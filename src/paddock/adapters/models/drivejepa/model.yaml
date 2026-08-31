@@ -1,0 +1,31 @@
+name: drivejepa
+description: Drive-JEPA perception-based agent (V-JEPA encoder + BEVFormer), NAVSIM v2
+repo: Drive-JEPA
+
+runtime:
+  kind: conda
+  python: "3.9"
+  # Built by setup.sh. Conda rather than uv because the upstream install pins
+  # torch 2.1/cu121 and an mmcv built against it.
+  venv: "{repos}/.conda-envs/drive-jepa"
+  pythonpath: ["{repo}/navsim_v2"]
+  # Load-bearing: the agent does np.load("./data/8192.npy") relative to cwd.
+  cwd: "{repo}/navsim_v2"
+  env:
+    NAVSIM_DEVKIT_ROOT: "{repo}/navsim_v2"
+    NAVSIM_EXP_ROOT: "{data.navsim.exp}"
+    OPENSCENE_DATA_ROOT: "{data.navsim}"
+    NUPLAN_MAPS_ROOT: "{data.navsim}/maps"
+    NUPLAN_MAP_VERSION: "nuplan-maps-v1.0"
+    DRIVEJEPA_CHECKPOINT: "{data.navsim.exp}/Drive-JEPA-cache/drive_jepa_perception_based_agent_vitl_v2.ckpt"
+    # mmcv-full's compiled kernel has no SASS above sm_86; 'auto' falls back to
+    # the equivalent pure-PyTorch path on newer cards. See patches/Drive-JEPA/.
+    DRIVE_JEPA_MSDA: "auto"
+
+capabilities:
+  cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT, CAM_BACK]
+  vram_gb: 12
+  startup_timeout_s: 900
+  waypoint_dt: 0.5
+
+benchmarks: [navsim, kitscenes, neuroncap]

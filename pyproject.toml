@@ -55,7 +55,6 @@ target-version = "py311"
 extend-exclude = [
     "tools",
     "src/paddock/adapters/models/alpamayo15",
-    "src/paddock/adapters/models/drivejepa",
     "src/paddock/adapters/models/visionpilot",
     "src/paddock/adapters/benchmarks/kitscenes",
     "src/paddock/adapters/benchmarks/neuroncap",
@@ -64,6 +63,16 @@ extend-exclude = [
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Rescued open-loop adapters still awaiting conversion, in directories whose
+# policy.py is already done. Narrower than excluding the whole directory, so new
+# code beside them stays linted. Remove the entry when the file is adapted.
+#
+# B019: @cache on a method pins the instance for the life of the process. Real,
+# but this is rescued code -- fix it during conversion, not in a lint pass.
+"src/paddock/adapters/models/drivejepa/kitscenes_adapter.py" = ["B019", "E501", "UP006", "UP035"]
+"src/paddock/adapters/models/openpilot/camera_adapt.py" = ["E501", "UP006", "UP035"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "src/paddock/adapters"]

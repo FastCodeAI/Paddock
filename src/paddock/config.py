@@ -85,6 +85,23 @@ class Dataset:
 
 
 @dataclass(frozen=True)
+class ModelOverride:
+    """Site-local corrections to a model's declared runtime.
+
+    Conda environments in particular live wherever a site happens to keep them,
+    which is often nowhere near the repo. Rather than force every site into one
+    layout, `model.yaml` declares a sensible default and paddock.toml overrides
+    it where reality differs:
+
+        [models.drivejepa]
+        venv = "/wherever/this/site/keeps/conda/envs/drive-jepa"
+    """
+
+    venv: Path | None = None
+    env: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class Gpu:
     budget_gb: float = 24.0
     serialize: bool = True
@@ -97,6 +114,7 @@ class SiteConfig:
     runs: Path
     weights: Path
     datasets: dict[str, Dataset]
+    models: dict[str, ModelOverride]
     gpu: Gpu
     source: Path
 
@@ -126,6 +144,13 @@ class SiteConfig:
             raise ConfigError(f"{cfg_path}: [roots] is missing {', '.join(missing)}")
 
         datasets = {name: cls._dataset(name, body) for name, body in raw.get("datasets", {}).items()}
+        models = {
+            name: ModelOverride(
+                venv=_abs(body["venv"]) if "venv" in body else None,
+                env={k: str(v) for k, v in (body.get("env") or {}).items()},
+            )
+            for name, body in raw.get("models", {}).items()
+        }
         gpu_raw = raw.get("gpu", {})
 
         return cls(
@@ -134,6 +159,7 @@ class SiteConfig:
             runs=_abs(roots["runs"]),
             weights=_abs(roots["weights"]),
             datasets=datasets,
+            models=models,
             gpu=Gpu(
                 budget_gb=float(gpu_raw.get("budget_gb", 24.0)),
                 serialize=bool(gpu_raw.get("serialize", True)),

@@ -68,8 +68,21 @@ class Runtime:
     env: dict[str, str] = field(default_factory=dict)
 
     def interpreter(self, cfg: SiteConfig, **ctx: str) -> Path:
+        """The interpreter to launch, with any site override applied.
+
+        The model name comes from `ModelSpec.context`, which already supplies it
+        as the {model} template variable -- taking it from there keeps one
+        source of truth rather than two that can disagree.
+        """
+        model = ctx.get("model", "")
+        override = cfg.models.get(model, None)
+        if override is not None and override.venv is not None:
+            return override.venv / "bin" / "python"
         if not self.venv:
-            raise ConfigError(f"runtime kind {self.kind!r} needs a 'venv' to locate its interpreter")
+            raise ConfigError(
+                f"runtime kind {self.kind!r} declares no 'venv', and paddock.toml has no "
+                f"[models.{model}] venv override to supply one"
+            )
         return Path(cfg.resolve(self.venv, **ctx)) / "bin" / "python"
 
 

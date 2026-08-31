@@ -265,7 +265,8 @@ def run(model_filter: str | None = None) -> Report:
                 name,
                 Status.WARN,
                 f"interpreter missing: {interpreter}",
-                f"bash {spec.directory.name}/setup.sh  (see docs/models/{name}.md)",
+                f"bash src/paddock/adapters/models/{spec.directory.name}/setup.sh, "
+                f"or set [models.{name}] venv in paddock.toml if it lives elsewhere",
             )
 
     # -- hardware ----------------------------------------------------------

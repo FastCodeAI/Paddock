@@ -211,6 +211,11 @@ class Observation:
     command: Command
     camera2image: dict[str, np.ndarray]
     camera2ego: dict[str, np.ndarray]
+    #: Lidar-to-ego extrinsics. Present in the NeuroNCAP payload and needed by
+    #: models whose feature builders work in the lidar frame (BEVFormer-style
+    #: projection derives lidar2img from it). None where a source does not
+    #: supply it, so a model that needs it should say so rather than assume.
+    lidar2ego: np.ndarray | None = None
 
     @classmethod
     def from_wire(cls, body: dict[str, Any], cameras: tuple[str, ...] = ("CAM_FRONT",)) -> Observation:
@@ -230,7 +235,21 @@ class Observation:
             command=Command(int(body["command"])),
             camera2image={c: np.asarray(v, dtype=np.float64) for c, v in calib["camera2image"].items()},
             camera2ego={c: np.asarray(v, dtype=np.float64) for c, v in calib["camera2ego"].items()},
+            lidar2ego=(np.asarray(calib["lidar2ego"], dtype=np.float64) if "lidar2ego" in calib else None),
         )
+
+    def require_lidar2ego(self) -> np.ndarray:
+        """Lidar extrinsics, or a clear error naming what is missing.
+
+        Models that project through the lidar frame fail deep inside a feature
+        builder otherwise, with a shape error that says nothing about calibration.
+        """
+        if self.lidar2ego is None:
+            raise ValueError(
+                "this observation carries no lidar2ego, which this model needs; "
+                "the benchmark's Observation must supply calibration['lidar2ego']"
+            )
+        return self.lidar2ego
 
     @property
     def speed(self) -> float:

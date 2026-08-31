@@ -1,9 +1,8 @@
-"""NeuroNCAP model node for Drive-JEPA (perception-based, v2).
+"""Drive-JEPA (perception-based, v2) as a paddock Policy.
 
-    NAVSIM_EXP_ROOT=/shakaal_hdd_1/workspace/naren/navsim_workspace/exp \\
-    PYTHONPATH=/shakaal_hdd_1/workspace/naren/renesas/Drive-JEPA/navsim_v2:\\
-/mnt/p4/naren/neuroncap/servers \\
-      conda run -p .../drive-jepa python drivejepa_server.py --port 9003
+Adapted from the NeuroNCAP model node. The model-specific reasoning is
+unchanged; the seams now implement `Policy`, and every path arrives through
+`model.yaml` rather than a hardcoded default.
 
 Of the four models this is the closest fit to NeuroNCAP out of the box: it is a
 NAVSIM agent, and NAVSIM's planning grid -- eight poses at 0.5 s, ego frame,
@@ -35,19 +34,12 @@ static.
 
 from __future__ import annotations
 
-import argparse
+import os
 from typing import Any
 
 import numpy as np
-import torch
-import uvicorn
-from fastapi import FastAPI
 
-import ncap_io
-
-from navsim.agents.drive_jepa_perception_based.drive_jepa_agent import DriveJEPAAgent
-from navsim.agents.drive_jepa_perception_based.drive_jepa_config import DriveJEPAConfig
-from navsim.common.dataclasses import AgentInput, Camera, Cameras, EgoStatus
+from paddock.policy.protocol import Observation, Policy, Trajectory
 
 # Drive-JEPA camera slot -> nuScenes camera. The perception branch reads these
 # four; the remaining slots stay empty and are skipped by the loader.
@@ -81,31 +73,53 @@ def relative_pose(pose: np.ndarray, reference: np.ndarray) -> np.ndarray:
     return np.array([delta[0, 3], delta[1, 3], yaw_of(delta)], dtype=np.float64)
 
 
-class DriveJepaNode:
-    def __init__(self, checkpoint: str, device: str = "cuda") -> None:
-        config = DriveJEPAConfig()
-        self.agent = DriveJEPAAgent(config=config, lr=1e-4, checkpoint_path=checkpoint)
-        self.agent.initialize()
-        self.agent.eval().to(device)
-        self.feature_builder = self.agent.get_feature_builders()[0]
+class DriveJepaPolicy(Policy):
+    cameras = NEEDED_CAMERAS
+    waypoint_dt = HISTORY_DT
+
+    def __init__(self, checkpoint: str | None = None, device: str = "cuda") -> None:
+        # Resolved from model.yaml (DRIVEJEPA_CHECKPOINT) rather than defaulted
+        # to one machine's path, so a site with the checkpoint elsewhere needs
+        # no code change.
+        self.checkpoint = checkpoint or os.environ.get("DRIVEJEPA_CHECKPOINT")
         self.device = device
+        self.agent = None
+        self.feature_builder = None
+        self.history: list[dict[str, Any]] = []
+
+    def load(self) -> None:
+        # navsim only exists inside Drive-JEPA's own environment; this module is
+        # imported by `paddock list` and the test suite, which run in paddock's.
+        if not self.checkpoint:
+            raise RuntimeError(
+                "no checkpoint: set DRIVEJEPA_CHECKPOINT (model.yaml supplies it "
+                "from {data.navsim.exp}) or pass one to DriveJepaPolicy"
+            )
+        from navsim.agents.drive_jepa_perception_based.drive_jepa_agent import DriveJEPAAgent
+        from navsim.agents.drive_jepa_perception_based.drive_jepa_config import DriveJEPAConfig
+
+        config = DriveJEPAConfig()
+        self.agent = DriveJEPAAgent(config=config, lr=1e-4, checkpoint_path=self.checkpoint)
+        self.agent.initialize()
+        self.agent.eval().to(self.device)
+        self.feature_builder = self.agent.get_feature_builders()[0]
         self.reset()
 
     def reset(self) -> None:
         """Drop the frame history between runs."""
         self.history: list[dict[str, Any]] = []
 
-    def _record(self, req: ncap_io.Request) -> None:
+    def _record(self, obs: Observation) -> None:
         self.history.append(
             {
-                "timestamp": req.timestamp,
-                "ego2world": req.ego2world,
-                "images": req.images,
-                "camera2image": req.camera2image,
-                "camera2ego": req.camera2ego,
-                "speed": req.speed,
-                "accel": req.accel,
-                "command": req.command,
+                "timestamp": obs.timestamp_us,
+                "ego2world": obs.ego2world,
+                "images": obs.images,
+                "camera2image": obs.camera2image,
+                "camera2ego": obs.camera2ego,
+                "speed": obs.speed,
+                "accel": obs.accel,
+                "command": int(obs.command),
             }
         )
         # 12 s of 10 Hz history is far more than the 1.5 s ever used; trimming
@@ -127,7 +141,9 @@ class DriveJepaNode:
             chosen.append(nearest)
         return chosen
 
-    def _cameras(self, frame: dict[str, Any], lidar2ego: np.ndarray) -> Cameras:
+    def _cameras(self, frame: dict[str, Any], lidar2ego: np.ndarray):
+        from navsim.common.dataclasses import Camera, Cameras
+
         slots: dict[str, Camera] = {}
         ego2lidar = np.linalg.inv(lidar2ego)
         for slot, camera in CAMERA_MAP.items():
@@ -150,7 +166,9 @@ class DriveJepaNode:
             cam_b0=slots["cam_b0"],
         )
 
-    def _agent_input(self, lidar2ego: np.ndarray) -> AgentInput:
+    def _agent_input(self, lidar2ego: np.ndarray):
+        from navsim.common.dataclasses import AgentInput, EgoStatus
+
         frames = self._select_history()
         current = frames[-1]["ego2world"]
 
@@ -167,10 +185,14 @@ class DriveJepaNode:
         cameras = [self._cameras(frame, lidar2ego) for frame in frames]
         return AgentInput(ego_statuses=ego_statuses, cameras=cameras, lidars=[])
 
-    def infer(self, body: dict[str, Any]) -> dict[str, Any]:
-        req = ncap_io.Request.parse(body, cameras=NEEDED_CAMERAS)
-        self._record(req)
-        lidar2ego = np.asarray(body["calibration"]["lidar2ego"], dtype=np.float64)
+    def infer(self, obs: Observation) -> Trajectory:
+        if self.agent is None:
+            raise RuntimeError("load() must be called before infer()")
+
+        import torch
+
+        self._record(obs)
+        lidar2ego = obs.require_lidar2ego()
 
         agent_input = self._agent_input(lidar2ego)
         features = self.feature_builder.compute_features(agent_input)
@@ -182,45 +204,28 @@ class DriveJepaNode:
             output = self.agent.forward(features)
 
         # NAVSIM plans eight poses at 0.5 s as (x, y, heading), ego frame,
-        # x forward and y left -- the grid NeuroNCAP drives, so no resampling.
+        # x forward and y left -- exactly the grid paddock uses, so nothing is
+        # resampled. All eight are returned: closed-loop takes the first six,
+        # and open-loop scoring wants the full horizon for FDE@3s.
         trajectory = output["trajectory"][0].float().cpu().numpy()
-        return ncap_io.response(trajectory[:6, :2]) | {
-            "debug": {
-                "history_span_s": round(
-                    (self.history[-1]["timestamp"] - self._select_history()[0]["timestamp"]) / 1e6, 2
-                ),
-                "poses_returned": int(trajectory.shape[0]),
-            }
+        return Trajectory(trajectory, dt=HISTORY_DT)
+
+    def diagnostics(self) -> dict[str, Any]:
+        """History depth actually achieved.
+
+        The reason this matters: history is selected by timestamp, so a
+        simulator stepping faster than 0.5 s still yields ~1.5 s of context. If
+        this collapses toward zero the model is reading a near-static scene and
+        its plans will look plausible while being badly under-informed.
+        """
+        if not self.history:
+            return {"status": "no frame seen yet"}
+        chosen = self._select_history()
+        return {
+            "frames_recorded": len(self.history),
+            "history_span_s": round((self.history[-1]["timestamp"] - chosen[0]["timestamp"]) / 1e6, 2),
+            "history_target_s": round((HISTORY_FRAMES - 1) * HISTORY_DT, 2),
         }
 
 
-def build_app(node: DriveJepaNode) -> FastAPI:
-    app = FastAPI()
-
-    @app.get("/alive")
-    async def alive() -> bool:
-        return True
-
-    @app.post("/infer")
-    async def infer(body: dict) -> dict:
-        return node.infer(body)
-
-    @app.post("/reset")
-    async def reset(body: dict | None = None) -> bool:
-        node.reset()
-        return True
-
-    return app
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=9003)
-    parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument(
-        "--checkpoint",
-        default="/shakaal_hdd_1/workspace/naren/navsim_workspace/exp/Drive-JEPA-cache/"
-        "drive_jepa_perception_based_agent_vitl_v2.ckpt",
-    )
-    args = parser.parse_args()
-    uvicorn.run(build_app(DriveJepaNode(args.checkpoint)), host=args.host, port=args.port, log_level="warning")
+POLICY = DriveJepaPolicy

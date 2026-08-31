@@ -32,15 +32,13 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import numpy.typing as npt
-from PIL import Image
-
 from navsim.common.dataclasses import AgentInput, Camera, Cameras, EgoStatus, Lidar
+from PIL import Image
 
 # --------------------------------------------------------------------------- #
 # Conventions
@@ -57,7 +55,7 @@ TARGET_CU, TARGET_CV = 960.0, 560.0
 
 # KITScenes ring camera -> NAVSIM slot.  Yaw angles measured from calib.json are
 # 1 / 61 / -58 / -179 deg against OpenScene's 0 / 55 / -55 / 180.
-CAMERA_MAP: Dict[str, str] = {
+CAMERA_MAP: dict[str, str] = {
     "cam_f0": "camera_ring_front",
     "cam_l0": "camera_ring_front_left",
     "cam_r0": "camera_ring_front_right",
@@ -97,7 +95,7 @@ def _quaternion_to_yaw(qx: float, qy: float, qz: float, qw: float) -> float:
     return float(np.arctan2(siny_cosp, cosy_cosp))
 
 
-def load_poses(scene_path: Path) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+def load_poses(scene_path: Path) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
     """Load ``poses.txt`` as (timestamps_s, (N, 3) x/y/yaw in the local UTM frame)."""
     raw = np.loadtxt(scene_path / POSES_FILENAME)
     if raw.ndim == 1:
@@ -126,7 +124,7 @@ def to_relative_poses(
 
 def _body_frame_dynamics(
     timestamps: npt.NDArray[np.float64], poses: npt.NDArray[np.float64], index: int
-) -> Tuple[npt.NDArray[np.float32], npt.NDArray[np.float32]]:
+) -> tuple[npt.NDArray[np.float32], npt.NDArray[np.float32]]:
     """Central-difference velocity and acceleration at *index*, in the body frame.
 
     OpenScene's ``ego_dynamic_state`` is ``[vx, vy, ax, ay]`` in the ego frame;
@@ -162,7 +160,7 @@ def _body_frame_dynamics(
 # --------------------------------------------------------------------------- #
 
 
-def _crop_box(intrinsics: dict) -> Tuple[int, int, int, int, float]:
+def _crop_box(intrinsics: dict) -> tuple[int, int, int, int, float]:
     """Crop window that maps the source pinhole onto the OpenScene intrinsics.
 
     Choosing ``scale = TARGET_FOCAL / f`` matches the field of view, and anchoring
@@ -193,16 +191,14 @@ def target_intrinsics() -> npt.NDArray[np.float32]:
 class KITScenesSceneAdapter:
     """Builds NAVSIM ``AgentInput`` samples from one KITScenes scene directory."""
 
-    def __init__(self, scene_path: Path, ground_offset: Optional[float] = None) -> None:
+    def __init__(self, scene_path: Path, ground_offset: float | None = None) -> None:
         self.scene_path = Path(scene_path)
         self.scene_id = self.scene_path.name
         self._calibration = json.loads((self.scene_path / CALIBRATION_FILENAME).read_text())
         self.reference_timestamps = np.loadtxt(self.scene_path / REFERENCE_TIMESTAMP_FILENAME)
         self.pose_timestamps, self.poses = load_poses(self.scene_path)
         self.num_frames = len(self.reference_timestamps)
-        self.ground_offset = (
-            ground_offset if ground_offset is not None else self.estimate_ground_offset()
-        )
+        self.ground_offset = ground_offset if ground_offset is not None else self.estimate_ground_offset()
 
     # -- geometry ----------------------------------------------------------- #
 
@@ -231,8 +227,8 @@ class KITScenesSceneAdapter:
             print(f"  ! ground estimate failed ({exc}); falling back to {fallback} m")
             return fallback
 
-    @lru_cache(maxsize=None)
-    def _camera_extrinsics(self, sensor: str) -> Tuple[npt.NDArray, npt.NDArray]:
+    @cache
+    def _camera_extrinsics(self, sensor: str) -> tuple[npt.NDArray, npt.NDArray]:
         """``sensor2lidar`` rotation/translation with the origin dropped to the road."""
         transform = np.array(self._calibration[sensor]["T_to_reference"], dtype=np.float64)
         rotation = transform[:3, :3]
@@ -259,8 +255,8 @@ class KITScenesSceneAdapter:
     # -- sample construction ------------------------------------------------ #
 
     def valid_keyframes(
-        self, num_future_frames: int, stride: int = 10, first_frame: Optional[int] = None
-    ) -> List[int]:
+        self, num_future_frames: int, stride: int = 10, first_frame: int | None = None
+    ) -> list[int]:
         """Keyframes with a full history behind them and a full future ahead.
 
         *first_frame* and *stride* are in 10 Hz frames.  The paper's e2e protocol
@@ -272,9 +268,7 @@ class KITScenesSceneAdapter:
         last = self.num_frames - num_future_frames * HISTORY_STRIDE - 1
         return list(range(first, last + 1, stride)) if last >= first else []
 
-    def _driving_command(
-        self, keyframe: int, num_future_frames: int, mode: str
-    ) -> npt.NDArray[np.int64]:
+    def _driving_command(self, keyframe: int, num_future_frames: int, mode: str) -> npt.NDArray[np.int64]:
         """NAVSIM's 4-way one-hot: [left, straight, right, unknown].
 
         Verified empirically against the navtest logs -- index 0 correlates with
@@ -298,7 +292,7 @@ class KITScenesSceneAdapter:
         self,
         keyframe: int,
         num_future_frames: int = 8,
-        camera_frames: Tuple[int, ...] = (2, 3),
+        camera_frames: tuple[int, ...] = (2, 3),
         command_mode: str = "gt",
     ) -> KITScenesSample:
         """Assemble the ``AgentInput`` for *keyframe* plus its ground-truth future.
@@ -307,20 +301,17 @@ class KITScenesSceneAdapter:
         Drive-JEPA reads ``cam_f0`` at [2, 3] and the side/rear cameras at [3].
         """
         history = [
-            keyframe - HISTORY_STRIDE * (NUM_HISTORY_FRAMES - 1 - i)
-            for i in range(NUM_HISTORY_FRAMES)
+            keyframe - HISTORY_STRIDE * (NUM_HISTORY_FRAMES - 1 - i) for i in range(NUM_HISTORY_FRAMES)
         ]
         local_history = to_relative_poses(self.poses[keyframe], self.poses[history])
         command = self._driving_command(keyframe, num_future_frames, command_mode)
 
-        ego_statuses: List[EgoStatus] = []
-        cameras: List[Cameras] = []
-        lidars: List[Lidar] = []
+        ego_statuses: list[EgoStatus] = []
+        cameras: list[Cameras] = []
+        lidars: list[Lidar] = []
 
         for position, frame_index in enumerate(history):
-            velocity, acceleration = _body_frame_dynamics(
-                self.pose_timestamps, self.poses, frame_index
-            )
+            velocity, acceleration = _body_frame_dynamics(self.pose_timestamps, self.poses, frame_index)
             ego_statuses.append(
                 EgoStatus(
                     ego_pose=local_history[position].astype(np.float32),
