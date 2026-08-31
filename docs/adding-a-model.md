@@ -62,7 +62,12 @@ cp -r src/paddock/adapters/models/_template src/paddock/adapters/models/mymodel
 ## Step 4 — declare the runtime
 
 Edit `model.yaml`. This is where the model's environment stops being tribal
-knowledge:
+knowledge.
+
+Use whatever the upstream repo actually needs -- `runtime.kind` may be `uv`,
+`conda` or `shell`, and models genuinely differ (Drive-JEPA is conda on Python
+3.9; openpilot is uv on 3.12). This is independent of how paddock's own
+environment was built.
 
 ```yaml
 name: mymodel
@@ -70,7 +75,7 @@ description: What it is and who publishes it.
 repo: mymodel
 
 runtime:
-  kind: uv                       # uv | conda | shell
+  kind: uv                       # uv | conda | shell -- whatever the repo needs
   python: "3.12"
   venv: "{repo}/.venv"           # the interpreter paddock launches
   pythonpath: ["{repo}"]

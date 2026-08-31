@@ -11,19 +11,36 @@ long each model's environment takes to build.
 
 ## 1. Install
 
+Paddock is pure Python with no compiled dependencies, so venv and conda work
+equally well. Pick whichever your team already uses.
+
+**venv / uv** (the default):
+
 ```bash
 git clone <paddock> && cd paddock
 make setup
 source .venv/bin/activate      # puts `paddock` on PATH for this shell
 ```
 
-Creates `.venv` and installs paddock in editable mode. **`paddock` is not
-installed system-wide** -- it lives in that venv, so a shell that has not
+**conda**, if that is your house standard:
+
+```bash
+git clone <paddock> && cd paddock
+make setup-conda
+conda activate paddock
+```
+
+Either way, `make check`, `make test` and `make doctor` run against whichever
+environment is active, so the rest of this repo does not care which you chose.
+`make which` shows the interpreter they will use. (Conda `base` is deliberately
+ignored -- installing a project into base is how base stops working.)
+
+**`paddock` is not installed system-wide** -- it lives in that venv, so a shell that has not
 activated it will report `command not found`. Three ways to run it:
 
 | | When |
 |---|---|
-| `source .venv/bin/activate`, then `paddock ...` | normal interactive use |
+| activate the environment, then `paddock ...` | normal interactive use |
 | `.venv/bin/paddock ...` | one-off, or from a cold shell |
 | `make doctor` | no activation needed |
 

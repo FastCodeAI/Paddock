@@ -1,0 +1,24 @@
+# Conda alternative to `make setup`, for sites that standardise on conda.
+#
+#   make setup-conda        # or: conda env create -f environment.yml
+#   conda activate paddock
+#
+# Either environment works identically -- paddock is pure Python with no
+# compiled dependencies, so there is nothing conda does here that venv cannot.
+# Pick whichever your team already uses.
+#
+# Note this is paddock's OWN environment, not any model's. Model environments
+# are separate by necessity (five Python versions across three managers are in
+# play) and are declared per model in adapters/models/<name>/model.yaml, where
+# `runtime.kind` may be uv, conda, or shell. Choosing conda here does not change
+# how any model is built, and choosing venv here does not stop a model using
+# conda.
+
+name: paddock
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - -e .[dev,serve]
