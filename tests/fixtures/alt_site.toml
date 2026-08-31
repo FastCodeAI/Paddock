@@ -1,0 +1,20 @@
+# A deliberately different layout, used to prove paddock is not welded to any
+# one machine. Every path here is under /tmp, so it works on any Linux box:
+#
+#   mkdir -p /tmp/paddock-altsite/{repos,runs,weights}
+#   PADDOCK_CONFIG=tests/fixtures/alt_site.toml paddock doctor
+#
+# Expect warnings (nothing is cloned, no datasets configured) and no failures.
+# A failure here means something resolved against the developer's own layout
+# instead of this file.
+
+site = "alt-site-rehearsal"
+
+[roots]
+repos   = "/tmp/paddock-altsite/repos"
+runs    = "/tmp/paddock-altsite/runs"
+weights = "/tmp/paddock-altsite/weights"
+
+[gpu]
+budget_gb = 8
+serialize = true

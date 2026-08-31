@@ -51,16 +51,25 @@ def list_(
             typer.echo(f"  {name:<{width}}  {detail}")
 
     if what in ("all", "models"):
-        show("models", [
-            (m.name, f"{m.runtime.kind}, {', '.join(m.cameras)}, {m.vram_gb:.0f} GB"
-                     + (f" -> {', '.join(m.benchmarks)}" if m.benchmarks else ""))
-            for m in registry.models.values()
-        ])
+        show(
+            "models",
+            [
+                (
+                    m.name,
+                    f"{m.runtime.kind}, {', '.join(m.cameras)}, {m.vram_gb:.0f} GB"
+                    + (f" -> {', '.join(m.benchmarks)}" if m.benchmarks else ""),
+                )
+                for m in registry.models.values()
+            ],
+        )
     if what in ("all", "benchmarks"):
-        show("benchmarks", [
-            (b.name, f"{b.mode}, dataset={b.dataset}, primary={b.primary_metric or '-'}")
-            for b in registry.benchmarks.values()
-        ])
+        show(
+            "benchmarks",
+            [
+                (b.name, f"{b.mode}, dataset={b.dataset}, primary={b.primary_metric or '-'}")
+                for b in registry.benchmarks.values()
+            ],
+        )
     if what in ("all", "datasets"):
         show("datasets", [(d.name, d.description) for d in registry.datasets.values()])
     if what in ("all", "repos"):
@@ -91,8 +100,7 @@ def config() -> None:
 
 def _not_yet(command: str, milestone: str) -> None:
     typer.echo(
-        f"`paddock {command}` is not implemented yet (planned for {milestone}).\n"
-        f"Nothing was changed.",
+        f"`paddock {command}` is not implemented yet (planned for {milestone}).\nNothing was changed.",
         err=True,
     )
     sys.exit(2)

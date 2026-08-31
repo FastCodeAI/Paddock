@@ -1,0 +1,153 @@
+# Results schema
+
+One schema for every benchmark, so an ADE and an NCAP score are comparable
+statements about the same model run the same way.
+
+## Where results live
+
+| | Path | Tracked? | Size |
+|---|---|---|---|
+| provenance | `results/<bench>/<model>/<run_id>/run.json` | **yes** | ~1 KB |
+| metrics | `results/<bench>/<model>/<run_id>/metrics.json` | **yes** | ~1 KB |
+| per-sample records | `{runs}/<bench>/<model>/<run_id>/samples.jsonl` | no | MB |
+| artifacts | `{runs}/<bench>/<model>/<run_id>/artifacts/` | no | GB |
+
+Metrics are committed so the leaderboard is reviewable in a diff and both
+organisations see one history. Predictions, frames and videos stay outside the
+repo.
+
+`run_id` is `<UTC timestamp>-<short config hash>`, e.g. `20260901T031500-a1b2c3`.
+
+---
+
+## `run.json` — provenance
+
+Everything needed to decide whether two numbers are comparable.
+
+```json
+{
+  "run_id": "20260901T031500-a1b2c3",
+  "site": "myorg-myhost",
+  "started_utc": "2026-09-01T03:15:00Z",
+  "duration_s": 1487.2,
+  "model": {"name": "openpilot", "repo_sha": "053d9c446", "adapter_sha": "1bfd5e7"},
+  "benchmark": {"name": "kitscenes", "mode": "open_loop", "adapter_sha": "1bfd5e7"},
+  "dataset": {"name": "kitscenes", "split": "val", "n_samples": 223,
+              "sequences_sha256": "9f86d0…"},
+  "config": {"limit": null, "seed": 0, "waypoint_dt": 0.5, "sim_step": null},
+  "hardware": {"gpu": "NVIDIA RTX PRO 6000", "gpu_count": 1},
+  "status": "complete",
+  "valid": true,
+  "notes": ""
+}
+```
+
+Three fields do the real work:
+
+- **`site`** — both organisations write into one history; without this a
+  discrepancy is unattributable.
+- **`sequences_sha256`** — a hash of the sorted sample-id list. Two runs with
+  different hashes evaluated different data, whatever their `n_samples` say. This
+  is the single most common cause of numbers that will not reconcile.
+- **`valid`** — set `false` with a `notes` explaining why, for runs known to be
+  bad. Reporting excludes them and never silently averages them in. Deleting a
+  bad run loses the record that it happened; marking it keeps it.
+
+Paths never appear in `run.json` — it is tracked, so the portability gate applies.
+
+## `metrics.json` — aggregates
+
+```json
+{
+  "run_id": "20260901T031500-a1b2c3",
+  "primary_metric": "ade",
+  "n": 223,
+  "metrics": {
+    "ade":    {"mean": 1.599, "median": 1.323, "p90": 2.955, "max": 7.084, "std": 0.94},
+    "fde@1s": {"mean": 0.836, "median": 0.71},
+    "fde@3s": {"mean": 2.894, "median": 2.55},
+    "longitudinal_mae": {"mean": 1.527},
+    "lateral_mae":      {"mean": 0.290}
+  },
+  "by_split":   {"val": {"n": 186, "ade": {"mean": 1.570}}},
+  "by_group":   {}
+}
+```
+
+Paddock aggregates; adapters return per-sample metrics only. That way every
+benchmark aggregates identically and per-sample records stay inspectable.
+
+**Metrics are always recomputed from stored predictions, never trusted from the
+producer.** It costs nothing and it catches the class of bug where a metric
+changes but the recorded number does not.
+
+## `samples.jsonl` — per-sample records
+
+One JSON object per line, under `{runs}`, not tracked.
+
+```json
+{"sample_id": "kitscenes/val/1df9975b/f130",
+ "native_id": {"scene_id": "1df9975b", "keyframe_index": 130},
+ "split": "val",
+ "prediction": [[2.5, 0.01], [5.1, 0.03], "..."],
+ "ground_truth": [[2.6, 0.00], [5.2, 0.02], "..."],
+ "metrics": {"ade": 1.21, "fde@3s": 2.44},
+ "inference_s": 0.083,
+ "extra": {"lead_prob": 0.91}}
+```
+
+`native_id` preserves identity exactly as the source dataset expressed it, so a
+record can always be traced back.
+
+---
+
+## Canonical metric names
+
+Reuse these. A new name should mean a genuinely new quantity, not a second
+spelling of an existing one.
+
+| Name | Meaning |
+|---|---|
+| `ade` | average displacement error, m |
+| `fde@1s`, `fde@2s`, `fde@3s` | displacement at that horizon, m |
+| `min_ade@K` | best ADE over K sampled trajectories |
+| `longitudinal_mae`, `lateral_mae` | ADE split along- and cross-track |
+| `ncap_score` | neuroNCAP score, 0–5 |
+| `collision_rate` | fraction of runs with a collision |
+| `impact_speed`, `reference_speed` | m/s, closed-loop collision detail |
+| `pdms`, `epdms` | NAVSIM composite scores |
+| `inference_s` | wall-clock per sample |
+
+Report `longitudinal_mae` and `lateral_mae` alongside `ade` where the benchmark
+allows. Every model measured so far errs far more longitudinally than
+laterally — it holds the lane and misjudges the speed — and a single ADE hides
+which failure you are looking at.
+
+---
+
+## Ingesting existing results
+
+Results predating paddock exist in six mutually incompatible shapes. Readers
+under `results/ingest/` normalise them. Four things they must reconcile:
+
+1. **Identity** — `token` in some sources, `(scene_id, keyframe_index)` in
+   others, and encoded in the *directory path* in one. Canonical: `sample_id`,
+   with `native_id` preserving the original.
+2. **Pose dimensionality** — 2-D `(x, y)` and 3-D `(x, y, yaw)` both occur.
+   Canonical: 3-D, yaw nullable.
+3. **Metrics inline vs aggregate-only** — some sources carry per-row metrics,
+   one carries none. Canonical: recompute from predictions.
+4. **Run identity** — a filesystem path, a record field, or a sidecar config.
+   Canonical: `run.json`.
+
+Two traps specific to the legacy data:
+
+- **Some quantities exist only in logs.** `impact_speed` and `reference_speed`
+  were printed to a text log and never written to the metrics file. Ingesting
+  only the structured file drops them silently.
+- **Known-bad runs are on disk.** At least one output directory is named for the
+  fact that it is invalid. Ingest must mark these `valid: false`, not average
+  them in.
+
+Ingest also strips absolute paths from provenance before writing, since
+`results/` is tracked and the portability gate applies to it.

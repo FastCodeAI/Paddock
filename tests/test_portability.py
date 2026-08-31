@@ -19,7 +19,6 @@ portability bug, and the fix is a template variable.
 
 from __future__ import annotations
 
-import re
 import subprocess
 from pathlib import Path
 
@@ -60,7 +59,9 @@ def tracked_files() -> list[Path]:
     try:
         out = subprocess.run(
             ["git", "-C", str(REPO_ROOT), "ls-files"],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         names = [n for n in out.stdout.splitlines() if n]
         if names:
@@ -70,12 +71,21 @@ def tracked_files() -> list[Path]:
 
     # Mirror .gitignore well enough to be useful before the first commit.
     skip_dirs = {
-        ".git", ".venv", "venv", "external", "__pycache__",
-        "runs", "paddock-runs", ".pytest_cache", ".ruff_cache", ".mypy_cache",
+        ".git",
+        ".venv",
+        "venv",
+        "external",
+        "__pycache__",
+        "runs",
+        "paddock-runs",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".mypy_cache",
     }
     skip_files = {"paddock.toml"}  # gitignored: this machine's real paths belong here
     return [
-        p for p in REPO_ROOT.rglob("*")
+        p
+        for p in REPO_ROOT.rglob("*")
         if p.is_file()
         and not skip_dirs.intersection(p.relative_to(REPO_ROOT).parts)
         and p.relative_to(REPO_ROOT).as_posix() not in skip_files
@@ -114,7 +124,7 @@ def test_no_machine_specific_paths() -> None:
         "tracked files contain machine-specific paths.\n\n"
         + "\n".join(failures)
         + "\n\nMove the location into paddock.toml and refer to it with a template\n"
-          "variable ({repos}, {runs}, {weights}, {data.<name>}). See docs/site-setup.md."
+        "variable ({repos}, {runs}, {weights}, {data.<name>}). See docs/site-setup.md."
     )
 
 
@@ -123,7 +133,9 @@ def test_paddock_toml_is_not_tracked() -> None:
     try:
         out = subprocess.run(
             ["git", "-C", str(REPO_ROOT), "ls-files", "paddock.toml"],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
         )
     except (subprocess.CalledProcessError, FileNotFoundError):
         return  # not a git repo yet

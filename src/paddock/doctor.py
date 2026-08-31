@@ -76,7 +76,10 @@ def _free_vram_gb() -> float | None:
     try:
         out = subprocess.run(
             ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, check=True, timeout=30,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,
         )
         return int(out.stdout.strip().splitlines()[0]) / 1024
     except (subprocess.SubprocessError, ValueError, IndexError):
@@ -103,7 +106,10 @@ def _git_sha(repo: Path) -> str | None:
     try:
         out = subprocess.run(
             ["git", "-C", str(repo), "rev-parse", "HEAD"],
-            capture_output=True, text=True, check=True, timeout=30,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,
         )
         return out.stdout.strip()
     except (subprocess.SubprocessError, FileNotFoundError):
@@ -123,7 +129,10 @@ def run(model_filter: str | None = None) -> Report:
     report.add("configuration", "paddock.toml", Status.OK, str(cfg.source))
     if cfg.site.startswith("CHANGEME"):
         report.add(
-            "configuration", "site label", Status.WARN, cfg.site,
+            "configuration",
+            "site label",
+            Status.WARN,
+            cfg.site,
             "set `site` to something identifying this machine; it is recorded in every run.json",
         )
     else:
@@ -137,7 +146,10 @@ def run(model_filter: str | None = None) -> Report:
     ):
         if not path.exists():
             report.add(
-                "roots", label, Status.FAIL, str(path),
+                "roots",
+                label,
+                Status.FAIL,
+                str(path),
                 f"directory does not exist; create it or correct [roots].{label} in paddock.toml",
             )
             continue
@@ -145,7 +157,10 @@ def run(model_filter: str | None = None) -> Report:
             report.add("roots", label, Status.FAIL, str(path), "not writable by this user")
         elif must_write and _on_root_filesystem(path):
             report.add(
-                "roots", label, Status.WARN, str(path),
+                "roots",
+                label,
+                Status.WARN,
+                str(path),
                 "on the root filesystem; run artifacts are tens of GB. Prefer a data disk.",
             )
         else:
@@ -155,7 +170,13 @@ def run(model_filter: str | None = None) -> Report:
 
     # -- vendor repos ------------------------------------------------------
     if not registry.repos:
-        report.add("repos", "repos.yaml", Status.WARN, "no repos registered yet")
+        report.add(
+            "repos",
+            "repos.yaml",
+            Status.WARN,
+            "no repos registered yet",
+            "add an upstream repo to repos.yaml -- see docs/adding-a-model.md",
+        )
     for name, spec in registry.repos.items():
         path = cfg.repo(name)
         if not path.exists():
@@ -163,10 +184,19 @@ def run(model_filter: str | None = None) -> Report:
             continue
         sha = _git_sha(path)
         if sha is None:
-            report.add("repos", name, Status.WARN, str(path), "present but not a git checkout")
+            report.add(
+                "repos",
+                name,
+                Status.WARN,
+                str(path),
+                "present but not a git checkout; paddock cannot verify the pinned revision",
+            )
         elif not sha.startswith(spec.sha):
             report.add(
-                "repos", name, Status.WARN, f"at {sha[:9]}, pinned {spec.sha}",
+                "repos",
+                name,
+                Status.WARN,
+                f"at {sha[:9]}, pinned {spec.sha}",
                 "results will not match the pinned revision; `git -C <repo> checkout <sha>` "
                 "or update repos.yaml if the move is intended",
             )
@@ -175,12 +205,21 @@ def run(model_filter: str | None = None) -> Report:
 
     # -- datasets ----------------------------------------------------------
     if not registry.datasets:
-        report.add("datasets", "datasets.yaml", Status.WARN, "no datasets declared yet")
+        report.add(
+            "datasets",
+            "datasets.yaml",
+            Status.WARN,
+            "no datasets declared yet",
+            "declare one in datasets.yaml -- see docs/data-setup.md",
+        )
     for name, spec in registry.datasets.items():
         configured = cfg.datasets.get(name)
         if configured is None:
             report.add(
-                "datasets", name, Status.WARN, "not configured",
+                "datasets",
+                name,
+                Status.WARN,
+                "not configured",
                 f"add [datasets.{name}] to paddock.toml if you have it -- see docs/data-setup.md",
             )
             continue
@@ -191,7 +230,10 @@ def run(model_filter: str | None = None) -> Report:
         missing = [r for r in spec.requires if not configured.find(r)]
         if missing:
             report.add(
-                "datasets", name, Status.WARN, f"{root} (missing: {', '.join(missing)})",
+                "datasets",
+                name,
+                Status.WARN,
+                f"{root} (missing: {', '.join(missing)})",
                 spec.notes or "dataset is incomplete; some benchmarks will not run",
             )
         else:
@@ -200,7 +242,13 @@ def run(model_filter: str | None = None) -> Report:
 
     # -- model environments ------------------------------------------------
     if not registry.models:
-        report.add("models", "adapters/models", Status.WARN, "no models registered yet")
+        report.add(
+            "models",
+            "adapters/models",
+            Status.WARN,
+            "no models registered yet",
+            "copy adapters/models/_template -- see docs/adding-a-model.md",
+        )
     for name, spec in registry.models.items():
         if model_filter and name != model_filter:
             continue
@@ -213,19 +261,30 @@ def run(model_filter: str | None = None) -> Report:
             report.add("models", name, Status.OK, f"{spec.runtime.kind}: {interpreter}")
         else:
             report.add(
-                "models", name, Status.WARN, f"interpreter missing: {interpreter}",
+                "models",
+                name,
+                Status.WARN,
+                f"interpreter missing: {interpreter}",
                 f"bash {spec.directory.name}/setup.sh  (see docs/models/{name}.md)",
             )
 
     # -- hardware ----------------------------------------------------------
     free = _free_vram_gb()
     if free is None:
-        report.add("hardware", "gpu", Status.WARN, "nvidia-smi unavailable", "CPU-only models will still run")
+        report.add(
+            "hardware",
+            "gpu",
+            Status.WARN,
+            "nvidia-smi unavailable",
+            "CPU-only models will still run; GPU models need a working driver",
+        )
     else:
         needed = max((m.vram_gb for m in registry.models.values()), default=0.0)
         status = Status.OK if free >= needed else Status.WARN
         report.add(
-            "hardware", "gpu", status,
+            "hardware",
+            "gpu",
+            status,
             f"{free:.1f} GB free of {cfg.gpu.budget_gb:.0f} GB budget (largest model wants {needed:.0f} GB)",
             "another process is holding the card; paddock will wait rather than OOM mid-load",
         )
@@ -234,12 +293,21 @@ def run(model_filter: str | None = None) -> Report:
     hf_home = os.environ.get("HF_HOME")
     if not hf_home:
         report.add(
-            "environment", "HF_HOME", Status.WARN, "unset",
+            "environment",
+            "HF_HOME",
+            Status.WARN,
+            "unset",
             "hf downloads will stage into ~/.cache on the root filesystem; "
             "export HF_HOME to a data disk before fetching datasets or weights",
         )
     elif _on_root_filesystem(Path(hf_home)):
-        report.add("environment", "HF_HOME", Status.WARN, hf_home, "points at the root filesystem")
+        report.add(
+            "environment",
+            "HF_HOME",
+            Status.WARN,
+            hf_home,
+            "points at the root filesystem; move it to a data disk before fetching",
+        )
     else:
         report.add("environment", "HF_HOME", Status.OK, hf_home)
 

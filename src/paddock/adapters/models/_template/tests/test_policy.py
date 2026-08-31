@@ -14,7 +14,7 @@ from __future__ import annotations
 import numpy as np
 
 from paddock.adapters.models._template.policy import POLICY
-from paddock.policy.protocol import Command, Observation, N_WAYPOINTS
+from paddock.policy.protocol import N_WAYPOINTS, Command, Observation
 
 
 def make_observation(speed: float = 10.0) -> Observation:

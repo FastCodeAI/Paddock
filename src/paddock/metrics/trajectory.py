@@ -143,7 +143,5 @@ def align(pred, pred_t, gt, gt_t) -> tuple[np.ndarray, np.ndarray, int]:
     p, pt = p[keep], pt[keep]
 
     # 2. interpolate ground truth onto the prediction's timestamps
-    aligned_gt = np.stack(
-        [np.interp(pt, gt_times, g[:, 0]), np.interp(pt, gt_times, g[:, 1])], axis=1
-    )
+    aligned_gt = np.stack([np.interp(pt, gt_times, g[:, 0]), np.interp(pt, gt_times, g[:, 1])], axis=1)
     return p, aligned_gt, len(p)

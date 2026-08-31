@@ -300,8 +300,7 @@ class Trajectory:
         """
         if len(self.waypoints) < N_WAYPOINTS:
             raise ValueError(
-                f"trajectory needs >= {N_WAYPOINTS} waypoints for closed-loop, "
-                f"got {len(self.waypoints)}"
+                f"trajectory needs >= {N_WAYPOINTS} waypoints for closed-loop, got {len(self.waypoints)}"
             )
         return {
             "trajectory": self.xy[:N_WAYPOINTS].tolist(),
@@ -354,10 +353,10 @@ class Policy(ABC):
     #: Waypoint spacing this model plans at, seconds.
     waypoint_dt: float = 0.5
 
-    def load(self) -> None:
+    def load(self) -> None:  # noqa: B027 - optional hook; a stateless policy needs no setup
         """Bring weights up. Called once, before any `infer`."""
 
-    def reset(self) -> None:
+    def reset(self) -> None:  # noqa: B027 - optional hook; a stateless policy has nothing to clear
         """Clear per-episode state (frame history, filters) between runs."""
 
     @abstractmethod
