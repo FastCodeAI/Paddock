@@ -1,0 +1,26 @@
+name: openpilot
+description: comma.ai openpilot supercombo, run through tinygrad
+repo: openpilot
+
+runtime:
+  kind: uv
+  python: "3.12"
+  venv: "{repo}/.venv"
+  pythonpath: ["{repo}"]
+  cwd: "{repo}"
+  env:
+    # ffmpeg from openpilot's own venv, so the RGB -> NV12 conversion matches
+    # the binary the recorded runs used.
+    PADDOCK_FFMPEG: "{repo}/.venv/bin/ffmpeg"
+    # Colon-separated search path, fastest tier first.
+    KITSCENES_ROOTS: "{data.kitscenes.tiers}"
+
+capabilities:
+  cameras: [CAM_FRONT]
+  # tinygrad's PC backend is CPU:LLVM -- supercombo does not touch the GPU.
+  # The reservation covers the harness around it, not the model.
+  vram_gb: 6
+  startup_timeout_s: 600
+  waypoint_dt: 0.5
+
+benchmarks: [kitscenes, neuroncap]

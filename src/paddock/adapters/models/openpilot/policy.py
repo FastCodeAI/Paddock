@@ -1,9 +1,9 @@
-"""NeuroNCAP model node for openpilot's supercombo.
+"""openpilot supercombo as a paddock Policy.
 
-Run inside the openpilot repo's environment:
-
-    PYTHONPATH=/shakaal_hdd_1/workspace/naren/renesas/openpilot:/mnt/p4/naren/neuroncap/servers \\
-      python openpilot_server.py --port 9000
+Adapted from the NeuroNCAP model node (`servers/openpilot_server.py`). The
+model-specific reasoning below is unchanged from that node; what changed is the
+seams -- it now implements `Policy`, so the same class serves open-loop scoring
+and closed-loop simulation instead of one implementation per loop type.
 
 What this adapts, and why each piece is load-bearing:
 
@@ -13,41 +13,29 @@ nuScenes' front camera is about 64 x 39 deg, so both fit inside it and no field
 of view has to be invented.  The margin on the wide view is thin (single
 degrees), so the source is letterboxed rather than cropped to openpilot's
 aspect: cropping to 1928x1208's aspect would throw away ~5 deg of width and put
-the wide view right at the edge of what the sensor actually saw.  ``/warp_check``
+the wide view right at the edge of what the sensor actually saw.  `diagnostics()`
 reports the real margin once the first frame has arrived.
 
 *Rate.*  supercombo consumes 20 Hz and needs ~96 frames to fill its feature
-buffer.  NeuroNCAP at its default 0.5 s step would give it 2 Hz and about 20
-frames per run -- the model would perceive a world at a tenth speed.  So the
-simulation is run at 0.1 s (``--engine.scenario.time-step 0.1``) and every
-rendered frame is emitted twice.  Warm-up frames come from the scenario's
-open-loop priming steps, repeated to fill the buffer on the first inference.
+buffer.  A simulator stepping at 0.5 s would give it 2 Hz and about 20 frames
+per run -- the model would perceive a world at a tenth speed.  So the simulation
+is run at 0.1 s and every rendered frame is emitted twice.  Warm-up frames come
+from the scenario's open-loop priming steps, repeated to fill the buffer on the
+first inference.
 
 *Frame convention.*  openpilot predicts in its device frame, x forward and y
-RIGHT.  NeuroNCAP wants y LEFT.  y is negated on the way out.
+RIGHT.  Paddock and NeuroNCAP want y LEFT.  y is negated on the way out.
 """
 
 from __future__ import annotations
 
-import argparse
-import sys
 from typing import Any
 
 import numpy as np
-import uvicorn
-from fastapi import FastAPI
 from PIL import Image
 
-import ncap_io
-
-from openpilot.common.transformations.model import get_warp_matrix
-from openpilot.common.transformations.orientation import rot2euler
-from openpilot.common.transformations.camera import view_frame_from_device_frame
-from openpilot.selfdrive.modeld.constants import ModelConstants, Plan
-from openpilot.selfdrive.modeld.modeld import ModelState
-from openpilot.system.camerad.cameras.nv12_info import get_nv12_info
-
-from eval_kitscenes.loader import pack_nv12, rgb_to_nv12_batch
+from paddock.adapters.models.openpilot.nv12 import pack_nv12, rgb_to_nv12_batch
+from paddock.policy.protocol import Observation, Pinhole, Policy, Trajectory, constant_velocity
 
 # ModelState compiles its warp for a fixed set of camera geometries; 1928x1208
 # is the tici one and the only sensible target here.
@@ -60,7 +48,7 @@ DEVICE_FROM_EGO = np.diag([1.0, -1.0, -1.0])
 # Right-hand traffic (Boston/Singapore in nuScenes) -> [0, 1].
 TRAFFIC_CONVENTION = np.array([0.0, 1.0], dtype=np.float32)
 
-# The 0.5 s grid NeuroNCAP's vehicle model expects, regardless of sim step.
+# The 0.5 s grid the vehicle model expects, regardless of sim step.
 GRID_S = np.arange(1, 9) * 0.5
 
 FEATURE_BUFFER_FRAMES = 100  # >= 96, the depth needed to fill features_buffer
@@ -70,11 +58,15 @@ MODEL_HZ = 20.0  # the rate supercombo believes its input arrives at
 class CameraAdapter:
     """Maps a rendered nuScenes camera into the frame openpilot expects."""
 
-    def __init__(self, pinhole: ncap_io.Pinhole, camera2ego: np.ndarray) -> None:
+    def __init__(self, pinhole: Pinhole, camera2ego: np.ndarray) -> None:
         self.src = pinhole
         # Letterbox: scale so the full width survives, then pad height. Keeping
         # the whole width is the point -- the wide model view needs nearly all
         # of the sensor's horizontal field of view.
+        #
+        # Checked before importing openpilot: it is pure arithmetic, and a bad
+        # source should be reported as a bad source rather than surfacing only
+        # on a machine that happens to have the model installed.
         scale = TARGET_W / pinhole.width
         scaled_h = int(round(pinhole.height * scale))
         if scaled_h > TARGET_H:
@@ -82,6 +74,11 @@ class CameraAdapter:
                 f"source {pinhole.width}x{pinhole.height} is too tall to letterbox into "
                 f"{TARGET_W}x{TARGET_H} without losing vertical field of view"
             )
+
+        from openpilot.common.transformations.camera import view_frame_from_device_frame
+        from openpilot.common.transformations.model import get_warp_matrix
+        from openpilot.common.transformations.orientation import rot2euler
+
         self.scale = scale
         self.scaled_size = (TARGET_W, scaled_h)
         self.pad_top = (TARGET_H - scaled_h) // 2
@@ -123,6 +120,8 @@ class CameraAdapter:
 
 def plan_to_grid(plan: np.ndarray) -> np.ndarray:
     """(33, 15) plan -> (8, 2) waypoints on the 0.5 s grid, y flipped to left."""
+    from openpilot.selfdrive.modeld.constants import ModelConstants, Plan
+
     pos = plan[:, Plan.POSITION]
     t = np.asarray(ModelConstants.T_IDXS)
     x = np.interp(GRID_S, t, pos[:, 0])
@@ -130,12 +129,27 @@ def plan_to_grid(plan: np.ndarray) -> np.ndarray:
     return np.stack([x, -y], axis=-1)
 
 
-class OpenpilotNode:
+class OpenpilotPolicy(Policy):
+    cameras = ("CAM_FRONT",)
+    waypoint_dt = 0.5
+
     def __init__(self) -> None:
-        self.model = ModelState(TARGET_W, TARGET_H, usbgpu=False)
+        self.model = None
         self.camera: CameraAdapter | None = None
         self.frames_seen = 0
         self.prev_timestamp: int | None = None
+        self.nv12_info = None
+        self.buf: np.ndarray | None = None
+        self.bufs: dict[str, np.ndarray] = {}
+
+    def load(self) -> None:
+        # Imported here, not at module scope: openpilot's package only exists
+        # inside its own environment, and this module is imported by
+        # `paddock list` and the test suite, which run in paddock's.
+        from openpilot.selfdrive.modeld.modeld import ModelState
+        from openpilot.system.camerad.cameras.nv12_info import get_nv12_info
+
+        self.model = ModelState(TARGET_W, TARGET_H, usbgpu=False)
         # ModelState caches its device tensors by buffer address, so this array
         # must be allocated once and written in place -- never reallocated.
         self.nv12_info = get_nv12_info(TARGET_W, TARGET_H)
@@ -151,16 +165,22 @@ class OpenpilotNode:
         kept: it is reused in place, and reallocating it would invalidate
         ModelState's address-keyed tensor cache.
         """
+        from openpilot.selfdrive.modeld.modeld import ModelState
+
         self.model = ModelState(TARGET_W, TARGET_H, usbgpu=False)
         self.frames_seen = 0
         self.prev_timestamp = None
 
-    def infer(self, body: dict[str, Any]) -> dict[str, Any]:
-        req = ncap_io.Request.parse(body, cameras=("CAM_FRONT",))
-        if self.camera is None:
-            self.camera = CameraAdapter(req.pinhole("CAM_FRONT"), req.camera2ego["CAM_FRONT"])
+    def infer(self, obs: Observation) -> Trajectory:
+        if self.model is None:
+            raise RuntimeError("load() must be called before infer()")
 
-        prepared = self.camera.prepare(req.images["CAM_FRONT"])
+        from openpilot.selfdrive.modeld.constants import ModelConstants
+
+        if self.camera is None:
+            self.camera = CameraAdapter(obs.pinhole("CAM_FRONT"), obs.camera2ego["CAM_FRONT"])
+
+        prepared = self.camera.prepare(obs.images["CAM_FRONT"])
         packed = rgb_to_nv12_batch(prepared[None], TARGET_W, TARGET_H)[0]
         stride, y_height = self.nv12_info[0], self.nv12_info[1]
 
@@ -173,8 +193,8 @@ class OpenpilotNode:
         # How many times to show each rendered frame, so that the model's own
         # clock matches the simulator's.
         #
-        # supercombo believes it is fed 20 Hz. NeuroNCAP advances the world by
-        # its scenario time step per request -- 0.5 s by default. Emitting one
+        # supercombo believes it is fed 20 Hz. The simulator advances the world
+        # by its scenario time step per request -- 0.5 s by default. Emitting one
         # model frame per rendered frame would tell the model that 0.5 s of
         # motion happened in 1/20 s, and it would read the ego as travelling ten
         # times its actual speed. Repeating each frame `dt * 20` times keeps the
@@ -183,15 +203,15 @@ class OpenpilotNode:
         # 0.1 s, where this lands on the 2 repeats the KITScenes run used.
         #
         # The step is measured rather than assumed, so this follows whatever
-        # --engine.scenario.time-step the run was launched with.
+        # time step the run was launched with.
         repeats = 2
         if self.prev_timestamp is not None:
-            dt = (req.timestamp - self.prev_timestamp) / 1e6
+            dt = (obs.timestamp_us - self.prev_timestamp) / 1e6
             if dt > 0:
                 repeats = max(1, round(dt * MODEL_HZ))
         if self.frames_seen == 0:
             repeats = FEATURE_BUFFER_FRAMES
-        self.prev_timestamp = req.timestamp
+        self.prev_timestamp = obs.timestamp_us
 
         out = None
         for _ in range(repeats):
@@ -200,44 +220,24 @@ class OpenpilotNode:
         self.frames_seen += 1
 
         if out is None or "plan" not in out:
-            return ncap_io.response(ncap_io.constant_velocity(req.speed))
-        return ncap_io.response(plan_to_grid(np.asarray(out["plan"])[0]))
+            return constant_velocity(obs.speed, dt=self.waypoint_dt)
+        return Trajectory(plan_to_grid(np.asarray(out["plan"])[0]), dt=self.waypoint_dt)
 
+    def diagnostics(self) -> dict[str, Any]:
+        """Field-of-view margin, once a first frame has established the camera.
 
-def build_app(node: OpenpilotNode) -> FastAPI:
-    app = FastAPI()
-
-    @app.get("/alive")
-    async def alive() -> bool:
-        return True
-
-    @app.post("/infer")
-    async def infer(body: dict) -> dict:
-        return node.infer(body)
-
-    @app.post("/reset")
-    async def reset(body: dict | None = None) -> bool:
-        node.reset()
-        return True
-
-    @app.get("/warp_check")
-    async def warp_check() -> dict:
-        """Field-of-view margin, once a first frame has established the camera."""
-        if node.camera is None:
+        A negative margin means the warp samples outside what the camera saw --
+        black wedges at the edges of the model's input, invisible in the score.
+        """
+        if self.camera is None:
             return {"status": "no frame seen yet"}
         return {
-            "source_hfov_deg": round(node.camera.src.hfov_deg, 2),
-            "source_vfov_deg": round(node.camera.src.vfov_deg, 2),
-            "margin_deg": {k: round(v, 2) for k, v in node.camera.margin_deg().items()},
-            "rpy": node.camera.rpy.tolist(),
+            "source_hfov_deg": round(self.camera.src.hfov_deg, 2),
+            "source_vfov_deg": round(self.camera.src.vfov_deg, 2),
+            "margin_deg": {k: round(v, 2) for k, v in self.camera.margin_deg().items()},
+            "rpy": self.camera.rpy.tolist(),
+            "frames_seen": self.frames_seen,
         }
 
-    return app
 
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=9000)
-    parser.add_argument("--host", default="0.0.0.0")
-    args = parser.parse_args()
-    uvicorn.run(build_app(OpenpilotNode()), host=args.host, port=args.port, log_level="warning")
+POLICY = OpenpilotPolicy

@@ -362,3 +362,14 @@ class Policy(ABC):
     @abstractmethod
     def infer(self, obs: Observation) -> Trajectory:
         """Plan from one observation. Ego frame, x forward, y left."""
+
+    def diagnostics(self) -> dict[str, Any]:
+        """Whatever helps confirm the adapter is wired correctly.
+
+        Served at `/diagnostics`. Use it for the checks that catch silent
+        misconfiguration -- field-of-view margins, resolved calibration,
+        frame counts -- rather than adding a bespoke endpoint. A negative
+        field-of-view margin means the warp is sampling outside what the
+        camera saw, which is invisible in the score and obvious here.
+        """
+        return {}

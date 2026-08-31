@@ -44,11 +44,24 @@ track that debt, and **both may only shrink**:
 New code is held to both from the start. If you find yourself adding to either
 list, that is the signal to use a template variable instead.
 
+### Adapter status
+
+| Model | Adapted | Off both backlogs | Notes |
+|---|---|---|---|
+| openpilot | yes | yes | reference conversion — follow this one |
+| alpamayo15 | no | no | also needs the forked `crop_box` resolved |
+| drivejepa | no | no | needs the five NAVSIM env vars via `runtime.env` |
+| visionpilot | no | no | largest (741 LOC); C++ binary behind it |
+
 ### Per-adapter checklist
 
-For each of the four models, in rough order of difficulty:
+For each remaining model, in rough order of difficulty:
 
 - [ ] `import ncap_io` → `from paddock.policy.protocol import ...`
+- [ ] keep every model-package import **inside** a method, and put cheap
+      validation *before* it — a guard placed after the import it guards can
+      never fire in paddock's own environment (this was a real bug in the
+      openpilot conversion, caught by its contract test)
 - [ ] `ncap_io.Request.parse(body, cameras=...)` → `Observation.from_wire(...)`; the
       node's `infer(body) -> dict` becomes `Policy.infer(obs) -> Trajectory`
 - [ ] `ncap_io.response(traj)` → return a `Trajectory`; the server wrapper handles the wire

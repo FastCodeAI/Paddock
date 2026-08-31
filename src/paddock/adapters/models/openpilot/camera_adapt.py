@@ -22,6 +22,7 @@ consistent across frame"), so `big_img` was trained on distorted pixels that a
 rectified KITScenes pinhole does not have. Second order, but real, and it affects
 only the wide slot.
 """
+
 from __future__ import annotations
 
 import json
@@ -29,12 +30,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
-
 from openpilot.common.transformations.camera import view_frame_from_device_frame
+from openpilot.common.transformations.model import MEDMODEL_INPUT_SIZE, SBIGMODEL_INPUT_SIZE, get_warp_matrix
 from openpilot.common.transformations.orientation import rot2euler
-from openpilot.common.transformations.model import (
-    get_warp_matrix, MEDMODEL_INPUT_SIZE, SBIGMODEL_INPUT_SIZE)
+from PIL import Image
 
 # the tici geometry ModelState has a compiled warp for
 TARGET_W, TARGET_H = 1928, 1208
@@ -48,9 +47,10 @@ DEVICE_FROM_REFERENCE = np.diag([1.0, -1.0, -1.0])
 @dataclass(frozen=True)
 class AdaptedCamera:
     """A KITScenes camera expressed the way openpilot wants it."""
-    intrinsics: np.ndarray      # 3x3 for the resized TARGET_W x TARGET_H frame
-    rpy: np.ndarray             # device_from_calib euler, openpilot's rpyCalib analogue
-    crop: tuple[int, int, int, int]   # x0, y0, x1, y1 in source pixels
+
+    intrinsics: np.ndarray  # 3x3 for the resized TARGET_W x TARGET_H frame
+    rpy: np.ndarray  # device_from_calib euler, openpilot's rpyCalib analogue
+    crop: tuple[int, int, int, int]  # x0, y0, x1, y1 in source pixels
     src_size: tuple[int, int]
 
     def warp_matrix(self, bigmodel_frame: bool) -> np.ndarray:
@@ -70,18 +70,16 @@ def load_camera(scene: Path, sensor: str = "camera_ring_front") -> AdaptedCamera
 
     # Crop to the target aspect, anchored on the PRINCIPAL POINT (not the image
     # centre -- they differ by 3 px vertically here, and it is free to get right).
-    if W / H > TARGET_ASPECT:      # source too wide -> trim width
+    if W / H > TARGET_ASPECT:  # source too wide -> trim width
         cw, ch = int(round(H * TARGET_ASPECT)), H
-    else:                          # source too tall -> trim height
+    else:  # source too tall -> trim height
         cw, ch = W, int(round(W / TARGET_ASPECT))
     x0 = int(round(np.clip(cu - cw / 2, 0, W - cw)))
     y0 = int(round(np.clip(cv - ch / 2, 0, H - ch)))
     crop = (x0, y0, x0 + cw, y0 + ch)
 
     s = TARGET_W / cw
-    intrinsics = np.array([[f * s, 0.0, (cu - x0) * s],
-                           [0.0, f * s, (cv - y0) * s],
-                           [0.0, 0.0, 1.0]])
+    intrinsics = np.array([[f * s, 0.0, (cu - x0) * s], [0.0, f * s, (cv - y0) * s], [0.0, 0.0, 1.0]])
 
     # Mounting rotation. Columns of T_to_reference[:3,:3] are the camera's optical
     # axes in the reference frame; openpilot wants the residual rotation that makes
@@ -91,8 +89,9 @@ def load_camera(scene: Path, sensor: str = "camera_ring_front") -> AdaptedCamera
     R_cam_dev = R_dev_cam.T
     rpy = rot2euler(view_frame_from_device_frame.T @ R_cam_dev)
 
-    return AdaptedCamera(intrinsics=intrinsics, rpy=np.asarray(rpy, dtype=np.float32),
-                         crop=crop, src_size=(W, H))
+    return AdaptedCamera(
+        intrinsics=intrinsics, rpy=np.asarray(rpy, dtype=np.float32), crop=crop, src_size=(W, H)
+    )
 
 
 def warp_to_model_frame(frame: np.ndarray, M: np.ndarray, size: tuple[int, int]) -> np.ndarray:
