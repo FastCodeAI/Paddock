@@ -1,0 +1,6 @@
+name: neuroncap
+description: NeuroNCAP closed-loop safety scoring - a NeuRAD render drives the model into staged collisions
+mode: closed_loop
+dataset: nuscenes
+metrics: [ncap_score, collision_rate, impact_speed, reference_speed]
+primary_metric: ncap_score

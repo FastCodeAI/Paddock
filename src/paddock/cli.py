@@ -114,12 +114,56 @@ def setup(repo: str = typer.Option(None, "--repo", help="Only this repository.")
 
 
 @app.command()
-def run(
-    model: str = typer.Option(..., "--model", "-m"),
-    bench: str = typer.Option(..., "--bench", "-b"),
+def renderer(
+    scene: str = typer.Option(..., "--scene", help="nuScenes sequence, zero-padded (e.g. 0103)."),
+    port: int = typer.Option(8000, "--port"),
 ) -> None:
-    """Run one model against one benchmark."""
-    _not_yet("run", "M5 (closed-loop) / M6 (open-loop)")
+    """Start the NeuroNCAP renderer in the foreground.
+
+    Model-independent and slow to start, so one instance serves a whole sweep.
+    Leave it running; `paddock run` connects to it.
+    """
+    from paddock.adapters.benchmarks.neuroncap import launcher
+
+    try:
+        cfg = SiteConfig.load()
+    except ConfigError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    raise typer.Exit(code=launcher.run_foreground(cfg, scene=scene, port=port))
+
+
+@app.command()
+def run(
+    bench: str = typer.Option(..., "--bench", "-b"),
+    model: str = typer.Option(..., "--model", "-m", help="Model name, or 'all'."),
+    scene: str = typer.Option("0103", "--scene"),
+    scenarios: str = typer.Option(None, "--scenarios", help="Comma-separated; default all three."),
+    runs: int = typer.Option(1, "--runs"),
+    limit: int = typer.Option(None, "--limit", help="Open-loop only: cap the sample count."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preflight only; start nothing."),
+) -> None:
+    """Run a model against a benchmark."""
+    from paddock.runner import run_benchmark
+
+    try:
+        cfg = SiteConfig.load()
+    except ConfigError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    code = run_benchmark(
+        cfg,
+        bench=bench,
+        model=model,
+        scene=scene,
+        scenarios=scenarios.split(",") if scenarios else None,
+        runs=runs,
+        limit=limit,
+        dry_run=dry_run,
+        echo=typer.echo,
+    )
+    raise typer.Exit(code=code)
 
 
 @app.command()

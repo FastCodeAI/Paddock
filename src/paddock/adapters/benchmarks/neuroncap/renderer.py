@@ -18,13 +18,22 @@ closed-loop path never reads a training image.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
 import numpy as np
 import torch
 
-sys.path.insert(0, "/mnt/p4/naren/neuroncap/neurad-studio")
+# NeuRAD-studio is a checkout, not an installed package, and it lives wherever
+# a site keeps it. Supplied by [benchmarks.neuroncap] neurad_studio.
+_STUDIO = os.environ.get("NEURAD_STUDIO")
+if not _STUDIO:
+    raise SystemExit(
+        "NEURAD_STUDIO is not set. Launch this through `paddock renderer`, which "
+        "supplies it from [benchmarks.neuroncap] neurad_studio in paddock.toml."
+    )
+sys.path.insert(0, _STUDIO)
 
 from nerfstudio.data.dataparsers import nuscenes_dataparser as ndp
 from nerfstudio.scripts.closed_loop import server as cl_server_mod

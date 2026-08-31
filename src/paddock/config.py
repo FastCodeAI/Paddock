@@ -102,6 +102,24 @@ class ModelOverride:
 
 
 @dataclass(frozen=True)
+class BenchmarkOverride:
+    """Site-local settings a benchmark needs.
+
+    Simulators bring their own environments and assets, which live wherever a
+    site keeps them:
+
+        [benchmarks.neuroncap]
+        python = "/path/to/envs/ncap/bin/python"
+        renderer_url = "http://127.0.0.1:8000"
+    """
+
+    settings: dict[str, str] = field(default_factory=dict)
+
+    def get(self, key: str, default: str | None = None) -> str | None:
+        return self.settings.get(key, default)
+
+
+@dataclass(frozen=True)
 class Gpu:
     budget_gb: float = 24.0
     serialize: bool = True
@@ -115,6 +133,7 @@ class SiteConfig:
     weights: Path
     datasets: dict[str, Dataset]
     models: dict[str, ModelOverride]
+    benchmarks: dict[str, BenchmarkOverride]
     gpu: Gpu
     source: Path
 
@@ -151,6 +170,10 @@ class SiteConfig:
             )
             for name, body in raw.get("models", {}).items()
         }
+        benchmarks = {
+            name: BenchmarkOverride(settings={k: str(v) for k, v in (body or {}).items()})
+            for name, body in raw.get("benchmarks", {}).items()
+        }
         gpu_raw = raw.get("gpu", {})
 
         return cls(
@@ -160,6 +183,7 @@ class SiteConfig:
             weights=_abs(roots["weights"]),
             datasets=datasets,
             models=models,
+            benchmarks=benchmarks,
             gpu=Gpu(
                 budget_gb=float(gpu_raw.get("budget_gb", 24.0)),
                 serialize=bool(gpu_raw.get("serialize", True)),
