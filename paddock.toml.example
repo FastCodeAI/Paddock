@@ -1,0 +1,71 @@
+# ---------------------------------------------------------------------------
+# Paddock site configuration.
+#
+# Copy this file to `paddock.toml` and edit the paths for YOUR machine.
+# `paddock.toml` is gitignored: it is the only file that knows where anything
+# lives, which is what lets the rest of the repo be identical at every site.
+#
+#   cp paddock.toml.example paddock.toml
+#   $EDITOR paddock.toml
+#   paddock doctor
+#
+# Set PADDOCK_CONFIG=/path/to/other.toml to use a different file, so one
+# checkout can serve several layouts (a laptop and a compute box, say).
+#
+# Anything you don't have yet, leave commented out. `paddock doctor` reports
+# what is missing and what that blocks; it is not an error to be incomplete.
+# ---------------------------------------------------------------------------
+
+# Free-form label for this machine. Recorded in every run.json so results from
+# different sites stay distinguishable in one shared history. Keep it stable.
+site = "CHANGEME-org-hostname"
+
+[roots]
+# Where vendor clones (openpilot, alpamayo1.5, Drive-JEPA, ...) live, or should
+# be cloned to. `paddock setup` adopts clones already here rather than re-cloning.
+repos = "/path/to/your/repos"
+
+# Where run artifacts go: predictions, frames, videos. These get large — 14 GB
+# for a modest neuroNCAP sweep — so point this at a disk with room. NOT tracked
+# by git; only the small metrics under results/ are.
+runs = "/path/to/paddock-runs"
+
+# Model checkpoints. Shared across models where possible.
+weights = "/path/to/weights"
+
+# ---------------------------------------------------------------------------
+# Datasets. Declare only the ones you have; see docs/data-setup.md.
+# What each dataset IS (layout, required subdirs, splits) is declared once in
+# the tracked datasets.yaml. This section only says WHERE it is here.
+# ---------------------------------------------------------------------------
+
+# [datasets.nuscenes]
+# path = "/path/to/nuscenes"          # contains samples/, maps/, v1.0-trainval/
+# version = "v1.0-trainval"           # or v1.0-mini
+
+# [datasets.kitscenes]
+# A search path, fastest tier first. Paddock resolves each scene against the
+# first tier that has it, so an NVMe working set can front an HDD or NAS
+# archive without duplicating the whole dataset.
+# tiers = [
+#   "/path/to/fast/kitscenes/data",
+#   "/path/to/bulk/kitscenes/data",
+# ]
+
+# [datasets.navsim]
+# path = "/path/to/navsim_workspace/dataset"   # navsim_logs/, sensor_blobs/, maps/
+# exp  = "/path/to/navsim_workspace/exp"       # checkpoints + metric cache
+
+# [datasets.neurad_checkpoints]
+# path = "/path/to/neuroncap/checkpoints"      # per-scene NeuRAD renderers
+
+[gpu]
+# Total VRAM paddock may assume, in GB. Used to gate model startup rather than
+# discovering the hard way, several minutes into a checkpoint read, that the
+# card is held by someone else.
+budget_gb = 24
+
+# Keep exactly one model resident at a time. On a shared or single-GPU box this
+# is the difference between a long job and a failed one. Set false only if you
+# have room for every model in `paddock run --model all` simultaneously.
+serialize = true

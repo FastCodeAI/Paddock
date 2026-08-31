@@ -1,0 +1,21 @@
+# Copy this directory to adapters/benchmarks/<your-benchmark>/ and edit.
+
+name: template
+description: One line. What it measures and on what data.
+
+# open_loop   -- iterate dataset samples, score predictions against ground truth
+# closed_loop -- a simulator drives the policy and scores the outcome
+mode: open_loop
+
+# Key in datasets.yaml. Each site maps it to a path in its own paddock.toml.
+dataset: kitscenes
+
+# Canonical metric names this benchmark produces. Use existing names where the
+# quantity is the same -- ade, fde@1s, fde@2s, fde@3s, min_ade@6, ncap_score,
+# collision_rate, pdms, epdms -- so results stay comparable across benchmarks.
+# Invent a name only for a genuinely new quantity, and document it in
+# docs/results-schema.md.
+metrics: [ade, fde@3s]
+
+# The one number that ranks models on this benchmark.
+primary_metric: ade

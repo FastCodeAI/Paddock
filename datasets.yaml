@@ -1,0 +1,41 @@
+# What each dataset IS -- never where it lives.
+#
+# Locations go in paddock.toml, which is gitignored, because they differ at
+# every site. `requires` lists subdirectories that must be present under the
+# resolved root; `paddock doctor` checks them and reports what a gap blocks.
+
+datasets:
+  nuscenes:
+    description: nuScenes v1.0 -- scene source for neuroNCAP, and planned open-loop ADE
+    requires: [samples, maps, v1.0-trainval]
+    splits: [train, val, test]
+    notes: >
+      Camera-only pipelines need samples/CAM_* and the v1.0-trainval metadata.
+      Anything using lidar or radar additionally needs sweeps/ and populated
+      RADAR_* directories, which keyframe-only copies do not have. Generating
+      nuscenes_infos*.pkl against a keyframe-only copy will degrade silently.
+
+  kitscenes:
+    description: KITScenes multimodal driving dataset -- open-loop ADE/FDE
+    splits: [train, val, test, test-e2e, overlap_train_val]
+    notes: >
+      Declare tiers fastest-first in paddock.toml; a pruned NVMe working set can
+      front a full archive. Note the full release is ~4.2 TB across 1006
+      sequences, so most sites hold a subset -- `paddock doctor` reports which
+      sequences the configured tiers can actually serve.
+
+  navsim:
+    description: NAVSIM / OpenScene -- PDMS and EPDMS closed-loop-proxy scoring
+    requires: [navsim_logs, sensor_blobs, maps]
+    notes: >
+      Evaluation needs only the test logs and blobs. Training additionally needs
+      navtrain / trainval_sensor, which are a separate and much larger download.
+
+  neurad_checkpoints:
+    description: per-scene NeuRAD renderer checkpoints, required by neuroNCAP
+    notes: >
+      One checkpoint per nuScenes sequence. A scenario whose scene has no
+      checkpoint cannot be rendered and will fail at run time, not at setup.
+
+  openlane_sample:
+    description: short OpenLane clips (video + speed trace) used to smoke-test VisionPilot

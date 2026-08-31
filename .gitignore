@@ -1,0 +1,28 @@
+# Site-local configuration — every machine has its own. Never commit.
+paddock.toml
+
+# Symlink farm pointing at this machine's vendor clones.
+external/
+
+# Run artifacts (predictions, frames, videos) live outside the repo.
+# Only results/ (metrics + provenance) is tracked.
+runs/
+paddock-runs/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+build/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp

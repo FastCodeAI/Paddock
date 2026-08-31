@@ -1,0 +1,62 @@
+# Copy this directory to adapters/models/<your-model>/ and edit.
+#
+# Paths use template variables only -- never a real path. They are expanded from
+# the site's paddock.toml at launch:
+#
+#   {repo}     this model's clone, i.e. [roots.repos]/<repo below>
+#   {repos}    the clone root itself
+#   {weights}  [roots.weights]
+#   {runs}     [roots.runs]
+#   {data.NAME}        a dataset's resolved root
+#   {data.NAME.tiers}  every tier, colon-joined (for search-path env vars)
+#
+# tests/test_portability.py fails the build if you write a real path here.
+
+name: template
+description: One line. What the model is and who publishes it.
+
+# Key in repos.yaml. `paddock setup` clones or adopts it.
+repo: template
+
+runtime:
+  # uv    -- pyproject + uv.lock in the repo; setup.sh runs `uv sync`
+  # conda -- an environment.yml or an explicitly built env
+  # shell -- anything else, including a compiled binary
+  kind: uv
+
+  python: "3.12"
+
+  # The interpreter paddock launches. Must exist after setup.sh has run.
+  venv: "{repo}/.venv"
+
+  # Prepended to PYTHONPATH, in order.
+  pythonpath:
+    - "{repo}"
+
+  # Working directory. Load-bearing for some repos: code that does
+  # np.load("./data/foo.npy") only works from one place.
+  cwd: "{repo}"
+
+  # Extra environment. Use this to point the repo at data rather than editing
+  # its source -- most repos already read an env var for exactly this.
+  env: {}
+    # EXAMPLE_DATA_ROOT: "{data.kitscenes}"
+
+capabilities:
+  # Only what infer() actually reads. Rendering unused cameras is the single
+  # largest closed-loop cost, and the simulator renders what you declare here.
+  cameras: [CAM_FRONT]
+
+  # VRAM to reserve before starting. Paddock waits for headroom rather than
+  # failing several minutes into a checkpoint read. 0 means CPU-only.
+  vram_gb: 0
+
+  # Generous enough for a cold checkpoint read on a contended box.
+  startup_timeout_s: 600
+
+  # Waypoint spacing the model plans at, seconds.
+  waypoint_dt: 0.5
+
+# Benchmarks this model is expected to work on. `paddock doctor` uses it to
+# report coverage; it does not restrict what you can run.
+benchmarks: []

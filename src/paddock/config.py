@@ -1,0 +1,208 @@
+"""Site configuration: the only place that knows where anything lives.
+
+Paddock is shared across sites with different disks, mounts and clone
+locations. The split that makes that work:
+
+    tracked in git          what a thing IS      datasets.yaml, models/*.yaml
+    site-local (gitignored) where it LIVES      paddock.toml
+
+Tracked files never contain a real path. They refer to locations through
+template variables which this module expands:
+
+    {repos}            roots.repos
+    {repo}             roots.repos/<the repo this model uses>   (context-supplied)
+    {runs}             roots.runs
+    {weights}          roots.weights
+    {site}             the site label
+    {data.NAME}        the dataset's path, or its first existing tier
+    {data.NAME.tiers}  every tier, colon-joined (for search-path env vars
+                       such as openpilot's KITSCENES_ROOTS)
+
+`tests/test_portability.py` enforces the split by failing if a tracked file
+contains an absolute path. That test is why this repo will still work at the
+other site six months from now.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import tomllib
+from dataclasses import dataclass, field
+from pathlib import Path
+
+# Repo root: src/paddock/config.py -> src/paddock -> src -> <root>
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+_TEMPLATE = re.compile(r"\{([a-zA-Z_][\w.]*)\}")
+
+
+class ConfigError(Exception):
+    """Site configuration is missing or wrong. Always actionable by the reader."""
+
+
+@dataclass(frozen=True)
+class Dataset:
+    """Where one dataset lives here.
+
+    Either a single `path`, or `tiers` — a search path, fastest first. Tiering
+    is not a workaround: an NVMe working set can front an HDD or NAS archive so
+    the hot subset is fast without duplicating hundreds of GB. openpilot's
+    loader already works this way via KITSCENES_ROOTS.
+    """
+
+    name: str
+    path: Path | None = None
+    tiers: tuple[Path, ...] = ()
+    version: str | None = None
+    extra: dict[str, Path] = field(default_factory=dict)
+
+    @property
+    def roots(self) -> tuple[Path, ...]:
+        """Every root to search, in priority order."""
+        return self.tiers if self.tiers else ((self.path,) if self.path else ())
+
+    def resolve(self) -> Path:
+        """The first root that exists on disk.
+
+        Falls back to the first declared root so error messages name something
+        concrete rather than reporting an empty path.
+        """
+        for root in self.roots:
+            if root.exists():
+                return root
+        if not self.roots:
+            raise ConfigError(f"dataset {self.name!r} has neither 'path' nor 'tiers' in paddock.toml")
+        return self.roots[0]
+
+    def find(self, relative: str) -> Path | None:
+        """Locate one entry across the tiers, fastest first."""
+        for root in self.roots:
+            candidate = root / relative
+            if candidate.exists():
+                return candidate
+        return None
+
+
+@dataclass(frozen=True)
+class Gpu:
+    budget_gb: float = 24.0
+    serialize: bool = True
+
+
+@dataclass(frozen=True)
+class SiteConfig:
+    site: str
+    repos: Path
+    runs: Path
+    weights: Path
+    datasets: dict[str, Dataset]
+    gpu: Gpu
+    source: Path
+
+    # -- loading ----------------------------------------------------------
+
+    @classmethod
+    def path(cls) -> Path:
+        """Where paddock.toml is expected: $PADDOCK_CONFIG, else the repo root."""
+        override = os.environ.get("PADDOCK_CONFIG")
+        return Path(override).expanduser() if override else REPO_ROOT / "paddock.toml"
+
+    @classmethod
+    def load(cls, path: Path | None = None) -> SiteConfig:
+        cfg_path = path or cls.path()
+        if not cfg_path.exists():
+            raise ConfigError(
+                f"no site configuration at {cfg_path}\n"
+                f"  cp {REPO_ROOT / 'paddock.toml.example'} {cfg_path}\n"
+                f"  then edit the paths for this machine (see docs/site-setup.md)"
+            )
+        with cfg_path.open("rb") as fh:
+            raw = tomllib.load(fh)
+
+        roots = raw.get("roots", {})
+        missing = [k for k in ("repos", "runs", "weights") if k not in roots]
+        if missing:
+            raise ConfigError(f"{cfg_path}: [roots] is missing {', '.join(missing)}")
+
+        datasets = {name: cls._dataset(name, body) for name, body in raw.get("datasets", {}).items()}
+        gpu_raw = raw.get("gpu", {})
+
+        return cls(
+            site=raw.get("site", "unnamed-site"),
+            repos=_abs(roots["repos"]),
+            runs=_abs(roots["runs"]),
+            weights=_abs(roots["weights"]),
+            datasets=datasets,
+            gpu=Gpu(
+                budget_gb=float(gpu_raw.get("budget_gb", 24.0)),
+                serialize=bool(gpu_raw.get("serialize", True)),
+            ),
+            source=cfg_path,
+        )
+
+    @staticmethod
+    def _dataset(name: str, body: dict) -> Dataset:
+        reserved = {"path", "tiers", "version"}
+        return Dataset(
+            name=name,
+            path=_abs(body["path"]) if "path" in body else None,
+            tiers=tuple(_abs(t) for t in body.get("tiers", [])),
+            version=body.get("version"),
+            extra={k: _abs(v) for k, v in body.items() if k not in reserved and isinstance(v, str)},
+        )
+
+    # -- template expansion -----------------------------------------------
+
+    def resolve(self, template: str, **context: str | Path) -> str:
+        """Expand template variables in a string from a tracked config file.
+
+        Unknown variables raise rather than silently surviving into a command
+        line, where they would surface much later as a confusing file-not-found.
+        """
+
+        def substitute(match: re.Match[str]) -> str:
+            key = match.group(1)
+            if key in context:
+                return str(context[key])
+            if key in ("repos", "runs", "weights", "site"):
+                return str(getattr(self, key))
+            if key.startswith("data."):
+                return self._resolve_data(key)
+            raise ConfigError(
+                f"unknown template variable {{{key}}} in {template!r}; "
+                f"known: repos, runs, weights, site, data.<name>, data.<name>.tiers, "
+                f"plus context {sorted(context)}"
+            )
+
+        return _TEMPLATE.sub(substitute, template)
+
+    def _resolve_data(self, key: str) -> str:
+        parts = key.split(".")
+        name = parts[1]
+        dataset = self.datasets.get(name)
+        if dataset is None:
+            known = ", ".join(sorted(self.datasets)) or "none configured"
+            raise ConfigError(
+                f"dataset {name!r} is not configured in {self.source}\n"
+                f"  add a [datasets.{name}] section (see docs/data-setup.md); known: {known}"
+            )
+        if len(parts) == 3 and parts[2] == "tiers":
+            return ":".join(str(r) for r in dataset.roots)
+        if len(parts) == 3:
+            extra = dataset.extra.get(parts[2])
+            if extra is None:
+                raise ConfigError(
+                    f"dataset {name!r} has no key {parts[2]!r} in {self.source} "
+                    f"(has: {', '.join(sorted(dataset.extra)) or 'none'})"
+                )
+            return str(extra)
+        return str(dataset.resolve())
+
+    def repo(self, name: str) -> Path:
+        """Where a vendor clone lives here."""
+        return self.repos / name
+
+
+def _abs(value: str | Path) -> Path:
+    return Path(value).expanduser()
