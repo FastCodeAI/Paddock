@@ -1,0 +1,87 @@
+Subject: [PATCH 1/2] decouple waypoint spacing from sim step, and render only the cameras a model uses
+
+Two knobs NeuroNCAP does not expose upstream, both needed to compare models
+fairly on one GPU.
+
+`--engine.waypoint-dt` separates the rate the simulation is stepped at from the
+grid the model plans on. They are the same thing upstream. They must differ here
+because openpilot needs 20 Hz input and reads a 0.5 s step as a parked car, so
+every model is driven at a 0.1 s sim step to keep control authority equal --
+while the waypoint grid stays at 0.5 s, which the collision lookahead and the
+reference-speed calculation both hard-code.
+
+`--engine.cameras` restricts what is rendered each step. Rendering dominates
+wall-clock and is linear in camera count, so rendering only what a model
+consumes is the largest speed-up available. Scoring is unaffected. The logger
+change follows from it: a debug panel with no image behind it is left blank
+rather than failing the step.
+
+Upstreamable in principle; both are additive and default to current behaviour.
+
+diff --git a/neuro_ncap/components/logger.py b/neuro_ncap/components/logger.py
+index a397c76..8804b15 100644
+--- a/neuro_ncap/components/logger.py
++++ b/neuro_ncap/components/logger.py
+@@ -145,6 +145,13 @@ class NCAPLogger:
+         obj_ax = fig.add_subplot(gs[:3, :3])
+ 
+         for cam, ax in zip(["CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT"], [fc_ax, fl_ax, fr_ax]):
++            # A run may render only the cameras its model consumes, so a panel
++            # here can have no image behind it. Leave that panel blank rather
++            # than failing the step -- this is a debug view, and losing it must
++            # not cost the run.
++            if cam not in images:
++                ax.axis("off")
++                continue
+             img = Image.fromarray((images[cam].cpu().numpy()))
+             canvas = ImageDraw.Draw(img)
+             canvas.text((img.width // 2 - len(cam) * 20, 800), cam, fill=(0, 255, 0), font=FONT_BIG)
+diff --git a/neuro_ncap/engine.py b/neuro_ncap/engine.py
+index 70de426..4cd95fe 100644
+--- a/neuro_ncap/engine.py
++++ b/neuro_ncap/engine.py
+@@ -48,6 +48,25 @@ class EngineConfig(InstantiateConfig):
+     """Configuration for the evaluator."""
+     scenario: ScenarioConfig = field(default_factory=ScenarioConfig)
+     """Configuration for the scenario."""
++    waypoint_dt: float | None = None
++    """Spacing of the waypoints the model returns, in seconds.
++
++    Defaults to the scenario time step, which is what the model is asked to
++    plan at when the two rates are the same. They only differ when the
++    simulation is stepped faster than 2 Hz to suit a model that needs a higher
++    frame rate: the ego then moves in smaller increments while the model keeps
++    planning on the 0.5 s grid the rest of the codebase assumes (the collision
++    lookahead and the reference-speed calculation both hard-code 0.5 s). Note
++    that six waypoints at a 0.1 s spacing only reach 0.6 s ahead, which is
++    shorter than the LQR tracker's 1.0 s lookahead.
++    """
++    cameras: tuple[str, ...] | None = None
++    """Which cameras to render each step. Defaults to all six.
++
++    Rendering dominates the wall-clock cost of a run, and it is linear in the
++    number of cameras, so restricting this to the cameras a model actually
++    consumes is the single largest speed-up available. Scoring is unaffected.
++    """
+ 
+ 
+ class Engine:
+@@ -62,7 +81,7 @@ class Engine:
+         self.evaluator: Evaluator = None  # will be reinitizalized
+         self.scenario: Scenario = config.scenario.setup()
+ 
+-        self.cam_names = [
++        self.cam_names = list(config.cameras) if config.cameras else [
+             "CAM_FRONT",
+             "CAM_FRONT_LEFT",
+             "CAM_FRONT_RIGHT",
+@@ -247,7 +266,8 @@ class Engine:
+             state.is_in_auto_mode = True
+ 
+         previous_pose = state.ego2world
+-        trajectory_times = [state.timestamp + int(i * self.timestep * 1e6) for i in range(1, 7)]
++        waypoint_dt = self.config.waypoint_dt or self.timestep
++        trajectory_times = [state.timestamp + int(i * waypoint_dt * 1e6) for i in range(1, 7)]
+         for _ in range(self._vehicle_model_sim_steps):
+             state.ego2world = self.vehicle_model.step(
+                 state.ego2world, self._vehicle_model_discretization_time, trajectory, trajectory_times

@@ -1,0 +1,87 @@
+Subject: [PATCH] fall back to pure-PyTorch deformable attention on newer GPUs
+
+mmcv-full's compiled `_ext` ships SASS for sm_50..sm_86 and embeds no PTX, so
+there is no JIT path onto newer cards. On anything above sm_86 -- Blackwell
+here -- the compiled multi-scale deformable attention kernel launches with
+"CUDA error: no kernel image is available for execution on the device".
+
+Upstream gates on `torch.cuda.is_available() and value.is_cuda`, which is true
+on exactly the cards where the kernel does not work. Gate on compute capability
+instead and fall back to `multi_scale_deformable_attn_pytorch`, which is
+numerically equivalent and device-agnostic, just slower.
+
+Override with DRIVE_JEPA_MSDA=compiled|pytorch.
+
+diff --git a/navsim_v2/navsim/agents/drive_jepa_perception_based/bevformer/spatial_cross_attention.py b/navsim_v2/navsim/agents/drive_jepa_perception_based/bevformer/spatial_cross_attention.py
+index e217d71..601707f 100755
+--- a/navsim_v2/navsim/agents/drive_jepa_perception_based/bevformer/spatial_cross_attention.py
++++ b/navsim_v2/navsim/agents/drive_jepa_perception_based/bevformer/spatial_cross_attention.py
+@@ -14,6 +14,7 @@ from mmcv.runner import force_fp32, auto_fp16
+ from mmcv.runner.base_module import BaseModule, ModuleList, Sequential
+ 
+ from mmcv.utils import ext_loader
++from .msda_compat import use_compiled_msda
+ from .multi_scale_deformable_attn_function import MultiScaleDeformableAttnFunction_fp32, \
+     MultiScaleDeformableAttnFunction_fp16
+ 
+@@ -412,7 +413,7 @@ class MSDeformableAttention3D(BaseModule):
+         #  attention_weights.shape: bs, num_query, num_heads, num_levels, num_all_points
+         #
+ 
+-        if torch.cuda.is_available() and value.is_cuda:
++        if use_compiled_msda(value):
+             if value.dtype == torch.float16:
+                 MultiScaleDeformableAttnFunction = MultiScaleDeformableAttnFunction_fp32
+             else:
+diff --git a/navsim_v2/navsim/agents/drive_jepa_perception_based/bevformer/temporal_self_attention.py b/navsim_v2/navsim/agents/drive_jepa_perception_based/bevformer/temporal_self_attention.py
+index 3909ef2..a7c6e09 100755
+--- a/navsim_v2/navsim/agents/drive_jepa_perception_based/bevformer/temporal_self_attention.py
++++ b/navsim_v2/navsim/agents/drive_jepa_perception_based/bevformer/temporal_self_attention.py
+@@ -1,3 +1,4 @@
++from .msda_compat import use_compiled_msda
+ from .multi_scale_deformable_attn_function import MultiScaleDeformableAttnFunction_fp32
+ from mmcv.ops.multi_scale_deform_attn import multi_scale_deformable_attn_pytorch
+ import warnings
+@@ -234,7 +235,7 @@ class TemporalSelfAttention(BaseModule):
+             raise ValueError(
+                 f'Last dim of reference_points must be'
+                 f' 2 or 4, but get {reference_points.shape[-1]} instead.')
+-        if torch.cuda.is_available() and value.is_cuda:
++        if use_compiled_msda(value):
+ 
+             # using fp16 deformable attention is unstable because it performs many sum operations
+             if value.dtype == torch.float16:
+diff --git a/navsim_v2/navsim/agents/drive_jepa_perception_based/bevformer/msda_compat.py b/navsim_v2/navsim/agents/drive_jepa_perception_based/bevformer/msda_compat.py
+new file mode 100644
+index 0000000..67e3794
+--- /dev/null
++++ b/navsim_v2/navsim/agents/drive_jepa_perception_based/bevformer/msda_compat.py
+@@ -0,0 +1,28 @@
++import os
++
++import torch
++
++# mmcv-full's `_ext` ships SASS for sm_50..sm_86 and embeds no PTX, so there is
++# no JIT path onto newer GPUs. Anything above this launches with
++# "CUDA error: no kernel image is available for execution on the device".
++_MAX_COMPILED_CAPABILITY = (8, 6)
++
++
++def use_compiled_msda(value: torch.Tensor) -> bool:
++    """Whether the compiled multi-scale deformable attention kernel can run here.
++
++    The pure-PyTorch implementation (`multi_scale_deformable_attn_pytorch`) is
++    numerically equivalent and device-agnostic, just slower, so it is the safe
++    choice whenever the compiled kernel is unusable.
++
++    Override with DRIVE_JEPA_MSDA=compiled or DRIVE_JEPA_MSDA=pytorch.
++    """
++    mode = os.environ.get("DRIVE_JEPA_MSDA", "auto")
++    if mode == "compiled":
++        return True
++    if mode == "pytorch":
++        return False
++
++    if not (torch.cuda.is_available() and value.is_cuda):
++        return False
++    return torch.cuda.get_device_capability(value.device) <= _MAX_COMPILED_CAPABILITY
