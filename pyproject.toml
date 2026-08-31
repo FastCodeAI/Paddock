@@ -41,9 +41,31 @@ packages = ["src/paddock"]
 line-length = 110
 target-version = "py311"
 
+# Migration backlog (M2). Code rescued verbatim from untracked working
+# directories, still carrying the style of where it was written. Excluded while
+# it is adapted, for the same reason as the portability exemption in
+# tests/test_portability.py: rewriting 9k lines before committing any of it left
+# it sitting unversioned on a scratch disk.
+#
+# Delete each entry as that directory is adapted. Do not add to this list --
+# new code is linted from the start.
+extend-exclude = [
+    "tools",
+    "src/paddock/adapters/models/openpilot",
+    "src/paddock/adapters/models/alpamayo15",
+    "src/paddock/adapters/models/drivejepa",
+    "src/paddock/adapters/models/visionpilot",
+    "src/paddock/adapters/benchmarks/kitscenes",
+    "src/paddock/adapters/benchmarks/neuroncap",
+    "src/paddock/adapters/benchmarks/navsim",
+]
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "src/paddock/adapters"]
 pythonpath = ["src"]
+# Rescued modules import torch, openpilot, mmcv -- none of which exist in
+# paddock's own environment, by design. Collection must not try.
+norecursedirs = ["tools", "*/scenarios_10hz"]
