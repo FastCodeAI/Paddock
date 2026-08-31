@@ -128,6 +128,7 @@ reviewable in a diff.
 | [docs/results-schema.md](docs/results-schema.md) | reading or ingesting results |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | something fails in a way that makes no sense |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | before opening a PR |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | what is done, what is verified, and what is not |
 
 Adding a model touches **one registry file and one new directory** — no changes
 to `src/paddock/`. If you cannot add a model without editing the core, that is a

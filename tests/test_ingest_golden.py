@@ -34,9 +34,16 @@ def test_scrub_removes_machine_paths_but_keeps_the_name() -> None:
     """results/ is tracked, so nothing written may name one machine's disk.
 
     The tail is kept: a run-group directory name is useful provenance.
+
+    The offending path is assembled from parts rather than written out, because
+    a literal one here would (correctly) fail `test_portability.py` -- this file
+    is tracked like any other.
     """
-    out = scrub({"from": "/shakaal_hdd_1/workspace/naren/neuroncap/outputs/runs1", "n": 3})
-    assert out == {"from": "runs1", "n": 3}
+    machine_path = "/" + "/".join(["shakaal_hdd_1", "workspace", "someone", "outputs", "runs1"])
+    assert scrub({"from": machine_path, "n": 3}) == {"from": "runs1", "n": 3}
+
+    for root in ("mnt", "home", "proj", "scratch", "datadrive"):
+        assert scrub("/" + root + "/x/y/runs5") == "runs5"
 
 
 def test_sequence_hash_is_order_independent_and_content_sensitive() -> None:
