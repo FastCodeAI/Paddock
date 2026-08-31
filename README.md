@@ -42,6 +42,7 @@ neuroNCAP triples are stationary / frontal / side, scene 0103, 1 run.
 ```bash
 git clone <this repo> && cd paddock
 make setup                                  # .venv + editable install
+source .venv/bin/activate                   # puts `paddock` on PATH
 
 cp paddock.toml.example paddock.toml
 $EDITOR paddock.toml                        # point at YOUR repos, data and scratch space
@@ -49,6 +50,9 @@ $EDITOR paddock.toml                        # point at YOUR repos, data and scra
 paddock setup                               # clone/adopt vendor repos, apply patches
 paddock doctor                              # what this machine can actually run
 ```
+
+Without activating, the CLI is still there as `.venv/bin/paddock`, and
+`make doctor` works from a cold shell.
 
 `paddock doctor` is the entry point for everything that goes wrong. It reports
 which repos resolved, which datasets are present and valid, which interpreters

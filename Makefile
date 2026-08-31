@@ -17,7 +17,10 @@ setup:
 	uv venv --python 3.11 .venv
 	uv pip install --python .venv/bin/python -e ".[dev,serve]"
 	@echo
-	@echo "Next: cp paddock.toml.example paddock.toml, edit the paths, then 'make doctor'."
+	@echo "Next:"
+	@echo "  source .venv/bin/activate      # puts 'paddock' on PATH"
+	@echo "  cp paddock.toml.example paddock.toml && \$$EDITOR paddock.toml"
+	@echo "  paddock doctor                 # or 'make doctor' without activating"
 
 check: lint test
 

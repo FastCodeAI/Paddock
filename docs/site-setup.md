@@ -14,11 +14,24 @@ long each model's environment takes to build.
 ```bash
 git clone <paddock> && cd paddock
 make setup
+source .venv/bin/activate      # puts `paddock` on PATH for this shell
 ```
 
-Creates `.venv` and installs paddock in editable mode. Paddock's own
-dependencies are deliberately thin — httpx, numpy, pydantic, PyYAML, typer — and
-it never shares an environment with a model.
+Creates `.venv` and installs paddock in editable mode. **`paddock` is not
+installed system-wide** -- it lives in that venv, so a shell that has not
+activated it will report `command not found`. Three ways to run it:
+
+| | When |
+|---|---|
+| `source .venv/bin/activate`, then `paddock ...` | normal interactive use |
+| `.venv/bin/paddock ...` | one-off, or from a cold shell |
+| `make doctor` | no activation needed |
+
+If you want it permanently on PATH without activating, `uv tool install -e .`
+puts a `paddock` shim in `~/.local/bin`.
+
+Paddock's own dependencies are deliberately thin — httpx, numpy, pydantic,
+PyYAML, typer — and it never shares an environment with a model.
 
 ## 2. Configure
 
