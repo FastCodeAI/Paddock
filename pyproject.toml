@@ -54,7 +54,6 @@ target-version = "py311"
 # new code is linted from the start.
 extend-exclude = [
     "tools",
-    "src/paddock/adapters/models/visionpilot",
     "src/paddock/adapters/benchmarks/kitscenes",
     "src/paddock/adapters/benchmarks/neuroncap",
     "src/paddock/adapters/benchmarks/navsim",

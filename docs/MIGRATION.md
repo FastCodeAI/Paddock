@@ -49,9 +49,19 @@ list, that is the signal to use a template variable instead.
 | Model | Adapted | Off both backlogs | Notes |
 |---|---|---|---|
 | openpilot | yes | yes | reference conversion — follow this one |
-| alpamayo15 | no | no | also needs the forked `crop_box` resolved |
-| drivejepa | no | no | needs the five NAVSIM env vars via `runtime.env` |
-| visionpilot | no | no | largest (741 LOC); C++ binary behind it |
+| alpamayo15 | yes | yes | `crop_box` fork resolved; see `tests/test_camera_warp.py` |
+| drivejepa | yes | yes | NAVSIM env vars supplied via `runtime.env` |
+| visionpilot | yes | yes | largest (741 LOC); Python policy needs only onnxruntime |
+
+All four model nodes are converted. What remains is the **benchmark** side —
+`adapters/benchmarks/{kitscenes,neuroncap,navsim}` are still rescued verbatim —
+plus `tools/`, which is diagnostics rather than eval-path code.
+
+**A bug pattern worth knowing, since it appeared in three of the four:** a guard
+placed *after* the import it guards can never fire, because the import raises
+first. `load()` checks and missing-configuration errors must come before
+`import torch` / `import onnxruntime` / `from openpilot...`. Each was caught by
+a contract test, not by review.
 
 ### Per-adapter checklist
 

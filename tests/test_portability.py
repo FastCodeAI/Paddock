@@ -80,7 +80,6 @@ EXEMPT_PENDING_MIGRATION = frozenset(
         "src/paddock/adapters/benchmarks/neuroncap/ladder.py",
         "src/paddock/adapters/benchmarks/neuroncap/renderer.py",
         "src/paddock/adapters/benchmarks/neuroncap/run_vp_variant.sh",
-        "src/paddock/adapters/models/visionpilot/policy.py",
         "tools/neuroncap/analyze_visionpilot.py",
         "tools/neuroncap/diag_visionpilot.py",
         "tools/neuroncap/gate_ab_render.py",
@@ -110,7 +109,7 @@ EXEMPT_PENDING_MIGRATION = frozenset(
 )
 
 #: Never raise this. It is the size of the backlog on the day it was created.
-MIGRATION_BACKLOG_CEILING = 36
+MIGRATION_BACKLOG_CEILING = 35
 
 
 def tracked_files() -> list[Path]:

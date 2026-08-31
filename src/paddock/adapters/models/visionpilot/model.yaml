@@ -1,0 +1,32 @@
+name: visionpilot
+description: Autoware VisionPilot - AutoSteer/AutoDrive/AutoSpeed ONNX stack with an MPC-style planner
+repo: vision_pilot
+
+runtime:
+  # The Python side is a reimplementation of the C++ planner driving the three
+  # shipped ONNX models, so it needs onnxruntime rather than the built binary.
+  kind: conda
+  python: "3.10"
+  venv: "{repos}/.conda-envs/ncap"
+  pythonpath: ["{repo}"]
+  cwd: "{repo}"
+  env:
+    VISIONPILOT_WEIGHTS: "{repo}/VisionPilot/modules/models/weights"
+    # CPU by default: the recorded closed-loop runs used it, and the renderer
+    # wants the GPU. Set to "cuda" to use CUDAExecutionProvider.
+    VISIONPILOT_PROVIDERS: "cpu"
+    # The shipped 2.0 starves the fusion filter's velocity state so it never
+    # identifies closing speed; 0.3 converges in ~2.4 s.
+    VISIONPILOT_PROCESS_NOISE_DIST: "0.3"
+    # NOT a performance tweak. conda-forge ships libgomp.so.1 as a symlink to
+    # LLVM's libomp.so, and MUMPS -- inside IPOPT, called by the planner every
+    # frame -- deadlocks in dmumps_perform_copies() under it.
+    OMP_NUM_THREADS: "1"
+
+capabilities:
+  cameras: [CAM_FRONT]
+  vram_gb: 0
+  startup_timeout_s: 300
+  waypoint_dt: 0.5
+
+benchmarks: [kitscenes, neuroncap]

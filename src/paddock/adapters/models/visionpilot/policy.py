@@ -1,7 +1,8 @@
 """NeuroNCAP model node for Autoware's Vision Pilot.
 
-    PYTHONPATH=/mnt/p4/naren/neuroncap/servers python visionpilot_server.py --port 9000 \\
-        --weights /shakaal_hdd_1/workspace/naren/renesas/vision_pilot/VisionPilot/modules/models/weights
+Adapted from the NeuroNCAP model node. The planner reimplementation below is
+unchanged; the seams now implement `Policy`, and the ONNX weights arrive via
+model.yaml rather than a hardcoded default.
 
 Vision Pilot is an L2 assist stack, not a planner, and it is the only one of the
 four models here that never produces a metric trajectory.  Three ONNX models do
@@ -66,18 +67,15 @@ real NCAP autonomous-braking test measures.
 
 from __future__ import annotations
 
-import argparse
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-import onnxruntime as ort
-import uvicorn
-from fastapi import FastAPI
 from PIL import Image
 
-import ncap_io
+from paddock.policy.protocol import Observation, Pinhole, Policy, Trajectory
 
 NET_W, NET_H = 1024, 512
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
@@ -256,7 +254,9 @@ class LongitudinalFusion:
         if ad_confirmed:
             ad_meas.distance_m = D_MAX_M * (1.0 - autodrive_dist_norm)
             p = float(np.clip(autodrive_flag_prob, 0.0, 1.0))
-            ad_meas.stddev_m = self.AUTODRIVE_NOISE_MIN_M + (self.AUTODRIVE_NOISE_M - self.AUTODRIVE_NOISE_MIN_M) * (1.0 - p)
+            ad_meas.stddev_m = self.AUTODRIVE_NOISE_MIN_M + (
+                self.AUTODRIVE_NOISE_M - self.AUTODRIVE_NOISE_MIN_M
+            ) * (1.0 - p)
             ad_meas.valid = True
 
         if not self.initialised:
@@ -336,7 +336,9 @@ class IDM:
 # ─── geometry ─────────────────────────────────────────────────────────────────
 
 
-def project_to_ground(uv: np.ndarray, pinhole: ncap_io.Pinhole, camera2ego: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def project_to_ground(
+    uv: np.ndarray, pinhole: Pinhole, camera2ego: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
     """Image points -> (x forward, y left) metres on the road plane.
 
     Each pixel defines a ray from the camera centre; the road is the z = 0 plane
@@ -416,15 +418,63 @@ def _nms(boxes: np.ndarray, scores: np.ndarray, iou_thres: float) -> list[int]:
     return keep
 
 
-class VisionPilotNode:
-    def __init__(self, weights: Path, providers: list[str], process_noise_dist_m: float | None = None) -> None:
-        opts = ort.SessionOptions()
-        self.steer = ort.InferenceSession(str(weights / "autosteer_fp32.onnx"), opts, providers=providers)
-        self.drive = ort.InferenceSession(str(weights / "autodrive_fp32.onnx"), opts, providers=providers)
-        self.speed = ort.InferenceSession(str(weights / "autospeed_fp32.onnx"), opts, providers=providers)
+class VisionPilotPolicy(Policy):
+    cameras = ("CAM_FRONT",)
+    waypoint_dt = WAYPOINT_DT
+
+    def __init__(
+        self,
+        weights: Path | str | None = None,
+        providers: list[str] | None = None,
+        process_noise_dist_m: float | None = None,
+    ) -> None:
+        # Supplied by model.yaml from {repo}; the ONNX files live inside the
+        # VisionPilot checkout rather than the shared weights root.
+        self.weights = Path(weights or os.environ.get("VISIONPILOT_WEIGHTS", ""))
+        # CPU by default: the closed-loop runs used it, and the renderer wants
+        # the GPU. Set VISIONPILOT_PROVIDERS=cuda to change that.
+        self.providers = providers or (
+            ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            if os.environ.get("VISIONPILOT_PROVIDERS", "cpu").lower().startswith("cuda")
+            else ["CPUExecutionProvider"]
+        )
+        # The shipped 2.0 starves the filter's velocity state; 0.3 lets it
+        # identify closing speed within ~2.4 s. See LongitudinalFusion.
+        env_noise = os.environ.get("VISIONPILOT_PROCESS_NOISE_DIST")
+        self.process_noise_dist_m = (
+            process_noise_dist_m
+            if process_noise_dist_m is not None
+            else (float(env_noise) if env_noise else None)
+        )
+        self.steer = self.drive = self.speed = None
         self.idm = IDM()
-        self.fusion = LongitudinalFusion(process_noise_dist_m=process_noise_dist_m)
+        self.fusion = LongitudinalFusion(process_noise_dist_m=self.process_noise_dist_m)
+        self._diagnostics: dict[str, Any] = {}
         self.reset()
+
+    def load(self) -> None:
+        # Checked before the import it guards: otherwise a missing-weights
+        # configuration error only surfaces on a machine that already has
+        # onnxruntime, and cannot be tested at all.
+        if not self.weights or not self.weights.exists():
+            raise RuntimeError(
+                f"VisionPilot ONNX weights not found at {self.weights or '<unset>'}. "
+                "model.yaml supplies VISIONPILOT_WEIGHTS from {repo}; run its setup.sh "
+                "if the checkout has not been built."
+            )
+
+        import onnxruntime as ort
+
+        opts = ort.SessionOptions()
+        self.steer = ort.InferenceSession(
+            str(self.weights / "autosteer_fp32.onnx"), opts, providers=self.providers
+        )
+        self.drive = ort.InferenceSession(
+            str(self.weights / "autodrive_fp32.onnx"), opts, providers=self.providers
+        )
+        self.speed = ort.InferenceSession(
+            str(self.weights / "autospeed_fp32.onnx"), opts, providers=self.providers
+        )
 
     def reset(self) -> None:
         """Clear all cross-frame state.
@@ -521,7 +571,7 @@ class VisionPilotNode:
 
     # ─── ground projection ────────────────────────────────────────────────────
 
-    def _path_points(self, xp: np.ndarray, mask: np.ndarray, req: ncap_io.Request) -> np.ndarray:
+    def _path_points(self, xp: np.ndarray, mask: np.ndarray, obs: Observation) -> np.ndarray:
         """AutoSteer output -> ground points, following lateral_fusion's reading.
 
         ``xp[i]`` is a normalised lateral position at the i-th of 64 fixed image
@@ -529,29 +579,29 @@ class VisionPilotNode:
         the 1024x512 network frame and are scaled back to the rendered image
         before projection.
         """
-        image = req.images["CAM_FRONT"]
+        image = obs.images["CAM_FRONT"]
         keep = mask >= STEER_MASK_THRESHOLD
         if not keep.any():
             return np.empty((0, 2))
         rows = np.linspace(0, NET_H - 1, len(xp))
         uv_net = np.stack([xp * NET_W, rows], axis=1)[keep]
         uv_src = uv_net * np.array([image.shape[1] / NET_W, image.shape[0] / NET_H])
-        points, ok = project_to_ground(uv_src, req.pinhole("CAM_FRONT"), req.camera2ego["CAM_FRONT"])
+        points, ok = project_to_ground(uv_src, obs.pinhole("CAM_FRONT"), obs.camera2ego["CAM_FRONT"])
         return points[ok]
 
-    def _lane_points_detail(self, xp: np.ndarray, mask: np.ndarray, req: ncap_io.Request):
+    def _lane_points_detail(self, xp: np.ndarray, mask: np.ndarray, obs: Observation):
         """The kept AutoSteer points in image pixels and on the ground, for drawing."""
-        image = req.images["CAM_FRONT"]
+        image = obs.images["CAM_FRONT"]
         keep = mask >= STEER_MASK_THRESHOLD
         if not keep.any():
             return np.empty((0, 2)), np.empty((0, 2))
         rows = np.linspace(0, NET_H - 1, len(xp))
         uv_net = np.stack([xp * NET_W, rows], axis=1)[keep]
         uv_src = uv_net * np.array([image.shape[1] / NET_W, image.shape[0] / NET_H])
-        ground, ok = project_to_ground(uv_src, req.pinhole("CAM_FRONT"), req.camera2ego["CAM_FRONT"])
+        ground, ok = project_to_ground(uv_src, obs.pinhole("CAM_FRONT"), obs.camera2ego["CAM_FRONT"])
         return uv_src, ground[ok]
 
-    def _box_ranges(self, dets: np.ndarray, req: ncap_io.Request) -> np.ndarray:
+    def _box_ranges(self, dets: np.ndarray, obs: Observation) -> np.ndarray:
         """Ground range of each box's bottom-centre, or NaN if it does not meet the road.
 
         This is what ``LongitudinalFusion::project_dist`` computes through its
@@ -563,7 +613,7 @@ class VisionPilotNode:
         if not len(dets):
             return np.empty(0)
         bottom = np.stack([(dets[:, 0] + dets[:, 2]) / 2, dets[:, 3]], axis=1)
-        points, ok = project_to_ground(bottom, req.pinhole("CAM_FRONT"), req.camera2ego["CAM_FRONT"])
+        points, ok = project_to_ground(bottom, obs.pinhole("CAM_FRONT"), obs.camera2ego["CAM_FRONT"])
         self._last_box_ground = np.where(ok[:, None], points, np.nan)
         return np.where(ok, np.linalg.norm(points, axis=1), np.nan)
 
@@ -593,7 +643,9 @@ class VisionPilotNode:
             return "FCW"
         return None
 
-    def _speed_schedule(self, ego_v: float, kappa: float, has_cipo: bool, v_rel: float, gap: float) -> np.ndarray:
+    def _speed_schedule(
+        self, ego_v: float, kappa: float, has_cipo: bool, v_rel: float, gap: float
+    ) -> np.ndarray:
         """Cumulative distance travelled at each NeuroNCAP waypoint time.
 
         ``compute_plan`` integrates ego speed forward at the 50 Hz control
@@ -625,22 +677,25 @@ class VisionPilotNode:
 
     # ─── entry point ──────────────────────────────────────────────────────────
 
-    def infer(self, body: dict[str, Any]) -> dict[str, Any]:
-        req = ncap_io.Request.parse(body, cameras=("CAM_FRONT",))
-        image = req.images["CAM_FRONT"]
+    def infer(self, obs: Observation) -> Trajectory:
+        if self.steer is None:
+            raise RuntimeError("load() must be called before infer()")
+        image = obs.images["CAM_FRONT"]
         resized = self._stretch(image)
 
-        dt_s = 0.1 if self.prev_timestamp is None else max(1e-3, (req.timestamp - self.prev_timestamp) / 1e6)
-        self.prev_timestamp = req.timestamp
+        dt_s = (
+            0.1 if self.prev_timestamp is None else max(1e-3, (obs.timestamp_us - self.prev_timestamp) / 1e6)
+        )
+        self.prev_timestamp = obs.timestamp_us
 
         xp, h_vector = self._run_steer(resized)
         dist_norm, curvature, flag_prob = self._run_drive(resized)
         dets = self._run_speed(image)
 
-        box_ranges = self._box_ranges(dets, req)
+        box_ranges = self._box_ranges(dets, obs)
         cipo = self.fusion.update(dist_norm, flag_prob, dets, box_ranges, dt_s)
 
-        ground = self._path_points(xp, h_vector, req)
+        ground = self._path_points(xp, h_vector, obs)
         path = self._fit_path(ground)
 
         # Latch the cruise set-speed at the speed the run starts from. IDM's
@@ -649,22 +704,20 @@ class VisionPilotNode:
         # that have nothing to do with what the perception models see. The speed
         # the logged driver was holding is the honest set-point for an ACC.
         if self.set_speed is None:
-            self.set_speed = max(req.speed, 1.0)
+            self.set_speed = max(obs.speed, 1.0)
         self.idm.speed_limit = self.set_speed
 
-        arc = self._speed_schedule(req.speed, curvature, cipo.has_cipo, cipo.velocity_ms, cipo.distance_m)
+        arc = self._speed_schedule(obs.speed, curvature, cipo.has_cipo, cipo.velocity_ms, cipo.distance_m)
         trajectory = np.stack([arc, path.lateral_at(arc)], axis=1)
 
         # The acceleration Planner::compute_plan returns for this step: the first
         # IDM evaluation, before the horizon is integrated. This is the number
         # its FCW/AEB bands are tested against.
-        accel = self.idm.acceleration(
-            curvature, req.speed, cipo.has_cipo, -cipo.velocity_ms, cipo.distance_m
-        )
+        accel = self.idm.acceleration(curvature, obs.speed, cipo.has_cipo, -cipo.velocity_ms, cipo.distance_m)
 
         detail = {}
         if self.debug_detail:
-            lane_uv, lane_ground = self._lane_points_detail(xp, h_vector, req)
+            lane_uv, lane_ground = self._lane_points_detail(xp, h_vector, obs)
             detail = {
                 "detections": dets.tolist(),
                 "box_ranges": np.where(np.isfinite(box_ranges), box_ranges, -1.0).tolist(),
@@ -675,67 +728,35 @@ class VisionPilotNode:
                 "path_x_max": path.x_max,
             }
 
-        return ncap_io.response(trajectory, ncap_io.empty_aux()) | {
-            "debug": {
-                "accel_cmd": round(accel, 3),
-                "warning": self.warning_for(accel),
-                **detail,
-                "fused_distance_m": round(cipo.distance_m, 2),
-                "fused_velocity_ms": round(cipo.velocity_ms, 2),
-                "fused_stddev_m": round(cipo.distance_stddev_m, 2),
-                "has_cipo": cipo.has_cipo,
-                "cut_in": cipo.cut_in_detected,
-                "autospeed_boxes": int(len(dets)),
-                "autospeed_cipo_m": round(cipo.cipo_raw_dist_m, 2) if cipo.cipo_raw_found else None,
-                "autodrive_m": round(D_MAX_M * (1.0 - dist_norm), 2),
-                "autodrive_prob": round(flag_prob, 3),
-                "curvature": round(float(curvature), 5),
-                "path_points": int(len(ground)),
-                "path_extent_m": round(path.x_max, 1),
-                "set_speed_ms": round(float(self.set_speed or 0.0), 2),
-            }
+        self._diagnostics = {
+            "accel_cmd": round(accel, 3),
+            "warning": self.warning_for(accel),
+            **detail,
+            "fused_distance_m": round(cipo.distance_m, 2),
+            "fused_velocity_ms": round(cipo.velocity_ms, 2),
+            "fused_stddev_m": round(cipo.distance_stddev_m, 2),
+            "has_cipo": cipo.has_cipo,
+            "cut_in": cipo.cut_in_detected,
+            "autospeed_boxes": int(len(dets)),
+            "autospeed_cipo_m": round(cipo.cipo_raw_dist_m, 2) if cipo.cipo_raw_found else None,
+            "autodrive_m": round(D_MAX_M * (1.0 - dist_norm), 2),
+            "autodrive_prob": round(flag_prob, 3),
+            "curvature": round(float(curvature), 5),
+            "path_points": int(len(ground)),
+            "path_extent_m": round(path.x_max, 1),
+            "set_speed_ms": round(float(self.set_speed or 0.0), 2),
         }
+        return Trajectory(trajectory, dt=self.waypoint_dt)
+
+    def diagnostics(self) -> dict[str, Any]:
+        """The planner's internal state from the last step.
+
+        VisionPilot is a reimplementation of a C++ planner, so its intermediates
+        are where a wiring error shows up: `fused_distance_m` drifting from
+        `autospeed_cipo_m`, or `path_extent_m` collapsing, both indicate a
+        problem long before the score does.
+        """
+        return self._diagnostics or {"status": "no frame seen yet"}
 
 
-def build_app(node: VisionPilotNode) -> FastAPI:
-    app = FastAPI()
-
-    @app.get("/alive")
-    async def alive() -> bool:
-        return True
-
-    @app.post("/infer")
-    async def infer(body: dict) -> dict:
-        return node.infer(body)
-
-    @app.post("/reset")
-    async def reset(body: dict | None = None) -> bool:
-        node.reset()
-        return True
-
-    return app
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=9000)
-    parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument(
-        "--weights",
-        type=Path,
-        default=Path("/shakaal_hdd_1/workspace/naren/renesas/vision_pilot/VisionPilot/modules/models/weights"),
-    )
-    parser.add_argument("--cpu", action="store_true", help="force CPU execution")
-    parser.add_argument(
-        "--process-noise-dist",
-        type=float,
-        default=None,
-        help="LongitudinalFusion distance process noise, m (default: the shipped 2.0). "
-        "The shipped value starves the filter's velocity state; 0.3 lets it identify "
-        "closing speed within ~2.4 s. See LongitudinalFusion.PROCESS_NOISE_DIST_M.",
-    )
-    args = parser.parse_args()
-
-    providers = ["CPUExecutionProvider"] if args.cpu else ["CUDAExecutionProvider", "CPUExecutionProvider"]
-    node = VisionPilotNode(args.weights, providers, process_noise_dist_m=args.process_noise_dist)
-    uvicorn.run(build_app(node), host=args.host, port=args.port, log_level="warning")
+POLICY = VisionPilotPolicy
