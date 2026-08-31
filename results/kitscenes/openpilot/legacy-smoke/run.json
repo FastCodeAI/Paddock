@@ -1,0 +1,21 @@
+{
+  "run_id": "legacy-smoke",
+  "site": "fastcode-shakaal",
+  "benchmark": "kitscenes",
+  "model": "openpilot",
+  "mode": "open_loop",
+  "started_utc": "",
+  "duration_s": null,
+  "repo_sha": null,
+  "dataset": {
+    "name": "kitscenes",
+    "n_samples": 1,
+    "sequences_sha256": "6ac00c091e89d3b9"
+  },
+  "config": {},
+  "hardware": {},
+  "status": "complete",
+  "valid": true,
+  "notes": "",
+  "ingested_from": "openpilot/eval_kitscenes/runs/smoke"
+}

@@ -7,6 +7,7 @@ succeeding quietly with nothing done.
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 import typer
 
@@ -122,15 +123,44 @@ def run(
 
 
 @app.command()
-def ingest(all_: bool = typer.Option(False, "--all")) -> None:
-    """Import existing results into the canonical store."""
-    _not_yet("ingest", "M4")
+def ingest(
+    all_: bool = typer.Option(False, "--all", help="Ingest every source in [ingest] of paddock.toml."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be written, write nothing."),
+) -> None:
+    """Import results produced before paddock into the canonical store."""
+    from paddock.results import legacy
+
+    try:
+        cfg = SiteConfig.load()
+    except ConfigError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    if not all_:
+        typer.echo("Nothing selected. Use --all to ingest every source in [ingest].", err=True)
+        raise typer.Exit(code=2)
+
+    written, skipped = legacy.ingest_all(cfg, dry_run=dry_run)
+    for line in skipped:
+        typer.echo(f"  skipped: {line}")
+    verb = "would write" if dry_run else "wrote"
+    typer.echo(f"{verb} {written} run(s) to results/")
 
 
 @app.command()
-def report() -> None:
+def report(
+    include_invalid: bool = typer.Option(False, "--include-invalid"),
+    out: str = typer.Option(None, "--out", help="Write to a file instead of stdout."),
+) -> None:
     """Render the leaderboard from the results store."""
-    _not_yet("report", "M4")
+    from paddock.results.report import markdown
+
+    text = markdown(include_invalid=include_invalid)
+    if out:
+        Path(out).write_text(text)
+        typer.echo(f"wrote {out}")
+    else:
+        typer.echo(text)
 
 
 if __name__ == "__main__":

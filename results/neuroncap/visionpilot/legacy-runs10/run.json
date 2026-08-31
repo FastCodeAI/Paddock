@@ -1,0 +1,23 @@
+{
+  "run_id": "legacy-runs10",
+  "site": "fastcode-shakaal",
+  "benchmark": "neuroncap",
+  "model": "visionpilot",
+  "mode": "closed_loop",
+  "started_utc": "",
+  "duration_s": null,
+  "repo_sha": null,
+  "dataset": {
+    "name": "nuscenes",
+    "n_samples": 5,
+    "sequences_sha256": "63212bcc9b60cd27"
+  },
+  "config": {
+    "run_group": "runs10"
+  },
+  "hardware": {},
+  "status": "complete",
+  "valid": true,
+  "notes": "",
+  "ingested_from": "neuroncap/outputs/runs10"
+}

@@ -1,0 +1,21 @@
+{
+  "run_id": "legacy-local20",
+  "site": "fastcode-shakaal",
+  "benchmark": "kitscenes",
+  "model": "openpilot",
+  "mode": "open_loop",
+  "started_utc": "",
+  "duration_s": null,
+  "repo_sha": null,
+  "dataset": {
+    "name": "kitscenes",
+    "n_samples": 20,
+    "sequences_sha256": "c2426ce954202dd9"
+  },
+  "config": {},
+  "hardware": {},
+  "status": "complete",
+  "valid": true,
+  "notes": "",
+  "ingested_from": "openpilot/eval_kitscenes/runs/local20"
+}

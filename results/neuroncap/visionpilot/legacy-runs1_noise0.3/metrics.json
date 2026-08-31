@@ -1,0 +1,173 @@
+{
+  "run_id": "legacy-runs1_noise0.3",
+  "primary_metric": "ncap_score",
+  "n": 3,
+  "metrics": {
+    "ncap_score": {
+      "n": 3,
+      "n_missing": 0,
+      "mean": 1.371385,
+      "median": 1.312812,
+      "p90": 2.503637,
+      "max": 2.801343,
+      "std": 1.144393
+    },
+    "collision_rate": {
+      "n": 3,
+      "n_missing": 0,
+      "mean": 1.0,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.0
+    },
+    "impact_speed": {
+      "n": 1,
+      "n_missing": 2,
+      "mean": 13.452363,
+      "median": 13.452363,
+      "p90": 13.452363,
+      "max": 13.452363,
+      "std": 0.0
+    },
+    "reference_speed": {
+      "n": 1,
+      "n_missing": 2,
+      "mean": 13.279218,
+      "median": 13.279218,
+      "p90": 13.279218,
+      "max": 13.279218,
+      "std": 0.0
+    }
+  },
+  "by_split": {
+    "frontal": {
+      "n": 1,
+      "ncap_score": {
+        "n": 1,
+        "n_missing": 0,
+        "mean": 1.312812,
+        "median": 1.312812,
+        "p90": 1.312812,
+        "max": 1.312812,
+        "std": 0.0
+      },
+      "collision_rate": {
+        "n": 1,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "impact_speed": {
+        "n": 0,
+        "n_missing": 1
+      },
+      "reference_speed": {
+        "n": 0,
+        "n_missing": 1
+      }
+    },
+    "side": {
+      "n": 1,
+      "ncap_score": {
+        "n": 1,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "collision_rate": {
+        "n": 1,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "impact_speed": {
+        "n": 1,
+        "n_missing": 0,
+        "mean": 13.452363,
+        "median": 13.452363,
+        "p90": 13.452363,
+        "max": 13.452363,
+        "std": 0.0
+      },
+      "reference_speed": {
+        "n": 1,
+        "n_missing": 0,
+        "mean": 13.279218,
+        "median": 13.279218,
+        "p90": 13.279218,
+        "max": 13.279218,
+        "std": 0.0
+      }
+    },
+    "stationary": {
+      "n": 1,
+      "ncap_score": {
+        "n": 1,
+        "n_missing": 0,
+        "mean": 2.801343,
+        "median": 2.801343,
+        "p90": 2.801343,
+        "max": 2.801343,
+        "std": 0.0
+      },
+      "collision_rate": {
+        "n": 1,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "impact_speed": {
+        "n": 0,
+        "n_missing": 1
+      },
+      "reference_speed": {
+        "n": 0,
+        "n_missing": 1
+      }
+    }
+  },
+  "by_group": {
+    "scenario": {
+      "frontal": {
+        "n": 1,
+        "n_missing": 0,
+        "mean": 1.312812,
+        "median": 1.312812,
+        "p90": 1.312812,
+        "max": 1.312812,
+        "std": 0.0
+      },
+      "side": {
+        "n": 1,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "stationary": {
+        "n": 1,
+        "n_missing": 0,
+        "mean": 2.801343,
+        "median": 2.801343,
+        "p90": 2.801343,
+        "max": 2.801343,
+        "std": 0.0
+      }
+    }
+  }
+}

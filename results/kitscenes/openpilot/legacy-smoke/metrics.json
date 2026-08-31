@@ -1,0 +1,121 @@
+{
+  "run_id": "legacy-smoke",
+  "primary_metric": "ade",
+  "n": 1,
+  "metrics": {
+    "ade": {
+      "n": 1,
+      "n_missing": 0,
+      "mean": 1.696681,
+      "median": 1.696681,
+      "p90": 1.696681,
+      "max": 1.696681,
+      "std": 0.0
+    },
+    "fde@1s": {
+      "n": 1,
+      "n_missing": 0,
+      "mean": 0.751789,
+      "median": 0.751789,
+      "p90": 0.751789,
+      "max": 0.751789,
+      "std": 0.0
+    },
+    "fde@2s": {
+      "n": 1,
+      "n_missing": 0,
+      "mean": 1.894807,
+      "median": 1.894807,
+      "p90": 1.894807,
+      "max": 1.894807,
+      "std": 0.0
+    },
+    "fde@3s": {
+      "n": 1,
+      "n_missing": 0,
+      "mean": 3.297982,
+      "median": 3.297982,
+      "p90": 3.297982,
+      "max": 3.297982,
+      "std": 0.0
+    },
+    "inference_seconds": {
+      "n": 1,
+      "n_missing": 0,
+      "mean": 17.758587,
+      "median": 17.758587,
+      "p90": 17.758587,
+      "max": 17.758587,
+      "std": 0.0
+    },
+    "baseline_ade_drivejepa": {
+      "n": 1,
+      "n_missing": 0,
+      "mean": 5.81018,
+      "median": 5.81018,
+      "p90": 5.81018,
+      "max": 5.81018,
+      "std": 0.0
+    }
+  },
+  "by_split": {
+    "overlap_train_val": {
+      "n": 1,
+      "ade": {
+        "n": 1,
+        "n_missing": 0,
+        "mean": 1.696681,
+        "median": 1.696681,
+        "p90": 1.696681,
+        "max": 1.696681,
+        "std": 0.0
+      },
+      "fde@1s": {
+        "n": 1,
+        "n_missing": 0,
+        "mean": 0.751789,
+        "median": 0.751789,
+        "p90": 0.751789,
+        "max": 0.751789,
+        "std": 0.0
+      },
+      "fde@2s": {
+        "n": 1,
+        "n_missing": 0,
+        "mean": 1.894807,
+        "median": 1.894807,
+        "p90": 1.894807,
+        "max": 1.894807,
+        "std": 0.0
+      },
+      "fde@3s": {
+        "n": 1,
+        "n_missing": 0,
+        "mean": 3.297982,
+        "median": 3.297982,
+        "p90": 3.297982,
+        "max": 3.297982,
+        "std": 0.0
+      },
+      "inference_seconds": {
+        "n": 1,
+        "n_missing": 0,
+        "mean": 17.758587,
+        "median": 17.758587,
+        "p90": 17.758587,
+        "max": 17.758587,
+        "std": 0.0
+      },
+      "baseline_ade_drivejepa": {
+        "n": 1,
+        "n_missing": 0,
+        "mean": 5.81018,
+        "median": 5.81018,
+        "p90": 5.81018,
+        "max": 5.81018,
+        "std": 0.0
+      }
+    }
+  },
+  "by_group": {}
+}
