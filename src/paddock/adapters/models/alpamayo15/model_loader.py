@@ -20,18 +20,33 @@ not installed and SDPA must be selected explicitly.
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
 
 import torch
-
 from alpamayo1_5 import helper
 from alpamayo1_5.config import Alpamayo1_5Config
 from alpamayo1_5.models.alpamayo1_5 import Alpamayo1_5
 
-CKPT = Path("/shakaal_hdd_1/workspace/NeurIPS/Dataset/weights/Alpamayo-1.5-10B")
-COSMOS = Path("/shakaal_hdd_1/workspace/NeurIPS/Dataset/weights/Cosmos-Reason2-8B")
+
+def _weights(env_var: str, default_name: str) -> Path:
+    """Where a checkpoint lives here.
+
+    Supplied by model.yaml from {weights}; the default is a bare directory name
+    so a missing setting fails as "Alpamayo-1.5-10B not found" rather than
+    pointing confidently at one machine's disk.
+    """
+    explicit = os.environ.get(env_var)
+    if explicit:
+        return Path(explicit)
+    root = os.environ.get("PADDOCK_WEIGHTS")
+    return Path(root) / default_name if root else Path(default_name)
+
+
+CKPT = _weights("ALPAMAYO_CHECKPOINT", "Alpamayo-1.5-10B")
+COSMOS = _weights("ALPAMAYO_COSMOS", "Cosmos-Reason2-8B")
 
 
 def build_config(ckpt: Path = CKPT, cosmos: Path = COSMOS, attn: str = "sdpa") -> Alpamayo1_5Config:
@@ -113,9 +128,7 @@ def load_model(
     reserve_timeout_s: float = 7200.0,
 ) -> tuple[Alpamayo1_5, Any]:
     """Return ``(model, processor)`` ready for inference, with the backend verified."""
-    reservation = (
-        acquire_vram(reserve_gb, reserve_timeout_s) if reserve_gb and device == "cuda" else None
-    )
+    reservation = acquire_vram(reserve_gb, reserve_timeout_s) if reserve_gb and device == "cuda" else None
 
     config = build_config(ckpt, cosmos, attn)
     model = Alpamayo1_5.from_pretrained(ckpt, config=config, dtype=dtype)

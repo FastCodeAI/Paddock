@@ -13,6 +13,7 @@ only so the self-test can prove the two agree.
 from __future__ import annotations
 
 import csv
+import os
 import pickle
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,12 +21,41 @@ from typing import Any
 
 import numpy as np
 
-KITSCENES_ROOT = Path("/shakaal_hdd_1/workspace/naren/renesas/kitscenes_data")
-KITSCENES_REPO = Path("/shakaal_hdd_1/workspace/naren/renesas/kitscenes")
-DRIVE_JEPA_PKL = Path(
-    "/shakaal_hdd_1/workspace/naren/navsim_workspace/exp/inference/kitscenes_e2e_final.pkl"
-)
-SPLIT_DIR = KITSCENES_REPO / "kitscenes/split/generated_splits/default_geo_split_v1_0"
+
+def _from_env(name: str, description: str) -> Path:
+    """A path supplied by model.yaml, or a clear error naming what to set.
+
+    These used to be one machine's absolute paths. Reading them from the
+    environment lets paddock resolve them per site -- and makes an unset value
+    fail as "KITSCENES_ROOT is not set" rather than as a missing directory
+    nobody else ever had.
+    """
+    value = os.environ.get(name)
+    if not value:
+        raise RuntimeError(
+            f"{name} is not set. It should be supplied by "
+            f"adapters/models/alpamayo15/model.yaml ({description}). "
+            f"Run through `paddock run`, or export it for a standalone script."
+        )
+    return Path(value)
+
+
+def kitscenes_root() -> Path:
+    """Parent of the dataset's data/ directory."""
+    return _from_env("KITSCENES_ROOT", "the KITScenes dataset root")
+
+
+def kitscenes_repo() -> Path:
+    """The kitscenes devkit checkout, for its split lists."""
+    return _from_env("KITSCENES_REPO", "the kitscenes repo, from {repos}/kitscenes")
+
+
+def drive_jepa_pkl() -> Path:
+    """The shared 223-keyframe sample list every KITScenes run is scored on."""
+    return _from_env("KITSCENES_SAMPLE_LIST", "the shared sample list pickle")
+
+
+SPLIT_SUBDIR = "kitscenes/split/generated_splits/default_geo_split_v1_0"
 SPLIT_FILES = {
     "train": "train.txt",
     "val": "validation.txt",
@@ -49,14 +79,16 @@ class Sample:
         return (self.scene_id, self.keyframe)
 
 
-def load_drive_jepa_rows(pkl: Path = DRIVE_JEPA_PKL) -> list[dict[str, Any]]:
+def load_drive_jepa_rows(pkl: Path | None = None) -> list[dict[str, Any]]:
     """The reference run's per-sample dicts, as pickled by ``run_kitscenes_inference``."""
+    pkl = pkl or drive_jepa_pkl()
     with open(pkl, "rb") as handle:
         return pickle.load(handle)
 
 
-def samples_from_pickle(pkl: Path = DRIVE_JEPA_PKL) -> list[Sample]:
+def samples_from_pickle(pkl: Path | None = None) -> list[Sample]:
     """The 223 reference samples, in scene order."""
+    pkl = pkl or drive_jepa_pkl()
     samples = [
         Sample(
             scene_id=row["scene_id"],
@@ -80,23 +112,23 @@ def samples_from_pickle(pkl: Path = DRIVE_JEPA_PKL) -> list[Sample]:
     return samples
 
 
-def split_scene_ids(split: str, split_dir: Path = SPLIT_DIR) -> list[str]:
+def split_scene_ids(split: str, split_dir: Path | None = None) -> list[str]:
     """Scene UUIDs for *split*, from the toolkit's generated split lists."""
+    split_dir = split_dir or (kitscenes_repo() / SPLIT_SUBDIR)
     text = (split_dir / SPLIT_FILES[split]).read_text()
     return [line.strip() for line in text.splitlines() if line.strip()]
 
 
-def archive_sizes(root: Path = KITSCENES_ROOT) -> dict[str, int]:
+def archive_sizes(root: Path | None = None) -> dict[str, int]:
     """Scene UUID -> tar size in bytes, from the dataset manifest.
 
     Used to sort scenes smallest-first and to refuse a download that would not fit --
     the largest archive in the val pool is 13.6 GB, several times the mean.
     """
+    root = root or kitscenes_root()
     manifest = root / "data/sequence_archives.csv"
     with open(manifest, newline="") as handle:
-        return {
-            row["sequence_id"]: int(row["archive_size_bytes"]) for row in csv.DictReader(handle)
-        }
+        return {row["sequence_id"]: int(row["archive_size_bytes"]) for row in csv.DictReader(handle)}
 
 
 def group_by_scene(samples: list[Sample]) -> dict[str, list[Sample]]:

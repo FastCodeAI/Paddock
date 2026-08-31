@@ -60,7 +60,7 @@ class Pinhole:
     height: int
 
     @classmethod
-    def from_calib(cls, entry: dict, width: int, height: int) -> "Pinhole":
+    def from_calib(cls, entry: dict, width: int, height: int) -> Pinhole:
         intrinsics = entry["intrinsics"]
         return cls(
             focal=float(intrinsics["focal_length"]),
@@ -81,12 +81,29 @@ def crop_box(src: Pinhole, target_hfov_deg: float | None = None) -> tuple[int, i
     ``target_hfov_deg=None`` takes the widest symmetric window the sensor allows
     (the ``fill`` mode); a value narrows it to that exact field of view (``zoom``).
     Returns ``(left, top, right, bottom)`` with the width/height ratio exactly 16:9
-    after integer rounding, which keeps the principal point at the output centre.
+    after integer rounding, which keeps the principal point at the output centre --
+    the property the whole camera adaptation rests on.
+
+    This is the single implementation for both loop types. The closed-loop node
+    previously carried its own copy that clamped vertically but also truncated
+    where this rounds, which moved the KITScenes crop by one pixel. Rounding is
+    kept, so open-loop results are unchanged; the clamping is kept, so renders
+    wider than 16:9 no longer escape the frame. See tests/test_camera_warp.py.
     """
-    if target_hfov_deg is None:
-        half_w = min(src.cu, src.width - 1 - src.cu)
-    else:
-        half_w = src.focal * math.tan(math.radians(0.5 * target_hfov_deg))
+    # Horizontal margin from the principal point, optionally narrowed to an
+    # exact field of view (the ``zoom`` mode). Clamped to the sensor either way:
+    # a requested hFOV wider than the sensor would otherwise sample past its edge.
+    half_w_limit = min(src.cu, src.width - 1 - src.cu)
+    if target_hfov_deg is not None:
+        half_w_limit = min(half_w_limit, src.focal * math.tan(math.radians(0.5 * target_hfov_deg)))
+
+    # Height follows width at 16:9, so a vertical margin caps the width too.
+    # On a 4:3-ish sensor (KITScenes' 3504x2272) the horizontal limit binds and
+    # this changes nothing. On a source already wider than 16:9 -- a 1599x900
+    # NeuRAD render -- the vertical limit binds, and without this the box runs
+    # off the bottom: "crop (1, 1, 1598, 899) escapes the 1599x900 frame".
+    half_h_limit = min(src.cv, src.height - 1 - src.cv)
+    half_w = min(half_w_limit, half_h_limit / TARGET_ASPECT)
 
     width = int(round(2.0 * half_w))
     height = int(round(width * TARGET_ASPECT))
@@ -126,9 +143,7 @@ def warp_fill(image: Image.Image, src: Pinhole) -> npt.NDArray[np.uint8]:
     return _to_array(image.crop(box).resize((TARGET_W, TARGET_H), Image.BICUBIC))
 
 
-def warp_zoom(
-    image: Image.Image, src: Pinhole, hfov_deg: float = TELE_HFOV_DEG
-) -> npt.NDArray[np.uint8]:
+def warp_zoom(image: Image.Image, src: Pinhole, hfov_deg: float = TELE_HFOV_DEG) -> npt.NDArray[np.uint8]:
     """Digital telephoto: an exact *hfov_deg* centre crop, rescaled to 1920x1080.
 
     Because the target is narrower than the source this reproduces the telephoto

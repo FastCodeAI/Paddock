@@ -198,6 +198,7 @@ class SiteConfig:
             raise ConfigError(
                 f"unknown template variable {{{key}}} in {template!r}; "
                 f"known: repos, runs, weights, site, data.<name>, data.<name>.tiers, "
+                f"data.<name>.parent, "
                 f"plus context {sorted(context)}"
             )
 
@@ -215,6 +216,12 @@ class SiteConfig:
             )
         if len(parts) == 3 and parts[2] == "tiers":
             return ":".join(str(r) for r in dataset.roots)
+        if len(parts) == 3 and parts[2] == "parent":
+            # The same dataset is addressed two ways by different repos: some
+            # want the directory holding data/, others want data/ itself. Rather
+            # than store it twice and let the two drift, store one root and
+            # project it. See docs/data-setup.md.
+            return str(dataset.resolve().parent)
         if len(parts) == 3:
             extra = dataset.extra.get(parts[2])
             if extra is None:

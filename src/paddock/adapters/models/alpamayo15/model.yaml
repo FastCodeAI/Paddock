@@ -1,0 +1,31 @@
+name: alpamayo15
+description: NVIDIA Alpamayo 1.5 VQA-10B - chain-of-causation VLM plus a diffusion trajectory expert
+repo: alpamayo1.5
+
+runtime:
+  kind: uv
+  python: "3.12"
+  venv: "{repo}/a1_5_venv"
+  pythonpath: ["{repo}"]
+  cwd: "{repo}"
+  env:
+    ALPAMAYO_CHECKPOINT: "{weights}/Alpamayo-1.5-10B"
+    ALPAMAYO_COSMOS: "{weights}/Cosmos-Reason2-8B"
+    PADDOCK_WEIGHTS: "{weights}"
+    # Claimed before the checkpoint read, which takes ~12 min on a contended card.
+    ALPAMAYO_RESERVE_GB: "26"
+    # KITScenes addressing: this repo's code wants the directory *containing*
+    # data/, where openpilot's wants data/ itself. One registry entry, projected.
+    KITSCENES_ROOT: "{data.kitscenes.parent}"
+    KITSCENES_REPO: "{repos}/kitscenes"
+    KITSCENES_SAMPLE_LIST: "{data.navsim.exp}/inference/kitscenes_e2e_final.pkl"
+
+capabilities:
+  cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT]
+  vram_gb: 26
+  # A 21 GB checkpoint read on a shared box genuinely takes this long. A shorter
+  # timeout looks like a hang and kills a run that was about to work.
+  startup_timeout_s: 3600
+  waypoint_dt: 0.5
+
+benchmarks: [kitscenes, neuroncap]

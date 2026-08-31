@@ -28,7 +28,7 @@ trajectory.  ``build_sample`` checks it against an independently computed speed.
 from __future__ import annotations
 
 import json
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -36,9 +36,8 @@ import numpy as np
 import numpy.typing as npt
 import torch
 from einops import rearrange
-from scipy.spatial import transform as spt
-
 from eval_kitscenes.camera_warp import Pinhole, load_and_warp
+from scipy.spatial import transform as spt
 
 # Alpamayo slot id -> (KITScenes sensor, warp mode for the fill/letterbox family).
 # Matched by yaw: the KITScenes ring sits at +60.9 / +0.97 / -58.5 deg, within 6 deg of
@@ -118,7 +117,7 @@ class KITScenesAlpamayoScene:
 
     # -- geometry ----------------------------------------------------------- #
 
-    @lru_cache(maxsize=None)
+    @cache
     def _pinhole(self, sensor: str) -> Pinhole:
         """Intrinsics for *sensor*, with the frame size read off frame 0."""
         from PIL import Image
@@ -156,9 +155,7 @@ class KITScenesAlpamayoScene:
         last = len(self.pose_timestamps) - 1
         lo, hi = max(k - 1, 0), min(k + 1, last)
         dt = self.pose_timestamps[hi] - self.pose_timestamps[lo]
-        velocity = (
-            np.zeros(2) if dt <= 0 else (self.planar[hi, :2] - self.planar[lo, :2]) / dt
-        )
+        velocity = np.zeros(2) if dt <= 0 else (self.planar[hi, :2] - self.planar[lo, :2]) / dt
         yaw = self.planar[k, 2]
         cos_y, sin_y = np.cos(-yaw), np.sin(-yaw)
         return np.array([[cos_y, -sin_y], [sin_y, cos_y]]) @ velocity
@@ -227,9 +224,9 @@ class KITScenesAlpamayoScene:
 
         image_frames, camera_indices = self._load_images(k, slots, fov_mode, load_images)
 
-        absolute_us = np.rint(
-            self.reference_timestamps[k - NUM_CAM_FRAMES + 1 : k + 1] * 1e6
-        ).astype(np.int64)
+        absolute_us = np.rint(self.reference_timestamps[k - NUM_CAM_FRAMES + 1 : k + 1] * 1e6).astype(
+            np.int64
+        )
         absolute_timestamps = torch.from_numpy(np.tile(absolute_us, (len(slots), 1)))
         relative = (absolute_timestamps - absolute_timestamps.min()).float() * 1e-6
 
@@ -255,9 +252,7 @@ class KITScenesAlpamayoScene:
             "kits_fov_mode": fov_mode,
         }
 
-    def _check_history(
-        self, hist_xyz: npt.NDArray, hist_rot: npt.NDArray, speed: float, k: int
-    ) -> None:
+    def _check_history(self, hist_xyz: npt.NDArray, hist_rot: npt.NDArray, speed: float, k: int) -> None:
         """Guard the three ways the ego history can be silently wrong."""
         assert np.abs(hist_xyz[-1]).max() < 1e-9, f"history does not end at the origin: {hist_xyz[-1]}"
         assert np.abs(hist_rot[-1] - np.eye(3)).max() < 1e-9, "history does not end at identity"

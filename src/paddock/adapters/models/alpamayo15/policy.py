@@ -1,9 +1,8 @@
-"""NeuroNCAP model node for NVIDIA Alpamayo 1.5.
+"""NVIDIA Alpamayo 1.5 as a paddock Policy.
 
-    PYTHONPATH=/shakaal_hdd_1/workspace/naren/renesas/alpamayo1.5:\\
-/shakaal_hdd_1/workspace/naren/renesas/alpamayo1.5/eval_kitscenes:\\
-/mnt/p4/naren/neuroncap/servers \\
-      a1_5_venv/bin/python alpamayo_server.py --port 9002
+Adapted from the NeuroNCAP model node. The camera crop it used to fork now
+lives once in `camera_warp.crop_box`, shared with the open-loop path -- see
+tests/test_camera_warp.py for why that mattered.
 
 Alpamayo is a 10B vision-language-action model: the VLM writes a
 chain-of-causation trace, then a diffusion expert samples trajectories
@@ -36,27 +35,25 @@ consensus draw rather than an oracle-selected best.
 
 from __future__ import annotations
 
-import argparse
-import math
-from typing import Any
+import os
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import torch
-import uvicorn
-from fastapi import FastAPI
 from PIL import Image
-from scipy.spatial import transform as spt
 
-import ncap_io
+if TYPE_CHECKING:  # annotations only -- torch lives in the model's own env
+    import torch
 
-from alpamayo1_5 import helper
-from eval_kitscenes.camera_warp import (
+from paddock.adapters.models.alpamayo15.camera_warp import (
     TARGET_H,
     TARGET_W,
     TELE_HFOV_DEG,
+    crop_box,
+)
+from paddock.adapters.models.alpamayo15.camera_warp import (
     Pinhole as WarpPinhole,
 )
-from eval_kitscenes.model_loader import load_model
+from paddock.policy.protocol import Observation, Pinhole, Policy, Trajectory
 
 # Alpamayo slot -> (nuScenes camera, how to fill it). Matched by bearing:
 # nuScenes' front-left/front-right sit within a couple of degrees of the
@@ -71,6 +68,12 @@ NEEDED_CAMERAS = ("CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT")
 
 TARGET_ASPECT = TARGET_H / TARGET_W  # 9:16, the model frame's height/width
 
+
+def _env_float(name: str) -> float | None:
+    raw = os.environ.get(name)
+    return float(raw) if raw else None
+
+
 NUM_HISTORY_STEPS = 16
 NUM_CAM_FRAMES = 4
 HISTORY_DT = 0.1
@@ -79,40 +82,9 @@ MODEL_HZ = 10.0
 GRID_INDICES = np.array([4, 9, 14, 19, 24, 29])
 
 
-def to_pinhole(p: ncap_io.Pinhole) -> WarpPinhole:
-    """ncap_io's intrinsics in the shape eval_kitscenes' warp code expects."""
+def to_pinhole(p: Pinhole) -> WarpPinhole:
+    """Protocol intrinsics in the shape the warp code expects."""
     return WarpPinhole(focal=p.fx, cu=p.cx, cv=p.cy, width=p.width, height=p.height)
-
-
-def crop_box(src: WarpPinhole, target_hfov_deg: float | None = None) -> tuple[int, int, int, int]:
-    """Widest 16:9 window centred on the principal point that fits the frame.
-
-    This is eval_kitscenes' crop_box with the vertical extent also constrained.
-    Theirs picks the width from the horizontal margin alone and derives the
-    height from it, which is safe on KITScenes' 3504x2272 (4:3-ish) sensors but
-    not here: a NeuRAD render is 1599x900, already wider than 16:9, so the
-    height is the binding dimension and the box runs off the bottom by a few
-    pixels -- ``crop (55, 36, 1598, 904) escapes the 1599x900 frame``.
-
-    Taking the smaller of the two limits keeps the principal point at the output
-    centre, which is the property the whole adaptation rests on. It costs about
-    1% of horizontal field of view against the unclamped box.
-    """
-    half_w_limit = min(src.cu, src.width - 1 - src.cu)
-    if target_hfov_deg is not None:
-        half_w_limit = min(half_w_limit, src.focal * math.tan(math.radians(0.5 * target_hfov_deg)))
-    # Height follows width at 16:9, so a vertical margin caps the width too.
-    half_h_limit = min(src.cv, src.height - 1 - src.cv)
-    half_w = min(half_w_limit, half_h_limit / TARGET_ASPECT)
-
-    width = int(2.0 * half_w)
-    height = int(width * TARGET_ASPECT)
-    left = int(round(src.cu - 0.5 * width))
-    top = int(round(src.cv - 0.5 * height))
-    box = (left, top, left + width, top + height)
-    if box[0] < 0 or box[1] < 0 or box[2] > src.width or box[3] > src.height:
-        raise ValueError(f"crop {box} escapes the {src.width}x{src.height} frame")
-    return box
 
 
 def warp(image: Image.Image, src: WarpPinhole, kind: str) -> np.ndarray:
@@ -135,14 +107,33 @@ def medoid(trajectories: np.ndarray) -> np.ndarray:
     return trajectories[int(np.argmin(distances))]
 
 
-class AlpamayoNode:
-    def __init__(self, num_traj_samples: int = 1, reserve_gb: float | None = None,
-                 temperature: float = 1.0, top_p: float = 0.95, max_generation_length: int = 512) -> None:
-        self.model, self.processor = load_model(reserve_gb=reserve_gb)
+class AlpamayoPolicy(Policy):
+    cameras = NEEDED_CAMERAS
+    waypoint_dt = 0.5
+
+    def __init__(
+        self,
+        num_traj_samples: int = 1,
+        reserve_gb: float | None = None,
+        temperature: float = 1.0,
+        top_p: float = 0.95,
+        max_generation_length: int = 512,
+    ) -> None:
         self.num_traj_samples = num_traj_samples
+        # Claim VRAM before the slow checkpoint read. On a shared card the
+        # alternative is discovering someone else took it, 12 minutes in.
+        self.reserve_gb = reserve_gb or _env_float("ALPAMAYO_RESERVE_GB")
         self.temperature, self.top_p = temperature, top_p
         self.max_generation_length = max_generation_length
+        self.model = None
+        self.processor = None
         self.reset()
+
+    def load(self) -> None:
+        # alpamayo1_5 and torch exist only inside the model's own environment.
+        from paddock.adapters.models.alpamayo15.model_loader import load_model
+
+        self.model, self.processor = load_model(reserve_gb=self.reserve_gb)
 
     def reset(self) -> None:
         """Drop the pose and image history between runs."""
@@ -166,6 +157,8 @@ class AlpamayoNode:
         sparse early history still yields metrically correct spacing rather
         than repeated poses reading as a standing start.
         """
+        from scipy.spatial import transform as spt
+
         times = np.array(self.timestamps, dtype=np.float64) / 1e6
         stack = np.stack(self.poses)
         now = times[-1]
@@ -189,6 +182,9 @@ class AlpamayoNode:
         Full SO(3), matching load_physical_aiavdataset rather than a yaw-only
         approximation.
         """
+        import torch
+        from scipy.spatial import transform as spt
+
         offsets = np.arange(NUM_HISTORY_STEPS - 1, -1, -1) * HISTORY_DT
         stack = self._sample_poses(offsets)
 
@@ -206,6 +202,8 @@ class AlpamayoNode:
         Frames are picked by timestamp at the same 0.1 s spacing as the pose
         history, for the same reason: the request cadence is not uniform.
         """
+        import torch
+
         times = np.array(self.timestamps, dtype=np.float64) / 1e6
         wanted = times[-1] - np.arange(NUM_CAM_FRAMES - 1, -1, -1) * HISTORY_DT
         recent = [self.frames[int(np.argmin(np.abs(times - w)))] for w in wanted]
@@ -218,27 +216,34 @@ class AlpamayoNode:
         indices = torch.tensor([slot for slot, _, _ in ordered], dtype=torch.int64)
         return torch.stack(per_camera, dim=0), indices
 
-    def _warp_frame(self, req: ncap_io.Request) -> dict[str, np.ndarray]:
+    def _warp_frame(self, obs: Observation) -> dict[str, np.ndarray]:
         warped = {}
         for _, camera, kind in CAMERA_SLOTS:
             key = f"{camera}:{kind}"
             if key in warped:
                 continue
-            image = Image.fromarray(req.images[camera])
-            pinhole = to_pinhole(req.pinhole(camera))
+            image = Image.fromarray(obs.images[camera])
+            pinhole = to_pinhole(obs.pinhole(camera))
             warped[key] = warp(image, pinhole, kind)
         return warped
 
-    def infer(self, body: dict[str, Any]) -> dict[str, Any]:
-        req = ncap_io.Request.parse(body, cameras=NEEDED_CAMERAS)
-        self.poses.append(req.ego2world)
-        self.timestamps.append(req.timestamp)
-        self.frames.append(self._warp_frame(req))
+    def infer(self, obs: Observation) -> Trajectory:
+        if self.model is None:
+            raise RuntimeError("load() must be called before infer()")
+
+        import torch
+        from alpamayo1_5 import helper
+
+        self.poses.append(obs.ego2world)
+        self.timestamps.append(obs.timestamp_us)
+        self.frames.append(self._warp_frame(obs))
         # A run is at most a few hundred steps, but each entry holds four warped
         # 1920x1080 frames, so old ones are dropped once they are out of reach.
         if len(self.poses) > 64:
             self.poses, self.timestamps, self.frames = (
-                self.poses[-64:], self.timestamps[-64:], self.frames[-64:]
+                self.poses[-64:],
+                self.timestamps[-64:],
+                self.frames[-64:],
             )
 
         hist_xyz, hist_rot = self._history()
@@ -275,47 +280,30 @@ class AlpamayoNode:
         waypoints = chosen[GRID_INDICES][:, :2]
 
         reasoning = extra.get("text", [""]) if isinstance(extra, dict) else ""
-        return ncap_io.response(waypoints) | {
-            "debug": {
-                "num_samples": int(len(samples)),
-                "history_frames": min(len(self.poses), NUM_HISTORY_STEPS),
-                "request_dt_s": (
-                    round((self.timestamps[-1] - self.timestamps[-2]) / 1e6, 3)
-                    if len(self.timestamps) > 1 else None
-                ),
-                "reasoning": (reasoning[0][:300] if isinstance(reasoning, list) and reasoning else ""),
-            }
+        self._last_reasoning = reasoning[0][:300] if isinstance(reasoning, list) and reasoning else ""
+        return Trajectory(waypoints, dt=self.waypoint_dt)
+
+    def diagnostics(self) -> dict[str, Any]:
+        """Request cadence and history depth, plus the latest reasoning trace.
+
+        `request_dt_s` is the one to watch. Alpamayo derives its initial speed
+        by differencing a history it believes is spaced at 0.1 s; if the
+        simulator is stepping at 0.5 s this reads five times too fast and the
+        model plans confidently for a car that is not there.
+        """
+        if not self.timestamps:
+            return {"status": "no frame seen yet"}
+        return {
+            "num_traj_samples": self.num_traj_samples,
+            "history_frames": min(len(self.poses), NUM_HISTORY_STEPS),
+            "expected_dt_s": HISTORY_DT,
+            "request_dt_s": (
+                round((self.timestamps[-1] - self.timestamps[-2]) / 1e6, 3)
+                if len(self.timestamps) > 1
+                else None
+            ),
+            "reasoning": getattr(self, "_last_reasoning", ""),
         }
 
 
-def build_app(node: AlpamayoNode) -> FastAPI:
-    app = FastAPI()
-
-    @app.get("/alive")
-    async def alive() -> bool:
-        return True
-
-    @app.post("/infer")
-    async def infer(body: dict) -> dict:
-        return node.infer(body)
-
-    @app.post("/reset")
-    async def reset(body: dict | None = None) -> bool:
-        node.reset()
-        return True
-
-    return app
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=9002)
-    parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument("--num-traj-samples", type=int, default=1,
-                        help="draws per step; the medoid is executed. 1 keeps VRAM near 24 GB")
-    parser.add_argument("--reserve-gb", type=float, default=None,
-                        help="claim this much VRAM before the slow checkpoint read (shared GPU)")
-    args = parser.parse_args()
-
-    node = AlpamayoNode(num_traj_samples=args.num_traj_samples, reserve_gb=args.reserve_gb)
-    uvicorn.run(build_app(node), host=args.host, port=args.port, log_level="warning")
+POLICY = AlpamayoPolicy

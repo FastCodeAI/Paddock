@@ -54,7 +54,6 @@ target-version = "py311"
 # new code is linted from the start.
 extend-exclude = [
     "tools",
-    "src/paddock/adapters/models/alpamayo15",
     "src/paddock/adapters/models/visionpilot",
     "src/paddock/adapters/benchmarks/kitscenes",
     "src/paddock/adapters/benchmarks/neuroncap",
@@ -73,6 +72,7 @@ select = ["E", "F", "I", "UP", "B"]
 # but this is rescued code -- fix it during conversion, not in a lint pass.
 "src/paddock/adapters/models/drivejepa/kitscenes_adapter.py" = ["B019", "E501", "UP006", "UP035"]
 "src/paddock/adapters/models/openpilot/camera_adapt.py" = ["E501", "UP006", "UP035"]
+"src/paddock/adapters/models/alpamayo15/kitscenes_alpamayo_loader.py" = ["B019", "E501", "UP006", "UP035"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "src/paddock/adapters"]
