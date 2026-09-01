@@ -1,5 +1,9 @@
 # openpilot — Repo Guide
 
+> Paths in this guide are written as placeholders: `<repos>` is
+> `[roots.repos]` from your `paddock.toml`, `<data>` a dataset root, and
+> `<scratch>` a working area. See [docs/site-setup.md](../site-setup.md).
+
 A working reference for this checkout: what the system is, how it's wired, what the
 neural nets consume and emit, and how to run it on sample data.
 
@@ -353,7 +357,7 @@ backend-specific.
 ### 6.2 Setup (as actually performed)
 
 ```bash
-cd /shakaal_hdd_1/workspace/naren/renesas/openpilot
+cd <repos>/openpilot
 
 # 1. system deps. On this box gcc/g++/make/curl/git were already present, so
 #    tools/setup_dependencies.sh was skipped (it otherwise wants sudo for udev rules).

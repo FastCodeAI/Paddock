@@ -94,8 +94,15 @@ def draw_cameras(axes, scene_path: Path, frame_index: int, calibration: Dict[str
             if slot:
                 left, top, width, height = crop_box(calibration[sensor]["intrinsics"])
                 ax.add_patch(
-                    Rectangle((left * scale, top * scale), width * scale, height * scale,
-                              fill=False, edgecolor=CROP_COLOR, linewidth=2.0, zorder=3)
+                    Rectangle(
+                        (left * scale, top * scale),
+                        width * scale,
+                        height * scale,
+                        fill=False,
+                        edgecolor=CROP_COLOR,
+                        linewidth=2.0,
+                        zorder=3,
+                    )
                 )
             label = f"{sensor.replace('camera_ring_', '')}" + (f"  → {slot}" if slot else "  (unused)")
             ax.set_title(label, fontsize=8, color=INK if slot else MUTED, pad=3)
@@ -110,13 +117,37 @@ def draw_bev(ax, sample: Dict[str, Any], horizon: int) -> None:
 
     ax.set_facecolor(SURFACE)
     ax.add_patch(
-        Rectangle((-EGO_WIDTH / 2, -EGO_LENGTH / 2), EGO_WIDTH, EGO_LENGTH,
-                  facecolor="#c9ccd1", edgecolor=INK, linewidth=1.2, zorder=2)
+        Rectangle(
+            (-EGO_WIDTH / 2, -EGO_LENGTH / 2),
+            EGO_WIDTH,
+            EGO_LENGTH,
+            facecolor="#c9ccd1",
+            edgecolor=INK,
+            linewidth=1.2,
+            zorder=2,
+        )
     )
-    ax.plot(human[:, 1], human[:, 0], color=HUMAN_COLOR, linewidth=2.4,
-            marker="o", markersize=6, label="recorded", zorder=4)
-    ax.plot(predicted[:, 1], predicted[:, 0], color=PREDICTED_COLOR, linewidth=2.4,
-            linestyle="--", marker="o", markersize=6, label="Drive-JEPA", zorder=5)
+    ax.plot(
+        human[:, 1],
+        human[:, 0],
+        color=HUMAN_COLOR,
+        linewidth=2.4,
+        marker="o",
+        markersize=6,
+        label="recorded",
+        zorder=4,
+    )
+    ax.plot(
+        predicted[:, 1],
+        predicted[:, 0],
+        color=PREDICTED_COLOR,
+        linewidth=2.4,
+        linestyle="--",
+        marker="o",
+        markersize=6,
+        label="Drive-JEPA",
+        zorder=5,
+    )
 
     # Scale the two axes independently. Tying the lateral range to the longitudinal
     # reach makes a 50 m straight run render as a sliver.  Aspect stays equal so the
@@ -136,9 +167,7 @@ def draw_bev(ax, sample: Dict[str, Any], horizon: int) -> None:
     ax.legend(frameon=False, fontsize=9, labelcolor=INK, loc="upper left")
 
 
-def render_sample(
-    sample: Dict[str, Any], kitscenes_root: Path, output_path: Path, horizon: int
-) -> bool:
+def render_sample(sample: Dict[str, Any], kitscenes_root: Path, output_path: Path, horizon: int) -> bool:
     scene_path = kitscenes_root / "data" / sample["split"] / sample["scene_id"]
     if not scene_path.is_dir():
         print(f"  ! {sample['scene_id']} not on disk -- re-fetch it to plot this sample")
@@ -164,11 +193,13 @@ def render_sample(
         f"= t {sample['keyframe_index'] / 10:.1f} s        "
         f"ADE@3s {sample['ade']:.2f} m · FDE@3s {sample.get('fde@3s', float('nan')):.2f} m · "
         f"ego {sample['ego_speed']:.1f} m/s",
-        fontsize=11, color=INK, y=0.965,
+        fontsize=11,
+        color=INK,
+        y=0.965,
     )
-    figure.text(0.012, 0.012,
-                "orange box = the OpenScene-FOV crop actually fed to the model",
-                fontsize=8, color=MUTED)
+    figure.text(
+        0.012, 0.012, "orange box = the OpenScene-FOV crop actually fed to the model", fontsize=8, color=MUTED
+    )
     figure.savefig(output_path, dpi=120, facecolor=SURFACE)
     plt.close(figure)
     print(f"  wrote {output_path}")
@@ -176,12 +207,18 @@ def render_sample(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--results", type=Path, required=True)
     parser.add_argument("--kitscenes-root", type=Path, required=True)
     parser.add_argument("--outdir", type=Path, required=True)
-    parser.add_argument("--samples", nargs="*", default=None,
-                        help="scene_id:keyframe pairs; default = every sample whose scene is on disk")
+    parser.add_argument(
+        "--samples",
+        nargs="*",
+        default=None,
+        help="scene_id:keyframe pairs; default = every sample whose scene is on disk",
+    )
     parser.add_argument("--horizon", type=int, default=6, help="waypoints to draw (6 = 3 s)")
     args = parser.parse_args()
 
@@ -190,10 +227,7 @@ def main() -> None:
         wanted = {(s.split(":")[0], int(s.split(":")[1])) for s in args.samples}
         chosen = [r for r in results if (r["scene_id"], r["keyframe_index"]) in wanted]
     else:
-        chosen = [
-            r for r in results
-            if (args.kitscenes_root / "data" / r["split"] / r["scene_id"]).is_dir()
-        ]
+        chosen = [r for r in results if (args.kitscenes_root / "data" / r["split"] / r["scene_id"]).is_dir()]
     if not chosen:
         raise SystemExit("no matching samples (are the scenes still on disk?)")
 

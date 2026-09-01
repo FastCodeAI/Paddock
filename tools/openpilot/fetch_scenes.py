@@ -13,19 +13,35 @@ copy exists for convenience and future work rather than speed.
 Scenes are fetched in priority order: the 127 needed for the 223-keyframe eval first,
 so scoring is never blocked behind train-split data it does not use.
 """
+
 from __future__ import annotations
 
-import argparse, os, queue, shutil, subprocess, sys, threading, time
+import argparse
+import os
+import queue
+import shutil
+import subprocess
+import sys
+import threading
+import time
 from pathlib import Path
 
-KITSCENES_REPO = Path("/shakaal_hdd_1/workspace/naren/renesas/kitscenes")
-DL_PYTHON = Path("/shakaal_hdd_1/workspace/naren/renesas/alpamayo1.5/a1_5_venv/bin/python")
+from tools import paths
+
+KITSCENES_REPO = paths.repo("kitscenes")
+DL_PYTHON = paths.repo("alpamayo1.5") / "a1_5_venv/bin/python"
 
 # kept on p4, in priority order; walked until the scene's share of --budget-gb is spent.
 # calibration + poses are free and always required.
 ESSENTIAL = ["calibration", "poses.txt", "camera_ring_front"]
-OPTIONAL  = ["camera_ring_front_left", "camera_ring_front_right", "lidar_top",
-             "camera_ring_rear", "camera_ring_rear_left", "camera_ring_rear_right"]
+OPTIONAL = [
+    "camera_ring_front_left",
+    "camera_ring_front_right",
+    "lidar_top",
+    "camera_ring_rear",
+    "camera_ring_rear_left",
+    "camera_ring_rear_right",
+]
 SPLITS = ("val", "overlap_train_val", "train", "test")
 
 
@@ -46,7 +62,7 @@ def find_scene(root: Path, sid: str) -> Path | None:
 def archive_to_nas(scene: Path, nas_root: Path, split: str, sid: str) -> tuple[bool, float]:
     dest = nas_root / "data" / split / sid
     if dest.is_dir() and du(dest) >= du(scene) * 0.98:
-        return True, 0.0            # already archived
+        return True, 0.0  # already archived
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_name(dest.name + ".partial")
     shutil.rmtree(tmp, ignore_errors=True)
@@ -54,7 +70,7 @@ def archive_to_nas(scene: Path, nas_root: Path, split: str, sid: str) -> tuple[b
     try:
         shutil.copytree(scene, tmp)
         shutil.rmtree(dest, ignore_errors=True)
-        tmp.rename(dest)            # rename only after a complete copy
+        tmp.rename(dest)  # rename only after a complete copy
         return True, time.time() - t0
     except Exception as e:
         print(f"    NAS archive failed: {type(e).__name__}: {e}", flush=True)
@@ -72,7 +88,8 @@ def prune_to_budget(scene: Path, allowance: int) -> int:
             continue
         sz = du(p)
         if used + sz <= allowance:
-            keep.add(name); used += sz
+            keep.add(name)
+            used += sz
     for child in scene.iterdir():
         if child.name not in keep:
             shutil.rmtree(child, ignore_errors=True) if child.is_dir() else child.unlink(missing_ok=True)
@@ -81,8 +98,13 @@ def prune_to_budget(scene: Path, allowance: int) -> int:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--root", default="/mnt/p4/naren/kitscenes")
-    ap.add_argument("--nas", default="/mnt/nas/naren/kitscenes")
+    ap.add_argument("--root", default=str(paths.ncap().parent / "kitscenes"))
+    ap.add_argument(
+        "--nas",
+        default=os.environ.get("KITSCENES_ARCHIVE"),
+        help="Archive tier to fetch from; defaults to $KITSCENES_ARCHIVE. "
+        "The slowest configured kitscenes tier is usually the right choice.",
+    )
     ap.add_argument("--scenes-file", default="/tmp/todo_scenes.txt")
     ap.add_argument("--budget-gb", type=float, default=200.0, help="p4 working-set cap")
     ap.add_argument("--limit", type=int, default=0)
@@ -102,8 +124,11 @@ def main() -> None:
     # per-scene allowance: equal share of the budget (scene sizes vary 1.8-13.6 G,
     # but the working set we keep is dominated by fixed-count sensors, not scene length)
     allowance = int(args.budget_gb * 1e9 / max(len(todo) + len(done), 1))
-    print(f"{len(todo)} scenes -> {root}\n  archive: {'off' if args.no_nas else nas}\n"
-          f"  p4 budget {args.budget_gb:.0f} G  ({allowance/1e6:.0f} MB/scene)", flush=True)
+    print(
+        f"{len(todo)} scenes -> {root}\n  archive: {'off' if args.no_nas else nas}\n"
+        f"  p4 budget {args.budget_gb:.0f} G  ({allowance / 1e6:.0f} MB/scene)",
+        flush=True,
+    )
 
     # Archive+prune runs on a worker thread so the NAS copy of scene N overlaps the
     # download of N+1. Measured: download ~85 s and archive ~66 s for a median scene,
@@ -117,28 +142,37 @@ def main() -> None:
         while True:
             item = work.get()
             if item is None:
-                work.task_done(); return
+                work.task_done()
+                return
             scene, split, sid, full = item
             nas_s = 0.0
             try:
                 if not args.no_nas:
                     okn, nas_s = archive_to_nas(scene, nas, split, sid)
                     if okn:
-                        with lock: totals["nas"] += full
-                used = prune_to_budget(scene, allowance)   # only after the archive lands
+                        with lock:
+                            totals["nas"] += full
+                used = prune_to_budget(scene, allowance)  # only after the archive lands
                 with lock:
                     totals["kept"] += used
-                    done.add(sid); log.write_text("\n".join(sorted(done)))
-                print(f"    archived {sid[:8]} {full/1e9:5.1f}G -> p4 {used/1e6:5.0f}M"
-                      f"{'' if args.no_nas else f' + nas {nas_s:4.0f}s'} | "
-                      f"p4 {totals['kept']/1e9:5.1f}G nas {totals['nas']/1e9:6.1f}G", flush=True)
+                    done.add(sid)
+                    log.write_text("\n".join(sorted(done)))
+                print(
+                    f"    archived {sid[:8]} {full / 1e9:5.1f}G -> p4 {used / 1e6:5.0f}M"
+                    f"{'' if args.no_nas else f' + nas {nas_s:4.0f}s'} | "
+                    f"p4 {totals['kept'] / 1e9:5.1f}G nas {totals['nas'] / 1e9:6.1f}G",
+                    flush=True,
+                )
             except Exception as e:
                 print(f"    archiver error on {sid[:8]}: {type(e).__name__}: {e}", flush=True)
             finally:
                 work.task_done()
 
-    th = threading.Thread(target=archiver, daemon=True); th.start()
-    t_all = time.time(); kept = 0; nas_bytes = 0
+    th = threading.Thread(target=archiver, daemon=True)
+    th.start()
+    t_all = time.time()
+    kept = 0
+    nas_bytes = 0
     for i, sid in enumerate(todo, 1):
         free = shutil.disk_usage(root).free / 1e9
         if free < args.min_free_gb:
@@ -150,30 +184,47 @@ def main() -> None:
             for attempt in range(3):
                 staging = root / f".staging_{sid[:8]}"
                 shutil.rmtree(staging, ignore_errors=True)
-                env = {**os.environ, "PYTHONPATH": str(KITSCENES_REPO),
-                       "KITSCENES_DOWNLOAD_STAGING": str(staging)}
-                r = subprocess.run([str(DL_PYTHON), "-m", "kitscenes.download", str(root),
-                                    "--scenes", sid], env=env, capture_output=True, text=True)
+                env = {
+                    **os.environ,
+                    "PYTHONPATH": str(KITSCENES_REPO),
+                    "KITSCENES_DOWNLOAD_STAGING": str(staging),
+                }
+                r = subprocess.run(
+                    [str(DL_PYTHON), "-m", "kitscenes.download", str(root), "--scenes", sid],
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                )
                 shutil.rmtree(staging, ignore_errors=True)
-                scene = find_scene(root, sid)      # exit 0 is not proof it arrived
+                scene = find_scene(root, sid)  # exit 0 is not proof it arrived
                 if scene:
-                    ok = True; break
+                    ok = True
+                    break
                 tail = (r.stderr or r.stdout).strip().splitlines()[-1:] or ["no output"]
-                print(f"    attempt {attempt+1} failed: {tail[0][:120]}", flush=True)
+                print(f"    attempt {attempt + 1} failed: {tail[0][:120]}", flush=True)
             if not ok:
-                print(f"[{i}/{len(todo)}] {sid[:8]} FAILED", flush=True); continue
+                print(f"[{i}/{len(todo)}] {sid[:8]} FAILED", flush=True)
+                continue
 
         split = scene.parent.name
         full = du(scene)
         el = time.time() - t_all
-        print(f"[{i}/{len(todo)}] {sid[:8]} {split:17} {full/1e9:5.1f}G downloaded | "
-              f"free {shutil.disk_usage(root).free/1e9:.0f}G | "
-              f"{el/60:.0f}m, eta {(el/i)*(len(todo)-i)/60:.0f}m", flush=True)
-        work.put((scene, split, sid, full))     # blocks if the archiver is 2 behind
+        print(
+            f"[{i}/{len(todo)}] {sid[:8]} {split:17} {full / 1e9:5.1f}G downloaded | "
+            f"free {shutil.disk_usage(root).free / 1e9:.0f}G | "
+            f"{el / 60:.0f}m, eta {(el / i) * (len(todo) - i) / 60:.0f}m",
+            flush=True,
+        )
+        work.put((scene, split, sid, full))  # blocks if the archiver is 2 behind
 
-    work.put(None); work.join(); th.join(timeout=30)
-    print(f"\ndone in {(time.time()-t_all)/60:.0f} min — p4 {totals['kept']/1e9:.1f} G, "
-          f"nas {totals['nas']/1e9:.1f} G", flush=True)
+    work.put(None)
+    work.join()
+    th.join(timeout=30)
+    print(
+        f"\ndone in {(time.time() - t_all) / 60:.0f} min — p4 {totals['kept'] / 1e9:.1f} G, "
+        f"nas {totals['nas'] / 1e9:.1f} G",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

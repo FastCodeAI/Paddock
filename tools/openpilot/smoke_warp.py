@@ -3,23 +3,27 @@
 Renders the two model views next to the same warps computed for a real comma frame.
 If these don't look like the same kind of picture, nothing downstream is meaningful.
 """
+
 import sys
 from pathlib import Path
+
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-sys.path.insert(0, "/shakaal_hdd_1/workspace/naren/renesas/openpilot")
-from eval_kitscenes.camera_adapt import load_camera, warp_to_model_frame, MODEL_VIEWS
-from openpilot.common.transformations.model import MEDMODEL_CY
+from tools import paths
+
+sys.path.insert(0, str(paths.repo("openpilot")))
+from eval_kitscenes.camera_adapt import MODEL_VIEWS, load_camera, warp_to_model_frame
 from openpilot.common.transformations.camera import DEVICE_CAMERAS
-from openpilot.common.transformations.model import get_warp_matrix
+from openpilot.common.transformations.model import MEDMODEL_CY, get_warp_matrix
 from openpilot.tools.lib.framereader import FrameReader
 from openpilot.tools.lib.openpilotci import get_url
 
-SCENE = Path("/shakaal_hdd_1/workspace/naren/renesas/kitscenes_data/data/"
-             "overlap_train_val/1df9975b-4ffd-9669-23ee-abf74f9c47e6")
-OUT = Path("/shakaal_hdd_1/workspace/naren/renesas/openpilot/openpilot/model_output")
-FONTS = "/shakaal_hdd_1/workspace/naren/renesas/openpilot/openpilot/selfdrive/assets/fonts"
+# Resolved through the dataset tiers rather than one copy, so this finds the
+# scene wherever this site keeps it.
+SCENE = paths.kitscenes() / "overlap_train_val/1df9975b-4ffd-9669-23ee-abf74f9c47e6"
+OUT = paths.repo("openpilot") / "openpilot/model_output"
+FONTS = str(paths.repo("openpilot") / "openpilot/selfdrive/assets/fonts")
 KEYFRAME = 40
 
 cam = load_camera(SCENE)
@@ -30,10 +34,12 @@ print(f"KITScenes source {src.size} -> prepared {prepared.shape[1]}x{prepared.sh
 # same two warps, computed for the real comma route we already ran
 comma_rpy = np.array([-0.0007, 0.0489, -0.0171], dtype=np.float32)
 dc = DEVICE_CAMERAS[("tizi", "ox03c10")]
-fr_n = FrameReader(get_url("8494c69d3c710e81|000001d4--2648a9a404", 4, "fcamera.hevc"),
-                   pix_fmt="rgb24", cache_size=2)
-fr_w = FrameReader(get_url("8494c69d3c710e81|000001d4--2648a9a404", 4, "ecamera.hevc"),
-                   pix_fmt="rgb24", cache_size=2)
+fr_n = FrameReader(
+    get_url("8494c69d3c710e81|000001d4--2648a9a404", 4, "fcamera.hevc"), pix_fmt="rgb24", cache_size=2
+)
+fr_w = FrameReader(
+    get_url("8494c69d3c710e81|000001d4--2648a9a404", 4, "ecamera.hevc"), pix_fmt="rgb24", cache_size=2
+)
 comma_src = {"img": np.asarray(fr_n.get(400)), "big_img": np.asarray(fr_w.get(400))}
 comma_K = {"img": dc.narrow_road.intrinsics, "big_img": dc.wide_road.intrinsics}
 

@@ -7,7 +7,7 @@ because both organisations need to see it.
 |---|---|---|---|
 | **M1** | Foundation and contribution contract | **done** | `make check`; `paddock doctor`; `tests/test_alt_site.py` |
 | **M2** | Rescue untracked work into adapters and patches | **done (models)** | patches verified byte-identical; 4 model adapters converted |
-| **M3** | Registries, `paddock setup`, data projection | partial | registries and projection done; `paddock setup` not implemented |
+| **M3** | Registries, `paddock setup`, data projection | partial | registries, projection and full de-hardcoding done; `paddock setup` not implemented |
 | **M4** | Ingest existing results | **done** | 36 runs, 77 tests, golden values from the original reports |
 | **M5** | Reproduce closed-loop (neuroNCAP) | **partial** | adapters proven identical to the original nodes; see `docs/benchmarks/neuroncap.md` |
 | **M6** | Reproduce open-loop (KITScenes) | **not started** | — |

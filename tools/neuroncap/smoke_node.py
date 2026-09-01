@@ -20,9 +20,11 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, "/mnt/p4/naren/neuroncap/servers")
+from tools import paths
 
-FIXTURE = Path("/mnt/p4/naren/neuroncap/fixtures/infer_sequence_0103.json")
+sys.path.insert(0, str(paths.ncap() / "servers"))
+
+FIXTURE = paths.ncap() / "fixtures/infer_sequence_0103.json"
 
 
 def build(kind: str):
@@ -34,7 +36,7 @@ def build(kind: str):
         from visionpilot_server import VisionPilotNode
 
         return VisionPilotNode(
-            Path("/shakaal_hdd_1/workspace/naren/renesas/vision_pilot/VisionPilot/modules/models/weights"),
+            paths.repo("vision_pilot") / "VisionPilot/modules/models/weights",
             ["CPUExecutionProvider"],
         )
     if kind == "alpamayo":
@@ -45,8 +47,10 @@ def build(kind: str):
         from drivejepa_server import DriveJepaNode
 
         return DriveJepaNode(
-            "/shakaal_hdd_1/workspace/naren/navsim_workspace/exp/Drive-JEPA-cache/"
-            "drive_jepa_perception_based_agent_vitl_v2.ckpt"
+            str(
+                paths.dataset("navsim").parent
+                / "exp/Drive-JEPA-cache/drive_jepa_perception_based_agent_vitl_v2.ckpt"
+            )
         )
     raise SystemExit(f"unknown node: {kind}")
 
@@ -60,7 +64,9 @@ def main() -> None:
     # from apparent motion need genuinely different frames, not a repeated one.
     for body in sequence:
         out = node.infer(body)
-    print(f"fed {len(sequence)} frames, {(sequence[-1]['timestamp'] - sequence[0]['timestamp']) / 1e6:.1f} s apart")
+    print(
+        f"fed {len(sequence)} frames, {(sequence[-1]['timestamp'] - sequence[0]['timestamp']) / 1e6:.1f} s apart"
+    )
 
     traj = np.asarray(out["trajectory"])
     print(f"\n{kind}: {traj.shape[0]} waypoints")
@@ -70,7 +76,7 @@ def main() -> None:
     prev = np.zeros(2)
     for i, point in enumerate(traj, 1):
         speed = np.linalg.norm(point - prev) / 0.5
-        print(f"  {i*0.5:4.1f}   {point[0]:8.2f} {point[1]:8.2f}   {speed:8.2f}")
+        print(f"  {i * 0.5:4.1f}   {point[0]:8.2f} {point[1]:8.2f}   {speed:8.2f}")
         prev = point
 
 

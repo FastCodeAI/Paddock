@@ -20,9 +20,8 @@ import matplotlib
 
 matplotlib.use("Agg")  # headless
 import matplotlib.pyplot as plt
+from hydra.utils import instantiate
 from matplotlib.lines import Line2D
-from nuplan.planning.simulation.trajectory.trajectory_sampling import TrajectorySampling
-
 from navsim.common.dataclasses import SceneFilter, SensorConfig, Trajectory
 from navsim.common.dataloader import SceneLoader
 from navsim.common.enums import BoundingBoxIndex
@@ -30,8 +29,7 @@ from navsim.visualization.bev import add_configured_bev_on_ax, add_trajectory_to
 from navsim.visualization.camera import add_annotations_to_camera_ax
 from navsim.visualization.config import BEV_PLOT_CONFIG, CAMERAS_PLOT_CONFIG, TRAJECTORY_CONFIG
 from navsim.visualization.plots import configure_all_ax, configure_ax, configure_bev_ax
-
-from hydra.utils import instantiate
+from nuplan.planning.simulation.trajectory.trajectory_sampling import TrajectorySampling
 from omegaconf import OmegaConf
 
 DEVKIT_ROOT = Path(os.environ["NAVSIM_DEVKIT_ROOT"])
@@ -43,8 +41,13 @@ DATA_ROOT = Path(os.environ["OPENSCENE_DATA_ROOT"])
 # good prediction hides the ground truth underneath it: draw the human thicker and
 # below, the prediction dashed and on top, so both stay readable when they coincide.
 HUMAN_STYLE: Dict[str, Any] = {**TRAJECTORY_CONFIG["human"], "line_width": 3.5, "marker_size": 6, "zorder": 3}
-AGENT_STYLE: Dict[str, Any] = {**TRAJECTORY_CONFIG["agent"], "line_style": "--", "line_width": 2.0,
-                               "marker_size": 4, "zorder": 4}
+AGENT_STYLE: Dict[str, Any] = {
+    **TRAJECTORY_CONFIG["agent"],
+    "line_style": "--",
+    "line_width": 2.0,
+    "marker_size": 4,
+    "zorder": 4,
+}
 VELOCITY_COLOR = "#333333"
 
 
@@ -57,15 +60,23 @@ def _cameras_only_sensor_config(frame_idx: int) -> SensorConfig:
     """
     frames = [frame_idx]
     return SensorConfig(
-        cam_f0=frames, cam_l0=frames, cam_l1=frames, cam_l2=frames,
-        cam_r0=frames, cam_r1=frames, cam_r2=frames, cam_b0=frames,
+        cam_f0=frames,
+        cam_l0=frames,
+        cam_l1=frames,
+        cam_l2=frames,
+        cam_r0=frames,
+        cam_r1=frames,
+        cam_r2=frames,
+        cam_b0=frames,
         lidar_pc=[],
     )
 
 
 def build_scene_loader(split: str, sensors: bool) -> SceneLoader:
     """BEV needs map + annotations only; cameras are loaded only for the reference view."""
-    scene_filter: SceneFilter = instantiate(OmegaConf.load(CONFIG_ROOT / f"train_test_split/scene_filter/{split}.yaml"))
+    scene_filter: SceneFilter = instantiate(
+        OmegaConf.load(CONFIG_ROOT / f"train_test_split/scene_filter/{split}.yaml")
+    )
     sensor_config = (
         _cameras_only_sensor_config(scene_filter.num_history_frames - 1)
         if sensors
@@ -89,10 +100,27 @@ def _to_trajectory(poses, sampling: Dict[str, float]) -> Trajectory:
 
 def _legend(ax: plt.Axes, velocities: bool = False, fontsize: int = 9, loc: str = "upper right") -> None:
     handles = [
-        Line2D([0], [0], color=HUMAN_STYLE["line_color"], lw=3.5, marker="o",
-               markeredgecolor="black", markersize=6, label="Human (ground truth)"),
-        Line2D([0], [0], color=AGENT_STYLE["line_color"], lw=2, ls="--", marker="o",
-               markeredgecolor="black", markersize=4, label="Drive-JEPA (predicted)"),
+        Line2D(
+            [0],
+            [0],
+            color=HUMAN_STYLE["line_color"],
+            lw=3.5,
+            marker="o",
+            markeredgecolor="black",
+            markersize=6,
+            label="Human (ground truth)",
+        ),
+        Line2D(
+            [0],
+            [0],
+            color=AGENT_STYLE["line_color"],
+            lw=2,
+            ls="--",
+            marker="o",
+            markeredgecolor="black",
+            markersize=4,
+            label="Drive-JEPA (predicted)",
+        ),
     ]
     if velocities:
         handles.append(Line2D([0], [0], color=VELOCITY_COLOR, lw=1.5, label="Velocity (1 s of travel)"))
@@ -114,14 +142,28 @@ def add_velocity_arrows(ax: plt.Axes, annotations, seconds: float = 1.0, min_spe
             continue
         x, y = float(box[BoundingBoxIndex.X]), float(box[BoundingBoxIndex.Y])
         ax.arrow(
-            y, x, vy * seconds, vx * seconds,
-            width=0.12, head_width=0.7, head_length=0.9,
-            color=VELOCITY_COLOR, alpha=0.9, length_includes_head=True, zorder=5,
+            y,
+            x,
+            vy * seconds,
+            vx * seconds,
+            width=0.12,
+            head_width=0.7,
+            head_length=0.9,
+            color=VELOCITY_COLOR,
+            alpha=0.9,
+            length_includes_head=True,
+            zorder=5,
         )
 
 
-def draw_bev(ax: plt.Axes, scene, result: Dict[str, Any], legend: bool = True,
-             match_horizon: bool = True, velocities: bool = False) -> None:
+def draw_bev(
+    ax: plt.Axes,
+    scene,
+    result: Dict[str, Any],
+    legend: bool = True,
+    match_horizon: bool = True,
+    velocities: bool = False,
+) -> None:
     """Map + annotations + both trajectories, in the ego frame."""
     frame_idx = scene.scene_metadata.num_history_frames - 1
     frame = scene.frames[frame_idx]
@@ -136,7 +178,9 @@ def draw_bev(ax: plt.Axes, scene, result: Dict[str, Any], legend: bool = True,
         human_sampling["num_poses"] = len(human_poses)
 
     add_trajectory_to_bev_ax(ax, _to_trajectory(human_poses, human_sampling), HUMAN_STYLE)
-    add_trajectory_to_bev_ax(ax, _to_trajectory(result["predicted_poses"], result["predicted_sampling"]), AGENT_STYLE)
+    add_trajectory_to_bev_ax(
+        ax, _to_trajectory(result["predicted_poses"], result["predicted_sampling"]), AGENT_STYLE
+    )
     if velocities:
         add_velocity_arrows(ax, frame.annotations)
 
@@ -156,8 +200,9 @@ CAMERA_LAYOUT = [
 ]
 
 
-def plot_cameras_with_bev(scene, frame_idx: int, result: Dict[str, Any],
-                          match_horizon: bool = True, velocities: bool = False):
+def plot_cameras_with_bev(
+    scene, frame_idx: int, result: Dict[str, Any], match_horizon: bool = True, velocities: bool = False
+):
     """All 8 cameras with projected 3D boxes, around a BEV showing both trajectories."""
     frame = scene.frames[frame_idx]
     fig, axes = plt.subplots(3, 3, figsize=CAMERAS_PLOT_CONFIG["figure_size"])
@@ -167,7 +212,9 @@ def plot_cameras_with_bev(scene, frame_idx: int, result: Dict[str, Any],
             if entry is None:
                 continue
             attr, _ = entry
-            add_annotations_to_camera_ax(axes[row_idx, col_idx], getattr(frame.cameras, attr), frame.annotations)
+            add_annotations_to_camera_ax(
+                axes[row_idx, col_idx], getattr(frame.cameras, attr), frame.annotations
+            )
 
     configure_all_ax(axes)
     # titles are applied after configure_all_ax so they survive it
@@ -207,8 +254,11 @@ def displacement_errors(result: Dict[str, Any]) -> Dict[str, float]:
     )
     n = min(len(pred), len(human))
     dists = np.linalg.norm(pred[:n, :2] - human[:n, :2], axis=1)
-    return {"fde": float(dists[-1]), "ade": float(dists.mean()),
-            "horizon_s": n * result["predicted_sampling"]["interval_length"]}
+    return {
+        "fde": float(dists[-1]),
+        "ade": float(dists.mean()),
+        "horizon_s": n * result["predicted_sampling"]["interval_length"],
+    }
 
 
 def main() -> None:
@@ -220,8 +270,11 @@ def main() -> None:
     parser.add_argument("--grid", action="store_true", help="also write one combined contact sheet")
     parser.add_argument("--cameras", action="store_true", help="also write the 8-camera + BEV reference view")
     parser.add_argument("--velocities", action="store_true", help="draw velocity arrows on moving traffic")
-    parser.add_argument("--full-human", action="store_true",
-                        help="plot the human's full 5s future instead of truncating to the agent's 4s")
+    parser.add_argument(
+        "--full-human",
+        action="store_true",
+        help="plot the human's full 5s future instead of truncating to the agent's 4s",
+    )
     parser.add_argument("--dpi", type=int, default=130)
     args = parser.parse_args()
     match_horizon = not args.full_human
@@ -255,8 +308,11 @@ def main() -> None:
         if camera_loader is not None:
             cam_scene = camera_loader.get_scene_from_token(result["token"])
             cfig, _ = plot_cameras_with_bev(
-                cam_scene, cam_scene.scene_metadata.num_history_frames - 1, result,
-                match_horizon=match_horizon, velocities=args.velocities,
+                cam_scene,
+                cam_scene.scene_metadata.num_history_frames - 1,
+                result,
+                match_horizon=match_horizon,
+                velocities=args.velocities,
             )
             cam_out = args.output_dir / f"cameras_{result['token']}.png"
             cfig.savefig(cam_out, dpi=args.dpi, bbox_inches="tight")
@@ -272,8 +328,10 @@ def main() -> None:
         for ax, result in zip(axes, results):
             scene = scene_loader.get_scene_from_token(result["token"])
             draw_bev(ax, scene, result, legend=False, match_horizon=match_horizon, velocities=args.velocities)
-            ax.set_title(f"{result['token'][:10]}…  FDE {displacement_errors(result)['fde']:.1f} m", fontsize=8)
-        for ax in axes[len(results):]:
+            ax.set_title(
+                f"{result['token'][:10]}…  FDE {displacement_errors(result)['fde']:.1f} m", fontsize=8
+            )
+        for ax in axes[len(results) :]:
             ax.axis("off")
         _legend(axes[0], args.velocities)
         fig.tight_layout()

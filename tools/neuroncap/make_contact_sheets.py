@@ -21,8 +21,10 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-ROOT = Path(__import__("os").environ.get("NCAP_RUNS", "/mnt/p4/naren/neuroncap/outputs/runs1"))
-OUT = Path("/mnt/p4/naren/neuroncap/frames")
+from tools import paths
+
+ROOT = Path(__import__("os").environ.get("NCAP_RUNS", str(paths.ncap() / "outputs/runs1")))
+OUT = paths.ncap() / "frames"
 SCENARIOS = ("stationary", "frontal", "side")
 
 

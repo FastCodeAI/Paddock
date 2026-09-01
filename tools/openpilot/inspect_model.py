@@ -1,36 +1,55 @@
 #!/usr/bin/env python3
 """Run modeld over a public segment and print real predictions."""
-import os, pickle, numpy as np
+
+import os
+import pickle
+
+import numpy as np
+from openpilot.selfdrive.test.process_replay.model_replay import (
+    END_FRAME,
+    SEGMENT,
+    START_FRAME,
+    TEST_ROUTE,
+    trim_logs,
+)
 from openpilot.selfdrive.test.process_replay.process_replay import get_process_config, replay_process
-from openpilot.selfdrive.test.process_replay.model_replay import TEST_ROUTE, SEGMENT, START_FRAME, END_FRAME, trim_logs
 from openpilot.tools.lib.logreader import LogReader
 from openpilot.tools.lib.openpilotci import get_url
 
-CACHE = f'/tmp/model_replay_cache/{TEST_ROUTE}_{SEGMENT}_{START_FRAME}_{END_FRAME}.pkl'
-frs = pickle.load(open(CACHE, 'rb'))
+CACHE = f"/tmp/model_replay_cache/{TEST_ROUTE}_{SEGMENT}_{START_FRAME}_{END_FRAME}.pkl"
+frs = pickle.load(open(CACHE, "rb"))
 print(f"loaded cached frames: {list(frs)}")
 
 lr = list(LogReader(get_url(TEST_ROUTE, SEGMENT, "rlog.zst")))
 cams = {"narrowRoadCameraState", "wideRoadCameraState"}
-logs = trim_logs(lr, START_FRAME, END_FRAME, cams,
-                 {"narrowRoadEncodeIdx", "wideRoadEncodeIdx", "carParams", "carState", "carControl", "can"})
-for s in ('extrinsicsCalibration', 'deviceState'):
+logs = trim_logs(
+    lr,
+    START_FRAME,
+    END_FRAME,
+    cams,
+    {"narrowRoadEncodeIdx", "wideRoadEncodeIdx", "carParams", "carState", "carControl", "can"},
+)
+for s in ("extrinsicsCalibration", "deviceState"):
     m = next(x for x in lr if x.which() == s).as_builder()
     m.logMonoTime = lr[0].logMonoTime
     logs.insert(1, m.as_reader())
 
 msgs = replay_process(get_process_config("modeld"), logs, frs)
-mv2 = [m.modelV2 for m in msgs if m.which() == 'modelV2']
+mv2 = [m.modelV2 for m in msgs if m.which() == "modelV2"]
 print(f"\n=== got {len(mv2)} modelV2 messages ===\n")
 
-print(f"{'frame':>6} {'curv':>9} {'accel':>8} {'stop':>5} {'v@1s':>7} {'x@5s':>7} "
-      f"{'lead_d':>7} {'lead_p':>6} {'llProb':>6} {'conf':>7}")
+print(
+    f"{'frame':>6} {'curv':>9} {'accel':>8} {'stop':>5} {'v@1s':>7} {'x@5s':>7} "
+    f"{'lead_d':>7} {'lead_p':>6} {'llProb':>6} {'conf':>7}"
+)
 for md in mv2[::6]:
     lead = md.leadsV3[0] if len(md.leadsV3) else None
-    print(f"{md.frameId:>6} {md.action.desiredCurvature:>9.5f} {md.action.desiredAcceleration:>8.3f} "
-          f"{str(md.action.shouldStop):>5} {md.velocity.x[10]:>7.2f} {md.position.x[20]:>7.2f} "
-          f"{(lead.x[0] if lead else float('nan')):>7.2f} {(lead.prob if lead else float('nan')):>6.2f} "
-          f"{np.mean(md.laneLineProbs):>6.2f} {str(md.confidence):>7}")
+    print(
+        f"{md.frameId:>6} {md.action.desiredCurvature:>9.5f} {md.action.desiredAcceleration:>8.3f} "
+        f"{str(md.action.shouldStop):>5} {md.velocity.x[10]:>7.2f} {md.position.x[20]:>7.2f} "
+        f"{(lead.x[0] if lead else float('nan')):>7.2f} {(lead.prob if lead else float('nan')):>6.2f} "
+        f"{np.mean(md.laneLineProbs):>6.2f} {str(md.confidence):>7}"
+    )
 
 md = mv2[len(mv2) // 2]
 print(f"\n--- detail @ frame {md.frameId} ---")
@@ -47,7 +66,7 @@ print(f"gasPressProbs    {np.array(list(dp.gasPressProbs)).round(3)}")
 print(f"brakePressProbs  {np.array(list(dp.brakePressProbs)).round(3)}")
 print(f"brake3ms2Probs   {np.array(list(dp.brake3MetersPerSecondSquaredProbs)).round(3)}")
 
-co = [m.cameraOdometry for m in msgs if m.which() == 'cameraOdometry']
+co = [m.cameraOdometry for m in msgs if m.which() == "cameraOdometry"]
 print(f"\n--- cameraOdometry (visual odometry), {len(co)} msgs ---")
 for c in co[::12]:
     print(f"  trans(m/s)={np.array(list(c.trans)).round(2)}  rot(rad/s)={np.array(list(c.rot)).round(4)}")

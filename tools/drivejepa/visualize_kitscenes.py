@@ -51,9 +51,7 @@ def constant_velocity(sample: Dict[str, Any], num_poses: int) -> np.ndarray:
     """
     speed = sample["ego_speed"]
     interval = sample["interval_length"]
-    return np.stack(
-        [speed * interval * np.arange(1, num_poses + 1), np.zeros(num_poses)], axis=-1
-    )
+    return np.stack([speed * interval * np.arange(1, num_poses + 1), np.zeros(num_poses)], axis=-1)
 
 
 def _style_bev(ax: plt.Axes) -> None:
@@ -71,9 +69,7 @@ def plot_contact_sheet(results: List[Dict[str, Any]], output_path: Path, columns
     ordered = sorted(results, key=lambda r: r["ade"], reverse=True)
     # Span the distribution rather than showing only the tail: worst four, then
     # evenly spaced ranks through to the best.
-    picks = list(range(4)) + list(
-        np.linspace(4, len(ordered) - 1, columns * 2 - 4, dtype=int)
-    )
+    picks = list(range(4)) + list(np.linspace(4, len(ordered) - 1, columns * 2 - 4, dtype=int))
     chosen = [ordered[i] for i in dict.fromkeys(picks)]
 
     rows = int(np.ceil(len(chosen) / columns))
@@ -84,12 +80,10 @@ def plot_contact_sheet(results: List[Dict[str, Any]], output_path: Path, columns
     # One shared scale across panels. Per-panel autoscaling would silently rescale
     # every panel to its own extent, making a 50 m run and a 0.3 m creep look alike.
     extent_x = max(
-        np.abs(np.concatenate([s["human_poses"][:, 0], s["predicted_poses"][:, 0]])).max()
-        for s in chosen
+        np.abs(np.concatenate([s["human_poses"][:, 0], s["predicted_poses"][:, 0]])).max() for s in chosen
     )
     extent_y = max(
-        np.abs(np.concatenate([s["human_poses"][:, 1], s["predicted_poses"][:, 1]])).max()
-        for s in chosen
+        np.abs(np.concatenate([s["human_poses"][:, 1], s["predicted_poses"][:, 1]])).max() for s in chosen
     )
     limit_y = max(extent_y, extent_x * 0.35) * 1.15
 
@@ -100,11 +94,27 @@ def plot_contact_sheet(results: List[Dict[str, Any]], output_path: Path, columns
 
         # BEV convention: x forward on the vertical axis, y left on the
         # horizontal, with the axis inverted so left-of-ego draws to the left.
-        ax.plot(human[:horizon, 1], human[:horizon, 0], color=HUMAN_COLOR,
-                linewidth=2.0, marker="o", markersize=4, label="human", zorder=3)
-        ax.plot(predicted[:horizon, 1], predicted[:horizon, 0], color=PREDICTED_COLOR,
-                linewidth=2.0, linestyle="--", marker="o", markersize=4,
-                label="Drive-JEPA", zorder=4)
+        ax.plot(
+            human[:horizon, 1],
+            human[:horizon, 0],
+            color=HUMAN_COLOR,
+            linewidth=2.0,
+            marker="o",
+            markersize=4,
+            label="human",
+            zorder=3,
+        )
+        ax.plot(
+            predicted[:horizon, 1],
+            predicted[:horizon, 0],
+            color=PREDICTED_COLOR,
+            linewidth=2.0,
+            linestyle="--",
+            marker="o",
+            markersize=4,
+            label="Drive-JEPA",
+            zorder=4,
+        )
         ax.scatter([0], [0], marker="s", s=26, color=INK, zorder=5)
 
         _style_bev(ax)
@@ -113,22 +123,34 @@ def plot_contact_sheet(results: List[Dict[str, Any]], output_path: Path, columns
         ax.set_title(
             f"{sample['scene_id'][:8]}  f{sample['keyframe_index']}\n"
             f"ADE {sample['ade']:.2f} m · {sample['ego_speed']:.1f} m/s",
-            fontsize=8, color=INK, pad=6,
+            fontsize=8,
+            color=INK,
+            pad=6,
         )
 
-    for ax in axes[len(chosen):]:
+    for ax in axes[len(chosen) :]:
         ax.set_visible(False)
 
     handles, labels = axes[0].get_legend_handles_labels()
     figure.suptitle(
         "Drive-JEPA zero-shot on KITScenes — predicted vs. recorded trajectory\n"
         "shared scale across panels · worst-first, then spanning the distribution",
-        fontsize=12, color=INK, y=0.985,
+        fontsize=12,
+        color=INK,
+        y=0.985,
     )
     # Legend under the title rather than at the foot, where it collided with the
     # shared x label.
-    figure.legend(handles, labels, loc="upper center", ncol=2, frameon=False,
-                  fontsize=9, labelcolor=INK, bbox_to_anchor=(0.5, 0.928))
+    figure.legend(
+        handles,
+        labels,
+        loc="upper center",
+        ncol=2,
+        frameon=False,
+        fontsize=9,
+        labelcolor=INK,
+        bbox_to_anchor=(0.5, 0.928),
+    )
     figure.supxlabel("lateral y (m), left ←", fontsize=9, color=MUTED, y=0.008)
     figure.supylabel("longitudinal x (m)", fontsize=9, color=MUTED, x=0.006)
     figure.tight_layout(rect=(0.02, 0.025, 1, 0.905))
@@ -147,9 +169,7 @@ def plot_error_growth(results: List[Dict[str, Any]], output_path: Path) -> None:
         human = sample["human_poses"][:horizon, :2]
         predicted = sample["predicted_poses"][:horizon, :2]
         model_errors.append(np.linalg.norm(predicted - human, axis=-1))
-        baseline_errors.append(
-            np.linalg.norm(constant_velocity(sample, horizon) - human, axis=-1)
-        )
+        baseline_errors.append(np.linalg.norm(constant_velocity(sample, horizon) - human, axis=-1))
     model = np.array(model_errors)
     baseline = np.array(baseline_errors)
 
@@ -164,14 +184,29 @@ def plot_error_growth(results: List[Dict[str, Any]], output_path: Path) -> None:
         # Standard error, not a percentile band: the claim is about the mean.
         error = 1.96 * values.std(axis=0, ddof=1) / np.sqrt(len(values))
         ax.fill_between(times, mean - error, mean + error, color=color, alpha=0.15, linewidth=0)
-        ax.plot(times, mean, color=color, linewidth=2.0, linestyle=style,
-                marker="o", markersize=5, label=label, zorder=3)
+        ax.plot(
+            times,
+            mean,
+            color=color,
+            linewidth=2.0,
+            linestyle=style,
+            marker="o",
+            markersize=5,
+            label=label,
+            zorder=3,
+        )
 
     # Direct labels at the horizon end instead of numbers on every point.
     for values, color, offset in ((model, PREDICTED_COLOR, 8), (baseline, BASELINE_COLOR, -14)):
-        ax.annotate(f"{values.mean(axis=0)[-1]:.2f} m", (times[-1], values.mean(axis=0)[-1]),
-                    textcoords="offset points", xytext=(6, offset), color=color,
-                    fontsize=9, fontweight="bold")
+        ax.annotate(
+            f"{values.mean(axis=0)[-1]:.2f} m",
+            (times[-1], values.mean(axis=0)[-1]),
+            textcoords="offset points",
+            xytext=(6, offset),
+            color=color,
+            fontsize=9,
+            fontweight="bold",
+        )
 
     ax.set_facecolor(SURFACE)
     ax.grid(True, color=GRID, linewidth=0.6, alpha=0.7)
@@ -185,7 +220,10 @@ def plot_error_growth(results: List[Dict[str, Any]], output_path: Path) -> None:
     ax.set_ylabel("mean displacement error (m)", fontsize=10, color=MUTED)
     ax.set_title(
         f"Drive-JEPA does not beat dead reckoning on KITScenes  ({len(results)} samples)",
-        fontsize=12, color=INK, pad=12, loc="left",
+        fontsize=12,
+        color=INK,
+        pad=12,
+        loc="left",
     )
     ax.legend(frameon=False, fontsize=9, labelcolor=INK, loc="upper left")
     figure.tight_layout()
@@ -194,7 +232,9 @@ def plot_error_growth(results: List[Dict[str, Any]], output_path: Path) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--results", type=Path, required=True)
     parser.add_argument("--outdir", type=Path, required=True)
     parser.add_argument("--columns", type=int, default=4)

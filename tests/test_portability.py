@@ -80,55 +80,34 @@ EXEMPT = {"tests/test_portability.py"}
 # To clear an entry: replace its hardcoded paths with registry lookups
 # (`SiteConfig.resolve`, `{repo}`, `{data.NAME}`), then delete the line.
 # ---------------------------------------------------------------------------
-EXEMPT_PENDING_MIGRATION = frozenset(
-    {
-        "docs/models/VISION_PILOT_GUIDE.md",
-        "docs/models/openpilot-guide.md",
-        "src/paddock/adapters/benchmarks/neuroncap/renderer.py",
-        "tools/neuroncap/analyze_visionpilot.py",
-        "tools/neuroncap/diag_visionpilot.py",
-        "tools/neuroncap/gate_ab_render.py",
-        "tools/neuroncap/gate_projection.py",
-        "tools/neuroncap/make_comparison_video.py",
-        "tools/neuroncap/make_contact_sheets.py",
-        "tools/neuroncap/make_fixture.py",
-        "tools/neuroncap/make_videos.sh",
-        "tools/neuroncap/make_visionpilot_video.py",
-        "tools/neuroncap/probe_autospeed_classes.py",
-        "tools/neuroncap/replay_visionpilot.py",
-        "tools/neuroncap/smoke_node.py",
-        "tools/neuroncap/smoke_openpilot.py",
-        "tools/neuroncap/smoke_visionpilot.py",
-        "tools/neuroncap/validate_render.py",
-        "tools/neuroncap/verify_projection.py",
-        "tools/openpilot/fetch_scenes.py",
-        "tools/openpilot/plot_debug.py",
-        "tools/openpilot/plot_slide.py",
-        "tools/openpilot/plot_three_way.py",
-        "tools/openpilot/render_dm.py",
-        "tools/openpilot/run_and_render.py",
-        "tools/openpilot/run_dm.py",
-        "tools/openpilot/smoke_warp.py",
-        "tools/openpilot/warp_check.py",
-    }
-)
+EXEMPT_PENDING_MIGRATION = frozenset({})
 
 #: Never raise this. It is the size of the backlog on the day it was created.
-MIGRATION_BACKLOG_CEILING = 28
+MIGRATION_BACKLOG_CEILING = 0
 
 
 def tracked_files() -> list[Path]:
-    """Files git would ship. Falls back to a walk before `git init`."""
+    """Files git would ship: tracked, plus untracked ones that are not ignored.
+
+    Untracked-but-not-ignored matters. Someone writing a new file with a machine
+    path in it has not staged it when they run `make check`; if the gate looked
+    only at the index, it would pass for them and fail for the reviewer. Ignored
+    files stay excluded -- paddock.toml is exactly where machine paths belong.
+
+    Falls back to a walk before `git init`.
+    """
     try:
-        out = subprocess.run(
-            ["git", "-C", str(REPO_ROOT), "ls-files"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        names = [n for n in out.stdout.splitlines() if n]
-        if names:
-            return [REPO_ROOT / n for n in names]
+        listed: list[str] = []
+        for args in (["ls-files"], ["ls-files", "--others", "--exclude-standard"]):
+            out = subprocess.run(
+                ["git", "-C", str(REPO_ROOT), *args],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            listed += [n for n in out.stdout.splitlines() if n]
+        if listed:
+            return [REPO_ROOT / n for n in dict.fromkeys(listed)]
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass
 
@@ -223,10 +202,31 @@ def test_migration_backlog_does_not_grow() -> None:
     )
 
 
-def test_exempted_files_still_exist() -> None:
-    """A stale exemption hides a file that no longer needs one."""
-    missing = [rel for rel in EXEMPT_PENDING_MIGRATION if not (REPO_ROOT / rel).exists()]
-    assert not missing, (
-        "these files are exempt but no longer exist; remove them from "
-        "EXEMPT_PENDING_MIGRATION and lower the ceiling:\n  " + "\n  ".join(missing)
-    )
+def test_exemptions_are_still_needed() -> None:
+    """An exemption that is no longer earned quietly stops protecting the file.
+
+    Two ways it goes stale: the file is gone, or it has been cleaned up and
+    nobody removed the entry. In the second case the gate would not notice a
+    machine path being reintroduced later.
+    """
+    gone, clean = [], []
+    for rel in sorted(EXEMPT_PENDING_MIGRATION):
+        path = REPO_ROOT / rel
+        if not path.exists():
+            gone.append(rel)
+            continue
+        try:
+            if not offending_lines(path.read_text(encoding="utf-8")):
+                clean.append(rel)
+        except (UnicodeDecodeError, OSError):
+            pass
+
+    problems = []
+    if gone:
+        problems.append("exempt but no longer present:\n  " + "\n  ".join(gone))
+    if clean:
+        problems.append(
+            "exempt but already clean - remove from EXEMPT_PENDING_MIGRATION and "
+            "lower MIGRATION_BACKLOG_CEILING:\n  " + "\n  ".join(clean)
+        )
+    assert not problems, "\n\n".join(problems)

@@ -26,6 +26,8 @@ from nuscenes import NuScenes
 from PIL import Image
 from pyquaternion import Quaternion
 
+from tools import paths
+
 CAM = "CAM_FRONT"
 
 
@@ -55,10 +57,10 @@ def psnr(a: np.ndarray, b: np.ndarray) -> float:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="http://localhost:8000")
-    ap.add_argument("--dataroot", default="/shakaal_hdd_1/workspace/NeurIPS/Dataset/raw_data/nuscenes")
+    ap.add_argument("--dataroot", default=str(paths.nuscenes()))
     ap.add_argument("--scene", default="scene-0103")
     ap.add_argument("--frames", type=int, default=4)
-    ap.add_argument("--out", default="/mnt/p4/naren/neuroncap/validation")
+    ap.add_argument("--out", default=str(paths.ncap() / "validation"))
     args = ap.parse_args()
 
     out_dir = Path(args.out)
@@ -85,11 +87,15 @@ def main() -> None:
         rendered = render(client, args.url, ego @ cam2ego, cam_data["timestamp"])
         real = np.asarray(Image.open(Path(args.dataroot) / cam_data["filename"]).convert("RGB"))
         if rendered.shape != real.shape:
-            real = np.asarray(Image.fromarray(real).resize((rendered.shape[1], rendered.shape[0]), Image.BILINEAR))
+            real = np.asarray(
+                Image.fromarray(real).resize((rendered.shape[1], rendered.shape[0]), Image.BILINEAR)
+            )
 
         score = psnr(rendered, real)
         scores.append(score)
-        Image.fromarray(np.concatenate([real, rendered], axis=0)).save(out_dir / f"frame_{i:02d}.jpg", quality=90)
+        Image.fromarray(np.concatenate([real, rendered], axis=0)).save(
+            out_dir / f"frame_{i:02d}.jpg", quality=90
+        )
         print(f"keyframe {i:2d}  PSNR {score:5.2f} dB   (top: real, bottom: rendered)", flush=True)
 
     print(f"\nmean PSNR over {len(scores)} keyframes: {np.mean(scores):.2f} dB")

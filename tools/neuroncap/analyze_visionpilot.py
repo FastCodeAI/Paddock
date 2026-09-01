@@ -30,15 +30,16 @@ from pathlib import Path
 
 import matplotlib
 
+from tools import paths
+
 matplotlib.use("Agg")
+import diag_visionpilot as diag  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import onnxruntime as ort  # noqa: E402
 from PIL import Image  # noqa: E402
 
-import diag_visionpilot as diag  # noqa: E402
-
-BASE = Path("/mnt/p4/naren/neuroncap")
+BASE = paths.ncap()
 RUNS = BASE / "outputs/runs1/visionpilot"
 OUT = BASE / "validation/visionpilot"
 SCENARIOS = ("stationary", "frontal", "side")
@@ -146,7 +147,7 @@ def analyse(scenario: str, nets: dict) -> dict:
                 uv = (K @ pts_cam[:, :3].T).T
                 uv = uv[:, :2] / uv[:, 2:3]
                 gt_box = np.array([uv[:, 0].min(), uv[:, 1].min(), uv[:, 0].max(), uv[:, 1].max()])
-                ious = np.array([diag.iou_matrix(gt_box, dets[j:j + 1, :4])[0] for j in range(len(dets))])
+                ious = np.array([diag.iou_matrix(gt_box, dets[j : j + 1, :4])[0] for j in range(len(dets))])
                 if ious.max() > 0.3 and ok[int(ious.argmax())]:
                     x, y = ground[int(ious.argmax())]
                     matched_range, matched_lat = float(np.hypot(x, y)), float(y)
@@ -174,7 +175,9 @@ def analyse(scenario: str, nets: dict) -> dict:
                 "autodrive_p": p,
                 "autospeed_range_m": round(matched_range, 2) if np.isfinite(matched_range) else None,
                 "autospeed_lat_m": round(matched_lat, 2) if np.isfinite(matched_lat) else None,
-                "autospeed_nearest_corridor_m": round(nearest_in_corridor, 2) if np.isfinite(nearest_in_corridor) else None,
+                "autospeed_nearest_corridor_m": round(nearest_in_corridor, 2)
+                if np.isfinite(nearest_in_corridor)
+                else None,
                 "closing_est": round(closing_est, 2),
                 "closing_true": round(closing_true, 2),
                 "accel_shipped": round(idm.acceleration(kappa, v, has_cipo, closing_est, d), 2),
@@ -199,11 +202,23 @@ def plot(results: list[dict]) -> None:
         ax.plot(t, gt, "k-", lw=2.5, label="ground truth")
         ax.plot(t, [r["autodrive_d_m"] for r in rows], "-", color="tab:red", label="AutoDrive (used)")
         asr = [r["autospeed_range_m"] for r in rows]
-        ax.plot(t, [np.nan if v is None else v for v in asr], "o", ms=5, color="tab:blue",
-                label="AutoSpeed box (discarded)")
+        ax.plot(
+            t,
+            [np.nan if v is None else v for v in asr],
+            "o",
+            ms=5,
+            color="tab:blue",
+            label="AutoSpeed box (discarded)",
+        )
         nc = [r["autospeed_nearest_corridor_m"] for r in rows]
-        ax.plot(t, [np.nan if v is None else v for v in nc], "--", color="tab:green", lw=1.2,
-                label="nearest AutoSpeed box in corridor")
+        ax.plot(
+            t,
+            [np.nan if v is None else v for v in nc],
+            "--",
+            color="tab:green",
+            lw=1.2,
+            label="nearest AutoSpeed box in corridor",
+        )
         ax.set_ylim(0, 70)
         ax.set_title(f"{res['scenario']}  —  range to target")
         ax.set_ylabel("distance (m)")
@@ -211,8 +226,14 @@ def plot(results: list[dict]) -> None:
 
         ax = axes[1, col]
         ax.plot(t, [r["closing_true"] for r in rows], "k-", lw=2.5, label="true closing speed")
-        ax.plot(t, [r["closing_est"] for r in rows], "-", color="tab:red", lw=1.2,
-                label="differenced AutoDrive (used)")
+        ax.plot(
+            t,
+            [r["closing_est"] for r in rows],
+            "-",
+            color="tab:red",
+            lw=1.2,
+            label="differenced AutoDrive (used)",
+        )
         ax.axhline(0, color="0.6", lw=0.8)
         ax.set_ylabel("closing speed (m/s)")
         ax.set_title("closing speed estimate")
@@ -220,10 +241,14 @@ def plot(results: list[dict]) -> None:
 
         ax = axes[2, col]
         ax.plot(t, [r["accel_shipped"] for r in rows], "-", color="tab:red", label="IDM as shipped")
-        ax.plot(t, [r["accel_true_closing"] for r in rows], "-", color="tab:orange",
-                label="IDM, true closing speed")
-        ax.plot(t, [r["accel_gt_gap"] for r in rows], "-", color="tab:green",
-                label="IDM, true gap + closing")
+        ax.plot(
+            t,
+            [r["accel_true_closing"] for r in rows],
+            "-",
+            color="tab:orange",
+            label="IDM, true closing speed",
+        )
+        ax.plot(t, [r["accel_gt_gap"] for r in rows], "-", color="tab:green", label="IDM, true gap + closing")
         ax.axhline(0, color="0.6", lw=0.8)
         ax.set_ylabel("commanded accel (m/s²)")
         ax.set_xlabel("time (s)")

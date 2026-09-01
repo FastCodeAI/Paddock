@@ -27,7 +27,6 @@ import matplotlib  # noqa: E402
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
-
 from eval_kitscenes import manifest as manifest_mod  # noqa: E402
 from eval_kitscenes.camera_warp import Pinhole, load_and_warp  # noqa: E402
 from eval_kitscenes.kitscenes_alpamayo_loader import KITScenesAlpamayoScene  # noqa: E402
@@ -114,8 +113,9 @@ def main() -> None:
         for r in manifest_mod.load_drive_jepa_rows(args.drive_jepa_pkl)
     }
 
-    fig, axes = plt.subplots(len(rows), 2, figsize=(11, 4.1 * len(rows)),
-                            gridspec_kw={"width_ratios": [1.35, 1]})
+    fig, axes = plt.subplots(
+        len(rows), 2, figsize=(11, 4.1 * len(rows)), gridspec_kw={"width_ratios": [1.35, 1]}
+    )
     axes = np.atleast_2d(axes)
 
     for i, row in enumerate(rows):
@@ -124,9 +124,7 @@ def main() -> None:
         ax_img = axes[i, 0]
         if image is not None:
             ax_img.imshow(image)
-            ax_img.set_title(
-                f"front camera, t0   ·   {(row.get('cot') or '')[:78]}", fontsize=8, loc="left"
-            )
+            ax_img.set_title(f"front camera, t0   ·   {(row.get('cot') or '')[:78]}", fontsize=8, loc="left")
         else:
             ax_img.text(0.5, 0.5, "scene not on disk", ha="center", va="center", fontsize=9)
         ax_img.set_xticks([])
@@ -137,8 +135,7 @@ def main() -> None:
             axes[i, 1].legend(fontsize=7.5, loc="upper left", framealpha=0.9)
 
     fig.suptitle(
-        f"Alpamayo-1.5 vs Drive-JEPA on KITScenes  ·  arm '{args.arm}'  "
-        f"·  scored 0-3 s on the 0.5 s grid",
+        f"Alpamayo-1.5 vs Drive-JEPA on KITScenes  ·  arm '{args.arm}'  ·  scored 0-3 s on the 0.5 s grid",
         fontsize=11,
         y=0.997,
     )

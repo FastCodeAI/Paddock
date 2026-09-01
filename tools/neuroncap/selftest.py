@@ -106,9 +106,7 @@ def main() -> int:
         if not expected:
             continue
         derived = KITScenesAlpamayoScene(path).valid_keyframes()
-        checker.check(
-            derived == expected, f"{scene_id[:8]} keyframes match", f"{derived} vs {expected}"
-        )
+        checker.check(derived == expected, f"{scene_id[:8]} keyframes match", f"{derived} vs {expected}")
     print()
 
     # ---- the parity checks ------------------------------------------------- #
@@ -127,9 +125,7 @@ def main() -> int:
         corrected = metrics_mod.apply_correction(future[None], correction)[0]
         grid = metrics_mod.GRID_IDX[: len(data["kits_planar_gt"])]
         grid = grid[grid < len(future)]
-        agree = float(
-            np.abs(corrected[grid, :2] - data["kits_planar_gt"][: len(grid), :2]).max()
-        )
+        agree = float(np.abs(corrected[grid, :2] - data["kits_planar_gt"][: len(grid), :2]).max())
         tilt = float(np.abs(corrected[:, :2] - future[:, :2]).max())
 
         worst_gt = max(worst_gt, gt_delta)
@@ -184,9 +180,7 @@ def main() -> int:
         "flattened image order is camera-major",
     )
     # Frames must run oldest -> newest; consecutive frames differ but are not unrelated.
-    diffs = [
-        float((frames[1, i + 1].float() - frames[1, i].float()).abs().mean()) for i in range(3)
-    ]
+    diffs = [float((frames[1, i + 1].float() - frames[1, i].float()).abs().mean()) for i in range(3)]
     checker.check(all(d > 0.5 for d in diffs), "temporal frames differ", f"mean |d| {diffs}")
 
     if args.contact_sheet:
@@ -203,7 +197,6 @@ def write_contact_sheet(frames, data, path: Path) -> None:
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-
     from alpamayo1_5.helper import CAMERA_DISPLAY_NAMES
 
     slots = data["camera_indices"].tolist()

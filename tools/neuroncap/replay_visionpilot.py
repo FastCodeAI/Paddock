@@ -27,13 +27,15 @@ import numpy as np
 import torch
 from PIL import Image
 
-sys.path.insert(0, "/mnt/p4/naren/neuroncap/servers")
-sys.path.insert(0, "/mnt/p4/naren/neuroncap")
+from tools import paths
+
+sys.path.insert(0, str(paths.ncap() / "servers"))
+sys.path.insert(0, str(paths.ncap()))
 
 import diag_visionpilot as diag  # noqa: E402
 from visionpilot_server import VisionPilotNode  # noqa: E402
 
-BASE = Path("/mnt/p4/naren/neuroncap")
+BASE = paths.ncap()
 RUNS = BASE / "outputs/runs1/visionpilot"
 OUT = BASE / "validation/visionpilot"
 SCENARIOS = ("stationary", "frontal", "side")
@@ -116,7 +118,7 @@ def replay(node: VisionPilotNode, scenario: str) -> list[dict]:
 
 def main() -> None:
     node = VisionPilotNode(
-        Path("/shakaal_hdd_1/workspace/naren/renesas/vision_pilot/VisionPilot/modules/models/weights"),
+        paths.repo("vision_pilot") / "VisionPilot/modules/models/weights",
         ["CPUExecutionProvider"],
     )
     old = {r["scenario"]: r["rows"] for r in json.loads((OUT / "planner_analysis.json").read_text())}
@@ -133,7 +135,9 @@ def main() -> None:
         new, prev = results[scenario], old[scenario]
         gt = np.array([r["gt_range_m"] for r in new])
         new_err = np.abs(np.array([r["fused_m"] for r in new]) - gt).mean()
-        old_err = np.abs(np.array([r["autodrive_d_m"] for r in prev]) - np.array([r["gt_range_m"] for r in prev])).mean()
+        old_err = np.abs(
+            np.array([r["autodrive_d_m"] for r in prev]) - np.array([r["gt_range_m"] for r in prev])
+        ).mean()
 
         true_closing = np.array([r["closing_true"] for r in prev])
         old_close = np.abs(np.array([r["closing_est"] for r in prev]) - true_closing).mean()

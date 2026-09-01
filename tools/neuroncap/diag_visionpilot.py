@@ -30,9 +30,11 @@ import numpy as np
 import onnxruntime as ort
 from PIL import Image, ImageDraw, ImageFont
 
-BASE = Path("/mnt/p4/naren/neuroncap")
+from tools import paths
+
+BASE = paths.ncap()
 RUNS = BASE / "outputs/runs1/visionpilot"
-WEIGHTS = Path("/shakaal_hdd_1/workspace/naren/renesas/vision_pilot/VisionPilot/modules/models/weights")
+WEIGHTS = paths.repo("vision_pilot") / "VisionPilot/modules/models/weights"
 OUT = BASE / "validation/visionpilot"
 CALIB = json.loads((BASE / "validation/calib_0103.json").read_text())
 
@@ -48,14 +50,17 @@ EDGES = [(0, 1), (0, 2), (0, 4), (1, 3), (1, 5), (2, 3), (2, 6), (3, 7), (4, 5),
 
 
 def font(size: int) -> ImageFont.ImageFont:
-    for path in ("/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
-                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"):
+    for path in (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    ):
         if Path(path).exists():
             return ImageFont.truetype(path, size)
     return ImageFont.load_default()
 
 
 # ─── preprocessing ────────────────────────────────────────────────────────────
+
 
 def letterbox(image: np.ndarray) -> tuple[np.ndarray, float, float, float]:
     """Aspect-preserving resize into 1024x512 with (114,114,114) padding.
@@ -69,7 +74,7 @@ def letterbox(image: np.ndarray) -> tuple[np.ndarray, float, float, float]:
     resized = np.asarray(Image.fromarray(image).resize((nw, nh), Image.BILINEAR))
     canvas = np.full((NET_H, NET_W, 3), 114, dtype=np.uint8)
     px, py = (NET_W - nw) // 2, (NET_H - nh) // 2
-    canvas[py:py + nh, px:px + nw] = resized
+    canvas[py : py + nh, px : px + nw] = resized
     return canvas, scale, float(px), float(py)
 
 
@@ -79,6 +84,7 @@ def stretch(image: np.ndarray) -> np.ndarray:
 
 
 # ─── AutoSpeed ────────────────────────────────────────────────────────────────
+
 
 def iou_matrix(box: np.ndarray, others: np.ndarray) -> np.ndarray:
     ix1 = np.maximum(box[0], others[:, 0])
@@ -130,6 +136,7 @@ def autospeed(session: ort.InferenceSession, image: np.ndarray, conf: float, iou
 
 # ─── AutoSteer / AutoDrive ────────────────────────────────────────────────────
 
+
 def autosteer(session: ort.InferenceSession, image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     chw = (stretch(image).astype(np.float32) / 255.0).transpose(2, 0, 1)[None]
     out = session.run(None, {session.get_inputs()[0].name: chw})
@@ -137,7 +144,9 @@ def autosteer(session: ort.InferenceSession, image: np.ndarray) -> tuple[np.ndar
 
 
 def autodrive(session: ort.InferenceSession, image: np.ndarray, prev: np.ndarray | None):
-    norm = ((stretch(image).astype(np.float32) / 255.0 - IMAGENET_MEAN) / IMAGENET_STD).transpose(2, 0, 1)[None]
+    norm = ((stretch(image).astype(np.float32) / 255.0 - IMAGENET_MEAN) / IMAGENET_STD).transpose(2, 0, 1)[
+        None
+    ]
     names = [i.name for i in session.get_inputs()]
     out = session.run(None, {names[0]: prev if prev is not None else norm, names[1]: norm})
     dist_norm, curvature, flag_logit = (float(np.asarray(o).ravel()[0]) for o in out)
@@ -145,6 +154,7 @@ def autodrive(session: ort.InferenceSession, image: np.ndarray, prev: np.ndarray
 
 
 # ─── geometry ─────────────────────────────────────────────────────────────────
+
 
 def actor_pose_at(stamps: np.ndarray, poses: np.ndarray, t: int) -> np.ndarray:
     """The actor's pose at time ``t``, interpolated.
@@ -169,7 +179,9 @@ def actor_pose_at(stamps: np.ndarray, poses: np.ndarray, t: int) -> np.ndarray:
 
 
 def project_to_ground(uv: np.ndarray, K: np.ndarray, cam2ego: np.ndarray) -> np.ndarray:
-    dirs_cam = np.stack([(uv[:, 0] - K[0, 2]) / K[0, 0], (uv[:, 1] - K[1, 2]) / K[1, 1], np.ones(len(uv))], axis=1)
+    dirs_cam = np.stack(
+        [(uv[:, 0] - K[0, 2]) / K[0, 0], (uv[:, 1] - K[1, 2]) / K[1, 1], np.ones(len(uv))], axis=1
+    )
     dirs_ego = dirs_cam @ cam2ego[:3, :3].T
     origin = cam2ego[:3, 3]
     descending = dirs_ego[:, 2] < -1e-6
@@ -248,13 +260,17 @@ def main() -> None:
             draw.rectangle([x1, y1, x2, y2], outline=(0, 220, 255), width=4)
             draw.text((x1 + 4, max(0, y1 - 28)), f"{int(cls)}:{score:.2f}", fill=(0, 220, 255), font=f_small)
             if gt_uv is not None:
-                gt_box = np.array([gt_uv[:, 0].min(), gt_uv[:, 1].min(), gt_uv[:, 0].max(), gt_uv[:, 1].max()])
+                gt_box = np.array(
+                    [gt_uv[:, 0].min(), gt_uv[:, 1].min(), gt_uv[:, 0].max(), gt_uv[:, 1].max()]
+                )
                 best_iou = max(best_iou, float(iou_matrix(gt_box, np.array([[x1, y1, x2, y2]]))[0]))
 
         # --- AutoSteer path, yellow; rows are linspace over the stretched net image
         keep = h_vec >= STEER_MASK_THRESHOLD
         net_rows = np.linspace(0, NET_H - 1, len(xp))
-        uv_src = np.stack([xp * NET_W, net_rows], axis=1) * np.array([image.shape[1] / NET_W, image.shape[0] / NET_H])
+        uv_src = np.stack([xp * NET_W, net_rows], axis=1) * np.array(
+            [image.shape[1] / NET_W, image.shape[0] / NET_H]
+        )
         for u, v in uv_src[keep]:
             draw.ellipse([u - 5, v - 5, u + 5, v + 5], fill=(255, 230, 0))
         ground, descending = project_to_ground(uv_src[keep], K, cam2ego)

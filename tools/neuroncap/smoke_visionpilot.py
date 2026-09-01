@@ -19,12 +19,14 @@ from nuscenes import NuScenes
 from PIL import Image
 from pyquaternion import Quaternion
 
-sys.path.insert(0, "/mnt/p4/naren/neuroncap/servers")
+from tools import paths
+
+sys.path.insert(0, str(paths.ncap() / "servers"))
 import ncap_io
 from visionpilot_server import VisionPilotNode
 
-DATAROOT = "/shakaal_hdd_1/workspace/NeurIPS/Dataset/raw_data/nuscenes"
-WEIGHTS = Path("/shakaal_hdd_1/workspace/naren/renesas/vision_pilot/VisionPilot/modules/models/weights")
+DATAROOT = str(paths.nuscenes())
+WEIGHTS = paths.repo("vision_pilot") / "VisionPilot/modules/models/weights"
 
 
 def encode(image: np.ndarray) -> str:
@@ -78,7 +80,7 @@ def main() -> None:
     print("debug:", out["debug"])
     print("\nwaypoints (x forward, y left), 0.5 s apart:")
     for i, (x, y) in enumerate(traj, 1):
-        print(f"  t={i*0.5:.1f}s  x={x:7.2f}  y={y:6.2f}")
+        print(f"  t={i * 0.5:.1f}s  x={x:7.2f}  y={y:6.2f}")
     step = np.linalg.norm(np.diff(np.vstack([[0, 0], traj]), axis=0), axis=1)
     print(f"\nimplied speed over horizon: {step / 0.5}")
 

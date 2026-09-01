@@ -22,9 +22,11 @@ from nuscenes import NuScenes
 from PIL import Image, ImageDraw
 from pyquaternion import Quaternion
 
-DATAROOT = "/shakaal_hdd_1/workspace/NeurIPS/Dataset/raw_data/nuscenes"
-ROOT = Path(__import__("os").environ.get("NCAP_RUNS", "/mnt/p4/naren/neuroncap/outputs/runs1"))
-OUT = Path("/mnt/p4/naren/neuroncap/validation")
+from tools import paths
+
+DATAROOT = str(paths.nuscenes())
+ROOT = Path(__import__("os").environ.get("NCAP_RUNS", str(paths.ncap() / "outputs/runs1")))
+OUT = paths.ncap() / "validation"
 
 # The 8 corners of a unit box centred at the origin, x forward, y left, z up.
 CORNERS = np.array([[sx, sy, sz] for sx in (0.5, -0.5) for sy in (0.5, -0.5) for sz in (0.5, -0.5)])

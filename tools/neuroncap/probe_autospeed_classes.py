@@ -16,13 +16,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import diag_visionpilot as diag
 import numpy as np
 import onnxruntime as ort
 from PIL import Image
 
-import diag_visionpilot as diag
+from tools import paths
 
-RUNS = Path("/mnt/p4/naren/neuroncap/outputs/runs1/visionpilot")
+RUNS = paths.ncap() / "outputs/runs1/visionpilot"
 CLASS_NAME = {0: "other", 1: "L1", 2: "L2", 3: "L3"}
 
 
@@ -64,7 +65,7 @@ def main() -> None:
                 uv = (K @ pts_cam[:, :3].T).T
                 uv = uv[:, :2] / uv[:, 2:3]
                 gt_box = np.array([uv[:, 0].min(), uv[:, 1].min(), uv[:, 0].max(), uv[:, 1].max()])
-                ious = np.array([diag.iou_matrix(gt_box, dets[j:j + 1, :4])[0] for j in range(len(dets))])
+                ious = np.array([diag.iou_matrix(gt_box, dets[j : j + 1, :4])[0] for j in range(len(dets))])
                 if ious.max() > 0.3:
                     j = int(ious.argmax())
                     target_cls = CLASS_NAME.get(int(dets[j, 5]), "?")
@@ -84,10 +85,14 @@ def main() -> None:
             cut_in = np.isfinite(best[2]) and best[2] < best[1]
             if first_threat is None and (np.isfinite(best[1]) or np.isfinite(best[2])):
                 first_threat = ((t - int(frames[0].stem)) / 1e6, gt_range)
-            print(f"{(t - int(frames[0].stem)) / 1e6:5.1f} {gt_range:7.1f}  {target_cls:>9}  {target_score:5.2f}"
-                  f"  {l1}  {l2}   {'yes' if cut_in else ''}")
+            print(
+                f"{(t - int(frames[0].stem)) / 1e6:5.1f} {gt_range:7.1f}  {target_cls:>9}  {target_score:5.2f}"
+                f"  {l1}  {l2}   {'yes' if cut_in else ''}"
+            )
         if first_threat:
-            print(f"  first L1/L2 threat at t={first_threat[0]:.1f}s, target then {first_threat[1]:.1f} m away")
+            print(
+                f"  first L1/L2 threat at t={first_threat[0]:.1f}s, target then {first_threat[1]:.1f} m away"
+            )
         else:
             print("  no L1/L2 detection at any point in this run")
 

@@ -21,11 +21,17 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-BASE = Path("/mnt/p4/naren/neuroncap")
-FFMPEG = "/shakaal_hdd_1/workspace/naren/renesas/openpilot/.venv/bin/ffmpeg"
+from tools import paths
+
+BASE = paths.ncap()
+FFMPEG = str(paths.repo("openpilot") / ".venv/bin/ffmpeg")
 MODELS = ("drivejepa", "openpilot", "alpamayo", "visionpilot")  # best-first, reading order
-LABELS = {"drivejepa": "Drive-JEPA", "openpilot": "OpenPilot",
-          "alpamayo": "Alpamayo 1.5", "visionpilot": "VisionPilot"}
+LABELS = {
+    "drivejepa": "Drive-JEPA",
+    "openpilot": "OpenPilot",
+    "alpamayo": "Alpamayo 1.5",
+    "visionpilot": "VisionPilot",
+}
 TILE_W, TILE_H = 800, 450
 BAR = 34
 CLOCK = 30
@@ -96,14 +102,15 @@ def main() -> None:
                     if ended:
                         tag += "   — run ended"
                     draw.rectangle([x, y, x + TILE_W, y + BAR], fill=(24, 24, 28))
-                    draw.text((x + 10, y + 10), tag,
-                              fill=(150, 150, 155) if ended else (0, 255, 150))
+                    draw.text((x + 10, y + 10), tag, fill=(150, 150, 155) if ended else (0, 255, 150))
                 base = 2 * (TILE_H + BAR)
                 draw.rectangle([0, base, 2 * TILE_W, base + CLOCK], fill=(0, 0, 0))
                 draw.text((12, base + 8), f"t = {i * STEP_S:4.1f} s", fill=(255, 255, 255))
-                draw.text((160, base + 8),
-                          f"scene-0103  {scenario}   |   dimmed tile = that model's run has already ended",
-                          fill=(140, 140, 145))
+                draw.text(
+                    (160, base + 8),
+                    f"scene-0103  {scenario}   |   dimmed tile = that model's run has already ended",
+                    fill=(140, 140, 145),
+                )
                 canvas.save(tmp / f"{i:05d}.png")
 
             listing = tmp / "list.txt"
@@ -113,8 +120,27 @@ def main() -> None:
 
             path = out_dir / f"compare_{scenario}_0103.mp4"
             subprocess.run(
-                [FFMPEG, "-loglevel", "error", "-y", "-r", "10", "-f", "concat", "-safe", "0",
-                 "-i", str(listing), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", str(path)],
+                [
+                    FFMPEG,
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-r",
+                    "10",
+                    "-f",
+                    "concat",
+                    "-safe",
+                    "0",
+                    "-i",
+                    str(listing),
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-crf",
+                    "20",
+                    str(path),
+                ],
                 check=True,
             )
             print(f"{path}  ({n} frames, {n * STEP_S:.1f}s + hold)")

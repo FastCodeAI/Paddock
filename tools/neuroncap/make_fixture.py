@@ -20,8 +20,10 @@ from nuscenes import NuScenes
 from PIL import Image
 from pyquaternion import Quaternion
 
-DATAROOT = "/shakaal_hdd_1/workspace/NeurIPS/Dataset/raw_data/nuscenes"
-OUT = Path("/mnt/p4/naren/neuroncap/fixtures")
+from tools import paths
+
+DATAROOT = str(paths.nuscenes())
+OUT = paths.ncap() / "fixtures"
 CAMERAS = ("CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT", "CAM_BACK", "CAM_BACK_LEFT", "CAM_BACK_RIGHT")
 EGO_SPEED = 8.0  # m/s, roughly what the logged driver was doing here
 N_FRAMES = 8  # keyframes of history, 0.5 s apart
@@ -89,7 +91,9 @@ def main() -> None:
 
     path = OUT / "infer_sequence_0103.json"
     path.write_text(json.dumps(requests))
-    print(f"wrote {path} ({path.stat().st_size / 1e6:.1f} MB, {len(requests)} frames, {len(CAMERAS)} cameras each)")
+    print(
+        f"wrote {path} ({path.stat().st_size / 1e6:.1f} MB, {len(requests)} frames, {len(CAMERAS)} cameras each)"
+    )
 
 
 if __name__ == "__main__":

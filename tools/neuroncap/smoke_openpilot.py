@@ -17,16 +17,17 @@ import numpy as np
 import torch
 from PIL import Image
 
-sys.path.insert(0, "/shakaal_hdd_1/workspace/naren/renesas/openpilot")
-sys.path.insert(0, "/mnt/p4/naren/neuroncap/servers")
+from tools import paths
 
-from nuscenes import NuScenes
-from pyquaternion import Quaternion
+sys.path.insert(0, str(paths.repo("openpilot")))
+sys.path.insert(0, str(paths.ncap() / "servers"))
 
 import ncap_io
+from nuscenes import NuScenes
 from openpilot_server import OpenpilotNode
+from pyquaternion import Quaternion
 
-DATAROOT = "/shakaal_hdd_1/workspace/NeurIPS/Dataset/raw_data/nuscenes"
+DATAROOT = str(paths.nuscenes())
 
 
 def encode(image: np.ndarray) -> str:
@@ -70,15 +71,17 @@ def main() -> None:
     node = OpenpilotNode()
     out = node.infer(body)
     cam_adapter = node.camera
-    print(f"source: {cam_adapter.src.width}x{cam_adapter.src.height}  "
-          f"hFOV {cam_adapter.src.hfov_deg:.1f} deg  vFOV {cam_adapter.src.vfov_deg:.1f} deg")
+    print(
+        f"source: {cam_adapter.src.width}x{cam_adapter.src.height}  "
+        f"hFOV {cam_adapter.src.hfov_deg:.1f} deg  vFOV {cam_adapter.src.vfov_deg:.1f} deg"
+    )
     print(f"fov margin after the wide model view is carved out: {cam_adapter.margin_deg()}")
     print(f"rpy (device_from_calib): {np.round(cam_adapter.rpy, 4).tolist()}")
 
     traj = np.asarray(out["trajectory"])
     print("\nwaypoints (x forward, y left), 0.5 s apart:")
     for i, (x, y) in enumerate(traj, 1):
-        print(f"  t={i*0.5:.1f}s  x={x:7.2f}  y={y:6.2f}")
+        print(f"  t={i * 0.5:.1f}s  x={x:7.2f}  y={y:6.2f}")
 
 
 if __name__ == "__main__":

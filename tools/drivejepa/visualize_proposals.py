@@ -37,8 +37,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from matplotlib.patches import Rectangle
 from matplotlib.colors import Normalize
+from matplotlib.patches import Rectangle
 from PIL import Image
 
 DEVKIT_ROOT = Path(os.environ["NAVSIM_DEVKIT_ROOT"])
@@ -48,9 +48,9 @@ sys.path.insert(0, ".")
 from scripts.inference.kitscenes_adapter import KITScenesSceneAdapter  # noqa: E402
 from scripts.inference.run_kitscenes_inference import DEFAULT_CKPT, build_agent  # noqa: E402
 
-HUMAN_COLOR = "#2a78d6"      # categorical slot 1
-PICKED_COLOR = "#eb6834"     # slot 2
-BEST_COLOR = "#1baf7a"       # slot 3
+HUMAN_COLOR = "#2a78d6"  # categorical slot 1
+PICKED_COLOR = "#eb6834"  # slot 2
+BEST_COLOR = "#1baf7a"  # slot 3
 CROP_COLOR = "#eda100"
 SURFACE = "#fcfcfb"
 INK = "#1f2328"
@@ -95,7 +95,8 @@ def collect(scene_path: Path, keyframe: int, horizon: int):
 def draw_camera_strip(axes, scene_path: Path, keyframe: int) -> None:
     calibration = json.loads((scene_path / "calibration/calib.json").read_text())
     for ax, (sensor, slot) in zip(axes, CAMERA_STRIP):
-        ax.set_xticks([]); ax.set_yticks([])
+        ax.set_xticks([])
+        ax.set_yticks([])
         ax.set_facecolor(SURFACE)
         path = scene_path / sensor / f"{keyframe:010d}.jpg"
         if not path.exists():
@@ -109,11 +110,23 @@ def draw_camera_strip(axes, scene_path: Path, keyframe: int) -> None:
             zoom = TARGET_FOCAL / float(intr["focal_length"])
             left = (intr["principal_point_u"] - TARGET_CU / zoom) * scale
             top = (intr["principal_point_v"] - TARGET_CV / zoom) * scale
-            ax.add_patch(Rectangle((left, top), TARGET_WIDTH / zoom * scale,
-                                   TARGET_HEIGHT / zoom * scale, fill=False,
-                                   edgecolor=CROP_COLOR, linewidth=1.6, zorder=3))
-        ax.set_title(sensor.replace("camera_ring_", "") + (f" → {slot}" if slot else "  (unused)"),
-                     fontsize=7.5, color=INK if slot else MUTED, pad=2)
+            ax.add_patch(
+                Rectangle(
+                    (left, top),
+                    TARGET_WIDTH / zoom * scale,
+                    TARGET_HEIGHT / zoom * scale,
+                    fill=False,
+                    edgecolor=CROP_COLOR,
+                    linewidth=1.6,
+                    zorder=3,
+                )
+            )
+        ax.set_title(
+            sensor.replace("camera_ring_", "") + (f" → {slot}" if slot else "  (unused)"),
+            fontsize=7.5,
+            color=INK if slot else MUTED,
+            pad=2,
+        )
         for spine in ax.spines.values():
             spine.set_color(GRID)
 
@@ -128,7 +141,9 @@ def style(ax) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--scene", required=True)
     parser.add_argument("--split", default="overlap_train_val")
     parser.add_argument("--keyframe", type=int, required=True)
@@ -143,9 +158,11 @@ def main() -> None:
 
     proposals, scores, truth, errors = collect(scene_path, args.keyframe, args.horizon)
     picked, best = int(scores.argmax()), int(errors.argmin())
-    print(f"{len(proposals)} proposals | picked #{picked} ADE {errors[picked]:.2f} "
-          f"| best #{best} ADE {errors[best]:.2f} | rank of picked "
-          f"{(errors < errors[picked]).sum()}/{len(proposals)}")
+    print(
+        f"{len(proposals)} proposals | picked #{picked} ADE {errors[picked]:.2f} "
+        f"| best #{best} ADE {errors[best]:.2f} | rank of picked "
+        f"{(errors < errors[picked]).sum()}/{len(proposals)}"
+    )
 
     figure = plt.figure(figsize=(18.5, 8.2))
     figure.patch.set_facecolor(SURFACE)
@@ -162,51 +179,123 @@ def main() -> None:
     for i, proposal in enumerate(proposals):
         if i in (picked, best):
             continue
-        bev.plot(proposal[:, 1], proposal[:, 0],
-                 color=ramp(0.25 + 0.55 * norm(scores[i])), linewidth=1.1, zorder=2)
-    bev.plot(truth[:, 1], truth[:, 0], color=HUMAN_COLOR, linewidth=3.0, marker="o",
-             markersize=6, label="recorded", zorder=6)
-    bev.plot(proposals[best][:, 1], proposals[best][:, 0], color=BEST_COLOR, linewidth=2.4,
-             marker="o", markersize=5, label=f"lowest ADE ({errors[best]:.2f} m)", zorder=5)
-    bev.plot(proposals[picked][:, 1], proposals[picked][:, 0], color=PICKED_COLOR, linewidth=2.4,
-             linestyle="--", marker="o", markersize=5,
-             label=f"picked ({errors[picked]:.2f} m)", zorder=7)
+        bev.plot(
+            proposal[:, 1], proposal[:, 0], color=ramp(0.25 + 0.55 * norm(scores[i])), linewidth=1.1, zorder=2
+        )
+    bev.plot(
+        truth[:, 1],
+        truth[:, 0],
+        color=HUMAN_COLOR,
+        linewidth=3.0,
+        marker="o",
+        markersize=6,
+        label="recorded",
+        zorder=6,
+    )
+    bev.plot(
+        proposals[best][:, 1],
+        proposals[best][:, 0],
+        color=BEST_COLOR,
+        linewidth=2.4,
+        marker="o",
+        markersize=5,
+        label=f"lowest ADE ({errors[best]:.2f} m)",
+        zorder=5,
+    )
+    bev.plot(
+        proposals[picked][:, 1],
+        proposals[picked][:, 0],
+        color=PICKED_COLOR,
+        linewidth=2.4,
+        linestyle="--",
+        marker="o",
+        markersize=5,
+        label=f"picked ({errors[picked]:.2f} m)",
+        zorder=7,
+    )
     span = np.abs(np.concatenate([proposals.reshape(-1, 2), truth])[:, 1]).max()
     bev.set_xlim(span * 1.2 + 0.5, -(span * 1.2 + 0.5))
     bev.set_ylim(-2, np.concatenate([proposals.reshape(-1, 2), truth])[:, 0].max() * 1.08)
     style(bev)
     bev.set_xlabel("lateral y (m), left ←   [axis exaggerated]", fontsize=9, color=MUTED)
     bev.set_ylabel("longitudinal x (m)", fontsize=9, color=MUTED)
-    bev.set_title(f"all {len(proposals)} proposals, shaded by predicted score",
-                  fontsize=10, color=INK, loc="left")
+    bev.set_title(
+        f"all {len(proposals)} proposals, shaded by predicted score", fontsize=10, color=INK, loc="left"
+    )
     bev.legend(frameon=False, fontsize=8.5, labelcolor=INK, loc="upper left")
 
     # --- Distance against time: the axis the proposals actually differ on -----
     for i, proposal in enumerate(proposals):
         if i in (picked, best):
             continue
-        profile.plot(times, np.linalg.norm(proposal, axis=1),
-                     color=ramp(0.25 + 0.55 * norm(scores[i])), linewidth=1.1, zorder=2)
-    profile.plot(times, np.linalg.norm(truth, axis=1), color=HUMAN_COLOR, linewidth=3.0,
-                 marker="o", markersize=6, label="recorded", zorder=6)
-    profile.plot(times, np.linalg.norm(proposals[best], axis=1), color=BEST_COLOR,
-                 linewidth=2.4, marker="o", markersize=5, label="lowest ADE", zorder=5)
-    profile.plot(times, np.linalg.norm(proposals[picked], axis=1), color=PICKED_COLOR,
-                 linewidth=2.4, linestyle="--", marker="o", markersize=5, label="picked", zorder=7)
+        profile.plot(
+            times,
+            np.linalg.norm(proposal, axis=1),
+            color=ramp(0.25 + 0.55 * norm(scores[i])),
+            linewidth=1.1,
+            zorder=2,
+        )
+    profile.plot(
+        times,
+        np.linalg.norm(truth, axis=1),
+        color=HUMAN_COLOR,
+        linewidth=3.0,
+        marker="o",
+        markersize=6,
+        label="recorded",
+        zorder=6,
+    )
+    profile.plot(
+        times,
+        np.linalg.norm(proposals[best], axis=1),
+        color=BEST_COLOR,
+        linewidth=2.4,
+        marker="o",
+        markersize=5,
+        label="lowest ADE",
+        zorder=5,
+    )
+    profile.plot(
+        times,
+        np.linalg.norm(proposals[picked], axis=1),
+        color=PICKED_COLOR,
+        linewidth=2.4,
+        linestyle="--",
+        marker="o",
+        markersize=5,
+        label="picked",
+        zorder=7,
+    )
     style(profile)
     profile.set_xlabel("time (s)", fontsize=9, color=MUTED)
     profile.set_ylabel("distance travelled (m)", fontsize=9, color=MUTED)
-    profile.set_title("distance profile — where the proposals separate",
-                      fontsize=10, color=INK, loc="left")
+    profile.set_title("distance profile — where the proposals separate", fontsize=10, color=INK, loc="left")
     profile.legend(frameon=False, fontsize=8.5, labelcolor=INK, loc="upper left")
 
     # --- Does the predicted score track accuracy? -----------------------------
-    scatter.scatter(scores, errors, s=44, color="#9aa0a6", edgecolor=SURFACE,
-                    linewidth=1.0, zorder=3, label="proposal")
-    scatter.scatter([scores[picked]], [errors[picked]], s=155, color=PICKED_COLOR,
-                    edgecolor=SURFACE, linewidth=1.5, zorder=5, label="picked (argmax score)")
-    scatter.scatter([scores[best]], [errors[best]], s=155, color=BEST_COLOR,
-                    edgecolor=SURFACE, linewidth=1.5, zorder=5, label="lowest ADE")
+    scatter.scatter(
+        scores, errors, s=44, color="#9aa0a6", edgecolor=SURFACE, linewidth=1.0, zorder=3, label="proposal"
+    )
+    scatter.scatter(
+        [scores[picked]],
+        [errors[picked]],
+        s=155,
+        color=PICKED_COLOR,
+        edgecolor=SURFACE,
+        linewidth=1.5,
+        zorder=5,
+        label="picked (argmax score)",
+    )
+    scatter.scatter(
+        [scores[best]],
+        [errors[best]],
+        s=155,
+        color=BEST_COLOR,
+        edgecolor=SURFACE,
+        linewidth=1.5,
+        zorder=5,
+        label="lowest ADE",
+    )
     style(scatter)
     correlation = float(np.corrcoef(scores, errors)[0, 1])
     scatter.set_xlabel("predicted PDM score (what the model maximises)", fontsize=9, color=MUTED)
@@ -217,7 +306,9 @@ def main() -> None:
     figure.suptitle(
         f"{args.scene}  ({args.split})  keyframe {args.keyframe} = t {args.keyframe / 10:.1f} s"
         f"   —   orange box on the cameras is the crop fed to the model",
-        fontsize=11.5, color=INK, y=0.972,
+        fontsize=11.5,
+        color=INK,
+        y=0.972,
     )
     figure.savefig(args.output, dpi=140, facecolor=SURFACE)
     print(f"wrote {args.output}")

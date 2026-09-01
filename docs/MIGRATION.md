@@ -33,16 +33,18 @@ already adapted; the four `policy.py` files above still import the original
 
 ## What is left
 
-The rescued code was written for one machine and still says so. Two exemptions
-track that debt, and **both may only shrink**:
+**The path backlog is cleared.** `EXEMPT_PENDING_MIGRATION` is empty and its
+ceiling is 0, so every tracked file — adapters, tools, docs — passes the
+portability gate, and any new machine path fails the build.
 
-| Gate | Where | Enforced by |
-|---|---|---|
-| absolute paths | `EXEMPT_PENDING_MIGRATION` in `tests/test_portability.py` | `test_migration_backlog_does_not_grow` |
-| lint | `extend-exclude` in `pyproject.toml` | review |
+The gate covers untracked-but-not-ignored files too. Someone writing a new file
+has not staged it when they run `make check`; checking only the index would pass
+for them and fail for the reviewer.
 
-New code is held to both from the start. If you find yourself adding to either
-list, that is the signal to use a template variable instead.
+What remains is stylistic: `pyproject.toml` carries per-file lint ignores for
+rescued reporting and diagnostic scripts. Their original style is left alone
+because rewriting analysis scripts nobody is reading risks changing what they
+measure for no gain.
 
 ### Adapter status
 
@@ -84,20 +86,22 @@ For each remaining model, in rough order of difficulty:
 - [ ] add `tests/test_policy.py` from the template
 - [ ] remove the directory from both exemption lists
 
-### Cross-repo hacks to delete while adapting
+### Cross-repo hacks — resolved
 
-These exist because there was no shared home for the code. There is now.
+These existed because there was no shared home for the code.
 
-- `openpilot/eval_kitscenes/loader.py` **AST-extracts** `to_relative_poses` out of
-  Alpamayo's loader on disk, to avoid importing torch. Both live here now; make
-  it a normal import from a shared module.
+- **Done.** The AST/`exec` extraction of `to_relative_poses` is gone; it and
+  `displacement_errors` now live in `paddock/metrics/{pose,trajectory}.py`, which
+  are torch-free, and are imported normally.
 - `alpamayo_server.py` imports `eval_kitscenes.camera_warp` across a PYTHONPATH
   reaching into another repo, then **redefines `crop_box`** locally — its own
   docstring says it is "eval_kitscenes' crop_box with the vertical extent also
   constrained". Two subtly different crops are live; pick one deliberately.
-- `openpilot/eval_kitscenes/loader.py` shells out to **Alpamayo's venv**
-  (`DL_PYTHON`) to download scenes.
-- Several scripts `sys.path.insert` an absolute sibling-repo path.
+- **Done.** Dataset roots now arrive as `KITSCENES_ROOTS` from the model's
+  `model.yaml`, so no script shells into another model's venv to find data.
+- **Done.** `sys.path` additions read `PADDOCK_REPO`, and the 25 diagnostic
+  scripts in `tools/` resolve everything through `tools/paths.py`, which is backed
+  by the same `paddock.toml` the framework uses.
 
 ### Known duplication to resolve
 

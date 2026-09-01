@@ -52,14 +52,20 @@ target-version = "py311"
 #
 # Delete each entry as that directory is adapted. Do not add to this list --
 # new code is linted from the start.
-extend-exclude = [
-    "tools",
-]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.per-file-ignores]
+# Rescued one-off diagnostics. De-hardcoded, so they pass the portability gate;
+# their original style is left alone because rewriting analysis scripts nobody
+# is reading risks changing what they measure for no gain.
+"tools/**" = [
+    "E501", "E702", "E731", "E741", "E402",
+    "F401", "F841", "F541",
+    "B905", "B019", "B007",
+    "UP006", "UP035",
+]
 # Rescued open-loop adapters still awaiting conversion, in directories whose
 # policy.py is already done. Narrower than excluding the whole directory, so new
 # code beside them stays linted. Remove the entry when the file is adapted.

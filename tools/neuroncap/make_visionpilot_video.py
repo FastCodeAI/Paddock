@@ -35,6 +35,8 @@ from pathlib import Path
 
 import matplotlib
 
+from tools import paths
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
@@ -43,14 +45,14 @@ from matplotlib.gridspec import GridSpec  # noqa: E402
 from matplotlib.patches import Rectangle  # noqa: E402
 from PIL import Image  # noqa: E402
 
-sys.path.insert(0, "/mnt/p4/naren/neuroncap/servers")
-sys.path.insert(0, "/mnt/p4/naren/neuroncap")
+sys.path.insert(0, str(paths.ncap() / "servers"))
+sys.path.insert(0, str(paths.ncap()))
 
 from visionpilot_server import VisionPilotNode  # noqa: E402
 
-BASE = Path("/mnt/p4/naren/neuroncap")
-WEIGHTS = Path("/shakaal_hdd_1/workspace/naren/renesas/vision_pilot/VisionPilot/modules/models/weights")
-FFMPEG = "/shakaal_hdd_1/workspace/naren/renesas/openpilot/.venv/bin/ffmpeg"
+BASE = paths.ncap()
+WEIGHTS = paths.repo("vision_pilot") / "VisionPilot/modules/models/weights"
+FFMPEG = str(paths.repo("openpilot") / ".venv/bin/ffmpeg")
 SCENARIOS = ("stationary", "frontal", "side")
 CANBUS_VELOCITY = 13
 STEP_S = 0.1
@@ -132,8 +134,11 @@ def replay(node: VisionPilotNode, run: Path, calib: dict) -> list[dict]:
                 **result["debug"],
             }
         )
-        print(f"    t={out[-1]['t']:4.1f}s  a={out[-1]['accel_cmd']:6.2f}  "
-              f"d={out[-1]['fused_distance_m']:6.1f}  {out[-1]['warning'] or ''}", flush=True)
+        print(
+            f"    t={out[-1]['t']:4.1f}s  a={out[-1]['accel_cmd']:6.2f}  "
+            f"d={out[-1]['fused_distance_m']:6.1f}  {out[-1]['warning'] or ''}",
+            flush=True,
+        )
     return out
 
 
@@ -147,16 +152,28 @@ def render(rows: list[dict], scenario: str, calib: dict, out_dir: Path) -> None:
 
     for i, row in enumerate(rows):
         fig = plt.figure(figsize=(19.2, 10.8), dpi=100, facecolor=BG)
-        gs = GridSpec(2, 3, figure=fig, width_ratios=[2.45, 1.12, 0.92],
-                      height_ratios=[1.0, 0.40], hspace=0.34, wspace=0.15,
-                      left=0.022, right=0.988, top=0.930, bottom=0.065)
+        gs = GridSpec(
+            2,
+            3,
+            figure=fig,
+            width_ratios=[2.45, 1.12, 0.92],
+            height_ratios=[1.0, 0.40],
+            hspace=0.34,
+            wspace=0.15,
+            left=0.022,
+            right=0.988,
+            top=0.930,
+            bottom=0.065,
+        )
 
         # ── camera ────────────────────────────────────────────────────────────
         ax = fig.add_subplot(gs[0, 0])
         image = np.asarray(Image.open(row["image"]).convert("RGB"))
         ax.imshow(image)
-        ax.set_xlim(0, image.shape[1]); ax.set_ylim(image.shape[0], 0)
-        ax.set_xticks([]); ax.set_yticks([])
+        ax.set_xlim(0, image.shape[1])
+        ax.set_ylim(image.shape[0], 0)
+        ax.set_xticks([])
+        ax.set_yticks([])
         style(ax, "CAM_FRONT — AutoSpeed boxes, AutoSteer lane points, planned path")
 
         for det, rng in zip(row["detections"], row["box_ranges"]):
@@ -168,8 +185,14 @@ def render(rows: list[dict], scenario: str, calib: dict, out_dir: Path) -> None:
                 label = f"{CLASS_NAME[int(cls)]} {score:.2f}"
                 if rng > 0:
                     label += f"  {rng:.0f} m"
-                ax.text(min(max(x1, 4), image.shape[1] - 190), max(y1 - 8, 14), label,
-                        color=colour, fontsize=9, weight="bold")
+                ax.text(
+                    min(max(x1, 4), image.shape[1] - 190),
+                    max(y1 - 8, 14),
+                    label,
+                    color=colour,
+                    fontsize=9,
+                    weight="bold",
+                )
 
         lane_uv = np.asarray(row["lane_uv"])
         if len(lane_uv):
@@ -178,8 +201,9 @@ def render(rows: list[dict], scenario: str, calib: dict, out_dir: Path) -> None:
         traj = row["trajectory"]
         traj_uv = ground_to_image(traj, K, cam2ego)
         if len(traj_uv):
-            ax.plot(traj_uv[:, 0], traj_uv[:, 1], "-o", color="#00ff96", lw=2.4, ms=5,
-                    label="planned trajectory")
+            ax.plot(
+                traj_uv[:, 0], traj_uv[:, 1], "-o", color="#00ff96", lw=2.4, ms=5, label="planned trajectory"
+            )
         if row["path_coeffs"] is not None:
             xs = np.linspace(2, max(6.0, row["path_x_max"]), 40)
             fit_uv = ground_to_image(np.stack([xs, np.polyval(row["path_coeffs"], xs)], axis=1), K, cam2ego)
@@ -192,7 +216,8 @@ def render(rows: list[dict], scenario: str, calib: dict, out_dir: Path) -> None:
         # ── bird's eye ────────────────────────────────────────────────────────
         ax = fig.add_subplot(gs[0, 1])
         style(ax, "Bird's eye (ego at origin)")
-        ax.set_xlim(-12, 12); ax.set_ylim(-2, 55)
+        ax.set_xlim(-12, 12)
+        ax.set_ylim(-2, 55)
         ax.set_xlabel("left (m)", color=DIM, fontsize=8)
         ax.set_ylabel("forward (m)", color=DIM, fontsize=8)
         ax.grid(color="#1e1e24", lw=0.6)
@@ -208,16 +233,29 @@ def render(rows: list[dict], scenario: str, calib: dict, out_dir: Path) -> None:
             if ground[0] < -900:  # ray never met the road plane
                 continue
             cls = int(det[5])
-            ax.plot(ground[1], ground[0], "o", color=CLASS_COLOR.get(cls, "#888"),
-                    ms=10 if cls in (1, 2) else 5, mec="#000", mew=0.5)
+            ax.plot(
+                ground[1],
+                ground[0],
+                "o",
+                color=CLASS_COLOR.get(cls, "#888"),
+                ms=10 if cls in (1, 2) else 5,
+                mec="#000",
+                mew=0.5,
+            )
         if row["has_cipo"] and row["fused_distance_m"] < 80:
             ax.axhline(row["fused_distance_m"], color="#ff4d4d", lw=1.4, ls=":")
-            ax.text(-11.4, row["fused_distance_m"] + 0.9,
-                    f"fused CIPO {row['fused_distance_m']:.1f} m", color="#ff7a7a", fontsize=8)
+            ax.text(
+                -11.4,
+                row["fused_distance_m"] + 0.9,
+                f"fused CIPO {row['fused_distance_m']:.1f} m",
+                color="#ff7a7a",
+                fontsize=8,
+            )
         ax.plot(traj[:, 1], traj[:, 0], "-o", color="#00ff96", lw=2.2, ms=5)
 
         # ── readouts ──────────────────────────────────────────────────────────
-        ax = fig.add_subplot(gs[0, 2]); ax.axis("off")
+        ax = fig.add_subplot(gs[0, 2])
+        ax.axis("off")
         warn = row["warning"]
         warn_colour = {"AEB": "#ff3b3b", "FCW": "#ffb02e"}.get(warn, "#4b8b5a")
         lines = [
@@ -232,14 +270,17 @@ def render(rows: list[dict], scenario: str, calib: dict, out_dir: Path) -> None:
             ("fused closing", f"{-row['fused_velocity_ms']:+.2f} m/s", FG),
             ("fusion ±1σ", f"{row['fused_stddev_m']:.1f} m", DIM),
             ("CIPO present", "yes" if row["has_cipo"] else "no", FG),
-            ("cut-in (L2 nearer)", "yes" if row["cut_in"] else "no",
-             "#ffd200" if row["cut_in"] else DIM),
+            ("cut-in (L2 nearer)", "yes" if row["cut_in"] else "no", "#ffd200" if row["cut_in"] else DIM),
             ("", None, None),
             ("NETWORKS", None, None),
             ("AutoSpeed boxes", f"{row['autospeed_boxes']}", FG),
-            ("AutoSpeed CIPO", f"{row['autospeed_cipo_m']:.1f} m"
-             if row["autospeed_cipo_m"] is not None else "none (no L1/L2)",
-             FG if row["autospeed_cipo_m"] is not None else "#ff7a7a"),
+            (
+                "AutoSpeed CIPO",
+                f"{row['autospeed_cipo_m']:.1f} m"
+                if row["autospeed_cipo_m"] is not None
+                else "none (no L1/L2)",
+                FG if row["autospeed_cipo_m"] is not None else "#ff7a7a",
+            ),
             ("AutoDrive range", f"{row['autodrive_m']:.1f} m", FG),
             ("AutoDrive conf", f"{row['autodrive_prob']:.2f}", FG),
             ("AutoSteer kept", f"{row['path_points']}/64", FG),
@@ -253,13 +294,15 @@ def render(rows: list[dict], scenario: str, calib: dict, out_dir: Path) -> None:
         for label, value, colour in lines:
             if value is None:
                 if label:
-                    ax.text(0.0, y, label, color="#5f8fbf", fontsize=8.5, weight="bold",
-                            transform=ax.transAxes)
+                    ax.text(
+                        0.0, y, label, color="#5f8fbf", fontsize=8.5, weight="bold", transform=ax.transAxes
+                    )
                 y -= 0.036
                 continue
             ax.text(0.0, y, label, color=DIM, fontsize=9, transform=ax.transAxes)
-            ax.text(1.0, y, value, color=colour, fontsize=10, weight="bold",
-                    ha="right", transform=ax.transAxes)
+            ax.text(
+                1.0, y, value, color=colour, fontsize=10, weight="bold", ha="right", transform=ax.transAxes
+            )
             y -= 0.040
 
         # ── history strips ────────────────────────────────────────────────────
@@ -278,8 +321,7 @@ def render(rows: list[dict], scenario: str, calib: dict, out_dir: Path) -> None:
                 ax.set_ylim(lo, hi)
                 ax.axhspan(-5.0, -3.0, color="#ffb02e", alpha=0.18)
                 ax.axhspan(lo, -5.0, color="#ff3b3b", alpha=0.18)
-                ax.text(0.015, 0.06, "FCW band / AEB band", color=DIM, fontsize=7,
-                        transform=ax.transAxes)
+                ax.text(0.015, 0.06, "FCW band / AEB band", color=DIM, fontsize=7, transform=ax.transAxes)
             ax.plot(times, series, color=colour, lw=1.0, alpha=0.35)
             ax.plot(times[: i + 1], series[: i + 1], color=colour, lw=2.0)
             ax.plot(times[i], series[i], "o", color=colour, ms=6)
@@ -288,11 +330,20 @@ def render(rows: list[dict], scenario: str, calib: dict, out_dir: Path) -> None:
 
         fig.suptitle(
             f"VisionPilot  ·  scene-0103  {scenario}  ·  t = {row['t']:.1f} s",
-            color=FG, fontsize=15, x=0.028, ha="left", y=0.975,
+            color=FG,
+            fontsize=15,
+            x=0.028,
+            ha="left",
+            y=0.975,
         )
-        fig.text(0.985, 0.975,
-                 "all values are node outputs — replay of the recorded run",
-                 color=DIM, fontsize=9, ha="right")
+        fig.text(
+            0.985,
+            0.975,
+            "all values are node outputs — replay of the recorded run",
+            color=DIM,
+            fontsize=9,
+            ha="right",
+        )
         fig.savefig(out_dir / f"{i:05d}.png", facecolor=BG)
         plt.close(fig)
 
@@ -326,8 +377,27 @@ def main() -> None:
             listing.write_text("\n".join([f"file '{f}'" for f in files] + [f"file '{files[-1]}'"] * 20))
             path = out_dir / f"visionpilot_detail_{scenario}_0103.mp4"
             subprocess.run(
-                [FFMPEG, "-loglevel", "error", "-y", "-r", "10", "-f", "concat", "-safe", "0",
-                 "-i", str(listing), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", str(path)],
+                [
+                    FFMPEG,
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-r",
+                    "10",
+                    "-f",
+                    "concat",
+                    "-safe",
+                    "0",
+                    "-i",
+                    str(listing),
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-crf",
+                    "20",
+                    str(path),
+                ],
                 check=True,
             )
             print(f"wrote {path}  ({len(files)} frames, {len(files) * STEP_S:.1f}s + hold)")

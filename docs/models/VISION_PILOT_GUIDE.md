@@ -1,5 +1,9 @@
 # Vision Pilot — a plain-language guide
 
+> Paths in this guide are written as placeholders: `<repos>` is
+> `[roots.repos]` from your `paddock.toml`, `<data>` a dataset root, and
+> `<scratch>` a working area. See [docs/site-setup.md](../site-setup.md).
+
 What this repo is, what the three model repos do, where the test data lives, and how to build and
 run it.
 
@@ -287,7 +291,7 @@ gdown --folder "https://drive.google.com/drive/folders/1-Sxgz3XHzFD6XtETz1sVFRtD
 On this machine they live at:
 
 ```
-/shakaal_hdd_1/workspace/naren/renesas/testdata/openlane_sample/
+<repos>/testdata/openlane_sample/
     test_open_lane_2/   input.mp4  frame_speed.txt  H.yaml
     test_open_lane_5/   input.mp4  frame_speed.txt
     test_open_lane_6/   ...            (7 clips in total)

@@ -7,9 +7,17 @@
 # CRASHED overlay, or its absence) is actually readable.
 set -euo pipefail
 
-FFMPEG=/shakaal_hdd_1/workspace/naren/renesas/openpilot/.venv/bin/ffmpeg
-ROOT="${NCAP_RUNS:-/mnt/p4/naren/neuroncap/outputs/runs1}"
-OUT="${NCAP_VIDEO_OUT:-/mnt/p4/naren/neuroncap/videos}"
+# Paths come from the environment. `paddock run` exports PADDOCK_RUNS; for a
+# standalone invocation, set NCAP_RUNS to the run directory you want rendered.
+FFMPEG="${PADDOCK_FFMPEG:-$(command -v ffmpeg)}"
+: "${NCAP_RUNS:?set NCAP_RUNS to the run directory to render (e.g. \$PADDOCK_RUNS/neuroncap/<model>/<run_id>)}"
+ROOT="${NCAP_RUNS}"
+OUT="${NCAP_VIDEO_OUT:-${NCAP_RUNS}/videos}"
+
+if [ -z "${FFMPEG}" ]; then
+  echo "ffmpeg not found; set PADDOCK_FFMPEG or put it on PATH" >&2
+  exit 1
+fi
 mkdir -p "$OUT"
 
 for model in "$@"; do
