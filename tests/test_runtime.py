@@ -92,3 +92,37 @@ def test_no_gpu_present_does_not_block(monkeypatch) -> None:
     """A CPU-only model must still run on a box with no usable nvidia-smi."""
     monkeypatch.setattr(gpu, "free_gb", lambda: None)
     gpu.wait_for(24.0, timeout_s=0.0)
+
+
+def test_port_selection_skips_a_port_in_use() -> None:
+    """9000 is somebody else's service as often as not on a shared machine.
+
+    Hardcoding it made a run fail during node startup, after it had already
+    committed to a model and a scenario list.
+    """
+    import socket
+
+    from paddock.runtime import ports
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as taken:
+        taken.bind(("127.0.0.1", 0))
+        taken.listen(1)
+        busy = taken.getsockname()[1]
+
+        assert not ports.is_free(busy)
+        chosen = ports.find_free(busy)
+        assert chosen != busy
+        assert ports.is_free(chosen)
+
+
+def test_a_wildcard_listener_counts_as_taken() -> None:
+    """A service on 0.0.0.0 blocks a bind on 127.0.0.1 -- the case that bit us."""
+    import socket
+
+    from paddock.runtime import ports
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as wildcard:
+        wildcard.bind(("0.0.0.0", 0))
+        wildcard.listen(1)
+        busy = wildcard.getsockname()[1]
+        assert not ports.is_free(busy), "a wildcard listener must count as in use"

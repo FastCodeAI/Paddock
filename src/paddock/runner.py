@@ -28,10 +28,12 @@ from paddock.config import SiteConfig
 from paddock.policy.protocol import Trajectory
 from paddock.registry import BenchmarkSpec, ModelSpec, Registry
 from paddock.results import store
-from paddock.runtime import proc
+from paddock.runtime import ports, proc
 
-#: Ports are assigned per model so a stale node from a previous attempt is
-#: obvious rather than silently answering for the wrong model.
+#: Where port selection starts. Not assumed free -- on a shared machine 9000 is
+#: somebody else's service as often as not, and `ports.find_free` scans past it.
+#: Ports are still assigned one per model so a stale node from a previous attempt
+#: is obvious rather than silently answering for the wrong model.
 BASE_PORT = 9000
 
 
@@ -103,9 +105,8 @@ def run_benchmark(
 
     failures = 0
     for index, model_spec in enumerate(models):
-        failures += _run_one_model(
-            cfg, harness, spec, model_spec, scene, scenarios, runs, BASE_PORT + index, echo
-        )
+        port = ports.find_free(BASE_PORT + index)
+        failures += _run_one_model(cfg, harness, spec, model_spec, scene, scenarios, runs, port, echo)
     return 1 if failures else 0
 
 
@@ -223,7 +224,7 @@ def _run_open_loop(
     failures = 0
 
     try:
-        with proc.model_node(model_spec, cfg, BASE_PORT, artifacts, echo=echo) as policy_url:
+        with proc.model_node(model_spec, cfg, ports.find_free(BASE_PORT), artifacts, echo=echo) as policy_url:
             for index, sample in enumerate(harness.samples(limit=limit)):
                 try:
                     payload = {
