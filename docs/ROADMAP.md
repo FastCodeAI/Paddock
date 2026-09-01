@@ -39,6 +39,10 @@ renderer as the recorded August runs:
   renderer, engine, node, scoring.
 - **paddock's adapter and the original node agree to full float precision**, run
   head to head, so the conversion to the `Policy` contract is faithful.
+- **alpamayo cannot be compared on a single run.** Its frontal score spans the
+  full 0-5 scale across seeds (sd 1.817 against openpilot's 0.298); today's 5.0
+  and August's 0.0 are both single draws from the same distribution. It samples
+  unseeded by design.
 - **visionpilot differs (2.827 against 3.145)** — because its node was edited
   1h44m *after* the last run that scored it. The current code had never been
   measured. drivejepa being untouched and reproducing exactly rules out any
@@ -46,6 +50,13 @@ renderer as the recorded August runs:
 
 That last point is the failure mode version pinning exists to prevent, and the
 reason this code now lives in git.
+
+Two open items came out of M5, both in `docs/benchmarks/neuroncap.md`:
+
+- the two openpilot paths disagree on `traffic_convention`, and the closed-loop
+  value looks wrong for boston-seaport. Not changed, because fixing it
+  invalidates every recorded closed-loop score.
+- stochastic models need a run count chosen from their variance, not `--runs 1`.
 
 Still unrun: the third scenario (`side`), scene 0108, and multi-run seeds.
 

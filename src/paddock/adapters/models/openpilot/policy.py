@@ -45,7 +45,19 @@ TARGET_W, TARGET_H = 1928, 1208
 # x-forward, y-right, z-down.
 DEVICE_FROM_EGO = np.diag([1.0, -1.0, -1.0])
 
-# Right-hand traffic (Boston/Singapore in nuScenes) -> [0, 1].
+# openpilot sets this as `traffic_convention[int(is_rhd)] = 1` (modeld.py), where
+# is_rhd means right-hand *drive* -- steering wheel on the right, i.e. left-hand
+# traffic (UK, Japan, Singapore).
+#
+# KNOWN DISCREPANCY, deliberately not changed here. This closed-loop path uses
+# [0, 1] (is_rhd = True), while the open-loop KITScenes harness uses [1, 0]. They
+# cannot both be right: KITScenes is Germany and the neuroNCAP scenes used so far
+# (0103, 0108) are boston-seaport -- both left-hand-drive, right-hand traffic, so
+# both should be [1, 0].
+#
+# It is left as-is because changing it changes every recorded closed-loop score,
+# and that re-measurement should be a deliberate decision with a commit of its
+# own rather than a side effect of a migration. See docs/benchmarks/neuroncap.md.
 TRAFFIC_CONVENTION = np.array([0.0, 1.0], dtype=np.float32)
 
 # The 0.5 s grid the vehicle model expects, regardless of sim step.

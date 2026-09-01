@@ -104,12 +104,12 @@ Applied to all four nodes, the same comparison predicts which reproduce:
 |---|---|---|---|---|
 | openpilot | 08-27 03:13 | 08-27 23:28 | unchanged, should match | matched |
 | drivejepa | 08-27 03:25 | 08-28 00:00 | unchanged, should match | matched exactly |
-| alpamayo | 08-27 04:12 | 08-27 07:37 | unchanged, should match | matched |
+| alpamayo | 08-27 04:12 | 08-27 07:37 | unchanged, should match | **stationary matched; frontal did not — see below** |
 | visionpilot | **08-29 05:02** | 08-29 03:18 | **newer, will differ** | differed |
 
-One model out of four, predicted in advance from a file timestamp. That is worth
-more than the individual result: it says the disagreement has a mundane cause and
-the pipeline is sound.
+The prediction held for the deterministic models. It does not apply to alpamayo,
+for the reason in the next section — the assumption behind it is that a run is
+reproducible at all.
 
 This is the failure mode version pinning exists to prevent, and it is precisely
 why this code is now in git: from here, a score change has a commit beside it.
@@ -119,3 +119,56 @@ implementation, and re-measured rather than compared against.
 **If a score moves unexpectedly, check this first.** Compare the adapter's git
 history against the run's `started_utc` before suspecting the renderer, the GPU,
 or the benchmark.
+
+
+## Single-run scores are not comparable for stochastic models
+
+Alpamayo returned 5.0 on frontal-0103 where August recorded 0.0 — the full width
+of the scale. Its node was not edited, so the timestamp check predicted a match.
+The prediction was wrong because the premise was: **alpamayo does not produce the
+same trajectory twice.**
+
+It samples with `temperature=1.0`, `top_p=0.95` and no seed. The five recorded
+seeds for that one scenario:
+
+| model | run_0 | run_1 | run_2 | run_3 | run_4 | mean | sd |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| alpamayo | 0.000 | 2.084 | 1.519 | 1.885 | 5.000 | 2.098 | **1.817** |
+| openpilot | 1.862 | 2.610 | 2.187 | 2.004 | 2.389 | 2.210 | 0.298 |
+
+Today's 5.0 is exactly run_4; August's 0.0 is exactly run_0. Both are single draws
+from the same distribution, and neither is evidence about the model.
+
+Consequences for anyone using this benchmark:
+
+* **A single run is meaningless for alpamayo.** At sd 1.817, distinguishing it
+  from openpilot's 2.210 to within ±0.25 would take roughly 200 runs.
+* **Their reported means are statistically indistinguishable** on this scenario
+  (2.098 against 2.210) despite looking a scale apart on any single run.
+* Deterministic models (openpilot, drivejepa, visionpilot) reproduce exactly, so
+  `--runs 1` is adequate for them and wasteful to exceed.
+
+The fix is not to seed alpamayo into false determinism — the sampling is part of
+the model — but to report a mean and spread over enough runs, and to say n.
+Paddock stores per-episode records, so the spread is available rather than
+collapsed into one number.
+
+## Open: the two openpilot paths disagree on traffic convention
+
+openpilot sets `traffic_convention[int(is_rhd)] = 1`, where `is_rhd` means
+right-hand *drive* — wheel on the right, i.e. left-hand traffic.
+
+| path | value | implies |
+|---|---|---|
+| open-loop KITScenes harness | `[1, 0]` | left-hand-drive / right-hand traffic |
+| closed-loop node | `[0, 1]` | right-hand-drive / left-hand traffic |
+
+They cannot both be right. KITScenes is Germany, and the neuroNCAP scenes used so
+far (0103, 0108) are `boston-seaport` — both left-hand-drive, right-hand traffic.
+`[1, 0]` looks correct for both, making the closed-loop value a bug that has been
+telling the model it is driving a right-hand-drive car in Boston.
+
+**Not changed.** Correcting it changes every recorded closed-loop openpilot score,
+and that re-measurement deserves its own decision and its own commit rather than
+arriving as a side effect of a migration. Flagged at the constant in
+`adapters/models/openpilot/policy.py`.
