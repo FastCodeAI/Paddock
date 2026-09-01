@@ -169,7 +169,33 @@ changes the numbers fails loudly rather than quietly rewriting history. It must
 run in paddock's environment with no GPU and no full dataset — commit a tiny
 fixture if you need one.
 
-## Step 8 — verify and document
+## Step 8 (optional) — a renderer
+
+If comparing models on this benchmark would be helped by a figure, add
+`render.py` beside `harness.py`:
+
+```python
+def render(runs: list[LoadedRun], out_dir: Path, cfg) -> list[Path]:
+    """Draw runs from any models together; return what was written."""
+```
+
+`paddock render --bench <name>` finds it. Each `LoadedRun` carries the run
+record, its metrics, and its per-sample records including predictions.
+
+Two things to get right:
+
+- **Colour comes from `paddock.viz.palette`, keyed on the model name.** Never
+  from list position, and never from a dict key you have folded a metric into --
+  both make a model change colour between figures.
+- **Check `sequences_sha256` before implying a comparison.** Runs over different
+  sample sets are not comparable however close the counts look; `paddock render`
+  warns, and a renderer should not paper over it.
+
+Rendering belongs to the benchmark rather than to a model because debugging
+means putting several models side by side. See
+[architecture.md](architecture.md#where-does-a-file-belong).
+
+## Step 9 — verify and document
 
 ```bash
 paddock doctor

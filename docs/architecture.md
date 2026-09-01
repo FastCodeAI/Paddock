@@ -120,6 +120,46 @@ files declare what a thing is and `paddock.toml` declares where it lives.
 `config.py` expands the template variables; `tests/test_portability.py` fails the
 build if a real machine path reaches a tracked file.
 
+## Where does a file belong?
+
+One question settles it:
+
+> **Does this need to know which model produced the result?**
+
+If no, it belongs to the benchmark or the shared layer. Three tiers:
+
+| Tier | Knows about | Examples |
+|---|---|---|
+| `paddock/viz/` | neither models nor benchmarks | BEV drawing, the model colour palette, contact sheets |
+| `adapters/benchmarks/<b>/render.py` | this benchmark's ground truth and what a comparison means; takes runs from **any** models | KITScenes error distribution and worst-disagreement grid |
+| `adapters/models/<m>/` | this model's internals only | openpilot's field-of-view margin, VisionPilot's planner trace |
+
+**Rendering is benchmark-scoped, not model-scoped**, because debugging means
+putting several models side by side on one benchmark. A model cannot draw that
+comparison: it does not know about its rivals, and should not.
+
+Before paddock this was inverted. A three-way KITScenes plot lived under
+openpilot, a trajectory plot under Drive-JEPA, a per-sample sheet under
+Drive-JEPA again -- each able to draw only the model it sat beside, and each
+re-deriving the same axes. `tools/` now mirrors the same split:
+
+```
+tools/benchmarks/<b>/   harness checks and one-off figures for that benchmark
+tools/models/<m>/       probes into that model's internals
+```
+
+### The colour rule
+
+`paddock/viz/palette.py` assigns a colour per **model name**, fixed once.
+Debugging produces several figures at a time; if colour came from position in
+whatever list a script built, a model would change colour between figures and
+the reader would have to re-check the legend each time -- or not notice.
+
+This is easy to break by accident. Folding a metric into a dict key
+(`"openpilot 2.84 m"`) makes the colour a function of the number, and the same
+model comes out a different colour in every panel. Pass legend text separately;
+`bev.draw` takes `labels=` for exactly this reason.
+
 ## Module map
 
 | Module | Responsibility |
@@ -136,4 +176,6 @@ build if a real machine path reaches a tracked file.
 | `metrics/` | trajectory (ADE/FDE), ncap, pdms |
 | `results/` | canonical store, ingest of legacy formats, reporting |
 | `adapters/models/<n>/` | one model |
-| `adapters/benchmarks/<n>/` | one benchmark |
+| `adapters/benchmarks/<n>/` | one benchmark: `harness.py` to run it, optional `render.py` to compare models on it |
+| `viz/` | drawing primitives shared by every benchmark |
+| `render.py` | loads runs and dispatches to a benchmark's renderer |

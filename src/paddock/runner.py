@@ -21,6 +21,8 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
+import numpy as np
+
 from paddock.benchmark import ClosedLoopBenchmark, OpenLoopBenchmark
 from paddock.config import SiteConfig
 from paddock.policy.protocol import Trajectory
@@ -242,6 +244,13 @@ def _run_open_loop(
                         "native_id": sample.native_id,
                         "split": sample.split,
                         "metrics": metrics,
+                        # Kept so a result can be looked at, not just ranked.
+                        # These live outside the repo with the rest of the run
+                        # artifacts, so the cost is disk rather than git.
+                        "prediction": prediction.xy.tolist(),
+                        "ground_truth": np.asarray(sample.ground_truth)[:, :2].tolist()
+                        if sample.ground_truth is not None
+                        else None,
                     }
                 )
                 if (index + 1) % 25 == 0:

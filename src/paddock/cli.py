@@ -166,6 +166,38 @@ def run(
     raise typer.Exit(code=code)
 
 
+@app.command("render")
+def render_(
+    bench: str = typer.Option(..., "--bench", "-b"),
+    model: str = typer.Option(None, "--model", "-m", help="Comma-separated; default every model."),
+    run_id: str = typer.Option(None, "--run-id", help="Comma-separated specific runs."),
+    out: str = typer.Option(None, "--out", help="Where to write; default the run store."),
+) -> None:
+    """Draw a comparison of several models on one benchmark.
+
+    Rendering is scoped to the benchmark: it knows what its ground truth is and
+    what a comparison means. Uses the newest valid run per model unless --run-id
+    names specific ones.
+    """
+    from paddock.render import render as do_render
+
+    try:
+        cfg = SiteConfig.load()
+    except ConfigError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    code = do_render(
+        cfg,
+        benchmark=bench,
+        models=model.split(",") if model else None,
+        run_ids=run_id.split(",") if run_id else None,
+        out_dir=Path(out) if out else None,
+        echo=typer.echo,
+    )
+    raise typer.Exit(code=code)
+
+
 @app.command()
 def ingest(
     all_: bool = typer.Option(False, "--all", help="Ingest every source in [ingest] of paddock.toml."),

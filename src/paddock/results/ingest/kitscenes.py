@@ -46,8 +46,15 @@ def _sample(row: dict[str, Any]) -> dict[str, Any]:
             metrics["baseline_ade_drivejepa"] = float(row[key])
             break
 
+    # Predictions carried through so ingested runs can be drawn, not only
+    # ranked. The two dialects name them differently.
+    prediction = row.get("pred") or row.get("predicted_poses")
+    ground_truth = row.get("gt") or row.get("human_poses")
+
     return {
         "sample_id": f"kitscenes/{split}/{scene}/{keyframe}",
+        "prediction": [p[:2] for p in prediction] if prediction else None,
+        "ground_truth": [g[:2] for g in ground_truth] if ground_truth else None,
         "native_id": {"scene_id": scene, "keyframe_index": keyframe},
         "split": split,
         "metrics": metrics,
