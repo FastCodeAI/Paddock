@@ -65,26 +65,40 @@ holds: the conversion to the `Policy` contract changed the seams and nothing els
 
 `openpilot` likewise returned 5.0 on stationary-0103, matching its recorded value.
 
-## Open: the original setup is not reproducible over time
+## Reproducing the recorded August runs
 
-Both runs above disagree with what the same scenario recorded in August:
+| model | scenario | recorded | paddock, 2026-09-01 | |
+|---|---|---:|---:|---|
+| openpilot | stationary | 5.0 | 5.0 | match |
+| drivejepa | stationary | 5.0 | 5.0 | match |
+| drivejepa | frontal | 2.0723314376255617 | 2.0723314376255617 | **exact** |
+| visionpilot | stationary | 3.145 (27 Aug) / 3.388 (29 Aug) | 2.827 | **differs — explained below** |
 
-| run | date | ncap_score | impact speed |
-|---|---|---:|---:|
-| `outputs/runs1` | 2026-08-27 | 3.145 | 1.777 |
-| `outputs/runs1_fixed` | 2026-08-29 | 3.388 | 1.272 |
-| paddock **and** original server | 2026-09-01 | 2.827 | 2.438 |
+drivejepa reproduces to full float precision, which is the strongest evidence
+available that the pipeline as a whole — renderer, engine, node, scoring — is
+behaving as it did in August.
 
-Reference speed is 8.314 in all three, so the scenario itself is unchanged; the
-ego is arriving at the actor differently. Two runs today agree exactly, so it is
-deterministic *now* — something changed between August and now rather than the
-run being noisy.
+### Why visionpilot differs, and why it is not a drift
 
-This is not a paddock regression: the original code reproduces paddock's number,
-not August's. But it means **the August neuroNCAP figures cannot currently be
-reproduced**, and any comparison against them is unsafe until the cause is found.
-Candidates not yet eliminated: renderer or checkpoint state, a driver or library
-update beneath onnxruntime, or a change in the neuro-ncap checkout since the runs.
+It initially looked like environmental drift: paddock returned 2.827 where
+August recorded 3.145, and the *original* `visionpilot_server.py` invoked the
+original way returned 2.827 too. Two candidate explanations survived that —
+either something beneath both had changed, or the code itself had.
 
-Recording it rather than quietly adopting the new number: a benchmark whose
-scores drift without explanation is the thing this framework exists to prevent.
+File timestamps settle it:
+
+```
+drivejepa_server.py    modified 2026-08-27 03:25   last recorded run 05:37   unchanged since
+visionpilot_server.py  modified 2026-08-29 05:02   last recorded run 03:18   edited 1h44m after
+```
+
+The VisionPilot node was revised after the last run that scored it. **The
+current code has never been scored**, and 2.827 is simply what the newer
+implementation does — not a regression, and nothing environmental. drivejepa,
+untouched since its run, reproduces exactly, which rules out the renderer, the
+engine, the GPU and the libraries beneath them.
+
+This is the failure mode version pinning exists to prevent, and it is precisely
+why this code is now in git: from here, a score change has a commit beside it.
+The August visionpilot figures should be treated as belonging to a superseded
+implementation, and re-measured rather than compared against.
