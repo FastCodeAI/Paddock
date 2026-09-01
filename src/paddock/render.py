@@ -149,7 +149,14 @@ def render(
     destination = out_dir or (cfg.runs / benchmark / "_compare")
     destination.mkdir(parents=True, exist_ok=True)
 
-    written = module.render(runs, destination, cfg)
+    try:
+        written = module.render(runs, destination, cfg)
+    except ImportError as exc:
+        echo(
+            f"rendering needs the 'viz' extra, which is not installed here: {exc}\n"
+            f"  uv pip install -e '.[viz]'    (or re-run 'make setup')"
+        )
+        return 2
     for path in written:
         echo(f"  wrote {path}")
     return 0

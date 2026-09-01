@@ -32,7 +32,7 @@ which:
 
 setup:
 	uv venv --python 3.11 .venv
-	uv pip install --python .venv/bin/python -e ".[dev,serve]"
+	uv pip install --python .venv/bin/python -e ".[dev,serve,viz]"
 	@echo
 	@echo "Next:"
 	@echo "  source .venv/bin/activate      # puts 'paddock' on PATH"

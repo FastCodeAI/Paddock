@@ -25,6 +25,11 @@ serve = [
     "fastapi>=0.111",
     "uvicorn>=0.30",
 ]
+# Needed only by `paddock render`. Kept out of the base install so a machine
+# that only runs evaluations does not pull a plotting stack.
+viz = [
+    "matplotlib>=3.8",
+]
 dev = [
     "pytest>=8.0",
     "ruff>=0.5",
