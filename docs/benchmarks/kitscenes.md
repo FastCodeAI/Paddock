@@ -61,3 +61,28 @@ Verified against the recorded `runs/full223` results, same keyframes:
 **12 of 12 metrics identical at full float precision** (ade, fde@1s, fde@2s,
 fde@3s across three samples). The full n=223 run has not been done yet; the
 published figure to match is ADE 1.599, median 1.323, FDE@3s 2.894.
+
+
+## A bug worth knowing about
+
+Reproducing the full n=223 found something a three-sample check could not: the
+openpilot adapter cached its `CameraAdapter` across samples. It is built from
+the first frame's calibration, and `reset()` did not clear it, so every scene
+after the first was warped with the **first scene's mounting rotation**.
+
+KITScenes rigs are recalibrated between sessions. Across 60 `val` scenes there
+are three distinct front-camera rotations, up to 1 degree apart — so roughly a
+quarter of samples were fed a subtly wrong view. Intrinsics are identical
+throughout, which is why this survived the obvious checks.
+
+What made it hard to see:
+
+- **Nothing failed.** A degree of rotation shifts the warp; it does not raise.
+- **The three samples used for the initial check all shared one rotation
+  group**, so they matched bit-for-bit and looked like proof.
+- The error only showed as a slowly growing gap in the running mean
+  (+0.021 at 25 samples, +0.067 at 100), which is easy to attribute to noise.
+
+The lesson generalises past this adapter: **anything derived from calibration is
+episode state.** If a model caches it, `reset()` must clear it, and a test should
+say so. `tests/test_policy.py::test_reset_clears_the_camera_adapter` does.

@@ -233,10 +233,19 @@ class OpenpilotPolicy(Policy):
         runs stop being independent samples.  The pixel buffer is deliberately
         kept: it is reused in place, and reallocating it would invalidate
         ModelState's address-keyed tensor cache.
+
+        The camera adapter is episode state too, and forgetting that was a real
+        bug: it is built from the first frame's calibration and was surviving
+        across samples, so every KITScenes scene after the first was warped with
+        the first scene's mounting rotation. KITScenes rigs are recalibrated
+        between sessions -- 3 distinct front-camera rotations across 60 val
+        scenes, differing by up to 1 degree -- so roughly a quarter of samples
+        were being fed a subtly wrong view, with nothing failing.
         """
         from openpilot.selfdrive.modeld.modeld import ModelState
 
         self.model = ModelState(TARGET_W, TARGET_H, usbgpu=False)
+        self.camera = None
         self.frames_seen = 0
         self.prev_timestamp = None
 

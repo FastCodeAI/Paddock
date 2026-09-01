@@ -140,3 +140,48 @@ def test_plan_is_converted_to_y_left() -> None:
 def test_target_resolution_matches_the_compiled_warp() -> None:
     """ModelState compiles its warp for a fixed geometry; 1928x1208 is the tici one."""
     assert (TARGET_W, TARGET_H) == (1928, 1208)
+
+
+def test_reset_clears_the_camera_adapter() -> None:
+    """The camera is episode state, not model state.
+
+    It is derived from the first frame's calibration. Surviving a reset means
+    every subsequent scene is warped with the first scene's mounting rotation --
+    which is exactly what happened, and cost a 40-minute run to find. KITScenes
+    rigs are recalibrated between sessions (3 distinct front-camera rotations
+    across 60 val scenes, up to 1 degree apart), so a stale adapter silently
+    feeds a quarter of samples a wrong view.
+    """
+    policy = POLICY()
+    policy.camera = object()  # stand-in for an adapter built from another scene
+    policy.frames_seen = 12
+    policy.model = object()  # so reset() does not need openpilot to be installed
+
+    try:
+        policy.reset()
+    except ModuleNotFoundError:
+        pytest.skip("reset() constructs a ModelState; needs openpilot's environment")
+
+    assert policy.camera is None, "a stale camera adapter would warp the next scene wrongly"
+    assert policy.frames_seen == 0
+
+
+def test_calibration_changes_between_scenes_are_material() -> None:
+    """Why the above matters: a degree of mounting rotation moves the warp.
+
+    Not a large error, and nothing raises -- which is the point. It shifts what
+    the model sees just enough to change its plan.
+    """
+    import numpy as np
+
+    from paddock.adapters.models.openpilot.policy import DEVICE_FROM_EGO
+
+    upright = np.eye(4)
+    tilted = np.eye(4)
+    angle = np.radians(1.0)
+    tilted[:3, :3] = np.array(
+        [[1, 0, 0], [0, np.cos(angle), -np.sin(angle)], [0, np.sin(angle), np.cos(angle)]]
+    )
+    a = DEVICE_FROM_EGO @ upright[:3, :3]
+    b = DEVICE_FROM_EGO @ tilted[:3, :3]
+    assert not np.allclose(a, b), "a 1 degree change must not be silently equivalent"
