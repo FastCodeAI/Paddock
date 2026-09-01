@@ -98,7 +98,24 @@ implementation does — not a regression, and nothing environmental. drivejepa,
 untouched since its run, reproduces exactly, which rules out the renderer, the
 engine, the GPU and the libraries beneath them.
 
+Applied to all four nodes, the same comparison predicts which reproduce:
+
+| model | node modified | last scored run | prediction | outcome |
+|---|---|---|---|---|
+| openpilot | 08-27 03:13 | 08-27 23:28 | unchanged, should match | matched |
+| drivejepa | 08-27 03:25 | 08-28 00:00 | unchanged, should match | matched exactly |
+| alpamayo | 08-27 04:12 | 08-27 07:37 | unchanged, should match | matched |
+| visionpilot | **08-29 05:02** | 08-29 03:18 | **newer, will differ** | differed |
+
+One model out of four, predicted in advance from a file timestamp. That is worth
+more than the individual result: it says the disagreement has a mundane cause and
+the pipeline is sound.
+
 This is the failure mode version pinning exists to prevent, and it is precisely
 why this code is now in git: from here, a score change has a commit beside it.
 The August visionpilot figures should be treated as belonging to a superseded
 implementation, and re-measured rather than compared against.
+
+**If a score moves unexpectedly, check this first.** Compare the adapter's git
+history against the run's `started_utc` before suspecting the renderer, the GPU,
+or the benchmark.
