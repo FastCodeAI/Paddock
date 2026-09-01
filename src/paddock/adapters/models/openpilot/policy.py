@@ -29,6 +29,7 @@ RIGHT.  Paddock and NeuroNCAP want y LEFT.  y is negated on the way out.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -66,69 +67,90 @@ FEATURE_BUFFER_FRAMES = 100  # >= 96, the depth needed to fill features_buffer
 MODEL_HZ = 20.0  # the rate supercombo believes its input arrives at
 
 
-class CameraAdapter:
-    """Maps a source camera into the frame openpilot expects.
+@dataclass(frozen=True)
+class CameraFit:
+    """How a source frame maps into openpilot's fixed 1928x1208 input.
 
-    ModelState compiles its warp for fixed geometries, so the source must become
-    1928x1208 exactly. Two ways to get there, and which is right depends on the
-    source's aspect:
+    Pure geometry, deliberately separate from `CameraAdapter`: it needs no
+    openpilot import, so it can be reasoned about and unit-tested in paddock's
+    own environment. Getting this wrong changes what the model sees without
+    anything failing.
 
-    *Crop* when the source is taller than the target aspect. Trimming height
-    costs no horizontal field of view, and the model then sees only real pixels.
-    KITScenes' 3504x2272 is this case.
+    Two strategies, chosen from the source's aspect rather than hardcoded:
 
-    *Letterbox* when the source is wider. Cropping to the target aspect would
-    trim width, and horizontal field of view is the scarce resource: the wide
-    model view wants 58.7 deg and a nuScenes camera has only about 64 deg to
-    give. Padding height instead keeps every degree of it.
+    *Crop* when the source is taller than the target. Trimming height costs no
+    horizontal field of view and the model sees only real pixels. KITScenes'
+    3504x2272 is this case.
 
-    The two loop types previously made this choice in two separate classes, one
-    per loop, each hardcoding one strategy. Deriving it from the geometry means
-    a source of either shape works in either loop.
+    *Letterbox* when the source is wider. Cropping would trim width, and
+    horizontal field of view is the scarce resource -- the wide model view wants
+    58.7 deg and a nuScenes camera has about 64 to give. Pad height instead.
     """
+
+    mode: str
+    crop: tuple[int, int, int, int]
+    scale: float
+    scaled_size: tuple[int, int]
+    pad_top: int
+    intrinsics: np.ndarray
+
+    @classmethod
+    def compute(cls, pinhole: Pinhole) -> CameraFit:
+        target_aspect = TARGET_W / TARGET_H
+
+        if pinhole.width / pinhole.height <= target_aspect:
+            mode, crop_w = "crop", pinhole.width
+            crop_h = int(round(pinhole.width / target_aspect))
+        else:
+            mode, crop_w, crop_h = "letterbox", pinhole.width, pinhole.height
+
+        # Anchored on the principal point, not the image centre -- they differ by
+        # a few pixels and it is free to get right.
+        x0 = int(round(np.clip(pinhole.cx - crop_w / 2, 0, pinhole.width - crop_w)))
+        y0 = int(round(np.clip(pinhole.cy - crop_h / 2, 0, pinhole.height - crop_h)))
+
+        scale = TARGET_W / crop_w
+        scaled_h = int(round(crop_h * scale))
+        # Neither branch can overflow, and it is worth knowing why rather than
+        # carrying a check that looks load-bearing. Crop sets crop_h = w/aspect,
+        # so scaled_h = TARGET_W/aspect = TARGET_H exactly. Letterbox is taken
+        # only when w/h > aspect, which makes scaled_h strictly less than that.
+        # Kept as an assertion so a future change to the branching is caught.
+        assert scaled_h <= TARGET_H, (
+            f"{mode} of {pinhole.width}x{pinhole.height} produced {scaled_h} rows, "
+            f"more than {TARGET_H} -- the branch invariant no longer holds"
+        )
+        pad_top = (TARGET_H - scaled_h) // 2
+        return cls(
+            mode=mode,
+            crop=(x0, y0, x0 + crop_w, y0 + crop_h),
+            scale=scale,
+            scaled_size=(TARGET_W, scaled_h),
+            pad_top=pad_top,
+            intrinsics=np.array(
+                [
+                    [pinhole.fx * scale, 0.0, (pinhole.cx - x0) * scale],
+                    [0.0, pinhole.fy * scale, (pinhole.cy - y0) * scale + pad_top],
+                    [0.0, 0.0, 1.0],
+                ]
+            ),
+        )
+
+
+class CameraAdapter:
+    """A `CameraFit` plus the openpilot warp matrices it implies."""
 
     #: Horizontal field of view openpilot's wide model view consumes, degrees.
     WIDE_HFOV_DEG = 58.7
 
     def __init__(self, pinhole: Pinhole, camera2ego: np.ndarray) -> None:
         self.src = pinhole
-        target_aspect = TARGET_W / TARGET_H
-
-        if pinhole.width / pinhole.height <= target_aspect:
-            # Taller than the target: trim height, keep all the width.
-            self.mode = "crop"
-            crop_w = pinhole.width
-            crop_h = int(round(pinhole.width / target_aspect))
-        else:
-            # Wider than the target: letterbox rather than lose width.
-            self.mode = "letterbox"
-            crop_w = pinhole.width
-            crop_h = pinhole.height
-
-        # Anchor on the principal point, not the image centre -- they differ by
-        # a few pixels and it is free to get right.
-        x0 = int(round(np.clip(pinhole.cx - crop_w / 2, 0, pinhole.width - crop_w)))
-        y0 = int(round(np.clip(pinhole.cy - crop_h / 2, 0, pinhole.height - crop_h)))
-        self.crop = (x0, y0, x0 + crop_w, y0 + crop_h)
-
-        scale = TARGET_W / crop_w
-        scaled_h = int(round(crop_h * scale))
-        if scaled_h > TARGET_H:
-            raise ValueError(
-                f"source {pinhole.width}x{pinhole.height} cannot be fitted into "
-                f"{TARGET_W}x{TARGET_H} in {self.mode} mode (would need {scaled_h} rows)"
-            )
-        self.scale = scale
-        self.scaled_size = (TARGET_W, scaled_h)
-        self.pad_top = (TARGET_H - scaled_h) // 2
-
-        self.intrinsics = np.array(
-            [
-                [pinhole.fx * scale, 0.0, (pinhole.cx - x0) * scale],
-                [0.0, pinhole.fy * scale, (pinhole.cy - y0) * scale + self.pad_top],
-                [0.0, 0.0, 1.0],
-            ]
-        )
+        self.fit = CameraFit.compute(pinhole)
+        self.mode = self.fit.mode
+        self.crop = self.fit.crop
+        self.scaled_size = self.fit.scaled_size
+        self.pad_top = self.fit.pad_top
+        self.intrinsics = self.fit.intrinsics
 
         from openpilot.common.transformations.camera import view_frame_from_device_frame
         from openpilot.common.transformations.model import get_warp_matrix
@@ -136,8 +158,7 @@ class CameraAdapter:
 
         # Mounting rotation: the residual rotation satisfying
         #   view_frame_from_device_frame @ rot_from_euler(rpy) == R_cam_from_device
-        r_ego_cam = camera2ego[:3, :3]
-        r_dev_cam = DEVICE_FROM_EGO @ r_ego_cam
+        r_dev_cam = DEVICE_FROM_EGO @ camera2ego[:3, :3]
         self.rpy = np.asarray(rot2euler(view_frame_from_device_frame.T @ r_dev_cam.T), dtype=np.float32)
         self.transforms = {
             "img": get_warp_matrix(self.rpy, self.intrinsics, False).astype(np.float32),
@@ -147,8 +168,7 @@ class CameraAdapter:
     def prepare(self, image: np.ndarray) -> np.ndarray:
         """Source frame -> the TARGET_W x TARGET_H frame `intrinsics` describes."""
         x0, y0, x1, y1 = self.crop
-        cropped = image[y0:y1, x0:x1]
-        resized = np.asarray(Image.fromarray(cropped).resize(self.scaled_size, Image.BILINEAR))
+        resized = np.asarray(Image.fromarray(image[y0:y1, x0:x1]).resize(self.scaled_size, Image.BILINEAR))
         if self.scaled_size[1] == TARGET_H:
             return resized
         out = np.zeros((TARGET_H, TARGET_W, 3), dtype=np.uint8)
