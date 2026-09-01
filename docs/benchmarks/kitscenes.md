@@ -58,9 +58,17 @@ Verified against the recorded `runs/full223` results, same keyframes:
 | 02be7d74 / 40 | 0.8611… | identical |
 | 03ed2585 / 40 | 2.8353… | identical |
 
-**12 of 12 metrics identical at full float precision** (ade, fde@1s, fde@2s,
-fde@3s across three samples). The full n=223 run has not been done yet; the
-published figure to match is ADE 1.599, median 1.323, FDE@3s 2.894.
+The **full n=223 run reproduces every metric exactly**:
+
+| metric | exact / 223 | paddock | recorded |
+|---|---:|---:|---:|
+| ade | **223/223** | 1.599424 | 1.599424 |
+| fde@1s | **223/223** | 0.836421 | 0.836421 |
+| fde@2s | **223/223** | 1.808482 | 1.808482 |
+| fde@3s | **223/223** | 2.893613 | 2.893613 |
+
+892 of 892 metric comparisons identical at full float precision; ADE median
+1.322747 against 1.322747. Roughly 85 minutes on this hardware.
 
 
 ## A bug worth knowing about

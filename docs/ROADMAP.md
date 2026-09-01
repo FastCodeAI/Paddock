@@ -10,7 +10,7 @@ because both organisations need to see it.
 | **M3** | Registries, `paddock setup`, data projection | partial | registries, projection and full de-hardcoding done; `paddock setup` not implemented |
 | **M4** | Ingest existing results | **done** | 36 runs, 77 tests, golden values from the original reports |
 | **M5** | Reproduce closed-loop (neuroNCAP) | **partial** | adapters proven identical to the original nodes; see `docs/benchmarks/neuroncap.md` |
-| **M6** | Reproduce open-loop (KITScenes) | **partial** | per-sample metrics identical at full float precision on a subset; full n=223 running |
+| **M6** | Reproduce open-loop (KITScenes) | **done** | full n=223: 892/892 metric comparisons identical at full float precision |
 
 ## What "done" means here, and what it does not
 
@@ -28,7 +28,7 @@ That distinction matters, so it is spelled out:
 | `crop_box` unification is behaviour-preserving | KITScenes crop is byte-identical: `(1, 151, 3503, 2121)` | **strong** |
 | Repo works at another site | `tests/test_alt_site.py` resolves a foreign layout; `test_portability.py` bans machine paths | **strong** |
 | Adapters obey the Policy contract | per-model contract tests: frame convention, shapes, guards, reset semantics | **moderate** — no GPU, no weights |
-| Adapters produce the same output as the original nodes | head-to-head on neuroNCAP: paddock and the original server both return `2.8269616956051293` | **proof**, for visionpilot + openpilot on one scenario |
+| Adapters produce the same output as the original nodes | head-to-head on neuroNCAP (both return `2.8269616956051293`), and KITScenes n=223 with 892/892 metrics identical | **proof** |
 | Adapters reproduce the **August** recorded numbers | drivejepa matches to full float precision; visionpilot differs because its node was edited after its last scored run | **strong** |
 
 M5 closed the first of those rows. Running paddock's adapters against the same
@@ -79,10 +79,13 @@ what is missing; `setup` does not yet fix it.
 Needs: the neuroNCAP benchmark adapter (rescued but not converted), the renderer
 launcher, `runtime/proc.py` and `runtime/gpu.py`.
 
-**M6 — open loop.** The adapter is built and `paddock run --bench kitscenes`
-works. On a three-sample subset all twelve metrics matched the recorded
-`runs/full223` values at full float precision. The full n=223 confirmation
-(ADE 1.599 / median 1.323 / FDE@3s 2.894) is the remaining step.
+**M6 — done.** `paddock run --bench kitscenes --model openpilot` reproduces the
+recorded `runs/full223` exactly: ADE 1.599424, median 1.322747, FDE@3s 2.893613,
+with all 892 metric comparisons identical at full float precision.
+
+Getting there found a real bug — the adapter was reusing the first scene's
+camera calibration for all 223 samples — which a three-sample check had missed
+because those three shared a rotation group. See `docs/benchmarks/kitscenes.md`.
 
 The sample-list question is settled: all 223 keyframes are servable from the
 configured tiers, 0 missing, and `samples()` refuses a partial set rather than
