@@ -24,6 +24,7 @@ from __future__ import annotations
 import numpy as np
 
 __all__ = [
+    "displacement_errors",
     "ade",
     "fde",
     "displacements",
@@ -145,3 +146,28 @@ def align(pred, pred_t, gt, gt_t) -> tuple[np.ndarray, np.ndarray, int]:
     # 2. interpolate ground truth onto the prediction's timestamps
     aligned_gt = np.stack([np.interp(pt, gt_times, g[:, 0]), np.interp(pt, gt_times, g[:, 1])], axis=1)
     return p, aligned_gt, len(p)
+
+
+def displacement_errors(
+    predicted, ground_truth, interval_s: float = 0.5, eval_horizon_s: float = 3.0
+) -> dict[str, float]:
+    """ADE up to `eval_horizon_s`, plus FDE at each whole second within it.
+
+    The KITScenes metric definition, unchanged from the harness that produced
+    the published n=223 tables. Kept as one function rather than assembled from
+    `ade` and `fde` at each call site, so every caller truncates to the horizon
+    the same way -- the difference between scoring 3 s and scoring whatever the
+    model happened to emit is exactly the kind of drift that makes two numbers
+    look comparable when they are not.
+    """
+    predicted = _xy(predicted)
+    ground_truth = _xy(ground_truth)
+    available = min(len(predicted), len(ground_truth))
+    horizon = min(available, int(round(eval_horizon_s / interval_s)))
+    error = np.linalg.norm(predicted[:horizon, :2] - ground_truth[:horizon, :2], axis=-1)
+    metrics: dict[str, float] = {"ade": float(error.mean())}
+    for seconds in range(1, int(eval_horizon_s) + 1):
+        index = int(round(seconds / interval_s)) - 1
+        if 0 <= index < horizon:
+            metrics[f"fde@{seconds}s"] = float(error[index])
+    return metrics

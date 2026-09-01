@@ -48,7 +48,19 @@ ALLOWED = (
     "/proc/",
 )
 
-BINARY_SUFFIXES = {".png", ".jpg", ".jpeg", ".mp4", ".pkl", ".ckpt", ".onnx", ".pt", ".gz", ".tar"}
+BINARY_SUFFIXES = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".mp4",
+    ".pkl",
+    ".ckpt",
+    ".onnx",
+    ".pt",
+    ".gz",
+    ".tar",
+    ".pyc",  # compiled modules embed their build-time source path
+}
 
 # This file necessarily contains the very patterns it bans.
 EXEMPT = {"tests/test_portability.py"}
@@ -72,14 +84,7 @@ EXEMPT_PENDING_MIGRATION = frozenset(
     {
         "docs/models/VISION_PILOT_GUIDE.md",
         "docs/models/openpilot-guide.md",
-        "src/paddock/adapters/benchmarks/kitscenes/loader.py",
-        "src/paddock/adapters/benchmarks/kitscenes/report_openpilot.py",
-        "src/paddock/adapters/benchmarks/kitscenes/run_openpilot.py",
-        "src/paddock/adapters/benchmarks/navsim/exports.sh.orig",
-        "src/paddock/adapters/benchmarks/navsim/run_kitscenes_inference.py",
-        "src/paddock/adapters/benchmarks/neuroncap/ladder.py",
         "src/paddock/adapters/benchmarks/neuroncap/renderer.py",
-        "src/paddock/adapters/benchmarks/neuroncap/run_vp_variant.sh",
         "tools/neuroncap/analyze_visionpilot.py",
         "tools/neuroncap/diag_visionpilot.py",
         "tools/neuroncap/gate_ab_render.py",
@@ -109,7 +114,7 @@ EXEMPT_PENDING_MIGRATION = frozenset(
 )
 
 #: Never raise this. It is the size of the backlog on the day it was created.
-MIGRATION_BACKLOG_CEILING = 35
+MIGRATION_BACKLOG_CEILING = 28
 
 
 def tracked_files() -> list[Path]:

@@ -42,7 +42,7 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import numpy as np
 import torch
@@ -54,18 +54,16 @@ DEVKIT_ROOT = Path(os.environ["NAVSIM_DEVKIT_ROOT"])
 os.chdir(DEVKIT_ROOT)  # the agent's __init__ does np.load("./data/8192.npy")
 
 from scripts.inference.kitscenes_adapter import (  # noqa: E402 - needs the chdir above
-    HISTORY_STRIDE,
     KITScenesSceneAdapter,
 )
 
 CONFIG_ROOT = DEVKIT_ROOT / "navsim/planning/script/config/common"
 DEFAULT_CKPT = (
-    Path(os.environ["NAVSIM_EXP_ROOT"])
-    / "Drive-JEPA-cache/drive_jepa_perception_based_agent_vitl_v2.ckpt"
+    Path(os.environ["NAVSIM_EXP_ROOT"]) / "Drive-JEPA-cache/drive_jepa_perception_based_agent_vitl_v2.ckpt"
 )
 
 
-def split_scene_ids(kitscenes_repo: Path, split: str) -> List[str]:
+def split_scene_ids(kitscenes_repo: Path, split: str) -> list[str]:
     """Scene UUIDs for *split*, read from the toolkit's split files."""
     filenames = {
         "train": "train.txt",
@@ -74,9 +72,7 @@ def split_scene_ids(kitscenes_repo: Path, split: str) -> List[str]:
         "test-e2e": "test-e2e.txt",
         "overlap_train_val": "overlap_train_val.txt",
     }
-    split_file = (
-        kitscenes_repo / "kitscenes/split/generated_splits/default_geo_split_v1_0" / filenames[split]
-    )
+    split_file = kitscenes_repo / "kitscenes/split/generated_splits/default_geo_split_v1_0" / filenames[split]
     return [line.strip() for line in split_file.read_text().splitlines() if line.strip()]
 
 
@@ -118,7 +114,7 @@ def build_agent(checkpoint_path: Path, agent_name: str):
 
 def displacement_errors(
     predicted: np.ndarray, ground_truth: np.ndarray, interval_s: float, eval_horizon_s: float
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """ADE up to *eval_horizon_s* plus FDE at each whole second within it.
 
     The paper evaluates every Table 6 metric at the 3 s horizon, so ADE must be
@@ -128,7 +124,7 @@ def displacement_errors(
     available = min(len(predicted), len(ground_truth))
     horizon = min(available, int(round(eval_horizon_s / interval_s)))
     error = np.linalg.norm(predicted[:horizon, :2] - ground_truth[:horizon, :2], axis=-1)
-    metrics: Dict[str, float] = {"ade": float(error.mean())}
+    metrics: dict[str, float] = {"ade": float(error.mean())}
     for seconds in range(1, int(eval_horizon_s) + 1):
         index = int(round(seconds / interval_s)) - 1
         if 0 <= index < horizon:
@@ -137,7 +133,9 @@ def displacement_errors(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--kitscenes-root", type=Path, default=Path(os.environ.get("KITSCENES_ROOT", "")))
     parser.add_argument(
         "--splits",
@@ -156,7 +154,7 @@ def main() -> None:
     parser.add_argument(
         "--kitscenes-repo",
         type=Path,
-        default=Path("/shakaal_hdd_1/workspace/naren/renesas/kitscenes"),
+        default=Path(os.environ["KITSCENES_REPO"]) if os.environ.get("KITSCENES_REPO") else None,
         help="clone of the kitscenes toolkit, for split lists and the downloader",
     )
     parser.add_argument(
@@ -166,7 +164,9 @@ def main() -> None:
         help="e2e: the paper's non-overlapping 9 s windows (4 s past + 5 s future, "
         "scored at 3 s). sweep: dense keyframes at --keyframe-stride, for debugging.",
     )
-    parser.add_argument("--keyframe-stride", type=int, default=10, help="sweep protocol only, in 10 Hz frames")
+    parser.add_argument(
+        "--keyframe-stride", type=int, default=10, help="sweep protocol only, in 10 Hz frames"
+    )
     parser.add_argument("--eval-horizon", type=float, default=3.0, help="seconds scored, paper uses 3")
     parser.add_argument("--max-samples-per-scene", type=int, default=0, help="0 = all keyframes")
     parser.add_argument("--command", choices=["gt", "straight"], default="gt")
@@ -181,7 +181,7 @@ def main() -> None:
 
     # (split, scene_id) pairs.  Streaming works off the toolkit's split lists so a
     # run covers the full population; otherwise only what is already extracted.
-    targets: List[tuple] = []
+    targets: list[tuple] = []
     for split in args.splits:
         split_root = args.kitscenes_root / "data" / split
         if args.stream_download:
@@ -210,7 +210,7 @@ def main() -> None:
     num_future_frames = horizon.num_poses
     print(f"agent horizon: {horizon.num_poses} poses x {horizon.interval_length}s = {horizon.time_horizon}s")
 
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     started = time.perf_counter()
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -233,9 +233,7 @@ def main() -> None:
         if args.protocol == "e2e":
             # 4 s of past observation, 9 s windows that do not overlap, and a full
             # 5 s of future so keyframes land where the benchmark's would.
-            keyframes = adapter.valid_keyframes(
-                num_future_frames=10, stride=90, first_frame=40
-            )
+            keyframes = adapter.valid_keyframes(num_future_frames=10, stride=90, first_frame=40)
         else:
             keyframes = adapter.valid_keyframes(num_future_frames, stride=args.keyframe_stride)
         if args.max_samples_per_scene:

@@ -50,16 +50,21 @@ def run_foreground(cfg: SiteConfig, scene: str, port: int = 8000) -> int:
         return 1
 
     env = {
-        k: os.environ[k] for k in ("PATH", "HOME", "USER", "LD_LIBRARY_PATH", "CUDA_VISIBLE_DEVICES")
+        k: os.environ[k]
+        for k in ("PATH", "HOME", "USER", "LD_LIBRARY_PATH", "CUDA_VISIBLE_DEVICES")
         if k in os.environ
     }
     env["NEURAD_STUDIO"] = studio
     env["PYTHONPATH"] = os.pathsep.join([str(REPO_ROOT / "src"), studio])
 
     command = [
-        python, "-u", str(RENDERER_SCRIPT),
-        "--load-config", str(config),
-        "--port", str(port),
+        python,
+        "-u",
+        str(RENDERER_SCRIPT),
+        "--load-config",
+        str(config),
+        "--port",
+        str(port),
     ]
     print(f"starting renderer for scene {scene} on port {port}")
     print("this takes a few minutes; leave it running and use another shell for `paddock run`")

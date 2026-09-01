@@ -22,7 +22,6 @@ import os
 import sys
 from pathlib import Path
 
-import numpy as np
 import torch
 
 # NeuRAD-studio is a checkout, not an installed package, and it lives wherever
@@ -165,12 +164,11 @@ cl_server_mod.ClosedLoopServer.update_actor_trajectories = torch.no_grad()(_upda
 
 
 if __name__ == "__main__":
+    import nerfstudio.scripts.closed_loop.main as cl_main
     import tyro
     import uvicorn
-
     from nerfstudio.scripts.closed_loop.main import app
     from nerfstudio.scripts.closed_loop.server import ClosedLoopServer
-    import nerfstudio.scripts.closed_loop.main as cl_main
 
     tyro.extras.set_accent_color("bright_yellow")
     cl_server = tyro.cli(ClosedLoopServer)

@@ -56,9 +56,7 @@ def constant_velocity_rows(reference: list[dict[str, Any]]) -> dict[str, float]:
     for row in reference:
         pred = metrics_mod.constant_velocity(float(row["ego_speed"]), n=len(row["human_poses"]))
         metrics.append(
-            metrics_mod.displacement_errors(
-                pred, np.asarray(row["human_poses"], dtype=float), 0.5, 3.0
-            )
+            metrics_mod.displacement_errors(pred, np.asarray(row["human_poses"], dtype=float), 0.5, 3.0)
         )
     return summarise(metrics)
 
@@ -107,23 +105,29 @@ def decompose_error(predicted: np.ndarray, gt: np.ndarray, steps: int = 6) -> tu
     return float(longitudinal), float(lateral)
 
 
-def decomposition_table(
-    arms: dict[str, list[dict[str, Any]]], reference: list[dict[str, Any]]
-) -> list[str]:
+def decomposition_table(arms: dict[str, list[dict[str, Any]]], reference: list[dict[str, Any]]) -> list[str]:
     lines = [
         "| system | longitudinal (m) | lateral (m) | ratio |",
         "|---|---:|---:|---:|",
     ]
     entries = [
-        (f"Alpamayo-1.5 [{name}] medoid",
-         [decompose_error(np.asarray(r["predicted_poses_medoid"]), np.asarray(r["human_poses"]))
-          for r in rows])
+        (
+            f"Alpamayo-1.5 [{name}] medoid",
+            [
+                decompose_error(np.asarray(r["predicted_poses_medoid"]), np.asarray(r["human_poses"]))
+                for r in rows
+            ],
+        )
         for name, rows in sorted(arms.items())
     ]
     entries.append(
-        ("Drive-JEPA",
-         [decompose_error(np.asarray(r["predicted_poses"]), np.asarray(r["human_poses"]))
-          for r in reference])
+        (
+            "Drive-JEPA",
+            [
+                decompose_error(np.asarray(r["predicted_poses"]), np.asarray(r["human_poses"]))
+                for r in reference
+            ],
+        )
     )
     for label, pairs in entries:
         lon = float(np.mean([a for a, _ in pairs]))
@@ -236,9 +240,7 @@ def main() -> None:
         "## Headline (mean over samples, metres)",
         "",
     ]
-    lines += headline_table(
-        arms, summarise(reference_subset), constant_velocity_rows(reference_subset)
-    )
+    lines += headline_table(arms, summarise(reference_subset), constant_velocity_rows(reference_subset))
     lines += [
         "",
         "All rows are scored on the identical protocol: predictions subsampled onto the",
@@ -282,12 +284,17 @@ def main() -> None:
     )
     lines += breakdown(
         primary_rows,
-        lambda r: ("<5 m/s" if r["ego_speed"] < 5 else "5-10 m/s" if r["ego_speed"] < 10 else ">10 m/s"),
+        lambda r: "<5 m/s" if r["ego_speed"] < 5 else "5-10 m/s" if r["ego_speed"] < 10 else ">10 m/s",
         "By ego speed",
     )
 
     worst = sorted(primary_rows, key=lambda r: -r["medoid_ade"])[:20]
-    lines += ["**Worst 20 samples**", "", "| scene | k | v0 | ours | Drive-JEPA | reasoning |", "|---|---:|---:|---:|---:|---|"]
+    lines += [
+        "**Worst 20 samples**",
+        "",
+        "| scene | k | v0 | ours | Drive-JEPA | reasoning |",
+        "|---|---:|---:|---:|---:|---|",
+    ]
     for row in worst:
         ref = ref_by_key.get((row["scene_id"], row["keyframe_index"]), {})
         cot = (row.get("cot") or "").replace("\n", " ").replace("|", "/")[:110]
@@ -312,7 +319,7 @@ def main() -> None:
         "  the `nonav` arm withholds it.",
         "- **Sampling.** Alpamayo samples trajectories (T=0.6, top-p=0.98); Drive-JEPA is",
         "  deterministic. Seeds are fixed per sample. minADE rows are oracle-selected.",
-        f"- **Frame reconciliation.** Predictions are rotated from the full-SO(3) t0 frame into the",
+        "- **Frame reconciliation.** Predictions are rotated from the full-SO(3) t0 frame into the",
         f"  yaw-only frame the ground truth uses; largest correction over the run was {frame_max * 100:.2f} cm.",
         "- Zero-shot transfer: neither model was trained on KITScenes.",
         "",

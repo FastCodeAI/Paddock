@@ -54,9 +54,6 @@ target-version = "py311"
 # new code is linted from the start.
 extend-exclude = [
     "tools",
-    "src/paddock/adapters/benchmarks/kitscenes",
-    "src/paddock/adapters/benchmarks/neuroncap",
-    "src/paddock/adapters/benchmarks/navsim",
 ]
 
 [tool.ruff.lint]
@@ -72,6 +69,18 @@ select = ["E", "F", "I", "UP", "B"]
 "src/paddock/adapters/models/drivejepa/kitscenes_adapter.py" = ["B019", "E501", "UP006", "UP035"]
 "src/paddock/adapters/models/openpilot/camera_adapt.py" = ["E501", "UP006", "UP035"]
 "src/paddock/adapters/models/alpamayo15/kitscenes_alpamayo_loader.py" = ["B019", "E501", "UP006", "UP035"]
+
+# Rescued reporting and inference scripts. De-hardcoded, so they pass the
+# portability gate; still in their original house style. Cosmetic only.
+"src/paddock/adapters/benchmarks/kitscenes/report_alpamayo.py" = ["E501", "E702", "E731", "E741"]
+"src/paddock/adapters/benchmarks/kitscenes/report_openpilot.py" = ["E501", "E702", "E731", "E741"]
+"src/paddock/adapters/benchmarks/kitscenes/run_openpilot.py" = ["E501", "E702", "E741"]
+"src/paddock/adapters/benchmarks/navsim/run_inference.py" = ["E501", "E702", "E741"]
+"src/paddock/adapters/benchmarks/navsim/run_kitscenes_inference.py" = ["E501", "E702", "E741"]
+
+# renderer.py must extend sys.path to the neurad-studio checkout before importing
+# from it, so its imports genuinely cannot come first.
+"src/paddock/adapters/benchmarks/neuroncap/renderer.py" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "src/paddock/adapters"]

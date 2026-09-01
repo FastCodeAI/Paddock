@@ -39,6 +39,8 @@ from einops import rearrange
 from eval_kitscenes.camera_warp import Pinhole, load_and_warp
 from scipy.spatial import transform as spt
 
+from paddock.metrics.pose import to_relative_poses
+
 # Alpamayo slot id -> (KITScenes sensor, warp mode for the fill/letterbox family).
 # Matched by yaw: the KITScenes ring sits at +60.9 / +0.97 / -58.5 deg, within 6 deg of
 # Alpamayo's canonical +55 / 0 / -55.  Slot 6 is a digital telephoto off the front camera.
@@ -70,24 +72,6 @@ def quaternion_to_yaw(qx: float, qy: float, qz: float, qw: float) -> float:
     siny_cosp = 2.0 * (qw * qz + qx * qy)
     cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz)
     return float(np.arctan2(siny_cosp, cosy_cosp))
-
-
-def to_relative_poses(
-    origin: npt.NDArray[np.float64], poses: npt.NDArray[np.float64]
-) -> npt.NDArray[np.float64]:
-    """Express absolute (x, y, yaw) poses in the frame of *origin*.
-
-    Byte-for-byte the Drive-JEPA function, because the ground truth it produces is what
-    both models are scored against.
-    """
-    cos_o, sin_o = np.cos(origin[2]), np.sin(origin[2])
-    delta = poses[:, :2] - origin[:2]
-    rotated = np.stack(
-        [cos_o * delta[:, 0] + sin_o * delta[:, 1], -sin_o * delta[:, 0] + cos_o * delta[:, 1]],
-        axis=-1,
-    )
-    heading = np.arctan2(np.sin(poses[:, 2] - origin[2]), np.cos(poses[:, 2] - origin[2]))
-    return np.concatenate([rotated, heading[:, None]], axis=-1)
 
 
 class KITScenesAlpamayoScene:

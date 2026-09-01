@@ -3,11 +3,11 @@
 Ground truth and the sample list come from the Alpamayo/Drive-JEPA harness
 unmodified, so the numbers are row-for-row comparable.
 """
+
 from __future__ import annotations
 
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -16,66 +16,64 @@ from PIL import Image
 # Their package is also called `eval_kitscenes`, so importing it normally would be
 # shadowed by this one. Load the two modules we reuse straight off disk instead --
 # reusing them unmodified is what keeps the numbers row-for-row comparable.
-import importlib.util
+from paddock.metrics.pose import to_relative_poses
+from paddock.metrics.trajectory import displacement_errors
 
-ALPAMAYO_EVAL = Path("/shakaal_hdd_1/workspace/naren/renesas/alpamayo1.5/eval_kitscenes")
+__all__ = ["to_relative_poses", "displacement_errors"]
+
+# Both of the above used to be reached by loading a sibling repo's module off
+# disk -- and, for to_relative_poses, by extracting its source with ast/exec to
+# avoid importing torch. They now live in paddock.metrics, which is torch-free,
+# so a normal import does the job and there is one definition rather than two
+# that can drift.
 
 
-def _load(name: str):
-    spec = importlib.util.spec_from_file_location(f"_alpamayo_{name}", ALPAMAYO_EVAL / f"{name}.py")
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = mod
-    spec.loader.exec_module(mod)
-    return mod
+def _roots() -> list[Path]:
+    """Dataset tiers to search, fastest first.
 
-
-def _borrow(module: str, func: str):
-    """Pull one function out of a reference module without importing the module.
-
-    ``kitscenes_alpamayo_loader`` imports torch, which openpilot's venv has no
-    reason to carry. Extracting the function's own source keeps it byte-identical
-    to the reference implementation without dragging in the dependency, and
-    without a copy that could silently drift.
+    Supplied as a colon-separated search path by the model's model.yaml, from
+    {data.kitscenes.tiers}. No default: a wrong guess here silently evaluates a
+    different set of scenes than the one intended, which is far worse than a
+    clear error.
     """
-    import ast
-    src = (ALPAMAYO_EVAL / f"{module}.py").read_text()
-    node = next(n for n in ast.parse(src).body
-                if isinstance(n, ast.FunctionDef) and n.name == func)
-    ns: dict = {"np": np, "npt": np.typing}
-    exec(compile(ast.Module(body=[node], type_ignores=[]), f"{module}.py", "exec"), ns)
-    return ns[func]
+    raw = os.environ.get("KITSCENES_ROOTS")
+    if not raw:
+        raise RuntimeError(
+            "KITSCENES_ROOTS is not set. It is supplied by the model's model.yaml "
+            "from {data.kitscenes.tiers}; run through `paddock run`, or export it "
+            "for a standalone script. See docs/data-setup.md."
+        )
+    return [Path(p) for p in raw.split(":") if p]
 
 
-_ref_metrics = _load("metrics")            # torch-free, import normally
-displacement_errors = _ref_metrics.displacement_errors
-to_relative_poses = _borrow("kitscenes_alpamayo_loader", "to_relative_poses")
+KITSCENES_ROOTS: list[Path] = _roots() if os.environ.get("KITSCENES_ROOTS") else []
 
-# Scenes live in two places: the original 13 on the shakaal HDD, and everything
-# fetched later under /mnt/p4 (NVMe, pruned to the 6% the eval reads). Search both.
-KITSCENES_ROOTS = [Path(p) for p in os.environ.get(
-    "KITSCENES_ROOTS",
-    "/shakaal_hdd_1/workspace/naren/renesas/kitscenes_data/data:/mnt/p4/naren/kitscenes/data"
-).split(":")]
-KITSCENES_ROOT = KITSCENES_ROOTS[0]   # back-compat for callers that expect one
-FFMPEG = "/shakaal_hdd_1/workspace/naren/renesas/openpilot/.venv/bin/ffmpeg"
-SRC_HZ = 10.0          # KITScenes native rate
-GT_STEP = 5            # 5 frames @10Hz == the 0.5 s scoring grid
+
+def _ffmpeg() -> str:
+    """ffmpeg, from PADDOCK_FFMPEG or PATH. See adapters/models/openpilot/nv12.py."""
+    import shutil
+
+    return os.environ.get("PADDOCK_FFMPEG") or shutil.which("ffmpeg") or "ffmpeg"
+
+
+SRC_HZ = 10.0  # KITScenes native rate
+GT_STEP = 5  # 5 frames @10Hz == the 0.5 s scoring grid
 
 
 def scene_path(scene_id: str, split: str | None = None) -> Path:
     """Locate a scene across every configured root, ignoring which split it sits in."""
     splits = [split] if split else []
     splits += [s for s in ("val", "overlap_train_val", "train", "test") if s != split]
-    for root in KITSCENES_ROOTS:
+    for root in _roots():
         for sp in splits:
             p = root / sp / scene_id
             if p.is_dir():
                 return p
-    raise FileNotFoundError(f"scene {scene_id} not found under {[str(r) for r in KITSCENES_ROOTS]}")
+    raise FileNotFoundError(f"scene {scene_id} not found under {[str(r) for r in _roots()]}")
 
 
 def scene_split(scene_id: str) -> str | None:
-    for root in KITSCENES_ROOTS:
+    for root in _roots():
         for sp in ("val", "overlap_train_val", "train", "test"):
             if (root / sp / scene_id).is_dir():
                 return sp
@@ -87,7 +85,7 @@ def load_poses(scene: Path) -> np.ndarray:
     raw = np.loadtxt(scene / "poses.txt")
     x, y = raw[:, 1], raw[:, 2]
     qx, qy, qz, qw = raw[:, 4], raw[:, 5], raw[:, 6], raw[:, 7]
-    yaw = np.arctan2(2.0 * (qw * qz + qx * qy), 1.0 - 2.0 * (qy ** 2 + qz ** 2))
+    yaw = np.arctan2(2.0 * (qw * qz + qx * qy), 1.0 - 2.0 * (qy**2 + qz**2))
     return np.stack([x, y, yaw], axis=-1)
 
 
@@ -114,23 +112,41 @@ def rgb_to_nv12_batch(frames: np.ndarray, w: int, h: int) -> np.ndarray:
     """
     n = len(frames)
     p = subprocess.run(
-        [FFMPEG, "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
-         "-s", f"{w}x{h}", "-i", "pipe:0", "-f", "rawvideo", "-pix_fmt", "nv12", "pipe:1"],
-        input=frames.tobytes(), stdout=subprocess.PIPE, check=True)
+        [
+            _ffmpeg(),
+            "-loglevel",
+            "error",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "-s",
+            f"{w}x{h}",
+            "-i",
+            "pipe:0",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "nv12",
+            "pipe:1",
+        ],
+        input=frames.tobytes(),
+        stdout=subprocess.PIPE,
+        check=True,
+    )
     per = w * h * 3 // 2
     out = np.frombuffer(p.stdout, dtype=np.uint8)
-    assert out.size == n * per, f"expected {n*per} nv12 bytes, got {out.size}"
+    assert out.size == n * per, f"expected {n * per} nv12 bytes, got {out.size}"
     return out.reshape(n, per)
 
 
-def pack_nv12(dst: np.ndarray, packed: np.ndarray, w: int, h: int,
-              stride: int, y_height: int) -> None:
+def pack_nv12(dst: np.ndarray, packed: np.ndarray, w: int, h: int, stride: int, y_height: int) -> None:
     """Copy tightly packed NV12 into openpilot's strided VisionBuf layout, in place."""
     y = packed[: w * h].reshape(h, w)
-    uv = packed[w * h:].reshape(h // 2, w)
+    uv = packed[w * h :].reshape(h // 2, w)
     dst[: y_height * stride].reshape(y_height, stride)[:h, :w] = y
     off = stride * y_height
-    dst[off: off + (h // 2) * stride].reshape(h // 2, stride)[:, :w] = uv
+    dst[off : off + (h // 2) * stride].reshape(h // 2, stride)[:, :w] = uv
 
 
 def frame_indices(keyframe: int, history: int) -> list[int]:
