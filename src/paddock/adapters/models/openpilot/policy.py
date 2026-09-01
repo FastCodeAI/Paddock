@@ -49,16 +49,15 @@ DEVICE_FROM_EGO = np.diag([1.0, -1.0, -1.0])
 # is_rhd means right-hand *drive* -- steering wheel on the right, i.e. left-hand
 # traffic (UK, Japan, Singapore).
 #
-# KNOWN DISCREPANCY, deliberately not changed here. This closed-loop path uses
-# [0, 1] (is_rhd = True), while the open-loop KITScenes harness uses [1, 0]. They
-# cannot both be right: KITScenes is Germany and the neuroNCAP scenes used so far
-# (0103, 0108) are boston-seaport -- both left-hand-drive, right-hand traffic, so
-# both should be [1, 0].
+# The scenes evaluated here are left-hand-drive, right-hand-traffic: the
+# neuroNCAP sequences (0103, 0108) are boston-seaport, and KITScenes is Germany.
+# So is_rhd is False and index 0 is set.
 #
-# It is left as-is because changing it changes every recorded closed-loop score,
-# and that re-measurement should be a deliberate decision with a commit of its
-# own rather than a side effect of a migration. See docs/benchmarks/neuroncap.md.
-TRAFFIC_CONVENTION = np.array([0.0, 1.0], dtype=np.float32)
+# This was [0, 1] in the closed-loop node -- telling the model it was driving a
+# right-hand-drive car in Boston -- while the open-loop KITScenes harness used
+# [1, 0]. Corrected to agree, which is why closed-loop openpilot scores recorded
+# before 2026-09-01 are not comparable with later ones.
+TRAFFIC_CONVENTION = np.array([1.0, 0.0], dtype=np.float32)
 
 # The 0.5 s grid the vehicle model expects, regardless of sim step.
 GRID_S = np.arange(1, 9) * 0.5

@@ -111,7 +111,18 @@ def _run_one_model(
 ) -> int:
     started = datetime.now(UTC)
     began = time.time()
-    run_id = store.make_run_id(started, {"scene": scene, "runs": runs, "model": model_spec.name})
+    run_id = store.make_run_id(
+        started,
+        # Everything that changes what was measured. Scenarios were missing,
+        # so two runs over different scenario sets hashed identically.
+        {
+            "scene": scene,
+            "runs": runs,
+            "model": model_spec.name,
+            "scenarios": sorted(scenarios) if scenarios else "all",
+            "cameras": list(model_spec.cameras),
+        },
+    )
     artifacts = cfg.runs / spec.name / model_spec.name / run_id
 
     echo(f"\n=== {model_spec.name} ===")

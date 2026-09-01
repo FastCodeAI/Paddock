@@ -1,0 +1,29 @@
+{
+  "run_id": "20260901T004005-88a4e0",
+  "site": "fastcode-shakaal",
+  "benchmark": "neuroncap",
+  "model": "openpilot",
+  "mode": "closed_loop",
+  "started_utc": "2026-09-01T00:40:05+00:00",
+  "duration_s": 267.9,
+  "repo_sha": null,
+  "dataset": {
+    "name": "nuscenes",
+    "n_samples": 2,
+    "sequences_sha256": "cc403e535bb55b1f"
+  },
+  "config": {
+    "scene": "0103",
+    "runs": 1,
+    "cameras": [
+      "CAM_FRONT"
+    ]
+  },
+  "hardware": {
+    "gpu_free_gb_at_start": null
+  },
+  "status": "complete",
+  "valid": true,
+  "notes": "",
+  "ingested_from": ""
+}
