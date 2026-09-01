@@ -9,7 +9,7 @@ because both organisations need to see it.
 | **M2** | Rescue untracked work into adapters and patches | **done (models)** | patches verified byte-identical; 4 model adapters converted |
 | **M3** | Registries, `paddock setup`, data projection | partial | registries and projection done; `paddock setup` not implemented |
 | **M4** | Ingest existing results | **done** | 36 runs, 77 tests, golden values from the original reports |
-| **M5** | Reproduce closed-loop (neuroNCAP) | **not started** | — |
+| **M5** | Reproduce closed-loop (neuroNCAP) | **partial** | adapters proven identical to the original nodes; see `docs/benchmarks/neuroncap.md` |
 | **M6** | Reproduce open-loop (KITScenes) | **not started** | — |
 
 ## What "done" means here, and what it does not
@@ -28,13 +28,22 @@ That distinction matters, so it is spelled out:
 | `crop_box` unification is behaviour-preserving | KITScenes crop is byte-identical: `(1, 151, 3503, 2121)` | **strong** |
 | Repo works at another site | `tests/test_alt_site.py` resolves a foreign layout; `test_portability.py` bans machine paths | **strong** |
 | Adapters obey the Policy contract | per-model contract tests: frame convention, shapes, guards, reset semantics | **moderate** — no GPU, no weights |
-| **Adapters produce the same trajectories as before** | **nothing yet** | **unverified** |
+| Adapters produce the same output as the original nodes | head-to-head on neuroNCAP: paddock and the original server both return `2.8269616956051293` | **proof**, for visionpilot + openpilot on one scenario |
+| Adapters reproduce the **August** recorded numbers | they do not, and neither does the original code | **open** — see below |
 
-The last row is what M5 and M6 exist to close. The model conversions preserved
-the model-specific logic and changed only the seams, which is an argument for
-correctness, not a test of it. Until `paddock run` reproduces
-`ladder_current.log` and the n=223 KITScenes tables, treat the adapters as
-untested against reality.
+M5 closed the first of those rows and opened a new question in doing so.
+Running paddock's visionpilot adapter and the original `visionpilot_server.py`
+head to head against the same renderer produced **the same score to full float
+precision** — so the conversion is faithful. But both disagree with what the
+same scenario recorded in August (2.827 today against 3.145 on 27 Aug).
+
+Since the original code reproduces today's number and not August's, this is not
+a paddock regression — but **the August neuroNCAP figures cannot currently be
+reproduced**, and comparisons against them are unsafe until the cause is found.
+Details and candidate causes in `docs/benchmarks/neuroncap.md`.
+
+Two models on one scenario is not the whole of M5. The remaining models
+(alpamayo15, drivejepa) and scenarios are still unrun.
 
 This is also why **the original code has not been deleted**. It stays in place
 until paddock reproduces its numbers.

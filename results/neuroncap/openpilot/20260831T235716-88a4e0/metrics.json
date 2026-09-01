@@ -1,0 +1,67 @@
+{
+  "run_id": "20260831T235716-88a4e0",
+  "primary_metric": "ncap_score",
+  "n": 1,
+  "metrics": {
+    "ncap_score": {
+      "n": 1,
+      "n_missing": 0,
+      "mean": 5.0,
+      "median": 5.0,
+      "p90": 5.0,
+      "max": 5.0,
+      "std": 0.0
+    },
+    "collision_rate": {
+      "n": 1,
+      "n_missing": 0,
+      "mean": 0.0,
+      "median": 0.0,
+      "p90": 0.0,
+      "max": 0.0,
+      "std": 0.0
+    },
+    "duration_s": {
+      "n": 1,
+      "n_missing": 0,
+      "mean": 151.3,
+      "median": 151.3,
+      "p90": 151.3,
+      "max": 151.3,
+      "std": 0.0
+    }
+  },
+  "by_split": {
+    "stationary": {
+      "n": 1,
+      "ncap_score": {
+        "n": 1,
+        "n_missing": 0,
+        "mean": 5.0,
+        "median": 5.0,
+        "p90": 5.0,
+        "max": 5.0,
+        "std": 0.0
+      },
+      "collision_rate": {
+        "n": 1,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 1,
+        "n_missing": 0,
+        "mean": 151.3,
+        "median": 151.3,
+        "p90": 151.3,
+        "max": 151.3,
+        "std": 0.0
+      }
+    }
+  },
+  "by_group": {}
+}
