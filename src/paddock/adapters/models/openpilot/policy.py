@@ -249,7 +249,7 @@ class OpenpilotPolicy(Policy):
         if self.camera is None:
             self.camera = CameraAdapter(obs.pinhole("CAM_FRONT"), obs.camera2ego["CAM_FRONT"])
 
-        prepared = self.camera.prepare(obs.images["CAM_FRONT"])
+        prepared = self.camera.prepare(obs.image("CAM_FRONT"))
         packed = rgb_to_nv12_batch(prepared[None], TARGET_W, TARGET_H)[0]
         stride, y_height = self.nv12_info[0], self.nv12_info[1]
 

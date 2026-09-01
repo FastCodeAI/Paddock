@@ -222,7 +222,7 @@ class AlpamayoPolicy(Policy):
             key = f"{camera}:{kind}"
             if key in warped:
                 continue
-            image = Image.fromarray(obs.images[camera])
+            image = Image.fromarray(obs.image(camera))
             pinhole = to_pinhole(obs.pinhole(camera))
             warped[key] = warp(image, pinhole, kind)
         return warped

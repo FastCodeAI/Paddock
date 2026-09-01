@@ -55,7 +55,7 @@ class TemplatePolicy(Policy):
         Never return zeros to mean "no plan" -- an all-zero trajectory is a
         commanded emergency stop and scores as one. Use constant_velocity().
         """
-        # image = obs.images["CAM_FRONT"]        # uint8 HWC
+        # image = obs.image("CAM_FRONT")         # uint8 HWC, loaded from disk if needed
         # pinhole = obs.pinhole("CAM_FRONT")     # fx, fy, cx, cy, width, height
         # speed = obs.speed                      # m/s forward
         return constant_velocity(obs.speed, n=6, dt=self.waypoint_dt)

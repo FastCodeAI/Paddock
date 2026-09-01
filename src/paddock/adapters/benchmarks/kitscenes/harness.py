@@ -119,12 +119,12 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         poses = L.load_poses(scene)
 
         indices = L.frame_indices(keyframe, HISTORY_FRAMES)
-        images = L.load_frames(scene, indices)
         calibration = _read_calibration(scene)
 
+        # Paths, not pixels. The node is a subprocess on this filesystem, so
+        # neither side needs to carry 24 MB a frame.
         observations = [
-            self._observation(image, poses, index, calibration)
-            for image, index in zip(images, indices, strict=True)
+            self._observation(L.frame_path(scene, index), poses, index, calibration) for index in indices
         ]
         return Sample(
             sample_id=f"kitscenes/{row['split']}/{row['scene_id']}/{keyframe}",
@@ -145,14 +145,13 @@ class KitScenesBenchmark(OpenLoopBenchmark):
             + ", ".join(str(r) for r in self.dataset.roots)
         )
 
-    def _observation(self, image, poses: np.ndarray, index: int, calibration) -> Observation:
+    def _observation(self, image_path: Path, poses: np.ndarray, index: int, calibration) -> Observation:
         """One frame, in the protocol's shape.
 
         Intrinsics and extrinsics come from the scene's calibration; the ego
         pose is the recorded one, so a model differencing history recovers the
         true speed rather than an assumed one.
         """
-        frame = np.asarray(image.convert("RGB"), dtype=np.uint8)
         ego2world = np.eye(4)
         ego2world[:2, 3] = poses[index, :2]
         yaw = float(poses[index, 2])
@@ -163,7 +162,8 @@ class KitScenesBenchmark(OpenLoopBenchmark):
 
         intrinsics, cam2ego = calibration
         return Observation(
-            images={"CAM_FRONT": frame},
+            images={},
+            image_paths={"CAM_FRONT": str(image_path)},
             ego2world=ego2world,
             canbus=canbus,
             timestamp_us=int(index / SRC_HZ * 1e6),

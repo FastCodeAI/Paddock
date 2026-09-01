@@ -579,7 +579,7 @@ class VisionPilotPolicy(Policy):
         the 1024x512 network frame and are scaled back to the rendered image
         before projection.
         """
-        image = obs.images["CAM_FRONT"]
+        image = obs.image("CAM_FRONT")
         keep = mask >= STEER_MASK_THRESHOLD
         if not keep.any():
             return np.empty((0, 2))
@@ -591,7 +591,7 @@ class VisionPilotPolicy(Policy):
 
     def _lane_points_detail(self, xp: np.ndarray, mask: np.ndarray, obs: Observation):
         """The kept AutoSteer points in image pixels and on the ground, for drawing."""
-        image = obs.images["CAM_FRONT"]
+        image = obs.image("CAM_FRONT")
         keep = mask >= STEER_MASK_THRESHOLD
         if not keep.any():
             return np.empty((0, 2)), np.empty((0, 2))
@@ -680,7 +680,7 @@ class VisionPilotPolicy(Policy):
     def infer(self, obs: Observation) -> Trajectory:
         if self.steer is None:
             raise RuntimeError("load() must be called before infer()")
-        image = obs.images["CAM_FRONT"]
+        image = obs.image("CAM_FRONT")
         resized = self._stretch(image)
 
         dt_s = (

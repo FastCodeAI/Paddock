@@ -304,8 +304,11 @@ def _encode(obs) -> dict:
         np.save(buffer, array, allow_pickle=False)
         return base64.b64encode(buffer.getvalue()).decode()
 
+    # Paths where the frame is on a shared filesystem, pixels only where it is
+    # not. A 223-sample KITScenes run would otherwise push 348 GB of base64.
     return {
         "images": {k: encode_image(v) for k, v in obs.images.items()},
+        "image_paths": dict(obs.image_paths),
         "ego2world": obs.ego2world.tolist(),
         "canbus": obs.canbus.tolist(),
         "timestamp": obs.timestamp_us,

@@ -35,7 +35,7 @@ import io
 import pickle
 import zipfile
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Any
 
@@ -211,6 +211,8 @@ class Observation:
     camera handling silently diverges.
     """
 
+    #: Decoded frames per camera. Prefer the `image` accessor, which also
+    #: resolves `image_paths`.
     images: dict[str, np.ndarray]
     ego2world: np.ndarray
     canbus: np.ndarray
@@ -223,6 +225,14 @@ class Observation:
     #: projection derives lidar2img from it). None where a source does not
     #: supply it, so a model that needs it should say so rather than assume.
     lidar2ego: np.ndarray | None = None
+    #: Frames that live on disk, loaded on first use instead of being carried.
+    #:
+    #: Open-loop benchmarks read from a local dataset, and the node is a
+    #: subprocess on the same filesystem, so shipping pixels is pure waste: one
+    #: KITScenes frame is 24 MB, a 49-frame sample 1.2 GB, and a 223-sample run
+    #: would have pushed 348 GB of base64 through a socket. A closed-loop
+    #: renderer has no file to point at and still sends pixels.
+    image_paths: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def from_wire(cls, body: dict[str, Any], cameras: tuple[str, ...] = ("CAM_FRONT",)) -> Observation:
@@ -234,8 +244,11 @@ class Observation:
         is the larger saving by far.
         """
         calib = body["calibration"]
+        wire_images = body.get("images") or {}
+        wire_paths = body.get("image_paths") or {}
         return cls(
-            images={c: decode_image(body["images"][c]) for c in cameras if c in body["images"]},
+            images={c: decode_image(wire_images[c]) for c in cameras if c in wire_images},
+            image_paths={c: wire_paths[c] for c in cameras if c in wire_paths},
             ego2world=np.asarray(body["ego2world"], dtype=np.float64),
             canbus=np.asarray(body["canbus"], dtype=np.float64),
             timestamp_us=int(body["timestamp"]),
@@ -258,6 +271,25 @@ class Observation:
             )
         return self.lidar2ego
 
+    def image(self, camera: str = "CAM_FRONT") -> np.ndarray:
+        """The frame for one camera, loading it from disk if that is where it is.
+
+        Cached in `images`, so repeated access within a step is free.
+        """
+        if camera in self.images:
+            return self.images[camera]
+        path = self.image_paths.get(camera)
+        if path is None:
+            raise KeyError(
+                f"observation has no image for {camera!r} "
+                f"(has {sorted(self.images) or sorted(self.image_paths)})"
+            )
+        from PIL import Image as _Image
+
+        array = np.asarray(_Image.open(path).convert("RGB"), dtype=np.uint8)
+        self.images[camera] = array
+        return array
+
     @property
     def speed(self) -> float:
         """Forward speed, m/s."""
@@ -273,7 +305,7 @@ class Observation:
         return float(self.canbus[CANBUS_YAW_RATE])
 
     def pinhole(self, camera: str = "CAM_FRONT") -> Pinhole:
-        image = self.images[camera]
+        image = self.image(camera)
         return Pinhole.from_calibration(
             self.camera2image[camera], width=image.shape[1], height=image.shape[0]
         )

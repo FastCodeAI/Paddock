@@ -114,7 +114,7 @@ class DriveJepaPolicy(Policy):
             {
                 "timestamp": obs.timestamp_us,
                 "ego2world": obs.ego2world,
-                "images": obs.images,
+                "images": {c: obs.image(c) for c in self.cameras},
                 "camera2image": obs.camera2image,
                 "camera2ego": obs.camera2ego,
                 "speed": obs.speed,

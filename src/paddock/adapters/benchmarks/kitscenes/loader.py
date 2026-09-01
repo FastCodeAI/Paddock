@@ -154,5 +154,14 @@ def frame_indices(keyframe: int, history: int) -> list[int]:
     return [max(0, keyframe - history + i) for i in range(history + 1)]
 
 
+def frame_path(scene: Path, index: int, sensor: str = "camera_ring_front") -> Path:
+    """Where one source frame lives, without opening it.
+
+    Used where a frame only needs to be referred to -- a 24 MB decode per frame
+    is worth avoiding when the consumer is a subprocess that can open it itself.
+    """
+    return scene / sensor / f"{index:010d}.jpg"
+
+
 def load_frames(scene: Path, idxs: list[int], sensor: str = "camera_ring_front") -> list[Image.Image]:
-    return [Image.open(scene / sensor / f"{i:010d}.jpg") for i in idxs]
+    return [Image.open(frame_path(scene, i, sensor)) for i in idxs]
