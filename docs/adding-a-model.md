@@ -175,13 +175,24 @@ Run the constant-velocity template **before** wiring in your model. Getting the
 plumbing green first makes coordinate-frame bugs obvious, because nothing else
 is moving.
 
-## Step 9 — document
+## Step 9 (optional) — probes
+
+Diagnostics that need this model's internals go in `tools/models/<name>/`, and
+anything cheap enough to serve on request goes in `diagnostics()`, which
+`paddock` exposes at `/diagnostics` on a running node.
+
+What does **not** go here is a figure comparing this model with others.
+Rendering is scoped to the benchmark, because debugging means putting several
+models side by side and a model cannot draw that — it does not know about its
+rivals. See [architecture.md](architecture.md#where-does-a-file-belong).
+
+## Step 10 — document
 
 Write `docs/models/<name>.md`: environment, weights and where they come from,
 quirks, and the reference numbers your run produced. The next person to touch
 this model is probably at the other site.
 
-## Step 10 — open the PR
+## Step 11 — open the PR
 
 ```bash
 make check          # lint + tests + portability gate

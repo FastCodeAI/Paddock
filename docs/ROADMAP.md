@@ -10,7 +10,7 @@ because both organisations need to see it.
 | **M3** | Registries, `paddock setup`, data projection | partial | registries, projection and full de-hardcoding done; `paddock setup` not implemented |
 | **M4** | Ingest existing results | **done** | 36 runs, 77 tests, golden values from the original reports |
 | **M5** | Reproduce closed-loop (neuroNCAP) | **partial** | adapters proven identical to the original nodes; see `docs/benchmarks/neuroncap.md` |
-| **M6** | Reproduce open-loop (KITScenes) | **not started** | — |
+| **M6** | Reproduce open-loop (KITScenes) | **partial** | per-sample metrics identical at full float precision on a subset; full n=223 running |
 
 ## What "done" means here, and what it does not
 
@@ -79,19 +79,16 @@ what is missing; `setup` does not yet fix it.
 Needs: the neuroNCAP benchmark adapter (rescued but not converted), the renderer
 launcher, `runtime/proc.py` and `runtime/gpu.py`.
 
-**M6 — open loop.** `paddock run --bench kitscenes --model openpilot` must
-reproduce ADE 1.599 / median 1.323 / FDE@3s 2.894 at n=223, and
-`--model alpamayo15 --arm nonav` must reproduce 0.921 / 2.003.
+**M6 — open loop.** The adapter is built and `paddock run --bench kitscenes`
+works. On a three-sample subset all twelve metrics matched the recorded
+`runs/full223` values at full float precision. The full n=223 confirmation
+(ADE 1.599 / median 1.323 / FDE@3s 2.894) is the remaining step.
 
-Needs: the KITScenes benchmark adapter converted, and the sample-list question
-below settled.
+The sample-list question is settled: all 223 keyframes are servable from the
+configured tiers, 0 missing, and `samples()` refuses a partial set rather than
+silently scoring fewer.
 
 ## Open questions
-
-**Which KITScenes tier serves the eval set.** The three copies may hold
-different sequence sets rather than nested subsets. Until that is checked, a
-"reproduced" number could be over different data. `paddock doctor` should
-cross-check the sample list against each configured tier.
 
 **The NAVSIM headline.** The CSV and its run log disagree (0.90673 vs 0.90488)
 over the same 242 scenarios. Both are stored; which belongs in a comparison
