@@ -146,12 +146,19 @@ def _load_torch_tensor_without_torch(data: bytes) -> np.ndarray:
 
 
 def decode_image(encoded: str) -> np.ndarray:
-    """base64(torch.save(uint8 HWC)) -> uint8 HWC array.
+    """base64 of either a numpy .npy or a ``torch.save``d tensor -> uint8 HWC.
 
-    This is the renderer's ``raw`` format: a torch pickle, not a PNG, so it has
-    to be unpickled rather than image-decoded.
+    Two producers, two formats. The NeuroNCAP renderer emits a torch pickle --
+    not a PNG, so it must be unpickled rather than image-decoded. Paddock's own
+    open-loop harness emits .npy, because it has no reason to depend on torch
+    just to move an array between two of its own processes.
+
+    Sniffed from the magic bytes rather than declared, so neither producer has
+    to know about the other.
     """
     data = base64.b64decode(encoded)
+    if data[:6] == b"\x93NUMPY":
+        return np.load(io.BytesIO(data), allow_pickle=False).astype(np.uint8)
     if torch is not None:
         tensor = torch.load(io.BytesIO(data), map_location="cpu", weights_only=True)
         return tensor.numpy().astype(np.uint8)
@@ -372,6 +379,16 @@ class Policy(ABC):
     #: Waypoint spacing this model plans at, seconds.
     waypoint_dt: float = 0.5
 
+    #: Whether the model should manufacture its own warm-up on the first frame
+    #: after `reset`.
+    #:
+    #: Closed-loop simulators hand over one frame at a time with no past, so a
+    #: model needing a filled history buffer has to synthesise one. Open-loop
+    #: benchmarks feed the real preceding frames instead, and a model that
+    #: primes anyway is evaluated on a different input sequence than intended.
+    #: `infer_sequence` clears this for the duration of a sequence.
+    self_prime: bool = True
+
     def load(self) -> None:  # noqa: B027 - optional hook; a stateless policy needs no setup
         """Bring weights up. Called once, before any `infer`."""
 
@@ -381,6 +398,29 @@ class Policy(ABC):
     @abstractmethod
     def infer(self, obs: Observation) -> Trajectory:
         """Plan from one observation. Ego frame, x forward, y left."""
+
+    def infer_sequence(self, observations: list[Observation]) -> Trajectory:
+        """Plan from a sequence, scoring only the last frame.
+
+        Open-loop benchmarks have the real past available and feed it, so the
+        model sees the history it would have had rather than one it invented.
+        Self-priming is disabled for the duration: doing both would show the
+        model a manufactured history *and* the real one.
+
+        The default resets, feeds every observation in order, and returns the
+        last plan. Override only if a model can use the sequence more directly.
+        """
+        if not observations:
+            raise ValueError("infer_sequence needs at least one observation")
+        previous, self.self_prime = self.self_prime, False
+        try:
+            self.reset()
+            result: Trajectory | None = None
+            for obs in observations:
+                result = self.infer(obs)
+            return result
+        finally:
+            self.self_prime = previous
 
     def diagnostics(self) -> dict[str, Any]:
         """Whatever helps confirm the adapter is wired correctly.

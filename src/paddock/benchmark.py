@@ -31,10 +31,19 @@ from paddock.registry import BenchmarkSpec
 
 @dataclass
 class Sample:
-    """One scoreable unit of an open-loop benchmark."""
+    """One scoreable unit of an open-loop benchmark.
+
+    Carries a *sequence*, not a single frame. Several models need real history
+    to produce their scored plan -- openpilot fills a 24-deep feature buffer,
+    Alpamayo differences 16 ego poses to derive its speed -- and handing them
+    one frame would either fail or quietly measure a model working from a
+    history it invented.
+    """
 
     sample_id: str
-    observation: Observation
+    #: The frames leading to the scored moment, oldest first; the last is the
+    #: one scored. A model needing no history gets a one-element list.
+    observations: list[Observation]
     #: Recorded future, ego frame, same convention as Trajectory: x fwd, y left.
     ground_truth: Any = None
     split: str = ""

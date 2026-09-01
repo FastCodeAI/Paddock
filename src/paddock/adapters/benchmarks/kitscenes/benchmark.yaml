@@ -1,0 +1,6 @@
+name: kitscenes
+description: KITScenes open-loop trajectory accuracy - ADE and FDE against the recorded future
+mode: open_loop
+dataset: kitscenes
+metrics: [ade, fde@1s, fde@2s, fde@3s, longitudinal_mae, lateral_mae, inference_seconds]
+primary_metric: ade

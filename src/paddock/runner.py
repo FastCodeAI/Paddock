@@ -21,8 +21,9 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from paddock.benchmark import ClosedLoopBenchmark
+from paddock.benchmark import ClosedLoopBenchmark, OpenLoopBenchmark
 from paddock.config import SiteConfig
+from paddock.policy.protocol import Trajectory
 from paddock.registry import BenchmarkSpec, ModelSpec, Registry
 from paddock.results import store
 from paddock.runtime import proc
@@ -80,15 +81,23 @@ def run_benchmark(
 
     echo(f"{bench}: {len(models)} model(s), scene {scene}, {runs} run(s) per scenario")
     if dry_run:
-        episodes = list(harness.episodes([scene], runs=runs, scenarios=scenarios))
-        for m in models:
-            echo(f"  {m.name}: {', '.join(e.episode_id for e in episodes)}")
+        if isinstance(harness, OpenLoopBenchmark):
+            found, missing = harness.coverage() if hasattr(harness, "coverage") else ([], [])
+            echo(f"  {len(found)} sample(s) available" + (f", {len(missing)} missing" if missing else ""))
+            if missing:
+                echo(f"    missing scenes: {', '.join(missing[:5])}" + (" ..." if len(missing) > 5 else ""))
+        else:
+            episodes = list(harness.episodes([scene], runs=runs, scenarios=scenarios))
+            for m in models:
+                echo(f"  {m.name}: {', '.join(e.episode_id for e in episodes)}")
         echo("dry run: nothing started")
         return 0
 
-    if not isinstance(harness, ClosedLoopBenchmark):
-        echo(f"open-loop benchmarks are not wired into `paddock run` yet ({bench} is {spec.mode})")
-        return 2
+    if isinstance(harness, OpenLoopBenchmark):
+        failures = 0
+        for model_spec in models:
+            failures += _run_open_loop(cfg, harness, spec, model_spec, limit, echo)
+        return 1 if failures else 0
 
     failures = 0
     for index, model_spec in enumerate(models):
@@ -183,3 +192,117 @@ def _run_one_model(
     written = store.write_run(run, metrics_record, samples, artifacts_root=cfg.runs)
     echo(f"  -> {written.relative_to(Path.cwd()) if written.is_relative_to(Path.cwd()) else written}")
     return failures
+
+
+def _run_open_loop(
+    cfg: SiteConfig,
+    harness: OpenLoopBenchmark,
+    spec: BenchmarkSpec,
+    model_spec: ModelSpec,
+    limit: int | None,
+    echo: Callable[[str], None],
+) -> int:
+    """Score one model over a benchmark's samples, in its own interpreter.
+
+    Open loop needs no simulator, but it still needs the model's environment --
+    so the work runs as a subprocess through the same node machinery, driven
+    over HTTP. Keeping one execution path for both loop types is the point: a
+    second in-process path would be where the two quietly diverge.
+    """
+    import httpx
+
+    started = datetime.now(UTC)
+    began = time.time()
+    run_id = store.make_run_id(started, {"bench": spec.name, "model": model_spec.name, "limit": limit})
+    artifacts = cfg.runs / spec.name / model_spec.name / run_id
+
+    echo(f"\n=== {model_spec.name} ===")
+    samples: list[dict] = []
+    failures = 0
+
+    try:
+        with proc.model_node(model_spec, cfg, BASE_PORT, artifacts, echo=echo) as policy_url:
+            for index, sample in enumerate(harness.samples(limit=limit)):
+                try:
+                    payload = {
+                        "observations": [_encode(o) for o in sample.observations],
+                    }
+                    response = httpx.post(f"{policy_url}/infer_sequence", json=payload, timeout=600.0)
+                    response.raise_for_status()
+                    prediction = Trajectory(response.json()["trajectory"], dt=model_spec.waypoint_dt)
+                    metrics = harness.score(sample, prediction)
+                except Exception as exc:  # noqa: BLE001 - one bad sample must not end the run
+                    echo(f"  {sample.sample_id}: FAILED - {exc}")
+                    failures += 1
+                    continue
+
+                samples.append(
+                    {
+                        "sample_id": sample.sample_id,
+                        "native_id": sample.native_id,
+                        "split": sample.split,
+                        "metrics": metrics,
+                    }
+                )
+                if (index + 1) % 25 == 0:
+                    running = sum(s["metrics"].get("ade", 0.0) for s in samples) / len(samples)
+                    echo(f"  {index + 1} samples, running ADE {running:.3f}")
+    except (proc.NodeStartupError, RuntimeError) as exc:
+        echo(f"  node failed: {exc}")
+        return 1
+
+    if not samples:
+        echo("  no samples scored; nothing recorded")
+        return 1
+
+    run = store.RunRecord(
+        run_id=run_id,
+        site=cfg.site,
+        benchmark=spec.name,
+        model=model_spec.name,
+        mode=spec.mode,
+        started_utc=started.isoformat(timespec="seconds"),
+        duration_s=round(time.time() - began, 1),
+        dataset={
+            "name": spec.dataset,
+            "n_samples": len(samples),
+            "sequences_sha256": store.sequence_hash([s["sample_id"] for s in samples]),
+        },
+        config={"limit": limit},
+        status="complete" if not failures else "partial",
+        valid=failures == 0,
+        notes="" if not failures else f"{failures} sample(s) failed",
+    )
+    metrics_record = store.MetricsRecord.from_samples(run_id, samples, primary_metric=spec.primary_metric)
+    store.write_run(run, metrics_record, samples, artifacts_root=cfg.runs)
+    headline = metrics_record.metrics.get(spec.primary_metric, {})
+    echo(
+        f"  n={metrics_record.n}  {spec.primary_metric} mean={headline.get('mean')}"
+        f" median={headline.get('median')}"
+    )
+    return failures
+
+
+def _encode(obs) -> dict:
+    """Observation -> the wire shape the node decodes."""
+    import base64
+    import io
+
+    import numpy as np
+
+    def encode_image(array: np.ndarray) -> str:
+        buffer = io.BytesIO()
+        np.save(buffer, array, allow_pickle=False)
+        return base64.b64encode(buffer.getvalue()).decode()
+
+    return {
+        "images": {k: encode_image(v) for k, v in obs.images.items()},
+        "ego2world": obs.ego2world.tolist(),
+        "canbus": obs.canbus.tolist(),
+        "timestamp": obs.timestamp_us,
+        "command": int(obs.command),
+        "calibration": {
+            "camera2image": {k: v.tolist() for k, v in obs.camera2image.items()},
+            "camera2ego": {k: v.tolist() for k, v in obs.camera2ego.items()},
+        },
+    }

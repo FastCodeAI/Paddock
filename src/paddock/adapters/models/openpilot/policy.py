@@ -67,39 +67,73 @@ MODEL_HZ = 20.0  # the rate supercombo believes its input arrives at
 
 
 class CameraAdapter:
-    """Maps a rendered nuScenes camera into the frame openpilot expects."""
+    """Maps a source camera into the frame openpilot expects.
+
+    ModelState compiles its warp for fixed geometries, so the source must become
+    1928x1208 exactly. Two ways to get there, and which is right depends on the
+    source's aspect:
+
+    *Crop* when the source is taller than the target aspect. Trimming height
+    costs no horizontal field of view, and the model then sees only real pixels.
+    KITScenes' 3504x2272 is this case.
+
+    *Letterbox* when the source is wider. Cropping to the target aspect would
+    trim width, and horizontal field of view is the scarce resource: the wide
+    model view wants 58.7 deg and a nuScenes camera has only about 64 deg to
+    give. Padding height instead keeps every degree of it.
+
+    The two loop types previously made this choice in two separate classes, one
+    per loop, each hardcoding one strategy. Deriving it from the geometry means
+    a source of either shape works in either loop.
+    """
+
+    #: Horizontal field of view openpilot's wide model view consumes, degrees.
+    WIDE_HFOV_DEG = 58.7
 
     def __init__(self, pinhole: Pinhole, camera2ego: np.ndarray) -> None:
         self.src = pinhole
-        # Letterbox: scale so the full width survives, then pad height. Keeping
-        # the whole width is the point -- the wide model view needs nearly all
-        # of the sensor's horizontal field of view.
-        #
-        # Checked before importing openpilot: it is pure arithmetic, and a bad
-        # source should be reported as a bad source rather than surfacing only
-        # on a machine that happens to have the model installed.
-        scale = TARGET_W / pinhole.width
-        scaled_h = int(round(pinhole.height * scale))
+        target_aspect = TARGET_W / TARGET_H
+
+        if pinhole.width / pinhole.height <= target_aspect:
+            # Taller than the target: trim height, keep all the width.
+            self.mode = "crop"
+            crop_w = pinhole.width
+            crop_h = int(round(pinhole.width / target_aspect))
+        else:
+            # Wider than the target: letterbox rather than lose width.
+            self.mode = "letterbox"
+            crop_w = pinhole.width
+            crop_h = pinhole.height
+
+        # Anchor on the principal point, not the image centre -- they differ by
+        # a few pixels and it is free to get right.
+        x0 = int(round(np.clip(pinhole.cx - crop_w / 2, 0, pinhole.width - crop_w)))
+        y0 = int(round(np.clip(pinhole.cy - crop_h / 2, 0, pinhole.height - crop_h)))
+        self.crop = (x0, y0, x0 + crop_w, y0 + crop_h)
+
+        scale = TARGET_W / crop_w
+        scaled_h = int(round(crop_h * scale))
         if scaled_h > TARGET_H:
             raise ValueError(
-                f"source {pinhole.width}x{pinhole.height} is too tall to letterbox into "
-                f"{TARGET_W}x{TARGET_H} without losing vertical field of view"
+                f"source {pinhole.width}x{pinhole.height} cannot be fitted into "
+                f"{TARGET_W}x{TARGET_H} in {self.mode} mode (would need {scaled_h} rows)"
             )
+        self.scale = scale
+        self.scaled_size = (TARGET_W, scaled_h)
+        self.pad_top = (TARGET_H - scaled_h) // 2
+
+        self.intrinsics = np.array(
+            [
+                [pinhole.fx * scale, 0.0, (pinhole.cx - x0) * scale],
+                [0.0, pinhole.fy * scale, (pinhole.cy - y0) * scale + self.pad_top],
+                [0.0, 0.0, 1.0],
+            ]
+        )
 
         from openpilot.common.transformations.camera import view_frame_from_device_frame
         from openpilot.common.transformations.model import get_warp_matrix
         from openpilot.common.transformations.orientation import rot2euler
 
-        self.scale = scale
-        self.scaled_size = (TARGET_W, scaled_h)
-        self.pad_top = (TARGET_H - scaled_h) // 2
-        self.intrinsics = np.array(
-            [
-                [pinhole.fx * scale, 0.0, pinhole.cx * scale],
-                [0.0, pinhole.fy * scale, pinhole.cy * scale + self.pad_top],
-                [0.0, 0.0, 1.0],
-            ]
-        )
         # Mounting rotation: the residual rotation satisfying
         #   view_frame_from_device_frame @ rot_from_euler(rpy) == R_cam_from_device
         r_ego_cam = camera2ego[:3, :3]
@@ -111,8 +145,12 @@ class CameraAdapter:
         }
 
     def prepare(self, image: np.ndarray) -> np.ndarray:
-        """Rendered frame -> the TARGET_W x TARGET_H frame `intrinsics` describes."""
-        resized = np.asarray(Image.fromarray(image).resize(self.scaled_size, Image.BILINEAR))
+        """Source frame -> the TARGET_W x TARGET_H frame `intrinsics` describes."""
+        x0, y0, x1, y1 = self.crop
+        cropped = image[y0:y1, x0:x1]
+        resized = np.asarray(Image.fromarray(cropped).resize(self.scaled_size, Image.BILINEAR))
+        if self.scaled_size[1] == TARGET_H:
+            return resized
         out = np.zeros((TARGET_H, TARGET_W, 3), dtype=np.uint8)
         out[self.pad_top : self.pad_top + self.scaled_size[1]] = resized
         return out
@@ -220,7 +258,10 @@ class OpenpilotPolicy(Policy):
             dt = (obs.timestamp_us - self.prev_timestamp) / 1e6
             if dt > 0:
                 repeats = max(1, round(dt * MODEL_HZ))
-        if self.frames_seen == 0:
+        if self.frames_seen == 0 and self.self_prime:
+            # No history supplied, so manufacture one deep enough to fill the
+            # 24-frame feature buffer. When a harness feeds the real preceding
+            # frames (see Policy.infer_sequence) this is skipped.
             repeats = FEATURE_BUFFER_FRAMES
         self.prev_timestamp = obs.timestamp_us
 

@@ -1,0 +1,23 @@
+{
+  "run_id": "20260901T010253-fd824c",
+  "site": "fastcode-shakaal",
+  "benchmark": "kitscenes",
+  "model": "openpilot",
+  "mode": "open_loop",
+  "started_utc": "2026-09-01T01:02:53+00:00",
+  "duration_s": 217.1,
+  "repo_sha": null,
+  "dataset": {
+    "name": "kitscenes",
+    "n_samples": 3,
+    "sequences_sha256": "48e7152ac9ec88d2"
+  },
+  "config": {
+    "limit": 3
+  },
+  "hardware": {},
+  "status": "complete",
+  "valid": true,
+  "notes": "",
+  "ingested_from": ""
+}
