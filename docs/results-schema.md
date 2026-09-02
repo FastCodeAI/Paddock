@@ -125,6 +125,29 @@ which failure you are looking at.
 
 ---
 
+### NAVSIM (PDMS / EPDMS)
+
+All in `[0, 1]`, higher is better, as NAVSIM defines them. `epdms` is the
+composite the leaderboard ranks on; the rest are its terms, kept per sample so
+a change in the composite can be traced to the term that moved.
+
+| name | what it measures |
+|---|---|
+| `epdms` | NAVSIM v2 extended PDM score, the composite |
+| `no_at_fault_collisions` | 1 unless the re-simulated ego caused a collision |
+| `drivable_area_compliance` | 1 unless the ego left the drivable area (multiplicative: a 0 zeroes the composite) |
+| `driving_direction_compliance` | 1 unless the ego drove against traffic |
+| `traffic_light_compliance` | 1 unless the ego ran a red light |
+| `ego_progress` | progress along the route relative to the PDM reference planner |
+| `time_to_collision_within_bound` | 1 unless projected time-to-collision fell below the bound |
+| `lane_keeping` | 1 unless the ego strayed from its lane beyond the tolerance |
+| `history_comfort` | jerk / acceleration bounds over the executed trajectory |
+| `two_frame_extended_comfort` | consistency between consecutive frames' plans; absent for a log's first frame, and for any scenario without a scorable predecessor |
+
+A scenario the scorer could not run (its agent raised) is written with every
+term NaN and `valid=False`; the parser excludes it and the run is marked
+`partial`, `valid=false`. See `docs/benchmarks/navsim.md`.
+
 ## Ingesting existing results
 
 Results predating paddock exist in six mutually incompatible shapes. Readers
