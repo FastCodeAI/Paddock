@@ -1,0 +1,235 @@
+{
+  "run_id": "20260902T173156-7e208f",
+  "primary_metric": "epdms",
+  "n": 12146,
+  "metrics": {
+    "no_at_fault_collisions": {
+      "n": 12146,
+      "n_missing": 0,
+      "mean": 0.983945,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.125522
+    },
+    "drivable_area_compliance": {
+      "n": 12146,
+      "n_missing": 0,
+      "mean": 0.984769,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.122472
+    },
+    "driving_direction_compliance": {
+      "n": 12146,
+      "n_missing": 0,
+      "mean": 0.991355,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.072925
+    },
+    "traffic_light_compliance": {
+      "n": 12146,
+      "n_missing": 0,
+      "mean": 0.998189,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.042521
+    },
+    "ego_progress": {
+      "n": 12146,
+      "n_missing": 0,
+      "mean": 0.889107,
+      "median": 0.992225,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.214322
+    },
+    "time_to_collision_within_bound": {
+      "n": 12146,
+      "n_missing": 0,
+      "mean": 0.978511,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.145006
+    },
+    "lane_keeping": {
+      "n": 12146,
+      "n_missing": 0,
+      "mean": 0.97423,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.158448
+    },
+    "history_comfort": {
+      "n": 12146,
+      "n_missing": 0,
+      "mean": 0.978264,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.145819
+    },
+    "two_frame_extended_comfort": {
+      "n": 10040,
+      "n_missing": 2106,
+      "mean": 0.477092,
+      "median": 0.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.499475
+    },
+    "epdms": {
+      "n": 12146,
+      "n_missing": 0,
+      "mean": 0.842724,
+      "median": 0.875,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.235009
+    }
+  },
+  "by_split": {
+    "navtest": {
+      "n": 12146,
+      "no_at_fault_collisions": {
+        "n": 12146,
+        "n_missing": 0,
+        "mean": 0.983945,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.125522
+      },
+      "drivable_area_compliance": {
+        "n": 12146,
+        "n_missing": 0,
+        "mean": 0.984769,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.122472
+      },
+      "driving_direction_compliance": {
+        "n": 12146,
+        "n_missing": 0,
+        "mean": 0.991355,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.072925
+      },
+      "traffic_light_compliance": {
+        "n": 12146,
+        "n_missing": 0,
+        "mean": 0.998189,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.042521
+      },
+      "ego_progress": {
+        "n": 12146,
+        "n_missing": 0,
+        "mean": 0.889107,
+        "median": 0.992225,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.214322
+      },
+      "time_to_collision_within_bound": {
+        "n": 12146,
+        "n_missing": 0,
+        "mean": 0.978511,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.145006
+      },
+      "lane_keeping": {
+        "n": 12146,
+        "n_missing": 0,
+        "mean": 0.97423,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.158448
+      },
+      "history_comfort": {
+        "n": 12146,
+        "n_missing": 0,
+        "mean": 0.978264,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.145819
+      },
+      "two_frame_extended_comfort": {
+        "n": 10040,
+        "n_missing": 2106,
+        "mean": 0.477092,
+        "median": 0.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.499475
+      },
+      "epdms": {
+        "n": 12146,
+        "n_missing": 0,
+        "mean": 0.842724,
+        "median": 0.875,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.235009
+      }
+    }
+  },
+  "by_group": {
+    "source_aggregates": {
+      "average_all_frames": {
+        "no_at_fault_collisions": 0.9839453317964763,
+        "drivable_area_compliance": 0.9847686481146056,
+        "driving_direction_compliance": 0.9913551786596411,
+        "traffic_light_compliance": 0.9981887041001153,
+        "ego_progress": 0.8891066440463503,
+        "time_to_collision_within_bound": 0.978511444096822,
+        "lane_keeping": 0.9742301992425489,
+        "history_comfort": 0.9782644492013832,
+        "two_frame_extended_comfort": 0.4770916334661355,
+        "score": 0.842723744359227
+      },
+      "pseudo_closed_loop": {
+        "no_at_fault_collisions": 0.4919726658982382,
+        "drivable_area_compliance": 0.49238432405730287,
+        "driving_direction_compliance": 0.49567758932982053,
+        "traffic_light_compliance": 0.4990943520500577,
+        "ego_progress": 0.44455332202317516,
+        "time_to_collision_within_bound": 0.48925572204841106,
+        "lane_keeping": 0.4871150996212746,
+        "history_comfort": 0.4891322246006917,
+        "two_frame_extended_comfort": 0.19718425819199736,
+        "score": 0.4213618721796135
+      },
+      "average_expert_frames": {
+        "no_at_fault_collisions": 0.9839453317964763,
+        "drivable_area_compliance": 0.9847686481146056,
+        "driving_direction_compliance": 0.9913551786596411,
+        "traffic_light_compliance": 0.9981887041001153,
+        "ego_progress": 0.8891066440463503,
+        "time_to_collision_within_bound": 0.978511444096822,
+        "lane_keeping": 0.9742301992425489,
+        "history_comfort": 0.9782644492013832,
+        "two_frame_extended_comfort": 0.4770916334661355,
+        "score": 0.842723744359227
+      }
+    },
+    "source_reported": {
+      "final_average_valid": 0.8426890615151921
+    }
+  }
+}
