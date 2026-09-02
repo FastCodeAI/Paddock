@@ -296,7 +296,14 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
                 f"{episode.episode_id}: no results.json after {elapsed / 60:.1f} min ({reason})\n{tail}"
             )
 
-        metrics = parse_results(results_json)
+        # A route that ran but produced no scored record (crash, disconnect, empty
+        # checkpoint) must fail only this episode -- raise RuntimeError so the runner
+        # records it as failed and moves on, rather than letting a ValueError abort
+        # the whole sweep.
+        try:
+            metrics = parse_results(results_json)
+        except ValueError as exc:
+            raise RuntimeError(f"{episode.episode_id}: {exc}") from exc
         metrics["duration_s"] = round(elapsed, 1)
         return metrics
 
