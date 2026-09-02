@@ -145,6 +145,18 @@ def _load_torch_tensor_without_torch(data: bytes) -> np.ndarray:
         return np.asarray(unpickler.load())
 
 
+def encode_image(array: np.ndarray) -> str:
+    """uint8 HWC -> base64 of a numpy .npy, the wire form paddock's own harnesses send.
+
+    Defined once, next to the decoder that sniffs it, so the runner and any
+    client running inside a vendor interpreter encode identically. This module
+    imports on python 3.9; the runner does not, which is why it lives here.
+    """
+    buffer = io.BytesIO()
+    np.save(buffer, np.asarray(array, dtype=np.uint8), allow_pickle=False)
+    return base64.b64encode(buffer.getvalue()).decode()
+
+
 def decode_image(encoded: str) -> np.ndarray:
     """base64 of either a numpy .npy or a ``torch.save``d tensor -> uint8 HWC.
 

@@ -12,10 +12,20 @@ decides whether a number is right belongs where it can be checked.
 
 from __future__ import annotations
 
-import base64
-import io
-
 import numpy as np
+
+# The contracts, imported rather than restated. paddock.policy.protocol imports
+# on the vendor's python 3.9 (it needs only numpy), so nothing here is a copy
+# that can drift from its definition. See docs/reviewing.md §2.
+from paddock.policy.protocol import (
+    CANBUS_ACCEL,
+    CANBUS_VELOCITY,
+    CANBUS_YAW_RATE,
+    Command,
+    encode_image,
+)
+
+__all__ = ["encode_image"]  # re-exported for agent.py, which is 3.9-only code
 
 #: NAVSIM's frame spacing and planning grid. Both are fixed by the benchmark:
 #: the scorer's simulator expects eight poses over four seconds.
@@ -34,10 +44,15 @@ CAMERA_SLOTS = {
     "CAM_BACK_RIGHT": "cam_r2",
 }
 
-#: NAVSIM's one-hot [left, straight, right, unknown] -> paddock's Command enum
-#: (RIGHT=0, LEFT=1, STRAIGHT=2, FOLLOW_REFERENCE=3). Inverse of the mapping in
-#: adapters/models/drivejepa/policy.py, which travels the other way.
-COMMAND_FROM_ONE_HOT = (1, 2, 0, 3)
+#: NAVSIM's one-hot [left, straight, right, unknown], by position, -> paddock's
+#: Command. Built from the enum so a renumbering there cannot leave a stale
+#: literal here. Inverse of the mapping in adapters/models/drivejepa/policy.py.
+COMMAND_FROM_ONE_HOT = (
+    int(Command.LEFT),
+    int(Command.STRAIGHT),
+    int(Command.RIGHT),
+    int(Command.FOLLOW_REFERENCE),
+)
 
 #: In OpenScene the lidar frame IS the ego frame -- every log frame carries
 #: lidar2ego_translation [0,0,0] and an identity rotation -- so a camera's
@@ -73,16 +88,19 @@ def canbus(ego_status, yaw_rate: float) -> list[float]:
     canbus[0:3] = [x, y, 0.0]
     # quaternion about z, w-first, matching nuScenes' ordering
     canbus[3:7] = [np.cos(heading / 2.0), 0.0, 0.0, np.sin(heading / 2.0)]
-    canbus[7:10] = [float(accel[0]), float(accel[1]) if accel.size > 1 else 0.0, 0.0]
-    canbus[10:13] = [0.0, 0.0, float(yaw_rate)]
-    canbus[13:16] = [float(velocity[0]), float(velocity[1]) if velocity.size > 1 else 0.0, 0.0]
+    # Offsets from the protocol, not literals: these are what every model reads.
+    canbus[CANBUS_ACCEL : CANBUS_ACCEL + 3] = [
+        float(accel[0]),
+        float(accel[1]) if accel.size > 1 else 0.0,
+        0.0,
+    ]
+    canbus[CANBUS_YAW_RATE] = float(yaw_rate)
+    canbus[CANBUS_VELOCITY : CANBUS_VELOCITY + 3] = [
+        float(velocity[0]),
+        float(velocity[1]) if velocity.size > 1 else 0.0,
+        0.0,
+    ]
     return [float(v) for v in canbus]
-
-
-def encode_image(array: np.ndarray) -> str:
-    buffer = io.BytesIO()
-    np.save(buffer, np.asarray(array, dtype=np.uint8), allow_pickle=False)
-    return base64.b64encode(buffer.getvalue()).decode()
 
 
 def derive_headings(xy: np.ndarray) -> np.ndarray:

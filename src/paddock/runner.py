@@ -259,7 +259,7 @@ def _run_external(
                     stack.enter_context(proc.model_node(model_spec, cfg, next_port, artifacts, echo=echo))
                 )
                 next_port += 1
-            samples = harness.evaluate(
+            samples, failures = harness.evaluate(
                 urls[0],
                 artifacts,
                 {
@@ -293,14 +293,21 @@ def _run_external(
             "sequences_sha256": store.sequence_hash([s["sample_id"] for s in samples]),
         },
         config={"limit": limit, "cameras": list(model_spec.cameras)},
-        status="complete",
-        valid=True,
+        # Same rule as the closed-loop path: a scenario the scorer could not
+        # run is excluded from the metrics and the run is marked, never
+        # averaged. A zero from a timed-out request is indistinguishable from
+        # a model that drove into a wall.
+        status="complete" if not failures else "partial",
+        valid=not failures,
+        notes="" if not failures else f"{len(failures)} scenario(s) failed in the scorer and are excluded",
     )
     metrics_record = store.MetricsRecord.from_samples(run_id, samples, primary_metric=spec.primary_metric)
     store.write_run(run, metrics_record, samples, artifacts_root=cfg.runs)
     headline = metrics_record.metrics.get(spec.primary_metric, {})
     echo(f"  n={metrics_record.n}  {spec.primary_metric} mean={headline.get('mean')}")
-    return 0
+    if failures:
+        echo(f"  {len(failures)} scenario(s) FAILED in the scorer; run recorded as partial, valid=false")
+    return 1 if failures else 0
 
 
 def _run_open_loop(
@@ -401,15 +408,7 @@ def _run_open_loop(
 
 def _encode(obs) -> dict:
     """Observation -> the wire shape the node decodes."""
-    import base64
-    import io
-
-    import numpy as np
-
-    def encode_image(array: np.ndarray) -> str:
-        buffer = io.BytesIO()
-        np.save(buffer, array, allow_pickle=False)
-        return base64.b64encode(buffer.getvalue()).decode()
+    from paddock.policy.protocol import encode_image
 
     # Paths where the frame is on a shared filesystem, pixels only where it is
     # not. A 223-sample KITScenes run would otherwise push 348 GB of base64.

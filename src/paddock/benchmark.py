@@ -73,6 +73,16 @@ class Benchmark(ABC):
     def dataset(self):
         return self.cfg.datasets.get(self.spec.dataset)
 
+    def setting(self, key: str, default: str | None = None) -> str | None:
+        """One key from this benchmark's `[benchmarks.<name>]` block, or *default*.
+
+        Tolerates the block being absent, which `BenchmarkOverride.get` alone
+        does not. Defined here once so adapters stop each carrying their own
+        copy -- docs/reviewing.md names that duplication as a review finding.
+        """
+        settings = self.cfg.benchmarks.get(self.spec.name)
+        return settings.get(key, default) if settings is not None else default
+
     @abstractmethod
     def preflight(self) -> list[str]:
         """Return human-readable reasons this benchmark cannot run here.
@@ -149,13 +159,16 @@ class ExternallyScoredBenchmark(Benchmark):
         config: dict[str, Any],
         limit: int | None = None,
         echo=print,
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], list[str]]:
         """Drive the external scorer against a running policy node.
 
         `config` carries what the model contributes to the run -- its declared
         cameras, above all, since those decide what the scorer loads.
 
-        Returns per-sample records in the results store's shape
-        (`sample_id`, `native_id`, `split`, `metrics`), one per scored scenario,
-        so an externally scored run is as inspectable as any other.
+        Returns `(samples, failures)`: per-sample records in the results
+        store's shape (`sample_id`, `native_id`, `split`, `metrics`), one per
+        scenario the scorer actually scored, and the ids of scenarios it could
+        not. The two are kept apart because a scorer that writes an empty row
+        for a crashed scenario has not measured anything, and the runner must
+        mark the run rather than average the row. See docs/reviewing.md §4.
         """

@@ -409,3 +409,70 @@ def test_coverage_counts_logs_not_directories() -> None:
         pytest.skip("devkit scene filter not present")
     assert len(declared) == 136, f"navtest declares 136 logs, got {len(declared)}"
     assert "metadata" not in declared
+
+
+# -- a crash must not become a score (docs/reviewing.md §4) ----------------
+
+
+def test_a_failed_scenario_is_excluded_and_reported_not_averaged(tmp_path: Path) -> None:
+    """The scorer writes `get_empty_results()` -- every metric NaN, stored as
+    empty cells -- with valid=False for a scenario whose agent raised. Before
+    this, such a row became a sample with no metrics: counted in n, invisible
+    as a failure, the run reading as complete. Values here are arbitrary; the
+    row must be excluded whatever it holds."""
+    from paddock.results.ingest.navsim import SUB_METRICS, parse_scores
+
+    header = ["token", "valid", *SUB_METRICS, "score"]
+    good = ["aaaa", "True", *["1.0"] * len(SUB_METRICS), "0.9"]
+    crashed = ["bbbb", "False", *["0.0"] * len(SUB_METRICS), "0.0"]
+    aggregate = ["average_all_frames", "True", *["0.5"] * len(SUB_METRICS), "0.45"]
+    csv_path = tmp_path / "scores.csv"
+    csv_path.write_text("\n".join(",".join(r) for r in (header, good, crashed, aggregate)) + "\n")
+
+    samples, aggregates, failed = parse_scores(csv_path)
+    assert [s["native_id"]["token"] for s in samples] == ["aaaa"], "only the scored scenario is a sample"
+    assert failed == ["bbbb"], "the crashed one is named, not silently dropped"
+    assert "average_all_frames" in aggregates
+    assert all(s["metrics"]["epdms"] > 0 for s in samples), "no zero from a crash reached the metrics"
+
+
+def test_ingest_marks_a_run_with_failed_scenarios_partial_and_invalid(tmp_path: Path) -> None:
+    from paddock.results.ingest.navsim import SUB_METRICS, ingest
+
+    header = ["token", "valid", *SUB_METRICS, "score"]
+    rows = [
+        header,
+        ["aaaa", "True", *["1.0"] * len(SUB_METRICS), "0.9"],
+        ["bbbb", "False", *["0.0"] * len(SUB_METRICS), "0.0"],
+    ]
+    run_dir = tmp_path / "2026.01.01.00.00.00"
+    run_dir.mkdir()
+    (run_dir / "scores.csv").write_text("\n".join(",".join(r) for r in rows) + "\n")
+
+    run, metrics, samples = ingest(run_dir / "scores.csv", "somemodel", site="test")[0]
+    assert run.valid is False and run.status == "partial"
+    assert "1 scenario(s) failed" in run.notes
+    assert metrics.n == 1
+
+
+# -- contracts are imported, not restated (docs/reviewing.md §2) -----------
+
+
+def test_command_map_is_built_from_the_enum_not_literals() -> None:
+    """A renumbering of Command must flow through, not leave a stale tuple."""
+    assert convert.COMMAND_FROM_ONE_HOT == (
+        int(Command.LEFT),
+        int(Command.STRAIGHT),
+        int(Command.RIGHT),
+        int(Command.FOLLOW_REFERENCE),
+    )
+
+
+def test_the_image_encoder_is_the_protocols_and_round_trips() -> None:
+    """One encoder, beside the decoder that sniffs it; the runner and the
+    vendor-side agent must not each carry a copy."""
+    from paddock.policy import protocol
+
+    assert convert.encode_image is protocol.encode_image
+    image = (np.arange(2 * 3 * 3) % 256).astype(np.uint8).reshape(2, 3, 3)
+    assert np.array_equal(protocol.decode_image(protocol.encode_image(image)), image)

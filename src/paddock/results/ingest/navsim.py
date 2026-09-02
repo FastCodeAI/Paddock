@@ -57,22 +57,34 @@ SUB_METRICS = (
 
 def parse_scores(
     csv_path: Path, split: str = "navtest"
-) -> tuple[list[dict[str, Any]], dict[str, dict[str, float]]]:
-    """A NAVSIM score CSV -> per-token sample records, plus the aggregate rows.
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, float]], list[str]]:
+    """A NAVSIM score CSV -> `(samples, aggregates, failed_tokens)`.
 
     Shared by two callers that must not drift: `ingest`, which reads a CSV some
     earlier run left behind, and the navsim harness, which reads the one paddock
     has just produced. Both go through here so a run scored today and a run
     ingested from August are the same shape, and the golden tests over this
     parser cover both.
+
+    **A failed scenario is not a sample.** When an agent raises, the scorer
+    writes `PDMResults.get_empty_results()` for that token with `valid=False`:
+    every metric NaN, which the CSV stores as empty cells. Those cells were
+    already skipped per metric, so the row would have entered the store as a
+    sample with no metrics at all -- counted toward n, invisible as a failure,
+    the run reading as complete. Those tokens come back separately so the
+    caller marks the run rather than the mean.
     """
     rows = list(csv.DictReader(csv_path.read_text().splitlines()))
     samples: list[dict[str, Any]] = []
     aggregates: dict[str, dict[str, float]] = {}
+    failed: list[str] = []
 
     for row in rows:
         token = (row.get("token") or "").strip()
         if not token:
+            continue
+        if token not in AGGREGATE_TOKENS and (row.get("valid") or "").strip().lower() == "false":
+            failed.append(token)
             continue
         # Empty cells are real: two_frame_extended_comfort has none for a log's
         # first frame. Omit the metric for that row rather than coercing a zero,
@@ -96,13 +108,13 @@ def parse_scores(
             }
         )
 
-    return samples, aggregates
+    return samples, aggregates, failed
 
 
 def ingest(
     csv_path: Path, model: str, site: str, split: str = "navtest"
 ) -> list[tuple[RunRecord, MetricsRecord, list[dict[str, Any]]]]:
-    samples, aggregates = parse_scores(csv_path, split)
+    samples, aggregates, failed = parse_scores(csv_path, split)
     log_score = log_reported_score(csv_path.parent)
 
     run = RunRecord(
@@ -118,8 +130,11 @@ def ingest(
             "sequences_sha256": sequence_hash([s["sample_id"] for s in samples]),
         },
         config={"train_test_split": split},
+        status="complete" if not failed else "partial",
+        valid=not failed,
         notes=(
-            "aggregate rows kept as context, not scored: "
+            (f"{len(failed)} scenario(s) failed in the source scorer and are excluded. " if failed else "")
+            + "aggregate rows kept as context, not scored: "
             + ", ".join(f"{k}={v.get('score'):.5f}" for k, v in aggregates.items() if "score" in v)
             + (
                 f". Source log reported {log_score:.5f} over the same scenarios; paddock "

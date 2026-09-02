@@ -38,6 +38,7 @@ Site settings, `[benchmarks.navsim]` in paddock.toml:
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -83,13 +84,9 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
     def settings(self):
         return self.cfg.benchmarks.get("navsim")
 
-    def _setting(self, key: str, default: str | None = None) -> str | None:
-        settings = self.settings
-        return settings.get(key, default) if settings is not None else default
-
     @property
     def split(self) -> str:
-        return self._setting("split", "navtest") or "navtest"
+        return self.setting("split", "navtest") or "navtest"
 
     @property
     def data_split(self) -> str:
@@ -97,7 +94,7 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
 
     @property
     def devkit(self) -> Path | None:
-        value = self._setting("devkit")
+        value = self.setting("devkit")
         return Path(value) if value else None
 
     # -- preflight --------------------------------------------------------
@@ -111,7 +108,7 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
                 "see docs/benchmarks/navsim.md for the four keys it needs"
             ]
 
-        interpreter = self._setting("python")
+        interpreter = self.setting("python")
         if not interpreter:
             problems.append("[benchmarks.navsim] python is not set")
         elif not Path(interpreter).exists():
@@ -154,7 +151,7 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         if "exp" not in dataset.extra:
             problems.append("[datasets.navsim] has no 'exp' key (the NAVSIM experiment root)")
 
-        cache = self._setting("metric_cache")
+        cache = self.setting("metric_cache")
         if not cache:
             problems.append("[benchmarks.navsim] metric_cache is not set")
         elif not Path(cache).is_dir():
@@ -222,7 +219,7 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         alpamayo would not start into the headroom left by the first; the
         `infer_sequence` override already took them off the critical path.
         """
-        wanted = int(self._setting("nodes", "1") or 1)
+        wanted = int(self.setting("nodes", "1") or 1)
         if model.vram_gb > 0:
             return 1
         return max(1, wanted)
@@ -278,16 +275,16 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         cameras = list(config.get("cameras") or ["CAM_FRONT"])
 
         command = [
-            str(self._setting("python")),
+            str(self.setting("python")),
             "-u",
             str(self.devkit / SCORER),
             f"hydra.searchpath=[pkg://navsim.planning.script.config.common,file://{CONF_DIR}]",
             f"train_test_split={self.split}",
             f"agent={agent}",
             "worker=single_machine_thread_pool",
-            f"worker.max_workers={self._setting('workers', '4')}",
+            f"worker.max_workers={self.setting('workers', '4')}",
             "worker.use_process_pool=true",
-            f"metric_cache_path={self._setting('metric_cache')}",
+            f"metric_cache_path={self.setting('metric_cache')}",
             f"experiment_name=paddock_{config.get('model', 'model')}",
             # Keep the CSV, the hydra config and the scorer log with the rest of
             # this run's artifacts instead of in NAVSIM's own experiment tree.
@@ -348,17 +345,28 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         with log_path.open("w") as handle:
             handle.write(" ".join(command) + "\n\n")
             handle.flush()
-            completed = subprocess.run(
+            # The scorer forks a worker pool. Give it its own process group so
+            # that when this run is interrupted the pool goes with it, rather
+            # than four orphans hammering a dead node on a machine other people
+            # are using. The log streams to a file as it runs, so a hung
+            # scenario is diagnosable while it hangs. See docs/reviewing.md §8.
+            scorer = subprocess.Popen(
                 command,
                 cwd=str(self.devkit),
                 env=self._environment(root, exp),
                 stdout=handle,
                 stderr=subprocess.STDOUT,
+                start_new_session=True,
             )
+            try:
+                returncode = scorer.wait()
+            except BaseException:
+                _kill_group(scorer)
+                raise
 
-        if completed.returncode != 0:
+        if returncode != 0:
             raise RuntimeError(
-                f"NAVSIM scorer exited {completed.returncode}\n--- tail of {log_path} ---\n" + _tail(log_path)
+                f"NAVSIM scorer exited {returncode}\n--- tail of {log_path} ---\n" + _tail(log_path)
             )
 
         csvs = sorted(out_dir.glob("*.csv"))
@@ -368,11 +376,12 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
                 f"--- tail of {log_path} ---\n" + _tail(log_path)
             )
 
-        samples, aggregates = navsim_ingest.parse_scores(csvs[-1], split=self.split)
+        samples, aggregates, failed = navsim_ingest.parse_scores(csvs[-1], split=self.split)
         reported = navsim_ingest.log_reported_score(out_dir)
         echo(
             f"  {len(samples)} scenario(s) in {time.time() - began:.0f}s"
             + (f", scorer reported {reported:.5f}" if reported is not None else "")
+            + (f", {len(failed)} FAILED in the scorer (excluded)" if failed else "")
         )
         # Kept on the run rather than folded into the score: the scorer's own
         # headline and paddock's recomputed mean answer slightly different
@@ -382,7 +391,19 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         if samples:
             samples[0]["extra"]["source_aggregates"] = aggregates
             samples[0]["extra"]["source_reported"] = reported
-        return samples
+        return samples, failed
+
+
+def _kill_group(proc: subprocess.Popen) -> None:
+    """Take the scorer and its whole worker pool down, TERM then KILL."""
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+        proc.wait(timeout=30)
+    except (ProcessLookupError, subprocess.TimeoutExpired):
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
 
 
 def _tail(path: Path, lines: int = 30) -> str:
