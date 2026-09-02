@@ -118,6 +118,14 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             )
         return problems
 
+    def scenario_problems(self, scenarios: list[str]) -> list[str]:
+        """A scenario name with no tracked directory would otherwise yield nothing, late."""
+        known = sorted(p.name for p in SCENARIOS_DIR.iterdir() if p.is_dir())
+        unknown = [s for s in scenarios if s not in known]
+        if not unknown:
+            return []
+        return [f"--scenarios {', '.join(unknown)}: no such scenario set; known: {', '.join(known)}"]
+
     # ---- episodes ------------------------------------------------------
 
     def episodes(

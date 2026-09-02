@@ -16,8 +16,10 @@ from paddock.results.store import RESULTS_ROOT, MetricsRecord, RunRecord, load_r
 # "_s" here matched ncap_score and rendered the headline metric backwards.
 _LOWER_IS_BETTER_MARKERS = ("ade", "fde", "_mae", "_error", "_err", "_loss", "seconds")
 _LOWER_IS_BETTER_EXACT = {"collision_rate", "impact_speed"}
-#: Explicitly higher-is-better despite matching a marker above.
-_HIGHER_IS_BETTER_EXACT = {"reference_speed"}
+#: Explicitly higher-is-better: `reference_speed` matches a marker above, and
+#: Bench2Drive's `infraction_penalty` is a 0-1 multiplier on the score, not a
+#: count -- the name reads the other way.
+_HIGHER_IS_BETTER_EXACT = {"reference_speed", "infraction_penalty"}
 
 
 def lower_is_better(name: str) -> bool:

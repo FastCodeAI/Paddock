@@ -116,6 +116,9 @@ spelling of an existing one.
 | `collision_rate` | fraction of runs with a collision |
 | `impact_speed`, `reference_speed` | m/s, closed-loop collision detail |
 | `pdms`, `epdms` | NAVSIM composite scores |
+| `driving_score` | CARLA Leaderboard driving score, 0–100: `route_completion × infraction_penalty` |
+| `route_completion` | % of a closed-loop route driven before it ended |
+| `infraction_penalty` | product of CARLA's per-infraction coefficients, a 0–1 multiplier — **higher is better**, despite the name; `report.py` lists it explicitly |
 | `inference_s` | wall-clock per sample |
 
 Report `longitudinal_mae` and `lateral_mae` alongside `ade` where the benchmark

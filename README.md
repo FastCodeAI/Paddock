@@ -15,7 +15,7 @@ machine, against whatever copy of the data they already have.
 | | |
 |---|---|
 | **Models** | OpenPilot, VisionPilot, Alpamayo 1.5, Drive-JEPA — each in its own Python environment, none of them compatible with any other |
-| **Benchmarks** | KITScenes (ADE/FDE), neuroNCAP (closed-loop NCAP score), NAVSIM (PDMS/EPDMS), nuScenes and Bench2Drive planned |
+| **Benchmarks** | KITScenes (ADE/FDE), neuroNCAP (closed-loop NCAP score), NAVSIM (PDMS/EPDMS), Bench2Drive (CARLA driving score; adapter landed, not yet run), nuScenes planned |
 | **Interface** | one `Policy` per model: `load()`, `reset()`, `infer(observation) -> trajectory`. The same class serves open-loop scoring and closed-loop simulation |
 | **Results** | one schema for every benchmark, with provenance — so an ADE and an NCAP score are statements about the same model, run the same way |
 
@@ -28,10 +28,10 @@ Reference numbers are what paddock must reproduce; see `docs/benchmarks/`.
 
 | | KITScenes | neuroNCAP | NAVSIM | nuScenes | Bench2Drive |
 |---|---|---|---|---|---|
-| OpenPilot | ✅ ADE 1.599 | ✅ 5.0 / 1.86 / 5.0 | ✗ 2 Hz ‡ | planned | planned |
-| Alpamayo 1.5 | ✅ ADE 0.921 | ✅ 5.0 / 0.00 / 1.18 | ✅ EPDMS 0.653 † | planned | planned |
-| Drive-JEPA | ✅ ADE 2.364 | ✅ 5.0 / 2.07 / 5.0 | ✅ EPDMS 0.843 | planned | planned |
-| VisionPilot | ✅ (traj only) | ✅ 3.14 / 1.68 / 1.07 | ✅ EPDMS 0.431 | planned | planned |
+| OpenPilot | ✅ ADE 1.599 | ✅ 5.0 / 1.86 / 5.0 | ✗ 2 Hz ‡ | planned | adapter, unrun |
+| Alpamayo 1.5 | ✅ ADE 0.921 | ✅ 5.0 / 0.00 / 1.18 | ✅ EPDMS 0.653 † | planned | adapter, unrun |
+| Drive-JEPA | ✅ ADE 2.364 | ✅ 5.0 / 2.07 / 5.0 | ✅ EPDMS 0.843 | planned | adapter, unrun |
+| VisionPilot | ✅ (traj only) | ✅ 3.14 / 1.68 / 1.07 | ✅ EPDMS 0.431 | planned | adapter, unrun |
 
 neuroNCAP triples are stationary / frontal / side, scene 0103, 1 run.
 

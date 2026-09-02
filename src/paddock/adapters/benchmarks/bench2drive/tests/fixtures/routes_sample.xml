@@ -1,0 +1,12 @@
+<routes>
+  <route id="1711" town="Town12">
+    <scenarios>
+      <scenario name="ParkingCutIn_1" type="ParkingCutIn"/>
+    </scenarios>
+  </route>
+  <route id="1773" town="Town12">
+    <scenarios>
+      <scenario name="ParkedObstacle_1" type="ParkedObstacle"/>
+    </scenarios>
+  </route>
+</routes>

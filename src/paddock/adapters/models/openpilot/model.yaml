@@ -32,6 +32,6 @@ capabilities:
 # NAVSIM is deliberately absent. The adapter is complete and the trajectory grid
 # already matches NAVSIM's, but OpenScene is a 2 Hz dataset and supercombo needs
 # 10 Hz to perceive motion at all (see min_input_hz above), so a score here would
-# measure the rate gap. `paddock run --bench navsim --model openpilot` still
-# refuses with that explanation rather than silently doing nothing.
-benchmarks: [kitscenes, neuroncap]
+# measure the rate gap. `paddock run --bench navsim --model openpilot` refuses
+# with that explanation before loading the model, rather than silently doing nothing.
+benchmarks: [kitscenes, neuroncap, bench2drive]

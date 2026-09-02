@@ -146,14 +146,15 @@ def _load_torch_tensor_without_torch(data: bytes) -> np.ndarray:
 
 
 def encode_image(array: np.ndarray) -> str:
-    """uint8 HWC -> base64 of a numpy .npy, the wire form paddock's own harnesses send.
+    """uint8 HWC -> base64 of a numpy ``.npy``: the encoder for paddock's own producers.
 
-    Defined once, next to the decoder that sniffs it, so the runner and any
-    client running inside a vendor interpreter encode identically. This module
-    imports on python 3.9; the runner does not, which is why it lives here.
+    The open-loop runner, the NAVSIM proxy and the CARLA client all use this,
+    so there is one definition of what goes on the wire and `decode_image` is
+    its inverse. This module imports on Python 3.8/3.9 -- vendor interpreters
+    load it -- and must stay that way.
     """
     buffer = io.BytesIO()
-    np.save(buffer, np.asarray(array, dtype=np.uint8), allow_pickle=False)
+    np.save(buffer, np.ascontiguousarray(np.asarray(array, dtype=np.uint8)), allow_pickle=False)
     return base64.b64encode(buffer.getvalue()).decode()
 
 
