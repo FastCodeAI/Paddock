@@ -68,3 +68,11 @@ def test_cli_default_scene_is_not_treated_as_a_filter() -> None:
     routes = parse_routes(FIXTURES / "routes_sample.xml")
     assert len(list(select_routes(routes, scenes=["0103"]))) == 2
     assert len(list(select_routes(routes, scenes=["all"]))) == 2
+
+
+def test_routes_subset_restricts_to_chosen_ids() -> None:
+    """[benchmarks.bench2drive] routes_subset pins a run to a chosen set of route
+    ids (e.g. one per scenario category) without editing the routes file."""
+    routes = parse_routes(FIXTURES / "routes_sample.xml")
+    assert list(select_routes(routes, subset=["1773"])) == [("1773", "Town12", "ParkedObstacle")]
+    assert len(list(select_routes(routes, subset=["1711", "1773"]))) == 2

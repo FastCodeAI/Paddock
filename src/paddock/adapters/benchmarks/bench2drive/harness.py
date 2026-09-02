@@ -66,15 +66,22 @@ def select_routes(
     routes: list[tuple[str, str, str]],
     scenes: list[str] | None = None,
     scenarios: list[str] | None = None,
+    subset: list[str] | None = None,
 ) -> Iterator[tuple[str, str, str]]:
-    """Filter routes by ``--scene`` (route id or town) and ``--scenarios`` (type).
+    """Filter routes by ``--scene`` (route id or town), ``--scenarios`` (type) and
+    an optional site ``subset`` (route ids, from ``[benchmarks.bench2drive]
+    routes_subset``) that restricts the run to a chosen set -- e.g. one route per
+    scenario category -- without editing the routes file.
 
     Pure and separate from :meth:`Bench2DriveBenchmark.episodes` so the selection
     logic is unit-testable without a site config.
     """
+    subset_ids = set(subset) if subset else None
     scene_filter = None if not scenes or set(scenes) <= _NO_SCENE_FILTER else set(scenes)
     scenario_filter = set(scenarios) if scenarios else None
     for rid, town, stype in routes:
+        if subset_ids is not None and rid not in subset_ids:
+            continue
         if scene_filter is not None and rid not in scene_filter and town not in scene_filter:
             continue
         if scenario_filter is not None and stype not in scenario_filter:
@@ -180,7 +187,9 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         routes_file = self._routes_file()
         if routes_file is None or not routes_file.exists():
             return
-        for rid, town, stype in select_routes(parse_routes(routes_file), scenes, scenarios):
+        subset_setting = self._setting("routes_subset")
+        subset = [s.strip() for s in subset_setting.split(",") if s.strip()] if subset_setting else None
+        for rid, town, stype in select_routes(parse_routes(routes_file), scenes, scenarios, subset):
             yield Episode(
                 episode_id=f"{rid}-{town}-{stype}",
                 scenario=stype,
