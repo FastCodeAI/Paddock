@@ -84,3 +84,22 @@ def test_fusion_resets_to_no_cipo() -> None:
     fusion = LongitudinalFusion(process_noise_dist_m=0.3)
     fusion.reset()
     assert 0.0 < CIPO_PROB_MIN < 1.0
+
+
+def test_ort_thread_cap_is_off_unless_asked_for() -> None:
+    """Unset must mean ORT's default, or every recorded single-node run moves."""
+    import os
+
+    from paddock.adapters.models.visionpilot.policy import ort_threads
+
+    saved = os.environ.pop("VISIONPILOT_ORT_THREADS", None)
+    try:
+        assert ort_threads() == 0
+        os.environ["VISIONPILOT_ORT_THREADS"] = "2"
+        assert ort_threads() == 2
+        os.environ["VISIONPILOT_ORT_THREADS"] = "all"
+        assert ort_threads() == 0, "garbage must fall back to the default, not crash a node"
+    finally:
+        os.environ.pop("VISIONPILOT_ORT_THREADS", None)
+        if saved is not None:
+            os.environ["VISIONPILOT_ORT_THREADS"] = saved

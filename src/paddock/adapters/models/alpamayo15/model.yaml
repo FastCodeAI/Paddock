@@ -27,5 +27,11 @@ capabilities:
   # timeout looks like a hang and kills a run that was about to work.
   startup_timeout_s: 3600
   waypoint_dt: 0.5
+  # No floor. The pose branch interpolates to any cadence, and `_image_frames`
+  # falls back to the most recent distinct frames when its 0.1 s grid would
+  # return duplicates -- which is what a sub-10 Hz source causes. Measured on
+  # NAVSIM's 2 Hz data, that fallback is worth +0.207 EPDMS, almost all of it
+  # collisions avoided.
+  min_input_hz: 0.0
 
-benchmarks: [kitscenes, neuroncap]
+benchmarks: [kitscenes, neuroncap, navsim]

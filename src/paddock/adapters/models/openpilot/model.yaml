@@ -22,5 +22,16 @@ capabilities:
   vram_gb: 6
   startup_timeout_s: 600
   waypoint_dt: 0.5
+  # supercombo infers ego motion from frame-to-frame change, so the observation
+  # rate is load-bearing rather than a preference. neuroNCAP's scenarios were
+  # rebuilt at 10 Hz for exactly this reason, and KITScenes feeds 0.1 s frames.
+  # Fed 0.5 s steps it plans 0.3 m of travel in 4 s while doing 4.8 m/s -- a
+  # parked car. Benchmarks slower than this refuse rather than record it.
+  min_input_hz: 10.0
 
+# NAVSIM is deliberately absent. The adapter is complete and the trajectory grid
+# already matches NAVSIM's, but OpenScene is a 2 Hz dataset and supercombo needs
+# 10 Hz to perceive motion at all (see min_input_hz above), so a score here would
+# measure the rate gap. `paddock run --bench navsim --model openpilot` still
+# refuses with that explanation rather than silently doing nothing.
 benchmarks: [kitscenes, neuroncap]
