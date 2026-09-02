@@ -1,0 +1,12 @@
+name: bench2drive
+description: Bench2Drive closed-loop driving on CARLA 0.9.15 - the SJTU leaderboard's 220 short routes (Towns 12/13/15, 44 scenario types)
+mode: closed_loop
+
+# CARLA generates every scenario procedurally from the routes that ship with the
+# Bench2Drive checkout, so there is no external dataset to download. Where the
+# checkout and CARLA live is set in [benchmarks.bench2drive] in paddock.toml.
+dataset: ""
+
+# CARLA Leaderboard driving score = route_completion x infraction_penalty.
+metrics: [driving_score, route_completion, infraction_penalty, collision_rate]
+primary_metric: driving_score

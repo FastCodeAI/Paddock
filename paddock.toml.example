@@ -59,6 +59,19 @@ weights = "/path/to/weights"
 # [datasets.neurad_checkpoints]
 # path = "/path/to/neuroncap/checkpoints"      # per-scene NeuRAD renderers
 
+# ---------------------------------------------------------------------------
+# Benchmarks that bring their own simulator or assets say where those live here.
+# What each benchmark measures is declared in its tracked benchmark.yaml; this
+# section is only paths for this machine. See docs/benchmarks/<name>.md.
+# ---------------------------------------------------------------------------
+
+# [benchmarks.bench2drive]                     # CARLA closed-loop; docs/benchmarks/bench2drive.md
+# python      = "/path/to/conda/envs/b2d/bin/python"  # CARLA-client env (carla==0.9.15)
+# carla_root  = "/path/to/carla0915"                   # contains CarlaUE4.sh
+# repo        = "/path/to/Bench2Drive"                 # has leaderboard/ + scenario_runner/
+# routes_file = "bench2drive220.xml"                   # under repo/leaderboard/data/ (default)
+# per_route_timeout_s = 1800
+
 [gpu]
 # Total VRAM paddock may assume, in GB. Used to gate model startup rather than
 # discovering the hard way, several minutes into a checkpoint read, that the

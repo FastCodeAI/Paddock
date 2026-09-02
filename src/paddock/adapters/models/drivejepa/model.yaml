@@ -28,4 +28,4 @@ capabilities:
   startup_timeout_s: 900
   waypoint_dt: 0.5
 
-benchmarks: [navsim, kitscenes, neuroncap]
+benchmarks: [navsim, kitscenes, neuroncap, bench2drive]

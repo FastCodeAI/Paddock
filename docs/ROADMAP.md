@@ -102,7 +102,10 @@ depends on what the other side computed. See
 
 Not started, and larger than everything above:
 
-- **Bench2Drive / CARLA** — no install, no checkout, no results anywhere. Greenfield.
+- **Bench2Drive / CARLA** — closed-loop adapter added (`adapters/benchmarks/bench2drive`,
+  model-agnostic `agent.py`, golden test); drivejepa + alpamayo15 declare it. Needs a
+  site with CARLA 0.9.15 + the checkout wired in `[benchmarks.bench2drive]` to run.
+  See `docs/benchmarks/bench2drive.md`.
 - **nuScenes open-loop** — needs `nuscenes_infos*.pkl`, which do not exist, and the
   local copy has no `sweeps/` and empty radar. Camera-only is viable; fusion is not.
 - **alpamayo2, vjepa2, sunnypilot** — never evaluated.
