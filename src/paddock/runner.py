@@ -15,7 +15,9 @@ because skipping it cost a run:
 
 from __future__ import annotations
 
+import contextlib
 import importlib
+import os
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -23,7 +25,7 @@ from pathlib import Path
 
 import numpy as np
 
-from paddock.benchmark import ClosedLoopBenchmark, OpenLoopBenchmark
+from paddock.benchmark import ClosedLoopBenchmark, ExternallyScoredBenchmark, OpenLoopBenchmark
 from paddock.config import SiteConfig
 from paddock.policy.protocol import Trajectory
 from paddock.registry import BenchmarkSpec, ModelSpec, Registry
@@ -34,7 +36,12 @@ from paddock.runtime import ports, proc
 #: somebody else's service as often as not, and `ports.find_free` scans past it.
 #: Ports are still assigned one per model so a stale node from a previous attempt
 #: is obvious rather than silently answering for the wrong model.
-BASE_PORT = 9000
+#:
+#: Overridable per run because `find_free` only knows a port was free when it
+#: looked. Two runs launched together scan the same range, and the one whose
+#: node loads slowest loses: its port is taken by the time it binds. Give each
+#: concurrent run its own base and they never meet.
+BASE_PORT = int(os.environ.get("PADDOCK_BASE_PORT", "9000"))
 
 
 def load_benchmark(spec: BenchmarkSpec, cfg: SiteConfig):
@@ -83,9 +90,19 @@ def run_benchmark(
             echo("  - " + problem.replace("\n", "\n    "))
         return 1
 
-    echo(f"{bench}: {len(models)} model(s), scene {scene}, {runs} run(s) per scenario")
+    # Scene and run count are closed-loop concepts; printing them for an
+    # open-loop benchmark reads as though a sweep were scoped to one scene.
+    if isinstance(harness, ClosedLoopBenchmark):
+        echo(f"{bench}: {len(models)} model(s), scene {scene}, {runs} run(s) per scenario")
+    else:
+        echo(f"{bench}: {len(models)} model(s)" + (f", limit {limit}" if limit else ""))
     if dry_run:
-        if isinstance(harness, OpenLoopBenchmark):
+        if isinstance(harness, ExternallyScoredBenchmark):
+            # The scorer decides what it can score, from the intersection of the
+            # logs on disk and the metric cache. Preflight has already refused a
+            # partial split, so there is nothing left to enumerate cheaply here.
+            echo("  preflight clean; the scorer reports its scenario count at run time")
+        elif isinstance(harness, OpenLoopBenchmark):
             found, missing = harness.coverage() if hasattr(harness, "coverage") else ([], [])
             echo(f"  {len(found)} sample(s) available" + (f", {len(missing)} missing" if missing else ""))
             if missing:
@@ -96,6 +113,13 @@ def run_benchmark(
                 echo(f"  {m.name}: {', '.join(e.episode_id for e in episodes)}")
         echo("dry run: nothing started")
         return 0
+
+    if isinstance(harness, ExternallyScoredBenchmark):
+        failures = 0
+        for index, model_spec in enumerate(models):
+            port = ports.find_free(BASE_PORT + index)
+            failures += _run_external(cfg, harness, spec, model_spec, port, limit, echo)
+        return 1 if failures else 0
 
     if isinstance(harness, OpenLoopBenchmark):
         failures = 0
@@ -195,6 +219,88 @@ def _run_one_model(
     written = store.write_run(run, metrics_record, samples, artifacts_root=cfg.runs)
     echo(f"  -> {written.relative_to(Path.cwd()) if written.is_relative_to(Path.cwd()) else written}")
     return failures
+
+
+def _run_external(
+    cfg: SiteConfig,
+    harness: ExternallyScoredBenchmark,
+    spec: BenchmarkSpec,
+    model_spec: ModelSpec,
+    port: int,
+    limit: int | None,
+    echo: Callable[[str], None],
+) -> int:
+    """Score one model with a benchmark that brings its own scorer.
+
+    Same lifecycle as everywhere else -- paddock starts the node, the benchmark
+    does its work against it, paddock stores the result -- except that the
+    per-sample records come back from the benchmark in one batch rather than
+    being accumulated a sample at a time, because the scorer owned the loop.
+    """
+    started = datetime.now(UTC)
+    began = time.time()
+    run_id = store.make_run_id(
+        started,
+        {"bench": spec.name, "model": model_spec.name, "limit": limit, "cameras": list(model_spec.cameras)},
+    )
+    artifacts = cfg.runs / spec.name / model_spec.name / run_id
+
+    echo(f"\n=== {model_spec.name} ===")
+    try:
+        with contextlib.ExitStack() as stack:
+            # Started one after another, each waiting for /alive before the
+            # next port is chosen, so `find_free` never hands out a port a
+            # sibling is about to bind.
+            urls: list[str] = []
+            next_port = port
+            for _ in range(max(1, harness.node_count(model_spec))):
+                next_port = ports.find_free(next_port)
+                urls.append(
+                    stack.enter_context(proc.model_node(model_spec, cfg, next_port, artifacts, echo=echo))
+                )
+                next_port += 1
+            samples = harness.evaluate(
+                urls[0],
+                artifacts,
+                {
+                    "cameras": list(model_spec.cameras),
+                    "model": model_spec.name,
+                    "min_input_hz": model_spec.min_input_hz,
+                    "policy_urls": urls,
+                },
+                limit=limit,
+                echo=echo,
+            )
+    except (proc.NodeStartupError, RuntimeError) as exc:
+        echo(f"  failed: {exc}")
+        return 1
+
+    if not samples:
+        echo("  no scenarios scored; nothing recorded")
+        return 1
+
+    run = store.RunRecord(
+        run_id=run_id,
+        site=cfg.site,
+        benchmark=spec.name,
+        model=model_spec.name,
+        mode=spec.mode,
+        started_utc=started.isoformat(timespec="seconds"),
+        duration_s=round(time.time() - began, 1),
+        dataset={
+            "name": spec.dataset,
+            "n_samples": len(samples),
+            "sequences_sha256": store.sequence_hash([s["sample_id"] for s in samples]),
+        },
+        config={"limit": limit, "cameras": list(model_spec.cameras)},
+        status="complete",
+        valid=True,
+    )
+    metrics_record = store.MetricsRecord.from_samples(run_id, samples, primary_metric=spec.primary_metric)
+    store.write_run(run, metrics_record, samples, artifacts_root=cfg.runs)
+    headline = metrics_record.metrics.get(spec.primary_metric, {})
+    echo(f"  n={metrics_record.n}  {spec.primary_metric} mean={headline.get('mean')}")
+    return 0
 
 
 def _run_open_loop(

@@ -55,9 +55,17 @@ SUB_METRICS = (
 )
 
 
-def ingest(
-    csv_path: Path, model: str, site: str, split: str = "navtest"
-) -> list[tuple[RunRecord, MetricsRecord, list[dict[str, Any]]]]:
+def parse_scores(
+    csv_path: Path, split: str = "navtest"
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, float]]]:
+    """A NAVSIM score CSV -> per-token sample records, plus the aggregate rows.
+
+    Shared by two callers that must not drift: `ingest`, which reads a CSV some
+    earlier run left behind, and the navsim harness, which reads the one paddock
+    has just produced. Both go through here so a run scored today and a run
+    ingested from August are the same shape, and the golden tests over this
+    parser cover both.
+    """
     rows = list(csv.DictReader(csv_path.read_text().splitlines()))
     samples: list[dict[str, Any]] = []
     aggregates: dict[str, dict[str, float]] = {}
@@ -88,7 +96,14 @@ def ingest(
             }
         )
 
-    log_score = _log_reported_score(csv_path.parent)
+    return samples, aggregates
+
+
+def ingest(
+    csv_path: Path, model: str, site: str, split: str = "navtest"
+) -> list[tuple[RunRecord, MetricsRecord, list[dict[str, Any]]]]:
+    samples, aggregates = parse_scores(csv_path, split)
+    log_score = log_reported_score(csv_path.parent)
 
     run = RunRecord(
         run_id=f"legacy-{csv_path.parent.name}",
@@ -123,7 +138,7 @@ def ingest(
     return [(run, metrics_record, samples)]
 
 
-def _log_reported_score(run_dir: Path) -> float | None:
+def log_reported_score(run_dir: Path) -> float | None:
     """The headline the original run printed, preserved for comparison."""
     for log in run_dir.glob("*.log"):
         for line in log.read_text(errors="replace").splitlines():

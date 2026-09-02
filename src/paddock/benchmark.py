@@ -109,3 +109,53 @@ class ClosedLoopBenchmark(Benchmark):
         `policy_url` is a node paddock has already started and health-checked.
         The benchmark owns the simulator; paddock owns the model process.
         """
+
+
+class ExternallyScoredBenchmark(Benchmark):
+    """Dataset-driven like open loop, but the scorer owns the iteration.
+
+    A third shape, added because NAVSIM genuinely is one. It is open loop in the
+    sense that matters -- the dataset decides what happens next and errors do not
+    compound -- so `mode` in benchmark.yaml stays `open_loop` and the leaderboard
+    reads correctly. What differs is who drives: NAVSIM's PDM scorer loads its
+    own scenes, re-simulates each predicted trajectory through a kinematic model
+    against a cached ground truth, and computes metrics that are not per-sample
+    functions at all (two-frame comfort needs the preceding frame). Paddock
+    cannot iterate that from the outside without reimplementing it, and
+    reimplementing a scorer is how two sites end up reporting different numbers
+    for the same model.
+
+    So paddock does what it does everywhere else -- own the model process, hand
+    the benchmark a running node, and store what comes back.
+    """
+
+    def node_count(self, model) -> int:
+        """How many policy nodes to start for *model*. One unless the benchmark
+        knows better.
+
+        A scorer that runs N worker processes against one node serialises on
+        it: a CPU-bound model that answers one request at a time leaves N-1
+        workers waiting. Starting N nodes and spreading workers across them is
+        an N-fold speedup with no change to what is computed, since every
+        request is a self-contained `infer_sequence`.
+        """
+        return 1
+
+    @abstractmethod
+    def evaluate(
+        self,
+        policy_url: str,
+        out_dir: Path,
+        config: dict[str, Any],
+        limit: int | None = None,
+        echo=print,
+    ) -> list[dict[str, Any]]:
+        """Drive the external scorer against a running policy node.
+
+        `config` carries what the model contributes to the run -- its declared
+        cameras, above all, since those decide what the scorer loads.
+
+        Returns per-sample records in the results store's shape
+        (`sample_id`, `native_id`, `split`, `metrics`), one per scored scenario,
+        so an externally scored run is as inspectable as any other.
+        """
