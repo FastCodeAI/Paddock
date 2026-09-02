@@ -73,7 +73,8 @@ provenance stays true.
 
 ## Review checklist
 
-A reviewer will look for:
+How to actually check these -- and what has slipped past a green `make check`
+before -- is in [docs/reviewing.md](docs/reviewing.md). A reviewer will look for:
 
 - [ ] `make check` passes, portability gate included
 - [ ] no real machine paths in tracked files
