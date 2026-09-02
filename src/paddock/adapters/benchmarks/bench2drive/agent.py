@@ -76,6 +76,13 @@ CMD = {
 
 F = np.diag([1.0, -1.0, 1.0, 1.0])  # y-flip: CARLA (left-handed) <-> paddock (right-handed)
 
+# Body (x-fwd, y-left, z-up) -> camera-optical (x-right, y-down, z-fwd). paddock's
+# camera2ego convention is the optical frame (as nuScenes/neuroncap supply); without
+# this the geometric warp openpilot builds is rotated 90 deg and it never sees the
+# road (derived mounting rpy [-90,0,90] instead of [0,0,0]). Right-multiplied onto
+# each camera's ego-frame rotation so mounting yaw/pitch are preserved.
+R_OPT = np.array([[0.0, 0.0, 1.0], [-1.0, 0.0, 0.0], [0.0, -1.0, 0.0]])
+
 
 def get_entry_point():
     return "PaddockB2DAgent"
@@ -114,7 +121,9 @@ class PaddockB2DAgent(AutonomousAgent):
             tf = carla.Transform(
                 carla.Location(x=x, y=y, z=z), carla.Rotation(roll=roll, pitch=pitch, yaw=yaw)
             )
-            self._cam2ego[cid] = _rh(tf.get_matrix()).tolist()
+            m = _rh(tf.get_matrix())
+            m[:3, :3] = m[:3, :3] @ R_OPT  # body -> camera-optical (paddock convention)
+            self._cam2ego[cid] = m.tolist()
             self._cam2img[cid] = _intrinsics(w, h, CAM_FOV[cid])
         try:
             requests.post(f"{SERVER}/reset", json={}, timeout=30)
