@@ -357,7 +357,15 @@ directions:
 the CSV round trip. Runs below the full split are recorded with `valid: false`
 so they cannot be averaged or ranked against a real one.
 
-## Status
+## Full navtest (12,146 scenarios)
+
+| model | EPDMS | collisions | drivable | progress | run |
+|---|---:|---:|---:|---:|---|
+| drivejepa | **0.8427** | 0.984 | 0.985 | 0.889 | `20260902T173156-7e208f` |
+| visionpilot | **0.4312** | 0.727 | 0.819 | 0.404 | `20260902T175642-df5291` |
+| constant_velocity | **0.2385** | 0.681 | 0.578 | 0.209 | `20260902T175923-feba73` |
+
+## Status (242-scenario subset, for reference)
 
 | model | EPDMS | n | note |
 |---|---:|---:|---|

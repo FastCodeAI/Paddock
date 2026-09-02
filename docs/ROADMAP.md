@@ -108,11 +108,11 @@ in one of the two cases.
 
 | model | NAVSIM | |
 |---|---:|---|
-| drivejepa | 0.87968 (n=242) | via proxy; the comparable figure |
-| alpamayo15 | 0.65332 (n=242) | `GRID_INDICES` widened to 8; frame selection fixed |
-| visionpilot | 0.44694 (n=242) | `PLAN_HORIZON_S` 3.0 -> 4.0 |
+| drivejepa | **0.84272** (n=12146) | via proxy; the comparable figure. 0.880 on the 242 subset |
+| alpamayo15 | 0.65332 (n=242, full split running) | `GRID_INDICES` widened to 8; frame selection fixed |
+| visionpilot | **0.43122** (n=12146) | `PLAN_HORIZON_S` 3.0 -> 4.0. 0.447 on the 242 subset |
 | openpilot | not measurable | no speed input; infers motion from 10 Hz frames |
-| constant velocity | 0.25673 (n=242) | reference baseline |
+| constant velocity | **0.23854** (n=12146) | reference baseline. 0.257 on the 242 subset |
 
 Both grid changes are additive at the tail, so no recorded neuroNCAP or
 KITScenes score moves: `to_wire` takes the first six poses and

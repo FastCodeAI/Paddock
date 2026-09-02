@@ -30,17 +30,18 @@ Reference numbers are what paddock must reproduce; see `docs/benchmarks/`.
 |---|---|---|---|---|---|
 | OpenPilot | ✅ ADE 1.599 | ✅ 5.0 / 1.86 / 5.0 | ✗ 2 Hz ‡ | planned | planned |
 | Alpamayo 1.5 | ✅ ADE 0.921 | ✅ 5.0 / 0.00 / 1.18 | ✅ EPDMS 0.653 † | planned | planned |
-| Drive-JEPA | ✅ ADE 2.364 | ✅ 5.0 / 2.07 / 5.0 | ✅ EPDMS 0.880 † | planned | planned |
-| VisionPilot | ✅ (traj only) | ✅ 3.14 / 1.68 / 1.07 | ✅ EPDMS 0.447 † | planned | planned |
+| Drive-JEPA | ✅ ADE 2.364 | ✅ 5.0 / 2.07 / 5.0 | ✅ EPDMS 0.843 | planned | planned |
+| VisionPilot | ✅ (traj only) | ✅ 3.14 / 1.68 / 1.07 | ✅ EPDMS 0.431 | planned | planned |
 
 neuroNCAP triples are stationary / frontal / side, scene 0103, 1 run.
 
-† NAVSIM here is **242 of navtest's 12,146 scenarios** — the metric cache covers
-all 136 logs, sensor blobs cover 5. `preflight` refuses a partial split unless
-told otherwise, so the figure cannot be reported as full navtest by accident.
-0.880 is drivejepa through paddock's proxy; the vendor's own agent scores 0.907
-by reading the scorer's simulator at inference time, which no other model can
-do, so 0.880 is the comparable number.
+† Alpamayo's NAVSIM figure is still the **242-scenario subset** (5 of 136
+logs); its full-navtest run is in progress. Drive-JEPA's and VisionPilot's are
+the full 12,146 scenarios. On the subset Drive-JEPA scored 0.880 through
+paddock's proxy — the vendor's own agent scores 0.907 by reading the scorer's
+simulator at inference time, which no other model can do, so the proxy figure
+is the comparable one. `preflight` refuses a partial split unless told
+otherwise, so a subset cannot be reported as full navtest by accident.
 
 ‡ OpenScene is a 2 Hz dataset and OpenPilot infers motion from frame-to-frame
 change, so it plans a parked car — 0.30 m of travel in 4 s at 4.8 m/s. Its model
