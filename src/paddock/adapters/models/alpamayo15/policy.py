@@ -221,11 +221,16 @@ class AlpamayoPolicy(Policy):
         still believes they are 0.1 s apart, so on a slower source apparent
         motion reads high rather than absent -- a different error, not no error.
 
-        ``auto`` (the default) uses ``grid`` unless it degenerates, meaning it
-        returned the same frame for two slots while distinct frames were
-        available. Under a uniform 10 Hz feed it never degenerates, so neuroNCAP
-        and KITScenes take the ``grid`` path exactly as before and no recorded
-        score moves.
+        ``auto`` (the default) uses ``grid`` unless the *source* is slow: the
+        frames that would fill the slots are themselves all at least
+        2 x HISTORY_DT apart. Testing the grid's output alone was not enough --
+        neuroNCAP primes two steps at 0.5 s dataset keyframes before its 0.1 s
+        loop, so at the first closed-loop steps the history is
+        [t, t+0.5, t+1.0, t+1.1]: the grid repeats a frame there too, yet the
+        newest frames are 0.1 s apart and the recorded neuroNCAP scores were
+        made on that path. Deciding from the source cadence keeps that
+        transition on ``grid`` (pinned by test) and still catches NAVSIM, where
+        every gap is 0.5 s.
 
         Which error is smaller was measured rather than argued. On 60 NAVSIM
         scenarios, paired, ``distinct`` beat ``grid`` 0.710 to 0.503 EPDMS
@@ -239,8 +244,10 @@ class AlpamayoPolicy(Policy):
         wanted = times[-1] - np.arange(NUM_CAM_FRAMES - 1, -1, -1) * HISTORY_DT
         grid = [int(np.argmin(np.abs(times - w))) for w in wanted]
 
-        degenerate = len(set(grid)) < NUM_CAM_FRAMES and len(self.frames) >= NUM_CAM_FRAMES
-        if mode == "distinct" or (mode == "auto" and degenerate):
+        gaps = np.diff(times[-NUM_CAM_FRAMES:])
+        slow_source = len(self.frames) >= NUM_CAM_FRAMES and bool(gaps.min() >= 2 * HISTORY_DT)
+        degenerate = len(set(grid)) < NUM_CAM_FRAMES
+        if mode == "distinct" or (mode == "auto" and slow_source and degenerate):
             recent = self.frames[-NUM_CAM_FRAMES:]
             # Early in an episode there may be fewer frames than slots; repeat
             # the oldest rather than reaching past the start of the sequence.
@@ -288,27 +295,18 @@ class AlpamayoPolicy(Policy):
                 self.frames[-64:],
             )
 
-    def infer_sequence(self, observations: list[Observation]) -> Trajectory:
-        """Record the history, sample the model once.
+    def observe(self, obs: Observation) -> None:
+        """Record a history frame without sampling the model.
 
-        The default runs a full VLM rollout per frame and keeps only the last:
-        on NAVSIM that is four 10B-parameter chain-of-causation generations to
-        use one, and it made alpamayo the long pole of the sweep at ~17 h. The
-        model conditions on the recorded history alone, so recording N-1 frames
-        and sampling on the last draws from the same distribution -- not the
-        same draw, since alpamayo samples unseeded, but it was never the same
-        draw run to run either.
+        The default `observe` runs a full VLM rollout per frame and keeps
+        nothing: on NAVSIM that is four 10B-parameter chain-of-causation
+        generations to use one, and it made alpamayo the long pole of the sweep
+        at ~17 h. The model conditions on the recorded history alone, so
+        recording N-1 frames and sampling on the last draws from the same
+        distribution -- not the same draw, since alpamayo samples unseeded, but
+        it was never the same draw run to run either.
         """
-        if not observations:
-            raise ValueError("infer_sequence needs at least one observation")
-        previous, self.self_prime = self.self_prime, False
-        try:
-            self.reset()
-            for obs in observations[:-1]:
-                self._record(obs)
-            return self.infer(observations[-1])
-        finally:
-            self.self_prime = previous
+        self._record(obs)
 
     def infer(self, obs: Observation) -> Trajectory:
         if self.model is None:

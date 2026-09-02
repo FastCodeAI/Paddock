@@ -106,8 +106,10 @@ In rough order of likelihood:
 Symptom: two runs launched together, one finishing suspiciously fast with a
 score that matches the other's. Cause: both scanned ports from the same base,
 the slower-loading node's port was taken before it bound, and its health check
-passed against the sibling. The launcher now verifies `/whoami` and refuses,
-naming both models. Fix: `PADDOCK_BASE_PORT=<distinct per run> paddock run ...`.
+passed against the sibling. The launcher now verifies `/whoami`, which names the
+model and echoes the nonce this launch was given, and refuses -- naming both
+models, or both launches when two runs of the *same* model collide. Fix:
+`PADDOCK_BASE_PORT=<distinct per run> paddock run ...`.
 
 This includes runs from *another checkout* on the same host. Paddock's default
 range is the same everywhere, so a colleague's `paddock run` from their own

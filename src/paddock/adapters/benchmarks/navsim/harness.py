@@ -45,21 +45,24 @@ from pathlib import Path
 from typing import Any
 
 from paddock.adapters.benchmarks.navsim.convert import NAVSIM_INTERVAL_S
-from paddock.benchmark import ExternallyScoredBenchmark
+from paddock.benchmark import Evaluation, ExternallyScoredBenchmark
 from paddock.results.ingest import navsim as navsim_ingest
-
-#: Which data_split each train_test_split reads. NAVSIM keeps this in its own
-#: config (train_test_split/<name>.yaml: data_split), and preflight needs it
-#: before hydra runs, so the mapping is repeated here for the splits paddock
-#: supports and validated against the devkit's own yaml at preflight time.
-SPLIT_DATA = {
-    "navtest": "test",
-    "navtest_two_stage": "test",
-    "navmini": "mini",
-    "navtrain": "trainval",
-}
+from paddock.runtime.proc import tail as _tail
 
 PROXY_AGENT = "paddock_proxy"
+
+#: Where the devkit keeps each train_test_split's own config. `data_split:`
+#: in there says which OpenScene split the scorer reads; preflight needs it
+#: before hydra runs, so it is read from the same file rather than repeated.
+SPLITS_DIR = "navsim/planning/script/config/common/train_test_split"
+
+#: Environment switches that change what a NAVSIM run measures. Each is
+#: recorded in run.json through `run_config()`, and the ones that make a run
+#: unrankable set `valid: false` through `invalid_reasons()`.
+ENV_AGENT = "PADDOCK_NAVSIM_AGENT"
+ENV_ALLOW_PARTIAL = "PADDOCK_NAVSIM_ALLOW_PARTIAL"
+ENV_ALLOW_SLOW = "PADDOCK_NAVSIM_ALLOW_SLOW"
+ENV_OVERRIDES = "PADDOCK_NAVSIM_OVERRIDES"
 
 #: Fewest scenarios NAVSIM can aggregate. `calculate_two_frame_extended_comfort`
 #: pairs consecutive frames within a log -- `range(len(group) - 1)` -- so a
@@ -77,25 +80,72 @@ CONF_DIR = Path(__file__).resolve().parent / "conf"
 SCORER = "navsim/planning/script/run_pdm_score_sequential.py"
 
 
-class NavsimBenchmark(ExternallyScoredBenchmark):
-    # -- site settings ----------------------------------------------------
+def input_rate_problems(min_input_hz: float, model_name: str) -> list[str]:
+    """Why a model needing denser input than OpenScene has cannot be scored.
 
-    @property
-    def settings(self):
-        return self.cfg.benchmarks.get("navsim")
+    Pure, so the runner can ask before loading the model and `--dry-run` can
+    report it. `PADDOCK_NAVSIM_ALLOW_SLOW` overrides -- for investigating the
+    gap, not for producing a score, and the run is then stored `valid: false`.
+    """
+    if min_input_hz > INPUT_HZ and not os.environ.get(ENV_ALLOW_SLOW):
+        return [
+            f"{model_name} needs {min_input_hz:g} Hz observations and NAVSIM "
+            f"supplies {INPUT_HZ:g} Hz. OpenScene stores one keyframe per 0.5 s and one image "
+            f"per keyframe, so a denser history cannot be built without inventing frames.\n"
+            f"A model that infers ego motion from frame-to-frame change reads this as a "
+            f"stationary world and plans accordingly, which scores near the constant-velocity "
+            f"baseline while measuring the rate gap rather than the model. See "
+            f"docs/benchmarks/navsim.md.\n"
+            f"Set {ENV_ALLOW_SLOW}=1 to run anyway -- for investigating the gap, "
+            f"not for producing a score."
+        ]
+    return []
+
+
+def limit_problems(limit: int | None) -> list[str]:
+    """Why a `--limit` below NAVSIM's floor cannot be scored at all."""
+    if limit is not None and limit < MIN_SCENARIOS:
+        return [
+            f"--limit {limit} is below NAVSIM's floor of {MIN_SCENARIOS}: two-frame extended "
+            f"comfort compares consecutive frames, so one scenario has nothing to pair with "
+            f"and the scorer fails in its own aggregation. Use --limit {MIN_SCENARIOS} or more."
+        ]
+    return []
+
+
+class NavsimBenchmark(ExternallyScoredBenchmark):
+    # -- site settings: `self.setting(key)` / `self.settings` from the base -----
 
     @property
     def split(self) -> str:
         return self.setting("split", "navtest") or "navtest"
 
     @property
-    def data_split(self) -> str:
-        return SPLIT_DATA.get(self.split, "test")
-
-    @property
     def devkit(self) -> Path | None:
         value = self.setting("devkit")
         return Path(value) if value else None
+
+    def _split_config(self) -> Path | None:
+        devkit = self.devkit
+        return None if devkit is None else devkit / SPLITS_DIR / f"{self.split}.yaml"
+
+    @property
+    def data_split(self) -> str:
+        """Which OpenScene split the scorer reads for `split`, from the devkit's own yaml.
+
+        Read, not repeated: a table here would be correct today and stale the
+        day the devkit renames one. Raises when it cannot be read; preflight
+        reports the same thing as a problem before anything is started.
+        """
+        path = self._split_config()
+        if path is not None and path.exists():
+            for line in path.read_text().splitlines():
+                if line.startswith("data_split:"):
+                    return line.split(":", 1)[1].strip()
+        raise RuntimeError(
+            f"cannot read data_split for train_test_split {self.split!r}: "
+            f"{path if path is not None else '[benchmarks.navsim] devkit is not set'}"
+        )
 
     # -- preflight --------------------------------------------------------
 
@@ -119,24 +169,13 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
             problems.append("[benchmarks.navsim] devkit is not set")
         elif not (devkit / SCORER).exists():
             problems.append(f"no NAVSIM scorer at {devkit / SCORER}; is 'devkit' the devkit root?")
-        elif self.split not in SPLIT_DATA:
-            problems.append(
-                f"split {self.split!r} is not one paddock knows; known: {', '.join(sorted(SPLIT_DATA))}"
-            )
         else:
-            # The mapping above must agree with the devkit's own config, or the
-            # blob path preflight checks is not the one the scorer will read.
-            splits = devkit / "navsim/planning/script/config/common/train_test_split"
-            declared = splits / f"{self.split}.yaml"
-            if declared.exists():
-                for line in declared.read_text().splitlines():
-                    if line.startswith("data_split:"):
-                        actual = line.split(":", 1)[1].strip()
-                        if actual != self.data_split:
-                            problems.append(
-                                f"{self.split} reads data_split {actual!r} but paddock expects "
-                                f"{self.data_split!r}; SPLIT_DATA in harness.py is stale"
-                            )
+            try:
+                _ = self.data_split
+            except RuntimeError as exc:
+                problems.append(f"split {self.split!r}: {exc}")
+        if problems:
+            return problems  # the checks below need the split
 
         dataset = self.dataset
         if dataset is None:
@@ -164,6 +203,33 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         problems.extend(self._coverage_warnings(root, cache))
         return problems
 
+    def _coverage(self) -> tuple[set[str], set[str]] | str | None:
+        """`(scorable, cached)` log sets for this split; a string naming why they
+        cannot be known; None when the inputs are not configured at all.
+
+        `cached` is the cache's listing intersected with the split's own log
+        list: the cache also holds a `metadata/` directory, so a raw directory
+        count makes a complete 136-log download look like 136 of 137. There is
+        no fallback to the raw count -- if the split's list cannot be read, that
+        is reported rather than guessed around.
+        """
+        dataset = self.dataset
+        cache = self.setting("metric_cache")
+        if dataset is None or not cache or not Path(cache).is_dir():
+            return None
+        blobs = dataset.resolve() / "sensor_blobs" / self.data_split
+        if not blobs.is_dir():
+            return None
+        declared = self._declared_logs()
+        if declared is None:
+            return (
+                f"cannot read the log list for {self.split} from "
+                f"{self.devkit / SPLITS_DIR / 'scene_filter' / (self.split + '.yaml')}"
+            )
+        have = {p.name for p in blobs.iterdir() if p.is_dir()}
+        cached = {p.name for p in Path(cache).iterdir() if p.is_dir()} & declared
+        return have & cached, cached
+
     def _coverage_warnings(self, root: Path, cache: str | None) -> list[str]:
         """Refuse a run whose sensor coverage is a small slice of the split.
 
@@ -171,35 +237,74 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         and says so only in a log line partway into the run. A site holding 5 of
         136 logs will otherwise get a headline number labelled `navtest` that is
         nothing of the sort -- which is exactly what the already-stored August
-        run turned out to be.
+        run turned out to be. `PADDOCK_NAVSIM_ALLOW_PARTIAL` lets it run; the
+        result is then stored `valid: false` with the coverage in `notes`.
         """
-        blobs = root / "sensor_blobs" / self.data_split
-        if not blobs.is_dir() or not cache or not Path(cache).is_dir():
+        coverage = self._coverage()
+        if coverage is None:
             return []
-        if os.environ.get("PADDOCK_NAVSIM_ALLOW_PARTIAL"):
+        if isinstance(coverage, str):
+            return [coverage]
+        if os.environ.get(ENV_ALLOW_PARTIAL):
             return []
-        have = {p.name for p in blobs.iterdir() if p.is_dir()}
-        cached = {p.name for p in Path(cache).iterdir() if p.is_dir()}
-        # Against the split's own log list, not the raw directory count: the
-        # cache also holds a `metadata/` directory, so counting directories
-        # makes a complete 136-log download look like 136 of 137 and refuse.
-        declared = self._declared_logs()
-        cached = (cached & declared) if declared else cached
-        scorable = have & cached
+        scorable, cached = coverage
         if not scorable:
             return [
                 f"no log has both sensor blobs and a metric cache entry "
-                f"({len(have)} with blobs, {len(cached)} cached); nothing can be scored"
+                f"({len(cached)} cached); nothing can be scored"
             ]
         if len(scorable) < len(cached):
             return [
                 f"partial coverage: {len(scorable)} of {len(cached)} {self.split} logs have sensor "
                 f"blobs, so this run scores a subset, not {self.split}.\n"
                 f"the missing blobs are the openscene_sensor_{self.data_split}_camera shards; "
-                f"see docs/benchmarks/navsim.md. Set PADDOCK_NAVSIM_ALLOW_PARTIAL=1 to run anyway "
-                f"-- the result is recorded as a subset and is not comparable with a full run."
+                f"see docs/benchmarks/navsim.md. Set {ENV_ALLOW_PARTIAL}=1 to run anyway "
+                f"-- the result is then stored valid=false, as a subset not comparable with a full run."
             ]
         return []
+
+    # -- what a run under the current switches measures --------------------
+
+    @staticmethod
+    def _agent() -> str:
+        return os.environ.get(ENV_AGENT, PROXY_AGENT)
+
+    @staticmethod
+    def _overrides() -> list[str]:
+        return os.environ.get(ENV_OVERRIDES, "").split()
+
+    def run_config(self) -> dict[str, Any]:
+        """The switches that change what a NAVSIM run measures, for run.json."""
+        return {
+            "split": self.split,
+            "agent": self._agent(),
+            "allow_partial": bool(os.environ.get(ENV_ALLOW_PARTIAL)),
+            "allow_slow": bool(os.environ.get(ENV_ALLOW_SLOW)),
+            "overrides": self._overrides(),
+        }
+
+    def invalid_reasons(self) -> list[str]:
+        """Why a run under the current switches cannot be ranked with the others."""
+        reasons: list[str] = []
+        if self._agent() != PROXY_AGENT:
+            reasons.append(
+                f"scored with the vendor's native agent {self._agent()!r}, not the paddock proxy; "
+                f"not comparable with proxy runs (docs/benchmarks/navsim.md)"
+            )
+        if os.environ.get(ENV_ALLOW_SLOW):
+            reasons.append(f"{ENV_ALLOW_SLOW}: a model below NAVSIM's input rate was run anyway")
+        if os.environ.get(ENV_ALLOW_PARTIAL):
+            coverage = self._coverage()
+            if isinstance(coverage, tuple) and len(coverage[0]) < len(coverage[1]):
+                scorable, cached = coverage
+                reasons.append(
+                    f"{ENV_ALLOW_PARTIAL}: {len(scorable)} of {len(cached)} {self.split} logs "
+                    f"have sensor blobs; a subset, not {self.split}"
+                )
+        return reasons
+
+    def model_problems(self, model, limit: int | None = None) -> list[str]:
+        return input_rate_problems(float(model.min_input_hz or 0.0), model.name) + limit_problems(limit)
 
     # -- the run ----------------------------------------------------------
 
@@ -224,28 +329,26 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
             return 1
         return max(1, wanted)
 
-    def _declared_logs(self) -> set[str]:
+    def _declared_logs(self) -> set[str] | None:
         """The logs this split declares, read from the devkit's own scene filter.
 
-        Empty when the devkit is not resolvable, in which case the caller falls
-        back to the cache's directory listing.
+        None when it cannot be read -- no devkit, no file, no `log_names`, a
+        yaml error -- and the caller reports that, rather than falling back to
+        a directory count that is known to be wrong by one.
         """
         devkit = self.devkit
         if devkit is None:
-            return set()
-        path = (
-            devkit
-            / "navsim/planning/script/config/common/train_test_split/scene_filter"
-            / f"{self.split}.yaml"
-        )
+            return None
+        path = devkit / SPLITS_DIR / "scene_filter" / f"{self.split}.yaml"
         if not path.exists():
-            return set()
+            return None
         try:
             import yaml
 
-            return set(yaml.safe_load(path.read_text()).get("log_names") or [])
-        except Exception:  # noqa: BLE001 - a preflight helper must not raise
-            return set()
+            names = yaml.safe_load(path.read_text()).get("log_names")
+        except Exception:  # noqa: BLE001 - a preflight helper must not raise; None is the report
+            return None
+        return set(names) if names else None
 
     def _environment(self, root: Path, exp: Path) -> dict[str, str]:
         devkit = self.devkit
@@ -271,7 +374,7 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         self, policy_url: str, out_dir: Path, config: dict[str, Any], limit: int | None
     ) -> list[str]:
         root = self.dataset.resolve()
-        agent = os.environ.get("PADDOCK_NAVSIM_AGENT", PROXY_AGENT)
+        agent = self._agent()
         cameras = list(config.get("cameras") or ["CAM_FRONT"])
 
         command = [
@@ -301,8 +404,7 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
             ]
         if limit:
             command.append(f"train_test_split.scene_filter.max_scenes={limit}")
-        extra = os.environ.get("PADDOCK_NAVSIM_OVERRIDES", "").split()
-        return command + extra
+        return command + self._overrides()
 
     def evaluate(
         self,
@@ -311,27 +413,14 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         config: dict[str, Any],
         limit: int | None = None,
         echo=print,
-    ) -> list[dict[str, Any]]:
-        needs = float(config.get("min_input_hz") or 0.0)
-        if needs > INPUT_HZ and not os.environ.get("PADDOCK_NAVSIM_ALLOW_SLOW"):
-            raise RuntimeError(
-                f"{config.get('model', 'this model')} needs {needs:g} Hz observations and NAVSIM "
-                f"supplies {INPUT_HZ:g} Hz. OpenScene stores one keyframe per 0.5 s and one image "
-                f"per keyframe, so a denser history cannot be built without inventing frames.\n"
-                f"A model that infers ego motion from frame-to-frame change reads this as a "
-                f"stationary world and plans accordingly, which scores near the constant-velocity "
-                f"baseline while measuring the rate gap rather than the model. See "
-                f"docs/benchmarks/navsim.md.\n"
-                f"Set PADDOCK_NAVSIM_ALLOW_SLOW=1 to run anyway -- for investigating the gap, "
-                f"not for producing a score."
-            )
-
-        if limit is not None and limit < MIN_SCENARIOS:
-            raise RuntimeError(
-                f"--limit {limit} is below NAVSIM's floor of {MIN_SCENARIOS}: two-frame extended "
-                f"comfort compares consecutive frames, so one scenario has nothing to pair with "
-                f"and the scorer fails in its own aggregation. Use --limit {MIN_SCENARIOS} or more."
-            )
+    ) -> Evaluation:
+        # The runner has already asked `model_problems`; asked again here so a
+        # caller that skips the runner is refused the same way.
+        problems = input_rate_problems(
+            float(config.get("min_input_hz") or 0.0), str(config.get("model", "this model"))
+        ) + limit_problems(limit)
+        if problems:
+            raise RuntimeError("\n".join(problems))
 
         root = self.dataset.resolve()
         exp = self.dataset.extra["exp"]
@@ -385,13 +474,16 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         )
         # Kept on the run rather than folded into the score: the scorer's own
         # headline and paddock's recomputed mean answer slightly different
-        # questions. See paddock/results/ingest/navsim.py.
-        for sample in samples:
-            sample.setdefault("extra", {})
-        if samples:
-            samples[0]["extra"]["source_aggregates"] = aggregates
-            samples[0]["extra"]["source_reported"] = reported
-        return samples, failed
+        # questions. Stored in the tracked metrics.json under `by_group`, the
+        # same keys the ingest path writes. See paddock/results/ingest/navsim.py.
+        return Evaluation(
+            samples=samples,
+            failed=failed,
+            by_group={
+                "source_aggregates": aggregates,
+                "source_reported": {"final_average_valid": reported} if reported is not None else {},
+            },
+        )
 
 
 def _kill_group(proc: subprocess.Popen) -> None:
@@ -404,12 +496,6 @@ def _kill_group(proc: subprocess.Popen) -> None:
             os.killpg(proc.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-
-
-def _tail(path: Path, lines: int = 30) -> str:
-    if not path.exists():
-        return "(no log)"
-    return "\n".join(path.read_text(errors="replace").splitlines()[-lines:]) or "(log empty)"
 
 
 BENCHMARK = NavsimBenchmark

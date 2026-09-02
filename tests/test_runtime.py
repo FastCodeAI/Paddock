@@ -217,3 +217,101 @@ def test_the_launcher_refuses_a_node_that_serves_a_different_model() -> None:
             )
     finally:
         server.shutdown()
+
+
+def _serve(handler) -> tuple[object, int]:
+    import http.server
+    import socket
+    import threading
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    server = http.server.HTTPServer(("127.0.0.1", port), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, port
+
+
+class _StillLoading:
+    returncode = None
+
+    def poll(self):
+        return None
+
+
+def test_the_launcher_refuses_another_launch_of_the_same_model() -> None:
+    """Two concurrent runs of one model -- an A/B, two sweeps -- answer `/whoami`
+    with the same model name. Only the nonce this launch was given tells them
+    apart; without it the loser scores against the winner's node."""
+    import http.server
+    import json
+
+    from paddock.runtime import proc as node_proc
+
+    class _SameModel(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            whoami = json.dumps({"model": "drivejepa", "nonce": "theirs"}).encode()
+            body = b"true" if self.path == "/alive" else whoami
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_):
+            pass
+
+    server, port = _serve(_SameModel)
+    try:
+        with pytest.raises(node_proc.NodeStartupError, match="another 'drivejepa' node .*'theirs'.*'ours'"):
+            node_proc.wait_alive(
+                port,
+                10.0,
+                _StillLoading(),
+                REPO_ROOT / "nonexistent.log",
+                expect_model="drivejepa",
+                expect_nonce="ours",
+            )
+    finally:
+        server.shutdown()
+
+
+def test_a_slow_or_malformed_whoami_is_retried_not_refused() -> None:
+    """On a loaded box `/whoami` can miss one request timeout after an
+    hour-long load; a foreign service can answer with something that is not a
+    JSON object. Neither is 'another node holds the port'."""
+    import http.server
+    import json
+
+    from paddock.runtime import proc as node_proc
+
+    answers = [None, b"[]", json.dumps({"model": "drivejepa", "nonce": "ours"}).encode()]
+
+    class _Flaky(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == "/alive":
+                body, status = b"true", 200
+            else:
+                body = answers.pop(0) if len(answers) > 1 else answers[0]
+                status = 500 if body is None else 200
+                body = body or b""
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_):
+            pass
+
+    server, port = _serve(_Flaky)
+    try:
+        node_proc.wait_alive(
+            port,
+            30.0,
+            _StillLoading(),
+            REPO_ROOT / "nonexistent.log",
+            expect_model="drivejepa",
+            expect_nonce="ours",
+        )
+    finally:
+        server.shutdown()
+    assert len(answers) == 1, "the launcher kept asking until it got a well-formed answer"

@@ -13,7 +13,19 @@ import numpy as np
 import pytest
 
 from paddock.adapters.benchmarks.navsim import convert
-from paddock.adapters.benchmarks.navsim.harness import CONF_DIR, PROXY_AGENT, SCORER, SPLIT_DATA
+from paddock.adapters.benchmarks.navsim.harness import (
+    BENCHMARK,
+    CONF_DIR,
+    ENV_AGENT,
+    ENV_ALLOW_PARTIAL,
+    ENV_ALLOW_SLOW,
+    ENV_OVERRIDES,
+    PROXY_AGENT,
+    SCORER,
+    SPLITS_DIR,
+    input_rate_problems,
+    limit_problems,
+)
 from paddock.config import ConfigError, SiteConfig
 from paddock.policy.protocol import CANBUS_ACCEL, CANBUS_VELOCITY, CANBUS_YAW_RATE, Command
 from paddock.registry import Registry
@@ -190,29 +202,171 @@ def test_the_proxy_agent_config_is_tracked_and_names_the_module() -> None:
     assert "node_url: ???" in config, "node_url must be supplied by the harness, never defaulted"
 
 
-def test_the_split_table_matches_the_devkit() -> None:
-    """SPLIT_DATA is duplicated from the devkit's config so preflight can run
-    before hydra does. If the devkit is present, the two must agree."""
+def _navsim_site(
+    tmp_path: Path,
+    monkeypatch,
+    split: str = "navtest",
+    data_split: str = "test",
+    declared: tuple[str, ...] | None = ("log_a", "log_b"),
+    blobs: tuple[str, ...] = ("log_a", "log_b"),
+    cached: tuple[str, ...] = ("log_a", "log_b", "metadata"),
+) -> SiteConfig:
+    """A site with a stand-in devkit, dataset and metric cache laid out as NAVSIM's are."""
+    import sys
+
+    devkit = tmp_path / "devkit"
+    (devkit / SCORER).parent.mkdir(parents=True)
+    (devkit / SCORER).write_text("")
+    splits = devkit / SPLITS_DIR
+    (splits / "scene_filter").mkdir(parents=True)
+    (splits / f"{split}.yaml").write_text(f"data_split: {data_split}\n")
+    if declared is not None:
+        (splits / "scene_filter" / f"{split}.yaml").write_text(
+            "log_names:\n" + "".join(f"  - {name}\n" for name in declared)
+        )
+    data = tmp_path / "data"
+    for name in blobs:
+        (data / "sensor_blobs" / data_split / name).mkdir(parents=True)
+    (data / "navsim_logs" / data_split).mkdir(parents=True)
+    (data / "maps").mkdir()
+    cache = tmp_path / "cache"
+    for name in cached:
+        (cache / name).mkdir(parents=True)
+    for sub in ("repos", "runs", "weights", "exp"):
+        (tmp_path / sub).mkdir()
+    (tmp_path / "site.toml").write_text(
+        f'site = "test-site"\n[roots]\nrepos = "{tmp_path / "repos"}"\nruns = "{tmp_path / "runs"}"\n'
+        f'weights = "{tmp_path / "weights"}"\n'
+        f'[datasets.navsim]\npath = "{data}"\nexp = "{tmp_path / "exp"}"\n'
+        f'[benchmarks.navsim]\npython = "{sys.executable}"\ndevkit = "{devkit}"\n'
+        f'metric_cache = "{cache}"\nsplit = "{split}"\n'
+    )
+    monkeypatch.setenv("PADDOCK_CONFIG", str(tmp_path / "site.toml"))
+    for name in (ENV_AGENT, ENV_ALLOW_PARTIAL, ENV_ALLOW_SLOW, ENV_OVERRIDES):
+        monkeypatch.delenv(name, raising=False)
+    return SiteConfig.load()
+
+
+def _harness(cfg: SiteConfig):
+    return BENCHMARK(Registry.load().benchmarks["navsim"], cfg)
+
+
+def test_data_split_is_read_from_the_devkits_own_yaml(tmp_path: Path, monkeypatch) -> None:
+    """No table of splits in paddock: the devkit's train_test_split yaml says
+    which OpenScene split the scorer reads, and preflight reads the same file."""
+    harness = _harness(_navsim_site(tmp_path, monkeypatch, split="navmini", data_split="mini"))
+    assert harness.data_split == "mini"
+    assert harness.preflight() == []
+
+    (tmp_path / "devkit" / SPLITS_DIR / "navmini.yaml").unlink()
+    problems = harness.preflight()
+    assert len(problems) == 1 and "navmini" in problems[0] and "data_split" in problems[0]
+
+
+def test_a_complete_download_is_not_refused_for_the_metadata_directory(tmp_path: Path, monkeypatch) -> None:
+    """The cache holds `metadata/` beside the per-log directories; 2 logs with
+    blobs against a 3-directory cache must read as 2 of 2, not 2 of 3."""
+    assert _harness(_navsim_site(tmp_path, monkeypatch)).preflight() == []
+
+
+def test_an_unreadable_log_list_is_reported_not_guessed_around(tmp_path: Path, monkeypatch) -> None:
+    """When the split's scene filter cannot be read there is no fallback to the
+    raw directory count, which is known to be wrong by one."""
+    problems = _harness(_navsim_site(tmp_path, monkeypatch, declared=None)).preflight()
+    assert len(problems) == 1 and "cannot read the log list" in problems[0]
+
+
+def test_partial_coverage_is_refused_and_when_allowed_is_never_valid(tmp_path: Path, monkeypatch) -> None:
+    cfg = _navsim_site(tmp_path, monkeypatch, blobs=("log_a",))
+    harness = _harness(cfg)
+    problems = harness.preflight()
+    assert len(problems) == 1 and "1 of 2 navtest logs" in problems[0]
+    assert harness.run_config()["allow_partial"] is False
+
+    monkeypatch.setenv(ENV_ALLOW_PARTIAL, "1")
+    assert harness.preflight() == []
+    assert harness.run_config()["allow_partial"] is True
+    reasons = harness.invalid_reasons()
+    assert len(reasons) == 1 and "1 of 2 navtest logs" in reasons[0]
+
+
+def test_measurement_switches_reach_run_config_and_validity(tmp_path: Path, monkeypatch) -> None:
+    """Every switch that changes what is measured is on the record, and the
+    ones that make a run unrankable say so -- by mechanism, not discipline."""
+    harness = _harness(_navsim_site(tmp_path, monkeypatch))
+    assert harness.run_config() == {
+        "split": "navtest",
+        "agent": PROXY_AGENT,
+        "allow_partial": False,
+        "allow_slow": False,
+        "overrides": [],
+    }
+    assert harness.invalid_reasons() == []
+
+    monkeypatch.setenv(ENV_AGENT, "drivejepa")
+    monkeypatch.setenv(ENV_ALLOW_SLOW, "1")
+    monkeypatch.setenv(ENV_OVERRIDES, "worker.max_workers=2 train_test_split.scene_filter.max_scenes=9")
+    config = harness.run_config()
+    assert config["agent"] == "drivejepa" and config["allow_slow"] is True
+    assert config["overrides"] == ["worker.max_workers=2", "train_test_split.scene_filter.max_scenes=9"]
+    reasons = harness.invalid_reasons()
+    assert any("native agent 'drivejepa'" in r for r in reasons)
+    assert any(ENV_ALLOW_SLOW in r for r in reasons)
+
+
+def test_model_problems_are_pure_so_they_run_before_any_node_starts() -> None:
+    assert "10 Hz observations" in input_rate_problems(10.0, "openpilot")[0]
+    assert input_rate_problems(0.0, "alpamayo15") == []
+    assert "below NAVSIM's floor" in limit_problems(1)[0]
+    assert limit_problems(2) == [] and limit_problems(None) == []
+
+
+def test_dry_run_reports_the_rate_gap_and_the_validity_without_loading_a_model(tmp_path, monkeypatch) -> None:
+    from paddock.runner import run_benchmark
+
+    cfg = _navsim_site(tmp_path, monkeypatch)
+    lines: list[str] = []
+    code = run_benchmark(cfg, bench="navsim", model="openpilot", dry_run=True, limit=3, echo=lines.append)
+    assert code == 0
+    out = "\n".join(lines)
+    assert "openpilot needs 10 Hz" in out
+    assert "valid=false: --limit 3" in out
+
+
+def test_wire_modules_compile_under_python_39() -> None:
+    """The proxy agent and what it imports run inside the vendor's 3.9
+    interpreter. A 3.10+ construct in protocol.py or convert.py would fail
+    every NAVSIM run inside hydra with only a log tail to show for it."""
+    import shutil
+    import subprocess
+
+    from paddock.config import REPO_ROOT
+
+    candidates = [shutil.which("python3.9")]
     try:
-        cfg = SiteConfig.load()
+        settings = SiteConfig.load().benchmarks.get("navsim")
+        candidates.append(settings.get("python") if settings else None)
     except ConfigError:
-        pytest.skip("no site configuration")
-    settings = cfg.benchmarks.get("navsim")
-    if settings is None or not settings.get("devkit"):
-        pytest.skip("navsim devkit not configured at this site")
+        pass
 
-    from pathlib import Path
+    def is_39(path: str | None) -> bool:
+        if not path:
+            return False
+        version = subprocess.run([path, "--version"], capture_output=True, text=True).stdout
+        return version.startswith("Python 3.9")
 
-    splits = Path(settings.get("devkit")) / "navsim/planning/script/config/common/train_test_split"
-    if not splits.is_dir():
-        pytest.skip("devkit not present")
-    for split, expected in SPLIT_DATA.items():
-        declared = splits / f"{split}.yaml"
-        if not declared.exists():
-            continue
-        for line in declared.read_text().splitlines():
-            if line.startswith("data_split:"):
-                assert line.split(":", 1)[1].strip() == expected, split
+    interpreter = next((c for c in candidates if is_39(c)), None)
+    if interpreter is None:
+        pytest.skip("no Python 3.9 interpreter on this box")
+    base = REPO_ROOT / "src" / "paddock"
+    files = [
+        base / "policy" / "protocol.py",
+        base / "adapters" / "benchmarks" / "navsim" / "convert.py",
+        base / "adapters" / "benchmarks" / "navsim" / "agent.py",
+    ]
+    command = [interpreter, "-m", "py_compile", *map(str, files)]
+    result = subprocess.run(command, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
 
 
 def test_the_scorer_path_exists_in_the_devkit() -> None:
@@ -335,6 +489,11 @@ def test_openpilot_declares_the_rate_neuroncap_already_established() -> None:
 def test_alpamayo_falls_back_to_distinct_frames_only_when_the_grid_degenerates() -> None:
     """The fix for alpamayo's camera collapse, and its blast radius.
 
+    The fallback is decided from the *source cadence* (the frames that would
+    fill the slots are all >= 0.2 s apart), not from the grid's output alone:
+    neuroNCAP's priming transition also makes the grid repeat a frame, and
+    changing that path would move a recorded score.
+
     `_image_frames` picks four frames on a fixed 0.1 s grid. At NAVSIM's 2 Hz
     that returned the same frame for three of four slots, so the model could not
     see other vehicles moving and drove into them: measured over 60 paired
@@ -367,6 +526,16 @@ def test_alpamayo_falls_back_to_distinct_frames_only_when_the_grid_degenerates()
         sparse = [-1500000, -1000000, -500000, 0]
         chosen = [f["id"] for f in _Stub(sparse)._select_frames()]
         assert len(set(chosen)) == NUM_CAM_FRAMES, f"2 Hz must fall back, got {chosen}"
+
+        # neuroNCAP's real cadence: two priming steps at 0.5 s dataset keyframes,
+        # then the 0.1 s loop. The grid repeats a frame here too, but the source
+        # is 10 Hz by now and the recorded neuroNCAP scores were made on the
+        # grid path -- so the grid path it stays, at both transition steps.
+        priming = [0, 500000, 1000000, 1100000]
+        chosen = [f["id"] for f in _Stub(priming)._select_frames()]
+        assert chosen == [2, 2, 2, 3], f"priming transition must keep the grid path, got {chosen}"
+        chosen = [f["id"] for f in _Stub([*priming, 1200000])._select_frames()]
+        assert chosen == [2, 2, 3, 4], f"first closed-loop step must keep the grid path, got {chosen}"
 
         # and the grid really would have collapsed, or the fallback guards nothing
         times = np.array(sparse, dtype=np.float64) / 1e6

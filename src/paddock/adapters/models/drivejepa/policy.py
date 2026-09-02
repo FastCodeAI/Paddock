@@ -185,29 +185,20 @@ class DriveJepaPolicy(Policy):
         cameras = [self._cameras(frame, lidar2ego) for frame in frames]
         return AgentInput(ego_statuses=ego_statuses, cameras=cameras, lidars=[])
 
-    def infer_sequence(self, observations: list[Observation]) -> Trajectory:
-        """Record the history, run the model once.
+    def observe(self, obs: Observation) -> None:
+        """Record a history frame without running the model.
 
-        The default feeds every frame through `infer`, which here means a full
-        BEVFormer forward pass per frame with all but the last thrown away --
-        four passes to use one on NAVSIM. The model is a pure function of its
-        recorded history, so recording the first N-1 and inferring on the last
-        produces the identical tensor: same `_select_history`, same features,
-        same forward. Bit-identical, four times cheaper.
+        The default `observe` is a full BEVFormer forward pass per frame with
+        the plan thrown away -- four passes to use one on NAVSIM. The model is
+        a pure function of its recorded history, so recording the first N-1
+        and inferring on the last produces the identical tensor: same
+        `_select_history`, same features, same forward. Bit-identical, four
+        times cheaper.
 
         Not a pattern to copy into openpilot or visionpilot: both carry state
         that each forward pass advances, so for them every pass is load-bearing.
         """
-        if not observations:
-            raise ValueError("infer_sequence needs at least one observation")
-        previous, self.self_prime = self.self_prime, False
-        try:
-            self.reset()
-            for obs in observations[:-1]:
-                self._record(obs)
-            return self.infer(observations[-1])
-        finally:
-            self.self_prime = previous
+        self._record(obs)
 
     def infer(self, obs: Observation) -> Trajectory:
         if self.agent is None:

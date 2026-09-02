@@ -61,7 +61,7 @@ def test_episode_ids_are_stable_and_paired() -> None:
 def test_a_scene_without_a_checkpoint_is_reported_before_running() -> None:
     """This is what preflight is for: catching it in seconds, not an hour in."""
     harness = _harness()
-    if not harness._setting("checkpoints"):
+    if not harness.setting("checkpoints"):
         pytest.skip("no checkpoints configured")
     problems = harness.scene_problems("9999")
     assert problems and "no renderer checkpoint" in problems[0]
@@ -70,7 +70,7 @@ def test_a_scene_without_a_checkpoint_is_reported_before_running() -> None:
 def test_available_scenes_intersects_scenarios_with_checkpoints() -> None:
     """A scenario yaml without a renderer checkpoint cannot be rendered."""
     harness = _harness()
-    if not harness._setting("checkpoints"):
+    if not harness.setting("checkpoints"):
         pytest.skip("no checkpoints configured")
     scenes = harness.available_scenes()
     assert scenes, "expected at least one runnable scene"

@@ -151,6 +151,14 @@ A scenario the scorer could not run (its agent raised) is written with every
 term NaN and `valid=False`; the parser excludes it and the run is marked
 `partial`, `valid=false`. See `docs/benchmarks/navsim.md`.
 
+`valid` is decided by the runner, in one place, from three things: whether
+anything failed, whether the run was a subset (`--limit`), and whatever the
+benchmark's `invalid_reasons()` says about the switches it was run under (a
+partial split allowed through, a vendor agent instead of the proxy). The
+reasons are written to `notes`. The same switches reach `config` through the
+benchmark's `run_config()` and are hashed into the run id, so a results file
+never needs a hand edit to say how it was produced.
+
 ## Ingesting existing results
 
 Results predating paddock exist in six mutually incompatible shapes. Readers

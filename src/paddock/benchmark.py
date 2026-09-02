@@ -73,15 +73,42 @@ class Benchmark(ABC):
     def dataset(self):
         return self.cfg.datasets.get(self.spec.dataset)
 
+    @property
+    def settings(self):
+        """This benchmark's `[benchmarks.<name>]` block, or None when the site has none."""
+        return self.cfg.benchmarks.get(self.spec.name)
+
     def setting(self, key: str, default: str | None = None) -> str | None:
         """One key from this benchmark's `[benchmarks.<name>]` block, or *default*.
 
         Tolerates the block being absent, which `BenchmarkOverride.get` alone
-        does not. Defined here once so adapters stop each carrying their own
-        copy -- docs/reviewing.md names that duplication as a review finding.
+        does not. Defined here once, and used by every adapter, so none carries
+        its own copy -- docs/reviewing.md names that duplication as a finding.
         """
-        settings = self.cfg.benchmarks.get(self.spec.name)
+        settings = self.settings
         return settings.get(key, default) if settings is not None else default
+
+    def run_config(self) -> dict[str, Any]:
+        """Site settings and switches that change *what is measured*.
+
+        The runner hashes these into the run id and writes them to `run.json`,
+        so two runs that measured different things never share a config hash
+        and a stored row says how it was produced: a routes subset, a
+        non-default scorer agent, a switch that lets a partial split run.
+        Anything read from the environment or the site config that alters the
+        number belongs here. Default: nothing.
+        """
+        return {}
+
+    def invalid_reasons(self) -> list[str]:
+        """Why a run made under the current settings must be stored `valid: false`.
+
+        A subset of the benchmark, a vendor agent that sees the scorer, a
+        rate-gap override: each is worth keeping and none may enter an average.
+        The runner joins these into `notes`, so the rule is a mechanism rather
+        than a discipline. Default: none.
+        """
+        return []
 
     @abstractmethod
     def preflight(self) -> list[str]:
@@ -121,6 +148,23 @@ class ClosedLoopBenchmark(Benchmark):
         """
 
 
+@dataclass
+class Evaluation:
+    """What an external scorer produced for one model.
+
+    `samples`: per-sample records in the results store's shape (`sample_id`,
+    `native_id`, `split`, `metrics`), one per scenario the scorer actually
+    scored. `failed`: the ids of scenarios it could not score, kept apart so
+    they mark the run rather than average into it. `by_group`: run-level
+    context the scorer reported (its own headline, its aggregate rows), stored
+    in the tracked `metrics.json` where the ingest path puts the same thing.
+    """
+
+    samples: list[dict[str, Any]]
+    failed: list[str] = field(default_factory=list)
+    by_group: dict[str, Any] = field(default_factory=dict)
+
+
 class ExternallyScoredBenchmark(Benchmark):
     """Dataset-driven like open loop, but the scorer owns the iteration.
 
@@ -151,6 +195,16 @@ class ExternallyScoredBenchmark(Benchmark):
         """
         return 1
 
+    def model_problems(self, model, limit: int | None = None) -> list[str]:
+        """Why *model* cannot be scored here at all, decided before it is loaded.
+
+        Pure in the model spec and the requested limit -- an input-rate gap, a
+        sample count the scorer cannot aggregate -- so the runner asks before
+        waiting for VRAM and reading a checkpoint, and `--dry-run` reports it.
+        `evaluate` must refuse the same things, for callers that skip the runner.
+        """
+        return []
+
     @abstractmethod
     def evaluate(
         self,
@@ -159,16 +213,11 @@ class ExternallyScoredBenchmark(Benchmark):
         config: dict[str, Any],
         limit: int | None = None,
         echo=print,
-    ) -> tuple[list[dict[str, Any]], list[str]]:
+    ) -> Evaluation:
         """Drive the external scorer against a running policy node.
 
         `config` carries what the model contributes to the run -- its declared
         cameras, above all, since those decide what the scorer loads.
 
-        Returns `(samples, failures)`: per-sample records in the results
-        store's shape (`sample_id`, `native_id`, `split`, `metrics`), one per
-        scenario the scorer actually scored, and the ids of scenarios it could
-        not. The two are kept apart because a scorer that writes an empty row
-        for a crashed scenario has not measured anything, and the runner must
-        mark the run rather than average the row. See docs/reviewing.md §4.
+        Returns an `Evaluation`; see its docstring for the three parts.
         """

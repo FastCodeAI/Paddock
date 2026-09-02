@@ -679,7 +679,7 @@ class VisionPilotPolicy(Policy):
         speed and the gap as it evolves -- so a braking ego closes the gap more
         slowly, which a fixed-closing-speed integration misses entirely. The
         same loop runs here, at the same ``dt``; only its length changes, from
-        the stack's N = 20 (1.0 s) to the 3.0 s of waypoints NeuroNCAP wants.
+        the stack's N = 20 (1.0 s) to the ``PLAN_HORIZON_S`` the benchmarks want.
 
         ``v_rel`` is the fusion's relative velocity, negative when approaching.
         """

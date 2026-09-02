@@ -62,12 +62,27 @@ split        = "navtest"
 workers      = 4
 ```
 
-Two escape hatches, both deliberate and both narrow:
+Four environment switches, all deliberate and all narrow. Every one is
+written into `run.json` (`config.agent`, `config.allow_partial`,
+`config.allow_slow`, `config.overrides`) and hashed into the run id, so a run
+made with one can never share a config hash with a run made without it:
 
-- `PADDOCK_NAVSIM_ALLOW_PARTIAL=1` — run despite partial sensor coverage.
+- `PADDOCK_NAVSIM_ALLOW_PARTIAL=1` — run despite partial sensor coverage. The
+  run is stored `valid: false` with the coverage (`N of M logs`) in `notes`.
 - `PADDOCK_NAVSIM_AGENT=<hydra agent group>` — run a vendor's native agent
   instead of the proxy. Used to reproduce a recorded run and to measure what the
-  proxy costs; not a normal path.
+  proxy costs; the run is stored `valid: false`, since a scorer-aware agent is
+  not comparable with the proxy runs (see below).
+- `PADDOCK_NAVSIM_ALLOW_SLOW=1` — score a model whose `min_input_hz` exceeds
+  OpenScene's 2 Hz anyway. Stored `valid: false`: it measures the rate gap.
+- `PADDOCK_NAVSIM_OVERRIDES="k=v ..."` — extra hydra overrides for the scorer,
+  recorded verbatim.
+
+`--limit N` is recorded the same way and also sets `valid: false`: it exists to
+test the pipeline. A site `[models.<name>] env` block is recorded as
+`config.model_env`, because an environment override can change a model's input
+(`ALPAMAYO_FRAME_SELECT`, for one). None of this needs a hand edit of a results
+file; the runner decides `valid` from these, and the reason is in `notes`.
 
 ## This site scores 242 scenarios, not navtest
 
@@ -216,48 +231,6 @@ higher figure is a model reading the scorer's own simulator at inference time,
 which none of the other three can do.
 
 
-## openpilot cannot be measured here, and the reason is the dataset
-
-openpilot ran cleanly through the proxy — node up, `POST /infer_sequence` 200,
-242 conversions with no error — and scored **EPDMS 0.302 against a
-constant-velocity baseline of 0.257**. The recorded plans say why:
-
-| model | ego speed | planned travel at 4 s | constant velocity |
-|---|---:|---:|---:|
-| openpilot | 4.76 m/s | **0.30 m** | 19.05 m |
-| drivejepa | 4.76 m/s | 20.51 m | 19.05 m |
-
-openpilot planned to travel 30 cm in four seconds while moving at 4.8 m/s. It
-had decided the car was parked. Its sub-metrics agree: no collisions, no
-direction or traffic-light faults, `ego_progress` 0.10, and
-`drivable_area_compliance` 0.0 on half the scenarios.
-
-This is a failure mode already documented in this repo from the other
-direction. From `docs/benchmarks/neuroncap.md`: *"0.1 s is forced, not chosen:
-openpilot reads a 0.5 s step as a parked car."* supercombo infers ego motion
-from frame-to-frame change, so the observation rate is load-bearing. neuroNCAP's
-scenarios were rebuilt at 10 Hz for exactly this reason and KITScenes feeds
-0.1 s frames; on both, openpilot scores normally.
-
-**NAVSIM cannot supply that.** OpenScene is 2 Hz by construction — one keyframe
-every 0.500 s and exactly one image per keyframe (334 frames, 334 JPEGs per
-log). More history frames would add span, not density. The only way to a denser
-history is interpolating pixels that were never recorded, which would be
-fabricating the model's input.
-
-So this is recorded as a dataset/model incompatibility, not a result:
-
-- `model.yaml` declares `capabilities.min_input_hz: 10.0`, a general statement
-  about openpilot rather than a NAVSIM special case;
-- the harness refuses the pairing before scoring, naming the rate gap;
-- openpilot no longer declares `navsim`, so `--model all` sweeps three models
-  rather than failing on one every time;
-- the two runs already stored are marked `valid: false` with the reason, so they
-  appear under "Excluded runs" and never enter an average.
-
-A near-baseline number that is really a rate artefact is worse than no number,
-because it looks like a result. That is what the guard exists to prevent.
-
 ## alpamayo15: under-fed, not unmeasurable
 
 alpamayo's first NAVSIM run scored 0.226 on **4 scenarios**, below the 0.257
@@ -354,8 +327,9 @@ directions:
 | alpamayo15 | 0.226 | 0.503 (n=60) | under-read |
 
 `--limit` exists to test the pipeline — node startup, conversion, the scorer,
-the CSV round trip. Runs below the full split are recorded with `valid: false`
-so they cannot be averaged or ranked against a real one.
+the CSV round trip. The runner stores any `--limit` run, and any run made under
+`PADDOCK_NAVSIM_ALLOW_PARTIAL`, with `valid: false` and the reason in `notes`,
+so nothing below the full split can be averaged or ranked against a real one.
 
 ## Full navtest (12,146 scenarios)
 
@@ -448,7 +422,12 @@ had passed against visionpilot's node, up on 9001 while drivejepa's own was
 still loading, and its scorer then sent every request to the wrong model.
 
 `/alive` says only that *a* paddock node is answering. Nodes now also answer
-`/whoami`, the launcher refuses a port that answers as a different model, and
-`PADDOCK_BASE_PORT` gives each concurrent run its own range. The bogus run is
-stored with `valid: false` and the reason. This would have applied to any two
-concurrent paddock runs, not only NAVSIM.
+`/whoami` with the model they serve and the nonce the launcher gave them (the
+run id), and the launcher refuses a port that answers as a different model *or
+a different launch of the same model* — two concurrent alpamayo A/B arms would
+otherwise pass each other's check. `/whoami` is retried within the startup
+deadline, so a slow answer on a loaded box is not mistaken for a foreign node,
+and a node that dies during the run is reported after it. `PADDOCK_BASE_PORT`
+gives each concurrent run its own range. The bogus run is stored with
+`valid: false` and the reason. This would have applied to any two concurrent
+paddock runs, not only NAVSIM.

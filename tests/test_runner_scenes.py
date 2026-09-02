@@ -93,3 +93,26 @@ def test_doctor_runs_every_benchmarks_preflight(b2d_site) -> None:
     assert by_name["bench2drive"].status is doctor.Status.OK, by_name["bench2drive"]
     assert by_name["neuroncap"].status is doctor.Status.WARN
     assert "[benchmarks.neuroncap]" in by_name["neuroncap"].fix
+
+
+def test_base_port_is_validated_and_named(monkeypatch) -> None:
+    from paddock.runner import DEFAULT_BASE_PORT, base_port
+
+    monkeypatch.setenv("PADDOCK_BASE_PORT", "")
+    assert base_port() == DEFAULT_BASE_PORT
+    monkeypatch.setenv("PADDOCK_BASE_PORT", "9400")
+    assert base_port() == 9400
+    for bad in ("abc", "9000-9100", "70000"):
+        monkeypatch.setenv("PADDOCK_BASE_PORT", bad)
+        with pytest.raises(ValueError, match="PADDOCK_BASE_PORT"):
+            base_port()
+
+
+def test_validity_is_decided_in_one_place() -> None:
+    """A run is valid only when nothing failed and nothing about how it was
+    made keeps it from being ranked; the reasons land in notes."""
+    from paddock.runner import _validity
+
+    assert _validity(None, []) == ("complete", True, "")
+    assert _validity(None, ["--limit 5: a subset"]) == ("complete", False, "--limit 5: a subset")
+    assert _validity("2 sample(s) failed", ["a subset"]) == ("partial", False, "a subset; 2 sample(s) failed")

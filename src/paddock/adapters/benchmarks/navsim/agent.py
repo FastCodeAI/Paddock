@@ -11,12 +11,15 @@ That split is what makes four models possible at all: the scorer runs in
 Drive-JEPA's python 3.9 conda environment, while openpilot runs under uv on
 3.12 and cannot share a process with it.
 
-**This module deliberately does not import paddock.** It is loaded inside the
-vendor's environment, where paddock is not installed and the interpreter is
-3.9, so it speaks the wire format directly (documented in
-``paddock/policy/protocol.py``) and depends only on numpy, httpx and NAVSIM's
-own dataclasses. Keep it that way; the coupling is the wire format, which is
-NeuroNCAP's and has been stable across every model node.
+**This module runs inside the vendor's Python 3.9 interpreter**, with
+paddock's source on ``PYTHONPATH`` (the harness puts it there) but none of
+paddock's dependencies installed. So it imports only from
+``paddock.policy.protocol`` and ``convert`` -- the wire contract and the
+geometry -- and *those two modules must stay 3.9-importable*: numpy-only,
+no ``match``, no 3.10+ syntax evaluated at import. A ``match`` statement in
+``protocol.py`` would fail every NAVSIM run inside hydra with only a log tail
+to show for it. ``tests/test_navsim_adapter.py`` compiles them under a 3.9
+interpreter when the site has one.
 
 Three things here exist because the fork made them necessary:
 
@@ -54,10 +57,10 @@ from paddock.adapters.benchmarks.navsim.convert import (
     NAVSIM_INTERVAL_S,
     NAVSIM_NUM_POSES,
     canbus,
-    encode_image,
     pose_matrix,
     to_navsim_poses,
 )
+from paddock.policy.protocol import Command, Observation, constant_velocity
 
 
 class _PaddockAgentBase(AbstractAgent):
@@ -87,6 +90,10 @@ class PaddockConstantVelocityAgent(_PaddockAgentBase):
     produce a plausible EPDMS over the configured scenarios, the problem is the
     data, the metric cache or the maps -- not any model. The fork ships an agent
     that means to do this and cannot run.
+
+    Built from the protocol's own `constant_velocity` and run through
+    `to_navsim_poses`, so the one agent meant to validate the conversion path
+    exercises it rather than sidestepping it.
     """
 
     def get_sensor_config(self) -> SensorConfig:
@@ -101,8 +108,8 @@ class PaddockConstantVelocityAgent(_PaddockAgentBase):
     ) -> Trajectory:
         velocity = np.asarray(agent_input.ego_statuses[-1].ego_velocity, dtype=np.float64)
         speed = float(np.linalg.norm(velocity))
-        steps = np.arange(1, NAVSIM_NUM_POSES + 1) * NAVSIM_INTERVAL_S
-        poses = np.stack([speed * steps, np.zeros_like(steps), np.zeros_like(steps)], axis=1)
+        plan = constant_velocity(speed, n=NAVSIM_NUM_POSES, dt=NAVSIM_INTERVAL_S)
+        poses = to_navsim_poses(plan.xy, plan.dt)
         return Trajectory(poses.astype(np.float32), self._trajectory_sampling)
 
 
@@ -149,6 +156,18 @@ class PaddockProxyAgent(_PaddockAgentBase):
         root = sensor_blobs_path or os.environ.get("PADDOCK_NAVSIM_SENSOR_BLOBS", "")
         self._sensor_blobs_path = root
         self._timeout_s = float(timeout_s)
+        # One connection per agent, opened on first use: the scorer instantiates
+        # the agent inside each worker, so a client created here would be built
+        # before the fork and a fresh one per scenario is a TCP handshake ~12k
+        # times on the full split.
+        self._client = None
+
+    def _http(self):
+        import httpx
+
+        if self._client is None:
+            self._client = httpx.Client(timeout=self._timeout_s)
+        return self._client
 
     def get_sensor_config(self) -> SensorConfig:
         """Load only the cameras this model declared, for every history frame.
@@ -176,14 +195,20 @@ class PaddockProxyAgent(_PaddockAgentBase):
         rates = np.gradient(headings, NAVSIM_INTERVAL_S)
         return [float(r) for r in rates]
 
-    def _frame_payload(self, agent_input: AgentInput, index: int, yaw_rate: float) -> dict[str, Any]:
+    def _observation(self, agent_input: AgentInput, index: int, yaw_rate: float) -> Observation:
+        """One history frame as a paddock `Observation`.
+
+        Built as the same object the open-loop runner builds and encoded with
+        its `to_wire`, so this proxy and the runner cannot disagree about the
+        wire shape.
+        """
         status = agent_input.ego_statuses[index]
         cameras = agent_input.cameras[index]
 
-        images: dict[str, str] = {}
+        images: dict[str, np.ndarray] = {}
         image_paths: dict[str, str] = {}
-        camera2image: dict[str, Any] = {}
-        camera2ego: dict[str, Any] = {}
+        camera2image: dict[str, np.ndarray] = {}
+        camera2ego: dict[str, np.ndarray] = {}
 
         for name in self._cameras:
             camera = getattr(cameras, CAMERA_SLOTS[name])
@@ -192,49 +217,48 @@ class PaddockProxyAgent(_PaddockAgentBase):
                     f"NAVSIM delivered no {name} for history frame {index}; the sensor config "
                     f"and the model's declared cameras disagree"
                 )
-            intrinsics = np.eye(4, dtype=np.float64)
-            intrinsics[:3, :3] = np.asarray(camera.intrinsics, dtype=np.float64)
-            camera2image[name] = intrinsics[:3, :3].tolist()
+            camera2image[name] = np.asarray(camera.intrinsics, dtype=np.float64)[:3, :3]
 
             # lidar2ego is identity in OpenScene, so sensor2lidar is camera2ego.
             extrinsics = np.eye(4, dtype=np.float64)
             extrinsics[:3, :3] = np.asarray(camera.sensor2lidar_rotation, dtype=np.float64)
             extrinsics[:3, 3] = np.asarray(camera.sensor2lidar_translation, dtype=np.float64)
-            camera2ego[name] = extrinsics.tolist()
+            camera2ego[name] = extrinsics
 
             if camera.camera_path is not None and self._sensor_blobs_path:
                 image_paths[name] = os.path.join(self._sensor_blobs_path, str(camera.camera_path))
             elif camera.image is not None:
-                images[name] = encode_image(camera.image)
+                images[name] = np.asarray(camera.image)
             else:
                 raise RuntimeError(f"NAVSIM delivered neither pixels nor a path for {name}")
 
         command = np.asarray(status.driving_command).ravel()
         hot = int(np.argmax(command)) if command.size else 3
 
-        return {
-            "images": images,
-            "image_paths": image_paths,
+        return Observation(
+            images=images,
+            image_paths=image_paths,
             # The current frame is the origin: NAVSIM expresses history poses
             # relative to it, and every paddock policy uses ego2world only for
             # relative motion, so a local origin is exact rather than an
             # approximation.
-            "ego2world": pose_matrix(status.ego_pose).tolist(),
-            "canbus": canbus(status, yaw_rate),
+            ego2world=pose_matrix(status.ego_pose),
+            canbus=np.asarray(canbus(status, yaw_rate), dtype=np.float64),
             # NAVSIM carries no wall-clock timestamp in AgentInput. Frames are
             # spaced at exactly NAVSIM_INTERVAL_S, which is what the models that
             # select history by timestamp actually need.
-            "timestamp": int(round((index - (len(agent_input.ego_statuses) - 1)) * NAVSIM_INTERVAL_S * 1e6)),
-            "command": int(COMMAND_FROM_ONE_HOT[hot]) if hot < 4 else 3,
-            "calibration": {
-                "camera2image": camera2image,
-                "camera2ego": camera2ego,
-                # Identity, but sent explicitly: models that project through the
-                # lidar frame call require_lidar2ego() and must not have to
-                # assume what this benchmark's convention is.
-                "lidar2ego": np.eye(4).tolist(),
-            },
-        }
+            timestamp_us=int(round((index - (len(agent_input.ego_statuses) - 1)) * NAVSIM_INTERVAL_S * 1e6)),
+            command=Command(int(COMMAND_FROM_ONE_HOT[hot]) if hot < 4 else 3),
+            camera2image=camera2image,
+            camera2ego=camera2ego,
+            # Identity, but sent explicitly: models that project through the
+            # lidar frame call require_lidar2ego() and must not have to assume
+            # what this benchmark's convention is.
+            lidar2ego=np.eye(4),
+        )
+
+    def _frame_payload(self, agent_input: AgentInput, index: int, yaw_rate: float) -> dict[str, Any]:
+        return self._observation(agent_input, index, yaw_rate).to_wire()
 
     def compute_trajectory(
         self,
@@ -243,18 +267,15 @@ class PaddockProxyAgent(_PaddockAgentBase):
         metric_cache: Any = None,
         observation_interval: Any = None,
     ) -> Trajectory:
-        import httpx
-
         yaw_rates = self._yaw_rates(agent_input.ego_statuses)
         observations = [
             self._frame_payload(agent_input, index, yaw_rates[min(index, len(yaw_rates) - 1)])
             for index in range(len(agent_input.ego_statuses))
         ]
 
-        response = httpx.post(
+        response = self._http().post(
             f"{self._node_url}/infer_sequence",
             json={"observations": observations},
-            timeout=self._timeout_s,
         )
         response.raise_for_status()
         body = response.json()

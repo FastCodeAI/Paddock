@@ -39,18 +39,11 @@ _SCORE_LINE = re.compile(r"ncap_score:\s*([-\d.eE+]+)")
 
 
 class NeuroNcapBenchmark(ClosedLoopBenchmark):
-    # ---- configuration -------------------------------------------------
-
-    @property
-    def _settings(self):
-        return self.cfg.benchmarks.get("neuroncap")
-
-    def _setting(self, key: str) -> str | None:
-        return self._settings.get(key) if self._settings else None
+    # ---- configuration: `self.setting(key)` / `self.settings` from the base ----
 
     def available_scenes(self) -> list[str]:
         """Scenes with both a scenario file and a renderer checkpoint."""
-        checkpoints = self._setting("checkpoints")
+        checkpoints = self.setting("checkpoints")
         have_ckpt = (
             {p.name for p in Path(checkpoints).iterdir() if p.is_dir()}
             if checkpoints and Path(checkpoints).exists()
@@ -74,21 +67,21 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
 
         problems: list[str] = []
 
-        if self._settings is None:
+        if self.settings is None:
             return [
                 "no [benchmarks.neuroncap] section in paddock.toml; it needs `python`, "
                 "`repo`, `renderer_url` and `checkpoints` (see docs/benchmarks/neuroncap.md)"
             ]
 
         for key in ("python", "repo", "renderer_url"):
-            if not self._setting(key):
+            if not self.setting(key):
                 problems.append(f"[benchmarks.neuroncap] {key} is not set in paddock.toml")
 
-        python = self._setting("python")
+        python = self.setting("python")
         if python and not Path(python).exists():
             problems.append(f"neuroNCAP interpreter not found: {python}")
 
-        repo = self._setting("repo")
+        repo = self.setting("repo")
         if repo and not (Path(repo) / "main.py").exists():
             problems.append(f"neuro-ncap checkout has no main.py: {repo}")
 
@@ -98,7 +91,7 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         elif not dataset.resolve().exists():
             problems.append(f"nuScenes root does not exist: {dataset.resolve()}")
 
-        url = self._setting("renderer_url")
+        url = self.setting("renderer_url")
         if url and not proc.is_alive(url):
             problems.append(
                 f"renderer is not answering at {url}. Start it first -- it is "
@@ -110,7 +103,7 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
     def scene_problems(self, scene: str) -> list[str]:
         """Per-scene checks: a scenario with no renderer checkpoint cannot run."""
         problems = []
-        checkpoints = self._setting("checkpoints")
+        checkpoints = self.setting("checkpoints")
         if checkpoints and not (Path(checkpoints) / scene).exists():
             problems.append(
                 f"scene {scene} has no renderer checkpoint under {checkpoints}; "
@@ -152,15 +145,15 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
 
         `policy_url` is a node paddock has already started and health-checked.
         """
-        repo = Path(self._setting("repo"))
+        repo = Path(self.setting("repo"))
         port = policy_url.rsplit(":", 1)[-1]
-        renderer_port = self._setting("renderer_url").rsplit(":", 1)[-1]
+        renderer_port = self.setting("renderer_url").rsplit(":", 1)[-1]
         runs = int(episode.config.get("runs", 1))
         cameras = episode.config.get("cameras") or ["CAM_FRONT"]
 
         out_dir.mkdir(parents=True, exist_ok=True)
         command = [
-            self._setting("python"),
+            self.setting("python"),
             "-u",
             "main.py",
             "--engine.renderer.port",

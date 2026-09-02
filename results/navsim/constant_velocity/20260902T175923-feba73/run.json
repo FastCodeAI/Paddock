@@ -20,6 +20,6 @@
   "hardware": {},
   "status": "complete",
   "valid": true,
-  "notes": "Reference baseline: straight ahead at the current speed, no model. Scorer reported 0.23853; paddock recomputes from per-sample scores. Source: 2026.09.02.22.50.46",
+  "notes": "Reference baseline: straight ahead at the current speed, no model. Produced by the devkit scorer run with agent=paddock_constant_velocity (paddock's own CV agent, adapters/benchmarks/navsim/agent.py) over the full navtest, 8 workers, hydra run 2026.09.02.22.50.46, and ingested with paddock.results.ingest.navsim. Stored under the pseudo-model 'constant_velocity' because it is not a registered model. Scorer reported 0.23853; paddock recomputes from per-sample scores.",
   "ingested_from": ""
 }
