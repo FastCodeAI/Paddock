@@ -1,0 +1,26 @@
+{
+  "run_id": "20260902T172247-37d005",
+  "site": "fastcode-shakaal",
+  "benchmark": "navsim",
+  "model": "visionpilot",
+  "mode": "open_loop",
+  "started_utc": "2026-09-02T17:22:47+00:00",
+  "duration_s": 48.2,
+  "repo_sha": null,
+  "dataset": {
+    "name": "navsim",
+    "n_samples": 8,
+    "sequences_sha256": "ffb571737c8f1cb3"
+  },
+  "config": {
+    "limit": 8,
+    "cameras": [
+      "CAM_FRONT"
+    ]
+  },
+  "hardware": {},
+  "status": "complete",
+  "valid": false,
+  "notes": "SMOKE, not a result: 8 scenarios to exercise the four-node launch path. Superseded by the full-split run.",
+  "ingested_from": ""
+}

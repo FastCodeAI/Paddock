@@ -1,0 +1,193 @@
+{
+  "run_id": "20260901T211745-df5291",
+  "primary_metric": "epdms",
+  "n": 242,
+  "metrics": {
+    "no_at_fault_collisions": {
+      "n": 242,
+      "n_missing": 0,
+      "mean": 0.640496,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.47553
+    },
+    "drivable_area_compliance": {
+      "n": 242,
+      "n_missing": 0,
+      "mean": 0.913223,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.281508
+    },
+    "driving_direction_compliance": {
+      "n": 242,
+      "n_missing": 0,
+      "mean": 0.923554,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.230305
+    },
+    "traffic_light_compliance": {
+      "n": 242,
+      "n_missing": 0,
+      "mean": 0.995868,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.064149
+    },
+    "ego_progress": {
+      "n": 242,
+      "n_missing": 0,
+      "mean": 0.439027,
+      "median": 0.400132,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.425244
+    },
+    "time_to_collision_within_bound": {
+      "n": 242,
+      "n_missing": 0,
+      "mean": 0.628099,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.483312
+    },
+    "lane_keeping": {
+      "n": 242,
+      "n_missing": 0,
+      "mean": 0.96281,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.189227
+    },
+    "history_comfort": {
+      "n": 242,
+      "n_missing": 0,
+      "mean": 0.966942,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.178788
+    },
+    "two_frame_extended_comfort": {
+      "n": 201,
+      "n_missing": 41,
+      "mean": 0.666667,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.471405
+    },
+    "epdms": {
+      "n": 242,
+      "n_missing": 0,
+      "mean": 0.446939,
+      "median": 0.400436,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.432901
+    }
+  },
+  "by_split": {
+    "navtest": {
+      "n": 242,
+      "no_at_fault_collisions": {
+        "n": 242,
+        "n_missing": 0,
+        "mean": 0.640496,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.47553
+      },
+      "drivable_area_compliance": {
+        "n": 242,
+        "n_missing": 0,
+        "mean": 0.913223,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.281508
+      },
+      "driving_direction_compliance": {
+        "n": 242,
+        "n_missing": 0,
+        "mean": 0.923554,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.230305
+      },
+      "traffic_light_compliance": {
+        "n": 242,
+        "n_missing": 0,
+        "mean": 0.995868,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.064149
+      },
+      "ego_progress": {
+        "n": 242,
+        "n_missing": 0,
+        "mean": 0.439027,
+        "median": 0.400132,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.425244
+      },
+      "time_to_collision_within_bound": {
+        "n": 242,
+        "n_missing": 0,
+        "mean": 0.628099,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.483312
+      },
+      "lane_keeping": {
+        "n": 242,
+        "n_missing": 0,
+        "mean": 0.96281,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.189227
+      },
+      "history_comfort": {
+        "n": 242,
+        "n_missing": 0,
+        "mean": 0.966942,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.178788
+      },
+      "two_frame_extended_comfort": {
+        "n": 201,
+        "n_missing": 41,
+        "mean": 0.666667,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.471405
+      },
+      "epdms": {
+        "n": 242,
+        "n_missing": 0,
+        "mean": 0.446939,
+        "median": 0.400436,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.432901
+      }
+    }
+  },
+  "by_group": {}
+}

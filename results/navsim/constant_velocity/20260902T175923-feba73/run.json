@@ -1,0 +1,25 @@
+{
+  "run_id": "20260902T175923-feba73",
+  "site": "fastcode-shakaal",
+  "benchmark": "navsim",
+  "model": "constant_velocity",
+  "mode": "open_loop",
+  "started_utc": "2026-09-02T17:59:23+00:00",
+  "duration_s": 0.0,
+  "repo_sha": null,
+  "dataset": {
+    "name": "navsim",
+    "split": "navtest",
+    "n_samples": 12146,
+    "sequences_sha256": "82e33c6837552a03"
+  },
+  "config": {
+    "agent": "paddock_constant_velocity",
+    "workers": 8
+  },
+  "hardware": {},
+  "status": "complete",
+  "valid": true,
+  "notes": "Reference baseline: straight ahead at the current speed, no model. Scorer reported 0.23853; paddock recomputes from per-sample scores. Source: 2026.09.02.22.50.46",
+  "ingested_from": ""
+}

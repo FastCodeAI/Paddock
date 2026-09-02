@@ -28,12 +28,27 @@ Reference numbers are what paddock must reproduce; see `docs/benchmarks/`.
 
 | | KITScenes | neuroNCAP | NAVSIM | nuScenes | Bench2Drive |
 |---|---|---|---|---|---|
-| OpenPilot | ✅ ADE 1.599 | ✅ 5.0 / 1.86 / 5.0 | — | planned | planned |
-| Alpamayo 1.5 | ✅ ADE 0.921 | ✅ 5.0 / 0.00 / 1.18 | — | planned | planned |
-| Drive-JEPA | ✅ ADE 2.364 | ✅ 5.0 / 2.07 / 5.0 | ✅ EPDMS 0.905 | planned | planned |
-| VisionPilot | ✅ (traj only) | ✅ 3.14 / 1.68 / 1.07 | — | planned | planned |
+| OpenPilot | ✅ ADE 1.599 | ✅ 5.0 / 1.86 / 5.0 | ✗ 2 Hz ‡ | planned | planned |
+| Alpamayo 1.5 | ✅ ADE 0.921 | ✅ 5.0 / 0.00 / 1.18 | ✅ EPDMS 0.653 † | planned | planned |
+| Drive-JEPA | ✅ ADE 2.364 | ✅ 5.0 / 2.07 / 5.0 | ✅ EPDMS 0.880 † | planned | planned |
+| VisionPilot | ✅ (traj only) | ✅ 3.14 / 1.68 / 1.07 | ✅ EPDMS 0.447 † | planned | planned |
 
 neuroNCAP triples are stationary / frontal / side, scene 0103, 1 run.
+
+† NAVSIM here is **242 of navtest's 12,146 scenarios** — the metric cache covers
+all 136 logs, sensor blobs cover 5. `preflight` refuses a partial split unless
+told otherwise, so the figure cannot be reported as full navtest by accident.
+0.880 is drivejepa through paddock's proxy; the vendor's own agent scores 0.907
+by reading the scorer's simulator at inference time, which no other model can
+do, so 0.880 is the comparable number.
+
+‡ OpenScene is a 2 Hz dataset and OpenPilot infers motion from frame-to-frame
+change, so it plans a parked car — 0.30 m of travel in 4 s at 4.8 m/s. Its model
+has no speed input at all (`{desire_pulse, traffic_convention, action_t}`), so
+this is not fixable in the adapter. It declares `min_input_hz: 10.0` and the
+harness refuses the pairing rather than recording the artefact. Alpamayo hit the
+same dataset property in a milder form and was fixed in its adapter, worth
++0.207 EPDMS. See `docs/benchmarks/navsim.md`.
 
 ---
 
