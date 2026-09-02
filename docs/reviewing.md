@@ -10,7 +10,8 @@ The guiding rule: **separate what you verified from what you argued.** A review
 that says "looks right" is worth less than one that says "ran the golden test,
 passed; the CARLA flags I checked against a 0.0.4 checkout; the PID import I
 could not resolve anywhere." Write the review the way `docs/ROADMAP.md` records
-status — claim, evidence, strength.
+status — claim, evidence, strength — and mark every finding 🔴 / 🟠 / 🟡 so
+severity is visible before the argument (see §10).
 
 ---
 
@@ -147,17 +148,46 @@ reads first:
 
 ## 10. Writing the review
 
-- Lead with the verdict and the blockers. Nits go last, or in a collapsed
-  section.
-- Anchor every finding to `file:line` in the PR's head commit.
-- For each finding: what breaks, under what input, and the concrete fix. A
-  finding without a failure scenario is a preference, and should say so.
-- Label each finding **verified** (you ran it, or read the upstream code) or
-  **argued** (reasoned from the diff). Reviewers at the other site will weigh
-  them differently, and should.
-- Praise what the PR did well when it is specific and reusable: "the pure
-  `parse_results` with a fixture is the pattern every adapter should follow" is
-  useful; "nice work" is not.
+Every finding carries a severity marker, so the author can triage the review
+at a glance and a reader at the other site can tell a merge-blocker from a
+preference without reading the argument.
+
+| Marker | Meaning | Merge rule |
+|---|---|---|
+| 🔴 **Blocker** | wrong numbers, a crash recorded as a result, harm to other users of the host, or the feature cannot run as documented | must be fixed before merge |
+| 🟠 **Should fix** | a correctness or contract gap that will bite the next site or the next adapter: ignored flags, restated contracts, missing preflight, docs that do not match the diff | fix in this PR, or land a tracked follow-up (ROADMAP entry or issue) before merge |
+| 🟡 **Nit** | quality, efficiency, wording | author's call; never blocks |
+| ✅ **Verified** | you ran it, or read the upstream code it depends on | label the evidence, not the finding |
+
+Rules of thumb for the scale:
+
+- If the leaderboard would show a number that is not what was measured, it is
+  🔴, however small the diff that fixes it.
+- If it only fails on the author's machine's absence (a module on their
+  `PYTHONPATH`, a path in their shell), it is 🔴: the whole point of paddock is
+  the other site.
+- If the code is correct but the *record* of what ran is wrong (`run.json`
+  claims three repetitions, or a scene id from another benchmark), it is 🟠.
+- Anything that could be a follow-up PR without changing a number is 🟡.
+
+And the structure:
+
+- Open with the verdict and a legend line. Then say what is *right* about the
+  PR, specifically enough that the author knows what to keep doing. "The pure
+  `parse_results` with a real fixture is the pattern every adapter should
+  follow" is useful; "nice work" is not.
+- A ✅ table of what you actually verified, with the result. "Nothing beyond
+  the diff" is an honest row.
+- Findings grouped 🔴, then 🟠, then 🟡, numbered so replies can cite them.
+  Anchor every one to `file:line` in the PR's head commit. For each: what
+  breaks, under what input, and the concrete fix. A finding without a failure
+  scenario is a preference, and should be 🟡.
+- Mirror the marker on the inline comment for the same finding, so the
+  file view and the summary agree.
+- Write as the most senior person in the room would: direct, specific, no
+  hedging on things you verified, no certainty on things you only argued,
+  and the principle stated once ("we do not kill processes we did not
+  start") rather than re-derived per finding.
 
 ## Reviewer's quick list
 
@@ -173,3 +203,4 @@ reads first:
 - [ ] nothing kills processes by name; recording volume estimated and gated
 - [ ] ROADMAP, README, docs and PR description agree with the diff
 - [ ] review states what was verified vs argued
+- [ ] every finding carries 🔴 / 🟠 / 🟡, summary and inline comments agree
