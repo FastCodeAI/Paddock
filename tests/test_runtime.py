@@ -6,6 +6,8 @@ constructs the right command and environment, not that a model works.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from paddock.config import REPO_ROOT, SiteConfig
@@ -126,3 +128,92 @@ def test_a_wildcard_listener_counts_as_taken() -> None:
         wildcard.listen(1)
         busy = wildcard.getsockname()[1]
         assert not ports.is_free(busy), "a wildcard listener must count as in use"
+
+
+def test_a_site_env_override_reaches_the_model_process() -> None:
+    """`[models.<name>] env` in paddock.toml must actually take effect.
+
+    It was parsed into ModelOverride.env and then never applied, so a site could
+    write one, see no error, and get none of the effect -- which is worse than
+    the key not existing, because it reads as configured.
+    """
+    from paddock.config import ModelOverride, SiteConfig
+    from paddock.registry import Registry
+    from paddock.runtime import env as env_builder
+
+    try:
+        cfg = SiteConfig.load()
+    except Exception:  # noqa: BLE001
+        pytest.skip("no site configuration")
+    registry = Registry.load()
+    name = next(iter(sorted(registry.models)))
+    spec = registry.models[name]
+
+    patched = replace(cfg, models={**cfg.models, name: ModelOverride(env={"PADDOCK_TEST_KEY": "set"})})
+    built = env_builder.build(spec, patched)
+    assert built.get("PADDOCK_TEST_KEY") == "set"
+
+
+def test_a_site_env_override_beats_the_models_declared_default() -> None:
+    """The site is the authority on its own machine; model.yaml is the default."""
+    from paddock.config import ModelOverride, SiteConfig
+    from paddock.registry import Registry
+    from paddock.runtime import env as env_builder
+
+    try:
+        cfg = SiteConfig.load()
+    except Exception:  # noqa: BLE001
+        pytest.skip("no site configuration")
+    registry = Registry.load()
+    spec = next(m for m in registry.models.values() if m.runtime.env)
+    key = next(iter(spec.runtime.env))
+
+    patched = replace(cfg, models={**cfg.models, spec.name: ModelOverride(env={key: "site-wins"})})
+    assert env_builder.build(spec, patched)[key] == "site-wins"
+
+
+def test_the_launcher_refuses_a_node_that_serves_a_different_model() -> None:
+    """Alive is not identity.
+
+    A port is chosen before the node binds it, and a model that takes minutes
+    to load leaves that window open. A sibling run's node answering `/alive`
+    on the same port passed the old check, and the run then scored the other
+    model's plans under its own name. `/whoami` closes that.
+    """
+    import http.server
+    import json
+    import socket
+    import threading
+
+    from paddock.runtime import proc as node_proc
+
+    class _Impostor(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = b"true" if self.path == "/alive" else json.dumps({"model": "visionpilot"}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_):
+            pass
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    server = http.server.HTTPServer(("127.0.0.1", port), _Impostor)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    class _StillLoading:
+        returncode = None
+
+        def poll(self):
+            return None
+
+    try:
+        with pytest.raises(node_proc.NodeStartupError, match="answering as 'visionpilot', not 'drivejepa'"):
+            node_proc.wait_alive(
+                port, 10.0, _StillLoading(), REPO_ROOT / "nonexistent.log", expect_model="drivejepa"
+            )
+    finally:
+        server.shutdown()

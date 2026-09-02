@@ -40,7 +40,9 @@ def _tail(path: Path, lines: int = 25) -> str:
     return "\n".join(content[-lines:]) or "(log empty)"
 
 
-def wait_alive(port: int, timeout_s: float, proc: subprocess.Popen, log: Path) -> None:
+def wait_alive(
+    port: int, timeout_s: float, proc: subprocess.Popen, log: Path, expect_model: str | None = None
+) -> None:
     deadline = time.time() + timeout_s
     while time.time() < deadline:
         # A node that has already exited will never answer; say so immediately
@@ -52,6 +54,12 @@ def wait_alive(port: int, timeout_s: float, proc: subprocess.Popen, log: Path) -
             )
         try:
             if httpx.get(f"http://127.0.0.1:{port}/alive", timeout=5.0).status_code == 200:
+                # Alive is not enough. A port is chosen before the node binds
+                # it, and a model that takes minutes to load leaves that window
+                # open; a sibling run's node answering here would pass the
+                # check and then serve this run's requests as the wrong model.
+                if expect_model is not None:
+                    _verify_identity(port, expect_model)
                 return
         except httpx.HTTPError:
             pass
@@ -60,6 +68,20 @@ def wait_alive(port: int, timeout_s: float, proc: subprocess.Popen, log: Path) -
         f"node did not answer /alive on port {port} within {timeout_s / 60:.0f} min.\n"
         f"--- {log.name} ---\n{_tail(log)}"
     )
+
+
+def _verify_identity(port: int, expect_model: str) -> None:
+    """Raise unless the node on `port` says it serves `expect_model`."""
+    try:
+        response = httpx.get(f"http://127.0.0.1:{port}/whoami", timeout=5.0)
+        served = response.json().get("model") if response.status_code == 200 else None
+    except (httpx.HTTPError, ValueError):
+        served = None
+    if served != expect_model:
+        raise NodeStartupError(
+            f"port {port} is answering as {served!r}, not {expect_model!r}: another node holds it. "
+            f"Concurrent runs must not share a port range -- set PADDOCK_BASE_PORT per run."
+        )
 
 
 @contextlib.contextmanager
@@ -110,7 +132,7 @@ def model_node(
             stderr=subprocess.STDOUT,
         )
         try:
-            wait_alive(port, spec.startup_timeout_s, proc, log)
+            wait_alive(port, spec.startup_timeout_s, proc, log, expect_model=spec.directory.name)
             echo(f"  {spec.name} ready")
             yield f"http://127.0.0.1:{port}"
         finally:

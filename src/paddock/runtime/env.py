@@ -51,6 +51,15 @@ def build(spec: ModelSpec, cfg: SiteConfig, extra: dict[str, str] | None = None)
     for key, value in spec.runtime.env.items():
         env[key] = cfg.resolve(value, **context)
 
+    # Site-local overrides win over the model's declared defaults. `paddock.toml`
+    # already parsed these into ModelOverride.env and nothing applied them, so an
+    # `[models.<name>] env` block was silently doing nothing -- the worst kind of
+    # configuration, because it looks like it took effect.
+    override = cfg.models.get(spec.name)
+    if override is not None:
+        for key, value in override.env.items():
+            env[key] = cfg.resolve(value, **context)
+
     # Paths a model's own setup.sh may want, named consistently.
     env.setdefault("PADDOCK_REPO", str(cfg.repo(spec.repo)))
     env.setdefault("PADDOCK_WEIGHTS", str(cfg.weights))
