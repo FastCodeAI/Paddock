@@ -102,9 +102,24 @@ def _store_run(
     invalid_reasons: list[str],
     by_group: dict | None = None,
     hardware: dict | None = None,
+    split: str | None = None,
 ) -> tuple[Path, store.MetricsRecord]:
-    """Write one run to the results store. Every path stores through here."""
+    """Write one run to the results store. Every path stores through here.
+
+    `split` is already in every sample id and therefore in the sequence hash;
+    recorded in `dataset` too so run.json answers "which split" without
+    opening samples.jsonl.
+    """
     status, valid, notes = _validity(failure_note, invalid_reasons)
+    dataset: dict = {"name": spec.dataset}
+    if split is not None:
+        dataset["split"] = split
+    dataset.update(
+        {
+            "n_samples": len(samples),
+            "sequences_sha256": store.sequence_hash([s["sample_id"] for s in samples]),
+        }
+    )
     run = store.RunRecord(
         run_id=run_id,
         site=cfg.site,
@@ -113,11 +128,7 @@ def _store_run(
         mode=spec.mode,
         started_utc=started.isoformat(timespec="seconds"),
         duration_s=round(time.time() - began, 1),
-        dataset={
-            "name": spec.dataset,
-            "n_samples": len(samples),
-            "sequences_sha256": store.sequence_hash([s["sample_id"] for s in samples]),
-        },
+        dataset=dataset,
         config=config,
         hardware=hardware or {},
         status=status,
@@ -420,6 +431,7 @@ def _run_external(
         # The scorer's own headline and aggregate rows, kept in the tracked
         # metrics.json exactly where the ingest path puts them.
         by_group=evaluation.by_group,
+        split=harness.split,
     )
     headline = metrics_record.metrics.get(spec.primary_metric, {})
     echo(f"  n={metrics_record.n}  {spec.primary_metric} mean={headline.get('mean')}")
