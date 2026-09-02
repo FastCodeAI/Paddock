@@ -25,11 +25,15 @@ datasets:
       sequences the configured tiers can actually serve.
 
   navsim:
-    description: NAVSIM / OpenScene -- PDMS and EPDMS closed-loop-proxy scoring
+    description: NAVSIM v2 on OpenScene (a 2 Hz redistribution of nuPlan, not nuScenes) -- EPDMS closed-loop-proxy scoring
     requires: [navsim_logs, sensor_blobs, maps]
     notes: >
-      Evaluation needs only the test logs and blobs. Training additionally needs
-      navtrain / trainval_sensor, which are a separate and much larger download.
+      Single-stage evaluation (navtest: 136 logs, 12,146 real scenes) needs only
+      the test logs, camera blobs and maps. The two-stage splits that the NAVSIM
+      v2 leaderboard reports (navhard / navsafe two-stage) additionally need
+      synthetic_scenes/, a separate download; EPDMS on navtest is the same metric
+      on different, easier data and is not comparable to those figures. Training
+      needs navtrain / trainval_sensor, another separate and much larger download.
 
   neurad_checkpoints:
     description: per-scene NeuRAD renderer checkpoints, required by neuroNCAP

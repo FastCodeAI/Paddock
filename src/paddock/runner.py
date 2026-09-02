@@ -289,6 +289,10 @@ def _run_external(
         duration_s=round(time.time() - began, 1),
         dataset={
             "name": spec.dataset,
+            # The split is already in every sample id and therefore in the
+            # sequence hash; recorded here too so run.json answers "which split"
+            # without opening samples.jsonl.
+            "split": getattr(harness, "split", None),
             "n_samples": len(samples),
             "sequences_sha256": store.sequence_hash([s["sample_id"] for s in samples]),
         },

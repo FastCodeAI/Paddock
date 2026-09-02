@@ -15,7 +15,7 @@ machine, against whatever copy of the data they already have.
 | | |
 |---|---|
 | **Models** | OpenPilot, VisionPilot, Alpamayo 1.5, Drive-JEPA — each in its own Python environment, none of them compatible with any other |
-| **Benchmarks** | KITScenes (ADE/FDE), neuroNCAP (closed-loop NCAP score), NAVSIM (PDMS/EPDMS), nuScenes and Bench2Drive planned |
+| **Benchmarks** | KITScenes (ADE/FDE), neuroNCAP (closed-loop NCAP score), NAVSIM v2 (EPDMS on navtest), nuScenes and Bench2Drive planned |
 | **Interface** | one `Policy` per model: `load()`, `reset()`, `infer(observation) -> trajectory`. The same class serves open-loop scoring and closed-loop simulation |
 | **Results** | one schema for every benchmark, with provenance — so an ADE and an NCAP score are statements about the same model, run the same way |
 

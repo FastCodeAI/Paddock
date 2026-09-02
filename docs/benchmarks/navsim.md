@@ -9,6 +9,29 @@ It is a **closed-loop proxy**: the ego is re-simulated, but it never sees the
 consequences of its own actions, so errors do not compound. Paddock therefore
 records it as `mode: open_loop`, alongside KITScenes.
 
+## What exactly is measured
+
+Four things a reader should not have to infer, stated once:
+
+- **Devkit: NAVSIM v2** (`Drive-JEPA/navsim_v2`, `[benchmarks.navsim] devkit`).
+  A v1 devkit sits beside it in the same checkout and is not used.
+- **Split: `navtest`** — 136 logs, 12,146 real recorded scenes, single stage.
+  Set by `[benchmarks.navsim] split`; the harness also knows
+  `navtest_two_stage`, `navmini` and `navtrain`.
+- **Score: EPDMS**, the v2 composite: the product of the multiplicative terms
+  {no at-fault collision, drivable area, traffic-light compliance, driving
+  direction} times a weighted average of {progress 5, time-to-collision 5,
+  lane keeping 2, history comfort 2, two-frame extended comfort 2}. v1's PDMS
+  has no lane-keeping, traffic-light or two-frame-comfort terms, so the two are
+  not interchangeable, and a v1 checkpoint scored here gets a v2 number.
+- **Not the v2 leaderboard protocol.** Published NAVSIM v2 figures are EPDMS
+  on `navhard` *two-stage*: a synthetic second stage (`synthetic_scenes/`)
+  branches off each real scene to test reactivity, and scores are far lower
+  there. This fork ships `navtest_two_stage` and `navsafe_two_stage` but no
+  `navhard`, and `synthetic_scenes/` is not on disk at this site, so nothing
+  two-stage can run here yet. EPDMS on navtest is the same metric on
+  different, easier data — do not compare it to published navhard numbers.
+
 ## OpenScene is nuPlan, not nuScenes
 
 Worth stating plainly, because the names invite the opposite assumption and the

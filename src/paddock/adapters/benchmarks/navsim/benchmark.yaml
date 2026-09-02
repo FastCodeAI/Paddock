@@ -1,5 +1,5 @@
 name: navsim
-description: NAVSIM PDMS/EPDMS - a closed-loop-proxy score from re-simulating a 4 s plan on OpenScene
+description: NAVSIM v2 EPDMS on navtest - a closed-loop-proxy score from re-simulating a 4 s plan on OpenScene's real scenes; not the navhard two-stage leaderboard protocol
 # Open loop in the sense that matters: the dataset decides what happens next and
 # errors do not compound. NAVSIM's scorer owns the iteration, which is why the
 # harness subclasses ExternallyScoredBenchmark rather than OpenLoopBenchmark.
