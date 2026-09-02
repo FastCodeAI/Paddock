@@ -137,8 +137,13 @@ def renderer(
 def run(
     bench: str = typer.Option(..., "--bench", "-b"),
     model: str = typer.Option(..., "--model", "-m", help="Model name, or 'all'."),
-    scene: str = typer.Option("0103", "--scene"),
-    scenarios: str = typer.Option(None, "--scenarios", help="Comma-separated; default all three."),
+    scene: str = typer.Option(
+        None,
+        "--scene",
+        help="Comma-separated scene ids (neuroNCAP: nuScenes sequence; Bench2Drive: route id or town). "
+        "Default: the benchmark's own default -- 0103 for neuroNCAP, every route for Bench2Drive.",
+    ),
+    scenarios: str = typer.Option(None, "--scenarios", help="Comma-separated scenario names; default all."),
     runs: int = typer.Option(1, "--runs"),
     limit: int = typer.Option(None, "--limit", help="Open-loop only: cap the sample count."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preflight only; start nothing."),

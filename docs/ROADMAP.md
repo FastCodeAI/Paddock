@@ -98,11 +98,28 @@ over the same 242 scenarios. Both are stored; which belongs in a comparison
 depends on what the other side computed. See
 `src/paddock/results/ingest/navsim.py`.
 
+## Bench2Drive / CARLA — adapter landed, not yet run
+
+`adapters/benchmarks/bench2drive`: a model-agnostic CARLA `agent.py`, the
+vendored dual-PID tracker, and a harness that fails a route on every failure
+the evaluator distinguishes rather than scoring it. All four models
+(openpilot, visionpilot, alpamayo15, drivejepa) declare it.
+
+| Claim | Verified how | Strength |
+|---|---|---|
+| parse reproduces a recorded score | golden test on a real 0.0.4 `results.json` | **strong** |
+| crashes fail, poor outcomes score | parametrised over the evaluator's status strings at 7ec25d1 | **strong** |
+| launch, timeout, CARLA cleanup | stand-in evaluator under test; real flags read from the checkout | **strong** / argued |
+| agent imports in the CARLA-client env | exercised in a Python 3.8 env with the 0.9.15 egg, no server | moderate |
+| a model drives a route through paddock | nothing yet | **unverified** |
+
+Needs a site with CARLA 0.9.15 and the pinned checkout wired in
+`[benchmarks.bench2drive]`. Detail in `docs/benchmarks/bench2drive.md`.
+
 ## Beyond reproduction
 
 Not started, and larger than everything above:
 
-- **Bench2Drive / CARLA** — no install, no checkout, no results anywhere. Greenfield.
 - **nuScenes open-loop** — needs `nuscenes_infos*.pkl`, which do not exist, and the
   local copy has no `sweeps/` and empty radar. Camera-only is viable; fusion is not.
 - **alpamayo2, vjepa2, sunnypilot** — never evaluated.

@@ -45,6 +45,11 @@ repos:
     patches:
       - 0001-waypoint-dt-and-camera-selection.patch
 
+  Bench2Drive:
+    url: https://github.com/Thinklab-SJTU/Bench2Drive.git
+    sha: 7ec25d1
+    description: CARLA 0.9.15 closed-loop leaderboard (release 0.0.4); driven by adapters/benchmarks/bench2drive
+
   kitscenes:
     url: https://github.com/KIT-MRT/kitscenes.git
     sha: 7765cde

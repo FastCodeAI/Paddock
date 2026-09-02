@@ -1,0 +1,672 @@
+"""Bench2Drive closed-loop benchmark (CARLA 0.9.15 / Thinklab-SJTU leaderboard).
+
+Bench2Drive drives the model through CARLA on the official leaderboard's 220
+short routes (Towns 12/13/15, 44 scenario types x 5). The model runs behind
+paddock's HTTP policy node; this harness spawns the leaderboard evaluator once
+per route, points its AutonomousAgent (``agent.py``, model-agnostic) at that
+node, and reads the driving score CARLA writes to ``results.json``.
+
+Closed-loop, like neuroNCAP: the model decides what happens next and errors
+compound. The shape mirrors ``neuroncap/harness.py`` deliberately --
+
+* ``preflight`` checks the CARLA install, the checkout, the routes file and
+  that the CARLA-client interpreter can import everything the agent needs, so
+  a missing asset is reported in seconds rather than an hour into a sweep;
+* ``episodes`` enumerates routes from the leaderboard routes XML;
+* ``run_episode`` shells out to ``leaderboard_evaluator.py`` with the node URL
+  and parses the ``results.json`` it produces.
+
+Three things the evaluator does that shape the code below (all read from the
+0.0.4 checkout, ``leaderboard_evaluator.py`` / ``utils/statistics_manager.py``):
+
+* it **self-launches CARLA** from ``CARLA_ROOT`` in its own session, on the
+  first free port at or above ``--port``, and reaps it with an ``atexit`` hook
+  -- which never runs if the evaluator itself is killed;
+* it **writes the checkpoint at startup**, so ``results.json`` existing proves
+  nothing, and it **still fills in scores for a crashed route**, marking the
+  crash only in the record's ``status``;
+* it exits non-zero only for ``Simulation crashed``; an agent crash exits 0.
+
+CARLA and the Bench2Drive checkout are vendored outside the package; the
+``[benchmarks.bench2drive]`` section of ``paddock.toml`` says where they live
+(see ``docs/benchmarks/bench2drive.md``).
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import signal
+import subprocess
+import time
+import xml.etree.ElementTree as ET
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
+
+from paddock.benchmark import ClosedLoopBenchmark, Episode
+from paddock.config import REPO_ROOT
+from paddock.runtime import ports
+from paddock.runtime.env import PASSTHROUGH
+
+#: The model-agnostic CARLA client shipped with this adapter. The evaluator loads
+#: it via ``--agent``; it reads its settings from PADDOCK_* variables set by
+#: ``run_episode`` below.
+AGENT = Path(__file__).parent / "agent.py"
+
+#: Default per-route wall-clock budget. Long routes ride CARLA's 4000-frame cap,
+#: and a slow model (Alpamayo runs ~0.05x real-time) needs a generous ceiling.
+DEFAULT_ROUTE_TIMEOUT_S = 1800
+
+#: Spacing of the waypoints the node returns. Every closed-loop model plans on a
+#: 0.5 s grid (see ``neuroncap/harness.py``); the agent turns waypoint spacing
+#: into a target speed with it, so it is a measurement parameter, not a knob.
+WAYPOINT_DT = 0.5
+
+DEFAULT_ROUTES_FILE = "bench2drive220.xml"
+
+#: CARLA's client library as the 0.9.15 release ships it. Put on the client's
+#: path when present, as the checkout's own ``run_evaluation.sh`` does, so a
+#: site need not also ``pip install carla``.
+CARLA_EGG = Path("PythonAPI") / "carla" / "dist" / "carla-0.9.15-py3.7-linux-x86_64.egg"
+
+#: ``statistics_manager.FAILURE_MESSAGES`` in Bench2Drive 0.0.4 (7ec25d1). A
+#: record whose status ends in one of these describes a route that did not
+#: run, whatever its ``scores`` say. Everything else the manager writes --
+#: ``Perfect``, ``Completed``, ``Failed - Agent got blocked``, ``Failed - Agent
+#: deviated from the route``, ``Failed - Agent timed out``, ``Failed -
+#: TickRuntime`` (the 4000-frame cap) -- is the benchmark working, and scores.
+CRASH_STATUSES = frozenset(
+    {
+        "Simulation crashed",
+        "Agent's sensors were invalid",
+        "Agent couldn't be set up",
+        "Agent crashed",
+    }
+)
+
+#: Everything ``agent.py`` imports, checked in the client interpreter by
+#: ``preflight`` so a missing package fails before CARLA boots.
+AGENT_IMPORTS = (
+    "carla",
+    "cv2",
+    "numpy",
+    "requests",
+    "agents.navigation.local_planner",
+    "leaderboard.autoagents.autonomous_agent",
+    "srunner.scenariomanager.carla_data_provider",
+    "paddock.policy.protocol",
+    "paddock.adapters.benchmarks.bench2drive.pid",
+)
+
+_RPC_PORT = re.compile(r"-carla-rpc-port=(\d+)")
+
+
+class NotScored(ValueError):
+    """``results.json`` holds no score for the route: empty, or the route crashed."""
+
+
+# ---------------------------------------------------------------------------
+# Pure helpers, golden-tested without CARLA
+# ---------------------------------------------------------------------------
+
+
+def parse_routes(routes_xml: Path) -> list[tuple[str, str, str]]:
+    """``(route_id, town, scenario_type)`` for every route in a leaderboard XML.
+
+    Pure, so the golden test can enumerate a fixture with no CARLA involved.
+    """
+    tree = ET.parse(routes_xml)
+    routes: list[tuple[str, str, str]] = []
+    for route in tree.getroot().findall("route"):
+        rid = route.get("id") or ""
+        town = route.get("town") or ""
+        scenario = route.find("scenarios/scenario")
+        stype = scenario.get("type") if scenario is not None else "route"
+        routes.append((rid, town, stype))
+    return routes
+
+
+def select_routes(
+    routes: list[tuple[str, str, str]],
+    scenes: list[str] | None = None,
+    scenarios: list[str] | None = None,
+    subset: list[str] | None = None,
+) -> Iterator[tuple[str, str, str]]:
+    """Filter routes by ``--scene`` (route id or town), ``--scenarios`` (type) and
+    an optional site ``subset`` (route ids, from ``[benchmarks.bench2drive]
+    routes_subset``) that restricts the run to a chosen set -- e.g. one route per
+    scenario category -- without editing the routes file.
+
+    ``scenes=None`` (or empty) means every route: the runner passes ``None``
+    when ``--scene`` was not given, the same contract every closed-loop
+    benchmark gets.
+
+    Pure and separate from :meth:`Bench2DriveBenchmark.episodes` so the selection
+    logic is unit-testable without a site config.
+    """
+    subset_ids = set(subset) if subset else None
+    scene_filter = set(scenes) if scenes else None
+    scenario_filter = set(scenarios) if scenarios else None
+    for rid, town, stype in routes:
+        if subset_ids is not None and rid not in subset_ids:
+            continue
+        if scene_filter is not None and rid not in scene_filter and town not in scene_filter:
+            continue
+        if scenario_filter is not None and stype not in scenario_filter:
+            continue
+        yield rid, town, stype
+
+
+def crash_reason(status: str) -> str | None:
+    """The failure message if ``status`` marks a route that did not run, else None."""
+    for reason in CRASH_STATUSES:
+        if status.endswith(reason):
+            return reason
+    return None
+
+
+def parse_results(results_json: Path) -> dict[str, float]:
+    """A Bench2Drive ``results.json`` -> paddock metrics for one route.
+
+    One record per repetition (``--repetitions N`` gives N); metrics are the
+    mean over them and ``n_runs`` says how many, as neuroNCAP's collector does.
+    The aggregate ``global_record`` is ignored.
+
+    Raises :class:`NotScored` when there is no record, or when any record's
+    ``status`` is one of :data:`CRASH_STATUSES`: the leaderboard fills in
+    ``score_composed`` for a crashed route too, and a zero that came from a
+    stack trace must not average into the leaderboard as if the car had driven
+    into a wall. Pure, so the golden test asserts it reproduces the score CARLA
+    recorded.
+    """
+    checkpoint = json.loads(Path(results_json).read_text()).get("_checkpoint", {})
+    records = checkpoint.get("records") or []
+    if not records:
+        raise NotScored(f"{results_json}: no records in _checkpoint (the route did not score)")
+
+    for record in records:
+        status = str(record.get("status", ""))
+        reason = crash_reason(status)
+        if reason:
+            raise NotScored(
+                f"{results_json}: {record.get('route_id', 'route')} status {status!r} -- "
+                f"the route did not run, so its scores are not a measurement"
+            )
+
+    def count(infractions: dict, key: str) -> int:
+        value = infractions.get(key, [])
+        return len(value) if isinstance(value, list) else int(value or 0)
+
+    driving, completion, penalty, collided = [], [], [], []
+    for record in records:
+        scores = record.get("scores", {})
+        infractions = record.get("infractions", {})
+        driving.append(float(scores.get("score_composed", 0.0)))
+        completion.append(float(scores.get("score_route", 0.0)))
+        penalty.append(float(scores.get("score_penalty", 0.0)))
+        collision_keys = ("collisions_vehicle", "collisions_pedestrian", "collisions_layout")
+        collisions = sum(count(infractions, k) for k in collision_keys)
+        collided.append(1.0 if collisions > 0 else 0.0)
+
+    n = len(records)
+    return {
+        "driving_score": round(sum(driving) / n, 4),
+        "route_completion": round(sum(completion) / n, 4),
+        "infraction_penalty": round(sum(penalty) / n, 4),
+        # Per-route 0/1 (a fraction over repetitions); paddock aggregates it to a
+        # rate across routes, as neuroNCAP does.
+        "collision_rate": round(sum(collided) / n, 4),
+        "n_runs": n,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Process hygiene: we kill only what we started
+# ---------------------------------------------------------------------------
+
+
+def carla_port_from_log(log_path: Path, fallback: int) -> int:
+    """The port CARLA was actually started on.
+
+    The evaluator moves up from ``--port`` to the first free one and prints the
+    launch command; that line is the only record of the port it chose.
+    """
+    if log_path.exists():
+        match = _RPC_PORT.search(log_path.read_text(errors="replace"))
+        if match:
+            return int(match.group(1))
+    return fallback
+
+
+def carla_pids(port: int) -> list[int]:
+    """PIDs whose command line carries exactly ``-carla-rpc-port=<port>``.
+
+    That token appears only on a CARLA server (and the shell that launched it),
+    and only one server can hold a port -- so this names the server *this*
+    evaluator launched and nothing else on the host. Never by process name:
+    ``CarlaUE4-Linux-Shipping`` is every CARLA on the machine.
+    """
+    token = re.compile(rf"(?:^|\s)-carla-rpc-port={port}(?:\s|$)")
+    me = os.getpid()
+    found: list[int] = []
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit() or int(entry.name) == me:
+            continue
+        try:
+            cmdline = (entry / "cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
+        except OSError:  # it exited between listing and reading
+            continue
+        if token.search(cmdline):
+            found.append(int(entry.name))
+    return found
+
+
+def kill_group(proc: subprocess.Popen) -> None:
+    """Take the evaluator and everything in its session down, TERM then KILL."""
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+        proc.wait(timeout=30)
+    except (ProcessLookupError, subprocess.TimeoutExpired):
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        try:
+            proc.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            pass
+
+
+def reap_carla(port: int, wait_s: float = 30.0) -> list[int]:
+    """Kill the CARLA server on ``port`` if it outlived its evaluator.
+
+    On a normal exit the evaluator's own ``atexit`` has already done this; after
+    a timeout kill nothing has, and CARLA sits in its own session where the
+    evaluator's process group cannot reach it. Polls the port free rather than
+    sleeping a fixed time, so the next route neither races the old server nor
+    waits longer than it must.
+    """
+    pids = carla_pids(port)
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    deadline = time.time() + wait_s
+    while pids and not ports.is_free(port) and time.time() < deadline:
+        time.sleep(1.0)
+    return pids
+
+
+def _tail(path: Path, lines: int = 20) -> str:
+    if not path.exists():
+        return "(no log)"
+    return "\n".join(path.read_text(errors="replace").splitlines()[-lines:]) or "(log empty)"
+
+
+# ---------------------------------------------------------------------------
+# The benchmark
+# ---------------------------------------------------------------------------
+
+
+class Bench2DriveBenchmark(ClosedLoopBenchmark):
+    # ---- site settings -------------------------------------------------
+
+    @property
+    def settings(self):
+        return self.cfg.benchmarks.get("bench2drive")
+
+    def setting(self, key: str, default: str | None = None) -> str | None:
+        return self.settings.get(key, default) if self.settings else default
+
+    @property
+    def repo(self) -> Path | None:
+        value = self.setting("repo")
+        return Path(value) if value else None
+
+    @property
+    def carla_root(self) -> Path | None:
+        value = self.setting("carla_root")
+        return Path(value) if value else None
+
+    @property
+    def routes_file(self) -> Path | None:
+        repo = self.repo
+        if repo is None:
+            return None
+        return repo / "leaderboard" / "data" / (self.setting("routes_file") or DEFAULT_ROUTES_FILE)
+
+    @property
+    def evaluator(self) -> Path | None:
+        repo = self.repo
+        return None if repo is None else repo / "leaderboard" / "leaderboard" / "leaderboard_evaluator.py"
+
+    @property
+    def routes_subset(self) -> list[str] | None:
+        value = self.setting("routes_subset")
+        ids = [s.strip() for s in value.split(",") if s.strip()] if value else []
+        return ids or None
+
+    @property
+    def record(self) -> bool:
+        """Per-tick front/BEV JPEGs and a log.csv: off unless asked for.
+
+        Roughly 50 KB x 4000 frames x 220 routes, about 40 GB a sweep, plus an
+        extra render on CARLA's side every tick.
+        """
+        return (self.setting("record") or "false").strip().lower() in ("1", "true", "yes", "on")
+
+    def _pythonpath(self) -> list[str]:
+        """What the client interpreter needs, in the checkout's own order.
+
+        ``REPO_ROOT/src`` first, as for every process paddock launches: the
+        agent imports the wire contract from ``paddock.policy.protocol`` and the
+        tracker from this package rather than restating either.
+        """
+        carla_root, repo = self.carla_root, self.repo
+        entries = [str(REPO_ROOT / "src")]
+        if carla_root is not None:
+            if (carla_root / CARLA_EGG).exists():
+                entries.append(str(carla_root / CARLA_EGG))
+            entries.append(str(carla_root / "PythonAPI" / "carla"))
+        if repo is not None:
+            entries += [str(repo / "leaderboard"), str(repo / "scenario_runner")]
+        return entries
+
+    def _environment(self, extra: dict[str, str]) -> dict[str, str]:
+        """The evaluator's environment: the host passthrough set, plus ours.
+
+        Built like ``runtime.env.build``, not inherited wholesale -- a stray
+        PYTHONPATH from paddock's own env would make the client half-import
+        paddock's dependencies. ``CUDA_VISIBLE_DEVICES`` passes through so the
+        CARLA the evaluator launches honours how the sweep was pinned.
+        """
+        env = {k: os.environ[k] for k in PASSTHROUGH if k in os.environ}
+        env.update(
+            {
+                "CARLA_ROOT": str(self.carla_root),
+                "SCENARIO_RUNNER_ROOT": str(self.repo / "scenario_runner"),
+                "LEADERBOARD_ROOT": str(self.repo / "leaderboard"),
+                "PYTHONPATH": os.pathsep.join(self._pythonpath()),
+            }
+        )
+        env.update(extra)
+        return env
+
+    # ---- preflight -----------------------------------------------------
+
+    def preflight(self) -> list[str]:
+        """Everything that must hold before a model is loaded, checked cheaply."""
+        problems: list[str] = []
+        if self.settings is None:
+            return [
+                "no [benchmarks.bench2drive] section in paddock.toml; it needs `python`, "
+                "`carla_root` and `repo` (see docs/benchmarks/bench2drive.md)"
+            ]
+
+        for key in ("python", "carla_root", "repo"):
+            if not self.setting(key):
+                problems.append(f"[benchmarks.bench2drive] {key} is not set in paddock.toml")
+
+        python = self.setting("python")
+        if python and not Path(python).exists():
+            problems.append(f"CARLA-client interpreter not found: {python}")
+
+        carla_root = self.carla_root
+        if carla_root is not None:
+            if not (carla_root / "CarlaUE4.sh").exists():
+                problems.append(f"CARLA 0.9.15 not found at carla_root (no CarlaUE4.sh): {carla_root}")
+            planner = carla_root / "PythonAPI" / "carla" / "agents" / "navigation" / "local_planner.py"
+            if not planner.exists():
+                problems.append(
+                    f"CARLA PythonAPI is incomplete (agent.py imports RoadOption from it): {planner}"
+                )
+
+        repo = self.repo
+        if repo is not None:
+            for relative, why in (
+                (Path("leaderboard/leaderboard/leaderboard_evaluator.py"), "the evaluator"),
+                (Path("leaderboard/leaderboard/autoagents/autonomous_agent.py"), "the AutonomousAgent base"),
+                (Path("scenario_runner/srunner/scenariomanager/carla_data_provider.py"), "scenario_runner"),
+            ):
+                if not (repo / relative).exists():
+                    problems.append(f"Bench2Drive checkout is missing {why}: {repo / relative}")
+
+        routes = self.routes_file
+        if routes is not None:
+            if not routes.exists():
+                problems.append(f"routes file not found: {routes}")
+            elif self.routes_subset:
+                known = {rid for rid, _, _ in parse_routes(routes)}
+                unknown = [rid for rid in self.routes_subset if rid not in known]
+                if unknown:
+                    problems.append(
+                        f"[benchmarks.bench2drive] routes_subset names route id(s) not in "
+                        f"{routes.name}: {', '.join(unknown)}"
+                    )
+
+        timeout = self.setting("per_route_timeout_s")
+        if timeout and not timeout.strip().isdigit():
+            problems.append(
+                f"[benchmarks.bench2drive] per_route_timeout_s must be an integer, got {timeout!r}"
+            )
+
+        if not problems:
+            problems += self._import_problems()
+        return problems
+
+    def _import_problems(self) -> list[str]:
+        """Import everything the agent will, in the client interpreter.
+
+        The agent runs in a foreign environment where a missing package shows
+        up as a ModuleNotFoundError only after CARLA has booted, on every route.
+        A one-second subprocess here reports it before the model is loaded.
+        """
+        command = [
+            str(self.setting("python")),
+            "-c",
+            "import importlib, sys\n"
+            f"for name in {list(AGENT_IMPORTS)!r}:\n"
+            "    importlib.import_module(name)\n",
+        ]
+        try:
+            result = subprocess.run(
+                command, env=self._environment({}), capture_output=True, text=True, timeout=120
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return [f"could not run the CARLA-client interpreter to check the agent's imports: {exc}"]
+        if result.returncode == 0:
+            return []
+        last = (result.stderr.strip().splitlines() or ["(no output)"])[-1]
+        return [
+            f"the CARLA-client interpreter cannot import what agent.py needs: {last}\n"
+            f"it must import {', '.join(AGENT_IMPORTS)} with PYTHONPATH="
+            f"{os.pathsep.join(self._pythonpath())} (see docs/benchmarks/bench2drive.md)"
+        ]
+
+    def scene_problems(self, scene: str) -> list[str]:
+        """``--scene`` names a route id or a town; say so before the model loads."""
+        routes = self.routes_file
+        if routes is None or not routes.exists():
+            return []  # preflight has already reported it
+        parsed = parse_routes(routes)
+        ids = {rid for rid, _, _ in parsed}
+        towns = sorted({town for _, town, _ in parsed})
+        if scene in ids or scene in towns:
+            return []
+        return [
+            f"--scene {scene} matches no route id or town in {routes.name} "
+            f"({len(ids)} route ids; towns: {', '.join(towns)})"
+        ]
+
+    def scenario_problems(self, scenarios: list[str]) -> list[str]:
+        """``--scenarios`` names scenario types; a typo would otherwise yield zero routes."""
+        routes = self.routes_file
+        if routes is None or not routes.exists():
+            return []
+        known = sorted({stype for _, _, stype in parse_routes(routes)})
+        unknown = [s for s in scenarios if s not in known]
+        if not unknown:
+            return []
+        return [
+            f"--scenarios {', '.join(unknown)}: not a scenario type in {routes.name}; "
+            f"known: {', '.join(known)}"
+        ]
+
+    def run_config(self) -> dict[str, Any]:
+        """Site settings that change *what is measured*, for ``run.json``.
+
+        A routes subset makes two sites' numbers incomparable unless it is on
+        the record; recorded here and hashed into the run id by the runner.
+        """
+        routes = self.routes_file
+        return {
+            "routes_file": routes.name if routes is not None else None,
+            "routes_subset": sorted(self.routes_subset) if self.routes_subset else None,
+            "waypoint_dt": WAYPOINT_DT,
+        }
+
+    # ---- episodes ------------------------------------------------------
+
+    def episodes(
+        self,
+        scenes: list[str] | None = None,
+        runs: int = 1,
+        scenarios: list[str] | None = None,
+    ) -> Iterator[Episode]:
+        routes_file = self.routes_file
+        if routes_file is None or not routes_file.exists():
+            return
+        routes = parse_routes(routes_file)
+        for rid, town, stype in select_routes(routes, scenes, scenarios, self.routes_subset):
+            yield Episode(
+                episode_id=f"{rid}-{town}-{stype}",
+                scenario=stype,
+                scene=rid,
+                run_index=0,
+                config={"route_id": rid, "town": town, "runs": runs},
+            )
+
+    # ---- run one episode ----------------------------------------------
+
+    def run_episode(self, episode: Episode, policy_url: str, out_dir: Path) -> dict[str, float]:
+        """Drive one route through CARLA against a running policy node.
+
+        ``policy_url`` is a node paddock has already started and health-checked.
+        The evaluator self-launches CARLA (reading CARLA_ROOT), so nothing else
+        needs starting here; the agent talks to the node over HTTP.
+
+        Failure order matters: a timeout is reported as a timeout, a non-zero
+        exit as an exit, and only then is ``results.json`` read -- which after
+        either of those still exists, holding either no record or a crashed one.
+        """
+        repo = self.repo
+        python = self.setting("python")
+        cameras = episode.config.get("cameras") or ["CAM_FRONT"]
+        runs = int(episode.config.get("runs", 1))
+        timeout_s = int(self.setting("per_route_timeout_s") or DEFAULT_ROUTE_TIMEOUT_S)
+        requested_port = int(self.setting("carla_port") or 2000)
+
+        out_dir.mkdir(parents=True, exist_ok=True)
+        results_json = out_dir / "results.json"
+        log_path = out_dir / "evaluator.log"
+
+        extra = {
+            "PADDOCK_NODE_URL": policy_url,
+            "PADDOCK_CAMERAS": ",".join(cameras),
+            "PADDOCK_WAYPOINT_DT": str(WAYPOINT_DT),
+        }
+        if self.record:
+            extra["PADDOCK_RECORD_DIR"] = str(out_dir)
+            # agent_wrapper reads SAVE_PATH as its "Bench2Drive mode" flag, which
+            # lifts the 3 m sensor-radius limit the BEV camera at z=30 needs.
+            extra["SAVE_PATH"] = str(out_dir)
+
+        command = [
+            str(python),
+            "-u",
+            str(self.evaluator),
+            "--routes",
+            str(self.routes_file),
+            "--routes-subset",
+            episode.config["route_id"],
+            "--repetitions",
+            str(runs),
+            "--track",
+            "SENSORS",
+            "--checkpoint",
+            str(results_json),
+            "--agent",
+            str(AGENT),
+            "--port",
+            str(requested_port),
+            "--traffic-manager-port",
+            str(self.setting("tm_port") or 8000),
+            "--gpu-rank",
+            str(self.setting("gpu_rank") or 0),
+        ]
+
+        started = time.time()
+        timed_out = False
+        with log_path.open("w") as handle:
+            handle.write(" ".join(command) + "\n\n")
+            handle.flush()
+            # Its own session, so a timeout or an interrupted sweep takes the
+            # evaluator and its children down together; the log streams to a
+            # file as it runs, so a hung route is diagnosable while it hangs.
+            # The evaluator reads `leaderboard/data/weather.xml` relative to
+            # its working directory, which must therefore be the checkout root.
+            evaluator = subprocess.Popen(
+                command,
+                cwd=repo,
+                env=self._environment(extra),
+                stdout=handle,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+            try:
+                returncode = evaluator.wait(timeout=timeout_s)
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                kill_group(evaluator)
+                returncode = evaluator.returncode
+            except BaseException:
+                kill_group(evaluator)
+                reap_carla(carla_port_from_log(log_path, requested_port))
+                raise
+        elapsed = time.time() - started
+
+        # On a normal exit the evaluator's atexit hook has already reaped its
+        # CARLA; after a kill it has not. Either way, only ours, by its port.
+        reap_carla(carla_port_from_log(log_path, requested_port))
+
+        if timed_out:
+            raise RuntimeError(
+                f"{episode.episode_id}: timed out after {timeout_s / 60:.0f} min "
+                f"(per_route_timeout_s); evaluator killed\n--- tail of {log_path.name} ---\n{_tail(log_path)}"
+            )
+        if returncode != 0:
+            raise RuntimeError(
+                f"{episode.episode_id}: evaluator exited {returncode} after {elapsed / 60:.1f} min"
+                f"\n--- tail of {log_path.name} ---\n{_tail(log_path)}"
+            )
+        if not results_json.exists():
+            raise RuntimeError(
+                f"{episode.episode_id}: evaluator exited 0 but wrote no results.json"
+                f"\n--- tail of {log_path.name} ---\n{_tail(log_path)}"
+            )
+
+        try:
+            metrics = parse_results(results_json)
+        except NotScored as exc:
+            raise RuntimeError(
+                f"{episode.episode_id}: {exc}\n--- tail of {log_path.name} ---\n{_tail(log_path)}"
+            ) from exc
+        metrics["duration_s"] = round(elapsed, 1)
+        return metrics
+
+
+#: Paddock looks for this name when loading an adapter.
+BENCHMARK = Bench2DriveBenchmark

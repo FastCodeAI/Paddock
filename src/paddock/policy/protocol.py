@@ -145,6 +145,17 @@ def _load_torch_tensor_without_torch(data: bytes) -> np.ndarray:
         return np.asarray(unpickler.load())
 
 
+def encode_image(array: np.ndarray) -> str:
+    """uint8 HWC -> base64 of a numpy ``.npy``: the encoder for paddock's own producers.
+
+    The open-loop runner and the CARLA client both use this, so there is one
+    definition of what goes on the wire and `decode_image` is its inverse.
+    """
+    buffer = io.BytesIO()
+    np.save(buffer, np.ascontiguousarray(array), allow_pickle=False)
+    return base64.b64encode(buffer.getvalue()).decode()
+
+
 def decode_image(encoded: str) -> np.ndarray:
     """base64 of either a numpy .npy or a ``torch.save``d tensor -> uint8 HWC.
 
