@@ -25,7 +25,7 @@ import numpy as np
 
 from paddock.benchmark import ClosedLoopBenchmark, OpenLoopBenchmark
 from paddock.config import SiteConfig
-from paddock.policy.protocol import Trajectory
+from paddock.policy.protocol import Trajectory, encode_image
 from paddock.registry import BenchmarkSpec, ModelSpec, Registry
 from paddock.results import store
 from paddock.runtime import ports, proc
@@ -46,7 +46,7 @@ def run_benchmark(
     cfg: SiteConfig,
     bench: str,
     model: str,
-    scene: str = "0103",
+    scene: str | None = None,
     scenarios: list[str] | None = None,
     runs: int = 1,
     limit: int | None = None,
@@ -74,16 +74,26 @@ def run_benchmark(
 
     harness = load_benchmark(spec, cfg)
 
+    # `--scene` is comma-separated like `--scenarios`; None means the benchmark's
+    # own default (neuroNCAP: 0103; Bench2Drive: every route). No benchmark's
+    # default id is passed to another benchmark.
+    scenes = [s.strip() for s in scene.split(",") if s.strip()] if scene else None
+
     problems = harness.preflight()
-    if hasattr(harness, "scene_problems"):
-        problems += harness.scene_problems(scene)
+    if scenes and hasattr(harness, "scene_problems"):
+        for one in scenes:
+            problems += harness.scene_problems(one)
+    if scenarios and hasattr(harness, "scenario_problems"):
+        problems += harness.scenario_problems(scenarios)
     if problems:
         echo(f"{bench} cannot run here:")
         for problem in problems:
             echo("  - " + problem.replace("\n", "\n    "))
         return 1
 
-    echo(f"{bench}: {len(models)} model(s), scene {scene}, {runs} run(s) per scenario")
+    echo(
+        f"{bench}: {len(models)} model(s), scene {scene or '(benchmark default)'}, {runs} run(s) per scenario"
+    )
     if dry_run:
         if isinstance(harness, OpenLoopBenchmark):
             found, missing = harness.coverage() if hasattr(harness, "coverage") else ([], [])
@@ -91,7 +101,7 @@ def run_benchmark(
             if missing:
                 echo(f"    missing scenes: {', '.join(missing[:5])}" + (" ..." if len(missing) > 5 else ""))
         else:
-            episodes = list(harness.episodes([scene], runs=runs, scenarios=scenarios))
+            episodes = list(harness.episodes(scenes, runs=runs, scenarios=scenarios))
             for m in models:
                 echo(f"  {m.name}: {', '.join(e.episode_id for e in episodes)}")
         echo("dry run: nothing started")
@@ -106,7 +116,7 @@ def run_benchmark(
     failures = 0
     for index, model_spec in enumerate(models):
         port = ports.find_free(BASE_PORT + index)
-        failures += _run_one_model(cfg, harness, spec, model_spec, scene, scenarios, runs, port, echo)
+        failures += _run_one_model(cfg, harness, spec, model_spec, scenes, scenarios, runs, port, echo)
     return 1 if failures else 0
 
 
@@ -115,7 +125,7 @@ def _run_one_model(
     harness: ClosedLoopBenchmark,
     spec: BenchmarkSpec,
     model_spec: ModelSpec,
-    scene: str,
+    scenes: list[str] | None,
     scenarios: list[str] | None,
     runs: int,
     port: int,
@@ -123,16 +133,22 @@ def _run_one_model(
 ) -> int:
     started = datetime.now(UTC)
     began = time.time()
+    # Everything that changes what was measured. Scenarios were missing once,
+    # so two runs over different scenario sets hashed identically. A benchmark
+    # adds its own measurement-changing site settings through `run_config()`
+    # (a routes subset, say), so two sites' numbers stay distinguishable.
+    config = {
+        "scene": ",".join(scenes) if scenes else None,
+        "runs": runs,
+        "cameras": list(model_spec.cameras),
+        **(harness.run_config() if hasattr(harness, "run_config") else {}),
+    }
     run_id = store.make_run_id(
         started,
-        # Everything that changes what was measured. Scenarios were missing,
-        # so two runs over different scenario sets hashed identically.
         {
-            "scene": scene,
-            "runs": runs,
+            **config,
             "model": model_spec.name,
             "scenarios": sorted(scenarios) if scenarios else "all",
-            "cameras": list(model_spec.cameras),
         },
     )
     artifacts = cfg.runs / spec.name / model_spec.name / run_id
@@ -143,7 +159,7 @@ def _run_one_model(
 
     try:
         with proc.model_node(model_spec, cfg, port, artifacts, echo=echo) as policy_url:
-            for episode in harness.episodes([scene], runs=runs, scenarios=scenarios):
+            for episode in harness.episodes(scenes, runs=runs, scenarios=scenarios):
                 episode.config["cameras"] = list(model_spec.cameras)
                 out_dir = artifacts / episode.episode_id
                 try:
@@ -185,7 +201,7 @@ def _run_one_model(
             "n_samples": len(samples),
             "sequences_sha256": store.sequence_hash([s["sample_id"] for s in samples]),
         },
-        config={"scene": scene, "runs": runs, "cameras": list(model_spec.cameras)},
+        config=config,
         hardware={"gpu_free_gb_at_start": None},
         status="complete" if not failures else "partial",
         valid=failures == 0,
@@ -295,16 +311,6 @@ def _run_open_loop(
 
 def _encode(obs) -> dict:
     """Observation -> the wire shape the node decodes."""
-    import base64
-    import io
-
-    import numpy as np
-
-    def encode_image(array: np.ndarray) -> str:
-        buffer = io.BytesIO()
-        np.save(buffer, array, allow_pickle=False)
-        return base64.b64encode(buffer.getvalue()).decode()
-
     # Paths where the frame is on a shared filesystem, pixels only where it is
     # not. A 223-sample KITScenes run would otherwise push 348 GB of base64.
     return {

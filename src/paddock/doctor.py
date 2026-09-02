@@ -240,6 +240,29 @@ def run(model_filter: str | None = None) -> Report:
             tiers = f"{len(configured.roots)} tiers" if len(configured.roots) > 1 else str(root)
             report.add("datasets", name, Status.OK, tiers)
 
+    # -- benchmarks --------------------------------------------------------
+    # Each adapter's preflight(), the same check `paddock run` makes before a
+    # model loads: a site that trusts a green doctor must not then die on the
+    # first route. Not configured here is a warning, not a failure.
+    from paddock.runner import load_benchmark
+
+    for name, spec in registry.benchmarks.items():
+        try:
+            problems = load_benchmark(spec, cfg).preflight()
+        except Exception as exc:  # noqa: BLE001 - doctor reports, it never raises
+            report.add(
+                "benchmarks",
+                name,
+                Status.WARN,
+                f"adapter failed to load: {exc}",
+                f"fix the adapter's import; see docs/benchmarks/{name}.md",
+            )
+            continue
+        if problems:
+            report.add("benchmarks", name, Status.WARN, f"{len(problems)} problem(s)", "\n".join(problems))
+        else:
+            report.add("benchmarks", name, Status.OK, "preflight passed")
+
     # -- model environments ------------------------------------------------
     if not registry.models:
         report.add(
