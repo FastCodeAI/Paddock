@@ -439,6 +439,57 @@ its four nodes 1591% -> 151% CPU, my share of the box 2173% -> 651%, load
 232 -> 79, and drivejepa -- which had not been touched -- 0.39/s -> 1.34/s.
 The cores it was burning were the cores everything else was waiting for.
 
+## Losing a run, and not losing the next one
+
+alpamayo's first full-navtest run scored all 12,146 scenarios in 11.5 h and
+produced nothing. Two scenarios had failed -- its VLM emitted no trajectory
+token -- and the vendor's aggregation cannot survive a failed row:
+`compute_final_scores` stacks a column mixing arrays with the scalar NaN a
+failed row carries, and the failed-token report applies `not` to a Series.
+The scorer keeps every result in worker memory and writes one CSV at the end,
+so the crash came after the last forward pass and took everything with it.
+
+Four changes, each of which alone would have saved that run:
+
+- **`patches/Drive-JEPA/0002`** scores valid rows, leaves failed rows NaN with
+  row alignment preserved, and negates the mask with `~`. Verified per
+  `patches/README.md` and on a synthetic frame with a failed row.
+- **The proxy retries a model failure** (`retries` in the agent config, default
+  2, so up to three requests, with a short backoff between them; a transport
+  error from a node mid-restart is retried the same way as a 5xx). For an
+  unseeded sampler that is a fresh draw from the same distribution; for a
+  deterministic model it costs a request. The final failure still propagates,
+  so the scorer records the scenario as failed rather than paddock inventing a
+  plan.
+- **The plan dump carries the scenario token** (from the metric cache's path,
+  read as a label, never fed to the model), so a run whose scorer dies after
+  the last forward pass can be re-scored from its plans through
+  `run_pdm_score_from_submission.py` in about an hour of CPU.
+- **The split is scored in chunks of logs** (`[benchmarks.navsim] chunk_logs`,
+  default 4): each chunk is its own scorer invocation with its own CSV,
+  `navsim_scorer.log` and dump under `chunks/<i>/`; `chunks.log` at the run's
+  top level is the chunk-by-chunk story across every attempt (`ok`, `reused`,
+  `FAILED`), appended, never truncated. A chunk that fails is recorded with the
+  number of scenarios it would have scored -- counted from the metric cache,
+  which holds one directory per scenario -- and the rest continue; `run.json`
+  then carries `n_expected`, `n_failed` and `n_unscored`, and `notes` says
+  "N chunk(s) never scored: M scenario(s) across K log(s)" rather than counting
+  a lost chunk as one scenario per log. `--limit` runs stay single-invocation,
+  with the scorer's `navsim_scorer.log` at the top level.
+
+And three levels of retry, so that surviving a crash needs nobody awake:
+
+| what died | who retries | how |
+|---|---|---|
+| one scenario (the model raised, or the node did not answer) | the proxy | up to `retries` more requests (default 2) with a short backoff; an unseeded sampler gets a fresh draw |
+| a scenario still failed after that | the harness | one pass re-scoring just those tokens; scored rows replace failed ones on merge |
+| a chunk, the scorer, or a node | the runner | tears the nodes down, starts fresh ones, re-invokes `evaluate` on the **same** artifacts; completed chunks are skipped. `[benchmarks.navsim] run_retries`, default 2 |
+| paddock itself, or the box | you | `paddock run --bench navsim --model X --resume <run_id>` continues that run in place, same id, nothing scored twice -- under the same configuration: the switches a run starts under are written to its `run_config.json`, and a resume with a different agent, switch or chunk size is refused rather than merged. `PADDOCK_NAVSIM_RESUME_FROM=<dir>` reuses another run's chunks instead |
+
+A run's cost on any single failure is now one chunk of four logs, about
+twenty minutes at alpamayo's rate, against the eleven and a half hours the
+first run lost.
+
 ## A launcher bug found by the parallel smoke
 
 Running two smokes at once produced two runs reporting a node on the same

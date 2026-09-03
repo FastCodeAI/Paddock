@@ -147,6 +147,12 @@ def run(
     runs: int = typer.Option(1, "--runs"),
     limit: int = typer.Option(None, "--limit", help="Open-loop only: cap the sample count."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preflight only; start nothing."),
+    resume: str = typer.Option(
+        None,
+        "--resume",
+        help="Run id of an earlier run of this model to continue in place: its completed "
+        "chunks are kept, only the rest are scored, and it keeps its id.",
+    ),
 ) -> None:
     """Run a model against a benchmark."""
     from paddock.runner import run_benchmark
@@ -165,6 +171,7 @@ def run(
         scenarios=scenarios.split(",") if scenarios else None,
         runs=runs,
         limit=limit,
+        resume=resume,
         dry_run=dry_run,
         echo=typer.echo,
     )

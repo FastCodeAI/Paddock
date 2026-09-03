@@ -210,6 +210,8 @@ def _navsim_site(
     declared: tuple[str, ...] | None = ("log_a", "log_b"),
     blobs: tuple[str, ...] = ("log_a", "log_b"),
     cached: tuple[str, ...] = ("log_a", "log_b", "metadata"),
+    tokens_per_log: int = 0,
+    **settings: str,
 ) -> SiteConfig:
     """A site with a stand-in devkit, dataset and metric cache laid out as NAVSIM's are."""
     import sys
@@ -232,6 +234,10 @@ def _navsim_site(
     cache = tmp_path / "cache"
     for name in cached:
         (cache / name).mkdir(parents=True)
+        # The cache is <cache>/<log>/<scenario type>/<token>/, one directory
+        # per scenario; a stand-in with a few tokens per log.
+        for i in range(tokens_per_log if name != "metadata" else 0):
+            (cache / name / "unknown" / f"{name}-t{i}").mkdir(parents=True)
     for sub in ("repos", "runs", "weights", "exp"):
         (tmp_path / sub).mkdir()
     (tmp_path / "site.toml").write_text(
@@ -240,6 +246,7 @@ def _navsim_site(
         f'[datasets.navsim]\npath = "{data}"\nexp = "{tmp_path / "exp"}"\n'
         f'[benchmarks.navsim]\npython = "{sys.executable}"\ndevkit = "{devkit}"\n'
         f'metric_cache = "{cache}"\nsplit = "{split}"\n'
+        + "".join(f'{key} = "{value}"\n' for key, value in settings.items())
     )
     monkeypatch.setenv("PADDOCK_CONFIG", str(tmp_path / "site.toml"))
     for name in (ENV_AGENT, ENV_ALLOW_PARTIAL, ENV_ALLOW_SLOW, ENV_OVERRIDES):
@@ -660,3 +667,289 @@ def test_the_image_encoder_is_the_protocols_and_round_trips() -> None:
     assert convert.encode_image is protocol.encode_image
     image = (np.arange(2 * 3 * 3) % 256).astype(np.uint8).reshape(2, 3, 3)
     assert np.array_equal(protocol.decode_image(protocol.encode_image(image)), image)
+
+
+# -- a lost run is a chunk, not a split -------------------------------------
+
+
+def test_chunking_is_deterministic_and_covers_every_log() -> None:
+    from paddock.adapters.benchmarks.navsim.harness import chunk_logs
+
+    logs = [f"log{i:03d}" for i in range(10)]
+    chunks = chunk_logs(logs, 4)
+    assert [len(c) for c in chunks] == [4, 4, 2]
+    assert [x for c in chunks for x in c] == logs, "order preserved, nothing dropped or repeated"
+    assert chunk_logs(logs, 0) == [logs], "0 means one invocation, as the vendor does"
+
+
+def test_the_hydra_list_literal_quotes_names_with_dots() -> None:
+    """Log names look like 2021.05.25.14.16.10_veh-35_02482_02649; unquoted,
+    hydra reads the dots as structure."""
+    from paddock.adapters.benchmarks.navsim.harness import hydra_list
+
+    assert hydra_list(["2021.05.25.14.16.10_veh-35_02482_02649", "b"]) == (
+        "['2021.05.25.14.16.10_veh-35_02482_02649','b']"
+    )
+
+
+def test_merging_chunk_csvs_drops_each_chunks_aggregate_rows(tmp_path: Path) -> None:
+    """Every chunk CSV carries average_all_frames and friends; across chunks
+    they mean nothing, and left in they would be parsed as scenarios."""
+    from paddock.adapters.benchmarks.navsim.harness import merge_chunk_csvs
+    from paddock.results.ingest.navsim import SUB_METRICS, parse_scores
+
+    header = ["token", "valid", *SUB_METRICS, "score"]
+
+    def chunk(path: Path, tokens: list[str]) -> Path:
+        rows = [header] + [[t, "True", *["1.0"] * len(SUB_METRICS), "0.9"] for t in tokens]
+        rows.append(["average_all_frames", "True", *["1.0"] * len(SUB_METRICS), "0.9"])
+        path.write_text("\n".join(",".join(r) for r in rows) + "\n")
+        return path
+
+    merged = merge_chunk_csvs(
+        [chunk(tmp_path / "a.csv", ["t1", "t2"]), chunk(tmp_path / "b.csv", ["t3"])], tmp_path / "scores.csv"
+    )
+    samples, aggregates, failed = parse_scores(merged)
+    assert [s["native_id"]["token"] for s in samples] == ["t1", "t2", "t3"]
+    assert aggregates == {} and failed == []
+
+
+def test_a_completed_chunk_is_detected_by_its_csv(tmp_path: Path) -> None:
+    """Resume keys on the CSV the scorer writes last; a chunk without one did
+    not finish, whatever else its directory holds."""
+    from paddock.adapters.benchmarks.navsim.harness import completed_chunk_csv
+
+    d = tmp_path / "000"
+    d.mkdir()
+    (d / "navsim_scorer.log").write_text("half way")
+    assert completed_chunk_csv(d) is None
+    (d / "2026.09.03.11.00.00.csv").write_text("token\n")
+    assert completed_chunk_csv(d).name.endswith(".csv")
+    assert completed_chunk_csv(tmp_path / "missing") is None
+
+
+def test_merging_prefers_a_retried_score_over_the_failed_row_it_replaces(tmp_path: Path) -> None:
+    """The retry pass re-scores failed tokens into their own chunk; on merge the
+    scored row wins, and a failed row never overwrites a scored one."""
+    from paddock.adapters.benchmarks.navsim.harness import merge_chunk_csvs
+    from paddock.results.ingest.navsim import SUB_METRICS, parse_scores
+
+    header = ["token", "valid", *SUB_METRICS, "score"]
+    first = [
+        header,
+        ["t1", "True", *["1.0"] * len(SUB_METRICS), "0.9"],
+        ["t2", "False", *[""] * len(SUB_METRICS), ""],
+    ]
+    retry = [
+        header,
+        ["t2", "True", *["1.0"] * len(SUB_METRICS), "0.8"],
+        ["t1", "False", *[""] * len(SUB_METRICS), ""],
+    ]
+    (tmp_path / "000.csv").write_text("\n".join(",".join(r) for r in first) + "\n")
+    (tmp_path / "retry.csv").write_text("\n".join(",".join(r) for r in retry) + "\n")
+
+    samples, _, failed = parse_scores(
+        merge_chunk_csvs([tmp_path / "000.csv", tmp_path / "retry.csv"], tmp_path / "m.csv")
+    )
+    assert sorted(s["native_id"]["token"] for s in samples) == ["t1", "t2"]
+    assert failed == [], "t2 was rescued by the retry; t1's later failed row did not unseat its score"
+
+
+# -- a dead node or scorer is retried with fresh nodes, on the same artifacts --
+
+
+def test_the_runner_restarts_nodes_and_resumes_after_a_failed_attempt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The first attempt dies (a scorer crash, a node that fell over); the
+    runner tears the nodes down, starts fresh ones, and re-invokes `evaluate`
+    on the same artifacts directory, where a resumable benchmark continues."""
+    import contextlib
+
+    from paddock import runner
+    from paddock.benchmark import Evaluation, ExternallyScoredBenchmark
+    from paddock.registry import BenchmarkSpec, ModelSpec, Runtime
+    from paddock.runtime import proc
+
+    started_nodes: list[int] = []
+
+    @contextlib.contextmanager
+    def fake_node(spec, cfg, port, log_dir, echo=print, nonce=None):
+        started_nodes.append(port)
+        yield f"http://127.0.0.1:{port}"
+
+    calls: list[dict] = []
+
+    class Flaky(ExternallyScoredBenchmark):
+        run_retries = 2
+        split = "navtest"
+
+        def preflight(self):
+            return []
+
+        def model_problems(self, model, limit):
+            return []
+
+        def invalid_reasons(self):
+            return []
+
+        def evaluate(self, policy_url, out_dir, config, limit=None, echo=print):
+            calls.append(dict(config))
+            if len(calls) == 1:
+                raise RuntimeError("NAVSIM scorer exited 1")  # the crash
+            return Evaluation(
+                samples=[
+                    {
+                        "sample_id": "navsim/navtest/x",
+                        "native_id": {},
+                        "split": "navtest",
+                        "metrics": {"epdms": 0.5},
+                    }
+                ]
+            )
+
+    stored = {}
+    monkeypatch.setattr(proc, "model_node", fake_node)
+    monkeypatch.setattr(
+        runner,
+        "_store_run",
+        lambda *a, **k: (
+            stored.setdefault("called", True),
+            type("M", (), {"n": 1, "metrics": {"epdms": {"mean": 0.5}}})(),
+        ),
+    )
+    monkeypatch.setattr(runner.ports, "find_free", lambda p: p)
+
+    # Nothing here depends on the site: nodes, storage and ports are all
+    # stand-ins, so the config is a constructed one and the test runs on a
+    # machine with no paddock.toml (CI, a fresh clone, the other site).
+    cfg = _navsim_site(tmp_path, monkeypatch)
+    spec = BenchmarkSpec(name="navsim", mode="open_loop", dataset="navsim", primary_metric="epdms")
+    model = ModelSpec(name="m", repo="r", runtime=Runtime(kind="shell"), vram_gb=0)
+    code = runner._run_external(cfg, Flaky(spec, cfg), spec, model, 9900, None, lambda m: None)
+
+    assert code == 0
+    assert len(calls) == 2, "one crash, one successful retry"
+    assert calls[1]["attempt"] == 2
+    assert len(started_nodes) == 2, "fresh nodes for the retry, not the ones that were up when it died"
+    assert stored.get("called")
+
+
+def test_node_alive_is_false_for_a_port_nobody_listens_on() -> None:
+    from paddock.adapters.benchmarks.navsim.harness import node_alive
+
+    assert node_alive("http://127.0.0.1:1", timeout_s=0.5) is False
+
+
+# -- chunk accounting, the chunk log, and resuming under one configuration ----
+
+STUB_SCORER = """\
+import os, sys
+args = sys.argv[1:]
+def opt(prefix):
+    return next((a[len(prefix):] for a in args if a.startswith(prefix)), "")
+out = opt("output_dir=")
+logs = [x.strip("'") for x in opt("train_test_split.scene_filter.log_names=").strip("[]").split(",") if x]
+if os.environ.get("STUB_FAIL_LOG") and os.environ["STUB_FAIL_LOG"] in logs:
+    print("stub scorer: boom", flush=True)
+    sys.exit(1)
+from paddock.results.ingest.navsim import SUB_METRICS
+os.makedirs(out, exist_ok=True)
+with open(os.path.join(out, "scores.csv"), "w") as f:
+    f.write(",".join(["token", "valid", *SUB_METRICS, "score", "log_name"]) + "\\n")
+    for log in logs or ["single"]:
+        for i in range(3):
+            f.write(",".join([f"{log}-t{i}", "True", *["1.0"] * len(SUB_METRICS), "0.5", log]) + "\\n")
+    f.write(",".join(["average_all_frames", "True", *["1.0"] * len(SUB_METRICS), "0.5", ""]) + "\\n")
+print("stub scorer done", flush=True)
+"""
+
+
+def _stub_scored_site(tmp_path: Path, monkeypatch, **settings: str) -> SiteConfig:
+    """A site whose devkit 'scorer' is a stand-in that writes three scored
+    rows per log it is given, and fails on the log named in STUB_FAIL_LOG."""
+    cfg = _navsim_site(tmp_path, monkeypatch, tokens_per_log=3, **settings)
+    (tmp_path / "devkit" / SCORER).write_text(STUB_SCORER)
+    monkeypatch.delenv("STUB_FAIL_LOG", raising=False)
+    return cfg
+
+
+def test_chunk_log_is_its_own_file_appended_across_attempts_and_the_scorer_log_keeps_its_command(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """`chunks.log` is the run's story; `navsim_scorer.log` is the scorer's and
+    opens with the command that was run -- also for an unchunked (--limit) run,
+    where both live at the same level and used to share one path."""
+    import sys
+
+    from paddock.adapters.benchmarks.navsim import harness as harness_module
+
+    harness = _harness(_stub_scored_site(tmp_path, monkeypatch, chunk_logs="1"))
+    monkeypatch.setattr(harness_module, "node_alive", lambda url, timeout_s=5.0: True)
+    out = tmp_path / "out"
+    config = {"cameras": ["CAM_FRONT"], "model": "m", "attempt": 1}
+
+    first = harness.evaluate("http://127.0.0.1:1", out, config)
+    assert len(first.samples) == 6 and first.failed == [] and first.failed_chunks == []
+    assert first.n_expected == 6, "two logs, three cached scenarios each"
+    story = (out / "chunks.log").read_text()
+    assert "attempt 1: 2 chunk(s)" in story and "chunk 000: ok (1 log(s))" in story
+    scorer_log = (out / "chunks" / "000" / "navsim_scorer.log").read_text()
+    assert scorer_log.startswith(sys.executable), "the scorer log opens with the command line"
+
+    second = harness.evaluate("http://127.0.0.1:1", out, {**config, "attempt": 2})
+    assert len(second.samples) == 6
+    story = (out / "chunks.log").read_text()
+    assert "attempt 1:" in story and "attempt 2:" in story, "appended, not truncated"
+    assert story.count("reused") == 2, "both chunks reused, no scorer invocation"
+
+    smoke = tmp_path / "smoke"
+    harness.evaluate("http://127.0.0.1:1", smoke, config, limit=2)
+    assert (smoke / "navsim_scorer.log").read_text().startswith(sys.executable)
+    assert "chunk 000: ok" in (smoke / "chunks.log").read_text()
+
+
+def test_a_failed_chunk_is_counted_in_scenarios_not_logs(tmp_path: Path, monkeypatch) -> None:
+    """A lost chunk of four logs is about a thousand scenarios; the run record
+    must say that, not "4 scenario(s) failed"."""
+    from paddock.adapters.benchmarks.navsim import harness as harness_module
+    from paddock.runner import _external_failure_note
+
+    harness = _harness(_stub_scored_site(tmp_path, monkeypatch, chunk_logs="1"))
+    monkeypatch.setattr(harness_module, "node_alive", lambda url, timeout_s=5.0: True)
+    monkeypatch.setenv("STUB_FAIL_LOG", "log_b")
+
+    evaluation = harness.evaluate(
+        "http://127.0.0.1:1", tmp_path / "out", {"cameras": ["CAM_FRONT"], "model": "m", "attempt": 1}
+    )
+    assert len(evaluation.samples) == 3 and evaluation.failed == []
+    assert evaluation.failed_chunks == [{"index": 1, "logs": ["log_b"], "scenarios": 3}]
+    assert evaluation.unscored == 3 and evaluation.n_expected == 6
+    assert _external_failure_note(evaluation) == "1 chunk(s) never scored: 3 scenario(s) across 1 log(s)"
+    assert "FAILED" in (tmp_path / "out" / "chunks.log").read_text()
+
+    evaluation.failed = ["tok1", "tok2"]
+    note = _external_failure_note(evaluation)
+    assert note.startswith("2 scenario(s) failed in the scorer") and "1 chunk(s) never scored" in note
+
+
+def test_an_unreadable_log_list_refuses_evaluate_the_way_preflight_does(tmp_path: Path, monkeypatch) -> None:
+    harness = _harness(_stub_scored_site(tmp_path, monkeypatch, declared=None, chunk_logs="1"))
+    with pytest.raises(RuntimeError, match="cannot read the log list"):
+        harness.evaluate("http://127.0.0.1:1", tmp_path / "out", {"cameras": ["CAM_FRONT"], "model": "m"})
+
+
+def test_resume_refuses_a_different_measurement_configuration(tmp_path: Path) -> None:
+    """run.json is written at the end; the configuration a run started under
+    is written at the start, and a resume under another one is refused."""
+    from paddock.runner import _config_marker_problems
+
+    run_dir = tmp_path / "run"
+    config = {"agent": PROXY_AGENT, "allow_partial": False, "limit": None, "cameras": ["CAM_FRONT"]}
+    assert _config_marker_problems(run_dir, config) == []
+    assert (run_dir / "run_config.json").exists()
+    assert _config_marker_problems(run_dir, dict(config)) == [], "the same configuration resumes"
+
+    problems = _config_marker_problems(run_dir, {**config, "agent": "drivejepa", "allow_partial": True})
+    assert len(problems) == 1
+    assert "agent, allow_partial" in problems[0] and "refused" in problems[0]

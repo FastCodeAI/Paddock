@@ -37,10 +37,14 @@ Site settings, `[benchmarks.navsim]` in paddock.toml:
 
 from __future__ import annotations
 
+import csv
 import os
+import shutil
 import signal
 import subprocess
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +52,78 @@ from paddock.adapters.benchmarks.navsim.convert import NAVSIM_INTERVAL_S
 from paddock.benchmark import Evaluation, ExternallyScoredBenchmark
 from paddock.results.ingest import navsim as navsim_ingest
 from paddock.runtime.proc import tail as _tail
+
+#: Logs per scorer invocation. The vendor scorer keeps every result in worker
+#: memory and writes one CSV at the very end, so anything that dies after the
+#: last forward pass -- its own aggregation, the node, the box -- loses the
+#: whole run. 12,146 alpamayo scenarios (11.5 h) were lost exactly that way.
+#: Scoring in chunks bounds the loss to one chunk, writes a CSV per chunk as it
+#: completes, and makes a run resumable from the chunks that finished.
+#: 0 scores the split in one invocation, as the vendor does.
+DEFAULT_CHUNK_LOGS = 4
+
+#: A previous run's artifacts directory whose completed chunks are reused.
+RESUME_ENV = "PADDOCK_NAVSIM_RESUME_FROM"
+
+
+def node_alive(policy_url: str, timeout_s: float = 5.0) -> bool:
+    """Whether the policy node still answers `/alive`. Standard library only:
+    the harness must not pull an HTTP client into the runner's process."""
+    try:
+        with urllib.request.urlopen(f"{policy_url.rstrip('/')}/alive", timeout=timeout_s) as response:
+            return 200 <= response.status < 300
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
+
+
+def chunk_logs(logs: list[str], size: int) -> list[list[str]]:
+    """Split *logs* into consecutive chunks of *size*, in the given order."""
+    if size <= 0:
+        return [list(logs)]
+    return [list(logs[i : i + size]) for i in range(0, len(logs), size)]
+
+
+def hydra_list(items: list[str]) -> str:
+    """A hydra list override literal. Quoted: log names carry dots."""
+    return "[" + ",".join(f"'{item}'" for item in items) + "]"
+
+
+def completed_chunk_csv(chunk_dir: Path) -> Path | None:
+    """The scorer's CSV for a chunk that finished, else None."""
+    csvs = sorted(chunk_dir.glob("*.csv")) if chunk_dir.is_dir() else []
+    return csvs[-1] if csvs else None
+
+
+def merge_chunk_csvs(csv_paths: list[Path], out_path: Path) -> Path:
+    """Concatenate per-chunk score CSVs into one the parser already understands.
+
+    Each chunk's CSV carries its own aggregate rows (average_all_frames and
+    friends), which mean nothing across chunks and are dropped; paddock
+    recomputes aggregates from per-sample records anyway.
+    """
+    header: list[str] | None = None
+    rows: dict[str, dict[str, str]] = {}
+    for path in csv_paths:
+        with path.open() as handle:
+            reader = csv.DictReader(handle)
+            if header is None:
+                header = list(reader.fieldnames or [])
+            for row in reader:
+                token = (row.get("token") or "").strip()
+                if token in navsim_ingest.AGGREGATE_TOKENS:
+                    continue
+                # A token scored twice -- once failed, once by the retry pass --
+                # keeps the scored row. A failed row never overwrites a scored one.
+                valid = (row.get("valid") or "").strip().lower() != "false"
+                if token in rows and not valid:
+                    continue
+                rows[token] = row
+    with out_path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=header or [])
+        writer.writeheader()
+        writer.writerows(rows.values())
+    return out_path
+
 
 PROXY_AGENT = "paddock_proxy"
 
@@ -308,6 +384,12 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
 
     # -- the run ----------------------------------------------------------
 
+    @property
+    def run_retries(self) -> int:
+        """`run_retries` from [benchmarks.navsim], default 2. Meaningful only
+        because chunks resume; each retry re-scores only what did not finish."""
+        return max(0, int(self.setting("run_retries", "2") or 0))
+
     def node_count(self, model) -> int:
         """`nodes` from [benchmarks.navsim], applied to CPU-only models.
 
@@ -371,7 +453,13 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         return env
 
     def _command(
-        self, policy_url: str, out_dir: Path, config: dict[str, Any], limit: int | None
+        self,
+        policy_url: str,
+        out_dir: Path,
+        config: dict[str, Any],
+        limit: int | None,
+        log_names: list[str] | None = None,
+        tokens: list[str] | None = None,
     ) -> list[str]:
         root = self.dataset.resolve()
         agent = self._agent()
@@ -404,33 +492,16 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
             ]
         if limit:
             command.append(f"train_test_split.scene_filter.max_scenes={limit}")
+        if log_names:
+            command.append(f"train_test_split.scene_filter.log_names={hydra_list(log_names)}")
+        if tokens:
+            command.append(f"train_test_split.scene_filter.tokens={hydra_list(tokens)}")
         return command + self._overrides()
 
-    def evaluate(
-        self,
-        policy_url: str,
-        out_dir: Path,
-        config: dict[str, Any],
-        limit: int | None = None,
-        echo=print,
-    ) -> Evaluation:
-        # The runner has already asked `model_problems`; asked again here so a
-        # caller that skips the runner is refused the same way.
-        problems = input_rate_problems(
-            float(config.get("min_input_hz") or 0.0), str(config.get("model", "this model"))
-        ) + limit_problems(limit)
-        if problems:
-            raise RuntimeError("\n".join(problems))
-
-        root = self.dataset.resolve()
-        exp = self.dataset.extra["exp"]
+    def _run_scorer(self, command: list[str], out_dir: Path, root: Path, exp: Path) -> Path:
+        """One scorer invocation. Returns its CSV; raises with the log tail if not."""
         out_dir.mkdir(parents=True, exist_ok=True)
-
-        command = self._command(policy_url, out_dir, config, limit)
         log_path = out_dir / "navsim_scorer.log"
-        echo(f"  scoring {self.split} via {Path(command[0]).name} -> {log_path.name}")
-
-        began = time.time()
         with log_path.open("w") as handle:
             handle.write(" ".join(command) + "\n\n")
             handle.flush()
@@ -452,25 +523,184 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
             except BaseException:
                 _kill_group(scorer)
                 raise
-
         if returncode != 0:
             raise RuntimeError(
                 f"NAVSIM scorer exited {returncode}\n--- tail of {log_path} ---\n" + _tail(log_path)
             )
-
-        csvs = sorted(out_dir.glob("*.csv"))
-        if not csvs:
+        csv_path = completed_chunk_csv(out_dir)
+        if csv_path is None:
             raise RuntimeError(
                 f"NAVSIM scorer exited 0 but wrote no CSV to {out_dir}\n"
                 f"--- tail of {log_path} ---\n" + _tail(log_path)
             )
+        return csv_path
 
-        samples, aggregates, failed = navsim_ingest.parse_scores(csvs[-1], split=self.split)
-        reported = navsim_ingest.log_reported_score(out_dir)
+    @staticmethod
+    def _logs_of(merged_csv: Path, tokens: list[str]) -> list[str]:
+        """The logs a set of tokens belong to, read from the scored CSV, so the
+        retry pass loads only those logs' metadata."""
+        wanted = set(tokens)
+        logs: set[str] = set()
+        with merged_csv.open() as handle:
+            for row in csv.DictReader(handle):
+                if (row.get("token") or "").strip() in wanted and row.get("log_name"):
+                    logs.add(row["log_name"].strip())
+        return sorted(logs)
+
+    def _scorable_logs(self) -> list[str]:
+        """The split's logs this site can score, in a fixed order.
+
+        Raises with `_coverage()`'s own message when the split's log list
+        cannot be read: a caller that skips the runner gets the same refusal
+        preflight gives, not a TypeError.
+        """
+        coverage = self._coverage()
+        if coverage is None:
+            return []
+        if isinstance(coverage, str):
+            raise RuntimeError(coverage)
+        scorable, _ = coverage
+        return sorted(scorable)
+
+    def _cache_scenarios(self, log_names: list[str]) -> int:
+        """How many scenarios the metric cache holds for these logs.
+
+        The cache is laid out `<cache>/<log>/<scenario type>/<token>/`, one
+        directory per scenario, and the scorer scores exactly the cached
+        scenarios of the logs it is given -- so this is what a chunk would have
+        produced, and what a failed chunk lost.
+        """
+        cache = Path(self.setting("metric_cache") or "")
+        total = 0
+        for name in log_names:
+            log_dir = cache / name
+            if log_dir.is_dir():
+                total += sum(1 for path in log_dir.glob("*/*") if path.is_dir())
+        return total
+
+    def evaluate(
+        self,
+        policy_url: str,
+        out_dir: Path,
+        config: dict[str, Any],
+        limit: int | None = None,
+        echo=print,
+    ) -> Evaluation:
+        # The runner has already asked `model_problems`; asked again here so a
+        # caller that skips the runner is refused the same way.
+        problems = input_rate_problems(
+            float(config.get("min_input_hz") or 0.0), str(config.get("model", "this model"))
+        ) + limit_problems(limit)
+        if problems:
+            raise RuntimeError("\n".join(problems))
+
+        root = self.dataset.resolve()
+        exp = self.dataset.extra["exp"]
+        out_dir.mkdir(parents=True, exist_ok=True)
+        began = time.time()
+
+        # A smoke run (--limit) is one invocation: it exists to test the pipe,
+        # and a per-invocation max_scenes would otherwise multiply by chunks.
+        size = 0 if limit else int(self.setting("chunk_logs", str(DEFAULT_CHUNK_LOGS)) or 0)
+        logs = self._scorable_logs() if size > 0 else []
+        chunks = chunk_logs(logs, size) if logs else [[]]
+        # Only one way to reuse another run's chunks, and it is this variable;
+        # `--resume` continues a run in its own directory and needs nothing here.
+        resume_from = os.environ.get(RESUME_ENV)
+        # What a complete run would score, so a partial one can say what it
+        # lost. Unknown for a --limit smoke, which the scorer caps itself.
+        n_expected = self._cache_scenarios(logs) if size > 0 else None
+        # The chunk-by-chunk story of this run, across every attempt: its own
+        # file, appended -- `navsim_scorer.log` is the scorer's, and for an
+        # unchunked run lives at this same level.
+        summary = out_dir / "chunks.log"
+        echo(
+            f"  scoring {self.split} via {Path(self.setting('python') or 'python').name}"
+            + (f" in {len(chunks)} chunk(s) of <= {size} log(s)" if size > 0 else "")
+            + (f", resuming from {resume_from}" if resume_from else "")
+        )
+
+        csvs: list[Path] = []
+        failed_chunks: list[dict[str, Any]] = []
+        with summary.open("a") as log:
+            log.write(f"attempt {config.get('attempt', 1)}: {len(chunks)} chunk(s)\n")
+            log.flush()
+            for index, names in enumerate(chunks):
+                chunk_dir = out_dir / "chunks" / f"{index:03d}" if size > 0 else out_dir
+                # Resume: a chunk this run already completed, or one a previous
+                # run completed, is reused rather than scored again.
+                done = completed_chunk_csv(chunk_dir)
+                if done is None and resume_from and size > 0:
+                    previous = completed_chunk_csv(Path(resume_from) / "chunks" / f"{index:03d}")
+                    if previous is not None:
+                        chunk_dir.mkdir(parents=True, exist_ok=True)
+                        done = Path(shutil.copy2(previous, chunk_dir / previous.name))
+                if done is not None:
+                    csvs.append(done)
+                    log.write(f"chunk {index:03d}: reused {done}\n")
+                    log.flush()
+                    continue
+                command = self._command(policy_url, chunk_dir, config, limit, names or None)
+                try:
+                    csvs.append(self._run_scorer(command, chunk_dir, root, exp))
+                    log.write(f"chunk {index:03d}: ok ({len(names)} log(s))\n")
+                    log.flush()
+                except RuntimeError as exc:
+                    # One chunk's failure must not take the others with it. It
+                    # is recorded -- with how many scenarios it would have
+                    # scored, so the run says what it lost -- the run is marked
+                    # partial, and a later run can resume from what completed.
+                    failed_chunks.append(
+                        {"index": index, "logs": list(names), "scenarios": self._cache_scenarios(names)}
+                    )
+                    log.write(f"chunk {index:03d}: FAILED -- {str(exc).splitlines()[0]}\n")
+                    log.flush()
+                    if not node_alive(policy_url):
+                        # Every remaining chunk would fail the same way. Hand the
+                        # run back to the runner, which restarts the nodes and
+                        # re-invokes us; the chunks that completed are reused.
+                        log.write(f"policy node {policy_url} is not answering; stopping for a restart\n")
+                        raise RuntimeError(
+                            f"policy node {policy_url} is not answering after chunk {index:03d} failed"
+                        ) from exc
+                    echo(f"  chunk {index:03d} FAILED ({', '.join(names) or 'whole split'}); continuing")
+
+        if not csvs:
+            raise RuntimeError(f"every chunk failed; nothing scored. See {summary} and {out_dir / 'chunks'}")
+        merged = merge_chunk_csvs(csvs, out_dir / "scores.csv") if size > 0 else csvs[-1]
+        samples, aggregates, failed = navsim_ingest.parse_scores(merged, split=self.split)
+
+        # Scenarios the model failed on inside a chunk that otherwise completed
+        # get one more pass of their own, by token. For an unseeded sampler that
+        # is a fresh draw; for anything else it fails again and stays excluded.
+        # Whole chunks that failed are the runner's to retry with fresh nodes.
+        if failed and size > 0 and not completed_chunk_csv(out_dir / "chunks" / "retry"):
+            echo(f"  re-scoring {len(failed)} failed scenario(s) by token")
+            logs_of = self._logs_of(merged, failed)
+            retry_dir = out_dir / "chunks" / "retry"
+            try:
+                csvs.append(
+                    self._run_scorer(
+                        self._command(policy_url, retry_dir, config, limit, logs_of or None, failed),
+                        retry_dir,
+                        root,
+                        exp,
+                    )
+                )
+                merged = merge_chunk_csvs(csvs, out_dir / "scores.csv")
+                samples, aggregates, failed = navsim_ingest.parse_scores(merged, split=self.split)
+            except RuntimeError as exc:
+                echo(f"  retry pass FAILED ({str(exc).splitlines()[0]}); the {len(failed)} stay excluded")
+        # The scorer's own headline is per invocation and means nothing across
+        # chunks; only a single-invocation run keeps it.
+        reported = navsim_ingest.log_reported_score(out_dir) if size == 0 else None
+        unscored = sum(chunk["scenarios"] for chunk in failed_chunks)
+        lost = f", {len(failed_chunks)} chunk(s) never scored ({unscored} scenarios)" if failed_chunks else ""
         echo(
             f"  {len(samples)} scenario(s) in {time.time() - began:.0f}s"
             + (f", scorer reported {reported:.5f}" if reported is not None else "")
-            + (f", {len(failed)} FAILED in the scorer (excluded)" if failed else "")
+            + (f", {len(failed)} FAILED (excluded)" if failed else "")
+            + lost
         )
         # Kept on the run rather than folded into the score: the scorer's own
         # headline and paddock's recomputed mean answer slightly different
@@ -483,6 +713,8 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
                 "source_aggregates": aggregates,
                 "source_reported": {"final_average_valid": reported} if reported is not None else {},
             },
+            failed_chunks=failed_chunks,
+            n_expected=n_expected,
         )
 
 

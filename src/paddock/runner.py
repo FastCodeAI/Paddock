@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import contextlib
 import importlib
+import json
 import os
 import time
 from collections.abc import Callable
@@ -145,6 +146,51 @@ def _store_run(
     return written, metrics_record
 
 
+def _external_failure_note(evaluation) -> str | None:
+    """What an external run failed to score, in the units it was lost in.
+
+    A scenario the model failed on is one scenario; a chunk the scorer never
+    completed is hundreds. "4 scenario(s) failed" for a thousand unscored ones
+    misdescribed a run by 250x once, so the two are counted apart.
+    """
+    parts = []
+    if evaluation.failed:
+        parts.append(f"{len(evaluation.failed)} scenario(s) failed in the scorer and are excluded")
+    if evaluation.failed_chunks:
+        logs = sum(len(chunk.get("logs") or []) for chunk in evaluation.failed_chunks)
+        parts.append(
+            f"{len(evaluation.failed_chunks)} chunk(s) never scored: {evaluation.unscored} scenario(s) "
+            f"across {logs} log(s)"
+        )
+    return "; ".join(parts) or None
+
+
+def _config_marker_problems(artifacts: Path, config: dict) -> list[str]:
+    """Refuse to resume a run under a different measurement configuration.
+
+    `run.json` is written only at the end, so the configuration a run started
+    under is recorded in its artifacts directory at the start; `--resume`
+    compares against it, and a changed agent, switch or chunk size is a
+    refusal rather than two measurements merged under one id. A run from
+    before the marker existed has nothing to compare against; it is written
+    now and said so.
+    """
+    marker = artifacts / "run_config.json"
+    if marker.exists():
+        recorded = json.loads(marker.read_text())
+        differing = sorted(k for k in set(recorded) | set(config) if recorded.get(k) != config.get(k))
+        if differing:
+            return [
+                f"--resume refused: {marker} was written under a different configuration; "
+                f"differs in {', '.join(differing)}. Start a new run, or restore the switches "
+                f"it was made under."
+            ]
+        return []
+    artifacts.mkdir(parents=True, exist_ok=True)
+    marker.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
+    return []
+
+
 def _limit_reason(limit: int | None) -> list[str]:
     return [f"--limit {limit}: a subset of the benchmark, run to test the pipeline"] if limit else []
 
@@ -163,6 +209,7 @@ def run_benchmark(
     runs: int = 1,
     limit: int | None = None,
     dry_run: bool = False,
+    resume: str | None = None,
     echo: Callable[[str], None] = print,
 ) -> int:
     registry = Registry.load()
@@ -172,6 +219,9 @@ def run_benchmark(
         echo(f"unknown benchmark {bench!r}; known: {', '.join(sorted(registry.benchmarks)) or 'none'}")
         return 2
 
+    if resume and model == "all":
+        echo("--resume names one run, so it needs one --model")
+        return 2
     if model == "all":
         models = [m for m in registry.models.values() if bench in m.benchmarks]
         if not models:
@@ -247,7 +297,7 @@ def run_benchmark(
         failures = 0
         for index, model_spec in enumerate(models):
             port = ports.find_free(base + index)
-            failures += _run_external(cfg, harness, spec, model_spec, port, limit, echo)
+            failures += _run_external(cfg, harness, spec, model_spec, port, limit, echo, resume=resume)
         return 1 if failures else 0
 
     if isinstance(harness, OpenLoopBenchmark):
@@ -358,6 +408,7 @@ def _run_external(
     port: int,
     limit: int | None,
     echo: Callable[[str], None],
+    resume: str | None = None,
 ) -> int:
     """Score one model with a benchmark that brings its own scorer.
 
@@ -365,14 +416,32 @@ def _run_external(
     does its work against it, paddock stores the result -- except that the
     per-sample records come back from the benchmark in one batch rather than
     being accumulated a sample at a time, because the scorer owned the loop.
+
+    A run this long must survive what happens during it. If the scorer or a
+    node dies, the nodes are torn down and restarted and `evaluate` is
+    re-invoked on the same artifacts, up to `harness.run_retries` times; a
+    benchmark that scores in resumable chunks then continues from the last
+    one that completed. `resume` names an earlier run id to continue in place
+    after paddock itself died -- same directory, same run id, nothing scored
+    twice.
     """
     started = datetime.now(UTC)
     began = time.time()
     config = _measurement_config(cfg, harness, model_spec, limit=limit)
-    run_id = store.make_run_id(started, {**config, "bench": spec.name, "model": model_spec.name})
-    artifacts = cfg.runs / spec.name / model_spec.name / run_id
+    if resume:
+        run_id = resume
+        artifacts = cfg.runs / spec.name / model_spec.name / run_id
+        if not artifacts.is_dir():
+            echo(f"  nothing to resume: {artifacts} does not exist")
+            return 2
+    else:
+        run_id = store.make_run_id(started, {**config, "bench": spec.name, "model": model_spec.name})
+        artifacts = cfg.runs / spec.name / model_spec.name / run_id
 
-    echo(f"\n=== {model_spec.name} ===")
+    echo(f"\n=== {model_spec.name} ===" + (f" (resuming {run_id})" if resume else ""))
+    for problem in _config_marker_problems(artifacts, config):
+        echo("  " + problem)
+        return 2
     # Pure in the model spec and the limit, so asked before any VRAM is waited
     # for or checkpoint read: `--model openpilot` used to load supercombo in
     # full to be told NAVSIM's input rate is too low for it.
@@ -382,36 +451,54 @@ def _run_external(
         for problem in problems:
             echo("  - " + problem.replace("\n", "\n    "))
         return 1
-    try:
-        with contextlib.ExitStack() as stack:
-            # Started one after another, each waiting for /alive before the
-            # next port is chosen, so `find_free` never hands out a port a
-            # sibling is about to bind.
-            urls: list[str] = []
-            next_port = port
-            for _ in range(max(1, harness.node_count(model_spec))):
-                next_port = ports.find_free(next_port)
-                urls.append(
-                    stack.enter_context(
-                        proc.model_node(model_spec, cfg, next_port, artifacts, echo=echo, nonce=run_id)
+    evaluation = None
+    attempts = 1 + max(0, int(getattr(harness, "run_retries", 0)))
+    for attempt in range(1, attempts + 1):
+        try:
+            with contextlib.ExitStack() as stack:
+                # Started one after another, each waiting for /alive before the
+                # next port is chosen, so `find_free` never hands out a port a
+                # sibling is about to bind. A retry re-enters here with fresh
+                # nodes: a node that died is replaced, not mourned.
+                urls: list[str] = []
+                next_port = port
+                for _ in range(max(1, harness.node_count(model_spec))):
+                    next_port = ports.find_free(next_port)
+                    urls.append(
+                        stack.enter_context(
+                            proc.model_node(model_spec, cfg, next_port, artifacts, echo=echo, nonce=run_id)
+                        )
                     )
+                    next_port += 1
+                evaluation = harness.evaluate(
+                    urls[0],
+                    artifacts,
+                    {
+                        "cameras": list(model_spec.cameras),
+                        "model": model_spec.name,
+                        "min_input_hz": model_spec.min_input_hz,
+                        "policy_urls": urls,
+                        "attempt": attempt,
+                    },
+                    limit=limit,
+                    echo=echo,
                 )
-                next_port += 1
-            evaluation = harness.evaluate(
-                urls[0],
-                artifacts,
-                {
-                    "cameras": list(model_spec.cameras),
-                    "model": model_spec.name,
-                    "min_input_hz": model_spec.min_input_hz,
-                    "policy_urls": urls,
-                },
-                limit=limit,
-                echo=echo,
+        except (proc.NodeStartupError, RuntimeError) as exc:
+            if attempt < attempts:
+                why = str(exc).splitlines()[0] if str(exc) else type(exc).__name__
+                echo(f"  attempt {attempt}/{attempts} failed: {why}; restarting nodes and resuming")
+                continue
+            echo(f"  failed after {attempts} attempt(s): {exc}")
+            return 1
+        # Whole chunks the scorer could not run are worth another attempt with
+        # fresh nodes; a scenario the model itself failed on twice is not.
+        if evaluation.failed_chunks and attempt < attempts:
+            echo(
+                f"  attempt {attempt}/{attempts}: {len(evaluation.failed_chunks)} chunk(s) unfinished "
+                f"({evaluation.unscored} scenario(s)); restarting"
             )
-    except (proc.NodeStartupError, RuntimeError) as exc:
-        echo(f"  failed: {exc}")
-        return 1
+            continue
+        break
 
     samples, failures = evaluation.samples, evaluation.failed
     if not samples:
@@ -424,7 +511,10 @@ def _run_external(
     # drove into a wall. And a subset or an override that changes what the
     # number means is stored, but never valid.
     invalid_reasons = [*harness.invalid_reasons(), *_limit_reason(limit)]
-    failure_note = f"{len(failures)} scenario(s) failed in the scorer and are excluded" if failures else None
+    failure_note = _external_failure_note(evaluation)
+    extra_dataset = {"n_failed": len(failures), "n_unscored": evaluation.unscored}
+    if evaluation.n_expected is not None:
+        extra_dataset["n_expected"] = evaluation.n_expected
     _, metrics_record = _store_run(
         cfg,
         spec,
@@ -440,14 +530,15 @@ def _run_external(
         # metrics.json exactly where the ingest path puts them.
         by_group=evaluation.by_group,
         split=harness.split,
+        extra_dataset=extra_dataset,
     )
     headline = metrics_record.metrics.get(spec.primary_metric, {})
     echo(f"  n={metrics_record.n}  {spec.primary_metric} mean={headline.get('mean')}")
-    if failures:
-        echo(f"  {len(failures)} scenario(s) FAILED in the scorer; run recorded as partial, valid=false")
+    if failure_note:
+        echo(f"  {failure_note}; run recorded as partial, valid=false")
     for reason in invalid_reasons:
         echo(f"  recorded valid=false: {reason}")
-    return 1 if failures else 0
+    return 1 if failure_note else 0
 
 
 def _run_open_loop(

@@ -158,11 +158,24 @@ class Evaluation:
     they mark the run rather than average into it. `by_group`: run-level
     context the scorer reported (its own headline, its aggregate rows), stored
     in the tracked `metrics.json` where the ingest path puts the same thing.
+
+    `failed_chunks`: whole units of work the scorer never completed, each
+    `{"logs": [...], "scenarios": n}` -- distinct from `failed` because one of
+    these is hundreds of scenarios, not one, and the run record must say so.
+    `n_expected`: how many scenarios a complete run would have scored, when
+    the benchmark can know it before scoring; None otherwise.
     """
 
     samples: list[dict[str, Any]]
     failed: list[str] = field(default_factory=list)
     by_group: dict[str, Any] = field(default_factory=dict)
+    failed_chunks: list[dict[str, Any]] = field(default_factory=list)
+    n_expected: int | None = None
+
+    @property
+    def unscored(self) -> int:
+        """Scenarios inside chunks that never completed."""
+        return sum(int(chunk.get("scenarios") or 0) for chunk in self.failed_chunks)
 
 
 class ExternallyScoredBenchmark(Benchmark):
@@ -182,6 +195,14 @@ class ExternallyScoredBenchmark(Benchmark):
     So paddock does what it does everywhere else -- own the model process, hand
     the benchmark a running node, and store what comes back.
     """
+
+    @property
+    def run_retries(self) -> int:
+        """How many times the runner may restart the nodes and re-invoke
+        `evaluate` on the same artifacts after a failure. Zero unless the
+        benchmark can resume -- retrying a scorer that starts from scratch
+        would only repeat the loss."""
+        return 0
 
     def node_count(self, model) -> int:
         """How many policy nodes to start for *model*. One unless the benchmark
