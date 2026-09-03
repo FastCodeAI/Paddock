@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Evaluation framework for driving world models across open- and closed-loop benchmarks"
 requires-python = ">=3.11"
 readme = "README.md"
+license = "Apache-2.0"
 
 # Deliberately thin. Paddock orchestrates other environments; it does not share
 # them. Model dependencies (torch, tinygrad, onnxruntime, ...) belong to each
