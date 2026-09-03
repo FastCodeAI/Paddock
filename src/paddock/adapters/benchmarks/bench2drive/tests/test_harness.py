@@ -123,6 +123,55 @@ def test_repetitions_are_averaged_and_counted(tmp_path: Path) -> None:
     assert metrics["route_completion"] == pytest.approx(75.0)
     assert metrics["infraction_penalty"] == pytest.approx(0.68)
     assert metrics["collision_rate"] == pytest.approx(0.5)
+    assert metrics["n_crashed"] == 0
+
+
+def _three_repetitions(tmp_path: Path, third_status: str) -> Path:
+    """Two repetitions that drove (36.0 and 50.0) and a third with `third_status`."""
+    doc = json.loads((FIXTURES / "results_collisions.json").read_text())
+    first = doc["_checkpoint"]["records"][0]
+    second = json.loads(json.dumps(first))
+    second["route_id"] = "RouteScenario_1773_rep1"
+    second["scores"] = {"score_route": 50.0, "score_penalty": 1.0, "score_composed": 50.0}
+    second["infractions"]["collisions_vehicle"] = []
+    third = json.loads(json.dumps(first))
+    third["route_id"] = "RouteScenario_1773_rep2"
+    third["status"] = third_status
+    third["scores"] = {"score_route": 41.3, "score_penalty": 1.0, "score_composed": 41.3}
+    doc["_checkpoint"]["records"] = [first, second, third]
+    path = tmp_path / "results.json"
+    path.write_text(json.dumps(doc))
+    return path
+
+
+def test_a_crashed_repetition_is_dropped_not_averaged_and_not_fatal(tmp_path: Path) -> None:
+    """With --runs 3, one repetition whose agent crashed must not throw away the
+    two that drove -- and must not average its filled-in 41.3 in either. The
+    thin average is visible: n_runs says 2, n_crashed says 1."""
+    metrics = parse_results(_three_repetitions(tmp_path, "Failed - Agent crashed"))
+    assert metrics["n_runs"] == 2
+    assert metrics["n_crashed"] == 1
+    assert metrics["driving_score"] == pytest.approx(43.0)
+    assert metrics["route_completion"] == pytest.approx(75.0)
+
+
+def test_a_poor_third_repetition_still_averages_in(tmp_path: Path) -> None:
+    """The dropping is for crashes only: a blocked repetition is the benchmark
+    working, and its score counts."""
+    metrics = parse_results(_three_repetitions(tmp_path, "Failed - Agent got blocked"))
+    assert metrics["n_runs"] == 3
+    assert metrics["n_crashed"] == 0
+    assert metrics["driving_score"] == pytest.approx((36.0 + 50.0 + 41.3) / 3)
+
+
+def test_every_repetition_crashed_is_not_a_score(tmp_path: Path) -> None:
+    doc = json.loads((FIXTURES / "results_agent_crashed.json").read_text())
+    rec = doc["_checkpoint"]["records"][0]
+    doc["_checkpoint"]["records"] = [rec, json.loads(json.dumps(rec))]
+    path = tmp_path / "results.json"
+    path.write_text(json.dumps(doc))
+    with pytest.raises(NotScored, match="Agent crashed"):
+        parse_results(path)
 
 
 # ---------------------------------------------------------------------------
@@ -446,3 +495,35 @@ def test_the_routes_subset_is_on_the_record(tmp_path, monkeypatch) -> None:
     }
     assert [e.scene for e in harness.episodes(None, runs=1)] == ["1711", "1773"]
     assert [e.scene for e in harness.episodes(["Town12"], runs=2, scenarios=["ParkedObstacle"])] == ["1773"]
+
+
+def test_metric_info_has_a_home_even_when_frames_are_not_recorded(tmp_path, monkeypatch) -> None:
+    """Efficiency/comfort need per-tick kinematics for every route; that is a
+    metric, not a debugging artifact, so it is not gated on `record`. The
+    upstream tool joins one directory with each record's save_name, so the
+    directory is per run (the episode dir's parent), not per episode."""
+    cfg = _site(tmp_path, monkeypatch, COMPLETED)
+    out = tmp_path / "runs" / "run-1" / "1773-Town12-ParkedObstacle"
+    _harness(cfg).run_episode(_episode(), "http://127.0.0.1:9000", out)
+    env = json.loads((out / "env.json").read_text())
+    assert env["PADDOCK_METRICS_DIR"] == str(out.parent / "metric_info")
+    assert "PADDOCK_RECORD_DIR" not in env
+
+
+def test_preflight_refuses_an_evaluator_that_lowers_render_quality(tmp_path, monkeypatch) -> None:
+    """`-quality-level=Low` is a one-line local edit to the evaluator that turns
+    the sky black and the road to speckle, and leaves no trace in run.json. It
+    produced a full set of frames at one site before anyone noticed. Preflight
+    is the place to catch a silently changed measurement."""
+    cfg = _site(tmp_path, monkeypatch, COMPLETED)
+    evaluator = tmp_path / "Bench2Drive" / "leaderboard" / "leaderboard" / "leaderboard_evaluator.py"
+    evaluator.write_text(
+        evaluator.read_text() + '\ncmd = "CarlaUE4.sh -RenderOffScreen -quality-level=Low"\n'
+    )
+    problems = _harness(cfg).preflight()
+    assert any("-quality-level" in p and "patches/Bench2Drive" in p for p in problems), problems
+
+
+def test_preflight_accepts_the_pinned_evaluators_launch_line(tmp_path, monkeypatch) -> None:
+    cfg = _site(tmp_path, monkeypatch, COMPLETED)
+    assert not any("-quality-level" in p for p in _harness(cfg).preflight())

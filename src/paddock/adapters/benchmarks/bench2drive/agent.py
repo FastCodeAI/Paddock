@@ -16,6 +16,12 @@ come from the environment, set by ``harness.run_episode``:
     PADDOCK_RECORD_DIR    if set, write front/BEV frames + a per-tick log.csv
                           here; the harness sets SAVE_PATH alongside it so the
                           leaderboard allows the BEV camera's 30 m mount
+    PADDOCK_METRICS_DIR   if set, write <dir>/<save_name>/metric_info.json: the
+                          per-tick ego kinematics Bench2Drive's
+                          efficiency_smoothness_benchmark.py scores. The
+                          leaderboard hands the agent its `save_name` by
+                          appending "+<save_name>" to the agent-config string
+                          (leaderboard_evaluator.py:363 at 7ec25d1)
 
 It runs inside the CARLA client's interpreter (Python 3.8 at the one site that
 has one), with ``REPO_ROOT/src`` on PYTHONPATH like every process paddock
@@ -31,6 +37,7 @@ takes paddock's frame directly on the way out).
 from __future__ import annotations
 
 import csv
+import json
 import math
 import os
 
@@ -49,6 +56,7 @@ SERVER = os.environ.get("PADDOCK_NODE_URL", "http://127.0.0.1:9000")
 CAMS = [c.strip() for c in os.environ.get("PADDOCK_CAMERAS", "CAM_FRONT").split(",") if c.strip()]
 WAYPOINT_DT = float(os.environ.get("PADDOCK_WAYPOINT_DT", "0.5"))
 RECORD_DIR = os.environ.get("PADDOCK_RECORD_DIR") or None
+METRICS_DIR = os.environ.get("PADDOCK_METRICS_DIR") or None
 
 # Placement (x, y, z, roll, pitch, yaw) in the CARLA ego frame for every nuScenes
 # camera a model might ask for; radius < 3m (the leaderboard sensor limit).
@@ -116,6 +124,14 @@ class PaddockB2DAgent(AutonomousAgent):
     def setup(self, path_to_conf_file):
         self.track = Track.SENSORS
         self._t = 0
+        # {tick: kinematics}, the shape efficiency_smoothness_benchmark.py reads.
+        # Keyed by save_name so a sweep's routes (and repetitions) never collide.
+        self._metric_info = {}
+        self._metric_path = None
+        conf = str(path_to_conf_file or "")
+        save_name = conf.rsplit("+", 1)[-1] if "+" in conf else ""
+        if METRICS_DIR and save_name:
+            self._metric_path = os.path.join(METRICS_DIR, save_name, "metric_info.json")
         self._prev_speed = 0.0
         self._prev_us = None
         self._hero = None
@@ -153,7 +169,30 @@ class PaddockB2DAgent(AutonomousAgent):
         if self._log is not None:
             self._log.close()
             self._log = None
+        if self._metric_path and self._metric_info:
+            os.makedirs(os.path.dirname(self._metric_path), exist_ok=True)
+            with open(self._metric_path, "w") as handle:
+                json.dump(self._metric_info, handle)
         self._http.close()
+
+    def _record_metric_info(self):
+        """One tick of ego kinematics, exactly the six fields the upstream
+        efficiency/comfort tool consumes (AutonomousAgent.get_metric_info at
+        7ec25d1), read from the hero this agent already tracks."""
+        hero = self._hero_actor()
+        if hero is None:
+            return
+        tf = hero.get_transform()
+        acc, ang = hero.get_acceleration(), hero.get_angular_velocity()
+        fwd, right, loc, rot = tf.get_forward_vector(), tf.get_right_vector(), tf.location, tf.rotation
+        self._metric_info[self._t] = {
+            "acceleration": [acc.x, acc.y, acc.z],
+            "angular_velocity": [ang.x, ang.y, ang.z],
+            "forward_vector": [fwd.x, fwd.y, fwd.z],
+            "right_vector": [right.x, right.y, right.z],
+            "location": [loc.x, loc.y, loc.z],
+            "rotation": [rot.roll, rot.pitch, rot.yaw],
+        }
 
     def sensors(self):
         w, h = CAM_RES
@@ -274,6 +313,9 @@ class PaddockB2DAgent(AutonomousAgent):
         # value CARLA accepts silently.
         plan = Trajectory(r.json()["trajectory"], dt=WAYPOINT_DT)
         control, desired_speed = self._control(plan.xy, speed)
+
+        if self._metric_path:
+            self._record_metric_info()
 
         if self._log is not None and front_bgr is not None:
             cv2.imwrite(
