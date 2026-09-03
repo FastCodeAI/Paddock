@@ -100,6 +100,7 @@ serialize = true
 # split        = "navtest"
 # workers      = 4
 # chunk_logs   = 4        # logs per scorer invocation; 0 = one invocation (no resume)
+# run_retries  = 2        # restart nodes and resume from completed chunks this many times
 # nodes        = 4        # policy nodes per CPU-only model; GPU models always get one
 #                        # with >1 visionpilot node, also set VISIONPILOT_ORT_THREADS (e.g. "2")
 #                        # under [models.visionpilot.env], or each node claims every core

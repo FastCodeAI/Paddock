@@ -183,6 +183,14 @@ class ExternallyScoredBenchmark(Benchmark):
     the benchmark a running node, and store what comes back.
     """
 
+    @property
+    def run_retries(self) -> int:
+        """How many times the runner may restart the nodes and re-invoke
+        `evaluate` on the same artifacts after a failure. Zero unless the
+        benchmark can resume -- retrying a scorer that starts from scratch
+        would only repeat the loss."""
+        return 0
+
     def node_count(self, model) -> int:
         """How many policy nodes to start for *model*. One unless the benchmark
         knows better.

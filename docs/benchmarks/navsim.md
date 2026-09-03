@@ -464,10 +464,21 @@ Four changes, each of which alone would have saved that run:
   `run_pdm_score_from_submission.py` in about an hour of CPU.
 - **The split is scored in chunks of logs** (`[benchmarks.navsim] chunk_logs`,
   default 4): each chunk is its own scorer invocation with its own CSV, log
-  and dump under `chunks/<i>/`; a chunk that fails is recorded and the rest
-  continue, with the run marked partial; and `PADDOCK_NAVSIM_RESUME_FROM=<a
-  previous run's artifacts dir>` reuses its completed chunks. A crash now
-  costs at most one chunk. `--limit` runs stay single-invocation.
+  and dump under `chunks/<i>/`. A chunk that fails is recorded and the rest
+  continue. `--limit` runs stay single-invocation.
+
+And three levels of retry, so that surviving a crash needs nobody awake:
+
+| what died | who retries | how |
+|---|---|---|
+| one scenario (the model raised) | the proxy | one more request; an unseeded sampler gets a fresh draw |
+| a scenario still failed after that | the harness | one pass re-scoring just those tokens; scored rows replace failed ones on merge |
+| a chunk, the scorer, or a node | the runner | tears the nodes down, starts fresh ones, re-invokes `evaluate` on the **same** artifacts; completed chunks are skipped. `[benchmarks.navsim] run_retries`, default 2 |
+| paddock itself, or the box | you | `paddock run --bench navsim --model X --resume <run_id>` continues that run in place, same id, nothing scored twice. `PADDOCK_NAVSIM_RESUME_FROM=<dir>` reuses another run's chunks instead |
+
+A run's cost on any single failure is now one chunk of four logs, about
+twenty minutes at alpamayo's rate, against the eleven and a half hours the
+first run lost.
 
 ## A launcher bug found by the parallel smoke
 

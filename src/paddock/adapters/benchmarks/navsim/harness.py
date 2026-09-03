@@ -90,20 +90,26 @@ def merge_chunk_csvs(csv_paths: list[Path], out_path: Path) -> Path:
     recomputes aggregates from per-sample records anyway.
     """
     header: list[str] | None = None
-    rows: list[dict[str, str]] = []
+    rows: dict[str, dict[str, str]] = {}
     for path in csv_paths:
         with path.open() as handle:
             reader = csv.DictReader(handle)
             if header is None:
                 header = list(reader.fieldnames or [])
             for row in reader:
-                if (row.get("token") or "").strip() in navsim_ingest.AGGREGATE_TOKENS:
+                token = (row.get("token") or "").strip()
+                if token in navsim_ingest.AGGREGATE_TOKENS:
                     continue
-                rows.append(row)
+                # A token scored twice -- once failed, once by the retry pass --
+                # keeps the scored row. A failed row never overwrites a scored one.
+                valid = (row.get("valid") or "").strip().lower() != "false"
+                if token in rows and not valid:
+                    continue
+                rows[token] = row
     with out_path.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=header or [])
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows(rows.values())
     return out_path
 
 
@@ -366,6 +372,12 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
 
     # -- the run ----------------------------------------------------------
 
+    @property
+    def run_retries(self) -> int:
+        """`run_retries` from [benchmarks.navsim], default 2. Meaningful only
+        because chunks resume; each retry re-scores only what did not finish."""
+        return max(0, int(self.setting("run_retries", "2") or 0))
+
     def node_count(self, model) -> int:
         """`nodes` from [benchmarks.navsim], applied to CPU-only models.
 
@@ -435,6 +447,7 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         config: dict[str, Any],
         limit: int | None,
         log_names: list[str] | None = None,
+        tokens: list[str] | None = None,
     ) -> list[str]:
         root = self.dataset.resolve()
         agent = self._agent()
@@ -469,6 +482,8 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
             command.append(f"train_test_split.scene_filter.max_scenes={limit}")
         if log_names:
             command.append(f"train_test_split.scene_filter.log_names={hydra_list(log_names)}")
+        if tokens:
+            command.append(f"train_test_split.scene_filter.tokens={hydra_list(tokens)}")
         return command + self._overrides()
 
     def _run_scorer(self, command: list[str], out_dir: Path, root: Path, exp: Path) -> Path:
@@ -508,6 +523,18 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
             )
         return csv_path
 
+    @staticmethod
+    def _logs_of(merged_csv: Path, tokens: list[str]) -> list[str]:
+        """The logs a set of tokens belong to, read from the scored CSV, so the
+        retry pass loads only those logs' metadata."""
+        wanted = set(tokens)
+        logs: set[str] = set()
+        with merged_csv.open() as handle:
+            for row in csv.DictReader(handle):
+                if (row.get("token") or "").strip() in wanted and row.get("log_name"):
+                    logs.add(row["log_name"].strip())
+        return sorted(logs)
+
     def _scorable_logs(self) -> list[str]:
         """The split's logs this site can score, in a fixed order."""
         root = self.dataset.resolve()
@@ -546,7 +573,7 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         size = 0 if limit else int(self.setting("chunk_logs", str(DEFAULT_CHUNK_LOGS)) or 0)
         logs = self._scorable_logs() if size > 0 else []
         chunks = chunk_logs(logs, size) if logs else [[]]
-        resume_from = os.environ.get(RESUME_ENV)
+        resume_from = config.get("resume_from") or os.environ.get(RESUME_ENV)
         summary = out_dir / "navsim_scorer.log"
         echo(
             f"  scoring {self.split} via {Path(self.setting('python') or 'python').name}"
@@ -589,8 +616,29 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         if not csvs:
             raise RuntimeError(f"every chunk failed; nothing scored. See {summary} and {out_dir / 'chunks'}")
         merged = merge_chunk_csvs(csvs, out_dir / "scores.csv") if size > 0 else csvs[-1]
-
         samples, aggregates, failed = navsim_ingest.parse_scores(merged, split=self.split)
+
+        # Scenarios the model failed on inside a chunk that otherwise completed
+        # get one more pass of their own, by token. For an unseeded sampler that
+        # is a fresh draw; for anything else it fails again and stays excluded.
+        # Whole chunks that failed are the runner's to retry with fresh nodes.
+        if failed and size > 0 and not completed_chunk_csv(out_dir / "chunks" / "retry"):
+            echo(f"  re-scoring {len(failed)} failed scenario(s) by token")
+            logs_of = self._logs_of(merged, failed)
+            retry_dir = out_dir / "chunks" / "retry"
+            try:
+                csvs.append(
+                    self._run_scorer(
+                        self._command(policy_url, retry_dir, config, limit, logs_of or None, failed),
+                        retry_dir,
+                        root,
+                        exp,
+                    )
+                )
+                merged = merge_chunk_csvs(csvs, out_dir / "scores.csv")
+                samples, aggregates, failed = navsim_ingest.parse_scores(merged, split=self.split)
+            except RuntimeError as exc:
+                echo(f"  retry pass FAILED ({str(exc).splitlines()[0]}); the {len(failed)} stay excluded")
         # The scorer's own headline is per invocation and means nothing across
         # chunks; only a single-invocation run keeps it.
         reported = navsim_ingest.log_reported_score(out_dir) if size == 0 else None

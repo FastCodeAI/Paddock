@@ -719,3 +719,108 @@ def test_a_completed_chunk_is_detected_by_its_csv(tmp_path: Path) -> None:
     (d / "2026.09.03.11.00.00.csv").write_text("token\n")
     assert completed_chunk_csv(d).name.endswith(".csv")
     assert completed_chunk_csv(tmp_path / "missing") is None
+
+
+def test_merging_prefers_a_retried_score_over_the_failed_row_it_replaces(tmp_path: Path) -> None:
+    """The retry pass re-scores failed tokens into their own chunk; on merge the
+    scored row wins, and a failed row never overwrites a scored one."""
+    from paddock.adapters.benchmarks.navsim.harness import merge_chunk_csvs
+    from paddock.results.ingest.navsim import SUB_METRICS, parse_scores
+
+    header = ["token", "valid", *SUB_METRICS, "score"]
+    first = [
+        header,
+        ["t1", "True", *["1.0"] * len(SUB_METRICS), "0.9"],
+        ["t2", "False", *[""] * len(SUB_METRICS), ""],
+    ]
+    retry = [
+        header,
+        ["t2", "True", *["1.0"] * len(SUB_METRICS), "0.8"],
+        ["t1", "False", *[""] * len(SUB_METRICS), ""],
+    ]
+    (tmp_path / "000.csv").write_text("\n".join(",".join(r) for r in first) + "\n")
+    (tmp_path / "retry.csv").write_text("\n".join(",".join(r) for r in retry) + "\n")
+
+    samples, _, failed = parse_scores(
+        merge_chunk_csvs([tmp_path / "000.csv", tmp_path / "retry.csv"], tmp_path / "m.csv")
+    )
+    assert sorted(s["native_id"]["token"] for s in samples) == ["t1", "t2"]
+    assert failed == [], "t2 was rescued by the retry; t1's later failed row did not unseat its score"
+
+
+# -- a dead node or scorer is retried with fresh nodes, on the same artifacts --
+
+
+def test_the_runner_restarts_nodes_and_resumes_after_a_failed_attempt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The first attempt dies (a scorer crash, a node that fell over); the
+    runner tears the nodes down, starts fresh ones, and re-invokes `evaluate`
+    on the same artifacts directory, where a resumable benchmark continues."""
+    import contextlib
+
+    from paddock import runner
+    from paddock.benchmark import Evaluation, ExternallyScoredBenchmark
+    from paddock.registry import BenchmarkSpec, ModelSpec, Runtime
+    from paddock.runtime import proc
+
+    started_nodes: list[int] = []
+
+    @contextlib.contextmanager
+    def fake_node(spec, cfg, port, log_dir, echo=print, nonce=None):
+        started_nodes.append(port)
+        yield f"http://127.0.0.1:{port}"
+
+    calls: list[dict] = []
+
+    class Flaky(ExternallyScoredBenchmark):
+        run_retries = 2
+        split = "navtest"
+
+        def preflight(self):
+            return []
+
+        def model_problems(self, model, limit):
+            return []
+
+        def invalid_reasons(self):
+            return []
+
+        def evaluate(self, policy_url, out_dir, config, limit=None, echo=print):
+            calls.append(dict(config))
+            if len(calls) == 1:
+                raise RuntimeError("NAVSIM scorer exited 1")  # the crash
+            return Evaluation(
+                samples=[
+                    {
+                        "sample_id": "navsim/navtest/x",
+                        "native_id": {},
+                        "split": "navtest",
+                        "metrics": {"epdms": 0.5},
+                    }
+                ]
+            )
+
+    stored = {}
+    monkeypatch.setattr(proc, "model_node", fake_node)
+    monkeypatch.setattr(
+        runner,
+        "_store_run",
+        lambda *a, **k: (
+            stored.setdefault("called", True),
+            type("M", (), {"n": 1, "metrics": {"epdms": {"mean": 0.5}}})(),
+        ),
+    )
+    monkeypatch.setattr(runner.ports, "find_free", lambda p: p)
+
+    cfg = SiteConfig.load()
+    cfg = type(cfg)(**{**cfg.__dict__, "runs": tmp_path})
+    spec = BenchmarkSpec(name="navsim", mode="open_loop", dataset="navsim", primary_metric="epdms")
+    model = ModelSpec(name="m", repo="r", runtime=Runtime(kind="shell"), vram_gb=0)
+    code = runner._run_external(cfg, Flaky(spec, cfg), spec, model, 9900, None, lambda m: None)
+
+    assert code == 0
+    assert len(calls) == 2, "one crash, one successful retry"
+    assert calls[1]["attempt"] == 2
+    assert len(started_nodes) == 2, "fresh nodes for the retry, not the ones that were up when it died"
+    assert stored.get("called")

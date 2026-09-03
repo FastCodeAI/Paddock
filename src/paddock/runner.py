@@ -163,6 +163,7 @@ def run_benchmark(
     runs: int = 1,
     limit: int | None = None,
     dry_run: bool = False,
+    resume: str | None = None,
     echo: Callable[[str], None] = print,
 ) -> int:
     registry = Registry.load()
@@ -172,6 +173,9 @@ def run_benchmark(
         echo(f"unknown benchmark {bench!r}; known: {', '.join(sorted(registry.benchmarks)) or 'none'}")
         return 2
 
+    if resume and model == "all":
+        echo("--resume names one run, so it needs one --model")
+        return 2
     if model == "all":
         models = [m for m in registry.models.values() if bench in m.benchmarks]
         if not models:
@@ -247,7 +251,7 @@ def run_benchmark(
         failures = 0
         for index, model_spec in enumerate(models):
             port = ports.find_free(base + index)
-            failures += _run_external(cfg, harness, spec, model_spec, port, limit, echo)
+            failures += _run_external(cfg, harness, spec, model_spec, port, limit, echo, resume=resume)
         return 1 if failures else 0
 
     if isinstance(harness, OpenLoopBenchmark):
@@ -358,6 +362,7 @@ def _run_external(
     port: int,
     limit: int | None,
     echo: Callable[[str], None],
+    resume: str | None = None,
 ) -> int:
     """Score one model with a benchmark that brings its own scorer.
 
@@ -365,14 +370,29 @@ def _run_external(
     does its work against it, paddock stores the result -- except that the
     per-sample records come back from the benchmark in one batch rather than
     being accumulated a sample at a time, because the scorer owned the loop.
+
+    A run this long must survive what happens during it. If the scorer or a
+    node dies, the nodes are torn down and restarted and `evaluate` is
+    re-invoked on the same artifacts, up to `harness.run_retries` times; a
+    benchmark that scores in resumable chunks then continues from the last
+    one that completed. `resume` names an earlier run id to continue in place
+    after paddock itself died -- same directory, same run id, nothing scored
+    twice.
     """
     started = datetime.now(UTC)
     began = time.time()
     config = _measurement_config(cfg, harness, model_spec, limit=limit)
-    run_id = store.make_run_id(started, {**config, "bench": spec.name, "model": model_spec.name})
-    artifacts = cfg.runs / spec.name / model_spec.name / run_id
+    if resume:
+        run_id = resume
+        artifacts = cfg.runs / spec.name / model_spec.name / run_id
+        if not artifacts.is_dir():
+            echo(f"  nothing to resume: {artifacts} does not exist")
+            return 2
+    else:
+        run_id = store.make_run_id(started, {**config, "bench": spec.name, "model": model_spec.name})
+        artifacts = cfg.runs / spec.name / model_spec.name / run_id
 
-    echo(f"\n=== {model_spec.name} ===")
+    echo(f"\n=== {model_spec.name} ===" + (f" (resuming {run_id})" if resume else ""))
     # Pure in the model spec and the limit, so asked before any VRAM is waited
     # for or checkpoint read: `--model openpilot` used to load supercombo in
     # full to be told NAVSIM's input rate is too low for it.
@@ -382,36 +402,52 @@ def _run_external(
         for problem in problems:
             echo("  - " + problem.replace("\n", "\n    "))
         return 1
-    try:
-        with contextlib.ExitStack() as stack:
-            # Started one after another, each waiting for /alive before the
-            # next port is chosen, so `find_free` never hands out a port a
-            # sibling is about to bind.
-            urls: list[str] = []
-            next_port = port
-            for _ in range(max(1, harness.node_count(model_spec))):
-                next_port = ports.find_free(next_port)
-                urls.append(
-                    stack.enter_context(
-                        proc.model_node(model_spec, cfg, next_port, artifacts, echo=echo, nonce=run_id)
+    evaluation = None
+    attempts = 1 + max(0, int(getattr(harness, "run_retries", 0)))
+    for attempt in range(1, attempts + 1):
+        try:
+            with contextlib.ExitStack() as stack:
+                # Started one after another, each waiting for /alive before the
+                # next port is chosen, so `find_free` never hands out a port a
+                # sibling is about to bind. A retry re-enters here with fresh
+                # nodes: a node that died is replaced, not mourned.
+                urls: list[str] = []
+                next_port = port
+                for _ in range(max(1, harness.node_count(model_spec))):
+                    next_port = ports.find_free(next_port)
+                    urls.append(
+                        stack.enter_context(
+                            proc.model_node(model_spec, cfg, next_port, artifacts, echo=echo, nonce=run_id)
+                        )
                     )
+                    next_port += 1
+                evaluation = harness.evaluate(
+                    urls[0],
+                    artifacts,
+                    {
+                        "cameras": list(model_spec.cameras),
+                        "model": model_spec.name,
+                        "min_input_hz": model_spec.min_input_hz,
+                        "policy_urls": urls,
+                        "attempt": attempt,
+                    },
+                    limit=limit,
+                    echo=echo,
                 )
-                next_port += 1
-            evaluation = harness.evaluate(
-                urls[0],
-                artifacts,
-                {
-                    "cameras": list(model_spec.cameras),
-                    "model": model_spec.name,
-                    "min_input_hz": model_spec.min_input_hz,
-                    "policy_urls": urls,
-                },
-                limit=limit,
-                echo=echo,
-            )
-    except (proc.NodeStartupError, RuntimeError) as exc:
-        echo(f"  failed: {exc}")
-        return 1
+        except (proc.NodeStartupError, RuntimeError) as exc:
+            if attempt < attempts:
+                why = str(exc).splitlines()[0] if str(exc) else type(exc).__name__
+                echo(f"  attempt {attempt}/{attempts} failed: {why}; restarting nodes and resuming")
+                continue
+            echo(f"  failed after {attempts} attempt(s): {exc}")
+            return 1
+        # Whole chunks the scorer could not run are worth another attempt with
+        # fresh nodes; a scenario the model itself failed on twice is not.
+        unfinished = [f for f in evaluation.failed if f.endswith("/*")]
+        if unfinished and attempt < attempts:
+            echo(f"  attempt {attempt}/{attempts}: {len(unfinished)} chunk(s) unfinished; restarting")
+            continue
+        break
 
     samples, failures = evaluation.samples, evaluation.failed
     if not samples:
