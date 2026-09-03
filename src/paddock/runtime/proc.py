@@ -117,6 +117,12 @@ def check_identity(port: int, served: dict, expect_model: str | None, expect_non
             f"port {port} is answering as {model!r}, not {expect_model!r}: another node holds it. "
             f"Concurrent runs must not share a port range -- set PADDOCK_BASE_PORT per run."
         )
+    if expect_nonce is not None and "nonce" not in served:
+        raise NodeStartupError(
+            f"port {port} is answering as {model!r} but without a launch nonce: a node started by an "
+            f"older paddock checkout (before /whoami echoed the nonce) holds it. Stop that node, or give "
+            f"this run its own range with PADDOCK_BASE_PORT."
+        )
     if expect_nonce is not None and nonce != expect_nonce:
         raise NodeStartupError(
             f"port {port} is answering as another {model!r} node (launch {nonce!r}, this run is "

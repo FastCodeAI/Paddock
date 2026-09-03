@@ -348,6 +348,18 @@ def test_wire_modules_compile_under_python_39() -> None:
         candidates.append(settings.get("python") if settings else None)
     except ConfigError:
         pass
+    # A review worktree has no paddock.toml of its own; the checkout it was
+    # made from usually does, and its [benchmarks.navsim] python is the
+    # interpreter these modules actually run in.
+    common = subprocess.run(
+        ["git", "rev-parse", "--git-common-dir"], capture_output=True, text=True, cwd=REPO_ROOT
+    ).stdout.strip()
+    site_toml = (REPO_ROOT / common).resolve().parent / "paddock.toml" if common else None
+    if site_toml is not None and site_toml.exists():
+        import tomllib
+
+        parent_site = tomllib.loads(site_toml.read_text())
+        candidates.append(parent_site.get("benchmarks", {}).get("navsim", {}).get("python"))
 
     def is_39(path: str | None) -> bool:
         if not path:
@@ -357,7 +369,10 @@ def test_wire_modules_compile_under_python_39() -> None:
 
     interpreter = next((c for c in candidates if is_39(c)), None)
     if interpreter is None:
-        pytest.skip("no Python 3.9 interpreter on this box")
+        pytest.skip(
+            "no Python 3.9 interpreter found: not python3.9 on PATH, not [benchmarks.navsim] python "
+            "in PADDOCK_CONFIG or this worktree's parent checkout"
+        )
     base = REPO_ROOT / "src" / "paddock"
     files = [
         base / "policy" / "protocol.py",

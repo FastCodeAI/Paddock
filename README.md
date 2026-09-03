@@ -41,7 +41,9 @@ the full 12,146 scenarios. On the subset Drive-JEPA scored 0.880 through
 paddock's proxy — the vendor's own agent scores 0.907 by reading the scorer's
 simulator at inference time, which no other model can do, so the proxy figure
 is the comparable one. `preflight` refuses a partial split unless told
-otherwise, so a subset cannot be reported as full navtest by accident.
+otherwise, so a subset cannot be reported as full navtest by accident, and the
+subset rows in `results/` are stored `valid: false` -- they appear under
+"Excluded runs" and never average against a full-split row.
 
 ‡ OpenScene is a 2 Hz dataset and OpenPilot infers motion from frame-to-frame
 change, so it plans a parked car — 0.30 m of travel in 4 s at 4.8 m/s. Its model

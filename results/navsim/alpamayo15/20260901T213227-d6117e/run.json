@@ -18,11 +18,12 @@
       "CAM_FRONT",
       "CAM_FRONT_LEFT",
       "CAM_FRONT_RIGHT"
-    ]
+    ],
+    "allow_partial": true
   },
   "hardware": {},
   "status": "complete",
-  "valid": true,
-  "notes": "",
+  "valid": false,
+  "notes": "242-scenario subset (5 of navtest's 136 logs had sensor blobs), run under PADDOCK_NAVSIM_ALLOW_PARTIAL=1 before the runner recorded that switch; marked valid=false and config.allow_partial added retroactively on 2026-09-03 under the rule that nothing below the full split is ranked against a full run. alpamayo15; this is the current headline for alpamayo15 until its full-navtest run lands, and it is a subset figure.",
   "ingested_from": ""
 }

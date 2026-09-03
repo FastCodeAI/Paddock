@@ -275,6 +275,16 @@ def test_the_launcher_refuses_another_launch_of_the_same_model() -> None:
         server.shutdown()
 
 
+def test_a_node_without_a_nonce_is_named_as_an_older_checkouts() -> None:
+    """A node from a checkout predating the nonce answers `{"model": ...}` only.
+    That is refused too, but the message should say what it is, not 'another
+    launch', so the fix (stop that node) is one line away."""
+    from paddock.runtime import proc as node_proc
+
+    with pytest.raises(node_proc.NodeStartupError, match="older paddock checkout"):
+        node_proc.check_identity(9000, {"model": "drivejepa"}, "drivejepa", "ours")
+
+
 def test_a_slow_or_malformed_whoami_is_retried_not_refused() -> None:
     """On a loaded box `/whoami` can miss one request timeout after an
     hour-long load; a foreign service can answer with something that is not a

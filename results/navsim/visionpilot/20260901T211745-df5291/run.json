@@ -16,11 +16,12 @@
     "limit": null,
     "cameras": [
       "CAM_FRONT"
-    ]
+    ],
+    "allow_partial": true
   },
   "hardware": {},
   "status": "complete",
-  "valid": true,
-  "notes": "",
+  "valid": false,
+  "notes": "242-scenario subset (5 of navtest's 136 logs had sensor blobs), run under PADDOCK_NAVSIM_ALLOW_PARTIAL=1 before the runner recorded that switch; marked valid=false and config.allow_partial added retroactively on 2026-09-03 under the rule that nothing below the full split is ranked against a full run. visionpilot; the comparable figure is the full-navtest row 20260902T175642-df5291 (0.43122).",
   "ingested_from": ""
 }
