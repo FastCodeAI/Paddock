@@ -22,10 +22,12 @@ checks it and says how to start it.
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
 import subprocess
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +52,21 @@ OFFICIAL_SET: dict[str, tuple[str, ...]] = {
 
 _SCORE_LINE = re.compile(r"ncap_score:\s*([-\d.eE+]+)")
 _RUN_DIR = re.compile(r"^run_(\d+)$")
+
+# The engine already writes a frame per step per run; these are the two derived
+# streams worth watching. FC_TRAJ is the front camera with the planned
+# trajectory drawn on it -- what the model saw and what it decided -- and
+# COMBINED_OUTPUTS is the multi-panel figure. The raw CAM_* jpegs are the
+# renderer's own output and are left alone: they are small, and together with
+# trajectories.json / ego_poses.json / actors.json they are enough to rebuild
+# either derived stream offline, which is why pruning them is safe.
+VIDEO_STREAMS = ("FC_TRAJ", "COMBINED_OUTPUTS")
+#: The simulation steps at 0.1 s, so 10 fps plays back in real time. Worth
+#: keeping: the question these clips answer is whether a model reacted in time.
+VIDEO_FPS = 10
+#: Hold the last frame ~1.5 s so the outcome is readable rather than a flicker.
+VIDEO_HOLD_FRAMES = 15
+VIDEO_MODES = ("encode", "keep", "off")
 
 
 def _official_set_summary() -> str:
@@ -221,6 +238,10 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             "--runs",
             str(runs),
         ]
+        if self.video_mode() == "off":
+            # No frames at all: skips the per-step jpeg and matplotlib writes,
+            # which is most of what the logger costs.
+            command += ["--engine.logger.enabled", "False"]
 
         started = time.time()
         result = subprocess.run(
@@ -246,7 +267,132 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         scores = [float(m.group(1)) for m in _SCORE_LINE.finditer(result.stdout)]
         if scores and "ncap_score" not in metrics:
             metrics["ncap_score"] = sum(scores) / len(scores)
+        self.render_videos(out_dir)
         return metrics
+
+    # ---- debugging video -----------------------------------------------
+
+    def video_mode(self) -> str:
+        """`encode` (default), `keep`, or `off` -- from `[benchmarks.neuroncap] video`.
+
+        Deliberately *not* in `run_config()`: what is kept for debugging does not
+        change what was measured, and putting it there would give the same sweep
+        two different run ids depending on whether videos were wanted.
+        """
+        mode = (self.setting("video") or "encode").strip().lower()
+        if mode not in VIDEO_MODES:
+            raise ValueError(
+                f"[benchmarks.neuroncap] video = {mode!r}: expected one of {', '.join(VIDEO_MODES)}"
+            )
+        return mode
+
+    def _ffmpeg(self) -> str | None:
+        """`[benchmarks.neuroncap] ffmpeg`, then `PADDOCK_FFMPEG`, then PATH."""
+        for candidate in (self.setting("ffmpeg"), os.environ.get("PADDOCK_FFMPEG")):
+            if candidate and Path(candidate).exists():
+                return candidate
+        return shutil.which("ffmpeg")
+
+    def render_videos(self, out_dir: Path, echo: Callable[[str], None] = print) -> list[Path]:
+        """One mp4 per stream per run, written beside that run's frames.
+
+        Runs are the unit because runs are what differ: each is a different draw
+        of the scenario jitter, so `run_3/FC_TRAJ.mp4` is the clip of the draw
+        that `run_3` scored, and the two sit in one directory.
+
+        Never fatal. Video is a debugging aid, not a result -- a missing ffmpeg
+        or a failed encode leaves the frames in place and says so, rather than
+        losing an episode that already cost minutes of simulator time.
+        """
+        mode = self.video_mode()
+        if mode == "off":
+            return []
+
+        ffmpeg = self._ffmpeg()
+        if ffmpeg is None:
+            echo(
+                "    no ffmpeg found; frames kept, no video. Set [benchmarks.neuroncap] "
+                "ffmpeg or PADDOCK_FFMPEG to a binary, or video = 'keep' to silence this."
+            )
+            return []
+
+        # `run_<i>/` when the engine drove several runs, the episode dir itself
+        # when it drove one -- the same shape `_per_run` reads.
+        run_dirs = sorted(
+            (p for p in out_dir.iterdir() if p.is_dir() and _RUN_DIR.match(p.name)),
+            key=lambda p: int(_RUN_DIR.match(p.name).group(1)),
+        ) or [out_dir]
+
+        written: list[Path] = []
+        for run_dir in run_dirs:
+            for stream in VIDEO_STREAMS:
+                frames_dir = run_dir / stream
+                if not frames_dir.is_dir():
+                    continue
+                video = self._encode(ffmpeg, frames_dir, run_dir / f"{stream}.mp4", echo)
+                if video is None:
+                    continue
+                written.append(video)
+                if mode == "encode":
+                    # Only the stream that actually encoded, so a partial
+                    # failure never deletes frames that have no video.
+                    shutil.rmtree(frames_dir, ignore_errors=True)
+        return written
+
+    @staticmethod
+    def _encode(ffmpeg: str, frames_dir: Path, dest: Path, echo: Callable[[str], None]) -> Path | None:
+        """Frames to one mp4. Returns the path, or None if there was nothing to do."""
+        # Filenames are microsecond timestamps, so lexical order is chronological.
+        frames = sorted(frames_dir.glob("*.png")) or sorted(frames_dir.glob("*.jpg"))
+        if not frames:
+            return None
+
+        # concat demuxer rather than a glob pattern: the timestamps are not a
+        # contiguous numeric sequence, which -pattern_type would require.
+        listing = frames_dir.parent / f".{frames_dir.name}.concat"
+        lines = [f"file '{f}'" for f in frames]
+        lines += [f"file '{frames[-1]}'"] * VIDEO_HOLD_FRAMES
+        listing.write_text("\n".join(lines) + "\n")
+
+        result = subprocess.run(
+            [
+                ffmpeg,
+                "-loglevel",
+                "error",
+                "-y",
+                "-r",
+                str(VIDEO_FPS),
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(listing),
+                # Bounded: shakaal fails at >=90% box CPU, and libx264 would
+                # otherwise take every core it can see.
+                "-threads",
+                "2",
+                # H.264 needs even dimensions; the matplotlib figures are not.
+                "-vf",
+                "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-crf",
+                "23",
+                str(dest),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        listing.unlink(missing_ok=True)
+
+        if result.returncode != 0 or not dest.exists():
+            tail = (result.stderr or "").strip().splitlines()[-3:]
+            echo(f"    video {dest.name} failed; frames kept: {' '.join(tail)}")
+            return None
+        return dest
 
     def samples_per_episode(self, runs: int = 1) -> int:
         """One sample per run -- see `episode_samples`."""

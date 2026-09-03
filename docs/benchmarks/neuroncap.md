@@ -275,3 +275,57 @@ sorted as strings, `run_10` falls between `run_1` and `run_2`.
 The renderer serves one scene at a time and is slow to start, so the loop is
 scene-outer, model-inner — restart the renderer per scene, run all four models
 against it, move on. That is 14 renderer starts rather than 56.
+
+## Debugging video
+
+The engine writes a frame per simulation step, per run, into the episode's
+artifact directory under `roots.runs` — the raw camera as jpeg, plus two derived
+streams: `FC_TRAJ` (front camera with the planned trajectory drawn on it — what
+the model saw and what it decided) and `COMBINED_OUTPUTS` (the multi-panel
+figure). Alongside them the engine writes `trajectories.json`, `ego_poses.json`,
+`actors.json` and `reference_trajectory.json`.
+
+Runs are the unit, because runs are what differ: `run_3/FC_TRAJ.mp4` is the clip
+of the jitter draw that `run_3` scored, sitting next to the `metrics.json` that
+scored it. With `--runs 1` the engine writes straight into the episode directory
+and the video lands there instead.
+
+After every episode the harness encodes each stream to H.264 at 10 fps — the
+simulation steps at 0.1 s, so that is real time, which matters when the question
+is whether a model reacted early enough. The last frame is held ~1.5 s so the
+outcome is readable rather than a flicker.
+
+### It has to be paid for
+
+One run is about **83 MB** of frames, of which `FC_TRAJ` alone is 59 MB. Across
+the full 20-pair set at 10 runs for four models that is **~66 GB**.
+
+`video` in `[benchmarks.neuroncap]` decides what survives:
+
+| mode | what is kept | full set, 4 models |
+|---|---|---:|
+| `encode` (default) | videos, raw `CAM_*` jpegs, all json | ~5 GB |
+| `keep` | the above plus every source PNG | ~66 GB |
+| `off` | no frames at all (`--engine.logger.enabled False`) | ~0 |
+
+`encode` prunes only the derived PNG streams, and only ones that actually
+encoded. Nothing is lost that cannot be rebuilt: the raw camera frames and the
+trajectory json are what those streams were drawn from. Measured on real frames,
+a two-run episode went 162 MB → 13 MB with both clips intact.
+
+Encoding costs about 2.5 s per stream per run — roughly an hour spread across a
+44 h sweep — and runs with `-threads 2`, because libx264 would otherwise take
+every core it can see and this box fails at 90% CPU.
+
+ffmpeg is found from `[benchmarks.neuroncap] ffmpeg`, then `$PADDOCK_FFMPEG`,
+then `PATH`. **Video is never fatal**: no ffmpeg, or a failed encode, leaves the
+frames in place and says so. An episode costs minutes of simulator time and a
+debugging aid must not be able to lose one.
+
+`video` is deliberately not part of `run_config()`. What is kept for debugging
+does not change what was measured, and putting it there would give the same
+sweep two different run ids depending on whether videos were wanted.
+
+For all four models side by side on one clock, see
+`tools/benchmarks/neuroncap/comparison_video.py` — it reads frames rather than
+videos, so it needs `video = "keep"`.

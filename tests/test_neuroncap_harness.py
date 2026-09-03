@@ -181,3 +181,112 @@ def test_the_default_closed_loop_benchmark_is_one_sample_per_episode() -> None:
     from paddock.benchmark import ClosedLoopBenchmark
 
     assert ClosedLoopBenchmark.samples_per_episode(object(), runs=10) == 1
+
+
+# ---- debugging video ---------------------------------------------------
+
+
+def _frames(run_dir, stream, n=3):
+    """A few real-ish PNG frames named the way the engine names them."""
+    from PIL import Image
+
+    d = run_dir / stream
+    d.mkdir(parents=True)
+    for i in range(n):
+        # Microsecond timestamps, as the engine writes them; even dimensions are
+        # NOT used here on purpose -- H.264 needs even, and the scale filter in
+        # _encode is what makes an odd matplotlib figure encodable.
+        Image.new("RGB", (65, 33), (i * 40, 90, 140)).save(d / f"153315160{i:04d}7766.png")
+    return d
+
+
+def _harness_with_video(mode):
+    harness = _harness()
+    real = harness.setting
+
+    def setting(key, default=None):
+        return mode if key == "video" else real(key, default)
+
+    harness.setting = setting
+    return harness
+
+
+def test_video_mode_defaults_to_encode_and_rejects_nonsense() -> None:
+    assert _harness().video_mode() == "encode"
+    with pytest.raises(ValueError, match="expected one of"):
+        _harness_with_video("mp4").video_mode()
+
+
+def test_encode_writes_one_video_per_run_and_prunes_the_frames(tmp_path) -> None:
+    """The frames are reconstructible from CAM_* plus the json, so pruning is safe.
+
+    83 MB per run is 66 GB across a 20-pair sweep at 10 runs for four models;
+    the same content as video is about 5 GB.
+    """
+    harness = _harness_with_video("encode")
+    if harness._ffmpeg() is None:
+        pytest.skip("no ffmpeg")
+
+    for i in (0, 1):
+        run = tmp_path / f"run_{i}"
+        _frames(run, "FC_TRAJ")
+        (run / "CAM_FRONT").mkdir()
+        (run / "trajectories.json").write_text("{}")
+
+    written = harness.render_videos(tmp_path, echo=lambda _: None)
+
+    assert [p.relative_to(tmp_path).as_posix() for p in written] == [
+        "run_0/FC_TRAJ.mp4",
+        "run_1/FC_TRAJ.mp4",
+    ]
+    for i in (0, 1):
+        run = tmp_path / f"run_{i}"
+        assert (run / "FC_TRAJ.mp4").stat().st_size > 0
+        assert not (run / "FC_TRAJ").exists(), "encoded frames should be pruned"
+        # What makes pruning safe: the raw camera and the trajectories survive.
+        assert (run / "CAM_FRONT").is_dir()
+        assert (run / "trajectories.json").exists()
+    assert not list(tmp_path.rglob("*.concat")), "the concat list is a temp file"
+
+
+def test_keep_encodes_without_deleting_anything(tmp_path) -> None:
+    harness = _harness_with_video("keep")
+    if harness._ffmpeg() is None:
+        pytest.skip("no ffmpeg")
+    _frames(tmp_path / "run_0", "FC_TRAJ")
+
+    harness.render_videos(tmp_path, echo=lambda _: None)
+
+    assert (tmp_path / "run_0" / "FC_TRAJ.mp4").exists()
+    assert (tmp_path / "run_0" / "FC_TRAJ").is_dir()
+
+
+def test_off_writes_nothing(tmp_path) -> None:
+    _frames(tmp_path / "run_0", "FC_TRAJ")
+    assert _harness_with_video("off").render_videos(tmp_path, echo=lambda _: None) == []
+    assert not list(tmp_path.rglob("*.mp4"))
+
+
+def test_a_single_run_episode_has_no_run_dir_and_still_renders(tmp_path) -> None:
+    """`--runs 1` writes straight into the episode dir; `_per_run` reads it the same way."""
+    harness = _harness_with_video("encode")
+    if harness._ffmpeg() is None:
+        pytest.skip("no ffmpeg")
+    _frames(tmp_path, "FC_TRAJ")
+
+    written = harness.render_videos(tmp_path, echo=lambda _: None)
+
+    assert [p.name for p in written] == ["FC_TRAJ.mp4"]
+
+
+def test_a_missing_ffmpeg_keeps_the_frames_and_never_raises(tmp_path, monkeypatch) -> None:
+    """An episode costs minutes of simulator time; a debugging aid must not lose it."""
+    harness = _harness_with_video("encode")
+    monkeypatch.setattr(type(harness), "_ffmpeg", lambda self: None)
+    _frames(tmp_path / "run_0", "FC_TRAJ")
+
+    said = []
+    assert harness.render_videos(tmp_path, echo=said.append) == []
+
+    assert (tmp_path / "run_0" / "FC_TRAJ").is_dir(), "frames must survive"
+    assert said and "ffmpeg" in said[0]
