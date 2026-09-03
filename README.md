@@ -1,11 +1,19 @@
-<p align="center"><img src="docs/assets/paddock.svg" width="128" height="128" alt="Paddock"></p>
+<h1 align="center">
+  <img src="docs/assets/paddock.svg" height="44" alt=""> Paddock
+</h1>
 
-# Paddock
+<p align="center"><strong>An evaluation framework for driving world models, spanning open-loop and closed-loop benchmarks.</strong></p>
 
-An evaluation framework for driving world models, spanning open-loop and
-closed-loop benchmarks. Paddock runs several independent research codebases
-against the same benchmarks, through one interface, and collects the results in
-one comparable format.
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
+  <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.11%2B-3776AB.svg?logo=python&logoColor=white" alt="Python 3.11+"></a>
+  <a href="docs/leaderboard.md"><img src="https://img.shields.io/badge/leaderboard-per--run_results-0F6472.svg" alt="Leaderboard"></a>
+  <a href="docs/ROADMAP.md"><img src="https://img.shields.io/badge/roadmap-what_is_verified-B4560A.svg" alt="Roadmap"></a>
+</p>
+
+Paddock runs several independent research codebases against the same
+benchmarks, through one interface, and collects the results in one comparable
+format.
 
 Shared between **Fastcode** and **Renesas**. Everyone runs it on their own
 machine, against whatever copy of the data they already have.
