@@ -20,47 +20,40 @@ schema with provenance, so an ADE and an NCAP score are statements about the
 same model, run the same way.
 
 ```mermaid
-%%{init: {"theme": "base", "themeVariables": {
-  "fontFamily": "-apple-system, Segoe UI, Helvetica, Arial, sans-serif",
-  "fontSize": "14px",
-  "primaryTextColor": "#1f2328",
-  "lineColor": "#6e7781",
-  "edgeLabelBackground": "#ffffff",
-  "clusterBkg": "#ffffff",
-  "clusterBorder": "#d0d7de"
-}}}%%
+%%{init: {"theme": "base", "themeVariables": {"primaryTextColor": "#1f2328", "lineColor": "#6e7781",
+  "edgeLabelBackground": "#ffffff", "clusterBkg": "#ffffff", "clusterBorder": "#d0d7de"}}}%%
 flowchart LR
-    subgraph models ["Models — each in its own environment"]
+    subgraph models ["Models, one environment each"]
         direction TB
-        op["OpenPilot<br/><small>uv · python 3.12 · tinygrad</small>"]
-        al["Alpamayo 1.5<br/><small>uv · python 3.12 · torch</small>"]
-        dj["Drive-JEPA<br/><small>conda · python 3.9 · mmcv</small>"]
-        vp["VisionPilot<br/><small>onnxruntime</small>"]
+        op["OpenPilot<br/>uv · py3.12 · tinygrad"]
+        al["Alpamayo 1.5<br/>uv · py3.12 · torch"]
+        dj["Drive-JEPA<br/>conda · py3.9 · mmcv"]
+        vp["VisionPilot<br/>onnxruntime"]
     end
 
-    pol["<b>Policy</b><br/>load()<br/>reset()<br/>infer(obs) → trajectory"]
+    pol["Policy<br/>load() · reset()<br/>infer(obs) → trajectory"]
 
-    subgraph open ["🟢 open-loop — replay a recording"]
+    subgraph open ["open-loop"]
         direction TB
-        ns["nuScenes<br/><small>planned</small>"]
-        ks["KITScenes<br/><small>ADE / FDE</small>"]
+        ns["nuScenes<br/>planned"]
+        ks["KITScenes<br/>ADE / FDE"]
     end
-    subgraph pseudo ["🟡 pseudo-closed-loop"]
-        nv["NAVSIM v2<br/><small>EPDMS</small>"]
+    subgraph pseudo ["pseudo-closed-loop"]
+        nv["NAVSIM v2<br/>EPDMS"]
     end
-    subgraph closed ["🔴 closed-loop — the model drives"]
+    subgraph closed ["closed-loop"]
         direction TB
-        b2d["Bench2Drive<br/><small>CARLA · ability score</small>"]
-        nc["neuroNCAP<br/><small>NeuRAD · NCAP score</small>"]
-        alp["AlpaSim<br/><small>OmniDreams · nuRec · planned</small>"]
+        b2d["Bench2Drive<br/>CARLA · ability score"]
+        nc["neuroNCAP<br/>NeuRAD · NCAP score"]
+        alp["AlpaSim<br/>OmniDreams · nuRec · planned"]
     end
 
-    res[("results/<br/><small>one schema, with provenance</small>")]
+    res[("results/<br/>one schema, with provenance")]
 
     op & al & dj & vp --> pol
-    pol -- "frames from a recording" --> open
-    pol -- "frames from a recording,<br/>scored in a simulator" --> pseudo
-    pol -- "frames from a simulator,<br/>the plan moves the car" --> closed
+    pol -- "replays a recording" --> open
+    pol -- "recording in,<br/>simulator scores" --> pseudo
+    pol -- "simulator in,<br/>the plan moves the car" --> closed
     open & pseudo & closed --> res
 
     style models fill:#fff8f1,stroke:#c2410c,stroke-width:1.5px,color:#9a3412
@@ -82,6 +75,61 @@ flowchart LR
     class b2d,nc,alp cl
     class ns,alp planned
     class res store
+```
+
+### On the wire
+
+Paddock is one Python 3.11 process. It never imports a model. It launches the
+model's `Policy` as a node in the model's own interpreter, with paddock's
+`src/` on `PYTHONPATH` rather than installed, and everything after that is
+HTTP on localhost. Open-loop harnesses send image *paths*, not pixels, because
+the node reads the same disk: one KITScenes frame is 24 MB and a full run would
+otherwise push 348 GB through a socket. Closed-loop simulators have no file to
+point at, so they send rendered pixels per step.
+
+```mermaid
+%%{init: {"theme": "base", "sequence": {"wrap": true, "width": 230, "messageAlign": "center",
+  "actorFontSize": 14, "messageFontSize": 13, "noteFontSize": 13},
+  "themeVariables": {"primaryTextColor": "#1f2328", "lineColor": "#6e7781",
+  "actorBkg": "#f6f8fa", "actorBorder": "#57606a", "noteBkgColor": "#fff8f1", "noteBorderColor": "#c2410c",
+  "activationBkgColor": "#ffedd5", "activationBorderColor": "#ea580c"}}}%%
+sequenceDiagram
+    participant R as paddock runner<br/>python 3.11
+    participant H as benchmark harness<br/>adapters/benchmarks/‹bench›
+    participant N as model node<br/>‹model venv›/python<br/>paddock.policy.server
+    participant S as simulator<br/>neuroNCAP · CARLA
+    participant D as dataset on disk
+
+    R->>H: preflight() · coverage()
+    Note over H: refuses to start if data or checkpoints are missing
+    R->>N: launch: python -m paddock.policy.server --model ‹m› --port 9000
+    Note over N: Policy.load() once, weights stay resident
+    R->>N: GET /alive, until healthy
+
+    rect rgb(242, 251, 244)
+        Note over H,D: open loop, one sample
+        H->>D: read poses + calibration
+        H->>N: POST /infer_sequence, one Observation per frame: image paths, ego2world, 18-float CAN bus, timestamp, nav command, calibration
+        N->>D: open the JPEGs itself
+        N-->>H: Trajectory: 6 waypoints, ego frame, x forward, y left, metres, every 0.5 s
+        H->>H: score(): ADE, FDE against the recorded drive
+        Note over H,N: NAVSIM v2 sends the same /infer_sequence from inside its scorer, then simulates the plan and scores EPDMS
+    end
+
+    rect rgb(255, 245, 245)
+        Note over R,S: closed loop, one episode
+        R->>S: start the simulator with the node's port
+        loop every simulation step
+            S->>N: POST /infer: rendered pixels, ego state, command
+            N-->>S: 6 waypoints
+            Note over S: the simulator moves the car on them
+        end
+        S->>N: POST /reset before the next episode
+        S-->>H: episode score: NCAP or driving score
+    end
+
+    H->>R: metrics + provenance
+    Note over R: results/‹bench›/‹model›/‹run›/ run.json + metrics.json
 ```
 
 Four models times five benchmarks, and nobody wrote twenty adapters. A fifth
