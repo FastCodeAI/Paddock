@@ -15,7 +15,7 @@ machine, against whatever copy of the data they already have.
 | | |
 |---|---|
 | **Models** | OpenPilot, VisionPilot, Alpamayo 1.5, Drive-JEPA — each in its own Python environment, none of them compatible with any other |
-| **Benchmarks** | KITScenes (ADE/FDE), neuroNCAP (closed-loop NCAP score), NAVSIM (PDMS/EPDMS), Bench2Drive (CARLA driving score; adapter landed, not yet run), nuScenes planned |
+| **Benchmarks** | KITScenes (ADE/FDE), neuroNCAP (closed-loop NCAP score), NAVSIM v2 (EPDMS on navtest), Bench2Drive (CARLA driving score; adapter landed, not yet run), nuScenes planned |
 | **Interface** | one `Policy` per model: `load()`, `reset()`, `infer(observation) -> trajectory`. The same class serves open-loop scoring and closed-loop simulation |
 | **Results** | one schema for every benchmark, with provenance — so an ADE and an NCAP score are statements about the same model, run the same way |
 
@@ -28,12 +28,30 @@ Reference numbers are what paddock must reproduce; see `docs/benchmarks/`.
 
 | | KITScenes | neuroNCAP | NAVSIM | nuScenes | Bench2Drive |
 |---|---|---|---|---|---|
-| OpenPilot | ✅ ADE 1.599 | ✅ 5.0 / 1.86 / 5.0 | — | planned | adapter, unrun |
-| Alpamayo 1.5 | ✅ ADE 0.921 | ✅ 5.0 / 0.00 / 1.18 | — | planned | adapter, unrun |
-| Drive-JEPA | ✅ ADE 2.364 | ✅ 5.0 / 2.07 / 5.0 | ✅ EPDMS 0.905 | planned | adapter, unrun |
-| VisionPilot | ✅ (traj only) | ✅ 3.14 / 1.68 / 1.07 | — | planned | adapter, unrun |
+| OpenPilot | ✅ ADE 1.599 | ✅ 5.0 / 1.86 / 5.0 | ✗ 2 Hz ‡ | planned | adapter, unrun |
+| Alpamayo 1.5 | ✅ ADE 0.921 | ✅ 5.0 / 0.00 / 1.18 | ✅ EPDMS 0.653 † | planned | adapter, unrun |
+| Drive-JEPA | ✅ ADE 2.364 | ✅ 5.0 / 2.07 / 5.0 | ✅ EPDMS 0.843 | planned | adapter, unrun |
+| VisionPilot | ✅ (traj only) | ✅ 3.14 / 1.68 / 1.07 | ✅ EPDMS 0.431 | planned | adapter, unrun |
 
 neuroNCAP triples are stationary / frontal / side, scene 0103, 1 run.
+
+† Alpamayo's NAVSIM figure is still the **242-scenario subset** (5 of 136
+logs); its full-navtest run is in progress. Drive-JEPA's and VisionPilot's are
+the full 12,146 scenarios. On the subset Drive-JEPA scored 0.880 through
+paddock's proxy — the vendor's own agent scores 0.907 by reading the scorer's
+simulator at inference time, which no other model can do, so the proxy figure
+is the comparable one. `preflight` refuses a partial split unless told
+otherwise, so a subset cannot be reported as full navtest by accident, and the
+subset rows in `results/` are stored `valid: false` -- they appear under
+"Excluded runs" and never average against a full-split row.
+
+‡ OpenScene is a 2 Hz dataset and OpenPilot infers motion from frame-to-frame
+change, so it plans a parked car — 0.30 m of travel in 4 s at 4.8 m/s. Its model
+has no speed input at all (`{desire_pulse, traffic_convention, action_t}`), so
+this is not fixable in the adapter. It declares `min_input_hz: 10.0` and the
+harness refuses the pairing rather than recording the artefact. Alpamayo hit the
+same dataset property in a milder form and was fixed in its adapter, worth
++0.207 EPDMS. See `docs/benchmarks/navsim.md`.
 
 ---
 

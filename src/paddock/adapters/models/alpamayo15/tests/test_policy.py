@@ -34,9 +34,14 @@ def test_grid_indices_land_on_the_half_second_grid() -> None:
     Index i is at (i+1)/10 s, so 0.5 s is index 4, 1.0 s is index 9, and so on.
     An off-by-one here shifts every waypoint 100 ms and is invisible in the
     output -- it just makes the model look slightly mistimed.
+
+    Eight points, not six: NAVSIM scores a 4 s horizon. NeuroNCAP still takes
+    the first six and KITScenes truncates at 3 s, so the extra two are dropped
+    by both -- see the note on GRID_INDICES.
     """
-    expected = [int(round(t / 0.1)) - 1 for t in (0.5, 1.0, 1.5, 2.0, 2.5, 3.0)]
-    assert list(GRID_INDICES) == expected
+    grid = (0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0)
+    assert list(GRID_INDICES) == [int(round(t / 0.1)) - 1 for t in grid]
+    assert GRID_INDICES[-1] < 64, "alpamayo predicts 64 waypoints; the grid must fit"
 
 
 def test_medoid_picks_the_consensus_draw() -> None:
@@ -62,3 +67,41 @@ def test_camera_slots_cover_the_declared_cameras() -> None:
 
 def test_history_depth_matches_the_model_contract() -> None:
     assert (NUM_HISTORY_STEPS, NUM_CAM_FRAMES, HISTORY_DT) == (16, 4, 0.1)
+
+
+def test_infer_sequence_records_the_history_and_runs_the_model_once() -> None:
+    """Four frames in, one forward pass out.
+
+    The base class feeds every frame through `infer`; this policy overrides that
+    to record the first N-1 and infer on the last, because the model is a pure
+    function of its recorded history. Pinned here so a refactor that drops the
+    override quietly quadruples the cost of every open-loop run.
+    """
+    import numpy as np
+
+    from paddock.policy.protocol import Trajectory
+
+    class _Stub(POLICY):
+        def __init__(self):
+            self.recorded, self.inferred, self.resets = [], [], 0
+            self.self_prime = True
+
+        def reset(self):
+            self.resets += 1
+            self.recorded = []
+
+        def _record(self, obs):
+            self.recorded.append(obs)
+
+        def infer(self, obs):
+            self.inferred.append(obs)
+            return Trajectory(np.zeros((8, 3)))
+
+    stub = _Stub()
+    frames = ["t-1.5", "t-1.0", "t-0.5", "t0"]
+    stub.infer_sequence(frames)
+
+    assert stub.resets == 1
+    assert stub.recorded == frames[:-1], "history must be recorded without inference"
+    assert stub.inferred == [frames[-1]], "exactly one forward pass, on the scored frame"
+    assert stub.self_prime is True, "self_prime must be restored after the sequence"

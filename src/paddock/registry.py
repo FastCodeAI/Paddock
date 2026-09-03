@@ -95,6 +95,12 @@ class ModelSpec:
     vram_gb: float = 0.0
     startup_timeout_s: int = 600
     waypoint_dt: float = 0.5
+    #: Slowest observation rate, Hz, at which this model still perceives motion.
+    #: 0 means it does not care. Models that infer ego motion from frame-to-frame
+    #: change do care, sharply: openpilot reads a 0.5 s step as a parked car, and
+    #: a benchmark whose data is slower than this measures the gap rather than
+    #: the model. Benchmarks check it before scoring.
+    min_input_hz: float = 0.0
     benchmarks: tuple[str, ...] = ()
     description: str = ""
     directory: Path = REPO_ROOT
@@ -174,6 +180,7 @@ def load_models(directory: Path = MODELS_DIR) -> dict[str, ModelSpec]:
             vram_gb=float(caps.get("vram_gb", 0.0)),
             startup_timeout_s=int(caps.get("startup_timeout_s", 600)),
             waypoint_dt=float(caps.get("waypoint_dt", 0.5)),
+            min_input_hz=float(caps.get("min_input_hz", 0.0)),
             benchmarks=tuple(body.get("benchmarks", ())),
             description=body.get("description", ""),
             directory=path.parent,

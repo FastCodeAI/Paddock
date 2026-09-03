@@ -64,8 +64,7 @@ class KitScenesBenchmark(OpenLoopBenchmark):
             [benchmarks.kitscenes]
             sample_list = "/path/to/kitscenes_e2e_final.pkl"
         """
-        settings = self.cfg.benchmarks.get("kitscenes")
-        raw = settings.get("sample_list") if settings else None
+        raw = self.setting("sample_list")
         if not raw:
             raise RuntimeError(
                 "[benchmarks.kitscenes] sample_list is not set in paddock.toml. "

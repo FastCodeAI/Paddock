@@ -49,6 +49,7 @@ from paddock.benchmark import ClosedLoopBenchmark, Episode
 from paddock.config import REPO_ROOT
 from paddock.runtime import ports
 from paddock.runtime.env import PASSTHROUGH
+from paddock.runtime.proc import tail as _tail
 
 #: The model-agnostic CARLA client shipped with this adapter. The evaluator loads
 #: it via ``--agent``; it reads its settings from PADDOCK_* variables set by
@@ -300,26 +301,13 @@ def reap_carla(port: int, wait_s: float = 30.0) -> list[int]:
     return pids
 
 
-def _tail(path: Path, lines: int = 20) -> str:
-    if not path.exists():
-        return "(no log)"
-    return "\n".join(path.read_text(errors="replace").splitlines()[-lines:]) or "(log empty)"
-
-
 # ---------------------------------------------------------------------------
 # The benchmark
 # ---------------------------------------------------------------------------
 
 
 class Bench2DriveBenchmark(ClosedLoopBenchmark):
-    # ---- site settings -------------------------------------------------
-
-    @property
-    def settings(self):
-        return self.cfg.benchmarks.get("bench2drive")
-
-    def setting(self, key: str, default: str | None = None) -> str | None:
-        return self.settings.get(key, default) if self.settings else default
+    # ---- site settings: `self.setting(key)` / `self.settings` from the base ----
 
     @property
     def repo(self) -> Path | None:

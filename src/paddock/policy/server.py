@@ -23,7 +23,7 @@ from paddock.policy.protocol import Observation, Policy
 logger = logging.getLogger(__name__)
 
 
-def build_app(policy: Policy):
+def build_app(policy: Policy, model: str | None = None, nonce: str | None = None):
     """Wrap a loaded Policy in the endpoints a simulator expects."""
     from fastapi import FastAPI
 
@@ -32,6 +32,20 @@ def build_app(policy: Policy):
     @app.get("/alive")
     async def alive() -> bool:
         return True
+
+    @app.get("/whoami")
+    async def whoami() -> dict:
+        """Which model this node serves.
+
+        `/alive` says only that *a* paddock node is answering. On a shared
+        machine, with several runs choosing ports from the same range, that is
+        not enough: a run whose own node was still loading once passed its
+        health check against a sibling's node on the same port and scored the
+        wrong model's plans under its name. The launcher checks the model,
+        and the nonce it gave this launch -- two concurrent runs of the *same*
+        model would otherwise pass each other's check.
+        """
+        return {"model": model or type(policy).__name__, "nonce": nonce}
 
     @app.post("/infer")
     async def infer(body: dict) -> dict:
@@ -83,6 +97,9 @@ def main() -> None:
     parser.add_argument("--model", required=True, help="directory name under adapters/models/")
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument(
+        "--nonce", default=None, help="echoed by /whoami so the launcher knows this node is its own"
+    )
     args = parser.parse_args()
 
     import uvicorn
@@ -95,7 +112,8 @@ def main() -> None:
     policy.load()
     logger.info("%s ready on port %d", args.model, args.port)
 
-    uvicorn.run(build_app(policy), host=args.host, port=args.port, log_level="warning")
+    app = build_app(policy, model=args.model, nonce=args.nonce)
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 
 if __name__ == "__main__":

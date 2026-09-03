@@ -1,0 +1,19 @@
+name: navsim
+description: NAVSIM v2 EPDMS on navtest - a closed-loop-proxy score from re-simulating a 4 s plan on OpenScene's real scenes; not the navhard two-stage leaderboard protocol
+# Open loop in the sense that matters: the dataset decides what happens next and
+# errors do not compound. NAVSIM's scorer owns the iteration, which is why the
+# harness subclasses ExternallyScoredBenchmark rather than OpenLoopBenchmark.
+mode: open_loop
+dataset: navsim
+metrics:
+  - epdms
+  - no_at_fault_collisions
+  - drivable_area_compliance
+  - driving_direction_compliance
+  - traffic_light_compliance
+  - ego_progress
+  - time_to_collision_within_bound
+  - lane_keeping
+  - history_comfort
+  - two_frame_extended_comfort
+primary_metric: epdms

@@ -87,3 +87,18 @@ budget_gb = 24
 # is the difference between a long job and a failed one. Set false only if you
 # have room for every model in `paddock run --model all` simultaneously.
 serialize = true
+
+# Benchmarks that bring their own environment and assets. Uncomment and fill in
+# the ones this site can run; `paddock doctor` reports the rest as unavailable.
+
+# [benchmarks.navsim]
+# NAVSIM scores in its own devkit, in an interpreter that can import navsim and
+# nuplan -- paddock supplies the model over HTTP and stores the result.
+# python       = "/path/to/envs/drive-jepa/bin/python"
+# devkit       = "/path/to/Drive-JEPA/navsim_v2"   # the directory holding navsim/
+# metric_cache = "/path/to/exp/metric_cache_v2"    # run_metric_caching.py builds one
+# split        = "navtest"
+# workers      = 4
+# nodes        = 4        # policy nodes per CPU-only model; GPU models always get one
+#                        # with >1 visionpilot node, also set VISIONPILOT_ORT_THREADS (e.g. "2")
+#                        # under [models.visionpilot.env], or each node claims every core

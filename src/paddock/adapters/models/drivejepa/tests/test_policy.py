@@ -80,3 +80,41 @@ def test_history_target_matches_navsim_rate() -> None:
     assert HISTORY_FRAMES == 4
     assert HISTORY_DT == 0.5
     assert round((HISTORY_FRAMES - 1) * HISTORY_DT, 2) == 1.5
+
+
+def test_infer_sequence_records_the_history_and_runs_the_model_once() -> None:
+    """Four frames in, one forward pass out.
+
+    The base class feeds every frame through `infer`; this policy overrides that
+    to record the first N-1 and infer on the last, because the model is a pure
+    function of its recorded history. Pinned here so a refactor that drops the
+    override quietly quadruples the cost of every open-loop run.
+    """
+    import numpy as np
+
+    from paddock.policy.protocol import Trajectory
+
+    class _Stub(POLICY):
+        def __init__(self):
+            self.recorded, self.inferred, self.resets = [], [], 0
+            self.self_prime = True
+
+        def reset(self):
+            self.resets += 1
+            self.recorded = []
+
+        def _record(self, obs):
+            self.recorded.append(obs)
+
+        def infer(self, obs):
+            self.inferred.append(obs)
+            return Trajectory(np.zeros((8, 3)))
+
+    stub = _Stub()
+    frames = ["t-1.5", "t-1.0", "t-0.5", "t0"]
+    stub.infer_sequence(frames)
+
+    assert stub.resets == 1
+    assert stub.recorded == frames[:-1], "history must be recorded without inference"
+    assert stub.inferred == [frames[-1]], "exactly one forward pass, on the scored frame"
+    assert stub.self_prime is True, "self_prime must be restored after the sequence"

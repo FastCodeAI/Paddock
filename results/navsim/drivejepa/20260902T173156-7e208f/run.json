@@ -1,0 +1,29 @@
+{
+  "run_id": "20260902T173156-7e208f",
+  "site": "fastcode-shakaal",
+  "benchmark": "navsim",
+  "model": "drivejepa",
+  "mode": "open_loop",
+  "started_utc": "2026-09-02T17:31:56+00:00",
+  "duration_s": 13913.8,
+  "repo_sha": null,
+  "dataset": {
+    "name": "navsim",
+    "n_samples": 12146,
+    "sequences_sha256": "82e33c6837552a03"
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT",
+      "CAM_BACK"
+    ]
+  },
+  "hardware": {},
+  "status": "complete",
+  "valid": true,
+  "notes": "Re-derived from the scorer CSV with the reviewing.md \u00a74 parser (the run predates it; n was 12146).",
+  "ingested_from": ""
+}

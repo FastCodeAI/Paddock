@@ -1,0 +1,25 @@
+{
+  "run_id": "20260902T175923-feba73",
+  "site": "fastcode-shakaal",
+  "benchmark": "navsim",
+  "model": "constant_velocity",
+  "mode": "open_loop",
+  "started_utc": "2026-09-02T17:59:23+00:00",
+  "duration_s": 0.0,
+  "repo_sha": null,
+  "dataset": {
+    "name": "navsim",
+    "split": "navtest",
+    "n_samples": 12146,
+    "sequences_sha256": "82e33c6837552a03"
+  },
+  "config": {
+    "agent": "paddock_constant_velocity",
+    "workers": 8
+  },
+  "hardware": {},
+  "status": "complete",
+  "valid": true,
+  "notes": "Reference baseline: straight ahead at the current speed, no model. Produced by the devkit scorer run with agent=paddock_constant_velocity (paddock's own CV agent, adapters/benchmarks/navsim/agent.py) over the full navtest, 8 workers, hydra run 2026.09.02.22.50.46, and ingested with paddock.results.ingest.navsim. Stored under the pseudo-model 'constant_velocity' because it is not a registered model. Scorer reported 0.23853; paddock recomputes from per-sample scores.",
+  "ingested_from": ""
+}

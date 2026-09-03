@@ -78,8 +78,15 @@ NUM_HISTORY_STEPS = 16
 NUM_CAM_FRAMES = 4
 HISTORY_DT = 0.1
 MODEL_HZ = 10.0
-# 64 waypoints at 10 Hz -> the six 0.5 s points NeuroNCAP drives.
-GRID_INDICES = np.array([4, 9, 14, 19, 24, 29])
+# 64 waypoints at 10 Hz -> the eight 0.5 s points NAVSIM scores (0.5 .. 4.0 s).
+#
+# Extending this from six changes neither of the other two benchmarks, which is
+# why it is safe to widen rather than fork: `Trajectory.to_wire` hands NeuroNCAP
+# the first six, and KITScenes' `displacement_errors` truncates at its 3 s
+# horizon, so points seven and eight are dropped by both. It also brings the
+# policy into line with `benchmarks/kitscenes/metrics.GRID_IDX`, which already
+# subsamples eight.
+GRID_INDICES = np.array([4, 9, 14, 19, 24, 29, 34, 39])
 
 
 def to_pinhole(p: Pinhole) -> WarpPinhole:
@@ -196,17 +203,64 @@ class AlpamayoPolicy(Policy):
             torch.from_numpy(rot).float()[None, None],
         )
 
-    def _image_frames(self) -> tuple[torch.Tensor, torch.Tensor]:
-        """(N_cam, 4, 3, H, W) uint8, cameras in ascending slot order.
+    def _select_frames(self) -> list[dict[str, np.ndarray]]:
+        """The NUM_CAM_FRAMES camera frames to condition on, oldest last-but-one.
 
-        Frames are picked by timestamp at the same 0.1 s spacing as the pose
-        history, for the same reason: the request cadence is not uniform.
+        Two strategies, because the right one depends on data paddock does not
+        control, and picking silently would hide the tradeoff:
+
+        ``grid`` (default) takes the frame nearest each point of a 0.1 s grid.
+        Correct whenever the source is at least 10 Hz -- neuroNCAP and KITScenes
+        both are -- and it tolerates a jittery request cadence, which is why it
+        was written this way. On a slower source it degenerates: at NAVSIM's
+        2 Hz it returns frame indices [2, 3, 3, 3], two distinct images in four
+        slots, so the model is shown a world that is not moving while its pose
+        history says otherwise.
+
+        ``distinct`` takes the most recent distinct frames instead. The model
+        still believes they are 0.1 s apart, so on a slower source apparent
+        motion reads high rather than absent -- a different error, not no error.
+
+        ``auto`` (the default) uses ``grid`` unless the *source* is slow: the
+        frames that would fill the slots are themselves all at least
+        2 x HISTORY_DT apart. Testing the grid's output alone was not enough --
+        neuroNCAP primes two steps at 0.5 s dataset keyframes before its 0.1 s
+        loop, so at the first closed-loop steps the history is
+        [t, t+0.5, t+1.0, t+1.1]: the grid repeats a frame there too, yet the
+        newest frames are 0.1 s apart and the recorded neuroNCAP scores were
+        made on that path. Deciding from the source cadence keeps that
+        transition on ``grid`` (pinned by test) and still catches NAVSIM, where
+        every gap is 0.5 s.
+
+        Which error is smaller was measured rather than argued. On 60 NAVSIM
+        scenarios, paired, ``distinct`` beat ``grid`` 0.710 to 0.503 EPDMS
+        (better on 36, worse on 19, sign test p = 0.03), and the term that moved
+        was collisions: ``no_at_fault_collisions`` 0.708 -> 0.992. Shown four
+        copies of one frame the model cannot see other vehicles moving, so it
+        drives into them. See docs/benchmarks/navsim.md.
         """
-        import torch
-
+        mode = os.environ.get("ALPAMAYO_FRAME_SELECT", "auto")
         times = np.array(self.timestamps, dtype=np.float64) / 1e6
         wanted = times[-1] - np.arange(NUM_CAM_FRAMES - 1, -1, -1) * HISTORY_DT
-        recent = [self.frames[int(np.argmin(np.abs(times - w)))] for w in wanted]
+        grid = [int(np.argmin(np.abs(times - w))) for w in wanted]
+
+        gaps = np.diff(times[-NUM_CAM_FRAMES:])
+        slow_source = len(self.frames) >= NUM_CAM_FRAMES and bool(gaps.min() >= 2 * HISTORY_DT)
+        degenerate = len(set(grid)) < NUM_CAM_FRAMES
+        if mode == "distinct" or (mode == "auto" and slow_source and degenerate):
+            recent = self.frames[-NUM_CAM_FRAMES:]
+            # Early in an episode there may be fewer frames than slots; repeat
+            # the oldest rather than reaching past the start of the sequence.
+            while len(recent) < NUM_CAM_FRAMES:
+                recent = [recent[0], *recent]
+            return recent
+        return [self.frames[i] for i in grid]
+
+    def _image_frames(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """(N_cam, 4, 3, H, W) uint8, cameras in ascending slot order."""
+        import torch
+
+        recent = self._select_frames()
 
         ordered = sorted(CAMERA_SLOTS, key=lambda entry: entry[0])
         per_camera = []
@@ -227,13 +281,8 @@ class AlpamayoPolicy(Policy):
             warped[key] = warp(image, pinhole, kind)
         return warped
 
-    def infer(self, obs: Observation) -> Trajectory:
-        if self.model is None:
-            raise RuntimeError("load() must be called before infer()")
-
-        import torch
-        from alpamayo1_5 import helper
-
+    def _record(self, obs: Observation) -> None:
+        """Append one observation to the pose and frame history."""
         self.poses.append(obs.ego2world)
         self.timestamps.append(obs.timestamp_us)
         self.frames.append(self._warp_frame(obs))
@@ -245,6 +294,28 @@ class AlpamayoPolicy(Policy):
                 self.timestamps[-64:],
                 self.frames[-64:],
             )
+
+    def observe(self, obs: Observation) -> None:
+        """Record a history frame without sampling the model.
+
+        The default `observe` runs a full VLM rollout per frame and keeps
+        nothing: on NAVSIM that is four 10B-parameter chain-of-causation
+        generations to use one, and it made alpamayo the long pole of the sweep
+        at ~17 h. The model conditions on the recorded history alone, so
+        recording N-1 frames and sampling on the last draws from the same
+        distribution -- not the same draw, since alpamayo samples unseeded, but
+        it was never the same draw run to run either.
+        """
+        self._record(obs)
+
+    def infer(self, obs: Observation) -> Trajectory:
+        if self.model is None:
+            raise RuntimeError("load() must be called before infer()")
+
+        import torch
+        from alpamayo1_5 import helper
+
+        self._record(obs)
 
         hist_xyz, hist_rot = self._history()
         image_frames, camera_indices = self._image_frames()

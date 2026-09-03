@@ -148,11 +148,13 @@ def _load_torch_tensor_without_torch(data: bytes) -> np.ndarray:
 def encode_image(array: np.ndarray) -> str:
     """uint8 HWC -> base64 of a numpy ``.npy``: the encoder for paddock's own producers.
 
-    The open-loop runner and the CARLA client both use this, so there is one
-    definition of what goes on the wire and `decode_image` is its inverse.
+    The open-loop runner, the NAVSIM proxy and the CARLA client all use this,
+    so there is one definition of what goes on the wire and `decode_image` is
+    its inverse. This module imports on Python 3.8/3.9 -- vendor interpreters
+    load it -- and must stay that way.
     """
     buffer = io.BytesIO()
-    np.save(buffer, np.ascontiguousarray(array), allow_pickle=False)
+    np.save(buffer, np.ascontiguousarray(np.asarray(array, dtype=np.uint8)), allow_pickle=False)
     return base64.b64encode(buffer.getvalue()).decode()
 
 
@@ -315,6 +317,31 @@ class Observation:
     def yaw_rate(self) -> float:
         return float(self.canbus[CANBUS_YAW_RATE])
 
+    def to_wire(self) -> dict[str, Any]:
+        """The request body a policy node decodes with `from_wire`.
+
+        One encoder for every producer -- the open-loop runner, the NAVSIM
+        proxy, the CARLA client -- so the wire shape cannot drift between them.
+        Paths travel where the frame is on a shared filesystem and pixels only
+        where it is not: a 223-sample KITScenes run would otherwise push 348 GB
+        of base64. `lidar2ego` is sent when the source has one.
+        """
+        calibration: dict[str, Any] = {
+            "camera2image": {k: np.asarray(v).tolist() for k, v in self.camera2image.items()},
+            "camera2ego": {k: np.asarray(v).tolist() for k, v in self.camera2ego.items()},
+        }
+        if self.lidar2ego is not None:
+            calibration["lidar2ego"] = np.asarray(self.lidar2ego).tolist()
+        return {
+            "images": {k: encode_image(v) for k, v in self.images.items()},
+            "image_paths": dict(self.image_paths),
+            "ego2world": np.asarray(self.ego2world).tolist(),
+            "canbus": np.asarray(self.canbus).tolist(),
+            "timestamp": int(self.timestamp_us),
+            "command": int(self.command),
+            "calibration": calibration,
+        }
+
     def pinhole(self, camera: str = "CAM_FRONT") -> Pinhole:
         image = self.image(camera)
         return Pinhole.from_calibration(
@@ -442,6 +469,17 @@ class Policy(ABC):
     def infer(self, obs: Observation) -> Trajectory:
         """Plan from one observation. Ego frame, x forward, y left."""
 
+    def observe(self, obs: Observation) -> None:
+        """Take in one frame of history without needing a plan for it.
+
+        `infer_sequence` calls this for every frame but the last. The default
+        runs a full `infer` and drops the plan, which is right for a model whose
+        state advances with each forward pass (openpilot, VisionPilot). A model
+        that is a pure function of its recorded history overrides this to just
+        record -- one forward pass per sequence instead of N, same tensor.
+        """
+        self.infer(obs)
+
     def infer_sequence(self, observations: list[Observation]) -> Trajectory:
         """Plan from a sequence, scoring only the last frame.
 
@@ -450,18 +488,18 @@ class Policy(ABC):
         Self-priming is disabled for the duration: doing both would show the
         model a manufactured history *and* the real one.
 
-        The default resets, feeds every observation in order, and returns the
-        last plan. Override only if a model can use the sequence more directly.
+        Resets, `observe`s every frame but the last, and returns the plan for
+        the last. The `self_prime`/`reset` bookkeeping lives here once; a model
+        customises the per-frame cost through `observe`, not by copying this.
         """
         if not observations:
             raise ValueError("infer_sequence needs at least one observation")
         previous, self.self_prime = self.self_prime, False
         try:
             self.reset()
-            result: Trajectory | None = None
-            for obs in observations:
-                result = self.infer(obs)
-            return result
+            for obs in observations[:-1]:
+                self.observe(obs)
+            return self.infer(observations[-1])
         finally:
             self.self_prime = previous
 

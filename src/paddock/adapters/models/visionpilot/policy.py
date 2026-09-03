@@ -98,8 +98,24 @@ MAX_CIPO_RANGE_M = 60.0  # beyond this a bottom-edge projection is not trustwort
 MAX_FIT_RANGE_M = 50.0
 
 CONTROL_DT = 0.05  # planning.cpp: `double dt = 0.05`, the 50 Hz control period
-PLAN_HORIZON_S = 3.0  # six NeuroNCAP waypoints at 0.5 s
+# Eight waypoints at 0.5 s: NAVSIM's grid. NeuroNCAP takes the first six, and
+# those are unchanged by the extension -- `_speed_schedule` integrates the IDM
+# forward at a fixed CONTROL_DT, so the first 60 steps are identical whether the
+# loop runs 60 or 80 times, and the six interpolation targets fall inside them.
+#
+# Laterally the fourth second is thinner evidence than the first three: the ego
+# can travel past `MAX_FIT_RANGE_M`, beyond which `PathFit.lateral_at` continues
+# on the tangent rather than running the quadratic out. That is VisionPilot's
+# own designed behaviour, not something added for NAVSIM, but it does mean a
+# far waypoint rests on extrapolated geometry from a single forward camera.
+PLAN_HORIZON_S = 4.0
 WAYPOINT_DT = 0.5
+
+
+def ort_threads() -> int:
+    """Intra-op threads per ORT session from VISIONPILOT_ORT_THREADS; 0 = ORT default."""
+    raw = os.environ.get("VISIONPILOT_ORT_THREADS", "").strip()
+    return int(raw) if raw.isdigit() else 0
 
 
 # ─── LongitudinalFusion, ported from fusion/src/longitudinal_fusion.cpp ───────
@@ -466,6 +482,16 @@ class VisionPilotPolicy(Policy):
         import onnxruntime as ort
 
         opts = ort.SessionOptions()
+        # onnxruntime's intra-op pool defaults to every core and ignores
+        # OMP_NUM_THREADS. One node on an idle box, that is fine. Four nodes on a
+        # shared box, each spinning 32 threads, measured at ~16 cores between
+        # them for no more throughput than one node -- they thrash each other
+        # and starve everything else. Unset leaves ORT's default, so recorded
+        # single-node runs are unchanged; set it when running several nodes.
+        threads = ort_threads()
+        if threads > 0:
+            opts.intra_op_num_threads = threads
+            opts.inter_op_num_threads = 1
         self.steer = ort.InferenceSession(
             str(self.weights / "autosteer_fp32.onnx"), opts, providers=self.providers
         )
@@ -653,7 +679,7 @@ class VisionPilotPolicy(Policy):
         speed and the gap as it evolves -- so a braking ego closes the gap more
         slowly, which a fixed-closing-speed integration misses entirely. The
         same loop runs here, at the same ``dt``; only its length changes, from
-        the stack's N = 20 (1.0 s) to the 3.0 s of waypoints NeuroNCAP wants.
+        the stack's N = 20 (1.0 s) to the ``PLAN_HORIZON_S`` the benchmarks want.
 
         ``v_rel`` is the fusion's relative velocity, negative when approaching.
         """

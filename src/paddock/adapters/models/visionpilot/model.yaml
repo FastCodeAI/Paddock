@@ -28,6 +28,9 @@ runtime:
     # LLVM's libomp.so, and MUMPS -- inside IPOPT, called by the planner every
     # frame -- deadlocks in dmumps_perform_copies() under it.
     OMP_NUM_THREADS: "1"
+    # Does NOT bound onnxruntime, which has its own pool defaulting to every
+    # core. Leave unset for single-node runs; set VISIONPILOT_ORT_THREADS (e.g.
+    # "2") in [models.visionpilot.env] when a benchmark starts several nodes.
 
 capabilities:
   cameras: [CAM_FRONT]
@@ -35,4 +38,4 @@ capabilities:
   startup_timeout_s: 300
   waypoint_dt: 0.5
 
-benchmarks: [kitscenes, neuroncap, bench2drive]
+benchmarks: [kitscenes, neuroncap, navsim, bench2drive]
