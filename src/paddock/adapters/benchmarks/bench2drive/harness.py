@@ -56,9 +56,21 @@ from paddock.runtime.proc import tail as _tail
 #: ``run_episode`` below.
 AGENT = Path(__file__).parent / "agent.py"
 
-#: Default per-route wall-clock budget. Long routes ride CARLA's 4000-frame cap,
-#: and a slow model (Alpamayo runs ~0.05x real-time) needs a generous ceiling.
-DEFAULT_ROUTE_TIMEOUT_S = 1800
+#: Default per-route wall-clock budget. The evaluator boots CARLA afresh for
+#: every route (about ten minutes of map load on the site measured, a little
+#: more at default render quality), and a long route then rides CARLA's
+#: 4000-frame cap: 200 s of game time, which a model at 0.05x real-time
+#: (Alpamayo) turns into ~4000 s of wall clock. 1800 s timed out every such
+#: route and recorded nothing; the budget bounds hangs, so err generous.
+#: Override per site with ``per_route_timeout_s``.
+DEFAULT_ROUTE_TIMEOUT_S = 5400
+
+#: The CARLA launch flag that changes what the cameras see. Bench2Drive 7ec25d1
+#: launches CARLA at its default (Epic) quality; ``-quality-level=Low`` renders
+#: the sky black and the wet-road decal layer as white speckle, so frames scored
+#: that way are not the benchmark's frames. It is a one-line local edit to the
+#: evaluator that leaves no trace in run.json, hence a preflight refusal.
+QUALITY_FLAG = "-quality-level"
 
 #: Spacing of the waypoints the node returns. Every closed-loop model plans on a
 #: 0.5 s grid (see ``neuroncap/harness.py``); the agent turns waypoint spacing
@@ -175,26 +187,33 @@ def parse_results(results_json: Path) -> dict[str, float]:
     mean over them and ``n_runs`` says how many, as neuroNCAP's collector does.
     The aggregate ``global_record`` is ignored.
 
-    Raises :class:`NotScored` when there is no record, or when any record's
-    ``status`` is one of :data:`CRASH_STATUSES`: the leaderboard fills in
-    ``score_composed`` for a crashed route too, and a zero that came from a
-    stack trace must not average into the leaderboard as if the car had driven
-    into a wall. Pure, so the golden test asserts it reproduces the score CARLA
-    recorded.
+    A record whose ``status`` is one of :data:`CRASH_STATUSES` is not a
+    measurement: the leaderboard fills in ``score_composed`` for a crashed route
+    too, and a zero that came from a stack trace must not average into the
+    leaderboard as if the car had driven into a wall. Such records are
+    **dropped**: with ``--runs 3`` one crashed repetition must not discard two
+    that drove. ``n_runs`` counts the repetitions that scored and ``n_crashed``
+    the ones that did not, so a thin average is visible as thin. Raises
+    :class:`NotScored` when there is no record, or when every record crashed.
+    Pure, so the golden test asserts it reproduces the score CARLA recorded.
     """
     checkpoint = json.loads(Path(results_json).read_text()).get("_checkpoint", {})
-    records = checkpoint.get("records") or []
-    if not records:
+    all_records = checkpoint.get("records") or []
+    if not all_records:
         raise NotScored(f"{results_json}: no records in _checkpoint (the route did not score)")
 
-    for record in records:
+    records, crashed = [], []
+    for record in all_records:
         status = str(record.get("status", ""))
-        reason = crash_reason(status)
-        if reason:
-            raise NotScored(
-                f"{results_json}: {record.get('route_id', 'route')} status {status!r} -- "
-                f"the route did not run, so its scores are not a measurement"
-            )
+        if crash_reason(status):
+            crashed.append(f"{record.get('route_id', 'route')} status {status!r}")
+        else:
+            records.append(record)
+    if not records:
+        raise NotScored(
+            f"{results_json}: {'; '.join(crashed)} -- "
+            f"the route did not run, so its scores are not a measurement"
+        )
 
     def count(infractions: dict, key: str) -> int:
         value = infractions.get(key, [])
@@ -220,6 +239,7 @@ def parse_results(results_json: Path) -> dict[str, float]:
         # rate across routes, as neuroNCAP does.
         "collision_rate": round(sum(collided) / n, 4),
         "n_runs": n,
+        "n_crashed": len(crashed),
     }
 
 
@@ -421,6 +441,18 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             ):
                 if not (repo / relative).exists():
                     problems.append(f"Bench2Drive checkout is missing {why}: {repo / relative}")
+            evaluator = self.evaluator
+            if (
+                evaluator is not None
+                and evaluator.exists()
+                and QUALITY_FLAG in evaluator.read_text(errors="replace")
+            ):
+                problems.append(
+                    f"{evaluator} passes {QUALITY_FLAG} to CARLA; the pinned evaluator launches "
+                    f"CARLA at default (Epic) quality and frames rendered at Low are not the "
+                    f"benchmark's (black sky, speckled road). Revert the edit, or make it a patch "
+                    f"under patches/Bench2Drive/ so it is on the record"
+                )
 
         routes = self.routes_file
         if routes is not None:
@@ -565,6 +597,10 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             "PADDOCK_NODE_URL": policy_url,
             "PADDOCK_CAMERAS": ",".join(cameras),
             "PADDOCK_WAYPOINT_DT": str(WAYPOINT_DT),
+            # Per-tick ego kinematics for Bench2Drive's efficiency/comfort tool,
+            # which joins ONE directory with each record's `save_name`. One dir
+            # per run, not per episode, so a whole sweep scores with one `-m`.
+            "PADDOCK_METRICS_DIR": str(out_dir.parent / "metric_info"),
         }
         if self.record:
             extra["PADDOCK_RECORD_DIR"] = str(out_dir)

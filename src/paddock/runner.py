@@ -103,6 +103,7 @@ def _store_run(
     by_group: dict | None = None,
     hardware: dict | None = None,
     split: str | None = None,
+    extra_dataset: dict | None = None,
 ) -> tuple[Path, store.MetricsRecord]:
     """Write one run to the results store. Every path stores through here.
 
@@ -120,6 +121,8 @@ def _store_run(
             "sequences_sha256": store.sequence_hash([s["sample_id"] for s in samples]),
         }
     )
+    if extra_dataset:
+        dataset.update(extra_dataset)
     run = store.RunRecord(
         run_id=run_id,
         site=cfg.site,
@@ -296,7 +299,11 @@ def _run_one_model(
 
     try:
         with proc.model_node(model_spec, cfg, port, artifacts, echo=echo, nonce=run_id) as policy_url:
-            for episode in harness.episodes(scenes, runs=runs, scenarios=scenarios):
+            # Materialised so run.json can say how many episodes were *meant* to
+            # score: n_samples alone cannot tell 220 scored from 6 scored and
+            # 214 failed, and a mean over the six reads like a full sweep.
+            episodes = list(harness.episodes(scenes, runs=runs, scenarios=scenarios))
+            for episode in episodes:
                 episode.config["cameras"] = list(model_spec.cameras)
                 out_dir = artifacts / episode.episode_id
                 try:
@@ -337,6 +344,7 @@ def _run_one_model(
         failure_note=f"{failures} episode(s) failed" if failures else None,
         invalid_reasons=harness.invalid_reasons(),
         hardware={"gpu_free_gb_at_start": None},
+        extra_dataset={"n_expected": len(episodes), "n_failed": failures},
     )
     echo(f"  -> {written.relative_to(Path.cwd()) if written.is_relative_to(Path.cwd()) else written}")
     return failures

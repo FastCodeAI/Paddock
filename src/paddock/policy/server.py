@@ -17,10 +17,27 @@ from __future__ import annotations
 import argparse
 import importlib
 import logging
+import time
 
 from paddock.policy.protocol import Observation, Policy
 
 logger = logging.getLogger(__name__)
+
+#: Log one line per this many /infer calls. At CARLA's 20 Hz a route is ~4000
+#: calls; a line per 100 is a heartbeat, not a flood.
+LOG_EVERY = 100
+
+
+def _plan_reach(result: dict) -> tuple[float, float]:
+    """(|first waypoint|, |last waypoint|) in metres from a wire response; a
+    plan whose first point never leaves the origin is a car that never engages,
+    and that is exactly what a node log needs to show."""
+    try:
+        wps = result["trajectory"]
+        first, last = wps[0], wps[-1]
+        return float((first[0] ** 2 + first[1] ** 2) ** 0.5), float((last[0] ** 2 + last[1] ** 2) ** 0.5)
+    except (KeyError, IndexError, TypeError, ValueError):
+        return float("nan"), float("nan")
 
 
 def build_app(policy: Policy, model: str | None = None, nonce: str | None = None):
@@ -47,13 +64,31 @@ def build_app(policy: Policy, model: str | None = None, nonce: str | None = None
         """
         return {"model": model or type(policy).__name__, "nonce": nonce}
 
+    calls = {"n": 0, "ms": 0.0}
+
     @app.post("/infer")
     async def infer(body: dict) -> dict:
         # Decode only the cameras this model declared. Decoding is a torch
         # unpickle per camera and the simulator sends what it rendered, so a
         # single-camera model should not pay for six.
+        t0 = time.monotonic()
         obs = Observation.from_wire(body, cameras=policy.cameras)
-        return policy.infer(obs).to_wire()
+        result = policy.infer(obs).to_wire()
+        calls["n"] += 1
+        calls["ms"] += (time.monotonic() - t0) * 1000.0
+        # A node that answers but never plans motion used to leave an empty log
+        # and a route scored "blocked" with nothing to say why. First call and
+        # every LOG_EVERY after: cadence, cost and how far the plan reaches.
+        if calls["n"] == 1 or calls["n"] % LOG_EVERY == 0:
+            first, last = _plan_reach(result)
+            logger.info(
+                "infer #%d: mean %.0f ms, plan reach %.2f m (first) / %.2f m (last)",
+                calls["n"],
+                calls["ms"] / calls["n"],
+                first,
+                last,
+            )
+        return result
 
     @app.post("/infer_sequence")
     async def infer_sequence(body: dict) -> dict:
@@ -101,6 +136,11 @@ def main() -> None:
         "--nonce", default=None, help="echoed by /whoami so the launcher knows this node is its own"
     )
     args = parser.parse_args()
+
+    # Without a handler at INFO the "loading"/"ready" lines below and the infer
+    # heartbeat are dropped, and the node log the launcher captures is empty --
+    # which is how a model that never engaged went undiagnosed at one site.
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     import uvicorn
 
