@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/assets/paddock.svg" width="128" height="128" alt="Paddock"></p>
+
 # Paddock
 
 An evaluation framework for driving world models, spanning open-loop and

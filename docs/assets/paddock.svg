@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Paddock">
+  <title>Paddock</title>
+  <rect x="0" y="0" width="512" height="512" rx="112" fill="#1f2937"/>
+  <!-- the paddock from above: a fenced enclosure with its gate open at the bottom-left -->
+  <path d="M120 400 L120 138 Q120 112 146 112 L366 112 Q392 112 392 138 L392 374 Q392 400 366 400 L232 400"
+        stroke="#5fbaca" stroke-width="26" stroke-linecap="round" fill="none"/>
+  <!-- the plan: six waypoints entering through the gate -->
+  <path d="M72 452 Q 230 470 330 250"
+        stroke="#e8933f" stroke-width="8" stroke-linecap="round" fill="none" opacity="0.55"/>
+  <g fill="#e8933f">
+    <circle cx="72" cy="452" r="17"/>
+    <circle cx="123" cy="451" r="17"/>
+    <circle cx="171" cy="438" r="17"/>
+    <circle cx="216" cy="410" r="17"/>
+    <circle cx="257" cy="370" r="17"/>
+    <circle cx="295" cy="317" r="17"/>
+  </g>
+  <circle cx="330" cy="250" r="26" fill="#ffffff"/>
+</svg>
