@@ -23,7 +23,12 @@ tracked by the Bench2Drive dual-PID controller, vendored in `pid.py` (see
 
 The infraction-penalty coefficients are CARLA Leaderboard's: collision-vehicle
 ×0.60, collision-pedestrian ×0.50, collision-static ×0.65, red light ×0.70, stop
-sign ×0.80, plus continuous off-road / min-speed terms. An episode ends when the
+sign ×0.80, scenario timeout ×0.70, yield-to-emergency ×0.70. **Two terms are
+switched off at the pinned revision** (`statistics_manager.py`): off-road is
+weighted 0 and `MIN_SPEED_INFRACTION` is tagged `'unused'`. So the driving score
+cannot see slow driving at all — a model that crawls a route at 1.2 m/s and
+one that drives it at 10 m/s both score 100 if neither hits anything. The
+efficiency/comfort tool (below) is what separates them. An episode ends when the
 car finishes, gets **blocked** (stuck too long), **deviates** >30 m off route,
 **times out**, or hits the evaluator's 4000-frame cap; `route_completion`
 freezes at whatever % was reached. All of those are the benchmark working and
@@ -60,7 +65,7 @@ carla_root  = "/path/to/carla0915"                   # contains CarlaUE4.sh
 repo        = "/path/to/Bench2Drive"                 # has leaderboard/ + scenario_runner/
 routes_file = "bench2drive220.xml"                   # under repo/leaderboard/data/ (default)
 # routes_subset = "1711,1773,1790"   # pin the run to these route ids; recorded in run.json
-# per_route_timeout_s = 1800         # default; long routes ride CARLA's 4000-frame cap
+# per_route_timeout_s = 5400         # default; must cover CARLA's boot + the route, see Cost
 # carla_port = "2000"                # the evaluator moves up to the first free port from here
 # tm_port    = "8000"                # traffic manager port, likewise
 # gpu_rank   = "0"                   # CARLA's -graphicsadapter
@@ -88,6 +93,91 @@ Prerequisites (all outside this repo):
 — including a real import of everything `agent.py` needs, inside that
 interpreter — so a missing piece is reported in seconds, not after CARLA has
 booted on the first route.
+
+## Render quality
+
+The pinned evaluator launches CARLA at its default (Epic) quality. A one-line
+local edit, `-quality-level=Low` on the launch line in `leaderboard_evaluator.py`,
+renders the sky black at midday and the wet-road decal layer as white speckle —
+frames that exist in no training distribution and are not the benchmark's. It
+leaves no trace in `run.json`, and it produced a full set of results at one site
+before anyone looked at a frame. `preflight()` now refuses an evaluator that
+contains the flag. If a site genuinely needs Low, make it a patch under
+`patches/Bench2Drive/` so the change is on the record and travels with the pin.
+
+## Cost
+
+**The evaluator boots CARLA afresh for every route.** On the site measured that
+is about ten minutes of Town12 map load per route (a little more at default
+quality), before any driving. Wall clock per route is therefore roughly
+
+    boot (~600 s)  +  game_time / realtime_factor
+
+where a long route rides the 4000-frame cap (200 s of game time at 20 Hz), and
+the real-time factor is the model's, not CARLA's. Measured on one machine, at
+Low quality, single GPU:
+
+| Model | real-time factor | mean wall / route | 220 routes |
+|---|---:|---:|---:|
+| Alpamayo 1.5 | 0.04–0.06× | ~2500 s | ~150 GPU-h |
+| openpilot | ~0.13× | ~840 s | ~50 GPU-h |
+| Drive-JEPA | 0.2–0.3× | ~470 s | ~30 GPU-h |
+| VisionPilot | ~0.45× | ~370 s | ~25 GPU-h |
+
+Two things follow. `per_route_timeout_s` has to cover boot **plus** the route:
+the old default of 1800 s timed out every long Alpamayo route and recorded
+nothing for it, which is why the default is now 5400 s. And a full sweep of all
+four models at three repetitions is on the order of **750 GPU-hours** on one
+card — run the slow model last, and gate on a small subset first (`--scene`
+with a handful of route ids, or `routes_subset`) until every model completes
+routes cleanly. The evaluator's own start-up (`time.sleep(30)` then a 600 s
+client timeout, retried) does not add to this: the first connection attempt
+returns as soon as CARLA answers, so the wait *is* the map load, not extra.
+
+## Repetitions
+
+`--runs N` reaches the evaluator as `--repetitions N`; the route's metrics are
+the mean over its repetitions. A repetition whose record carries a crash status
+(§ *What does not score*) is **dropped from that mean, not averaged and not
+fatal**: with `--runs 3`, one crashed repetition must not throw away two that
+drove, and its filled-in score must not count either. `n_runs` says how many
+repetitions scored and `n_crashed` how many did not, so a thin average is
+visible as thin. Only when every repetition crashed does the episode fail.
+
+Run-to-run variance is real here — the same model on the same route has scored
+0 and 100 on consecutive runs when its node did not engage — so treat a single
+repetition as a smoke test, not a measurement.
+
+## Efficiency and comfort
+
+Every route writes `metric_info/<save_name>/metric_info.json` under the run's
+artifact directory: per-tick ego acceleration, angular velocity, heading
+vectors, position and rotation — the six fields Bench2Drive's
+`tools/efficiency_smoothness_benchmark.py` reads (`AutonomousAgent.get_metric_info`
+at the pinned revision), keyed by the `save_name` the evaluator hands the agent.
+It is written whether or not `record` is on: these are metrics, not debugging
+frames, and at a few hundred kilobytes a route they cost nothing.
+
+Bench2Drive's own tools then score a sweep. They live in the checkout and expect
+the leaderboard's layout — a folder of `results.json` files and one directory of
+`metric_info` — which a paddock run provides:
+
+```bash
+RUN=/path/to/runs/bench2drive/<model>/<run_id>       # the run's artifact dir
+mkdir -p $RUN/leaderboard && for d in $RUN/*-Town*/; do
+  cp "$d/results.json" "$RUN/leaderboard/$(basename $d).json"; done
+cd /path/to/Bench2Drive
+python tools/merge_route_json.py -f $RUN/leaderboard/            # -> merged.json
+python tools/ability_benchmark.py -r $RUN/leaderboard/merged.json
+python tools/efficiency_smoothness_benchmark.py \
+  -f $RUN/leaderboard/merged.json -m $RUN/metric_info/
+```
+
+`merge_route_json.py` assumes **exactly 220 routes** and silently scores a
+missing one as 0, and it does not understand repetitions (it counts records):
+run each repetition into its own run (three `paddock run … --runs 1`) if you
+intend to feed the upstream tools, and check `n_expected` against `n_samples`
+in `run.json` before believing a merged number.
 
 ## Running
 
@@ -122,6 +212,12 @@ per-tick `log.csv`.
   `ps | grep -graphicsadapter=<gpu_rank> | kill -9`, which takes down every
   CARLA on that GPU index, including other people's. That is the checkout's
   behaviour, not paddock's; on a shared box, use a `gpu_rank` nobody else does.
+- The node log (`<model>_node.log` in the run dir) now carries the model's
+  load/ready lines and a heartbeat every 100 `/infer` calls with mean latency
+  and how far the returned plan reaches. A node that answers but never plans
+  motion — a plan whose first waypoint stays at the origin for a whole route —
+  is what "blocked at exactly 60 s with brake held" looks like from CARLA's
+  side, and it is now visible from the node's.
 - Recording is off by default: a JPEG per camera per tick, a 512² BEV render per
   tick and a CSV flush, inside the synchronous tick, come to roughly 40 GB for a
   220-route sweep.
@@ -152,4 +248,7 @@ per-tick `log.csv`.
 | crash statuses fail the episode, poor outcomes score | status strings read from `statistics_manager.py` at 7ec25d1; parametrised test over all of them | **strong** |
 | evaluator flags, exit codes, checkpoint-at-startup, CARLA port and session | read from `leaderboard_evaluator.py` at 7ec25d1; launch path tested against a stand-in evaluator (`tests/test_harness.py`) | **strong** for the harness, argued for the real evaluator |
 | `agent.py` imports and runs its control path in the CARLA-client env | imported and exercised in the site's `b2d` env (Python 3.8, 0.9.15 egg) without a server | moderate |
-| a model drives a route end to end through paddock | **not yet run** | unverified |
+| a model drives a route end to end through paddock | openpilot and VisionPilot completed routes (DS 100) through this adapter at one site; frames were at Low quality (see *Render quality*) and the run predates the crash-status and repetition handling above | moderate |
+| `metric_info.json` matches what the upstream tool reads | field names and layout taken from `get_metric_info` and `efficiency_smoothness_benchmark.read_from_json` at 7ec25d1; not yet fed through the tool end to end | argued |
+| crashed repetitions are dropped, not averaged | unit-tested over crashed, blocked and all-crashed triples | **strong** |
+| an edited CARLA launch line is refused | unit-tested against a stub evaluator with and without the flag | **strong** |
