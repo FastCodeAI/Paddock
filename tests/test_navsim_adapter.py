@@ -660,3 +660,62 @@ def test_the_image_encoder_is_the_protocols_and_round_trips() -> None:
     assert convert.encode_image is protocol.encode_image
     image = (np.arange(2 * 3 * 3) % 256).astype(np.uint8).reshape(2, 3, 3)
     assert np.array_equal(protocol.decode_image(protocol.encode_image(image)), image)
+
+
+# -- a lost run is a chunk, not a split -------------------------------------
+
+
+def test_chunking_is_deterministic_and_covers_every_log() -> None:
+    from paddock.adapters.benchmarks.navsim.harness import chunk_logs
+
+    logs = [f"log{i:03d}" for i in range(10)]
+    chunks = chunk_logs(logs, 4)
+    assert [len(c) for c in chunks] == [4, 4, 2]
+    assert [x for c in chunks for x in c] == logs, "order preserved, nothing dropped or repeated"
+    assert chunk_logs(logs, 0) == [logs], "0 means one invocation, as the vendor does"
+
+
+def test_the_hydra_list_literal_quotes_names_with_dots() -> None:
+    """Log names look like 2021.05.25.14.16.10_veh-35_02482_02649; unquoted,
+    hydra reads the dots as structure."""
+    from paddock.adapters.benchmarks.navsim.harness import hydra_list
+
+    assert hydra_list(["2021.05.25.14.16.10_veh-35_02482_02649", "b"]) == (
+        "['2021.05.25.14.16.10_veh-35_02482_02649','b']"
+    )
+
+
+def test_merging_chunk_csvs_drops_each_chunks_aggregate_rows(tmp_path: Path) -> None:
+    """Every chunk CSV carries average_all_frames and friends; across chunks
+    they mean nothing, and left in they would be parsed as scenarios."""
+    from paddock.adapters.benchmarks.navsim.harness import merge_chunk_csvs
+    from paddock.results.ingest.navsim import SUB_METRICS, parse_scores
+
+    header = ["token", "valid", *SUB_METRICS, "score"]
+
+    def chunk(path: Path, tokens: list[str]) -> Path:
+        rows = [header] + [[t, "True", *["1.0"] * len(SUB_METRICS), "0.9"] for t in tokens]
+        rows.append(["average_all_frames", "True", *["1.0"] * len(SUB_METRICS), "0.9"])
+        path.write_text("\n".join(",".join(r) for r in rows) + "\n")
+        return path
+
+    merged = merge_chunk_csvs(
+        [chunk(tmp_path / "a.csv", ["t1", "t2"]), chunk(tmp_path / "b.csv", ["t3"])], tmp_path / "scores.csv"
+    )
+    samples, aggregates, failed = parse_scores(merged)
+    assert [s["native_id"]["token"] for s in samples] == ["t1", "t2", "t3"]
+    assert aggregates == {} and failed == []
+
+
+def test_a_completed_chunk_is_detected_by_its_csv(tmp_path: Path) -> None:
+    """Resume keys on the CSV the scorer writes last; a chunk without one did
+    not finish, whatever else its directory holds."""
+    from paddock.adapters.benchmarks.navsim.harness import completed_chunk_csv
+
+    d = tmp_path / "000"
+    d.mkdir()
+    (d / "navsim_scorer.log").write_text("half way")
+    assert completed_chunk_csv(d) is None
+    (d / "2026.09.03.11.00.00.csv").write_text("token\n")
+    assert completed_chunk_csv(d).name.endswith(".csv")
+    assert completed_chunk_csv(tmp_path / "missing") is None

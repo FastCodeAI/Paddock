@@ -1,0 +1,91 @@
+Subject: [PATCH] score a run that has failed scenarios instead of losing it
+
+A scenario whose agent raises is recorded through PDMResults.get_empty_results()
+-- every field a scalar NaN -- with valid=False. Two things then go wrong in the
+aggregation, so that a single failed scenario destroys the whole run's output:
+
+* compute_final_scores() np.stack()s the weighted_metrics column across all
+  rows. Scored rows hold arrays and failed rows hold a scalar, so numpy raises
+  "all input arrays must have the same shape" and no CSV is written. Observed
+  after 12,146 scenarios (11.5 h) with two failures: everything lost.
+
+* Past that, the failed-token report does `pdm_score_df[not pdm_score_df["valid"]]`;
+  `not` on a Series raises. The code intends to support failed scenarios and
+  cannot: this path has never run.
+
+The fix scores only valid rows in compute_final_scores(), leaves failed rows
+NaN (row alignment preserved, so the multiplicative product stays elementwise),
+and negates the mask with `~`. The per-token CSV then carries the failed rows
+with valid=False, which is what downstream consumers already expect.
+
+Not configurable externally: the aggregation runs inside the vendor's script.
+Upstreamable as-is; both defects are in navsim v2's own scoring path.
+
+---
+diff --git a/navsim_v2/navsim/planning/script/run_pdm_score_sequential.py b/navsim_v2/navsim/planning/script/run_pdm_score_sequential.py
+index ca654b7..4c32d5f 100644
+--- a/navsim_v2/navsim/planning/script/run_pdm_score_sequential.py
++++ b/navsim_v2/navsim/planning/script/run_pdm_score_sequential.py
+@@ -413,24 +413,36 @@ def compute_final_scores(pdm_score_df: pd.DataFrame) -> pd.DataFrame:
+     pdm_score_df = pdm_score_df.copy()
+     two_frame_scores = pdm_score_df["two_frame_extended_comfort"].to_numpy()
+ 
+-    weighted_metrics = np.stack(pdm_score_df["weighted_metrics"].to_numpy())
+-    weighted_metrics_array = np.stack(pdm_score_df["weighted_metrics_array"].to_numpy())
+-
+-    for i, val in enumerate(two_frame_scores):
+-        if pd.isna(val):
+-            weighted_metrics[i, WeightedMetricIndex.TWO_FRAME_EXTENDEND_COMFORT] = 0
+-            weighted_metrics_array[
+-                i, WeightedMetricIndex.TWO_FRAME_EXTENDEND_COMFORT
+-            ] = 0
+-        else:
+-            weighted_metrics[i, WeightedMetricIndex.TWO_FRAME_EXTENDEND_COMFORT] = val
++    # A scenario whose agent raised is recorded via get_empty_results(): every
++    # field a scalar NaN, where a scored row holds an array. Stacking the mixed
++    # column raises "all input arrays must have the same shape" and the whole
++    # run is lost. Score the valid rows only and leave the failed ones NaN,
++    # keeping row alignment so the multiply below stays elementwise.
++    valid = pdm_score_df["valid"].to_numpy().astype(bool)
++    final_scores = np.full(len(pdm_score_df), np.nan)
++
++    if valid.any():
++        weighted_metrics = np.stack(pdm_score_df.loc[valid, "weighted_metrics"].to_numpy())
++        weighted_metrics_array = np.stack(
++            pdm_score_df.loc[valid, "weighted_metrics_array"].to_numpy()
++        )
++
++        for i, val in enumerate(two_frame_scores[valid]):
++            if pd.isna(val):
++                weighted_metrics[i, WeightedMetricIndex.TWO_FRAME_EXTENDEND_COMFORT] = 0
++                weighted_metrics_array[
++                    i, WeightedMetricIndex.TWO_FRAME_EXTENDEND_COMFORT
++                ] = 0
++            else:
++                weighted_metrics[i, WeightedMetricIndex.TWO_FRAME_EXTENDEND_COMFORT] = val
+ 
+-    weighted_metric_scores = (weighted_metrics * weighted_metrics_array).sum(axis=1)
+-    weighted_metric_scores /= weighted_metrics_array.sum(axis=1)
++        weighted_metric_scores = (weighted_metrics * weighted_metrics_array).sum(axis=1)
++        weighted_metric_scores /= weighted_metrics_array.sum(axis=1)
+ 
+-    final_scores = (
+-        pdm_score_df["multiplicative_metrics_prod"].to_numpy() * weighted_metric_scores
+-    )
++        final_scores[valid] = (
++            pdm_score_df.loc[valid, "multiplicative_metrics_prod"].to_numpy()
++            * weighted_metric_scores
++        )
+ 
+     pdm_score_df["score"] = final_scores
+ 
+@@ -561,7 +573,8 @@ def main(cfg: DictConfig) -> None:
+     num_sucessful_scenarios = pdm_score_df["valid"].sum()
+     num_failed_scenarios = len(pdm_score_df) - num_sucessful_scenarios
+     if num_failed_scenarios > 0:
+-        failed_tokens = pdm_score_df[not pdm_score_df["valid"]]["token"].to_list()
++        # `not` on a Series raises; the elementwise negation is `~`.
++        failed_tokens = pdm_score_df[~pdm_score_df["valid"]]["token"].to_list()
+     else:
+         failed_tokens = []
+ 

@@ -439,6 +439,36 @@ its four nodes 1591% -> 151% CPU, my share of the box 2173% -> 651%, load
 232 -> 79, and drivejepa -- which had not been touched -- 0.39/s -> 1.34/s.
 The cores it was burning were the cores everything else was waiting for.
 
+## Losing a run, and not losing the next one
+
+alpamayo's first full-navtest run scored all 12,146 scenarios in 11.5 h and
+produced nothing. Two scenarios had failed -- its VLM emitted no trajectory
+token -- and the vendor's aggregation cannot survive a failed row:
+`compute_final_scores` stacks a column mixing arrays with the scalar NaN a
+failed row carries, and the failed-token report applies `not` to a Series.
+The scorer keeps every result in worker memory and writes one CSV at the end,
+so the crash came after the last forward pass and took everything with it.
+
+Four changes, each of which alone would have saved that run:
+
+- **`patches/Drive-JEPA/0002`** scores valid rows, leaves failed rows NaN with
+  row alignment preserved, and negates the mask with `~`. Verified per
+  `patches/README.md` and on a synthetic frame with a failed row.
+- **The proxy retries a model failure once.** For an unseeded sampler that is
+  a fresh draw from the same distribution; for a deterministic model it costs
+  one request. The final failure still propagates, so the scorer records the
+  scenario as failed rather than paddock inventing a plan.
+- **The plan dump carries the scenario token** (from the metric cache's path,
+  read as a label, never fed to the model), so a run whose scorer dies after
+  the last forward pass can be re-scored from its plans through
+  `run_pdm_score_from_submission.py` in about an hour of CPU.
+- **The split is scored in chunks of logs** (`[benchmarks.navsim] chunk_logs`,
+  default 4): each chunk is its own scorer invocation with its own CSV, log
+  and dump under `chunks/<i>/`; a chunk that fails is recorded and the rest
+  continue, with the run marked partial; and `PADDOCK_NAVSIM_RESUME_FROM=<a
+  previous run's artifacts dir>` reuses its completed chunks. A crash now
+  costs at most one chunk. `--limit` runs stay single-invocation.
+
 ## A launcher bug found by the parallel smoke
 
 Running two smokes at once produced two runs reporting a node on the same

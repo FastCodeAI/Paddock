@@ -133,6 +133,7 @@ class PaddockProxyAgent(_PaddockAgentBase):
         sensor_blobs_path: str | None = None,
         timeout_s: float = 600.0,
         dump_path: str | None = None,
+        retries: int = 2,
         trajectory_sampling: TrajectorySampling | None = None,
     ) -> None:
         super().__init__(trajectory_sampling)
@@ -156,6 +157,7 @@ class PaddockProxyAgent(_PaddockAgentBase):
         root = sensor_blobs_path or os.environ.get("PADDOCK_NAVSIM_SENSOR_BLOBS", "")
         self._sensor_blobs_path = root
         self._timeout_s = float(timeout_s)
+        self._retries = max(0, int(retries))
         # One connection per agent, opened on first use: the scorer instantiates
         # the agent inside each worker, so a client created here would be built
         # before the fork and a fresh one per scenario is a TCP handshake ~12k
@@ -273,18 +275,31 @@ class PaddockProxyAgent(_PaddockAgentBase):
             for index in range(len(agent_input.ego_statuses))
         ]
 
-        response = self._http().post(
-            f"{self._node_url}/infer_sequence",
-            json={"observations": observations},
-        )
-        response.raise_for_status()
-        body = response.json()
+        # A model can fail on one scenario for reasons that are not the
+        # scenario's: alpamayo's VLM occasionally emits no trajectory token and
+        # its policy raises. For an unseeded sampler a second request is a fresh
+        # draw from the same distribution, not a different measurement; for a
+        # deterministic model it fails again at the cost of one request. The
+        # final failure still propagates, so the scorer records the scenario
+        # as failed rather than paddock inventing a plan for it.
+        body = None
+        for attempt in range(1 + self._retries):
+            response = self._http().post(
+                f"{self._node_url}/infer_sequence",
+                json={"observations": observations},
+            )
+            if response.status_code < 500 or attempt == self._retries:
+                response.raise_for_status()
+                body = response.json()
+                break
 
         poses = to_navsim_poses(body["trajectory"], float(body.get("dt", NAVSIM_INTERVAL_S)))
-        self._record(agent_input, body, poses)
+        self._record(agent_input, body, poses, metric_cache)
         return Trajectory(poses.astype(np.float32), self._trajectory_sampling)
 
-    def _record(self, agent_input: AgentInput, body: dict, poses: np.ndarray) -> None:
+    def _record(
+        self, agent_input: AgentInput, body: dict, poses: np.ndarray, metric_cache: Any = None
+    ) -> None:
         """Append one plan to the dump, alongside the ego state that produced it.
 
         Best-effort: a failure to write a diagnostic must never fail a run, and
@@ -296,8 +311,24 @@ class PaddockProxyAgent(_PaddockAgentBase):
         try:
             status = agent_input.ego_statuses[-1]
             speed = float(np.linalg.norm(np.asarray(status.ego_velocity, dtype=np.float64)))
+            # Which scenario this plan belongs to. MetricCache has no token
+            # field, but its file lives at <cache>/<log>/<type>/<token>/..., so
+            # the token is the parent directory's name. Read as a label only --
+            # never as an input to the model -- so that a run whose scorer dies
+            # after the last forward pass can be re-scored from these plans
+            # through run_pdm_score_from_submission.py instead of re-run.
+            # 12,144 alpamayo plans were once lost for want of this.
+            scenario = {}
+            if metric_cache is not None:
+                path = getattr(metric_cache, "file_path", None)
+                scenario = {
+                    "token": os.path.basename(os.path.dirname(str(path))) if path else None,
+                    "log_name": getattr(metric_cache, "log_name", None),
+                    "time_s": getattr(getattr(metric_cache, "timepoint", None), "time_s", None),
+                }
             line = json.dumps(
                 {
+                    **scenario,
                     "ego_speed_ms": round(speed, 4),
                     "driving_command": np.asarray(status.driving_command).ravel().tolist(),
                     "model_dt": float(body.get("dt", NAVSIM_INTERVAL_S)),

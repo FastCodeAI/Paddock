@@ -10,6 +10,7 @@ cameras: [CAM_FRONT]
 sensor_blobs_path: null
 timeout_s: 600.0
 dump_path: null
+retries: 2
 
 trajectory_sampling:
   _target_: nuplan.planning.simulation.trajectory.trajectory_sampling.TrajectorySampling
