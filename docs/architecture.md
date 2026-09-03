@@ -70,6 +70,61 @@ Two details that look like off-by-ones and are not:
 environment runs tinygrad and has no torch at all — installing torch there just
 to unpickle an image would be absurd, and would change what is being evaluated.
 
+### On the wire
+
+Paddock is one Python 3.11 process. It never imports a model. It launches the
+model's `Policy` as a node in the model's own interpreter, with paddock's
+`src/` on `PYTHONPATH` rather than installed, and everything after that is
+HTTP on localhost. Open-loop harnesses send image *paths*, not pixels, because
+the node reads the same disk: one KITScenes frame is 24 MB and a full run would
+otherwise push 348 GB through a socket. Closed-loop simulators have no file to
+point at, so they send rendered pixels per step.
+
+```mermaid
+%%{init: {"theme": "base", "sequence": {"wrap": true, "width": 230, "messageAlign": "center",
+  "actorFontSize": 14, "messageFontSize": 13, "noteFontSize": 13},
+  "themeVariables": {"primaryTextColor": "#1f2328", "lineColor": "#6e7781",
+  "actorBkg": "#f6f8fa", "actorBorder": "#57606a", "noteBkgColor": "#fff8f1", "noteBorderColor": "#c2410c",
+  "activationBkgColor": "#ffedd5", "activationBorderColor": "#ea580c"}}}%%
+sequenceDiagram
+    participant R as paddock runner<br/>python 3.11
+    participant H as benchmark harness<br/>adapters/benchmarks/‹bench›
+    participant N as model node<br/>‹model venv›/python<br/>paddock.policy.server
+    participant S as simulator<br/>neuroNCAP · CARLA
+    participant D as dataset on disk
+
+    R->>H: preflight() · coverage()
+    Note over H: refuses to start if data or checkpoints are missing
+    R->>N: launch: python -m paddock.policy.server --model ‹m› --port 9000
+    Note over N: Policy.load() once, weights stay resident
+    R->>N: GET /alive, until healthy
+
+    rect rgb(242, 251, 244)
+        Note over H,D: open loop, one sample
+        H->>D: read poses + calibration
+        H->>N: POST /infer_sequence, one Observation per frame: image paths, ego2world, 18-float CAN bus, timestamp, nav command, calibration
+        N->>D: open the JPEGs itself
+        N-->>H: Trajectory: 6 waypoints, ego frame, x forward, y left, metres, every 0.5 s
+        H->>H: score(): ADE, FDE against the recorded drive
+        Note over H,N: NAVSIM v2 sends the same /infer_sequence from inside its scorer, then simulates the plan and scores EPDMS
+    end
+
+    rect rgb(255, 245, 245)
+        Note over R,S: closed loop, one episode
+        R->>S: start the simulator with the node's port
+        loop every simulation step
+            S->>N: POST /infer: rendered pixels, ego state, command
+            N-->>S: 6 waypoints
+            Note over S: the simulator moves the car on them
+        end
+        S->>N: POST /reset before the next episode
+        S-->>H: episode score: NCAP or driving score
+    end
+
+    H->>R: metrics + provenance
+    Note over R: results/‹bench›/‹model›/‹run›/ run.json + metrics.json
+```
+
 ## Open loop vs closed loop
 
 | | Open loop | Closed loop |
