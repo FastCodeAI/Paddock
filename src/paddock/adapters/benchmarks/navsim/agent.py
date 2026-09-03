@@ -62,6 +62,9 @@ from paddock.adapters.benchmarks.navsim.convert import (
 )
 from paddock.policy.protocol import Command, Observation, constant_velocity
 
+#: Seconds between proxy retries, multiplied by the attempt number.
+RETRY_BACKOFF_S = 1.0
+
 
 class _PaddockAgentBase(AbstractAgent):
     """Shared plumbing. Calls super().__init__(), which the fork's agents do not."""
@@ -282,16 +285,34 @@ class PaddockProxyAgent(_PaddockAgentBase):
         # deterministic model it fails again at the cost of one request. The
         # final failure still propagates, so the scorer records the scenario
         # as failed rather than paddock inventing a plan for it.
+        # A transport error -- the node swapping, or mid-restart, which is the
+        # case the runner-level retry exists for -- is retried the same way as
+        # a 5xx, after a short backoff so the second draw is not the same
+        # instant's; the last failure of either kind propagates.
+        import time
+
+        import httpx
+
         body = None
+        last_error = None
         for attempt in range(1 + self._retries):
-            response = self._http().post(
-                f"{self._node_url}/infer_sequence",
-                json={"observations": observations},
-            )
-            if response.status_code < 500 or attempt == self._retries:
-                response.raise_for_status()
-                body = response.json()
-                break
+            if attempt:
+                time.sleep(RETRY_BACKOFF_S * attempt)
+            try:
+                response = self._http().post(
+                    f"{self._node_url}/infer_sequence",
+                    json={"observations": observations},
+                )
+            except httpx.TransportError as exc:
+                last_error = exc
+                continue
+            if response.status_code >= 500 and attempt < self._retries:
+                continue
+            response.raise_for_status()
+            body = response.json()
+            break
+        if body is None:
+            raise last_error if last_error is not None else RuntimeError("policy node gave no answer")
 
         poses = to_navsim_poses(body["trajectory"], float(body.get("dt", NAVSIM_INTERVAL_S)))
         self._record(agent_input, body, poses, metric_cache)

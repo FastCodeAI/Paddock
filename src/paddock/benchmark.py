@@ -158,11 +158,24 @@ class Evaluation:
     they mark the run rather than average into it. `by_group`: run-level
     context the scorer reported (its own headline, its aggregate rows), stored
     in the tracked `metrics.json` where the ingest path puts the same thing.
+
+    `failed_chunks`: whole units of work the scorer never completed, each
+    `{"logs": [...], "scenarios": n}` -- distinct from `failed` because one of
+    these is hundreds of scenarios, not one, and the run record must say so.
+    `n_expected`: how many scenarios a complete run would have scored, when
+    the benchmark can know it before scoring; None otherwise.
     """
 
     samples: list[dict[str, Any]]
     failed: list[str] = field(default_factory=list)
     by_group: dict[str, Any] = field(default_factory=dict)
+    failed_chunks: list[dict[str, Any]] = field(default_factory=list)
+    n_expected: int | None = None
+
+    @property
+    def unscored(self) -> int:
+        """Scenarios inside chunks that never completed."""
+        return sum(int(chunk.get("scenarios") or 0) for chunk in self.failed_chunks)
 
 
 class ExternallyScoredBenchmark(Benchmark):

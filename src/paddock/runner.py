@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import contextlib
 import importlib
+import json
 import os
 import time
 from collections.abc import Callable
@@ -143,6 +144,51 @@ def _store_run(
         metrics_record.by_group = dict(by_group)
     written = store.write_run(run, metrics_record, samples, artifacts_root=cfg.runs)
     return written, metrics_record
+
+
+def _external_failure_note(evaluation) -> str | None:
+    """What an external run failed to score, in the units it was lost in.
+
+    A scenario the model failed on is one scenario; a chunk the scorer never
+    completed is hundreds. "4 scenario(s) failed" for a thousand unscored ones
+    misdescribed a run by 250x once, so the two are counted apart.
+    """
+    parts = []
+    if evaluation.failed:
+        parts.append(f"{len(evaluation.failed)} scenario(s) failed in the scorer and are excluded")
+    if evaluation.failed_chunks:
+        logs = sum(len(chunk.get("logs") or []) for chunk in evaluation.failed_chunks)
+        parts.append(
+            f"{len(evaluation.failed_chunks)} chunk(s) never scored: {evaluation.unscored} scenario(s) "
+            f"across {logs} log(s)"
+        )
+    return "; ".join(parts) or None
+
+
+def _config_marker_problems(artifacts: Path, config: dict) -> list[str]:
+    """Refuse to resume a run under a different measurement configuration.
+
+    `run.json` is written only at the end, so the configuration a run started
+    under is recorded in its artifacts directory at the start; `--resume`
+    compares against it, and a changed agent, switch or chunk size is a
+    refusal rather than two measurements merged under one id. A run from
+    before the marker existed has nothing to compare against; it is written
+    now and said so.
+    """
+    marker = artifacts / "run_config.json"
+    if marker.exists():
+        recorded = json.loads(marker.read_text())
+        differing = sorted(k for k in set(recorded) | set(config) if recorded.get(k) != config.get(k))
+        if differing:
+            return [
+                f"--resume refused: {marker} was written under a different configuration; "
+                f"differs in {', '.join(differing)}. Start a new run, or restore the switches "
+                f"it was made under."
+            ]
+        return []
+    artifacts.mkdir(parents=True, exist_ok=True)
+    marker.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
+    return []
 
 
 def _limit_reason(limit: int | None) -> list[str]:
@@ -393,6 +439,9 @@ def _run_external(
         artifacts = cfg.runs / spec.name / model_spec.name / run_id
 
     echo(f"\n=== {model_spec.name} ===" + (f" (resuming {run_id})" if resume else ""))
+    for problem in _config_marker_problems(artifacts, config):
+        echo("  " + problem)
+        return 2
     # Pure in the model spec and the limit, so asked before any VRAM is waited
     # for or checkpoint read: `--model openpilot` used to load supercombo in
     # full to be told NAVSIM's input rate is too low for it.
@@ -443,9 +492,11 @@ def _run_external(
             return 1
         # Whole chunks the scorer could not run are worth another attempt with
         # fresh nodes; a scenario the model itself failed on twice is not.
-        unfinished = [f for f in evaluation.failed if f.endswith("/*")]
-        if unfinished and attempt < attempts:
-            echo(f"  attempt {attempt}/{attempts}: {len(unfinished)} chunk(s) unfinished; restarting")
+        if evaluation.failed_chunks and attempt < attempts:
+            echo(
+                f"  attempt {attempt}/{attempts}: {len(evaluation.failed_chunks)} chunk(s) unfinished "
+                f"({evaluation.unscored} scenario(s)); restarting"
+            )
             continue
         break
 
@@ -460,7 +511,10 @@ def _run_external(
     # drove into a wall. And a subset or an override that changes what the
     # number means is stored, but never valid.
     invalid_reasons = [*harness.invalid_reasons(), *_limit_reason(limit)]
-    failure_note = f"{len(failures)} scenario(s) failed in the scorer and are excluded" if failures else None
+    failure_note = _external_failure_note(evaluation)
+    extra_dataset = {"n_failed": len(failures), "n_unscored": evaluation.unscored}
+    if evaluation.n_expected is not None:
+        extra_dataset["n_expected"] = evaluation.n_expected
     _, metrics_record = _store_run(
         cfg,
         spec,
@@ -476,14 +530,15 @@ def _run_external(
         # metrics.json exactly where the ingest path puts them.
         by_group=evaluation.by_group,
         split=harness.split,
+        extra_dataset=extra_dataset,
     )
     headline = metrics_record.metrics.get(spec.primary_metric, {})
     echo(f"  n={metrics_record.n}  {spec.primary_metric} mean={headline.get('mean')}")
-    if failures:
-        echo(f"  {len(failures)} scenario(s) FAILED in the scorer; run recorded as partial, valid=false")
+    if failure_note:
+        echo(f"  {failure_note}; run recorded as partial, valid=false")
     for reason in invalid_reasons:
         echo(f"  recorded valid=false: {reason}")
-    return 1 if failures else 0
+    return 1 if failure_note else 0
 
 
 def _run_open_loop(

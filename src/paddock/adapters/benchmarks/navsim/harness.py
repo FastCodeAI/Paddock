@@ -548,16 +548,35 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         return sorted(logs)
 
     def _scorable_logs(self) -> list[str]:
-        """The split's logs this site can score, in a fixed order."""
-        root = self.dataset.resolve()
-        blobs = root / "sensor_blobs" / self.data_split
-        cache = self.setting("metric_cache")
-        declared = self._declared_logs()
-        have = {p.name for p in blobs.iterdir() if p.is_dir()} if blobs.is_dir() else set()
-        cached = (
-            {p.name for p in Path(cache).iterdir() if p.is_dir()} if cache and Path(cache).is_dir() else set()
-        )
-        return sorted(declared & have & cached)
+        """The split's logs this site can score, in a fixed order.
+
+        Raises with `_coverage()`'s own message when the split's log list
+        cannot be read: a caller that skips the runner gets the same refusal
+        preflight gives, not a TypeError.
+        """
+        coverage = self._coverage()
+        if coverage is None:
+            return []
+        if isinstance(coverage, str):
+            raise RuntimeError(coverage)
+        scorable, _ = coverage
+        return sorted(scorable)
+
+    def _cache_scenarios(self, log_names: list[str]) -> int:
+        """How many scenarios the metric cache holds for these logs.
+
+        The cache is laid out `<cache>/<log>/<scenario type>/<token>/`, one
+        directory per scenario, and the scorer scores exactly the cached
+        scenarios of the logs it is given -- so this is what a chunk would have
+        produced, and what a failed chunk lost.
+        """
+        cache = Path(self.setting("metric_cache") or "")
+        total = 0
+        for name in log_names:
+            log_dir = cache / name
+            if log_dir.is_dir():
+                total += sum(1 for path in log_dir.glob("*/*") if path.is_dir())
+        return total
 
     def evaluate(
         self,
@@ -585,8 +604,16 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         size = 0 if limit else int(self.setting("chunk_logs", str(DEFAULT_CHUNK_LOGS)) or 0)
         logs = self._scorable_logs() if size > 0 else []
         chunks = chunk_logs(logs, size) if logs else [[]]
-        resume_from = config.get("resume_from") or os.environ.get(RESUME_ENV)
-        summary = out_dir / "navsim_scorer.log"
+        # Only one way to reuse another run's chunks, and it is this variable;
+        # `--resume` continues a run in its own directory and needs nothing here.
+        resume_from = os.environ.get(RESUME_ENV)
+        # What a complete run would score, so a partial one can say what it
+        # lost. Unknown for a --limit smoke, which the scorer caps itself.
+        n_expected = self._cache_scenarios(logs) if size > 0 else None
+        # The chunk-by-chunk story of this run, across every attempt: its own
+        # file, appended -- `navsim_scorer.log` is the scorer's, and for an
+        # unchunked run lives at this same level.
+        summary = out_dir / "chunks.log"
         echo(
             f"  scoring {self.split} via {Path(self.setting('python') or 'python').name}"
             + (f" in {len(chunks)} chunk(s) of <= {size} log(s)" if size > 0 else "")
@@ -594,8 +621,10 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         )
 
         csvs: list[Path] = []
-        failed_chunks: list[list[str]] = []
-        with summary.open("w") as log:
+        failed_chunks: list[dict[str, Any]] = []
+        with summary.open("a") as log:
+            log.write(f"attempt {config.get('attempt', 1)}: {len(chunks)} chunk(s)\n")
+            log.flush()
             for index, names in enumerate(chunks):
                 chunk_dir = out_dir / "chunks" / f"{index:03d}" if size > 0 else out_dir
                 # Resume: a chunk this run already completed, or one a previous
@@ -618,9 +647,12 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
                     log.flush()
                 except RuntimeError as exc:
                     # One chunk's failure must not take the others with it. It
-                    # is recorded, the run is marked partial, and a later run
-                    # can resume from what did complete.
-                    failed_chunks.append(names)
+                    # is recorded -- with how many scenarios it would have
+                    # scored, so the run says what it lost -- the run is marked
+                    # partial, and a later run can resume from what completed.
+                    failed_chunks.append(
+                        {"index": index, "logs": list(names), "scenarios": self._cache_scenarios(names)}
+                    )
                     log.write(f"chunk {index:03d}: FAILED -- {str(exc).splitlines()[0]}\n")
                     log.flush()
                     if not node_alive(policy_url):
@@ -662,12 +694,13 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         # The scorer's own headline is per invocation and means nothing across
         # chunks; only a single-invocation run keeps it.
         reported = navsim_ingest.log_reported_score(out_dir) if size == 0 else None
-        for names in failed_chunks:
-            failed.extend(f"{name}/*" for name in names)
+        unscored = sum(chunk["scenarios"] for chunk in failed_chunks)
+        lost = f", {len(failed_chunks)} chunk(s) never scored ({unscored} scenarios)" if failed_chunks else ""
         echo(
             f"  {len(samples)} scenario(s) in {time.time() - began:.0f}s"
             + (f", scorer reported {reported:.5f}" if reported is not None else "")
             + (f", {len(failed)} FAILED (excluded)" if failed else "")
+            + lost
         )
         # Kept on the run rather than folded into the score: the scorer's own
         # headline and paddock's recomputed mean answer slightly different
@@ -680,6 +713,8 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
                 "source_aggregates": aggregates,
                 "source_reported": {"final_average_valid": reported} if reported is not None else {},
             },
+            failed_chunks=failed_chunks,
+            n_expected=n_expected,
         )
 
 
