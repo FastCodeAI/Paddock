@@ -78,13 +78,18 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 
 🟢 open-loop · 🟡 pseudo-closed-loop · 🔴 closed-loop · ↑ higher is better · ↓ lower is better
 
-| | 🟢 nuScenes ADE ↓ (m) | 🟢 KITScenes ADE / FDE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🔴 Bench2Drive ability ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim (OmniDreams) | 🔴 AlpaSim (nuRec) |
+| | 🟢 nuScenes ADE ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🔴 Bench2Drive ability ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim (OmniDreams) | 🔴 AlpaSim (nuRec) |
 |---|---|---|---|---|---|---|---|
-| OpenPilot | planned | 1.599 / 2.894 | ✗ 2 Hz ‡ | ◐ 37.7 ¶ | 3.80 | planned | planned |
-| Alpamayo 1.5 | planned | 1.002 / 2.158 | 0.653 † | adapter, unrun | 2.46 | planned | planned |
-| Drive-JEPA | planned | 2.364 / 4.199 | 0.843 | adapter, unrun | 4.04 | planned | planned |
-| VisionPilot | planned | not scored | 0.431 | ◐ 61.6 ¶ | 1.67 | planned | planned |
-| Baseline (Constant Velocity) | — | 1.381 / 3.091 | 0.239 | — | 0 § | — | — |
+| OpenPilot | planned | 1.599 | ✗ 2 Hz ‡ | 37.7 ¶ | 3.80 | planned | planned |
+| Alpamayo 1.5 | planned | 1.002 | 0.653 † | adapter, unrun | 2.46 | planned | planned |
+| Drive-JEPA | planned | 2.364 | 0.843 | adapter, unrun | 4.04 | planned | planned |
+| VisionPilot | n/a ∗ | n/a ∗ | 0.431 | 61.6 ¶ | 1.67 | planned | planned |
+| Baseline (Constant Velocity) | — | 1.381 | 0.239 | — | 0 § | — | — |
+
+∗ VisionPilot does not predict a trajectory. It predicts lane curvature and the
+closest in-path object, which are converted into instantaneous acceleration and
+steering commands, so there is no plan to measure an ADE against. It can only
+be scored where something drives on those commands.
 
 † Alpamayo's NAVSIM figure is still the **242-scenario subset** (5 of 136
 logs); its full-navtest run is in progress. Drive-JEPA's and VisionPilot's are
@@ -117,15 +122,15 @@ collision rate.
 ### KITScenes
 
 Open-loop displacement error in metres over the 3 s horizon, full 223-sample
-split. Alpamayo 1.5 is its nav-conditioned single-draw run. VisionPilot
-produces trajectories on KITScenes but has no scored run yet.
+split. Alpamayo 1.5 is its nav-conditioned single-draw run. VisionPilot has no
+trajectory to score (see ∗).
 
 | Model | ADE@3s ↓ (m) | FDE@3s ↓ (m) |
 |---|---:|---:|
 | OpenPilot | 1.599 | 2.894 |
 | Alpamayo 1.5 | **1.002** | **2.158** |
 | Drive-JEPA | 2.364 | 4.199 |
-| VisionPilot | — | — |
+| VisionPilot | n/a ∗ | n/a ∗ |
 | Baseline (Constant Velocity) | 1.381 | 3.091 |
 
 ### NAVSIM v2
