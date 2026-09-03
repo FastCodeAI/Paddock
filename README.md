@@ -20,6 +20,15 @@ schema with provenance, so an ADE and an NCAP score are statements about the
 same model, run the same way.
 
 ```mermaid
+%%{init: {"theme": "base", "themeVariables": {
+  "fontFamily": "-apple-system, Segoe UI, Helvetica, Arial, sans-serif",
+  "fontSize": "14px",
+  "primaryTextColor": "#1f2328",
+  "lineColor": "#6e7781",
+  "edgeLabelBackground": "#ffffff",
+  "clusterBkg": "#ffffff",
+  "clusterBorder": "#d0d7de"
+}}}%%
 flowchart LR
     subgraph models ["Models — each in its own environment"]
         direction TB
@@ -54,13 +63,24 @@ flowchart LR
     pol -- "frames from a simulator,<br/>the plan moves the car" --> closed
     open & pseudo & closed --> res
 
-    classDef model fill:#F7E7D6,stroke:#B4560A,color:#15191C
-    classDef bench fill:#DCEBEE,stroke:#0F6472,color:#15191C
-    classDef waist fill:#FAFBFB,stroke:#15191C,stroke-width:2px,color:#15191C
-    classDef store fill:#F0F2F3,stroke:#5C666E,color:#15191C
+    style models fill:#fff8f1,stroke:#c2410c,stroke-width:1.5px,color:#9a3412
+    style open   fill:#f2fbf4,stroke:#15803d,stroke-width:1.5px,color:#166534
+    style pseudo fill:#fffbeb,stroke:#b45309,stroke-width:1.5px,color:#92400e
+    style closed fill:#fff5f5,stroke:#b91c1c,stroke-width:1.5px,color:#991b1b
+
+    classDef model   fill:#ffedd5,stroke:#ea580c,stroke-width:1.5px,color:#1f2328
+    classDef waist   fill:#1f2937,stroke:#111827,stroke-width:2px,color:#ffffff
+    classDef ol      fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px,color:#1f2328
+    classDef pcl     fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#1f2328
+    classDef cl      fill:#fee2e2,stroke:#dc2626,stroke-width:1.5px,color:#1f2328
+    classDef planned stroke-dasharray:5 4,color:#57606a
+    classDef store   fill:#f6f8fa,stroke:#57606a,stroke-width:1.5px,color:#1f2328
     class op,al,dj,vp model
-    class ns,ks,nv,b2d,nc,alp bench
     class pol waist
+    class ns,ks ol
+    class nv pcl
+    class b2d,nc,alp cl
+    class ns,alp planned
     class res store
 ```
 
