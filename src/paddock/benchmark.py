@@ -147,6 +147,38 @@ class ClosedLoopBenchmark(Benchmark):
         The benchmark owns the simulator; paddock owns the model process.
         """
 
+    def samples_per_episode(self, runs: int = 1) -> int:
+        """How many results samples one episode is expected to record.
+
+        Keeps `n_expected` in the same unit as `n_samples`: docs/results-schema.md
+        defines a run's completion ratio as `n_samples / n_expected`, which is
+        only meaningful if both count samples. Default: one, matching the default
+        `episode_samples`. Override alongside it.
+        """
+        return 1
+
+    def episode_samples(
+        self, episode: Episode, metrics: dict[str, float], out_dir: Path
+    ) -> list[dict[str, Any]]:
+        """Per-sample records for one episode, in the results store's shape.
+
+        Default: the episode is the scored unit, so it yields one sample -- what
+        every closed-loop benchmark did before this hook existed.
+
+        A benchmark whose episode contains several independently scored units
+        overrides this so the store keeps them apart. neuroNCAP does: one
+        subprocess drives N differently-jittered runs, and collapsing them to a
+        mean here would throw away the spread that makes the mean readable.
+        """
+        return [
+            {
+                "sample_id": f"{self.spec.name}/{episode.scene}/{episode.scenario}",
+                "native_id": {"scenario": episode.scenario, "scene": episode.scene},
+                "split": episode.scenario,
+                "metrics": {k: float(v) for k, v in metrics.items() if k not in ("n_runs",)},
+            }
+        ]
+
 
 @dataclass
 class Evaluation:

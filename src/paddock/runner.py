@@ -353,6 +353,7 @@ def _run_one_model(
             # score: n_samples alone cannot tell 220 scored from 6 scored and
             # 214 failed, and a mean over the six reads like a full sweep.
             episodes = list(harness.episodes(scenes, runs=runs, scenarios=scenarios))
+            per_episode = harness.samples_per_episode(runs)
             for episode in episodes:
                 episode.config["cameras"] = list(model_spec.cameras)
                 out_dir = artifacts / episode.episode_id
@@ -366,14 +367,7 @@ def _run_one_model(
                     f"  {episode.episode_id}: "
                     + ", ".join(f"{k} {v:.4g}" for k, v in sorted(metrics.items()))
                 )
-                samples.append(
-                    {
-                        "sample_id": f"{spec.name}/{episode.scene}/{episode.scenario}",
-                        "native_id": {"scenario": episode.scenario, "scene": episode.scene},
-                        "split": episode.scenario,
-                        "metrics": {k: float(v) for k, v in metrics.items() if k not in ("n_runs",)},
-                    }
-                )
+                samples.extend(harness.episode_samples(episode, metrics, out_dir))
     except (proc.NodeStartupError, RuntimeError) as exc:
         echo(f"  node failed: {exc}")
         return 1
@@ -394,7 +388,14 @@ def _run_one_model(
         failure_note=f"{failures} episode(s) failed" if failures else None,
         invalid_reasons=harness.invalid_reasons(),
         hardware={"gpu_free_gb_at_start": None},
-        extra_dataset={"n_expected": len(episodes), "n_failed": failures},
+        # In samples, not episodes: docs/results-schema.md defines the completion
+        # ratio as `n_samples / n_expected`, so the two have to count the same
+        # unit. An episode that records several samples loses all of them when it
+        # fails, so the failure count scales the same way.
+        extra_dataset={
+            "n_expected": len(episodes) * per_episode,
+            "n_failed": failures * per_episode,
+        },
     )
     echo(f"  -> {written.relative_to(Path.cwd()) if written.is_relative_to(Path.cwd()) else written}")
     return failures

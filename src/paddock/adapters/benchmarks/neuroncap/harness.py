@@ -35,7 +35,25 @@ SCENARIOS_DIR = Path(__file__).parent / "scenarios_10hz"
 WAYPOINT_DT = 0.5
 DEFAULT_SCENARIOS = ("stationary", "frontal", "side")
 
+# The official evaluation set, transcribed from the vendor's own job arrays in
+# `scripts/arrays/ncap_slurm_array_*.txt`: 20 scenario-scene pairs over 14
+# distinct scenes. Sequence 0061 is in the stationary array carrying the comment
+# "mini set (do not use for eval)" and is deliberately absent here.
+#
+# Tracked as data, not inferred from the directory listing, so that a file going
+# missing is a test failure rather than a quietly shorter sweep.
+OFFICIAL_SET: dict[str, tuple[str, ...]] = {
+    "stationary": ("0099", "0101", "0103", "0106", "0108", "0278", "0331", "0783", "0796", "0966"),
+    "frontal": ("0103", "0106", "0110", "0346", "0923"),
+    "side": ("0103", "0108", "0110", "0278", "0921"),
+}
+
 _SCORE_LINE = re.compile(r"ncap_score:\s*([-\d.eE+]+)")
+_RUN_DIR = re.compile(r"^run_(\d+)$")
+
+
+def _official_set_summary() -> str:
+    return ", ".join(f"{k} {len(v)} scenes" for k, v in OFFICIAL_SET.items())
 
 
 class NeuroNcapBenchmark(ClosedLoopBenchmark):
@@ -91,6 +109,19 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         elif not dataset.resolve().exists():
             problems.append(f"nuScenes root does not exist: {dataset.resolve()}")
 
+        missing = [
+            f"{scenario}/{scene}.yaml"
+            for scenario, scene_ids in OFFICIAL_SET.items()
+            for scene in scene_ids
+            if not (SCENARIOS_DIR / scenario / f"{scene}.yaml").exists()
+        ]
+        if missing:
+            problems.append(
+                f"{len(missing)} of the 20 official scenario files are missing from "
+                f"{SCENARIOS_DIR.name}/: {', '.join(missing)}. A sweep would score the "
+                f"rest and record it as a sweep."
+            )
+
         url = self.setting("renderer_url")
         if url and not proc.is_alive(url):
             problems.append(
@@ -127,10 +158,23 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         runs: int = 1,
         scenarios: list[str] | None = None,
     ) -> Iterator[Episode]:
+        # An explicit --scenarios means the caller named the pairs it wants, so a
+        # missing file is an error. Defaulted, it means "whatever this scene is
+        # in", and a gap is the benchmark's own shape: the official set puts 10
+        # scenes in stationary and 5 each in frontal and side, so scene 0099 has
+        # a stationary file and no other. Skipping that is right; skipping a
+        # pair the caller asked for by name is how a sweep silently shrinks.
+        explicit = scenarios is not None
         for scene in scenes or ["0103"]:
             for scenario in scenarios or list(DEFAULT_SCENARIOS):
                 path = SCENARIOS_DIR / scenario / f"{scene}.yaml"
                 if not path.exists():
+                    if explicit:
+                        raise FileNotFoundError(
+                            f"--scenarios {scenario} --scene {scene}: no scenario file at "
+                            f"{path.relative_to(SCENARIOS_DIR.parent)}. The official set is "
+                            f"{_official_set_summary()}."
+                        )
                     continue
                 yield Episode(
                     episode_id=f"{scenario}-{scene}",
@@ -204,24 +248,86 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             metrics["ncap_score"] = sum(scores) / len(scores)
         return metrics
 
+    def samples_per_episode(self, runs: int = 1) -> int:
+        """One sample per run -- see `episode_samples`."""
+        return max(1, runs)
+
+    def episode_samples(
+        self, episode: Episode, metrics: dict[str, float], out_dir: Path
+    ) -> list[dict[str, Any]]:
+        """One sample per *run*, not per episode.
+
+        A neuroNCAP run is not a repeat: the engine seeds the scenario jitter
+        with the run index (`engine.run(i)` in the vendor's `main.py`), so each
+        run draws a different actor start frame, position, size and identity.
+        The spread across runs is therefore a property of the model under the
+        scenario distribution, and it is the thing the mean has to be read
+        against -- alpamayo's sd on frontal-0103 is 1.82 on a 0-5 scale.
+
+        Recording only the episode mean would put `n` at 20 for a full sweep
+        where 200 episodes were driven, and would leave no way to recover the
+        spread from `results/`, which is the only part of a run that is tracked.
+        """
+        per_run = self._per_run(out_dir)
+        if not per_run:
+            # Nothing parseable on disk: fall back to whatever run_episode
+            # scraped from stdout rather than dropping the episode entirely.
+            return super().episode_samples(episode, metrics, out_dir)
+        return [
+            {
+                # `run_<i>`, matching results/ingest/neuroncap.py exactly: the
+                # legacy August runs are in the store under that shape, and a
+                # live run has to be comparable with them sample for sample.
+                "sample_id": f"{self.spec.name}/{episode.scene}/{episode.scenario}/run_{index}",
+                "native_id": {
+                    "scenario": episode.scenario,
+                    "scene": episode.scene,
+                    "run": index,
+                },
+                "split": episode.scenario,
+                "metrics": run_metrics,
+            }
+            for index, run_metrics in per_run
+        ]
+
     @staticmethod
-    def _collect(out_dir: Path) -> dict[str, float]:
-        """Read the metrics.json the engine wrote, for one run or several."""
-        files = sorted(out_dir.rglob("metrics.json"))
-        if not files:
-            return {}
-        scores, collisions = [], []
-        for path in files:
+    def _per_run(out_dir: Path) -> list[tuple[int, dict[str, float]]]:
+        """Every run's metrics.json under `out_dir`, in run order.
+
+        The engine writes `run_<i>/metrics.json` when driven with `--runs > 1`
+        and a bare `metrics.json` when driven with one. Ordering is by the parsed
+        integer, not the path: sorted lexically, `run_10` falls between `run_1`
+        and `run_2`, which would misattribute every run index above nine.
+        """
+        out: list[tuple[int, dict[str, float]]] = []
+        for path in out_dir.rglob("metrics.json"):
             raw = json.loads(path.read_text())
-            if raw.get("ncap_score") is not None:
-                scores.append(float(raw["ncap_score"]))
+            match = _RUN_DIR.match(path.parent.name)
+            index = int(match.group(1)) if match else 0
+            record: dict[str, float] = {}
+            for key in ("ncap_score", "impact_speed", "reference_speed"):
+                if raw.get(key) is not None:
+                    record[key] = float(raw[key])
             if raw.get("any_collide@0.0s") is not None:
-                collisions.append(1.0 if raw["any_collide@0.0s"] else 0.0)
-        out: dict[str, Any] = {"n_runs": len(files)}
-        if scores:
-            out["ncap_score"] = sum(scores) / len(scores)
-        if collisions:
-            out["collision_rate"] = sum(collisions) / len(collisions)
+                record["collision_rate"] = 1.0 if raw["any_collide@0.0s"] else 0.0
+            if record:
+                out.append((index, record))
+        return sorted(out, key=lambda item: item[0])
+
+    @classmethod
+    def _collect(cls, out_dir: Path) -> dict[str, float]:
+        """The episode's headline: the mean over its runs, for the console line.
+
+        The per-run records are what reach `results/` -- see `episode_samples`.
+        """
+        per_run = cls._per_run(out_dir)
+        if not per_run:
+            return {}
+        out: dict[str, Any] = {"n_runs": len(per_run)}
+        for key in ("ncap_score", "collision_rate"):
+            values = [m[key] for _, m in per_run if key in m]
+            if values:
+                out[key] = sum(values) / len(values)
         return out
 
 

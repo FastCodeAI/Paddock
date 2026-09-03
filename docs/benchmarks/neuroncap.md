@@ -153,22 +153,125 @@ the model — but to report a mean and spread over enough runs, and to say n.
 Paddock stores per-episode records, so the spread is available rather than
 collapsed into one number.
 
-## Open: the two openpilot paths disagree on traffic convention
+## Resolved: the two openpilot paths disagreed on traffic convention
 
 openpilot sets `traffic_convention[int(is_rhd)] = 1`, where `is_rhd` means
 right-hand *drive* — wheel on the right, i.e. left-hand traffic.
 
-| path | value | implies |
+| path | value before | implies |
 |---|---|---|
 | open-loop KITScenes harness | `[1, 0]` | left-hand-drive / right-hand traffic |
 | closed-loop node | `[0, 1]` | right-hand-drive / left-hand traffic |
 
-They cannot both be right. KITScenes is Germany, and the neuroNCAP scenes used so
-far (0103, 0108) are `boston-seaport` — both left-hand-drive, right-hand traffic.
-`[1, 0]` looks correct for both, making the closed-loop value a bug that has been
-telling the model it is driving a right-hand-drive car in Boston.
+They cannot both be right. KITScenes is Germany, and every neuroNCAP scene in the
+official set is `boston-seaport` or `singapore-*` — the ones evaluated here are
+Boston, so left-hand-drive, right-hand traffic. `[1, 0]` is correct for both, and
+the closed-loop value had been telling the model it was driving a right-hand-drive
+car in Boston.
 
-**Not changed.** Correcting it changes every recorded closed-loop openpilot score,
-and that re-measurement deserves its own decision and its own commit rather than
-arriving as a side effect of a migration. Flagged at the constant in
-`adapters/models/openpilot/policy.py`.
+**Fixed in `12f3250`**, committed 2026-09-01T00:44:56Z. Both paths now pass
+`[1, 0]`, and `tests/test_openpilot_traffic_convention.py` parses the constant out
+of both files and fails if they ever disagree again — they are separate constants
+in separate files, because the two paths load openpilot differently, which is how
+they came to disagree in the first place.
+
+### Every recorded closed-loop openpilot score predates the fix
+
+| run | started | vs fix |
+|---|---|---|
+| `20260831T235716-88a4e0` | 2026-08-31T23:57:16Z | before |
+| `20260901T004005-88a4e0` | 2026-09-01T00:40:05Z | before, by 5 minutes |
+| `legacy-*` (four runs) | August, undated | before |
+
+There is no closed-loop openpilot number on record that was produced with the
+correct traffic convention. The README's neuroNCAP row for openpilot — mean 3.80,
+47% collision rate — is a measurement of the misconfigured model, and the size of
+the error is unknown until it is re-run. It is not a small knob: it changes which
+side of the road the network believes traffic is on, and the side scenario is
+laterally asymmetric.
+
+openpilot's rows are re-measured as part of the full-set sweep below; until that
+lands, treat the recorded closed-loop openpilot figures as superseded.
+
+## The evaluation set, and how many runs
+
+### 20 scenario–scene pairs
+
+The official set is transcribed from the vendor's own job arrays
+(`scripts/arrays/ncap_slurm_array_*.txt`) into `OFFICIAL_SET` in `harness.py`:
+
+| scenario | scenes | |
+|---|---:|---|
+| stationary | 10 | 0099, 0101, 0103, 0106, 0108, 0278, 0331, 0783, 0796, 0966 |
+| frontal | 5 | 0103, 0106, 0110, 0346, 0923 |
+| side | 5 | 0103, 0108, 0110, 0278, 0921 |
+
+20 pairs over 14 distinct scenes. Sequence 0061 appears in the stationary array
+carrying `# mini set (do not use for eval)` and is excluded; it is also the one
+scene with no renderer checkpoint on this machine.
+
+The files under `scenarios_10hz/` are the upstream scenario files with
+`time-step: 0.5` changed to `0.1` and nothing else — verified one line per file
+at porting time. `preflight` refuses a sweep with any of the 20 missing, and
+`tests/test_neuroncap_harness.py` pins the set both ways: no file missing, and
+no file present that is not in it.
+
+Not every scene is in every category — 0099 is stationary-only — so `episodes()`
+skips a (scene, scenario) pair with no file when `--scenarios` is defaulted.
+When `--scenarios` names a category explicitly, a missing pair raises instead:
+asking for something that does not exist should not quietly score less.
+
+### Runs: 10, not 50
+
+Upstream runs 50 (`RUNS=50` in `single_machine_docker_run_eval.sh`). Paddock's
+sweeps use 10, which is a subsample of that protocol rather than a different one:
+the engine seeds the scenario jitter with the run index (`engine.run(i)` in
+`main.py`), so runs 0–9 are exactly the first ten of upstream's fifty, and a
+later top-up extends rather than replaces them.
+
+A run is **not** a repeat. Each index jitters the actor's start frame, position,
+dimensions and identity, which is why deterministic models still show spread —
+openpilot's sd is 0.27 on frontal-0103 and 1.00 on side-0103. Treating `--runs 1`
+as sufficient for a deterministic model confuses reproducibility (same seed, same
+score — true) with sufficiency (one draw characterises the model — false).
+
+The standard error of a category mean over S scenes and R runs is
+`sqrt(σ_between²/S + σ_within²/(S·R))`. Going from 1 scene to 5 attacks the
+dominant term; going from 10 runs to 50 attacks a term already five times
+smaller. At S=5 with openpilot's measured σ_within of 1.00 on side, the
+within-scene contribution is 0.14 at R=10 and 0.06 at R=50 — both well under the
+between-scene term. Five times the compute for a few percent of the error.
+
+R=10 is also the point at which σ_between becomes measurable for the first time;
+it has never been estimated here, because every recorded run is on one or two
+scenes. If it turns out small, topping up runs is worth it. Alpamayo is the one
+model where extra runs plausibly pay on their own: its σ_within is 1.82.
+
+### Cost
+
+Measured per-episode wall clock (2026-09-01 runs, `--runs 1`, including node
+startup, which amortises across the runs in a sweep so these are upper bounds):
+
+| model | s/episode | 20 pairs × 10 runs |
+|---|---:|---:|
+| visionpilot | 92 | ~5 h |
+| openpilot | 134 | ~7.5 h |
+| drivejepa | 191 | ~10.5 h |
+| alpamayo15 | 375 | ~21 h |
+| **total** | | **~44 h** |
+
+The full 50-run protocol would be ~220 h with `gpu.serialize = true`.
+
+### Per-run records reach `results/`
+
+One subprocess drives N runs, but the store keeps them apart: the harness
+overrides `ClosedLoopBenchmark.episode_samples` to emit one sample per run, so a
+20-pair sweep at R=10 records `n = 200`, not `n = 20`, and the spread survives
+into the only part of a run that is tracked. Runs are ordered by parsed index —
+sorted as strings, `run_10` falls between `run_1` and `run_2`.
+
+### Sweep shape
+
+The renderer serves one scene at a time and is slow to start, so the loop is
+scene-outer, model-inner — restart the renderer per scene, run all four models
+against it, move on. That is 14 renderer starts rather than 56.

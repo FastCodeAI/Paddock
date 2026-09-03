@@ -106,7 +106,7 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 
 | | 🟢 nuScenes ADE ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🔴 Bench2Drive ability ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim (OmniDreams) | 🔴 AlpaSim (nuRec) |
 |---|---|---|---|---|---|---|---|
-| OpenPilot | planned | 1.599 | ✗ 2 Hz ‡ | 37.7 ¶ | 3.80 | planned | planned |
+| OpenPilot | planned | 1.599 | ✗ 2 Hz ‡ | 37.7 ¶ | 3.80 ‖ | planned | planned |
 | Alpamayo 1.5 | planned | 1.002 | 0.653 † | adapter, unrun | 2.46 | planned | planned |
 | Drive-JEPA | planned | 2.364 | 0.843 | adapter, unrun | 4.04 | planned | planned |
 | VisionPilot | n/a ∗ | n/a ∗ | 0.431 | 61.6 ¶ | 1.67 | planned | planned |
@@ -190,13 +190,25 @@ Multi-ability scores (0–100) from the upstream `ability_benchmark.py`, 25 of
 Scene 0103, 5 runs per scenario, mean ± std of the NCAP score (0 = full-speed
 collision, 5 = avoided). CR is the collision rate over all 15 runs.
 
+**Preliminary — 1 of the 20 official scenario–scene pairs.** The official set is
+10 stationary scenes, 5 frontal and 5 side; these numbers are one scene, so the
+between-scene variance that dominates a category mean is entirely unmeasured. A
+full-set sweep at 10 runs per pair will replace them. See
+[docs/benchmarks/neuroncap.md](docs/benchmarks/neuroncap.md#the-evaluation-set-and-how-many-runs).
+
 | Model | stationary ↑ (0–5) | frontal ↑ (0–5) | side ↑ (0–5) | mean ↑ (0–5) | CR ↓ (0–100%) |
 |---|---:|---:|---:|---:|---:|
-| OpenPilot | 5.00 ±0.00 | 2.21 ±0.27 | 4.18 ±1.00 | 3.80 | 47% |
+| OpenPilot ‖ | 5.00 ±0.00 | 2.21 ±0.27 | 4.18 ±1.00 | 3.80 | 47% |
 | Alpamayo 1.5 | 4.08 ±1.84 | 2.10 ±1.63 | 1.20 ±0.36 | 2.46 | 67% |
 | Drive-JEPA | 5.00 ±0.00 | 2.13 ±0.08 | 5.00 ±0.00 | **4.04** | 33% |
 | VisionPilot | 2.79 ±0.56 | 1.68 ±0.10 | 0.54 ±0.64 | 1.67 | 100% |
 | Baseline (Constant Velocity) | 0.00 | 0.00 | 0.00 | 0.00 § | 100% |
+
+‖ **Superseded.** Every recorded closed-loop OpenPilot score, this row included,
+was produced before `12f3250` fixed the `traffic_convention` one-hot, which had
+been telling supercombo it was a right-hand-drive car in Boston. The open-loop
+KITScenes path always had it right, so only the closed-loop rows are affected.
+The size of the error is unknown until OpenPilot is re-run.
 
 ---
 
