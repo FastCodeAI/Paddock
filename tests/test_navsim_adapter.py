@@ -824,3 +824,9 @@ def test_the_runner_restarts_nodes_and_resumes_after_a_failed_attempt(
     assert calls[1]["attempt"] == 2
     assert len(started_nodes) == 2, "fresh nodes for the retry, not the ones that were up when it died"
     assert stored.get("called")
+
+
+def test_node_alive_is_false_for_a_port_nobody_listens_on() -> None:
+    from paddock.adapters.benchmarks.navsim.harness import node_alive
+
+    assert node_alive("http://127.0.0.1:1", timeout_s=0.5) is False

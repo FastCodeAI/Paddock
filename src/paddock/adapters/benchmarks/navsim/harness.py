@@ -43,6 +43,8 @@ import shutil
 import signal
 import subprocess
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -62,6 +64,16 @@ DEFAULT_CHUNK_LOGS = 4
 
 #: A previous run's artifacts directory whose completed chunks are reused.
 RESUME_ENV = "PADDOCK_NAVSIM_RESUME_FROM"
+
+
+def node_alive(policy_url: str, timeout_s: float = 5.0) -> bool:
+    """Whether the policy node still answers `/alive`. Standard library only:
+    the harness must not pull an HTTP client into the runner's process."""
+    try:
+        with urllib.request.urlopen(f"{policy_url.rstrip('/')}/alive", timeout=timeout_s) as response:
+            return 200 <= response.status < 300
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
 
 
 def chunk_logs(logs: list[str], size: int) -> list[list[str]]:
@@ -611,6 +623,14 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
                     failed_chunks.append(names)
                     log.write(f"chunk {index:03d}: FAILED -- {str(exc).splitlines()[0]}\n")
                     log.flush()
+                    if not node_alive(policy_url):
+                        # Every remaining chunk would fail the same way. Hand the
+                        # run back to the runner, which restarts the nodes and
+                        # re-invokes us; the chunks that completed are reused.
+                        log.write(f"policy node {policy_url} is not answering; stopping for a restart\n")
+                        raise RuntimeError(
+                            f"policy node {policy_url} is not answering after chunk {index:03d} failed"
+                        ) from exc
                     echo(f"  chunk {index:03d} FAILED ({', '.join(names) or 'whole split'}); continuing")
 
         if not csvs:
