@@ -31,6 +31,6 @@
   "hardware": {},
   "status": "complete",
   "valid": true,
-  "notes": "",
+  "notes": "Produced by paddock at None (branch navsim-scorer-failures, launched 2026-09-03 18:38Z, before PR #4's review fixes merged as 6c9776d), so `dataset` predates n_expected/n_failed/n_unscored. From the merged scores.csv: 12,146 expected, 12,146 scored, 0 failed, 34 chunks, one attempt.",
   "ingested_from": ""
 }

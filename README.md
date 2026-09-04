@@ -168,8 +168,12 @@ trajectory to score (see ∗).
 Full navtest (stage one: real recorded scenes, no synthetic stage two), 12,146 scenarios, all sub-metrics 0–1. Every column except EPDMS
 is the mean of a per-scenario pass/fail or ratio, and EPDMS is the weighted
 product the scorer builds from them. Drive-JEPA is scored through paddock's
-proxy agent (see †). The last column is the 242-scenario subset (2% of
-navtest) that every model was first run on, for reference only.
+proxy agent (see †). Extended comfort is the mean over the scenarios where it
+is defined, 10,040 of the 12,146 -- it compares consecutive frames' plans, so
+it is absent for a log's first frame and for any scenario without a scorable
+predecessor (`docs/results-schema.md`); every other column is over all 12,146.
+The last column is the 242-scenario subset (2% of navtest) that every model
+was first run on, for reference only.
 
 | Model | EPDMS ↑ | No at-fault collisions ↑ | Drivable area ↑ | Driving direction ↑ | Traffic light ↑ | Ego progress ↑ | TTC within bound ↑ | Lane keeping ↑ | History comfort ↑ | Extended comfort ↑ | EPDMS on 242 subset |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
