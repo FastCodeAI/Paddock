@@ -394,3 +394,56 @@ def test_run_count_alone_does_not_invalidate() -> None:
     harness = _harness()
     list(harness.episodes(harness.available_scenes(), runs=1))
     assert harness.invalid_reasons() == []
+
+
+# ---- renderer management -----------------------------------------------
+
+
+def test_renderer_management_is_off_by_default() -> None:
+    """The single-scene workflow keeps a renderer alive across runs on purpose."""
+    assert _harness().manages_renderer() is False
+
+
+def test_managing_renderers_makes_the_whole_official_set_one_valid_run() -> None:
+    """This is the reason the switch exists.
+
+    The renderer cannot change scene, so driving 14 scenes from outside means one
+    `paddock run` per scene -- and then every run covers 1-3 of the 20 pairs and
+    is correctly recorded `valid: false`. 28 partial runs, no rankable score.
+    """
+    harness = _harness()
+    list(harness.episodes(harness.available_scenes(), runs=10))
+    assert harness.invalid_reasons() == []
+
+    per_scene = _harness()
+    list(per_scene.episodes(["0103"], runs=10))
+    assert per_scene.invalid_reasons(), "a single-scene run must not rank as a sweep"
+
+
+def test_a_renderer_we_did_not_start_is_never_stopped() -> None:
+    """On a shared box that renderer may be another person's sweep."""
+    harness = _harness()
+    harness._renderer_proc = None
+    harness._stop_renderer(lambda _: None)  # must not raise, must not touch anything
+    assert harness._renderer_proc is None
+
+
+def test_ensure_renderer_is_a_no_op_when_unmanaged(monkeypatch) -> None:
+    """Without the switch, run_episode must not try to start anything."""
+    harness = _harness()
+    called = []
+    monkeypatch.setattr(type(harness), "_stop_renderer", lambda self, echo=print: called.append(1))
+    harness._ensure_renderer("0106", echo=lambda _: None)
+    assert called == []
+
+
+def test_every_official_scene_has_a_buildable_renderer_command() -> None:
+    """preflight's check, asserted directly: a sweep must not die on scene 9 of 14."""
+    from paddock.adapters.benchmarks.neuroncap import launcher
+
+    harness = _harness()
+    if not harness.setting("checkpoints"):
+        pytest.skip("no checkpoints configured")
+    for scene in sorted({s for v in OFFICIAL_SET.values() for s in v}):
+        command, cwd, env = launcher.renderer_command(harness.cfg, scene, 8000)
+        assert command and cwd and "NEURAD_STUDIO" in env

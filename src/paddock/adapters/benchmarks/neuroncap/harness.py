@@ -21,6 +21,7 @@ checks it and says how to start it.
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
 import re
@@ -77,6 +78,9 @@ VIDEO_FPS = 10
 VIDEO_HOLD_FRAMES = 15
 VIDEO_MODES = ("encode", "keep", "off")
 
+#: A scene's hash grids take ~80 s to load; allow for a cold page cache.
+RENDERER_STARTUP_S = 900
+
 
 def _official_set_summary() -> str:
     return ", ".join(f"{k} {len(v)} scenes" for k, v in OFFICIAL_SET.items())
@@ -84,6 +88,15 @@ def _official_set_summary() -> str:
 
 class NeuroNcapBenchmark(ClosedLoopBenchmark):
     # ---- configuration: `self.setting(key)` / `self.settings` from the base ----
+
+    def __init__(self, spec, cfg) -> None:
+        super().__init__(spec, cfg)
+        self._renderer_proc: subprocess.Popen | None = None
+        self._renderer_scene: str | None = None
+        self._renderer_log_dir: Path | None = None
+        # A sweep holds ~8 GB of VRAM on a card six other people share; leaving
+        # it behind on a crash or a Ctrl-C is not acceptable.
+        atexit.register(self._stop_renderer, lambda _msg: None)
 
     def available_scenes(self) -> list[str]:
         """Scenes with both a scenario file and a renderer checkpoint."""
@@ -149,7 +162,23 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             )
 
         url = self.setting("renderer_url")
-        if url and not proc.is_alive(url):
+        if url and self.manages_renderer():
+            # We start one per scene; a live one here would be someone else's,
+            # and our port must be free rather than occupied.
+            if proc.is_alive(url):
+                problems.append(
+                    f"manage_renderer is on but something is already answering at {url}. "
+                    f"Stop it, or point renderer_url at a free port -- this harness will "
+                    f"not take over or kill a renderer it did not start."
+                )
+            try:
+                from paddock.adapters.benchmarks.neuroncap import launcher
+
+                for scene in sorted({s for v in OFFICIAL_SET.values() for s in v}):
+                    launcher.renderer_command(self.cfg, scene, int(url.rsplit(":", 1)[-1]))
+            except Exception as exc:  # noqa: BLE001 - reported, not raised
+                problems.append(f"cannot start a renderer: {exc}")
+        elif url and not proc.is_alive(url):
             problems.append(
                 f"renderer is not answering at {url}. Start it first -- it is "
                 f"model-independent and slow to start, so one instance serves a whole sweep:\n"
@@ -239,6 +268,11 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
 
         `policy_url` is a node paddock has already started and health-checked.
         """
+        # The renderer serves one scene; a multi-scene sweep restarts it here so
+        # the whole official set is one run rather than one run per scene.
+        self._renderer_log_dir = out_dir.parent
+        self._ensure_renderer(episode.scene)
+
         repo = Path(self.setting("repo"))
         port = policy_url.rsplit(":", 1)[-1]
         renderer_port = self.setting("renderer_url").rsplit(":", 1)[-1]
@@ -302,6 +336,81 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             metrics["ncap_score"] = sum(scores) / len(scores)
         self.render_videos(out_dir)
         return metrics
+
+    # ---- renderer ------------------------------------------------------
+
+    def manages_renderer(self) -> bool:
+        """Whether this harness starts and stops renderers itself.
+
+        Off by default: the usual single-scene workflow is `paddock renderer
+        --scene X` in one shell and `paddock run` in another, and the renderer
+        outliving the run is the point -- it costs ~80 s to load and is shared
+        across models.
+
+        A sweep over the full official set cannot work that way. The renderer
+        loads one scene's hash grids at startup and cannot switch, so 14 scenes
+        means 14 renderers. Driving them from outside would mean one `paddock
+        run` per scene, and then every run covers 1-3 of the 20 pairs and is
+        correctly recorded `valid: false` -- 28 partial runs and no rankable
+        score. With this on, one invocation covers the whole set.
+        """
+        raw = os.environ.get("PADDOCK_NCAP_MANAGE_RENDERER") or self.setting("manage_renderer", "false")
+        return str(raw).strip().lower() in ("true", "1", "yes")
+
+    def _ensure_renderer(self, scene: str, echo: Callable[[str], None] = print) -> None:
+        """Make the renderer on our port serve `scene`, starting one if needed.
+
+        Only ever stops a renderer this harness started. One left running by
+        `paddock renderer` belongs to whoever started it -- on a shared box that
+        may well be another person's sweep.
+        """
+        if not self.manages_renderer() or getattr(self, "_renderer_scene", None) == scene:
+            return
+
+        from paddock.adapters.benchmarks.neuroncap import launcher
+        from paddock.runtime import proc
+
+        self._stop_renderer(echo)
+
+        url = self.setting("renderer_url")
+        port = int(url.rsplit(":", 1)[-1])
+        command, cwd, env = launcher.renderer_command(self.cfg, scene, port)
+        echo(f"  renderer: loading scene {scene}")
+        # Its own stdout is large and mostly nerfstudio noise; keep it beside the
+        # run rather than interleaved with the episode lines.
+        log = self._renderer_log_dir / f"renderer_{scene}.log" if self._renderer_log_dir else None
+        handle = open(log, "w") if log else subprocess.DEVNULL  # noqa: SIM115
+        self._renderer_proc = subprocess.Popen(command, cwd=cwd, env=env, stdout=handle, stderr=handle)
+        self._renderer_scene = scene
+
+        deadline = time.time() + RENDERER_STARTUP_S
+        while time.time() < deadline:
+            if self._renderer_proc.poll() is not None:
+                self._renderer_scene = None
+                raise RuntimeError(
+                    f"renderer for scene {scene} exited with {self._renderer_proc.returncode}"
+                    + (f"; see {log}" if log else "")
+                )
+            if proc.is_alive(url):
+                echo(f"  renderer: scene {scene} ready")
+                return
+            time.sleep(5)
+        self._stop_renderer(echo)
+        raise RuntimeError(f"renderer for scene {scene} did not answer within {RENDERER_STARTUP_S}s")
+
+    def _stop_renderer(self, echo: Callable[[str], None] = print) -> None:
+        """Stop only a renderer we started; leave anyone else's alone."""
+        running = getattr(self, "_renderer_proc", None)
+        if running is None:
+            return
+        running.terminate()
+        try:
+            running.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            running.kill()
+            running.wait(timeout=10)
+        self._renderer_proc = None
+        self._renderer_scene = None
 
     # ---- debugging video -----------------------------------------------
 

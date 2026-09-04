@@ -116,6 +116,17 @@ serialize = true
 # neurad_studio   = "/path/to/neurad-studio"
 # checkpoints     = "/path/to/neuroncap/checkpoints"     # one per scene; also [datasets.neurad_checkpoints]
 #
+# A full-set sweep spans 14 scenes, and the renderer loads one scene's hash
+# grids at startup and cannot switch. With this on, the harness starts and stops
+# a renderer per scene, so one `paddock run` covers all 20 pairs and is rankable.
+# Driven from outside it would be one run per scene, each covering 1-3 pairs and
+# each correctly recorded `valid: false`. Also settable as
+# PADDOCK_NCAP_MANAGE_RENDERER=true for a one-off sweep.
+#
+# Leave false for the single-scene workflow: `paddock renderer --scene X` in
+# another shell keeps a renderer warm across several runs, which this would not.
+# manage_renderer = false
+#
 # Per-run debugging clips. The engine writes a frame per simulation step for
 # every run, which is ~83 MB per run -- about 66 GB across the full 20-pair set
 # at 10 runs for four models.
