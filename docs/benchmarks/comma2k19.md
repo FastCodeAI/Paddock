@@ -97,3 +97,53 @@ does not currently expose a `--split` flag for open-loop runs (`run_benchmark`
 never passes one through), so `--limit N` today draws from the front of the
 sorted (chunk, route_id, segment) order regardless -- mostly `rav4` for small
 N, since chunks 1-2 sort first.
+
+## Reproduction status
+
+`--limit 100` (all `rav4`, chunks 1-2 -- see Splits above), `results/comma2k19/openpilot/20260904T011824-9a8260/`:
+
+| metric | mean | median | p90 | max |
+|---|---:|---:|---:|---:|
+| ade | 38.84 | 47.31 | 55.77 | 60.92 |
+| fde@1s | 22.29 | 27.18 | 31.93 | 34.91 |
+| fde@2s | 44.43 | 54.11 | 63.76 | 69.65 |
+| fde@3s | 66.36 | 80.75 | 95.49 | 104.22 |
+| longitudinal_mae | 38.82 | 47.27 | 55.68 | 60.91 |
+| lateral_mae | 0.96 | 0.70 | 2.66 | 5.98 |
+
+**This is a real, large ADE, and it is almost entirely longitudinal.**
+`lateral_mae` (<1 m on average) is in the same range as the KITScenes numbers
+above; `longitudinal_mae` alone accounts for essentially all of `ade`. Ruled
+out before concluding this is a genuine finding rather than an adapter bug:
+
+- **Camera FOV margin** -- EON's real 65.2°x51.3° comfortably covers
+  supercombo's required 58.7°x31.3° (a slightly larger margin than KITScenes'
+  own working setup has), so the crop/warp is not starved of field of view.
+- **Frame rate / `repeats`** -- comma2k19 is native 20 Hz with a uniform
+  1/20 s step between every history frame in a sample, so `OpenpilotPolicy`'s
+  `repeats` calculation comes out to exactly 1 throughout -- there is no
+  hidden 4x (or any) rate mismatch being fed to the model.
+- **Ground truth** -- validated directly against real segment data (11 m of
+  forward travel per 0.5 s step against a recorded ~22 m/s speed, sub-metre
+  lateral drift, near-zero yaw -- exactly right for a car holding lane on a
+  straight highway) before any model was ever involved; see
+  `tests/test_harness.py` for the synthetic version of the same check.
+- **`canbus` has no path to the visual plan** -- the six ONNX inputs are
+  `{img, big_img, features_buffer, desire_pulse, traffic_convention,
+  action_t}`; there is no speed/`vEgo` input at all, so a difference in how
+  `canbus[13]` is computed (comma2k19 uses the dataset's own recorded
+  velocity; KITScenes finite-differences positions) cannot be why the plan's
+  perceived speed is wrong.
+
+What's left, and the most likely explanation: **comma2k19's EON camera
+(1164x874, a 2018-era phone-grade sensor) is being upscaled 66% to fill
+supercombo's 1928x1208 input**, whereas KITScenes' ring camera (3504x2272) is
+being *downscaled* into the same target -- a much gentler transformation.
+supercombo was trained on modern tici-camera footage; fed a materially
+blurrier, lower-detail, highway-speed (~22 m/s / ~80 km/h) view through a
+camera two hardware generations older than what it expects, it appears to
+substantially underestimate ego speed while still tracking lane geometry
+(a largely single-frame, resolution-tolerant cue) just fine. That reads as a
+genuine cross-hardware generalization gap in the model, not a defect in this
+adapter -- but it is only a 100-sample, single-split (`rav4`) result; a full
+`civic`-inclusive run would confirm whether it holds outside chunk 1-2.

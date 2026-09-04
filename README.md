@@ -47,6 +47,7 @@ flowchart LR
         direction TB
         ns["nuScenes<br/>planned"]
         ks["KITScenes<br/>ADE / FDE"]
+        cm["comma2k19<br/>ADE / FDE"]
     end
     subgraph pseudo ["pseudo-closed-loop"]
         nv["NAVSIM v2<br/>EPDMS"]
@@ -80,16 +81,16 @@ flowchart LR
     classDef store   fill:#f6f8fa,stroke:#57606a,stroke-width:1.5px,color:#1f2328
     class op,al,dj,vp model
     class pol waist
-    class ns,ks ol
+    class ns,ks,cm ol
     class nv pcl
     class b2d,nc,alp cl
     class ns,alp planned
     class res store
 ```
 
-Four models times five benchmarks, and nobody wrote twenty adapters. A fifth
-model is one new directory under `adapters/models/`; a sixth benchmark is one
-new directory under `adapters/benchmarks/`.
+Four models times six benchmarks, and nobody wrote twenty-four adapters. A
+fifth model is one new directory under `adapters/models/`; a seventh
+benchmark is one new directory under `adapters/benchmarks/`.
 
 What crosses the wire between paddock, the model node and a simulator is
 drawn step by step in [docs/architecture.md](docs/architecture.md#on-the-wire).
@@ -104,13 +105,13 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 
 🟢 open-loop · 🟡 pseudo-closed-loop · 🔴 closed-loop · ↑ higher is better · ↓ lower is better
 
-| | 🟢 nuScenes ADE ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🔴 Bench2Drive ability ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim (OmniDreams) | 🔴 AlpaSim (nuRec) |
-|---|---|---|---|---|---|---|---|
-| OpenPilot | planned | 1.599 | ✗ 2 Hz ‡ | 37.7 ¶ | 3.80 | planned | planned |
-| Alpamayo 1.5 | planned | 1.002 | 0.653 † | adapter, unrun | 2.46 | planned | planned |
-| Drive-JEPA | planned | 2.364 | 0.843 | adapter, unrun | 4.04 | planned | planned |
-| VisionPilot | n/a ∗ | n/a ∗ | 0.431 | 61.6 ¶ | 1.67 | planned | planned |
-| Baseline (Constant Velocity) | — | 1.381 | 0.239 | — | 0 § | — | — |
+| | 🟢 nuScenes ADE ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟢 comma2k19 ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🔴 Bench2Drive ability ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim (OmniDreams) | 🔴 AlpaSim (nuRec) |
+|---|---|---|---|---|---|---|---|---|
+| OpenPilot | planned | 1.599 | 38.84 ‖ | ✗ 2 Hz ‡ | 37.7 ¶ | 3.80 | planned | planned |
+| Alpamayo 1.5 | planned | 1.002 | adapter, unrun | 0.653 † | adapter, unrun | 2.46 | planned | planned |
+| Drive-JEPA | planned | 2.364 | adapter, unrun | 0.843 | adapter, unrun | 4.04 | planned | planned |
+| VisionPilot | n/a ∗ | n/a ∗ | adapter, unrun | 0.431 | 61.6 ¶ | 1.67 | planned | planned |
+| Baseline (Constant Velocity) | — | 1.381 | — | 0.239 | — | 0 § | — | — |
 
 ∗ VisionPilot does not predict a trajectory. It predicts lane curvature and the
 closest in-path object, which are converted into instantaneous acceleration and
@@ -145,6 +146,15 @@ ego holding its current velocity collides at full speed, and the score is
 equal. The baseline therefore scores 0 in all three scenarios with a 100%
 collision rate.
 
+‖ 100 of 2035 segments (chunks 1-2 / `rav4` only — see the comma2k19 table
+below and `docs/benchmarks/comma2k19.md`), stored `valid: false` as a partial
+run, not the full corpus. Lateral tracking is fine (<1 m MAE, comparable to
+the KITScenes number); the large ADE is almost entirely longitudinal —
+consistent with a genuine cross-camera generalization gap (comma2k19's
+2018-era 1164x874 EON sensor, upscaled into supercombo's 1928x1208 input,
+vs. KITScenes' 3504x2272 camera, which is downscaled) rather than an adapter
+defect. Ruled-out causes are listed in the linked doc.
+
 ### KITScenes
 
 Open-loop displacement error in metres over the 3 s horizon, full 223-sample
@@ -158,6 +168,15 @@ trajectory to score (see ∗).
 | Drive-JEPA | 2.364 | 4.199 |
 | VisionPilot | n/a ∗ | n/a ∗ |
 | Baseline (Constant Velocity) | 1.381 | 3.091 |
+
+### comma2k19
+
+Open-loop displacement error in metres over the 3 s horizon, `--limit 100`
+(chunks 1-2 / `rav4` only — see ‖ above). One model so far.
+
+| Model | ADE@3s ↓ (m) | FDE@3s ↓ (m) | Lateral MAE ↓ (m) |
+|---|---:|---:|---:|
+| OpenPilot | 38.84 | 66.36 | 0.96 |
 
 ### NAVSIM v2
 
