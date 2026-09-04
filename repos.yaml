@@ -13,7 +13,7 @@
 repos:
   openpilot:
     url: https://github.com/commaai/openpilot.git
-    sha: 053d9c446
+    sha: 555f48c5d
     description: comma.ai openpilot; supercombo driving model via tinygrad
 
   sunnypilot:

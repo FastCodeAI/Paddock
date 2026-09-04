@@ -1,0 +1,6 @@
+name: comma2k19
+description: comma2k19 open-loop trajectory accuracy - ADE and FDE against the recorded (INS/GNSS/vision-fused) future
+mode: open_loop
+dataset: comma2k19
+metrics: [ade, fde@1s, fde@2s, fde@3s, longitudinal_mae, lateral_mae]
+primary_metric: ade

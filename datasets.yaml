@@ -43,3 +43,18 @@ datasets:
 
   openlane_sample:
     description: short OpenLane clips (video + speed trace) used to smoke-test VisionPilot
+
+  comma2k19:
+    description: comma.ai comma2k19 -- 33 hours of 20 Hz highway driving -- open-loop ADE/FDE
+    splits: [rav4, civic]
+    notes: >
+      Point this at raw_data/ (Chunk_1..10/<dongle_id>|<start_time>/<segment>/), not the
+      sibling demo/ or compression_challenge/ directories the HuggingFace redistribution
+      also ships -- those are a small parquet sample and a separate video-codec contest,
+      not this dataset. Each segment already carries pre-computed ground-truth ego pose
+      (global_pose/frame_positions + frame_orientations, ECEF, one row per video frame),
+      so no GNSS post-processing is needed. video.hevc is a raw HEVC elementary stream
+      with no per-frame images on disk; the harness decodes and caches the frames it
+      needs on first use (see docs/benchmarks/comma2k19.md). Native camera rate is 20 Hz,
+      which is supercombo's own input rate exactly -- unlike KITScenes' 10 Hz, no
+      frame-repeat trick is needed to keep the model's sense of speed honest.
