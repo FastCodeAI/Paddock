@@ -140,10 +140,15 @@ not a full sweep. The per-ability breakdown is in the Bench2Drive table below.
 Alpamayo and Drive-JEPA have adapters but no run yet.
 
 § Not run — zero by construction. Every neuroNCAP scenario is staged so that an
-ego holding its current velocity collides at full speed, and the score is
-`5 · max(0, 1 − v_impact / v_reference)`, which is 0 when the two speeds are
+ego holding its current velocity collides at full speed. A run that avoids the
+collision scores a flat **5**; a run that collides scores
+`4 · max(0, 1 − v_impact / v_reference)`, which is 0 when the two speeds are
 equal. The baseline therefore scores 0 in all three scenarios with a 100%
 collision rate.
+
+Note the discontinuity: **a single run scores either exactly 5, or at most 4** —
+grazing an obstacle at walking pace scores 4, not 4.9. Anything between the two
+is a mean over runs, which is what the model rows above are.
 
 ### KITScenes
 

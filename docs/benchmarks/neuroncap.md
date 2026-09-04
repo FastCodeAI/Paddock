@@ -329,3 +329,31 @@ sweep two different run ids depending on whether videos were wanted.
 For all four models side by side on one clock, see
 `tools/benchmarks/neuroncap/comparison_video.py` — it reads frames rather than
 videos, so it needs `video = "keep"`.
+
+## The score is not linear over 0–5
+
+From `neuro_ncap/components/evaluator.py::_compute_ncap_score`:
+
+```python
+if not collisions:
+    return 5.0                                        # a flat bonus
+return 4.0 * (1 - impact_speed / reference_speed).clamp_min(0.0)
+```
+
+So a single run scores **either exactly 5.0, or at most 4.0**. There is a gap:
+grazing an obstacle at walking pace scores just under 4, not just under 5. Any
+figure between 4 and 5 is a mean over runs — Drive-JEPA's 4.04 is
+`(5.00 + 2.13 + 5.00) / 3`, not a run that nearly avoided everything.
+
+Two consequences worth keeping in mind when reading a table:
+
+* **A mean hides which side of the gap its runs fell on.** 4.0 could be four
+  clean avoidances and one bad collision, or five near-misses. The per-run rows
+  in `results/` are what distinguish them, which is one more reason they are
+  stored separately.
+* **`impact_speed` and `reference_speed` are the score's own inputs.** Stored
+  alongside it, any row can be checked: `4 * (1 - impact/reference)` reproduces
+  the score exactly for a collision. That is how the formula above was confirmed
+  against a real run rather than taken from a docstring — the README had said
+  `5 · max(0, 1 − v_impact / v_reference)`, which overstates every collision
+  score by 25%.
