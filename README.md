@@ -107,7 +107,7 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 | | 🟢 nuScenes ADE ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🔴 Bench2Drive ability ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim (OmniDreams) | 🔴 AlpaSim (nuRec) |
 |---|---|---|---|---|---|---|---|
 | OpenPilot | planned | 1.599 | ✗ 2 Hz ‡ | 37.7 ¶ | 3.80 | planned | planned |
-| Alpamayo 1.5 | planned | 1.002 | 0.653 † | adapter, unrun | 2.46 | planned | planned |
+| Alpamayo 1.5 | planned | 1.002 | 0.608 † | adapter, unrun | 2.46 | planned | planned |
 | Drive-JEPA | planned | 2.364 | 0.843 | adapter, unrun | 4.04 | planned | planned |
 | VisionPilot | n/a ∗ | n/a ∗ | 0.431 | 61.6 ¶ | 1.67 | planned | planned |
 | Baseline (Constant Velocity) | — | 1.381 | 0.239 | — | 0 § | — | — |
@@ -117,12 +117,16 @@ closest in-path object, which are converted into instantaneous acceleration and
 steering commands, so there is no plan to measure an ADE against. It can only
 be scored where something drives on those commands.
 
-† Alpamayo's NAVSIM figure is still the **242-scenario subset** (5 of 136
-logs); its full-navtest run is in progress. Drive-JEPA's and VisionPilot's are
-the full 12,146 scenarios. On the subset Drive-JEPA scored 0.880 through
-paddock's proxy — the vendor's own agent scores 0.907 by reading the scorer's
-simulator at inference time, which no other model can do, so the proxy figure
-is the comparable one. `preflight` refuses a partial split unless told
+† All three NAVSIM figures are the full navtest split, 12,146 real recorded
+scenarios, scored through paddock's proxy agent. This is NAVSIM v2's **stage
+one** only: the leaderboard's stage two, the pseudo-simulation on synthetic
+scenes (navhard / navsafe two-stage), is not run -- it needs the
+`synthetic_scenes/` download and a second metric cache. Alpamayo's earlier
+242-scenario estimate was 0.653; the full split says 0.608, which is why
+subsets are stored `valid: false`. On the subset Drive-JEPA scored 0.880
+through the proxy — the vendor's own agent scores 0.907 by reading the
+scorer's simulator at inference time, which no other model can do, so the
+proxy figure is the comparable one. `preflight` refuses a partial split unless told
 otherwise, so a subset cannot be reported as full navtest by accident, and the
 subset rows in `results/` are stored `valid: false` -- they appear under
 "Excluded runs" and never average against a full-split row.
@@ -161,16 +165,20 @@ trajectory to score (see ∗).
 
 ### NAVSIM v2
 
-Full navtest, 12,146 scenarios, all sub-metrics 0–1. Every column except EPDMS
+Full navtest (stage one: real recorded scenes, no synthetic stage two), 12,146 scenarios, all sub-metrics 0–1. Every column except EPDMS
 is the mean of a per-scenario pass/fail or ratio, and EPDMS is the weighted
 product the scorer builds from them. Drive-JEPA is scored through paddock's
-proxy agent (see †). The last column is the 242-scenario subset (2% of
-navtest) that every model was first run on, for reference only.
+proxy agent (see †). Extended comfort is the mean over the scenarios where it
+is defined, 10,040 of the 12,146 -- it compares consecutive frames' plans, so
+it is absent for a log's first frame and for any scenario without a scorable
+predecessor (`docs/results-schema.md`); every other column is over all 12,146.
+The last column is the 242-scenario subset (2% of navtest) that every model
+was first run on, for reference only.
 
 | Model | EPDMS ↑ | No at-fault collisions ↑ | Drivable area ↑ | Driving direction ↑ | Traffic light ↑ | Ego progress ↑ | TTC within bound ↑ | Lane keeping ↑ | History comfort ↑ | Extended comfort ↑ | EPDMS on 242 subset |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | OpenPilot | — ‡ | — | — | — | — | — | — | — | — | — | — |
-| Alpamayo 1.5 | running † | — | — | — | — | — | — | — | — | — | 0.653 |
+| Alpamayo 1.5 | 0.608 | 0.941 | 0.788 | 0.890 | 0.998 | 0.596 | 0.939 | 0.931 | 0.938 | 0.490 | 0.653 |
 | Drive-JEPA | **0.843** | 0.984 | 0.985 | 0.991 | 0.998 | 0.889 | 0.979 | 0.974 | 0.978 | 0.477 | 0.880 |
 | VisionPilot | 0.431 | 0.727 | 0.819 | 0.926 | 0.975 | 0.404 | 0.700 | 0.899 | 0.968 | 0.518 | 0.447 |
 | Baseline (Constant Velocity) | 0.239 | 0.681 | 0.578 | 0.805 | 0.981 | 0.209 | 0.669 | 0.827 | 0.979 | 0.567 | 0.257 |
