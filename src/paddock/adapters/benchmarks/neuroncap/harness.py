@@ -50,7 +50,16 @@ OFFICIAL_SET: dict[str, tuple[str, ...]] = {
     "side": ("0103", "0108", "0110", "0278", "0921"),
 }
 
-_SCORE_LINE = re.compile(r"ncap_score:\s*([-\d.eE+]+)")
+# The engine prints all three but writes only ncap_score to metrics.json:
+#     ncap_score: 3.14488,  impact_speed: 1.77743,  reference_speed: 8.31438
+# The speeds are the score's own inputs -- it is 5*max(0, 1 - v_impact/v_ref) --
+# so dropping them leaves a score nothing can be checked against. The legacy
+# ingest recovers them from the ladder logs; the live path reads the stdout it
+# already captures. The speed group is optional so a score-only line still matches.
+_SCORE_LINE = re.compile(
+    r"ncap_score:\s*([-\d.eE+]+)"
+    r"(?:,\s*impact_speed:\s*([-\d.eE+]+),\s*reference_speed:\s*([-\d.eE+]+))?"
+)
 _RUN_DIR = re.compile(r"^run_(\d+)$")
 
 # The engine already writes a frame per step per run; these are the two derived
@@ -148,6 +157,28 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             )
         return problems
 
+    def invalid_reasons(self) -> list[str]:
+        """Why a run under the current scope cannot be ranked against the others.
+
+        A neuroNCAP figure means "the official 20 scenario-scene pairs". Anything
+        narrower -- one scene for a smoke, one scenario while debugging -- is a
+        different measurement wearing the same name, and stored `valid: true` it
+        would average into the leaderboard as a full sweep. NAVSIM has refused a
+        partial split this way from the start; this is the same guard.
+
+        The run *count* is deliberately not checked. Runs are seeded 0..R-1, so
+        10 of upstream's 50 is an unbiased subsample of the same protocol rather
+        than a different scope -- see docs/benchmarks/neuroncap.md.
+        """
+        total = sum(len(v) for v in OFFICIAL_SET.values())
+        ran = getattr(self, "_pairs_run", None)
+        if ran is None or ran >= total:
+            return []
+        return [
+            f"{ran} of the {total} official scenario-scene pairs; a subset, "
+            f"not a neuroNCAP score ({_official_set_summary()})"
+        ]
+
     def scene_problems(self, scene: str) -> list[str]:
         """Per-scene checks: a scenario with no renderer checkpoint cannot run."""
         problems = []
@@ -182,6 +213,7 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         # a stationary file and no other. Skipping that is right; skipping a
         # pair the caller asked for by name is how a sweep silently shrinks.
         explicit = scenarios is not None
+        self._pairs_run = 0
         for scene in scenes or ["0103"]:
             for scenario in scenarios or list(DEFAULT_SCENARIOS):
                 path = SCENARIOS_DIR / scenario / f"{scene}.yaml"
@@ -193,6 +225,7 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
                             f"{_official_set_summary()}."
                         )
                     continue
+                self._pairs_run += 1
                 yield Episode(
                     episode_id=f"{scenario}-{scene}",
                     scenario=scenario,
@@ -458,7 +491,39 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
                 record["collision_rate"] = 1.0 if raw["any_collide@0.0s"] else 0.0
             if record:
                 out.append((index, record))
-        return sorted(out, key=lambda item: item[0])
+        out.sort(key=lambda item: item[0])
+        return NeuroNcapBenchmark._with_speeds(out, out_dir)
+
+    @staticmethod
+    def _with_speeds(
+        runs: list[tuple[int, dict[str, float]]], out_dir: Path
+    ) -> list[tuple[int, dict[str, float]]]:
+        """Fill in impact_speed / reference_speed from the captured stdout.
+
+        The engine prints them per run and writes neither to metrics.json, so
+        without this a stored row has a score and no way to see what produced it.
+
+        Matched by position: the engine drives runs sequentially and prints one
+        line each, so line i belongs to run i. If the counts disagree -- a run
+        crashed, or the log was truncated -- the join is abandoned rather than
+        guessed, because a speed attributed to the wrong run is worse than none.
+        """
+        log = out_dir / "stdout.log"
+        if not runs or not log.exists():
+            return runs
+        parsed = [m.groups() for m in _SCORE_LINE.finditer(log.read_text())]
+        if len(parsed) != len(runs):
+            return runs
+        for (_, record), (score, impact, reference) in zip(runs, parsed, strict=True):
+            if impact is None or reference is None:
+                continue
+            # The score is in both places at full precision; disagreement means
+            # the positional assumption is wrong, so leave that run alone.
+            if "ncap_score" in record and abs(record["ncap_score"] - float(score)) > 1e-9:
+                continue
+            record.setdefault("impact_speed", float(impact))
+            record.setdefault("reference_speed", float(reference))
+        return runs
 
     @classmethod
     def _collect(cls, out_dir: Path) -> dict[str, float]:

@@ -290,3 +290,107 @@ def test_a_missing_ffmpeg_keeps_the_frames_and_never_raises(tmp_path, monkeypatc
 
     assert (tmp_path / "run_0" / "FC_TRAJ").is_dir(), "frames must survive"
     assert said and "ffmpeg" in said[0]
+
+
+# ---- impact / reference speed ------------------------------------------
+
+# Exactly as the engine prints it, two spaces after each comma.
+_STDOUT = """\
+starting run 0
+ncap_score: 1.7853428451189424,  impact_speed: 7.352228805237549,  reference_speed: 13.27921802981268
+starting run 1
+ncap_score: 2.458287437510784,  impact_speed: 5.118184314148877,  reference_speed: 13.27921802981268
+"""
+
+
+def _episode_with_stdout(tmp_path, scores, stdout=_STDOUT):
+    for i, s in enumerate(scores):
+        d = tmp_path / f"run_{i}"
+        d.mkdir()
+        (d / "metrics.json").write_text(json.dumps({"ncap_score": s, "any_collide@0.0s": True}))
+    (tmp_path / "stdout.log").write_text(stdout)
+    return tmp_path
+
+
+def test_speeds_are_recovered_from_stdout(tmp_path) -> None:
+    """The engine prints impact/reference speed and writes neither to metrics.json.
+
+    They are the score's own inputs -- 5*max(0, 1 - v_impact/v_ref) -- so a row
+    without them records a number nothing can be checked against. The legacy
+    ingest recovers them from its logs; the live path has the same text in the
+    stdout it already captures.
+    """
+    from paddock.adapters.benchmarks.neuroncap.harness import NeuroNcapBenchmark
+
+    per_run = NeuroNcapBenchmark._per_run(
+        _episode_with_stdout(tmp_path, [1.7853428451189424, 2.458287437510784])
+    )
+
+    assert [m["impact_speed"] for _, m in per_run] == [7.352228805237549, 5.118184314148877]
+    assert [m["reference_speed"] for _, m in per_run] == [13.27921802981268, 13.27921802981268]
+
+
+def test_speeds_are_left_out_rather_than_guessed_when_the_join_is_unsafe(tmp_path) -> None:
+    """A speed on the wrong run is worse than no speed.
+
+    Positional matching holds only while the engine prints one line per run. If
+    a run crashed or the log was truncated the counts disagree, and then there
+    is no way to tell which line belongs to which run.
+    """
+    from paddock.adapters.benchmarks.neuroncap.harness import NeuroNcapBenchmark
+
+    one_line = "\n".join(_STDOUT.splitlines()[:2]) + "\n"
+    per_run = NeuroNcapBenchmark._per_run(
+        _episode_with_stdout(tmp_path, [1.7853428451189424, 2.458287437510784], stdout=one_line)
+    )
+
+    assert len(per_run) == 2
+    assert all("impact_speed" not in m for _, m in per_run)
+    assert [m["ncap_score"] for _, m in per_run] == [1.7853428451189424, 2.458287437510784]
+
+
+def test_a_score_that_disagrees_leaves_that_run_alone(tmp_path) -> None:
+    """The score appears at full precision in both places, so it validates the join."""
+    from paddock.adapters.benchmarks.neuroncap.harness import NeuroNcapBenchmark
+
+    per_run = NeuroNcapBenchmark._per_run(_episode_with_stdout(tmp_path, [9.9, 2.458287437510784]))
+
+    by_index = dict(per_run)
+    assert "impact_speed" not in by_index[0], "mismatched score must not take the line's speeds"
+    assert by_index[1]["impact_speed"] == 5.118184314148877
+
+
+def test_a_score_only_line_still_matches(tmp_path) -> None:
+    """Older logs print the score alone; the speed group is optional."""
+    from paddock.adapters.benchmarks.neuroncap.harness import NeuroNcapBenchmark
+
+    per_run = NeuroNcapBenchmark._per_run(_episode_with_stdout(tmp_path, [5.0], stdout="ncap_score: 5.0\n"))
+
+    assert [m["ncap_score"] for _, m in per_run] == [5.0]
+    assert "impact_speed" not in per_run[0][1]
+
+
+def test_a_partial_scope_is_stored_invalid(tmp_path) -> None:
+    """A smoke on one scene must not average into the leaderboard as a sweep.
+
+    This is the failure the whole adapter guards against, one level up: not a
+    sweep that silently scores fewer pairs, but a deliberately narrow run that
+    gets recorded wearing the full benchmark's name.
+    """
+    harness = _harness()
+    list(harness.episodes(["0103"], runs=2, scenarios=["stationary", "frontal"]))
+    reasons = harness.invalid_reasons()
+    assert reasons and "2 of the 20 official" in reasons[0]
+
+
+def test_the_full_official_set_is_valid() -> None:
+    harness = _harness()
+    list(harness.episodes(harness.available_scenes(), runs=10))
+    assert harness.invalid_reasons() == []
+
+
+def test_run_count_alone_does_not_invalidate() -> None:
+    """10 runs of upstream's 50 is a seeded prefix -- a subsample, not a subset."""
+    harness = _harness()
+    list(harness.episodes(harness.available_scenes(), runs=1))
+    assert harness.invalid_reasons() == []
