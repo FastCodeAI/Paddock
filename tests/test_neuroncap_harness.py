@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -16,7 +17,77 @@ from paddock.config import ConfigError, SiteConfig
 from paddock.registry import Registry
 
 
+def _stub_ffmpeg(tmp_path: Path, fail: bool = False) -> Path:
+    """A stand-in encoder, so the video tests do not need a real ffmpeg.
+
+    What these tests check is the harness's part -- which frames it lists, that
+    it writes and cleans up the concat file, that it prunes only a stream that
+    encoded, that a failure keeps the frames. None of that is ffmpeg's
+    behaviour, and requiring the binary meant the whole video pipeline had no
+    coverage on CI or at the other site. A real encode is verified separately.
+    """
+    stub = tmp_path / ("ffmpeg_fail" if fail else "ffmpeg_stub")
+    stub.write_text(
+        "#!/bin/sh\n" + ("exit 1\n" if fail else 'for a; do out="$a"; done\nprintf fake > "$out"\n')
+    )
+    stub.chmod(0o755)
+    return stub
+
+
+def _ncap_site(tmp_path: Path, monkeypatch, **settings) -> SiteConfig:
+    """A neuroNCAP site built from a temp layout, so no test needs this machine.
+
+    Most of this harness needs nothing from the site: `episodes` reads tracked
+    scenario files, `episode_samples` takes an `out_dir`, `video_mode` reads one
+    setting and `_encode` needs ffmpeg and a directory. Loading the real
+    `paddock.toml` made all of that skip on CI and at the other site, which left
+    the video pipeline and the per-run sampling with no coverage anywhere but
+    here.
+    """
+    for sub in ("repos", "runs", "weights", "nuscenes", "ncap-repo"):
+        (tmp_path / sub).mkdir(exist_ok=True)
+    (tmp_path / "ncap-repo" / "main.py").touch()
+    # One checkpoint dir per official scene, so available_scenes() is the full set.
+    ckpt = tmp_path / "checkpoints"
+    ckpt.mkdir(exist_ok=True)
+    for scene in {s for v in OFFICIAL_SET.values() for s in v}:
+        (ckpt / scene).mkdir(exist_ok=True)
+
+    for scene in {s for v in OFFICIAL_SET.values() for s in v}:
+        (ckpt / scene / "config.yml").write_text("")
+    block = {
+        "python": str(tmp_path / "python"),
+        "repo": str(tmp_path / "ncap-repo"),
+        "renderer_url": "http://127.0.0.1:8765",
+        "checkpoints": str(ckpt),
+        "renderer_python": str(tmp_path / "python"),
+        "renderer_cwd": str(tmp_path),
+        "neurad_studio": str(tmp_path / "studio"),
+        **settings,
+    }
+    (tmp_path / "studio").mkdir(exist_ok=True)
+    if "ffmpeg" not in block:
+        block["ffmpeg"] = str(_stub_ffmpeg(tmp_path))
+    (tmp_path / "python").touch()
+    lines = "\n".join(f'{k} = "{v}"' for k, v in block.items())
+    (tmp_path / "site.toml").write_text(
+        f'site = "test-site"\n[roots]\nrepos = "{tmp_path / "repos"}"\n'
+        f'runs = "{tmp_path / "runs"}"\nweights = "{tmp_path / "weights"}"\n'
+        f'[datasets.nuscenes]\npath = "{tmp_path / "nuscenes"}"\nversion = "v1.0-trainval"\n'
+        f"[benchmarks.neuroncap]\n{lines}\n"
+    )
+    monkeypatch.setenv("PADDOCK_CONFIG", str(tmp_path / "site.toml"))
+    return SiteConfig.load()
+
+
+def _harness_for(cfg: SiteConfig):
+    from paddock.adapters.benchmarks.neuroncap.harness import BENCHMARK
+
+    return BENCHMARK(Registry.load().benchmarks["neuroncap"], cfg)
+
+
 def _harness():
+    """The real site, for the few checks that are genuinely about this machine."""
     try:
         cfg = SiteConfig.load()
     except ConfigError:
@@ -52,27 +123,28 @@ def test_waypoint_grid_is_independent_of_the_sim_step() -> None:
     assert WAYPOINT_DT == 0.5
 
 
-def test_episode_ids_are_stable_and_paired() -> None:
+def test_episode_ids_are_stable_and_paired(tmp_path, monkeypatch) -> None:
     """Every model must see identical episodes, in a deterministic order."""
-    harness = _harness()
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
     first = [e.episode_id for e in harness.episodes(["0103"], runs=1)]
     second = [e.episode_id for e in harness.episodes(["0103"], runs=1)]
     assert first == second
     assert first == ["stationary-0103", "frontal-0103", "side-0103"]
 
 
-def test_a_scene_without_a_checkpoint_is_reported_before_running() -> None:
+def test_a_scene_without_a_checkpoint_is_reported_before_running(tmp_path, monkeypatch) -> None:
     """This is what preflight is for: catching it in seconds, not an hour in."""
-    harness = _harness()
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
+
     if not harness.setting("checkpoints"):
         pytest.skip("no checkpoints configured")
     problems = harness.scene_problems("9999")
     assert problems and "no renderer checkpoint" in problems[0]
 
 
-def test_available_scenes_intersects_scenarios_with_checkpoints() -> None:
+def test_available_scenes_intersects_scenarios_with_checkpoints(tmp_path, monkeypatch) -> None:
     """A scenario yaml without a renderer checkpoint cannot be rendered."""
-    harness = _harness()
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
     if not harness.setting("checkpoints"):
         pytest.skip("no checkpoints configured")
     scenes = harness.available_scenes()
@@ -106,16 +178,16 @@ def test_no_scenario_files_beyond_the_official_set() -> None:
     assert tracked == official, f"unexpected: {tracked - official}, missing: {official - tracked}"
 
 
-def test_a_named_scenario_scene_pair_that_does_not_exist_is_an_error() -> None:
+def test_a_named_scenario_scene_pair_that_does_not_exist_is_an_error(tmp_path, monkeypatch) -> None:
     """Explicitly asked for, explicitly refused -- not silently dropped."""
-    harness = _harness()
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
     with pytest.raises(FileNotFoundError, match="no scenario file"):
         list(harness.episodes(["0099"], runs=1, scenarios=["frontal"]))
 
 
-def test_a_scene_outside_a_category_is_skipped_when_scenarios_default() -> None:
+def test_a_scene_outside_a_category_is_skipped_when_scenarios_default(tmp_path, monkeypatch) -> None:
     """0099 is a stationary-only scene; that is the benchmark's shape, not a gap."""
-    harness = _harness()
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
     assert [e.episode_id for e in harness.episodes(["0099"], runs=1)] == ["stationary-0099"]
 
 
@@ -137,7 +209,7 @@ def test_runs_are_ordered_numerically_not_lexically(tmp_path) -> None:
     assert [m["ncap_score"] for _, m in per_run] == [0.0, 1.0, 2.0, 10.0, 11.0]
 
 
-def test_every_run_reaches_the_results_store_separately(tmp_path) -> None:
+def test_every_run_reaches_the_results_store_separately(tmp_path, monkeypatch) -> None:
     """The spread is the point: a mean of 10 runs with no n and no sd is unreadable."""
     from paddock.adapters.benchmarks.neuroncap.harness import NeuroNcapBenchmark
 
@@ -146,7 +218,7 @@ def test_every_run_reaches_the_results_store_separately(tmp_path) -> None:
         d.mkdir()
         (d / "metrics.json").write_text(json.dumps({"ncap_score": score, "any_collide@0.0s": score < 5.0}))
 
-    harness = _harness()
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
     episode = next(iter(harness.episodes(["0103"], runs=3, scenarios=["frontal"])))
     samples = harness.episode_samples(episode, {}, tmp_path)
 
@@ -162,14 +234,14 @@ def test_every_run_reaches_the_results_store_separately(tmp_path) -> None:
     assert NeuroNcapBenchmark._collect(tmp_path)["ncap_score"] == pytest.approx(2.361333, abs=1e-5)
 
 
-def test_expected_sample_count_matches_what_a_sweep_records() -> None:
+def test_expected_sample_count_matches_what_a_sweep_records(tmp_path, monkeypatch) -> None:
     """`n_samples / n_expected` is the schema's completion ratio, so both count samples.
 
     neuroNCAP is the one benchmark where an episode is not one sample, so it is
     the one that breaks the ratio if `samples_per_episode` and `episode_samples`
     ever disagree about the factor.
     """
-    harness = _harness()
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
     runs = 10
     episodes = list(harness.episodes(harness.available_scenes(), runs=runs))
     assert harness.samples_per_episode(runs) == runs
@@ -200,8 +272,8 @@ def _frames(run_dir, stream, n=3):
     return d
 
 
-def _harness_with_video(mode):
-    harness = _harness()
+def _harness_with_video(mode, tmp_path, monkeypatch):
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch, video=mode))
     real = harness.setting
 
     def setting(key, default=None):
@@ -211,19 +283,20 @@ def _harness_with_video(mode):
     return harness
 
 
-def test_video_mode_defaults_to_encode_and_rejects_nonsense() -> None:
-    assert _harness().video_mode() == "encode"
+def test_video_mode_defaults_to_encode_and_rejects_nonsense(tmp_path, monkeypatch) -> None:
+    # A site that never set `video` gets encode.
+    assert _harness_for(_ncap_site(tmp_path, monkeypatch)).video_mode() == "encode"
     with pytest.raises(ValueError, match="expected one of"):
-        _harness_with_video("mp4").video_mode()
+        _harness_with_video("mp4", tmp_path, monkeypatch).video_mode()
 
 
-def test_encode_writes_one_video_per_run_and_prunes_the_frames(tmp_path) -> None:
+def test_encode_writes_one_video_per_run_and_prunes_the_frames(tmp_path, monkeypatch) -> None:
     """The frames are reconstructible from CAM_* plus the json, so pruning is safe.
 
     83 MB per run is 66 GB across a 20-pair sweep at 10 runs for four models;
     the same content as video is about 5 GB.
     """
-    harness = _harness_with_video("encode")
+    harness = _harness_with_video("encode", tmp_path, monkeypatch)
     if harness._ffmpeg() is None:
         pytest.skip("no ffmpeg")
 
@@ -249,8 +322,8 @@ def test_encode_writes_one_video_per_run_and_prunes_the_frames(tmp_path) -> None
     assert not list(tmp_path.rglob("*.concat")), "the concat list is a temp file"
 
 
-def test_keep_encodes_without_deleting_anything(tmp_path) -> None:
-    harness = _harness_with_video("keep")
+def test_keep_encodes_without_deleting_anything(tmp_path, monkeypatch) -> None:
+    harness = _harness_with_video("keep", tmp_path, monkeypatch)
     if harness._ffmpeg() is None:
         pytest.skip("no ffmpeg")
     _frames(tmp_path / "run_0", "FC_TRAJ")
@@ -261,15 +334,17 @@ def test_keep_encodes_without_deleting_anything(tmp_path) -> None:
     assert (tmp_path / "run_0" / "FC_TRAJ").is_dir()
 
 
-def test_off_writes_nothing(tmp_path) -> None:
+def test_off_writes_nothing(tmp_path, monkeypatch) -> None:
     _frames(tmp_path / "run_0", "FC_TRAJ")
-    assert _harness_with_video("off").render_videos(tmp_path, echo=lambda _: None) == []
+    assert (
+        _harness_with_video("off", tmp_path, monkeypatch).render_videos(tmp_path, echo=lambda _: None) == []
+    )
     assert not list(tmp_path.rglob("*.mp4"))
 
 
-def test_a_single_run_episode_has_no_run_dir_and_still_renders(tmp_path) -> None:
+def test_a_single_run_episode_has_no_run_dir_and_still_renders(tmp_path, monkeypatch) -> None:
     """`--runs 1` writes straight into the episode dir; `_per_run` reads it the same way."""
-    harness = _harness_with_video("encode")
+    harness = _harness_with_video("encode", tmp_path, monkeypatch)
     if harness._ffmpeg() is None:
         pytest.skip("no ffmpeg")
     _frames(tmp_path, "FC_TRAJ")
@@ -279,9 +354,23 @@ def test_a_single_run_episode_has_no_run_dir_and_still_renders(tmp_path) -> None
     assert [p.name for p in written] == ["FC_TRAJ.mp4"]
 
 
+def test_a_failing_encoder_keeps_the_frames(tmp_path, monkeypatch) -> None:
+    """A non-zero ffmpeg must not prune: frames with no video are the worst case."""
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch, ffmpeg=str(_stub_ffmpeg(tmp_path, fail=True))))
+    _frames(tmp_path / "run_0", "FC_TRAJ")
+
+    said = []
+    assert harness.render_videos(tmp_path, echo=said.append) == []
+
+    assert (tmp_path / "run_0" / "FC_TRAJ").is_dir(), "frames must survive a failed encode"
+    assert not (tmp_path / "run_0" / "FC_TRAJ.mp4").exists()
+    assert said and "failed" in said[0]
+    assert not list(tmp_path.rglob("*.concat")), "the concat list must be cleaned up"
+
+
 def test_a_missing_ffmpeg_keeps_the_frames_and_never_raises(tmp_path, monkeypatch) -> None:
     """An episode costs minutes of simulator time; a debugging aid must not lose it."""
-    harness = _harness_with_video("encode")
+    harness = _harness_with_video("encode", tmp_path, monkeypatch)
     monkeypatch.setattr(type(harness), "_ffmpeg", lambda self: None)
     _frames(tmp_path / "run_0", "FC_TRAJ")
 
@@ -312,7 +401,7 @@ def _episode_with_stdout(tmp_path, scores, stdout=_STDOUT):
     return tmp_path
 
 
-def test_speeds_are_recovered_from_stdout(tmp_path) -> None:
+def test_speeds_are_recovered_from_stdout(tmp_path, monkeypatch) -> None:
     """The engine prints impact/reference speed and writes neither to metrics.json.
 
     They are the score's own inputs -- 5*max(0, 1 - v_impact/v_ref) -- so a row
@@ -370,28 +459,28 @@ def test_a_score_only_line_still_matches(tmp_path) -> None:
     assert "impact_speed" not in per_run[0][1]
 
 
-def test_a_partial_scope_is_stored_invalid(tmp_path) -> None:
+def test_a_partial_scope_is_stored_invalid(tmp_path, monkeypatch) -> None:
     """A smoke on one scene must not average into the leaderboard as a sweep.
 
     This is the failure the whole adapter guards against, one level up: not a
     sweep that silently scores fewer pairs, but a deliberately narrow run that
     gets recorded wearing the full benchmark's name.
     """
-    harness = _harness()
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
     list(harness.episodes(["0103"], runs=2, scenarios=["stationary", "frontal"]))
     reasons = harness.invalid_reasons()
     assert reasons and "2 of the 20 official" in reasons[0]
 
 
-def test_the_full_official_set_is_valid() -> None:
-    harness = _harness()
+def test_the_full_official_set_is_valid(tmp_path, monkeypatch) -> None:
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
     list(harness.episodes(harness.available_scenes(), runs=10))
     assert harness.invalid_reasons() == []
 
 
-def test_run_count_alone_does_not_invalidate() -> None:
+def test_run_count_alone_does_not_invalidate(tmp_path, monkeypatch) -> None:
     """10 runs of upstream's 50 is a seeded prefix -- a subsample, not a subset."""
-    harness = _harness()
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
     list(harness.episodes(harness.available_scenes(), runs=1))
     assert harness.invalid_reasons() == []
 
@@ -399,46 +488,50 @@ def test_run_count_alone_does_not_invalidate() -> None:
 # ---- renderer management -----------------------------------------------
 
 
-def test_renderer_management_is_off_by_default() -> None:
+def test_renderer_management_is_off_by_default(tmp_path, monkeypatch) -> None:
     """The single-scene workflow keeps a renderer alive across runs on purpose."""
-    assert _harness().manages_renderer() is False
+    assert _harness_for(_ncap_site(tmp_path, monkeypatch)).manages_renderer() is False
 
 
-def test_managing_renderers_makes_the_whole_official_set_one_valid_run() -> None:
+def test_managing_renderers_makes_the_whole_official_set_one_valid_run(tmp_path, monkeypatch) -> None:
     """This is the reason the switch exists.
 
     The renderer cannot change scene, so driving 14 scenes from outside means one
     `paddock run` per scene -- and then every run covers 1-3 of the 20 pairs and
     is correctly recorded `valid: false`. 28 partial runs, no rankable score.
     """
-    harness = _harness()
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
     list(harness.episodes(harness.available_scenes(), runs=10))
     assert harness.invalid_reasons() == []
 
-    per_scene = _harness()
+    per_scene = _harness_for(_ncap_site(tmp_path, monkeypatch))
     list(per_scene.episodes(["0103"], runs=10))
     assert per_scene.invalid_reasons(), "a single-scene run must not rank as a sweep"
 
 
-def test_a_renderer_we_did_not_start_is_never_stopped() -> None:
+def test_a_renderer_we_did_not_start_is_never_stopped(tmp_path, monkeypatch) -> None:
     """On a shared box that renderer may be another person's sweep."""
-    harness = _harness()
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
     harness._renderer_proc = None
     harness._stop_renderer(lambda _: None)  # must not raise, must not touch anything
     assert harness._renderer_proc is None
 
 
-def test_ensure_renderer_is_a_no_op_when_unmanaged(monkeypatch) -> None:
+def test_ensure_renderer_is_a_no_op_when_unmanaged(monkeypatch, tmp_path) -> None:
     """Without the switch, run_episode must not try to start anything."""
-    harness = _harness()
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
     called = []
     monkeypatch.setattr(type(harness), "_stop_renderer", lambda self, echo=print: called.append(1))
     harness._ensure_renderer("0106", echo=lambda _: None)
     assert called == []
 
 
-def test_every_official_scene_has_a_buildable_renderer_command() -> None:
-    """preflight's check, asserted directly: a sweep must not die on scene 9 of 14."""
+def test_this_site_can_render_every_official_scene() -> None:
+    """The real site, deliberately: a sweep must not die on scene 9 of 14.
+
+    Tautological against a temp layout, which is why this one still loads the
+    machine's own config and skips where there is none.
+    """
     from paddock.adapters.benchmarks.neuroncap import launcher
 
     harness = _harness()
@@ -447,3 +540,49 @@ def test_every_official_scene_has_a_buildable_renderer_command() -> None:
     for scene in sorted({s for v in OFFICIAL_SET.values() for s in v}):
         command, cwd, env = launcher.renderer_command(harness.cfg, scene, 8000)
         assert command and cwd and "NEURAD_STUDIO" in env
+
+
+# ---- usage errors reach the user, before the model loads ---------------
+
+
+def test_a_named_pair_that_does_not_exist_is_refused_by_preflight(tmp_path, monkeypatch) -> None:
+    """`episodes()` raising is too late and the wrong type.
+
+    It is called inside the `model_node` block, so the model is already resident;
+    and the runner catches `RuntimeError`, which `FileNotFoundError` is not, so
+    the carefully written message arrives as a traceback. preflight runs first.
+    """
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
+    problems = harness.scenario_problems(["frontal"], ["0099"])
+    assert problems and "no scenario file for frontal/0099" in problems[0]
+    assert "stationary-only" in problems[0]
+
+    assert harness.scenario_problems(["stationary"], ["0099"]) == []
+    assert harness.scenario_problems(["frontal"], ["0103"]) == []
+
+
+def test_an_unknown_scenario_name_is_still_refused(tmp_path, monkeypatch) -> None:
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
+    problems = harness.scenario_problems(["sideways"], ["0103"])
+    assert problems and "no such scenario set" in problems[0]
+
+
+def test_a_bad_video_setting_is_refused_by_preflight(tmp_path, monkeypatch) -> None:
+    """Otherwise a typo raises ValueError from the first episode, after the node is up.
+
+    The runner catches `RuntimeError`, not `ValueError`, so that is a traceback
+    minutes into a sweep instead of a refusal in seconds.
+    """
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch, video="encoded"))
+    assert any("expected one of" in p for p in harness.preflight())
+
+
+def test_episode_output_goes_to_the_runs_own_stream(tmp_path, monkeypatch) -> None:
+    """A detached sweep's log should hold the whole story, not just stdout."""
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
+    monkeypatch.setattr(type(harness), "_ffmpeg", lambda self: None)
+    _frames(tmp_path / "run_0", "FC_TRAJ")
+
+    said = []
+    harness.render_videos(tmp_path, echo=said.append)
+    assert said and "ffmpeg" in said[0], "must reach the caller's echo, not print"

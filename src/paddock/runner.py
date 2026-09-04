@@ -252,7 +252,10 @@ def run_benchmark(
         for one in scenes:
             problems += harness.scene_problems(one)
     if scenarios and hasattr(harness, "scenario_problems"):
-        problems += harness.scenario_problems(scenarios)
+        try:
+            problems += harness.scenario_problems(scenarios, scenes)
+        except TypeError:  # a benchmark that only validates the names
+            problems += harness.scenario_problems(scenarios)
     if problems:
         echo(f"{bench} cannot run here:")
         for problem in problems:
@@ -358,7 +361,7 @@ def _run_one_model(
                 episode.config["cameras"] = list(model_spec.cameras)
                 out_dir = artifacts / episode.episode_id
                 try:
-                    metrics = harness.run_episode(episode, policy_url, out_dir)
+                    metrics = harness.run_episode(episode, policy_url, out_dir, echo)
                 except RuntimeError as exc:
                     echo(f"  {episode.episode_id}: FAILED - {exc}")
                     failures += 1

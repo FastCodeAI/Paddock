@@ -23,7 +23,7 @@
     "gpu_free_gb_at_start": null
   },
   "status": "complete",
-  "valid": true,
-  "notes": "",
+  "valid": false,
+  "notes": "openpilot closed-loop scores recorded before 12f3250 fixed the traffic_convention one-hot: the node passed [0, 1], telling supercombo it was a right-hand-drive car in a left-hand-drive city. Superseded; re-measure rather than compare. See docs/benchmarks/neuroncap.md.",
   "ingested_from": ""
 }

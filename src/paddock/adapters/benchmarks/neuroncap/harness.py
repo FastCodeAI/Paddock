@@ -161,6 +161,14 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
                 f"rest and record it as a sweep."
             )
 
+        try:
+            self.video_mode()
+        except ValueError as exc:
+            # Otherwise a typo raises from the first episode's run_episode, after
+            # the node is up, and as a traceback -- the runner catches
+            # RuntimeError, not ValueError.
+            problems.append(str(exc))
+
         url = self.setting("renderer_url")
         if url and self.manages_renderer():
             # We start one per scene; a live one here would be someone else's,
@@ -219,13 +227,33 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             )
         return problems
 
-    def scenario_problems(self, scenarios: list[str]) -> list[str]:
-        """A scenario name with no tracked directory would otherwise yield nothing, late."""
+    def scenario_problems(self, scenarios: list[str], scenes: list[str] | None = None) -> list[str]:
+        """A named scenario, or a named (scenario, scene) pair, that cannot be run.
+
+        Both checks live here rather than in `episodes()` because this runs
+        before the policy node loads. `episodes()` still raises for a named pair
+        with no file -- it is a generator and cannot be trusted to have been
+        preflighted -- but by then a model is resident and the raise surfaces as
+        a traceback, since the runner catches `RuntimeError`, not this.
+        """
         known = sorted(p.name for p in SCENARIOS_DIR.iterdir() if p.is_dir())
         unknown = [s for s in scenarios if s not in known]
-        if not unknown:
-            return []
-        return [f"--scenarios {', '.join(unknown)}: no such scenario set; known: {', '.join(known)}"]
+        if unknown:
+            return [f"--scenarios {', '.join(unknown)}: no such scenario set; known: {', '.join(known)}"]
+
+        missing = [
+            f"{scenario}/{scene}"
+            for scene in scenes or []
+            for scenario in scenarios
+            if not (SCENARIOS_DIR / scenario / f"{scene}.yaml").exists()
+        ]
+        if missing:
+            return [
+                f"no scenario file for {', '.join(missing)}. Not every scene is in every "
+                f"category -- the official set is {_official_set_summary()}, so e.g. 0099 is "
+                f"stationary-only. Drop --scenarios to run whichever categories a scene is in."
+            ]
+        return []
 
     # ---- episodes ------------------------------------------------------
 
@@ -263,7 +291,13 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
                     config={"scenario_path": str(path), "runs": runs},
                 )
 
-    def run_episode(self, episode: Episode, policy_url: str, out_dir: Path) -> dict[str, float]:
+    def run_episode(
+        self,
+        episode: Episode,
+        policy_url: str,
+        out_dir: Path,
+        echo: Callable[[str], None] = print,
+    ) -> dict[str, float]:
         """Drive one scenario against a running policy node.
 
         `policy_url` is a node paddock has already started and health-checked.
@@ -271,7 +305,7 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         # The renderer serves one scene; a multi-scene sweep restarts it here so
         # the whole official set is one run rather than one run per scene.
         self._renderer_log_dir = out_dir.parent
-        self._ensure_renderer(episode.scene)
+        self._ensure_renderer(episode.scene, echo)
 
         repo = Path(self.setting("repo"))
         port = policy_url.rsplit(":", 1)[-1]
@@ -334,7 +368,7 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         scores = [float(m.group(1)) for m in _SCORE_LINE.finditer(result.stdout)]
         if scores and "ncap_score" not in metrics:
             metrics["ncap_score"] = sum(scores) / len(scores)
-        self.render_videos(out_dir)
+        self.render_videos(out_dir, echo)
         return metrics
 
     # ---- renderer ------------------------------------------------------

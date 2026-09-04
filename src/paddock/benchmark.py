@@ -19,7 +19,7 @@ classes instead of two frameworks.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -140,11 +140,21 @@ class ClosedLoopBenchmark(Benchmark):
         """Yield episodes to simulate."""
 
     @abstractmethod
-    def run_episode(self, episode: Episode, policy_url: str, out_dir: Path) -> dict[str, float]:
+    def run_episode(
+        self,
+        episode: Episode,
+        policy_url: str,
+        out_dir: Path,
+        echo: Callable[[str], None] = print,
+    ) -> dict[str, float]:
         """Drive one episode against a running policy node; return its metrics.
 
         `policy_url` is a node paddock has already started and health-checked.
         The benchmark owns the simulator; paddock owns the model process.
+
+        `echo` is the run's own output stream. Anything an episode wants to say
+        about how it went belongs there rather than on stdout, so a detached
+        sweep's log holds the whole story.
         """
 
     def samples_per_episode(self, runs: int = 1) -> int:
