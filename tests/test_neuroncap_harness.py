@@ -586,3 +586,103 @@ def test_episode_output_goes_to_the_runs_own_stream(tmp_path, monkeypatch) -> No
     said = []
     harness.render_videos(tmp_path, echo=said.append)
     assert said and "ffmpeg" in said[0], "must reach the caller's echo, not print"
+
+
+# ---- resume -------------------------------------------------------------
+
+
+def _episode_dir(tmp_path, n_runs, scenario="frontal", scene="0103"):
+    d = tmp_path / f"{scenario}-{scene}"
+    for i in range(n_runs):
+        run = d / f"run_{i}"
+        run.mkdir(parents=True)
+        (run / "metrics.json").write_text(json.dumps({"ncap_score": 2.0 + i, "any_collide@0.0s": True}))
+    return d
+
+
+def test_a_fully_scored_episode_is_reusable(tmp_path, monkeypatch) -> None:
+    """The point of resume: simulator time already spent is not spent again."""
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
+    episode = next(iter(harness.episodes(["0103"], runs=3, scenarios=["frontal"])))
+    out = _episode_dir(tmp_path, 3)
+
+    metrics = harness.completed_metrics(episode, out, runs=3)
+    assert metrics is not None
+    assert metrics["n_runs"] == 3
+    assert metrics["ncap_score"] == pytest.approx(3.0)
+
+
+def test_a_half_scored_episode_is_not_reused(tmp_path, monkeypatch) -> None:
+    """The failure that matters. An interrupted episode has some runs on disk.
+
+    Counting those as the whole episode would make a mean over however many
+    happened to finish -- a wrong number, not a slow one. It has to be re-driven.
+    """
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
+    episode = next(iter(harness.episodes(["0103"], runs=10, scenarios=["frontal"])))
+    out = _episode_dir(tmp_path, 4)
+
+    assert harness.completed_metrics(episode, out, runs=10) is None
+
+
+def test_an_episode_never_started_is_not_reused(tmp_path, monkeypatch) -> None:
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
+    episode = next(iter(harness.episodes(["0103"], runs=3, scenarios=["frontal"])))
+    assert harness.completed_metrics(episode, tmp_path / "nothing-here", runs=3) is None
+
+
+def test_more_runs_on_disk_than_asked_for_is_still_reusable(tmp_path, monkeypatch) -> None:
+    """Resuming a 10-run sweep as a 3-run one: the first three are there."""
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
+    episode = next(iter(harness.episodes(["0103"], runs=3, scenarios=["frontal"])))
+    assert harness.completed_metrics(episode, _episode_dir(tmp_path, 10), runs=3) is not None
+
+
+def test_benchmarks_that_cannot_tell_opt_out_by_default() -> None:
+    """Default None: resume re-runs everything until a benchmark opts in.
+
+    Half an episode counted as whole is worse than an episode driven twice.
+    """
+    from paddock.benchmark import ClosedLoopBenchmark
+    from paddock.benchmark import Episode as Ep
+
+    ep = Ep(episode_id="x", scenario="frontal", scene="0103")
+    assert ClosedLoopBenchmark.completed_metrics(object(), ep, Path("/nowhere"), 5) is None
+
+
+def test_a_metrics_file_killed_mid_write_is_skipped_not_fatal(tmp_path, monkeypatch) -> None:
+    """The exact state a SIGKILL, an OOM kill or a reboot leaves behind.
+
+    An unguarded `json.loads` made `--resume` die on the first episode it
+    inspected -- and, because `_per_run` also backs `_collect` and
+    `episode_samples`, made a *fresh* run into a directory holding one stale
+    truncated file fail the same way. Skipping the file counts the run as
+    missing, so the episode is driven again, which is both the safe answer and
+    the correct one.
+    """
+    from paddock.adapters.benchmarks.neuroncap.harness import NeuroNcapBenchmark
+
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
+    (tmp_path / "run_0").mkdir()
+    (tmp_path / "run_0" / "metrics.json").write_text(json.dumps({"ncap_score": 5.0}))
+    (tmp_path / "run_1").mkdir()
+    (tmp_path / "run_1" / "metrics.json").write_text('{"ncap_score": 4.')
+
+    per_run = NeuroNcapBenchmark._per_run(tmp_path)
+    assert [i for i, _ in per_run] == [0], "the truncated run must be skipped, not raise"
+
+    episode = next(iter(harness.episodes(["0103"], runs=2, scenarios=["frontal"])))
+    assert harness.completed_metrics(episode, tmp_path, runs=2) is None, "so the episode re-runs"
+
+    # A fresh run reading the same directory must not die either.
+    assert NeuroNcapBenchmark._collect(tmp_path)["n_runs"] == 1
+    assert len(harness.episode_samples(episode, {}, tmp_path)) == 1
+
+
+def test_an_unreadable_metrics_file_is_also_survivable(tmp_path, monkeypatch) -> None:
+    """A directory where a file should be: same class of damage, same answer."""
+    from paddock.adapters.benchmarks.neuroncap.harness import NeuroNcapBenchmark
+
+    (tmp_path / "run_0").mkdir()
+    (tmp_path / "run_0" / "metrics.json").mkdir()
+    assert NeuroNcapBenchmark._per_run(tmp_path) == []
