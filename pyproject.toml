@@ -34,6 +34,9 @@ viz = [
 dev = [
     "pytest>=8.0",
     "ruff>=0.5",
+    # Advisory only. `make typecheck` runs it, `make check` does not, and its CI
+    # job cannot fail the build. See the [tool.mypy] block below for why.
+    "mypy>=1.10",
 ]
 
 [project.scripts]
@@ -93,6 +96,35 @@ select = ["E", "F", "I", "UP", "B"]
 # renderer.py must extend sys.path to the neurad-studio checkout before importing
 # from it, so its imports genuinely cannot come first.
 "src/paddock/adapters/benchmarks/neuroncap/renderer.py" = ["E402"]
+
+[tool.mypy]
+# Advisory, and deliberately NOT part of `make check`.
+#
+# The rule this repo follows is that local and CI must agree on what can
+# *reject* your work: CI's blocking gate is literally `make check`, so anything
+# added there has to hold at both sites on day one. mypy does not: there are 63
+# errors across 19 files today, most of them in the code rescued in M2, which is
+# unannotated by construction. A blocking gate would turn every PR red --
+# including PRs touching none of those files -- and teach everyone to ignore it.
+#
+# So it runs, and it reports, and it blocks nothing: `make typecheck` locally,
+# an advisory job in CI, and any editor hook you point at it. Every caller
+# reads this block, so they cannot drift apart on strictness.
+#
+# Tighten as the migration backlog in [tool.ruff.lint.per-file-ignores] shrinks,
+# not before. Making it blocking is a separate decision that needs those 63
+# fixed first.
+python_version = "3.11"
+# Paddock never imports a model, so torch, tinygrad, mmcv and openpilot are
+# absent from this environment by design -- the same fact norecursedirs encodes.
+ignore_missing_imports = true
+check_untyped_defs = false
+warn_unused_ignores = false
+# So no caller has to set PYTHONPATH to agree with the others.
+mypy_path = "src"
+# Without this, a single-file check (`make typecheck PATHS=...`, or an editor
+# hook) reports every pre-existing error in everything that file imports.
+follow_imports = "silent"
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "src/paddock/adapters"]
