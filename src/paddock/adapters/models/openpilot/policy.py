@@ -186,9 +186,7 @@ class CameraAdapter:
         self.scaled_size = self.fit.scaled_size
         self.pad_top = self.fit.pad_top
         self.intrinsics = self.fit.intrinsics
-        self.size = (
-            (TARGET_W, TARGET_H) if resample else (pinhole.width, pinhole.height)
-        )
+        self.size = (TARGET_W, TARGET_H) if resample else (pinhole.width, pinhole.height)
 
         from openpilot.common.transformations.camera import view_frame_from_device_frame
         from openpilot.common.transformations.model import get_warp_matrix
@@ -197,9 +195,7 @@ class CameraAdapter:
         # Mounting rotation: the residual rotation satisfying
         #   view_frame_from_device_frame @ rot_from_euler(rpy) == R_cam_from_device
         r_dev_cam = DEVICE_FROM_EGO @ np.asarray(camera2ego)[:3, :3]
-        self.rpy = np.asarray(
-            rot2euler(view_frame_from_device_frame.T @ r_dev_cam.T), dtype=np.float32
-        )
+        self.rpy = np.asarray(rot2euler(view_frame_from_device_frame.T @ r_dev_cam.T), dtype=np.float32)
         self._check_mounting(camera2ego)
 
         self.transforms = {
@@ -231,9 +227,7 @@ class CameraAdapter:
         if self.mode == "native":
             return image
         x0, y0, x1, y1 = self.crop
-        resized = np.asarray(
-            Image.fromarray(image[y0:y1, x0:x1]).resize(self.scaled_size, Image.BILINEAR)
-        )
+        resized = np.asarray(Image.fromarray(image[y0:y1, x0:x1]).resize(self.scaled_size, Image.BILINEAR))
         if self.scaled_size[1] == TARGET_H:
             return resized
         out = np.zeros((TARGET_H, TARGET_W, 3), dtype=np.uint8)
@@ -255,9 +249,7 @@ def plan_to_grid(plan: np.ndarray, grid_s: np.ndarray = GRID_S) -> np.ndarray:
 
     pos = plan[:, Plan.POSITION]
     t = np.asarray(ModelConstants.T_IDXS)
-    return np.stack(
-        [np.interp(grid_s, t, pos[:, 0]), -np.interp(grid_s, t, pos[:, 1])], axis=-1
-    )
+    return np.stack([np.interp(grid_s, t, pos[:, 0]), -np.interp(grid_s, t, pos[:, 1])], axis=-1)
 
 
 class OpenpilotPolicy(Policy):
@@ -374,9 +366,7 @@ class OpenpilotPolicy(Policy):
             raise RuntimeError("load() must be called before infer()")
         if self.camera is None:
             self.camera = self._build_camera(obs)
-        return (
-            self._infer_tinygrad(obs) if self.backend == "tinygrad" else self._infer_onnx(obs)
-        )
+        return self._infer_tinygrad(obs) if self.backend == "tinygrad" else self._infer_onnx(obs)
 
     def _repeats(self, obs: Observation) -> int:
         """How many times to show one rendered frame.
@@ -433,8 +423,7 @@ class OpenpilotPolicy(Policy):
                 self.session.spec.input_shapes["img"][2] * 2,
             )
             self._plans = {
-                k: WarpPlan.build(self.camera.transforms[k], model_size, src)
-                for k in ("img", "big_img")
+                k: WarpPlan.build(self.camera.transforms[k], model_size, src) for k in ("img", "big_img")
             }
             self._plans_for = self.camera
 
@@ -484,9 +473,7 @@ class OpenpilotPolicy(Policy):
             diag["providers"] = self.session.providers
             diag["model_checkpoint"] = self.session.spec.model_checkpoint
             if getattr(self, "_plans", None):
-                diag["warp_in_bounds"] = {
-                    k: round(p.in_bounds_frac, 5) for k, p in self._plans.items()
-                }
+                diag["warp_in_bounds"] = {k: round(p.in_bounds_frac, 5) for k, p in self._plans.items()}
             if self.model is not None:
                 diag["warmup_frames"] = self.model.warmup_frames
                 diag["warmed_up"] = self.frames_seen >= self.model.warmup_frames

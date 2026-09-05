@@ -77,6 +77,66 @@ def list_(
         show("repos", [(r.name, f"{r.url} @ {r.sha}") for r in registry.repos.values()])
 
 
+@app.command("new")
+def new_(
+    kind: str = typer.Argument(..., help="model | benchmark"),
+    name: str = typer.Argument(..., help="lowercase identifier, e.g. 'mymodel'"),
+    dataset: str = typer.Option(
+        None, "--dataset", help="Benchmarks only: the dataset key. Default: the adapter's name."
+    ),
+    force: bool = typer.Option(False, "--force", help="Overwrite an existing adapter directory."),
+) -> None:
+    """Scaffold a new model or benchmark adapter from the template.
+
+    Creating the directory *is* the registration -- discovery is a directory
+    walk, so there is no registry file to edit and none to forget.
+    """
+    from paddock.scaffold import ScaffoldError, create
+
+    try:
+        result = create(kind, name, dataset=dataset, force=force)
+    except ScaffoldError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(result.render())
+
+
+@app.command()
+def verify(
+    model: str = typer.Option(None, "--model", "-m", help="Check this model's Policy contract."),
+    bench: str = typer.Option(None, "--bench", "-b", help="Check this benchmark's contract."),
+    explain: bool = typer.Option(
+        False, "--explain", help="Print what every contract check is for, and exit."
+    ),
+) -> None:
+    """Check an adapter against the contract before running it for real.
+
+    Every serious defect found in this repo so far has been a silent contract
+    violation rather than a crash -- a camera2ego of `np.eye(4)` (a 90 degree
+    error that reads as "no rotation"), episode state surviving `reset()`, a
+    metric set that cannot tell "predicted nothing" from "tracked the lane".
+    These checks are chosen from failures that actually happened.
+
+    Run it on a new adapter before its first real sweep, and on an existing one
+    after touching anything to do with frames or calibration.
+    """
+    from paddock import conformance as conformance_mod
+    from paddock.verify import verify as do_verify
+
+    if explain:
+        typer.echo(conformance_mod.explain())
+        raise typer.Exit(code=0)
+
+    try:
+        cfg = SiteConfig.load()
+    except ConfigError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    code = do_verify(cfg, model=model, bench=bench, echo=typer.echo)
+    raise typer.Exit(code=code)
+
+
 @app.command()
 def config() -> None:
     """Show the resolved site configuration."""

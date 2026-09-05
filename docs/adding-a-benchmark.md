@@ -1,5 +1,11 @@
 # Adding a benchmark
 
+> **Start with `paddock new benchmark <name>`** — it scaffolds the directory below
+> and renames the template consistently. Then `paddock verify --bench <name>`
+> checks the contract before you spend a sweep on it. The shared mechanics and the
+> full contract are in [adding-an-adapter.md](adding-an-adapter.md); this page is the
+> benchmark-specific detail.
+
 Same shape as [adding a model](adding-a-model.md): one registry file, one new
 directory, no changes to `src/paddock/`.
 

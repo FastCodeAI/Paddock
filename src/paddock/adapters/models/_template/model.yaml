@@ -12,11 +12,11 @@
 #
 # tests/test_portability.py fails the build if you write a real path here.
 
-name: template
+name: _template
 description: One line. What the model is and who publishes it.
 
 # Key in repos.yaml. `paddock setup` clones or adopts it.
-repo: template
+repo: _template
 
 runtime:
   # uv    -- pyproject + uv.lock in the repo; setup.sh runs `uv sync`

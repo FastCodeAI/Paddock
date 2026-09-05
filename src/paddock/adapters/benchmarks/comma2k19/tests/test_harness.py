@@ -373,14 +373,28 @@ def test_a_stationary_prediction_reproduces_the_published_numbers():
     """
     gt = np.array(
         [
-            [11.2, -0.13], [22.5, -0.23], [33.7, -0.32], [45.0, -0.41], [56.3, -0.51],
-            [67.5, -0.63], [78.6, -0.76], [89.6, -0.88], [100.5, -0.98], [111.2, -1.11],
+            [11.2, -0.13],
+            [22.5, -0.23],
+            [33.7, -0.32],
+            [45.0, -0.41],
+            [56.3, -0.51],
+            [67.5, -0.63],
+            [78.6, -0.76],
+            [89.6, -0.88],
+            [100.5, -0.98],
+            [111.2, -1.11],
         ]
     )
     m = MC.score_trajectory(np.zeros((10, 2)), gt, eval_horizon_s=3.0)
 
-    published = {"ade": 38.84, "fde@1s": 22.29, "fde@2s": 44.43, "fde@3s": 66.36,
-                 "longitudinal_mae": 38.82, "lateral_mae": 0.96}
+    published = {
+        "ade": 38.84,
+        "fde@1s": 22.29,
+        "fde@2s": 44.43,
+        "fde@3s": 66.36,
+        "longitudinal_mae": 38.82,
+        "lateral_mae": 0.96,
+    }
     for key, want in published.items():
         got = m[key]
         # 6 % covers the difference between one segment's speed and the mean of

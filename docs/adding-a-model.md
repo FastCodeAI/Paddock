@@ -1,5 +1,11 @@
 # Adding a model
 
+> **Start with `paddock new model <name>`** — it scaffolds the directory below
+> and renames the template consistently. Then `paddock verify --model <name>`
+> checks the contract before you spend a sweep on it. The shared mechanics and the
+> full contract are in [adding-an-adapter.md](adding-an-adapter.md); this page is the
+> model-specific detail.
+
 **You touch one registry file and one new directory. You do not edit anything
 under `src/paddock/` outside your own adapter.** If you cannot add a model
 without changing the core, that is a framework bug — please open an issue.

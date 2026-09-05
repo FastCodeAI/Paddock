@@ -238,7 +238,12 @@ class SupercomboSession:
         loosen this check.
         """
         expected = {
-            "img", "big_img", "features_buffer", "desire_pulse", "traffic_convention", "action_t",
+            "img",
+            "big_img",
+            "features_buffer",
+            "desire_pulse",
+            "traffic_convention",
+            "action_t",
         }
         got = set(self.spec.input_shapes)
         if got != expected:
@@ -265,9 +270,7 @@ class SupercomboSession:
         `.cast('float32')`), and `parse_model_outputs.safe_exp` behaves
         differently in float16, so this is not cosmetic.
         """
-        typed = {
-            k: np.ascontiguousarray(feed[k], dtype=dt) for k, dt in self.spec.input_dtypes.items()
-        }
+        typed = {k: np.ascontiguousarray(feed[k], dtype=dt) for k, dt in self.spec.input_dtypes.items()}
         (out,) = self.session.run([self.spec.output_name], typed)
         return out[0].astype(np.float32)
 
@@ -332,9 +335,7 @@ class InputQueues:
     def push_desire(self, desire):
         self._shift(self.desire_q, desire)
         depth = self.desire_q.shape[0] // self.frame_skip
-        return self.desire_q.reshape(depth, self.frame_skip, -1).max(axis=1).reshape(
-            self.desire_pulse_shape
-        )
+        return self.desire_q.reshape(depth, self.frame_skip, -1).max(axis=1).reshape(self.desire_pulse_shape)
 
 
 @dataclass
@@ -439,12 +440,17 @@ class SupercomboRunner:
         if "action" not in out:
             plan = out["plan"][0]
             accel = get_accel_from_plan(
-                plan[:, Plan.VELOCITY][:, 0], plan[:, Plan.ACCELERATION][:, 0],
-                ModelConstants.T_IDXS, action_t=float(action_t[1]),
+                plan[:, Plan.VELOCITY][:, 0],
+                plan[:, Plan.ACCELERATION][:, 0],
+                ModelConstants.T_IDXS,
+                action_t=float(action_t[1]),
             )
             curvature = get_curvature_from_plan(
-                plan[:, Plan.T_FROM_CURRENT_EULER][:, 2], plan[:, Plan.ORIENTATION_RATE][:, 2],
-                ModelConstants.T_IDXS, v_ego, float(action_t[0]),
+                plan[:, Plan.T_FROM_CURRENT_EULER][:, 2],
+                plan[:, Plan.ORIENTATION_RATE][:, 2],
+                ModelConstants.T_IDXS,
+                v_ego,
+                float(action_t[0]),
             )
         else:
             accel = out["action"][0, 1]
