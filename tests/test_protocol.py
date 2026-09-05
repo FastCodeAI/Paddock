@@ -64,3 +64,39 @@ def test_to_wire_is_the_inverse_of_from_wire() -> None:
     obs.lidar2ego = None
     assert "lidar2ego" not in obs.to_wire()["calibration"]
     assert Observation.from_wire(obs.to_wire()).lidar2ego is None
+
+
+def test_every_closed_loop_harness_matches_the_base_run_episode_signature() -> None:
+    """Including `_template`, which `docs/adding-a-benchmark.md` step 3 says to copy.
+
+    The runner calls `run_episode` positionally, so a harness one parameter
+    behind raises TypeError on its first episode -- after the node has loaded,
+    which is the failure mode preflight exists to prevent. The template drifting
+    is the worst case, because the next benchmark inherits it silently.
+    """
+    import importlib
+    import inspect
+    from pathlib import Path
+
+    from paddock.benchmark import ClosedLoopBenchmark
+
+    expected = list(inspect.signature(ClosedLoopBenchmark.run_episode).parameters)
+
+    adapters = Path("src/paddock/adapters/benchmarks")
+    checked = []
+    for harness_py in sorted(adapters.glob("*/harness.py")):
+        module = importlib.import_module(f"paddock.adapters.benchmarks.{harness_py.parent.name}.harness")
+        for _, obj in inspect.getmembers(module, inspect.isclass):
+            if not issubclass(obj, ClosedLoopBenchmark) or obj is ClosedLoopBenchmark:
+                continue
+            if "run_episode" not in obj.__dict__:
+                continue
+            got = list(inspect.signature(obj.run_episode).parameters)
+            assert got == expected, (
+                f"{harness_py.parent.name}.{obj.__name__}.run_episode{tuple(got)} "
+                f"does not match ClosedLoopBenchmark.run_episode{tuple(expected)}"
+            )
+            checked.append(f"{harness_py.parent.name}.{obj.__name__}")
+
+    assert "_template.TemplateClosedLoopBenchmark" in checked, "the template must be covered"
+    assert len(checked) >= 3, f"expected template + neuroncap + bench2drive, got {checked}"

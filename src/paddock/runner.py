@@ -75,15 +75,24 @@ def _measurement_config(cfg: SiteConfig, harness, model_spec: ModelSpec, **given
     return config
 
 
-def _validity(failure_note: str | None, invalid_reasons: list[str]) -> tuple[str, bool, str]:
+def _validity(
+    failure_note: str | None,
+    invalid_reasons: list[str],
+    remarks: list[str] | None = None,
+) -> tuple[str, bool, str]:
     """`(status, valid, notes)` for a run record. The one place that decides `valid`.
 
     A run is valid only when nothing failed *and* nothing about how it was made
     keeps it from being ranked: no subset, no override that changes what the
     number means. The reasons go into `notes`, so a `valid: false` row explains
     itself and nobody has to hand-edit a results file to say so.
+
+    `remarks` are the other kind of note: things a reader of the row should know
+    that do not make it unrankable -- that it was resumed, say. Kept apart from
+    `invalid_reasons` precisely because everything in that list invalidates, and
+    a resumed run is a perfectly good run.
     """
-    notes = [*invalid_reasons]
+    notes = [*invalid_reasons, *(remarks or [])]
     if failure_note:
         notes.append(failure_note)
     status = "partial" if failure_note else "complete"
@@ -101,6 +110,7 @@ def _store_run(
     config: dict,
     failure_note: str | None,
     invalid_reasons: list[str],
+    remarks: list[str] | None = None,
     by_group: dict | None = None,
     hardware: dict | None = None,
     split: str | None = None,
@@ -112,7 +122,7 @@ def _store_run(
     recorded in `dataset` too so run.json answers "which split" without
     opening samples.jsonl.
     """
-    status, valid, notes = _validity(failure_note, invalid_reasons)
+    status, valid, notes = _validity(failure_note, invalid_reasons, remarks)
     dataset: dict = {"name": spec.dataset}
     if split is not None:
         dataset["split"] = split
@@ -252,7 +262,10 @@ def run_benchmark(
         for one in scenes:
             problems += harness.scene_problems(one)
     if scenarios and hasattr(harness, "scenario_problems"):
-        problems += harness.scenario_problems(scenarios)
+        try:
+            problems += harness.scenario_problems(scenarios, scenes)
+        except TypeError:  # a benchmark that only validates the names
+            problems += harness.scenario_problems(scenarios)
     if problems:
         echo(f"{bench} cannot run here:")
         for problem in problems:
@@ -309,7 +322,9 @@ def run_benchmark(
     failures = 0
     for index, model_spec in enumerate(models):
         port = ports.find_free(base + index)
-        failures += _run_one_model(cfg, harness, spec, model_spec, scenes, scenarios, runs, port, echo)
+        failures += _run_one_model(
+            cfg, harness, spec, model_spec, scenes, scenarios, runs, port, echo, resume=resume
+        )
     return 1 if failures else 0
 
 
@@ -323,6 +338,7 @@ def _run_one_model(
     runs: int,
     port: int,
     echo: Callable[[str], None],
+    resume: str | None = None,
 ) -> int:
     started = datetime.now(UTC)
     began = time.time()
@@ -333,47 +349,81 @@ def _run_one_model(
     config = _measurement_config(
         cfg, harness, model_spec, scene=",".join(scenes) if scenes else None, runs=runs
     )
-    run_id = store.make_run_id(
-        started,
-        {
-            **config,
-            "model": model_spec.name,
-            "scenarios": sorted(scenarios) if scenarios else "all",
-        },
-    )
-    artifacts = cfg.runs / spec.name / model_spec.name / run_id
+    if resume:
+        run_id = resume
+        artifacts = cfg.runs / spec.name / model_spec.name / run_id
+        if not artifacts.is_dir():
+            echo(f"  nothing to resume: {artifacts} does not exist")
+            return 2
+    else:
+        run_id = store.make_run_id(
+            started,
+            {
+                **config,
+                "model": model_spec.name,
+                "scenarios": sorted(scenarios) if scenarios else "all",
+            },
+        )
+        artifacts = cfg.runs / spec.name / model_spec.name / run_id
 
-    echo(f"\n=== {model_spec.name} ===")
+    echo(f"\n=== {model_spec.name} ===" + (f" (resuming {run_id})" if resume else ""))
+    # Written on the first attempt and compared on every later one: resuming
+    # under different switches would merge two measurements under one run id.
+    for problem in _config_marker_problems(artifacts, config):
+        echo("  " + problem)
+        return 2
     samples: list[dict] = []
     failures = 0
+    reused = 0
+
+    episodes = list(harness.episodes(scenes, runs=runs, scenarios=scenarios))
+    per_episode = harness.samples_per_episode(runs)
+
+    # Checked before the node starts, because re-issuing the command to see
+    # where a sweep got to is a thing people do with a 12-hour sweep -- and
+    # loading alpamayo to reuse everything costs an hour and a VRAM wait on a
+    # card other people are using.
+    outstanding = (
+        [e for e in episodes if harness.completed_metrics(e, artifacts / e.episode_id, runs) is None]
+        if resume
+        else episodes
+    )
+    if resume and not outstanding:
+        echo(f"  all {len(episodes)} episode(s) already scored; recording without starting a node")
 
     try:
-        with proc.model_node(model_spec, cfg, port, artifacts, echo=echo, nonce=run_id) as policy_url:
-            # Materialised so run.json can say how many episodes were *meant* to
-            # score: n_samples alone cannot tell 220 scored from 6 scored and
-            # 214 failed, and a mean over the six reads like a full sweep.
-            episodes = list(harness.episodes(scenes, runs=runs, scenarios=scenarios))
+        with contextlib.ExitStack() as stack:
+            policy_url = (
+                stack.enter_context(
+                    proc.model_node(model_spec, cfg, port, artifacts, echo=echo, nonce=run_id)
+                )
+                if outstanding
+                else ""
+            )
             for episode in episodes:
                 episode.config["cameras"] = list(model_spec.cameras)
                 out_dir = artifacts / episode.episode_id
-                try:
-                    metrics = harness.run_episode(episode, policy_url, out_dir)
-                except RuntimeError as exc:
-                    echo(f"  {episode.episode_id}: FAILED - {exc}")
-                    failures += 1
-                    continue
+                # On a resume, an episode with all its runs already scored is
+                # simulator time already spent; re-driving it to reach the next
+                # one is hours wasted, and on a shared GPU hours taken from
+                # someone else.
+                done = harness.completed_metrics(episode, out_dir, runs) if resume else None
+                if done is not None:
+                    reused += 1
+                    echo(f"  {episode.episode_id}: reusing {runs} completed run(s)")
+                    metrics = done
+                else:
+                    try:
+                        metrics = harness.run_episode(episode, policy_url, out_dir, echo)
+                    except RuntimeError as exc:
+                        echo(f"  {episode.episode_id}: FAILED - {exc}")
+                        failures += 1
+                        continue
                 echo(
                     f"  {episode.episode_id}: "
                     + ", ".join(f"{k} {v:.4g}" for k, v in sorted(metrics.items()))
                 )
-                samples.append(
-                    {
-                        "sample_id": f"{spec.name}/{episode.scene}/{episode.scenario}",
-                        "native_id": {"scenario": episode.scenario, "scene": episode.scene},
-                        "split": episode.scenario,
-                        "metrics": {k: float(v) for k, v in metrics.items() if k not in ("n_runs",)},
-                    }
-                )
+                samples.extend(harness.episode_samples(episode, metrics, out_dir))
     except (proc.NodeStartupError, RuntimeError) as exc:
         echo(f"  node failed: {exc}")
         return 1
@@ -393,8 +443,28 @@ def _run_one_model(
         config,
         failure_note=f"{failures} episode(s) failed" if failures else None,
         invalid_reasons=harness.invalid_reasons(),
+        # A remark, not a reason: resuming does not make a run unrankable, and
+        # everything in `invalid_reasons` sets `valid: false`. But `started_utc`
+        # and `duration_s` cover the resumed attempt only, so a 20-episode sweep
+        # can read as forty minutes, and the row should say so itself.
+        remarks=(
+            [
+                f"resumed: {reused} episode(s) reused from an earlier attempt, so "
+                f"started_utc and duration_s describe this attempt only"
+            ]
+            if reused
+            else None
+        ),
         hardware={"gpu_free_gb_at_start": None},
-        extra_dataset={"n_expected": len(episodes), "n_failed": failures},
+        # In samples, not episodes: docs/results-schema.md defines the completion
+        # ratio as `n_samples / n_expected`, so the two have to count the same
+        # unit. An episode that records several samples loses all of them when it
+        # fails, so the failure count scales the same way.
+        extra_dataset={
+            "n_expected": len(episodes) * per_episode,
+            "n_failed": failures * per_episode,
+            "n_reused": reused * per_episode,
+        },
     )
     echo(f"  -> {written.relative_to(Path.cwd()) if written.is_relative_to(Path.cwd()) else written}")
     return failures

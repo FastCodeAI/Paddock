@@ -19,7 +19,7 @@ classes instead of two frameworks.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -140,12 +140,70 @@ class ClosedLoopBenchmark(Benchmark):
         """Yield episodes to simulate."""
 
     @abstractmethod
-    def run_episode(self, episode: Episode, policy_url: str, out_dir: Path) -> dict[str, float]:
+    def run_episode(
+        self,
+        episode: Episode,
+        policy_url: str,
+        out_dir: Path,
+        echo: Callable[[str], None] = print,
+    ) -> dict[str, float]:
         """Drive one episode against a running policy node; return its metrics.
 
         `policy_url` is a node paddock has already started and health-checked.
         The benchmark owns the simulator; paddock owns the model process.
+
+        `echo` is the run's own output stream. Anything an episode wants to say
+        about how it went belongs there rather than on stdout, so a detached
+        sweep's log holds the whole story.
         """
+
+    def completed_metrics(self, episode: Episode, out_dir: Path, runs: int = 1) -> dict[str, float] | None:
+        """Metrics already on disk for this episode, or None to run it again.
+
+        This is what makes `--resume` possible for closed loop. A run that has
+        driven nine of fourteen scenes has nine scenes' worth of simulator time
+        on disk; re-driving them to reach the tenth is hours wasted, and on a
+        shared GPU it is hours somebody else could have used.
+
+        Returning a dict claims the episode finished *completely* -- all `runs`
+        of it. A benchmark that cannot tell a finished episode from an
+        interrupted one must return None, because half an episode counted as
+        whole is a wrong number rather than a slow one. Default: None, so
+        `--resume` re-runs everything until a benchmark opts in.
+        """
+        return None
+
+    def samples_per_episode(self, runs: int = 1) -> int:
+        """How many results samples one episode is expected to record.
+
+        Keeps `n_expected` in the same unit as `n_samples`: docs/results-schema.md
+        defines a run's completion ratio as `n_samples / n_expected`, which is
+        only meaningful if both count samples. Default: one, matching the default
+        `episode_samples`. Override alongside it.
+        """
+        return 1
+
+    def episode_samples(
+        self, episode: Episode, metrics: dict[str, float], out_dir: Path
+    ) -> list[dict[str, Any]]:
+        """Per-sample records for one episode, in the results store's shape.
+
+        Default: the episode is the scored unit, so it yields one sample -- what
+        every closed-loop benchmark did before this hook existed.
+
+        A benchmark whose episode contains several independently scored units
+        overrides this so the store keeps them apart. neuroNCAP does: one
+        subprocess drives N differently-jittered runs, and collapsing them to a
+        mean here would throw away the spread that makes the mean readable.
+        """
+        return [
+            {
+                "sample_id": f"{self.spec.name}/{episode.scene}/{episode.scenario}",
+                "native_id": {"scenario": episode.scenario, "scene": episode.scene},
+                "split": episode.scenario,
+                "metrics": {k: float(v) for k, v in metrics.items() if k not in ("n_runs",)},
+            }
+        ]
 
 
 @dataclass

@@ -41,7 +41,7 @@ import signal
 import subprocess
 import time
 import xml.etree.ElementTree as ET
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -571,7 +571,13 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
 
     # ---- run one episode ----------------------------------------------
 
-    def run_episode(self, episode: Episode, policy_url: str, out_dir: Path) -> dict[str, float]:
+    def run_episode(
+        self,
+        episode: Episode,
+        policy_url: str,
+        out_dir: Path,
+        echo: Callable[[str], None] = print,
+    ) -> dict[str, float]:
         """Drive one route through CARLA against a running policy node.
 
         ``policy_url`` is a node paddock has already started and health-checked.
