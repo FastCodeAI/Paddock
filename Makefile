@@ -1,7 +1,10 @@
 # Paddock — developer entry points.
 #
-# No CI service is assumed: `make check` is what you run before opening a PR,
-# and what a reviewer runs to reproduce your claim that it passes.
+# `make check` is what you run before opening a PR, what GitHub Actions runs on
+# every PR (.github/workflows/check.yml, in a clean environment with no site
+# paddock.toml), and what a reviewer runs with the site config to cover the
+# tests CI has to skip. The three must agree, so CI calls this file rather
+# than its own command list.
 #
 # Every target runs against whichever environment is active -- an activated
 # venv, an activated conda env, or the repo's own .venv as a fallback. So

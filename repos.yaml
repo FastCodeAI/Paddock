@@ -45,6 +45,7 @@ repos:
     description: closed-loop NCAP harness; drives a model node over HTTP
     patches:
       - 0001-waypoint-dt-and-camera-selection.patch
+      - 0002-fail-loudly-on-renderer-http-errors.patch
 
   Bench2Drive:
     url: https://github.com/Thinklab-SJTU/Bench2Drive.git
