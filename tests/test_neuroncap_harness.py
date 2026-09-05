@@ -34,6 +34,32 @@ def _stub_ffmpeg(tmp_path: Path, fail: bool = False) -> Path:
     return stub
 
 
+def _nuscenes_meta(tmp_path: Path, scenes: dict[str, int], present: set[str]) -> None:
+    """A minimal nuScenes metadata tree plus whichever lidar files should exist.
+
+    `scenes` maps scene name to its keyframe count; `present` names the scenes
+    whose .pcd.bin files are actually written to disk.
+    """
+    meta = tmp_path / "nuscenes" / "v1.0-trainval"
+    meta.mkdir(parents=True, exist_ok=True)
+    lidar_dir = tmp_path / "nuscenes" / "samples" / "LIDAR_TOP"
+    lidar_dir.mkdir(parents=True, exist_ok=True)
+
+    scene_rows, sample_rows, sd_rows = [], [], []
+    for name, count in scenes.items():
+        tokens = [f"{name}-s{i}" for i in range(count)]
+        scene_rows.append({"name": name, "first_sample_token": tokens[0]})
+        for i, tok in enumerate(tokens):
+            sample_rows.append({"token": tok, "next": tokens[i + 1] if i + 1 < count else ""})
+            filename = f"samples/LIDAR_TOP/{name}__LIDAR_TOP__{i}.pcd.bin"
+            sd_rows.append({"sample_token": tok, "is_key_frame": True, "filename": filename})
+            if name in present:
+                (tmp_path / "nuscenes" / filename).write_bytes(b"")
+    (meta / "scene.json").write_text(json.dumps(scene_rows))
+    (meta / "sample.json").write_text(json.dumps(sample_rows))
+    (meta / "sample_data.json").write_text(json.dumps(sd_rows))
+
+
 def _ncap_site(tmp_path: Path, monkeypatch, **settings) -> SiteConfig:
     """A neuroNCAP site built from a temp layout, so no test needs this machine.
 
@@ -686,3 +712,80 @@ def test_an_unreadable_metrics_file_is_also_survivable(tmp_path, monkeypatch) ->
     (tmp_path / "run_0").mkdir()
     (tmp_path / "run_0" / "metrics.json").mkdir()
     assert NeuroNcapBenchmark._per_run(tmp_path) == []
+
+
+# ---- a scene with no lidar is refused before anything loads --------------
+
+
+def test_a_scene_with_no_lidar_keyframes_is_refused(tmp_path, monkeypatch) -> None:
+    """The check that would have saved the 2026-09-04 sweep thirteen GPU-hours.
+
+    The renderer never uses the points, but NeuRAD's dataparser reads them
+    eagerly and `renderer.py` needs one real cloud to copy a tensor width from.
+    With none it raises; with that raise removed the dataparser falls over later
+    instead, in `_get_world_to_mean_transform`. Either way the scene cannot run,
+    and finding that out mid-sweep costs hours.
+    """
+    from paddock.adapters.benchmarks.neuroncap.harness import _lidar_keyframes_by_scene
+
+    _lidar_keyframes_by_scene.cache_clear()
+    _nuscenes_meta(tmp_path, {"scene-0796": 40, "scene-0103": 40}, present={"scene-0103"})
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
+
+    problems = harness.scene_problems("0796")
+    assert problems, "a scene with no lidar must not reach the renderer"
+    assert "none of its 40 LIDAR_TOP keyframes" in problems[0]
+
+    assert harness.scene_problems("0103") == [], "a scene with its lidar must pass"
+
+
+def test_a_scene_missing_only_some_lidar_still_runs(tmp_path, monkeypatch) -> None:
+    """Partial lidar is the normal case here, not an error.
+
+    This nuScenes copy has no `sweeps/` at all, so every scene is already
+    rendering with thousands of empty stand-ins. One real cloud is enough.
+    """
+    from paddock.adapters.benchmarks.neuroncap.harness import _lidar_keyframes_by_scene
+
+    _lidar_keyframes_by_scene.cache_clear()
+    _nuscenes_meta(tmp_path, {"scene-0103": 40}, present={"scene-0103"})
+    # Delete all but one, leaving the single cloud the width is copied from.
+    kept = sorted((tmp_path / "nuscenes" / "samples" / "LIDAR_TOP").glob("*.pcd.bin"))
+    for f in kept[1:]:
+        f.unlink()
+
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
+    assert harness.scene_problems("0103") == []
+
+
+def test_an_unknown_scene_is_not_refused_for_lidar(tmp_path, monkeypatch) -> None:
+    """A scene nuScenes has never heard of fails the checkpoint check, not this one.
+
+    Two messages for one problem sends the reader looking in the wrong place.
+    """
+    from paddock.adapters.benchmarks.neuroncap.harness import _lidar_keyframes_by_scene
+
+    _lidar_keyframes_by_scene.cache_clear()
+    _nuscenes_meta(tmp_path, {"scene-0103": 40}, present={"scene-0103"})
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
+
+    problems = harness.scene_problems("9999")
+    assert problems and "no renderer checkpoint" in problems[0]
+    assert not any("LIDAR" in p for p in problems)
+
+
+def test_unreadable_metadata_does_not_fail_preflight(tmp_path, monkeypatch) -> None:
+    """Preflight refuses what it knows is broken; it does not invent reasons.
+
+    A truncated sample_data.json says nothing about whether a scene has lidar,
+    and blocking a sweep on an unparseable file the run may not even need is
+    worse than letting the run report the real problem itself.
+    """
+    from paddock.adapters.benchmarks.neuroncap.harness import _lidar_keyframes_by_scene
+
+    _lidar_keyframes_by_scene.cache_clear()
+    _nuscenes_meta(tmp_path, {"scene-0103": 40}, present={"scene-0103"})
+    (tmp_path / "nuscenes" / "v1.0-trainval" / "sample_data.json").write_text('[{"broken"')
+
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
+    assert harness.scene_problems("0103") == []

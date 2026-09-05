@@ -403,3 +403,44 @@ on a shared card. `run.json` carries `n_reused` alongside `n_expected` and
 `n_failed`, and a resumed row says in `notes` that its `started_utc` and
 `duration_s` cover that attempt only -- a remark, not a reason: resuming does
 not make a run unrankable.
+
+
+## A scene needs at least one lidar keyframe
+
+The renderer never uses lidar points. The scene is in the trained hash grids and
+the closed-loop server reads only poses, intrinsics, transforms and actor
+trajectories. But NeuRAD's dataparser reads every lidar file eagerly, so
+`renderer.py` substitutes an empty cloud for each missing one -- copying the
+tensor width from a real cloud to do it.
+
+That needs one real cloud. A scene with none fails at
+[renderer.py:49](../../src/paddock/adapters/benchmarks/neuroncap/renderer.py#L49):
+
+```
+FileNotFoundError: no lidar files found at all -- check the nuScenes path, this is not the sweeps issue
+```
+
+Removing that guard does not help. With no lidar files the dataparser's lidar
+set is empty, so `_get_world_to_mean_transform` builds the transform from the
+cameras instead, and `ad_dataparser.py:320` then multiplies a Float transform
+against Double lidar poses:
+
+```
+RuntimeError: expected scalar type Float but found Double
+```
+
+`preflight` now refuses such a scene before anything loads. It is cheap: the
+nuScenes metadata is parsed once and cached, so checking all fourteen official
+scenes takes about four seconds.
+
+**This is not hypothetical.** The 2026-09-04 sweep spent roughly 13 GPU-hours on
+it. This nuScenes copy was extracted with a camera-only filter, so 177 of 850
+scenes have no lidar; three of them -- 0796, 0921 and 0923 -- are in the
+official 20 pairs. Every attempt failed those three, exited non-zero, and
+retried the other seventeen from the start, producing byte-identical results
+each time.
+
+Missing lidar for a scene is fixable without re-downloading the dataset: the
+nuScenes keyframes blobs are public, ordered by date, and can be streamed and
+filtered to `samples/LIDAR_TOP/*` -- about 4 GB of transfer for the ~500 MB of
+lidar in one blob.

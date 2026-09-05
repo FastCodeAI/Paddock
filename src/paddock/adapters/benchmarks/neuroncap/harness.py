@@ -29,6 +29,7 @@ import shutil
 import subprocess
 import time
 from collections.abc import Callable, Iterator
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -80,6 +81,33 @@ VIDEO_MODES = ("encode", "keep", "off")
 
 #: A scene's hash grids take ~80 s to load; allow for a cold page cache.
 RENDERER_STARTUP_S = 900
+
+
+@lru_cache(maxsize=4)
+def _lidar_keyframes_by_scene(meta: Path) -> dict[str, list[str]]:
+    """scene name -> its LIDAR_TOP keyframe filenames, for one nuScenes metadata dir.
+
+    Cached because `sample_data.json` is hundreds of megabytes and a 14-scene
+    sweep would otherwise parse it fourteen times -- about a minute of preflight
+    to answer a question that takes four seconds once.
+    """
+    scenes = {s["name"]: s for s in json.loads((meta / "scene.json").read_text())}
+    samples = {s["token"]: s for s in json.loads((meta / "sample.json").read_text())}
+    lidar = {
+        d["sample_token"]: d["filename"]
+        for d in json.loads((meta / "sample_data.json").read_text())
+        if d["is_key_frame"] and d["filename"].startswith("samples/LIDAR_TOP")
+    }
+    out: dict[str, list[str]] = {}
+    for name, scene in scenes.items():
+        names, token = [], scene["first_sample_token"]
+        while token:
+            filename = lidar.get(token)
+            if filename:
+                names.append(filename)
+            token = samples[token]["next"]
+        out[name] = names
+    return out
 
 
 def _official_set_summary() -> str:
@@ -217,7 +245,7 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         ]
 
     def scene_problems(self, scene: str) -> list[str]:
-        """Per-scene checks: a scenario with no renderer checkpoint cannot run."""
+        """Per-scene checks: what stops this scene rendering, before anything loads."""
         problems = []
         checkpoints = self.setting("checkpoints")
         if checkpoints and not (Path(checkpoints) / scene).exists():
@@ -225,7 +253,54 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
                 f"scene {scene} has no renderer checkpoint under {checkpoints}; "
                 f"available: {', '.join(self.available_scenes()) or 'none'}"
             )
+        problems += self._lidar_problems(scene)
         return problems
+
+    def _lidar_problems(self, scene: str) -> list[str]:
+        """A scene with no lidar keyframe on disk cannot be rendered.
+
+        The renderer never uses the points -- the scene is in the trained hash
+        grids -- but NeuRAD's dataparser reads every lidar file eagerly, and
+        `renderer.py` needs one real cloud to copy a tensor width from when it
+        substitutes empty ones for the rest. With none it raises, and with the
+        raise removed the dataparser falls over later instead: `len(lidars)` is
+        0, so `_get_world_to_mean_transform` builds the transform from the
+        cameras and `ad_dataparser.py:320` multiplies a Float against a Double.
+
+        This is not hypothetical. The 2026-09-04 sweep spent about 13 GPU-hours
+        finding it: this nuScenes copy was extracted with a camera-only filter,
+        so 177 of 850 scenes have no lidar, three of them in the official 20
+        pairs. Every attempt failed those three and retried the other 17.
+        """
+        dataset = self.dataset
+        if dataset is None:
+            return []
+        root = Path(dataset.resolve())
+        meta = root / (dataset.version or "v1.0-trainval")
+        if not meta.exists():
+            return []  # the dataset checks in preflight() cover a missing root
+
+        try:
+            names = self._lidar_keyframes(meta, scene)
+        except (OSError, ValueError, KeyError):
+            # Reading 850 scenes of metadata is not worth failing preflight over;
+            # the run will say so itself if the data really is unusable.
+            return []
+        if names is None:
+            return []
+        if not any((root / n).exists() for n in names):
+            return [
+                f"scene {scene} has none of its {len(names)} LIDAR_TOP keyframes under {root}. "
+                f"The renderer does not use the points, but NeuRAD's dataparser reads them "
+                f"eagerly and needs at least one. Fetch this scene's lidar (see "
+                f"docs/data-setup.md) or leave the scene out of --scene."
+            ]
+        return []
+
+    @staticmethod
+    def _lidar_keyframes(meta: Path, scene: str) -> list[str] | None:
+        """The lidar keyframe filenames nuScenes lists for `scene`, or None if unknown."""
+        return _lidar_keyframes_by_scene(meta).get(f"scene-{scene}")
 
     def scenario_problems(self, scenarios: list[str], scenes: list[str] | None = None) -> list[str]:
         """A named scenario, or a named (scenario, scene) pair, that cannot be run.
