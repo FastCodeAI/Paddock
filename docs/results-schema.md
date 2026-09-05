@@ -49,13 +49,20 @@ Three fields do the real work:
 - **`sequences_sha256`** — a hash of the sorted sample-id list. Two runs with
   different hashes evaluated different data, whatever their `n_samples` say. This
   is the single most common cause of numbers that will not reconcile.
-- **`n_expected` / `n_failed`** (closed-loop runs) — how many episodes the
-  sweep enumerated and how many failed to score (crashed agent, evaluator
-  exit, timeout). `n_samples` counts only the episodes that scored, and
+- **`n_expected` / `n_failed`** (closed-loop runs) — how many samples the
+  sweep expected to record and how many were lost to a failure (crashed agent,
+  evaluator exit, timeout). `n_samples` counts only what scored, and
   `metrics.json` averages only those, so without these two a mean over six
   routes is indistinguishable from a mean over 220. A leaderboard-style
   driving score, which counts a failed route as 0 over the full set, is
   `driving_score.mean × n_samples / n_expected`.
+
+  All three count **samples**, not episodes, because an episode need not be one
+  sample: neuroNCAP drives N differently-seeded runs per episode and records
+  each separately, so a 20-episode sweep at `--runs 10` expects 200. Benchmarks
+  declare the factor with `ClosedLoopBenchmark.samples_per_episode`, which is 1
+  everywhere else. An episode that fails loses all of its samples, so the
+  ratio stays a completion fraction either way.
 - **`valid`** — set `false` with a `notes` explaining why, for runs known to be
   bad. Reporting excludes them and never silently averages them in. Deleting a
   bad run loses the record that it happened; marking it keeps it.
