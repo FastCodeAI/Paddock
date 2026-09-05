@@ -357,3 +357,49 @@ Two consequences worth keeping in mind when reading a table:
   against a real run rather than taken from a docstring — the README had said
   `5 · max(0, 1 − v_impact / v_reference)`, which overstates every collision
   score by 25%.
+
+
+## Resuming a sweep
+
+A full-set sweep is hours of simulator time, and until now a closed-loop run
+that died took all of it with it -- only NAVSIM had `--resume`. It now works
+here too:
+
+```bash
+paddock run --bench neuroncap --model openpilot --scene <the same list> --runs 10 \
+  --resume 20260904T232901-abc123
+```
+
+The run id is the artifact directory's name under `roots.runs`. Episodes whose
+runs are all on disk are reused; everything else is driven again. `run.json`
+records `n_reused` so a resumed row says how much of it was re-driven.
+
+**A part-finished episode is never reused.** The engine writes a run's
+`metrics.json` only after scoring it, so counting the files is the check: fewer
+than `--runs` asked for means the episode was interrupted, and it is driven
+again from the start. A mean over however many runs happened to complete is a
+wrong number rather than a slow one, which is the whole reason the check counts
+rather than merely looking for the directory.
+
+`--resume` compares the run's `run_config.json` against the current switches and
+refuses if they differ, so a resume under a different scene list, run count or
+camera set cannot merge two measurements under one id.
+
+Benchmarks opt in: `ClosedLoopBenchmark.completed_metrics` returns None by
+default, so a benchmark that cannot distinguish a finished episode from an
+interrupted one re-runs everything rather than risking the wrong number.
+
+**A `metrics.json` killed mid-write is skipped, not fatal.** That is the state a
+SIGKILL, an OOM kill or a reboot leaves behind, and it is exactly the state
+resume exists for -- so an unparseable file counts the run as missing and the
+episode is driven again. It matters beyond resume: `_per_run` also backs
+`_collect` and `episode_samples`, so one stale truncated file would otherwise
+fail a *fresh* run into the same directory.
+
+**A resume with nothing left to drive starts no node.** Re-issuing the command
+to see where a sweep got to is a normal thing to do with a 12-hour sweep, and
+loading alpamayo to reuse everything is a 21 GB checkpoint read and a VRAM wait
+on a shared card. `run.json` carries `n_reused` alongside `n_expected` and
+`n_failed`, and a resumed row says in `notes` that its `started_utc` and
+`duration_s` cover that attempt only -- a remark, not a reason: resuming does
+not make a run unrankable.

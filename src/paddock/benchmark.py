@@ -157,6 +157,22 @@ class ClosedLoopBenchmark(Benchmark):
         sweep's log holds the whole story.
         """
 
+    def completed_metrics(self, episode: Episode, out_dir: Path, runs: int = 1) -> dict[str, float] | None:
+        """Metrics already on disk for this episode, or None to run it again.
+
+        This is what makes `--resume` possible for closed loop. A run that has
+        driven nine of fourteen scenes has nine scenes' worth of simulator time
+        on disk; re-driving them to reach the tenth is hours wasted, and on a
+        shared GPU it is hours somebody else could have used.
+
+        Returning a dict claims the episode finished *completely* -- all `runs`
+        of it. A benchmark that cannot tell a finished episode from an
+        interrupted one must return None, because half an episode counted as
+        whole is a wrong number rather than a slow one. Default: None, so
+        `--resume` re-runs everything until a benchmark opts in.
+        """
+        return None
+
     def samples_per_episode(self, runs: int = 1) -> int:
         """How many results samples one episode is expected to record.
 

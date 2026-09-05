@@ -574,6 +574,20 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         """One sample per run -- see `episode_samples`."""
         return max(1, runs)
 
+    def completed_metrics(self, episode: Episode, out_dir: Path, runs: int = 1) -> dict[str, float] | None:
+        """The episode's metrics if all `runs` of it are on disk, else None.
+
+        The engine writes each run's `metrics.json` only after that run has been
+        scored, so a file present is a run finished. Counting them is therefore
+        the whole check: fewer than asked for means the episode was interrupted
+        part-way and has to be driven again, since a mean over the runs that
+        happened to complete is a different measurement.
+        """
+        found = self._per_run(out_dir)
+        if len(found) < max(1, runs):
+            return None
+        return self._collect(out_dir)
+
     def episode_samples(
         self, episode: Episode, metrics: dict[str, float], out_dir: Path
     ) -> list[dict[str, Any]]:
@@ -623,7 +637,17 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         """
         out: list[tuple[int, dict[str, float]]] = []
         for path in out_dir.rglob("metrics.json"):
-            raw = json.loads(path.read_text())
+            try:
+                raw = json.loads(path.read_text())
+            except (json.JSONDecodeError, OSError):
+                # A run killed mid-write leaves a half-written metrics.json, and
+                # that is precisely the state `--resume` exists to recover from.
+                # Skipping it makes the run count as missing, so the episode is
+                # driven again -- which is both the safe answer and the correct
+                # one. Raising here would kill the resume on the first episode it
+                # inspected, and would fail a *fresh* run into the same directory
+                # too, since `_collect` and `episode_samples` read through here.
+                continue
             match = _RUN_DIR.match(path.parent.name)
             index = int(match.group(1)) if match else 0
             record: dict[str, float] = {}
