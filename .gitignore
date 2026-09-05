@@ -1,6 +1,11 @@
 # Site-local configuration — every machine has its own. Never commit.
 paddock.toml
 
+# Which of .claude/hooks/ you have switched on, and any other per-machine
+# Claude Code settings. The scripts are tracked; whether they run here is not.
+# See .claude/hooks/README.md.
+.claude/settings.local.json
+
 # Symlink farm pointing at this machine's vendor clones.
 external/
 
