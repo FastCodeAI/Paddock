@@ -34,8 +34,18 @@ def test_policy_imports_without_openpilot_installed() -> None:
 
 
 def test_diagnostics_before_any_frame() -> None:
-    """Diagnostics must answer before the camera is established, not raise."""
-    assert POLICY().diagnostics() == {"status": "no frame seen yet"}
+    """Diagnostics must answer before the camera is established, not raise.
+
+    Everything derived from a frame is necessarily absent, but the chosen
+    backend is known from construction and is worth reporting -- a node that
+    silently fell back from the tinygrad JIT to onnxruntime produces different
+    numbers, and waiting for the first frame to say so is too late.
+    """
+    diag = POLICY().diagnostics()
+    assert diag["status"] == "no frame seen yet"
+    assert diag["backend"] in {"auto", "tinygrad", "onnx"}
+    for frame_derived in ("rpy_deg", "margin_deg", "warp_in_bounds", "source_size"):
+        assert frame_derived not in diag
 
 
 def test_infer_without_load_is_a_clear_error() -> None:

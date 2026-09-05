@@ -1,5 +1,5 @@
 name: openpilot
-description: comma.ai openpilot supercombo, run through tinygrad
+description: comma.ai openpilot supercombo, through tinygrad where available and onnxruntime otherwise
 repo: openpilot
 
 runtime:
@@ -14,6 +14,27 @@ runtime:
     PADDOCK_FFMPEG: "{repo}/.venv/bin/ffmpeg"
     # Colon-separated search path, fastest tier first.
     KITSCENES_ROOTS: "{data.kitscenes.tiers}"
+    # "auto" prefers openpilot's own tinygrad JIT -- upstream's exact execution
+    # path -- and falls back to onnxruntime on the shipped ONNX files when the
+    # JIT pickle is absent, which is the case on a machine with no GPU or an
+    # unpopulated tinygrad_repo submodule. Set to "tinygrad" or "onnx" to pin it.
+    #
+    # The two are not identical and the difference is recorded in every run's
+    # diagnostics: the tinygrad warp is compiled for one camera geometry
+    # (1928x1208), so any other source has to be resampled into it first, while
+    # the ONNX path builds its warp at the source's native resolution and
+    # resamples nothing. That matters most for a small sensor -- comma2k19's
+    # 1164x874 EON was previously upscaled 66 % and then warped back down.
+    PADDOCK_OPENPILOT_BACKEND: "auto"
+    # "small" (driving_supercombo, 61 MB) or "big" (big_driving_supercombo,
+    # 766 MB, LFS-excluded by setup.sh unless PADDOCK_OPENPILOT_BIG=1).
+    PADDOCK_OPENPILOT_MODEL: "small"
+    # onnxruntime intra-op threads per policy node. The shipped graphs are
+    # float16 and onnxruntime's CPU provider has no float16 kernels, so they run
+    # ~45x slower there than the same graph widened to float32; see
+    # experiments/op_c2k19/tools/convert_fp32.py and set
+    # PADDOCK_OPENPILOT_ONNX to a converted graph if CPU throughput matters.
+    PADDOCK_OPENPILOT_THREADS: "8"
 
 capabilities:
   cameras: [CAM_FRONT]
