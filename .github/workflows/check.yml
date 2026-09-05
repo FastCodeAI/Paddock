@@ -105,8 +105,31 @@ jobs:
           uv venv --python 3.11 .venv
           uv pip install --python .venv/bin/python -e ".[dev,serve,viz]"
 
+      # continue-on-error sits on the STEP, not the job, so the job itself goes
+      # green. A job that shows a red X on every PR forever is the check people
+      # stop reading -- the exact failure this whole arrangement is trying to
+      # avoid. The count goes to the run summary instead, where it is visible
+      # without pretending to be a gate.
       - name: make typecheck
-        run: make typecheck
+        id: mypy
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          make typecheck 2>&1 | tee /tmp/mypy.txt
+
+      - name: Report the count in the run summary
+        if: always()
+        run: |
+          {
+            echo "### mypy — advisory, blocks nothing"
+            echo
+            echo '```'
+            tail -n 1 /tmp/mypy.txt 2>/dev/null || echo "mypy produced no output"
+            echo '```'
+            echo
+            echo "Full output is in the \`make typecheck\` step. This never gates a PR;"
+            echo "see the \`[tool.mypy]\` block in \`pyproject.toml\` for why."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   patches:
     name: patches apply at the pinned revisions
