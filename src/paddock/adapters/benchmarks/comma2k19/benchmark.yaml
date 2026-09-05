@@ -1,0 +1,24 @@
+name: comma2k19
+description: >-
+  comma2k19 open-loop trajectory accuracy - ADE and FDE against the recorded
+  INS/GNSS/vision-fused future pose, on 33 h of California I-280 highway driving.
+  Reports the path-tangent split (along/cross-track) and lateral error at matched
+  arc length alongside the axis-aligned one, because a supercombo-style plan is a
+  path plus a speed profile and the two fail independently.
+mode: open_loop
+dataset: comma2k19
+metrics:
+  - ade
+  - fde@1s
+  - fde@2s
+  - fde@3s
+  - ade@5s
+  - fde@5s
+  - longitudinal_mae
+  - lateral_mae
+  - along_track_mae
+  - cross_track_mae
+  - lateral_at_arclength_mae
+  - path_length_ratio
+  - inference_seconds
+primary_metric: ade
