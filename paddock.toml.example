@@ -104,3 +104,18 @@ serialize = true
 # nodes        = 4        # policy nodes per CPU-only model; GPU models always get one
 #                        # with >1 visionpilot node, also set VISIONPILOT_ORT_THREADS (e.g. "2")
 #                        # under [models.visionpilot.env], or each node claims every core
+
+# [benchmarks.kitscenes]
+# The shared keyframe list every model is scored on. It *is* the benchmark:
+# two models scored on different lists are not comparable.
+# sample_list = "/path/to/kitscenes_e2e_final.pkl"
+
+# [benchmarks.neuroncap]
+# The engine runs in its own environment; the renderer in a *different* one.
+# python          = "/path/to/envs/ncap/bin/python"
+# repo            = "/path/to/neuro-ncap"
+# renderer_url    = "http://127.0.0.1:8000"      # a running `paddock renderer`; one serves a sweep
+# renderer_python = "/path/to/envs/neurad/bin/python"
+# renderer_cwd    = "/path/to/neurad-studio"
+# neurad_studio   = "/path/to/neurad-studio"
+# checkpoints     = "/path/to/neuroncap/checkpoints"   # one per scene; preflight checks each scene has one

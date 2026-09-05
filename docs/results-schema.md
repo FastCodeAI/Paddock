@@ -99,7 +99,7 @@ One JSON object per line, under `{runs}`, not tracked.
  "prediction": [[2.5, 0.01], [5.1, 0.03], "..."],
  "ground_truth": [[2.6, 0.00], [5.2, 0.02], "..."],
  "metrics": {"ade": 1.21, "fde@3s": 2.44},
- "inference_s": 0.083,
+ "inference_seconds": 0.083,
  "extra": {"lead_prob": 0.91}}
 ```
 
@@ -126,7 +126,7 @@ spelling of an existing one.
 | `driving_score` | CARLA Leaderboard driving score, 0–100: `route_completion × infraction_penalty` |
 | `route_completion` | % of a closed-loop route driven before it ended |
 | `infraction_penalty` | product of CARLA's per-infraction coefficients, a 0–1 multiplier — **higher is better**, despite the name; `report.py` lists it explicitly |
-| `inference_s` | wall-clock per sample |
+| `inference_seconds` | wall-clock per sample (the `seconds` suffix is what marks it lower-is-better in `report.py`) |
 
 Report `longitudinal_mae` and `lateral_mae` alongside `ade` where the benchmark
 allows. Every model measured so far errs far more longitudinally than
