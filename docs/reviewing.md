@@ -23,6 +23,10 @@ git worktree add /tmp/pr-<N> pr-<N>
 cd /tmp/pr-<N> && make check; echo "exit=$?"
 ```
 
+- CI (`.github/workflows/check.yml`) has already run `make check` on the PR
+  head **without** a site config; a red check there is a finding in itself.
+  Your run adds what CI cannot: the tests that skip without `paddock.toml`,
+  and the site's own vendor checkouts. Say which of the two you ran.
 - Check `$?` directly. `make check 2>&1 | tail` reports *tail's* exit code and
   has let a failing test through before.
 - `make check` includes `tests/test_portability.py`, the gate on real machine
