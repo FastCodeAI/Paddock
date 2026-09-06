@@ -38,6 +38,8 @@ from paddock.benchmark import ClosedLoopBenchmark, Episode
 SCENARIOS_DIR = Path(__file__).parent / "scenarios_10hz"
 WAYPOINT_DT = 0.5
 DEFAULT_SCENARIOS = ("stationary", "frontal", "side")
+#: What `episodes()` uses when --scene is not given; preflight checks it too.
+DEFAULT_SCENE = "0103"
 
 # The official evaluation set, transcribed from the vendor's own job arrays in
 # `scripts/arrays/ncap_slurm_array_*.txt`: 20 scenario-scene pairs over 14
@@ -83,21 +85,62 @@ VIDEO_MODES = ("encode", "keep", "off")
 RENDERER_STARTUP_S = 900
 
 
+def _lidar_sample_data(path: Path) -> dict[str, str]:
+    """sample_token -> LIDAR_TOP keyframe filename, read without loading the file.
+
+    `sample_data.json` is 1.25 GB here and `json.loads` on it peaks around
+    4.6 GB of RSS. That is an absurd cost for preflight -- the cheap check that
+    runs before anything else, often on a box already busy with someone else's
+    job -- so this reads it a line at a time instead and keeps only the two
+    fields it needs, a few MB for the whole dataset.
+
+    nuScenes writes these files pretty-printed, one field per line, which is
+    what makes a scan this simple viable. The parse is deliberately narrow: a
+    line that does not look like one of the three fields is skipped, and a
+    record missing any of them is dropped rather than guessed at.
+
+    A compact, single-line file yields nothing from that scan, and "nothing"
+    here would mean "no scene has any lidar" -- preflight would then refuse
+    every scene, confidently and wrongly. So an empty result on a non-empty file
+    falls back to loading it whole: slow and memory-hungry, but right. Being
+    wrong in the blocking direction is worse than being expensive.
+    """
+    out: dict[str, str] = {}
+    token = filename = None
+    keyframe = False
+    with path.open() as handle:
+        for line in handle:
+            line = line.strip().rstrip(",")
+            if line in ("{", "},", "}"):
+                if keyframe and token and filename and filename.startswith("samples/LIDAR_TOP"):
+                    out[token] = filename
+                token = filename = None
+                keyframe = False
+            elif line.startswith('"sample_token"'):
+                token = line.split('": "', 1)[-1].rstrip('"')
+            elif line.startswith('"filename"'):
+                filename = line.split('": "', 1)[-1].rstrip('"')
+            elif line.startswith('"is_key_frame"'):
+                keyframe = line.endswith("true")
+
+    if not out and path.stat().st_size:
+        return {
+            d["sample_token"]: d["filename"]
+            for d in json.loads(path.read_text())
+            if d.get("is_key_frame") and str(d.get("filename", "")).startswith("samples/LIDAR_TOP")
+        }
+    return out
+
+
 @lru_cache(maxsize=4)
 def _lidar_keyframes_by_scene(meta: Path) -> dict[str, list[str]]:
     """scene name -> its LIDAR_TOP keyframe filenames, for one nuScenes metadata dir.
 
-    Cached because `sample_data.json` is hundreds of megabytes and a 14-scene
-    sweep would otherwise parse it fourteen times -- about a minute of preflight
-    to answer a question that takes four seconds once.
+    Cached because a 14-scene sweep would otherwise redo the scan fourteen times.
     """
     scenes = {s["name"]: s for s in json.loads((meta / "scene.json").read_text())}
     samples = {s["token"]: s for s in json.loads((meta / "sample.json").read_text())}
-    lidar = {
-        d["sample_token"]: d["filename"]
-        for d in json.loads((meta / "sample_data.json").read_text())
-        if d["is_key_frame"] and d["filename"].startswith("samples/LIDAR_TOP")
-    }
+    lidar = _lidar_sample_data(meta / "sample_data.json")
     out: dict[str, list[str]] = {}
     for name, scene in scenes.items():
         names, token = [], scene["first_sample_token"]
@@ -197,6 +240,12 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             # RuntimeError, not ValueError.
             problems.append(str(exc))
 
+        # The scenes a run will actually touch. `scene_problems` covers whatever
+        # --scene names, but a run without it falls back to the default and
+        # would never be checked -- the same asymmetry as verifying the 20
+        # scenario files exist while not verifying their scenes can render.
+        problems += self._lidar_problems(DEFAULT_SCENE)
+
         url = self.setting("renderer_url")
         if url and self.manages_renderer():
             # We start one per scene; a live one here would be someone else's,
@@ -292,8 +341,9 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             return [
                 f"scene {scene} has none of its {len(names)} LIDAR_TOP keyframes under {root}. "
                 f"The renderer does not use the points, but NeuRAD's dataparser reads them "
-                f"eagerly and needs at least one. Fetch this scene's lidar (see "
-                f"docs/data-setup.md) or leave the scene out of --scene."
+                f"eagerly and needs at least one. To fetch just this scene's lidar without "
+                f"re-downloading nuScenes, see the 'cameras but no lidar for some scenes' "
+                f"recipe in docs/data-setup.md; or leave the scene out of --scene."
             ]
         return []
 
@@ -346,7 +396,7 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         # pair the caller asked for by name is how a sweep silently shrinks.
         explicit = scenarios is not None
         self._pairs_run = 0
-        for scene in scenes or ["0103"]:
+        for scene in scenes or [DEFAULT_SCENE]:
             for scenario in scenarios or list(DEFAULT_SCENARIOS):
                 path = SCENARIOS_DIR / scenario / f"{scene}.yaml"
                 if not path.exists():

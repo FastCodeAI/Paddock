@@ -789,3 +789,118 @@ def test_unreadable_metadata_does_not_fail_preflight(tmp_path, monkeypatch) -> N
 
     harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
     assert harness.scene_problems("0103") == []
+
+
+def test_the_streaming_parse_matches_a_whole_file_parse(tmp_path, monkeypatch) -> None:
+    """The scan replaced `json.loads` on a 1.25 GB file; it must give the same answer.
+
+    Reading the file whole peaked at 4.6 GB of RSS, which is an absurd cost for
+    the check that runs before everything else. The scan relies on nuScenes
+    writing these files pretty-printed, one field per line, so this pins that
+    the two agree on a file shaped exactly like the real one.
+    """
+    from paddock.adapters.benchmarks.neuroncap.harness import _lidar_sample_data
+
+    rows = [
+        {
+            "token": "a",
+            "sample_token": "s1",
+            "is_key_frame": True,
+            "filename": "samples/LIDAR_TOP/x__LIDAR_TOP__1.pcd.bin",
+        },
+        # a sweep, not a keyframe -- must be skipped
+        {
+            "token": "b",
+            "sample_token": "s2",
+            "is_key_frame": False,
+            "filename": "sweeps/LIDAR_TOP/x__LIDAR_TOP__2.pcd.bin",
+        },
+        # a camera keyframe -- must be skipped
+        {
+            "token": "c",
+            "sample_token": "s3",
+            "is_key_frame": True,
+            "filename": "samples/CAM_FRONT/x__CAM_FRONT__3.jpg",
+        },
+        # a keyframe lidar file for a second sample
+        {
+            "token": "d",
+            "sample_token": "s4",
+            "is_key_frame": True,
+            "filename": "samples/LIDAR_TOP/x__LIDAR_TOP__4.pcd.bin",
+        },
+    ]
+    path = tmp_path / "sample_data.json"
+    path.write_text(json.dumps(rows, indent=1))
+
+    expected = {
+        d["sample_token"]: d["filename"]
+        for d in json.loads(path.read_text())
+        if d["is_key_frame"] and d["filename"].startswith("samples/LIDAR_TOP")
+    }
+    assert _lidar_sample_data(path) == expected
+    assert _lidar_sample_data(path) == {
+        "s1": "samples/LIDAR_TOP/x__LIDAR_TOP__1.pcd.bin",
+        "s4": "samples/LIDAR_TOP/x__LIDAR_TOP__4.pcd.bin",
+    }
+
+
+def test_preflight_checks_the_default_scene_when_no_scene_is_named(tmp_path, monkeypatch) -> None:
+    """A run without --scene falls back to the default, which was never checked.
+
+    `scene_problems` only sees what --scene names, so the one scene a bare
+    `paddock run` will actually drive was the one scene preflight skipped.
+    """
+    from paddock.adapters.benchmarks.neuroncap.harness import (
+        DEFAULT_SCENE,
+        _lidar_keyframes_by_scene,
+    )
+
+    _lidar_keyframes_by_scene.cache_clear()
+    _nuscenes_meta(tmp_path, {f"scene-{DEFAULT_SCENE}": 40}, present=set())
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
+
+    assert any("LIDAR_TOP keyframes" in p for p in harness.preflight())
+
+
+def test_a_compact_metadata_file_falls_back_rather_than_reporting_nothing(tmp_path) -> None:
+    """A single-line file yields nothing from the scan, and nothing means "no lidar".
+
+    Left there, preflight would refuse every scene on a copy whose metadata
+    happens to be compact -- confidently and wrongly. Being wrong in the
+    blocking direction is worse than being slow, so it falls back to a whole
+    read. Caught by the fixture in this file writing compact JSON.
+    """
+    from paddock.adapters.benchmarks.neuroncap.harness import _lidar_sample_data
+
+    rows = [
+        {
+            "token": "a",
+            "sample_token": "s1",
+            "is_key_frame": True,
+            "filename": "samples/LIDAR_TOP/x__LIDAR_TOP__1.pcd.bin",
+        },
+        {
+            "token": "b",
+            "sample_token": "s2",
+            "is_key_frame": True,
+            "filename": "samples/CAM_FRONT/x__CAM_FRONT__2.jpg",
+        },
+    ]
+    compact = tmp_path / "compact.json"
+    compact.write_text(json.dumps(rows))  # no indent: one line
+    pretty = tmp_path / "pretty.json"
+    pretty.write_text(json.dumps(rows, indent=1))
+
+    want = {"s1": "samples/LIDAR_TOP/x__LIDAR_TOP__1.pcd.bin"}
+    assert _lidar_sample_data(pretty) == want, "the fast path"
+    assert _lidar_sample_data(compact) == want, "the fallback"
+
+
+def test_an_empty_metadata_file_is_not_a_fallback_loop(tmp_path) -> None:
+    """An empty file legitimately has no lidar; it must not try to json.loads it."""
+    from paddock.adapters.benchmarks.neuroncap.harness import _lidar_sample_data
+
+    empty = tmp_path / "empty.json"
+    empty.write_text("")
+    assert _lidar_sample_data(empty) == {}

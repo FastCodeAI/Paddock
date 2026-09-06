@@ -433,14 +433,19 @@ RuntimeError: expected scalar type Float but found Double
 nuScenes metadata is parsed once and cached, so checking all fourteen official
 scenes takes about four seconds.
 
-**This is not hypothetical.** The 2026-09-04 sweep spent roughly 13 GPU-hours on
-it. This nuScenes copy was extracted with a camera-only filter, so 177 of 850
-scenes have no lidar; three of them -- 0796, 0921 and 0923 -- are in the
-official 20 pairs. Every attempt failed those three, exited non-zero, and
-retried the other seventeen from the start, producing byte-identical results
-each time.
+**This is not hypothetical -- it is why the check exists.** As extracted on
+2026-09-04, the shakaal copy of nuScenes had 177 of 850 scenes with no lidar at
+all, because `extract_nuscenes.sh` took `samples/CAM_*` and nothing else. Three
+of those scenes -- 0796, 0921 and 0923 -- are in the official 20 pairs. The
+full-set sweep spent roughly 13 GPU-hours on it: every attempt failed those
+three, exited non-zero, and retried the other seventeen from the start,
+producing byte-identical results each time.
 
-Missing lidar for a scene is fixable without re-downloading the dataset: the
-nuScenes keyframes blobs are public, ordered by date, and can be streamed and
-filtered to `samples/LIDAR_TOP/*` -- about 4 GB of transfer for the ~500 MB of
-lidar in one blob.
+Their lidar has since been fetched, so on that machine all fourteen official
+scenes now pass and 174 scenes remain without lidar. The paragraph above is an
+incident record, not a description of the current state -- check with
+`paddock doctor` or a `--dry-run`, which is what the check is for.
+
+Missing lidar for a scene is fixable without re-downloading the dataset. The
+recipe is in [docs/data-setup.md](../data-setup.md) under "nuScenes with cameras
+but no lidar for some scenes".
