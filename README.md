@@ -109,7 +109,7 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 |---|---|---|---|---|---|---|---|
 | OpenPilot | planned | 1.599 | ✗ 2 Hz ‡ | 37.7 ¶ | **3.60** ‖ | planned | planned |
 | Alpamayo 1.5 | planned | 1.002 | 0.608 † | adapter, unrun | 2.46 ✳ | planned | planned |
-| Drive-JEPA | planned | 2.364 | 0.843 | adapter, unrun | 4.04 ✳ | planned | planned |
+| Drive-JEPA | planned | 2.364 | 0.843 | adapter, unrun | **3.57** ‖ | planned | planned |
 | VisionPilot | n/a ∗ | n/a ∗ | 0.431 | 61.6 ¶ | **1.58** ‖ | planned | planned |
 | Baseline (Constant Velocity) | — | 1.381 | 0.239 | — | 0 § | — | — |
 
@@ -209,15 +209,22 @@ all 200 runs. Runs are seeded 0-9, so every model met identical scenario jitter.
 |---|---:|---:|---:|---:|---:|
 | OpenPilot | 4.52 ±1.34 | 2.30 ±1.24 | 3.08 ±2.25 | **3.60** | 38% |
 | VisionPilot | 2.53 ±1.60 | 1.17 ±1.38 | 0.08 ±0.18 | **1.58** | 86% |
+| Drive-JEPA | 4.23 ±1.33 | 2.42 ±1.43 | 3.39 ±2.07 | **3.57** | 46% |
 | Alpamayo 1.5 ✳ | 4.08 ±1.84 | 2.10 ±1.63 | 1.20 ±0.36 | 2.46 | 67% |
-| Drive-JEPA ✳ | 5.00 ±0.00 | 2.13 ±0.08 | 5.00 ±0.00 | 4.04 | 33% |
 | Baseline (Constant Velocity) | 0.00 | 0.00 | 0.00 | 0.00 § | 100% |
 
-✳ Alpamayo and Drive-JEPA are still the **old single-scene numbers** — scene
-0103 only, 5 runs, n = 15. They are not comparable with the two full-set rows
-above and are shown only until their sweeps land. Scene 0103 is not
-representative: OpenPilot scored 3.80 there and 3.60 across all fourteen, and
-VisionPilot's side score fell from 0.54 on 0103 to 0.08 across the set.
+✳ Alpamayo 1.5 is still the **old single-scene number** — scene 0103 only, 5
+runs, n = 15 — and is not comparable with the full-set rows above. Its sweep is
+running.
+
+**Scene 0103 was not representative, and the ranking it implied was wrong.** On
+that one scene Drive-JEPA led OpenPilot 4.04 to 3.80. Over the full set they are
+indistinguishable: 3.60 against 3.57. Because runs are seeded 0–9, every model
+met identical scenario jitter, so the comparison can be paired sample for
+sample — over all 200, OpenPilot − Drive-JEPA is **+0.04 (SE 0.12, t = 0.30)**,
+with OpenPilot higher on 52, lower on 49 and tied on 99. That is a tie, not a
+lead for either. VisionPilot's side score also fell from 0.54 on 0103 to 0.08
+across the set.
 
 **A single run scores either exactly 5.0 or at most 4.0** (see §), so a mean
 between them is an average over runs and the standard deviation matters. The
