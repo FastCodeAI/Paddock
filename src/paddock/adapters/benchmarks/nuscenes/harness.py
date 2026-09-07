@@ -134,11 +134,14 @@ class NuScenesBenchmark(OpenLoopBenchmark):
             return [f"nuscenes dataset root: {exc}"]
         # Every table the loader reads, not just sample.json -- a partial dump is
         # otherwise discovered an hour into the index build.
+        # Every table the loader reads (loader.build_index), not just sample.json
+        # -- a partial dump is otherwise discovered an hour into the index build.
         tables = (
             "sample",
             "sample_data",
             "ego_pose",
             "calibrated_sensor",
+            "sensor",
             "sample_annotation",
             "scene",
         )
@@ -153,15 +156,19 @@ class NuScenesBenchmark(OpenLoopBenchmark):
         if not (root / "can_bus").is_dir():
             problems.append(f"{root}/can_bus is missing (ego status comes from the CAN-bus pose messages)")
         elif VAL_SCENES.exists():
-            # Spot-check one val scene's pose file: the directory can exist while
-            # the per-scene messages the loader needs are absent.
+            # The directory can exist while per-scene pose files are absent, and
+            # the loader needs one for EVERY val scene (a missing one raises mid
+            # build). Check them all -- it is 150 cheap existence checks.
             try:
-                scene = json.loads(VAL_SCENES.read_text())["val"][0]
-                if not (root / "can_bus" / f"{scene}_pose.json").exists():
+                scenes = json.loads(VAL_SCENES.read_text())["val"]
+                missing_can = [s for s in scenes if not (root / "can_bus" / f"{s}_pose.json").exists()]
+                if missing_can:
+                    shown = ", ".join(missing_can[:3]) + (" ..." if len(missing_can) > 3 else "")
                     problems.append(
-                        f"{root}/can_bus has no {scene}_pose.json (CAN-bus pose messages missing)"
+                        f"{root}/can_bus is missing {len(missing_can)} val-scene pose file(s) "
+                        f"(e.g. {shown}); the CAN-bus expansion is incomplete"
                     )
-            except (OSError, KeyError, IndexError, ValueError):
+            except (OSError, KeyError, ValueError):
                 pass
         if not VAL_SCENES.exists():
             problems.append(f"{VAL_SCENES} (vendored official val split) is missing")
@@ -191,6 +198,7 @@ class NuScenesBenchmark(OpenLoopBenchmark):
         if split not in (None, "", "val"):
             raise ValueError(f"nuscenes open-loop scores the official val split only, not {split!r}")
         emitted = 0
+        skipped = 0
         for frames in self._index():
             for i in range(len(frames)):
                 if i + N_STEPS >= len(frames):
@@ -199,11 +207,21 @@ class NuScenesBenchmark(OpenLoopBenchmark):
                 # keyframe was dropped (e.g. missing LIDAR_TOP), the window would
                 # silently span more than 3 s -- skip it rather than mis-score.
                 if frames[i + N_STEPS].index_in_scene - frames[i].index_in_scene != N_STEPS:
+                    skipped += 1
                     continue
                 yield self._sample(frames, i)
                 emitted += 1
                 if limit and emitted >= limit:
                     return
+        # Every val keyframe has LIDAR_TOP, so this is normally 0; a non-zero
+        # count means the metadata was damaged and the scored set is smaller than
+        # the protocol's. Surface it rather than finish quietly short.
+        if skipped:
+            print(
+                f"  nuscenes: skipped {skipped} keyframe(s) with a non-contiguous 3 s future "
+                f"(damaged metadata); scored {emitted}",
+                flush=True,
+            )
 
     def _sample(self, frames: list, i: int) -> Sample:
         cur = frames[i]
