@@ -101,5 +101,28 @@ except `inference_seconds`, which is a cost).
 ## Tests
 
 `tests/test_nuscenes_openloop.py`: quaternion/frame geometry, oriented-box
-intersection, the command rule, plan resampling, and the scorer's point vs
-cumulative conventions on synthetic plans.
+intersection, the command rule, plan resampling (including the origin anchor and
+the mid-turn distance), the scorer's point vs cumulative conventions, that absent
+box data omits the collision metrics rather than zeroing them, and that the index
+cache rebuilds when the dataset/version/scene set changes.
+
+**Verified vs. what is not.** These are self-consistency tests: they pin the L2
+and collision arithmetic and the frame conventions this adapter implements,
+transcribed from the UniAD/VAD protocol. They do **not** establish numerical
+parity against the original UniAD/VAD scorers on identical inputs -- there is no
+golden fixture from those scorers here. Establishing that would need one recorded
+(plan, future, boxes) case scored by the original code to diff against; until
+then the equivalence claim rests on the transcription, not on a measured match.
+
+## Framework changes in this PR
+
+Adding this benchmark stayed inside its own adapter directory, with two
+deliberate framework touchpoints kept minimal and called out here per
+`CONTRIBUTING.md`:
+
+* `registry.py` gained a `builtin` runtime kind (paddock's own interpreter), so a
+  dependency-free baseline (`constant_velocity`) can run without a separate venv.
+* `results/report.py` learned that `l2*`/`col*` are lower-is-better, so these
+  metrics render with the correct arrow. This is global metric-direction
+  inference; a per-metric declaration on the benchmark would be the cleaner home
+  and is worth a follow-up.

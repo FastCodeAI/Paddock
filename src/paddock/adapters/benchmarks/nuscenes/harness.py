@@ -48,9 +48,14 @@ def plan_on_grid(prediction: Trajectory, n_steps: int = N_STEPS, step_s: float =
     xy = np.asarray(prediction.xy, dtype=np.float64)
     if len(xy) == 0:
         return np.zeros((n_steps, 2))
-    t_pred = prediction.dt * np.arange(1, len(xy) + 1)
+    # Anchor at the ego origin (t=0 -> (0, 0)) so a grid step wanted before the
+    # plan's first waypoint interpolates from the car, not flat-held at that
+    # first point. Plans on the 0.5 s grid already land on their own points; a
+    # coarser plan (dt > 0.5 s) would otherwise mis-score its early horizons.
+    t_pred = np.concatenate([[0.0], prediction.dt * np.arange(1, len(xy) + 1)])
+    xy_anchor = np.vstack([[0.0, 0.0], xy])
     wanted = step_s * np.arange(1, n_steps + 1)
-    return np.column_stack([np.interp(wanted, t_pred, xy[:, i]) for i in range(2)])
+    return np.column_stack([np.interp(wanted, t_pred, xy_anchor[:, i]) for i in range(2)])
 
 
 def plan_headings(xy: np.ndarray) -> np.ndarray:
@@ -66,24 +71,33 @@ def plan_headings(xy: np.ndarray) -> np.ndarray:
     return np.asarray(yaws)
 
 
-def score_plan(xy: np.ndarray, future_xy: np.ndarray, fut_boxes: list[np.ndarray]) -> dict[str, float]:
-    """All metrics for one plan already on the 0.5 s grid."""
+def score_plan(xy: np.ndarray, future_xy: np.ndarray, fut_boxes: list[np.ndarray] | None) -> dict[str, float]:
+    """All metrics for one plan already on the 0.5 s grid.
+
+    ``fut_boxes`` is the annotated boxes per future step, or ``None`` when box
+    data is unavailable (a run scored outside the process that built the index).
+    In that case the collision metrics are *omitted* rather than reported as 0 --
+    "not scored" must never read as "collision-free".
+    """
     n = min(len(xy), len(future_xy), N_STEPS)
     l2 = np.linalg.norm(xy[:n] - future_xy[:n], axis=1)
-    yaws = plan_headings(xy[:n])
-    col = np.array(
-        [
-            float(L.collides([xy[k, 0], xy[k, 1], yaws[k], L.EGO_LENGTH_M, L.EGO_WIDTH_M], fut_boxes[k]))
-            for k in range(n)
-        ]
-    )
+    col: np.ndarray | None = None
+    if fut_boxes is not None:
+        yaws = plan_headings(xy[:n])
+        col = np.array(
+            [
+                float(L.collides([xy[k, 0], xy[k, 1], yaws[k], L.EGO_LENGTH_M, L.EGO_WIDTH_M], fut_boxes[k]))
+                for k in range(n)
+            ]
+        )
     out: dict[str, float] = {}
     for name, k in HORIZONS.items():
         if k <= n:
             out[f"l2_{name}"] = float(l2[k - 1])
-            out[f"col_{name}"] = float(col[k - 1])
             out[f"l2_uniad_{name}"] = float(l2[:k].mean())
-            out[f"col_uniad_{name}"] = float(col[:k].mean())
+            if col is not None:
+                out[f"col_{name}"] = float(col[k - 1])
+                out[f"col_uniad_{name}"] = float(col[:k].mean())
     for kind in ("l2", "col", "l2_uniad", "col_uniad"):
         vals = [out[f"{kind}_{h}"] for h in HORIZONS if f"{kind}_{h}" in out]
         if vals:
@@ -206,9 +220,11 @@ class NuScenesBenchmark(OpenLoopBenchmark):
 
     def score(self, sample: Sample, prediction: Trajectory) -> dict[str, float]:
         future_xy = np.asarray(sample.ground_truth, dtype=np.float64)[:, :2]
-        boxes = self._boxes.pop(sample.sample_id, None)
-        if boxes is None:  # scored outside the process that built it: L2 only, no collision
-            boxes = [np.zeros((0, 5)) for _ in range(N_STEPS)]
+        # get, not pop: re-scoring a sample (or scoring twice) must not drop the
+        # boxes and silently turn collision metrics into a false 0. When the
+        # boxes are genuinely absent (scored outside the process that built the
+        # index) score_plan omits the collision metrics rather than zeroing them.
+        boxes = self._boxes.get(sample.sample_id)
         return score_plan(plan_on_grid(prediction), future_xy, boxes)
 
 
