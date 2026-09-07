@@ -149,16 +149,22 @@ def test_infra_failure_routes_are_dropped(tmp_path):
     xml = _routes_xml(tmp_path / "routes.xml")
     run = tmp_path / "run"
     run.mkdir()
-    # A crashed route carries no scored outcome and must not enter the tally.
-    _write_results(
-        run / "1711-Town12_X",
-        status="Failed - Agent crashed",
-        score_route=5.0,
-        score_composed=5.0,
-        penalty=1.0,
-        infractions={},
-    )
-    (run / "1711-Town12_X" / "log.csv").write_text("ego_x,ego_y,resume\n0.0,0.0,0\n")
+    # Crash and bad-sensor routes carry no scored outcome and must not enter the
+    # tally (the bad-sensor status is the one the first substring filter missed).
+    for rid, status in (
+        ("1711", "Failed - Agent crashed"),
+        ("1852", "Failed - Agent's sensors were invalid"),
+        ("2050", "Failed - Simulation crashed"),
+    ):
+        _write_results(
+            run / f"{rid}-Town12_X",
+            status=status,
+            score_route=5.0,
+            score_composed=5.0,
+            penalty=1.0,
+            infractions={},
+        )
+        (run / f"{rid}-Town12_X" / "log.csv").write_text("ego_x,ego_y,resume\n0.0,0.0,0\n")
     # A legitimate 'blocked' route is kept.
     _write_results(
         run / "1790-Town12_Y",
@@ -190,4 +196,17 @@ def test_missing_resume_telemetry_is_flagged(tmp_path):
     (d / "log.csv").write_text("ego_x,ego_y\n0.0,0.0\n5.0,0.0\n")
     (row,) = tally.two_case_rows(run, xml)
     assert "no resume telemetry" in row["note"]
+    assert row["unassisted_ok"] is False  # excluded from the unassisted mean
     assert row["unassisted_DS"] == row["assisted_DS"] == 90.0
+
+
+def test_usable_rows_carry_the_unassisted_ok_flag(tmp_path):
+    xml = _routes_xml(tmp_path / "routes.xml")
+    run = tmp_path / "run"
+    run.mkdir()
+    # A clean route with resume telemetry and data rows is usable.
+    _route_dir(
+        run, "1711", score_route=90.0, score_composed=90.0, penalty=1.0, infractions={}, resume_at=None
+    )
+    (row,) = tally.two_case_rows(run, xml)
+    assert row["unassisted_ok"] is True

@@ -13,8 +13,8 @@ this derives two scores per route, so the assisted number never stands alone:
   marked ``*`` with the nudge count.
 
 A route with no nudge scores identically in both. Route completion at the nudge
-is the ego's progress along the route polyline (Bench2Drive's own RC definition)
-divided by the route length from ``results.json``.
+is the ego's progress along the route polyline (an approximation; see Fidelity
+below) divided by the route length from ``results.json``.
 
 This is the shipped, reproducible form of the two-case protocol documented in
 ``docs/benchmarks/bench2drive.md``; it reads only the artefacts a normal run
@@ -59,6 +59,8 @@ from typing import Any
 
 import numpy as np
 
+from paddock.adapters.benchmarks.bench2drive.harness import CRASH_STATUSES
+
 #: Bench2Drive / CARLA leaderboard infraction penalty coefficients (the
 #: multipliers the official Driving Score applies per event). Kept here beside
 #: the tally that uses them so a change to the scoring shows up in a diff; they
@@ -79,11 +81,16 @@ INFRACTION_PENALTY: dict[str, float] = {
 _LOG_DT_S = 0.05
 _XY_RE = re.compile(r"x=(-?[\d.]+), y=(-?[\d.]+)")
 
-#: Substrings of a route status that mark an infrastructure failure rather than a
-#: scored outcome (an agent or simulation crash, or a failed setup). These carry
-#: no meaningful score and are dropped from the tally. "Agent got blocked" is NOT
-#: here: it is a legitimate scored outcome.
-_INVALID_STATUS = ("crashed", "couldn't be set up", "could not be set up")
+
+def _is_infra_failure(status: str) -> bool:
+    """True for a route that did not run (crash / bad sensors / failed setup).
+
+    Reuses the harness's own ``CRASH_STATUSES`` (the leaderboard's
+    ``FAILURE_MESSAGES``) so this list never drifts from the one the runner uses;
+    the manager writes them as a ``"Failed - <message>"`` suffix. "Agent got
+    blocked" is deliberately NOT one of them -- it is a legitimate scored outcome.
+    """
+    return any(status.endswith(msg) for msg in CRASH_STATUSES)
 
 
 def route_polyline(routes_xml: Path, route_id: str) -> np.ndarray | None:
@@ -106,8 +113,10 @@ def route_polyline(routes_xml: Path, route_id: str) -> np.ndarray | None:
 def progress_along(poly: np.ndarray, pt: np.ndarray) -> tuple[float, float]:
     """``(distance_along, total_length)`` at the projection of ``pt`` onto ``poly``.
 
-    The along-track distance is measured to the nearest point of the polyline,
-    which is Bench2Drive's own route-completion definition.
+    The along-track distance is the arc length to the nearest point of the 2-D
+    route polyline. This is an *approximation* of route completion; Bench2Drive's
+    own definition tracks a stateful, windowed 3-D distance, so the two can
+    differ (see the module docstring's fidelity note).
     """
     seg = np.diff(poly, axis=0)
     seg_len = np.hypot(seg[:, 0], seg[:, 1])
@@ -185,32 +194,35 @@ def two_case_rows(run_dir: Path, routes_xml: Path) -> list[dict[str, Any]]:
         rec = records[0]
         status = rec.get("status") or ""
         # Drop infra failures; they carry no scored outcome (N1).
-        if not status or any(bad in status.lower() for bad in _INVALID_STATUS):
+        if not status or _is_infra_failure(status):
             continue
         scores = rec["scores"]
         ds, rc, pen = scores["score_composed"], scores["score_route"], scores["score_penalty"]
         route_length = float(rec.get("meta", {}).get("route_length") or 0.0) or None
 
         notes: list[str] = []
-        # One repetition per route is assumed; a multi-rep run would need the log
-        # matched to the right repetition, which this tool does not do (N5).
+        # `unassisted_ok` gates a row's unassisted score from the mean: the
+        # assisted score is always exact, but the unassisted reconstruction is
+        # only trustworthy when the resume telemetry, the log rows and (for a
+        # nudged route) the polyline are all present, and there is one repetition.
+        unassisted_ok = True
         if len(records) > 1:
+            # A multi-rep run would need the log matched to the right repetition,
+            # which this tool does not do (N5): don't average its unassisted score.
             notes.append(f"{len(records)} repetitions; used records[0]")
+            unassisted_ok = False
 
         log_csv = d / "log.csv"
         first = None
         nudges = 0
-        resume_seen = False
         body: list[list[str]] = []
         ix: dict[str, int] = {}
         if log_csv.is_file():
             nudges, first, body, ix = _first_nudge_index(log_csv)
-            resume_seen = "resume" in ix
-        if not resume_seen:
-            # No resume column -> the run was not produced with the resume
-            # emulation, so an unassisted score cannot be derived; do not
-            # silently pass off the assisted score as unassisted (N2).
+        # A header-only log (resume column but no data rows) is not telemetry.
+        if "resume" not in ix or not body:
             notes.append("no resume telemetry")
+            unassisted_ok = False
 
         una_rc, una_ds = rc, ds
         first_nudge_s = None
@@ -218,7 +230,8 @@ def two_case_rows(run_dir: Path, routes_xml: Path) -> list[dict[str, Any]]:
             first_nudge_s = round(first * _LOG_DT_S, 1)
             poly = route_polyline(routes_xml, rid)
             if poly is None:
-                notes.append("route polyline missing; unassisted = assisted")
+                notes.append("route polyline missing; unassisted unavailable")
+                unassisted_ok = False
             else:
                 pt = np.array(
                     [float(body[first][ix["ego_x"]]), float(body[first][ix["ego_y"]])],
@@ -238,6 +251,7 @@ def two_case_rows(run_dir: Path, routes_xml: Path) -> list[dict[str, Any]]:
                 "first_nudge_s": first_nudge_s,
                 "unassisted_RC": una_rc,
                 "unassisted_DS": una_ds,
+                "unassisted_ok": unassisted_ok,
                 "assisted_RC": rc,
                 "assisted_DS": round(ds, 2),
                 "penalty": pen,
@@ -261,13 +275,18 @@ def _print(rows: list[dict[str, Any]]) -> None:
         )
     print("\nassisted DS is exact; unassisted DS is an approximate reconstruction (see module docstring)")
     if rows:
-        mean_una = sum(r["unassisted_DS"] for r in rows) / len(rows)
+        # Assisted is exact for every row; unassisted only where it is trustworthy.
+        usable = [r for r in rows if r.get("unassisted_ok")]
         mean_ass = sum(r["assisted_DS"] for r in rows) / len(rows)
         with_nudge = sum(1 for r in rows if r["nudges"])
-        print(
-            f"\nmean unassisted DS {mean_una:.2f} | mean assisted DS {mean_ass:.2f}  "
-            f"(n={len(rows)}, routes with nudges: {with_nudge})"
+        excluded = len(rows) - len(usable)
+        una = (
+            f"mean unassisted DS {sum(r['unassisted_DS'] for r in usable) / len(usable):.2f} "
+            f"(n={len(usable)}" + (f", {excluded} excluded as unavailable" if excluded else "") + ")"
+            if usable
+            else "mean unassisted DS n/a (no route had a usable reconstruction)"
         )
+        print(f"\n{una} | mean assisted DS {mean_ass:.2f} (n={len(rows)}, routes with nudges: {with_nudge})")
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -486,14 +486,21 @@ class OpenpilotPolicy(Policy):
         """
         if self.camera is None:
             return {"status": "no frame seen yet"}
+        # Each view's margin from the camera that actually feeds it: in the
+        # two-camera rig the road cam feeds "img" and the wide cam "big_img", so
+        # reading both off one camera reports a false deficit for the other. A
+        # single-camera source feeds both views from the one frame.
+        slot_cam = (
+            {"img": self.cam_road, "big_img": self.cam_wide}
+            if self.cam_wide is not None
+            else {"img": self.camera, "big_img": self.camera}
+        )
         return {
             "source_hfov_deg": round(self.camera.src.hfov_deg, 2),
             "source_vfov_deg": round(self.camera.src.vfov_deg, 2),
-            # Both views: reporting only the wide (big_img) default reads as a
-            # false deficit for a narrow road camera in the two-camera rig.
             "margin_deg": {
-                slot: {k: round(v, 2) for k, v in self.camera.margin_deg(slot).items()}
-                for slot in ("img", "big_img")
+                slot: {k: round(v, 2) for k, v in cam.margin_deg(slot).items()}
+                for slot, cam in slot_cam.items()
             },
             "rpy": self.camera.rpy.tolist(),
             "frames_seen": self.frames_seen,
