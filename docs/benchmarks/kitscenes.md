@@ -94,3 +94,29 @@ What made it hard to see:
 The lesson generalises past this adapter: **anything derived from calibration is
 episode state.** If a model caches it, `reset()` must clear it, and a test should
 say so. `tests/test_policy.py::test_reset_clears_the_camera_adapter` does.
+
+## Harness changes of 05 Sep 2026 (uncommitted, partially verified)
+
+Made while trying to run all four models through this harness, then parked
+because open-loop evaluation moved to nuScenes:
+
+* **Route hint.** Every model used to get `command = STRAIGHT`. The reference
+  Drive-JEPA run (`run_kitscenes_inference.py --command gt`) inferred
+  left/right/straight from the recorded future (pose 8 steps × 5 frames ahead,
+  lateral offset beyond 5 m). `route_hint()` now applies that rule for every
+  model and also fills `nav_maneuver` / `nav_distance_m`.
+* **Cameras.** Only `CAM_FRONT` was offered; Drive-JEPA (four slots) and
+  Alpamayo (three) failed every sample. The four ring cameras are now offered
+  under the nuScenes-style names, each located on its own tier, because the
+  pruned NVMe tier lacks side or rear cameras for up to 58 of the 140 scenes.
+  Verified on all 223 samples.
+* **Duplicate warm-up frames.** Keyframe 40 with a 48-frame history repeats
+  frame 0 eight times; Alpamayo's time-based pose resampler rejected the
+  duplicate timestamps. Its policy now ignores repeated frames.
+* **Known consequence, fixed 06 Sep:** openpilot's `model.yaml` declares the
+  comma cameras for Bench2Drive, and `Observation.from_wire` keeps only
+  declared cameras, so openpilot lost `CAM_FRONT` here. `CAM_FRONT` is now
+  declared as well; the policy prefers the comma pair when present.
+
+Only VisionPilot completed under this harness (n = 223, ADE 3.70 m, median
+2.80). Drive-JEPA and Alpamayo were stopped mid-run and not rerun.

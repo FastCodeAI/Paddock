@@ -31,6 +31,43 @@ SRC_HZ = 10.0
 INTERVAL_S = 0.5
 EVAL_HORIZON_S = 3.0
 N_GT_POSES = 8
+#: The route hint. KITScenes has no route annotation, so the reference Drive-JEPA
+#: run (`run_kitscenes_inference.py --command gt`) inferred it from the recorded
+#: future: the pose 8 scoring steps ahead (8 x 5 frames = 4 s), expressed in the
+#: keyframe's frame; a lateral offset beyond 5 m is a turn. Every model gets the
+#: same hint -- as the 4-way command, and as the next-maneuver fields a policy
+#: with a navigation instruction (Alpamayo) reads. Pinning STRAIGHT for all would
+#: withhold from every model what the reference gave Drive-JEPA on 39 of 223.
+ROUTE_LOOKAHEAD_FRAMES = 8 * 5
+TURN_THRESHOLD_M = 5.0
+#: KITScenes ring cameras offered under the protocol's nuScenes-style names, the
+#: same mapping the reference Drive-JEPA KITScenes adapter used (its CAMERA_MAP;
+#: measured yaws 1 / 61 / -58 / -179 deg against nuScenes' 0 / 55 / -55 / 180).
+#: Paths only, so offering all four costs nothing; a policy takes the slots it
+#: declares (openpilot/VisionPilot the front, Alpamayo the front three, Drive-JEPA
+#: all four) and the node reads the files it needs.
+CAMERA_SENSORS = {
+    "CAM_FRONT": "camera_ring_front",
+    "CAM_FRONT_LEFT": "camera_ring_front_left",
+    "CAM_FRONT_RIGHT": "camera_ring_front_right",
+    "CAM_BACK": "camera_ring_rear",
+}
+
+
+def route_hint(poses: np.ndarray, keyframe: int) -> tuple[Command, str | None, float | None]:
+    """(command, nav_maneuver, nav_distance_m) for *keyframe*, from the recorded future."""
+    from paddock.metrics.pose import to_relative_poses
+
+    horizon = min(keyframe + ROUTE_LOOKAHEAD_FRAMES, len(poses) - 1)
+    if horizon <= keyframe:
+        return Command.STRAIGHT, None, None
+    lateral = float(to_relative_poses(poses[keyframe], poses[[horizon]])[0, 1])
+    distance = float(np.linalg.norm(poses[horizon, :2] - poses[keyframe, :2]))
+    if lateral > TURN_THRESHOLD_M:
+        return Command.LEFT, "TURN_LEFT", round(distance, 1)
+    if lateral < -TURN_THRESHOLD_M:
+        return Command.RIGHT, "TURN_RIGHT", round(distance, 1)
+    return Command.STRAIGHT, None, None
 
 
 class KitScenesBenchmark(OpenLoopBenchmark):
@@ -118,12 +155,23 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         poses = L.load_poses(scene)
 
         indices = L.frame_indices(keyframe, HISTORY_FRAMES)
-        calibration = _read_calibration(scene)
+        # The tiers hold different sensor subsets of the same scenes (the pruned
+        # NVMe tier keeps the front camera for most, the side and rear cameras
+        # for fewer), so each camera is located on its own, fastest tier first.
+        cameras = {
+            cam: found
+            for cam, sensor in CAMERA_SENSORS.items()
+            if (found := self._sensor_dir(row["scene_id"], row["split_dir"], sensor)) is not None
+        }
+        calibration = {cam: _read_calibration(scene, CAMERA_SENSORS[cam]) for cam in cameras}
+        lidar2ego = _read_lidar2ego(scene)
+        # One hint per sample, held through its history, as the reference did.
+        hint = route_hint(poses, keyframe)
 
         # Paths, not pixels. The node is a subprocess on this filesystem, so
         # neither side needs to carry 24 MB a frame.
         observations = [
-            self._observation(L.frame_path(scene, index), poses, index, calibration) for index in indices
+            self._observation(scene, cameras, poses, index, calibration, lidar2ego, hint) for index in indices
         ]
         return Sample(
             sample_id=f"kitscenes/{row['split']}/{row['scene_id']}/{keyframe}",
@@ -132,6 +180,14 @@ class KitScenesBenchmark(OpenLoopBenchmark):
             split=row["split"],
             native_id={"scene_id": row["scene_id"], "keyframe_index": keyframe},
         )
+
+    def _sensor_dir(self, scene_id: str, split: str, sensor: str) -> Path | None:
+        """The first tier holding this scene's frames for *sensor*, or None."""
+        for root in self.dataset.roots:
+            candidate = root / split / scene_id / sensor
+            if candidate.is_dir():
+                return candidate
+        return None
 
     def _scene_path(self, scene_id: str, split: str) -> Path:
         """Locate a scene across the configured tiers, fastest first."""
@@ -144,7 +200,16 @@ class KitScenesBenchmark(OpenLoopBenchmark):
             + ", ".join(str(r) for r in self.dataset.roots)
         )
 
-    def _observation(self, image_path: Path, poses: np.ndarray, index: int, calibration) -> Observation:
+    def _observation(
+        self,
+        scene: Path,
+        cameras: dict,
+        poses: np.ndarray,
+        index: int,
+        calibration: dict,
+        lidar2ego: np.ndarray | None,
+        hint: tuple = (Command.STRAIGHT, None, None),
+    ) -> Observation:
         """One frame, in the protocol's shape.
 
         Intrinsics and extrinsics come from the scene's calibration; the ego
@@ -159,16 +224,18 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         canbus = np.zeros(18)
         canbus[13] = L.ego_speed(poses, index)
 
-        intrinsics, cam2ego = calibration
         return Observation(
             images={},
-            image_paths={"CAM_FRONT": str(image_path)},
+            image_paths={cam: str(folder / f"{index:010d}.jpg") for cam, folder in cameras.items()},
             ego2world=ego2world,
             canbus=canbus,
             timestamp_us=int(index / SRC_HZ * 1e6),
-            command=Command.STRAIGHT,
-            camera2image={"CAM_FRONT": intrinsics},
-            camera2ego={"CAM_FRONT": cam2ego},
+            command=hint[0],
+            camera2image={cam: calibration[cam][0] for cam in cameras},
+            camera2ego={cam: calibration[cam][1] for cam in cameras},
+            lidar2ego=lidar2ego,
+            nav_maneuver=hint[1],
+            nav_distance_m=hint[2],
         )
 
     # ---- scoring --------------------------------------------------------
@@ -210,3 +277,16 @@ def _read_calibration(scene: Path, sensor: str = "camera_ring_front") -> tuple[n
     # frame the ground truth poses are expressed in.
     cam2ego = np.asarray(calib["T_to_reference"], dtype=np.float64)
     return intrinsics, cam2ego
+
+
+def _read_lidar2ego(scene: Path, sensor: str = "lidar_top") -> np.ndarray | None:
+    """lidar -> rig reference, for models that project through the lidar frame
+    (Drive-JEPA derives lidar2img from it, as its reference KITScenes adapter did
+    from the same calib entry). None when the scene has no such sensor."""
+    import json
+
+    calib = json.loads((scene / "calibration" / "calib.json").read_text())
+    entry = calib.get(sensor)
+    if not isinstance(entry, dict) or "T_to_reference" not in entry:
+        return None
+    return np.asarray(entry["T_to_reference"], dtype=np.float64)
