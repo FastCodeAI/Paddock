@@ -16,7 +16,8 @@ VisionPilot the front), with the dataset's calibration.
 Two conventions coexist in the literature and both are reported:
 * `l2_{1,2,3}s` / `col_{1,2,3}s`: the value at exactly that horizon (VAD);
 * `l2_uniad_*` / `col_uniad_*`: the mean over every 0.5 s step up to that
-  horizon (UniAD's table), which is always lower.
+  horizon (UniAD's table), lower than the point value when error grows with the
+  horizon (the usual case), not by definition.
 `*_avg` is the mean of the 1/2/3 s values. Collision uses UniAD's ego footprint
 (4.084 x 1.85 m) against every annotated box at the same future step, in the
 scored keyframe's ego frame; heading of the planned footprint follows the plan
@@ -107,11 +108,14 @@ def score_plan(xy: np.ndarray, future_xy: np.ndarray, fut_boxes: list[np.ndarray
 
 
 class NuScenesBenchmark(OpenLoopBenchmark):
-    _index_cache = None
-    #: sample_id -> future boxes per step. `Sample.ground_truth` stays the
-    #: (6, 3) future-pose array the runner records for every open-loop
-    #: benchmark; the boxes are large and only the scorer needs them.
-    _boxes: dict[str, list] = {}
+    def __init__(self, spec, cfg) -> None:
+        super().__init__(spec, cfg)
+        self._index_cache = None
+        #: sample_id -> future boxes per step. `Sample.ground_truth` stays the
+        #: (6, 3) future-pose array the runner records for every open-loop
+        #: benchmark; the boxes are large and only the scorer needs them. Held
+        #: per instance, not on the class, so two benchmarks never share state.
+        self._boxes: dict[str, list] = {}
 
     # ---- readiness ------------------------------------------------------
 
@@ -128,12 +132,37 @@ class NuScenesBenchmark(OpenLoopBenchmark):
             root = dataset.resolve()
         except Exception as exc:  # noqa: BLE001 - any resolution failure is the finding
             return [f"nuscenes dataset root: {exc}"]
-        if not (root / self.version / "sample.json").exists():
-            problems.append(f"{root / self.version} has no sample.json (need the {self.version} tables)")
+        # Every table the loader reads, not just sample.json -- a partial dump is
+        # otherwise discovered an hour into the index build.
+        tables = (
+            "sample",
+            "sample_data",
+            "ego_pose",
+            "calibrated_sensor",
+            "sample_annotation",
+            "scene",
+        )
+        missing_tables = [t for t in tables if not (root / self.version / f"{t}.json").exists()]
+        if missing_tables:
+            problems.append(
+                f"{root / self.version} is missing tables: {', '.join(missing_tables)} "
+                f"(need the full {self.version} metadata)"
+            )
         if not (root / "samples" / "CAM_FRONT").is_dir():
             problems.append(f"{root}/samples/CAM_FRONT is missing")
         if not (root / "can_bus").is_dir():
             problems.append(f"{root}/can_bus is missing (ego status comes from the CAN-bus pose messages)")
+        elif VAL_SCENES.exists():
+            # Spot-check one val scene's pose file: the directory can exist while
+            # the per-scene messages the loader needs are absent.
+            try:
+                scene = json.loads(VAL_SCENES.read_text())["val"][0]
+                if not (root / "can_bus" / f"{scene}_pose.json").exists():
+                    problems.append(
+                        f"{root}/can_bus has no {scene}_pose.json (CAN-bus pose messages missing)"
+                    )
+            except (OSError, KeyError, IndexError, ValueError):
+                pass
         if not VAL_SCENES.exists():
             problems.append(f"{VAL_SCENES} (vendored official val split) is missing")
         return problems
@@ -166,6 +195,11 @@ class NuScenesBenchmark(OpenLoopBenchmark):
             for i in range(len(frames)):
                 if i + N_STEPS >= len(frames):
                     break  # no full 3 s future: the standard drops these too
+                # The 3 s horizon assumes six *consecutive* keyframes. If a
+                # keyframe was dropped (e.g. missing LIDAR_TOP), the window would
+                # silently span more than 3 s -- skip it rather than mis-score.
+                if frames[i + N_STEPS].index_in_scene - frames[i].index_in_scene != N_STEPS:
+                    continue
                 yield self._sample(frames, i)
                 emitted += 1
                 if limit and emitted >= limit:
