@@ -1,0 +1,24 @@
+{
+  "run_id": "20260907T093007-9697fe",
+  "site": "fastcode-navvrat-nusc-dj",
+  "benchmark": "nuscenes",
+  "model": "constant_velocity",
+  "mode": "open_loop",
+  "started_utc": "2026-09-07T09:30:07+00:00",
+  "duration_s": 90.4,
+  "repo_sha": null,
+  "dataset": {
+    "name": "nuscenes",
+    "n_samples": 5119,
+    "sequences_sha256": "b507a7d90c5ccae9"
+  },
+  "config": {
+    "limit": null,
+    "cameras": []
+  },
+  "hardware": {},
+  "status": "complete",
+  "valid": true,
+  "notes": "",
+  "ingested_from": ""
+}
