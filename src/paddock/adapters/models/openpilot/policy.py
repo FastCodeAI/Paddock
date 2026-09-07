@@ -89,6 +89,8 @@ A_CRUISE_MAX_BP, A_CRUISE_MAX_VALS = [0.0, 10.0, 25.0, 40.0], [1.6, 1.2, 0.8, 0.
 J_CRUISE = 0.5  # m/s^3 cruise jerk limit (chill)
 COMFORT_BRAKE, STOP_DISTANCE, T_FOLLOW = 2.5, 6.0, 1.45
 K_ROOM, K_VREL = 0.3, 0.6  # closed-form stand-in for the lead MPC on its safe-distance model
+# radard.RADAR_TO_CAMERA: model lead sits at the camera; the MPC uses the radar frame.
+RADAR_TO_CAMERA = 1.52
 V_CRUISE_FALLBACK = 13.9  # m/s when the source sends no road limit
 #: Driver-resume emulation (experimental mode). Stock openpilot in experimental mode
 #: holds after a full stop until the e2e plan asks to go; a driver in stop-and-go taps
@@ -429,7 +431,14 @@ class OpenpilotPolicy(Policy):
         lead = np.asarray(out["lead"])[0, 0]
         prob = float(np.asarray(out["lead_prob"])[0, 0])
         if prob > 0.5:
-            x_lead, v_lead = float(lead[0, 0]), float(lead[0, 2])
+            # radard.get_RadarState_from_vision (radard.py:136-143): the model's
+            # lead velocity is relative to the model's OWN ego-speed estimate, so
+            # recover the absolute lead speed in the measured-ego frame before
+            # comparing (vLead = v_ego + lead.v[0] - model_v_ego). The lead sits
+            # at the camera; the MPC wants the radar-frame distance.
+            model_v_ego = float(plan33[:, Plan.VELOCITY][0, 0])
+            x_lead = float(lead[0, 0]) - RADAR_TO_CAMERA
+            v_lead = v_ego + (float(lead[0, 2]) - model_v_ego)
             safe = v_ego**2 / (2 * COMFORT_BRAKE) + T_FOLLOW * v_ego + STOP_DISTANCE
             room = x_lead + v_lead**2 / (2 * COMFORT_BRAKE) - safe
             a_lead = float(np.clip(K_ROOM * room + K_VREL * (v_lead - v_ego), ACCEL_MIN, max_accel))

@@ -54,7 +54,7 @@ from paddock.adapters.models.alpamayo15.camera_warp import (
 from paddock.adapters.models.alpamayo15.camera_warp import (
     Pinhole as WarpPinhole,
 )
-from paddock.policy.protocol import Observation, Pinhole, Policy, Trajectory
+from paddock.policy.protocol import Command, Observation, Pinhole, Policy, Trajectory
 
 _log = logging.getLogger(__name__)
 
@@ -107,8 +107,8 @@ def route_maneuver(obs) -> tuple[str | None, float | None]:
     man = getattr(obs, "nav_maneuver", None)
     if man:
         return man, getattr(obs, "nav_distance_m", None)
-    cmd = int(getattr(obs, "command", 3))
-    return ({1: "TURN_LEFT", 0: "TURN_RIGHT"}.get(cmd), None)
+    cmd = int(getattr(obs, "command", Command.FOLLOW_REFERENCE))
+    return ({Command.LEFT: "TURN_LEFT", Command.RIGHT: "TURN_RIGHT"}.get(cmd), None)
 
 
 NUM_HISTORY_STEPS = 16

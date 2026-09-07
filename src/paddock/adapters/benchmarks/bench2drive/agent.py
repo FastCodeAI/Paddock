@@ -457,7 +457,9 @@ class PaddockB2DAgent(AutonomousAgent):
         car -- no all-or-nothing brake below 0.4 m/s, creep allowed."""
         from paddock.adapters.benchmarks.bench2drive.pid import CLIP_DELTA, MAX_THROTTLE
 
-        steer, _, _, _ = self._tracker.control(wps, speed)
+        # Steering only: the native path drives the speed PID itself just below,
+        # so calling the full tracker here would step that PID twice per tick.
+        steer = self._tracker.steer_only(wps)
         a = float(native.get("accel", 0.0))
         stop = bool(native.get("should_stop", False))
         v_target = float(native.get("v_target", speed + a * 0.5))

@@ -276,8 +276,9 @@ below made the 24-route set (5 abilities × 5 routes minus 11715) the reference.
   driver-resume rule (`PADDOCK_OPENPILOT_RESUME_S=3.0`: stopped 3 s, no lead →
   the e2e candidate is dropped until 1 m/s) is logged as `resume` in log.csv
   and every route is scored twice: **unassisted** (frozen at the first nudge,
-  as if blocked there) and **assisted \*** (the full run). Tally:
-  `paddock-ops/tally_two_cases.py`.
+  as if blocked there) and **assisted \*** (the full run). Tally the two from a
+  finished run's own `results.json` + `log.csv`:
+  `python -m paddock.adapters.benchmarks.bench2drive.tally <run_dir> --routes-xml <repo>/leaderboard/data/bench2drive220.xml`.
 * **VisionPilot** cruises at the posted limit (its NeuroNCAP latch pinned it at
   1 m/s) and runs on the CUDA provider with two threads.
 * **Alpamayo** receives the route as its navigation text ("Turn left in 37m")
