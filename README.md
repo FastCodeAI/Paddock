@@ -107,10 +107,10 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 
 | | 🟢 nuScenes ADE ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🔴 Bench2Drive ability ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim (OmniDreams) | 🔴 AlpaSim (nuRec) |
 |---|---|---|---|---|---|---|---|
-| OpenPilot | planned | 1.599 | ✗ 2 Hz ‡ | 53.6 \* ◆ | superseded ‖ | planned | planned |
-| Alpamayo 1.5 | planned | 1.002 | 0.608 † | 44.6 ◆ | 2.46 | planned | planned |
-| Drive-JEPA | planned | 2.364 | 0.843 | 31.1 ◆ | 4.04 | planned | planned |
-| VisionPilot | n/a ∗ | n/a ∗ | 0.431 | 49.9 ◆ | 1.67 | planned | planned |
+| OpenPilot | ✗ 2 Hz △ | 1.599 | ✗ 2 Hz ‡ | 53.6 \* ◆ | superseded ‖ | planned | planned |
+| Alpamayo 1.5 | 0.79 △ | 1.002 | 0.608 † | 44.6 ◆ | 2.46 | planned | planned |
+| Drive-JEPA | 0.91 △ | 2.364 | 0.843 | 31.1 ◆ | 4.04 | planned | planned |
+| VisionPilot | 1.44 △ | n/a ∗ | 0.431 | 49.9 ◆ | 1.67 | planned | planned |
 | Baseline (Constant Velocity) | — | 1.381 | 0.239 | — | 0 § | — | — |
 
 ∗ VisionPilot does not predict a trajectory. It predicts lane curvature and the
@@ -147,6 +147,16 @@ assisted run -- its driver-resume nudge counted; the unassisted case scores
 30.1. Drive-JEPA is the released NAVSIM-v2 checkpoint transferred zero-shot to
 CARLA; the paper's 64.5 is an unreleased Bench2Drive-trained variant. Full
 per-route and per-ability tables: `docs/benchmarks/bench2drive.md`, `docs/leaderboard.md`.
+
+△ nuScenes val, open loop, zero-shot (none of these models was trained on
+nuScenes): the average L2 over 0-3 s on the official 150-scene val split (5119
+keyframes), UniAD/VAD protocol, `--bench nuscenes` -- the cumulative (per-step)
+average, comparable to published tables (the `l2_avg` in `docs/leaderboard.md`
+is the point value at 1/2/3 s and reads higher). openpilot is excluded for the
+same 2 Hz reason as NAVSIM. VisionPilot's plan here is its acceleration/steering
+integrated to a path, as in NAVSIM, so unlike KITScenes it does yield an L2.
+Alpamayo's figure is inflated by the first keyframe of each scene, where it has
+no history to difference (9.5 m there vs 1.2 m elsewhere). See `docs/benchmarks/nuscenes.md`.
 
 § Not run — zero by construction. Every neuroNCAP scenario is staged so that an
 ego holding its current velocity collides at full speed. A run that avoids the

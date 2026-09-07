@@ -14,7 +14,7 @@ from paddock.results.store import RESULTS_ROOT, MetricsRecord, RunRecord, load_r
 # because nobody had added it.
 # Markers must be specific enough not to catch unrelated names: an earlier
 # "_s" here matched ncap_score and rendered the headline metric backwards.
-_LOWER_IS_BETTER_MARKERS = ("ade", "fde", "_mae", "_error", "_err", "_loss", "seconds")
+_LOWER_IS_BETTER_MARKERS = ("ade", "fde", "_mae", "_error", "_err", "_loss", "seconds", "l2", "col_")
 _LOWER_IS_BETTER_EXACT = {"collision_rate", "impact_speed"}
 #: Explicitly higher-is-better: `reference_speed` matches a marker above, and
 #: Bench2Drive's `infraction_penalty` is a 0-1 multiplier on the score, not a
