@@ -60,3 +60,17 @@
 ---
 
 Arrows show direction of better. Aggregates are recomputed by paddock from per-sample records, never taken from the producer.
+
+## bench2drive (24 routes, 04–06 Sep 2026)
+
+One run per route; 5 abilities × 5 routes minus 11715 (CARLA crash). DS = mean
+driving score. Full definitions and per-route/per-scenario tables are in
+`docs/benchmarks/bench2drive.md`.
+
+| model | DS | RC | Success | notes |
+|---|---|---|---|---|
+| openpilot, with nudge \* | 53.62 | 66.8 | 29.2 % | L2 ADAS reference row; 28 nudges on 16 routes |
+| VisionPilot | 49.85 | 75.5 | 25.0 % | set-speed fix, CUDA |
+| Alpamayo 1.5 | 44.58 | 73.4 | 0.0 % | nav text from the route |
+| Drive-JEPA | 31.11 | 40.4 | 0.0 % | NAVSIM-v2 checkpoint, zero-shot in CARLA |
+| openpilot, no nudge | 30.09 | 30.8 | 12.5 % | frozen where it first stops |

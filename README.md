@@ -107,10 +107,10 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 
 | | 🟢 nuScenes ADE ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🔴 Bench2Drive ability ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim (OmniDreams) | 🔴 AlpaSim (nuRec) |
 |---|---|---|---|---|---|---|---|
-| OpenPilot | planned | 1.599 | ✗ 2 Hz ‡ | 37.7 ¶ | superseded ‖ | planned | planned |
-| Alpamayo 1.5 | planned | 1.002 | 0.608 † | adapter, unrun | 2.46 | planned | planned |
-| Drive-JEPA | planned | 2.364 | 0.843 | adapter, unrun | 4.04 | planned | planned |
-| VisionPilot | n/a ∗ | n/a ∗ | 0.431 | 61.6 ¶ | 1.67 | planned | planned |
+| OpenPilot | planned | 1.599 | ✗ 2 Hz ‡ | 53.6 \* ◆ | superseded ‖ | planned | planned |
+| Alpamayo 1.5 | planned | 1.002 | 0.608 † | 44.6 ◆ | 2.46 | planned | planned |
+| Drive-JEPA | planned | 2.364 | 0.843 | 31.1 ◆ | 4.04 | planned | planned |
+| VisionPilot | n/a ∗ | n/a ∗ | 0.431 | 49.9 ◆ | 1.67 | planned | planned |
 | Baseline (Constant Velocity) | — | 1.381 | 0.239 | — | 0 § | — | — |
 
 ∗ VisionPilot does not predict a trajectory. It predicts lane curvature and the
@@ -140,9 +140,13 @@ harness refuses the pairing rather than recording the artefact. Alpamayo hit the
 same dataset property in a milder form and was fixed in its adapter, worth
 +0.207 EPDMS. See `docs/benchmarks/navsim.md`.
 
-¶ Preliminary: the Bench2Drive multi-ability mean on **25 of the 220 routes**,
-not a full sweep. The per-ability breakdown is in the Bench2Drive table below.
-Alpamayo and Drive-JEPA have adapters but no run yet.
+◆ Bench2Drive mean driving score on the **24-route set** (5 abilities x 5,
+minus route 11715, which segfaults CARLA for every model), each model's
+faithful adapter, one run per route (04-06 Sep 2026). openpilot \* is the
+assisted run -- its driver-resume nudge counted; the unassisted case scores
+30.1. Drive-JEPA is the released NAVSIM-v2 checkpoint transferred zero-shot to
+CARLA; the paper's 64.5 is an unreleased Bench2Drive-trained variant. Full
+per-route and per-ability tables: `docs/benchmarks/bench2drive.md`, `docs/leaderboard.md`.
 
 § Not run — zero by construction. Every neuroNCAP scenario is staged so that an
 ego holding its current velocity collides at full speed. A run that avoids the
