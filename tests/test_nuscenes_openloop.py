@@ -41,21 +41,35 @@ def test_command_follows_the_3s_lateral_offset():
     assert L.command_from_future(straight) == (2, None, None)
     left = np.column_stack([np.linspace(2, 12, 6), np.linspace(0, 3, 6)])
     cmd, man, dist = L.command_from_future(left)
-    # Distance is to where the turn BEGINS (first point past the 2 m threshold),
-    # the along-track arc length there, not the straight-line end displacement.
-    crossing = np.flatnonzero(np.abs(left[:, 1]) >= L.TURN_THRESHOLD_M)[0]
-    seg = np.linalg.norm(np.diff(left, axis=0), axis=1)
-    expected = round(float(np.concatenate([[0.0], np.cumsum(seg)])[crossing]), 1)
-    assert (cmd, man) == (1, "TURN_LEFT") and dist == expected
+    # Distance is to where the turn begins (first point past the 2 m threshold),
+    # measured along the path FROM THE EGO ORIGIN (so the leg to the first future
+    # point counts), not the straight-line end displacement.
+    assert (cmd, man) == (1, "TURN_LEFT")
+    assert dist == 10.4  # origin->(10,2.4) along the ramp
     right = np.column_stack([np.linspace(2, 12, 6), -np.linspace(0, 3, 6)])
     assert L.command_from_future(right)[:2] == (0, "TURN_RIGHT")
 
 
-def test_command_distance_is_zero_when_already_mid_turn():
-    # Lateral offset already past the threshold at the first future point.
+def test_command_distance_from_the_ego_includes_the_first_leg():
+    # Already turning at the first future point: distance is the leg to it (from
+    # the ego origin), never zero, since the ego is at lateral 0 in its own frame.
     turning = np.column_stack([np.linspace(2, 12, 6), np.linspace(2.5, 8.0, 6)])
     cmd, man, dist = L.command_from_future(turning)
-    assert (cmd, man) == (1, "TURN_LEFT") and dist == 0.0
+    assert (cmd, man) == (1, "TURN_LEFT")
+    assert abs(dist - round(math.hypot(2.0, 2.5), 1)) < 1e-9  # origin -> (2, 2.5)
+
+
+def test_command_distance_ignores_a_jog_in_the_wrong_direction():
+    # A brief right jog past the threshold, then a committed left turn: the
+    # distance must be to the LEFT crossing, not the earlier right one.
+    y = np.array([-2.5, -2.1, 0.0, 2.1, 2.6, 3.0])
+    path = np.column_stack([np.linspace(2, 12, 6), y])
+    cmd, man, dist = L.command_from_future(path)
+    assert (cmd, man) == (1, "TURN_LEFT")
+    full = np.vstack([[0.0, 0.0], path[:, :2]])
+    cumulative = np.cumsum(np.linalg.norm(np.diff(full, axis=0), axis=1))
+    first_left = np.flatnonzero(path[:, 1] >= L.TURN_THRESHOLD_M)[0]
+    assert dist == round(float(cumulative[first_left]), 1)
 
 
 def test_plan_resampling_and_headings():

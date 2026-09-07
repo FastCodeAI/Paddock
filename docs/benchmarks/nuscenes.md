@@ -25,7 +25,8 @@ human drove. Zero-shot for every model here; none was trained on nuScenes.
 * **Metrics** (per sample, aggregated by the runner):
   `l2_{1,2,3}s`, `l2_avg` — L2 at exactly that horizon (VAD style) and their
   mean; `l2_uniad_{1,2,3}s`, `l2_uniad_avg` — mean over every 0.5 s step up to
-  the horizon (UniAD style, always lower, the convention published tables
+  the horizon (UniAD style; lower than the point value whenever error grows with
+  the horizon, as it usually does, the convention published tables
   use); `col_*` likewise for collision, where the ego footprint (UniAD's
   4.084 × 1.85 m, heading from the plan's direction of travel) is tested
   against every annotated box of the future keyframe in the current ego frame
@@ -126,3 +127,16 @@ deliberate framework touchpoints kept minimal and called out here per
   metrics render with the correct arrow. This is global metric-direction
   inference; a per-metric declaration on the benchmark would be the cleaner home
   and is worth a follow-up.
+
+Kept OUT of this PR on purpose, as separate framework follow-ups rather than more
+core changes folded into an adapter:
+
+* **Run provenance (`repo_sha`).** `run.json` carries a `repo_sha` field that the
+  runner never populates, so runs do not record the code version that produced
+  them. Fixing it touches `runner.py` (framework) and should be its own change.
+  Until then, treat any committed result as predating later code changes —
+  e.g. the results here were produced before the geometry and nav-distance fixes
+  and should be re-run before they are quoted alongside the corrected code.
+* **Numerical-parity fixture.** Establishing parity with the original UniAD/VAD
+  scorers needs a recorded `(plan, future, boxes)` case scored by that code to
+  diff against; none is vendored here (see the Tests section).

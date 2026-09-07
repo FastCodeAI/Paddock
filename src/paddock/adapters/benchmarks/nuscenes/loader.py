@@ -141,22 +141,28 @@ def command_from_future(future_xy_ego: np.ndarray) -> tuple[int, str | None, flo
     """VAD's rule -> (paddock Command, nav_maneuver, nav_distance_m).
 
     The command follows VAD's 3 s lateral-offset rule; `nav_distance_m` is the
-    along-track distance to where the maneuver *begins* -- the first future point
-    whose lateral offset crosses the turn threshold -- which is what the protocol
-    field means (distance to the next maneuver), not the straight-line
-    displacement to the 3 s endpoint. A car already mid-turn reports ~0, not the
-    full end distance.
+    along-track distance *from the ego* to where the maneuver begins -- the first
+    future point whose lateral offset crosses the threshold in the commanded
+    direction -- which is what the protocol field means (distance to the next
+    maneuver), not the straight-line displacement to the 3 s endpoint. The path
+    is measured from the ego origin (0, 0), so the leg to the first future point
+    is included, and only crossings in the turn's own direction count.
     """
     if len(future_xy_ego) == 0:
         return int(Command.STRAIGHT), None, None
     lateral = future_xy_ego[-1][1]
     if abs(lateral) < TURN_THRESHOLD_M:
         return int(Command.STRAIGHT), None, None
-    command, maneuver = (Command.LEFT, "TURN_LEFT") if lateral > 0 else (Command.RIGHT, "TURN_RIGHT")
-    # along-track distance to the first point past the lateral threshold
-    seg = np.linalg.norm(np.diff(future_xy_ego[:, :2], axis=0), axis=1)
-    cumulative = np.concatenate([[0.0], np.cumsum(seg)])
-    crossed = np.flatnonzero(np.abs(future_xy_ego[:, 1]) >= TURN_THRESHOLD_M)
+    if lateral > 0:
+        command, maneuver = Command.LEFT, "TURN_LEFT"
+        crossed = np.flatnonzero(future_xy_ego[:, 1] >= TURN_THRESHOLD_M)
+    else:
+        command, maneuver = Command.RIGHT, "TURN_RIGHT"
+        crossed = np.flatnonzero(future_xy_ego[:, 1] <= -TURN_THRESHOLD_M)
+    # Along-track distance from the ego origin to the crossing point. Prepending
+    # (0, 0) makes cumulative[k] the distance to future_xy_ego[k].
+    path = np.vstack([[0.0, 0.0], future_xy_ego[:, :2]])
+    cumulative = np.cumsum(np.linalg.norm(np.diff(path, axis=0), axis=1))
     distance = float(cumulative[crossed[0]]) if len(crossed) else float(cumulative[-1])
     return int(command), maneuver, round(distance, 1)
 
@@ -330,6 +336,9 @@ def _cache_key(root: Path, version: str, scene_names: list[str]) -> dict:
 
 
 def load_or_build_index(root: Path, version: str, scene_names: list[str], cache: Path | None, log=print):
+    # Canonicalize the scene order so a cache hit and a cold build return the
+    # SAME ordering (the key is order-independent, so the build must be too).
+    scene_names = sorted(scene_names)
     key = _cache_key(root, version, scene_names)
     if cache is not None and cache.exists():
         try:
