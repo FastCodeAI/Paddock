@@ -27,6 +27,8 @@ from pathlib import Path
 
 import numpy as np
 
+from paddock.policy.protocol import CANBUS_ACCEL, CANBUS_VELOCITY, Command
+
 CAMERAS = ("CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT", "CAM_BACK", "CAM_BACK_LEFT", "CAM_BACK_RIGHT")
 KEYFRAME_DT_S = 0.5
 FUTURE_STEPS = 6  # 3 s at 2 Hz
@@ -68,13 +70,21 @@ def yaw_of(rotation) -> float:
 
 
 def to_ego_xy(ego2world: np.ndarray, points_world: np.ndarray) -> np.ndarray:
-    """World (N, 2|3) -> the ego frame of `ego2world`, planar (N, 2)."""
-    pts = np.asarray(points_world, dtype=np.float64)
-    if pts.shape[1] == 2:
-        pts = np.column_stack([pts, np.zeros(len(pts))])
-    world2ego = np.linalg.inv(ego2world)
-    local = (world2ego[:3, :3] @ pts.T).T + world2ego[:3, 3]
-    return local[:, :2]
+    """World (N, 2|3) -> the ego BEV frame of `ego2world`, planar (N, 2).
+
+    A bird's-eye (SE(2)) transform: only the ego yaw and its XY translation, so a
+    point's height never enters -- and never has to be fabricated as Z=0 before a
+    full 3-D rotation that carries the pose's pitch/roll. This is the UniAD/VAD
+    convention, and it keeps annotation boxes (stored without Z) and future ego
+    poses (which do carry a real Z) in exactly one frame; a full 3-D transform
+    would place them in slightly different planes and shift near-boundary
+    collisions.
+    """
+    pts = np.asarray(points_world, dtype=np.float64)[:, :2]
+    yaw = math.atan2(ego2world[1, 0], ego2world[0, 0])
+    c, s = math.cos(-yaw), math.sin(-yaw)
+    rot = np.array([[c, -s], [s, c]])
+    return (rot @ (pts - ego2world[:2, 3]).T).T
 
 
 def boxes_to_ego(ego2world: np.ndarray, boxes_world: np.ndarray) -> np.ndarray:
@@ -128,19 +138,27 @@ def collides(ego_box, boxes) -> bool:
 
 
 def command_from_future(future_xy_ego: np.ndarray) -> tuple[int, str | None, float | None]:
-    """VAD's rule -> (paddock Command int, nav_maneuver, nav_distance_m).
+    """VAD's rule -> (paddock Command, nav_maneuver, nav_distance_m).
 
-    Command ints: 0=RIGHT 1=LEFT 2=STRAIGHT (paddock.policy.protocol.Command).
+    The command follows VAD's 3 s lateral-offset rule; `nav_distance_m` is the
+    along-track distance to where the maneuver *begins* -- the first future point
+    whose lateral offset crosses the turn threshold -- which is what the protocol
+    field means (distance to the next maneuver), not the straight-line
+    displacement to the 3 s endpoint. A car already mid-turn reports ~0, not the
+    full end distance.
     """
     if len(future_xy_ego) == 0:
-        return 2, None, None
-    end = future_xy_ego[-1]
-    distance = float(np.hypot(end[0], end[1]))
-    if end[1] >= TURN_THRESHOLD_M:
-        return 1, "TURN_LEFT", round(distance, 1)
-    if end[1] <= -TURN_THRESHOLD_M:
-        return 0, "TURN_RIGHT", round(distance, 1)
-    return 2, None, None
+        return int(Command.STRAIGHT), None, None
+    lateral = future_xy_ego[-1][1]
+    if abs(lateral) < TURN_THRESHOLD_M:
+        return int(Command.STRAIGHT), None, None
+    command, maneuver = (Command.LEFT, "TURN_LEFT") if lateral > 0 else (Command.RIGHT, "TURN_RIGHT")
+    # along-track distance to the first point past the lateral threshold
+    seg = np.linalg.norm(np.diff(future_xy_ego[:, :2], axis=0), axis=1)
+    cumulative = np.concatenate([[0.0], np.cumsum(seg)])
+    crossed = np.flatnonzero(np.abs(future_xy_ego[:, 1]) >= TURN_THRESHOLD_M)
+    distance = float(cumulative[crossed[0]]) if len(crossed) else float(cumulative[-1])
+    return int(command), maneuver, round(distance, 1)
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +241,13 @@ def build_index(root: Path, version: str, scene_names: list[str], log=print) -> 
     out: list[list[Keyframe]] = []
     for scene_name, tokens in ordered:
         can = _CanBus.for_scene(root, scene_name)
+        if can is None:
+            raise FileNotFoundError(
+                f"CAN-bus pose file missing for scene {scene_name!r}: "
+                f"{root / 'can_bus' / f'{scene_name}_pose.json'}. The nuScenes CAN-bus "
+                "expansion supplies the ego speed the models read; without it scoring "
+                "would silently treat the ego as stationary. Download the can_bus expansion."
+            )
         frames: list[Keyframe] = []
         for i, tok in enumerate(tokens):
             recs = per_sample[tok]
@@ -252,7 +277,7 @@ def build_index(root: Path, version: str, scene_names: list[str], log=print) -> 
                     cameras=cams,
                     lidar2ego=pose_matrix(lidar_cal["translation"], lidar_cal["rotation"]),
                     boxes_world=np.asarray(boxes[tok], dtype=np.float64).reshape(-1, 5),
-                    canbus=can.vector(ts, ego2world) if can else np.zeros(18),
+                    canbus=can.vector(ts, ego2world),
                 )
             )
         out.append(frames)
@@ -282,21 +307,42 @@ class _CanBus:
         v = np.zeros(18)
         v[0:3] = m["pos"]
         v[3:7] = m["orientation"]
-        v[7:10] = m["accel"]
-        v[10:13] = m["rotation_rate"]
-        v[13:16] = m["vel"]
+        v[CANBUS_ACCEL : CANBUS_ACCEL + 3] = m["accel"]  # 7:10
+        v[CANBUS_ACCEL + 3 : CANBUS_VELOCITY] = m["rotation_rate"]  # 10:13, yaw rate at CANBUS_YAW_RATE
+        v[CANBUS_VELOCITY : CANBUS_VELOCITY + 3] = m["vel"]  # 13:16
         yaw = math.atan2(ego2world[1, 0], ego2world[0, 0])
         v[16], v[17] = yaw, math.degrees(yaw)
         return v
 
 
+#: Bump when the cached index layout (Keyframe fields, geometry conventions)
+#: changes, so an old pickle is rebuilt rather than silently reused.
+_CACHE_SCHEMA = 2
+
+
+def _cache_key(root: Path, version: str, scene_names: list[str]) -> dict:
+    return {
+        "schema": _CACHE_SCHEMA,
+        "root": str(Path(root).resolve()),
+        "version": version,
+        "scenes": sorted(scene_names),
+    }
+
+
 def load_or_build_index(root: Path, version: str, scene_names: list[str], cache: Path | None, log=print):
+    key = _cache_key(root, version, scene_names)
     if cache is not None and cache.exists():
-        with cache.open("rb") as handle:
-            return pickle.load(handle)
+        try:
+            with cache.open("rb") as handle:
+                blob = pickle.load(handle)
+            if isinstance(blob, dict) and blob.get("key") == key:
+                return blob["index"]
+            log(f"nuscenes: index cache {cache} does not match this dataset/version/scenes; rebuilding")
+        except Exception as exc:  # noqa: BLE001 -- a bad cache must never be fatal; rebuild
+            log(f"nuscenes: could not read index cache {cache} ({exc}); rebuilding")
     index = build_index(root, version, scene_names, log=log)
     if cache is not None:
         cache.parent.mkdir(parents=True, exist_ok=True)
         with cache.open("wb") as handle:
-            pickle.dump(index, handle)
+            pickle.dump({"key": key, "index": index}, handle)
     return index

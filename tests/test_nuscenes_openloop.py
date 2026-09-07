@@ -41,9 +41,21 @@ def test_command_follows_the_3s_lateral_offset():
     assert L.command_from_future(straight) == (2, None, None)
     left = np.column_stack([np.linspace(2, 12, 6), np.linspace(0, 3, 6)])
     cmd, man, dist = L.command_from_future(left)
-    assert (cmd, man) == (1, "TURN_LEFT") and dist == round(math.hypot(12, 3), 1)
+    # Distance is to where the turn BEGINS (first point past the 2 m threshold),
+    # the along-track arc length there, not the straight-line end displacement.
+    crossing = np.flatnonzero(np.abs(left[:, 1]) >= L.TURN_THRESHOLD_M)[0]
+    seg = np.linalg.norm(np.diff(left, axis=0), axis=1)
+    expected = round(float(np.concatenate([[0.0], np.cumsum(seg)])[crossing]), 1)
+    assert (cmd, man) == (1, "TURN_LEFT") and dist == expected
     right = np.column_stack([np.linspace(2, 12, 6), -np.linspace(0, 3, 6)])
     assert L.command_from_future(right)[:2] == (0, "TURN_RIGHT")
+
+
+def test_command_distance_is_zero_when_already_mid_turn():
+    # Lateral offset already past the threshold at the first future point.
+    turning = np.column_stack([np.linspace(2, 12, 6), np.linspace(2.5, 8.0, 6)])
+    cmd, man, dist = L.command_from_future(turning)
+    assert (cmd, man) == (1, "TURN_LEFT") and dist == 0.0
 
 
 def test_plan_resampling_and_headings():
@@ -52,6 +64,10 @@ def test_plan_resampling_and_headings():
     assert grid.shape == (6, 2) and np.allclose(grid[:, 0], np.arange(1, 7) * 2.0)
     fine = Trajectory(np.column_stack([np.arange(1, 31) * 0.4, np.zeros(30)]), dt=0.1)  # same plan at 10 Hz
     assert np.allclose(plan_on_grid(fine)[:, 0], np.arange(1, 7) * 2.0)
+    # A coarse plan (1 s spacing, first point at 10 m) must interpolate its 0.5 s
+    # grid from the ego origin, not flat-hold the first waypoint: x(0.5s) = 5, not 10.
+    coarse = Trajectory(np.column_stack([np.arange(1, 4) * 10.0, np.zeros(3)]), dt=1.0)
+    assert abs(plan_on_grid(coarse)[0, 0] - 5.0) < 1e-9
     yaws = plan_headings(np.array([[1.0, 1.0], [2.0, 2.0], [2.0, 2.0]]))
     assert np.allclose(yaws, [math.pi / 4, math.pi / 4, math.pi / 4])  # zero step keeps heading
 
@@ -78,3 +94,36 @@ def test_scorer_l2_and_collision_conventions():
     assert m["col_1s"] == 0.0 and m["col_2s"] == 1.0 and m["col_3s"] == 1.0
     assert abs(m["col_uniad_2s"] - 0.25) < 1e-9 and abs(m["col_uniad_3s"] - 0.5) < 1e-9
     assert abs(m["col_avg"] - 2.0 / 3.0) < 1e-9
+
+
+def test_absent_boxes_omit_collision_metrics_rather_than_zeroing_them():
+    # None boxes = "not scored" (a run scored outside the process that built the
+    # index). Collision keys must be absent, never a false 0 "collision-free".
+    future = np.column_stack([np.arange(1, 7) * 2.0, np.zeros(6)])
+    m = score_plan(future.copy(), future, None)
+    assert m["l2_avg"] == 0.0 and "ade_3s" in m
+    assert not any(k.startswith("col_") for k in m)
+
+
+def test_index_cache_is_rebuilt_when_the_dataset_key_changes(tmp_path, monkeypatch):
+    calls = {"n": 0}
+
+    def fake_build(root, version, scene_names, log=print):
+        calls["n"] += 1
+        return [[f"{version}:{','.join(scene_names)}"]]
+
+    monkeypatch.setattr(L, "build_index", fake_build)
+    cache = tmp_path / "idx.pkl"
+    root = tmp_path / "data"
+
+    first = L.load_or_build_index(root, "v1.0-trainval", ["a", "b"], cache)
+    assert calls["n"] == 1 and cache.exists()
+    # Same args: served from cache, no rebuild.
+    again = L.load_or_build_index(root, "v1.0-trainval", ["b", "a"], cache)
+    assert calls["n"] == 1 and again == first
+    # Different scene set: key mismatch -> rebuild.
+    L.load_or_build_index(root, "v1.0-trainval", ["a", "b", "c"], cache)
+    assert calls["n"] == 2
+    # Different version: rebuild again.
+    L.load_or_build_index(root, "v1.0-mini", ["a", "b"], cache)
+    assert calls["n"] == 3

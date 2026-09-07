@@ -234,9 +234,13 @@ Needs a site with CARLA 0.9.15 and the pinned checkout wired in
 
 ## Beyond reproduction
 
+- **nuScenes open-loop** — **done (camera-only).** `paddock run --bench nuscenes`
+  scores the UniAD/VAD L2 + collision protocol on the 150 val scenes, reading the
+  `v1.0-trainval` JSON tables directly (no `nuscenes_infos*.pkl`, which do not
+  exist here). Detail in `docs/benchmarks/nuscenes.md`. Fusion is still not viable
+  (the local copy has no `sweeps/` and empty radar); camera-only is what runs.
+
 Not started, and larger than everything above:
 
-- **nuScenes open-loop** — needs `nuscenes_infos*.pkl`, which do not exist, and the
-  local copy has no `sweeps/` and empty radar. Camera-only is viable; fusion is not.
 - **alpamayo2, vjepa2, sunnypilot** — never evaluated.
 - **Training** — the framework's eventual purpose; out of scope until evaluation is trustworthy.

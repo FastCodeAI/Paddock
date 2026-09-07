@@ -76,12 +76,16 @@ class Runtime:
         """
         model = ctx.get("model", "")
         override = cfg.models.get(model, None)
-        if override is None and self.kind == "builtin":
+        # An explicit venv override always wins (a site may redirect any model).
+        if override is not None and override.venv is not None:
+            return override.venv / "bin" / "python"
+        # Otherwise the builtin kind runs on paddock's own interpreter -- even
+        # when a site sets an env-only override (which leaves venv None); that
+        # must not fall through to the "no venv" error below.
+        if self.kind == "builtin":
             import sys
 
             return Path(sys.executable)
-        if override is not None and override.venv is not None:
-            return override.venv / "bin" / "python"
         if not self.venv:
             raise ConfigError(
                 f"runtime kind {self.kind!r} declares no 'venv', and paddock.toml has no "
