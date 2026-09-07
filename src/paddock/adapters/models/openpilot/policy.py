@@ -489,7 +489,12 @@ class OpenpilotPolicy(Policy):
         return {
             "source_hfov_deg": round(self.camera.src.hfov_deg, 2),
             "source_vfov_deg": round(self.camera.src.vfov_deg, 2),
-            "margin_deg": {k: round(v, 2) for k, v in self.camera.margin_deg().items()},
+            # Both views: reporting only the wide (big_img) default reads as a
+            # false deficit for a narrow road camera in the two-camera rig.
+            "margin_deg": {
+                slot: {k: round(v, 2) for k, v in self.camera.margin_deg(slot).items()}
+                for slot in ("img", "big_img")
+            },
             "rpy": self.camera.rpy.tolist(),
             "frames_seen": self.frames_seen,
         }

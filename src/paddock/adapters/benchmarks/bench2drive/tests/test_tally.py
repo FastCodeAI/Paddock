@@ -119,3 +119,75 @@ def test_progress_along_straight_line():
     poly = np.array([[0.0, 0.0], [50.0, 0.0], [100.0, 0.0]])
     along, total = tally.progress_along(poly, np.array([30.0, 2.0]))
     assert abs(along - 30.0) < 1e-6 and abs(total - 100.0) < 1e-6
+
+
+def _write_results(d, *, status, score_route, score_composed, penalty, infractions):
+    d.mkdir(parents=True)
+    (d / "results.json").write_text(
+        json.dumps(
+            {
+                "_checkpoint": {
+                    "records": [
+                        {
+                            "status": status,
+                            "scores": {
+                                "score_composed": score_composed,
+                                "score_route": score_route,
+                                "score_penalty": penalty,
+                            },
+                            "meta": {"route_length": 100.0},
+                            "infractions": infractions,
+                        }
+                    ]
+                }
+            }
+        )
+    )
+
+
+def test_infra_failure_routes_are_dropped(tmp_path):
+    xml = _routes_xml(tmp_path / "routes.xml")
+    run = tmp_path / "run"
+    run.mkdir()
+    # A crashed route carries no scored outcome and must not enter the tally.
+    _write_results(
+        run / "1711-Town12_X",
+        status="Failed - Agent crashed",
+        score_route=5.0,
+        score_composed=5.0,
+        penalty=1.0,
+        infractions={},
+    )
+    (run / "1711-Town12_X" / "log.csv").write_text("ego_x,ego_y,resume\n0.0,0.0,0\n")
+    # A legitimate 'blocked' route is kept.
+    _write_results(
+        run / "1790-Town12_Y",
+        status="Failed - Agent got blocked",
+        score_route=40.0,
+        score_composed=40.0,
+        penalty=1.0,
+        infractions={},
+    )
+    (run / "1790-Town12_Y" / "log.csv").write_text("ego_x,ego_y,resume\n0.0,0.0,0\n")
+    rows = tally.two_case_rows(run, xml)
+    assert [r["route"] for r in rows] == ["1790"]
+
+
+def test_missing_resume_telemetry_is_flagged(tmp_path):
+    xml = _routes_xml(tmp_path / "routes.xml")
+    run = tmp_path / "run"
+    run.mkdir()
+    d = run / "1711-Town12_X"
+    _write_results(
+        d,
+        status="Completed",
+        score_route=90.0,
+        score_composed=90.0,
+        penalty=1.0,
+        infractions={},
+    )
+    # log.csv without a resume column -> unassisted cannot be derived.
+    (d / "log.csv").write_text("ego_x,ego_y\n0.0,0.0\n5.0,0.0\n")
+    (row,) = tally.two_case_rows(run, xml)
+    assert "no resume telemetry" in row["note"]
+    assert row["unassisted_DS"] == row["assisted_DS"] == 90.0

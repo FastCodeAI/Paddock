@@ -138,17 +138,22 @@ def warp(image: Image.Image, src: WarpPinhole, kind: str) -> np.ndarray:
     return np.asarray(resized.convert("RGB"), dtype=np.uint8)
 
 
+def medoid_index(trajectories: np.ndarray) -> int:
+    """Index of the draw closest to all the others: (K, T, D) -> int."""
+    if len(trajectories) == 1:
+        return 0
+    flat = trajectories.reshape(len(trajectories), -1)
+    distances = np.linalg.norm(flat[:, None] - flat[None, :], axis=-1).sum(axis=1)
+    return int(np.argmin(distances))
+
+
 def medoid(trajectories: np.ndarray) -> np.ndarray:
     """The draw closest to all the others: (K, T, D) -> (T, D).
 
     Executed rather than the best-scoring draw, because in closed loop there is
     no ground truth to score against and only one trajectory can be driven.
     """
-    if len(trajectories) == 1:
-        return trajectories[0]
-    flat = trajectories.reshape(len(trajectories), -1)
-    distances = np.linalg.norm(flat[:, None] - flat[None, :], axis=-1).sum(axis=1)
-    return trajectories[int(np.argmin(distances))]
+    return trajectories[medoid_index(trajectories)]
 
 
 class AlpamayoPolicy(Policy):
@@ -408,16 +413,17 @@ class AlpamayoPolicy(Policy):
             )
 
         samples = pred_xyz.float().cpu().numpy()[0, 0]  # (K, 64, 3)
-        chosen = medoid(samples)
+        chosen_idx = medoid_index(samples)
+        chosen = samples[chosen_idx]
         # Alpamayo is x-forward, y-left, the same convention NeuroNCAP drives.
         waypoints = chosen[GRID_INDICES][:, :2]
 
-        # extract_text_tokens returns {"cot": [B, sets, samples] of str, ...}; the
-        # executed draw's chain-of-causation is the one worth keeping.
+        # extract_text_tokens returns {"cot": [B, sets, samples] of str, ...}; keep
+        # the chain-of-causation of the *executed* draw (the medoid), not sample 0.
         cot = ""
         if isinstance(extra, dict) and "cot" in extra:
             flat = np.asarray(extra["cot"]).reshape(-1)
-            cot = str(flat[0]) if flat.size else ""
+            cot = str(flat[chosen_idx]) if chosen_idx < flat.size else (str(flat[0]) if flat.size else "")
         self._last_reasoning = cot[:400]
         self._n_infer = getattr(self, "_n_infer", 0) + 1
         if self._n_infer % 100 == 1:
