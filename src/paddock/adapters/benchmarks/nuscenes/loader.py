@@ -141,12 +141,16 @@ def command_from_future(future_xy_ego: np.ndarray) -> tuple[int, str | None, flo
     """VAD's rule -> (paddock Command, nav_maneuver, nav_distance_m).
 
     The command follows VAD's 3 s lateral-offset rule; `nav_distance_m` is the
-    along-track distance *from the ego* to where the maneuver begins -- the first
-    future point whose lateral offset crosses the threshold in the commanded
-    direction -- which is what the protocol field means (distance to the next
-    maneuver), not the straight-line displacement to the 3 s endpoint. The path
-    is measured from the ego origin (0, 0), so the leg to the first future point
-    is included, and only crossings in the turn's own direction count.
+    along-track distance *from the ego* to the first future point whose lateral
+    offset crosses the threshold in the commanded direction, measured from the
+    ego origin (0, 0) so the leg to the first future point is included, and only
+    crossings in the turn's own direction count.
+
+    This is a PROXY for the protocol's "distance to the next maneuver": nuScenes
+    carries no map junctions, so onset is inferred from the future trajectory. A
+    lateral threshold can be crossed only once a turn is already under way, so
+    the value can understate the true lead-in distance; it is a best-effort hint
+    for the model's prompt, not a surveyed junction distance.
     """
     if len(future_xy_ego) == 0:
         return int(Command.STRAIGHT), None, None
@@ -321,9 +325,11 @@ class _CanBus:
         return v
 
 
-#: Bump when the cached index layout (Keyframe fields, geometry conventions)
-#: changes, so an old pickle is rebuilt rather than silently reused.
-_CACHE_SCHEMA = 2
+#: Bump when the cached index layout (Keyframe fields, geometry conventions) or
+#: the build ORDER changes, so an old pickle is rebuilt rather than silently
+#: reused. 3: scene order canonicalized (sorted) at build time -- a schema-2
+#: cache may hold an unsorted build under a now-sorted key, so it must not match.
+_CACHE_SCHEMA = 3
 
 
 def _cache_key(root: Path, version: str, scene_names: list[str]) -> dict:
