@@ -60,7 +60,7 @@ class Runtime:
     makes it declarative instead of tribal.
     """
 
-    kind: str  # uv | conda | shell
+    kind: str  # uv | conda | shell | builtin (paddock's own interpreter)
     venv: str | None = None
     python: str | None = None
     pythonpath: tuple[str, ...] = ()
@@ -76,6 +76,10 @@ class Runtime:
         """
         model = ctx.get("model", "")
         override = cfg.models.get(model, None)
+        if override is None and self.kind == "builtin":
+            import sys
+
+            return Path(sys.executable)
         if override is not None and override.venv is not None:
             return override.venv / "bin" / "python"
         if not self.venv:

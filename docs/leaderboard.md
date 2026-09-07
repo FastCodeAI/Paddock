@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-42 runs across 4 benchmarks.
+43 runs across 4 benchmarks.
 24 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## kitscenes
@@ -61,6 +61,7 @@
 
 | model | run | n | site | l2_avg ↓ | l2_1s ↓ | col_1s ↓ | l2_uniad_1s ↓ | col_uniad_1s ↓ | l2_2s ↓ | col_2s ↓ |
 |---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| constant_velocity | 20260907T093007-9697fe | 5119 | fastcode-navvrat-nusc-dj | 1.288 | 0.372 | 0.008 | 0.259 | 0.008 | 1.151 | 0.013 |
 | alpamayo15 | 20260905T093547-3dd7cd | 5119 | fastcode-navvrat-nusc-al | 1.487 | 0.509 | 0.008 | 0.369 | 0.008 | 1.351 | 0.013 |
 | drivejepa | 20260905T093335-4513d4 | 5119 | fastcode-navvrat-nusc-dj | 1.882 | 0.540 | 0.006 | 0.376 | 0.008 | 1.587 | 0.014 |
 | visionpilot | 20260905T093333-319ef5 | 5119 | fastcode-navvrat-nusc-vp | 2.360 | 1.031 | 0.025 | 0.883 | 0.033 | 2.213 | 0.031 |

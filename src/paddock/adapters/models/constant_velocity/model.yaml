@@ -1,0 +1,23 @@
+name: constant_velocity
+description: Baseline. Holds the current speed and heading -- straight line at constant velocity. No perception; a floor every learned model should clear.
+
+# No vendor clone and no dependencies beyond paddock itself, so it runs in
+# paddock's own interpreter. `builtin` resolves the interpreter to the one
+# running paddock (see registry.Runtime.interpreter); no venv/path is needed,
+# which also keeps this portable (tests/test_portability.py).
+runtime:
+  kind: builtin
+  # Any existing directory; the policy loads no files, so this is only where the
+  # node process starts.
+  cwd: "{repos}"
+
+capabilities:
+  # The policy reads only ego speed (from the CAN bus), no images. Closed-loop
+  # benchmarks still render one camera for the recording; that is the agent's
+  # default, not a model input.
+  cameras: []
+  vram_gb: 0
+  startup_timeout_s: 60
+  waypoint_dt: 0.5
+
+benchmarks: [nuscenes, bench2drive]

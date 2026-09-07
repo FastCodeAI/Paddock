@@ -111,7 +111,7 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 | Alpamayo 1.5 | 0.79 △ | 1.002 | 0.608 † | 44.6 ◆ | 2.46 | planned | planned |
 | Drive-JEPA | 0.91 △ | 2.364 | 0.843 | 31.1 ◆ | 4.04 | planned | planned |
 | VisionPilot | 1.44 △ | n/a ∗ | 0.431 | 49.9 ◆ | 1.67 | planned | planned |
-| Baseline (Constant Velocity) | — | 1.381 | 0.239 | — | 0 § | — | — |
+| Baseline (Constant Velocity) | 0.64 △ | 1.381 | 0.239 | — | 0 § | — | — |
 
 ∗ VisionPilot does not predict a trajectory. It predicts lane curvature and the
 closest in-path object, which are converted into instantaneous acceleration and
@@ -156,7 +156,7 @@ is the point value at 1/2/3 s and reads higher). openpilot is excluded for the
 same 2 Hz reason as NAVSIM. VisionPilot's plan here is its acceleration/steering
 integrated to a path, as in NAVSIM, so unlike KITScenes it does yield an L2.
 Alpamayo's figure is inflated by the first keyframe of each scene, where it has
-no history to difference (9.5 m there vs 1.2 m elsewhere). See `docs/benchmarks/nuscenes.md`.
+no history to difference (9.5 m there vs 1.2 m elsewhere). See `docs/benchmarks/nuscenes.md`. A constant-velocity baseline scores 0.64 here (point-avg L2 1.29), **better than all three learned models** — nuScenes ego motion is largely straight, so open-loop L2 rewards a straight line; read these numbers with that in mind.
 
 § Not run — zero by construction. Every neuroNCAP scenario is staged so that an
 ego holding its current velocity collides at full speed. A run that avoids the
