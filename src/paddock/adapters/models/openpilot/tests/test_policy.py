@@ -29,7 +29,9 @@ def test_policy_imports_without_openpilot_installed() -> None:
     """
     policy = POLICY()
     assert isinstance(policy, Policy)
-    assert policy.cameras == ("CAM_FRONT",)
+    # comma-three rig for closed loop (road cam -> img, wide cam -> big_img) plus
+    # CAM_FRONT, the single-camera fallback open-loop sources still rely on
+    assert policy.cameras == ("CAM_OP_ROAD", "CAM_OP_WIDE", "CAM_FRONT")
     assert policy.waypoint_dt == 0.5
 
 

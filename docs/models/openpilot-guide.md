@@ -698,3 +698,34 @@ piped into `tail`, so check for `scons: *** ` in the output rather than trusting
 | Engage/disengage logic, alerts | [selfdrive/selfdrived/](openpilot/selfdrive/selfdrived/) |
 | Car-specific interfaces | `opendbc_repo/opendbc/car/` (submodule) |
 | Safety model | [docs/SAFETY.md](docs/SAFETY.md), `panda/` (submodule) |
+
+## 5. Paddock adapter: Bench2Drive configuration (September 2026)
+
+What `adapters/models/openpilot/policy.py` does in closed loop, and why.
+
+* **Cameras.** `model.yaml` declares `CAM_OP_ROAD` (1928×1208, fov 40 → the
+  `img` slot) and `CAM_OP_WIDE` (fov 119 → `big_img`), the comma-three rig, so
+  the driving model sees the geometry it was trained on; `CAM_FRONT` stays
+  declared as the single-camera fallback for open-loop sources. The warp was
+  verified pixel-exact (horizon rows 47.6 / 151.8 = `MEDMODEL_CY`,
+  `(256+47.6)/2`). With the reference 800×450 fov-70 front camera the model
+  froze for adjacent parked cars (1711: DS 1.6 → 40.7 after the change).
+* **Longitudinal control.** `PADDOCK_OPENPILOT_NATIVE_LONG=1` makes the node
+  return `extras.native_long` — a reproduction of openpilot 0.11.2's
+  longitudinal planner: candidates from cruise-to-limit, lead-follow (the
+  model's `lead` / `lead_prob` on the MPC's safe-distance model) and, in
+  `PADDOCK_OPENPILOT_MODE=experimental`, the e2e plan; `accel = min`,
+  `should_stop = any`. The Bench2Drive agent then drives throttle from a
+  closed-loop speed PID on the planner's target speed instead of the shared TCP
+  tracker, whose 0.4 m/s brake rule braked on 92 % of ticks. Without
+  `NATIVE_LONG` the node behaves as before.
+* **The nudge.** The 0.11.2 model has no launch-from-standstill without a
+  driver: once stationary on a clear road its plan stays at ~0 m (verified by
+  offline replay with a fresh state). `PADDOCK_OPENPILOT_RESUME_S=3.0` emulates
+  the driver's resume: stopped ≥ 3 s with `lead_prob < 0.5` → the e2e candidate
+  is dropped and the cruise/lead candidates accelerate until 1 m/s. It never
+  steers and never fires with a lead present. Each firing is a rising edge of
+  the `resume` column in log.csv; routes are scored unassisted (frozen at the
+  first nudge) and assisted \* (full run). See `docs/benchmarks/bench2drive.md`.
+* **Not a route follower.** No navigation input reaches the model (its desire
+  pulses are zeros), so junction turns are missed by construction.

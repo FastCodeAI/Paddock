@@ -492,14 +492,27 @@ class VisionPilotPolicy(Policy):
         if threads > 0:
             opts.intra_op_num_threads = threads
             opts.inter_op_num_threads = 1
+        # CUDA: be frugal on a shared GPU. ORT's defaults grow the arena freely and
+        # run an exhaustive cuDNN conv-algorithm search that wants large
+        # workspaces; with other tenants on the card that failed at the first
+        # inference (bfc_arena alloc). Cap the per-session arena, grow it only as
+        # requested, and pick conv algorithms heuristically. Same maths, less VRAM.
+        mem_mb = int(os.environ.get("VISIONPILOT_GPU_MEM_MB", "1536"))
+        cuda_opts = {
+            "arena_extend_strategy": "kSameAsRequested",
+            "gpu_mem_limit": mem_mb * 1024 * 1024,
+            "cudnn_conv_algo_search": "HEURISTIC",
+            "do_copy_in_default_stream": "1",
+        }
+        providers = [(p, cuda_opts) if p == "CUDAExecutionProvider" else p for p in self.providers]
         self.steer = ort.InferenceSession(
-            str(self.weights / "autosteer_fp32.onnx"), opts, providers=self.providers
+            str(self.weights / "autosteer_fp32.onnx"), opts, providers=providers
         )
         self.drive = ort.InferenceSession(
-            str(self.weights / "autodrive_fp32.onnx"), opts, providers=self.providers
+            str(self.weights / "autodrive_fp32.onnx"), opts, providers=providers
         )
         self.speed = ort.InferenceSession(
-            str(self.weights / "autospeed_fp32.onnx"), opts, providers=self.providers
+            str(self.weights / "autospeed_fp32.onnx"), opts, providers=providers
         )
 
     def reset(self) -> None:
@@ -729,7 +742,14 @@ class VisionPilotPolicy(Policy):
         # urban scenes it would have the car flooring the throttle for reasons
         # that have nothing to do with what the perception models see. The speed
         # the logged driver was holding is the honest set-point for an ACC.
-        if self.set_speed is None:
+        # Bench2Drive sends the posted road limit: use it as the ACC set-point every
+        # tick (curvature still caps it inside IDM). Without one -- NeuroNCAP -- the
+        # latch below is wrong for a run that starts from standstill (max(0, 1.0)
+        # pinned VisionPilot at 1 m/s for whole Bench2Drive routes), so it is only
+        # the fallback.
+        if obs.speed_limit is not None and obs.speed_limit > 0:
+            self.set_speed = float(obs.speed_limit)
+        elif self.set_speed is None:
             self.set_speed = max(obs.speed, 1.0)
         self.idm.speed_limit = self.set_speed
 

@@ -105,3 +105,88 @@ def test_infer_sequence_records_the_history_and_runs_the_model_once() -> None:
     assert stub.recorded == frames[:-1], "history must be recorded without inference"
     assert stub.inferred == [frames[-1]], "exactly one forward pass, on the scored frame"
     assert stub.self_prime is True, "self_prime must be restored after the sequence"
+
+
+def test_nav_text_uses_the_reference_phrasing() -> None:
+    """Bench2Drive sends the next junction maneuver and the metres to it; the
+    model was trained on "Turn left in 30m" / "Continue straight"."""
+    from paddock.adapters.models.alpamayo15.policy import nav_text_for
+
+    assert nav_text_for("TURN_LEFT", 37.4) == "Turn left in 37m"
+    assert nav_text_for("TURN_RIGHT", 0.0) == "Turn right in 0m"
+    assert nav_text_for("TURN_RIGHT", -2.0) == "Turn right in 0m"  # never negative
+    assert nav_text_for("TURN_RIGHT", None) == "Turn right"  # command without a distance
+    assert nav_text_for("STRAIGHT", 12.0) == "Continue straight"
+    assert nav_text_for(None, None) == "Continue straight"
+
+
+def test_repeated_frames_are_recorded_once(monkeypatch) -> None:
+    """KITScenes clamps its warm-up at frame 0, so early keyframes repeat it; the
+    time-resampled history must not see duplicate timestamps."""
+    from types import SimpleNamespace as NS
+
+    p = POLICY()
+    monkeypatch.setattr(p, "_warp_frame", lambda obs: None)
+    for t in (0, 0, 0, 100_000, 100_000, 200_000):
+        p._record(NS(ego2world=np.eye(4), timestamp_us=t))
+    assert p.timestamps == [0, 100_000, 200_000] and len(p.poses) == 3
+
+
+def test_route_maneuver_falls_back_to_the_command() -> None:
+    """NAVSIM sends only the 4-way command; Bench2Drive/KITScenes send the fields."""
+    from types import SimpleNamespace as NS
+
+    from paddock.adapters.models.alpamayo15.policy import route_maneuver
+    from paddock.policy.protocol import Command
+
+    assert route_maneuver(NS(nav_maneuver="TURN_LEFT", nav_distance_m=40.0, command=Command.STRAIGHT)) == (
+        "TURN_LEFT",
+        40.0,
+    )
+    assert route_maneuver(NS(nav_maneuver=None, nav_distance_m=None, command=Command.LEFT)) == (
+        "TURN_LEFT",
+        None,
+    )
+    assert route_maneuver(NS(nav_maneuver=None, nav_distance_m=None, command=Command.RIGHT)) == (
+        "TURN_RIGHT",
+        None,
+    )
+    assert route_maneuver(NS(nav_maneuver=None, nav_distance_m=None, command=Command.FOLLOW_REFERENCE)) == (
+        None,
+        None,
+    )
+
+
+def test_sampling_defaults_are_the_models_own(monkeypatch) -> None:
+    for k in ("ALPAMAYO_NUM_TRAJ_SAMPLES", "ALPAMAYO_TEMPERATURE", "ALPAMAYO_TOP_P", "ALPAMAYO_NAV"):
+        monkeypatch.delenv(k, raising=False)
+    p = POLICY()
+    assert (p.num_traj_samples, p.temperature, p.top_p, p.max_generation_length) == (1, 0.6, 0.98, 256)
+    assert p.use_nav is True
+    monkeypatch.setenv("ALPAMAYO_NAV", "0")
+    monkeypatch.setenv("ALPAMAYO_NUM_TRAJ_SAMPLES", "6")
+    q = POLICY()
+    assert q.use_nav is False and q.num_traj_samples == 6
+
+
+def test_observation_carries_nav_fields_optionally() -> None:
+    from paddock.policy.protocol import Command, Observation
+
+    base = dict(
+        images={"CAM_FRONT": np.zeros((4, 4, 3), np.uint8)},
+        ego2world=np.eye(4),
+        canbus=np.zeros(18),
+        timestamp_us=0,
+        command=Command.STRAIGHT,
+        camera2image={"CAM_FRONT": np.eye(3)},
+        camera2ego={"CAM_FRONT": np.eye(4)},
+    )
+    plain = Observation(**base)
+    assert plain.nav_maneuver is None and plain.nav_distance_m is None
+    wire = Observation(**base, nav_maneuver="TURN_LEFT", nav_distance_m=40.0).to_wire()
+    back = Observation.from_wire(wire, ["CAM_FRONT"])
+    assert (back.nav_maneuver, back.nav_distance_m) == ("TURN_LEFT", 40.0)
+    wire.pop("nav_maneuver")
+    wire.pop("nav_distance_m")  # an older agent
+    old = Observation.from_wire(wire, ["CAM_FRONT"])
+    assert old.nav_maneuver is None and old.nav_distance_m is None
