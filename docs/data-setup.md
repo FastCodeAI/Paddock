@@ -131,3 +131,17 @@ locally, or the next person repeats the discovery.
 Checkpoints go under `[roots.weights]`, shared across models where a backbone is
 shared. Models reference them through `{weights}` in `model.yaml`, so no
 checkpoint path is ever hardcoded in tracked code.
+
+## nuScenes (open-loop planning)
+
+```toml
+[datasets.nuscenes]
+path    = "/path/to/nuscenes"        # the directory holding v1.0-trainval/, samples/, can_bus/, maps/
+version = "v1.0-trainval"
+```
+
+`--bench nuscenes` reads the `v1.0-trainval` JSON tables and the keyframe images
+under `samples/` (2 Hz); it does not need `sweeps/`. The 150-scene val index is
+built once and cached (see `docs/benchmarks/nuscenes.md`); point
+`[benchmarks.nuscenes] index_cache` at a writable path if the checkout is
+read-only.

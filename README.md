@@ -168,6 +168,16 @@ waypoints and the shared controller; actual vehicle speed can differ. nuScenes
 constant velocity instead extrapolates the recorded ego velocity. These are
 different speed settings of the baseline, as detailed below.
 
+△ nuScenes val, open loop, zero-shot (none of these models was trained on
+nuScenes): the average L2 over 0-3 s on the official 150-scene val split (5119
+keyframes), UniAD/VAD protocol, `--bench nuscenes` -- the cumulative (per-step)
+average, comparable to published tables (the `l2_avg` in `docs/leaderboard.md`
+is the point value at 1/2/3 s and reads higher). openpilot is excluded for the
+same 2 Hz reason as NAVSIM. VisionPilot's plan here is its acceleration/steering
+integrated to a path, as in NAVSIM, so unlike KITScenes it does yield an L2.
+Alpamayo's figure is inflated by the first keyframe of each scene, where it has
+no history to difference (9.5 m there vs 1.2 m elsewhere). See `docs/benchmarks/nuscenes.md`.
+
 § Not run — zero by construction. Every neuroNCAP scenario is staged so that an
 ego holding its current velocity collides at full speed. A run that avoids the
 collision scores a flat **5**; a run that collides scores
