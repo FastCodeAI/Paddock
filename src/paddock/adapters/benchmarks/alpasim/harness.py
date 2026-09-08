@@ -223,13 +223,28 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
 
     # -- episodes ----------------------------------------------------------
 
-    def episodes(self, scenes: list[str] | None = None, runs: int = 1) -> Iterator[Episode]:
+    def episodes(
+        self,
+        scenes: list[str] | None = None,
+        runs: int = 1,
+        scenarios: list[str] | None = None,
+    ) -> Iterator[Episode]:
         """One episode per scene, in the pinned order.
 
         Deterministic by construction: the order comes from the pinned YAML, not
         from the filesystem, so `--limit` selects the same scenes at both sites.
+
+        `scenarios` is the scene *set* here -- AlpaSim has no scenario axis of
+        its own, and `Episode.scenario` carries the set name so a run's episodes
+        say which pinned list they came from. The parameter is accepted because
+        the runner always passes it, even though `ClosedLoopBenchmark.episodes`
+        does not declare it; a harness that omits it dies with a TypeError
+        before the first scene.
         """
         selected = set(scenes) if scenes else None
+        wanted = set(scenarios) if scenarios else None
+        if wanted is not None and self.scene_set not in wanted:
+            return
         for scene in load_scene_set(self.scene_set):
             if selected is not None and scene not in selected:
                 continue
@@ -240,6 +255,23 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
                 run_index=0,
                 config={"scene_set": self.scene_set, "runs": runs},
             )
+
+    def scenario_problems(self, scenarios: list[str] | None) -> list[str]:
+        """A named scenario that is not this run's scene set, reported early.
+
+        Without this the filter silently yields nothing and the run records zero
+        episodes, which reads as a benchmark with no work rather than a typo.
+        """
+        if not scenarios:
+            return []
+        available = ", ".join(sorted(p.stem for p in SCENES_DIR.glob("*.yaml")))
+        unknown = [s for s in scenarios if s != self.scene_set]
+        if not unknown:
+            return []
+        return [
+            f"scenario(s) {', '.join(sorted(unknown))} are not this run's scene set "
+            f"({self.scene_set!r}); available scene sets: {available}"
+        ]
 
     # -- resume ------------------------------------------------------------
 

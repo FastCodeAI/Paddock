@@ -255,7 +255,10 @@ def serve(policy_url: str, port: int, version_id: str, timeout_s: float) -> None
         keep_images=True,
     )
     logger.info("bridge on :%d -> %s (version_id %s)", port, policy_url, version_id)
-    scaffold_serve(scaffold, port=port)
+    # serve(host, port, driver) -- host first and the servicer last. 0.0.0.0
+    # because the runtime reaches the bridge from inside a container even with
+    # use_localhost set; binding 127.0.0.1 would be unreachable from there.
+    scaffold_serve("0.0.0.0", port, scaffold)
 
 
 def main(argv: list[str] | None = None) -> int:

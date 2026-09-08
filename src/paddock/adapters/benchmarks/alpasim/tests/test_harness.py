@@ -201,6 +201,40 @@ def test_the_bridge_is_the_driver_and_the_wizard_starts_no_driver_of_its_own(tmp
     assert '"driver"' not in joined.split("run_sim_services=")[1].split()[0]
 
 
+def test_episodes_accepts_exactly_what_the_runner_passes(tmp_path: Path, monkeypatch) -> None:
+    """The runner calls `episodes(scenes, runs=..., scenarios=...)`.
+
+    `ClosedLoopBenchmark.episodes` declares only `(scenes, runs)`, so a harness
+    written to the documented signature raises TypeError on the runner's third
+    keyword -- before the first scene, after the node has been started. That is
+    exactly what happened on the first live attempt, so it is pinned here
+    against the runner's real call rather than against the base class.
+    """
+    import inspect
+
+    from paddock.runner import _run_one_model
+
+    source = inspect.getsource(_run_one_model)
+    assert "harness.episodes(scenes, runs=runs, scenarios=scenarios)" in source, (
+        "the runner's call changed; update this test and the harness together"
+    )
+    bench = _benchmark(tmp_path, monkeypatch)
+    episodes = list(bench.episodes(None, runs=1, scenarios=None))
+    assert len(episodes) == 10
+
+
+def test_a_scenario_filter_selects_the_scene_set(tmp_path: Path, monkeypatch) -> None:
+    bench = _benchmark(tmp_path, monkeypatch)
+    assert list(bench.episodes(scenarios=[DEFAULT_SCENE_SET]))
+    assert list(bench.episodes(scenarios=["something-else"])) == []
+
+
+def test_an_unknown_scenario_is_named_rather_than_silently_empty(tmp_path: Path, monkeypatch) -> None:
+    """A typo must not read as a benchmark with no work to do."""
+    problems = _benchmark(tmp_path, monkeypatch).scenario_problems(["typo"])
+    assert problems and "typo" in problems[0] and DEFAULT_SCENE_SET in problems[0]
+
+
 # ---------------------------------------------------------------------------
 # preflight
 # ---------------------------------------------------------------------------

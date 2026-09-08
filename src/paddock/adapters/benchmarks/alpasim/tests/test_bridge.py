@@ -253,3 +253,45 @@ def test_two_sessions_are_kept_apart(bridge) -> None:
     assert [b["timestamp"] for b in node.bodies] == [111_000, 222_000]
     stub.close_session(DriveSessionCloseRequest(session_uuid="a"))
     stub.close_session(DriveSessionCloseRequest(session_uuid="b"))
+
+
+# ---------------------------------------------------------------------------
+# the bridge as a subprocess, the way launcher.py starts it
+# ---------------------------------------------------------------------------
+
+
+def test_the_bridge_starts_as_a_subprocess_and_tears_down() -> None:
+    """The launch path, not just the servicer.
+
+    `serve()` is called across a process boundary with a different interpreter
+    and a constructed PYTHONPATH, so an argument-order slip or a missing path
+    shows up only here -- and did: the first live attempt died on
+    `serve(scaffold, port=port)` when the real signature is
+    `serve(host, port, driver)`. That is invisible to every in-process test.
+    """
+    import tempfile
+    from pathlib import Path as _Path
+
+    from paddock.adapters.benchmarks.alpasim import launcher
+    from paddock.config import SiteConfig
+    from paddock.runtime import ports
+
+    try:
+        cfg = SiteConfig.load()
+    except Exception:  # noqa: BLE001
+        pytest.skip("no site configuration")
+    python = (cfg.benchmarks.get("alpasim") or {}).get("python")
+    if not python or not _Path(python).exists():
+        pytest.skip("[benchmarks.alpasim] python is not configured here")
+
+    tmp = _Path(tempfile.mkdtemp())
+    port = ports.find_free(9200)
+    with launcher.BridgeProcess(
+        python=python,
+        policy_url="http://127.0.0.1:1",
+        port=port,
+        version_id="test-subprocess-0",
+        log_path=tmp / "bridge.log",
+    ) as bridge:
+        assert bridge.proc is not None and bridge.proc.poll() is None
+    assert bridge.proc.poll() is not None, "the bridge outlived its context manager"
