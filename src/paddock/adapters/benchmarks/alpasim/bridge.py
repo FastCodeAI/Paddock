@@ -23,6 +23,17 @@ CARLA client under the CARLA interpreter.
 
 Three translation decisions worth knowing:
 
+**Frames are decoded here, and NOT rectified.** AlpaSim sends encoded bytes,
+so the bridge decodes them before handing pixels to the node. AlpaSim's own
+driver additionally applies `session.rectify_image` -- lens-distortion
+correction derived from the camera model in `start_session` -- and this bridge
+does not. It makes no difference to a policy that ignores images, such as the
+constant-velocity floor, and it is a real difference for any model that looks at
+them: those frames are distorted where AlpaSim's own driver's are not. Closing
+it means porting the rectification, and until that happens an image-consuming
+model driven through this bridge is not receiving what it would receive from
+AlpaSim's native driver. Recorded here rather than discovered later.
+
 **Frames travel as pixels, not paths.** The renderer holds them in memory and
 there is no file for the node to open, so the `.npy`-over-base64 branch of
 `decode_image` is the one used. Costly, and unavoidable -- the same trade the
@@ -63,6 +74,26 @@ N_WAYPOINTS = 6
 #: AlpaSim's runtime pushes observations then calls drive(); a plan the node
 #: cannot produce inside this is a failed rollout, not a slow one.
 DEFAULT_INFER_TIMEOUT_S = 60.0
+
+
+def decode_frame(payload: bytes) -> np.ndarray:
+    """AlpaSim's `image_bytes` -> uint8 HWC.
+
+    The runtime sends **encoded** image bytes (JPEG in practice), not arrays --
+    `RolloutCameraImage.CameraImage.image_bytes` in egodriver.proto. Treating
+    them as an array fails inside numpy with a message about int() and a literal
+    starting `\xff\xd8\xff\xe0...JFIF`, which names neither the camera nor the
+    format.
+
+    PIL rather than torchvision's nvJPEG: this runs on whatever host the bridge
+    is on, and decoding four cameras per tick on CPU is cheap next to the
+    renderer. AlpaSim's own driver uses PIL on its CPU path for the same reason.
+    """
+    from io import BytesIO
+
+    from PIL import Image
+
+    return np.asarray(Image.open(BytesIO(payload)).convert("RGB"), dtype=np.uint8)
 
 
 def encode_image(frame: np.ndarray) -> str:
@@ -207,7 +238,10 @@ class PolicyPlanner(Planner):
             if not frames:
                 continue
             _, payload = frames[-1]
-            images[logical_id] = payload if isinstance(payload, str) else encode_image(payload)
+            if isinstance(payload, str):
+                images[logical_id] = payload
+            else:
+                images[logical_id] = encode_image(decode_frame(payload))
 
         body = {
             "images": images,

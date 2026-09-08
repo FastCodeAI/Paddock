@@ -124,6 +124,28 @@ def _open_session(stub, session="s-1", cameras=("camera_front_wide_120fov",)):
     return stub.start_session(request)
 
 
+def _jpeg(width=32, height=16, colour=(10, 20, 30)) -> bytes:
+    """A real JPEG, because the bug this guards was a format assumption."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    buf = BytesIO()
+    Image.new("RGB", (width, height), colour).save(buf, format="JPEG")
+    return buf.getvalue()
+
+
+def _push_image(stub, session="s-1", camera="camera_front_wide_120fov", t_us=1_000_000):
+    from alpasim_grpc.v0.egodriver_pb2 import RolloutCameraImage
+
+    request = RolloutCameraImage()
+    request.session_uuid = session
+    request.camera_image.logical_id = camera
+    request.camera_image.frame_end_us = t_us
+    request.camera_image.image_bytes = _jpeg()
+    return stub.submit_image_observation(request)
+
+
 def _push_egomotion(stub, session="s-1", timestamp_us=1_000_000):
     request = RolloutEgoTrajectory()
     request.session_uuid = session
@@ -295,3 +317,35 @@ def test_the_bridge_starts_as_a_subprocess_and_tears_down() -> None:
     ) as bridge:
         assert bridge.proc is not None and bridge.proc.poll() is None
     assert bridge.proc.poll() is not None, "the bridge outlived its context manager"
+
+
+def test_encoded_camera_bytes_are_decoded_before_they_reach_the_node() -> None:
+    """AlpaSim sends JPEG bytes, not arrays.
+
+    The first live run drove four scenes and failed every drive() on this:
+    `image_bytes` was handed to np.save as if it were an array, which fails deep
+    in numpy with a message naming neither the camera nor the format. Guarded
+    with a real JPEG rather than a stand-in, since the bug was precisely an
+    assumption about the format.
+    """
+    from paddock.adapters.benchmarks.alpasim.bridge import decode_frame
+
+    frame = decode_frame(_jpeg(width=32, height=16))
+    assert frame.shape == (16, 32, 3)
+    assert frame.dtype == np.uint8
+
+
+def test_a_frame_survives_the_whole_path_to_the_node(bridge) -> None:
+    """Decoded, re-encoded as .npy, and decodable by paddock's own reader."""
+    from paddock.policy.protocol import decode_image
+
+    stub, node = bridge
+    _open_session(stub)
+    _push_image(stub)
+    _push_egomotion(stub)
+    _drive(stub)
+
+    images = node.bodies[-1]["images"]
+    assert "camera_front_wide_120fov" in images, "the node was sent no frame"
+    recovered = decode_image(images["camera_front_wide_120fov"])
+    assert recovered.shape == (16, 32, 3)
