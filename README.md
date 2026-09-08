@@ -56,7 +56,7 @@ flowchart LR
         direction TB
         b2d["Bench2Drive<br/>CARLA · ability score"]
         nc["neuroNCAP<br/>NeuRAD · NCAP score"]
-        alp["AlpaSim<br/>OmniDreams · nuRec · planned"]
+        alp["AlpaSim<br/>nuRec · scene score<br/>OmniDreams · planned"]
     end
 
     res[("results/<br/>one schema, with provenance")]
@@ -105,13 +105,13 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 
 🟢 open-loop · 🟡 pseudo-closed-loop · 🔴 closed-loop · ↑ higher is better · ↓ lower is better
 
-| | 🟢 nuScenes cumulative L2 avg ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🔴 Bench2Drive driving score ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim (OmniDreams) | 🔴 AlpaSim (nuRec) |
+| | 🟢 nuScenes cumulative L2 avg ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🔴 Bench2Drive driving score ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim (OmniDreams) | 🔴 AlpaSim nuRec scene score ↑ (0–1) |
 |---|---|---|---|---|---|---|---|
-| OpenPilot | 2.477 △ | 1.599 | ✗ 2 Hz ‡ | 30.09 ≈ ◆ | **3.60** ‖ | planned | planned |
-| Alpamayo 1.5 | 0.787 △ | 1.002 | 0.608 † | 44.58 ◆ | **3.73** ‖ | planned | planned |
-| Drive-JEPA | 0.912 △ | 2.364 | 0.843 | 31.11 ◆ | **3.57** ‖ | planned | planned |
-| VisionPilot | 1.441 △ | n/a ∗ | 0.431 | 49.85 ◆ | **1.58** ‖ | planned | planned |
-| Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | — | 0 § | — | — |
+| OpenPilot | 2.477 △ | 1.599 | ✗ 2 Hz ‡ | 30.09 ≈ ◆ | **3.60** ‖ | planned | 0.9566 ¶ |
+| Alpamayo 1.5 | 0.787 △ | 1.002 | 0.608 † | 44.58 ◆ | **3.73** ‖ | planned | 0.8000 ¶ |
+| Drive-JEPA | 0.912 △ | 2.364 | 0.843 | 31.11 ◆ | **3.57** ‖ | planned | 0.5619 ¶ |
+| VisionPilot | 1.441 △ | n/a ∗ | 0.431 | 49.85 ◆ | **1.58** ‖ | planned | 0.8864 ¶ |
+| Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | — | 0 § | — | 0.3562 ¶ |
 
 ∗ VisionPilot has no native trajectory output. For nuScenes and NAVSIM, Paddock
 constructs sampled XY points from its projected image-space path and speed
@@ -163,6 +163,14 @@ collision rate.
 Note the discontinuity: **a single run scores either exactly 5, or at most 4** —
 grazing an obstacle at walking pace scores 4, not 4.9. Anything between the two
 is a mean over runs, which is what the model rows above are.
+
+¶ **Preliminary — 10 scenes, one run each, and the results files are not
+stored yet.** AlpaSim runs at whatever camera set and control rate you configure,
+and each model above was run at the rate and camera count it is built for, so
+**the column is four different measurements and its rows do not rank against
+each other.** Each is quoted against the constant-velocity floor *of its own
+configuration* in the AlpaSim table below; the baseline cell here is the 20 Hz
+single-camera floor, one of three. Those floor numbers are being re-checked.
 
 ### nuScenes
 
@@ -291,6 +299,75 @@ scenarios in both directions.
 Three scenes (0796, 0921, 0923) initially failed for missing nuScenes lidar and
 were completed after fetching it; both runs record `n_reused` for the episodes
 carried over. See `docs/benchmarks/neuroncap.md`.
+
+### AlpaSim (nuRec)
+
+Closed-loop driving on replayed real scenes: AlpaSim renders a recorded clip as
+a neural reconstruction, hands the policy frames at a fixed control rate, and
+steps the world forward on what the policy commands. `scene_score` is 0–1,
+meaned over scenes. The set is the first 10 scenes of the `public_2601` suite,
+one run per scene — **n = 10, preliminary**. The adapter and the full protocol
+are in flight as PR #16; `docs/benchmarks/alpasim.md` arrives with it.
+
+**The four models were not run in the same configuration, and the configuration
+changes what is measured.** Each was driven at the rate and camera count it is
+built for. 20 Hz control gives a policy ten times the chances to correct that
+2 Hz does, and four cameras see what one cannot. Read each model against the
+constant-velocity floor *of its own row group*; the floors themselves differ by
+more than most of the models do.
+
+| Model | Control · cameras | `scene_score` ↑ | Δ vs its floor | Progress ↑ | Pace (× human) | Scored window | At-fault collisions ↓ | Any collision ↓ | Off-road ↓ |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| OpenPilot | 20 Hz · 1 cam | 0.9566 | **+0.6004** | 0.9010 | 0.913 | 0.777 | 0 / 10 | 1 / 10 | 0 / 10 |
+| *floor* | *20 Hz · 1 cam* | *0.3562* | *—* | *0.3815* | *0.383* | *0.267* | *0 / 10* | *3 / 10* | *3 / 10* |
+| Alpamayo 1.5 | 10 Hz · 4 cam | 0.8000 | **+0.4209** | 0.9557 | 0.972 | 0.761 | 1 / 10 | 1 / 10 | 1 / 10 |
+| *floor* | *10 Hz · 4 cam* | *0.3791* | *—* | *0.4720* | *0.477* | *0.380* | *2 / 10* | *5 / 10* | *2 / 10* |
+| VisionPilot | 2 Hz · 1 cam | 0.8864 | +0.1839 | 0.8582 | 0.868 | 0.713 | 1 / 10 | 2 / 10 | 0 / 10 |
+| Drive-JEPA | 2 Hz · 1 cam | 0.5619 | **−0.1406** | 0.6116 | 0.622 | 0.450 | 2 / 10 | 4 / 10 | 1 / 10 |
+| *floor* | *2 Hz · 1 cam* | *0.7025* | *—* | *0.6826* | *0.700* | *0.497* | *0 / 10* | *3 / 10* | *1 / 10* |
+
+**An at-fault collision or an off-road event zeroes the scene outright**, whatever
+progress preceded it:
+
+```
+progress_score = min(clamp(progress_clipped_rel, 0, 1) / 0.8, 1.0)
+scene_score    = 0.0  if collision_at_fault or offroad  else progress_score
+```
+
+There is no partial credit — 95% of a scene and then a clipped car scores the
+same 0.0 as never moving. That rule is why constant velocity is a serious
+opponent rather than a formality: it does not steer and it rear-ends things, but
+a rear-end is *not at fault*, so the hard-failure rule leaves it standing while
+the at-fault collisions and off-road events a real policy commits zero it. At
+2 Hz the floor scores 0.7025 and **Drive-JEPA does not beat it.** A model that
+does not clear its own floor has not demonstrated competence here, whatever the
+absolute number looks like.
+
+**Scored window is the trap in this benchmark.** AlpaSim truncates a rollout at
+the first collision or off-road event and again once the ego is 4 m from the
+recorded trajectory, so **a policy that fails early is scored over a shorter
+window than one that drives the scene out** — and its fidelity numbers, measured
+only over the easy opening seconds, look *better* for it. The column above is
+the fraction of ticks that survived that chain. The 20 Hz floor was scored over
+26.7% of its ticks against OpenPilot's 77.7%; do not compare progress or pace
+across rows whose scored windows differ.
+
+Two things this table is not yet:
+
+- **The results files are not in `results/` yet.** These numbers are transcribed,
+  so `paddock report` does not know them and cannot check them. The run and
+  metrics rows land in a follow-up, and this table should be regenerated from
+  them when they do.
+- **The constant-velocity floors are under review.** All three are being
+  re-checked; the Δ column moves with them, and Drive-JEPA's sign is the entry
+  most at risk.
+
+Alpamayo's row is a **single unseeded draw**. That run was made before the
+adapter set `force_determinism`, so AlpaSim re-running the identical command
+would not reproduce it — read it as one sample, not as the model's score. It is
+the same property `docs/benchmarks/neuroncap.md` records for Alpamayo there,
+where five seeds on one scenario spanned 0.000 to 5.000. The floor has no such
+caveat: it is deterministic, which is what makes it the useful reference.
 
 ---
 
