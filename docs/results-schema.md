@@ -134,6 +134,9 @@ spelling of an existing one.
 | `route_completion` | % of a closed-loop route driven before it ended |
 | `infraction_penalty` | product of CARLA's per-infraction coefficients, a 0–1 multiplier — **higher is better**, despite the name; `report.py` lists it explicitly |
 | `inference_seconds` | wall-clock per sample (the `seconds` suffix is what marks it lower-is-better in `report.py`) |
+| `scene_score` | AlpaSim closed-loop scene score, 0–1, **higher is better**. Saturating progress, **zeroed outright** by an at-fault collision or an offroad event — no partial credit for a scene that ends in either. See [benchmarks/alpasim.md](benchmarks/alpasim.md) |
+| `progress` | fraction of the human's recorded path covered, 0–1, higher is better |
+| `duration_frac_20s` | fraction of a nominal 20 s budget survived from handover, 0–1, higher is better |
 
 Report `longitudinal_mae` and `lateral_mae` alongside `ade` where the benchmark
 allows. Every model measured so far errs far more longitudinally than
@@ -196,6 +199,14 @@ Two traps specific to the legacy data:
 - **Known-bad runs are on disk.** At least one output directory is named for the
   fact that it is invalid. Ingest must mark these `valid: false`, not average
   them in.
+
+- **A closed-loop aggregate may describe only part of a rollout.** AlpaSim
+  truncates its scored window at the first collision or offroad event — including
+  a *not-at-fault* rear-end — and again at a divergence cap. A policy that fails
+  early is scored over less of the scene than one that drives it out, and its
+  trajectory-fidelity numbers look better for it. Two AlpaSim runs are comparable
+  on outcome rates and `scene_score`; on fidelity only if their scored fractions
+  match.
 
 Ingest also strips absolute paths from provenance before writing, since
 `results/` is tracked and the portability gate applies to it.

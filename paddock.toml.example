@@ -77,6 +77,26 @@ weights = "/path/to/weights"
 # gpu_rank    = "0"                                    # CARLA's -graphicsadapter
 # record      = "false"                                # per-tick front/BEV JPEGs + log.csv: ~40 GB per full sweep
 
+# [benchmarks.alpasim]
+# AlpaSim runs its services through docker compose and attaches a driver over
+# gRPC; paddock supplies the driver via the bridge, so only the checkout and its
+# interpreter are needed here.
+# repo   = "/path/to/alpasim"
+# python = "/path/to/alpasim/.venv/bin/python"
+#
+# Which pinned scene list to drive. See adapters/benchmarks/alpasim/scenes/.
+# scene_set = "public_2601_first10"
+#
+# Backstop against a wedged container, not a performance target: about 5 min per
+# scene with a 10B driver, 50 s for the constant-velocity floor.
+# per_scene_timeout_s = "1800"
+#
+# How long the runtime waits for the driver to answer its version probe.
+# Upstream defaults to 120 s; a cold 10B checkpoint read answers at ~305 s, so
+# the default kills the run and blames the driver. Leave this alone unless a
+# model loads slower still.
+# startup_timeout_s = "900"
+
 [gpu]
 # Total VRAM paddock may assume, in GB. Used to gate model startup rather than
 # discovering the hard way, several minutes into a checkpoint read, that the

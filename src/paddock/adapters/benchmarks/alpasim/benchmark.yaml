@@ -1,0 +1,17 @@
+name: alpasim
+description: AlpaSim closed-loop driving on replayed real scenes - a NuRec reconstruction drives the model and scores the outcome
+
+mode: closed_loop
+
+# No external dataset. The public_2601 suite ships inside the AlpaSim checkout
+# pinned in repos.yaml, and its USDZ scene artifacts are fetched by AlpaSim's
+# own scene provider on first use -- so there is no root for a site to point at
+# and `requires:` would have nothing to check. Same reasoning as bench2drive.
+# Where the checkout lives is [benchmarks.alpasim] in paddock.toml.
+dataset: ""
+
+# scene_score is AlpaSim's own composite and has no equivalent elsewhere, so it
+# is a new canonical name, documented in docs/results-schema.md. The rest reuse
+# existing names so a collision rate stays comparable across benchmarks.
+metrics: [scene_score, progress, collision_rate, duration_frac_20s]
+primary_metric: scene_score
