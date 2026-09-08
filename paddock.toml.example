@@ -87,6 +87,15 @@ weights = "/path/to/weights"
 # Which pinned scene list to drive. See adapters/benchmarks/alpasim/scenes/.
 # scene_set = "public_2601_first10"
 #
+# Where AlpaSim caches the USDZ scene artifacts. Large and site-specific; an
+# unset cache re-fetches every scene, which is slow rather than wrong.
+# scene_cache = "/path/to/nre-artifacts"
+#
+# The wizard's two required config groups. `local` and `1gpu` are what every
+# recorded run used; a site with more GPUs can raise the topology.
+# deploy   = "local"
+# topology = "1gpu"
+#
 # Backstop against a wedged container, not a performance target: about 5 min per
 # scene with a 10B driver, 50 s for the constant-velocity floor.
 # per_scene_timeout_s = "1800"

@@ -144,8 +144,7 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
             "scene_set": self.scene_set,
             "startup_timeout_s": self.startup_timeout_s,
             "scorer_repo_sha": "affc2ea",
-            "random_seed": launcher.DEFAULT_RANDOM_SEED,
-            "force_determinism": True,
+            "topology": self.setting("topology") or launcher.DEFAULT_TOPOLOGY,
         }
 
     # -- preflight ---------------------------------------------------------
@@ -344,6 +343,9 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
                 bridge_port=bridge_port,
                 searchpath=None,
                 startup_timeout_s=self.startup_timeout_s,
+                deploy=self.setting("deploy") or launcher.DEFAULT_DEPLOY,
+                topology=self.setting("topology") or launcher.DEFAULT_TOPOLOGY,
+                scene_cache=self.setting("scene_cache"),
             )
             returncode, timed_out, elapsed = launcher.run_wizard(
                 command,

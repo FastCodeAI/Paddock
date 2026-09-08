@@ -166,11 +166,13 @@ def test_the_wizard_is_invoked_as_the_package_not_a_main_module(tmp_path: Path) 
     assert "alpasim_wizard.main" not in " ".join(command)
 
 
-def test_the_wizard_is_told_to_seed_and_force_determinism(tmp_path: Path) -> None:
-    """Alpamayo samples at temperature 0.6 and seeds only under this flag.
+def test_the_wizard_is_not_told_to_force_determinism(tmp_path: Path) -> None:
+    """AlpaSim's determinism flag seeds a model AlpaSim runs -- and it runs none.
 
-    Without both, a run is one unseeded draw that neither paddock nor AlpaSim
-    itself can reproduce -- which is what the recorded pre-adapter run was.
+    Under this adapter paddock owns the model process and the bridge only
+    relays, so `driver.model.force_determinism` would be a no-op that reads as a
+    guarantee. Sampling determinism belongs to the model's paddock policy.
+    Asserted rather than merely omitted, because adding it back looks harmless.
     """
     joined = " ".join(
         launcher.wizard_command(
@@ -182,8 +184,29 @@ def test_the_wizard_is_told_to_seed_and_force_determinism(tmp_path: Path) -> Non
             searchpath=None,
         )
     )
-    assert "+driver.model.force_determinism=true" in joined
-    assert f"+scenes.random_seed={launcher.DEFAULT_RANDOM_SEED}" in joined
+    assert "force_determinism" not in joined
+    assert "random_seed" not in joined
+
+
+def test_the_wizard_gets_the_required_groups_and_the_log_dir(tmp_path: Path) -> None:
+    """deploy/topology are required to compose; artifacts follow wizard.log_dir."""
+    out = tmp_path / "out"
+    joined = " ".join(
+        launcher.wizard_command(
+            repo=tmp_path,
+            python="python",
+            scene_id="clipgt-x",
+            out_dir=out,
+            bridge_port=9200,
+            searchpath=None,
+        )
+    )
+    assert "deploy=local" in joined and "topology=1gpu" in joined
+    assert f"wizard.log_dir={out}" in joined
+    # The adapter's own configs must be on the search path or `driver=` resolves
+    # to nothing and the run dies during composition.
+    assert f"file://{launcher.CONFIGS_DIR}" in joined
+    assert "driver=paddock_bridge" in joined
 
 
 def test_the_bridge_is_the_driver_and_the_wizard_starts_no_driver_of_its_own(tmp_path: Path) -> None:

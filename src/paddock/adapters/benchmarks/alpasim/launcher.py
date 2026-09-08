@@ -45,9 +45,15 @@ DEFAULT_STARTUP_TIMEOUT_S = 900
 #: How long to wait for the bridge to accept connections before giving up.
 BRIDGE_READY_TIMEOUT_S = 60.0
 
-#: Fixed, so a sampling model's run is reproducible. Paired with
-#: force_determinism, which is what actually makes the seed take effect.
-DEFAULT_RANDOM_SEED = 0
+#: Config tree this adapter ships, added to Hydra's search path so `driver=`
+#: resolves to the bridge rather than to a driver the wizard would start itself.
+CONFIGS_DIR = Path(__file__).parent / "configs"
+
+#: The wizard requires both and refuses to compose without them. `local` and
+#: `1gpu` are what every run in this campaign used; a site with more GPUs can
+#: override them in paddock.toml.
+DEFAULT_DEPLOY = "local"
+DEFAULT_TOPOLOGY = "1gpu"
 
 
 class BridgeProcess:
@@ -171,8 +177,10 @@ def wizard_command(
     bridge_port: int,
     searchpath: Path | None,
     startup_timeout_s: int = DEFAULT_STARTUP_TIMEOUT_S,
-    driver: str = "constant_velocity",
-    random_seed: int = DEFAULT_RANDOM_SEED,
+    driver: str = "paddock_bridge",
+    deploy: str = DEFAULT_DEPLOY,
+    topology: str = DEFAULT_TOPOLOGY,
+    scene_cache: str | None = None,
 ) -> list[str]:
     """The wizard invocation for one scene.
 
@@ -188,8 +196,17 @@ def wizard_command(
         python,
         "-m",
         "alpasim_wizard",
+        # deploy and topology are required groups: the wizard refuses to compose
+        # without them.
+        f"deploy={deploy}",
+        f"topology={topology}",
         f"driver={driver}",
         f"scenes.scene_ids=[{scene_id}]",
+        # Artifacts follow wizard.log_dir, not hydra.run.dir -- the latter moves
+        # only Hydra's own working directory, while the rollouts, the aggregate
+        # and the console log the harness parses are written where log_dir says.
+        # Both are set so the two cannot diverge.
+        f"wizard.log_dir={out_dir}",
         f"hydra.run.dir={out_dir}",
         f"+runtime.endpoints.startup_timeout_s={startup_timeout_s}",
         f"wizard.external_services.driver=[localhost:{bridge_port}]",
@@ -197,15 +214,30 @@ def wizard_command(
         "wizard.debug_flags.use_localhost=true",
         "runtime.enable_autoresume=true",
         "eval.allow_aggregation_with_failed_rollouts=true",
-        # Alpamayo samples at temperature 0.6 / top_p 0.98 and seeds only under
-        # force_determinism, so without these two a run is one unseeded draw and
-        # cannot be reproduced -- by paddock or by AlpaSim itself. Harmless for
-        # a deterministic driver, which ignores both.
-        "+driver.model.force_determinism=true",
-        f"+scenes.random_seed={random_seed}",
+        # NOTE: AlpaSim's own `driver.model.force_determinism` is deliberately
+        # NOT set here. It seeds a model AlpaSim runs, and under this adapter
+        # AlpaSim runs no model -- paddock owns the process and the bridge only
+        # relays. Sampling determinism for a model like Alpamayo therefore
+        # belongs to its paddock policy, not to the simulator's driver config;
+        # setting the flag here would be a no-op that reads as a guarantee.
+        # The rollout's own session_seed already defaults to 0.
+        # Pinned to the recorded campaign's value. The scorer's defaults are not
+        # guaranteed stable across versions, and a horizon set that differs
+        # makes min_ade a different quantity under the same name.
+        "eval.scorers.min_ade.time_deltas=[0.5,1.0,2.5]",
     ]
+    if scene_cache:
+        # Where the USDZ artifacts are cached. Site-specific and large, so it is
+        # a paddock.toml key rather than a default -- an unset cache re-fetches
+        # every scene, which is slow rather than wrong.
+        command.append(f"scenes.scene_cache={scene_cache}")
+    # The adapter's own configs always come first; a caller-supplied path is
+    # appended, not substituted, because dropping ours means `driver=` resolves
+    # to nothing and the run dies during config composition.
+    paths = [f"file://{CONFIGS_DIR}"]
     if searchpath is not None:
-        command.append(f"hydra.searchpath=[file://{searchpath}]")
+        paths.append(f"file://{searchpath}")
+    command.append("hydra.searchpath=[" + ",".join(paths) + "]")
     return command
 
 
