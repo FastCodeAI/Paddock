@@ -107,10 +107,10 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 
 | | 🟢 nuScenes cumulative L2 avg ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🔴 Bench2Drive driving score ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim (OmniDreams) | 🔴 AlpaSim (nuRec) |
 |---|---|---|---|---|---|---|---|
-| OpenPilot | 2.477 △ | 1.599 | ✗ 2 Hz ‡ | 30.09 ≈ ◆ | superseded ‖ | planned | planned |
-| Alpamayo 1.5 | 0.787 △ | 1.002 | 0.608 † | 44.58 ◆ | 2.46 | planned | planned |
-| Drive-JEPA | 0.912 △ | 2.364 | 0.843 | 31.11 ◆ | 4.04 | planned | planned |
-| VisionPilot | 1.441 △ | n/a ∗ | 0.431 | 49.85 ◆ | 1.67 | planned | planned |
+| OpenPilot | 2.477 △ | 1.599 | ✗ 2 Hz ‡ | 30.09 ≈ ◆ | **3.60** ‖ | planned | planned |
+| Alpamayo 1.5 | 0.787 △ | 1.002 | 0.608 † | 44.58 ◆ | **3.73** ‖ | planned | planned |
+| Drive-JEPA | 0.912 △ | 2.364 | 0.843 | 31.11 ◆ | **3.57** ‖ | planned | planned |
+| VisionPilot | 1.441 △ | n/a ∗ | 0.431 | 49.85 ◆ | **1.58** ‖ | planned | planned |
 | Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | — | 0 § | — | — |
 
 ∗ VisionPilot has no native trajectory output. For nuScenes and NAVSIM, Paddock
@@ -242,31 +242,55 @@ speed-band experiments are separate from this four-model historical cohort.
 
 ### neuroNCAP
 
-Scene 0103, 5 runs per scenario, mean ± std of the NCAP score (0 = full-speed
-collision, 5 = avoided). CR is the collision rate over all 15 runs.
+The **full official set**: 20 scenario-scene pairs over 14 scenes, 10 runs each,
+n = 200 per model. Mean ± std of the NCAP score; CR is the collision rate over
+all 200 runs. Runs are seeded 0-9, so every model met identical scenario jitter.
 
-**Preliminary — 1 of the 20 official scenario–scene pairs.** The official set is
-10 stationary scenes, 5 frontal and 5 side; these numbers are one scene, so the
-between-scene variance that dominates a category mean is entirely unmeasured. A
-full-set sweep at 10 runs per pair will replace them. See
-[docs/benchmarks/neuroncap.md](docs/benchmarks/neuroncap.md#the-evaluation-set-and-how-many-runs).
-
-| Model | stationary ↑ (0–5) | frontal ↑ (0–5) | side ↑ (0–5) | mean ↑ (0–5) | CR ↓ (0–100%) |
+| Model | stationary ↑ (0–5) | frontal ↑ (0–5) | side ↑ (0–5) | overall ↑ (0–5) | CR ↓ (of 200) |
 |---|---:|---:|---:|---:|---:|
-| OpenPilot ‖ | — | — | — | — | — |
-| Alpamayo 1.5 | 4.08 ±1.84 | 2.10 ±1.63 | 1.20 ±0.36 | 2.46 | 67% |
-| Drive-JEPA | 5.00 ±0.00 | 2.13 ±0.08 | 5.00 ±0.00 | **4.04** | 33% |
-| VisionPilot | 2.79 ±0.56 | 1.68 ±0.10 | 0.54 ±0.64 | 1.67 | 100% |
-| Baseline (Constant Velocity) | 0.00 | 0.00 | 0.00 | 0.00 § | 100% |
+| Alpamayo 1.5 | 4.41 ±1.48 | 3.64 ±2.01 | 2.45 ±1.93 | **3.73** | 32.5% |
+| OpenPilot | 4.52 ±1.34 | 2.30 ±1.24 | 3.08 ±2.25 | **3.60** | 38.0% |
+| Drive-JEPA | 4.23 ±1.33 | 2.42 ±1.43 | 3.39 ±2.07 | **3.57** | 45.5% |
+| VisionPilot | 2.53 ±1.60 | 1.17 ±1.38 | 0.08 ±0.18 | **1.58** | 85.5% |
+| Baseline (Constant Velocity) | 0.00 | 0.00 | 0.00 | 0.00 § | 100.0% |
 
-‖ **Superseded — OpenPilot has no closed-loop score on record.** Every stored
-closed-loop run was produced before `12f3250` fixed the `traffic_convention`
-one-hot, which had been telling supercombo it was a right-hand-drive car in
-Boston. All five are now stored `valid: false` with that reason, so `paddock
-report` excludes them and this row is empty because the record is empty, not
-because a footnote says so. Its previous figures were 5.00 / 2.21 / 4.18,
-mean 3.80, CR 47%; the size of the error is unknown until the re-run lands. The
-open-loop KITScenes path always passed `[1, 0]`, so only closed-loop is affected.
+**Scene 0103 was not representative, and the ordering it implied was wrong.**
+Every model met identical scenario jitter (runs seeded 0–9), so these can be
+compared paired sample for sample rather than as means:
+
+| paired difference over 200 samples | mean | SE | t |
+|---|---:|---:|---:|
+| Alpamayo − OpenPilot | +0.12 | 0.15 | 0.80 |
+| Alpamayo − Drive-JEPA | +0.16 | 0.14 | 1.12 |
+| Alpamayo − VisionPilot | **+2.15** | 0.17 | **12.89** |
+
+The top three are **statistically indistinguishable**. Only VisionPilot is
+separated, and decisively. On scene 0103 alone the order was Drive-JEPA 4.04,
+OpenPilot 3.80, Alpamayo 2.46 — which put Alpamayo last of the three and
+Drive-JEPA clearly first. Neither holds up. Alpamayo moved most, from 2.46 to
+3.73, because scene 0103's side scenario is one of its worst and n = 15 could
+not show that.
+
+VisionPilot's side score moved the same way in the other direction: 0.54 on
+0103, 0.08 across the set.
+
+**A single run scores either exactly 5.0 or at most 4.0** (see §), so a mean
+between them is an average over runs and the standard deviation matters. The
+per-run rows are in `results/`; VisionPilot's side result is 0.08 with a 100%
+collision rate on all 50 runs — it hits the side obstacle at nearly full speed
+every time, which the 0.54 from one scene did not show.
+
+‖ Full official set, 20 pairs over 14 scenes, 10 runs each (n = 200), stored
+`valid: true`. OpenPilot's earlier closed-loop figures were all produced before
+`12f3250` fixed the `traffic_convention` one-hot — which had been telling
+supercombo it was a right-hand-drive car in Boston — and are stored
+`valid: false`; this is its first valid closed-loop score. Paired by seed on
+frontal-0103 the fix was worth −0.16, and on side-0103 +0.36, so it moved
+scenarios in both directions.
+
+Three scenes (0796, 0921, 0923) initially failed for missing nuScenes lidar and
+were completed after fetching it; both runs record `n_reused` for the episodes
+carried over. See `docs/benchmarks/neuroncap.md`.
 
 ---
 
