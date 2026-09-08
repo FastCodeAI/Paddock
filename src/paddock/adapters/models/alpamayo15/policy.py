@@ -35,6 +35,7 @@ consensus draw rather than an oracle-selected best.
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import TYPE_CHECKING, Any
 
@@ -53,7 +54,9 @@ from paddock.adapters.models.alpamayo15.camera_warp import (
 from paddock.adapters.models.alpamayo15.camera_warp import (
     Pinhole as WarpPinhole,
 )
-from paddock.policy.protocol import Observation, Pinhole, Policy, Trajectory
+from paddock.policy.protocol import Command, Observation, Pinhole, Policy, Trajectory
+
+_log = logging.getLogger(__name__)
 
 # Alpamayo slot -> (nuScenes camera, how to fill it). Matched by bearing:
 # nuScenes' front-left/front-right sit within a couple of degrees of the
@@ -72,6 +75,40 @@ TARGET_ASPECT = TARGET_H / TARGET_W  # 9:16, the model frame's height/width
 def _env_float(name: str) -> float | None:
     raw = os.environ.get(name)
     return float(raw) if raw else None
+
+
+def _env_or(name: str, default):
+    """`default` unless the environment names a value, cast to default's type."""
+    raw = os.environ.get(name)
+    return type(default)(raw) if raw else default
+
+
+def nav_text_for(maneuver: str | None, distance_m: float | None) -> str:
+    """The navigation instruction in the phrasing the model was trained on.
+
+    The reference notebook and `nav_utils` use "Turn left in 30m" /
+    "Turn right in 9m" for turns and "Continue straight" otherwise; a route with
+    no junction ahead is the "otherwise". Distances are whole metres, never
+    negative.
+    """
+    if maneuver in ("TURN_LEFT", "TURN_RIGHT"):
+        side = "left" if maneuver == "TURN_LEFT" else "right"
+        if distance_m is None:  # a source with a turn command but no distance (NAVSIM)
+            return f"Turn {side}"
+        return f"Turn {side} in {max(0, int(round(distance_m)))}m"
+    return "Continue straight"
+
+
+def route_maneuver(obs) -> tuple[str | None, float | None]:
+    """The next maneuver for *obs*: the explicit fields when the source sends
+    them (Bench2Drive, KITScenes), else the 4-way command every source carries
+    (NAVSIM's driving command), so no benchmark leaves the model without its
+    route instruction."""
+    man = getattr(obs, "nav_maneuver", None)
+    if man:
+        return man, getattr(obs, "nav_distance_m", None)
+    cmd = int(getattr(obs, "command", Command.FOLLOW_REFERENCE))
+    return ({Command.LEFT: "TURN_LEFT", Command.RIGHT: "TURN_RIGHT"}.get(cmd), None)
 
 
 NUM_HISTORY_STEPS = 16
@@ -101,17 +138,22 @@ def warp(image: Image.Image, src: WarpPinhole, kind: str) -> np.ndarray:
     return np.asarray(resized.convert("RGB"), dtype=np.uint8)
 
 
+def medoid_index(trajectories: np.ndarray) -> int:
+    """Index of the draw closest to all the others: (K, T, D) -> int."""
+    if len(trajectories) == 1:
+        return 0
+    flat = trajectories.reshape(len(trajectories), -1)
+    distances = np.linalg.norm(flat[:, None] - flat[None, :], axis=-1).sum(axis=1)
+    return int(np.argmin(distances))
+
+
 def medoid(trajectories: np.ndarray) -> np.ndarray:
     """The draw closest to all the others: (K, T, D) -> (T, D).
 
     Executed rather than the best-scoring draw, because in closed loop there is
     no ground truth to score against and only one trajectory can be driven.
     """
-    if len(trajectories) == 1:
-        return trajectories[0]
-    flat = trajectories.reshape(len(trajectories), -1)
-    distances = np.linalg.norm(flat[:, None] - flat[None, :], axis=-1).sum(axis=1)
-    return trajectories[int(np.argmin(distances))]
+    return trajectories[medoid_index(trajectories)]
 
 
 class AlpamayoPolicy(Policy):
@@ -120,18 +162,31 @@ class AlpamayoPolicy(Policy):
 
     def __init__(
         self,
-        num_traj_samples: int = 1,
+        num_traj_samples: int | None = None,
         reserve_gb: float | None = None,
-        temperature: float = 1.0,
-        top_p: float = 0.95,
-        max_generation_length: int = 512,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        max_generation_length: int | None = None,
+        use_nav: bool | None = None,
     ) -> None:
-        self.num_traj_samples = num_traj_samples
+        # Sampling defaults follow the reference inference notebook
+        # (notebooks/inference.ipynb: top_p 0.98, temperature 0.6, one sample,
+        # 256 generation tokens). More samples give a medoid to execute, but the
+        # VLM writes one chain-of-thought per sample (num_return_sequences), so
+        # 6 samples measured 3.7 s per tick against 1.0 s for one on this card.
+        # Each is overridable from the environment.
+        self.num_traj_samples = num_traj_samples or _env_or("ALPAMAYO_NUM_TRAJ_SAMPLES", 1)
         # Claim VRAM before the slow checkpoint read. On a shared card the
         # alternative is discovering someone else took it, 12 minutes in.
         self.reserve_gb = reserve_gb or _env_float("ALPAMAYO_RESERVE_GB")
-        self.temperature, self.top_p = temperature, top_p
-        self.max_generation_length = max_generation_length
+        self.temperature = temperature or _env_or("ALPAMAYO_TEMPERATURE", 0.6)
+        self.top_p = top_p or _env_or("ALPAMAYO_TOP_P", 0.98)
+        self.max_generation_length = max_generation_length or _env_or("ALPAMAYO_MAX_GEN", 256)
+        # Navigation conditioning: the observation's next-maneuver fields become
+        # the model's route instruction ("Turn left in 40m"). ALPAMAYO_NAV=0
+        # runs the no-nav baseline.
+        self.use_nav = use_nav if use_nav is not None else _env_or("ALPAMAYO_NAV", 1) == 1
+        self._last_nav: str | None = None
         self.model = None
         self.processor = None
         self.reset()
@@ -282,7 +337,15 @@ class AlpamayoPolicy(Policy):
         return warped
 
     def _record(self, obs: Observation) -> None:
-        """Append one observation to the pose and frame history."""
+        """Append one observation to the pose and frame history.
+
+        A frame stamped no later than the last one is the same frame again (the
+        KITScenes warm-up clamps its 48-frame history at the scene start, so a
+        keyframe at 40 repeats frame 0 eight times) and is dropped: the history
+        is resampled by time, and Slerp needs strictly increasing times.
+        """
+        if self.timestamps and obs.timestamp_us <= self.timestamps[-1]:
+            return
         self.poses.append(obs.ego2world)
         self.timestamps.append(obs.timestamp_us)
         self.frames.append(self._warp_frame(obs))
@@ -320,8 +383,12 @@ class AlpamayoPolicy(Policy):
         hist_xyz, hist_rot = self._history()
         image_frames, camera_indices = self._image_frames()
 
+        nav_text = None
+        if self.use_nav:
+            nav_text = nav_text_for(*route_maneuver(obs))
+        self._last_nav = nav_text
         messages = helper.create_message(
-            frames=image_frames.flatten(0, 1), camera_indices=camera_indices, nav_text=None
+            frames=image_frames.flatten(0, 1), camera_indices=camera_indices, nav_text=nav_text
         )
         inputs = self.processor.apply_chat_template(
             messages,
@@ -346,12 +413,27 @@ class AlpamayoPolicy(Policy):
             )
 
         samples = pred_xyz.float().cpu().numpy()[0, 0]  # (K, 64, 3)
-        chosen = medoid(samples)
+        chosen_idx = medoid_index(samples)
+        chosen = samples[chosen_idx]
         # Alpamayo is x-forward, y-left, the same convention NeuroNCAP drives.
         waypoints = chosen[GRID_INDICES][:, :2]
 
-        reasoning = extra.get("text", [""]) if isinstance(extra, dict) else ""
-        self._last_reasoning = reasoning[0][:300] if isinstance(reasoning, list) and reasoning else ""
+        # extract_text_tokens returns {"cot": [B, sets, samples] of str, ...}; keep
+        # the chain-of-causation of the *executed* draw (the medoid), not sample 0.
+        cot = ""
+        if isinstance(extra, dict) and "cot" in extra:
+            flat = np.asarray(extra["cot"]).reshape(-1)
+            cot = str(flat[chosen_idx]) if chosen_idx < flat.size else (str(flat[0]) if flat.size else "")
+        self._last_reasoning = cot[:400]
+        self._n_infer = getattr(self, "_n_infer", 0) + 1
+        if self._n_infer % 100 == 1:
+            _log.info(
+                "infer #%d nav=%r reach %.2f m cot=%r",
+                self._n_infer,
+                nav_text,
+                float(np.linalg.norm(waypoints[-1])),
+                cot[:240],
+            )
         return Trajectory(waypoints, dt=self.waypoint_dt)
 
     def diagnostics(self) -> dict[str, Any]:
@@ -366,6 +448,10 @@ class AlpamayoPolicy(Policy):
             return {"status": "no frame seen yet"}
         return {
             "num_traj_samples": self.num_traj_samples,
+            "temperature": self.temperature,
+            "top_p": self.top_p,
+            "nav": self.use_nav,
+            "nav_text": self._last_nav,
             "history_frames": min(len(self.poses), NUM_HISTORY_STEPS),
             "expected_dt_s": HISTORY_DT,
             "request_dt_s": (

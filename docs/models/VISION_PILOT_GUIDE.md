@@ -516,3 +516,22 @@ on-screen display support:
 | "undefined reference to WebRTCStreamer" while building | Streaming libraries not detected — install `zlib` |
 | "read() called past end of speeds data" | The speed file has fewer lines than the video has frames |
 | Nothing appears in the browser | Set `webrtc_on = true`, and make sure the streaming libraries were present when you built |
+
+## Paddock adapter notes (September 2026)
+
+* **Set-speed.** The IDM cruise speed used to be latched at run start as
+  `max(start speed, 1.0)`, a NeuroNCAP assumption (ego already at cruise). On
+  Bench2Drive every route starts from standstill, so VisionPilot crawled at
+  1 m/s for whole routes and its "completions" were completions by crawl. The
+  policy now takes `Observation.speed_limit` (the simulator's posted limit) each
+  tick and falls back to the latch only when no limit is sent.
+* **GPU.** The ONNX stack defaulted to the CPU provider with ~94 threads. Site
+  env: `VISIONPILOT_PROVIDERS="cuda"`, `VISIONPILOT_ORT_THREADS="2"`, and
+  `LD_LIBRARY_PATH` pointing at the venv's nvidia wheel libs
+  (`site-packages/nvidia/{cudnn,cublas,cuda_runtime,cuda_nvrtc}/lib`); without
+  it ORT 1.23 fails "libcudnn.so.9: cannot open" and silently falls back to
+  CPU. Under shared-GPU pressure the CUDA provider is built with
+  `arena_extend_strategy=kSameAsRequested`, a 1.5 GB limit and heuristic conv
+  search (`VISIONPILOT_GPU_MEM_MB`).
+* **No route input.** VisionPilot has no goal or command interface, so on
+  junction routes it goes straight; nuScenes and Bench2Drive both show it.

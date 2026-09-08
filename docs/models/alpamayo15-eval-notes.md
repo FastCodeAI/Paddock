@@ -177,3 +177,33 @@ Wall-clock ~2 h for the full run, of which only 34 min was GPU; the rest is down
 - **Zero-shot** — neither model was trained on KITScenes; these are not comparable to
   KITScenes-trained baselines.
 - **Sampling** — Alpamayo samples (T=0.6, top-p=0.98); seeds are fixed per (sample, arm).
+
+## Closed loop and navigation (September 2026)
+
+* **Navigation text.** The adapter used to call `helper.create_message(...,
+  nav_text=None)`. Bench2Drive supplies a route command every tick and the
+  model's own interface takes an instruction, so the agent now sends the next
+  junction maneuver and the metres to it (`nav_maneuver`, `nav_distance_m`) and
+  `nav_text_for()` phrases it the way `notebooks/inference_nav.ipynb` and
+  `nav_utils` do: "Turn left in 37m", "Turn right in 9m", "Continue straight".
+  Sources without the fields (NAVSIM) fall back to the 4-way command ("Turn
+  left"). `ALPAMAYO_NAV=0` gives the no-nav baseline.
+* **Sampling.** Defaults follow the reference inference notebook: top-p 0.98,
+  temperature 0.6, one sample, 256 generation tokens
+  (`ALPAMAYO_NUM_TRAJ_SAMPLES`, `ALPAMAYO_TEMPERATURE`, `ALPAMAYO_TOP_P`,
+  `ALPAMAYO_MAX_GEN`). Six samples cost 3.7 s per call against 1.0 s, because
+  the VLM writes one chain-of-thought per sample (`num_return_sequences`).
+  Classifier-free guidance (`..._cfg_nav`, 60 GB+) is optional in the notebook
+  and not used.
+* **History.** Frames stamped no later than the previous one are dropped
+  (KITScenes' clamped warm-up repeats frame 0). The chain-of-causation is read
+  from `extra["cot"]`, kept in `diagnostics()` and logged every 100 calls.
+* **Behaviour worth knowing.** From standstill the model derives zero speed
+  from its own pose history and plans near-zero motion until a sample commits;
+  in CARLA that is 20+ s of waiting followed by a hard launch, and at junctions
+  it stops short of the turn although the instruction says "Turn left in 4m"
+  (its own reasoning: "stop for the red light", "keep lane"). On nuScenes the
+  same mechanism inflates its error on the first keyframe of each scene (L2
+  avg 9.5 m there, 1.2 m elsewhere). Results: Bench2Drive 24 routes DS 44.6
+  (best Overtaking of the four stacks); nuScenes val L2 avg 1.49 m (best of
+  three). See `docs/benchmarks/bench2drive.md` and `nuscenes.md`.
