@@ -68,6 +68,12 @@ CAM_TF = {
     "CAM_BACK_LEFT": (0.0, -0.6, 1.5, 0.0, 0.0, -110.0),
     "CAM_BACK_RIGHT": (0.0, 0.6, 1.5, 0.0, 0.0, 110.0),
 }
+# openpilot's comma-three rig, reproduced: a narrow road camera (1928x1208, focal
+# 2648 -> 40 deg) and a wide camera (1928x1208, focal 567 -> ~119 deg, modelled as a
+# pinhole, as openpilot does), both at the windshield mount (~1.3 m). Each feeds its
+# own model slot (img / big_img) instead of both views being cut from one 800x450 frame.
+CAM_TF["CAM_OP_ROAD"] = (1.0, 0.0, 1.3, 0.0, 0.0, 0.0)
+CAM_TF["CAM_OP_WIDE"] = (1.0, 0.0, 1.3, 0.0, 0.0, 0.0)
 CAM_FOV = {
     "CAM_FRONT": 70.0,
     "CAM_FRONT_LEFT": 70.0,
@@ -76,10 +82,21 @@ CAM_FOV = {
     "CAM_BACK_LEFT": 70.0,
     "CAM_BACK_RIGHT": 70.0,
 }
+CAM_FOV["CAM_OP_ROAD"] = 40.0
+CAM_FOV["CAM_OP_WIDE"] = 119.0
 # One resolution for every camera: model feature builders np.stack the images, so
 # unequal sizes raise. Half-res (vs 1600x900) is a big render + payload win and the
 # front is cropped/resized downstream anyway.
 CAM_RES = (800, 450)
+#: Per-camera overrides of CAM_RES (the openpilot rig needs comma's native 1928x1208).
+CAM_RES_BY_ID = {"CAM_OP_ROAD": (1928, 1208), "CAM_OP_WIDE": (1928, 1208)}
+#: Rendered for the frames/BEV recording even when the model does not consume it.
+RECORD_CAM = "CAM_FRONT"
+
+
+def _res(cid: str) -> tuple:
+    return CAM_RES_BY_ID.get(cid, CAM_RES)
+
 
 # CARLA's route option -> paddock's navigation command. Lane changes are
 # "keep going" from the model's point of view.
@@ -90,6 +107,13 @@ CMD = {
     RoadOption.LANEFOLLOW: Command.FOLLOW_REFERENCE,
     RoadOption.CHANGELANELEFT: Command.STRAIGHT,
     RoadOption.CHANGELANERIGHT: Command.STRAIGHT,
+}
+# Junction maneuvers, for policies that take a navigation instruction (Alpamayo's
+# "Turn left in 40m"). Lane-follow and lane changes are not maneuvers here.
+NAV_MANEUVER = {
+    RoadOption.LEFT: "TURN_LEFT",
+    RoadOption.RIGHT: "TURN_RIGHT",
+    RoadOption.STRAIGHT: "STRAIGHT",
 }
 
 F = np.diag([1.0, -1.0, 1.0, 1.0])  # y-flip: CARLA (left-handed) <-> paddock (right-handed)
@@ -103,6 +127,10 @@ R_OPT = np.array([[0.0, 0.0, 1.0], [-1.0, 0.0, 0.0], [0.0, -1.0, 0.0]])
 
 #: Columns of waypoints written to log.csv when recording.
 LOGGED_WAYPOINTS = 6
+
+#: Seconds to wait for one /infer reply. Under heavy GPU contention a single
+#: DriveJEPA step can stall well past 120 s; raise via PADDOCK_INFER_TIMEOUT_S.
+INFER_TIMEOUT_S = int(os.environ.get("PADDOCK_INFER_TIMEOUT_S", "120"))
 
 
 def get_entry_point():
@@ -140,8 +168,8 @@ class PaddockB2DAgent(AutonomousAgent):
         self._http = requests.Session()
         self._cam2ego = {}
         self._cam2img = {}
-        w, h = CAM_RES
         for cid in CAMS:
+            w, h = _res(cid)
             x, y, z, roll, pitch, yaw = CAM_TF[cid]
             tf = carla.Transform(
                 carla.Location(x=x, y=y, z=z), carla.Rotation(roll=roll, pitch=pitch, yaw=yaw)
@@ -163,6 +191,7 @@ class PaddockB2DAgent(AutonomousAgent):
             self._w.writerow(
                 ["frame", "speed", "steer", "throttle", "brake", "v_des", "path_end"]
                 + [f"wp{i}{ax}" for i in range(LOGGED_WAYPOINTS) for ax in ("x", "y")]
+                + ["ego_x", "ego_y", "ego_yaw", "resume", "nav_maneuver", "nav_distance_m"]
             )
 
     def destroy(self):
@@ -195,9 +224,10 @@ class PaddockB2DAgent(AutonomousAgent):
         }
 
     def sensors(self):
-        w, h = CAM_RES
         s = []
-        for cid in CAMS:
+        render = list(CAMS) + ([RECORD_CAM] if RECORD_DIR and RECORD_CAM not in CAMS else [])
+        for cid in render:
+            w, h = _res(cid)
             x, y, z, roll, pitch, yaw = CAM_TF[cid]
             s.append(
                 {
@@ -268,6 +298,34 @@ class PaddockB2DAgent(AutonomousAgent):
                 best_d, best = d, opt
         return int(CMD.get(best, Command.FOLLOW_REFERENCE))
 
+    def _nav(self) -> tuple:
+        """The next junction maneuver on the route and the along-route metres to it.
+
+        Walks the leaderboard's world-coordinate plan (1 m spacing, see
+        ``set_global_plan``) forward from the point nearest the ego to the first
+        LEFT/RIGHT/STRAIGHT option and sums the segment lengths on the way. Inside
+        the maneuver the distance is 0; with no junction left before the goal it
+        is (None, None), which a policy reads as "continue straight".
+        """
+        plan = getattr(self, "_global_plan_world_coord", None)
+        hero = self._hero_actor()
+        if not plan or hero is None:
+            return None, None
+        hero_loc = hero.get_location()
+        start, best_d = 0, 1e9
+        for i, (tf, _opt) in enumerate(plan):
+            d = tf.location.distance(hero_loc)
+            if d < best_d:
+                best_d, start = d, i
+        dist = 0.0
+        for j in range(start, len(plan)):
+            name = NAV_MANEUVER.get(plan[j][1])
+            if name is not None:
+                return name, round(dist, 1)
+            if j + 1 < len(plan):
+                dist += plan[j][0].location.distance(plan[j + 1][0].location)
+        return None, None
+
     def run_step(self, input_data, timestamp):
         us = int(timestamp * 1e6)
         # No speedometer is a broken sensor setup, not a stationary car: let the
@@ -286,13 +344,26 @@ class PaddockB2DAgent(AutonomousAgent):
             if cid in input_data:
                 bgra = input_data[cid][1]
                 rgb = bgra[:, :, :3][:, :, ::-1]  # BGRA -> RGB
-                images[cid] = encode_image(rgb)
-                if cid == "CAM_FRONT" and RECORD_DIR:
-                    front_bgr = bgra[:, :, :3].copy()
+                # raw .npy for the small frames the multi-camera models stack; JPEG (q95)
+                # for multi-megapixel frames, where raw pixels would be ~20 MB a tick
+                big = rgb.shape[0] * rgb.shape[1] >= 1_000_000
+                images[cid] = encode_image(rgb, codec="jpeg" if big else None)
+        if RECORD_DIR and RECORD_CAM in input_data:
+            front_bgr = input_data[RECORD_CAM][1][:, :, :3].copy()
 
         canbus = [0.0] * 18
         canbus[CANBUS_ACCEL] = accel
         canbus[CANBUS_VELOCITY] = speed
+
+        # Posted road limit at the ego (CARLA reports km/h). Sent so a policy with a
+        # cruise set-point can use the real limit instead of guessing one.
+        hero = self._hero_actor()
+        try:
+            lim_kmh = float(hero.get_speed_limit()) if hero is not None else 0.0
+        except Exception:
+            lim_kmh = 0.0
+        speed_limit = lim_kmh / 3.6 if lim_kmh > 0 else None
+        nav_maneuver, nav_distance_m = self._nav()
 
         body = {
             "images": images,
@@ -300,6 +371,9 @@ class PaddockB2DAgent(AutonomousAgent):
             "canbus": canbus,
             "timestamp": us,
             "command": self._command(),
+            "speed_limit": speed_limit,
+            "nav_maneuver": nav_maneuver,
+            "nav_distance_m": nav_distance_m,
             "calibration": {
                 "camera2image": self._cam2img,
                 "camera2ego": self._cam2ego,
@@ -307,12 +381,17 @@ class PaddockB2DAgent(AutonomousAgent):
             },
         }
 
-        r = self._http.post(f"{SERVER}/infer", json=body, timeout=120)
+        r = self._http.post(f"{SERVER}/infer", json=body, timeout=INFER_TIMEOUT_S)
         r.raise_for_status()
         # Validated here: a NaN from a mis-warmed model is an error, not a steer
         # value CARLA accepts silently.
-        plan = Trajectory(r.json()["trajectory"], dt=WAYPOINT_DT)
-        control, desired_speed = self._control(plan.xy, speed)
+        payload = r.json()
+        plan = Trajectory(payload["trajectory"], dt=WAYPOINT_DT)
+        native = (payload.get("extras") or {}).get("native_long")
+        if native:
+            control, desired_speed = self._control_native(plan.xy, speed, native)
+        else:
+            control, desired_speed = self._control(plan.xy, speed)
 
         if self._metric_path:
             self._record_metric_info()
@@ -332,6 +411,7 @@ class PaddockB2DAgent(AutonomousAgent):
             logged = np.full((LOGGED_WAYPOINTS, 2), np.nan)
             head = plan.xy[:LOGGED_WAYPOINTS]
             logged[: len(head)] = head
+            e2w = self._ego2world()  # ego world pose, for the traversed-path / failure-location footprint
             self._w.writerow(
                 [
                     self._t,
@@ -343,6 +423,17 @@ class PaddockB2DAgent(AutonomousAgent):
                     round(float(np.linalg.norm(plan.xy[-1])), 3),
                 ]
                 + [round(float(v), 3) for v in logged.flatten()]
+                + [
+                    round(float(e2w[0, 3]), 3),
+                    round(float(e2w[1, 3]), 3),
+                    round(float(math.atan2(e2w[1, 0], e2w[0, 0])), 4),
+                    # 1 while the driver-resume emulation is steering the speed
+                    # (openpilot native mode only): the "nudge" that marks a route *
+                    1 if (native and "+resume" in str(native.get("source", ""))) else 0,
+                    # the route instruction the node was given this tick (Alpamayo nav text)
+                    nav_maneuver or "",
+                    "" if nav_distance_m is None else nav_distance_m,
+                ]
             )
             self._log.flush()
         self._t += 1
@@ -356,3 +447,32 @@ class PaddockB2DAgent(AutonomousAgent):
         c.throttle = throttle
         c.brake = brake
         return c, desired_speed
+
+    def _control_native(self, wps, speed, native):
+        """Model-native longitudinal control (openpilot), structured like its
+        LongControl: steer from the standard tracker on the plan positions; the
+        speed PID (TCP's proven actuator loop) is driven by the model's own
+        v_target at action_t instead of the tracker's 4 s mean; braking is the
+        model's desired deceleration (proportional), and should_stop holds the
+        car -- no all-or-nothing brake below 0.4 m/s, creep allowed."""
+        from paddock.adapters.benchmarks.bench2drive.pid import CLIP_DELTA, MAX_THROTTLE
+
+        # Steering only: the native path drives the speed PID itself just below,
+        # so calling the full tracker here would step that PID twice per tick.
+        steer = self._tracker.steer_only(wps)
+        a = float(native.get("accel", 0.0))
+        stop = bool(native.get("should_stop", False))
+        v_target = float(native.get("v_target", speed + a * 0.5))
+        if stop:
+            throttle, brake = 0.0, 0.5  # hold, as openpilot does at a stop
+        else:
+            delta = float(np.clip(v_target - speed, 0.0, CLIP_DELTA))
+            throttle = float(np.clip(self._tracker.speed.step(delta), 0.0, MAX_THROTTLE))
+            brake = float(np.clip(-a / 5.0, 0.0, 1.0)) if a < -0.1 else 0.0
+            if brake > 0.0:
+                throttle = 0.0
+        c = carla.VehicleControl()
+        c.steer = steer
+        c.throttle = throttle
+        c.brake = brake
+        return c, v_target

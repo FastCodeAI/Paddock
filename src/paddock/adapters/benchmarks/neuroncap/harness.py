@@ -41,6 +41,31 @@ DEFAULT_SCENARIOS = ("stationary", "frontal", "side")
 #: What `episodes()` uses when --scene is not given; preflight checks it too.
 DEFAULT_SCENE = "0103"
 
+#: The cameras NeuRAD (nuScenes) can render. A model may declare cameras a
+#: closed-loop simulator synthesises but this dataset lacks -- openpilot's
+#: comma-three rig (CAM_OP_ROAD / CAM_OP_WIDE) is real in Bench2Drive's CARLA
+#: client but has no calibration here -- so declared cameras are intersected
+#: with this set, falling back to CAM_FRONT, before they reach --engine.cameras.
+NUSC_CAMERAS = (
+    "CAM_FRONT",
+    "CAM_FRONT_LEFT",
+    "CAM_FRONT_RIGHT",
+    "CAM_BACK",
+    "CAM_BACK_LEFT",
+    "CAM_BACK_RIGHT",
+)
+
+
+def renderable_cameras(declared: list[str] | None) -> list[str]:
+    """The declared cameras this dataset can render, falling back to CAM_FRONT.
+
+    A model may declare cameras a closed-loop simulator synthesises but nuScenes
+    lacks (openpilot's comma rig); those are dropped rather than passed to
+    ``--engine.cameras``, where an unknown name fails NeuRAD calibration.
+    """
+    return [c for c in (declared or []) if c in NUSC_CAMERAS] or ["CAM_FRONT"]
+
+
 # The official evaluation set, transcribed from the vendor's own job arrays in
 # `scripts/arrays/ncap_slurm_array_*.txt`: 20 scenario-scene pairs over 14
 # distinct scenes. Sequence 0061 is in the stationary array carrying the comment
@@ -92,7 +117,12 @@ def _lidar_sample_data(path: Path) -> dict[str, str]:
     4.6 GB of RSS. That is an absurd cost for preflight -- the cheap check that
     runs before anything else, often on a box already busy with someone else's
     job -- so this reads it a line at a time instead and keeps only the two
-    fields it needs, a few MB for the whole dataset.
+    fields it needs: peak RSS 64 MB for the whole dataset.
+
+    It is not faster. Reading the file whole takes about 4 s on an idle box
+    against 6 s for this scan, and 20-30 s when the machine is loaded. Memory is
+    what the trade buys, and it is the right way round: preflight failing for
+    want of RAM would defeat the point of checking early.
 
     nuScenes writes these files pretty-printed, one field per line, which is
     what makes a scan this simple viable. The parse is deliberately narrow: a
@@ -436,7 +466,10 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         port = policy_url.rsplit(":", 1)[-1]
         renderer_port = self.setting("renderer_url").rsplit(":", 1)[-1]
         runs = int(episode.config.get("runs", 1))
-        cameras = episode.config.get("cameras") or ["CAM_FRONT"]
+        # Keep only cameras this dataset can render; a model that also declares
+        # simulator-only cameras (openpilot's comma rig) falls back to CAM_FRONT
+        # rather than failing NeuRAD calibration on a name nuScenes never had.
+        cameras = renderable_cameras(episode.config.get("cameras"))
 
         out_dir.mkdir(parents=True, exist_ok=True)
         command = [

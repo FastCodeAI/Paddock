@@ -429,9 +429,18 @@ against Double lidar poses:
 RuntimeError: expected scalar type Float but found Double
 ```
 
-`preflight` now refuses such a scene before anything loads. It is cheap: the
-nuScenes metadata is parsed once and cached, so checking all fourteen official
-scenes takes about four seconds.
+`preflight` now refuses such a scene before anything loads. The nuScenes
+metadata is scanned once and cached, so all fourteen official scenes cost one
+scan, not fourteen.
+
+That scan reads `sample_data.json` -- 1.25 GB here -- a line at a time, keeping
+only `sample_token -> filename` for LIDAR_TOP keyframes. Measured on this
+machine: **peak RSS 64 MB**, against 4.6 GB for `json.loads` on the same file.
+Wall clock is **6 s on an idle box and 20-30 s under load** (87% CPU, load
+average 59), so it is bounded by whatever else the machine is doing. Reading the
+file whole was faster when idle -- about 4 s -- and the memory is what the trade
+buys: preflight is the cheap check that runs before everything else, often on a
+box already busy, and it should not be the largest allocation in the run.
 
 **This is not hypothetical -- it is why the check exists.** As extracted on
 2026-09-04, the shakaal copy of nuScenes had 177 of 850 scenes with no lidar at

@@ -74,6 +74,34 @@ class WaypointTracker:
         self.turn = PID(TURN_KP, TURN_KI, TURN_KD, TURN_N)
         self.speed = PID(SPEED_KP, SPEED_KI, SPEED_KD, SPEED_N)
 
+    @staticmethod
+    def _as_xy(waypoints) -> np.ndarray:
+        wps = np.asarray(waypoints, dtype=np.float64)
+        if wps.ndim != 2 or wps.shape[0] < 2 or wps.shape[1] < 2:
+            raise ValueError(f"need at least two (x, y) waypoints, got shape {wps.shape}")
+        return wps[:, :2]
+
+    def _steer(self, wps: np.ndarray) -> float:
+        """Lateral control from parsed (N, 2) waypoints, advancing the turn PID.
+
+        Aim at the waypoint opening the segment whose midpoint is nearest
+        AIM_DIST from the car. Heading error is measured from the forward axis
+        toward the right, in units of 90 degrees, so a point to the right gives
+        a positive error and a positive (right) steer.
+        """
+        midpoints = np.linalg.norm((wps[1:] + wps[:-1]) / 2.0, axis=1)
+        aim = wps[int(np.argmin(np.abs(midpoints - AIM_DIST)))]
+        angle = float(np.degrees(np.arctan2(-aim[1], aim[0])) / 90.0)
+        return float(np.clip(self.turn.step(angle), -1.0, 1.0))
+
+    def steer_only(self, waypoints) -> float:
+        """Steering alone, advancing ONLY the turn PID -- for model-native
+        longitudinal modes that drive the speed PID themselves. Calling
+        ``control`` there would step the speed PID a second time in the same
+        tick with a different target, mixing two error histories into its window.
+        """
+        return self._steer(self._as_xy(waypoints))
+
     def control(self, waypoints, speed: float) -> tuple[float, float, float, float]:
         """``(steer, throttle, brake, desired_speed)`` for one tick.
 
@@ -84,22 +112,12 @@ class WaypointTracker:
         Steer follows CARLA's sign (+1 is full right); throttle and brake are
         0..1, brake being all-or-nothing as in TCP.
         """
-        wps = np.asarray(waypoints, dtype=np.float64)
-        if wps.ndim != 2 or wps.shape[0] < 2 or wps.shape[1] < 2:
-            raise ValueError(f"need at least two (x, y) waypoints, got shape {wps.shape}")
-        wps = wps[:, :2]
+        wps = self._as_xy(waypoints)
 
         steps = np.linalg.norm(np.diff(wps, axis=0), axis=1)
         desired_speed = float(steps.mean() / self.waypoint_dt)
 
-        # Aim at the waypoint opening the segment whose midpoint is nearest
-        # AIM_DIST from the car. Heading error is measured from the forward
-        # axis toward the right, in units of 90 degrees, so a point to the
-        # right gives a positive error and a positive (right) steer.
-        midpoints = np.linalg.norm((wps[1:] + wps[:-1]) / 2.0, axis=1)
-        aim = wps[int(np.argmin(np.abs(midpoints - AIM_DIST)))]
-        angle = float(np.degrees(np.arctan2(-aim[1], aim[0])) / 90.0)
-        steer = float(np.clip(self.turn.step(angle), -1.0, 1.0))
+        steer = self._steer(wps)
 
         brake = desired_speed < BRAKE_SPEED or speed > BRAKE_RATIO * desired_speed
         delta = float(np.clip(desired_speed - speed, 0.0, CLIP_DELTA))
