@@ -34,10 +34,7 @@ repos:
   alpasim:
     url: https://github.com/NVlabs/alpasim.git
     sha: affc2ea
-    description: >
-      NVIDIA AlpaSim closed-loop driving simulator; renderer, physics, traffic
-      and scorer as separate services. Drivers attach over gRPC, so paddock
-      supplies the policy node rather than patching the simulator.
+    description: NVIDIA AlpaSim closed-loop driving simulator; drivers attach over gRPC, so paddock needs no patch
 
   Drive-JEPA:
     url: https://github.com/linhanwang/Drive-JEPA.git
