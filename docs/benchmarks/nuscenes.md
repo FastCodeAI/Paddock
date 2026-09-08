@@ -46,8 +46,8 @@ index_cache = "/path/to/cache/nuscenes_val_index.pkl"   # optional; default <rep
 The loader reads the `v1.0-trainval` JSON tables directly (no devkit): the
 1.3 GB `sample_data`, `ego_pose` and `sample_annotation` tables are each loaded
 once, reduced to the val keyframes and dropped; the 27 MB index is cached at
-`index_cache` (default `<repo>/.cache/`). Building it takes ~25 s. Only the
-keyframe images (`samples/`) are needed; sweeps are not.
+`index_cache` (default `<repo>/.cache/`). Building it takes ~25 s. The default path only needs keyframe images (`samples/`). Openpilot additionally
+requires the CAM_FRONT sweeps described below.
 
 ## Cost
 
@@ -57,12 +57,72 @@ for the 5119), Alpamayo 2.5 s/sample (~3.5 h). Results:
 `results/nuscenes/<model>/<run>/metrics.json`; per-sample plans and ground truth
 in the run's `samples.jsonl` under the runs root.
 
-## Not run
+## Openpilot camera history and GPU inference
 
-openpilot: its model needs ≥ 10 Hz consecutive frames to perceive motion and
-nuScenes keyframes are 2 Hz. The 12 Hz camera sweeps would make it valid; they
-ship only in the `*_blobs.tgz` trainval packages (~290 GB), not in the
-`*_keyframes.tgz` copy on this box.
+Openpilot uses real approximately 12 Hz CAM_FRONT exposures between keyframes.
+The scored anchors and their six future ground-truth points remain at 2 Hz.
+History includes only exposures strictly before each anchor, followed by the
+original anchor observation. Early scenes naturally have less than five seconds
+of available history. The normal keyframe-only path remains the default.
+
+Download the validation CAM_FRONT images under both `samples/CAM_FRONT` and
+`sweeps/CAM_FRONT`; other sweep cameras are unnecessary for this model. The
+metadata and CAN-bus files are still read from `[datasets.nuscenes]`.
+Configure a dedicated Openpilot run:
+
+```toml
+[benchmarks.nuscenes]
+camera_history = "CAM_FRONT"
+history_seconds = 5.0
+history_image_root = "/path/to/nuscenes/images"
+history_index_cache = "/path/to/cache/nuscenes_front_exposures.pkl"
+
+[models.openpilot.env]
+PADDOCK_OPENPILOT_CUDA_MODEL = "/path/to/driving_cuda.pkl"
+NVRTC_PATH = "/path/to/cuda_nvrtc/lib/libnvrtc.so.12"
+DEV = "CUDA"
+WARP_DEV = "CPU"
+PADDOCK_OPENPILOT_NATIVE_LONG = "0"
+PADDOCK_OPENPILOT_RESUME_S = "0"
+```
+
+Use model environment settings above: shell exports of adapter-specific variables
+are not automatically inherited by model nodes. The history setting replaces
+multi-camera keyframe history with CAM_FRONT history, so use it for Openpilot
+runs only. Without it, the runner rejects Openpilot's 2 Hz input before loading
+the model. `history_image_root` must contain both sample and sweep images.
+
+To compile the CUDA artifact, run the following inside the pinned openpilot
+checkout, using its virtual environment and an NVRTC library compatible with the
+GPU (the completed run used NVRTC 12.9):
+
+```bash
+DEV=CUDA WARP_DEV=CPU NVRTC_PATH=/path/to/cuda_nvrtc/lib/libnvrtc.so.12 \
+  .venv/bin/python openpilot/selfdrive/modeld/compile_modeld.py \
+  --model-size 512x256 --camera-resolutions 1928x1208 \
+  --onnx openpilot/selfdrive/modeld/models/driving_supercombo.onnx \
+  --output /path/to/driving_cuda.pkl --frame-skip 4
+```
+
+Model inference and its queues use CUDA; camera warping remains on CPU. Omitting
+`PADDOCK_OPENPILOT_CUDA_MODEL` retains the upstream default artifact. Construction
+and per-sample reset select the same artifact with fresh temporal state.
+Then run `paddock run --bench nuscenes --model openpilot`. The standard runner
+uses one model node; the published four-worker run used site orchestration.
+
+Completed predictions are also appended to `samples.partial.jsonl` in the run's
+artifact directory, preserving evidence on interruption. This is not automatic
+resume or a completed result. Scoring history settings are included in new run
+configuration hashes. Camera-history caches assume the underlying dataset is
+immutable; remove the cache after replacing metadata or image files.
+
+The completed 8 September 2026 run scored all 5,119 anchors in 150 scenes with
+zero failures: point L2 average 4.057 m, cumulative L2 average 2.477 m, ADE at
+3 seconds 3.535 m, point collision average 2.624%. See the
+[README result](../../README.md#nuscenes--openpilot-gpu-validation) and
+[run record](../../results/nuscenes/openpilot/20260908T110028-b71f4f/run.json).
+Its historical `repo_sha` remains null; publication does not retroactively assign
+a code revision to that run. Saved-plan videos cover all 150 scenes.
 
 ## Results (05 Sep 2026, n = 5119)
 

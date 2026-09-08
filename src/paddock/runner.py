@@ -258,6 +258,9 @@ def run_benchmark(
     scenes = [s.strip() for s in scene.split(",") if s.strip()] if scene else None
 
     problems = harness.preflight()
+    if hasattr(harness, "input_problems"):
+        for selected_model in models:
+            problems += harness.input_problems(selected_model)
     if scenes and hasattr(harness, "scene_problems"):
         for one in scenes:
             problems += harness.scene_problems(one)
@@ -673,6 +676,10 @@ def _run_open_loop(
                         else None,
                     }
                 )
+                # Preserve completed predictions if a long validation is stopped.
+                # This partial file is evidence, not a completed metrics record.
+                with (artifacts / "samples.partial.jsonl").open("a") as checkpoint:
+                    checkpoint.write(json.dumps(samples[-1]) + "\n")
                 if (index + 1) % 25 == 0:
                     running = sum(s["metrics"].get("ade", 0.0) for s in samples) / len(samples)
                     echo(f"  {index + 1} samples, running ADE {running:.3f}")

@@ -17,8 +17,8 @@ runtime:
 
 capabilities:
   cameras: [CAM_OP_ROAD, CAM_OP_WIDE, CAM_FRONT]   # comma-three rig: road cam -> img, wide cam -> big_img; CAM_FRONT = fallback for single-camera sources (KITScenes, neuroNCAP)
-  # tinygrad's PC backend is CPU:LLVM -- supercombo does not touch the GPU.
-  # The reservation covers the harness around it, not the model.
+  # Default PC artifact uses CPU:LLVM. PADDOCK_OPENPILOT_CUDA_MODEL selects
+  # a separately compiled CUDA policy with CPU camera warping.
   vram_gb: 6
   startup_timeout_s: 600
   waypoint_dt: 0.5
@@ -56,4 +56,4 @@ capabilities:
     # comma's internal fleet, ~6,670 h, not released. No overlap with any
     # paddock dataset, which is the claim that matters here.
     - dataset: comma-fleet
-benchmarks: [kitscenes, neuroncap, bench2drive]
+benchmarks: [kitscenes, neuroncap, bench2drive, nuscenes]

@@ -5,9 +5,9 @@ Every model is scored on the same keyframes: the 150 official val scenes, every
 keyframe with a full 3 s of recorded future (six keyframes at 2 Hz). Each sample
 is a *sequence* -- up to four preceding keyframes plus the scored one, 2 s of
 real history -- because the models need a past: Drive-JEPA picks four frames
-0.5 s apart, Alpamayo differences its pose history for speed. openpilot is not
-run here: nuScenes keyframes are 2 Hz and its model needs >= 10 Hz to perceive
-motion at all (its model.yaml says so).
+0.5 s apart, Alpamayo differences its pose history for speed. Openpilot uses
+the optional CAM_FRONT exposure history, with its own
+timestamps and poses, while the scored anchor and ground truth remain unchanged.
 
 None of the models here was trained on nuScenes, so this is zero-shot; the
 cameras are nuScenes' own six (Drive-JEPA takes four, Alpamayo three,
@@ -33,6 +33,7 @@ from pathlib import Path
 
 import numpy as np
 
+from paddock.adapters.benchmarks.nuscenes import history as H
 from paddock.adapters.benchmarks.nuscenes import loader as L
 from paddock.benchmark import OpenLoopBenchmark, Sample
 from paddock.policy.protocol import Command, Observation, Trajectory
@@ -111,17 +112,32 @@ class NuScenesBenchmark(OpenLoopBenchmark):
     def __init__(self, spec, cfg) -> None:
         super().__init__(spec, cfg)
         self._index_cache = None
+        self._camera_history_cache = None
         #: sample_id -> future boxes per step. `Sample.ground_truth` stays the
         #: (6, 3) future-pose array the runner records for every open-loop
         #: benchmark; the boxes are large and only the scorer needs them. Held
         #: per instance, not on the class, so two benchmarks never share state.
         self._boxes: dict[str, list] = {}
 
+    def run_config(self) -> dict:
+        return {
+            "camera_history": self.setting("camera_history") or "keyframes",
+            "history_seconds": float(self.setting("history_seconds", 5.0))
+            if self.setting("camera_history")
+            else HISTORY_KEYFRAMES * STEP_S,
+            "scoring_hz": 2.0,
+        }
+
     # ---- readiness ------------------------------------------------------
 
     @property
     def version(self) -> str:
         return (self.dataset.version if self.dataset else None) or "v1.0-trainval"
+
+    def input_problems(self, model) -> list[str]:
+        if model.min_input_hz > 2.0 and self.setting("camera_history") != "CAM_FRONT":
+            return [f"{model.name} requires camera_history=CAM_FRONT with real nuScenes camera sweeps"]
+        return []
 
     def preflight(self) -> list[str]:
         problems: list[str] = []
@@ -145,6 +161,18 @@ class NuScenesBenchmark(OpenLoopBenchmark):
             "sample_annotation",
             "scene",
         )
+        camera_history = self.setting("camera_history")
+        if camera_history and camera_history != "CAM_FRONT":
+            problems.append("camera_history currently supports CAM_FRONT only")
+        if camera_history:
+            image_root = Path(self.setting("history_image_root") or str(root))
+            if not (image_root / "sweeps/CAM_FRONT").is_dir():
+                problems.append(f"camera history sweeps missing: {image_root / 'sweeps/CAM_FRONT'}")
+            if (
+                not math.isfinite(float(self.setting("history_seconds", 5.0)))
+                or float(self.setting("history_seconds", 5.0)) <= 0
+            ):
+                problems.append("history_seconds must be positive")
         missing_tables = [t for t in tables if not (root / self.version / f"{t}.json").exists()]
         if missing_tables:
             problems.append(
@@ -237,6 +265,17 @@ class NuScenesBenchmark(OpenLoopBenchmark):
         )
         cmd, maneuver, distance = L.command_from_future(future_xy)
         history = frames[max(0, i - HISTORY_KEYFRAMES) : i + 1]
+        if self.setting("camera_history") == "CAM_FRONT":
+            if self._camera_history_cache is None:
+                self._camera_history_cache = H.load(
+                    self.dataset.resolve(),
+                    self.version,
+                    Path(self.setting("history_image_root") or str(self.dataset.resolve())),
+                    json.loads(VAL_SCENES.read_text())["val"],
+                    Path(self.setting("history_index_cache") or str(self._cache_path()) + ".camera"),
+                )
+            history_s = float(self.setting("history_seconds", 5.0))
+            history = H.before(self._camera_history_cache[cur.scene], cur.timestamp_us, history_s) + [cur]
         observations = [self._observation(f, cmd, maneuver, distance) for f in history]
         sample_id = f"nuscenes/val/{cur.scene}/{cur.index_in_scene}"
         self._boxes[sample_id] = [L.boxes_to_ego(cur.ego2world, f.boxes_world) for f in future]
