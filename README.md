@@ -111,7 +111,7 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 | Alpamayo 1.5 | 0.787 △ | 1.002 | 0.608 † | 44.58 ◆ | 2.46 | planned | planned |
 | Drive-JEPA | 0.912 △ | 2.364 | 0.843 | 31.11 ◆ | 4.04 | planned | planned |
 | VisionPilot | 1.441 △ | n/a ∗ | 0.431 | 49.85 ◆ | 1.67 | planned | planned |
-| Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | — | 0 § | — | — |
+| Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | 47.94 ♣ | 0 § | — | — |
 
 ∗ VisionPilot has no native trajectory output. For nuScenes and NAVSIM, Paddock
 constructs sampled XY points from its projected image-space path and speed
@@ -152,6 +152,11 @@ are censored before intervention and eight had no intervention. It is not a
 separate unassisted sweep. The historical OpenPilot scores predate later
 controller fixes. Drive-JEPA uses its released NAVSIM-v2 checkpoint zero-shot
 in CARLA. See [Bench2Drive protocol](docs/benchmarks/bench2drive.md).
+
+♣ The Bench2Drive baseline uses a **fixed 3 m/s target**, with straight ego-frame
+waypoints and the shared controller; actual vehicle speed can differ. nuScenes
+constant velocity instead extrapolates the recorded ego velocity. These are
+different speed settings of the baseline, as detailed below.
 
 § Not run — zero by construction. Every neuroNCAP scenario is staged so that an
 ego holding its current velocity collides at full speed. A run that avoids the
@@ -236,9 +241,24 @@ recorded driving metrics. Higher is better for both columns.
 | OpenPilot (unassisted estimate ≈) | 30.09 | 30.8 |
 
 OpenPilot's row is an approximate reconstruction, as explained in ◆; it does
-not establish the performance of the corrected controller. Constant-velocity
-speed-band experiments are separate from this four-model historical cohort.
+not establish the performance of the corrected controller.
 [Detailed metrics](docs/benchmarks/bench2drive.md).
+
+#### Constant velocity — fixed-speed baseline
+
+The separate **3 m/s** experiment completed all **24 / 24** routes on the same
+route set, with zero infrastructure failures. Higher is better for these metrics.
+
+| Target speed (m/s) | Routes scored | Driving score ↑ | Route completion ↑ (%) | Infraction penalty factor ↑ |
+|---:|---:|---:|---:|---:|
+| 3 | 24 / 24 | 47.94 | 74.68 | 0.635 |
+
+[Run configuration](results/bench2drive/constant_velocity/20260908T084921-804913/run.json)
+· [Full metrics](results/bench2drive/constant_velocity/20260908T084921-804913/metrics.json).
+This fixes the target speed rather than holding the zero speed at route start;
+the path is straight in the ego frame, not a route-following reference. Targets
+of 6, 9, 12 and 15 m/s are separate experiments; no complete aggregate is
+published for them here. The saved run reused four completed route checkpoints.
 
 ### neuroNCAP
 
