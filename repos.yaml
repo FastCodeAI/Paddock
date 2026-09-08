@@ -68,5 +68,10 @@ repos:
 
   auto_e2e:
     url: https://github.com/autowarefoundation/auto_e2e.git
-    sha: 16d60f0a
-    description: Autoware end-to-end model; AWS/Flyte native, not yet evaluated
+    # Bumped from 16d60f0a for the adapter. The geometry ABI changed in #77/#107:
+    # the [B,V,3,4] `camera_params` kwarg was replaced by a `projection` operator,
+    # and passing the old name now raises TypeError rather than silently falling
+    # back to a learned prior. adapters/models/autoe2e is written against the new
+    # signature, so the older pin would fail on the first forward pass.
+    sha: b6b83fd0
+    description: Autoware end-to-end model; 7-camera + raster-map planner predicting accel/curvature at 10 Hz

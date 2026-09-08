@@ -1,0 +1,77 @@
+name: autoe2e
+description: Autoware AutoE2E - 7-camera + raster-map planner predicting acceleration and curvature at 10 Hz
+repo: auto_e2e
+
+runtime:
+  # Upstream ships a Makefile driving plain pip, but the requirements pin a
+  # torch build with no wheels for 3.13+, so the interpreter version is
+  # load-bearing rather than incidental. uv holds the pin explicitly.
+  kind: uv
+  python: "3.12"
+  venv: "{repo}/.venv"
+
+  # Two roots, both needed:
+  #   Model/     -- model_components, evaluation, data_parsing
+  #   Platform/  -- pipelines.inference, whose load_policy() reads the
+  #                 checkpoint's own config and filters it against the current
+  #                 AutoE2E signature. Reused rather than reimplemented, so an
+  #                 upstream ABI change surfaces there instead of here.
+  pythonpath:
+    - "{repo}/Model"
+    - "{repo}/Platform"
+
+  # Load-bearing: the KITScenes parser and the timm backbone config are both
+  # resolved relative to Model/.
+  cwd: "{repo}/Model"
+
+  env:
+    # The KITScenes SDK's own variable, which the upstream parser already reads.
+    KITSCENES_ROOT: "{data.kitscenes}"
+
+    # A torch archive holding {"config": ..., "model_state_dict": ...}, the
+    # shape Platform/pipelines/inference.py:load_policy expects. There is no
+    # public release of this file -- see docs/models/autoe2e.md. The policy
+    # refuses to load without it rather than scoring a randomly initialised
+    # planner head, which would produce a plausible ADE that means nothing.
+    AUTOE2E_CHECKPOINT: "{weights}/autoe2e/autoe2e.pt"
+
+    # Map tiles need Lanelet2, which pip cannot always supply (see setup.sh).
+    # Unset, the policy sends a zero map tile with map_valid=False, which
+    # upstream supports explicitly. That changes what is measured, so the
+    # policy reports it in diagnostics() and docs/models/autoe2e.md says what
+    # it costs. Set to "1" once lanelet2 imports.
+    AUTOE2E_ENABLE_MAP: "0"
+
+capabilities:
+  # Seven views, in upstream's CAMERA_NAMES order. The stereo front pair is
+  # dropped upstream as duplicate forward coverage. CAM_FRONT_TELE has no
+  # nuScenes equivalent -- it is KITScenes' hi-res centre camera, and the model
+  # was built expecting it, so it is named rather than dropped.
+  cameras:
+    - CAM_FRONT_TELE
+    - CAM_FRONT
+    - CAM_FRONT_LEFT
+    - CAM_FRONT_RIGHT
+    - CAM_BACK
+    - CAM_BACK_LEFT
+    - CAM_BACK_RIGHT
+
+  # SwinV2-Tiny over 7 views at 256x256, batch 1, plus the planner head.
+  # Tighten from Model/speed_benchmark/BENCHMARKS.md once a run confirms it.
+  vram_gb: 8
+
+  startup_timeout_s: 600
+
+  # Paddock's grid. The model plans at 10 Hz internally; policy.py resamples.
+  waypoint_dt: 0.5
+
+  # The egomotion history is defined at 10 Hz and curvature is derived as
+  # yaw_rate / speed by finite differencing consecutive poses. Below 10 Hz the
+  # differencing measures the sampling gap rather than the motion -- the same
+  # trap that blocks openpilot on NAVSIM's 2 Hz OpenScene.
+  min_input_hz: 10.0
+
+# KITScenes only, deliberately. Closed-loop would need a simulator that renders
+# all seven views; neuroNCAP's NeuRAD renders the six nuScenes cameras and has
+# no hi-res centre camera to give, so the pairing is not yet meaningful.
+benchmarks: [kitscenes]
