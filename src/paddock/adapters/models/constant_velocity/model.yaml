@@ -1,0 +1,37 @@
+name: constant_velocity
+description: Reference floor, not a model - holds the measured ego speed on a straight line
+
+# No repo and no weights: the whole policy is four lines of arithmetic. It is
+# here because a closed-loop score is unreadable without one. AlpaSim's
+# scene_score, for instance, zeroes a scene on an at-fault collision or an
+# offroad event -- and constant velocity commits neither, so it outscores three
+# of the four real models on the pilot set. A number that surprising is only
+# interpretable next to the floor that produces it.
+# No upstream to clone: the whole policy is four lines of arithmetic.
+repo: ""
+
+runtime:
+  kind: uv
+  python: "3.11"
+
+  # numpy and nothing else, so this venv is trivial -- but paddock launches
+  # every model in its own interpreter and the floor is not a special case.
+  # A site that would rather not keep a venv for four lines of arithmetic can
+  # point [models.constant_velocity] venv at paddock's own, which already has
+  # numpy; setup.sh exists so that is a choice rather than a requirement.
+  venv: "{repos}/.venvs/constant_velocity"
+
+  pythonpath: []
+  cwd: ""
+  env: {}
+
+capabilities:
+  # It never looks at an image. Declared anyway because the simulator renders
+  # what a model declares, and declaring none has renderers to skip work that
+  # the scored comparison assumes happened.
+  cameras: [CAM_FRONT]
+  vram_gb: 0
+  startup_timeout_s: 60
+  waypoint_dt: 0.5
+
+benchmarks: [alpasim]

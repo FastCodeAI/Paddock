@@ -208,6 +208,21 @@ sites scored the same scenes.
 `alpamayo1_5-driver-0.91.0`, as probed by the runtime at connect and recorded in
 `config.driver_version_id`.
 
+**Sampling, and what the recorded numbers are.** Alpamayo 1.5 generates with
+`temperature=0.6`, `top_p=0.98`, and seeds only when `force_determinism` is set.
+The adapter sets it, together with a fixed `scenes.random_seed`, so a run driven
+through paddock is reproducible.
+
+**The recorded Alpamayo run above predates that.** It ran with
+`force_determinism: false` and no seed, so it is a **single unseeded draw** —
+AlpaSim re-running the identical command would not reproduce it either. Read it
+as one sample, not as the model's score, and do not compare a fresh per-scene
+result against it and conclude anything from a difference. This is the same
+property `docs/benchmarks/neuroncap.md` documents for Alpamayo there, where five
+seeds on one scenario spanned 0.000 to 5.000 with sd 1.817. The constant-velocity
+floor has no such caveat: it is deterministic, which is what makes it the useful
+reference.
+
 **Scorer.** Pinned at alpasim `affc2ea`. Note the divergence from the
 `e2e_challenge` scorer: `open_loop_collision` does not exist there, so a number
 quoted from that scorer is not this one.

@@ -144,6 +144,8 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
             "scene_set": self.scene_set,
             "startup_timeout_s": self.startup_timeout_s,
             "scorer_repo_sha": "affc2ea",
+            "random_seed": launcher.DEFAULT_RANDOM_SEED,
+            "force_determinism": True,
         }
 
     # -- preflight ---------------------------------------------------------
@@ -167,7 +169,7 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
         repo = self.repo
         if repo is not None:
             for relative, why in (
-                (Path("src/wizard/alpasim_wizard/main.py"), "the wizard entry point"),
+                (Path("src/wizard/alpasim_wizard/__main__.py"), "the wizard entry point"),
                 (Path("src/eval/src/eval/aggregation/processing.py"), "the scorer"),
                 (Path("src/grpc/alpasim_grpc/v0/egodriver.proto"), "the driver contract"),
             ):

@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from paddock.adapters.benchmarks.alpasim import launcher
 from paddock.adapters.benchmarks.alpasim.harness import (
     BENCHMARK,
     DEFAULT_SCENE_SET,
@@ -138,6 +139,66 @@ def test_an_unknown_scene_is_named_before_a_model_loads(tmp_path: Path, monkeypa
 def test_an_unknown_scene_set_says_what_is_available() -> None:
     with pytest.raises(FileNotFoundError, match=DEFAULT_SCENE_SET):
         load_scene_set("no_such_suite")
+
+
+# ---------------------------------------------------------------------------
+# the wizard invocation
+# ---------------------------------------------------------------------------
+
+
+def test_the_wizard_is_invoked_as_the_package_not_a_main_module(tmp_path: Path) -> None:
+    """`-m alpasim_wizard`, never `-m alpasim_wizard.main`.
+
+    The package's entry point is `__main__.py`, exposed as the console script
+    `alpasim_wizard = "alpasim_wizard.__main__:main"`. There is no `main`
+    module; naming one fails at the first scene with an import error that says
+    nothing about the wizard. Pinned because it is invisible until a live run.
+    """
+    command = launcher.wizard_command(
+        repo=tmp_path,
+        python="python",
+        scene_id="clipgt-x",
+        out_dir=tmp_path / "out",
+        bridge_port=9200,
+        searchpath=None,
+    )
+    assert command[1:3] == ["-m", "alpasim_wizard"]
+    assert "alpasim_wizard.main" not in " ".join(command)
+
+
+def test_the_wizard_is_told_to_seed_and_force_determinism(tmp_path: Path) -> None:
+    """Alpamayo samples at temperature 0.6 and seeds only under this flag.
+
+    Without both, a run is one unseeded draw that neither paddock nor AlpaSim
+    itself can reproduce -- which is what the recorded pre-adapter run was.
+    """
+    joined = " ".join(
+        launcher.wizard_command(
+            repo=tmp_path,
+            python="python",
+            scene_id="clipgt-x",
+            out_dir=tmp_path / "out",
+            bridge_port=9200,
+            searchpath=None,
+        )
+    )
+    assert "+driver.model.force_determinism=true" in joined
+    assert f"+scenes.random_seed={launcher.DEFAULT_RANDOM_SEED}" in joined
+
+
+def test_the_bridge_is_the_driver_and_the_wizard_starts_no_driver_of_its_own(tmp_path: Path) -> None:
+    joined = " ".join(
+        launcher.wizard_command(
+            repo=tmp_path,
+            python="python",
+            scene_id="s",
+            out_dir=tmp_path,
+            bridge_port=9271,
+            searchpath=None,
+        )
+    )
+    assert "wizard.external_services.driver=[localhost:9271]" in joined
+    assert '"driver"' not in joined.split("run_sim_services=")[1].split()[0]
 
 
 # ---------------------------------------------------------------------------

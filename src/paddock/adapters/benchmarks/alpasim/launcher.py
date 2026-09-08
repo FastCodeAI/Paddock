@@ -45,6 +45,10 @@ DEFAULT_STARTUP_TIMEOUT_S = 900
 #: How long to wait for the bridge to accept connections before giving up.
 BRIDGE_READY_TIMEOUT_S = 60.0
 
+#: Fixed, so a sampling model's run is reproducible. Paired with
+#: force_determinism, which is what actually makes the seed take effect.
+DEFAULT_RANDOM_SEED = 0
+
 
 class BridgeProcess:
     """The gRPC bridge, running under AlpaSim's interpreter.
@@ -168,16 +172,22 @@ def wizard_command(
     searchpath: Path | None,
     startup_timeout_s: int = DEFAULT_STARTUP_TIMEOUT_S,
     driver: str = "constant_velocity",
+    random_seed: int = DEFAULT_RANDOM_SEED,
 ) -> list[str]:
     """The wizard invocation for one scene.
 
     `+key=value` for `startup_timeout_s` because the key is absent from the
     Hydra struct and plain assignment would be rejected.
     """
+    # `-m alpasim_wizard`, not `-m alpasim_wizard.main`: the package's entry
+    # point is __main__.py, exposed as the console script
+    # `alpasim_wizard = "alpasim_wizard.__main__:main"`. There is no main
+    # module, and naming one fails at the first scene with an import error that
+    # says nothing about the wizard.
     command = [
         python,
         "-m",
-        "alpasim_wizard.main",
+        "alpasim_wizard",
         f"driver={driver}",
         f"scenes.scene_ids=[{scene_id}]",
         f"hydra.run.dir={out_dir}",
@@ -187,6 +197,12 @@ def wizard_command(
         "wizard.debug_flags.use_localhost=true",
         "runtime.enable_autoresume=true",
         "eval.allow_aggregation_with_failed_rollouts=true",
+        # Alpamayo samples at temperature 0.6 / top_p 0.98 and seeds only under
+        # force_determinism, so without these two a run is one unseeded draw and
+        # cannot be reproduced -- by paddock or by AlpaSim itself. Harmless for
+        # a deterministic driver, which ignores both.
+        "+driver.model.force_determinism=true",
+        f"+scenes.random_seed={random_seed}",
     ]
     if searchpath is not None:
         command.append(f"hydra.searchpath=[file://{searchpath}]")
