@@ -403,3 +403,58 @@ on a shared card. `run.json` carries `n_reused` alongside `n_expected` and
 `n_failed`, and a resumed row says in `notes` that its `started_utc` and
 `duration_s` cover that attempt only -- a remark, not a reason: resuming does
 not make a run unrankable.
+
+
+## A scene needs at least one lidar keyframe
+
+The renderer never uses lidar points. The scene is in the trained hash grids and
+the closed-loop server reads only poses, intrinsics, transforms and actor
+trajectories. But NeuRAD's dataparser reads every lidar file eagerly, so
+`renderer.py` substitutes an empty cloud for each missing one -- copying the
+tensor width from a real cloud to do it.
+
+That needs one real cloud. A scene with none fails at
+[renderer.py:49](../../src/paddock/adapters/benchmarks/neuroncap/renderer.py#L49):
+
+```
+FileNotFoundError: no lidar files found at all -- check the nuScenes path, this is not the sweeps issue
+```
+
+Removing that guard does not help. With no lidar files the dataparser's lidar
+set is empty, so `_get_world_to_mean_transform` builds the transform from the
+cameras instead, and `ad_dataparser.py:320` then multiplies a Float transform
+against Double lidar poses:
+
+```
+RuntimeError: expected scalar type Float but found Double
+```
+
+`preflight` now refuses such a scene before anything loads. The nuScenes
+metadata is scanned once and cached, so all fourteen official scenes cost one
+scan, not fourteen.
+
+That scan reads `sample_data.json` -- 1.25 GB here -- a line at a time, keeping
+only `sample_token -> filename` for LIDAR_TOP keyframes. Measured on this
+machine: **peak RSS 64 MB**, against 4.6 GB for `json.loads` on the same file.
+Wall clock is **6 s on an idle box and 20-30 s under load** (87% CPU, load
+average 59), so it is bounded by whatever else the machine is doing. Reading the
+file whole was faster when idle -- about 4 s -- and the memory is what the trade
+buys: preflight is the cheap check that runs before everything else, often on a
+box already busy, and it should not be the largest allocation in the run.
+
+**This is not hypothetical -- it is why the check exists.** As extracted on
+2026-09-04, the shakaal copy of nuScenes had 177 of 850 scenes with no lidar at
+all, because `extract_nuscenes.sh` took `samples/CAM_*` and nothing else. Three
+of those scenes -- 0796, 0921 and 0923 -- are in the official 20 pairs. The
+full-set sweep spent roughly 13 GPU-hours on it: every attempt failed those
+three, exited non-zero, and retried the other seventeen from the start,
+producing byte-identical results each time.
+
+Their lidar has since been fetched, so on that machine all fourteen official
+scenes now pass and 174 scenes remain without lidar. The paragraph above is an
+incident record, not a description of the current state -- check with
+`paddock doctor` or a `--dry-run`, which is what the check is for.
+
+Missing lidar for a scene is fixable without re-downloading the dataset. The
+recipe is in [docs/data-setup.md](../data-setup.md) under "nuScenes with cameras
+but no lidar for some scenes".
