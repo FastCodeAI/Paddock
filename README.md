@@ -108,7 +108,7 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 | | 🟢 nuScenes ADE ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🔴 Bench2Drive ability ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim (OmniDreams) | 🔴 AlpaSim (nuRec) |
 |---|---|---|---|---|---|---|---|
 | OpenPilot | planned | 1.599 | ✗ 2 Hz ‡ | 37.7 ¶ | **3.60** ‖ | planned | planned |
-| Alpamayo 1.5 | planned | 1.002 | 0.608 † | adapter, unrun | 2.46 ✳ | planned | planned |
+| Alpamayo 1.5 | planned | 1.002 | 0.608 † | adapter, unrun | **3.73** ‖ | planned | planned |
 | Drive-JEPA | planned | 2.364 | 0.843 | adapter, unrun | **3.57** ‖ | planned | planned |
 | VisionPilot | n/a ∗ | n/a ∗ | 0.431 | 61.6 ¶ | **1.58** ‖ | planned | planned |
 | Baseline (Constant Velocity) | — | 1.381 | 0.239 | — | 0 § | — | — |
@@ -205,26 +205,33 @@ The **full official set**: 20 scenario-scene pairs over 14 scenes, 10 runs each,
 n = 200 per model. Mean ± std of the NCAP score; CR is the collision rate over
 all 200 runs. Runs are seeded 0-9, so every model met identical scenario jitter.
 
-| Model | stationary ↑ (0–5) | frontal ↑ (0–5) | side ↑ (0–5) | overall ↑ (0–5) | CR ↓ |
+| Model | stationary ↑ (0–5) | frontal ↑ (0–5) | side ↑ (0–5) | overall ↑ (0–5) | CR ↓ (of 200) |
 |---|---:|---:|---:|---:|---:|
-| OpenPilot | 4.52 ±1.34 | 2.30 ±1.24 | 3.08 ±2.25 | **3.60** | 38% |
-| VisionPilot | 2.53 ±1.60 | 1.17 ±1.38 | 0.08 ±0.18 | **1.58** | 86% |
-| Drive-JEPA | 4.23 ±1.33 | 2.42 ±1.43 | 3.39 ±2.07 | **3.57** | 46% |
-| Alpamayo 1.5 ✳ | 4.08 ±1.84 | 2.10 ±1.63 | 1.20 ±0.36 | 2.46 | 67% |
-| Baseline (Constant Velocity) | 0.00 | 0.00 | 0.00 | 0.00 § | 100% |
+| Alpamayo 1.5 | 4.41 ±1.48 | 3.64 ±2.01 | 2.45 ±1.93 | **3.73** | 32.5% |
+| OpenPilot | 4.52 ±1.34 | 2.30 ±1.24 | 3.08 ±2.25 | **3.60** | 38.0% |
+| Drive-JEPA | 4.23 ±1.33 | 2.42 ±1.43 | 3.39 ±2.07 | **3.57** | 45.5% |
+| VisionPilot | 2.53 ±1.60 | 1.17 ±1.38 | 0.08 ±0.18 | **1.58** | 85.5% |
+| Baseline (Constant Velocity) | 0.00 | 0.00 | 0.00 | 0.00 § | 100.0% |
 
-✳ Alpamayo 1.5 is still the **old single-scene number** — scene 0103 only, 5
-runs, n = 15 — and is not comparable with the full-set rows above. Its sweep is
-running.
+**Scene 0103 was not representative, and the ordering it implied was wrong.**
+Every model met identical scenario jitter (runs seeded 0–9), so these can be
+compared paired sample for sample rather than as means:
 
-**Scene 0103 was not representative, and the ranking it implied was wrong.** On
-that one scene Drive-JEPA led OpenPilot 4.04 to 3.80. Over the full set they are
-indistinguishable: 3.60 against 3.57. Because runs are seeded 0–9, every model
-met identical scenario jitter, so the comparison can be paired sample for
-sample — over all 200, OpenPilot − Drive-JEPA is **+0.04 (SE 0.12, t = 0.30)**,
-with OpenPilot higher on 52, lower on 49 and tied on 99. That is a tie, not a
-lead for either. VisionPilot's side score also fell from 0.54 on 0103 to 0.08
-across the set.
+| paired difference over 200 samples | mean | SE | t |
+|---|---:|---:|---:|
+| Alpamayo − OpenPilot | +0.12 | 0.15 | 0.80 |
+| Alpamayo − Drive-JEPA | +0.16 | 0.14 | 1.12 |
+| Alpamayo − VisionPilot | **+2.15** | 0.17 | **12.89** |
+
+The top three are **statistically indistinguishable**. Only VisionPilot is
+separated, and decisively. On scene 0103 alone the order was Drive-JEPA 4.04,
+OpenPilot 3.80, Alpamayo 2.46 — which put Alpamayo last of the three and
+Drive-JEPA clearly first. Neither holds up. Alpamayo moved most, from 2.46 to
+3.73, because scene 0103's side scenario is one of its worst and n = 15 could
+not show that.
+
+VisionPilot's side score moved the same way in the other direction: 0.54 on
+0103, 0.08 across the set.
 
 **A single run scores either exactly 5.0 or at most 4.0** (see §), so a mean
 between them is an average over runs and the standard deviation matters. The
