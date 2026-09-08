@@ -113,9 +113,7 @@ class AutoE2EPolicy(Policy):
                 "see docs/models/autoe2e.md for where one comes from."
             )
         if not Path(checkpoint).is_file():
-            raise FileNotFoundError(
-                f"AUTOE2E_CHECKPOINT points at {checkpoint!r}, which is not a file"
-            )
+            raise FileNotFoundError(f"AUTOE2E_CHECKPOINT points at {checkpoint!r}, which is not a file")
 
         import timm
         import torch
@@ -158,8 +156,6 @@ class AutoE2EPolicy(Policy):
     # ---- inference ------------------------------------------------------
 
     def infer(self, obs: Observation) -> Trajectory:
-        import torch
-
         if self.model is None:
             raise RuntimeError("infer() before load(); paddock's node loads before serving")
 
@@ -269,9 +265,7 @@ class AutoE2EPolicy(Policy):
         """
         from evaluation.metrics import integrate_trajectory
 
-        positions = integrate_trajectory(
-            controls[:, 0], controls[:, 1], v0, dt=1.0 / MODEL_HZ
-        )
+        positions = integrate_trajectory(controls[:, 0], controls[:, 1], v0, dt=1.0 / MODEL_HZ)
         waypoints = resample(positions, 1.0 / MODEL_HZ, self.waypoint_dt)
         if len(waypoints) < N_WAYPOINTS:
             raise ValueError(
