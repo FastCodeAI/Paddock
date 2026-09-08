@@ -105,9 +105,9 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 
 🟢 open-loop · 🟡 pseudo-closed-loop · 🔴 closed-loop · ↑ higher is better · ↓ lower is better
 
-| | 🟢 nuScenes ADE ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🔴 Bench2Drive ability ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim (OmniDreams) | 🔴 AlpaSim (nuRec) |
+| | 🟢 nuScenes cumulative L2 avg ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🔴 Bench2Drive ability ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim (OmniDreams) | 🔴 AlpaSim (nuRec) |
 |---|---|---|---|---|---|---|---|
-| OpenPilot | ✗ 2 Hz △ | 1.599 | ✗ 2 Hz ‡ | 53.6 \* ◆ | superseded ‖ | planned | planned |
+| OpenPilot | 2.48 △ | 1.599 | ✗ 2 Hz ‡ | 53.6 \* ◆ | superseded ‖ | planned | planned |
 | Alpamayo 1.5 | 0.79 △ | 1.002 | 0.608 † | 44.6 ◆ | 2.46 | planned | planned |
 | Drive-JEPA | 0.91 △ | 2.364 | 0.843 | 31.1 ◆ | 4.04 | planned | planned |
 | VisionPilot | 1.44 △ | n/a ∗ | 0.431 | 49.9 ◆ | 1.67 | planned | planned |
@@ -152,11 +152,12 @@ per-route and per-ability tables: `docs/benchmarks/bench2drive.md`, `docs/leader
 nuScenes): the average L2 over 0-3 s on the official 150-scene val split (5119
 keyframes), UniAD/VAD protocol, `--bench nuscenes` -- the cumulative (per-step)
 average, comparable to published tables (the `l2_avg` in `docs/leaderboard.md`
-is the point value at 1/2/3 s and reads higher). openpilot is excluded for the
-same 2 Hz reason as NAVSIM. VisionPilot's plan here is its acceleration/steering
+is the point value at 1/2/3 s). OpenPilot now uses real approximately 12 Hz
+front-camera history while retaining the same 2 Hz scoring anchors; its completed
+GPU run is detailed below. VisionPilot's plan here is its acceleration/steering
 integrated to a path, as in NAVSIM, so unlike KITScenes it does yield an L2.
 Alpamayo's figure is inflated by the first keyframe of each scene, where it has
-no history to difference (9.5 m there vs 1.2 m elsewhere). See `docs/benchmarks/nuscenes.md`. A constant-velocity baseline scores 0.64 here (point-avg L2 1.29), **better than all three learned models** — nuScenes ego motion is largely straight, so open-loop L2 rewards a straight line; read these numbers with that in mind.
+no history to difference (9.5 m there vs 1.2 m elsewhere). See `docs/benchmarks/nuscenes.md`. A constant-velocity baseline scores 0.64 here (point-avg L2 1.29), **better than all four learned models** — nuScenes ego motion is largely straight, so open-loop L2 rewards a straight line; read these numbers with that in mind.
 
 ✦ Bench2Drive constant velocity is a do-nothing floor: "constant velocity" means holding the current speed, and every route starts from a standstill, so the baseline holds zero and never departs -- blocked after 60 s, driving score 0 on every route (confirmed on 3 routes, structural for all 24). Unlike nuScenes, where the logged ego is already moving, it is not an informative baseline in closed loop.
 
@@ -170,6 +171,38 @@ collision rate.
 Note the discontinuity: **a single run scores either exactly 5, or at most 4** —
 grazing an obstacle at walking pace scores 4, not 4.9. Anything between the two
 is a mean over runs, which is what the model rows above are.
+
+### nuScenes — OpenPilot GPU validation
+
+Completed **5,119 / 5,119 samples across 150 validation scenes, with zero failures**
+on 8 September 2026. Input uses up to 5 seconds of real approximately 12 Hz
+front-camera history; predictions are scored at the original 2 Hz anchors.
+Model inference used CUDA with four workers; camera warping used CPU.
+Resume assistance and native longitudinal control were disabled.
+
+| L2 at 1 s ↓ (m) | L2 at 2 s ↓ (m) | L2 at 3 s ↓ (m) | Point L2 avg ↓ (m) | Cumulative L2 avg ↓ (m) | ADE at 3 s ↓ (m) |
+|---:|---:|---:|---:|---:|---:|
+| 1.925 | 4.054 | 6.194 | 4.057 | 2.477 | 3.535 |
+
+Point collision average: **2.624%**; cumulative collision average:
+**1.585%**. Collision measures predicted ego-footprint overlap
+with annotated boxes, not an observed simulator crash.
+
+Point L2 averages the errors at 1, 2 and 3 seconds. Cumulative L2 averages the
+three prefix means (through 1, 2 and 3 seconds). ADE at 3 seconds averages all
+six half-second errors and equals cumulative L2 through 3 seconds; it is not
+the cumulative-average headline above.
+
+Run: [`20260908T110028-b71f4f`](results/nuscenes/openpilot/20260908T110028-b71f4f/run.json)
+· [Full metrics](results/nuscenes/openpilot/20260908T110028-b71f4f/metrics.json).
+Front-camera and bird’s-eye videos were generated from saved predictions for
+all 150 scenes; playback is at the 2 Hz scoring anchors. Videos remain in the
+site's explorer, outside the repository.
+
+Reproducibility note: this records a completed site run using local camera-history
+and CUDA adapter changes that are not yet included in this branch. Its recorded
+`repo_sha` is null; the published branch alone cannot reproduce this run yet.
+The older setup instructions describing OpenPilot as not run predate this result.
 
 ### KITScenes
 
