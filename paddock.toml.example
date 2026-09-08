@@ -143,3 +143,24 @@ serialize = true
 #                     # "off" logs no frames at all -- fastest, smallest.
 # ffmpeg = "/path/to/ffmpeg"   # else $PADDOCK_FFMPEG, else PATH. Without one,
 #                              # frames are kept and the run is not failed.
+
+# [benchmarks.nuscenes]
+# nuScenes val open-loop planning (L2 + collision, UniAD/VAD protocol). Reads the
+# v1.0-trainval tables directly -- no devkit -- using [datasets.nuscenes] above.
+# The 150-scene val index is cached here; optional, defaults to <repo>/.cache/.
+# index_cache = "/path/to/cache/nuscenes_val_index.pkl"
+
+# For Openpilot only: real front-camera exposures between the scored keyframes.
+# camera_history = "CAM_FRONT"
+# history_image_root = "/path/to/nuscenes/with/sweeps"
+# history_index_cache = "/path/to/cache/nuscenes_front_exposures.pkl"
+# history_seconds = 5.0
+
+# Configure these in the model node environment, not just the invoking shell.
+# [models.openpilot.env]
+# PADDOCK_OPENPILOT_CUDA_MODEL = "/path/to/driving_cuda.pkl"
+# NVRTC_PATH = "/path/to/cuda_nvrtc/lib/libnvrtc.so.12"
+# DEV = "CUDA"
+# WARP_DEV = "CPU"
+# PADDOCK_OPENPILOT_NATIVE_LONG = "0"
+# PADDOCK_OPENPILOT_RESUME_S = "0"

@@ -187,3 +187,52 @@ def test_calibration_changes_between_scenes_are_material() -> None:
     a = DEVICE_FROM_EGO @ upright[:3, :3]
     b = DEVICE_FROM_EGO @ tilted[:3, :3]
     assert not np.allclose(a, b), "a 1 degree change must not be silently equivalent"
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_cuda_constructor_restores_upstream_helpers(tmp_path, monkeypatch, fail):
+    import sys
+    from types import ModuleType
+
+    names = [
+        "openpilot",
+        "openpilot.selfdrive",
+        "openpilot.selfdrive.modeld",
+        "openpilot.selfdrive.modeld.modeld",
+    ]
+    for name in names:
+        module = ModuleType(name)
+        monkeypatch.setitem(sys.modules, name, module)
+        if "." in name:
+            parent, child = name.rsplit(".", 1)
+            setattr(sys.modules[parent], child, module)
+    modeld = sys.modules[names[-1]]
+    artifact = tmp_path / "driving_cuda.pkl"
+    artifact.touch()
+    monkeypatch.setenv("PADDOCK_OPENPILOT_CUDA_MODEL", str(artifact))
+
+    def original_path():
+        return None
+
+    def original_devices():
+        return {}
+
+    modeld.modeld_pkl_path = original_path
+    modeld.get_tg_input_devices = original_devices
+    sentinel = object()
+
+    def construct(*args, **kwargs):
+        assert modeld.modeld_pkl_path() == artifact
+        assert modeld.get_tg_input_devices() == {"WARP_DEV": "CPU", "QUEUE_DEV": "CUDA"}
+        if fail:
+            raise RuntimeError("construction failed")
+        return sentinel
+
+    modeld.ModelState = construct
+    if fail:
+        with pytest.raises(RuntimeError, match="construction failed"):
+            POLICY()._new_model()
+    else:
+        assert POLICY()._new_model() is sentinel
+    assert modeld.modeld_pkl_path is original_path
+    assert modeld.get_tg_input_devices is original_devices

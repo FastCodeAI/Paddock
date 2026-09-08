@@ -17,8 +17,8 @@ runtime:
 
 capabilities:
   cameras: [CAM_OP_ROAD, CAM_OP_WIDE, CAM_FRONT]   # comma-three rig: road cam -> img, wide cam -> big_img; CAM_FRONT = fallback for single-camera sources (KITScenes, neuroNCAP)
-  # tinygrad's PC backend is CPU:LLVM -- supercombo does not touch the GPU.
-  # The reservation covers the harness around it, not the model.
+  # Default PC artifact uses CPU:LLVM. PADDOCK_OPENPILOT_CUDA_MODEL selects
+  # a separately compiled CUDA policy with CPU camera warping.
   vram_gb: 6
   startup_timeout_s: 600
   waypoint_dt: 0.5
@@ -34,4 +34,5 @@ capabilities:
 # 10 Hz to perceive motion at all (see min_input_hz above), so a score here would
 # measure the rate gap. `paddock run --bench navsim --model openpilot` refuses
 # with that explanation before loading the model, rather than silently doing nothing.
-benchmarks: [kitscenes, neuroncap, bench2drive]
+# nuScenes requires camera_history=CAM_FRONT and the camera sweeps.
+benchmarks: [kitscenes, neuroncap, bench2drive, nuscenes]
