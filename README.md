@@ -199,11 +199,6 @@ Front-camera and bird’s-eye videos were generated from saved predictions for
 all 150 scenes; playback is at the 2 Hz scoring anchors. Videos remain in the
 site's explorer, outside the repository.
 
-Reproducibility note: this records a completed site run using local camera-history
-and CUDA adapter changes that are not yet included in this branch. Its recorded
-`repo_sha` is null; the published branch alone cannot reproduce this run yet.
-The older setup instructions describing OpenPilot as not run predate this result.
-
 ### KITScenes
 
 Open-loop displacement error in metres over the 3 s horizon, full 223-sample
