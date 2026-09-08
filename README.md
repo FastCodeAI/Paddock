@@ -105,13 +105,13 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 
 🟢 open-loop · 🟡 pseudo-closed-loop · 🔴 closed-loop · ↑ higher is better · ↓ lower is better
 
-| | 🟢 nuScenes cumulative L2 avg ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🔴 Bench2Drive driving score ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim (OmniDreams) | 🔴 AlpaSim nuRec scene score ↑ (0–1) |
+| | 🟢 nuScenes cumulative L2 avg ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🔴 Bench2Drive driving score ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim nuRec scene score ↑ (0–1) | 🔴 AlpaSim (OmniDreams) |
 |---|---|---|---|---|---|---|---|
-| OpenPilot | 2.477 △ | 1.599 | ✗ 2 Hz ‡ | 30.09 ≈ ◆ | **3.60** ‖ | planned | 0.9566 ¶ |
-| Alpamayo 1.5 | 0.787 △ | 1.002 | 0.608 † | 44.58 ◆ | **3.73** ‖ | planned | 0.8000 ¶ |
-| Drive-JEPA | 0.912 △ | 2.364 | 0.843 | 31.11 ◆ | **3.57** ‖ | planned | 0.5619 ¶ |
-| VisionPilot | 1.441 △ | n/a ∗ | 0.431 | 49.85 ◆ | **1.58** ‖ | planned | 0.8864 ¶ |
-| Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | — | 0 § | — | 0.3562 ¶ |
+| OpenPilot | 2.477 △ | 1.599 | ✗ 2 Hz ‡ | 30.09 ≈ ◆ | **3.60** ‖ | 0.9566 ¶ | planned |
+| Alpamayo 1.5 | 0.787 △ | 1.002 | 0.608 † | 44.58 ◆ | **3.73** ‖ | 0.8000 ¶ | planned |
+| Drive-JEPA | 0.912 △ | 2.364 | 0.843 | 31.11 ◆ | **3.57** ‖ | 0.5619 ¶ | planned |
+| VisionPilot | 1.441 △ | n/a ∗ | 0.431 | 49.85 ◆ | **1.58** ‖ | 0.8864 ¶ | planned |
+| Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | — | 0 § | 0.3562 ¶ | — |
 
 ∗ VisionPilot has no native trajectory output. For nuScenes and NAVSIM, Paddock
 constructs sampled XY points from its projected image-space path and speed
