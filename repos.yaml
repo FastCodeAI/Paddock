@@ -31,6 +31,14 @@ repos:
     sha: beb2977
     description: NVIDIA Alpamayo 2 Super (34B); not yet evaluated
 
+  alpasim:
+    url: https://github.com/NVlabs/alpasim.git
+    sha: affc2ea
+    description: >
+      NVIDIA AlpaSim closed-loop driving simulator; renderer, physics, traffic
+      and scorer as separate services. Drivers attach over gRPC, so paddock
+      supplies the policy node rather than patching the simulator.
+
   Drive-JEPA:
     url: https://github.com/linhanwang/Drive-JEPA.git
     sha: e21f474
