@@ -1,0 +1,9 @@
+name: nuplan
+description: nuPlan v1.1 open-loop trajectory accuracy - ADE and FDE against the recorded future, on the original 10 Hz camera logs
+# Open loop: the dataset decides what happens next and errors do not compound.
+# nuPlan's own devkit scores closed-loop in its simulator; this is deliberately
+# the KITScenes question asked of nuPlan's logs, so the columns mean one thing.
+mode: open_loop
+dataset: nuplan
+metrics: [ade, fde@1s, fde@2s, fde@3s, longitudinal_mae, lateral_mae, inference_seconds]
+primary_metric: ade
