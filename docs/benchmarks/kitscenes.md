@@ -22,6 +22,39 @@ keyframes are not comparable however close the counts look. `paddock run
 --dry-run` reports how many of the list this site's tiers can serve, and
 `samples()` refuses to run a partial set rather than silently scoring fewer.
 
+That file is not a hand-written list. It is the output of the Drive-JEPA run
+that went first, kept because whichever 223 keyframes it happened to score
+became the set every later model had to match. Reading it as a sample list uses
+`scene_id`, `keyframe_index` and `split` and ignores the predictions sitting
+beside them; `paddock ingest` reads the same file for the predictions, which is
+how Drive-JEPA has a row on this benchmark without a paddock run.
+
+### Drive-JEPA's row came in through ingest
+
+| model | run | n | ADE | source |
+|---|---|---:|---:|---|
+| alpamayo15 | `legacy-full-nonav` | 223 | 0.921 | `eval_kitscenes/runs/full` |
+| openpilot | `legacy-full223` | 223 | 1.599 | `eval_kitscenes/runs/full223` |
+| drivejepa | `legacy-kitscenes_e2e_final` | 223 | 2.364 | `inference/kitscenes_e2e_final.pkl` |
+
+All three carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
+so the column compares. Two caveats that the hash cannot express:
+
+- **Route hint.** Drive-JEPA was run with `--command gt`, which derives a turn
+  command from the recorded future on 39 of the 223 samples; openpilot has no
+  such input and Alpamayo's equivalent is its `nav` arm. Recorded as
+  `command_source` in that run's `config`.
+- **Domain.** The checkpoint is trained on nuPlan/OpenScene — US cities, a
+  windshield rig — and KITScenes is European driving from a roof pod. Its rank
+  here is a zero-shot transfer result, which is why it sits last on this
+  benchmark and first on NAVSIM. `adapters/benchmarks/navsim/run_kitscenes_inference.py`
+  sets out what the adapter can and cannot reconcile.
+
+Nearly all of Drive-JEPA's error is longitudinal (2.317 m against 0.209 m
+lateral, an 11:1 split, from the original report, which decomposed it against
+Alpamayo only): it steers better than Alpamayo and predicts speed far worse,
+so its last place here is a speed result rather than a path one.
+
 ## Samples are sequences
 
 Each sample is 48 preceding source frames plus the keyframe, not a single image.
