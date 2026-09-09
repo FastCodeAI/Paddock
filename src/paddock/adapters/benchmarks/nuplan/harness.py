@@ -68,6 +68,10 @@ DEFAULT_SPLIT = "mini"
 
 
 class NuPlanBenchmark(OpenLoopBenchmark):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._manifest: list[tuple[Path, str, int]] | None = None
+
     # ---- readiness ------------------------------------------------------
 
     def preflight(self) -> list[str]:
@@ -95,10 +99,10 @@ class NuPlanBenchmark(OpenLoopBenchmark):
         sensors = L.sensor_root(root)
         if not sensors.is_dir():
             problems.append(f"nuplan sensor_blobs directory is missing: {sensors}")
-        elif not any(sensors.iterdir()):
+        elif not L.log_locations(root):
             problems.append(
-                f"nuplan sensor_blobs is empty: {sensors}. The logs are present but the "
-                "camera images are a separate download; see docs/benchmarks/nuplan.md."
+                f"nuplan sensor_blobs holds no camera data: {sensors}. The logs are present "
+                "but the images are a separate download; see docs/benchmarks/nuplan.md."
             )
 
         # One log stands in for all of them: a truncated or half-extracted
@@ -114,6 +118,32 @@ class NuPlanBenchmark(OpenLoopBenchmark):
     @property
     def split(self) -> str:
         return self.setting("split", DEFAULT_SPLIT) or DEFAULT_SPLIT
+
+    def coverage(self) -> tuple[list[tuple[Path, str, int]], list[str]]:
+        """(anchors this site can serve, log names whose images are absent).
+
+        nuPlan ships its cameras as nine ~45 GB shards and holding one of them
+        is a perfectly normal state, so a partial copy is reported rather than
+        refused -- but it is not silently averaged either; see
+        `invalid_reasons`.
+        """
+        located = L.log_locations(self.dataset.resolve())
+        rows = self.manifest()
+        served = [row for row in rows if row[0].stem in located]
+        missing = sorted({row[0].stem for row in rows if row[0].stem not in located})
+        return served, missing
+
+    def invalid_reasons(self) -> list[str]:
+        """A partial camera copy scores a real subset, and a subset is not the
+        benchmark. Recorded so the run is kept and excluded rather than quietly
+        ranked against full ones."""
+        served, missing = self.coverage()
+        if not missing:
+            return []
+        return [
+            f"camera images cover {len(served)} of {len(self.manifest())} anchors "
+            f"({len(missing)} logs have no images); not comparable with a full-coverage run"
+        ]
 
     def run_config(self) -> dict[str, Any]:
         """What decides the scored set, hashed into the run id.
@@ -149,7 +179,12 @@ class NuPlanBenchmark(OpenLoopBenchmark):
 
         Everything is sorted before it is sliced, so the set is reproducible
         from the data alone.
+
+        Cached: it reads every log in the split, and `coverage`,
+        `invalid_reasons` and `samples` all want it within one run.
         """
+        if self._manifest is not None:
+            return self._manifest
         root = self.dataset.resolve()
         by_type: dict[str, dict[Path, list[int]]] = {}
         for db in L.log_dbs(root, self.split):
@@ -197,11 +232,12 @@ class NuPlanBenchmark(OpenLoopBenchmark):
                 best[key] = (db, scenario_type, timestamp)
 
         # Grouped by log so `samples` opens each database once, in order.
-        return sorted(best.values(), key=lambda r: (r[0].name, r[2], r[1]))
+        self._manifest = sorted(best.values(), key=lambda r: (r[0].name, r[2], r[1]))
+        return self._manifest
 
     def samples(self, limit: int | None = None, split: str | None = None) -> Iterator[Sample]:
-        rows = self.manifest()
-        sensors = L.sensor_root(self.dataset.resolve())
+        rows, _ = self.coverage()
+        located = L.log_locations(self.dataset.resolve())
         yielded = 0
         current: Path | None = None
         conn = None
@@ -209,6 +245,7 @@ class NuPlanBenchmark(OpenLoopBenchmark):
             for db, scenario_type, timestamp in rows:
                 if limit is not None and yielded >= limit:
                     return
+                sensors = located[db.stem]
                 if db != current:
                     if conn is not None:
                         conn.close()

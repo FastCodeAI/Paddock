@@ -37,6 +37,7 @@ from paddock.metrics import trajectory as M
 from paddock.policy.protocol import constant_velocity
 from paddock.registry import Registry
 
+LOG_NAME = "2021.05.12.22.00.38_veh-99_00000_00100"
 SPEED_MS = 10.0
 DURATION_S = 100.0
 T0 = 1_600_000_000_000_000
@@ -211,10 +212,10 @@ def site(tmp_path: Path) -> SiteConfig:
     root = tmp_path / "nuplan"
     split = root / "nuplan-v1.1" / "splits" / "mini"
     split.mkdir(parents=True)
-    _build_log(split / "2021.05.12.22.00.38_veh-99_00000_00100.db")
-    sensors = L.sensor_root(root)
-    sensors.mkdir(parents=True)
-    (sensors / "placeholder").write_text("")
+    _build_log(split / f"{LOG_NAME}.db")
+    # Sharded layout, which is what the nuPlan camera zips actually unpack to.
+    (L.sensor_root(root) / "nuplan-v1.1_mini_camera_8" / LOG_NAME / L.FRONT_CAMERA).mkdir(parents=True)
+    (L.sensor_root(root) / "nuplan-v1.1_mini_camera_8" / "LICENSE").write_text("")
     return SiteConfig(
         site="test",
         repos=tmp_path,
@@ -329,6 +330,30 @@ def test_observations_carry_real_calibration_and_speed(site: SiteConfig) -> None
     assert scored.image_paths["CAM_FRONT"].endswith(".jpg")
 
 
+def test_image_paths_resolve_through_the_camera_shard(site: SiteConfig) -> None:
+    """nuPlan's camera zips each unpack into their own directory, but the
+    database only knows `<log>/CAM_F0/<token>.jpg`. Resolving that against
+    `sensor_blobs` directly would miss every image at a sharded site."""
+    path = next(iter(_harness(site).samples())).observations[-1].image_paths["CAM_FRONT"]
+    assert f"/nuplan-v1.1_mini_camera_8/{LOG_NAME}/{L.FRONT_CAMERA}/" in path
+
+
+def test_a_partial_camera_copy_is_scored_but_marked_invalid(site: SiteConfig, tmp_path: Path) -> None:
+    """One shard of nine is a normal state, so the run happens -- but a subset
+    of the scored set must not be ranked against a full run."""
+    harness = _harness(site)
+    assert harness.invalid_reasons() == []
+
+    import shutil
+
+    shutil.rmtree(L.sensor_root(tmp_path / "nuplan") / "nuplan-v1.1_mini_camera_8" / LOG_NAME)
+    partial = _harness(site)
+    served, missing = partial.coverage()
+    assert served == [] and missing == [LOG_NAME]
+    assert "not comparable" in partial.invalid_reasons()[0]
+    assert list(partial.samples()) == [], "anchors with no images are skipped, not failed"
+
+
 # ---------------------------------------------------------------------------
 # ground truth and scoring
 # ---------------------------------------------------------------------------
@@ -385,10 +410,12 @@ def test_preflight_is_clean_when_everything_is_present(site: SiteConfig) -> None
 def test_preflight_reports_missing_cameras(site: SiteConfig, tmp_path: Path) -> None:
     """The 450 GB of camera blobs is a separate download from the logs, and
     having one without the other is the normal half-way state."""
-    (L.sensor_root(tmp_path / "nuplan") / "placeholder").unlink()
+    import shutil
+
+    shutil.rmtree(L.sensor_root(tmp_path / "nuplan") / "nuplan-v1.1_mini_camera_8")
     problems = _harness(site).preflight()
     assert len(problems) == 1
-    assert "sensor_blobs is empty" in problems[0]
+    assert "holds no camera data" in problems[0]
 
 
 def test_preflight_reports_an_unconfigured_dataset(tmp_path: Path) -> None:

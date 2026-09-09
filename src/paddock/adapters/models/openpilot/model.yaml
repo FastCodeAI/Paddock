@@ -34,4 +34,7 @@ capabilities:
 # 10 Hz to perceive motion at all (see min_input_hz above), so a score here would
 # measure the rate gap. `paddock run --bench navsim --model openpilot` refuses
 # with that explanation before loading the model, rather than silently doing nothing.
-benchmarks: [kitscenes, neuroncap, bench2drive]
+# nuplan is listed and navsim is not, though both come from nuPlan logs: NAVSIM
+# scores on the 2 Hz OpenScene redistribution, while nuPlan's own release keeps
+# the native 10 Hz cameras -- exactly the rate supercombo needs.
+benchmarks: [kitscenes, neuroncap, nuplan, bench2drive]

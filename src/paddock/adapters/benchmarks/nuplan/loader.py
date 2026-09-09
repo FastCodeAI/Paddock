@@ -160,6 +160,37 @@ def sensor_root(root: Path) -> Path:
     return root / "nuplan-v1.1" / "sensor_blobs"
 
 
+def log_locations(root: Path) -> dict[str, Path]:
+    """Log name -> the directory `image.filename_jpg` should be joined to.
+
+    nuPlan splits its ~450 GB of camera data into nine zips, and each unpacks
+    into a directory of its own: `sensor_blobs/nuplan-v1.1_mini_camera_8/<log>/
+    CAM_F0/...`. The database only knows `<log>/CAM_F0/<token>.jpg`, so
+    something has to know which shard holds which log. Sites that flatten the
+    shards, or that hold only one, are equally normal -- so both layouts are
+    detected rather than one being declared correct.
+
+    A log directory is recognised by containing camera channels; anything else
+    one level down is treated as a shard and searched one level deeper. Built
+    once per run: it is a few dozen `listdir` calls, against tens of thousands
+    of `exists` checks if resolved per frame.
+    """
+    sensors = sensor_root(root)
+    if not sensors.is_dir():
+        return {}
+    found: dict[str, Path] = {}
+    for entry in sorted(sensors.iterdir()):
+        if not entry.is_dir():
+            continue  # the LICENSE file each shard ships
+        if any((entry / channel).is_dir() for channel in (FRONT_CAMERA, "CAM_B0")):
+            found.setdefault(entry.name, sensors)
+            continue
+        for log_dir in sorted(entry.iterdir()):
+            if log_dir.is_dir():
+                found.setdefault(log_dir.name, entry)
+    return found
+
+
 def open_log(path: Path) -> sqlite3.Connection:
     """Read-only connection to one log.
 
