@@ -115,7 +115,8 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 
 ∗ VisionPilot has no native trajectory output. For nuScenes and NAVSIM, Paddock
 constructs sampled XY points from its projected image-space path and speed
-schedule. KITScenes has no scored trajectory for this adapter.
+schedule driven by IDM, not a fixed constant velocity. KITScenes has no scored
+trajectory for this adapter. See [plotting and controller notes](docs/benchmarks/controller-notes.md).
 
 △ nuScenes uses 5,119 scoring anchors across 150 validation scenes. The headline
 is the mean of cumulative L2 through 1, 2 and 3 seconds, not ADE at 3 seconds.
@@ -251,6 +252,47 @@ recorded driving metrics. Higher is better for both columns.
 OpenPilot's row is an approximate reconstruction, as explained in ◆; it does
 not establish the performance of the corrected controller.
 [Detailed metrics](docs/benchmarks/bench2drive.md).
+
+#### Recorded infractions (24 routes per model)
+
+Counts below include **all recorded infraction categories**. Lower is better,
+with the exposure caveat below. They count entries in upstream route records,
+not per-kilometre rates, penalty factors, or a count of unique affected routes.
+Assisted OpenPilot results are excluded. Its pre-resume estimate above does not
+provide a comparable full-route unassisted infraction table.
+
+| Infraction entries ↓ | DriveJEPA | VisionPilot | Alpamayo 1.5 (nav) |
+|---|---:|---:|---:|
+| Pedestrian collision (`collisions_pedestrian`) | 2 | 3 | 2 |
+| Vehicle collision (`collisions_vehicle`) | 2 | 14 | 16 |
+| Layout collision (`collisions_layout`) | 2 | 3 | 1 |
+| Red light (`red_light`) | 1 | 6 | 0 |
+| Stop sign (`stop_infraction`) | 0 | 2 | 0 |
+| Outside route lanes (`outside_route_lanes`) | 3 | 3 | 12 |
+| Route deviation (`route_dev`) | 3 | 2 | 0 |
+| Vehicle blocked (`vehicle_blocked`) | 5 | 0 | 3 |
+| Failure to yield to emergency vehicle (`yield_emergency_vehicle_infractions`) | 1 | 1 | 0 |
+| Minimum speed (`min_speed_infractions`) | 170 | 338 | 325 |
+| Route timeout (`route_timeout`) | 0 | 0 | 0 |
+| Scenario timeout (`scenario_timeouts`) | 0 | 0 | 0 |
+
+| Collision summary ↓ | DriveJEPA | VisionPilot | Alpamayo 1.5 (nav) |
+|---|---:|---:|---:|
+| Total collision events | 6 | 20 | 19 |
+| Routes with any collision | 6/24 (25.0%) | 15/24 (62.5%) | 13/24 (54.2%) |
+
+Minimum-speed entries are reported separately: the checked upstream statistics
+manager marks their percentage penalty as unused. Outside-route-lane entries
+also carry severity information in the raw records; their count is not distance
+outside the lane. We do not sum these heterogeneous categories into a safety score.
+A model that stalls drives less and can encounter fewer collisions: compare
+these counts alongside route completion, not in isolation.
+
+[Per-route counts, scores and source hashes](docs/benchmarks/bench2drive-24-infractions.json)
+allow the totals to be independently recomputed. The new 26-route expansion is
+not included. VisionPilot uses a synthesized path and IDM speed schedule, with
+extrapolation beyond its native 1 s horizon; see
+[controller and scoring assumptions](docs/benchmarks/controller-notes.md).
 
 #### Constant velocity — fixed-speed baseline
 
