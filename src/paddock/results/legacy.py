@@ -11,6 +11,9 @@ alongside everything else machine-shaped:
     openpilot  = "/path/to/openpilot/eval_kitscenes/runs"
     alpamayo15 = "/path/to/alpamayo1.5/eval_kitscenes/runs"
 
+    [ingest.kitscenes_pkl]
+    drivejepa  = "/path/to/exp/inference/kitscenes_e2e_final.pkl"
+
 Absent sources are reported and skipped, not treated as errors: no site is
 expected to have all of them.
 """
@@ -51,6 +54,13 @@ def ingest_all(cfg: SiteConfig, dry_run: bool = False) -> tuple[int, list[str]]:
             collected += kitscenes.ingest(Path(runs_root), model=model, site=cfg.site)
         else:
             skipped.append(f"kitscenes_runs.{model} does not exist: {runs_root}")
+
+    # A file per run, not a directory of them: see kitscenes.ingest_pkl.
+    for model, pkl_path in (section.get("kitscenes_pkl") or {}).items():
+        if Path(pkl_path).exists():
+            collected += kitscenes.ingest_pkl(Path(pkl_path), model=model, site=cfg.site)
+        else:
+            skipped.append(f"kitscenes_pkl.{model} does not exist: {pkl_path}")
 
     csv_path = section.get("navsim_csv")
     if csv_path and Path(csv_path).exists():
