@@ -104,3 +104,42 @@ serialize = true
 # nodes        = 4        # policy nodes per CPU-only model; GPU models always get one
 #                        # with >1 visionpilot node, also set VISIONPILOT_ORT_THREADS (e.g. "2")
 #                        # under [models.visionpilot.env], or each node claims every core
+
+# [benchmarks.kitscenes]
+# The shared keyframe list every model is scored on. It *is* the benchmark:
+# two models scored on different lists are not comparable.
+# sample_list = "/path/to/kitscenes_e2e_final.pkl"
+
+# [benchmarks.neuroncap]
+# Closed-loop NCAP scoring against a NeuRAD render; docs/benchmarks/neuroncap.md.
+# The engine and the renderer are two different environments on purpose.
+# python          = "/path/to/envs/ncap/bin/python"     # the engine's env
+# repo            = "/path/to/neuro-ncap"                # has main.py; sha pinned in repos.yaml
+# renderer_url    = "http://127.0.0.1:8000"              # `paddock renderer --scene <id>` serves this
+# renderer_python = "/path/to/envs/neurad/bin/python"    # a *different* env from the engine
+# renderer_cwd    = "/path/to/neuroncap"
+# neurad_studio   = "/path/to/neurad-studio"
+# checkpoints     = "/path/to/neuroncap/checkpoints"     # one per scene; also [datasets.neurad_checkpoints]
+#
+# A full-set sweep spans 14 scenes, and the renderer loads one scene's hash
+# grids at startup and cannot switch. With this on, the harness starts and stops
+# a renderer per scene, so one `paddock run` covers all 20 pairs and is rankable.
+# Driven from outside it would be one run per scene, each covering 1-3 pairs and
+# each correctly recorded `valid: false`. Also settable as
+# PADDOCK_NCAP_MANAGE_RENDERER=true for a one-off sweep.
+#
+# Leave false for the single-scene workflow: `paddock renderer --scene X` in
+# another shell keeps a renderer warm across several runs, which this would not.
+# manage_renderer = false
+#
+# Per-run debugging clips. The engine writes a frame per simulation step for
+# every run, which is ~83 MB per run -- about 66 GB across the full 20-pair set
+# at 10 runs for four models.
+# video  = "encode"   # default: one mp4 per stream per run, then drop the source
+#                     #   PNGs. The raw CAM_* jpegs and trajectories/ego_poses/
+#                     #   actors json stay, so any frame can be rebuilt: ~5 GB.
+#                     # "keep" also keeps the PNGs (needed by
+#                     #   tools/benchmarks/neuroncap/comparison_video.py).
+#                     # "off" logs no frames at all -- fastest, smallest.
+# ffmpeg = "/path/to/ffmpeg"   # else $PADDOCK_FFMPEG, else PATH. Without one,
+#                              # frames are kept and the run is not failed.

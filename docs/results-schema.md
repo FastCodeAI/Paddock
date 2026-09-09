@@ -49,13 +49,20 @@ Three fields do the real work:
 - **`sequences_sha256`** — a hash of the sorted sample-id list. Two runs with
   different hashes evaluated different data, whatever their `n_samples` say. This
   is the single most common cause of numbers that will not reconcile.
-- **`n_expected` / `n_failed`** (closed-loop runs) — how many episodes the
-  sweep enumerated and how many failed to score (crashed agent, evaluator
-  exit, timeout). `n_samples` counts only the episodes that scored, and
+- **`n_expected` / `n_failed`** (closed-loop runs) — how many samples the
+  sweep expected to record and how many were lost to a failure (crashed agent,
+  evaluator exit, timeout). `n_samples` counts only what scored, and
   `metrics.json` averages only those, so without these two a mean over six
   routes is indistinguishable from a mean over 220. A leaderboard-style
   driving score, which counts a failed route as 0 over the full set, is
   `driving_score.mean × n_samples / n_expected`.
+
+  All three count **samples**, not episodes, because an episode need not be one
+  sample: neuroNCAP drives N differently-seeded runs per episode and records
+  each separately, so a 20-episode sweep at `--runs 10` expects 200. Benchmarks
+  declare the factor with `ClosedLoopBenchmark.samples_per_episode`, which is 1
+  everywhere else. An episode that fails loses all of its samples, so the
+  ratio stays a completion fraction either way.
 - **`valid`** — set `false` with a `notes` explaining why, for runs known to be
   bad. Reporting excludes them and never silently averages them in. Deleting a
   bad run loses the record that it happened; marking it keeps it.
@@ -99,7 +106,7 @@ One JSON object per line, under `{runs}`, not tracked.
  "prediction": [[2.5, 0.01], [5.1, 0.03], "..."],
  "ground_truth": [[2.6, 0.00], [5.2, 0.02], "..."],
  "metrics": {"ade": 1.21, "fde@3s": 2.44},
- "inference_s": 0.083,
+ "inference_seconds": 0.083,
  "extra": {"lead_prob": 0.91}}
 ```
 
@@ -126,7 +133,7 @@ spelling of an existing one.
 | `driving_score` | CARLA Leaderboard driving score, 0–100: `route_completion × infraction_penalty` |
 | `route_completion` | % of a closed-loop route driven before it ended |
 | `infraction_penalty` | product of CARLA's per-infraction coefficients, a 0–1 multiplier — **higher is better**, despite the name; `report.py` lists it explicitly |
-| `inference_s` | wall-clock per sample |
+| `inference_seconds` | wall-clock per sample (the `seconds` suffix is what marks it lower-is-better in `report.py`) |
 
 Report `longitudinal_mae` and `lateral_mae` alongside `ade` where the benchmark
 allows. Every model measured so far errs far more longitudinally than

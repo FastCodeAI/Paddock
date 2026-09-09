@@ -1,7 +1,10 @@
 # Paddock — developer entry points.
 #
-# No CI service is assumed: `make check` is what you run before opening a PR,
-# and what a reviewer runs to reproduce your claim that it passes.
+# `make check` is what you run before opening a PR, what GitHub Actions runs on
+# every PR (.github/workflows/check.yml, in a clean environment with no site
+# paddock.toml), and what a reviewer runs with the site config to cover the
+# tests CI has to skip. The three must agree, so CI calls this file rather
+# than its own command list.
 #
 # Every target runs against whichever environment is active -- an activated
 # venv, an activated conda env, or the repo's own .venv as a fallback. So
@@ -14,7 +17,7 @@ PY := $(shell \
   elif [ -x .venv/bin/python ]; then echo ".venv/bin/python"; \
   else echo "python3"; fi)
 
-.PHONY: help setup setup-conda check test lint fmt doctor which clean
+.PHONY: help setup setup-conda check test lint fmt typecheck doctor which clean
 
 help:
 	@echo "make setup        — create .venv and install paddock (uv; the default)"
@@ -23,6 +26,7 @@ help:
 	@echo "make test         — pytest only"
 	@echo "make lint         — ruff only"
 	@echo "make fmt          — ruff format + autofix"
+	@echo "make typecheck    — mypy. ADVISORY: not in 'make check', never blocks a PR."
 	@echo "make doctor       — report what this machine can actually run"
 	@echo "make which        — show which interpreter these targets will use"
 
@@ -55,6 +59,20 @@ test:
 lint:
 	$(PY) -m ruff check src tests tools
 	$(PY) -m ruff format --check src tests
+
+# Advisory. Deliberately not a dependency of `check`: CI's blocking gate is
+# `make check`, and what blocks locally must be what blocks there. mypy reports
+# 63 errors across 19 files today, most in the M2 rescued code, so gating on it
+# would fail PRs that touch none of it. Settings live in [tool.mypy].
+#
+# The exit code is mypy's own -- not swallowed -- so this is scriptable and an
+# honest signal. What makes it advisory is that nothing depends on it: CI runs
+# it under continue-on-error.
+#
+# Override the scope to check less than the whole package:
+#   make typecheck PATHS=src/paddock/runner.py
+typecheck:
+	$(PY) -m mypy $(or $(PATHS),src/paddock)
 
 fmt:
 	$(PY) -m ruff check --fix src tests tools

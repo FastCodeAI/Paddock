@@ -252,3 +252,59 @@ per-tick `log.csv`.
 | `metric_info.json` matches what the upstream tool reads | field names and layout taken from `get_metric_info` and `efficiency_smoothness_benchmark.read_from_json` at 7ec25d1; not yet fed through the tool end to end | argued |
 | crashed repetitions are dropped, not averaged | unit-tested over crashed, blocked and all-crashed triples | **strong** |
 | an edited CARLA launch line is refused | unit-tested against a stub evaluator with and without the flag | **strong** |
+
+## September 2026 runs: what changed and what the numbers are
+
+The first sweeps (2–3 Sep) were harness artifacts for two models; the fixes
+below made the 24-route set (5 abilities × 5 routes minus 11715) the reference.
+
+* **Route 11715 (Town12 EnterActorFlow) is excluded for every model.** CARLA
+  segfaults inside `route_scenario.spawn_parked_vehicles` ~54 s in, on all nine
+  attempts across three stacks, regardless of ego speed.
+* **Wire format:** the agent now sends `speed_limit` (m/s, from
+  `hero.get_speed_limit()`) and the next junction maneuver as `nav_maneuver` /
+  `nav_distance_m` (walked forward on the 1 m world plan). Both optional; only
+  VisionPilot (set-speed) and Alpamayo (navigation text) read them.
+* **Timeouts:** `PADDOCK_INFER_TIMEOUT_S` (default 120) raises the per-tick
+  HTTP timeout; heavy nodes under GPU contention need 600. Use
+  `per_route_timeout_s = 14400` or more for slow models.
+* **openpilot** runs with its comma-three rig (`CAM_OP_ROAD` 1928×1208 fov 40
+  → `img`, `CAM_OP_WIDE` fov 119 → `big_img`; warp verified pixel-exact) and a
+  reproduction of openpilot 0.11.2's longitudinal planner
+  (`PADDOCK_OPENPILOT_NATIVE_LONG=1`, `PADDOCK_OPENPILOT_MODE=experimental`).
+  Its model does not launch from standstill without a driver; the
+  driver-resume rule (`PADDOCK_OPENPILOT_RESUME_S=3.0`: stopped 3 s, no lead →
+  the e2e candidate is dropped until 1 m/s) is logged as `resume` in log.csv
+  and every route is scored twice: **unassisted** (frozen at the first nudge,
+  as if blocked there) and **assisted \*** (the full run). Tally the two from a
+  finished run's own `results.json` + `log.csv`:
+  `python -m paddock.adapters.benchmarks.bench2drive.tally <run_dir> --routes-xml <repo>/leaderboard/data/bench2drive220.xml`.
+* **VisionPilot** cruises at the posted limit (its NeuroNCAP latch pinned it at
+  1 m/s) and runs on the CUDA provider with two threads.
+* **Alpamayo** receives the route as its navigation text ("Turn left in 37m")
+  and samples with the reference notebook's settings.
+* **Drive-JEPA** is the released NAVSIM-v2 checkpoint transferred zero-shot to
+  CARLA. The paper's Bench2Drive result (DS 64.52) comes from a
+  Bench2Drive-trained variant whose configs are in the repo but whose data
+  pipeline, agent and checkpoint are unreleased; do not compare.
+* **Official metrics beyond DS:** `tools/statistic_route_json.is_success`
+  (Completed and no infraction except min-speed), and
+  `tools/efficiency_smoothness_benchmark.py` on the per-tick `metric_info`
+  the agent writes (needs scipy; the b2d conda env lacks it). Wrapper:
+  `paddock-ops/bench2drive_official_metrics.py`.
+
+Results on the 24 (04–06 Sep 2026), one run per route:
+
+| model | DS | RC | Success | Efficiency | Smoothness | penalised events |
+|---|---|---|---|---|---|---|
+| Drive-JEPA (NAVSIM ckpt, zero-shot) | 31.11 | 40.4 | 0.0 % | 98.4 | 0.653 | 19 |
+| VisionPilot | 49.85 | 75.5 | 25.0 % | 175.5 | 0.310 | 34 |
+| Alpamayo 1.5 (nav) | 44.58 | 73.4 | 0.0 % | 180.7 | 0.598 | 34 |
+| openpilot, no nudge | 30.09 | 30.8 | 12.5 % | — | — | 1 (+17 blocked) |
+| openpilot, with nudge \* | 53.62 | 66.8 | 29.2 % | 171.6 | 0.410 | 21 |
+
+Videos with the driven trajectory overlaid, every route, every model:
+`<site video root>/Bench2drive/Simulation/<model>/<route>/{front.cam.mp4,bev.mp4}`
+plus `route_table.md`. Raw runs: `{runs}/bench2drive/<model>/<run>/<route>/`. Machine-specific locations for this site are kept in the top-level repo's `docs/RUNNING_BENCH2DRIVE.md`, not here.
+Per-scenario infractions, the nudge, and the metric definitions are on the
+"Paddock Benchmark Metrics" artifact.

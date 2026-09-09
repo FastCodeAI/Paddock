@@ -109,7 +109,7 @@ in one of the two cases.
 | model | NAVSIM | |
 |---|---:|---|
 | drivejepa | **0.84272** (n=12146) | via proxy; the comparable figure. 0.880 on the 242 subset |
-| alpamayo15 | 0.65332 (n=242, full split running) | `GRID_INDICES` widened to 8; frame selection fixed |
+| alpamayo15 | **0.60813** (n=12146) | `GRID_INDICES` widened to 8; frame selection fixed |
 | visionpilot | **0.43122** (n=12146) | `PLAN_HORIZON_S` 3.0 -> 4.0. 0.447 on the 242 subset |
 | openpilot | not measurable | no speed input; infers motion from 10 Hz frames |
 | constant velocity | **0.23854** (n=12146) | reference baseline. 0.257 on the 242 subset |

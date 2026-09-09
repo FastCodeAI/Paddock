@@ -12,6 +12,20 @@ now. Nearly every convention here follows from that.
 make check          # lint + tests + the portability gate
 ```
 
+The same command runs on every PR in GitHub Actions
+([`.github/workflows/check.yml`](.github/workflows/check.yml)), in a clean
+environment with **no site `paddock.toml`** -- so a test that quietly needs the
+author's site config fails there rather than at the other site. Tests that
+genuinely need a site skip in CI; the reviewer runs `make check` with the site
+config to cover them. A second job checks that every patch under `patches/`
+still applies at the sha `repos.yaml` pins (`python tools/ci/check_patches.py`
+runs the same check locally).
+
+CI runs no model, simulator or dataset. A number in `results/` is produced at a
+site and reviewed by diff, and the mechanical part of that review is
+`tests/test_results_store.py` and `tests/test_contracts.py`, both part of
+`make check`.
+
 ## The one rule that is not negotiable
 
 **No tracked file may contain a path that exists on only one machine.**

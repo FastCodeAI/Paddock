@@ -17,11 +17,20 @@ from paddock.config import REPO_ROOT, SiteConfig
 RENDERER_SCRIPT = Path(__file__).parent / "renderer.py"
 
 
-def run_foreground(cfg: SiteConfig, scene: str, port: int = 8000) -> int:
+class RendererConfigError(RuntimeError):
+    """The site cannot start a renderer, with the reason spelled out."""
+
+
+def renderer_command(cfg: SiteConfig, scene: str, port: int = 8000) -> tuple[list[str], str, dict]:
+    """`(command, cwd, env)` to serve one scene.
+
+    Shared with the harness, which starts a renderer per scene when it drives a
+    sweep across several: the renderer loads one scene's hash grids at startup
+    and cannot switch, so a 14-scene sweep is 14 renderers, not one.
+    """
     settings = cfg.benchmarks.get("neuroncap")
     if settings is None:
-        print("no [benchmarks.neuroncap] section in paddock.toml")
-        return 1
+        raise RendererConfigError("no [benchmarks.neuroncap] section in paddock.toml")
 
     python = settings.get("renderer_python")
     cwd = settings.get("renderer_cwd")
@@ -39,15 +48,15 @@ def run_foreground(cfg: SiteConfig, scene: str, port: int = 8000) -> int:
         if not value
     ]
     if missing:
-        print(f"[benchmarks.neuroncap] is missing: {', '.join(missing)}")
-        return 1
+        raise RendererConfigError(f"[benchmarks.neuroncap] is missing: {', '.join(missing)}")
 
     config = Path(checkpoints) / scene / "config.yml"
     if not config.exists():
         available = sorted(p.name for p in Path(checkpoints).iterdir() if p.is_dir())
-        print(f"no renderer checkpoint for scene {scene}: {config} does not exist")
-        print(f"available scenes: {', '.join(available)}")
-        return 1
+        raise RendererConfigError(
+            f"no renderer checkpoint for scene {scene}: {config} does not exist; "
+            f"available scenes: {', '.join(available)}"
+        )
 
     env = {
         k: os.environ[k]
@@ -57,15 +66,23 @@ def run_foreground(cfg: SiteConfig, scene: str, port: int = 8000) -> int:
     env["NEURAD_STUDIO"] = studio
     env["PYTHONPATH"] = os.pathsep.join([str(REPO_ROOT / "src"), studio])
 
-    command = [
-        python,
-        "-u",
-        str(RENDERER_SCRIPT),
-        "--load-config",
-        str(config),
-        "--port",
-        str(port),
-    ]
+    command = [python, "-u", str(RENDERER_SCRIPT), "--load-config", str(config), "--port", str(port)]
+    return command, cwd, env
+
+
+def run_foreground(cfg: SiteConfig, scene: str, port: int = 8000) -> int:
+    """`paddock renderer --scene <id>`: one scene, in the foreground.
+
+    Still the right thing for a single-scene sweep, and for keeping a renderer
+    warm across several `paddock run` invocations. A sweep over many scenes has
+    the harness start one per scene instead -- see `manage_renderer`.
+    """
+    try:
+        command, cwd, env = renderer_command(cfg, scene, port)
+    except RendererConfigError as exc:
+        print(str(exc))
+        return 1
+
     print(f"starting renderer for scene {scene} on port {port}")
     print("this takes a few minutes; leave it running and use another shell for `paddock run`")
     return subprocess.run(command, cwd=cwd, env=env).returncode

@@ -37,7 +37,7 @@ runtime:
     PADDOCK_OPENPILOT_THREADS: "8"
 
 capabilities:
-  cameras: [CAM_FRONT]
+  cameras: [CAM_OP_ROAD, CAM_OP_WIDE, CAM_FRONT]   # comma-three rig: road cam -> img, wide cam -> big_img; CAM_FRONT = fallback for single-camera sources (KITScenes, neuroNCAP)
   # tinygrad's PC backend is CPU:LLVM -- supercombo does not touch the GPU.
   # The reservation covers the harness around it, not the model.
   vram_gb: 6

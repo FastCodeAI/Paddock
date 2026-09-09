@@ -1,0 +1,146 @@
+# The gate every PR passes before a reviewer reads it.
+#
+# Job `check` is `make check` -- lint, format, the tests, the portability gate
+# -- in an environment that has NO site paddock.toml. That is deliberate: a
+# test that quietly depends on the author's site config passes on their box
+# and fails at the other site, and this is where that is caught (it happened
+# on PR #4). Tests that genuinely need a site skip here and are run by the
+# reviewer with the site config, per docs/reviewing.md §1.
+#
+# Job `patches` proves every patch under patches/ still applies to the upstream
+# revision repos.yaml pins, from a partial clone -- the check patches/README.md
+# asks for by hand.
+#
+# Job `typecheck` runs mypy and CANNOT fail the build (continue-on-error).
+# That asymmetry is deliberate. What must match between a developer's box and
+# CI is the set of checks that can *reject* work -- that set is `make check`,
+# and it is identical in both places. mypy is not in it: 63 errors across 19
+# files today, mostly in the code rescued in M2, so gating on it would redden
+# PRs that touch none of it. It runs here anyway so the signal reaches every
+# reviewer at both sites, not only whoever runs `make typecheck` by hand.
+#
+# Nothing here runs a model, a simulator or a dataset. Those numbers are
+# produced at a site and reviewed by diff in results/.
+
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: make check (no site config)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # 3.11 is paddock's own interpreter. 3.9 is on PATH only so that
+      # tests/test_navsim_adapter.py::test_wire_modules_compile_under_python_39
+      # runs instead of skipping: the NAVSIM proxy imports paddock's wire
+      # modules inside the vendor's 3.9 interpreter.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: |
+            3.9
+            3.11
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+
+      - name: Install paddock the way `make setup` does
+        run: |
+          uv venv --python 3.11 .venv
+          uv pip install --python .venv/bin/python -e ".[dev,serve,viz]"
+
+      - name: Refuse a site config in CI
+        run: |
+          if [ -e paddock.toml ]; then
+            echo "paddock.toml is tracked or generated; it must never be" >&2
+            exit 1
+          fi
+
+      - name: make check
+        run: |
+          make check
+          echo "exit=$?"
+
+      - name: Say which tests skipped here (they need a site)
+        if: always()
+        run: .venv/bin/python -m pytest -q -rs 2>/dev/null | grep -E "^SKIPPED|passed|failed" || true
+
+  typecheck:
+    name: mypy (advisory — cannot fail the build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # The whole point: this job reports, it does not gate. Do not remove this
+    # line to "make types matter" -- fix the 63 errors first, then move mypy
+    # into `make check`, so local and CI start blocking on the same day.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+
+      - name: Install paddock the way `make setup` does
+        run: |
+          uv venv --python 3.11 .venv
+          uv pip install --python .venv/bin/python -e ".[dev,serve,viz]"
+
+      # continue-on-error sits on the STEP, not the job, so the job itself goes
+      # green. A job that shows a red X on every PR forever is the check people
+      # stop reading -- the exact failure this whole arrangement is trying to
+      # avoid. The count goes to the run summary instead, where it is visible
+      # without pretending to be a gate.
+      - name: make typecheck
+        id: mypy
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          make typecheck 2>&1 | tee /tmp/mypy.txt
+
+      - name: Report the count in the run summary
+        if: always()
+        run: |
+          {
+            echo "### mypy — advisory, blocks nothing"
+            echo
+            echo '```'
+            tail -n 1 /tmp/mypy.txt 2>/dev/null || echo "mypy produced no output"
+            echo '```'
+            echo
+            echo "Full output is in the \`make typecheck\` step. This never gates a PR;"
+            echo "see the \`[tool.mypy]\` block in \`pyproject.toml\` for why."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  patches:
+    name: patches apply at the pinned revisions
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install PyYAML
+        run: python -m pip install --quiet pyyaml
+      - name: git apply --check every patch against its pinned sha
+        run: python tools/ci/check_patches.py

@@ -1,0 +1,32 @@
+{
+  "run_id": "20260905T055713-11ac59",
+  "site": "fastcode-shakaal",
+  "benchmark": "neuroncap",
+  "model": "openpilot",
+  "mode": "closed_loop",
+  "started_utc": "2026-09-05T19:39:48+00:00",
+  "duration_s": 3791.2,
+  "repo_sha": null,
+  "dataset": {
+    "name": "nuscenes",
+    "n_samples": 200,
+    "sequences_sha256": "ef927e969576db84",
+    "n_expected": 200,
+    "n_failed": 0,
+    "n_reused": 170
+  },
+  "config": {
+    "scene": "0099,0101,0103,0106,0108,0110,0278,0331,0346,0783,0796,0921,0923,0966",
+    "runs": 10,
+    "cameras": [
+      "CAM_FRONT"
+    ]
+  },
+  "hardware": {
+    "gpu_free_gb_at_start": null
+  },
+  "status": "complete",
+  "valid": true,
+  "notes": "resumed: 17 episode(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only",
+  "ingested_from": ""
+}

@@ -9,7 +9,7 @@ after fifty minutes" into "scene 0061 has no renderer checkpoint, here is why".
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import numpy as np
@@ -70,7 +70,16 @@ class TemplateClosedLoopBenchmark(ClosedLoopBenchmark):
     def episodes(self, scenes: list[str] | None = None, runs: int = 1) -> Iterator[Episode]:
         raise NotImplementedError
 
-    def run_episode(self, episode: Episode, policy_url: str, out_dir: Path) -> dict[str, float]:
+    def run_episode(
+        self,
+        episode: Episode,
+        policy_url: str,
+        out_dir: Path,
+        echo: Callable[[str], None] = print,
+    ) -> dict[str, float]:
+        #: `echo` is the run's own output stream -- say anything about how the
+        #: episode went through it, so a detached sweep's log holds the whole
+        #: story. The runner calls this positionally, so keep the parameter.
         raise NotImplementedError
 
 

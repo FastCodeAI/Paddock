@@ -1,5 +1,10 @@
 """openpilot supercombo as a paddock Policy.
 
+Adapted from the NeuroNCAP model node (`servers/openpilot_server.py`). The
+model-specific reasoning below is unchanged from that node; what changed is the
+seams -- it now implements `Policy`, so the same class serves open-loop scoring
+and closed-loop simulation instead of one implementation per loop type.
+
 What this adapts, and why each piece is load-bearing:
 
 *Camera.* The network never sees a raw frame -- it sees two warped 512x256
@@ -77,23 +82,42 @@ TRAFFIC_CONVENTION = np.array([1.0, 0.0], dtype=np.float32)
 #: The 0.5 s grid the closed-loop vehicle model expects.
 GRID_S = np.arange(1, 9) * 0.5
 
-FEATURE_BUFFER_FRAMES = 130  # >= the big model's 128-deep buffer
-MODEL_HZ = 20.0
-
-#: A camera mounting further from level than this is a coordinate-convention
-#: error, not a mounting. See the module docstring.
-MAX_MOUNT_DEG = 15.0
-
-#: Sources whose geometry openpilot already describes, so no resampling is
-#: needed on the ONNX backend. Keyed by (width, height) -> focal length.
-#: comma2k19's EON is `("neo", "unknown").narrow_road` in openpilot's own
-#: `DEVICE_CAMERAS` table: 1164x874 at fl 910, which is also the medmodel
-#: frame's focal length -- the model frame is a plain crop of an EON image.
-NATIVE_CAMERAS = {(1164, 874): 910.0, (1928, 1208): 2648.0}
-
-
-class ImplausibleMounting(ValueError):
-    """The derived camera mounting cannot be a real one."""
+FEATURE_BUFFER_FRAMES = 100  # >= 96, the depth needed to fill features_buffer
+MODEL_HZ = 20.0  # the rate supercombo believes its input arrives at
+#: Emit openpilot's own longitudinal intent (desired accel + should_stop) so the
+#: closed-loop client can drive it natively instead of through the TCP tracker's
+#: brake-below-0.4 m/s rule. Off by default: the standard tracker path is what
+#: every published Bench2Drive baseline uses.
+NATIVE_LONG = os.environ.get("PADDOCK_OPENPILOT_NATIVE_LONG", "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+LONG_ACTION_T = 0.5  # the action_t[1] this adapter feeds the model
+LONG_SMOOTH_SECONDS = 0.3  # openpilot modeld's longitudinal smoothing
+#: Which openpilot longitudinal mode to reproduce (selfdriveState.experimentalMode):
+#: "chill" = lead-follow + cruise only (default openpilot; does not stop for lights),
+#: "experimental" = also the e2e plan candidate (stops for lights/hazards).
+OP_MODE = os.environ.get("PADDOCK_OPENPILOT_MODE", "experimental").strip().lower()
+# longitudinal_planner.py / drive_helpers.py / long_mpc.py constants (0.11.2)
+ACCEL_MIN, ACCEL_MAX = -3.5, 2.0
+A_CRUISE_MIN = -1.2
+A_CRUISE_MAX_BP, A_CRUISE_MAX_VALS = [0.0, 10.0, 25.0, 40.0], [1.6, 1.2, 0.8, 0.6]
+J_CRUISE = 0.5  # m/s^3 cruise jerk limit (chill)
+COMFORT_BRAKE, STOP_DISTANCE, T_FOLLOW = 2.5, 6.0, 1.45
+K_ROOM, K_VREL = 0.3, 0.6  # closed-form stand-in for the lead MPC on its safe-distance model
+# radard.RADAR_TO_CAMERA: model lead sits at the camera; the MPC uses the radar frame.
+RADAR_TO_CAMERA = 1.52
+V_CRUISE_FALLBACK = 13.9  # m/s when the source sends no road limit
+#: Driver-resume emulation (experimental mode). Stock openpilot in experimental mode
+#: holds after a full stop until the e2e plan asks to go; a driver in stop-and-go taps
+#: resume/gas. In CARLA the e2e plan at standstill stays ~0 indefinitely (static
+#: frames), so after this many seconds stopped WITH NO LEAD the e2e candidate is
+#: dropped -- openpilot's own chill-mode candidates (cruise, lead) take over -- until
+#: the car is rolling (>= 1 m/s), then experimental resumes control. 0 disables.
+RESUME_S = float(os.environ.get("PADDOCK_OPENPILOT_RESUME_S", "3.0"))
+RESUME_UNTIL_V = 1.0
 
 
 @dataclass(frozen=True)
@@ -234,13 +258,19 @@ class CameraAdapter:
         out[self.pad_top : self.pad_top + self.scaled_size[1]] = resized
         return out
 
-    def margin_deg(self) -> dict[str, float]:
-        """Field of view left over after each model view is carved out.
+    #: (hfov, vfov) each model view carves out of its source, degrees.
+    VIEW_FOV = {"img": (31.4, 15.9), "big_img": (58.7, 31.3)}
 
-        Negative means the warp samples outside what the camera saw, which shows
-        up as black or smeared wedges at the edges of the model's input.
+    def margin_deg(self, slot: str = "big_img") -> dict[str, float]:
+        """How much field of view is left over after the model view is carved out.
+
+        `slot` is the view this source feeds: "big_img" (the default, and the
+        tighter one when a single frame feeds both views) or "img" for a
+        dedicated narrow road camera. Negative means the warp samples outside
+        what the camera saw -- black wedges at the edges of the model's input.
         """
-        return {"horizontal": self.src.hfov_deg - 58.7, "vertical": self.src.vfov_deg - 31.3}
+        h, v = self.VIEW_FOV[slot]
+        return {"horizontal": self.src.hfov_deg - h, "vertical": self.src.vfov_deg - v}
 
 
 def plan_to_grid(plan: np.ndarray, grid_s: np.ndarray = GRID_S) -> np.ndarray:
@@ -253,7 +283,14 @@ def plan_to_grid(plan: np.ndarray, grid_s: np.ndarray = GRID_S) -> np.ndarray:
 
 
 class OpenpilotPolicy(Policy):
-    cameras = ("CAM_FRONT",)
+    #: comma-three rig: the narrow road camera feeds `img`, the wide camera feeds
+    #: `big_img` -- as on the device. A source that only has CAM_FRONT still works
+    #: (both views cut from it), which is what NeuroNCAP/NAVSIM/KITScenes send.
+    cameras = (
+        "CAM_OP_ROAD",
+        "CAM_OP_WIDE",
+        "CAM_FRONT",
+    )  # CAM_FRONT: single-camera fallback for open-loop sources
     waypoint_dt = 0.5
 
     def __init__(self, backend: str | None = None, model: str | None = None) -> None:
@@ -264,8 +301,15 @@ class OpenpilotPolicy(Policy):
         self.model = None
         self.session = None
         self.camera: CameraAdapter | None = None
+        self.cam_road: CameraAdapter | None = None
+        self.cam_wide: CameraAdapter | None = None
+        self.buf_wide: np.ndarray | None = None
         self.frames_seen = 0
         self.prev_timestamp: int | None = None
+        self.prev_accel = 0.0
+        self.a_cruise_prev = 0.0
+        self.still_s = 0.0
+        self.resuming = False
         self.nv12_info = None
         self.buf: np.ndarray | None = None
         self.bufs: dict[str, np.ndarray] = {}
@@ -300,35 +344,14 @@ class OpenpilotPolicy(Policy):
             from openpilot.selfdrive.modeld.modeld import ModelState
             from openpilot.system.camerad.cameras.nv12_info import get_nv12_info
 
-            self.model = ModelState(TARGET_W, TARGET_H, usbgpu=False)
-            # ModelState caches its device tensors by buffer address, so this
-            # array must be allocated once and written in place.
-            self.nv12_info = get_nv12_info(TARGET_W, TARGET_H)
-            self.buf = np.zeros(self.nv12_info[3], dtype=np.uint8)
-            self.bufs = {"img": self.buf, "big_img": self.buf}
-        else:
-            from paddock.adapters.models.openpilot.supercombo import SupercomboSession
-
-            self.session = SupercomboSession(self._onnx_path(), self._threads())
-            self._new_onnx_runner()
-
-    def _onnx_path(self) -> Path:
-        override = os.environ.get("PADDOCK_OPENPILOT_ONNX")
-        if override:
-            return Path(override)
-        prefix = "big_" if self.model_name == "big" else ""
-        return self._models_dir() / f"{prefix}driving_supercombo.onnx"
-
-    @staticmethod
-    def _threads() -> int:
-        return int(os.environ.get("PADDOCK_OPENPILOT_THREADS", "8"))
-
-    def _new_onnx_runner(self) -> None:
-        from paddock.adapters.models.openpilot.supercombo import SupercomboRunner
-
-        self.model = SupercomboRunner(session=self.session, traffic_convention=TRAFFIC_CONVENTION)
-
-    # ---- episode state ---------------------------------------------------
+        self.model = ModelState(TARGET_W, TARGET_H, usbgpu=False)
+        # ModelState caches its device tensors by buffer address, so this array
+        # must be allocated once and written in place -- never reallocated.
+        self.nv12_info = get_nv12_info(TARGET_W, TARGET_H)
+        self.buf = np.zeros(self.nv12_info[3], dtype=np.uint8)
+        self.buf_wide = np.zeros(self.nv12_info[3], dtype=np.uint8)
+        # one source: both slots read the same buffer; two sources: each slot its own
+        self.bufs = {"img": self.buf, "big_img": self.buf}
 
     def reset(self) -> None:
         """Drop all temporal state.
@@ -349,8 +372,15 @@ class OpenpilotPolicy(Policy):
         elif self.session is not None:
             self._new_onnx_runner()
         self.camera = None
+        self.cam_road = None
+        self.cam_wide = None
+        self.bufs = {"img": self.buf, "big_img": self.buf}
         self.frames_seen = 0
         self.prev_timestamp = None
+        self.prev_accel = 0.0
+        self.a_cruise_prev = 0.0
+        self.still_s = 0.0
+        self.resuming = False
 
     # ---- inference -------------------------------------------------------
 
@@ -364,12 +394,49 @@ class OpenpilotPolicy(Policy):
     def infer(self, obs: Observation) -> Trajectory:
         if self.model is None:
             raise RuntimeError("load() must be called before infer()")
-        if self.camera is None:
-            self.camera = self._build_camera(obs)
-        return self._infer_tinygrad(obs) if self.backend == "tinygrad" else self._infer_onnx(obs)
 
-    def _repeats(self, obs: Observation) -> int:
-        """How many times to show one rendered frame.
+        from openpilot.selfdrive.modeld.constants import ModelConstants
+
+        stride, y_height = self.nv12_info[0], self.nv12_info[1]
+        have = set(obs.images) | set(obs.image_paths)
+        two = "CAM_OP_ROAD" in have and "CAM_OP_WIDE" in have
+        if two:
+            if self.cam_road is None:
+                self.cam_road = CameraAdapter(obs.pinhole("CAM_OP_ROAD"), obs.camera2ego["CAM_OP_ROAD"])
+                self.cam_wide = CameraAdapter(obs.pinhole("CAM_OP_WIDE"), obs.camera2ego["CAM_OP_WIDE"])
+                self.camera = self.cam_road
+                self.bufs = {"img": self.buf, "big_img": self.buf_wide}
+            packs = [
+                (
+                    self.buf,
+                    rgb_to_nv12_batch(
+                        self.cam_road.prepare(obs.image("CAM_OP_ROAD"))[None], TARGET_W, TARGET_H
+                    )[0],
+                ),
+                (
+                    self.buf_wide,
+                    rgb_to_nv12_batch(
+                        self.cam_wide.prepare(obs.image("CAM_OP_WIDE"))[None], TARGET_W, TARGET_H
+                    )[0],
+                ),
+            ]
+            transforms = {
+                "img": self.cam_road.transforms["img"],
+                "big_img": self.cam_wide.transforms["big_img"],
+            }
+        else:
+            if self.camera is None:
+                self.camera = CameraAdapter(obs.pinhole("CAM_FRONT"), obs.camera2ego["CAM_FRONT"])
+                self.bufs = {"img": self.buf, "big_img": self.buf}
+            packs = [
+                (
+                    self.buf,
+                    rgb_to_nv12_batch(self.camera.prepare(obs.image("CAM_FRONT"))[None], TARGET_W, TARGET_H)[
+                        0
+                    ],
+                )
+            ]
+            transforms = self.camera.transforms
 
         supercombo believes it is fed 20 Hz. A simulator advancing 0.5 s per
         request would otherwise tell the model that half a second of motion
@@ -377,12 +444,26 @@ class OpenpilotPolicy(Policy):
         its actual speed. The step is measured rather than assumed, so this
         follows whatever time step the run was launched with.
 
-        comma2k19 is natively 20 Hz, so this comes out to exactly 1 throughout
-        and no repetition happens.
-        """
-        repeats = 1
+        # How many times to show each rendered frame, so that the model's own
+        # clock matches the simulator's.
+        #
+        # supercombo believes it is fed 20 Hz. The simulator advances the world
+        # by its scenario time step per request -- 0.5 s by default. Emitting one
+        # model frame per rendered frame would tell the model that 0.5 s of
+        # motion happened in 1/20 s, and it would read the ego as travelling ten
+        # times its actual speed. Repeating each frame `dt * 20` times keeps the
+        # average rate honest. It is still jerky -- the world holds still and
+        # then jumps -- which is the argument for running the simulation at
+        # 0.1 s, where this lands on the 2 repeats the KITScenes run used.
+        #
+        # The step is measured rather than assumed, so this follows whatever
+        # time step the run was launched with.
+        repeats = 2
+        dt_s = 1.0 / MODEL_HZ
         if self.prev_timestamp is not None:
             dt = (obs.timestamp_us - self.prev_timestamp) / 1e6
+            if dt > 0:
+                dt_s = dt
             if dt > 0:
                 repeats = max(1, round(dt * MODEL_HZ))
         if self.frames_seen == 0 and self.self_prime:
@@ -405,9 +486,10 @@ class OpenpilotPolicy(Policy):
             "action_t": np.array([0.3, 0.5], dtype=np.float32),
         }
         out = None
-        for _ in range(self._repeats(obs)):
-            pack_nv12(self.buf, packed, TARGET_W, TARGET_H, stride, y_height)
-            out = self.model.run(self.bufs, self.camera.transforms, inputs)
+        for _ in range(repeats):
+            for buf, packed in packs:
+                pack_nv12(buf, packed, TARGET_W, TARGET_H, stride, y_height)
+            out = self.model.run(self.bufs, transforms, inputs)
         self.frames_seen += 1
         if out is None or "plan" not in out:
             return constant_velocity(obs.speed, dt=self.waypoint_dt)
@@ -438,12 +520,82 @@ class OpenpilotPolicy(Policy):
         self.frames_seen += 1
         if out is None or "plan" not in out:
             return constant_velocity(obs.speed, dt=self.waypoint_dt)
-        self._last_diag = {
-            "desiredCurvature": out["action_value"]["desiredCurvature"],
-            "desiredAcceleration": out["action_value"]["desiredAcceleration"],
-            "pose_trans": np.asarray(out["pose"][0][:3]).tolist(),
+        plan33 = np.asarray(out["plan"])[0]
+        traj = Trajectory(plan_to_grid(plan33), dt=self.waypoint_dt)
+        if NATIVE_LONG:
+            traj.extras = {"native_long": self._native_long(out, plan33, obs.speed, dt_s, obs.speed_limit)}
+        return traj
+
+    def _native_long(self, out, plan33, v_ego: float, dt_s: float, speed_limit) -> dict:
+        """openpilot 0.11 longitudinal planner, reproduced (longitudinal_planner.py:128-149):
+        desired accel = MIN of (lead-follow, cruise-to-set-speed, and in experimental
+        mode the e2e plan); should_stop = ANY candidate says stop. The cruise set-speed
+        is the posted road limit the simulator sends. Lead-follow uses the model's own
+        lead / lead_prob (current-time hypothesis) on the MPC's safe-distance model."""
+        from openpilot.selfdrive.controls.lib.drive_helpers import get_accel_from_plan, should_stop
+        from openpilot.selfdrive.modeld.constants import ModelConstants, Plan
+
+        e2e = OP_MODE == "experimental"
+        v_cruise = float(speed_limit) if speed_limit else V_CRUISE_FALLBACK
+        max_accel = ACCEL_MAX if e2e else float(np.interp(v_ego, A_CRUISE_MAX_BP, A_CRUISE_MAX_VALS))
+        # cruise candidate (get_cruise_accel)
+        a_cruise = float(np.clip(v_cruise - v_ego, A_CRUISE_MIN, max_accel))
+        if not e2e:
+            a_cruise = float(
+                np.clip(a_cruise, self.a_cruise_prev - J_CRUISE * dt_s, self.a_cruise_prev + J_CRUISE * dt_s)
+            )
+        self.a_cruise_prev = a_cruise
+        cands = [(a_cruise, "cruise", bool(should_stop(v_ego, a_cruise)))]
+        # lead candidate (radard uses the model lead above prob 0.5; MPC keeps x_lead >= safe distance)
+        lead = np.asarray(out["lead"])[0, 0]
+        prob = float(np.asarray(out["lead_prob"])[0, 0])
+        if prob > 0.5:
+            # radard.get_RadarState_from_vision (radard.py:136-143): the model's
+            # lead velocity is relative to the model's OWN ego-speed estimate, so
+            # recover the absolute lead speed in the measured-ego frame before
+            # comparing (vLead = v_ego + lead.v[0] - model_v_ego). The lead sits
+            # at the camera; the MPC wants the radar-frame distance.
+            model_v_ego = float(plan33[:, Plan.VELOCITY][0, 0])
+            x_lead = float(lead[0, 0]) - RADAR_TO_CAMERA
+            v_lead = v_ego + (float(lead[0, 2]) - model_v_ego)
+            safe = v_ego**2 / (2 * COMFORT_BRAKE) + T_FOLLOW * v_ego + STOP_DISTANCE
+            room = x_lead + v_lead**2 / (2 * COMFORT_BRAKE) - safe
+            a_lead = float(np.clip(K_ROOM * room + K_VREL * (v_lead - v_ego), ACCEL_MIN, max_accel))
+            cands.append((a_lead, "lead", bool(should_stop(v_ego, a_lead))))
+        # e2e candidate (modeld get_action_from_model, plan branch, 0.3 s smoothed)
+        a_raw = float(
+            get_accel_from_plan(
+                plan33[:, Plan.VELOCITY][:, 0],
+                plan33[:, Plan.ACCELERATION][:, 0],
+                ModelConstants.T_IDXS,
+                action_t=LONG_ACTION_T,
+            )
+        )
+        alpha = dt_s / (LONG_SMOOTH_SECONDS + dt_s) if dt_s > 0 else 1.0
+        a_e2e = self.prev_accel + alpha * (a_raw - self.prev_accel)
+        self.prev_accel = a_e2e
+        # driver-resume emulation (see RESUME_S)
+        self.still_s = self.still_s + dt_s if v_ego < 0.3 else 0.0
+        if v_ego >= RESUME_UNTIL_V:
+            self.resuming = False
+        if e2e and RESUME_S > 0 and not self.resuming and self.still_s >= RESUME_S and prob < 0.5:
+            self.resuming = True
+        if e2e and not self.resuming:
+            cands.append((a_e2e, "e2e", bool(should_stop(v_ego, a_e2e))))
+        a_target, source, _ = min(cands, key=lambda c: c[0])
+        if self.resuming:
+            source = source + "+resume"
+        return {
+            "accel": a_target,
+            "v_target": max(0.0, v_ego + a_target * LONG_ACTION_T),
+            "should_stop": any(c[2] for c in cands),
+            "source": source,
+            "mode": OP_MODE,
+            "a_cruise": a_cruise,
+            "a_e2e": a_e2e,
+            "lead_prob": prob,
+            "v_cruise": v_cruise,
         }
-        return Trajectory(plan_to_grid(np.asarray(out["plan"])[0]), dt=self.waypoint_dt)
 
     # ---- diagnostics -----------------------------------------------------
 
@@ -455,16 +607,24 @@ class OpenpilotPolicy(Policy):
         than 1.0 means border smearing, which no score will show.
         """
         if self.camera is None:
-            return {"status": "no frame seen yet", "backend": self.backend}
-        diag: dict[str, Any] = {
-            "backend": self.backend,
-            "model": self.model_name,
-            "source_size": [self.camera.src.width, self.camera.src.height],
-            "resample_mode": self.camera.mode,
+            return {"status": "no frame seen yet"}
+        # Each view's margin from the camera that actually feeds it: in the
+        # two-camera rig the road cam feeds "img" and the wide cam "big_img", so
+        # reading both off one camera reports a false deficit for the other. A
+        # single-camera source feeds both views from the one frame.
+        slot_cam = (
+            {"img": self.cam_road, "big_img": self.cam_wide}
+            if self.cam_wide is not None
+            else {"img": self.camera, "big_img": self.camera}
+        )
+        return {
             "source_hfov_deg": round(self.camera.src.hfov_deg, 2),
             "source_vfov_deg": round(self.camera.src.vfov_deg, 2),
-            "margin_deg": {k: round(v, 2) for k, v in self.camera.margin_deg().items()},
-            "rpy_deg": [round(float(v), 4) for v in np.degrees(self.camera.rpy)],
+            "margin_deg": {
+                slot: {k: round(v, 2) for k, v in cam.margin_deg(slot).items()}
+                for slot, cam in slot_cam.items()
+            },
+            "rpy": self.camera.rpy.tolist(),
             "frames_seen": self.frames_seen,
             "feature_buffer_frames": FEATURE_BUFFER_FRAMES,
         }

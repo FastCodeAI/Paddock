@@ -359,6 +359,7 @@ so nothing below the full split can be averaged or ranked against a real one.
 | model | EPDMS | collisions | drivable | progress | run |
 |---|---:|---:|---:|---:|---|
 | drivejepa | **0.8427** | 0.984 | 0.985 | 0.889 | `20260902T173156-7e208f` |
+| alpamayo15 | **0.6081** | 0.941 | 0.788 | 0.596 | `20260903T183818-5879c1` |
 | visionpilot | **0.4312** | 0.727 | 0.819 | 0.404 | `20260902T175642-df5291` |
 | constant_velocity | **0.2385** | 0.681 | 0.578 | 0.209 | `20260902T175923-feba73` |
 

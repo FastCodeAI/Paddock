@@ -41,7 +41,7 @@ import signal
 import subprocess
 import time
 import xml.etree.ElementTree as ET
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -571,7 +571,13 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
 
     # ---- run one episode ----------------------------------------------
 
-    def run_episode(self, episode: Episode, policy_url: str, out_dir: Path) -> dict[str, float]:
+    def run_episode(
+        self,
+        episode: Episode,
+        policy_url: str,
+        out_dir: Path,
+        echo: Callable[[str], None] = print,
+    ) -> dict[str, float]:
         """Drive one route through CARLA against a running policy node.
 
         ``policy_url`` is a node paddock has already started and health-checked.
@@ -602,6 +608,12 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             # per run, not per episode, so a whole sweep scores with one `-m`.
             "PADDOCK_METRICS_DIR": str(out_dir.parent / "metric_info"),
         }
+        # The agent reads PADDOCK_INFER_TIMEOUT_S for its per-tick /infer HTTP
+        # timeout (default 120 s). It is set on the host, not in PASSTHROUGH, so
+        # forward it explicitly or the documented override never reaches the
+        # foreign-interpreter agent that honours it.
+        if os.environ.get("PADDOCK_INFER_TIMEOUT_S"):
+            extra["PADDOCK_INFER_TIMEOUT_S"] = os.environ["PADDOCK_INFER_TIMEOUT_S"]
         if self.record:
             extra["PADDOCK_RECORD_DIR"] = str(out_dir)
             # agent_wrapper reads SAVE_PATH as its "Bench2Drive mode" flag, which
