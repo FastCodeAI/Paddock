@@ -136,15 +136,50 @@ learned anything a straight line does not already say.
 Not a `paddock run` and not in `results/`: no model was involved, and it is
 recorded here as a reference rather than as a leaderboard row.
 
+## Camera shards and partial coverage
+
+The nine camera zips each unpack into a directory of their own
+(`sensor_blobs/nuplan-v1.1_mini_camera_8/<log>/CAM_F0/…`), while the database
+only knows `<log>/CAM_F0/<token>.jpg`. Both the sharded and the flattened layout
+are detected, so no site has to reshape its copy.
+
+Holding one shard of nine is normal, not an error. Anchors whose log has no
+images are **skipped**, and the run is recorded `valid: false` with the coverage
+in `notes`, so it is kept and inspectable but never averaged against a
+full-coverage run. `--dry-run` reports the split before anything starts.
+
+## First result
+
+One camera shard (8 of 9) covers 8 logs, giving **26 of 375 anchors**; 25 of
+those have both the history and the future the scored moment needs.
+
+| n=25 | visionpilot | constant velocity |
+|---|---:|---:|
+| ade | 3.1924 | **1.3926** |
+| fde@1s | 1.7155 | 0.4624 |
+| fde@2s | 3.2339 | 1.4327 |
+| fde@3s | 5.8514 | 3.1994 |
+| lateral_mae | 1.3283 | 0.6300 |
+
+Both columns are over the same 25 samples. **VisionPilot is beaten by a straight
+line, by more than a factor of two on every metric.** Three things to hold in
+mind before reading that as a verdict on the model: n=25 is small and comes from
+one shard rather than a spread of the dataset; VisionPilot's recorded strength
+is closed-loop NCAP rather than open-loop imitation; and nuPlan's urban
+intersection content is the regime where a constant-velocity baseline is hardest
+to beat and VisionPilot is furthest from its training distribution. The number
+is real, but it is a starting point, not a ranking.
+
+Roughly 3 minutes wall-clock for the 25 samples on CPU, including model load.
+
 ## Status
 
-**Verified**: sample construction, selection, ground truth, calibration decoding
-and scoring all run against the real 56-log mini copy; the golden tests build a
-synthetic log and run with no dataset, no devkit and no GPU. The
-constant-velocity table above is measured, not estimated.
+**Verified**: the full path runs end to end — sample construction, selection,
+ground truth, calibration decoding, camera-path resolution, inference and
+scoring — against the real download, and the numbers above came out of it. The
+golden tests build a synthetic log and run with no dataset, no devkit and no GPU.
 
-**Not yet done**: no model has been scored. This site holds the logs but not the
-450 GB of camera blobs, so `preflight()` reports the gap and refuses the run.
-Wall-clock for a real sweep is therefore unmeasured — sample construction alone
-is ~0.07 s each (~25 s for the full set), and everything beyond that is model
-inference.
+**Not yet done**: only visionpilot has been scored, on 7% of the scored set.
+openpilot is the interesting one here — it is the model nuPlan's 10 Hz cameras
+exist to serve — and it has not been run because its repo is not cloned at this
+site. A full-coverage run needs the other eight camera shards (~405 GB).
