@@ -115,8 +115,7 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 
 ∗ VisionPilot has no native trajectory output. For nuScenes and NAVSIM, Paddock
 constructs sampled XY points from its projected image-space path and speed
-schedule driven by IDM, not a fixed constant velocity. KITScenes has no scored
-trajectory for this adapter. See [plotting and controller notes](docs/benchmarks/controller-notes.md).
+schedule. KITScenes has no scored trajectory for this adapter.
 
 △ nuScenes uses 5,119 scoring anchors across 150 validation scenes. The headline
 is the mean of cumulative L2 through 1, 2 and 3 seconds, not ADE at 3 seconds.
@@ -290,9 +289,7 @@ these counts alongside route completion, not in isolation.
 
 [Per-route counts, scores and source hashes](docs/benchmarks/bench2drive-24-infractions.json)
 allow the totals to be independently recomputed. The new 26-route expansion is
-not included. VisionPilot uses a synthesized path and IDM speed schedule, with
-extrapolation beyond its native 1 s horizon; see
-[controller and scoring assumptions](docs/benchmarks/controller-notes.md).
+not included.
 
 #### Constant velocity — fixed-speed baseline
 
