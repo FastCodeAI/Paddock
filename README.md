@@ -258,7 +258,8 @@ Counts below include **all recorded infraction categories**. Lower is better,
 with the exposure caveat below. They count entries in upstream route records,
 not per-kilometre rates, penalty factors, or a count of unique affected routes.
 Assisted OpenPilot results are excluded. Its pre-resume estimate above does not
-provide a comparable full-route unassisted infraction table.
+provide a comparable full-route unassisted infraction table; the available
+OpenPilot observations and prefix estimates are reported separately below.
 
 | Infraction entries ↓ | DriveJEPA | VisionPilot | Alpamayo 1.5 (nav) |
 |---|---:|---:|---:|
@@ -290,6 +291,43 @@ these counts alongside route completion, not in isolation.
 [Per-route counts, scores and source hashes](docs/benchmarks/bench2drive-24-infractions.json)
 allow the totals to be independently recomputed. The new 26-route expansion is
 not included.
+
+#### OpenPilot infractions and correlation data
+
+[Download per-route OpenPilot counts and driving scores (CSV)](docs/benchmarks/openpilot-24-infractions.csv).
+This covers the same 24 routes as the ≈30.09 driving-score estimate above:
+8 recordings had no intervention; 16 rows estimate the prefix ending at the
+first intervention. No assisted full-run scores or totals are included.
+
+| Infraction entries | Observed, 8 no-intervention routes | Estimated prefix + observed, 24 routes ≈ |
+|---|---:|---:|
+| Pedestrian collision | 0 | 0 ≈ |
+| Vehicle collision | 0 | 0 ≈ |
+| Layout collision | 0 | 0 ≈ |
+| Red light | 1 | 1 ≈ |
+| Stop sign | 0 | 0 ≈ |
+| Outside route lanes | 0 | N/A |
+| Route deviation | 1 | 1 ≈ |
+| Vehicle blocked | 1 | N/A (1 observed; 16 hypothetical) |
+| Failure to yield to emergency vehicle | 0 | N/A |
+| Minimum speed | 77 | N/A |
+| Route timeout | 0 | 0 ≈ |
+| Scenario timeout | 0 | 0 ≈ |
+
+Prefix attribution uses an event's position along the route relative to the
+first intervention, not an event timestamp, so these counts are estimates.
+Minimum-speed messages and some lane/yield events lack the information needed
+to attribute them to that prefix. Missing CSV values are **unknown, not zero**.
+The earlier reconstruction inserted 16 hypothetical blocked events; these are
+isolated in `hypothetical_blocked_at_cutoff`, not counted as recorded infractions.
+
+For correlations, filter `measurement=observed_no_intervention` for the 8 observed
+rows, or explicitly label a 24-route analysis as using prefix estimates and
+report the number of non-missing pairs for each category. Collision counts are
+zero throughout this export, so their correlation is undefined, not zero.
+The CSV also includes route completion and source hashes. These prefixes have
+less driving exposure, and driving score itself incorporates infraction penalties;
+a correlation does not independently establish model quality or causation.
 
 #### Constant velocity — fixed-speed baseline
 
