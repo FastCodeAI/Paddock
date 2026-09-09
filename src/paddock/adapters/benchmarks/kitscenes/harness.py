@@ -32,6 +32,33 @@ INTERVAL_S = 0.5
 EVAL_HORIZON_S = 3.0
 N_GT_POSES = 8
 
+#: Height of the KITScenes reference frame above the road, in metres.
+#:
+#: KITScenes calibrates every sensor against `base_frame`, which `calib.json`
+#: shows is `lidar_top` -- an origin on the roof pod, not at road level. The
+#: front ring camera therefore sits at z = -0.183 m in it.
+#:
+#: That matters to any model that intersects a camera ray with the ground
+#: plane, because the whole method assumes z = 0 *is* the road: neuroNCAP zeroes
+#: the ego pose's z every step and CARLA mounts the camera 1.5 m up, so both
+#: satisfy it. KITScenes does not, and a negative camera height flips the sign
+#: of the ray-plane scale -- every projected point lands *behind* the car.
+#: Measured on the first three samples of the shared list, 0 of 32, 0 of 29 and
+#: 0 of 28 AutoSteer points came out ahead of the ego; with the origin dropped
+#: they span 25-46 m ahead, which is where a forward camera can actually see.
+#:
+#: Dropping the origin here rather than in a model keeps one convention for
+#: every model: the alternative is each adapter rediscovering this. Only the
+#: translation moves, so a model reading just the rotation (openpilot's warp)
+#: is unaffected and its recorded n=223 numbers stand.
+#:
+#: `Drive-JEPA/kitscenes_adapter.estimate_ground_offset` measures this per scene
+#: from the lidar ground return and falls back to the same constant when it
+#: cannot. That needs pyarrow, which paddock's own environment deliberately
+#: lacks, so this is the declared default; override per site with
+#: `[benchmarks.kitscenes] ground_offset_m`.
+POD_HEIGHT_M = 2.2
+
 
 class KitScenesBenchmark(OpenLoopBenchmark):
     # ---- readiness ------------------------------------------------------
@@ -118,7 +145,7 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         poses = L.load_poses(scene)
 
         indices = L.frame_indices(keyframe, HISTORY_FRAMES)
-        calibration = _read_calibration(scene)
+        calibration = _read_calibration(scene, ground_offset=self._ground_offset())
 
         # Paths, not pixels. The node is a subprocess on this filesystem, so
         # neither side needs to carry 24 MB a frame.
@@ -132,6 +159,19 @@ class KitScenesBenchmark(OpenLoopBenchmark):
             split=row["split"],
             native_id={"scene_id": row["scene_id"], "keyframe_index": keyframe},
         )
+
+    def _ground_offset(self) -> float:
+        """Roof-pod height above the road, from the site config or `POD_HEIGHT_M`."""
+        return float(self.setting("ground_offset_m") or POD_HEIGHT_M)
+
+    def run_config(self) -> dict:
+        """The ground offset changes every projected point, so it is measured-with.
+
+        Recorded and hashed into the run id: two runs made with different
+        offsets put the camera at different heights and are not the same
+        measurement, which a bare ADE would not reveal.
+        """
+        return {"ground_offset_m": self._ground_offset()}
 
     def _scene_path(self, scene_id: str, split: str) -> Path:
         """Locate a scene across the configured tiers, fastest first."""
@@ -187,12 +227,18 @@ class KitScenesBenchmark(OpenLoopBenchmark):
 BENCHMARK = KitScenesBenchmark
 
 
-def _read_calibration(scene: Path, sensor: str = "camera_ring_front") -> tuple[np.ndarray, np.ndarray]:
-    """The scene's real camera intrinsics and extrinsics.
+def _read_calibration(
+    scene: Path, sensor: str = "camera_ring_front", ground_offset: float = POD_HEIGHT_M
+) -> tuple[np.ndarray, np.ndarray]:
+    """The scene's real camera intrinsics and extrinsics, in a road-level ego frame.
 
     Read from the dataset rather than assumed. openpilot derives its warp from
     these, so a guessed focal length would silently change what the model sees
     and therefore its score -- with nothing failing to indicate it.
+
+    *ground_offset* raises the origin from the roof pod to the road; see
+    `POD_HEIGHT_M`. Only the translation changes, so the rotation openpilot
+    reads is untouched.
     """
     import json
 
@@ -207,6 +253,10 @@ def _read_calibration(scene: Path, sensor: str = "camera_ring_front") -> tuple[n
         ]
     )
     # T_to_reference is camera -> the rig reference frame, which is the ego
-    # frame the ground truth poses are expressed in.
-    cam2ego = np.asarray(calib["T_to_reference"], dtype=np.float64)
+    # frame the ground truth poses are expressed in. Its origin sits on the roof
+    # pod, so the z translation is shifted to put it on the road -- the frame
+    # every ground-plane projection assumes it is given. The poses are x/y only,
+    # so nothing about the ground truth moves.
+    cam2ego = np.asarray(calib["T_to_reference"], dtype=np.float64).copy()
+    cam2ego[2, 3] += ground_offset
     return intrinsics, cam2ego

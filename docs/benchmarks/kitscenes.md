@@ -29,21 +29,22 @@ became the set every later model had to match. Reading it as a sample list uses
 beside them; `paddock ingest` reads the same file for the predictions, which is
 how Drive-JEPA has a row on this benchmark without a paddock run.
 
-### Drive-JEPA's row came in through ingest
+### The four rows, and where each came from
 
 | model | run | n | ADE | source |
 |---|---|---:|---:|---|
 | alpamayo15 | `legacy-full-nonav` | 223 | 0.921 | `eval_kitscenes/runs/full` |
+| visionpilot | `20260909T202724-153b04` | 223 | 1.534 | a paddock run; see below |
 | openpilot | `legacy-full223` | 223 | 1.599 | `eval_kitscenes/runs/full223` |
 | drivejepa | `legacy-kitscenes_e2e_final` | 223 | 2.364 | `inference/kitscenes_e2e_final.pkl` |
 
-All three carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
-so the column compares. Two caveats that the hash cannot express:
+All four carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
+so the column compares. Caveats the hash cannot express:
 
 - **Route hint.** Drive-JEPA was run with `--command gt`, which derives a turn
-  command from the recorded future on 39 of the 223 samples; openpilot has no
-  such input and Alpamayo's equivalent is its `nav` arm. Recorded as
-  `command_source` in that run's `config`.
+  command from the recorded future on 39 of the 223 samples; openpilot and
+  VisionPilot have no such input, and Alpamayo's equivalent is its `nav` arm.
+  Recorded as `command_source` in that run's `config`.
 - **Domain.** The checkpoint is trained on nuPlan/OpenScene — US cities, a
   windshield rig — and KITScenes is European driving from a roof pod. Its rank
   here is a zero-shot transfer result, which is why it sits last on this
@@ -54,6 +55,47 @@ Nearly all of Drive-JEPA's error is longitudinal (2.317 m against 0.209 m
 lateral, an 11:1 split, from the original report, which decomposed it against
 Alpamayo only): it steers better than Alpamayo and predicts speed far worse,
 so its last place here is a speed result rather than a path one.
+## VisionPilot has no trajectory of its own
+
+VisionPilot is an L2 assist stack. Its three networks return a path drawn in
+*image* space, a distance to the closest in-path object, and boxes tagged with a
+threat class. No metres, no timing. The adapter builds the trajectory by porting
+the stack's own planner: project the AutoSteer points onto the road, fit a
+curve, then walk an IDM speed schedule along it. So an ADE here scores
+perception, projection, the curve fit, the speed assumption and extrapolation
+together, and it is not comparable in kind with a model that emits a timed
+trajectory directly.
+
+Two things about this dataset broke that pipeline, and both are worth knowing
+before reading the number.
+
+**The ego frame is not on the road.** KITScenes calibrates every sensor against
+`base_frame`, which is the roof pod. The front ring camera sits at z = -0.183 m
+in it. Ground projection assumes z = 0 *is* the road -- true for neuroNCAP,
+which zeroes the ego pose's z, and for CARLA, which mounts the camera 1.5 m up.
+A negative camera height flips the sign of the ray-plane scale, so every
+projected point lands *behind* the car: measured on the first three samples, 0
+of 32, 0 of 29 and 0 of 28 AutoSteer points came out ahead of the ego, and since
+the furthest sat at -0.09 m every waypoint fell past the fitted extent and came
+from the straight-line tangent rule. The lateral path was a perfectly straight
+line, identical step to step to seven decimals.
+
+`ground_offset_m` (default 2.2, `POD_HEIGHT_M`) raises the origin to the road.
+The same points then span 25-46 m ahead. Only the translation moves, so a model
+reading just the rotation is untouched -- openpilot's three-sample ADE is
+1.591566 against its recorded 1.591566, unchanged.
+
+**The cruise set-speed was latched 4.8 s early.** KITScenes supplies no posted
+limit, so VisionPilot falls back to `max(speed, 1.0)` at the first frame it is
+shown -- which `infer_sequence` makes the *start of the history*, not the frame
+being scored. That pinned 39 of 223 samples to a 1 m/s crawl while the ego was
+moving. `observe()` now warms the filters without fixing the set-point, moving
+the latch to the scored frame; 12 samples remain at the floor, and those are
+cars genuinely stopped at the keyframe. This uses the speed the car has at
+prediction time, not the recorded future -- the driver's speed changes 1.36 m/s
+on average over the scored 3 s, so it stays a prediction.
+
+Together these took the three-sample ADE from 5.486 to 1.996.
 
 ## Samples are sequences
 
