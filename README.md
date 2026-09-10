@@ -50,7 +50,7 @@ flowchart LR
         ks["KITScenes<br/>ADE / FDE"]
     end
     subgraph pseudo ["pseudo-closed-loop"]
-        nv["NAVSIM v2<br/>EPDMS"]
+        nv["NAVSIM<br/>v1 PDMS · v2 EPDMS"]
     end
     subgraph closed ["closed-loop"]
         direction TB
@@ -105,13 +105,13 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 
 🟢 open-loop · 🟡 pseudo-closed-loop · 🔴 closed-loop · ↑ higher is better · ↓ lower is better
 
-| | 🟢 nuScenes cumulative L2 avg ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🔴 Bench2Drive driving score ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim nuRec scene score ↑ (0–1) | 🔴 AlpaSim (OmniDreams) |
-|---|---|---|---|---|---|---|---|
-| OpenPilot | 2.477 △ | 1.599 | ✗ 2 Hz ‡ | 30.09 ≈ ◆ | **3.60** ‖ | 0.9566 ¶ | planned |
-| Alpamayo 1.5 | 0.787 △ | 1.002 | 0.608 † | 44.58 ◆ | **3.73** ‖ | 0.8000 ¶ | planned |
-| Drive-JEPA | 0.912 △ | 2.364 | 0.843 | 31.11 ◆ | **3.57** ‖ | 0.5619 ¶ | planned |
-| VisionPilot | 1.441 △ | 1.534 ∗ | 0.431 | 49.85 ◆ | **1.58** ‖ | 0.8864 ¶ | planned |
-| Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | 47.94 ♣ | 0 § | 0.3562 ¶ | — |
+| | 🟢 nuScenes cumulative L2 avg ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🟡 NAVSIM v1 PDMS ↑ (0–1) | 🔴 Bench2Drive driving score ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim nuRec scene score ↑ (0–1) | 🔴 AlpaSim (OmniDreams) |
+|---|---|---|---|---|---|---|---|---|
+| OpenPilot | 2.477 △ | 1.599 | ✗ 2 Hz ‡ | ✗ 2 Hz ‡ | 30.09 ≈ ◆ | **3.60** ‖ | 0.9566 ¶ | planned |
+| Alpamayo 1.5 | 0.787 △ | 1.002 | 0.608 † | running † | 44.58 ◆ | **3.73** ‖ | 0.8000 ¶ | planned |
+| Drive-JEPA | 0.912 △ | 2.364 | 0.843 | running † | 31.11 ◆ | **3.57** ‖ | 0.5619 ¶ | planned |
+| VisionPilot | 1.441 △ | 1.534 ∗ | 0.431 | running † | 49.85 ◆ | **1.58** ‖ | 0.8864 ¶ | planned |
+| Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | running † | 47.94 ♣ | 0 § | 0.3562 ¶ | — |
 
 ∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
 KITScenes, Paddock constructs sampled XY points from its projected image-space
@@ -140,6 +140,11 @@ proxy figure is the comparable one. `preflight` refuses a partial split unless t
 otherwise, so a subset cannot be reported as full navtest by accident, and the
 subset rows in `results/` are stored `valid: false` -- they appear under
 "Excluded runs" and never average against a full-split row.
+The **NAVSIM v1 PDMS** column scores the same 12,146 scenarios with the v1.1
+devkit -- the composite the 2024 leaderboard uses, on which the NAVSIM paper
+reports constant velocity 20.6 and human 94.8 -- see
+`docs/benchmarks/navsim_v1.md`. Alpamayo's v1 figure replays the plans its v2
+run recorded (the same plans, the other scorer); the rest are fresh proxy runs.
 
 ‡ OpenScene is a 2 Hz dataset and OpenPilot infers motion from frame-to-frame
 change, so it plans a parked car — 0.30 m of travel in 4 s at 4.8 m/s. Its model
@@ -240,6 +245,21 @@ was first run on, for reference only.
 | Drive-JEPA | **0.843** | 0.984 | 0.985 | 0.991 | 0.998 | 0.889 | 0.979 | 0.974 | 0.978 | 0.477 | 0.880 |
 | VisionPilot | 0.431 | 0.727 | 0.819 | 0.926 | 0.975 | 0.404 | 0.700 | 0.899 | 0.968 | 0.518 | 0.447 |
 | Baseline (Constant Velocity) | 0.239 | 0.681 | 0.578 | 0.805 | 0.981 | 0.209 | 0.669 | 0.827 | 0.979 | 0.567 | 0.257 |
+
+### NAVSIM v1
+
+The same 12,146 navtest scenarios, scored by the v1.1 devkit as PDMS =
+NC × DAC × (5·TTC + 5·EP + 2·comfort) / 12 (`docs/benchmarks/navsim_v1.md`).
+Driving direction compliance is recorded with weight zero. Rows land here as
+the runs complete.
+
+| Model | PDMS ↑ | No at-fault collisions ↑ | Drivable area ↑ | Ego progress ↑ | TTC within bound ↑ | Comfort ↑ | Driving direction (weight 0) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| OpenPilot | — ‡ | — | — | — | — | — | — |
+| Alpamayo 1.5 | running | | | | | | |
+| Drive-JEPA | running | | | | | | |
+| VisionPilot | running | | | | | | |
+| Baseline (Constant Velocity) | running | | | | | | |
 
 ### Bench2Drive — historical 24-route results
 

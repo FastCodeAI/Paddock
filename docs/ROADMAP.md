@@ -12,6 +12,7 @@ because both organisations need to see it.
 | **M5** | Reproduce closed-loop (neuroNCAP) | **partial** | adapters proven identical to the original nodes; see `docs/benchmarks/neuroncap.md` |
 | **M6** | Reproduce open-loop (KITScenes) | **done** | full n=223: 892/892 metric comparisons identical at full float precision |
 | **M7** | NAVSIM benchmark adapter | **done** | reproduction exact (2379/2379 metrics identical, delta 0.0); 3 of 4 models scored, openpilot blocked by a 2 Hz dataset |
+| **M7b** | NAVSIM v1 PDMS beside v2 EPDMS | in progress | adapter and v1 metric cache built; constant-velocity and human anchors, then the three models, being run -- see `docs/benchmarks/navsim_v1.md` |
 
 ## What "done" means here, and what it does not
 
@@ -117,6 +118,18 @@ in one of the two cases.
 Both grid changes are additive at the tail, so no recorded neuroNCAP or
 KITScenes score moves: `to_wire` takes the first six poses and
 `displacement_errors` truncates at 3 s. Pinned by tests.
+
+**M7b — NAVSIM v1 PDMS.** The same scenes scored by the v1.1 devkit vendored
+beside the v2 one, as its own benchmark `navsim_v1` (own metric name, results
+tree and site block), implemented as a subclass of the v2 harness and proxy.
+Doing it found that the shared parser had one devkit generation's vocabulary
+baked in, that the v2 harness kept its variant knobs as module constants, and
+that the runner could not run an external scorer without a policy node -- the
+constant-velocity record for v2 was an untracked one-off. All three are now
+general: `ScoreVocabulary`, class attributes, and `nodeless.py`, which also
+replays a run's recorded plans under another devkit (alpamayo15's v1 number
+comes from the plans that produced its v2 number, no GPU). What is proven
+versus argued is tracked in `docs/benchmarks/navsim_v1.md` as runs land.
 
 **openpilot is genuinely blocked.** OpenScene is 2 Hz by construction and
 supercombo's complete non-image input set is `{desire_pulse,

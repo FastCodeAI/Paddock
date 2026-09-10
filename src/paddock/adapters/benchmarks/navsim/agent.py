@@ -33,6 +33,14 @@ Three things here exist because the fork made them necessary:
 * ``PaddockConstantVelocityAgent`` exists to give the scoring path a baseline
   that actually runs, without patching vendor source.
 
+The same classes serve the v1 devkit (``navsim_v1``), whose ``AbstractAgent``
+constructor takes no trajectory sampling and whose scorer never passes the
+metric cache: the base adapts to either constructor, and the v1 proxy in
+``adapters/benchmarks/navsim_v1/agent.py`` overrides only how a plan is
+labelled. ``PaddockReplayAgent`` and ``PaddockHumanAgent`` need no model at
+all and exist for node-less runs (``nodeless.py``): re-scoring recorded plans,
+and anchoring the scoring path against the devkit's published human figure.
+
 The privileged arguments (``metric_cache``, ``past_ego_simulated_states``) are
 accepted and **ignored**. Drive-JEPA's native agent uses them to re-rank its
 proposals against the scorer's own comfort metric; a model behind an HTTP node
@@ -42,8 +50,10 @@ others do not is not a comparison. See docs/benchmarks/navsim.md.
 
 from __future__ import annotations
 
+import inspect
 import json
 import os
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -57,6 +67,7 @@ from paddock.adapters.benchmarks.navsim.convert import (
     NAVSIM_INTERVAL_S,
     NAVSIM_NUM_POSES,
     canbus,
+    load_plans,
     pose_matrix,
     to_navsim_poses,
 )
@@ -66,8 +77,26 @@ from paddock.policy.protocol import Command, Observation, constant_velocity
 RETRY_BACKOFF_S = 1.0
 
 
+def scene_label(scene: Any) -> dict:
+    """Which scenario a plan belongs to, from the Scene a scorer passes an agent
+    that declares `requires_scene`. Both devkits pass one; it is the only thing
+    v1 hands an agent that names the scenario. A label only, never an input."""
+    if scene is None:
+        return {}
+    meta = scene.scene_metadata
+    current = scene.frames[meta.num_history_frames - 1]
+    return {
+        "token": meta.initial_token,
+        "log_name": meta.log_name,
+        # Frame timestamps are integer microseconds; the v2 metric cache's
+        # timepoint.time_s is seconds, so the two dumps agree.
+        "time_s": float(current.timestamp) / 1e6,
+    }
+
+
 class _PaddockAgentBase(AbstractAgent):
-    """Shared plumbing. Calls super().__init__(), which the fork's agents do not."""
+    """Shared plumbing. Calls super().__init__(), which the fork's agents do
+    not, for either devkit generation's constructor."""
 
     requires_scene = False
 
@@ -77,7 +106,21 @@ class _PaddockAgentBase(AbstractAgent):
                 time_horizon=NAVSIM_NUM_POSES * NAVSIM_INTERVAL_S,
                 interval_length=NAVSIM_INTERVAL_S,
             )
-        super().__init__(trajectory_sampling)
+        # v2's AbstractAgent.__init__(trajectory_sampling, requires_scene=False)
+        # stores both; v1's AbstractAgent.__init__(requires_scene=False) stores
+        # only the flag. A positional call under v1 does not raise -- it stores
+        # the sampling *as* requires_scene, which is truthy, so the scorer would
+        # silently switch to its scene-passing call and every scenario would
+        # then fail on the missing _trajectory_sampling -- hence a signature
+        # check rather than try/except. Both constructors set requires_scene as
+        # an instance attribute, shadowing the class attribute a subclass
+        # declares, so the class's value is read first and passed explicitly.
+        requires_scene = bool(type(self).requires_scene)
+        if "trajectory_sampling" in inspect.signature(AbstractAgent.__init__).parameters:
+            super().__init__(trajectory_sampling, requires_scene=requires_scene)
+        else:
+            super().__init__(requires_scene=requires_scene)
+        self._trajectory_sampling = trajectory_sampling
 
     def name(self) -> str:
         return self.__class__.__name__
@@ -272,6 +315,32 @@ class PaddockProxyAgent(_PaddockAgentBase):
         metric_cache: Any = None,
         observation_interval: Any = None,
     ) -> Trajectory:
+        """The v2 scorer's call. The privileged arguments are accepted and
+        ignored (module docstring); the metric cache only labels the plan dump."""
+        return self._plan(agent_input, self._cache_label(metric_cache))
+
+    @staticmethod
+    def _cache_label(metric_cache: Any) -> dict:
+        """Which scenario a plan belongs to, from the v2 scorer's metric cache.
+
+        MetricCache has no token field, but its file lives at
+        <cache>/<log>/<type>/<token>/..., so the token is the parent directory's
+        name. Read as a label only -- never as an input to the model -- so that
+        a run whose scorer dies after the last forward pass can be re-scored
+        from these plans (PaddockReplayAgent) instead of re-run. 12,144
+        alpamayo plans were once lost for want of this.
+        """
+        if metric_cache is None:
+            return {}
+        path = getattr(metric_cache, "file_path", None)
+        return {
+            "token": os.path.basename(os.path.dirname(str(path))) if path else None,
+            "log_name": getattr(metric_cache, "log_name", None),
+            "time_s": getattr(getattr(metric_cache, "timepoint", None), "time_s", None),
+        }
+
+    def _plan(self, agent_input: AgentInput, scenario: dict) -> Trajectory:
+        """Ask the node for a plan and record it under *scenario*'s label."""
         yaw_rates = self._yaw_rates(agent_input.ego_statuses)
         observations = [
             self._frame_payload(agent_input, index, yaw_rates[min(index, len(yaw_rates) - 1)])
@@ -315,38 +384,22 @@ class PaddockProxyAgent(_PaddockAgentBase):
             raise last_error if last_error is not None else RuntimeError("policy node gave no answer")
 
         poses = to_navsim_poses(body["trajectory"], float(body.get("dt", NAVSIM_INTERVAL_S)))
-        self._record(agent_input, body, poses, metric_cache)
+        self._record(agent_input, body, poses, scenario)
         return Trajectory(poses.astype(np.float32), self._trajectory_sampling)
 
-    def _record(
-        self, agent_input: AgentInput, body: dict, poses: np.ndarray, metric_cache: Any = None
-    ) -> None:
+    def _record(self, agent_input: AgentInput, body: dict, poses: np.ndarray, scenario: dict) -> None:
         """Append one plan to the dump, alongside the ego state that produced it.
 
         Best-effort: a failure to write a diagnostic must never fail a run, and
         four scorer processes append to one file, so each line is written in a
         single `write` call to stay atomic on POSIX for payloads this small.
+        `scenario` is the label (token, log_name, time_s) the caller derived.
         """
         if not self._dump_path:
             return
         try:
             status = agent_input.ego_statuses[-1]
             speed = float(np.linalg.norm(np.asarray(status.ego_velocity, dtype=np.float64)))
-            # Which scenario this plan belongs to. MetricCache has no token
-            # field, but its file lives at <cache>/<log>/<type>/<token>/..., so
-            # the token is the parent directory's name. Read as a label only --
-            # never as an input to the model -- so that a run whose scorer dies
-            # after the last forward pass can be re-scored from these plans
-            # through run_pdm_score_from_submission.py instead of re-run.
-            # 12,144 alpamayo plans were once lost for want of this.
-            scenario = {}
-            if metric_cache is not None:
-                path = getattr(metric_cache, "file_path", None)
-                scenario = {
-                    "token": os.path.basename(os.path.dirname(str(path))) if path else None,
-                    "log_name": getattr(metric_cache, "log_name", None),
-                    "time_s": getattr(getattr(metric_cache, "timepoint", None), "time_s", None),
-                }
             line = json.dumps(
                 {
                     **scenario,
@@ -361,3 +414,55 @@ class PaddockProxyAgent(_PaddockAgentBase):
                 handle.write(line + "\n")
         except Exception:  # noqa: BLE001 - diagnostics must not break a scoring run
             pass
+
+
+class PaddockReplayAgent(_PaddockAgentBase):
+    """Recorded plans, handed back to the scorer. No model, no node, no images.
+
+    Every proxy run dumps its plans with their scenario tokens; this agent
+    replays them, so the plans that produced one devkit generation's score can
+    be scored under the other (v1 PDMS from the run that measured v2 EPDMS), or
+    a run whose scorer died after the last forward pass can be finished, without
+    running the model again. A token with no recorded plan raises, so the
+    scorer records that scenario as failed rather than paddock inventing one.
+
+    Asks for the Scene: it is the one thing both devkits pass an agent that
+    names the scenario. Loads no sensors, so the scene costs no JPEG decodes.
+    """
+
+    requires_scene = True
+
+    def __init__(self, plans_dir: str, trajectory_sampling: TrajectorySampling | None = None) -> None:
+        super().__init__(trajectory_sampling)
+        self._plans = load_plans(sorted(Path(plans_dir).rglob("trajectories.jsonl")))
+        if not self._plans:
+            raise FileNotFoundError(f"no trajectories.jsonl with scenario tokens under {plans_dir}")
+
+    def get_sensor_config(self) -> SensorConfig:
+        return SensorConfig.build_no_sensors()
+
+    def compute_trajectory(self, agent_input: AgentInput, scene: Any = None) -> Trajectory:
+        token = scene_label(scene).get("token")
+        if token is None:
+            raise RuntimeError("the replay agent needs the Scene and the scorer passed none")
+        poses = np.asarray(self._plans[token], dtype=np.float32)
+        return Trajectory(poses, self._trajectory_sampling)
+
+
+class PaddockHumanAgent(_PaddockAgentBase):
+    """The recorded human future, handed back. Privileged -- it reads the frames
+    the scorer is about to score against -- so it is an anchor for the scoring
+    path, never a model, and a run of it is stored valid=false: navsim v1
+    reports it at 0.948 PDMS on navtest, against 0.206 for constant velocity.
+    The fork's own HumanAgent never initialises nn.Module and dies in
+    `agent.eval()`; this one is the same three lines on paddock's base."""
+
+    requires_scene = True
+
+    def get_sensor_config(self) -> SensorConfig:
+        return SensorConfig.build_no_sensors()
+
+    def compute_trajectory(self, agent_input: AgentInput, scene: Any = None) -> Trajectory:
+        if scene is None:
+            raise RuntimeError("the human agent needs the Scene and the scorer passed none")
+        return scene.get_future_trajectory(self._trajectory_sampling.num_poses)

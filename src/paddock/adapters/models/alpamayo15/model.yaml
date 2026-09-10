@@ -34,4 +34,4 @@ capabilities:
   # collisions avoided.
   min_input_hz: 0.0
 
-benchmarks: [kitscenes, neuroncap, navsim, bench2drive]
+benchmarks: [kitscenes, neuroncap, navsim, navsim_v1, bench2drive]
