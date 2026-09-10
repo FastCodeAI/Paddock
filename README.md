@@ -254,50 +254,53 @@ not establish the performance of the corrected controller.
 
 #### Recorded infractions (24 routes per model)
 
-Counts below include **all recorded infraction categories**. Lower is better,
-with the exposure caveat below. They count entries in upstream route records,
-not per-kilometre rates, penalty factors, or a count of unique affected routes.
-Assisted OpenPilot results are excluded. Its pre-resume estimate above does not
-provide a comparable full-route unassisted infraction table; the available
-OpenPilot observations and prefix estimates are reported separately below.
+Counts are lengths of the upstream per-route infraction lists, not per-kilometre rates,
+penalty factors, or numbers of affected routes. **OpenPilot includes assistance on
+16 of 24 routes**, as present in the full recordings; its scores here must not be
+combined with the unassisted prefix estimate above. CV uses the selected fixed
+6 m/s target on the same route set.
 
-| Infraction entries ↓ | DriveJEPA | VisionPilot | Alpamayo 1.5 (nav) |
-|---|---:|---:|---:|
-| Pedestrian collision (`collisions_pedestrian`) | 2 | 3 | 2 |
-| Vehicle collision (`collisions_vehicle`) | 2 | 14 | 16 |
-| Layout collision (`collisions_layout`) | 2 | 3 | 1 |
-| Red light (`red_light`) | 1 | 6 | 0 |
-| Stop sign (`stop_infraction`) | 0 | 2 | 0 |
-| Outside route lanes (`outside_route_lanes`) | 3 | 3 | 12 |
-| Route deviation (`route_dev`) | 3 | 2 | 0 |
-| Vehicle blocked (`vehicle_blocked`) | 5 | 0 | 3 |
-| Failure to yield to emergency vehicle (`yield_emergency_vehicle_infractions`) | 1 | 1 | 0 |
-| Minimum speed (`min_speed_infractions`) | 170 | 338 | 325 |
-| Route timeout (`route_timeout`) | 0 | 0 | 0 |
-| Scenario timeout (`scenario_timeouts`) | 0 | 0 | 0 |
+| Metric / recorded entries | DriveJEPA | VisionPilot | Alpamayo 1.5 (nav) | OpenPilot (full recorded) | CV (fixed 6 m/s) |
+|---|---:|---:|---:|---:|---:|
+| Mean route completion (%) | 40.44 | 75.54 | 73.36 | 66.81 | 75.79 |
+| Mean driving score | 31.11 | 49.85 | 44.58 | 53.62 | 39.23 |
+| Pedestrian collision (`collisions_pedestrian`) | 2 | 3 | 2 | 1 | 5 |
+| Vehicle collision (`collisions_vehicle`) | 2 | 14 | 16 | 4 | 14 |
+| Layout collision (`collisions_layout`) | 2 | 3 | 1 | 2 | 17 |
+| Red light (`red_light`) | 1 | 6 | 0 | 4 | 6 |
+| Stop sign (`stop_infraction`) | 0 | 2 | 0 | 2 | 2 |
+| Outside route lanes (`outside_route_lanes`) | 3 | 3 | 12 | 1 | 7 |
+| Route deviation (`route_dev`) | 3 | 2 | 0 | 4 | 5 |
+| Vehicle blocked (`vehicle_blocked`) | 5 | 0 | 3 | 2 | 2 |
+| Failure to yield to emergency vehicle (`yield_emergency_vehicle_infractions`) | 1 | 1 | 0 | 1 | 1 |
+| Minimum speed (`min_speed_infractions`) | 170 | 338 | 325 | 300 | 339 |
+| Route timeout (`route_timeout`) | 0 | 0 | 0 | 0 | 0 |
+| Scenario timeout (`scenario_timeouts`) | 0 | 0 | 0 | 0 | 0 |
+| Total collision events | 6 | 20 | 19 | 7 | 36 |
+| Routes with any collision | 6/24 | 15/24 | 13/24 | 6/24 | 16/24 |
 
-| Collision summary ↓ | DriveJEPA | VisionPilot | Alpamayo 1.5 (nav) |
-|---|---:|---:|---:|
-| Total collision events | 6 | 20 | 19 |
-| Routes with any collision | 6/24 (25.0%) | 15/24 (62.5%) | 13/24 (54.2%) |
+**Why DriveJEPA has fewer minimum-speed entries:** `MinimumSpeedRouteTest` emits
+an entry at distance checkpoints (20 configured per route), without requiring the
+reported speed percentage to be below 100%. In fact, 63/170 DriveJEPA entries,
+277/338 VisionPilot entries, 198/325 Alpamayo entries and 192/300 OpenPilot entries
+report at least 100%. Fewer entries therefore do not establish better speed
+compliance. DriveJEPA's 40.44% mean route completion gives it fewer opportunities
+to reach these checkpoints than VisionPilot's 75.54% or Alpamayo's 73.36%.
+The upstream statistics manager also marks this percentage penalty as `unused`.
 
-Minimum-speed entries are reported separately: the checked upstream statistics
-manager marks their percentage penalty as unused. Outside-route-lane entries
-also carry severity information in the raw records; their count is not distance
-outside the lane. We do not sum these heterogeneous categories into a safety score.
-A model that stalls drives less and can encounter fewer collisions: compare
-these counts alongside route completion, not in isolation.
+Outside-route-lane counts do not measure distance outside the lane. Early stops
+reduce exposure to collisions and other events; compare counts with route completion.
+Do not sum these heterogeneous entries into a safety score.
 
 [Per-route counts, scores and source hashes](docs/benchmarks/bench2drive-24-infractions.json)
-allow the totals to be independently recomputed. The new 26-route expansion is
-not included.
+allow independent recomputation. The new 26-route expansion is excluded.
 
 #### OpenPilot infractions and correlation data
 
 [Download per-route OpenPilot counts and driving scores (CSV)](docs/benchmarks/openpilot-24-infractions.csv).
 This covers the same 24 routes as the ≈30.09 driving-score estimate above:
 8 recordings had no intervention; 16 rows estimate the prefix ending at the
-first intervention. No assisted full-run scores or totals are included.
+first intervention. This CSV excludes assisted full-run totals; the full recorded table above includes them.
 
 | Infraction entries | Observed, 8 no-intervention routes | Estimated prefix + observed, 24 routes ≈ |
 |---|---:|---:|
@@ -331,19 +334,20 @@ a correlation does not independently establish model quality or causation.
 
 #### Constant velocity — fixed-speed baseline
 
-The separate **3 m/s** experiment completed all **24 / 24** routes on the same
-route set, with zero infrastructure failures. Higher is better for these metrics.
+All five fixed targets completed the same 24 routes. These are straight
+trajectories tracked by the shared PID, without route following or collision avoidance.
+Actual achieved speed may differ from the target. The selected baseline remains
+6 m/s; no best-speed-per-route selection is used.
 
-| Target speed (m/s) | Routes scored | Driving score ↑ | Route completion ↑ (%) | Infraction penalty factor ↑ |
-|---:|---:|---:|---:|---:|
-| 3 | 24 / 24 | 47.94 | 74.68 | 0.635 |
+| Target (m/s) | Routes | Driving score | Route completion (%) |
+|---:|---:|---:|---:|
+| 3 | 24 | 47.94 | 74.68 |
+| 6 | 24 | 39.23 | 75.79 |
+| 9 | 24 | 45.88 | 74.59 |
+| 12 | 24 | 46.49 | 75.16 |
+| 15 | 24 | 44.94 | 76.84 |
 
-[Run configuration](results/bench2drive/constant_velocity/20260908T084921-804913/run.json)
-· [Full metrics](results/bench2drive/constant_velocity/20260908T084921-804913/metrics.json).
-This fixes the target speed rather than holding the zero speed at route start;
-the path is straight in the ego frame, not a route-following reference. Targets
-of 6, 9, 12 and 15 m/s are separate experiments; no complete aggregate is
-published for them here. The saved run reused four completed route checkpoints.
+All five bands’ per-route scores and infraction counts are in the linked JSON above.
 
 ### neuroNCAP
 
