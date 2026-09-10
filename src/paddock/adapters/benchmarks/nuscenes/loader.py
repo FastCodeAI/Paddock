@@ -120,6 +120,69 @@ def obb_intersects(box_a, box_b) -> bool:
     return True
 
 
+def _seg_point_distance(point, a, b) -> float:
+    """Distance from `point` to segment ab."""
+    ab = b - a
+    denom = float(ab @ ab)
+    t = 0.0 if denom == 0.0 else float(np.clip((point - a) @ ab / denom, 0.0, 1.0))
+    return float(np.linalg.norm(point - (a + t * ab)))
+
+
+def obb_signed_margin(box_a, box_b) -> float:
+    """Signed clearance between two oriented rectangles, in metres.
+
+    Positive is the gap between them; negative is how deep they overlap. Zero is
+    exact contact. `obb_intersects(a, b)` is `obb_signed_margin(a, b) <= 0`.
+
+    Two branches, because one formula does not give both exactly:
+
+    * **Disjoint** -- the true polygon distance, the smallest vertex-to-edge
+      distance either way round. The separating-axis gap is *not* used here: on
+      face normals alone it underestimates whenever the closest features are two
+      corners, and a clearance metric that reads smaller than the real gap would
+      make near-misses look worse than they were.
+    * **Overlapping** -- the minimum-translation distance, the smallest overlap
+      across the face normals, which is the standard exact answer for convex
+      polygons and is what "how badly did it hit" should mean.
+
+    The boolean this replaces was the reason more than half of a per-scene
+    collision column came out as exactly 0.0: a clean miss and a miss by four
+    centimetres were recorded identically, leaving nothing to correlate.
+    """
+    a, b = box_corners(box_a), box_corners(box_b)
+    if not obb_intersects(box_a, box_b):
+        best = float("inf")
+        for poly_p, poly_q in ((a, b), (b, a)):
+            for point in poly_p:
+                for i in range(4):
+                    best = min(best, _seg_point_distance(point, poly_q[i], poly_q[(i + 1) % 4]))
+        return best
+    depth = float("inf")
+    for poly in (a, b):
+        for i in range(4):
+            edge = poly[(i + 1) % 4] - poly[i]
+            axis = np.array([-edge[1], edge[0]], dtype=np.float64)
+            norm = float(np.linalg.norm(axis))
+            if norm == 0.0:
+                continue
+            axis /= norm
+            pa, pb = a @ axis, b @ axis
+            depth = min(depth, float(min(pa.max(), pb.max()) - max(pa.min(), pb.min())))
+    return -depth
+
+
+def margin_to(ego_box, boxes) -> float:
+    """Signed clearance from the ego footprint to the NEAREST of `boxes`.
+
+    `inf` when there is nothing to hit -- the caller decides what an empty scene
+    means, because clipping it to some large number here would put a fabricated
+    distance into a metric.
+    """
+    if len(boxes) == 0:
+        return float("inf")
+    return min(obb_signed_margin(ego_box, box) for box in boxes)
+
+
 def collides(ego_box, boxes) -> bool:
     """Does the ego footprint at `ego_box` overlap any of `boxes` (N, 5)?"""
     if len(boxes) == 0:
