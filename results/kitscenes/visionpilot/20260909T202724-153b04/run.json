@@ -1,0 +1,30 @@
+{
+  "run_id": "20260909T202724-153b04",
+  "site": "fastcode-shakaal",
+  "benchmark": "kitscenes",
+  "model": "visionpilot",
+  "mode": "open_loop",
+  "started_utc": "2026-09-09T20:27:24+00:00",
+  "duration_s": 2945.4,
+  "repo_sha": null,
+  "dataset": {
+    "name": "kitscenes",
+    "n_samples": 223,
+    "sequences_sha256": "80665529bea7f500"
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT"
+    ],
+    "ground_offset_m": 2.2,
+    "model_env": {
+      "VISIONPILOT_ORT_THREADS": "2"
+    }
+  },
+  "hardware": {},
+  "status": "complete",
+  "valid": true,
+  "notes": "",
+  "ingested_from": ""
+}
