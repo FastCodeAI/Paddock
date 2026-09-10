@@ -97,6 +97,26 @@ on average over the scored 3 s, so it stays a prediction.
 
 Together these took the three-sample ADE from 5.486 to 1.996.
 
+![How the trajectory is built](../assets/visionpilot_kitscenes_pipeline.png)
+
+The left panel is the whole roof-pod story in one picture: the same 29 AutoSteer
+points, projected twice. With the origin on the road they span 3-31 m ahead;
+with the origin where KITScenes puts it, all 29 land behind the car.
+
+![Timed trajectory vs bare geometry](../assets/visionpilot_kitscenes_trajectories.png)
+
+The second figure is worth keeping for a different reason. It separates the
+timed trajectory from the *bare path geometry* -- the fitted curve with no speed
+schedule -- because those are easy to confuse and score very differently. The
+clearest case is `950dda14`, where the ego is doing 0.4 m/s and travels 0.1 m in
+3 s: the timed plan barely moves and scores 1.39, while the geometry alone runs
+31 m out and scores 14.01. A path with no clock cannot know the car is stopped.
+
+Both are drawn by `tools/benchmarks/kitscenes/visionpilot_figures.py` from a
+stage dump written by `visionpilot_stages.py`, which records the pod-origin and
+stale-set-point variants alongside the merged behaviour so the comparison can be
+redrawn without arguing from memory.
+
 ## Samples are sequences
 
 Each sample is 48 preceding source frames plus the keyframe, not a single image.
