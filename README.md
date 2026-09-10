@@ -110,12 +110,17 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 | OpenPilot | 2.477 △ | 1.599 | ✗ 2 Hz ‡ | 30.09 ≈ ◆ | **3.60** ‖ | 0.9566 ¶ | planned |
 | Alpamayo 1.5 | 0.787 △ | 1.002 | 0.608 † | 44.58 ◆ | **3.73** ‖ | 0.8000 ¶ | planned |
 | Drive-JEPA | 0.912 △ | 2.364 | 0.843 | 31.11 ◆ | **3.57** ‖ | 0.5619 ¶ | planned |
-| VisionPilot | 1.441 △ | n/a ∗ | 0.431 | 49.85 ◆ | **1.58** ‖ | 0.8864 ¶ | planned |
+| VisionPilot | 1.441 △ | 1.534 ∗ | 0.431 | 49.85 ◆ | **1.58** ‖ | 0.8864 ¶ | planned |
 | Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | 47.94 ♣ | 0 § | 0.3562 ¶ | — |
 
-∗ VisionPilot has no native trajectory output. For nuScenes and NAVSIM, Paddock
-constructs sampled XY points from its projected image-space path and speed
-schedule. KITScenes has no scored trajectory for this adapter.
+∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
+KITScenes, Paddock constructs sampled XY points from its projected image-space
+path and speed schedule, so those three figures grade the whole synthesised
+pipeline -- perception, ground projection, curve fit, cruise-speed assumption
+and extrapolation past a 1 s planner horizon -- and are not comparable in kind
+with a model that emits a timed trajectory. The KITScenes run additionally
+needed the ego origin dropped from the roof pod to the road, without which every
+projected path point lands behind the car; see `docs/benchmarks/kitscenes.md`.
 
 △ nuScenes uses 5,119 scoring anchors across 150 validation scenes. The headline
 is the mean of cumulative L2 through 1, 2 and 3 seconds, not ADE at 3 seconds.
@@ -204,15 +209,16 @@ these tables report the saved runs, not new evaluations of the merged code.
 ### KITScenes
 
 Open-loop displacement error in metres over the 3 s horizon, full 223-sample
-split. Alpamayo 1.5 is its nav-conditioned single-draw run. VisionPilot has no
-trajectory to score (see ∗).
+split. Alpamayo 1.5 is its nav-conditioned single-draw run. VisionPilot's
+trajectory is synthesised by the adapter (see ∗). Only Alpamayo 1.5 beats the
+constant-velocity baseline on this benchmark.
 
 | Model | ADE@3s ↓ (m) | FDE@3s ↓ (m) |
 |---|---:|---:|
 | OpenPilot | 1.599 | 2.894 |
 | Alpamayo 1.5 | **1.002** | **2.158** |
 | Drive-JEPA | 2.364 | 4.199 |
-| VisionPilot | n/a ∗ | n/a ∗ |
+| VisionPilot | 1.534 ∗ | 3.089 ∗ |
 | Baseline (Constant Velocity) | 1.381 | 3.091 |
 
 ### NAVSIM v2
