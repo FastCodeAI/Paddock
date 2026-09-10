@@ -13,7 +13,7 @@ import typer
 
 from paddock import doctor as doctor_mod
 from paddock.config import ConfigError, SiteConfig
-from paddock.registry import Registry
+from paddock.registry import ModelSpec, Registry
 
 app = typer.Typer(
     add_completion=False,
@@ -35,6 +35,43 @@ def doctor(
     raise typer.Exit(code=1 if report.failed else 0)
 
 
+def model_card(m: ModelSpec) -> str:
+    """One line of what a model IS, for `paddock list models`.
+
+    Only what is recorded: a model declaring nothing gets no card line, which
+    reads as "nobody has written this down" rather than as a row of zeros.
+    """
+    parts: list[str] = []
+    if m.architecture:
+        parts.append(m.architecture)
+    if m.params_m is not None:
+        # Billions past 1000 M, because "10000 M params" reads as a typo.
+        big = m.params_m >= 1000
+        parts.append(f"{m.params_m / 1000:.0f} B params" if big else f"{m.params_m:g} M params")
+    if m.size_gb is not None:
+        parts.append(f"{m.size_gb:g} GB{' ' + m.precision if m.precision else ''}")
+    if m.macs_g is not None:
+        parts.append(f"{m.macs_g:g} GMACs")
+    if m.input_size is not None:
+        parts.append(f"{m.input_size[0]}x{m.input_size[1]}")
+    if m.history_frames is not None:
+        parts.append(f"{m.history_frames} frame{'s' if m.history_frames != 1 else ''}")
+    out = m.output_kind
+    if m.horizon_s is not None:
+        out += f" @{m.horizon_s:g}s"
+    parts.append(out)
+    if m.stochastic:
+        parts.append("stochastic")
+    if not m.needs_speed:
+        parts.append("no speed input")
+    if m.trained_on:
+        parts.append(
+            "trained on "
+            + ", ".join(f"{t.dataset}/{t.split}" if t.split else t.dataset for t in m.trained_on)
+        )
+    return " · ".join(parts)
+
+
 @app.command("list")
 def list_(
     what: str = typer.Argument("all", help="all | models | benchmarks | datasets | repos"),
@@ -52,17 +89,22 @@ def list_(
             typer.echo(f"  {name:<{width}}  {detail}")
 
     if what in ("all", "models"):
-        show(
-            "models",
-            [
-                (
-                    m.name,
-                    f"{m.runtime.kind}, {', '.join(m.cameras)}, {m.vram_gb:.0f} GB"
-                    + (f" -> {', '.join(m.benchmarks)}" if m.benchmarks else ""),
-                )
-                for m in registry.models.values()
-            ],
-        )
+        models = list(registry.models.values())
+        typer.echo("\nmodels")
+        if not models:
+            typer.echo("  (none registered)")
+        width = max((len(m.name) for m in models), default=0)
+        for m in models:
+            runtime = f"{m.runtime.kind}, {', '.join(m.cameras)}, {m.vram_gb:.0f} GB" + (
+                f" -> {', '.join(m.benchmarks)}" if m.benchmarks else ""
+            )
+            typer.echo(f"  {m.name:<{width}}  {runtime}")
+            card = model_card(m)
+            if card:
+                # Indented under the runtime line rather than appended to it:
+                # what a model IS and how to launch it are different questions,
+                # and joining them makes a line nobody reads to the end of.
+                typer.echo(f"  {'':<{width}}  {card}")
     if what in ("all", "benchmarks"):
         show(
             "benchmarks",

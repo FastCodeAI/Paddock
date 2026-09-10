@@ -28,4 +28,25 @@ capabilities:
   startup_timeout_s: 900
   waypoint_dt: 0.5
 
+  # -- model card (docs/models/comparison.md) --
+  architecture: "V-JEPA-2-init ViT-L encoder + proposal-centric planner"
+  params_m: 307
+  size_gb: 1.23
+  precision: fp32
+  input_size: [512, 256]
+  history_frames: 2
+  output_kind: waypoints
+  horizon_s: 4.0
+  trained_on:
+    # The only training exposure to a paddock benchmark's data among the four
+    # models -- and it leads that benchmark by 0.235 EPDMS. navtrain -> navtest
+    # is the protocol NAVSIM intends; what makes the column hard to read is that
+    # the other three meet navtest zero-shot. Its pre-training also included
+    # OpenScene, which IS the NAVSIM dataset. See comparison.md.
+    - dataset: navsim
+      split: navtrain
+    # Post-trained on CARLA for Bench2Drive. Its adapter there has not been run;
+    # when it is, that number is in-distribution while openpilot's and
+    # visionpilot's are not.
+    - dataset: carla
 benchmarks: [navsim, kitscenes, neuroncap, bench2drive]
