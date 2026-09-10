@@ -284,6 +284,12 @@ class NuScenesBenchmark(OpenLoopBenchmark):
             observations=observations,
             ground_truth=np.column_stack([future_xy, future_yaw]),
             split="val",
+            # Per-scene L2 in the tracked metrics.json. 150 scenes of a few
+            # numbers is still kilobytes, and it is what pairs this benchmark
+            # against neuroNCAP, which stages its collisions in these same
+            # scenes -- without that, the only way to ask how a model did on one
+            # scene is to re-read the per-sample records, if they still exist.
+            group=cur.scene,
             native_id={
                 "sample_token": cur.token,
                 "scene": cur.scene,

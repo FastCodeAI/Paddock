@@ -665,6 +665,7 @@ def _run_open_loop(
                         "sample_id": sample.sample_id,
                         "native_id": sample.native_id,
                         "split": sample.split,
+                        "group": sample.group,
                         "metrics": metrics,
                         # Kept so a result can be looked at, not just ranked.
                         # These live outside the repo with the rest of the run
