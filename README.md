@@ -203,9 +203,10 @@ benchmark's own dataset, and it leads that benchmark by 0.235 EPDMS.** It was
 post-trained on NAVSIM `navtrain` and pre-trained partly on OpenScene, which
 *is* the NAVSIM dataset; the other three meet `navtest` zero-shot. That is the
 protocol NAVSIM intends — it is not cheating — but it means the NAVSIM column
-conflates "better planner" with "in-distribution versus zero-shot". It was also
-post-trained on CARLA, so the same will apply to Bench2Drive once its adapter is
-run. Detail in [docs/models/comparison.md](docs/models/comparison.md).
+conflates "better planner" with "in-distribution versus zero-shot". Sourced at
+the pinned sha: `navsim_v2/scripts/training/train_drive_jepa_perception_based.sh`
+sets `TRAIN_TEST_SPLIT=navtrain` for the same agent whose checkpoint paddock
+loads. Detail in [docs/models/comparison.md](docs/models/comparison.md).
 
 ✧ The published architecture reads one front camera; the adapter declares four,
 because it runs the NAVSIM perception-based variant whose BEVFormer stage is

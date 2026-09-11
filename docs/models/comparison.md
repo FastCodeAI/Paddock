@@ -61,19 +61,47 @@ are non-commercial by default; VisionPilot's and OpenPilot's are not.
 
 ## What this changes about reading the support matrix
 
-**Drive-JEPA is the only model with training exposure to a paddock benchmark's
-dataset, and it leads that benchmark by a wide margin.**
+One of the four models has training exposure to a benchmark's own dataset. The
+score table cannot show that, and it changes how one column should be read.
 
-It was post-trained on NAVSIM `navtrain` and pre-trained partly on OpenScene —
-which *is* the NAVSIM dataset. The other three met `navtest` **zero-shot**.
-Drive-JEPA scores 0.843 EPDMS; the next model scores 0.608.
+**Every such pair gets its own section here**, named for the model and the
+dataset. `test_training_on_a_benchmarks_own_dataset_is_documented` requires one
+for any model that declares training on a dataset it is also scored on, and
+checks there is a paragraph under it — so a future adapter cannot inherit the
+situation and pass on the strength of having a row in the tables above.
+
+### Drive-JEPA × navsim
+
+**Drive-JEPA is the only one of the four with training exposure to a paddock
+benchmark's dataset, and it leads that benchmark by 0.235 EPDMS.** It was
+post-trained on NAVSIM `navtrain` and pre-trained partly on OpenScene — which
+*is* the NAVSIM dataset. The other three meet `navtest` zero-shot.
 
 To be precise about what this is and is not: training on `navtrain` and testing
 on `navtest` is **the protocol NAVSIM intends**. Drive-JEPA is not cheating; it
 is playing the benchmark the way the benchmark is designed to be played. What
 makes the column hard to read is that the other three are not playing it that
 way at all. The 0.235 EPDMS gap therefore conflates *"better planner"* with
-*"in-distribution versus zero-shot"*, and nothing on the page currently says so.
+*"in-distribution versus zero-shot"*, and nothing on the page previously said so.
+
+**Sourced at the pinned sha, not taken on trust.** In `Drive-JEPA @ e21f474`,
+the script `navsim_v2/scripts/training/train_drive_jepa_perception_based.sh`
+reads:
+
+```bash
+TRAIN_TEST_SPLIT=navtrain                          # line 4
+...
+        agent=drive_jepa_perception_based_agent \  # line 7
+        train_test_split=$TRAIN_TEST_SPLIT \
+```
+
+That agent is the one whose checkpoint paddock loads —
+`drive_jepa_perception_based_agent_vitl_v2.ckpt`, named in
+`adapters/models/drivejepa/model.yaml` as `DRIVEJEPA_CHECKPOINT`. So the
+training split is not inferred from the paper; it is in the trainer for this
+exact checkpoint. (The script lives under `navsim_v2/`, not at the top level —
+the README's Training section points at `scripts/training/`, which is easy to
+look for in the wrong place.)
 
 This compounds a caveat already recorded in
 [navsim.md](../benchmarks/navsim.md): Drive-JEPA's native agent is
@@ -81,22 +109,30 @@ This compounds a caveat already recorded in
 paddock reports its proxy figure instead. Two independent advantages, both
 pointing the same way.
 
-**The same applies to Bench2Drive, before the sweep is run.** Drive-JEPA was
-post-trained on CARLA. [bench2drive.md](../benchmarks/bench2drive.md) frames
-that benchmark as a real→sim transfer test — *"models trained on real data
-(nuScenes / NAVSIM) are out of distribution on CARLA frames, so expect them to
-drive partway and slow"* — which would not be true of Drive-JEPA. Its adapter
-exists and has not been run. **Worth deciding how to label that number before it
-is produced, not after.**
+**What is *not* sourced: CARLA.** Drive-JEPA is reported to have been
+post-trained on CARLA for Bench2Drive, which would matter — that benchmark is
+framed in [bench2drive.md](../benchmarks/bench2drive.md) as a real→sim transfer
+test where *"models trained on real data (nuScenes / NAVSIM) are out of
+distribution on CARLA frames"*, and a CARLA-trained model would not be. **It
+could not be confirmed from the checkout.** The only CARLA reference at
+`e21f474` is a URL in a code comment citing `carla_garage` for an augmentation
+recipe; there is no CARLA training script, config or doc. It is therefore
+*not* declared in `trained_on`, and the Bench2Drive number — whenever that
+adapter is run — should not be labelled on the strength of it. Worth resolving
+before that sweep, not after.
 
-**And AutoE2E may be trained on KITScenes.** If the unconfirmed pre-training row
-is right, an AutoE2E KITScenes ADE would be in-distribution while all four
-current models are zero-shot there. `docs/models/alpamayo15-eval-notes.md`
-states plainly that neither Alpamayo nor Drive-JEPA was trained on KITScenes,
-which is what makes that column a fair comparison today. Confirm before scoring
-it.
+### AutoE2E × kitscenes — unconfirmed, and not yet a paddock model
 
-None of this makes any recorded number wrong. It makes three of them mean
+AutoE2E's pre-training row reads KITScenes, marked unconfirmed. If it is right,
+an AutoE2E KITScenes ADE would be in-distribution while all four current models
+are zero-shot there — and `alpamayo15-eval-notes.md` states plainly that neither
+Alpamayo nor Drive-JEPA was trained on KITScenes, which is what makes that
+column a fair comparison today.
+
+AutoE2E has no merged adapter, so nothing enforces this yet. Confirm the
+pre-training corpus before scoring it, and give it a section here if it holds.
+
+None of this makes any recorded number wrong. It makes one of them mean
 something different from what a reader assumes, which is the same class of
 problem `sequences_sha256` and `valid: false` exist to prevent.
 

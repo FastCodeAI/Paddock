@@ -46,8 +46,11 @@ def model_card(m: ModelSpec) -> str:
         parts.append(m.architecture)
     if m.params_m is not None:
         # Billions past 1000 M, because "10000 M params" reads as a typo.
+        # Billions past 1000 M, because "10000 M params" reads as a typo -- but
+        # to one decimal, because :.0f turns 1500 M into "2 B".
         big = m.params_m >= 1000
-        parts.append(f"{m.params_m / 1000:.0f} B params" if big else f"{m.params_m:g} M params")
+        billions = round(m.params_m / 1000, 1)
+        parts.append(f"{billions:g} B params" if big else f"{m.params_m:g} M params")
     if m.size_gb is not None:
         parts.append(f"{m.size_gb:g} GB{' ' + m.precision if m.precision else ''}")
     if m.macs_g is not None:

@@ -36,9 +36,11 @@ capabilities:
 # with that explanation before loading the model, rather than silently doing nothing.
   # -- model card (docs/models/comparison.md) --
   architecture: "supercombo -- one ONNX graph, run through tinygrad"
-  # Parameter count is not published by comma. The size is the file paddock
-  # actually loads; big_driving_supercombo.onnx is 1.76 GB and needs an
-  # external AMD GPU.
+  # Parameter count is not published by comma. size_gb is the file paddock
+  # actually loads: driving_supercombo.onnx, 60,881,999 bytes. The other one in
+  # that directory, big_driving_supercombo.onnx, needs an external AMD GPU and
+  # is 1,757,355,221 bytes -- which is only ever seen as a 135-byte git-lfs
+  # pointer here, so read the `size` line in the pointer, not the file length.
   size_gb: 0.061
   input_size: [512, 256]
   history_frames: 2

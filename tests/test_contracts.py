@@ -150,17 +150,51 @@ def test_card_values_are_in_range(name: str) -> None:
     )
 
 
+#: Words of prose a training-overlap section must carry. A heading alone, or a
+#: heading over a table, does not explain anything to a reader of the matrix.
+MIN_OVERLAP_WORDS = 40
+
+
+def _prose_sections(text: str) -> dict[str, str]:
+    """Markdown split into {heading: prose beneath it}.
+
+    Prose means what a reader would call prose: table rows, fenced code and
+    further headings are dropped, so a section cannot satisfy a word count by
+    containing a big table.
+    """
+    sections: dict[str, list[str]] = {}
+    current = ""
+    fenced = False
+    for line in text.splitlines():
+        if line.startswith("```"):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
+        if line.startswith("#"):
+            current = line.lstrip("#").strip()
+            sections.setdefault(current, [])
+            continue
+        if line.startswith("|") or not line.strip():
+            continue
+        sections.setdefault(current, []).append(line)
+    return {head: " ".join(body) for head, body in sections.items()}
+
+
 @pytest.mark.parametrize("name", sorted(REGISTRY.models))
 def test_training_on_a_benchmarks_own_dataset_is_documented(name: str) -> None:
-    """A model scored on data it trained on is not comparable to one that was not.
+    """A model scored on data it trained on needs a section saying what that means.
 
     Not an error -- training on navtrain and testing on navtest is the protocol
     NAVSIM intends. What is an error is leaving it unsaid, because the support
     matrix puts an in-distribution number in the same column as three zero-shot
     ones and nothing on the page distinguishes them.
 
-    Drive-JEPA is the live case: post-trained on NAVSIM navtrain, and leading
-    the NAVSIM column by 0.235 EPDMS.
+    The check is for a **section headed with both names**, carrying real prose.
+    An earlier version only asked that both names appear somewhere in the file,
+    which every model satisfies by having a row in the comparison tables -- it
+    passed with every word of prose stripped out. A per-pair heading is
+    something a table row cannot accidentally provide.
     """
     model = REGISTRY.models[name]
     trained = {t.dataset for t in model.trained_on}
@@ -171,15 +205,25 @@ def test_training_on_a_benchmarks_own_dataset_is_documented(name: str) -> None:
     )
     if not overlaps:
         return
-    comparison = (DOCS / "models" / "comparison.md").read_text()
-    # Normalised because the doc writes "Drive-JEPA" where the adapter is
-    # "drivejepa"; the same helper the doc-existence checks above use.
-    normalised = _normalised(comparison)
+
+    doc = DOCS / "models" / "comparison.md"
+    sections = _prose_sections(doc.read_text())
     for dataset in overlaps:
-        assert _normalised(name) in normalised and _normalised(dataset) in normalised, (
-            f"{name} declares training on {dataset!r} and is also scored on a benchmark "
-            f"that uses it, but docs/models/comparison.md does not discuss the pair. "
-            f"Say what the overlap means for reading that column."
+        matches = [
+            body
+            for head, body in sections.items()
+            if _normalised(name) in _normalised(head) and _normalised(dataset) in _normalised(head)
+        ]
+        assert matches, (
+            f"{name} declares training on {dataset!r} and is also scored on a benchmark that "
+            f"uses it. docs/models/comparison.md needs a section headed with both names -- "
+            f"'### {name} x {dataset}' or similar -- saying what the overlap means for reading "
+            f"that column. Headings found: {sorted(sections)}"
+        )
+        words = max(len(body.split()) for body in matches)
+        assert words >= MIN_OVERLAP_WORDS, (
+            f"the '{name} x {dataset}' section in docs/models/comparison.md has {words} words of "
+            f"prose; {MIN_OVERLAP_WORDS} is the minimum. A heading over a table explains nothing."
         )
 
 
