@@ -82,8 +82,20 @@ TRAFFIC_CONVENTION = np.array([1.0, 0.0], dtype=np.float32)
 #: The 0.5 s grid the closed-loop vehicle model expects.
 GRID_S = np.arange(1, 9) * 0.5
 
-FEATURE_BUFFER_FRAMES = 100  # >= 96, the depth needed to fill features_buffer
+FEATURE_BUFFER_FRAMES = 130  # >= the big model's 128-deep buffer
 MODEL_HZ = 20.0  # the rate supercombo believes its input arrives at
+
+#: A camera mounting further from level than this is a coordinate-convention
+#: error, not a mounting. See the module docstring.
+MAX_MOUNT_DEG = 15.0
+
+#: Sources whose geometry openpilot already describes, so no resampling is
+#: needed on the ONNX backend. Keyed by (width, height) -> focal length.
+#: comma2k19's EON is `("neo", "unknown").narrow_road` in openpilot's own
+#: `DEVICE_CAMERAS` table: 1164x874 at fl 910, which is also the medmodel
+#: frame's focal length -- the model frame is a plain crop of an EON image.
+NATIVE_CAMERAS = {(1164, 874): 910.0, (1928, 1208): 2648.0}
+
 #: Emit openpilot's own longitudinal intent (desired accel + should_stop) so the
 #: closed-loop client can drive it natively instead of through the TCP tracker's
 #: brake-below-0.4 m/s rule. Off by default: the standard tracker path is what
@@ -118,6 +130,10 @@ V_CRUISE_FALLBACK = 13.9  # m/s when the source sends no road limit
 #: the car is rolling (>= 1 m/s), then experimental resumes control. 0 disables.
 RESUME_S = float(os.environ.get("PADDOCK_OPENPILOT_RESUME_S", "3.0"))
 RESUME_UNTIL_V = 1.0
+
+
+class ImplausibleMounting(ValueError):
+    """The derived camera mounting cannot be a real one."""
 
 
 @dataclass(frozen=True)
@@ -306,6 +322,8 @@ class OpenpilotPolicy(Policy):
         self.buf_wide: np.ndarray | None = None
         self.frames_seen = 0
         self.prev_timestamp: int | None = None
+        #: Seconds between the last two observations, measured in `_repeats`.
+        self.dt_s = 1.0 / MODEL_HZ
         self.prev_accel = 0.0
         self.a_cruise_prev = 0.0
         self.still_s = 0.0
@@ -344,14 +362,38 @@ class OpenpilotPolicy(Policy):
             from openpilot.selfdrive.modeld.modeld import ModelState
             from openpilot.system.camerad.cameras.nv12_info import get_nv12_info
 
-        self.model = ModelState(TARGET_W, TARGET_H, usbgpu=False)
-        # ModelState caches its device tensors by buffer address, so this array
-        # must be allocated once and written in place -- never reallocated.
-        self.nv12_info = get_nv12_info(TARGET_W, TARGET_H)
-        self.buf = np.zeros(self.nv12_info[3], dtype=np.uint8)
-        self.buf_wide = np.zeros(self.nv12_info[3], dtype=np.uint8)
-        # one source: both slots read the same buffer; two sources: each slot its own
-        self.bufs = {"img": self.buf, "big_img": self.buf}
+            self.model = ModelState(TARGET_W, TARGET_H, usbgpu=False)
+            # ModelState caches its device tensors by buffer address, so these
+            # arrays must be allocated once and written in place.
+            self.nv12_info = get_nv12_info(TARGET_W, TARGET_H)
+            self.buf = np.zeros(self.nv12_info[3], dtype=np.uint8)
+            self.buf_wide = np.zeros(self.nv12_info[3], dtype=np.uint8)
+            # One source: both slots read the same buffer. Two sources: each
+            # slot gets its own, rebound in `_build_camera`.
+            self.bufs = {"img": self.buf, "big_img": self.buf}
+        else:
+            from paddock.adapters.models.openpilot.supercombo import SupercomboSession
+
+            self.session = SupercomboSession(self._onnx_path(), self._threads())
+            self._new_onnx_runner()
+
+    def _onnx_path(self) -> Path:
+        override = os.environ.get("PADDOCK_OPENPILOT_ONNX")
+        if override:
+            return Path(override)
+        prefix = "big_" if self.model_name == "big" else ""
+        return self._models_dir() / f"{prefix}driving_supercombo.onnx"
+
+    @staticmethod
+    def _threads() -> int:
+        return int(os.environ.get("PADDOCK_OPENPILOT_THREADS", "8"))
+
+    def _new_onnx_runner(self) -> None:
+        from paddock.adapters.models.openpilot.supercombo import SupercomboRunner
+
+        self.model = SupercomboRunner(session=self.session, traffic_convention=TRAFFIC_CONVENTION)
+
+    # ---- episode state ---------------------------------------------------
 
     def reset(self) -> None:
         """Drop all temporal state.
@@ -374,9 +416,13 @@ class OpenpilotPolicy(Policy):
         self.camera = None
         self.cam_road = None
         self.cam_wide = None
-        self.bufs = {"img": self.buf, "big_img": self.buf}
+        if self.buf is not None:
+            # Back to one source feeding both views; `_infer_tinygrad` rebinds
+            # "big_img" to buf_wide again if the next sample has two cameras.
+            self.bufs = {"img": self.buf, "big_img": self.buf}
         self.frames_seen = 0
         self.prev_timestamp = None
+        self.dt_s = 1.0 / MODEL_HZ
         self.prev_accel = 0.0
         self.a_cruise_prev = 0.0
         self.still_s = 0.0
@@ -394,11 +440,48 @@ class OpenpilotPolicy(Policy):
     def infer(self, obs: Observation) -> Trajectory:
         if self.model is None:
             raise RuntimeError("load() must be called before infer()")
+        return self._infer_tinygrad(obs) if self.backend == "tinygrad" else self._infer_onnx(obs)
 
+    def _repeats(self, obs: Observation) -> int:
+        """How many times to show one rendered frame.
+
+        supercombo believes it is fed 20 Hz. A simulator advancing 0.5 s per
+        request would otherwise tell the model that half a second of motion
+        happened in 1/20 s, and it would read the ego as travelling ten times
+        its actual speed. Repeating each frame `dt * 20` times keeps the average
+        rate honest. It is still jerky -- the world holds still and then jumps --
+        which is the argument for running the simulation at 0.1 s, where this
+        lands on the 2 repeats the KITScenes run used.
+
+        The step is measured rather than assumed, so this follows whatever time
+        step the run was launched with. comma2k19 is natively 20 Hz, so there it
+        comes out to exactly 1 throughout and no repetition happens.
+
+        Also records `self.dt_s`, the measured step, which the native
+        longitudinal planner integrates over.
+        """
+        repeats = 1
+        self.dt_s = 1.0 / MODEL_HZ
+        if self.prev_timestamp is not None:
+            dt = (obs.timestamp_us - self.prev_timestamp) / 1e6
+            if dt > 0:
+                self.dt_s = dt
+                repeats = max(1, round(dt * MODEL_HZ))
+        if self.frames_seen == 0 and self.self_prime:
+            # No history supplied, so manufacture one deep enough to fill the
+            # feature buffer. `infer_sequence` clears `self_prime`, so this only
+            # happens in closed loop.
+            repeats = FEATURE_BUFFER_FRAMES
+        self.prev_timestamp = obs.timestamp_us
+        return repeats
+
+    def _infer_tinygrad(self, obs: Observation) -> Trajectory:
         from openpilot.selfdrive.modeld.constants import ModelConstants
 
         stride, y_height = self.nv12_info[0], self.nv12_info[1]
         have = set(obs.images) | set(obs.image_paths)
+        # A comma rig has two cameras; every dataset in this repo but Bench2Drive
+        # has one, and then the single frame feeds both model views.
         two = "CAM_OP_ROAD" in have and "CAM_OP_WIDE" in have
         if two:
             if self.cam_road is None:
@@ -426,7 +509,7 @@ class OpenpilotPolicy(Policy):
             }
         else:
             if self.camera is None:
-                self.camera = CameraAdapter(obs.pinhole("CAM_FRONT"), obs.camera2ego["CAM_FRONT"])
+                self.camera = self._build_camera(obs)
                 self.bufs = {"img": self.buf, "big_img": self.buf}
             packs = [
                 (
@@ -438,66 +521,32 @@ class OpenpilotPolicy(Policy):
             ]
             transforms = self.camera.transforms
 
-        supercombo believes it is fed 20 Hz. A simulator advancing 0.5 s per
-        request would otherwise tell the model that half a second of motion
-        happened in 1/20 s, and it would read the ego as travelling ten times
-        its actual speed. The step is measured rather than assumed, so this
-        follows whatever time step the run was launched with.
-
-        # How many times to show each rendered frame, so that the model's own
-        # clock matches the simulator's.
-        #
-        # supercombo believes it is fed 20 Hz. The simulator advances the world
-        # by its scenario time step per request -- 0.5 s by default. Emitting one
-        # model frame per rendered frame would tell the model that 0.5 s of
-        # motion happened in 1/20 s, and it would read the ego as travelling ten
-        # times its actual speed. Repeating each frame `dt * 20` times keeps the
-        # average rate honest. It is still jerky -- the world holds still and
-        # then jumps -- which is the argument for running the simulation at
-        # 0.1 s, where this lands on the 2 repeats the KITScenes run used.
-        #
-        # The step is measured rather than assumed, so this follows whatever
-        # time step the run was launched with.
-        repeats = 2
-        dt_s = 1.0 / MODEL_HZ
-        if self.prev_timestamp is not None:
-            dt = (obs.timestamp_us - self.prev_timestamp) / 1e6
-            if dt > 0:
-                dt_s = dt
-            if dt > 0:
-                repeats = max(1, round(dt * MODEL_HZ))
-        if self.frames_seen == 0 and self.self_prime:
-            # No history supplied, so manufacture one deep enough to fill the
-            # feature buffer. `infer_sequence` clears `self_prime`, so this only
-            # happens in closed loop.
-            repeats = FEATURE_BUFFER_FRAMES
-        self.prev_timestamp = obs.timestamp_us
-        return repeats
-
-    def _infer_tinygrad(self, obs: Observation) -> Trajectory:
-        from openpilot.selfdrive.modeld.constants import ModelConstants
-
-        prepared = self.camera.prepare(obs.image("CAM_FRONT"))
-        packed = rgb_to_nv12_batch(prepared[None], TARGET_W, TARGET_H)[0]
-        stride, y_height = self.nv12_info[0], self.nv12_info[1]
         inputs = {
             "desire_pulse": np.zeros(ModelConstants.DESIRE_LEN, dtype=np.float32),
             "traffic_convention": TRAFFIC_CONVENTION,
             "action_t": np.array([0.3, 0.5], dtype=np.float32),
         }
         out = None
-        for _ in range(repeats):
+        for _ in range(self._repeats(obs)):
             for buf, packed in packs:
                 pack_nv12(buf, packed, TARGET_W, TARGET_H, stride, y_height)
             out = self.model.run(self.bufs, transforms, inputs)
         self.frames_seen += 1
         if out is None or "plan" not in out:
             return constant_velocity(obs.speed, dt=self.waypoint_dt)
-        return Trajectory(plan_to_grid(np.asarray(out["plan"])[0]), dt=self.waypoint_dt)
+        plan33 = np.asarray(out["plan"])[0]
+        traj = Trajectory(plan_to_grid(plan33), dt=self.waypoint_dt)
+        if NATIVE_LONG:
+            traj.extras = {
+                "native_long": self._native_long(out, plan33, obs.speed, self.dt_s, obs.speed_limit)
+            }
+        return traj
 
     def _infer_onnx(self, obs: Observation) -> Trajectory:
         from paddock.adapters.models.openpilot.supercombo import WarpPlan, rgb_to_yuv420
 
+        if self.camera is None:
+            self.camera = self._build_camera(obs)
         if not hasattr(self, "_plans") or self._plans_for is not self.camera:
             src = self.camera.size
             model_size = (
@@ -520,10 +569,17 @@ class OpenpilotPolicy(Policy):
         self.frames_seen += 1
         if out is None or "plan" not in out:
             return constant_velocity(obs.speed, dt=self.waypoint_dt)
+        self._last_diag = {
+            "desiredCurvature": out["action_value"]["desiredCurvature"],
+            "desiredAcceleration": out["action_value"]["desiredAcceleration"],
+            "pose_trans": np.asarray(out["pose"][0][:3]).tolist(),
+        }
         plan33 = np.asarray(out["plan"])[0]
         traj = Trajectory(plan_to_grid(plan33), dt=self.waypoint_dt)
         if NATIVE_LONG:
-            traj.extras = {"native_long": self._native_long(out, plan33, obs.speed, dt_s, obs.speed_limit)}
+            traj.extras = {
+                "native_long": self._native_long(out, plan33, obs.speed, self.dt_s, obs.speed_limit)
+            }
         return traj
 
     def _native_long(self, out, plan33, v_ego: float, dt_s: float, speed_limit) -> dict:
@@ -607,7 +663,7 @@ class OpenpilotPolicy(Policy):
         than 1.0 means border smearing, which no score will show.
         """
         if self.camera is None:
-            return {"status": "no frame seen yet"}
+            return {"status": "no frame seen yet", "backend": self.backend}
         # Each view's margin from the camera that actually feeds it: in the
         # two-camera rig the road cam feeds "img" and the wide cam "big_img", so
         # reading both off one camera reports a false deficit for the other. A
@@ -617,14 +673,18 @@ class OpenpilotPolicy(Policy):
             if self.cam_wide is not None
             else {"img": self.camera, "big_img": self.camera}
         )
-        return {
+        diag: dict[str, Any] = {
+            "backend": self.backend,
+            "model": self.model_name,
+            "source_size": [self.camera.src.width, self.camera.src.height],
+            "resample_mode": self.camera.mode,
             "source_hfov_deg": round(self.camera.src.hfov_deg, 2),
             "source_vfov_deg": round(self.camera.src.vfov_deg, 2),
             "margin_deg": {
                 slot: {k: round(v, 2) for k, v in cam.margin_deg(slot).items()}
                 for slot, cam in slot_cam.items()
             },
-            "rpy": self.camera.rpy.tolist(),
+            "rpy_deg": [round(float(v), 4) for v in np.degrees(self.camera.rpy)],
             "frames_seen": self.frames_seen,
             "feature_buffer_frames": FEATURE_BUFFER_FRAMES,
         }
