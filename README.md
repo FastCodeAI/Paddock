@@ -182,6 +182,37 @@ each other.** Each is quoted against the constant-velocity floor *of its own
 configuration* in the AlpaSim table below; the baseline cell here is the 20 Hz
 single-camera floor, one of three. Those floor numbers are being re-checked.
 
+### What these models are
+
+The scores above say how well each model drives. This says what each one **is** —
+because a four-order-of-magnitude spread in size sits behind a neuroNCAP column
+whose top three are statistically indistinguishable. Full table, licences and
+provenance in [docs/models/comparison.md](docs/models/comparison.md); the
+machine-readable form is in each `model.yaml` and prints with
+`paddock list models`.
+
+| | Architecture | Params | Size (GB) | Input | Output | Trained on |
+|---|---|---:|---:|---|---|---|
+| OpenPilot | supercombo — one ONNX graph, via tinygrad | not published | 0.061 | 2 cam @20 Hz · 512×256 · 2 frames | 33 waypoints, 10 s | comma fleet, ≈6,670 h (not released) |
+| Alpamayo 1.5 | Cosmos-Reason2 VLM + diffusion trajectory decoder | **10 B** | 20 | 4 cam @10 Hz · 448×280 | trajectory 6.4 s + reasoning trace | NVIDIA internal, 80,000 h |
+| Drive-JEPA | V-JEPA-2 ViT-L encoder + proposal-centric planner | 307 M | 1.23 | 1 cam ✧ · 512×256 · 2 frames | trajectory 4 s, from 8192 anchors | OpenScene, then **NAVSIM `navtrain`** ✦ |
+| VisionPilot | three YOLO-family conv nets | **28.1 M** | 0.112 | 1 cam @10 Hz · 1024×512 | lane curvature + closest in-path object | OpenLane, TuSimple, CurveLanes |
+
+✦ **Drive-JEPA is the only one of the four with training exposure to a
+benchmark's own dataset, and it leads that benchmark by 0.235 EPDMS.** It was
+post-trained on NAVSIM `navtrain` and pre-trained partly on OpenScene, which
+*is* the NAVSIM dataset; the other three meet `navtest` zero-shot. That is the
+protocol NAVSIM intends — it is not cheating — but it means the NAVSIM column
+conflates "better planner" with "in-distribution versus zero-shot". Sourced at
+the pinned sha: `navsim_v2/scripts/training/train_drive_jepa_perception_based.sh`
+sets `TRAIN_TEST_SPLIT=navtrain` for the same agent whose checkpoint paddock
+loads. Detail in [docs/models/comparison.md](docs/models/comparison.md).
+
+✧ The published architecture reads one front camera; the adapter declares four,
+because it runs the NAVSIM perception-based variant whose BEVFormer stage is
+multi-camera. Unreconciled — and since a simulator renders exactly what is
+declared, it is worth measuring before the next closed-loop sweep.
+
 ### nuScenes
 
 Recorded validation results, 5,119 anchors across 150 scenes. Lower is better.
@@ -484,6 +515,7 @@ reviewable in a diff.
 | [docs/data-setup.md](docs/data-setup.md) | pointing paddock at datasets, or fetching ones you lack |
 | [docs/adding-a-model.md](docs/adding-a-model.md) | **adding a model** — the full checklist |
 | [docs/adding-a-benchmark.md](docs/adding-a-benchmark.md) | **adding a benchmark** — the full checklist |
+| [docs/models/comparison.md](docs/models/comparison.md) | **what each model is** — size, inputs, outputs, training data, licences |
 | [docs/architecture.md](docs/architecture.md) | understanding open- vs closed-loop, the Policy protocol |
 | [docs/benchmarks/](docs/benchmarks/) | how each benchmark is run and scored, and every recorded figure with its run id |
 | [docs/leaderboard.md](docs/leaderboard.md) | the full per-run leaderboard, rendered by `paddock report` |
