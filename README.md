@@ -108,10 +108,10 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 | | 🟢 nuScenes cumulative L2 avg ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🟡 NAVSIM v1 PDMS ↑ (0–1) | 🔴 Bench2Drive driving score ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim nuRec scene score ↑ (0–1) | 🔴 AlpaSim (OmniDreams) |
 |---|---|---|---|---|---|---|---|---|
 | OpenPilot | 2.477 △ | 1.599 | ✗ 2 Hz ‡ | ✗ 2 Hz ‡ | 30.09 ≈ ◆ | **3.60** ‖ | 0.9566 ¶ | planned |
-| Alpamayo 1.5 | 0.787 △ | 1.002 | 0.608 † | running † | 44.58 ◆ | **3.73** ‖ | 0.8000 ¶ | planned |
-| Drive-JEPA | 0.912 △ | 2.364 | 0.843 | running † | 31.11 ◆ | **3.57** ‖ | 0.5619 ¶ | planned |
-| VisionPilot | 1.441 △ | 1.534 ∗ | 0.431 | running † | 49.85 ◆ | **1.58** ‖ | 0.8864 ¶ | planned |
-| Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | running † | 47.94 ♣ | 0 § | 0.3562 ¶ | — |
+| Alpamayo 1.5 | 0.787 △ | 1.002 | 0.608 † | 0.676 † | 44.58 ◆ | **3.73** ‖ | 0.8000 ¶ | planned |
+| Drive-JEPA | 0.912 △ | 2.364 | 0.843 | 0.892 † | 31.11 ◆ | **3.57** ‖ | 0.5619 ¶ | planned |
+| VisionPilot | 1.441 △ | 1.534 ∗ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.8864 ¶ | planned |
+| Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | 0.207 † | 47.94 ♣ | 0 § | 0.3562 ¶ | — |
 
 ∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
 KITScenes, Paddock constructs sampled XY points from its projected image-space
@@ -250,16 +250,20 @@ was first run on, for reference only.
 
 The same 12,146 navtest scenarios, scored by the v1.1 devkit as PDMS =
 NC × DAC × (5·TTC + 5·EP + 2·comfort) / 12 (`docs/benchmarks/navsim_v1.md`).
-Driving direction compliance is recorded with weight zero. Rows land here as
-the runs complete.
+Driving direction compliance is recorded with weight zero. Full navtest,
+12,146 scenarios each, zero failures. Drive-JEPA and VisionPilot are fresh
+proxy runs; Alpamayo's row replays the plans its v2 run recorded, so it scores
+the very plans behind its 0.608 above. The baseline reproduces the NAVSIM
+paper's constant-velocity row (20.6) term by term, and the recorded human
+future scores 0.946 against the paper's 94.8 (privileged; stored `valid: false`).
 
 | Model | PDMS ↑ | No at-fault collisions ↑ | Drivable area ↑ | Ego progress ↑ | TTC within bound ↑ | Comfort ↑ | Driving direction (weight 0) |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | OpenPilot | — ‡ | — | — | — | — | — | — |
-| Alpamayo 1.5 | running | | | | | | |
-| Drive-JEPA | running | | | | | | |
-| VisionPilot | running | | | | | | |
-| Baseline (Constant Velocity) | running | | | | | | |
+| Alpamayo 1.5 | 0.676 | 0.941 | 0.788 | 0.604 | 0.878 | 0.979 | 0.885 |
+| Drive-JEPA | **0.892** | 0.984 | 0.985 | 0.887 | 0.881 | 0.999 | 0.988 |
+| VisionPilot | 0.488 | 0.771 | 0.818 | 0.451 | 0.617 | 0.996 | 0.920 |
+| Baseline (Constant Velocity) | 0.207 | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 |
 
 ### Bench2Drive — historical 24-route results
 

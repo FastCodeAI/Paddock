@@ -183,7 +183,33 @@ the stored record `20260902T175923-feba73`:
 The re-run's record is kept beside the ops logs rather than committed, so the
 leaderboard does not carry two identical baseline rows.
 
-## Status
+## Full navtest (12,146 scenarios)
 
-The three models' figures land here, in the README column and in
-`results/navsim_v1/` as the runs complete.
+All rows are the full split with zero failed scenarios and no unscored chunks;
+records under `results/navsim_v1/`. The v2 column is the same model's EPDMS
+from `results/navsim/` for reference: a different composite, not a ranking.
+
+| model | PDMS | NC | DAC | EP | TTC | comfort | DDC (weight 0) | v2 EPDMS | run | how |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
+| drivejepa | **0.892** | 0.984 | 0.985 | 0.887 | 0.881 | 0.999 | 0.988 | 0.843 | `20260911T082329-575df6` | proxy, 7.5 h |
+| alpamayo15 | **0.676** | 0.941 | 0.788 | 0.604 | 0.878 | 0.979 | 0.885 | 0.608 | `20260911T044805-0aea35` | replay of `navsim/alpamayo15/20260903T183818-5879c1`'s 12,146 plans, 30 min, no GPU |
+| visionpilot | **0.488** | 0.771 | 0.818 | 0.451 | 0.617 | 0.996 | 0.920 | 0.431 | `20260911T083323-c07583` | proxy, four nodes, 8.2 h |
+| constant_velocity | **0.207** | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 | 0.239 | `20260911T034553-8f28ac` | node-less baseline, 27 min |
+| human (`valid: false`) | 0.946 | 1.000 | 1.000 | 0.870 | 1.000 | 0.999 | 0.988 | — | `20260911T041230-67c4f3` | node-less anchor, 35 min |
+
+Two consistency checks across the scorer generations, for the two models whose
+plans are the same under both: Drive-JEPA is deterministic and Alpamayo's plans
+were replayed, and for both the no-at-fault-collision and drivable-area terms
+agree with the v2 run to three or four decimals (0.984 / 0.985 and 0.941 /
+0.788). The terms that move are the ones v2 redefined: time to collision (v2
+applies its human-penalty filter and a collision horizon), ego progress, and
+comfort, which is a different metric in each generation.
+
+The wall-clock figures were measured with the box near its CPU limit and the
+guard holding paddock's pools to two cores for long stretches; the v2 runs of
+the same models took about half as long.
+
+Drive-JEPA's paper reports 93.3 PDMS. That figure is its v1-trained checkpoint
+through its own scorer-aware agent; paddock scores the released v2 checkpoint
+through the proxy, so the two are not the same measurement and 0.892 is the
+comparable one here.
