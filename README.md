@@ -142,12 +142,15 @@ subset rows in `results/` are stored `valid: false` -- they appear under
 "Excluded runs" and never average against a full-split row.
 
 ‡ OpenScene is a 2 Hz dataset and OpenPilot infers motion from frame-to-frame
-change, so it plans a parked car — 0.30 m of travel in 4 s at 4.8 m/s. Its model
-has no speed input at all (`{desire_pulse, traffic_convention, action_t}`), so
-this is not fixable in the adapter. It declares `min_input_hz: 10.0` and the
-harness refuses the pairing rather than recording the artefact. Alpamayo hit the
-same dataset property in a milder form and was fixed in its adapter, worth
-+0.207 EPDMS. See `docs/benchmarks/navsim.md`.
+change, so on it OpenPilot plans a parked car — 0.30 m of travel in 4 s at
+4.8 m/s. Its model has no speed input at all (`{desire_pulse, traffic_convention,
+action_t}`), so this is not fixable in the adapter: it declares
+`min_input_hz: 10.0` and the harness refuses the pairing on OpenScene alone. The
+frames OpenScene left out exist upstream — nuPlan's cameras run at 10 Hz — and
+with `[benchmarks.navsim] nuplan` naming that data the harness feeds a 10 Hz
+history to OpenPilot and to Alpamayo (built for 0.1 s frames). Full-split runs
+at that rate are in progress; on 12 scenarios OpenPilot scored 0.79 and Alpamayo
+0.66 against 0.50 at 2 Hz. See "10 Hz from nuPlan" in `docs/benchmarks/navsim.md`.
 
 ◆ Historical Bench2Drive mean driving score on 24 routes (04–06 Sep 2026),
 one run per route; route 11715 was excluded after CARLA crashes. These are
