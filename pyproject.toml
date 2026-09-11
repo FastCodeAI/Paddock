@@ -30,6 +30,12 @@ serve = [
 # that only runs evaluations does not pull a plotting stack.
 viz = [
     "matplotlib>=3.8",
+    # comma2k19's overlay draws onto frames with PIL. matplotlib already pulls
+    # Pillow in, but depending on a transitive dependency is how a working
+    # install breaks on someone else's resolver. 10.1 is where
+    # `ImageFont.load_default` learned to take a size, which is what keeps the
+    # HUD off any one machine's font tree.
+    "pillow>=10.1",
 ]
 # comma2k19 ships one raw HEVC elementary stream per segment and no per-frame
 # images, so that benchmark -- alone among the current set -- needs a video

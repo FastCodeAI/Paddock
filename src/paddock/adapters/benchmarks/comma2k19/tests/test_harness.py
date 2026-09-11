@@ -23,6 +23,12 @@ from paddock.adapters.benchmarks.comma2k19 import calibration as CAL
 from paddock.adapters.benchmarks.comma2k19 import loader as L
 from paddock.adapters.benchmarks.comma2k19 import metrics as MC
 from paddock.adapters.benchmarks.comma2k19 import toolkit as TK
+from paddock.adapters.benchmarks.comma2k19.tests.synthetic import (
+    reset_pose_cache,
+    rot2quat,
+    straight_pose,
+    write_segment,
+)
 
 # --------------------------------------------------------------------------
 # Rotation helpers
@@ -214,44 +220,15 @@ def test_identity_camera2ego_is_rejected_by_the_policy_guard(toolkit):
 # --------------------------------------------------------------------------
 
 
-def _straight_pose(n: int = 200, speed: float = 20.0, hz: float = 20.0) -> L.SegmentPose:
-    """A car driving straight east at constant speed, at the equator.
-
-    ECEF at (lat 0, lon 0) has x out of the ground, y east, z north -- so
-    "driving east" is +y in ECEF, and the device frame [forward, right, down]
-    maps forward->+y_ecef, right->-z_ecef, down->-x_ecef.
-    """
-    t = np.arange(n) / hz
-    pos = np.zeros((n, 3))
-    pos[:, 0] = 6378137.0
-    pos[:, 1] = speed * t
-    vel = np.zeros((n, 3))
-    vel[:, 1] = speed
-    ecef_from_device = np.array([[0.0, 0.0, -1.0], [1.0, 0.0, 0.0], [0.0, -1.0, 0.0]])
-    # rot2quat of that matrix, by hand: it is a 120 deg rotation about
-    # (1,-1,-1)/sqrt(3); w = 0.5, and the vector part follows.
-    quat = np.tile(_rot2quat(ecef_from_device), (n, 1))
-    return L.SegmentPose(times=t, positions=pos, orientations=quat, velocities=vel)
-
-
-def _rot2quat(r: np.ndarray) -> np.ndarray:
-    w = np.sqrt(max(0.0, 1.0 + r[0, 0] + r[1, 1] + r[2, 2])) / 2.0
-    x = (r[2, 1] - r[1, 2]) / (4 * w)
-    y = (r[0, 2] - r[2, 0]) / (4 * w)
-    z = (r[1, 0] - r[0, 1]) / (4 * w)
-    q = np.array([w, x, y, z])
-    return q if q[0] >= 0 else -q
-
-
 def test_synthetic_pose_velocity_is_forward_dominant(toolkit):
-    pose = _straight_pose()
+    pose = straight_pose()
     vd = pose.velocity_device
     assert np.allclose(vd[:, 0], 20.0, atol=1e-6)
     assert np.allclose(vd[:, 1:], 0.0, atol=1e-6)
 
 
 def test_future_in_ego_frame_advances_forward_and_stays_centred(toolkit):
-    pose = _straight_pose(speed=20.0)
+    pose = straight_pose(speed=20.0)
     fut = L.future_in_ego_frame(pose, 20, [0.5, 1.0, 1.5])
     assert np.allclose(fut[:, 0], [10.0, 20.0, 30.0], atol=1e-4)
     assert np.allclose(fut[:, 1], 0.0, atol=1e-6)
@@ -265,16 +242,14 @@ def test_ground_truth_relative_to_a_rotated_keyframe(toolkit):
     orientation is the identity. So the keyframe is yawed, and the answer is
     known: after a 90 deg left yaw, what was 30 m ahead is 30 m to the right.
     """
-    pose = _straight_pose(speed=20.0, n=200)
+    pose = straight_pose(speed=20.0, n=200)
     # Yaw the keyframe 90 deg to the left (device z is down, so left is -z).
     yaw_left = L.rot_from_euler([0.0, 0.0, -np.pi / 2])
     idx = 20
     pose.orientations = pose.orientations.copy()
     rotated = pose.ecef_from_device[idx] @ yaw_left
-    pose.orientations[idx] = _rot2quat(rotated)
-    # Invalidate the cached properties recomputed from orientations.
-    for attr in ("ecef_from_device", "device_from_ecef", "velocity_device", "yaw_rate"):
-        pose.__dict__.pop(attr, None)
+    pose.orientations[idx] = rot2quat(rotated)
+    reset_pose_cache(pose)  # the cached rotations predate the edit above
 
     fut = L.future_in_ego_frame(pose, idx, [1.5])  # 30 m of travel
     # Travel is still east; the car now faces north, so east is on its right,
@@ -296,24 +271,14 @@ def test_calibration_recovers_a_synthetic_mount_pitch(toolkit, tmp_path):
     must return +p, and applying it must remove the residual.
     """
     pitch = np.radians(3.5)
-    pose = _straight_pose(speed=25.0, n=400)
+    pose = straight_pose(speed=25.0, n=400)
     # device_from_calib = rot_from_euler([0, pitch, 0]); the recorded
     # orientation is the camera's, so rotate ecef_from_device by its inverse.
     ecef_from_device = pose.ecef_from_device[0] @ L.rot_from_euler([0.0, pitch, 0.0]).T
-    pose.orientations = np.tile(_rot2quat(ecef_from_device), (len(pose), 1))
-    for attr in ("ecef_from_device", "device_from_ecef", "velocity_device", "yaw_rate"):
-        pose.__dict__.pop(attr, None)
+    pose.orientations = np.tile(rot2quat(ecef_from_device), (len(pose), 1))
+    reset_pose_cache(pose)
 
-    seg = tmp_path / "seg"
-    (seg / "global_pose").mkdir(parents=True)
-    for name, arr in (
-        ("frame_times", pose.times),
-        ("frame_positions", pose.positions),
-        ("frame_orientations", pose.orientations),
-        ("frame_velocities", pose.velocities),
-    ):
-        np.save(seg / "global_pose" / name, arr)
-        (seg / "global_pose" / name).with_suffix(".npy").rename(seg / "global_pose" / name)
+    seg = write_segment(tmp_path / "seg", pose)
 
     cal = CAL.estimate([seg])
     assert cal.n_valid > 300

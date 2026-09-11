@@ -199,6 +199,57 @@ transposes it before use, which is the tell. `_quat2rot` returns
 transpose. Getting it wrong does not fail — it mirrors every relative position
 through the direction of travel.
 
+## Overlay video
+
+An ADE distribution says how often a model is wrong. Only a picture says how, so
+this benchmark can draw on the frames themselves. There are two entry points,
+because there are two questions.
+
+**One scored sample**, with every model's stored plan on it:
+
+```bash
+paddock render --bench comma2k19 --sample 1/b0c9d2329ad1606b|2018-07-27--06-03-57/3/300
+```
+
+The clip replays the history window the model was actually shown, at the rate it
+was shown it, then stops on the scored keyframe and holds it with the recorded
+future and each run's plan drawn together. The window and the rate come from the
+sample's stored `native_id`, so what you watch is what was scored rather than a
+nearby frame that looks like it. The benchmark prefix is optional, `--run-id`
+picks particular runs, and `--out` chooses the directory (default
+`{runs}/comma2k19/_samples`).
+
+**One raw segment**, with no model and no run involved — for checking the
+dataset itself, or a calibration, before any evaluation has happened:
+
+```bash
+python -m tools.benchmarks.comma2k19.overlay_video \
+    --segment "$COMMA2K19/Chunk_1/<route>/3" --max-frames 200 --out /tmp/seg.mp4
+```
+
+Both draw the same layers from the same code
+([overlay.py](../../src/paddock/adapters/benchmarks/comma2k19/overlay.py)),
+adapted from the toolkit's `visualize_segment.py`: the recorded path as a
+ribbon on the road plane, CAN radar returns as boxes with the in-lane lead
+highlighted, a HUD of the logs at that frame, a north-up minimap of the whole
+segment, and — only in the first case — the model's plan, coloured by
+`viz.palette` so a model keeps its colour here as in every other figure.
+
+Two things to know before trusting what you see:
+
+- **A mirrored plan is a bug, not a model.** Plans arrive in paddock's ego frame
+  (y **left**) and the toolkit projects comma2k19's device frame (y **right**).
+  The conversion is a sign, a wrong one mirrors the drawn path about the
+  direction of travel, raises nothing, and on a straight road is invisible.
+  `test_a_plan_to_the_left_is_drawn_to_the_left` exists for exactly this.
+- **Encoding needs a video backend**, the same one scoring needs: PyAV from the
+  `comma2k19` extra, or an external ffmpeg named by `PADDOCK_FFMPEG`. Drawing
+  additionally needs Pillow, which the `viz` extra declares.
+
+On straight highway the recorded future and a working model's plan should
+overlap; they separate in curves, and that separation is the thing worth looking
+at.
+
 ## Calibration: the thing that was wrong before
 
 openpilot's model never sees a raw frame. `modeld` warps every frame with

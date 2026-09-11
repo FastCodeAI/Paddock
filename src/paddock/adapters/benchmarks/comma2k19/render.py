@@ -1,9 +1,13 @@
-"""Comparison figures for comma2k19 runs.
+"""Comparison figures for comma2k19 runs, and one sample as video.
 
 Takes runs from any models and draws them together, scoped to the benchmark
 rather than to any model -- the same contract as `kitscenes/render.py`:
 
     def render(runs, out_dir, cfg) -> list[Path]
+
+and the optional per-sample hook `paddock render --sample` dispatches to:
+
+    def render_sample(runs, sample_id, out_dir, cfg) -> list[Path]
 
 Three figures, and the choice of them is the whole point of this module:
 
@@ -21,6 +25,11 @@ Three figures, and the choice of them is the whole point of this module:
    combination that reads as "tracks the lane, misjudges speed" and is nothing
    of the kind.
 
+The video is a different question from the figures: a distribution says *how
+often* a model is wrong, and only a picture says *how*. It runs the history
+window the model was actually shown and stops on the scored keyframe, where the
+recorded future and every run's stored plan are drawn together and held.
+
 Colour comes from `paddock.viz.palette`, so a model keeps its colour across
 every figure in the repo.
 """
@@ -31,6 +40,8 @@ from pathlib import Path
 
 import numpy as np
 
+from paddock.adapters.benchmarks.comma2k19 import loader as L
+from paddock.adapters.benchmarks.comma2k19 import overlay as OV
 from paddock.viz import palette
 
 _INK = "#0b0b0b"
@@ -226,3 +237,122 @@ def _path_length(runs, out_dir: Path, plt) -> Path | None:
     fig.savefig(path, dpi=140, facecolor=_SURFACE)
     plt.close(fig)
     return path
+
+
+# --------------------------------------------------------------------------
+# One sample, as video
+# --------------------------------------------------------------------------
+
+#: Seconds the keyframe is held at the end of the clip. The plans are only drawn
+#: there -- a plan is a statement made at one moment, and painting it over the
+#: history frames would show the model predicting things it had not yet seen --
+#: so without a hold the interesting frame flashes past in one frame time.
+HOLD_S = 2.5
+
+
+def render_sample(runs, sample_id: str, out_dir: Path, cfg) -> list[Path]:
+    """One scored sample as an .mp4: the history window, then the plans.
+
+    The clip runs the frames the model was actually shown, at the rate it was
+    shown them, and stops on the scored keyframe with the recorded future and
+    every run's stored plan drawn together. So the thing being compared is the
+    thing that was scored, not a nearby frame that looks like it.
+
+    Raises `LookupError` if no loaded run holds `sample_id`, or if the segment
+    behind it is not present at this site -- `paddock.render` turns that into a
+    message and a non-zero exit.
+    """
+    found = [(run, rec) for run, rec in ((r, _record(r, sample_id)) for r in runs) if rec is not None]
+    if not found:
+        raise LookupError(_no_such_sample(runs, sample_id))
+
+    # Runs at different input rates saw different windows of the same keyframe.
+    # Play the densest one: it is the most road per second of clip, and the
+    # keyframe -- the only frame the plans are drawn on -- is the same either way.
+    native = min(found, key=lambda pair: int(pair[1]["native_id"].get("stride", 1)))[1]["native_id"]
+    dataset = cfg.datasets.get("comma2k19")
+    if dataset is None:
+        raise LookupError("dataset 'comma2k19' is not configured here; see docs/data-setup.md")
+    segment = L.find_segment(dataset, int(native["chunk"]), str(native["route_id"]), int(native["segment"]))
+    if segment is None:
+        raise LookupError(
+            f"segment {native['chunk']}/{native['route_id']}/{native['segment']} is not under any "
+            "configured comma2k19 tier, so the frames behind this sample cannot be decoded here"
+        )
+
+    keyframe = int(native["keyframe_index"])
+    stride = int(native.get("stride", 1))
+    first = int(native.get("first_frame_index", keyframe))
+    fps = float(native.get("input_hz") or L.SRC_HZ)
+    plans = [
+        OV.Plan.for_model(run.model, rec["prediction"], label=_plan_label(run, rec))
+        for run, rec in found
+        if rec.get("prediction")
+    ]
+
+    overlay = OV.SegmentOverlay(segment.path)
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / (sample_id.removeprefix("comma2k19/").replace("|", "_").replace("/", "_") + ".mp4")
+    L.encode_frames(
+        _overlaid(overlay, segment, range(first, keyframe + 1, stride), keyframe, plans, fps),
+        path,
+        fps=fps,
+    )
+    return [path]
+
+
+def _overlaid(overlay, segment, window, keyframe: int, plans, fps: float):
+    """The window's frames, drawn, with the keyframe held at the end.
+
+    Decoding starts at frame 0 however late the keyframe is: the streams carry
+    no container index, so there is nothing to seek with -- the same constraint
+    `loader.decode_frames` documents for scoring.
+    """
+    wanted = set(window)
+    for index, rgb in enumerate(L.decode_frames(segment.video, limit=keyframe + 1)):
+        if index not in wanted:
+            continue
+        if index != keyframe:
+            ahead = (keyframe - index) / overlay.fps
+            yield overlay.draw(rgb, index, note=f"history: {ahead:4.1f} s before the scored frame")
+            continue
+        drawn = overlay.draw(rgb, index, plans=plans, note="keyframe: scored here")
+        for _ in range(max(1, int(round(HOLD_S * fps)))):
+            yield drawn
+
+
+def _record(run, sample_id: str) -> dict | None:
+    """The sample's stored record in one run, by full id or by its tail.
+
+    The tail is accepted because the full id starts with the benchmark name that
+    `--bench` already carried, and nobody types it twice.
+    """
+    for sample in run.samples:
+        stored = str(sample.get("sample_id", ""))
+        if stored == sample_id or stored.removeprefix("comma2k19/") == sample_id.removeprefix("comma2k19/"):
+            return sample
+    return None
+
+
+def _plan_label(run, record) -> str:
+    """Model name plus what it scored, so the picture carries its own number."""
+    metrics = record.get("metrics") or {}
+    scored = [
+        f"{key} {metrics[key]:.2f}"
+        for key in ("ade", "fde@3s")
+        if isinstance(metrics.get(key), (int, float)) and np.isfinite(metrics[key])
+    ]
+    return f"{run.model} plan" + ("   " + "  ".join(scored) if scored else "")
+
+
+def _no_such_sample(runs, sample_id: str) -> str:
+    examples = [str(s.get("sample_id")) for run in runs for s in run.samples[:2]][:3]
+    total = sum(len(run.samples) for run in runs)
+    if not total:
+        return (
+            f"no per-sample records loaded, so {sample_id!r} cannot be drawn. They live under "
+            "[roots] runs rather than in the repo, and may have been cleaned up -- re-run the "
+            "benchmark, or point --run-id at a run whose artifacts are still there."
+        )
+    return f"no loaded run holds sample {sample_id!r} ({total} records loaded, e.g. {', '.join(examples)})"

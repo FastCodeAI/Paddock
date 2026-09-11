@@ -243,6 +243,7 @@ def render_(
     bench: str = typer.Option(..., "--bench", "-b"),
     model: str = typer.Option(None, "--model", "-m", help="Comma-separated; default every model."),
     run_id: str = typer.Option(None, "--run-id", help="Comma-separated specific runs."),
+    sample: str = typer.Option(None, "--sample", help="Draw one sample by id instead of the run figures."),
     out: str = typer.Option(None, "--out", help="Where to write; default the run store."),
 ) -> None:
     """Draw a comparison of several models on one benchmark.
@@ -250,8 +251,12 @@ def render_(
     Rendering is scoped to the benchmark: it knows what its ground truth is and
     what a comparison means. Uses the newest valid run per model unless --run-id
     names specific ones.
+
+    With --sample, draws that one sample instead -- the aggregate says how often
+    a model is wrong and only a sample says how. Sample ids are in the run's
+    samples.jsonl; not every benchmark implements it.
     """
-    from paddock.render import render as do_render
+    from paddock import render as rendering
 
     try:
         cfg = SiteConfig.load()
@@ -259,14 +264,17 @@ def render_(
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
 
-    code = do_render(
-        cfg,
-        benchmark=bench,
-        models=model.split(",") if model else None,
-        run_ids=run_id.split(",") if run_id else None,
-        out_dir=Path(out) if out else None,
-        echo=typer.echo,
-    )
+    common = {
+        "benchmark": bench,
+        "models": model.split(",") if model else None,
+        "run_ids": run_id.split(",") if run_id else None,
+        "out_dir": Path(out) if out else None,
+        "echo": typer.echo,
+    }
+    if sample:
+        code = rendering.render_sample(cfg, sample_id=sample, **common)
+    else:
+        code = rendering.render(cfg, **common)
     raise typer.Exit(code=code)
 
 

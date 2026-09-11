@@ -201,6 +201,35 @@ Rendering belongs to the benchmark rather than to a model because debugging
 means putting several models side by side. See
 [architecture.md](architecture.md#where-does-a-file-belong).
 
+### One sample, drawn
+
+`render.py` may also define a second, independent hook:
+
+```python
+def render_sample(runs: list[LoadedRun], sample_id: str, out_dir: Path, cfg) -> list[Path]:
+    """Draw the one sample `sample_id`; return what was written."""
+```
+
+`paddock render --bench <name> --sample <sample_id>` finds it, and says so
+plainly if the benchmark does not define it. The two hooks answer different
+questions and neither implies the other: `render` says *how often* a model is
+wrong across a run, `render_sample` says *how* it was wrong on one — which is
+the question a long tail in the first figure always raises next.
+
+What makes this implementable is `native_id`. The runner stores it with every
+per-sample record, and it is the benchmark's own handle on the sample — scene
+id, frame index, whatever is needed to find the raw data again. Put enough in
+it to re-decode the sample without re-deriving anything, and a stored run stays
+inspectable months later. comma2k19 stores the route, the keyframe, the window
+and the input rate, and re-decodes the video from that
+([comma2k19/render.py](../src/paddock/adapters/benchmarks/comma2k19/render.py)).
+
+Raise `LookupError` when the sample is not in the loaded runs, or when the raw
+data behind it is not present at this site. The message is shown verbatim and
+the CLI exits non-zero, so name what *is* available rather than only what is
+not — the usual cause is a run whose artifacts under `[roots] runs` were cleaned
+up, and a bare "not found" sends the reader looking in the wrong place.
+
 ## Step 9 — verify and document
 
 ```bash

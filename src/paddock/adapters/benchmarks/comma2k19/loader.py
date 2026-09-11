@@ -3,7 +3,8 @@
 comma2k19 ships two things most datasets do not: ready-made ego pose (no SLAM
 or GNSS pipeline to run) and *no per-frame images at all* -- one raw HEVC
 elementary stream per ~60 s segment. So this module has three parts: segment
-discovery, pose maths on `global_pose/*`, and a streaming frame decoder.
+discovery, pose maths on `global_pose/*`, and streaming video in (`decode_frames`,
+on the scoring path) and back out again (`encode_frames`, for `overlay.py`).
 
 Three things here were established empirically rather than read off the
 documentation, and each one is load-bearing. Each is pinned down by a test in
@@ -64,9 +65,12 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
+from contextlib import suppress
 from dataclasses import dataclass
+from fractions import Fraction
 from functools import cached_property
+from itertools import chain
 from pathlib import Path
 
 import numpy as np
@@ -83,7 +87,10 @@ __all__ = [
     "SegmentRef",
     "camera2ego_from_rpy",
     "decode_frames",
+    "device_from_ego",
     "ego_from_device",
+    "encode_frames",
+    "find_segment",
     "future_in_ego_frame",
     "list_segments",
     "load_pose",
@@ -198,6 +205,21 @@ def list_segments(dataset: Dataset) -> list[SegmentRef]:
                     ref = SegmentRef(chunk_num, route_dir.name, int(seg_dir.name), seg_dir)
                     seen.setdefault(ref.sample_key, ref)
     return sorted(seen.values(), key=lambda r: (r.chunk, r.route_id, r.segment))
+
+
+def find_segment(dataset: Dataset, chunk: int, route_id: str, segment: int) -> SegmentRef | None:
+    """One segment by its identity, without walking the dataset.
+
+    `list_segments` visits ~2000 directories to answer "what is here"; looking up
+    a segment a run already recorded is a question about one path, and the
+    rendering paths ask it per sample. Tier order is preserved, so the answer is
+    the same segment `list_segments` would have chosen.
+    """
+    for root in dataset.roots:
+        path = root / f"Chunk_{chunk}" / route_id / str(segment)
+        if _is_segment(path):
+            return SegmentRef(chunk, route_id, segment, path)
+    return None
 
 
 # --------------------------------------------------------------------------
@@ -332,6 +354,17 @@ def load_can_speed(seg_path: Path) -> tuple[np.ndarray, np.ndarray] | None:
 def ego_from_device(points_device: np.ndarray) -> np.ndarray:
     """comma2k19 device [fwd, right, down] -> paddock ego [fwd, left, up]."""
     return np.asarray(points_device, dtype=np.float64) @ _DEVICE_TO_EGO.T
+
+
+def device_from_ego(points_ego: np.ndarray) -> np.ndarray:
+    """paddock ego [fwd, left, up] -> comma2k19 device [fwd, right, down].
+
+    The same arithmetic as `ego_from_device`, because `diag(1, -1, -1)` is its
+    own inverse. Named separately anyway: `overlay.py` converts in this
+    direction to draw a plan, and a reader there should not have to check the
+    matrix is an involution before believing which way the call goes.
+    """
+    return np.asarray(points_ego, dtype=np.float64) @ _DEVICE_TO_EGO.T
 
 
 def future_in_ego_frame(pose: SegmentPose, index: int, horizons_s) -> np.ndarray:
@@ -474,3 +507,69 @@ def decode_frames(
         for stream in (proc.stdout, proc.stderr):
             if stream is not None:
                 stream.close()
+
+
+def encode_frames(frames: Iterable[np.ndarray], out_path: Path, fps: float = SRC_HZ, crf: int = 23) -> Path:
+    """Write uint8 RGB HWC frames to an H.264 .mp4, and return where.
+
+    The mirror of `decode_frames`, and deliberately the same backend split: PyAV
+    if the environment has it, otherwise the external ffmpeg. Without this,
+    producing a video would need the `comma2k19` extra while *scoring* does not,
+    and the machine most likely to want a video is the one debugging a score it
+    already produced.
+
+    Streamed frame by frame, so the caller may hand over a generator over a
+    whole segment without holding 1200 decoded frames -- about 3.7 GB -- in RAM.
+    """
+    frames = iter(frames)
+    first = next(frames, None)
+    if first is None:
+        raise ValueError(f"no frames to encode into {out_path}")
+    first = np.ascontiguousarray(first, dtype=np.uint8)
+    height, width = first.shape[:2]
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if probe_decoder() == "av":
+        import av
+
+        with av.open(str(out_path), "w") as container:
+            # Fraction rather than round(fps): a rate of 20/3 Hz is reachable by
+            # subsampling and rounding it to 7 would stamp the file with a
+            # duration that does not match the observations it holds.
+            stream = container.add_stream("libx264", rate=Fraction(fps).limit_denominator(1000))
+            stream.width, stream.height = width, height
+            stream.pix_fmt = "yuv420p"
+            stream.options = {"crf": str(crf)}
+            for rgb in chain([first], frames):
+                frame = av.VideoFrame.from_ndarray(np.ascontiguousarray(rgb, dtype=np.uint8), format="rgb24")
+                container.mux(stream.encode(frame))
+            container.mux(stream.encode())
+        return out_path
+
+    cmd = [
+        _ffmpeg(), "-v", "error", "-y",
+        "-f", "rawvideo", "-pix_fmt", "rgb24",
+        # "pipe:0" rather than the more familiar "-": ffmpeg builds since 7.x
+        # resolve an input "-" as a protocol name and fail with "Protocol not
+        # found", which reads like a codec problem and is not one.
+        "-s", f"{width}x{height}", "-r", f"{fps:.6f}", "-i", "pipe:0",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", str(crf),
+        str(out_path),
+    ]  # fmt: skip
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        for rgb in chain([first], frames):
+            proc.stdin.write(np.ascontiguousarray(rgb, dtype=np.uint8).tobytes())
+    except BrokenPipeError as exc:  # ffmpeg died; its stderr says why, the pipe does not
+        why = proc.stderr.read().decode(errors="replace").strip()
+        raise RuntimeError(f"ffmpeg failed writing {out_path}: {why}") from exc
+    finally:
+        if proc.stdin is not None:
+            with suppress(BrokenPipeError):
+                proc.stdin.close()
+    err = proc.stderr.read().decode(errors="replace")
+    proc.stderr.close()
+    if proc.wait() != 0:
+        raise RuntimeError(f"ffmpeg failed writing {out_path}: {err.strip()}")
+    return out_path
