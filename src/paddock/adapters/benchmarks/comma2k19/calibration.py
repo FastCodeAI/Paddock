@@ -58,6 +58,7 @@ point: this class of defect must be loud.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 
 import numpy as np
@@ -69,7 +70,7 @@ from paddock.adapters.benchmarks.comma2k19.loader import (
     rot_from_euler,
 )
 
-__all__ = ["Calibration", "RouteCalibrations", "estimate", "plausible"]
+__all__ = ["Calibration", "RouteCalibrations", "estimate", "for_segment", "plausible"]
 
 #: calibrationd.MIN_SPEED_FILTER = 15 * CV.MPH_TO_MS
 MIN_SPEED_FILTER = 15 * 0.44704
@@ -180,6 +181,31 @@ def estimate(segment_paths: list[Path] | list[str], scope: str = "route") -> Cal
             samples.append(pose.velocity_device[mask])
     pooled = np.concatenate(samples) if samples else np.zeros((0, 3))
     return _fixed_point(pooled, n_total, scope)
+
+
+@cache
+def _for_route(route: Path, fallback: Path, scope: str) -> Calibration:
+    siblings = sorted(
+        (p for p in route.iterdir() if p.is_dir() and p.name.isdigit()),
+        key=lambda p: int(p.name),
+    )
+    return estimate(siblings or [fallback], scope=scope)
+
+
+def for_segment(segment_path: Path | str, scope: str = "route") -> Calibration:
+    """Route-pooled calibration for one segment, from its siblings on disk.
+
+    `RouteCalibrations` is the right entry point for a caller that already has
+    the survey; a renderer has one segment path and nothing else, and pooling
+    the route still matters for exactly the reason the module docstring gives --
+    a minute of stop-and-go traffic can contain no qualifying frame at all.
+
+    Memoised by route for the same reason `RouteCalibrations` is: pooling a
+    70-segment route means reading 70 segments' pose arrays, which is over a
+    minute, and a renderer walking a route would otherwise pay it per segment.
+    """
+    path = Path(segment_path)
+    return _for_route(path.parent, path, scope)
 
 
 class RouteCalibrations:

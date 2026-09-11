@@ -65,6 +65,51 @@ def test_the_road_is_drawn_below_the_horizon(toolkit):
     assert near[1] > far[1] > L.EON_HEIGHT_PX / 2, (near, far)
 
 
+def test_a_radar_range_is_drawn_at_the_range_it_reports(toolkit):
+    """No radar-to-camera offset -- see `radar_to_device` for the measurement.
+
+    Pinned because openpilot's `RADAR_TO_CAMERA = 1.52` and opendbc's "from
+    front of car" comment both argue for adding one, so this is the kind of
+    correction someone reads the source and puts back. On real frames it makes
+    every box about 1.5 m too far: 244 px of predicted lead width becomes 199 px
+    against a car that measures 244.
+    """
+    box = OV.radar_to_device(40.0, 0.0, rpy=None)
+    assert np.allclose(box[:, 0], 40.0)
+    # The box stands on the road, so its base is the road plane and its top is
+    # 1.5 m above it -- device z is down, so the top is the *smaller* z.
+    assert box[:, 2].max() == pytest.approx(L.EON_HEIGHT)
+    assert box[:, 2].min() == pytest.approx(L.EON_HEIGHT - 1.5)
+    # Left-positive in, right-positive out: a return to the left of the car
+    # must not be drawn to its right.
+    assert OV.radar_to_device(40.0, 2.0, rpy=None)[:, 1].mean() == pytest.approx(-2.0)
+
+
+def test_the_mount_rotation_moves_a_radar_box_by_the_pitch_it_encodes(toolkit):
+    """The bug this was written for: radar is car-frame, the camera is not.
+
+    comma2k19's mount pitch runs 1.7-3.8 deg across the two vehicles. At fl 910
+    that is 27-58 px of vertical error on every box -- far more than the gap
+    between a lead vehicle's bumper and the road under it, which is why the
+    box looked "slightly off" against the car it was drawn on.
+
+    The check is the first-order one: a pure pitch moves the projected box by
+    `focal * pitch` rows and leaves the columns alone.
+    """
+    pitch = np.radians(3.0)
+    uncorrected = OV.project(OV.radar_to_device(40.0, 0.0, rpy=None), clip=False)
+    corrected = OV.project(OV.radar_to_device(40.0, 0.0, rpy=[0.0, pitch, 0.0]), clip=False)
+
+    shift = np.mean(corrected[:, 1] - uncorrected[:, 1])
+    assert abs(shift) == pytest.approx(L.EON_FOCAL * pitch, rel=0.05), shift
+    assert np.allclose(corrected[:, 0], uncorrected[:, 0], atol=1.0), "pitch must not move columns"
+
+    # And a route with no estimate draws what it always drew, rather than
+    # silently applying a zero that looks like a measurement.
+    assert np.allclose(OV.calib_to_device([[1.0, 2.0, 3.0]], None), [[1.0, 2.0, 3.0]])
+    assert np.allclose(OV.calib_to_device([[1.0, 2.0, 3.0]], [0.0, 0.0, 0.0]), [[1.0, 2.0, 3.0]], atol=1e-12)
+
+
 def test_a_plan_behind_the_camera_is_not_drawn(toolkit):
     """`img_from_device` NaNs negative depth, and the drawing must honour it.
 

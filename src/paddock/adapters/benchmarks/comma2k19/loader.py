@@ -82,6 +82,8 @@ __all__ = [
     "EON_HEIGHT",
     "EON_FOCAL",
     "EON_WIDTH",
+    "HALF_LANE_M",
+    "RADAR_WINDOW_S",
     "SRC_HZ",
     "SegmentPose",
     "SegmentRef",
@@ -92,9 +94,13 @@ __all__ = [
     "encode_frames",
     "find_segment",
     "future_in_ego_frame",
+    "lead_track",
     "list_segments",
+    "load_can_speed",
     "load_pose",
+    "load_radar",
     "probe_decoder",
+    "radar_tracks",
 ]
 
 # comma's EON dashcam. Fixed for the whole dataset, and identical to the
@@ -113,6 +119,27 @@ EON_WIDTH, EON_HEIGHT_PX, EON_FOCAL = 1164, 874, 910.0
 #: head independently estimates 1.22 m on this data, which is the check that
 #: makes using the prior defensible.
 EON_HEIGHT = 1.22
+
+#: Deliberately absent: a radar-to-camera offset.
+#:
+#: openpilot carries `RADAR_TO_CAMERA = 1.52` to convert between the camera
+#: frame and the radar frame, and `dRel` is documented as measured "from front
+#: of car". Both suggest comma2k19's recorded radar range needs +1.52 m before
+#: it can be projected into the image. **Measured on real frames, it does
+#: not** -- this column already behaves as a camera-frame range, and applying
+#: the offset draws every lead box about 1.5 m too far away. The measurement,
+#: and why the reference script's own lead-range number agrees, are written up
+#: in `overlay.radar_to_device`, which is the only place that would use it.
+
+#: Radar rows kept either side of a frame's timestamp. A track is re-reported at
+#: ~15 Hz, so this is a little over one reporting period: wide enough to catch
+#: every live track, narrow enough not to draw a stale one.
+RADAR_WINDOW_S = 0.06
+#: Half a US highway lane, the gate on "is this track in my lane". Matches
+#: `overlay.LANE_HALF_W` to within the 5 cm that stops a car straddling the line
+#: from flickering in and out of the lead role; neither is measured, because
+#: comma2k19 records no lane geometry.
+HALF_LANE_M = 1.8
 
 RAV4_DONGLE = "b0c9d2329ad1606b"
 CIVIC_DONGLE = "99c94dc769b5d96e"
@@ -344,6 +371,48 @@ def load_can_speed(seg_path: Path) -> tuple[np.ndarray, np.ndarray] | None:
     t = np.load(d / "t")
     v = np.asarray(np.load(d / "value")).reshape(len(t), -1)[:, 0]
     return t, v
+
+
+def load_radar(seg_path: Path) -> tuple[np.ndarray, np.ndarray] | None:
+    """(t, rows) from `processed_log/CAN/radar`, or None.
+
+    A row is `[fwd, left, rel_speed, nan, nan, address, new_track]` -- comma2k19's
+    README, and openpilot's `RadarPoint` with `yRel` left-positive. `fwd` needs no
+    frame conversion before it is projected; `overlay.radar_to_device` explains
+    the measurement behind that, which is not what the constant in openpilot's
+    source would lead you to expect.
+    """
+    d = Path(seg_path) / "processed_log" / "CAN" / "radar"
+    if not (d / "t").exists():
+        return None
+    return np.load(d / "t"), np.load(d / "value")
+
+
+def radar_tracks(radar_t, radar_v, t: float, window: float = RADAR_WINDOW_S) -> np.ndarray:
+    """Live tracks at time `t`: the most recent row per track address.
+
+    A track is re-reported every ~15 Hz, so a window wide enough to catch every
+    track also catches several copies of each. Keeping the last per address is
+    what makes a count of these a track count rather than a row count.
+    """
+    if radar_t is None or radar_v is None or not len(radar_t):
+        return np.empty((0, 7))
+    lo = int(np.searchsorted(radar_t, t - window))
+    hi = int(np.searchsorted(radar_t, t + window))
+    latest = {float(row[5]): row for row in radar_v[lo:hi]}
+    return np.array(list(latest.values())) if latest else np.empty((0, 7))
+
+
+def lead_track(rows, half_lane: float = HALF_LANE_M):
+    """The closest track inside the ego lane -- what an ACC model must predict.
+
+    The one definition of "the lead", shared by the overlay that draws it and
+    the harness that scores a model's lead head against it. Two definitions here
+    would mean the box a reviewer looks at and the number they read were about
+    different vehicles.
+    """
+    in_lane = [r for r in rows if abs(float(r[1])) < half_lane and 1.0 < float(r[0]) < 200.0]
+    return min(in_lane, key=lambda r: float(r[0])) if in_lane else None
 
 
 # --------------------------------------------------------------------------

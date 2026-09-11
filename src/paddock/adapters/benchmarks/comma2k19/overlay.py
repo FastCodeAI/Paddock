@@ -61,10 +61,11 @@ LANE_HALF_W = 1.85
 #: skipped because the hood hides it anyway.
 PATH_HORIZON_S = 5.0
 PATH_SKIP_S = 0.3
-#: Radar rows kept either side of a frame's timestamp. A track is re-reported at
-#: ~15 Hz, so this is a little over one reporting period: wide enough to catch
-#: every live track, narrow enough not to draw a stale one.
-RADAR_WINDOW_S = 0.06
+#: Re-exported: reading radar rows is data access, not drawing, and the harness
+#: needs the same lead definition this module draws in order to score against it.
+RADAR_WINDOW_S = L.RADAR_WINDOW_S
+radar_tracks = L.radar_tracks
+lead_track = L.lead_track
 #: Blend applied after the ribbon so the road stays readable underneath it.
 #: PIL polygons have no alpha of their own, so the whole layer is faded at once.
 RIBBON_ALPHA = 0.55
@@ -100,6 +101,90 @@ def project(points_device, clip: bool = True) -> np.ndarray:
         return np.atleast_2d(np.asarray(tk.denormalize(norm)))
     homogeneous = np.hstack([norm, np.ones((len(norm), 1))])
     return (np.asarray(tk.eon_intrinsics) @ homogeneous.T).T[:, :2]
+
+
+def calib_to_device(points_calib, rpy) -> np.ndarray:
+    """Calibrated-frame points -> the device frame `project` expects.
+
+    The *calibrated* frame is aligned with the car in pitch and yaw; the device
+    frame is however the phone happens to sit on the windscreen. Anything
+    measured by the car -- the radar above all -- arrives in the first and has
+    to be rotated into the second before it can be projected, because the camera
+    model knows only where the camera is pointing.
+
+    `calibration.estimate` defines `p_calib = p_device @ rot_from_euler(rpy)`.
+    The rotation is orthonormal, so the inverse is a right-multiply by its
+    transpose; `rpy = None` means "no estimate", and the points pass through.
+    """
+    pts = np.atleast_2d(np.asarray(points_calib, dtype=np.float64))
+    if rpy is None:
+        return pts
+    return pts @ L.rot_from_euler(np.asarray(rpy, dtype=np.float64)).T
+
+
+def radar_to_device(fwd: float, left: float, rpy=None, height: float = L.EON_HEIGHT) -> np.ndarray:
+    """One radar return -> the four corners of a car-sized box, device frame.
+
+    ## The correction that was missing
+
+    **The radar is bolted to the car; the camera is stuck to the windscreen.**
+    A radar return arrives in the car-aligned (calibrated) frame and `project`
+    consumes the device frame, so without `calib_to_device` the mount rotation
+    is simply left out. On this dataset the mount pitch is 1.7-3.8 deg, which at
+    fl 910 is **27-58 px** of vertical error on every box -- far more than the
+    gap between a lead vehicle's bumper and the road under it, which is why the
+    box looked slightly low against the car it was drawn on. The reference
+    script has the same defect: it rotates lanes, edges and paths, and not radar.
+
+    ## The correction that turned out not to be needed
+
+    openpilot's `RADAR_TO_CAMERA = 1.52` (`selfdrive/controls/radard.py:26`)
+    converts between the camera frame and the radar frame, and `dRel` is
+    documented as measured "from front of car"
+    (`opendbc/car/honda/radar_interface.py`). That reads like this column needs
+    +1.52 m before it can be projected. **Measured on real frames, it does
+    not** -- comma2k19's recorded `processed_log/CAN/radar` behaves as a
+    camera-frame range already, and adding the offset puts every box about 1.5 m
+    too far away.
+
+    Checked two ways on `Chunk_1/b0c9d2329ad1606b|2018-07-27--06-03-57/4`, whose
+    route calibration is a 2.60 deg pitch, at leads of 6.70 m and 8.42 m:
+
+    * *Apparent width.* `width_px = 910 * 1.8 / d`, which is 244 px at 6.70 m and
+      199 px at 8.22 m. Verticals at 244 px sit on the lead's tail lights; at
+      199 px they cut well inside its body. Same at the second range (195 vs
+      165 px). This is the decisive one -- it uses no assumption about camera
+      height or pitch.
+    * *Road plane.* A ground line at the raw range lands under the rear bumper;
+      at range + 1.52 m it lands up on the bumper. Making the offset hypothesis
+      fit would need a camera height of 1.48 m at one lead and 1.43 m at the
+      other -- inconsistent, and both implausible for a windscreen mount --
+      whereas the raw range fits comma's published 1.22 m at both.
+
+    Consistent with the reference's own Track B number, which measured the
+    model's camera-frame lead range as 0.8 m *short* of this column, not 1.5 m
+    long. The likely provenance is that comma's 2018 logger published
+    `liveTracks` already shifted into the camera frame, but that is inference;
+    the geometry above is the measurement.
+
+    ## What the box claims
+
+    The box is *nominal*, not measured: 1.8 m wide and 1.5 m tall, standing on
+    the road plane. A radar return is a point on the rear of the vehicle, so the
+    face drawn is its rear bumper and neither the width nor the height says
+    anything about the car that is actually there.
+    """
+    x = fwd
+    y = -left  # the radar reports left-positive; the calibrated frame is y-right
+    box = np.array(
+        [
+            [x, y - 0.9, height],
+            [x, y + 0.9, height],
+            [x, y + 0.9, height - 1.5],
+            [x, y - 0.9, height - 1.5],
+        ]
+    )
+    return calib_to_device(box, rpy)
 
 
 def ego_to_road(xy, height: float = L.EON_HEIGHT) -> np.ndarray:
@@ -209,28 +294,6 @@ def draw_plan(draw, plan_device, color: str, width: int = 5, dot: float = 5.0) -
         draw.ellipse([p[0] - dot, p[1] - dot, p[0] + dot, p[1] + dot], fill=color)
 
 
-def radar_tracks(radar_t, radar_v, t: float, window: float = RADAR_WINDOW_S) -> np.ndarray:
-    """Live tracks at time `t`: the most recent row per track address.
-
-    A track (columns `[fwd, left, rel_speed, nan, nan, address, new_track]`) is
-    re-reported every ~15 Hz, so a window wide enough to catch every track also
-    catches several copies of each. Keeping the last per address is what makes
-    the count in the HUD a track count rather than a row count.
-    """
-    if radar_t is None or radar_v is None or not len(radar_t):
-        return np.empty((0, 7))
-    lo = int(np.searchsorted(radar_t, t - window))
-    hi = int(np.searchsorted(radar_t, t + window))
-    latest = {float(row[5]): row for row in radar_v[lo:hi]}
-    return np.array(list(latest.values())) if latest else np.empty((0, 7))
-
-
-def lead_track(rows, half_lane: float = 1.8):
-    """The closest track inside the ego lane -- what an ACC model must predict."""
-    in_lane = [r for r in rows if abs(float(r[1])) < half_lane and 1.0 < float(r[0]) < 200.0]
-    return min(in_lane, key=lambda r: float(r[0])) if in_lane else None
-
-
 def _place_label(draw, taken, x: float, y: float, text: str) -> tuple[float, float]:
     """Where to put `text` so it does not sit on a label already placed.
 
@@ -255,8 +318,12 @@ def _place_label(draw, taken, x: float, y: float, text: str) -> tuple[float, flo
     return x, y
 
 
-def draw_radar(draw, rows, lead=None, size=(L.EON_WIDTH, L.EON_HEIGHT_PX)) -> int:
-    """Radar returns as boxes standing on the road plane. Returns how many."""
+def draw_radar(draw, rows, lead=None, size=(L.EON_WIDTH, L.EON_HEIGHT_PX), rpy=None) -> int:
+    """Radar returns as boxes standing on the road plane. Returns how many.
+
+    `rpy` is the route's estimated mount rotation; see `radar_to_device` for
+    what it corrects and for what the box does and does not claim.
+    """
     drawn = 0
     taken: list[tuple[float, float, float, float]] = []
     # Nearest first, so a label pushed clear of a collision is the one for the
@@ -268,16 +335,7 @@ def draw_radar(draw, rows, lead=None, size=(L.EON_WIDTH, L.EON_HEIGHT_PX)) -> in
             continue
         is_lead = lead is not None and float(row[5]) == float(lead[5])
         color = _LEAD if is_lead else _RADAR
-        y = -left  # the radar reports left-positive; device y is right-positive
-        box = np.array(
-            [
-                [fwd, y - 0.9, L.EON_HEIGHT],
-                [fwd, y + 0.9, L.EON_HEIGHT],
-                [fwd, y + 0.9, L.EON_HEIGHT - 1.5],
-                [fwd, y - 0.9, L.EON_HEIGHT - 1.5],
-            ]
-        )
-        pts = project(box, clip=False)
+        pts = project(radar_to_device(fwd, left, rpy), clip=False)
         if not np.isfinite(pts).all():
             continue
         xs, ys = pts[:, 0], pts[:, 1]
@@ -370,9 +428,15 @@ class SegmentOverlay:
         path_horizon_s: float = PATH_HORIZON_S,
         path_skip_s: float = PATH_SKIP_S,
         radar_window_s: float = RADAR_WINDOW_S,
+        rpy=None,
     ) -> None:
         self.path = Path(seg_path)
         self.layers = layers or Layers()
+        #: The route's mount rotation, for anything measured in the car's frame
+        #: rather than the camera's. Estimated from the route if not supplied --
+        #: a caller that already holds a `RouteCalibrations` should pass its
+        #: answer rather than paying for a second pooled estimate.
+        self.rpy = self._rpy(rpy)
         self.path_horizon_s = path_horizon_s
         self.path_skip_s = path_skip_s
         self.radar_window_s = radar_window_s
@@ -388,6 +452,22 @@ class SegmentOverlay:
         self.gnss = (_load(log, "GNSS/live_gnss_ublox/t"), _load(log, "GNSS/live_gnss_ublox/value"))
         self.accel = (_load(log, "IMU/accelerometer/t"), _load(log, "IMU/accelerometer/value"))
         self.gps_times = _load(self.path, "global_pose/frame_gps_times")
+
+    def _rpy(self, given):
+        """The mount rotation to draw car-frame measurements with.
+
+        Falls back to the route's own pooled estimate, and to None -- draw
+        uncorrected -- if the route has no frame that passes calibrationd's
+        gate or produces a rotation no windscreen bracket could hold. Drawing
+        nothing would hide the radar entirely; drawing an implausible rotation
+        would move every box by more than the error it was meant to remove.
+        """
+        if given is not None:
+            return np.asarray(given, dtype=np.float64)
+        from paddock.adapters.benchmarks.comma2k19 import calibration as CAL
+
+        cal = CAL.for_segment(self.path)
+        return cal.rpy if cal.is_valid else None
 
     @property
     def fps(self) -> float:
@@ -442,7 +522,7 @@ class SegmentOverlay:
         tracks = radar_tracks(*self.radar, t, self.radar_window_s)
         lead = lead_track(tracks)
         if self.layers.radar and len(tracks):
-            draw_radar(pen, tracks, lead, size=img.size)
+            draw_radar(pen, tracks, lead, size=img.size, rpy=self.rpy)
 
         if self.layers.hud:
             draw_hud(pen, self.title, self._hud_lines(index, t, tracks, lead), note)
