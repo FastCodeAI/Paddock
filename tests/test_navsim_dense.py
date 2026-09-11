@@ -165,15 +165,33 @@ def test_a_history_of_the_models_own_length_is_honoured(tmp_path: Path) -> None:
     assert len(frames) == 49, "openpilot's 96-frame buffer at 20 Hz"
 
 
-def test_a_missing_frame_is_reported_not_papered_over(tmp_path: Path) -> None:
+def test_a_single_dropped_frame_is_borrowed_and_flagged(tmp_path: Path) -> None:
+    """nuPlan drops the odd frame (five 0.2 s gaps across navtest's 408 camera
+    streams). A scenario is not lost over one; its neighbour stands in and the
+    plan dump says so."""
     root = _nuplan_root(tmp_path)
     conn = sqlite3.connect(root / "splits/test/log_a.db")
-    conn.execute("delete from image where filename_jpg like '%cam_f0001_.jpg'")  # a 1 s hole at 1.0-1.9 s
+    conn.execute("delete from image where filename_jpg like '%cam_f00012.jpg'")  # t = 1.2 s gone
+    conn.commit()
+    conn.close()
+    frames = DenseHistory(str(root), "test", ["CAM_FRONT"]).frames("log_a/CAM_F0/cam_f00020.jpg", 1.5)
+    assert len(frames) == 16
+    flagged = [f for f in frames if f.approximate]
+    assert len(flagged) == 1 and flagged[0].time_us in (-900_000, -700_000), "a neighbour of 1.2 s"
+    assert frames[-1].approximate is False
+
+
+def test_a_hole_in_the_frames_is_reported_not_papered_over(tmp_path: Path) -> None:
+    root = _nuplan_root(tmp_path, seconds=5.0)
+    conn = sqlite3.connect(root / "splits/test/log_a.db")
+    # A 2 s hole at 1.0-2.9 s: the target at 2.0 s is a full second from any frame.
+    conn.execute("delete from image where filename_jpg like '%cam_f0001_.jpg'")
+    conn.execute("delete from image where filename_jpg like '%cam_f0002_.jpg'")
     conn.commit()
     conn.close()
     history = DenseHistory(str(root), "test", ["CAM_FRONT"])
     with pytest.raises(RuntimeError, match="missing frames"):
-        history.frames("log_a/CAM_F0/cam_f00020.jpg", 1.5)
+        history.frames("log_a/CAM_F0/cam_f00040.jpg", 4.0)
 
 
 def test_an_image_the_database_does_not_know_is_refused(tmp_path: Path) -> None:

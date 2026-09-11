@@ -306,7 +306,13 @@ class PaddockProxyAgent(_PaddockAgentBase):
         camera2image, camera2ego = self._calibration(cameras, len(statuses) - 1)
         last = len(statuses) - 1
         payloads = []
-        for frame in self._dense.frames(str(anchor.camera_path), self._history_s):
+        frames = self._dense.frames(str(anchor.camera_path), self._history_s)
+        # For the plan dump: how much of this history was not the frame asked for.
+        self._last_history = {
+            "clamped": sum(f.clamped for f in frames),
+            "approximate": sum(f.approximate for f in frames),
+        }
+        for frame in frames:
             nearest = last + int(round(frame.time_us / 1e6 / NAVSIM_INTERVAL_S))
             status = statuses[min(max(nearest, 0), last)]
             observation = Observation(
@@ -420,6 +426,7 @@ class PaddockProxyAgent(_PaddockAgentBase):
                     "driving_command": np.asarray(status.driving_command).ravel().tolist(),
                     "history_frames": history_frames,
                     "history_source": "nuplan" if self._dense is not None else "openscene",
+                    **(getattr(self, "_last_history", None) or {}),
                     "model_dt": float(body.get("dt", NAVSIM_INTERVAL_S)),
                     "model_waypoints": np.asarray(body["trajectory"], dtype=float).round(4).tolist(),
                     "navsim_poses": poses.round(4).tolist(),

@@ -391,8 +391,10 @@ frame the way NAVSIM expresses its history, and velocity, acceleration and yaw
 rate are nuPlan's measured ones -- no differencing. The last frame *is*
 NAVSIM's keyframe: same image, origin pose. A scenario closer to the log's
 start than the history asked for repeats the log's first frame, as KITScenes
-does at a scene start. A hole in the frames raises, so a scenario with missing
-data fails visibly rather than being scored on a stutter. The scorer, the
+does at a scene start. nuPlan drops the odd frame -- five single 0.2 s gaps
+across navtest's 408 front-camera streams -- and a neighbour stands in for one,
+flagged in the plan dump (`approximate`); a hole wider than 0.5 s raises, so a
+scenario with missing data fails visibly rather than being scored on a stutter. The scorer, the
 metric cache and the trajectory conversion are untouched: only what the model
 is shown changes.
 

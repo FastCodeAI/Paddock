@@ -39,6 +39,12 @@ NUPLAN_HZ = 10.0
 #: a neighbouring frame, not jitter. Measured on a navtest log.
 MATCH_TOLERANCE_S = 0.05
 
+#: The longest gap a frame may be borrowed across. nuPlan drops the odd frame:
+#: five single 0.2 s gaps across the 408 navtest camera streams, measured
+#: 2026-09-12. A borrowed neighbour is flagged (`approximate`), a hole wider
+#: than this is refused -- a scenario scored on a stutter is worse than none.
+MAX_GAP_S = 0.5
+
 _EGO_QUERY = """
 select i.timestamp, i.filename_jpg,
        e.x, e.y, e.qw, e.qx, e.qy, e.qz,
@@ -70,6 +76,9 @@ class DenseFrame:
     #: start than the history asked for. Same as KITScenes' clamp at a scene
     #: start, and what a model's own warm-up would have shown it.
     clamped: bool = False
+    #: A camera had no frame within MATCH_TOLERANCE_S of the target time and
+    #: its nearest one, at most MAX_GAP_S away, stands in: a dropped frame.
+    approximate: bool = False
 
 
 def quaternion_yaw(qw: float, qx: float, qy: float, qz: float) -> float:
@@ -205,6 +214,7 @@ class DenseHistory:
         count = int(round(history_s * self.hz)) + 1
         step_us = 1e6 / self.hz
         tolerance_us = MATCH_TOLERANCE_S * 1e6
+        max_gap_us = MAX_GAP_S * 1e6
         origin = index.ego[anchor][at][:3]
         first = index.times[anchor][0]
 
@@ -213,13 +223,16 @@ class DenseHistory:
             target = t0 - (count - 1 - k) * step_us
             clamped = target < first - tolerance_us
             paths: dict[str, str] = {}
+            approximate = False
             for camera, channel in self.channels.items():
                 i = 0 if clamped else index.nearest(channel, target)
-                if not clamped and abs(index.times[channel][i] - target) > step_us:
+                off = abs(index.times[channel][i] - target)
+                if not clamped and off > max_gap_us:
                     raise RuntimeError(
-                        f"{log}: no {channel} frame within {step_us / 1e6:.1f} s of "
+                        f"{log}: no {channel} frame within {MAX_GAP_S:g} s of "
                         f"t0{(target - t0) / 1e6:+.1f} s; the sensor blobs are missing frames"
                     )
+                approximate = approximate or (not clamped and off > tolerance_us)
                 paths[camera] = self.image_path(log, channel, index.names[channel][i])
             a = 0 if clamped else index.nearest(anchor, target)
             x, y, heading, vx, vy, ax, ay, yaw_rate = index.ego[anchor][a]
@@ -232,6 +245,7 @@ class DenseHistory:
                     acceleration=(ax, ay),
                     yaw_rate=yaw_rate,
                     clamped=clamped,
+                    approximate=approximate,
                 )
             )
         return frames
