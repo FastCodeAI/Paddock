@@ -18,6 +18,7 @@ import argparse
 import importlib
 import logging
 import time
+from typing import Any
 
 from paddock.policy.protocol import Observation, Policy
 
@@ -97,10 +98,18 @@ def build_app(policy: Policy, model: str | None = None, nonce: str | None = None
         The model runs in its own environment, so the sequence crosses a process
         boundary. That is deliberate -- open and closed loop share one execution
         path, and a second in-process path is where the two would diverge.
+
+        `extras` crosses with the trajectory for the same reason the closed-loop
+        path forwards it: the auxiliary heads are predictions the benchmark can
+        score against its own recorded truth, and dropping them here would make
+        open loop the one path where a model is judged on less than it produced.
         """
         observations = [Observation.from_wire(item, cameras=policy.cameras) for item in body["observations"]]
         trajectory = policy.infer_sequence(observations)
-        return {"trajectory": trajectory.waypoints.tolist(), "dt": trajectory.dt}
+        result: dict[str, Any] = {"trajectory": trajectory.waypoints.tolist(), "dt": trajectory.dt}
+        if trajectory.extras:
+            result["extras"] = trajectory.extras
+        return result
 
     @app.post("/reset")
     async def reset(body: dict | None = None) -> bool:

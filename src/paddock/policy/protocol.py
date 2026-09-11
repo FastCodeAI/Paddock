@@ -445,6 +445,113 @@ class Trajectory:
         return wire
 
 
+# --------------------------------------------------------------------------
+# Optional auxiliary predictions
+# --------------------------------------------------------------------------
+
+#: Keys of the model-agnostic auxiliary schema carried in `Trajectory.extras`.
+#:
+#: A trajectory is the only thing every model produces, but most produce more,
+#: and scoring only the trajectory throws away the heads a benchmark could check
+#: against its own recorded truth. These keys are the common ground: a model
+#: fills whichever it has, a harness scores whichever are present, and a metric
+#: whose input is absent is NaN rather than missing -- so the metric list a
+#: benchmark declares does not change with the model under test.
+#:
+#: Every key is optional and `extras` may also carry model-native blocks outside
+#: this schema (openpilot's `native_long`); `validate_extras` ignores those.
+#:
+#: Shapes, all in the ego frame (x forward, y LEFT, metres) unless stated:
+#:
+#:   pose   {"velocity": [vx, vy, vz],                    m/s
+#:           "rotation_rate": [roll, pitch, yaw]}         rad/s
+#:   lead   [{"d": float,        longitudinal gap, metres, measured from the
+#:                               CAMERA -- not from a radar, which sits ahead
+#:                               of it (openpilot's RADAR_TO_CAMERA)
+#:            "y": float,        lateral offset, positive left
+#:            "v_rel": float,    closing rate, m/s, negative when closing
+#:            "a_rel": float,    relative acceleration, m/s^2
+#:            "prob": float},    0..1
+#:           ...]                nearest first; [] means "nothing ahead"
+#:   sigma  [[sx, sy], ...]      per-waypoint 1-sigma, metres; same length and
+#:                               same dt as `waypoints`
+#:   lane   {"lines": [[[x, y], ...], ...],   4 polylines, left to right
+#:           "line_probs": [p, ...],          one per line, 0..1
+#:           "edges": [[[x, y], ...], ...]}   2 polylines, left then right
+#:   road   {"camera_height": float,          metres above the road surface
+#:           "pitch": float, "yaw": float}    rad, device relative to the road
+EXTRAS_KEYS = ("pose", "lead", "sigma", "lane", "road")
+
+
+def validate_extras(extras: dict[str, Any] | None, n_waypoints: int | None = None) -> None:
+    """Raise if a known `extras` key has the wrong shape. Unknown keys pass.
+
+    Called by a model once, at the point it builds the payload, so a shape
+    mistake surfaces in that model's own tests rather than as a NaN column in a
+    ten-thousand-sample sweep. `n_waypoints`, when given, ties `sigma` to the
+    trajectory it belongs to -- a per-waypoint uncertainty that is not
+    per-waypoint is the one error this schema cannot express as NaN.
+    """
+    if not extras:
+        return
+
+    def _floats(value: Any, n: int, where: str) -> None:
+        arr = np.asarray(value, dtype=np.float64)
+        if arr.shape != (n,):
+            raise ValueError(f"extras[{where}] must be {n} floats, got shape {arr.shape}")
+
+    pose = extras.get("pose")
+    if pose is not None:
+        if not isinstance(pose, dict):
+            raise ValueError(f"extras['pose'] must be a dict, got {type(pose).__name__}")
+        for key in ("velocity", "rotation_rate"):
+            if key in pose:
+                _floats(pose[key], 3, f"'pose'][{key!r}")
+
+    leads = extras.get("lead")
+    if leads is not None:
+        if not isinstance(leads, list):
+            raise ValueError(f"extras['lead'] must be a list, got {type(leads).__name__}")
+        for index, lead in enumerate(leads):
+            if not isinstance(lead, dict):
+                raise ValueError(f"extras['lead'][{index}] must be a dict")
+            missing = {"d", "y", "prob"} - set(lead)
+            if missing:
+                raise ValueError(f"extras['lead'][{index}] is missing {sorted(missing)}")
+
+    sigma = extras.get("sigma")
+    if sigma is not None:
+        arr = np.asarray(sigma, dtype=np.float64)
+        if arr.ndim != 2 or arr.shape[1] != 2:
+            raise ValueError(f"extras['sigma'] must be (N, 2), got shape {arr.shape}")
+        if n_waypoints is not None and arr.shape[0] != n_waypoints:
+            raise ValueError(
+                f"extras['sigma'] has {arr.shape[0]} rows for {n_waypoints} waypoints; "
+                "it is one sigma per waypoint, on the same grid"
+            )
+        if (arr < 0).any():
+            raise ValueError("extras['sigma'] contains a negative standard deviation")
+
+    lane = extras.get("lane")
+    if lane is not None:
+        if not isinstance(lane, dict):
+            raise ValueError(f"extras['lane'] must be a dict, got {type(lane).__name__}")
+        for key in ("lines", "edges"):
+            for index, line in enumerate(lane.get(key) or []):
+                arr = np.asarray(line, dtype=np.float64)
+                if arr.ndim != 2 or arr.shape[1] != 2:
+                    raise ValueError(
+                        f"extras['lane'][{key!r}][{index}] must be (N, 2), got shape {arr.shape}"
+                    )
+        probs = lane.get("line_probs")
+        if probs is not None and len(probs) != len(lane.get("lines") or []):
+            raise ValueError("extras['lane']['line_probs'] must have one entry per line")
+
+    road = extras.get("road")
+    if road is not None and not isinstance(road, dict):
+        raise ValueError(f"extras['road'] must be a dict, got {type(road).__name__}")
+
+
 def constant_velocity(speed: float, n: int = N_WAYPOINTS, dt: float = 0.5) -> Trajectory:
     """Straight ahead at the current speed.
 

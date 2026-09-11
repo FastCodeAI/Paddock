@@ -2,9 +2,20 @@
 
 from __future__ import annotations
 
-import numpy as np
+import re
 
-from paddock.policy.protocol import Command, Observation, Policy, Trajectory, constant_velocity
+import numpy as np
+import pytest
+
+from paddock.policy.protocol import (
+    EXTRAS_KEYS,
+    Command,
+    Observation,
+    Policy,
+    Trajectory,
+    constant_velocity,
+    validate_extras,
+)
 
 
 class _Counting(Policy):
@@ -64,6 +75,60 @@ def test_to_wire_is_the_inverse_of_from_wire() -> None:
     obs.lidar2ego = None
     assert "lidar2ego" not in obs.to_wire()["calibration"]
     assert Observation.from_wire(obs.to_wire()).lidar2ego is None
+
+
+def _extras() -> dict:
+    return {
+        "pose": {"velocity": [24.0, 0.1, 0.0], "rotation_rate": [0.0, 0.0, -0.02]},
+        "lead": [{"d": 31.4, "y": -0.3, "v_rel": -1.2, "a_rel": 0.0, "prob": 0.96}],
+        "sigma": [[0.1, 0.05], [0.2, 0.09]],
+        "lane": {
+            "lines": [[[0.0, 1.8], [10.0, 1.9]], [[0.0, -1.8], [10.0, -1.7]]],
+            "line_probs": [0.9, 0.8],
+            "edges": [[[0.0, 5.0], [10.0, 5.1]], [[0.0, -5.0], [10.0, -5.1]]],
+        },
+        "road": {"camera_height": 1.22, "pitch": 0.03, "yaw": -0.004},
+        # A model-native block outside the schema. It must survive untouched.
+        "native_long": {"accel": -0.4, "should_stop": False},
+    }
+
+
+def test_extras_survive_the_closed_loop_wire_and_validate() -> None:
+    """`extras` is how a benchmark sees what a model predicted beyond the path.
+
+    The schema is advisory -- every key optional, unknown keys passed through --
+    so the one thing worth pinning is that a conforming payload validates and
+    crosses `to_wire` byte for byte, model-native blocks included.
+    """
+    traj = Trajectory(np.zeros((6, 2)), extras=_extras())
+    validate_extras(traj.extras, n_waypoints=2)
+    assert traj.to_wire()["extras"] == _extras()
+    assert set(_extras()) - set(EXTRAS_KEYS) == {"native_long"}
+
+    # No extras at all is the common case and must not add a wire key.
+    assert "extras" not in Trajectory(np.zeros((6, 2))).to_wire()
+    validate_extras(None)
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (lambda e: e.__setitem__("sigma", [[0.1, 0.05]]), "one sigma per waypoint"),
+        (lambda e: e.__setitem__("sigma", [[0.1, 0.05, 0.2], [0.0, 0.0, 0.0]]), "must be (N, 2)"),
+        (lambda e: e.__setitem__("sigma", [[0.1, -0.05], [0.2, 0.09]]), "negative standard deviation"),
+        (lambda e: e["pose"].__setitem__("velocity", [24.0, 0.1]), "must be 3 floats"),
+        (lambda e: e["lead"][0].pop("prob"), "missing ['prob']"),
+        (lambda e: e["lane"].__setitem__("line_probs", [0.9]), "one entry per line"),
+    ],
+)
+def test_validate_extras_rejects_a_shape_that_would_score_as_a_silent_nan(mutate, message: str) -> None:
+    """A wrong shape must fail where the model builds it, not ten thousand
+    samples later as an all-NaN column that looks like "this model has no
+    uncertainty head" rather than "this model's uncertainty head is misread"."""
+    extras = _extras()
+    mutate(extras)
+    with pytest.raises(ValueError, match=re.escape(message)):
+        validate_extras(extras, n_waypoints=2)
 
 
 def test_every_closed_loop_harness_matches_the_base_run_episode_signature() -> None:

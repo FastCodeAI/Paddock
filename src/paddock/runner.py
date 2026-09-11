@@ -669,7 +669,16 @@ def _run_open_loop(
                     }
                     response = httpx.post(f"{policy_url}/infer_sequence", json=payload, timeout=600.0)
                     response.raise_for_status()
-                    prediction = Trajectory(response.json()["trajectory"], dt=model_spec.waypoint_dt)
+                    body = response.json()
+                    prediction = Trajectory(
+                        body["trajectory"],
+                        dt=model_spec.waypoint_dt,
+                        # Auxiliary heads (pose, lead, sigma, lane geometry), when
+                        # the model produces them. A harness scores what is here
+                        # and returns NaN for what is not, so the same metric list
+                        # holds across models -- see `protocol.EXTRAS_KEYS`.
+                        extras=body.get("extras"),
+                    )
                     metrics = harness.score(sample, prediction)
                 except Exception as exc:  # noqa: BLE001 - one bad sample must not end the run
                     echo(f"  {sample.sample_id}: FAILED - {exc}")
@@ -689,6 +698,11 @@ def _run_open_loop(
                         "ground_truth": np.asarray(sample.ground_truth)[:, :2].tolist()
                         if sample.ground_truth is not None
                         else None,
+                        # What the model predicted beyond the path. Kept because
+                        # a dashboard replays it frame by frame and a report
+                        # tabulates it; re-running the sweep to get it back costs
+                        # hours, and disk is cheap out here.
+                        **({"extras": prediction.extras} if prediction.extras else {}),
                     }
                 )
                 if (index + 1) % 25 == 0:
