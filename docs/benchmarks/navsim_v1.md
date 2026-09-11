@@ -137,8 +137,53 @@ through the runner's own store path. Three uses:
 | `comfort` | higher | 1 if acceleration, jerk and yaw rate stayed within bounds over the 4 s plan |
 | `driving_direction_compliance` | higher | 1 unless the ego drove against traffic; recorded, weight zero in `pdms` |
 
+## Anchors: the scoring path against the paper
+
+Both anchors were run over the full navtest split (12,146 scenarios, zero
+failures) on a metric cache built at this site with the v1 devkit, before any
+model. The NAVSIM paper's navtest table is the reference.
+
+| term | constant velocity, paddock | paper | human, paddock | paper |
+|---|---:|---:|---:|---:|
+| no at-fault collisions | 68.02 | 68.0 | 100.00 | 100 |
+| drivable area compliance | 57.84 | 57.8 | 100.00 | 100 |
+| time to collision within bound | 50.03 | 50.0 | 100.00 | 100 |
+| comfort | 100.00 | 100 | 99.90 | 99.9 |
+| ego progress | 19.44 | 19.4 | 86.96 | 87.5 |
+| **PDMS** | **20.65** | **20.6** | **94.55** | **94.8** |
+
+Runs `20260911T034553-8f28ac` (`constant_velocity`, valid) and
+`20260911T041230-67c4f3` (`human`, stored `valid: false` as privileged).
+
+**Verified:** every term of the constant-velocity baseline, and every term but
+one of the human's, match the paper to the precision it prints. The cache, the
+maps, the v1.1 scorer and the PDMS vocabulary are therefore the paper's.
+
+**Argued:** the human's 0.25-point PDMS gap sits entirely in ego progress
+(86.96 against 87.5). Progress is normalised against the PDM-Closed reference
+plan stored in the metric cache, and a human plan runs close to that reference,
+so it is the term most sensitive to how the cache was built (this site's
+nuplan-devkit 1.2.0 against whatever produced the paper's cache). The
+constant-velocity progress, far from the reference, matches. Not investigated
+further: the human is an anchor, not a result.
+
+## v2 is unchanged by the shared-code changes
+
+The v2 harness, proxy and parser were generalised for this benchmark. To show
+the v2 numbers did not move, the constant-velocity baseline was re-run over the
+full navtest through the refactored path (`nodeless --bench navsim --agent
+constant_velocity`, run `20260911T051742-c99808`) and compared per scenario with
+the stored record `20260902T175923-feba73`:
+
+- mean EPDMS 0.238544 in both;
+- 12,139 of 12,146 scenarios identical in every metric;
+- the other 7 differ only in `ego_progress` (and so in `epdms`), by at most
+  1e-11 -- last-bit floating-point noise in the progress normaliser.
+
+The re-run's record is kept beside the ops logs rather than committed, so the
+leaderboard does not carry two identical baseline rows.
+
 ## Status
 
-The adapter, the v1 metric cache and the anchors are being run on this site;
-figures land here, in the README column and in `results/navsim_v1/` as they
-complete, with what was verified separated from what was argued.
+The three models' figures land here, in the README column and in
+`results/navsim_v1/` as the runs complete.
