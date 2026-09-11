@@ -48,7 +48,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from paddock.adapters.benchmarks.navsim.convert import NAVSIM_INTERVAL_S
+from paddock.adapters.benchmarks.navsim.convert import CAMERA_SLOTS, NAVSIM_INTERVAL_S
+from paddock.adapters.benchmarks.navsim.dense import NUPLAN_HZ
 from paddock.benchmark import Evaluation, ExternallyScoredBenchmark
 from paddock.results.ingest import navsim as navsim_ingest
 from paddock.runtime.proc import tail as _tail
@@ -152,30 +153,69 @@ MIN_SCENARIOS = 2
 #: denser history to build. A model needing more than this cannot be measured
 #: here, only mis-measured.
 INPUT_HZ = 1.0 / NAVSIM_INTERVAL_S
+
+#: Seconds of history NAVSIM's own AgentInput spans: four keyframes at 0.5 s.
+NAVSIM_HISTORY_S = 1.5
+
+#: [benchmarks.navsim] key naming a nuPlan root -- `splits/<split>/<log>.db` and
+#: `sensor_blobs/<split>/<log>/<CHANNEL>/` at nuPlan's own 10 Hz. With it, a
+#: model whose floor or native rate is above OpenScene's 2 Hz is fed a dense
+#: history built from it (dense.py); without it such a model is refused, as
+#: `input_rate_problems` explains. Which rate a run used is in `run.json`.
+SETTING_NUPLAN = "nuplan"
 CONF_DIR = Path(__file__).resolve().parent / "conf"
 SCORER = "navsim/planning/script/run_pdm_score_sequential.py"
 
 
-def input_rate_problems(min_input_hz: float, model_name: str) -> list[str]:
-    """Why a model needing denser input than OpenScene has cannot be scored.
+def input_rate_problems(min_input_hz: float, model_name: str, supplied_hz: float = INPUT_HZ) -> list[str]:
+    """Why a model needing denser input than this run supplies cannot be scored.
 
-    Pure, so the runner can ask before loading the model and `--dry-run` can
-    report it. `PADDOCK_NAVSIM_ALLOW_SLOW` overrides -- for investigating the
-    gap, not for producing a score, and the run is then stored `valid: false`.
+    `supplied_hz` is OpenScene's 2 Hz, or nuPlan's 10 Hz when the site holds
+    the full-rate data (`SETTING_NUPLAN`). Pure, so the runner can ask before
+    loading the model and `--dry-run` can report it. `PADDOCK_NAVSIM_ALLOW_SLOW`
+    overrides -- for investigating the gap, not for producing a score, and the
+    run is then stored `valid: false`.
     """
-    if min_input_hz > INPUT_HZ and not os.environ.get(ENV_ALLOW_SLOW):
+    if min_input_hz <= supplied_hz or os.environ.get(ENV_ALLOW_SLOW):
+        return []
+    if supplied_hz > INPUT_HZ:
         return [
-            f"{model_name} needs {min_input_hz:g} Hz observations and NAVSIM "
-            f"supplies {INPUT_HZ:g} Hz. OpenScene stores one keyframe per 0.5 s and one image "
-            f"per keyframe, so a denser history cannot be built without inventing frames.\n"
-            f"A model that infers ego motion from frame-to-frame change reads this as a "
-            f"stationary world and plans accordingly, which scores near the constant-velocity "
-            f"baseline while measuring the rate gap rather than the model. See "
-            f"docs/benchmarks/navsim.md.\n"
-            f"Set {ENV_ALLOW_SLOW}=1 to run anyway -- for investigating the gap, "
-            f"not for producing a score."
+            f"{model_name} needs {min_input_hz:g} Hz observations and nuPlan's cameras run at "
+            f"{supplied_hz:g} Hz; nothing denser was ever recorded."
         ]
-    return []
+    return [
+        f"{model_name} needs {min_input_hz:g} Hz observations and NAVSIM "
+        f"supplies {INPUT_HZ:g} Hz. OpenScene stores one keyframe per 0.5 s and one image "
+        f"per keyframe, so a denser history cannot be built from it without inventing frames.\n"
+        f"A model that infers ego motion from frame-to-frame change reads this as a "
+        f"stationary world and plans accordingly, which scores near the constant-velocity "
+        f"baseline while measuring the rate gap rather than the model. See "
+        f"docs/benchmarks/navsim.md.\n"
+        f"The frames exist upstream: set [benchmarks.navsim] {SETTING_NUPLAN} to nuPlan's "
+        f"full-rate sensor data and the model is fed {NUPLAN_HZ:g} Hz from it.\n"
+        f"Or set {ENV_ALLOW_SLOW}=1 to run anyway -- for investigating the gap, "
+        f"not for producing a score."
+    ]
+
+
+def supplied_cameras(cameras: list[str]) -> list[str]:
+    """The declared cameras this rig has a view for, in declaration order.
+
+    A model may declare cameras only one benchmark can render (openpilot's
+    comma-three pair exists in CARLA alone) and fall back to CAM_FRONT elsewhere;
+    the proxy asks NAVSIM for the ones that exist and the policy sees the rest
+    as absent, as it does on KITScenes. None at all is a refusal.
+    """
+    return [c for c in cameras if c in CAMERA_SLOTS]
+
+
+def camera_problems(cameras: list[str], model_name: str) -> list[str]:
+    if supplied_cameras(cameras):
+        return []
+    return [
+        f"{model_name} declares {', '.join(cameras) or 'no cameras'} and the nuPlan rig has none of "
+        f"them; see CAMERA_SLOTS in convert.py"
+    ]
 
 
 def limit_problems(limit: int | None) -> list[str]:
@@ -266,6 +306,15 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         if "exp" not in dataset.extra:
             problems.append("[datasets.navsim] has no 'exp' key (the NAVSIM experiment root)")
 
+        nuplan = self.setting(SETTING_NUPLAN)
+        if nuplan:
+            for required in (f"splits/{self.data_split}", f"sensor_blobs/{self.data_split}"):
+                if not (Path(nuplan) / required).is_dir():
+                    problems.append(
+                        f"[benchmarks.navsim] {SETTING_NUPLAN} = {nuplan} has no {required}/; "
+                        f"it must be a nuPlan root laid out as nuPlan's own (docs/benchmarks/navsim.md)"
+                    )
+
         cache = self.setting("metric_cache")
         if not cache:
             problems.append("[benchmarks.navsim] metric_cache is not set")
@@ -349,6 +398,71 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
     def _overrides() -> list[str]:
         return os.environ.get(ENV_OVERRIDES, "").split()
 
+    # -- which observation rate a model is fed ------------------------------
+
+    @property
+    def nuplan_root(self) -> Path | None:
+        """The site's full-rate nuPlan data, when `SETTING_NUPLAN` names one."""
+        raw = self.setting(SETTING_NUPLAN)
+        return Path(raw) if raw else None
+
+    def input_rate(self, min_input_hz: float, native_input_hz: float = 0.0) -> float:
+        """Hz this model would be fed here: nuPlan's 10 when it needs or was
+        built for more than OpenScene's 2 and the site holds nuPlan; 2 otherwise.
+
+        A model that neither needs nor was built for a denser rate keeps
+        OpenScene's frames even when nuPlan is present, so its recorded scores
+        stay comparable with themselves.
+        """
+        wanted = max(float(min_input_hz or 0.0), float(native_input_hz or 0.0))
+        if wanted > INPUT_HZ and self.nuplan_root is not None:
+            return NUPLAN_HZ
+        return INPUT_HZ
+
+    def history_s(self, model_history_s: float, input_hz: float) -> float:
+        """Seconds of history fed: the model's own ask on the dense path, or
+        NAVSIM's 1.5 s where the scorer's AgentInput is what it gets."""
+        if input_hz > INPUT_HZ and float(model_history_s or 0.0) > 0:
+            return float(model_history_s)
+        return NAVSIM_HISTORY_S
+
+    def model_run_config(self, model) -> dict[str, Any]:
+        hz = self.input_rate(model.min_input_hz, getattr(model, "native_input_hz", 0.0))
+        return {
+            "input_hz": hz,
+            "history_source": "nuplan" if hz > INPUT_HZ else "openscene",
+            "history_s": self.history_s(getattr(model, "history_s", 0.0), hz),
+        }
+
+    def _dense_problems(self, cameras: list[str]) -> list[str]:
+        """Why nuPlan's data cannot feed this model's cameras for this split's logs."""
+        root = self.nuplan_root
+        if root is None:
+            return []
+        coverage = self._coverage()
+        logs = sorted(coverage[0]) if isinstance(coverage, tuple) else sorted(self._declared_logs() or [])
+        channels = [CAMERA_SLOTS[c].upper() for c in cameras if c in CAMERA_SLOTS]
+        no_db = [log for log in logs if not (root / "splits" / self.data_split / f"{log}.db").is_file()]
+        no_cam = [
+            f"{log}/{channel}"
+            for log in logs
+            for channel in channels
+            if not any((root / "sensor_blobs" / self.data_split / log / channel).glob("*.jpg"))
+        ]
+        problems = []
+        if no_db:
+            problems.append(
+                f"{len(no_db)} of {len(logs)} {self.split} logs have no nuPlan database under "
+                f"{root / 'splits' / self.data_split} (first: {no_db[0]})"
+            )
+        if no_cam:
+            problems.append(
+                f"{len(no_cam)} log/camera directories have no nuPlan frames under "
+                f"{root / 'sensor_blobs' / self.data_split} (first: {no_cam[0]}); "
+                f"this model reads {', '.join(channels)}"
+            )
+        return problems
+
     def run_config(self) -> dict[str, Any]:
         """The switches that change what a NAVSIM run measures, for run.json."""
         return {
@@ -380,7 +494,12 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         return reasons
 
     def model_problems(self, model, limit: int | None = None) -> list[str]:
-        return input_rate_problems(float(model.min_input_hz or 0.0), model.name) + limit_problems(limit)
+        hz = self.input_rate(model.min_input_hz, getattr(model, "native_input_hz", 0.0))
+        problems = input_rate_problems(float(model.min_input_hz or 0.0), model.name, hz)
+        problems += camera_problems(list(model.cameras), model.name)
+        if hz > INPUT_HZ and not problems:
+            problems += self._dense_problems(list(model.cameras))
+        return problems + limit_problems(limit)
 
     # -- the run ----------------------------------------------------------
 
@@ -463,7 +582,7 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
     ) -> list[str]:
         root = self.dataset.resolve()
         agent = self._agent()
-        cameras = list(config.get("cameras") or ["CAM_FRONT"])
+        cameras = supplied_cameras(list(config.get("cameras") or ["CAM_FRONT"]))
 
         command = [
             str(self.setting("python")),
@@ -490,6 +609,14 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
                 f"agent.sensor_blobs_path={root / 'sensor_blobs' / self.data_split}",
                 f"agent.dump_path={out_dir / 'trajectories.jsonl'}",
             ]
+            hz = self.input_rate(config.get("min_input_hz", 0.0), config.get("native_input_hz", 0.0))
+            if hz > INPUT_HZ:
+                command += [
+                    f"agent.nuplan_root={self.nuplan_root}",
+                    f"agent.nuplan_split={self.data_split}",
+                    f"agent.dense_hz={hz:g}",
+                    f"agent.history_s={self.history_s(config.get('history_s', 0.0), hz):g}",
+                ]
         if limit:
             command.append(f"train_test_split.scene_filter.max_scenes={limit}")
         if log_names:
@@ -588,9 +715,13 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
     ) -> Evaluation:
         # The runner has already asked `model_problems`; asked again here so a
         # caller that skips the runner is refused the same way.
+        hz = self.input_rate(config.get("min_input_hz", 0.0), config.get("native_input_hz", 0.0))
         problems = input_rate_problems(
-            float(config.get("min_input_hz") or 0.0), str(config.get("model", "this model"))
+            float(config.get("min_input_hz") or 0.0), str(config.get("model", "this model")), hz
         ) + limit_problems(limit)
+        problems += camera_problems(list(config.get("cameras") or []), str(config.get("model", "this model")))
+        if hz > INPUT_HZ and not problems:
+            problems += self._dense_problems(list(config.get("cameras") or ["CAM_FRONT"]))
         if problems:
             raise RuntimeError("\n".join(problems))
 

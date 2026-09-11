@@ -83,6 +83,7 @@ devkit       = ".../Drive-JEPA/navsim_v2"         # the directory holding navsim
 metric_cache = ".../exp/metric_cache_v2"          # run_metric_caching.py builds one
 split        = "navtest"
 workers      = 4
+nuplan       = ".../nuplan-v1.1"                   # optional: 10 Hz frames, see "10 Hz from nuPlan"
 ```
 
 Four environment switches, all deliberate and all narrow. Every one is
@@ -296,7 +297,7 @@ grid path exactly as before and no recorded score moves. That property is pinned
 by test rather than re-measured. `ALPAMAYO_FRAME_SELECT=grid|distinct` forces
 either arm, which is how the A/B above was run.
 
-## openpilot cannot be measured here, and that one is final
+## openpilot cannot be measured on OpenScene
 
 openpilot ran cleanly through the proxy and scored 0.302 against the 0.257
 baseline. The recorded plans say why:
@@ -335,9 +336,57 @@ of nuPlan, whose cameras ran faster, so a denser history exists upstream but in
 no data held here. openpilot has coverage on KITScenes (0.1 s) and neuroNCAP
 (10 Hz); NAVSIM is the outlier.
 
-So: `capabilities.min_input_hz: 10.0`, `navsim` undeclared, and the stored runs
-marked invalid with the reason. A near-baseline number that is really a rate
-artefact is worse than no number, because it looks like a result.
+So: `capabilities.min_input_hz: 10.0`, and the stored 2 Hz runs marked invalid
+with the reason. A near-baseline number that is really a rate artefact is worse
+than no number, because it looks like a result. The denser data turned out to
+be obtainable after all -- the next section.
+
+## 10 Hz from nuPlan
+
+OpenScene is a 2 Hz subsample of nuPlan, whose cameras record at 10 Hz (the
+devkit's `nuplan_scenario_queries.py` says so; lidar is 20 Hz). Motional's
+public bucket holds the full-rate test-split blobs and the per-log databases
+that say which image was taken when and where the ego was, under the same log
+names and image tokens OpenScene uses. On 2026-09-11 the three front cameras
+of all 136 navtest logs (212 GB, 1,072,284 frames) and their 136 databases
+were pulled onto the NAS, verified against each database's `image` table:
+0 missing, 0 extra, frame interval 0.100 s.
+
+`[benchmarks.navsim] nuplan = <root>` names that data, laid out as nuPlan's own:
+`splits/<split>/<log>.db` and `sensor_blobs/<split>/<log>/<CHANNEL>/<token>.jpg`.
+With it set, the harness decides per model which rate to feed:
+
+| model declares | fed | history |
+|---|---|---|
+| `min_input_hz` or `native_input_hz` above 2 | nuPlan, 10 Hz | the model's `history_s`, else NAVSIM's 1.5 s |
+| neither | OpenScene, 2 Hz, the scorer's own four frames | 1.5 s |
+
+So openpilot (`min_input_hz: 10`, `history_s: 4.8` for its 96-frame buffer at
+20 Hz -- what KITScenes feeds) and alpamayo (`native_input_hz: 10`, `history_s:
+1.5`: four frames 0.1 s apart and 16 poses, per its vendor loader) get the
+dense path; drivejepa and visionpilot keep the frames they were scored on.
+Which rate a run used is in `run.json` (`config.input_hz`, `history_source`,
+`history_s`) and hashed into the run id, so a 10 Hz alpamayo run cannot share
+an id with the 2 Hz one.
+
+How it is built (`dense.py`, running inside the scorer's interpreter next to
+the proxy): the keyframe's own front image names the log and the image token;
+the log's database gives that image's timestamp `t0` and, for every image of
+the model's channels, its timestamp and the ego pose it was taken at. Frames
+at `t0 - k/10 s` are picked per camera by nearest timestamp (the rig's cameras
+fire within ~8 ms of each other), poses are re-expressed in the keyframe's
+frame the way NAVSIM expresses its history, and velocity, acceleration and yaw
+rate are nuPlan's measured ones -- no differencing. The last frame *is*
+NAVSIM's keyframe: same image, origin pose. A scenario closer to the log's
+start than the history asked for repeats the log's first frame, as KITScenes
+does at a scene start. A hole in the frames raises, so a scenario with missing
+data fails visibly rather than being scored on a stutter. The scorer, the
+metric cache and the trajectory conversion are untouched: only what the model
+is shown changes.
+
+What it does not fix: alpamayo's field of view (nuPlan's cameras are the same
+~65 deg the model gets from OpenScene) and the proxy's blindness to the
+scorer's state, which every model shares.
 
 ## Sample size
 

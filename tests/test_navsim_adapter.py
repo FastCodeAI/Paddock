@@ -176,14 +176,20 @@ def test_the_command_mapping_inverts_the_drivejepa_adapter() -> None:
 # -- cameras ---------------------------------------------------------------
 
 
-def test_every_camera_a_model_declares_has_a_navsim_slot() -> None:
-    """The nuPlan rig is not nuScenes'. A model asking for a view it cannot get
-    should fail at preflight, not partway into a scoring run."""
+def test_every_navsim_model_has_a_camera_the_rig_can_supply() -> None:
+    """The nuPlan rig is not nuScenes'. A model with no view it can get fails at
+    preflight, not partway into a scoring run; one declaring extra views only
+    CARLA renders (openpilot's comma-three pair) is handed the ones that exist,
+    and its policy sees the rest as absent, as on KITScenes."""
+    from paddock.adapters.benchmarks.navsim.harness import camera_problems, supplied_cameras
+
     for model in Registry.load().models.values():
         if "navsim" not in model.benchmarks:
             continue
-        for camera in model.cameras:
-            assert camera in convert.CAMERA_SLOTS, f"{model.name} wants {camera}"
+        assert camera_problems(list(model.cameras), model.name) == []
+        assert supplied_cameras(list(model.cameras)), f"{model.name} wants only {model.cameras}"
+    assert supplied_cameras(["CAM_OP_ROAD", "CAM_OP_WIDE", "CAM_FRONT"]) == ["CAM_FRONT"]
+    assert "none of them" in camera_problems(["CAM_OP_ROAD"], "x")[0]
 
 
 def test_camera_slots_are_distinct() -> None:
@@ -200,6 +206,8 @@ def test_the_proxy_agent_config_is_tracked_and_names_the_module() -> None:
     config = (CONF_DIR / "agent" / f"{PROXY_AGENT}.yaml").read_text()
     assert "paddock.adapters.benchmarks.navsim.agent.PaddockProxyAgent" in config
     assert "node_url: ???" in config, "node_url must be supplied by the harness, never defaulted"
+    for key in ("nuplan_root: null", "nuplan_split: null", "dense_hz: 0.0", "history_s: 0.0"):
+        assert key in config, f"the dense-history switch {key!r} must default off in the tracked config"
 
 
 def _navsim_site(
@@ -384,6 +392,7 @@ def test_wire_modules_compile_under_python_39() -> None:
     files = [
         base / "policy" / "protocol.py",
         base / "adapters" / "benchmarks" / "navsim" / "convert.py",
+        base / "adapters" / "benchmarks" / "navsim" / "dense.py",
         base / "adapters" / "benchmarks" / "navsim" / "agent.py",
     ]
     command = [interpreter, "-m", "py_compile", *map(str, files)]
@@ -472,7 +481,7 @@ def test_a_limit_below_navsims_floor_is_refused_with_a_reason() -> None:
     assert MIN_SCENARIOS == 2
 
 
-def test_a_model_needing_denser_input_than_navsim_has_is_refused() -> None:
+def test_a_model_needing_denser_input_than_navsim_has_is_refused(monkeypatch) -> None:
     """NAVSIM is a 2 Hz dataset. A model that reads motion from frame-to-frame
     change scores near the constant-velocity baseline on it while measuring the
     rate gap, which is worse than not running: it looks like a result."""
@@ -487,6 +496,9 @@ def test_a_model_needing_denser_input_than_navsim_has_is_refused() -> None:
 
     assert INPUT_HZ == pytest.approx(2.0)
     harness = BENCHMARK(spec, cfg)
+    # A site holding nuPlan's full-rate data feeds it instead (test_navsim_dense.py);
+    # this is the refusal without it.
+    monkeypatch.setattr(BENCHMARK, "nuplan_root", property(lambda self: None))
     with pytest.raises(RuntimeError, match="Hz observations"):
         harness.evaluate(
             "http://127.0.0.1:0",
@@ -498,14 +510,24 @@ def test_a_model_needing_denser_input_than_navsim_has_is_refused() -> None:
 
 def test_openpilot_declares_the_rate_neuroncap_already_established() -> None:
     """neuroNCAP rebuilt its scenarios at 10 Hz because openpilot reads a 0.5 s
-    step as a parked car. That fact now lives in the registry, where a benchmark
-    can act on it, instead of only in a doc."""
+    step as a parked car. That fact lives in the registry, where a benchmark can
+    act on it: NAVSIM feeds it nuPlan's 10 Hz frames when the site has them and
+    refuses it otherwise. Its history ask covers supercombo's 96-frame buffer at
+    20 Hz, which is what KITScenes feeds (48 frames at 10 Hz, emitted twice)."""
     openpilot = Registry.load().models["openpilot"]
     assert openpilot.min_input_hz >= 10.0
-    assert "navsim" not in openpilot.benchmarks, (
-        "openpilot cannot be measured on a 2 Hz dataset; declaring it would make "
-        "`--bench navsim --model all` fail on every sweep"
-    )
+    assert openpilot.history_s >= 96 / 20.0
+    assert "navsim" in openpilot.benchmarks
+
+
+def test_alpamayo_states_the_rate_it_was_built_for_without_a_floor() -> None:
+    """Four frames 0.1 s apart and 16 poses at 0.1 s, per the vendor loader. It
+    works at 2 Hz too (differently), so the floor stays at zero and the native
+    rate is what a benchmark holding 10 Hz data acts on."""
+    alpamayo = Registry.load().models["alpamayo15"]
+    assert alpamayo.min_input_hz == 0.0
+    assert alpamayo.native_input_hz == pytest.approx(10.0)
+    assert alpamayo.history_s == pytest.approx(1.5)
 
 
 def test_alpamayo_falls_back_to_distinct_frames_only_when_the_grid_degenerates() -> None:

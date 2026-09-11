@@ -1,0 +1,283 @@
+"""The 10 Hz history NAVSIM feeds from nuPlan's full-rate data (dense.py) and the
+harness switches around it. No site, no data: a stand-in nuPlan root with a
+tiny sqlite database per log, laid out as nuPlan lays its own out."""
+
+from __future__ import annotations
+
+import math
+import sqlite3
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from paddock.adapters.benchmarks.navsim.dense import (
+    MATCH_TOLERANCE_S,
+    DenseHistory,
+    quaternion_yaw,
+    relative_se2,
+)
+from paddock.adapters.benchmarks.navsim.harness import (
+    INPUT_HZ,
+    NAVSIM_HISTORY_S,
+    input_rate_problems,
+)
+from paddock.registry import Registry
+from tests.test_navsim_adapter import _harness, _navsim_site
+
+SPEED = 5.0  # m/s, heading north (pi/2) from (100, 200)
+YAW_RATE = 0.1
+HZ = 10.0
+
+
+def _nuplan_root(
+    tmp_path: Path,
+    logs: tuple[str, ...] = ("log_a", "log_b"),
+    seconds: float = 3.0,
+    channels: dict[str, float] | None = None,
+    split: str = "test",
+) -> Path:
+    """A nuPlan root: per-log .db with camera/image/ego_pose, and empty jpgs.
+
+    The ego drives due north at SPEED from (100, 200); YAW_RATE is what the
+    IMU column says, not a turn, so relative poses stay on the ego's x axis.
+    One image per channel every 0.1 s, each channel offset by its value in
+    ms -- the rig's cameras fire a few ms apart, as they do in the real logs.
+    """
+    channels = channels if channels is not None else {"CAM_F0": 0.0, "CAM_L0": 8.0}
+    root = tmp_path / "nuplan"
+    for log in logs:
+        db_dir = root / "splits" / split
+        db_dir.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(db_dir / f"{log}.db")
+        conn.executescript(
+            "create table camera (token blob primary key, log_token blob, channel text);"
+            "create table ego_pose (token blob primary key, timestamp integer, x float, y float, z float,"
+            " qw float, qx float, qy float, qz float, vx float, vy float, vz float,"
+            " acceleration_x float, acceleration_y float, acceleration_z float,"
+            " angular_rate_x float, angular_rate_y float, angular_rate_z float,"
+            " epsg integer, log_token blob);"
+            "create table image (token blob primary key, next_token blob, prev_token blob,"
+            " ego_pose_token blob,"
+            " camera_token blob, filename_jpg text, timestamp integer);"
+        )
+        for channel, offset_ms in channels.items():
+            conn.execute("insert into camera values (?, ?, ?)", (f"{log}-{channel}", log, channel))
+            (root / "sensor_blobs" / split / log / channel).mkdir(parents=True, exist_ok=True)
+            for i in range(int(seconds * HZ)):
+                t_s = i / HZ + offset_ms / 1e3
+                t_us = int(round(t_s * 1e6))
+                heading = math.pi / 2
+                x, y = 100.0, 200.0 + SPEED * t_s
+                ego = f"{log}-{channel}-ego-{i}"
+                conn.execute(
+                    "insert into ego_pose values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        ego,
+                        t_us,
+                        x,
+                        y,
+                        0.0,
+                        math.cos(heading / 2),
+                        0.0,
+                        0.0,
+                        math.sin(heading / 2),
+                        SPEED,
+                        0.0,
+                        0.0,
+                        0.5,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        YAW_RATE,
+                        0,
+                        log,
+                    ),
+                )
+                name = f"{channel.lower()}{i:04d}.jpg"
+                conn.execute(
+                    "insert into image values (?,?,?,?,?,?,?)",
+                    (
+                        f"{log}-{channel}-{i}",
+                        None,
+                        None,
+                        ego,
+                        f"{log}-{channel}",
+                        f"{log}/{channel}/{name}",
+                        t_us,
+                    ),
+                )
+                (root / "sensor_blobs" / split / log / channel / name).write_bytes(b"")
+        conn.commit()
+        conn.close()
+    return root
+
+
+def test_dense_history_is_the_keyframe_plus_the_frames_openscene_left_out(tmp_path: Path) -> None:
+    root = _nuplan_root(tmp_path)
+    history = DenseHistory(str(root), "test", ["CAM_FRONT", "CAM_FRONT_LEFT"])
+    frames = history.frames("log_a/CAM_F0/cam_f00020.jpg", 1.5)  # keyframe at t = 2.0 s
+
+    assert len(frames) == 16, "1.5 s at 10 Hz plus the keyframe"
+    assert [f.time_us for f in frames] == [-(15 - k) * 100_000 for k in range(16)]
+    assert not any(f.clamped for f in frames)
+
+    # The last frame is NAVSIM's own keyframe: same image, pose at the origin.
+    last = frames[-1]
+    assert last.paths["CAM_FRONT"] == str(root / "sensor_blobs/test/log_a/CAM_F0/cam_f00020.jpg")
+    assert last.pose == pytest.approx((0.0, 0.0, 0.0))
+    # Earlier frames sit behind the ego along its own x axis, 0.5 m per 0.1 s
+    # at 5 m/s: global north becomes the ego's +x.
+    for k, frame in enumerate(frames):
+        dt = -(15 - k) / HZ
+        assert frame.pose[0] == pytest.approx(SPEED * dt, abs=1e-6)
+        assert frame.pose[1] == pytest.approx(0.0, abs=1e-6)
+        assert frame.pose[2] == pytest.approx(0.0, abs=1e-6)
+        assert frame.velocity == pytest.approx((SPEED, 0.0))
+        assert frame.acceleration == pytest.approx((0.5, 0.0))
+        assert frame.yaw_rate == pytest.approx(YAW_RATE)
+        assert Path(frame.paths["CAM_FRONT"]).exists() and Path(frame.paths["CAM_FRONT_LEFT"]).exists()
+    # The second camera fires 8 ms after the front one: its frame nearest each
+    # target time is the same index, not the previous one.
+    assert frames[0].paths["CAM_FRONT_LEFT"].endswith("cam_l00005.jpg")
+    assert frames[-1].paths["CAM_FRONT_LEFT"].endswith("cam_l00020.jpg")
+
+
+def test_a_scenario_near_the_log_start_repeats_the_first_frame(tmp_path: Path) -> None:
+    """KITScenes clamps at a scene start; so does this, and it says so per frame."""
+    root = _nuplan_root(tmp_path)
+    history = DenseHistory(str(root), "test", ["CAM_FRONT"])
+    frames = history.frames("log_a/CAM_F0/cam_f00005.jpg", 1.5)  # keyframe at 0.5 s
+    assert len(frames) == 16
+    clamped = [f for f in frames if f.clamped]
+    assert len(clamped) == 10 and clamped == frames[:10]
+    first = str(root / "sensor_blobs/test/log_a/CAM_F0/cam_f00000.jpg")
+    assert {f.paths["CAM_FRONT"] for f in clamped} == {first}
+    assert {f.time_us for f in clamped} == {-500_000}
+    assert [f.time_us for f in frames[10:]] == [-500_000, -400_000, -300_000, -200_000, -100_000, 0]
+
+
+def test_a_history_of_the_models_own_length_is_honoured(tmp_path: Path) -> None:
+    root = _nuplan_root(tmp_path, seconds=6.0)
+    history = DenseHistory(str(root), "test", ["CAM_FRONT"])
+    frames = history.frames("log_a/CAM_F0/cam_f00055.jpg", 4.8)
+    assert len(frames) == 49, "openpilot's 96-frame buffer at 20 Hz"
+
+
+def test_a_missing_frame_is_reported_not_papered_over(tmp_path: Path) -> None:
+    root = _nuplan_root(tmp_path)
+    conn = sqlite3.connect(root / "splits/test/log_a.db")
+    conn.execute("delete from image where filename_jpg like '%cam_f0001_.jpg'")  # a 1 s hole at 1.0-1.9 s
+    conn.commit()
+    conn.close()
+    history = DenseHistory(str(root), "test", ["CAM_FRONT"])
+    with pytest.raises(RuntimeError, match="missing frames"):
+        history.frames("log_a/CAM_F0/cam_f00020.jpg", 1.5)
+
+
+def test_an_image_the_database_does_not_know_is_refused(tmp_path: Path) -> None:
+    root = _nuplan_root(tmp_path)
+    history = DenseHistory(str(root), "test", ["CAM_FRONT"])
+    with pytest.raises(RuntimeError, match="not a CAM_F0 image of log_a"):
+        history.frames("log_a/CAM_F0/deadbeef.jpg", 1.5)
+    with pytest.raises(FileNotFoundError):
+        history.frames("log_zzz/CAM_F0/cam_f00020.jpg", 1.5)
+
+
+def test_relative_se2_and_quaternion_yaw_follow_navsims_conventions() -> None:
+    # One metre ahead of an ego facing north is +x in its frame; one metre to
+    # its left is +y; a heading difference wraps into (-pi, pi].
+    north = math.pi / 2
+    assert relative_se2((1.0, 3.0, north), (1.0, 2.0, north)) == pytest.approx((1.0, 0.0, 0.0))
+    assert relative_se2((0.0, 2.0, north), (1.0, 2.0, north)) == pytest.approx((0.0, 1.0, 0.0))
+    assert relative_se2((1.0, 2.0, -3.0), (1.0, 2.0, 3.0)) == pytest.approx((0.0, 0.0, 2 * math.pi - 6.0))
+    for theta in (0.0, 1.0, -2.5, math.pi - 1e-6):
+        assert quaternion_yaw(math.cos(theta / 2), 0.0, 0.0, math.sin(theta / 2)) == pytest.approx(theta)
+    assert MATCH_TOLERANCE_S <= 1.0 / HZ / 2, "a tolerance wider than half a frame would match neighbours"
+
+
+# -- the harness: who is fed what, and what the record says ------------------
+
+
+def test_a_model_needing_denser_input_is_fed_nuplan_only_when_the_site_has_it(tmp_path, monkeypatch) -> None:
+    models = Registry.load().models
+    openpilot, alpamayo, drivejepa = models["openpilot"], models["alpamayo15"], models["drivejepa"]
+
+    plain = _harness(_navsim_site(tmp_path / "plain", monkeypatch))
+    assert plain.input_rate(openpilot.min_input_hz, openpilot.native_input_hz) == INPUT_HZ
+    assert plain.model_run_config(openpilot) == {
+        "input_hz": INPUT_HZ,
+        "history_source": "openscene",
+        "history_s": NAVSIM_HISTORY_S,
+    }
+    assert any("needs 10 Hz" in p and "nuplan" in p for p in plain.model_problems(openpilot))
+
+    root = _nuplan_root(tmp_path, channels={"CAM_F0": 0.0, "CAM_L0": 8.0, "CAM_R0": 4.0})
+    dense = _harness(_navsim_site(tmp_path / "dense", monkeypatch, nuplan=str(root)))
+    fed = {"input_hz": 10.0, "history_source": "nuplan"}
+    assert dense.model_run_config(openpilot) == {**fed, "history_s": 4.8}
+    assert dense.model_run_config(alpamayo) == {**fed, "history_s": 1.5}
+    # A model that neither needs nor was built for more keeps OpenScene's frames,
+    # so its recorded scores stay comparable with themselves.
+    assert dense.model_run_config(drivejepa) == {
+        "input_hz": INPUT_HZ,
+        "history_source": "openscene",
+        "history_s": NAVSIM_HISTORY_S,
+    }
+    assert dense.model_problems(openpilot) == []
+    assert dense.model_problems(alpamayo) == []
+    assert dense.preflight() == []
+
+
+def test_missing_nuplan_data_is_reported_per_log_and_camera(tmp_path, monkeypatch) -> None:
+    openpilot = Registry.load().models["openpilot"]
+    root = _nuplan_root(tmp_path, logs=("log_a",))  # log_b: no database, no frames
+    (root / "sensor_blobs/test/log_b/CAM_F0").mkdir(parents=True)
+    harness = _harness(_navsim_site(tmp_path / "site", monkeypatch, nuplan=str(root)))
+    problems = harness.model_problems(openpilot)
+    assert len(problems) == 2, problems
+    assert "1 of 2 navtest logs have no nuPlan database" in problems[0] and "log_b" in problems[0]
+    assert "1 log/camera directories have no nuPlan frames" in problems[1] and "log_b/CAM_F0" in problems[1]
+
+    # A root that is not a nuPlan root is a preflight problem before any model is asked.
+    wrong = _harness(_navsim_site(tmp_path / "wrong", monkeypatch, nuplan=str(tmp_path / "elsewhere")))
+    assert any("nuplan" in p and "splits/test" in p for p in wrong.preflight())
+
+
+def test_the_scorer_command_hands_the_proxy_the_dense_source(tmp_path, monkeypatch) -> None:
+    root = _nuplan_root(tmp_path)
+    harness = _harness(_navsim_site(tmp_path, monkeypatch, nuplan=str(root)))
+    base = {"cameras": ["CAM_FRONT"], "model": "openpilot", "policy_urls": ["http://h:1"]}
+    asks = {**base, "min_input_hz": 10.0, "history_s": 4.8}
+    dense = harness._command("http://h:1", tmp_path / "out", asks, None)
+    assert f"agent.nuplan_root={root}" in dense
+    assert "agent.nuplan_split=test" in dense
+    assert "agent.dense_hz=10" in dense
+    assert "agent.history_s=4.8" in dense
+    native = harness._command("http://h:1", tmp_path / "out", {**base, "native_input_hz": 10.0}, None)
+    assert "agent.dense_hz=10" in native and "agent.history_s=1.5" in native, "no ask: NAVSIM's own span"
+    plain = harness._command("http://h:1", tmp_path / "out", {**base, "model": "drivejepa"}, None)
+    assert not any(arg.startswith("agent.nuplan_root") or arg.startswith("agent.dense_hz") for arg in plain)
+
+
+def test_input_rate_problems_know_where_the_frames_are() -> None:
+    refused = input_rate_problems(10.0, "openpilot")
+    assert "[benchmarks.navsim] nuplan" in refused[0]
+    assert input_rate_problems(10.0, "openpilot", supplied_hz=10.0) == []
+    assert "nothing denser was ever recorded" in input_rate_problems(20.0, "faster", supplied_hz=10.0)[0]
+
+
+def test_the_wire_observation_for_a_dense_frame_carries_the_measured_rates(tmp_path: Path) -> None:
+    """What the proxy builds from a DenseFrame, checked through the same
+    helpers it uses: canbus reads speed and a *measured* yaw rate, the pose
+    matrix places the frame behind the ego."""
+    from paddock.adapters.benchmarks.navsim.convert import canbus, pose_matrix
+    from paddock.adapters.benchmarks.navsim.dense import as_ego_status
+    from paddock.policy.protocol import CANBUS_VELOCITY, CANBUS_YAW_RATE
+
+    root = _nuplan_root(tmp_path)
+    frame = DenseHistory(str(root), "test", ["CAM_FRONT"]).frames("log_a/CAM_F0/cam_f00020.jpg", 0.5)[0]
+    bus = canbus(as_ego_status(frame), frame.yaw_rate)
+    assert bus[CANBUS_VELOCITY] == pytest.approx(SPEED) and bus[CANBUS_YAW_RATE] == pytest.approx(YAW_RATE)
+    assert pose_matrix(frame.pose)[:2, 3] == pytest.approx(np.array([-2.5, 0.0]), abs=1e-6)

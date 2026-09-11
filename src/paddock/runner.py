@@ -68,7 +68,12 @@ def _measurement_config(cfg: SiteConfig, harness, model_spec: ModelSpec, **given
     site `[models.<name>] env` block -- an environment override can change a
     model's input (alpamayo's frame selection, say), so it is on the record.
     """
-    config = {**given, "cameras": list(model_spec.cameras), **harness.run_config()}
+    config = {
+        **given,
+        "cameras": list(model_spec.cameras),
+        **harness.run_config(),
+        **harness.model_run_config(model_spec),
+    }
     override = cfg.models.get(model_spec.name)
     if override is not None and override.env:
         config["model_env"] = dict(override.env)
@@ -547,6 +552,8 @@ def _run_external(
                         "cameras": list(model_spec.cameras),
                         "model": model_spec.name,
                         "min_input_hz": model_spec.min_input_hz,
+                        "native_input_hz": model_spec.native_input_hz,
+                        "history_s": model_spec.history_s,
                         "policy_urls": urls,
                         "attempt": attempt,
                     },
