@@ -87,6 +87,23 @@ class Runtime:
 
 
 @dataclass(frozen=True)
+class TrainedOn:
+    """One dataset a model saw during training.
+
+    `dataset` should name a key in `datasets.yaml` where it is one -- that is
+    what makes an overlap with a benchmark's data detectable. A corpus paddock
+    does not know about (comma's fleet, NVIDIA internal) is still worth
+    recording: the useful claim is usually "none of ours".
+
+    This is a **self-declaration, not a measurement** -- the same class of claim
+    as a pinned sha in repos.yaml. Nothing verifies it.
+    """
+
+    dataset: str
+    split: str = ""
+
+
+@dataclass(frozen=True)
 class ModelSpec:
     name: str
     repo: str
@@ -109,6 +126,49 @@ class ModelSpec:
     #: unstated, and a benchmark with a history of its own feeds that. openpilot
     #: fills a 96-frame feature buffer at 20 Hz, so it asks for 4.8 s.
     history_s: float = 0.0
+
+    # -- the model card ---------------------------------------------------
+    # What the model IS, as opposed to how to launch it. Each field is here
+    # because it answers a question a reader of the support matrix asks and
+    # paddock could not previously answer. Absent is honest: `None` means
+    # nobody has recorded it, and reads as "-" rather than as zero.
+    # See docs/models/comparison.md for the values and where they came from.
+
+    #: One line. Enough to tell two rows of the matrix apart.
+    architecture: str = ""
+    #: Millions of parameters.
+    params_m: float | None = None
+    #: Multiply-accumulates per forward pass, billions. Nobody has computed one
+    #: for any model yet; the slot exists so the deployment column has somewhere
+    #: to land.
+    macs_g: float | None = None
+    #: On-disk size of the weights actually loaded, GB.
+    size_gb: float | None = None
+    #: fp32 | bf16 | fp16 | int8 | mixed
+    precision: str = ""
+    #: Per-camera input, (width, height) in pixels.
+    input_size: tuple[int, int] | None = None
+    #: Frames of camera history one inference consumes. 1 means the current
+    #: frame only.
+    history_frames: int | None = None
+    #: waypoints | controls | perception. Explains an `n/a` in an ADE column
+    #: without sending the reader to find a footnote.
+    output_kind: str = "waypoints"
+    #: Planning horizon, seconds. None where the output is not time-parameterised.
+    horizon_s: float | None = None
+    #: True if repeated inference on identical input can differ. A single run of
+    #: a stochastic model is a draw, not a measurement: alpamayo's frontal
+    #: neuroNCAP score has sd 1.817 across seeds on one scenario.
+    stochastic: bool = False
+    #: Whether ego speed reaches the model at all. openpilot's complete
+    #: non-image input set is {desire_pulse, traffic_convention, action_t} --
+    #: which is why it reads a 2 Hz dataset as a parked car and why its
+    #: min_input_hz is load-bearing rather than cautious.
+    needs_speed: bool = True
+    #: Datasets seen in training. Empty means "not recorded", which is not the
+    #: same claim as "trained on nothing" -- say which you mean in the adapter.
+    trained_on: tuple[TrainedOn, ...] = ()
+
     benchmarks: tuple[str, ...] = ()
     description: str = ""
     directory: Path = REPO_ROOT
@@ -164,6 +224,42 @@ def load_datasets(root: Path = REPO_ROOT) -> dict[str, DatasetSpec]:
     }
 
 
+def _optional_float(value: object) -> float | None:
+    return None if value is None else float(value)  # type: ignore[arg-type]
+
+
+def _optional_int(value: object) -> int | None:
+    return None if value is None else int(value)  # type: ignore[arg-type]
+
+
+def _input_size(value: object, path: Path) -> tuple[int, int] | None:
+    """Per-camera input as (width, height).
+
+    Refuses anything but a two-item sequence rather than accepting it and
+    surfacing much later as a silently transposed image size.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise ConfigError(f"{path}: capabilities.input_size must be [width, height], got {value!r}")
+    return (int(value[0]), int(value[1]))
+
+
+def _trained_on(value: object, path: Path) -> tuple[TrainedOn, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ConfigError(f"{path}: capabilities.trained_on must be a list, got {value!r}")
+    out = []
+    for entry in value:
+        if not isinstance(entry, dict) or "dataset" not in entry:
+            raise ConfigError(
+                f"{path}: each capabilities.trained_on entry needs a 'dataset' key, got {entry!r}"
+            )
+        out.append(TrainedOn(dataset=str(entry["dataset"]), split=str(entry.get("split", ""))))
+    return tuple(out)
+
+
 def load_models(directory: Path = MODELS_DIR) -> dict[str, ModelSpec]:
     models: dict[str, ModelSpec] = {}
     for path in sorted(directory.glob("*/model.yaml")):
@@ -191,6 +287,18 @@ def load_models(directory: Path = MODELS_DIR) -> dict[str, ModelSpec]:
             min_input_hz=float(caps.get("min_input_hz", 0.0)),
             native_input_hz=float(caps.get("native_input_hz", 0.0)),
             history_s=float(caps.get("history_s", 0.0)),
+            architecture=caps.get("architecture", ""),
+            params_m=_optional_float(caps.get("params_m")),
+            macs_g=_optional_float(caps.get("macs_g")),
+            size_gb=_optional_float(caps.get("size_gb")),
+            precision=caps.get("precision", ""),
+            input_size=_input_size(caps.get("input_size"), path),
+            history_frames=_optional_int(caps.get("history_frames")),
+            output_kind=caps.get("output_kind", "waypoints"),
+            horizon_s=_optional_float(caps.get("horizon_s")),
+            stochastic=bool(caps.get("stochastic", False)),
+            needs_speed=bool(caps.get("needs_speed", True)),
+            trained_on=_trained_on(caps.get("trained_on"), path),
             benchmarks=tuple(body.get("benchmarks", ())),
             description=body.get("description", ""),
             directory=path.parent,
