@@ -130,6 +130,33 @@ def test_a_wildcard_listener_counts_as_taken() -> None:
         assert not ports.is_free(busy), "a wildcard listener must count as in use"
 
 
+def _a_buildable_model(cfg, needs_env: bool = False):
+    """A model whose env template this site can actually resolve.
+
+    Taking the first model alphabetically instead made these tests a statement
+    about that one model's dependencies: `alpamayo15` names `{data.navsim...}`,
+    so a site holding some datasets but not NAVSIM got a `ConfigError` from
+    `substitute` rather than the skip the guard above was written to give it.
+    A site with a partial paddock.toml is the normal case, not a broken one --
+    it is what `paddock doctor` exists to describe.
+    """
+    from paddock.config import ConfigError
+    from paddock.registry import Registry
+    from paddock.runtime import env as env_builder
+
+    models = Registry.load().models
+    for name in sorted(models):
+        spec = models[name]
+        if needs_env and not spec.runtime.env:
+            continue
+        try:
+            env_builder.build(spec, cfg)
+        except ConfigError:
+            continue
+        return spec
+    pytest.skip("no model's environment resolves against this site configuration")
+
+
 def test_a_site_env_override_reaches_the_model_process() -> None:
     """`[models.<name>] env` in paddock.toml must actually take effect.
 
@@ -145,11 +172,9 @@ def test_a_site_env_override_reaches_the_model_process() -> None:
         cfg = SiteConfig.load()
     except Exception:  # noqa: BLE001
         pytest.skip("no site configuration")
-    registry = Registry.load()
-    name = next(iter(sorted(registry.models)))
-    spec = registry.models[name]
+    spec = _a_buildable_model(cfg)
 
-    patched = replace(cfg, models={**cfg.models, name: ModelOverride(env={"PADDOCK_TEST_KEY": "set"})})
+    patched = replace(cfg, models={**cfg.models, spec.name: ModelOverride(env={"PADDOCK_TEST_KEY": "set"})})
     built = env_builder.build(spec, patched)
     assert built.get("PADDOCK_TEST_KEY") == "set"
 
@@ -157,15 +182,13 @@ def test_a_site_env_override_reaches_the_model_process() -> None:
 def test_a_site_env_override_beats_the_models_declared_default() -> None:
     """The site is the authority on its own machine; model.yaml is the default."""
     from paddock.config import ModelOverride, SiteConfig
-    from paddock.registry import Registry
     from paddock.runtime import env as env_builder
 
     try:
         cfg = SiteConfig.load()
     except Exception:  # noqa: BLE001
         pytest.skip("no site configuration")
-    registry = Registry.load()
-    spec = next(m for m in registry.models.values() if m.runtime.env)
+    spec = _a_buildable_model(cfg, needs_env=True)
     key = next(iter(spec.runtime.env))
 
     patched = replace(cfg, models={**cfg.models, spec.name: ModelOverride(env={key: "site-wins"})})
