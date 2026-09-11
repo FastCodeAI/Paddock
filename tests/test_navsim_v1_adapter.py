@@ -376,10 +376,19 @@ def test_the_human_anchor_is_never_valid(tmp_path: Path, monkeypatch) -> None:
     assert run["config"]["agent"] == HUMAN_AGENT
 
 
-def _source_run(cfg, root: Path, bench: str, model: str, run_id: str, tokens: list[str] | None) -> None:
+def _source_run(
+    cfg,
+    root: Path,
+    bench: str,
+    model: str,
+    run_id: str,
+    tokens: list[str] | None,
+    valid: bool = True,
+    notes: str = "",
+) -> None:
     record = root / bench / model / run_id
     record.mkdir(parents=True)
-    run = {"run_id": run_id, "benchmark": bench, "model": model, "valid": True}
+    run = {"run_id": run_id, "benchmark": bench, "model": model, "valid": valid, "notes": notes}
     (record / "run.json").write_text(json.dumps(run))
     metrics = {"primary_metric": "epdms", "metrics": {"epdms": {"mean": 0.6}}}
     (record / "metrics.json").write_text(json.dumps(metrics))
@@ -406,6 +415,22 @@ def test_a_replay_is_stored_under_the_source_model_with_its_provenance(tmp_path:
     assert metrics["primary_metric"] == "pdms"
     scorer_log = next((cfg.runs / "navsim_v1" / "alpamayo15").rglob("navsim_scorer.log")).read_text()
     assert f"agent={REPLAY_AGENT}" in scorer_log and "agent.plans_dir=" in scorer_log
+
+
+def test_a_replay_inherits_the_source_runs_validity(tmp_path: Path, monkeypatch) -> None:
+    """A source stored valid=false -- a subset, a rate override -- gives a replay
+    that is valid=false for the same reason; the plans are that measurement's."""
+    cfg = _stub_v1_site(tmp_path, monkeypatch, chunk_logs="1")
+    root = _results_root(tmp_path, monkeypatch)
+    why = "PADDOCK_NAVSIM_ALLOW_SLOW: a model below NAVSIM's input rate was run anyway"
+    _source_run(cfg, root, "navsim", "openpilot", "slow1", ["log_a-t0"], valid=False, notes=why)
+    assert nodeless.run(cfg, "navsim_v1", replay="navsim/openpilot/slow1", echo=lambda _: None) == 0
+    run, _ = _only_run(root, "navsim_v1", "openpilot")
+    assert run["valid"] is False
+    assert (
+        "replayed from navsim/openpilot/slow1, which is stored valid=false" in run["notes"]
+        and why in run["notes"]
+    )
 
 
 def test_a_replay_refuses_what_it_cannot_vouch_for(tmp_path: Path, monkeypatch) -> None:

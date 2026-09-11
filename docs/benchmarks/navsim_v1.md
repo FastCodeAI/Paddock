@@ -123,7 +123,8 @@ through the runner's own store path. Three uses:
   with `config.replayed_from` and a note saying so. Every proxy run since the
   token-labelling fix dumps its plans with scenario tokens; replaying them under
   this devkit scores exactly the plans that produced the v2 EPDMS, with no GPU.
-  Older dumps without tokens are refused.
+  Older dumps without tokens are refused, and a replay of a run stored
+  `valid: false` is stored `valid: false` too, with the source's reason.
 
 ## Metrics
 

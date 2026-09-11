@@ -18,8 +18,9 @@ that: `paddock run` always starts a node and stores under a registered model.
 * `--replay <bench>/<model>/<run_id>`: the plans an earlier run of *model*
   recorded, scored again -- under another devkit generation, or after a scorer
   died past the last forward pass. Stored under *model* on the target
-  benchmark with `config.replayed_from`, and `valid: true`: they are that
-  model's own plans on the full split, and the record says how they got there.
+  benchmark with `config.replayed_from`, and valid exactly when the source
+  was: they are that model's own plans, and whatever kept the source from
+  being ranked -- a subset, a rate override -- keeps the replay from it too.
   Only a run in the results store is accepted as a source, never a loose file.
 
 Everything else is the runner's: the same measurement config, run id, resume
@@ -136,6 +137,7 @@ def locate_replay(cfg: SiteConfig, ref: str) -> dict | str:
         "plans_sha256": digest.hexdigest()[:16],
         "source_score": score,
         "source_valid": bool(record.get("valid")),
+        "source_notes": str(record.get("notes") or ""),
     }
 
 
@@ -251,6 +253,12 @@ def run(
         invalid_reasons = [*harness.switch_reasons(), *_limit_reason(limit)]
         if group == HUMAN_AGENT:
             invalid_reasons.append(PRIVILEGED_HUMAN)
+        if source is not None and not source["source_valid"]:
+            # The plans are that measurement's; whatever kept it from being
+            # ranked -- a subset, a rate override -- keeps this one too.
+            invalid_reasons.append(
+                f"replayed from {source['ref']}, which is stored valid=false: {source['source_notes'][:200]}"
+            )
         if source is not None:
             told = ", ".join(f"{k} {v:.4f}" for k, v in source["source_score"].items()) or "no headline"
             remarks = [
