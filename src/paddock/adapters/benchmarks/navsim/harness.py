@@ -105,18 +105,20 @@ def completed_chunk_csvs(run_dir: Path) -> list[Path]:
     return [f for f in found if f is not None]
 
 
-def logs_in_csvs(csv_paths: list[Path]) -> set[str]:
-    """The `log_name`s scored in these chunk CSVs (aggregate rows carry none)."""
+def tokens_in_csvs(csv_paths: list[Path]) -> set[str]:
+    """Every `token` in these chunk CSVs. The scorer's CSV names no log -- its
+    columns end at `score` -- so which log a token belongs to is the metric
+    cache's to say (`_token_logs`)."""
     import csv
 
-    logs: set[str] = set()
+    tokens: set[str] = set()
     for path in csv_paths:
         with Path(path).open(newline="") as handle:
             for row in csv.DictReader(handle):
-                name = (row.get("log_name") or "").strip()
-                if name:
-                    logs.add(name)
-    return logs
+                token = (row.get("token") or "").strip()
+                if token:
+                    tokens.add(token)
+    return tokens
 
 
 def completed_chunk_csv(chunk_dir: Path) -> Path | None:
@@ -697,17 +699,30 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
             )
         return csv_path
 
-    @staticmethod
-    def _logs_of(merged_csv: Path, tokens: list[str]) -> list[str]:
-        """The logs a set of tokens belong to, read from the scored CSV, so the
-        retry pass loads only those logs' metadata."""
-        wanted = set(tokens)
-        logs: set[str] = set()
-        with merged_csv.open() as handle:
-            for row in csv.DictReader(handle):
-                if (row.get("token") or "").strip() in wanted and row.get("log_name"):
-                    logs.add(row["log_name"].strip())
-        return sorted(logs)
+    def _token_logs(self) -> dict[str, str]:
+        """token -> log, from the metric cache's own layout `<cache>/<log>/<type>/<token>/`.
+
+        Walked once per harness. The scorer's CSV has no log column, so this
+        is the one place a token's log is known outside the scorer.
+        """
+        if getattr(self, "_token_log_map", None) is None:
+            cache = Path(self.setting("metric_cache") or "")
+            mapping: dict[str, str] = {}
+            if cache.is_dir():
+                for log_dir in cache.iterdir():
+                    if log_dir.is_dir():
+                        for token_dir in log_dir.glob("*/*"):
+                            if token_dir.is_dir():
+                                mapping[token_dir.name] = log_dir.name
+            self._token_log_map = mapping
+        return self._token_log_map
+
+    def _logs_of(self, merged_csv: Path, tokens: list[str]) -> list[str]:
+        """The logs a set of tokens belong to, so the retry pass loads only
+        those logs' metadata. `merged_csv` is unused: the CSV names no log."""
+        del merged_csv
+        token_logs = self._token_logs()
+        return sorted({token_logs[t] for t in tokens if t in token_logs})
 
     def _scorable_logs(self) -> list[str]:
         """The split's logs this site can score, in a fixed order.
@@ -781,7 +796,8 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         merge_from = os.environ.get(MERGE_ENV)
         if merge_from and size > 0:
             merged_csvs = completed_chunk_csvs(Path(merge_from))
-            merged_logs = logs_in_csvs(merged_csvs) & set(logs)
+            token_logs = self._token_logs()
+            merged_logs = {token_logs[t] for t in tokens_in_csvs(merged_csvs) if t in token_logs} & set(logs)
             if not merged_csvs:
                 raise RuntimeError(f"{MERGE_ENV}={merge_from} has no completed chunk CSVs under chunks/")
         chunks = chunk_logs([log for log in logs if log not in merged_logs], size) if logs else [[]]

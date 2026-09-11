@@ -956,7 +956,7 @@ def test_a_run_can_take_another_runs_completed_chunks_and_skip_their_logs(tmp_pa
     index, which means nothing across orderings, so the completed CSVs are
     taken as rows and their logs are left out of the new chunks."""
     from paddock.adapters.benchmarks.navsim import harness as harness_module
-    from paddock.adapters.benchmarks.navsim.harness import MERGE_ENV, logs_in_csvs
+    from paddock.adapters.benchmarks.navsim.harness import MERGE_ENV, tokens_in_csvs
 
     harness = _harness(_stub_scored_site(tmp_path, monkeypatch, chunk_logs="1"))
     monkeypatch.setattr(harness_module, "node_alive", lambda url, timeout_s=5.0: True)
@@ -966,7 +966,9 @@ def test_a_run_can_take_another_runs_completed_chunks_and_skip_their_logs(tmp_pa
     monkeypatch.setenv("STUB_FAIL_LOG", "log_a")  # only log_b's chunk completes
     evaluation = harness.evaluate("http://127.0.0.1:1", first, config)
     assert len(evaluation.samples) == 3 and len(evaluation.failed_chunks) == 1
-    assert logs_in_csvs(harness_module.completed_chunk_csvs(first)) == {"log_b"}
+    done = tokens_in_csvs(harness_module.completed_chunk_csvs(first))
+    assert {"log_b-t0", "log_b-t1", "log_b-t2"} <= done and "average_all_frames" in done
+    assert harness._logs_of(first / "scores.csv", sorted(done)) == ["log_b"], "the cache says which log"
 
     monkeypatch.delenv("STUB_FAIL_LOG")
     monkeypatch.setenv(MERGE_ENV, str(first))
@@ -978,7 +980,8 @@ def test_a_run_can_take_another_runs_completed_chunks_and_skip_their_logs(tmp_pa
     assert "attempt 1: 1 chunk(s)" in story, "only log_a is chunked"
     assert "merged 1 completed chunk CSV(s)" in story and "1 log(s) not scored again" in story
     assert sorted(d.name for d in (second / "chunks").iterdir()) == ["000"], "log_b was never scored again"
-    assert logs_in_csvs([second / "scores.csv"]) == {"log_a", "log_b"}, "the merged rows carry both logs"
+    rows = tokens_in_csvs([second / "scores.csv"])
+    assert harness._logs_of(second / "scores.csv", sorted(rows)) == ["log_a", "log_b"], "rows from both logs"
 
     monkeypatch.setenv(MERGE_ENV, str(tmp_path / "nowhere"))
     with pytest.raises(RuntimeError, match="no completed chunk CSVs"):
