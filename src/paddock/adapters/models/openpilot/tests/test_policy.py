@@ -225,3 +225,72 @@ def test_calibration_changes_between_scenes_are_material() -> None:
     a = DEVICE_FROM_EGO @ upright[:3, :3]
     b = DEVICE_FROM_EGO @ tilted[:3, :3]
     assert not np.allclose(a, b), "a 1 degree change must not be silently equivalent"
+
+
+def test_auxiliary_heads_are_converted_out_of_the_device_frame() -> None:
+    """The sign conventions in `build_extras`, checked without openpilot.
+
+    supercombo speaks [forward, right, down] and predicts its lane lines as (y,
+    z) sampled at fixed distances rather than as (x, y) points. Both are easy to
+    carry through unchanged, and neither shows up as an exception -- a mirrored
+    lane line scores as a model that cannot see lanes, and a flipped yaw rate
+    scores as a model that turns the wrong way. This is the cheapest place to
+    catch either.
+    """
+    from paddock.adapters.models.openpilot.policy import _polyline, _to_ego
+
+    # 1 m/s forward, 2 m/s to the device's right, 3 m/s down.
+    assert _to_ego([1.0, 2.0, 3.0]) == [1.0, -2.0, -3.0]
+    # Its own inverse, which is what lets one matrix serve both directions.
+    assert _to_ego(_to_ego([1.0, 2.0, 3.0])) == [1.0, 2.0, 3.0]
+
+    # A line 1.85 m to the device's right is 1.85 m to ego's left of nothing --
+    # it is the RIGHT lane line, at negative ego y.
+    line = _polyline([[1.85, 0.0], [1.9, 0.0]], x_idxs=[0.0, 4.0])
+    assert line == [[0.0, -1.85], [4.0, -1.9]]
+
+
+def test_build_extras_matches_supercombos_own_output_layout() -> None:
+    """Against the real `ModelConstants`, so a head's width cannot drift unseen."""
+    pytest.importorskip("openpilot", reason="needs openpilot's environment")
+    from openpilot.selfdrive.modeld.constants import ModelConstants as MC
+
+    from paddock.adapters.models.openpilot.policy import build_extras
+    from paddock.policy.protocol import validate_extras
+
+    n = MC.IDX_N
+    plan = np.zeros((n, MC.PLAN_WIDTH))
+    plan[:, 0] = np.asarray(MC.T_IDXS) * 10.0
+    lead = np.zeros((1, MC.LEAD_MHP_SELECTION, MC.LEAD_TRAJ_LEN, MC.LEAD_WIDTH))
+    lead[0, 0, 0] = [42.0, 1.5, 25.0, -0.2]  # x, y(right), absolute speed, accel
+    out = {
+        "plan": plan[None],
+        "plan_stds": np.full((1, n, MC.PLAN_WIDTH), 0.25),
+        "pose": np.array([[30.0, 0.5, 0.1, 0.0, 0.0, 0.02]]),
+        "road_transform": np.array([[0.0, 0.0, 1.22, 0.0, 0.03, -0.004]]),
+        "lead": lead,
+        "lead_prob": np.array([[0.97, 0.5, 0.2]]),
+        "lane_lines": np.zeros((1, MC.NUM_LANE_LINES, n, MC.LANE_LINES_WIDTH)),
+        "lane_lines_prob": np.tile([0.1, 0.9], (1, MC.NUM_LANE_LINES)),
+        "road_edges": np.zeros((1, MC.NUM_ROAD_EDGES, n, MC.LANE_LINES_WIDTH)),
+    }
+
+    extras = build_extras(out, plan)
+    validate_extras(extras, n_waypoints=len(GRID_S))
+
+    assert extras["pose"]["velocity"] == [30.0, -0.5, -0.1]
+    assert extras["pose"]["rotation_rate"][2] == pytest.approx(-0.02), "yaw rate must be left-positive"
+    # The camera is above the road, not below it.
+    assert extras["road"]["camera_height"] == pytest.approx(1.22)
+    assert len(extras["sigma"]) == len(GRID_S)
+
+    (lead_out,) = extras["lead"]
+    assert lead_out["d"] == pytest.approx(42.0), "camera-origin, as radard reads it"
+    assert lead_out["y"] == pytest.approx(-1.5), "openpilot's right is paddock's negative y"
+    assert lead_out["v_rel"] == pytest.approx(-5.0), "25 m/s lead, 30 m/s ego: closing"
+    assert lead_out["prob"] == pytest.approx(0.97)
+
+    assert extras["lane"]["line_probs"] == [pytest.approx(0.9)] * MC.NUM_LANE_LINES
+    assert len(extras["lane"]["lines"]) == MC.NUM_LANE_LINES
+    assert len(extras["lane"]["edges"]) == MC.NUM_ROAD_EDGES
+    assert len(extras["lane"]["lines"][0]) == n

@@ -63,7 +63,14 @@ import numpy as np
 from PIL import Image
 
 from paddock.adapters.models.openpilot.nv12 import pack_nv12, rgb_to_nv12_batch
-from paddock.policy.protocol import Observation, Pinhole, Policy, Trajectory, constant_velocity
+from paddock.policy.protocol import (
+    Observation,
+    Pinhole,
+    Policy,
+    Trajectory,
+    constant_velocity,
+    validate_extras,
+)
 
 # The camera geometry openpilot's tinygrad JIT is compiled for.
 TARGET_W, TARGET_H = 1928, 1208
@@ -311,6 +318,107 @@ def plan_to_grid(plan: np.ndarray, grid_s: np.ndarray = GRID_S) -> np.ndarray:
     return np.stack([np.interp(grid_s, t, pos[:, 0]), -np.interp(grid_s, t, pos[:, 1])], axis=-1)
 
 
+def _to_ego(vec) -> list[float]:
+    """Device frame [forward, right, down] -> ego frame [forward, left, up].
+
+    `DEVICE_FROM_EGO` is a 180 degree rotation about the forward axis and so is
+    its own inverse, which is why the same matrix serves both directions. Being
+    a proper rotation, it applies unchanged to angular rates as well as to
+    positions and velocities.
+    """
+    return [float(v) for v in np.asarray(vec, dtype=np.float64).ravel()[:3] @ DEVICE_FROM_EGO]
+
+
+def _polyline(points, x_idxs) -> list[list[float]]:
+    """A supercombo lane line or road edge -> an ego-frame (N, 2) polyline.
+
+    The heads predict (y, z) sampled at the model's fixed `X_IDXS` distances
+    rather than (x, y) pairs, so the x column is implicit and has to be put
+    back. y is right-positive in the device frame; the ego frame is y-left.
+    """
+    return [[float(x), -float(row[0])] for x, row in zip(x_idxs, np.asarray(points), strict=False)]
+
+
+def build_extras(out: dict, plan33: np.ndarray, grid_s: np.ndarray = GRID_S) -> dict:
+    """supercombo's non-trajectory heads, in `protocol.EXTRAS_KEYS` form.
+
+    supercombo predicts a great deal more than a path -- its own speed and
+    rotation rate, a lead vehicle, per-waypoint uncertainty, the lane and road
+    edges, and where the road surface is relative to the device. A benchmark
+    with recorded CAN, radar and INS can check every one of those against
+    measured truth, but only if the model hands them over; scoring the path
+    alone is the same run with most of the evidence thrown away.
+
+    Everything is converted to paddock's ego frame here, at the one place that
+    knows supercombo's conventions, so no harness has to learn them.
+    """
+    from openpilot.selfdrive.modeld.constants import ModelConstants, Plan
+
+    t_idxs = np.asarray(ModelConstants.T_IDXS)
+    stds = np.asarray(out["plan_stds"])[0][:, Plan.POSITION]
+    extras: dict[str, Any] = {
+        "pose": {
+            "velocity": _to_ego(out["pose"][0][:3]),
+            "rotation_rate": _to_ego(out["pose"][0][3:6]),
+        },
+        # One sigma per waypoint, on the trajectory's own grid. Interpolating a
+        # standard deviation is an approximation, but it is the same
+        # approximation `plan_to_grid` makes for the mean it belongs to, and the
+        # alternative -- reporting sigma on supercombo's grid and the mean on
+        # ours -- cannot be used for a calibration check at all.
+        "sigma": [
+            [float(sx), float(sy)]
+            for sx, sy in zip(
+                np.interp(grid_s, t_idxs, stds[:, 0]),
+                np.interp(grid_s, t_idxs, stds[:, 1]),
+                strict=True,
+            )
+        ],
+    }
+
+    if "lead" in out and "lead_prob" in out:
+        # (batch, 3 time offsets, 6 trajectory points, 4 = x, y, v, a). The three
+        # offsets are the *same* lead predicted 0/2/4 s from now, not three
+        # vehicles, so there is one entry to report: offset 0, point 0.
+        lead = np.asarray(out["lead"])[0, 0, 0]
+        v_ego_model = float(out["pose"][0][0])
+        extras["lead"] = [
+            {
+                # Camera-origin, as `radard.get_RadarState_from_vision` reads it
+                # (it subtracts RADAR_TO_CAMERA to reach the radar's frame).
+                "d": float(lead[0]),
+                "y": -float(lead[1]),
+                # The head predicts the lead's absolute speed; a gap closes at
+                # the difference against the model's own estimate of ego speed.
+                "v_rel": float(lead[2]) - v_ego_model,
+                "a_rel": float(lead[3]),
+                "prob": float(np.asarray(out["lead_prob"])[0, 0]),
+            }
+        ]
+
+    if "lane_lines" in out:
+        x_idxs = ModelConstants.X_IDXS
+        lines = np.asarray(out["lane_lines"])[0]
+        # Paired logits, one pair per line; the odd entries are the probability
+        # that the line exists (`fill_model_msg` reads them the same way).
+        probs = np.asarray(out["lane_lines_prob"])[0][1::2]
+        extras["lane"] = {
+            "lines": [_polyline(line, x_idxs) for line in lines],
+            "line_probs": [float(p) for p in probs[: len(lines)]],
+            "edges": [_polyline(edge, x_idxs) for edge in np.asarray(out.get("road_edges", [[]]))[0]],
+        }
+
+    if "road_transform" in out:
+        road = np.asarray(out["road_transform"])[0]
+        rot = _to_ego(road[3:6])
+        # Not `_to_ego`: this translation is road-relative-to-device, and device
+        # z points down, so the road being 1.22 m below the camera already comes
+        # out as +1.22. Flipping it would report a camera underground.
+        extras["road"] = {"camera_height": float(road[2]), "pitch": rot[1], "yaw": rot[2]}
+
+    return extras
+
+
 class OpenpilotPolicy(Policy):
     #: comma-three rig: the narrow road camera feeds `img`, the wide camera feeds
     #: `big_img` -- as on the device. A source that only has CAM_FRONT still works
@@ -547,13 +655,7 @@ class OpenpilotPolicy(Policy):
         self.frames_seen += 1
         if out is None or "plan" not in out:
             return constant_velocity(obs.speed, dt=self.waypoint_dt)
-        plan33 = np.asarray(out["plan"])[0]
-        traj = Trajectory(plan_to_grid(plan33), dt=self.waypoint_dt)
-        if NATIVE_LONG:
-            traj.extras = {
-                "native_long": self._native_long(out, plan33, obs.speed, self.dt_s, obs.speed_limit)
-            }
-        return traj
+        return self._trajectory(out, obs)
 
     def _infer_onnx(self, obs: Observation) -> Trajectory:
         from paddock.adapters.models.openpilot.supercombo import WarpPlan, rgb_to_yuv420
@@ -582,17 +684,26 @@ class OpenpilotPolicy(Policy):
         self.frames_seen += 1
         if out is None or "plan" not in out:
             return constant_velocity(obs.speed, dt=self.waypoint_dt)
-        self._last_diag = {
-            "desiredCurvature": out["action_value"]["desiredCurvature"],
-            "desiredAcceleration": out["action_value"]["desiredAcceleration"],
-            "pose_trans": np.asarray(out["pose"][0][:3]).tolist(),
-        }
+        if "action_value" in out:
+            self._last_diag = {
+                "desiredCurvature": out["action_value"]["desiredCurvature"],
+                "desiredAcceleration": out["action_value"]["desiredAcceleration"],
+            }
+        return self._trajectory(out, obs)
+
+    def _trajectory(self, out: dict, obs: Observation) -> Trajectory:
+        """One parsed model output -> the plan plus everything else it predicted.
+
+        Shared by both backends: they differ in how the frame reaches the
+        network, not in what comes back, and a second copy of this is a second
+        place for the two to disagree about what openpilot predicted.
+        """
         plan33 = np.asarray(out["plan"])[0]
         traj = Trajectory(plan_to_grid(plan33), dt=self.waypoint_dt)
+        traj.extras = build_extras(out, plan33)
         if NATIVE_LONG:
-            traj.extras = {
-                "native_long": self._native_long(out, plan33, obs.speed, self.dt_s, obs.speed_limit)
-            }
+            traj.extras["native_long"] = self._native_long(out, plan33, obs.speed, self.dt_s, obs.speed_limit)
+        validate_extras(traj.extras, n_waypoints=len(traj.waypoints))
         return traj
 
     def _native_long(self, out, plan33, v_ego: float, dt_s: float, speed_limit) -> dict:
