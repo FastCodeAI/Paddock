@@ -11,6 +11,7 @@ import pytest
 
 from paddock.adapters.benchmarks.bench2drive.pid import (
     BRAKE_SPEED,
+    CONTROL_HORIZON_S,
     MAX_THROTTLE,
     WaypointTracker,
 )
@@ -59,6 +60,31 @@ def test_overspeed_brakes_rather_than_coasting() -> None:
     assert desired == pytest.approx(5.0)
     assert brake == 1.0
     assert throttle == 0.0
+
+
+def test_a_longer_plan_does_not_change_the_control_it_produces() -> None:
+    """The desired speed is a mean, so an unfixed window makes throttle a
+    function of how far the model chose to plan.
+
+    openpilot's grid was extended from 4 s to supercombo's native 10 s; without
+    `CONTROL_HORIZON_S` that alone would have moved every recorded Bench2Drive
+    score, with nothing in the Bench2Drive diff to explain it. Both plans below
+    are the same drive -- 5 m/s, straight -- read to different depths.
+    """
+    short = WaypointTracker(0.5).control(_plan(5.0, n=8), speed=3.0)
+    long = WaypointTracker(0.5).control(_plan(5.0, n=20), speed=3.0)
+    assert short == long
+
+    # ... and the window is a truncation, not a resample: a plan that stops
+    # inside it is still read whole.
+    assert WaypointTracker(0.5).control(_plan(5.0, n=6), speed=0.0)[3] == pytest.approx(5.0)
+
+
+def test_the_control_window_covers_what_the_gains_were_tuned_on() -> None:
+    """TCP's constants assume roughly four seconds of plan; a much shorter
+    window would be a different controller wearing the same numbers."""
+    assert CONTROL_HORIZON_S == pytest.approx(4.0)
+    assert int(round(CONTROL_HORIZON_S / 0.5)) == 8
 
 
 def test_yaw_column_is_ignored_and_short_plans_are_rejected() -> None:

@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from paddock.adapters.models.openpilot.policy import (
+    GRID_S,
     POLICY,
     TARGET_H,
     TARGET_W,
@@ -145,8 +146,35 @@ def test_plan_is_converted_to_y_left() -> None:
     plan[:, Plan.POSITION][:, 1] = 1.0  # 1 m to openpilot's right
 
     grid = plan_to_grid(plan)
-    assert grid.shape == (8, 2)
+    assert grid.shape == (len(GRID_S), 2)
     assert np.all(grid[:, 1] < 0), "y must be negated into the left-positive convention"
+
+
+def test_the_grid_reaches_supercombos_own_horizon_without_extrapolating() -> None:
+    """`plan_to_grid` interpolates T_IDXS; a grid past its end would invent plan."""
+    pytest.importorskip("openpilot", reason="needs openpilot's environment")
+    from openpilot.selfdrive.modeld.constants import ModelConstants
+
+    assert GRID_S[-1] <= ModelConstants.T_IDXS[-1] + 1e-9, "the grid must not outrun the model"
+    assert GRID_S[-1] == pytest.approx(ModelConstants.T_IDXS[-1]), "and should not stop short of it"
+
+
+def test_extending_the_grid_left_the_shorter_benchmarks_alone() -> None:
+    """Widening for comma2k19's 10 s must not move a recorded neuroNCAP,
+    KITScenes or Bench2Drive score.
+
+    The guarantee is a prefix one: the first eight entries are untouched, and
+    every consumer reads a fixed prefix, truncates to its own ground truth, or
+    resamples. Bench2Drive is the one that had no prefix -- its tracker averaged
+    the whole plan -- so `pid.CONTROL_HORIZON_S` was added alongside this, and
+    the second assertion is what keeps the pair honest.
+    """
+    from paddock.adapters.benchmarks.bench2drive.pid import CONTROL_HORIZON_S
+    from paddock.policy.protocol import N_WAYPOINTS
+
+    assert list(GRID_S[:8]) == [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0]
+    assert GRID_S[N_WAYPOINTS - 1] == 3.0, "neuroNCAP reads the first six"
+    assert CONTROL_HORIZON_S <= GRID_S[7], "Bench2Drive must still see the plan it was tuned on"
 
 
 def test_target_resolution_matches_the_compiled_warp() -> None:

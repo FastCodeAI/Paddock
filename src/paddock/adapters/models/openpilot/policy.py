@@ -79,8 +79,21 @@ DEVICE_FROM_EGO = np.diag([1.0, -1.0, -1.0])
 # 0 is set.
 TRAFFIC_CONVENTION = np.array([1.0, 0.0], dtype=np.float32)
 
-#: The 0.5 s grid the closed-loop vehicle model expects.
-GRID_S = np.arange(1, 9) * 0.5
+#: The 0.5 s grid every paddock consumer reads, out to supercombo's own horizon.
+#:
+#: `ModelConstants.T_IDXS` runs to 10 s, so stopping at 4 s threw away more than
+#: half the plan the model had already computed and made every longer-horizon
+#: metric unscoreable for the one model that runs a 10 s benchmark (comma2k19).
+#: Resampling to 10 s is interpolation of supercombo's own output, never
+#: extrapolation -- T_IDXS is ~0.6 s apart at the tail, finer than this grid.
+#:
+#: Additive by construction: indices 0-7 are bit-identical to the old array, and
+#: every consumer either takes a fixed prefix (`to_wire` six for neuroNCAP,
+#: `pid.CONTROL_HORIZON_S` four seconds for Bench2Drive), truncates to its own
+#: ground truth (KITScenes), or resamples onto its own grid (NAVSIM). So no
+#: recorded score moves. Bench2Drive's prefix did not exist until this change --
+#: its tracker averaged the whole plan -- and was added with it.
+GRID_S = np.arange(1, 21) * 0.5
 
 FEATURE_BUFFER_FRAMES = 130  # >= the big model's 128-deep buffer
 MODEL_HZ = 20.0  # the rate supercombo believes its input arrives at

@@ -60,12 +60,16 @@ alongside.
 | `inference_seconds` | wall clock per sample | lower |
 
 **A horizon the model's plan does not reach is `NaN`, never a shorter horizon
-under a longer label.** This matters here more than elsewhere: openpilot's
-paddock adapter returns 8 waypoints on a 0.5 s grid, so 4.0 s, and anything past
-that is NaN until `GRID_S` is extended. An earlier version of the shared
-`decompose` clamped the end index to what was available and emitted anyway,
-which is why every `fde@5s` figure recorded for this benchmark before that fix
-is an FDE at 4.0 s and must not be read as a 5 s number.
+under a longer label.** An earlier version of the shared `decompose` clamped the
+end index to what was available and emitted anyway, and openpilot's adapter used
+to stop at 4.0 s -- so every `fde@5s` figure recorded for this benchmark before
+those two fixes is an FDE at 4.0 s and must not be read as a 5 s number.
+`scored_horizon_s` is now recorded per sample so the question is answerable from
+the results rather than from the changelog.
+
+openpilot's `GRID_S` now reaches supercombo's own 10 s horizon, so all of the
+above are scoreable for it. A model that plans less far still gets `NaN` past
+where it stopped.
 
 `history_frames` defaults to **160** because the queues hold
 `frame_skip * feature_depth` frames of history -- 4 x 24 = 96 for the small
