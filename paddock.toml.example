@@ -71,13 +71,20 @@ weights = "/path/to/weights"
 # ---------------------------------------------------------------------------
 
 # [benchmarks.comma2k19]                       # docs/benchmarks/comma2k19.md
-# All three change what is measured and are hashed into the run id, so two
-# runs with different values never share a config hash. Defaults shown.
+# The first three change what is measured and are hashed into the run id, so
+# two runs with different values never share a config hash. Defaults shown.
 # history_frames        = 160    # observations fed before the scored one
-# keyframes_per_segment = 1      # scored frames per 60 s segment
+# keyframes_per_segment = 5      # scored frames per 60 s segment
 # input_hz              = 20     # observation rate; only 20/n is reachable, and
 #                                # PADDOCK_COMMA2K19_INPUT_HZ overrides this for
 #                                # a single run (sweeping rates is the point)
+# keep_frames           = false  # keep the decoded frames the harness stages
+#                                # under {runs}/comma2k19/_frames instead of
+#                                # deleting them per segment. Not hashed: it
+#                                # changes nothing a model is shown. A full
+#                                # sweep keeps about 1 GB per segment, so say
+#                                # yes only with 2 TB free and several runs to
+#                                # amortise the decode over.
 
 # [benchmarks.bench2drive]                     # CARLA closed-loop; docs/benchmarks/bench2drive.md
 # python      = "/path/to/conda/envs/b2d/bin/python"  # CARLA-client env: imports carla, cv2, numpy, requests

@@ -77,9 +77,14 @@ from __future__ import annotations
 
 import math
 import os
+import shutil
+import tempfile
+import threading
 from collections.abc import Iterator
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from functools import cached_property
+from pathlib import Path
 
 import numpy as np
 
@@ -120,6 +125,12 @@ DEFAULT_HISTORY_FRAMES = 160
 DEFAULT_KEYFRAMES = 5
 #: Native rate, i.e. every recorded frame. Overridden per site or per run.
 DEFAULT_INPUT_HZ = L.SRC_HZ
+
+#: Threads writing decoded frames in `_materialise`. Eight, because that is
+#: where the measured gain flattens (52 -> 6.7 ms/frame) and because these
+#: threads run *beside* a model holding the GPU: this is a staging cost on the
+#: harness side, not the thing the machine is here to do.
+ENCODE_WORKERS = min(8, os.cpu_count() or 1)
 
 #: Reads a `20 / n` observation rate for the run, ahead of the site's
 #: `[benchmarks.comma2k19] input_hz`. An environment variable rather than only a
@@ -236,6 +247,34 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
     def grid(self) -> EvalGrid:
         """The run's grids. Raises `UnreachableRate`; `preflight` reports it."""
         return EvalGrid.build(self.input_hz, self.history_frames)
+
+    @property
+    def keep_frames(self) -> bool:
+        """Keep the decoded frames after a segment is scored?
+
+        Off, because the arithmetic is unforgiving: a 160-frame history at five
+        keyframes is roughly 800 unique frames per segment and about a gigabyte
+        of PNG, so keeping them for all 2035 segments would ask for terabytes to
+        save a decode pass. A site with the disk can turn it on and let a second
+        model's run reuse the first's frames; it changes nothing a model sees,
+        which is why it is deliberately **not** in `run_config`.
+        """
+        return bool(self.setting("keep_frames", False))
+
+    @cached_property
+    def _frame_root(self) -> Path:
+        """This run's frame cache. Private to the run unless `keep_frames`.
+
+        Two runs sweeping the same segments concurrently is ordinary here -- one
+        per model, or a rate sweep -- and they must not delete each other's
+        frames mid-read, so each run gets its own directory. `keep_frames` opts
+        into the shared one precisely because sharing is the point of keeping.
+        """
+        root = self.cfg.runs / "comma2k19" / "_frames"
+        root.mkdir(parents=True, exist_ok=True)
+        if self.keep_frames:
+            return root
+        return Path(tempfile.mkdtemp(prefix=f"run-{os.getpid()}-", dir=root))
 
     def run_config(self) -> dict:
         """What changes the number, hashed into the run id.
@@ -574,12 +613,19 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
             segments = [s for s in segments if s.vehicle == split]
         cals = self._calibrations
         produced = 0
-        for segment in segments:
-            for sample in self._segment_samples(segment, cals):
-                yield sample
-                produced += 1
-                if limit is not None and produced >= limit:
-                    return
+        try:
+            for segment in segments:
+                for sample in self._segment_samples(segment, cals):
+                    yield sample
+                    produced += 1
+                    if limit is not None and produced >= limit:
+                        return
+        finally:
+            # Per-segment cleanup already runs inside `_segment_samples`; this
+            # removes the run's own directory, which a crash or a `--limit`
+            # would otherwise leave behind empty.
+            if not self.keep_frames and "_frame_root" in self.__dict__:
+                shutil.rmtree(self._frame_root, ignore_errors=True)
 
     def _segment_samples(self, segment: L.SegmentRef, cals: CAL.RouteCalibrations) -> Iterator[Sample]:
         grid = self.grid
@@ -601,45 +647,128 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         # One decode pass per segment, and at a stride above 1 most of what it
         # decodes is thrown away -- unavoidable, since the streams carry no
         # container index and cannot be seeked. Only frames some keyframe's
-        # window needs are retained; everything else is dropped as it streams by.
+        # window needs are written; everything else is dropped as it streams by.
         windows = {k: grid.window(k) for k in keyframes}
         needed = {i for w in windows.values() for i in w}
-        last_needed = max(needed)
-        frames: dict[int, np.ndarray] = {}
-        for i, rgb in enumerate(L.decode_frames(segment.video, limit=last_needed + 1)):
-            if i in needed:
-                frames[i] = rgb
+        frames = self._materialise(segment, needed)
 
-        for k in keyframes:
-            window = [i for i in windows[k] if i in frames]
-            if len(window) < grid.history_frames // 2 or window[-1] != k:
-                # A short window is a truncated video; a window missing its last
-                # frame is a truncated video that also lost the scored moment,
-                # and scoring a plan made from a frame that is not the keyframe
-                # would be a silently different measurement.
-                continue
-            observations = [self._observation(frames[i], pose, can, i, window[0], camera2ego) for i in window]
-            yield Sample(
-                sample_id=f"comma2k19/{segment.chunk}/{segment.route_id}/{segment.segment}/{k}",
-                observations=observations,
-                ground_truth=L.future_in_ego_frame(pose, k, grid.gt_horizons_s),
-                split=segment.vehicle,
-                native_id={
-                    "chunk": segment.chunk,
-                    "route_id": segment.route_id,
-                    "segment": segment.segment,
-                    "keyframe_index": k,
-                    # The window, so a stored sample can be re-decoded and drawn
-                    # (see render.render_sample) without re-deriving the grid.
-                    "first_frame_index": window[0],
-                    "stride": grid.stride,
-                    "input_hz": grid.input_hz,
-                    "rpy_calib_deg": [round(v, 4) for v in cal.rpy_deg],
-                    "calibration_scope": cal.scope,
-                    "calibration_frames": cal.n_valid,
-                    "reference": self._reference(pose, can, radar, k),
-                },
-            )
+        try:
+            for k in keyframes:
+                window = [i for i in windows[k] if i in frames]
+                if len(window) < grid.history_frames // 2 or window[-1] != k:
+                    # A short window is a truncated video; a window missing its
+                    # last frame is a truncated video that also lost the scored
+                    # moment, and scoring a plan made from a frame that is not
+                    # the keyframe would be a silently different measurement.
+                    continue
+                observations = [
+                    self._observation(frames[i], pose, can, i, window[0], camera2ego) for i in window
+                ]
+                yield Sample(
+                    sample_id=f"comma2k19/{segment.chunk}/{segment.route_id}/{segment.segment}/{k}",
+                    observations=observations,
+                    ground_truth=L.future_in_ego_frame(pose, k, grid.gt_horizons_s),
+                    split=segment.vehicle,
+                    native_id={
+                        "chunk": segment.chunk,
+                        "route_id": segment.route_id,
+                        "segment": segment.segment,
+                        "keyframe_index": k,
+                        # The window, so a stored sample can be re-decoded and
+                        # drawn (see render.render_sample) without re-deriving
+                        # the grid.
+                        "first_frame_index": window[0],
+                        "stride": grid.stride,
+                        "input_hz": grid.input_hz,
+                        "rpy_calib_deg": [round(v, 4) for v in cal.rpy_deg],
+                        "calibration_scope": cal.scope,
+                        "calibration_frames": cal.n_valid,
+                        "reference": self._reference(pose, can, radar, k),
+                    },
+                )
+        finally:
+            # The frames are scratch, not results: released as soon as this
+            # segment's samples have been consumed, including when `--limit`
+            # closes the generator mid-segment. Without this a full sweep would
+            # leave 2035 segments' worth of PNG on disk.
+            if not self.keep_frames:
+                shutil.rmtree(self._segment_frame_dir(segment), ignore_errors=True)
+
+    # ---- frames ---------------------------------------------------------
+
+    def _segment_frame_dir(self, segment: L.SegmentRef) -> Path:
+        """Where this segment's decoded frames live for the duration of the run.
+
+        Under `{roots.runs}`, never under the dataset: the dataset root is read
+        only and may be a shared mount that this run has no business writing to.
+        The route id carries a `|`, which is legal on disk and awkward in every
+        shell that would ever be used to look at this directory, so it is
+        flattened out of the cache path.
+        """
+        route = segment.route_id.replace("|", "_")
+        return self._frame_root / f"{segment.chunk}_{route}_{segment.segment}"
+
+    def _materialise(self, segment: L.SegmentRef, needed: set[int]) -> dict[int, Path]:
+        """Decode the frames this segment's windows need, and return their paths.
+
+        **Paths, not pixels.** paddock's open-loop convention is that the harness
+        sends a path and the node reads the same disk, and this harness was the
+        one place that did not: it base64'd every frame into the request body, so
+        a single 160-frame sample carried ~650 MB and a full sweep would have
+        pushed petabytes through a localhost socket. The decode cost is unchanged
+        -- one streaming pass per segment either way -- and it is now amortised
+        over every keyframe in the segment rather than repeated per keyframe.
+
+        Lossless PNG, at the codec's cheapest setting: these files are written
+        and read back within seconds by a process on the same machine, so encode
+        time matters and file size does not. Lossless is not negotiable -- a
+        re-compressed frame would make the pixels a model sees depend on this
+        cache, and two models' numbers would stop being comparable to any run
+        that predates it.
+
+        Written to a temporary name and renamed into place, because a decode
+        interrupted half way through a file must not leave a truncated PNG that
+        a later run treats as cached.
+
+        The encode runs on a thread pool because it, and not the decode, is the
+        whole cost: measured on one segment's frames, decoding is 0.8 ms/frame
+        and a serial PNG write is 52. Threads are enough because PIL drops the
+        GIL inside the encoder, which takes the same write to 6.7 ms/frame --
+        about 5 s per segment, against 42 -- and the difference across 2035
+        segments is a day of wall clock.
+        """
+        directory = self._segment_frame_dir(segment)
+        paths = {i: directory / f"{i:06d}.png" for i in sorted(needed)}
+        missing = {i for i, path in paths.items() if not path.exists()}
+        if missing:
+            directory.mkdir(parents=True, exist_ok=True)
+            with ThreadPoolExecutor(ENCODE_WORKERS) as pool:
+                pending: set[Future[None]] = set()
+                for index, rgb in enumerate(L.decode_frames(segment.video, limit=max(missing) + 1)):
+                    if index not in missing:
+                        continue
+                    # Bounded in flight, because the decode is far faster than
+                    # the encode: submitting freely would queue a whole
+                    # segment's frames and hold 2 GB of RGB in RAM waiting for
+                    # the pool. Draining eagerly also surfaces a write error at
+                    # the frame that caused it.
+                    while len(pending) >= 2 * ENCODE_WORKERS:
+                        done, pending = wait(pending, return_when=FIRST_COMPLETED)
+                        for future in done:
+                            future.result()
+                    pending.add(pool.submit(self._write_frame, paths[index], rgb))
+                for future in pending:
+                    future.result()
+        return {i: path for i, path in paths.items() if path.exists()}
+
+    @staticmethod
+    def _write_frame(path: Path, rgb: np.ndarray) -> None:
+        """One frame to disk, atomically. See `_materialise` for the whys."""
+        from PIL import Image
+
+        staged = path.with_suffix(f".{os.getpid()}.{threading.get_ident()}.tmp")
+        Image.fromarray(rgb).save(staged, format="PNG", compress_level=1)
+        os.replace(staged, path)
 
     def _reference(self, pose: L.SegmentPose, can, radar, index: int) -> dict[str, float | str]:
         """What the car measured at the keyframe, for `auxiliary.score` to score against.
@@ -680,7 +809,7 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
 
     def _observation(
         self,
-        rgb: np.ndarray,
+        frame: Path,
         pose: L.SegmentPose,
         can,
         index: int,
@@ -688,6 +817,9 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         camera2ego: np.ndarray,
     ) -> Observation:
         """One frame, in the protocol's shape.
+
+        The frame travels as a **path** (`_materialise` put it there); the node
+        runs on this machine and reads the same disk.
 
         `ego2world` is relative to the sequence's first frame so every
         observation in a sample shares one locally flat world frame. `canbus`
@@ -715,7 +847,8 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         canbus[12] = -float(pose.yaw_rate[index])  # ego yaw rate is left-positive
 
         return Observation(
-            images={"CAM_FRONT": rgb},
+            images={},
+            image_paths={"CAM_FRONT": str(frame)},
             ego2world=ego2world,
             canbus=canbus,
             timestamp_us=int(round(pose.times[index] * 1e6)),

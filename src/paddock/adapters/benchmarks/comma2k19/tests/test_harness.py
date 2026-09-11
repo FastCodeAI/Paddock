@@ -16,6 +16,8 @@ it, and nothing else in the pipeline would have.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -289,6 +291,103 @@ def test_calibration_recovers_a_synthetic_mount_pitch(toolkit, tmp_path):
 def test_plausible_rejects_the_prior_bug():
     assert not CAL.plausible([-np.pi / 2, 0.0, np.pi / 2])
     assert CAL.plausible([0.0, np.radians(3.5), np.radians(1.3)])
+
+
+# --------------------------------------------------------------------------
+# Frames on the wire
+# --------------------------------------------------------------------------
+
+
+class _AlwaysValid:
+    """A calibration survey that answers for any segment, so a frame test is a
+    frame test and not a calibration test."""
+
+    def get(self, segment):
+        return CAL.Calibration(rpy=np.zeros(3), n_valid=10, n_total=10, spread=np.zeros(3), scope="route")
+
+
+def _synthetic_frames(n: int = 64) -> list[np.ndarray]:
+    """Frames whose pixels identify their index, so a misordered cache shows."""
+    rng = np.random.default_rng(3)
+    return [rng.integers(0, 256, size=(12, 16, 3), dtype=np.uint8) for _ in range(n)]
+
+
+def _frame_bench(tmp_path, monkeypatch, frames, **settings):
+    bench = _bench(history_frames=4, keyframes_per_segment=2, **settings)
+    bench.cfg.runs = tmp_path / "runs"
+
+    def fake_decode(video, limit=None, **kwargs):
+        yield from frames[: limit if limit is not None else len(frames)]
+
+    monkeypatch.setattr(L, "decode_frames", fake_decode)
+    pose = straight_pose(speed=25.0, n=260)
+    seg = write_segment(tmp_path / "seg", pose)
+    return bench, L.SegmentRef(chunk=1, route_id="dongle|route", segment=4, path=seg)
+
+
+def test_observations_carry_frame_paths_rather_than_pixels(tmp_path, monkeypatch):
+    """paddock's open-loop convention, which this harness used to break.
+
+    A 160-frame window base64'd into the request body is ~650 MB *per sample*;
+    the node runs on this machine and can read the same disk.
+    """
+    frames = _synthetic_frames()
+    bench, segment = _frame_bench(tmp_path, monkeypatch, frames)
+
+    samples = list(bench._segment_samples(segment, _AlwaysValid()))
+    assert samples
+    for sample in samples:
+        for obs in sample.observations:
+            assert obs.images == {}
+            assert obs.image_paths["CAM_FRONT"].endswith(".png")
+
+
+def test_a_cached_frame_is_the_decoded_frame_bit_for_bit(tmp_path, monkeypatch):
+    """Lossless, or two models' numbers stop being comparable across the change."""
+    frames = _synthetic_frames()
+    bench, segment = _frame_bench(tmp_path, monkeypatch, frames, keep_frames=True)
+
+    sample = next(iter(bench._segment_samples(segment, _AlwaysValid())))
+    first = sample.native_id["first_frame_index"]
+    for offset, obs in enumerate(sample.observations):
+        loaded = obs.image("CAM_FRONT")
+        assert np.array_equal(loaded, frames[first + offset])
+
+
+def test_the_frames_are_released_once_the_segment_has_been_scored(tmp_path, monkeypatch):
+    """800 frames a segment across 2035 segments is terabytes; they are scratch."""
+    frames = _synthetic_frames()
+    bench, segment = _frame_bench(tmp_path, monkeypatch, frames)
+
+    samples = list(bench._segment_samples(segment, _AlwaysValid()))
+    path = Path(samples[0].observations[0].image_paths["CAM_FRONT"])
+    assert not path.exists()
+    assert not bench._segment_frame_dir(segment).exists()
+
+
+def test_keep_frames_leaves_them_for_the_next_run(tmp_path, monkeypatch):
+    frames = _synthetic_frames()
+    bench, segment = _frame_bench(tmp_path, monkeypatch, frames, keep_frames=True)
+
+    samples = list(bench._segment_samples(segment, _AlwaysValid()))
+    path = Path(samples[0].observations[0].image_paths["CAM_FRONT"])
+    assert path.exists()
+    # And the kept directory is the shared one, not a per-run temporary, since
+    # sharing between runs is the entire point of keeping.
+    assert bench._frame_root == bench.cfg.runs / "comma2k19" / "_frames"
+
+
+def test_a_second_pass_reuses_the_frames_instead_of_decoding_again(tmp_path, monkeypatch):
+    frames = _synthetic_frames()
+    bench, segment = _frame_bench(tmp_path, monkeypatch, frames, keep_frames=True)
+    list(bench._segment_samples(segment, _AlwaysValid()))
+
+    def explode(*args, **kwargs):
+        raise AssertionError("decoded again despite a full cache")
+        yield  # pragma: no cover - generator, never reached
+
+    monkeypatch.setattr(L, "decode_frames", explode)
+    assert list(bench._segment_samples(segment, _AlwaysValid()))
 
 
 # --------------------------------------------------------------------------
