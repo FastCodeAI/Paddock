@@ -168,6 +168,30 @@ scenario stationary/0061 needs renderer checkpoint 0061, which is not present
 Check the data root, the splits, and any per-scene assets the run will reach for
 an hour in.
 
+### `status()` — the other half of the same question
+
+`preflight` says what is wrong. It cannot say what is *right*, and at a new site
+that is the more useful half: "2035 segments, no decoder" tells someone far more
+than the refusal alone. So `Benchmark` has a second, optional hook:
+
+```python
+def status(self) -> list[tuple[str, str]]:
+    """Informational rows about what this benchmark's data actually holds."""
+```
+
+`paddock doctor` prints the pairs indented under the benchmark's row with no
+status glyph and no fix arrow, because they are **facts, not verdicts** — the
+moment a row implies a judgement it belongs in `preflight` instead. It defaults
+to returning nothing, so this costs other adapters nothing.
+
+Two rules make it safe to leave on. `doctor` calls it for every benchmark on
+every machine, so it must stay interactive: walk directories if you must, but do
+not read arrays, and sample rather than sweep. And it must not be the reason a
+diagnosis fails — `doctor` catches what it raises and turns that into a row, but
+a benchmark whose description throws has lost the point of the exercise. Reuse
+whatever `preflight` already computed rather than paying for it twice.
+`adapters/benchmarks/comma2k19/inventory.py` is the worked example.
+
 ## Step 7 — golden test
 
 Pin a handful of samples and their expected metric values, so a refactor that

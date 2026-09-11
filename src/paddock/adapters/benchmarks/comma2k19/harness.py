@@ -84,6 +84,7 @@ from functools import cached_property
 import numpy as np
 
 from paddock.adapters.benchmarks.comma2k19 import calibration as CAL
+from paddock.adapters.benchmarks.comma2k19 import inventory as INV
 from paddock.adapters.benchmarks.comma2k19 import loader as L
 from paddock.adapters.benchmarks.comma2k19 import metrics as MC
 from paddock.adapters.benchmarks.comma2k19 import toolkit as TK
@@ -123,6 +124,10 @@ ENV_ALLOW_SLOW = "PADDOCK_COMMA2K19_ALLOW_SLOW"
 #: Segment length, seconds. Used only to explain, rather than to compute: the
 #: real length comes from the pose stream per segment.
 SEGMENT_S = 60.0
+
+#: Chunks the published dataset has. Used only by `status`, to say how much of
+#: it is here -- a site with three of them is normal, not broken.
+TOTAL_CHUNKS = 10
 
 
 class UnreachableRate(ValueError):
@@ -260,6 +265,119 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
             f"{ENV_ALLOW_SLOW} is set: a model was scored below its declared min_input_hz, "
             "which measures the observation-rate gap rather than the model"
         ]
+
+    # ---- description ----------------------------------------------------
+
+    def status(self) -> list[tuple[str, str]]:
+        """What this machine's copy of comma2k19 actually holds.
+
+        comma2k19 arrives as ten separately-downloaded chunks, so a partial copy
+        is the normal state at a new site rather than an error -- and "1 chunk,
+        204 segments" is the single most useful thing to tell someone who has
+        just pointed paddock at it. Every row is a fact; `preflight` keeps
+        owning the refusals, including the calibration one this samples.
+
+        Nothing here walks more than the directory tree. See `inventory.survey`
+        for what that costs and `tools/benchmarks/comma2k19/metadata_report.py`
+        for the report that does read the arrays.
+        """
+        dataset = self.dataset
+        if dataset is None:
+            return []
+        # `self._segments` is the walk `preflight` just did, so doctor pays for
+        # it once rather than once per caller.
+        found = INV.survey(dataset, segments=self._segments)
+        rows = [
+            ("segments", self._segments_row(found)),
+            ("chunks", self._chunks_row(found)),
+            ("input rate", self._rate_row()),
+            ("decoder", self._decoder_row()),
+            # Only whether it is usable. The sha and the pin check belong to
+            # doctor's own `repos` section a few lines above this one, and a
+            # second copy of that comparison is a second thing to keep true.
+            ("toolkit", TK.available(self.cfg) or str(TK.root(self.cfg))),
+            ("calibration", self._calibration_row(found)),
+            ("integrity", self._integrity_row(found)),
+        ]
+        return [(label, value) for label, value in rows if value]
+
+    @staticmethod
+    def _segments_row(found: INV.Survey) -> str:
+        if not found.n_segments:
+            return "none found -- see preflight"
+        vehicles = found.vehicle_summary()
+        return f"{found.n_segments} ({found.hours:.1f} h) in {found.n_routes} routes" + (
+            f", {vehicles}" if vehicles else ""
+        )
+
+    @staticmethod
+    def _chunks_row(found: INV.Survey) -> str:
+        """`n of 10`, then the per-chunk counts.
+
+        Named against the full ten because a partial copy is the normal state at
+        a new site -- the count someone needs is how much of the dataset is here,
+        and "3 chunks" alone does not say that.
+        """
+        if not found.chunks:
+            return ""
+        counts = " ".join(f"{c}:{n}" for c, n in found.chunks.items())
+        return f"{len(found.chunks)} of {TOTAL_CHUNKS} present -- {counts}"
+
+    def _rate_row(self) -> str:
+        try:
+            grid = self.grid
+        except UnreachableRate:
+            return f"{L.SRC_HZ:g} Hz native, {self.input_hz:g} Hz requested and unreachable -- see preflight"
+        at = "native" if grid.stride == 1 else f"stride {grid.stride}"
+        return (
+            f"{L.SRC_HZ:g} Hz native, evaluating at {grid.input_hz:g} Hz ({at}), "
+            f"{grid.history_frames}-frame history spanning {grid.history_span_s:.1f} s"
+        )
+
+    @staticmethod
+    def _decoder_row() -> str:
+        try:
+            backend = L.probe_decoder()
+        except RuntimeError:
+            return "none -- see preflight"
+        if backend == "av":
+            import av
+
+            return f"PyAV {av.__version__}"
+        return f"ffmpeg {L._ffmpeg()}"
+
+    def _calibration_row(self, found: INV.Survey) -> str:
+        """The same spot-check `preflight` makes, reported as a value.
+
+        `preflight` decides whether these numbers are usable; this says what
+        they are, because a mounting angle is the setting that most changes the
+        result and "all plausible" is worth seeing before a sweep rather than
+        after it.
+        """
+        routes = list({s.route_key: s for s in found.segments}.values())[:5]
+        if not routes:
+            return ""
+        pitches, bad = [], 0
+        for seg in routes:
+            cal = self._calibrations.get(seg)
+            if cal.n_valid == 0 or not CAL.plausible(cal.rpy):
+                bad += 1
+                continue
+            pitches.append(float(cal.rpy_deg[1]))
+        if not pitches:
+            return f"{len(routes)} routes sampled, none estimable -- see preflight"
+        span = f"pitch {min(pitches):+.1f} to {max(pitches):+.1f} deg"
+        verdict = "all plausible" if not bad else f"{bad} implausible -- see preflight"
+        return f"{len(routes)} routes sampled, {span}, {verdict}"
+
+    @staticmethod
+    def _integrity_row(found: INV.Survey) -> str:
+        if not found.checked:
+            return ""
+        ok = found.checked - len(found.incomplete)
+        row = f"{ok}/{found.checked} sampled segments hold every optional file"
+        extra = len(found.anomalies)
+        return row + (f"; {extra} directory anomal{'y' if extra == 1 else 'ies'} skipped" if extra else "")
 
     # ---- readiness ------------------------------------------------------
 

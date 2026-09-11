@@ -151,6 +151,12 @@ This benchmark also needs comma's **toolkit** cloned into `[roots] repos`; the
 pose maths under every score comes from it, and `preflight` refuses without it.
 That page has the command.
 
+A partial copy is fine and is the normal state while the other nine chunks
+download — the benchmark scores what is here. `paddock doctor` says how much
+that is, chunk by chunk, and
+`python -m tools.benchmarks.comma2k19.metadata_report` writes the full
+inventory; see [Inspecting the dataset](benchmarks/comma2k19.md#inspecting-the-dataset).
+
 ## Symlinks
 
 Paddock creates symlinks in exactly two situations:

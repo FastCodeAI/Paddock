@@ -14,6 +14,11 @@ external/
 runs/
 paddock-runs/
 
+# Dataset inventories describe *this* machine's copy, down to its mount points,
+# so committing one would put a real machine root in a tracked file and fail
+# tests/test_portability.py. Regenerate it instead; the tool takes a minute.
+COMMA2K19_METADATA.md
+
 # Python
 __pycache__/
 *.py[cod]

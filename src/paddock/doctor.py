@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -37,14 +38,25 @@ class Check:
     status: Status
     detail: str = ""
     fix: str = ""
+    #: `(label, value)` facts about this check's subject, printed under it with
+    #: no symbol. Description, not judgement -- see `Benchmark.status`.
+    info: tuple[tuple[str, str], ...] = ()
 
 
 class Report:
     def __init__(self) -> None:
         self.checks: list[Check] = []
 
-    def add(self, section: str, name: str, status: Status, detail: str = "", fix: str = "") -> None:
-        self.checks.append(Check(section, name, status, detail, fix))
+    def add(
+        self,
+        section: str,
+        name: str,
+        status: Status,
+        detail: str = "",
+        fix: str = "",
+        info: Sequence[tuple[str, str]] = (),
+    ) -> None:
+        self.checks.append(Check(section, name, status, detail, fix, tuple(info)))
 
     @property
     def failed(self) -> bool:
@@ -60,6 +72,11 @@ class Report:
                 if check.fix and check.status is not Status.OK:
                     for fixline in check.fix.splitlines():
                         lines.append(f"         -> {fixline}")
+                # No symbol and no arrow: these are facts about the subject, and
+                # a verdict glyph beside one would read as a fourth status.
+                width = max((len(label) for label, _ in check.info), default=0)
+                for label, value in check.info:
+                    lines.append(f"         {label:<{width}}  {value}")
 
         ok = sum(c.status is Status.OK for c in self.checks)
         warn = sum(c.status is Status.WARN for c in self.checks)
@@ -248,7 +265,8 @@ def run(model_filter: str | None = None) -> Report:
 
     for name, spec in registry.benchmarks.items():
         try:
-            problems = load_benchmark(spec, cfg).preflight()
+            bench = load_benchmark(spec, cfg)
+            problems = bench.preflight()
         except Exception as exc:  # noqa: BLE001 - doctor reports, it never raises
             report.add(
                 "benchmarks",
@@ -258,10 +276,18 @@ def run(model_filter: str | None = None) -> Report:
                 f"fix the adapter's import; see docs/benchmarks/{name}.md",
             )
             continue
+        # Reported even when preflight found problems: "2035 segments, no
+        # decoder" is a far more useful thing to read than the refusal alone.
+        try:
+            info = bench.status()
+        except Exception as exc:  # noqa: BLE001 - a description must not break the diagnosis
+            info = [("status", f"unavailable: {type(exc).__name__}: {exc}")]
         if problems:
-            report.add("benchmarks", name, Status.WARN, f"{len(problems)} problem(s)", "\n".join(problems))
+            report.add(
+                "benchmarks", name, Status.WARN, f"{len(problems)} problem(s)", "\n".join(problems), info
+            )
         else:
-            report.add("benchmarks", name, Status.OK, "preflight passed")
+            report.add("benchmarks", name, Status.OK, "preflight passed", info=info)
 
     # -- model environments ------------------------------------------------
     if not registry.models:

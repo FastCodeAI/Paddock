@@ -199,6 +199,66 @@ transposes it before use, which is the tell. `_quat2rot` returns
 transpose. Getting it wrong does not fail — it mirrors every relative position
 through the direction of travel.
 
+## Inspecting the dataset
+
+comma2k19 arrives as ten separately downloaded chunks, so **a partial copy is
+the normal state at a new site**, not an error. Someone fetches `Chunk_1` to get
+something running and the rest lands over the following week. Two depths of
+answer to "what do I actually have", because the two callers have incompatible
+budgets.
+
+`paddock doctor` prints the cheap one under the benchmark's own row:
+
+```
+  [ ok ] comma2k19  preflight passed
+         segments     2035 (33.9 h) in 178 routes, civic 1653, rav4 382
+         chunks       10 of 10 present -- 1:188 2:194 3:202 ... 10:210
+         input rate   20 Hz native, evaluating at 20 Hz (native), 160-frame history spanning 8.0 s
+         decoder      ffmpeg /some/env/bin/ffmpeg
+         toolkit      /some/repos/comma2k19
+         calibration  5 routes sampled, pitch +2.6 to +3.6 deg, all plausible
+         integrity    64/64 sampled segments hold every optional file
+```
+
+Those rows carry no `[ ok ]` glyph and no `->` fix arrow because they are
+**facts, not verdicts** — `preflight` already owns the refusals, including the
+calibration one this samples. They come from `Benchmark.status()`, which every
+adapter may implement and which defaults to printing nothing.
+
+`status()` must stay interactive, since `doctor` calls it on every benchmark on
+every machine: `inventory.survey` walks the directory tree, stats nothing,
+loads no arrays, and spot-checks completeness on a *sample* of 64 segments
+rather than all 2035. It reuses the walk `preflight` just did. The walk itself
+delegates to `loader.list_segments` rather than reimplementing "what counts as a
+segment", because a second implementation is how a report comes to describe a
+dataset the scoring path would not accept.
+
+The expensive answer is a document to hand someone setting the dataset up:
+
+```bash
+python -m tools.benchmarks.comma2k19.metadata_report --out COMMA2K19_METADATA.md
+```
+
+That loads every array of a stratified sample of segments — two per chunk by
+default, `--per-chunk` to change it — and writes twelve sections: an at-a-glance
+table, the vocabulary of the directory tree, the layout, per-chunk and per-car
+inventories, a storage profile, and measured video / pose / log / CAN /
+geography / integrity facts. Measured, not quoted: where it repeats the
+publication it says *(from README)* and where it samples it names the sample
+size. Nothing on the `doctor` path may call it — it is minutes, not
+milliseconds.
+
+Its video section needs a probe, and uses the same backend split as decoding:
+PyAV if the environment has it, otherwise `ffprobe` looked for beside
+`PADDOCK_FFMPEG` and then on `PATH`. Without either, the section says so and the
+other eleven still render.
+
+Both depths report the directory names the walk passed over — a `Chunk_beta`, a
+route directory whose name is not `dongle_id|start_time`, a segment whose
+`video.hevc` never finished downloading. The harness is right to skip those
+silently, since a run must not fail because a download left a partial file
+behind, but a person setting the dataset up wants to be told.
+
 ## Overlay video
 
 An ADE distribution says how often a model is wrong. Only a picture says how, so

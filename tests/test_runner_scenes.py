@@ -96,6 +96,42 @@ def test_doctor_runs_every_benchmarks_preflight(b2d_site) -> None:
     assert "[benchmarks.neuroncap]" in by_name["neuroncap"].fix
 
 
+def test_doctor_prints_status_rows_as_facts_rather_than_verdicts() -> None:
+    """`Benchmark.status` rows must not read as a fourth status.
+
+    They are descriptions -- "2035 segments" is neither pass nor fail -- so they
+    carry no `[ ok ]`/`[warn]` glyph and no `->` fix arrow, which are the two
+    marks a reader uses to find what needs doing.
+    """
+    report = doctor.Report()
+    report.add(
+        "benchmarks",
+        "comma2k19",
+        doctor.Status.OK,
+        "preflight passed",
+        info=[("segments", "2035 in 178 routes"), ("rate", "20 Hz")],
+    )
+    body = [line for line in report.render().splitlines() if "2035" in line or "20 Hz" in line]
+    assert len(body) == 2
+    assert not any(sym in line for line in body for sym in ("[ ok ]", "[warn]", "[FAIL]", "->"))
+    # Labels padded to a common width, so the values line up as a column.
+    assert [line.index("2035") for line in body[:1]] == [line.index("20 Hz") for line in body[1:]]
+
+
+def test_doctor_reports_a_status_that_raises_instead_of_dying(b2d_site, monkeypatch) -> None:
+    """A broken description must not cost the site its diagnosis."""
+    from paddock.benchmark import Benchmark
+
+    def boom(self):
+        raise RuntimeError("the NAS went away")
+
+    monkeypatch.setattr(Benchmark, "status", boom)
+    report = doctor.run()
+    check = {c.name: c for c in report.checks if c.section == "benchmarks"}["bench2drive"]
+    assert check.status is doctor.Status.OK
+    assert check.info == (("status", "unavailable: RuntimeError: the NAS went away"),)
+
+
 def test_base_port_is_validated_and_named(monkeypatch) -> None:
     from paddock.runner import DEFAULT_BASE_PORT, base_port
 
