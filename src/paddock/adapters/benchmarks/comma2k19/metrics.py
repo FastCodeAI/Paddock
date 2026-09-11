@@ -56,10 +56,19 @@ __all__ = [
 MIN_PATH_LENGTH_M = MIN_PRED_PATH_LENGTH_M
 
 
-#: Reported in addition to the 3 s headline. `ade@1s`/`ade@2s` are inside the
-#: headline horizon and still worth having: they separate a model that is wrong
-#: from the first waypoint from one that drifts only late.
-REPORTED_HORIZONS_S = (1.0, 2.0, 5.0, 10.0)
+#: Reported in addition to the 3 s headline, out to supercombo's own 10 s.
+#:
+#: The ones inside the headline horizon (1 s, 2 s) are not redundant: they
+#: separate a model that is wrong from the first waypoint from one that drifts
+#: only late, and a single 3 s average hides which it is. The ones past it are
+#: where the two failure modes have had time to diverge -- and where a plan that
+#: stops short comes back NaN rather than as a shorter horizon wearing a longer
+#: label, so a model that plans 4 s and one that plans 10 s are not silently
+#: averaged together.
+#:
+#: Every horizon is free: `decompose` walks the aligned pair once and reads off
+#: whichever indices it is asked for.
+REPORTED_HORIZONS_S = (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0)
 
 
 def score_trajectory(

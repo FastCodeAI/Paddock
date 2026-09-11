@@ -69,30 +69,88 @@ than checking paddock against itself.
 
 ## What is scored
 
-One keyframe per segment, with the real preceding frames fed through
-`Policy.infer_sequence`, scored against **10 s** of recorded future on a 0.5 s
-grid. 10 s is `ModelConstants.T_IDXS[-1]`, the horizon supercombo plans over;
-comma2k19 is comma's dataset for comma's model and its 60 s segments put the
-recording nowhere near the binding constraint.
+**Five keyframes per segment**, spread evenly across the span that has both a
+full history behind it and 10 s of future ahead of it, with the real preceding
+frames fed through `Policy.infer_sequence` and scored against **10 s** of
+recorded future on a 0.5 s grid. 10 s is `ModelConstants.T_IDXS[-1]`, the horizon
+supercombo plans over; comma2k19 is comma's dataset for comma's model and its
+60 s segments put the recording nowhere near the binding constraint. Five rather
+than one because the interesting splits — lead present or not, per vehicle, per
+sanity gate — need enough samples of the *rarer* case to say anything, and the
+decode pass over a segment is the same pass either way.
 
 The headline is `ade` and `fde@3s` over a 3 s horizon, matching every other
-open-loop benchmark here. `ade@Ns` / `fde@Ns` at 1, 2, 5 and 10 s are reported
-alongside.
+open-loop benchmark here.
+
+### Trajectory
 
 | metric | what it is | direction |
 |---|---|---|
 | `ade` | mean displacement over the 3 s headline horizon, metres | lower |
 | `fde@1s`, `fde@2s`, `fde@3s` | displacement at that horizon, metres | lower |
-| `ade@1s`, `ade@2s`, `ade@5s`, `ade@10s` | mean displacement up to that horizon | lower |
-| `fde@5s`, `fde@10s` | displacement at that horizon | lower |
+| `ade@1s`, `ade@2s`, `ade@3s`, `ade@4s`, `ade@5s`, `ade@6s`, `ade@8s`, `ade@10s` | mean displacement up to that horizon | lower |
+| `fde@4s`, `fde@5s`, `fde@6s`, `fde@8s`, `fde@10s` | displacement at that horizon | lower |
 | `scored_horizon_s` | how far the prediction and the recording actually overlapped, seconds | higher |
 | `longitudinal_mae`, `lateral_mae` | axis-aligned error split, metres | lower |
 | `along_track_mae`, `cross_track_mae` | the same split against the ground-truth *path tangent* | lower |
 | `along_track_bias` | signed along-track error; positive means the plan ran ahead | toward 0 |
 | `lateral_at_arclength_mae` | lateral error with speed error removed, metres | lower |
 | `predicted_path_length`, `recorded_path_length` | distance covered over the horizon, metres | n/a |
-| `path_length_ratio` | predicted / recorded distance | toward 1 |
-| `inference_seconds` | wall clock per sample | lower |
+| `path_length_ratio` | predicted / recorded distance — the progress component | toward 1 |
+
+`ade@3s` is not a duplicate of `ade`: the headline averages over whatever the
+plan reached, `ade@3s` is `NaN` unless the plan reached 3 s.
+
+### Auxiliary heads
+
+comma2k19 ships the car's own CAN speed, its radar returns and a fused
+INS/GNSS/vision pose, which is enough to check most of what a supercombo-class
+model predicts *besides* the path. Everything in this group is read from
+`Trajectory.extras` ([the protocol's optional schema](../architecture.md)) and is
+`NaN` for a model that publishes none — one declared metric list, whatever heads
+the model happens to have. Scored by
+[`auxiliary.py`](../../src/paddock/adapters/benchmarks/comma2k19/auxiliary.py).
+
+| metric | what it is | direction |
+|---|---|---|
+| `speed_abs_err`, `speed_rel_err` | model ego speed vs CAN (pose where a segment has no CAN); relative error floors the denominator at 1 m/s | lower |
+| `yaw_rate_abs_err` | model yaw rate vs the differenced recorded orientation, rad/s | lower |
+| `yaw_rate_bias` | the same, signed — a mirrored convention shows here and nowhere else | toward 0 |
+| `lead_prob` | the model's own confidence in its nearest lead | n/a |
+| `lead_precision`, `lead_recall` | agreement with the closest in-lane radar track inside 60 m; `NaN` where the question does not arise, so the mean over a run *is* precision and recall | higher |
+| `lead_range_err` | signed range error vs radar, metres; positive means the model places the lead too far | toward 0 |
+| `lead_range_abs_err`, `lead_lateral_abs_err`, `lead_rel_speed_abs_err` | unsigned lead errors, metres and m/s | lower |
+| `within_1sigma_x`, `within_1sigma_y`, `within_2sigma_x`, `within_2sigma_y` | fraction of waypoints whose realised error falls inside the model's own predicted sigma; a calibrated model reads ~0.68 and ~0.95 | toward 0.68 / 0.95 |
+| `lane_width_m`, `lane_offset_m`, `lane_prob`, `road_width_m`, `camera_height_m` | the predicted geometry abeam the car. comma2k19 has **no lane labels**, so these are descriptive, not errors | n/a |
+| `gate_speed`, `gate_lane_width`, `gate_camera_height` | 0/1 plausibility gates on the above (speed within 5 %, lane 2.5–4.5 m, camera 1.0–1.5 m); geometry gates are `NaN` below 15 mph, where the road frame is not observable | higher |
+| `sanity_pass` | all applicable gates passed | higher |
+
+A failed gate means the warp or the calibration is wrong and the trajectory
+numbers for that sample mean nothing — read `sanity_pass` before reading `ade`.
+
+### Safety and comfort
+
+These need no extras: both are read off the *planned* trajectory, so they are
+reported for every model including the constant-velocity baseline. Comfort comes
+from the shared [`paddock.metrics.comfort`](../../src/paddock/metrics/comfort.py),
+so a comfort number here and one on another open-loop benchmark are the same
+statement; the bounds are nuPlan's `ego_is_comfortable` thresholds as NAVSIM's
+PDM score uses them, cited there at the strength of published constants.
+
+| metric | what it is | direction |
+|---|---|---|
+| `lead_gap_min_m` | smallest gap to the radar lead if the plan were driven and the lead held its measured closing rate, metres. `NaN` on an empty road — scoring that as a large safe gap would reward driving on deserted roads | higher |
+| `lead_ttc_min_s` | when that gap first reaches zero, seconds; `NaN` when it never does | higher |
+| `ttc_below_2s` | rate of plans that would have closed the gap within 2 s | lower |
+| `comfort_lon_accel_max`, `comfort_lon_decel_max`, `comfort_lat_accel_max`, `comfort_lon_jerk_max`, `comfort_yaw_rate_max` | the plan's kinematic extremes, all as positive magnitudes | lower |
+| `comfort_lon_accel_within_bounds`, `comfort_lon_decel_within_bounds`, `comfort_lat_accel_within_bounds`, `comfort_lon_jerk_within_bounds`, `comfort_yaw_rate_within_bounds` | fraction of plans inside each bound (2.40, 4.05, 4.89 m/s², 4.13 m/s³, 0.95 rad/s) | higher |
+| `comfort_within_bounds` | fraction inside *all five* | higher |
+
+There is deliberately **no composite driving score**. A single number here would
+have to weight an ADE against a comfort rate against a TTC, and no such weighting
+is published for this dataset; inventing one would make the benchmark's headline
+an opinion of paddock's rather than a measurement. The components are reported
+separately and combine however a reader's application requires.
 
 **A horizon the model's plan does not reach is `NaN`, never a shorter horizon
 under a longer label.** An earlier version of the shared `decompose` clamped the

@@ -381,9 +381,18 @@ def test_keyframes_leave_room_for_history_and_future():
     bench = _bench()
     future = int(round(N_GT_POSES * INTERVAL_S * L.SRC_HZ))
     for n in (1197, 1200):
-        for k in bench.keyframe_indices(n):
-            assert k >= DEFAULT_HISTORY_FRAMES
+        keyframes = bench.keyframe_indices(n)
+        assert keyframes
+        for k in keyframes:
+            # The keyframe is the *last* frame of its own history window, so a
+            # full 160-frame window ends at index 159. The earliest keyframe
+            # sits exactly there, and did before the default rose above one
+            # keyframe per segment -- it was just never selected.
+            assert k >= DEFAULT_HISTORY_FRAMES - 1
             assert k + future < n
+            # The invariant the constant above stands in for, stated directly:
+            # every frame the model is shown was actually recorded.
+            assert bench.grid.window(k)[0] >= 0
 
 
 def test_short_segments_yield_no_keyframes():
@@ -659,3 +668,34 @@ def test_a_plan_past_the_recorded_future_is_trimmed_not_extrapolated():
     m = _bench().score(sample, plan)
     assert m["scored_horizon_s"] == pytest.approx(10.0)
     assert m["ade@10s"] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_score_joins_the_auxiliary_metrics_onto_the_trajectory_ones():
+    """One `score()` call must answer for every key `benchmark.yaml` declares.
+
+    The trajectory metrics and the auxiliary ones are computed by two modules
+    and merged here; a model publishing extras and one publishing none must
+    still produce the same key set, or the run's metrics stop being comparable.
+    """
+    from paddock.adapters.benchmarks.comma2k19 import auxiliary as AUX
+    from paddock.adapters.benchmarks.comma2k19.harness import INTERVAL_S, N_GT_POSES
+    from paddock.benchmark import Sample
+    from paddock.policy.protocol import Trajectory
+
+    gt_t = INTERVAL_S * np.arange(1, N_GT_POSES + 1)
+    gt = np.stack([20.0 * gt_t, np.zeros(N_GT_POSES)], axis=1)
+    sample = Sample(
+        sample_id="t",
+        observations=[],
+        ground_truth=gt,
+        native_id={"reference": {"speed": 20.0, "yaw_rate": 0.0}},
+    )
+    plan = Trajectory(gt.copy(), dt=INTERVAL_S)
+    bare = _bench().score(sample, plan)
+    assert set(AUX.ALL_KEYS) <= set(bare)
+    assert np.isnan(bare["speed_abs_err"])  # no extras, so nothing to compare
+
+    plan.extras = {"pose": {"velocity": [20.5, 0.0, 0.0], "rotation_rate": [0.0, 0.0, 0.0]}}
+    rich = _bench().score(sample, plan)
+    assert set(rich) == set(bare)
+    assert rich["speed_abs_err"] == pytest.approx(0.5)

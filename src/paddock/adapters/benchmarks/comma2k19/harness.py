@@ -83,6 +83,7 @@ from functools import cached_property
 
 import numpy as np
 
+from paddock.adapters.benchmarks.comma2k19 import auxiliary as AUX
 from paddock.adapters.benchmarks.comma2k19 import calibration as CAL
 from paddock.adapters.benchmarks.comma2k19 import inventory as INV
 from paddock.adapters.benchmarks.comma2k19 import loader as L
@@ -108,7 +109,15 @@ N_GT_POSES = 20
 #: See the module docstring: 96 fills the small model's feature buffer, 128
 #: the big model's, and one default has to clear both.
 DEFAULT_HISTORY_FRAMES = 160
-DEFAULT_KEYFRAMES = 1
+#: Keyframes scored per 60 s segment, spread evenly across the scoreable span.
+#:
+#: One per segment scores 2035 moments, which sounds like plenty until the
+#: samples are split by vehicle, by lead-present, or by any of the auxiliary
+#: gates -- an empty road and a queue of traffic are different measurements and
+#: a single keyframe per minute produces too few of the rarer one to say
+#: anything about it. Five costs nothing extra in decode time (the pass over a
+#: segment is the same pass) and only the forward passes multiply.
+DEFAULT_KEYFRAMES = 5
 #: Native rate, i.e. every recorded frame. Overridden per site or per run.
 DEFAULT_INPUT_HZ = L.SRC_HZ
 
@@ -587,6 +596,7 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
             return
         camera2ego = L.camera2ego_from_rpy(cal.rpy)
         can = L.load_can_speed(segment.path)
+        radar = L.load_radar(segment.path)
 
         # One decode pass per segment, and at a stride above 1 most of what it
         # decodes is thrown away -- unavoidable, since the streams carry no
@@ -627,8 +637,46 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
                     "rpy_calib_deg": [round(v, 4) for v in cal.rpy_deg],
                     "calibration_scope": cal.scope,
                     "calibration_frames": cal.n_valid,
+                    "reference": self._reference(pose, can, radar, k),
                 },
             )
+
+    def _reference(self, pose: L.SegmentPose, can, radar, index: int) -> dict[str, float | str]:
+        """What the car measured at the keyframe, for `auxiliary.score` to score against.
+
+        Stashed in `native_id` -- already a free-form traceability dict, already
+        serialised with the sample -- because `score()` is handed a `Sample` and a
+        prediction and nothing else. Reading the segment a second time there would
+        mean re-opening CAN and radar once per sample, after the decode pass that
+        produced the sample has already been thrown away.
+
+        Everything is in paddock's ego convention (x forward, y **left**), which
+        is the convention `policy.protocol.EXTRAS_KEYS` puts the model's own
+        answers in, so `auxiliary` compares numbers and never frames.
+        """
+        t = float(pose.times[index])
+        # CAN is the car's own odometer and the better reference; the pose speed
+        # is the fallback for a segment that recorded no CAN, and which was used
+        # is recorded rather than inferred from whether the error looks large.
+        speed, source = float(pose.speed[index]), "pose"
+        if can is not None:
+            speed, source = float(np.interp(t, can[0], can[1])), "can"
+        out: dict[str, float | str] = {
+            "speed": speed,
+            "speed_source": source,
+            "yaw_rate": -float(pose.yaw_rate[index]),  # device yaw is right-positive
+        }
+
+        tracks = L.radar_tracks(*radar, t) if radar is not None else np.empty((0, 7))
+        out["n_radar_tracks"] = int(len(tracks))
+        lead = L.lead_track(tracks)
+        if lead is not None:
+            # Columns `[fwd, left, rel_speed, ...]`: already ego-signed, and the
+            # forward column already a camera-frame range -- see `load_radar`.
+            out["lead_d"] = float(lead[0])
+            out["lead_y"] = float(lead[1])
+            out["lead_v_rel"] = float(lead[2])
+        return out
 
     def _observation(
         self,
@@ -688,6 +736,11 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         only for as long as those two numbers happen to be equal, which is a
         property of today's model roster and not of anything either side
         promises.
+
+        The trajectory metrics are joined by whatever `auxiliary.score` can make
+        of the model's `extras` -- NaN throughout for a model that sends none, so
+        the declared metric list is the same for every model and a missing head
+        reads as "not answered" rather than as a zero.
         """
         gt_xy = np.asarray(sample.ground_truth, dtype=np.float64)[:, :2]
         gt_t = INTERVAL_S * np.arange(1, len(gt_xy) + 1)
@@ -704,7 +757,9 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         # After alignment both sides sit on the prediction's grid, so that is
         # the spacing every horizon index is counted in. How far the pair
         # actually reached comes back as `scored_horizon_s`.
-        return MC.score_trajectory(pred, gt, interval_s=prediction.dt, eval_horizon_s=EVAL_HORIZON_S)
+        out = MC.score_trajectory(pred, gt, interval_s=prediction.dt, eval_horizon_s=EVAL_HORIZON_S)
+        out.update(AUX.score(sample, prediction, pred, gt))
+        return out
 
 
 BENCHMARK = Comma2k19Benchmark
