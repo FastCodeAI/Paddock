@@ -39,9 +39,17 @@ metrics:
   - along_track_mae
   - cross_track_mae
   - lateral_at_arclength_mae
+  # Signed, unlike the MAEs above: a model that is consistently short reads as a
+  # bias, while one that is equally early and late averages to zero here and is
+  # only visible in `along_track_mae`.
+  - along_track_bias
   # Progress against the human: > 1 overshoots the distance driven, < 1 falls
   # short. There is no second key for this; it is the progress component.
   - path_length_ratio
+  # The ratio's two halves, because the ratio alone cannot separate "the model
+  # stopped short" from "the car was stopped".
+  - predicted_path_length
+  - recorded_path_length
   # ---- auxiliary heads -----------------------------------------------------
   # Everything below comes from `Trajectory.extras` and is NaN for a model that
   # publishes none, which is how one declared list describes runs from models

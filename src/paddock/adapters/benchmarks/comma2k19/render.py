@@ -25,10 +25,15 @@ Three figures, and the choice of them is the whole point of this module:
    combination that reads as "tracks the lane, misjudges speed" and is nothing
    of the kind.
 
+Alongside them, `report.py` writes `report.md`: every declared metric in groups,
+which is the artefact people actually quote from. The figures are linked from
+it, so the directory reads as one document rather than a pile of PNGs.
+
 The video is a different question from the figures: a distribution says *how
 often* a model is wrong, and only a picture says *how*. It runs the history
 window the model was actually shown and stops on the scored keyframe, where the
-recorded future and every run's stored plan are drawn together and held.
+recorded future and every run's stored plan are drawn together and held. The
+numbers ride alongside it in `dashboard.py` rather than on the road.
 
 Colour comes from `paddock.viz.palette`, so a model keeps its colour across
 every figure in the repo.
@@ -40,8 +45,10 @@ from pathlib import Path
 
 import numpy as np
 
+from paddock.adapters.benchmarks.comma2k19 import dashboard as DB
 from paddock.adapters.benchmarks.comma2k19 import loader as L
 from paddock.adapters.benchmarks.comma2k19 import overlay as OV
+from paddock.adapters.benchmarks.comma2k19 import report as RP
 from paddock.viz import palette
 
 _INK = "#0b0b0b"
@@ -64,7 +71,10 @@ def render(runs, out_dir: Path, cfg) -> list[Path]:
         _decomposition(runs, out_dir, plt),
         _path_length(runs, out_dir, plt),
     ]
-    return [p for p in written if p is not None]
+    figures = [p for p in written if p is not None]
+    # The report last, so it can link the figures that were actually produced
+    # rather than the ones this module hoped to produce.
+    return [*figures, RP.write(runs, out_dir, figures)]
 
 
 def _style(ax) -> None:
@@ -251,12 +261,16 @@ HOLD_S = 2.5
 
 
 def render_sample(runs, sample_id: str, out_dir: Path, cfg) -> list[Path]:
-    """One scored sample as an .mp4: the history window, then the plans.
+    """One scored sample as a dashboard .mp4: the road, and the instruments.
 
     The clip runs the frames the model was actually shown, at the rate it was
     shown them, and stops on the scored keyframe with the recorded future and
     every run's stored plan drawn together. So the thing being compared is the
     thing that was scored, not a nearby frame that looks like it.
+
+    The image carries only what is spatial and `dashboard` carries everything
+    numeric beside it, on a shared time axis. See that module for why the HUD
+    left the road.
 
     Raises `LookupError` if no loaded run holds `sample_id`, or if the segment
     behind it is not present at this site -- `paddock.render` turns that into a
@@ -289,37 +303,72 @@ def render_sample(runs, sample_id: str, out_dir: Path, cfg) -> list[Path]:
         for run, rec in found
         if rec.get("prediction")
     ]
+    scored = [_scored(run, rec) for run, rec in found if rec.get("prediction")]
 
-    overlay = OV.SegmentOverlay(segment.path)
+    # The HUD, the legend and the minimap are the dashboard's job now; leaving
+    # them on would print every number twice, once over moving road.
+    overlay = OV.SegmentOverlay(segment.path, layers=OV.Layers(hud=False, minimap=False))
+    dash = DB.Dashboard(
+        overlay,
+        scored,
+        keyframe=keyframe,
+        window_s=(keyframe - first) / L.SRC_HZ,
+        note=f"history at {fps:g} Hz, stride {stride}; plans drawn on the scored frame only",
+        legend=overlay.legend_entries(plans),
+    )
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / (sample_id.removeprefix("comma2k19/").replace("|", "_").replace("/", "_") + ".mp4")
-    L.encode_frames(
-        _overlaid(overlay, segment, range(first, keyframe + 1, stride), keyframe, plans, fps),
-        path,
-        fps=fps,
-    )
+    window = range(first, keyframe + 1, stride)
+    try:
+        drawn = _overlaid(overlay, segment, window, keyframe, plans, fps)
+        L.encode_frames(DB.frames(dash, drawn), path, fps=fps)
+    finally:
+        dash.close()
     return [path]
 
 
+def _scored(run, record) -> DB.Scored:
+    """One run's stored answer, in the shape the panels read.
+
+    `waypoint_dt` comes from the registry because the per-sample record does not
+    carry it, and falls back to paddock's own 0.5 s for a model that is no
+    longer registered -- a run outlives the roster, and a missing model should
+    cost a correct time axis, not the whole video.
+    """
+    from paddock.registry import load_models
+
+    spec = load_models().get(run.model)
+    return DB.Scored(
+        model=run.model,
+        plan=np.asarray(record["prediction"], dtype=np.float64),
+        ground_truth=record.get("ground_truth"),
+        metrics=record.get("metrics") or {},
+        dt=float(getattr(spec, "waypoint_dt", 0.5) or 0.5),
+    )
+
+
 def _overlaid(overlay, segment, window, keyframe: int, plans, fps: float):
-    """The window's frames, drawn, with the keyframe held at the end.
+    """The window's frames, drawn, as `(index, rgb, show_plans)`.
 
     Decoding starts at frame 0 however late the keyframe is: the streams carry
     no container index, so there is nothing to seek with -- the same constraint
     `loader.decode_frames` documents for scoring.
+
+    The keyframe is repeated for `HOLD_S`; the dashboard is composed per
+    repetition rather than once, because it is cheap next to the decode and
+    composing once would freeze the playhead a frame early.
     """
     wanted = set(window)
     for index, rgb in enumerate(L.decode_frames(segment.video, limit=keyframe + 1)):
         if index not in wanted:
             continue
         if index != keyframe:
-            ahead = (keyframe - index) / overlay.fps
-            yield overlay.draw(rgb, index, note=f"history: {ahead:4.1f} s before the scored frame")
+            yield index, overlay.draw(rgb, index), False
             continue
-        drawn = overlay.draw(rgb, index, plans=plans, note="keyframe: scored here")
+        drawn = overlay.draw(rgb, index, plans=plans)
         for _ in range(max(1, int(round(HOLD_S * fps)))):
-            yield drawn
+            yield index, drawn, True
 
 
 def _record(run, sample_id: str) -> dict | None:

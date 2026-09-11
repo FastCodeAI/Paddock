@@ -526,7 +526,7 @@ class SegmentOverlay:
 
         if self.layers.hud:
             draw_hud(pen, self.title, self._hud_lines(index, t, tracks, lead), note)
-            draw_legend(pen, img.size, self._legend(plans))
+            draw_legend(pen, img.size, self.legend_entries(plans))
         if self.layers.minimap:
             draw_minimap(pen, self.ned, index, img.size)
         return np.asarray(img)
@@ -560,7 +560,14 @@ class SegmentOverlay:
             ("lead", ahead),
         ]
 
-    def _legend(self, plans) -> list[tuple[str, str]]:
+    def legend_entries(self, plans=()) -> list[tuple[str, str]]:
+        """`(label, colour)` for every layer this overlay will actually draw.
+
+        Public because the legend does not have to be drawn *on* the frame:
+        `dashboard` puts the same entries in its header, where they sit on paper
+        rather than on road. It reflects `self.layers`, so a legend can never
+        promise a layer that is switched off.
+        """
         entries: list[tuple[str, str]] = []
         if self.layers.path:
             entries.append((f"recorded path (next {self.path_horizon_s:.0f} s)", palette.GROUND_TRUTH))
