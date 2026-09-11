@@ -86,6 +86,7 @@ import numpy as np
 from paddock.adapters.benchmarks.comma2k19 import calibration as CAL
 from paddock.adapters.benchmarks.comma2k19 import loader as L
 from paddock.adapters.benchmarks.comma2k19 import metrics as MC
+from paddock.adapters.benchmarks.comma2k19 import toolkit as TK
 from paddock.benchmark import OpenLoopBenchmark, Sample, input_rate_problems
 from paddock.metrics import trajectory as T
 from paddock.policy.protocol import Command, Observation, Trajectory
@@ -293,6 +294,16 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
             ]
         if not any(root.exists() for root in dataset.roots):
             return ["no configured comma2k19 tier exists: " + ", ".join(str(r) for r in dataset.roots)]
+
+        # Before the decoder and the segments: every rotation under a comma2k19
+        # score comes from the toolkit, so without it there is nothing to check
+        # the rest against and the failure would otherwise surface as an import
+        # error from inside the calibration spot-check below.
+        try:
+            TK.load(self.cfg)
+        except TK.ToolkitMissing as exc:
+            problems.append(str(exc))
+
         try:
             L.probe_decoder()
         except RuntimeError as exc:

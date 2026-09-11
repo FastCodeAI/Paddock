@@ -22,32 +22,33 @@ import pytest
 from paddock.adapters.benchmarks.comma2k19 import calibration as CAL
 from paddock.adapters.benchmarks.comma2k19 import loader as L
 from paddock.adapters.benchmarks.comma2k19 import metrics as MC
+from paddock.adapters.benchmarks.comma2k19 import toolkit as TK
 
 # --------------------------------------------------------------------------
 # Rotation helpers
 # --------------------------------------------------------------------------
 
 
-def test_rot_euler_round_trip():
+def test_rot_euler_round_trip(toolkit):
     for rpy in ([0, 0, 0], [0.0, 0.06, 0.02], [0.01, -0.1, 0.05]):
         got = L.euler_from_rot(L.rot_from_euler(rpy))
         assert np.allclose(got, rpy, atol=1e-12), (rpy, got)
 
 
-def test_rot_from_euler_is_a_proper_rotation():
+def test_rot_from_euler_is_a_proper_rotation(toolkit):
     r = L.rot_from_euler([0.02, -0.07, 0.11])
     assert np.allclose(r @ r.T, np.eye(3), atol=1e-12)
     assert np.isclose(np.linalg.det(r), 1.0)
 
 
-def test_quat2rot_matches_a_known_rotation():
+def test_quat2rot_matches_a_known_rotation(toolkit):
     # 90 deg about z: forward -> left in a right-handed frame.
     q = np.array([np.cos(np.pi / 4), 0.0, 0.0, np.sin(np.pi / 4)])
     r = L._quat2rot(q)
     assert np.allclose(r @ np.array([1.0, 0, 0]), [0, 1, 0], atol=1e-12)
 
 
-def test_quat2rot_matches_openpilot():
+def test_quat2rot_matches_openpilot(toolkit):
     """openpilot's converter, if it is importable in this environment."""
     op = pytest.importorskip("openpilot.common.transformations.orientation")
     rng = np.random.default_rng(0)
@@ -57,12 +58,105 @@ def test_quat2rot_matches_openpilot():
     assert np.allclose(L._quat2rot(q), np.asarray(op.rot_from_quat(q)), atol=1e-12)
 
 
+def test_the_toolkit_rotations_match_an_independent_reference(toolkit):
+    """Check the *toolkit*, not paddock's agreement with itself.
+
+    Every other rotation test here now passes trivially if the toolkit is
+    wrong, because paddock delegates to it. This one writes the algebra out
+    again from the textbook definitions and asserts the toolkit reproduces it,
+    which is the check that survives delegation -- and the one that has to stand
+    in for the pull-request run these tests no longer get (see conftest.py).
+    """
+    rng = np.random.default_rng(11)
+
+    def reference_rot_from_quat(w, x, y, z):
+        """Hamilton [w,x,y,z] -> R, written from the standard expansion."""
+        return np.array(
+            [
+                [1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+                [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+                [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)],
+            ]
+        )
+
+    def reference_rot_from_euler(roll, pitch, yaw):
+        """Rz(yaw) @ Ry(pitch) @ Rx(roll) -- the order openpilot's calibration uses."""
+        cr, sr, cp, sp, cy, sy = (
+            np.cos(roll),
+            np.sin(roll),
+            np.cos(pitch),
+            np.sin(pitch),
+            np.cos(yaw),
+            np.sin(yaw),
+        )
+        rx = np.array([[1, 0, 0], [0, cr, -sr], [0, sr, cr]])
+        ry = np.array([[cp, 0, sp], [0, 1, 0], [-sp, 0, cp]])
+        rz = np.array([[cy, -sy, 0], [sy, cy, 0], [0, 0, 1]])
+        return rz @ ry @ rx
+
+    for _ in range(200):
+        q = rng.standard_normal(4)
+        q /= np.linalg.norm(q)
+        assert np.allclose(toolkit.rot_from_quat(q), reference_rot_from_quat(*q), atol=1e-12)
+
+        rpy = rng.uniform(-np.pi / 3, np.pi / 3, 3)
+        assert np.allclose(toolkit.rot_from_euler(rpy), reference_rot_from_euler(*rpy), atol=1e-12)
+
+    # And paddock's one remaining local piece inverts the toolkit's forward map
+    # -- `toolkit.py` explains why `euler_from_rot` could not be delegated.
+    for _ in range(200):
+        rpy = rng.uniform(-1.0, 1.0, 3)
+        assert np.allclose(L.euler_from_rot(toolkit.rot_from_euler(rpy)), rpy, atol=1e-12)
+
+
+def test_the_camera_model_paddock_holds_locally_still_matches_the_toolkit(toolkit):
+    """The EON geometry is duplicated on purpose, so it needs a drift check.
+
+    `EON_WIDTH`/`EON_HEIGHT_PX`/`EON_FOCAL` are literals in `loader.py` so that
+    importing the module needs no site config -- `paddock list` runs on a
+    machine with no clone. That is a second source of truth, and this is what
+    keeps it honest.
+    """
+    assert np.array_equal(L.EON_INTRINSICS, toolkit.eon_intrinsics)
+    assert L.EON_FOCAL == toolkit.eon_intrinsics[0, 0] == toolkit.eon_intrinsics[1, 1]
+    assert L.EON_WIDTH == 2 * toolkit.eon_intrinsics[0, 2]
+    assert L.EON_HEIGHT_PX == 2 * toolkit.eon_intrinsics[1, 2]
+
+
+def test_loading_the_toolkit_leaves_sys_path_alone(toolkit):
+    """The clone must not stay importable after the import that needed it.
+
+    Its root contains a directory called `openpilot` -- a partial vendored copy
+    of comma's stack, not the model paddock evaluates. While the root sat on
+    `sys.path`, `import openpilot` found the stub, and openpilot's own adapter
+    tests stopped skipping and started failing against it. Removing the entry
+    after the import is the fix; this is what keeps it removed.
+    """
+    import sys
+
+    before = list(sys.path)
+    TK._load.cache_clear()  # the fixture already loaded it; make the import happen again
+    TK.load()
+    assert sys.path == before, "the toolkit root must not outlive its own import"
+    assert str(TK.root()) not in sys.path
+
+
+def test_the_toolkit_is_pinned_in_repos_yaml():
+    """A floating toolkit is a floating score. Runs without a clone."""
+    from paddock.registry import load_repos
+
+    entry = load_repos().get(TK.REPO)
+    assert entry is not None, "the toolkit is a hard requirement; repos.yaml must list it"
+    assert entry.sha, "pin a sha -- see the header of repos.yaml"
+    assert entry.url.endswith("comma2k19.git")
+
+
 # --------------------------------------------------------------------------
 # camera2ego -- the defect that produced the previous result
 # --------------------------------------------------------------------------
 
 
-def test_camera2ego_for_zero_rpy_is_not_the_identity():
+def test_camera2ego_for_zero_rpy_is_not_the_identity(toolkit):
     """The core of the removed implementation's bug, as an assertion.
 
     `rpy = 0` means "the camera is aligned with the direction of travel", which
@@ -77,7 +171,7 @@ def test_camera2ego_for_zero_rpy_is_not_the_identity():
     assert np.isclose(m[2, 3], L.EON_HEIGHT)
 
 
-def test_camera2ego_round_trips_through_openpilot():
+def test_camera2ego_round_trips_through_openpilot(toolkit):
     """`camera2ego_from_rpy` must invert `CameraAdapter`'s rpy derivation.
 
     Both sides are needed for this to mean anything, so it is skipped when
@@ -99,7 +193,7 @@ def test_camera2ego_round_trips_through_openpilot():
     assert np.allclose(np.degrees(derive_rpy(np.eye(4))), [-90.0, 0.0, 90.0], atol=1e-6)
 
 
-def test_identity_camera2ego_is_rejected_by_the_policy_guard():
+def test_identity_camera2ego_is_rejected_by_the_policy_guard(toolkit):
     """The guard must refuse the value that produced the previous result."""
     policy_mod = pytest.importorskip("paddock.adapters.models.openpilot.policy")
     pytest.importorskip("openpilot.common.transformations.model")
@@ -149,21 +243,21 @@ def _rot2quat(r: np.ndarray) -> np.ndarray:
     return q if q[0] >= 0 else -q
 
 
-def test_synthetic_pose_velocity_is_forward_dominant():
+def test_synthetic_pose_velocity_is_forward_dominant(toolkit):
     pose = _straight_pose()
     vd = pose.velocity_device
     assert np.allclose(vd[:, 0], 20.0, atol=1e-6)
     assert np.allclose(vd[:, 1:], 0.0, atol=1e-6)
 
 
-def test_future_in_ego_frame_advances_forward_and_stays_centred():
+def test_future_in_ego_frame_advances_forward_and_stays_centred(toolkit):
     pose = _straight_pose(speed=20.0)
     fut = L.future_in_ego_frame(pose, 20, [0.5, 1.0, 1.5])
     assert np.allclose(fut[:, 0], [10.0, 20.0, 30.0], atol=1e-4)
     assert np.allclose(fut[:, 1], 0.0, atol=1e-6)
 
 
-def test_ground_truth_relative_to_a_rotated_keyframe():
+def test_ground_truth_relative_to_a_rotated_keyframe(toolkit):
     """The check a zero-rotation fixture cannot make.
 
     With the quaternion direction reversed, a relative position is mirrored
@@ -194,7 +288,7 @@ def test_ground_truth_relative_to_a_rotated_keyframe():
 # --------------------------------------------------------------------------
 
 
-def test_calibration_recovers_a_synthetic_mount_pitch(tmp_path):
+def test_calibration_recovers_a_synthetic_mount_pitch(toolkit, tmp_path):
     """Pitch the camera down and check the estimate finds it.
 
     The pose stream describes the camera, so a camera pitched down by `p` sees
@@ -349,7 +443,7 @@ def test_run_config_records_what_changes_the_number():
     assert "calibration" in cfg
 
 
-def test_a_stationary_prediction_reproduces_the_published_numbers():
+def test_a_stationary_prediction_reproduces_the_published_numbers(toolkit):
     """The previous comma2k19 result, reproduced from a plan of literally zero.
 
     This is the load-bearing evidence for the claim in

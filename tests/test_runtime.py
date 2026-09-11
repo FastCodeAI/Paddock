@@ -165,7 +165,6 @@ def test_a_site_env_override_reaches_the_model_process() -> None:
     the key not existing, because it reads as configured.
     """
     from paddock.config import ModelOverride, SiteConfig
-    from paddock.registry import Registry
     from paddock.runtime import env as env_builder
 
     try:

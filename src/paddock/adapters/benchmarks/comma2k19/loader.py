@@ -40,6 +40,23 @@ the device origin with no rotation of its own and hand openpilot an identity
 
 So `camera2ego` here carries the estimated mount rotation, and
 `calibration.py` computes it.
+
+**Where the maths comes from.** The rotations, the EON intrinsics and the
+view-frame basis are comma's own, taken from the dataset toolkit through
+`toolkit.py` rather than copied here. An earlier version of this module inlined
+them, arguing that paddock's environment is thin and twelve lines of algebra are
+cheaper than a clone. That reasoning is reversed: a copy of a matrix is a second
+source of truth with nothing to catch it drifting, and this benchmark is the
+toolkit's own dataset. Cloning it is a hard requirement, checked by `preflight`.
+
+Two things stay local on purpose, both narrower than they look:
+
+* `euler_from_rot` -- upstream's `rot2euler` is unrunnable at the pinned sha
+  (`toolkit.py` documents why), so this is paddock's, and a test asserts it
+  inverts the toolkit's forward rotation.
+* `EON_WIDTH` / `EON_HEIGHT_PX` / `EON_FOCAL` -- plain literals so that
+  importing this module needs no site configuration and `paddock list` works on
+  a machine with no clone. A test asserts they equal the toolkit's.
 """
 
 from __future__ import annotations
@@ -54,11 +71,12 @@ from pathlib import Path
 
 import numpy as np
 
+from paddock.adapters.benchmarks.comma2k19 import toolkit as TK
 from paddock.config import Dataset
 
 __all__ = [
     "EON_HEIGHT",
-    "EON_INTRINSICS",
+    "EON_FOCAL",
     "EON_WIDTH",
     "SRC_HZ",
     "SegmentPose",
@@ -77,10 +95,12 @@ __all__ = [
 # `common/transformations/camera.py` -- 1164x874 at focal length 910. That is
 # not a coincidence: openpilot's medmodel frame also uses fl = 910, so the
 # model's input frame is a plain 512x256 crop of an EON image.
+#: Literals, not `toolkit.eon_intrinsics[0, 0]` and friends: these are default
+#: arguments to `decode_frames`, so reading them from the toolkit would make
+#: *importing* this module require a site config and a clone, and `paddock list`
+#: would stop working on a machine that has neither. `tests/test_harness.py`
+#: asserts they still equal the toolkit's.
 EON_WIDTH, EON_HEIGHT_PX, EON_FOCAL = 1164, 874, 910.0
-EON_INTRINSICS = np.array(
-    [[EON_FOCAL, 0.0, EON_WIDTH / 2.0], [0.0, EON_FOCAL, EON_HEIGHT_PX / 2.0], [0.0, 0.0, 1.0]]
-)
 #: Camera height above the road, metres. Not recorded by comma2k19; this is
 #: openpilot's own `calibrationd.HEIGHT_INIT`, and the model's `road_transform`
 #: head independently estimates 1.22 m on this data, which is the check that
@@ -101,11 +121,22 @@ SRC_HZ = 20.0
 #: Paddock ego [forward, left, up] <- comma2k19 device [forward, right, down].
 _DEVICE_TO_EGO = np.diag([1.0, -1.0, -1.0])
 
-#: openpilot's `device_frame_from_view_frame`, inlined so this module (which
-#: runs in paddock's own thin environment) does not import openpilot.
-_DEVICE_FROM_VIEW = np.array([[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
-
 POSE_FILES = ("frame_times", "frame_positions", "frame_orientations", "frame_velocities")
+
+#: Names served from the toolkit on first access. Module-level `__getattr__`
+#: rather than eager constants, so the toolkit is loaded when the maths is
+#: actually used and not when this module is imported -- see the note on the
+#: literals above. Call sites read `L.EON_INTRINSICS` exactly as before.
+_FROM_TOOLKIT = {
+    "EON_INTRINSICS": "eon_intrinsics",
+    "_DEVICE_FROM_VIEW": "device_frame_from_view_frame",
+}
+
+
+def __getattr__(name: str):
+    if name in _FROM_TOOLKIT:
+        return getattr(TK.load(), _FROM_TOOLKIT[name])
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # --------------------------------------------------------------------------
@@ -175,44 +206,33 @@ def list_segments(dataset: Dataset) -> list[SegmentRef]:
 
 
 def _quat2rot(quats: np.ndarray) -> np.ndarray:
-    """Hamilton [w,x,y,z] -> rotation matrices, openpilot's `quat2rot_single`.
+    """Hamilton [w,x,y,z] -> rotation matrices. The toolkit's `quat2rot`.
 
-    Inlined rather than imported: openpilot's copy lives behind an import chain
-    that reaches `cereal` and `opendbc`, and this module runs in paddock's own
-    environment. It is 12 lines of algebra and
-    `tests/test_harness.py::test_quat2rot_matches_openpilot` checks it against
-    openpilot's when openpilot is importable.
+    Kept as a named wrapper rather than an alias so callers (and the tests that
+    compare this against openpilot's own `rot_from_quat`) do not have to know
+    the toolkit is what answers.
     """
-    q = np.atleast_2d(np.asarray(quats, dtype=np.float64))
-    w, x, y, z = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
-    xx, yy, zz = x * x, y * y, z * z
-    xy, xz, yz = x * y, x * z, y * z
-    wx, wy, wz = w * x, w * y, w * z
-    out = np.empty((len(q), 3, 3))
-    out[:, 0, 0] = 1 - 2 * (yy + zz)
-    out[:, 0, 1] = 2 * (xy - wz)
-    out[:, 0, 2] = 2 * (xz + wy)
-    out[:, 1, 0] = 2 * (xy + wz)
-    out[:, 1, 1] = 1 - 2 * (xx + zz)
-    out[:, 1, 2] = 2 * (yz - wx)
-    out[:, 2, 0] = 2 * (xz - wy)
-    out[:, 2, 1] = 2 * (yz + wx)
-    out[:, 2, 2] = 1 - 2 * (xx + yy)
-    return out[0] if np.asarray(quats).ndim == 1 else out
+    return np.asarray(TK.load().rot_from_quat(np.asarray(quats, dtype=np.float64)))
 
 
 def rot_from_euler(rpy) -> np.ndarray:
-    """[roll, pitch, yaw] -> R, rotating around x then y then z (openpilot's order)."""
-    r, p, y = (float(v) for v in rpy)
-    cr, sr, cp, sp, cy, sy = np.cos(r), np.sin(r), np.cos(p), np.sin(p), np.cos(y), np.sin(y)
-    rx = np.array([[1, 0, 0], [0, cr, -sr], [0, sr, cr]])
-    ry = np.array([[cp, 0, sp], [0, 1, 0], [-sp, 0, cp]])
-    rz = np.array([[cy, -sy, 0], [sy, cy, 0], [0, 0, 1]])
-    return rz @ ry @ rx
+    """[roll, pitch, yaw] -> R, rotating around x then y then z (openpilot's order).
+
+    The toolkit's `rot_matrix`. Its `euler2rot` is the better-named entry point
+    and computes the identical matrix, but is unrunnable at the pinned sha --
+    `toolkit.py` has the detail.
+    """
+    return np.asarray(TK.load().rot_from_euler(rpy))
 
 
 def euler_from_rot(r: np.ndarray) -> np.ndarray:
-    """R -> [roll, pitch, yaw], the inverse of `rot_from_euler`."""
+    """R -> [roll, pitch, yaw], the inverse of `rot_from_euler`.
+
+    The one piece of pose maths paddock still owns: upstream's `rot2euler` goes
+    through an eigendecomposition in `rot2quat`, which neither Python 3 nor
+    modern numpy will run. Three `arctan2`s are also simply the better answer.
+    A test asserts this inverts the toolkit's forward rotation.
+    """
     r = np.asarray(r, dtype=np.float64)
     return np.array(
         [
@@ -348,7 +368,11 @@ def camera2ego_from_rpy(rpy, height: float = EON_HEIGHT) -> np.ndarray:
     """
     calib_from_device = rot_from_euler(np.asarray(rpy)).T
     m = np.eye(4)
-    m[:3, :3] = _DEVICE_TO_EGO @ calib_from_device @ _DEVICE_FROM_VIEW
+    # Read from the toolkit directly rather than through the module's own
+    # `_DEVICE_FROM_VIEW`: a module resolves its globals then builtins and never
+    # consults its own `__getattr__`, so an internal reference to a lazy name is
+    # a NameError rather than a lookup.
+    m[:3, :3] = _DEVICE_TO_EGO @ calib_from_device @ TK.load().device_frame_from_view_frame
     m[2, 3] = float(height)
     return m
 

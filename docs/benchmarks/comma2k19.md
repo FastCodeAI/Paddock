@@ -32,6 +32,41 @@ reports which, and refuses to run without one.
 Getting the dataset: see [data setup](../data-setup.md#comma2k19). It is a
 Harvard Dataverse download, `Chunk_1.zip` … `Chunk_10.zip`, ~100 GB unpacked.
 
+### The toolkit is required, not optional
+
+comma ships a toolkit with the dataset, and every rotation under a comma2k19
+score comes from it. Clone it into `[roots] repos` at the sha pinned in
+`repos.yaml`:
+
+```bash
+paddock config                      # prints the resolved [roots] repos
+git clone https://github.com/commaai/comma2k19.git <repos>/comma2k19
+```
+
+The directory name must be `comma2k19`; that is the key in `repos.yaml` and how
+paddock finds it.
+
+It is not pip-installable (no `setup.py`), so paddock treats it the way it
+treats every model repo: a pinned clone, put on `sys.path` for the length of one
+import by [`toolkit.py`](../../src/paddock/adapters/benchmarks/comma2k19/toolkit.py)
+and taken off again. Only the two numpy-only modules are imported, so it adds no
+dependency to paddock's environment. `preflight` says so before anything else if
+the clone is missing.
+
+An earlier version of the adapter inlined the rotations and the EON intrinsics
+and argued for it. That argument is reversed: a copied matrix is a second source
+of truth with nothing watching it, on the toolkit's own dataset.
+
+**The cost, stated plainly.** CI runs with no site `paddock.toml` and therefore
+no clone, so the tests that exercise this maths **skip on a pull request** and
+are run by the reviewer at a real site — the arrangement in
+[reviewing](../reviewing.md) §1. That is a real loss: `camera2ego = np.eye(4)`,
+the defect described below, is exactly what those tests exist to catch. Two
+things partly compensate, and both do run in CI: the toolkit is pinned (checked
+by a test), and `test_the_toolkit_rotations_match_an_independent_reference`
+checks the toolkit against algebra written out again in the test file rather
+than checking paddock against itself.
+
 ## What is scored
 
 One keyframe per segment, with the real preceding frames fed through

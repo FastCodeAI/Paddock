@@ -16,6 +16,11 @@ repos:
     sha: 555f48c5d
     description: comma.ai openpilot; supercombo driving model via tinygrad
 
+  comma2k19:
+    url: https://github.com/commaai/comma2k19.git
+    sha: 4c7f1a6e1
+    description: comma2k19 dataset toolkit; the ECEF pose maths and EON camera model under adapters/benchmarks/comma2k19
+
   sunnypilot:
     url: https://github.com/sunnypilot/sunnypilot.git
     sha: 0b1ed0d047
