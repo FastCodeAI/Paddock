@@ -18,6 +18,7 @@ classes instead of two frameworks.
 
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
@@ -27,6 +28,49 @@ from typing import Any
 from paddock.config import SiteConfig
 from paddock.policy.protocol import Observation, Trajectory
 from paddock.registry import BenchmarkSpec
+
+
+def input_rate_problems(
+    *,
+    model_name: str,
+    min_input_hz: float,
+    benchmark_name: str,
+    benchmark_hz: float,
+    allow_env: str,
+    why: str,
+    doc: str,
+) -> list[str]:
+    """Why a model needing denser observations than a benchmark supplies cannot be scored.
+
+    `min_input_hz` in model.yaml is load-bearing: a model that infers ego motion
+    from frame-to-frame change reads a too-slow stream as a stationary world and
+    plans accordingly. The resulting number scores near the constant-velocity
+    baseline and measures the rate gap rather than the model, so the harness
+    refuses the pairing instead of recording the artefact.
+
+    Pure in its arguments, so the runner can ask before waiting for VRAM and
+    reading a checkpoint, and `--dry-run` can report it. `allow_env` overrides --
+    for investigating the gap, not for producing a score, and the benchmark must
+    then add an `invalid_reasons()` entry so the run is stored `valid: false`.
+
+    `why` is the one fact only the benchmark knows: what it is about this data
+    that makes a denser history impossible (or, where the rate is a deliberate
+    setting, that it was chosen). `doc` is where the full story lives.
+
+    Shared rather than restated: NAVSIM and comma2k19 refuse for the same reason
+    and must say the same thing, and two copies of a refusal drift.
+    """
+    if min_input_hz <= benchmark_hz or os.environ.get(allow_env):
+        return []
+    return [
+        f"{model_name} needs {min_input_hz:g} Hz observations and {benchmark_name} "
+        f"supplies {benchmark_hz:g} Hz. {why}\n"
+        f"A model that infers ego motion from frame-to-frame change reads this as a "
+        f"stationary world and plans accordingly, which scores near the constant-velocity "
+        f"baseline while measuring the rate gap rather than the model. See {doc}.\n"
+        f"Set {allow_env}=1 to run anyway -- for investigating the gap, "
+        f"not for producing a score."
+    ]
 
 
 @dataclass
@@ -110,6 +154,21 @@ class Benchmark(ABC):
         """
         return []
 
+    def status(self) -> list[tuple[str, str]]:
+        """Informational `(label, detail)` rows about what this data actually holds.
+
+        Facts, not verdicts: `preflight` already owns problems, and a row here
+        carries no ok/warn symbol. The audience is a developer who has just
+        pointed `paddock.toml` at a dataset and wants to know what paddock found
+        there -- how many segments, at what rate, with which decoder -- before
+        spending an hour discovering it from a sweep.
+
+        Must stay fast enough for `paddock doctor` to call on every benchmark:
+        sample rather than walk. Anything expensive belongs in a `tools/`
+        report. Default: no rows, so a benchmark opts in by overriding.
+        """
+        return []
+
     @abstractmethod
     def preflight(self) -> list[str]:
         """Return human-readable reasons this benchmark cannot run here.
@@ -121,9 +180,30 @@ class Benchmark(ABC):
 
 
 class OpenLoopBenchmark(Benchmark):
+    def model_problems(self, model, limit: int | None = None) -> list[str]:
+        """Why *model* cannot be scored here at all, decided before it is loaded.
+
+        The same hook `ExternallyScoredBenchmark` has, for the same reason: an
+        input-rate gap or a sample count the benchmark cannot serve is knowable
+        from the model spec alone, so the runner asks before waiting for VRAM
+        and reading a checkpoint, and `--dry-run` reports it.
+
+        Refusing here rather than in `samples()` is the point. A benchmark that
+        yields samples a model cannot use produces a number, and a number that
+        measures the harness instead of the model is worse than no number.
+        Default: none.
+        """
+        return []
+
     @abstractmethod
     def samples(self, limit: int | None = None, split: str | None = None) -> Iterator[Sample]:
-        """Yield samples to evaluate, in a deterministic order."""
+        """Yield samples to evaluate, in a deterministic order.
+
+        `limit` caps the count of **samples**, matching what `paddock run
+        --limit` documents. A benchmark whose samples are grouped (several
+        keyframes per segment) must stop mid-group rather than slicing the
+        groups, or `--limit 5` quietly means something else.
+        """
 
     @abstractmethod
     def score(self, sample: Sample, prediction: Trajectory) -> dict[str, float]:

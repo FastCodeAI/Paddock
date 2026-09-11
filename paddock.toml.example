@@ -56,6 +56,11 @@ weights = "/path/to/weights"
 # path = "/path/to/navsim_workspace/dataset"   # navsim_logs/, sensor_blobs/, maps/
 # exp  = "/path/to/navsim_workspace/exp"       # checkpoints + metric cache
 
+# [datasets.comma2k19]
+# raw_data/, holding Chunk_1..Chunk_10 -- NOT the sibling data/ (a HuggingFace
+# demo parquet) or compression_challenge/, which are different artefacts.
+# path = "/path/to/comma2k19/raw_data"
+
 # [datasets.neurad_checkpoints]
 # path = "/path/to/neuroncap/checkpoints"      # per-scene NeuRAD renderers
 
@@ -64,6 +69,15 @@ weights = "/path/to/weights"
 # What each benchmark measures is declared in its tracked benchmark.yaml; this
 # section is only paths for this machine. See docs/benchmarks/<name>.md.
 # ---------------------------------------------------------------------------
+
+# [benchmarks.comma2k19]                       # docs/benchmarks/comma2k19.md
+# All three change what is measured and are hashed into the run id, so two
+# runs with different values never share a config hash. Defaults shown.
+# history_frames        = 160    # observations fed before the scored one
+# keyframes_per_segment = 1      # scored frames per 60 s segment
+# input_hz              = 20     # observation rate; only 20/n is reachable, and
+#                                # PADDOCK_COMMA2K19_INPUT_HZ overrides this for
+#                                # a single run (sweeping rates is the point)
 
 # [benchmarks.bench2drive]                     # CARLA closed-loop; docs/benchmarks/bench2drive.md
 # python      = "/path/to/conda/envs/b2d/bin/python"  # CARLA-client env: imports carla, cv2, numpy, requests

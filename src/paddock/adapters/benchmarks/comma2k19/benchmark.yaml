@@ -12,8 +12,13 @@ metrics:
   - fde@1s
   - fde@2s
   - fde@3s
+  # Beyond the 3 s headline. NaN, not a truncated value, when the model's plan
+  # does not reach the horizon -- `scored_horizon_s` says how far it did reach.
   - ade@5s
   - fde@5s
+  - ade@10s
+  - fde@10s
+  - scored_horizon_s
   - longitudinal_mae
   - lateral_mae
   - along_track_mae

@@ -18,23 +18,54 @@ paddock render --bench comma2k19                              # comparison figur
 path = "/path/to/comma2k19/raw_data"
 
 [benchmarks.comma2k19]
-# Optional. Defaults shown; both change what is measured and are hashed into
-# the run id.
-history_frames = 160          # real preceding frames fed before the scored one
+# Optional. Defaults shown; all three change what is measured and are hashed
+# into the run id.
+history_frames = 160          # observations fed before the scored one
 keyframes_per_segment = 1
+input_hz = 20                 # observation rate; see "Evaluation rate" below
 ```
 
 Frame decoding needs either **PyAV** in paddock's environment
 (`pip install av`) or an ffmpeg binary via `PADDOCK_FFMPEG`. `preflight`
 reports which, and refuses to run without one.
 
-Getting the dataset: [`scripts/download_comma2k19.py`](../../../scripts/README.md)
-downloads and verifies it resumably.
+Getting the dataset: see [data setup](../data-setup.md#comma2k19). It is a
+Harvard Dataverse download, `Chunk_1.zip` … `Chunk_10.zip`, ~100 GB unpacked.
 
 ## What is scored
 
 One keyframe per segment, with the real preceding frames fed through
-`Policy.infer_sequence`, scored against 5 s of recorded future on a 0.5 s grid.
+`Policy.infer_sequence`, scored against **10 s** of recorded future on a 0.5 s
+grid. 10 s is `ModelConstants.T_IDXS[-1]`, the horizon supercombo plans over;
+comma2k19 is comma's dataset for comma's model and its 60 s segments put the
+recording nowhere near the binding constraint.
+
+The headline is `ade` and `fde@3s` over a 3 s horizon, matching every other
+open-loop benchmark here. `ade@Ns` / `fde@Ns` at 1, 2, 5 and 10 s are reported
+alongside.
+
+| metric | what it is | direction |
+|---|---|---|
+| `ade` | mean displacement over the 3 s headline horizon, metres | lower |
+| `fde@1s`, `fde@2s`, `fde@3s` | displacement at that horizon, metres | lower |
+| `ade@1s`, `ade@2s`, `ade@5s`, `ade@10s` | mean displacement up to that horizon | lower |
+| `fde@5s`, `fde@10s` | displacement at that horizon | lower |
+| `scored_horizon_s` | how far the prediction and the recording actually overlapped, seconds | higher |
+| `longitudinal_mae`, `lateral_mae` | axis-aligned error split, metres | lower |
+| `along_track_mae`, `cross_track_mae` | the same split against the ground-truth *path tangent* | lower |
+| `along_track_bias` | signed along-track error; positive means the plan ran ahead | toward 0 |
+| `lateral_at_arclength_mae` | lateral error with speed error removed, metres | lower |
+| `predicted_path_length`, `recorded_path_length` | distance covered over the horizon, metres | n/a |
+| `path_length_ratio` | predicted / recorded distance | toward 1 |
+| `inference_seconds` | wall clock per sample | lower |
+
+**A horizon the model's plan does not reach is `NaN`, never a shorter horizon
+under a longer label.** This matters here more than elsewhere: openpilot's
+paddock adapter returns 8 waypoints on a 0.5 s grid, so 4.0 s, and anything past
+that is NaN until `GRID_S` is extended. An earlier version of the shared
+`decompose` clamped the end index to what was available and emitted anyway,
+which is why every `fde@5s` figure recorded for this benchmark before that fix
+is an FDE at 4.0 s and must not be read as a 5 s number.
 
 `history_frames` defaults to **160** because the queues hold
 `frame_skip * feature_depth` frames of history -- 4 x 24 = 96 for the small
@@ -45,21 +76,75 @@ It is tempting to justify a larger number by a settling transient after the
 buffer fills, and one segment's error trace does look that way. Aggregated over
 24 segments it does not: cross-track error at 3 s is 0.20 m in the first 20
 frames past the 96-frame boundary and 0.27 m thereafter, already at its floor.
-The single-segment impression was noise, and
-`experiments/op_c2k19/tests/gate_g5_g6_run.py` is what settled it.
+The single-segment impression was noise.
 
 There is no shared external keyframe list the way KITScenes has one, so
 `keyframe_indices` generates it from the segment length — deterministic, so
 `--limit N` selects the same work at every site, but a property of this
-benchmark's code rather than an external artefact.
+benchmark's code rather than an external artefact. `--limit` counts **samples**,
+so with `keyframes_per_segment = 3` a `--limit 5` run stops part-way through the
+second segment.
 
-### For dense evaluation, use the reference implementation
+## Evaluation rate
 
-`experiments/op_c2k19` scores **every frame of every segment** — 240k frames
-over 10 % of the dataset in about five minutes — because it drives the model
-directly instead of through a per-sample protocol. This adapter exists to put
-comma2k19 on the same footing as paddock's other open-loop benchmarks: one
-comparable number per segment, any model, no openpilot-specific assumptions.
+comma2k19 is the only dataset in this repo recorded fast enough to *have* a rate
+axis — 20 Hz, against NAVSIM's one keyframe per 0.5 s — so `input_hz` exists
+here and nowhere else. It answers the question no other benchmark can: how much
+of a model's score is the model, and how much is the density of its input.
+
+```bash
+PADDOCK_COMMA2K19_INPUT_HZ=10 paddock run --bench comma2k19 -m openpilot
+```
+
+The environment variable wins over `[benchmarks.comma2k19] input_hz`, which wins
+over 20. It is an environment variable and not only a toml key because sweeping
+one model across rates is the whole point, and that should not mean editing a
+site file between runs.
+
+**Only `20 / n` rates are reachable** — 20, 10, 6.67, 5, 4, … — because anything
+else would need frames the recording does not contain. `preflight` refuses the
+rest and names the nearest reachable rates rather than rounding the stride
+silently.
+
+**The scored moment does not move with the rate.** The window is built backwards
+from the keyframe, so lowering the rate changes only how densely the model saw
+the road leading up to the scored frame.
+
+**`history_frames` counts observations, not recorded frames**, so the model's
+feature buffer fills identically at every rate. The cost is that the window's
+wall-clock span is `history_frames / input_hz`:
+
+| `input_hz` | stride | span of a 160-frame history |
+|---:|---:|---:|
+| 20 | 1 | 8.0 s |
+| 10 | 2 | 15.9 s |
+| 5 | 4 | 31.8 s |
+| 4 | 5 | 39.8 s |
+| 2 | 10 | 79.5 s — longer than a segment |
+
+At 2 Hz the default window no longer fits in a 60 s segment. `preflight` says so
+and names the largest `history_frames` that does, rather than yielding zero
+samples with nothing to explain them. Note also that a low-rate number
+confounds input rate with history span: the model is being shown far more road
+than its buffer was trained to hold. That is intrinsic to the pairing, not a
+choice this harness makes.
+
+### Refusing a model the rate cannot feed
+
+`min_input_hz` in `model.yaml` is load-bearing — openpilot declares 10.0 — and a
+model that infers ego motion from frame-to-frame change reads a too-slow stream
+as a parked car. So below a model's declared floor the pairing is refused before
+the model is even loaded, and `--dry-run` reports it:
+
+```bash
+PADDOCK_COMMA2K19_ALLOW_SLOW=1 PADDOCK_COMMA2K19_INPUT_HZ=4 \
+  paddock run --bench comma2k19 -m openpilot
+```
+
+The override exists because this is the only place in the repo where the rate
+gap can be **measured** rather than merely refused. A run made with it set is
+stored `valid: false` and excluded from `paddock report`, which is the point: a
+measurement of the gap is worth keeping and must never enter an average.
 
 ## Ground truth needs no post-processing, unlike KITScenes
 
@@ -106,12 +191,12 @@ because it is instructive, not to be re-derived.
 
 | metric | mean |
 |---|---:|
-| ade | 38.84 |
-| fde@1s | 22.29 |
-| fde@2s | 44.43 |
-| fde@3s | 66.36 |
-| longitudinal_mae | 38.82 |
-| lateral_mae | 0.96 |
+| `ade` | 38.84 |
+| `fde@1s` | 22.29 |
+| `fde@2s` | 44.43 |
+| `fde@3s` | 66.36 |
+| `longitudinal_mae` | 38.82 |
+| `lateral_mae` | 0.96 |
 
 At the recorded ~22 m/s, those FDEs are *exactly the distance travelled* — the
 model was predicting a **stationary car**. `lateral_mae` was low not because
@@ -157,10 +242,11 @@ cause, and the conclusion was wrong.
 
 ### Corrected reference numbers
 
-From the reference implementation, scoring **every frame** of a 10 % sample
-(220 segments, ~241k frames) — see
-[`experiments/op_c2k19/RESULTS.md`](../../../experiments/op_c2k19/RESULTS.md)
-for the authoritative tables and the gates that back them:
+Measured before this adapter existed, by a standalone harness that scored
+**every frame** of a 10 % sample (220 segments, ~241k frames) by driving the
+model directly rather than through the `Policy` protocol. That harness is not in
+this repository; these figures are quoted from its report to establish the scale
+of the correction, and are **not reproducible from this tree**:
 
 | | small | big |
 |---|---:|---:|
@@ -168,9 +254,8 @@ for the authoritative tables and the gates that back them:
 | ADE over 0–10 s | ~2.1 m | ~1.6 m |
 | cross-track at 3 s | ~0.27 m | ~0.24 m |
 
-These are per-frame figures over the model's full 10 s horizon and are **not**
-directly comparable to this adapter's per-sample 3 s ADE; they are quoted to
-establish the scale of the correction, not as this benchmark's numbers.
+They are per-frame figures over the model's full 10 s horizon and are **not**
+directly comparable to this adapter's per-sample 3 s ADE.
 
 ## A pin discrepancy to be aware of
 

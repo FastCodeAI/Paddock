@@ -299,6 +299,15 @@ def run_benchmark(
             echo(f"  {len(found)} sample(s) available" + (f", {len(missing)} missing" if missing else ""))
             if missing:
                 echo(f"    missing scenes: {', '.join(missing[:5])}" + (" ..." if len(missing) > 5 else ""))
+            for m in models:
+                problems = harness.model_problems(m, limit)
+                if problems:
+                    echo(f"  {m.name} cannot be scored here:")
+                    for problem in problems:
+                        echo("    - " + problem.replace("\n", "\n      "))
+            reasons = [*harness.invalid_reasons(), *_limit_reason(limit)]
+            if reasons:
+                echo("  would be stored valid=false: " + "; ".join(reasons))
         else:
             episodes = list(harness.episodes(scenes, runs=runs, scenarios=scenarios))
             for m in models:
@@ -628,6 +637,16 @@ def _run_open_loop(
     second in-process path would be where the two quietly diverge.
     """
     import httpx
+
+    # Before VRAM and a checkpoint read: a pairing the benchmark cannot measure
+    # is refused rather than recorded. Same order as the externally-scored path.
+    problems = harness.model_problems(model_spec, limit)
+    if problems:
+        echo(f"\n=== {model_spec.name} ===")
+        echo(f"  cannot be scored on {spec.name}:")
+        for problem in problems:
+            echo("    - " + problem.replace("\n", "\n      "))
+        return 1
 
     started = datetime.now(UTC)
     began = time.time()

@@ -50,6 +50,7 @@ from typing import Any
 
 from paddock.adapters.benchmarks.navsim.convert import NAVSIM_INTERVAL_S
 from paddock.benchmark import Evaluation, ExternallyScoredBenchmark
+from paddock.benchmark import input_rate_problems as shared_input_rate_problems
 from paddock.results.ingest import navsim as navsim_ingest
 from paddock.runtime.proc import tail as _tail
 
@@ -159,23 +160,23 @@ SCORER = "navsim/planning/script/run_pdm_score_sequential.py"
 def input_rate_problems(min_input_hz: float, model_name: str) -> list[str]:
     """Why a model needing denser input than OpenScene has cannot be scored.
 
-    Pure, so the runner can ask before loading the model and `--dry-run` can
-    report it. `PADDOCK_NAVSIM_ALLOW_SLOW` overrides -- for investigating the
-    gap, not for producing a score, and the run is then stored `valid: false`.
+    The refusal itself is `paddock.benchmark.input_rate_problems`, shared with
+    comma2k19 -- both benchmarks refuse for the same reason and must say the
+    same thing. This wrapper supplies the one fact only NAVSIM knows and keeps
+    the argument order its own call sites use.
     """
-    if min_input_hz > INPUT_HZ and not os.environ.get(ENV_ALLOW_SLOW):
-        return [
-            f"{model_name} needs {min_input_hz:g} Hz observations and NAVSIM "
-            f"supplies {INPUT_HZ:g} Hz. OpenScene stores one keyframe per 0.5 s and one image "
-            f"per keyframe, so a denser history cannot be built without inventing frames.\n"
-            f"A model that infers ego motion from frame-to-frame change reads this as a "
-            f"stationary world and plans accordingly, which scores near the constant-velocity "
-            f"baseline while measuring the rate gap rather than the model. See "
-            f"docs/benchmarks/navsim.md.\n"
-            f"Set {ENV_ALLOW_SLOW}=1 to run anyway -- for investigating the gap, "
-            f"not for producing a score."
-        ]
-    return []
+    return shared_input_rate_problems(
+        model_name=model_name,
+        min_input_hz=min_input_hz,
+        benchmark_name="NAVSIM",
+        benchmark_hz=INPUT_HZ,
+        allow_env=ENV_ALLOW_SLOW,
+        why=(
+            "OpenScene stores one keyframe per 0.5 s and one image per keyframe, "
+            "so a denser history cannot be built without inventing frames."
+        ),
+        doc="docs/benchmarks/navsim.md",
+    )
 
 
 def limit_problems(limit: int | None) -> list[str]:

@@ -6,8 +6,8 @@ elementary stream per ~60 s segment. So this module has three parts: segment
 discovery, pose maths on `global_pose/*`, and a streaming frame decoder.
 
 Three things here were established empirically rather than read off the
-documentation, and each one is load-bearing. The reference implementation in
-`experiments/op_c2k19` holds the gates that pin them down; the summary is:
+documentation, and each one is load-bearing. Each is pinned down by a test in
+`tests/test_harness.py`; the summary is:
 
 **1. The quaternion direction.** `frame_orientations[i]` is
 `ecef_from_device`, *not* `device_from_ecef`. The dataset README states it the

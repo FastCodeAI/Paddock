@@ -169,22 +169,47 @@ def decompose(
     benchmark using this stays comparable with every other one in the repo; the
     decomposition is added on top.
 
-    `extra_horizons_s` adds `ade@Ns` / `fde@Ns` beyond `eval_horizon_s`, for a
-    model whose plan is much longer than the benchmark's headline horizon
-    (supercombo plans to 10 s; a 3 s window does not exercise it).
+    `extra_horizons_s` adds `ade@Ns` / `fde@Ns` at other horizons, for a model
+    whose plan is much longer than the benchmark's headline horizon (supercombo
+    plans to 10 s; a 3 s window does not exercise it) or much shorter.
+
+    **A horizon the pair does not reach is NaN, not a shorter horizon under a
+    longer label.** An earlier version clamped the end index to the available
+    length and emitted anyway, so openpilot -- which returned 8 waypoints, 4.0 s
+    -- reported `fde@5s` that was FDE at 4.0 s, and comma2k19's benchmark.yaml
+    advertised it as a 5 s number. `trajectory.fde` has always returned NaN in
+    this case and says why: "silently scoring a shorter horizon would make an
+    unfair comparison look like a fair one". The two implementations disagreed
+    and the wrong one was the one in use.
+
+    `scored_horizon_s` reports how far the pair actually reached, so a short
+    plan is visible in the metrics rather than only inferable from which keys
+    came back NaN.
     """
     pred_xy = np.asarray(pred_xy, dtype=np.float64)[:, :2]
     gt_xy = np.asarray(gt_xy, dtype=np.float64)[:, :2]
 
-    metrics = T.displacement_errors(pred_xy, gt_xy, interval_s, eval_horizon_s)
-    horizon = min(len(pred_xy), len(gt_xy), int(round(eval_horizon_s / interval_s)))
+    available = min(len(pred_xy), len(gt_xy))
+    # An empty pair reaches `T.displacement_errors` only via `T.align` finding no
+    # overlap in time, which is "not scoreable" rather than an error -- but the
+    # mean of an empty array warns on the way to the NaN it already implies.
+    metrics = (
+        T.displacement_errors(pred_xy, gt_xy, interval_s, eval_horizon_s)
+        if available
+        else {"ade": float("nan")}
+    )
+    horizon = min(available, int(round(eval_horizon_s / interval_s)))
+    metrics["scored_horizon_s"] = available * interval_s
 
     for h in extra_horizons_s:
-        end = min(len(pred_xy), len(gt_xy), int(round(h / interval_s)))
-        if end > horizon:
-            err = np.linalg.norm(pred_xy[:end] - gt_xy[:end], axis=1)
-            metrics[f"ade@{h:g}s"] = float(err.mean())
-            metrics[f"fde@{h:g}s"] = float(err[-1])
+        end = int(round(h / interval_s))
+        if end < 1 or end > available:
+            metrics[f"ade@{h:g}s"] = float("nan")
+            metrics[f"fde@{h:g}s"] = float("nan")
+            continue
+        err = np.linalg.norm(pred_xy[:end] - gt_xy[:end], axis=1)
+        metrics[f"ade@{h:g}s"] = float(err.mean())
+        metrics[f"fde@{h:g}s"] = float(err[-1])
 
     # Axis-aligned split, from paddock's shared implementation. Kept because it
     # is what the other benchmarks report; superseded on curves by the tangent

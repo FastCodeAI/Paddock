@@ -407,3 +407,196 @@ def test_a_stationary_prediction_reproduces_the_published_numbers():
     assert m["path_length_ratio"] == pytest.approx(0.0)
     assert np.isnan(m["lateral_at_arclength_mae"])
     assert m["cross_track_mae"] < 0.1
+
+
+# --------------------------------------------------------------------------
+# Evaluation rate
+# --------------------------------------------------------------------------
+
+
+def test_the_native_rate_is_stride_one_and_touches_nothing():
+    from paddock.adapters.benchmarks.comma2k19.harness import EvalGrid
+
+    grid = EvalGrid.build(L.SRC_HZ, history_frames=160)
+    assert grid.stride == 1
+    assert grid.history_span_frames == 160
+    assert grid.window(700) == list(range(541, 701))
+
+
+def test_lowering_the_rate_widens_the_window_without_moving_the_keyframe():
+    """The scored moment must not move with the rate.
+
+    A rate sweep that also shifted the keyframe would vary two things at once,
+    and the resulting curve would not be a statement about observation rate.
+    """
+    from paddock.adapters.benchmarks.comma2k19.harness import EvalGrid
+
+    for hz, stride in ((20.0, 1), (10.0, 2), (5.0, 4), (4.0, 5), (2.0, 10)):
+        grid = EvalGrid.build(hz, history_frames=40)
+        assert grid.stride == stride
+        window = grid.window(900)
+        assert window[-1] == 900, "the keyframe is always the last observation"
+        assert len(window) == 40, "the model sees the same number of frames at every rate"
+        assert set(np.diff(window)) == {stride}
+
+
+def test_an_unreachable_rate_is_refused_with_the_nearest_reachable_ones():
+    from paddock.adapters.benchmarks.comma2k19.harness import EvalGrid, UnreachableRate
+
+    with pytest.raises(UnreachableRate) as exc:
+        EvalGrid.build(15.0, history_frames=160)
+    # 15 Hz would need a stride of 1.33; silently rounding it to 1 would report
+    # a 15 Hz run that fed the model 20 Hz.
+    assert "20/n" in str(exc.value)
+    assert "10" in str(exc.value) and "6.66667" in str(exc.value)
+
+
+def test_input_hz_comes_from_the_environment_before_the_site_config(monkeypatch):
+    from paddock.adapters.benchmarks.comma2k19.harness import ENV_INPUT_HZ
+
+    monkeypatch.delenv(ENV_INPUT_HZ, raising=False)
+    assert _bench().input_hz == L.SRC_HZ
+    assert _bench(input_hz=4.0).input_hz == 4.0
+    monkeypatch.setenv(ENV_INPUT_HZ, "2")
+    assert _bench(input_hz=4.0).input_hz == 2.0
+
+
+def test_run_config_separates_two_rates(monkeypatch):
+    """Two rates must not share a config hash, or one overwrites the other."""
+    from paddock.adapters.benchmarks.comma2k19.harness import ENV_INPUT_HZ
+
+    monkeypatch.delenv(ENV_INPUT_HZ, raising=False)
+    fast = _bench().run_config()
+    slow = _bench(input_hz=4.0).run_config()
+    assert fast != slow
+    assert (fast["input_hz"], fast["stride"]) == (20.0, 1)
+    assert (slow["input_hz"], slow["stride"]) == (4.0, 5)
+    assert slow["history_span_s"] > fast["history_span_s"]
+
+
+def test_a_window_longer_than_a_segment_is_refused_loudly(monkeypatch):
+    """Zero samples with no explanation is the failure mode this prevents."""
+    from paddock.adapters.benchmarks.comma2k19.harness import ENV_INPUT_HZ
+
+    monkeypatch.delenv(ENV_INPUT_HZ, raising=False)
+    assert _bench(input_hz=4.0)._rate_problems() == []
+
+    problems = _bench(input_hz=2.0)._rate_problems()
+    assert len(problems) == 1 and "exceeds a 60 s comma2k19 segment" in problems[0]
+    # The number it names must be one that actually works.
+    capped = int(problems[0].split("history_frames to at most ")[1].split(",")[0])
+    bench = _bench(input_hz=2.0, history_frames=capped)
+    assert bench._rate_problems() == []
+    assert bench.keyframe_indices(int(60 * L.SRC_HZ)) != []
+    assert _bench(input_hz=2.0, history_frames=capped + 1)._rate_problems() != []
+
+
+def test_keyframes_leave_room_for_the_subsampled_window():
+    for hz, history in ((20.0, 160), (10.0, 160), (4.0, 160), (2.0, 90)):
+        bench = _bench(input_hz=hz, history_frames=history)
+        grid = bench.grid
+        for n in (1197, 1200):
+            for k in bench.keyframe_indices(n):
+                window = grid.window(k)
+                assert window[0] >= 0 and window[-1] == k
+                assert k + grid.future_frames < n
+
+
+def test_a_model_below_the_configured_rate_is_refused_before_it_loads(monkeypatch):
+    from paddock.adapters.benchmarks.comma2k19.harness import ENV_ALLOW_SLOW, ENV_INPUT_HZ
+
+    monkeypatch.delenv(ENV_INPUT_HZ, raising=False)
+    monkeypatch.delenv(ENV_ALLOW_SLOW, raising=False)
+    model = type("M", (), {"name": "openpilot", "min_input_hz": 10.0})()
+
+    assert _bench().model_problems(model) == []
+    assert _bench(input_hz=10.0).model_problems(model) == []
+
+    problems = _bench(input_hz=4.0).model_problems(model)
+    assert len(problems) == 1
+    assert "needs 10 Hz" in problems[0] and "supplies 4 Hz" in problems[0]
+    assert ENV_ALLOW_SLOW in problems[0]
+
+    # The override runs the pairing and marks the run unusable for a leaderboard.
+    monkeypatch.setenv(ENV_ALLOW_SLOW, "1")
+    assert _bench(input_hz=4.0).model_problems(model) == []
+    assert _bench(input_hz=4.0).invalid_reasons() != []
+
+
+# --------------------------------------------------------------------------
+# Horizons and time alignment
+# --------------------------------------------------------------------------
+
+
+def test_a_horizon_the_plan_does_not_reach_is_nan_not_a_shorter_horizon():
+    """The defect this replaced: `fde@5s` was FDE at 4.0 s wearing a 5 s label.
+
+    openpilot returned 8 waypoints on a 0.5 s grid -- 4.0 s -- and the metric
+    clamped its end index to what was available and emitted anyway.
+    `benchmark.yaml` then advertised the result as a 5 s number.
+    """
+    gt = np.stack([20.0 * 0.5 * np.arange(1, 21), np.zeros(20)], axis=1)
+    pred = gt[:8].copy()  # a perfect 4.0 s plan
+
+    m = MC.score_trajectory(pred, gt)
+    assert m["ade"] == pytest.approx(0.0)
+    assert m["fde@3s"] == pytest.approx(0.0)
+    assert m["ade@2s"] == pytest.approx(0.0)
+    for key in ("ade@5s", "fde@5s", "ade@10s", "fde@10s"):
+        assert np.isnan(m[key]), f"{key} was reported for a plan that stops at 4.0 s"
+    assert m["scored_horizon_s"] == pytest.approx(4.0)
+
+
+def test_a_longer_plan_reaches_the_long_horizons():
+    gt = np.stack([20.0 * 0.5 * np.arange(1, 21), np.zeros(20)], axis=1)
+    m = MC.score_trajectory(gt.copy(), gt)
+    assert m["scored_horizon_s"] == pytest.approx(10.0)
+    for key in ("ade@5s", "fde@5s", "ade@10s", "fde@10s"):
+        assert m[key] == pytest.approx(0.0)
+
+
+def test_scoring_pairs_by_time_not_by_index():
+    """A model on a grid other than 0.5 s must still be scored against 0.5 s truth.
+
+    The runner stamps a Trajectory with the *model's* `waypoint_dt` while this
+    harness lays the recorded future out on its own `INTERVAL_S`. Pairing them
+    elementwise is correct only while those two numbers coincide, which is a
+    fact about today's model roster and not a promise either side makes.
+    """
+    from paddock.adapters.benchmarks.comma2k19.harness import INTERVAL_S, N_GT_POSES
+    from paddock.benchmark import Sample
+    from paddock.policy.protocol import Trajectory
+
+    speed = 20.0
+    gt_t = INTERVAL_S * np.arange(1, N_GT_POSES + 1)
+    gt = np.stack([speed * gt_t, np.zeros(N_GT_POSES)], axis=1)
+    sample = Sample(sample_id="t", observations=[], ground_truth=gt)
+
+    # Same motion, quarter-second grid: perfect, and index pairing would have
+    # scored waypoint k of the plan against 2k's worth of ground truth.
+    fine_t = 0.25 * np.arange(1, 41)
+    fine = Trajectory(np.stack([speed * fine_t, np.zeros(40)], axis=1), dt=0.25)
+    m = _bench().score(sample, fine)
+    assert m["ade"] == pytest.approx(0.0, abs=1e-9)
+    assert m["fde@3s"] == pytest.approx(0.0, abs=1e-9)
+    assert m["scored_horizon_s"] == pytest.approx(10.0)
+
+    # Index pairing on the same input would have looked like a large error.
+    naive = float(np.linalg.norm(fine.xy[:20] - gt, axis=1).mean())
+    assert naive > 10.0
+
+
+def test_a_plan_past_the_recorded_future_is_trimmed_not_extrapolated():
+    from paddock.adapters.benchmarks.comma2k19.harness import INTERVAL_S, N_GT_POSES
+    from paddock.benchmark import Sample
+    from paddock.policy.protocol import Trajectory
+
+    gt_t = INTERVAL_S * np.arange(1, N_GT_POSES + 1)
+    gt = np.stack([20.0 * gt_t, np.zeros(N_GT_POSES)], axis=1)
+    sample = Sample(sample_id="t", observations=[], ground_truth=gt)
+
+    long_t = INTERVAL_S * np.arange(1, 41)  # 20 s of plan against 10 s of truth
+    plan = Trajectory(np.stack([20.0 * long_t, np.zeros(40)], axis=1), dt=INTERVAL_S)
+    m = _bench().score(sample, plan)
+    assert m["scored_horizon_s"] == pytest.approx(10.0)
+    assert m["ade@10s"] == pytest.approx(0.0, abs=1e-9)

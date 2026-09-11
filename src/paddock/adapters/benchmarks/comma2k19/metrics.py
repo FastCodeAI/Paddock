@@ -18,8 +18,12 @@ from `paddock.metrics.trajectory` unchanged, so these numbers stay comparable
 with every other open-loop benchmark in the repo.
 
 This module only fixes the horizons: 3 s for the headline (matching paddock's
-other open-loop benchmarks) and 5 s in addition, because supercombo plans to
-10 s and a 3 s window does not exercise it.
+other open-loop benchmarks), plus 1, 2, 5 and 10 s reported alongside. 10 s is
+not an arbitrary ceiling -- it is `ModelConstants.T_IDXS[-1]`, the horizon
+supercombo plans over, and comma2k19 is comma's dataset for comma's model. The
+segments are 60 s, so the recorded future is nowhere near the constraint; the
+*prediction* is, and a horizon the model does not reach comes back NaN rather
+than as a shorter horizon wearing a longer label.
 
 Read `paddock.metrics.openloop` for *why* the decomposition exists. The short
 version: a plan is a path plus a speed profile, they fail independently, and
@@ -52,18 +56,30 @@ __all__ = [
 MIN_PATH_LENGTH_M = MIN_PRED_PATH_LENGTH_M
 
 
+#: Reported in addition to the 3 s headline. `ade@1s`/`ade@2s` are inside the
+#: headline horizon and still worth having: they separate a model that is wrong
+#: from the first waypoint from one that drifts only late.
+REPORTED_HORIZONS_S = (1.0, 2.0, 5.0, 10.0)
+
+
 def score_trajectory(
     pred_xy,
     gt_xy,
     interval_s: float = 0.5,
     eval_horizon_s: float = 3.0,
-    long_horizon_s: float = 5.0,
+    horizons_s: tuple[float, ...] = REPORTED_HORIZONS_S,
 ) -> dict[str, float]:
-    """Metrics for one prediction. Keys are the canonical paddock names."""
+    """Metrics for one prediction. Keys are the canonical paddock names.
+
+    `pred_xy` and `gt_xy` must already be on a common time grid of spacing
+    `interval_s` -- `harness.score` puts them there with
+    `paddock.metrics.trajectory.align`, which is the only thing that makes
+    `interval_s` true for both at once.
+    """
     return decompose(
         pred_xy,
         gt_xy,
         interval_s=interval_s,
         eval_horizon_s=eval_horizon_s,
-        extra_horizons_s=(long_horizon_s,),
+        extra_horizons_s=horizons_s,
     )
