@@ -101,6 +101,18 @@ made with one can never share a config hash with a run made without it:
   OpenScene's 2 Hz anyway. Stored `valid: false`: it measures the rate gap.
 - `PADDOCK_NAVSIM_OVERRIDES="k=v ..."` — extra hydra overrides for the scorer,
   recorded verbatim.
+- `PADDOCK_NAVSIM_MERGE_FROM=<run dir>` — take another run's completed chunk
+  CSVs as this run's rows and leave their logs out of the chunks. For
+  continuing a run whose chunking changed: `--resume` reuses chunks by
+  index, which means nothing across orderings. Recorded as `merged_from`;
+  the other run must have been made under the same measurement configuration,
+  which is the caller's to check.
+
+Logs are chunked **largest first** (`config.chunk_order: by_size`). The scorer
+hands each of its workers one whole log, so a chunk costs its longest log;
+chunked alphabetically, a 156-scenario log beside 22-scenario ones left seven
+of eight openpilot nodes idle for two hours at a time. Grouping logs of like
+size keeps the workers busy together.
 
 `--limit N` is recorded the same way and also sets `valid: false`: it exists to
 test the pipeline. A site `[models.<name>] env` block is recorded as

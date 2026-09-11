@@ -66,6 +66,13 @@ DEFAULT_CHUNK_LOGS = 4
 #: A previous run's artifacts directory whose completed chunks are reused.
 RESUME_ENV = "PADDOCK_NAVSIM_RESUME_FROM"
 
+#: Another run whose *completed chunk CSVs* this run takes as its own, skipping
+#: their logs. For continuing a run whose chunking changed -- `RESUME_ENV`
+#: reuses chunks by index, which only works when the index means the same
+#: logs. The other run must have been made under the same measurement
+#: configuration; the record says where the rows came from (`merged_from`).
+MERGE_ENV = "PADDOCK_NAVSIM_MERGE_FROM"
+
 
 def node_alive(policy_url: str, timeout_s: float = 5.0) -> bool:
     """Whether the policy node still answers `/alive`. Standard library only:
@@ -87,6 +94,29 @@ def chunk_logs(logs: list[str], size: int) -> list[list[str]]:
 def hydra_list(items: list[str]) -> str:
     """A hydra list override literal. Quoted: log names carry dots."""
     return "[" + ",".join(f"'{item}'" for item in items) + "]"
+
+
+def completed_chunk_csvs(run_dir: Path) -> list[Path]:
+    """Every completed chunk CSV under another run's `chunks/`, retry pass included."""
+    chunks = Path(run_dir) / "chunks"
+    if not chunks.is_dir():
+        return []
+    found = [completed_chunk_csv(d) for d in sorted(chunks.iterdir()) if d.is_dir()]
+    return [f for f in found if f is not None]
+
+
+def logs_in_csvs(csv_paths: list[Path]) -> set[str]:
+    """The `log_name`s scored in these chunk CSVs (aggregate rows carry none)."""
+    import csv
+
+    logs: set[str] = set()
+    for path in csv_paths:
+        with Path(path).open(newline="") as handle:
+            for row in csv.DictReader(handle):
+                name = (row.get("log_name") or "").strip()
+                if name:
+                    logs.add(name)
+    return logs
 
 
 def completed_chunk_csv(chunk_dir: Path) -> Path | None:
@@ -471,6 +501,11 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
             "allow_partial": bool(os.environ.get(ENV_ALLOW_PARTIAL)),
             "allow_slow": bool(os.environ.get(ENV_ALLOW_SLOW)),
             "overrides": self._overrides(),
+            # Logs are chunked largest-first (see `_scorable_logs`). On the
+            # record because `--resume` reuses chunks by index, and a run
+            # chunked in another order has different logs behind each index.
+            "chunk_order": "by_size",
+            "merged_from": os.environ.get(MERGE_ENV) or None,
         }
 
     def invalid_reasons(self) -> list[str]:
@@ -687,7 +722,12 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         if isinstance(coverage, str):
             raise RuntimeError(coverage)
         scorable, _ = coverage
-        return sorted(scorable)
+        # Largest first. The scorer hands each of its workers one whole log,
+        # so a chunk costs its longest log: chunked alphabetically, a 156-
+        # scenario log next to 22-scenario ones left seven of eight nodes idle
+        # for two hours at a time. Grouping logs of like size fills the
+        # workers; name breaks ties so the order is fixed for `--resume`.
+        return sorted(scorable, key=lambda log: (-self._cache_scenarios([log]), log))
 
     def _cache_scenarios(self, log_names: list[str]) -> int:
         """How many scenarios the metric cache holds for these logs.
@@ -734,7 +774,17 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         # and a per-invocation max_scenes would otherwise multiply by chunks.
         size = 0 if limit else int(self.setting("chunk_logs", str(DEFAULT_CHUNK_LOGS)) or 0)
         logs = self._scorable_logs() if size > 0 else []
-        chunks = chunk_logs(logs, size) if logs else [[]]
+        # Rows another run already scored, taken as this run's own: their
+        # logs are not chunked again. See MERGE_ENV.
+        merged_csvs: list[Path] = []
+        merged_logs: set[str] = set()
+        merge_from = os.environ.get(MERGE_ENV)
+        if merge_from and size > 0:
+            merged_csvs = completed_chunk_csvs(Path(merge_from))
+            merged_logs = logs_in_csvs(merged_csvs) & set(logs)
+            if not merged_csvs:
+                raise RuntimeError(f"{MERGE_ENV}={merge_from} has no completed chunk CSVs under chunks/")
+        chunks = chunk_logs([log for log in logs if log not in merged_logs], size) if logs else [[]]
         # Only one way to reuse another run's chunks, and it is this variable;
         # `--resume` continues a run in its own directory and needs nothing here.
         resume_from = os.environ.get(RESUME_ENV)
@@ -751,10 +801,19 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
             + (f", resuming from {resume_from}" if resume_from else "")
         )
 
-        csvs: list[Path] = []
+        csvs: list[Path] = list(merged_csvs)
         failed_chunks: list[dict[str, Any]] = []
         with summary.open("a") as log:
             log.write(f"attempt {config.get('attempt', 1)}: {len(chunks)} chunk(s)\n")
+            if merged_csvs:
+                log.write(
+                    f"merged {len(merged_csvs)} completed chunk CSV(s) from {merge_from}: "
+                    f"{len(merged_logs)} log(s) not scored again\n"
+                )
+                echo(
+                    f"  taking {len(merged_csvs)} completed chunk(s) from {merge_from}; "
+                    f"{len(merged_logs)} log(s) skipped"
+                )
             log.flush()
             for index, names in enumerate(chunks):
                 chunk_dir = out_dir / "chunks" / f"{index:03d}" if size > 0 else out_dir

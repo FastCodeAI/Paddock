@@ -315,6 +315,8 @@ def test_measurement_switches_reach_run_config_and_validity(tmp_path: Path, monk
         "allow_partial": False,
         "allow_slow": False,
         "overrides": [],
+        "chunk_order": "by_size",
+        "merged_from": None,
     }
     assert harness.invalid_reasons() == []
 
@@ -929,6 +931,58 @@ def test_chunk_log_is_its_own_file_appended_across_attempts_and_the_scorer_log_k
     harness.evaluate("http://127.0.0.1:1", smoke, config, limit=2)
     assert (smoke / "navsim_scorer.log").read_text().startswith(sys.executable)
     assert "chunk 000: ok" in (smoke / "chunks.log").read_text()
+
+
+def test_logs_are_chunked_largest_first_so_a_chunks_workers_finish_together(tmp_path, monkeypatch) -> None:
+    """The scorer gives each worker one whole log, so a chunk costs its longest
+    log. Alphabetical chunking once left seven of eight nodes idle for two
+    hours behind a 156-scenario log. Size orders, name breaks ties, and the
+    order is on the record because `--resume` reuses chunks by index."""
+    from paddock.adapters.benchmarks.navsim.harness import MERGE_ENV
+
+    cfg = _navsim_site(tmp_path, monkeypatch, tokens_per_log=2)
+    for i in range(2, 5):  # log_b: five cached scenarios; log_a keeps two
+        (tmp_path / "cache" / "log_b" / "unknown" / f"log_b-t{i}").mkdir(parents=True)
+    harness = _harness(cfg)
+    assert harness._scorable_logs() == ["log_b", "log_a"]
+    assert harness.run_config()["chunk_order"] == "by_size"
+    assert harness.run_config()["merged_from"] is None
+    monkeypatch.setenv(MERGE_ENV, str(tmp_path / "elsewhere"))
+    assert harness.run_config()["merged_from"] == str(tmp_path / "elsewhere")
+
+
+def test_a_run_can_take_another_runs_completed_chunks_and_skip_their_logs(tmp_path, monkeypatch) -> None:
+    """Continuing a run whose chunking changed: `--resume` reuses chunks by
+    index, which means nothing across orderings, so the completed CSVs are
+    taken as rows and their logs are left out of the new chunks."""
+    from paddock.adapters.benchmarks.navsim import harness as harness_module
+    from paddock.adapters.benchmarks.navsim.harness import MERGE_ENV, logs_in_csvs
+
+    harness = _harness(_stub_scored_site(tmp_path, monkeypatch, chunk_logs="1"))
+    monkeypatch.setattr(harness_module, "node_alive", lambda url, timeout_s=5.0: True)
+    config = {"cameras": ["CAM_FRONT"], "model": "m", "attempt": 1}
+
+    first = tmp_path / "first"
+    monkeypatch.setenv("STUB_FAIL_LOG", "log_a")  # only log_b's chunk completes
+    evaluation = harness.evaluate("http://127.0.0.1:1", first, config)
+    assert len(evaluation.samples) == 3 and len(evaluation.failed_chunks) == 1
+    assert logs_in_csvs(harness_module.completed_chunk_csvs(first)) == {"log_b"}
+
+    monkeypatch.delenv("STUB_FAIL_LOG")
+    monkeypatch.setenv(MERGE_ENV, str(first))
+    second = tmp_path / "second"
+    evaluation = harness.evaluate("http://127.0.0.1:1", second, config)
+    assert len(evaluation.samples) == 6 and evaluation.failed_chunks == []
+    assert evaluation.n_expected == 6, "expected counts every log, taken or scored"
+    story = (second / "chunks.log").read_text()
+    assert "attempt 1: 1 chunk(s)" in story, "only log_a is chunked"
+    assert "merged 1 completed chunk CSV(s)" in story and "1 log(s) not scored again" in story
+    assert sorted(d.name for d in (second / "chunks").iterdir()) == ["000"], "log_b was never scored again"
+    assert logs_in_csvs([second / "scores.csv"]) == {"log_a", "log_b"}, "the merged rows carry both logs"
+
+    monkeypatch.setenv(MERGE_ENV, str(tmp_path / "nowhere"))
+    with pytest.raises(RuntimeError, match="no completed chunk CSVs"):
+        harness.evaluate("http://127.0.0.1:1", tmp_path / "third", config)
 
 
 def test_a_failed_chunk_is_counted_in_scenarios_not_logs(tmp_path: Path, monkeypatch) -> None:
