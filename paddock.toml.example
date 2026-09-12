@@ -78,13 +78,28 @@ weights = "/path/to/weights"
 # input_hz              = 20     # observation rate; only 20/n is reachable, and
 #                                # PADDOCK_COMMA2K19_INPUT_HZ overrides this for
 #                                # a single run (sweeping rates is the point)
-# keep_frames           = false  # keep the decoded frames the harness stages
-#                                # under {runs}/comma2k19/_frames instead of
-#                                # deleting them per segment. Not hashed: it
-#                                # changes nothing a model is shown. A full
-#                                # sweep keeps about 1 GB per segment, so say
-#                                # yes only with 2 TB free and several runs to
-#                                # amortise the decode over.
+# The rest change only how fast the run goes, never what it measures, so none
+# of them is hashed into the run id.
+# nodes                 = 4      # policy nodes scored in parallel. A comma2k19
+#                                # sample is 160 frames a node must read and
+#                                # colour-convert before the model sees them,
+#                                # and that part is per-process CPU: profiling
+#                                # put ~90% of a node's wall clock there. Raise
+#                                # it to the cores you can spare; each node
+#                                # still waits for the model's declared VRAM.
+# frame_cache = "/dev/shm/paddock-comma2k19"
+#                                # where decoded frames are staged. Each is
+#                                # written once and read once, seconds apart,
+#                                # by two processes on this machine -- so a
+#                                # tmpfs or local NVMe belongs here if {runs}
+#                                # is a network mount. Template variables are
+#                                # expanded. Default: {runs}/comma2k19/_frames.
+# keep_frames           = false  # keep the staged frames instead of releasing
+#                                # them as the sweep moves on. Not hashed: it
+#                                # changes nothing a model is shown. Raw frames
+#                                # are ~2.4 GB per segment, so say yes only
+#                                # with 5 TB free and several runs to amortise
+#                                # the decode over.
 
 # [benchmarks.bench2drive]                     # CARLA closed-loop; docs/benchmarks/bench2drive.md
 # python      = "/path/to/conda/envs/b2d/bin/python"  # CARLA-client env: imports carla, cv2, numpy, requests

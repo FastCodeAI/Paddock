@@ -319,6 +319,15 @@ class Observation:
         """The frame for one camera, loading it from disk if that is where it is.
 
         Cached in `images`, so repeated access within a step is free.
+
+        A `.npy` path is read as the raw array it is. That is not a convenience:
+        an open-loop harness that stages frames for a node on the same machine
+        compresses them only to have the node decompress them again, and
+        profiling a comma2k19 sweep found 59% of the node's wall clock in PIL's
+        PNG decoder against 10% in the model. A harness that stages raw pays a
+        memcpy at both ends instead, and this is the one place that has to know.
+        Dataset frames on disk are whatever the dataset ships, and still go
+        through PIL.
         """
         if camera in self.images:
             return self.images[camera]
@@ -328,9 +337,12 @@ class Observation:
                 f"observation has no image for {camera!r} "
                 f"(has {sorted(self.images) or sorted(self.image_paths)})"
             )
-        from PIL import Image as _Image
+        if str(path).endswith(".npy"):
+            array = np.ascontiguousarray(np.load(path), dtype=np.uint8)
+        else:
+            from PIL import Image as _Image
 
-        array = np.asarray(_Image.open(path).convert("RGB"), dtype=np.uint8)
+            array = np.asarray(_Image.open(path).convert("RGB"), dtype=np.uint8)
         self.images[camera] = array
         return array
 

@@ -1,5 +1,6 @@
 """`paddock run` plumbing that needs no simulator: scene selection, pre-run
-checks, the run record, and `paddock doctor`'s benchmarks section."""
+checks, the run record, the open-loop dispatch (parallel nodes and `--resume`),
+and `paddock doctor`'s benchmarks section."""
 
 from __future__ import annotations
 
@@ -8,10 +9,12 @@ import shutil
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from paddock import doctor
 from paddock.adapters.benchmarks.bench2drive.harness import Bench2DriveBenchmark
+from paddock.benchmark import OpenLoopBenchmark, Sample
 from paddock.config import SiteConfig
 from paddock.runner import run_benchmark
 
@@ -437,3 +440,266 @@ def test_a_real_reason_still_invalidates_alongside_a_remark() -> None:
     status, valid, notes = _validity(None, ["2 of the 20 official pairs"], ["resumed: 3 reused"])
     assert valid is False
     assert "2 of the 20 official pairs" in notes and "resumed" in notes
+
+
+# ---- open-loop dispatch: batching, parallel nodes, resume ---------------
+
+
+class _OpenLoop(OpenLoopBenchmark):
+    """`n` cheap samples, for the runner's open-loop path without a dataset.
+
+    Records what it was asked to skip and what it actually yielded, which is
+    what the resume tests assert on: a resume that re-reads the whole dataset
+    costs the hours it was meant to save, so "did not yield it" is the claim,
+    not "did not score it".
+    """
+
+    spec = type("S", (), {"name": "fake", "dataset": "d", "mode": "open_loop", "primary_metric": "ade"})()
+
+    def __init__(self, cfg, n=6, nodes=1, fail_at=None, honour_skip=True) -> None:
+        super().__init__(self.spec, cfg)
+        self.n, self.nodes, self.fail_at, self.honour_skip = n, nodes, fail_at, honour_skip
+        self.skipped: list[set[str]] = []
+        self.yielded: list[str] = []
+
+    def preflight(self) -> list[str]:
+        return []
+
+    def node_count(self, model) -> int:
+        return self.nodes
+
+    def samples(self, limit=None, split=None, skip=()):
+        from paddock import conformance
+
+        self.skipped.append(set(skip))
+        produced = 0
+        for i in range(self.n):
+            sample_id = f"fake/{i}"
+            if self.honour_skip and sample_id in skip:
+                continue
+            if i == self.fail_at:
+                raise RuntimeError("the dataset went away")
+            self.yielded.append(sample_id)
+            yield Sample(
+                sample_id=sample_id,
+                observations=[conformance.synthetic_observation(width=8, height=6, timestamp_us=i)],
+                ground_truth=np.zeros((8, 2)),
+                split="test",
+            )
+            produced += 1
+            if limit is not None and produced >= limit:
+                return
+
+    def score(self, sample, prediction) -> dict[str, float]:
+        return {"ade": 1.0}
+
+
+def _stub_open_loop_nodes(monkeypatch, waypoints: int = 8):
+    """Start no subprocess and answer `/infer_sequence` from memory.
+
+    Returns `(urls, requests)`, both filled as the run goes: which nodes were
+    started, and which sample each one was asked about.
+    """
+    import contextlib
+
+    import httpx
+
+    from paddock.runtime import ports, proc
+
+    urls: list[str] = []
+    requests: list[tuple[str, int]] = []
+
+    @contextlib.contextmanager
+    def _node(_model, _cfg, port, *_a, **_k):
+        urls.append(f"http://127.0.0.1:{port}")
+        yield urls[-1]
+
+    class _Response:
+        def __init__(self, body: dict) -> None:
+            self._body = body
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return self._body
+
+    def _post(url, json=None, timeout=None, **_kwargs):
+        requests.append((url.rsplit("/", 1)[0], int(json["observations"][0]["timestamp"])))
+        return _Response({"trajectory": [[float(i), 0.0] for i in range(1, waypoints + 1)]})
+
+    monkeypatch.setattr(proc, "model_node", _node)
+    monkeypatch.setattr(ports, "find_free", lambda port: port)
+    monkeypatch.setattr(httpx, "post", _post)
+    return urls, requests
+
+
+def _artifacts(cfg):
+    """The one run directory under `{runs}`, whatever id it was given."""
+    (directory,) = list((cfg.runs / "fake" / "visionpilot").iterdir())
+    return directory
+
+
+def test_batching_keeps_the_tail_whether_or_not_it_prefetches() -> None:
+    """A dropped final partial batch is samples silently missing from a sweep."""
+    from paddock.runner import _batches
+
+    for prefetch in (False, True):
+        batches = list(_batches(iter(range(7)), 3, prefetch=prefetch))
+        assert batches == [[0, 1, 2], [3, 4, 5], [6]], f"prefetch={prefetch}"
+        assert list(_batches(iter([]), 3, prefetch=prefetch)) == []
+
+
+def test_a_prefetching_stream_runs_no_more_than_two_batches_ahead() -> None:
+    """How far ahead the puller may get is a correctness bound, not a tuning knob.
+
+    A harness releases a sample's inputs once the stream has moved past them --
+    comma2k19 deletes a segment's staged frames -- so it has to know how many
+    it must still hold. One batch in the consumer's hands, one in the queue and
+    one being built is the whole of it.
+    """
+    import time
+
+    from paddock.runner import _batches
+
+    produced: list[int] = []
+
+    def source():
+        for i in range(12):
+            produced.append(i)
+            yield i
+
+    ahead = 0
+    for batch in _batches(source(), 2, prefetch=True):
+        time.sleep(0.02)  # a slow consumer: give the puller every chance to run on
+        ahead = max(ahead, len(produced) - (batch[-1] + 1))
+    assert ahead <= 4, "two batches of two is the bound a harness is entitled to assume"
+
+
+def test_a_source_that_raises_reaches_the_consumer_rather_than_ending_the_stream() -> None:
+    """On a background thread an exception is an early, silent end of stream --
+    which is a short sweep reported as a complete one."""
+    from paddock.runner import _batches
+
+    def source():
+        yield 1
+        raise RuntimeError("the dataset went away")
+
+    with pytest.raises(RuntimeError, match="went away"):
+        list(_batches(source(), 1, prefetch=True))
+
+
+def test_a_journal_truncated_mid_write_loses_one_sample_not_the_run(tmp_path) -> None:
+    """The process is killed while a line is half written; the rest still counts."""
+    from paddock import runner
+
+    (tmp_path / runner.PARTIAL_SAMPLES).write_text('{"sample_id": "a"}\n{"sample_id": "b"}\n{"sample_i')
+    assert [r["sample_id"] for r in runner._scored_samples(tmp_path)] == ["a", "b"]
+
+
+def test_resuming_a_finished_run_reads_its_real_samples_file(tmp_path) -> None:
+    """So re-issuing the command after a sweep completed is a no-op, not a repeat."""
+    from paddock import runner
+
+    assert runner._scored_samples(tmp_path) == []
+    (tmp_path / "samples.jsonl").write_text('{"sample_id": "a"}\n')
+    assert [r["sample_id"] for r in runner._scored_samples(tmp_path)] == ["a"]
+
+
+def test_an_interrupted_open_loop_run_resumes_from_its_journal(tmp_path, monkeypatch) -> None:
+    """The one that matters: a sweep dies at sample 4 of 6 and the second attempt
+    yields only 4 and 5, keeping the run id and the samples already paid for."""
+    from paddock import runner
+
+    _isolate_results(tmp_path, monkeypatch)
+    _stub_open_loop_nodes(monkeypatch)
+    cfg = _cfg(tmp_path)
+
+    said: list[str] = []
+    died = _OpenLoop(cfg, n=6, fail_at=4)
+    assert runner._run_open_loop(cfg, died, died.spec, _model_spec(), 9000, None, said.append) == 1
+
+    artifacts = _artifacts(cfg)
+    journal = artifacts / runner.PARTIAL_SAMPLES
+    lines = [json.loads(line) for line in journal.read_text().splitlines()]
+    assert [r["sample_id"] for r in lines] == [f"fake/{i}" for i in range(4)]
+    assert not (artifacts / "samples.jsonl").exists(), "a partial run is not a result"
+
+    resumed = _OpenLoop(cfg, n=6)
+    rc = runner._run_open_loop(
+        cfg, resumed, resumed.spec, _model_spec(), 9000, None, said.append, resume=artifacts.name
+    )
+
+    assert rc == 0
+    assert resumed.skipped == [{f"fake/{i}" for i in range(4)}]
+    assert resumed.yielded == ["fake/4", "fake/5"], "the first four must never be built again"
+    assert not journal.exists(), "the journal outliving the run is a double count waiting to happen"
+    stored = tmp_path / "results" / "fake" / "visionpilot" / artifacts.name / "run.json"
+    written = json.loads(stored.read_text())
+    assert written["dataset"]["n_samples"] == 6
+    assert written["valid"] is True and "resumed" in written["notes"]
+
+
+def test_resume_is_refused_when_the_switches_changed(tmp_path, monkeypatch) -> None:
+    """Two measurements under one run id is the failure mode; `--limit` is enough
+    to make them two."""
+    from paddock import runner
+
+    _isolate_results(tmp_path, monkeypatch)
+    _stub_open_loop_nodes(monkeypatch)
+    cfg = _cfg(tmp_path)
+
+    died = _OpenLoop(cfg, n=6, fail_at=2)
+    runner._run_open_loop(cfg, died, died.spec, _model_spec(), 9000, None, lambda _s: None)
+    artifacts = _artifacts(cfg)
+
+    said: list[str] = []
+    again = _OpenLoop(cfg, n=6)
+    rc = runner._run_open_loop(
+        cfg, again, again.spec, _model_spec(), 9000, 3, said.append, resume=artifacts.name
+    )
+    assert rc == 2
+    assert any("differs in limit" in line for line in said)
+    assert again.yielded == []
+
+
+def test_a_harness_that_ignores_skip_still_does_not_score_a_sample_twice(tmp_path, monkeypatch) -> None:
+    """`skip` saves work; it is not what keeps the record honest. One id twice in
+    samples.jsonl double-counts it in every aggregate."""
+    from paddock import runner
+
+    _isolate_results(tmp_path, monkeypatch)
+    _stub_open_loop_nodes(monkeypatch)
+    cfg = _cfg(tmp_path)
+
+    died = _OpenLoop(cfg, n=6, fail_at=3)
+    runner._run_open_loop(cfg, died, died.spec, _model_spec(), 9000, None, lambda _s: None)
+    artifacts = _artifacts(cfg)
+
+    stubborn = _OpenLoop(cfg, n=6, honour_skip=False)
+    runner._run_open_loop(
+        cfg, stubborn, stubborn.spec, _model_spec(), 9000, None, lambda _s: None, resume=artifacts.name
+    )
+
+    lines = (artifacts / "samples.jsonl").read_text().splitlines()
+    scored = [json.loads(line)["sample_id"] for line in lines]
+    assert sorted(scored) == [f"fake/{i}" for i in range(6)]
+    assert len(set(scored)) == len(scored)
+
+
+def test_every_node_a_benchmark_asks_for_is_started_and_used(tmp_path, monkeypatch) -> None:
+    """`node_count` is the whole of the open-loop speedup: N nodes score N
+    samples in the time one node scores one, and the aggregate is order-free."""
+    from paddock import runner
+
+    _isolate_results(tmp_path, monkeypatch)
+    urls, requests = _stub_open_loop_nodes(monkeypatch)
+    cfg = _cfg(tmp_path)
+
+    harness = _OpenLoop(cfg, n=7, nodes=3)
+    rc = runner._run_open_loop(cfg, harness, harness.spec, _model_spec(), 9000, None, lambda _s: None)
+
+    assert rc == 0
+    assert len(urls) == 3 and len(set(urls)) == 3, "three nodes on three ports"
+    assert len(set(url for url, _ in requests)) == 3, "and every one of them was asked something"
+    assert sorted(stamp for _, stamp in requests) == list(range(7))

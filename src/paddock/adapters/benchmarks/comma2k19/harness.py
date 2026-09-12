@@ -80,7 +80,7 @@ import os
 import shutil
 import tempfile
 import threading
-from collections.abc import Iterator
+from collections.abc import Container, Iterator
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from functools import cached_property
@@ -126,11 +126,25 @@ DEFAULT_KEYFRAMES = 5
 #: Native rate, i.e. every recorded frame. Overridden per site or per run.
 DEFAULT_INPUT_HZ = L.SRC_HZ
 
-#: Threads writing decoded frames in `_materialise`. Eight, because that is
-#: where the measured gain flattens (52 -> 6.7 ms/frame) and because these
-#: threads run *beside* a model holding the GPU: this is a staging cost on the
-#: harness side, not the thing the machine is here to do.
+#: Threads writing decoded frames in `_materialise`. Eight, because these
+#: threads run *beside* the policy nodes: this is a staging cost on the harness
+#: side, not the thing the machine is here to do. `ndarray.tofile` releases the
+#: GIL, so they overlap a slow filesystem with the decode; on tmpfs the write is
+#: a memcpy and the pool is free.
 ENCODE_WORKERS = min(8, os.cpu_count() or 1)
+
+#: Policy nodes run in parallel by default. See `Comma2k19Benchmark.node_count`
+#: for why more than one, and `[benchmarks.comma2k19] nodes` to change it.
+DEFAULT_NODES = 4
+
+#: Segments whose staged frames are kept before the oldest is deleted.
+#:
+#: One would be wrong: the runner dispatches a batch of samples across several
+#: nodes and reads one batch ahead, so it holds samples this generator has
+#: already moved past. Four covers a batch that straddles two segments plus the
+#: one being prefetched, with a segment in hand. The cost is the high-water
+#: mark -- four segments of raw frames, about 10 GB. See `_retire`.
+RETAIN_SEGMENTS = 4
 
 #: Reads a `20 / n` observation rate for the run, ahead of the site's
 #: `[benchmarks.comma2k19] input_hz`. An environment variable rather than only a
@@ -253,11 +267,11 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         """Keep the decoded frames after a segment is scored?
 
         Off, because the arithmetic is unforgiving: a 160-frame history at five
-        keyframes is roughly 800 unique frames per segment and about a gigabyte
-        of PNG, so keeping them for all 2035 segments would ask for terabytes to
-        save a decode pass. A site with the disk can turn it on and let a second
-        model's run reuse the first's frames; it changes nothing a model sees,
-        which is why it is deliberately **not** in `run_config`.
+        keyframes is roughly 800 unique frames per segment and 2.4 GB of raw
+        RGB, so keeping them for all 2035 segments would ask for five terabytes
+        to save a decode pass. A site with the disk can turn it on and let a
+        second model's run reuse the first's frames; it changes nothing a model
+        sees, which is why it is deliberately **not** in `run_config`.
         """
         return bool(self.setting("keep_frames", False))
 
@@ -269,12 +283,43 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         per model, or a rate sweep -- and they must not delete each other's
         frames mid-read, so each run gets its own directory. `keep_frames` opts
         into the shared one precisely because sharing is the point of keeping.
+
+        Under `{runs}` by default, but a site with a tmpfs or a local NVMe
+        should say so:
+
+            [benchmarks.comma2k19]
+            frame_cache = "/dev/shm/paddock-comma2k19"
+
+        Every frame here is written once and read once, seconds apart, by two
+        processes on the same machine -- the definition of scratch. On a network
+        `{runs}` the staging is the sweep's bottleneck; on tmpfs it is a memcpy.
+        Template variables are expanded, so `"{runs}/scratch"` works too.
         """
-        root = self.cfg.runs / "comma2k19" / "_frames"
+        configured = self.setting("frame_cache")
+        root = Path(self.cfg.resolve(configured)) if configured else self.cfg.runs / "comma2k19" / "_frames"
         root.mkdir(parents=True, exist_ok=True)
         if self.keep_frames:
             return root
         return Path(tempfile.mkdtemp(prefix=f"run-{os.getpid()}-", dir=root))
+
+    def node_count(self, model) -> int:
+        """Policy nodes to run in parallel. See `Benchmark.node_count`.
+
+        Worth overriding here because a comma2k19 sample is 160 forward passes
+        over frames a node has to read and colour-convert first, and profiling
+        the sweep put roughly nine tenths of the node's wall clock in that
+        preparation rather than in the graph. That part is per-process CPU, so
+        it scales with nodes until the machine runs out of cores -- and the
+        cores are what a machine bought for a GPU has spare.
+
+        Default 4: enough to cover a keyframe group without asking a shared
+        machine for more than it will miss, and every node still waits for the
+        model's declared VRAM before it loads. Raise it per site:
+
+            [benchmarks.comma2k19]
+            nodes = 8
+        """
+        return max(1, int(self.setting("nodes", DEFAULT_NODES)))
 
     def run_config(self) -> dict:
         """What changes the number, hashed into the run id.
@@ -601,12 +646,26 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
             return [int((first + last) // 2)]
         return [int(round(first + i * (last - first) / (k - 1))) for i in range(k)]
 
-    def samples(self, limit: int | None = None, split: str | None = None) -> Iterator[Sample]:
+    def samples(
+        self,
+        limit: int | None = None,
+        split: str | None = None,
+        skip: Container[str] = (),
+    ) -> Iterator[Sample]:
         """Yield up to `limit` **samples**, stopping mid-segment if need be.
 
         Slicing the segment list instead -- which this did -- makes `--limit 5`
         mean 5 * `keyframes_per_segment` samples, and `cli.py` documents
         `--limit` as a sample count.
+
+        `skip` is applied at two levels, and the outer one is the one that
+        matters. A sample here costs a minute of HEVC decoded and ~800 frames
+        staged, all of it before the first sample of that segment exists, so a
+        resume that filtered only the yielded samples would pay the full price
+        of the work it is skipping. `_segment_sample_ids` rebuilds a segment's
+        ids from its length alone -- one small `.npy` read -- and a segment
+        whose ids are all in `skip` is never opened. The per-sample test after
+        it covers the partial segment the interruption landed in.
         """
         segments = self._segments
         if split:
@@ -615,7 +674,11 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         produced = 0
         try:
             for segment in segments:
+                if skip and self._segment_is_done(segment, skip):
+                    continue
                 for sample in self._segment_samples(segment, cals):
+                    if sample.sample_id in skip:
+                        continue
                     yield sample
                     produced += 1
                     if limit is not None and produced >= limit:
@@ -626,6 +689,31 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
             # would otherwise leave behind empty.
             if not self.keep_frames and "_frame_root" in self.__dict__:
                 shutil.rmtree(self._frame_root, ignore_errors=True)
+
+    @staticmethod
+    def _sample_id(segment: L.SegmentRef, keyframe: int) -> str:
+        """The id one keyframe is scored under. One definition, three callers."""
+        return f"comma2k19/{segment.chunk}/{segment.route_id}/{segment.segment}/{keyframe}"
+
+    def _segment_sample_ids(self, segment: L.SegmentRef) -> list[str]:
+        """Every id this segment *would* yield, without opening its video.
+
+        `keyframe_indices` needs only the frame count, and `_n_frames` reads one
+        small `.npy`, so this is the cheap half of `_segment_samples`.
+        """
+        return [self._sample_id(segment, k) for k in self.keyframe_indices(self._n_frames(segment))]
+
+    def _segment_is_done(self, segment: L.SegmentRef, skip: Container[str]) -> bool:
+        """Is every sample this segment can produce already scored?
+
+        Deliberately conservative: a segment whose calibration is refused, or
+        whose video is truncated, yields fewer samples than its length predicts,
+        so some predicted id will be missing from `skip` and the segment is
+        opened again. That costs a decode; the other way round would silently
+        drop samples from a resumed run, which costs the run.
+        """
+        ids = self._segment_sample_ids(segment)
+        return bool(ids) and all(sample_id in skip for sample_id in ids)
 
     def _segment_samples(self, segment: L.SegmentRef, cals: CAL.RouteCalibrations) -> Iterator[Sample]:
         grid = self.grid
@@ -665,7 +753,7 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
                     self._observation(frames[i], pose, can, i, window[0], camera2ego) for i in window
                 ]
                 yield Sample(
-                    sample_id=f"comma2k19/{segment.chunk}/{segment.route_id}/{segment.segment}/{k}",
+                    sample_id=self._sample_id(segment, k),
                     observations=observations,
                     ground_truth=L.future_in_ego_frame(pose, k, grid.gt_horizons_s),
                     split=segment.vehicle,
@@ -687,14 +775,38 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
                     },
                 )
         finally:
-            # The frames are scratch, not results: released as soon as this
-            # segment's samples have been consumed, including when `--limit`
-            # closes the generator mid-segment. Without this a full sweep would
-            # leave 2035 segments' worth of PNG on disk.
+            # The frames are scratch, not results, and a full sweep would
+            # otherwise leave 2035 segments of raw RGB on disk. Retired rather
+            # than deleted here: see `_retire`.
             if not self.keep_frames:
-                shutil.rmtree(self._segment_frame_dir(segment), ignore_errors=True)
+                self._retire(self._segment_frame_dir(segment))
 
     # ---- frames ---------------------------------------------------------
+
+    @cached_property
+    def _retiring(self) -> list[Path]:
+        """Staged segment directories waiting to be deleted. See `_retire`."""
+        return []
+
+    def _retire(self, directory: Path) -> None:
+        """Release a segment's frames, `RETAIN_SEGMENTS` segments later.
+
+        Deleting them the moment this generator moves on is what the code did,
+        and it was correct only while the consumer scored one sample at a time
+        and asked for the next one afterwards. A runner that dispatches a batch
+        across several policy nodes, or reads one batch ahead while the nodes
+        work, is still holding samples whose paths this generator has already
+        passed -- and their frames would vanish mid-request, surfacing as a
+        file-not-found from inside a model rather than as anything about
+        staging.
+
+        A ring is the cheap fix: the frames stay until several more segments
+        have been produced, which is far longer than any consumer holds a
+        sample, and the disk high-water mark is bounded rather than growing.
+        """
+        self._retiring.append(directory)
+        while len(self._retiring) > RETAIN_SEGMENTS:
+            shutil.rmtree(self._retiring.pop(0), ignore_errors=True)
 
     def _segment_frame_dir(self, segment: L.SegmentRef) -> Path:
         """Where this segment's decoded frames live for the duration of the run.
@@ -719,26 +831,34 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         -- one streaming pass per segment either way -- and it is now amortised
         over every keyframe in the segment rather than repeated per keyframe.
 
-        Lossless PNG, at the codec's cheapest setting: these files are written
-        and read back within seconds by a process on the same machine, so encode
-        time matters and file size does not. Lossless is not negotiable -- a
-        re-compressed frame would make the pixels a model sees depend on this
-        cache, and two models' numbers would stop being comparable to any run
-        that predates it.
+        **Raw arrays, not PNG.** Every frame here is written once and read once,
+        seconds apart, by two processes on the same machine, so compressing it
+        buys nothing and costs twice. Profiling a sweep found 39% of the
+        runner's CPU in PIL's PNG encoder and 59% of the *node's* in the matching
+        decoder, against 10% in the model's own forward pass: the benchmark was
+        measuring a codec. `.npy` makes both ends a memcpy, and
+        `Observation.image` reads either.
+
+        Lossless is not negotiable, whichever format: a re-compressed frame
+        would make the pixels a model sees depend on this cache, and two models'
+        numbers would stop being comparable to any run that predates it. Raw is
+        lossless by construction, which is one fewer thing to get right.
+
+        The cost is size -- 3.0 MB a frame against ~1 MB of PNG, so about
+        2.4 GB per segment, bounded by `_retire` to `RETAIN_SEGMENTS` of them at
+        a time. A site whose `{runs}` is a network mount should point
+        `[benchmarks.comma2k19] frame_cache` at a tmpfs; see `_frame_root`.
 
         Written to a temporary name and renamed into place, because a decode
-        interrupted half way through a file must not leave a truncated PNG that
-        a later run treats as cached.
+        interrupted half way through a file must not leave a truncated frame
+        that a later run treats as cached.
 
-        The encode runs on a thread pool because it, and not the decode, is the
-        whole cost: measured on one segment's frames, decoding is 0.8 ms/frame
-        and a serial PNG write is 52. Threads are enough because PIL drops the
-        GIL inside the encoder, which takes the same write to 6.7 ms/frame --
-        about 5 s per segment, against 42 -- and the difference across 2035
-        segments is a day of wall clock.
+        The write still runs on a thread pool: `ndarray.tofile` releases the
+        GIL, so a slow filesystem overlaps with the decode rather than stalling
+        it. On tmpfs the pool does nothing and costs nothing.
         """
         directory = self._segment_frame_dir(segment)
-        paths = {i: directory / f"{i:06d}.png" for i in sorted(needed)}
+        paths = {i: directory / f"{i:06d}.npy" for i in sorted(needed)}
         missing = {i for i, path in paths.items() if not path.exists()}
         if missing:
             directory.mkdir(parents=True, exist_ok=True)
@@ -747,11 +867,11 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
                 for index, rgb in enumerate(L.decode_frames(segment.video, limit=max(missing) + 1)):
                     if index not in missing:
                         continue
-                    # Bounded in flight, because the decode is far faster than
-                    # the encode: submitting freely would queue a whole
-                    # segment's frames and hold 2 GB of RGB in RAM waiting for
-                    # the pool. Draining eagerly also surfaces a write error at
-                    # the frame that caused it.
+                    # Bounded in flight, because the decode outruns the write:
+                    # submitting freely would queue a whole segment's frames and
+                    # hold 2 GB of RGB in RAM waiting for the pool. Draining
+                    # eagerly also surfaces a write error at the frame that
+                    # caused it.
                     while len(pending) >= 2 * ENCODE_WORKERS:
                         done, pending = wait(pending, return_when=FIRST_COMPLETED)
                         for future in done:
@@ -764,11 +884,11 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
     @staticmethod
     def _write_frame(path: Path, rgb: np.ndarray) -> None:
         """One frame to disk, atomically. See `_materialise` for the whys."""
-        from PIL import Image
-
         staged = path.with_suffix(f".{os.getpid()}.{threading.get_ident()}.tmp")
-        Image.fromarray(rgb).save(staged, format="PNG", compress_level=1)
-        os.replace(staged, path)
+        np.save(staged, np.ascontiguousarray(rgb, dtype=np.uint8), allow_pickle=False)
+        # `np.save` appends `.npy` to a name that lacks it; `staged` ends in
+        # `.tmp`, so the file it actually wrote is one suffix longer.
+        os.replace(staged.with_suffix(".tmp.npy"), path)
 
     def _reference(self, pose: L.SegmentPose, can, radar, index: int) -> dict[str, float | str]:
         """What the car measured at the keyframe, for `auxiliary.score` to score against.

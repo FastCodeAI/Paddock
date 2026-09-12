@@ -211,7 +211,8 @@ def run(
         None,
         "--resume",
         help="Run id of an earlier run of this model to continue in place: its completed "
-        "chunks are kept, only the rest are scored, and it keeps its id.",
+        "samples, episodes or chunks are kept, only the rest are scored, and it keeps its id. "
+        "Refused if the switches differ from the ones the run was started under.",
     ),
 ) -> None:
     """Run a model against a benchmark."""

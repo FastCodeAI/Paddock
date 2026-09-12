@@ -22,6 +22,7 @@ import numpy as np
 import pytest
 
 from paddock.adapters.benchmarks.comma2k19 import calibration as CAL
+from paddock.adapters.benchmarks.comma2k19 import harness as H
 from paddock.adapters.benchmarks.comma2k19 import loader as L
 from paddock.adapters.benchmarks.comma2k19 import metrics as MC
 from paddock.adapters.benchmarks.comma2k19 import toolkit as TK
@@ -339,7 +340,9 @@ def test_observations_carry_frame_paths_rather_than_pixels(tmp_path, monkeypatch
     for sample in samples:
         for obs in sample.observations:
             assert obs.images == {}
-            assert obs.image_paths["CAM_FRONT"].endswith(".png")
+            # Raw, not PNG: the node decompressing what the runner just
+            # compressed was two thirds of this benchmark's wall clock.
+            assert obs.image_paths["CAM_FRONT"].endswith(".npy")
 
 
 def test_a_cached_frame_is_the_decoded_frame_bit_for_bit(tmp_path, monkeypatch):
@@ -354,15 +357,37 @@ def test_a_cached_frame_is_the_decoded_frame_bit_for_bit(tmp_path, monkeypatch):
         assert np.array_equal(loaded, frames[first + offset])
 
 
-def test_the_frames_are_released_once_the_segment_has_been_scored(tmp_path, monkeypatch):
-    """800 frames a segment across 2035 segments is terabytes; they are scratch."""
+def test_the_frames_are_released_once_enough_segments_have_gone_by(tmp_path, monkeypatch):
+    """800 frames a segment across 2035 segments is terabytes; they are scratch.
+
+    Released on a ring rather than immediately, because the runner holds
+    samples this generator has already passed -- see `_retire`. The property
+    that matters is that the high-water mark is bounded, not that any one
+    segment is gone the instant it is scored.
+    """
     frames = _synthetic_frames()
     bench, segment = _frame_bench(tmp_path, monkeypatch, frames)
 
     samples = list(bench._segment_samples(segment, _AlwaysValid()))
     path = Path(samples[0].observations[0].image_paths["CAM_FRONT"])
+    assert path.exists(), "released while a consumer could still be reading it"
+
+    for _ in range(H.RETAIN_SEGMENTS):
+        bench._retire(tmp_path / "somewhere-else")
     assert not path.exists()
     assert not bench._segment_frame_dir(segment).exists()
+
+
+def test_the_staged_frames_of_a_sweep_stay_bounded(tmp_path, monkeypatch):
+    """The ring is a budget, not a leak: N segments retire to N directories."""
+    frames = _synthetic_frames()
+    bench, segment = _frame_bench(tmp_path, monkeypatch, frames)
+
+    for index in range(3 * H.RETAIN_SEGMENTS):
+        directory = tmp_path / f"staged-{index}"
+        directory.mkdir()
+        bench._retire(directory)
+        assert len(bench._retiring) <= H.RETAIN_SEGMENTS
 
 
 def test_keep_frames_leaves_them_for_the_next_run(tmp_path, monkeypatch):
@@ -375,6 +400,68 @@ def test_keep_frames_leaves_them_for_the_next_run(tmp_path, monkeypatch):
     # And the kept directory is the shared one, not a per-run temporary, since
     # sharing between runs is the entire point of keeping.
     assert bench._frame_root == bench.cfg.runs / "comma2k19" / "_frames"
+
+
+def _sweepable(bench, segment):
+    """Point `samples()` at one segment, with a calibration that always answers."""
+    bench.__dict__["_segments"] = [segment]
+    bench.__dict__["_calibrations"] = _AlwaysValid()
+    return bench
+
+
+def test_a_segment_a_resume_has_finished_is_never_opened(tmp_path, monkeypatch):
+    """The whole value of `skip` for this benchmark.
+
+    A sample costs a minute of HEVC decoded and hundreds of frames staged,
+    before the first sample of that segment exists. Filtering only the yielded
+    samples would pay that price for every segment a resume is skipping, so a
+    resume at 8000 of 10165 would save nothing at all.
+    """
+    frames = _synthetic_frames()
+    bench, segment = _frame_bench(tmp_path, monkeypatch, frames)
+    _sweepable(bench, segment)
+
+    ids = [s.sample_id for s in bench.samples()]
+    assert len(ids) == 2
+
+    def explode(*args, **kwargs):
+        raise AssertionError("decoded a segment whose every sample was already scored")
+        yield  # pragma: no cover - generator, never reached
+
+    monkeypatch.setattr(L, "decode_frames", explode)
+    assert list(bench.samples(skip=set(ids))) == []
+
+
+def test_the_segment_an_interruption_landed_in_yields_only_what_is_left(tmp_path, monkeypatch):
+    """The partial segment is the one the outer skip cannot help with: its ids
+    are not all in `skip`, so it is decoded, and the per-sample test after it
+    is what keeps the already-scored keyframe out of the record."""
+    frames = _synthetic_frames()
+    bench, segment = _frame_bench(tmp_path, monkeypatch, frames)
+    _sweepable(bench, segment)
+
+    ids = [s.sample_id for s in bench.samples()]
+    remaining = [s.sample_id for s in _sweepable(bench, segment).samples(skip={ids[0]})]
+    assert remaining == ids[1:]
+
+
+def test_the_frame_cache_can_be_moved_off_the_run_store(tmp_path):
+    """`{runs}` is a network mount at some sites, and these frames are scratch:
+    written once and read once, seconds apart, by two processes on this machine."""
+    bench = _bench(frame_cache=str(tmp_path / "shm"))
+    bench.cfg.runs = tmp_path / "runs"
+    assert bench._frame_root.parent == tmp_path / "shm"
+
+    default = _bench()
+    default.cfg.runs = tmp_path / "runs"
+    assert default._frame_root.parent == tmp_path / "runs" / "comma2k19" / "_frames"
+
+
+def test_the_node_count_is_a_site_setting_with_a_default():
+    """More nodes is the speedup; the site says how many cores it can spare."""
+    assert _bench().node_count(None) == H.DEFAULT_NODES
+    assert _bench(nodes=12).node_count(None) == 12
+    assert _bench(nodes=0).node_count(None) == 1, "zero nodes scores nothing"
 
 
 def test_a_second_pass_reuses_the_frames_instead_of_decoding_again(tmp_path, monkeypatch):
@@ -466,7 +553,17 @@ def _bench(**settings):
 
     bench = Comma2k19Benchmark.__new__(Comma2k19Benchmark)
     bench.spec = type("S", (), {"name": "comma2k19", "dataset": "comma2k19"})()
-    bench.cfg = type("C", (), {"benchmarks": {"comma2k19": _Cfg(**settings)}, "datasets": {}})()
+    bench.cfg = type(
+        "C",
+        (),
+        {
+            "benchmarks": {"comma2k19": _Cfg(**settings)},
+            "datasets": {},
+            # `frame_cache` is expanded for template variables by the real
+            # SiteConfig; here a path is already a path.
+            "resolve": lambda self, value: Path(value),
+        },
+    )()
     return bench
 
 

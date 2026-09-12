@@ -191,11 +191,17 @@ def write_run(
         external.mkdir(parents=True, exist_ok=True)
         with (external / "samples.jsonl").open("w") as fh:
             for sample in samples:
-                fh.write(json.dumps(sample, default=_json_default) + "\n")
+                fh.write(json.dumps(sample, default=json_default) + "\n")
     return directory
 
 
-def _json_default(obj: Any) -> Any:
+def json_default(obj: Any) -> Any:
+    """`json.dumps(default=...)` for the numpy types a sample record carries.
+
+    Public because the runner writes the same records to its resume journal one
+    line at a time, and a second copy of this would be a second thing to keep
+    in step with what `write_run` accepts.
+    """
     if isinstance(obj, np.ndarray):
         return obj.tolist()
     if isinstance(obj, (np.floating, np.integer)):

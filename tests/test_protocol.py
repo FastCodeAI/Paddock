@@ -77,6 +77,48 @@ def test_to_wire_is_the_inverse_of_from_wire() -> None:
     assert Observation.from_wire(obs.to_wire()).lidar2ego is None
 
 
+def test_a_staged_frame_is_read_as_an_array_and_a_dataset_frame_through_pil(tmp_path) -> None:
+    """A harness staging frames for a node on the same machine may write raw.
+
+    Profiling a comma2k19 sweep found 59% of the node's wall clock in PIL's PNG
+    decoder against 10% in the model, all of it undoing a compression the runner
+    had just paid for. `.npy` is the way out, and it has to come back bit for
+    bit -- a frame that round-trips lossily is a quieter bug than one that
+    fails to load. Frames the dataset itself ships are untouched by this.
+    """
+    from PIL import Image
+
+    rng = np.random.default_rng(0)
+    pixels = rng.integers(0, 255, (4, 6, 3), dtype=np.uint8)
+
+    raw = tmp_path / "000159.npy"
+    np.save(raw, pixels)
+    obs = Observation(
+        images={},
+        image_paths={"CAM_FRONT": str(raw)},
+        ego2world=np.eye(4),
+        canbus=np.zeros(18),
+        timestamp_us=0,
+        command=Command.STRAIGHT,
+        camera2image={},
+        camera2ego={},
+    )
+    loaded = obs.image("CAM_FRONT")
+    assert np.array_equal(loaded, pixels) and loaded.dtype == np.uint8
+    assert obs.images["CAM_FRONT"] is loaded, "cached, so a 160-frame sequence reads each once"
+
+    png = tmp_path / "000159.png"
+    Image.fromarray(pixels).save(png)
+    obs.images.clear()
+    obs.image_paths = {"CAM_FRONT": str(png)}
+    assert np.array_equal(obs.image("CAM_FRONT"), pixels)
+
+    obs.images.clear()
+    obs.image_paths = {}
+    with pytest.raises(KeyError, match="no image for"):
+        obs.image("CAM_FRONT")
+
+
 def _extras() -> dict:
     return {
         "pose": {"velocity": [24.0, 0.1, 0.0], "rotation_rate": [0.0, 0.0, -0.02]},
@@ -165,3 +207,42 @@ def test_every_closed_loop_harness_matches_the_base_run_episode_signature() -> N
 
     assert "_template.TemplateClosedLoopBenchmark" in checked, "the template must be covered"
     assert len(checked) >= 3, f"expected template + neuroncap + bench2drive, got {checked}"
+
+
+def test_every_open_loop_harness_accepts_the_base_samples_parameters() -> None:
+    """The same guard for the other loop type, for the same reason.
+
+    The runner calls `samples(limit=..., skip=...)`; a harness that never grew
+    `skip` raises TypeError on the first pull of a resumed sweep -- after the
+    nodes have loaded. Keyword names, not positions, because that is how the
+    runner calls it and how an adapter is free to order its own parameters.
+    """
+    import importlib
+    import inspect
+    from pathlib import Path
+
+    from paddock.benchmark import OpenLoopBenchmark
+
+    expected = set(inspect.signature(OpenLoopBenchmark.samples).parameters)
+
+    adapters = Path("src/paddock/adapters/benchmarks")
+    checked = []
+    for harness_py in sorted(adapters.glob("*/harness.py")):
+        module = importlib.import_module(f"paddock.adapters.benchmarks.{harness_py.parent.name}.harness")
+        for _, obj in inspect.getmembers(module, inspect.isclass):
+            if not issubclass(obj, OpenLoopBenchmark) or obj is OpenLoopBenchmark:
+                continue
+            if "samples" not in obj.__dict__:
+                continue
+            got = set(inspect.signature(obj.samples).parameters)
+            assert expected <= got, (
+                f"{harness_py.parent.name}.{obj.__name__}.samples is missing "
+                f"{sorted(expected - got)}, which the runner passes by keyword"
+            )
+            # A module exports its class under `BENCHMARK` as well as its own
+            # name, so the same class arrives twice.
+            checked.append(f"{harness_py.parent.name}.{obj.__name__}")
+
+    checked = sorted(set(checked))
+    assert "_template.TemplateBenchmark" in checked, "the template must be covered"
+    assert len(checked) >= 3, f"expected template + kitscenes + comma2k19, got {checked}"

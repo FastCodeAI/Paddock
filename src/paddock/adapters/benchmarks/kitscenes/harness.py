@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import os
 import pickle
-from collections.abc import Iterator
+from collections.abc import Container, Iterator
 from pathlib import Path
 
 import numpy as np
@@ -124,7 +124,12 @@ class KitScenesBenchmark(OpenLoopBenchmark):
 
     # ---- samples --------------------------------------------------------
 
-    def samples(self, limit: int | None = None, split: str | None = None) -> Iterator[Sample]:
+    def samples(
+        self,
+        limit: int | None = None,
+        split: str | None = None,
+        skip: Container[str] = (),
+    ) -> Iterator[Sample]:
         rows, missing = self.coverage()
         if missing:
             raise RuntimeError(
@@ -136,8 +141,16 @@ class KitScenesBenchmark(OpenLoopBenchmark):
             rows = [r for r in rows if r.get("split") == split]
         # Deterministic: --limit N must select the same N at every site.
         rows.sort(key=lambda r: (r["scene_id"], int(r["keyframe_index"])))
+        # Filtered by id before `_sample` reads poses and calibration, so a
+        # resume costs a directory listing rather than a re-read per scene.
+        rows = [r for r in rows if self._sample_id(r) not in skip]
         for row in rows[:limit] if limit else rows:
             yield self._sample(row)
+
+    @staticmethod
+    def _sample_id(row: dict) -> str:
+        """The id `_sample` will give this row. One definition, used twice."""
+        return f"kitscenes/{row['split']}/{row['scene_id']}/{int(row['keyframe_index'])}"
 
     def _sample(self, row: dict) -> Sample:
         scene = self._scene_path(row["scene_id"], row["split_dir"])
@@ -153,7 +166,7 @@ class KitScenesBenchmark(OpenLoopBenchmark):
             self._observation(L.frame_path(scene, index), poses, index, calibration) for index in indices
         ]
         return Sample(
-            sample_id=f"kitscenes/{row['split']}/{row['scene_id']}/{keyframe}",
+            sample_id=self._sample_id(row),
             observations=observations,
             ground_truth=L.ground_truth(poses, keyframe, n=N_GT_POSES),
             split=row["split"],

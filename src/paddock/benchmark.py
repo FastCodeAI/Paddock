@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import os
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Container, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -169,6 +169,25 @@ class Benchmark(ABC):
         """
         return []
 
+    def node_count(self, model) -> int:
+        """How many policy nodes to start for *model*. One unless the benchmark
+        knows better.
+
+        A benchmark that issues N requests at a time serialises on one node: a
+        model that answers one request at a time leaves N-1 of them waiting.
+        Starting N nodes and spreading the requests across them is an N-fold
+        speedup with no change to what is computed, since every request is a
+        self-contained `infer` or `infer_sequence`.
+
+        The ceiling is the model, not the benchmark: a node that holds the GPU
+        for the whole of a request gains nothing from a sibling, while one whose
+        wall clock is decode and preprocessing -- which is most open-loop work
+        -- scales until the cores run out. `runtime.gpu.wait_for` still gates
+        each launch on the model's declared VRAM, so asking for more nodes than
+        the card can hold waits rather than fails.
+        """
+        return 1
+
     @abstractmethod
     def preflight(self) -> list[str]:
         """Return human-readable reasons this benchmark cannot run here.
@@ -196,13 +215,32 @@ class OpenLoopBenchmark(Benchmark):
         return []
 
     @abstractmethod
-    def samples(self, limit: int | None = None, split: str | None = None) -> Iterator[Sample]:
+    def samples(
+        self,
+        limit: int | None = None,
+        split: str | None = None,
+        skip: Container[str] = (),
+    ) -> Iterator[Sample]:
         """Yield samples to evaluate, in a deterministic order.
 
         `limit` caps the count of **samples**, matching what `paddock run
         --limit` documents. A benchmark whose samples are grouped (several
         keyframes per segment) must stop mid-group rather than slicing the
         groups, or `--limit 5` quietly means something else.
+
+        `skip` holds sample ids an interrupted run already scored; this is what
+        makes `--resume` possible for open loop. Filtering the yielded samples
+        is correct but not the point -- the runner can do that itself. The
+        point is to avoid *building* them: comma2k19 decodes a minute of HEVC
+        per segment before it can yield a single sample, so a resume at 8000 of
+        10165 that still walks every segment saves nothing at all. A benchmark
+        whose samples are cheap may ignore it: the runner drops a repeat rather
+        than scoring it twice, at the cost of `limit` then counting from the
+        start of the stream.
+
+        `limit` counts what is yielded, so on a resume it caps the samples
+        still to do rather than the run's total. The runner subtracts what is
+        already on disk before calling.
         """
 
     @abstractmethod
@@ -341,18 +379,6 @@ class ExternallyScoredBenchmark(Benchmark):
         benchmark can resume -- retrying a scorer that starts from scratch
         would only repeat the loss."""
         return 0
-
-    def node_count(self, model) -> int:
-        """How many policy nodes to start for *model*. One unless the benchmark
-        knows better.
-
-        A scorer that runs N worker processes against one node serialises on
-        it: a CPU-bound model that answers one request at a time leaves N-1
-        workers waiting. Starting N nodes and spreading workers across them is
-        an N-fold speedup with no change to what is computed, since every
-        request is a self-contained `infer_sequence`.
-        """
-        return 1
 
     def model_problems(self, model, limit: int | None = None) -> list[str]:
         """Why *model* cannot be scored here at all, decided before it is loaded.
