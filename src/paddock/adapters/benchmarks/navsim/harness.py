@@ -121,6 +121,51 @@ def tokens_in_csvs(csv_paths: list[Path]) -> set[str]:
     return tokens
 
 
+def retry_tokens(failed: list[str], token_logs: dict[str, str], floor: int | None = None) -> list[str]:
+    """The failed tokens, plus enough already-scored neighbours from the same
+    logs for the scorer to aggregate them.
+
+    The scorer pairs consecutive frames within a log for two-frame comfort and
+    dies in pandas below MIN_SCENARIOS per log -- the same floor `--limit`
+    guards. One failed token per log is the common case, so alone it cannot
+    be retried at all. The neighbours are re-scored and then discarded
+    (`keep_tokens`): a stochastic model must not get a second draw on a
+    scenario that did not fail.
+    """
+    floor = MIN_SCENARIOS if floor is None else floor  # defined below; resolved at call time
+    wanted = set(failed)
+    by_log: dict[str, list[str]] = {}
+    for token in failed:
+        log = token_logs.get(token)
+        if log is not None:
+            by_log.setdefault(log, []).append(token)
+    padded = list(failed)
+    for log, tokens in by_log.items():
+        need = floor - len(tokens)
+        if need > 0:
+            others = sorted(t for t, owner in token_logs.items() if owner == log and t not in wanted)
+            padded += others[:need]
+    return padded
+
+
+def keep_tokens(csv_path: Path, tokens: set[str]) -> Path:
+    """Rewrite a scorer CSV in place keeping only `tokens` and the aggregate rows."""
+    with Path(csv_path).open(newline="") as handle:
+        reader = csv.DictReader(handle)
+        header = list(reader.fieldnames or [])
+        rows = [
+            row
+            for row in reader
+            if (row.get("token") or "").strip() in tokens
+            or (row.get("token") or "").strip() in navsim_ingest.AGGREGATE_TOKENS
+        ]
+    with Path(csv_path).open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=header)
+        writer.writeheader()
+        writer.writerows(rows)
+    return Path(csv_path)
+
+
 def completed_chunk_csv(chunk_dir: Path) -> Path | None:
     """The scorer's CSV for a chunk that finished, else None."""
     csvs = sorted(chunk_dir.glob("*.csv")) if chunk_dir.is_dir() else []
@@ -880,23 +925,33 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         # get one more pass of their own, by token. For an unseeded sampler that
         # is a fresh draw; for anything else it fails again and stays excluded.
         # Whole chunks that failed are the runner's to retry with fresh nodes.
-        if failed and size > 0 and not completed_chunk_csv(out_dir / "chunks" / "retry"):
-            echo(f"  re-scoring {len(failed)} failed scenario(s) by token")
-            logs_of = self._logs_of(merged, failed)
+        if failed and size > 0:
             retry_dir = out_dir / "chunks" / "retry"
-            try:
-                csvs.append(
-                    self._run_scorer(
-                        self._command(policy_url, retry_dir, config, limit, logs_of or None, failed),
+            # A retry a previous attempt completed is merged, not run again.
+            retried = completed_chunk_csv(retry_dir)
+            if retried is None:
+                tokens = retry_tokens(failed, self._token_logs())
+                neighbours = len(tokens) - len(failed)
+                echo(
+                    f"  re-scoring {len(failed)} failed scenario(s) by token"
+                    + (f", with {neighbours} neighbour(s) so the scorer can aggregate" if neighbours else "")
+                )
+                logs_of = self._logs_of(merged, tokens)
+                try:
+                    retried = self._run_scorer(
+                        self._command(policy_url, retry_dir, config, limit, logs_of or None, tokens),
                         retry_dir,
                         root,
                         exp,
                     )
-                )
+                    keep_tokens(retried, set(failed))
+                except RuntimeError as exc:
+                    echo(f"  retry pass FAILED ({str(exc).splitlines()[0]}); the {len(failed)} stay excluded")
+                    retried = None
+            if retried is not None:
+                csvs.append(retried)
                 merged = merge_chunk_csvs(csvs, out_dir / "scores.csv")
                 samples, aggregates, failed = navsim_ingest.parse_scores(merged, split=self.split)
-            except RuntimeError as exc:
-                echo(f"  retry pass FAILED ({str(exc).splitlines()[0]}); the {len(failed)} stay excluded")
         # The scorer's own headline is per invocation and means nothing across
         # chunks; only a single-invocation run keeps it.
         reported = navsim_ingest.log_reported_score(out_dir) if size == 0 else None

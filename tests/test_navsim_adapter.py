@@ -988,6 +988,26 @@ def test_a_run_can_take_another_runs_completed_chunks_and_skip_their_logs(tmp_pa
         harness.evaluate("http://127.0.0.1:1", tmp_path / "third", config)
 
 
+def test_a_retried_token_brings_a_neighbour_so_the_scorer_can_aggregate(tmp_path: Path) -> None:
+    """The scorer pairs consecutive frames per log for two-frame comfort and
+    dies in pandas on a lone token -- the --limit floor, hit by the retry pass
+    on a real run (alpamayo, 12,145 of 12,146 scored, one retry, KeyError).
+    The neighbour is re-scored and discarded: no second draw for a scenario
+    that did not fail."""
+    from paddock.adapters.benchmarks.navsim.harness import keep_tokens, retry_tokens
+
+    token_logs = {"a1": "log_a", "a2": "log_a", "a3": "log_a", "b1": "log_b", "b2": "log_b"}
+    assert retry_tokens(["a2"], token_logs) == ["a2", "a1"], "one neighbour, the first by name"
+    assert retry_tokens(["a1", "a3"], token_logs) == ["a1", "a3"], "two in a log already aggregate"
+    assert retry_tokens(["a2", "b2"], token_logs) == ["a2", "b2", "a1", "b1"]
+    assert retry_tokens(["zz"], token_logs) == ["zz"], "a token the cache does not know is not padded"
+
+    path = tmp_path / "retry.csv"
+    path.write_text("token,valid,score\na2,True,0.9\na1,True,0.8\naverage_all_frames,True,0.85\n")
+    keep_tokens(path, {"a2"})
+    assert path.read_text() == "token,valid,score\na2,True,0.9\naverage_all_frames,True,0.85\n"
+
+
 def test_a_failed_chunk_is_counted_in_scenarios_not_logs(tmp_path: Path, monkeypatch) -> None:
     """A lost chunk of four logs is about a thousand scenarios; the run record
     must say that, not "4 scenario(s) failed"."""

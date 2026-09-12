@@ -546,7 +546,7 @@ And three levels of retry, so that surviving a crash needs nobody awake:
 | what died | who retries | how |
 |---|---|---|
 | one scenario (the model raised, or the node did not answer) | the proxy | up to `retries` more requests (default 2) with a short backoff; an unseeded sampler gets a fresh draw |
-| a scenario still failed after that | the harness | one pass re-scoring just those tokens; scored rows replace failed ones on merge |
+| a scenario still failed after that | the harness | one pass re-scoring just those tokens, each with a neighbour from its log so the scorer can aggregate (it dies below two consecutive frames); the neighbours' rows are discarded, scored rows replace failed ones on merge |
 | a chunk, the scorer, or a node | the runner | tears the nodes down, starts fresh ones, re-invokes `evaluate` on the **same** artifacts; completed chunks are skipped. `[benchmarks.navsim] run_retries`, default 2 |
 | paddock itself, or the box | you | `paddock run --bench navsim --model X --resume <run_id>` continues that run in place, same id, nothing scored twice -- under the same configuration: the switches a run starts under are written to its `run_config.json`, and a resume with a different agent, switch or chunk size is refused rather than merged. `PADDOCK_NAVSIM_RESUME_FROM=<dir>` reuses another run's chunks instead |
 
