@@ -113,7 +113,7 @@ actually drive.
 ```python
 class MyBenchmark(OpenLoopBenchmark):
     def preflight(self) -> list[str]: ...
-    def samples(self, limit=None, split=None) -> Iterator[Sample]: ...
+    def samples(self, limit=None, split=None, skip=()) -> Iterator[Sample]: ...
     def score(self, sample, prediction) -> dict[str, float]: ...
 
 BENCHMARK = MyBenchmark
@@ -130,6 +130,15 @@ BENCHMARK = MyBenchmark
   catches people out: interpolate ground truth onto the prediction's timestamps,
   and never extrapolate past the end of the recorded future — trim instead. A
   hand-rolled ADE that extrapolates flatters long-horizon predictions.
+- **`skip` is what makes `--resume` worth having.** It holds the ids an
+  interrupted run already scored. Dropping them from what you yield is correct
+  but pointless; the win is not *building* them, as early as your data lets you
+  decide — comma2k19 rebuilds a segment's ids from its frame count and never
+  opens the video. The runner drops a repeat either way, so a benchmark whose
+  samples are cheap may accept the parameter and ignore it.
+- **Override `node_count` if a sample costs more to prepare than to infer.**
+  Open-loop requests are self-contained, so the runner will score N at a time
+  across N nodes, and decode-bound work scales with them. The default is one.
 
 ### Closed loop
 

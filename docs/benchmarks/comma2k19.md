@@ -5,10 +5,18 @@ Open-loop trajectory accuracy against comma2k19's own recorded
 California's I-280, 2035 one-minute segments, two vehicles.
 
 ```bash
-paddock run --bench comma2k19 --model openpilot --limit 5     # smoke
-paddock run --bench comma2k19 --model openpilot               # full, n=2035
-paddock render --bench comma2k19                              # comparison figures
+paddock run --bench comma2k19 --model openpilot --limit 5      # smoke
+paddock run --bench comma2k19 --model openpilot                # full, n=10165
+paddock run --bench comma2k19 --model openpilot --resume <id>  # continue one in place
+paddock render --bench comma2k19                               # comparison figures
 ```
+
+**Segments are not samples.** The dataset has 2035 one-minute segments and the
+default is `keyframes_per_segment = 5`, so a full sweep is **10,165 scored
+samples**: 2033 segments × 5, plus two segments that yield none. Those two hold
+222 and 194 frames, and a scored keyframe needs 160 frames of history behind it
+and 200 of recorded future ahead — 360 in all — so neither can place one. The
+numbers reported here are always samples; `n` in a run record is samples too.
 
 ## Setup
 
@@ -21,8 +29,14 @@ path = "/path/to/comma2k19/raw_data"
 # Optional. Defaults shown; all three change what is measured and are hashed
 # into the run id.
 history_frames = 160          # observations fed before the scored one
-keyframes_per_segment = 1
+keyframes_per_segment = 5
 input_hz = 20                 # observation rate; see "Evaluation rate" below
+
+# These three change only how fast the sweep runs, never what it measures, so
+# none of them is hashed into the run id. See "Making a sweep finish" below.
+nodes = 4                     # policy nodes scored in parallel
+frame_cache = "/dev/shm/paddock-comma2k19"   # where decoded frames are staged
+keep_frames = false           # keep them for the next model instead of releasing
 ```
 
 Frame decoding needs either **PyAV** in paddock's environment
@@ -242,6 +256,46 @@ The override exists because this is the only place in the repo where the rate
 gap can be **measured** rather than merely refused. A run made with it set is
 stored `valid: false` and excluded from `paddock report`, which is the point: a
 measurement of the gap is worth keeping and must never enter an average.
+
+## Making a sweep finish
+
+10,165 samples of 160 frames each is the largest thing paddock runs, and the
+first full sweep took a day on a machine with 256 cores and two H200s, both
+idle. Three profiles, taken with py-spy on that sweep, say where it went:
+
+| where | share of that process's CPU |
+| --- | --- |
+| node: PIL `ImageFile.load` + `Image.open` (PNG decode) | 59% |
+| node: `supercombo.rgb_to_yuv420` | 23% |
+| node: onnxruntime `run` — the model itself | **10%** |
+| runner: PIL `_encode_tile` (PNG encode) | 39% |
+
+The sweep was a codec with a model attached, on one core each side. Three
+settings deal with it, none of which changes a number:
+
+- **`nodes`** (default 4). Every sample is a self-contained `infer_sequence`,
+  so N nodes score N samples in the time one scored one. The preparation is
+  per-process CPU, so it scales until the cores run out — and the cores are
+  what a machine bought for a GPU has spare. Each node still waits for the
+  model's declared VRAM before it starts.
+- **`frame_cache`**. Decoded frames are staged to disk and read back by the
+  node, which runs on the same machine; the default is under `{runs}`, and a
+  site whose `{runs}` is a network mount should point this at a tmpfs or a
+  local NVMe. They are written raw (`.npy`), not PNG: the two PIL rows above
+  are one process compressing what the other is about to decompress.
+- **`keep_frames`**. Keeps the staged frames for the next model instead of
+  releasing them as the sweep moves on. Raw frames are ~2.4 GB per segment, so
+  say yes only with several TB free and several models to amortise the decode
+  over. Otherwise the harness holds the last four segments and deletes the
+  rest as it goes.
+
+`--resume <run_id>` continues an interrupted sweep in place, keeping its id.
+Scored samples are journalled to `samples.partial.jsonl` as the run goes; a
+resume reads that, and the harness skips a segment without opening it when all
+of its keyframes are already scored — which matters because a skipped segment
+would otherwise cost a minute of HEVC decoded to produce nothing. Resuming
+under different switches is refused rather than merged, and the run stays
+rankable: being resumed is recorded as a note, not as a reason to exclude it.
 
 ## Ground truth needs no post-processing, unlike KITScenes
 
