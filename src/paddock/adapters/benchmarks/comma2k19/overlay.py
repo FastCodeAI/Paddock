@@ -68,7 +68,11 @@ radar_tracks = L.radar_tracks
 lead_track = L.lead_track
 #: Blend applied after the ribbon so the road stays readable underneath it.
 #: PIL polygons have no alpha of their own, so the whole layer is faded at once.
-RIBBON_ALPHA = 0.55
+#:
+#: Low, because a 1.8 m corridor two metres from the camera is most of the frame:
+#: at 0.55 the recorded path was the brightest thing in the image and hid the
+#: predicted one drawn on top of it, which inverts what the comparison is for.
+RIBBON_ALPHA = 0.32
 
 #: An override for a site whose Pillow has no usable bundled font.
 ENV_FONT = "PADDOCK_FONT"
