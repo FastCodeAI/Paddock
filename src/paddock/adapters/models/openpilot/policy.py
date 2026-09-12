@@ -493,17 +493,51 @@ class OpenpilotPolicy(Policy):
             # slot gets its own, rebound in `_build_camera`.
             self.bufs = {"img": self.buf, "big_img": self.buf}
         else:
-            from paddock.adapters.models.openpilot.supercombo import SupercomboSession
-
-            self.session = SupercomboSession(self._onnx_path(), self._threads())
+            self.session = self._open_session()
             self._new_onnx_runner()
 
-    def _onnx_path(self) -> Path:
+    def _onnx_paths(self) -> dict[str, Path]:
+        """Where each layout's graphs would be in this checkout.
+
+        `PADDOCK_OPENPILOT_ONNX` names a combined graph explicitly, and then
+        that is the only candidate -- a typo in it must fail loudly rather than
+        quietly fall through to whatever else is on disk.
+        """
         override = os.environ.get("PADDOCK_OPENPILOT_ONNX")
         if override:
-            return Path(override)
-        prefix = "big_" if self.model_name == "big" else ""
-        return self._models_dir() / f"{prefix}driving_supercombo.onnx"
+            return {"supercombo": Path(override)}
+        models, prefix = self._models_dir(), "big_" if self.model_name == "big" else ""
+        return {
+            "supercombo": models / f"{prefix}driving_supercombo.onnx",
+            "vision": models / f"{prefix}driving_vision.onnx",
+            "policy": models / f"{prefix}driving_policy.onnx",
+        }
+
+    def _open_session(self):
+        """Whichever graph layout the checkout ships. See `supercombo`'s docstring.
+
+        Deliberately by what is on disk rather than by a version string: a
+        checkout is a sha, openpilot has shipped both layouts, and the files
+        themselves are the only thing that cannot be wrong about which.
+        """
+        from paddock.adapters.models.openpilot.supercombo import Graph, SplitSession, SupercomboSession
+
+        paths, threads = self._onnx_paths(), self._threads()
+        combined = paths["supercombo"]
+        if combined.exists():
+            return SupercomboSession(Graph.open(combined, threads))
+        if "vision" in paths and paths["vision"].exists() and paths["policy"].exists():
+            return SplitSession(Graph.open(paths["vision"], threads), Graph.open(paths["policy"], threads))
+        raise FileNotFoundError(
+            "no openpilot driving model in "
+            + str(self._models_dir())
+            + ".\nExpected either the combined graph "
+            + combined.name
+            + " or the split pair "
+            + ", ".join(p.name for k, p in paths.items() if k != "supercombo")
+            + ".\nBoth ship as git-LFS objects: run `git lfs pull` in the openpilot checkout "
+            "(see the model's setup.sh), or set PADDOCK_OPENPILOT_ONNX to a combined graph."
+        )
 
     @staticmethod
     def _threads() -> int:
@@ -712,8 +746,9 @@ class OpenpilotPolicy(Policy):
         mode the e2e plan); should_stop = ANY candidate says stop. The cruise set-speed
         is the posted road limit the simulator sends. Lead-follow uses the model's own
         lead / lead_prob (current-time hypothesis) on the MPC's safe-distance model."""
-        from openpilot.selfdrive.controls.lib.drive_helpers import get_accel_from_plan, should_stop
         from openpilot.selfdrive.modeld.constants import ModelConstants, Plan
+
+        from paddock.adapters.models.openpilot import upstream
 
         e2e = OP_MODE == "experimental"
         v_cruise = float(speed_limit) if speed_limit else V_CRUISE_FALLBACK
@@ -725,7 +760,7 @@ class OpenpilotPolicy(Policy):
                 np.clip(a_cruise, self.a_cruise_prev - J_CRUISE * dt_s, self.a_cruise_prev + J_CRUISE * dt_s)
             )
         self.a_cruise_prev = a_cruise
-        cands = [(a_cruise, "cruise", bool(should_stop(v_ego, a_cruise)))]
+        cands = [(a_cruise, "cruise", upstream.stopped(v_ego, a_cruise))]
         # lead candidate (radard uses the model lead above prob 0.5; MPC keeps x_lead >= safe distance)
         lead = np.asarray(out["lead"])[0, 0]
         prob = float(np.asarray(out["lead_prob"])[0, 0])
@@ -741,15 +776,14 @@ class OpenpilotPolicy(Policy):
             safe = v_ego**2 / (2 * COMFORT_BRAKE) + T_FOLLOW * v_ego + STOP_DISTANCE
             room = x_lead + v_lead**2 / (2 * COMFORT_BRAKE) - safe
             a_lead = float(np.clip(K_ROOM * room + K_VREL * (v_lead - v_ego), ACCEL_MIN, max_accel))
-            cands.append((a_lead, "lead", bool(should_stop(v_ego, a_lead))))
+            cands.append((a_lead, "lead", upstream.stopped(v_ego, a_lead)))
         # e2e candidate (modeld get_action_from_model, plan branch, 0.3 s smoothed)
-        a_raw = float(
-            get_accel_from_plan(
-                plan33[:, Plan.VELOCITY][:, 0],
-                plan33[:, Plan.ACCELERATION][:, 0],
-                ModelConstants.T_IDXS,
-                action_t=LONG_ACTION_T,
-            )
+        a_raw, _ = upstream.accel_and_stop(
+            plan33[:, Plan.VELOCITY][:, 0],
+            plan33[:, Plan.ACCELERATION][:, 0],
+            ModelConstants.T_IDXS,
+            action_t=LONG_ACTION_T,
+            v_ego=v_ego,
         )
         alpha = dt_s / (LONG_SMOOTH_SECONDS + dt_s) if dt_s > 0 else 1.0
         a_e2e = self.prev_accel + alpha * (a_raw - self.prev_accel)
@@ -761,7 +795,7 @@ class OpenpilotPolicy(Policy):
         if e2e and RESUME_S > 0 and not self.resuming and self.still_s >= RESUME_S and prob < 0.5:
             self.resuming = True
         if e2e and not self.resuming:
-            cands.append((a_e2e, "e2e", bool(should_stop(v_ego, a_e2e))))
+            cands.append((a_e2e, "e2e", upstream.stopped(v_ego, a_e2e)))
         a_target, source, _ = min(cands, key=lambda c: c[0])
         if self.resuming:
             source = source + "+resume"
@@ -813,7 +847,9 @@ class OpenpilotPolicy(Policy):
             "feature_buffer_frames": FEATURE_BUFFER_FRAMES,
         }
         if self.session is not None:
-            diag["onnx"] = str(self.session.onnx_path)
+            # A dict, not a string: the split layout is two files, and a run
+            # record that names only one of them cannot be reproduced from.
+            diag["onnx"] = {k: str(v) for k, v in self.session.paths.items()}
             diag["providers"] = self.session.providers
             diag["model_checkpoint"] = self.session.spec.model_checkpoint
             if getattr(self, "_plans", None):

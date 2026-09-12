@@ -465,20 +465,49 @@ of the correction, and are **not reproducible from this tree**:
 They are per-frame figures over the model's full 10 s horizon and are **not**
 directly comparable to this adapter's per-sample 3 s ADE.
 
-## A pin discrepancy to be aware of
+## Which openpilot revision produced a number
 
-This adapter and the openpilot ONNX backend were developed and verified against
-openpilot **`675ff5698`**. `repos.yaml` pins **`555f48c5d`**, which is what the
-recorded kitscenes / neuroncap / bench2drive runs were produced against.
+openpilot ships its driving model as **two different graph layouts**, and which
+one a checkout has is not something a tag ordering tells you:
 
-The pin is deliberately left alone: moving it would silently make those existing
-numbers incomparable, which is a worse problem than this one. Instead,
-`supercombo.SupercomboSession` checks the graph's declared inputs on load and
-raises with the mismatch named if the pinned revision's supercombo is not the
-`{img, big_img, features_buffer, desire_pulse, traffic_convention, action_t}`
-graph it was written for. Producing a comma2k19 number therefore requires either
-pinning the verified revision — and re-running whatever else that pin affects —
-or using the tinygrad backend, which tracks whatever the checkout ships.
+| layout | files | revisions |
+|---|---|---|
+| split | `driving_vision.onnx` + `driving_policy.onnx` | v0.11.1 (`4df40d2c1`, 2026-05-29) |
+| combined | `driving_supercombo.onnx` | `555f48c5d` (2026-08-19, the `repos.yaml` pin), `675ff5698` (2026-09-04) |
+
+The combined graph is the *later* one. The recorded kitscenes / neuroncap /
+bench2drive runs were all produced against it, which is why the pin is left
+alone: moving it would silently make those numbers incomparable.
+
+`policy._open_session` therefore selects on **what is on disk**, not on a version
+string — a checkout is a sha, openpilot has shipped both, and the files are the
+only thing that cannot be wrong about which. `supercombo.SupercomboSession` and
+`SplitSession` each check their graph's declared inputs on load and raise with
+both input sets named, so a checkout carrying the *other* layout fails at load
+with a message that says so rather than on a shape mismatch mid-run.
+
+The two are not interchangeable, and the difference is not cosmetic:
+
+- The split layout runs vision first and pushes its feature **before** the policy
+  reads the buffer, so the policy plans from the current frame. The combined
+  graph reads the previous frame's hidden state — a one-tick lag that
+  `ModelState.run` has and that this adapter reproduces rather than fixes.
+- The feature queue is `frame_skip * (D - 1) + 1` deep in the split layout and
+  `frame_skip * D` in the combined one, so `[::frame_skip]` lands on the newest
+  entry in the first case and four ticks short of it in the second.
+- The split policy graph has no `action_t` input and publishes no `action` head,
+  so `NATIVE_LONG` takes its acceleration from the plan there.
+
+Both are pinned by `adapters/models/openpilot/tests/test_supercombo.py`, which
+drives each layout with fake graphs and asserts which frame's feature the policy
+actually sees.
+
+`diagnostics()` names every graph file loaded — `diag["onnx"]` is a dict, not a
+path, for this reason — and the node serves it at `/diagnostics`. Note that
+nothing in paddock currently *fetches* that endpoint, so it does not reach
+`run.json`: which layout produced a recorded number is answerable by looking at
+the checkout, not by reading the run. Worth closing, but it is a framework
+change and not this adapter's to make unilaterally.
 
 ## Splits
 

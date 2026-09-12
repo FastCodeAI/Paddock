@@ -161,12 +161,16 @@ exactly what the replay tools consume.
 
 ## 4. The models
 
-Three ONNX files in [openpilot/selfdrive/modeld/models/](openpilot/selfdrive/modeld/models/):
+ONNX files in [openpilot/selfdrive/modeld/models/](openpilot/selfdrive/modeld/models/).
+**Which ones you have depends on the revision** — comma has shipped the driving
+model both as one combined graph and as a vision/policy pair, and the pair is the
+*earlier* of the two (see "Two layouts" at the end of §4.1):
 
 | File | LFS size | Role |
 |---|---:|---|
-| `driving_supercombo.onnx` | 60.9 MB | the driving policy — default model |
-| `big_driving_supercombo.onnx` | 1.76 GB | high-capacity variant, runs on the "chestnut" external AMD GPU |
+| `driving_supercombo.onnx` | 60.9 MB | combined layout: the whole driving policy in one graph |
+| `driving_vision.onnx` + `driving_policy.onnx` | 44.7 MB + 13.4 MB | split layout: the same model as two graphs |
+| `big_*` variants | up to 1.76 GB | high-capacity, runs on the "chestnut" external AMD GPU |
 | `dmonitoring_model.onnx` | 7.5 MB | driver monitoring |
 
 There is no training code in this repo — comma trains offline and ships weights.
@@ -245,6 +249,31 @@ from the `plan` trajectory. See `get_action_from_model` in
 - `drivingModelData` — a compact subset for the UI/downstream (polyfit paths).
 - `cameraOdometry` — the `pose` head as a velocity/rotation measurement, consumed
   by `locationd` and `calibrationd`.
+
+**Two layouts.** Everything above describes the **combined** graph
+(`driving_supercombo.onnx`), which is what `repos.yaml`'s pin `555f48c5d`
+(2026-08-19) ships. v0.11.1 (`4df40d2c1`, 2026-05-29) ships the same model
+**split** in two, and the differences matter to anyone driving it directly:
+
+| | combined | split |
+|---|---|---|
+| graphs | `driving_supercombo.onnx` | `driving_vision.onnx` → `driving_policy.onnx` |
+| vision inputs | — | `{img, big_img}`, uint8 |
+| policy inputs | all six above | `{features_buffer, desire_pulse, traffic_convention}` — **no `action_t`** |
+| output dtype | float32 | float16 |
+| `action` head | yes | no — control comes from the `plan` |
+| feature the policy sees | the **previous** frame's `hidden_state` | the **current** frame's |
+
+That last row is the one that bites. `ModelState.run` writes `prev_feat` *after*
+the call and `run_policy` pushes it *before*, so the combined graph plans from a
+one-tick-stale hidden state; the split layout runs vision first and pushes its
+feature between the two calls, so there is no lag to reproduce. The queue depths
+differ to match: `frame_skip * D` combined (so `[::frame_skip]` never reaches the
+newest entry) versus `frame_skip * (D - 1) + 1` split (so it lands exactly on it).
+
+Paddock's `supercombo.SupercomboSession` / `SplitSession` own one layout each and
+`policy._open_session` picks by what is on disk. Both refuse a graph from the
+other layout at load time, with both input sets named.
 
 ### 4.2 dmonitoring — the driver monitoring model
 

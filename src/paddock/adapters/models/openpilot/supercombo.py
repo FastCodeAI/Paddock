@@ -20,18 +20,47 @@ careful port rather than a quick one:
    the two frames are 0.2 s apart. Feeding adjacent frames shows the network a
    quarter of the true apparent motion; measured on comma2k19 that alone takes
    ego-speed error from 4 % to 74 % and ADE from 3.1 m to 41.9 m.
-2. **`features_buffer` lags by three ticks.** `feat_q` is 96 deep sampled
-   `[::4]`, which yields indices 0, 4, ..., 92 -- the newest inserted feature at
-   95 is not sampled. Reproduced, not "fixed".
+2. **`features_buffer` can lag by three ticks.** On the combined graph `feat_q`
+   is 96 deep sampled `[::4]`, which yields indices 0, 4, ..., 92 -- the newest
+   inserted feature at 95 is not sampled. Reproduced, not "fixed".
 3. **`desire_pulse` is max-pooled** over each 4-frame window, not subsampled, so
    a one-frame pulse cannot fall between samples.
-4. **`hidden_state` is fed back one tick late.** `ModelState.run` writes
-   `prev_feat` *after* the model call and `run_policy` pushes it *before*, so
-   frame t's queue receives frame t-1's hidden state.
+4. **`hidden_state` can be fed back one tick late.** On the combined graph
+   `ModelState.run` writes `prev_feat` *after* the model call and `run_policy`
+   pushes it *before*, so frame t's queue receives frame t-1's hidden state.
 
 The warp is nearest-neighbour with border replicate, matching
 `warp_perspective_tinygrad` exactly -- not bilinear, which would be a different
 input than the network was trained on.
+
+## Two graph layouts ship under this name
+
+Which one a checkout has is not a detail, and it is not a version anyone can
+infer from a tag ordering -- both of these are real revisions of this repo:
+
+- **Combined** (`driving_supercombo.onnx`): one graph taking `{img, big_img,
+  features_buffer, desire_pulse, traffic_convention, action_t}`. This is what
+  `repos.yaml` pins (`555f48c5d`, 2026-08-19) and what every recorded kitscenes
+  / neuroncap / bench2drive run was produced against. `SupercomboSession`.
+- **Split** (`driving_vision.onnx` + `driving_policy.onnx`): vision takes the
+  two image streams, the policy takes `{features_buffer, desire_pulse,
+  traffic_convention}`, and they run in series. This is openpilot v0.11.1
+  (`4df40d2c1`, 2026-05-29). `SplitSession`.
+
+The two differ in three ways that change the numbers, which is why the split
+path is a separate class rather than a path resolution:
+
+- The vision graph runs *first*, so the feature it produces is pushed into
+  `feat_q` before the policy graph reads it: the split layout has **no
+  recurrence lag** (item 4 above), and `feat_q` is `frame_skip * (D - 1) + 1`
+  deep so that `[::frame_skip]` samples the newest entry (no item 2 either).
+- The policy graph has no `action_t` input and no `action` output, so the
+  action is always derived from the plan.
+- Its tensors are float16 end to end; the combined graph's are float32.
+
+Everything above the graph -- queues, warp, parsing, the action head -- is
+shared, so a number from one layout is comparable with a number from the other
+to exactly the extent that the two networks are.
 """
 
 from __future__ import annotations
@@ -156,12 +185,101 @@ def rgb_to_yuv420(rgb: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 # --------------------------------------------------------------------------
 
 
+class Graph:
+    """One loaded ONNX graph: its declared inputs, its `output_slices`, and a run.
+
+    Both layouts are made of these -- the combined one has a single graph, the
+    split one has two -- so loading, dtype coercion and slicing are written
+    once and the session classes hold only what actually differs.
+    """
+
+    def __init__(self, session, path: Path) -> None:
+        self.session = session
+        self.path = Path(path)
+        self.name = self.path.name
+        self.providers = session.get_providers()
+        meta = session.get_modelmeta().custom_metadata_map
+        raw = meta.get("output_slices")
+        if raw is None:
+            raise ValueError(
+                f"{self.name} has no 'output_slices' in metadata_props; "
+                "openpilot's own get_model_metadata.py asserts on this too"
+            )
+        outputs = session.get_outputs()
+        self.input_shapes = {i.name: tuple(i.shape) for i in session.get_inputs()}
+        self.input_dtypes = {i.name: _ORT_DTYPES[i.type] for i in session.get_inputs()}
+        self.output_name = outputs[0].name
+        self.output_width = int(outputs[0].shape[-1])
+        self.output_slices = pickle.loads(codecs.decode(raw.encode(), "base64"))
+        self.model_checkpoint = meta.get("model_checkpoint")
+
+    @classmethod
+    def open(cls, onnx_path: Path, intra_op_threads: int = 8) -> Graph:
+        import onnxruntime as ort
+
+        # CUDA and cuDNN arrive as pip wheels under `site-packages/nvidia/`, whose
+        # lib dirs are on no loader path: onnxruntime dlopens the unversioned
+        # `libcudnn.so`, which those wheels do not ship. Without this the CUDA
+        # provider loads happily and then fails on the first Conv, mid-run and far
+        # from anything that explains why. `preload_dlls` is onnxruntime's own
+        # answer to exactly that layout, and is a no-op where the libs are system-
+        # installed.
+        if hasattr(ort, "preload_dlls"):  # onnxruntime >= 1.21
+            ort.preload_dlls()
+
+        onnx_path = Path(onnx_path)
+        opts = ort.SessionOptions()
+        opts.intra_op_num_threads = intra_op_threads
+        opts.inter_op_num_threads = 1
+        opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        opts.log_severity_level = 3
+        providers = ort.get_available_providers()
+        preferred = [p for p in ("CUDAExecutionProvider", "CPUExecutionProvider") if p in providers]
+        return cls(ort.InferenceSession(str(onnx_path), opts, providers=preferred), onnx_path)
+
+    def run(self, feed: dict) -> np.ndarray:
+        """Raw (N,) output for one frame, as float32.
+
+        The tinygrad path casts to float32 before parsing (`run_policy`:
+        `.cast('float32')`), and `parse_model_outputs.safe_exp` behaves
+        differently in float16, so this is not cosmetic -- and the split
+        layout's graphs are float16 throughout.
+        """
+        typed = {k: np.ascontiguousarray(feed[k], dtype=dt) for k, dt in self.input_dtypes.items()}
+        (out,) = self.session.run([self.output_name], typed)
+        raw = out[0].astype(np.float32)
+        if not np.all(np.isfinite(raw)):
+            raise RuntimeError(f"{self.name} output is not finite")
+        return raw
+
+    def slice_outputs(self, model_output: np.ndarray) -> dict:
+        """`ModelState.slice_outputs`, verbatim in effect."""
+        return {k: model_output[np.newaxis, v] for k, v in self.output_slices.items()}
+
+    def expect_inputs(self, expected: set[str]) -> None:
+        got = set(self.input_shapes)
+        if got != expected:
+            raise ValueError(
+                f"{self.name} declares inputs {sorted(got)}, but this backend was written for "
+                f"{sorted(expected)}.\n"
+                "openpilot's model input set has changed across revisions. Pin repos.yaml to a "
+                "revision whose graph matches one of the two layouts this module implements "
+                "(see its docstring), or use the tinygrad backend, which tracks whatever the "
+                "checkout ships."
+            )
+
+
 @dataclass(frozen=True)
 class ModelSpec:
+    """The model-level view of a session, whatever its layout.
+
+    `input_shapes` and `output_slices` are the union across the graphs, which is
+    exactly how the rest of the adapter reads them: the queues care about `img`
+    and `features_buffer`, `build_extras` cares about the head names, and
+    neither has any business knowing which graph produced which.
+    """
+
     input_shapes: dict
-    input_dtypes: dict
-    output_name: str
-    output_width: int
     output_slices: dict
     model_checkpoint: str | None
 
@@ -183,100 +301,136 @@ class ModelSpec:
 
 
 class SupercomboSession:
-    """One loaded supercombo ONNX graph."""
+    """The combined graph: one ONNX taking images, queues and `action_t`.
 
-    def __init__(self, onnx_path: Path, intra_op_threads: int = 8) -> None:
-        import onnxruntime as ort
+    `repos.yaml`'s pin (`555f48c5d`) resolves to this, and every recorded
+    openpilot run in `results/` was produced through it.
+    """
 
-        self.onnx_path = Path(onnx_path)
-        opts = ort.SessionOptions()
-        opts.intra_op_num_threads = intra_op_threads
-        opts.inter_op_num_threads = 1
-        opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-        opts.log_severity_level = 3
-        providers = ort.get_available_providers()
-        preferred = [p for p in ("CUDAExecutionProvider", "CPUExecutionProvider") if p in providers]
-        self.session = ort.InferenceSession(str(self.onnx_path), opts, providers=preferred)
-        self.providers = self.session.get_providers()
-
-        inputs = self.session.get_inputs()
-        outputs = self.session.get_outputs()
-        meta = self.session.get_modelmeta().custom_metadata_map
-        raw = meta.get("output_slices")
-        if raw is None:
-            raise ValueError(
-                f"{self.onnx_path.name} has no 'output_slices' in metadata_props; "
-                "openpilot's own get_model_metadata.py asserts on this too"
-            )
-        self.spec = ModelSpec(
-            input_shapes={i.name: tuple(i.shape) for i in inputs},
-            input_dtypes={i.name: _ORT_DTYPES[i.type] for i in inputs},
-            output_name=outputs[0].name,
-            output_width=int(outputs[0].shape[-1]),
-            output_slices=pickle.loads(codecs.decode(raw.encode(), "base64")),
-            model_checkpoint=meta.get("model_checkpoint"),
+    def __init__(self, graph: Graph) -> None:
+        self.graph = graph
+        graph.expect_inputs(
+            {"img", "big_img", "features_buffer", "desire_pulse", "traffic_convention", "action_t"}
         )
-        self._check_graph_contract()
-
-    def _check_graph_contract(self) -> None:
-        """Refuse a supercombo graph this module was not written against.
-
-        This matters because openpilot's model input set has changed more than
-        once. The graph expected here takes
-        `{img, big_img, features_buffer, desire_pulse, traffic_convention,
-        action_t}` and carries `output_slices` in `metadata_props`, and that is
-        what `repos.yaml`'s pin must resolve to for the ONNX backend to work.
-
-        **This module was developed and verified against openpilot
-        `675ff5698`.** `repos.yaml` currently pins `555f48c5d`, which is what
-        the recorded kitscenes / neuroncap / bench2drive runs were produced
-        against -- so the pin is deliberately *not* changed here, because moving
-        it would silently make those numbers incomparable. If the pinned
-        revision's graph differs, this raises with the mismatch named instead of
-        failing later on a shape error, and the fix is to pin the verified
-        revision (and re-run whatever else that pin affects) rather than to
-        loosen this check.
-        """
-        expected = {
-            "img",
-            "big_img",
-            "features_buffer",
-            "desire_pulse",
-            "traffic_convention",
-            "action_t",
-        }
-        got = set(self.spec.input_shapes)
-        if got != expected:
+        self.spec = ModelSpec(
+            input_shapes=dict(graph.input_shapes),
+            output_slices=dict(graph.output_slices),
+            model_checkpoint=graph.model_checkpoint,
+        )
+        _check_shapes(self.spec, graph.name)
+        if "hidden_state" not in graph.output_slices:
             raise ValueError(
-                f"{self.onnx_path.name} declares inputs {sorted(got)}, but this backend was "
-                f"written for {sorted(expected)}.\n"
-                "openpilot's supercombo input set has changed across revisions; this module was "
-                "verified against openpilot 675ff5698. Pin repos.yaml to a revision whose graph "
-                "matches, or use the tinygrad backend, which tracks whatever the checkout ships."
-            )
-        img = self.spec.input_shapes["img"]
-        if len(img) != 4 or img[1] % 6 != 0:
-            raise ValueError(f"{self.onnx_path.name}: unexpected img shape {img}, want (1, 6*n, h, w)")
-        if "hidden_state" not in self.spec.output_slices:
-            raise ValueError(
-                f"{self.onnx_path.name}: no 'hidden_state' in output_slices, so the feature "
+                f"{graph.name}: no 'hidden_state' in output_slices, so the feature "
                 "recurrence cannot be closed"
             )
 
-    def run(self, feed: dict) -> np.ndarray:
-        """Raw (N,) output for one frame, as float32.
+    @property
+    def paths(self) -> dict[str, Path]:
+        return {"supercombo": self.graph.path}
 
-        The tinygrad path casts to float32 before parsing (`run_policy`:
-        `.cast('float32')`), and `parse_model_outputs.safe_exp` behaves
-        differently in float16, so this is not cosmetic.
+    @property
+    def providers(self) -> list[str]:
+        return list(self.graph.providers)
+
+    def make_queues(self, frame_skip: int) -> InputQueues:
+        # frame_skip * D, so `[::frame_skip]` stops at D*frame_skip - frame_skip
+        # and the newest entry is never sampled. See item 2 in the module
+        # docstring: reproduced, not fixed.
+        return InputQueues.build(self.spec, frame_skip, frame_skip * self.spec.feature_depth)
+
+    def tick(self, queues: InputQueues, parser, *, img, big_img, desire_edge, traffic_convention, action_t):
+        shapes = self.spec.input_shapes
+        img_in, big_in = queues.push_frames(img, big_img)
+        desire_in = queues.push_desire(desire_edge)
+        # Last tick's feature: `ModelState.run` writes `prev_feat` after the
+        # call and `run_policy` pushes it before. Item 4 in the module docstring.
+        feat_in = queues.push_feature(queues.feature)
+        raw = self.graph.run(
+            {
+                "img": img_in,
+                "big_img": big_in,
+                "features_buffer": feat_in,
+                "desire_pulse": desire_in,
+                "traffic_convention": traffic_convention.reshape(shapes["traffic_convention"]),
+                "action_t": action_t.reshape(shapes["action_t"]),
+            }
+        )
+        queues.feature = raw[self.graph.output_slices["hidden_state"]].astype(np.float32)
+        return parser.parse_outputs(self.graph.slice_outputs(raw))
+
+
+class SplitSession:
+    """The split layout: a vision graph feeding a policy graph, run in series.
+
+    openpilot v0.11.1's `compile_modeld.make_run_policy`, without the JIT: the
+    vision graph turns two image streams into a 512-wide feature, that feature
+    is pushed into `feat_q`, and the policy graph reads the buffer. Because the
+    push happens between the two calls, the policy sees the *current* frame's
+    feature -- unlike the combined graph, which sees the previous one.
+    """
+
+    def __init__(self, vision: Graph, policy: Graph) -> None:
+        self.vision, self.policy = vision, policy
+        vision.expect_inputs({"img", "big_img"})
+        policy.expect_inputs({"features_buffer", "desire_pulse", "traffic_convention"})
+        self.spec = ModelSpec(
+            # Union, and `pad` is the one key both graphs declare -- a
+            # whole-vector slice neither parser reads, so the collision is
+            # harmless. Every head name is unique to its graph.
+            input_shapes={**vision.input_shapes, **policy.input_shapes},
+            output_slices={**vision.output_slices, **policy.output_slices},
+            model_checkpoint=f"vision {vision.model_checkpoint} / policy {policy.model_checkpoint}",
+        )
+        _check_shapes(self.spec, vision.name)
+        if "hidden_state" not in vision.output_slices:
+            raise ValueError(
+                f"{vision.name}: no 'hidden_state' in output_slices, so there is nothing to "
+                "feed the policy graph's features_buffer with"
+            )
+        if "plan" not in policy.output_slices:
+            raise ValueError(f"{policy.name}: no 'plan' in output_slices, so it predicts no path")
+
+    @property
+    def paths(self) -> dict[str, Path]:
+        return {"vision": self.vision.path, "policy": self.policy.path}
+
+    @property
+    def providers(self) -> list[str]:
+        return list(self.vision.providers)
+
+    def make_queues(self, frame_skip: int) -> InputQueues:
+        # frame_skip * (D - 1) + 1, so `[::frame_skip]` lands exactly on the
+        # newest entry: this layout has no recurrence lag to reproduce.
+        return InputQueues.build(self.spec, frame_skip, frame_skip * (self.spec.feature_depth - 1) + 1)
+
+    def tick(self, queues: InputQueues, parser, *, img, big_img, desire_edge, traffic_convention, action_t):
+        """`action_t` is accepted and ignored: this policy graph has no such
+        input, and its action comes from the plan in `SupercomboRunner._action`.
         """
-        typed = {k: np.ascontiguousarray(feed[k], dtype=dt) for k, dt in self.spec.input_dtypes.items()}
-        (out,) = self.session.run([self.spec.output_name], typed)
-        return out[0].astype(np.float32)
+        img_in, big_in = queues.push_frames(img, big_img)
+        desire_in = queues.push_desire(desire_edge)
 
-    def slice_outputs(self, model_output: np.ndarray) -> dict:
-        """`ModelState.slice_outputs`, verbatim in effect."""
-        return {k: model_output[np.newaxis, v] for k, v in self.spec.output_slices.items()}
+        vision_raw = self.vision.run({"img": img_in, "big_img": big_in})
+        queues.feature = vision_raw[self.vision.output_slices["hidden_state"]].astype(np.float32)
+        feat_in = queues.push_feature(queues.feature)
+        policy_raw = self.policy.run(
+            {
+                "features_buffer": feat_in,
+                "desire_pulse": desire_in,
+                "traffic_convention": traffic_convention.reshape(
+                    self.policy.input_shapes["traffic_convention"]
+                ),
+            }
+        )
+        out = parser.parse_vision_outputs(self.vision.slice_outputs(vision_raw))
+        out.update(parser.parse_policy_outputs(self.policy.slice_outputs(policy_raw)))
+        return out
+
+
+def _check_shapes(spec: ModelSpec, name: str) -> None:
+    img = spec.input_shapes["img"]
+    if len(img) != 4 or img[1] % 6 != 0:
+        raise ValueError(f"{name}: unexpected img shape {img}, want (1, 6*n, h, w)")
 
 
 # --------------------------------------------------------------------------
@@ -286,29 +440,38 @@ class SupercomboSession:
 
 @dataclass
 class InputQueues:
-    """`compile_modeld.make_input_queues`, as numpy ring buffers."""
+    """`compile_modeld.make_input_queues`, as numpy ring buffers.
+
+    `feature` is the recurrence state: the most recent `hidden_state`. Both
+    layouts push it into `feat_q`, and the only difference between them is
+    *when* -- the combined graph pushes it before the call that produces the
+    next one, the split layout pushes it between its two calls. One field, two
+    orderings; see each session's `tick`.
+    """
 
     img_q: np.ndarray
     big_img_q: np.ndarray
     feat_q: np.ndarray
     desire_q: np.ndarray
+    feature: np.ndarray
     frame_skip: int
     features_buffer_shape: tuple
     desire_pulse_shape: tuple
     img_shape: tuple
 
     @classmethod
-    def build(cls, spec: ModelSpec, frame_skip: int) -> InputQueues:
+    def build(cls, spec: ModelSpec, frame_skip: int, feat_depth: int) -> InputQueues:
         img = spec.input_shapes["img"]
         depth = frame_skip * (spec.n_frames - 1) + 1
         return cls(
             img_q=np.zeros((depth, 6, img[2], img[3]), dtype=np.uint8),
             big_img_q=np.zeros((depth, 6, img[2], img[3]), dtype=np.uint8),
-            feat_q=np.zeros((frame_skip * spec.feature_depth, spec.feature_dim), dtype=np.float32),
+            feat_q=np.zeros((feat_depth, spec.feature_dim), dtype=np.float32),
             desire_q=np.zeros(
                 (frame_skip * spec.desire_depth, spec.input_shapes["desire_pulse"][2]),
                 dtype=np.float32,
             ),
+            feature=np.zeros(spec.feature_dim, dtype=np.float32),
             frame_skip=frame_skip,
             features_buffer_shape=spec.input_shapes["features_buffer"],
             desire_pulse_shape=spec.input_shapes["desire_pulse"],
@@ -346,14 +509,13 @@ class SupercomboRunner:
     across sequences would leak one sample's motion into the next one's warm-up.
     """
 
-    session: SupercomboSession
+    session: SupercomboSession | SplitSession
     traffic_convention: np.ndarray
     lat_delay: float = 0.2
     long_actuator_delay: float = 0.15
 
     queues: InputQueues = field(init=False)
     prev_desire: np.ndarray = field(init=False)
-    prev_feat: np.ndarray = field(init=False)
     prev_curvature: float = field(init=False, default=0.0)
     prev_accel: float = field(init=False, default=0.0)
     frames_seen: int = field(init=False, default=0)
@@ -363,15 +525,18 @@ class SupercomboRunner:
         from openpilot.selfdrive.modeld.parse_model_outputs import Parser
 
         self.frame_skip = ModelConstants.MODEL_RUN_FREQ // ModelConstants.MODEL_CONTEXT_FREQ
-        self.queues = InputQueues.build(self.session.spec, self.frame_skip)
+        self.queues = self.session.make_queues(self.frame_skip)
         self.prev_desire = np.zeros(ModelConstants.DESIRE_LEN, dtype=np.float32)
-        self.prev_feat = np.zeros(self.session.spec.feature_dim, dtype=np.float32)
         self.parser = Parser()
 
     @property
     def warmup_frames(self) -> int:
-        """Ticks until no queue still holds initialisation zeros."""
-        return self.frame_skip * self.session.spec.feature_depth
+        """Ticks until no queue still holds initialisation zeros.
+
+        The feature queue is the deepest, and how deep it is depends on the
+        layout, so this is read off the queue rather than recomputed.
+        """
+        return int(self.queues.feat_q.shape[0])
 
     def _action_t(self) -> np.ndarray:
         from openpilot.common.realtime import DT_MDL
@@ -391,7 +556,6 @@ class SupercomboRunner:
         """One model tick. `img`/`big_img` are (6, h/2, w/2) uint8, already warped."""
         from openpilot.selfdrive.modeld.constants import ModelConstants
 
-        spec = self.session.spec
         desire_pulse = (
             np.zeros(ModelConstants.DESIRE_LEN, dtype=np.float32)
             if desire is None
@@ -401,49 +565,39 @@ class SupercomboRunner:
         edge = np.where(desire_pulse - self.prev_desire > 0.99, desire_pulse, 0.0)
         self.prev_desire[:] = desire_pulse
 
-        img_in, big_in = self.queues.push_frames(img, big_img)
-        feat_in = self.queues.push_feature(self.prev_feat)
-        desire_in = self.queues.push_desire(edge)
-
-        raw = self.session.run(
-            {
-                "img": img_in,
-                "big_img": big_in,
-                "features_buffer": feat_in,
-                "desire_pulse": desire_in,
-                "traffic_convention": self.traffic_convention.reshape(
-                    spec.input_shapes["traffic_convention"]
-                ),
-                "action_t": self._action_t().reshape(spec.input_shapes["action_t"]),
-            }
+        out = self.session.tick(
+            self.queues,
+            self.parser,
+            img=img,
+            big_img=big_img,
+            desire_edge=edge,
+            traffic_convention=self.traffic_convention,
+            action_t=self._action_t(),
         )
-        if not np.all(np.isfinite(raw)):
-            raise RuntimeError("supercombo output is not finite")
-
-        out = self.parser.parse_outputs(self.session.slice_outputs(raw))
-        self.prev_feat = raw[spec.output_slices["hidden_state"]].astype(np.float32)
         out["action_value"] = self._action(out, v_ego)
         self.frames_seen += 1
         return out
 
     def _action(self, out: dict, v_ego: float) -> dict:
-        """`modeld.py::get_action_from_model`, reusing openpilot's helpers."""
-        from openpilot.selfdrive.controls.lib.drive_helpers import (
-            get_accel_from_plan,
-            get_curvature_from_plan,
-            should_stop,
-            smooth_value,
-        )
+        """`modeld.py::get_action_from_model`, reusing openpilot's helpers.
+
+        The split layout has no `action` head, so it always takes the first
+        branch -- which is also what v0.11.1's own `get_action_from_model` does.
+        """
+        from openpilot.selfdrive.controls.lib.drive_helpers import get_curvature_from_plan, smooth_value
         from openpilot.selfdrive.modeld.constants import ModelConstants, Plan
+
+        from paddock.adapters.models.openpilot import upstream
 
         action_t = self._action_t()
         if "action" not in out:
             plan = out["plan"][0]
-            accel = get_accel_from_plan(
+            accel, stop = upstream.accel_and_stop(
                 plan[:, Plan.VELOCITY][:, 0],
                 plan[:, Plan.ACCELERATION][:, 0],
                 ModelConstants.T_IDXS,
                 action_t=float(action_t[1]),
+                v_ego=v_ego,
             )
             curvature = get_curvature_from_plan(
                 plan[:, Plan.T_FROM_CURRENT_EULER][:, 2],
@@ -455,8 +609,8 @@ class SupercomboRunner:
         else:
             accel = out["action"][0, 1]
             curvature = out["action"][0, 0] / (max(1.0, v_ego)) ** 2
+            stop = upstream.stopped(v_ego, accel)
 
-        stop = should_stop(v_ego, accel)
         accel = smooth_value(accel, self.prev_accel, 0.3)
         curvature = smooth_value(curvature, self.prev_curvature, 0.0) if v_ego > 0.3 else self.prev_curvature
         self.prev_accel, self.prev_curvature = float(accel), float(curvature)
