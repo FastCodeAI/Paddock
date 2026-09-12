@@ -12,6 +12,7 @@ wrote it and fails for everyone else.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -55,6 +56,23 @@ def test_unknown_template_variable_is_loud(alt_site) -> None:
     cfg = SiteConfig.load()
     with pytest.raises(ConfigError, match="unknown template variable"):
         cfg.resolve("{repoz}/bin")
+
+
+def test_an_edited_config_is_re_read(alt_site) -> None:
+    """The parse is cached; the answer must not be.
+
+    `SiteConfig.load()` turns out to be called per-frame on some paths, so the
+    TOML is parsed once per (path, mtime, size). That cache is only safe if
+    editing the file still changes what the next `load()` returns -- a stale
+    site config is a much worse bug than a slow one.
+    """
+    config = Path(os.environ["PADDOCK_CONFIG"])
+    assert SiteConfig.load().site == "alt-site-rehearsal"
+    config.write_text(
+        config.read_text(encoding="utf-8").replace("alt-site-rehearsal", "renamed-mid-process"),
+        encoding="utf-8",
+    )
+    assert SiteConfig.load().site == "renamed-mid-process"
 
 
 def test_unconfigured_dataset_names_the_fix(alt_site) -> None:

@@ -154,8 +154,7 @@ class SiteConfig:
                 f"  cp {REPO_ROOT / 'paddock.toml.example'} {cfg_path}\n"
                 f"  then edit the paths for this machine (see docs/site-setup.md)"
             )
-        with cfg_path.open("rb") as fh:
-            raw = tomllib.load(fh)
+        raw = _parse(cfg_path)
 
         roots = raw.get("roots", {})
         missing = [k for k in ("repos", "runs", "weights") if k not in roots]
@@ -263,3 +262,32 @@ class SiteConfig:
 
 def _abs(value: str | Path) -> Path:
     return Path(value).expanduser()
+
+
+#: Parsed `paddock.toml`, keyed by identity *and* contents.
+_PARSED: dict[tuple[str, int, int], dict] = {}
+
+
+def _parse(cfg_path: Path) -> dict:
+    """The TOML, parsed once per (path, mtime, size).
+
+    `SiteConfig.load()` is called from places that turn out to be per-frame --
+    `comma2k19.toolkit.load()` resolves the clone through it on every call, and
+    the loader asks the toolkit for a rotation matrix per pose. Profiling a
+    comma2k19 sweep put roughly half the runner's CPU in this one `open` and
+    `tomllib.load`, most of it waiting on a network filesystem.
+
+    Keyed on mtime and size rather than path alone because tests rewrite a
+    config in place and expect the next `load()` to see it; an identity-only
+    cache would make that silently stale, which is a far worse bug than the
+    parse was slow.
+    """
+    stat = cfg_path.stat()
+    key = (str(cfg_path), stat.st_mtime_ns, stat.st_size)
+    cached = _PARSED.get(key)
+    if cached is None:
+        with cfg_path.open("rb") as fh:
+            cached = tomllib.load(fh)
+        _PARSED.clear()  # one live config per process; this is a cache, not a registry
+        _PARSED[key] = cached
+    return cached
