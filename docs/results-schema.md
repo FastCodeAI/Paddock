@@ -191,7 +191,7 @@ under `results/ingest/` normalise them. Four things they must reconcile:
 4. **Run identity** — a filesystem path, a record field, or a sidecar config.
    Canonical: `run.json`.
 
-Two traps specific to the legacy data:
+Three traps specific to the legacy data:
 
 - **Some quantities exist only in logs.** `impact_speed` and `reference_speed`
   were printed to a text log and never written to the metrics file. Ingesting
@@ -199,6 +199,13 @@ Two traps specific to the legacy data:
 - **Known-bad runs are on disk.** At least one output directory is named for the
   fact that it is invalid. Ingest must mark these `valid: false`, not average
   them in.
+- **A run and its own partitions sit side by side.** Drive-JEPA's inference
+  directory holds `kitscenes_e2e_final.pkl` (223 rows) next to
+  `kitscenes_e2e_full.pkl` (187) and `kitscenes_e2e_overlap.pkl` (36), which are
+  its two disjoint halves row for row, not separate experiments. A reader that
+  walks the directory puts one run on the leaderboard three times, twice at a
+  sample count that is not the benchmark. `kitscenes_pkl` in `[ingest]`
+  therefore names a file rather than a directory.
 
 - **A closed-loop aggregate may describe only part of a rollout.** AlpaSim
   truncates its scored window at the first collision or offroad event — including

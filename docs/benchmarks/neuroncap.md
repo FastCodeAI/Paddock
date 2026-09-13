@@ -32,6 +32,126 @@ than the run itself.
 0.1 s, because drifting back to 0.5 s would silently compare models at a rate
 one of them cannot use.
 
+## What the simulator actually does with a plan
+
+Answers to questions that recur, with the line that decides each. The short
+version: the model is called at 10 Hz, returns six waypoints on a 0.5 s grid,
+and an LQR tracker turns those into acceleration and steering for one 0.1 s
+integration before it is asked again.
+
+### How often is the model called, and is it the same for every model?
+
+**10 Hz -- one call per 0.1 s of simulated time, identical for all four
+models.** The engine's loop makes exactly one `run_model` call per iteration and
+then advances the clock by `self.timestep` (`engine.py:281`), which is the
+scenario file's `time-step` (`engine.py:94`).
+
+The vendor default is 0.5 s, i.e. 2 Hz (`components/scenario.py:21`). The
+tracked files under `scenarios_10hz/` override it to 0.1, and
+`tests/test_neuroncap_harness.py` asserts all 20 still do.
+
+Nothing per-model changes the rate. openpilot duplicates each frame internally
+to feed supercombo at the 20 Hz it expects
+(`adapters/models/openpilot/policy.py:387`), but that happens inside one call.
+
+10 Hz is *simulated* time. Wall clock in the 2026-09 sweeps was about 1.2-1.6 s
+per step, dominated by rendering, so an 8 s scenario is 80 model calls and
+several minutes of real time.
+
+### How do waypoints on a 0.5 s grid drive a 0.1 s simulation?
+
+The six waypoints are stamped t+0.5 ... t+3.0 (`engine.py:269-270`), given a
+heading by finite difference between neighbours, and wrapped in an
+`InterpolatedTrajectory` (`components/vehicle_model.py:152-195`). That turns the
+0.5 s grid into a continuous function of time, which the controller samples
+between the model's waypoints rather than only at them.
+
+nuPlan's `LQRTracker` then produces two commands -- longitudinal acceleration
+and tire steering rate -- looking 1 s ahead in 0.1 s slices
+(`discretization_time 0.1`, `tracking_horizon 10`).
+
+**There is no brake channel.** Braking is negative acceleration, clamped to
+±6.0 m/s² (`components/vehicle_model.py:199-201`). If the last waypoint is
+within `STANDING_STILL_RADIUS` (1 m) the tracker is bypassed for a stopping
+controller, which is why an all-zero trajectory reads as a commanded emergency
+stop rather than "no plan".
+
+### Is it one 0.1 s step before the model is called again?
+
+Yes. `_vehicle_model_sim_steps = timestep / 0.1` (`engine.py:106`), which is
+exactly 1 at 0.1 s. Each cycle is: render, one model call, one LQR solve, one
+0.1 s integration.
+
+At the vendor's 0.5 s default it would be 5, so the car would follow one stale
+plan through five control updates before seeing anything new.
+
+**The model plans 3 s ahead and only the first 0.1 s is ever executed.** The
+rest exists to give LQR its lookahead: the plan is a tracking reference, not a
+path that gets driven.
+
+### How do the commands become the next frame the model sees?
+
+They do not reach the renderer. `propagate_state` integrates a kinematic bicycle
+model 0.1 s forward (`components/vehicle_model.py:203-205`) to a new
+`ego2world`, and that pose becomes a camera extrinsic --
+`pose = ego2world @ camera2ego` (`engine.py:165-171`) -- which NeuRAD renders
+from the trained hash grids.
+
+**The controls move a virtual camera through a fixed scene.** That is also why a
+scene renders without its lidar: the geometry is in the checkpoint, not rebuilt
+per frame. See [A scene needs at least one lidar keyframe](#a-scene-needs-at-least-one-lidar-keyframe).
+
+`accel_time_constant` and `steering_angle_time_constant` are both **0**
+(`components/vehicle_model.py:70-72`), so there is no actuator lag: a commanded
+acceleration takes effect immediately.
+
+### Do models output different numbers of waypoints?
+
+Natively yes; at the interface no. neuroNCAP requires **exactly six waypoints at
+0.5 s**, enforced in `Trajectory.to_wire` (`policy/protocol.py:429-441`): fewer
+raises, more are dropped, because the engine builds six timestamps and indexes
+them positionally.
+
+| model | native output | adaptation |
+|---|---|---|
+| Drive-JEPA | 8 poses at 0.5 s, NAVSIM's grid | none; first six taken |
+| openpilot | 8 points on `arange(1, 9) * 0.5` | interpolated onto the grid |
+| VisionPilot | lane curvature + lead object | integrated to a path, resampled |
+| Alpamayo 1.5 | its own horizon | resampled by timestamp |
+
+### Does driving smoothness depend on every 0.1 s output?
+
+In principle yes -- a model that commanded full throttle on one call and full
+brake on the next would drive jaggedly. Three things bound it: LQR penalises
+steering rate (0.05) and acceleration (1.0) against tracking error over a 1 s
+horizon; acceleration is clamped to ±6 m/s²; and only 0.1 s of any plan is
+executed, so a single bad frame moves the car centimetres.
+
+**Nothing scores smoothness.** The NCAP score is a flat 5 for avoidance and
+`4 · max(0, 1 − v_impact / v_reference)` otherwise, so a model could oscillate
+badly and still score 5.0 if it avoids. NAVSIM has `history_comfort` and
+`two_frame_extended_comfort`; neuroNCAP has no equivalent, which means
+jaggedness shows up only in the per-run clips -- one reason to keep them.
+
+### Does ego history help, and where does it come from?
+
+`ModelInput` carries **one frame**: images, `ego2world`, canbus, timestamp,
+command, calibration. No history. A model that needs it accumulates it across
+calls itself, which is what `reset()` clears between runs.
+
+* **openpilot** fills a 24-deep feature buffer, manufacturing 100 frames on the
+  first call when no history has been supplied.
+* **Alpamayo 1.5** differences 16 ego poses to derive its own speed.
+* **Drive-JEPA** selects history *by timestamp*, not by taking the last N
+  frames, so a simulator stepping faster than 0.5 s still yields ~1.5 s of
+  context. Its `diagnostics()` reports the depth actually achieved, because
+  otherwise that degrades silently.
+
+History helps indirectly: successive plans agree better, so the tracker corrects
+less. **No model here has an explicit temporal-consistency term** -- what
+stability there is comes from the controller and the vehicle, not from the
+planner being asked to be smooth.
+
 ## Configuration
 
 ```toml
@@ -403,3 +523,58 @@ on a shared card. `run.json` carries `n_reused` alongside `n_expected` and
 `n_failed`, and a resumed row says in `notes` that its `started_utc` and
 `duration_s` cover that attempt only -- a remark, not a reason: resuming does
 not make a run unrankable.
+
+
+## A scene needs at least one lidar keyframe
+
+The renderer never uses lidar points. The scene is in the trained hash grids and
+the closed-loop server reads only poses, intrinsics, transforms and actor
+trajectories. But NeuRAD's dataparser reads every lidar file eagerly, so
+`renderer.py` substitutes an empty cloud for each missing one -- copying the
+tensor width from a real cloud to do it.
+
+That needs one real cloud. A scene with none fails at
+[renderer.py:49](../../src/paddock/adapters/benchmarks/neuroncap/renderer.py#L49):
+
+```
+FileNotFoundError: no lidar files found at all -- check the nuScenes path, this is not the sweeps issue
+```
+
+Removing that guard does not help. With no lidar files the dataparser's lidar
+set is empty, so `_get_world_to_mean_transform` builds the transform from the
+cameras instead, and `ad_dataparser.py:320` then multiplies a Float transform
+against Double lidar poses:
+
+```
+RuntimeError: expected scalar type Float but found Double
+```
+
+`preflight` now refuses such a scene before anything loads. The nuScenes
+metadata is scanned once and cached, so all fourteen official scenes cost one
+scan, not fourteen.
+
+That scan reads `sample_data.json` -- 1.25 GB here -- a line at a time, keeping
+only `sample_token -> filename` for LIDAR_TOP keyframes. Measured on this
+machine: **peak RSS 64 MB**, against 4.6 GB for `json.loads` on the same file.
+Wall clock is **6 s on an idle box and 20-30 s under load** (87% CPU, load
+average 59), so it is bounded by whatever else the machine is doing. Reading the
+file whole was faster when idle -- about 4 s -- and the memory is what the trade
+buys: preflight is the cheap check that runs before everything else, often on a
+box already busy, and it should not be the largest allocation in the run.
+
+**This is not hypothetical -- it is why the check exists.** As extracted on
+2026-09-04, the shakaal copy of nuScenes had 177 of 850 scenes with no lidar at
+all, because `extract_nuscenes.sh` took `samples/CAM_*` and nothing else. Three
+of those scenes -- 0796, 0921 and 0923 -- are in the official 20 pairs. The
+full-set sweep spent roughly 13 GPU-hours on it: every attempt failed those
+three, exited non-zero, and retried the other seventeen from the start,
+producing byte-identical results each time.
+
+Their lidar has since been fetched, so on that machine all fourteen official
+scenes now pass and 174 scenes remain without lidar. The paragraph above is an
+incident record, not a description of the current state -- check with
+`paddock doctor` or a `--dry-run`, which is what the check is for.
+
+Missing lidar for a scene is fixable without re-downloading the dataset. The
+recipe is in [docs/data-setup.md](../data-setup.md) under "nuScenes with cameras
+but no lidar for some scenes".

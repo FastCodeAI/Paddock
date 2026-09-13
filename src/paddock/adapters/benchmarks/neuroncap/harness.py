@@ -29,6 +29,7 @@ import shutil
 import subprocess
 import time
 from collections.abc import Callable, Iterator
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,33 @@ from paddock.benchmark import ClosedLoopBenchmark, Episode
 SCENARIOS_DIR = Path(__file__).parent / "scenarios_10hz"
 WAYPOINT_DT = 0.5
 DEFAULT_SCENARIOS = ("stationary", "frontal", "side")
+#: What `episodes()` uses when --scene is not given; preflight checks it too.
+DEFAULT_SCENE = "0103"
+
+#: The cameras NeuRAD (nuScenes) can render. A model may declare cameras a
+#: closed-loop simulator synthesises but this dataset lacks -- openpilot's
+#: comma-three rig (CAM_OP_ROAD / CAM_OP_WIDE) is real in Bench2Drive's CARLA
+#: client but has no calibration here -- so declared cameras are intersected
+#: with this set, falling back to CAM_FRONT, before they reach --engine.cameras.
+NUSC_CAMERAS = (
+    "CAM_FRONT",
+    "CAM_FRONT_LEFT",
+    "CAM_FRONT_RIGHT",
+    "CAM_BACK",
+    "CAM_BACK_LEFT",
+    "CAM_BACK_RIGHT",
+)
+
+
+def renderable_cameras(declared: list[str] | None) -> list[str]:
+    """The declared cameras this dataset can render, falling back to CAM_FRONT.
+
+    A model may declare cameras a closed-loop simulator synthesises but nuScenes
+    lacks (openpilot's comma rig); those are dropped rather than passed to
+    ``--engine.cameras``, where an unknown name fails NeuRAD calibration.
+    """
+    return [c for c in (declared or []) if c in NUSC_CAMERAS] or ["CAM_FRONT"]
+
 
 # The official evaluation set, transcribed from the vendor's own job arrays in
 # `scripts/arrays/ncap_slurm_array_*.txt`: 20 scenario-scene pairs over 14
@@ -80,6 +108,79 @@ VIDEO_MODES = ("encode", "keep", "off")
 
 #: A scene's hash grids take ~80 s to load; allow for a cold page cache.
 RENDERER_STARTUP_S = 900
+
+
+def _lidar_sample_data(path: Path) -> dict[str, str]:
+    """sample_token -> LIDAR_TOP keyframe filename, read without loading the file.
+
+    `sample_data.json` is 1.25 GB here and `json.loads` on it peaks around
+    4.6 GB of RSS. That is an absurd cost for preflight -- the cheap check that
+    runs before anything else, often on a box already busy with someone else's
+    job -- so this reads it a line at a time instead and keeps only the two
+    fields it needs: peak RSS 64 MB for the whole dataset.
+
+    It is not faster. Reading the file whole takes about 4 s on an idle box
+    against 6 s for this scan, and 20-30 s when the machine is loaded. Memory is
+    what the trade buys, and it is the right way round: preflight failing for
+    want of RAM would defeat the point of checking early.
+
+    nuScenes writes these files pretty-printed, one field per line, which is
+    what makes a scan this simple viable. The parse is deliberately narrow: a
+    line that does not look like one of the three fields is skipped, and a
+    record missing any of them is dropped rather than guessed at.
+
+    A compact, single-line file yields nothing from that scan, and "nothing"
+    here would mean "no scene has any lidar" -- preflight would then refuse
+    every scene, confidently and wrongly. So an empty result on a non-empty file
+    falls back to loading it whole: slow and memory-hungry, but right. Being
+    wrong in the blocking direction is worse than being expensive.
+    """
+    out: dict[str, str] = {}
+    token = filename = None
+    keyframe = False
+    with path.open() as handle:
+        for line in handle:
+            line = line.strip().rstrip(",")
+            if line in ("{", "},", "}"):
+                if keyframe and token and filename and filename.startswith("samples/LIDAR_TOP"):
+                    out[token] = filename
+                token = filename = None
+                keyframe = False
+            elif line.startswith('"sample_token"'):
+                token = line.split('": "', 1)[-1].rstrip('"')
+            elif line.startswith('"filename"'):
+                filename = line.split('": "', 1)[-1].rstrip('"')
+            elif line.startswith('"is_key_frame"'):
+                keyframe = line.endswith("true")
+
+    if not out and path.stat().st_size:
+        return {
+            d["sample_token"]: d["filename"]
+            for d in json.loads(path.read_text())
+            if d.get("is_key_frame") and str(d.get("filename", "")).startswith("samples/LIDAR_TOP")
+        }
+    return out
+
+
+@lru_cache(maxsize=4)
+def _lidar_keyframes_by_scene(meta: Path) -> dict[str, list[str]]:
+    """scene name -> its LIDAR_TOP keyframe filenames, for one nuScenes metadata dir.
+
+    Cached because a 14-scene sweep would otherwise redo the scan fourteen times.
+    """
+    scenes = {s["name"]: s for s in json.loads((meta / "scene.json").read_text())}
+    samples = {s["token"]: s for s in json.loads((meta / "sample.json").read_text())}
+    lidar = _lidar_sample_data(meta / "sample_data.json")
+    out: dict[str, list[str]] = {}
+    for name, scene in scenes.items():
+        names, token = [], scene["first_sample_token"]
+        while token:
+            filename = lidar.get(token)
+            if filename:
+                names.append(filename)
+            token = samples[token]["next"]
+        out[name] = names
+    return out
 
 
 def _official_set_summary() -> str:
@@ -169,6 +270,12 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             # RuntimeError, not ValueError.
             problems.append(str(exc))
 
+        # The scenes a run will actually touch. `scene_problems` covers whatever
+        # --scene names, but a run without it falls back to the default and
+        # would never be checked -- the same asymmetry as verifying the 20
+        # scenario files exist while not verifying their scenes can render.
+        problems += self._lidar_problems(DEFAULT_SCENE)
+
         url = self.setting("renderer_url")
         if url and self.manages_renderer():
             # We start one per scene; a live one here would be someone else's,
@@ -217,7 +324,7 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         ]
 
     def scene_problems(self, scene: str) -> list[str]:
-        """Per-scene checks: a scenario with no renderer checkpoint cannot run."""
+        """Per-scene checks: what stops this scene rendering, before anything loads."""
         problems = []
         checkpoints = self.setting("checkpoints")
         if checkpoints and not (Path(checkpoints) / scene).exists():
@@ -225,7 +332,55 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
                 f"scene {scene} has no renderer checkpoint under {checkpoints}; "
                 f"available: {', '.join(self.available_scenes()) or 'none'}"
             )
+        problems += self._lidar_problems(scene)
         return problems
+
+    def _lidar_problems(self, scene: str) -> list[str]:
+        """A scene with no lidar keyframe on disk cannot be rendered.
+
+        The renderer never uses the points -- the scene is in the trained hash
+        grids -- but NeuRAD's dataparser reads every lidar file eagerly, and
+        `renderer.py` needs one real cloud to copy a tensor width from when it
+        substitutes empty ones for the rest. With none it raises, and with the
+        raise removed the dataparser falls over later instead: `len(lidars)` is
+        0, so `_get_world_to_mean_transform` builds the transform from the
+        cameras and `ad_dataparser.py:320` multiplies a Float against a Double.
+
+        This is not hypothetical. The 2026-09-04 sweep spent about 13 GPU-hours
+        finding it: this nuScenes copy was extracted with a camera-only filter,
+        so 177 of 850 scenes have no lidar, three of them in the official 20
+        pairs. Every attempt failed those three and retried the other 17.
+        """
+        dataset = self.dataset
+        if dataset is None:
+            return []
+        root = Path(dataset.resolve())
+        meta = root / (dataset.version or "v1.0-trainval")
+        if not meta.exists():
+            return []  # the dataset checks in preflight() cover a missing root
+
+        try:
+            names = self._lidar_keyframes(meta, scene)
+        except (OSError, ValueError, KeyError):
+            # Reading 850 scenes of metadata is not worth failing preflight over;
+            # the run will say so itself if the data really is unusable.
+            return []
+        if names is None:
+            return []
+        if not any((root / n).exists() for n in names):
+            return [
+                f"scene {scene} has none of its {len(names)} LIDAR_TOP keyframes under {root}. "
+                f"The renderer does not use the points, but NeuRAD's dataparser reads them "
+                f"eagerly and needs at least one. To fetch just this scene's lidar without "
+                f"re-downloading nuScenes, see the 'cameras but no lidar for some scenes' "
+                f"recipe in docs/data-setup.md; or leave the scene out of --scene."
+            ]
+        return []
+
+    @staticmethod
+    def _lidar_keyframes(meta: Path, scene: str) -> list[str] | None:
+        """The lidar keyframe filenames nuScenes lists for `scene`, or None if unknown."""
+        return _lidar_keyframes_by_scene(meta).get(f"scene-{scene}")
 
     def scenario_problems(self, scenarios: list[str], scenes: list[str] | None = None) -> list[str]:
         """A named scenario, or a named (scenario, scene) pair, that cannot be run.
@@ -271,7 +426,7 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         # pair the caller asked for by name is how a sweep silently shrinks.
         explicit = scenarios is not None
         self._pairs_run = 0
-        for scene in scenes or ["0103"]:
+        for scene in scenes or [DEFAULT_SCENE]:
             for scenario in scenarios or list(DEFAULT_SCENARIOS):
                 path = SCENARIOS_DIR / scenario / f"{scene}.yaml"
                 if not path.exists():
@@ -311,7 +466,10 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         port = policy_url.rsplit(":", 1)[-1]
         renderer_port = self.setting("renderer_url").rsplit(":", 1)[-1]
         runs = int(episode.config.get("runs", 1))
-        cameras = episode.config.get("cameras") or ["CAM_FRONT"]
+        # Keep only cameras this dataset can render; a model that also declares
+        # simulator-only cameras (openpilot's comma rig) falls back to CAM_FRONT
+        # rather than failing NeuRAD calibration on a name nuScenes never had.
+        cameras = renderable_cameras(episode.config.get("cameras"))
 
         out_dir.mkdir(parents=True, exist_ok=True)
         command = [

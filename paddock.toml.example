@@ -138,6 +138,13 @@ serialize = true
 # The shared keyframe list every model is scored on. It *is* the benchmark:
 # two models scored on different lists are not comparable.
 # sample_list = "/path/to/kitscenes_e2e_final.pkl"
+#
+# Height of the KITScenes reference frame (the roof pod) above the road, in
+# metres. Every sensor is calibrated against that pod, so a model that
+# intersects camera rays with the ground plane needs the origin dropped to road
+# level -- otherwise every projected point lands behind the car. Default 2.2;
+# override only if you have measured this rig.
+# ground_offset_m = 2.2
 
 # [benchmarks.neuroncap]
 # Closed-loop NCAP scoring against a NeuRAD render; docs/benchmarks/neuroncap.md.

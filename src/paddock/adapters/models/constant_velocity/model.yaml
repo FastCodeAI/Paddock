@@ -34,4 +34,19 @@ capabilities:
   startup_timeout_s: 60
   waypoint_dt: 0.5
 
+  # -- model card (docs/models/comparison.md) --
+  # There is no network here, so the fields that describe one are absent rather
+  # than zero: `params_m: 0` would read as a measured parameter count, and the
+  # range check would accept it. Absent says "not applicable"; 0 says "nothing".
+  architecture: "None -- integrates the measured ego speed along a straight line"
+  output_kind: waypoints
+  # 6 waypoints at waypoint_dt 0.5, the closed-loop minimum.
+  horizon_s: 3.0
+  # Same speed in, same plan out. The floor is the one row in the matrix that
+  # cannot move between seeds, which is part of why it is a usable reference.
+  stochastic: false
+  # Trained on nothing, so it cannot overlap any benchmark's data. That is the
+  # property that makes it a floor rather than a competitor.
+  trained_on: []
+
 benchmarks: [alpasim]

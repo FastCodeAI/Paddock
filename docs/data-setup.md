@@ -64,6 +64,34 @@ rather than erroring — the resulting numbers are not comparable to published
 ones. Check for `sweeps/` and populated `RADAR_*` before trusting a fusion
 pipeline.
 
+**nuScenes with cameras but no lidar for some scenes.** A copy extracted with a
+camera-only filter -- the shakaal site's `extract_nuscenes.sh` took
+`samples/CAM_*` and nothing else -- has full camera keyframes for every scene and
+no `samples/LIDAR_TOP` for the scenes whose blob was filtered. neuroNCAP refuses
+such a scene in `preflight`, because NeuRAD's dataparser reads lidar eagerly and
+needs one real cloud even though the render never uses the points. See
+[neuroNCAP: a scene needs at least one lidar keyframe](benchmarks/neuroncap.md#a-scene-needs-at-least-one-lidar-keyframe).
+
+To fetch just the lidar for the scenes you are missing, without re-downloading
+the dataset: the nuScenes keyframes blobs are public and need no credentials, so
+stream one and keep only its point clouds. About 4 GB of transfer yields the
+~500 MB of lidar in one blob.
+
+```bash
+# Which scenes lack lidar, and which nuScenes log each belongs to:
+#   log.json maps a scene's log_token to a logfile name, and every lidar file is
+#   named <logfile>__LIDAR_TOP__<timestamp>.pcd.bin.
+curl -sL https://d36yt3mvayqw5m.cloudfront.net/public/v1.0/v1.0-trainval09_keyframes.tgz \
+  | tar -xzf - -C /some/staging --wildcards 'samples/LIDAR_TOP/*'
+```
+
+The ten blobs are roughly, **but not strictly**, chronological: blob 09 holds
+2018-09-18 onward and blob 10 starts 2018-11-14, yet a 2018-10-02 log turned up
+in blob 08. Read the first ~60 MB of a blob (`curl -r 0-60000000 … | tar -tzf -`)
+to see which logs it starts with, and expect to try more than one. Verify every
+file is present and non-empty before copying into the shared tree; a half-copied
+scene looks exactly like the problem you are fixing.
+
 **KITScenes partial fetch.** The full release is several terabytes across ~1000
 sequences; almost nobody has all of it. Evaluation only needs the sequences the
 sample list references, which is why the tiering above exists. What matters is

@@ -16,7 +16,7 @@ runtime:
     KITSCENES_ROOTS: "{data.kitscenes.tiers}"
 
 capabilities:
-  cameras: [CAM_FRONT]
+  cameras: [CAM_OP_ROAD, CAM_OP_WIDE, CAM_FRONT]   # comma-three rig: road cam -> img, wide cam -> big_img; CAM_FRONT = fallback for single-camera sources (KITScenes, neuroNCAP)
   # tinygrad's PC backend is CPU:LLVM -- supercombo does not touch the GPU.
   # The reservation covers the harness around it, not the model.
   vram_gb: 6
@@ -34,4 +34,26 @@ capabilities:
 # 10 Hz to perceive motion at all (see min_input_hz above), so a score here would
 # measure the rate gap. `paddock run --bench navsim --model openpilot` refuses
 # with that explanation before loading the model, rather than silently doing nothing.
+  # -- model card (docs/models/comparison.md) --
+  architecture: "supercombo -- one ONNX graph, run through tinygrad"
+  # Parameter count is not published by comma. size_gb is the file paddock
+  # actually loads: driving_supercombo.onnx, 60,881,999 bytes. The other one in
+  # that directory, big_driving_supercombo.onnx, needs an external AMD GPU and
+  # is 1,757,355,221 bytes -- which is only ever seen as a 135-byte git-lfs
+  # pointer here, so read the `size` line in the pointer, not the file length.
+  size_gb: 0.061
+  input_size: [512, 256]
+  history_frames: 2
+  output_kind: waypoints
+  horizon_s: 10.0
+  # The reason min_input_hz above is load-bearing rather than cautious: the
+  # complete non-image input set is {desire_pulse, traffic_convention,
+  # action_t}. There is no channel to tell supercombo how fast it is going, so
+  # it infers ego motion from frame-to-frame change and reads a 2 Hz dataset as
+  # a parked car. Not fixable in an adapter.
+  needs_speed: false
+  trained_on:
+    # comma's internal fleet, ~6,670 h, not released. No overlap with any
+    # paddock dataset, which is the claim that matters here.
+    - dataset: comma-fleet
 benchmarks: [kitscenes, neuroncap, bench2drive]

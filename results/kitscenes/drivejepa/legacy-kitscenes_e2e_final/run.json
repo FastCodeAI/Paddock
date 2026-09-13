@@ -1,0 +1,24 @@
+{
+  "run_id": "legacy-kitscenes_e2e_final",
+  "site": "fastcode-shakaal",
+  "benchmark": "kitscenes",
+  "model": "drivejepa",
+  "mode": "open_loop",
+  "started_utc": "",
+  "duration_s": null,
+  "repo_sha": null,
+  "dataset": {
+    "name": "kitscenes",
+    "n_samples": 223,
+    "sequences_sha256": "80665529bea7f500"
+  },
+  "config": {
+    "command_source": "gt",
+    "turn_commands": 39
+  },
+  "hardware": {},
+  "status": "complete",
+  "valid": true,
+  "notes": "",
+  "ingested_from": "drivejepa/inference/kitscenes_e2e_final.pkl"
+}

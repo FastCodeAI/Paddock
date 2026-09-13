@@ -13,6 +13,9 @@ The wire contract, unchanged from NeuroNCAP:
               canbus       18 floats, nuScenes layout (see CanBus offsets)
               timestamp    microseconds
               command      0=RIGHT 1=LEFT 2=STRAIGHT 3=FOLLOW_REFERENCE
+              nav_maneuver   optional: next junction maneuver on the route,
+                             "TURN_LEFT" | "TURN_RIGHT" | "STRAIGHT" | null
+              nav_distance_m optional: along-route metres to that maneuver
               calibration  camera2image (3x3 per camera), camera2ego (4x4)
 
     response  trajectory   ego frame, x forward and y LEFT, spaced by waypoint dt
@@ -145,8 +148,10 @@ def _load_torch_tensor_without_torch(data: bytes) -> np.ndarray:
         return np.asarray(unpickler.load())
 
 
-def encode_image(array: np.ndarray) -> str:
-    """uint8 HWC -> base64 of a numpy ``.npy``: the encoder for paddock's own producers.
+def encode_image(array: np.ndarray, codec: str | None = None) -> str:
+    """uint8 HWC -> base64 of a numpy ``.npy`` (default) or a JPEG (``codec="jpeg"``,
+    quality 95; used for multi-megapixel frames where raw pixels would be ~20 MB a
+    tick). `decode_image` detects either by magic bytes.
 
     The open-loop runner, the NAVSIM proxy and the CARLA client all use this,
     so there is one definition of what goes on the wire and `decode_image` is
@@ -154,7 +159,14 @@ def encode_image(array: np.ndarray) -> str:
     load it -- and must stay that way.
     """
     buffer = io.BytesIO()
-    np.save(buffer, np.ascontiguousarray(np.asarray(array, dtype=np.uint8)), allow_pickle=False)
+    if codec == "jpeg":
+        from PIL import Image as _Image
+
+        _Image.fromarray(np.ascontiguousarray(np.asarray(array, dtype=np.uint8))).save(
+            buffer, "JPEG", quality=95, subsampling=0
+        )
+    else:
+        np.save(buffer, np.ascontiguousarray(np.asarray(array, dtype=np.uint8)), allow_pickle=False)
     return base64.b64encode(buffer.getvalue()).decode()
 
 
@@ -170,6 +182,10 @@ def decode_image(encoded: str) -> np.ndarray:
     to know about the other.
     """
     data = base64.b64decode(encoded)
+    if data[:2] == b"\xff\xd8":  # JPEG (encode_image codec="jpeg")
+        from PIL import Image as _Image
+
+        return np.asarray(_Image.open(io.BytesIO(data)).convert("RGB"), dtype=np.uint8)
     if data[:6] == b"\x93NUMPY":
         return np.load(io.BytesIO(data), allow_pickle=False).astype(np.uint8)
     if torch is not None:
@@ -238,6 +254,16 @@ class Observation:
     #: projection derives lidar2img from it). None where a source does not
     #: supply it, so a model that needs it should say so rather than assume.
     lidar2ego: np.ndarray | None = None
+    #: Road speed limit at the ego, m/s. Closed-loop simulators that know the
+    #: posted limit send it; a policy with a cruise set-point (VisionPilot's IDM)
+    #: uses it instead of guessing. None where the source has none.
+    speed_limit: float | None = None
+    #: The next junction maneuver on the route ("TURN_LEFT", "TURN_RIGHT",
+    #: "STRAIGHT") and the along-route distance to it, for policies that take a
+    #: navigation instruction (Alpamayo's nav text: "Turn left in 40m"). None
+    #: where the source has no route, or no junction ahead of the ego.
+    nav_maneuver: str | None = None
+    nav_distance_m: float | None = None
     #: Frames that live on disk, loaded on first use instead of being carried.
     #:
     #: Open-loop benchmarks read from a local dataset, and the node is a
@@ -269,6 +295,11 @@ class Observation:
             camera2image={c: np.asarray(v, dtype=np.float64) for c, v in calib["camera2image"].items()},
             camera2ego={c: np.asarray(v, dtype=np.float64) for c, v in calib["camera2ego"].items()},
             lidar2ego=(np.asarray(calib["lidar2ego"], dtype=np.float64) if "lidar2ego" in calib else None),
+            speed_limit=(float(body["speed_limit"]) if body.get("speed_limit") is not None else None),
+            nav_maneuver=(str(body["nav_maneuver"]) if body.get("nav_maneuver") else None),
+            nav_distance_m=(
+                float(body["nav_distance_m"]) if body.get("nav_distance_m") is not None else None
+            ),
         )
 
     def require_lidar2ego(self) -> np.ndarray:
@@ -339,6 +370,9 @@ class Observation:
             "canbus": np.asarray(self.canbus).tolist(),
             "timestamp": int(self.timestamp_us),
             "command": int(self.command),
+            "speed_limit": self.speed_limit,
+            "nav_maneuver": self.nav_maneuver,
+            "nav_distance_m": self.nav_distance_m,
             "calibration": calibration,
         }
 
@@ -373,6 +407,10 @@ class Trajectory:
 
     waypoints: np.ndarray
     dt: float = 0.5
+    #: Optional model-native control hints for a closed-loop client (e.g.
+    #: openpilot's desired acceleration + should_stop). Forwarded verbatim on
+    #: the wire under ``extras``; absent for models that have none.
+    extras: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         self.waypoints = np.asarray(self.waypoints, dtype=np.float64)
@@ -398,10 +436,13 @@ class Trajectory:
             raise ValueError(
                 f"trajectory needs >= {N_WAYPOINTS} waypoints for closed-loop, got {len(self.waypoints)}"
             )
-        return {
+        wire: dict[str, Any] = {
             "trajectory": self.xy[:N_WAYPOINTS].tolist(),
             "aux_outputs": aux if aux is not None else empty_aux(),
         }
+        if self.extras:
+            wire["extras"] = self.extras
+        return wire
 
 
 def constant_velocity(speed: float, n: int = N_WAYPOINTS, dt: float = 0.5) -> Trajectory:

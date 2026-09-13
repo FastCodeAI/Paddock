@@ -34,4 +34,21 @@ capabilities:
   # collisions avoided.
   min_input_hz: 0.0
 
+  # -- model card (docs/models/comparison.md) --
+  architecture: "Cosmos-Reason2 VLM + diffusion trajectory decoder"
+  params_m: 10000
+  size_gb: 20
+  precision: bf16
+  input_size: [448, 280]
+  # The model has a fourth slot, front_tele, which this adapter does not feed --
+  # see comparison.md. cameras above is what infer() actually reads.
+  history_frames: 4
+  output_kind: waypoints
+  horizon_s: 6.4
+  # Samples unseeded at T=1.0/top_p=0.95 in closed loop. One run is a draw, not
+  # a measurement: sd 1.817 across seeds on frontal-0103.
+  stochastic: true
+  trained_on:
+    # NVIDIA internal, 80,000 h. Zero-shot on every paddock benchmark.
+    - dataset: nvidia-internal
 benchmarks: [kitscenes, neuroncap, navsim, bench2drive, alpasim]
