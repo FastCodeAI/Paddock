@@ -17,15 +17,22 @@ The primary metric is `scene_score`, 0–1, meaned over scenes.
 | GPU | ~17 GB for the simulator alone; ~41 GB with a 10B driver resident |
 | disk | ~180 MB per scene of rollout artifacts, under `{runs}` |
 
-No dataset download. The scenes are USDZ artifacts fetched by AlpaSim's own
-scene provider on first use, so `datasets.yaml` declares the suite rather than a
-directory you must populate.
+No dataset download, and **no `datasets.yaml` entry**: the scenes are USDZ
+artifacts fetched by AlpaSim's own scene provider on first use, so there is no
+root for a site to point at and `requires:` would have nothing to check.
+`benchmark.yaml` therefore sets `dataset: ""`, the same as Bench2Drive. Which
+scenes a run drove is pinned by `sequences_sha256` in its `run.json`, not by a
+path.
 
 ## Running it
 
 ```bash
-paddock run --bench alpasim --model alpamayo15 --scenes public_2601:first10
-paddock run --bench alpasim --model constant_velocity --scenes public_2601:first10
+# The scene SET comes from [benchmarks.alpasim] scene_set, or --scenarios.
+paddock run --bench alpasim --model alpamayo15 --scenarios public_2601_first10
+paddock run --bench alpasim --model constant_velocity --scenarios public_2601_first10
+
+# --scene takes individual scene ids, which here are clipgt-<uuid>:
+paddock run --bench alpasim --model constant_velocity --scene clipgt-01d503d4-449b-46fc-8d78-9085e70d3554
 ```
 
 Roughly **5 minutes per scene** with a 10B driver at 4 cameras and 10 Hz — a
@@ -55,9 +62,11 @@ choices change what is being measured**, not merely how precisely:
 10 Hz control gives a policy five times the opportunities to correct that 2 Hz
 does, and four cameras see what one cannot. **Numbers from different groups are
 not comparable and must never be averaged together.** Every run records its
-group in `run.json` under `config.group`, and `metrics.json` carries it in
-`by_group`, so a report can refuse to mix them rather than relying on a reader
-to notice.
+group in `run.json` under `config.renderer`, `config.topology` and
+`config.scene_set`, all of which are hashed into the run id — so two tick
+configs cannot collide on one run id. **There is no `config.group` key and no
+`by_group` block on this path**: grouping the rows is done by the ingest reader
+for recorded campaigns, not by the adapter, which drives one scene per run.
 
 Compare a model against the constant-velocity floor **of its own group**.
 
@@ -138,6 +147,16 @@ however respectable its absolute number looks.
 
 `public_2601` first 10 scenes, uuid-pinned, n=10, scorer `affc2ea`.
 
+> **These numbers were not produced through this adapter.** They come from
+> AlpaSim's own native drivers — `openpilot-supercombo-driver-0.2.0`,
+> `visionpilot-*`, `drivejepa-*`, `alpamayo1_5-driver-0.91.0` — run before the
+> paddock bridge existed. That is also why only `alpamayo15` and
+> `constant_velocity` declare `alpasim` in their `model.yaml`: declaring the
+> other three would claim a pairing runs through the bridge, and nothing here
+> demonstrates that. So these rows are **reference values for what the
+> benchmark yields**, not evidence about this PR's code path. The live path
+> through the bridge is unverified, as the PR says.
+
 ### `1cam-2Hz`
 
 | model | `scene_score` | sd | passed | failures |
@@ -205,13 +224,21 @@ via the suite table — `sequences_sha256` in each `run.json` is the check that 
 sites scored the same scenes.
 
 **Driver identity.** `constant_velocity-driver-0.2.0` and
-`alpamayo1_5-driver-0.91.0`, as probed by the runtime at connect and recorded in
-`config.driver_version_id`.
+`alpamayo1_5-driver-0.91.0`, as probed by the runtime at connect. Those are
+**AlpaSim's own native drivers**, which is what produced the tables below — see
+the note under Reference numbers. A run driven through this adapter reports
+`paddock-bridge/<scenario>` instead, and the model it served is in `run.json`
+under `model`, not under a `driver_version_id` key: this adapter writes none.
 
 **Sampling, and what the recorded numbers are.** Alpamayo 1.5 generates with
 `temperature=0.6`, `top_p=0.98`, and seeds only when `force_determinism` is set.
-The adapter sets it, together with a fixed `scenes.random_seed`, so a run driven
-through paddock is reproducible.
+**This adapter deliberately does not set it** (`launcher.py` carries the
+reasoning): `driver.model.force_determinism` seeds a model *AlpaSim* runs, and
+under this adapter AlpaSim runs no model — paddock owns the process and the
+bridge only relays. Setting it here would be a no-op that reads as a guarantee.
+Sampling determinism for a model like Alpamayo belongs to its paddock policy.
+So a run driven through paddock is **not** reproducible by this flag, and a
+stochastic model's row is one draw unless its own policy seeds itself.
 
 **The recorded Alpamayo run above predates that.** It ran with
 `force_determinism: false` and no seed, so it is a **single unseeded draw** —

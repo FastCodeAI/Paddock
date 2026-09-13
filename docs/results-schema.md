@@ -137,6 +137,10 @@ spelling of an existing one.
 | `scene_score` | AlpaSim closed-loop scene score, 0–1, **higher is better**. Saturating progress, **zeroed outright** by an at-fault collision or an offroad event — no partial credit for a scene that ends in either. See [benchmarks/alpasim.md](benchmarks/alpasim.md) |
 | `progress` | fraction of the human's recorded path covered, 0–1, higher is better |
 | `duration_frac_20s` | fraction of a nominal 20 s budget survived from handover, 0–1, higher is better |
+| `collision_at_fault` | fraction of scenes ending in a collision the ego caused, 0–1, **lower is better**. The term that zeroes `scene_score`; `collision_rate` counts every collision including rear-endings the ego did not cause |
+| `offroad` | fraction of scenes in which the ego left the drivable area, 0–1, **lower is better**. The other term that zeroes `scene_score` |
+| `open_loop_collision` | fraction of scenes whose *recorded* plan intersects an actor, 0–1, **lower is better** — a property of the plan rather than of what the simulator then drove |
+| `dist_to_gt_trajectory` | mean metres between the ego and the human's recorded path over the scored window, **lower is better**. Only comparable between runs with similar scored fractions: the window closes at the first hard event, so a model that failed early is measured over less of the scene |
 
 Report `longitudinal_mae` and `lateral_mae` alongside `ade` where the benchmark
 allows. Every model measured so far errs far more longitudinally than

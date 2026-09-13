@@ -55,8 +55,6 @@ and the run records fewer samples than it expected.
 from __future__ import annotations
 
 import argparse
-import base64
-import io
 import logging
 import sys
 from typing import Any
@@ -66,14 +64,29 @@ import numpy as np
 from paddock.adapters.benchmarks.alpasim.scaffold import DriverScaffold, Planner, PlanResult
 from paddock.adapters.benchmarks.alpasim.scaffold import serve as scaffold_serve
 
-logger = logging.getLogger("alpasim.bridge")
+# Imported, never restated. The canbus offsets and the command enum are the two
+# things an adapter gets wrong silently -- a shifted offset feeds every model a
+# wrong speed and nothing raises. This module already imports from `scaffold`,
+# so it is running in an interpreter that can see paddock; the foreign-process
+# exemption does not apply here.
+from paddock.policy.protocol import (
+    CANBUS_VELOCITY,
+    CANBUS_YAW_RATE,
+    Command,
+    encode_image,
+)
 
-#: The engine indexes the waypoint list positionally and has timestamps for six.
-N_WAYPOINTS = 6
+logger = logging.getLogger("alpasim.bridge")
 
 #: AlpaSim's runtime pushes observations then calls drive(); a plan the node
 #: cannot produce inside this is a failed rollout, not a slow one.
 DEFAULT_INFER_TIMEOUT_S = 60.0
+
+#: Waypoint spacing to assume when the launcher does not say. `Policy` declares
+#: `waypoint_dt` and every model paddock drives today uses 0.5 s; the bridge is
+#: told rather than guessing, because the spacing is what turns a list of points
+#: into a trajectory in time and a wrong value is a silently mis-timed plan.
+DEFAULT_WAYPOINT_DT = 0.5
 
 
 def decode_frame(payload: bytes) -> np.ndarray:
@@ -94,18 +107,6 @@ def decode_frame(payload: bytes) -> np.ndarray:
     from PIL import Image
 
     return np.asarray(Image.open(BytesIO(payload)).convert("RGB"), dtype=np.uint8)
-
-
-def encode_image(frame: np.ndarray) -> str:
-    """uint8 HWC -> base64 of a .npy buffer.
-
-    `.npy` rather than a torch pickle because paddock's `decode_image` sniffs
-    the magic bytes and accepts either, and this side has no reason to depend on
-    torch to move an array between two processes.
-    """
-    buffer = io.BytesIO()
-    np.save(buffer, np.ascontiguousarray(frame, dtype=np.uint8), allow_pickle=False)
-    return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
 def pose_to_matrix(pose: Any) -> np.ndarray:
@@ -145,10 +146,10 @@ def canbus_from(view: Any) -> np.ndarray:
         vy = float(getattr(velocity, "y", 0.0) or 0.0)
         vz = float(getattr(velocity, "z", 0.0) or 0.0)
         canbus[0], canbus[1] = vx, vy
-        canbus[13] = float(np.linalg.norm((vx, vy, vz)))
+        canbus[CANBUS_VELOCITY] = float(np.linalg.norm((vx, vy, vz)))
     angular = getattr(state, "angular_velocity", None)
     if angular is not None:
-        canbus[12] = float(getattr(angular, "z", 0.0) or 0.0)
+        canbus[CANBUS_YAW_RATE] = float(getattr(angular, "z", 0.0) or 0.0)
     return canbus
 
 
@@ -187,9 +188,15 @@ class PolicyPlanner(Planner):
     AttributeError that surfaces as an opaque gRPC UNKNOWN.
     """
 
-    def __init__(self, policy_url: str, timeout_s: float = DEFAULT_INFER_TIMEOUT_S) -> None:
+    def __init__(
+        self,
+        policy_url: str,
+        timeout_s: float = DEFAULT_INFER_TIMEOUT_S,
+        waypoint_dt: float = DEFAULT_WAYPOINT_DT,
+    ) -> None:
         self.policy_url = policy_url.rstrip("/")
         self.timeout_s = timeout_s
+        self._waypoint_dt = waypoint_dt
         self._calls = 0
 
     # -- the one method the scaffold calls ---------------------------------
@@ -204,7 +211,11 @@ class PolicyPlanner(Planner):
         positions = np.zeros((len(waypoints), 3), dtype=np.float64)
         positions[:, :2] = waypoints[:, :2]
 
-        step_us = int(round(float(answer.get("dt", 0.5)) * 1e6))
+        # `/infer` returns exactly {"trajectory", "aux_outputs"} -- only
+        # `/infer_sequence` carries a dt -- so `answer.get("dt")` was always the
+        # default and read as though the node had a say. The spacing is the
+        # policy's declared `waypoint_dt`, which is what the node planned on.
+        step_us = int(round(self._waypoint_dt * 1e6))
         self._calls += 1
         if self._calls == 1 or self._calls % 50 == 0:
             logger.info(
@@ -251,7 +262,7 @@ class PolicyPlanner(Planner):
             # AlpaSim's route is a path to follow, not a discrete manoeuvre, so
             # FOLLOW_REFERENCE is the honest command. Sending STRAIGHT would tell
             # a command-conditioned model to ignore a turn the route describes.
-            "command": 3,
+            "command": Command.FOLLOW_REFERENCE,
             "calibration": calibration_from(view),
         }
         return body, source_t_us
@@ -279,10 +290,16 @@ class PolicyPlanner(Planner):
         return answer
 
 
-def serve(policy_url: str, port: int, version_id: str, timeout_s: float) -> None:
+def serve(
+    policy_url: str,
+    port: int,
+    version_id: str,
+    timeout_s: float,
+    waypoint_dt: float = DEFAULT_WAYPOINT_DT,
+) -> None:
     """Run the bridge until killed. Blocks."""
     scaffold = DriverScaffold(
-        planner=PolicyPlanner(policy_url, timeout_s=timeout_s),
+        planner=PolicyPlanner(policy_url, timeout_s=timeout_s, waypoint_dt=waypoint_dt),
         version_id=version_id,
         # The node needs pixels, so the scaffold must keep them. Off by default
         # because a blind planner should not pay to decode frames it ignores.
@@ -301,9 +318,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--version-id", default="paddock-bridge-0.1.0")
     parser.add_argument("--infer-timeout-s", type=float, default=DEFAULT_INFER_TIMEOUT_S)
+    parser.add_argument(
+        "--waypoint-dt",
+        type=float,
+        default=DEFAULT_WAYPOINT_DT,
+        help="the serving policy's declared waypoint_dt; the plan's spacing in time",
+    )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", stream=sys.stderr)
-    serve(args.policy_url, args.port, args.version_id, args.infer_timeout_s)
+    serve(args.policy_url, args.port, args.version_id, args.infer_timeout_s, args.waypoint_dt)
     return 0
 
 

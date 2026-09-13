@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from paddock.adapters.models.constant_velocity.policy import (
-    CANBUS_SPEED_INDEX,
+    CANBUS_VELOCITY,
     N_WAYPOINTS,
     POLICY,
 )
@@ -21,7 +21,7 @@ from paddock.policy.protocol import Command, Observation
 def _obs(speed: float | None) -> Observation:
     canbus = np.zeros(18, dtype=np.float64)
     if speed is not None:
-        canbus[CANBUS_SPEED_INDEX] = speed
+        canbus[CANBUS_VELOCITY] = speed
     return Observation(
         images={},
         ego2world=np.eye(4),

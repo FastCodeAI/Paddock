@@ -55,10 +55,41 @@ DEFAULT_SCENE_SET = "public_2601_first10"
 #: timeout is a backstop against a wedged container, not a performance target.
 DEFAULT_SCENE_TIMEOUT_S = 1800
 
-#: Preferred bridge port. AlpaSim's own services sit at 9100-9107 (driver 9105),
-#: so the bridge starts well clear of them: a bridge that landed on a service
-#: port would be found by the runtime and mistaken for that service.
+#: Preferred bridge port, chosen to collide with nothing the run also starts.
+#: The wizard enumerates its containers' ports from `defines.baseport: 6000`
+#: (`src/wizard/configs/base_config.yaml:76`), and this site's own driver
+#: configs have historically sat in the 9100s. 9200 is clear of both. A bridge
+#: that landed on a service port would be found by the runtime and mistaken for
+#: that service. (An earlier comment here said AlpaSim's services occupy
+#: 9100-9107; they do not, at this pin -- the choice is still right, the stated
+#: reason was not.)
 BRIDGE_PORT_BASE = 9200
+
+#: The reconstruction the scene is replayed through, when the site does not say.
+#: NuRec is what the pinned sha wires: `runtime.scene_provider.kind: usdz` with
+#: `runtime.renderer.kind: sensorsim` and no `video_model_config`.
+DEFAULT_RENDERER = "nurec"
+
+#: What this adapter can actually start. OmniDreams is a real AlpaSim backend
+#: and a column in the README, but selecting it needs a `video_model_config`
+#: this adapter does not set, so it is refused in preflight rather than
+#: recorded as if it had run.
+SUPPORTED_RENDERERS = ("nurec",)
+
+
+def scorer_sha() -> str:
+    """The AlpaSim pin from repos.yaml, which is also the scorer's version.
+
+    Read rather than copied. The scorer ships inside the pinned repo, so the
+    next person to bump the pin -- in its own PR, which is the workflow
+    repos.yaml exists to support -- moves every number this benchmark produces.
+    A literal here would keep saying `affc2ea` while something else did the
+    scoring, and the provenance field would hide the change it exists to explain.
+    """
+    from paddock.registry import Registry
+
+    return Registry.load().repos["alpasim"].sha
+
 
 #: Metrics we lift out of a rollout record, mapped to canonical names.
 _METRIC_KEYS = {
@@ -72,8 +103,37 @@ _METRIC_KEYS = {
 }
 
 
+#: The only reasons the scorer zeroes a scene it actually scored. Anything else
+#: in `failure_reason` is the runtime reporting that the rollout did not run.
+_HARD_FAILURE_REASONS = frozenset({"collision_at_fault", "offroad"})
+
+
 class NotScored(ValueError):
     """The simulator produced a summary that holds no usable score."""
+
+
+def _crashed(rollout: dict[str, Any]) -> bool:
+    """Did this rollout fail to run, as opposed to running and scoring zero?
+
+    `eval.allow_aggregation_with_failed_rollouts=true` -- which launcher.py sets,
+    so that one dead scene does not discard nine good ones -- makes AlpaSim emit
+    a summary row for a rollout that crashed. Upstream writes that row with
+    **`score: 0.0`**, not `None` (`eval/aggregation/failed_rollouts.py`), so the
+    score alone cannot tell a crash from a model that drove into a wall. Both
+    then average into the leaderboard as the same number.
+
+    The shapes do differ. A scored rollout carries a full numeric block and a
+    `failure_reason` drawn from `_HARD_FAILURE_REASONS`; a crashed one carries
+    `{run_name, run_uuid, clipgt_id, rollout_id, error}` and no metric at all.
+    Both tests are applied, because either alone would be a guess about which
+    field upstream keeps stable.
+    """
+    values = rollout.get("metrics") or {}
+    scored_anything = any(values.get(key) is not None for key in _METRIC_KEYS)
+    if scored_anything:
+        return False
+    reason = rollout.get("failure_reason")
+    return "error" in values or rollout.get("status") == "fail" or reason not in _HARD_FAILURE_REASONS
 
 
 def load_scene_set(name: str = DEFAULT_SCENE_SET) -> list[str]:
@@ -109,6 +169,15 @@ def parse_summary(summary_json: Path, scene_id: str | None = None) -> dict[str, 
         raise NotScored(
             f"{summary_json}: rollout for {scene_id} has no score (status {rollout.get('status')!r})"
         )
+    if _crashed(rollout):
+        raise NotScored(
+            f"{summary_json}: rollout for {scene_id} did not run -- "
+            f"status {rollout.get('status')!r}, failure_reason "
+            f"{rollout.get('failure_reason')!r}, error "
+            f"{(rollout.get('metrics') or {}).get('error')!r}. "
+            f"Its score of {rollout.get('score')!r} is the aggregator filling in a "
+            f"row for a crash, not a measurement of the policy"
+        )
 
     values = rollout.get("metrics") or {}
     metrics = {"scene_score": float(rollout["score"])}
@@ -138,12 +207,29 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
     def startup_timeout_s(self) -> int:
         return int(self.setting("startup_timeout_s") or launcher.DEFAULT_STARTUP_TIMEOUT_S)
 
+    @property
+    def renderer(self) -> str:
+        """Which reconstruction drives the scene: `nurec` or `omnidreams`.
+
+        The README carries them as separate columns because they are different
+        reconstructions of the same clip -- a score from one is not a statement
+        about the other. It is in `run_config` so the two hash to different run
+        ids and can never be averaged together by accident.
+        """
+        return str(self.setting("renderer") or DEFAULT_RENDERER)
+
     def run_config(self) -> dict[str, Any]:
         """What changes the number, hashed into the run id and stored."""
         return {
             "scene_set": self.scene_set,
             "startup_timeout_s": self.startup_timeout_s,
-            "scorer_repo_sha": "affc2ea",
+            # Read from repos.yaml, never copied: the scorer ships in that repo,
+            # so bumping the pin moves every published number. A literal here
+            # would keep reporting the old sha while something else did the
+            # scoring -- the field that exists to explain a change in the
+            # numbers would be the field that concealed it.
+            "scorer_repo_sha": scorer_sha(),
+            "renderer": self.renderer,
             "topology": self.setting("topology") or launcher.DEFAULT_TOPOLOGY,
         }
 
@@ -152,6 +238,13 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
     def preflight(self) -> list[str]:
         """Everything that must hold before a model loads, checked cheaply."""
         problems: list[str] = []
+        if self.renderer not in SUPPORTED_RENDERERS:
+            problems.append(
+                f"[benchmarks.alpasim] renderer = {self.renderer!r}: this adapter wires "
+                f"{', '.join(SUPPORTED_RENDERERS)} only. OmniDreams needs a "
+                f"runtime.renderer.video_model_config the launcher does not set, and a run "
+                f"labelled omnidreams that rendered NuRec would be worse than no run"
+            )
         if self.settings is None:
             return [
                 "no [benchmarks.alpasim] section in paddock.toml; it needs `repo` and "
@@ -346,6 +439,8 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
                 deploy=self.setting("deploy") or launcher.DEFAULT_DEPLOY,
                 topology=self.setting("topology") or launcher.DEFAULT_TOPOLOGY,
                 scene_cache=self.setting("scene_cache"),
+                video=bool(self.setting("video")),
+                video_every_nth_frame=int(self.setting("video_every_nth_frame") or 1),
             )
             returncode, timed_out, elapsed = launcher.run_wizard(
                 command,
@@ -377,7 +472,12 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
             )
         try:
             metrics = parse_summary(summary, episode.scene)
-        except NotScored as exc:
+        except (NotScored, json.JSONDecodeError, OSError) as exc:
+            # Not NotScored alone: a summary truncated by an OOM kill or a reboot
+            # raises JSONDecodeError, which is not a RuntimeError, so it escapes
+            # the runner's per-episode handler and the sweep dies with a
+            # traceback -- discarding every episode already scored. The right
+            # tuple is the one `completed_metrics` above already uses.
             raise RuntimeError(
                 f"{episode.scene}: {exc}\n--- tail of {wizard_log.name} ---\n{launcher._tail(wizard_log)}"
             ) from exc

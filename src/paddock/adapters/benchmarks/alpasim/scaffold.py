@@ -26,7 +26,7 @@ single interface: :meth:`Planner.plan`.
 To write a driver: implement :class:`Planner`, hand it to :class:`DriverScaffold`
 (or subclass the scaffold and supply a default), and call :func:`serve`.
 
-Contract reference: ``paddock-sid/Alpasim/adapters/INTERFACE.md``.
+Contract reference: ``docs/benchmarks/alpasim-driver-interface.md``, vendored into this repo.
 """
 
 from __future__ import annotations
@@ -69,11 +69,11 @@ from alpasim_grpc.v0.egodriver_pb2_grpc import (
 from alpasim_grpc.v0.sensorsim_pb2 import AvailableCamerasReturn
 
 # Geometry helpers, used exactly as the bundled VaVAM driver uses them, so we
-# never hand-roll quaternion maths (INTERFACE.md §6.3(g)).
+# never hand-roll quaternion maths (alpasim-driver-interface.md §6.3(g)).
 from alpasim_utils.geometry import Pose as GeometryPose
 from alpasim_utils.geometry import pose_from_grpc, pose_to_grpc_at_time
 
-# The per-camera declaration carried in DriveSessionRequest (INTERFACE.md §4.2).
+# The per-camera declaration carried in DriveSessionRequest (alpasim-driver-interface.md §4.2).
 AvailableCamera = AvailableCamerasReturn.AvailableCamera
 
 logger = logging.getLogger(__name__)
@@ -93,7 +93,7 @@ class ObservationView:
     *outside* that lock. A planner that mutated it would be corrupting another
     thread's view. Copy anything you need to keep.
 
-    Contents mirror what the runtime actually pushes (INTERFACE.md §2):
+    Contents mirror what the runtime actually pushes (alpasim-driver-interface.md §2):
 
     - ``poses`` / ``dynamic_states``: the egomotion history, oldest first.
     - ``frames_received``: per-camera frame counters. The images themselves are
@@ -101,7 +101,7 @@ class ObservationView:
     - ``route``: the latest navigation route, or None if this scenario has none.
 
     Recorded ground truth is deliberately absent: steering on it is cheating
-    (INTERFACE.md §4.6), so the scaffold acknowledges and discards it.
+    (alpasim-driver-interface.md §4.6), so the scaffold acknowledges and discards it.
     """
 
     session_uuid: str
@@ -127,7 +127,7 @@ class ObservationView:
     # intrinsics (lens model + resolution) and rig_to_camera (the camera's pose
     # in the rig).  A blind planner ignores these; a planner that projects
     # between camera and vehicle coordinates needs them, and start_session is
-    # the only place they are ever sent (INTERFACE.md §4.2).
+    # the only place they are ever sent (alpasim-driver-interface.md §4.2).
     #
     # Defaulted and placed last on purpose: it was added after the view already
     # had callers, and a defaulted trailing field keeps every existing
@@ -152,7 +152,7 @@ class ObservationView:
 
         Mirrors the bundled driver (main.py:658-660): the z component is
         ignored because the car drives on the ground plane, and velocities are
-        already in the rig frame (INTERFACE.md §4.1).
+        already in the rig frame (alpasim-driver-interface.md §4.1).
         """
         state = self.latest_dynamic_state
         if state is None:
@@ -171,7 +171,7 @@ class PlanResult:
 
     The scaffold turns this into a ``DriveResponse``: it composes the waypoints
     into the local frame through the ego pose and prepends the anchor
-    (INTERFACE.md §5). A planner never touches the local frame.
+    (alpasim-driver-interface.md §5). A planner never touches the local frame.
     """
 
     # (T, 3) waypoint positions in the rig frame, metres. x forward, y left,
@@ -249,12 +249,12 @@ class Planner(abc.ABC):
             time_now_us: Current simulation time, microseconds.
             time_query_us: The time the controller will next need a pose for.
                 Usually ``time_now_us + control_timestep_us``. The bundled
-                VaVAM driver ignores it (INTERFACE.md §7.13).
+                VaVAM driver ignores it (alpasim-driver-interface.md §7.13).
 
         Returns:
             A :class:`PlanResult`, or ``None`` to mean "not ready yet" -- which
             the scaffold turns into the contract's legal empty trajectory
-            (INTERFACE.md §4.8). Returning None is how a planner that needs, say,
+            (alpasim-driver-interface.md §4.8). Returning None is how a planner that needs, say,
             8 camera frames declines to answer until it has them.
 
         Note:
@@ -284,7 +284,7 @@ class Planner(abc.ABC):
 class _SessionState:
     """Live state for one rollout. Never handed to a planner directly.
 
-    The contract is push-then-ask (INTERFACE.md §2): observations arrive through
+    The contract is push-then-ask (alpasim-driver-interface.md §2): observations arrive through
     one-way RPCs and ``drive`` carries almost nothing, so everything the planner
     will need has to be accumulated here between calls.
     """
@@ -366,11 +366,11 @@ class DriverScaffold(EgodriverServiceServicer):
         self._keep_images = keep_images
         self._image_history = image_history
 
-        # One process serves many concurrent rollouts (INTERFACE.md §7.6).
+        # One process serves many concurrent rollouts (alpasim-driver-interface.md §7.6).
         # Instance-level, never module-level, so two scaffolds cannot collide.
         self._sessions: dict[str, _SessionState] = {}
         # The runtime fires observation RPCs concurrently and joins them at a
-        # barrier before drive() (INTERFACE.md §7.1), and gRPC serves them from
+        # barrier before drive() (alpasim-driver-interface.md §7.1), and gRPC serves them from
         # a thread pool. Every touch of _sessions and of the states inside it
         # goes through this lock.
         self._sessions_lock = threading.Lock()
@@ -416,7 +416,7 @@ class DriverScaffold(EgodriverServiceServicer):
         """Identify this build.
 
         Called once at startup with ``wait_for_ready=True``, so in practice it
-        doubles as the runtime's readiness probe (INTERFACE.md §7.2). A planner
+        doubles as the runtime's readiness probe (alpasim-driver-interface.md §7.2). A planner
         that loads a model should do so in its own __init__, before the port is
         bound, so "port answers" genuinely implies "ready".
         """
@@ -426,7 +426,7 @@ class DriverScaffold(EgodriverServiceServicer):
             # git; we match rather than inventing a convention.
             git_hash="unknown",
             # Must be the proto package's own version constant (common.proto:74).
-            # The runtime records it but does not enforce it (INTERFACE.md §7.3).
+            # The runtime records it but does not enforce it (alpasim-driver-interface.md §7.3).
             grpc_api_version=API_VERSION_MESSAGE,
         )
 
@@ -439,13 +439,13 @@ class DriverScaffold(EgodriverServiceServicer):
     ) -> SessionRequestStatus:
         """Open one rollout."""
         # The camera list is the ONLY place a driver learns what sensors exist
-        # (INTERFACE.md §4.2).
+        # (alpasim-driver-interface.md §4.2).
         camera_ids = [camera.logical_id for camera in request.rollout_spec.vehicle.available_cameras]
 
         state = _SessionState(
             uuid=request.session_uuid,
             # Exists so inference is reproducible; planners that sample should
-            # derive their per-tick seed from it (INTERFACE.md §7.7).
+            # derive their per-tick seed from it (alpasim-driver-interface.md §7.7).
             seed=request.random_seed,
             # Withheld in benchmark runs to prevent data leakage; falling back
             # to the uuid keeps log lines useful either way.
@@ -485,11 +485,11 @@ class DriverScaffold(EgodriverServiceServicer):
 
         We must answer even if the planner is blind, because the runtime blocks
         on every observation ACK at the barrier before it will call drive()
-        (INTERFACE.md §2).
+        (alpasim-driver-interface.md §2).
 
         The bytes are an *encoded* image (JPEG by default) and the message
         carries no format field, so a planner that wants pixels must sniff them
-        -- PIL's ``Image.open`` does that for you (INTERFACE.md §4.3).
+        -- PIL's ``Image.open`` does that for you (alpasim-driver-interface.md §4.3).
         """
         state = self._require_session(request.session_uuid, context)
         camera_id = request.camera_image.logical_id
@@ -509,7 +509,7 @@ class DriverScaffold(EgodriverServiceServicer):
             if self._keep_images:
                 frames = state.images.setdefault(camera_id, [])
                 # Filed under frame_end_us: the shutter-CLOSE time is the
-                # timestamp a frame belongs to (INTERFACE.md §4.3).
+                # timestamp a frame belongs to (alpasim-driver-interface.md §4.3).
                 frames.append(
                     (
                         request.camera_image.frame_end_us,
@@ -532,7 +532,7 @@ class DriverScaffold(EgodriverServiceServicer):
         """Cache where the car is and how fast it is going.
 
         The runtime sends *every* pose since the previous tick, not just the
-        newest (INTERFACE.md §4.4), so we extend rather than replace.
+        newest (alpasim-driver-interface.md §4.4), so we extend rather than replace.
         """
         state = self._require_session(request.session_uuid, context)
 
@@ -573,7 +573,7 @@ class DriverScaffold(EgodriverServiceServicer):
 
         Waypoints are in the rig frame at the route's own timestamp. A planner
         typically reduces them to a left / straight / right command
-        (INTERFACE.md §6.3(c)); the scaffold just stores the latest one.
+        (alpasim-driver-interface.md §6.3(c)); the scaffold just stores the latest one.
         """
         state = self._require_session(request.session_uuid, context)
         with self._sessions_lock:
@@ -591,7 +591,7 @@ class DriverScaffold(EgodriverServiceServicer):
 
         This is the path the *real* car took. Driving on it is cheating, so like
         the bundled driver we drop it on the floor and never expose it to a
-        planner (INTERFACE.md §4.6).
+        planner (alpasim-driver-interface.md §4.6).
         """
         self._require_session(request.session_uuid, context)
         return Empty()
@@ -606,7 +606,7 @@ class DriverScaffold(EgodriverServiceServicer):
 
         with self._sessions_lock:
             # An empty Trajectory is the contract's legal "not ready yet"
-            # (INTERFACE.md §4.8, §7.5) -- it is NOT an error. Without an ego
+            # (alpasim-driver-interface.md §4.8, §7.5) -- it is NOT an error. Without an ego
             # pose there is nothing to anchor a plan to, so we never even reach
             # the planner.
             if not state.poses or not state.dynamic_states:
@@ -683,7 +683,7 @@ class DriverScaffold(EgodriverServiceServicer):
     ) -> tuple[PoseAtTime, int]:
         """Pick the pose and timestamp the plan hangs off.
 
-        Two conventions, both documented in INTERFACE.md §5:
+        Two conventions, both documented in alpasim-driver-interface.md §5:
 
         * ``plan.model_t0_us is None`` -- the FALLBACK. Newest cached pose,
           stamped with ``time_now_us``. If that pose is stale the anchor is
@@ -711,7 +711,7 @@ class DriverScaffold(EgodriverServiceServicer):
         """Compose rig-frame waypoints into the local-frame response.
 
         Mirrors the bundled driver's ``_rig_est_waypoints_to_local_trajectory``
-        (main.py:102-147) and the recipe in INTERFACE.md §5. The result is
+        (main.py:102-147) and the recipe in alpasim-driver-interface.md §5. The result is
         ``[anchor] + T waypoints`` -- T+1 poses in total.
         """
         anchor_pose_at_time, model_t0_us = self._resolve_anchor(plan, view, time_now_us)
@@ -729,7 +729,7 @@ class DriverScaffold(EgodriverServiceServicer):
             # Leaving the rotation block as identity means "keep the current
             # heading". Building the transform this way also means we never
             # touch quaternion components by hand, which sidesteps the proto's
-            # w-first field order entirely (INTERFACE.md §5).
+            # w-first field order entirely (alpasim-driver-interface.md §5).
 
             # The one line that matters: left-multiplying by the ego pose turns
             # "3 metres ahead of me" into an absolute position in the scene.
@@ -747,7 +747,7 @@ class DriverScaffold(EgodriverServiceServicer):
         Unused by the scaffold itself (it always answers
         ``terminate_session=False``). It exists because a driver that *does* set
         the flag must clean up here: the runtime stops the rollout immediately
-        on that response (INTERFACE.md §4.8), so close_session is not
+        on that response (alpasim-driver-interface.md §4.8), so close_session is not
         guaranteed to arrive.
         """
         self._drop_session(session_uuid)
@@ -801,7 +801,7 @@ def serve(host: str, port: int, driver: EgodriverServiceServicer) -> None:
 
     No TLS, no registration, no service discovery, no health service -- the
     driver binds a port and waits, and the runtime (told the address by config)
-    connects with wait_for_ready=True (INTERFACE.md §6.1, §7.4).
+    connects with wait_for_ready=True (alpasim-driver-interface.md §6.1, §7.4).
     """
     server, _ = build_server(host, port, driver=driver)
     # start() returned immediately, so block here or the process would exit.

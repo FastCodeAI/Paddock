@@ -15,7 +15,21 @@ from paddock.results.store import RESULTS_ROOT, MetricsRecord, RunRecord, load_r
 # Markers must be specific enough not to catch unrelated names: an earlier
 # "_s" here matched ncap_score and rendered the headline metric backwards.
 _LOWER_IS_BETTER_MARKERS = ("ade", "fde", "_mae", "_error", "_err", "_loss", "seconds")
-_LOWER_IS_BETTER_EXACT = {"collision_rate", "impact_speed"}
+#: AlpaSim's outcome rates and its fidelity distance read as higher-is-better
+#: from their names alone -- `collision_at_fault` and `offroad` are fractions of
+#: scenes that went wrong, and `dist_to_gt_trajectory` is metres away from the
+#: human's path. Rendered with an up arrow they invert the whole column: a
+#: reader comparing two rows concludes the model that crashed more often did
+#: better. This is the staleness the comment above warns about, on the first
+#: benchmark whose metrics are mostly outcome rates rather than errors.
+_LOWER_IS_BETTER_EXACT = {
+    "collision_rate",
+    "impact_speed",
+    "collision_at_fault",
+    "offroad",
+    "open_loop_collision",
+    "dist_to_gt_trajectory",
+}
 #: Explicitly higher-is-better: `reference_speed` matches a marker above, and
 #: Bench2Drive's `infraction_penalty` is a 0-1 multiplier on the score, not a
 #: count -- the name reads the other way.

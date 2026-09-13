@@ -91,6 +91,20 @@ weights = "/path/to/weights"
 # unset cache re-fetches every scene, which is slow rather than wrong.
 # scene_cache = "/path/to/nre-artifacts"
 #
+# Which reconstruction replays the clip. The README carries nuRec and OmniDreams
+# as separate columns because they are different reconstructions of the same
+# scene -- a score from one is not a statement about the other -- so this is
+# hashed into the run id and stored in run.json, and the two can never be
+# averaged together by accident. Only "nurec" is wired at the pinned sha;
+# anything else is refused in preflight rather than recorded as if it had run.
+# renderer = "nurec"
+#
+# Per-frame debugging video. Upstream defaults this ON at every frame, which is
+# ~180 MB per scene -- and `scene_set` is a site setting, so a site that widens
+# it to all 913 public_2601 scenes gets ~160 GB per model. Off unless asked.
+# video                 = false
+# video_every_nth_frame = 1          # only read when video = true
+#
 # The wizard's two required config groups. `local` and `1gpu` are what every
 # recorded run used; a site with more GPUs can raise the topology.
 # deploy   = "local"

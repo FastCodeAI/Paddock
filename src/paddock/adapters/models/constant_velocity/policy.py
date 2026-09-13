@@ -17,14 +17,17 @@ from __future__ import annotations
 
 import numpy as np
 
-from paddock.policy.protocol import Observation, Policy, Trajectory
-
-#: Enough for closed-loop, which needs six (`Trajectory.to_wire`).
-N_WAYPOINTS = 6
-
-#: Where AlpaSim puts the ego's speed in the canbus vector; the bridge fills it
-#: from the norm of DynamicState.linear_velocity.
-CANBUS_SPEED_INDEX = 13
+# N_WAYPOINTS and CANBUS_VELOCITY come from the protocol, not from here. This
+# file already imports from it two names up; redefining them makes a second
+# definition that drifts silently, and the canbus offset is exactly the constant
+# whose drift nothing would raise on.
+from paddock.policy.protocol import (
+    CANBUS_VELOCITY,
+    N_WAYPOINTS,
+    Observation,
+    Policy,
+    Trajectory,
+)
 
 
 class ConstantVelocityPolicy(Policy):
@@ -53,9 +56,9 @@ class ConstantVelocityPolicy(Policy):
         not reverse.
         """
         canbus = np.asarray(obs.canbus, dtype=np.float64).ravel()
-        if canbus.size <= CANBUS_SPEED_INDEX:
+        if canbus.size <= CANBUS_VELOCITY:
             return 0.0
-        speed = float(canbus[CANBUS_SPEED_INDEX])
+        speed = float(canbus[CANBUS_VELOCITY])
         if not np.isfinite(speed):
             return 0.0
         return max(speed, 0.0)

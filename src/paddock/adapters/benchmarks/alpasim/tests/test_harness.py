@@ -20,10 +20,12 @@ import pytest
 from paddock.adapters.benchmarks.alpasim import launcher
 from paddock.adapters.benchmarks.alpasim.harness import (
     BENCHMARK,
+    DEFAULT_RENDERER,
     DEFAULT_SCENE_SET,
     NotScored,
     load_scene_set,
     parse_summary,
+    scorer_sha,
 )
 from paddock.benchmark import Episode
 from paddock.config import SiteConfig
@@ -80,6 +82,80 @@ def test_a_zeroed_scene_keeps_the_progress_that_earned_nothing() -> None:
     assert metrics["scene_score"] == 0.0
     assert metrics["progress"] == pytest.approx(0.9878, abs=1e-4)
     assert metrics["offroad"] == 1.0
+
+
+# -- a rollout that crashed is not a rollout that scored zero -----------------
+#
+# `eval.allow_aggregation_with_failed_rollouts=true` -- which launcher.py sets so
+# that one dead scene does not discard nine good ones -- makes AlpaSim emit a
+# summary row for a rollout that never ran. Upstream's
+# `eval/aggregation/failed_rollouts.py` writes that row with `score: 0.0`, NOT
+# `None`, so the score alone cannot tell it from a model that drove into a wall.
+# The two shapes are what differ, and this is the shape upstream produces.
+
+
+def _crashed_row(clipgt_id: str) -> dict:
+    """A failed-rollout row as `failed_rollout_summary_rows` writes it.
+
+    Only the identity keys and an `error`: none of the metric keys a scored
+    rollout carries, and a `failure_reason` holding the exception text rather
+    than one of the scorer's hard-failure reasons.
+    """
+    return {
+        "clipgt_id": clipgt_id,
+        "rollout_id": "rollout-0",
+        "run_name": "LR-test",
+        "run_uuid": "0" * 64,
+        "status": "fail",
+        "passed": False,
+        "failure_reason": "RpcError: driver call failed after 3 retries",
+        "score": 0.0,
+        "metrics": {
+            "clipgt_id": clipgt_id,
+            "rollout_id": "rollout-0",
+            "run_name": "LR-test",
+            "run_uuid": "0" * 64,
+            "error": "RpcError: driver call failed after 3 retries",
+        },
+    }
+
+
+def test_a_crashed_rollout_is_refused_not_recorded_as_zero(tmp_path: Path) -> None:
+    """The bug this guards: an HTTP 500 landing on the leaderboard as 0.0.
+
+    The bridge's RPC raising -- a model OOMs, the node stops answering, the
+    renderer dies -- comes back through aggregation as `scene_score 0.0`,
+    indistinguishable from a policy that drove off the road, and averages in.
+    """
+    body = json.loads(SUMMARY.read_text())
+    body["rollouts"] = [_crashed_row(CLEAN)]
+    path = tmp_path / "crashed.json"
+    path.write_text(json.dumps(body))
+
+    with pytest.raises(NotScored, match="did not run"):
+        parse_summary(path, CLEAN)
+
+
+def test_a_scene_the_scorer_zeroed_is_still_a_measurement() -> None:
+    """The other half: over-rejecting would throw away real zeros.
+
+    An offroad scene scores 0.0 legitimately -- it ran, it was scored, and the
+    zero is the scorer's verdict on it. It carries a full numeric block and a
+    hard-failure reason, which is exactly what the crashed row does not.
+    """
+    assert parse_summary(SUMMARY, OFFROAD)["scene_score"] == 0.0
+
+
+def test_a_truncated_summary_does_not_take_the_sweep_with_it(tmp_path: Path) -> None:
+    """A half-written results-summary.json raises JSONDecodeError, not NotScored.
+
+    Uncaught it escapes the runner's per-episode handler and the whole sweep
+    dies, discarding every episode already scored -- #7's lesson, one file over.
+    """
+    path = tmp_path / "truncated.json"
+    path.write_text('{"rollouts": [{"clipgt_id": "x", "sco')
+    with pytest.raises(json.JSONDecodeError):
+        parse_summary(path, CLEAN)
 
 
 def test_the_score_is_read_per_rollout_not_from_metrics_results() -> None:
@@ -285,8 +361,38 @@ def test_run_config_records_what_changes_the_number(tmp_path: Path, monkeypatch)
     """Two runs that measured different things must not share a config hash."""
     config = _benchmark(tmp_path, monkeypatch).run_config()
     assert config["scene_set"] == DEFAULT_SCENE_SET
-    assert config["scorer_repo_sha"] == "affc2ea"
     assert config["startup_timeout_s"] == 900
+
+
+def test_the_scorer_sha_is_read_from_repos_yaml_not_copied() -> None:
+    """The pin and the recorded sha cannot be allowed to drift apart.
+
+    The scorer ships inside the pinned AlpaSim repo, so bumping that pin -- in
+    its own PR, which is the workflow repos.yaml exists to support -- moves
+    every number this benchmark produces. A literal in the harness would keep
+    reporting the old sha while something else did the scoring: the field that
+    exists to explain a change in the numbers would be the field that hid it.
+    """
+    assert scorer_sha() == Registry.load().repos["alpasim"].sha
+
+
+def test_the_renderer_is_in_the_run_config(tmp_path: Path, monkeypatch) -> None:
+    """nuRec and OmniDreams are separate columns in the README for a reason.
+
+    They are different reconstructions of the same clip, so a score from one is
+    not a statement about the other. Without the renderer in run_config the two
+    produce the same config hash and the same run.json, and results/alpasim/
+    cannot tell them apart -- the first OmniDreams campaign would average
+    silently against nuRec rows.
+    """
+    config = _benchmark(tmp_path, monkeypatch).run_config()
+    assert config["renderer"] == DEFAULT_RENDERER
+
+
+def test_an_unwired_renderer_is_refused_in_preflight(tmp_path: Path, monkeypatch) -> None:
+    """Recording a run as omnidreams that rendered nuRec is worse than no run."""
+    bench = _benchmark(tmp_path, monkeypatch, renderer="omnidreams")
+    assert any("renderer" in p and "omnidreams" in p for p in bench.preflight())
 
 
 # ---------------------------------------------------------------------------
@@ -401,3 +507,35 @@ def test_resume_returns_metrics_when_the_rollout_completed(tmp_path: Path, monke
     (marker / "_complete").write_text("")
     metrics = _benchmark(tmp_path, monkeypatch).completed_metrics(_episode(), out)
     assert metrics is not None and metrics["scene_score"] == 1.0
+
+
+# -- a bridge that starts but never binds must not outlive the failure ---------
+
+
+def test_a_bridge_that_never_binds_is_killed_not_leaked(tmp_path: Path) -> None:
+    """`__enter__` raising means the `with` never entered, so `__exit__` never runs.
+
+    The child is started with `start_new_session=True`, so without an explicit
+    teardown on this path it survives in its own process group holding the
+    bridge port, under AlpaSim's interpreter, for whoever uses the box next.
+    Here the "bridge" is a sleep that never listens, so `wait_ready` times out.
+    """
+    import sys
+
+    bridge = launcher.BridgeProcess(
+        python=sys.executable,
+        policy_url="http://127.0.0.1:1",
+        port=1,  # privileged and unbound: nothing will ever accept here
+        version_id="test",
+        log_path=tmp_path / "bridge.log",
+    )
+    # A stand-in for the real bridge command: alive, silent, never binding.
+    bridge._command_override = [sys.executable, "-c", "import time; time.sleep(300)"]
+    bridge.ready_timeout_s = 2.0
+
+    with pytest.raises(RuntimeError):
+        with bridge:
+            pass
+
+    assert bridge.proc is not None
+    assert bridge.proc.poll() is not None, "the bridge survived a failed __enter__"

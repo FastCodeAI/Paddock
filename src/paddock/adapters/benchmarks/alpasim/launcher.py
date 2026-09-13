@@ -38,7 +38,9 @@ import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 
-#: Upstream's default is 120 s; a cold 10B load answers at ~305 s. See the
+#: Upstream's default is 120 s (`runtime/alpasim_runtime/config.py:380`,
+#: `startup_timeout_s: int = 2 * 60` -- not the wizard's own `timeout: 600`,
+#: which is a different clock); a cold 10B load answers at ~305 s. See the
 #: module docstring -- this is the difference between a run and a mystery.
 DEFAULT_STARTUP_TIMEOUT_S = 900
 
@@ -81,9 +83,18 @@ class BridgeProcess:
         self.env = env
         self.proc: subprocess.Popen | None = None
 
+    #: Set by tests to stand in for the real bridge command. Production never
+    #: sets it; it exists so the teardown-on-failure path can be exercised
+    #: without an AlpaSim interpreter.
+    _command_override: list[str] | None = None
+
+    #: How long __enter__ waits for the port. An attribute so a test can ask for
+    #: the failure path without waiting out the production timeout.
+    ready_timeout_s: float = BRIDGE_READY_TIMEOUT_S
+
     def __enter__(self) -> BridgeProcess:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
-        command = [
+        command = self._command_override or [
             self.python,
             "-m",
             "paddock.adapters.benchmarks.alpasim.bridge",
@@ -109,7 +120,16 @@ class BridgeProcess:
             start_new_session=True,
             env=environment,
         )
-        self.wait_ready()
+        try:
+            self.wait_ready(self.ready_timeout_s)
+        except BaseException:
+            # __enter__ is raising, so the `with` is never entered and __exit__
+            # -- the only caller of _kill_group -- never runs. The child was
+            # started with start_new_session=True, so without this it survives
+            # in its own process group holding the port, under AlpaSim's
+            # interpreter, for whoever uses the box next. The log leaks with it.
+            self.__exit__(None, None, None)
+            raise
         return self
 
     def wait_ready(self, timeout_s: float = BRIDGE_READY_TIMEOUT_S) -> None:
@@ -180,6 +200,8 @@ def wizard_command(
     driver: str = "paddock_bridge",
     deploy: str = DEFAULT_DEPLOY,
     topology: str = DEFAULT_TOPOLOGY,
+    video: bool = False,
+    video_every_nth_frame: int = 1,
     scene_cache: str | None = None,
 ) -> list[str]:
     """The wizard invocation for one scene.
@@ -214,6 +236,14 @@ def wizard_command(
         "wizard.debug_flags.use_localhost=true",
         "runtime.enable_autoresume=true",
         "eval.allow_aggregation_with_failed_rollouts=true",
+        # Upstream defaults to render_video: true at every single frame
+        # (base_config.yaml:410,415), which is ~180 MB per scene. `scene_set` is
+        # a site setting and public_2601 holds 913 scenes, so an unwidened
+        # default is the difference between 1.8 GB and ~160 GB per model. Off
+        # unless the site asks: debugging clips are worth having, but they are
+        # worth having on purpose.
+        f"eval.video.render_video={'true' if video else 'false'}",
+        f"eval.video.render_every_nth_frame={video_every_nth_frame}",
         # NOTE: AlpaSim's own `driver.model.force_determinism` is deliberately
         # NOT set here. It seeds a model AlpaSim runs, and under this adapter
         # AlpaSim runs no model -- paddock owns the process and the bridge only
