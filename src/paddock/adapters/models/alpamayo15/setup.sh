@@ -16,6 +16,13 @@ uv venv "${UV_PROJECT_ENVIRONMENT}" --python 3.12
 # If you "fix" the missing dependency, you break the install.
 uv sync --no-install-package flash-attn
 
+# The policy node -- `python -m paddock.policy.server`, which paddock talks to
+# over localhost -- runs inside this venv, not paddock's own, so it needs
+# fastapi and uvicorn here. Alpamayo's own pyproject.toml has no reason to know
+# about paddock, so `uv sync` cannot supply them: without this the checkpoint
+# loads fine and the node dies at import with ModuleNotFoundError: uvicorn.
+uv pip install --python "${UV_PROJECT_ENVIRONMENT}/bin/python" fastapi uvicorn
+
 echo
 echo "Weights are not downloaded here. Place them under [roots.weights]:"
 echo "  Alpamayo-1.5-10B    (gated; needs a Hugging Face token)"
