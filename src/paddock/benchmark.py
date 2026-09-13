@@ -29,6 +29,20 @@ from paddock.config import SiteConfig
 from paddock.policy.protocol import Observation, Trajectory
 from paddock.registry import BenchmarkSpec
 
+#: How many batches of `Benchmark.node_count` samples an open-loop run may be
+#: holding at once: the one being scored, the one queued behind it, and the one
+#: the prefetch thread is building. `runner._batches` sizes its handoff queue
+#: from this, so the two cannot drift.
+#:
+#: It is a contract because a harness may release a sample's inputs once its
+#: iterator moves past them -- comma2k19 stages decoded frames and deletes them
+#: as it goes -- and anything it releases sooner than this vanishes mid-request,
+#: surfacing as a file-not-found from inside a model rather than as anything
+#: about staging. The count of *samples* that must stay alive is this times the
+#: node count, and the harness's own cleanup at the end of the stream is part of
+#: it: `--limit` stops the iterator while the last batches are still out.
+PIPELINE_BATCHES = 3
+
 
 def input_rate_problems(
     *,
@@ -185,6 +199,10 @@ class Benchmark(ABC):
         -- scales until the cores run out. `runtime.gpu.wait_for` still gates
         each launch on the model's declared VRAM, so asking for more nodes than
         the card can hold waits rather than fails.
+
+        **A harness that releases a sample's inputs when its iterator moves past
+        them must keep `PIPELINE_BATCHES * node_count` samples alive**, not one.
+        See that constant.
         """
         return 1
 

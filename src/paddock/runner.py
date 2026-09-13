@@ -28,7 +28,12 @@ from pathlib import Path
 
 import numpy as np
 
-from paddock.benchmark import ClosedLoopBenchmark, ExternallyScoredBenchmark, OpenLoopBenchmark
+from paddock.benchmark import (
+    PIPELINE_BATCHES,
+    ClosedLoopBenchmark,
+    ExternallyScoredBenchmark,
+    OpenLoopBenchmark,
+)
 from paddock.config import SiteConfig
 from paddock.policy.protocol import Trajectory
 from paddock.registry import BenchmarkSpec, ModelSpec, Registry
@@ -669,6 +674,12 @@ def _batches(source: Iterator, size: int, prefetch: bool) -> Iterator[list]:
     are busy with this one -- the two halves of an open-loop sweep are otherwise
     strictly alternating, and each is idle for the other's half. It is off for a
     single node, where there is nothing to overlap with.
+
+    How far ahead that is allowed to run is `PIPELINE_BATCHES`, and it is a
+    published number rather than an implementation detail: a harness that frees
+    a sample's inputs as its iterator moves past them has to know. The queue
+    holds one batch, the consumer is scoring one, and the pull thread is
+    building one.
     """
     if not prefetch:
         while batch := list(itertools.islice(source, size)):
@@ -678,7 +689,7 @@ def _batches(source: Iterator, size: int, prefetch: bool) -> Iterator[list]:
     import queue
     import threading
 
-    handoff: queue.Queue = queue.Queue(maxsize=1)
+    handoff: queue.Queue = queue.Queue(maxsize=PIPELINE_BATCHES - 2)
 
     def pull() -> None:
         try:

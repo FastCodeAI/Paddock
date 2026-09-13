@@ -372,7 +372,7 @@ def test_the_frames_are_released_once_enough_segments_have_gone_by(tmp_path, mon
     path = Path(samples[0].observations[0].image_paths["CAM_FRONT"])
     assert path.exists(), "released while a consumer could still be reading it"
 
-    for _ in range(H.RETAIN_SEGMENTS):
+    for _ in range(bench._retain_segments):
         bench._retire(tmp_path / "somewhere-else")
     assert not path.exists()
     assert not bench._segment_frame_dir(segment).exists()
@@ -383,11 +383,28 @@ def test_the_staged_frames_of_a_sweep_stay_bounded(tmp_path, monkeypatch):
     frames = _synthetic_frames()
     bench, segment = _frame_bench(tmp_path, monkeypatch, frames)
 
-    for index in range(3 * H.RETAIN_SEGMENTS):
+    for index in range(3 * bench._retain_segments):
         directory = tmp_path / f"staged-{index}"
         directory.mkdir()
         bench._retire(directory)
-        assert len(bench._retiring) <= H.RETAIN_SEGMENTS
+        assert len(bench._retiring) <= bench._retain_segments
+
+
+def test_the_ring_is_deep_enough_for_every_sample_the_runner_holds():
+    """The ring has to cover the consumer's pipeline, not a fixed four segments.
+
+    The runner may hold `PIPELINE_BATCHES` batches of `node_count` samples at
+    once, and those samples are consecutive, so a site that raises `nodes`
+    raises how far behind the newest staged segment the oldest live sample can
+    be. At `nodes = 16` and five keyframes that is ten segments, and a fixed
+    four would delete frames a node is still reading -- which surfaces as a
+    file-not-found from inside the model, the hardest place to read it from.
+    """
+    for nodes, keyframes in [(1, 5), (4, 5), (16, 5), (16, 1)]:
+        bench = _bench(nodes=nodes, keyframes_per_segment=keyframes)
+        in_flight = H.PIPELINE_BATCHES * nodes
+        assert bench._retain_segments >= in_flight / keyframes
+        assert bench._retain_segments >= H.RETAIN_SEGMENTS
 
 
 def test_keep_frames_leaves_them_for_the_next_run(tmp_path, monkeypatch):
@@ -443,6 +460,28 @@ def test_the_segment_an_interruption_landed_in_yields_only_what_is_left(tmp_path
     ids = [s.sample_id for s in bench.samples()]
     remaining = [s.sample_id for s in _sweepable(bench, segment).samples(skip={ids[0]})]
     assert remaining == ids[1:]
+
+
+def test_the_last_samples_of_a_stream_keep_their_frames_after_it_ends(tmp_path, monkeypatch):
+    """The end of the stream is not the end of the scoring, and this cost a run.
+
+    `--limit` stops the iterator while the runner is still holding the last
+    `PIPELINE_BATCHES` batches, and exhausting the segments does the same. The
+    generator used to delete the whole run cache in its `finally`, so a
+    four-node `--limit 100` lost its last eight samples to file-not-found
+    raised *inside the model* and returned as an HTTP 500 -- and an eight-node
+    one lost thirty-two. Nothing about that error says "staging".
+    """
+    frames = _synthetic_frames()
+    bench, segment = _frame_bench(tmp_path, monkeypatch, frames)
+    _sweepable(bench, segment)
+
+    for taken in (bench.samples(limit=1), bench.samples()):
+        samples = list(taken)
+        assert samples
+        for obs in samples[-1].observations:
+            path = Path(obs.image_paths["CAM_FRONT"])
+            assert path.exists(), f"{path} was deleted while the runner still held the sample"
 
 
 def test_the_frame_cache_can_be_moved_off_the_run_store(tmp_path):

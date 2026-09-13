@@ -75,6 +75,7 @@ modelling result when it was not.
 
 from __future__ import annotations
 
+import atexit
 import math
 import os
 import shutil
@@ -94,7 +95,7 @@ from paddock.adapters.benchmarks.comma2k19 import inventory as INV
 from paddock.adapters.benchmarks.comma2k19 import loader as L
 from paddock.adapters.benchmarks.comma2k19 import metrics as MC
 from paddock.adapters.benchmarks.comma2k19 import toolkit as TK
-from paddock.benchmark import OpenLoopBenchmark, Sample, input_rate_problems
+from paddock.benchmark import PIPELINE_BATCHES, OpenLoopBenchmark, Sample, input_rate_problems
 from paddock.metrics import trajectory as T
 from paddock.policy.protocol import Command, Observation, Trajectory
 
@@ -137,13 +138,15 @@ ENCODE_WORKERS = min(8, os.cpu_count() or 1)
 #: for why more than one, and `[benchmarks.comma2k19] nodes` to change it.
 DEFAULT_NODES = 4
 
-#: Segments whose staged frames are kept before the oldest is deleted.
+#: Fewest segments whose staged frames are kept before the oldest is deleted.
 #:
 #: One would be wrong: the runner dispatches a batch of samples across several
-#: nodes and reads one batch ahead, so it holds samples this generator has
-#: already moved past. Four covers a batch that straddles two segments plus the
-#: one being prefetched, with a segment in hand. The cost is the high-water
-#: mark -- four segments of raw frames, about 10 GB. See `_retire`.
+#: nodes and reads two batches ahead, so it holds samples this generator has
+#: already moved past. Four covers the default four nodes, whose twelve in-flight
+#: samples span at most three segments of five keyframes, with one in hand. A
+#: site that raises `nodes` raises this too -- see `_retain_segments`, which is
+#: what `_retire` actually reads. The cost is the high-water mark: four segments
+#: of raw frames, about 10 GB.
 RETAIN_SEGMENTS = 4
 
 #: Reads a `20 / n` observation rate for the run, ahead of the site's
@@ -300,7 +303,15 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         root.mkdir(parents=True, exist_ok=True)
         if self.keep_frames:
             return root
-        return Path(tempfile.mkdtemp(prefix=f"run-{os.getpid()}-", dir=root))
+        run_root = Path(tempfile.mkdtemp(prefix=f"run-{os.getpid()}-", dir=root))
+        # At exit, not at the end of `samples()`: the runner is still scoring
+        # the last batches when the iterator ends, and they hold paths into
+        # here. Registered where the directory is created so its lifetime is
+        # one thing to read rather than two. What survives until exit is only
+        # what `_retire` did not reach -- the ring's depth, not the sweep -- so
+        # `--model all` holds one ring per model rather than one per sweep.
+        atexit.register(shutil.rmtree, run_root, ignore_errors=True)
+        return run_root
 
     def node_count(self, model) -> int:
         """Policy nodes to run in parallel. See `Benchmark.node_count`.
@@ -672,23 +683,25 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
             segments = [s for s in segments if s.vehicle == split]
         cals = self._calibrations
         produced = 0
-        try:
-            for segment in segments:
-                if skip and self._segment_is_done(segment, skip):
+        for segment in segments:
+            if skip and self._segment_is_done(segment, skip):
+                continue
+            for sample in self._segment_samples(segment, cals):
+                if sample.sample_id in skip:
                     continue
-                for sample in self._segment_samples(segment, cals):
-                    if sample.sample_id in skip:
-                        continue
-                    yield sample
-                    produced += 1
-                    if limit is not None and produced >= limit:
-                        return
-        finally:
-            # Per-segment cleanup already runs inside `_segment_samples`; this
-            # removes the run's own directory, which a crash or a `--limit`
-            # would otherwise leave behind empty.
-            if not self.keep_frames and "_frame_root" in self.__dict__:
-                shutil.rmtree(self._frame_root, ignore_errors=True)
+                yield sample
+                produced += 1
+                if limit is not None and produced >= limit:
+                    return
+        # The run's own directory is *not* deleted here, and that is the fix for
+        # a real failure rather than an oversight. This generator ends while the
+        # runner is still scoring the last `PIPELINE_BATCHES` batches -- which is
+        # exactly what `--limit` does, and what exhausting the segments does --
+        # so deleting the tree at the end of the stream pulls the frames out from
+        # under samples that have already been handed out. It cost eight
+        # file-not-founds in the last eight samples of a four-node run, reported
+        # from inside the model as an HTTP 500. `_frame_root` hands the directory
+        # to `atexit` instead: by then nothing holds a path to it.
 
     @staticmethod
     def _sample_id(segment: L.SegmentRef, keyframe: int) -> str:
@@ -788,8 +801,24 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         """Staged segment directories waiting to be deleted. See `_retire`."""
         return []
 
+    @property
+    def _retain_segments(self) -> int:
+        """How many staged segments must survive the consumer's pipeline.
+
+        The runner may be holding `PIPELINE_BATCHES` batches of `node_count`
+        samples at once, and those samples are consecutive, so they span
+        `that / keyframes_per_segment` segments -- plus one, because a batch
+        straddles a boundary rather than landing on it. At the default four
+        nodes and five keyframes this is the floor, `RETAIN_SEGMENTS`; at
+        `nodes = 16` it is nine, and hard-coding four there would delete frames
+        out from under a node that is still reading them.
+        """
+        in_flight = PIPELINE_BATCHES * self.node_count(None)
+        spanned = -(-in_flight // max(1, self.keyframes_per_segment)) + 1
+        return max(RETAIN_SEGMENTS, spanned)
+
     def _retire(self, directory: Path) -> None:
-        """Release a segment's frames, `RETAIN_SEGMENTS` segments later.
+        """Release a segment's frames, `_retain_segments` segments later.
 
         Deleting them the moment this generator moves on is what the code did,
         and it was correct only while the consumer scored one sample at a time
@@ -805,7 +834,7 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         sample, and the disk high-water mark is bounded rather than growing.
         """
         self._retiring.append(directory)
-        while len(self._retiring) > RETAIN_SEGMENTS:
+        while len(self._retiring) > self._retain_segments:
             shutil.rmtree(self._retiring.pop(0), ignore_errors=True)
 
     def _segment_frame_dir(self, segment: L.SegmentRef) -> Path:
