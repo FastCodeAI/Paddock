@@ -362,6 +362,16 @@ eight nodes. supercombo is a small graph; a sweep of it is a data-movement
 problem with a model attached, which is what the profile above says and what
 an 11× speedup with the model untouched confirms.
 
+**A 10B VLM changes none of that**, which is the sharpest evidence for it: the
+alpamayo15 sweep ran the full 10,165 samples in **1.83 h at 1.54 samples/s** on
+the same four nodes, marginally *faster* than supercombo's 1.44. A model two
+orders of magnitude larger costs nothing extra here because the pipeline is
+still waiting on the same decode. What it does need is to stop paying for
+history it will not look at — alpamayo conditions on 4 frames of the 160 it is
+sent, and warping all 160 on arrival cost several times the inference. That fix
+belongs in the model adapter, not here; see `slots_for` and `Frame` in
+`adapters/models/alpamayo15/policy.py`.
+
 `--resume <run_id>` continues an interrupted sweep in place, keeping its id.
 Scored samples are journalled to `samples.partial.jsonl` as the run goes; a
 resume reads that, and the harness skips a segment without opening it when all
@@ -519,21 +529,52 @@ cross-track error.
 
 ## Recorded results
 
-The full dataset, 10,165 samples, openpilot against the constant-velocity
-baseline on the identical sample set (`sequences_sha256` `293a225a0b5cbaff` in
-both run records). Lower is better.
+The full dataset, 10,165 samples, every row on the identical sample set
+(`sequences_sha256` `293a225a0b5cbaff` in all three run records). A model is
+scored only as far as it plans; `—` is where its own horizon ends, not a
+failure. Lower is better.
 
-| | ADE@1s | ADE@2s | **ADE@3s** | ADE@5s | ADE@10s | FDE@3s | FDE@10s | median ADE@3s |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| openpilot (`small`, split graph, `4df40d2c1`) | 0.598 | 1.035 | **1.507** | 2.571 | 6.032 | 2.712 | 13.62 | 1.555 |
-| constant velocity | 0.537 | 1.017 | 1.639 | 3.331 | 10.048 | 3.286 | 25.71 | 1.475 |
+| | horizon | ADE@1s | ADE@2s | **ADE@3s** | ADE@4s | ADE@5s | ADE@10s | FDE@3s | median ADE@3s |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| alpamayo15 (`Alpamayo-1.5-10B`, 2 of 4 camera slots) | 4 s | 0.386 | 0.616 | **0.900** | 1.263 | — | — | 1.654 | 0.823 |
+| openpilot (`small`, split graph, `4df40d2c1`) | 10 s | 0.598 | 1.035 | 1.507 | 2.017 | 2.571 | 6.032 | 2.712 | 1.555 |
+| constant velocity | 10 s | 0.537 | 1.017 | 1.639 | 2.411 | 3.331 | 10.048 | 3.286 | 1.475 |
 
-Constant velocity is better at 1 s and has the better *median* at 3 s; openpilot
-wins the 3 s mean and pulls away monotonically with horizon. Both facts come
-from the same property of the data — I-280 is mostly straight, so the baseline is
-nearly exact most of the time and wrong only on the curves, which is exactly
-where a mean lives and a median does not. Reporting one of the two alone would
-misdescribe the result.
+Constant velocity is better at 1 s and has the better *median* at 3 s than
+openpilot; openpilot wins the 3 s mean and pulls away monotonically with
+horizon. Both facts come from the same property of the data — I-280 is mostly
+straight, so the baseline is nearly exact most of the time and wrong only on the
+curves, which is exactly where a mean lives and a median does not. Reporting one
+of the two alone would misdescribe the result.
+
+Alpamayo is ahead of both at every horizon it reaches, on the mean *and* the
+median, and it is the median that matters for the comparison above: constant
+velocity beats openpilot there and does not come close here. Two qualifications
+belong with that number rather than after it.
+
+- **It sees one camera where it asks for four view slots.** Alpamayo takes three
+  nominally 120° views at +55/0/−55° and a 30° telephoto; comma2k19 is a single
+  forward camera, so it fills the centre slot and the telephoto cropped out of
+  it and the two side slots go unsent. They are omitted rather than filled with
+  the forward view, because `camera_indices` lets the model be told a view is
+  absent and there is no way to tell it a view is a different view than it is.
+  On a highway that costs less than it would in town, but it is a handicap, not
+  a neutral difference — and the recorded `config.cameras` in `run.json` lists
+  the three the *policy declares*, not the one the dataset supplied. The node's
+  `camera_slots` diagnostic is the field that says what it actually got.
+- **It plans 4 s, so the columns where openpilot separates from the baseline do
+  not exist for it.** `scored_horizon_s` is 4.0 on every sample: 64 waypoints at
+  10 Hz, of which paddock takes eight on the 0.5 s grid. Whether it would hold
+  its lead at 10 s is not a question this table answers.
+
+Its plan is also much smoother than supercombo's: `comfort_within_bounds` 0.956
+against 0.302, and `comfort_lon_jerk_max` 0.64 m/s³ against 5.04 — see the jerk
+result below, which is the same measurement from the other side.
+
+Alpamayo publishes none of the auxiliary heads through `Trajectory.extras`, so
+every metric in the next two paragraphs is `NaN` for it. That is the intended
+behaviour of one declared metric list rather than a per-model one: the run
+records what the model did not produce instead of quietly shortening the list.
 
 The decomposition, for openpilot: `lateral_mae` 1.092 against `longitudinal_mae`
 0.834, `along_track_bias` +0.400 (the plan runs slightly *ahead* of the car),

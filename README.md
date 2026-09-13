@@ -108,8 +108,8 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 
 | | 🟢 nuScenes cumulative L2 avg ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟢 comma2k19 ADE@3s ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🔴 Bench2Drive driving score ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim nuRec scene score ↑ (0–1) | 🔴 AlpaSim (OmniDreams) |
 |---|---|---|---|---|---|---|---|---|
-| OpenPilot | 2.477 △ | 1.599 | **1.507** ✦ | ✗ 2 Hz ‡ | 30.09 ≈ ◆ | **3.60** ‖ | 0.9566 ¶ | planned |
-| Alpamayo 1.5 | 0.787 △ | 1.002 | — ✦ | 0.608 † | 44.58 ◆ | **3.73** ‖ | 0.8000 ¶ | planned |
+| OpenPilot | 2.477 △ | 1.599 | 1.507 ✦ | ✗ 2 Hz ‡ | 30.09 ≈ ◆ | **3.60** ‖ | 0.9566 ¶ | planned |
+| Alpamayo 1.5 | 0.787 △ | 1.002 | **0.900** ✦ | 0.608 † | 44.58 ◆ | **3.73** ‖ | 0.8000 ¶ | planned |
 | Drive-JEPA | 0.912 △ | 2.364 | — ✦ | 0.843 | 31.11 ◆ | **3.57** ‖ | 0.5619 ¶ | planned |
 | VisionPilot | 1.441 △ | 1.534 ∗ | — ✦ | 0.431 | 49.85 ◆ | **1.58** ‖ | 0.8864 ¶ | planned |
 | Baseline (Constant Velocity) | 0.641 △ | 1.381 | 1.639 | 0.239 | 47.94 ♣ | 0 § | 0.3562 ¶ | — |
@@ -129,15 +129,16 @@ OpenPilot uses real approximately 12 Hz front-camera history; scoring stays at
 2 Hz. See the nuScenes table below for point L2, cumulative L2 and ADE.
 
 ✦ comma2k19 is the full dataset: **2035 one-minute segments, 5 keyframes each,
-10,165 scored samples**, with both rows over the identical sample set
-(`sequences_sha256` matches). Only OpenPilot and the baseline have been run —
-this is comma's dataset for comma's model, and the other three have not been
-swept on it yet. Read the mean *and* the median: OpenPilot's 3 s mean beats
-constant velocity by 8% (1.507 vs 1.639) while its **median is worse** (1.555 vs
-1.475), because two thirds of I-280 is straight enough for constant velocity to
-be nearly exact and the mean is carried by the curves. The separation is at long
-horizon, where a straight line stops being an approximation: 6.03 vs 10.05 m at
-10 s. See the comma2k19 table below.
+10,165 scored samples**, with every row over the identical sample set
+(`sequences_sha256` matches). Drive-JEPA and VisionPilot have not been swept on
+it yet. Read the mean *and* the median: OpenPilot's 3 s mean beats constant
+velocity by 8% (1.507 vs 1.639) while its **median is worse** (1.555 vs 1.475),
+because two thirds of I-280 is straight enough for constant velocity to be
+nearly exact and the mean is carried by the curves. Alpamayo is ahead on both,
+but on a **shorter horizon and one camera**: it plans 4 s where supercombo plans
+10, and comma2k19 has a single forward camera against the four view slots
+Alpamayo takes, so two of them go unsent. The 3 s column is a fair comparison;
+the 10 s column does not exist for it. See the comma2k19 table below.
 
 † All three NAVSIM figures are the full navtest split, 12,146 real recorded
 scenarios, scored through paddock's proxy agent. This is NAVSIM v2's **stage
@@ -236,22 +237,35 @@ constant-velocity baseline on this benchmark.
 ### comma2k19
 
 The full dataset: 2035 one-minute segments of 20 Hz California highway driving,
-5 keyframes each, **10,165 scored samples**, both rows over the identical sample
+5 keyframes each, **10,165 scored samples**, every row over the identical sample
 set. Each sample feeds the model **160 real frames — 7.95 s of history ending at
-the scored moment** — and scores the **20 waypoints it plans out to 10 s**
-against the 20 poses the car actually reached. Lower is better throughout.
+the scored moment** — and scores the waypoints it plans against the 20 poses the
+car actually reached, on a 0.5 s grid out to 10 s. A model is scored only as far
+as it plans, so a cell is blank where its own horizon ends rather than being
+padded. Lower is better throughout.
 
-| Model | ADE@1s | ADE@2s | **ADE@3s** | ADE@5s | ADE@10s | FDE@3s | FDE@10s | median ADE@3s |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| OpenPilot | 0.598 | 1.035 | **1.507** | **2.571** | **6.032** | **2.712** | **13.62** | 1.555 |
-| Baseline (Constant Velocity) | **0.537** | **1.017** | 1.639 | 3.331 | 10.048 | 3.286 | 25.71 | **1.475** |
+| Model | horizon | ADE@1s | ADE@2s | **ADE@3s** | ADE@4s | ADE@5s | ADE@10s | FDE@3s | median ADE@3s |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Alpamayo 1.5 | 4 s | **0.386** | **0.616** | **0.900** | **1.263** | — | — | **1.654** | **0.823** |
+| OpenPilot | 10 s | 0.598 | 1.035 | 1.507 | 2.017 | **2.571** | **6.032** | 2.712 | 1.555 |
+| Baseline (Constant Velocity) | 10 s | 0.537 | 1.017 | 1.639 | 2.411 | 3.331 | 10.048 | 3.286 | 1.475 |
 
-**The two are separated by horizon, not by skill at the headline.** Constant
-velocity is *better* for the first two seconds and has the better median at
-three, because I-280 is mostly straight and a straight line is then almost
-exactly right; OpenPilot's mean wins on the curves, and its advantage grows
-monotonically with horizon until it is 1.7× at 10 s. An ADE at 3 s alone would
-have called this benchmark nearly a tie.
+**OpenPilot and the baseline are separated by horizon, not by skill at the
+headline.** Constant velocity is *better* for the first two seconds and has the
+better median at three, because I-280 is mostly straight and a straight line is
+then almost exactly right; OpenPilot's mean wins on the curves, and its
+advantage grows monotonically with horizon until it is 1.7× at 10 s. An ADE at
+3 s alone would have called those two nearly a tie.
+
+**Alpamayo leads at every horizon it reaches, on less input than either.** It
+sees one camera where it expects four view slots — comma2k19 is a single
+forward camera, so the +55°/−55° slots go unsent rather than being filled with
+the forward view — and it plans 4 s where supercombo plans 10. Within those 4 s
+it is ahead on the mean *and* the median, which is the comparison constant
+velocity survives against OpenPilot and does not survive here (0.823 vs 1.475 at
+3 s). What the table cannot say is how it would extrapolate to 10 s, because it
+does not go there. Its plan is also far smoother: 96% of samples inside the
+comfort bounds against OpenPilot's 30%.
 
 comma2k19 also carries the car's own CAN bus, radar and fused pose, so it scores
 what supercombo predicts **besides** the path — one metric list, `NaN` for a
@@ -272,13 +286,17 @@ head is badly under-dispersed** — a calibrated 1σ should contain about 68% of
 outcomes and contains 12% — and the plan's **longitudinal jerk exceeds the
 comfort bound on 63% of samples** (mean peak 5.04 m/s³ against a 4.13 bound),
 which is a property of the 33-point plan resampled onto a 0.5 s grid and is
-worth reading before anyone treats that grid as a controller input. The
-baseline's comfort columns are all 1.0 by construction — a straight line at
-constant speed has no jerk — so comfort is not a comparison between these two
-rows.
+worth reading before anyone treats that grid as a controller input. Alpamayo
+publishes none of these heads through paddock's extras schema, so its whole
+column here is `NaN` — which is the point of one declared metric list rather
+than a per-model one. The baseline's comfort columns are all 1.0 by
+construction — a straight line at constant speed has no jerk — so comfort is a
+comparison only between the two models.
 
-[Run record](results/comma2k19/openpilot/20260912T053225-2a91ca/run.json)
-· [full metrics](results/comma2k19/openpilot/20260912T053225-2a91ca/metrics.json)
+[OpenPilot run](results/comma2k19/openpilot/20260912T053225-2a91ca/run.json)
+· [metrics](results/comma2k19/openpilot/20260912T053225-2a91ca/metrics.json)
+· [Alpamayo run](results/comma2k19/alpamayo15/20260913T072437-b058c2/run.json)
+· [metrics](results/comma2k19/alpamayo15/20260913T072437-b058c2/metrics.json)
 · [baseline](results/comma2k19/constant_velocity/20260911T231819-736a8a/metrics.json)
 · [protocol, and what it cannot score](docs/benchmarks/comma2k19.md).
 
