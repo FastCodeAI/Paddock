@@ -48,6 +48,7 @@ flowchart LR
         direction TB
         ns["nuScenes<br/>val · 5,119 anchors"]
         ks["KITScenes<br/>ADE / FDE"]
+        c2k["comma2k19<br/>20 Hz highway · 10,165 samples"]
     end
     subgraph pseudo ["pseudo-closed-loop"]
         nv["NAVSIM v2<br/>EPDMS"]
@@ -81,14 +82,14 @@ flowchart LR
     classDef store   fill:#f6f8fa,stroke:#57606a,stroke-width:1.5px,color:#1f2328
     class op,al,dj,vp model
     class pol waist
-    class ns,ks ol
+    class ns,ks,c2k ol
     class nv pcl
     class b2d,nc,alp cl
     class alp planned
     class res store
 ```
 
-Four models times five benchmarks, and nobody wrote twenty adapters. A fifth
+Four models times seven benchmarks, and nobody wrote twenty-eight adapters. A fifth
 model is one new directory under `adapters/models/`; a sixth benchmark is one
 new directory under `adapters/benchmarks/`.
 
@@ -105,13 +106,13 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 
 🟢 open-loop · 🟡 pseudo-closed-loop · 🔴 closed-loop · ↑ higher is better · ↓ lower is better
 
-| | 🟢 nuScenes cumulative L2 avg ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🔴 Bench2Drive driving score ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim nuRec scene score ↑ (0–1) | 🔴 AlpaSim (OmniDreams) |
-|---|---|---|---|---|---|---|---|
-| OpenPilot | 2.477 △ | 1.599 | ✗ 2 Hz ‡ | 30.09 ≈ ◆ | **3.60** ‖ | 0.9566 ¶ | planned |
-| Alpamayo 1.5 | 0.787 △ | 1.002 | 0.608 † | 44.58 ◆ | **3.73** ‖ | 0.8000 ¶ | planned |
-| Drive-JEPA | 0.912 △ | 2.364 | 0.843 | 31.11 ◆ | **3.57** ‖ | 0.5619 ¶ | planned |
-| VisionPilot | 1.441 △ | 1.534 ∗ | 0.431 | 49.85 ◆ | **1.58** ‖ | 0.8864 ¶ | planned |
-| Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | 47.94 ♣ | 0 § | 0.3562 ¶ | — |
+| | 🟢 nuScenes cumulative L2 avg ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟢 comma2k19 ADE@3s ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🔴 Bench2Drive driving score ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim nuRec scene score ↑ (0–1) | 🔴 AlpaSim (OmniDreams) |
+|---|---|---|---|---|---|---|---|---|
+| OpenPilot | 2.477 △ | 1.599 | **1.507** ✦ | ✗ 2 Hz ‡ | 30.09 ≈ ◆ | **3.60** ‖ | 0.9566 ¶ | planned |
+| Alpamayo 1.5 | 0.787 △ | 1.002 | — ✦ | 0.608 † | 44.58 ◆ | **3.73** ‖ | 0.8000 ¶ | planned |
+| Drive-JEPA | 0.912 △ | 2.364 | — ✦ | 0.843 | 31.11 ◆ | **3.57** ‖ | 0.5619 ¶ | planned |
+| VisionPilot | 1.441 △ | 1.534 ∗ | — ✦ | 0.431 | 49.85 ◆ | **1.58** ‖ | 0.8864 ¶ | planned |
+| Baseline (Constant Velocity) | 0.641 △ | 1.381 | 1.639 | 0.239 | 47.94 ♣ | 0 § | 0.3562 ¶ | — |
 
 ∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
 KITScenes, Paddock constructs sampled XY points from its projected image-space
@@ -126,6 +127,17 @@ projected path point lands behind the car; see `docs/benchmarks/kitscenes.md`.
 is the mean of cumulative L2 through 1, 2 and 3 seconds, not ADE at 3 seconds.
 OpenPilot uses real approximately 12 Hz front-camera history; scoring stays at
 2 Hz. See the nuScenes table below for point L2, cumulative L2 and ADE.
+
+✦ comma2k19 is the full dataset: **2035 one-minute segments, 5 keyframes each,
+10,165 scored samples**, with both rows over the identical sample set
+(`sequences_sha256` matches). Only OpenPilot and the baseline have been run —
+this is comma's dataset for comma's model, and the other three have not been
+swept on it yet. Read the mean *and* the median: OpenPilot's 3 s mean beats
+constant velocity by 8% (1.507 vs 1.639) while its **median is worse** (1.555 vs
+1.475), because two thirds of I-280 is straight enough for constant velocity to
+be nearly exact and the mean is carried by the curves. The separation is at long
+horizon, where a straight line stops being an approximation: 6.03 vs 10.05 m at
+10 s. See the comma2k19 table below.
 
 † All three NAVSIM figures are the full navtest split, 12,146 real recorded
 scenarios, scored through paddock's proxy agent. This is NAVSIM v2's **stage
@@ -220,6 +232,55 @@ constant-velocity baseline on this benchmark.
 | Drive-JEPA | 2.364 | 4.199 |
 | VisionPilot | 1.534 ∗ | 3.089 ∗ |
 | Baseline (Constant Velocity) | 1.381 | 3.091 |
+
+### comma2k19
+
+The full dataset: 2035 one-minute segments of 20 Hz California highway driving,
+5 keyframes each, **10,165 scored samples**, both rows over the identical sample
+set. Each sample feeds the model **160 real frames — 7.95 s of history ending at
+the scored moment** — and scores the **20 waypoints it plans out to 10 s**
+against the 20 poses the car actually reached. Lower is better throughout.
+
+| Model | ADE@1s | ADE@2s | **ADE@3s** | ADE@5s | ADE@10s | FDE@3s | FDE@10s | median ADE@3s |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| OpenPilot | 0.598 | 1.035 | **1.507** | **2.571** | **6.032** | **2.712** | **13.62** | 1.555 |
+| Baseline (Constant Velocity) | **0.537** | **1.017** | 1.639 | 3.331 | 10.048 | 3.286 | 25.71 | **1.475** |
+
+**The two are separated by horizon, not by skill at the headline.** Constant
+velocity is *better* for the first two seconds and has the better median at
+three, because I-280 is mostly straight and a straight line is then almost
+exactly right; OpenPilot's mean wins on the curves, and its advantage grows
+monotonically with horizon until it is 1.7× at 10 s. An ADE at 3 s alone would
+have called this benchmark nearly a tie.
+
+comma2k19 also carries the car's own CAN bus, radar and fused pose, so it scores
+what supercombo predicts **besides** the path — one metric list, `NaN` for a
+model that publishes no such head. OpenPilot, over the same 10,165 samples:
+
+| what | value | reference it is scored against |
+|---|---:|---|
+| ego speed, relative error | 0.020 | CAN speed |
+| yaw rate, absolute error (rad/s) | 0.0024 | fused INS/GNSS pose |
+| lead recall / precision | 0.945 / 0.593 | radar tracks |
+| lead range, absolute error (m) | 3.04 (median 1.45) | radar range |
+| plan within 1σ, along / across track | 0.559 / **0.124** | the recorded future |
+| longitudinal jerk within comfort bound | **0.373** | NAVSIM's bounds |
+| sanity gates passed (lane width, camera height, speed) | 0.926 | plausibility ranges |
+
+Two of those are results rather than confirmations. The **lateral uncertainty
+head is badly under-dispersed** — a calibrated 1σ should contain about 68% of
+outcomes and contains 12% — and the plan's **longitudinal jerk exceeds the
+comfort bound on 63% of samples** (mean peak 5.04 m/s³ against a 4.13 bound),
+which is a property of the 33-point plan resampled onto a 0.5 s grid and is
+worth reading before anyone treats that grid as a controller input. The
+baseline's comfort columns are all 1.0 by construction — a straight line at
+constant speed has no jerk — so comfort is not a comparison between these two
+rows.
+
+[Run record](results/comma2k19/openpilot/20260912T053225-2a91ca/run.json)
+· [full metrics](results/comma2k19/openpilot/20260912T053225-2a91ca/metrics.json)
+· [baseline](results/comma2k19/constant_velocity/20260911T231819-736a8a/metrics.json)
+· [protocol, and what it cannot score](docs/benchmarks/comma2k19.md).
 
 ### NAVSIM v2
 

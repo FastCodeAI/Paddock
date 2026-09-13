@@ -11,12 +11,51 @@ paddock run --bench comma2k19 --model openpilot --resume <id>  # continue one in
 paddock render --bench comma2k19                               # comparison figures
 ```
 
+## One sample, end to end
+
+A **sample** is one *keyframe*: one moment in one segment at which the model is
+asked to plan, and the recording says what the car did next.
+
+| | count | span | spacing |
+|---|---|---|---|
+| **input** | 160 camera frames, the last of them *at* the keyframe | 7.95 s of past | 20 Hz — every recorded frame |
+| **output** | 33 plan points, resampled to **20 waypoints** | 0.5 s → 10 s ahead | 0.5 s |
+| **ground truth** | 200 recorded frames, read as **20 poses** | 0.5 s → 10 s ahead | 0.5 s |
+| **headline** | first **6** waypoints vs the same 6 poses | 3 s ahead | 0.5 s |
+
+So: *the model sees 160 frames of the past 7.95 s and predicts 20 waypoints out
+to 10 s; `ade` is its mean error over the first 3 s, and `ade@h`/`fde@h` repeat
+that at 1, 2, 3, 4, 5, 6, 8 and 10 s.*
+
+The three counts are independent of each other and each is a separate setting:
+
+- **160 input frames** is `history_frames`, fed one at a time through
+  `Policy.infer_sequence` — real preceding frames, not a repeated still.
+  supercombo's feature buffer is 96 frames deep (128 for `big`), so 160 both
+  fills it and leaves the model warm before the moment that counts. At
+  `input_hz = 20` that is 159 gaps × 0.05 s = **7.95 s**; lowering the rate
+  keeps the 160 observations and stretches the span (see *Evaluation rate*).
+- **20 output waypoints** is the harness's grid, `np.arange(1, 21) * 0.5`.
+  supercombo does not predict on it: it predicts 33 points on its own
+  `ModelConstants.T_IDXS`, which run 0 → 10 s and are packed tightly near the
+  car. The adapter resamples those onto the 0.5 s grid, so every model is
+  scored on the same clock whatever its native one is.
+- **20 ground-truth poses** is `interval_s = 0.5` × `gt_horizon_s = 10`, taken
+  from the segment's own fused INS/GNSS/vision pose — the next **200 recorded
+  frames**, subsampled by 10.
+
+Scoring is displacement in the ego frame, waypoint against pose. `ade` is the
+mean over the first 6 pairs (`eval_horizon_s = 3.0`); `ade@h` is the mean up to
+`h`, `fde@h` the error at `h` alone. A horizon the *pair* does not reach is
+**`NaN`**, never a shorter horizon wearing a longer label — `scored_horizon_s`
+records how far it did reach, and is 10.0 for openpilot.
+
 **Segments are not samples.** The dataset has 2035 one-minute segments and the
 default is `keyframes_per_segment = 5`, so a full sweep is **10,165 scored
 samples**: 2033 segments × 5, plus two segments that yield none. Those two hold
-222 and 194 frames, and a scored keyframe needs 160 frames of history behind it
-and 200 of recorded future ahead — 360 in all — so neither can place one. The
-numbers reported here are always samples; `n` in a run record is samples too.
+222 and 194 frames, and by the table above a keyframe needs 160 frames behind it
+and 200 ahead — 360 in all — so neither can place even one. The numbers reported
+here are always samples; `n` in a run record is samples too.
 
 ## Setup
 
@@ -277,7 +316,9 @@ settings deal with it, none of which changes a number:
   so N nodes score N samples in the time one scored one. The preparation is
   per-process CPU, so it scales until the cores run out — and the cores are
   what a machine bought for a GPU has spare. Each node still waits for the
-  model's declared VRAM before it starts.
+  model's declared VRAM before it starts. Raising it also deepens the frame
+  cache's retention ring: the runner holds `PIPELINE_BATCHES × nodes` samples
+  at once, and staged frames have to outlive every one of them.
 - **`frame_cache`**. Decoded frames are staged to disk and read back by the
   node, which runs on the same machine; the default is under `{runs}`, and a
   site whose `{runs}` is a network mount should point this at a tmpfs or a
@@ -288,6 +329,38 @@ settings deal with it, none of which changes a number:
   say yes only with several TB free and several models to amortise the decode
   over. Otherwise the harness holds the last four segments and deletes the
   rest as it goes.
+
+### What they are worth, measured
+
+Same 100 samples every time, on a 256-core machine with two H200s. Rates are
+steady state — from the first progress line to the last, so node startup is
+excluded; the first row is the real 10,165-sample sweep rather than a slice of
+one.
+
+| staging | nodes | samples/s | 10,165 samples would take |
+|---|---:|---:|---:|
+| PNG under `{runs}` (NFS) — the first sweep | 1 | 0.174 | **16.2 h** (measured) |
+| `.npy` under `{runs}` (NFS) | 1 | 0.201 | 14.1 h |
+| `.npy` on `/dev/shm` | 1 | 0.547 | 5.2 h |
+| `.npy` on `/dev/shm` | 4 (default) | 1.44 | 2.0 h |
+| `.npy` on `/dev/shm` | 8 | 1.95 | 1.4 h |
+
+**Every row scored `ade mean = 1.036782`, identical to the last digit.** That is
+the claim these settings have to meet, and the reason they are not hashed into
+the run id.
+
+Two things are worth reading off it. Dropping PNG is worth little *on NFS*
+(0.174 → 0.201) and a great deal on tmpfs (→ 0.547): the encode and the decode
+were being paid on top of a filesystem that was itself the wall, so the two fixes
+only pay together. And **8 nodes buy 1.36× over 4, not 2×** — past four nodes the
+bottleneck has moved to the harness's own single decode pipeline, which is one
+process reading one segment at a time.
+
+**The GPU was never the constraint, and still is not.** onnxruntime does use
+CUDA here, and across these runs the card averaged 13–24% with peaks of 86% at
+eight nodes. supercombo is a small graph; a sweep of it is a data-movement
+problem with a model attached, which is what the profile above says and what
+an 11× speedup with the model untouched confirms.
 
 `--resume <run_id>` continues an interrupted sweep in place, keeping its id.
 Scored samples are journalled to `samples.partial.jsonl` as the run goes; a
@@ -443,6 +516,55 @@ those at `rpy = 0`, silently; openpilot never hits this because it persists
 Result on this dataset: 3.5–3.8° of pitch on the RAV4, 1.7–1.8° on the Civic,
 consistent within each vehicle. Correcting it is worth roughly 1.7× in
 cross-track error.
+
+## Recorded results
+
+The full dataset, 10,165 samples, openpilot against the constant-velocity
+baseline on the identical sample set (`sequences_sha256` `293a225a0b5cbaff` in
+both run records). Lower is better.
+
+| | ADE@1s | ADE@2s | **ADE@3s** | ADE@5s | ADE@10s | FDE@3s | FDE@10s | median ADE@3s |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| openpilot (`small`, split graph, `4df40d2c1`) | 0.598 | 1.035 | **1.507** | 2.571 | 6.032 | 2.712 | 13.62 | 1.555 |
+| constant velocity | 0.537 | 1.017 | 1.639 | 3.331 | 10.048 | 3.286 | 25.71 | 1.475 |
+
+Constant velocity is better at 1 s and has the better *median* at 3 s; openpilot
+wins the 3 s mean and pulls away monotonically with horizon. Both facts come
+from the same property of the data — I-280 is mostly straight, so the baseline is
+nearly exact most of the time and wrong only on the curves, which is exactly
+where a mean lives and a median does not. Reporting one of the two alone would
+misdescribe the result.
+
+The decomposition, for openpilot: `lateral_mae` 1.092 against `longitudinal_mae`
+0.834, `along_track_bias` +0.400 (the plan runs slightly *ahead* of the car),
+`path_length_ratio` 1.014, `scored_horizon_s` 10.0 on every sample. The ego-speed
+head is accurate — `speed_rel_err` 0.020, `yaw_rate_abs_err` 0.0024 rad/s — so
+the path error is a path error and not a misread of how fast the car was going.
+
+Two auxiliary results are worth naming because they are not confirmations:
+
+- **The lateral uncertainty head is under-dispersed.** `within_1sigma_y` is
+  0.124 where a calibrated σ implies ≈0.68 (`within_1sigma_x` 0.559 is closer
+  but still low). Read σ_y as a relative confidence, not a probability.
+- **Longitudinal jerk leaves the comfort bound on 63% of samples.**
+  `comfort_lon_jerk_within_bounds` 0.373, mean peak 5.04 m/s³ against NAVSIM's
+  4.13. The other four comfort components are ≥0.93. This is a property of the
+  plan resampled onto the 0.5 s grid and matters to anyone treating that grid
+  as a controller input rather than as a score.
+
+The lead head is the mixed one: `lead_recall` 0.945 against `lead_precision`
+0.593 — radar has a lead on 46% of samples and the model claims one on 73% — with
+`lead_range_abs_err` 3.04 m mean, 1.45 m median.
+
+**Against the standalone harness's ~1.6–2.1 m "ADE over 0–10 s" below, this
+`ade@10s` of 6.03 m is not a contradiction and not a reproduction.** The two
+average different point sets: that harness scored supercombo's own 33 `T_IDXS`
+points, which are packed near the car — over half of them fall in the first 2 s
+— so its mean is dominated by short horizons, while this grid is uniform in time
+out to 10 s. The comparable pair is that harness's speed error (~2% mean) against
+this run's `speed_rel_err` of 0.020, which do agree. Nothing here re-derives that
+number; it is quoted, and the two protocols are stated so neither is mistaken for
+the other.
 
 ## Reproduction status and the previous result
 
