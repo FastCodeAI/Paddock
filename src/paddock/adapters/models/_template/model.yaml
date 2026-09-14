@@ -57,6 +57,55 @@ capabilities:
   # Waypoint spacing the model plans at, seconds.
   waypoint_dt: 0.5
 
+  # -- the model card ---------------------------------------------------
+  # What the model IS, as opposed to how to launch it. `paddock list models`
+  # prints it, and docs/models/comparison.md is where the values and their
+  # provenance live. Omit anything nobody has measured: absent reads as "not
+  # recorded", which is honest, where a zero would be a claim.
+
+  # One line. Enough to tell two rows of the support matrix apart.
+  architecture: ""
+
+  # Millions of parameters, billions of MACs per forward pass, GB on disk.
+  # params_m: 0
+  # macs_g: 0
+  # size_gb: 0
+  # precision: fp32          # fp32 | bf16 | fp16 | int8 | mixed
+
+  # Per-camera input, [width, height], and how many frames of history one
+  # inference consumes. 1 means the current frame only.
+  # input_size: [512, 256]
+  # history_frames: 1
+
+  # waypoints | controls | perception. Explains an `n/a` in an ADE column
+  # without sending a reader to find the footnote: a model predicting lane
+  # curvature and a lead object has no plan to measure a displacement against.
+  output_kind: waypoints
+
+  # Planning horizon, seconds. Omit where the output is not time-parameterised.
+  # horizon_s: 4.0
+
+  # True if repeated inference on identical input can differ. A single run of a
+  # stochastic model is a draw, not a measurement -- one model here has sd 1.817
+  # across seeds on a single scenario, so `--runs 1` measures nothing.
+  stochastic: false
+
+  # Whether ego speed reaches the model at all. Set false only if there is
+  # genuinely no channel for it; that is what makes min_input_hz above
+  # load-bearing rather than cautious.
+  needs_speed: true
+
+  # Datasets seen in training, so a benchmark scored on data the model trained
+  # on can be marked as such. Name a datasets.yaml key where it is one; an
+  # outside corpus is still worth recording, because "none of ours" is the
+  # useful claim. A self-declaration, not a measurement -- nothing verifies it.
+  #
+  # An empty list means NOT RECORDED, which is a different claim from "trained
+  # on nothing". Say which you mean.
+  # trained_on:
+  #   - dataset: nuscenes
+  #     split: train
+
 # Benchmarks this model is expected to work on. `paddock doctor` uses it to
 # report coverage; it does not restrict what you can run.
 benchmarks: []

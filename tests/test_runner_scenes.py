@@ -214,6 +214,10 @@ def test_resume_drives_only_the_episodes_that_did_not_finish(tmp_path, monkeypat
         def run_config(self):
             return {}
 
+        def model_run_config(self, model):
+
+            return {}
+
         def invalid_reasons(self):
             return []
 
@@ -255,6 +259,10 @@ def test_resume_refuses_a_run_id_that_does_not_exist(tmp_path, monkeypatch) -> N
             yield Episode(episode_id="a", scenario="frontal", scene="a")
 
         def run_config(self):
+            return {}
+
+        def model_run_config(self, model):
+
             return {}
 
     said: list[str] = []
@@ -346,6 +354,10 @@ def test_a_fully_complete_resume_never_starts_a_node(tmp_path, monkeypatch) -> N
         def run_config(self):
             return {}
 
+        def model_run_config(self, model):
+
+            return {}
+
         def invalid_reasons(self):
             return []
 
@@ -404,6 +416,10 @@ def test_a_resumed_run_is_still_rankable(tmp_path, monkeypatch) -> None:
             return 1
 
         def run_config(self):
+            return {}
+
+        def model_run_config(self, model):
+
             return {}
 
         def invalid_reasons(self):

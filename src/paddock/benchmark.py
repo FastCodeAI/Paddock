@@ -105,6 +105,14 @@ class Sample:
     #: Recorded future, ego frame, same convention as Trajectory: x fwd, y left.
     ground_truth: Any = None
     split: str = ""
+    #: A within-split partition to aggregate by, alongside the overall figure --
+    #: nuScenes sets the scene, so a run answers "how did this model do on scene
+    #: 0103" without anyone re-reading the per-sample records. Empty means the
+    #: benchmark has no useful partition, and `by_group` stays empty.
+    #:
+    #: Distinct from `split`, which names the dataset partition (val/test) and is
+    #: what `run.json` reports; overloading it would break that answer.
+    group: str = ""
     #: Identity as the source dataset expressed it, preserved for traceability.
     native_id: dict[str, Any] = field(default_factory=dict)
 
@@ -167,6 +175,16 @@ class Benchmark(ABC):
         than a discipline. Default: none.
         """
         return []
+
+    def model_run_config(self, model) -> dict[str, Any]:
+        """Measurement-changing settings that depend on which model is paired.
+
+        `run_config()` is the benchmark's alone. Some choices are made per
+        model -- NAVSIM feeds a 10 Hz nuPlan history to a model that needs one
+        and OpenScene's 2 Hz to the rest -- and those belong in `run.json` and
+        the run id just the same. Default: none.
+        """
+        return {}
 
     def status(self) -> list[tuple[str, str]]:
         """Informational `(label, detail)` rows about what this data actually holds.

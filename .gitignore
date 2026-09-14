@@ -36,3 +36,5 @@ build/
 .idea/
 .DS_Store
 *.swp
+# also as a symlink: a worktree pointing at a sibling checkout's venv
+.venv

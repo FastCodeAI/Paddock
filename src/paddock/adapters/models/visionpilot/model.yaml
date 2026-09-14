@@ -46,4 +46,23 @@ capabilities:
   startup_timeout_s: 300
   waypoint_dt: 0.5
 
-benchmarks: [kitscenes, neuroncap, navsim, bench2drive]
+  # -- model card (docs/models/comparison.md) --
+  architecture: "three YOLO-family conv nets: AutoSteer, AutoSpeed, AutoDrive"
+  # 8.22 + 9.33 + 10.58. A later count puts AutoSpeed at 9.31; the total is 28.1
+  # either way.
+  params_m: 28.1
+  size_gb: 0.112
+  precision: fp32
+  input_size: [1024, 512]
+  # AutoDrive consumes a frame pair; the other two are single-frame.
+  history_frames: 2
+  # It predicts lane curvature and the closest in-path object, not a plan --
+  # which is why it has no ADE and why horizon_s is absent rather than zero.
+  # AutoSteer's waypoints are in camera coordinates with no time parameterisation.
+  output_kind: controls
+  trained_on:
+    # Lane and CIPO datasets only. Zero-shot on every paddock benchmark.
+    - dataset: openlane
+    - dataset: tusimple
+    - dataset: curvelanes
+benchmarks: [kitscenes, neuroncap, navsim, navsim_v1, bench2drive]

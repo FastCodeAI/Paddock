@@ -1,0 +1,33 @@
+# @package _global_
+# The driver AlpaSim composes when paddock supplies the policy.
+#
+# Paddock owns the model process and hands the benchmark a running HTTP node, so
+# the wizard must NOT start a driver of its own -- it attaches to the bridge
+# instead (see bridge.py). Hydra still needs a `driver` group to compose, which
+# is why this file exists at all: without it `driver=...` names nothing and the
+# run dies during config composition, before any container starts.
+#
+# The camera rig and cadence come from AlpaSim's own alpamayo_configs through
+# the defaults list, NOT copied here. A hand-copied 4-camera block would drift
+# from Alpamayo's if upstream changed it, and the whole point of the floor is
+# that it shares a configuration with the model it is the floor for -- exactly,
+# not approximately.
+
+defaults:
+  - alpamayo_configs
+  - _self_
+
+wizard:
+  # driver is absent on purpose: the bridge is already listening.
+  run_sim_services:
+    ["renderer", "physics", "trafficsim", "controller", "runtime"]
+
+  external_services:
+    # Overridden per episode with the port the harness actually reserved; this
+    # value only has to compose.
+    driver:
+      - "localhost:9200"
+
+  debug_flags:
+    # Containers join the host network, so localhost:<port> reaches the bridge.
+    use_localhost: true

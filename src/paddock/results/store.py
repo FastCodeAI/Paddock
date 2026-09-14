@@ -112,6 +112,23 @@ def summarise(values: list[float]) -> dict[str, float]:
     }
 
 
+def _aggregate_by(samples: list[dict[str, Any]], names: list[str], key: str) -> dict[str, Any]:
+    """Per-value aggregates of every metric, for samples carrying `key`.
+
+    Kept generic so `split` and `group` aggregate identically -- two copies of
+    this loop is how the two would drift into reporting different things.
+    Samples with the key absent or empty contribute to the overall figure only.
+    """
+    out: dict[str, Any] = {}
+    for value in sorted({s.get(key, "") for s in samples if s.get(key)}):
+        rows = [s for s in samples if s.get(key) == value]
+        out[value] = {
+            "n": len(rows),
+            **{name: summarise([r.get("metrics", {}).get(name) for r in rows]) for name in names},
+        }
+    return out
+
+
 @dataclass
 class MetricsRecord:
     run_id: str
@@ -141,21 +158,15 @@ class MetricsRecord:
 
         metrics = {name: summarise([s.get("metrics", {}).get(name) for s in samples]) for name in names}
 
-        by_split: dict[str, Any] = {}
-        splits = {s.get("split", "") for s in samples if s.get("split")}
-        for split in sorted(splits):
-            rows = [s for s in samples if s.get("split") == split]
-            by_split[split] = {
-                "n": len(rows),
-                **{name: summarise([r.get("metrics", {}).get(name) for r in rows]) for name in names},
-            }
-
         return cls(
             run_id=run_id,
             primary_metric=primary_metric or (names[0] if names else ""),
             n=len(samples),
             metrics=metrics,
-            by_split=by_split,
+            by_split=_aggregate_by(samples, names, "split"),
+            # A benchmark whose samples carry no `group` gets {} here, and an
+            # externally scored one overwrites this with the scorer's own rows.
+            by_group=_aggregate_by(samples, names, "group"),
         )
 
     def to_json(self) -> dict[str, Any]:

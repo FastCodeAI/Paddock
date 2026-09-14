@@ -7,6 +7,11 @@ keyframes is not comparable, however close the count looks.
 Each sample is a *sequence* -- 48 preceding source frames plus the keyframe --
 because the models need real history. Feeding one frame would measure a model
 working from a history it invented. See `Policy.infer_sequence`.
+
+Every observation carries the whole six-camera ring -- a path and a calibration
+per camera -- and the node keeps the cameras its policy declares. A model that
+declares four is scored on four; before this, every model was handed the front
+camera alone, and a six-camera model was scored with five of its inputs absent.
 """
 
 from __future__ import annotations
@@ -36,7 +41,8 @@ N_GT_POSES = 8
 #:
 #: KITScenes calibrates every sensor against `base_frame`, which `calib.json`
 #: shows is `lidar_top` -- an origin on the roof pod, not at road level. The
-#: front ring camera therefore sits at z = -0.183 m in it.
+#: front ring camera therefore sits at z = -0.183 m in it, and the other five
+#: within 4 mm of that: the ring shares the pod, so one offset serves all six.
 #:
 #: That matters to any model that intersects a camera ray with the ground
 #: plane, because the whole method assumes z = 0 *is* the road: neuroNCAP zeroes
@@ -59,6 +65,25 @@ N_GT_POSES = 8
 #: `[benchmarks.kitscenes] ground_offset_m`.
 POD_HEIGHT_M = 2.2
 
+#: The six ring cameras: the dataset's sensor name -> the protocol's camera name.
+#:
+#: Every observation carries all six, each as a path plus its own intrinsics
+#: and extrinsics. That costs nothing a model did not ask for: the node keeps
+#: only the cameras its policy declares (`Observation.from_wire`) and opens
+#: only the ones it reads (`Observation.image`), so openpilot and VisionPilot
+#: still see one frame and produce the same numbers, while a model declaring
+#: the ring is at last scored on it. The order is `protocol.CAMERAS`' (the
+#: tests pin that), and the dataset's `rear` is the protocol's `BACK` because
+#: every adapter's camera handling is written against the nuScenes names.
+RING = {
+    "camera_ring_front": "CAM_FRONT",
+    "camera_ring_front_left": "CAM_FRONT_LEFT",
+    "camera_ring_front_right": "CAM_FRONT_RIGHT",
+    "camera_ring_rear": "CAM_BACK",
+    "camera_ring_rear_left": "CAM_BACK_LEFT",
+    "camera_ring_rear_right": "CAM_BACK_RIGHT",
+}
+
 
 class KitScenesBenchmark(OpenLoopBenchmark):
     # ---- readiness ------------------------------------------------------
@@ -79,6 +104,9 @@ class KitScenesBenchmark(OpenLoopBenchmark):
             self._sample_list()
         except RuntimeError as exc:
             problems.append(str(exc))
+            return problems
+        if not problems:
+            problems += self.ring_problems()
         return problems
 
     def _sample_list(self) -> Path:
@@ -122,6 +150,55 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         missing = sorted({r["scene_id"] for r in rows if r["scene_id"] not in on_disk})
         return found, missing
 
+    def ring_problems(self) -> list[str]:
+        """Listed scenes whose ring is incomplete here, or out of step with the poses.
+
+        Every model is handed the whole ring and takes the cameras it declares,
+        so the harness cannot tell a gap that costs nothing (openpilot reads
+        only the front) from one that silently changes what a six-camera model
+        was scored on -- the score would not show it, and the sample-list hash
+        would still match. So it refuses, naming what is missing. The fix is a
+        tier that holds it: the archive a working set was pruned from, declared
+        last in `tiers`. Checking every listed scene takes well under a second.
+
+        The frame count is compared with the pose count because that is the
+        synchronisation the harness relies on: frame *i* of every camera is the
+        sample taken at pose *i*. KITScenes writes one frame index across every
+        sensor of a scene and no per-camera timestamps, so a camera with a
+        different count is the only form the assumption failing can take on
+        disk, and it is checked rather than trusted.
+        """
+        rows, _ = self.coverage()
+        scenes = {row["scene_id"]: row["split_dir"] for row in rows}
+        incomplete: list[str] = []
+        out_of_step: list[str] = []
+        for scene_id, split in sorted(scenes.items()):
+            n_poses = len(L.load_poses(self._scene_path(scene_id, split)))
+            missing: list[str] = []
+            for sensor in RING:
+                scene = self._sensor_scene(scene_id, split, sensor)
+                if scene is None:
+                    missing.append(sensor)
+                    continue
+                n_frames = sum(1 for name in os.listdir(scene / sensor) if name.endswith(".jpg"))
+                if n_frames != n_poses:
+                    out_of_step.append(f"{scene_id}: {sensor} has {n_frames} frames for {n_poses} poses")
+            if missing:
+                incomplete.append(f"{scene_id}: {', '.join(missing)}")
+        problems: list[str] = []
+        if incomplete:
+            problems.append(
+                f"{len(incomplete)} of {len(scenes)} listed scenes lack a ring camera on every "
+                f"configured tier, so a model declaring it would be scored on fewer inputs than it "
+                f"declares. First few: {'; '.join(incomplete[:5])}. See docs/benchmarks/kitscenes.md."
+            )
+        if out_of_step:
+            problems.append(
+                f"{len(out_of_step)} ring camera(s) do not have one frame per pose, so frame i and "
+                f"pose i are not the same moment. First few: {'; '.join(out_of_step[:5])}."
+            )
+        return problems
+
     # ---- samples --------------------------------------------------------
 
     def samples(
@@ -159,12 +236,11 @@ class KitScenesBenchmark(OpenLoopBenchmark):
 
         indices = L.frame_indices(keyframe, HISTORY_FRAMES)
         calibration = _read_calibration(scene, ground_offset=self._ground_offset())
+        ring = self._ring(row["scene_id"], row["split_dir"])
 
         # Paths, not pixels. The node is a subprocess on this filesystem, so
-        # neither side needs to carry 24 MB a frame.
-        observations = [
-            self._observation(L.frame_path(scene, index), poses, index, calibration) for index in indices
-        ]
+        # neither side needs to carry 24 MB a frame -- times six, now.
+        observations = [self._observation(ring, poses, index, calibration) for index in indices]
         return Sample(
             sample_id=self._sample_id(row),
             observations=observations,
@@ -186,6 +262,18 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         """
         return {"ground_offset_m": self._ground_offset()}
 
+    def model_run_config(self, model) -> dict:
+        """Which ring cameras this model was given: the ones it declares.
+
+        Recorded and hashed so that a run made with the ring never shares a
+        run id with one made when the harness supplied the front camera alone.
+        The model's declared cameras (`config.cameras`) are the same in both,
+        and `run.json` carries no paddock revision, so without this the two
+        records could be told apart by timestamp only. A record without the
+        key predates the ring and saw `CAM_FRONT`.
+        """
+        return {"cameras_supplied": [camera for camera in RING.values() if camera in model.cameras]}
+
     def _scene_path(self, scene_id: str, split: str) -> Path:
         """Locate a scene across the configured tiers, fastest first."""
         for root in self.dataset.roots:
@@ -197,12 +285,40 @@ class KitScenesBenchmark(OpenLoopBenchmark):
             + ", ".join(str(r) for r in self.dataset.roots)
         )
 
-    def _observation(self, image_path: Path, poses: np.ndarray, index: int, calibration) -> Observation:
-        """One frame, in the protocol's shape.
+    def _sensor_scene(self, scene_id: str, split: str, sensor: str) -> Path | None:
+        """The scene directory on the first tier whose copy holds *sensor*, or None.
 
-        Intrinsics and extrinsics come from the scene's calibration; the ego
-        pose is the recorded one, so a model differencing history recovers the
-        true speed rather than an assumed one.
+        Resolved per camera rather than per scene, because a working set is
+        pruned by sensor: a fast tier that keeps the front camera for every
+        listed scene and the rest of the ring for some of them is exactly what
+        docs/data-setup.md invites. Resolving the scene once would point the
+        other five cameras at files that exist one tier further down.
+        """
+        for root in self.dataset.roots:
+            candidate = root / split / scene_id
+            if (candidate / sensor).is_dir():
+                return candidate
+        return None
+
+    def _ring(self, scene_id: str, split: str) -> dict[str, Path]:
+        """Sensor -> the scene directory its frames are read from, for all six."""
+        ring: dict[str, Path] = {}
+        for sensor in RING:
+            scene = self._sensor_scene(scene_id, split, sensor)
+            if scene is None:
+                raise FileNotFoundError(
+                    f"scene {scene_id} has no {sensor} under any configured kitscenes tier: "
+                    + ", ".join(str(r) for r in self.dataset.roots)
+                )
+            ring[sensor] = scene
+        return ring
+
+    def _observation(self, ring: dict[str, Path], poses: np.ndarray, index: int, calibration) -> Observation:
+        """One frame of every ring camera, in the protocol's shape.
+
+        Intrinsics and extrinsics come from the scene's calibration, one pair
+        per camera; the ego pose is the recorded one, so a model differencing
+        history recovers the true speed rather than an assumed one.
         """
         ego2world = np.eye(4)
         ego2world[:2, 3] = poses[index, :2]
@@ -212,16 +328,19 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         canbus = np.zeros(18)
         canbus[13] = L.ego_speed(poses, index)
 
-        intrinsics, cam2ego = calibration
+        camera2image, camera2ego = calibration
+        image_paths = {
+            RING[sensor]: str(L.frame_path(scene, index, sensor)) for sensor, scene in ring.items()
+        }
         return Observation(
             images={},
-            image_paths={"CAM_FRONT": str(image_path)},
+            image_paths=image_paths,
             ego2world=ego2world,
             canbus=canbus,
             timestamp_us=int(index / SRC_HZ * 1e6),
             command=Command.STRAIGHT,
-            camera2image={"CAM_FRONT": intrinsics},
-            camera2ego={"CAM_FRONT": cam2ego},
+            camera2image={camera: camera2image[camera] for camera in image_paths},
+            camera2ego={camera: camera2ego[camera] for camera in image_paths},
         )
 
     # ---- scoring --------------------------------------------------------
@@ -241,35 +360,48 @@ BENCHMARK = KitScenesBenchmark
 
 
 def _read_calibration(
-    scene: Path, sensor: str = "camera_ring_front", ground_offset: float = POD_HEIGHT_M
-) -> tuple[np.ndarray, np.ndarray]:
-    """The scene's real camera intrinsics and extrinsics, in a road-level ego frame.
+    scene: Path, sensors: dict[str, str] = RING, ground_offset: float = POD_HEIGHT_M
+) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+    """Each ring camera's real intrinsics and extrinsics, in a road-level ego frame.
 
-    Read from the dataset rather than assumed. openpilot derives its warp from
-    these, so a guessed focal length would silently change what the model sees
-    and therefore its score -- with nothing failing to indicate it.
+    Returns `(camera2image, camera2ego)`, keyed by the protocol's camera names.
+    Read from the dataset rather than assumed, per camera: the six focal
+    lengths differ by a few pixels and the principal points by tens, and
+    openpilot derives its warp from these, so a guessed or shared value would
+    silently change what a model sees and therefore its score.
+
+    `T_to_reference` takes a camera's OpenCV optical frame (x right, y down,
+    z forward) into the rig reference (x forward, y left, z up). That reading
+    holds for all six, not just the front: projected through these, a point
+    10 m ahead lands in the lower middle of the front image and 10 m behind in
+    the rear one (docs/benchmarks/kitscenes.md records the check).
 
     *ground_offset* raises the origin from the roof pod to the road; see
-    `POD_HEIGHT_M`. Only the translation changes, so the rotation openpilot
-    reads is untouched.
+    `POD_HEIGHT_M`. It is the rig's, so it is added to every camera alike.
+    Only the translation changes, so the rotation openpilot reads is untouched.
     """
     import json
 
-    calib = json.loads((scene / "calibration" / "calib.json").read_text())[sensor]
-    k = calib["intrinsics"]
-    focal = float(k["focal_length"])
-    intrinsics = np.array(
-        [
-            [focal, 0.0, float(k["principal_point_u"])],
-            [0.0, focal, float(k["principal_point_v"])],
-            [0.0, 0.0, 1.0],
-        ]
-    )
-    # T_to_reference is camera -> the rig reference frame, which is the ego
-    # frame the ground truth poses are expressed in. Its origin sits on the roof
-    # pod, so the z translation is shifted to put it on the road -- the frame
-    # every ground-plane projection assumes it is given. The poses are x/y only,
-    # so nothing about the ground truth moves.
-    cam2ego = np.asarray(calib["T_to_reference"], dtype=np.float64).copy()
-    cam2ego[2, 3] += ground_offset
-    return intrinsics, cam2ego
+    calib = json.loads((scene / "calibration" / "calib.json").read_text())
+    camera2image: dict[str, np.ndarray] = {}
+    camera2ego: dict[str, np.ndarray] = {}
+    for sensor, camera in sensors.items():
+        entry = calib[sensor]
+        k = entry["intrinsics"]
+        focal = float(k["focal_length"])
+        camera2image[camera] = np.array(
+            [
+                [focal, 0.0, float(k["principal_point_u"])],
+                [0.0, focal, float(k["principal_point_v"])],
+                [0.0, 0.0, 1.0],
+            ]
+        )
+        # T_to_reference is camera -> the rig reference frame, which is the ego
+        # frame the ground truth poses are expressed in. Its origin sits on the
+        # roof pod, so the z translation is shifted to put it on the road -- the
+        # frame every ground-plane projection assumes it is given. The poses are
+        # x/y only, so nothing about the ground truth moves.
+        cam2ego = np.asarray(entry["T_to_reference"], dtype=np.float64).copy()
+        cam2ego[2, 3] += ground_offset
+        camera2ego[camera] = cam2ego
+    return camera2image, camera2ego

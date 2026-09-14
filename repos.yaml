@@ -44,10 +44,11 @@ repos:
   Drive-JEPA:
     url: https://github.com/linhanwang/Drive-JEPA.git
     sha: e21f474
-    description: V-JEPA driving policy with NAVSIM devkit vendored under navsim_v2/
+    description: V-JEPA driving policy with the NAVSIM devkits vendored under navsim_v1/ and navsim_v2/
     patches:
       - 0001-msda-compat-for-newer-gpus.patch
       - 0002-score-runs-with-failed-scenarios.patch
+      - 0003-navsim-v1-camera-path.patch
 
   neuro-ncap:
     url: https://github.com/atonderski/neuro-ncap

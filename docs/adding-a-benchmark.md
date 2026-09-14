@@ -9,6 +9,14 @@
 Same shape as [adding a model](adding-a-model.md): one registry file, one new
 directory, no changes to `src/paddock/`.
 
+Two base classes cover most benchmarks (`OpenLoopBenchmark`, `ClosedLoopBenchmark`);
+a third, `ExternallyScoredBenchmark`, is for a scorer that owns its own iteration
+and only needs a running node from paddock -- NAVSIM is the example. A *variant*
+of an existing benchmark, the same scorer family on another devkit generation,
+is still its own directory and name (its own results tree, site block and doc),
+and subclasses the sibling's harness rather than copying it: `navsim_v1` next to
+`navsim` shows the shape.
+
 The one extra step is that a benchmark needs data, and data lives in a different
 place at every site. So a benchmark is declared in two halves — **what it needs**
 (tracked, identical everywhere) and **where that is** (each site's own

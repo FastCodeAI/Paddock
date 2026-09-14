@@ -129,11 +129,18 @@ spelling of an existing one.
 | `ncap_score` | neuroNCAP score, 0–5 |
 | `collision_rate` | fraction of runs with a collision |
 | `impact_speed`, `reference_speed` | m/s, closed-loop collision detail |
-| `pdms`, `epdms` | NAVSIM composite scores |
+| `pdms`, `epdms` | NAVSIM composite scores: v1.1 PDMS (`navsim_v1`) and v2 EPDMS (`navsim`) |
 | `driving_score` | CARLA Leaderboard driving score, 0–100: `route_completion × infraction_penalty` |
 | `route_completion` | % of a closed-loop route driven before it ended |
 | `infraction_penalty` | product of CARLA's per-infraction coefficients, a 0–1 multiplier — **higher is better**, despite the name; `report.py` lists it explicitly |
 | `inference_seconds` | wall-clock per sample (the `seconds` suffix is what marks it lower-is-better in `report.py`) |
+| `scene_score` | AlpaSim closed-loop scene score, 0–1, **higher is better**. Saturating progress, **zeroed outright** by an at-fault collision or an offroad event — no partial credit for a scene that ends in either. See [benchmarks/alpasim.md](benchmarks/alpasim.md) |
+| `progress` | fraction of the human's recorded path covered, 0–1, higher is better |
+| `duration_frac_20s` | fraction of a nominal 20 s budget survived from handover, 0–1, higher is better |
+| `collision_at_fault` | fraction of scenes ending in a collision the ego caused, 0–1, **lower is better**. The term that zeroes `scene_score`; `collision_rate` counts every collision including rear-endings the ego did not cause |
+| `offroad` | fraction of scenes in which the ego left the drivable area, 0–1, **lower is better**. The other term that zeroes `scene_score` |
+| `open_loop_collision` | fraction of scenes whose *recorded* plan intersects an actor, 0–1, **lower is better** — a property of the plan rather than of what the simulator then drove |
+| `dist_to_gt_trajectory` | mean metres between the ego and the human's recorded path over the scored window, **lower is better**. Only comparable between runs with similar scored fractions: the window closes at the first hard event, so a model that failed early is measured over less of the scene |
 
 Report `longitudinal_mae` and `lateral_mae` alongside `ade` where the benchmark
 allows. Every model measured so far errs far more longitudinally than
@@ -164,6 +171,22 @@ a change in the composite can be traced to the term that moved.
 A scenario the scorer could not run (its agent raised) is written with every
 term NaN and `valid=False`; the parser excludes it and the run is marked
 `partial`, `valid=false`. See `docs/benchmarks/navsim.md`.
+
+### NAVSIM v1 (PDMS)
+
+`navsim_v1` scores the same scenes with the v1.1 devkit. Its composite and the
+one term v2 does not have:
+
+| name | what it measures |
+|---|---|
+| `pdms` | NAVSIM v1.1 PDM score, the composite: NC × DAC × (5·TTC + 5·EP + 2·comfort) / 12 |
+| `comfort` | v1's single comfort term: acceleration, jerk and yaw-rate bounds over the re-simulated 4 s trajectory. Not the same number as v2's `history_comfort`, which pads the plan with the recorded past before testing the same bounds |
+
+`no_at_fault_collisions`, `drivable_area_compliance`, `ego_progress`,
+`time_to_collision_within_bound` and `driving_direction_compliance` keep the
+names above. v1.1 computes driving direction compliance with weight zero, so it
+is recorded per scenario but does not enter `pdms`. See
+`docs/benchmarks/navsim_v1.md`.
 
 `valid` is decided by the runner, in one place, from three things: whether
 anything failed, whether the run was a subset (`--limit`), and whatever the
@@ -203,6 +226,14 @@ Three traps specific to the legacy data:
   walks the directory puts one run on the leaderboard three times, twice at a
   sample count that is not the benchmark. `kitscenes_pkl` in `[ingest]`
   therefore names a file rather than a directory.
+
+- **A closed-loop aggregate may describe only part of a rollout.** AlpaSim
+  truncates its scored window at the first collision or offroad event — including
+  a *not-at-fault* rear-end — and again at a divergence cap. A policy that fails
+  early is scored over less of the scene than one that drives it out, and its
+  trajectory-fidelity numbers look better for it. Two AlpaSim runs are comparable
+  on outcome rates and `scene_score`; on fidelity only if their scored fractions
+  match.
 
 Ingest also strips absolute paths from provenance before writing, since
 `results/` is tracked and the portability gate applies to it.
