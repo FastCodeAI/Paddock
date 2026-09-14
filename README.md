@@ -130,9 +130,9 @@ camera alone, as the harness did before #40, it scored 4.784 -- the run is kept
 as an ablation. With six cameras the residual error is longitudinal above
 13 m/s, where its plans plateau near 35 m at 3 s (a prior from its training
 domain). The feed matches the authors' reference loader byte for byte. On
-nuScenes, with all six cameras, its L2 sits with Drive-JEPA's; the collision
-figure is a standstill artefact (it creeps ~1 m into the queue ahead when
-stopped, 22.6 % of stopped anchors), and its plans carry a left bias twice as
+nuScenes, with all six cameras, its L2 sits with Drive-JEPA's; its collisions
+are concentrated at standstill, where the planner creeps ~1 m into the queue
+ahead (22.6 % of stopped anchors), and its plans carry a left bias twice as
 large in Boston as in Singapore. See `docs/models/meteor.md`.
 
 △ nuScenes uses 5,119 scoring anchors across 150 validation scenes. The headline
@@ -198,7 +198,7 @@ front-camera history while retaining the same 2 Hz scoring anchors; its complete
 GPU run is detailed below. VisionPilot's plan here is its acceleration/steering
 integrated to a path, as in NAVSIM, so unlike KITScenes it does yield an L2.
 Alpamayo's figure is inflated by the first keyframe of each scene, where it has
-no history to difference (9.5 m there vs 1.2 m elsewhere). See `docs/benchmarks/nuscenes.md`. A constant-velocity baseline scores 0.64 here (point-avg L2 1.29), **better than all four learned models** — nuScenes ego motion is largely straight, so open-loop L2 rewards a straight line; read these numbers with that in mind.
+no history to difference (9.5 m there vs 1.2 m elsewhere). See `docs/benchmarks/nuscenes.md`. A constant-velocity baseline scores 0.64 here (point-avg L2 1.29), **better than every learned model** — nuScenes ego motion is largely straight, so open-loop L2 rewards a straight line; read these numbers with that in mind.
 
 ✦ Bench2Drive constant velocity is a do-nothing floor: "constant velocity" means holding the current speed, and every route starts from a standstill, so the baseline holds zero and never departs -- blocked after 60 s, driving score 0 on every route (confirmed on 3 routes, structural for all 24). Unlike nuScenes, where the logged ego is already moving, it is not an informative baseline in closed loop.
 

@@ -214,12 +214,12 @@ each comes from, measured on the per-sample records:
 
 - **Speed is in range here.** nuScenes is urban: 96 % of anchors are below
   12 m/s, and from 6 m/s up the 3 s point is within 2 m of the truth
-  (22.2 vs 24.2 m at 6-9 m/s, 30.0 vs 30.4 at 9-12). The KITScenes
-  saturation does not appear. The error moves to the *low* end instead: at
+  (22.2 vs 24.2 m at 6-9 m/s, 30.0 vs 30.4 at 9-12). The plateau above
+  13 m/s seen on KITScenes is out of range here. The error moves to the *low* end instead: at
   1-3 m/s the model plans 11.0 m where the car went 6.5 (L2 avg 3.24, the
   worst band), and at standstill it creeps.
-- **Collisions are a standstill artefact.** Of the 893 anchors where the ego
-  is stopped, 22.6 % collide: the plan creeps 0.95 m forward on average into
+- **Collisions are concentrated at standstill, where the planner creeps.** Of
+  the 893 anchors where the ego is stopped, 22.6 % collide: the plan creeps 0.95 m forward on average into
   the vehicle the car is queued behind. Anchors above 6 m/s collide 1.1 %
   of the time, in line with the other models. Constant velocity plans zero
   motion when stopped and collides on 1.7 % overall; METEOR's brake logit is
@@ -235,3 +235,8 @@ each comes from, measured on the per-sample records:
   taken (mean y@3s +4.28 m vs +4.15 true, n=257) and right turns are cut
   short (-2.30 vs -4.34, n=361): the scene geometry drives the mode choice,
   and the left bias helps on one side and hurts on the other.
+
+The record carries per-scene aggregates (`by_group`, all 150 scenes), because
+the harness sets `group` to the scene. The four sibling nuScenes records predate
+#28 and carry none, so a per-scene comparison against them is not possible from
+tracked files until they are re-run under the current runner.
