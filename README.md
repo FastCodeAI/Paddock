@@ -186,6 +186,19 @@ waypoints and the shared controller; actual vehicle speed can differ. nuScenes
 constant velocity instead extrapolates the recorded ego velocity. These are
 different speed settings of the baseline, as detailed below.
 
+△ nuScenes val, open loop, zero-shot (none of these models was trained on
+nuScenes): the average L2 over 0-3 s on the official 150-scene val split (5119
+keyframes), UniAD/VAD protocol, `--bench nuscenes` -- the cumulative (per-step)
+average, comparable to published tables (the `l2_avg` in `docs/leaderboard.md`
+is the point value at 1/2/3 s). OpenPilot now uses real approximately 12 Hz
+front-camera history while retaining the same 2 Hz scoring anchors; its completed
+GPU run is detailed below. VisionPilot's plan here is its acceleration/steering
+integrated to a path, as in NAVSIM, so unlike KITScenes it does yield an L2.
+Alpamayo's figure is inflated by the first keyframe of each scene, where it has
+no history to difference (9.5 m there vs 1.2 m elsewhere). See `docs/benchmarks/nuscenes.md`. A constant-velocity baseline scores 0.64 here (point-avg L2 1.29), **better than all four learned models** — nuScenes ego motion is largely straight, so open-loop L2 rewards a straight line; read these numbers with that in mind.
+
+✦ Bench2Drive constant velocity is a do-nothing floor: "constant velocity" means holding the current speed, and every route starts from a standstill, so the baseline holds zero and never departs -- blocked after 60 s, driving score 0 on every route (confirmed on 3 routes, structural for all 24). Unlike nuScenes, where the logged ego is already moving, it is not an informative baseline in closed loop.
+
 § Not run — zero by construction. Every neuroNCAP scenario is staged so that an
 ego holding its current velocity collides at full speed. A run that avoids the
 collision scores a flat **5**; a run that collides scores

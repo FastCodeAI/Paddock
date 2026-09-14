@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-56 runs across 5 benchmarks.
+61 runs across 6 benchmarks.
 30 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## bench2drive
@@ -83,6 +83,16 @@
 | visionpilot | runs1_fixed | 3 | fastcode-shakaal | 1.475 | 6.411 | 9.902 | 1.000 | - |
 | visionpilot | runs1_noise0.3 | 3 | fastcode-shakaal | 1.371 | 13.452 | 13.279 | 1.000 | - |
 | visionpilot | scene0108_runs5 | 10 | fastcode-shakaal | 1.352 | 8.055 | 10.743 | 1.000 | - |
+
+## nuscenes
+
+| model | run | n | site | l2_avg ↓ | l2_1s ↓ | l2_uniad_1s ↓ | col_1s ↓ | col_uniad_1s ↓ | l2_2s ↓ | l2_uniad_2s ↓ |
+|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| constant_velocity | 20260914T225156-e5170c | 5119 | fastcode-shakaal | 1.288 | 0.372 | 0.260 | 0.008 | 0.008 | 1.151 | 0.594 |
+| alpamayo15 | 20260905T093547-3dd7cd | 5119 | fastcode-navvrat-nusc-al | 1.487 | 0.509 | 0.369 | 0.008 | 0.008 | 1.351 | 0.742 |
+| drivejepa | 20260905T093335-4513d4 | 5119 | fastcode-navvrat-nusc-dj | 1.882 | 0.540 | 0.376 | 0.006 | 0.008 | 1.587 | 0.824 |
+| visionpilot | 20260905T093333-319ef5 | 5119 | fastcode-navvrat-nusc-vp | 2.360 | 1.031 | 0.883 | 0.025 | 0.033 | 2.213 | 1.382 |
+| openpilot | 20260908T110028-b71f4f | 5119 | fastcode-navvrat-nusc-vp | 4.057 | 1.925 | 1.424 | 0.013 | 0.011 | 4.054 | 2.470 |
 
 ## Excluded runs
 

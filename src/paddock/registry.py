@@ -76,6 +76,7 @@ class Runtime:
         """
         model = ctx.get("model", "")
         override = cfg.models.get(model, None)
+        # An explicit venv override always wins (a site may redirect any model).
         if override is not None and override.venv is not None:
             return override.venv / "bin" / "python"
         if not self.venv:
