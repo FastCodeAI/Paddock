@@ -14,7 +14,6 @@ import pytest
 
 from paddock.adapters.benchmarks.navsim import convert
 from paddock.adapters.benchmarks.navsim.harness import (
-    BENCHMARK,
     CONF_DIR,
     ENV_AGENT,
     ENV_ALLOW_PARTIAL,
@@ -184,7 +183,7 @@ def test_every_navsim_model_has_a_camera_the_rig_can_supply() -> None:
     from paddock.adapters.benchmarks.navsim.harness import camera_problems, supplied_cameras
 
     for model in Registry.load().models.values():
-        if "navsim" not in model.benchmarks:
+        if not any(name.startswith("navsim") for name in model.benchmarks):
             continue
         assert camera_problems(list(model.cameras), model.name) == []
         assert supplied_cameras(list(model.cameras)), f"{model.name} wants only {model.cameras}"
@@ -210,6 +209,11 @@ def test_the_proxy_agent_config_is_tracked_and_names_the_module() -> None:
         assert key in config, f"the dense-history switch {key!r} must default off in the tracked config"
 
 
+#: What the stand-in devkit's setup.py declares per benchmark: the harness
+#: refuses the other generation's tree (both ship a run_pdm_score.py).
+DEVKIT_VERSIONS = {"navsim": "2.0.0", "navsim_v1": "1.1.0"}
+
+
 def _navsim_site(
     tmp_path: Path,
     monkeypatch,
@@ -219,20 +223,41 @@ def _navsim_site(
     blobs: tuple[str, ...] = ("log_a", "log_b"),
     cached: tuple[str, ...] = ("log_a", "log_b", "metadata"),
     tokens_per_log: int = 0,
+    bench: str = "navsim",
+    scorer: str = SCORER,
+    devkit_version: str | None = None,
+    camera_path: bool = True,
+    declare_tokens: bool = False,
+    metadata_csv: bool = True,
     **settings: str,
 ) -> SiteConfig:
-    """A site with a stand-in devkit, dataset and metric cache laid out as NAVSIM's are."""
+    """A site with a stand-in devkit, dataset and metric cache laid out as NAVSIM's are.
+
+    `bench` picks the `[benchmarks.<bench>]` block and, with `scorer`, the
+    devkit generation being stood in for; the stand-in carries the setup.py
+    version and the `camera_path` field preflight looks for, and a metric cache
+    metadata csv listing the stand-in scenarios, as the devkit's caching writes.
+    """
     import sys
 
     devkit = tmp_path / "devkit"
-    (devkit / SCORER).parent.mkdir(parents=True)
-    (devkit / SCORER).write_text("")
+    (devkit / scorer).parent.mkdir(parents=True)
+    (devkit / scorer).write_text("")
+    version = devkit_version or DEVKIT_VERSIONS[bench]
+    (devkit / "setup.py").write_text(f'setup(name="navsim", version="{version}")\n')
+    (devkit / "navsim" / "common").mkdir(parents=True, exist_ok=True)
+    (devkit / "navsim" / "common" / "dataclasses.py").write_text(
+        "class Camera:\n    image = None\n" + ("    camera_path = None\n" if camera_path else "")
+    )
     splits = devkit / SPLITS_DIR
     (splits / "scene_filter").mkdir(parents=True)
     (splits / f"{split}.yaml").write_text(f"data_split: {data_split}\n")
+    tokens = [f"{name}-t{i}" for name in cached if name != "metadata" for i in range(tokens_per_log)]
     if declared is not None:
         (splits / "scene_filter" / f"{split}.yaml").write_text(
-            "log_names:\n" + "".join(f"  - {name}\n" for name in declared)
+            "log_names:\n"
+            + "".join(f"  - {name}\n" for name in declared)
+            + ("tokens:\n" + "".join(f"  - {token}\n" for token in tokens) if declare_tokens else "")
         )
     data = tmp_path / "data"
     for name in blobs:
@@ -240,19 +265,26 @@ def _navsim_site(
     (data / "navsim_logs" / data_split).mkdir(parents=True)
     (data / "maps").mkdir()
     cache = tmp_path / "cache"
+    rows: list[str] = []
     for name in cached:
         (cache / name).mkdir(parents=True)
         # The cache is <cache>/<log>/<scenario type>/<token>/, one directory
         # per scenario; a stand-in with a few tokens per log.
         for i in range(tokens_per_log if name != "metadata" else 0):
             (cache / name / "unknown" / f"{name}-t{i}").mkdir(parents=True)
+            rows.append(str(cache / name / "unknown" / f"{name}-t{i}" / "metric_cache.pkl"))
+    if metadata_csv:
+        (cache / "metadata").mkdir(exist_ok=True)
+        (cache / "metadata" / "metric_cache_metadata_node_0.csv").write_text(
+            "file_name\n" + "".join(r + "\n" for r in rows)
+        )
     for sub in ("repos", "runs", "weights", "exp"):
         (tmp_path / sub).mkdir()
     (tmp_path / "site.toml").write_text(
         f'site = "test-site"\n[roots]\nrepos = "{tmp_path / "repos"}"\nruns = "{tmp_path / "runs"}"\n'
         f'weights = "{tmp_path / "weights"}"\n'
         f'[datasets.navsim]\npath = "{data}"\nexp = "{tmp_path / "exp"}"\n'
-        f'[benchmarks.navsim]\npython = "{sys.executable}"\ndevkit = "{devkit}"\n'
+        f'[benchmarks.{bench}]\npython = "{sys.executable}"\ndevkit = "{devkit}"\n'
         f'metric_cache = "{cache}"\nsplit = "{split}"\n'
         + "".join(f'{key} = "{value}"\n' for key, value in settings.items())
     )
@@ -262,8 +294,10 @@ def _navsim_site(
     return SiteConfig.load()
 
 
-def _harness(cfg: SiteConfig):
-    return BENCHMARK(Registry.load().benchmarks["navsim"], cfg)
+def _harness(cfg: SiteConfig, bench: str = "navsim"):
+    from paddock.runner import load_benchmark
+
+    return load_benchmark(Registry.load().benchmarks[bench], cfg)
 
 
 def test_data_split_is_read_from_the_devkits_own_yaml(tmp_path: Path, monkeypatch) -> None:
@@ -396,6 +430,7 @@ def test_wire_modules_compile_under_python_39() -> None:
         base / "adapters" / "benchmarks" / "navsim" / "convert.py",
         base / "adapters" / "benchmarks" / "navsim" / "dense.py",
         base / "adapters" / "benchmarks" / "navsim" / "agent.py",
+        base / "adapters" / "benchmarks" / "navsim_v1" / "agent.py",
     ]
     command = [interpreter, "-m", "py_compile", *map(str, files)]
     result = subprocess.run(command, capture_output=True, text=True)
@@ -520,6 +555,9 @@ def test_openpilot_declares_the_rate_neuroncap_already_established() -> None:
     assert openpilot.min_input_hz >= 10.0
     assert openpilot.history_s >= 96 / 20.0
     assert "navsim" in openpilot.benchmarks
+    assert "navsim_v1" not in openpilot.benchmarks, (
+        "no 10 Hz run under the v1 devkit yet; declaring it would put a 2 Hz refusal in every v1 sweep"
+    )
 
 
 def test_alpamayo_states_the_rate_it_was_built_for_without_a_floor() -> None:

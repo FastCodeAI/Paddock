@@ -1,0 +1,13 @@
+# Recorded plans handed back to the scorer: no model, no node. `plans_dir` is a
+# run's artifacts directory; every trajectories.jsonl under it is read. Supplied
+# by nodeless.py, never defaulted -- a replay must say what it replays.
+_target_: paddock.adapters.benchmarks.navsim.agent.PaddockReplayAgent
+_convert_: 'all'
+
+plans_dir: ???
+
+trajectory_sampling:
+  _target_: nuplan.planning.simulation.trajectory.trajectory_sampling.TrajectorySampling
+  _convert_: 'all'
+  time_horizon: 4
+  interval_length: 0.5

@@ -66,4 +66,6 @@ capabilities:
 # on OpenScene alone a score would measure the rate gap. Without that setting
 # `paddock run --bench navsim --model openpilot` refuses with the explanation
 # before loading the model, rather than silently recording the artefact.
+# `navsim_v1` is not declared: no 10 Hz run under the v1 devkit yet, and the v1
+# harness would need its own [benchmarks.navsim_v1] nuplan setting.
 benchmarks: [kitscenes, neuroncap, bench2drive, navsim]

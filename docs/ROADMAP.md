@@ -12,6 +12,7 @@ because both organisations need to see it.
 | **M5** | Reproduce closed-loop (neuroNCAP) | **partial** | adapters proven identical to the original nodes; see `docs/benchmarks/neuroncap.md` |
 | **M6** | Reproduce open-loop (KITScenes) | **done** | full n=223: 892/892 metric comparisons identical at full float precision |
 | **M7** | NAVSIM benchmark adapter | **done** | reproduction exact (2379/2379 metrics identical, delta 0.0); 3 of 4 models scored, openpilot blocked by a 2 Hz dataset |
+| **M7b** | NAVSIM v1 PDMS beside v2 EPDMS | **done** | constant velocity reproduces the paper's navtest row term by term (20.65 vs 20.6); v2 baseline re-run identical to 1e-11; drivejepa 0.892, alpamayo15 0.676 (replayed), visionpilot 0.488, n=12,146 each |
 
 ## What "done" means here, and what it does not
 
@@ -117,6 +118,31 @@ in one of the two cases.
 Both grid changes are additive at the tail, so no recorded neuroNCAP or
 KITScenes score moves: `to_wire` takes the first six poses and
 `displacement_errors` truncates at 3 s. Pinned by tests.
+
+**M7b — NAVSIM v1 PDMS.** The same scenes scored by the v1.1 devkit vendored
+beside the v2 one, as its own benchmark `navsim_v1` (own metric name, results
+tree and site block), implemented as a subclass of the v2 harness and proxy.
+Doing it found that the shared parser had one devkit generation's vocabulary
+baked in, that the v2 harness kept its variant knobs as module constants, and
+that the runner could not run an external scorer without a policy node -- the
+constant-velocity record for v2 was an untracked one-off. All three are now
+general: `ScoreVocabulary`, class attributes, and `nodeless.py`, which also
+replays a run's recorded plans under another devkit (alpamayo15's v1 number
+comes from the plans that produced its v2 number, no GPU).
+
+| model | NAVSIM v1 PDMS | v2 EPDMS | |
+|---|---:|---:|---|
+| drivejepa | **0.892** (n=12146) | 0.843 | proxy; the paper's 93.3 is a v1 checkpoint through a scorer-aware agent |
+| alpamayo15 | **0.676** (n=12146) | 0.608 | the v2 run's own plans, replayed |
+| visionpilot | **0.488** (n=12146) | 0.431 | proxy, four nodes |
+| constant velocity | **0.207** (n=12146) | 0.239 | paper: 20.6, every term matching |
+| human | 0.946, `valid: false` | — | paper: 94.8; the gap is ego progress only |
+
+**Verified:** the baseline row against the paper, term by term; the v2 path
+unchanged (12,139/12,146 scenarios identical, the rest within 1e-11); n and
+zero failures in every record. **Argued:** the human's 0.25-point gap is the
+cache's reference plan; the fork's v1 tree is upstream v1.1 (byte-identical
+scoring files; its occupancy-map edit is a no-op under shapely 2).
 
 **openpilot is genuinely blocked.** OpenScene is 2 Hz by construction and
 supercombo's complete non-image input set is `{desire_pulse,
