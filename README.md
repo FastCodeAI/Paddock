@@ -111,6 +111,7 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 | Alpamayo 1.5 | 0.787 △ | 1.002 | 0.691 (10 Hz) † | 0.676 (2 Hz) † | 44.58 ◆ | **3.73** ‖ | 0.8000 ¶ | planned |
 | Drive-JEPA | 0.912 △ | 2.364 | 0.843 | 0.892 † | 31.11 ◆ | **3.57** ‖ | 0.5619 ¶ | planned |
 | VisionPilot | 1.441 △ | 1.534 ∗ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.8864 ¶ | planned |
+| Qwen-Drive 1.0 | — | 0.806 | pending | pending | planned | pending | — | planned |
 | Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | 0.207 † | 47.94 ♣ | 0 § | 0.3562 ¶ | — |
 
 ∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
@@ -209,12 +210,15 @@ machine-readable form is in each `model.yaml` and prints with
 | Alpamayo 1.5 | Cosmos-Reason2 VLM + diffusion trajectory decoder | **10 B** | 20 | 4 cam @10 Hz · 448×280 | trajectory 6.4 s + reasoning trace | NVIDIA internal, 80,000 h |
 | Drive-JEPA | V-JEPA-2 ViT-L encoder + proposal-centric planner | 307 M | 1.23 | 1 cam ✧ · 512×256 · 2 frames | trajectory 4 s, from 8192 anchors | OpenScene, then **NAVSIM `navtrain`** ✦ |
 | VisionPilot | three YOLO-family conv nets | **28.1 M** | 0.112 | 1 cam @10 Hz · 1024×512 | lane curvature + closest in-path object | OpenLane, TuSimple, CurveLanes |
+| Qwen-Drive 1.0 | Qwen3.5-4B VLM + 1 B flow-matching planning expert | ≈5 B | 11.2 | 3 cam · 4 frames 0.5 s apart · current ~720p, history ~320p | 50 poses (x, y, heading), 5 s @10 Hz | Qwen3.5's corpus + public driving sets, incl. **NAVSIM `navtrain`** ✦ |
 
-✦ **Drive-JEPA is the only one of the four with training exposure to a
-benchmark's own dataset, and it leads that benchmark by 0.235 EPDMS on v2 and
-0.216 PDMS on v1.** It was post-trained on NAVSIM `navtrain` and pre-trained
-partly on OpenScene, which *is* the NAVSIM dataset; the other three meet
-`navtest` zero-shot. That is the protocol NAVSIM intends — it is not cheating —
+✦ **Two models here declare training exposure to a benchmark's own dataset.**
+Drive-JEPA leads that benchmark by 0.235 EPDMS on v2 and 0.216 PDMS on v1: it
+was post-trained on NAVSIM `navtrain` and pre-trained partly on OpenScene, which
+*is* the NAVSIM dataset. Qwen-Drive 1.0 reports navtest as its own headline
+planning result, so its adapter declares `navtrain` too — an assumption from the
+report rather than a line of code, and the one thing to correct if the paper
+says otherwise. OpenPilot, Alpamayo and VisionPilot meet `navtest` zero-shot. That is the protocol NAVSIM intends — it is not cheating —
 but it means both NAVSIM columns conflate "better planner" with
 "in-distribution versus zero-shot". Sourced at
 the pinned sha: `navsim_v2/scripts/training/train_drive_jepa_perception_based.sh`
@@ -254,15 +258,18 @@ these tables report the saved runs, not new evaluations of the merged code.
 
 Open-loop displacement error in metres over the 3 s horizon, full 223-sample
 split. Alpamayo 1.5 is its nav-conditioned single-draw run. VisionPilot's
-trajectory is synthesised by the adapter (see ∗). Only Alpamayo 1.5 beats the
-constant-velocity baseline on this benchmark.
+trajectory is synthesised by the adapter (see ∗). Qwen-Drive 1.0 is the first
+model here to read the camera ring rather than the front camera alone, and it is
+zero-shot on this dataset. Only it and Alpamayo 1.5 beat the constant-velocity
+baseline.
 
 | Model | ADE@3s ↓ (m) | FDE@3s ↓ (m) |
 |---|---:|---:|
 | OpenPilot | 1.599 | 2.894 |
-| Alpamayo 1.5 | **1.002** | **2.158** |
+| Alpamayo 1.5 | 1.002 | 2.158 |
 | Drive-JEPA | 2.364 | 4.199 |
 | VisionPilot | 1.534 ∗ | 3.089 ∗ |
+| Qwen-Drive 1.0 | **0.806** | **1.777** |
 | Baseline (Constant Velocity) | 1.381 | 3.091 |
 
 ### NAVSIM v2
