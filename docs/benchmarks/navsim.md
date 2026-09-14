@@ -398,6 +398,21 @@ scenario with missing data fails visibly rather than being scored on a stutter. 
 metric cache and the trajectory conversion are untouched: only what the model
 is shown changes.
 
+Results, full navtest (records in `results/navsim/`):
+
+| model | 2 Hz OpenScene | 10 Hz nuPlan | frames per plan |
+|---|---:|---:|---:|
+| openpilot | refused (0.302 on 4 scenarios under `ALLOW_SLOW`, a parked car) | **0.7468** | 49 |
+| alpamayo15 | 0.6081 | **0.6910** | 16 |
+
+Alpamayo paired on all 12,146 scenarios: every sub-metric up except traffic
+light (tied); ego progress 0.596 -> 0.681. openpilot's 12,146 plans: 49 frames
+each, 94 scenarios clamped at a log start, one borrowed frame; while moving the
+planned 4 s travel is a median 0.82 of constant velocity and 2 plans in 12,146
+look parked (under 0.15), against every plan at 2 Hz. openpilot ran on 8 CPU
+nodes at ~42 s of inference per scenario (98 supercombo passes); alpamayo on
+one GPU node shared with other users' work, ~25 h each.
+
 What it does not fix: alpamayo's field of view (nuPlan's cameras are the same
 ~65 deg the model gets from OpenScene) and the proxy's blindness to the
 scorer's state, which every model shares.
@@ -422,6 +437,7 @@ so nothing below the full split can be averaged or ranked against a real one.
 | model | EPDMS | collisions | drivable | progress | run |
 |---|---:|---:|---:|---:|---|
 | drivejepa | **0.8427** | 0.984 | 0.985 | 0.889 | `20260902T173156-7e208f` |
+| openpilot, 10 Hz nuPlan history | **0.7468** | 0.970 | 0.913 | 0.712 | `20260911T161513-3a4c90` |
 | alpamayo15, 10 Hz nuPlan history | **0.6910** | 0.957 | 0.856 | 0.681 | `20260912T040211-a9562c` |
 | alpamayo15, 2 Hz OpenScene | **0.6081** | 0.941 | 0.788 | 0.596 | `20260903T183818-5879c1` |
 | visionpilot | **0.4312** | 0.727 | 0.819 | 0.404 | `20260902T175642-df5291` |
