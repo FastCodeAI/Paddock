@@ -27,6 +27,8 @@ venv/
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
+# nuScenes val index pickle (adapters/benchmarks/nuscenes) defaults here.
+.cache/
 .mypy_cache/
 dist/
 build/

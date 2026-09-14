@@ -65,4 +65,4 @@ capabilities:
     - dataset: openlane
     - dataset: tusimple
     - dataset: curvelanes
-benchmarks: [kitscenes, neuroncap, navsim, navsim_v1, bench2drive]
+benchmarks: [kitscenes, neuroncap, navsim, navsim_v1, bench2drive, nuscenes]

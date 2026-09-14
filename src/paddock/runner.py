@@ -270,6 +270,9 @@ def run_benchmark(
     scenes = [s.strip() for s in scene.split(",") if s.strip()] if scene else None
 
     problems = harness.preflight()
+    if hasattr(harness, "input_problems"):
+        for selected_model in models:
+            problems += harness.input_problems(selected_model)
     if scenes and hasattr(harness, "scene_problems"):
         for one in scenes:
             problems += harness.scene_problems(one)
@@ -863,8 +866,13 @@ def _run_open_loop(
                         journal.write(json.dumps(record, default=store.json_default) + "\n")
                     journal.flush()
                     if len(samples) // 25 != before // 25:
-                        running = sum(s["metrics"].get("ade", 0.0) for s in samples) / len(samples)
-                        echo(f"  {len(samples)} samples, running ADE {running:.3f}")
+                        # The benchmark's own headline, not `ade`: nuScenes calls
+                        # its displacement metric `l2_avg`, and 0.000 for 5,119
+                        # samples told nobody anything.
+                        key = spec.primary_metric
+                        seen = [s["metrics"][key] for s in samples if key in s["metrics"]]
+                        running = sum(seen) / len(seen) if seen else float("nan")
+                        echo(f"  {len(samples)} samples, running {key} {running:.3f}")
     except (proc.NodeStartupError, RuntimeError) as exc:
         echo(f"  node failed: {exc}")
         return 1

@@ -57,5 +57,5 @@ capabilities:
     # NVIDIA internal, 80,000 h. Zero-shot on every paddock benchmark.
     - dataset: nvidia-internal
 # One key, not one per benchmark that arrived: two `benchmarks:` lines make YAML
-# keep the last and silently drop the rest, which is how alpasim went missing.
-benchmarks: [kitscenes, neuroncap, navsim, navsim_v1, bench2drive, alpasim, comma2k19]
+# keep the last and silently drop the rest, which is how alpasim once went missing.
+benchmarks: [kitscenes, neuroncap, navsim, navsim_v1, bench2drive, alpasim, nuscenes, comma2k19]

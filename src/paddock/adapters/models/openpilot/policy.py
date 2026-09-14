@@ -474,16 +474,44 @@ class OpenpilotPolicy(Policy):
             # The ONNX files ship in the repo either way.
             return "onnx"
 
+    def _new_model(self):
+        """Load the default artifact or an explicitly compiled CUDA artifact.
+
+        Upstream selects its artifact and queue devices through module helpers.
+        Override those only during construction; each sample still gets fresh
+        temporal state. The policy node constructs models serially.
+        """
+        from pathlib import Path
+        from unittest.mock import patch
+
+        import openpilot.selfdrive.modeld.modeld as modeld
+
+        artifact = os.environ.get("PADDOCK_OPENPILOT_CUDA_MODEL")
+        if not artifact:
+            return modeld.ModelState(TARGET_W, TARGET_H, usbgpu=False)
+        path = Path(artifact)
+        if not path.is_file():
+            raise FileNotFoundError(f"Openpilot CUDA artifact missing: {path}")
+        with (
+            patch.object(modeld, "modeld_pkl_path", return_value=path),
+            patch.object(
+                modeld, "get_tg_input_devices", return_value={"WARP_DEV": "CPU", "QUEUE_DEV": "CUDA"}
+            ),
+        ):
+            return modeld.ModelState(TARGET_W, TARGET_H, usbgpu=False)
+
     def load(self) -> None:
         # Imported here, not at module scope: openpilot's package only exists
         # inside its own environment, and this module is imported by
         # `paddock list` and the test suite, which run in paddock's.
         self.backend = self._resolve_backend()
         if self.backend == "tinygrad":
-            from openpilot.selfdrive.modeld.modeld import ModelState
             from openpilot.system.camerad.cameras.nv12_info import get_nv12_info
 
-            self.model = ModelState(TARGET_W, TARGET_H, usbgpu=False)
+            # `_new_model`, not `ModelState` directly: it is the one place that
+            # knows about PADDOCK_OPENPILOT_CUDA_MODEL, and `reset` needs the
+            # same choice made the same way on every sample.
+            self.model = self._new_model()
             # ModelState caches its device tensors by buffer address, so these
             # arrays must be allocated once and written in place.
             self.nv12_info = get_nv12_info(TARGET_W, TARGET_H)
@@ -563,9 +591,7 @@ class OpenpilotPolicy(Policy):
         the first scene's mounting rotation.
         """
         if self.backend == "tinygrad":
-            from openpilot.selfdrive.modeld.modeld import ModelState
-
-            self.model = ModelState(TARGET_W, TARGET_H, usbgpu=False)
+            self.model = self._new_model()
         elif self.session is not None:
             self._new_onnx_runner()
         self.camera = None

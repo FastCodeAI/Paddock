@@ -1,0 +1,40 @@
+{
+  "run_id": "20260908T110028-b71f4f",
+  "site": "fastcode-navvrat-nusc-vp",
+  "benchmark": "nuscenes",
+  "model": "openpilot",
+  "mode": "open_loop",
+  "started_utc": "2026-09-08T11:00:28+00:00",
+  "duration_s": 14587.1,
+  "repo_sha": null,
+  "dataset": {
+    "name": "nuscenes",
+    "split": "val",
+    "n_samples": 5119,
+    "sequences_sha256": "b507a7d90c5ccae9",
+    "n_expected": 5119,
+    "n_failed": 0
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_OP_ROAD",
+      "CAM_OP_WIDE",
+      "CAM_FRONT"
+    ],
+    "model_env": {
+      "PADDOCK_OPENPILOT_CUDA_MODEL": "driving_cuda.pkl",
+      "NVRTC_PATH": "libnvrtc.so.12",
+      "DEV": "CUDA",
+      "WARP_DEV": "CPU",
+      "PADDOCK_OPENPILOT_NATIVE_LONG": "0",
+      "PADDOCK_OPENPILOT_RESUME_S": "0"
+    },
+    "execution_workers": 4
+  },
+  "hardware": {},
+  "status": "complete",
+  "valid": true,
+  "notes": "Four independent CUDA workers; 135 checked predictions retained from 20260908T103511-0d4e0a",
+  "ingested_from": ""
+}

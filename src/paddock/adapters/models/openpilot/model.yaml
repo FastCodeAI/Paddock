@@ -100,4 +100,4 @@ capabilities:
 # comma2k19 needs no such setting: it is native 20 Hz, exactly supercombo's own
 # input rate, so no frame-repeat trick is needed at all -- see
 # docs/benchmarks/comma2k19.md.
-benchmarks: [kitscenes, neuroncap, bench2drive, navsim, comma2k19]
+benchmarks: [kitscenes, neuroncap, bench2drive, navsim, nuscenes, comma2k19]
