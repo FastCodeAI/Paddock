@@ -118,6 +118,16 @@ class Benchmark(ABC):
         """
         return []
 
+    def model_run_config(self, model) -> dict[str, Any]:
+        """Measurement-changing settings that depend on which model is paired.
+
+        `run_config()` is the benchmark's alone. Some choices are made per
+        model -- NAVSIM feeds a 10 Hz nuPlan history to a model that needs one
+        and OpenScene's 2 Hz to the rest -- and those belong in `run.json` and
+        the run id just the same. Default: none.
+        """
+        return {}
+
     @abstractmethod
     def preflight(self) -> list[str]:
         """Return human-readable reasons this benchmark cannot run here.

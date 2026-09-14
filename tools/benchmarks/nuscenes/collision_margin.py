@@ -31,9 +31,11 @@ from pathlib import Path
 
 import numpy as np
 
+from tools import paths  # noqa: F401  (puts src/ on the path for the imports below)
+
+# isort: split
 from paddock.adapters.benchmarks.nuscenes import loader as L  # noqa: E402
 from paddock.adapters.benchmarks.nuscenes.harness import N_STEPS, plan_headings  # noqa: E402
-from tools import paths  # noqa: F401  (puts src/ on the path)
 
 VAL_SCENES = Path(L.__file__).with_name("val_scenes.json")
 HORIZONS = {"1s": 2, "2s": 4, "3s": 6}

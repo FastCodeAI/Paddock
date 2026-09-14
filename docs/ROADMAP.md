@@ -137,6 +137,8 @@ comes from the plans that produced its v2 number, no GPU).
 | visionpilot | **0.488** (n=12146) | 0.431 | proxy, four nodes |
 | constant velocity | **0.207** (n=12146) | 0.239 | paper: 20.6, every term matching |
 | human | 0.946, `valid: false` | — | paper: 94.8; the gap is ego progress only |
+| openpilot, 10 Hz history | **0.807** (n=12146) | 0.747 | PR #33's plans, replayed |
+| alpamayo15, 10 Hz history | **0.753** (n=12146) | 0.691 | PR #33's plans, replayed |
 
 **Verified:** the baseline row against the paper, term by term; the v2 path
 unchanged (12,139/12,146 scenarios identical, the rest within 1e-11); n and
@@ -234,7 +236,8 @@ Needs a site with CARLA 0.9.15 and the pinned checkout wired in
 
 ## Beyond reproduction
 
-- **nuScenes open-loop** — **done (camera-only).** `paddock run --bench nuscenes`
+- **nuScenes open-loop** — **done (camera-only); protocol transcribed and pinned by
+  tests, parity with the UniAD/VAD scorers unverified (no fixture).** `paddock run --bench nuscenes`
   scores the UniAD/VAD L2 + collision protocol on the 150 val scenes, reading the
   `v1.0-trainval` JSON tables directly (no `nuscenes_infos*.pkl`, which do not
   exist here). Detail in `docs/benchmarks/nuscenes.md`. Fusion is still not viable
@@ -243,4 +246,8 @@ Needs a site with CARLA 0.9.15 and the pinned checkout wired in
 Not started, and larger than everything above:
 
 - **alpamayo2, vjepa2, sunnypilot** — never evaluated.
+- **nuScenes openpilot record is not regenerable with tracked code** — the
+  tracked run (`20260908T110028-b71f4f`) was assembled by four-worker site
+  orchestration; land that orchestration (or a `--workers` path in the open-loop
+  runner) so the record can be re-made anywhere. Number not in question; provenance is.
 - **Training** — the framework's eventual purpose; out of scope until evaluation is trustworthy.

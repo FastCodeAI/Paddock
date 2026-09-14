@@ -268,8 +268,9 @@ class MeteorPolicy(Policy):
 
         want_cuda = self.provider_mode.startswith("cuda")
         if want_cuda and hasattr(ort, "preload_dlls"):
-            # cuDNN/cuBLAS live in the nvidia-*-cu12 wheels; there is no
-            # system CUDA on the reference box for the loader to find.
+            # cuDNN/cuBLAS come from NVIDIA's CUDA 13 pip wheels (nvidia-cudnn-cu13,
+            # nvidia-cublas==13.*, ... -- see setup.sh); there is no system CUDA
+            # on the reference box for the loader to find.
             ort.preload_dlls()
         opts = ort.SessionOptions()
         opts.intra_op_num_threads = self.threads

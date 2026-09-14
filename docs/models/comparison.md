@@ -137,19 +137,20 @@ None of this makes any recorded number wrong. It makes one of them mean
 something different from what a reader assumes, which is the same class of
 problem `sequences_sha256` and `valid: false` exist to prevent.
 
-### METEOR × kitscenes — one camera of eight, and the graph as shipped
+### METEOR × kitscenes — six cameras of eight, and the graph as shipped
 
 METEOR trained on none of paddock's datasets, so it has no exposure section;
-the unequal terms run the other way. It is an 8-camera network fed one camera
-on KITScenes (seven slots absent, the convention it was trained with for one
-missing camera, not seven), with no driving-command input in the released
-ONNX, and that ONNX applies no ImageNet normalisation although its training
-loader did (verified against the checkpoint's first conv; see
-`docs/models/meteor.md`). Its 4.784 ADE is mostly longitudinal: the planner
-slows above ~8 m/s, a prior from urban Japanese driving that KITScenes' faster
-sequences fall outside. Read the KITScenes cell as "the released model, on a
-rig and a domain it never saw", which is the same caveat the other rows carry
-in different proportions.
+the unequal terms run the other way. It is an 8-camera network; KITScenes hands
+it six (#40), the two telephoto slots stay absent (the convention it was
+trained with for one missing camera), it has no driving-command input in the
+released ONNX, and that ONNX applies no ImageNet normalisation although its
+training loader did (verified against the checkpoint's first conv; see
+`docs/models/meteor.md`). Its 1.879 ADE is longitudinal above 13 m/s, where its
+plans plateau near 35 m at 3 s, a prior from urban Japanese driving. The
+front-only run made before #40 scored 4.784 and is kept as an ablation: 2.9 m
+of ADE was the missing cameras. Read the KITScenes cell as "the released model,
+on a rig and a domain it never saw", which is the same caveat the other rows
+carry in different proportions.
 
 ## Three discrepancies against what the adapters declare
 
