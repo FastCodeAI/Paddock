@@ -184,8 +184,21 @@ the stored record `20260902T175923-feba73`:
 - the other 7 differ only in `ego_progress` (and so in `epdms`), by at most
   1e-11 -- last-bit floating-point noise in the progress normaliser.
 
-The re-run's record is kept beside the ops logs rather than committed, so the
-leaderboard does not carry two identical baseline rows.
+The re-run is not committed, so the leaderboard does not carry two identical
+baseline rows. At the fastcode-shakaal site its record is kept at
+`{runs}/ops/navsim_v1/v2_regression_record/20260911T051742-c99808/`, its
+artifacts (samples, per-chunk CSVs, scorer logs) under
+`{runs}/navsim/constant_velocity/20260911T051742-c99808/`, and the comparison
+script beside the record as `compare_cv.py`. The comparison's output, verbatim:
+
+```
+compare_cv: old 20260902T175923-feba73 n=12146 mean=0.238544; new 20260911T051742-c99808 n=12146 mean=0.238544
+compare_cv: 12146 common tokens, 12139 identical across every metric; worst |delta| 9.78e-12 at navsim/navtest/29be20efdac25f74 ego_progress
+compare_cv: DIFFERENCES FOUND
+```
+
+The last line is the script demanding exact equality; the seven cells it
+counts as different are the 1e-11 ones above.
 
 ## Full navtest (12,146 scenarios)
 
