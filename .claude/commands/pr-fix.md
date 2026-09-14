@@ -1,5 +1,5 @@
 ---
-description: Take a /pr-review (or any review on a paddock PR) and address it — verify each finding is real, fix the ones that are, prove each fix, and report what was left alone and why.
+description: Take a /pr-review (or any review on a paddock PR) and address it — verify each finding is real, fix the ones that are, prove each fix, then push to the PR branch and reply on every thread.
 argument-hint: "[PR number | blank for the review in this session | path to a review file]"
 allowed-tools: Bash, Read, Grep, Glob, Write, Edit, TodoWrite, Agent
 ---
@@ -140,7 +140,7 @@ make check; echo "exit=$?"
 let a failing test through this repo before. Do not launch a benchmark sweep as
 part of a fix; this box degrades badly above ~90% CPU.
 
-## 5. Report — and do not post or push without being asked
+## 5. Report, commit, and push
 
 Print a table mapping every finding to its outcome: fixed (with the commit or
 the file:line), not reproduced (with what you ran), deferred to a follow-up (with
@@ -148,25 +148,54 @@ the ROADMAP row or issue), or declined (with the reason). **Every finding gets a
 row**, including 🟡 ones you skipped. A finding that quietly vanishes is the one
 the reviewer re-raises next pass.
 
-Then stop. Committing is fine; **pushing, replying on GitHub, or resolving a
-thread is outward-facing and needs an explicit ask.** Offer it in one line. When
-asked, a reply goes on the thread it answers:
+Then commit and **push to the PR's head branch**. A fix that only exists in a
+worktree has not addressed anything. One commit per finding, or per group that
+genuinely belongs together, with the message naming what it fixes — so a
+reviewer can map the review to the diff without guessing.
+
+**Four conditions gate the push. If one fails, stop and say so; do not work
+around it.**
+
+- **`make check` exited 0.** Never push red. Pushing work you know is broken
+  spends CI minutes and a reviewer's attention to tell you what you already knew.
+- **The branch is not `main`.** Fixes go on the PR's head branch. If you somehow
+  ended up on the default branch, stop — pushing there bypasses the review this
+  command exists to serve. (`gh repo view --json defaultBranchRef` if unsure.)
+- **The push fast-forwards.** Never `--force`, never `--force-with-lease`, on a
+  branch the author may have pulled. If it is rejected as non-fast-forward, fetch
+  and rebase, then push again.
+- **You can actually write to it.** A PR from a fork usually refuses:
+
+  ```bash
+  gh pr view <N> --json isCrossRepository,maintainerCanModify \
+    --jq '"fork=\(.isCrossRepository) canModify=\(.maintainerCanModify)"'
+  ```
+
+  A fork whose author did not allow maintainer edits cannot be pushed to. Leave
+  the commits local, say so, and offer the patch.
+
+Then close the loop on each thread you addressed, so the reviewer does not have
+to diff the branch to find out what happened:
 
 ```bash
 gh api repos/FastCodeAI/Paddock/pulls/<N>/comments/<comment-id>/replies \
   -f body='Fixed in <sha> — <what changed>.'
 ```
 
+Reply on the findings you did **not** fix too. "Did not reproduce, here is what I
+ran" is the reply that saves the next pass from re-raising it.
+
 ## 6. Clean up
 
 Unlike `/pr-review`, **the branch here carries the fixes.** `/pr-review` ends by
 deleting its scratch branch; doing that after a fix run throws the work away.
-Remove the worktree only once the commits are pushed or the user has said they
-are done with them, and check before you do:
+§5 normally pushes, so the commits are safe — but when a push was blocked (red
+`make check`, a fork you cannot write to), they exist only here. Check before
+removing anything:
 
 ```bash
 git -C /tmp/claude-prfix-<N> log --oneline @{u}.. 2>/dev/null   # unpushed commits?
-git worktree remove /tmp/claude-prfix-<N> --force               # only if that was empty, or they said so
+git worktree remove /tmp/claude-prfix-<N> --force               # only if that was empty
 ```
 
 Never `git branch -D prfix-<N>` while it holds commits that exist nowhere else.
