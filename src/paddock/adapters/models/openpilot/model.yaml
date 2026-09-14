@@ -29,7 +29,7 @@ capabilities:
   # parked car. Benchmarks slower than this refuse rather than record it.
   min_input_hz: 10.0
 
-# NAVSIM is deliberately absent. The adapter is complete and the trajectory grid
+# NAVSIM -- both `navsim` and `navsim_v1` -- is deliberately absent. The adapter is complete and the trajectory grid
 # already matches NAVSIM's, but OpenScene is a 2 Hz dataset and supercombo needs
 # 10 Hz to perceive motion at all (see min_input_hz above), so a score here would
 # measure the rate gap. `paddock run --bench navsim --model openpilot` refuses

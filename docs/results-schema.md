@@ -129,7 +129,7 @@ spelling of an existing one.
 | `ncap_score` | neuroNCAP score, 0–5 |
 | `collision_rate` | fraction of runs with a collision |
 | `impact_speed`, `reference_speed` | m/s, closed-loop collision detail |
-| `pdms`, `epdms` | NAVSIM composite scores |
+| `pdms`, `epdms` | NAVSIM composite scores: v1.1 PDMS (`navsim_v1`) and v2 EPDMS (`navsim`) |
 | `driving_score` | CARLA Leaderboard driving score, 0–100: `route_completion × infraction_penalty` |
 | `route_completion` | % of a closed-loop route driven before it ended |
 | `infraction_penalty` | product of CARLA's per-infraction coefficients, a 0–1 multiplier — **higher is better**, despite the name; `report.py` lists it explicitly |
@@ -171,6 +171,22 @@ a change in the composite can be traced to the term that moved.
 A scenario the scorer could not run (its agent raised) is written with every
 term NaN and `valid=False`; the parser excludes it and the run is marked
 `partial`, `valid=false`. See `docs/benchmarks/navsim.md`.
+
+### NAVSIM v1 (PDMS)
+
+`navsim_v1` scores the same scenes with the v1.1 devkit. Its composite and the
+one term v2 does not have:
+
+| name | what it measures |
+|---|---|
+| `pdms` | NAVSIM v1.1 PDM score, the composite: NC × DAC × (5·TTC + 5·EP + 2·comfort) / 12 |
+| `comfort` | v1's single comfort term: acceleration, jerk and yaw-rate bounds over the re-simulated 4 s trajectory. Not the same number as v2's `history_comfort`, which pads the plan with the recorded past before testing the same bounds |
+
+`no_at_fault_collisions`, `drivable_area_compliance`, `ego_progress`,
+`time_to_collision_within_bound` and `driving_direction_compliance` keep the
+names above. v1.1 computes driving direction compliance with weight zero, so it
+is recorded per scenario but does not enter `pdms`. See
+`docs/benchmarks/navsim_v1.md`.
 
 `valid` is decided by the runner, in one place, from three things: whether
 anything failed, whether the run was a subset (`--limit`), and whatever the

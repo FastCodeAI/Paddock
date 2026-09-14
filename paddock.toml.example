@@ -148,6 +148,21 @@ serialize = true
 #                        # with >1 visionpilot node, also set VISIONPILOT_ORT_THREADS (e.g. "2")
 #                        # under [models.visionpilot.env], or each node claims every core
 
+# [benchmarks.navsim_v1]
+# NAVSIM v1.1 PDMS on the same OpenScene data, scored by the v1 devkit that sits
+# beside navsim_v2 in the Drive-JEPA clone. Same interpreter; the harness puts
+# the devkit first on PYTHONPATH. A metric cache is per devkit generation: build
+# this one with `python -m tools.benchmarks.navsim.build_metric_cache`; the v2
+# cache does not load under v1, and preflight refuses the wrong generation.
+# python       = "/path/to/envs/drive-jepa/bin/python"
+# devkit       = "/path/to/Drive-JEPA/navsim_v1"   # the directory holding navsim/
+# metric_cache = "/path/to/exp/metric_cache_v1"
+# split        = "navtest"
+# workers      = 4
+# chunk_logs   = 4
+# run_retries  = 2
+# nodes        = 4
+
 # [benchmarks.kitscenes]
 # The shared keyframe list every model is scored on. It *is* the benchmark:
 # two models scored on different lists are not comparable.

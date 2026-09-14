@@ -25,11 +25,15 @@ datasets:
       sequences the configured tiers can actually serve.
 
   navsim:
-    description: NAVSIM v2 on OpenScene (a 2 Hz redistribution of nuPlan, not nuScenes) -- EPDMS closed-loop-proxy scoring
+    description: NAVSIM on OpenScene (a 2 Hz redistribution of nuPlan, not nuScenes) -- closed-loop-proxy scoring as v1.1 PDMS (navsim_v1) or v2 EPDMS (navsim)
     requires: [navsim_logs, sensor_blobs, maps]
     notes: >
       Single-stage evaluation (navtest: 136 logs, 12,146 real scenes) needs only
-      the test logs, camera blobs and maps. The two-stage splits that the NAVSIM
+      the test logs, camera blobs and maps. Each devkit generation needs its own
+      metric cache ([benchmarks.navsim] and [benchmarks.navsim_v1] metric_cache
+      in paddock.toml); the pickles are not interchangeable, and
+      tools/benchmarks/navsim/build_metric_cache.py builds either from the logs
+      and maps. The two-stage splits that the NAVSIM
       v2 leaderboard reports (navhard / navsafe two-stage) additionally need
       synthetic_scenes/, a separate download; EPDMS on navtest is the same metric
       on different, easier data and is not comparable to those figures. Training
