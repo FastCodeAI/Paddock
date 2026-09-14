@@ -1,6 +1,6 @@
 # nuScenes val, open loop
 
-`paddock run --bench nuscenes --model <drivejepa|visionpilot|alpamayo15>`
+`paddock run --bench nuscenes --model <drivejepa|visionpilot|alpamayo15|meteor>`
 
 The nuScenes planning protocol that UniAD, VAD and their successors report: on
 every val keyframe, plan 3 s ahead from the real past and compare with what the
