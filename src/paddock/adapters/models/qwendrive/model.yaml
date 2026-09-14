@@ -66,4 +66,4 @@ capabilities:
     - dataset: nvidia-physical-ai
       split: train
 
-benchmarks: [kitscenes, navsim, navsim_v1, neuroncap]
+benchmarks: [kitscenes, nuscenes, navsim, navsim_v1, neuroncap]

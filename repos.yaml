@@ -78,6 +78,11 @@ repos:
     sha: 16d60f0a
     description: Autoware end-to-end model; AWS/Flyte native, not yet evaluated
 
+  METEOR:
+    url: https://github.com/tier4/METEOR.git
+    sha: dc193a81
+    description: TIER IV METEOR surround-view multi-task network with an E2E planning head; run from the released ONNX
+
   Qwen-Drive-1.0:
     url: https://github.com/QwenLM/Qwen-Drive-1.0.git
     sha: 28091c1
