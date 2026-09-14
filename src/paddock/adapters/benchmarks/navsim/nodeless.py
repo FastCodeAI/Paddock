@@ -39,6 +39,7 @@ import sys
 import time
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from pathlib import Path
 
 from paddock.adapters.benchmarks.navsim.convert import load_plans
 from paddock.adapters.benchmarks.navsim.harness import (
@@ -108,19 +109,38 @@ def locate_replay(cfg: SiteConfig, ref: str) -> dict | str:
     if record.get("benchmark") != bench or record.get("model") != model:
         named = f"{record.get('benchmark')}/{record.get('model')}"
         return f"{record_dir / 'run.json'} names {named}, not {bench}/{model}"
-    plans_dir = cfg.runs / bench / model / run_id
-    dumps = sorted(plans_dir.rglob("trajectories.jsonl"))
+    # A run that resumed from an earlier run's completed chunks (`merged_from`
+    # in its config, as an id or an artifacts path) keeps those chunks' plans
+    # in the earlier run's directory. Follow the chain and load oldest first,
+    # so the later run's plan -- the one that was scored -- wins a token.
+    chain: list[Path] = []
+    seen: set[str] = set()
+    current: str | None = run_id
+    config = record.get("config") or {}
+    while current and current not in seen:
+        seen.add(current)
+        chain.append(Path(current) if current.startswith("/") else cfg.runs / bench / model / current)
+        marker = chain[-1] / "run_config.json"
+        current = config.get("merged_from") if len(chain) == 1 else None
+        if current is None and marker.exists():
+            current = (json.loads(marker.read_text()) or {}).get("merged_from")
+    chain.reverse()
+    missing = [str(d) for d in chain if not d.is_dir()]
+    if missing:
+        return f"no artifacts directory for {', '.join(missing)}; the plans cannot be found"
+    dumps = [f for d in chain for f in sorted(d.rglob("trajectories.jsonl"))]
     if not dumps:
-        return f"no trajectories.jsonl under {plans_dir}; that run left no plan dump"
+        return f"no trajectories.jsonl under {', '.join(map(str, chain))}; that run left no plan dump"
     plans = load_plans(dumps)
     if not plans:
         return (
-            f"the plan dumps under {plans_dir} carry no scenario tokens (recorded before the proxy "
+            f"the plan dumps under {chain[-1]} carry no scenario tokens (recorded before the proxy "
             f"labelled its plans), so nothing says which scenario each plan was for; not replayable"
         )
     digest = hashlib.sha256()
     for dump in dumps:
         digest.update(dump.read_bytes())
+    plans_dir = ":".join(str(d) for d in chain)
     score: dict = {}
     metrics_path = record_dir / "metrics.json"
     if metrics_path.exists():
@@ -135,6 +155,7 @@ def locate_replay(cfg: SiteConfig, ref: str) -> dict | str:
         "plans_dir": plans_dir,
         "n_plans": len(plans),
         "plans_sha256": digest.hexdigest()[:16],
+        "sources": [d.name for d in chain],
         "source_score": score,
         "source_valid": bool(record.get("valid")),
         "source_notes": str(record.get("notes") or ""),
@@ -199,7 +220,11 @@ def run(
         config["node"] = None
         if source is not None:
             config["replayed_from"] = source["ref"]
-            config["plans"] = {"n": source["n_plans"], "sha256": source["plans_sha256"]}
+            config["plans"] = {
+                "n": source["n_plans"],
+                "sha256": source["plans_sha256"],
+                "from": source["sources"],
+            }
         if resume:
             run_id = resume
             artifacts = cfg.runs / spec.name / name / run_id

@@ -417,6 +417,35 @@ def test_a_replay_is_stored_under_the_source_model_with_its_provenance(tmp_path:
     assert f"agent={REPLAY_AGENT}" in scorer_log and "agent.plans_dir=" in scorer_log
 
 
+def test_a_replay_follows_a_merged_run_back_to_its_earlier_plans(tmp_path: Path, monkeypatch) -> None:
+    """A run that resumed from an earlier run's chunks keeps those plans in the
+    earlier directory; the replay reads both, older first, and says so."""
+    cfg = _stub_v1_site(tmp_path, monkeypatch, chunk_logs="1")
+    root = _results_root(tmp_path, monkeypatch)
+    _source_run(cfg, root, "navsim", "alpamayo15", "old1", ["log_a-t0", "log_b-t0"])
+    (root / "navsim" / "alpamayo15" / "old1").rename(tmp_path / "old-record-gone")  # only artifacts remain
+    _source_run(cfg, root, "navsim", "alpamayo15", "new1", ["log_b-t0"])
+    record = root / "navsim" / "alpamayo15" / "new1" / "run.json"
+    run = json.loads(record.read_text())
+    run["config"] = {"merged_from": "old1"}
+    record.write_text(json.dumps(run))
+    assert nodeless.run(cfg, "navsim_v1", replay="navsim/alpamayo15/new1", echo=lambda _: None) == 0
+    stored, _ = _only_run(root, "navsim_v1", "alpamayo15")
+    assert stored["config"]["plans"] == {
+        "n": 2,
+        "sha256": stored["config"]["plans"]["sha256"],
+        "from": ["old1", "new1"],
+    }
+    scorer_log = next((cfg.runs / "navsim_v1" / "alpamayo15").rglob("navsim_scorer.log")).read_text()
+    old_dir, new_dir = (
+        cfg.runs / "navsim" / "alpamayo15" / "old1",
+        cfg.runs / "navsim" / "alpamayo15" / "new1",
+    )
+    assert f"agent.plans_dir={old_dir}:{new_dir}" in scorer_log, "older first, so the scored plan wins"
+    located = nodeless.locate_replay(cfg, "navsim/alpamayo15/new1")
+    assert isinstance(located, dict) and located["sources"] == ["old1", "new1"]
+
+
 def test_a_replay_inherits_the_source_runs_validity(tmp_path: Path, monkeypatch) -> None:
     """A source stored valid=false -- a subset, a rate override -- gives a replay
     that is valid=false for the same reason; the plans are that measurement's."""

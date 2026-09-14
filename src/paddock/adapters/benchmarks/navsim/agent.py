@@ -434,7 +434,11 @@ class PaddockReplayAgent(_PaddockAgentBase):
 
     def __init__(self, plans_dir: str, trajectory_sampling: TrajectorySampling | None = None) -> None:
         super().__init__(trajectory_sampling)
-        self._plans = load_plans(sorted(Path(plans_dir).rglob("trajectories.jsonl")))
+        # One directory, or several joined with ':' oldest first: a run that
+        # resumed from an earlier run's chunks has its plans split across both
+        # artifact directories, and the later run's plan is the one scored.
+        dumps = [f for d in plans_dir.split(":") if d for f in sorted(Path(d).rglob("trajectories.jsonl"))]
+        self._plans = load_plans(dumps)
         if not self._plans:
             raise FileNotFoundError(f"no trajectories.jsonl with scenario tokens under {plans_dir}")
 

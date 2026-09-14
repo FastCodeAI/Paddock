@@ -124,7 +124,10 @@ through the runner's own store path. Three uses:
   token-labelling fix dumps its plans with scenario tokens; replaying them under
   this devkit scores exactly the plans that produced the v2 EPDMS, with no GPU.
   Older dumps without tokens are refused, and a replay of a run stored
-  `valid: false` is stored `valid: false` too, with the source's reason.
+  `valid: false` is stored `valid: false` too, with the source's reason. A
+  run that resumed from an earlier run's chunks (`merged_from`) keeps those
+  plans in the earlier run's directory; the replay follows that chain, oldest
+  first, so the plan that was scored wins.
 
 ## Metrics
 
