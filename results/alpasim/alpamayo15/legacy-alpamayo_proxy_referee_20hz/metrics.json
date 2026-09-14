@@ -1,0 +1,87 @@
+{
+  "run_id": "legacy-alpamayo_proxy_referee_20hz",
+  "primary_metric": "scene_score",
+  "n": 10,
+  "metrics": {
+    "scene_score": {
+      "n": 10,
+      "n_missing": 0,
+      "mean": 0.9,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.3
+    },
+    "progress": {
+      "n": 10,
+      "n_missing": 0,
+      "mean": 0.960306,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.072624
+    },
+    "collision_rate": {
+      "n": 10,
+      "n_missing": 0,
+      "mean": 0.1,
+      "median": 0.0,
+      "p90": 0.1,
+      "max": 1.0,
+      "std": 0.3
+    },
+    "collision_at_fault": {
+      "n": 10,
+      "n_missing": 0,
+      "mean": 0.1,
+      "median": 0.0,
+      "p90": 0.1,
+      "max": 1.0,
+      "std": 0.3
+    },
+    "offroad": {
+      "n": 10,
+      "n_missing": 0,
+      "mean": 0.0,
+      "median": 0.0,
+      "p90": 0.0,
+      "max": 0.0,
+      "std": 0.0
+    },
+    "duration_frac_20s": {
+      "n": 10,
+      "n_missing": 0,
+      "mean": 0.74,
+      "median": 0.74,
+      "p90": 0.84,
+      "max": 0.84,
+      "std": 0.0912
+    },
+    "dist_to_gt_trajectory": {
+      "n": 10,
+      "n_missing": 0,
+      "mean": 3.170411,
+      "median": 4.008581,
+      "p90": 4.216427,
+      "max": 4.26209,
+      "std": 1.261589
+    },
+    "open_loop_collision": {
+      "n": 10,
+      "n_missing": 0,
+      "mean": 0.018692,
+      "median": 0.0,
+      "p90": 0.018692,
+      "max": 0.186916,
+      "std": 0.056075
+    }
+  },
+  "by_split": {},
+  "by_group": {
+    "tick_config": {
+      "4cam-20Hz": {
+        "n": 10
+      }
+    }
+  }
+}

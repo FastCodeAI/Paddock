@@ -107,11 +107,11 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 
 | | 🟢 nuScenes cumulative L2 avg ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🟡 NAVSIM v1 PDMS ↑ (0–1) | 🔴 Bench2Drive driving score ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim nuRec scene score ↑ (0–1) | 🔴 AlpaSim (OmniDreams) |
 |---|---|---|---|---|---|---|---|---|
-| OpenPilot | 2.477 △ | 1.599 | 0.747 (10 Hz) ‡ | ✗ 2 Hz ‡ | 30.09 ≈ ◆ | **3.60** ‖ | 0.9566 ¶ | planned |
-| Alpamayo 1.5 | 0.787 △ | 1.002 | 0.691 (10 Hz) † | 0.676 (2 Hz) † | 44.58 ◆ | **3.73** ‖ | 0.8000 ¶ | planned |
-| Drive-JEPA | 0.912 △ | 2.364 | 0.843 | 0.892 † | 31.11 ◆ | **3.57** ‖ | 0.5619 ¶ | planned |
-| VisionPilot | 1.441 △ | 1.534 ∗ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.8864 ¶ | planned |
-| Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | 0.207 † | 47.94 ♣ | 0 § | 0.3562 ¶ | — |
+| OpenPilot | 2.477 △ | 1.599 | 0.747 (10 Hz) ‡ | ✗ 2 Hz ‡ | 30.09 ≈ ◆ | **3.60** ‖ | **0.9566** ◊ | planned |
+| Alpamayo 1.5 | 0.787 △ | 1.002 | 0.691 (10 Hz) † | 0.676 (2 Hz) † | 44.58 ◆ | **3.73** ‖ | 0.9000 ◊◊ | planned |
+| Drive-JEPA | 0.912 △ | 2.364 | 0.843 | 0.892 † | 31.11 ◆ | **3.57** ‖ | 0.5030 ◊ | planned |
+| VisionPilot | 1.441 △ | 1.534 ∗ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.8488 ◊ | planned |
+| Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | 0.207 † | 47.94 ♣ | 0 § | *0.8850* ◊ | — |
 
 ∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
 KITScenes, Paddock constructs sampled XY points from its projected image-space
@@ -186,13 +186,27 @@ Note the discontinuity: **a single run scores either exactly 5, or at most 4** �
 grazing an obstacle at walking pace scores 4, not 4.9. Anything between the two
 is a mean over runs, which is what the model rows above are.
 
-¶ **Preliminary — 10 scenes, one run each, and the results files are not
-stored yet.** AlpaSim runs at whatever camera set and control rate you configure,
-and each model above was run at the rate and camera count it is built for, so
-**the column is four different measurements and its rows do not rank against
-each other.** Each is quoted against the constant-velocity floor *of its own
-configuration* in the AlpaSim table below; the baseline cell here is the 20 Hz
-single-camera floor, one of three. Those floor numbers are being re-checked.
+◊ AlpaSim `scene_score`, `public_2601` first 10 scenes, uuid-pinned, n=10,
+scorer `affc2ea`, under the **shared 20 Hz referee** — one control rate, one
+force-GT duration and one `eval-config.yaml` (md5 `68cf4aaa…`) across every row,
+so the rows differ by the model rather than by the harness. The files are in
+`results/alpasim/` and `paddock report` reads them. **Only OpenPilot clears the
+constant-velocity floor**, by +0.0716. That is a property of the metric as much
+as of the models: `scene_score` saturates at `progress_clipped_rel ≥ 0.8` and
+zeroes a scene only on an at-fault collision or an offroad event, neither of
+which a blind constant velocity commits — it rear-ends things, and a rear-end is
+not at fault. Quote progress beside it (floor 0.8290, OpenPilot 0.9010,
+VisionPilot 0.8202, Drive-JEPA 0.5652). VisionPilot's whole 0.0362 deficit is a
+single at-fault collision; its other nine scenes average 0.9431. Drive-JEPA's
+0.5030 is six early-terminated or hard-gated scenes and four clean 1.0000s.
+Per-row caveats, including the gates VisionPilot's run did not pass, are in
+[docs/benchmarks/alpasim.md](docs/benchmarks/alpasim.md).
+
+◊◊ Alpamayo ran 4 cameras at 20 Hz (`4cam-20Hz`), the other four rows 1 camera
+at 20 Hz. **Different group, not comparable** — and it has no constant-velocity
+floor in its own group, so it cannot be quoted against one. Scene-level variance
+on this model is large enough that no single-rollout mean here should be read to
+four figures.
 
 ### What these models are
 

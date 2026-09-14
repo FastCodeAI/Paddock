@@ -49,7 +49,7 @@ compose = "docker"            # the wizard drives docker compose
 drivers = "{weights}/alpasim-drivers"
 ```
 
-## The two rates are the comparison group
+## The tick config is the comparison group
 
 AlpaSim runs at whatever camera set and control rate you configure, and **those
 choices change what is being measured**, not merely how precisely:
@@ -58,6 +58,15 @@ choices change what is being measured**, not merely how precisely:
 |---|---|---|---|
 | `1cam-2Hz` | 1 forward | 2 Hz | 3,000,000 |
 | `4cam-10Hz` | 4 (front wide, front tele, cross L/R) | 10 Hz | 1,700,000 |
+| `1cam-20Hz` | 1 forward | 20 Hz | 3,000,000 |
+| `4cam-20Hz` | 4 (front wide, front tele, cross L/R) | 20 Hz | 3,000,000 |
+
+The 20 Hz groups are the **shared referee**: one control rate, one force-GT
+duration and one `eval-config.yaml` across every model, so that for the first
+time the rows differ by the model rather than by the harness. How much that
+matters is visible in the floor itself — constant velocity scores 0.3562 at
+20 Hz on the 0.1.0 driver, 0.7411 on 0.2.0 and 0.8850 on 0.2.3, a spread wider
+than the gap between most of the models.
 
 10 Hz control gives a policy five times the opportunities to correct that 2 Hz
 does, and four cameras see what one cannot. **Numbers from different groups are
@@ -186,6 +195,52 @@ errors, so not scene luck. Collisions 1/10 against 5/10; distance travelled
 Note the floor is *harder* at `4cam-10Hz` (0.3791) than at `1cam-2Hz` (0.7025):
 10 Hz control gives constant velocity five times as many chances to leave the
 road before the clip ends.
+
+### `1cam-20Hz` — the shared referee
+
+Four rows on one referee: same control rate, same force-GT duration, same
+`eval-config.yaml` (md5 `68cf4aaa89356e0f6053d76eb4ef2321`, byte-identical
+across all five 20 Hz rows including Alpamayo's).
+
+| model | `scene_score` | sd | progress | passed | failures |
+|---|---|---|---|---|---|
+| OpenPilot supercombo 0.2.0 | **0.9566** | 0.1303 | 0.9010 | 10/10 | — |
+| *constant-velocity floor 0.2.3* | *0.8850* | *0.2312* | *0.8290* | *10/10* | *—* |
+| VisionPilot v2 2.0.0 | 0.8488 | 0.3170 | 0.8202 | 9/10 | at-fault 1 |
+| Drive-JEPA 0.1.4 | 0.5030 | 0.4306 | 0.5652 | 7/10 | at-fault 2, offroad 1 |
+
+**Only OpenPilot clears the floor**, by +0.0716. This is the finding, not a
+measurement artefact: `scene_score` saturates at `progress_clipped_rel ≥ 0.8`
+and zeroes only on `collision_at_fault` or `offroad`, so a blind constant
+velocity that never commits either scores 1.0 on 8 of 10 scenes. Progress
+separates what the score cannot — floor 0.8290 against OpenPilot's 0.9010.
+
+Two rows need their caveat quoted with the number:
+
+- **VisionPilot** finishes 0.0362 below the floor and **the entire deficit is
+  one at-fault collision** on `048b974e`; the other nine scenes average 0.9431.
+  Its `set_speed` is the human clip's mean speed, handed to it per scene — the
+  model does not choose its own cruising speed here. Its own `smoke_gates.json`
+  reads `ok: false` on 3 of 12 gates (two Prometheus ports, two that look like
+  gate-side indexing); none touch the referee pins, which were read from the
+  resolved config and are on-pin.
+- **Drive-JEPA**'s 0.5030 is a mean over six early-terminated or hard-gated
+  scenes and four full-distance runs that all scored 1.0000. It is a pattern —
+  it wins 1, ties 3 and loses 6 against the floor — not one bad scene.
+
+### `4cam-20Hz`
+
+| model | `scene_score` | sd | progress | passed | failures |
+|---|---|---|---|---|---|
+| Alpamayo 1.5 (10B), via the referee proxy | **0.9000** | 0.3000 | 0.9603 | 9/10 | at-fault 1 |
+
+Alpamayo has no constant-velocity floor in its own group at 20 Hz, so it cannot
+be quoted against one; the `1cam-20Hz` floor is a different measurement and is
+not a substitute. Its environment is verified identical to the reference rows'
+(`pip freeze` 300/300 packages, image `8a69f005`) and all 25 smoke gates pass on
+all ten scenes. Scene-level variance on this model is large — `04749bb9` has
+produced 0.0, 0.9148 and 1.0 across identical environments — so neither this
+mean nor any other single-rollout mean here should be read to four figures.
 
 ## Reproducing this
 

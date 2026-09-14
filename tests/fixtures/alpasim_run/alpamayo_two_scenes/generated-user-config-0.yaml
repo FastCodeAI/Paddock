@@ -1,0 +1,14 @@
+endpoints:
+  driver:
+    n_concurrent_rollouts: 1
+rollout:
+  n_sim_steps: 200
+  force_gt_duration_us: 1700000
+controller:
+  control_timestep_us: 100000
+rig:
+  cameras:
+    - logical_id: camera_front_wide_120fov
+    - logical_id: camera_front_tele_30fov
+    - logical_id: camera_cross_left_120fov
+    - logical_id: camera_cross_right_120fov
