@@ -1,9 +1,12 @@
 """Ingest NAVSIM PDMS / EPDMS results from a hydra run directory.
 
-The CSV carries one row per scenario token plus **three aggregate rows** whose
-token column holds a label rather than a token: `average_all_frames`,
-`pseudo_closed_loop` and `average_expert_frames`. Treating those as scenarios
-skews the mean, so they are pulled out and kept as run-level context.
+The CSV carries one row per scenario token plus **aggregate rows** whose token
+column holds a label rather than a token: `average_all_frames`,
+`pseudo_closed_loop` and `average_expert_frames` from the v2 devkit, a single
+`average` from v1. Treating those as scenarios skews the mean, so they are
+pulled out and kept as run-level context. Which labels, which sub-metrics and
+what the `score` column is called are one devkit generation's vocabulary
+(`ScoreVocabulary` below); one parser serves both so they cannot drift.
 
 Two things about this file that cost time to work out, recorded so nobody has
 to work them out again:
@@ -31,6 +34,7 @@ to work them out again:
 from __future__ import annotations
 
 import csv
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -55,8 +59,50 @@ SUB_METRICS = (
 )
 
 
+@dataclass(frozen=True)
+class ScoreVocabulary:
+    """What one devkit generation's score CSV calls things.
+
+    The columns are the devkit's, not paddock's: v1.1 writes PDMS with six terms
+    and one `average` row; v2 writes EPDMS with nine terms and three aggregate
+    rows. One parser serves both, so the difference is data, not a second parser.
+    """
+
+    #: Canonical name for the CSV's `score` column (docs/results-schema.md).
+    score_metric: str
+    sub_metrics: tuple[str, ...]
+    #: Rows whose `token` is a label, not a scenario.
+    aggregate_tokens: frozenset[str]
+
+
+#: navsim v2 `run_pdm_score_sequential.py`: EPDMS.
+EPDMS = ScoreVocabulary("epdms", SUB_METRICS, frozenset(AGGREGATE_TOKENS))
+
+#: navsim v1.1 `run_pdm_score.py`: PDMS = NC x DAC x (5 TTC + 5 EP + 2 C + 0 DDC) / 12.
+#: `comfort` is v1's single comfort term, kept under the scorer's own name: v2's
+#: `history_comfort` is computed over a different window and is not the same
+#: number. Its one aggregate row is `average`, whose `valid` is the AND of every
+#: row's -- False after a single failed scenario -- which is why aggregate rows
+#: are identified by token before `valid` is read.
+PDMS = ScoreVocabulary(
+    "pdms",
+    (
+        "no_at_fault_collisions",
+        "drivable_area_compliance",
+        "ego_progress",
+        "time_to_collision_within_bound",
+        "comfort",
+        "driving_direction_compliance",
+    ),
+    frozenset({"average"}),
+)
+
+
 def parse_scores(
-    csv_path: Path, split: str = "navtest"
+    csv_path: Path,
+    split: str = "navtest",
+    vocabulary: ScoreVocabulary = EPDMS,
+    benchmark: str = "navsim",
 ) -> tuple[list[dict[str, Any]], dict[str, dict[str, float]], list[str]]:
     """A NAVSIM score CSV -> `(samples, aggregates, failed_tokens)`.
 
@@ -73,6 +119,10 @@ def parse_scores(
     sample with no metrics at all -- counted toward n, invisible as a failure,
     the run reading as complete. Those tokens come back separately so the
     caller marks the run rather than the mean.
+
+    `vocabulary` names the devkit generation that wrote the CSV -- `EPDMS` (v2,
+    the default) or `PDMS` (v1); `benchmark` prefixes the sample ids, as every
+    other benchmark's are.
     """
     rows = list(csv.DictReader(csv_path.read_text().splitlines()))
     samples: list[dict[str, Any]] = []
@@ -83,7 +133,8 @@ def parse_scores(
         token = (row.get("token") or "").strip()
         if not token:
             continue
-        if token not in AGGREGATE_TOKENS and (row.get("valid") or "").strip().lower() == "false":
+        aggregate = token in vocabulary.aggregate_tokens
+        if not aggregate and (row.get("valid") or "").strip().lower() == "false":
             failed.append(token)
             continue
         # Empty cells are real: two_frame_extended_comfort has none for a log's
@@ -91,16 +142,16 @@ def parse_scores(
         # which would read as "maximally uncomfortable" instead of "not measurable".
         values = {
             name: float(row[name])
-            for name in (*SUB_METRICS, "score")
+            for name in (*vocabulary.sub_metrics, "score")
             if (row.get(name) or "").strip() not in ("", "None")
         }
-        if token in AGGREGATE_TOKENS:
+        if aggregate:
             aggregates[token] = values
             continue
-        metrics = {("epdms" if k == "score" else k): v for k, v in values.items()}
+        metrics = {(vocabulary.score_metric if k == "score" else k): v for k, v in values.items()}
         samples.append(
             {
-                "sample_id": f"navsim/{split}/{token}",
+                "sample_id": f"{benchmark}/{split}/{token}",
                 "native_id": {"token": token},
                 "split": split,
                 "metrics": metrics,

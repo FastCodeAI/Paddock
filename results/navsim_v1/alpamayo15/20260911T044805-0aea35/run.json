@@ -1,0 +1,39 @@
+{
+  "run_id": "20260911T044805-0aea35",
+  "site": "fastcode-shakaal",
+  "benchmark": "navsim_v1",
+  "model": "alpamayo15",
+  "mode": "open_loop",
+  "started_utc": "2026-09-11T04:48:05+00:00",
+  "duration_s": 1775.2,
+  "repo_sha": null,
+  "dataset": {
+    "name": "navsim",
+    "split": "navtest",
+    "n_samples": 12146,
+    "sequences_sha256": "013e89176339021d",
+    "n_failed": 0,
+    "n_unscored": 0,
+    "n_expected": 12146
+  },
+  "config": {
+    "limit": null,
+    "cameras": [],
+    "split": "navtest",
+    "agent": "paddock_replay",
+    "allow_partial": false,
+    "allow_slow": false,
+    "overrides": [],
+    "node": null,
+    "replayed_from": "navsim/alpamayo15/20260903T183818-5879c1",
+    "plans": {
+      "n": 12146,
+      "sha256": "3a1171958b490fc3"
+    }
+  },
+  "hardware": {},
+  "status": "complete",
+  "valid": true,
+  "notes": "no model process ran: 12146 plans replayed from navsim/alpamayo15/20260903T183818-5879c1 (that run: epdms 0.6081); the same plans, this benchmark's scorer",
+  "ingested_from": ""
+}

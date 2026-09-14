@@ -33,18 +33,25 @@ Site settings, `[benchmarks.navsim]` in paddock.toml:
     metric_cache   prebuilt metric cache; `run_metric_caching.py` builds one
     split          train_test_split name, default navtest
     workers        scorer worker processes, default 4
+
+`adapters/benchmarks/navsim_v1/harness.py` subclasses `NavsimBenchmark` for the
+v1 devkit and PDMS. The knobs that differ between devkit generations -- the
+scorer script, the hydra conf directory, the score vocabulary, the smoke floor,
+the version the devkit must declare -- are class attributes for that reason.
 """
 
 from __future__ import annotations
 
 import csv
 import os
+import re
 import shutil
 import signal
 import subprocess
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Collection
 from pathlib import Path
 from typing import Any
 
@@ -94,12 +101,16 @@ def completed_chunk_csv(chunk_dir: Path) -> Path | None:
     return csvs[-1] if csvs else None
 
 
-def merge_chunk_csvs(csv_paths: list[Path], out_path: Path) -> Path:
+def merge_chunk_csvs(
+    csv_paths: list[Path],
+    out_path: Path,
+    aggregate_tokens: Collection[str] = navsim_ingest.EPDMS.aggregate_tokens,
+) -> Path:
     """Concatenate per-chunk score CSVs into one the parser already understands.
 
     Each chunk's CSV carries its own aggregate rows (average_all_frames and
-    friends), which mean nothing across chunks and are dropped; paddock
-    recomputes aggregates from per-sample records anyway.
+    friends in v2, `average` in v1), which mean nothing across chunks and are
+    dropped; paddock recomputes aggregates from per-sample records anyway.
     """
     header: list[str] | None = None
     rows: dict[str, dict[str, str]] = {}
@@ -110,7 +121,7 @@ def merge_chunk_csvs(csv_paths: list[Path], out_path: Path) -> Path:
                 header = list(reader.fieldnames or [])
             for row in reader:
                 token = (row.get("token") or "").strip()
-                if token in navsim_ingest.AGGREGATE_TOKENS:
+                if token in aggregate_tokens:
                     continue
                 # A token scored twice -- once failed, once by the retry pass --
                 # keeps the scored row. A failed row never overwrites a scored one.
@@ -126,6 +137,11 @@ def merge_chunk_csvs(csv_paths: list[Path], out_path: Path) -> Path:
 
 
 PROXY_AGENT = "paddock_proxy"
+#: The agents that need no policy node (nodeless.py). Each is a yaml under
+#: every NAVSIM conf/agent/ directory; the names are the hydra group entries.
+CONSTANT_VELOCITY_AGENT = "paddock_constant_velocity"
+HUMAN_AGENT = "paddock_human"
+REPLAY_AGENT = "paddock_replay"
 
 #: Where the devkit keeps each train_test_split's own config. `data_split:`
 #: in there says which OpenScene split the scorer reads; preflight needs it
@@ -178,18 +194,44 @@ def input_rate_problems(min_input_hz: float, model_name: str) -> list[str]:
     return []
 
 
-def limit_problems(limit: int | None) -> list[str]:
-    """Why a `--limit` below NAVSIM's floor cannot be scored at all."""
-    if limit is not None and limit < MIN_SCENARIOS:
-        return [
-            f"--limit {limit} is below NAVSIM's floor of {MIN_SCENARIOS}: two-frame extended "
-            f"comfort compares consecutive frames, so one scenario has nothing to pair with "
-            f"and the scorer fails in its own aggregation. Use --limit {MIN_SCENARIOS} or more."
-        ]
+def limit_problems(limit: int | None, floor: int = MIN_SCENARIOS) -> list[str]:
+    """Why a `--limit` below the scorer's floor cannot be scored at all.
+
+    The default floor is the v2 devkit's two-frame pairing; a devkit without
+    that term (v1) passes its own floor of one.
+    """
+    if limit is not None and limit < floor:
+        why = (
+            "two-frame extended comfort compares consecutive frames, so one scenario has "
+            "nothing to pair with and the scorer fails in its own aggregation"
+            if floor >= 2
+            else "the scorer needs a scenario to score"
+        )
+        return [f"--limit {limit} is below NAVSIM's floor of {floor}: {why}. Use --limit {floor} or more."]
     return []
 
 
 class NavsimBenchmark(ExternallyScoredBenchmark):
+    """NAVSIM v2 EPDMS. The class attributes are what a devkit generation
+    changes; `navsim_v1/harness.py` overrides them and nothing else."""
+
+    #: Scorer script, relative to the devkit root.
+    SCORER = SCORER
+    #: Hydra config directory holding paddock's agent group entries.
+    CONF_DIR = CONF_DIR
+    #: The agent group a comparable run -- a model behind a node -- uses.
+    PROXY_AGENT = PROXY_AGENT
+    #: Fewest scenarios the scorer can aggregate.
+    MIN_SCENARIOS = MIN_SCENARIOS
+    #: What the scorer's CSV calls its columns and aggregate rows.
+    VOCABULARY = navsim_ingest.EPDMS
+    #: Where refusal messages send people.
+    DOC = "docs/benchmarks/navsim.md"
+    #: Major version the devkit's setup.py must declare. Both generations ship a
+    #: `run_pdm_score.py`, so the scorer path passing proves little, and a v2
+    #: tree scored under a PDMS label would look exactly like a result.
+    DEVKIT_MAJOR = "2"
+
     # -- site settings: `self.setting(key)` / `self.settings` from the base -----
 
     @property
@@ -218,34 +260,31 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
             for line in path.read_text().splitlines():
                 if line.startswith("data_split:"):
                     return line.split(":", 1)[1].strip()
-        raise RuntimeError(
-            f"cannot read data_split for train_test_split {self.split!r}: "
-            f"{path if path is not None else '[benchmarks.navsim] devkit is not set'}"
-        )
+        where = path if path is not None else f"[benchmarks.{self.spec.name}] devkit is not set"
+        raise RuntimeError(f"cannot read data_split for train_test_split {self.split!r}: {where}")
 
     # -- preflight --------------------------------------------------------
 
     def preflight(self) -> list[str]:
         problems: list[str] = []
+        section = f"[benchmarks.{self.spec.name}]"
 
         if self.settings is None:
-            return [
-                "paddock.toml has no [benchmarks.navsim] section\n"
-                "see docs/benchmarks/navsim.md for the four keys it needs"
-            ]
+            return [f"paddock.toml has no {section} section\nsee {self.DOC} for the keys it needs"]
 
         interpreter = self.setting("python")
         if not interpreter:
-            problems.append("[benchmarks.navsim] python is not set")
+            problems.append(f"{section} python is not set")
         elif not Path(interpreter).exists():
-            problems.append(f"[benchmarks.navsim] python does not exist: {interpreter}")
+            problems.append(f"{section} python does not exist: {interpreter}")
 
         devkit = self.devkit
         if devkit is None:
-            problems.append("[benchmarks.navsim] devkit is not set")
-        elif not (devkit / SCORER).exists():
-            problems.append(f"no NAVSIM scorer at {devkit / SCORER}; is 'devkit' the devkit root?")
+            problems.append(f"{section} devkit is not set")
+        elif not (devkit / self.SCORER).exists():
+            problems.append(f"no NAVSIM scorer at {devkit / self.SCORER}; is 'devkit' the devkit root?")
         else:
+            problems.extend(self._devkit_problems(devkit))
             try:
                 _ = self.data_split
             except RuntimeError as exc:
@@ -255,7 +294,7 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
 
         dataset = self.dataset
         if dataset is None:
-            problems.append("paddock.toml has no [datasets.navsim]; see docs/data-setup.md")
+            problems.append(f"paddock.toml has no [datasets.{self.spec.dataset}]; see docs/data-setup.md")
             return problems
 
         root = dataset.resolve()
@@ -264,20 +303,88 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
                 problems.append(f"navsim dataset is missing {required}/ under {root}")
 
         if "exp" not in dataset.extra:
-            problems.append("[datasets.navsim] has no 'exp' key (the NAVSIM experiment root)")
+            problems.append(f"[datasets.{self.spec.dataset}] has no 'exp' key (the NAVSIM experiment root)")
 
         cache = self.setting("metric_cache")
         if not cache:
-            problems.append("[benchmarks.navsim] metric_cache is not set")
+            problems.append(f"{section} metric_cache is not set")
         elif not Path(cache).is_dir():
             problems.append(
                 f"metric cache not found at {cache}\n"
                 f"build one with the devkit's run_metric_caching.py, or download the "
                 f"vendor's; a scenario with no cache entry is silently skipped"
             )
+        elif not self._cache_csvs(Path(cache)):
+            problems.append(
+                f"metric cache at {cache} has no metadata/*.csv: run_metric_caching.py writes it "
+                f"last, so the build did not finish. Re-run it; it skips scenarios already cached"
+            )
 
         problems.extend(self._coverage_warnings(root, cache))
         return problems
+
+    def _devkit_problems(self, devkit: Path) -> list[str]:
+        """Is this the devkit generation this benchmark scores with, patched as needed?
+
+        `setup.py` declares the version; a tree without one (the tests' stand-ins)
+        gets no opinion. The proxy also needs `Camera.camera_path`, which the v1
+        devkit only has with paddock's patch applied -- without it every scenario
+        fails at run time and the run ends as "no scenarios scored", hours later,
+        rather than as a refusal here.
+        """
+        problems: list[str] = []
+        setup = devkit / "setup.py"
+        if setup.exists():
+            match = re.search(r"""version\s*=\s*["'](\d+)(?:\.\d+)*["']""", setup.read_text(errors="replace"))
+            if match and match.group(1) != self.DEVKIT_MAJOR:
+                problems.append(
+                    f"devkit at {devkit} declares navsim {match.group(1)}.x; [benchmarks.{self.spec.name}] "
+                    f"needs a v{self.DEVKIT_MAJOR} devkit (see {self.DOC})"
+                )
+        dataclasses = devkit / "navsim" / "common" / "dataclasses.py"
+        if dataclasses.exists() and "camera_path" not in dataclasses.read_text(errors="replace"):
+            problems.append(
+                f"{dataclasses} has no Camera.camera_path, which the proxy needs to ship image paths; "
+                f"apply the patches repos.yaml lists for this devkit's repo (patches/README.md)"
+            )
+        return problems
+
+    @staticmethod
+    def _cache_csvs(cache: Path) -> list[Path]:
+        """The metric cache's metadata csv(s). The scorer reads the cache through
+        the first of these alone -- not the directory tree -- so a cache without
+        one, or with a stale one, scores nothing or a subset."""
+        metadata = cache / "metadata"
+        return sorted(metadata.glob("*.csv")) if metadata.is_dir() else []
+
+    def _cache_index(self) -> dict[str, str]:
+        """token -> log name, from the metric cache's metadata csv; empty when absent.
+
+        Rows are `<cache>/<log>/<scenario type>/<token>/metric_cache.pkl`, the
+        same lines the devkit's MetricCacheLoader reads.
+        """
+        csvs = self._cache_csvs(Path(self.setting("metric_cache") or ""))
+        if not csvs:
+            return {}
+        index: dict[str, str] = {}
+        for line in csvs[0].read_text(errors="replace").splitlines()[1:]:
+            parts = Path(line.strip()).parts
+            if len(parts) >= 4:
+                index[parts[-2]] = parts[-4]
+        return index
+
+    def _cache_coverage(self) -> tuple[int, int] | None:
+        """`(listed, declared)`: how many of the split's declared scenarios the
+        cache's metadata csv lists. None when either side is unknown -- a split
+        whose scene filter names no tokens has no opinion, and a missing csv is
+        preflight's to report."""
+        declared = self._declared_tokens()
+        if not declared:
+            return None
+        index = self._cache_index()
+        if not index:
+            return None
+        return len(declared & set(index)), len(declared)
 
     def _coverage(self) -> tuple[set[str], set[str]] | str | None:
         """`(scorable, cached)` log sets for this split; a string naming why they
@@ -334,16 +441,26 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
                 f"partial coverage: {len(scorable)} of {len(cached)} {self.split} logs have sensor "
                 f"blobs, so this run scores a subset, not {self.split}.\n"
                 f"the missing blobs are the openscene_sensor_{self.data_split}_camera shards; "
-                f"see docs/benchmarks/navsim.md. Set {ENV_ALLOW_PARTIAL}=1 to run anyway "
+                f"see {self.DOC}. Set {ENV_ALLOW_PARTIAL}=1 to run anyway "
                 f"-- the result is then stored valid=false, as a subset not comparable with a full run."
+            ]
+        listed = self._cache_coverage()
+        if listed is not None and listed[0] < listed[1]:
+            # The scorer scores what the cache's csv lists, not what the split
+            # declares: an interrupted or smaller build gives a subset under the
+            # split's name, and nothing later in the run would say so.
+            return [
+                f"partial metric cache: its metadata csv lists {listed[0]} of the {listed[1]} scenarios "
+                f"{self.split} declares, so this run scores a subset, not {self.split}.\n"
+                f"re-run run_metric_caching.py (it skips scenarios already cached) or set "
+                f"{ENV_ALLOW_PARTIAL}=1 to run anyway -- the result is then stored valid=false."
             ]
         return []
 
     # -- what a run under the current switches measures --------------------
 
-    @staticmethod
-    def _agent() -> str:
-        return os.environ.get(ENV_AGENT, PROXY_AGENT)
+    def _agent(self) -> str:
+        return os.environ.get(ENV_AGENT, self.PROXY_AGENT)
 
     @staticmethod
     def _overrides() -> list[str]:
@@ -361,12 +478,24 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
 
     def invalid_reasons(self) -> list[str]:
         """Why a run under the current switches cannot be ranked with the others."""
-        reasons: list[str] = []
-        if self._agent() != PROXY_AGENT:
-            reasons.append(
+        return self.agent_reasons() + self.switch_reasons()
+
+    def agent_reasons(self) -> list[str]:
+        """The agent switch alone: through the runner, any agent but the proxy
+        means the plans did not come from the model whose name the run carries."""
+        if self._agent() != self.PROXY_AGENT:
+            return [
                 f"scored with the vendor's native agent {self._agent()!r}, not the paddock proxy; "
-                f"not comparable with proxy runs (docs/benchmarks/navsim.md)"
-            )
+                f"not comparable with proxy runs ({self.DOC})"
+            ]
+        return []
+
+    def switch_reasons(self) -> list[str]:
+        """The measurement switches other than the agent. Apart from the agent
+        reason so that a run with no node by design -- the constant-velocity
+        baseline, a replay of recorded plans (nodeless.py) -- is judged on these
+        alone and states its own provenance."""
+        reasons: list[str] = []
         if os.environ.get(ENV_ALLOW_SLOW):
             reasons.append(f"{ENV_ALLOW_SLOW}: a model below NAVSIM's input rate was run anyway")
         if os.environ.get(ENV_ALLOW_PARTIAL):
@@ -377,10 +506,18 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
                     f"{ENV_ALLOW_PARTIAL}: {len(scorable)} of {len(cached)} {self.split} logs "
                     f"have sensor blobs; a subset, not {self.split}"
                 )
+            listed = self._cache_coverage()
+            if listed is not None and listed[0] < listed[1]:
+                reasons.append(
+                    f"{ENV_ALLOW_PARTIAL}: the metric cache lists {listed[0]} of the {listed[1]} "
+                    f"scenarios {self.split} declares; a subset, not {self.split}"
+                )
         return reasons
 
     def model_problems(self, model, limit: int | None = None) -> list[str]:
-        return input_rate_problems(float(model.min_input_hz or 0.0), model.name) + limit_problems(limit)
+        return input_rate_problems(float(model.min_input_hz or 0.0), model.name) + limit_problems(
+            limit, self.MIN_SCENARIOS
+        )
 
     # -- the run ----------------------------------------------------------
 
@@ -411,12 +548,12 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
             return 1
         return max(1, wanted)
 
-    def _declared_logs(self) -> set[str] | None:
-        """The logs this split declares, read from the devkit's own scene filter.
+    def _scene_filter_value(self, key: str) -> list | None:
+        """One list from the devkit's own scene filter for this split.
 
-        None when it cannot be read -- no devkit, no file, no `log_names`, a
-        yaml error -- and the caller reports that, rather than falling back to
-        a directory count that is known to be wrong by one.
+        None when it cannot be read -- no devkit, no file, no such key, a yaml
+        error -- and the caller reports that, rather than falling back to a
+        directory count that is known to be wrong by one.
         """
         devkit = self.devkit
         if devkit is None:
@@ -427,10 +564,21 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         try:
             import yaml
 
-            names = yaml.safe_load(path.read_text()).get("log_names")
+            value = yaml.safe_load(path.read_text()).get(key)
         except Exception:  # noqa: BLE001 - a preflight helper must not raise; None is the report
             return None
+        return list(value) if value else None
+
+    def _declared_logs(self) -> set[str] | None:
+        """The logs this split declares."""
+        names = self._scene_filter_value("log_names")
         return set(names) if names else None
+
+    def _declared_tokens(self) -> set[str] | None:
+        """The scenario tokens this split declares; navtest names all 12,146,
+        a training split may name none."""
+        tokens = self._scene_filter_value("tokens")
+        return set(tokens) if tokens else None
 
     def _environment(self, root: Path, exp: Path) -> dict[str, str]:
         devkit = self.devkit
@@ -444,12 +592,17 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
                 "NUPLAN_MAP_VERSION": "nuplan-maps-v1.0",
             }
         )
-        # The proxy agent is imported inside the devkit's interpreter, where
-        # paddock is not installed. It imports nothing from paddock, but hydra
-        # still has to find the module by its dotted path.
+        # The devkit root goes first: the interpreter's `navsim` may be an
+        # editable install of the *other* generation (a .pth naming navsim_v2,
+        # which site.py appends after site-packages), and PYTHONPATH decides
+        # which tree `import navsim` -- and hydra's pkg://navsim searchpath --
+        # resolves to. For the generation that is installed, nothing changes.
+        # Then paddock's src: the proxy agent is imported inside the devkit's
+        # interpreter, where paddock is not installed, and hydra has to find
+        # the module by its dotted path.
         src = str(Path(__file__).resolve().parents[4])
         existing = env.get("PYTHONPATH", "")
-        env["PYTHONPATH"] = f"{src}:{existing}" if existing else src
+        env["PYTHONPATH"] = ":".join([str(devkit), src] + ([existing] if existing else []))
         return env
 
     def _command(
@@ -468,8 +621,8 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         command = [
             str(self.setting("python")),
             "-u",
-            str(self.devkit / SCORER),
-            f"hydra.searchpath=[pkg://navsim.planning.script.config.common,file://{CONF_DIR}]",
+            str(self.devkit / self.SCORER),
+            f"hydra.searchpath=[pkg://navsim.planning.script.config.common,file://{self.CONF_DIR}]",
             f"train_test_split={self.split}",
             f"agent={agent}",
             "worker=single_machine_thread_pool",
@@ -481,7 +634,7 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
             # this run's artifacts instead of in NAVSIM's own experiment tree.
             f"output_dir={out_dir}",
         ]
-        if agent == PROXY_AGENT:
+        if agent == self.PROXY_AGENT:
             urls = list(config.get("policy_urls") or [policy_url])
             command += [
                 f"agent.node_url={policy_url}",
@@ -490,6 +643,11 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
                 f"agent.sensor_blobs_path={root / 'sensor_blobs' / self.data_split}",
                 f"agent.dump_path={out_dir / 'trajectories.jsonl'}",
             ]
+        if agent == REPLAY_AGENT and config.get("plans_dir"):
+            # The run being replayed, by artifacts directory. Passed on the
+            # command line rather than through PADDOCK_NAVSIM_OVERRIDES so the
+            # tracked run.json records the run's id, not a machine path.
+            command.append(f"agent.plans_dir={config['plans_dir']}")
         if limit:
             command.append(f"train_test_split.scene_filter.max_scenes={limit}")
         if log_names:
@@ -535,17 +693,22 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
             )
         return csv_path
 
-    @staticmethod
-    def _logs_of(merged_csv: Path, tokens: list[str]) -> list[str]:
-        """The logs a set of tokens belong to, read from the scored CSV, so the
-        retry pass loads only those logs' metadata."""
+    def _logs_of(self, merged_csv: Path, tokens: list[str]) -> list[str]:
+        """The logs a set of tokens belong to, so the retry pass loads only those
+        logs' metadata. From the scored CSV when it has a `log_name` column,
+        otherwise from the metric cache's metadata csv; the alternative is the
+        scorer opening every log pickle in the split to find a handful of tokens."""
         wanted = set(tokens)
         logs: set[str] = set()
         with merged_csv.open() as handle:
-            for row in csv.DictReader(handle):
-                if (row.get("token") or "").strip() in wanted and row.get("log_name"):
-                    logs.add(row["log_name"].strip())
-        return sorted(logs)
+            reader = csv.DictReader(handle)
+            if "log_name" in (reader.fieldnames or []):
+                for row in reader:
+                    if (row.get("token") or "").strip() in wanted and row.get("log_name"):
+                        logs.add(row["log_name"].strip())
+                return sorted(logs)
+        index = self._cache_index()
+        return sorted({index[token] for token in wanted if token in index})
 
     def _scorable_logs(self) -> list[str]:
         """The split's logs this site can score, in a fixed order.
@@ -578,6 +741,15 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
                 total += sum(1 for path in log_dir.glob("*/*") if path.is_dir())
         return total
 
+    def _merge(self, csvs: list[Path], out_dir: Path) -> Path:
+        return merge_chunk_csvs(csvs, out_dir / "scores.csv", self.VOCABULARY.aggregate_tokens)
+
+    def _parse(self, merged: Path):
+        """The scorer's CSV through the shared parser, in this devkit's vocabulary."""
+        return navsim_ingest.parse_scores(
+            merged, split=self.split, vocabulary=self.VOCABULARY, benchmark=self.spec.name
+        )
+
     def evaluate(
         self,
         policy_url: str,
@@ -590,7 +762,7 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         # caller that skips the runner is refused the same way.
         problems = input_rate_problems(
             float(config.get("min_input_hz") or 0.0), str(config.get("model", "this model"))
-        ) + limit_problems(limit)
+        ) + limit_problems(limit, self.MIN_SCENARIOS)
         if problems:
             raise RuntimeError("\n".join(problems))
 
@@ -655,7 +827,7 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
                     )
                     log.write(f"chunk {index:03d}: FAILED -- {str(exc).splitlines()[0]}\n")
                     log.flush()
-                    if not node_alive(policy_url):
+                    if self._agent() == self.PROXY_AGENT and not node_alive(policy_url):
                         # Every remaining chunk would fail the same way. Hand the
                         # run back to the runner, which restarts the nodes and
                         # re-invokes us; the chunks that completed are reused.
@@ -667,8 +839,8 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
 
         if not csvs:
             raise RuntimeError(f"every chunk failed; nothing scored. See {summary} and {out_dir / 'chunks'}")
-        merged = merge_chunk_csvs(csvs, out_dir / "scores.csv") if size > 0 else csvs[-1]
-        samples, aggregates, failed = navsim_ingest.parse_scores(merged, split=self.split)
+        merged = self._merge(csvs, out_dir) if size > 0 else csvs[-1]
+        samples, aggregates, failed = self._parse(merged)
 
         # Scenarios the model failed on inside a chunk that otherwise completed
         # get one more pass of their own, by token. For an unseeded sampler that
@@ -687,8 +859,8 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
                         exp,
                     )
                 )
-                merged = merge_chunk_csvs(csvs, out_dir / "scores.csv")
-                samples, aggregates, failed = navsim_ingest.parse_scores(merged, split=self.split)
+                merged = self._merge(csvs, out_dir)
+                samples, aggregates, failed = self._parse(merged)
             except RuntimeError as exc:
                 echo(f"  retry pass FAILED ({str(exc).splitlines()[0]}); the {len(failed)} stay excluded")
         # The scorer's own headline is per invocation and means nothing across

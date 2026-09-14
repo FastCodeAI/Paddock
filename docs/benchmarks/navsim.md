@@ -14,7 +14,9 @@ records it as `mode: open_loop`, alongside KITScenes.
 Four things a reader should not have to infer, stated once:
 
 - **Devkit: NAVSIM v2** (`Drive-JEPA/navsim_v2`, `[benchmarks.navsim] devkit`).
-  A v1 devkit sits beside it in the same checkout and is not used.
+  The v1 devkit beside it in the same checkout is driven by the `navsim_v1`
+  benchmark ([navsim_v1.md](navsim_v1.md)), which subclasses this adapter's
+  harness and proxy and scores the same scenes as v1.1 PDMS.
 - **Split: `navtest`** — 136 logs, 12,146 real recorded scenes, single stage.
   Set by `[benchmarks.navsim] split`; the harness also knows
   `navtest_two_stage`, `navmini` and `navtrain`.

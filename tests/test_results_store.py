@@ -71,6 +71,30 @@ def _sample(metric: float, split: str = "val", group: str = "") -> dict:
     return {"sample_id": f"s{metric}", "split": split, "group": group, "metrics": {"l2": metric}}
 
 
+REPLAYS = [p for p in RUNS if (json.loads(p.read_text()).get("config") or {}).get("replayed_from")]
+
+
+@pytest.mark.parametrize("run_json", REPLAYS, ids=lambda p: str(p.parent.relative_to(RESULTS_ROOT)))
+def test_a_replay_names_a_source_run_that_is_in_the_store(run_json: Path) -> None:
+    """A replay scored plans another recorded run produced. Its `replayed_from`
+    is the provenance a reader follows to find what made them, so the source
+    has to be in the store, under the model the replay is filed under -- not in
+    another branch, and not only in an artifacts directory somewhere."""
+    rel = run_json.parent.relative_to(RESULTS_ROOT)
+    run = json.loads(run_json.read_text())
+    ref = run["config"]["replayed_from"]
+    source = RESULTS_ROOT / ref / "run.json"
+    assert source.exists(), f"{rel}: replayed from {ref}, which is not in results/"
+    src = json.loads(source.read_text())
+    bench, model, _ = ref.split("/")
+    assert (src["benchmark"], src["model"]) == (bench, model), (
+        f"{rel}: {ref} names {src['benchmark']}/{src['model']}"
+    )
+    assert src["model"] == run["model"], (
+        f"{rel}: filed under {run['model']} but replays {src['model']}'s plans"
+    )
+
+
 def test_by_group_aggregates_each_group_separately() -> None:
     record = MetricsRecord.from_samples(
         "r",
