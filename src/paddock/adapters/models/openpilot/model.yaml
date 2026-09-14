@@ -14,12 +14,21 @@ runtime:
     PADDOCK_FFMPEG: "{repo}/.venv/bin/ffmpeg"
     # Colon-separated search path, fastest tier first.
     KITSCENES_ROOTS: "{data.kitscenes.tiers}"
+    # tinygrad picks its device at import, and on a box with an NVIDIA card
+    # that is NV -- so "supercombo does not touch the GPU" (vram_gb 0 below,
+    # several NAVSIM nodes) would otherwise rest on luck. openpilot's own build
+    # compiles the pickles with DEV=CPU:LLVM (selfdrive/modeld/SConscript);
+    # the node runs them on the same device, pinned here.
+    DEV: "CPU:LLVM"
 
 capabilities:
   cameras: [CAM_OP_ROAD, CAM_OP_WIDE, CAM_FRONT]   # comma-three rig: road cam -> img, wide cam -> big_img; CAM_FRONT = fallback for single-camera sources (KITScenes, neuroNCAP)
-  # tinygrad's PC backend is CPU:LLVM -- supercombo does not touch the GPU.
-  # The reservation covers the harness around it, not the model.
-  vram_gb: 6
+  # tinygrad's PC backend is CPU:LLVM -- supercombo does not touch the GPU, and
+  # no benchmark process around it does either (the neuroNCAP renderer is its
+  # own process with its own reservation). Zero is what lets NAVSIM run several
+  # nodes of it: a model with a VRAM claim is treated as a GPU model and capped
+  # at one, and one node is 50 s a scenario with the 4.8 s history.
+  vram_gb: 0
   startup_timeout_s: 600
   waypoint_dt: 0.5
   # supercombo infers ego motion from frame-to-frame change, so the observation
@@ -28,12 +37,12 @@ capabilities:
   # Fed 0.5 s steps it plans 0.3 m of travel in 4 s while doing 4.8 m/s -- a
   # parked car. Benchmarks slower than this refuse rather than record it.
   min_input_hz: 10.0
+  # supercombo's feature buffer holds 96 frames at its 20 Hz: 4.8 s. KITScenes
+  # feeds exactly that (48 source frames at 10 Hz, emitted twice each), and a
+  # benchmark with a real history should feed no less, or the first plan is
+  # made from a half-filled buffer.
+  history_s: 4.8
 
-# NAVSIM -- both `navsim` and `navsim_v1` -- is deliberately absent. The adapter is complete and the trajectory grid
-# already matches NAVSIM's, but OpenScene is a 2 Hz dataset and supercombo needs
-# 10 Hz to perceive motion at all (see min_input_hz above), so a score here would
-# measure the rate gap. `paddock run --bench navsim --model openpilot` refuses
-# with that explanation before loading the model, rather than silently doing nothing.
   # -- model card (docs/models/comparison.md) --
   architecture: "supercombo -- one ONNX graph, run through tinygrad"
   # Parameter count is not published by comma. size_gb is the file paddock
@@ -56,4 +65,13 @@ capabilities:
     # comma's internal fleet, ~6,670 h, not released. No overlap with any
     # paddock dataset, which is the claim that matters here.
     - dataset: comma-fleet
-benchmarks: [kitscenes, neuroncap, bench2drive]
+
+# NAVSIM is measurable only with nuPlan's full-rate sensor data configured
+# ([benchmarks.navsim] nuplan in paddock.toml): OpenScene is a 2 Hz subsample and
+# supercombo needs 10 Hz to perceive motion at all (see min_input_hz above), so
+# on OpenScene alone a score would measure the rate gap. Without that setting
+# `paddock run --bench navsim --model openpilot` refuses with the explanation
+# before loading the model, rather than silently recording the artefact.
+# `navsim_v1` is not declared: no 10 Hz run under the v1 devkit yet, and the v1
+# harness would need its own [benchmarks.navsim_v1] nuplan setting.
+benchmarks: [kitscenes, neuroncap, bench2drive, navsim]

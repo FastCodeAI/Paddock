@@ -140,6 +140,8 @@ serialize = true
 # python       = "/path/to/envs/drive-jepa/bin/python"
 # devkit       = "/path/to/Drive-JEPA/navsim_v2"   # the directory holding navsim/
 # metric_cache = "/path/to/exp/metric_cache_v2"    # run_metric_caching.py builds one
+# nuplan       = "/path/to/nuplan-v1.1"            # optional: splits/<split>/*.db + sensor_blobs/<split>/ at 10 Hz,
+#                                                  # for models needing denser input than OpenScene's 2 Hz
 # split        = "navtest"
 # workers      = 4
 # chunk_logs   = 4        # logs per scorer invocation; 0 = one invocation (no resume)
