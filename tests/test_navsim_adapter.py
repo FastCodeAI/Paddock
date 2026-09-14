@@ -1035,10 +1035,11 @@ def test_a_retried_token_brings_a_neighbour_so_the_scorer_can_aggregate(tmp_path
     from paddock.adapters.benchmarks.navsim.harness import keep_tokens, retry_tokens
 
     token_logs = {"a1": "log_a", "a2": "log_a", "a3": "log_a", "b1": "log_b", "b2": "log_b"}
-    assert retry_tokens(["a2"], token_logs) == ["a2", "a1"], "one neighbour, the first by name"
-    assert retry_tokens(["a1", "a3"], token_logs) == ["a1", "a3"], "two in a log already aggregate"
-    assert retry_tokens(["a2", "b2"], token_logs) == ["a2", "b2", "a1", "b1"]
-    assert retry_tokens(["zz"], token_logs) == ["zz"], "a token the cache does not know is not padded"
+    assert retry_tokens(["a2"], token_logs, 2) == ["a2", "a1"], "one neighbour, the first by name"
+    assert retry_tokens(["a1", "a3"], token_logs, 2) == ["a1", "a3"], "two in a log already aggregate"
+    assert retry_tokens(["a2", "b2"], token_logs, 2) == ["a2", "b2", "a1", "b1"]
+    assert retry_tokens(["zz"], token_logs, 2) == ["zz"], "a token the cache does not know is not padded"
+    assert retry_tokens(["a2"], token_logs, 1) == ["a2"], "v1's floor of one pads nothing"
 
     path = tmp_path / "retry.csv"
     path.write_text("token,valid,score\na2,True,0.9\na1,True,0.8\naverage_all_frames,True,0.85\n")

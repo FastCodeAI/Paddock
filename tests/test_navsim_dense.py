@@ -299,3 +299,49 @@ def test_the_wire_observation_for_a_dense_frame_carries_the_measured_rates(tmp_p
     bus = canbus(as_ego_status(frame), frame.yaw_rate)
     assert bus[CANBUS_VELOCITY] == pytest.approx(SPEED) and bus[CANBUS_YAW_RATE] == pytest.approx(YAW_RATE)
     assert pose_matrix(frame.pose)[:2, 3] == pytest.approx(np.array([-2.5, 0.0]), abs=1e-6)
+
+
+def test_every_dense_override_is_declared_by_both_proxy_configs(tmp_path, monkeypatch) -> None:
+    """hydra refuses an override of a key the config does not declare, after
+    preflight, in every chunk. The v1 devkit's proxy config once lacked the four
+    dense keys while inheriting the harness that emits them, so a v1 site with
+    nuPlan configured passed preflight and then lost the run (review of #33)."""
+    import yaml
+
+    from paddock.adapters.benchmarks.navsim.harness import CONF_DIR as V2_CONF
+    from paddock.adapters.benchmarks.navsim_v1.harness import CONF_DIR as V1_CONF
+    from tests.test_navsim_v1_adapter import _v1_site
+
+    root = _nuplan_root(tmp_path, channels={"CAM_F0": 0.0, "CAM_L0": 8.0, "CAM_R0": 4.0})
+    asks = {"cameras": ["CAM_FRONT"], "model": "alpamayo15", "native_input_hz": 10.0, "history_s": 1.5}
+    for bench, conf, site in (
+        ("navsim", V2_CONF, _navsim_site(tmp_path / "v2", monkeypatch, nuplan=str(root))),
+        ("navsim_v1", V1_CONF, _v1_site(tmp_path / "v1", monkeypatch, nuplan=str(root))),
+    ):
+        harness = _harness(site, bench)
+        assert harness.model_run_config(Registry.load().models["alpamayo15"])["history_source"] == "nuplan"
+        command = harness._command("http://h:1", tmp_path / bench / "out", asks, None)
+        emitted = {arg[len("agent.") :].split("=", 1)[0] for arg in command if arg.startswith("agent.")}
+        declared = set(yaml.safe_load((conf / "agent" / "paddock_proxy.yaml").read_text()))
+        assert {"nuplan_root", "nuplan_split", "dense_hz", "history_s"} <= emitted, bench
+        assert emitted <= declared, f"{bench}: overrides the proxy config lacks: {emitted - declared}"
+
+
+def test_the_borrowed_and_clamped_frame_counts_reach_the_record(tmp_path: Path) -> None:
+    """The one measurement-changing thing the dump alone used to hold."""
+    import json
+
+    from paddock.adapters.benchmarks.navsim.harness import dense_history_summary
+
+    out = tmp_path / "out"
+    for chunk, lines in (
+        ("000", [{"token": "a", "clamped": 3}, {"token": "b", "clamped": 0, "approximate": 1}]),
+        ("retry", [{"token": "b", "clamped": 0, "approximate": 0}, {"token": "c"}]),
+    ):
+        (out / "chunks" / chunk).mkdir(parents=True)
+        (out / "chunks" / chunk / "trajectories.jsonl").write_text(
+            "\n".join(json.dumps(x) for x in lines) + "\nnot json\n"
+        )
+    summary = dense_history_summary(out)
+    assert summary == {"scenarios": 3, "clamped": 1, "approximate": 0}, "b's retry line wins"
+    assert dense_history_summary(tmp_path / "nowhere") == {"scenarios": 0, "clamped": 0, "approximate": 0}

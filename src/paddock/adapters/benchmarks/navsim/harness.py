@@ -128,18 +128,18 @@ def tokens_in_csvs(csv_paths: list[Path]) -> set[str]:
     return tokens
 
 
-def retry_tokens(failed: list[str], token_logs: dict[str, str], floor: int | None = None) -> list[str]:
+def retry_tokens(failed: list[str], token_logs: dict[str, str], floor: int) -> list[str]:
     """The failed tokens, plus enough already-scored neighbours from the same
     logs for the scorer to aggregate them.
 
-    The scorer pairs consecutive frames within a log for two-frame comfort and
-    dies in pandas below MIN_SCENARIOS per log -- the same floor `--limit`
-    guards. One failed token per log is the common case, so alone it cannot
+    The v2 scorer pairs consecutive frames within a log for two-frame comfort
+    and dies in pandas below `floor` per log -- the benchmark's MIN_SCENARIOS,
+    the same floor `--limit` guards (1 under v1, which pads nothing). One failed
+    token per log is the common case, so alone it cannot
     be retried at all. The neighbours are re-scored and then discarded
     (`keep_tokens`): a stochastic model must not get a second draw on a
     scenario that did not fail.
     """
-    floor = MIN_SCENARIOS if floor is None else floor  # defined below; resolved at call time
     wanted = set(failed)
     by_log: dict[str, list[str]] = {}
     for token in failed:
@@ -172,6 +172,36 @@ def keep_tokens(
         writer.writeheader()
         writer.writerows(rows)
     return Path(csv_path)
+
+
+def dense_history_summary(out_dir: Path) -> dict[str, int]:
+    """What the plan dumps under `out_dir` say about the 10 Hz history each
+    scenario was shown: how many scenarios had frames clamped at a log start
+    or borrowed across a dropped frame (dense.py). Zero when no dump says so.
+
+    A token planned more than once (the proxy's retries) counts once, by its
+    last line. Summed into the tracked record because it is the one thing
+    that changes what the model saw and would otherwise live only in the
+    untracked dump.
+    """
+    import json
+
+    last: dict[str, dict] = {}
+    for dump in sorted(Path(out_dir).rglob("trajectories.jsonl")):
+        with dump.open() as handle:
+            for line in handle:
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    continue
+                token = record.get("token")
+                if token:
+                    last[token] = record
+    return {
+        "scenarios": len(last),
+        "clamped": sum(1 for r in last.values() if r.get("clamped")),
+        "approximate": sum(1 for r in last.values() if r.get("approximate")),
+    }
 
 
 def completed_chunk_csv(chunk_dir: Path) -> Path | None:
@@ -425,10 +455,11 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
 
         nuplan = self.setting(SETTING_NUPLAN)
         if nuplan:
+            section = f"[benchmarks.{self.spec.name}]"
             for required in (f"splits/{self.data_split}", f"sensor_blobs/{self.data_split}"):
                 if not (Path(nuplan) / required).is_dir():
                     problems.append(
-                        f"[benchmarks.navsim] {SETTING_NUPLAN} = {nuplan} has no {required}/; "
+                        f"{section} {SETTING_NUPLAN} = {nuplan} has no {required}/; "
                         f"it must be a nuPlan root laid out as nuPlan's own (docs/benchmarks/navsim.md)"
                     )
 
@@ -1111,7 +1142,7 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
             # A retry a previous attempt completed is merged, not run again.
             retried = completed_chunk_csv(retry_dir)
             if retried is None:
-                tokens = retry_tokens(failed, self._token_logs())
+                tokens = retry_tokens(failed, self._token_logs(), self.MIN_SCENARIOS)
                 neighbours = len(tokens) - len(failed)
                 echo(
                     f"  re-scoring {len(failed)} failed scenario(s) by token"
@@ -1148,13 +1179,16 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         # headline and paddock's recomputed mean answer slightly different
         # questions. Stored in the tracked metrics.json under `by_group`, the
         # same keys the ingest path writes. See paddock/results/ingest/navsim.py.
+        by_group: dict[str, Any] = {
+            "source_aggregates": aggregates,
+            "source_reported": {"final_average_valid": reported} if reported is not None else {},
+        }
+        if self._agent() == self.PROXY_AGENT and hz > INPUT_HZ:
+            by_group["dense_history"] = dense_history_summary(out_dir)
         return Evaluation(
             samples=samples,
             failed=failed,
-            by_group={
-                "source_aggregates": aggregates,
-                "source_reported": {"final_average_valid": reported} if reported is not None else {},
-            },
+            by_group=by_group,
             failed_chunks=failed_chunks,
             n_expected=n_expected,
         )
