@@ -77,3 +77,8 @@ repos:
     url: https://github.com/autowarefoundation/auto_e2e.git
     sha: 16d60f0a
     description: Autoware end-to-end model; AWS/Flyte native, not yet evaluated
+
+  METEOR:
+    url: https://github.com/tier4/METEOR.git
+    sha: dc193a81
+    description: TIER IV METEOR surround-view multi-task network with an E2E planning head; run from the released ONNX
