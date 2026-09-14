@@ -71,9 +71,13 @@ an absent camera is a zero image tensor with a donor camera's calibration
 (`bevlane/dataset.py`, `_CAM_FALLBACK` and `cam_drop`), and METEOR's runtime
 feeds a missing eighth camera as a zero buffer. The adapter feeds black, which
 the graph's own `/255` turns into that zero tensor. The two NARROW slots are
-always absent in paddock; KITScenes leaves seven of eight absent. That is a
+always absent in paddock; on KITScenes seven of eight are, because paddock's
+KITScenes harness hands over only `camera_ring_front` as `CAM_FRONT`, although
+the dataset records a six-camera ring with calibration for each. That is a
 heavier ablation than anything the network saw in training and the KITScenes
-number should be read with that in mind.
+number should be read with that in mind. Extending the harness to the ring is
+a benchmark change, not an adapter one, and would apply to every multi-camera
+model.
 
 **Normalisation, as shipped.** `meteor_v157.param.yaml` and `deploy/README.md`
 say the uint8 graph applies `/255` and ImageNet mean/std normalisation
