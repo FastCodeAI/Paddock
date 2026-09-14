@@ -201,20 +201,10 @@ from `results/navsim/` for reference: a different composite, not a ranking.
 | constant_velocity | **0.207** | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 | 0.239 | `20260911T034553-8f28ac` | node-less baseline, 27 min |
 | human (`valid: false`) | 0.946 | 1.000 | 1.000 | 0.870 | 1.000 | 0.999 | 0.988 | — | `20260911T041230-67c4f3` | node-less anchor, 35 min |
 
-With the **10 Hz history from nuPlan** (the v2 runs of PR #33, whose plans
-were replayed here; both source runs are merges of an earlier and a completing
-run, and the replay read both directories):
-
-| model | PDMS | NC | DAC | EP | TTC | comfort | DDC (weight 0) | v2 EPDMS | run | how |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
-| openpilot, 10 Hz | **0.807** | 0.972 | 0.895 | 0.766 | 0.897 | 0.989 | 0.955 | 0.747 | `20260914T181009-dbcef4` | replay of `navsim/openpilot/20260911T161513-3a4c90`, 13 min |
-| alpamayo15, 10 Hz | **0.753** | 0.957 | 0.856 | 0.690 | 0.896 | 0.991 | 0.927 | 0.691 | `20260914T175447-89a9ca` | replay of `navsim/alpamayo15/20260912T040211-a9562c`, 15 min |
-
-The 10 Hz history changes what the model sees, not what is scored: the same
-navtest scenes, the same v1 cache. For Alpamayo it is worth +0.077 PDMS over
-its 2 Hz plans; OpenPilot, refused at 2 Hz, scores above Alpamayo at 10 Hz.
-Which pair of rows the README reports for each model follows the v2 column, so
-both columns always describe one run.
+The 10 Hz-history runs of PR #33 (openpilot and alpamayo15 on v2) replay the
+same way; their v1 records are held until those source runs are in the store,
+so that every `replayed_from` in `results/` resolves -- a store test now
+requires it.
 
 Two consistency checks across the scorer generations, for the two models whose
 plans are the same under both: Drive-JEPA is deterministic and Alpamayo's plans

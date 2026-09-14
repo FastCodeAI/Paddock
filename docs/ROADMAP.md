@@ -137,8 +137,6 @@ comes from the plans that produced its v2 number, no GPU).
 | visionpilot | **0.488** (n=12146) | 0.431 | proxy, four nodes |
 | constant velocity | **0.207** (n=12146) | 0.239 | paper: 20.6, every term matching |
 | human | 0.946, `valid: false` | — | paper: 94.8; the gap is ego progress only |
-| openpilot, 10 Hz history | **0.807** (n=12146) | 0.747 | PR #33's plans, replayed |
-| alpamayo15, 10 Hz history | **0.753** (n=12146) | 0.691 | PR #33's plans, replayed |
 
 **Verified:** the baseline row against the paper, term by term; the v2 path
 unchanged (12,139/12,146 scenarios identical, the rest within 1e-11); n and
