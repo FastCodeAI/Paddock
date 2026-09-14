@@ -111,7 +111,7 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 | Alpamayo 1.5 | 0.787 △ | 1.002 | 0.691 (10 Hz) † | 0.676 (2 Hz) † | 44.58 ◆ | **3.73** ‖ | 0.8000 ¶ | planned |
 | Drive-JEPA | 0.912 △ | 2.364 | 0.843 | 0.892 † | 31.11 ◆ | **3.57** ‖ | 0.5619 ¶ | planned |
 | VisionPilot | 1.441 △ | 1.534 ∗ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.8864 ¶ | planned |
-| METEOR | — | 4.784 ◇ | — | — | — | — | — | — |
+| METEOR | — | 1.879 ◇ | — | — | — | — | — | — |
 | Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | 0.207 † | 47.94 ♣ | 0 § | 0.3562 ¶ | — |
 
 ∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
@@ -124,11 +124,16 @@ needed the ego origin dropped from the roof pod to the road, without which every
 projected path point lands behind the car; see `docs/benchmarks/kitscenes.md`.
 
 ◇ METEOR is TIER IV's 8-camera multi-task network, run from its released
-camera-only ONNX. paddock's KITScenes harness hands over only the front ring
-camera (the dataset has six), so seven of its eight slots are fed as absent, it has no driving-command input, and its planner slows down
-above ~8 m/s (a prior from its training domain), which is where most of the
-error is; the feed itself matches the authors' reference loader byte for byte.
-See `docs/models/meteor.md`.
+camera-only ONNX. KITScenes hands it the six-camera ring (#40), so only its two
+telephoto slots are absent; it has no driving-command input. Fed the front
+camera alone, as the harness did before #40, it scored 4.784 -- the run is kept
+as an ablation. With six cameras the residual error is longitudinal above
+13 m/s, where its plans plateau near 35 m at 3 s (a prior from its training
+domain). The feed matches the authors' reference loader byte for byte. On
+nuScenes, with all six cameras, its L2 sits with Drive-JEPA's; the collision
+figure is a standstill artefact (it creeps ~1 m into the queue ahead when
+stopped, 22.6 % of stopped anchors), and its plans carry a left bias twice as
+large in Boston as in Singapore. See `docs/models/meteor.md`.
 
 △ nuScenes uses 5,119 scoring anchors across 150 validation scenes. The headline
 is the mean of cumulative L2 through 1, 2 and 3 seconds, not ADE at 3 seconds.
@@ -262,7 +267,7 @@ these tables report the saved runs, not new evaluations of the merged code.
 
 Open-loop displacement error in metres over the 3 s horizon, full 223-sample
 split. Alpamayo 1.5 is its nav-conditioned single-draw run. VisionPilot's
-trajectory is synthesised by the adapter (see ∗); METEOR sees one of its eight
+trajectory is synthesised by the adapter (see ∗); METEOR sees six of its eight
 cameras (see ◇). Only Alpamayo 1.5 beats the constant-velocity baseline on this
 benchmark.
 
@@ -272,7 +277,7 @@ benchmark.
 | Alpamayo 1.5 | **1.002** | **2.158** |
 | Drive-JEPA | 2.364 | 4.199 |
 | VisionPilot | 1.534 ∗ | 3.089 ∗ |
-| METEOR | 4.784 ◇ | 9.011 ◇ |
+| METEOR | 1.879 ◇ | 4.034 ◇ |
 | Baseline (Constant Velocity) | 1.381 | 3.091 |
 
 ### NAVSIM v2
