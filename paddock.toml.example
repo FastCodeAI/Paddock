@@ -224,6 +224,9 @@ serialize = true
 # AlpaSim writes into a bucket named for the model, so a site has several roots
 # rather than one. Name the run directories to publish rather than walking a
 # root: everything under a root is not necessarily a row worth publishing.
+# alpasim_runs walks one root instead, one run per directory under it -- only
+# for a root that holds nothing but runs worth publishing.
+# alpasim_runs = "/path/to/alpasim-runs"
 # alpasim_run_dirs = [
 #   "/path/to/runs/openpilot/openpilot_020_pilot10",
 #   "/path/to/runs/baselines/cv_023_20hz_pilot10",
@@ -242,5 +245,7 @@ serialize = true
 # driver or the tick config, or if two of them hold the same scene.
 # [ingest.alpasim_campaigns.legacy-my_campaign_20hz]
 # dirs  = ["/path/to/runs/alpamayo/my_campaign_scene01", "..."]
+# split = "public_2601"  # a sweep driven by explicit scene ids records no
+#                        # test_suite_id; name the suite its scenes came from
 # notes = ""      # required by the results store when valid = false
 # valid = true

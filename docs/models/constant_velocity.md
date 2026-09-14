@@ -9,17 +9,18 @@ it**.
 AlpaSim's `scene_score` zeroes a scene outright on an at-fault collision or an
 offroad event, whatever progress preceded it. Constant velocity commits neither:
 it does not steer into anything, and a rear-end collision — the failure it
-*does* cause — is not at fault. On the `public_2601` first-10 set it therefore
-outscores three of the four real models:
+*does* cause — is not at fault. On the `public_2601` first-10 set under the
+shared 20 Hz referee it therefore outscores two of the three real models in its
+group:
 
-| | `scene_score`, `1cam-2Hz` |
-|---|---|
-| VisionPilot 0.2.2 | 0.886 |
-| **constant velocity** | **0.703** |
-| Drive-JEPA 0.1.2 | 0.407 |
-| OpenPilot | 0.232 |
+| | `scene_score`, `1cam-20Hz` | progress |
+|---|---|---|
+| OpenPilot supercombo 0.2.0 | 0.957 | 0.901 |
+| **constant velocity 0.2.3** | **0.885** | **0.829** |
+| VisionPilot v2 2.0.0 | 0.849 | 0.820 |
+| Drive-JEPA 0.1.4 | 0.503 | 0.565 |
 
-Read without the floor, that table says three driving models are worse than
+Read without the floor, that table says two driving models are worse than
 doing nothing. Read with it, it says what it actually measures: the metric
 punishes at-fault failure, and a policy incapable of being at fault is hard to
 beat on it. Every AlpaSim number should be quoted against the floor for its

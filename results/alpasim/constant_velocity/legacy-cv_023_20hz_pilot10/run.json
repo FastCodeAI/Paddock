@@ -1,6 +1,6 @@
 {
   "run_id": "legacy-cv_023_20hz_pilot10",
-  "site": "renesas-shakaal",
+  "site": "fastcode-shakaal",
   "benchmark": "alpasim",
   "model": "constant_velocity",
   "mode": "closed_loop",

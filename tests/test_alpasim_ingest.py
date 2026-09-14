@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from paddock.adapters.benchmarks.alpasim.harness import scorer_sha
 from paddock.results.ingest import alpasim
 
 FIXTURE = Path(__file__).parent / "fixtures" / "alpasim_run"
@@ -93,7 +94,9 @@ def test_provenance_records_what_makes_runs_comparable() -> None:
     # The divergence cap truncates the scored window, so it changes what every
     # fidelity number means and belongs in provenance.
     assert run.config["max_dist_to_gt_trajectory"] == 4.0
-    assert run.config["scorer_repo_sha"] == "affc2ea"
+    # Read from the repos.yaml pin, not copied: a literal would keep naming the
+    # old scorer after the next bump.
+    assert run.config["scorer_repo_sha"] == scorer_sha()
     assert run.dataset["sequences_sha256"]
     assert metrics.by_group == {"tick_config": {"4cam-10Hz": {"n": 2}}}
 
@@ -255,3 +258,30 @@ def test_a_campaign_refuses_to_score_the_same_scene_twice(tmp_path: Path) -> Non
 
     with pytest.raises(alpasim.Incomparable, match="same scene"):
         alpasim.ingest_campaign([a, b], run_id="legacy-sweep", site="test-site")
+
+
+def _unsuited(run: Path) -> Path:
+    """What a sweep driven by explicit scene ids leaves: no test_suite_id."""
+    meta = run / "run_metadata.yaml"
+    meta.write_text(meta.read_text().replace("test_suite_id: public_2601", "test_suite_id: null"))
+    return run
+
+
+def test_a_campaign_driven_by_scene_ids_takes_its_split_from_the_config(tmp_path: Path) -> None:
+    """`split: null` beside `n_samples: 10` reads as an unknown subset."""
+    a = _unsuited(_scene_variant(tmp_path, "sweep_a"))
+    b = _unsuited(_scene_variant(tmp_path, "sweep_b", "0b0b0b0b", "0a0a0a0a"))
+
+    run, _, _ = alpasim.ingest_campaign([a, b], run_id="legacy-sweep", site="test-site")
+    assert run.dataset["split"] == ""
+
+    run, _, _ = alpasim.ingest_campaign([a, b], run_id="legacy-sweep", site="test-site", split="public_2601")
+    assert run.dataset["split"] == "public_2601"
+
+
+def test_a_campaign_refuses_a_split_its_directories_contradict(tmp_path: Path) -> None:
+    a = _scene_variant(tmp_path, "sweep_a")
+    b = _scene_variant(tmp_path, "sweep_b", "0b0b0b0b", "0a0a0a0a")
+
+    with pytest.raises(alpasim.Incomparable, match="split"):
+        alpasim.ingest_campaign([a, b], run_id="legacy-sweep", site="test-site", split="public_2602")

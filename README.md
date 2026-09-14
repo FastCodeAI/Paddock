@@ -410,25 +410,23 @@ Closed-loop driving on replayed real scenes: AlpaSim renders a recorded clip as
 a neural reconstruction, hands the policy frames at a fixed control rate, and
 steps the world forward on what the policy commands. `scene_score` is 0–1,
 meaned over scenes. The set is the first 10 scenes of the `public_2601` suite,
-one run per scene — **n = 10, preliminary**. The adapter and the full protocol
-are in flight as PR #16; `docs/benchmarks/alpasim.md` arrives with it.
+uuid-pinned, one rollout per scene — **n = 10**. Every row is under
+`results/alpasim/` and `paddock report` reads it; the protocol is in
+[docs/benchmarks/alpasim.md](docs/benchmarks/alpasim.md).
 
-**The four models were not run in the same configuration, and the configuration
-changes what is measured.** Each was driven at the rate and camera count it is
-built for. 20 Hz control gives a policy ten times the chances to correct that
-2 Hz does, and four cameras see what one cannot. Read each model against the
-constant-velocity floor *of its own row group*; the floors themselves differ by
-more than most of the models do.
+**Every row ran under the shared 20 Hz referee**: one control rate, one force-GT
+duration and one `eval-config.yaml` (md5 `68cf4aaa…`), so the rows differ by the
+model rather than by the harness. Camera count still changes what is measured —
+four cameras see what one cannot — so Alpamayo's `4cam-20Hz` row is a separate
+group, and it has no constant-velocity floor of its own.
 
-| Model | Control · cameras | `scene_score` ↑ | Δ vs its floor | Progress ↑ | Pace (× human) | Scored window | At-fault collisions ↓ | Any collision ↓ | Off-road ↓ |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| OpenPilot | 20 Hz · 1 cam | 0.9566 | **+0.6004** | 0.9010 | 0.913 | 0.777 | 0 / 10 | 1 / 10 | 0 / 10 |
-| *floor* | *20 Hz · 1 cam* | *0.3562* | *—* | *0.3815* | *0.383* | *0.267* | *0 / 10* | *3 / 10* | *3 / 10* |
-| Alpamayo 1.5 | 10 Hz · 4 cam | 0.8000 | **+0.4209** | 0.9557 | 0.972 | 0.761 | 1 / 10 | 1 / 10 | 1 / 10 |
-| *floor* | *10 Hz · 4 cam* | *0.3791* | *—* | *0.4720* | *0.477* | *0.380* | *2 / 10* | *5 / 10* | *2 / 10* |
-| VisionPilot | 2 Hz · 1 cam | 0.8864 | +0.1839 | 0.8582 | 0.868 | 0.713 | 1 / 10 | 2 / 10 | 0 / 10 |
-| Drive-JEPA | 2 Hz · 1 cam | 0.5619 | **−0.1406** | 0.6116 | 0.622 | 0.450 | 2 / 10 | 4 / 10 | 1 / 10 |
-| *floor* | *2 Hz · 1 cam* | *0.7025* | *—* | *0.6826* | *0.700* | *0.497* | *0 / 10* | *3 / 10* | *1 / 10* |
+| Model | Group | `scene_score` ↑ | Δ vs its floor | Progress ↑ | `duration_frac_20s` ↑ | At-fault collisions ↓ | Any collision ↓ | Off-road ↓ |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| OpenPilot | `1cam-20Hz` | 0.9566 | **+0.0716** | 0.9010 | 0.777 | 0 / 10 | 1 / 10 | 0 / 10 |
+| *floor* | *`1cam-20Hz`* | *0.8850* | *—* | *0.8290* | *0.654* | *0 / 10* | *2 / 10* | *0 / 10* |
+| VisionPilot | `1cam-20Hz` | 0.8488 | −0.0362 | 0.8202 | 0.699 | 1 / 10 | 3 / 10 | 0 / 10 |
+| Drive-JEPA | `1cam-20Hz` | 0.5030 | **−0.3820** | 0.5652 | 0.462 | 2 / 10 | 4 / 10 | 1 / 10 |
+| Alpamayo 1.5 | `4cam-20Hz` | 0.9000 | no floor | 0.9603 | 0.740 | 1 / 10 | 1 / 10 | 0 / 10 |
 
 **An at-fault collision or an off-road event zeroes the scene outright**, whatever
 progress preceded it:
@@ -443,35 +441,27 @@ same 0.0 as never moving. That rule is why constant velocity is a serious
 opponent rather than a formality: it does not steer and it rear-ends things, but
 a rear-end is *not at fault*, so the hard-failure rule leaves it standing while
 the at-fault collisions and off-road events a real policy commits zero it. At
-2 Hz the floor scores 0.7025 and **Drive-JEPA does not beat it.** A model that
-does not clear its own floor has not demonstrated competence here, whatever the
-absolute number looks like.
+20 Hz the floor scores 0.8850 and **only OpenPilot beats it**. A model that does
+not clear its own floor has not demonstrated competence here, whatever the
+absolute number looks like — and because the score saturates, progress is the
+column that separates the floor (0.8290) from OpenPilot (0.9010).
 
 **Scored window is the trap in this benchmark.** AlpaSim truncates a rollout at
 the first collision or off-road event and again once the ego is 4 m from the
 recorded trajectory, so **a policy that fails early is scored over a shorter
 window than one that drives the scene out** — and its fidelity numbers, measured
-only over the easy opening seconds, look *better* for it. The column above is
-the fraction of ticks that survived that chain. The 20 Hz floor was scored over
-26.7% of its ticks against OpenPilot's 77.7%; do not compare progress or pace
-across rows whose scored windows differ.
+only over the easy opening seconds, look *better* for it. `duration_frac_20s` is
+how much of a 20 s scene survived that chain: Drive-JEPA's 0.462 against
+OpenPilot's 0.777 is why its `dist_to_gt_trajectory` (2.44 m) cannot be read
+against OpenPilot's (1.45 m). Do not compare fidelity across rows whose scored
+windows differ.
 
-Two things this table is not yet:
-
-- **The results files are not in `results/` yet.** These numbers are transcribed,
-  so `paddock report` does not know them and cannot check them. The run and
-  metrics rows land in a follow-up, and this table should be regenerated from
-  them when they do.
-- **The constant-velocity floors are under review.** All three are being
-  re-checked; the Δ column moves with them, and Drive-JEPA's sign is the entry
-  most at risk.
-
-Alpamayo's row is a **single unseeded draw**. That run was made before the
-adapter set `force_determinism`, so AlpaSim re-running the identical command
-would not reproduce it — read it as one sample, not as the model's score. It is
-the same property `docs/benchmarks/neuroncap.md` records for Alpamayo there,
-where five seeds on one scenario spanned 0.000 to 5.000. The floor has no such
-caveat: it is deterministic, which is what makes it the useful reference.
+Alpamayo's row is **one stochastic draw per scene**. No seed is recorded for
+the run, and scene `04749bb9` has scored 0.0, 0.9148 and 1.0 across identical
+environments — read it as one sample, not as the model's score. It is the same
+property `docs/benchmarks/neuroncap.md` records for Alpamayo there, where five
+seeds on one scenario spanned 0.000 to 5.000. The floor has no such caveat: it
+is deterministic, which is what makes it the useful reference.
 
 ---
 

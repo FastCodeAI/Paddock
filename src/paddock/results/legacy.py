@@ -15,6 +15,7 @@ alongside everything else machine-shaped:
     # One AlpaSim sweep that left one directory per scene, merged into one run.
     [ingest.alpasim_campaigns.legacy-my_campaign]
     dirs  = ["/path/to/runs/my_campaign_scene01", "/path/to/runs/my_campaign_scene02"]
+    split = "public_2601"   # optional; for sweeps driven by explicit scene ids
     notes = ""      # optional; required by the store when valid = false
     valid = true
 
@@ -106,6 +107,7 @@ def ingest_all(cfg: SiteConfig, dry_run: bool = False) -> tuple[int, list[str]]:
                     site=cfg.site,
                     note=campaign.get("notes", ""),
                     valid=campaign.get("valid", True),
+                    split=campaign.get("split"),
                 )
             )
         except alpasim.Incomparable as exc:

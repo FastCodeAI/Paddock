@@ -38,6 +38,11 @@ window than one that drives the scene out, so trajectory-fidelity numbers are
 not comparable between runs with different scored fractions. The fraction is
 recorded per sample as `scored_fraction` so that a reader can see it rather than
 having to know.
+
+`scorer_repo_sha` is read from the AlpaSim pin in `repos.yaml` at ingest time,
+not from the run: the runtime logs `git_hash: "unknown"`, so the run itself
+cannot say which scorer produced it. The pin is the scorer only while the runs
+being ingested were scored at it -- ingest after a pin bump, not across one.
 """
 
 from __future__ import annotations
@@ -51,6 +56,7 @@ from typing import Any
 
 import yaml
 
+from paddock.adapters.benchmarks.alpasim.harness import scorer_sha
 from paddock.results.store import MetricsRecord, RunRecord, sequence_hash
 
 #: renderer-0-1 | [NuRec::NRend][INFO] ::: Model nre::sh-gaussians => ...
@@ -286,6 +292,7 @@ def _record(
     site: str,
     note: str = "",
     valid: bool = True,
+    split: str | None = None,
 ) -> tuple[RunRecord, MetricsRecord, list[dict[str, Any]]]:
     """Build one paddock run from one or more scanned directories."""
     first = scans[0]
@@ -305,7 +312,7 @@ def _record(
         started_utc=started,
         dataset={
             "name": "alpasim_public2601",
-            "split": first.meta.get("test_suite_id", ""),
+            "split": split or first.meta.get("test_suite_id") or "",
             "n_samples": len(samples),
             "sequences_sha256": sequence_hash([s["sample_id"] for s in samples]),
         },
@@ -319,7 +326,8 @@ def _record(
             "max_dist_to_gt_trajectory": (first.eval_cfg.get("aggregation_modifiers") or {}).get(
                 "max_dist_to_gt_trajectory"
             ),
-            "scorer_repo_sha": "affc2ea",
+            # The pin, read now: see the module docstring for why not the run.
+            "scorer_repo_sha": scorer_sha(),
             # A campaign scored one scene per directory. Without this a reader
             # cannot tell a ten-scene sweep from a ten-rollout single run, and
             # the two fail differently: one lost directory costs a whole scene.
@@ -394,6 +402,7 @@ def ingest_campaign(
     site: str,
     note: str = "",
     valid: bool = True,
+    split: str | None = None,
 ) -> tuple[RunRecord, MetricsRecord, list[dict[str, Any]]]:
     """One paddock run from several AlpaSim run directories, one scene each.
 
@@ -408,6 +417,10 @@ def ingest_campaign(
     the driver or the tick config, because that is not one measurement: 10 Hz
     control gives a policy five times the chances to correct that 2 Hz does, so
     averaging across it produces a number describing no run that ever happened.
+
+    `split` names the scene set when the directories cannot: a sweep driven by
+    explicit scene ids leaves `test_suite_id: null` in every `run_metadata.yaml`.
+    It is refused if a directory does record a different suite.
     """
     scans = []
     for path in dirs:
@@ -433,4 +446,8 @@ def ingest_campaign(
     if repeated:
         raise Incomparable(f"{run_id}: directories score the same scene more than once: {repeated}")
 
-    return _record(run_id, scans, site, note=note, valid=valid)
+    suites = {scan.meta.get("test_suite_id") for scan in scans} - {None}
+    if split and suites - {split}:
+        raise Incomparable(f"{run_id}: split {split!r} given, but directories record {sorted(suites)}")
+
+    return _record(run_id, scans, site, note=note, valid=valid, split=split)

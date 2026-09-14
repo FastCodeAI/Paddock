@@ -1,6 +1,6 @@
 {
   "run_id": "legacy-openpilot_020_pilot10",
-  "site": "renesas-shakaal",
+  "site": "fastcode-shakaal",
   "benchmark": "alpasim",
   "model": "openpilot",
   "mode": "closed_loop",

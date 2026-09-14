@@ -1,6 +1,6 @@
 {
   "run_id": "legacy-visionpilot_v2_smoke_pilot10_handover_blend",
-  "site": "renesas-shakaal",
+  "site": "fastcode-shakaal",
   "benchmark": "alpasim",
   "model": "visionpilot",
   "mode": "closed_loop",

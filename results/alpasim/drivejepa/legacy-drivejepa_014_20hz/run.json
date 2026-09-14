@@ -1,6 +1,6 @@
 {
   "run_id": "legacy-drivejepa_014_20hz",
-  "site": "renesas-shakaal",
+  "site": "fastcode-shakaal",
   "benchmark": "alpasim",
   "model": "drivejepa",
   "mode": "closed_loop",
@@ -9,7 +9,7 @@
   "repo_sha": null,
   "dataset": {
     "name": "alpasim_public2601",
-    "split": null,
+    "split": "public_2601",
     "n_samples": 10,
     "sequences_sha256": "f4241f1ea8476b14"
   },
