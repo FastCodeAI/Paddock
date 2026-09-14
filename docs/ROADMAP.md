@@ -218,8 +218,8 @@ the comparable set is runs through `paddock_proxy`.
 
 `adapters/benchmarks/bench2drive`: a model-agnostic CARLA `agent.py`, the
 vendored dual-PID tracker, and a harness that fails a route on every failure
-the evaluator distinguishes rather than scoring it. All four models
-(openpilot, visionpilot, alpamayo15, drivejepa) declare it.
+the evaluator distinguishes rather than scoring it. All five models
+(openpilot, visionpilot, alpamayo15, drivejepa, meteor) declare it.
 
 | Claim | Verified how | Strength |
 |---|---|---|

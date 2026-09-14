@@ -111,6 +111,7 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 | Alpamayo 1.5 | 0.787 △ | 1.002 | 0.608 † | 0.676 † | 44.58 ◆ | **3.73** ‖ | 0.8000 ¶ | planned |
 | Drive-JEPA | 0.912 △ | 2.364 | 0.843 | 0.892 † | 31.11 ◆ | **3.57** ‖ | 0.5619 ¶ | planned |
 | VisionPilot | 1.441 △ | 1.534 ∗ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.8864 ¶ | planned |
+| METEOR | — | 4.784 ◇ | — | — | — | — | — | — |
 | Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | 0.207 † | 47.94 ♣ | 0 § | 0.3562 ¶ | — |
 
 ∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
@@ -121,6 +122,13 @@ and extrapolation past a 1 s planner horizon -- and are not comparable in kind
 with a model that emits a timed trajectory. The KITScenes run additionally
 needed the ego origin dropped from the roof pod to the road, without which every
 projected path point lands behind the car; see `docs/benchmarks/kitscenes.md`.
+
+◇ METEOR is TIER IV's 8-camera multi-task network, run from its released
+camera-only ONNX. KITScenes supplies one camera, so seven of its eight slots
+are fed as absent, it has no driving-command input, and its planner slows down
+above ~8 m/s (a prior from its training domain), which is where most of the
+error is; the feed itself matches the authors' reference loader byte for byte.
+See `docs/models/meteor.md`.
 
 △ nuScenes uses 5,119 scoring anchors across 150 validation scenes. The headline
 is the mean of cumulative L2 through 1, 2 and 3 seconds, not ADE at 3 seconds.
@@ -260,8 +268,9 @@ these tables report the saved runs, not new evaluations of the merged code.
 
 Open-loop displacement error in metres over the 3 s horizon, full 223-sample
 split. Alpamayo 1.5 is its nav-conditioned single-draw run. VisionPilot's
-trajectory is synthesised by the adapter (see ∗). Only Alpamayo 1.5 beats the
-constant-velocity baseline on this benchmark.
+trajectory is synthesised by the adapter (see ∗); METEOR sees one of its eight
+cameras (see ◇). Only Alpamayo 1.5 beats the constant-velocity baseline on this
+benchmark.
 
 | Model | ADE@3s ↓ (m) | FDE@3s ↓ (m) |
 |---|---:|---:|
@@ -269,6 +278,7 @@ constant-velocity baseline on this benchmark.
 | Alpamayo 1.5 | **1.002** | **2.158** |
 | Drive-JEPA | 2.364 | 4.199 |
 | VisionPilot | 1.534 ∗ | 3.089 ∗ |
+| METEOR | 4.784 ◇ | 9.011 ◇ |
 | Baseline (Constant Velocity) | 1.381 | 3.091 |
 
 ### NAVSIM v2
