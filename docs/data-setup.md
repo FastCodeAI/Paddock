@@ -45,6 +45,12 @@ archive, so the hot subset is fast without duplicating the whole dataset.
 A tier holding only the sensors an evaluation actually reads is a legitimate and
 useful thing — do not "tidy it up" into the archive.
 
+KITScenes goes one step further and resolves each ring *camera* against the
+tiers, not only the scene, so a working set pruned to the front camera can
+front an archive that holds the full ring; its `preflight()` refuses when no
+tier completes the ring for a listed scene. See
+[benchmarks/kitscenes.md](benchmarks/kitscenes.md).
+
 **Tiers are not necessarily nested.** Two tiers can hold different sequence sets
 rather than one being a subset of the other. `doctor` reports which sequences the
 configured tiers can collectively serve, and a benchmark's `preflight()` reports
