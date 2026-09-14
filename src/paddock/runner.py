@@ -688,8 +688,13 @@ def _run_open_loop(
                 with (artifacts / "samples.partial.jsonl").open("a") as checkpoint:
                     checkpoint.write(json.dumps(samples[-1]) + "\n")
                 if (index + 1) % 25 == 0:
-                    running = sum(s["metrics"].get("ade", 0.0) for s in samples) / len(samples)
-                    echo(f"  {index + 1} samples, running ADE {running:.3f}")
+                    # The benchmark's own headline, not `ade`: nuScenes calls its
+                    # displacement metric `l2_avg`, and 0.000 for 5,119 samples told
+                    # nobody anything.
+                    key = spec.primary_metric
+                    seen = [s["metrics"][key] for s in samples if key in s["metrics"]]
+                    running = sum(seen) / len(seen) if seen else float("nan")
+                    echo(f"  {index + 1} samples, running {key} {running:.3f}")
     except (proc.NodeStartupError, RuntimeError) as exc:
         echo(f"  node failed: {exc}")
         return 1
@@ -710,6 +715,9 @@ def _run_open_loop(
         failure_note=f"{failures} sample(s) failed" if failures else None,
         invalid_reasons=[*harness.invalid_reasons(), *_limit_reason(limit)],
     )
+    # samples.jsonl now holds every row the checkpoint held; keeping both would
+    # leave a byte-for-byte duplicate beside every finished run.
+    (artifacts / "samples.partial.jsonl").unlink(missing_ok=True)
     headline = metrics_record.metrics.get(spec.primary_metric, {})
     echo(
         f"  n={metrics_record.n}  {spec.primary_metric} mean={headline.get('mean')}"
