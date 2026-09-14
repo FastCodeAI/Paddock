@@ -29,8 +29,12 @@ Release `v1.0` on Hugging Face, `AutowareFoundation/meteor`:
 | `SHA256SUMS` | checksums | `setup.sh` verifies against it |
 
 `setup.sh` builds `<repos>/METEOR/.venv` with `uv` (Python 3.11,
-`onnxruntime-gpu`, the `nvidia-*-cu12` wheels for the CUDA runtime, cuDNN and
-cuBLAS, plus what the paddock node needs) and downloads the three files to
+`onnxruntime-gpu==1.30.*`, which is a CUDA 13 build, and NVIDIA's CUDA 13
+wheels for the runtime, cuBLAS, cuFFT, cuRAND, NVRTC and cuDNN --
+`nvidia-cuda-runtime==13.*`, `nvidia-cublas==13.*`, `nvidia-cuda-nvrtc==13.*`,
+`nvidia-cufft`, `nvidia-curand`, `nvidia-cudnn-cu13`; the CUDA 12 generation
+dropped the `-cu12` suffix and does not satisfy this onnxruntime -- plus what
+the paddock node needs) and downloads the three files to
 `<weights>/meteor/`. It deliberately does not follow the upstream recipe
 (python3.10, torch 2.1.1/cu121, TensorRT 8.6): that torch has no kernels for a
 Blackwell card, and the ONNX path needs none of it.
