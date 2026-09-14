@@ -20,4 +20,17 @@ capabilities:
   startup_timeout_s: 60
   waypoint_dt: 0.5
 
+  # -- the model card ---------------------------------------------------
+  # Nothing is learned and nothing is loaded; every size field is absent on
+  # purpose, which reads as "not applicable" rather than as a claim of zero.
+  architecture: "baseline: straight ahead at the current speed, no perception"
+  history_frames: 1
+  output_kind: waypoints
+  horizon_s: 3.0
+  stochastic: false
+  needs_speed: true
+  # Trained on nothing; an empty list would read as "not recorded".
+  trained_on:
+    - dataset: none
+
 benchmarks: [nuscenes, bench2drive]
