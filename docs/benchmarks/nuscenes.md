@@ -116,6 +116,16 @@ resume or a completed result. Scoring history settings are included in new run
 configuration hashes. Camera-history caches assume the underlying dataset is
 immutable; remove the cache after replacing metadata or image files.
 
+**Provenance of that record.** `results/nuscenes/openpilot/20260908T110028-b71f4f`
+was assembled by the site's four-worker orchestration, not written by
+`paddock run` as tracked here: its `config.execution_workers` and
+`dataset.n_expected` are keys no open-loop path in `src/paddock/` writes, it
+retained 135 predictions from an earlier attempt, and it predates the
+`camera_history` keys `run_config()` records now. The other site cannot
+regenerate it with the tracked code. It stays `valid` because the number is not
+in question, but landing the orchestration (or a `--workers` path in the
+runner) is the open item that makes it regenerable; see `docs/ROADMAP.md`.
+
 The completed 8 September 2026 run scored all 5,119 anchors in 150 scenes with
 zero failures: point L2 average 4.057 m, cumulative L2 average 2.477 m, ADE at
 3 seconds 3.535 m, point collision average 2.624%. See the
@@ -139,12 +149,12 @@ unaffected. The protocol keeps all 5119.
 
 Overlays for every scored keyframe (camera with the human future and each
 model's plan, BEV with annotated boxes, per-scene videos) are on the NAS:
-`<site video root>/Nuscenes/Simulation/<model>/<scene>/` (this site's root is in the top-level repo's `docs/RUNNING_BENCH2DRIVE.md`).
+`<site video root>/Nuscenes/Simulation/<model>/<scene>/`. The root is site-specific and not a paddock setting; ask the site that made the run.
 
 ## Metrics
 
 Every metric `benchmark.yaml` declares, with its direction (all lower is better
-except `inference_seconds`, which is a cost).
+.
 
 | metric | meaning |
 |---|---|
@@ -157,7 +167,6 @@ except `inference_seconds`, which is a cost).
 | `col_uniad_1s`, `col_uniad_2s`, `col_uniad_3s` | collision averaged over every step up to that horizon (cumulative) |
 | `col_uniad_avg` | mean of the three cumulative collision values |
 | `ade_3s` | average displacement over all six 0.5 s steps, m |
-| `inference_seconds` | wall time per sample, s |
 
 ## Tests
 

@@ -6,5 +6,5 @@ description: nuScenes val open-loop planning - L2 error at 1/2/3 s and collision
 # 1/2/3 s, and UniAD-style cumulative means up to each horizon.
 mode: open_loop
 dataset: nuscenes
-metrics: [l2_1s, l2_2s, l2_3s, l2_avg, col_1s, col_2s, col_3s, col_avg, l2_uniad_1s, l2_uniad_2s, l2_uniad_3s, l2_uniad_avg, col_uniad_1s, col_uniad_2s, col_uniad_3s, col_uniad_avg, ade_3s, inference_seconds]
+metrics: [l2_1s, l2_2s, l2_3s, l2_avg, col_1s, col_2s, col_3s, col_avg, l2_uniad_1s, l2_uniad_2s, l2_uniad_3s, l2_uniad_avg, col_uniad_1s, col_uniad_2s, col_uniad_3s, col_uniad_avg, ade_3s]
 primary_metric: l2_avg

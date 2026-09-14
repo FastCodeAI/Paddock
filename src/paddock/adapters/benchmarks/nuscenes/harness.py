@@ -148,8 +148,6 @@ class NuScenesBenchmark(OpenLoopBenchmark):
             root = dataset.resolve()
         except Exception as exc:  # noqa: BLE001 - any resolution failure is the finding
             return [f"nuscenes dataset root: {exc}"]
-        # Every table the loader reads, not just sample.json -- a partial dump is
-        # otherwise discovered an hour into the index build.
         # Every table the loader reads (loader.build_index), not just sample.json
         # -- a partial dump is otherwise discovered an hour into the index build.
         tables = (
