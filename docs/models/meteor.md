@@ -71,13 +71,12 @@ an absent camera is a zero image tensor with a donor camera's calibration
 (`bevlane/dataset.py`, `_CAM_FALLBACK` and `cam_drop`), and METEOR's runtime
 feeds a missing eighth camera as a zero buffer. The adapter feeds black, which
 the graph's own `/255` turns into that zero tensor. The two NARROW slots are
-always absent in paddock; on KITScenes seven of eight are, because paddock's
-KITScenes harness hands over only `camera_ring_front` as `CAM_FRONT`, although
-the dataset records a six-camera ring with calibration for each. That is a
-heavier ablation than anything the network saw in training and the KITScenes
-number should be read with that in mind. Extending the harness to the ring is
-a benchmark change, not an adapter one, and would apply to every multi-camera
-model.
+always absent in paddock. Every other benchmark supplies the nuScenes six;
+KITScenes did not until #40, whose harness handed over only `camera_ring_front`
+although the dataset records a six-camera ring with calibration for each. The
+run made under that harness is kept as an ablation (below): seven absent slots
+is a heavier ablation than anything the network saw in training, and it cost
+2.9 m of ADE.
 
 **Normalisation, as shipped.** `meteor_v157.param.yaml` and `deploy/README.md`
 say the uint8 graph applies `/255` and ImageNet mean/std normalisation
@@ -159,30 +158,39 @@ Timing on the reference box (RTX PRO 6000, shared): load plus warm-up 1-2 s,
 
 ## Reference numbers
 
-KITScenes, `results/kitscenes/meteor/20260914T185351-5e5223` (n=223, the
-shared `kitscenes_e2e_final` list, front camera only, native 3 s plan):
+KITScenes, `results/kitscenes/meteor/20260914T215457-ab0586` (n=223, the
+shared `kitscenes_e2e_final` list, the six-camera ring, native 3 s plan,
+99 s wall clock):
 
 | ADE | FDE@1s | FDE@2s | FDE@3s | longitudinal MAE | lateral MAE |
 |---|---|---|---|---|---|
-| **4.784** (median 3.411) | 2.334 | 5.542 | 9.011 | 4.427 | 1.064 |
+| **1.879** (median 1.419) | 0.695 | 2.040 | 4.034 | 1.563 | 0.688 |
 
-Constant velocity scores 1.381 on the same list. Where the error comes from,
-measured:
+Constant velocity scores 1.381 on the same list; Alpamayo 1.002, VisionPilot
+1.534, OpenPilot 1.599, Drive-JEPA 2.364. A second run reproduced all 223
+predictions exactly.
 
-- **Longitudinal, growing with speed.** By ground-truth speed band the 3 s
-  point is 5.2 m predicted vs 6.0 m true below 3 m/s, 13.1 vs 16.8 at
-  3-8 m/s, 17.2 vs 30.6 at 8-13 m/s, and 15.8 vs 42.8 above 13 m/s
-  (n = 35 / 103 / 70 / 14; ADE 1.69 / 2.66 / 7.45 / 15.02). On the in-domain
-  demo frame with all six cameras, sweeping only `v0` gives x@3s of 7.4, 13.5,
-  20.3, 29.3, 34.3 and 34.7 m for 2.5, 5.2, 8, 12, 16 and 20 m/s, with the
-  accel output going from -0.3 to -1.1 m/s^2: the network reads its speed
-  input but plans to slow down above ~8 m/s and saturates near 34 m. That is a
-  prior from its training domain (urban Japan at 5 Hz), and KITScenes'
-  faster sequences fall outside it.
-- **Lateral, from the missing cameras.** On the same demo frame at the true
-  speed, six cameras give y@3s of -0.04 m; front-left-right gives +1.31 m;
-  the front camera alone gives +2.97 m. KITScenes supplies the front camera
-  only, and its lateral MAE is 1.06 m.
+**Front camera only, kept as an ablation:**
+`results/kitscenes/meteor/20260914T185351-5e5223`, made before #40 when the
+harness handed over one camera: ADE **4.784** (median 3.411), FDE@3s 9.011,
+longitudinal MAE 4.427, lateral MAE 1.064. The ring improves 177 of the 223
+samples. Where the difference lives, by ground-truth speed band (3 s point,
+predicted vs true, and ADE, one camera -> six):
 
-Both effects are properties of the released model under paddock's inputs, not
+| speed | n | true x@3s | one camera | six cameras | ADE one -> six |
+|---|---|---|---|---|---|
+| 0-3 m/s | 35 | 6.0 m | 5.2 m | 7.3 m | 1.69 -> 1.68 |
+| 3-8 m/s | 103 | 16.8 m | 13.1 m | 16.2 m | 2.66 -> 1.66 |
+| 8-13 m/s | 70 | 30.6 m | 17.2 m | 27.8 m | 7.45 -> 1.85 |
+| 13-30 m/s | 14 | 42.8 m | 15.8 m | 35.3 m | 15.02 -> 4.11 |
+
+So the longitudinal collapse at speed in the single-camera run was mostly the
+missing cameras, not a speed prior: with the ring the plan tracks the truth to
+13 m/s. Above that it still stops short (35 m at 3 s for a car that went 43),
+which matches the `v0` sweep on an in-domain frame with six cameras, where
+x@3s plateaus at 34-35 m from 16 m/s up. The lateral error with six cameras
+is 0.69 m; the front-only demo probe (y@3s +2.97 m with one camera against
+-0.04 with six) explains the rest of the single-camera number.
+
+Both numbers are properties of the released model under paddock's inputs, not
 of the adapter: the feed matches the authors' loader byte for byte (above).

@@ -129,11 +129,8 @@ telephoto slots are absent; it has no driving-command input. Fed the front
 camera alone, as the harness did before #40, it scored 4.784 -- the run is kept
 as an ablation. With six cameras the residual error is longitudinal above
 13 m/s, where its plans plateau near 35 m at 3 s (a prior from its training
-domain). The feed matches the authors' reference loader byte for byte. On
-nuScenes, with all six cameras, its L2 sits with Drive-JEPA's; the collision
-figure is a standstill artefact (it creeps ~1 m into the queue ahead when
-stopped, 22.6 % of stopped anchors), and its plans carry a left bias twice as
-large in Boston as in Singapore. See `docs/models/meteor.md`.
+domain). The feed matches the authors' reference loader byte for byte. See
+`docs/models/meteor.md`.
 
 △ nuScenes uses 5,119 scoring anchors across 150 validation scenes. The headline
 is the mean of cumulative L2 through 1, 2 and 3 seconds, not ADE at 3 seconds.
