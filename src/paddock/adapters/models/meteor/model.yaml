@@ -77,4 +77,4 @@ capabilities:
 
 # navsim needs METEOR_HORIZON_S=4.0 (see above) or every sample fails in
 # to_navsim_poses with "model plans 3.00 s".
-benchmarks: [kitscenes, neuroncap, navsim, bench2drive]
+benchmarks: [kitscenes, nuscenes, neuroncap, navsim, bench2drive]

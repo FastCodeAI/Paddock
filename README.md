@@ -111,7 +111,7 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 | Alpamayo 1.5 | 0.787 △ | 1.002 | 0.691 (10 Hz) † | 0.753 (10 Hz) † | 44.58 ◆ | **3.73** ‖ | 0.8000 ¶ | planned |
 | Drive-JEPA | 0.912 △ | 2.364 | 0.843 | 0.892 † | 31.11 ◆ | **3.57** ‖ | 0.5619 ¶ | planned |
 | VisionPilot | 1.441 △ | 1.534 ∗ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.8864 ¶ | planned |
-| METEOR | — | 1.879 ◇ | — | — | — | — | — | — |
+| METEOR | 0.977 △ | 1.879 ◇ | — | — | — | — | — | — |
 | Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | 0.207 † | 47.94 ♣ | 0 § | 0.3562 ¶ | — |
 
 ∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
@@ -129,8 +129,11 @@ telephoto slots are absent; it has no driving-command input. Fed the front
 camera alone, as the harness did before #40, it scored 4.784 -- the run is kept
 as an ablation. With six cameras the residual error is longitudinal above
 13 m/s, where its plans plateau near 35 m at 3 s (a prior from its training
-domain). The feed matches the authors' reference loader byte for byte. See
-`docs/models/meteor.md`.
+domain). The feed matches the authors' reference loader byte for byte. On
+nuScenes, with all six cameras, its L2 sits with Drive-JEPA's; its collisions
+are concentrated at standstill, where the planner creeps ~1 m into the queue
+ahead (22.6 % of stopped anchors), and its plans carry a left bias twice as
+large in Boston as in Singapore. See `docs/models/meteor.md`.
 
 △ nuScenes uses 5,119 scoring anchors across 150 validation scenes. The headline
 is the mean of cumulative L2 through 1, 2 and 3 seconds, not ADE at 3 seconds.
@@ -195,7 +198,7 @@ front-camera history while retaining the same 2 Hz scoring anchors; its complete
 GPU run is detailed below. VisionPilot's plan here is its acceleration/steering
 integrated to a path, as in NAVSIM, so unlike KITScenes it does yield an L2.
 Alpamayo's figure is inflated by the first keyframe of each scene, where it has
-no history to difference (9.5 m there vs 1.2 m elsewhere). See `docs/benchmarks/nuscenes.md`. A constant-velocity baseline scores 0.64 here (point-avg L2 1.29), **better than all four learned models** — nuScenes ego motion is largely straight, so open-loop L2 rewards a straight line; read these numbers with that in mind.
+no history to difference (9.5 m there vs 1.2 m elsewhere). See `docs/benchmarks/nuscenes.md`. A constant-velocity baseline scores 0.64 here (point-avg L2 1.29), **better than every learned model** — nuScenes ego motion is largely straight, so open-loop L2 rewards a straight line; read these numbers with that in mind.
 
 ✦ Bench2Drive constant velocity is a do-nothing floor: "constant velocity" means holding the current speed, and every route starts from a standstill, so the baseline holds zero and never departs -- blocked after 60 s, driving score 0 on every route (confirmed on 3 routes, structural for all 24). Unlike nuScenes, where the logged ego is already moving, it is not an informative baseline in closed loop.
 
@@ -263,6 +266,7 @@ history, CUDA inference, CPU camera warping and resume assistance disabled.
 | Alpamayo 1.5 | 0.509 | 1.351 | 2.602 | 1.487 | 0.787 | 1.249 | 1.582 |
 | Drive-JEPA | 0.540 | 1.587 | 3.519 | 1.882 | 0.912 | 1.536 | 1.459 |
 | VisionPilot | 1.031 | 2.213 | 3.837 | 2.360 | 1.441 | 2.058 | 3.816 |
+| METEOR | 0.616 | 1.683 | 3.356 | 1.885 | 0.977 | 1.570 | 6.152 ◇ |
 | Baseline (Constant Velocity) | 0.372 | 1.151 | 2.340 | 1.288 | 0.641 | 1.069 | 1.661 |
 
 Point L2 averages errors at 1, 2 and 3 seconds. Cumulative L2 averages the three

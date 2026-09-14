@@ -198,3 +198,45 @@ is 0.69 m; the front-only demo probe (y@3s +2.97 m with one camera against
 
 Both numbers are properties of the released model under paddock's inputs, not
 of the adapter: the feed matches the authors' loader byte for byte (above).
+
+nuScenes val, `results/nuscenes/meteor/20260914T202122-4320bb` (n=5,119
+anchors in 150 scenes, all six cameras, 2 Hz keyframes, native 3 s plan,
+14 min wall clock):
+
+| L2@1s | L2@2s | L2@3s | point L2 avg | cumulative L2 avg | ADE@3s | point collision avg |
+|---|---|---|---|---|---|---|
+| 0.616 | 1.683 | 3.356 | **1.885** (median 1.581) | 0.977 | 1.570 | 6.15 % |
+
+Drive-JEPA scores 1.882 / 0.912 / 1.46 % on the same anchors and constant
+velocity 1.288 / 0.641 / 1.66 %. With its cameras filled in, METEOR's
+displacement error sits with Drive-JEPA; the collision rate does not. Where
+each comes from, measured on the per-sample records:
+
+- **Speed is in range here.** nuScenes is urban: 96 % of anchors are below
+  12 m/s, and from 6 m/s up the 3 s point is within 2 m of the truth
+  (22.2 vs 24.2 m at 6-9 m/s, 30.0 vs 30.4 at 9-12). The plateau above
+  13 m/s seen on KITScenes is out of range here. The error moves to the *low* end instead: at
+  1-3 m/s the model plans 11.0 m where the car went 6.5 (L2 avg 3.24, the
+  worst band), and at standstill it creeps.
+- **Collisions are concentrated at standstill, where the planner creeps.** Of
+  the 893 anchors where the ego is stopped, 22.6 % collide: the plan creeps 0.95 m forward on average into
+  the vehicle the car is queued behind. Anchors above 6 m/s collide 1.1 %
+  of the time, in line with the other models. Constant velocity plans zero
+  motion when stopped and collides on 1.7 % overall; METEOR's brake logit is
+  strongly negative when v0 is zero (the demo probe gives -5.1), so this is
+  the planner head, not a decode error.
+- **A left bias.** On straight, moving anchors the plan ends 0.83 m to the
+  left of the truth at 3 s. Split by recording location: +1.26 m in Boston
+  (right-hand traffic, n=1,525) against +0.60 m in Singapore (left-hand,
+  n=1,570). METEOR trained on Japanese roads, which drive on the left, so a
+  prior for sitting left of the centreline is the plausible reading;
+  consistent with the split, not proven by it.
+- **Turns without a command.** With no intent input, left turns are still
+  taken (mean y@3s +4.28 m vs +4.15 true, n=257) and right turns are cut
+  short (-2.30 vs -4.34, n=361): the scene geometry drives the mode choice,
+  and the left bias helps on one side and hurts on the other.
+
+The record carries per-scene aggregates (`by_group`, all 150 scenes), because
+the harness sets `group` to the scene. The four sibling nuScenes records predate
+#28 and carry none, so a per-scene comparison against them is not possible from
+tracked files until they are re-run under the current runner.

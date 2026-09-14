@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
-61 runs across 6 benchmarks.
-30 run(s) excluded as invalid — shown at the end, never averaged in.
+63 runs across 6 benchmarks.
+31 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## bench2drive
 
@@ -89,8 +89,10 @@
 | model | run | n | site | l2_avg ↓ | l2_1s ↓ | l2_uniad_1s ↓ | col_1s ↓ | col_uniad_1s ↓ | l2_2s ↓ | l2_uniad_2s ↓ |
 |---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
 | constant_velocity | 20260914T225156-e5170c | 5119 | fastcode-shakaal | 1.288 | 0.372 | 0.260 | 0.008 | 0.008 | 1.151 | 0.594 |
+| constant_velocity | 20260907T093007-9697fe | 5119 | fastcode-navvrat-nusc-dj | 1.288 | 0.372 | 0.259 | 0.008 | 0.008 | 1.151 | 0.594 |
 | alpamayo15 | 20260905T093547-3dd7cd | 5119 | fastcode-navvrat-nusc-al | 1.487 | 0.509 | 0.369 | 0.008 | 0.008 | 1.351 | 0.742 |
 | drivejepa | 20260905T093335-4513d4 | 5119 | fastcode-navvrat-nusc-dj | 1.882 | 0.540 | 0.376 | 0.006 | 0.008 | 1.587 | 0.824 |
+| meteor | 20260914T202122-4320bb | 5119 | fastcode-shakaal | 1.885 | 0.616 | 0.447 | 0.030 | 0.023 | 1.683 | 0.914 |
 | visionpilot | 20260905T093333-319ef5 | 5119 | fastcode-navvrat-nusc-vp | 2.360 | 1.031 | 0.883 | 0.025 | 0.033 | 2.213 | 1.382 |
 | openpilot | 20260908T110028-b71f4f | 5119 | fastcode-navvrat-nusc-vp | 4.057 | 1.925 | 1.424 | 0.013 | 0.011 | 4.054 | 2.470 |
 
@@ -103,6 +105,7 @@
 - **neuroncap/drivejepa/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **neuroncap/openpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **neuroncap/visionpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
+- **nuscenes/meteor/20260914T202008-98df65** — --limit 5: a subset of the benchmark, run to test the pipeline
 - **kitscenes/meteor/20260914T185332-24b8ff** — --limit 5: a subset of the benchmark, run to test the pipeline
 - **navsim_v1/human/20260911T041230-67c4f3** — privileged: the human agent returns the recorded future the scorer measures against; an anchor for the scoring path, not a model; no model process ran: the recorded human future through the devkit scorer
 - **navsim/alpamayo15/20260911T024038-d518fc** — 1 scenario(s) failed in the scorer and are excluded
