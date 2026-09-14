@@ -124,8 +124,8 @@ needed the ego origin dropped from the roof pod to the road, without which every
 projected path point lands behind the car; see `docs/benchmarks/kitscenes.md`.
 
 ◇ METEOR is TIER IV's 8-camera multi-task network, run from its released
-camera-only ONNX. KITScenes supplies one camera, so seven of its eight slots
-are fed as absent, it has no driving-command input, and its planner slows down
+camera-only ONNX. paddock's KITScenes harness hands over only the front ring
+camera (the dataset has six), so seven of its eight slots are fed as absent, it has no driving-command input, and its planner slows down
 above ~8 m/s (a prior from its training domain), which is where most of the
 error is; the feed itself matches the authors' reference loader byte for byte.
 See `docs/models/meteor.md`.
