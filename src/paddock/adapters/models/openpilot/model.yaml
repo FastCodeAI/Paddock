@@ -14,6 +14,12 @@ runtime:
     PADDOCK_FFMPEG: "{repo}/.venv/bin/ffmpeg"
     # Colon-separated search path, fastest tier first.
     KITSCENES_ROOTS: "{data.kitscenes.tiers}"
+    # tinygrad picks its device at import, and on a box with an NVIDIA card
+    # that is NV -- so "supercombo does not touch the GPU" (vram_gb 0 below,
+    # several NAVSIM nodes) would otherwise rest on luck. openpilot's own build
+    # compiles the pickles with DEV=CPU:LLVM (selfdrive/modeld/SConscript);
+    # the node runs them on the same device, pinned here.
+    DEV: "CPU:LLVM"
 
 capabilities:
   cameras: [CAM_OP_ROAD, CAM_OP_WIDE, CAM_FRONT]   # comma-three rig: road cam -> img, wide cam -> big_img; CAM_FRONT = fallback for single-camera sources (KITScenes, neuroNCAP)
