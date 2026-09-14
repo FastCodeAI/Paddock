@@ -1,36 +1,52 @@
 name: constant_velocity
-description: Baseline. Holds the current speed and heading -- straight line at constant velocity. No perception; a floor every learned model should clear.
+description: Reference floor, not a model - holds the measured ego speed on a straight line
 
-# No vendor clone and no dependencies beyond paddock itself, so it runs in
-# paddock's own interpreter. `builtin` resolves the interpreter to the one
-# running paddock (see registry.Runtime.interpreter); no venv/path is needed,
-# which also keeps this portable (tests/test_portability.py).
+# No repo and no weights: the whole policy is four lines of arithmetic. It is
+# here because a closed-loop score is unreadable without one. AlpaSim's
+# scene_score, for instance, zeroes a scene on an at-fault collision or an
+# offroad event -- and constant velocity commits neither, so it outscores three
+# of the four real models on the pilot set. A number that surprising is only
+# interpretable next to the floor that produces it.
+# No upstream to clone: the whole policy is four lines of arithmetic.
+repo: ""
+
 runtime:
-  kind: builtin
-  # Any existing directory; the policy loads no files, so this is only where the
-  # node process starts.
-  cwd: "{repos}"
+  kind: uv
+  python: "3.11"
+
+  # numpy and nothing else, so this venv is trivial -- but paddock launches
+  # every model in its own interpreter and the floor is not a special case.
+  # A site that would rather not keep a venv for four lines of arithmetic can
+  # point [models.constant_velocity] venv at paddock's own, which already has
+  # numpy; setup.sh exists so that is a choice rather than a requirement.
+  venv: "{repos}/.venvs/constant_velocity"
+
+  pythonpath: []
+  cwd: ""
+  env: {}
 
 capabilities:
-  # The policy reads only ego speed (from the CAN bus), no images. Closed-loop
-  # benchmarks still render one camera for the recording; that is the agent's
-  # default, not a model input.
-  cameras: []
+  # It never looks at an image. Declared anyway because the simulator renders
+  # what a model declares, and declaring none has renderers to skip work that
+  # the scored comparison assumes happened.
+  cameras: [CAM_FRONT]
   vram_gb: 0
   startup_timeout_s: 60
   waypoint_dt: 0.5
 
-  # -- the model card ---------------------------------------------------
-  # Nothing is learned and nothing is loaded; every size field is absent on
-  # purpose, which reads as "not applicable" rather than as a claim of zero.
-  architecture: "baseline: straight ahead at the current speed, no perception"
-  history_frames: 1
+  # -- model card (docs/models/comparison.md) --
+  # There is no network here, so the fields that describe one are absent rather
+  # than zero: `params_m: 0` would read as a measured parameter count, and the
+  # range check would accept it. Absent says "not applicable"; 0 says "nothing".
+  architecture: "None -- integrates the measured ego speed along a straight line"
   output_kind: waypoints
+  # 6 waypoints at waypoint_dt 0.5, the closed-loop minimum.
   horizon_s: 3.0
+  # Same speed in, same plan out. The floor is the one row in the matrix that
+  # cannot move between seeds, which is part of why it is a usable reference.
   stochastic: false
-  needs_speed: true
-  # Trained on nothing; an empty list would read as "not recorded".
-  trained_on:
-    - dataset: none
+  # Trained on nothing, so it cannot overlap any benchmark's data. That is the
+  # property that makes it a floor rather than a competitor.
+  trained_on: []
 
-benchmarks: [nuscenes, bench2drive]
+benchmarks: [alpasim, nuscenes, bench2drive]

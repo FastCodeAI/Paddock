@@ -60,7 +60,7 @@ class Runtime:
     makes it declarative instead of tribal.
     """
 
-    kind: str  # uv | conda | shell | builtin (paddock's own interpreter)
+    kind: str  # uv | conda | shell
     venv: str | None = None
     python: str | None = None
     pythonpath: tuple[str, ...] = ()
@@ -79,13 +79,6 @@ class Runtime:
         # An explicit venv override always wins (a site may redirect any model).
         if override is not None and override.venv is not None:
             return override.venv / "bin" / "python"
-        # Otherwise the builtin kind runs on paddock's own interpreter -- even
-        # when a site sets an env-only override (which leaves venv None); that
-        # must not fall through to the "no venv" error below.
-        if self.kind == "builtin":
-            import sys
-
-            return Path(sys.executable)
         if not self.venv:
             raise ConfigError(
                 f"runtime kind {self.kind!r} declares no 'venv', and paddock.toml has no "
@@ -126,6 +119,14 @@ class ModelSpec:
     #: a benchmark whose data is slower than this measures the gap rather than
     #: the model. Benchmarks check it before scoring.
     min_input_hz: float = 0.0
+    #: Observation rate the model was built for, Hz, when it also tolerates
+    #: slower input. 0 means unstated. alpamayo takes 0.1 s frames and works at
+    #: 0.5 s ones, differently; a benchmark holding both rates should use this.
+    native_input_hz: float = 0.0
+    #: Seconds of observation history the model consumes before a plan. 0 means
+    #: unstated, and a benchmark with a history of its own feeds that. openpilot
+    #: fills a 96-frame feature buffer at 20 Hz, so it asks for 4.8 s.
+    history_s: float = 0.0
 
     # -- the model card ---------------------------------------------------
     # What the model IS, as opposed to how to launch it. Each field is here
@@ -285,6 +286,8 @@ def load_models(directory: Path = MODELS_DIR) -> dict[str, ModelSpec]:
             startup_timeout_s=int(caps.get("startup_timeout_s", 600)),
             waypoint_dt=float(caps.get("waypoint_dt", 0.5)),
             min_input_hz=float(caps.get("min_input_hz", 0.0)),
+            native_input_hz=float(caps.get("native_input_hz", 0.0)),
+            history_s=float(caps.get("history_s", 0.0)),
             architecture=caps.get("architecture", ""),
             params_m=_optional_float(caps.get("params_m")),
             macs_g=_optional_float(caps.get("macs_g")),

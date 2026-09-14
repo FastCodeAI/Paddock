@@ -55,7 +55,8 @@ from collections.abc import Collection
 from pathlib import Path
 from typing import Any
 
-from paddock.adapters.benchmarks.navsim.convert import NAVSIM_INTERVAL_S
+from paddock.adapters.benchmarks.navsim.convert import CAMERA_SLOTS, NAVSIM_INTERVAL_S
+from paddock.adapters.benchmarks.navsim.dense import NUPLAN_HZ
 from paddock.benchmark import Evaluation, ExternallyScoredBenchmark
 from paddock.results.ingest import navsim as navsim_ingest
 from paddock.runtime.proc import tail as _tail
@@ -71,6 +72,13 @@ DEFAULT_CHUNK_LOGS = 4
 
 #: A previous run's artifacts directory whose completed chunks are reused.
 RESUME_ENV = "PADDOCK_NAVSIM_RESUME_FROM"
+
+#: Another run whose *completed chunk CSVs* this run takes as its own, skipping
+#: their logs. For continuing a run whose chunking changed -- `RESUME_ENV`
+#: reuses chunks by index, which only works when the index means the same
+#: logs. The other run must have been made under the same measurement
+#: configuration; the record says where the rows came from (`merged_from`).
+MERGE_ENV = "PADDOCK_NAVSIM_MERGE_FROM"
 
 
 def node_alive(policy_url: str, timeout_s: float = 5.0) -> bool:
@@ -93,6 +101,107 @@ def chunk_logs(logs: list[str], size: int) -> list[list[str]]:
 def hydra_list(items: list[str]) -> str:
     """A hydra list override literal. Quoted: log names carry dots."""
     return "[" + ",".join(f"'{item}'" for item in items) + "]"
+
+
+def completed_chunk_csvs(run_dir: Path) -> list[Path]:
+    """Every completed chunk CSV under another run's `chunks/`, retry pass included."""
+    chunks = Path(run_dir) / "chunks"
+    if not chunks.is_dir():
+        return []
+    found = [completed_chunk_csv(d) for d in sorted(chunks.iterdir()) if d.is_dir()]
+    return [f for f in found if f is not None]
+
+
+def tokens_in_csvs(csv_paths: list[Path]) -> set[str]:
+    """Every `token` in these chunk CSVs. The scorer's CSV names no log -- its
+    columns end at `score` -- so which log a token belongs to is the metric
+    cache's to say (`_token_logs`)."""
+    import csv
+
+    tokens: set[str] = set()
+    for path in csv_paths:
+        with Path(path).open(newline="") as handle:
+            for row in csv.DictReader(handle):
+                token = (row.get("token") or "").strip()
+                if token:
+                    tokens.add(token)
+    return tokens
+
+
+def retry_tokens(failed: list[str], token_logs: dict[str, str], floor: int) -> list[str]:
+    """The failed tokens, plus enough already-scored neighbours from the same
+    logs for the scorer to aggregate them.
+
+    The v2 scorer pairs consecutive frames within a log for two-frame comfort
+    and dies in pandas below `floor` per log -- the benchmark's MIN_SCENARIOS,
+    the same floor `--limit` guards (1 under v1, which pads nothing). One failed
+    token per log is the common case, so alone it cannot
+    be retried at all. The neighbours are re-scored and then discarded
+    (`keep_tokens`): a stochastic model must not get a second draw on a
+    scenario that did not fail.
+    """
+    wanted = set(failed)
+    by_log: dict[str, list[str]] = {}
+    for token in failed:
+        log = token_logs.get(token)
+        if log is not None:
+            by_log.setdefault(log, []).append(token)
+    padded = list(failed)
+    for log, tokens in by_log.items():
+        need = floor - len(tokens)
+        if need > 0:
+            others = sorted(t for t, owner in token_logs.items() if owner == log and t not in wanted)
+            padded += others[:need]
+    return padded
+
+
+def keep_tokens(
+    csv_path: Path, tokens: set[str], aggregate: frozenset[str] = frozenset(navsim_ingest.AGGREGATE_TOKENS)
+) -> Path:
+    """Rewrite a scorer CSV in place keeping only `tokens` and the aggregate rows."""
+    with Path(csv_path).open(newline="") as handle:
+        reader = csv.DictReader(handle)
+        header = list(reader.fieldnames or [])
+        rows = [
+            row
+            for row in reader
+            if (row.get("token") or "").strip() in tokens or (row.get("token") or "").strip() in aggregate
+        ]
+    with Path(csv_path).open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=header)
+        writer.writeheader()
+        writer.writerows(rows)
+    return Path(csv_path)
+
+
+def dense_history_summary(out_dir: Path) -> dict[str, int]:
+    """What the plan dumps under `out_dir` say about the 10 Hz history each
+    scenario was shown: how many scenarios had frames clamped at a log start
+    or borrowed across a dropped frame (dense.py). Zero when no dump says so.
+
+    A token planned more than once (the proxy's retries) counts once, by its
+    last line. Summed into the tracked record because it is the one thing
+    that changes what the model saw and would otherwise live only in the
+    untracked dump.
+    """
+    import json
+
+    last: dict[str, dict] = {}
+    for dump in sorted(Path(out_dir).rglob("trajectories.jsonl")):
+        with dump.open() as handle:
+            for line in handle:
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    continue
+                token = record.get("token")
+                if token:
+                    last[token] = record
+    return {
+        "scenarios": len(last),
+        "clamped": sum(1 for r in last.values() if r.get("clamped")),
+        "approximate": sum(1 for r in last.values() if r.get("approximate")),
+    }
 
 
 def completed_chunk_csv(chunk_dir: Path) -> Path | None:
@@ -168,30 +277,69 @@ MIN_SCENARIOS = 2
 #: denser history to build. A model needing more than this cannot be measured
 #: here, only mis-measured.
 INPUT_HZ = 1.0 / NAVSIM_INTERVAL_S
+
+#: Seconds of history NAVSIM's own AgentInput spans: four keyframes at 0.5 s.
+NAVSIM_HISTORY_S = 1.5
+
+#: [benchmarks.navsim] key naming a nuPlan root -- `splits/<split>/<log>.db` and
+#: `sensor_blobs/<split>/<log>/<CHANNEL>/` at nuPlan's own 10 Hz. With it, a
+#: model whose floor or native rate is above OpenScene's 2 Hz is fed a dense
+#: history built from it (dense.py); without it such a model is refused, as
+#: `input_rate_problems` explains. Which rate a run used is in `run.json`.
+SETTING_NUPLAN = "nuplan"
 CONF_DIR = Path(__file__).resolve().parent / "conf"
 SCORER = "navsim/planning/script/run_pdm_score_sequential.py"
 
 
-def input_rate_problems(min_input_hz: float, model_name: str) -> list[str]:
-    """Why a model needing denser input than OpenScene has cannot be scored.
+def input_rate_problems(min_input_hz: float, model_name: str, supplied_hz: float = INPUT_HZ) -> list[str]:
+    """Why a model needing denser input than this run supplies cannot be scored.
 
-    Pure, so the runner can ask before loading the model and `--dry-run` can
-    report it. `PADDOCK_NAVSIM_ALLOW_SLOW` overrides -- for investigating the
-    gap, not for producing a score, and the run is then stored `valid: false`.
+    `supplied_hz` is OpenScene's 2 Hz, or nuPlan's 10 Hz when the site holds
+    the full-rate data (`SETTING_NUPLAN`). Pure, so the runner can ask before
+    loading the model and `--dry-run` can report it. `PADDOCK_NAVSIM_ALLOW_SLOW`
+    overrides -- for investigating the gap, not for producing a score, and the
+    run is then stored `valid: false`.
     """
-    if min_input_hz > INPUT_HZ and not os.environ.get(ENV_ALLOW_SLOW):
+    if min_input_hz <= supplied_hz or os.environ.get(ENV_ALLOW_SLOW):
+        return []
+    if supplied_hz > INPUT_HZ:
         return [
-            f"{model_name} needs {min_input_hz:g} Hz observations and NAVSIM "
-            f"supplies {INPUT_HZ:g} Hz. OpenScene stores one keyframe per 0.5 s and one image "
-            f"per keyframe, so a denser history cannot be built without inventing frames.\n"
-            f"A model that infers ego motion from frame-to-frame change reads this as a "
-            f"stationary world and plans accordingly, which scores near the constant-velocity "
-            f"baseline while measuring the rate gap rather than the model. See "
-            f"docs/benchmarks/navsim.md.\n"
-            f"Set {ENV_ALLOW_SLOW}=1 to run anyway -- for investigating the gap, "
-            f"not for producing a score."
+            f"{model_name} needs {min_input_hz:g} Hz observations and nuPlan's cameras run at "
+            f"{supplied_hz:g} Hz; nothing denser was ever recorded."
         ]
-    return []
+    return [
+        f"{model_name} needs {min_input_hz:g} Hz observations and NAVSIM "
+        f"supplies {INPUT_HZ:g} Hz. OpenScene stores one keyframe per 0.5 s and one image "
+        f"per keyframe, so a denser history cannot be built from it without inventing frames.\n"
+        f"A model that infers ego motion from frame-to-frame change reads this as a "
+        f"stationary world and plans accordingly, which scores near the constant-velocity "
+        f"baseline while measuring the rate gap rather than the model. See "
+        f"docs/benchmarks/navsim.md.\n"
+        f"The frames exist upstream: set [benchmarks.navsim] {SETTING_NUPLAN} to nuPlan's "
+        f"full-rate sensor data and the model is fed {NUPLAN_HZ:g} Hz from it.\n"
+        f"Or set {ENV_ALLOW_SLOW}=1 to run anyway -- for investigating the gap, "
+        f"not for producing a score."
+    ]
+
+
+def supplied_cameras(cameras: list[str]) -> list[str]:
+    """The declared cameras this rig has a view for, in declaration order.
+
+    A model may declare cameras only one benchmark can render (openpilot's
+    comma-three pair exists in CARLA alone) and fall back to CAM_FRONT elsewhere;
+    the proxy asks NAVSIM for the ones that exist and the policy sees the rest
+    as absent, as it does on KITScenes. None at all is a refusal.
+    """
+    return [c for c in cameras if c in CAMERA_SLOTS]
+
+
+def camera_problems(cameras: list[str], model_name: str) -> list[str]:
+    if supplied_cameras(cameras):
+        return []
+    return [
+        f"{model_name} declares {', '.join(cameras) or 'no cameras'} and the nuPlan rig has none of "
+        f"them; see CAMERA_SLOTS in convert.py"
+    ]
 
 
 def limit_problems(limit: int | None, floor: int = MIN_SCENARIOS) -> list[str]:
@@ -304,6 +452,16 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
 
         if "exp" not in dataset.extra:
             problems.append(f"[datasets.{self.spec.dataset}] has no 'exp' key (the NAVSIM experiment root)")
+
+        nuplan = self.setting(SETTING_NUPLAN)
+        if nuplan:
+            section = f"[benchmarks.{self.spec.name}]"
+            for required in (f"splits/{self.data_split}", f"sensor_blobs/{self.data_split}"):
+                if not (Path(nuplan) / required).is_dir():
+                    problems.append(
+                        f"{section} {SETTING_NUPLAN} = {nuplan} has no {required}/; "
+                        f"it must be a nuPlan root laid out as nuPlan's own (docs/benchmarks/navsim.md)"
+                    )
 
         cache = self.setting("metric_cache")
         if not cache:
@@ -466,6 +624,71 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
     def _overrides() -> list[str]:
         return os.environ.get(ENV_OVERRIDES, "").split()
 
+    # -- which observation rate a model is fed ------------------------------
+
+    @property
+    def nuplan_root(self) -> Path | None:
+        """The site's full-rate nuPlan data, when `SETTING_NUPLAN` names one."""
+        raw = self.setting(SETTING_NUPLAN)
+        return Path(raw) if raw else None
+
+    def input_rate(self, min_input_hz: float, native_input_hz: float = 0.0) -> float:
+        """Hz this model would be fed here: nuPlan's 10 when it needs or was
+        built for more than OpenScene's 2 and the site holds nuPlan; 2 otherwise.
+
+        A model that neither needs nor was built for a denser rate keeps
+        OpenScene's frames even when nuPlan is present, so its recorded scores
+        stay comparable with themselves.
+        """
+        wanted = max(float(min_input_hz or 0.0), float(native_input_hz or 0.0))
+        if wanted > INPUT_HZ and self.nuplan_root is not None:
+            return NUPLAN_HZ
+        return INPUT_HZ
+
+    def history_s(self, model_history_s: float, input_hz: float) -> float:
+        """Seconds of history fed: the model's own ask on the dense path, or
+        NAVSIM's 1.5 s where the scorer's AgentInput is what it gets."""
+        if input_hz > INPUT_HZ and float(model_history_s or 0.0) > 0:
+            return float(model_history_s)
+        return NAVSIM_HISTORY_S
+
+    def model_run_config(self, model) -> dict[str, Any]:
+        hz = self.input_rate(model.min_input_hz, getattr(model, "native_input_hz", 0.0))
+        return {
+            "input_hz": hz,
+            "history_source": "nuplan" if hz > INPUT_HZ else "openscene",
+            "history_s": self.history_s(getattr(model, "history_s", 0.0), hz),
+        }
+
+    def _dense_problems(self, cameras: list[str]) -> list[str]:
+        """Why nuPlan's data cannot feed this model's cameras for this split's logs."""
+        root = self.nuplan_root
+        if root is None:
+            return []
+        coverage = self._coverage()
+        logs = sorted(coverage[0]) if isinstance(coverage, tuple) else sorted(self._declared_logs() or [])
+        channels = [CAMERA_SLOTS[c].upper() for c in cameras if c in CAMERA_SLOTS]
+        no_db = [log for log in logs if not (root / "splits" / self.data_split / f"{log}.db").is_file()]
+        no_cam = [
+            f"{log}/{channel}"
+            for log in logs
+            for channel in channels
+            if not any((root / "sensor_blobs" / self.data_split / log / channel).glob("*.jpg"))
+        ]
+        problems = []
+        if no_db:
+            problems.append(
+                f"{len(no_db)} of {len(logs)} {self.split} logs have no nuPlan database under "
+                f"{root / 'splits' / self.data_split} (first: {no_db[0]})"
+            )
+        if no_cam:
+            problems.append(
+                f"{len(no_cam)} log/camera directories have no nuPlan frames under "
+                f"{root / 'sensor_blobs' / self.data_split} (first: {no_cam[0]}); "
+                f"this model reads {', '.join(channels)}"
+            )
+        return problems
+
     def run_config(self) -> dict[str, Any]:
         """The switches that change what a NAVSIM run measures, for run.json."""
         return {
@@ -474,6 +697,11 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
             "allow_partial": bool(os.environ.get(ENV_ALLOW_PARTIAL)),
             "allow_slow": bool(os.environ.get(ENV_ALLOW_SLOW)),
             "overrides": self._overrides(),
+            # Logs are chunked largest-first (see `_scorable_logs`). On the
+            # record because `--resume` reuses chunks by index, and a run
+            # chunked in another order has different logs behind each index.
+            "chunk_order": "by_size",
+            "merged_from": os.environ.get(MERGE_ENV) or None,
         }
 
     def invalid_reasons(self) -> list[str]:
@@ -515,9 +743,15 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         return reasons
 
     def model_problems(self, model, limit: int | None = None) -> list[str]:
-        return input_rate_problems(float(model.min_input_hz or 0.0), model.name) + limit_problems(
-            limit, self.MIN_SCENARIOS
-        )
+        hz = self.input_rate(model.min_input_hz, getattr(model, "native_input_hz", 0.0))
+        problems = input_rate_problems(float(model.min_input_hz or 0.0), model.name, hz)
+        # Cameras and the dense history are the proxy's concern; a node-less
+        # agent (baseline, human, replay) loads no sensors at all.
+        if self._agent() == self.PROXY_AGENT:
+            problems += camera_problems(list(model.cameras), model.name)
+            if hz > INPUT_HZ and not problems:
+                problems += self._dense_problems(list(model.cameras))
+        return problems + limit_problems(limit, self.MIN_SCENARIOS)
 
     # -- the run ----------------------------------------------------------
 
@@ -616,7 +850,7 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
     ) -> list[str]:
         root = self.dataset.resolve()
         agent = self._agent()
-        cameras = list(config.get("cameras") or ["CAM_FRONT"])
+        cameras = supplied_cameras(list(config.get("cameras") or ["CAM_FRONT"]))
 
         command = [
             str(self.setting("python")),
@@ -643,6 +877,14 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
                 f"agent.sensor_blobs_path={root / 'sensor_blobs' / self.data_split}",
                 f"agent.dump_path={out_dir / 'trajectories.jsonl'}",
             ]
+            hz = self.input_rate(config.get("min_input_hz", 0.0), config.get("native_input_hz", 0.0))
+            if hz > INPUT_HZ:
+                command += [
+                    f"agent.nuplan_root={self.nuplan_root}",
+                    f"agent.nuplan_split={self.data_split}",
+                    f"agent.dense_hz={hz:g}",
+                    f"agent.history_s={self.history_s(config.get('history_s', 0.0), hz):g}",
+                ]
         if agent == REPLAY_AGENT and config.get("plans_dir"):
             # The run being replayed, by artifacts directory. Passed on the
             # command line rather than through PADDOCK_NAVSIM_OVERRIDES so the
@@ -693,6 +935,24 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
             )
         return csv_path
 
+    def _token_logs(self) -> dict[str, str]:
+        """token -> log, once per harness: the metric cache's metadata csv
+        (`_cache_index`) when it has one, else walked from the cache's own
+        layout `<cache>/<log>/<type>/<token>/`. The scorer's CSV names no log,
+        so this is the one place a token's log is known outside the scorer."""
+        if getattr(self, "_token_log_map", None) is None:
+            mapping = dict(self._cache_index())
+            if not mapping:
+                cache = Path(self.setting("metric_cache") or "")
+                if cache.is_dir():
+                    for log_dir in cache.iterdir():
+                        if log_dir.is_dir():
+                            for token_dir in log_dir.glob("*/*"):
+                                if token_dir.is_dir():
+                                    mapping[token_dir.name] = log_dir.name
+            self._token_log_map = mapping
+        return self._token_log_map
+
     def _logs_of(self, merged_csv: Path, tokens: list[str]) -> list[str]:
         """The logs a set of tokens belong to, so the retry pass loads only those
         logs' metadata. From the scored CSV when it has a `log_name` column,
@@ -707,7 +967,7 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
                     if (row.get("token") or "").strip() in wanted and row.get("log_name"):
                         logs.add(row["log_name"].strip())
                 return sorted(logs)
-        index = self._cache_index()
+        index = self._token_logs()
         return sorted({index[token] for token in wanted if token in index})
 
     def _scorable_logs(self) -> list[str]:
@@ -723,7 +983,12 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         if isinstance(coverage, str):
             raise RuntimeError(coverage)
         scorable, _ = coverage
-        return sorted(scorable)
+        # Largest first. The scorer hands each of its workers one whole log,
+        # so a chunk costs its longest log: chunked alphabetically, a 156-
+        # scenario log next to 22-scenario ones left seven of eight nodes idle
+        # for two hours at a time. Grouping logs of like size fills the
+        # workers; name breaks ties so the order is fixed for `--resume`.
+        return sorted(scorable, key=lambda log: (-self._cache_scenarios([log]), log))
 
     def _cache_scenarios(self, log_names: list[str]) -> int:
         """How many scenarios the metric cache holds for these logs.
@@ -760,9 +1025,15 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
     ) -> Evaluation:
         # The runner has already asked `model_problems`; asked again here so a
         # caller that skips the runner is refused the same way.
+        hz = self.input_rate(config.get("min_input_hz", 0.0), config.get("native_input_hz", 0.0))
         problems = input_rate_problems(
-            float(config.get("min_input_hz") or 0.0), str(config.get("model", "this model"))
+            float(config.get("min_input_hz") or 0.0), str(config.get("model", "this model")), hz
         ) + limit_problems(limit, self.MIN_SCENARIOS)
+        if self._agent() == self.PROXY_AGENT:
+            model_name = str(config.get("model", "this model"))
+            problems += camera_problems(list(config.get("cameras") or []), model_name)
+            if hz > INPUT_HZ and not problems:
+                problems += self._dense_problems(list(config.get("cameras") or ["CAM_FRONT"]))
         if problems:
             raise RuntimeError("\n".join(problems))
 
@@ -775,7 +1046,18 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         # and a per-invocation max_scenes would otherwise multiply by chunks.
         size = 0 if limit else int(self.setting("chunk_logs", str(DEFAULT_CHUNK_LOGS)) or 0)
         logs = self._scorable_logs() if size > 0 else []
-        chunks = chunk_logs(logs, size) if logs else [[]]
+        # Rows another run already scored, taken as this run's own: their
+        # logs are not chunked again. See MERGE_ENV.
+        merged_csvs: list[Path] = []
+        merged_logs: set[str] = set()
+        merge_from = os.environ.get(MERGE_ENV)
+        if merge_from and size > 0:
+            merged_csvs = completed_chunk_csvs(Path(merge_from))
+            token_logs = self._token_logs()
+            merged_logs = {token_logs[t] for t in tokens_in_csvs(merged_csvs) if t in token_logs} & set(logs)
+            if not merged_csvs:
+                raise RuntimeError(f"{MERGE_ENV}={merge_from} has no completed chunk CSVs under chunks/")
+        chunks = chunk_logs([log for log in logs if log not in merged_logs], size) if logs else [[]]
         # Only one way to reuse another run's chunks, and it is this variable;
         # `--resume` continues a run in its own directory and needs nothing here.
         resume_from = os.environ.get(RESUME_ENV)
@@ -792,10 +1074,19 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
             + (f", resuming from {resume_from}" if resume_from else "")
         )
 
-        csvs: list[Path] = []
+        csvs: list[Path] = list(merged_csvs)
         failed_chunks: list[dict[str, Any]] = []
         with summary.open("a") as log:
             log.write(f"attempt {config.get('attempt', 1)}: {len(chunks)} chunk(s)\n")
+            if merged_csvs:
+                log.write(
+                    f"merged {len(merged_csvs)} completed chunk CSV(s) from {merge_from}: "
+                    f"{len(merged_logs)} log(s) not scored again\n"
+                )
+                echo(
+                    f"  taking {len(merged_csvs)} completed chunk(s) from {merge_from}; "
+                    f"{len(merged_logs)} log(s) skipped"
+                )
             log.flush()
             for index, names in enumerate(chunks):
                 chunk_dir = out_dir / "chunks" / f"{index:03d}" if size > 0 else out_dir
@@ -846,23 +1137,33 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         # get one more pass of their own, by token. For an unseeded sampler that
         # is a fresh draw; for anything else it fails again and stays excluded.
         # Whole chunks that failed are the runner's to retry with fresh nodes.
-        if failed and size > 0 and not completed_chunk_csv(out_dir / "chunks" / "retry"):
-            echo(f"  re-scoring {len(failed)} failed scenario(s) by token")
-            logs_of = self._logs_of(merged, failed)
+        if failed and size > 0:
             retry_dir = out_dir / "chunks" / "retry"
-            try:
-                csvs.append(
-                    self._run_scorer(
-                        self._command(policy_url, retry_dir, config, limit, logs_of or None, failed),
+            # A retry a previous attempt completed is merged, not run again.
+            retried = completed_chunk_csv(retry_dir)
+            if retried is None:
+                tokens = retry_tokens(failed, self._token_logs(), self.MIN_SCENARIOS)
+                neighbours = len(tokens) - len(failed)
+                echo(
+                    f"  re-scoring {len(failed)} failed scenario(s) by token"
+                    + (f", with {neighbours} neighbour(s) so the scorer can aggregate" if neighbours else "")
+                )
+                logs_of = self._logs_of(merged, tokens)
+                try:
+                    retried = self._run_scorer(
+                        self._command(policy_url, retry_dir, config, limit, logs_of or None, tokens),
                         retry_dir,
                         root,
                         exp,
                     )
-                )
+                    keep_tokens(retried, set(failed), self.VOCABULARY.aggregate_tokens)
+                except RuntimeError as exc:
+                    echo(f"  retry pass FAILED ({str(exc).splitlines()[0]}); the {len(failed)} stay excluded")
+                    retried = None
+            if retried is not None:
+                csvs.append(retried)
                 merged = self._merge(csvs, out_dir)
                 samples, aggregates, failed = self._parse(merged)
-            except RuntimeError as exc:
-                echo(f"  retry pass FAILED ({str(exc).splitlines()[0]}); the {len(failed)} stay excluded")
         # The scorer's own headline is per invocation and means nothing across
         # chunks; only a single-invocation run keeps it.
         reported = navsim_ingest.log_reported_score(out_dir) if size == 0 else None
@@ -878,13 +1179,16 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         # headline and paddock's recomputed mean answer slightly different
         # questions. Stored in the tracked metrics.json under `by_group`, the
         # same keys the ingest path writes. See paddock/results/ingest/navsim.py.
+        by_group: dict[str, Any] = {
+            "source_aggregates": aggregates,
+            "source_reported": {"final_average_valid": reported} if reported is not None else {},
+        }
+        if self._agent() == self.PROXY_AGENT and hz > INPUT_HZ:
+            by_group["dense_history"] = dense_history_summary(out_dir)
         return Evaluation(
             samples=samples,
             failed=failed,
-            by_group={
-                "source_aggregates": aggregates,
-                "source_reported": {"final_average_valid": reported} if reported is not None else {},
-            },
+            by_group=by_group,
             failed_chunks=failed_chunks,
             n_expected=n_expected,
         )

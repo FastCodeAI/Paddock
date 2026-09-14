@@ -325,25 +325,3 @@ def test_a_slow_or_malformed_whoami_is_retried_not_refused() -> None:
     finally:
         server.shutdown()
     assert len(answers) == 1, "the launcher kept asking until it got a well-formed answer"
-
-
-def test_builtin_interpreter_survives_an_env_only_site_override() -> None:
-    """A `[models.<name>] env = {...}` override leaves venv None; the builtin
-    runtime (paddock's own interpreter) must still resolve, not fall through to
-    the "no venv" error."""
-    import sys
-    import types
-    from pathlib import Path
-
-    from paddock.config import ModelOverride
-    from paddock.registry import Runtime
-
-    rt = Runtime(kind="builtin")
-    env_only = types.SimpleNamespace(models={"cv": ModelOverride(env={"K": "v"})})
-    assert rt.interpreter(env_only, model="cv") == Path(sys.executable)
-    # No override at all: still the builtin interpreter.
-    none = types.SimpleNamespace(models={})
-    assert rt.interpreter(none, model="cv") == Path(sys.executable)
-    # An explicit venv override still wins, even for a builtin model.
-    venv = types.SimpleNamespace(models={"cv": ModelOverride(venv=Path("/x/env"))})
-    assert rt.interpreter(venv, model="cv") == Path("/x/env") / "bin" / "python"

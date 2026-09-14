@@ -33,6 +33,11 @@ capabilities:
   # NAVSIM's 2 Hz data, that fallback is worth +0.207 EPDMS, almost all of it
   # collisions avoided.
   min_input_hz: 0.0
+  # What it was built for: four camera frames 0.1 s apart and 16 poses at 0.1 s
+  # (load_physical_aiavdataset.py in the vendor repo). A benchmark holding
+  # 10 Hz data should feed that rather than the 0.5 s fallback above.
+  native_input_hz: 10.0
+  history_s: 1.5
 
   # -- model card (docs/models/comparison.md) --
   architecture: "Cosmos-Reason2 VLM + diffusion trajectory decoder"
@@ -51,4 +56,4 @@ capabilities:
   trained_on:
     # NVIDIA internal, 80,000 h. Zero-shot on every paddock benchmark.
     - dataset: nvidia-internal
-benchmarks: [kitscenes, neuroncap, navsim, navsim_v1, bench2drive, nuscenes]
+benchmarks: [kitscenes, neuroncap, navsim, navsim_v1, bench2drive, alpasim, nuscenes]

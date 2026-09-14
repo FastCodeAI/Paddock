@@ -177,12 +177,12 @@ then the equivalence claim rests on the transcription, not on a measured match.
 
 ## Framework changes in this PR
 
-Adding this benchmark stayed inside its own adapter directory, with two
-deliberate framework touchpoints kept minimal and called out here per
-`CONTRIBUTING.md`:
+Adding this benchmark stayed inside its own adapter directory, with one
+deliberate framework touchpoint kept minimal and called out here per
+`CONTRIBUTING.md` (the `constant_velocity` baseline it uses is `main`'s
+adapter, which runs in a uv venv, or in paddock's own interpreter when a site
+points `[models.constant_velocity] venv` there):
 
-* `registry.py` gained a `builtin` runtime kind (paddock's own interpreter), so a
-  dependency-free baseline (`constant_velocity`) can run without a separate venv.
 * `results/report.py` learned that `l2*`/`col*` are lower-is-better, so these
   metrics render with the correct arrow. This is global metric-direction
   inference; a per-metric declaration on the benchmark would be the cleaner home

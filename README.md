@@ -107,10 +107,11 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 
 | | 🟢 nuScenes cumulative L2 avg ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🟡 NAVSIM v1 PDMS ↑ (0–1) | 🔴 Bench2Drive driving score ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim nuRec scene score ↑ (0–1) | 🔴 AlpaSim (OmniDreams) |
 |---|---|---|---|---|---|---|---|---|
-| OpenPilot | 2.477 △ | 1.599 | ✗ 2 Hz ‡ | ✗ 2 Hz ‡ | 30.09 ≈ ◆ | **3.60** ‖ | 0.9566 ¶ | planned |
-| Alpamayo 1.5 | 0.787 △ | 1.002 | 0.608 † | 0.676 † | 44.58 ◆ | **3.73** ‖ | 0.8000 ¶ | planned |
+| OpenPilot | 2.477 △ | 1.599 | 0.747 (10 Hz) ‡ | 0.807 (10 Hz) ‡ | 30.09 ≈ ◆ | **3.60** ‖ | 0.9566 ¶ | planned |
+| Alpamayo 1.5 | 0.787 △ | 1.002 | 0.691 (10 Hz) † | 0.753 (10 Hz) † | 44.58 ◆ | **3.73** ‖ | 0.8000 ¶ | planned |
 | Drive-JEPA | 0.912 △ | 2.364 | 0.843 | 0.892 † | 31.11 ◆ | **3.57** ‖ | 0.5619 ¶ | planned |
 | VisionPilot | 1.441 △ | 1.534 ∗ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.8864 ¶ | planned |
+| METEOR | — | 1.879 ◇ | — | — | — | — | — | — |
 | Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | 0.207 † | 47.94 ♣ | 0 § | 0.3562 ¶ | — |
 
 ∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
@@ -122,18 +123,28 @@ with a model that emits a timed trajectory. The KITScenes run additionally
 needed the ego origin dropped from the roof pod to the road, without which every
 projected path point lands behind the car; see `docs/benchmarks/kitscenes.md`.
 
+◇ METEOR is TIER IV's 8-camera multi-task network, run from its released
+camera-only ONNX. KITScenes hands it the six-camera ring (#40), so only its two
+telephoto slots are absent; it has no driving-command input. Fed the front
+camera alone, as the harness did before #40, it scored 4.784 -- the run is kept
+as an ablation. With six cameras the residual error is longitudinal above
+13 m/s, where its plans plateau near 35 m at 3 s (a prior from its training
+domain). The feed matches the authors' reference loader byte for byte. See
+`docs/models/meteor.md`.
+
 △ nuScenes uses 5,119 scoring anchors across 150 validation scenes. The headline
 is the mean of cumulative L2 through 1, 2 and 3 seconds, not ADE at 3 seconds.
 OpenPilot uses real approximately 12 Hz front-camera history; scoring stays at
 2 Hz. See the nuScenes table below for point L2, cumulative L2 and ADE.
 
-† All three NAVSIM figures are the full navtest split, 12,146 real recorded
+† Every NAVSIM figure is the full navtest split, 12,146 real recorded
 scenarios, scored through paddock's proxy agent. This is NAVSIM v2's **stage
 one** only: the leaderboard's stage two, the pseudo-simulation on synthetic
 scenes (navhard / navsafe two-stage), is not run -- it needs the
-`synthetic_scenes/` download and a second metric cache. Alpamayo's earlier
-242-scenario estimate was 0.653; the full split says 0.608, which is why
-subsets are stored `valid: false`. On the subset Drive-JEPA scored 0.880
+`synthetic_scenes/` download and a second metric cache. Alpamayo's 0.691 is
+with the 10 Hz history from nuPlan (see ‡); at OpenScene's 2 Hz the same model
+scores 0.608 on the same split. Its earlier 242-scenario estimate was 0.653
+against that 0.608, which is why subsets are stored `valid: false`. On the subset Drive-JEPA scored 0.880
 through the proxy — the vendor's own agent scores 0.907 by reading the
 scorer's simulator at inference time, which no other model can do, so the
 proxy figure is the comparable one. `preflight` refuses a partial split unless told
@@ -143,16 +154,23 @@ subset rows in `results/` are stored `valid: false` -- they appear under
 The **NAVSIM v1 PDMS** column scores the same 12,146 scenarios with the v1.1
 devkit -- the composite the 2024 leaderboard uses, on which the NAVSIM paper
 reports constant velocity 20.6 and human 94.8 -- see
-`docs/benchmarks/navsim_v1.md`. Alpamayo's v1 figure replays the plans its v2
-run recorded (the same plans, the other scorer); the rest are fresh proxy runs.
+`docs/benchmarks/navsim_v1.md`. Alpamayo's and OpenPilot's v1 figures replay the
+plans their 10 Hz v2 runs recorded -- the same plans, the other scorer -- so each
+model's two columns describe one run; Alpamayo's 2 Hz pair (0.608 / 0.676) is in
+the tables below. Drive-JEPA and VisionPilot are fresh proxy runs at 2 Hz.
 
 ‡ OpenScene is a 2 Hz dataset and OpenPilot infers motion from frame-to-frame
-change, so it plans a parked car — 0.30 m of travel in 4 s at 4.8 m/s. Its model
-has no speed input at all (`{desire_pulse, traffic_convention, action_t}`), so
-this is not fixable in the adapter. It declares `min_input_hz: 10.0` and the
-harness refuses the pairing rather than recording the artefact. Alpamayo hit the
-same dataset property in a milder form and was fixed in its adapter, worth
-+0.207 EPDMS. See `docs/benchmarks/navsim.md`.
+change, so on it OpenPilot plans a parked car — 0.30 m of travel in 4 s at
+4.8 m/s. Its model has no speed input at all (`{desire_pulse, traffic_convention,
+action_t}`), so this is not fixable in the adapter: it declares
+`min_input_hz: 10.0` and the harness refuses the pairing on OpenScene alone. The
+frames OpenScene left out exist upstream — nuPlan's cameras run at 10 Hz — and
+with `[benchmarks.navsim] nuplan` naming that data the harness feeds a 10 Hz
+history to OpenPilot and to Alpamayo (built for 0.1 s frames). On the full
+split OpenPilot scores 0.747 at 10 Hz, its plans tracking ego speed (median
+0.82 of constant-velocity travel over 4 s while moving; 2 of 12,146 plans look
+parked), and Alpamayo 0.691 against 0.608 at 2 Hz, every sub-metric up but
+traffic light. See "10 Hz from nuPlan" in `docs/benchmarks/navsim.md`.
 
 ◆ Historical Bench2Drive mean driving score on 24 routes (04–06 Sep 2026),
 one run per route; route 11715 was excluded after CARLA crashes. These are
@@ -217,8 +235,9 @@ machine-readable form is in each `model.yaml` and prints with
 | VisionPilot | three YOLO-family conv nets | **28.1 M** | 0.112 | 1 cam @10 Hz · 1024×512 | lane curvature + closest in-path object | OpenLane, TuSimple, CurveLanes |
 
 ✦ **Drive-JEPA is the only one of the four with training exposure to a
-benchmark's own dataset, and it leads that benchmark by 0.235 EPDMS on v2 and
-0.216 PDMS on v1.** It was post-trained on NAVSIM `navtrain` and pre-trained
+benchmark's own dataset, and it leads that benchmark by 0.096 EPDMS on v2 and
+0.085 PDMS on v1 over OpenPilot with its 10 Hz history (0.235 and 0.216 over
+the 2 Hz field).** It was post-trained on NAVSIM `navtrain` and pre-trained
 partly on OpenScene, which *is* the NAVSIM dataset; the other three meet
 `navtest` zero-shot. That is the protocol NAVSIM intends — it is not cheating —
 but it means both NAVSIM columns conflate "better planner" with
@@ -260,8 +279,9 @@ these tables report the saved runs, not new evaluations of the merged code.
 
 Open-loop displacement error in metres over the 3 s horizon, full 223-sample
 split. Alpamayo 1.5 is its nav-conditioned single-draw run. VisionPilot's
-trajectory is synthesised by the adapter (see ∗). Only Alpamayo 1.5 beats the
-constant-velocity baseline on this benchmark.
+trajectory is synthesised by the adapter (see ∗); METEOR sees six of its eight
+cameras (see ◇). Only Alpamayo 1.5 beats the constant-velocity baseline on this
+benchmark.
 
 | Model | ADE@3s ↓ (m) | FDE@3s ↓ (m) |
 |---|---:|---:|
@@ -269,6 +289,7 @@ constant-velocity baseline on this benchmark.
 | Alpamayo 1.5 | **1.002** | **2.158** |
 | Drive-JEPA | 2.364 | 4.199 |
 | VisionPilot | 1.534 ∗ | 3.089 ∗ |
+| METEOR | 1.879 ◇ | 4.034 ◇ |
 | Baseline (Constant Velocity) | 1.381 | 3.091 |
 
 ### NAVSIM v2
@@ -285,8 +306,9 @@ was first run on, for reference only.
 
 | Model | EPDMS ↑ | No at-fault collisions ↑ | Drivable area ↑ | Driving direction ↑ | Traffic light ↑ | Ego progress ↑ | TTC within bound ↑ | Lane keeping ↑ | History comfort ↑ | Extended comfort ↑ | EPDMS on 242 subset |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| OpenPilot | — ‡ | — | — | — | — | — | — | — | — | — | — |
-| Alpamayo 1.5 | 0.608 | 0.941 | 0.788 | 0.890 | 0.998 | 0.596 | 0.939 | 0.931 | 0.938 | 0.490 | 0.653 |
+| OpenPilot, 10 Hz nuPlan history ‡ | 0.747 | 0.970 | 0.913 | 0.954 | 0.998 | 0.712 | 0.965 | 0.947 | 0.983 | 0.653 | — |
+| Alpamayo 1.5, 10 Hz nuPlan history ‡ | 0.691 | 0.957 | 0.856 | 0.933 | 0.997 | 0.681 | 0.951 | 0.963 | 0.962 | 0.576 | — |
+| Alpamayo 1.5, 2 Hz OpenScene | 0.608 | 0.941 | 0.788 | 0.890 | 0.998 | 0.596 | 0.939 | 0.931 | 0.938 | 0.490 | 0.653 |
 | Drive-JEPA | **0.843** | 0.984 | 0.985 | 0.991 | 0.998 | 0.889 | 0.979 | 0.974 | 0.978 | 0.477 | 0.880 |
 | VisionPilot | 0.431 | 0.727 | 0.819 | 0.926 | 0.975 | 0.404 | 0.700 | 0.899 | 0.968 | 0.518 | 0.447 |
 | Baseline (Constant Velocity) | 0.239 | 0.681 | 0.578 | 0.805 | 0.981 | 0.209 | 0.669 | 0.827 | 0.979 | 0.567 | 0.257 |
@@ -297,15 +319,18 @@ The same 12,146 navtest scenarios, scored by the v1.1 devkit as PDMS =
 NC × DAC × (5·TTC + 5·EP + 2·comfort) / 12 (`docs/benchmarks/navsim_v1.md`).
 Driving direction compliance is recorded with weight zero. Full navtest,
 12,146 scenarios each, zero failures. Drive-JEPA and VisionPilot are fresh
-proxy runs; Alpamayo's row replays the plans its v2 run recorded, so it scores
-the very plans behind its 0.608 above. The baseline reproduces the NAVSIM
+proxy runs; the Alpamayo and OpenPilot rows replay the plans their v2 runs
+recorded (the 10 Hz nuPlan history and, for Alpamayo, the 2 Hz OpenScene run
+too), so each scores the very plans behind the v2 figure above. The baseline
+reproduces the NAVSIM
 paper's constant-velocity row (20.6) term by term, and the recorded human
 future scores 0.946 against the paper's 94.8 (privileged; stored `valid: false`).
 
 | Model | PDMS ↑ | No at-fault collisions ↑ | Drivable area ↑ | Ego progress ↑ | TTC within bound ↑ | Comfort ↑ | Driving direction (weight 0) |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| OpenPilot | — ‡ | — | — | — | — | — | — |
-| Alpamayo 1.5 | 0.676 | 0.941 | 0.788 | 0.604 | 0.878 | 0.979 | 0.885 |
+| OpenPilot, 10 Hz nuPlan history ‡ | 0.807 | 0.969 | 0.913 | 0.719 | 0.936 | 1.000 | 0.948 |
+| Alpamayo 1.5, 10 Hz nuPlan history ‡ | 0.753 | 0.957 | 0.856 | 0.690 | 0.896 | 0.991 | 0.927 |
+| Alpamayo 1.5, 2 Hz OpenScene | 0.676 | 0.941 | 0.788 | 0.604 | 0.878 | 0.979 | 0.885 |
 | Drive-JEPA | **0.892** | 0.984 | 0.985 | 0.887 | 0.881 | 0.999 | 0.988 |
 | VisionPilot | 0.488 | 0.771 | 0.818 | 0.451 | 0.617 | 0.996 | 0.920 |
 | Baseline (Constant Velocity) | 0.207 | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 |

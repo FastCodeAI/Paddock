@@ -71,6 +71,7 @@ from paddock.adapters.benchmarks.navsim.convert import (
     pose_matrix,
     to_navsim_poses,
 )
+from paddock.adapters.benchmarks.navsim.dense import DenseHistory, as_ego_status
 from paddock.policy.protocol import Command, Observation, constant_velocity
 
 #: Seconds between proxy retries, multiplied by the attempt number.
@@ -181,6 +182,10 @@ class PaddockProxyAgent(_PaddockAgentBase):
         dump_path: str | None = None,
         retries: int = 2,
         trajectory_sampling: TrajectorySampling | None = None,
+        nuplan_root: str | None = None,
+        nuplan_split: str | None = None,
+        dense_hz: float = 0.0,
+        history_s: float = 0.0,
     ) -> None:
         super().__init__(trajectory_sampling)
         # One node per scorer worker, when the harness started several. Each
@@ -209,6 +214,16 @@ class PaddockProxyAgent(_PaddockAgentBase):
         # before the fork and a fresh one per scenario is a TCP handshake ~12k
         # times on the full split.
         self._client = None
+        # A 10 Hz history from nuPlan's full-rate data, for a model that needs
+        # denser input than OpenScene's four 0.5 s frames (dense.py). Set by the
+        # harness per model; when unset the scorer's own AgentInput is forwarded.
+        self._dense = None
+        self._history_s = float(history_s or 0.0)
+        if nuplan_root and float(dense_hz or 0.0) > 0:
+            split = nuplan_split or (os.path.basename(os.path.normpath(root)) if root else None)
+            if not split:
+                raise ValueError("nuplan_split is needed with nuplan_root; sensor_blobs_path names no split")
+            self._dense = DenseHistory(nuplan_root, split, self._cameras, float(dense_hz))
 
     def _http(self):
         import httpx
@@ -243,6 +258,31 @@ class PaddockProxyAgent(_PaddockAgentBase):
         rates = np.gradient(headings, NAVSIM_INTERVAL_S)
         return [float(r) for r in rates]
 
+    def _calibration(self, cameras, index: int) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+        """(camera2image, camera2ego) of this model's cameras at one NAVSIM frame."""
+        camera2image: dict[str, np.ndarray] = {}
+        camera2ego: dict[str, np.ndarray] = {}
+        for name in self._cameras:
+            camera = getattr(cameras, CAMERA_SLOTS[name])
+            if camera.intrinsics is None:
+                raise RuntimeError(
+                    f"NAVSIM delivered no {name} for history frame {index}; the sensor config "
+                    f"and the model's declared cameras disagree"
+                )
+            camera2image[name] = np.asarray(camera.intrinsics, dtype=np.float64)[:3, :3]
+            # lidar2ego is identity in OpenScene, so sensor2lidar is camera2ego.
+            extrinsics = np.eye(4, dtype=np.float64)
+            extrinsics[:3, :3] = np.asarray(camera.sensor2lidar_rotation, dtype=np.float64)
+            extrinsics[:3, 3] = np.asarray(camera.sensor2lidar_translation, dtype=np.float64)
+            camera2ego[name] = extrinsics
+        return camera2image, camera2ego
+
+    @staticmethod
+    def _command_of(status) -> Command:
+        command = np.asarray(status.driving_command).ravel()
+        hot = int(np.argmax(command)) if command.size else 3
+        return Command(int(COMMAND_FROM_ONE_HOT[hot]) if hot < 4 else 3)
+
     def _observation(self, agent_input: AgentInput, index: int, yaw_rate: float) -> Observation:
         """One history frame as a paddock `Observation`.
 
@@ -252,36 +292,18 @@ class PaddockProxyAgent(_PaddockAgentBase):
         """
         status = agent_input.ego_statuses[index]
         cameras = agent_input.cameras[index]
+        camera2image, camera2ego = self._calibration(cameras, index)
 
         images: dict[str, np.ndarray] = {}
         image_paths: dict[str, str] = {}
-        camera2image: dict[str, np.ndarray] = {}
-        camera2ego: dict[str, np.ndarray] = {}
-
         for name in self._cameras:
             camera = getattr(cameras, CAMERA_SLOTS[name])
-            if camera.intrinsics is None:
-                raise RuntimeError(
-                    f"NAVSIM delivered no {name} for history frame {index}; the sensor config "
-                    f"and the model's declared cameras disagree"
-                )
-            camera2image[name] = np.asarray(camera.intrinsics, dtype=np.float64)[:3, :3]
-
-            # lidar2ego is identity in OpenScene, so sensor2lidar is camera2ego.
-            extrinsics = np.eye(4, dtype=np.float64)
-            extrinsics[:3, :3] = np.asarray(camera.sensor2lidar_rotation, dtype=np.float64)
-            extrinsics[:3, 3] = np.asarray(camera.sensor2lidar_translation, dtype=np.float64)
-            camera2ego[name] = extrinsics
-
             if camera.camera_path is not None and self._sensor_blobs_path:
                 image_paths[name] = os.path.join(self._sensor_blobs_path, str(camera.camera_path))
             elif camera.image is not None:
                 images[name] = np.asarray(camera.image)
             else:
                 raise RuntimeError(f"NAVSIM delivered neither pixels nor a path for {name}")
-
-        command = np.asarray(status.driving_command).ravel()
-        hot = int(np.argmax(command)) if command.size else 3
 
         return Observation(
             images=images,
@@ -296,7 +318,7 @@ class PaddockProxyAgent(_PaddockAgentBase):
             # spaced at exactly NAVSIM_INTERVAL_S, which is what the models that
             # select history by timestamp actually need.
             timestamp_us=int(round((index - (len(agent_input.ego_statuses) - 1)) * NAVSIM_INTERVAL_S * 1e6)),
-            command=Command(int(COMMAND_FROM_ONE_HOT[hot]) if hot < 4 else 3),
+            command=self._command_of(status),
             camera2image=camera2image,
             camera2ego=camera2ego,
             # Identity, but sent explicitly: models that project through the
@@ -307,6 +329,48 @@ class PaddockProxyAgent(_PaddockAgentBase):
 
     def _frame_payload(self, agent_input: AgentInput, index: int, yaw_rate: float) -> dict[str, Any]:
         return self._observation(agent_input, index, yaw_rate).to_wire()
+
+    def _dense_payloads(self, agent_input: AgentInput) -> list[dict[str, Any]]:
+        """The scenario's history at nuPlan's rate, as wire observations.
+
+        Anchored on the keyframe's own image of the model's first camera, so
+        the last observation *is* NAVSIM's current frame -- same image, same
+        pose origin -- and the frames before it are the ones OpenScene left
+        out. Calibration comes from the keyframe: one rig, one log. The driving
+        command is the nearest keyframe's; nuPlan records none at 10 Hz.
+        """
+        statuses = agent_input.ego_statuses
+        cameras = agent_input.cameras[-1]
+        anchor = getattr(cameras, CAMERA_SLOTS[self._cameras[0]])
+        if anchor.camera_path is None:
+            raise RuntimeError(
+                f"NAVSIM delivered no path for {self._cameras[0]}; the dense history is keyed by it"
+            )
+        camera2image, camera2ego = self._calibration(cameras, len(statuses) - 1)
+        last = len(statuses) - 1
+        payloads = []
+        frames = self._dense.frames(str(anchor.camera_path), self._history_s)
+        # For the plan dump: how much of this history was not the frame asked for.
+        self._last_history = {
+            "clamped": sum(f.clamped for f in frames),
+            "approximate": sum(f.approximate for f in frames),
+        }
+        for frame in frames:
+            nearest = last + int(round(frame.time_us / 1e6 / NAVSIM_INTERVAL_S))
+            status = statuses[min(max(nearest, 0), last)]
+            observation = Observation(
+                images={},
+                image_paths=dict(frame.paths),
+                ego2world=pose_matrix(frame.pose),
+                canbus=np.asarray(canbus(as_ego_status(frame), frame.yaw_rate), dtype=np.float64),
+                timestamp_us=int(frame.time_us),
+                command=self._command_of(status),
+                camera2image=camera2image,
+                camera2ego=camera2ego,
+                lidar2ego=np.eye(4),
+            )
+            payloads.append(observation.to_wire())
+        return payloads
 
     def compute_trajectory(
         self,
@@ -341,11 +405,14 @@ class PaddockProxyAgent(_PaddockAgentBase):
 
     def _plan(self, agent_input: AgentInput, scenario: dict) -> Trajectory:
         """Ask the node for a plan and record it under *scenario*'s label."""
-        yaw_rates = self._yaw_rates(agent_input.ego_statuses)
-        observations = [
-            self._frame_payload(agent_input, index, yaw_rates[min(index, len(yaw_rates) - 1)])
-            for index in range(len(agent_input.ego_statuses))
-        ]
+        if self._dense is not None:
+            observations = self._dense_payloads(agent_input)
+        else:
+            yaw_rates = self._yaw_rates(agent_input.ego_statuses)
+            observations = [
+                self._frame_payload(agent_input, index, yaw_rates[min(index, len(yaw_rates) - 1)])
+                for index in range(len(agent_input.ego_statuses))
+            ]
 
         # A model can fail on one scenario for reasons that are not the
         # scenario's: alpamayo's VLM occasionally emits no trajectory token and
@@ -384,10 +451,12 @@ class PaddockProxyAgent(_PaddockAgentBase):
             raise last_error if last_error is not None else RuntimeError("policy node gave no answer")
 
         poses = to_navsim_poses(body["trajectory"], float(body.get("dt", NAVSIM_INTERVAL_S)))
-        self._record(agent_input, body, poses, scenario)
+        self._record(agent_input, body, poses, scenario, len(observations))
         return Trajectory(poses.astype(np.float32), self._trajectory_sampling)
 
-    def _record(self, agent_input: AgentInput, body: dict, poses: np.ndarray, scenario: dict) -> None:
+    def _record(
+        self, agent_input: AgentInput, body: dict, poses: np.ndarray, scenario: dict, history_frames: int = 0
+    ) -> None:
         """Append one plan to the dump, alongside the ego state that produced it.
 
         Best-effort: a failure to write a diagnostic must never fail a run, and
@@ -405,6 +474,9 @@ class PaddockProxyAgent(_PaddockAgentBase):
                     **scenario,
                     "ego_speed_ms": round(speed, 4),
                     "driving_command": np.asarray(status.driving_command).ravel().tolist(),
+                    "history_frames": history_frames,
+                    "history_source": "nuplan" if self._dense is not None else "openscene",
+                    **(getattr(self, "_last_history", None) or {}),
                     "model_dt": float(body.get("dt", NAVSIM_INTERVAL_S)),
                     "model_waypoints": np.asarray(body["trajectory"], dtype=float).round(4).tolist(),
                     "navsim_poses": poses.round(4).tolist(),
