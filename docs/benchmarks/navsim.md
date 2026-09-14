@@ -451,7 +451,7 @@ so nothing below the full split can be averaged or ranked against a real one.
 | alpamayo15 | 0.65332 | 242 | with the adaptive frame selection |
 | visionpilot | 0.44694 | 242 | |
 | constant velocity | 0.25673 | 242 | reference baseline |
-| openpilot | — | — | not measurable at 2 Hz; see above |
+| openpilot | — | — | not measurable at 2 Hz; 0.7468 at 10 Hz from nuPlan, see the full-navtest table |
 
 All five are the **242-scenario subset**, not navtest, and the three model rows
 are stored `valid: false` (marked retroactively on 2026-09-03: they were run
