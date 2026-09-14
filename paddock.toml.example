@@ -77,6 +77,49 @@ weights = "/path/to/weights"
 # gpu_rank    = "0"                                    # CARLA's -graphicsadapter
 # record      = "false"                                # per-tick front/BEV JPEGs + log.csv: ~40 GB per full sweep
 
+# [benchmarks.alpasim]
+# AlpaSim runs its services through docker compose and attaches a driver over
+# gRPC; paddock supplies the driver via the bridge, so only the checkout and its
+# interpreter are needed here.
+# repo   = "/path/to/alpasim"
+# python = "/path/to/alpasim/.venv/bin/python"
+#
+# Which pinned scene list to drive. See adapters/benchmarks/alpasim/scenes/.
+# scene_set = "public_2601_first10"
+#
+# Where AlpaSim caches the USDZ scene artifacts. Large and site-specific; an
+# unset cache re-fetches every scene, which is slow rather than wrong.
+# scene_cache = "/path/to/nre-artifacts"
+#
+# Which reconstruction replays the clip. The README carries nuRec and OmniDreams
+# as separate columns because they are different reconstructions of the same
+# scene -- a score from one is not a statement about the other -- so this is
+# hashed into the run id and stored in run.json, and the two can never be
+# averaged together by accident. Only "nurec" is wired at the pinned sha;
+# anything else is refused in preflight rather than recorded as if it had run.
+# renderer = "nurec"
+#
+# Per-frame debugging video. Upstream defaults this ON at every frame, which is
+# ~180 MB per scene -- and `scene_set` is a site setting, so a site that widens
+# it to all 913 public_2601 scenes gets ~160 GB per model. Off unless asked.
+# video                 = false
+# video_every_nth_frame = 1          # only read when video = true
+#
+# The wizard's two required config groups. `local` and `1gpu` are what every
+# recorded run used; a site with more GPUs can raise the topology.
+# deploy   = "local"
+# topology = "1gpu"
+#
+# Backstop against a wedged container, not a performance target: about 5 min per
+# scene with a 10B driver, 50 s for the constant-velocity floor.
+# per_scene_timeout_s = "1800"
+#
+# How long the runtime waits for the driver to answer its version probe.
+# Upstream defaults to 120 s; a cold 10B checkpoint read answers at ~305 s, so
+# the default kills the run and blames the driver. Leave this alone unless a
+# model loads slower still.
+# startup_timeout_s = "900"
+
 [gpu]
 # Total VRAM paddock may assume, in GB. Used to gate model startup rather than
 # discovering the hard way, several minutes into a checkpoint read, that the
