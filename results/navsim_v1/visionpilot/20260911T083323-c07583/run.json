@@ -33,6 +33,6 @@
   "hardware": {},
   "status": "complete",
   "valid": true,
-  "notes": "",
+  "notes": "Plan dump has 12,589 lines for 12,146 scenarios: 342 scenarios were planned twice, which looks like the devkit's worker pool re-running a log; the CSV and n are clean, the model is deterministic, and a replay keys plans by token, so the duplicates resolve to one plan each. Noted after the run (2026-09-15, review of PR #32); not investigated.",
   "ingested_from": ""
 }
