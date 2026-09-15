@@ -11,7 +11,6 @@ Nothing here mutates anything. It is safe to run at any time.
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -20,6 +19,7 @@ from pathlib import Path
 
 from paddock.config import ConfigError, SiteConfig
 from paddock.registry import Registry
+from paddock.runtime import gpu
 
 
 class Status(Enum):
@@ -85,22 +85,6 @@ class Report:
         if fail:
             lines.append("Fix the failures above, then re-run. See docs/site-setup.md.")
         return "\n".join(lines)
-
-
-def _free_vram_gb() -> float | None:
-    if not shutil.which("nvidia-smi"):
-        return None
-    try:
-        out = subprocess.run(
-            ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=30,
-        )
-        return int(out.stdout.strip().splitlines()[0]) / 1024
-    except (subprocess.SubprocessError, ValueError, IndexError):
-        return None
 
 
 def _on_root_filesystem(path: Path) -> bool:
@@ -319,7 +303,12 @@ def run(model_filter: str | None = None) -> Report:
             )
 
     # -- hardware ----------------------------------------------------------
-    free = _free_vram_gb()
+    # Whichever card the models will land on, not whichever one nvidia-smi lists
+    # first: `runtime.gpu` is the single definition of that, and doctor used to
+    # carry its own copy that always read row 0. On a two-card box pinned with
+    # CUDA_VISIBLE_DEVICES=1 that reported the wrong headroom twice over -- the
+    # opposite of what this command is for.
+    free = gpu.free_gb()
     if free is None:
         report.add(
             "hardware",
@@ -335,7 +324,8 @@ def run(model_filter: str | None = None) -> Report:
             "hardware",
             "gpu",
             status,
-            f"{free:.1f} GB free of {cfg.gpu.budget_gb:.0f} GB budget (largest model wants {needed:.0f} GB)",
+            f"device {gpu.visible_device()}: {free:.1f} GB free of "
+            f"{cfg.gpu.budget_gb:.0f} GB budget (largest model wants {needed:.0f} GB)",
             "another process is holding the card; paddock will wait rather than OOM mid-load",
         )
 

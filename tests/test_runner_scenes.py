@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -119,6 +120,28 @@ def test_doctor_prints_status_rows_as_facts_rather_than_verdicts() -> None:
     assert not any(sym in line for line in body for sym in ("[ ok ]", "[warn]", "[FAIL]", "->"))
     # Labels padded to a common width, so the values line up as a column.
     assert [line.index("2035") for line in body[:1]] == [line.index("20 Hz") for line in body[1:]]
+
+
+def test_doctor_reads_the_headroom_of_the_card_the_run_will_use(b2d_site, monkeypatch) -> None:
+    """Same rule as `runtime.gpu`, because it is now the same code.
+
+    doctor carried its own nvidia-smi reader that always took row 0, so on a
+    two-card box pinned to card 1 it showed the *other* card's headroom -- and
+    then the launch gate, which does honour CUDA_VISIBLE_DEVICES, waited on a
+    number doctor had never printed. A command whose whole job is "what can this
+    machine run" must not be the one place that answers for a different machine.
+    """
+    from paddock.runtime import gpu
+
+    monkeypatch.setattr(gpu.shutil, "which", lambda _name: "/usr/bin/nvidia-smi")
+    monkeypatch.setattr(
+        gpu.subprocess,
+        "run",
+        lambda *_a, **_k: subprocess.CompletedProcess(args=[], returncode=0, stdout="24576\n92160\n"),
+    )
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "1")
+    check = {c.name: c for c in doctor.run().checks if c.section == "hardware"}["gpu"]
+    assert "device 1: 90.0 GB free" in check.detail
 
 
 def test_doctor_reports_a_status_that_raises_instead_of_dying(b2d_site, monkeypatch) -> None:
