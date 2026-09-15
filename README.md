@@ -235,20 +235,10 @@ was first run on, for reference only.
 | VisionPilot | 0.431 | 0.727 | 0.819 | 0.926 | 0.975 | 0.404 | 0.700 | 0.899 | 0.968 | 0.518 | 0.447 |
 | Baseline (Constant Velocity) | 0.239 | 0.681 | 0.578 | 0.805 | 0.981 | 0.209 | 0.669 | 0.827 | 0.979 | 0.567 | 0.257 |
 
-### Bench2Drive — all 50 routes: recorded results
+### Bench2Drive — 50 routes
 
-All four models and CV have one selected final record for each of the **same 50
-route IDs** (24 historical + 26 additional). Qwen-Drive is excluded. Counts below
-are recorded list entries, including all 12 categories. DS and RC are arithmetic
-means over 50 route records; driving failures and the 4000-tick cap are included.
-CV is the previously selected fixed 6 m/s target, without per-route speed selection.
-
-**† OpenPilot is a mixed-setup aggregate:** 16 of its historical 24 recordings
-include assistance; the additional 26 are unassisted with the newer upstream
-longitudinal controller. Its full-record counts and pooled scores are reported
-as requested, but are not an unassisted 50-route or single-controller result.
-The other systems also retain their cohort-specific deployment/recovery labels
-in the [26-route details](docs/benchmarks/bench2drive-expansion-results.md#protocol-labels).
+Four models and CV (fixed 6 m/s), evaluated on the same 50 routes.
+DS = mean driving score; RC = mean route completion. Infraction columns are recorded counts.
 
 | Model/system | Routes | DS | RC (%) | Ped. collision | Vehicle collision | Layout collision | Red light | Stop sign | Outside lanes | Deviation | Blocked | Emergency yield | Min-speed entries | Route timeout | Scenario timeout | Collisions total | Routes with collision |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -258,178 +248,24 @@ in the [26-route details](docs/benchmarks/bench2drive-expansion-results.md#proto
 | OpenPilot (mixed setups) † | 50/50 | 48.11 | 63.50 | 3 | 10 | 5 | 5 | 4 | 4 | 9 | 10 | 4 | 587 | 0 | 0 | 18 | 14/50 |
 | CV (fixed 6 m/s) | 50/50 | 40.39 | 73.08 | 9 | 24 | 26 | 11 | 4 | 14 | 14 | 4 | 5 | 673 | 0 | 0 | 59 | 31/50 |
 
-#### Minimum-speed normalization — all 50 routes
+† OpenPilot combines controller versions and includes 16 assisted recordings.
+DriveJEPA uses a NAVSIM-v2 checkpoint zero-shot; VisionPilot uses a synthesized trajectory with an extrapolated tail.
 
-| Model/system | Recorded entries | Route progress (km, estimated) | Entries / progress km | Entries / completed-route equivalent | Below 100% / entries | Below 100% (%) |
-|---|---:|---:|---:|---:|---:|---:|
-| DriveJEPA | 338 | 2.139 | 158.03 | 17.29 | 200/338 | 59.17 |
-| VisionPilot | 655 | 3.918 | 167.16 | 18.40 | 139/655 | 21.22 |
-| Alpamayo 1.5 (nav) | 660 | 3.978 | 165.93 | 18.25 | 291/660 | 44.09 |
-| OpenPilot (mixed setups) † | 587 | 3.456 | 169.85 | 18.49 | 276/587 | 47.02 |
-| CV (fixed 6 m/s) | 673 | 3.984 | 168.93 | 18.42 | 314/673 | 46.66 |
+#### Minimum-speed normalization
 
-Pool counts and progress over all 50 routes before dividing:
+| Model/system | Recorded entries | Entries / progress km | Below 100% (%) |
+| --- | ---: | ---: | ---: |
+| DriveJEPA | 338 | 158.03 | 59.17 |
+| VisionPilot | 655 | 167.16 | 21.22 |
+| Alpamayo 1.5 (nav) | 660 | 165.93 | 44.09 |
+| OpenPilot (mixed setups) † | 587 | 169.85 | 47.02 |
+| CV (fixed 6 m/s) | 673 | 168.93 | 46.66 |
 
-```text
-progress_km = sum(route_length_m * route_completion_pct / 100) / 1000
-entries_per_progress_km = total_min_speed_entries / progress_km
-completed_route_equivalents = sum(route_completion_pct / 100)
-entries_per_completed_route_equivalent = total_min_speed_entries / completed_route_equivalents
-below_100_share_pct = 100 * count(checkpoint_percentage < 100) / total_min_speed_entries
-```
+`Entries/km = total entries / sum(route_length_m × RC/100 / 1000)`.
+B2D records speed at distance checkpoints, even above traffic speed; fewer entries can reflect less route progress.
+“Below 100%” is the share of recorded ratios below traffic speed, not a safety violation rate.
 
-Entries/km matches the upstream aggregate normalization for these nonzero-exposure
-cohorts. Progress is estimated from scored route completion, not odometry.
-Checkpoint spacing scales with route length, so entries/km also depends on route
-length; completed-route equivalents show the count-versus-progress effect.
-A below-100 ratio can include legitimate waiting/yielding and is not by itself
-an unsafe-driving violation. Unvisited checkpoints are not imputed. A saved
-100% may be the evaluator's no-usable-traffic-speed fallback. No official driving
-score or controller was changed to produce these reporting statistics.
-
-DriveJEPA's lower raw count does not establish better speed compliance: the
-criterion emits records at distance checkpoints even above 100% of traffic speed.
-Its lower completion gives it fewer checkpoint opportunities. Do not sum these
-heterogeneous infraction entries into one safety score.
-
-[Harness calculation audit](docs/benchmarks/bench2drive-speed-normalization.md) ·
-[All per-route normalization inputs and source hashes](docs/benchmarks/bench2drive-speed-normalization.json) ·
-[Additional 26-route breakdown](docs/benchmarks/bench2drive-expansion-results.md).
-
-### Bench2Drive — historical 24-route results
-
-Mean driving score and route completion from the 24-route cohort described in ◆.
-The superseded 25-route, two-model ability table is replaced here with the
-recorded driving metrics. Higher is better for both columns.
-
-| Model | Driving score ↑ | Route completion ↑ (%) |
-|---|---:|---:|
-| VisionPilot | **49.85** | **75.5** |
-| Alpamayo 1.5 | 44.58 | 73.4 |
-| Drive-JEPA | 31.11 | 40.4 |
-| OpenPilot (unassisted estimate ≈) | 30.09 | 30.8 |
-
-OpenPilot's row is an approximate reconstruction, as explained in ◆; it does
-not establish the performance of the corrected controller.
-[Detailed metrics](docs/benchmarks/bench2drive.md).
-
-#### Recorded infractions (24 routes per model)
-
-Counts are lengths of the recorded upstream infraction lists. DS is mean driving
-score; RC is mean route completion. Every model occupies one row; CV uses the
-previously selected fixed **6 m/s** target, without best-speed-per-route selection.
-All 12 categories are retained, including zero counts. A final record includes
-driving failures and the 4000-tick cap, not just successful route finishes.
-
-**OpenPilot here includes assistance on 16 of 24 recordings.** These full-run
-counts do not describe the unassisted prefix estimate above. The additional
-26-route OpenPilot cohort is unassisted and reported separately.
-
-| Model/system | DS | RC (%) | Ped. collision | Vehicle collision | Layout collision | Red light | Stop sign | Outside lanes | Deviation | Blocked | Emergency yield | Min-speed entries | Route timeout | Scenario timeout | Collisions total | Routes with collision |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| DriveJEPA | 31.11 | 40.44 | 2 | 2 | 2 | 1 | 0 | 3 | 3 | 5 | 1 | 170 | 0 | 0 | 6 | 6/24 |
-| VisionPilot | 49.85 | 75.54 | 3 | 14 | 3 | 6 | 2 | 3 | 2 | 0 | 1 | 338 | 0 | 0 | 20 | 15/24 |
-| Alpamayo 1.5 (nav) | 44.58 | 73.36 | 2 | 16 | 1 | 0 | 0 | 12 | 0 | 3 | 0 | 325 | 0 | 0 | 19 | 13/24 |
-| OpenPilot (full recorded; assisted) | 53.62 | 66.81 | 1 | 4 | 2 | 4 | 2 | 1 | 4 | 2 | 1 | 300 | 0 | 0 | 7 | 6/24 |
-| CV (fixed 6 m/s) | 39.23 | 75.79 | 5 | 14 | 17 | 6 | 2 | 7 | 5 | 2 | 1 | 339 | 0 | 0 | 36 | 16/24 |
-
-##### Minimum-speed normalization
-
-| Model/system | Recorded entries | Route progress (km, estimated) | Entries / progress km | Entries / completed-route equivalent | Below 100% / entries | Below 100% (%) |
-|---|---:|---:|---:|---:|---:|---:|
-| DriveJEPA | 170 | 1.064 | 159.73 | 17.52 | 107/170 | 62.94 |
-| VisionPilot | 338 | 1.950 | 173.30 | 18.64 | 61/338 | 18.05 |
-| Alpamayo 1.5 (nav) | 325 | 1.936 | 167.85 | 18.46 | 127/325 | 39.08 |
-| OpenPilot (full recorded; assisted) | 300 | 1.718 | 174.59 | 18.71 | 108/300 | 36.00 |
-| CV (fixed 6 m/s) | 339 | 1.949 | 173.90 | 18.64 | 153/339 | 45.13 |
-
-These are **derived reporting statistics**, not changes to the B2D penalty or
-controller. Entries/km uses the upstream aggregate normalization for these
-nonzero-exposure cohorts. Pool counts and exposure across routes before dividing:
-
-```text
-route_progress_km = sum(route_length_m * route_completion_pct / 100) / 1000
-entries_per_progress_km = total_recorded_min_speed_entries / route_progress_km
-completed_route_equivalents = sum(route_completion_pct / 100)
-entries_per_completed_route_equivalent = total_entries / completed_route_equivalents
-below_100_share_pct = 100 * count(recorded_speed_percentage < 100) / total_entries
-```
-
-Route progress is an estimate from recorded route length and completion, not an
-odometer measurement. Checkpoint spacing scales with route length (20 configured
-per route), so entries/km is also sensitive to route length; completed-route
-equivalents help expose the count-versus-progress effect. The below-100 share is
-a descriptive fraction of recorded checkpoint ratios, not an official violation
-rate: lawful yielding and traffic stops may also reduce speed. Percentages are
-rounded to two decimals in the source. A value of 100 can be the evaluator's
-fallback when there is no usable background-speed measurement; those entries
-cannot be distinguished from an actual 100% ratio in the saved messages.
-No unvisited checkpoints are imputed. Zero denominators would be undefined, not
-zero; all displayed cohorts have nonzero exposure.
-
-**Why DriveJEPA has fewer entries:** these are distance-checkpoint measurements,
-not counts of distinct slow-driving incidents. Its lower route completion reduces
-checkpoint exposure. A lower raw count does not establish better speed compliance;
-the table above shows the fraction of its recorded ratios below 100%.
-
-[Harness audit and normalization definitions](docs/benchmarks/bench2drive-speed-normalization.md).
-[Per-route source counts](docs/benchmarks/bench2drive-24-infractions.json) and
-[normalization inputs and source hashes](docs/benchmarks/bench2drive-speed-normalization.json).
-Do not sum heterogeneous entries into a safety score.
-
-#### OpenPilot infractions and correlation data
-
-[Download per-route OpenPilot counts and driving scores (CSV)](docs/benchmarks/openpilot-24-infractions.csv).
-This covers the same 24 routes as the ≈30.09 driving-score estimate above:
-8 recordings had no intervention; 16 rows estimate the prefix ending at the
-first intervention. This CSV excludes assisted full-run totals; the full recorded table above includes them.
-
-| Infraction entries | Observed, 8 no-intervention routes | Estimated prefix + observed, 24 routes ≈ |
-|---|---:|---:|
-| Pedestrian collision | 0 | 0 ≈ |
-| Vehicle collision | 0 | 0 ≈ |
-| Layout collision | 0 | 0 ≈ |
-| Red light | 1 | 1 ≈ |
-| Stop sign | 0 | 0 ≈ |
-| Outside route lanes | 0 | N/A |
-| Route deviation | 1 | 1 ≈ |
-| Vehicle blocked | 1 | N/A (1 observed; 16 hypothetical) |
-| Failure to yield to emergency vehicle | 0 | N/A |
-| Minimum speed | 77 | N/A |
-| Route timeout | 0 | 0 ≈ |
-| Scenario timeout | 0 | 0 ≈ |
-
-Prefix attribution uses an event's position along the route relative to the
-first intervention, not an event timestamp, so these counts are estimates.
-Minimum-speed messages and some lane/yield events lack the information needed
-to attribute them to that prefix. Missing CSV values are **unknown, not zero**.
-The earlier reconstruction inserted 16 hypothetical blocked events; these are
-isolated in `hypothetical_blocked_at_cutoff`, not counted as recorded infractions.
-
-For correlations, filter `measurement=observed_no_intervention` for the 8 observed
-rows, or explicitly label a 24-route analysis as using prefix estimates and
-report the number of non-missing pairs for each category. Collision counts are
-zero throughout this export, so their correlation is undefined, not zero.
-The CSV also includes route completion and source hashes. These prefixes have
-less driving exposure, and driving score itself incorporates infraction penalties;
-a correlation does not independently establish model quality or causation.
-
-#### Constant velocity — fixed-speed baseline
-
-All five fixed targets completed the same 24 routes. These are straight
-trajectories tracked by the shared PID, without route following or collision avoidance.
-Actual achieved speed may differ from the target. The selected baseline remains
-6 m/s; no best-speed-per-route selection is used.
-
-| Target (m/s) | Routes | Driving score | Route completion (%) |
-|---:|---:|---:|---:|
-| 3 | 24 | 47.94 | 74.68 |
-| 6 | 24 | 39.23 | 75.79 |
-| 9 | 24 | 45.88 | 74.59 |
-| 12 | 24 | 46.49 | 75.16 |
-| 15 | 24 | 44.94 | 76.84 |
-
-All five bands’ per-route scores and infraction counts are in the linked JSON above.
+[Calculation](docs/benchmarks/bench2drive-speed-normalization.md) · [Recorded data](docs/benchmarks/bench2drive-speed-normalization.json)
 
 ### neuroNCAP
 
