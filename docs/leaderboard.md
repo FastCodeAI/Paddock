@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-69 runs across 6 benchmarks.
+70 runs across 6 benchmarks.
 38 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## bench2drive
@@ -94,6 +94,7 @@
 
 | model | run | n | site | l2_avg ↓ | l2_1s ↓ | l2_uniad_1s ↓ | col_1s ↓ | col_uniad_1s ↓ | l2_2s ↓ | l2_uniad_2s ↓ |
 |---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| qwendrive | 20260915T190350-47479e | 5119 | fastcode-shakaal | 0.800 | 0.318 | 0.245 | 0.007 | 0.007 | 0.722 | 0.427 |
 | constant_velocity | 20260914T225156-e5170c | 5119 | fastcode-shakaal | 1.288 | 0.372 | 0.260 | 0.008 | 0.008 | 1.151 | 0.594 |
 | constant_velocity | 20260907T093007-9697fe | 5119 | fastcode-navvrat-nusc-dj | 1.288 | 0.372 | 0.259 | 0.008 | 0.008 | 1.151 | 0.594 |
 | alpamayo15 | 20260905T093547-3dd7cd | 5119 | fastcode-navvrat-nusc-al | 1.487 | 0.509 | 0.369 | 0.008 | 0.008 | 1.351 | 0.742 |

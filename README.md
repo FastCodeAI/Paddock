@@ -112,7 +112,7 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 | Drive-JEPA | 0.912 △ | 2.364 | 0.843 | 0.892 † | 31.11 ◆ | **3.57** ‖ | 0.5619 ¶ | planned |
 | VisionPilot | 1.441 △ | 1.534 ∗ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.8864 ¶ | planned |
 | METEOR | 0.977 △ | 1.879 ◇ | 0.303 ◊ | 0.366 ◊ | — | — | — | — |
-| Qwen-Drive 1.0 | pending | 0.806 | 0.840 | 0.876 | planned | **2.49** | — | planned |
+| Qwen-Drive 1.0 | 0.450 | 0.806 | 0.840 | 0.876 | planned | **2.49** | — | planned |
 | Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | 0.207 † | 47.94 ♣ | 0 § | 0.3562 ¶ | — |
 
 ∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
@@ -283,12 +283,23 @@ history, CUDA inference, CPU camera warping and resume assistance disabled.
 | Drive-JEPA | 0.540 | 1.587 | 3.519 | 1.882 | 0.912 | 1.536 | 1.459 |
 | VisionPilot | 1.031 | 2.213 | 3.837 | 2.360 | 1.441 | 2.058 | 3.816 |
 | METEOR | 0.616 | 1.683 | 3.356 | 1.885 | 0.977 | 1.570 | 6.152 ◇ |
+| Qwen-Drive 1.0 | 0.318 | 0.722 | 1.360 | 0.800 | 0.450 | 0.678 | 0.770 |
 | Baseline (Constant Velocity) | 0.372 | 1.151 | 2.340 | 1.288 | 0.641 | 1.069 | 1.661 |
 
 Point L2 averages errors at 1, 2 and 3 seconds. Cumulative L2 averages the three
 prefix means; ADE at 3 seconds averages all six half-second errors. Collision
 is predicted ego-footprint overlap with annotated boxes, not an observed crash.
-Constant velocity has the lowest L2 on this recorded split.
+
+**Constant velocity was the lowest L2 on this recorded split until Qwen-Drive,
+which is below it on every column**, collision included, and is the first model
+here to beat the baseline outright rather than on one metric. That is worth
+reading with the split's shape in mind: nuScenes val is 20-second urban clips
+scored open-loop against what the log did, so a model that predicts the recorded
+future well scores well whether or not it would drive. The same model places
+fourth of five on neuroNCAP, which stages the collisions this split never
+contains. nuScenes is also not in its declared training data (NAVSIM `navtrain`,
+Waymo E2E, NVIDIA PhysicalAI), so unlike its NAVSIM columns this one is
+zero-shot.
 
 [nuScenes implementation and result records (PR #14)](https://github.com/FastCodeAI/Paddock/pull/14)
 · [OpenPilot full metrics](https://github.com/FastCodeAI/Paddock/blob/a75d30418248c33e5a9a76de837887cd1e19a1e8/results/nuscenes/openpilot/20260908T110028-b71f4f/metrics.json).
@@ -428,12 +439,16 @@ all 200 runs. Runs are seeded 0-9, so every model met identical scenario jitter.
 KITScenes and ties Drive-JEPA on NAVSIM, then places fourth here, below three
 models it beat on every open-loop column. The frontal column is where it goes:
 1.52 with 86% of those runs ending in a collision, against 3.64 for Alpamayo.
-Nothing measured here explains it. The adapter replans every 0.1 s tick like
-every other model, and its four camera frames advance one record per tick, so it
-is not being shown a stale history: at tick *k* the slots are records *k*−15,
-*k*−10, *k*−5 and *k*, and at *k*+1 every one of them has moved on. Each past
-slot is simply a frame the model already saw as the current one 0.5, 1.0 or
-1.5 s earlier. The cause is unmeasured, and the frontal split is where to look.
+**It brakes; it does not steer.** Over the 50 frontal episodes its planned 3 s
+path reaches a mean peak lateral offset of 1.22 m, against 10.44 m for
+Alpamayo — which decelerates no harder (−2.31 m/s against Qwen-Drive's −2.48)
+and collides in 32% of episodes rather than 86%. Drive-JEPA brakes hardest of
+the five, −5.47 m/s, and still collides in 78%. In a staged head-on the closing
+vehicle arrives whatever the ego's speed, so the escape is lateral, and Alpamayo
+is the only model of the five that takes it. This is not an adapter limit: on
+NAVSIM the same code path produces lateral offsets to 19.92 m. The full table,
+and what is interpretation rather than measurement, are in
+[docs/models/qwendrive.md](docs/models/qwendrive.md).
 
 **Scene 0103 was not representative, and the ordering it implied was wrong.**
 Every model met identical scenario jitter (runs seeded 0–9), so these can be
