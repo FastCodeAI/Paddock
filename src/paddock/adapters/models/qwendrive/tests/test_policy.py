@@ -217,6 +217,44 @@ def test_acceleration_is_differenced_when_the_source_records_none() -> None:
     np.testing.assert_allclose(from_source[:, 0], 3.0)
 
 
+def test_how_much_history_is_kept_does_not_decide_how_acceleration_is_derived() -> None:
+    """`KEEP_S` bounds memory. It must not also pick a modelling branch.
+
+    The decision "did the source record acceleration, or must it be differenced"
+    used to be read off the retained rows, so a stream whose source filled the
+    channel only in older records answered 2.0 trimmed and 0.0 untrimmed from
+    the same input. The policy now tracks it as records arrive.
+    """
+    p = _policy()
+    accel = 2.0
+    for i in range(60):  # 6 s at 10 Hz, well past KEEP_S
+        obs = make_observation(i * 100_000, x=0.5 * accel * (i * 0.1) ** 2, speed=accel * i * 0.1)
+        # Only records well outside the retained window carry the accel channel,
+        # so every row the trimmed history can see has a zero there.
+        if i * 0.1 < 6.0 - KEEP_S - 1.0:
+            obs.canbus[CANBUS_ACCEL] = accel
+        p._record(obs)
+
+    assert p.source_has_accel is True, "the channel was populated, even if those rows are gone"
+    inputs = p.scene_inputs(Command.STRAIGHT)
+    # Trusted as recorded, which for the retained rows is 0.0 -- not differenced.
+    assert float(inputs["ego_acceleration"][0]) == 0.0
+
+    # And the sticky flag is per episode, not per process.
+    p.reset()
+    assert p.source_has_accel is False
+
+
+def test_a_source_that_never_records_acceleration_still_gets_it_differenced() -> None:
+    """KITScenes fills speed only; the differenced path must survive the change."""
+    p = _policy()
+    for i in range(30):
+        p._record(make_observation(i * 100_000, x=0.5 * 2.0 * (i * 0.1) ** 2, speed=2.0 * i * 0.1))
+    assert p.source_has_accel is False
+    inputs = p.scene_inputs(Command.STRAIGHT)
+    assert float(inputs["ego_acceleration"][0]) == pytest.approx(2.0, abs=1e-6)
+
+
 def test_a_sparse_early_history_is_a_standing_start_not_a_crash() -> None:
     t, poses, motion = _straight(1, speed=5.0, yaw=0.0)
     history, velocity, acceleration = resample_history(t, poses, motion)

@@ -137,7 +137,10 @@ def select_frame_indices(times_s: np.ndarray) -> tuple[list[int], list[float]]:
 
 
 def resample_history(
-    times_s: np.ndarray, poses: np.ndarray, motion: np.ndarray
+    times_s: np.ndarray,
+    poses: np.ndarray,
+    motion: np.ndarray,
+    source_has_acceleration: bool | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """The model's 16-row history from recorded (x, y, yaw) and (vx, vy, ax, ay).
 
@@ -145,7 +148,14 @@ def resample_history(
     y left, heading positive for a left turn, last row (0, 0, 0). Positions
     and unwrapped yaw are interpolated by time and clipped at the oldest
     record, so a sparse early history reads as the standing start it is.
+
     Acceleration is differenced from velocity when the source recorded none.
+    `source_has_acceleration` is that decision, and the caller owns it: the
+    policy tracks whether the channel was ever populated in this episode, which
+    no amount of trimming can change. Left None, the decision falls back to
+    whatever these rows happen to show -- fine for a standalone call, wrong for
+    a retained window, because then how much history is *kept* would silently
+    choose between a recorded acceleration and a differenced one.
     """
     times = np.asarray(times_s, dtype=np.float64)
     poses = np.asarray(poses, dtype=np.float64).reshape(-1, 3)
@@ -165,7 +175,8 @@ def resample_history(
 
     velocity = np.stack([np.interp(wanted, times, motion[:, i]) for i in (0, 1)], axis=1)
     acceleration = np.stack([np.interp(wanted, times, motion[:, i]) for i in (2, 3)], axis=1)
-    if not np.any(motion[:, 2:4]) and len(times) > 1:
+    recorded = np.any(motion[:, 2:4]) if source_has_acceleration is None else source_has_acceleration
+    if not recorded and len(times) > 1:
         acceleration = np.gradient(velocity, HISTORY_DT, axis=0)
     return history, velocity, acceleration
 
@@ -251,6 +262,12 @@ class QwenDrivePolicy(Policy):
         self.poses: list[np.ndarray] = []
         self.motion: list[np.ndarray] = []
         self.frames: list[dict[str, Any]] = []
+        #: Whether this source has ever populated the CAN bus's acceleration
+        #: channel. Sticky for the episode and decided as records arrive, so
+        #: that `KEEP_S` bounds memory without also choosing how acceleration
+        #: is derived -- the same stream must not answer differently because an
+        #: old record aged out.
+        self.source_has_accel = False
 
     # ---- history --------------------------------------------------------
 
@@ -277,6 +294,8 @@ class QwenDrivePolicy(Policy):
                     f"Qwen-Drive needs all of {list(self.cameras)}"
                 )
         canbus = np.asarray(obs.canbus, dtype=np.float64)
+        if canbus[CANBUS_ACCEL] or canbus[CANBUS_ACCEL + 1]:
+            self.source_has_accel = True
         self.timestamps.append(int(obs.timestamp_us))
         self.poses.append(pose_xy_yaw(obs.ego2world))
         # Imported, never re-typed: the CAN-bus layout is one of the contracts
@@ -327,7 +346,12 @@ class QwenDrivePolicy(Policy):
         recorded frames to open. Pure numpy, so the tests can check it."""
         times = np.array(self.timestamps, dtype=np.float64) / 1e6
         indices, gaps = select_frame_indices(times)
-        history, velocity, acceleration = resample_history(times, np.stack(self.poses), np.stack(self.motion))
+        history, velocity, acceleration = resample_history(
+            times,
+            np.stack(self.poses),
+            np.stack(self.motion),
+            source_has_acceleration=self.source_has_accel,
+        )
         return {
             "frame_indices": indices,
             "frame_gaps_s": gaps,
