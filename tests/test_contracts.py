@@ -252,3 +252,54 @@ def test_the_loader_refuses_a_malformed_card(tmp_path: Path) -> None:
     models = load_models(write(good))
     assert models["mymodel"].input_size == (512, 256)
     assert models["mymodel"].trained_on[0].dataset == "nuscenes"
+
+
+# -- paddock's own modules must import in the oldest interpreter a model uses ---
+
+
+def test_the_policy_servers_routes_avoid_syntax_the_oldest_model_python_cannot_evaluate() -> None:
+    """FastAPI evaluates route annotations; `dict | None` is not evaluable on 3.9.
+
+    `policy/server.py` runs inside the *model's* interpreter, not paddock's, and
+    the registry says how old that can be -- Drive-JEPA's perception-free agent
+    is Python 3.9. `from __future__ import annotations` makes annotations
+    strings, which is normally the end of it, but FastAPI asks pydantic to
+    evaluate the ones on a route to build it, and on 3.9 pydantic cannot
+    evaluate PEP 604 without `eval_type_backport`. The node then dies at import,
+    before `load()`, with a pydantic traceback naming neither paddock nor the
+    model. Caught once, on drivejepa_free's first sweep; this is the guard,
+    because on paddock's own 3.11 nothing about it fails.
+    """
+    import ast
+
+    oldest = min(
+        tuple(int(p) for p in spec.runtime.python.split("."))
+        for spec in REGISTRY.models.values()
+        if spec.runtime.python
+    )
+    if oldest >= (3, 10):
+        pytest.skip(f"no model older than 3.10 remains (oldest is {oldest}); the hazard is gone")
+
+    source = (REPO_ROOT / "src" / "paddock" / "policy" / "server.py").read_text()
+    tree = ast.parse(source)
+
+    def routes(node):
+        for child in ast.walk(node):
+            if isinstance(child, ast.AsyncFunctionDef | ast.FunctionDef) and any(
+                isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) for d in child.decorator_list
+            ):
+                yield child
+
+    offenders = []
+    for route in routes(tree):
+        annotations = [a.annotation for a in route.args.args if a.annotation]
+        annotations += [route.returns] if route.returns else []
+        for annotation in annotations:
+            for node in ast.walk(annotation):
+                if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+                    offenders.append(f"{route.name}: {ast.unparse(annotation)}")
+
+    assert not offenders, (
+        f"these route annotations use PEP 604, which pydantic cannot evaluate on Python "
+        f"{'.'.join(str(p) for p in oldest)}: {offenders}. Spell them with typing.Optional/Union."
+    )

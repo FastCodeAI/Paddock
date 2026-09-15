@@ -18,7 +18,7 @@ import argparse
 import importlib
 import logging
 import time
-from typing import Any
+from typing import Any, Optional
 
 from paddock.policy.protocol import Observation, Policy
 
@@ -112,7 +112,17 @@ def build_app(policy: Policy, model: str | None = None, nonce: str | None = None
         return result
 
     @app.post("/reset")
-    async def reset(body: dict | None = None) -> bool:
+    # `Optional[dict]`, not `dict | None`, and it is not a style choice. This
+    # module runs inside the *model's* interpreter, which is as old as the model
+    # needs -- Drive-JEPA's perception-free agent is Python 3.9. `from __future__
+    # import annotations` makes the annotation a string, FastAPI asks pydantic to
+    # evaluate it to build the route, and on 3.9 pydantic cannot evaluate PEP 604
+    # without the `eval_type_backport` package. The node then dies at import,
+    # before load(), with a pydantic traceback that names neither paddock nor the
+    # model. Every other annotation here is either a builtin or behind the
+    # `__future__` import and never evaluated, so this is the only one that has
+    # to be spelled the old way.
+    async def reset(body: Optional[dict] = None) -> bool:  # noqa: UP045
         policy.reset()
         return True
 
