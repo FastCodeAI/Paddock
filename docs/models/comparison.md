@@ -176,6 +176,20 @@ of ADE was the missing cameras. Read the KITScenes cell as "the released model,
 on a rig and a domain it never saw", which is the same caveat the other rows
 carry in different proportions.
 
+### METEOR × navsim — a 3 s planner on a 4 s benchmark
+
+The other unequal term, and it runs the same way as the camera one. NAVSIM
+scores four seconds; METEOR's checkpoint plans three. Paddock will not quietly
+extrapolate, so the run declared `METEOR_HORIZON_S=4.0` and the last second of
+every plan is its final 0.5 s segment continued — one quarter of the scored
+horizon, recorded in `run.json`. The columns that read the far end of the plan
+are where it falls to the constant-velocity floor: lane keeping 0.795 against
+the floor's 0.827, extended comfort 0.451 against 0.567. Its 0.303 EPDMS sits
+between the floor and VisionPilot, while on nuScenes, which scores three
+seconds and needs no extension, its L2 sits with Drive-JEPA's. Both numbers are
+real; they are not measuring the same object. `docs/models/meteor.md` has the
+measurements.
+
 ## Three discrepancies against what the adapters declare
 
 Recorded rather than resolved, because `capabilities.cameras` decides what a
