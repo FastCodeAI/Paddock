@@ -730,7 +730,7 @@ class VisionPilotPolicy(Policy):
         dets: np.ndarray,
         box_ranges: np.ndarray,
         flag_prob: float,
-    ) -> list[dict[str, float]]:
+    ) -> list[dict[str, float | None]]:
         """VisionPilot's CIPO in the protocol's `lead` shape. `[]` means "nothing ahead".
 
         Empty list, not a missing key: `auxiliary._lead` treats an absent `lead`
@@ -753,19 +753,31 @@ class VisionPilotPolicy(Policy):
         publish a low confidence for a lead the stack is in fact certain about
         on AutoSpeed's evidence, and `auxiliary._lead` thresholds this value to
         decide whether the model reported anything at all.
+
+        `y` is always present and is `None` when no AutoSpeed box met the road
+        for this lead -- the fusion can hold a CIPO on AutoDrive's distance head
+        alone, which is a real longitudinal detection with no lateral evidence
+        behind it. Two things make `None` the right spelling rather than either
+        omitting the key or sending NaN: `validate_extras` requires `d`, `y` and
+        `prob` together, and a plan crosses to the harness as JSON, which
+        starlette renders with `allow_nan=False`, so a NaN here does not degrade
+        to a missing measurement -- it fails the whole sample with a 500. The
+        scorer reads `None` as "not measured" already (`auxiliary._finite`), and
+        drops `lead_lateral_abs_err` for the sample while keeping the range and
+        closing-rate columns, which is exactly the claim being made.
         """
         if not cipo.has_cipo:
             return []
         raw_range = cipo.cipo_raw_dist_m if cipo.cipo_raw_found else float("nan")
         lateral, box_score = self._cipo_box(dets, box_ranges, self._last_box_ground, raw_range)
-        entry: dict[str, float] = {
-            "d": float(cipo.distance_m),
-            "v_rel": float(cipo.velocity_ms),
-            "prob": float(max(flag_prob, box_score if np.isfinite(box_score) else 0.0)),
-        }
-        if np.isfinite(lateral):
-            entry["y"] = lateral
-        return [entry]
+        return [
+            {
+                "d": float(cipo.distance_m),
+                "y": float(lateral) if np.isfinite(lateral) else None,
+                "v_rel": float(cipo.velocity_ms),
+                "prob": float(max(flag_prob, box_score if np.isfinite(box_score) else 0.0)),
+            }
+        ]
 
     def _box_ranges(self, dets: np.ndarray, obs: Observation) -> np.ndarray:
         """Ground range of each box's bottom-centre, or NaN if it does not meet the road.

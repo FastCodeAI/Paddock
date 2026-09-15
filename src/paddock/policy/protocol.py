@@ -473,6 +473,16 @@ class Trajectory:
 #: Every key is optional and `extras` may also carry model-native blocks outside
 #: this schema (openpilot's `native_long`); `validate_extras` ignores those.
 #:
+#: **A scalar the model did not measure is `None`, not NaN.** Extras cross to the
+#: harness as JSON, which starlette renders with `allow_nan=False`, so a NaN does
+#: not arrive as a missing measurement -- it raises inside the response encoder
+#: and fails the whole sample with a 500 that names neither the key nor the model.
+#: Scorers already read `None` as not-measured (`auxiliary._finite`), so `None` is
+#: both the safe and the meaningful spelling. Where a key is required as part of a
+#: group -- `lead` wants `d`, `y` and `prob` together -- send it as `None` rather
+#: than omitting it, so "I have no lateral for this lead" stays distinguishable
+#: from "I have no lead head at all".
+#:
 #: Shapes, all in the ego frame (x forward, y LEFT, metres) unless stated:
 #:
 #:   pose   {"velocity": [vx, vy, vz],                    m/s

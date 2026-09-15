@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pytest
 
@@ -171,18 +173,28 @@ def test_confidence_is_the_stronger_of_the_two_networks() -> None:
     assert confident[0]["prob"] == pytest.approx(0.95)
 
 
-def test_a_lead_seen_only_by_autodrive_has_a_range_but_no_lateral() -> None:
+def test_a_lead_seen_only_by_autodrive_has_a_range_but_a_null_lateral() -> None:
     """AutoDrive is a scalar distance head. It cannot say where across the road.
 
-    Omitting `y` leaves `lead_lateral_abs_err` NaN for that sample, which is
-    "not answered". Filling it with 0.0 would claim the lead is dead ahead and
-    score a free hit whenever it happened to be.
+    `y: None` leaves `lead_lateral_abs_err` NaN for that sample -- "not
+    answered" -- while the range and closing-rate columns still score. Filling
+    it with 0.0 would claim the lead is dead ahead and take a free hit whenever
+    it happened to be.
+
+    Three spellings of "no lateral" and only one of them works, which is why
+    this asserts the exact value rather than merely a falsy one. Omitting the
+    key fails `validate_extras`, which requires `d`, `y` and `prob` together;
+    NaN fails the whole sample with a 500, because a plan reaches the harness as
+    JSON and starlette encodes with `allow_nan=False`. `None` is the only one
+    the wire carries, and `auxiliary._finite` already reads it as not-measured.
     """
     policy = POLICY()
     policy._last_box_ground = np.empty((0, 2))
     leads = policy._lead_extra(_estimate(cipo_raw_found=False), np.empty((0, 6)), np.empty(0), 0.9)
-    assert "y" not in leads[0]
+    assert leads[0]["y"] is None
     assert leads[0]["d"] == pytest.approx(28.5)
+    validate_extras({"lead": leads}, n_waypoints=8)
+    json.dumps(leads, allow_nan=False)  # what starlette will do with it
 
 
 def test_the_published_lead_matches_the_protocol_schema() -> None:
