@@ -93,11 +93,37 @@ number, so `trained_on` declares NAVSIM `navtrain`; see the Qwen-Drive × navsim
 section of [comparison.md](comparison.md) for what that does to the NAVSIM
 column. KITScenes and neuroNCAP (nuScenes, rendered) are zero-shot.
 
+## Results
+
+All four on `planner-sft`, direct mode, one seeded sample, one RTX PRO 6000.
+
+| benchmark | n | score | wall clock | run |
+|---|---:|---:|---:|---|
+| KITScenes ADE@3s ↓ | 223 | 0.806 m | 6.6 min | `20260914T220841-5a91fd` |
+| NAVSIM v2 EPDMS ↑ | 12,146 | 0.840 | 4.0 h | `20260914T221802-80457c` |
+| NAVSIM v1 PDMS ↑ | 12,146 | 0.876 | 9 min, no GPU | `20260915T021715-02aab4` |
+| neuroNCAP score ↑ | 200 | 2.49 | 7.7 h | `20260915T023604-12d5eb` |
+
+The v1 figure is worth one line on its own: the vendor reports 87.8 PDMS on this
+split for exactly this configuration, and paddock measures 87.6. That agreement
+covers the camera mapping, the pose history, the 8-pose conversion and the
+scorer together, which is a stronger check than any one of them alone. It is
+also an in-distribution number — the model declares `navtrain`.
+
+neuroNCAP is the outlier: first or near-first on every open-loop column, fourth
+of five closed-loop. See the neuroNCAP section of the README for what is and is
+not known about why.
+
 ## Cost
 
-No latency is published for the model. The adapter's `/diagnostics` reports
-`infer_seconds_mean`; measure it on a `--limit` smoke before projecting a full
-run. Expectations before measurement, direct mode, one sample, this card:
-KITScenes n=223 in well under an hour; NAVSIM navtest in 4–8 h; neuroNCAP's
-200 episodes in 8–11 h. Reasoning mode adds a 256-token decode per plan and
-multiplies closed-loop cost several times over.
+No latency is published for the model. Measured here, direct mode, one sample:
+
+| | |
+|---|---|
+| checkpoint load | 121 s cold, 17 s warm |
+| inference | ~1.0–1.5 s per plan |
+| VRAM | ~15 GB |
+
+`/diagnostics` reports `infer_seconds_mean` live. Reasoning mode adds a
+256-token decode per plan and multiplies closed-loop cost several times over;
+nothing here was run that way.

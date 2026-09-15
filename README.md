@@ -112,7 +112,7 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 | Drive-JEPA | 0.912 △ | 2.364 | 0.843 | 0.892 † | 31.11 ◆ | **3.57** ‖ | 0.5619 ¶ | planned |
 | VisionPilot | 1.441 △ | 1.534 ∗ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.8864 ¶ | planned |
 | METEOR | 0.977 △ | 1.879 ◇ | — | — | — | — | — | — |
-| Qwen-Drive 1.0 | pending | 0.806 | pending | pending | planned | pending | — | planned |
+| Qwen-Drive 1.0 | pending | 0.806 | 0.840 | 0.876 | planned | **2.49** | — | planned |
 | Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | 0.207 † | 47.94 ♣ | 0 § | 0.3562 ¶ | — |
 
 ∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
@@ -320,6 +320,7 @@ was first run on, for reference only.
 | Alpamayo 1.5, 2 Hz OpenScene | 0.608 | 0.941 | 0.788 | 0.890 | 0.998 | 0.596 | 0.939 | 0.931 | 0.938 | 0.490 | 0.653 |
 | Drive-JEPA | **0.843** | 0.984 | 0.985 | 0.991 | 0.998 | 0.889 | 0.979 | 0.974 | 0.978 | 0.477 | 0.880 |
 | VisionPilot | 0.431 | 0.727 | 0.819 | 0.926 | 0.975 | 0.404 | 0.700 | 0.899 | 0.968 | 0.518 | 0.447 |
+| Qwen-Drive 1.0, 10 Hz nuPlan history ‡ | 0.840 | 0.982 | 0.964 | 0.993 | 0.998 | 0.820 | 0.977 | 0.975 | 0.982 | **0.867** | — |
 | Baseline (Constant Velocity) | 0.239 | 0.681 | 0.578 | 0.805 | 0.981 | 0.209 | 0.669 | 0.827 | 0.979 | 0.567 | 0.257 |
 
 ### NAVSIM v1
@@ -342,7 +343,16 @@ future scores 0.946 against the paper's 94.8 (privileged; stored `valid: false`)
 | Alpamayo 1.5, 2 Hz OpenScene | 0.676 | 0.941 | 0.788 | 0.604 | 0.878 | 0.979 | 0.885 |
 | Drive-JEPA | **0.892** | 0.984 | 0.985 | 0.887 | 0.881 | 0.999 | 0.988 |
 | VisionPilot | 0.488 | 0.771 | 0.818 | 0.451 | 0.617 | 0.996 | 0.920 |
+| Qwen-Drive 1.0, 10 Hz nuPlan history ‡ | 0.876 | 0.982 | 0.964 | 0.817 | 0.941 | 1.000 | 0.987 |
 | Baseline (Constant Velocity) | 0.207 | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 |
+
+**Qwen-Drive reproduces its own published number here.** Its technical report
+gives 87.8 PDMS on this split for `planner-sft` without reasoning, the exact
+configuration paddock runs; paddock measures 0.876. That is the only row in this
+table with a vendor figure to check against, and the agreement is evidence about
+the whole path — the camera mapping, the 10 Hz history, the 8-pose conversion
+and the v1 scorer — not just about the model. Read it as an in-distribution
+result all the same: Qwen-Drive declares `navtrain` (see ✦).
 
 ### Bench2Drive — historical 24-route results
 
@@ -388,8 +398,18 @@ all 200 runs. Runs are seeded 0-9, so every model met identical scenario jitter.
 | Alpamayo 1.5 | 4.41 ±1.48 | 3.64 ±2.01 | 2.45 ±1.93 | **3.73** | 32.5% |
 | OpenPilot | 4.52 ±1.34 | 2.30 ±1.24 | 3.08 ±2.25 | **3.60** | 38.0% |
 | Drive-JEPA | 4.23 ±1.33 | 2.42 ±1.43 | 3.39 ±2.07 | **3.57** | 45.5% |
+| Qwen-Drive 1.0 | 2.71 ±1.73 | 1.52 ±1.49 | 3.00 ±2.04 | **2.49** | 69.0% |
 | VisionPilot | 2.53 ±1.60 | 1.17 ±1.38 | 0.08 ±0.18 | **1.58** | 85.5% |
 | Baseline (Constant Velocity) | 0.00 | 0.00 | 0.00 | 0.00 § | 100.0% |
+
+**Qwen-Drive is the widest open-loop-to-closed-loop gap in the table.** It leads
+KITScenes and ties Drive-JEPA on NAVSIM, then places fourth here, below three
+models it beat on every open-loop column. The frontal column is where it goes:
+1.52 with 86% of those runs ending in a collision, against 3.64 for Alpamayo.
+The adapter replans every 0.1 s tick like every other model, and the four camera
+frames it reads span 1.5 s, so at 10 Hz it is shown the same three frames of
+past for fifteen consecutive ticks. Whether that is the cause is untested — it
+is the first thing to measure, not a finding.
 
 **Scene 0103 was not representative, and the ordering it implied was wrong.**
 Every model met identical scenario jitter (runs seeded 0–9), so these can be
