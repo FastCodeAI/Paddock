@@ -235,14 +235,66 @@ was first run on, for reference only.
 | VisionPilot | 0.431 | 0.727 | 0.819 | 0.926 | 0.975 | 0.404 | 0.700 | 0.899 | 0.968 | 0.518 | 0.447 |
 | Baseline (Constant Velocity) | 0.239 | 0.681 | 0.578 | 0.805 | 0.981 | 0.209 | 0.669 | 0.827 | 0.979 | 0.567 | 0.257 |
 
-### Bench2Drive — expansion results (15 September 2026)
+### Bench2Drive — all 50 routes: recorded results
 
-The additional **26 routes have final records for DriveJEPA, VisionPilot,
-Alpamayo and unassisted OpenPilot**. Qwen-Drive's 50-route batch and the
-constant-velocity expansion are still in progress. See the
-[expansion score and full infraction tables](docs/benchmarks/bench2drive-expansion-results.md).
-The newer OpenPilot controller differs from the historical 24-route setup;
-keep the cohorts separate. A final, consistent 50-route leaderboard is pending.
+All four models and CV have one selected final record for each of the **same 50
+route IDs** (24 historical + 26 additional). Qwen-Drive is excluded. Counts below
+are recorded list entries, including all 12 categories. DS and RC are arithmetic
+means over 50 route records; driving failures and the 4000-tick cap are included.
+CV is the previously selected fixed 6 m/s target, without per-route speed selection.
+
+**† OpenPilot is a mixed-setup aggregate:** 16 of its historical 24 recordings
+include assistance; the additional 26 are unassisted with the newer upstream
+longitudinal controller. Its full-record counts and pooled scores are reported
+as requested, but are not an unassisted 50-route or single-controller result.
+The other systems also retain their cohort-specific deployment/recovery labels
+in the [26-route details](docs/benchmarks/bench2drive-expansion-results.md#protocol-labels).
+
+| Model/system | Routes | DS | RC (%) | Ped. collision | Vehicle collision | Layout collision | Red light | Stop sign | Outside lanes | Deviation | Blocked | Emergency yield | Min-speed entries | Route timeout | Scenario timeout | Collisions total | Routes with collision |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| DriveJEPA | 50/50 | 31.71 | 39.10 | 2 | 3 | 3 | 1 | 1 | 7 | 6 | 17 | 3 | 338 | 0 | 0 | 8 | 8/50 |
+| VisionPilot | 50/50 | 47.82 | 71.19 | 6 | 23 | 13 | 11 | 3 | 11 | 10 | 2 | 4 | 655 | 0 | 0 | 42 | 29/50 |
+| Alpamayo 1.5 (nav) | 50/50 | 43.04 | 72.32 | 3 | 42 | 1 | 0 | 0 | 22 | 3 | 9 | 1 | 660 | 0 | 0 | 46 | 27/50 |
+| OpenPilot (mixed setups) † | 50/50 | 48.11 | 63.50 | 3 | 10 | 5 | 5 | 4 | 4 | 9 | 10 | 4 | 587 | 0 | 0 | 18 | 14/50 |
+| CV (fixed 6 m/s) | 50/50 | 40.39 | 73.08 | 9 | 24 | 26 | 11 | 4 | 14 | 14 | 4 | 5 | 673 | 0 | 0 | 59 | 31/50 |
+
+#### Minimum-speed normalization — all 50 routes
+
+| Model/system | Recorded entries | Route progress (km, estimated) | Entries / progress km | Entries / completed-route equivalent | Below 100% / entries | Below 100% (%) |
+|---|---:|---:|---:|---:|---:|---:|
+| DriveJEPA | 338 | 2.139 | 158.03 | 17.29 | 200/338 | 59.17 |
+| VisionPilot | 655 | 3.918 | 167.16 | 18.40 | 139/655 | 21.22 |
+| Alpamayo 1.5 (nav) | 660 | 3.978 | 165.93 | 18.25 | 291/660 | 44.09 |
+| OpenPilot (mixed setups) † | 587 | 3.456 | 169.85 | 18.49 | 276/587 | 47.02 |
+| CV (fixed 6 m/s) | 673 | 3.984 | 168.93 | 18.42 | 314/673 | 46.66 |
+
+Pool counts and progress over all 50 routes before dividing:
+
+```text
+progress_km = sum(route_length_m * route_completion_pct / 100) / 1000
+entries_per_progress_km = total_min_speed_entries / progress_km
+completed_route_equivalents = sum(route_completion_pct / 100)
+entries_per_completed_route_equivalent = total_min_speed_entries / completed_route_equivalents
+below_100_share_pct = 100 * count(checkpoint_percentage < 100) / total_min_speed_entries
+```
+
+Entries/km matches the upstream aggregate normalization for these nonzero-exposure
+cohorts. Progress is estimated from scored route completion, not odometry.
+Checkpoint spacing scales with route length, so entries/km also depends on route
+length; completed-route equivalents show the count-versus-progress effect.
+A below-100 ratio can include legitimate waiting/yielding and is not by itself
+an unsafe-driving violation. Unvisited checkpoints are not imputed. A saved
+100% may be the evaluator's no-usable-traffic-speed fallback. No official driving
+score or controller was changed to produce these reporting statistics.
+
+DriveJEPA's lower raw count does not establish better speed compliance: the
+criterion emits records at distance checkpoints even above 100% of traffic speed.
+Its lower completion gives it fewer checkpoint opportunities. Do not sum these
+heterogeneous infraction entries into one safety score.
+
+[Harness calculation audit](docs/benchmarks/bench2drive-speed-normalization.md) ·
+[All per-route normalization inputs and source hashes](docs/benchmarks/bench2drive-speed-normalization.json) ·
+[Additional 26-route breakdown](docs/benchmarks/bench2drive-expansion-results.md).
 
 ### Bench2Drive — historical 24-route results
 
@@ -263,46 +315,67 @@ not establish the performance of the corrected controller.
 
 #### Recorded infractions (24 routes per model)
 
-Counts are lengths of the upstream per-route infraction lists, not per-kilometre rates,
-penalty factors, or numbers of affected routes. **OpenPilot includes assistance on
-16 of 24 routes**, as present in the full recordings; its scores here must not be
-combined with the unassisted prefix estimate above. CV uses the selected fixed
-6 m/s target on the same route set.
+Counts are lengths of the recorded upstream infraction lists. DS is mean driving
+score; RC is mean route completion. Every model occupies one row; CV uses the
+previously selected fixed **6 m/s** target, without best-speed-per-route selection.
+All 12 categories are retained, including zero counts. A final record includes
+driving failures and the 4000-tick cap, not just successful route finishes.
 
-| Metric / recorded entries | DriveJEPA | VisionPilot | Alpamayo 1.5 (nav) | OpenPilot (full recorded) | CV (fixed 6 m/s) |
-|---|---:|---:|---:|---:|---:|
-| Mean route completion (%) | 40.44 | 75.54 | 73.36 | 66.81 | 75.79 |
-| Mean driving score | 31.11 | 49.85 | 44.58 | 53.62 | 39.23 |
-| Pedestrian collision (`collisions_pedestrian`) | 2 | 3 | 2 | 1 | 5 |
-| Vehicle collision (`collisions_vehicle`) | 2 | 14 | 16 | 4 | 14 |
-| Layout collision (`collisions_layout`) | 2 | 3 | 1 | 2 | 17 |
-| Red light (`red_light`) | 1 | 6 | 0 | 4 | 6 |
-| Stop sign (`stop_infraction`) | 0 | 2 | 0 | 2 | 2 |
-| Outside route lanes (`outside_route_lanes`) | 3 | 3 | 12 | 1 | 7 |
-| Route deviation (`route_dev`) | 3 | 2 | 0 | 4 | 5 |
-| Vehicle blocked (`vehicle_blocked`) | 5 | 0 | 3 | 2 | 2 |
-| Failure to yield to emergency vehicle (`yield_emergency_vehicle_infractions`) | 1 | 1 | 0 | 1 | 1 |
-| Minimum speed (`min_speed_infractions`) | 170 | 338 | 325 | 300 | 339 |
-| Route timeout (`route_timeout`) | 0 | 0 | 0 | 0 | 0 |
-| Scenario timeout (`scenario_timeouts`) | 0 | 0 | 0 | 0 | 0 |
-| Total collision events | 6 | 20 | 19 | 7 | 36 |
-| Routes with any collision | 6/24 | 15/24 | 13/24 | 6/24 | 16/24 |
+**OpenPilot here includes assistance on 16 of 24 recordings.** These full-run
+counts do not describe the unassisted prefix estimate above. The additional
+26-route OpenPilot cohort is unassisted and reported separately.
 
-**Why DriveJEPA has fewer minimum-speed entries:** `MinimumSpeedRouteTest` emits
-an entry at distance checkpoints (20 configured per route), without requiring the
-reported speed percentage to be below 100%. In fact, 63/170 DriveJEPA entries,
-277/338 VisionPilot entries, 198/325 Alpamayo entries and 192/300 OpenPilot entries
-report at least 100%. Fewer entries therefore do not establish better speed
-compliance. DriveJEPA's 40.44% mean route completion gives it fewer opportunities
-to reach these checkpoints than VisionPilot's 75.54% or Alpamayo's 73.36%.
-The upstream statistics manager also marks this percentage penalty as `unused`.
+| Model/system | DS | RC (%) | Ped. collision | Vehicle collision | Layout collision | Red light | Stop sign | Outside lanes | Deviation | Blocked | Emergency yield | Min-speed entries | Route timeout | Scenario timeout | Collisions total | Routes with collision |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| DriveJEPA | 31.11 | 40.44 | 2 | 2 | 2 | 1 | 0 | 3 | 3 | 5 | 1 | 170 | 0 | 0 | 6 | 6/24 |
+| VisionPilot | 49.85 | 75.54 | 3 | 14 | 3 | 6 | 2 | 3 | 2 | 0 | 1 | 338 | 0 | 0 | 20 | 15/24 |
+| Alpamayo 1.5 (nav) | 44.58 | 73.36 | 2 | 16 | 1 | 0 | 0 | 12 | 0 | 3 | 0 | 325 | 0 | 0 | 19 | 13/24 |
+| OpenPilot (full recorded; assisted) | 53.62 | 66.81 | 1 | 4 | 2 | 4 | 2 | 1 | 4 | 2 | 1 | 300 | 0 | 0 | 7 | 6/24 |
+| CV (fixed 6 m/s) | 39.23 | 75.79 | 5 | 14 | 17 | 6 | 2 | 7 | 5 | 2 | 1 | 339 | 0 | 0 | 36 | 16/24 |
 
-Outside-route-lane counts do not measure distance outside the lane. Early stops
-reduce exposure to collisions and other events; compare counts with route completion.
-Do not sum these heterogeneous entries into a safety score.
+##### Minimum-speed normalization
 
-[Per-route counts, scores and source hashes](docs/benchmarks/bench2drive-24-infractions.json)
-allow independent recomputation. The new 26-route expansion is excluded.
+| Model/system | Recorded entries | Route progress (km, estimated) | Entries / progress km | Entries / completed-route equivalent | Below 100% / entries | Below 100% (%) |
+|---|---:|---:|---:|---:|---:|---:|
+| DriveJEPA | 170 | 1.064 | 159.73 | 17.52 | 107/170 | 62.94 |
+| VisionPilot | 338 | 1.950 | 173.30 | 18.64 | 61/338 | 18.05 |
+| Alpamayo 1.5 (nav) | 325 | 1.936 | 167.85 | 18.46 | 127/325 | 39.08 |
+| OpenPilot (full recorded; assisted) | 300 | 1.718 | 174.59 | 18.71 | 108/300 | 36.00 |
+| CV (fixed 6 m/s) | 339 | 1.949 | 173.90 | 18.64 | 153/339 | 45.13 |
+
+These are **derived reporting statistics**, not changes to the B2D penalty or
+controller. Entries/km uses the upstream aggregate normalization for these
+nonzero-exposure cohorts. Pool counts and exposure across routes before dividing:
+
+```text
+route_progress_km = sum(route_length_m * route_completion_pct / 100) / 1000
+entries_per_progress_km = total_recorded_min_speed_entries / route_progress_km
+completed_route_equivalents = sum(route_completion_pct / 100)
+entries_per_completed_route_equivalent = total_entries / completed_route_equivalents
+below_100_share_pct = 100 * count(recorded_speed_percentage < 100) / total_entries
+```
+
+Route progress is an estimate from recorded route length and completion, not an
+odometer measurement. Checkpoint spacing scales with route length (20 configured
+per route), so entries/km is also sensitive to route length; completed-route
+equivalents help expose the count-versus-progress effect. The below-100 share is
+a descriptive fraction of recorded checkpoint ratios, not an official violation
+rate: lawful yielding and traffic stops may also reduce speed. Percentages are
+rounded to two decimals in the source. A value of 100 can be the evaluator's
+fallback when there is no usable background-speed measurement; those entries
+cannot be distinguished from an actual 100% ratio in the saved messages.
+No unvisited checkpoints are imputed. Zero denominators would be undefined, not
+zero; all displayed cohorts have nonzero exposure.
+
+**Why DriveJEPA has fewer entries:** these are distance-checkpoint measurements,
+not counts of distinct slow-driving incidents. Its lower route completion reduces
+checkpoint exposure. A lower raw count does not establish better speed compliance;
+the table above shows the fraction of its recorded ratios below 100%.
+
+[Harness audit and normalization definitions](docs/benchmarks/bench2drive-speed-normalization.md).
+[Per-route source counts](docs/benchmarks/bench2drive-24-infractions.json) and
+[normalization inputs and source hashes](docs/benchmarks/bench2drive-speed-normalization.json).
+Do not sum heterogeneous entries into a safety score.
 
 #### OpenPilot infractions and correlation data
 

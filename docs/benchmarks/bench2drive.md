@@ -25,10 +25,11 @@ The infraction-penalty coefficients are CARLA Leaderboard's: collision-vehicle
 ×0.60, collision-pedestrian ×0.50, collision-static ×0.65, red light ×0.70, stop
 sign ×0.80, scenario timeout ×0.70, yield-to-emergency ×0.70. **Two terms are
 switched off at the pinned revision** (`statistics_manager.py`): off-road is
-weighted 0 and `MIN_SPEED_INFRACTION` is tagged `'unused'`. So the driving score
-cannot see slow driving at all — a model that crawls a route at 1.2 m/s and
-one that drives it at 10 m/s both score 100 if neither hits anything. The
-efficiency/comfort tool (below) is what separates them. An episode ends when the
+weighted 0 and `MIN_SPEED_INFRACTION` is tagged `'unused'`. There is no direct
+minimum-speed multiplier. Slow driving can still reduce
+completion through blocking or timeout. Recorded minimum-speed entries include
+checkpoint percentages above 100%, so their count alone is not speed compliance;
+see the [harness audit and normalized tables](bench2drive-speed-normalization.md). An episode ends when the
 car finishes, gets **blocked** (stuck too long), **deviates** >30 m off route,
 **times out**, or hits the evaluator's 4000-frame cap; `route_completion`
 freezes at whatever % was reached. All of those are the benchmark working and
