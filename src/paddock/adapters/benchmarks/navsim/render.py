@@ -29,6 +29,21 @@ N_SCENES = 8
 #: NAVSIM scores eight poses at 0.5 s.
 N_POSES = 8
 
+#: Give up on the drawing subprocess after this long. Generous: loading the
+#: split's logs is tens of seconds before the first panel is drawn.
+ENV_TIMEOUT = "PADDOCK_RENDER_TIMEOUT_S"
+DEFAULT_TIMEOUT_S = 1800
+
+
+def render_timeout_s() -> float:
+    """Seconds to allow the drawing subprocess, from PADDOCK_RENDER_TIMEOUT_S."""
+    raw = os.environ.get(ENV_TIMEOUT, "").strip()
+    try:
+        value = float(raw)
+    except ValueError:
+        return float(DEFAULT_TIMEOUT_S)
+    return value if value > 0 else float(DEFAULT_TIMEOUT_S)
+
 
 def render(runs, out_dir: Path, cfg) -> list[Path]:
     from paddock.adapters.benchmarks.navsim.harness import NavsimBenchmark
@@ -99,19 +114,33 @@ def render(runs, out_dir: Path, cfg) -> list[Path]:
         }
     )
     script = Path(__file__).with_name("draw_scenes.py")
-    result = subprocess.run(
-        [str(interpreter), str(script), str(payload_path)],
-        env=env,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        tail = "\n".join((result.stderr or result.stdout).strip().splitlines()[-12:])
-        raise RuntimeError(f"navsim drawing failed in the devkit interpreter:\n{tail}")
+    # Stream to a log rather than capturing: loading a scene takes seconds and
+    # the whole grid a minute, so a devkit stuck on the map API would otherwise
+    # hang with nothing on screen and nothing on disk to look at. The scorer
+    # writes its own subprocess output to a file for the same reason.
+    log_path = out_dir / "navsim_render.log"
+    try:
+        with log_path.open("w") as log:
+            result = subprocess.run(
+                [str(interpreter), str(script), str(payload_path)],
+                env=env,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                timeout=render_timeout_s(),
+            )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"navsim drawing did not finish within {exc.timeout:.0f}s; its output so far is in "
+            f"{log_path} (raise {ENV_TIMEOUT} if this machine is simply slow)"
+        ) from exc
 
-    written = [Path(line) for line in result.stdout.split() if line.endswith(".png")]
+    output = log_path.read_text()
+    if result.returncode != 0:
+        tail = "\n".join(output.strip().splitlines()[-12:])
+        raise RuntimeError(f"navsim drawing failed in the devkit interpreter ({log_path}):\n{tail}")
+
     payload_path.unlink(missing_ok=True)
-    return [p for p in written if p.exists()]
+    return [p for p in written_paths(output) if p.exists()]
 
 
 def _plans(run, cfg) -> tuple[dict[str, list[list[float]]], dict[str, str]]:
@@ -134,6 +163,16 @@ def _plans(run, cfg) -> tuple[dict[str, list[list[float]]], dict[str, str]]:
                 if row.get("log_name"):
                     logs[row["token"]] = row["log_name"]
     return out, logs
+
+
+def written_paths(output: str) -> list[Path]:
+    """The files the drawing script reported, one per line.
+
+    Split on lines, not whitespace: a directory with a space in it would
+    otherwise become two paths that do not exist, and the caller would report
+    that nothing was written.
+    """
+    return [Path(line.strip()) for line in output.splitlines() if line.strip().endswith(".png")]
 
 
 def _scene_filter(harness) -> dict[str, object]:

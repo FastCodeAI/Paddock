@@ -97,3 +97,26 @@ def test_a_caption_names_only_the_models_on_the_panel() -> None:
 
 def test_a_caption_without_scores_is_just_the_scenario() -> None:
     assert render.caption({"models": ["meteor"], "scores": {}}, "abcdef1234") == "abcdef12"
+
+
+def test_written_paths_keeps_a_path_containing_a_space() -> None:
+    """Splitting the child's output on whitespace would make this two paths
+    that do not exist, and the caller would report that nothing was drawn."""
+    output = "/runs/my figures/navsim_trajectories.png\n"
+    assert render.written_paths(output) == [Path("/runs/my figures/navsim_trajectories.png")]
+
+
+def test_written_paths_ignores_chatter_around_the_filenames() -> None:
+    """The devkit's loader prints progress bars to the same stream."""
+    output = "Loading logs: 100%|####| 136/136\n/runs/a.png\n  /runs/b.png  \ndone\n"
+    assert render.written_paths(output) == [Path("/runs/a.png"), Path("/runs/b.png")]
+
+
+def test_the_drawing_timeout_is_overridable(monkeypatch) -> None:
+    monkeypatch.delenv(render.ENV_TIMEOUT, raising=False)
+    assert render.render_timeout_s() == float(render.DEFAULT_TIMEOUT_S)
+    monkeypatch.setenv(render.ENV_TIMEOUT, "45")
+    assert render.render_timeout_s() == 45.0
+    for bad in ("0", "-1", "soon"):
+        monkeypatch.setenv(render.ENV_TIMEOUT, bad)
+        assert render.render_timeout_s() == float(render.DEFAULT_TIMEOUT_S)
