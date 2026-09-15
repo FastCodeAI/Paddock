@@ -97,4 +97,21 @@ metrics:
   - comfort_lon_jerk_within_bounds
   - comfort_yaw_rate_within_bounds
   - comfort_within_bounds
+  # ---- miss rate, and a sourced composite ----------------------------------
+  # `adapters/benchmarks/comma2k19/score.py`. Nothing new is measured here: all
+  # of it is derived from the keys above, so these columns can be recomputed --
+  # or reweighted by someone who disagrees with NAVSIM -- from the per-sample
+  # records alone. `pdm_style_score` is deliberately NOT `primary_metric`; two
+  # of its five terms are proxies for things comma2k19 cannot observe (there is
+  # no map and there are no other-agent tracks), which is why it carries
+  # "style" in its name and may not be compared with a NAVSIM PDMS.
+  - miss_rate@2s
+  - miss_rate@3s
+  - miss_rate@4s
+  - pdm_nc_proxy
+  - pdm_dac_proxy
+  - pdm_ttc
+  - pdm_ep
+  - pdm_comfort
+  - pdm_style_score
 primary_metric: ade

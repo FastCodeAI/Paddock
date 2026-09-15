@@ -199,11 +199,57 @@ PDM score uses them, cited there at the strength of published constants.
 | `comfort_lon_accel_within_bounds`, `comfort_lon_decel_within_bounds`, `comfort_lat_accel_within_bounds`, `comfort_lon_jerk_within_bounds`, `comfort_yaw_rate_within_bounds` | fraction of plans inside each bound (2.40, 4.05, 4.89 m/s², 4.13 m/s³, 0.95 rad/s) | higher |
 | `comfort_within_bounds` | fraction inside *all five* | higher |
 
-There is deliberately **no composite driving score**. A single number here would
-have to weight an ADE against a comfort rate against a TTC, and no such weighting
-is published for this dataset; inventing one would make the benchmark's headline
-an opinion of paddock's rather than a measurement. The components are reported
-separately and combine however a reader's application requires.
+### Miss rate, and a driving score that is sourced rather than invented
+
+There is deliberately **no composite driving score of paddock's own**. A single
+number here would have to weight an ADE against a comfort rate against a TTC, and
+no such weighting is published for this dataset; inventing one would make the
+benchmark's headline an opinion of paddock's rather than a measurement. The
+components are reported separately and combine however a reader's application
+requires, and `primary_metric` is still `ade`.
+
+That argument forbids paddock *choosing* the weights. It does not forbid
+evaluating **someone else's published formula**, which is a much weaker claim:
+"here is what NAVSIM's scoring function returns when you feed it log replay". So
+[`score.py`](../../src/paddock/adapters/benchmarks/comma2k19/score.py) computes
+NAVSIM v1's PDMS shape with NAVSIM's weights unchanged —
+`NC × DAC × (5·TTC + 5·EP + 2·C) / 12` — and prints all five sub-scores beside
+it, so nobody has to trust the sum and anyone who disagrees with the weights can
+reweigh them from the per-sample records. Nothing new is measured: every term is
+derived from a column already in the tables above.
+
+| metric | what it is | direction |
+|---|---|---|
+| `miss_rate@2s`, `miss_rate@3s`, `miss_rate@4s` | fraction of samples whose FDE at that horizon exceeded 2 m — the prediction-benchmark convention (Argoverse MR@2m). `NaN`, not a miss, where the plan never reached the horizon | lower |
+| `pdm_nc_proxy` | *no-collision proxy*: 0 if the plan would have closed the radar gap to zero, else 1. 1 on an empty road | higher |
+| `pdm_dac_proxy` | *drivable-area proxy*: 1 if every scored waypoint stayed within ±1.85 m (half a US lane) cross-track of the recorded path | higher |
+| `pdm_ttc` | `1 − ttc_below_2s` | higher |
+| `pdm_ep` | *ego progress*: `min(1, predicted / recorded)` path length, so overshooting is not extra credit. 1 where the car was stopped and there was no distance to cover | higher |
+| `pdm_comfort` | `comfort_within_bounds`, unchanged | higher |
+| `pdm_style_score` | the composite above. **Not** the headline | higher |
+
+Three things about it are load-bearing, and eroding any of them turns it back
+into an opinion:
+
+* **It is named `pdm_style_score`, never "driving score", and it is not a NAVSIM
+  PDMS.** Two terms are proxies for things comma2k19 cannot observe. The dataset
+  has no map and no other-agent tracks, so `pdm_nc_proxy` sees only the closest
+  radar lead — it cannot see a car the plan would have sideswiped, and a plan
+  that leaves the road entirely is invisible to it. `pdm_dac_proxy` uses the
+  human's own path as the corridor, which makes it a *lane-keeping* measure
+  wearing a drivable-area name: a correctly executed lane change scores 0. A
+  number from this column may not be compared with one from
+  [navsim_v1.md](navsim_v1.md).
+* **A term that cannot be measured is `NaN`, and `NaN` propagates** to the
+  composite. A plan too short to have a jerk does not get a free comfort pass.
+* **It is reported beside its components, always.** `report.md`'s "Driving score
+  (proxy)" group prints all seven columns together.
+
+**What cannot be computed here at all**, so that the absence is not mistaken for
+an oversight: Bench2Drive's driving score, neuroNCAP's score and a true NAVSIM
+PDMS all require a simulator whose world reacts to the plan. comma2k19 is log
+replay — the human drove, the recording does not change — so no number on this
+page is a closed-loop result.
 
 **A horizon the model's plan does not reach is `NaN`, never a shorter horizon
 under a longer label.** An earlier version of the shared `decompose` clamped the

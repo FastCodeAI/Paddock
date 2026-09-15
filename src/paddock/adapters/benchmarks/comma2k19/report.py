@@ -25,9 +25,18 @@ dominated by whichever sample had the smallest denominator.
 lead head scores NaN for every lead metric, which aggregates to `n = 0` -- the
 report says "not answered" rather than printing a zero that looks like a result.
 
-There is no composite driving score. See the benchmark's docs for why: the
-components are measured against different references with different coverage,
-and a weighted sum of them would hide exactly the thing each one exists to show.
+There is no composite driving score **of paddock's own**. See the benchmark's
+docs for why: the components are measured against different references with
+different coverage, and a weighted sum of them would hide exactly the thing each
+one exists to show.
+
+The "Driving score (proxy)" group is not a counterexample to that, and the
+distinction is worth stating precisely because it is easy to erode. What is
+refused is paddock *choosing* weights and calling the result a driving score.
+What that group does instead is evaluate NAVSIM v1's published formula, with
+NAVSIM's weights, over log-replay proxies -- reported beside all five of its
+sub-scores and never as the headline. `score.py` carries the full argument and
+the list of ways the proxies are weaker than the terms they stand in for.
 """
 
 from __future__ import annotations
@@ -38,6 +47,7 @@ from pathlib import Path
 
 from paddock.adapters.benchmarks.comma2k19 import auxiliary as AUX
 from paddock.adapters.benchmarks.comma2k19 import metrics as MC
+from paddock.adapters.benchmarks.comma2k19 import score as SC
 
 #: Worst samples listed by the primary metric, with the command to draw each.
 WORST_N = 10
@@ -126,6 +136,17 @@ GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "including one that publishes no auxiliary heads at all. Bounds are "
         "`paddock.metrics.comfort.BOUNDS`.",
         tuple(k for k in AUX.ALL_KEYS if k.startswith("comfort_")),
+    ),
+    (
+        "Driving score (proxy)",
+        "NAVSIM v1's PDMS formula and weights evaluated over log-replay "
+        f"proxies: `NC x DAC x (5*TTC + 5*EP + 2*C) / {sum(SC.WEIGHTS.values()):.0f}`. "
+        "Read the sub-scores, not the composite -- NC sees only the radar lead "
+        "and DAC uses the human's own path as the corridor, so this is not a "
+        "PDMS and may not be compared with one. `ade` is still the headline. "
+        "The miss rate is the fraction of samples whose FDE at that horizon "
+        f"exceeded {SC.MISS_THRESHOLD_M:.0f} m. See `score.py`.",
+        SC.keys(),
     ),
 )
 
