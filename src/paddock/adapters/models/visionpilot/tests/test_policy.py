@@ -10,6 +10,7 @@ import pytest
 from paddock.adapters.models.visionpilot.policy import (
     CIPO_PROB_MIN,
     CONTROL_DT,
+    CURV_SCALE,
     IDM,
     POLICY,
     WAYPOINT_DT,
@@ -75,6 +76,27 @@ def test_idm_brakes_when_closing_on_a_lead() -> None:
     closing = idm.acceleration(kappa=0.0, ego_v=15.0, has_cipo=True, closing_v=10.0, gap=8.0)
     assert closing < 0.0, "closing on a near lead must decelerate"
     assert closing < free
+
+
+def test_a_highway_curve_does_not_read_as_a_hairpin() -> None:
+    """The units of AutoDrive's curvature head, asserted through their consequence.
+
+    `CURV_SCALE` converts `curvature_raw` to 1/m and the stack's value is 0.21
+    (`lateral_fusion.hpp::ad_curvature_scale`). Asserting the constant alone
+    would be a restatement; what makes it load-bearing is `IDM.acceleration`,
+    which caps the set-speed at `sqrt(mu*g/|kappa|)` and then raises the
+    overshoot to the fourth power. So the same raw output is either a 480 m
+    highway sweep the car holds 30 m/s through, or a 100 m bend it stands on
+    the brakes for, and nothing in between.
+
+    0.0100 raw is a curvature AutoDrive reports routinely on I-280. Under the
+    placeholder 1.0 this demanded -19 m/s2 -- five times a hard emergency stop,
+    from a straight road -- which is how the scale error was found.
+    """
+    assert CURV_SCALE == 0.21
+    idm = IDM(speed_limit=30.0)
+    accel = idm.acceleration(kappa=0.0100 * CURV_SCALE, ego_v=30.0, has_cipo=False, closing_v=0.0, gap=1e6)
+    assert accel > -1.0, f"a highway sweep must not command emergency braking (got {accel:.1f} m/s2)"
 
 
 def test_control_and_waypoint_rates_are_distinct() -> None:

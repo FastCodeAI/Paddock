@@ -82,7 +82,31 @@ IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
 D_MAX_M = 150.0  # AutoDrive's distance normalisation, from auto_drive.hpp
-CURV_SCALE = 1.0  # curvature_raw -> 1/m; auto_drive.hpp leaves this to the caller
+
+#: `curvature_raw` -> 1/m. `auto_drive.hpp` documents the conversion and
+#: deliberately does not perform it ("Domain conversion is the caller's job"),
+#: which is why grepping that file for the constant finds nothing. The caller
+#: is `LateralFusion`, and the number is
+#: `lateral_fusion.hpp::Config::ad_curvature_scale = 0.21f`, annotated there as
+#: "CURV_SCALE = 0.21 in training"; `debug_draw.hpp` carries the same 0.21 and
+#: sources it to `load_data_auto_drive.py`. It is a training-time normalisation,
+#: not a tuning knob.
+#:
+#: This was 1.0 -- a placeholder that read the header's sentence as "there is no
+#: constant" rather than "the constant lives elsewhere" -- and 1.0 is not a
+#: harmless default. `IDM.acceleration` caps the set-speed at
+#: `sqrt(mu*g/|kappa|)`, so a curvature 4.8x too large shrinks that cap by 2.2x,
+#: and the free-road term raises the overshoot to the *fourth* power: on a
+#: comma2k19 keyframe at 30.6 m/s the planner demanded roughly -60 m/s2 and the
+#: 4 s plan reached 5 m instead of 120. It surfaces here rather than on the
+#: closed-loop benchmarks only because those are urban and slow enough that the
+#: cap rarely binds.
+#:
+#: 0.21 is independently checked, not merely copied: against IMU yaw rate over
+#: CAN speed on a comma2k19 highway segment -- a camera and a dataset the
+#: constant was not tuned on -- AutoDrive recovers ground-truth curvature with
+#: slope 0.969 (r = +0.70).
+CURV_SCALE = 0.21
 CIPO_PROB_MIN = 0.40  # longitudinal_fusion.cpp: below this AutoDrive does not confirm a CIPO
 STEER_MASK_THRESHOLD = 0.5  # h_vector gate, from lateral_fusion
 
