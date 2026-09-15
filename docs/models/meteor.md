@@ -276,6 +276,21 @@ run's own plan dumps:
   split, 0.795, is below the floor's 0.827: a straight line stays in its lane
   better than a curving plan continued off at a tangent.
 
+**The picture.** `paddock render --bench navsim` draws it, into
+`{roots.runs}/navsim/_compare/` unless `--out` says otherwise:
+
+```bash
+paddock render --bench navsim --model meteor,alpamayo15,openpilot
+```
+
+Eight panels, the navtest scenarios where these models' 4 s plans diverge most,
+one per log, each over the map the scorer re-simulated against. METEOR's plan
+tracks the others through its own three seconds, then kinks where the extension
+begins and leaves on a tangent -- in the turning panels, across the lane centres
+and off the drivable area. Drive-JEPA and VisionPilot cannot be drawn: their
+full-split plan dumps predate scenario-token labelling, so no plan can be tied
+to a scenario (`docs/benchmarks/navsim.md`).
+
 **What is the model's own.** Two findings from nuScenes reappear here, on the
 first 3 s that METEOR actually planned:
 
