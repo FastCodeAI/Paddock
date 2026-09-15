@@ -27,10 +27,29 @@ from typing import Any
 
 import numpy as np
 
-#: The camera every model is scored from. nuPlan's eight channels are CAM_F0
-#: (front), CAM_B0 (back), and three per side; only the front one is declared by
-#: the models paddock currently runs.
+#: The camera every model is scored from, and the one every model declares.
 FRONT_CAMERA = "CAM_F0"
+
+#: paddock's camera names -> nuPlan's channels. nuPlan ships eight: CAM_F0
+#: forward, CAM_B0 back, and three down each side. The mapping is OpenScene's,
+#: so a model that was trained or evaluated against NAVSIM sees the same view
+#: under the same name here.
+#:
+#: Load-bearing for multi-camera models: drivejepa declares four cameras and
+#: alpamayo15 three, and `Observation.image` raises rather than substituting a
+#: view it was not given -- correctly, since a model indexing its projection
+#: matrices positionally would otherwise read each camera through its
+#: neighbour's geometry without anything failing.
+CHANNELS = {
+    "CAM_FRONT": "CAM_F0",
+    "CAM_FRONT_LEFT": "CAM_L0",
+    "CAM_FRONT_RIGHT": "CAM_R0",
+    "CAM_LEFT": "CAM_L1",
+    "CAM_RIGHT": "CAM_R1",
+    "CAM_BACK_LEFT": "CAM_L2",
+    "CAM_BACK_RIGHT": "CAM_R2",
+    "CAM_BACK": "CAM_B0",
+}
 
 #: Ego poses are logged at 100 Hz, cameras at 10 Hz. The scored anchor is a
 #: camera frame, so the harness works in camera time and reads poses by
@@ -121,6 +140,32 @@ def camera_calibration(
     cam2ego[:3, :3] = quaternion_matrix(decode_calibration(row[2]))
     cam2ego[:3, 3] = decode_calibration(row[1])
     return intrinsics, cam2ego
+
+
+def lidar_calibration(conn: sqlite3.Connection) -> np.ndarray:
+    """4x4 lidar-to-ego for this log's merged point cloud.
+
+    Needed even by a camera-only run: BEVFormer-style models build their BEV
+    grid in the lidar frame and project the cameras into it, so `lidar2ego` is
+    the transform that ties the two together. drivejepa calls
+    `Observation.require_lidar2ego()`, which raises rather than assuming
+    identity -- right, because an identity here would silently shift the whole
+    BEV grid by the sensor offset and still produce a plausible trajectory.
+
+    nuPlan stores it in the same pickled devkit types as the cameras.
+
+    Expect the **identity matrix**, and do not treat that as a bug: nuPlan's
+    channel is `MergedPointCloud`, already expressed in the ego frame, so its
+    stored translation is [0, 0, 0] and its rotation [1, 0, 0, 0]. The decoder
+    is fine -- CAM_F0 in the same log decodes to [1.67, -0.03, 1.52].
+    """
+    row = conn.execute("SELECT translation, rotation FROM lidar LIMIT 1").fetchone()
+    if row is None:
+        raise LookupError("log has no lidar calibration")
+    lidar2ego = np.eye(4)
+    lidar2ego[:3, :3] = quaternion_matrix(decode_calibration(row[1]))
+    lidar2ego[:3, 3] = decode_calibration(row[0])
+    return lidar2ego
 
 
 # ---- locating logs -------------------------------------------------------
@@ -231,15 +276,30 @@ def camera_frames(conn: sqlite3.Connection, channel: str = FRONT_CAMERA) -> list
     return list(conn.execute(query, (channel,)))
 
 
+#: Column offsets into the array `ego_poses` returns.
+POSE_T, POSE_X, POSE_Y = 0, 1, 2
+POSE_QW = 3  # ..QW+4 is the quaternion
+POSE_VX, POSE_VY = 7, 8
+POSE_AX, POSE_AY = 9, 10
+POSE_YAW_RATE = 11
+
+
 def ego_poses(conn: sqlite3.Connection) -> np.ndarray:
-    """All ego poses as (N, 7): timestamp_us, x, y, qw, qx, qy, qz, speed.
+    """All ego poses as (N, 12); see the POSE_* offsets above.
+
+    Acceleration and yaw rate are read, not left at zero. A model reading all
+    of speed/accel/yaw-rate cannot distinguish a zeroed channel from a car
+    travelling at constant velocity in a straight line, so omitting them is not
+    a missing feature but a wrong input that nothing reports -- drivejepa reads
+    `Observation.accel` on every frame.
 
     Returned as one array rather than queried per sample: a log holds ~40 000
     poses and a sample needs a 4 s window of them, so a single read plus
     `searchsorted` beats a query per waypoint by a wide margin.
     """
     rows = conn.execute(
-        "SELECT timestamp, x, y, qw, qx, qy, qz, vx, vy FROM ego_pose ORDER BY timestamp"
+        "SELECT timestamp, x, y, qw, qx, qy, qz, vx, vy, "
+        "acceleration_x, acceleration_y, angular_rate_z FROM ego_pose ORDER BY timestamp"
     ).fetchall()
     return np.asarray(rows, dtype=np.float64)
 
@@ -251,27 +311,43 @@ def pose_at(poses: np.ndarray, timestamp_us: int) -> int:
     a camera frame's own timestamp falls between pose samples about half the
     time.
     """
-    index = int(np.searchsorted(poses[:, 0], timestamp_us))
+    index = int(np.searchsorted(poses[:, POSE_T], timestamp_us))
     if index <= 0:
         return 0
     if index >= len(poses):
         return len(poses) - 1
-    before, after = poses[index - 1, 0], poses[index, 0]
+    before, after = poses[index - 1, POSE_T], poses[index, POSE_T]
     return index - 1 if (timestamp_us - before) <= (after - timestamp_us) else index
 
 
 def speed_at(poses: np.ndarray, index: int) -> float:
     """Ego speed in m/s. Magnitude of the logged velocity, so it does not matter
     whether nuPlan recorded vx/vy in the body or the global frame."""
-    return float(np.hypot(poses[index, 7], poses[index, 8]))
+    return float(np.hypot(poses[index, POSE_VX], poses[index, POSE_VY]))
+
+
+def accel_at(poses: np.ndarray, index: int) -> float:
+    """Forward acceleration in m/s^2, **signed**.
+
+    The longitudinal component alone, not the magnitude: `hypot` would report a
+    braking car as accelerating, and braking is most of what the scored nuPlan
+    moments are doing. This takes nuPlan's `acceleration_x` as body-frame
+    longitudinal, which is how the devkit documents it.
+    """
+    return float(poses[index, POSE_AX])
+
+
+def yaw_rate_at(poses: np.ndarray, index: int) -> float:
+    """Yaw rate in rad/s about the vertical axis."""
+    return float(poses[index, POSE_YAW_RATE])
 
 
 def ego_frame(poses: np.ndarray, origin: int, indices: np.ndarray) -> np.ndarray:
     """Poses at *indices* expressed in the ego frame at *origin*: x fwd, y left."""
-    x0, y0 = poses[origin, 1], poses[origin, 2]
-    yaw = yaw_of(poses[origin, 3:7])
-    dx = poses[indices, 1] - x0
-    dy = poses[indices, 2] - y0
+    x0, y0 = poses[origin, POSE_X], poses[origin, POSE_Y]
+    yaw = yaw_of(poses[origin, POSE_QW : POSE_QW + 4])
+    dx = poses[indices, POSE_X] - x0
+    dy = poses[indices, POSE_Y] - y0
     cos, sin = np.cos(yaw), np.sin(yaw)
     return np.stack([dx * cos + dy * sin, -dx * sin + dy * cos], axis=1)
 
@@ -284,8 +360,8 @@ def ground_truth(poses: np.ndarray, origin: int, interval_s: float, n: int) -> n
     car stopping, and score a model that predicted the truth as though it were
     wrong.
     """
-    times = poses[origin, 0] + np.arange(1, n + 1) * interval_s * 1e6
-    if times[-1] > poses[-1, 0]:
+    times = poses[origin, POSE_T] + np.arange(1, n + 1) * interval_s * 1e6
+    if times[-1] > poses[-1, POSE_T]:
         return None
     indices = np.array([pose_at(poses, t) for t in times])
     return ego_frame(poses, origin, indices)

@@ -28,7 +28,14 @@ import numpy as np
 from paddock.adapters.benchmarks.nuplan import loader as L
 from paddock.benchmark import OpenLoopBenchmark, Sample
 from paddock.metrics import trajectory as M
-from paddock.policy.protocol import Command, Observation, Trajectory
+from paddock.policy.protocol import (
+    CANBUS_ACCEL,
+    CANBUS_VELOCITY,
+    CANBUS_YAW_RATE,
+    Command,
+    Observation,
+    Trajectory,
+)
 
 #: Anchors kept per scenario type, per split. nuPlan mini tags ~460 000
 #: keyframes across 65 types, which is far more than anyone would score and
@@ -251,12 +258,24 @@ class NuPlanBenchmark(OpenLoopBenchmark):
                         conn.close()
                     conn = L.open_log(db)
                     current = db
-                    frames = L.camera_frames(conn)
-                    frame_times = np.array([f[0] for f in frames], dtype=np.float64)
+                    # Every channel nuPlan has, not only the ones one model
+                    # wants: the harness cannot know which model will be run
+                    # against it, and a missing view raises in `Observation`.
+                    channels = {}
+                    for name, channel in L.CHANNELS.items():
+                        rows = L.camera_frames(conn, channel)
+                        if not rows:
+                            continue
+                        channels[name] = (
+                            rows,
+                            np.array([r[0] for r in rows], dtype=np.float64),
+                            L.camera_calibration(conn, channel),
+                        )
+                    frames, frame_times, _ = channels[PADDOCK_CAMERA]
                     poses = L.ego_poses(conn)
-                    calibration = L.camera_calibration(conn)
+                    lidar2ego = L.lidar_calibration(conn)
                 sample = self._sample(
-                    db, scenario_type, timestamp, frames, frame_times, poses, calibration, sensors
+                    db, scenario_type, timestamp, frames, frame_times, poses, channels, lidar2ego, sensors
                 )
                 if sample is not None:
                     yielded += 1
@@ -273,7 +292,8 @@ class NuPlanBenchmark(OpenLoopBenchmark):
         frames: list[tuple[int, str, bytes]],
         frame_times: np.ndarray,
         poses: np.ndarray,
-        calibration: tuple[np.ndarray, np.ndarray],
+        channels: dict[str, tuple[list[tuple[int, str, bytes]], np.ndarray, tuple[np.ndarray, np.ndarray]]],
+        lidar2ego: np.ndarray,
         sensors: Path,
     ) -> Sample | None:
         """One anchor, or None if the log cannot support it.
@@ -295,7 +315,7 @@ class NuPlanBenchmark(OpenLoopBenchmark):
             return None
 
         observations = [
-            self._observation(frames[i], poses, calibration, sensors)
+            self._observation(frames[i][0], poses, channels, lidar2ego, sensors)
             for i in range(anchor - HISTORY_FRAMES, anchor + 1)
         ]
         return Sample(
@@ -308,29 +328,47 @@ class NuPlanBenchmark(OpenLoopBenchmark):
 
     def _observation(
         self,
-        frame: tuple[int, str, bytes],
+        timestamp: int,
         poses: np.ndarray,
-        calibration: tuple[np.ndarray, np.ndarray],
+        channels: dict[str, tuple[list[tuple[int, str, bytes]], np.ndarray, tuple[np.ndarray, np.ndarray]]],
+        lidar2ego: np.ndarray,
         sensors: Path,
     ) -> Observation:
-        timestamp, filename, _ = frame
         index = L.pose_at(poses, timestamp)
 
         ego2world = np.eye(4)
-        ego2world[:2, 3] = poses[index, 1:3]
-        yaw = L.yaw_of(poses[index, 3:7])
+        ego2world[:2, 3] = poses[index, L.POSE_X : L.POSE_Y + 1]
+        yaw = L.yaw_of(poses[index, L.POSE_QW : L.POSE_QW + 4])
         ego2world[:2, :2] = [[np.cos(yaw), -np.sin(yaw)], [np.sin(yaw), np.cos(yaw)]]
 
+        # All three motion channels, not only speed: see loader.ego_poses on
+        # why a zeroed accel is a wrong input rather than a missing one.
         canbus = np.zeros(18)
-        canbus[13] = L.speed_at(poses, index)
+        canbus[CANBUS_VELOCITY] = L.speed_at(poses, index)
+        canbus[CANBUS_ACCEL] = L.accel_at(poses, index)
+        canbus[CANBUS_YAW_RATE] = L.yaw_rate_at(poses, index)
 
-        intrinsics, cam2ego = calibration
+        # Each channel is sampled independently, so the eight shutters do not
+        # fire together; the nearest frame per channel is at most half a frame
+        # (50 ms) from the scored instant. Matching by timestamp rather than by
+        # row index matters because the channels do not all start on the same
+        # frame, so index i is a different moment in each.
+        image_paths, camera2image, camera2ego = {}, {}, {}
+        for name, (rows, times, (intrinsics, cam2ego)) in channels.items():
+            position = int(np.searchsorted(times, timestamp))
+            position = min(max(position, 0), len(rows) - 1)
+            if position > 0 and abs(times[position - 1] - timestamp) < abs(times[position] - timestamp):
+                position -= 1
+            image_paths[name] = str(sensors / rows[position][1])
+            camera2image[name] = intrinsics
+            camera2ego[name] = cam2ego
+
         # Paths, not pixels: the node is a subprocess on this filesystem, and a
         # 48-frame history would otherwise push megabytes per sample through a
         # socket for no gain.
         return Observation(
             images={},
-            image_paths={PADDOCK_CAMERA: str(sensors / filename)},
+            image_paths=image_paths,
             ego2world=ego2world,
             canbus=canbus,
             timestamp_us=int(timestamp),
@@ -338,8 +376,12 @@ class NuPlanBenchmark(OpenLoopBenchmark):
             #: passes for the same reason -- a guessed turn signal would be a
             #: fabricated input, and every model treats it as a hint.
             command=Command.STRAIGHT,
-            camera2image={PADDOCK_CAMERA: intrinsics},
-            camera2ego={PADDOCK_CAMERA: cam2ego},
+            camera2image=camera2image,
+            camera2ego=camera2ego,
+            #: BEVFormer-style models build their grid in the lidar frame and
+            #: project the cameras into it, so this is load-bearing even for a
+            #: camera-only run.
+            lidar2ego=lidar2ego,
         )
 
     # ---- scoring --------------------------------------------------------

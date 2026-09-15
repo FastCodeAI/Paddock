@@ -111,10 +111,14 @@ def _build_log(path: Path) -> None:
                             camera_token BLOB, filename_jpg TEXT, timestamp INTEGER);
         CREATE TABLE ego_pose (token BLOB, timestamp INTEGER, x FLOAT, y FLOAT, z FLOAT,
                                qw FLOAT, qx FLOAT, qy FLOAT, qz FLOAT,
-                               vx FLOAT, vy FLOAT, vz FLOAT);
+                               vx FLOAT, vy FLOAT, vz FLOAT,
+                               acceleration_x FLOAT, acceleration_y FLOAT, acceleration_z FLOAT,
+                               angular_rate_x FLOAT, angular_rate_y FLOAT, angular_rate_z FLOAT);
         CREATE TABLE lidar_pc (token BLOB, next_token BLOB, prev_token BLOB, ego_pose_token BLOB,
                                lidar_token BLOB, scene_token BLOB, filename TEXT, timestamp INTEGER);
         CREATE TABLE scenario_tag (token BLOB, lidar_pc_token BLOB, type TEXT, agent_track_token BLOB);
+        CREATE TABLE lidar (token BLOB, log_token BLOB, channel TEXT, model TEXT,
+                            translation BLOB, rotation BLOB);
         """
     )
     logfile = path.stem
@@ -140,13 +144,31 @@ def _build_log(path: Path) -> None:
         ),
     )
 
+    # nuPlan's MergedPointCloud is already expressed in the ego frame, so its
+    # translation really is zero and its rotation really is identity -- that is
+    # the dataset, not a decode failure, and this fixture keeps it that way so
+    # the identity in `lidar2ego` is pinned rather than merely observed.
+    conn.execute(
+        "INSERT INTO lidar VALUES (?,?,?,?,?,?)",
+        (
+            _token("lid", 0),
+            _token("log", 0),
+            "MergedPointCloud",
+            "Hesai Pandar",
+            _devkit_blob("Translation", [0.0, 0.0, 0.0]),
+            _devkit_blob("Rotation", [1.0, 0.0, 0.0, 0.0]),
+        ),
+    )
+
     # Straight and due east at a constant speed: yaw 0, so the ego frame is the
     # world frame translated, and the expected ground truth is just distance.
     poses = []
     for i in range(int(DURATION_S * L.EGO_HZ)):
         t = i / L.EGO_HZ
         poses.append(
-            # token, timestamp, x, y, z, qw, qx, qy, qz, vx, vy, vz
+            # token, timestamp, x, y, z, qw..qz, vx, vy, vz, accel xyz, angular xyz.
+            # Constant velocity in a straight line: accel and yaw rate are 0,
+            # which here is the truth rather than an unfilled channel.
             (
                 _token("ego", i),
                 int(T0 + t * 1e6),
@@ -160,9 +182,15 @@ def _build_log(path: Path) -> None:
                 SPEED_MS,
                 0.0,
                 0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
             )
         )
-    conn.executemany("INSERT INTO ego_pose VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", poses)
+    conn.executemany("INSERT INTO ego_pose VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", poses)
 
     images = []
     for i in range(int(DURATION_S * L.CAMERA_HZ)):
