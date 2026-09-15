@@ -7,10 +7,15 @@ somebody else has the GPU.
 
 So paddock waits for the headroom a model declares in its `model.yaml`, and says
 what it is waiting for.
+
+Where there is more than one card, the one that matters is the one the model
+will land on -- `CUDA_VISIBLE_DEVICES` -- not the first one nvidia-smi lists.
+See `visible_device`.
 """
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import time
@@ -21,8 +26,38 @@ class GpuUnavailable(RuntimeError):
     """The card never had room within the timeout."""
 
 
+def visible_device() -> int:
+    """The physical device index a launched model will actually use.
+
+    `CUDA_VISIBLE_DEVICES` is in `runtime.env.PASSTHROUGH`, so a model node does
+    honour it -- which means gating must honour it too. It did not: this read
+    `nvidia-smi`'s first row unconditionally, so on a two-card box a run pinned
+    to card 1 waited on card 0's headroom. That is not a slow path, it is the
+    wrong answer twice over: it blocks on a full card the run is not using, and
+    it green-lights a launch into an empty one that is not there.
+
+    Only the first entry matters. paddock starts one process per model and
+    `wait_for` asks a single "is there room to load this", so a list selects
+    which card that process lands on; a model sharding itself across several is
+    outside what a single free-VRAM number can describe anyway.
+
+    Falls back to device 0 for an unset, empty or non-numeric value (`MIG-...`
+    UUIDs are legal there and are not an index we can look up by position).
+    """
+    raw = (os.environ.get("CUDA_VISIBLE_DEVICES") or "").split(",")[0].strip()
+    return int(raw) if raw.isdigit() else 0
+
+
 def free_gb() -> float | None:
-    """Free VRAM on device 0, or None where there is no usable nvidia-smi."""
+    """Free VRAM on the visible device, or None where there is no usable nvidia-smi.
+
+    The whole table is queried and indexed rather than asking nvidia-smi for one
+    device: `-i` takes the *physical* index, and re-deriving that from a
+    `CUDA_VISIBLE_DEVICES` that may itself be a remapping is a second chance to
+    be wrong. A device index past the end of the table returns None -- "cannot
+    tell", which `wait_for` treats as "do not block" -- rather than silently
+    reporting some other card's headroom.
+    """
     if not shutil.which("nvidia-smi"):
         return None
     try:
@@ -33,7 +68,7 @@ def free_gb() -> float | None:
             check=True,
             timeout=30,
         )
-        return int(out.stdout.strip().splitlines()[0]) / 1024
+        return int(out.stdout.strip().splitlines()[visible_device()]) / 1024
     except (subprocess.SubprocessError, ValueError, IndexError):
         return None
 

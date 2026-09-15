@@ -6,6 +6,7 @@ constructs the right command and environment, not that a model works.
 
 from __future__ import annotations
 
+import subprocess
 from dataclasses import replace
 
 import pytest
@@ -94,6 +95,50 @@ def test_no_gpu_present_does_not_block(monkeypatch) -> None:
     """A CPU-only model must still run on a box with no usable nvidia-smi."""
     monkeypatch.setattr(gpu, "free_gb", lambda: None)
     gpu.wait_for(24.0, timeout_s=0.0)
+
+
+def _nvidia_smi_returning(rows: str):
+    """Stand in for the nvidia-smi call `free_gb` makes, with `rows` as output."""
+
+    def run(*_args, **_kwargs):
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout=rows, stderr="")
+
+    return run
+
+
+@pytest.mark.parametrize(
+    ("visible", "expected"),
+    [
+        (None, 24.0),  # unset: device 0, as before
+        ("0", 24.0),
+        ("1", 90.0),  # the emptier card, which is the point
+        ("1,0", 90.0),  # a list selects with its first entry
+        ("", 24.0),  # empty: no remapping to apply
+        ("MIG-abc", 24.0),  # a UUID is not an index; do not guess
+    ],
+)
+def test_free_vram_is_read_from_the_card_the_model_will_use(monkeypatch, visible, expected) -> None:
+    """CUDA_VISIBLE_DEVICES reaches the node, so gating must honour it too.
+
+    Before this, a run pinned to a second card waited on the first card's
+    headroom: it blocked on a full GPU it was not using while the one it *was*
+    using sat empty.
+    """
+    monkeypatch.setattr(gpu.shutil, "which", lambda _name: "/usr/bin/nvidia-smi")
+    monkeypatch.setattr(gpu.subprocess, "run", _nvidia_smi_returning("24576\n92160\n"))
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    if visible is not None:
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", visible)
+    assert gpu.free_gb() == pytest.approx(expected)
+
+
+def test_free_vram_is_unknown_rather_than_wrong_for_a_device_that_is_not_there(monkeypatch) -> None:
+    """Reporting some other card's headroom would be worse than admitting ignorance."""
+    monkeypatch.setattr(gpu.shutil, "which", lambda _name: "/usr/bin/nvidia-smi")
+    monkeypatch.setattr(gpu.subprocess, "run", _nvidia_smi_returning("24576\n"))
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "7")
+    assert gpu.free_gb() is None
+    gpu.wait_for(24.0, timeout_s=0.0)  # "cannot tell" must not block the launch
 
 
 def test_port_selection_skips_a_port_in_use() -> None:
