@@ -41,7 +41,14 @@ from typing import Any
 
 import numpy as np
 
-from paddock.policy.protocol import Command, Observation, Policy, Trajectory
+from paddock.policy.protocol import (
+    CANBUS_ACCEL,
+    CANBUS_VELOCITY,
+    Command,
+    Observation,
+    Policy,
+    Trajectory,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -62,8 +69,14 @@ HISTORY_DT = 0.1
 #: A frame farther than this from its slot's time is a neighbour standing in,
 #: not jitter. nuPlan's cameras fire within ~8 ms of each other.
 FRAME_TOLERANCE_S = 0.06
-#: Recorded observations kept. 64 is 6.4 s at 10 Hz, 3.2 s at CARLA's 20 Hz;
-#: both cover the 1.5 s the model reads with room for uneven request cadence.
+#: Seconds of history kept. The model never looks past 1.5 s, so this is that
+#: plus room for an uneven request cadence. It matters because in closed loop a
+#: record holds *decoded pixels*: at neuroNCAP's 1600x900x3 on three cameras,
+#: retaining 64 records would be ~830 MB resident on a shared box, for frames
+#: nothing will read again.
+KEEP_S = 2.5
+#: Hard ceiling on records, whatever the cadence. Also the floor early in an
+#: episode, so a stalled or very slow source still has frames to select from.
 MAX_RECORDED = 64
 
 #: Model output: 50 poses at 10 Hz. Index i is at (i+1)/10 s, so the 0.5 s
@@ -193,6 +206,7 @@ class QwenDrivePolicy(Policy):
         self._mode = None
         self._infer_seconds: list[float] = []
         self._frames_repeated = 0
+        self._frames_off_grid = 0
         self._last_gaps: list[float] = []
         self._last_command: str | None = None
         self._last_reasoning: str | None = None
@@ -265,13 +279,40 @@ class QwenDrivePolicy(Policy):
         canbus = np.asarray(obs.canbus, dtype=np.float64)
         self.timestamps.append(int(obs.timestamp_us))
         self.poses.append(pose_xy_yaw(obs.ego2world))
-        self.motion.append(np.array([canbus[13], canbus[14], canbus[7], canbus[8]]))
+        # Imported, never re-typed: the CAN-bus layout is one of the contracts
+        # docs/reviewing.md names. Both channels are (x, y) pairs, so the lateral
+        # component is the declared offset plus one.
+        self.motion.append(
+            np.array(
+                [
+                    canbus[CANBUS_VELOCITY],
+                    canbus[CANBUS_VELOCITY + 1],
+                    canbus[CANBUS_ACCEL],
+                    canbus[CANBUS_ACCEL + 1],
+                ]
+            )
+        )
         self.frames.append(sources)
-        if len(self.timestamps) > MAX_RECORDED:
-            del self.timestamps[:-MAX_RECORDED]
-            del self.poses[:-MAX_RECORDED]
-            del self.motion[:-MAX_RECORDED]
-            del self.frames[:-MAX_RECORDED]
+        self._trim()
+
+    def _trim(self) -> None:
+        """Drop records the model can no longer read.
+
+        By time first, because that is what bounds memory under a fast source:
+        anything older than `KEEP_S` is past every slot the selection can ask
+        for. `NUM_CAM_FRAMES` records are always kept, so a source slower than
+        the window still has four frames to fill four slots, and `MAX_RECORDED`
+        caps the count whatever the cadence.
+        """
+        cutoff = self.timestamps[-1] - int(KEEP_S * 1e6)
+        keep = sum(1 for t in self.timestamps if t >= cutoff)
+        keep = max(keep, NUM_CAM_FRAMES)
+        keep = min(keep, MAX_RECORDED)
+        if keep < len(self.timestamps):
+            del self.timestamps[:-keep]
+            del self.poses[:-keep]
+            del self.motion[:-keep]
+            del self.frames[:-keep]
 
     def observe(self, obs: Observation) -> None:
         """Record a history frame without running the model.
@@ -325,6 +366,10 @@ class QwenDrivePolicy(Policy):
         inputs = self.scene_inputs(obs.command)
         self._last_gaps = inputs["frame_gaps_s"]
         self._frames_repeated += NUM_CAM_FRAMES - len(set(inputs["frame_indices"]))
+        # A duplicate index is not the only way a slot goes unfilled: a drifting
+        # cadence gives four *distinct* frames that are all late. Counted
+        # separately, so a 1.5 s history that is not actually 1.5 s is visible.
+        self._frames_off_grid += sum(1 for gap in self._last_gaps if gap > FRAME_TOLERANCE_S)
         self._last_command = Command(obs.command).name
         scene = self._scene(obs, inputs)
 
@@ -360,6 +405,11 @@ class QwenDrivePolicy(Policy):
         slots filled by a stand-in because less than 1.5 s had been seen. A few
         per episode is the warm-up; growing steadily means the request cadence
         is not what the benchmark claims.
+
+        `frames_off_grid_total` is its quieter sibling: slots filled by a
+        distinct frame that is nonetheless more than `FRAME_TOLERANCE_S` from
+        the time the slot asked for. A source that drifts rather than repeats
+        moves this one and leaves the other at zero.
         """
         if not self.timestamps:
             return {"status": "no frame seen yet"}
@@ -373,6 +423,7 @@ class QwenDrivePolicy(Policy):
             "history_span_s": round(float(times[-1] - times[0]), 3),
             "request_dt_s": round(float(times[-1] - times[-2]), 3) if len(times) > 1 else None,
             "frames_repeated_total": self._frames_repeated,
+            "frames_off_grid_total": self._frames_off_grid,
             "last_frame_gaps_s": [round(g, 3) for g in self._last_gaps],
             "last_command": self._last_command,
             "infer_seconds_mean": (

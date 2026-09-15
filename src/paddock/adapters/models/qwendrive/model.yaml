@@ -14,6 +14,13 @@ runtime:
     # planner-sft plans in direct mode; planner-rl was reward-optimised only
     # under reasoning rollouts and the vendor says to run it in reasoning mode.
     # The adapter refuses the rl/direct pairing rather than record its number.
+    #
+    # These two do NOT reach run.json: the runner records config.model_env only
+    # from a site [models.qwendrive] env override, not from runtime.env, so no
+    # record says which planner produced it -- and the vendor's published PDMS
+    # for the two differs by 2.9 points. Framework gap, raised as issue #46;
+    # `paddock doctor --model qwendrive` and /diagnostics both report them
+    # meanwhile.
     QWENDRIVE_PLANNER: "planner-sft"
     QWENDRIVE_MODE: "direct"
     QWENDRIVE_NUM_SAMPLES: "1"
@@ -49,6 +56,9 @@ capabilities:
   input_size: [1280, 720]
   history_frames: 4
   output_kind: waypoints
+  # What the model emits. The adapter hands paddock the first 4 s of it on the
+  # 0.5 s grid (GRID_INDICES), which is what NAVSIM scores and more than
+  # neuroNCAP or KITScenes read; poses 40-49 are dropped.
   horizon_s: 5.0
   # Flow matching from seeded noise (noise_seed + k): repeated inference on
   # identical input is identical.

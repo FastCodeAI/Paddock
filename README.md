@@ -346,13 +346,21 @@ future scores 0.946 against the paper's 94.8 (privileged; stored `valid: false`)
 | Qwen-Drive 1.0, 10 Hz nuPlan history ‡ | 0.876 | 0.982 | 0.964 | 0.817 | 0.941 | 1.000 | 0.987 |
 | Baseline (Constant Velocity) | 0.207 | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 |
 
-**Qwen-Drive reproduces its own published number here.** Its technical report
-gives 87.8 PDMS on this split for `planner-sft` without reasoning, the exact
-configuration paddock runs; paddock measures 0.876. That is the only row in this
-table with a vendor figure to check against, and the agreement is evidence about
-the whole path — the camera mapping, the 10 Hz history, the 8-pose conversion
-and the v1 scorer — not just about the model. Read it as an in-distribution
-result all the same: Qwen-Drive declares `navtrain` (see ✦).
+**Qwen-Drive reproduces its own published row here, term by term.** Its
+technical report gives the `planner-sft`-without-reasoning navtest row — the
+exact configuration paddock runs — and every term agrees:
+
+| | NC | DAC | EP | TTC | Comfort | PDMS |
+|---|---:|---:|---:|---:|---:|---:|
+| vendor, SFT w/o reasoning | 98.2 | 96.4 | 82.0 | 94.4 | 100.0 | 87.8 |
+| paddock | 98.19 | 96.42 | 81.73 | 94.06 | 99.99 | **87.58** |
+
+Every term is within 0.34 and five of the six within 0.27. This is the only row
+in the table with a vendor figure to check against, and matching the *terms*
+rather than just the composite is evidence about the whole path — the camera
+mapping, the 10 Hz history, the 8-pose conversion and the v1 scorer — not only
+about the model. Read it as an in-distribution result all the same: Qwen-Drive
+declares `navtrain` (see ✦).
 
 ### Bench2Drive — historical 24-route results
 
@@ -406,10 +414,12 @@ all 200 runs. Runs are seeded 0-9, so every model met identical scenario jitter.
 KITScenes and ties Drive-JEPA on NAVSIM, then places fourth here, below three
 models it beat on every open-loop column. The frontal column is where it goes:
 1.52 with 86% of those runs ending in a collision, against 3.64 for Alpamayo.
-The adapter replans every 0.1 s tick like every other model, and the four camera
-frames it reads span 1.5 s, so at 10 Hz it is shown the same three frames of
-past for fifteen consecutive ticks. Whether that is the cause is untested — it
-is the first thing to measure, not a finding.
+Nothing measured here explains it. The adapter replans every 0.1 s tick like
+every other model, and its four camera frames advance one record per tick, so it
+is not being shown a stale history: at tick *k* the slots are records *k*−15,
+*k*−10, *k*−5 and *k*, and at *k*+1 every one of them has moved on. Each past
+slot is simply a frame the model already saw as the current one 0.5, 1.0 or
+1.5 s earlier. The cause is unmeasured, and the frontal split is where to look.
 
 **Scene 0103 was not representative, and the ordering it implied was wrong.**
 Every model met identical scenario jitter (runs seeded 0–9), so these can be
