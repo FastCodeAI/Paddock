@@ -1,0 +1,42 @@
+{
+  "run_id": "20260911T024038-d518fc",
+  "site": "fastcode-shakaal",
+  "benchmark": "navsim",
+  "model": "alpamayo15",
+  "mode": "open_loop",
+  "started_utc": "2026-09-11T02:40:38+00:00",
+  "duration_s": 91082.4,
+  "repo_sha": null,
+  "dataset": {
+    "name": "navsim",
+    "split": "navtest",
+    "n_samples": 12145,
+    "sequences_sha256": "0eedbeac7edc2171",
+    "n_failed": 1,
+    "n_unscored": 0,
+    "n_expected": 12146
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT"
+    ],
+    "split": "navtest",
+    "agent": "paddock_proxy",
+    "allow_partial": false,
+    "allow_slow": false,
+    "overrides": [
+      "worker.max_workers=2"
+    ],
+    "input_hz": 10.0,
+    "history_source": "nuplan",
+    "history_s": 1.5
+  },
+  "hardware": {},
+  "status": "partial",
+  "valid": false,
+  "notes": "1 scenario(s) failed in the scorer and are excluded",
+  "ingested_from": ""
+}

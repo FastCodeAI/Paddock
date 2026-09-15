@@ -168,3 +168,28 @@ def to_navsim_poses(waypoints, dt: float) -> np.ndarray:
     else:
         headings = derive_headings(np.stack([xs, ys], axis=1))
     return np.stack([xs, ys, headings], axis=1)
+
+
+def load_plans(paths) -> dict[str, list]:
+    """token -> NAVSIM poses, from proxy plan dumps (`trajectories.jsonl`).
+
+    One JSON object per line, as `agent.py` writes them. Lines without a token
+    -- dumps from before tokens were recorded -- are skipped, and a token seen
+    twice keeps the later line: a retry pass re-plans a scenario, and its plan
+    is the one that was scored. Standard library only, for the same reason as
+    the rest of this module.
+    """
+    import json
+
+    plans: dict[str, list] = {}
+    for path in paths:
+        with open(path) as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                record = json.loads(line)
+                token = record.get("token")
+                if token:
+                    plans[str(token)] = record["navsim_poses"]
+    return plans

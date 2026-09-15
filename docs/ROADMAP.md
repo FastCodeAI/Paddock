@@ -12,6 +12,7 @@ because both organisations need to see it.
 | **M5** | Reproduce closed-loop (neuroNCAP) | **partial** | adapters proven identical to the original nodes; see `docs/benchmarks/neuroncap.md` |
 | **M6** | Reproduce open-loop (KITScenes) | **done** | full n=223: 892/892 metric comparisons identical at full float precision |
 | **M7** | NAVSIM benchmark adapter | **done** | reproduction exact (2379/2379 metrics identical, delta 0.0); 3 of 4 models scored, openpilot blocked by a 2 Hz dataset |
+| **M7b** | NAVSIM v1 PDMS beside v2 EPDMS | **done** | constant velocity reproduces the paper's navtest row term by term (20.65 vs 20.6); v2 baseline re-run identical to 1e-11; drivejepa 0.892, alpamayo15 0.676 (replayed), visionpilot 0.488, n=12,146 each |
 
 ## What "done" means here, and what it does not
 
@@ -118,6 +119,33 @@ Both grid changes are additive at the tail, so no recorded neuroNCAP or
 KITScenes score moves: `to_wire` takes the first six poses and
 `displacement_errors` truncates at 3 s. Pinned by tests.
 
+**M7b — NAVSIM v1 PDMS.** The same scenes scored by the v1.1 devkit vendored
+beside the v2 one, as its own benchmark `navsim_v1` (own metric name, results
+tree and site block), implemented as a subclass of the v2 harness and proxy.
+Doing it found that the shared parser had one devkit generation's vocabulary
+baked in, that the v2 harness kept its variant knobs as module constants, and
+that the runner could not run an external scorer without a policy node -- the
+constant-velocity record for v2 was an untracked one-off. All three are now
+general: `ScoreVocabulary`, class attributes, and `nodeless.py`, which also
+replays a run's recorded plans under another devkit (alpamayo15's v1 number
+comes from the plans that produced its v2 number, no GPU).
+
+| model | NAVSIM v1 PDMS | v2 EPDMS | |
+|---|---:|---:|---|
+| drivejepa | **0.892** (n=12146) | 0.843 | proxy; the paper's 93.3 is a v1 checkpoint through a scorer-aware agent |
+| alpamayo15 | **0.676** (n=12146) | 0.608 | the v2 run's own plans, replayed |
+| visionpilot | **0.488** (n=12146) | 0.431 | proxy, four nodes |
+| constant velocity | **0.207** (n=12146) | 0.239 | paper: 20.6, every term matching |
+| human | 0.946, `valid: false` | — | paper: 94.8; the gap is ego progress only |
+| openpilot, 10 Hz history | **0.807** (n=12146) | 0.747 | PR #33's plans, replayed |
+| alpamayo15, 10 Hz history | **0.753** (n=12146) | 0.691 | PR #33's plans, replayed |
+
+**Verified:** the baseline row against the paper, term by term; the v2 path
+unchanged (12,139/12,146 scenarios identical, the rest within 1e-11); n and
+zero failures in every record. **Argued:** the human's 0.25-point gap is the
+cache's reference plan; the fork's v1 tree is upstream v1.1 (byte-identical
+scoring files; its occupancy-map edit is a no-op under shapely 2).
+
 **openpilot is genuinely blocked.** OpenScene is 2 Hz by construction and
 supercombo's complete non-image input set is `{desire_pulse,
 traffic_convention, action_t}` -- there is no channel to tell it its speed, so
@@ -192,8 +220,8 @@ the comparable set is runs through `paddock_proxy`.
 
 `adapters/benchmarks/bench2drive`: a model-agnostic CARLA `agent.py`, the
 vendored dual-PID tracker, and a harness that fails a route on every failure
-the evaluator distinguishes rather than scoring it. All four models
-(openpilot, visionpilot, alpamayo15, drivejepa) declare it.
+the evaluator distinguishes rather than scoring it. All five models
+(openpilot, visionpilot, alpamayo15, drivejepa, meteor) declare it.
 
 | Claim | Verified how | Strength |
 |---|---|---|
@@ -208,9 +236,18 @@ Needs a site with CARLA 0.9.15 and the pinned checkout wired in
 
 ## Beyond reproduction
 
+- **nuScenes open-loop** — **done (camera-only); protocol transcribed and pinned by
+  tests, parity with the UniAD/VAD scorers unverified (no fixture).** `paddock run --bench nuscenes`
+  scores the UniAD/VAD L2 + collision protocol on the 150 val scenes, reading the
+  `v1.0-trainval` JSON tables directly (no `nuscenes_infos*.pkl`, which do not
+  exist here). Detail in `docs/benchmarks/nuscenes.md`. Fusion is still not viable
+  (the local copy has no `sweeps/` and empty radar); camera-only is what runs.
+
 Not started, and larger than everything above:
 
-- **nuScenes open-loop** — needs `nuscenes_infos*.pkl`, which do not exist, and the
-  local copy has no `sweeps/` and empty radar. Camera-only is viable; fusion is not.
 - **alpamayo2, vjepa2, sunnypilot** — never evaluated.
+- **nuScenes openpilot record is not regenerable with tracked code** — the
+  tracked run (`20260908T110028-b71f4f`) was assembled by four-worker site
+  orchestration; land that orchestration (or a `--workers` path in the open-loop
+  runner) so the record can be re-made anywhere. Number not in question; provenance is.
 - **Training** — the framework's eventual purpose; out of scope until evaluation is trustworthy.

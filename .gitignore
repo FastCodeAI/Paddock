@@ -22,6 +22,8 @@ venv/
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
+# nuScenes val index pickle (adapters/benchmarks/nuscenes) defaults here.
+.cache/
 .mypy_cache/
 dist/
 build/
@@ -31,3 +33,5 @@ build/
 .idea/
 .DS_Store
 *.swp
+# also as a symlink: a worktree pointing at a sibling checkout's venv
+.venv

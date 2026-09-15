@@ -1,5 +1,5 @@
 ---
-description: Review a paddock PR against docs/reviewing.md — runs make check on the PR branch in an isolated worktree, then reports findings with severity markers.
+description: Review a paddock PR against docs/reviewing.md — runs make check on the PR branch in an isolated worktree, then posts the findings to the PR as one review with severity markers.
 argument-hint: "[PR number | branch | blank for the current branch]"
 allowed-tools: Bash, Read, Grep, Glob, Write, Edit, TodoWrite, Agent
 ---
@@ -80,11 +80,40 @@ result ("nothing beyond the diff" is an honest row), then findings grouped
 and carrying a concrete failure scenario. A finding with no failure scenario is
 a preference and belongs in 🟡.
 
-Print the review in the terminal. Do **not** post it to GitHub, comment on the
-PR, or push anything unless the user explicitly asks — and say in one line that
-you can post it if they want.
+## 5. Post it
 
-## 5. Clean up
+Print the review in the terminal **and post it to the PR**. Finishing means the
+review is where the author will see it, not only in someone's scrollback.
+
+Post it as **one review carrying both the summary and the inline comments**, not
+as a summary plus twenty separate comments — that is one notification instead of
+twenty, and it keeps the file view and the summary in agreement:
+
+```bash
+# inline.json: [{"path":"src/...","line":123,"side":"RIGHT","body":"🔴 **Blocker.** ..."}]
+jq -n --rawfile body /tmp/review.md --argjson comments "$(cat /tmp/inline.json)" \
+  '{event:"COMMENT", body:$body, comments:$comments}' > /tmp/review-payload.json
+gh api repos/FastCodeAI/Paddock/pulls/<N>/reviews --input /tmp/review-payload.json
+```
+
+Four things that decide whether this works:
+
+- **`event` is always `COMMENT`.** Never `APPROVE` or `REQUEST_CHANGES`: a
+  generated review should not gate a merge, and every human review on this repo
+  so far is `COMMENTED`.
+- **An inline comment only attaches to a line that is part of the diff.** A
+  finding about a line the PR did not touch returns 422 — put it in the summary
+  body instead, quoting `file:line` there.
+- **Anchor to the head commit you reviewed.** If the author pushes while you are
+  writing, re-read the diff rather than posting line numbers from under them.
+- **A new pass is fine; a duplicate is noise.** Reviews accumulate (PR #16 has
+  three passes, and its third overturned the verdict). Before posting, check
+  whether the review you are about to leave is one you already left.
+
+If the target is a local branch with no PR, there is nowhere to post — print it,
+say so, and stop.
+
+## 6. Clean up
 
 ```bash
 git worktree remove /tmp/claude-pr-<N> --force

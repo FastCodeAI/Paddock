@@ -1,0 +1,27 @@
+# Forwards NAVSIM's AgentInput to a paddock policy node over HTTP. The harness
+# fills node_url, cameras and sensor_blobs_path from the model's registry entry
+# and the site's paddock.toml -- never hardcode them here.
+_target_: paddock.adapters.benchmarks.navsim_v1.agent.PaddockV1ProxyAgent
+_convert_: 'all'
+
+node_url: ???
+node_urls: null
+cameras: [CAM_FRONT]
+sensor_blobs_path: null
+timeout_s: 600.0
+dump_path: null
+retries: 2
+# A 10 Hz history from nuPlan's full-rate sensor data (navsim/dense.py). The
+# shared harness emits these four overrides for a model that needs it whenever
+# [benchmarks.navsim_v1] names `nuplan`; hydra refuses an override of a key the
+# config does not declare, so they must exist here as they do in the v2 copy.
+nuplan_root: null
+nuplan_split: null
+dense_hz: 0.0
+history_s: 0.0
+
+trajectory_sampling:
+  _target_: nuplan.planning.simulation.trajectory.trajectory_sampling.TrajectorySampling
+  _convert_: 'all'
+  time_horizon: 4
+  interval_length: 0.5

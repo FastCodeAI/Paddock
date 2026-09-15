@@ -11,6 +11,13 @@ sensor_blobs_path: null
 timeout_s: 600.0
 dump_path: null
 retries: 2
+# A 10 Hz history from nuPlan's full-rate sensor data instead of OpenScene's
+# four 0.5 s frames. The harness sets all three for a model that needs it and
+# leaves them alone otherwise; see dense.py and docs/benchmarks/navsim.md.
+nuplan_root: null
+nuplan_split: null
+dense_hz: 0.0
+history_s: 0.0
 
 trajectory_sampling:
   _target_: nuplan.planning.simulation.trajectory.trajectory_sampling.TrajectorySampling

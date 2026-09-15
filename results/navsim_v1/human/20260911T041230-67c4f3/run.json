@@ -1,0 +1,34 @@
+{
+  "run_id": "20260911T041230-67c4f3",
+  "site": "fastcode-shakaal",
+  "benchmark": "navsim_v1",
+  "model": "human",
+  "mode": "open_loop",
+  "started_utc": "2026-09-11T04:12:30+00:00",
+  "duration_s": 2127.2,
+  "repo_sha": null,
+  "dataset": {
+    "name": "navsim",
+    "split": "navtest",
+    "n_samples": 12146,
+    "sequences_sha256": "013e89176339021d",
+    "n_failed": 0,
+    "n_unscored": 0,
+    "n_expected": 12146
+  },
+  "config": {
+    "limit": null,
+    "cameras": [],
+    "split": "navtest",
+    "agent": "paddock_human",
+    "allow_partial": false,
+    "allow_slow": false,
+    "overrides": [],
+    "node": null
+  },
+  "hardware": {},
+  "status": "complete",
+  "valid": false,
+  "notes": "privileged: the human agent returns the recorded future the scorer measures against; an anchor for the scoring path, not a model; no model process ran: the recorded human future through the devkit scorer",
+  "ingested_from": ""
+}
