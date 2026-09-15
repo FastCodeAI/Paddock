@@ -75,7 +75,7 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
-from paddock.policy.protocol import Observation, Pinhole, Policy, Trajectory
+from paddock.policy.protocol import Observation, Pinhole, Policy, Trajectory, validate_extras
 
 NET_W, NET_H = 1024, 512
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
@@ -515,6 +515,21 @@ class VisionPilotPolicy(Policy):
             str(self.weights / "autospeed_fp32.onnx"), opts, providers=providers
         )
 
+        # onnxruntime does not raise when a requested EP fails to register; it
+        # drops it and runs on whatever is left. So asking for CUDA and getting
+        # CPU is silent, produces identical numbers, and costs ~40x wall clock --
+        # on a 10,165-sample sweep, four hours against a week. Refuse at load,
+        # where the fix is one environment away, rather than at hour six.
+        requested = [p for p in self.providers if p != "CPUExecutionProvider"]
+        missing = [p for p in requested if p not in self.resolved_providers()]
+        if missing:
+            raise RuntimeError(
+                f"VisionPilot asked onnxruntime for {missing} and did not get it; it would "
+                f"have run on {self.resolved_providers()} instead, silently and far slower. "
+                "The CUDA EP needs `ort.preload_dlls()` and a cuDNN matching the "
+                "onnxruntime-gpu wheel. Set VISIONPILOT_PROVIDERS=cpu to run on CPU on purpose."
+            )
+
     def observe(self, obs: Observation) -> None:
         """Warm the ONNX and filter state on a history frame, without fixing the ACC set-point.
 
@@ -668,6 +683,80 @@ class VisionPilotPolicy(Policy):
         ground, ok = project_to_ground(uv_src, obs.pinhole("CAM_FRONT"), obs.camera2ego["CAM_FRONT"])
         return uv_src, ground[ok]
 
+    @staticmethod
+    def _cipo_box(dets: np.ndarray, ranges: np.ndarray, ground: np.ndarray, cipo_range_m: float):
+        """The AutoSpeed box `select_cipo` chose, as `(lateral_m, score)`.
+
+        `select_cipo` returns only a range, because the C++ fusion only ever
+        wanted a range -- it is a scalar filter. The lateral offset and the
+        detection score are wanted here for the auxiliary `lead` head, and
+        recovering them by matching the range is deliberate: the alternative is
+        widening the port's return type, and the port is the thing that has to
+        stay recognisable against the C++ it was read from.
+
+        The match is exact rather than approximate because `cipo_raw_dist_m` is
+        literally `float(ranges[j])` for the winning `j` -- `min` over floats
+        returns one of its inputs unchanged. Ties (two boxes at bit-identical
+        range) take the first, which is the same box either way for `y` to
+        within the pixel that produced it.
+
+        Returns `(nan, nan)` when AutoDrive alone confirmed the lead and there
+        is no box at all, which is a real state: the fusion has a distance but
+        nothing to read a lateral from, and the benchmark scores that as a
+        range answered and a lateral not.
+        """
+        if not len(dets) or not np.isfinite(cipo_range_m):
+            return float("nan"), float("nan")
+        hit = np.flatnonzero(ranges == cipo_range_m)
+        if not len(hit):
+            return float("nan"), float("nan")
+        j = int(hit[0])
+        lateral = float(ground[j, 1]) if np.isfinite(ground[j, 1]) else float("nan")
+        return lateral, float(dets[j, 4])
+
+    def _lead_extra(
+        self,
+        cipo: CIPOFusionEstimate,
+        dets: np.ndarray,
+        box_ranges: np.ndarray,
+        flag_prob: float,
+    ) -> list[dict[str, float]]:
+        """VisionPilot's CIPO in the protocol's `lead` shape. `[]` means "nothing ahead".
+
+        Empty list, not a missing key: `auxiliary._lead` treats an absent `lead`
+        as "this model has no lead head" and scores nothing, while `[]` is an
+        answer -- "I looked and there is no lead" -- which is what VisionPilot
+        is actually saying, and which must cost it recall when the radar saw
+        one. A model that declines to answer and a model that answers "no" are
+        different models and the schema can tell them apart.
+
+        `v_rel` is **not** negated. `CIPOFusionEstimate.velocity_ms` is negative
+        when approaching and the protocol's `v_rel` is negative when closing,
+        which is the same convention under two names. (`infer` passes
+        `-cipo.velocity_ms` to IDM because *that* interface wants a positive
+        closing rate -- three sign conventions in one function, so the check is
+        worth writing down rather than repeating.)
+
+        `prob` is the larger of AutoDrive's CIPO flag and the chosen box's
+        detection score, because either network on its own is enough for
+        `select_cipo`/`update` to declare a lead. Taking only `flag_prob` would
+        publish a low confidence for a lead the stack is in fact certain about
+        on AutoSpeed's evidence, and `auxiliary._lead` thresholds this value to
+        decide whether the model reported anything at all.
+        """
+        if not cipo.has_cipo:
+            return []
+        raw_range = cipo.cipo_raw_dist_m if cipo.cipo_raw_found else float("nan")
+        lateral, box_score = self._cipo_box(dets, box_ranges, self._last_box_ground, raw_range)
+        entry: dict[str, float] = {
+            "d": float(cipo.distance_m),
+            "v_rel": float(cipo.velocity_ms),
+            "prob": float(max(flag_prob, box_score if np.isfinite(box_score) else 0.0)),
+        }
+        if np.isfinite(lateral):
+            entry["y"] = lateral
+        return [entry]
+
     def _box_ranges(self, dets: np.ndarray, obs: Observation) -> np.ndarray:
         """Ground range of each box's bottom-centre, or NaN if it does not meet the road.
 
@@ -820,7 +909,48 @@ class VisionPilotPolicy(Policy):
             "path_extent_m": round(path.x_max, 1),
             "set_speed_ms": round(float(self.set_speed or 0.0), 2),
         }
-        return Trajectory(trajectory, dt=self.waypoint_dt)
+
+        # What the stack already knows, in the schema a harness can score.
+        # Deliberately only `lead`:
+        #
+        # * **not** `pose` -- VisionPilot does not predict ego speed, it is
+        #   *given* it in `obs.speed`. Publishing that back would score
+        #   `speed_abs_err` ~ 0 for a head that does not exist.
+        # * **not** `road.camera_height` -- same objection. It consumes
+        #   `obs.camera2ego`; echoing the calibration is not a prediction.
+        # * **not** `lane`. The schema wants four polylines left to right and
+        #   AutoSteer emits exactly one: a single drivable *path*, one lateral
+        #   per image row, not lane boundaries. There is no honest way to fill
+        #   `lines[1]` and `lines[2]` from it, and filling them by offsetting the
+        #   path by half a nominal lane would make `lane_width_m` report the
+        #   constant that was assumed. The path itself is already scored -- it
+        #   is the trajectory.
+        extras: dict[str, Any] = {"lead": self._lead_extra(cipo, dets, box_ranges, flag_prob)}
+        validate_extras(extras, n_waypoints=len(trajectory))
+        return Trajectory(trajectory, dt=self.waypoint_dt, extras=extras)
+
+    def resolved_providers(self) -> list[str]:
+        """The execution providers onnxruntime actually gave the three sessions.
+
+        Not the ones that were asked for. `VISIONPILOT_PROVIDERS=cuda` requests
+        the CUDA EP, and onnxruntime **falls back to CPU silently** when the EP
+        cannot register -- a missing `ort.preload_dlls()`, or a cuDNN build that
+        does not match the cu13 wheel. Nothing raises; the run is simply ~40x
+        slower, which on a 10,165-sample sweep is the difference between four
+        hours and a week, and is not obvious until it is far too late.
+
+        A list per session, deduplicated across them, so a partial fallback (one
+        net on CPU) is visible rather than averaged away.
+        """
+        sessions = [s for s in (self.steer, self.drive, self.speed) if s is not None]
+        if not sessions:
+            return []
+        seen: list[str] = []
+        for session in sessions:
+            for provider in session.get_providers():
+                if provider not in seen:
+                    seen.append(provider)
+        return seen
 
     def diagnostics(self) -> dict[str, Any]:
         """The planner's internal state from the last step.
@@ -829,8 +959,17 @@ class VisionPilotPolicy(Policy):
         are where a wiring error shows up: `fused_distance_m` drifting from
         `autospeed_cipo_m`, or `path_extent_m` collapsing, both indicate a
         problem long before the score does.
+
+        `providers` and `providers_requested` are here rather than only in a log
+        line because `diagnostics()` is what gets stored with the run: a number
+        recorded on a silent CPU fallback and one recorded on the GPU are the
+        same number, and the only way to tell afterwards which machine-hours
+        produced it is to have written it down at the time.
         """
-        return self._diagnostics or {"status": "no frame seen yet"}
+        out = dict(self._diagnostics) if self._diagnostics else {"status": "no frame seen yet"}
+        out["providers_requested"] = list(self.providers)
+        out["providers"] = self.resolved_providers()
+        return out
 
 
 POLICY = VisionPilotPolicy
