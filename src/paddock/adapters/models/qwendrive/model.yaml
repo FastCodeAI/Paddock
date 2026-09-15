@@ -1,0 +1,86 @@
+name: qwendrive
+description: Alibaba Qwen-Drive 1.0 4B - Qwen3.5 VLM with a flow-matching planning expert
+
+repo: Qwen-Drive-1.0
+
+runtime:
+  # requirements.txt + two source builds, not a lockfile: see setup.sh.
+  kind: shell
+  python: "3.10"
+  venv: "{repo}/.venv"
+  pythonpath: ["{repo}/src"]
+  cwd: "{repo}"
+  env:
+    # The snapshot directory holding config.json, model.safetensors and the
+    # planner heads. A site whose weights are a HuggingFace cache names the
+    # revision outright in paddock.toml, so a later download cannot quietly move
+    # what a recorded run was scored against.
+    QWENDRIVE_WEIGHTS: "{weights}/Qwen-Drive-1.0-4B"
+    # Keeps the tokenizer's cache lookups on the weights disk rather than the
+    # root filesystem, even though the checkpoint above is addressed directly.
+    HF_HOME: "{weights}"
+    # `planner-sft` serves both planning modes; `planner-rl` is reasoning-only.
+    QWENDRIVE_PLANNER: "planner-sft"
+    # The VLM writes a one-sentence rationale and the expert plans from that
+    # cache. Worth 1.47 against 1.55 ADE on the reference's city segment at
+    # roughly twice the latency, and it is where the per-sample rationale in
+    # `diagnostics()` comes from. QWENDRIVE_MODE=direct_planning is the ablation.
+    QWENDRIVE_MODE: "reasoning_planning"
+    # Fill the two side view slots with the true forward frame rather than
+    # cropping fake ones out of it. Measured, not assumed: 1.47/2.00 ADE against
+    # crop's 1.78/2.13. QWENDRIVE_VIEWS=crop runs the other side.
+    QWENDRIVE_VIEWS: "replicate"
+    # Explicit, so `stochastic: false` below is a property of this file rather
+    # than of whatever `noise_seed` the checkpoint happens to ship.
+    QWENDRIVE_SEED: "42"
+    QWENDRIVE_SAMPLES: "1"
+    # sdpa, not flash_attention_2. flash-attn cannot be built against torch 2.14
+    # + CUDA 13 here (setup.sh has the two independent reasons); it is a speed
+    # optimisation for the 8 full-attention layers and changes no result.
+    QWENDRIVE_ATTN: "sdpa"
+
+capabilities:
+  cameras: [CAM_FRONT]
+  # 5.58 B parameters in bf16 is 11.2 GB; the rest is the vision tower's
+  # activations for 12 images plus the reasoning turn's KV cache.
+  vram_gb: 18
+  # A 13 GB checkpoint read on a contended card.
+  startup_timeout_s: 1800
+  waypoint_dt: 0.1
+  # The history is resampled by timestamp, so a faster source is fine -- but a
+  # slower one cannot fill a 10 Hz grid, and this model derives everything it
+  # knows about its own motion from that grid. The reference's ablation put a
+  # stationary history at ADE 70.74 on the highway against 2.00, so a source
+  # that cannot feed 10 Hz should be refused rather than silently interpolated.
+  min_input_hz: 10.0
+  native_input_hz: 10.0
+  history_s: 1.5
+
+  # -- model card (docs/models/comparison.md) --
+  architecture: "Qwen3.5-4B VLM + 1B flow-matching planning expert"
+  # Loaded VLM + expert, counted from the checkpoint rather than the card.
+  params_m: 5580
+  size_gb: 13
+  precision: bf16
+  # Native source resolution, unchanged: frames carry no target_size, so the
+  # processor snaps them to its own patch budget and keeps the aspect ratio.
+  input_size: [1164, 874]
+  history_frames: 4
+  output_kind: waypoints
+  horizon_s: 5.0
+  # The flow sampler draws sample k from a Generator seeded seed + k, and the
+  # reasoning turn is generated with do_sample=False. With QWENDRIVE_SEED fixed,
+  # repeated inference on identical input gives an identical trajectory.
+  stochastic: false
+  needs_speed: true
+  trained_on:
+    # The released card names no public driving corpus, and the checkout carries
+    # no training manifest. Recording "not stated" rather than guessing: the
+    # useful claim would be "none of paddock's benchmarks", and nothing here
+    # supports it. The bundled demo scenes are Waymo Open Dataset format, which
+    # is evidence about the input format, not about the training set.
+    - dataset: not-stated
+# One key, not one per benchmark that arrives: two `benchmarks:` lines is valid
+# YAML and keeps only the last, which is how a model has silently dropped off a
+# board before.
+benchmarks: [comma2k19]
