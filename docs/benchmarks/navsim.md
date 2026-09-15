@@ -379,6 +379,10 @@ So openpilot (`min_input_hz: 10`, `history_s: 4.8` for its 96-frame buffer at
 20 Hz -- what KITScenes feeds) and alpamayo (`native_input_hz: 10`, `history_s:
 1.5`: four frames 0.1 s apart and 16 poses, per its vendor loader) get the
 dense path; drivejepa and visionpilot keep the frames they were scored on.
+qwendrive takes it too (`native_input_hz: 10`, `history_s: 1.5`), for the pose
+branch rather than the image one: it reads 16 poses at 0.1 s, and its four
+camera frames are 0.5 s apart either way, so the dense path changes its ego
+history and not its images.
 Which rate a run used is in `run.json` (`config.input_hz`, `history_source`,
 `history_s`) and hashed into the run id, so a 10 Hz alpamayo run cannot share
 an id with the 2 Hz one.

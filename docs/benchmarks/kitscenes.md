@@ -29,16 +29,18 @@ became the set every later model had to match. Reading it as a sample list uses
 beside them; `paddock ingest` reads the same file for the predictions, which is
 how Drive-JEPA has a row on this benchmark without a paddock run.
 
-### The four rows, and where each came from
+### The six rows, and where each came from
 
 | model | run | n | ADE | source |
 |---|---|---:|---:|---|
+| qwendrive | `20260914T220841-5a91fd` | 223 | 0.806 | a paddock run; three of the six ring cameras |
 | alpamayo15 | `legacy-full-nonav` | 223 | 0.921 | `eval_kitscenes/runs/full` |
 | visionpilot | `20260909T202724-153b04` | 223 | 1.534 | a paddock run; see below |
 | openpilot | `legacy-full223` | 223 | 1.599 | `eval_kitscenes/runs/full223` |
+| meteor | `20260914T215457-ab0586` | 223 | 1.879 | a paddock run; six of its eight cameras |
 | drivejepa | `legacy-kitscenes_e2e_final` | 223 | 2.364 | `inference/kitscenes_e2e_final.pkl` |
 
-All four carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
+All six carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
 so the column compares. Caveats the hash cannot express:
 
 - **Route hint.** Drive-JEPA was run with `--command gt`, which derives a turn
@@ -50,6 +52,12 @@ so the column compares. Caveats the hash cannot express:
   here is a zero-shot transfer result, which is why it sits last on this
   benchmark and first on NAVSIM. `adapters/benchmarks/navsim/run_kitscenes_inference.py`
   sets out what the adapter can and cannot reconcile.
+- **Camera geometry, and no route hint at all.** Qwen-Drive is the only row read
+  on three cameras: the ring's front, front-left and front-right, at
+  +60.9 / +0.97 / −58.5 degrees and ~87° horizontally, against the ~70° nuPlan
+  rig it trained on. It is zero-shot here. The benchmark supplies no navigation
+  command, so every one of its samples is driven as "go straight" — a channel
+  the model uses on NAVSIM is inert on this one.
 
 Nearly all of Drive-JEPA's error is longitudinal (2.317 m against 0.209 m
 lateral, an 11:1 split, from the original report, which decomposed it against
