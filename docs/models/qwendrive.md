@@ -95,11 +95,12 @@ column. KITScenes and neuroNCAP (nuScenes, rendered) are zero-shot.
 
 ## Results
 
-All four on `planner-sft`, direct mode, one seeded sample, one RTX PRO 6000.
+All five on `planner-sft`, direct mode, one seeded sample, one RTX PRO 6000.
 
 | benchmark | n | score | wall clock | run |
 |---|---:|---:|---:|---|
 | KITScenes ADE@3s ↓ | 223 | 0.806 m | 6.6 min | `20260914T220841-5a91fd` |
+| nuScenes cumulative L2 ↓ | 5,119 | 0.450 m | 88 min | `20260915T190350-47479e` |
 | NAVSIM v2 EPDMS ↑ | 12,146 | 0.840 | 4.0 h | `20260914T221802-80457c` |
 | NAVSIM v1 PDMS ↑ | 12,146 | 0.876 | 9 min, no GPU | `20260915T021715-02aab4` |
 | neuroNCAP score ↑ | 200 | 2.49 | 7.7 h | `20260915T023604-12d5eb` |
@@ -110,9 +111,48 @@ covers the camera mapping, the pose history, the 8-pose conversion and the
 scorer together, which is a stronger check than any one of them alone. It is
 also an in-distribution number — the model declares `navtrain`.
 
-neuroNCAP is the outlier: first or near-first on every open-loop column, fourth
-of five closed-loop. See the neuroNCAP section of the README for what is and is
-not known about why.
+nuScenes is the widest margin: lower than every other model on all seven
+columns, collision included, and the first model here to beat the
+constant-velocity baseline outright. Zero-shot — nuScenes is not among the
+datasets the model declares.
+
+## Why neuroNCAP is the exception
+
+First or near-first on every open-loop column, fourth of five closed-loop. The
+recorded artifacts say what the difference is, and it is not braking.
+
+Over all 50 frontal episodes, per model, the mean peak lateral offset of the 3 s
+plan against the collision rate:
+
+| model | collisions | speed change over the episode | mean peak \|lateral\| |
+|---|---:|---:|---:|
+| alpamayo15 | 32% | −2.31 m/s | 10.44 m |
+| drivejepa | 78% | −5.47 m/s | 0.11 m |
+| openpilot | 84% | −1.88 m/s | 1.00 m |
+| **qwendrive** | **86%** | **−2.48 m/s** | **1.22 m** |
+| visionpilot | 90% | −2.45 m/s | 1.91 m |
+
+Qwen-Drive brakes about as hard as Alpamayo, and harder than OpenPilot: on
+`frontal-0103` seed 5 it goes from 7.3 to 2.3 m/s with its planned reach
+collapsing from 21 m to under 5 m. Its lateral offset stays near zero
+throughout. Drive-JEPA brakes hardest of anyone and still collides in 78% of
+episodes. In a staged head-on the closing vehicle arrives whatever the ego's
+speed, so the escape is lateral, and Alpamayo is the only model that takes it.
+
+**This is the model, not the adapter.** Through the same code path on NAVSIM the
+model produces lateral offsets up to 19.92 m at 4 s, 286 plans beyond 10 m, so
+it can express evasion and does at junctions. Across all 200 neuroNCAP episodes
+its peak is 6.40 m and its frontal mean is 1.22 m.
+
+Interpretation, not measurement: neuroNCAP stages collisions that do not occur
+in ordinary driving logs, and this model is trained on recordings of ordinary
+driving. It answers a closing obstacle the way a careful driver answers a slow
+one. Note the sample is five models with a single point at high lateral, so read
+it as where to look next rather than as a fitted relationship.
+
+Side-by-side clips of the frontal episodes, and the figure behind that table,
+are reproducible from the recorded runs — the sweep already writes one mp4 per
+stream per episode (`[benchmarks.neuroncap] video`).
 
 ## Cost
 
