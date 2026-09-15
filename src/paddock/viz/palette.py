@@ -28,6 +28,17 @@ ASSIGNED: dict[str, str] = {
     "visionpilot": "#e7298a",
     "sunnypilot": "#a6761d",
     "alpamayo2": "#66a61e",
+    "qwendrive": "#e6ab02",
+    # Deliberately a sibling of drivejepa's green: same V-JEPA backbone, a
+    # different agent head, and they never share a figure (one is on NAVSIM v2
+    # and nuScenes, the other on comma2k19). Where a reader does meet both, the
+    # kinship is the useful signal and the hue difference still separates them.
+    "drivejepa_free": "#0f766e",
+    # The floor gets grey, and gets an entry at all because the hash handed it
+    # #e377c2 -- a pink two steps from visionpilot's #e7298a, on a board where
+    # both now appear. Grey also says what it is: the line every other line is
+    # being read against, not a competitor.
+    "constant_velocity": "#666666",
 }
 
 #: Drawn from for models with no assigned colour.

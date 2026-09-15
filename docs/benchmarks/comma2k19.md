@@ -4,6 +4,12 @@ Open-loop trajectory accuracy against comma2k19's own recorded
 (INS/GNSS/vision-fused) future pose. 33 hours of 20 Hz highway driving on
 California's I-280, 2035 one-minute segments, two vehicles.
 
+This page is the **protocol** — what paddock asks and how it scores the answer,
+all of it paddock's choices. What the dataset *is* — its sensors and their
+limits, its coordinate frames, the two errors in its own documentation, and the
+derivation of the 10,165 scored samples every row below is conditioned on — is
+[docs/datasets/comma2k19.md](../datasets/comma2k19.md).
+
 ```bash
 paddock run --bench comma2k19 --model openpilot --limit 5      # smoke
 paddock run --bench comma2k19 --model openpilot                # full, n=10165

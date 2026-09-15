@@ -34,6 +34,7 @@ place at every site. So a benchmark is declared in two halves — **what it need
 | 4 | `src/paddock/adapters/benchmarks/<name>/harness.py` | **create** |
 | 5 | `src/paddock/adapters/benchmarks/<name>/tests/test_harness.py` | **create** — golden test |
 | 6 | `docs/benchmarks/<name>.md` | **create** |
+| 7 | `docs/datasets/<dataset>.md` | **create**, if the dataset is new to paddock |
 
 If the benchmark uses a dataset that is already declared, skip step 1.
 
@@ -281,3 +282,19 @@ make check
 
 Then write `docs/benchmarks/<name>.md`: what data is required, what the metrics
 mean, roughly what a run costs in wall-clock, and reference numbers.
+
+If the dataset itself is new to paddock, write `docs/datasets/<dataset>.md` as
+well, and keep the line between them: the **benchmark** page documents paddock's
+protocol — history length, horizons, what is scored — all of which are choices
+that can change; the **dataset** page documents what is true of the data on any
+machine — sensors and their limits, coordinate frames and units, coverage, the
+traps in its own documentation, and what it cannot answer. Two rules make the
+dataset page worth having rather than a second copy of the first:
+
+* **Derive counts, do not assert them.** Any sample count a leaderboard row is
+  conditioned on should be produced by a script against the harness's own
+  methods, with the output pasted in, so it cannot drift from what a sweep does.
+  [comma2k19](datasets/comma2k19.md#where-10165-comes-from) is the worked example.
+* **Tracked means portable.** A machine-specific inventory belongs under
+  `{roots.runs}` with the command that regenerates it, not in the repo;
+  `tests/test_portability.py` will reject the paths otherwise.

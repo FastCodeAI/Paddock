@@ -162,6 +162,11 @@ download — the benchmark scores what is here. `paddock doctor` says how much
 that is, chunk by chunk, and
 `python -m tools.benchmarks.comma2k19.metadata_report` writes the full
 inventory; see [Inspecting the dataset](benchmarks/comma2k19.md#inspecting-the-dataset).
+Write that report under `{roots.runs}` rather than into the repo — it names real
+paths, which is exactly what `tests/test_portability.py` rejects in a tracked
+file. The portable half is [docs/datasets/comma2k19.md](datasets/comma2k19.md):
+what the dataset is, what its sensors are worth, the two traps in its own
+documentation, and where the scored-sample count comes from.
 
 ## Symlinks
 

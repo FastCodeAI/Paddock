@@ -49,4 +49,8 @@ capabilities:
   # property that makes it a floor rather than a competitor.
   trained_on: []
 
-benchmarks: [alpasim, nuscenes, bench2drive]
+# comma2k19 belongs here and was missing: a run has been on that board since the
+# benchmark landed, but `--model all` and `paddock render` walk the registry
+# rather than the results directory, so the floor was absent from every figure
+# it was supposed to anchor. A row nobody can see is not a reference.
+benchmarks: [alpasim, nuscenes, bench2drive, comma2k19]

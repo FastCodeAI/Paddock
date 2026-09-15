@@ -373,7 +373,8 @@ comparison only between the two models.
 · [Alpamayo run](results/comma2k19/alpamayo15/20260913T072437-b058c2/run.json)
 · [metrics](results/comma2k19/alpamayo15/20260913T072437-b058c2/metrics.json)
 · [baseline](results/comma2k19/constant_velocity/20260911T231819-736a8a/metrics.json)
-· [protocol, and what it cannot score](docs/benchmarks/comma2k19.md).
+· [protocol, and what it cannot score](docs/benchmarks/comma2k19.md)
+· [the dataset itself](docs/datasets/comma2k19.md).
 
 ### NAVSIM v2
 
@@ -645,6 +646,8 @@ src/paddock/
   adapters/benchmarks/   one directory per benchmark (_template to copy)
   results/               canonical store, ingest of legacy formats, reporting
 docs/                    see below
+  docs/benchmarks/       how a benchmark is run and scored — paddock's protocol
+  docs/datasets/         what the data is — true of the dataset on any machine
 ```
 
 Run artifacts — predictions, frames, videos — go to `roots.runs`, outside the
@@ -664,6 +667,7 @@ reviewable in a diff.
 | [docs/models/comparison.md](docs/models/comparison.md) | **what each model is** — size, inputs, outputs, training data, licences |
 | [docs/architecture.md](docs/architecture.md) | understanding open- vs closed-loop, the Policy protocol |
 | [docs/benchmarks/](docs/benchmarks/) | how each benchmark is run and scored, and every recorded figure with its run id |
+| [docs/datasets/](docs/datasets/) | what the underlying data *is* — sensors, frames, coverage, and what it cannot answer |
 | [docs/leaderboard.md](docs/leaderboard.md) | the full per-run leaderboard, rendered by `paddock report` |
 | [docs/results-schema.md](docs/results-schema.md) | reading or ingesting results |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | something fails in a way that makes no sense |
