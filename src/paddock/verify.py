@@ -34,7 +34,7 @@ try:
     import importlib
     mod = importlib.import_module(sys.argv[1])
     policy = mod.POLICY()
-    findings = C.policy_findings(policy)
+    findings = C.policy_findings(policy, stochastic=sys.argv[2] == "stochastic")
     print("__PADDOCK_JSON__" + json.dumps([
         {"check": f.check, "ok": f.ok, "severity": f.severity,
          "detail": f.detail, "rationale": f.rationale}
@@ -87,7 +87,10 @@ def _verify_model_in_its_own_env(cfg: SiteConfig, registry: Registry, name: str,
     module = f"paddock.adapters.models.{spec.directory.name}.policy"
     echo(f"  running the policy checks inside {interpreter}")
     proc = subprocess.run(  # noqa: S603 -- interpreter comes from the tracked registry
-        [str(interpreter), "-c", _MODEL_DRIVER, module],
+        # The declaration travels as an argument because the registry is not
+        # importable from every model's environment; the driver must not have to
+        # resolve a site config to know what the model already said about itself.
+        [str(interpreter), "-c", _MODEL_DRIVER, module, "stochastic" if spec.stochastic else "seeded"],
         capture_output=True,
         text=True,
         env=env_builder.build(spec, cfg),
@@ -165,7 +168,9 @@ def verify(
             )
             policy = mod.POLICY()
             policy.load()
-            sections[f"pair {model} x {bench}"] = C.pair_findings(bench_obj, policy, spec)
+            sections[f"pair {model} x {bench}"] = C.pair_findings(
+                bench_obj, policy, spec, stochastic=registry.models[model].stochastic
+            )
         except Exception as exc:  # noqa: BLE001
             sections[f"pair {model} x {bench}"] = [
                 C.Finding(

@@ -30,14 +30,27 @@ runtime:
     # cropping fake ones out of it. Measured, not assumed: 1.47/2.00 ADE against
     # crop's 1.78/2.13. QWENDRIVE_VIEWS=crop runs the other side.
     QWENDRIVE_VIEWS: "replicate"
-    # Explicit, so `stochastic: false` below is a property of this file rather
-    # than of whatever `noise_seed` the checkpoint happens to ship.
+    # Explicit, so the sampler's contribution to a run is a property of this
+    # file rather than of whatever `noise_seed` the checkpoint happens to ship.
+    # It is not sufficient for reproducibility -- see `stochastic` below.
     QWENDRIVE_SEED: "42"
     QWENDRIVE_SAMPLES: "1"
     # sdpa, not flash_attention_2. flash-attn cannot be built against torch 2.14
     # + CUDA 13 here (setup.sh has the two independent reasons); it is a speed
     # optimisation for the 8 full-attention layers and changes no result.
     QWENDRIVE_ATTN: "sdpa"
+    # Read by cuBLAS when it creates its first handle, which happens inside the
+    # first matmul -- long before anything the policy could set. So it has to be
+    # in the environment, not in `load()`, and it is what makes
+    # `torch.use_deterministic_algorithms(True)` there stick for cuBLAS
+    # reductions at all.
+    #
+    # Kept even though it does not deliver reproducibility here (`stochastic`
+    # below records what is left): it removes the workspace-dependent split-k
+    # choice, which is the one source of variation that would otherwise depend
+    # on how busy the card was rather than on anything about the model. What
+    # remains is smaller and does not vary with the neighbours.
+    CUBLAS_WORKSPACE_CONFIG: ":4096:8"
 
 capabilities:
   cameras: [CAM_FRONT]
@@ -68,10 +81,21 @@ capabilities:
   history_frames: 4
   output_kind: waypoints
   horizon_s: 5.0
-  # The flow sampler draws sample k from a Generator seeded seed + k, and the
-  # reasoning turn is generated with do_sample=False. With QWENDRIVE_SEED fixed,
-  # repeated inference on identical input gives an identical trajectory.
-  stochastic: false
+  # Both sources of randomness are pinned and it is still not reproducible, so
+  # this says true. The flow sampler draws sample k from a Generator seeded
+  # seed + k; the reasoning turn runs do_sample=False and decodes the identical
+  # sentence every time (5/5 rollouts on a fixed input). What moves is the
+  # arithmetic underneath `vlm.generate()`: five rollouts with reset() between
+  # gave four identical plans and one 0.64 m away at the 90 m end of the 5 s
+  # horizon -- exactly one bf16 step at that magnitude, i.e. a reduction that
+  # split differently, not a different sample. `use_deterministic_algorithms`
+  # plus CUBLAS_WORKSPACE_CONFIG (above) does not close it.
+  #
+  # QWENDRIVE_MODE=direct_planning *is* bit-exact across 5 rollouts, which is
+  # what localises this to the reasoning turn's KV cache. So the ablation is
+  # reproducible and the default mode is a draw -- and since the default is what
+  # gets scored, the declaration has to describe the default.
+  stochastic: true
   needs_speed: true
   trained_on:
     # The released card names no public driving corpus, and the checkout carries

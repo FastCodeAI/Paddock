@@ -323,6 +323,28 @@ class QwenDrivePolicy(Policy):
             planner.name,
             self.view_mode,
         )
+        # Seeding the sampler is not sufficient for a repeatable plan and the
+        # difference is large enough to see: on a fixed input, repeated rollouts
+        # landed on two or three distinct answers up to 0.64 m apart at 90 m,
+        # all of them multiples of the bf16 step at that magnitude. That is
+        # non-associative reduction order -- cuBLAS picking a split-k by
+        # workspace availability, SDPA by allocator state -- not a draw from the
+        # flow sampler, which is why `QWENDRIVE_SEED` alone does not fix it.
+        #
+        # `use_deterministic_algorithms` with `CUBLAS_WORKSPACE_CONFIG` (set in
+        # model.yaml, because cuBLAS reads it at first handle creation and
+        # setting it here would be too late) pins the part of that order torch
+        # can reach. It is not enough: with both in place, five rollouts still
+        # gave four identical plans and one 0.64 m out. `QWENDRIVE_MODE=
+        # direct_planning` under the same settings is bit-exact, so what is left
+        # lives in the reasoning turn's generate loop, and `stochastic: true` in
+        # model.yaml is the honest record of it rather than a guess.
+        #
+        # Kept anyway, because it removes the variation that would otherwise
+        # track how busy the card is -- a run's noise should not be a function
+        # of its neighbours. `warn_only` so that an op with no deterministic
+        # kernel costs a line in the log rather than the run.
+        torch.use_deterministic_algorithms(True, warn_only=True)
 
     def reset(self) -> None:
         """Drop the pose, speed and frame history between sequences."""

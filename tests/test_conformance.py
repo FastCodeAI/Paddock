@@ -11,6 +11,8 @@ a failure in these tests points at the checker rather than at them.
 
 from __future__ import annotations
 
+import re
+
 import numpy as np
 import pytest
 
@@ -93,6 +95,18 @@ class GoodBenchmark:
 
 def _by_check(findings: list[C.Finding]) -> dict[str, C.Finding]:
     return {f.check: f for f in findings}
+
+
+def _drift_of(finding: C.Finding) -> float:
+    """The metres out of a `reset_clears_state` row, read back from its detail.
+
+    Read rather than recomputed on purpose: the number a reader sees is the one
+    under test, and a detail that stopped carrying it would still pass an
+    assertion made against a separately computed value.
+    """
+    match = re.search(r"([\d.]+e[-+]\d+) m", finding.detail)
+    assert match, f"no magnitude in {finding.detail!r}"
+    return float(match.group(1))
 
 
 # --------------------------------------------------------------------------
@@ -179,6 +193,62 @@ def test_it_catches_state_surviving_reset():
 
     got = _by_check(C.policy_findings(Leaky()))
     assert got["policy.reset_clears_state"].failed
+    # The magnitude belongs in the row: it is the only thing that separates a
+    # leaked buffer from float noise, and a reader of a warning row has nothing
+    # else to judge on. A leak is metres.
+    assert _drift_of(got["policy.reset_clears_state"]) > 0.1
+
+
+def test_a_declared_stochastic_model_is_not_failed_for_drifting_but_is_still_measured():
+    """`stochastic: true` is a claim about the model, so the check answers accordingly.
+
+    qwendrive is the case: seeded sampler, greedy decode that emits the same
+    sentence 5/5 times, and still one rollout in five landing 0.64 m away at the
+    end of a 5 s plan -- one bf16 step at 90 m, from a reduction that split
+    differently. No bf16 GPU model can meet `RESET_DRIFT_M`, and loosening the
+    tolerance to let it through would have blinded the check for every
+    deterministic model instead. So the declaration moves the severity and
+    leaves the number, which is what a reviewer actually reads.
+    """
+
+    class Drifty(GoodPolicy):
+        """Reproduces its plan except for one bf16-sized step at the far end."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self._rollouts = 0
+
+        def infer_sequence(self, observations):
+            self._rollouts += 1
+            return super().infer_sequence(observations)
+
+        def infer(self, obs):
+            traj = constant_velocity(obs.speed, n=8, dt=0.5)
+            traj.xy[-1, 0] += 0.64 * (self._rollouts == 2)  # only the second rollout
+            return traj
+
+    got = _by_check(C.policy_findings(Drifty(), stochastic=True))["policy.reset_clears_state"]
+    assert not got.ok, "a downgrade is not a pass; the drift still happened"
+    assert not got.failed, "a model that declared itself a draw must not fail for being one"
+    assert got.severity == "warning"
+    assert _drift_of(got) == pytest.approx(0.64)
+
+    # Same policy, no declaration: the drift is a defect again.
+    assert _by_check(C.policy_findings(Drifty()))["policy.reset_clears_state"].failed
+
+
+def test_a_passing_row_does_not_print_a_sentence_about_failing():
+    """`render()` prints `detail` under `[ok]` as well, so it cannot be the verdict.
+
+    Both of these read as bug reports when they were phrased as one -- `[ok]
+    policy.reset_clears_state / the same input after reset() produced a
+    different plan` was printed, in those words, by a model that had just
+    reproduced its plan exactly. The verdict is the mark; `detail` is the
+    measurement that earned it.
+    """
+    rendered = "\n".join(f.render() for f in C.policy_findings(GoodPolicy()) if f.ok)
+    for phrase in ("produced a different plan", "which a simulator reads as brake-to-stop"):
+        assert phrase not in rendered
 
 
 def test_it_catches_an_undeclared_camera_read():

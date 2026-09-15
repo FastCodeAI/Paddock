@@ -72,6 +72,15 @@ MAX_MOUNT_DEG = 15.0
 #: An *unrotated* camera is this matrix, not the identity.
 UNROTATED_CAMERA2EGO = np.array([[0.0, 0.0, 1.0], [-1.0, 0.0, 0.0], [0.0, -1.0, 0.0]])
 
+#: How far two plans from the same input may sit apart and still count as the
+#: same plan. A tenth of a millimetre is not a driving tolerance -- it is a
+#: "these came from the same arithmetic" tolerance, which is the actual claim.
+#: It stays this tight rather than being loosened to something a bf16 GPU model
+#: can meet, because loosening it to suit the noisiest model would blind the
+#: check for every deterministic one. Models that cannot meet it declare
+#: `stochastic: true` and get the finding as a warning with the number attached.
+RESET_DRIFT_M = 1e-4
+
 
 @dataclass
 class Finding:
@@ -121,7 +130,10 @@ CHECKS: dict[str, str] = {
     ),
     "policy.reset_clears_state": (
         "reset() must make inference reproducible. Without it run N+1 starts with run N's "
-        "feature buffer and the runs stop being independent samples."
+        "feature buffer and the runs stop being independent samples. A model that declares "
+        "`stochastic: true` gets this as a warning -- it has already said its output is a "
+        "draw -- but the measured drift is still printed, because a leaked buffer moves a "
+        "plan by metres and sampling noise does not."
     ),
     "policy.diagnostics_before_load": (
         "diagnostics() is served over HTTP and must answer before a frame arrives, not raise."
@@ -270,7 +282,10 @@ def synthetic_observation(
 
 
 def policy_findings(
-    policy: Policy, observations: list[Observation] | None = None, load: bool = True
+    policy: Policy,
+    observations: list[Observation] | None = None,
+    load: bool = True,
+    stochastic: bool = False,
 ) -> list[Finding]:
     """Check a Policy against the contract.
 
@@ -278,6 +293,12 @@ def policy_findings(
     produces a more meaningful plan from them. Without them a short synthetic
     sequence is used, and the accuracy-dependent checks downgrade to warnings
     because a model handed grey rectangles is entitled to say anything.
+
+    `stochastic` is the model's own declaration from `model.yaml`, and it
+    downgrades `reset_clears_state` to a warning: a model that has already said
+    its output is a draw cannot also be held to reproducing a plan exactly. It
+    is passed in rather than read from the registry because these checks run
+    inside the *model's* interpreter, where paddock's config may not resolve.
     """
     out: list[Finding] = []
     synthetic = observations is None
@@ -329,12 +350,16 @@ def policy_findings(
     )
     out.append(_finding("policy.finite", bool(np.isfinite(xy).all())))
 
+    # Detail is the measurement, not the verdict: `render()` prints it under
+    # `[ok]` too, so a sentence phrased as a failure ("every waypoint is (0,0)")
+    # read as one there. The number says the same thing and stays true either
+    # way -- a commanded stop is the row that reports 0.00.
     all_zero = bool(np.allclose(xy, 0.0))
     out.append(
         _finding(
             "policy.not_a_commanded_stop",
             not all_zero,
-            "every waypoint is (0, 0), which a simulator reads as brake-to-stop",
+            f"largest waypoint magnitude is {np.abs(xy).max():.2f} m",
         )
     )
 
@@ -352,12 +377,18 @@ def policy_findings(
     try:
         policy.reset()
         again = policy.infer_sequence(observations) if len(observations) > 1 else policy.infer(last)
-        same = np.allclose(np.asarray(again.xy, dtype=np.float64), xy, atol=1e-4)
+        drift = float(np.abs(np.asarray(again.xy, dtype=np.float64) - xy).max())
         out.append(
             _finding(
                 "policy.reset_clears_state",
-                same,
-                "the same input after reset() produced a different plan, so per-episode state survives reset",
+                drift <= RESET_DRIFT_M,
+                f"two plans from the same input, reset() between: max |delta| = {drift:.2e} m",
+                # A declared-stochastic model is being asked the wrong question,
+                # so report the answer and do not fail on it. The magnitude is
+                # what makes the row readable: sampling noise is centimetres and
+                # a survived buffer is metres, and only a reader comparing the
+                # two can tell which this is.
+                severity="warning" if stochastic else "error",
             )
         )
     except Exception as exc:  # noqa: BLE001
@@ -557,8 +588,12 @@ def benchmark_findings(bench, spec=None, sample_limit: int = 2) -> list[Finding]
 # --------------------------------------------------------------------------
 
 
-def pair_findings(bench, policy: Policy, spec=None) -> list[Finding]:
-    """One real sample from `bench` through `policy`, scored. The smoke test."""
+def pair_findings(bench, policy: Policy, spec=None, stochastic: bool = False) -> list[Finding]:
+    """One real sample from `bench` through `policy`, scored. The smoke test.
+
+    `spec` is the benchmark's; `stochastic` is the *model's* declaration, which
+    this function has no way to look up and so must be told.
+    """
     out: list[Finding] = []
     try:
         sample = next(iter(bench.samples(limit=1)))
@@ -592,7 +627,7 @@ def pair_findings(bench, policy: Policy, spec=None) -> list[Finding]:
                 "pair.end_to_end", np.isfinite(metrics.get(primary, np.nan)), f"{sample.sample_id}: {detail}"
             )
         )
-        out += policy_findings(policy, observations=sample.observations, load=False)
+        out += policy_findings(policy, observations=sample.observations, load=False, stochastic=stochastic)
     except Exception as exc:  # noqa: BLE001
         out.append(_finding("pair.end_to_end", False, f"{type(exc).__name__}: {exc}"))
     return out

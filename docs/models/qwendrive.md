@@ -91,7 +91,7 @@ Settings, all in `model.yaml` `runtime.env`:
 | `QWENDRIVE_PLANNER` | `planner-sft` | a bare name resolves inside the snapshot; an absolute path is taken as-is |
 | `QWENDRIVE_MODE` | `reasoning_planning` | `direct_planning` is the ablation |
 | `QWENDRIVE_VIEWS` | `replicate` | `crop` is the ablation; see below |
-| `QWENDRIVE_SEED` | `42` | passed on every call, so `stochastic: false` is a property of this file |
+| `QWENDRIVE_SEED` | `42` | passed on every call; pins the sampler, but see Determinism — it is not enough for a repeatable plan |
 | `QWENDRIVE_SAMPLES` | `1` | flow-sampler draws; sample 0 is scored |
 | `QWENDRIVE_ATTN` | `sdpa` | see above |
 
@@ -166,12 +166,29 @@ to a missing input rather than to planning. The mapping was cross-checked
 against the released WOD scene files, where a left turn has future y = +11.98 m
 and a right y = −11.0 m.
 
-**Determinism.** The flow sampler draws sample *k* from a `torch.Generator`
-seeded `seed + k`, and the reasoning turn is generated with `do_sample=False,
-num_beams=1`. With `QWENDRIVE_SEED` fixed the model is reproducible, which is
-why `model.yaml` declares `stochastic: false`. The seed is passed explicitly on
-every call rather than inherited from whatever `noise_seed` the checkpoint
-happens to ship.
+**Determinism — `stochastic: true`, and why the seeds do not buy it back.**
+Every deliberate source of randomness here is pinned. The flow sampler draws
+sample *k* from a `torch.Generator` seeded `seed + k`, with the seed passed
+explicitly on every call rather than inherited from whatever `noise_seed` the
+checkpoint ships; the reasoning turn runs `do_sample=False, num_beams=1` and
+decodes the identical sentence on every rollout (5/5 on a fixed input, verified
+by capturing `_last_reasoning`). The plan still moves.
+
+Five rollouts through the model's own interpreter, with `reset()` between each,
+gave four identical trajectories and one that differed by **0.64 m at the 90 m
+end of the 5 s horizon** — one bf16 step at that magnitude, i.e. a reduction
+that split differently, not a second draw from the sampler. Adding
+`torch.use_deterministic_algorithms(True)` and `CUBLAS_WORKSPACE_CONFIG=:4096:8`
+(both now in place) does not close it. `QWENDRIVE_MODE=direct_planning` under
+the same settings *is* bit-exact across five rollouts, which localises what is
+left to the reasoning turn's generate loop rather than to the planning expert.
+
+So `model.yaml` declares `stochastic: true`, because the scored default is
+`reasoning_planning`. Two consequences worth stating plainly: a recorded
+qwendrive number is a draw rather than a measurement, of order 0.7 % at the far
+end of the plan and far smaller near it; and `paddock verify` reports
+`policy.reset_clears_state` as a **warning** with the measured drift attached,
+rather than failing on an exactness this model never claimed.
 
 **Why `num_samples: 1`.** Three flow-matching samples differed by a standard
 deviation of only 0.09–0.14 m at t = 5 s in the reference measurements, so
