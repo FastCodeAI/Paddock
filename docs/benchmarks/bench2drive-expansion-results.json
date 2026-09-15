@@ -1,0 +1,3361 @@
+{
+  "snapshot_date": "2026-09-15",
+  "expected_expansion_routes": [
+    "2086",
+    "3373",
+    "3378",
+    "3380",
+    "3410",
+    "3575",
+    "3800",
+    "3813",
+    "4669",
+    "18305",
+    "18311",
+    "18356",
+    "24240",
+    "24252",
+    "24333",
+    "24795",
+    "24816",
+    "25378",
+    "25857",
+    "25863",
+    "26956",
+    "26990",
+    "27018",
+    "27515",
+    "27529",
+    "27582"
+  ],
+  "qwen_expected_routes": [
+    "14194",
+    "17752",
+    "24211",
+    "24224",
+    "2790",
+    "2802",
+    "3364",
+    "3564",
+    "3572",
+    "1711",
+    "2201",
+    "2273",
+    "2286",
+    "3749",
+    "1852",
+    "2509",
+    "2534",
+    "2539",
+    "3307",
+    "2050",
+    "2084",
+    "3936",
+    "4183",
+    "4468",
+    "24252",
+    "27529",
+    "3575",
+    "18356",
+    "24816",
+    "24795",
+    "26990",
+    "27582",
+    "27515",
+    "25378",
+    "18305",
+    "24240",
+    "26956",
+    "27018",
+    "24333",
+    "3373",
+    "3378",
+    "3813",
+    "3410",
+    "4669",
+    "25863",
+    "3380",
+    "18311",
+    "3800",
+    "25857",
+    "2086"
+  ],
+  "records": [
+    {
+      "model": "alpamayo15",
+      "route_id": "3575",
+      "scenario": "InvadingTurn_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 1.0,
+        "score_composed": 100.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260910T105820-130d4f/3575-Town13-InvadingTurn/results.json",
+      "source_sha256": "5bd067cd50f34472c5a74c1fec859fb0057cbe516b25923faedf5550ec4cf5d9",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "24240",
+      "scenario": "Accident_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 0.807994,
+        "score_composed": 80.799395
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260910T105820-130d4f/24240-Town10HD-Accident/results.json",
+      "source_sha256": "7139970c4180abed5af365d458fca39abb443e74920de05729111346e69a74fd",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "3813",
+      "scenario": "HighwayCutIn_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 35.15,
+        "score_penalty": 1.0,
+        "score_composed": 35.15
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 6,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260910T105820-130d4f/3813-Town13-HighwayCutIn/results.json",
+      "source_sha256": "c87edd6ec46e7b840c5ea578bbe3f23176fa9cea86f6c7138271932ae0354410",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "18311",
+      "scenario": "ParkingCutIn_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 86.38,
+        "score_penalty": 0.318989,
+        "score_composed": 27.554239
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 2,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 14,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260910T105820-130d4f/18311-Town12-ParkingCutIn/results.json",
+      "source_sha256": "bd00efb2ab30188561a1ba476db361f3a492d168a6255a811b6ee6cd42005f68",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "3373",
+      "scenario": "YieldToEmergencyVehicle_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 0.6,
+        "score_composed": 60.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 1,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260910T105820-130d4f/3373-Town13-YieldToEmergencyVehicle/results.json",
+      "source_sha256": "2c13eacc57c10eca365eff6837906b3b454500af4dcb5f064e05c974ca07b033",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "3410",
+      "scenario": "AccidentTwoWays_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 30.13,
+        "score_penalty": 0.205231,
+        "score_composed": 6.183619
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 3,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 5,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260910T105820-130d4f/3410-Town13-AccidentTwoWays/results.json",
+      "source_sha256": "2f5ec356ba641148f7c5698a6ec527aeb89525aa4c93cb8b1d992ddc602d584d",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "3380",
+      "scenario": "YieldToEmergencyVehicle_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 0.1512,
+        "score_composed": 15.12
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 3,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 18,
+        "yield_emergency_vehicle_infractions": 1,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260910T105820-130d4f/3380-Town13-YieldToEmergencyVehicle/results.json",
+      "source_sha256": "f1e4ed7faa5089c1e374ed750df3beec66f6c4edb9f0a6c60496e1ecb8219631",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "18356",
+      "scenario": "ParkingCutIn_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 1.0,
+        "score_composed": 100.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260910T105820-130d4f/18356-Town12-ParkingCutIn/results.json",
+      "source_sha256": "8772da0c5162e3672eda9df60aa98c2c3eaf2140ccd0f4d830c7b1bddbfd5f8c",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "3378",
+      "scenario": "YieldToEmergencyVehicle_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 0.6,
+        "score_composed": 60.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 1,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260910T105820-130d4f/3378-Town13-YieldToEmergencyVehicle/results.json",
+      "source_sha256": "3b1e096e7504736bb18303ab7a595c536a2437b879fbd8e638ee07f928ab23e2",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "4669",
+      "scenario": "SignalizedJunctionLeftTurn_1",
+      "status": "Failed - Agent deviated from the route",
+      "scores": {
+        "score_route": 54.47,
+        "score_penalty": 1.0,
+        "score_composed": 54.47
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 10,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 1,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260910T105820-130d4f/4669-Town12-SignalizedJunctionLeftTurn/results.json",
+      "source_sha256": "ad6a12676ce21e005908a73119e1e74daf2dc4a12bb0889c4d588ae5b8134f34",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "2086",
+      "scenario": "NonSignalizedJunctionLeftTurn_1",
+      "status": "Failed - Agent deviated from the route",
+      "scores": {
+        "score_route": 52.35,
+        "score_penalty": 0.36,
+        "score_composed": 18.846
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 2,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 9,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 1,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260910T105820-130d4f/2086-Town12-NonSignalizedJunctionLeftTurn/results.json",
+      "source_sha256": "738fbdc2a0e23269650cad053bf3dbb0efe1483b6cd4f053c0da7cebbbac8bfd",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "3800",
+      "scenario": "MergerIntoSlowTraffic_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 35.33,
+        "score_penalty": 1.0,
+        "score_composed": 35.33
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 6,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260910T105820-130d4f/3800-Town13-MergerIntoSlowTraffic/results.json",
+      "source_sha256": "417d436068ffe132cde7eadf82ee457fc305a0b1b62fe2720e1c16f738b5e011",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "18305",
+      "scenario": "ParkingCutIn_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 80.47,
+        "score_penalty": 0.346557,
+        "score_composed": 27.887415
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 2,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 15,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260910T105820-130d4f/18305-Town12-ParkingCutIn/results.json",
+      "source_sha256": "6967e107ea6a7bbf2636ad7872405473c02921d50cada16a354145f55747e06d",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "18311",
+      "scenario": "ParkingCutIn_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 1.0,
+        "score_composed": 100.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-19404f/18311-Town12-ParkingCutIn/results.json",
+      "source_sha256": "a8ed2b6343457c2ff2d26caa22272e7d6434ec331c8786593af8a2234e12a515",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "25863",
+      "scenario": "PedestrianCrossing_1",
+      "status": "Failed - Agent deviated from the route",
+      "scores": {
+        "score_route": 56.22,
+        "score_penalty": 0.640623,
+        "score_composed": 36.015844
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 9,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 1,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-19404f/25863-Town07-PedestrianCrossing/results.json",
+      "source_sha256": "b28dbdfb5d619243faa89918a5118b5246e0e429b465f66c2c9eaf5e0a6e3067",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "3380",
+      "scenario": "YieldToEmergencyVehicle_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 11.81,
+        "score_penalty": 0.596066,
+        "score_composed": 7.039535
+      },
+      "infractions": {
+        "collisions_layout": 1,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 2,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-19404f/3380-Town13-YieldToEmergencyVehicle/results.json",
+      "source_sha256": "c4017c0f0d0cd98bb67fe2d44042042f70ecd1419afb1a8b5610d16f7fdf4327",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "25857",
+      "scenario": "AccidentTwoWays_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 38.35,
+        "score_penalty": 0.6,
+        "score_composed": 23.01
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 1,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 6,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-19404f/25857-Town05-AccidentTwoWays/results.json",
+      "source_sha256": "e9e81c4abeb5045b7597d9068f92317b10a6b301f5b45ab7175e50419f8c808f",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "2086",
+      "scenario": "NonSignalizedJunctionLeftTurn_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 20.5,
+        "score_penalty": 0.206486,
+        "score_composed": 4.232955
+      },
+      "infractions": {
+        "collisions_layout": 1,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 4,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-19404f/2086-Town12-NonSignalizedJunctionLeftTurn/results.json",
+      "source_sha256": "2f5e9ee70879e23415ce22f906e2edf23c947342b74f1033edcdb1a71847d580",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "3800",
+      "scenario": "MergerIntoSlowTraffic_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100.0,
+        "score_penalty": 1.0,
+        "score_composed": 100.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 20,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 1,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-19404f/3800-Town13-MergerIntoSlowTraffic/results.json",
+      "source_sha256": "0a18512bb408892d7772bc21aea532dd62faf620ace0176400af081ef7a7bdd6",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "3813",
+      "scenario": "HighwayCutIn_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 66.47,
+        "score_penalty": 0.227579,
+        "score_composed": 15.12717
+      },
+      "infractions": {
+        "collisions_layout": 3,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 11,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-b34815/3813-Town13-HighwayCutIn/results.json",
+      "source_sha256": "10aaf2cfee6d7284f6b413ccb63742f3628e3340889e1babd06461c2aa6a0e02",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "3373",
+      "scenario": "YieldToEmergencyVehicle_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 0.7,
+        "score_composed": 70.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 1,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-b34815/3373-Town13-YieldToEmergencyVehicle/results.json",
+      "source_sha256": "6228b4de7f37ef0f2fcb58b0cea0f31bbb77f172ec22fff33ff3bbeafc0d48fd",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "24333",
+      "scenario": "DynamicObjectCrossing_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 0.5,
+        "score_composed": 50.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 1,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 18,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-b34815/24333-Town15-DynamicObjectCrossing/results.json",
+      "source_sha256": "004342a1e53ad02c16726946a89e76a9b136f4c0d5a5264d8218e3ce9fca086e",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "3410",
+      "scenario": "AccidentTwoWays_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 39.9,
+        "score_penalty": 0.6,
+        "score_composed": 23.94
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 1,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 7,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-b34815/3410-Town13-AccidentTwoWays/results.json",
+      "source_sha256": "cee5547ac6303f175f6cbba4de2b08ced0395538f16faf0db166912a24254809",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "3378",
+      "scenario": "YieldToEmergencyVehicle_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 0.7,
+        "score_composed": 70.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 1,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-b34815/3378-Town13-YieldToEmergencyVehicle/results.json",
+      "source_sha256": "0394c5e31e76a5a56294f3c4ad7d1da0a48fb279eedcd3c48b760dc19ee3efc8",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "4669",
+      "scenario": "SignalizedJunctionLeftTurn_1",
+      "status": "Failed - Agent deviated from the route",
+      "scores": {
+        "score_route": 54.47,
+        "score_penalty": 0.7,
+        "score_composed": 38.129
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 1,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 10,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 1,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-b34815/4669-Town12-SignalizedJunctionLeftTurn/results.json",
+      "source_sha256": "4c7ada9fd4fcc310d88f11180281da559ba88b1b7de4193ec01e68090c494dac",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "3575",
+      "scenario": "InvadingTurn_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 1.0,
+        "score_composed": 100.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-93c0b5/3575-Town13-InvadingTurn/results.json",
+      "source_sha256": "5a16dd72d4dfc2957535d738c2661ee5bac89ab57cf82f976f513a56d4b59b04",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "24816",
+      "scenario": "Accident_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 42.46,
+        "score_penalty": 0.6,
+        "score_composed": 25.476
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 1,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 7,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-93c0b5/24816-Town03-Accident/results.json",
+      "source_sha256": "9aaf33db2893d00639a87b0b9c1e66a8b1ed06e6d14b9cb29e295fbce74d7c11",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "24252",
+      "scenario": "DynamicObjectCrossing_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 1.0,
+        "score_composed": 100.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 20,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-93c0b5/24252-Town11-DynamicObjectCrossing/results.json",
+      "source_sha256": "32a33e019ac6d9f8189371acfdceae5697c33c313b31b6dd4634597d609f2f4e",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "18356",
+      "scenario": "ParkingCutIn_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 1.0,
+        "score_composed": 100.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-93c0b5/18356-Town12-ParkingCutIn/results.json",
+      "source_sha256": "92e63fe8bd1d24de91382e78c882ac72334f545f853c4f30055c27e510ad6525",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "26990",
+      "scenario": "NonSignalizedJunctionLeftTurn_1",
+      "status": "Failed - Agent deviated from the route",
+      "scores": {
+        "score_route": 43.7,
+        "score_penalty": 0.286477,
+        "score_composed": 12.519045
+      },
+      "infractions": {
+        "collisions_layout": 2,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 1,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 6,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 1,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-93c0b5/26990-Town03-NonSignalizedJunctionLeftTurn/results.json",
+      "source_sha256": "ccf0eda24615a803adb0f14ff118267da81d61dd48e1e6203d953f9b67e12aad",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "27529",
+      "scenario": "PedestrianCrossing_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 59.98,
+        "score_penalty": 0.24761,
+        "score_composed": 14.851619
+      },
+      "infractions": {
+        "collisions_layout": 1,
+        "collisions_pedestrian": 1,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 1,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 10,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-93c0b5/27529-Town04-PedestrianCrossing/results.json",
+      "source_sha256": "b4b4d2bb3042cff0d42609e49575d67bfc90d7da54332677ca5dd4e804b06b72",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "24795",
+      "scenario": "ConstructionObstacle_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 34.65,
+        "score_penalty": 0.65,
+        "score_composed": 22.5225
+      },
+      "infractions": {
+        "collisions_layout": 1,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 6,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-93c0b5/24795-Town04-ConstructionObstacle/results.json",
+      "source_sha256": "9024c91974bcbf3f5ec88dd09796ab54a60ff1ff023c2322b70265048444d20a",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "25378",
+      "scenario": "YieldToEmergencyVehicle_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 0.7,
+        "score_composed": 70.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 1,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-1c6288/25378-Town03-YieldToEmergencyVehicle/results.json",
+      "source_sha256": "492909c48d895f73904076d43dd627830e1ddb935209d962f81ddf291ab61520",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "24240",
+      "scenario": "Accident_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 54.05,
+        "score_penalty": 0.6,
+        "score_composed": 32.43
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 1,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 9,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-1c6288/24240-Town10HD-Accident/results.json",
+      "source_sha256": "45ca60ee755bcd52c106d5f4b33025065baced161d8ea13f4cd48050e0488ea6",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "27515",
+      "scenario": "PedestrianCrossing_1",
+      "status": "Failed - Agent deviated from the route",
+      "scores": {
+        "score_route": 49.19,
+        "score_penalty": 0.7,
+        "score_composed": 34.433
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 1,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 8,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 1,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-1c6288/27515-Town03-PedestrianCrossing/results.json",
+      "source_sha256": "f37430a5d44cb3f13d6653d437f2d760de579c81855feb97a56f0179db067501",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "27018",
+      "scenario": "SignalizedJunctionRightTurn_1",
+      "status": "Failed - Agent deviated from the route",
+      "scores": {
+        "score_route": 74.3,
+        "score_penalty": 0.132632,
+        "score_composed": 9.854542
+      },
+      "infractions": {
+        "collisions_layout": 1,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 2,
+        "red_light": 1,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 14,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 1,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-1c6288/27018-Town15-SignalizedJunctionRightTurn/results.json",
+      "source_sha256": "02bd4a39c75497936d749c0c8e8acbc477b16e65eb3069c4ee749f9bc400ce8c",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "26956",
+      "scenario": "SignalizedJunctionRightTurn_1",
+      "status": "Failed - Agent deviated from the route",
+      "scores": {
+        "score_route": 54.47,
+        "score_penalty": 0.6,
+        "score_composed": 32.682
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 1,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 9,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 1,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-1c6288/26956-Town05-SignalizedJunctionRightTurn/results.json",
+      "source_sha256": "80d6bfcf34143487abc3b682748a4bdc4f1f318ec4b217d9287fb4580fc73743",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "27582",
+      "scenario": "PedestrianCrossing_1",
+      "status": "Failed - Agent deviated from the route",
+      "scores": {
+        "score_route": 46.04,
+        "score_penalty": 0.053936,
+        "score_composed": 2.483204
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 1,
+        "collisions_vehicle": 2,
+        "red_light": 1,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 7,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 1,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-1c6288/27582-Town11-PedestrianCrossing/results.json",
+      "source_sha256": "582ebd3fe0d9bd670f4bb721d965a4663a5a0a52a589b1826785dfec16f5cef3",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "visionpilot",
+      "route_id": "18305",
+      "scenario": "ParkingCutIn_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 1.0,
+        "score_composed": 100.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 20,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T124158-1c6288/18305-Town12-ParkingCutIn/results.json",
+      "source_sha256": "d6f9ddd5724c75a962d4d4710b5c89ed6cfc65079ce3a724fad5de35df3b5210",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "24795",
+      "scenario": "ConstructionObstacle_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 0.36,
+        "score_composed": 36.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 2,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 20,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T133536-aa2984/24795-Town04-ConstructionObstacle/results.json",
+      "source_sha256": "7ad2c99b6fb7530deb990ef1ea2bf42985c8fe97378a80be80a15d8b29ff846f",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "26990",
+      "scenario": "NonSignalizedJunctionLeftTurn_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 66.75,
+        "score_penalty": 0.6,
+        "score_composed": 40.05
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 1,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 10,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T133536-aa2984/26990-Town03-NonSignalizedJunctionLeftTurn/results.json",
+      "source_sha256": "65b5fdf955b4a0c70394c346fe74c1dcb2f96a536793b6d3abdec139f2df781c",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "27529",
+      "scenario": "PedestrianCrossing_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 47.75,
+        "score_penalty": 0.940131,
+        "score_composed": 44.891251
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 8,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T133536-aa2984/27529-Town04-PedestrianCrossing/results.json",
+      "source_sha256": "531202c6c79b72d1b26c7d71286448a84d620d6b7acadc8ea7a241c685cde12b",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "25857",
+      "scenario": "AccidentTwoWays_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 20.01,
+        "score_penalty": 1.0,
+        "score_composed": 20.01
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 3,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T133536-aa2984/25857-Town05-AccidentTwoWays/results.json",
+      "source_sha256": "3f5a9cf6712e301d4e667acf0292ef61e9c6cbaee373360bb6c4a64d8ca961f5",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "25378",
+      "scenario": "YieldToEmergencyVehicle_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 0.211458,
+        "score_composed": 21.145843
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 3,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T133403-c08bbc/25378-Town03-YieldToEmergencyVehicle/results.json",
+      "source_sha256": "ee73bf4aeb4b6a38569f68fc5948b6c82a32586ccfed651e5cad1cc9498435cc",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "26956",
+      "scenario": "SignalizedJunctionRightTurn_1",
+      "status": "Failed - Agent deviated from the route",
+      "scores": {
+        "score_route": 54.47,
+        "score_penalty": 1.0,
+        "score_composed": 54.47
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 9,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 1,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T133403-c08bbc/26956-Town05-SignalizedJunctionRightTurn/results.json",
+      "source_sha256": "f8a140fb9f92153a6bc5264b7b883766cb8bd800f932bd2a9c2b4c2680333c72",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "24333",
+      "scenario": "DynamicObjectCrossing_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 0.1296,
+        "score_composed": 12.96
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 4,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 18,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T133403-c08bbc/24333-Town15-DynamicObjectCrossing/results.json",
+      "source_sha256": "2ec7a0fd7df47c7873cb216c33be40180402699c83f48884e0a17ef26fb5a74b",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "27515",
+      "scenario": "PedestrianCrossing_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 51.16,
+        "score_penalty": 0.768695,
+        "score_composed": 39.326457
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 8,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T133403-c08bbc/27515-Town03-PedestrianCrossing/results.json",
+      "source_sha256": "b1f5653b7f26d6b21d7f4f0c331754db14499ef82f874d2624fcfafe0b28f928",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "24816",
+      "scenario": "Accident_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 0.518479,
+        "score_composed": 51.847908
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 1,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T133113-73c2cc/24816-Town03-Accident/results.json",
+      "source_sha256": "a322b061aeb9c140ae6e83752dee98d7cce671f2a1ec2c1e8e218abe7b50007d",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "27582",
+      "scenario": "PedestrianCrossing_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 26.51,
+        "score_penalty": 0.889653,
+        "score_composed": 23.584712
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 4,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T133113-73c2cc/27582-Town11-PedestrianCrossing/results.json",
+      "source_sha256": "77fb578b5ce78dabe9ff9867a7400099c36042765d7d250bd452345f3c31e2ea",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "25863",
+      "scenario": "PedestrianCrossing_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 0.5,
+        "score_composed": 50.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 1,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 17,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T133113-73c2cc/25863-Town07-PedestrianCrossing/results.json",
+      "source_sha256": "0e43a2b9e4aa05d6100edc6823eea59f9600936929af1d5aa2363908f25743e3",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "24252",
+      "scenario": "DynamicObjectCrossing_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 0.523385,
+        "score_composed": 52.338541
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 1,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 20,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T133113-73c2cc/24252-Town11-DynamicObjectCrossing/results.json",
+      "source_sha256": "a4acec74eca78a93b5f5bf399a7bb8ffd8021613b8111b8b7851fe55adba9a2b",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "alpamayo15",
+      "route_id": "27018",
+      "scenario": "SignalizedJunctionRightTurn_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 14.22,
+        "score_penalty": 1.0,
+        "score_composed": 14.22
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 2,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T133113-73c2cc/27018-Town15-SignalizedJunctionRightTurn/results.json",
+      "source_sha256": "c71aa7dd0b99b478a7b00696ebf9314c1e053fb16cf052e170f09b2079712264",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "3410",
+      "scenario": "AccidentTwoWays_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 39.9,
+        "score_penalty": 0.6,
+        "score_composed": 23.94
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 1,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 7,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T214244-49d8f2/3410-Town13-AccidentTwoWays/results.json",
+      "source_sha256": "264cc5960b6afe5c260618744b983598f8d9f725006481c721fcf91394a8e3f9",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "4669",
+      "scenario": "SignalizedJunctionLeftTurn_1",
+      "status": "Failed - Agent deviated from the route",
+      "scores": {
+        "score_route": 54.47,
+        "score_penalty": 1.0,
+        "score_composed": 54.47
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 10,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 1,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T214244-49d8f2/4669-Town12-SignalizedJunctionLeftTurn/results.json",
+      "source_sha256": "d952137a987426fe38b97f6103c123b304a76268dd825050f22617be0f611635",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "24333",
+      "scenario": "DynamicObjectCrossing_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 0.5,
+        "score_composed": 50.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 1,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 18,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T214244-49d8f2/24333-Town15-DynamicObjectCrossing/results.json",
+      "source_sha256": "d59aa57bb3d19cbbc144d665bce6ce71588f880225222dffe5053fe2c321fe56",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "3378",
+      "scenario": "YieldToEmergencyVehicle_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 0,
+        "score_penalty": 1.0,
+        "score_composed": 0.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 0,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T214244-49d8f2/3378-Town13-YieldToEmergencyVehicle/results.json",
+      "source_sha256": "66d0f4b7c6bd266754815d660434624d9a297a5c33221ccc1bd41ec5b2393088",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "3813",
+      "scenario": "HighwayCutIn_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 1.0,
+        "score_composed": 100.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T214244-49d8f2/3813-Town13-HighwayCutIn/results.json",
+      "source_sha256": "2dfe4b43ce45e97f91cf9795dbec3149ccd70e1baecc42e754ca03b0401ac505",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "3373",
+      "scenario": "YieldToEmergencyVehicle_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 0.7,
+        "score_composed": 70.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 1,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T214244-49d8f2/3373-Town13-YieldToEmergencyVehicle/results.json",
+      "source_sha256": "8f26785975db50c8253bab8580727ae5b8667076096994c18e388d169a923cfc",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "2086",
+      "scenario": "NonSignalizedJunctionLeftTurn_1",
+      "status": "Failed - Agent deviated from the route",
+      "scores": {
+        "score_route": 52.35,
+        "score_penalty": 0.8,
+        "score_composed": 41.88
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 1,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 9,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 1,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T214244-b6bbe1/2086-Town12-NonSignalizedJunctionLeftTurn/results.json",
+      "source_sha256": "c162e855eb79445b6a9125cbaf82cccf0205e4707af806521a52df555506ea69",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "3380",
+      "scenario": "YieldToEmergencyVehicle_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 0.7,
+        "score_composed": 70.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 18,
+        "yield_emergency_vehicle_infractions": 1,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T214244-b6bbe1/3380-Town13-YieldToEmergencyVehicle/results.json",
+      "source_sha256": "24e1c1828dd92b33a56704fd82a6ad770ecdd602259447c88bdb03c7f9322367",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "25863",
+      "scenario": "PedestrianCrossing_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 0.7,
+        "score_composed": 70.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 1,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 17,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T214244-b6bbe1/25863-Town07-PedestrianCrossing/results.json",
+      "source_sha256": "81b12661ca27caf40416b4b8b3812ed786c94399980bdf309fb2ff422a124c7a",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "25857",
+      "scenario": "AccidentTwoWays_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 0.0,
+        "score_penalty": 1.0,
+        "score_composed": 0.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 0,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T214244-b6bbe1/25857-Town05-AccidentTwoWays/results.json",
+      "source_sha256": "08b5edd84effb374843f190ef1144a5dad3298b37551c97af8d5f8a600a2f3b1",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "18311",
+      "scenario": "ParkingCutIn_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 0,
+        "score_penalty": 1.0,
+        "score_composed": 0.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 0,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T214244-b6bbe1/18311-Town12-ParkingCutIn/results.json",
+      "source_sha256": "aa4d1ced609a6c4ba07782336bf7bb6bbda85db22f2ef3ea87be11c39e02ae83",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "3800",
+      "scenario": "MergerIntoSlowTraffic_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100.0,
+        "score_penalty": 1.0,
+        "score_composed": 100.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 20,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 1,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T214244-b6bbe1/3800-Town13-MergerIntoSlowTraffic/results.json",
+      "source_sha256": "ab09a4dbc60c95b7ea0dbe905fd66b92a35e1c8ba965b0d36db30c60dd2f9632",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "25378",
+      "scenario": "YieldToEmergencyVehicle_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 0.7,
+        "score_composed": 70.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 1,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T214244-e87dbc/25378-Town03-YieldToEmergencyVehicle/results.json",
+      "source_sha256": "451d2e2cd59c7f85096197f294fbd2ed0fd2b91f8d16ede09dd2685b6a3f047c",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "26956",
+      "scenario": "SignalizedJunctionRightTurn_1",
+      "status": "Failed - Agent deviated from the route",
+      "scores": {
+        "score_route": 54.47,
+        "score_penalty": 1.0,
+        "score_composed": 54.47
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 9,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 1,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T214244-e87dbc/26956-Town05-SignalizedJunctionRightTurn/results.json",
+      "source_sha256": "1f48707dea71c3fabf703629d3844092c0c52625d21046c13732b7830f6562b6",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "18305",
+      "scenario": "ParkingCutIn_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 0,
+        "score_penalty": 1.0,
+        "score_composed": 0.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 0,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T214244-e87dbc/18305-Town12-ParkingCutIn/results.json",
+      "source_sha256": "20e180e4196625e6e36785948b027bc56575ab41f4f4fba2e4defc4a1212c9c2",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "27515",
+      "scenario": "PedestrianCrossing_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 50.17,
+        "score_penalty": 0.459857,
+        "score_composed": 23.071047
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 8,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T214244-e87dbc/27515-Town03-PedestrianCrossing/results.json",
+      "source_sha256": "b07fd935569ffaf9d7ceb9b0adb7b0c98aed686d9fd8d83c26fef2141ad4a621",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "27582",
+      "scenario": "PedestrianCrossing_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 0.0,
+        "score_penalty": 1.0,
+        "score_composed": 0.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 0,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T214244-e87dbc/27582-Town11-PedestrianCrossing/results.json",
+      "source_sha256": "ee29816afd33ac62141bedd934338884fd4cf45aab654ef770319e3bbd10d002",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "24240",
+      "scenario": "Accident_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100.0,
+        "score_penalty": 0.121131,
+        "score_composed": 12.113136
+      },
+      "infractions": {
+        "collisions_layout": 1,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 2,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T214244-e87dbc/24240-Town10HD-Accident/results.json",
+      "source_sha256": "f9ee60e2af8230f1609448f06f0df2e439f6b8a06b643f1520c1c1181e3f33ce",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "27018",
+      "scenario": "SignalizedJunctionRightTurn_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 69.16,
+        "score_penalty": 0.375504,
+        "score_composed": 25.969885
+      },
+      "infractions": {
+        "collisions_layout": 1,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 1,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 13,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T214244-e87dbc/27018-Town15-SignalizedJunctionRightTurn/results.json",
+      "source_sha256": "2c682d5c94829eaa987132589a97c320db29b8833939fcb4ae3526e040498614",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "24816",
+      "scenario": "Accident_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 41.66,
+        "score_penalty": 0.6,
+        "score_composed": 24.996
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 1,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 7,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T213950-8ce349/24816-Town03-Accident/results.json",
+      "source_sha256": "b4684e8cf7960e296de2976fa42210e4cc0d1d85d0aa2b89af754d66462565ce",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "24795",
+      "scenario": "ConstructionObstacle_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 33.88,
+        "score_penalty": 0.65,
+        "score_composed": 22.022
+      },
+      "infractions": {
+        "collisions_layout": 1,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 6,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T213950-8ce349/24795-Town04-ConstructionObstacle/results.json",
+      "source_sha256": "f2deaf7db917a758eb6e1fc47f0c78215e96e4edbee3c2d8eb80221e163848cd",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "26990",
+      "scenario": "NonSignalizedJunctionLeftTurn_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 25.72,
+        "score_penalty": 0.6,
+        "score_composed": 15.432
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 1,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 3,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T213950-8ce349/26990-Town03-NonSignalizedJunctionLeftTurn/results.json",
+      "source_sha256": "3d26c7acb67208fef01db890e85e1ca6df6b208ba39fcab7ed7859d530af6bcd",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "3575",
+      "scenario": "InvadingTurn_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 1.0,
+        "score_composed": 100.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T213950-8ce349/3575-Town13-InvadingTurn/results.json",
+      "source_sha256": "fef87684fdd1f36741e1ad87c7110fb37cfa6fac87f26dddb10c7d3d22db8744",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "18356",
+      "scenario": "ParkingCutIn_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 1.0,
+        "score_composed": 100.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T213950-8ce349/18356-Town12-ParkingCutIn/results.json",
+      "source_sha256": "b5ca3a4a7d47e5cd2206d0f65244a06cce49ee94e8b05375c92c7af0edfcaaf1",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "27529",
+      "scenario": "PedestrianCrossing_1",
+      "status": "Failed - Agent deviated from the route",
+      "scores": {
+        "score_route": 50.02,
+        "score_penalty": 0.8,
+        "score_composed": 40.016
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 1,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 8,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 1,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T213950-8ce349/27529-Town04-PedestrianCrossing/results.json",
+      "source_sha256": "bc0bac1a93fa091edbea872688ccd35e5265c60c28aa204eebf15e13cc2dcb36",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "openpilot",
+      "route_id": "24252",
+      "scenario": "DynamicObjectCrossing_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 0.5,
+        "score_composed": 50.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 1,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 20,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260913T213950-8ce349/24252-Town11-DynamicObjectCrossing/results.json",
+      "source_sha256": "b727d89ef4c4202df2c111c6a547f76eb11e01da42212fd00b630c777a162941",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "18311",
+      "scenario": "ParkingCutIn_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 53.07,
+        "score_penalty": 1.0,
+        "score_composed": 53.07
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 8,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T144215-11b512/18311-Town12-ParkingCutIn/results.json",
+      "source_sha256": "416745a1ca543533314e10ced88cddf7a2601acdb0fb46b107259040767dc9a9",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "24252",
+      "scenario": "DynamicObjectCrossing_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 83.48,
+        "score_penalty": 1.0,
+        "score_composed": 83.48
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 15,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T140324-66103d/24252-Town11-DynamicObjectCrossing/results.json",
+      "source_sha256": "a3dcb3296c194bec2265a602ecc92fc09e33ebbe8a97c49577e5f808dc9b5539",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "24816",
+      "scenario": "Accident_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 13.69,
+        "score_penalty": 1.0,
+        "score_composed": 13.69
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 2,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T140324-5a2e93/24816-Town03-Accident/results.json",
+      "source_sha256": "ad7e374197b36e286424aa87087a69ce3371fd16d320089ee02f5696e73b6b16",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "26956",
+      "scenario": "SignalizedJunctionRightTurn_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 28.09,
+        "score_penalty": 1.0,
+        "score_composed": 28.09
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 5,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T140324-66103d/26956-Town05-SignalizedJunctionRightTurn/results.json",
+      "source_sha256": "9bdea8b8124f361f146ce7fab46fbff7cb3bfaeba98de331de9443dc4a6ce91a",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "3373",
+      "scenario": "YieldToEmergencyVehicle_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 28.23,
+        "score_penalty": 0.6,
+        "score_composed": 16.938
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 1,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 4,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T150102-38b66c/3373-Town13-YieldToEmergencyVehicle/results.json",
+      "source_sha256": "faefcfc3a855f1475e05232e5f64f5efa8d34d0eea760561af900a926403339c",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "2086",
+      "scenario": "NonSignalizedJunctionLeftTurn_1",
+      "status": "Failed - Agent deviated from the route",
+      "scores": {
+        "score_route": 52.35,
+        "score_penalty": 0.8,
+        "score_composed": 41.88
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 1,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 9,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 1,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T165636-06dce2/2086-Town12-NonSignalizedJunctionLeftTurn/results.json",
+      "source_sha256": "18ae3089c75c6a484884f9b960213838bc0f16b6ea1bfc0164af8e74fc26e2a6",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "3378",
+      "scenario": "YieldToEmergencyVehicle_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 11.82,
+        "score_penalty": 0.7,
+        "score_composed": 8.274
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 2,
+        "yield_emergency_vehicle_infractions": 1,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T165636-06dce2/3378-Town13-YieldToEmergencyVehicle/results.json",
+      "source_sha256": "879058933f0db47478deec39240a07b3078d4166254c59eb8bb05eb5f39e13a3",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "3410",
+      "scenario": "AccidentTwoWays_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 9.1,
+        "score_penalty": 1.0,
+        "score_composed": 9.1
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 1,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T165636-06dce2/3410-Town13-AccidentTwoWays/results.json",
+      "source_sha256": "987602aed2df74826b82bc1489ef11d52068862db950e0778ae6e57ea64d88d1",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "3575",
+      "scenario": "InvadingTurn_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 1.0,
+        "score_composed": 100.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T165636-06dce2/3575-Town13-InvadingTurn/results.json",
+      "source_sha256": "40883e2410705570edc3f89906490b2170692514eddffa1984ba866c13841598",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "18305",
+      "scenario": "ParkingCutIn_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 23.38,
+        "score_penalty": 1.0,
+        "score_composed": 23.38
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 4,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260910T012026-7d5d34/18305-Town12-ParkingCutIn/results.json",
+      "source_sha256": "9d46d2eb51c8366e2e51b01917560c8861444cff8d05da67497b38cd6ac43c02",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "24795",
+      "scenario": "ConstructionObstacle_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 30.04,
+        "score_penalty": 1.0,
+        "score_composed": 30.04
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 5,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260910T012026-7d5d34/24795-Town04-ConstructionObstacle/results.json",
+      "source_sha256": "0f75359f3a5fb0379de5b8a4426e18bc65155ff980fc5e7215c90ed92f27aba1",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "25863",
+      "scenario": "PedestrianCrossing_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 26.29,
+        "score_penalty": 1.0,
+        "score_composed": 26.29
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 4,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260910T012026-7d5d34/25863-Town07-PedestrianCrossing/results.json",
+      "source_sha256": "3874794ab5e45300e4d9aba1a39d616d4a9c029770198cec01d5d5ba989693b6",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "27018",
+      "scenario": "SignalizedJunctionRightTurn_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 23.22,
+        "score_penalty": 1.0,
+        "score_composed": 23.22
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 4,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260910T012026-7d5d34/27018-Town15-SignalizedJunctionRightTurn/results.json",
+      "source_sha256": "d3b5652bd189d614a07ac2690c88eeb191058463061f198dadae066c17cf2458",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "27515",
+      "scenario": "PedestrianCrossing_1",
+      "status": "Failed - Agent deviated from the route",
+      "scores": {
+        "score_route": 27.26,
+        "score_penalty": 0.82096,
+        "score_composed": 22.379358
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 4,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 1,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260910T012026-7d5d34/27515-Town03-PedestrianCrossing/results.json",
+      "source_sha256": "d54cf191b3ad38bc7510f13c327e9367c2dcb4de79e799a4d965d77822d00606",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "27582",
+      "scenario": "PedestrianCrossing_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 29.44,
+        "score_penalty": 1.0,
+        "score_composed": 29.44
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 5,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260910T012026-7d5d34/27582-Town11-PedestrianCrossing/results.json",
+      "source_sha256": "dec7873926eb3060da130f2bb5910d5d6e3773e81dbbfc4cdef286c7fbae234a",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "3380",
+      "scenario": "YieldToEmergencyVehicle_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 9.85,
+        "score_penalty": 0.7,
+        "score_composed": 6.895
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 1,
+        "yield_emergency_vehicle_infractions": 1,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T171111-4c3d83/3380-Town13-YieldToEmergencyVehicle/results.json",
+      "source_sha256": "719c8e29e0b989ea677cdd35dfb90296c16c2014287cb7681cf2b7e67ca17187",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "3813",
+      "scenario": "HighwayCutIn_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 33.73,
+        "score_penalty": 0.831212,
+        "score_composed": 28.03678
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 6,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T171111-4c3d83/3813-Town13-HighwayCutIn/results.json",
+      "source_sha256": "06411ad9905ea9a9366a1fdd7867f9145439e21083a066c9aa68a04808d3cc07",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "4669",
+      "scenario": "SignalizedJunctionLeftTurn_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 18.19,
+        "score_penalty": 1.0,
+        "score_composed": 18.19
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 3,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T171111-4c3d83/4669-Town12-SignalizedJunctionLeftTurn/results.json",
+      "source_sha256": "141bc889495d922399b1582482bd48f49e89a9de9fc8bd870d41db112c43d776",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "18356",
+      "scenario": "ParkingCutIn_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 1.0,
+        "score_composed": 100.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T171111-4c3d83/18356-Town12-ParkingCutIn/results.json",
+      "source_sha256": "2fb68b4ff167766b2fc01da8498e4cd912185de657673c8ec24eaa71339840a2",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "24240",
+      "scenario": "Accident_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 44.92,
+        "score_penalty": 0.303865,
+        "score_composed": 13.649626
+      },
+      "infractions": {
+        "collisions_layout": 1,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 7,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T171111-4c3d83/24240-Town10HD-Accident/results.json",
+      "source_sha256": "410c4b00ae8a14f6b6da30716eb82b4dd702b5cf0ab070db63a07e77847318d6",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "24333",
+      "scenario": "DynamicObjectCrossing_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 25.86,
+        "score_penalty": 1.0,
+        "score_composed": 25.86
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 4,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T171111-4c3d83/24333-Town15-DynamicObjectCrossing/results.json",
+      "source_sha256": "caea38e9ce87d1411dd76bfbda7c1dbbfad384e9aa8322260d8ca8e7ca3e384d",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "25378",
+      "scenario": "YieldToEmergencyVehicle_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 95.8,
+        "score_penalty": 0.209915,
+        "score_composed": 20.109815
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T171111-4c3d83/25378-Town03-YieldToEmergencyVehicle/results.json",
+      "source_sha256": "38f2460cf27b9e0525cfcc981abf9ab6498a16727bd2ab49024c68f90dd4c2f9",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "25857",
+      "scenario": "AccidentTwoWays_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 35.37,
+        "score_penalty": 1.0,
+        "score_composed": 35.37
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 6,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T171111-4c3d83/25857-Town05-AccidentTwoWays/results.json",
+      "source_sha256": "9638a6b0b169b019fdd6241ade4f60af0f09db9cdc3ddec4464b0bb810a361cf",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "26990",
+      "scenario": "NonSignalizedJunctionLeftTurn_1",
+      "status": "Failed - Agent deviated from the route",
+      "scores": {
+        "score_route": 39.59,
+        "score_penalty": 1.0,
+        "score_composed": 39.59
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 6,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 1,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T171111-4c3d83/26990-Town03-NonSignalizedJunctionLeftTurn/results.json",
+      "source_sha256": "e3a9e1ea9d205c4f41cd7abda1d2abaf3389c87cb382c2452459c3b10f028081",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "27529",
+      "scenario": "PedestrianCrossing_1",
+      "status": "Failed - Agent got blocked",
+      "scores": {
+        "score_route": 25.81,
+        "score_penalty": 1.0,
+        "score_composed": 25.81
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 4,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 1,
+        "route_timeout": 0
+      },
+      "source_id": "20260909T171111-4c3d83/27529-Town04-PedestrianCrossing/results.json",
+      "source_sha256": "03cccfa263432c001de97b330157bcfcc58624e645c46118199eaaa13db3926a",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "drivejepa",
+      "route_id": "3800",
+      "scenario": "MergerIntoSlowTraffic_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 16.0,
+        "score_penalty": 1.0,
+        "score_composed": 16.0
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 2,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260910T040435-282e6c/3800-Town13-MergerIntoSlowTraffic/results.json",
+      "source_sha256": "36bde6ef01edee5ea71c0af1554345eacfa9c64cbcb82f7ff5aa2a1a25c3e091",
+      "cohort": "expansion26"
+    },
+    {
+      "model": "qwendrive",
+      "route_id": "3575",
+      "scenario": "InvadingTurn_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 50.54,
+        "score_penalty": 0.21349,
+        "score_composed": 10.789775
+      },
+      "infractions": {
+        "collisions_layout": 1,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 8,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260914T183850-87c795/3575-Town13-InvadingTurn/results.json",
+      "source_sha256": null,
+      "cohort": "expansion26"
+    },
+    {
+      "model": "qwendrive",
+      "route_id": "1852",
+      "scenario": "AccidentTwoWays_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 29.39,
+        "score_penalty": 0.174182,
+        "score_composed": 5.119207
+      },
+      "infractions": {
+        "collisions_layout": 1,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 2,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 5,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260915T011931-036234/1852-Town12-AccidentTwoWays/results.json",
+      "source_sha256": null,
+      "cohort": "original24"
+    },
+    {
+      "model": "qwendrive",
+      "route_id": "2084",
+      "scenario": "NonSignalizedJunctionLeftTurn_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 17.81,
+        "score_penalty": 0.419805,
+        "score_composed": 7.476733
+      },
+      "infractions": {
+        "collisions_layout": 1,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 3,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260915T011931-036234/2084-Town12-NonSignalizedJunctionLeftTurn/results.json",
+      "source_sha256": null,
+      "cohort": "original24"
+    },
+    {
+      "model": "qwendrive",
+      "route_id": "2539",
+      "scenario": "Accident_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 69.27,
+        "score_penalty": 0.537484,
+        "score_composed": 37.231518
+      },
+      "infractions": {
+        "collisions_layout": 1,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 0,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 12,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260915T011931-036234/2539-Town12-Accident/results.json",
+      "source_sha256": null,
+      "cohort": "original24"
+    },
+    {
+      "model": "qwendrive",
+      "route_id": "2050",
+      "scenario": "SignalizedJunctionRightTurn_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 52.4,
+        "score_penalty": 0.315948,
+        "score_composed": 16.555688
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 1,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 9,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260915T011931-179070/2050-Town12-SignalizedJunctionRightTurn/results.json",
+      "source_sha256": null,
+      "cohort": "original24"
+    },
+    {
+      "model": "qwendrive",
+      "route_id": "2201",
+      "scenario": "EnterActorFlow_1",
+      "status": "Failed - Agent deviated from the route",
+      "scores": {
+        "score_route": 58.67,
+        "score_penalty": 0.39944,
+        "score_composed": 23.435119
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 1,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 9,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 1,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260915T011931-179070/2201-Town12-EnterActorFlow/results.json",
+      "source_sha256": null,
+      "cohort": "original24"
+    },
+    {
+      "model": "qwendrive",
+      "route_id": "2534",
+      "scenario": "Accident_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100.0,
+        "score_penalty": 0.000551,
+        "score_composed": 0.055123
+      },
+      "infractions": {
+        "collisions_layout": 14,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 2,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 1,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260915T011931-179070/2534-Town12-Accident/results.json",
+      "source_sha256": null,
+      "cohort": "original24"
+    },
+    {
+      "model": "qwendrive",
+      "route_id": "3564",
+      "scenario": "InvadingTurn_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 41.21,
+        "score_penalty": 0.167473,
+        "score_composed": 6.90155
+      },
+      "infractions": {
+        "collisions_layout": 1,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 1,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 7,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260915T011931-179070/3564-Town13-InvadingTurn/results.json",
+      "source_sha256": null,
+      "cohort": "original24"
+    },
+    {
+      "model": "qwendrive",
+      "route_id": "3749",
+      "scenario": "EnterActorFlow_1",
+      "status": "Failed - Agent deviated from the route",
+      "scores": {
+        "score_route": 51.52,
+        "score_penalty": 0.412571,
+        "score_composed": 21.255634
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 1,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 8,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 1,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260915T011931-179070/3749-Town13-EnterActorFlow/results.json",
+      "source_sha256": null,
+      "cohort": "original24"
+    },
+    {
+      "model": "qwendrive",
+      "route_id": "1711",
+      "scenario": "ParkingCutIn_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 96.24,
+        "score_penalty": 0.045705,
+        "score_composed": 4.398607
+      },
+      "infractions": {
+        "collisions_layout": 4,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 2,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260915T011931-956007/1711-Town12-ParkingCutIn/results.json",
+      "source_sha256": null,
+      "cohort": "original24"
+    },
+    {
+      "model": "qwendrive",
+      "route_id": "2086",
+      "scenario": "NonSignalizedJunctionLeftTurn_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 47.5,
+        "score_penalty": 0.288,
+        "score_composed": 13.68
+      },
+      "infractions": {
+        "collisions_layout": 0,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 2,
+        "red_light": 0,
+        "stop_infraction": 1,
+        "outside_route_lanes": 0,
+        "min_speed_infractions": 9,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260915T011931-956007/2086-Town12-NonSignalizedJunctionLeftTurn/results.json",
+      "source_sha256": null,
+      "cohort": "expansion26"
+    },
+    {
+      "model": "qwendrive",
+      "route_id": "2286",
+      "scenario": "HighwayCutIn_1",
+      "status": "Completed",
+      "scores": {
+        "score_route": 100,
+        "score_penalty": 0.334322,
+        "score_composed": 33.432245
+      },
+      "infractions": {
+        "collisions_layout": 1,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 1,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 19,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260915T011931-956007/2286-Town12-HighwayCutIn/results.json",
+      "source_sha256": null,
+      "cohort": "original24"
+    },
+    {
+      "model": "qwendrive",
+      "route_id": "2509",
+      "scenario": "ConstructionObstacle_1",
+      "status": "Failed - TickRuntime",
+      "scores": {
+        "score_route": 44.41,
+        "score_penalty": 0.125754,
+        "score_composed": 5.584736
+      },
+      "infractions": {
+        "collisions_layout": 3,
+        "collisions_pedestrian": 0,
+        "collisions_vehicle": 1,
+        "red_light": 0,
+        "stop_infraction": 0,
+        "outside_route_lanes": 1,
+        "min_speed_infractions": 8,
+        "yield_emergency_vehicle_infractions": 0,
+        "scenario_timeouts": 0,
+        "route_dev": 0,
+        "vehicle_blocked": 0,
+        "route_timeout": 0
+      },
+      "source_id": "20260915T011931-956007/2509-Town12-ConstructionObstacle/results.json",
+      "source_sha256": null,
+      "cohort": "original24"
+    }
+  ]
+}

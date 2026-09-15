@@ -235,6 +235,15 @@ was first run on, for reference only.
 | VisionPilot | 0.431 | 0.727 | 0.819 | 0.926 | 0.975 | 0.404 | 0.700 | 0.899 | 0.968 | 0.518 | 0.447 |
 | Baseline (Constant Velocity) | 0.239 | 0.681 | 0.578 | 0.805 | 0.981 | 0.209 | 0.669 | 0.827 | 0.979 | 0.567 | 0.257 |
 
+### Bench2Drive — expansion results (15 September 2026)
+
+The additional **26 routes have final records for DriveJEPA, VisionPilot,
+Alpamayo and unassisted OpenPilot**. Qwen-Drive's 50-route batch and the
+constant-velocity expansion are still in progress. See the
+[expansion score and full infraction tables](docs/benchmarks/bench2drive-expansion-results.md).
+The newer OpenPilot controller differs from the historical 24-route setup;
+keep the cohorts separate. A final, consistent 50-route leaderboard is pending.
+
 ### Bench2Drive — historical 24-route results
 
 Mean driving score and route completion from the 24-route cohort described in ◆.
