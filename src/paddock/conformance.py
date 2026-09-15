@@ -172,7 +172,20 @@ CHECKS: dict[str, str] = {
 
 
 def _finding(check: str, ok: bool, detail: str = "", severity: str = "error") -> Finding:
-    return Finding(check=check, ok=ok, severity=severity, detail=detail, rationale=CHECKS.get(check, ""))
+    """One finding, with `ok` forced to a real `bool`.
+
+    The coercion is load-bearing. Almost every check here is a numpy comparison,
+    so `ok` arrives as a `np.bool_` -- and `paddock verify --model` runs these
+    inside the *model's* interpreter and ships the results back as JSON, which
+    refuses a `np.bool_`. numpy 2 named that scalar `bool`, so the whole run
+    dies on "Object of type bool is not JSON serializable": a message that reads
+    as a paddock bug about a type json handles natively, several frames away
+    from the check that produced it. One coercion here rather than a `bool(...)`
+    every caller has to remember.
+    """
+    return Finding(
+        check=check, ok=bool(ok), severity=severity, detail=detail, rationale=CHECKS.get(check, "")
+    )
 
 
 # --------------------------------------------------------------------------

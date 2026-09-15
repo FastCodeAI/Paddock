@@ -234,9 +234,16 @@ class Frame:
         A 1164x874 RGB frame is 3 MB and `Observation.image` caches it in place,
         so a sequence held whole would carry half a gigabyte of images nobody
         will look at again.
+
+        The decode cache is only dropped where a path can refill it. An
+        open-loop harness sends paths, which is the case worth freeing; a
+        closed-loop observation arrives as pixels with nothing behind them, and
+        evicting those deletes the only copy, so the next read raises rather
+        than re-decoding. The warped views are ours and always go.
         """
         self._views = None
-        self._obs.images.pop(CAMERA, None)
+        if CAMERA in self._obs.image_paths:
+            self._obs.images.pop(CAMERA, None)
 
 
 class QwenDrivePolicy(Policy):

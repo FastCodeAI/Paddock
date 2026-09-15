@@ -481,6 +481,16 @@ class VisionPilotPolicy(Policy):
 
         import onnxruntime as ort
 
+        # The CUDA EP dlopens libcudnn.so by bare name. Installed from a wheel
+        # -- which is how onnxruntime-gpu's own instructions install it -- that
+        # library sits in site-packages/nvidia/..., on nobody's loader path, so
+        # the EP registers, load succeeds, and then the first Conv node fails
+        # with NOT_IMPLEMENTED naming cuDNN. `preload_dlls` is onnxruntime's own
+        # answer: it dlopens the wheel's libraries by absolute path first.
+        # Guarded on the attribute because it arrived in onnxruntime 1.21.
+        if any(p != "CPUExecutionProvider" for p in self.providers) and hasattr(ort, "preload_dlls"):
+            ort.preload_dlls()
+
         opts = ort.SessionOptions()
         # onnxruntime's intra-op pool defaults to every core and ignores
         # OMP_NUM_THREADS. One node on an idle box, that is fine. Four nodes on a

@@ -95,16 +95,25 @@ def _verify_model_in_its_own_env(cfg: SiteConfig, registry: Registry, name: str,
         timeout=spec.startup_timeout_s or 600,
         check=False,
     )
-    for line in proc.stdout.splitlines():
+    lines = proc.stdout.splitlines()
+    for i, line in enumerate(lines):
         if line.startswith("__PADDOCK_JSON__"):
             raw = json.loads(line[len("__PADDOCK_JSON__") :])
             return [C.Finding(**f) for f in raw]
         if line.startswith("__PADDOCK_ERROR__"):
+            # The marker prefixes a whole traceback, so the line it sits on is
+            # only ever "Traceback (most recent call last):" -- which is what
+            # this used to report, for every cause, hiding the one line that
+            # says what actually went wrong. Report the exception, then the
+            # last few frames, which are where the adapter appears.
+            trace = [row for row in (line[len("__PADDOCK_ERROR__") :], *lines[i + 1 :]) if row.strip()]
             return [
                 C.Finding(
                     check="model.checks_ran",
                     ok=False,
-                    detail=line[len("__PADDOCK_ERROR__") :].strip().splitlines()[-1],
+                    detail="\n".join([trace[-1], *(f"{' ' * 9}{row}" for row in trace[-4:-1])])
+                    if trace
+                    else "no output",
                     rationale="The policy module could not be imported or instantiated.",
                 )
             ]

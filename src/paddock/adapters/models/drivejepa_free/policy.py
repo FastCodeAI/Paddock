@@ -203,8 +203,19 @@ class Frame:
         return self.obs.image(CAMERA)
 
     def release(self) -> None:
-        """Drop decoded pixels; the ego state above is what the history needs."""
-        self.obs.images.pop(CAMERA, None)
+        """Drop decoded pixels; the ego state above is what the history needs.
+
+        Only where a path can produce them again. `Observation.image` caches
+        into `images`, and an open-loop harness sends paths, so dropping the
+        cache there frees 3 MB a frame and costs a re-read nobody makes. A
+        closed-loop observation arrives *as* pixels with no path behind it:
+        popping that is not a cache eviction, it is deleting the only copy, and
+        the next read raises `KeyError` instead of decoding. Found by
+        `paddock verify`, whose second `infer_sequence` after `reset()` replays
+        the very observations the first one had emptied.
+        """
+        if CAMERA in self.obs.image_paths:
+            self.obs.images.pop(CAMERA, None)
 
 
 class DriveJepaFreePolicy(Policy):

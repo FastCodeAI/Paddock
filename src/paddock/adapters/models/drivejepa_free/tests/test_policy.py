@@ -204,6 +204,27 @@ def test_old_frames_are_dropped_and_their_pixels_released() -> None:
     assert older in policy.frames
 
 
+def test_pixels_are_only_released_where_a_path_can_produce_them_again() -> None:
+    """An observation that carries pixels and no path holds the only copy.
+
+    `paddock verify` caught this: it infers, calls `reset()`, and infers again
+    over the same observation objects, and the first pass had emptied them --
+    `KeyError: observation has no image for 'CAM_FRONT'`. Closed-loop sends
+    pixels over the wire the same way, so this was a fault in the simulator
+    path, not only in the checker.
+    """
+    from paddock.adapters.models.drivejepa_free.policy import Frame
+
+    held = _observation(0.0)
+    Frame(held).release()
+    assert held.image(CAMERA).shape == (EON.height, EON.width, 3)
+
+    staged = _observation(0.0)
+    staged.image_paths[CAMERA] = "/staged/frame.npy"
+    Frame(staged).release()
+    assert CAMERA not in staged.images
+
+
 # -- derived ego state ---------------------------------------------------------
 
 

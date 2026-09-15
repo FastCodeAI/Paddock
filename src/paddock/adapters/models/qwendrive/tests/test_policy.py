@@ -293,12 +293,29 @@ def test_old_frames_are_dropped_and_their_pixels_released() -> None:
     """160 observations at 3 MB each is half a gigabyte of images nobody reads."""
     policy = POLICY()
     first = _observation(0.0, 0.0, 0.0, 0.0, 10.0)
+    first.image_paths["CAM_FRONT"] = "/staged/frame.npy"
     policy.observe(first)
     first.image()  # force the decode cache
     _drive(policy, n=HISTORY_KEEP + 20)
     assert len(policy.frames) == HISTORY_KEEP
     assert len(policy.timestamps) == HISTORY_KEEP
     assert "CAM_FRONT" not in first.images
+
+
+def test_pixels_are_kept_where_there_is_no_path_to_read_them_back_from() -> None:
+    """An observation carrying pixels and no path holds the only copy.
+
+    Evicting that is not a cache eviction, it is a delete, and the next read
+    raises instead of decoding. `paddock verify` found it on the sibling
+    adapter: it infers, calls `reset()`, and infers again over the same
+    observation objects that the first pass had emptied. Closed-loop sends
+    pixels over the wire the same way.
+    """
+    policy = POLICY()
+    held = _observation(0.0, 0.0, 0.0, 0.0, 10.0)
+    policy.observe(held)
+    _drive(policy, n=HISTORY_KEEP + 20)
+    assert held.image("CAM_FRONT").shape == _IMAGE.shape
 
 
 # ---------------------------------------------------------------------------
