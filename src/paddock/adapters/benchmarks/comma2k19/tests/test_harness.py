@@ -407,6 +407,45 @@ def test_the_ring_is_deep_enough_for_every_sample_the_runner_holds():
         assert bench._retain_segments >= H.RETAIN_SEGMENTS
 
 
+def _model(vram_gb: float):
+    return type("M", (), {"vram_gb": vram_gb, "name": "stub"})()
+
+
+@pytest.mark.parametrize(
+    ("free_gb", "vram_gb", "nodes", "expected"),
+    [
+        (90.0, 18.0, 4, 4),  # a roomy card runs the site's full width
+        (24.0, 18.0, 4, 1),  # only one 18 GB node fits in 24 GB
+        (24.0, 10.0, 4, 2),
+        (90.0, 26.0, 8, 3),  # VRAM binds below the site's ceiling
+        (90.0, 0.0, 8, 8),  # a CPU model is not divided up
+        (4.0, 18.0, 4, 1),  # never zero: one node that waits beats none at all
+    ],
+)
+def test_node_count_is_capped_by_what_the_card_will_hold(monkeypatch, free_gb, vram_gb, nodes, expected):
+    """Four nodes of an 18 GB model into 24 GB is not a slow run, it is no run.
+
+    `runtime.gpu.wait_for` gates each launch on declared VRAM, so the three
+    that do not fit poll for two hours and then raise. Dividing up front is
+    what makes the sweep finish.
+    """
+    monkeypatch.setattr(H.gpu, "free_gb", lambda: free_gb)
+    assert _bench(nodes=nodes).node_count(_model(vram_gb)) == expected
+
+
+def test_node_count_falls_back_to_the_site_budget_without_nvidia_smi(monkeypatch):
+    """No usable nvidia-smi is not a licence to start eight 18 GB nodes."""
+    monkeypatch.setattr(H.gpu, "free_gb", lambda: None)
+    assert _bench(nodes=8).node_count(_model(18.0)) == 1  # 24 GB budget // 18
+    assert _bench(nodes=8).node_count(_model(0.0)) == 8
+
+
+def test_node_count_without_a_model_is_the_site_setting(monkeypatch):
+    """`_retain_segments` calls this with None and must keep sizing the ring."""
+    monkeypatch.setattr(H.gpu, "free_gb", lambda: 8.0)
+    assert _bench(nodes=6).node_count(None) == 6
+
+
 def test_keep_frames_leaves_them_for_the_next_run(tmp_path, monkeypatch):
     frames = _synthetic_frames()
     bench, segment = _frame_bench(tmp_path, monkeypatch, frames, keep_frames=True)
@@ -598,6 +637,8 @@ def _bench(**settings):
         {
             "benchmarks": {"comma2k19": _Cfg(**settings)},
             "datasets": {},
+            # What `node_count` falls back to when nvidia-smi cannot be read.
+            "gpu": type("G", (), {"budget_gb": 24.0, "serialize": True})(),
             # `frame_cache` is expanded for template variables by the real
             # SiteConfig; here a path is already a path.
             "resolve": lambda self, value: Path(value),

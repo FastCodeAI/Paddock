@@ -94,10 +94,12 @@ from paddock.adapters.benchmarks.comma2k19 import calibration as CAL
 from paddock.adapters.benchmarks.comma2k19 import inventory as INV
 from paddock.adapters.benchmarks.comma2k19 import loader as L
 from paddock.adapters.benchmarks.comma2k19 import metrics as MC
+from paddock.adapters.benchmarks.comma2k19 import score as SC
 from paddock.adapters.benchmarks.comma2k19 import toolkit as TK
 from paddock.benchmark import PIPELINE_BATCHES, OpenLoopBenchmark, Sample, input_rate_problems
 from paddock.metrics import trajectory as T
 from paddock.policy.protocol import Command, Observation, Trajectory
+from paddock.runtime import gpu
 
 #: Waypoint spacing of the recorded future handed to `score`. Independent of the
 #: input rate: what the model is *shown* and what it is *scored against* are two
@@ -314,7 +316,7 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         return run_root
 
     def node_count(self, model) -> int:
-        """Policy nodes to run in parallel. See `Benchmark.node_count`.
+        """Policy nodes to run in parallel, capped by what the card will hold.
 
         Worth overriding here because a comma2k19 sample is 160 forward passes
         over frames a node has to read and colour-convert first, and profiling
@@ -324,13 +326,35 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         cores are what a machine bought for a GPU has spare.
 
         Default 4: enough to cover a keyframe group without asking a shared
-        machine for more than it will miss, and every node still waits for the
-        model's declared VRAM before it loads. Raise it per site:
+        machine for more than it will miss. Raise it per site:
 
             [benchmarks.comma2k19]
             nodes = 8
+
+        **The VRAM cap is not an optimisation.** `runtime.gpu.wait_for` gates
+        each launch on the model's declared VRAM, so four nodes of an 18 GB
+        model against a card with 24 GB free does not fail -- it starts one,
+        and then the other three sit in a 60 s poll loop until the two-hour
+        timeout, having produced nothing. Dividing up front turns that into a
+        smaller sweep that runs. CPU models (`vram_gb: 0` -- openpilot on
+        tinygrad, VisionPilot on onnxruntime CPU) are unaffected and keep the
+        site's node count.
+
+        Reads the card's *actual* free VRAM, falling back to the site's
+        `[gpu] budget_gb` when there is no usable nvidia-smi. `free_gb` honours
+        `CUDA_VISIBLE_DEVICES`, so this divides up the card the nodes will
+        really land on. Wall clock only: `node_count` is absent from
+        `run_config`, and every node scores a self-contained `infer_sequence`,
+        so this cannot move a number.
         """
-        return max(1, int(self.setting("nodes", DEFAULT_NODES)))
+        nodes = max(1, int(self.setting("nodes", DEFAULT_NODES)))
+        wanted = float(getattr(model, "vram_gb", 0.0) or 0.0)
+        if wanted <= 0:
+            return nodes
+        available = gpu.free_gb()
+        if available is None:
+            available = float(self.cfg.gpu.budget_gb)
+        return max(1, min(nodes, int(available // wanted)))
 
     def run_config(self) -> dict:
         """What changes the number, hashed into the run id.
@@ -1023,6 +1047,11 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         of the model's `extras` -- NaN throughout for a model that sends none, so
         the declared metric list is the same for every model and a missing head
         reads as "not answered" rather than as a zero.
+
+        `score.score` runs last and only reads what the first two produced, plus
+        the aligned pair. That ordering is the point: the composite is a function
+        of columns that are each published separately, so it can be checked, and
+        disagreed with, without rerunning anything.
         """
         gt_xy = np.asarray(sample.ground_truth, dtype=np.float64)[:, :2]
         gt_t = INTERVAL_S * np.arange(1, len(gt_xy) + 1)
@@ -1041,6 +1070,7 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         # actually reached comes back as `scored_horizon_s`.
         out = MC.score_trajectory(pred, gt, interval_s=prediction.dt, eval_horizon_s=EVAL_HORIZON_S)
         out.update(AUX.score(sample, prediction, pred, gt))
+        out.update(SC.score(out, pred, gt, interval_s=prediction.dt, eval_horizon_s=EVAL_HORIZON_S))
         return out
 
 
