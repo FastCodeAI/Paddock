@@ -371,6 +371,8 @@ B2D records speed at distance checkpoints, even above traffic speed; fewer entri
 
 [Calculation](docs/benchmarks/bench2drive-speed-normalization.md) · [Recorded data](docs/benchmarks/bench2drive-speed-normalization.json)
 
+[VisionPilot and OpenPilot videos](docs/evidence/driving-videos/README.md)
+
 ### neuroNCAP
 
 The **full official set**: 20 scenario-scene pairs over 14 scenes, 10 runs each,
