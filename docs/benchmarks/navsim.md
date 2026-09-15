@@ -183,6 +183,7 @@ NAVSIM scores 8 poses at 0.5 s as `(x, y, heading)`. What each model gives:
 | visionpilot | 8 × 0.5 s | derived | `PLAN_HORIZON_S` 3.0 → 4.0 |
 | alpamayo15 | 8 × 0.5 s of a 64 × 0.1 s raw output | derived | `GRID_INDICES` widened to 8 |
 | openpilot | 8 × 0.5 s | derived | grid already matched — **blocked on input rate** |
+| meteor | 6 × 0.5 s, extended to 8 | derived | 3 s planner; `METEOR_HORIZON_S=4.0` opt-in, recorded as `model_env` |
 
 Both grid changes are additive at the tail, so no recorded score moves:
 `Trajectory.to_wire` hands neuroNCAP the first six poses, and KITScenes'

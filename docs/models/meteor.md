@@ -240,3 +240,59 @@ The record carries per-scene aggregates (`by_group`, all 150 scenes), because
 the harness sets `group` to the scene. The four sibling nuScenes records predate
 #28 and carry none, so a per-scene comparison against them is not possible from
 tracked files until they are re-run under the current runner.
+
+NAVSIM navtest, `results/navsim/meteor/20260914T234307-e56cfc` (v2 EPDMS, 12,146
+scenarios, zero failures, 69 min) and `results/navsim_v1/meteor/20260915T005223-071c0b`
+(v1 PDMS, a node-less replay of exactly those plans, 12 min, no GPU):
+
+| | EPDMS / PDMS | NC | DAC | EP | TTC | lane keeping | comfort | extended comfort |
+|---|---|---|---|---|---|---|---|---|
+| v2 | **0.303** | 0.694 | 0.687 | 0.317 | 0.683 | 0.795 | 0.973 | 0.451 |
+| v1 | **0.366** | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | — | — |
+
+Above the constant-velocity floor (0.239 v2, 0.207 v1) and below every learned
+model (VisionPilot 0.431 / 0.488, Drive-JEPA 0.843 / 0.892). That is a different
+standing from nuScenes, where its L2 sits with Drive-JEPA's, and the difference
+is worth reading carefully, because **a quarter of what NAVSIM scored here is
+not the model's output.**
+
+**The horizon.** METEOR plans 3 s. NAVSIM scores 4 s and `to_navsim_poses`
+refuses a shorter plan rather than extrapolating behind the reader's back, so
+this run set `METEOR_HORIZON_S=4.0`, which continues the model's final 0.5 s
+segment to 4 s; the setting is in `run.json` as `model_env`. Measured on the
+run's own plan dumps:
+
+- **The extension is where the plans are unstable.** Over the 10,040 pairs of
+  consecutive scored frames, the mean lateral disagreement between what one
+  frame planned and what the next planned for the same instant is 0.52 m inside
+  the model's own 3 s and **1.62 m in the extrapolated second**. Extended
+  comfort, which is exactly that comparison, is 0.451 — the lowest in the
+  matrix, below the constant-velocity floor's 0.567, though the model itself is
+  deterministic and single-frame.
+- **And it grows with the turn.** Bucketed by the lateral offset of the model's
+  own 3 s point, the extension adds 0.5 m of further lateral for a straight plan
+  and 4.5 m for a hard turn; drivable-area compliance falls 0.760 → 0.561 across
+  those buckets and lane keeping 0.908 → 0.716. Lane keeping over the whole
+  split, 0.795, is below the floor's 0.827: a straight line stays in its lane
+  better than a curving plan continued off at a tangent.
+
+**What is the model's own.** Two findings from nuScenes reappear here, on the
+first 3 s that METEOR actually planned:
+
+- **It stops short at speed.** Planned travel at 3 s against constant speed:
+  12.0 m vs 10.9 at 2–5 m/s, 19.2 vs 20.6 at 5–9, 25.9 vs 31.8 at 9–14, 34.0 vs
+  43.7 above 14. The plateau near 35 m is the same one KITScenes shows. Ego
+  progress, 0.317, is the second-largest loss after collisions.
+- **It creeps when stopped.** At ego speeds below 0.5 m/s it plans 1.6 m of
+  travel in 3 s where constant speed gives 0.4 m — the nuScenes standstill creep,
+  in a second dataset.
+
+Collisions are the largest single loss: no-at-fault-collisions 0.694 against
+0.94 and above for every other learned model, and barely over the floor's 0.681.
+They are worst in the 2–5 m/s band (0.605), not at standstill (0.792), where
+NAVSIM's at-fault test excuses being rear-ended.
+
+None of this is reachable by the adapter. A 4 s score for this network needs a
+4 s network: the checkpoint's own horizon is 3 s (`EGO_HORIZON = 6` at 0.5 s),
+so the honest options are to report the extension as an extension, as here, or
+to leave NAVSIM out.

@@ -111,7 +111,7 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 | Alpamayo 1.5 | 0.787 △ | 1.002 | 0.691 (10 Hz) † | 0.753 (10 Hz) † | 44.58 ◆ | **3.73** ‖ | 0.8000 ¶ | planned |
 | Drive-JEPA | 0.912 △ | 2.364 | 0.843 | 0.892 † | 31.11 ◆ | **3.57** ‖ | 0.5619 ¶ | planned |
 | VisionPilot | 1.441 △ | 1.534 ∗ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.8864 ¶ | planned |
-| METEOR | 0.977 △ | 1.879 ◇ | — | — | — | — | — | — |
+| METEOR | 0.977 △ | 1.879 ◇ | 0.303 ◊ | 0.366 ◊ | — | — | — | — |
 | Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | 0.207 † | 47.94 ♣ | 0 § | 0.3562 ¶ | — |
 
 ∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
@@ -122,6 +122,18 @@ and extrapolation past a 1 s planner horizon -- and are not comparable in kind
 with a model that emits a timed trajectory. The KITScenes run additionally
 needed the ego origin dropped from the roof pod to the road, without which every
 projected path point lands behind the car; see `docs/benchmarks/kitscenes.md`.
+
+◊ METEOR plans **3 s**; NAVSIM scores **4 s**. A quarter of every scored plan is
+therefore not the model's: `METEOR_HORIZON_S=4.0` (on the record as `model_env`)
+continues the final 0.5 s segment to 4 s, because `to_navsim_poses` refuses a
+shorter horizon rather than inventing one silently. The metrics that read the far
+end of the plan are where METEOR falls to or below the constant-velocity floor —
+lane keeping 0.795 against the floor's 0.827, extended comfort 0.451 against
+0.567, the lowest in this table. Consecutive plans disagree three times more in
+the extrapolated second (1.62 m of lateral) than inside the model's own horizon
+(0.52 m), measured over 10,040 consecutive pairs. Read these two cells as METEOR
+plus that extension, not as a 4 s planner; its 3 s output is scored without any
+extension on nuScenes and KITScenes. See `docs/models/meteor.md`.
 
 ◇ METEOR is TIER IV's 8-camera multi-task network, run from its released
 camera-only ONNX. KITScenes hands it the six-camera ring (#40), so only its two
@@ -315,6 +327,7 @@ was first run on, for reference only.
 | Alpamayo 1.5, 2 Hz OpenScene | 0.608 | 0.941 | 0.788 | 0.890 | 0.998 | 0.596 | 0.939 | 0.931 | 0.938 | 0.490 | 0.653 |
 | Drive-JEPA | **0.843** | 0.984 | 0.985 | 0.991 | 0.998 | 0.889 | 0.979 | 0.974 | 0.978 | 0.477 | 0.880 |
 | VisionPilot | 0.431 | 0.727 | 0.819 | 0.926 | 0.975 | 0.404 | 0.700 | 0.899 | 0.968 | 0.518 | 0.447 |
+| METEOR ◊ | 0.303 | 0.694 | 0.687 | 0.805 | 0.979 | 0.317 | 0.683 | 0.795 | 0.973 | 0.451 | — |
 | Baseline (Constant Velocity) | 0.239 | 0.681 | 0.578 | 0.805 | 0.981 | 0.209 | 0.669 | 0.827 | 0.979 | 0.567 | 0.257 |
 
 ### NAVSIM v1
@@ -337,6 +350,7 @@ future scores 0.946 against the paper's 94.8 (privileged; stored `valid: false`)
 | Alpamayo 1.5, 2 Hz OpenScene | 0.676 | 0.941 | 0.788 | 0.604 | 0.878 | 0.979 | 0.885 |
 | Drive-JEPA | **0.892** | 0.984 | 0.985 | 0.887 | 0.881 | 0.999 | 0.988 |
 | VisionPilot | 0.488 | 0.771 | 0.818 | 0.451 | 0.617 | 0.996 | 0.920 |
+| METEOR ◊ | 0.366 | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | 0.800 |
 | Baseline (Constant Velocity) | 0.207 | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 |
 
 ### Bench2Drive — historical 24-route results
