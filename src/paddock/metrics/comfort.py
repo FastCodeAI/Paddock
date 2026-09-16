@@ -38,18 +38,41 @@ and is prepended before differencing -- without it the first commanded
 acceleration is unmeasurable, and a plan that jumps away from the car (the
 classic "model has not warmed up" artefact) would score as perfectly smooth.
 
-Differencing three times on a half-second grid is a coarse instrument: `dt` is
-the model's own waypoint spacing, so a model planning at 2 Hz and one planning
-at 10 Hz do not see the same high-frequency content, and jerk in particular is
-the noisiest of the five. Read these as "did the plan command something no car
-should do", not as ride-quality telemetry.
+Differencing three times is a coarse instrument, and it is worse than coarse if
+each model is differenced on its own waypoint spacing. Position quantisation of
+size `e` becomes an acceleration of `e/dt^2` and a jerk of `e/dt^3`, so halving
+the spacing multiplies the noise floor eightfold while changing nothing about
+the path. Measured on comma2k19: Qwen-Drive plans at `dt = 0.1` and carries
+about 4 cm of output quantisation on a plan that is otherwise smooth enough to
+score the best ADE of any real model on that benchmark -- and scored a peak jerk
+of 1932 m/s^3 against openpilot's 5.0 on the identical road at the identical
+speed. Every one of its 10,165 plans came out "uncomfortable". None of that was
+a property of the plan; all of it was the grid.
+
+So the kinematics are read on a **common grid** -- `REFERENCE_DT`, coarsened to
+it when a model plans more finely, left alone when it does not. That restores
+the comparison this module exists to make. The cost is that content faster than
+2 Hz is invisible, which is the right trade: these are bounds on what a plan
+commands, and a plan is handed to a controller that smooths it anyway.
+
+Read these as "did the plan command something no car should do", not as
+ride-quality telemetry.
 """
 
 from __future__ import annotations
 
 import numpy as np
 
-__all__ = ["BOUNDS", "COMFORT_KEYS", "MIN_WAYPOINTS", "comfort"]
+__all__ = ["BOUNDS", "COMFORT_KEYS", "MIN_WAYPOINTS", "REFERENCE_DT", "comfort"]
+
+#: The spacing every model is measured on, whatever it plans at. 0.5 s because
+#: that is what every model in this repo emits and what the open-loop harnesses
+#: score at, so for all but one of them this changes precisely nothing -- the
+#: resampled points are the original points. It is deliberately *not* nuPlan's
+#: own 0.1 s: nuPlan differences a simulated, dynamically feasible rollout, where
+#: a 4 cm step between samples cannot occur, while this module differences raw
+#: network output, where it routinely does.
+REFERENCE_DT = 0.5
 
 #: nuPlan's `ego_is_comfortable` bounds. Stored as positive magnitudes --
 #: `lon_decel` is a limit on braking, compared against `-min(a_lon)`.
@@ -77,13 +100,38 @@ COMFORT_KEYS: tuple[str, ...] = (
 )
 
 
+def _on_reference_grid(xy, dt: float):
+    """Resample a finer-than-reference plan onto `REFERENCE_DT` spacing.
+
+    Only ever coarsens. Interpolating a coarse plan *up* to a finer grid would
+    manufacture the smoothness being measured -- linear interpolation has zero
+    jerk between its knots -- so a model planning at or above `REFERENCE_DT` is
+    left on its own grid and its numbers are unchanged by this function existing.
+
+    Returns None when the plan is too short to place `MIN_WAYPOINTS` on the
+    common grid, which is a refusal to measure and not a comfortable verdict.
+    """
+    n = int(len(xy) * dt / REFERENCE_DT + 1e-9)
+    if n < MIN_WAYPOINTS:
+        return None
+    # t = 0 is the ego origin, so it anchors the interpolation as a real sample
+    # rather than being extrapolated to.
+    src_t = np.arange(len(xy) + 1) * dt
+    src = np.vstack([np.zeros((1, 2)), np.asarray(xy, dtype=np.float64)])
+    dst_t = np.arange(1, n + 1) * REFERENCE_DT
+    return np.column_stack([np.interp(dst_t, src_t, src[:, i]) for i in range(2)])
+
+
 def comfort(xy, dt: float) -> dict[str, float]:
     """Kinematic extremes of one planned path, plus whether each is in bounds.
 
     `xy` is (N, 2) in paddock's ego frame, waypoint `i` at `t = (i+1) * dt`;
-    `dt` is the plan's own spacing in seconds. Returns every key in
-    `COMFORT_KEYS`, NaN throughout for a plan too short or not finite, so a
-    caller aggregating across models never sees a key appear and disappear.
+    `dt` is the plan's own spacing in seconds. It is what the plan is *given*
+    on, not what it is measured on -- a plan finer than `REFERENCE_DT` is
+    coarsened onto it first, so two models are always compared on one grid.
+    Returns every key in `COMFORT_KEYS`, NaN throughout for a plan too short or
+    not finite, so a caller aggregating across models never sees a key appear
+    and disappear.
 
     The `*_within_bounds` flags are 0.0/1.0 rather than bools so that averaging
     them across samples gives the fraction of plans that stayed in bounds, which
@@ -96,6 +144,15 @@ def comfort(xy, dt: float) -> dict[str, float]:
     xy = xy[:, :2]
     if not np.isfinite(xy).all():
         return nan
+
+    # Everything below differences `xy` on `dt`, so the grid has to be common
+    # before any of it runs -- see the module docstring on why a model's own
+    # spacing is not a usable one.
+    if dt < REFERENCE_DT:
+        xy = _on_reference_grid(xy, dt)
+        if xy is None:
+            return nan
+        dt = REFERENCE_DT
 
     # t = 0 is the ego origin by construction of the frame; see the docstring.
     path = np.vstack([np.zeros((1, 2)), xy])

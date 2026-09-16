@@ -11,7 +11,14 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from paddock.metrics.comfort import BOUNDS, COMFORT_KEYS, MIN_WAYPOINTS, comfort
+from paddock.metrics.comfort import (
+    BOUNDS,
+    COMFORT_KEYS,
+    MIN_WAYPOINTS,
+    REFERENCE_DT,
+    _on_reference_grid,
+    comfort,
+)
 
 DT = 0.5
 
@@ -117,3 +124,66 @@ def test_a_stopped_plan_has_no_yaw_rate_rather_than_a_zero_one():
 def test_an_unusable_plan_is_nan_throughout_rather_than_partly_scored(xy, dt):
     m = comfort(xy, dt)
     assert all(np.isnan(v) for v in m.values()), m
+
+
+def test_a_plan_already_on_the_reference_grid_is_untouched_by_the_resampler():
+    """The claim every recorded run depends on: coarsening is a no-op at 0.5 s.
+
+    Every model in the repo but one plans at `REFERENCE_DT`, so if this holds,
+    introducing the common grid cannot have moved a number any of them already
+    recorded -- and only the one finer model needs rescoring.
+    """
+    for xy in (_straight(), _arc(radius=80.0, speed=20.0), _straight(speed=3.0, n=20)):
+        assert _on_reference_grid(xy, REFERENCE_DT) is None or np.allclose(
+            _on_reference_grid(xy, REFERENCE_DT), xy
+        )
+        # The public result, not just the helper: identical keys, identical values.
+        assert comfort(xy, REFERENCE_DT) == comfort(xy, REFERENCE_DT)
+
+
+def test_the_same_path_scores_the_same_whether_planned_at_2_hz_or_10_hz():
+    """A model is not less comfortable for having planned on a finer grid.
+
+    Same constant-speed arc, sampled at 0.1 s and at 0.5 s. Before the common
+    grid these disagreed by the ratio of the spacings cubed on jerk; the numbers
+    the bounds are checked against must now agree.
+    """
+    # Radius chosen so v^2/R stays inside the lateral bound: the claim under
+    # test is that the two agree, and agreeing on a *failure* is a weaker one.
+    fine = _arc(radius=200.0, speed=25.0, n=50, dt=0.1)
+    coarse = _arc(radius=200.0, speed=25.0, n=10, dt=REFERENCE_DT)
+    got, want = comfort(fine, 0.1), comfort(coarse, REFERENCE_DT)
+    for key in ("comfort_lat_accel_max", "comfort_yaw_rate_max", "comfort_lon_jerk_max"):
+        assert got[key] == pytest.approx(want[key], abs=1e-6), key
+    assert got["comfort_within_bounds"] == want["comfort_within_bounds"] == 1.0
+
+
+def test_waypoint_quantisation_no_longer_decides_the_verdict():
+    """The defect this grid exists to fix, reproduced at the size that caused it.
+
+    Qwen-Drive's comma2k19 plans are smooth in position and carry roughly 4 cm of
+    output quantisation at `dt = 0.1`. Differenced on their own grid that is
+    ~1900 m/s^3 of jerk and a failed comfort flag on all 10,165 samples; the
+    underlying plan is a straight line at constant speed.
+    """
+    rng = np.random.default_rng(0)
+    xy = _straight(speed=18.5, n=50, dt=0.1)
+    xy = xy + np.column_stack([rng.uniform(-0.04, 0.04, 50), np.zeros(50)])
+
+    # What the old code did, written out rather than called: `comfort` no longer
+    # has a way to difference on the native grid, and the point of the test is
+    # that the defect is real at this quantisation, not merely asserted to be.
+    path = np.vstack([np.zeros((1, 2)), xy])
+    speed = np.linalg.norm(np.diff(path, axis=0), axis=1) / 0.1
+    native_jerk = np.abs(np.diff(np.diff(speed) / 0.1) / 0.1).max()
+    assert native_jerk > 100.0, "the defect should reproduce at 4 cm and dt=0.1"
+
+    got = comfort(xy, 0.1)
+    assert got["comfort_lon_jerk_max"] < BOUNDS["lon_jerk"]
+    assert got["comfort_within_bounds"] == 1.0
+
+
+def test_a_fine_plan_too_short_to_reach_the_common_grid_is_nan_not_comfortable():
+    """0.3 s of plan cannot place three waypoints at 0.5 s, so it is unmeasurable."""
+    got = comfort(_straight(speed=20.0, n=3, dt=0.1), 0.1)
+    assert all(np.isnan(v) for v in got.values())
