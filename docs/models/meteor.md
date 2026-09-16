@@ -322,10 +322,23 @@ end.
 |---|---|---|---|---|
 | 2.44 ±2.42 | 3.20 ±2.39 | 2.50 ±2.50 | **2.64** | 48.0% |
 
-Paired over the same 200 seeded episodes: 0.92 below Drive-JEPA (SE 0.22,
-t −4.25), 0.96 below OpenPilot (t −4.62), 1.08 below Alpamayo (t −5.31), 1.07
-above VisionPilot (t +5.35), and indistinguishable from Qwen-Drive (+0.16, SE
-0.19, t 0.83).
+Paired over the same seeded episodes, at two levels. The episode level treats
+the 200 episodes as independent; they are 10 runs of each of 20 scenario-scene
+pairs, and `docs/benchmarks/neuroncap.md` says the between-scene term dominates
+this benchmark's error, so the pair-level column (each pair's ten runs averaged
+first, n = 20) is the one the conclusions rest on.
+
+| METEOR minus | mean | SE, 200 episodes | t | SE, 20 pairs | t |
+|---|---|---|---|---|---|
+| Alpamayo | −1.08 | 0.20 | −5.31 | 0.44 | −2.47 |
+| OpenPilot | −0.96 | 0.21 | −4.62 | 0.51 | −1.89 |
+| Drive-JEPA | −0.92 | 0.22 | −4.25 | 0.58 | −1.60 |
+| Qwen-Drive | +0.16 | 0.19 | +0.83 | 0.41 | +0.39 |
+| VisionPilot | +1.07 | 0.20 | +5.35 | 0.48 | +2.21 |
+
+So: level with Qwen-Drive, marginally below Alpamayo and above VisionPilot, and
+not clearly separated from Drive-JEPA or OpenPilot. The episode-level t-values
+alone would have put it below all of the top three.
 
 **It steers, and it does not brake.** Measured on every episode's recorded ego
 poses and plans:

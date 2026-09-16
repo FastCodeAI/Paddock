@@ -466,8 +466,10 @@ NAVSIM the same code path produces lateral offsets to 19.92 m. The full table,
 and what is interpretation rather than measurement, are in
 [docs/models/qwendrive.md](docs/models/qwendrive.md).
 
-**METEOR is the mirror image: it steers, and it does not brake.** It places
-fourth, level with Qwen-Drive (paired below), and below the top three. Over the
+**METEOR is the mirror image: it steers, and it does not brake.** Its mean
+places it fourth, level with Qwen-Drive; counted over scenario-scene pairs, it is
+only marginally below Alpamayo and not clearly separated from Drive-JEPA or
+OpenPilot (paired below). Over the
 50 frontal episodes its planned 3 s path reaches a mean peak lateral offset of
 5.17 m, second only to Alpamayo's 10.44 m, and it collides in 36% of them, also
 second best. But it speeds up through every scenario type rather than slowing:
@@ -483,13 +485,22 @@ collision rate sits at the constant-velocity floor. Detail in
 Every model met identical scenario jitter (runs seeded 0–9), so these can be
 compared paired sample for sample rather than as means:
 
-| paired difference over 200 samples | mean | SE | t |
-|---|---:|---:|---:|
-| Alpamayo − OpenPilot | +0.12 | 0.15 | 0.80 |
-| Alpamayo − Drive-JEPA | +0.16 | 0.14 | 1.12 |
-| Alpamayo − VisionPilot | **+2.15** | 0.17 | **12.89** |
-| METEOR − Drive-JEPA | **−0.92** | 0.22 | **−4.25** |
-| METEOR − Qwen-Drive | +0.16 | 0.19 | 0.83 |
+| paired difference | mean | SE over 200 episodes | t | SE over 20 pairs | t |
+|---|---:|---:|---:|---:|---:|
+| Alpamayo − OpenPilot | +0.12 | 0.15 | 0.80 | 0.32 | 0.38 |
+| Alpamayo − Drive-JEPA | +0.16 | 0.14 | 1.12 | 0.32 | 0.50 |
+| Alpamayo − VisionPilot | **+2.15** | 0.17 | **12.89** | 0.38 | **5.73** |
+| METEOR − Drive-JEPA | −0.92 | 0.22 | −4.25 | 0.58 | −1.60 |
+| METEOR − Qwen-Drive | +0.16 | 0.19 | 0.83 | 0.41 | 0.39 |
+
+**Read the pair-level columns.** The 200 episodes are 10 seeded runs of each of
+20 scenario-scene pairs, not 200 independent draws, and this benchmark's error
+is dominated by the between-scene term (`docs/benchmarks/neuroncap.md`). The
+pair-level standard error averages each pair's ten runs first. The Alpamayo rows
+reach the same conclusions at both levels. METEOR's do not: over the 20 pairs
+it is not separable from Drive-JEPA (t −1.60) or OpenPilot (t −1.89), only
+marginally below Alpamayo (t −2.47) and above VisionPilot (t +2.21), and level
+with Qwen-Drive either way.
 
 The top three are **statistically indistinguishable**. Only VisionPilot is
 separated, and decisively. On scene 0103 alone the order was Drive-JEPA 4.04,
