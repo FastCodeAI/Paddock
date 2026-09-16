@@ -526,6 +526,19 @@ nearby frame that looks like it. The benchmark prefix is optional, `--run-id`
 picks particular runs, and `--out` chooses the directory (default
 `{runs}/comma2k19/_samples`).
 
+Three scenes are rendered with all six models together, chosen by querying the
+recorded samples rather than by eye so that "a curve" means a measured one:
+
+| scene | how it was selected | sample |
+|---|---|---|
+| straight highway | speed > 29 m/s, \|yaw rate\| < 0.002 rad/s | `3/99c94dc769b5d96e\|2018-05-03--08-13-12/23/999` |
+| sustained curve | speed > 20 m/s, \|yaw rate\| > 0.06 rad/s | `4/99c94dc769b5d96e\|2018-06-27--15-03-44/18/998` |
+| pull-away from low speed | lowest speeds, ranked by distance covered over the horizon — 2.65 m/s travelling 20.7 m, so a real departure and not a parked car | `8/99c94dc769b5d96e\|2018-08-17--15-51-25/6/999` |
+
+One sample id addresses the same scene for every row, because all six runs score
+the identical sample set. The mp4s land in `{runs}/comma2k19/_samples/` and are
+not tracked — they are tens of megabytes and regenerate from the stored runs.
+
 **One raw segment**, with no model and no run involved — for checking the
 dataset itself, or a calibration, before any evaluation has happened:
 
