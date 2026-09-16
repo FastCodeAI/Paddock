@@ -475,7 +475,9 @@ OpenPilot (paired below). Over the
 second best. But it speeds up through every scenario type rather than slowing:
 the ego's last speed minus its first is +2.37 m/s over frontal episodes, +1.82
 over side and +1.40 over stationary, against −2.81 for Qwen-Drive and −2.29 for
-Alpamayo on the same measure. So the escape that works head-on fails against an
+Alpamayo over the same frontal episodes, last speed minus first
+(`docs/models/qwendrive.md` measures speed change differently, which is why its
+figures for those episodes differ). So the escape that works head-on fails against an
 obstacle standing in the lane, where stationary is its weakest column (2.44,
 53% collisions). The same failure shows on NAVSIM, where its no-at-fault
 collision rate sits at the constant-velocity floor. Detail in

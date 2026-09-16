@@ -343,7 +343,7 @@ alone would have put it below all of the top three.
 **It steers, and it does not brake.** Measured on every episode's recorded ego
 poses and plans:
 
-| episodes | collisions | ego speed, last minus first | mean peak lateral of the 3 s plan |
+| episodes | collisions | ego speed, last minus first | mean peak lateral at the plan's 3 s waypoint |
 |---|---|---|---|
 | frontal (50) | 36% | +2.37 m/s | 5.17 m |
 | side (50) | 50% | +1.82 m/s | 6.29 m |
@@ -354,10 +354,12 @@ frontal lateral offset is second only to Alpamayo's 10.44 m, so frontal is its
 best column. Against an obstacle already standing in the lane, swerving while
 accelerating is not enough, and stationary is its worst. That matches NAVSIM,
 where its no-at-fault collision rate sits at the constant-velocity floor, and
-nuScenes, where it creeps into stopped traffic. The peak lateral offset and the
-collision rate reproduce the method in `docs/models/qwendrive.md` exactly for
-all five models there (1.22 m and 86% for Qwen-Drive, 10.44 m and 32% for
-Alpamayo). The speed column there does not reproduce under last-minus-first,
+nuScenes, where it creeps into stopped traffic. The peak lateral offset, read at
+the 3 s waypoint, and the collision rate reproduce the method in
+`docs/models/qwendrive.md` exactly for all five models there (1.22 m and 86%
+for Qwen-Drive, 10.44 m and 32% for Alpamayo). Read across all six waypoints
+instead, VisionPilot's frontal figure would be 3.65 m against the documented
+1.91 m; METEOR's values are the same either way. The speed column there does not reproduce under last-minus-first,
 so the speed figures here are this measure throughout, not that one.
 
 **The spread is the headline as much as the mean.** Four pairs score a full
