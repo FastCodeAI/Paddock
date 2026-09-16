@@ -49,4 +49,4 @@ capabilities:
   # property that makes it a floor rather than a competitor.
   trained_on: []
 
-benchmarks: [alpasim]
+benchmarks: [alpasim, nuscenes, bench2drive]

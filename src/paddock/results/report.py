@@ -14,7 +14,7 @@ from paddock.results.store import RESULTS_ROOT, MetricsRecord, RunRecord, load_r
 # because nobody had added it.
 # Markers must be specific enough not to catch unrelated names: an earlier
 # "_s" here matched ncap_score and rendered the headline metric backwards.
-_LOWER_IS_BETTER_MARKERS = ("ade", "fde", "_mae", "_error", "_err", "_loss", "seconds")
+_LOWER_IS_BETTER_MARKERS = ("ade", "fde", "_mae", "_error", "_err", "_loss", "seconds", "l2", "col_")
 #: AlpaSim's outcome rates and its fidelity distance read as higher-is-better
 #: from their names alone -- `collision_at_fault` and `offroad` are fractions of
 #: scenes that went wrong, and `dist_to_gt_trajectory` is metres away from the

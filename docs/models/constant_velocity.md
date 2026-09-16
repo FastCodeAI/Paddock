@@ -61,3 +61,19 @@ It reads no image, so it is blind to everything a benchmark is testing. It is a
 denominator, not a baseline to beat in any interesting sense — a model that only
 just clears it has not demonstrated much, and one that falls below it should be
 read as failing *at fault*, not as failing to move.
+
+## On nuScenes and Bench2Drive
+
+The same four lines serve the open-loop protocol and CARLA:
+
+```bash
+paddock run --bench nuscenes    --model constant_velocity
+paddock run --bench bench2drive --model constant_velocity
+```
+
+On nuScenes its L2 grows with the horizon exactly as the road curves away from
+a straight line, and it still beats every learned model on the cumulative
+average (`README.md`, nuScenes table): ego motion in the val split is mostly
+straight. On Bench2Drive it drives at its entry speed until the route turns or
+something stops it. NAVSIM uses its own native constant-velocity agent
+(`paddock_constant_velocity`), not this adapter.

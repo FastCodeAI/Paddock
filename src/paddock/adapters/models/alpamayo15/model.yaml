@@ -56,4 +56,4 @@ capabilities:
   trained_on:
     # NVIDIA internal, 80,000 h. Zero-shot on every paddock benchmark.
     - dataset: nvidia-internal
-benchmarks: [kitscenes, neuroncap, navsim, navsim_v1, bench2drive, alpasim]
+benchmarks: [kitscenes, neuroncap, navsim, navsim_v1, bench2drive, alpasim, nuscenes]

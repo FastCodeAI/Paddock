@@ -29,16 +29,18 @@ became the set every later model had to match. Reading it as a sample list uses
 beside them; `paddock ingest` reads the same file for the predictions, which is
 how Drive-JEPA has a row on this benchmark without a paddock run.
 
-### The four rows, and where each came from
+### The six rows, and where each came from
 
 | model | run | n | ADE | source |
 |---|---|---:|---:|---|
+| qwendrive | `20260914T220841-5a91fd` | 223 | 0.806 | a paddock run; three of the six ring cameras |
 | alpamayo15 | `legacy-full-nonav` | 223 | 0.921 | `eval_kitscenes/runs/full` |
 | visionpilot | `20260909T202724-153b04` | 223 | 1.534 | a paddock run; see below |
 | openpilot | `legacy-full223` | 223 | 1.599 | `eval_kitscenes/runs/full223` |
+| meteor | `20260914T215457-ab0586` | 223 | 1.879 | a paddock run; six of its eight cameras |
 | drivejepa | `legacy-kitscenes_e2e_final` | 223 | 2.364 | `inference/kitscenes_e2e_final.pkl` |
 
-All four carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
+All six carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
 so the column compares. Caveats the hash cannot express:
 
 - **Route hint.** Drive-JEPA was run with `--command gt`, which derives a turn
@@ -50,6 +52,12 @@ so the column compares. Caveats the hash cannot express:
   here is a zero-shot transfer result, which is why it sits last on this
   benchmark and first on NAVSIM. `adapters/benchmarks/navsim/run_kitscenes_inference.py`
   sets out what the adapter can and cannot reconcile.
+- **Camera geometry, and no route hint at all.** Qwen-Drive is the only row read
+  on three cameras: the ring's front, front-left and front-right, at
+  +60.9 / +0.97 / −58.5 degrees and ~87° horizontally, against the ~70° nuPlan
+  rig it trained on. It is zero-shot here. The benchmark supplies no navigation
+  command, so every one of its samples is driven as "go straight" — a channel
+  the model uses on NAVSIM is inert on this one.
 
 Nearly all of Drive-JEPA's error is longitudinal (2.317 m against 0.209 m
 lateral, an 11:1 split, from the original report, which decomposed it against
@@ -107,6 +115,112 @@ measure a model working from a history it invented.
 `Policy.infer_sequence` feeds the sequence and scores the last frame, disabling
 self-priming for its duration. A model that primes *and* receives real history
 sees a manufactured past followed by a real one.
+
+## The camera ring
+
+KITScenes records a six-camera ring and calibrates each camera against the rig
+reference. Every observation the harness builds carries all six -- a frame path
+plus that camera's own intrinsics and extrinsics -- and the node keeps the
+cameras its policy declares (`Observation.from_wire`) and opens the ones it
+reads (`Observation.image`). A model declaring four cameras is scored on four,
+and a model declaring one pays nothing for the other five.
+
+Until this change the harness handed every model `camera_ring_front` alone, as
+`CAM_FRONT`. openpilot and VisionPilot read one camera, so their rows measure
+what they claim; Drive-JEPA declares four, Alpamayo three and METEOR six, and a
+paddock run of any of them was scored with most of its inputs absent. The
+Drive-JEPA and Alpamayo rows in the table above were ingested from their own
+pre-paddock loaders, which read the ring themselves, so they are unaffected.
+
+| dataset sensor | protocol camera | looks |
+|---|---|---|
+| `camera_ring_front` | `CAM_FRONT` | forward |
+| `camera_ring_front_left` | `CAM_FRONT_LEFT` | 60 deg left |
+| `camera_ring_front_right` | `CAM_FRONT_RIGHT` | 60 deg right |
+| `camera_ring_rear` | `CAM_BACK` | backward |
+| `camera_ring_rear_left` | `CAM_BACK_LEFT` | 120 deg left |
+| `camera_ring_rear_right` | `CAM_BACK_RIGHT` | 120 deg right |
+
+The protocol's names are nuScenes', which every adapter's camera handling is
+written against; the dataset's `rear` becomes `BACK` for that reason and no
+other. `RING` in `harness.py` is the mapping, and its test pins it to
+`protocol.CAMERAS` in the protocol's order.
+
+**Calibration.** `calib.json` gives each camera its own pinhole -- on the scene
+checked, focal lengths 1841-1847 px and principal points up to 29 px apart --
+and a `T_to_reference` from the camera's OpenCV optical frame, x right, y down,
+z forward, into the rig reference, x forward, y left, z up. That reading was
+established on the front camera and then *checked* on the other five rather
+than assumed: ego-frame ground points 10 m ahead, behind, left and right,
+projected through each camera's K and inv(cam2ego) on scene `00fc1b9b`, land
+where the ring's geometry says they must (u, v as fractions of width and
+height):
+
+| camera | 10 m ahead | 10 m behind | 10 m left | 10 m right |
+|---|---|---|---|---|
+| front | u 0.51, v 0.67 | behind camera | behind camera | behind camera |
+| front_left | off image, u 1.49 | behind camera | u 0.20, v 0.68 | behind camera |
+| front_right | off image, u -0.40 | behind camera | behind camera | u 0.83, v 0.70 |
+| rear | behind camera | u 0.51, v 0.67 | behind camera | behind camera |
+| rear_left | behind camera | off image, u -0.40 | u 0.83, v 0.69 | behind camera |
+| rear_right | behind camera | off image, u 1.52 | behind camera | u 0.21, v 0.69 |
+
+Front and rear put their point in the lower middle; each side camera, looking
+60 deg out, sees its side's point 30 deg off-axis, a fifth of the way in from
+the edge; every point that should be off the image or behind the camera is.
+v is 0.67-0.70 throughout, which is what a camera 2.0 m above the road sees of
+a ground point 10 m away. A wrong axis convention on any one camera would have
+put its point above the horizon or in the wrong half; none did.
+
+**The ground offset is the rig's.** `ground_offset_m` (`POD_HEIGHT_M`, 2.2) is
+added to every camera's z translation, not only the front's: the six sit within
+4 mm of one another in the pod frame (z from -0.1826 to -0.1864 m), so after
+the shift each is 2.01-2.02 m above the road, and the z = 0 that every
+ground-plane projection assumes is the same road for all six.
+
+**Provenance.** `run.json` gains `config.cameras_supplied`: the ring cameras
+the model declares, in the protocol's order, hashed into the run id alongside
+`config.cameras` (what the model declares in full). The declared list did not
+change with the ring and `run.json` carries no paddock revision, so without
+this a ring run and a front-only run of the same model would share a run id
+and differ by timestamp alone. A record without the key predates the ring and
+was scored on `CAM_FRONT`.
+
+**Tiers, per camera.** A working set is pruned by sensor -- `docs/data-setup.md`
+invites exactly that -- so the harness resolves each ring camera against the
+tiers independently: a camera's frames come from the first tier whose copy of
+the scene has that camera's directory, while `poses.txt` and `calib.json` come
+from the first tier holding the scene. At this site the NVMe working set holds
+the front camera for all 127 of its listed scenes and the rear-right for 53;
+the archive behind it holds all six for all 127; the 13 scenes on the local
+disk hold all six. Resolving the scene once, as before, would have pointed
+five cameras at files one tier further down.
+
+**What is checked, and what is assumed.** Frame *i* of every camera is treated
+as the sample taken at pose *i*. That is how the dataset is written -- one frame
+index across every sensor of a scene, named `{index:010d}.jpg`, against one
+reference clock -- but the scenes on disk here carry neither
+`timestamp.reference.txt` nor the per-sensor `timestamp.<sensor>.txt` files the
+dataset package reads for its asynchronous layout, so how far any camera's
+exposure sits from its pose is not something the harness can measure. It is
+assumed. What can be checked is checked: `preflight()` walks every listed
+scene and refuses if a ring camera is missing from every tier or if a camera's
+frame count differs from the pose count. Over the 140 scenes the sample list
+names, at this site: 840 of 840 camera directories present across the union of
+tiers, 840 of 840 holding exactly one frame per pose with indices contiguous
+from 0. The walk takes about 0.3 s.
+
+**An incomplete ring refuses rather than degrades.** The harness cannot see
+which model is paired -- `samples()` is built before the model is -- so it
+cannot tell a gap that costs nothing (openpilot, rear camera missing) from one
+that silently changes what a six-camera model was scored on. Between refusing
+a run that would have been fine and recording a number that is wrong with
+nothing to show it, it refuses, naming the scenes and the cameras; the
+sample-list hash would not have caught it, since the keyframes are unchanged.
+The fix is a tier that holds the ring, declared last: the archive the working
+set was pruned from. A site that genuinely holds only the front camera cannot
+run this benchmark for any model until it does, and that is the intended
+trade.
 
 ## Camera adaptation
 
