@@ -1,13 +1,26 @@
 # Paddock leaderboard
 
-63 runs across 6 benchmarks.
-31 run(s) excluded as invalid — shown at the end, never averaged in.
+71 runs across 7 benchmarks.
+32 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## bench2drive
 
 | model | run | n | site | driving_score ↑ | route_completion ↑ | infraction_penalty ↑ | collision_rate ↓ | n_crashed ↑ | duration_s ↑ |
 |---|---|---:|---|---:|---:|---:|---:|---:|---:|
 | constant_velocity | 20260908T084921-804913 | 24 | fastcode-navvrat-cv-b2d | 47.943 | 74.682 | 0.635 | 0.583 | 0.000 | 451.080 |
+
+## comma2k19
+
+| model | run | n | site | ade ↓ | fde@1s ↓ | fde@2s ↓ | fde@3s ↓ | scored_horizon_s ↑ | ade@1s ↓ | ade@2s ↓ |
+|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| alpamayo15 | 20260913T072437-b058c2 | 10165 | hpcai-skodate | 0.900 | 0.499 | 0.973 | 1.654 | 4.000 | 0.386 | 0.616 |
+| qwendrive | 20260915T214115-405f64 | 10165 | hpcai-skodate | 1.016 | 0.634 | 1.288 | 2.075 | 5.000 | 0.352 | 0.674 |
+| openpilot | 20260916T051616-2a91ca | 10165 | hpcai-skodate | 1.507 | 0.804 | 1.703 | 2.712 | 10.000 | 0.598 | 1.035 |
+| openpilot | 20260912T053225-2a91ca | 10165 | hpcai-skodate | 1.507 | 0.804 | 1.703 | 2.712 | 10.000 | 0.598 | 1.035 |
+| constant_velocity | 20260916T162837-b89038 | 10165 | hpcai-skodate | 1.639 | 0.734 | 1.786 | 3.286 | 3.000 | 0.537 | 1.017 |
+| constant_velocity | 20260911T231819-736a8a | 10165 | hpcai-skodate | 1.639 | 0.734 | 1.786 | 3.286 | 10.000 | 0.537 | 1.017 |
+| visionpilot | 20260916T012719-03350c | 10165 | hpcai-skodate | 4.045 | 1.652 | 4.553 | 8.146 | 4.000 | 1.149 | 2.462 |
+| drivejepa_free | 20260916T003407-c504e5 | 10165 | hpcai-skodate | 16.048 | 10.887 | 18.016 | 26.248 | 4.000 | 7.800 | 12.077 |
 
 ## kitscenes
 
@@ -107,6 +120,7 @@
 - **neuroncap/visionpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **nuscenes/meteor/20260914T202008-98df65** — --limit 5: a subset of the benchmark, run to test the pipeline
 - **kitscenes/meteor/20260914T185332-24b8ff** — --limit 5: a subset of the benchmark, run to test the pipeline
+- **comma2k19/openpilot/20260912T051526-e9e08e** — --limit 20: a subset of the benchmark, run to test the pipeline
 - **navsim_v1/human/20260911T041230-67c4f3** — privileged: the human agent returns the recorded future the scorer measures against; an anchor for the scoring path, not a model; no model process ran: the recorded human future through the devkit scorer
 - **navsim/alpamayo15/20260911T024038-d518fc** — 1 scenario(s) failed in the scorer and are excluded
 - **navsim/openpilot/20260911T004312-98f3dc** — --limit 12: a subset of the benchmark, run to test the pipeline

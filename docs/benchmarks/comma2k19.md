@@ -582,22 +582,68 @@ cross-track error.
 ## Recorded results
 
 The full dataset, 10,165 samples, every row on the identical sample set
-(`sequences_sha256` `293a225a0b5cbaff` in all three run records). A model is
+(`sequences_sha256` `293a225a0b5cbaff` in all six run records). A model is
 scored only as far as it plans; `—` is where its own horizon ends, not a
-failure. Lower is better.
+failure. Lower is better except `pdm_style_score`.
 
-| | horizon | ADE@1s | ADE@2s | **ADE@3s** | ADE@4s | ADE@5s | ADE@10s | FDE@3s | median ADE@3s |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| alpamayo15 (`Alpamayo-1.5-10B`, 2 of 4 camera slots) | 4 s | 0.386 | 0.616 | **0.900** | 1.263 | — | — | 1.654 | 0.823 |
-| openpilot (`small`, split graph, `4df40d2c1`) | 10 s | 0.598 | 1.035 | 1.507 | 2.017 | 2.571 | 6.032 | 2.712 | 1.555 |
-| constant velocity | 10 s | 0.537 | 1.017 | 1.639 | 2.411 | 3.331 | 10.048 | 3.286 | 1.475 |
+| | horizon | ADE@1s | ADE@2s | **ADE@3s** | ADE@4s | ADE@5s | ADE@10s | FDE@3s | median ADE@3s | miss@3s | PDMS-style ↑ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| alpamayo15 (`Alpamayo-1.5-10B`, 2 of 4 camera slots) | 4 s | 0.386 | 0.616 | **0.900** | 1.263 | — | — | 1.654 | 0.823 | — | — |
+| qwendrive (`Qwen-Drive-1.0-4B`, side slots replicated) | 5 s | 0.352 | 0.674 | 1.016 | 1.405 | 1.847 | — | 2.075 | 1.005 | 0.501 | — |
+| openpilot (`small`, split graph, `4df40d2c1`) | 10 s | 0.598 | 1.035 | 1.507 | 2.017 | 2.571 | 6.032 | 2.712 | 1.555 | 0.647 | 0.410 |
+| constant velocity (registered policy, 6 waypoints) | 3 s | 0.537 | 1.017 | 1.639 | — | — | — | 3.286 | 1.475 | 0.658 | 0.417 |
+| visionpilot (synthesised trajectory) | 4 s | 1.149 | 2.462 | 4.045 | 5.835 | — | — | 8.146 | 2.195 | 0.864 | 0.406 |
+| drivejepa_free (perception-free agent, NAVSIM v1) | 4 s | 7.800 | 12.077 | 16.048 | 20.501 | — | — | 26.248 | 19.801 | 0.831 | 0.541 |
+
+Two rows carry `—` in the last column and the reason differs. `alpamayo15`
+predates it and is `stochastic: true`, so re-running for two proxy columns would
+replace a published 0.900 with a different draw. `qwendrive` is the one model
+here that plans on a 0.1 s grid: its recorded `comfort_*` values were measured
+on that grid, before `metrics/comfort.py` moved to a common `REFERENCE_DT`, and
+they are stale against current code — 1932 m/s³ of "jerk" that was a property of
+4 cm of output quantisation amplified by `1/dt³`, not of the plan. Recomputed
+from its stored predictions the figure is 11.4. Publishing either the stale
+number or a recomputation that no recorded run produced would be worse than
+publishing neither, so the comfort and `pdm_style_score` cells are `—` until it
+is swept again. The five models at `dt = 0.5` are bit-identical under the change.
+
+**The constant-velocity row stops at 3 s, and that is a change in producer, not
+in arithmetic.** The earlier record
+(`constant_velocity/20260911T231819-736a8a`) came from
+`tools/benchmarks/comma2k19/constant_velocity.py`, a standalone script that
+extrapolates the recorded speed across the full 10 s ground-truth horizon and is
+stored under a pseudo-model, as its own `notes` field says. The row above is the
+registered `constant_velocity` policy, which emits the six waypoints neuroNCAP
+requires — 3 s at `waypoint_dt` 0.5. They agree to every printed digit at 1, 2
+and 3 s; the tool's 4/5/10 s figures are 2.411, 3.331 and 10.048, and remain the
+long-horizon reference line because nothing else here reaches 10 s except
+openpilot.
 
 Constant velocity is better at 1 s and has the better *median* at 3 s than
-openpilot; openpilot wins the 3 s mean and pulls away monotonically with
-horizon. Both facts come from the same property of the data — I-280 is mostly
+openpilot; openpilot wins the 3 s mean and pulls away with every horizon they
+share. Both facts come from the same property of the data — I-280 is mostly
 straight, so the baseline is nearly exact most of the time and wrong only on the
 curves, which is exactly where a mean lives and a median does not. Reporting one
 of the two alone would misdescribe the result.
+
+Two of the four models added after the first sweep need their rows read with a
+caveat attached, and in both cases the auxiliary columns are what supply it.
+
+- **drivejepa_free's 16.048 is a reach failure, not a shape failure.** Its
+  `lateral_at_arclength_mae` is 0.609 — the lowest of any model on this
+  benchmark, openpilot included at 1.155 — while `path_length_ratio` is 0.672.
+  It draws close to the right curve and travels two thirds of it. Four seconds
+  of NAVSIM city driving saturates near 64 m and I-280 covers 120, so this is a
+  training-domain speed prior meeting a highway. It is also the clearest
+  demonstration in the repo of why this benchmark refuses to report ADE alone:
+  ADE calls it the worst model here by an order of magnitude, and the two
+  columns that separate speed from shape say the shape is the best on the board.
+- **visionpilot has no native trajectory**, so its row grades a synthesised
+  pipeline — perception, ground projection, curve fit, cruise-speed assumption
+  and extrapolation past a 1 s planner horizon — and is not comparable in kind
+  with a model that emits a timed trajectory. Its median (2.195) is barely half
+  its mean (4.045), which is the signature of that extrapolation failing on a
+  minority of samples rather than a uniform error.
 
 Alpamayo is ahead of both at every horizon it reaches, on the mean *and* the
 median, and it is the median that matters for the comparison above: constant
@@ -623,10 +669,23 @@ Its plan is also much smoother than supercombo's: `comfort_within_bounds` 0.956
 against 0.302, and `comfort_lon_jerk_max` 0.64 m/s³ against 5.04 — see the jerk
 result below, which is the same measurement from the other side.
 
-Alpamayo publishes none of the auxiliary heads through `Trajectory.extras`, so
-every metric in the next two paragraphs is `NaN` for it. That is the intended
-behaviour of one declared metric list rather than a per-model one: the run
-records what the model did not produce instead of quietly shortening the list.
+Of the six, only openpilot and visionpilot publish auxiliary heads through
+`Trajectory.extras`; alpamayo15, qwendrive and drivejepa_free emit a trajectory
+and nothing else, so every metric in the next two paragraphs is `NaN` for them.
+That is the intended behaviour of one declared metric list rather than a
+per-model one: the run records what the model did not produce instead of quietly
+shortening the list.
+
+visionpilot publishes `lead` and deliberately not `lane`. The schema wants four
+polylines ordered left to right; AutoSteer emits a single fitted path centreline
+sampled per image row, and offsetting it by half a nominal lane to manufacture
+two boundaries would make `lane_width_m` report the assumption back as a
+measurement. Its lead head is the interesting comparison with supercombo's:
+three times worse at range (`lead_range_abs_err` 9.10 m against 3.04) and better
+at lateral placement (`lead_lateral_abs_err` 0.369 m against 0.595), which is
+what a detect-and-project stack against a regression head should look like.
+Neither publishes what the other lacks, so `speed_rel_err`, `yaw_rate_abs_err`
+and the sanity gates stay openpilot-only.
 
 The decomposition, for openpilot: `lateral_mae` 1.092 against `longitudinal_mae`
 0.834, `along_track_bias` +0.400 (the plan runs slightly *ahead* of the car),

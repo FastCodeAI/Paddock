@@ -312,7 +312,9 @@ CAN/radar coverage, disk footprint, the lot —
 writes a twelve-section `COMMA2K19_METADATA.md`:
 
 ```bash
-python tools/benchmarks/comma2k19/metadata_report.py --out "$PADDOCK_RUNS/COMMA2K19_METADATA.md"
+# -m from the repo root: the script imports `tools.paths`, so running it by
+# path leaves `tools` off sys.path and it exits with ModuleNotFoundError.
+python -m tools.benchmarks.comma2k19.metadata_report --out "$PADDOCK_RUNS/COMMA2K19_METADATA.md"
 ```
 
 That report is **generated, site-specific and untracked** by design: it names

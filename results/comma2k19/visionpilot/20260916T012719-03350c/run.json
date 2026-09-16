@@ -1,0 +1,38 @@
+{
+  "run_id": "20260916T012719-03350c",
+  "site": "hpcai-skodate",
+  "benchmark": "comma2k19",
+  "model": "visionpilot",
+  "mode": "open_loop",
+  "started_utc": "2026-09-16T01:27:19+00:00",
+  "duration_s": 13687.8,
+  "repo_sha": null,
+  "dataset": {
+    "name": "comma2k19",
+    "n_samples": 10165,
+    "sequences_sha256": "293a225a0b5cbaff"
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT"
+    ],
+    "history_frames": 160,
+    "keyframes_per_segment": 5,
+    "eval_horizon_s": 3.0,
+    "interval_s": 0.5,
+    "gt_horizon_s": 10.0,
+    "input_hz": 20.0,
+    "calibration": "route-pooled, calibrationd formula on recorded pose",
+    "stride": 1,
+    "history_span_s": 7.95,
+    "model_env": {
+      "VISIONPILOT_PROVIDERS": "cuda"
+    }
+  },
+  "hardware": {},
+  "status": "complete",
+  "valid": true,
+  "notes": "",
+  "ingested_from": ""
+}
