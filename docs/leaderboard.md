@@ -1,7 +1,17 @@
 # Paddock leaderboard
 
-71 runs across 6 benchmarks.
+76 runs across 7 benchmarks.
 39 run(s) excluded as invalid — shown at the end, never averaged in.
+
+## alpasim
+
+| model | run | n | site | scene_score ↑ | progress ↑ | collision_rate ↓ | collision_at_fault ↓ | offroad ↓ | duration_frac_20s ↑ | dist_to_gt_trajectory ↓ |
+|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| openpilot | openpilot_020_pilot10 | 10 | fastcode-shakaal | 0.957 | 0.901 | 0.100 | 0.000 | 0.000 | 0.777 | 1.454 |
+| alpamayo15 | alpamayo_proxy_referee_20hz | 10 | fastcode-shakaal | 0.900 | 0.960 | 0.100 | 0.100 | 0.000 | 0.740 | 3.170 |
+| constant_velocity | cv_023_20hz_pilot10 | 10 | fastcode-shakaal | 0.885 | 0.829 | 0.200 | 0.000 | 0.000 | 0.653 | 2.507 |
+| visionpilot | visionpilot_v2_smoke_pilot10_handover_blend | 10 | fastcode-shakaal | 0.849 | 0.820 | 0.300 | 0.100 | 0.000 | 0.699 | 1.467 |
+| drivejepa | drivejepa_014_20hz | 10 | fastcode-shakaal | 0.503 | 0.565 | 0.400 | 0.200 | 0.100 | 0.462 | 2.443 |
 
 ## bench2drive
 
