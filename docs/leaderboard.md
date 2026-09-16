@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
-70 runs across 6 benchmarks.
-38 run(s) excluded as invalid — shown at the end, never averaged in.
+71 runs across 6 benchmarks.
+39 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## bench2drive
 
@@ -78,6 +78,7 @@
 | drivejepa | 20260901T001634-44b6bb | 2 | fastcode-shakaal | 3.536 | - | - | 0.500 | 140.000 |
 | visionpilot | 20260901T000037-c950bd | 1 | fastcode-shakaal | 2.827 | - | - | 1.000 | 89.100 |
 | visionpilot | runs10 | 5 | fastcode-shakaal | 2.792 | 2.510 | 8.314 | 1.000 | - |
+| meteor | 20260915T193036-d34559 | 200 | fastcode-shakaal | 2.644 | 5.051 | 8.604 | 0.480 | - |
 | qwendrive | 20260915T023604-12d5eb | 200 | fastcode-shakaal | 2.487 | 4.514 | 8.604 | 0.690 | - |
 | alpamayo | runs5 | 15 | fastcode-shakaal | 2.458 | 4.731 | 11.226 | 0.667 | - |
 | alpamayo | runs1 | 3 | fastcode-shakaal | 2.059 | 6.393 | 11.557 | 0.667 | - |
@@ -112,6 +113,7 @@
 - **neuroncap/drivejepa/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **neuroncap/openpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **neuroncap/visionpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
+- **neuroncap/meteor/20260915T192353-6ed840** — 1 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes)
 - **nuscenes/qwendrive/20260915T190154-9212ce** — --limit 50: a subset of the benchmark, run to test the pipeline
 - **nuscenes/qwendrive/20260915T185751-94386b** — --limit 5: a subset of the benchmark, run to test the pipeline
 - **neuroncap/qwendrive/20260915T022633-f5592e** — 3 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes)
