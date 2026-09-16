@@ -56,7 +56,7 @@ flowchart LR
         direction TB
         b2d["Bench2Drive<br/>CARLA · ability score"]
         nc["neuroNCAP<br/>NeuRAD · NCAP score"]
-        alp["AlpaSim<br/>nuRec · scene score<br/>OmniDreams · planned"]
+        alp["AlpaSim<br/>nuRec · scene score"]
     end
 
     res[("results/<br/>one schema, with provenance")]
