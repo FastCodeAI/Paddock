@@ -25,6 +25,7 @@ import pytest
 from paddock.adapters.benchmarks.bench2drive.harness import (
     BENCHMARK,
     CRASH_STATUSES,
+    EXCLUDED_ROUTES,
     NotScored,
     carla_pids,
     carla_port_from_log,
@@ -214,6 +215,55 @@ def test_routes_subset_restricts_to_chosen_ids() -> None:
     routes = parse_routes(FIXTURES / "routes_sample.xml")
     assert list(select_routes(routes, subset=["1773"])) == [("1773", "Town12", "ParkedObstacle")]
     assert len(list(select_routes(routes, subset=["1711", "1773"]))) == 2
+
+
+# ---------------------------------------------------------------------------
+# excluded routes
+# ---------------------------------------------------------------------------
+
+#: A stand-in 220 holding one excluded id, built here rather than in the XML
+#: fixture: the fixture is two routes cut verbatim from the real file, and it
+#: should keep saying only that.
+EXCLUDED_ID = next(iter(EXCLUDED_ROUTES))
+ROUTES_WITH_EXCLUDED = [
+    ("1711", "Town12", "ParkingCutIn"),
+    (EXCLUDED_ID, "Town12", "EnterActorFlow"),
+    ("1773", "Town12", "ParkedObstacle"),
+]
+
+
+def test_excluded_route_is_skipped_by_an_unfiltered_run() -> None:
+    """The failure mode this guards: CARLA segfaults on the route and its crash
+    handler kills every CARLA on the same graphics adapter, so a full-set sweep
+    that reaches it loses concurrent runs too."""
+    picked = [rid for rid, _, _ in select_routes(ROUTES_WITH_EXCLUDED)]
+    assert picked == ["1711", "1773"]
+
+
+def test_excluded_route_is_skipped_by_a_town_or_scenario_filter() -> None:
+    """A town or a scenario type does not name the route, so it still skips."""
+    by_town = [rid for rid, _, _ in select_routes(ROUTES_WITH_EXCLUDED, scenes=["Town12"])]
+    assert by_town == ["1711", "1773"]
+    by_scenario = list(select_routes(ROUTES_WITH_EXCLUDED, scenarios=["EnterActorFlow"]))
+    assert by_scenario == []
+
+
+def test_naming_an_excluded_route_runs_it() -> None:
+    """Asking for the id is opt-in: the crash stays reproducible against a newer
+    CARLA, from either `--scene` or a site routes_subset."""
+    by_scene = list(select_routes(ROUTES_WITH_EXCLUDED, scenes=[EXCLUDED_ID]))
+    assert by_scene == [(EXCLUDED_ID, "Town12", "EnterActorFlow")]
+    by_subset = list(select_routes(ROUTES_WITH_EXCLUDED, subset=[EXCLUDED_ID]))
+    assert by_subset == [(EXCLUDED_ID, "Town12", "EnterActorFlow")]
+
+
+def test_every_excluded_route_carries_a_reason() -> None:
+    """The constant is the record of why a route is not scored; an id with no
+    reason would leave a silent hole in a 220-route set."""
+    assert EXCLUDED_ROUTES
+    for rid, reason in EXCLUDED_ROUTES.items():
+        assert rid.isdigit(), rid
+        assert reason.strip(), rid
 
 
 # ---------------------------------------------------------------------------
@@ -486,11 +536,14 @@ def test_an_unknown_scene_or_scenario_is_reported_before_the_model_loads(tmp_pat
 
 
 def test_the_routes_subset_is_on_the_record(tmp_path, monkeypatch) -> None:
-    """A site setting that changes what is measured must reach run.json."""
+    """A site setting that changes what is measured must reach run.json, and so
+    must the tracked exclusion: a full-set run is 219 of the official 220, and
+    which 220 it was cut from has to travel with the number."""
     harness = _harness(_site(tmp_path, monkeypatch, COMPLETED, routes_subset="1773, 1711"))
     assert harness.run_config() == {
         "routes_file": "routes_sample.xml",
         "routes_subset": ["1711", "1773"],
+        "excluded_routes": sorted(EXCLUDED_ROUTES),
         "waypoint_dt": 0.5,
     }
     assert [e.scene for e in harness.episodes(None, runs=1)] == ["1711", "1773"]

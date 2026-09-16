@@ -226,12 +226,13 @@ component of EPDMS. No model behind an HTTP node can do that. Its recorded
 0.90673 is therefore not a baseline the other three can be measured against;
 the comparable set is runs through `paddock_proxy`.
 
-## Bench2Drive / CARLA — adapter landed, not yet run
+## Bench2Drive / CARLA — five models driven, one model's numbers in the store
 
 `adapters/benchmarks/bench2drive`: a model-agnostic CARLA `agent.py`, the
 vendored dual-PID tracker, and a harness that fails a route on every failure
-the evaluator distinguishes rather than scoring it. All five models
-(openpilot, visionpilot, alpamayo15, drivejepa, meteor) declare it.
+the evaluator distinguishes rather than scoring it. Six of the seven models
+(openpilot, visionpilot, alpamayo15, drivejepa, meteor, constant_velocity)
+declare it; qwendrive does not.
 
 | Claim | Verified how | Strength |
 |---|---|---|
@@ -239,10 +240,29 @@ the evaluator distinguishes rather than scoring it. All five models
 | crashes fail, poor outcomes score | parametrised over the evaluator's status strings at 7ec25d1 | **strong** |
 | launch, timeout, CARLA cleanup | stand-in evaluator under test; real flags read from the checkout | **strong** / argued |
 | agent imports in the CARLA-client env | exercised in a Python 3.8 env with the 0.9.15 egg, no server | moderate |
-| a model drives a route through paddock | nothing yet | **unverified** |
+| route 11715 is skipped unless named | unit-tested over every selection path | **strong** |
+| a model drives a route through paddock | constant_velocity, 24/24 routes, stored | **strong** |
+| the four model numbers in the README are reproducible here | driven 4–6 Sep at another site; no `run.json`/`metrics.json` in `results/` | **unverified** |
+| meteor drives a route | nothing yet — declared only | **unverified** |
 
-Needs a site with CARLA 0.9.15 and the pinned checkout wired in
-`[benchmarks.bench2drive]`. Detail in `docs/benchmarks/bench2drive.md`.
+Two things are open, and they are separate.
+
+**The four model results are documented but not stored.** Drive-JEPA (31.11),
+VisionPilot (49.85), Alpamayo 1.5 (44.58) and openpilot (30.09 / 53.62) were
+driven 4–6 Sep 2026 at another site. The numbers are in the README and
+`docs/benchmarks/bench2drive.md`; the raw runs are not on this machine, so
+`paddock report` and `docs/leaderboard.md` show only constant_velocity. Closing
+this means either carrying the source `results.json` trees over and ingesting
+them, or re-running the five models here now that `[benchmarks.bench2drive]` is
+wired up. Until then the README's Bench2Drive table is the only record, and it
+is not regenerable from tracked code and config — the provenance rule the rest
+of `results/` keeps.
+
+**meteor has never run on it.** It declares the benchmark and its six nuScenes
+cameras are all in the agent's `CAM_TF`/`CAM_FOV` tables, so nothing obviously
+blocks it, but that is an argument and not a run.
+
+Detail in `docs/benchmarks/bench2drive.md`.
 
 ## Beyond reproduction
 

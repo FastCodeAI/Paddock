@@ -99,6 +99,19 @@ CRASH_STATUSES = frozenset(
     }
 )
 
+#: Route ids a full-set run skips, and why. CARLA 0.9.15 segfaults inside
+#: ``route_scenario.spawn_parked_vehicles`` about 54 s into 11715, on all nine
+#: attempts across three stacks and regardless of ego speed, so no model can be
+#: scored on it. It is dropped here rather than left to fail because the
+#: evaluator's crash handler kills every CARLA sharing its ``-graphicsadapter``:
+#: a sweep that walks into 11715 takes concurrent runs on the same GPU down with
+#: it, after burning a full ``per_route_timeout_s``. Naming the id explicitly --
+#: ``--scene 11715``, or a site ``routes_subset`` -- still runs it, so the crash
+#: stays reproducible for anyone retesting it against a newer CARLA.
+EXCLUDED_ROUTES = {
+    "11715": "CARLA segfaults in spawn_parked_vehicles (Town12 EnterActorFlow)",
+}
+
 #: Everything ``agent.py`` imports, checked in the client interpreter by
 #: ``preflight`` so a missing package fails before CARLA boots.
 AGENT_IMPORTS = (
@@ -156,13 +169,20 @@ def select_routes(
     when ``--scene`` was not given, the same contract every closed-loop
     benchmark gets.
 
+    Routes in :data:`EXCLUDED_ROUTES` are skipped unless the caller names the id
+    itself, in ``scenes`` or ``subset``. A town, a scenario type or no filter at
+    all is not naming it; asking for the id is, and gets the route.
+
     Pure and separate from :meth:`Bench2DriveBenchmark.episodes` so the selection
     logic is unit-testable without a site config.
     """
     subset_ids = set(subset) if subset else None
     scene_filter = set(scenes) if scenes else None
     scenario_filter = set(scenarios) if scenarios else None
+    named = (subset_ids or set()) | (scene_filter or set())
     for rid, town, stype in routes:
+        if rid in EXCLUDED_ROUTES and rid not in named:
+            continue
         if subset_ids is not None and rid not in subset_ids:
             continue
         if scene_filter is not None and rid not in scene_filter and town not in scene_filter:
@@ -540,11 +560,17 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
 
         A routes subset makes two sites' numbers incomparable unless it is on
         the record; recorded here and hashed into the run id by the runner.
+
+        ``excluded_routes`` is the same argument against a tracked constant: a
+        full-set run is 219 of the official 220, and which 220 it was cut from
+        has to travel with the number. Changing :data:`EXCLUDED_ROUTES` changes
+        the run id, which is the point.
         """
         routes = self.routes_file
         return {
             "routes_file": routes.name if routes is not None else None,
             "routes_subset": sorted(self.routes_subset) if self.routes_subset else None,
+            "excluded_routes": sorted(EXCLUDED_ROUTES),
             "waypoint_dt": WAYPOINT_DT,
         }
 

@@ -3,7 +3,9 @@
 [Bench2Drive](https://github.com/Thinklab-SJTU/Bench2Drive) is a closed-loop
 end-to-end driving benchmark on **CARLA 0.9.15**. The model drives the official
 leaderboard's **220 short routes** (Towns 12/13/15, 44 scenario types × 5), one
-scenario per route, and is scored by the CARLA Leaderboard driving score.
+scenario per route, and is scored by the CARLA Leaderboard driving score. One
+route (11715) crashes CARLA itself and is skipped, so a paddock full-set run is
+219 of them — see *September 2026 runs*.
 
 Closed-loop, like neuroNCAP: the model decides what happens next and errors
 compound. The model runs behind paddock's HTTP policy node; the adapter spawns the
@@ -179,6 +181,12 @@ run each repetition into its own run (three `paddock run … --runs 1`) if you
 intend to feed the upstream tools, and check `n_expected` against `n_samples`
 in `run.json` before believing a merged number.
 
+This bites a full-set run specifically. Paddock skips route 11715 (see
+*September 2026 runs*), so a full sweep is 219 records and the upstream merge
+scores the missing one as 0 — a driving score about 0.45 points below what the
+run measured. Either add the gap back by hand or state the 219 denominator; do
+not report a merged 220-route number from a paddock run without saying which.
+
 ## Running
 
 ```bash
@@ -252,6 +260,7 @@ per-tick `log.csv`.
 | `metric_info.json` matches what the upstream tool reads | field names and layout taken from `get_metric_info` and `efficiency_smoothness_benchmark.read_from_json` at 7ec25d1; not yet fed through the tool end to end | argued |
 | crashed repetitions are dropped, not averaged | unit-tested over crashed, blocked and all-crashed triples | **strong** |
 | an edited CARLA launch line is refused | unit-tested against a stub evaluator with and without the flag | **strong** |
+| route 11715 is skipped unless its id is named | unit-tested over an unfiltered run, a town filter, a scenario filter, `--scene` and `routes_subset` | **strong** for the selection, argued for the CARLA segfault it exists for (nine attempts, not re-run since) |
 
 ## September 2026 runs: what changed and what the numbers are
 
@@ -260,7 +269,14 @@ below made the 24-route set (5 abilities × 5 routes minus 11715) the reference.
 
 * **Route 11715 (Town12 EnterActorFlow) is excluded for every model.** CARLA
   segfaults inside `route_scenario.spawn_parked_vehicles` ~54 s in, on all nine
-  attempts across three stacks, regardless of ego speed.
+  attempts across three stacks, regardless of ego speed. This is now enforced
+  by `EXCLUDED_ROUTES` in `harness.py`, not left to whoever builds the subset:
+  the evaluator's crash handler kills every CARLA sharing its
+  `-graphicsadapter`, so a sweep that reaches 11715 takes concurrent runs on
+  that GPU down with it. A full-set run is therefore 219 routes, and
+  `run.json` records `excluded_routes` so which 220 it was cut from travels
+  with the number. Naming the id — `--scene 11715`, or a site `routes_subset`
+  — still runs it, so the crash stays reproducible against a newer CARLA.
 * **Wire format:** the agent now sends `speed_limit` (m/s, from
   `hero.get_speed_limit()`) and the next junction maneuver as `nav_maneuver` /
   `nav_distance_m` (walked forward on the 1 m world plan). Both optional; only
