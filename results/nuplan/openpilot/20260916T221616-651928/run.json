@@ -1,0 +1,40 @@
+{
+  "run_id": "20260916T221616-651928",
+  "site": "renesas-sjc",
+  "benchmark": "nuplan",
+  "model": "openpilot",
+  "mode": "open_loop",
+  "started_utc": "2026-09-16T22:16:16+00:00",
+  "duration_s": 42.9,
+  "repo_sha": null,
+  "dataset": {
+    "name": "nuplan",
+    "n_samples": 3,
+    "sequences_sha256": "08dfa781f2dfb489"
+  },
+  "config": {
+    "limit": 3,
+    "cameras": [
+      "CAM_OP_ROAD",
+      "CAM_OP_WIDE",
+      "CAM_FRONT"
+    ],
+    "split": "mini",
+    "scenarios_per_type": 8,
+    "min_separation_s": 20.0,
+    "history_frames": 48,
+    "camera": "CAM_F0",
+    "model_env": {
+      "PADDOCK_FFMPEG": "ffmpeg",
+      "PYTHONNOUSERSITE": "1",
+      "LD_LIBRARY_PATH": "/users/gbanda/git/.conda-envs/zmq/lib:lib",
+      "CACHEDB": "/users/gbanda/git/openpilot-build/.tinygrad_cache/cache.db",
+      "XDG_CACHE_HOME": "/users/gbanda/git/openpilot-build/.xdg_cache"
+    }
+  },
+  "hardware": {},
+  "status": "complete",
+  "valid": false,
+  "notes": "camera images cover 26 of 375 anchors (53 logs have no images); not comparable with a full-coverage run; --limit 3: a subset of the benchmark, run to test the pipeline",
+  "ingested_from": ""
+}

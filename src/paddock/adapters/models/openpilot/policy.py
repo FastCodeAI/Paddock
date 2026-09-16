@@ -296,6 +296,9 @@ class OpenpilotPolicy(Policy):
         from openpilot.system.camerad.cameras.nv12_info import get_nv12_info
 
         self.model = self._new_model()
+        import inspect
+
+        self._run_takes_prepare_only = "prepare_only" in inspect.signature(self.model.run).parameters
         # ModelState caches its device tensors by buffer address, so this array
         # must be allocated once and written in place -- never reallocated.
         self.nv12_info = get_nv12_info(TARGET_W, TARGET_H)
@@ -322,6 +325,9 @@ class OpenpilotPolicy(Policy):
         were being fed a subtly wrong view, with nothing failing.
         """
         self.model = self._new_model()
+        import inspect
+
+        self._run_takes_prepare_only = "prepare_only" in inspect.signature(self.model.run).parameters
         self.camera = None
         self.cam_road = None
         self.cam_wide = None
@@ -419,7 +425,13 @@ class OpenpilotPolicy(Policy):
         for _ in range(repeats):
             for buf, packed in packs:
                 pack_nv12(buf, packed, TARGET_W, TARGET_H, stride, y_height)
-            out = self.model.run(self.bufs, transforms, inputs)
+            # openpilot 0.11 added a `prepare_only` positional to ModelState.run.
+            # Probed rather than pinned: the sha in repos.yaml predates it, and
+            # hardcoding either arity breaks whichever checkout a site has.
+            if self._run_takes_prepare_only:
+                out = self.model.run(self.bufs, transforms, inputs, False)
+            else:
+                out = self.model.run(self.bufs, transforms, inputs)
         self.frames_seen += 1
 
         if out is None or "plan" not in out:
