@@ -311,3 +311,66 @@ None of this is reachable by the adapter. A 4 s score for this network needs a
 4 s network: the checkpoint's own horizon is 3 s (`EGO_HORIZON = 6` at 0.5 s),
 so the honest options are to report the extension as an extension, as here, or
 to leave NAVSIM out.
+
+neuroNCAP, `results/neuroncap/meteor/20260915T193036-d34559` (the full official
+set: 20 scenario-scene pairs over 14 scenes, 10 runs each, n=200, zero failures,
+8 h wall clock). No extrapolation here: neuroNCAP takes exactly the six
+waypoints at 0.5 s that METEOR plans, so this is the model's own output end to
+end.
+
+| stationary | frontal | side | overall | collision rate |
+|---|---|---|---|---|
+| 2.44 ±2.42 | 3.20 ±2.39 | 2.50 ±2.50 | **2.64** | 48.0% |
+
+Paired over the same seeded episodes, at two levels. The episode level treats
+the 200 episodes as independent; they are 10 runs of each of 20 scenario-scene
+pairs, and `docs/benchmarks/neuroncap.md` says the between-scene term dominates
+this benchmark's error, so the pair-level column (each pair's ten runs averaged
+first, n = 20) is the one the conclusions rest on.
+
+| METEOR minus | mean | SE, 200 episodes | t | SE, 20 pairs | t |
+|---|---|---|---|---|---|
+| Alpamayo | −1.08 | 0.20 | −5.31 | 0.44 | −2.47 |
+| OpenPilot | −0.96 | 0.21 | −4.62 | 0.51 | −1.89 |
+| Drive-JEPA | −0.92 | 0.22 | −4.25 | 0.58 | −1.60 |
+| Qwen-Drive | +0.16 | 0.19 | +0.83 | 0.41 | +0.39 |
+| VisionPilot | +1.07 | 0.20 | +5.35 | 0.48 | +2.21 |
+
+So: level with Qwen-Drive, marginally below Alpamayo and above VisionPilot, and
+not clearly separated from Drive-JEPA or OpenPilot. The episode-level t-values
+alone would have put it below all of the top three.
+
+**It steers, and it does not brake.** Measured on every episode's recorded ego
+poses and plans:
+
+| episodes | collisions | ego speed, last minus first | mean peak lateral at the plan's 3 s waypoint |
+|---|---|---|---|
+| frontal (50) | 36% | +2.37 m/s | 5.17 m |
+| side (50) | 50% | +1.82 m/s | 6.29 m |
+| stationary (100) | 53% | +1.40 m/s | 4.99 m |
+
+It gains speed in every scenario type. Head-on, swerving is the escape, and its
+frontal lateral offset is second only to Alpamayo's 10.44 m, so frontal is its
+best column. Against an obstacle already standing in the lane, swerving while
+accelerating is not enough, and stationary is its worst. That matches NAVSIM,
+where its no-at-fault collision rate sits at the constant-velocity floor, and
+nuScenes, where it creeps into stopped traffic. The peak lateral offset, read at
+the 3 s waypoint, and the collision rate reproduce the method in
+`docs/models/qwendrive.md` exactly for all five models there (1.22 m and 86%
+for Qwen-Drive, 10.44 m and 32% for Alpamayo). Read across all six waypoints
+instead, VisionPilot's frontal figure would be 3.65 m against the documented
+1.91 m; METEOR's values are the same either way. The speed column there does not reproduce under last-minus-first,
+so the speed figures here are this measure throughout, not that one.
+
+**The spread is the headline as much as the mean.** Four pairs score a full
+5.0 (frontal-0346, side-0108, side-0921, stationary-0108), three score exactly
+0 (side-0103, side-0278, stationary-0966), and two more stay below 0.15
+(stationary-0796 0.12, stationary-0099 0.14). A single run scores exactly 5.0 or at most
+4.0, so a per-pair mean near 2.5 is a mix of clean escapes and full-speed
+impacts.
+
+**One episode misled.** The pipeline smoke,
+`results/neuroncap/meteor/20260915T192353-6ed840`, drove stationary-0103 once
+and scored 0.71 at high impact speed; that pair averages 4.07 over its ten
+runs. Scene 0103 misled this repo in the same way in September.
+

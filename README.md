@@ -111,7 +111,7 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 | Alpamayo 1.5 | 0.787 △ | 1.002 | 0.691 (10 Hz) † | 0.753 (10 Hz) † | 44.58 ◆ | **3.73** ‖ | 0.9000 ¶¶ |
 | Drive-JEPA | 0.912 △ | 2.364 | 0.843 | 0.892 † | 31.11 ◆ | **3.57** ‖ | 0.5030 ¶ |
 | VisionPilot | 1.441 △ | 1.534 ∗ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.8488 ¶ |
-| METEOR | 0.977 △ | 1.879 ◇ | 0.303 ◊ | 0.366 ◊ | — | — | — |
+| METEOR | 0.977 △ | 1.879 ◇ | 0.303 ◊ | 0.366 ◊ | — | **2.64** ‖ | — |
 | Qwen-Drive 1.0 | 0.450 | 0.806 | 0.840 | 0.876 | planned | **2.49** | — |
 | Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | 0.207 † | 47.94 ♣ | 0 § | *0.8850* ¶ |
 
@@ -263,6 +263,7 @@ machine-readable form is in each `model.yaml` and prints with
 | Alpamayo 1.5 | Cosmos-Reason2 VLM + diffusion trajectory decoder | **10 B** | 20 | 4 cam @10 Hz · 448×280 | trajectory 6.4 s + reasoning trace | NVIDIA internal, 80,000 h |
 | Drive-JEPA | V-JEPA-2 ViT-L encoder + proposal-centric planner | 307 M | 1.23 | 1 cam ✧ · 512×256 · 2 frames | trajectory 4 s, from 8192 anchors | OpenScene, then **NAVSIM `navtrain`** ✦ |
 | VisionPilot | three YOLO-family conv nets | **28.1 M** | 0.112 | 1 cam @10 Hz · 1024×512 | lane curvature + closest in-path object | OpenLane, TuSimple, CurveLanes |
+| METEOR | ResNet-34 + FPN per camera, depth-gated IPM lift to one BEV grid, 12 task heads | 54 M | 0.35 | 8 cam · 768×432 · 1 frame (paddock fills 6) | 3 paths × 6 waypoints, 3 s, + steer / accel / brake and 11 perception heads | TIER IV Co-MLOps DRS, Japan + a US subset, 953 GB / 12,595 scenes @5 Hz, auto-labelled (hours not published) |
 | Qwen-Drive 1.0 | Qwen3.5-4B VLM + 1 B flow-matching planning expert | ≈5 B | 11.2 | 3 cam · 4 frames 0.5 s apart · current ~720p, history ~320p | 50 poses (x, y, heading), 5 s @10 Hz | Qwen3.5's corpus + public driving sets, incl. **NAVSIM `navtrain`** ✦ |
 
 ✦ **Two models here declare training exposure to a benchmark's own dataset.**
@@ -445,6 +446,7 @@ all 200 runs. Runs are seeded 0-9, so every model met identical scenario jitter.
 | Alpamayo 1.5 | 4.41 ±1.48 | 3.64 ±2.01 | 2.45 ±1.93 | **3.73** | 32.5% |
 | OpenPilot | 4.52 ±1.34 | 2.30 ±1.24 | 3.08 ±2.25 | **3.60** | 38.0% |
 | Drive-JEPA | 4.23 ±1.33 | 2.42 ±1.43 | 3.39 ±2.07 | **3.57** | 45.5% |
+| METEOR | 2.44 ±2.42 | 3.20 ±2.39 | 2.50 ±2.50 | **2.64** | 48.0% |
 | Qwen-Drive 1.0 | 2.71 ±1.73 | 1.52 ±1.49 | 3.00 ±2.04 | **2.49** | 69.0% |
 | VisionPilot | 2.53 ±1.60 | 1.17 ±1.38 | 0.08 ±0.18 | **1.58** | 85.5% |
 | Baseline (Constant Velocity) | 0.00 | 0.00 | 0.00 | 0.00 § | 100.0% |
@@ -464,15 +466,43 @@ NAVSIM the same code path produces lateral offsets to 19.92 m. The full table,
 and what is interpretation rather than measurement, are in
 [docs/models/qwendrive.md](docs/models/qwendrive.md).
 
+**METEOR is the mirror image: it steers, and it does not brake.** Its mean
+places it fourth, level with Qwen-Drive; counted over scenario-scene pairs, it is
+only marginally below Alpamayo and not clearly separated from Drive-JEPA or
+OpenPilot (paired below). Over the
+50 frontal episodes its planned 3 s path reaches a mean peak lateral offset of
+5.17 m, second only to Alpamayo's 10.44 m, and it collides in 36% of them, also
+second best. But it speeds up through every scenario type rather than slowing:
+the ego's last speed minus its first is +2.37 m/s over frontal episodes, +1.82
+over side and +1.40 over stationary, against −2.81 for Qwen-Drive and −2.29 for
+Alpamayo over the same frontal episodes, last speed minus first
+(`docs/models/qwendrive.md` measures speed change differently, which is why its
+figures for those episodes differ). So the escape that works head-on fails against an
+obstacle standing in the lane, where stationary is its weakest column (2.44,
+53% collisions). The same failure shows on NAVSIM, where its no-at-fault
+collision rate sits at the constant-velocity floor. Detail in
+[docs/models/meteor.md](docs/models/meteor.md).
+
 **Scene 0103 was not representative, and the ordering it implied was wrong.**
 Every model met identical scenario jitter (runs seeded 0–9), so these can be
 compared paired sample for sample rather than as means:
 
-| paired difference over 200 samples | mean | SE | t |
-|---|---:|---:|---:|
-| Alpamayo − OpenPilot | +0.12 | 0.15 | 0.80 |
-| Alpamayo − Drive-JEPA | +0.16 | 0.14 | 1.12 |
-| Alpamayo − VisionPilot | **+2.15** | 0.17 | **12.89** |
+| paired difference | mean | SE over 200 episodes | t | SE over 20 pairs | t |
+|---|---:|---:|---:|---:|---:|
+| Alpamayo − OpenPilot | +0.12 | 0.15 | 0.80 | 0.32 | 0.38 |
+| Alpamayo − Drive-JEPA | +0.16 | 0.14 | 1.12 | 0.32 | 0.50 |
+| Alpamayo − VisionPilot | **+2.15** | 0.17 | **12.89** | 0.38 | **5.73** |
+| METEOR − Drive-JEPA | −0.92 | 0.22 | −4.25 | 0.58 | −1.60 |
+| METEOR − Qwen-Drive | +0.16 | 0.19 | 0.83 | 0.41 | 0.39 |
+
+**Read the pair-level columns.** The 200 episodes are 10 seeded runs of each of
+20 scenario-scene pairs, not 200 independent draws, and this benchmark's error
+is dominated by the between-scene term (`docs/benchmarks/neuroncap.md`). The
+pair-level standard error averages each pair's ten runs first. The Alpamayo rows
+reach the same conclusions at both levels. METEOR's do not: over the 20 pairs
+it is not separable from Drive-JEPA (t −1.60) or OpenPilot (t −1.89), only
+marginally below Alpamayo (t −2.47) and above VisionPilot (t +2.21), and level
+with Qwen-Drive either way.
 
 The top three are **statistically indistinguishable**. Only VisionPilot is
 separated, and decisively. On scene 0103 alone the order was Drive-JEPA 4.04,
