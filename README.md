@@ -341,7 +341,7 @@ future scores 0.946 against the paper's 94.8 (privileged; stored `valid: false`)
 
 ### Bench2Drive — 50 routes
 
-Four models and CV (fixed 6 m/s), evaluated on the same 50 routes.
+Five models and constant velocity at five fixed target speeds, evaluated on the same 50 routes.
 DS = mean driving score; RC = mean route completion. Infraction columns are recorded counts.
 
 | Model/system | Routes | DS | RC (%) | Ped. collision | Vehicle collision | Layout collision | Red light | Stop sign | Outside lanes | Deviation | Blocked | Emergency yield | Min-speed entries | Route timeout | Scenario timeout | Collisions total | Routes with collision |
@@ -350,10 +350,18 @@ DS = mean driving score; RC = mean route completion. Infraction columns are reco
 | VisionPilot | 50/50 | 47.82 | 71.19 | 6 | 23 | 13 | 11 | 3 | 11 | 10 | 2 | 4 | 655 | 0 | 0 | 42 | 29/50 |
 | Alpamayo 1.5 (nav) | 50/50 | 43.04 | 72.32 | 3 | 42 | 1 | 0 | 0 | 22 | 3 | 9 | 1 | 660 | 0 | 0 | 46 | 27/50 |
 | OpenPilot (mixed setups) † | 50/50 | 48.11 | 63.50 | 3 | 10 | 5 | 5 | 4 | 4 | 9 | 10 | 4 | 587 | 0 | 0 | 18 | 14/50 |
+| QwenDrive ‡ | 50/50 | 12.92 | 50.19 | 0 | 50 | 60 | 1 | 0 | 46 | 9 | 16 | 0 | 437 | 0 | 0 | 110 | 45/50 |
 | CV (fixed 6 m/s) | 50/50 | 40.39 | 73.08 | 9 | 24 | 26 | 11 | 4 | 14 | 14 | 4 | 5 | 673 | 0 | 0 | 59 | 31/50 |
+| CV (fixed 3 m/s) | 50/50 | 48.31 | 74.65 | 8 | 27 | 14 | 5 | 4 | 11 | 11 | 1 | 5 | 688 | 0 | 0 | 49 | 27/50 |
+| CV (fixed 9 m/s) | 50/50 | 43.57 | 72.70 | 6 | 24 | 14 | 11 | 4 | 13 | 15 | 3 | 4 | 667 | 0 | 0 | 44 | 29/50 |
+| CV (fixed 12 m/s) | 50/50 | 42.19 | 72.12 | 4 | 35 | 16 | 11 | 4 | 14 | 13 | 3 | 4 | 659 | 0 | 0 | 55 | 28/50 |
+| CV (fixed 15 m/s) | 50/50 | 41.45 | 73.68 | 4 | 37 | 17 | 11 | 4 | 15 | 15 | 4 | 4 | 676 | 0 | 0 | 58 | 28/50 |
 
 † OpenPilot combines controller versions and includes 16 assisted recordings.
 DriveJEPA uses a NAVSIM-v2 checkpoint zero-shot; VisionPilot uses a synthesized trajectory with an extrapolated tail.
+‡ QwenDrive is zero-shot, front camera only, through the same tracker; its route 24333 entry is the valid rerun after a startup-guard fix.
+(nav) marks the Alpamayo run that receives the route's navigation instruction (manoeuvre and distance) on the wire each tick.
+CV rows hold the stated fixed target speed; the score depends strongly on the chosen speed, so all five bands are shown.
 
 #### Minimum-speed normalization
 
@@ -363,13 +371,22 @@ DriveJEPA uses a NAVSIM-v2 checkpoint zero-shot; VisionPilot uses a synthesized 
 | VisionPilot | 655 | 167.16 | 21.22 |
 | Alpamayo 1.5 (nav) | 660 | 165.93 | 44.09 |
 | OpenPilot (mixed setups) † | 587 | 169.85 | 47.02 |
+| QwenDrive ‡ | 437 | 163.11 | 53.32 |
 | CV (fixed 6 m/s) | 673 | 168.93 | 46.66 |
+| CV (fixed 3 m/s) | 688 | 168.10 | 67.73 |
+| CV (fixed 9 m/s) | 667 | 168.08 | 13.04 |
+| CV (fixed 12 m/s) | 659 | 168.13 | 9.71 |
+| CV (fixed 15 m/s) | 676 | 168.25 | 7.99 |
 
 `Entries/km = total entries / sum(route_length_m × RC/100 / 1000)`.
 B2D records speed at distance checkpoints, even above traffic speed; fewer entries can reflect less route progress.
 “Below 100%” is the share of recorded ratios below traffic speed, not a safety violation rate.
 
 [Calculation](docs/benchmarks/bench2drive-speed-normalization.md) · [Recorded data](docs/benchmarks/bench2drive-speed-normalization.json)
+
+Tracked run records for every row above, recomputed from the per-route `results.json` files by
+`paddock ingest` (`[[ingest.bench2drive]]`, one pooled closed-loop run per model or speed band):
+`results/bench2drive/<model>/pooled50-*`. `paddock report` reads them like any other run.
 
 [VisionPilot and OpenPilot videos](docs/evidence/driving-videos/README.md)
 

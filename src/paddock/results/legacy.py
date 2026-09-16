@@ -13,6 +13,11 @@ alongside everything else machine-shaped:
 
     [ingest.kitscenes_pkl]
     drivejepa  = "/path/to/exp/inference/kitscenes_e2e_final.pkl"
+    [[ingest.bench2drive]]
+    model  = "drivejepa"
+    runs   = "/path/to/paddock-runs/bench2drive/drivejepa"
+    label  = "pooled50"
+    routes = ["1711", "1852"]        # optional; default: every route found
 
 Absent sources are reported and skipped, not treated as errors: no site is
 expected to have all of them.
@@ -25,7 +30,7 @@ from pathlib import Path
 
 from paddock.config import SiteConfig
 from paddock.results import store
-from paddock.results.ingest import kitscenes, navsim, neuroncap
+from paddock.results.ingest import bench2drive, kitscenes, navsim, neuroncap
 
 
 def _ingest_section(cfg: SiteConfig) -> dict:
@@ -62,6 +67,22 @@ def ingest_all(cfg: SiteConfig, dry_run: bool = False) -> tuple[int, list[str]]:
         else:
             skipped.append(f"kitscenes_pkl.{model} does not exist: {pkl_path}")
 
+    # One pooled closed-loop run per entry: see results/ingest/bench2drive.py.
+    for entry in section.get("bench2drive") or []:
+        runs = entry["runs"]
+        roots = [Path(r) for r in (runs if isinstance(runs, list) else [runs])]
+        if all(r.exists() for r in roots):
+            collected += bench2drive.ingest(
+                roots,
+                model=entry["model"],
+                site=cfg.site,
+                routes=[str(r) for r in entry["routes"]] if entry.get("routes") else None,
+                run_label=entry.get("label", "pooled"),
+                notes=entry.get("notes", ""),
+                model_env=entry.get("model_env"),
+            )
+        else:
+            skipped.append(f"bench2drive.{entry.get('model', '?')} runs do not exist: {runs}")
     csv_path = section.get("navsim_csv")
     if csv_path and Path(csv_path).exists():
         model = section.get("navsim_model", "drivejepa")

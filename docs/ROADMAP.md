@@ -234,6 +234,15 @@ the evaluator distinguishes rather than scoring it. All five models
 Needs a site with CARLA 0.9.15 and the pinned checkout wired in
 `[benchmarks.bench2drive]`. Detail in `docs/benchmarks/bench2drive.md`.
 
+**Recorded results are tracked (16 Sep 2026).** The 50-route driving results for
+Drive-JEPA, VisionPilot, Alpamayo 1.5, OpenPilot, QwenDrive and constant velocity at
+five fixed speeds live in `results/bench2drive/<model>/pooled50-*`, produced by
+`paddock ingest` from the per-route `results.json` trees at the site that ran them
+(`[[ingest.bench2drive]]`), not transcribed from a README. Landing them needed no
+re-run: the ingest pools the recorded routes and keeps every source run id and
+file digest. A site without the trees cannot regenerate them, which is the
+intended meaning of a tracked result.
+
 ## Beyond reproduction
 
 - **nuScenes open-loop** — **done (camera-only); protocol transcribed and pinned by

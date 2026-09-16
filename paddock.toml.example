@@ -231,3 +231,13 @@ serialize = true
 # WARP_DEV = "CPU"
 # PADDOCK_OPENPILOT_NATIVE_LONG = "0"
 # PADDOCK_OPENPILOT_RESUME_S = "0"
+
+# Recorded Bench2Drive route results, pooled into one run per model (or per
+# speed band). `runs` may be one root or a list; routes default to every route
+# found under them. See src/paddock/results/ingest/bench2drive.py.
+# [[ingest.bench2drive]]
+# model  = "drivejepa"
+# runs   = "/path/to/paddock-runs/bench2drive/drivejepa"
+# label  = "pooled50"
+# routes = ["1711", "1852", "2802"]
+# notes  = "24 routes from the 03-04 Sep campaign, 26 from the 09 Sep expansion"
