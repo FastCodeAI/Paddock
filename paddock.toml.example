@@ -77,6 +77,49 @@ weights = "/path/to/weights"
 # gpu_rank    = "0"                                    # CARLA's -graphicsadapter
 # record      = "false"                                # per-tick front/BEV JPEGs + log.csv: ~40 GB per full sweep
 
+# [benchmarks.alpasim]
+# AlpaSim runs its services through docker compose and attaches a driver over
+# gRPC; paddock supplies the driver via the bridge, so only the checkout and its
+# interpreter are needed here.
+# repo   = "/path/to/alpasim"
+# python = "/path/to/alpasim/.venv/bin/python"
+#
+# Which pinned scene list to drive. See adapters/benchmarks/alpasim/scenes/.
+# scene_set = "public_2601_first10"
+#
+# Where AlpaSim caches the USDZ scene artifacts. Large and site-specific; an
+# unset cache re-fetches every scene, which is slow rather than wrong.
+# scene_cache = "/path/to/nre-artifacts"
+#
+# Which reconstruction replays the clip. The README carries nuRec and OmniDreams
+# as separate columns because they are different reconstructions of the same
+# scene -- a score from one is not a statement about the other -- so this is
+# hashed into the run id and stored in run.json, and the two can never be
+# averaged together by accident. Only "nurec" is wired at the pinned sha;
+# anything else is refused in preflight rather than recorded as if it had run.
+# renderer = "nurec"
+#
+# Per-frame debugging video. Upstream defaults this ON at every frame, which is
+# ~180 MB per scene -- and `scene_set` is a site setting, so a site that widens
+# it to all 913 public_2601 scenes gets ~160 GB per model. Off unless asked.
+# video                 = false
+# video_every_nth_frame = 1          # only read when video = true
+#
+# The wizard's two required config groups. `local` and `1gpu` are what every
+# recorded run used; a site with more GPUs can raise the topology.
+# deploy   = "local"
+# topology = "1gpu"
+#
+# Backstop against a wedged container, not a performance target: about 5 min per
+# scene with a 10B driver, 50 s for the constant-velocity floor.
+# per_scene_timeout_s = "1800"
+#
+# How long the runtime waits for the driver to answer its version probe.
+# Upstream defaults to 120 s; a cold 10B checkpoint read answers at ~305 s, so
+# the default kills the run and blames the driver. Leave this alone unless a
+# model loads slower still.
+# startup_timeout_s = "900"
+
 [gpu]
 # Total VRAM paddock may assume, in GB. Used to gate model startup rather than
 # discovering the hard way, several minutes into a checkpoint read, that the
@@ -97,6 +140,8 @@ serialize = true
 # python       = "/path/to/envs/drive-jepa/bin/python"
 # devkit       = "/path/to/Drive-JEPA/navsim_v2"   # the directory holding navsim/
 # metric_cache = "/path/to/exp/metric_cache_v2"    # run_metric_caching.py builds one
+# nuplan       = "/path/to/nuplan-v1.1"            # optional: splits/<split>/*.db + sensor_blobs/<split>/ at 10 Hz,
+#                                                  # for models needing denser input than OpenScene's 2 Hz
 # split        = "navtest"
 # workers      = 4
 # chunk_logs   = 4        # logs per scorer invocation; 0 = one invocation (no resume)
@@ -105,10 +150,32 @@ serialize = true
 #                        # with >1 visionpilot node, also set VISIONPILOT_ORT_THREADS (e.g. "2")
 #                        # under [models.visionpilot.env], or each node claims every core
 
+# [benchmarks.navsim_v1]
+# NAVSIM v1.1 PDMS on the same OpenScene data, scored by the v1 devkit that sits
+# beside navsim_v2 in the Drive-JEPA clone. Same interpreter; the harness puts
+# the devkit first on PYTHONPATH. A metric cache is per devkit generation: build
+# this one with `python -m tools.benchmarks.navsim.build_metric_cache`; the v2
+# cache does not load under v1, and preflight refuses the wrong generation.
+# python       = "/path/to/envs/drive-jepa/bin/python"
+# devkit       = "/path/to/Drive-JEPA/navsim_v1"   # the directory holding navsim/
+# metric_cache = "/path/to/exp/metric_cache_v1"
+# split        = "navtest"
+# workers      = 4
+# chunk_logs   = 4
+# run_retries  = 2
+# nodes        = 4
+
 # [benchmarks.kitscenes]
 # The shared keyframe list every model is scored on. It *is* the benchmark:
 # two models scored on different lists are not comparable.
 # sample_list = "/path/to/kitscenes_e2e_final.pkl"
+#
+# Height of the KITScenes reference frame (the roof pod) above the road, in
+# metres. Every sensor is calibrated against that pod, so a model that
+# intersects camera rays with the ground plane needs the origin dropped to road
+# level -- otherwise every projected point lands behind the car. Default 2.2;
+# override only if you have measured this rig.
+# ground_offset_m = 2.2
 
 # [benchmarks.neuroncap]
 # Closed-loop NCAP scoring against a NeuRAD render; docs/benchmarks/neuroncap.md.
@@ -143,3 +210,62 @@ serialize = true
 #                     # "off" logs no frames at all -- fastest, smallest.
 # ffmpeg = "/path/to/ffmpeg"   # else $PADDOCK_FFMPEG, else PATH. Without one,
 #                              # frames are kept and the run is not failed.
+
+# [benchmarks.nuscenes]
+# nuScenes val open-loop planning (L2 + collision, UniAD/VAD protocol). Reads the
+# v1.0-trainval tables directly -- no devkit -- using [datasets.nuscenes] above.
+# The 150-scene val index is cached here; optional, defaults to <repo>/.cache/.
+# index_cache = "/path/to/cache/nuscenes_val_index.pkl"
+
+# For Openpilot only: real front-camera exposures between the scored keyframes.
+# camera_history = "CAM_FRONT"
+# history_image_root = "/path/to/nuscenes/with/sweeps"
+# history_index_cache = "/path/to/cache/nuscenes_front_exposures.pkl"
+# history_seconds = 5.0
+
+# Configure these in the model node environment, not just the invoking shell.
+# [models.openpilot.env]
+# PADDOCK_OPENPILOT_CUDA_MODEL = "/path/to/driving_cuda.pkl"
+# NVRTC_PATH = "/path/to/cuda_nvrtc/lib/libnvrtc.so.12"
+# DEV = "CUDA"
+# WARP_DEV = "CPU"
+# PADDOCK_OPENPILOT_NATIVE_LONG = "0"
+# PADDOCK_OPENPILOT_RESUME_S = "0"
+
+# ---------------------------------------------------------------------------
+# [ingest] -- where results that predate paddock live on this machine.
+#
+# Only needed for `paddock ingest`. Absent sources are reported and skipped, so
+# no site is expected to have all of them; the full key list is the docstring of
+# src/paddock/results/legacy.py.
+# ---------------------------------------------------------------------------
+# [ingest]
+#
+# AlpaSim writes into a bucket named for the model, so a site has several roots
+# rather than one. Name the run directories to publish rather than walking a
+# root: everything under a root is not necessarily a row worth publishing.
+# alpasim_runs walks one root instead, one run per directory under it -- only
+# for a root that holds nothing but runs worth publishing.
+# alpasim_runs = "/path/to/alpasim-runs"
+# alpasim_run_dirs = [
+#   "/path/to/runs/openpilot/openpilot_020_pilot10",
+#   "/path/to/runs/baselines/cv_023_20hz_pilot10",
+# ]
+#
+# A run that is known-bad is still ingested, marked valid:false with the reason,
+# because deleting it loses the record that it happened. Keyed by directory name.
+# [ingest.alpasim_invalid]
+# some_run_dir = "actor never rendered; scored against an empty road"
+#
+# A sweep driven one scene per wizard invocation leaves one directory per scene
+# -- which is how anything behind the referee proxy runs, since the container is
+# torn down between scenes. Ingested individually those are runs of n=1 and the
+# ten-scene mean that was actually measured is nowhere in the store. Listed here
+# they become one run; the merge is refused if the directories disagree about the
+# driver or the tick config, or if two of them hold the same scene.
+# [ingest.alpasim_campaigns.legacy-my_campaign_20hz]
+# dirs  = ["/path/to/runs/alpamayo/my_campaign_scene01", "..."]
+# split = "public_2601"  # a sweep driven by explicit scene ids records no
+#                        # test_suite_id; name the suite its scenes came from
+# notes = ""      # required by the results store when valid = false
+# valid = true

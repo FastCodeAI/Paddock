@@ -14,7 +14,6 @@ import pytest
 
 from paddock.adapters.benchmarks.navsim import convert
 from paddock.adapters.benchmarks.navsim.harness import (
-    BENCHMARK,
     CONF_DIR,
     ENV_AGENT,
     ENV_ALLOW_PARTIAL,
@@ -176,14 +175,20 @@ def test_the_command_mapping_inverts_the_drivejepa_adapter() -> None:
 # -- cameras ---------------------------------------------------------------
 
 
-def test_every_camera_a_model_declares_has_a_navsim_slot() -> None:
-    """The nuPlan rig is not nuScenes'. A model asking for a view it cannot get
-    should fail at preflight, not partway into a scoring run."""
+def test_every_navsim_model_has_a_camera_the_rig_can_supply() -> None:
+    """The nuPlan rig is not nuScenes'. A model with no view it can get fails at
+    preflight, not partway into a scoring run; one declaring extra views only
+    CARLA renders (openpilot's comma-three pair) is handed the ones that exist,
+    and its policy sees the rest as absent, as on KITScenes."""
+    from paddock.adapters.benchmarks.navsim.harness import camera_problems, supplied_cameras
+
     for model in Registry.load().models.values():
-        if "navsim" not in model.benchmarks:
+        if not any(name.startswith("navsim") for name in model.benchmarks):
             continue
-        for camera in model.cameras:
-            assert camera in convert.CAMERA_SLOTS, f"{model.name} wants {camera}"
+        assert camera_problems(list(model.cameras), model.name) == []
+        assert supplied_cameras(list(model.cameras)), f"{model.name} wants only {model.cameras}"
+    assert supplied_cameras(["CAM_OP_ROAD", "CAM_OP_WIDE", "CAM_FRONT"]) == ["CAM_FRONT"]
+    assert "none of them" in camera_problems(["CAM_OP_ROAD"], "x")[0]
 
 
 def test_camera_slots_are_distinct() -> None:
@@ -200,6 +205,13 @@ def test_the_proxy_agent_config_is_tracked_and_names_the_module() -> None:
     config = (CONF_DIR / "agent" / f"{PROXY_AGENT}.yaml").read_text()
     assert "paddock.adapters.benchmarks.navsim.agent.PaddockProxyAgent" in config
     assert "node_url: ???" in config, "node_url must be supplied by the harness, never defaulted"
+    for key in ("nuplan_root: null", "nuplan_split: null", "dense_hz: 0.0", "history_s: 0.0"):
+        assert key in config, f"the dense-history switch {key!r} must default off in the tracked config"
+
+
+#: What the stand-in devkit's setup.py declares per benchmark: the harness
+#: refuses the other generation's tree (both ship a run_pdm_score.py).
+DEVKIT_VERSIONS = {"navsim": "2.0.0", "navsim_v1": "1.1.0"}
 
 
 def _navsim_site(
@@ -211,20 +223,41 @@ def _navsim_site(
     blobs: tuple[str, ...] = ("log_a", "log_b"),
     cached: tuple[str, ...] = ("log_a", "log_b", "metadata"),
     tokens_per_log: int = 0,
+    bench: str = "navsim",
+    scorer: str = SCORER,
+    devkit_version: str | None = None,
+    camera_path: bool = True,
+    declare_tokens: bool = False,
+    metadata_csv: bool = True,
     **settings: str,
 ) -> SiteConfig:
-    """A site with a stand-in devkit, dataset and metric cache laid out as NAVSIM's are."""
+    """A site with a stand-in devkit, dataset and metric cache laid out as NAVSIM's are.
+
+    `bench` picks the `[benchmarks.<bench>]` block and, with `scorer`, the
+    devkit generation being stood in for; the stand-in carries the setup.py
+    version and the `camera_path` field preflight looks for, and a metric cache
+    metadata csv listing the stand-in scenarios, as the devkit's caching writes.
+    """
     import sys
 
     devkit = tmp_path / "devkit"
-    (devkit / SCORER).parent.mkdir(parents=True)
-    (devkit / SCORER).write_text("")
+    (devkit / scorer).parent.mkdir(parents=True)
+    (devkit / scorer).write_text("")
+    version = devkit_version or DEVKIT_VERSIONS[bench]
+    (devkit / "setup.py").write_text(f'setup(name="navsim", version="{version}")\n')
+    (devkit / "navsim" / "common").mkdir(parents=True, exist_ok=True)
+    (devkit / "navsim" / "common" / "dataclasses.py").write_text(
+        "class Camera:\n    image = None\n" + ("    camera_path = None\n" if camera_path else "")
+    )
     splits = devkit / SPLITS_DIR
     (splits / "scene_filter").mkdir(parents=True)
     (splits / f"{split}.yaml").write_text(f"data_split: {data_split}\n")
+    tokens = [f"{name}-t{i}" for name in cached if name != "metadata" for i in range(tokens_per_log)]
     if declared is not None:
         (splits / "scene_filter" / f"{split}.yaml").write_text(
-            "log_names:\n" + "".join(f"  - {name}\n" for name in declared)
+            "log_names:\n"
+            + "".join(f"  - {name}\n" for name in declared)
+            + ("tokens:\n" + "".join(f"  - {token}\n" for token in tokens) if declare_tokens else "")
         )
     data = tmp_path / "data"
     for name in blobs:
@@ -232,19 +265,26 @@ def _navsim_site(
     (data / "navsim_logs" / data_split).mkdir(parents=True)
     (data / "maps").mkdir()
     cache = tmp_path / "cache"
+    rows: list[str] = []
     for name in cached:
         (cache / name).mkdir(parents=True)
         # The cache is <cache>/<log>/<scenario type>/<token>/, one directory
         # per scenario; a stand-in with a few tokens per log.
         for i in range(tokens_per_log if name != "metadata" else 0):
             (cache / name / "unknown" / f"{name}-t{i}").mkdir(parents=True)
+            rows.append(str(cache / name / "unknown" / f"{name}-t{i}" / "metric_cache.pkl"))
+    if metadata_csv:
+        (cache / "metadata").mkdir(exist_ok=True)
+        (cache / "metadata" / "metric_cache_metadata_node_0.csv").write_text(
+            "file_name\n" + "".join(r + "\n" for r in rows)
+        )
     for sub in ("repos", "runs", "weights", "exp"):
         (tmp_path / sub).mkdir()
     (tmp_path / "site.toml").write_text(
         f'site = "test-site"\n[roots]\nrepos = "{tmp_path / "repos"}"\nruns = "{tmp_path / "runs"}"\n'
         f'weights = "{tmp_path / "weights"}"\n'
         f'[datasets.navsim]\npath = "{data}"\nexp = "{tmp_path / "exp"}"\n'
-        f'[benchmarks.navsim]\npython = "{sys.executable}"\ndevkit = "{devkit}"\n'
+        f'[benchmarks.{bench}]\npython = "{sys.executable}"\ndevkit = "{devkit}"\n'
         f'metric_cache = "{cache}"\nsplit = "{split}"\n'
         + "".join(f'{key} = "{value}"\n' for key, value in settings.items())
     )
@@ -254,8 +294,10 @@ def _navsim_site(
     return SiteConfig.load()
 
 
-def _harness(cfg: SiteConfig):
-    return BENCHMARK(Registry.load().benchmarks["navsim"], cfg)
+def _harness(cfg: SiteConfig, bench: str = "navsim"):
+    from paddock.runner import load_benchmark
+
+    return load_benchmark(Registry.load().benchmarks[bench], cfg)
 
 
 def test_data_split_is_read_from_the_devkits_own_yaml(tmp_path: Path, monkeypatch) -> None:
@@ -307,6 +349,8 @@ def test_measurement_switches_reach_run_config_and_validity(tmp_path: Path, monk
         "allow_partial": False,
         "allow_slow": False,
         "overrides": [],
+        "chunk_order": "by_size",
+        "merged_from": None,
     }
     assert harness.invalid_reasons() == []
 
@@ -384,7 +428,9 @@ def test_wire_modules_compile_under_python_39() -> None:
     files = [
         base / "policy" / "protocol.py",
         base / "adapters" / "benchmarks" / "navsim" / "convert.py",
+        base / "adapters" / "benchmarks" / "navsim" / "dense.py",
         base / "adapters" / "benchmarks" / "navsim" / "agent.py",
+        base / "adapters" / "benchmarks" / "navsim_v1" / "agent.py",
     ]
     command = [interpreter, "-m", "py_compile", *map(str, files)]
     result = subprocess.run(command, capture_output=True, text=True)
@@ -472,7 +518,7 @@ def test_a_limit_below_navsims_floor_is_refused_with_a_reason() -> None:
     assert MIN_SCENARIOS == 2
 
 
-def test_a_model_needing_denser_input_than_navsim_has_is_refused() -> None:
+def test_a_model_needing_denser_input_than_navsim_has_is_refused(monkeypatch) -> None:
     """NAVSIM is a 2 Hz dataset. A model that reads motion from frame-to-frame
     change scores near the constant-velocity baseline on it while measuring the
     rate gap, which is worse than not running: it looks like a result."""
@@ -487,6 +533,9 @@ def test_a_model_needing_denser_input_than_navsim_has_is_refused() -> None:
 
     assert INPUT_HZ == pytest.approx(2.0)
     harness = BENCHMARK(spec, cfg)
+    # A site holding nuPlan's full-rate data feeds it instead (test_navsim_dense.py);
+    # this is the refusal without it.
+    monkeypatch.setattr(BENCHMARK, "nuplan_root", property(lambda self: None))
     with pytest.raises(RuntimeError, match="Hz observations"):
         harness.evaluate(
             "http://127.0.0.1:0",
@@ -498,14 +547,27 @@ def test_a_model_needing_denser_input_than_navsim_has_is_refused() -> None:
 
 def test_openpilot_declares_the_rate_neuroncap_already_established() -> None:
     """neuroNCAP rebuilt its scenarios at 10 Hz because openpilot reads a 0.5 s
-    step as a parked car. That fact now lives in the registry, where a benchmark
-    can act on it, instead of only in a doc."""
+    step as a parked car. That fact lives in the registry, where a benchmark can
+    act on it: NAVSIM feeds it nuPlan's 10 Hz frames when the site has them and
+    refuses it otherwise. Its history ask covers supercombo's 96-frame buffer at
+    20 Hz, which is what KITScenes feeds (48 frames at 10 Hz, emitted twice)."""
     openpilot = Registry.load().models["openpilot"]
     assert openpilot.min_input_hz >= 10.0
-    assert "navsim" not in openpilot.benchmarks, (
-        "openpilot cannot be measured on a 2 Hz dataset; declaring it would make "
-        "`--bench navsim --model all` fail on every sweep"
+    assert openpilot.history_s >= 96 / 20.0
+    assert "navsim" in openpilot.benchmarks
+    assert "navsim_v1" not in openpilot.benchmarks, (
+        "no 10 Hz run under the v1 devkit yet; declaring it would put a 2 Hz refusal in every v1 sweep"
     )
+
+
+def test_alpamayo_states_the_rate_it_was_built_for_without_a_floor() -> None:
+    """Four frames 0.1 s apart and 16 poses at 0.1 s, per the vendor loader. It
+    works at 2 Hz too (differently), so the floor stays at zero and the native
+    rate is what a benchmark holding 10 Hz data acts on."""
+    alpamayo = Registry.load().models["alpamayo15"]
+    assert alpamayo.min_input_hz == 0.0
+    assert alpamayo.native_input_hz == pytest.approx(10.0)
+    assert alpamayo.history_s == pytest.approx(1.5)
 
 
 def test_alpamayo_falls_back_to_distinct_frames_only_when_the_grid_degenerates() -> None:
@@ -907,6 +969,82 @@ def test_chunk_log_is_its_own_file_appended_across_attempts_and_the_scorer_log_k
     harness.evaluate("http://127.0.0.1:1", smoke, config, limit=2)
     assert (smoke / "navsim_scorer.log").read_text().startswith(sys.executable)
     assert "chunk 000: ok" in (smoke / "chunks.log").read_text()
+
+
+def test_logs_are_chunked_largest_first_so_a_chunks_workers_finish_together(tmp_path, monkeypatch) -> None:
+    """The scorer gives each worker one whole log, so a chunk costs its longest
+    log. Alphabetical chunking once left seven of eight nodes idle for two
+    hours behind a 156-scenario log. Size orders, name breaks ties, and the
+    order is on the record because `--resume` reuses chunks by index."""
+    from paddock.adapters.benchmarks.navsim.harness import MERGE_ENV
+
+    cfg = _navsim_site(tmp_path, monkeypatch, tokens_per_log=2)
+    for i in range(2, 5):  # log_b: five cached scenarios; log_a keeps two
+        (tmp_path / "cache" / "log_b" / "unknown" / f"log_b-t{i}").mkdir(parents=True)
+    harness = _harness(cfg)
+    assert harness._scorable_logs() == ["log_b", "log_a"]
+    assert harness.run_config()["chunk_order"] == "by_size"
+    assert harness.run_config()["merged_from"] is None
+    monkeypatch.setenv(MERGE_ENV, str(tmp_path / "elsewhere"))
+    assert harness.run_config()["merged_from"] == str(tmp_path / "elsewhere")
+
+
+def test_a_run_can_take_another_runs_completed_chunks_and_skip_their_logs(tmp_path, monkeypatch) -> None:
+    """Continuing a run whose chunking changed: `--resume` reuses chunks by
+    index, which means nothing across orderings, so the completed CSVs are
+    taken as rows and their logs are left out of the new chunks."""
+    from paddock.adapters.benchmarks.navsim import harness as harness_module
+    from paddock.adapters.benchmarks.navsim.harness import MERGE_ENV, tokens_in_csvs
+
+    harness = _harness(_stub_scored_site(tmp_path, monkeypatch, chunk_logs="1"))
+    monkeypatch.setattr(harness_module, "node_alive", lambda url, timeout_s=5.0: True)
+    config = {"cameras": ["CAM_FRONT"], "model": "m", "attempt": 1}
+
+    first = tmp_path / "first"
+    monkeypatch.setenv("STUB_FAIL_LOG", "log_a")  # only log_b's chunk completes
+    evaluation = harness.evaluate("http://127.0.0.1:1", first, config)
+    assert len(evaluation.samples) == 3 and len(evaluation.failed_chunks) == 1
+    done = tokens_in_csvs(harness_module.completed_chunk_csvs(first))
+    assert {"log_b-t0", "log_b-t1", "log_b-t2"} <= done and "average_all_frames" in done
+    assert harness._logs_of(first / "scores.csv", sorted(done)) == ["log_b"], "the cache says which log"
+
+    monkeypatch.delenv("STUB_FAIL_LOG")
+    monkeypatch.setenv(MERGE_ENV, str(first))
+    second = tmp_path / "second"
+    evaluation = harness.evaluate("http://127.0.0.1:1", second, config)
+    assert len(evaluation.samples) == 6 and evaluation.failed_chunks == []
+    assert evaluation.n_expected == 6, "expected counts every log, taken or scored"
+    story = (second / "chunks.log").read_text()
+    assert "attempt 1: 1 chunk(s)" in story, "only log_a is chunked"
+    assert "merged 1 completed chunk CSV(s)" in story and "1 log(s) not scored again" in story
+    assert sorted(d.name for d in (second / "chunks").iterdir()) == ["000"], "log_b was never scored again"
+    rows = tokens_in_csvs([second / "scores.csv"])
+    assert harness._logs_of(second / "scores.csv", sorted(rows)) == ["log_a", "log_b"], "rows from both logs"
+
+    monkeypatch.setenv(MERGE_ENV, str(tmp_path / "nowhere"))
+    with pytest.raises(RuntimeError, match="no completed chunk CSVs"):
+        harness.evaluate("http://127.0.0.1:1", tmp_path / "third", config)
+
+
+def test_a_retried_token_brings_a_neighbour_so_the_scorer_can_aggregate(tmp_path: Path) -> None:
+    """The scorer pairs consecutive frames per log for two-frame comfort and
+    dies in pandas on a lone token -- the --limit floor, hit by the retry pass
+    on a real run (alpamayo, 12,145 of 12,146 scored, one retry, KeyError).
+    The neighbour is re-scored and discarded: no second draw for a scenario
+    that did not fail."""
+    from paddock.adapters.benchmarks.navsim.harness import keep_tokens, retry_tokens
+
+    token_logs = {"a1": "log_a", "a2": "log_a", "a3": "log_a", "b1": "log_b", "b2": "log_b"}
+    assert retry_tokens(["a2"], token_logs, 2) == ["a2", "a1"], "one neighbour, the first by name"
+    assert retry_tokens(["a1", "a3"], token_logs, 2) == ["a1", "a3"], "two in a log already aggregate"
+    assert retry_tokens(["a2", "b2"], token_logs, 2) == ["a2", "b2", "a1", "b1"]
+    assert retry_tokens(["zz"], token_logs, 2) == ["zz"], "a token the cache does not know is not padded"
+    assert retry_tokens(["a2"], token_logs, 1) == ["a2"], "v1's floor of one pads nothing"
+
+    path = tmp_path / "retry.csv"
+    path.write_text("token,valid,score\na2,True,0.9\na1,True,0.8\naverage_all_frames,True,0.85\n")
+    keep_tokens(path, {"a2"})
+    assert path.read_text() == "token,valid,score\na2,True,0.9\naverage_all_frames,True,0.85\n"
 
 
 def test_a_failed_chunk_is_counted_in_scenarios_not_logs(tmp_path: Path, monkeypatch) -> None:

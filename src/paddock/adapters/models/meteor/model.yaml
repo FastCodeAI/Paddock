@@ -1,0 +1,80 @@
+name: meteor
+description: TIER IV METEOR v157 - 8-camera multi-task BEV network with an end-to-end planning head, run from the released ONNX
+repo: METEOR
+
+runtime:
+  # The adapter runs the released ONNX in onnxruntime; nothing from the METEOR
+  # checkout is imported, so the env is small. uv rather than the upstream
+  # recipe (python3.10 + torch 2.1.1/cu121): that torch has no kernels for the
+  # Blackwell card here, and the ONNX path does not need torch at all.
+  kind: uv
+  python: "3.11"
+  venv: "{repo}/.venv"
+  pythonpath: ["{repo}"]
+  cwd: "{repo}"
+  env:
+    # meteor_v157c3Z.onnx from Hugging Face AutowareFoundation/meteor, tag v1.0.
+    # setup.sh downloads it and checks the sha256 against the release's SHA256SUMS.
+    METEOR_ONNX: "{weights}/meteor/meteor_v157c3Z.onnx"
+    # cuda: CUDAExecutionProvider, falling back to CPU with a logged warning
+    # (~4 s a frame). cuda-strict: refuse to start on CPU. cpu: CPU only.
+    METEOR_PROVIDERS: "cuda"
+    # onnxruntime's intra-op pool defaults to every core. This box fails above
+    # ~90% CPU, so the pool is capped here; raise it on an idle machine.
+    METEOR_ORT_THREADS: "4"
+    # Arena cap for the CUDA provider, MiB. The graph needs well under this.
+    METEOR_GPU_MEM_MB: "6144"
+    OMP_NUM_THREADS: "1"
+    OPENBLAS_NUM_THREADS: "1"
+    # The network plans 3 s (six waypoints at 0.5 s). Leave unset to return
+    # exactly that. NAVSIM scores 4 s and its harness refuses a shorter plan,
+    # so a NAVSIM run sets this to "4.0" in [models.meteor.env]; the adapter
+    # then continues the last 0.5 s segment to 4 s and says so in `extras`.
+    # That is an extrapolation the model never made, which is why it is opt-in
+    # and lands in run.json as model_env rather than being the default.
+    # METEOR_HORIZON_S: "4.0"
+
+capabilities:
+  # paddock's six nuScenes cameras fill six of METEOR's eight slots (the two
+  # telephoto NARROW slots have no counterpart and are fed as absent, the
+  # convention the network was trained with for 7-camera rigs). Benchmarks
+  # that supply fewer cameras leave the rest absent too; KITScenes is
+  # front-camera only.
+  cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT, CAM_BACK, CAM_BACK_LEFT, CAM_BACK_RIGHT]
+  vram_gb: 8
+  # load() runs the graph once so a kernel/JIT failure on a new GPU
+  # architecture surfaces here, inside the timeout, not on the first scored frame.
+  startup_timeout_s: 900
+  waypoint_dt: 0.5
+  # Single-frame: the temporal memory is baked out of the export, so the
+  # observation rate does not matter.
+  min_input_hz: 0.0
+
+  # -- the model card ---------------------------------------------------
+  # Values and provenance: docs/models/meteor.md and docs/models/comparison.md.
+  architecture: "ResNet-34 + FPN per camera, depth-gated IPM lift to one BEV grid, 12 task heads incl. a K=3 E2E planner"
+  # README badge: 54M with the refiner. The measured breakdown in
+  # docs/ARCHITECTURE.md (43.5M, ~3100 GFLOPs) is for an earlier generation,
+  # so no macs_g is claimed for v157.
+  params_m: 54
+  # meteor_v157c3Z.onnx, 350,260,990 bytes. Weights are stored fp32; the
+  # convolutional trunk is 2:4 structured-sparse, which is a pattern, not a
+  # precision.
+  size_gb: 0.35
+  precision: fp32
+  input_size: [768, 432]
+  history_frames: 1
+  output_kind: waypoints
+  horizon_s: 3.0
+  stochastic: false
+  needs_speed: true
+  # TIER IV Co-MLOps DRS recordings (Japan, plus a US subset), auto-labelled;
+  # adverse conditions as Cosmos Transfer re-renderings. None of paddock's
+  # benchmark datasets.
+  trained_on:
+    - dataset: tier4_comlops_drs
+      split: train
+
+# navsim needs METEOR_HORIZON_S=4.0 (see above) or every sample fails in
+# to_navsim_poses with "model plans 3.00 s".
+benchmarks: [kitscenes, nuscenes, neuroncap, navsim, bench2drive]

@@ -39,10 +39,11 @@ repos:
   Drive-JEPA:
     url: https://github.com/linhanwang/Drive-JEPA.git
     sha: e21f474
-    description: V-JEPA driving policy with NAVSIM devkit vendored under navsim_v2/
+    description: V-JEPA driving policy with the NAVSIM devkits vendored under navsim_v1/ and navsim_v2/
     patches:
       - 0001-msda-compat-for-newer-gpus.patch
       - 0002-score-runs-with-failed-scenarios.patch
+      - 0003-navsim-v1-camera-path.patch
 
   neuro-ncap:
     url: https://github.com/atonderski/neuro-ncap
@@ -76,3 +77,13 @@ repos:
     url: https://github.com/autowarefoundation/auto_e2e.git
     sha: 16d60f0a
     description: Autoware end-to-end model; AWS/Flyte native, not yet evaluated
+
+  METEOR:
+    url: https://github.com/tier4/METEOR.git
+    sha: dc193a81
+    description: TIER IV METEOR surround-view multi-task network with an E2E planning head; run from the released ONNX
+
+  Qwen-Drive-1.0:
+    url: https://github.com/QwenLM/Qwen-Drive-1.0.git
+    sha: 28091c1
+    description: Qwen-Drive-1.0-4B inference code; Qwen3.5 VLM with planning expert and BEV perception head

@@ -68,7 +68,12 @@ def _measurement_config(cfg: SiteConfig, harness, model_spec: ModelSpec, **given
     site `[models.<name>] env` block -- an environment override can change a
     model's input (alpamayo's frame selection, say), so it is on the record.
     """
-    config = {**given, "cameras": list(model_spec.cameras), **harness.run_config()}
+    config = {
+        **given,
+        "cameras": list(model_spec.cameras),
+        **harness.run_config(),
+        **harness.model_run_config(model_spec),
+    }
     override = cfg.models.get(model_spec.name)
     if override is not None and override.env:
         config["model_env"] = dict(override.env)
@@ -258,6 +263,9 @@ def run_benchmark(
     scenes = [s.strip() for s in scene.split(",") if s.strip()] if scene else None
 
     problems = harness.preflight()
+    if hasattr(harness, "input_problems"):
+        for selected_model in models:
+            problems += harness.input_problems(selected_model)
     if scenes and hasattr(harness, "scene_problems"):
         for one in scenes:
             problems += harness.scene_problems(one)
@@ -547,6 +555,8 @@ def _run_external(
                         "cameras": list(model_spec.cameras),
                         "model": model_spec.name,
                         "min_input_hz": model_spec.min_input_hz,
+                        "native_input_hz": model_spec.native_input_hz,
+                        "history_s": model_spec.history_s,
                         "policy_urls": urls,
                         "attempt": attempt,
                     },
@@ -662,6 +672,7 @@ def _run_open_loop(
                         "sample_id": sample.sample_id,
                         "native_id": sample.native_id,
                         "split": sample.split,
+                        "group": sample.group,
                         "metrics": metrics,
                         # Kept so a result can be looked at, not just ranked.
                         # These live outside the repo with the rest of the run
@@ -672,9 +683,18 @@ def _run_open_loop(
                         else None,
                     }
                 )
+                # Preserve completed predictions if a long validation is stopped.
+                # This partial file is evidence, not a completed metrics record.
+                with (artifacts / "samples.partial.jsonl").open("a") as checkpoint:
+                    checkpoint.write(json.dumps(samples[-1]) + "\n")
                 if (index + 1) % 25 == 0:
-                    running = sum(s["metrics"].get("ade", 0.0) for s in samples) / len(samples)
-                    echo(f"  {index + 1} samples, running ADE {running:.3f}")
+                    # The benchmark's own headline, not `ade`: nuScenes calls its
+                    # displacement metric `l2_avg`, and 0.000 for 5,119 samples told
+                    # nobody anything.
+                    key = spec.primary_metric
+                    seen = [s["metrics"][key] for s in samples if key in s["metrics"]]
+                    running = sum(seen) / len(seen) if seen else float("nan")
+                    echo(f"  {index + 1} samples, running {key} {running:.3f}")
     except (proc.NodeStartupError, RuntimeError) as exc:
         echo(f"  node failed: {exc}")
         return 1
@@ -695,6 +715,9 @@ def _run_open_loop(
         failure_note=f"{failures} sample(s) failed" if failures else None,
         invalid_reasons=[*harness.invalid_reasons(), *_limit_reason(limit)],
     )
+    # samples.jsonl now holds every row the checkpoint held; keeping both would
+    # leave a byte-for-byte duplicate beside every finished run.
+    (artifacts / "samples.partial.jsonl").unlink(missing_ok=True)
     headline = metrics_record.metrics.get(spec.primary_metric, {})
     echo(
         f"  n={metrics_record.n}  {spec.primary_metric} mean={headline.get('mean')}"

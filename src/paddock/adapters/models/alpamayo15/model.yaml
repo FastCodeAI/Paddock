@@ -33,5 +33,27 @@ capabilities:
   # NAVSIM's 2 Hz data, that fallback is worth +0.207 EPDMS, almost all of it
   # collisions avoided.
   min_input_hz: 0.0
+  # What it was built for: four camera frames 0.1 s apart and 16 poses at 0.1 s
+  # (load_physical_aiavdataset.py in the vendor repo). A benchmark holding
+  # 10 Hz data should feed that rather than the 0.5 s fallback above.
+  native_input_hz: 10.0
+  history_s: 1.5
 
-benchmarks: [kitscenes, neuroncap, navsim, nuplan, bench2drive]
+  # -- model card (docs/models/comparison.md) --
+  architecture: "Cosmos-Reason2 VLM + diffusion trajectory decoder"
+  params_m: 10000
+  size_gb: 20
+  precision: bf16
+  input_size: [448, 280]
+  # The model has a fourth slot, front_tele, which this adapter does not feed --
+  # see comparison.md. cameras above is what infer() actually reads.
+  history_frames: 4
+  output_kind: waypoints
+  horizon_s: 6.4
+  # Samples unseeded at T=1.0/top_p=0.95 in closed loop. One run is a draw, not
+  # a measurement: sd 1.817 across seeds on frontal-0103.
+  stochastic: true
+  trained_on:
+    # NVIDIA internal, 80,000 h. Zero-shot on every paddock benchmark.
+    - dataset: nvidia-internal
+benchmarks: [kitscenes, neuroncap, navsim, navsim_v1, bench2drive, alpasim, nuscenes, nuplan]

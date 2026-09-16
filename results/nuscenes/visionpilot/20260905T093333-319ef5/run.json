@@ -1,0 +1,31 @@
+{
+  "run_id": "20260905T093333-319ef5",
+  "site": "fastcode-navvrat-nusc-vp",
+  "benchmark": "nuscenes",
+  "model": "visionpilot",
+  "mode": "open_loop",
+  "started_utc": "2026-09-05T09:33:33+00:00",
+  "duration_s": 1129.8,
+  "repo_sha": null,
+  "dataset": {
+    "name": "nuscenes",
+    "n_samples": 5119,
+    "sequences_sha256": "b507a7d90c5ccae9"
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT"
+    ],
+    "model_env": {
+      "VISIONPILOT_PROVIDERS": "cuda",
+      "VISIONPILOT_ORT_THREADS": "2",
+      "LD_LIBRARY_PATH": "x86_64-linux-gnu"
+    }
+  },
+  "hardware": {},
+  "status": "complete",
+  "valid": true,
+  "notes": "",
+  "ingested_from": ""
+}

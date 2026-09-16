@@ -14,7 +14,9 @@ records it as `mode: open_loop`, alongside KITScenes.
 Four things a reader should not have to infer, stated once:
 
 - **Devkit: NAVSIM v2** (`Drive-JEPA/navsim_v2`, `[benchmarks.navsim] devkit`).
-  A v1 devkit sits beside it in the same checkout and is not used.
+  The v1 devkit beside it in the same checkout is driven by the `navsim_v1`
+  benchmark ([navsim_v1.md](navsim_v1.md)), which subclasses this adapter's
+  harness and proxy and scores the same scenes as v1.1 PDMS.
 - **Split: `navtest`** — 136 logs, 12,146 real recorded scenes, single stage.
   Set by `[benchmarks.navsim] split`; the harness also knows
   `navtest_two_stage`, `navmini` and `navtrain`.
@@ -83,6 +85,7 @@ devkit       = ".../Drive-JEPA/navsim_v2"         # the directory holding navsim
 metric_cache = ".../exp/metric_cache_v2"          # run_metric_caching.py builds one
 split        = "navtest"
 workers      = 4
+nuplan       = ".../nuplan-v1.1"                   # optional: 10 Hz frames, see "10 Hz from nuPlan"
 ```
 
 Four environment switches, all deliberate and all narrow. Every one is
@@ -100,6 +103,18 @@ made with one can never share a config hash with a run made without it:
   OpenScene's 2 Hz anyway. Stored `valid: false`: it measures the rate gap.
 - `PADDOCK_NAVSIM_OVERRIDES="k=v ..."` — extra hydra overrides for the scorer,
   recorded verbatim.
+- `PADDOCK_NAVSIM_MERGE_FROM=<run dir>` — take another run's completed chunk
+  CSVs as this run's rows and leave their logs out of the chunks. For
+  continuing a run whose chunking changed: `--resume` reuses chunks by
+  index, which means nothing across orderings. Recorded as `merged_from`;
+  the other run must have been made under the same measurement configuration,
+  which is the caller's to check.
+
+Logs are chunked **largest first** (`config.chunk_order: by_size`). The scorer
+hands each of its workers one whole log, so a chunk costs its longest log;
+chunked alphabetically, a 156-scenario log beside 22-scenario ones left seven
+of eight openpilot nodes idle for two hours at a time. Grouping logs of like
+size keeps the workers busy together.
 
 `--limit N` is recorded the same way and also sets `valid: false`: it exists to
 test the pipeline. A site `[models.<name>] env` block is recorded as
@@ -168,6 +183,7 @@ NAVSIM scores 8 poses at 0.5 s as `(x, y, heading)`. What each model gives:
 | visionpilot | 8 × 0.5 s | derived | `PLAN_HORIZON_S` 3.0 → 4.0 |
 | alpamayo15 | 8 × 0.5 s of a 64 × 0.1 s raw output | derived | `GRID_INDICES` widened to 8 |
 | openpilot | 8 × 0.5 s | derived | grid already matched — **blocked on input rate** |
+| meteor | 6 × 0.5 s, extended to 8 | derived | 3 s planner; `METEOR_HORIZON_S=4.0` opt-in, recorded as `model_env` |
 
 Both grid changes are additive at the tail, so no recorded score moves:
 `Trajectory.to_wire` hands neuroNCAP the first six poses, and KITScenes'
@@ -296,7 +312,7 @@ grid path exactly as before and no recorded score moves. That property is pinned
 by test rather than re-measured. `ALPAMAYO_FRAME_SELECT=grid|distinct` forces
 either arm, which is how the A/B above was run.
 
-## openpilot cannot be measured here, and that one is final
+## openpilot cannot be measured on OpenScene
 
 openpilot ran cleanly through the proxy and scored 0.302 against the 0.257
 baseline. The recorded plans say why:
@@ -335,9 +351,78 @@ of nuPlan, whose cameras ran faster, so a denser history exists upstream but in
 no data held here. openpilot has coverage on KITScenes (0.1 s) and neuroNCAP
 (10 Hz); NAVSIM is the outlier.
 
-So: `capabilities.min_input_hz: 10.0`, `navsim` undeclared, and the stored runs
-marked invalid with the reason. A near-baseline number that is really a rate
-artefact is worse than no number, because it looks like a result.
+So: `capabilities.min_input_hz: 10.0`, and the stored 2 Hz runs marked invalid
+with the reason. A near-baseline number that is really a rate artefact is worse
+than no number, because it looks like a result. The denser data turned out to
+be obtainable after all -- the next section.
+
+## 10 Hz from nuPlan
+
+OpenScene is a 2 Hz subsample of nuPlan, whose cameras record at 10 Hz (the
+devkit's `nuplan_scenario_queries.py` says so; lidar is 20 Hz). Motional's
+public bucket holds the full-rate test-split blobs and the per-log databases
+that say which image was taken when and where the ego was, under the same log
+names and image tokens OpenScene uses. On 2026-09-11 the three front cameras
+of all 136 navtest logs (212 GB, 1,072,284 frames) and their 136 databases
+were pulled onto the NAS, verified against each database's `image` table:
+0 missing, 0 extra, frame interval 0.100 s.
+
+`[benchmarks.navsim] nuplan = <root>` names that data, laid out as nuPlan's own:
+`splits/<split>/<log>.db` and `sensor_blobs/<split>/<log>/<CHANNEL>/<token>.jpg`.
+With it set, the harness decides per model which rate to feed:
+
+| model declares | fed | history |
+|---|---|---|
+| `min_input_hz` or `native_input_hz` above 2 | nuPlan, 10 Hz | the model's `history_s`, else NAVSIM's 1.5 s |
+| neither | OpenScene, 2 Hz, the scorer's own four frames | 1.5 s |
+
+So openpilot (`min_input_hz: 10`, `history_s: 4.8` for its 96-frame buffer at
+20 Hz -- what KITScenes feeds) and alpamayo (`native_input_hz: 10`, `history_s:
+1.5`: four frames 0.1 s apart and 16 poses, per its vendor loader) get the
+dense path; drivejepa and visionpilot keep the frames they were scored on.
+qwendrive takes it too (`native_input_hz: 10`, `history_s: 1.5`), for the pose
+branch rather than the image one: it reads 16 poses at 0.1 s, and its four
+camera frames are 0.5 s apart either way, so the dense path changes its ego
+history and not its images.
+Which rate a run used is in `run.json` (`config.input_hz`, `history_source`,
+`history_s`) and hashed into the run id, so a 10 Hz alpamayo run cannot share
+an id with the 2 Hz one.
+
+How it is built (`dense.py`, running inside the scorer's interpreter next to
+the proxy): the keyframe's own front image names the log and the image token;
+the log's database gives that image's timestamp `t0` and, for every image of
+the model's channels, its timestamp and the ego pose it was taken at. Frames
+at `t0 - k/10 s` are picked per camera by nearest timestamp (the rig's cameras
+fire within ~8 ms of each other), poses are re-expressed in the keyframe's
+frame the way NAVSIM expresses its history, and velocity, acceleration and yaw
+rate are nuPlan's measured ones -- no differencing. The last frame *is*
+NAVSIM's keyframe: same image, origin pose. A scenario closer to the log's
+start than the history asked for repeats the log's first frame, as KITScenes
+does at a scene start. nuPlan drops the odd frame -- five single 0.2 s gaps
+across navtest's 408 front-camera streams -- and a neighbour stands in for one,
+flagged in the plan dump (`approximate`); a hole wider than 0.5 s raises, so a
+scenario with missing data fails visibly rather than being scored on a stutter. The scorer, the
+metric cache and the trajectory conversion are untouched: only what the model
+is shown changes.
+
+Results, full navtest (records in `results/navsim/`):
+
+| model | 2 Hz OpenScene | 10 Hz nuPlan | frames per plan |
+|---|---:|---:|---:|
+| openpilot | refused (0.302 on 4 scenarios under `ALLOW_SLOW`, a parked car) | **0.7468** | 49 |
+| alpamayo15 | 0.6081 | **0.6910** | 16 |
+
+Alpamayo paired on all 12,146 scenarios: every sub-metric up except traffic
+light (tied); ego progress 0.596 -> 0.681. openpilot's 12,146 plans: 49 frames
+each, 94 scenarios clamped at a log start, one borrowed frame; while moving the
+planned 4 s travel is a median 0.82 of constant velocity and 2 plans in 12,146
+look parked (under 0.15), against every plan at 2 Hz. openpilot ran on 8 CPU
+nodes at ~42 s of inference per scenario (98 supercombo passes); alpamayo on
+one GPU node shared with other users' work, ~25 h each.
+
+What it does not fix: alpamayo's field of view (nuPlan's cameras are the same
+~65 deg the model gets from OpenScene) and the proxy's blindness to the
+scorer's state, which every model shares.
 
 ## Sample size
 
@@ -359,9 +444,40 @@ so nothing below the full split can be averaged or ranked against a real one.
 | model | EPDMS | collisions | drivable | progress | run |
 |---|---:|---:|---:|---:|---|
 | drivejepa | **0.8427** | 0.984 | 0.985 | 0.889 | `20260902T173156-7e208f` |
-| alpamayo15 | **0.6081** | 0.941 | 0.788 | 0.596 | `20260903T183818-5879c1` |
+| openpilot, 10 Hz nuPlan history | **0.7468** | 0.970 | 0.913 | 0.712 | `20260911T161513-3a4c90` |
+| alpamayo15, 10 Hz nuPlan history | **0.6910** | 0.957 | 0.856 | 0.681 | `20260912T040211-a9562c` |
+| alpamayo15, 2 Hz OpenScene | **0.6081** | 0.941 | 0.788 | 0.596 | `20260903T183818-5879c1` |
 | visionpilot | **0.4312** | 0.727 | 0.819 | 0.404 | `20260902T175642-df5291` |
 | constant_velocity | **0.2385** | 0.681 | 0.578 | 0.209 | `20260902T175923-feba73` |
+
+## Comparison figures
+
+```bash
+paddock render --bench navsim                  # every model with a valid run
+paddock render --bench navsim --model meteor,openpilot --out docs/assets
+```
+
+`render.py` draws several models' plans on the same scenario, over the map the
+scorer re-simulated them against -- the drivable area, the lane centres and the
+annotated agents. That context is the point: EPDMS is built from drivable-area
+compliance, collisions and progress, so a plan is only readable next to the
+lanes it should have stayed in.
+
+It picks the scenarios where the models' 4 s endpoints disagree most, one per
+log, because a panel where every plan lies on top of every other shows only that
+the scenario was easy.
+
+Drawing needs the devkit's `navsim.visualization` and nuPlan's map API, which
+live in `[benchmarks.navsim] python` and not in paddock's interpreter -- the same
+split the harness makes for scoring. So `render.py` selects and gathers, and
+`draw_scenes.py` draws under the devkit's python. Colour is paddock's, keyed by
+model name, so a model is the same colour here as in every other figure.
+
+**A run can only be drawn if its plan dump carries scenario tokens.** Dumps
+recorded before the proxy labelled its plans (Drive-JEPA's and VisionPilot's
+full-split runs, September 2026) say what was planned but not for which
+scenario; those models are named in the figure's subtitle rather than silently
+missing. Re-running them is the only fix.
 
 ## Status (242-scenario subset, for reference)
 
@@ -371,7 +487,7 @@ so nothing below the full split can be averaged or ranked against a real one.
 | alpamayo15 | 0.65332 | 242 | with the adaptive frame selection |
 | visionpilot | 0.44694 | 242 | |
 | constant velocity | 0.25673 | 242 | reference baseline |
-| openpilot | — | — | not measurable at 2 Hz; see above |
+| openpilot | — | — | not measurable at 2 Hz; 0.7468 at 10 Hz from nuPlan, see the full-navtest table |
 
 All five are the **242-scenario subset**, not navtest, and the three model rows
 are stored `valid: false` (marked retroactively on 2026-09-03: they were run
@@ -483,7 +599,7 @@ And three levels of retry, so that surviving a crash needs nobody awake:
 | what died | who retries | how |
 |---|---|---|
 | one scenario (the model raised, or the node did not answer) | the proxy | up to `retries` more requests (default 2) with a short backoff; an unseeded sampler gets a fresh draw |
-| a scenario still failed after that | the harness | one pass re-scoring just those tokens; scored rows replace failed ones on merge |
+| a scenario still failed after that | the harness | one pass re-scoring just those tokens, each with a neighbour from its log so the scorer can aggregate (it dies below two consecutive frames); the neighbours' rows are discarded, scored rows replace failed ones on merge |
 | a chunk, the scorer, or a node | the runner | tears the nodes down, starts fresh ones, re-invokes `evaluate` on the **same** artifacts; completed chunks are skipped. `[benchmarks.navsim] run_retries`, default 2 |
 | paddock itself, or the box | you | `paddock run --bench navsim --model X --resume <run_id>` continues that run in place, same id, nothing scored twice -- under the same configuration: the switches a run starts under are written to its `run_config.json`, and a resume with a different agent, switch or chunk size is refused rather than merged. `PADDOCK_NAVSIM_RESUME_FROM=<dir>` reuses another run's chunks instead |
 

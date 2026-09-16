@@ -45,6 +45,12 @@ archive, so the hot subset is fast without duplicating the whole dataset.
 A tier holding only the sensors an evaluation actually reads is a legitimate and
 useful thing — do not "tidy it up" into the archive.
 
+KITScenes goes one step further and resolves each ring *camera* against the
+tiers, not only the scene, so a working set pruned to the front camera can
+front an archive that holds the full ring; its `preflight()` refuses when no
+tier completes the ring for a listed scene. See
+[benchmarks/kitscenes.md](benchmarks/kitscenes.md).
+
 **Tiers are not necessarily nested.** Two tiers can hold different sequence sets
 rather than one being a subset of the other. `doctor` reports which sequences the
 configured tiers can collectively serve, and a benchmark's `preflight()` reports
@@ -131,3 +137,17 @@ locally, or the next person repeats the discovery.
 Checkpoints go under `[roots.weights]`, shared across models where a backbone is
 shared. Models reference them through `{weights}` in `model.yaml`, so no
 checkpoint path is ever hardcoded in tracked code.
+
+## nuScenes (open-loop planning)
+
+```toml
+[datasets.nuscenes]
+path    = "/path/to/nuscenes"        # the directory holding v1.0-trainval/, samples/, can_bus/, maps/
+version = "v1.0-trainval"
+```
+
+`--bench nuscenes` reads the `v1.0-trainval` JSON tables and the keyframe images
+under `samples/` (2 Hz); it does not need `sweeps/`. The 150-scene val index is
+built once and cached (see `docs/benchmarks/nuscenes.md`); point
+`[benchmarks.nuscenes] index_cache` at a writable path if the checkout is
+read-only.

@@ -1,0 +1,36 @@
+Subject: [PATCH] navsim_v1: keep each camera's image path, as navsim v2 does
+
+Paddock's NAVSIM proxy agent ships image *paths* to the model node rather than
+pixels: the scorer and the node share a filesystem, and re-sending one
+1920x1080 history frame per camera over a socket would move ~8 GB across 242
+scenarios. Upstream navsim v2 added `Camera.camera_path` for exactly this, and
+the proxy reads it. navsim v1.1 opens the JPEG inside `Cameras.from_camera_dict`
+and discards the path, and `AgentInput` offers no other route to it, so it
+cannot be recovered outside the devkit.
+
+Additive: an Optional field defaulting to None, populated where the image is
+loaded. Nothing in the v1 devkit reads it. Same field name as v2's so one proxy
+serves both devkits. Not upstreamable in practice: navsim v1 is unmaintained
+and v2 already has it.
+
+---
+diff --git a/navsim_v1/navsim/common/dataclasses.py b/navsim_v1/navsim/common/dataclasses.py
+index 0f4671c..8484244 100755
+--- a/navsim_v1/navsim/common/dataclasses.py
++++ b/navsim_v1/navsim/common/dataclasses.py
+@@ -38,6 +38,7 @@ class Camera:
+     sensor2lidar_translation: Optional[npt.NDArray[np.float32]] = None
+     intrinsics: Optional[npt.NDArray[np.float32]] = None
+     distortion: Optional[npt.NDArray[np.float32]] = None
++    camera_path: Optional[Path] = None
+ 
+ 
+ @dataclass
+@@ -79,6 +80,7 @@ class Cameras:
+                     sensor2lidar_translation=camera_dict[camera_name]["sensor2lidar_translation"],
+                     intrinsics=camera_dict[camera_name]["cam_intrinsic"],
+                     distortion=camera_dict[camera_name]["distortion"],
++                    camera_path=camera_dict[camera_name]["data_path"],
+                 )
+             else:
+                 data_dict[camera_identifier] = Camera()  # empty camera

@@ -515,6 +515,34 @@ class VisionPilotPolicy(Policy):
             str(self.weights / "autospeed_fp32.onnx"), opts, providers=providers
         )
 
+    def observe(self, obs: Observation) -> None:
+        """Warm the ONNX and filter state on a history frame, without fixing the ACC set-point.
+
+        The default runs a full `infer` and discards the plan, which is exactly
+        what AutoDrive's two-frame input and the fusion posterior need. But
+        `infer` also latches the cruise set-speed the first time it runs, and in
+        open-loop the first history frame is 4.8 s before the frame being
+        scored -- so a car stopped at a light back then pins the set-point to
+        the 1 m/s floor for a prediction made after it has pulled away. That is
+        39 of the 223 KITScenes samples; clearing it here moves the latch to the
+        scored frame, which is the speed an ACC would actually be holding when
+        asked to plan. Still the present, not the recorded future.
+
+        Closed-loop never reaches this -- `/infer` calls `infer` every tick -- so
+        the episode-start latch neuroNCAP and Bench2Drive rely on is unchanged.
+        NAVSIM *does* go through `/infer_sequence`, so its history is shorter but
+        this applies there too: the recorded EPDMS 0.431 was measured under the
+        old behaviour and a re-run will not reproduce it.
+
+        ``VISIONPILOT_SETPOINT=run_start`` keeps the latch at the first history
+        frame, which is what every run recorded before this change used. It has
+        to be set in `[models.visionpilot.env]`; a shell variable never reaches
+        the node, because only `runtime.env.PASSTHROUGH` is inherited.
+        """
+        self.infer(obs)
+        if os.environ.get("VISIONPILOT_SETPOINT", "scored") != "run_start":
+            self.set_speed = None
+
     def reset(self) -> None:
         """Clear all cross-frame state.
 

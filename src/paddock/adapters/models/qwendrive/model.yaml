@@ -1,0 +1,79 @@
+name: qwendrive
+description: Qwen-Drive-1.0-4B (Qwen team + HUST) - Qwen3.5-4B VLM with a 1B flow-matching planning expert
+repo: Qwen-Drive-1.0
+
+runtime:
+  kind: uv
+  python: "3.12"
+  venv: "{repo}/.venv"
+  # The package is importable from src/ without an install (docs/cookbook.md:3).
+  pythonpath: ["{repo}/src"]
+  cwd: "{repo}"
+  env:
+    QWENDRIVE_CHECKPOINT: "{weights}/Qwen-Drive-1.0-4B"
+    # planner-sft plans in direct mode; planner-rl was reward-optimised only
+    # under reasoning rollouts and the vendor says to run it in reasoning mode.
+    # The adapter refuses the rl/direct pairing rather than record its number.
+    #
+    # These two do NOT reach run.json: the runner records config.model_env only
+    # from a site [models.qwendrive] env override, not from runtime.env, so no
+    # record says which planner produced it -- and the vendor's published PDMS
+    # for the two differs by 2.9 points. Framework gap, raised as issue #46;
+    # `paddock doctor --model qwendrive` and /diagnostics both report them
+    # meanwhile.
+    QWENDRIVE_PLANNER: "planner-sft"
+    QWENDRIVE_MODE: "direct"
+    QWENDRIVE_NUM_SAMPLES: "1"
+    # flash-attn does not build for sm_120 on this toolchain (see setup.sh);
+    # the model supports sdpa for both the VLM and the expert.
+    QWENDRIVE_ATTN: "sdpa"
+
+capabilities:
+  # Exactly the three views the model was trained on (scene.py CAMERA_VIEWS).
+  cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT]
+  # 9.1 GB VLM + 2.1 GB expert in bf16, plus activations for ~4k vision tokens.
+  vram_gb: 18
+  # An 11 GB checkpoint read on a shared box.
+  startup_timeout_s: 1800
+  waypoint_dt: 0.5
+  # No floor: the four camera frames are picked by timestamp 0.5 s apart, so
+  # a 2 Hz source contributes every frame and a 10 Hz source every fifth.
+  min_input_hz: 0.0
+  # What it was built for: 16 ego poses at 0.1 s over 1.5 s (docs/data.md
+  # hist_traj_10hz), which NAVSIM can supply from nuPlan (native_input_hz
+  # above 2 selects the dense path); the frames stay 0.5 s apart either way.
+  native_input_hz: 10.0
+  history_s: 1.5
+
+  # -- model card (docs/models/comparison.md) --
+  architecture: "Qwen3.5-4B VLM + 1B flow-matching planning expert (planner-sft)"
+  params_m: 5000
+  size_gb: 11.2
+  precision: bf16
+  # Per-frame pixel budgets, not a fixed size: current frame ~720p
+  # (921,600 px), the three history frames ~320p (174,080 px), each snapped
+  # to a 32 px grid. 1280x720 is the current frame's budget at 16:9.
+  input_size: [1280, 720]
+  history_frames: 4
+  output_kind: waypoints
+  # What the model emits. The adapter hands paddock the first 4 s of it on the
+  # 0.5 s grid (GRID_INDICES), which is what NAVSIM scores and more than
+  # neuroNCAP or KITScenes read; poses 40-49 are dropped.
+  horizon_s: 5.0
+  # Flow matching from seeded noise (noise_seed + k): repeated inference on
+  # identical input is identical.
+  stochastic: false
+  needs_speed: true
+  # From the technical report's data section (arXiv 2609.00111): trajectories
+  # "standardized from multiple public driving datasets", and its reported
+  # NAVSIM navtest number is the in-distribution one. Which splits exactly is
+  # not stated in the repo; navtrain is the honest assumption for navtest.
+  trained_on:
+    - dataset: navsim
+      split: navtrain
+    - dataset: waymo-e2e
+      split: train
+    - dataset: nvidia-physical-ai
+      split: train
+
+benchmarks: [kitscenes, nuscenes, navsim, navsim_v1, neuroncap]

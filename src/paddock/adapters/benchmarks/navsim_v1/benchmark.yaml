@@ -1,0 +1,16 @@
+name: navsim_v1
+description: NAVSIM v1.1 PDMS on navtest - the 2024 leaderboard composite, NC x DAC x (5 TTC + 5 EP + 2 comfort)/12, from re-simulating a 4 s plan on OpenScene's real scenes; the same data as `navsim`, scored by the v1 devkit
+# The same third shape as navsim: the devkit's scorer owns the iteration and
+# paddock supplies the model over HTTP. Open loop because the recording decides
+# what happens next and errors do not compound.
+mode: open_loop
+dataset: navsim
+metrics:
+  - pdms
+  - no_at_fault_collisions
+  - drivable_area_compliance
+  - ego_progress
+  - time_to_collision_within_bound
+  - comfort
+  - driving_direction_compliance
+primary_metric: pdms

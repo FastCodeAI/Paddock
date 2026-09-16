@@ -82,6 +82,16 @@ def test_summarise_of_nothing_is_not_zero() -> None:
         ("reference_speed", False),
         ("ego_progress", False),
         ("lane_keeping", False),
+        # AlpaSim: outcome rates and a fidelity distance whose names read the
+        # wrong way round. An up arrow on these tells a reader the model that
+        # crashed more often did better.
+        ("collision_at_fault", True),
+        ("offroad", True),
+        ("open_loop_collision", True),
+        ("dist_to_gt_trajectory", True),
+        ("scene_score", False),
+        ("progress", False),
+        ("duration_frac_20s", False),
     ],
 )
 def test_metric_direction(metric: str, lower_better: bool) -> None:
@@ -140,6 +150,63 @@ def test_kitscenes_matches_the_published_report(
     assert match.metrics["ade"]["mean"] == pytest.approx(ade, abs=0.001)
     assert match.metrics["ade"]["median"] == pytest.approx(median, abs=0.001)
     assert match.metrics["fde@3s"]["mean"] == pytest.approx(fde3, abs=0.001)
+
+
+def _kitscenes_pkl(model: str) -> Path:
+    path = _ingest_config().get("kitscenes_pkl", {}).get(model)
+    if not path or not Path(path).exists():
+        pytest.skip(f"kitscenes pkl for {model} not present at this site")
+    return Path(path)
+
+
+def test_kitscenes_pkl_matches_the_published_report() -> None:
+    """Drive-JEPA's row in alpamayo1.5/eval_kitscenes/runs/full/report.md.
+
+    An independent reference in the strict sense: that table was written by the
+    Alpamayo harness, which read this same pickle and carried its per-sample ADE
+    through as `reference_ade`. Paddock re-aggregates from the per-sample
+    records and has to land on the same four numbers.
+    """
+    from paddock.results.ingest import kitscenes
+
+    runs = kitscenes.ingest_pkl(_kitscenes_pkl("drivejepa"), "drivejepa", site="test")
+    assert len(runs) == 1, "one pickle is one run"
+    _, metrics, _ = runs[0]
+
+    assert metrics.n == 223
+    assert metrics.metrics["ade"]["mean"] == pytest.approx(2.364, abs=0.001)
+    assert metrics.metrics["fde@1s"]["mean"] == pytest.approx(1.306, abs=0.001)
+    assert metrics.metrics["fde@2s"]["mean"] == pytest.approx(2.668, abs=0.001)
+    assert metrics.metrics["fde@3s"]["mean"] == pytest.approx(4.199, abs=0.001)
+
+
+def test_kitscenes_pkl_is_scored_on_the_same_keyframes_as_the_jsonl_runs() -> None:
+    """The whole point of ingesting it: one shared list, so the rows compare.
+
+    A matching sequence hash is the claim; equal counts are not. Checked against
+    openpilot's full223, whose harness never shared code with Drive-JEPA's.
+    """
+    from paddock.results.ingest import kitscenes
+
+    reference = kitscenes.ingest_run_dir(_kitscenes_runs("openpilot") / "full223", "openpilot", site="test")
+    run, _, _ = kitscenes.ingest_pkl(_kitscenes_pkl("drivejepa"), "drivejepa", site="test")[0]
+
+    assert run.dataset["sequences_sha256"] == reference[0][0].dataset["sequences_sha256"]
+
+
+def test_kitscenes_pkl_records_the_route_hint() -> None:
+    """Drive-JEPA got a ground-truth-derived turn command; the others did not.
+
+    Recorded because it is a difference in what the model was told, which a
+    later reader comparing these numbers needs and cannot recover from the
+    metrics. 39 of 223 is the figure the report's caveats section cites.
+    """
+    from paddock.results.ingest import kitscenes
+
+    run, _, _ = kitscenes.ingest_pkl(_kitscenes_pkl("drivejepa"), "drivejepa", site="test")[0]
+
+    assert run.config["command_source"] == "gt"
+    assert run.config["turn_commands"] == 39
 
 
 def test_navsim_drops_all_three_aggregate_rows() -> None:

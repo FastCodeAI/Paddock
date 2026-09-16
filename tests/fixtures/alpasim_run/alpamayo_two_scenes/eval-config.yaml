@@ -1,0 +1,2 @@
+aggregation_modifiers:
+  max_dist_to_gt_trajectory: 4.0
