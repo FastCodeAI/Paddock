@@ -310,11 +310,12 @@ def run(model_filter: str | None = None) -> Report:
     # opposite of what this command is for.
     free = gpu.free_gb()
     if free is None:
+        pinned_off = gpu.visible_device() is None
         report.add(
             "hardware",
             "gpu",
             Status.WARN,
-            "nvidia-smi unavailable",
+            'CUDA_VISIBLE_DEVICES="" -- no device' if pinned_off else "nvidia-smi unavailable",
             "CPU-only models will still run; GPU models need a working driver",
         )
     else:

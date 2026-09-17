@@ -168,7 +168,21 @@ def comfort(xy, dt: float) -> dict[str, float]:
     # swinging between whatever headings its noise happened to produce.
     moving = length > 1e-6
     heading = np.where(moving, np.arctan2(step[:, 1], step[:, 0]), np.nan)
-    yaw_rate = np.diff(np.unwrap(heading)) / dt
+    # `np.unwrap` is a cumulative sum over differences, so a single NaN voids
+    # every heading after it: a plan that waited at a light and then turned off
+    # reported `comfort_yaw_rate_max` and `comfort_lat_accel_max` as NaN for the
+    # whole rest of the plan, which `summarise()` reads as "not measurable" and
+    # drops -- so the turn never reached an aggregate at all. Unwrap the moving
+    # headings among themselves instead; a constant 2*pi offset picked up across
+    # a gap cancels in the differences taken below.
+    unwrapped = np.full(heading.shape, np.nan)
+    if moving.any():
+        unwrapped[moving] = np.unwrap(heading[moving])
+    # Putting the NaNs back where the car was stopped is also what keeps a yaw
+    # rate from being reported *across* a stop: nothing in a path says whether
+    # the car rotated while stationary, and a pair straddling one has a NaN at
+    # one end, so the difference stays NaN without needing a second mask.
+    yaw_rate = np.diff(unwrapped) / dt
     # Lateral acceleration is v * yaw_rate, at the point where the yaw rate is
     # defined: between two interval midpoints, so the mean of their speeds.
     lat_accel = yaw_rate * 0.5 * (speed[:-1] + speed[1:])

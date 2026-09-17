@@ -86,14 +86,14 @@ def test_zero_vram_models_do_not_wait() -> None:
 
 
 def test_impossible_vram_request_fails_with_a_useful_message(monkeypatch) -> None:
-    monkeypatch.setattr(gpu, "free_gb", lambda: 1.0)
+    monkeypatch.setattr(gpu, "free_gb", lambda _env=None: 1.0)
     with pytest.raises(gpu.GpuUnavailable, match="held by other processes"):
         gpu.wait_for(999.0, timeout_s=0.0, poll_s=0.0)
 
 
 def test_no_gpu_present_does_not_block(monkeypatch) -> None:
     """A CPU-only model must still run on a box with no usable nvidia-smi."""
-    monkeypatch.setattr(gpu, "free_gb", lambda: None)
+    monkeypatch.setattr(gpu, "free_gb", lambda _env=None: None)
     gpu.wait_for(24.0, timeout_s=0.0)
 
 
@@ -113,7 +113,9 @@ def _nvidia_smi_returning(rows: str):
         ("0", 24.0),
         ("1", 90.0),  # the emptier card, which is the point
         ("1,0", 90.0),  # a list selects with its first entry
-        ("", 24.0),  # empty: no remapping to apply
+        # Explicitly empty is how CUDA is told there is no device at all, so
+        # there is no headroom to read and nothing to wait for.
+        ("", None),
         ("MIG-abc", 24.0),  # a UUID is not an index; do not guess
     ],
 )
@@ -129,7 +131,41 @@ def test_free_vram_is_read_from_the_card_the_model_will_use(monkeypatch, visible
     monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
     if visible is not None:
         monkeypatch.setenv("CUDA_VISIBLE_DEVICES", visible)
-    assert gpu.free_gb() == pytest.approx(expected)
+    assert gpu.free_gb() == (None if expected is None else pytest.approx(expected))
+
+
+def test_gating_reads_the_card_the_model_is_pinned_to_not_the_one_paddock_sees(monkeypatch) -> None:
+    """`[models.X] env.CUDA_VISIBLE_DEVICES = "1"` never reached the gate.
+
+    `runtime.env.build` puts a model's declared environment on the node, so the
+    node lands on card 1 -- while `wait_for`, reading `os.environ`, waited on
+    card 0. The same wrong answer twice over the previous fix set out to stop,
+    one level up: it blocks on a card the run is not using and green-lights a
+    launch into an empty one that is not there.
+    """
+    monkeypatch.setattr(gpu.shutil, "which", lambda _name: "/usr/bin/nvidia-smi")
+    monkeypatch.setattr(gpu.subprocess, "run", _nvidia_smi_returning("1024\n92160\n"))
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")  # paddock's own view: card 0, nearly full
+
+    assert gpu.free_gb() == pytest.approx(1.0)
+    assert gpu.free_gb({"CUDA_VISIBLE_DEVICES": "1"}) == pytest.approx(90.0)
+    # And the model's own view is what decides whether to block.
+    gpu.wait_for(24.0, timeout_s=0.0, poll_s=0.0, env={"CUDA_VISIBLE_DEVICES": "1"})
+    with pytest.raises(gpu.GpuUnavailable):
+        gpu.wait_for(24.0, timeout_s=0.0, poll_s=0.0, env={"CUDA_VISIBLE_DEVICES": "0"})
+
+
+def test_a_model_pinned_to_no_device_does_not_wait_for_one(monkeypatch) -> None:
+    """`CUDA_VISIBLE_DEVICES=""` is CUDA's "there is no GPU here".
+
+    Read as an index it was device 0, so a model deliberately pushed onto the
+    CPU sat waiting up to two hours for headroom on a card it could not open.
+    """
+    monkeypatch.setattr(gpu.shutil, "which", lambda _name: "/usr/bin/nvidia-smi")
+    monkeypatch.setattr(gpu.subprocess, "run", _nvidia_smi_returning("1024\n"))
+    assert gpu.visible_device({"CUDA_VISIBLE_DEVICES": ""}) is None
+    assert gpu.free_gb({"CUDA_VISIBLE_DEVICES": ""}) is None
+    gpu.wait_for(24.0, timeout_s=0.0, poll_s=0.0, env={"CUDA_VISIBLE_DEVICES": ""})
 
 
 def test_free_vram_is_unknown_rather_than_wrong_for_a_device_that_is_not_there(monkeypatch) -> None:

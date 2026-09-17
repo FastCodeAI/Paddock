@@ -48,10 +48,11 @@ from paddock.config import Dataset
 
 __all__ = ["Survey", "human", "rate_hz", "survey"]
 
-#: Files every complete segment has. `loader._is_segment` requires only
-#: `video.hevc` and the pose, because those are what scoring reads; a segment
-#: missing `raw_log.bz2` still scores. Reported, therefore, rather than refused.
-SEGMENT_FILES = ("video.hevc", "preview.png", "raw_log.bz2", "global_pose/frame_positions")
+#: Files every complete segment has. `loader._is_segment` requires `video.hevc`
+#: and all of `L.POSE_FILES`, because those are what scoring opens; a segment
+#: missing `raw_log.bz2` still scores. Reported, therefore, rather than refused
+#: -- and the ones `_is_segment` already enforces are not restated here.
+SEGMENT_FILES = ("preview.png", "raw_log.bz2")
 
 #: `dongle_id|start_time`, as the dataset writes it. Underscore as well as pipe:
 #: a copy that has been through a filesystem which rejects `|` renames it, and
@@ -177,7 +178,7 @@ def _anomalies(dataset: Dataset, found: set[str]) -> tuple[list[str], list[tuple
                 if unusable > 0:
                     notes.append(
                         f"Chunk_{chunk}/{route_dir.name}: {unusable} segment(s) without a video.hevc "
-                        "and a global_pose/frame_times, skipped"
+                        f"and all of global_pose/{{{','.join(L.POSE_FILES)}}}, skipped"
                     )
                 if usable:
                     routes.append((chunk, route_dir.name))
@@ -187,8 +188,8 @@ def _anomalies(dataset: Dataset, found: set[str]) -> tuple[list[str], list[tuple
 def _spot_check(segments: list[L.SegmentRef], n: int, rng: random.Random) -> tuple[int, list[str]]:
     """Stat `SEGMENT_FILES` on `n` segments spread across the chunks.
 
-    A sample, not a sweep: `os.lstat` on 2035 segments x 4 files is ~8000 cold
-    stats on a NAS, which is seconds, and `paddock doctor` calls this on every
+    A sample, not a sweep: `os.lstat` on 2035 segments x every file is thousands
+    of cold stats on a NAS, which is seconds, and `paddock doctor` calls this on every
     machine. A chunk that half-extracted shows up in a sample of 64; a single
     missing preview.png is not worth making everyone wait for.
     """

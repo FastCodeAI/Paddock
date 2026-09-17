@@ -144,14 +144,26 @@ def path_length_ratio(pred_xy, gt_xy) -> tuple[float, float, float]:
     The ratio is NaN when the car barely moved. **1.0 is right; ~0 means the
     model predicted a stationary world**, which is a broken input pipeline
     rather than a modelling limitation, and is invisible in ADE alone.
+
+    Both lengths start at the ego origin, which is a real point of the path at
+    `t = 0` and not an interpolation -- `lateral_at_arclength` above prepends it
+    for the same reason. Differencing the waypoints alone drops the first leg,
+    which is the largest one: at 30 m/s over a 3 s horizon that reported 75 m of
+    a 90 m drive. The ratio was unaffected (both sides lost the same leg) but
+    `predicted_path_length` and `recorded_path_length` are published columns and
+    were not the metres they claim to be.
     """
     pred_xy = np.asarray(pred_xy, dtype=np.float64)[:, :2]
     gt_xy = np.asarray(gt_xy, dtype=np.float64)[:, :2]
     n = min(len(pred_xy), len(gt_xy))
-    if n < 2:
+    if n < 1:
         return 0.0, 0.0, float("nan")
-    pred_len = float(np.sum(np.linalg.norm(np.diff(pred_xy[:n], axis=0), axis=1)))
-    gt_len = float(np.sum(np.linalg.norm(np.diff(gt_xy[:n], axis=0), axis=1)))
+    origin = np.zeros((1, 2))
+
+    def length(xy: np.ndarray) -> float:
+        return float(np.sum(np.linalg.norm(np.diff(np.concatenate([origin, xy]), axis=0), axis=1)))
+
+    pred_len, gt_len = length(pred_xy[:n]), length(gt_xy[:n])
     ratio = pred_len / gt_len if gt_len > MIN_GT_PATH_LENGTH_M else float("nan")
     return pred_len, gt_len, ratio
 

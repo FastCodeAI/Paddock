@@ -112,6 +112,44 @@ def test_a_stopped_plan_has_no_yaw_rate_rather_than_a_zero_one():
     assert m["comfort_lon_accel_max"] == 0.0
 
 
+def test_a_plan_that_stops_once_still_reports_the_turn_that_follows():
+    """One stationary interval used to void the yaw channel for the whole plan.
+
+    `np.unwrap` is a cumulative sum over differences, so the NaN heading that
+    marks "the car did not move here" propagated to every later heading. A plan
+    that waits at a light and then turns off reported `comfort_yaw_rate_max` and
+    `comfort_lat_accel_max` as NaN -- which `summarise()` reads as "not
+    measurable" and drops, so the turn never reached an aggregate at all.
+    """
+    radius, speed = 50.0, 10.0
+    stopped = np.zeros((2, 2))
+    turn = _arc(radius, speed)
+    m = comfort(np.vstack([stopped, turn]), DT)
+
+    assert m["comfort_yaw_rate_max"] == pytest.approx(speed / radius, rel=0.01)
+    assert m["comfort_lat_accel_max"] == pytest.approx(speed**2 / radius, rel=0.01)
+    # Pulling away from a standstill really is 20 m/s^2, so the plan is
+    # uncomfortable -- but on the longitudinal channel, and measurably so.
+    assert m["comfort_yaw_rate_within_bounds"] == 1.0
+    assert m["comfort_lat_accel_within_bounds"] == 1.0
+    assert m["comfort_within_bounds"] == 0.0
+
+
+def test_a_yaw_rate_is_never_reported_across_a_stop():
+    """Nothing in a path says whether the car rotated while it was stationary.
+
+    The heading before a stop and the heading after it are two separate turns,
+    so the pair that straddles one stays unmeasurable rather than being charged
+    the whole difference at once.
+    """
+    # East for two intervals, stopped for one, then north for two: the only
+    # heading change in the plan is the one hidden inside the stop.
+    xy = np.array([[5.0, 0.0], [10.0, 0.0], [10.0, 0.0], [10.0, 5.0], [10.0, 10.0]])
+    m = comfort(xy, DT)
+    assert m["comfort_yaw_rate_max"] == pytest.approx(0.0, abs=1e-9)
+    assert m["comfort_lat_accel_max"] == pytest.approx(0.0, abs=1e-9)
+
+
 @pytest.mark.parametrize(
     "xy, dt",
     [

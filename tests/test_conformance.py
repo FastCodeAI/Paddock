@@ -377,11 +377,52 @@ def test_it_accepts_a_real_mounting_and_rejects_a_ninety_degree_one():
     mounted[:3, :3] = ry @ C.UNROTATED_CAMERA2EGO
     assert not C.check_camera_mounting(mounted).failed
 
-    # A yaw of 90 deg about the ego z axis is not a mounting.
-    rz = np.array([[0.0, -1, 0], [1, 0, 0], [0, 0, 1]])
+    # A roll of 90 deg about the ego forward axis is not a mounting: the horizon
+    # runs down the image.
+    rx = np.array([[1.0, 0, 0], [0, 0, -1], [0, 1, 0]])
     slipped = np.eye(4)
-    slipped[:3, :3] = rz @ C.UNROTATED_CAMERA2EGO
+    slipped[:3, :3] = rx @ C.UNROTATED_CAMERA2EGO
     assert C.check_camera_mounting(slipped).failed
+
+
+def _facing(degrees: float) -> np.ndarray:
+    """A correctly mounted, level camera pointing `degrees` off straight ahead."""
+    t = np.radians(degrees)
+    rz = np.array([[np.cos(t), -np.sin(t), 0], [np.sin(t), np.cos(t), 0], [0, 0, 1.0]])
+    m = np.eye(4)
+    m[:3, :3] = rz @ C.UNROTATED_CAMERA2EGO
+    return m
+
+
+@pytest.mark.parametrize("bearing", [30.0, 55.0, 70.0, 90.0, 110.0, 120.0, 180.0, -70.0])
+def test_a_camera_that_faces_sideways_is_a_rig_choice_and_not_a_slip(bearing):
+    """Every one of these failed while the residual still counted yaw.
+
+    nuScenes hands out a six-camera ring -- roughly 55, 70, 110 and 180 degrees
+    off straight ahead -- and `policy_findings` checks the mounting of every
+    camera the observation carries. A check that calls five of six correct
+    mountings an error is one people learn to ignore, which costs the identity
+    case it exists to catch. What no real bracket does is tilt or roll, so that
+    is what the angle now measures.
+    """
+    finding = C.check_camera_mounting(_facing(bearing), "CAM_BACK_LEFT")
+    assert not finding.failed
+    assert "0.00 deg off level" in finding.detail
+    # The bearing is still on the record, so a camera named CAM_FRONT facing
+    # sideways is visible to whoever reads the report.
+    assert f"{bearing:+.0f} deg" in finding.detail
+
+
+def test_a_sideways_camera_that_is_also_tilted_still_fails():
+    """Dividing yaw out must not divide the pitch out with it."""
+    yaw, pitch = np.radians(70.0), np.radians(40.0)
+    rz = np.array([[np.cos(yaw), -np.sin(yaw), 0], [np.sin(yaw), np.cos(yaw), 0], [0, 0, 1.0]])
+    ry = np.array([[np.cos(pitch), 0, np.sin(pitch)], [0, 1, 0], [-np.sin(pitch), 0, np.cos(pitch)]])
+    tilted = np.eye(4)
+    tilted[:3, :3] = rz @ ry @ C.UNROTATED_CAMERA2EGO
+    finding = C.check_camera_mounting(tilted, "CAM_FRONT_LEFT")
+    assert finding.failed
+    assert "40.00 deg off level" in finding.detail
 
 
 def test_it_catches_a_non_rotation_matrix():

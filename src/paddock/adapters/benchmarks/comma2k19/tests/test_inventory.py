@@ -85,6 +85,22 @@ def test_survey_names_every_directory_the_walk_passed_over(dataset, tmp_path):
     assert f"Chunk_1/{RAV4_ROUTE}: 1 segment(s) without a video.hevc" in notes
 
 
+def test_a_segment_missing_one_pose_file_is_not_a_segment(dataset, tmp_path):
+    """The half-extracted chunk that used to survive inventory and die mid-sweep.
+
+    `_is_segment` checked `frame_times` and nothing else, so a copy that stopped
+    partway through `global_pose/` passed the walk, got counted, got scheduled,
+    and raised `FileNotFoundError` out of `load_pose` hours into a run.
+    """
+    victim = tmp_path / "raw_data" / "Chunk_1" / CIVIC_ROUTE / "1"
+    (victim / "global_pose" / "frame_positions").unlink()
+
+    found = INV.survey(dataset)
+    assert found.n_segments == 5
+    assert f"Chunk_1/{CIVIC_ROUTE}: 1 segment(s) without" in "\n".join(found.anomalies)
+    assert all(seg.sample_key != f"1/{CIVIC_ROUTE}/1" for seg in L.list_segments(dataset))
+
+
 def test_survey_keeps_counting_when_a_root_is_not_mounted(tmp_path):
     """The normal state before the NAS is mounted, and not a crash."""
     absent = tmp_path / "not-here"

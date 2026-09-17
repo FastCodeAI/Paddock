@@ -11,6 +11,9 @@ to answer.
 
 from __future__ import annotations
 
+import sys
+import threading
+
 import numpy as np
 import pytest
 
@@ -250,3 +253,54 @@ def test_the_legend_carries_the_number_the_plan_scored():
     assert "ade 1.23" in label and "fde@3s 2.00" in label
     # Only the two headline numbers: a legend entry is one line on an image.
     assert "ade@5s" not in label
+
+
+def _chatty_ffmpeg(tmp_path, frames: int, noise_kb: int) -> str:
+    """A stand-in ffmpeg that talks as much as a damaged HEVC stream does.
+
+    Real ffmpeg emits a line per undecodable frame, so a segment's worth is
+    roughly 96 KB -- comfortably past the 64 KB a pipe holds. This writes its
+    complaints first and its frames second, which is the order that matters: a
+    decoder blocked on stderr never reaches stdout, and a reader waiting on
+    stdout never drains stderr.
+    """
+    script = tmp_path / "ffmpeg-stub"
+    script.write_text(
+        "#!/bin/sh\n"
+        f"exec {sys.executable} -c '\n"
+        "import sys\n"
+        f'sys.stderr.buffer.write(b"[hevc @ 0x0] Could not find ref with POC\\n" * {noise_kb * 25})\n'
+        "sys.stderr.flush()\n"
+        f"sys.stdout.buffer.write(bytes({frames} * 8 * 4 * 3))\n"
+        "'\n"
+    )
+    script.chmod(0o755)
+    return str(script)
+
+
+def test_a_decoder_that_complains_about_every_frame_does_not_wedge_the_sweep(tmp_path, monkeypatch):
+    """The deadlock that had no timeout anywhere to end it.
+
+    `stderr=PIPE` was drained only once stdout reached EOF. This harness expects
+    truncated video, a damaged stream complains once per frame, and ~96 KB does
+    not fit in a 64 KB pipe -- so ffmpeg blocked writing, `stdout.read()` blocked
+    waiting, and four pinned nodes sat there until somebody noticed.
+    """
+    monkeypatch.setattr(L, "probe_decoder", lambda: "ffmpeg")
+    monkeypatch.setattr(L, "_ffmpeg", lambda: _chatty_ffmpeg(tmp_path, frames=3, noise_kb=256))
+
+    decoded: list[int] = []
+    error: list[BaseException] = []
+
+    def run() -> None:
+        try:
+            decoded.append(len(list(L.decode_frames(tmp_path / "video.hevc", width=8, height=4))))
+        except BaseException as exc:  # noqa: BLE001 - reported through `error`, not swallowed
+            error.append(exc)
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(timeout=30.0)
+    assert not worker.is_alive(), "decode_frames deadlocked on ffmpeg's stderr"
+    assert not error, error
+    assert decoded == [3]

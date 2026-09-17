@@ -63,15 +63,18 @@ Two things stay local on purpose, both narrower than they look:
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
+import tempfile
 from collections.abc import Iterable, Iterator
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from fractions import Fraction
 from functools import cached_property
 from itertools import chain
 from pathlib import Path
+from typing import IO
 
 import numpy as np
 
@@ -204,7 +207,17 @@ class SegmentRef:
 
 
 def _is_segment(path: Path) -> bool:
-    return (path / "video.hevc").exists() and (path / "global_pose" / "frame_times").exists()
+    """Every file the loader will actually open, not a sample of them.
+
+    Checking `frame_times` alone let a half-extracted chunk through inventory
+    and into a sweep, where `load_pose` raised `FileNotFoundError` on
+    `frame_positions` hours later. The four names are the ones that function
+    reads, which is why they are `POSE_FILES` rather than a list here.
+    """
+    if not (path / "video.hevc").exists():
+        return False
+    pose = path / "global_pose"
+    return all((pose / name).exists() for name in POSE_FILES)
 
 
 def list_segments(dataset: Dataset) -> list[SegmentRef]:
@@ -514,6 +527,38 @@ def probe_decoder() -> str:
         return "ffmpeg"
 
 
+@contextmanager
+def _stderr_log(tag: str) -> Iterator[tuple[IO[bytes], Path]]:
+    """A real file for ffmpeg's stderr, never a pipe.
+
+    A pipe holds 64 KB and nothing here drains it until stdout reaches EOF. This
+    harness *expects* truncated video -- `harness._segment_samples` handles a
+    short segment as a normal case -- and a damaged HEVC stream emits a line per
+    frame, roughly 96 KB over a segment. So the pipe fills, ffmpeg blocks
+    writing to it, the reader blocks in `stdout.read()` waiting for frames that
+    will never come, and there is no timeout anywhere: the sweep wedges until
+    somebody notices. `-v error` shrinks the output but does not bound it.
+
+    A file cannot block. It can also be read *while* the decode is running,
+    which is the difference between a hang you can diagnose and one you can only
+    kill. It is removed on the way out, so a finished decode leaves nothing.
+    """
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", tag)[:64]
+    fd, name = tempfile.mkstemp(prefix=f"paddock-ffmpeg-{safe}-", suffix=".log")
+    handle = os.fdopen(fd, "w+b")
+    try:
+        yield handle, Path(name)
+    finally:
+        handle.close()
+        with suppress(OSError):
+            Path(name).unlink()
+
+
+def _drain(handle: IO[bytes]) -> str:
+    handle.seek(0)
+    return handle.read().decode(errors="replace").strip()
+
+
 def decode_frames(
     video: Path, limit: int | None = None, width: int = EON_WIDTH, height: int = EON_HEIGHT_PX
 ) -> Iterator[np.ndarray]:
@@ -554,28 +599,30 @@ def decode_frames(
         "-",
     ]
     frame_bytes = width * height * 3
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    try:
-        i = 0
-        while True:
-            if limit is not None and i >= limit:
-                return
-            buf = proc.stdout.read(frame_bytes)
-            if not buf:
-                break
-            if len(buf) < frame_bytes:
-                raise RuntimeError(f"{video}: truncated frame {i} ({len(buf)}/{frame_bytes} bytes)")
-            yield np.frombuffer(buf, dtype=np.uint8).reshape(height, width, 3)
-            i += 1
-        err = proc.stderr.read().decode(errors="replace")
-        if proc.wait() != 0:
-            raise RuntimeError(f"{video}: ffmpeg failed: {err.strip()}")
-    finally:
-        if proc.poll() is None:
-            proc.kill()
-        for stream in (proc.stdout, proc.stderr):
-            if stream is not None:
-                stream.close()
+    with _stderr_log(video.parent.name) as (log, log_path):
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=log)
+        try:
+            i = 0
+            while True:
+                if limit is not None and i >= limit:
+                    return
+                buf = proc.stdout.read(frame_bytes)
+                if not buf:
+                    break
+                if len(buf) < frame_bytes:
+                    raise RuntimeError(
+                        f"{video}: truncated frame {i} ({len(buf)}/{frame_bytes} bytes); "
+                        f"ffmpeg said: {_drain(log) or '(nothing)'}"
+                    )
+                yield np.frombuffer(buf, dtype=np.uint8).reshape(height, width, 3)
+                i += 1
+            if proc.wait() != 0:
+                raise RuntimeError(f"{video}: ffmpeg failed: {_drain(log)} (log was {log_path})")
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+            if proc.stdout is not None:
+                proc.stdout.close()
 
 
 def encode_frames(frames: Iterable[np.ndarray], out_path: Path, fps: float = SRC_HZ, crf: int = 23) -> Path:
@@ -626,19 +673,20 @@ def encode_frames(frames: Iterable[np.ndarray], out_path: Path, fps: float = SRC
         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", str(crf),
         str(out_path),
     ]  # fmt: skip
-    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-    try:
-        for rgb in chain([first], frames):
-            proc.stdin.write(np.ascontiguousarray(rgb, dtype=np.uint8).tobytes())
-    except BrokenPipeError as exc:  # ffmpeg died; its stderr says why, the pipe does not
-        why = proc.stderr.read().decode(errors="replace").strip()
-        raise RuntimeError(f"ffmpeg failed writing {out_path}: {why}") from exc
-    finally:
-        if proc.stdin is not None:
-            with suppress(BrokenPipeError):
-                proc.stdin.close()
-    err = proc.stderr.read().decode(errors="replace")
-    proc.stderr.close()
-    if proc.wait() != 0:
-        raise RuntimeError(f"ffmpeg failed writing {out_path}: {err.strip()}")
+    # A file rather than a pipe, for the reason `_stderr_log` gives: the writer
+    # here blocks in `stdin.write` while ffmpeg blocks writing to a full stderr,
+    # which is the same deadlock from the other end.
+    with _stderr_log(out_path.stem) as (log, _):
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=log)
+        try:
+            for rgb in chain([first], frames):
+                proc.stdin.write(np.ascontiguousarray(rgb, dtype=np.uint8).tobytes())
+        except BrokenPipeError as exc:  # ffmpeg died; its stderr says why, the pipe does not
+            raise RuntimeError(f"ffmpeg failed writing {out_path}: {_drain(log)}") from exc
+        finally:
+            if proc.stdin is not None:
+                with suppress(BrokenPipeError):
+                    proc.stdin.close()
+        if proc.wait() != 0:
+            raise RuntimeError(f"ffmpeg failed writing {out_path}: {_drain(log)}")
     return out_path

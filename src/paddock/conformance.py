@@ -218,6 +218,13 @@ def check_camera_mounting(camera2ego, name: str = "CAM_FRONT") -> Finding:
     Derives the mounting rotation the way an adapter does and rejects anything
     beyond `MAX_MOUNT_DEG`. Names the identity case explicitly, because that is
     the one people actually write.
+
+    **Yaw is divided out before the angle is taken.** Which way a camera faces
+    is a rig decision, not an error: nuScenes' ring sits at roughly 55, 70, 110
+    and 180 degrees, and measuring the residual with yaw in it failed every one
+    of those correctly-mounted cameras. What the check is actually looking for
+    is a camera that is not *level* -- pitched or rolled away from the horizon,
+    which is what a frame slip produces and what no real bracket does.
     """
     m = np.asarray(camera2ego, dtype=np.float64)
     if m.shape != (4, 4):
@@ -241,14 +248,23 @@ def check_camera_mounting(camera2ego, name: str = "CAM_FRONT") -> Finding:
             "             [[0, 0, 1], [-1, 0, 0], [0, -1, 0]]\n"
             "         and the identity is a 90 degree error.",
         )
-    # Residual rotation relative to an unrotated camera, as an angle.
-    residual = r @ UNROTATED_CAMERA2EGO.T
+    # Where the camera points, in the ego's horizontal plane: column 2 of a
+    # camera2ego is the optical axis, because paddock's camera frame is
+    # [right, down, forward]. That bearing is the rig's business, so the
+    # reference to compare against is an unrotated camera turned to face the
+    # same way -- leaving pitch and roll, which are the check's business.
+    forward = r[:, 2]
+    yaw = float(np.arctan2(forward[1], forward[0]))
+    c, s = np.cos(yaw), np.sin(yaw)
+    about_ego_up = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+    residual = r @ (about_ego_up @ UNROTATED_CAMERA2EGO).T
     angle = float(np.degrees(np.arccos(np.clip((np.trace(residual) - 1.0) / 2.0, -1.0, 1.0))))
     ok = angle <= MAX_MOUNT_DEG
+    bearing = f" (facing {np.degrees(yaw):+.0f} deg, which is not counted)" if abs(yaw) > 1e-3 else ""
     return _finding(
         "benchmark.camera_mounting_is_plausible",
         ok,
-        f"{name}: mounting is {angle:.2f} deg off level (limit {MAX_MOUNT_DEG:g} deg)",
+        f"{name}: mounting is {angle:.2f} deg off level{bearing} (limit {MAX_MOUNT_DEG:g} deg)",
     )
 
 

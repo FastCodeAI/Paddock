@@ -621,6 +621,21 @@ def test_a_perfect_prediction_scores_zero():
     assert m["path_length_ratio"] == pytest.approx(1.0)
 
 
+def test_the_path_lengths_are_the_metres_the_car_actually_covered():
+    """They start at the ego origin, which is where the car is at `t = 0`.
+
+    Differencing the waypoints alone drops the first leg -- the longest one --
+    so a car holding 30 m/s through a 3 s horizon reported 75 m of a 90 m drive.
+    The ratio survived it (both sides lost the same leg) but the two lengths are
+    published in metres and were short by one interval's worth.
+    """
+    gt = np.stack([np.arange(1, 7) * 15.0, np.zeros(6)], axis=1)  # 30 m/s, 0.5 s
+    m = MC.score_trajectory(gt, gt, eval_horizon_s=3.0)
+    assert m["recorded_path_length"] == pytest.approx(90.0)
+    assert m["predicted_path_length"] == pytest.approx(90.0)
+    assert m["path_length_ratio"] == pytest.approx(1.0)
+
+
 def test_a_stationary_prediction_is_not_flattered_by_the_lateral_metric():
     """The failure mode the previous comma2k19 report misread.
 
