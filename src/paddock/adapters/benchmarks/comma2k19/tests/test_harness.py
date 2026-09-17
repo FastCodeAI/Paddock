@@ -1051,3 +1051,120 @@ def test_score_joins_the_auxiliary_metrics_onto_the_trajectory_ones():
     rich = _bench().score(sample, plan)
     assert set(rich) == set(bare)
     assert rich["speed_abs_err"] == pytest.approx(0.5)
+
+
+# --------------------------------------------------------------------------
+# Scene sets
+# --------------------------------------------------------------------------
+
+#: What this pretend site holds, as `SegmentRef.sample_key` spells it.
+SITE_KEYS = (
+    "1/aaa|2018-01-01--00-00-00/3",
+    "1/aaa|2018-01-01--00-00-00/4",
+    "2/bbb|2018-02-02--00-00-00/7",
+)
+ONE_SCENE = "keyframes_per_segment: 85\nscenes:\n- 2/bbb|2018-02-02--00-00-00/7\n"
+
+
+def _ref(key: str) -> L.SegmentRef:
+    """The `SegmentRef` whose `sample_key` is `key` -- the parse `list_segments` does."""
+    chunk, route_id, segment = key.split("/")
+    return L.SegmentRef(chunk=int(chunk), route_id=route_id, segment=int(segment), path=Path(key))
+
+
+def _scene_bench(monkeypatch, tmp_path, name, body: str | None, keys=SITE_KEYS, **settings):
+    """A bench asking for scene set `name`, with `scenes/` redirected to disk.
+
+    Written out rather than pointed at the tracked `viewer10.yaml`: whether
+    pinning works is a separate fact from which ten scenes this repo ships, and
+    a test that asserts both fails for two unrelated reasons.
+    """
+    monkeypatch.setattr(H, "SCENES_DIR", tmp_path)
+    monkeypatch.setenv(H.ENV_SCENE_SET, name)
+    if body is not None:
+        (tmp_path / f"{name}.yaml").write_text(body)
+    bench = _bench(**settings)
+    bench.__dict__["_all_segments"] = [_ref(k) for k in keys]
+    return bench
+
+
+def test_a_scene_set_restricts_the_segments_and_names_their_density(monkeypatch, tmp_path):
+    """The one selection `--limit N` cannot express: score *these* segments."""
+    bench = _scene_bench(monkeypatch, tmp_path, "ten", ONE_SCENE, keyframes_per_segment=5)
+    assert [s.sample_key for s in bench._segments] == ["2/bbb|2018-02-02--00-00-00/7"]
+    # The set wins over the site setting: it names the segments and the density
+    # that working set means, which is the more specific of the two statements.
+    assert bench.keyframes_per_segment == 85
+
+    monkeypatch.delenv(H.ENV_SCENE_SET)
+    plain = _bench(keyframes_per_segment=5)
+    assert plain.scene_set is None and plain.keyframes_per_segment == 5
+
+
+def test_a_dry_run_counts_the_scene_set_rather_than_the_dataset(monkeypatch, tmp_path):
+    """`coverage()`, `preflight()` and `status()` must all describe the run."""
+    bench = _scene_bench(monkeypatch, tmp_path, "ten", ONE_SCENE)
+    monkeypatch.setattr(type(bench), "_n_frames", staticmethod(lambda segment: 1200))
+
+    rows, missing = bench.coverage()
+    assert missing == []
+    assert {r["sample_key"].rsplit("/", 1)[0] for r in rows} == {"2/bbb|2018-02-02--00-00-00/7"}
+    assert len(rows) == 85  # the set's own density, not the default five
+
+
+def test_a_scene_set_naming_an_absent_segment_is_a_preflight_problem(monkeypatch, tmp_path):
+    """Nine of ten, quietly, is the failure pinning a set exists to prevent."""
+    body = ONE_SCENE + "- 9/nope|2019-09-09--00-00-00/1\n"
+    bench = _scene_bench(monkeypatch, tmp_path, "ten", body)
+    problems = bench._scene_set_problems()
+    assert len(problems) == 1 and "9/nope|2019-09-09--00-00-00/1" in problems[0]
+
+
+def test_a_scene_set_that_is_not_here_says_so_instead_of_raising(monkeypatch, tmp_path):
+    """Reported beside every other problem, not as a traceback out of `_segments`."""
+    (tmp_path / "ten.yaml").write_text(ONE_SCENE)
+    bench = _scene_bench(monkeypatch, tmp_path, "absent", None)
+    assert bench._segments == []
+    problem = bench._scene_set_problems()[0]
+    assert "no scene set 'absent'" in problem and "have: ten" in problem
+
+
+def test_a_scene_set_makes_the_run_invalid(monkeypatch, tmp_path):
+    """Ten chosen segments is a working set to look at, not comma2k19.
+
+    `_validity` turns this into `valid: false`, which is what keeps these runs
+    out of `paddock report` and out of `render.load_runs` unless asked for by id.
+    """
+    monkeypatch.delenv(H.ENV_ALLOW_SLOW, raising=False)
+    bench = _scene_bench(monkeypatch, tmp_path, "ten", ONE_SCENE)
+    reasons = bench.invalid_reasons()
+    assert len(reasons) == 1 and "'ten' (1 of 3 segments)" in reasons[0]
+
+    monkeypatch.delenv(H.ENV_SCENE_SET)
+    assert _bench().invalid_reasons() == []
+
+
+def test_a_run_with_no_scene_set_configures_exactly_as_it_did(monkeypatch, tmp_path):
+    """The regression that would break `--resume` on every recorded sweep.
+
+    A `scene_set` key present with the value `None` would change the config
+    JSON of every configuration that has ever run, and so its run id -- the
+    runner hashes `run_config()` verbatim into it. The literal below is the
+    default configuration as the recorded sweeps in `results/comma2k19/` carry
+    it, so a new key here fails this rather than silently orphaning them.
+    """
+    monkeypatch.delenv(H.ENV_SCENE_SET, raising=False)
+    monkeypatch.delenv(H.ENV_INPUT_HZ, raising=False)
+    monkeypatch.setattr(H, "SCENES_DIR", tmp_path)  # nothing on disk to find
+
+    assert _bench().run_config() == {
+        "history_frames": 160,
+        "keyframes_per_segment": 5,
+        "eval_horizon_s": 3.0,
+        "interval_s": 0.5,
+        "gt_horizon_s": 10.0,
+        "input_hz": 20.0,
+        "calibration": "route-pooled, calibrationd formula on recorded pose",
+        "stride": 1,
+        "history_span_s": 7.95,
+    }

@@ -1,0 +1,36 @@
+# The pinned 10-scene working set for the side-by-side viewer.
+#
+# Drawn by tools/benchmarks/comma2k19/pick_scenes.py: random within behaviour
+# buckets measured off each segment's recorded pose and radar, over the frames
+# that could actually be scored. Pinned as an explicit list for the same reason
+# alpasim pins its suite -- a set re-derived at run time is a set that can change
+# under two sites comparing numbers.
+#
+# Buckets drawn: close_lead:2, curve:3, speed_change:3, straight:2. At most one segment per route.
+# `features` is recorded, not read at run time: it is how a reader sees what
+# these ten actually do without re-measuring 2035 segments.
+selection: seeded random draw within behaviour buckets; see tools/benchmarks/comma2k19/pick_scenes.py
+seed: 20260917
+keyframes_per_segment: 85
+scenes:
+- 10/99c94dc769b5d96e|2018-11-16--10-00-42/37
+- 8/99c94dc769b5d96e|2018-09-25--09-06-17/39
+- 9/99c94dc769b5d96e|2018-10-15--13-43-11/1
+- 2/b0c9d2329ad1606b|2018-10-05--22-20-31/16
+- 3/99c94dc769b5d96e|2018-05-05--16-36-30/6
+- 5/99c94dc769b5d96e|2018-07-06--18-18-36/28
+- 2/b0c9d2329ad1606b|2018-10-22--11-21-08/36
+- 3/99c94dc769b5d96e|2018-05-02--16-01-39/67
+- 2/b0c9d2329ad1606b|2018-09-21--23-18-39/7
+- 5/99c94dc769b5d96e|2018-07-03--10-35-30/33
+features:
+  10/99c94dc769b5d96e|2018-11-16--10-00-42/37: {bucket: "curve", curve_s: 3.95, lead_close_s: 0.0, n_frames: 1200, span_s: 42.05, speed_max: 34.52, speed_mean: 33.23, speed_min: 29.38, vehicle: "civic", yaw_abs_max: 0.0681}
+  8/99c94dc769b5d96e|2018-09-25--09-06-17/39: {bucket: "curve", curve_s: 3.0, lead_close_s: 0.0, n_frames: 1200, span_s: 42.05, speed_max: 34.06, speed_mean: 33.78, speed_min: 33.27, vehicle: "civic", yaw_abs_max: 0.0685}
+  9/99c94dc769b5d96e|2018-10-15--13-43-11/1: {bucket: "curve", curve_s: 12.5, lead_close_s: 7.75, n_frames: 1200, span_s: 42.05, speed_max: 29.47, speed_mean: 25.0, speed_min: 18.23, vehicle: "civic", yaw_abs_max: 0.173}
+  2/b0c9d2329ad1606b|2018-10-05--22-20-31/16: {bucket: "speed_change", curve_s: 0.0, lead_close_s: 2.25, n_frames: 1200, span_s: 42.05, speed_max: 20.13, speed_mean: 17.87, speed_min: 13.85, vehicle: "rav4", yaw_abs_max: 0.0253}
+  3/99c94dc769b5d96e|2018-05-05--16-36-30/6: {bucket: "speed_change", curve_s: 0.75, lead_close_s: 5.5, n_frames: 1200, span_s: 42.05, speed_max: 36.18, speed_mean: 32.61, speed_min: 26.93, vehicle: "civic", yaw_abs_max: 0.0639}
+  5/99c94dc769b5d96e|2018-07-06--18-18-36/28: {bucket: "speed_change", curve_s: 0.0, lead_close_s: 0.75, n_frames: 1200, span_s: 42.05, speed_max: 18.81, speed_mean: 17.59, speed_min: 8.84, vehicle: "civic", yaw_abs_max: 0.055}
+  2/b0c9d2329ad1606b|2018-10-22--11-21-08/36: {bucket: "close_lead", curve_s: 0.0, lead_close_s: 3.0, n_frames: 1199, span_s: 42.0, speed_max: 29.14, speed_mean: 27.97, speed_min: 26.66, vehicle: "rav4", yaw_abs_max: 0.0589}
+  3/99c94dc769b5d96e|2018-05-02--16-01-39/67: {bucket: "close_lead", curve_s: 1.1, lead_close_s: 37.0, n_frames: 1200, span_s: 42.05, speed_max: 29.4, speed_mean: 27.46, speed_min: 25.41, vehicle: "civic", yaw_abs_max: 0.0818}
+  2/b0c9d2329ad1606b|2018-09-21--23-18-39/7: {bucket: "straight", curve_s: 0.0, lead_close_s: 0.0, n_frames: 1199, span_s: 42.0, speed_max: 29.74, speed_mean: 29.5, speed_min: 29.16, vehicle: "rav4", yaw_abs_max: 0.0588}
+  5/99c94dc769b5d96e|2018-07-03--10-35-30/33: {bucket: "straight", curve_s: 0.0, lead_close_s: 0.25, n_frames: 1200, span_s: 42.05, speed_max: 33.23, speed_mean: 32.83, speed_min: 32.38, vehicle: "civic", yaw_abs_max: 0.0577}

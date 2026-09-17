@@ -88,6 +88,7 @@ from functools import cached_property
 from pathlib import Path
 
 import numpy as np
+import yaml
 
 from paddock.adapters.benchmarks.comma2k19 import auxiliary as AUX
 from paddock.adapters.benchmarks.comma2k19 import calibration as CAL
@@ -174,6 +175,13 @@ ENV_INPUT_HZ = "PADDOCK_COMMA2K19_INPUT_HZ"
 #: measures the rate gap, so it is stored `valid: false`.
 ENV_ALLOW_SLOW = "PADDOCK_COMMA2K19_ALLOW_SLOW"
 
+#: Restrict the run to a named working set of segments, pinned under `scenes/`.
+#: An environment variable as well as a `[benchmarks.comma2k19] scene_set` key
+#: for the same reason `ENV_INPUT_HZ` has one: choosing a working set is a
+#: per-run decision, and should not require editing a site file between runs.
+ENV_SCENE_SET = "PADDOCK_COMMA2K19_SCENE_SET"
+SCENES_DIR = Path(__file__).parent / "scenes"
+
 #: Segment length, seconds. Used only to explain, rather than to compute: the
 #: real length comes from the pose stream per segment.
 SEGMENT_S = 60.0
@@ -181,6 +189,49 @@ SEGMENT_S = 60.0
 #: Chunks the published dataset has. Used only by `status`, to say how much of
 #: it is here -- a site with three of them is normal, not broken.
 TOTAL_CHUNKS = 10
+
+
+@dataclass(frozen=True)
+class SceneSet:
+    """A named working set of segments, pinned in `scenes/<name>.yaml`.
+
+    Restricting a run to chosen segments is not something the CLI can express --
+    `--scene` reaches `ClosedLoopBenchmark.episodes()` only, and `--limit N`
+    takes the *first* N samples in `list_segments` order, which is not a
+    selection. So the selection lives here, in the benchmark that knows what a
+    segment key means, and is pinned to a tracked file for the same reason
+    alpasim pins its suite: a working set re-derived at run time is a working
+    set that can quietly change between two sites comparing numbers.
+
+    A set may also name the `keyframes_per_segment` that working set means --
+    ten scenes chosen to be *watched* want a prediction every half second, which
+    a site-wide default cannot say.
+
+    Keys are `SegmentRef.sample_key`, i.e. `<chunk>/<route_id>/<segment>`.
+    """
+
+    name: str
+    keys: tuple[str, ...]
+    keyframes_per_segment: int | None = None
+    #: Why the file could not be read, when it could not. Carried rather than
+    #: raised so `preflight` reports it beside every other problem, instead of a
+    #: traceback out of whichever property happened to touch `_segments` first.
+    error: str | None = None
+
+
+def load_scene_set(name: str) -> SceneSet:
+    """The pinned working set called `name`, or one carrying why it is not here."""
+    path = SCENES_DIR / f"{name}.yaml"
+    if not path.exists():
+        available = ", ".join(sorted(p.stem for p in SCENES_DIR.glob("*.yaml"))) or "none"
+        return SceneSet(name, (), error=f"no scene set {name!r} in {SCENES_DIR.name}/ (have: {available})")
+    try:
+        body = yaml.safe_load(path.read_text()) or {}
+        keys = tuple(str(s) for s in body["scenes"])
+    except (yaml.YAMLError, KeyError, TypeError) as exc:
+        return SceneSet(name, (), error=f"scene set {name!r} is unreadable: {exc}")
+    density = body.get("keyframes_per_segment")
+    return SceneSet(name, keys, keyframes_per_segment=int(density) if density else None)
 
 
 class UnreachableRate(ValueError):
@@ -265,7 +316,27 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
 
     @property
     def keyframes_per_segment(self) -> int:
+        """Scene set, then site config, then five.
+
+        The scene set wins because it names the segments *and* the density that
+        working set means, which is the more specific statement of the two: ten
+        scenes pinned to be watched frame by frame want 2 Hz whatever the site
+        happens to sweep the other 2025 segments at.
+        """
+        scenes = self.scene_set
+        if scenes is not None and scenes.keyframes_per_segment:
+            return scenes.keyframes_per_segment
         return int(self.setting("keyframes_per_segment", DEFAULT_KEYFRAMES))
+
+    @cached_property
+    def scene_set(self) -> SceneSet | None:
+        """The working set this run is restricted to: env, then site, then all.
+
+        `None` is the whole dataset, and is deliberately the only state in which
+        `run_config` says nothing about scene sets -- see there.
+        """
+        name = os.environ.get(ENV_SCENE_SET) or self.setting("scene_set", "")
+        return load_scene_set(str(name)) if name else None
 
     @property
     def input_hz(self) -> float:
@@ -426,6 +497,11 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         recorded because they, not the rate, are what a reader needs to interpret
         the row. `calibration` is in here because it is the single setting that
         most changes the result and the one that was silently wrong before.
+
+        `scene_set` appears **only when one is active**. A key present with the
+        value `None` would change the JSON of every configuration that has ever
+        run, and so every run id -- breaking `--resume` on the recorded full
+        sweeps for the sake of recording an absence.
         """
         config = {
             "history_frames": self.history_frames,
@@ -436,6 +512,8 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
             "input_hz": self.input_hz,
             "calibration": "route-pooled, calibrationd formula on recorded pose",
         }
+        if self.scene_set is not None:
+            config["scene_set"] = self.scene_set.name
         try:
             config["stride"] = self.grid.stride
             config["history_span_s"] = round(self.grid.history_span_s, 3)
@@ -448,12 +526,24 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         return config
 
     def invalid_reasons(self) -> list[str]:
-        if not os.environ.get(ENV_ALLOW_SLOW):
-            return []
-        return [
-            f"{ENV_ALLOW_SLOW} is set: a model was scored below its declared min_input_hz, "
-            "which measures the observation-rate gap rather than the model"
-        ]
+        reasons: list[str] = []
+        scenes = self.scene_set
+        if scenes is not None:
+            # Ten chosen segments is a working set to look at, not comma2k19.
+            # `_validity` writes `valid: false` with this in `notes`, `paddock
+            # report` then excludes it, and `render.load_runs` skips it unless
+            # asked for by run id -- all of which is the wanted behaviour.
+            reasons.append(
+                f"restricted to scene set {scenes.name!r} ({len(self._segments)} of "
+                f"{len(self._all_segments)} segments), so this scores a chosen subset "
+                "rather than the benchmark"
+            )
+        if os.environ.get(ENV_ALLOW_SLOW):
+            reasons.append(
+                f"{ENV_ALLOW_SLOW} is set: a model was scored below its declared min_input_hz, "
+                "which measures the observation-rate gap rather than the model"
+            )
+        return reasons
 
     # ---- description ----------------------------------------------------
 
@@ -477,6 +567,9 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         # it once rather than once per caller.
         found = INV.survey(dataset, segments=self._segments)
         rows = [
+            # First, when set, because it is what makes every row below it a
+            # statement about ten segments rather than about this machine.
+            ("scene set", self._scene_set_row()),
             ("segments", self._segments_row(found)),
             ("chunks", self._chunks_row(found)),
             ("input rate", self._rate_row()),
@@ -489,6 +582,18 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
             ("integrity", self._integrity_row(found)),
         ]
         return [(label, value) for label, value in rows if value]
+
+    def _scene_set_row(self) -> str:
+        """Empty when no set is active, which is the usual case and drops the row."""
+        scenes = self.scene_set
+        if scenes is None:
+            return ""
+        if scenes.error:
+            return f"{scenes.name} -- {scenes.error}"
+        return (
+            f"{scenes.name}: {len(self._segments)} of {len(scenes.keys)} named segments here, "
+            f"{self.keyframes_per_segment} keyframes each"
+        )
 
     @staticmethod
     def _segments_row(found: INV.Survey) -> str:
@@ -626,12 +731,15 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
             problems.append(str(exc))
 
         problems.extend(self._rate_problems())
-        segments = self._segments
-        if not segments:
+        if not self._all_segments:
             problems.append(
                 "no comma2k19 segments found under the configured root(s) -- expected "
                 "raw_data/Chunk_<n>/<dongle_id>|<start_time>/<segment>/ (see docs/data-setup.md)"
             )
+            return problems
+        problems.extend(self._scene_set_problems())
+        segments = self._segments
+        if not segments:
             return problems
         problems.extend(self._frame_cache_problems(len(segments)))
 
@@ -654,6 +762,32 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
                     "this is the signature of a coordinate-convention error, not a real mount"
                 )
         return problems
+
+    def _scene_set_problems(self) -> list[str]:
+        """Is the requested working set readable, and is all of it here?
+
+        A key this site has no segment for is a refusal rather than a silently
+        shorter run: the point of pinning a set is that two sites score the same
+        segments, and "9 of 10, quietly" is precisely the failure that defeats.
+        comma2k19 arrives in ten separately-downloaded chunks, so a set drawn at
+        one site naming a chunk another lacks is the expected way to meet this.
+        """
+        scenes = self.scene_set
+        if scenes is None:
+            return []
+        if scenes.error:
+            return [scenes.error]
+        if not scenes.keys:
+            return [f"scene set {scenes.name!r} names no scenes"]
+        here = {s.sample_key for s in self._all_segments}
+        missing = [k for k in scenes.keys if k not in here]
+        if not missing:
+            return []
+        shown = ", ".join(missing[:5]) + (f", and {len(missing) - 5} more" if len(missing) > 5 else "")
+        return [
+            f"scene set {scenes.name!r} names {len(missing)} of {len(scenes.keys)} segments this "
+            f"site does not have: {shown} -- fetch the missing chunk(s) (see docs/data-setup.md)"
+        ]
 
     def _frame_cache_problems(self, n_segments: int) -> list[str]:
         """Can this machine actually stage frames, and has it room to?
@@ -732,8 +866,27 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         return max(1, 1 + math.floor(usable / grid.stride))
 
     @cached_property
+    def _all_segments(self) -> list[L.SegmentRef]:
+        """Every segment this site can serve, before any scene set narrows it."""
+        dataset = self.dataset
+        return L.list_segments(dataset) if dataset is not None else []
+
+    @cached_property
     def _segments(self) -> list[L.SegmentRef]:
-        return L.list_segments(self.dataset)
+        """The segments this run will actually touch.
+
+        The scene set is applied here rather than in `samples()` so that
+        `coverage()` (`--dry-run`), `preflight()` and `status()` all describe the
+        same segments the run will score -- in particular so preflight's
+        calibration spot-check samples the routes that are about to run, not the
+        first five of the full dataset.
+        """
+        found = self._all_segments
+        scenes = self.scene_set
+        if scenes is None:
+            return found
+        wanted = set(scenes.keys)
+        return [s for s in found if s.sample_key in wanted]
 
     @cached_property
     def _calibrations(self) -> CAL.RouteCalibrations:
