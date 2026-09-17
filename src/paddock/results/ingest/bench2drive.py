@@ -53,8 +53,18 @@ Site configuration (``paddock.toml``)::
     label  = "pooled50"                  # run id: <label>-<route hash>-<config hash>
     routes = ["1711", "1852", ...]       # optional; default: every route found
     notes  = "24 routes from the 03-04 Sep campaign, 26 from the 09 Sep expansion"
-    [ingest.bench2drive.model_env]       # optional; recorded in config
+    [ingest.bench2drive.model_env]       # optional; overrides what the runs recorded
     PADDOCK_CV_SPEED_M_S = "6"
+    [ingest.bench2drive.setups]          # optional; recording setup -> route ids
+    assisted = ["1711", "2802"]
+
+``setups`` names the configuration each route was actually driven under, and lands
+on the samples as ``group``, so the tracked ``metrics.json`` carries a per-setup
+breakdown in ``by_group``. Routes driven under **more than one** setup are not one
+experiment: a mean over them describes no configuration anybody ran, so such a run
+is written ``valid: false`` with the setups in ``notes``. It is kept, and the
+leaderboard lists it as excluded rather than ranking it -- which is the whole point
+of recording the setup instead of a sentence in prose.
 """
 
 from __future__ import annotations
@@ -212,9 +222,11 @@ def ingest(
     run_label: str = "pooled",
     notes: str = "",
     model_env: dict[str, str] | None = None,
+    setups: dict[str, list[str]] | None = None,
 ) -> list[tuple[RunRecord, MetricsRecord, list[dict[str, Any]]]]:
     """One pooled paddock run for ``model`` over the routes under ``runs_root``."""
     roots = [runs_root] if isinstance(runs_root, Path) else list(runs_root)
+    setup_of = {route: label for label, group in (setups or {}).items() for route in group}
     survey = discover(roots, routes)
     rejected = dict(survey.rejected)
     # Keyed by directory, not by run id: two roots can hold the same run id, and
@@ -262,6 +274,8 @@ def ingest(
                     "sha256": hashlib.sha256(raw).hexdigest(),
                 },
                 "split": scenario,
+                # The recording setup, aggregated into metrics.json's `by_group`.
+                "group": setup_of.get(route, ""),
                 "metrics": metrics,
             }
         )
@@ -295,8 +309,17 @@ def ingest(
         "model_env": {**recorded_env, **dict(model_env or {})},
         "source_config_read": f"{sum(1 for c in configs if c)}/{len(used)} source runs",
     }
+    pooled_setups = sorted({s["group"] for s in samples if s["group"]})
+    if setups:
+        config["recording_setups"] = {label: sorted(group) for label, group in sorted(setups.items())}
     run_id = f"{run_label}-{sequence_hash(sample_ids)}-{config_hash(config)}"
     note = notes.strip()
+    if len(pooled_setups) > 1:
+        note = (note + " " if note else "") + (
+            f"pooled across {len(pooled_setups)} recording setups ({', '.join(pooled_setups)}); "
+            "one mean describes none of them, so this run does not rank -- the per-setup "
+            "figures are in metrics.json by_group."
+        )
     unverified = sum(1 for rec in used if not rec.get("model"))
     if unverified:
         note = (note + " " if note else "") + (
@@ -322,7 +345,10 @@ def ingest(
         },
         config=config,
         status="complete" if not missing else "partial",
-        valid=not missing,
+        # More than one recording setup is not one experiment: its mean is not a
+        # measurement of anything, so it is kept and not ranked rather than
+        # published as a number nobody drove.
+        valid=not missing and len(pooled_setups) <= 1,
         notes=note,
         # A relative tail only: results/ is tracked and must not name a machine's disk.
         ingested_from="; ".join("/".join(r.parts[-3:]) for r in roots),

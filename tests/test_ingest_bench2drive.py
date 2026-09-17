@@ -295,3 +295,43 @@ def test_a_tree_without_run_records_says_so(tmp_path: Path) -> None:
     assert run.config["source_config_read"] == "0/2 source runs"
     assert run.config["source_sites"] == []
     assert "kept no run.json" in run.notes
+
+
+# --- a pooled run says which setup each route was driven under ---------------
+
+
+def test_recording_setups_land_in_by_group_and_stop_the_row_ranking(tmp_path: Path) -> None:
+    """OpenPilot's row: 16 routes with human resume, 26 on a different upstream
+    longitudinal setup, 8 plain. `paddock report` prints metrics, never `notes`,
+    so the prose caveat was invisible to it and the pooled mean ranked second.
+    """
+    root = _tree(tmp_path)
+    setups = {"assisted": ["1711"], "native-long": ["2802"], "plain": ["24333"]}
+
+    ((run, metrics, samples),) = bench2drive.ingest(root, model="modelx", site="s", setups=setups)
+
+    assert {s["native_id"]["route_id"]: s["group"] for s in samples} == {
+        "1711": "assisted",
+        "2802": "native-long",
+        "24333": "plain",
+    }
+    assert set(metrics.by_group) == {"assisted", "native-long", "plain"}
+    assert metrics.by_group["assisted"]["driving_score"]["mean"] == 60.0
+    assert metrics.by_group["native-long"]["driving_score"]["mean"] == 100.0
+    assert not run.valid, "a mean over three setups is a measurement of none of them"
+    assert run.status == "complete", "every route scored; it is the pooling that is invalid"
+    assert "assisted, native-long, plain" in run.notes and "by_group" in run.notes
+
+
+def test_one_setup_over_every_route_still_ranks(tmp_path: Path) -> None:
+    root = _tree(tmp_path)
+    ((run, metrics, _),) = bench2drive.ingest(
+        root, model="modelx", site="s", setups={"unassisted": ["1711", "2802", "24333"]}
+    )
+    assert run.valid and set(metrics.by_group) == {"unassisted"}
+
+
+def test_without_setups_nothing_changes(tmp_path: Path) -> None:
+    root = _tree(tmp_path)
+    ((run, metrics, _),) = bench2drive.ingest(root, model="modelx", site="s")
+    assert run.valid and metrics.by_group == {}
