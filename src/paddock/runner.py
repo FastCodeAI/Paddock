@@ -76,8 +76,33 @@ def _measurement_config(cfg: SiteConfig, harness, model_spec: ModelSpec, **given
     }
     override = cfg.models.get(model_spec.name)
     if override is not None and override.env:
-        config["model_env"] = dict(override.env)
+        config["model_env"] = {k: _portable_value(v) for k, v in override.env.items()}
     return config
+
+
+#: Stands in for a site path in a tracked record. The key still appears, so a
+#: reader can see an override was in effect and the run id still changes when
+#: one is added or removed; only the machine-specific value is withheld.
+SITE_PATH = "<site path>"
+
+
+def _portable_value(value: str) -> str:
+    """One `[models.*] env` value, with absolute paths withheld.
+
+    `run.json` is tracked, and CONTRIBUTING's one non-negotiable rule is that no
+    tracked file names a path that exists on one machine. A site whose env block
+    holds `LD_LIBRARY_PATH` or a weights directory would otherwise commit its own
+    home directory into a shared results file -- which is how the first such
+    paths reached this repo, through a nuPlan run at a site whose homes are
+    under a root the portability gate did not list.
+
+    Withheld rather than dropped: whether an override was set changes what was
+    measured, so the key has to stay on the record even when its value cannot.
+    Relative values pass through unchanged, since those are portable and often
+    the interesting part (`"cuda"`, `"2"`, `"auto"`).
+    """
+    parts = [SITE_PATH if segment.startswith("/") else segment for segment in value.split(os.pathsep)]
+    return os.pathsep.join(parts)
 
 
 def _validity(
