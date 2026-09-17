@@ -519,6 +519,11 @@ class OpenpilotPolicy(Policy):
         A negative margin means the warp samples outside what the camera saw --
         black wedges at the edges of the model's input, invisible in the score.
         """
+        # Which ModelState.run arity was probed at load. On the record because
+        # it is the visible sign of the checkout's generation: the sha in
+        # repos.yaml predates `prepare_only`, so True means the run was made
+        # against a newer tree and its number is not attributable to the pin.
+        probe = {"run_takes_prepare_only": bool(getattr(self, "_run_takes_prepare_only", False))}
         if self.camera is None:
             return {"status": "no frame seen yet"}
         # Each view's margin from the camera that actually feeds it: in the
@@ -531,6 +536,7 @@ class OpenpilotPolicy(Policy):
             else {"img": self.camera, "big_img": self.camera}
         )
         return {
+            **probe,
             "source_hfov_deg": round(self.camera.src.hfov_deg, 2),
             "source_vfov_deg": round(self.camera.src.vfov_deg, 2),
             "margin_deg": {

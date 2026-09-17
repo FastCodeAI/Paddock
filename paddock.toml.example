@@ -56,6 +56,16 @@ weights = "/path/to/weights"
 # path = "/path/to/navsim_workspace/dataset"   # navsim_logs/, sensor_blobs/, maps/
 # exp  = "/path/to/navsim_workspace/exp"       # checkpoints + metric cache
 
+# [datasets.nuplan]
+# The original nuPlan release, not NAVSIM's 2 Hz OpenScene redistribution of it.
+# Two layouts are in the wild and both are searched, so point this at whichever
+# directory holds maps/ and nuplan-v1.1/:
+#   nuplan-v1.1/splits/<split>/*.db          (nuPlan's documented layout)
+#   nuplan-v1.1/splits/data/cache/<split>/   (what the mini archive unpacks to)
+# The camera blobs are a separate ~450 GB download per shard; holding the logs
+# without them is a normal state that `paddock doctor` reports.
+# path = "/path/to/nuplan"
+
 # [datasets.neurad_checkpoints]
 # path = "/path/to/neuroncap/checkpoints"      # per-scene NeuRAD renderers
 
@@ -164,6 +174,11 @@ serialize = true
 # chunk_logs   = 4
 # run_retries  = 2
 # nodes        = 4
+
+# [benchmarks.nuplan]
+# Which nuPlan split to score. Default "mini"; the scored set is otherwise
+# fixed in the adapter, because two sites must score the same anchors.
+# split = "mini"
 
 # [benchmarks.kitscenes]
 # The shared keyframe list every model is scored on. It *is* the benchmark:

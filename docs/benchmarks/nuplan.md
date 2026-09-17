@@ -84,10 +84,13 @@ first 4.8 s there is no history to feed, and within 4 s of the end there is no
 future to score. Padding the future would read as the car stopping and would
 score a correct prediction as wrong.
 
-On this site's 56-log mini copy that yields **360 anchors → 335 scored samples**,
-across 53 logs and 57 scenario types. Eight types never occur without a rarer
-co-tag and so contribute no sample of their own; their moments are still scored,
-under the rarer label.
+On this site's 64-log mini copy that yields **375 anchors across 59 scenario
+types and 61 logs**, of which **351 are scorable** — the rest are anchors the
+drop rule above removes. `coverage()` counts the scorable ones, not the
+manifest, so `--dry-run` promises what a sweep will actually deliver.
+
+Six types never occur without a rarer co-tag and so contribute no sample of
+their own; their moments are still scored, under the rarer label.
 
 ## Samples are sequences
 
@@ -113,28 +116,40 @@ This is worth a test of its own — and has one. If it silently stopped working,
 every sample would lose its intrinsics and openpilot would warp to the wrong
 focal length without anything failing.
 
-## Reference: constant velocity
+## Results
 
-Computed from the logs alone (a constant-velocity plan needs only ego speed, so
-it needs no camera images), over the full n=335:
+Five models over the same 25 samples, `valid: false` at one camera shard. Every
+cell has a committed record under `results/nuplan/`.
 
-| metric | mean | median |
-|---|---:|---:|
-| ade | 1.2538 | 0.8461 |
-| fde@1s | 0.3880 | 0.2834 |
-| fde@2s | 1.3502 | 0.8850 |
-| fde@3s | 2.8324 | 1.8800 |
-| longitudinal_mae | 1.0864 | 0.6969 |
-| lateral_mae | 0.3157 | 0.0447 |
+| n=25 | openpilot | meteor | **constant velocity** | drivejepa | visionpilot |
+|---|---:|---:|---:|---:|---:|
+| ade | **0.807** | 1.273 | 1.393 | 1.512 | 3.192 |
+| fde@1s | 0.416 | 0.483 | **0.462** | 0.568 | 1.715 |
+| fde@2s | **0.878** | 1.333 | 1.433 | 1.593 | 3.234 |
+| fde@3s | **1.539** | 2.803 | 3.199 | 3.305 | 5.851 |
+| longitudinal_mae | **0.658** | 0.831 | 1.036 | 1.429 | 2.565 |
+| lateral_mae | 0.316 | 0.778 | 0.630 | **0.299** | 1.328 |
 
-This is the floor a model has to beat, and the breakdown says where: the
-baseline is near-perfect on the stationary types (`stationary_in_traffic` 0.041)
-and worst exactly where speed changes (`accelerating_at_traffic_light` 3.325,
-`traversing_intersection` 3.254). A model that cannot beat 1.2538 has not
-learned anything a straight line does not already say.
+**Read these as a 25-sample subset, not as nuPlan.** They cover **7 of the 59
+scenario types**, six of them stop-sign or traffic-light decelerations, because
+one camera shard decides which logs are servable and the balancing rules act on
+the 375-anchor manifest rather than on what a shard happens to hold. A ranking
+over near-homogeneous deceleration moments is not a ranking on nuPlan. The
+three sampling rules do their work; none of these numbers inherits it.
 
-Not a `paddock run` and not in `results/`: no model was involved, and it is
-recorded here as a reference rather than as a leaderboard row.
+`constant_velocity` is a stored run like any other — declared in its
+`model.yaml` and scored through the same harness — so the floor and the rows it
+anchors are one artifact class and both regenerate from `paddock run`.
+
+Two caveats that travel with individual rows:
+
+- **openpilot** was run against a v0.11.1 checkout, not the `053d9c446` that
+  `repos.yaml` pins, so its `run.json` carries `repo_sha: null`. The number is
+  real and the adapter's arity probe is a no-op at the pin, but it is not yet
+  attributable to a revision. Bumping the pin belongs in its own PR.
+- **alpamayo15** has no row here. It needs `nvidia/Cosmos-Reason2-8B`, which is
+  gated; only its config and tokenizer are read, and a substitute was used for
+  an earlier measurement that is not committed.
 
 ## Camera shards and partial coverage
 
@@ -148,38 +163,34 @@ images are **skipped**, and the run is recorded `valid: false` with the coverage
 in `notes`, so it is kept and inspectable but never averaged against a
 full-coverage run. `--dry-run` reports the split before anything starts.
 
-## First result
+## Reading VisionPilot's row
 
-One camera shard (8 of 9) covers 8 logs, giving **26 of 375 anchors**; 25 of
-those have both the history and the future the scored moment needs.
+One camera shard covers 8 logs, giving **25 scorable anchors** — the arithmetic
+behind the `valid: false` on every run above.
 
-| n=25 | visionpilot | constant velocity |
-|---|---:|---:|
-| ade | 3.1924 | **1.3926** |
-| fde@1s | 1.7155 | 0.4624 |
-| fde@2s | 3.2339 | 1.4327 |
-| fde@3s | 5.8514 | 3.1994 |
-| lateral_mae | 1.3283 | 0.6300 |
+VisionPilot is beaten by a straight line by more than a factor of two on every
+metric, and that is worth three qualifications before it reads as a verdict on
+the model: the subset is small and skewed toward decelerations; VisionPilot's
+recorded strength is closed-loop NCAP rather than open-loop imitation; and it
+has no goal or command interface, so at a junction it goes straight — a
+limitation already visible on nuScenes and Bench2Drive.
 
-Both columns are over the same 25 samples. **VisionPilot is beaten by a straight
-line, by more than a factor of two on every metric.** Three things to hold in
-mind before reading that as a verdict on the model: n=25 is small and comes from
-one shard rather than a spread of the dataset; VisionPilot's recorded strength
-is closed-loop NCAP rather than open-loop imitation; and nuPlan's urban
-intersection content is the regime where a constant-velocity baseline is hardest
-to beat and VisionPilot is furthest from its training distribution. The number
-is real, but it is a starting point, not a ranking.
-
-Roughly 3 minutes wall-clock for the 25 samples on CPU, including model load.
+Roughly 3 minutes wall-clock for the 25 samples on CPU, including model load;
+meteor does the same set in 27 s on GPU.
 
 ## Status
 
 **Verified**: the full path runs end to end — sample construction, selection,
 ground truth, calibration decoding, camera-path resolution, inference and
-scoring — against the real download, and the numbers above came out of it. The
-golden tests build a synthetic log and run with no dataset, no devkit and no GPU.
+scoring — and five models are scored on one shared sample set. The golden tests
+build a synthetic log and run with no dataset, no devkit and no GPU. The
+adapter has been exercised at a second site, on a different nuPlan copy and
+split, with no devkit present.
 
-**Not yet done**: only visionpilot has been scored, on 7% of the scored set.
-openpilot is the interesting one here — it is the model nuPlan's 10 Hz cameras
-exist to serve — and it has not been run because its repo is not cloned at this
-site. A full-coverage run needs the other eight camera shards (~405 GB).
+**Not yet done**: `Observation.speed_limit` is not populated, so an IDM-style
+policy falls back to a latched cruise speed and drives away from a stopped car
+— which inflates every model's error on the near-stationary samples that
+dominate this subset. Reading `speed_limit_mps` from nuPlan's maps is the fix;
+it is out of scope here because it adds a map dependency to a benchmark that
+currently reads none. Coverage is one camera shard of nine; the rest are
+~405 GB.

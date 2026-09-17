@@ -245,10 +245,14 @@ def _by_scenario_type(runs, out_dir: Path, plt) -> Path | None:
             cv_grouped[type_of(s)].append(value)
     cv_mean = {k: float(np.mean(v)) for k, v in cv_grouped.items()}
 
+    # Every type any model scored, not just the first model's -- with partial
+    # camera coverage the models can cover different types, and taking one
+    # model's keys silently dropped the rest.
+    types = {t for values in per_model.values() for t in values}
     first = next(iter(per_model.values()))
     # Ordered by how much the first model loses to the baseline: the top of the
     # chart is then the list of scenario types to go and look at.
-    types = sorted(first, key=lambda t: -(first.get(t, 0.0) - cv_mean.get(t, 0.0)))
+    types = sorted(types, key=lambda t: -(first.get(t, 0.0) - cv_mean.get(t, 0.0)))
     if not types:
         return None
 
@@ -257,16 +261,21 @@ def _by_scenario_type(runs, out_dir: Path, plt) -> Path | None:
     fig, ax = plt.subplots(figsize=(9.5, max(3.2, 0.42 * len(types) + 1.4)))
 
     for index, (model, values) in enumerate(per_model.items()):
+        # A type this model never scored is left out rather than plotted at
+        # zero, which on an error chart reads as a perfect score rather than as
+        # no data. Absence shows as a gap in the group.
+        present = [t for t in types if t in values]
         ax.barh(
-            y + index * width,
-            [values.get(t, 0.0) for t in types],
+            [y[types.index(t)] + index * width for t in present],
+            [values[t] for t in present],
             height=width,
             color=palette.color(model),
             label=model,
         )
+    cv_present = [t for t in types if t in cv_mean]
     ax.barh(
-        y + len(per_model) * width,
-        [cv_mean.get(t, 0.0) for t in types],
+        [y[types.index(t)] + len(per_model) * width for t in cv_present],
+        [cv_mean[t] for t in cv_present],
         height=width,
         color=palette.GROUND_TRUTH,
         alpha=0.75,

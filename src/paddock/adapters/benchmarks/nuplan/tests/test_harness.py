@@ -34,11 +34,21 @@ from paddock.adapters.benchmarks.nuplan.harness import (
 from paddock.benchmark import Sample
 from paddock.config import Dataset, Gpu, SiteConfig
 from paddock.metrics import trajectory as M
-from paddock.policy.protocol import constant_velocity
+from paddock.policy.protocol import (
+    CANBUS_ACCEL,
+    CANBUS_VELOCITY,
+    CANBUS_YAW_RATE,
+    constant_velocity,
+)
 from paddock.registry import Registry
 
 LOG_NAME = "2021.05.12.22.00.38_veh-99_00000_00100"
 SPEED_MS = 10.0
+#: Distinct non-zero values, and distinct from each other: with both at
+#: zero, swapping CANBUS_ACCEL and CANBUS_YAW_RATE passed every test while
+#: loader.py argues those channels are load-bearing for drivejepa.
+ACCEL_MS2 = 1.75
+YAW_RATE = 0.166
 DURATION_S = 100.0
 T0 = 1_600_000_000_000_000
 DEVKIT_MODULE = "nuplan.database.common.data_types"
@@ -91,6 +101,21 @@ def _devkit_blob(name: str, value: list) -> bytes:
     finally:
         for n in created:
             del sys.modules[n]
+
+
+class _Reduces:
+    """Pickles as a call to whatever global it is handed.
+
+    The shape a tampered calibration column would take: `__reduce__` naming a
+    function rather than a container, which is what `find_class` exists to
+    refuse.
+    """
+
+    def __init__(self, target, args):
+        self.target, self.args = target, args
+
+    def __reduce__(self):
+        return self.target, self.args
 
 
 def _token(kind: str, index: int) -> bytes:
@@ -182,12 +207,12 @@ def _build_log(path: Path) -> None:
                 SPEED_MS,
                 0.0,
                 0.0,
+                ACCEL_MS2,
                 0.0,
                 0.0,
                 0.0,
                 0.0,
-                0.0,
-                0.0,
+                YAW_RATE,
             )
         )
     conn.executemany("INSERT INTO ego_pose VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", poses)
@@ -276,6 +301,30 @@ def test_calibration_decodes_without_the_devkit() -> None:
     assert intrinsics[2, 2] == 1.0
 
 
+def test_calibration_refuses_a_numpy_callable() -> None:
+    """The escape a reviewer found: `numpy.testing.runstring` is a function whose
+    body is `exec`, and a prefix match on "numpy" admitted it -- so a tampered
+    blob ran arbitrary code through the class that promised it could not.
+
+    Pinned with the real global rather than a stand-in, because the bug was
+    precisely that the allowlist was a prefix and not a set of names.
+    """
+    import numpy.testing
+
+    blob = pickle.dumps(_Reduces(numpy.testing.runstring, ("pass", {})), protocol=5)
+    with pytest.raises(pickle.UnpicklingError, match="refusing to load"):
+        L.decode_calibration(blob)
+
+
+def test_calibration_admits_the_numpy_value_reconstructors() -> None:
+    """The allowlist has to stay wide enough to decode a real blob: nuPlan's
+    Translation and Rotation carry float64 scalars, not plain floats."""
+    import numpy as np_
+
+    blob = _devkit_blob("Translation", [np_.float64(1.67), np_.float64(-0.03), np_.float64(1.52)])
+    assert L.decode_calibration(blob) == pytest.approx([1.67, -0.03, 1.52])
+
+
 def test_calibration_refuses_an_unexpected_class() -> None:
     """A blob naming anything outside the calibration containers is rejected
     rather than executed -- these come out of a downloaded file."""
@@ -354,7 +403,15 @@ def test_each_sample_carries_a_full_history(site: SiteConfig) -> None:
 def test_observations_carry_real_calibration_and_speed(site: SiteConfig) -> None:
     scored = next(iter(_harness(site).samples())).observations[-1]
     assert scored.camera2image["CAM_FRONT"][0, 0] == 1545.0
-    assert scored.canbus[13] == pytest.approx(SPEED_MS)
+    # Through the protocol's constants, not slot numbers: a literal here is the
+    # restated contract CLAUDE.md names, and it would not catch the channels
+    # being swapped.
+    assert scored.canbus[CANBUS_VELOCITY] == pytest.approx(SPEED_MS)
+    assert scored.canbus[CANBUS_ACCEL] == pytest.approx(ACCEL_MS2)
+    assert scored.canbus[CANBUS_YAW_RATE] == pytest.approx(YAW_RATE)
+    assert scored.speed == pytest.approx(SPEED_MS)
+    assert scored.accel == pytest.approx(ACCEL_MS2)
+    assert scored.yaw_rate == pytest.approx(YAW_RATE)
     assert scored.image_paths["CAM_FRONT"].endswith(".jpg")
 
 

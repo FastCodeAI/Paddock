@@ -78,6 +78,7 @@ class NuPlanBenchmark(OpenLoopBenchmark):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._manifest: list[tuple[Path, str, int]] | None = None
+        self._scorable: list[tuple[Path, str, int]] | None = None
 
     # ---- readiness ------------------------------------------------------
 
@@ -87,7 +88,8 @@ class NuPlanBenchmark(OpenLoopBenchmark):
         if dataset is None:
             return [
                 "dataset 'nuplan' is not configured; add [datasets.nuplan] to "
-                "paddock.toml (see docs/data-setup.md)"
+                "paddock.toml (see docs/benchmarks/nuplan.md, which covers both "
+                "on-disk layouts)"
             ]
         root = dataset.resolve()
         if not root.exists():
@@ -126,8 +128,47 @@ class NuPlanBenchmark(OpenLoopBenchmark):
     def split(self) -> str:
         return self.setting("split", DEFAULT_SPLIT) or DEFAULT_SPLIT
 
+    def scorable(self) -> list[tuple[Path, str, int]]:
+        """Manifest anchors that `_sample` will actually turn into a sample.
+
+        `_sample` drops an anchor sitting inside the log's first 4.8 s (no
+        history to feed) or within 4 s of its end (no future to score). Counting
+        them as available made `--dry-run` promise more than a sweep delivers and
+        put an inflated denominator in `invalid_reasons` -- 387 announced against
+        363 scored at one site, 375 against 25 here.
+
+        Decided from timestamps alone: the frame index against `HISTORY_FRAMES`,
+        and the horizon against the log's last ego pose. No image is opened and
+        no calibration decoded, so this stays cheap enough to run inside
+        `preflight`.
+
+        Independent of which logs have images, because the drop depends on the
+        log's own extent -- so this is the denominator a full-coverage copy
+        would score, which is what makes the coverage fraction mean anything.
+        """
+        if self._scorable is not None:
+            return self._scorable
+        horizon_us = N_GT_POSES * INTERVAL_S * 1e6
+        by_log: dict[Path, list[tuple[Path, str, int]]] = {}
+        for row in self.manifest():
+            by_log.setdefault(row[0], []).append(row)
+
+        keep: list[tuple[Path, str, int]] = []
+        for db, rows in by_log.items():
+            with L.open_log(db) as conn:
+                times = np.array([f[0] for f in L.camera_frames(conn)], dtype=np.float64)
+                last_pose = conn.execute("SELECT MAX(timestamp) FROM ego_pose").fetchone()[0]
+            if not len(times) or last_pose is None:
+                continue
+            for row in rows:
+                anchor = min(int(np.searchsorted(times, row[2])), len(times) - 1)
+                if anchor >= HISTORY_FRAMES and times[anchor] + horizon_us <= float(last_pose):
+                    keep.append(row)
+        self._scorable = sorted(keep, key=lambda r: (r[0].name, r[2], r[1]))
+        return self._scorable
+
     def coverage(self) -> tuple[list[tuple[Path, str, int]], list[str]]:
-        """(anchors this site can serve, log names whose images are absent).
+        """(anchors this site can score, log names whose images are absent).
 
         nuPlan ships its cameras as nine ~45 GB shards and holding one of them
         is a perfectly normal state, so a partial copy is reported rather than
@@ -135,7 +176,7 @@ class NuPlanBenchmark(OpenLoopBenchmark):
         `invalid_reasons`.
         """
         located = L.log_locations(self.dataset.resolve())
-        rows = self.manifest()
+        rows = self.scorable()
         served = [row for row in rows if row[0].stem in located]
         missing = sorted({row[0].stem for row in rows if row[0].stem not in located})
         return served, missing
@@ -148,22 +189,27 @@ class NuPlanBenchmark(OpenLoopBenchmark):
         if not missing:
             return []
         return [
-            f"camera images cover {len(served)} of {len(self.manifest())} anchors "
+            f"camera images cover {len(served)} of {len(self.scorable())} scorable anchors "
             f"({len(missing)} logs have no images); not comparable with a full-coverage run"
         ]
 
     def run_config(self) -> dict[str, Any]:
-        """What decides the scored set, hashed into the run id.
+        """What decides the scored set and the metric, hashed into the run id.
 
-        `split` is a site setting and the rest are constants, but all four go in:
-        a stored row should say what it measured without the reader having to
-        know which version of this file produced it.
+        `split` is a site setting and the rest are constants, but every one goes
+        in: a stored row should say what it measured without the reader having
+        to know which version of this file produced it. That includes the
+        horizon and spacing -- `ade` and `fde@3s` mean different things at a
+        different `interval_s`, and a row that omits them cannot be compared
+        across a change to either.
         """
         return {
             "split": self.split,
             "scenarios_per_type": SCENARIOS_PER_TYPE,
             "min_separation_s": MIN_SEPARATION_S,
             "history_frames": HISTORY_FRAMES,
+            "interval_s": INTERVAL_S,
+            "eval_horizon_s": EVAL_HORIZON_S,
             "camera": L.FRONT_CAMERA,
         }
 
@@ -263,14 +309,22 @@ class NuPlanBenchmark(OpenLoopBenchmark):
                     # against it, and a missing view raises in `Observation`.
                     channels = {}
                     for name, channel in L.CHANNELS.items():
-                        rows = L.camera_frames(conn, channel)
-                        if not rows:
+                        # Named `channel_rows`, not `rows`: `rows` is this loop's
+                        # own iterable from coverage(), and rebinding it here left
+                        # camera frames under the name anchors were read from.
+                        channel_rows = L.camera_frames(conn, channel)
+                        if not channel_rows:
                             continue
                         channels[name] = (
-                            rows,
-                            np.array([r[0] for r in rows], dtype=np.float64),
+                            channel_rows,
+                            np.array([r[0] for r in channel_rows], dtype=np.float64),
                             L.camera_calibration(conn, channel),
                         )
+                    # A log whose sensor directory exists but whose front channel
+                    # has no rows is skipped like one with no images at all,
+                    # rather than raising KeyError partway through a sweep.
+                    if PADDOCK_CAMERA not in channels:
+                        continue
                     frames, frame_times, _ = channels[PADDOCK_CAMERA]
                     poses = L.ego_poses(conn)
                     lidar2ego = L.lidar_calibration(conn)

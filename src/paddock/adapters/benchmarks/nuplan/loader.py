@@ -74,23 +74,40 @@ class _Row(list):
 _DEVKIT_MODULE = "nuplan.database.common.data_types"
 _DEVKIT_TYPES = frozenset({"CameraIntrinsic", "Translation", "Rotation", "Quaternion"})
 
+#: Exactly the numpy globals a calibration blob needs, as (module, name) pairs.
+#:
+#: Pairs rather than a `module.startswith("numpy")` prefix, which this used and
+#: which was not an allowlist at all: `numpy.testing.runstring` is a function
+#: whose body is `exec`, so a blob naming it ran arbitrary code through a class
+#: whose docstring promised the opposite. Anything added here should be a
+#: reconstructor for a value, never something callable with an effect.
+_NUMPY_GLOBALS = frozenset(
+    {
+        ("numpy.core.multiarray", "scalar"),
+        ("numpy._core.multiarray", "scalar"),  # numpy >= 2 moved the private module
+        ("numpy", "dtype"),
+        ("numpy", "ndarray"),
+    }
+)
+
 
 class _CalibrationUnpickler(pickle.Unpickler):
     """Unpickler that will only build the handful of types a calibration needs.
 
     A blob out of a downloaded database is untrusted input, and unpickling is
     arbitrary code execution by design. Allowing exactly the devkit's four
-    container types and numpy's scalar reconstructors keeps that closed, and
-    fails loudly rather than silently returning something odd if nuPlan ever
-    changes the encoding.
+    container types and the numpy value reconstructors in `_NUMPY_GLOBALS`
+    keeps that closed, and fails loudly rather than silently returning
+    something odd if nuPlan ever changes the encoding.
     """
 
     def find_class(self, module: str, name: str) -> Any:
         if module == _DEVKIT_MODULE and name in _DEVKIT_TYPES:
             return _Row
-        # numpy.core.multiarray.scalar + numpy.dtype rebuild the float64 scalars
-        # inside Translation and Rotation.
-        if module.startswith("numpy"):
+        # scalar + dtype rebuild the float64 scalars inside Translation and
+        # Rotation; ndarray covers an intrinsic stored as an array rather than
+        # nested lists.
+        if (module, name) in _NUMPY_GLOBALS:
             return super().find_class(module, name)
         raise pickle.UnpicklingError(
             f"refusing to load {module}.{name} from a nuPlan calibration blob; "

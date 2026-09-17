@@ -5,5 +5,7 @@ description: nuPlan v1.1 open-loop trajectory accuracy - ADE and FDE against the
 # the KITScenes question asked of nuPlan's logs, so the columns mean one thing.
 mode: open_loop
 dataset: nuplan
-metrics: [ade, fde@1s, fde@2s, fde@3s, longitudinal_mae, lateral_mae, inference_seconds]
+# inference_seconds is deliberately absent: score() does not time the call,
+# so declaring it left a column blank in every record.
+metrics: [ade, fde@1s, fde@2s, fde@3s, longitudinal_mae, lateral_mae]
 primary_metric: ade
