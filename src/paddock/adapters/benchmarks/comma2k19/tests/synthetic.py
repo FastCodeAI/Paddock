@@ -16,6 +16,62 @@ import numpy as np
 from paddock.adapters.benchmarks.comma2k19 import loader as L
 
 
+def reference_rot_from_quat(quats) -> np.ndarray:
+    """Hamilton [w,x,y,z] -> R, written out from the standard expansion.
+
+    The textbook algebra, not a call into the toolkit -- that is the whole
+    point. `test_the_toolkit_rotations_match_an_independent_reference` asserts
+    the toolkit reproduces this, and `conftest.rotations` stands this in for the
+    toolkit where no clone exists, so the two uses hold each other honest: if
+    this drifts, the agreement test fails at any site that has a clone.
+
+    Accepts a single quaternion or an (N, 4) stack, like the toolkit's.
+    """
+    q = np.asarray(quats, dtype=np.float64)
+    flat = np.atleast_2d(q)
+    w, x, y, z = flat[:, 0], flat[:, 1], flat[:, 2], flat[:, 3]
+    r = np.empty((flat.shape[0], 3, 3))
+    r[:, 0, 0] = 1 - 2 * (y * y + z * z)
+    r[:, 0, 1] = 2 * (x * y - w * z)
+    r[:, 0, 2] = 2 * (x * z + w * y)
+    r[:, 1, 0] = 2 * (x * y + w * z)
+    r[:, 1, 1] = 1 - 2 * (x * x + z * z)
+    r[:, 1, 2] = 2 * (y * z - w * x)
+    r[:, 2, 0] = 2 * (x * z - w * y)
+    r[:, 2, 1] = 2 * (y * z + w * x)
+    r[:, 2, 2] = 1 - 2 * (x * x + y * y)
+    return r[0] if q.ndim == 1 else r
+
+
+def reference_rot_from_euler(rpy) -> np.ndarray:
+    """[roll, pitch, yaw] -> Rz(yaw) @ Ry(pitch) @ Rx(roll).
+
+    openpilot's calibration order, written out rather than delegated. See
+    `reference_rot_from_quat` for why this lives here.
+    """
+    roll, pitch, yaw = (float(v) for v in np.asarray(rpy, dtype=np.float64))
+    cr, sr = np.cos(roll), np.sin(roll)
+    cp, sp = np.cos(pitch), np.sin(pitch)
+    cy, sy = np.cos(yaw), np.sin(yaw)
+    rx = np.array([[1, 0, 0], [0, cr, -sr], [0, sr, cr]])
+    ry = np.array([[cp, 0, sp], [0, 1, 0], [-sp, 0, cp]])
+    rz = np.array([[cy, -sy, 0], [sy, cy, 0], [0, 0, 1]])
+    return rz @ ry @ rx
+
+
+#: device [forward, right, down] <- view [right, down, forward]. The toolkit's
+#: `camera.device_frame_from_view_frame`, transcribed so the stand-in can carry
+#: it; `test_the_camera_model_paddock_holds_locally_still_matches_the_toolkit`
+#: is the drift check for the literals in `loader.py` and this one moves with it.
+REFERENCE_DEVICE_FROM_VIEW = np.array(
+    [
+        [0.0, 0.0, 1.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+    ]
+)
+
+
 def rot2quat(r: np.ndarray) -> np.ndarray:
     """Rotation matrix -> Hamilton [w, x, y, z]. The toolkit's is unrunnable.
 

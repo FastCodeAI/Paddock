@@ -481,10 +481,19 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         they are, because a mounting angle is the setting that most changes the
         result and "all plausible" is worth seeing before a sweep rather than
         after it.
+
+        The estimate runs on the toolkit's pose maths, so without a clone this
+        says so rather than raising. The row above already degrades that way,
+        and `status` is a description: one unanswerable row must not cost the
+        reader the six answerable ones. `doctor` catches an exception here by
+        replacing the whole list with it.
         """
         routes = list({s.route_key: s for s in found.segments}.values())[:5]
         if not routes:
             return ""
+        why = TK.available(self.cfg)
+        if why is not None:
+            return f"not estimable without the toolkit: {why}"
         pitches, bad = [], 0
         for seg in routes:
             cal = self._calibrations.get(seg)

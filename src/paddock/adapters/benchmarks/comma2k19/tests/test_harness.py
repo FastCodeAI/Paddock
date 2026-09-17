@@ -26,6 +26,7 @@ from paddock.adapters.benchmarks.comma2k19 import harness as H
 from paddock.adapters.benchmarks.comma2k19 import loader as L
 from paddock.adapters.benchmarks.comma2k19 import metrics as MC
 from paddock.adapters.benchmarks.comma2k19 import toolkit as TK
+from paddock.adapters.benchmarks.comma2k19.tests import synthetic as S
 from paddock.adapters.benchmarks.comma2k19.tests.synthetic import (
     reset_pose_cache,
     rot2quat,
@@ -75,41 +76,24 @@ def test_the_toolkit_rotations_match_an_independent_reference(toolkit):
     again from the textbook definitions and asserts the toolkit reproduces it,
     which is the check that survives delegation -- and the one that has to stand
     in for the pull-request run these tests no longer get (see conftest.py).
+
+    The reference lives in `synthetic.py` rather than here because the
+    `rotations` fixture stands it in for the toolkit where no clone exists. That
+    gives it a second job -- and makes this test the thing that stops the
+    stand-in drifting away from the toolkit it substitutes for.
     """
     rng = np.random.default_rng(11)
-
-    def reference_rot_from_quat(w, x, y, z):
-        """Hamilton [w,x,y,z] -> R, written from the standard expansion."""
-        return np.array(
-            [
-                [1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
-                [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
-                [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)],
-            ]
-        )
-
-    def reference_rot_from_euler(roll, pitch, yaw):
-        """Rz(yaw) @ Ry(pitch) @ Rx(roll) -- the order openpilot's calibration uses."""
-        cr, sr, cp, sp, cy, sy = (
-            np.cos(roll),
-            np.sin(roll),
-            np.cos(pitch),
-            np.sin(pitch),
-            np.cos(yaw),
-            np.sin(yaw),
-        )
-        rx = np.array([[1, 0, 0], [0, cr, -sr], [0, sr, cr]])
-        ry = np.array([[cp, 0, sp], [0, 1, 0], [-sp, 0, cp]])
-        rz = np.array([[cy, -sy, 0], [sy, cy, 0], [0, 0, 1]])
-        return rz @ ry @ rx
 
     for _ in range(200):
         q = rng.standard_normal(4)
         q /= np.linalg.norm(q)
-        assert np.allclose(toolkit.rot_from_quat(q), reference_rot_from_quat(*q), atol=1e-12)
+        assert np.allclose(toolkit.rot_from_quat(q), S.reference_rot_from_quat(q), atol=1e-12)
 
         rpy = rng.uniform(-np.pi / 3, np.pi / 3, 3)
-        assert np.allclose(toolkit.rot_from_euler(rpy), reference_rot_from_euler(*rpy), atol=1e-12)
+        assert np.allclose(toolkit.rot_from_euler(rpy), S.reference_rot_from_euler(rpy), atol=1e-12)
+
+    # The view-frame basis the stand-in carries, against the clone's own.
+    assert np.array_equal(np.asarray(toolkit.device_frame_from_view_frame), S.REFERENCE_DEVICE_FROM_VIEW)
 
     # And paddock's one remaining local piece inverts the toolkit's forward map
     # -- `toolkit.py` explains why `euler_from_rot` could not be delegated.
@@ -326,7 +310,7 @@ def _frame_bench(tmp_path, monkeypatch, frames, **settings):
     return bench, L.SegmentRef(chunk=1, route_id="dongle|route", segment=4, path=seg)
 
 
-def test_observations_carry_frame_paths_rather_than_pixels(tmp_path, monkeypatch):
+def test_observations_carry_frame_paths_rather_than_pixels(tmp_path, monkeypatch, rotations):
     """paddock's open-loop convention, which this harness used to break.
 
     A 160-frame window base64'd into the request body is ~650 MB *per sample*;
@@ -345,7 +329,7 @@ def test_observations_carry_frame_paths_rather_than_pixels(tmp_path, monkeypatch
             assert obs.image_paths["CAM_FRONT"].endswith(".npy")
 
 
-def test_a_cached_frame_is_the_decoded_frame_bit_for_bit(tmp_path, monkeypatch):
+def test_a_cached_frame_is_the_decoded_frame_bit_for_bit(tmp_path, monkeypatch, rotations):
     """Lossless, or two models' numbers stop being comparable across the change."""
     frames = _synthetic_frames()
     bench, segment = _frame_bench(tmp_path, monkeypatch, frames, keep_frames=True)
@@ -357,7 +341,7 @@ def test_a_cached_frame_is_the_decoded_frame_bit_for_bit(tmp_path, monkeypatch):
         assert np.array_equal(loaded, frames[first + offset])
 
 
-def test_the_frames_are_released_once_enough_segments_have_gone_by(tmp_path, monkeypatch):
+def test_the_frames_are_released_once_enough_segments_have_gone_by(tmp_path, monkeypatch, rotations):
     """800 frames a segment across 2035 segments is terabytes; they are scratch.
 
     Released on a ring rather than immediately, because the runner holds
@@ -446,7 +430,7 @@ def test_node_count_without_a_model_is_the_site_setting(monkeypatch):
     assert _bench(nodes=6).node_count(None) == 6
 
 
-def test_keep_frames_leaves_them_for_the_next_run(tmp_path, monkeypatch):
+def test_keep_frames_leaves_them_for_the_next_run(tmp_path, monkeypatch, rotations):
     frames = _synthetic_frames()
     bench, segment = _frame_bench(tmp_path, monkeypatch, frames, keep_frames=True)
 
@@ -465,7 +449,7 @@ def _sweepable(bench, segment):
     return bench
 
 
-def test_a_segment_a_resume_has_finished_is_never_opened(tmp_path, monkeypatch):
+def test_a_segment_a_resume_has_finished_is_never_opened(tmp_path, monkeypatch, rotations):
     """The whole value of `skip` for this benchmark.
 
     A sample costs a minute of HEVC decoded and hundreds of frames staged,
@@ -488,7 +472,7 @@ def test_a_segment_a_resume_has_finished_is_never_opened(tmp_path, monkeypatch):
     assert list(bench.samples(skip=set(ids))) == []
 
 
-def test_the_segment_an_interruption_landed_in_yields_only_what_is_left(tmp_path, monkeypatch):
+def test_the_segment_an_interruption_landed_in_yields_only_what_is_left(tmp_path, monkeypatch, rotations):
     """The partial segment is the one the outer skip cannot help with: its ids
     are not all in `skip`, so it is decoded, and the per-sample test after it
     is what keeps the already-scored keyframe out of the record."""
@@ -501,7 +485,7 @@ def test_the_segment_an_interruption_landed_in_yields_only_what_is_left(tmp_path
     assert remaining == ids[1:]
 
 
-def test_the_last_samples_of_a_stream_keep_their_frames_after_it_ends(tmp_path, monkeypatch):
+def test_the_last_samples_of_a_stream_keep_their_frames_after_it_ends(tmp_path, monkeypatch, rotations):
     """The end of the stream is not the end of the scoring, and this cost a run.
 
     `--limit` stops the iterator while the runner is still holding the last
@@ -542,7 +526,7 @@ def test_the_node_count_is_a_site_setting_with_a_default():
     assert _bench(nodes=0).node_count(None) == 1, "zero nodes scores nothing"
 
 
-def test_a_second_pass_reuses_the_frames_instead_of_decoding_again(tmp_path, monkeypatch):
+def test_a_second_pass_reuses_the_frames_instead_of_decoding_again(tmp_path, monkeypatch, rotations):
     frames = _synthetic_frames()
     bench, segment = _frame_bench(tmp_path, monkeypatch, frames, keep_frames=True)
     list(bench._segment_samples(segment, _AlwaysValid()))

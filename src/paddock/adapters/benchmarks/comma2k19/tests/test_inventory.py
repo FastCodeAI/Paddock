@@ -233,9 +233,32 @@ def test_status_describes_the_copy_on_this_machine(dataset, tmp_path, monkeypatc
     assert rows["chunks"] == "2 of 10 present -- 1:5 2:1"
     assert rows["input rate"].startswith("20 Hz native, evaluating at 20 Hz (native)")
     assert rows["integrity"].startswith("6/6 sampled segments hold every optional file")
-    assert rows["calibration"].startswith("3 routes sampled")
     # Every row is a fact about the subject; none is a verdict on it.
     assert not any("[" in value for value in rows.values())
+
+
+def test_status_keeps_its_other_rows_when_the_toolkit_is_missing(dataset, tmp_path):
+    """A description must survive the machine it is describing.
+
+    `_bench` points `repo` at an empty directory, which is the state of any site
+    that has the dataset but has not cloned the toolkit. The calibration row
+    needs the toolkit's pose maths and so cannot be computed -- but it used to
+    *raise*, and `doctor` catches that by replacing the whole list with the
+    exception, so the reader lost the six rows that were perfectly answerable.
+    """
+    rows = dict(_bench(dataset, tmp_path).status())
+    assert rows["calibration"].startswith("not estimable without the toolkit")
+    assert "comma2k19 toolkit not found" in rows["calibration"]
+    # The point of the fix: the answerable rows are still there.
+    assert rows["segments"] == "6 (0.1 h) in 3 routes, civic 3, rav4 3"
+    assert rows["chunks"] == "2 of 10 present -- 1:5 2:1"
+    assert rows["integrity"].startswith("6/6 sampled segments")
+
+
+def test_status_estimates_the_mounting_angle_when_it_can(dataset, tmp_path, rotations):
+    """And with the pose maths available, the row is the estimate itself."""
+    rows = dict(_bench(dataset, tmp_path).status())
+    assert rows["calibration"].startswith("3 routes sampled")
 
 
 def test_status_reports_a_rate_that_cannot_be_reached_without_raising(dataset, tmp_path):
