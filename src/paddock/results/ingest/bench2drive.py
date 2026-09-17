@@ -28,12 +28,29 @@ from per-route metrics by the store, and every source run id and results.json
 digest is kept in the samples, so each number can be traced to the CARLA file it
 came from. Nothing here is copied from a report.
 
+**The configuration in the record is read from the runs, not typed here.**
+``routes_file`` is a site setting and ``waypoint_dt`` a model capability, so
+neither is knowable from a results tree; both come from the harness's own
+``run.json`` (or the older ``run_config.json``) beside the route folders, as does
+``model_env`` and the site that produced them. Source runs that disagree are
+recorded disagreeing rather than collapsed to the first value, the operator's
+``model_env`` is layered on top as an override, and a route whose source run
+names a *different* model is refused -- pointing ``runs`` one component too high
+otherwise pools two models into one row. ``source_config_read`` says how many of
+the source runs kept such a record at all.
+
+The run id is ``<label>-<route-set hash>-<config hash>``. The route set alone
+cannot distinguish two settings of the same routes -- five constant-velocity
+speed bands, say -- and ``store.write_run`` overwrites a directory that already
+exists, so with the label as the only difference a copied config block silently
+leaves one directory holding whichever entry ran last.
+
 Site configuration (``paddock.toml``)::
 
     [[ingest.bench2drive]]
     model  = "drivejepa"
     runs   = "/path/to/paddock-runs/bench2drive/drivejepa"   # or a list of roots
-    label  = "pooled50"                  # run id becomes <label>-<sequence hash>
+    label  = "pooled50"                  # run id: <label>-<route hash>-<config hash>
     routes = ["1711", "1852", ...]       # optional; default: every route found
     notes  = "24 routes from the 03-04 Sep campaign, 26 from the 09 Sep expansion"
     [ingest.bench2drive.model_env]       # optional; recorded in config
@@ -50,8 +67,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from paddock.adapters.benchmarks.bench2drive.harness import NotScored, crash_reason, parse_results
-from paddock.results.store import MetricsRecord, RunRecord, sequence_hash
+from paddock.adapters.benchmarks.bench2drive.harness import (
+    DEFAULT_ROUTES_FILE,
+    NotScored,
+    crash_reason,
+    parse_results,
+)
+from paddock.registry import Registry
+from paddock.results.store import MetricsRecord, RunRecord, config_hash, sequence_hash
 
 _ROUTE_DIR = re.compile(r"^(?P<route>\d+)-(?P<town>Town\w+?)-(?P<scenario>[A-Za-z]+)$")
 _RUN_ID = re.compile(r"^(?P<stamp>\d{8}T\d{6})-[0-9a-f]{6}$")
@@ -90,6 +113,57 @@ class Survey(NamedTuple):
     scored: dict[str, Attempt]
     #: route folder -> why the last attempt seen there is not a measurement.
     rejected: dict[str, str]
+
+
+def source_record(run_dir: Path) -> dict[str, Any]:
+    """What the harness recorded about the run that produced these routes.
+
+    ``run.json`` is the harness's own run record -- model, site and the config it
+    ran with. Campaigns that predate it left ``run_config.json``, the same config
+    without the identity. Either is better than a constant typed into an ingest:
+    ``routes_file`` is a site setting and ``waypoint_dt`` a model capability, so
+    neither is knowable from the results tree alone. Missing or unreadable is not
+    an error -- the oldest recordings have neither file -- it just means nothing
+    was read, and the caller records how much it had to assume.
+    """
+    record: dict[str, Any] = {}
+    payload = _read_json(run_dir / "run.json")
+    if isinstance(payload, dict):
+        record = {key: payload[key] for key in ("model", "site") if payload.get(key)}
+        if isinstance(payload.get("config"), dict):
+            record["config"] = payload["config"]
+    if "config" not in record:
+        fallback = _read_json(run_dir / "run_config.json")
+        if isinstance(fallback, dict):
+            record["config"] = fallback
+    return record
+
+
+def _read_json(path: Path) -> Any:
+    try:
+        return json.loads(path.read_bytes())
+    except (ValueError, OSError):
+        return None
+
+
+def _agreed(values: Sequence[Any]) -> Any:
+    """One value if the source runs agree, the sorted list if they do not.
+
+    Collapsing a disagreement to "the first one" is how a record comes to assert
+    a configuration that only some of its routes ran under.
+    """
+    distinct = sorted({json.dumps(v, sort_keys=True) for v in values if v is not None})
+    if not distinct:
+        return None
+    return json.loads(distinct[0]) if len(distinct) == 1 else [json.loads(d) for d in distinct]
+
+
+def _registered_waypoint_dt(model: str) -> float | None:
+    try:
+        spec = Registry.load().models.get(model)
+    except Exception:  # noqa: BLE001 -- a broken registry must not fail an ingest
+        return None
+    return getattr(spec, "waypoint_dt", None) if spec else None
 
 
 def discover(runs_roots: Sequence[Path], routes: list[str] | None = None) -> Survey:
@@ -142,9 +216,25 @@ def ingest(
     """One pooled paddock run for ``model`` over the routes under ``runs_root``."""
     roots = [runs_root] if isinstance(runs_root, Path) else list(runs_root)
     survey = discover(roots, routes)
+    rejected = dict(survey.rejected)
+    # Keyed by directory, not by run id: two roots can hold the same run id, and
+    # that collision is exactly the mix this is here to catch.
+    sources: dict[Path, dict[str, Any]] = {}
+    contributing: list[Path] = []
     samples: list[dict[str, Any]] = []
     for folder, attempt in sorted(survey.scored.items()):
         route, town, scenario = route_parts(folder)  # type: ignore[misc]
+        run_dir = attempt.results.parent.parent
+        source = sources.setdefault(run_dir, source_record(run_dir))
+        recorded_model = source.get("model")
+        if recorded_model and recorded_model != model:
+            # One path component too high (`.../bench2drive` for
+            # `.../bench2drive/drivejepa`) otherwise pools another model's routes
+            # into this model's row, and `native_id.source` does not name the
+            # model directory, so the mix is not recoverable afterwards.
+            rejected[folder] = f"{attempt.run_id}: recorded for model {recorded_model!r}, not {model!r}"
+            continue
+        contributing.append(run_dir)
         raw = attempt.results.read_bytes()
         metrics = dict(attempt.metrics)
         checkpoint = json.loads(raw).get("_checkpoint", {})
@@ -180,14 +270,39 @@ def ingest(
     # `wanted` to the samples that survived would make `missing` empty by
     # construction -- n_failed: 0, status complete, valid true -- on exactly the
     # case the record exists to show: a model that crashed out of a route.
-    attempted = {route_parts(f)[0]: why for f, why in survey.rejected.items() if route_parts(f)}  # type: ignore[index]
+    attempted = {route_parts(f)[0]: why for f, why in rejected.items() if route_parts(f)}  # type: ignore[index]
     wanted = sorted(routes) if routes is not None else sorted(have | set(attempted))
     missing = [r for r in wanted if r not in have]
     source_runs = sorted({s["native_id"]["run_id"] for s in samples})
     starts = [d for d in (_started(r) for r in source_runs) if d is not None]
     sample_ids = [s["sample_id"] for s in samples]
-    run_id = f"{run_label}-{sequence_hash(sample_ids)}"
+
+    # Configuration comes from the runs being ingested, not from this function.
+    used = [sources[d] for d in dict.fromkeys(contributing)]
+    configs = [rec.get("config") or {} for rec in used]
+    recorded_env: dict[str, Any] = {}
+    for key in sorted({k for c in configs for k in (c.get("model_env") or {})}):
+        recorded_env[key] = _agreed([(c.get("model_env") or {}).get(key) for c in configs])
+    config = {
+        "routes_file": _agreed([c.get("routes_file") for c in configs]) or DEFAULT_ROUTES_FILE,
+        "routes_subset": wanted,
+        "source_runs": source_runs,
+        # nit 8: `site` names the operation that pooled these runs; the machines
+        # that produced them are here, as far as the recordings state them.
+        "source_sites": sorted({rec["site"] for rec in used if rec.get("site")}),
+        "waypoint_dt": _agreed([c.get("waypoint_dt") for c in configs]) or _registered_waypoint_dt(model),
+        # The operator's entry is an override of what ran, not a substitute for it.
+        "model_env": {**recorded_env, **dict(model_env or {})},
+        "source_config_read": f"{sum(1 for c in configs if c)}/{len(used)} source runs",
+    }
+    run_id = f"{run_label}-{sequence_hash(sample_ids)}-{config_hash(config)}"
     note = notes.strip()
+    unverified = sum(1 for rec in used if not rec.get("model"))
+    if unverified:
+        note = (note + " " if note else "") + (
+            f"{unverified} of {len(used)} source runs kept no run.json, "
+            f"so their routes are attributed to {model} on the tree they were found in."
+        )
     if missing:
         lost = ", ".join(f"{r} ({attempted.get(r, 'no attempt found')})" for r in missing)
         note = (note + " " if note else "") + f"routes expected but never scored: {lost}."
@@ -205,13 +320,7 @@ def ingest(
             "n_expected": len(wanted),
             "n_failed": len(missing),
         },
-        config={
-            "routes_file": "bench2drive220.xml",
-            "routes_subset": wanted,
-            "source_runs": source_runs,
-            "waypoint_dt": 0.5,
-            "model_env": dict(model_env or {}),
-        },
+        config=config,
         status="complete" if not missing else "partial",
         valid=not missing,
         notes=note,
