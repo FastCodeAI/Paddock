@@ -233,11 +233,31 @@ serialize = true
 # PADDOCK_OPENPILOT_RESUME_S = "0"
 
 # Recorded Bench2Drive route results, pooled into one run per model (or per
-# speed band). `runs` may be one root or a list; routes default to every route
-# found under them. See src/paddock/results/ingest/bench2drive.py.
+# speed band). An ARRAY of tables -- double brackets -- one block per run.
+# `runs` may be one root or a list; routes default to every route found under
+# them. The run id is <label>-<route hash>-<config hash>, so two blocks that
+# differ only in `model_env` do not overwrite each other.
+# See src/paddock/results/ingest/bench2drive.py and docs/benchmarks/bench2drive.md.
 # [[ingest.bench2drive]]
 # model  = "drivejepa"
 # runs   = "/path/to/paddock-runs/bench2drive/drivejepa"
 # label  = "pooled50"
 # routes = ["1711", "1852", "2802"]
 # notes  = "24 routes from the 03-04 Sep campaign, 26 from the 09 Sep expansion"
+#
+# Environment overrides recorded in the run's config. The ingest reads what the
+# source runs recorded; this is layered on top, for what they did not. For the
+# constant-velocity baseline it is the only machine-readable statement of which
+# speed band a row is -- without it five bands are indistinguishable.
+# [ingest.bench2drive.model_env]
+# PADDOCK_CV_SPEED_SOURCE = "fixed"
+# PADDOCK_CV_SPEED_M_S = "6"
+#
+# The recording setup each route was driven under, if they differ. Lands on the
+# samples as `group`, so metrics.json carries a per-setup breakdown in
+# `by_group`. A run pooling more than one setup is written `valid: false`: its
+# mean describes no configuration anybody drove, and the leaderboard lists it as
+# excluded rather than ranking it.
+# [ingest.bench2drive.setups]
+# assisted    = ["1711", "2802"]
+# unassisted  = ["1852"]
