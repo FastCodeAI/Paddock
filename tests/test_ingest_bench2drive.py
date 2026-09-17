@@ -150,6 +150,30 @@ def test_a_route_that_never_scored_is_expected_not_absent(tmp_path: Path) -> Non
     assert metrics.n == 3, "the three routes that scored are what the mean is over"
 
 
+def test_a_route_excluded_by_the_subset_and_never_scored_is_still_recorded(tmp_path: Path) -> None:
+    """11715 exactly: excluded for every model because CARLA crashes on it.
+
+    An explicit `routes` list is a choice and keeps the run complete, but
+    "excluded" and "attempted and lost" are different facts and `results/` must
+    hold both -- otherwise the only place the loss exists is a prose sentence in
+    a benchmark doc.
+    """
+    root = _tree(tmp_path)
+    for run in ("20260904T000000-dddddd", "20260905T000000-eeeeee"):
+        _write(root, run, "11715-Town12-EnterActorFlow", _unscored("11715"))
+
+    ((run, metrics, _),) = bench2drive.ingest(
+        root, model="modelx", site="s", routes=["1711", "2802", "24333"]
+    )
+
+    assert run.status == "complete" and run.valid, "the subset it was asked for is complete"
+    assert run.dataset["n_expected"] == 3 and run.dataset["n_failed"] == 0
+    assert "11715" not in run.config["routes_subset"]
+    assert list(run.config["routes_never_scored"]) == ["11715"]
+    assert "20260905T000000-eeeeee" in run.config["routes_never_scored"]["11715"]
+    assert "attempted outside the configured route subset" in run.notes
+
+
 def test_the_rejection_reason_names_the_run_and_no_machine_path(tmp_path: Path) -> None:
     """`notes` is tracked, so the reason may name a run id but never a disk."""
     root = _tree(tmp_path)

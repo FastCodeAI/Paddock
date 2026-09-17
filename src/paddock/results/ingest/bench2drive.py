@@ -187,6 +187,11 @@ def discover(runs_roots: Sequence[Path], routes: list[str] | None = None) -> Sur
     Unreadable files are rejections too, not silence: a truncated ``results.json``
     on a network mount used to abort the whole walk, and a malformed one used to
     be indistinguishable from a route that crashed.
+
+    ``routes`` selects what is *scored*, not what is *seen*: a route excluded by
+    the subset and never scored anywhere is still reported, because "excluded"
+    and "attempted and lost" are different facts about a benchmark run and only
+    one of them is a choice.
     """
     scored: dict[str, Attempt] = {}
     rejected: dict[str, str] = {}
@@ -194,8 +199,9 @@ def discover(runs_roots: Sequence[Path], routes: list[str] | None = None) -> Sur
         for results in sorted(root.rglob("results.json")):
             route_dir, run_dir = results.parent, results.parent.parent
             parts = route_parts(route_dir.name)
-            if parts is None or (routes is not None and parts[0] not in routes):
+            if parts is None:
                 continue
+            wanted_here = routes is None or parts[0] in routes
             try:
                 metrics = parse_results(results)
             except NotScored as exc:
@@ -207,6 +213,8 @@ def discover(runs_roots: Sequence[Path], routes: list[str] | None = None) -> Sur
             # is the NFS read that used to take the whole ingest down with it.
             except (ValueError, OSError) as exc:
                 rejected[route_dir.name] = f"{run_dir.name}: unreadable ({type(exc).__name__})"
+                continue
+            if not wanted_here:
                 continue
             previous = scored.get(route_dir.name)
             if previous is None or run_dir.name > previous.run_id:
@@ -309,11 +317,23 @@ def ingest(
         "model_env": {**recorded_env, **dict(model_env or {})},
         "source_config_read": f"{sum(1 for c in configs if c)}/{len(used)} source runs",
     }
+    # Every route that was attempted and never scored, whether or not the
+    # configured subset asked for it. Route 11715 is the case: excluded for every
+    # model because CARLA crashes on it, so it is not in `routes` and not in
+    # `n_failed` -- and without this line `results/` would not say it happened.
+    if attempted:
+        config["routes_never_scored"] = dict(sorted(attempted.items()))
     pooled_setups = sorted({s["group"] for s in samples if s["group"]})
     if setups:
         config["recording_setups"] = {label: sorted(group) for label, group in sorted(setups.items())}
     run_id = f"{run_label}-{sequence_hash(sample_ids)}-{config_hash(config)}"
     note = notes.strip()
+    outside = sorted(r for r in attempted if r not in set(wanted))
+    if outside:
+        lost = ", ".join(f"{r} ({attempted[r]})" for r in outside)
+        note = (note + " " if note else "") + (
+            f"attempted outside the configured route subset and never scored: {lost}."
+        )
     if len(pooled_setups) > 1:
         note = (note + " " if note else "") + (
             f"pooled across {len(pooled_setups)} recording setups ({', '.join(pooled_setups)}); "
