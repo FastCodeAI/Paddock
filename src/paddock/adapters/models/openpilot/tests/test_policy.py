@@ -343,3 +343,126 @@ def test_cuda_constructor_restores_upstream_helpers(tmp_path, monkeypatch, fail)
         assert POLICY()._new_model() is sentinel
     assert modeld.modeld_pkl_path is original_path
     assert modeld.get_tg_input_devices is original_devices
+
+
+# --------------------------------------------------------------------------
+# Two cameras reach two views
+# --------------------------------------------------------------------------
+
+
+class _FakeCameraAdapter:
+    """`CameraAdapter` without openpilot, keeping only what inference reads.
+
+    The real one imports `openpilot.common.transformations` in its constructor,
+    which paddock's environment does not have. Everything downstream of it here
+    -- `WarpPlan`, `rgb_to_yuv420` -- is numpy and runs for real, so this stands
+    in for the one part that cannot and leaves the wiring under test.
+    """
+
+    def __init__(self, pinhole, camera2ego, resample: bool = True) -> None:
+        self.src = pinhole
+        self.resample = resample
+        self.size = (pinhole.width, pinhole.height)
+        self.transforms = {"img": np.eye(3, dtype=np.float32), "big_img": np.eye(3, dtype=np.float32)}
+
+    def prepare(self, image):
+        return image
+
+
+def _two_camera_observation():
+    """A comma rig: distinguishable road and wide frames, and nothing else."""
+    from paddock.policy.protocol import Command, Observation
+
+    def frame(fill):
+        return np.full((TARGET_H, TARGET_W, 3), fill, dtype=np.uint8)
+
+    k = np.array([[900.0, 0.0, TARGET_W / 2], [0.0, 900.0, TARGET_H / 2], [0.0, 0.0, 1.0]])
+    mount = np.eye(4)
+    mount[:3, :3] = [[0, 0, 1], [-1, 0, 0], [0, -1, 0]]
+    return Observation(
+        images={"CAM_OP_ROAD": frame(40), "CAM_OP_WIDE": frame(200)},
+        ego2world=np.eye(4),
+        canbus=np.zeros(18),
+        timestamp_us=0,
+        command=Command.STRAIGHT,
+        camera2image={"CAM_OP_ROAD": k, "CAM_OP_WIDE": k},
+        camera2ego={"CAM_OP_ROAD": mount, "CAM_OP_WIDE": mount},
+    )
+
+
+def _onnx_policy(monkeypatch):
+    """A policy on the ONNX backend, wired to record what the graph is handed."""
+    import paddock.adapters.models.openpilot.policy as P
+
+    monkeypatch.setattr(P, "CameraAdapter", _FakeCameraAdapter)
+    policy = POLICY()
+    policy.backend = "onnx"
+    policy.self_prime = False
+    policy.session = type("S", (), {"spec": type("Spec", (), {"input_shapes": {"img": (1, 12, 128, 256)}})})()
+    seen = {}
+
+    def run(img, big, speed):
+        seen["img"], seen["big_img"] = img, big
+        return {}
+
+    policy.model = type("M", (), {"run": staticmethod(run)})()
+    return policy, seen
+
+
+def test_the_onnx_path_feeds_the_wide_camera_to_the_wide_view(monkeypatch) -> None:
+    """The defect that made a backend choice a scoring difference.
+
+    `_resolve_backend` picks ONNX by *trying an import*, and `setup.sh` makes a
+    failed `scons` non-fatal, so a site that never built tinygrad got the ONNX
+    path silently. That path had no two-camera branch: it passed the road frame
+    as both `img` and `big_img`, so on comma2k19 and Bench2Drive openpilot was
+    scored with the narrow camera warped into the wide field, and the wide
+    camera it declares was never read at all.
+    """
+    policy, seen = _onnx_policy(monkeypatch)
+    policy.infer(_two_camera_observation())
+
+    assert policy.cam_wide is not None, "the rig has two cameras and only one was bound"
+    assert not np.array_equal(seen["img"], seen["big_img"])
+    # Not just different: `big_img` has to be the *wide* frame. The two source
+    # fills differ, and the warp is the identity here, so the fill survives.
+    assert seen["big_img"].max() > seen["img"].max()
+
+
+def test_one_camera_still_feeds_both_views(monkeypatch) -> None:
+    """Every dataset here but the comma rigs has one camera; it fills both."""
+    policy, seen = _onnx_policy(monkeypatch)
+    obs = _two_camera_observation()
+    obs.images = {"CAM_FRONT": obs.images["CAM_OP_ROAD"]}
+    obs.camera2image = {"CAM_FRONT": obs.camera2image["CAM_OP_ROAD"]}
+    obs.camera2ego = {"CAM_FRONT": obs.camera2ego["CAM_OP_ROAD"]}
+
+    policy.infer(obs)
+
+    assert policy.cam_wide is None
+    assert np.array_equal(seen["img"], seen["big_img"])
+
+
+def test_the_two_backends_bind_the_same_cameras(monkeypatch) -> None:
+    """They disagreed for a year, and nothing on the record showed it.
+
+    `_bind_cameras` is shared so that "which image reaches big_img" is one
+    answer. Only `resample` may differ, because only the warp does: the ONNX
+    warp is built per source geometry and the tinygrad one is compiled for a
+    fixed size.
+    """
+    import paddock.adapters.models.openpilot.policy as P
+
+    monkeypatch.setattr(P, "CameraAdapter", _FakeCameraAdapter)
+    obs = _two_camera_observation()
+    bound = {}
+    for backend in ("onnx", "tinygrad"):
+        policy = POLICY()
+        policy.backend = backend
+        assert policy._bind_cameras(obs) is True
+        road, wide, road_key, wide_key = policy._views(True)
+        bound[backend] = (road_key, wide_key, road.resample, wide.resample)
+
+    assert bound["onnx"][:2] == bound["tinygrad"][:2] == ("CAM_OP_ROAD", "CAM_OP_WIDE")
+    assert bound["onnx"][2:] == (False, False)
+    assert bound["tinygrad"][2:] == (True, True)

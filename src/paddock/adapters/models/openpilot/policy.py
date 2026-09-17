@@ -518,7 +518,7 @@ class OpenpilotPolicy(Policy):
             self.buf = np.zeros(self.nv12_info[3], dtype=np.uint8)
             self.buf_wide = np.zeros(self.nv12_info[3], dtype=np.uint8)
             # One source: both slots read the same buffer. Two sources: each
-            # slot gets its own, rebound in `_build_camera`.
+            # slot gets its own, rebound in `_bind_cameras`.
             self.bufs = {"img": self.buf, "big_img": self.buf}
         else:
             self.session = self._open_session()
@@ -598,7 +598,7 @@ class OpenpilotPolicy(Policy):
         self.cam_road = None
         self.cam_wide = None
         if self.buf is not None:
-            # Back to one source feeding both views; `_infer_tinygrad` rebinds
+            # Back to one source feeding both views; `_bind_cameras` rebinds
             # "big_img" to buf_wide again if the next sample has two cameras.
             self.bufs = {"img": self.buf, "big_img": self.buf}
         self.frames_seen = 0
@@ -611,12 +611,56 @@ class OpenpilotPolicy(Policy):
 
     # ---- inference -------------------------------------------------------
 
-    def _build_camera(self, obs: Observation) -> CameraAdapter:
-        pinhole = obs.pinhole("CAM_FRONT")
-        # The ONNX warp is built per source geometry, so nothing needs
-        # resampling. The tinygrad warp is compiled for 1928x1208 and does.
+    def _bind_cameras(self, obs: Observation) -> bool:
+        """Bind this sample's cameras to the model's two views, once.
+
+        Returns whether the rig has two. supercombo takes a narrow `img` and a
+        wide `big_img`; a comma rig has a camera for each, and every dataset
+        here but Bench2Drive and comma2k19 has one, in which case the single
+        frame feeds both views.
+
+        Shared by both backends deliberately. Which image reaches `big_img` is a
+        fact about the rig, not about whether this machine built tinygrad, and
+        keeping it in one place is what stops the two answering differently --
+        which they did: `_infer_onnx` had no two-camera branch at all, so on a
+        site whose `scons` failed (`setup.sh` makes that non-fatal, and
+        `_resolve_backend` then silently picks ONNX) openpilot was scored with
+        the *narrow* frame warped into the wide view. Nothing on the record
+        distinguished the two runs.
+
+        Only `resample` differs, and for the reason the two warps differ: the
+        ONNX warp is built per source geometry, so nothing needs resampling,
+        while the tinygrad warp is compiled for 1928x1208 and does.
+        """
+        have = set(obs.images) | set(obs.image_paths)
+        two = "CAM_OP_ROAD" in have and "CAM_OP_WIDE" in have
         resample = self.backend == "tinygrad"
-        return CameraAdapter(pinhole, obs.camera2ego["CAM_FRONT"], resample=resample)
+        if two:
+            if self.cam_road is None:
+                self.cam_road = CameraAdapter(
+                    obs.pinhole("CAM_OP_ROAD"), obs.camera2ego["CAM_OP_ROAD"], resample=resample
+                )
+                self.cam_wide = CameraAdapter(
+                    obs.pinhole("CAM_OP_WIDE"), obs.camera2ego["CAM_OP_WIDE"], resample=resample
+                )
+                self.camera = self.cam_road
+                if self.buf is not None:
+                    self.bufs = {"img": self.buf, "big_img": self.buf_wide}
+        elif self.camera is None:
+            self.camera = CameraAdapter(
+                obs.pinhole("CAM_FRONT"), obs.camera2ego["CAM_FRONT"], resample=resample
+            )
+            if self.buf is not None:
+                self.bufs = {"img": self.buf, "big_img": self.buf}
+        return two
+
+    def _views(self, two: bool) -> tuple[CameraAdapter, CameraAdapter, str, str]:
+        """(road camera, wide camera, road key, wide key) after `_bind_cameras`."""
+        if two:
+            assert self.cam_road is not None and self.cam_wide is not None
+            return self.cam_road, self.cam_wide, "CAM_OP_ROAD", "CAM_OP_WIDE"
+        assert self.camera is not None
+        return self.camera, self.camera, "CAM_FRONT", "CAM_FRONT"
 
     def infer(self, obs: Observation) -> Trajectory:
         if self.model is None:
@@ -660,47 +704,19 @@ class OpenpilotPolicy(Policy):
         from openpilot.selfdrive.modeld.constants import ModelConstants
 
         stride, y_height = self.nv12_info[0], self.nv12_info[1]
-        have = set(obs.images) | set(obs.image_paths)
-        # A comma rig has two cameras; every dataset in this repo but Bench2Drive
-        # has one, and then the single frame feeds both model views.
-        two = "CAM_OP_ROAD" in have and "CAM_OP_WIDE" in have
+        two = self._bind_cameras(obs)
+        road, wide, road_key, wide_key = self._views(two)
+        packs = [
+            (self.buf, rgb_to_nv12_batch(road.prepare(obs.image(road_key))[None], TARGET_W, TARGET_H)[0])
+        ]
         if two:
-            if self.cam_road is None:
-                self.cam_road = CameraAdapter(obs.pinhole("CAM_OP_ROAD"), obs.camera2ego["CAM_OP_ROAD"])
-                self.cam_wide = CameraAdapter(obs.pinhole("CAM_OP_WIDE"), obs.camera2ego["CAM_OP_WIDE"])
-                self.camera = self.cam_road
-                self.bufs = {"img": self.buf, "big_img": self.buf_wide}
-            packs = [
-                (
-                    self.buf,
-                    rgb_to_nv12_batch(
-                        self.cam_road.prepare(obs.image("CAM_OP_ROAD"))[None], TARGET_W, TARGET_H
-                    )[0],
-                ),
+            packs.append(
                 (
                     self.buf_wide,
-                    rgb_to_nv12_batch(
-                        self.cam_wide.prepare(obs.image("CAM_OP_WIDE"))[None], TARGET_W, TARGET_H
-                    )[0],
-                ),
-            ]
-            transforms = {
-                "img": self.cam_road.transforms["img"],
-                "big_img": self.cam_wide.transforms["big_img"],
-            }
-        else:
-            if self.camera is None:
-                self.camera = self._build_camera(obs)
-                self.bufs = {"img": self.buf, "big_img": self.buf}
-            packs = [
-                (
-                    self.buf,
-                    rgb_to_nv12_batch(self.camera.prepare(obs.image("CAM_FRONT"))[None], TARGET_W, TARGET_H)[
-                        0
-                    ],
+                    rgb_to_nv12_batch(wide.prepare(obs.image(wide_key))[None], TARGET_W, TARGET_H)[0],
                 )
-            ]
-            transforms = self.camera.transforms
+            )
+        transforms = {"img": road.transforms["img"], "big_img": wide.transforms["big_img"]}
 
         inputs = {
             "desire_pulse": np.zeros(ModelConstants.DESIRE_LEN, dtype=np.float32),
@@ -717,25 +733,39 @@ class OpenpilotPolicy(Policy):
             return constant_velocity(obs.speed, dt=self.waypoint_dt)
         return self._trajectory(out, obs)
 
+    def _model_size(self, view: str) -> tuple[int, int]:
+        """(width, height) the graph wants for one view, from its own input shape.
+
+        NCHW over YUV420, so the frame is twice the tensor in each dimension.
+        Read per view rather than once from `img`: the combined and split graphs
+        agree today, but a graph whose two views differ would otherwise have the
+        wide plan built for the narrow shape, silently.
+        """
+        shape = self.session.spec.input_shapes.get(view) or self.session.spec.input_shapes["img"]
+        return (shape[3] * 2, shape[2] * 2)
+
     def _infer_onnx(self, obs: Observation) -> Trajectory:
         from paddock.adapters.models.openpilot.supercombo import WarpPlan, rgb_to_yuv420
 
-        if self.camera is None:
-            self.camera = self._build_camera(obs)
-        if not hasattr(self, "_plans") or self._plans_for is not self.camera:
-            src = self.camera.size
-            model_size = (
-                self.session.spec.input_shapes["img"][3] * 2,
-                self.session.spec.input_shapes["img"][2] * 2,
-            )
+        two = self._bind_cameras(obs)
+        road, wide, road_key, wide_key = self._views(two)
+        # Keyed on the pair, not on `self.camera`: on a two-camera rig the two
+        # views have different source geometry, so one plan built from the road
+        # camera and applied to both is the defect this branch exists to fix.
+        if getattr(self, "_plans_for", None) != (id(road), id(wide)):
             self._plans = {
-                k: WarpPlan.build(self.camera.transforms[k], model_size, src) for k in ("img", "big_img")
+                "img": WarpPlan.build(road.transforms["img"], self._model_size("img"), road.size),
+                "big_img": WarpPlan.build(wide.transforms["big_img"], self._model_size("big_img"), wide.size),
             }
-            self._plans_for = self.camera
+            self._plans_for = (id(road), id(wide))
 
-        rgb = self.camera.prepare(obs.image("CAM_FRONT"))
-        y, u, v = rgb_to_yuv420(rgb)
+        y, u, v = rgb_to_yuv420(road.prepare(obs.image(road_key)))
         img = self._plans["img"].apply(y, u, v)
+        if two:
+            # One camera keeps feeding both views off a single conversion; two
+            # must not, or big_img is the narrow frame stretched into the wide
+            # field and the wide camera never reaches the model.
+            y, u, v = rgb_to_yuv420(wide.prepare(obs.image(wide_key)))
         big = self._plans["big_img"].apply(y, u, v)
 
         out = None
