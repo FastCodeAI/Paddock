@@ -59,6 +59,7 @@ ADE alone.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -250,9 +251,22 @@ class DriveJepaFreePolicy(Policy):
             ("DRIVEJEPA_FREE_CHECKPOINT", self.checkpoint),
             ("DRIVEJEPA_VJEPA_WEIGHTS", self.pretrain),
         )
+        # Checked for existence, not just for being set. `model.yaml` always
+        # sets both from `{weights}`, so the emptiness test alone could never
+        # fire on the `paddock run` path -- and with `startup_timeout_s: 900` a
+        # missing 8.3 GB checkpoint cost up to fifteen minutes per node before
+        # torch got far enough to say which file it could not find.
         for name, value in weights:
             if not value:
                 raise RuntimeError(f"no weights: set {name} (model.yaml supplies it from {{weights}})")
+        # A second pass, so "you did not set this" is never reported as the
+        # absence of whatever the unset half would have pointed at.
+        for name, value in weights:
+            if not Path(str(value)).is_file():
+                raise RuntimeError(
+                    f"{name} points at {value}, which is not a file -- "
+                    f"check [roots] weights in paddock.toml and that the checkpoint was downloaded"
+                )
 
         import torch
         from navsim.agents.drive_jepa_perception_free.drive_jepa_agent import DriveJEPAAgent

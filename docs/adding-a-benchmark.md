@@ -298,3 +298,8 @@ dataset page worth having rather than a second copy of the first:
 * **Tracked means portable.** A machine-specific inventory belongs under
   `{roots.runs}` with the command that regenerates it, not in the repo;
   `tests/test_portability.py` will reject the paths otherwise.
+
+[SKILLS.md](../SKILLS.md) is the companion to this page: not what to write, but
+what went wrong writing it — vendored tools missing the flags you would reach
+for, quaternion conventions that need verifying against the data rather than the
+docs, and a `--dry-run` sample count that reads 0 for a new benchmark.

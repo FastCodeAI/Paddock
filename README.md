@@ -127,6 +127,16 @@ with a model that emits a timed trajectory. The KITScenes run additionally
 needed the ego origin dropped from the roof pod to the road, without which every
 projected path point lands behind the car; see `docs/benchmarks/kitscenes.md`.
 
+The ∗ rows are also the ones **`CURV_SCALE` moved**. The adapter carried 1.0
+where the stack's own `lateral_fusion.hpp` has 0.21, so the planner saw a
+curvature 4.8x too large and its `sqrt(mu*g/|kappa|)` speed cap bound where it
+should not have. Fixed September 2026; on a 20-sample comma2k19 smoke the
+correction moved ADE@3s from 15.09 to 5.28. **Every VisionPilot figure in this
+README predates it** and will not be reproduced by a re-run — the closed-loop
+ones least, since urban scenes rarely reach the cap, and the comma2k19 and
+KITScenes ones most. `docs/models/VISION_PILOT_GUIDE.md` §"Curvature scale" has
+the derivation; re-sweeping VisionPilot is an open item in `docs/ROADMAP.md`.
+
 ◊ METEOR plans **3 s**; NAVSIM scores **4 s**. A quarter of every scored plan is
 therefore not the model's: `METEOR_HORIZON_S=4.0` (on the record as `model_env`)
 continues the final 0.5 s segment to 4 s, because `to_navsim_poses` refuses a
@@ -180,7 +190,8 @@ neither the four cameras nor the lidar extrinsics v2 requires. The number is a
 speed prior, not a wiring fault: its plans are the most accurately *shaped* of
 any model here (0.609 m lateral error at matched arc length, against OpenPilot's
 1.155) but reach only ~67% as far as the car travelled, because 4 s of NAVSIM
-city driving saturates near 64 m while I-280 runs at 30 m/s. See the comma2k19
+city driving saturates near 64 m while I-280 runs at 30 m/s. See
+[docs/models/drivejepa_free.md](docs/models/drivejepa_free.md) and the comma2k19
 table below.
 
 ⊗ **OpenPilot's comma2k19 row was not produced at the `repos.yaml` pin.** It
@@ -838,6 +849,8 @@ reviewable in a diff.
 | [docs/adding-a-model.md](docs/adding-a-model.md) | **adding a model** — the full checklist |
 | [docs/adding-a-benchmark.md](docs/adding-a-benchmark.md) | **adding a benchmark** — the full checklist |
 | [docs/models/comparison.md](docs/models/comparison.md) | **what each model is** — size, inputs, outputs, training data, licences |
+| [docs/models/](docs/models/) | one page per model — what the checkpoint is, how the adapter wires it, and what its figures do and do not support |
+| [SKILLS.md](SKILLS.md) | bringing up a model's own environment, and the failures that look nothing like a paddock bug |
 | [docs/architecture.md](docs/architecture.md) | understanding open- vs closed-loop, the Policy protocol |
 | [docs/benchmarks/](docs/benchmarks/) | how each benchmark is run and scored, and every recorded figure with its run id |
 | [docs/datasets/](docs/datasets/) | what the underlying data *is* — sensors, frames, coverage, and what it cannot answer |

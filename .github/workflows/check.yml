@@ -62,7 +62,7 @@ jobs:
       - name: Install paddock the way `make setup` does
         run: |
           uv venv --python 3.11 .venv
-          uv pip install --python .venv/bin/python -e ".[dev,serve,viz]"
+          uv pip install --python .venv/bin/python -e ".[dev,serve,viz,comma2k19]"
 
       - name: Refuse a site config in CI
         run: |
@@ -103,7 +103,7 @@ jobs:
       - name: Install paddock the way `make setup` does
         run: |
           uv venv --python 3.11 .venv
-          uv pip install --python .venv/bin/python -e ".[dev,serve,viz]"
+          uv pip install --python .venv/bin/python -e ".[dev,serve,viz,comma2k19]"
 
       # continue-on-error sits on the STEP, not the job, so the job itself goes
       # green. A job that shows a red X on every PR forever is the check people

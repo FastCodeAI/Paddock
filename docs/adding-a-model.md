@@ -230,3 +230,13 @@ git diff > /path/to/paddock/patches/mymodel/0001-short-description.patch
 Add it to the `patches:` list in `repos.yaml` and explain in the patch header
 **why** external configuration was not possible. `paddock setup` applies patches
 in order after checkout.
+
+---
+
+## When the environment resists you instead
+
+This checklist covers what to write. [SKILLS.md](../SKILLS.md) covers what goes
+wrong doing it — `uv sync` failing on an extra you do not need, a `setup.sh`
+missing a dependency the shared machinery assumes, a model that needs a dataset
+your benchmark does not use — the failures that look nothing like a paddock bug
+because they happen inside a model's own interpreter or a site's config.

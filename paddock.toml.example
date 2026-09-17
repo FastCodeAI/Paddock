@@ -315,3 +315,44 @@ serialize = true
 #                        # test_suite_id; name the suite its scenes came from
 # notes = ""      # required by the results store when valid = false
 # valid = true
+
+# ---------------------------------------------------------------------------
+# Environment variables paddock reads
+#
+# These are not config keys -- there is nowhere in this file to set them -- so
+# they are listed here because otherwise the only record of them is the source.
+# Anything under `[models.<name>.env]` or `[benchmarks.<name>]` above is a
+# better place to pin behaviour for a run; these are the escape hatches.
+#
+#   PADDOCK_CONFIG          use a different site config than ./paddock.toml
+#   PADDOCK_BASE_PORT       first port a run scans from. Two concurrent runs
+#                           both scanning from 9000 collide; give each its own.
+#   PADDOCK_FFMPEG          ffmpeg binary, when it is not on PATH. Also settable
+#                           as [benchmarks.neuroncap] ffmpeg.
+#   PADDOCK_FFPROBE         ffprobe binary. Unset, paddock looks beside
+#                           PADDOCK_FFMPEG first and then on PATH -- a site that
+#                           pointed PADDOCK_FFMPEG into another project's venv
+#                           has both there.
+#   PADDOCK_FONT            TrueType font for the comma2k19 overlay's captions,
+#                           for a site whose Pillow ships no usable bundled one.
+#
+# openpilot's node, all read inside its own interpreter. Set them under
+# [models.openpilot.env] rather than exporting them, so they are on the record
+# in run.json:
+#
+#   PADDOCK_OPENPILOT_BACKEND       "tinygrad" or "onnx". Unset, the node picks
+#                                   by trying the import, and records which it
+#                                   got under provenance.policy.
+#   PADDOCK_OPENPILOT_MODEL         "small" (driving_supercombo, the default)
+#                                   or "big" (big_driving_supercombo)
+#   PADDOCK_OPENPILOT_CUDA_MODEL    path to the CUDA-compiled tinygrad pickle
+#   PADDOCK_OPENPILOT_ONNX          path to a *combined* ONNX graph. Set, it is
+#                                   the only candidate, so a typo fails loudly
+#                                   instead of falling back to the split pair.
+#   PADDOCK_OPENPILOT_MODE          "experimental" (the default: openpilot's
+#                                   end-to-end longitudinal head) or ""
+#   PADDOCK_OPENPILOT_NATIVE_LONG   "1" to let openpilot's own longitudinal
+#                                   planner set speed instead of the harness
+#   PADDOCK_OPENPILOT_RESUME_S      seconds stopped with no lead before the
+#                                   driver-resume rule pulls away; "0" disables
+#   PADDOCK_OPENPILOT_THREADS       onnxruntime thread count (default 8)

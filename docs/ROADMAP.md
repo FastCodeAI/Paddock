@@ -244,6 +244,17 @@ README and the benchmark doc until they land:
   and the backend is now on the record as `provenance.policy.backend`, but rows
   produced before the fix are not bit-reproducible from this tree.
 
+A third re-sweep is owed across every benchmark, and it is not openpilot's:
+
+- **Re-sweep VisionPilot everywhere.** Its adapter carried `CURV_SCALE = 1.0`
+  where the stack has 0.21, so `IDM`'s `sqrt(mu*g/|kappa|)` speed cap bound on a
+  curvature 4.8x too large. Fixed September 2026; on a 20-sample comma2k19 smoke
+  ADE@3s moved 15.09 -> 5.28. **Every VisionPilot row in the README and in
+  `docs/models/comparison.md` predates it.** Expect the open-loop rows to move
+  most: Bench2Drive and neuroNCAP are urban and slow enough that the cap rarely
+  binds, which is how this survived them. Marked `∗` in the README until it
+  lands.
+
 Landed alongside it, none comma2k19-specific:
 
 - **`drivejepa_free`, the eighth model adapter** — Drive-JEPA's perception-free

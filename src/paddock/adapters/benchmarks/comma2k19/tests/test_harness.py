@@ -764,8 +764,13 @@ def test_run_config_records_what_changes_the_number():
     assert "calibration" in cfg
 
 
-def test_a_stationary_prediction_reproduces_the_published_numbers(toolkit):
+def test_a_stationary_prediction_reproduces_the_published_numbers():
     """The previous comma2k19 result, reproduced from a plan of literally zero.
+
+    Takes no `toolkit` fixture: it is numpy and a table of recorded metres, with
+    no pose maths in it. It used to ask for one anyway, which meant the evidence
+    this docstring calls load-bearing was skipped on every machine without a
+    clone -- including CI, which is every PR.
 
     This is the load-bearing evidence for the claim in
     `docs/benchmarks/comma2k19.md` that the earlier run was measuring a model

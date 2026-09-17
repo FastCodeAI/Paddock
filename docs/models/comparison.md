@@ -126,6 +126,14 @@ recipe; there is no CARLA training script, config or doc. It is therefore
 adapter is run — should not be labelled on the strength of it. Worth resolving
 before that sweep, not after.
 
+**Every Drive-JEPA row on this page is the perception-*based* v2 agent.** The
+comma2k19 board carries a second, separate registry entry —
+[`drivejepa_free`](drivejepa_free.md), the perception-free NAVSIM v1 agent —
+because comma2k19 supplies neither the four cameras nor the lidar extrinsics v2
+requires. Different checkpoint (`drive_jepa_perception_free_agent_vitl.ckpt`),
+different repo subtree, different inputs; the two are not comparable to each
+other and are deliberately not merged into one column here.
+
 ### Qwen-Drive 1.0 × navsim
 
 **Qwen-Drive's NAVSIM number is in-distribution, and it is the number the
@@ -221,6 +229,27 @@ between the floor and VisionPilot, while on nuScenes, which scores three
 seconds and needs no extension, its L2 sits with Drive-JEPA's. Both numbers are
 real; they are not measuring the same object. `docs/models/meteor.md` has the
 measurements.
+
+### VisionPilot × everything — every figure predates a constant that moved
+
+VisionPilot's adapter carried `CURV_SCALE = 1.0`. The stack's own
+`lateral_fusion.hpp` has `ad_curvature_scale = 0.21f`, annotated "CURV_SCALE =
+0.21 in training", and `auto_drive.hpp` deliberately leaves the conversion to
+the caller — which is why grepping the file that documents it finds nothing. So
+the planner was handed a curvature 4.8x too large, and `IDM` caps set-speed at
+`sqrt(mu*g/|kappa|)` and raises the overshoot to the fourth power: on a 30 m/s
+comma2k19 keyframe it demanded about -60 m/s² and reached 5 m in four seconds
+instead of 120.
+
+Fixed September 2026. On a 20-sample comma2k19 smoke the correction moved ADE@3s
+from 15.09 to 5.28 and `path_length_ratio` from 0.60 to 0.84, with every lateral
+number unchanged — curvature reaches the plan only through the longitudinal cap.
+**Every VisionPilot number on this page and in the README was produced with 1.0**
+and will not be reproduced by a re-run. Expect the open-loop rows to move most
+and the closed-loop ones least: Bench2Drive and neuroNCAP are urban and slow
+enough that the cap rarely binds, which is why the defect survived them.
+`docs/models/VISION_PILOT_GUIDE.md` has the derivation; the re-sweep is an open
+item in `docs/ROADMAP.md`.
 
 ## Three discrepancies against what the adapters declare
 

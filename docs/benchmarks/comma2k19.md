@@ -84,9 +84,10 @@ frame_cache = "/dev/shm/paddock-comma2k19-$USER"  # where decoded frames are sta
 keep_frames = false           # keep them for the next model instead of releasing
 ```
 
-Frame decoding needs either **PyAV** in paddock's environment
-(`pip install av`) or an ffmpeg binary via `PADDOCK_FFMPEG`. `preflight`
-reports which, and refuses to run without one.
+Frame decoding needs either **PyAV** in paddock's environment or an ffmpeg
+binary via `PADDOCK_FFMPEG`. `preflight` reports which, and refuses to run
+without one. `make setup` installs PyAV (the `comma2k19` extra) already; on an
+environment built by hand it is `pip install -e ".[comma2k19]"`.
 
 Getting the dataset: see [data setup](../data-setup.md#comma2k19). It is a
 Harvard Dataverse download, `Chunk_1.zip` … `Chunk_10.zip`, ~100 GB unpacked.
@@ -149,7 +150,7 @@ open-loop benchmark here.
 | `fde@1s`, `fde@2s`, `fde@3s` | displacement at that horizon, metres | lower |
 | `ade@1s`, `ade@2s`, `ade@3s`, `ade@4s`, `ade@5s`, `ade@6s`, `ade@8s`, `ade@10s` | mean displacement up to that horizon | lower |
 | `fde@4s`, `fde@5s`, `fde@6s`, `fde@8s`, `fde@10s` | displacement at that horizon | lower |
-| `scored_horizon_s` | how far the prediction and the recording actually overlapped, seconds | higher |
+| `scored_horizon_s` | how far the prediction and the recording actually overlapped, seconds | n/a |
 | `longitudinal_mae`, `lateral_mae` | axis-aligned error split, metres | lower |
 | `along_track_mae`, `cross_track_mae` | the same split against the ground-truth *path tangent* | lower |
 | `along_track_bias` | signed along-track error; positive means the plan ran ahead | toward 0 |
@@ -159,6 +160,21 @@ open-loop benchmark here.
 
 `ade@3s` is not a duplicate of `ade`: the headline averages over whatever the
 plan reached, `ade@3s` is `NaN` unless the plan reached 3 s.
+
+`scored_horizon_s` is marked n/a rather than "higher" because it describes the
+model, not its quality — a 4 s planner scored over 4 s is at its own horizon,
+which this doc says elsewhere is "not a failure". The leaderboard renders it
+with no arrow for the same reason.
+
+**The two path lengths in the recorded runs are one interval short.** Both were
+computed by differencing the waypoints, which drops the leg from the ego origin
+to waypoint 0 — the longest one. At 30 m/s over a 3 s horizon that is 75 m
+reported for 90 m travelled. Fixed in the metric; the published runs were not
+re-swept, so `predicted_path_length` and `recorded_path_length` in
+`results/comma2k19/**` are still the short figures and a re-run will not
+reproduce them. `path_length_ratio` is unaffected and always was: both sides
+lost the same leg, so the quotient is unchanged, which is why this was invisible
+in the column anyone actually reads.
 
 ### Auxiliary heads
 
@@ -685,6 +701,9 @@ caveat attached, and in both cases the auxiliary columns are what supply it.
   demonstration in the repo of why this benchmark refuses to report ADE alone:
   ADE calls it the worst model here by an order of magnitude, and the two
   columns that separate speed from shape say the shape is the best on the board.
+  [docs/models/drivejepa_free.md](../models/drivejepa_free.md) is the adapter's
+  own page — what the checkpoint is, and why it is a separate registry entry
+  from the perception-based v2 model.
 - **visionpilot has no native trajectory**, so its row grades a synthesised
   pipeline — perception, ground projection, curve fit, cruise-speed assumption
   and extrapolation past a 1 s planner horizon — and is not comparable in kind

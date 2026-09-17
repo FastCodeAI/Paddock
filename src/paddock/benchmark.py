@@ -231,6 +231,13 @@ class Benchmark(ABC):
         **A harness that releases a sample's inputs when its iterator moves past
         them must keep `PIPELINE_BATCHES * node_count` samples alive**, not one.
         See that constant.
+
+        **Returning more than 1 makes the harness concurrent, and the harness is
+        the same object.** The runner advances `samples()` on a prefetch thread
+        while `score()` runs on `node_count` pool threads, so anything either
+        touches -- a cache, a counter, a lazily-built table -- is shared mutable
+        state under real contention. Returning 1 is the only value that needs no
+        thought here; anything else is a claim that this harness is thread-safe.
         """
         return 1
 

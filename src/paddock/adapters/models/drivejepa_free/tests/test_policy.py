@@ -90,6 +90,22 @@ def test_load_without_weights_names_the_missing_setting() -> None:
         POLICY(checkpoint="/x.ckpt", pretrain=None).load()
 
 
+def test_a_weight_path_that_does_not_exist_is_caught_before_torch_is_touched(tmp_path) -> None:
+    """`model.yaml` always sets both, so "is it set" could never fire in a run.
+
+    What actually goes wrong is a checkpoint that was not downloaded, or a
+    `[roots] weights` pointing somewhere else. With `startup_timeout_s: 900`
+    that cost up to fifteen minutes per node before torch got far enough to name
+    the file, on a path where the answer was knowable immediately.
+    """
+    real = tmp_path / "vjepa.pt"
+    real.write_bytes(b"")
+    with pytest.raises(RuntimeError, match=r"DRIVEJEPA_FREE_CHECKPOINT points at .*not a file"):
+        POLICY(checkpoint=str(tmp_path / "absent.ckpt"), pretrain=str(real)).load()
+    with pytest.raises(RuntimeError, match=r"DRIVEJEPA_VJEPA_WEIGHTS points at .*not a file"):
+        POLICY(checkpoint=str(real), pretrain=str(tmp_path)).load()  # a directory is not a file
+
+
 def test_infer_without_load_is_a_clear_error() -> None:
     with pytest.raises(RuntimeError, match="load"):
         POLICY(checkpoint="/x.ckpt", pretrain="/x.pt").infer(object())  # type: ignore[arg-type]
