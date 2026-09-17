@@ -253,6 +253,29 @@ Needs a site with CARLA 0.9.15 and the pinned checkout wired in
   exist here). Detail in `docs/benchmarks/nuscenes.md`. Fusion is still not viable
   (the local copy has no `sweeps/` and empty radar); camera-only is what runs.
 
+- **Sim2real appearance sensitivity** — **done (open loop, one route); a converted-frame driving
+  score is not measured.** CARLA frames converted to real-looking ones with Cosmos 3 Nano
+  video-to-video (edge + CARLA depth + Ludus map as controls), then each model asked for its plan
+  on the CARLA frame and on the converted frame of the *same* recorded state. Every model is
+  compared against its own run-to-run floor: four of the five are deterministic on identical
+  frames and one (Alpamayo) is not, so the same gap means different things. Detail, settings and
+  artefacts in `docs/sim2real/cosmos3.md`; scripts in `tools/sim2real/cosmos3/`.
+
+  | Claim | Verified how | Strength |
+  |---|---|---|
+  | The two replays differ only in pixels | one capture drives both; only `--frames` changes | **strong** |
+  | openpilot is the most pixel-sensitive model (6.11 m plan gap at 3 s against a 0 floor, and it plans 5.9 m/s where the CARLA-frame plan plans 4.8) | 301 ticks on route 2802; same sign in the closed-loop run and on route 3813 | **strong** |
+  | DriveJEPA 2.09 m, QwenDrive 1.36 m, VisionPilot 0.67 m, all against a 0 floor | same runs, `compare/all_summaries.json` | **strong** |
+  | Alpamayo's 3.23 m is mostly its own sampling | its floor on identical frames is 2.55 m; never repeated | **moderate** |
+  | Cosmos 3 preserves CARLA's geometry where cosmos-transfer 2.5 did not | frame-by-frame review, no numeric layout metric | **moderate** |
+  | The bonnet on every front view is a model prior | absent from all three controls, unchanged by prompt, seed, weights and guidance | **strong** |
+  | The bonnet comes from the per-frame inverse-depth normalisation | argument only | **unverified** |
+  | Plan gap predicts a closed-loop score | not claimed; VisionPilot scored DS 100 on either pixels | **not measured** |
+
+  Open: one route and one pair of runs per model, so nothing here is a distribution; the two
+  sampling models need repeats rather than a better converter; and the artefact hypothesis is
+  untested.
+
 Not started, and larger than everything above:
 
 - **alpamayo2, vjepa2, sunnypilot** — never evaluated.
