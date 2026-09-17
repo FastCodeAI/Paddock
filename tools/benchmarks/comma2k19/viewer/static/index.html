@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>comma2k19 side by side</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <h1>comma2k19 &mdash; six models, one scene at a time</h1>
+  <div class="bar">
+    <label>scene
+      <select id="scene"></select>
+    </label>
+    <label title="the CAN radar returns drawn as boxes on the road frame">
+      <input id="radar" type="checkbox" checked> radar boxes
+    </label>
+    <span id="status" class="status">loading&hellip;</span>
+    <a id="video" class="video" href="#" hidden>overlay.mp4</a>
+  </div>
+</header>
+
+<main>
+  <figure class="road">
+    <img id="frame" alt="road frame with every model's plan drawn on it">
+  </figure>
+  <figure class="bev">
+    <img id="bev" alt="bird's-eye plans against the recorded future">
+  </figure>
+</main>
+
+<section class="controls">
+  <button id="play" title="space">&#9654; play</button>
+  <button id="prev" title="left arrow">&#9664;&#9664;</button>
+  <button id="next" title="right arrow">&#9654;&#9654;</button>
+  <input id="slider" type="range" min="0" max="0" value="0" step="1">
+  <label>rate
+    <select id="rate">
+      <option value="0.5">0.5&times;</option>
+      <option value="1" selected>1&times;</option>
+      <option value="2">2&times;</option>
+    </select>
+  </label>
+  <span id="clock" class="clock"></span>
+</section>
+
+<section class="meta">
+  <code id="sample"></code>
+  <button id="copy" class="copy">copy</button>
+  <span id="reference" class="reference"></span>
+</section>
+
+<table id="metrics">
+  <thead><tr><th>model</th></tr></thead>
+  <tbody></tbody>
+</table>
+
+<p class="note">
+  Plans are ego-frame: <strong>x is lateral</strong> (left of the car plots left,
+  the axis is inverted for that), <strong>y is forward</strong>, the ego is the
+  square at (0,&nbsp;0). The first waypoint sits half a second ahead of the car,
+  not at the origin &mdash; a paddock trajectory starts at
+  <code>t&nbsp;=&nbsp;waypoint_dt</code>, so at 27&nbsp;m/s it is ~13&nbsp;m out;
+  the recorded future starts there too. The panel draws each plan only as far as
+  the metrics beside it were computed over (<span id="horizon">3</span>&nbsp;s),
+  even for models that plan further; the road frame draws the whole plan.
+  <strong>The lateral axis is stretched</strong> &mdash; three seconds of driving
+  is ~100&nbsp;m long and ~20&nbsp;m wide, and at true scale two plans a metre
+  apart are two pixels apart &mdash; so the panel states its own factor and is
+  not a shape to read distances off diagonally. Its window covers this scene's
+  own spread, ground truth and every model, so two scenes are not to the same
+  scale. One prediction every 0.5&nbsp;s. These runs score ten
+  chosen segments, so they are recorded <code>valid: false</code> and excluded
+  from <code>paddock report</code> &mdash; they are a thing to look at, not a
+  score. Deep-dive any moment with
+  <code>paddock render --bench comma2k19 --sample &lt;id&gt;</code>.
+</p>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

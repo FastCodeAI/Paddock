@@ -1,0 +1,81 @@
+/* No framework and no CDN: this page is opened over an ssh tunnel on a machine
+   that may have no route to the internet, and a stylesheet that fails to load
+   there would make the viewer unreadable rather than plain. */
+
+:root {
+  --ink: #16181d;
+  --paper: #fbfbfc;
+  --line: #d6d8de;
+  --dim: #6b6f7a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0 auto;
+  padding: 1rem 1.25rem 3rem;
+  max-width: 1900px;
+  font: 14px/1.45 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--ink);
+  background: var(--paper);
+}
+
+h1 { font-size: 1.05rem; margin: 0 0 .5rem; font-weight: 600; }
+
+.bar { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+label { display: inline-flex; gap: .35rem; align-items: center; color: var(--dim); }
+select, button { font: inherit; padding: .2rem .45rem; }
+button { cursor: pointer; }
+
+.status { color: var(--dim); }
+.status.waiting::before { content: "\25CF"; color: #c98a1a; margin-right: .35rem; }
+.status.complete::before { content: "\25CF"; color: #2f8f4e; margin-right: .35rem; }
+
+.video { color: var(--dim); }
+
+main {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: .75rem;
+  align-items: start;
+  margin: .75rem 0;
+}
+
+figure { margin: 0; }
+figure img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+.controls {
+  display: flex;
+  gap: .6rem;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: .5rem 0;
+  border-top: 1px solid var(--line);
+}
+#slider { flex: 1 1 320px; }
+#play { min-width: 6.5rem; }
+.clock { font-variant-numeric: tabular-nums; color: var(--dim); }
+
+.meta { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin-bottom: .6rem; }
+.meta code { background: #eef0f4; padding: .15rem .35rem; }
+.copy { font-size: .85em; }
+.reference { color: var(--dim); font-variant-numeric: tabular-nums; }
+
+table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { padding: .25rem .85rem .25rem 0; text-align: left; }
+thead th { border-bottom: 1px solid var(--line); font-weight: 600; color: var(--dim); }
+td.model { font-weight: 600; }
+/* The swatch is the model's paddock palette colour, sent by the server. The
+   page must never pick a colour itself, or a model reads one colour here and
+   another in every figure the repo draws. */
+.swatch { display: inline-block; width: .7rem; height: .7rem; margin-right: .4rem; }
+tr.absent td { color: var(--dim); font-style: italic; }
+
+.note { color: var(--dim); max-width: 70ch; margin-top: 1.5rem; }
+.note code { background: #eef0f4; padding: 0 .2rem; }

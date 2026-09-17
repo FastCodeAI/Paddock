@@ -71,11 +71,13 @@ here are always samples; `n` in a run record is samples too.
 path = "/path/to/comma2k19/raw_data"
 
 [benchmarks.comma2k19]
-# Optional. Defaults shown; all three change what is measured and are hashed
+# Optional. Defaults shown; all four change what is measured and are hashed
 # into the run id.
 history_frames = 160          # observations fed before the scored one
 keyframes_per_segment = 5
 input_hz = 20                 # observation rate; see "Evaluation rate" below
+scene_set = ""                # restrict the run to a pinned working set of
+                              # segments; see "Ten scenes, six models" below
 
 # These three change only how fast the sweep runs, never what it measures, so
 # none of them is hashed into the run id. See "Making a sweep finish" below.
@@ -610,6 +612,123 @@ Two things to know before trusting what you see:
 On straight highway the recorded future and a working model's plan should
 overlap; they separate in curves, and that separation is the thing worth looking
 at.
+
+## Ten scenes, six models, frame by frame
+
+The two entry points above answer "what happened *here*". The third answers
+"what happens as the car drives": a prediction from every model every half
+second across ten chosen segments, with play, pause and step.
+
+The sweep scores five keyframes in a sixty-second segment, which is one frozen
+moment every twelve seconds — enough for a distribution, far too sparse to watch.
+Two things are therefore configurable, and both are recorded in the run id
+because both change what is measured:
+
+**A scene set** names the segments a run touches, pinned in
+`adapters/benchmarks/comma2k19/scenes/<name>.yaml` the way alpasim pins its
+suite. Re-deriving a working set at run time is how two sites come to compare
+numbers over different segments. Choose one per run, without editing a site file:
+
+```bash
+export PADDOCK_COMMA2K19_SCENE_SET=viewer10     # or [benchmarks.comma2k19] scene_set
+```
+
+`viewer10` holds ten segments drawn by
+[pick_scenes.py](../../tools/benchmarks/comma2k19/pick_scenes.py): a seeded
+random draw *within* behaviour buckets measured off each segment's own pose and
+radar, over the frames that could actually be scored, at most one segment per
+route. Three sustained curves, three speed changes, two close-lead follows, two
+straight-highway controls — the same gates the three hand-picked scenes above
+use, so "a curve" still means a measured one. The file records each scene's
+measurements beside it, so a reader can see what the ten actually do without
+re-measuring 2035 segments. Two gates had to be loosened against what the table
+above implies, and the file says why: `|yaw rate| < 0.002 rad/s` is below the
+noise floor of differencing the recorded pose (257 fast, flat candidates
+measured 0.024–0.060), and "close lead" without a speed floor selects car parks.
+
+**A density**: the scene set carries `keyframes_per_segment: 85`, which on a
+1200-frame segment puts a scored keyframe every 10 frames — **2 Hz**, a
+prediction every 0.5 s across the whole 42 s scoreable span. 850 samples per
+model rather than 50.
+
+Run all six models and serve the result:
+
+```bash
+CUDA_VISIBLE_DEVICES=1 python -m tools.benchmarks.comma2k19.viewer.pipeline --scene-set viewer10
+python -m tools.benchmarks.comma2k19.viewer.server --scene-set viewer10 --port 8850
+```
+
+The pipeline runs one `paddock run` at a time and rebuilds the viewer bundle
+after each, so the page gains a model roughly every ten to twenty minutes rather
+than after two hours; a model that fails is logged and skipped rather than
+stopping the rest. The server can be started first and left up — it re-reads the
+bundle on every request, and the page polls for new models and busts its own
+image cache when the bundle's generation changes. Before any model has run the
+bundle still builds, showing the road, the radar and the recorded future with an
+empty table, which is the cheap way to check the scene pick and the geometry
+before spending the GPU time.
+[build.py](../../tools/benchmarks/comma2k19/viewer/build.py) can also be run on
+its own, with `--watch` to follow runs started by hand.
+
+Each scene gives a road frame with every model's plan on it, a bird's-eye panel
+of those plans against the recorded future (x lateral with left plotted left, y
+forward, ego at the origin, legend under the panel in two columns carrying each
+model's ADE at that keyframe), a per-keyframe
+metric table, and a 20 Hz `overlay.mp4` of the whole segment. The bundle lands in
+`{runs}/comma2k19/_viewer/<scene set>/` and is not tracked. Its raw keyframe
+cache is 2.6 GB and `build.py --drop-cache` reclaims it; it exists because
+comma2k19's HEVC carries no index, so a rebuild without it would re-decode ten
+segments from frame 0 every time a model lands. `build.py --force` recomposites
+regardless of staleness, which is what editing the drawing code needs: the
+staleness rule watches the inputs — which models, which keyframes, which axes —
+and cannot see a change to how a panel is drawn.
+
+Two things about that panel are worth stating, because both are choices rather
+than defaults:
+
+- **It draws three seconds, not the model's whole plan.** The metrics beside it
+  are `ade` and `fde@3s`, which `displacement_errors` truncates to
+  `EVAL_HORIZON_S`; openpilot plans to 10 s and `constant_velocity` to 3, so
+  drawing every waypoint each model happens to emit would put a 10 s line next
+  to a 3 s number and make the longest-horizon model look the wildest. Each
+  plan is cut at its own `waypoint_dt` from the registry, and the axes are
+  sized to the same horizon. The road frame still carries the whole plan, and
+  `scene.json` still stores every waypoint.
+- **The first waypoint is half a second ahead of the car, not at the origin.** A
+  paddock trajectory starts at `t = waypoint_dt`, so at 30 m/s the nearest point
+  of every line — the recording's included — is ~15 m out. That gap is the
+  convention, not a missing point.
+- **The lateral axis is stretched, and the panel says by how much.** Three
+  seconds is ~100 m of road and ~20 m of lateral spread, so an equal-aspect
+  panel is a strip an inch wide in which the models are one line: the thing the
+  panel exists to show is exactly the thing equal aspect hides. The window is
+  sized to *this scene's* own spread — the recording and every model drawn
+  beside it — which is also why two scenes are not to the same scale, and why
+  `built_from` records which models a panel was drawn with.
+
+The road frame is composited once per layer set (`frames/` with the CAN radar
+returns boxed, `plans/` without), and the page switches between them by changing
+an `<img src>`. The boxes are what a reader turns off to see the plans in
+traffic, and a toggle beats a rebuild with a different flag; the cost is ~110 MB
+and a couple of seconds per scene.
+
+Two properties of these runs are deliberate:
+
+- **They are recorded `valid: false`**, with "restricted to scene set 'viewer10'
+  (10 of 2035 segments)" in `notes`. Ten chosen segments biased towards
+  interesting driving is not comma2k19, and a leaderboard row built from them
+  would be a better number for the wrong reason. `paddock report` excludes them;
+  `paddock render --run-id` still reaches them.
+- **2 Hz is not per-frame.** Every video frame is *shown*, but the plans refresh
+  ten frames apart, so they step rather than glide. Literal per-frame inference
+  is ~8400 samples per model — each an independent `infer_sequence` over a
+  160-frame history — which is half a day for six. The density lives in the
+  scene file, so raising it is a re-run rather than a redesign.
+
+The mirrored-plan warning above applies to the bird's-eye panel too, and there
+in a second way: `bev.draw` inverts the x axis so left plots leftward, so limits
+set on that axis afterwards must go in descending order or the panel silently
+mirrors every plan on it.
 
 ## Calibration: the thing that was wrong before
 
