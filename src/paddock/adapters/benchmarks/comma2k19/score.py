@@ -51,6 +51,20 @@ NC and DAC are the proxies, and they are weaker than what they stand in for:
   measure wearing a drivable-area name: a model that changes lane correctly is
   scored as leaving the corridor. On this dataset that is rare, and the
   alternative -- no DAC term at all -- silently reweights the other four.
+* **DAC rewards not moving**, and this is the sharpest edge on the module.
+  `path_tangent_split` pairs waypoint *i* of the plan with waypoint *i* of the
+  recording, so cross-track for a plan that barely left the origin is its
+  perpendicular distance from a straight-ahead tangent -- about zero. A
+  0.2 m/s plan therefore takes DAC 1.0, and with NC, TTC and comfort also
+  forgiving a standstill it composites to **0.586** against a 30 m/s
+  recording -- above every model currently on the board, on EP alone
+  (0.0067) doing all the work. That is a statement about this
+  proxy, not about the plan. It is survivable because `primary_metric` is
+  `ade`, which calls the same plan what it is, and because `pdm_style_score`
+  is outside the leaderboard's seven columns -- but a reader who sorts on it
+  gets a ranking with a parked car at the top. Fixing it means pairing by
+  arc length rather than by index, which moves a published column; it is a
+  ROADMAP item, not a quiet edit.
 
 ## What cannot be computed, said once so nobody asks again
 

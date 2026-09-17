@@ -186,6 +186,29 @@ class TestProgress:
         assert _score(pred=_straight(), gt=stopped)["pdm_ep"] == 1.0
 
 
+def test_the_composite_rewards_a_plan_that_barely_moves():
+    """A known weakness, pinned so it cannot be discovered twice.
+
+    `path_tangent_split` pairs waypoint *i* with waypoint *i*, so a crawling
+    plan never leaves the corridor drawn around a straight recording and DAC
+    reads 1.0. NC, TTC and comfort forgive a standstill for their own stated
+    reasons, which leaves EP -- one fifth of the additive half -- carrying the
+    entire objection. The result outranks every model on the board.
+
+    This is survivable only because `primary_metric` is `ade`, which calls the
+    same plan what it is, and `pdm_style_score` is outside the leaderboard's
+    seven columns. Fixing it means pairing by arc length, which moves a
+    published column; see `score.py`'s proxy table and docs/ROADMAP.md. If this
+    test starts failing because the composite dropped, that fix landed, and the
+    recorded comma2k19 rows need re-deriving rather than this assertion
+    relaxing.
+    """
+    out = _score(pred=_straight(speed=0.2), gt=_straight(speed=30.0))
+    assert out["pdm_dac_proxy"] == 1.0
+    assert out["pdm_ep"] == pytest.approx(0.2 / 30.0)
+    assert out["pdm_style_score"] == pytest.approx(0.586, abs=5e-4)
+
+
 class TestNanDiscipline:
     def test_an_unmeasurable_comfort_term_is_not_a_free_pass(self):
         """A plan too short to have a jerk scores NaN, and NaN propagates.

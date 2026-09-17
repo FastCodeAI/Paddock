@@ -221,6 +221,17 @@ PDM score uses them, cited there at the strength of published constants.
 | `comfort_lon_accel_within_bounds`, `comfort_lon_decel_within_bounds`, `comfort_lat_accel_within_bounds`, `comfort_lon_jerk_within_bounds`, `comfort_yaw_rate_within_bounds` | fraction of plans inside each bound (2.40, 4.05, 4.89 m/s², 4.13 m/s³, 0.95 rad/s) | higher |
 | `comfort_within_bounds` | fraction inside *all five* | higher |
 
+**The comfort rates do not share a denominator across models.** A plan too
+short, not finite, or too coarse to resample onto the 0.5 s reference grid is
+NaN rather than a failure — "not measurable" is not "uncomfortable" — and the
+aggregate drops it. On the runs recorded below that is `n = 9148` for
+constant_velocity (1017 missing) against `n = 10165` for alpamayo15, openpilot,
+qwendrive and drivejepa_free, and `10161` for visionpilot. Read a comfort column
+as *of the plans this model made that could be judged, this fraction were
+comfortable*: comparable as a rate, not subtractable. `metrics.json` carries `n`
+and `n_missing` per metric, so the denominator is always recoverable from the
+record; it is the rendered table that shows the mean alone.
+
 ### Miss rate, and a driving score that is sourced rather than invented
 
 There is deliberately **no composite driving score of paddock's own**. A single

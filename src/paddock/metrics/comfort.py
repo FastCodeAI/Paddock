@@ -136,6 +136,23 @@ def comfort(xy, dt: float) -> dict[str, float]:
     The `*_within_bounds` flags are 0.0/1.0 rather than bools so that averaging
     them across samples gives the fraction of plans that stayed in bounds, which
     is the number a report wants.
+
+    **That average does not have the same denominator for every model.** A
+    sample whose plan was too short, not finite, or too coarse to resample
+    contributes NaN, and an aggregate over NaN drops the sample rather than
+    counting it as a failure -- deliberately, because "not measurable" is not
+    "uncomfortable". On the recorded comma2k19 runs that is `n = 9148,
+    n_missing = 1017` for constant_velocity against `n = 10165, n_missing = 0`
+    for alpamayo15, openpilot, qwendrive and drivejepa_free, and `10161` for
+    visionpilot. So the column reads "of the plans this model made that could
+    be judged, this fraction were comfortable" -- fine to compare as a rate,
+    not as a count, and never to subtract.
+
+    `metrics.json` carries `n` and `n_missing` for every metric, so the
+    denominator is on the record; it is the *rendered* leaderboard column that
+    shows the mean alone. Surfacing the coverage next to the number is a
+    reporting change that touches every benchmark's table, which is why it is a
+    ROADMAP item rather than a quiet edit here.
     """
     nan = dict.fromkeys(COMFORT_KEYS, float("nan"))
     xy = np.asarray(xy, dtype=np.float64)

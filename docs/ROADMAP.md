@@ -255,6 +255,28 @@ A third re-sweep is owed across every benchmark, and it is not openpilot's:
   binds, which is how this survived them. Marked `∗` in the README until it
   lands.
 
+Two known weaknesses are documented rather than fixed, because fixing either
+moves a published column and this branch launched no sweep. Both are argued from
+a reproduction, not from reading the code:
+
+- **`pdm_dac_proxy` rewards not moving.** `path_tangent_split` pairs waypoint
+  *i* with waypoint *i*, so a crawling plan never leaves the corridor drawn
+  around a straight recording: a 0.2 m/s plan against a 30 m/s recording takes
+  DAC 1.0 and composites to `pdm_style_score` **0.586**, above every model on
+  the comma2k19 board, with EP (0.0067) carrying the whole objection alone.
+  Pinned by `test_the_composite_rewards_a_plan_that_barely_moves`, and set out
+  in `score.py`'s proxy table. It is survivable only because `primary_metric` is
+  `ade` and the composite is outside the leaderboard's seven columns. **Fix:**
+  pair by arc length rather than by index — which re-derives a published column,
+  so it needs its own PR and its own sweep.
+- **Comfort rates do not share a denominator across models.** A plan too short
+  or too coarse to resample is NaN, not a failure, and the aggregate drops it:
+  `n = 9148` for constant_velocity against `n = 10165` for four other models on
+  the same sample set. `metrics.json` already carries `n` and `n_missing` per
+  metric, so nothing is lost — the rendered table shows the mean alone. **Fix:**
+  surface coverage beside the number in `results/report.py`, which changes every
+  benchmark's table and should land once, on its own.
+
 Landed alongside it, none comma2k19-specific:
 
 - **`drivejepa_free`, the eighth model adapter** — Drive-JEPA's perception-free
