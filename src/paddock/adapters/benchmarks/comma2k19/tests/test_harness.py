@@ -16,6 +16,7 @@ it, and nothing else in the pipeline would have.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -33,6 +34,7 @@ from paddock.adapters.benchmarks.comma2k19.tests.synthetic import (
     straight_pose,
     write_segment,
 )
+from paddock.config import BenchmarkOverride
 
 # --------------------------------------------------------------------------
 # Rotation helpers
@@ -442,6 +444,72 @@ def test_keep_frames_leaves_them_for_the_next_run(tmp_path, monkeypatch, rotatio
     assert bench._frame_root == bench.cfg.runs / "comma2k19" / "_frames"
 
 
+def test_a_ring_left_by_a_dead_run_is_swept_and_a_live_one_is_not(tmp_path, monkeypatch):
+    """`atexit` does not run on SIGTERM, which is how a sweep usually ends.
+
+    This box was found carrying an 888 MB ring whose pid had been dead for five
+    days. On the tmpfs the docs recommend, that is unaccounted RAM; the pid is
+    in the directory name precisely so the next run can tell.
+    """
+    bench = _bench()
+    bench.cfg.runs = tmp_path / "runs"
+    cache = bench._frame_cache
+    cache.mkdir(parents=True)
+
+    dead = cache / "run-999999999-aaaaaaaa"  # above pid_max; cannot be running
+    live = cache / f"run-{os.getpid()}-bbbbbbbb"
+    stranger = cache / "not-a-ring"
+    for d in (dead, live, stranger):
+        d.mkdir()
+        (d / "frame.npy").write_bytes(b"x")
+
+    mine = bench._frame_root
+
+    assert not dead.exists()
+    assert live.exists(), "swept a ring whose process is still staging into it"
+    assert stranger.exists(), "swept something this cache did not create"
+    assert mine.exists() and mine.parent == cache
+
+
+def test_preflight_says_so_when_the_frame_cache_cannot_be_written(tmp_path):
+    """Staging starts after four nodes are up and have waited for VRAM.
+
+    So an unwritable cache -- the ordinary case being `/dev/shm/...` owned by
+    whoever on this machine ran the sweep first -- surfaced minutes and one
+    checkpoint read in, rather than in a dry run.
+    """
+    blocked = tmp_path / "theirs"
+    blocked.mkdir(mode=0o500)
+    bench = _bench(frame_cache=str(blocked / "mine"))
+    bench.cfg.runs = tmp_path / "runs"
+
+    problems = bench._frame_cache_problems(n_segments=2033)
+    assert len(problems) == 1
+    assert "not writable" in problems[0]
+    assert str(blocked / "mine") in problems[0]
+
+
+def test_preflight_refuses_a_volume_that_cannot_hold_the_frames(tmp_path, monkeypatch):
+    """`keep_frames` on the 4.2 TB volume this site uses would fill it in minutes.
+
+    The gate is the high-water mark, not the total written: without
+    `keep_frames` a run holds a ring of four segments, so the same 649 GB that
+    refuses a retained sweep must let an ordinary one through.
+    """
+    bench = _bench(frame_cache=str(tmp_path / "cache"), keep_frames=True)
+    bench.cfg.runs = tmp_path / "runs"
+    monkeypatch.setattr(
+        H.shutil, "disk_usage", lambda p: type("U", (), {"free": 649e9, "total": 4.2e12, "used": 0})()
+    )
+
+    (problem,) = bench._frame_cache_problems(n_segments=2033)
+    assert "649 GB free" in problem and "4879 GB" in problem
+
+    roomy = _bench(frame_cache=str(tmp_path / "cache"))
+    roomy.cfg.runs = tmp_path / "runs"
+    assert roomy._frame_cache_problems(n_segments=2033) == []
+
+
 def _sweepable(bench, segment):
     """Point `samples()` at one segment, with a calibration that always answers."""
     bench.__dict__["_segments"] = [segment]
@@ -602,12 +670,16 @@ def test_lateral_at_arclength_catches_a_real_lane_offset():
 # --------------------------------------------------------------------------
 
 
-class _Cfg:
-    def __init__(self, **kw):
-        self._kw = kw
+def _Cfg(**kw):
+    """The site's `[benchmarks.comma2k19]` block, as the harness really sees it.
 
-    def get(self, key, default=None):
-        return self._kw.get(key, default)
+    The real `BenchmarkOverride`, not a double with the same two methods --
+    and stringified here because `SiteConfig.load` stringifies every setting.
+    The hand-written double stored raw Python values, which is exactly why
+    `keep_frames = false` reading as **true** in production went unnoticed by a
+    green suite: no test in this file ever exercised the string path.
+    """
+    return BenchmarkOverride(settings={k: str(v) for k, v in kw.items()})
 
 
 def _bench(**settings):

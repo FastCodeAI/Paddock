@@ -80,7 +80,7 @@ input_hz = 20                 # observation rate; see "Evaluation rate" below
 # These three change only how fast the sweep runs, never what it measures, so
 # none of them is hashed into the run id. See "Making a sweep finish" below.
 nodes = 4                     # policy nodes scored in parallel
-frame_cache = "/dev/shm/paddock-comma2k19"   # where decoded frames are staged
+frame_cache = "/dev/shm/paddock-comma2k19-$USER"  # where decoded frames are staged
 keep_frames = false           # keep them for the next model instead of releasing
 ```
 
@@ -376,11 +376,25 @@ settings deal with it, none of which changes a number:
   site whose `{runs}` is a network mount should point this at a tmpfs or a
   local NVMe. They are written raw (`.npy`), not PNG: the two PIL rows above
   are one process compressing what the other is about to decompress.
+  `$USER` is expanded, and the recommended path keeps it: `/dev/shm` is shared
+  by everyone on the machine, and a directory the first user created is one the
+  second cannot write into. `preflight` probes the path for writability and
+  free space, because staging starts *after* the nodes are up — without the
+  check, a wrong value costs a checkpoint read and a VRAM wait before it fails.
 - **`keep_frames`**. Keeps the staged frames for the next model instead of
-  releasing them as the sweep moves on. Raw frames are ~2.4 GB per segment, so
-  say yes only with several TB free and several models to amortise the decode
-  over. Otherwise the harness holds the last four segments and deletes the
-  rest as it goes.
+  releasing them as the sweep moves on. Raw frames are ~2.4 GB per segment —
+  about 4.9 TB for all 2033 — so say yes only with that free and several models
+  to amortise the decode over; `preflight` refuses if the volume cannot hold
+  it. Otherwise the harness holds the last four segments and deletes the rest
+  as it goes.
+
+  Omitting it and writing `keep_frames = false` mean the same thing. That is
+  worth stating because for a while they did not: every setting in this section
+  arrives as a string, so `false` reached the harness as `"False"` and read as
+  **true** — the one setting whose job is to protect the disk turned retention
+  on for anyone who set it explicitly. Booleans now go through
+  `BenchmarkOverride.flag`, which reads `false`, `0`, `no`, `off` and an empty
+  value as off.
 
 ### What they are worth, measured
 

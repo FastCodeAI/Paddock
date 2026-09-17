@@ -154,6 +154,16 @@ class Benchmark(ABC):
         settings = self.settings
         return settings.get(key, default) if settings is not None else default
 
+    def flag(self, key: str, default: bool = False) -> bool:
+        """One *boolean* key from that block. Never `bool(setting(...))`.
+
+        Settings reach a harness as strings, so `bool()` on one is true for
+        every value a site can write, `false` included. `BenchmarkOverride.flag`
+        has the detail and the bug that prompted it.
+        """
+        settings = self.settings
+        return settings.flag(key, default) if settings is not None else default
+
     def run_config(self) -> dict[str, Any]:
         """Site settings and switches that change *what is measured*.
 

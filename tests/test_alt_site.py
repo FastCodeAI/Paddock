@@ -95,3 +95,68 @@ def test_doctor_survives_a_bare_site(alt_site) -> None:
     for check in report.checks:
         if check.status is not Status.OK:
             assert check.fix, f"{check.section}/{check.name} reports a problem with no fix"
+
+
+def test_a_boolean_setting_a_site_wrote_as_false_reads_as_false(alt_site) -> None:
+    """`false` in a site config must not arrive at a harness as True.
+
+    Settings are stringified on the way in, so every value a site can write is
+    truthy once it gets there -- `bool(setting("keep_frames", False))` returned
+    True for `keep_frames = false`, and only *omitting* the key worked. The
+    setting whose whole job is to stop comma2k19 retaining roughly five
+    terabytes of staged frames therefore turned retention on for anyone who
+    turned it off, into a cache the shipped example puts on tmpfs.
+
+    This goes through a real `SiteConfig.load()` on purpose. The adapter's own
+    test double stores raw Python values and so never sees the string, which is
+    how this survived a green suite.
+    """
+    config = Path(os.environ["PADDOCK_CONFIG"])
+    config.write_text(
+        config.read_text(encoding="utf-8")
+        + "\n[benchmarks.comma2k19]\nkeep_frames = false\nkeyframes_per_segment = 5\n",
+        encoding="utf-8",
+    )
+    settings = SiteConfig.load().benchmarks["comma2k19"]
+    assert settings.flag("keep_frames") is False
+    assert settings.flag("keep_frames", default=True) is False
+    # Absent still falls back to the default, and a real `true` still wins.
+    assert settings.flag("keep_nothing_of_the_sort", default=True) is True
+    assert settings.get("keyframes_per_segment") == "5", "non-boolean settings stay strings"
+
+
+def test_every_falsehood_a_site_might_write_is_one(alt_site) -> None:
+    config = Path(os.environ["PADDOCK_CONFIG"])
+    base = config.read_text(encoding="utf-8")
+    for written, expected in (
+        ("false", False),
+        ('"no"', False),
+        ('"off"', False),
+        ("0", False),
+        ('""', False),
+        ("true", True),
+        ('"yes"', True),
+        ("1", True),
+    ):
+        config.write_text(base + f"\n[benchmarks.comma2k19]\nkeep_frames = {written}\n", encoding="utf-8")
+        got = SiteConfig.load().benchmarks["comma2k19"].flag("keep_frames")
+        assert got is expected, f"keep_frames = {written} read as {got}"
+
+
+def test_the_comma2k19_harness_honours_keep_frames_false(alt_site) -> None:
+    """The config layer being right is only half of it; the reader must use it.
+
+    Pins the harness property rather than `BenchmarkOverride` alone, because the
+    defect was at the call site: `bool()` applied to a correctly-parsed string.
+    """
+    from paddock.adapters.benchmarks.comma2k19.harness import Comma2k19Benchmark
+
+    config = Path(os.environ["PADDOCK_CONFIG"])
+    config.write_text(
+        config.read_text(encoding="utf-8") + "\n[benchmarks.comma2k19]\nkeep_frames = false\n",
+        encoding="utf-8",
+    )
+    bench = Comma2k19Benchmark.__new__(Comma2k19Benchmark)
+    bench.spec = type("S", (), {"name": "comma2k19", "dataset": "comma2k19"})()
+    bench.cfg = SiteConfig.load()
+    assert bench.keep_frames is False

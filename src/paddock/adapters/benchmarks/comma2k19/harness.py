@@ -151,6 +151,14 @@ DEFAULT_NODES = 4
 #: of raw frames, about 10 GB.
 RETAIN_SEGMENTS = 4
 
+#: Raw RGB a staged segment costs, in GB -- the number `preflight` gates on.
+#:
+#: Roughly 800 unique frames at 1164x874x3, measured rather than derived: the
+#: exact count depends on `history_frames` and the rate, and the point of the
+#: gate is to refuse a volume that cannot hold the run, not to predict its size
+#: to the megabyte.
+SEGMENT_GB = 2.4
+
 #: Reads a `20 / n` observation rate for the run, ahead of the site's
 #: `[benchmarks.comma2k19] input_hz`. An environment variable rather than only a
 #: toml key because sweeping one model across rates is the entire purpose of the
@@ -278,7 +286,20 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         second model's run reuse the first's frames; it changes nothing a model
         sees, which is why it is deliberately **not** in `run_config`.
         """
-        return bool(self.setting("keep_frames", False))
+        return self.flag("keep_frames", False)
+
+    @property
+    def _frame_cache(self) -> Path:
+        """Where rings are made -- the shared root, not this run's ring.
+
+        Separate from `_frame_root` so `preflight` can ask whether staging will
+        work without creating a ring (and an `atexit` cleanup) for a `--dry-run`
+        that is never going to stage anything.
+        """
+        configured = self.setting("frame_cache")
+        if not configured:
+            return self.cfg.runs / "comma2k19" / "_frames"
+        return Path(os.path.expandvars(self.cfg.resolve(configured)))
 
     @cached_property
     def _frame_root(self) -> Path:
@@ -293,18 +314,22 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         should say so:
 
             [benchmarks.comma2k19]
-            frame_cache = "/dev/shm/paddock-comma2k19"
+            frame_cache = "/dev/shm/paddock-comma2k19-$USER"
 
         Every frame here is written once and read once, seconds apart, by two
         processes on the same machine -- the definition of scratch. On a network
         `{runs}` the staging is the sweep's bottleneck; on tmpfs it is a memcpy.
-        Template variables are expanded, so `"{runs}/scratch"` works too.
+        Template variables are expanded, so `"{runs}/scratch"` works too, and
+        `$USER` is expanded because `/dev/shm` is shared by everyone on the box:
+        without it the second person to follow that line inherits the first
+        one's directory and fails on `mkdtemp` with a permission error, halfway
+        into a sweep.
         """
-        configured = self.setting("frame_cache")
-        root = Path(self.cfg.resolve(configured)) if configured else self.cfg.runs / "comma2k19" / "_frames"
+        root = self._frame_cache
         root.mkdir(parents=True, exist_ok=True)
         if self.keep_frames:
             return root
+        self._sweep_stale_rings(root)
         run_root = Path(tempfile.mkdtemp(prefix=f"run-{os.getpid()}-", dir=root))
         # At exit, not at the end of `samples()`: the runner is still scoring
         # the last batches when the iterator ends, and they hold paths into
@@ -314,6 +339,36 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         # `--model all` holds one ring per model rather than one per sweep.
         atexit.register(shutil.rmtree, run_root, ignore_errors=True)
         return run_root
+
+    @staticmethod
+    def _sweep_stale_rings(root: Path) -> None:
+        """Remove rings left by runs that are no longer running.
+
+        `atexit` is the only cleanup a ring gets, and `atexit` does not run on
+        SIGTERM -- which is how a sweep on a shared machine usually ends: a
+        scheduler's time limit, a Ctrl-C that the runner turns into a kill, an
+        OOM. This box was carrying an 888 MB ring whose pid had been dead since
+        September 11. On the tmpfs the docstring above recommends, that is RAM
+        nobody can account for and nobody will think to look for.
+
+        The pid is already in the directory name, which is the whole reason the
+        prefix has one, so "is anybody still using this?" is a `kill(pid, 0)`
+        rather than a lock file. Only rings this same cache holds are touched,
+        and only the ones nothing owns; a live sibling sweep is left alone.
+        Cleanup is never worth failing a run over, so every error here is
+        swallowed -- the next sweep will try again.
+        """
+        for ring in root.glob("run-*-*"):
+            parts = ring.name.split("-")
+            if not ring.is_dir() or len(parts) < 3 or not parts[1].isdigit():
+                continue
+            try:
+                os.kill(int(parts[1]), 0)
+            except ProcessLookupError:
+                shutil.rmtree(ring, ignore_errors=True)
+            except (PermissionError, OSError):
+                # Alive but another user's, or a pid we may not signal: leave it.
+                continue
 
     def node_count(self, model) -> int:
         """Policy nodes to run in parallel, capped by what the card will hold.
@@ -572,6 +627,7 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
                 "raw_data/Chunk_<n>/<dongle_id>|<start_time>/<segment>/ (see docs/data-setup.md)"
             )
             return problems
+        problems.extend(self._frame_cache_problems(len(segments)))
 
         # A calibration this benchmark cannot trust is a hard stop, not a
         # warning. The previous implementation ran happily with a 90 degree
@@ -592,6 +648,48 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
                     "this is the signature of a coordinate-convention error, not a real mount"
                 )
         return problems
+
+    def _frame_cache_problems(self, n_segments: int) -> list[str]:
+        """Can this machine actually stage frames, and has it room to?
+
+        Both halves used to be discovered mid-run. `_frame_root` is a
+        `cached_property` first touched *inside* `samples()`, which is after the
+        nodes have been launched and waited on for VRAM, so an unwritable cache
+        surfaced as a `PermissionError` several minutes and one checkpoint read
+        into a sweep. And nothing checked free space at all, while
+        `keep_frames`' own docstring says to turn it on only "with several TB
+        free": at roughly `SEGMENT_GB` per segment it fills a volume in minutes
+        and takes out everyone else on the mount with it.
+
+        The estimate is deliberately the high-water mark rather than the total
+        written -- `_retire` bounds a normal run to a ring -- so this refuses
+        only what genuinely will not fit.
+        """
+        root = self._frame_cache
+        try:
+            root.mkdir(parents=True, exist_ok=True)
+            probe = root / f".paddock-preflight-{os.getpid()}"
+            probe.write_bytes(b"")
+            probe.unlink()
+        except OSError as exc:
+            return [
+                f"frame cache {root} is not writable: {exc} -- staging happens after the "
+                "nodes are up, so this would otherwise fail several minutes into a sweep "
+                "(set [benchmarks.comma2k19] frame_cache to a scratch path you own)"
+            ]
+
+        held = n_segments if self.keep_frames else self._retain_segments
+        need_gb = held * SEGMENT_GB
+        free_gb = shutil.disk_usage(root).free / 1e9
+        if free_gb >= need_gb:
+            return []
+        how = f"keep_frames holds all {n_segments} segments" if self.keep_frames else f"a {held}-segment ring"
+        return [
+            f"frame cache {root} has {free_gb:.0f} GB free and this run needs about "
+            f"{need_gb:.0f} GB ({how} at ~{SEGMENT_GB:g} GB each) -- point "
+            "[benchmarks.comma2k19] frame_cache at a larger volume"
+            + (", or leave keep_frames off" if self.keep_frames else "")
+        ]
 
     def _rate_problems(self) -> list[str]:
         """Why the configured `input_hz` cannot produce samples.

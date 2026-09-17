@@ -111,12 +111,33 @@ class BenchmarkOverride:
         [benchmarks.neuroncap]
         python = "/path/to/envs/ncap/bin/python"
         renderer_url = "http://127.0.0.1:8000"
+
+    Values arrive as strings -- `_parse` stringifies every setting so that a
+    harness reading one never has to care whether the site wrote `4` or `"4"`.
+    That makes `bool(get(...))` a trap: TOML `false` becomes the string
+    `"False"`, which is true. Use `flag()` for anything a site writes as a
+    boolean.
     """
 
     settings: dict[str, str] = field(default_factory=dict)
 
     def get(self, key: str, default: str | None = None) -> str | None:
         return self.settings.get(key, default)
+
+    def flag(self, key: str, default: bool = False) -> bool:
+        """A boolean setting, read the way a site would expect to write it.
+
+        Every falsehood TOML or a shell-shaped habit can produce -- `false`,
+        `0`, `no`, `off`, an empty value -- means off. This exists because
+        `bool(self.setting("keep_frames", False))` returned **True** for a site
+        that had written `keep_frames = false`, so the one setting whose job is
+        to stop comma2k19 retaining ~5 TB of staged frames turned retention on
+        for anybody who set it explicitly. Only leaving it *out* worked.
+        """
+        raw = self.settings.get(key)
+        if raw is None:
+            return default
+        return str(raw).strip().lower() not in {"false", "0", "no", "off", ""}
 
 
 @dataclass(frozen=True)
