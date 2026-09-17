@@ -61,11 +61,21 @@ class RunRecord:
     mode: str = "open_loop"
     started_utc: str = ""
     duration_s: float | None = None
-    #: Upstream revision the model was run from, where known.
+    #: Upstream revision the model was run from, where known. Filled from the
+    #: clone itself by `runtime.provenance`, not from `repos.yaml`: a pin is
+    #: where a checkout is supposed to be, and the two have differed.
     repo_sha: str | None = None
     dataset: dict[str, Any] = field(default_factory=dict)
     config: dict[str, Any] = field(default_factory=dict)
     hardware: dict[str, Any] = field(default_factory=dict)
+    #: What the policy said it was, from the node's `/diagnostics`, plus which
+    #: clone it ran from and whether that clone was at the pin.
+    #:
+    #: Deliberately **not** in `config`: `config` is hashed into the run id and
+    #: compared by `--resume`, so a graph layout landing there would give the
+    #: same measurement two ids and refuse to resume across a `git pull`. This
+    #: describes what ran; `config` decides what was measured.
+    provenance: dict[str, Any] = field(default_factory=dict)
     status: str = "complete"
     #: False marks a run known to be bad. Reporting excludes it rather than
     #: silently averaging it in, and the record of it having happened survives --

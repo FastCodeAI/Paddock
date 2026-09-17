@@ -567,9 +567,16 @@ def _stub_open_loop_nodes(monkeypatch, waypoints: int = 8):
         requests.append((url.rsplit("/", 1)[0], int(json["observations"][0]["timestamp"])))
         return _Response({"trajectory": [[float(i), 0.0] for i in range(1, waypoints + 1)]})
 
+    def _get(url, timeout=None, **_kwargs):
+        # `/diagnostics`, fetched once while the node is still up. Answered
+        # here rather than left to fail so the tests below can assert what
+        # reaches run.json, which is the whole point of fetching it.
+        return _Response({"backend": "onnx", "note": "what the policy says it is"})
+
     monkeypatch.setattr(proc, "model_node", _node)
     monkeypatch.setattr(ports, "find_free", lambda port: port)
     monkeypatch.setattr(httpx, "post", _post)
+    monkeypatch.setattr(httpx, "get", _get)
     return urls, requests
 
 
@@ -742,3 +749,164 @@ def test_every_node_a_benchmark_asks_for_is_started_and_used(tmp_path, monkeypat
     assert len(urls) == 3 and len(set(urls)) == 3, "three nodes on three ports"
     assert len(set(url for url, _ in requests)) == 3, "and every one of them was asked something"
     assert sorted(stamp for _, stamp in requests) == list(range(7))
+
+
+# --------------------------------------------------------------------------
+# What a run records about itself, and when it gives up
+# --------------------------------------------------------------------------
+
+
+def test_a_finished_open_loop_resume_never_starts_a_node(tmp_path, monkeypatch) -> None:
+    """The open-loop half of `test_a_fully_complete_resume_never_starts_a_node`.
+
+    The closed-loop path decides this above its ExitStack and has had a test
+    pinning it since it was written; the open-loop path started every node
+    first and only then looked at `outstanding`. comma2k19 runs four, so
+    re-issuing a finished command paid four checkpoint reads and four VRAM
+    waits to rewrite a record it already had.
+    """
+    from paddock import runner
+
+    _isolate_results(tmp_path, monkeypatch)
+    urls, _ = _stub_open_loop_nodes(monkeypatch)
+    cfg = _cfg(tmp_path)
+
+    first = _OpenLoop(cfg, n=3, nodes=4)
+    assert runner._run_open_loop(cfg, first, first.spec, _model_spec(), 9000, 3, lambda _s: None) == 0
+    artifacts = _artifacts(cfg)
+    started_by_the_first = len(urls)
+
+    said: list[str] = []
+    again = _OpenLoop(cfg, n=3, nodes=4)
+    rc = runner._run_open_loop(
+        cfg, again, again.spec, _model_spec(), 9000, 3, said.append, resume=artifacts.name
+    )
+
+    assert rc == 0
+    assert len(urls) == started_by_the_first, "a node was started for a run with nothing outstanding"
+    assert any("no node started" in line for line in said)
+
+
+def test_a_wedged_node_stops_the_sweep_instead_of_grinding(tmp_path, monkeypatch) -> None:
+    """A node that fails everything costs two weeks and produces an invalid run.
+
+    `score_one` swallows a failure per sample on purpose -- one truncated video
+    must not end a 10,165-sample sweep -- and `infer_sequence` waits 600 s for
+    each. Nothing put those two together, so a node that wedged early kept four
+    pinned nodes busy for a fortnight to write `valid: false`.
+    """
+    import httpx
+
+    from paddock import runner
+
+    _isolate_results(tmp_path, monkeypatch)
+    _stub_open_loop_nodes(monkeypatch)
+    cfg = _cfg(tmp_path)
+
+    attempts = []
+
+    def _wedged(url, json=None, timeout=None, **_kwargs):
+        attempts.append(url)
+        raise httpx.ReadTimeout("node stopped answering")
+
+    monkeypatch.setattr(httpx, "post", _wedged)
+
+    said: list[str] = []
+    bench = _OpenLoop(cfg, n=10_000)
+    rc = runner._run_open_loop(cfg, bench, bench.spec, _model_spec(), 9000, None, said.append)
+
+    assert rc == 1, "nothing scored, so nothing is recorded"
+    assert len(attempts) <= runner.MAX_CONSECUTIVE_FAILURES + 1, "kept handing samples to a dead node"
+    assert any("consecutive sample failures" in line for line in said)
+
+
+def test_a_run_records_the_revision_and_the_policy_that_produced_it(tmp_path, monkeypatch) -> None:
+    """The blocker this exists for: a headline number nobody could attribute.
+
+    `RunRecord.repo_sha` has been a field since the store was written and
+    nothing ever set it, and nothing in paddock fetched `/diagnostics` -- so
+    `openpilot/model.yaml`'s claim that "the difference is recorded in every
+    run's diagnostics" was simply false. The published comma2k19 openpilot row
+    came from a checkout two shas and one graph layout away from the pin, and
+    the only way to find that out was to run `git -C` in the clone.
+    """
+    import subprocess
+
+    from paddock import runner
+    from paddock.runtime import provenance
+
+    _isolate_results(tmp_path, monkeypatch)
+    _stub_open_loop_nodes(monkeypatch)
+    cfg = _cfg(tmp_path)
+
+    clone = cfg.repo(_model_spec().repo)
+    clone.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-q"], cwd=clone, check=True)
+    (clone / "f").write_text("x")
+    subprocess.run(["git", "add", "-A"], cwd=clone, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "one"],
+        cwd=clone,
+        check=True,
+    )
+    head = provenance.git_sha(clone)
+
+    bench = _OpenLoop(cfg, n=2)
+    assert runner._run_open_loop(cfg, bench, bench.spec, _model_spec(), 9000, None, lambda _s: None) == 0
+
+    written = json.loads(
+        (tmp_path / "results" / "fake" / "visionpilot" / _artifacts(cfg).name / "run.json").read_text()
+    )
+    assert written["repo_sha"] == head
+    assert written["provenance"]["repo"]["at_pin"] is False, "the pin is not this throwaway commit"
+    assert written["provenance"]["policy"]["backend"] == "onnx"
+    # Not in `config`: config is hashed into the run id and compared by
+    # `--resume`, so a `git pull` between attempts must not refuse the resume.
+    assert "repo" not in written["config"] and "backend" not in written["config"]
+
+
+def test_a_run_that_scored_fewer_samples_than_it_should_have_says_so(tmp_path, monkeypatch) -> None:
+    """`n: 10105`, `valid: true`, `notes: ""` -- with 60 samples silently gone.
+
+    A route whose calibration failed or a window running off a truncated video
+    drops samples from the stream with nothing recorded. `coverage()` already
+    knew the expected count; the record did not carry it, so a partial dataset
+    ranked beside complete ones.
+    """
+    from paddock import runner
+
+    _isolate_results(tmp_path, monkeypatch)
+    _stub_open_loop_nodes(monkeypatch)
+    cfg = _cfg(tmp_path)
+
+    class _Short(_OpenLoop):
+        def coverage(self):
+            return [{"sample_key": str(i)} for i in range(6)], []
+
+    bench = _Short(cfg, n=4)
+    assert runner._run_open_loop(cfg, bench, bench.spec, _model_spec(), 9000, None, lambda _s: None) == 0
+
+    written = json.loads(
+        (tmp_path / "results" / "fake" / "visionpilot" / _artifacts(cfg).name / "run.json").read_text()
+    )
+    assert written["dataset"]["n_expected"] == 6
+    assert written["dataset"]["n_samples"] == 4
+    assert written["valid"] is False
+    assert "scored 4 of 6" in written["notes"]
+
+
+def test_resuming_reads_both_a_finished_file_and_a_later_journal(tmp_path) -> None:
+    """Three attempts, and the second one's work must not vanish.
+
+    `_store_run` unlinks the journal when it writes `samples.jsonl`, so holding
+    both means a resume completed and was then interrupted again. Returning the
+    journal alone -- the first of the two, as this did -- silently discards
+    everything the completed attempt scored, and the run stores short with
+    nothing in `notes` to say why.
+    """
+    from paddock import runner
+
+    (tmp_path / "samples.jsonl").write_text('{"sample_id": "a"}\n{"sample_id": "b"}\n')
+    (tmp_path / runner.PARTIAL_SAMPLES).write_text('{"sample_id": "b"}\n{"sample_id": "c"}\n')
+
+    assert sorted(r["sample_id"] for r in runner._scored_samples(tmp_path)) == ["a", "b", "c"]

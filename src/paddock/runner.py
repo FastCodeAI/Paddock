@@ -40,6 +40,10 @@ from paddock.registry import BenchmarkSpec, ModelSpec, Registry
 from paddock.results import store
 from paddock.runtime import ports, proc
 
+# Aliased: `_store_run` takes a `provenance=` argument, and a module of the
+# same name in scope is a shadowing bug waiting to be written.
+from paddock.runtime import provenance as prov_info
+
 #: Where port selection starts. Not assumed free -- on a shared machine 9000 is
 #: somebody else's service as often as not, and `ports.find_free` scans past it.
 #: Ports are still assigned one per model so a stale node from a previous attempt
@@ -127,6 +131,7 @@ def _store_run(
     hardware: dict | None = None,
     split: str | None = None,
     extra_dataset: dict | None = None,
+    provenance: dict | None = None,
 ) -> tuple[Path, store.MetricsRecord]:
     """Write one run to the results store. Every path stores through here.
 
@@ -146,6 +151,7 @@ def _store_run(
     )
     if extra_dataset:
         dataset.update(extra_dataset)
+    provenance = dict(provenance or {})
     run = store.RunRecord(
         run_id=run_id,
         site=cfg.site,
@@ -154,8 +160,13 @@ def _store_run(
         mode=spec.mode,
         started_utc=started.isoformat(timespec="seconds"),
         duration_s=round(time.time() - began, 1),
+        # Promoted out of `provenance` because it is the one field a reader
+        # looks for first, and it has been declared on `RunRecord` since the
+        # store was written without anything ever filling it in.
+        repo_sha=(provenance.get("repo") or {}).get("sha"),
         dataset=dataset,
         config=config,
+        provenance=provenance,
         hardware=hardware or {},
         status=status,
         valid=valid,
@@ -215,6 +226,54 @@ def _config_marker_problems(artifacts: Path, config: dict) -> list[str]:
 
 def _limit_reason(limit: int | None) -> list[str]:
     return [f"--limit {limit}: a subset of the benchmark, run to test the pipeline"] if limit else []
+
+
+#: Consecutive per-sample failures that mean the node, not the samples.
+#:
+#: `score_one` swallows one bad sample deliberately -- a truncated video must
+#: not end a ten-thousand-sample sweep -- and `infer_sequence` waits 600 s. A
+#: node that has wedged therefore fails silently and slowly: at comma2k19's
+#: 10,165 samples, two weeks of four pinned nodes to produce a run `_validity`
+#: marks invalid anyway. Generous, because a genuinely bad patch of data is a
+#: real thing: a whole batch's worth at the default four nodes, several times
+#: over, is not.
+MAX_CONSECUTIVE_FAILURES = 25
+
+
+def _expected_samples(harness) -> dict | None:
+    """`{"n_expected": N}` where the harness can say how many it should serve.
+
+    On the record because `n` alone cannot distinguish a complete run from one
+    that quietly dropped samples -- a route whose calibration failed, a window
+    running off the end of a truncated video. A comma2k19 run that produced
+    10,105 of 10,165 stored `n: 10105`, `valid: true`, `notes: ""`, and nothing
+    anywhere said 60 were missing.
+    """
+    if not hasattr(harness, "coverage"):
+        return None
+    try:
+        found, _ = harness.coverage()
+    except Exception:  # noqa: BLE001 - a count is never worth losing a sweep over
+        return None
+    return {"n_expected": len(found)} if found else None
+
+
+def _coverage_reason(harness, samples: list[dict], limit: int | None) -> list[str]:
+    """Scoring fewer samples than the dataset holds makes a run unrankable.
+
+    The pair to `_expected_samples`: recording the shortfall is worth little if
+    the row still sorts beside complete ones. `--limit` is excluded because it
+    is a deliberate subset with its own reason already.
+    """
+    if limit is not None:
+        return []
+    expected = (_expected_samples(harness) or {}).get("n_expected")
+    if not expected or len(samples) >= expected:
+        return []
+    return [
+        f"scored {len(samples)} of {expected} available sample(s): "
+        f"{expected - len(samples)} were not produced"
+    ]
 
 
 def load_benchmark(spec: BenchmarkSpec, cfg: SiteConfig):
@@ -415,6 +474,7 @@ def _run_one_model(
     if resume and not outstanding:
         echo(f"  all {len(episodes)} episode(s) already scored; recording without starting a node")
 
+    prov: dict = {"repo": prov_info.repo_provenance(cfg, model_spec)}
     try:
         with contextlib.ExitStack() as stack:
             policy_url = (
@@ -448,6 +508,9 @@ def _run_one_model(
                     + ", ".join(f"{k} {v:.4g}" for k, v in sorted(metrics.items()))
                 )
                 samples.extend(harness.episode_samples(episode, metrics, out_dir))
+            # Before the ExitStack closes the node, and only where one ran.
+            if policy_url:
+                prov["policy"] = prov_info.policy_diagnostics(policy_url)
     except (proc.NodeStartupError, RuntimeError) as exc:
         echo(f"  node failed: {exc}")
         return 1
@@ -467,6 +530,7 @@ def _run_one_model(
         config,
         failure_note=f"{failures} episode(s) failed" if failures else None,
         invalid_reasons=harness.invalid_reasons(),
+        provenance=prov,
         # A remark, not a reason: resuming does not make a run unrankable, and
         # everything in `invalid_reasons` sets `valid: false`. But `started_utc`
         # and `duration_s` cover the resumed attempt only, so a 20-episode sweep
@@ -627,6 +691,9 @@ def _run_external(
         by_group=evaluation.by_group,
         split=harness.split,
         extra_dataset=extra_dataset,
+        # No `/diagnostics` here: the external scorer owns the node's lifetime,
+        # so by the time this runs there is nothing left to ask.
+        provenance={"repo": prov_info.repo_provenance(cfg, model_spec)},
     )
     headline = metrics_record.metrics.get(spec.primary_metric, {})
     echo(f"  n={metrics_record.n}  {spec.primary_metric} mean={headline.get('mean')}")
@@ -649,26 +716,33 @@ PARTIAL_SAMPLES = "samples.partial.jsonl"
 def _scored_samples(artifacts: Path) -> list[dict]:
     """Sample records an interrupted run already wrote, oldest first.
 
-    Reads the journal, and falls back to a completed `samples.jsonl` so that
-    `--resume` on a run that actually finished is a no-op rather than a repeat.
-    A truncated last line is dropped: the process was killed mid-write, and one
-    lost sample is cheaper than a parse error at the start of a resume.
+    Reads the journal *and* a completed `samples.jsonl`, so that `--resume` on a
+    run that actually finished is a no-op rather than a repeat. A truncated last
+    line is dropped: the process was killed mid-write, and one lost sample is
+    cheaper than a parse error at the start of a resume.
+
+    Both, not the first of the two. `_store_run` unlinks the journal when it
+    writes `samples.jsonl`, so the only way to hold both is to be interrupted
+    again after a resume completed -- and then returning the journal alone
+    silently discards everything the finished attempt scored, and the run is
+    stored short with no sign of it. Ids are unique per sample, so the union is
+    well defined; the later record of a duplicated id wins.
     """
-    for name in (PARTIAL_SAMPLES, "samples.jsonl"):
+    merged: dict[str, dict] = {}
+    for name in ("samples.jsonl", PARTIAL_SAMPLES):
         path = artifacts / name
         if not path.exists():
             continue
-        out = []
         for line in path.read_text().splitlines():
             line = line.strip()
             if not line:
                 continue
             try:
-                out.append(json.loads(line))
+                record = json.loads(line)
             except json.JSONDecodeError:
                 break
-        return out
-    return []
+            merged[record["sample_id"]] = record
+    return list(merged.values())
 
 
 def _batches(source: Iterator, size: int, prefetch: bool) -> Iterator[list]:
@@ -829,37 +903,48 @@ def _run_open_loop(
             **({"extras": prediction.extras} if prediction.extras else {}),
         }
 
+    prov: dict = {"repo": prov_info.repo_provenance(cfg, model_spec)}
+    aborted: str | None = None
     try:
-        with contextlib.ExitStack() as stack:
-            urls: list[str] = []
-            next_port = base
-            for _ in range(nodes):
-                next_port = ports.find_free(next_port)
-                urls.append(
-                    stack.enter_context(
-                        proc.model_node(model_spec, cfg, next_port, artifacts, echo=echo, nonce=run_id)
+        # Above the ExitStack, exactly as `_run_one_model` decides it: a node is
+        # a checkpoint read and a VRAM wait, and comma2k19 starts four of them.
+        # Re-resuming a finished run paid all four to write a record it already
+        # had. The closed-loop path has a test pinning this; so does this one now.
+        if outstanding == 0:
+            echo("  nothing outstanding; no node started")
+        else:
+            with contextlib.ExitStack() as stack:
+                urls: list[str] = []
+                next_port = base
+                for _ in range(nodes):
+                    next_port = ports.find_free(next_port)
+                    urls.append(
+                        stack.enter_context(
+                            proc.model_node(model_spec, cfg, next_port, artifacts, echo=echo, nonce=run_id)
+                        )
                     )
-                )
-                next_port += 1
-            if nodes > 1:
-                echo(f"  {nodes} policy nodes on ports {urls[0].rsplit(':', 1)[1]}+")
+                    next_port += 1
+                if nodes > 1:
+                    echo(f"  {nodes} policy nodes on ports {urls[0].rsplit(':', 1)[1]}+")
 
-            pool = stack.enter_context(ThreadPoolExecutor(nodes, thread_name_prefix="infer"))
-            journal = stack.enter_context((artifacts / PARTIAL_SAMPLES).open("a"))
-            stream = harness.samples(limit=outstanding, skip=done)
-            # `skip` is an optimisation the harness may decline; scoring a
-            # sample twice is not. One id appearing twice in samples.jsonl
-            # double-counts it in every aggregate, so the guarantee is enforced
-            # here and the saving is left to the harness.
-            stream = (s for s in stream if s.sample_id not in done)
+                pool = stack.enter_context(ThreadPoolExecutor(nodes, thread_name_prefix="infer"))
+                journal = stack.enter_context((artifacts / PARTIAL_SAMPLES).open("a"))
+                stream = harness.samples(limit=outstanding, skip=done)
+                # `skip` is an optimisation the harness may decline; scoring a
+                # sample twice is not. One id appearing twice in samples.jsonl
+                # double-counts it in every aggregate, so the guarantee is
+                # enforced here and the saving is left to the harness.
+                stream = (s for s in stream if s.sample_id not in done)
 
-            if outstanding != 0:
+                consecutive = 0
                 for batch in _batches(stream, nodes, prefetch=nodes > 1):
                     before = len(samples)
                     for record in pool.map(score_one, zip(urls, batch, strict=False)):
                         if record is None:
                             failures += 1
+                            consecutive += 1
                             continue
+                        consecutive = 0
                         samples.append(record)
                         # Flushed per batch, not per sample: a killed run loses
                         # at most one batch, and `--resume` re-scores it.
@@ -873,6 +958,26 @@ def _run_open_loop(
                         seen = [s["metrics"][key] for s in samples if key in s["metrics"]]
                         running = sum(seen) / len(seen) if seen else float("nan")
                         echo(f"  {len(samples)} samples, running {key} {running:.3f}")
+                    if consecutive >= MAX_CONSECUTIVE_FAILURES:
+                        # A wedged node fails every sample it is handed and
+                        # nothing here noticed: `score_one` swallows per sample
+                        # so one bad sample cannot end a sweep, and
+                        # `infer_sequence` has a 600 s timeout. At 10,165
+                        # samples that is two weeks of four pinned nodes to
+                        # produce a run `_validity` marks invalid anyway.
+                        aborted = (
+                            f"aborted after {consecutive} consecutive sample failures; "
+                            "the node is not scoring, not the samples"
+                        )
+                        echo("  " + aborted)
+                        break
+
+                # While the node is up and has inferred: most of what a policy
+                # reports about itself -- openpilot's graph layout, its backend,
+                # the fraction of each view that came from real pixels -- is
+                # unanswerable before it has seen a frame.
+                if samples:
+                    prov["policy"] = prov_info.policy_diagnostics(urls[0])
     except (proc.NodeStartupError, RuntimeError) as exc:
         echo(f"  node failed: {exc}")
         return 1
@@ -890,9 +995,18 @@ def _run_open_loop(
         began,
         samples,
         config,
-        failure_note=f"{failures} sample(s) failed" if failures else None,
-        invalid_reasons=[*harness.invalid_reasons(), *_limit_reason(limit)],
+        failure_note="; ".join(
+            n for n in (f"{failures} sample(s) failed" if failures else None, aborted) if n
+        )
+        or None,
+        invalid_reasons=[
+            *harness.invalid_reasons(),
+            *_limit_reason(limit),
+            *_coverage_reason(harness, samples, limit),
+        ],
         remarks=[f"resumed: {reused} sample(s) reused from an earlier attempt"] if reused else None,
+        extra_dataset=_expected_samples(harness),
+        provenance=prov,
     )
     # The journal has served its purpose the moment the real file exists, and
     # leaving it would make the next `--resume` reuse a finished run's samples
