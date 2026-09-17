@@ -1,110 +1,106 @@
 name: qwendrive
-description: Alibaba Qwen-Drive 1.0 4B - Qwen3.5 VLM with a flow-matching planning expert
-
+description: Qwen-Drive-1.0-4B (Qwen team + HUST) - Qwen3.5-4B VLM with a 1B flow-matching planning expert
 repo: Qwen-Drive-1.0
 
 runtime:
-  # requirements.txt + two source builds, not a lockfile: see setup.sh.
-  kind: shell
-  python: "3.10"
+  kind: uv
+  python: "3.12"
   venv: "{repo}/.venv"
+  # The package is importable from src/ without an install (docs/cookbook.md:3).
   pythonpath: ["{repo}/src"]
   cwd: "{repo}"
   env:
-    # The snapshot directory holding config.json, model.safetensors and the
-    # planner heads. A site whose weights are a HuggingFace cache names the
-    # revision outright in paddock.toml, so a later download cannot quietly move
-    # what a recorded run was scored against.
-    QWENDRIVE_WEIGHTS: "{weights}/Qwen-Drive-1.0-4B"
-    # Keeps the tokenizer's cache lookups on the weights disk rather than the
-    # root filesystem, even though the checkpoint above is addressed directly.
-    HF_HOME: "{weights}"
-    # `planner-sft` serves both planning modes; `planner-rl` is reasoning-only.
-    QWENDRIVE_PLANNER: "planner-sft"
-    # The VLM writes a one-sentence rationale and the expert plans from that
-    # cache. Worth 1.47 against 1.55 ADE on the reference's city segment at
-    # roughly twice the latency, and it is where the per-sample rationale in
-    # `diagnostics()` comes from. QWENDRIVE_MODE=direct_planning is the ablation.
-    QWENDRIVE_MODE: "reasoning_planning"
-    # Fill the two side view slots with the true forward frame rather than
-    # cropping fake ones out of it. Measured, not assumed: 1.47/2.00 ADE against
-    # crop's 1.78/2.13. QWENDRIVE_VIEWS=crop runs the other side.
-    QWENDRIVE_VIEWS: "replicate"
-    # Explicit, so the sampler's contribution to a run is a property of this
-    # file rather than of whatever `noise_seed` the checkpoint happens to ship.
-    # It is not sufficient for reproducibility -- see `stochastic` below.
-    QWENDRIVE_SEED: "42"
-    QWENDRIVE_SAMPLES: "1"
-    # sdpa, not flash_attention_2. flash-attn cannot be built against torch 2.14
-    # + CUDA 13 here (setup.sh has the two independent reasons); it is a speed
-    # optimisation for the 8 full-attention layers and changes no result.
-    QWENDRIVE_ATTN: "sdpa"
-    # Read by cuBLAS when it creates its first handle, which happens inside the
-    # first matmul -- long before anything the policy could set. So it has to be
-    # in the environment, not in `load()`, and it is what makes
-    # `torch.use_deterministic_algorithms(True)` there stick for cuBLAS
-    # reductions at all.
+    QWENDRIVE_CHECKPOINT: "{weights}/Qwen-Drive-1.0-4B"
+    # planner-sft plans in direct mode; planner-rl was reward-optimised only
+    # under reasoning rollouts and the vendor says to run it in reasoning mode.
+    # The adapter refuses the rl/direct pairing rather than record its number.
     #
-    # Kept even though it does not deliver reproducibility here (`stochastic`
-    # below records what is left): it removes the workspace-dependent split-k
-    # choice, which is the one source of variation that would otherwise depend
-    # on how busy the card was rather than on anything about the model. What
-    # remains is smaller and does not vary with the neighbours.
-    CUBLAS_WORKSPACE_CONFIG: ":4096:8"
+    # These two do NOT reach run.json: the runner records config.model_env only
+    # from a site [models.qwendrive] env override, not from runtime.env, so no
+    # record says which planner produced it -- and the vendor's published PDMS
+    # for the two differs by 2.9 points. Framework gap, raised as issue #46;
+    # `paddock doctor --model qwendrive` and /diagnostics both report them
+    # meanwhile.
+    QWENDRIVE_PLANNER: "planner-sft"
+    # direct, not reasoning. Reasoning is worth roughly 1.47 against 1.55 ADE on
+    # comma2k19's city segment at about twice the latency -- and it is the one
+    # thing here that is not reproducible, because the arithmetic under
+    # `vlm.generate()` varies: five rollouts on a fixed input gave four
+    # identical plans and one 0.64 m away at the 90 m end of the 5 s horizon.
+    # Direct mode is bit-exact across the same five, which is what `stochastic`
+    # below declares. QWENDRIVE_MODE=reasoning runs the other side.
+    QWENDRIVE_MODE: "direct"
+    QWENDRIVE_NUM_SAMPLES: "1"
+    # One real camera per view slot: what the model was trained on, and what
+    # every benchmark here but comma2k19 supplies. A site whose source is
+    # monocular sets `replicate` (or the `crop` ablation) in its own
+    # [models.qwendrive.env] -- the choice belongs to the source, not the model,
+    # and the policy re-declares `cameras` to match so nothing renders or asks
+    # for a camera that does not exist. A site that runs both kinds needs two
+    # registry entries, the way drivejepa and drivejepa_free split.
+    QWENDRIVE_VIEWS: "ring"
+    # flash-attn does not build for sm_120 on this toolchain (see setup.sh);
+    # the model supports sdpa for both the VLM and the expert.
+    QWENDRIVE_ATTN: "sdpa"
 
 capabilities:
-  cameras: [CAM_FRONT]
-  # 5.58 B parameters in bf16 is 11.2 GB; the rest is the vision tower's
-  # activations for 12 images plus the reasoning turn's KV cache.
+  # Exactly the three views the model was trained on (scene.py CAMERA_VIEWS).
+  # Under QWENDRIVE_VIEWS=replicate|crop the policy declares CAM_FRONT alone and
+  # fills the other two slots from it; this list is the ring-source default.
+  cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT]
+  # 9.1 GB VLM + 2.1 GB expert in bf16, plus activations for ~4k vision tokens.
   vram_gb: 18
-  # A 13 GB checkpoint read on a contended card.
+  # An 11 GB checkpoint read on a shared box.
   startup_timeout_s: 1800
-  waypoint_dt: 0.1
-  # The history is resampled by timestamp, so a faster source is fine -- but a
-  # slower one cannot fill a 10 Hz grid, and this model derives everything it
-  # knows about its own motion from that grid. The reference's ablation put a
-  # stationary history at ADE 70.74 on the highway against 2.00, so a source
-  # that cannot feed 10 Hz should be refused rather than silently interpolated.
-  min_input_hz: 10.0
+  waypoint_dt: 0.5
+  # No floor: the four camera frames are picked by timestamp 0.5 s apart, so
+  # a 2 Hz source contributes every frame and a 10 Hz source every fifth.
+  min_input_hz: 0.0
+  # What it was built for: 16 ego poses at 0.1 s over 1.5 s (docs/data.md
+  # hist_traj_10hz), which NAVSIM can supply from nuPlan (native_input_hz
+  # above 2 selects the dense path); the frames stay 0.5 s apart either way.
   native_input_hz: 10.0
   history_s: 1.5
 
   # -- model card (docs/models/comparison.md) --
-  architecture: "Qwen3.5-4B VLM + 1B flow-matching planning expert"
-  # Loaded VLM + expert, counted from the checkpoint rather than the card.
+  architecture: "Qwen3.5-4B VLM + 1B flow-matching planning expert (planner-sft)"
+  # Counted from the checkpoint, not the card: 4539 M in model.safetensors plus
+  # 1040 M in planner-sft/. perception/ (125 M) is not loaded for planning.
   params_m: 5580
-  size_gb: 13
+  size_gb: 11.2
   precision: bf16
-  # Native source resolution, unchanged: frames carry no target_size, so the
-  # processor snaps them to its own patch budget and keeps the aspect ratio.
-  input_size: [1164, 874]
+  # Per-frame pixel budgets, not a fixed size: current frame ~720p
+  # (921,600 px), the three history frames ~320p (174,080 px), each snapped
+  # to a 32 px grid. 1280x720 is the current frame's budget at 16:9. Frames
+  # carry no `target_size`, so a source's own aspect ratio is kept.
+  input_size: [1280, 720]
   history_frames: 4
   output_kind: waypoints
+  # What the model emits, and now all of what the adapter hands paddock: the
+  # 0.5 s grid (GRID_INDICES) carries all ten points rather than stopping at
+  # 4 s. NAVSIM scores the first eight, neuroNCAP the first six and KITScenes
+  # the first six, so the tail costs them nothing and lets comma2k19 score
+  # ADE@5s at the same spacing every other model on that board is scored at.
   horizon_s: 5.0
-  # Both sources of randomness are pinned and it is still not reproducible, so
-  # this says true. The flow sampler draws sample k from a Generator seeded
-  # seed + k; the reasoning turn runs do_sample=False and decodes the identical
-  # sentence every time (5/5 rollouts on a fixed input). What moves is the
-  # arithmetic underneath `vlm.generate()`: five rollouts with reset() between
-  # gave four identical plans and one 0.64 m away at the 90 m end of the 5 s
-  # horizon -- exactly one bf16 step at that magnitude, i.e. a reduction that
-  # split differently, not a different sample. `use_deterministic_algorithms`
-  # plus CUBLAS_WORKSPACE_CONFIG (above) does not close it.
-  #
-  # QWENDRIVE_MODE=direct_planning *is* bit-exact across 5 rollouts, which is
-  # what localises this to the reasoning turn's KV cache. So the ablation is
-  # reproducible and the default mode is a draw -- and since the default is what
-  # gets scored, the declaration has to describe the default.
-  stochastic: true
+  # Flow matching from seeded noise (noise_seed + k) and a greedy reasoning
+  # turn: in the default direct mode, repeated inference on identical input is
+  # identical. QWENDRIVE_MODE=reasoning is not -- see the note there.
+  stochastic: false
   needs_speed: true
+  # From the technical report's data section (arXiv 2609.00111): trajectories
+  # "standardized from multiple public driving datasets", and its reported
+  # NAVSIM navtest number is the in-distribution one. Which splits exactly is
+  # not stated in the repo; navtrain is the honest assumption for navtest.
+  # comma2k19 is named by neither the report nor the checkout.
   trained_on:
-    # The released card names no public driving corpus, and the checkout carries
-    # no training manifest. Recording "not stated" rather than guessing: the
-    # useful claim would be "none of paddock's benchmarks", and nothing here
-    # supports it. The bundled demo scenes are Waymo Open Dataset format, which
-    # is evidence about the input format, not about the training set.
-    - dataset: not-stated
+    - dataset: navsim
+      split: navtrain
+    - dataset: waymo-e2e
+      split: train
+    - dataset: nvidia-physical-ai
+      split: train
+
 # One key, not one per benchmark that arrives: two `benchmarks:` lines is valid
 # YAML and keeps only the last, which is how a model has silently dropped off a
 # board before.
-benchmarks: [comma2k19]
+benchmarks: [kitscenes, nuscenes, navsim, navsim_v1, neuroncap, comma2k19]

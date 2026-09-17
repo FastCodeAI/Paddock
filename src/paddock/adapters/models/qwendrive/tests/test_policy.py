@@ -1,452 +1,672 @@
-"""Contract tests for the Qwen-Drive adapter. No torch, no qwen_drive, no weights.
-
-Everything here is about the two things that would make a Qwen-Drive number
-wrong without making it fail: a frame-convention error, which still produces
-smooth mirrored trajectories, and a history that does not describe the motion
-the poses describe, which the reference's ablation showed is this model's most
-load-bearing input by a wide margin (a stationary history scored ADE 70.74 on a
-highway segment against a 2.00 baseline).
-"""
+"""Contract tests for the Qwen-Drive-1.0 adapter. No torch, no weights, no GPU."""
 
 from __future__ import annotations
 
+from pathlib import Path
+from types import SimpleNamespace as NS
+
 import numpy as np
 import pytest
-from PIL import Image
+import yaml
 
 from paddock.adapters.models.qwendrive.policy import (
-    CAMERA_VIEWS,
-    COMMANDS,
+    CROP_SPAN,
+    DRIVING_COMMAND,
+    FRAME_DT,
+    FRAME_TOLERANCE_S,
+    GRID_INDICES,
     HISTORY_DT,
-    HISTORY_KEEP,
+    KEEP_S,
+    MAX_RECORDED,
+    NAV_COMMAND,
+    NEEDED_CAMERAS,
+    NUM_CAM_FRAMES,
     NUM_HISTORY_STEPS,
+    OUTPUT_POINTS,
     POLICY,
-    VIEW_OFFSETS_S,
-    interp_angle,
-    smooth,
-    synthesize_views,
-    wrap_angle,
+    VIEW_MODES,
+    crop_box,
+    medoid_index,
+    pose_xy_yaw,
+    resample_history,
+    select_frame_indices,
 )
-from paddock.policy.protocol import Command, Observation, Policy
+from paddock.policy.protocol import (
+    CANBUS_ACCEL,
+    CANBUS_VELOCITY,
+    N_WAYPOINTS,
+    Command,
+    Observation,
+    Policy,
+    Trajectory,
+)
 
-SRC_HZ = 20.0
-#: Small enough that a whole test sequence of them is cheap, large enough that
-#: the `crop` boxes are distinguishable.
-_IMAGE = np.zeros((16, 40, 3), dtype=np.uint8)
+CAMERAS = ("CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT")
 
 
-def _observation(t_s: float, x: float, y: float, yaw: float, speed: float, yaw_rate: float = 0.0):
-    pose = np.eye(4)
-    pose[0, 3], pose[1, 3] = x, y
-    pose[:2, :2] = [[np.cos(yaw), -np.sin(yaw)], [np.sin(yaw), np.cos(yaw)]]
+def make_observation(
+    t_us: int, x: float = 0.0, y: float = 0.0, yaw: float = 0.0, speed: float = 10.0
+) -> Observation:
+    ego2world = np.eye(4)
+    ego2world[:2, :2] = [[np.cos(yaw), -np.sin(yaw)], [np.sin(yaw), np.cos(yaw)]]
+    ego2world[:2, 3] = [x, y]
     canbus = np.zeros(18)
-    canbus[13], canbus[12] = speed, yaw_rate
+    canbus[CANBUS_VELOCITY] = speed
     return Observation(
-        images={"CAM_FRONT": _IMAGE.copy()},
-        ego2world=pose,
+        images={},
+        image_paths={c: f"/frames/{c}/{t_us}.jpg" for c in CAMERAS},
+        ego2world=ego2world,
         canbus=canbus,
-        timestamp_us=int(round(t_s * 1e6)),
+        timestamp_us=t_us,
         command=Command.STRAIGHT,
-        camera2image={"CAM_FRONT": np.eye(3)},
-        camera2ego={"CAM_FRONT": np.eye(4)},
+        camera2image={c: np.eye(3) for c in CAMERAS},
+        camera2ego={c: np.eye(4) for c in CAMERAS},
     )
 
 
-def _drive(policy, n: int = 60, speed: float = 20.0, omega: float = 0.0):
-    """Feed `n` frames at 20 Hz along an arc, and return the last observation.
-
-    `omega` is the yaw rate in rad/s, positive for a left turn -- paddock's ego
-    frame is x forward, y left, so that is the direction the sign convention has
-    to survive.
-    """
-    dt = 1.0 / SRC_HZ
-    x = y = yaw = 0.0
-    last = None
-    for i in range(n):
-        last = _observation(i * dt, x, y, yaw, speed, omega)
-        policy.observe(last)
-        x += speed * np.cos(yaw) * dt
-        y += speed * np.sin(yaw) * dt
-        yaw += omega * dt
-    return last
+def _policy(**kwargs) -> POLICY:
+    """Every knob named, so a site's own QWENDRIVE_* cannot move a test."""
+    kwargs.setdefault("views", "ring")
+    return POLICY(planner="planner-sft", mode="direct", num_samples=1, attn="sdpa", **kwargs)
 
 
-def _history(policy):
-    """(poses, velocity, acceleration) exactly as `_scene` would build them."""
-    offsets, wanted = policy._grid()
-    local = policy._poses_in_current_frame(wanted)
-    velocity, acceleration = policy._ego_series(local, wanted, -offsets)
-    return local, velocity, acceleration
+# ---- configuration ----------------------------------------------------------
 
 
-# ---------------------------------------------------------------------------
-# wiring
-# ---------------------------------------------------------------------------
-
-
-def test_policy_imports_without_torch() -> None:
-    policy = POLICY()
+def test_policy_imports_without_the_model_environment() -> None:
+    policy = _policy()
     assert isinstance(policy, Policy)
-    assert policy.cameras == ("CAM_FRONT",)
-
-
-def test_the_waypoint_rate_is_the_model_s_own() -> None:
-    """50 waypoints at 10 Hz. Declaring 0.5 here would stretch a 5 s plan to 25 s.
-
-    Nothing raises: the harness pairs prediction and ground truth by time, so a
-    wrong `dt` scores a correct plan against the wrong part of the future and
-    the error looks like a model that cannot drive.
-    """
-    assert POLICY().waypoint_dt == pytest.approx(0.1)
+    assert policy.waypoint_dt == 0.5
+    assert tuple(policy.cameras) == CAMERAS
 
 
 def test_infer_without_load_is_a_clear_error() -> None:
     with pytest.raises(RuntimeError, match="load"):
-        POLICY().infer(object())  # type: ignore[arg-type]
+        _policy().infer(make_observation(0))
 
 
-def test_an_unknown_view_mode_is_refused_at_construction(monkeypatch) -> None:
-    """Not at the first frame, 40 minutes into a sweep."""
-    monkeypatch.setenv("QWENDRIVE_VIEWS", "panorama")
-    with pytest.raises(ValueError, match="panorama"):
-        POLICY()
+def test_planner_rl_refuses_direct_mode() -> None:
+    """The vendor reward-optimised planner-rl under reasoning rollouts only."""
+    with pytest.raises(ValueError, match="reasoning"):
+        POLICY(planner="planner-rl", mode="direct")
+    assert POLICY(planner="planner-rl", mode="reasoning").mode == "reasoning"
+    with pytest.raises(ValueError, match="QWENDRIVE_MODE"):
+        POLICY(planner="planner-sft", mode="vqa")
 
 
-def test_reset_clears_every_cross_sample_channel() -> None:
-    """comma2k19 scores 10,165 independent samples through one node.
-
-    Any of these surviving would make sample N's history start with sample
-    N-1's ending, and `infer_sequence` would stop being a self-contained query.
-    """
-    policy = POLICY()
-    _drive(policy, n=5)
-    policy.reset()
-    assert policy.timestamps == []
-    assert policy.poses == []
-    assert policy.speeds == []
-    assert policy.yaw_rates == []
-    assert policy.frames == []
-
-
-def test_the_seed_is_ours_not_the_checkpoint_s(monkeypatch) -> None:
-    """`stochastic: false` in model.yaml is a claim about this file.
-
-    The flow sampler falls back to the checkpoint's `noise_seed` when none is
-    passed, so relying on that would make a recorded number depend on a config
-    value nothing in paddock pins.
-    """
-    assert POLICY().seed == 42
+def test_defaults_come_from_the_environment(monkeypatch) -> None:
+    for key in (
+        "QWENDRIVE_PLANNER",
+        "QWENDRIVE_MODE",
+        "QWENDRIVE_NUM_SAMPLES",
+        "QWENDRIVE_ATTN",
+        "QWENDRIVE_SEED",
+        "QWENDRIVE_VIEWS",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    p = POLICY()
+    assert (p.planner, p.mode, p.num_samples, p.attn, p.seed) == ("planner-sft", "direct", 1, "sdpa", None)
+    assert p.views == "ring"
+    monkeypatch.setenv("QWENDRIVE_NUM_SAMPLES", "6")
     monkeypatch.setenv("QWENDRIVE_SEED", "7")
-    assert POLICY().seed == 7
+    q = POLICY()
+    assert (q.num_samples, q.seed) == (6, 7)
 
 
-# ---------------------------------------------------------------------------
-# the history the expert reads
-# ---------------------------------------------------------------------------
+# ---- the output grid --------------------------------------------------------
 
 
-def test_history_is_sixteen_poses_ending_at_the_origin() -> None:
-    """The prompt asserts the last pose is (0, 0, 0). It has to be true."""
-    policy = POLICY()
-    _drive(policy)
-    local, velocity, acceleration = _history(policy)
-    assert local.shape == (NUM_HISTORY_STEPS, 3)
-    assert velocity.shape == (NUM_HISTORY_STEPS, 2)
-    assert acceleration.shape == (NUM_HISTORY_STEPS, 2)
-    assert local[-1] == pytest.approx([0.0, 0.0, 0.0], abs=1e-9)
+def test_grid_indices_land_on_the_half_second_grid() -> None:
+    """The model emits 50 poses at 10 Hz; pose i is at (i+1)/10 s. Ten points,
+    the whole 5 s: NAVSIM scores the first eight, neuroNCAP the first six and
+    KITScenes three seconds, so the tail costs them nothing and comma2k19 scores
+    ADE@5s on the same spacing as everything else on that board."""
+    grid = (0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0)
+    assert list(GRID_INDICES) == [int(round(t / 0.1)) - 1 for t in grid]
+    assert len(GRID_INDICES) >= N_WAYPOINTS
+    assert GRID_INDICES[-1] == OUTPUT_POINTS - 1
 
 
-def test_history_runs_oldest_first_and_spans_one_and_a_half_seconds() -> None:
-    """Reversed, the model is told the car is driving backwards at 20 m/s."""
-    policy = POLICY()
-    _drive(policy, speed=20.0)
-    local, _, _ = _history(policy)
-    assert np.all(np.diff(local[:, 0]) > 0), "x must increase towards the present"
-    assert local[0, 0] == pytest.approx(-20.0 * 1.5, abs=0.05)
+def test_the_grid_reaches_the_horizon_the_card_declares() -> None:
+    """`horizon_s` in model.yaml is what the dashboard's time axis reads. A grid
+    that stopped short would draw a 5 s plan over 4 s of waypoints."""
+    spec = yaml.safe_load((Path(__file__).resolve().parents[1] / "model.yaml").read_text())
+    caps = spec["capabilities"]
+    assert len(GRID_INDICES) * caps["waypoint_dt"] == pytest.approx(caps["horizon_s"])
 
 
-def test_the_history_grid_is_ten_hertz_whatever_the_source_runs_at() -> None:
-    """comma2k19 feeds 20 Hz. Taking the last 16 requests would span 0.8 s.
+def test_medoid_picks_the_consensus_draw() -> None:
+    a = np.zeros((50, 3))
+    b = np.ones((50, 3)) * 0.1
+    outlier = np.ones((50, 3)) * 100.0
+    assert medoid_index(np.stack([outlier, a, b])) in (1, 2)
+    assert medoid_index(np.stack([a])) == 0
 
-    The model differences exactly this grid to recover its own speed, so a
-    history spanning 0.8 s labelled 1.5 s reads as a car going half speed --
-    confident, smooth and wrong.
+
+# ---- frame selection --------------------------------------------------------
+
+
+def test_frame_slots_are_half_a_second_apart() -> None:
+    assert (NUM_CAM_FRAMES, FRAME_DT, NUM_HISTORY_STEPS, HISTORY_DT) == (4, 0.5, 16, 0.1)
+
+
+def test_a_10hz_source_contributes_every_fifth_frame() -> None:
+    times = np.arange(20) * 0.1
+    indices, gaps = select_frame_indices(times)
+    assert indices == [4, 9, 14, 19]
+    assert max(gaps) < 1e-9
+
+
+def test_a_2hz_source_contributes_every_frame() -> None:
+    """NAVSIM's four OpenScene keyframes are exactly the model's four slots."""
+    times = np.arange(4) * 0.5
+    indices, gaps = select_frame_indices(times)
+    assert indices == [0, 1, 2, 3]
+    assert max(gaps) < 1e-9
+
+
+def test_a_short_history_repeats_its_oldest_frame_visibly() -> None:
+    times = np.array([0.0, 0.1])
+    indices, gaps = select_frame_indices(times)
+    assert indices == [0, 0, 0, 1]
+    assert gaps[0] > FRAME_TOLERANCE_S and gaps[-1] < 1e-9
+
+
+def test_jitter_within_tolerance_is_not_a_stand_in() -> None:
+    times = np.arange(20) * 0.1 + np.array([0.004 * (i % 2) for i in range(20)])
+    _, gaps = select_frame_indices(times)
+    assert max(gaps) < FRAME_TOLERANCE_S
+
+
+# ---- pose history -----------------------------------------------------------
+
+
+def _straight(n: int, speed: float, yaw: float, hz: float = 10.0):
+    """n recorded frames driving straight at `speed` along heading `yaw`."""
+    t = np.arange(n) / hz
+    poses = np.stack([speed * t * np.cos(yaw), speed * t * np.sin(yaw), np.full(n, yaw)], axis=1)
+    motion = np.tile([speed, 0.0, 0.0, 0.0], (n, 1))
+    return t, poses, motion
+
+
+def test_history_is_expressed_in_the_current_ego_frame() -> None:
+    """Driving north in the world must read as driving along +x for the model."""
+    t, poses, motion = _straight(20, speed=10.0, yaw=np.pi / 2)
+    history, velocity, acceleration = resample_history(t, poses, motion)
+    assert history.shape == (16, 3) and velocity.shape == (16, 2) and acceleration.shape == (16, 2)
+    np.testing.assert_allclose(history[:, 0], (np.arange(16) - 15) * HISTORY_DT * 10.0, atol=1e-9)
+    np.testing.assert_allclose(history[:, 1], 0.0, atol=1e-9)
+    np.testing.assert_allclose(history[:, 2], 0.0, atol=1e-9)
+    np.testing.assert_array_equal(history[-1], 0.0)
+    np.testing.assert_allclose(velocity[:, 0], 10.0)
+
+
+def test_a_left_turn_puts_the_past_behind_and_to_the_left_with_negative_heading() -> None:
+    """Past poses on a left turn had a smaller yaw than now, so their heading
+    relative to now is negative. The arc's centre is on the left, so the past
+    positions lie behind and to the LEFT of the current axis (y > 0) -- the
+    easy sign to get backwards, which is why it is pinned."""
+    t = np.arange(20) * 0.1
+    yaw = 0.3 * t  # a circle turned left at 0.3 rad/s and 10 m/s
+    radius = 10.0 / 0.3
+    poses = np.stack([radius * np.sin(yaw), radius * (1 - np.cos(yaw)), yaw], axis=1)
+    motion = np.tile([10.0, 0.0, 0.0, 0.0], (20, 1))
+    history, _, _ = resample_history(t, poses, motion)
+    assert (history[:-1, 2] < 0).all()
+    assert (history[:-1, 1] > 0).all()
+    assert (history[:-1, 0] < 0).all()
+
+
+def test_yaw_wraparound_does_not_spike_the_history() -> None:
+    t, poses, motion = _straight(20, speed=10.0, yaw=np.pi - 0.01)
+    poses[10:, 2] = -np.pi + 0.01  # the same heading, wrapped the other way
+    history, _, _ = resample_history(t, poses, motion)
+    assert np.abs(history[:, 2]).max() < 0.05
+
+
+def test_acceleration_is_differenced_when_the_source_records_none() -> None:
+    """KITScenes fills canbus with speed only."""
+    t = np.arange(20) * 0.1
+    poses = np.stack([0.5 * 2.0 * t**2, np.zeros(20), np.zeros(20)], axis=1)
+    motion = np.stack([2.0 * t, np.zeros(20), np.zeros(20), np.zeros(20)], axis=1)
+    _, velocity, acceleration = resample_history(t, poses, motion)
+    np.testing.assert_allclose(acceleration[:, 0], 2.0, atol=1e-6)
+    recorded = motion.copy()
+    recorded[:, 2] = 3.0
+    _, _, from_source = resample_history(t, poses, recorded)
+    np.testing.assert_allclose(from_source[:, 0], 3.0)
+
+
+def test_how_much_history_is_kept_does_not_decide_how_acceleration_is_derived() -> None:
+    """`KEEP_S` bounds memory. It must not also pick a modelling branch.
+
+    The decision "did the source record acceleration, or must it be differenced"
+    used to be read off the retained rows, so a stream whose source filled the
+    channel only in older records answered 2.0 trimmed and 0.0 untrimmed from
+    the same input. The policy now tracks it as records arrive.
     """
-    policy = POLICY()
-    _drive(policy, speed=10.0)
-    local, _, _ = _history(policy)
-    steps = np.hypot(np.diff(local[:, 0]), np.diff(local[:, 1]))
-    assert steps == pytest.approx(10.0 * HISTORY_DT, abs=0.01)
+    p = _policy()
+    accel = 2.0
+    for i in range(60):  # 6 s at 10 Hz, well past KEEP_S
+        obs = make_observation(i * 100_000, x=0.5 * accel * (i * 0.1) ** 2, speed=accel * i * 0.1)
+        # Only records well outside the retained window carry the accel channel,
+        # so every row the trimmed history can see has a zero there.
+        if i * 0.1 < 6.0 - KEEP_S - 1.0:
+            obs.canbus[CANBUS_ACCEL] = accel
+        p._record(obs)
+
+    assert p.source_has_accel is True, "the channel was populated, even if those rows are gone"
+    inputs = p.scene_inputs(Command.STRAIGHT)
+    # Trusted as recorded, which for the retained rows is 0.0 -- not differenced.
+    assert float(inputs["ego_acceleration"][0]) == 0.0
+
+    # And the sticky flag is per episode, not per process.
+    p.reset()
+    assert p.source_has_accel is False
 
 
-def test_a_left_turn_is_left_in_every_channel() -> None:
-    """The one sign that a mirrored adapter would still pass every other test.
+def test_a_source_that_never_records_acceleration_still_gets_it_differenced() -> None:
+    """KITScenes fills speed only; the differenced path must survive the change."""
+    p = _policy()
+    for i in range(30):
+        p._record(make_observation(i * 100_000, x=0.5 * 2.0 * (i * 0.1) ** 2, speed=2.0 * i * 0.1))
+    assert p.source_has_accel is False
+    inputs = p.scene_inputs(Command.STRAIGHT)
+    assert float(inputs["ego_acceleration"][0]) == pytest.approx(2.0, abs=1e-6)
 
-    Paddock's ego frame and Qwen-Drive's are both x forward, y left, so nothing
-    in this policy flips anything -- comma2k19's y-right device frame is
-    converted in the loader, before the observation exists. If a flip were
-    reintroduced here the plans would stay smooth and score roughly twice the
-    lateral error on every curve.
 
-    On a left-turning arc the car came from behind and to the *right* of where
-    it now points, so the recorded history sits at positive y with a negative
-    (clockwise-of-now) heading, and the lateral acceleration points left.
+def test_a_sparse_early_history_is_a_standing_start_not_a_crash() -> None:
+    t, poses, motion = _straight(1, speed=5.0, yaw=0.0)
+    history, velocity, acceleration = resample_history(t, poses, motion)
+    np.testing.assert_array_equal(history, 0.0)
+    np.testing.assert_allclose(velocity[:, 0], 5.0)
+    assert np.isfinite(acceleration).all()
+
+
+def test_pose_xy_yaw_reads_the_rotated_x_axis() -> None:
+    m = np.eye(4)
+    m[:2, :2] = [[0, -1], [1, 0]]
+    m[:3, 3] = [3.0, 4.0, 9.0]
+    np.testing.assert_allclose(pose_xy_yaw(m), [3.0, 4.0, np.pi / 2])
+
+
+# ---- commands ---------------------------------------------------------------
+
+
+def test_command_mapping_round_trips_navsims_one_hot() -> None:
+    assert (
+        NAV_COMMAND[Command.STRAIGHT] == 0
+        and NAV_COMMAND[Command.LEFT] == 1
+        and NAV_COMMAND[Command.RIGHT] == 2
+    )
+    assert DRIVING_COMMAND[Command.LEFT] == (1, 0, 0, 0)
+    assert DRIVING_COMMAND[Command.STRAIGHT] == (0, 1, 0, 0)
+    assert DRIVING_COMMAND[Command.RIGHT] == (0, 0, 1, 0)
+    assert DRIVING_COMMAND[Command.FOLLOW_REFERENCE] == (0, 0, 0, 1)
+    assert NAV_COMMAND[Command.FOLLOW_REFERENCE] == 0, "the text vocabulary has no 'unknown'"
+    assert set(NAV_COMMAND) == set(DRIVING_COMMAND) == set(Command)
+
+
+# ---- recording --------------------------------------------------------------
+
+
+def test_repeated_frames_are_recorded_once() -> None:
+    p = _policy()
+    for t in (0, 0, 0, 100_000, 100_000, 200_000):
+        p._record(make_observation(t))
+    assert p.timestamps == [0, 100_000, 200_000] and len(p.frames) == 3
+
+
+def test_old_records_are_dropped_without_changing_what_the_model_sees() -> None:
+    """Retention is bounded by time, because a record holds decoded pixels.
+
+    The model never reads past 1.5 s, so trimming to KEEP_S must leave the four
+    selected frames and the 16-pose history bit-for-bit what an untrimmed buffer
+    would have given. Checked here by asserting the selected frames land exactly
+    on the grid and the history spans exactly 1.5 s.
     """
-    policy = POLICY()
-    _drive(policy, speed=15.0, omega=+0.2)
-    local, _, acceleration = _history(policy)
-    assert local[0, 1] > 0.05, "history of a left turn lies to the left of the ego x axis"
-    assert local[0, 2] < -0.05, "the car was pointing right of its current heading"
-    assert acceleration[-1, 1] > 0.0, "centripetal acceleration in a left turn points left"
+    p = _policy()
+    for i in range(60):  # 6 s at 10 Hz, well past KEEP_S
+        p._record(make_observation(i * 100_000, x=i * 1.0))
 
-    right = POLICY()
-    _drive(right, speed=15.0, omega=-0.2)
-    mirrored, _, right_accel = _history(right)
-    assert mirrored[0, 1] < -0.05
-    assert mirrored[0, 2] > 0.05
-    assert right_accel[-1, 1] < 0.0
+    assert len(p.timestamps) <= int(KEEP_S * 10) + 1 < 60, "old records must be dropped"
+
+    inputs = p.scene_inputs(Command.STRAIGHT)
+    now = p.timestamps[-1] / 1e6
+    chosen = [p.timestamps[i] / 1e6 for i in inputs["frame_indices"]]
+    assert chosen == [now - 1.5, now - 1.0, now - 0.5, now]
+    assert max(inputs["frame_gaps_s"]) < 1e-9, "every slot lands on its own time"
+    assert inputs["history"].shape == (16, 3)
+    np.testing.assert_array_equal(inputs["history"][-1], 0.0)
+    # 1.5 s at 10 m/s: the oldest pose sits 15 m behind the current one.
+    assert inputs["history"][0][0] == pytest.approx(-15.0)
 
 
-def test_velocity_comes_from_the_odometer_not_a_difference() -> None:
-    """A one-sided difference at t=0 lags; the recorded speed does not.
+def test_a_slow_source_keeps_enough_frames_to_fill_four_slots() -> None:
+    """A 2 Hz source spans 1.5 s in four records; a 1 Hz one spans more than
+    KEEP_S. Neither may be trimmed below four, or a slot has nothing to take."""
+    p = _policy()
+    for i in range(6):
+        p._record(make_observation(i * 1_000_000))  # 1 Hz, 5 s of span
+    assert len(p.timestamps) >= NUM_CAM_FRAMES
+    indices, _ = select_frame_indices(np.array(p.timestamps) / 1e6)
+    assert len(indices) == NUM_CAM_FRAMES
 
-    t=0 is the sample the expert conditions on most strongly and the only one a
-    policy cannot centre a difference on, because the frames after it have not
-    happened.
+
+def test_the_record_count_is_capped_whatever_the_cadence() -> None:
+    p = _policy()
+    for i in range(MAX_RECORDED * 2):
+        p._record(make_observation(i * 1_000))  # 1 kHz: KEEP_S would keep them all
+    assert len(p.timestamps) == MAX_RECORDED
+
+
+def test_a_drifting_cadence_is_counted_even_though_no_frame_repeats() -> None:
+    """The quiet failure the tolerance exists for.
+
+    A source ticking at 0.2 s fills all four slots with distinct frames that are
+    each up to 0.1 s from the time they asked for, so `frames_repeated_total`
+    stays 0 while the history is not the 1.5 s the model was told it is.
     """
-    policy = POLICY()
-    _drive(policy, speed=27.5)
-    _, velocity, _ = _history(policy)
-    assert velocity[-1, 0] == pytest.approx(27.5, abs=1e-6)
-    assert velocity[-1, 1] == pytest.approx(0.0, abs=0.01), "no sideslip on a straight line"
-    assert policy._speed_source == "recorded"
+    p = _loaded()
+    for i in range(20):
+        p.observe(make_observation(i * 200_000, x=i * 2.0))  # 5 Hz
+    p.infer(make_observation(20 * 200_000, x=40.0))
+
+    d = p.diagnostics()
+    assert d["frames_repeated_total"] == 0, "distinct frames, so nothing repeats"
+    assert d["frames_off_grid_total"] > 0, "but they are not on the 0.5 s grid"
 
 
-def test_a_source_with_no_odometer_falls_back_to_the_poses() -> None:
-    """And says so, rather than reporting a moving car as parked.
+def test_a_missing_camera_is_a_clear_error() -> None:
+    p = _policy()
+    obs = make_observation(0)
+    obs.image_paths.pop("CAM_FRONT_LEFT")
+    with pytest.raises(KeyError, match="CAM_FRONT_LEFT"):
+        p._record(obs)
 
-    comma2k19 fills the speed slot from CAN; a benchmark that does not would
-    otherwise hand this model the one input the reference measured as
-    catastrophic to get wrong.
+
+def test_pixels_and_paths_are_both_kept_as_given() -> None:
+    p = _policy()
+    obs = make_observation(0)
+    pixels = np.zeros((4, 4, 3), np.uint8)
+    obs.image_paths.pop("CAM_FRONT")
+    obs.images["CAM_FRONT"] = pixels
+    p._record(obs)
+    assert p.frames[0]["CAM_FRONT"] is pixels
+    assert p.frames[0]["CAM_FRONT_LEFT"] == "/frames/CAM_FRONT_LEFT/0.jpg"
+
+
+def test_motion_is_read_at_the_protocols_declared_offsets() -> None:
+    """The CAN-bus layout is imported, not re-typed.
+
+    Built here through `CANBUS_VELOCITY` and `CANBUS_ACCEL` rather than through
+    13 and 7, so if the protocol ever renumbers the layout this test moves with
+    it and an adapter still reading channel 13 fails here instead of silently
+    conditioning its plan on whatever now sits there.
     """
-    policy = POLICY()
-    dt = 1.0 / SRC_HZ
-    for i in range(60):
-        policy.observe(_observation(i * dt, 18.0 * i * dt, 0.0, 0.0, speed=0.0))
-    _, velocity, _ = _history(policy)
-    assert policy._speed_source == "pose"
-    assert velocity[-1, 0] == pytest.approx(18.0, abs=0.2)
+    p = _policy()
+    obs = make_observation(0)
+    obs.canbus[:] = 0.0
+    obs.canbus[CANBUS_VELOCITY] = 7.5
+    obs.canbus[CANBUS_VELOCITY + 1] = -0.25
+    obs.canbus[CANBUS_ACCEL] = 1.5
+    obs.canbus[CANBUS_ACCEL + 1] = 0.75
+    p._record(obs)
+
+    inputs = p.scene_inputs(Command.STRAIGHT)
+    assert inputs["ego_velocity"] == (7.5, -0.25)
+    assert inputs["ego_acceleration"] == (1.5, 0.75)
 
 
-def test_braking_shows_up_as_negative_longitudinal_acceleration() -> None:
-    policy = POLICY()
-    dt, x, speed = 1.0 / SRC_HZ, 0.0, 25.0
-    for i in range(80):
-        policy.observe(_observation(i * dt, x, 0.0, 0.0, speed))
-        x += speed * dt
-        speed = max(0.0, speed - 3.0 * dt)
-    _, _, acceleration = _history(policy)
-    assert acceleration[-1, 0] == pytest.approx(-3.0, abs=0.3)
+def test_a_renumbered_canbus_layout_moves_this_adapter_with_it(monkeypatch) -> None:
+    """The test above passes either way today, because CANBUS_VELOCITY is 13.
 
-
-def test_a_standstill_history_is_zero_rather_than_noise() -> None:
-    """The failure mode the reference's ablation named: it plans to stay put."""
-    policy = POLICY()
-    for i in range(60):
-        policy.observe(_observation(i / SRC_HZ, 0.0, 0.0, 0.0, 0.0))
-    local, velocity, acceleration = _history(policy)
-    assert np.allclose(local, 0.0, atol=1e-9)
-    assert np.allclose(velocity, 0.0, atol=1e-9)
-    assert np.allclose(acceleration, 0.0, atol=1e-9)
-
-
-def test_a_short_history_is_clipped_not_extrapolated() -> None:
-    """A sequence that starts 0.4 s ago must not invent 1.1 s of travel."""
-    policy = POLICY()
-    _drive(policy, n=9, speed=20.0)  # 0.4 s at 20 Hz
-    local, _, _ = _history(policy)
-    assert local[0, 0] == pytest.approx(-20.0 * 0.4, abs=0.05)
-    assert local[-1] == pytest.approx([0.0, 0.0, 0.0], abs=1e-9)
-
-
-def test_a_single_frame_still_produces_a_usable_scene() -> None:
-    """Closed-loop hands over one frame with no past. It must not raise."""
-    policy = POLICY()
-    policy.observe(_observation(0.0, 0.0, 0.0, 0.0, 12.0))
-    local, velocity, acceleration = _history(policy)
-    assert np.allclose(local, 0.0)
-    assert velocity[-1, 0] == pytest.approx(12.0)
-    assert np.all(np.isfinite(acceleration))
-
-
-def test_a_repeated_timestamp_is_dropped() -> None:
-    """np.interp needs a strictly increasing x, and a warm-up that clamps at the
-    start of a sequence hands the same frame over several times."""
-    policy = POLICY()
-    policy.observe(_observation(0.0, 0.0, 0.0, 0.0, 10.0))
-    policy.observe(_observation(0.0, 5.0, 0.0, 0.0, 10.0))
-    policy.observe(_observation(-1.0, 9.0, 0.0, 0.0, 10.0))
-    assert len(policy.timestamps) == 1
-
-
-def test_old_frames_are_dropped_and_their_pixels_released() -> None:
-    """160 observations at 3 MB each is half a gigabyte of images nobody reads."""
-    policy = POLICY()
-    first = _observation(0.0, 0.0, 0.0, 0.0, 10.0)
-    first.image_paths["CAM_FRONT"] = "/staged/frame.npy"
-    policy.observe(first)
-    first.image()  # force the decode cache
-    _drive(policy, n=HISTORY_KEEP + 20)
-    assert len(policy.frames) == HISTORY_KEEP
-    assert len(policy.timestamps) == HISTORY_KEEP
-    assert "CAM_FRONT" not in first.images
-
-
-def test_pixels_are_kept_where_there_is_no_path_to_read_them_back_from() -> None:
-    """An observation carrying pixels and no path holds the only copy.
-
-    Evicting that is not a cache eviction, it is a delete, and the next read
-    raises instead of decoding. `paddock verify` found it on the sibling
-    adapter: it infers, calls `reset()`, and infers again over the same
-    observation objects that the first pass had emptied. Closed-loop sends
-    pixels over the wire the same way.
+    This one does not: it renumbers the layout under the adapter and checks the
+    adapter follows. A hard-coded `canbus[13]` keeps reading the old channel and
+    fails here, which is the whole point of importing the constant.
     """
-    policy = POLICY()
-    held = _observation(0.0, 0.0, 0.0, 0.0, 10.0)
-    policy.observe(held)
-    _drive(policy, n=HISTORY_KEEP + 20)
-    assert held.image("CAM_FRONT").shape == _IMAGE.shape
+    from paddock.adapters.models.qwendrive import policy as mod
+
+    monkeypatch.setattr(mod, "CANBUS_VELOCITY", 3)
+    monkeypatch.setattr(mod, "CANBUS_ACCEL", 9)
+
+    p = _policy()
+    obs = make_observation(0)
+    obs.canbus[:] = 0.0
+    obs.canbus[3] = 11.0
+    obs.canbus[4] = 0.5
+    obs.canbus[9] = 2.0
+    obs.canbus[10] = -1.0
+    p._record(obs)
+
+    inputs = p.scene_inputs(Command.STRAIGHT)
+    assert inputs["ego_velocity"] == (11.0, 0.5)
+    assert inputs["ego_acceleration"] == (2.0, -1.0)
 
 
-# ---------------------------------------------------------------------------
-# views
-# ---------------------------------------------------------------------------
+def test_scene_inputs_from_a_10hz_stream() -> None:
+    p = _policy()
+    for i in range(20):
+        p._record(make_observation(i * 100_000, x=i * 1.0, speed=10.0))
+    inputs = p.scene_inputs(Command.LEFT)
+    assert inputs["frame_indices"] == [4, 9, 14, 19]
+    assert inputs["history"].shape == (16, 3)
+    assert inputs["ego_velocity"] == (10.0, 0.0)
+    assert inputs["driving_command"] == [1.0, 0.0, 0.0, 0.0] and inputs["nav_command"] == 1
 
 
-def test_replicate_fills_all_three_slots_with_the_true_forward_frame() -> None:
-    """DrivingScene raises on a missing view, so all three have to be filled.
+# ---- the infer path, with a stub model ------------------------------------
 
-    Measured rather than assumed: replicate scored 1.47/2.00 ADE against crop's
-    1.78/2.13. Each replicated view really is a forward camera, where a crop is
-    not a rotated one, and the model's learned cross-view extrinsics notice.
+
+class _StubModel:
+    def __init__(self, draws: int = 1):
+        self.draws = draws
+        self.calls: list[dict] = []
+
+    def generate_trajectory(self, scene, mode, num_samples, seed):
+        self.calls.append({"scene": scene, "mode": mode, "num_samples": num_samples, "seed": seed})
+        t = (np.arange(OUTPUT_POINTS) + 1) * 0.1
+        one = np.stack([10.0 * t, np.zeros_like(t), np.zeros_like(t)], axis=1)
+        return NS(trajectories=np.stack([one] * self.draws), reasoning=None)
+
+
+def _loaded(draws: int = 1) -> POLICY:
+    p = _policy()
+    p.model = _StubModel(draws)
+    p._mode = "direct_planning"
+    p._scene = lambda obs, inputs: inputs  # no qwen_drive in this env
+    return p
+
+
+def test_infer_obeys_the_contract() -> None:
+    p = _loaded()
+    p.reset()
+    for i in range(20):
+        p.observe(make_observation(i * 100_000, x=i * 1.0))
+    traj = p.infer(make_observation(20 * 100_000, x=20.0))
+    assert isinstance(traj, Trajectory) and traj.dt == 0.5
+    assert traj.waypoints.shape == (10, 3)
+    np.testing.assert_allclose(traj.xy[:, 0], [5, 10, 15, 20, 25, 30, 35, 40, 45, 50])
+    assert np.isfinite(traj.waypoints).all()
+    assert not np.allclose(traj.xy, 0.0)
+    assert p.model.calls[0]["num_samples"] == 1
+
+
+def test_several_draws_execute_the_medoid() -> None:
+    p = _loaded(draws=3)
+    p.num_samples = 3
+    traj = p.infer(make_observation(0))
+    assert traj.waypoints.shape == (10, 3)
+
+
+def test_infer_sequence_records_the_history_and_runs_the_model_once() -> None:
+    p = _loaded()
+    frames = [make_observation(i * 500_000, x=i * 5.0) for i in range(4)]
+    traj = p.infer_sequence(frames)
+    assert len(p.model.calls) == 1, "exactly one forward pass, on the scored frame"
+    assert p.timestamps == [f.timestamp_us for f in frames]
+    assert p.self_prime is True
+    assert traj.waypoints.shape == (10, 3)
+
+
+def test_diagnostics_report_cadence_and_stand_ins() -> None:
+    p = _loaded()
+    assert p.diagnostics() == {"status": "no frame seen yet"}
+    p.infer(make_observation(0))
+    p.infer(make_observation(100_000))
+    d = p.diagnostics()
+    assert d["request_dt_s"] == 0.1
+    assert d["frames_repeated_total"] == 3 + 2, "one frame fills four slots, then two fill four"
+    assert d["last_command"] == "STRAIGHT" and d["infer_seconds_mean"] is not None
+
+
+# ---- filling three view slots from one camera ------------------------------
+
+
+def _mono(t_us: int, **kwargs) -> Observation:
+    """One observation from a source with a road camera and nothing else."""
+    obs = make_observation(t_us, **kwargs)
+    for camera in CAMERAS[1:]:
+        obs.image_paths.pop(camera)
+        obs.camera2image.pop(camera)
+        obs.camera2ego.pop(camera)
+    return obs
+
+
+def test_a_monocular_mode_declares_the_one_camera_it_reads() -> None:
+    """`cameras` is what a simulator renders and what `paddock verify` checks a
+    benchmark can supply, so it has to follow the view mode rather than stay at
+    the three the model was trained on."""
+    assert tuple(_policy(views="ring").cameras) == CAMERAS
+    for mode in ("replicate", "crop"):
+        assert tuple(_policy(views=mode).cameras) == (NEEDED_CAMERAS[0],)
+
+
+def test_an_unknown_view_mode_is_refused_at_construction() -> None:
+    with pytest.raises(ValueError, match="QWENDRIVE_VIEWS"):
+        _policy(views="stereo")
+    assert set(VIEW_MODES) == {"ring", "replicate", "crop"}
+
+
+def test_the_view_mode_comes_from_the_environment(monkeypatch) -> None:
+    monkeypatch.delenv("QWENDRIVE_VIEWS", raising=False)
+    assert POLICY().views == "ring"
+    monkeypatch.setenv("QWENDRIVE_VIEWS", "replicate")
+    assert POLICY().views == "replicate"
+
+
+def test_a_monocular_source_records_without_a_missing_camera_error() -> None:
+    """The same observation that `ring` refuses, `replicate` accepts. Both are
+    right: the refusal is what stops a ring model reading a third of its input
+    and calling the result a number."""
+    p = _policy(views="replicate")
+    p._record(_mono(0))
+    assert p.frames[0] == {"CAM_FRONT": "/frames/CAM_FRONT/0.jpg"}
+    with pytest.raises(KeyError, match="CAM_FRONT_LEFT"):
+        _policy(views="ring")._record(_mono(0))
+
+
+def test_crop_boxes_are_overlapping_thirds_of_one_frame() -> None:
+    size = (1164, 874)
+    left = crop_box(size, "<FRONT LEFT VIEW>")
+    front = crop_box(size, "<FRONT VIEW>")
+    right = crop_box(size, "<FRONT RIGHT VIEW>")
+    widths = {box[2] - box[0] for box in (left, front, right)}
+    assert widths == {int(1164 * CROP_SPAN)}, "one width, so the three read at one scale"
+    assert all(box[1] == 0 and box[3] == 874 for box in (left, front, right)), "full height"
+    assert left[0] == 0 and right[2] == 1164, "the sides keep the shoulders"
+    assert left[2] > front[0] and right[0] < front[2], "and overlap the centre"
+    assert front[0] + front[2] == 1164, "which keeps the vanishing point centred"
+
+
+class _FakeQwenDrive:
+    """Just enough of the vendor package to build a scene without importing it.
+
+    `_scene` is the one method the other tests stub out, and it is where the
+    view slots are actually filled -- so it gets a fake rather than a skip.
     """
-    image = Image.fromarray(_IMAGE)
-    views = synthesize_views(image, "replicate")
-    assert set(views) == set(CAMERA_VIEWS)
-    assert all(v is image for v in views.values())
+
+    class CameraFrame:
+        def __init__(self, image, target_size=None):
+            self.image = image
+            self.target_size = target_size
+
+    class DrivingScene:
+        def __init__(self, views, token="", **rest):
+            self.views = views
+            self.token = token
+            self.rest = rest
 
 
-def test_crop_gives_three_overlapping_thirds_of_the_same_width() -> None:
-    views = synthesize_views(Image.fromarray(np.zeros((16, 100, 3), np.uint8)), "crop")
-    assert set(views) == set(CAMERA_VIEWS)
-    assert {v.size for v in views.values()} == {(55, 16)}
+@pytest.fixture
+def qwen_drive(monkeypatch):
+    import sys
+
+    monkeypatch.setitem(sys.modules, "qwen_drive", _FakeQwenDrive)
+    return _FakeQwenDrive
 
 
-def test_frames_are_decoded_only_when_the_processor_asks() -> None:
-    """comma2k19 sends 160 frames and the model looks at four.
-
-    Those frames are PNGs and the decode is the dominant cost on this
-    benchmark; decoding on record would spend it on frames read for their pose
-    alone.
-    """
-    policy = POLICY()
-    _drive(policy, n=40)
-    assert all(frame._views is None for frame in policy.frames)
-    loader = policy.frames[-1].loader(CAMERA_VIEWS[0])
-    assert policy.frames[-1]._views is None, "building the loader must not decode"
-    assert loader().size == (40, 16)
+def _scene_of(policy: POLICY, obs: Observation):
+    policy._record(obs)
+    return policy._scene(obs, policy.scene_inputs(obs.command))
 
 
-def test_view_frames_are_chosen_by_timestamp_not_by_index() -> None:
-    """comma2k19's camera runs at 19.93 Hz, not 20.
-
-    Index arithmetic drifts about 0.2 s over a one-minute segment, which is
-    comparable to the 0.5 s spacing the prompt tells the model these frames
-    have.
-    """
-    policy = POLICY()
-    dt = 1.0 / 19.93
-    for i in range(60):
-        policy.observe(_observation(i * dt, 20.0 * i * dt, 0.0, 0.0, 20.0))
-    frames, ages = policy._view_frames()
-    assert len(frames) == len(VIEW_OFFSETS_S)
-    assert ages == pytest.approx(list(VIEW_OFFSETS_S), abs=dt)
-    assert ages[0] > ages[-1], "oldest first, matching the t-1.5s .. t-0s labels"
+def test_replicate_puts_the_true_forward_frame_in_all_three_slots(qwen_drive) -> None:
+    """Measured against the alternative: 1.47 / 2.00 ADE on comma2k19's city and
+    highway segments, against crop's 1.78 / 2.13."""
+    scene = _scene_of(_policy(views="replicate"), _mono(0))
+    assert sorted(scene.views) == ["<FRONT LEFT VIEW>", "<FRONT RIGHT VIEW>", "<FRONT VIEW>"]
+    sources = {frame.image for frames in scene.views.values() for frame in frames}
+    assert sources == {"/frames/CAM_FRONT/0.jpg"}, "the path, unopened: the processor decides when"
 
 
-# ---------------------------------------------------------------------------
-# the navigation command
-# ---------------------------------------------------------------------------
+def test_crop_defers_the_decode_and_cuts_the_slot_it_was_asked_for(qwen_drive, tmp_path) -> None:
+    """A loader, not an image. comma2k19 hands over 160 frames and the model
+    reads four; opening on scene build would decode all of them."""
+    from PIL import Image
+
+    path = tmp_path / "frame.png"
+    Image.new("RGB", (1164, 874), (10, 20, 30)).save(path)
+    obs = _mono(0)
+    obs.image_paths["CAM_FRONT"] = str(path)
+
+    scene = _scene_of(_policy(views="crop"), obs)
+    for view, frames in scene.views.items():
+        assert all(callable(frame.image) for frame in frames), "nothing opened yet"
+        cut = frames[-1].image()
+        assert cut.size == (int(1164 * CROP_SPAN), 874)
+        assert cut.tobytes() == Image.open(path).convert("RGB").crop(crop_box((1164, 874), view)).tobytes()
 
 
-def test_the_command_mapping_matches_the_model_s_vocabulary() -> None:
-    """Cross-checked against the released Waymo scene files, where a left turn
-    has future y = +11.98 m and a right turn y = -11.0 m.
+def test_a_staged_raw_frame_is_read_as_an_array_and_still_deferred(qwen_drive, tmp_path) -> None:
+    """comma2k19 stages `.npy`, because PNG decode was 59% of a node's wall
+    clock. PIL cannot open one, so the path cannot go through as a path -- but
+    it must still not be read until the processor asks for it."""
+    pixels = np.random.default_rng(0).integers(0, 255, (874, 1164, 3), dtype=np.uint8)
+    path = tmp_path / "000966.npy"
+    np.save(path, pixels)
+    obs = _mono(0)
+    obs.image_paths["CAM_FRONT"] = str(path)
 
-    The one-hot is [left, straight, right, unknown] and the index selects from
-    NAV_COMMANDS = ("GO STRAIGHT", "TURN LEFT", "TURN RIGHT") -- two different
-    orderings of the same three things, which is exactly the kind of pair that
-    gets crossed.
-    """
-    assert COMMANDS[Command.STRAIGHT] == (0, (0.0, 1.0, 0.0, 0.0))
-    assert COMMANDS[Command.LEFT] == (1, (1.0, 0.0, 0.0, 0.0))
-    assert COMMANDS[Command.RIGHT] == (2, (0.0, 0.0, 1.0, 0.0))
-
-
-def test_every_command_a_benchmark_can_send_is_mapped() -> None:
-    """A KeyError here would be a crash mid-sweep on the first junction."""
-    assert set(COMMANDS) == {int(c) for c in Command}
+    scene = _scene_of(_policy(views="replicate"), obs)
+    for frames in scene.views.values():
+        assert all(callable(frame.image) for frame in frames), "nothing read yet"
+        assert np.array_equal(np.asarray(frames[-1].image()), pixels)
 
 
-def test_follow_reference_reads_as_go_straight() -> None:
-    """The default for a source with no route, which is what comma2k19 is."""
-    assert COMMANDS[Command.FOLLOW_REFERENCE] == COMMANDS[Command.STRAIGHT]
+def test_a_ring_source_still_gets_one_real_camera_per_slot(qwen_drive) -> None:
+    scene = _scene_of(_policy(views="ring"), make_observation(0))
+    assert {view: frames[-1].image for view, frames in scene.views.items()} == {
+        "<FRONT VIEW>": "/frames/CAM_FRONT/0.jpg",
+        "<FRONT LEFT VIEW>": "/frames/CAM_FRONT_LEFT/0.jpg",
+        "<FRONT RIGHT VIEW>": "/frames/CAM_FRONT_RIGHT/0.jpg",
+    }
 
 
-# ---------------------------------------------------------------------------
-# small numerics
-# ---------------------------------------------------------------------------
-
-
-def test_angles_interpolate_through_the_wrap() -> None:
-    """Linear interpolation of the angle itself turns a crossing of +-pi into
-    most of a lap, which on a 10 Hz history reads as a spin that never happened."""
-    source = np.array([0.0, 1.0])
-    angle = np.array([3.0, -3.0])  # 0.28 rad apart across the wrap
-    out = interp_angle(np.array([0.5]), source, angle)
-    assert abs(wrap_angle(out - np.pi))[0] < 0.01
-
-
-def test_smoothing_preserves_a_ramp_and_its_endpoints() -> None:
-    """The edges continue the slope rather than tapering to the last value.
-
-    Edge replication -- the obvious padding -- cost a third of a steady
-    deceleration at t=0, which is the sample the expert plans from. This is the
-    test that caught it.
-    """
-    ramp = np.arange(10, dtype=float)
-    assert smooth(ramp, 3) == pytest.approx(ramp)
-    assert smooth(-2.5 * ramp, 3) == pytest.approx(-2.5 * ramp)
-
-
-def test_diagnostics_before_the_first_frame_do_not_raise() -> None:
-    diag = POLICY().diagnostics()
-    assert diag["status"] == "no frame seen yet"
-    assert diag["view_mode"] == "replicate"
-
-
-def test_diagnostics_expose_the_pose_speed_beside_the_recorded_one() -> None:
-    """The reference's own conversion check, kept as a live one.
-
-    A disagreement here means the pose frame, the timestamps and the odometer
-    are not describing the same motion -- and every one of those errors
-    produces a smooth, plausible, wrong trajectory.
-    """
-    policy = POLICY()
-    _drive(policy, speed=22.0)
-    policy._scene  # noqa: B018 - the scene needs qwen_drive; diagnostics do not
-    diag = policy.diagnostics()
-    assert diag["speed_recorded"] == pytest.approx(22.0)
-    assert diag["speed_pose"] == pytest.approx(22.0, rel=0.02)
-    assert diag["history_span_s"] == pytest.approx(59 / SRC_HZ, abs=0.01)
-    assert diag["nav_command"] == "GO STRAIGHT"
+def test_diagnostics_name_the_view_mode_and_the_cameras_it_implies() -> None:
+    p = _loaded()
+    p.views = "replicate"
+    p.cameras = (NEEDED_CAMERAS[0],)
+    p.infer(_mono(0))
+    d = p.diagnostics()
+    assert d["views"] == "replicate" and d["cameras"] == ["CAM_FRONT"]

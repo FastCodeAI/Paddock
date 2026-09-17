@@ -17,20 +17,20 @@ narrative half: provenance, licences, and the things that do not fit a schema.
 
 ## Inputs
 
-| | Drive-JEPA | Alpamayo 1.5 | OpenPilot | VisionPilot | METEOR | Qwen-Drive 1.0 | AutoE2E ᵘ |
+| | Drive-JEPA | Alpamayo 1.5 | OpenPilot | VisionPilot | METEOR | AutoE2E ᵘ | Qwen-Drive 1.0 |
 |---|---|---|---|---|---|---|---|
-| **Camera views @ freq** | 1 front, 2 frames (t, t−1) | 4 (front_left, front_wide, front_right, front_tele); rig is 7-cam. AR1 paper used 2 | 2 (road + wide), 2 frames, 20 Hz | 1 mono front, 52–55° HFOV, 1–2 MP, 10+ Hz on Orin | 8 surround (front/back wide, front/back narrow, 4 corners), single frame; paddock fills 6 of the 8 | 3 view slots (front/left/right) x 4 timesteps = 12 images, 10 Hz. comma2k19 has one camera, so paddock replicates the front frame into both side slots -- `DrivingScene` raises on a missing view | 7 surround, 10 Hz |
-| **Per-camera input** | 512×256 | 448×280 (→160 tokens/img); triplane tokenizer fixes 288 tokens/timestep regardless of camera count | 512×256 (medmodel); 1024×512 (bigmodel) | 1024×512 (2:1) all three nets; AutoDrive adds a 50° centre crop | 768×432 uint8 RGB | native source resolution, unchanged: frames carry no `target_size`, so the processor snaps them to its own patch budget and keeps the aspect ratio | 256×256 |
-| **Other inputs** | ego state (NAVSIM protocol) | text prompt; egomotion history (3D translation + 9D rotation, multi-timestep); optional route | desire/nav command, 512-d feature history. **No speed channel at all** | vehicle speed | ego speed; optional LiDAR raster / SD map / driving command in the checkpoint, none in the released ONNX | 16-pose ego history @ 10 Hz (1.5 s) with body-frame velocity and acceleration; a nav-command string; in `reasoning_planning`, its own one-sentence rationale | rendered BEV nav-map tile; 256-d egomotion history (6.4 s @ 10 Hz); 896-d visual memory (64×14); camera projection operator |
+| **Camera views @ freq** | 1 front, 2 frames (t, t−1) | 4 (front_left, front_wide, front_right, front_tele); rig is 7-cam. AR1 paper used 2 | 2 (road + wide), 2 frames, 20 Hz | 1 mono front, 52–55° HFOV, 1–2 MP, 10+ Hz on Orin | 8 surround (front/back wide, front/back narrow, 4 corners), single frame; paddock fills 6 of the 8 | 7 surround, 10 Hz | 3 (front, front-left, front-right), 4 frames each 0.5 s apart. `DrivingScene` refuses a missing view, so a monocular source (comma2k19) replicates its road camera into both side slots -- `QWENDRIVE_VIEWS`, and the policy re-declares `cameras` to match |
+| **Per-camera input** | 512×256 | 448×280 (→160 tokens/img); triplane tokenizer fixes 288 tokens/timestep regardless of camera count | 512×256 (medmodel); 1024×512 (bigmodel) | 1024×512 (2:1) all three nets; AutoDrive adds a 50° centre crop | 768×432 uint8 RGB | 256×256 | pixel budget on a 32 px grid: current ~720p (921,600 px), history ~320p (174,080 px) |
+| **Other inputs** | ego state (NAVSIM protocol) | text prompt; egomotion history (3D translation + 9D rotation, multi-timestep); optional route | desire/nav command, 512-d feature history. **No speed channel at all** | vehicle speed | ego speed; optional LiDAR raster / SD map / driving command in the checkpoint, none in the released ONNX | rendered BEV nav-map tile; 256-d egomotion history (6.4 s @ 10 Hz); 896-d visual memory (64×14); camera projection operator | 16 ego poses @10 Hz (1.5 s) + velocity + acceleration; ego status [v, a, one-hot command]; nav command in the prompt |
 
 ## Outputs and architecture
 
-| | Drive-JEPA | Alpamayo 1.5 | OpenPilot | VisionPilot | METEOR | Qwen-Drive 1.0 | AutoE2E ᵘ |
+| | Drive-JEPA | Alpamayo 1.5 | OpenPilot | VisionPilot | METEOR | AutoE2E ᵘ | Qwen-Drive 1.0 |
 |---|---|---|---|---|---|---|---|
-| **Output @ freq** | trajectory from an 8192-entry anchor vocabulary | trajectory @ 6.4 s + chain-of-causation trace; 99 ms end-to-end | 33 waypoints over 10 s @ 20 Hz + lane lines/lead | AutoSteer: ego-path waypoints in camera coords, **no time parameterisation**; AutoSpeed: CIPO boxes (3 classes); AutoDrive: CIPO distance + curvature + presence prob | K=3 × 6 waypoints @ 0.5 s (3 s) + mode logits + steer/accel/brake; plus 11 perception heads | 50 waypoints (x, y, heading) over 5 s @ 10 Hz, from a flow-matching sampler; plus the rationale and, unused here, 3D detection / occupancy / BEV-map heads | 128-d = 64 steps × (accel, curvature), 6.4 s @ 10 Hz |
-| **Architecture** | V-JEPA-2-init ViT-L encoder + proposal-centric planner; MTD + momentum-aware selection | Cosmos-Reason2 + diffusion trajectory decoder (AR1: Cosmos-Reason VLM + traj decoder) | supercombo, a single ONNX graph | 3 separate conv nets, all YOLO-family 'n' variant | ResNet-34 + FPN per camera, depth-gated IPM lift to one 800×500 BEV @ 0.2 m, 12 task heads + refiners (`DepthSegIPMNetV52`) | Qwen3.5-4B VLM shared by three attached modules: a BEV perception head, a flow-matching planning expert, and the unmodified LLM decoder for VQA | SwinV2-T or ConvNextV2-T + fusion (concat / cross-attn / BEV) + planner GRU |
-| **Parameters** | 307 M (encoder + planner) | **10 B** (34 B for Super) | not published | **28.1 M** — AutoSteer 8.22 + AutoSpeed 9.33 + AutoDrive 10.58 ᵐ | 54 M (refiner incl.) ᵖ | **5.58 B** (loaded VLM + expert, counted from the checkpoint) | 35.3 M (concat/cross-attn); 69.7 M (BEV, default) |
-| **Size** | 1.23 GB fp32 / 0.61 fp16 ᶜ | 20 GB bf16 ᶜ | **0.061 GB** (`driving_supercombo.onnx`); 1.76 GB big variant; 0.0075 GB dmonitoring ᵐ | 0.112 GB fp32 / 0.028 INT8 ᵐ | 0.35 GB fp32 ONNX ᵐ; 2:4 sparse trunk | 13 GB bf16 ᶜ | 0.141 / 0.279 GB fp32 ᶜ |
+| **Output @ freq** | trajectory from an 8192-entry anchor vocabulary | trajectory @ 6.4 s + chain-of-causation trace; 99 ms end-to-end | 33 waypoints over 10 s @ 20 Hz + lane lines/lead | AutoSteer: ego-path waypoints in camera coords, **no time parameterisation**; AutoSpeed: CIPO boxes (3 classes); AutoDrive: CIPO distance + curvature + presence prob | K=3 × 6 waypoints @ 0.5 s (3 s) + mode logits + steer/accel/brake; plus 11 perception heads | 128-d = 64 steps × (accel, curvature), 6.4 s @ 10 Hz | 50 poses (x, y, heading) @10 Hz, 5 s; optional one-sentence rationale |
+| **Architecture** | V-JEPA-2-init ViT-L encoder + proposal-centric planner; MTD + momentum-aware selection | Cosmos-Reason2 + diffusion trajectory decoder (AR1: Cosmos-Reason VLM + traj decoder) | supercombo, a single ONNX graph | 3 separate conv nets, all YOLO-family 'n' variant | ResNet-34 + FPN per camera, depth-gated IPM lift to one 800×500 BEV @ 0.2 m, 12 task heads + refiners (`DepthSegIPMNetV52`) | SwinV2-T or ConvNextV2-T + fusion (concat / cross-attn / BEV) + planner GRU | Qwen3.5-4B VLM (unchanged) + 1 B flow-matching Planning Expert reading its KV caches; separate BEV perception head |
+| **Parameters** | 307 M (encoder + planner) | **10 B** (34 B for Super) | not published | **28.1 M** — AutoSteer 8.22 + AutoSpeed 9.33 + AutoDrive 10.58 ᵐ | 54 M (refiner incl.) ᵖ | 35.3 M (concat/cross-attn); 69.7 M (BEV, default) | **5.58 B** (4.54 B VLM + 1.04 B expert, counted from the checkpoint; the 125 M perception head is not loaded for planning) |
+| **Size** | 1.23 GB fp32 / 0.61 fp16 ᶜ | 20 GB bf16 ᶜ | **0.061 GB** (`driving_supercombo.onnx`); 1.76 GB big variant; 0.0075 GB dmonitoring ᵐ | 0.112 GB fp32 / 0.028 INT8 ᵐ | 0.35 GB fp32 ONNX ᵐ; 2:4 sparse trunk | 0.141 / 0.279 GB fp32 ᶜ | 9.1 GB VLM + 2.1 GB per planner, bf16 ᶜ |
 
 Note the four-order-of-magnitude spread in the size row, and then read the
 neuroNCAP column of the support matrix, where the top three are statistically
@@ -38,11 +38,11 @@ indistinguishable.
 
 ## Availability
 
-| | Drive-JEPA | Alpamayo 1.5 | OpenPilot | VisionPilot | METEOR | Qwen-Drive 1.0 | AutoE2E ᵘ |
+| | Drive-JEPA | Alpamayo 1.5 | OpenPilot | VisionPilot | METEOR | AutoE2E ᵘ | Qwen-Drive 1.0 |
 |---|---|---|---|---|---|---|---|
-| **Training code** | yes | yes (Apache-2.0) | **no** — comma trains offline and ships weights | yes | yes (Apache-2.0), + autolabel factory | **no** -- inference and evaluation scripts only | yes |
-| **Inference code** | yes | yes, + AlpaSim integration | yes (`modeld`, MIT) | yes (Python + C++, ONNX Runtime/TensorRT, ROS2/Zenoh) | yes (Python + C++ TensorRT runtimes; plain ONNX runs in onnxruntime) | yes (Apache-2.0) | yes |
-| **Checkpoints** | yes (HF) | yes — `nvidia/Alpamayo-R1-10B`, `nvidia/Alpamayo-1.5-10B`. **OpenMDW-1.1, non-commercial**; commercial on request | yes — git-LFS in repo, MIT | yes — `.pth` + ONNX fp32 + ONNX INT8, **Apache-2.0, commercial OK** | yes — `AutowareFoundation/meteor` (`.pt` + ONNX), **Apache-2.0** | yes -- `Qwen/Qwen-Drive-1.0-4B` on HF and ModelScope, **Apache-2.0** | **none** |
+| **Training code** | yes | yes (Apache-2.0) | **no** — comma trains offline and ships weights | yes | yes (Apache-2.0), + autolabel factory | yes | **no** — inference code only |
+| **Inference code** | yes | yes, + AlpaSim integration | yes (`modeld`, MIT) | yes (Python + C++, ONNX Runtime/TensorRT, ROS2/Zenoh) | yes (Python + C++ TensorRT runtimes; plain ONNX runs in onnxruntime) | yes | yes (Apache-2.0) |
+| **Checkpoints** | yes (HF) | yes — `nvidia/Alpamayo-R1-10B`, `nvidia/Alpamayo-1.5-10B`. **OpenMDW-1.1, non-commercial**; commercial on request | yes — git-LFS in repo, MIT | yes — `.pth` + ONNX fp32 + ONNX INT8, **Apache-2.0, commercial OK** | yes — `AutowareFoundation/meteor` (`.pt` + ONNX), **Apache-2.0** | **none** | yes — `Qwen/Qwen-Drive-1.0-4B` (VLM + planner-sft + planner-rl + perception), **Apache-2.0, commercial OK** |
 
 The licence row is the one to read before planning a product. Alpamayo's weights
 are non-commercial by default; VisionPilot's and OpenPilot's are not.
@@ -56,16 +56,15 @@ are non-commercial by default; VisionPilot's and OpenPilot's are not.
 | **OpenPilot** | comma internal fleet: 400 k × 1-min segments ≈ 6,670 h @5 Hz, not released | on-policy rollouts in reprojective sim + world model; fleet deployment, 500 users, 87 k trips |
 | **VisionPilot** | OpenLane (AutoSpeed CIPO); TuSimple + OpenLane + CurveLanes (AutoSteer); AutoDrive warm-starts from the AutoSpeed backbone | none — single-stage supervised |
 | **METEOR** | TIER IV Co-MLOps DRS recordings (Japan + a US subset), 953 GB / 12,595 scenes @ 5 Hz, 100 % auto-labelled; adverse conditions as Cosmos Transfer re-renders | rule-based trajectory rewards + GRPO mode loss (r48) |
-| **Qwen-Drive 1.0** | **not stated.** The released card names no public driving corpus and the checkout carries no training manifest — only "multiple public driving datasets", standardised into one waypoint representation, alongside general-purpose vision-language data | staged: perception + language + planning objectives; `planner-sft` is the imitation-trained expert, `planner-rl` the same expert after reward training |
 | **AutoE2E** ᵘ | KITScenes (unconfirmed) | not documented |
+| **Qwen-Drive 1.0** | Qwen3.5-4B's own corpus; driving VQA, perception and planning data from public datasets (report §data); trajectories "standardized from multiple public driving datasets" — **NAVSIM `navtrain`** (declared), Waymo E2E, NVIDIA PhysicalAI | planner-rl: reward optimisation on the benchmark objectives; paddock runs planner-sft |
 
 ---
 
 ## What this changes about reading the support matrix
 
-One model has *declared* training exposure to a benchmark's own dataset, and one
-declares nothing at all. The score table cannot show either, and both change how
-a column should be read.
+One of the four models has training exposure to a benchmark's own dataset. The
+score table cannot show that, and it changes how one column should be read.
 
 **Every such pair gets its own section here**, named for the model and the
 dataset. `test_training_on_a_benchmarks_own_dataset_is_documented` requires one
@@ -124,6 +123,34 @@ recipe; there is no CARLA training script, config or doc. It is therefore
 adapter is run — should not be labelled on the strength of it. Worth resolving
 before that sweep, not after.
 
+### Qwen-Drive 1.0 × navsim
+
+**Qwen-Drive's NAVSIM number is in-distribution, and it is the number the
+vendor chose as its headline.** The technical report standardises trajectories
+from several public driving datasets into one waypoint representation and
+reports NAVSIM v1.1 navtest PDMS (87.8 sft direct, 88.2 sft reasoning, 90.7 rl)
+alongside Waymo E2E and NVIDIA PhysicalAI; a model reporting navtest as its
+first planning result trained on `navtrain`, and `trained_on` declares that.
+The NAVSIM frames, cameras (`cam_f0/l0/r0`) and 10 Hz ego history paddock feeds
+it are the ones its own scene files are built from, so on this column it plays
+the benchmark as designed, like Drive-JEPA, while Alpamayo, OpenPilot and
+VisionPilot meet navtest zero-shot.
+
+**What is not sourced.** The exact split list is not in the inference repo:
+`docs/data.md` describes building navtest scene files, and the report's data
+section names the datasets rather than the splits. `navtrain` is the honest
+assumption, not a citation; if the report turns out to state otherwise, the
+declaration in `adapters/models/qwendrive/model.yaml` is the one line to change.
+
+KITScenes, neuroNCAP (nuScenes, rendered) and comma2k19 are zero-shot for this
+model, and its KITScenes cameras sit at wider bearings and field of view than
+the nuPlan rig it was trained on (see [qwendrive.md](qwendrive.md)). comma2k19
+is the unequal column in a different way: nothing in the corpus is a
+windscreen-mounted mono camera on a Californian highway, and paddock has to
+replicate that one frame into three view slots for the model to read it at all.
+Second place on that board is therefore a claim about a model driven outside
+both its rig and its domain.
+
 ### AutoE2E × kitscenes — unconfirmed, and not yet a paddock model
 
 AutoE2E's pre-training row reads KITScenes, marked unconfirmed. If it is right,
@@ -154,41 +181,19 @@ of ADE was the missing cameras. Read the KITScenes cell as "the released model,
 on a rig and a domain it never saw", which is the same caveat the other rows
 carry in different proportions.
 
-### Qwen-Drive × everything — the corpus is not stated, so nothing can be ruled out
+### METEOR × navsim — a 3 s planner on a 4 s benchmark
 
-Qwen-Drive's `trained_on` is `not-stated`, and that is a finding rather than a
-gap in this page. The released card names no public driving corpus — only
-"multiple public driving datasets" standardised into one waypoint
-representation — and the checkout carries no training manifest, no training
-code, and no data config. The useful claim would be "none of paddock's
-benchmarks", and nothing in the release supports it.
-
-So the comma2k19 row cannot be called zero-shot. comma2k19 is an unusual case in
-its favour — it is a pose-estimation dataset whose video is one Californian
-highway, not a standard planning corpus, and it appears in no public
-E2E-planning training recipe we can find — but "unlikely" is not "declared", and
-the only honest label is *unknown*. Two things follow. `trained_on: not-stated`
-stays as it is, rather than being filled in with a plausible list; and the
-demo scenes bundled with the checkout being Waymo Open Dataset format is
-evidence about the input format the model expects, not about what it saw.
-
-The paper's own table reports a Waymo Open Dataset E2E **test** result, which is
-an evaluation, not a declaration of training data. Do not read it as one.
-
-### Drive-JEPA (perception-free) × comma2k19 — zero-shot on the data, not on the domain
-
-The `drivejepa_free` row is genuinely zero-shot with respect to comma2k19: the
-perception-free agent is a NAVSIM v1 model, trained on nuPlan-derived data, and
-comma2k19 is neither. What the row should not be read as is *domain*
-transfer-free. It was trained on urban and suburban driving at nuPlan speeds,
-and its 4 s reach saturates around 64 m — roughly 16 m/s — while I-280 runs at
-about 30 m/s.
-
-That is a training-domain speed prior, and it dominates its raw ADE. The
-benchmark reports `lateral_at_arclength_mae` and `path_length_ratio` beside ADE
-precisely so this is legible rather than mysterious: the path is close to right
-and the distance along it is not. Read the comma2k19 cell with that in mind, and
-see the README's footnote on the row.
+The other unequal term, and it runs the same way as the camera one. NAVSIM
+scores four seconds; METEOR's checkpoint plans three. Paddock will not quietly
+extrapolate, so the run declared `METEOR_HORIZON_S=4.0` and the last second of
+every plan is its final 0.5 s segment continued — one quarter of the scored
+horizon, recorded in `run.json`. The columns that read the far end of the plan
+are where it falls to the constant-velocity floor: lane keeping 0.795 against
+the floor's 0.827, extended comfort 0.451 against 0.567. Its 0.303 EPDMS sits
+between the floor and VisionPilot, while on nuScenes, which scores three
+seconds and needs no extension, its L2 sits with Drive-JEPA's. Both numbers are
+real; they are not measuring the same object. `docs/models/meteor.md` has the
+measurements.
 
 ## Three discrepancies against what the adapters declare
 

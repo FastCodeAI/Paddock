@@ -82,6 +82,16 @@ def test_summarise_of_nothing_is_not_zero() -> None:
         ("reference_speed", False),
         ("ego_progress", False),
         ("lane_keeping", False),
+        # AlpaSim: outcome rates and a fidelity distance whose names read the
+        # wrong way round. An up arrow on these tells a reader the model that
+        # crashed more often did better.
+        ("collision_at_fault", True),
+        ("offroad", True),
+        ("open_loop_collision", True),
+        ("dist_to_gt_trajectory", True),
+        ("scene_score", False),
+        ("progress", False),
+        ("duration_frac_20s", False),
     ],
 )
 def test_metric_direction(metric: str, lower_better: bool) -> None:

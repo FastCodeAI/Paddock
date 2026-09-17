@@ -1,0 +1,47 @@
+{
+  "run_id": "20260915T021715-02aab4",
+  "site": "fastcode-shakaal",
+  "benchmark": "navsim_v1",
+  "model": "qwendrive",
+  "mode": "open_loop",
+  "started_utc": "2026-09-15T02:17:15+00:00",
+  "duration_s": 548.1,
+  "repo_sha": null,
+  "dataset": {
+    "name": "navsim",
+    "split": "navtest",
+    "n_samples": 12146,
+    "sequences_sha256": "013e89176339021d",
+    "n_failed": 0,
+    "n_unscored": 0,
+    "n_expected": 12146
+  },
+  "config": {
+    "limit": null,
+    "cameras": [],
+    "split": "navtest",
+    "agent": "paddock_replay",
+    "allow_partial": false,
+    "allow_slow": false,
+    "overrides": [],
+    "chunk_order": "by_size",
+    "merged_from": null,
+    "input_hz": 2.0,
+    "history_source": "openscene",
+    "history_s": 1.5,
+    "node": null,
+    "replayed_from": "navsim/qwendrive/20260914T221802-80457c",
+    "plans": {
+      "n": 12146,
+      "sha256": "31662b18e7e54d5b",
+      "from": [
+        "20260914T221802-80457c"
+      ]
+    }
+  },
+  "hardware": {},
+  "status": "complete",
+  "valid": true,
+  "notes": "no model process ran: 12146 plans replayed from navsim/qwendrive/20260914T221802-80457c (that run: epdms 0.8402); the same plans, this benchmark's scorer",
+  "ingested_from": ""
+}

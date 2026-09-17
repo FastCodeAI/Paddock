@@ -183,6 +183,7 @@ NAVSIM scores 8 poses at 0.5 s as `(x, y, heading)`. What each model gives:
 | visionpilot | 8 × 0.5 s | derived | `PLAN_HORIZON_S` 3.0 → 4.0 |
 | alpamayo15 | 8 × 0.5 s of a 64 × 0.1 s raw output | derived | `GRID_INDICES` widened to 8 |
 | openpilot | 8 × 0.5 s | derived | grid already matched — **blocked on input rate** |
+| meteor | 6 × 0.5 s, extended to 8 | derived | 3 s planner; `METEOR_HORIZON_S=4.0` opt-in, recorded as `model_env` |
 
 Both grid changes are additive at the tail, so no recorded score moves:
 `Trajectory.to_wire` hands neuroNCAP the first six poses, and KITScenes'
@@ -379,6 +380,10 @@ So openpilot (`min_input_hz: 10`, `history_s: 4.8` for its 96-frame buffer at
 20 Hz -- what KITScenes feeds) and alpamayo (`native_input_hz: 10`, `history_s:
 1.5`: four frames 0.1 s apart and 16 poses, per its vendor loader) get the
 dense path; drivejepa and visionpilot keep the frames they were scored on.
+qwendrive takes it too (`native_input_hz: 10`, `history_s: 1.5`), for the pose
+branch rather than the image one: it reads 16 poses at 0.1 s, and its four
+camera frames are 0.5 s apart either way, so the dense path changes its ego
+history and not its images.
 Which rate a run used is in `run.json` (`config.input_hz`, `history_source`,
 `history_s`) and hashed into the run id, so a 10 Hz alpamayo run cannot share
 an id with the 2 Hz one.
@@ -444,6 +449,35 @@ so nothing below the full split can be averaged or ranked against a real one.
 | alpamayo15, 2 Hz OpenScene | **0.6081** | 0.941 | 0.788 | 0.596 | `20260903T183818-5879c1` |
 | visionpilot | **0.4312** | 0.727 | 0.819 | 0.404 | `20260902T175642-df5291` |
 | constant_velocity | **0.2385** | 0.681 | 0.578 | 0.209 | `20260902T175923-feba73` |
+
+## Comparison figures
+
+```bash
+paddock render --bench navsim                  # every model with a valid run
+paddock render --bench navsim --model meteor,openpilot --out docs/assets
+```
+
+`render.py` draws several models' plans on the same scenario, over the map the
+scorer re-simulated them against -- the drivable area, the lane centres and the
+annotated agents. That context is the point: EPDMS is built from drivable-area
+compliance, collisions and progress, so a plan is only readable next to the
+lanes it should have stayed in.
+
+It picks the scenarios where the models' 4 s endpoints disagree most, one per
+log, because a panel where every plan lies on top of every other shows only that
+the scenario was easy.
+
+Drawing needs the devkit's `navsim.visualization` and nuPlan's map API, which
+live in `[benchmarks.navsim] python` and not in paddock's interpreter -- the same
+split the harness makes for scoring. So `render.py` selects and gathers, and
+`draw_scenes.py` draws under the devkit's python. Colour is paddock's, keyed by
+model name, so a model is the same colour here as in every other figure.
+
+**A run can only be drawn if its plan dump carries scenario tokens.** Dumps
+recorded before the proxy labelled its plans (Drive-JEPA's and VisionPilot's
+full-split runs, September 2026) say what was planned but not for which
+scenario; those models are named in the figure's subtitle rather than silently
+missing. Re-running them is the only fix.
 
 ## Status (242-scenario subset, for reference)
 

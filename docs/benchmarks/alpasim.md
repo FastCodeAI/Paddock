@@ -49,18 +49,25 @@ compose = "docker"            # the wizard drives docker compose
 drivers = "{weights}/alpasim-drivers"
 ```
 
-## The two rates are the comparison group
+## The tick config is the comparison group
 
 AlpaSim runs at whatever camera set and control rate you configure, and **those
 choices change what is being measured**, not merely how precisely:
 
 | group | cameras | control | `force_gt_duration_us` |
 |---|---|---|---|
-| `1cam-2Hz` | 1 forward | 2 Hz | 3,000,000 |
-| `4cam-10Hz` | 4 (front wide, front tele, cross L/R) | 10 Hz | 1,700,000 |
+| `1cam-20Hz` | 1 forward | 20 Hz | 3,000,000 |
+| `4cam-20Hz` | 4 (front wide, front tele, cross L/R) | 20 Hz | 3,000,000 |
 
-10 Hz control gives a policy five times the opportunities to correct that 2 Hz
-does, and four cameras see what one cannot. **Numbers from different groups are
+Both groups are the **shared referee**: one control rate, one force-GT
+duration and one `eval-config.yaml` across every model, so that for the first
+time the rows differ by the model rather than by the harness. How much that
+matters is visible in the floor itself — constant velocity scores 0.3562 at
+20 Hz on the 0.1.0 driver, 0.7411 on 0.2.0 and 0.8850 on 0.2.3, a spread wider
+than the gap between most of the models.
+
+A faster control rate gives a policy more opportunities to correct, and four
+cameras see what one cannot. **Numbers from different groups are
 not comparable and must never be averaged together.** Every run records its
 group in `run.json` under `config.renderer`, `config.topology` and
 `config.scene_set`, all of which are hashed into the run id — so two tick
@@ -93,11 +100,10 @@ The consequence is the trap in this benchmark:
 > drives the scene out.** Its trajectory-fidelity numbers are measured only over
 > the easy opening seconds and look *better* as a result.
 
-In the `4cam-10Hz` 10-scene campaign the constant-velocity floor was scored over
-**38.6 %** of its ticks and Alpamayo over **76.8 %**. On one scene the floor was
-scored over 13 of 200 ticks — 6.5 % — and posted a flattering
-`dist_to_gt_trajectory` of 2.4 m while Alpamayo drove the same scene out over
-148 ticks and 300 metres.
+In the `1cam-20Hz` collection Drive-JEPA was scored over **46.7 %** of its ticks
+and OpenPilot over **78.4 %**. On `04749bb9` Drive-JEPA was scored over 9 of 398
+ticks — 2.3 % — so whatever fidelity it posted there describes less than half a
+second of driving, while OpenPilot's number on the same scene covers 337 ticks.
 
 The scored fraction is **not** recoverable from `results-summary.json` — it needs
 the per-rollout `metrics.parquet` replayed through the modifier chain, which is
@@ -121,20 +127,20 @@ one that never moved.
 
 That rule produces the result that most needs stating plainly:
 
-| | `scene_score` | vs its floor |
-|---|---|---|
-| **constant-velocity floor, `1cam-2Hz`** | **0.7025** | *(floor)* |
-| VisionPilot 0.2.2 | 0.8864 | **+0.184** |
-| Drive-JEPA 0.1.2 | 0.4073 | −0.295 |
-| OpenPilot supercombo | 0.2320 | −0.471 |
+| | `scene_score` | progress | vs its floor |
+|---|---|---|---|
+| OpenPilot supercombo 0.2.0 | 0.9566 | 0.9010 | **+0.0716** |
+| **constant-velocity floor 0.2.3, `1cam-20Hz`** | **0.8850** | **0.8290** | *(floor)* |
+| VisionPilot v2 2.0.0 | 0.8488 | 0.8202 | −0.0362 |
+| Drive-JEPA 0.1.4 | 0.5030 | 0.5652 | −0.3820 |
 
-**Three of the four models score below constant velocity.** This is not a bug in
+**Two of the three models score below constant velocity.** This is not a bug in
 the metric and not a claim that constant velocity drives well — it does not
 steer, and it rear-ends things. But a rear-end collision is *not at fault*, so
 the hard-failure rule does not zero it, while the at-fault collisions and
 offroad events the real policies commit do. Driving straight at a fixed speed
 down a mostly-straight recorded clip turns out to be a strong baseline against
-that rule.
+that rule — it scores 1.0 on 8 of the 10 scenes.
 
 **This is why the floor is recorded as a run at all** — under
 `results/alpasim/constant_velocity/`, marked in its `run.json` notes as a
@@ -145,11 +151,13 @@ however respectable its absolute number looks.
 
 ## Reference numbers
 
-`public_2601` first 10 scenes, uuid-pinned, n=10, scorer `affc2ea`.
+`public_2601` first 10 scenes, uuid-pinned, n=10, scorer `affc2ea`. Every row is
+filed under `results/alpasim/`, so `paddock report` agrees with these tables.
 
 > **These numbers were not produced through this adapter.** They come from
 > AlpaSim's own native drivers — `openpilot-supercombo-driver-0.2.0`,
-> `visionpilot-*`, `drivejepa-*`, `alpamayo1_5-driver-0.91.0` — run before the
+> `visionpilot-v2-driver-2.0.0`, `drivejepa-v2-driver-0.1.4`,
+> `alpamayo1_5-driver-0.91.0`, `constant_velocity-driver-0.2.3` — run before the
 > paddock bridge existed. That is also why only `alpamayo15` and
 > `constant_velocity` declare `alpasim` in their `model.yaml`: declaring the
 > other three would claim a pairing runs through the bridge, and nothing here
@@ -157,35 +165,51 @@ however respectable its absolute number looks.
 > benchmark yields**, not evidence about this PR's code path. The live path
 > through the bridge is unverified, as the PR says.
 
-### `1cam-2Hz`
+### `1cam-20Hz` — the shared referee
 
-| model | `scene_score` | sd | passed | failures |
-|---|---|---|---|---|
-| VisionPilot 0.2.2 | 0.8864 | 0.3144 | 9/10 | at-fault 1 |
-| *constant-velocity floor* | *0.7025* | *0.4006* | *9/10* | *offroad 1* |
-| Drive-JEPA 0.1.2 | 0.4073 | 0.4590 | 6/10 | offroad 2, at-fault 2 |
-| OpenPilot supercombo | 0.2320 | 0.4091 | 3/10 | at-fault 5, offroad 2 |
+These are the only AlpaSim numbers this repo records. Four rows on one referee: same control rate, same force-GT duration, same
+`eval-config.yaml` (md5 `68cf4aaa89356e0f6053d76eb4ef2321`, byte-identical
+across all five 20 Hz rows including Alpamayo's).
 
-OpenPilot runs **below its native frame rate** in this group: it expects 20 Hz
-input and is driven at 2 Hz, which it reads as a nearly parked car. Its number
-is a statement about this configuration, not about the model.
+| model | `scene_score` | sd | progress | passed | failures |
+|---|---|---|---|---|---|
+| OpenPilot supercombo 0.2.0 | **0.9566** | 0.1303 | 0.9010 | 10/10 | — |
+| *constant-velocity floor 0.2.3* | *0.8850* | *0.2312* | *0.8290* | *10/10* | *—* |
+| VisionPilot v2 2.0.0 | 0.8488 | 0.3170 | 0.8202 | 9/10 | at-fault 1 |
+| Drive-JEPA 0.1.4 | 0.5030 | 0.4306 | 0.5652 | 7/10 | at-fault 2, offroad 1 |
 
-### `4cam-10Hz`
+**Only OpenPilot clears the floor**, by +0.0716. This is the finding, not a
+measurement artefact: `scene_score` saturates at `progress_clipped_rel ≥ 0.8`
+and zeroes only on `collision_at_fault` or `offroad`, so a blind constant
+velocity that never commits either scores 1.0 on 8 of 10 scenes. Progress
+separates what the score cannot — floor 0.8290 against OpenPilot's 0.9010.
 
-| model | `scene_score` | sd | passed | failures |
-|---|---|---|---|---|
-| Alpamayo 1.5 (10B) | **0.8000** | 0.4216 | 8/10 | offroad 1, at-fault 1 |
-| *constant-velocity floor* | *0.3791* | *0.4453* | *6/10* | *offroad 2, at-fault 2* |
+Two rows need their caveat quoted with the number:
 
-Alpamayo beats its floor by **+0.421**. Paired over the same 10 scenes it leads
-on progress in 9 and ties the tenth: mean paired Δ progress **+0.484**
-(se 0.0995), Δ `duration_frac_20s` **+0.381** (se 0.0910) — about five standard
-errors, so not scene luck. Collisions 1/10 against 5/10; distance travelled
-165 m against 73 m.
+- **VisionPilot** finishes 0.0362 below the floor and **the entire deficit is
+  one at-fault collision** on `048b974e`; the other nine scenes average 0.9431.
+  Its `set_speed` is the human clip's mean speed, handed to it per scene — the
+  model does not choose its own cruising speed here. Its own `smoke_gates.json`
+  reads `ok: false` on 3 of 12 gates (two Prometheus ports, two that look like
+  gate-side indexing); none touch the referee pins, which were read from the
+  resolved config and are on-pin.
+- **Drive-JEPA**'s 0.5030 is a mean over six early-terminated or hard-gated
+  scenes and four full-distance runs that all scored 1.0000. It is a pattern —
+  it wins 1, ties 3 and loses 6 against the floor — not one bad scene.
 
-Note the floor is *harder* at `4cam-10Hz` (0.3791) than at `1cam-2Hz` (0.7025):
-10 Hz control gives constant velocity five times as many chances to leave the
-road before the clip ends.
+### `4cam-20Hz`
+
+| model | `scene_score` | sd | progress | passed | failures |
+|---|---|---|---|---|---|
+| Alpamayo 1.5 (10B), via the referee proxy | **0.9000** | 0.3000 | 0.9603 | 9/10 | at-fault 1 |
+
+Alpamayo has no constant-velocity floor in its own group at 20 Hz, so it cannot
+be quoted against one; the `1cam-20Hz` floor is a different measurement and is
+not a substitute. Its environment is verified identical to the reference rows'
+(`pip freeze` 300/300 packages, image `8a69f005`) and all 25 smoke gates pass on
+all ten scenes. Scene-level variance on this model is large — `04749bb9` has
+produced 0.0, 0.9148 and 1.0 across identical environments — so neither this
+mean nor any other single-rollout mean here should be read to four figures.
 
 ## Reproducing this
 
@@ -221,11 +245,14 @@ default kills the run before the model finishes loading.
 
 **Scene set.** `test_suite_id: public_2601`, `limit_to_first_n: 10`, uuid-pinned
 via the suite table — `sequences_sha256` in each `run.json` is the check that two
-sites scored the same scenes.
+sites scored the same scenes. The Alpamayo and Drive-JEPA sweeps drove the same
+ten scenes one explicit id at a time, so their directories record
+`test_suite_id: null`; the split on their records comes from the campaign's
+`split` key in `[ingest]`, and the matching `sequences_sha256` is what backs it.
 
-**Driver identity.** `constant_velocity-driver-0.2.0` and
-`alpamayo1_5-driver-0.91.0`, as probed by the runtime at connect. Those are
-**AlpaSim's own native drivers**, which is what produced the tables below — see
+**Driver identity.** The five `driver_version_id`s listed under Reference
+numbers, as probed by the runtime at connect. Those are
+**AlpaSim's own native drivers**, which is what produced the tables above — see
 the note under Reference numbers. A run driven through this adapter reports
 `paddock-bridge/<scenario>` instead, and the model it served is in `run.json`
 under `model`, not under a `driver_version_id` key: this adapter writes none.
@@ -240,9 +267,10 @@ Sampling determinism for a model like Alpamayo belongs to its paddock policy.
 So a run driven through paddock is **not** reproducible by this flag, and a
 stochastic model's row is one draw unless its own policy seeds itself.
 
-**The recorded Alpamayo run above predates that.** It ran with
-`force_determinism: false` and no seed, so it is a **single unseeded draw** —
-AlpaSim re-running the identical command would not reproduce it either. Read it
+**The recorded Alpamayo run above is one draw per scene.** It ran through the
+referee proxy with no seed recorded, and `04749bb9` has scored 0.0, 0.9148 and
+1.0 across identical environments — re-running the identical command would not
+reproduce it. Read it
 as one sample, not as the model's score, and do not compare a fresh per-scene
 result against it and conclude anything from a difference. This is the same
 property `docs/benchmarks/neuroncap.md` documents for Alpamayo there, where five

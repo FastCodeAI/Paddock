@@ -602,23 +602,27 @@ failure. Lower is better except `pdm_style_score`.
 | | horizon | ADE@1s | ADE@2s | **ADE@3s** | ADE@4s | ADE@5s | ADE@10s | FDE@3s | median ADE@3s | miss@3s | PDMS-style ↑ |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | alpamayo15 (`Alpamayo-1.5-10B`, 2 of 4 camera slots) | 4 s | 0.386 | 0.616 | **0.900** | 1.263 | — | — | 1.654 | 0.823 | — | — |
-| qwendrive (`Qwen-Drive-1.0-4B`, side slots replicated) | 5 s | 0.352 | 0.674 | 1.016 | 1.405 | 1.847 | — | 2.075 | 1.005 | 0.501 | — |
+| qwendrive (`Qwen-Drive-1.0-4B`, side slots replicated) | 5 s | 0.475 | 0.801 | 1.159 | 1.570 | 2.045 | — | 2.094 | 1.138 | 0.505 | 0.511 |
 | openpilot (`small`, split graph, `4df40d2c1`) | 10 s | 0.598 | 1.035 | 1.507 | 2.017 | 2.571 | 6.032 | 2.712 | 1.555 | 0.647 | 0.410 |
 | constant velocity (registered policy, 6 waypoints) | 3 s | 0.537 | 1.017 | 1.639 | — | — | — | 3.286 | 1.475 | 0.658 | 0.417 |
 | visionpilot (synthesised trajectory) | 4 s | 1.149 | 2.462 | 4.045 | 5.835 | — | — | 8.146 | 2.195 | 0.864 | 0.406 |
 | drivejepa_free (perception-free agent, NAVSIM v1) | 4 s | 7.800 | 12.077 | 16.048 | 20.501 | — | — | 26.248 | 19.801 | 0.831 | 0.541 |
 
-Two rows carry `—` in the last column and the reason differs. `alpamayo15`
-predates it and is `stochastic: true`, so re-running for two proxy columns would
-replace a published 0.900 with a different draw. `qwendrive` is the one model
-here that plans on a 0.1 s grid: its recorded `comfort_*` values were measured
-on that grid, before `metrics/comfort.py` moved to a common `REFERENCE_DT`, and
-they are stale against current code — 1932 m/s³ of "jerk" that was a property of
-4 cm of output quantisation amplified by `1/dt³`, not of the plan. Recomputed
-from its stored predictions the figure is 11.4. Publishing either the stale
-number or a recomputation that no recorded run produced would be worse than
-publishing neither, so the comfort and `pdm_style_score` cells are `—` until it
-is swept again. The five models at `dt = 0.5` are bit-identical under the change.
+One row carries `—` in the last column: `alpamayo15` predates it and is
+`stochastic: true`, so re-running for two proxy columns would replace a
+published 0.900 with a different draw.
+
+`qwendrive` was `—` here too until it was swept again, and the reason is worth
+keeping because it is a property of the grid rather than of the model. It used
+to emit all 50 poses of its output at `waypoint_dt` 0.1; `metrics/comfort.py`
+differences jerk as `1/dt³`, so 4 cm of output quantisation became 1932 m/s³ of
+"jerk" — a number about the quantiser, not about the plan. The row above is the
+same model reporting the ten poses on the 0.5 s grid every other row uses, and
+its jerk is 11.45 m/s³. Nothing else in the row moved for that reason: the ADE
+columns changed because the grid an ADE averages over changed, which is the
+`score()` alignment described under [What is scored](#what-is-scored), not a change in what
+the model planned. The five models already at `dt = 0.5` are untouched
+throughout.
 
 **The constant-velocity row stops at 3 s, and that is a change in producer, not
 in arithmetic.** The earlier record

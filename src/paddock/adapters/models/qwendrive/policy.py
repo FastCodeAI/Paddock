@@ -1,591 +1,558 @@
-"""Qwen-Drive 1.0 as a paddock Policy.
+"""Qwen-Drive-1.0 adapter: a Qwen3.5-4B VLM with a flow-matching planning expert.
 
-Qwen-Drive is a Qwen3.5-4B VLM with a 1 B flow-matching planning expert bolted
-to the post-rotary K/V of its eight full-attention layers. In
-`REASONING_PLANNING` the VLM first writes a one-sentence rationale and the
-expert plans from *that* cache, so the text is upstream of the trajectory rather
-than commentary on it.
+Qwen-Drive reads three cameras at four timestamps 0.5 s apart, 1.5 s of ego
+poses at 10 Hz with their velocities and accelerations, and a navigation
+command, and regresses 50 waypoints at 10 Hz (vendor `docs/data.md`). The
+vendor's benchmark scene files carry exactly that, built offline per dataset;
+here the same scene is assembled from whatever a benchmark streams, so the
+model sees one input shape on every benchmark. Three adaptations matter.
 
-Its conventions already match paddock's: x forward, y **left**, heading positive
-for a left turn, metres and radians, 50 waypoints at 10 Hz. Nothing here flips a
-sign -- comma2k19's device frame is y-right, but `benchmarks/comma2k19/loader.py`
-converts to the ego convention before the observation is built, so a flip in the
-policy would mirror every plan and still look smooth. See
-`docs/datasets/comma2k19.md`.
+*Frames.* Benchmarks hand over one frame per observation, at 10 Hz (KITScenes,
+neuroNCAP, nuPlan) or 2 Hz (OpenScene). The four camera frames are picked from
+the recorded history by timestamp, nearest to t-1.5/-1.0/-0.5/0 s, so a 10 Hz
+source contributes every fifth frame and a 2 Hz source every frame. Before
+1.5 s of a closed-loop run has elapsed the oldest frame stands in for the
+missing ones, and `diagnostics()` counts how often that happened.
 
-Four adaptations matter.
+*Poses.* The 16 history poses are resampled onto a 0.1 s grid by timestamp,
+not taken as the last 16 requests: neuroNCAP's priming steps arrive 0.5 s
+apart and only its loop steps at 0.1 s, so counting requests would hand the
+model a history five times longer than its label says. Velocity and
+acceleration come from the CAN bus where a source records them; KITScenes
+records speed only, so acceleration is differenced from it.
 
-*Three views from one camera.* `DrivingScene.__post_init__` **raises** on a
-missing view, so `<FRONT VIEW>`, `<FRONT LEFT VIEW>` and `<FRONT RIGHT VIEW>`
-must all be filled from whatever the source has. `alpamayo15/policy.py::slots_for`
-argues the opposite case and is right there -- that model tolerates a missing
-slot, so dropping one says "there is no +55 deg view" where repeating the centre
-frame would say "here is one" and lie. Qwen-Drive does not tolerate it, so the
-choice is between two lies, and it was measured rather than argued: `replicate`
-(the true forward frame in all three slots) scored 1.47/2.00 ADE against
-`crop`'s 1.78/2.13 on the reference's city/highway segments. Honest geometry --
-each view really is a forward camera -- beat fabricated lateral context, because
-the model's learned cross-view extrinsics are load-bearing. `QWENDRIVE_VIEWS=crop`
-runs the ablation.
+*Views.* The model wants three cameras and `DrivingScene` refuses a missing
+slot, so a monocular source has to fill all three from one frame or not run at
+all. `QWENDRIVE_VIEWS` picks which: `ring` (the default, and the model as
+trained) takes one real camera per slot; `replicate` puts the true forward
+frame in all three; `crop` cuts overlapping thirds out of it. The mode also
+decides what the policy *declares*, so `cameras` always names exactly what
+`infer()` reads and a benchmark is never asked for a camera it does not have.
+Between the two monocular modes the measurement says replicate: 1.47 / 2.00 ADE
+on comma2k19's city and highway segments against crop's 1.78 / 2.13. That is
+choosing between two lies -- a replicated frame claims a bearing it does not
+have, a crop claims extrinsics a crop does not have -- and the measured one
+wins.
 
-*History.* 16 poses at 10 Hz over 1.5 s plus `[vx, vy, ax, ay]`, all in the ego
-frame of the scored frame. These are resampled **by timestamp** from whatever
-cadence the source runs at, never by taking the last 16 requests: comma2k19
-feeds 20 Hz, and differencing a 20 Hz history labelled as 10 Hz would tell the
-model it is going half speed. Ego state is by far this model's strongest input
--- the reference's ablation put a stationary history at ADE 15.79 city / 70.74
-highway against a 1.47/2.00 baseline -- so `diagnostics()` publishes the
-pose-derived speed beside the recorded one, and a disagreement there is the
-first thing to look at when a number will not line up.
+*Output.* 50 waypoints at 10 Hz become 10 on the 0.5 s grid, indices 4, 9, ...
+49 -- the vendor's own NAVSIM conversion (`qwen_drive.trajectory.resample_10hz_to_2hz`)
+carried to the end of the plan rather than stopped at 4 s. Every benchmark here
+reads the prefix it scores and drops the rest: NAVSIM takes 4 s, neuroNCAP the
+first six points, KITScenes truncates at 3 s, and comma2k19 scores whatever is
+offered against horizons it labels honestly -- so emitting the full 5 s costs
+those four nothing and is the only way the fifth second is scored at all.
 
-*No route.* comma2k19 ships no turn-by-turn signal and every observation carries
-`Command.STRAIGHT`, so the model plans every sample under "GO STRAIGHT". That is
-a real cost, not a formality: feeding the command a route planner *would* have
-issued (read off the recorded future, hence diagnostic-only and never scored)
-improved the reference's city ADE 1.47 -> 1.28. The residual on turns is partly
-a missing input rather than a planning failure, and `nav_command` in
-`diagnostics()` records which it was.
-
-*Determinism.* The flow sampler draws sample *k* from `torch.Generator` seeded
-`seed + k`, and the reasoning turn is generated with `do_sample=False`. So
-Qwen-Drive is reproducible given a seed, which is why `model.yaml` declares
-`stochastic: false` -- an explicit `QWENDRIVE_SEED` is passed on every call
-rather than relying on the checkpoint's default staying put.
+The model's package (torch, transformers 5.14) exists only in its own
+environment and is imported inside `load()`. Everything that can be checked
+without it -- frame selection, pose resampling, command mapping, the output
+grid -- is a module-level function so the tests can run in paddock's env.
 """
 
 from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any
+import time
+from typing import Any
 
 import numpy as np
-from PIL import Image
 
-if TYPE_CHECKING:  # annotations only -- torch lives in the model's own env
-    from PIL.Image import Image as PILImage
-
-from paddock.policy.protocol import Command, Observation, Policy, Trajectory
+from paddock.policy.protocol import (
+    CANBUS_ACCEL,
+    CANBUS_VELOCITY,
+    Command,
+    Observation,
+    Policy,
+    Trajectory,
+)
 
 _log = logging.getLogger(__name__)
 
-CAMERA = "CAM_FRONT"
+#: paddock camera -> the view tag the model was trained to read (scene.py CAMERA_VIEWS).
+CAMERA_VIEWS: tuple[tuple[str, str], ...] = (
+    ("CAM_FRONT", "<FRONT VIEW>"),
+    ("CAM_FRONT_LEFT", "<FRONT LEFT VIEW>"),
+    ("CAM_FRONT_RIGHT", "<FRONT RIGHT VIEW>"),
+)
+NEEDED_CAMERAS = tuple(camera for camera, _ in CAMERA_VIEWS)
 
-#: The three view slots the model was trained to read, in that order. Imported
-#: from the vendor package at load time; restated here because the tests run in
-#: paddock's own interpreter, which cannot import `qwen_drive`.
-CAMERA_VIEWS = ("<FRONT VIEW>", "<FRONT LEFT VIEW>", "<FRONT RIGHT VIEW>")
-
-#: 16 poses at 10 Hz, oldest first, the last one exactly (0, 0, 0).
+#: Camera frames per view and their spacing: t-1.5, t-1.0, t-0.5, t-0 s.
+NUM_CAM_FRAMES = 4
+FRAME_DT = 0.5
+#: Ego poses consumed and their spacing: 1.5 s at 10 Hz, last row is now.
 NUM_HISTORY_STEPS = 16
 HISTORY_DT = 0.1
+#: A frame farther than this from its slot's time is a neighbour standing in,
+#: not jitter. nuPlan's cameras fire within ~8 ms of each other.
+FRAME_TOLERANCE_S = 0.06
+#: Seconds of history kept. The model never looks past 1.5 s, so this is that
+#: plus room for an uneven request cadence. It matters because in closed loop a
+#: record holds *decoded pixels*: at neuroNCAP's 1600x900x3 on three cameras,
+#: retaining 64 records would be ~830 MB resident on a shared box, for frames
+#: nothing will read again.
+KEEP_S = 2.5
+#: Hard ceiling on records, whatever the cadence. Also the floor early in an
+#: episode, so a stalled or very slow source still has frames to select from.
+MAX_RECORDED = 64
 
-#: Camera timestamps, seconds before the scored frame, oldest first. The model's
-#: prompt labels them "t-1.5s" .. "t-0s"; feeding a different spacing would make
-#: the labels false without raising anything.
-VIEW_OFFSETS_S = (1.5, 1.0, 0.5, 0.0)
+#: Model output: 50 poses at 10 Hz. Index i is at (i+1)/10 s, so the 0.5 s
+#: grid is 4, 9, ... 49 -- ten points, the whole 5 s the model plans.
+OUTPUT_POINTS = 50
+GRID_INDICES = (4, 9, 14, 19, 24, 29, 34, 39, 44, 49)
 
-#: 50 waypoints at 10 Hz = 5 s. `model.yaml` repeats both, because the report's
-#: time axis reads them from the registry rather than from the array.
-NUM_WAYPOINTS = 50
-WAYPOINT_DT = 0.1
+DEFAULT_PLANNER = "planner-sft"
+MODES = ("direct", "reasoning")
 
-#: Centred box filter width, in history samples, applied before differentiating.
-#: 3 at 10 Hz spans 0.3 s -- the reference used 5 at 20 Hz, i.e. 0.25 s.
-SMOOTH_WIDTH = 3
-
-#: Frames kept per episode. 1.5 s at comma2k19's 20 Hz is 30; the margin covers
-#: a jittery cadence without holding a whole sequence's worth of decoded PNGs.
-HISTORY_KEEP = 64
-
-VIEW_MODES = ("replicate", "crop")
-
-#: Overlapping thirds, as a fraction of image width, for the `crop` ablation.
+#: How the three view slots are filled. `ring` is the model as trained, one
+#: real camera per slot; the other two exist for a source that has a road
+#: camera and nothing else (comma2k19), where `DrivingScene`'s refusal to accept
+#: a missing view leaves no third option. See the module docstring for which.
+VIEW_MODES = ("ring", "replicate", "crop")
+#: Width of each `crop` slice as a fraction of the frame. Overlapping thirds:
+#: the centre keeps the vanishing point, the sides keep the shoulders.
 CROP_SPAN = 0.55
 
-#: `Command` -> (nav_command index, one-hot driving command). The one-hot is
-#: ordered [left, straight, right, unknown]; the index selects from
-#: `scene.NAV_COMMANDS = ("GO STRAIGHT", "TURN LEFT", "TURN RIGHT")`. Both were
-#: cross-checked against the released WOD scene files, where a left turn has
-#: future y = +11.98 m and a right turn y = -11.0 m.
-COMMANDS: dict[int, tuple[int, tuple[float, float, float, float]]] = {
-    Command.STRAIGHT: (0, (0.0, 1.0, 0.0, 0.0)),
-    Command.FOLLOW_REFERENCE: (0, (0.0, 1.0, 0.0, 0.0)),
-    Command.LEFT: (1, (1.0, 0.0, 0.0, 0.0)),
-    Command.RIGHT: (2, (0.0, 0.0, 1.0, 0.0)),
+#: paddock's 4-way command -> the model's text command (scene.py NAV_COMMANDS:
+#: 0 GO STRAIGHT, 1 TURN LEFT, 2 TURN RIGHT) and its one-hot ego-status
+#: command [left, straight, right, unknown] (docs/data.md). The text vocabulary
+#: has no "unknown", so FOLLOW_REFERENCE reads as straight in the prompt and
+#: as unknown in the status, which is how NAVSIM's own `unknown` rows encode.
+NAV_COMMAND: dict[Command, int] = {
+    Command.STRAIGHT: 0,
+    Command.LEFT: 1,
+    Command.RIGHT: 2,
+    Command.FOLLOW_REFERENCE: 0,
 }
-
-#: Below this the recorded speed channel is treated as absent rather than as a
-#: parked car, and the pose-derived speed is used instead. A source that fills
-#: neither is a source this model cannot be run on; `needs_speed` says so.
-SPEED_FLOOR_MS = 0.1
+DRIVING_COMMAND: dict[Command, tuple[float, float, float, float]] = {
+    Command.LEFT: (1.0, 0.0, 0.0, 0.0),
+    Command.STRAIGHT: (0.0, 1.0, 0.0, 0.0),
+    Command.RIGHT: (0.0, 0.0, 1.0, 0.0),
+    Command.FOLLOW_REFERENCE: (0.0, 0.0, 0.0, 1.0),
+}
 
 
 def _env_or(name: str, default):
-    """`default` unless the environment names a value, cast to default's type."""
     raw = os.environ.get(name)
-    return type(default)(raw) if raw else default
-
-
-def smooth(values: np.ndarray, width: int = SMOOTH_WIDTH) -> np.ndarray:
-    """Centred box filter, edges extended by odd reflection.
-
-    The padding is the whole point. Replicating the endpoint -- the obvious
-    choice, and the one the reference used, where it only ever touched the ends
-    of a segment -- flattens the filter's last samples towards the last value,
-    and here the last sample is `t = 0`: the frame being planned from. A car
-    braking at a steady 3 m/s^2 came out at 2 m/s^2, a third of the deceleration
-    lost at exactly the moment the expert reads it. Odd reflection continues the
-    local slope instead, so a constant acceleration stays constant through the
-    boundary.
-    """
-    if width <= 1 or len(values) < 2:
-        return values
-    pad = width // 2
-    padded = np.pad(values, (pad, pad), mode="reflect", reflect_type="odd")
-    return np.convolve(padded, np.ones(width) / width, mode="valid")
-
-
-def interp_angle(target: np.ndarray, source: np.ndarray, angle: np.ndarray) -> np.ndarray:
-    """Interpolate an angle through its sine and cosine, so wrap-around is safe.
-
-    Linear interpolation of the angle itself turns a crossing of +-pi into most
-    of a lap, which on a 10 Hz history reads as a violent spin that never
-    happened.
-    """
-    return np.arctan2(np.interp(target, source, np.sin(angle)), np.interp(target, source, np.cos(angle)))
+    return type(default)(raw) if raw not in (None, "") else default
 
 
 def wrap_angle(angle: np.ndarray) -> np.ndarray:
-    """Fold to (-pi, pi]."""
     return np.arctan2(np.sin(angle), np.cos(angle))
 
 
-def synthesize_views(image: PILImage, mode: str) -> dict[str, PILImage]:
-    """Turn one road camera into the three views the model requires.
+def pose_xy_yaw(ego2world: np.ndarray) -> np.ndarray:
+    """(x, y, yaw) of a 4x4 ego->world; yaw from the rotated x axis."""
+    m = np.asarray(ego2world, dtype=np.float64)
+    return np.array([m[0, 3], m[1, 3], np.arctan2(m[1, 0], m[0, 0])])
 
-    `replicate` is the default and the measured winner; see the module
-    docstring. `crop` takes overlapping `CROP_SPAN` slices -- the centre keeps
-    the vanishing point, the sides keep the shoulders -- which gives real
-    lateral content at the price of extrinsics that are simply wrong, since a
-    crop is not a rotated camera.
+
+def select_frame_indices(times_s: np.ndarray) -> tuple[list[int], list[float]]:
+    """Which recorded frames fill the four slots, oldest first, and how far
+    each is from its slot's time.
+
+    Nearest by timestamp to now-1.5, now-1.0, now-0.5 and now. A 10 Hz source
+    lands within a few ms; a 2 Hz source lands exactly; a history shorter than
+    1.5 s repeats its oldest frame, which the gaps make visible.
     """
-    if mode == "replicate":
-        return dict.fromkeys(CAMERA_VIEWS, image)
-    if mode == "crop":
-        width, height = image.size
-        span = int(width * CROP_SPAN)
-        boxes = {
-            "<FRONT VIEW>": ((width - span) // 2, 0, (width + span) // 2, height),
-            "<FRONT LEFT VIEW>": (0, 0, span, height),
-            "<FRONT RIGHT VIEW>": (width - span, 0, width, height),
-        }
-        return {view: image.crop(box) for view, box in boxes.items()}
-    raise ValueError(f"unknown view mode {mode!r}, expected one of {VIEW_MODES}")
+    times = np.asarray(times_s, dtype=np.float64)
+    wanted = times[-1] - np.arange(NUM_CAM_FRAMES - 1, -1, -1) * FRAME_DT
+    indices = [int(np.argmin(np.abs(times - w))) for w in wanted]
+    gaps = [float(abs(times[i] - w)) for i, w in zip(indices, wanted, strict=True)]
+    return indices, gaps
 
 
-class Frame:
-    """One recorded frame, decoded and cut into views only if the model reads it.
+def resample_history(
+    times_s: np.ndarray,
+    poses: np.ndarray,
+    motion: np.ndarray,
+    source_has_acceleration: bool | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The model's 16-row history from recorded (x, y, yaw) and (vx, vy, ax, ay).
 
-    An open-loop harness hands over the whole history the model would have had:
-    comma2k19 sends 160 observations and Qwen-Drive looks at four. Those frames
-    are PNGs, and decoding them is the single largest cost on this benchmark --
-    59 % of wall clock against 10 % in the network, measured on the openpilot
-    sweep. Decoding on record would spend all of it on frames read for their
-    pose alone.
+    Rows are 0.1 s apart ending now, in the current ego frame: x forward,
+    y left, heading positive for a left turn, last row (0, 0, 0). Positions
+    and unwrapped yaw are interpolated by time and clipped at the oldest
+    record, so a sparse early history reads as the standing start it is.
 
-    The decode is also shared across the three view slots, so `replicate` opens
-    one file rather than three.
+    Acceleration is differenced from velocity when the source recorded none.
+    `source_has_acceleration` is that decision, and the caller owns it: the
+    policy tracks whether the channel was ever populated in this episode, which
+    no amount of trimming can change. Left None, the decision falls back to
+    whatever these rows happen to show -- fine for a standalone call, wrong for
+    a retained window, because then how much history is *kept* would silently
+    choose between a recorded acceleration and a differenced one.
     """
+    times = np.asarray(times_s, dtype=np.float64)
+    poses = np.asarray(poses, dtype=np.float64).reshape(-1, 3)
+    motion = np.asarray(motion, dtype=np.float64).reshape(-1, 4)
+    now = times[-1]
+    wanted = np.clip(now - np.arange(NUM_HISTORY_STEPS - 1, -1, -1) * HISTORY_DT, times[0], now)
 
-    __slots__ = ("_mode", "_obs", "_views")
+    x = np.interp(wanted, times, poses[:, 0])
+    y = np.interp(wanted, times, poses[:, 1])
+    yaw = np.interp(wanted, times, np.unwrap(poses[:, 2]))
 
-    def __init__(self, obs: Observation, mode: str) -> None:
-        self._obs = obs
-        self._mode = mode
-        self._views: dict[str, PILImage] | None = None
+    x0, y0, yaw0 = poses[-1]
+    c, s = np.cos(yaw0), np.sin(yaw0)
+    dx, dy = x - x0, y - y0
+    history = np.stack([c * dx + s * dy, -s * dx + c * dy, wrap_angle(yaw - yaw0)], axis=1)
+    history[-1] = 0.0
 
-    @property
-    def timestamp_us(self) -> int:
-        return self._obs.timestamp_us
+    velocity = np.stack([np.interp(wanted, times, motion[:, i]) for i in (0, 1)], axis=1)
+    acceleration = np.stack([np.interp(wanted, times, motion[:, i]) for i in (2, 3)], axis=1)
+    recorded = np.any(motion[:, 2:4]) if source_has_acceleration is None else source_has_acceleration
+    if not recorded and len(times) > 1:
+        acceleration = np.gradient(velocity, HISTORY_DT, axis=0)
+    return history, velocity, acceleration
 
-    def view(self, name: str) -> PILImage:
-        if self._views is None:
-            image = Image.fromarray(self._obs.image(CAMERA)).convert("RGB")
-            self._views = synthesize_views(image, self._mode)
-        return self._views[name]
 
-    def loader(self, name: str):
-        """A zero-argument loader, which is what `CameraFrame` accepts.
+def crop_box(size: tuple[int, int], view: str) -> tuple[int, int, int, int]:
+    """The `CROP_SPAN` slice of a front frame that stands in for `view`.
 
-        Deferring to here means the processor -- not this policy -- decides when
-        a frame is worth decoding, and a scene that is built and discarded costs
-        nothing.
-        """
+    Kept apart from the cropping itself so the geometry is checkable in
+    paddock's own interpreter, which has no PIL-free way to build a frame.
+    """
+    width, height = size
+    span = int(width * CROP_SPAN)
+    if view == "<FRONT LEFT VIEW>":
+        return (0, 0, span, height)
+    if view == "<FRONT RIGHT VIEW>":
+        return (width - span, 0, width, height)
+    return ((width - span) // 2, 0, (width + span) // 2, height)
 
-        def load(name: str = name) -> PILImage:
-            return self.view(name)
 
-        return load
-
-    def release(self) -> None:
-        """Drop the decoded pixels, keeping the pose and timestamp.
-
-        A 1164x874 RGB frame is 3 MB and `Observation.image` caches it in place,
-        so a sequence held whole would carry half a gigabyte of images nobody
-        will look at again.
-
-        The decode cache is only dropped where a path can refill it. An
-        open-loop harness sends paths, which is the case worth freeing; a
-        closed-loop observation arrives as pixels with nothing behind them, and
-        evicting those deletes the only copy, so the next read raises rather
-        than re-decoding. The warped views are ours and always go.
-        """
-        self._views = None
-        if CAMERA in self._obs.image_paths:
-            self._obs.images.pop(CAMERA, None)
+def medoid_index(trajectories: np.ndarray) -> int:
+    """The draw closest to all the others; not a mean, which can land between modes."""
+    flat = trajectories.reshape(len(trajectories), -1)
+    distances = np.linalg.norm(flat[:, None] - flat[None], axis=-1)
+    return int(np.argmin(distances.sum(axis=1)))
 
 
 class QwenDrivePolicy(Policy):
-    cameras = (CAMERA,)
-    waypoint_dt = WAYPOINT_DT
+    cameras = NEEDED_CAMERAS
+    waypoint_dt = 0.5
 
     def __init__(
         self,
-        weights: str | None = None,
         planner: str | None = None,
         mode: str | None = None,
-        view_mode: str | None = None,
         num_samples: int | None = None,
+        attn: str | None = None,
         seed: int | None = None,
+        views: str | None = None,
     ) -> None:
-        # The checkpoint directory, and the planner head inside it. `planner-sft`
-        # serves both planning modes; `planner-rl` is reasoning-only, so it is
-        # not the default -- picking it would silently change which modes work.
-        self.weights = weights or os.environ.get("QWENDRIVE_WEIGHTS", "")
-        self.planner = planner or _env_or("QWENDRIVE_PLANNER", "planner-sft")
-        self.mode = mode or _env_or("QWENDRIVE_MODE", "reasoning_planning")
-        self.view_mode = view_mode or _env_or("QWENDRIVE_VIEWS", "replicate")
-        # One sample. The three the reference drew differed by a standard
-        # deviation of 0.09-0.14 m at t=5 s, so best-of-3 bought 0.03-0.04 ADE
-        # -- and best-of-N needs the ground truth, which a deployed planner does
-        # not have. Sample 0 is what it would follow.
-        self.num_samples = num_samples if num_samples is not None else _env_or("QWENDRIVE_SAMPLES", 1)
-        # Passed explicitly rather than left to the checkpoint's `noise_seed`,
-        # so a recorded number can be re-derived from this file alone.
-        self.seed = seed if seed is not None else _env_or("QWENDRIVE_SEED", 42)
-        # sdpa, not flash-attn: see setup.sh for why flash-attn cannot be built
-        # here. It changes speed, not results.
-        self.attn = _env_or("QWENDRIVE_ATTN", "sdpa")
-        if self.view_mode not in VIEW_MODES:
-            raise ValueError(f"QWENDRIVE_VIEWS={self.view_mode!r}, expected one of {VIEW_MODES}")
+        self.views = views or _env_or("QWENDRIVE_VIEWS", "ring")
+        if self.views not in VIEW_MODES:
+            raise ValueError(f"QWENDRIVE_VIEWS must be one of {VIEW_MODES}, got {self.views!r}")
+        # Declared, not merely used: `Observation.from_wire` keeps the cameras
+        # this names and a closed-loop simulator renders exactly them, so a
+        # monocular mode that still claimed three would cost two renders a frame
+        # and make `paddock verify` refuse a benchmark this can in fact run.
+        self.cameras = NEEDED_CAMERAS if self.views == "ring" else NEEDED_CAMERAS[:1]
+        self.planner = planner or _env_or("QWENDRIVE_PLANNER", DEFAULT_PLANNER)
+        self.mode = mode or _env_or("QWENDRIVE_MODE", "direct")
+        if self.mode not in MODES:
+            raise ValueError(f"QWENDRIVE_MODE must be one of {MODES}, got {self.mode!r}")
+        # planner-rl was reward-optimised only under reasoning-conditioned
+        # rollouts and the vendor says to run it in reasoning mode; a direct-mode
+        # number from it would be nobody's model.
+        if "rl" in os.path.basename(self.planner).split("-") and self.mode != "reasoning":
+            raise ValueError(f"planner {self.planner!r} must run with QWENDRIVE_MODE=reasoning")
+        self.num_samples = num_samples or _env_or("QWENDRIVE_NUM_SAMPLES", 1)
+        self.attn = attn or _env_or("QWENDRIVE_ATTN", "sdpa")
+        raw_seed = os.environ.get("QWENDRIVE_SEED")
+        self.seed = seed if seed is not None else (int(raw_seed) if raw_seed else None)
         self.model = None
-        self._last_reasoning = ""
-        self._speed_source = "unknown"
+        self._mode = None
+        self._infer_seconds: list[float] = []
+        self._frames_repeated = 0
+        self._frames_off_grid = 0
+        self._last_gaps: list[float] = []
+        self._last_command: str | None = None
+        self._last_reasoning: str | None = None
         self._n_infer = 0
         self.reset()
 
-    # ---- lifecycle -------------------------------------------------------
+    # ---- lifecycle ------------------------------------------------------
 
     def load(self) -> None:
-        # qwen_drive and torch exist only inside the model's own environment.
-        from pathlib import Path
-
+        # torch and qwen_drive exist only inside the model's own environment.
         import torch
-        from qwen_drive.modeling_qwen_drive import InferenceMode, QwenDriveForPlanning
+        from qwen_drive import InferenceMode, QwenDriveForPlanning
 
-        if not self.weights or not Path(self.weights).is_dir():
+        checkpoint = os.environ.get("QWENDRIVE_CHECKPOINT")
+        if not checkpoint:
             raise RuntimeError(
-                f"QWENDRIVE_WEIGHTS={self.weights!r} is not a directory. Point it at the "
-                "Qwen-Drive-1.0-4B snapshot (the one holding config.json and planner-sft/)."
+                "QWENDRIVE_CHECKPOINT is not set; model.yaml points it at {weights}/Qwen-Drive-1.0-4B"
             )
-        # A bare head name resolves inside the snapshot; an absolute path wins,
-        # so a head can be swapped without copying the whole checkpoint.
-        planner = Path(self.planner)
-        if not planner.is_absolute():
-            planner = Path(self.weights) / planner
+        if not os.path.isdir(checkpoint):
+            raise FileNotFoundError(f"QWENDRIVE_CHECKPOINT does not exist: {checkpoint}")
+        planner = self.planner if os.path.isabs(self.planner) else os.path.join(checkpoint, self.planner)
+        if not os.path.isdir(planner):
+            raise FileNotFoundError(f"planner directory does not exist: {planner}")
 
-        self._mode_enum = InferenceMode(self.mode)
+        _log.info("loading %s + %s (attn=%s, mode=%s)", checkpoint, planner, self.attn, self.mode)
+        started = time.perf_counter()
         self.model = (
             QwenDriveForPlanning.from_pretrained(
-                self.weights,
-                planner=planner,
-                dtype=torch.bfloat16,
-                attn_implementation=self.attn,
+                checkpoint, planner=planner, dtype=torch.bfloat16, attn_implementation=self.attn
             )
             .to("cuda")
             .eval()
         )
-        _log.info(
-            "qwen-drive loaded: %.3f B params, mode=%s planner=%s views=%s",
-            sum(p.numel() for p in self.model.parameters()) / 1e9,
-            self.mode,
-            planner.name,
-            self.view_mode,
+        self._mode = (
+            InferenceMode.REASONING_PLANNING if self.mode == "reasoning" else InferenceMode.DIRECT_PLANNING
         )
-        # Seeding the sampler is not sufficient for a repeatable plan and the
-        # difference is large enough to see: on a fixed input, repeated rollouts
-        # landed on two or three distinct answers up to 0.64 m apart at 90 m,
-        # all of them multiples of the bf16 step at that magnitude. That is
-        # non-associative reduction order -- cuBLAS picking a split-k by
-        # workspace availability, SDPA by allocator state -- not a draw from the
-        # flow sampler, which is why `QWENDRIVE_SEED` alone does not fix it.
-        #
-        # `use_deterministic_algorithms` with `CUBLAS_WORKSPACE_CONFIG` (set in
-        # model.yaml, because cuBLAS reads it at first handle creation and
-        # setting it here would be too late) pins the part of that order torch
-        # can reach. It is not enough: with both in place, five rollouts still
-        # gave four identical plans and one 0.64 m out. `QWENDRIVE_MODE=
-        # direct_planning` under the same settings is bit-exact, so what is left
-        # lives in the reasoning turn's generate loop, and `stochastic: true` in
-        # model.yaml is the honest record of it rather than a guess.
-        #
-        # Kept anyway, because it removes the variation that would otherwise
-        # track how busy the card is -- a run's noise should not be a function
-        # of its neighbours. `warn_only` so that an op with no deterministic
-        # kernel costs a line in the log rather than the run.
-        torch.use_deterministic_algorithms(True, warn_only=True)
+        _log.info("loaded in %.0f s", time.perf_counter() - started)
 
     def reset(self) -> None:
-        """Drop the pose, speed and frame history between sequences."""
+        """Drop the pose, motion and frame history between runs."""
         self.timestamps: list[int] = []
         self.poses: list[np.ndarray] = []
-        self.speeds: list[float] = []
-        self.yaw_rates: list[float] = []
-        self.frames: list[Frame] = []
+        self.motion: list[np.ndarray] = []
+        self.frames: list[dict[str, Any]] = []
+        #: Whether this source has ever populated the CAN bus's acceleration
+        #: channel. Sticky for the episode and decided as records arrive, so
+        #: that `KEEP_S` bounds memory without also choosing how acceleration
+        #: is derived -- the same stream must not answer differently because an
+        #: old record aged out.
+        self.source_has_accel = False
 
-    # ---- history ---------------------------------------------------------
+    # ---- history --------------------------------------------------------
 
     def _record(self, obs: Observation) -> None:
         """Append one observation.
 
-        A frame stamped no later than the last one is the same frame again --
-        an open-loop warm-up that clamps at the start of a sequence repeats
-        frame 0 -- and is dropped, because the history is resampled by time and
-        `np.interp` needs a strictly increasing x.
+        A frame stamped no later than the last is the same frame again
+        (KITScenes clamps its warm-up at the scene start) and is dropped: the
+        history is resampled by time. Frames are kept as whatever the source
+        gave -- a path on the open-loop benchmarks, decoded pixels in closed
+        loop -- and only the four that are used get opened.
         """
         if self.timestamps and obs.timestamp_us <= self.timestamps[-1]:
             return
-        pose = obs.ego2world
-        self.poses.append(
-            np.array([pose[0, 3], pose[1, 3], np.arctan2(pose[1, 0], pose[0, 0])], dtype=np.float64)
-        )
-        self.timestamps.append(obs.timestamp_us)
-        self.speeds.append(obs.speed)
-        self.yaw_rates.append(obs.yaw_rate)
-        self.frames.append(Frame(obs, self.view_mode))
-        if len(self.timestamps) > HISTORY_KEEP:
-            dropped, self.frames = self.frames[:-HISTORY_KEEP], self.frames[-HISTORY_KEEP:]
-            for frame in dropped:
-                frame.release()
-            self.timestamps = self.timestamps[-HISTORY_KEEP:]
-            self.poses = self.poses[-HISTORY_KEEP:]
-            self.speeds = self.speeds[-HISTORY_KEEP:]
-            self.yaw_rates = self.yaw_rates[-HISTORY_KEEP:]
-
-    def _grid(self) -> tuple[np.ndarray, np.ndarray]:
-        """(offsets before now, wanted absolute times) for the 10 Hz history.
-
-        Clipped to what was actually recorded rather than extrapolated: a short
-        history should read as a car that was standing still before the
-        sequence began, not as one that teleported in.
-        """
-        offsets = np.arange(NUM_HISTORY_STEPS - 1, -1, -1) * HISTORY_DT
-        times = np.asarray(self.timestamps, dtype=np.float64) / 1e6
-        return offsets, np.clip(times[-1] - offsets, times[0], times[-1])
-
-    def _poses_in_current_frame(self, wanted: np.ndarray) -> np.ndarray:
-        """(N, 3) history poses as (x, y, heading) in the ego frame of now.
-
-        The last row is exactly (0, 0, 0) by construction, which is what the
-        model's prompt asserts about it.
-        """
-        times = np.asarray(self.timestamps, dtype=np.float64) / 1e6
-        track = np.stack(self.poses)
-        if len(times) == 1:
-            world = np.repeat(track[:1], len(wanted), axis=0)
-        else:
-            world = np.stack(
+        sources: dict[str, Any] = {}
+        for camera in self.cameras:
+            if camera in obs.image_paths:
+                sources[camera] = obs.image_paths[camera]
+            elif camera in obs.images:
+                sources[camera] = obs.images[camera]
+            else:
+                raise KeyError(
+                    f"observation has no {camera} (has {sorted(obs.images) or sorted(obs.image_paths)}); "
+                    f"Qwen-Drive needs all of {list(self.cameras)}"
+                )
+        canbus = np.asarray(obs.canbus, dtype=np.float64)
+        if canbus[CANBUS_ACCEL] or canbus[CANBUS_ACCEL + 1]:
+            self.source_has_accel = True
+        self.timestamps.append(int(obs.timestamp_us))
+        self.poses.append(pose_xy_yaw(obs.ego2world))
+        # Imported, never re-typed: the CAN-bus layout is one of the contracts
+        # docs/reviewing.md names. Both channels are (x, y) pairs, so the lateral
+        # component is the declared offset plus one.
+        self.motion.append(
+            np.array(
                 [
-                    np.interp(wanted, times, track[:, 0]),
-                    np.interp(wanted, times, track[:, 1]),
-                    interp_angle(wanted, times, track[:, 2]),
-                ],
-                axis=1,
+                    canbus[CANBUS_VELOCITY],
+                    canbus[CANBUS_VELOCITY + 1],
+                    canbus[CANBUS_ACCEL],
+                    canbus[CANBUS_ACCEL + 1],
+                ]
             )
-        x0, y0, h0 = world[-1]
-        cos0, sin0 = np.cos(h0), np.sin(h0)
-        dx, dy = world[:, 0] - x0, world[:, 1] - y0
-        return np.stack([cos0 * dx + sin0 * dy, -sin0 * dx + cos0 * dy, wrap_angle(world[:, 2] - h0)], axis=1)
-
-    def _ego_series(self, local: np.ndarray, wanted: np.ndarray, t_rel: np.ndarray):
-        """Body-frame (velocity, acceleration) on the history grid, each (N, 2).
-
-        Every term comes from a first-class protocol field or from the pose
-        history the model is also shown, so the two cannot disagree silently:
-
-        ``vx``  the recorded speed, resampled. A sensor reading rather than a
-                derivative, so it carries no differentiation lag at t = 0 --
-                which is the one sample the expert is most sensitive to, and the
-                one where a policy has no future frames to centre a difference
-                on. A source that records no speed falls back to the poses, and
-                `diagnostics()["speed_source"]` says which was used.
-        ``vy``  sideslip, from the pose history. Near zero for a road vehicle;
-                deriving it is still better than asserting a zero, because a
-                hard-coded zero would hide a genuine frame error.
-        ``ax``  differentiated from a smoothed ``vx``.
-        ``ay``  ``vx * yaw_rate``. In planar vehicle motion the centripetal term
-                dominates lateral acceleration, and the recorded yaw rate is far
-                quieter than differentiating a 10 Hz heading would be -- at
-                30 m/s, 0.01 rad of heading noise over 0.1 s is 3 m/s^2 of
-                fictitious lateral acceleration.
-        """
-        times = np.asarray(self.timestamps, dtype=np.float64) / 1e6
-        heading = local[:, 2]
-        if len(times) > 1:
-            velocity = np.stack([np.gradient(smooth(local[:, i]), t_rel) for i in range(2)], axis=1)
-        else:
-            velocity = np.zeros((len(local), 2))
-        # local is already expressed in the frame of *now*; rotate each sample
-        # further into the frame the car was pointing at the time.
-        cos_h, sin_h = np.cos(heading), np.sin(heading)
-        vx_pose = cos_h * velocity[:, 0] + sin_h * velocity[:, 1]
-        vy = -sin_h * velocity[:, 0] + cos_h * velocity[:, 1]
-
-        recorded = np.asarray(self.speeds, dtype=np.float64)
-        vx = np.interp(wanted, times, recorded) if len(times) > 1 else np.full(len(local), recorded[-1])
-        if np.max(np.abs(vx)) < SPEED_FLOOR_MS < np.max(np.abs(vx_pose)):
-            vx, self._speed_source = vx_pose, "pose"
-        else:
-            self._speed_source = "recorded"
-
-        yaw_rate = (
-            np.interp(wanted, times, np.asarray(self.yaw_rates, dtype=np.float64))
-            if len(times) > 1
-            else np.zeros(len(local))
         )
-        ax = np.gradient(smooth(vx), t_rel) if len(times) > 1 else np.zeros(len(local))
-        return np.stack([vx, vy], axis=1), np.stack([ax, vx * yaw_rate], axis=1)
+        self.frames.append(sources)
+        self._trim()
 
-    def _view_frames(self) -> tuple[list[Frame], list[float]]:
-        """The four frames nearest `VIEW_OFFSETS_S`, oldest first, and their ages.
+    def _trim(self) -> None:
+        """Drop records the model can no longer read.
 
-        Nearest-by-timestamp rather than by index, because a source's request
-        cadence is not paddock's business: comma2k19's camera runs at 19.93 Hz,
-        not 20, and index arithmetic drifts ~0.2 s over a minute -- comparable to
-        the 0.5 s spacing the prompt claims these frames have.
+        By time first, because that is what bounds memory under a fast source:
+        anything older than `KEEP_S` is past every slot the selection can ask
+        for. `NUM_CAM_FRAMES` records are always kept, so a source slower than
+        the window still has four frames to fill four slots, and `MAX_RECORDED`
+        caps the count whatever the cadence.
         """
-        times = np.asarray(self.timestamps, dtype=np.float64) / 1e6
-        ages = []
-        chosen = []
-        for offset in VIEW_OFFSETS_S:
-            index = int(np.argmin(np.abs(times - (times[-1] - offset))))
-            chosen.append(self.frames[index])
-            ages.append(float(times[-1] - times[index]))
-        return chosen, ages
-
-    # ---- inference -------------------------------------------------------
-
-    def _scene(self, obs: Observation):
-        from qwen_drive.scene import CameraFrame, DrivingScene
-
-        offsets, wanted = self._grid()
-        local = self._poses_in_current_frame(wanted)
-        velocity, acceleration = self._ego_series(local, wanted, -offsets)
-
-        nav_command, driving_command = COMMANDS[int(obs.command)]
-        frames, self._view_ages = self._view_frames()
-        # Frames carry no `target_size`, so the processor falls back to the
-        # config's history/current pixel budgets. That keeps the source's own
-        # aspect ratio instead of forcing the portrait crop the released
-        # benchmark metadata encodes for Waymo imagery.
-        views = {view: [CameraFrame(image=f.loader(view)) for f in frames] for view in CAMERA_VIEWS}
-        return DrivingScene(
-            views=views,
-            history=local.astype(np.float32),
-            history_velocity=velocity.astype(np.float32),
-            history_acceleration=acceleration.astype(np.float32),
-            ego_velocity=tuple(velocity[-1]),
-            ego_acceleration=tuple(acceleration[-1]),
-            driving_command=driving_command,
-            nav_command=nav_command,
-            token=str(obs.timestamp_us),
-            metadata={"view_mode": self.view_mode},
-        )
+        cutoff = self.timestamps[-1] - int(KEEP_S * 1e6)
+        keep = sum(1 for t in self.timestamps if t >= cutoff)
+        keep = max(keep, NUM_CAM_FRAMES)
+        keep = min(keep, MAX_RECORDED)
+        if keep < len(self.timestamps):
+            del self.timestamps[:-keep]
+            del self.poses[:-keep]
+            del self.motion[:-keep]
+            del self.frames[:-keep]
 
     def observe(self, obs: Observation) -> None:
-        """Record a history frame without sampling the model.
+        """Record a history frame without running the model.
 
-        The default `observe` runs a full rollout per frame and keeps nothing.
-        Qwen-Drive is a pure function of its recorded history, so on comma2k19
-        that would be 160 VLM rollouts to use one, and a ~1.5 s sample would
-        take four minutes. Recording N-1 frames and planning on the last gives
-        the identical scene -- and, since the sampler is seeded, the identical
-        trajectory.
+        The model conditions on the recorded history alone, so an open-loop
+        sequence costs one forward pass, not one per frame.
         """
         self._record(obs)
+
+    def scene_inputs(self, command: Command) -> dict[str, Any]:
+        """Everything but the images for one `DrivingScene`, plus which
+        recorded frames to open. Pure numpy, so the tests can check it."""
+        times = np.array(self.timestamps, dtype=np.float64) / 1e6
+        indices, gaps = select_frame_indices(times)
+        history, velocity, acceleration = resample_history(
+            times,
+            np.stack(self.poses),
+            np.stack(self.motion),
+            source_has_acceleration=self.source_has_accel,
+        )
+        return {
+            "frame_indices": indices,
+            "frame_gaps_s": gaps,
+            "history": history,
+            "history_velocity": velocity,
+            "history_acceleration": acceleration,
+            "ego_velocity": tuple(float(v) for v in velocity[-1]),
+            "ego_acceleration": tuple(float(a) for a in acceleration[-1]),
+            "driving_command": list(DRIVING_COMMAND[Command(command)]),
+            "nav_command": NAV_COMMAND[Command(command)],
+        }
+
+    def _scene(self, obs: Observation, inputs: dict[str, Any]):
+        """A `DrivingScene` from `scene_inputs` plus the four frames per view.
+
+        A slot whose camera was never recorded is filled from the front frame,
+        the way `self.views` says. Crops go in as a loader rather than an image:
+        `CameraFrame` accepts a callable and the processor decides when a frame
+        is worth opening, so a source that sends paths -- every open-loop
+        benchmark -- still decodes the four frames it reads and not the 160 it
+        was handed.
+        """
+        from PIL import Image
+        from qwen_drive import CameraFrame, DrivingScene
+
+        inputs = dict(inputs)
+        indices = inputs.pop("frame_indices")
+        inputs.pop("frame_gaps_s")
+
+        def open_image(source: Any) -> Any:
+            """One frame as a PIL image, whatever the benchmark handed over.
+
+            A `.npy` path is a *staged raw frame*, not an encoded one: a harness
+            that stages frames for a node on the same machine writes arrays
+            because compressing them only to decompress them again cost a
+            comma2k19 sweep 59% of its wall clock in PIL's PNG decoder
+            (`Observation.image` carries the measurement). PIL cannot open one,
+            so the read happens here.
+            """
+            if not isinstance(source, str):
+                return Image.fromarray(source)
+            if source.endswith(".npy"):
+                return Image.fromarray(np.load(source))
+            return Image.open(source)
+
+        views: dict[str, list[Any]] = {}
+        for camera, view in CAMERA_VIEWS:
+            frames = []
+            for index in indices:
+                record = self.frames[index]
+                if self.views == "crop":
+                    # The centre is cut too, not passed through whole: three
+                    # slices of one width is the point, and a wide centre beside
+                    # two narrow sides would put the model's three views at two
+                    # different scales.
+                    front = record[NEEDED_CAMERAS[0]]
+
+                    def cut(source: Any = front, view: str = view) -> Any:
+                        image = open_image(source).convert("RGB")
+                        return image.crop(crop_box(image.size, view))
+
+                    frames.append(CameraFrame(cut))
+                    continue
+                source = record[camera if self.views == "ring" else NEEDED_CAMERAS[0]]
+                if isinstance(source, str) and not source.endswith(".npy"):
+                    # An encoded path goes in as a path: the vendor's own loader
+                    # opens it when -- and only if -- the processor reads it.
+                    frames.append(CameraFrame(source))
+                    continue
+
+                def read(source: Any = source) -> Any:
+                    return open_image(source).convert("RGB")
+
+                frames.append(CameraFrame(read))
+            views[view] = frames
+        return DrivingScene(views=views, token=str(obs.timestamp_us), **inputs)
+
+    # ---- planning -------------------------------------------------------
 
     def infer(self, obs: Observation) -> Trajectory:
         if self.model is None:
             raise RuntimeError("load() must be called before infer()")
         self._record(obs)
+        inputs = self.scene_inputs(obs.command)
+        self._last_gaps = inputs["frame_gaps_s"]
+        self._frames_repeated += NUM_CAM_FRAMES - len(set(inputs["frame_indices"]))
+        # A duplicate index is not the only way a slot goes unfilled: a drifting
+        # cadence gives four *distinct* frames that are all late. Counted
+        # separately, so a 1.5 s history that is not actually 1.5 s is visible.
+        self._frames_off_grid += sum(1 for gap in self._last_gaps if gap > FRAME_TOLERANCE_S)
+        self._last_command = Command(obs.command).name
+        scene = self._scene(obs, inputs)
 
-        scene = self._scene(obs)
-        output = self.model.run(self._mode_enum, scene=scene, num_samples=self.num_samples, seed=self.seed)
-        # (num_samples, 50, 3) of (x, y, heading), ego frame, 10 Hz. Sample 0 is
-        # the deployed one; paddock scores what would be driven.
-        waypoints = np.asarray(output.trajectories, dtype=np.float64)[0, :, :2]
-        self._last_reasoning = (output.reasoning or "")[:400]
+        started = time.perf_counter()
+        result = self.model.generate_trajectory(
+            scene, mode=self._mode, num_samples=self.num_samples, seed=self.seed
+        )
+        self._infer_seconds.append(time.perf_counter() - started)
+        del self._infer_seconds[:-200]
 
-        for frame in self.frames:
-            frame.release()
+        samples = np.asarray(result.trajectories, dtype=np.float64)  # (K, 50, 3)
+        chosen = samples[medoid_index(samples)] if len(samples) > 1 else samples[0]
+        self._last_reasoning = result.reasoning
+        # The model plans x forward, y left, heading positive left: paddock's frame.
+        waypoints = chosen[list(GRID_INDICES)]
+
         self._n_infer += 1
         if self._n_infer % 100 == 1:
             _log.info(
-                "infer #%d v=%.1f m/s (%s) reach %.1f m: %s",
+                "infer #%d command=%s reach %.1f m in %.2f s (frames repeated so far: %d)",
                 self._n_infer,
-                scene.ego_velocity[0],
-                self._speed_source,
-                float(np.linalg.norm(waypoints[-1])),
-                self._last_reasoning[:200],
+                self._last_command,
+                float(np.linalg.norm(waypoints[-1, :2])),
+                self._infer_seconds[-1],
+                self._frames_repeated,
             )
         return Trajectory(waypoints, dt=self.waypoint_dt)
 
-    # ---- diagnostics -----------------------------------------------------
-
     def diagnostics(self) -> dict[str, Any]:
-        """What would make a number wrong without making it fail.
+        """Cadence, history depth and how often a slot had no frame of its own.
 
-        `history_span_s` and `speed_recorded` vs `speed_pose` are the two to
-        watch. A history spanning much less than 1.5 s means the source did not
-        feed one and the model is planning from a near-standstill it invented; a
-        speed disagreement beyond a percent or so means the pose frame, the
-        timestamps or the odometer channel are not describing the same motion,
-        and the reference's own conversion check was exactly this comparison.
+        `frames_repeated_total` is the one to watch in closed loop: it counts
+        slots filled by a stand-in because less than 1.5 s had been seen. A few
+        per episode is the warm-up; growing steadily means the request cadence
+        is not what the benchmark claims.
+
+        `frames_off_grid_total` is its quieter sibling: slots filled by a
+        distinct frame that is nonetheless more than `FRAME_TOLERANCE_S` from
+        the time the slot asked for. A source that drifts rather than repeats
+        moves this one and leaves the other at zero.
         """
         if not self.timestamps:
-            return {"status": "no frame seen yet", "view_mode": self.view_mode, "mode": self.mode}
-        offsets, wanted = self._grid()
-        local = self._poses_in_current_frame(wanted)
-        velocity, _ = self._ego_series(local, wanted, -offsets)
-        times = np.asarray(self.timestamps, dtype=np.float64) / 1e6
-        pose_step = np.hypot(*(local[-1, :2] - local[-2, :2])) if len(local) > 1 else 0.0
+            return {"status": "no frame seen yet"}
+        times = np.array(self.timestamps, dtype=np.float64) / 1e6
         return {
-            "mode": self.mode,
             "planner": self.planner,
-            "attn": self.attn,
-            "view_mode": self.view_mode,
+            "mode": self.mode,
+            "views": self.views,
+            "cameras": list(self.cameras),
             "num_samples": self.num_samples,
+            "attn": self.attn,
             "seed": self.seed,
-            "nav_command": "GO STRAIGHT",
-            "recorded_frames": len(self.timestamps),
             "history_span_s": round(float(times[-1] - times[0]), 3),
-            "request_dt_s": (round(float(times[-1] - times[-2]), 4) if len(times) > 1 else None),
-            "view_ages_s": [round(a, 3) for a in getattr(self, "_view_ages", [])],
-            "speed_source": self._speed_source,
-            "speed_recorded": round(self.speeds[-1], 3),
-            "speed_pose": round(float(pose_step / HISTORY_DT), 3),
-            "reasoning": self._last_reasoning,
+            "request_dt_s": round(float(times[-1] - times[-2]), 3) if len(times) > 1 else None,
+            "frames_repeated_total": self._frames_repeated,
+            "frames_off_grid_total": self._frames_off_grid,
+            "last_frame_gaps_s": [round(g, 3) for g in self._last_gaps],
+            "last_command": self._last_command,
+            "infer_seconds_mean": (
+                round(float(np.mean(self._infer_seconds)), 3) if self._infer_seconds else None
+            ),
+            "reasoning": (self._last_reasoning or "")[:400],
         }
 
 

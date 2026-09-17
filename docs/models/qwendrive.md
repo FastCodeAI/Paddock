@@ -1,124 +1,88 @@
-# Qwen-Drive 1.0 — Adapter Notes
+# Qwen-Drive-1.0 in paddock
 
-> Paths in this guide are written as placeholders: `<repos>` is
-> `[roots.repos]` from your `paddock.toml`, `<weights>` is `[roots.weights]`.
+Qwen-Drive-1.0-4B (Qwen team + HUST, September 2026, Apache-2.0) is a Qwen3.5-4B
+vision-language model with a 1 B-parameter "Planning Expert" attached: a
+flow-matching transformer that reads the VLM's attention caches and regresses
+a trajectory. The VLM is unchanged, so it also answers driving questions. Paddock
+runs the planning path only. Vendor repo: `Qwen-Drive-1.0` in `repos.yaml`
+(`28091c1`), weights `Qwen-Drive-1.0-4B/` under `[roots.weights]`.
 
-## What it is
+Adapter: `src/paddock/adapters/models/qwendrive/`. Run it with
 
-[Qwen-Drive 1.0](https://github.com/QwenLM/Qwen-Drive-1.0) is a Qwen3.5-4B
-vision-language model with a 1 B flow-matching **planning expert** attached to
-it, 5.58 B parameters loaded in bf16. The expert is not a head on top of a
-pooled embedding: it cross-attends to the post-rotary K/V of the VLM's eight
-`full_attention` layers. In `REASONING_PLANNING` the VLM first writes a
-one-sentence rationale and the expert plans from *that* cache, so the text is
-upstream of the trajectory rather than commentary on it. The rationale is
-published per sample in `diagnostics()`.
-
-Three inference modes ship: `VQA` (text only), `DIRECT_PLANNING` and
-`REASONING_PLANNING`. Two planner heads ship: `planner-sft`, which serves both
-planning modes, and `planner-rl`, which is reasoning-only. The adapter defaults
-to `REASONING_PLANNING` + `planner-sft`.
-
-Pinned in `repos.yaml` at `28091c1`. The checkout is imported as a library from
-`<repos>/Qwen-Drive-1.0/src`; nothing is vendored and nothing is patched.
-`scripts/demo.py` is *not* used — it hard-codes `attn_implementation="flash_attention_2"`,
-which cannot be built here (below).
-
-**What it was trained on is not stated.** The released card names no public
-driving corpus and the checkout carries no training manifest, so
-`model.yaml` records `trained_on: [{dataset: not-stated}]`. The useful claim
-would be "none of paddock's benchmarks", and nothing in the checkout supports
-it. The bundled demo scenes are in Waymo Open Dataset format, which is evidence
-about the input format, not about the training set.
-
-## Weights and environment
-
-The snapshot directory must hold `config.json`, `model.safetensors` and the
-`planner-sft/` head. Point `QWENDRIVE_WEIGHTS` at it. A site whose weights live
-in a HuggingFace cache should name the revision outright in `paddock.toml`, so
-a later download cannot quietly move what a recorded run was scored against.
-
-`setup.sh` builds the venv from the repo's `requirements.txt` plus two things
-that repository does not get right on its own:
-
-**`causal-conv1d` must be compiled, with C++20 forced.** Qwen3.5's attention is
-hybrid: `layer_types` is 3× `linear_attention` then 1× `full_attention`,
-repeated 8× for 32 layers. The 24 linear layers are Gated DeltaNet and fall back
-to a slow reference path unless `causal-conv1d` and `flash-linear-attention`
-both resolve. torch 2.14's ATen headers require C++20 while the system gcc
-defaults to C++17, so the standard has to be forced through `CXXFLAGS`. Verify
-afterwards:
-
-```python
-from transformers.models.qwen3_5 import modeling_qwen3_5 as m
-m.is_fast_path_available   # must be True
+```bash
+paddock doctor --model qwendrive
+paddock run --model qwendrive --bench kitscenes --limit 5      # smoke
+paddock run --model qwendrive --bench navsim                   # full navtest, 10 Hz history
+paddock run --model qwendrive --bench neuroncap --runs 10 --scene <official set>
+paddock run --model qwendrive --bench comma2k19                # 10,165 keyframes, one camera
 ```
 
-Probing that by importing the submodule directly raises
-`Could not import module 'modeling_qwen3_5'`. That is transformers' lazy-module
-accessor, not a real failure.
+## What the model consumes and emits
 
-**`flash-linear-attention` ships half a package.** As of 0.3.2 the project split
-in two: `fla.layers` and `fla.models` stayed in `flash-linear-attention` while
-`fla.modules` and `fla.ops` moved to a separate `fla-core` distribution. The
-repo's `requirements.txt` names only the first, so a `--no-deps` install yields
-a package that imports and then fails at
-`from fla.modules import FusedRMSNormGated`, surfacing as
-`ModuleNotFoundError: Could not import module 'Qwen3_5ForConditionalGeneration'`
-— which looks exactly like a truncated download and is not one. The wheel sizes
-give it away: 0.3.1 is 656 KB, 0.3.2 is 268 KB. Install **both**, both under
-`--no-deps`.
+From the vendor's `docs/data.md`, `docs/model.md` and `src/qwen_drive/scene.py`:
 
-**flash-attn is deliberately absent.** Two independent reasons, and the adapter
-asks for `sdpa` instead:
+| | |
+|---|---|
+| cameras | three: front, front-left, front-right (`CAMERA_VIEWS`); a scene missing one raises |
+| frames per camera | four, 0.5 s apart: t−1.5, t−1.0, t−0.5, t−0 |
+| image size | a pixel budget snapped to a 32 px grid: current frame 921,600 px (~720p), history frames 174,080 px (~320p) |
+| ego history | 16 poses (x, y, heading) at 10 Hz over 1.5 s, current ego frame, x forward, y left, last row (0, 0, 0); plus velocity [16, 2] and acceleration [16, 2] |
+| ego status | `[vx, vy, ax, ay, left, straight, right, unknown]` |
+| navigation | integer command 0 straight / 1 left / 2 right, written into the prompt text |
+| output | 50 poses of (x, y, heading) at 10 Hz, 5 s, ego frame; flow matching from seeded noise, so deterministic |
 
-1. The C++20 trick above does not work for it. flash-attn's `setup.py` puts
-   `-std=c++17` in `extra_compile_args`, which distutils emits *after* the
-   environment's `CXXFLAGS`, so the variable is silently overridden and the
-   ATen C++20 errors come straight back.
-2. flash-attn 2.8.3 does not compile against CUDA 13 regardless — its vector
-   types hit the `double4`/`double4_16a` deprecations.
+Two planners ship. `planner-sft` is imitation-trained and plans with or without
+a written rationale; `planner-rl` is reward-optimised and, the vendor says, must
+run in reasoning mode. Paddock's default is **`planner-sft` in direct mode**: one
+VLM pass then the expert, no text generated. The adapter refuses `planner-rl`
+with direct mode rather than record a number nobody's model produced. Vendor
+NAVSIM v1.1 navtest PDMS: 87.8 (sft, direct), 88.2 (sft, reasoning), 90.7 (rl).
 
-It is a speed optimisation for the eight full-attention layers. It changes no
-result, so "fixing" the missing dependency buys nothing and breaks the install.
+## How each benchmark's stream becomes that scene
 
-Settings, all in `model.yaml` `runtime.env`:
+Every benchmark hands the adapter one frame per observation. The adapter keeps
+the recorded frames, poses and CAN bus, and at each plan:
 
-| variable | default | meaning |
-|---|---|---|
-| `QWENDRIVE_WEIGHTS` | `{weights}/Qwen-Drive-1.0-4B` | snapshot directory |
-| `HF_HOME` | `{weights}` | keeps tokenizer cache lookups off the root filesystem |
-| `QWENDRIVE_PLANNER` | `planner-sft` | a bare name resolves inside the snapshot; an absolute path is taken as-is |
-| `QWENDRIVE_MODE` | `reasoning_planning` | `direct_planning` is the ablation |
-| `QWENDRIVE_VIEWS` | `replicate` | `crop` is the ablation; see below |
-| `QWENDRIVE_SEED` | `42` | passed on every call; pins the sampler, but see Determinism — it is not enough for a repeatable plan |
-| `QWENDRIVE_SAMPLES` | `1` | flow-sampler draws; sample 0 is scored |
-| `QWENDRIVE_ATTN` | `sdpa` | see above |
+- picks the four camera frames nearest by timestamp to t−1.5/−1.0/−0.5/0 s.
+  A 10 Hz source contributes every fifth frame, a 2 Hz source every frame.
+  Before 1.5 s of a closed-loop run has been seen, the oldest frame stands in;
+  `/diagnostics` `frames_repeated_total` counts those slots.
+- resamples the 16 poses onto a 0.1 s grid **by timestamp**, not by request
+  count: neuroNCAP's priming steps arrive 0.5 s apart and only its loop steps at
+  0.1 s. Velocity and acceleration come from the CAN bus where the source
+  records them; KITScenes records speed only, so acceleration is differenced.
+- maps paddock's command to both of the model's encodings: LEFT → (1, [1,0,0,0]),
+  STRAIGHT → (0, [0,1,0,0]), RIGHT → (2, [0,0,1,0]), FOLLOW_REFERENCE → (0, [0,0,0,1]).
+  The prompt vocabulary has no "unknown", so FOLLOW_REFERENCE reads as straight
+  in the text and as unknown in the ego status, as NAVSIM's own records do.
+- keeps the 0.5 s grid of the 50-pose output, indices 4, 9, … 49: ten
+  waypoints over 5 s with heading — the whole plan. NAVSIM scores the first
+  eight; neuroNCAP takes the first six; KITScenes truncates at 3 s; comma2k19
+  scores every point it is given, against horizons it labels honestly, which is
+  why the grid runs to the end rather than stopping at NAVSIM's 4 s.
 
-## Input contract and how paddock fills it
+| benchmark | frames | poses | command | note |
+|---|---|---|---|---|
+| KITScenes | 49 at 10 Hz, one `/infer_sequence`; ring cameras front, front-left, front-right | real, 4.8 s; speed only | always STRAIGHT | ring cameras sit at +60.9/−58.5° with ~87° HFOV against the ~70° nuPlan cameras the model trained on; zero-shot, not warped |
+| NAVSIM v2 / v1 | `native_input_hz: 10` selects nuPlan's 10 Hz path (`[benchmarks.navsim] nuplan`): 16 observations over 1.5 s, frames picked every 0.5 s | 16 real poses with velocity, acceleration, yaw rate | NAVSIM's one-hot, round-tripped exactly | the model's own NAVSIM cameras (`cam_f0/l0/r0`) and history rate |
+| neuroNCAP | one 1600×900 frame per 0.1 s tick, three cameras rendered | from `ego2world` each tick | the engine's | the adapter plans every tick, as every other model here |
+| comma2k19 | 160 observations at 20 Hz per sample, one `/infer_sequence`; **one** camera, replicated into all three view slots | real, 8 s of 20 Hz pose; CAN speed, acceleration differenced | always STRAIGHT — the dataset ships no route | zero-shot on a rig nothing in the corpus resembles; see below |
+| Bench2Drive | one frame per 20 Hz tick | from `ego2world` | route-derived | not yet run; 20 Hz × a VLM is the cost to plan for |
 
-`DrivingScene` wants, per scored frame: three camera views at four timestamps,
-16 ego poses at 10 Hz, an ego-status vector, and a navigation command.
+## Filling three views from one camera
 
-**Conventions already match.** x forward, y **left**, heading positive for a
-left turn, metres and radians. comma2k19's device frame is y-right, but
-`adapters/benchmarks/comma2k19/loader.py` converts to the ego convention before
-the `Observation` is built, so **the policy flips no signs**. A flip here would
-mirror every plan and still look perfectly smooth — see
-`docs/datasets/comma2k19.md` for why that is the easiest thing on this dataset
-to get silently wrong. `tests/test_policy.py::test_a_left_turn_is_left_in_every_channel`
-pins it: a left arc must show positive lateral position, negative past heading
-and positive lateral acceleration, and the mirrored right arc the reverse.
+`DrivingScene.__post_init__` **raises** on a missing view, so `<FRONT VIEW>`,
+`<FRONT LEFT VIEW>` and `<FRONT RIGHT VIEW>` all have to be filled from whatever
+the source has. On comma2k19 that is one windscreen camera. `QWENDRIVE_VIEWS`
+picks how:
 
-**Three views from one camera.** `DrivingScene.__post_init__` **raises** on a
-missing view, so `<FRONT VIEW>`, `<FRONT LEFT VIEW>` and `<FRONT RIGHT VIEW>`
-must all be filled from whatever the source has. Two modes:
-
-- `replicate` (default) — the true forward frame in all three slots.
-  Geometrically honest, each view really is a forward camera, but it adds no
-  lateral context.
-- `crop` — overlapping 55 %-width thirds. Real lateral content, wrong
-  extrinsics: a crop is not a rotated camera.
+- `ring` (default) — one real camera per slot. The model as trained, and what
+  KITScenes, NAVSIM and neuroNCAP supply.
+- `replicate` — the true forward frame in all three slots. Geometrically honest
+  in that each view really is a forward camera, but it adds no lateral context.
+- `crop` — overlapping 55 %-width thirds of the road camera, all three cut to
+  one width so the model does not read one wide view beside two narrow ones.
+  Real lateral content, wrong extrinsics: a crop is not a rotated camera.
 
 `replicate` wins, measured rather than argued: 1.47 city / 2.00 highway ADE
 against `crop`'s 1.78 / 2.13 on the reference investigation's segments. The
@@ -131,155 +95,125 @@ says "there is no +55° view"; repeating the centre frame there would say "here
 is one" and lie. Qwen-Drive does not tolerate it, so the choice is between two
 lies and the measured one wins.
 
-**History is resampled by timestamp, never by request count.** 16 poses at
-10 Hz over 1.5 s, ego frame of the scored frame, last row exactly `(0, 0, 0)`;
-camera timestamps at −1.5, −1.0, −0.5 and 0 s. comma2k19 feeds 20 Hz, and
-differencing a 20 Hz history labelled 10 Hz would tell the model it is going
-half speed. Ego state is by far this model's strongest input — the reference
-ablation put a stationary history at ADE 15.79 city / 70.74 highway against a
-1.47 / 2.00 baseline — so `diagnostics()` publishes the pose-derived speed
-beside the recorded one, and a disagreement there is the first thing to look at
-when a number will not line up.
+The mode also decides what the policy **declares**: under `replicate` or `crop`,
+`policy.cameras` is `CAM_FRONT` alone. That keeps `paddock verify`'s
+`pair.declared_cameras_available` honest and stops a closed-loop simulator
+rendering two cameras nobody reads. It is a property of the *source*, not of the
+model, and paddock has no per-benchmark model environment — so a site that runs
+both a ring source and a monocular one needs two registry entries, the way
+`drivejepa` and `drivejepa_free` split.
 
-**Ego status** is `[vx, vy, ax, ay]` plus a one-hot `[left, straight, right,
-unknown]`. `vx` comes from the recorded odometer (`obs.speed`) resampled onto
-the grid rather than from differentiated poses, so there is no differentiation
-lag at `t = 0` — the frame the expert plans from. `vy` is the sideslip implied
-by the pose history, `ax = d/dt smooth(vx)`, and `ay = vx · yaw_rate`, taken
-from the recorded yaw rate because differentiating a 10 Hz heading manufactures
-about 3 m/s² of lateral acceleration at 30 m/s. A source with no odometer falls
-back to pose-derived speed and records `speed_source` in `diagnostics()`.
+**No route, and it costs something.** comma2k19 ships no turn-by-turn signal, so
+every observation carries `Command.STRAIGHT` and the model plans every sample
+under "GO STRAIGHT". Feeding the command a route planner *would* have issued —
+read off the recorded future, hence diagnostic-only and never scored — improved
+the reference's city ADE 1.47 → 1.28 and highway 2.00 → 1.77. `/diagnostics`
+records the command per sample so a residual on curves can be attributed to a
+missing input rather than to planning.
 
-The smoother's edge handling is deliberate and is the one place a plausible
-choice is wrong: replicating the endpoint flattens the filter's last samples
-towards the last value, and here the last sample is `t = 0`. A car braking at a
-steady 3 m/s² came out at 2. `smooth()` pads by **odd reflection**, which
-continues the local slope through the boundary.
+## Environment
 
-**No route.** comma2k19 ships no turn-by-turn signal, so every observation
-carries `Command.STRAIGHT` and the model plans every sample under "GO STRAIGHT".
-That is a real cost, not a formality: feeding the command a route planner *would*
-have issued — read off the recorded future, hence diagnostic-only and never
-scored — improved the reference's city ADE 1.47 → 1.28 and highway 2.00 → 1.77.
-`diagnostics()` records `nav_command` so a residual on turns can be attributed
-to a missing input rather than to planning. The mapping was cross-checked
-against the released WOD scene files, where a left turn has future y = +11.98 m
-and a right y = −11.0 m.
+`setup.sh` builds `{repo}/.venv` on Python 3.12 with the vendor's pins (torch
+2.8.0 cu128, transformers 5.14.1). Two things are deliberate:
 
-**Determinism — `stochastic: true`, and why the seeds do not buy it back.**
-Every deliberate source of randomness here is pinned. The flow sampler draws
-sample *k* from a `torch.Generator` seeded `seed + k`, with the seed passed
-explicitly on every call rather than inherited from whatever `noise_seed` the
-checkpoint ships; the reasoning turn runs `do_sample=False, num_beams=1` and
-decodes the identical sentence on every rollout (5/5 on a fixed input, verified
-by capturing `_last_reasoning`). The plan still moves.
+- **flash-attn is not installed.** It does not build for this card's sm_120
+  (the alpamayo adapter hit the same wall). The model supports
+  `attn_implementation="sdpa"` in both the VLM and the expert; `QWENDRIVE_ATTN`
+  sets it.
+- **causal-conv1d is attempted, not required.** It is a CUDA extension the
+  Qwen3.5 hybrid-attention layers use; if it fails to build, transformers falls
+  back to a torch implementation, slower and numerically the same. The setup log
+  says which happened.
 
-Five rollouts through the model's own interpreter, with `reset()` between each,
-gave four identical trajectories and one that differed by **0.64 m at the 90 m
-end of the 5 s horizon** — one bf16 step at that magnitude, i.e. a reduction
-that split differently, not a second draw from the sampler. Adding
-`torch.use_deterministic_algorithms(True)` and `CUBLAS_WORKSPACE_CONFIG=:4096:8`
-(both now in place) does not close it. `QWENDRIVE_MODE=direct_planning` under
-the same settings *is* bit-exact across five rollouts, which localises what is
-left to the reasoning turn's generate loop rather than to the planning expert.
+`QWENDRIVE_CHECKPOINT`, `QWENDRIVE_PLANNER`, `QWENDRIVE_MODE`,
+`QWENDRIVE_VIEWS`, `QWENDRIVE_NUM_SAMPLES`, `QWENDRIVE_ATTN` and
+`QWENDRIVE_SEED` are the knobs; `model.yaml` sets all but the last. `num_samples > 1` executes the medoid draw;
+the vendor's best-of-N figures select with the ground truth and are not
+reproducible here.
 
-So `model.yaml` declares `stochastic: true`, because the scored default is
-`reasoning_planning`. Two consequences worth stating plainly: a recorded
-qwendrive number is a draw rather than a measurement, of order 0.7 % at the far
-end of the plan and far smaller near it; and `paddock verify` reports
-`policy.reset_clears_state` as a **warning** with the measured drift attached,
-rather than failing on an exactness this model never claimed.
+## Training exposure
 
-**Why `num_samples: 1`.** Three flow-matching samples differed by a standard
-deviation of only 0.09–0.14 m at t = 5 s in the reference measurements, so
-best-of-3 barely improved on the first sample (1.75 vs 1.78 city) — and
-best-of-N needs ground truth a deployed planner does not have. Raising
-`QWENDRIVE_SAMPLES` costs latency roughly linearly and buys almost nothing;
-any diversity-based use would need a different noise scale or step count.
+The vendor states the planner was trained on trajectories "standardized from
+multiple public driving datasets" and reports NAVSIM navtest as its headline
+number, so `trained_on` declares NAVSIM `navtrain`; see the Qwen-Drive × navsim
+section of [comparison.md](comparison.md) for what that does to the NAVSIM
+column. KITScenes, neuroNCAP (nuScenes, rendered) and comma2k19 are zero-shot —
+and comma2k19 doubly so, since nothing the report names is a windscreen-mounted
+mono camera on a Californian highway.
 
-## Output
+## Results
 
-50 waypoints `(x, y, heading)` — 5 s at 10 Hz in the scored frame's ego frame.
-The adapter takes `(x, y)` of sample 0 and returns `Trajectory(xy, dt=0.1)`, so
-`waypoint_dt: 0.1` and `horizon_s: 5.0` in `model.yaml`; the dashboard reads the
-time axis from the registry, not from the array.
+All six on `planner-sft`, direct mode, one seeded sample. The first five on one
+RTX PRO 6000; comma2k19 on an H200, seven nodes, `QWENDRIVE_VIEWS=replicate`.
 
-Everything else the model produces — the rationale, the nav command actually
-used, the resolved view mode, the speed source and both speeds — rides in
-`diagnostics()`. No benchmark reads them; they are there so a surprising number
-has somewhere to be explained from.
+| benchmark | n | score | wall clock | run |
+|---|---:|---:|---:|---|
+| KITScenes ADE@3s ↓ | 223 | 0.806 m | 6.6 min | `20260914T220841-5a91fd` |
+| nuScenes cumulative L2 ↓ | 5,119 | 0.450 m | 88 min | `20260915T190350-47479e` |
+| NAVSIM v2 EPDMS ↑ | 12,146 | 0.840 | 4.0 h | `20260914T221802-80457c` |
+| NAVSIM v1 PDMS ↑ | 12,146 | 0.876 | 9 min, no GPU | `20260915T021715-02aab4` |
+| neuroNCAP score ↑ | 200 | 2.49 | 7.7 h | `20260915T023604-12d5eb` |
+| comma2k19 ADE@3s ↓ | 10,165 | 1.159 m | 2.0 h | `20260916T220846-971379` |
 
-## Running it
+The v1 figure is worth one line on its own: the vendor reports 87.8 PDMS on this
+split for exactly this configuration, and paddock measures 87.6. That agreement
+covers the camera mapping, the pose history, the eight poses NAVSIM reads and the
+scorer together, which is a stronger check than any one of them alone. It is
+also an in-distribution number — the model declares `navtrain`.
 
-```bash
-PADDOCK_REPO=<repos>/Qwen-Drive-1.0 bash src/paddock/adapters/models/qwendrive/setup.sh
-paddock doctor --model qwendrive
-paddock verify --model qwendrive --bench comma2k19
-paddock run --model qwendrive --bench comma2k19 --limit 20
-paddock run --model qwendrive --bench comma2k19
-```
+nuScenes is the widest margin: lower than every other model on all seven
+columns, collision included, and the first model here to beat the
+constant-velocity baseline outright. Zero-shot — nuScenes is not among the
+datasets the model declares.
 
-The card must hold `vram_gb: 18` per node — 11.2 GB of bf16 weights plus the
-vision tower's activations for 12 images and the reasoning turn's KV cache.
-`comma2k19/harness.py::node_count` caps parallel nodes by what the selected card
-will actually hold, so pick the card first:
+## Why neuroNCAP is the exception
 
-```bash
-nvidia-smi --query-gpu=index,memory.free --format=csv
-export CUDA_VISIBLE_DEVICES=1
-```
+First or near-first on every open-loop column, fourth of five closed-loop. The
+recorded artifacts say what the difference is, and it is not braking.
 
-`startup_timeout_s` is 1800: a 13 GB checkpoint read on a contended card is
-slow, and failing at eight minutes into it teaches nothing.
+Over all 50 frontal episodes, per model, the mean peak lateral offset of the 3 s
+plan against the collision rate:
 
-## Reference measurements
+| model | collisions | speed change over the episode | mean peak \|lateral\| |
+|---|---:|---:|---:|
+| alpamayo15 | 32% | −2.31 m/s | 10.44 m |
+| drivejepa | 78% | −5.47 m/s | 0.11 m |
+| openpilot | 84% | −1.88 m/s | 1.00 m |
+| **qwendrive** | **86%** | **−2.48 m/s** | **1.22 m** |
+| visionpilot | 90% | −2.45 m/s | 1.91 m |
 
-These come from a standalone investigation under the checkout's own `.tmp/`,
-**not** from a paddock run: three 60 s comma2k19 segments, 107 keyframes each at
-2 Hz, `REASONING_PLANNING` + `planner-sft`, three samples, `replicate` views,
-`nav = GO STRAIGHT`. They are recorded here as what the paddock sweep should be
-checked against, and a large disagreement means paddock's feed differs from that
-one.
+Qwen-Drive brakes about as hard as Alpamayo, and harder than OpenPilot: on
+`frontal-0103` seed 5 it goes from 7.3 to 2.3 m/s with its planned reach
+collapsing from 21 m to under 5 m. Its lateral offset stays near zero
+throughout. Drive-JEPA brakes hardest of anyone and still collides in 78% of
+episodes. In a staged head-on the closing vehicle arrives whatever the ego's
+speed, so the escape is lateral, and Alpamayo is the only model that takes it.
 
-| segment | v (m/s) | ADE | median | FDE@5s | heading MAE | ADE@1s | ADE@3s | ADE/distance |
-|---|---|---|---|---|---|---|---|---|
-| city, signals + left turn | 6.7 | 1.78 | 1.27 | 5.41 | 0.056 rad | 0.20 | 1.87 | 5.3 % |
-| arterial, hard braking | 12.3 | 2.38 | 1.71 | 6.81 | 0.050 rad | 0.29 | 2.54 | 4.3 % |
-| highway at night | 27.9 | 1.95 | 1.82 | 5.53 | 0.026 rad | 0.37 | 2.03 | 1.4 % |
+**This is the model, not the adapter.** Through the same code path on NAVSIM the
+model produces lateral offsets up to 19.92 m at 4 s, 286 plans beyond 10 m, so
+it can express evasion and does at junctions. Across all 200 neuroNCAP episodes
+its peak is 6.40 m and its frontal mean is 1.22 m.
 
-Absolute error is roughly flat across a 4× speed range, so relative error falls
-sharply with speed. The mean is well above the median in every segment: error is
-concentrated in a few manoeuvres, and the six worst city keyframes are all the
-same left turn, where the model's own rationale is correct ("turn left at the
-intersection following the lead white SUV under the green traffic light") and
-the plan under-turns because it was told to go straight.
+Interpretation, not measurement: neuroNCAP stages collisions that do not occur
+in ordinary driving logs, and this model is trained on recordings of ordinary
+driving. It answers a closing obstacle the way a careful driver answers a slow
+one. Note the sample is five models with a single point at high lateral, so read
+it as where to look next rather than as a fitted relationship.
 
-Input ablations, same keyframes, one input perturbed at a time. "Shift" is the
-mean distance from the baseline plan — it shows an input reaches the model at
-all, independently of whether it helps:
+Side-by-side clips of the frontal episodes, and the figure behind that table,
+are reproducible from the recorded runs — the sweep already writes one mp4 per
+stream per episode (`[benchmarks.neuroncap] video`).
 
-| condition | city ADE | shift | highway ADE | shift |
-|---|---|---|---|---|
-| baseline | 1.47 | — | 2.00 | — |
-| `direct` (no reasoning) | 1.55 | 0.21 | 2.04 | 0.19 |
-| `nav_oracle` *(diagnostic, leaks GT)* | 1.28 | 0.53 | 1.77 | 0.30 |
-| `crop_views` | 1.78 | 0.81 | 2.13 | 1.18 |
-| `blank_cameras` | 1.97 | 1.74 | 3.07 | 1.94 |
-| `still_history` | 15.79 | 15.18 | 70.74 | 69.93 |
+## Cost
 
-The ranking is ego-state ≫ vision ≈ nav-command ≫ reasoning-mode. Grey images
-cost +34 % ADE in the city and +54 % on the highway, which is the right
-direction — at 28 m/s the lane geometry 140 m ahead can only come from the
-image. On the four scenes bundled with the checkout, SDPA gave ADE 0.23–0.58 m,
-which is what establishes that the environment is sound independently of any
-comma2k19 code.
+No latency is published for the model. Measured here, direct mode, one sample:
 
-Timing: 1.43–1.49 s per scene on one H200 with SDPA, for 12 images plus the
-reasoning turn plus 10 sampler steps × 3 samples.
+| | |
+|---|---|
+| checkpoint load | 121 s cold, 17 s warm |
+| inference | ~1.0–1.5 s per plan |
+| VRAM | ~15 GB |
 
-One limitation worth carrying forward: VQA probes on real comma2k19 frames
-showed solid scene *content* recognition (lead-vehicle identity, traffic-light
-state, lane count, weather) but unreliable scene *handedness* — the model called
-a green left-arrow signal a mandatory right turn. That reinforces the
-missing-route reading above: the navigation command is doing work the vision
-does not reliably supply on this imagery.
+`/diagnostics` reports `infer_seconds_mean` live. Reasoning mode adds a
+256-token decode per plan and multiplies closed-loop cost several times over;
+nothing here was run that way.
