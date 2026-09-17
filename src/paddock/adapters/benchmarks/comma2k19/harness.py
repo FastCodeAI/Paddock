@@ -98,7 +98,13 @@ from paddock.adapters.benchmarks.comma2k19 import score as SC
 from paddock.adapters.benchmarks.comma2k19 import toolkit as TK
 from paddock.benchmark import PIPELINE_BATCHES, OpenLoopBenchmark, Sample, input_rate_problems
 from paddock.metrics import trajectory as T
-from paddock.policy.protocol import Command, Observation, Trajectory
+from paddock.policy.protocol import (
+    CANBUS_VELOCITY,
+    CANBUS_YAW_RATE,
+    Command,
+    Observation,
+    Trajectory,
+)
 from paddock.runtime import gpu
 
 #: Waypoint spacing of the recorded future handed to `score`. Independent of the
@@ -1123,8 +1129,9 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         if can is not None:
             speed = float(np.interp(pose.times[index], can[0], can[1]))
         canbus = np.zeros(18)
-        canbus[13] = speed
-        canbus[12] = -float(pose.yaw_rate[index])  # ego yaw rate is left-positive
+        canbus[CANBUS_VELOCITY] = speed
+        # Ego yaw rate is left-positive; the recording's is right-positive.
+        canbus[CANBUS_YAW_RATE] = -float(pose.yaw_rate[index])
 
         return Observation(
             images={},

@@ -26,7 +26,7 @@ import numpy as np
 from paddock.adapters.benchmarks.kitscenes import loader as L
 from paddock.benchmark import OpenLoopBenchmark, Sample
 from paddock.metrics import trajectory as M
-from paddock.policy.protocol import Command, Observation, Trajectory
+from paddock.policy.protocol import CANBUS_VELOCITY, Command, Observation, Trajectory
 
 #: Source frames of history fed before the scored keyframe. 48 at the dataset's
 #: 10 Hz is 4.8 s, which is what fills openpilot's 24-deep feature buffer at the
@@ -326,7 +326,7 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         ego2world[:2, :2] = [[np.cos(yaw), -np.sin(yaw)], [np.sin(yaw), np.cos(yaw)]]
 
         canbus = np.zeros(18)
-        canbus[13] = L.ego_speed(poses, index)
+        canbus[CANBUS_VELOCITY] = L.ego_speed(poses, index)
 
         camera2image, camera2ego = calibration
         image_paths = {

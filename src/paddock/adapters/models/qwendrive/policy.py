@@ -64,6 +64,7 @@ from paddock.policy.protocol import (
     Observation,
     Policy,
     Trajectory,
+    load_frame,
 )
 
 _log = logging.getLogger(__name__)
@@ -433,18 +434,15 @@ class QwenDrivePolicy(Policy):
         def open_image(source: Any) -> Any:
             """One frame as a PIL image, whatever the benchmark handed over.
 
-            A `.npy` path is a *staged raw frame*, not an encoded one: a harness
-            that stages frames for a node on the same machine writes arrays
-            because compressing them only to decompress them again cost a
-            comma2k19 sweep 59% of its wall clock in PIL's PNG decoder
-            (`Observation.image` carries the measurement). PIL cannot open one,
-            so the read happens here.
+            Paths go through `protocol.load_frame`, which is the same rule
+            `Observation.image` uses, rather than a copy of it: a `.npy` path is
+            a *staged raw frame* that PIL cannot open, and the copy that used to
+            live here had already drifted -- it read the array without checking
+            its dtype, so a float32 frame would have arrived here as noise.
             """
             if not isinstance(source, str):
                 return Image.fromarray(source)
-            if source.endswith(".npy"):
-                return Image.fromarray(np.load(source))
-            return Image.open(source)
+            return Image.fromarray(load_frame(source))
 
         views: dict[str, list[Any]] = {}
         for camera, view in CAMERA_VIEWS:

@@ -14,6 +14,7 @@ from paddock.policy.protocol import (
     Policy,
     Trajectory,
     constant_velocity,
+    load_frame,
     validate_extras,
 )
 
@@ -246,3 +247,79 @@ def test_every_open_loop_harness_accepts_the_base_samples_parameters() -> None:
     checked = sorted(set(checked))
     assert "_template.TemplateBenchmark" in checked, "the template must be covered"
     assert len(checked) >= 3, f"expected template + kitscenes + comma2k19, got {checked}"
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("sigma", [[0.1, float("nan")], [0.2, 0.09]]),
+        ("pose", {"velocity": [24.0, 0.0, float("nan")], "rotation_rate": [0.0, 0.0, 0.0]}),
+        # A model-native block is passed through to the same encoder and breaks
+        # it just as thoroughly, so the walk does not stop at the known keys.
+        ("native_long", {"accel": float("-inf"), "should_stop": False}),
+    ],
+)
+def test_validate_extras_rejects_a_nan_where_the_key_can_still_be_named(key, value) -> None:
+    """The failure this function's own docstring describes and did not prevent.
+
+    Extras are encoded with `allow_nan=False`, so a NaN does not arrive as a
+    missing measurement: it raises inside the response encoder and fails the
+    whole sample with a 500 naming neither the key nor the model. Caught here,
+    the message says which key and what to send instead.
+    """
+    extras = _extras()
+    extras[key] = value
+    with pytest.raises(ValueError, match=re.escape(f"extras[{key!r}]")) as raised:
+        validate_extras(extras, n_waypoints=2)
+    assert "`None`, not NaN" in str(raised.value)
+
+
+def test_a_staged_frame_that_is_not_uint8_pixels_is_refused_by_name(tmp_path) -> None:
+    """The silent one: a float32 array in [0, 1] cast to uint8 is a black frame.
+
+    No exception, no warning, and a model scored on darkness -- which reads as a
+    model that cannot drive rather than as a harness that staged the wrong
+    array. `load_frame` is the single place that knows the `.npy` rule, so it is
+    the place that can still name the file.
+    """
+    good = tmp_path / "good.npy"
+    np.save(good, np.full((4, 6, 3), 200, dtype=np.uint8))
+    assert load_frame(good).shape == (4, 6, 3)
+    assert load_frame(good).dtype == np.uint8
+
+    for name, array in [
+        ("float.npy", np.full((4, 6, 3), 0.8, dtype=np.float32)),
+        ("gray.npy", np.full((4, 6), 200, dtype=np.uint8)),
+        ("rgba.npy", np.full((4, 6, 4), 200, dtype=np.uint8)),
+    ]:
+        path = tmp_path / name
+        np.save(path, array)
+        with pytest.raises(ValueError, match=re.escape(name)) as raised:
+            load_frame(path)
+        assert "uint8" in str(raised.value)
+
+
+def test_both_readers_of_a_staged_frame_go_through_one_rule(tmp_path) -> None:
+    """`Observation.image` and any adapter reading `image_paths` must agree.
+
+    They did not: the adapter copy read the array without coercing its dtype,
+    so the same file gave uint8 pixels through one path and float noise through
+    the other. Nothing in the suite compared them, which is how the copy drifted.
+    """
+    from paddock.adapters.models.qwendrive import policy as qwendrive
+
+    assert qwendrive.load_frame is load_frame
+
+    path = tmp_path / "frame.npy"
+    np.save(path, np.arange(4 * 6 * 3, dtype=np.uint8).reshape(4, 6, 3))
+    obs = Observation(
+        images={},
+        image_paths={"CAM_FRONT": str(path)},
+        ego2world=np.eye(4),
+        canbus=np.zeros(18),
+        timestamp_us=0,
+        command=Command.STRAIGHT,
+        camera2image={},
+        camera2ego={},
+    )
+    assert np.array_equal(obs.image("CAM_FRONT"), load_frame(path))

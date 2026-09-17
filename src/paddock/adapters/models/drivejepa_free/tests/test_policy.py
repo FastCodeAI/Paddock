@@ -26,7 +26,14 @@ from paddock.adapters.models.drivejepa_free.policy import (
     relative_pose,
     to_model_image,
 )
-from paddock.policy.protocol import Command, Observation, Pinhole, Policy
+from paddock.policy.protocol import (
+    CANBUS_VELOCITY,
+    CANBUS_YAW_RATE,
+    Command,
+    Observation,
+    Pinhole,
+    Policy,
+)
 
 #: The EON camera comma2k19 records with.
 EON = Pinhole(fx=910.0, fy=910.0, cx=582.0, cy=437.0, width=1164, height=874)
@@ -36,8 +43,8 @@ def _observation(t_s: float, x: float = 0.0, speed: float = 20.0, yaw_rate: floa
     ego2world = np.eye(4)
     ego2world[0, 3] = x
     canbus = np.zeros(18)
-    canbus[13] = speed
-    canbus[12] = yaw_rate
+    canbus[CANBUS_VELOCITY] = speed
+    canbus[CANBUS_YAW_RATE] = yaw_rate
     image = np.zeros((EON.height, EON.width, 3), dtype=np.uint8)
     # A row ramp, so a crop that takes the wrong rows is visible in the values
     # rather than only in the shape.

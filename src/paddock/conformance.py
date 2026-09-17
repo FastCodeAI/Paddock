@@ -49,7 +49,14 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from paddock.policy.protocol import N_WAYPOINTS, Command, Observation, Policy, Trajectory
+from paddock.policy.protocol import (
+    CANBUS_VELOCITY,
+    N_WAYPOINTS,
+    Command,
+    Observation,
+    Policy,
+    Trajectory,
+)
 
 __all__ = [
     "CHECKS",
@@ -264,7 +271,7 @@ def synthetic_observation(
     camera2ego[:3, :3] = UNROTATED_CAMERA2EGO
     camera2ego[2, 3] = 1.22
     canbus = np.zeros(18)
-    canbus[13] = speed
+    canbus[CANBUS_VELOCITY] = speed
     return Observation(
         images={c: np.full((height, width, 3), 128, dtype=np.uint8) for c in cameras},
         ego2world=np.eye(4),

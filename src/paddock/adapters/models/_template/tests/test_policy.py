@@ -17,7 +17,7 @@ import numpy as np
 
 from paddock import conformance
 from paddock.adapters.models._template.policy import POLICY
-from paddock.policy.protocol import N_WAYPOINTS, Command, Observation
+from paddock.policy.protocol import CANBUS_VELOCITY, N_WAYPOINTS, Command, Observation
 
 
 def make_observation(speed: float = 10.0) -> Observation:
@@ -41,7 +41,7 @@ def make_observation(speed: float = 10.0) -> Observation:
     camera2ego[:3, :3] = conformance.UNROTATED_CAMERA2EGO
     camera2ego[2, 3] = 1.5  # camera height above the ground, metres
     canbus = np.zeros(18)
-    canbus[13] = speed  # forward velocity
+    canbus[CANBUS_VELOCITY] = speed
     return Observation(
         images={"CAM_FRONT": np.zeros((256, 512, 3), dtype=np.uint8)},
         ego2world=np.eye(4),

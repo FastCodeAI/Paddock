@@ -40,6 +40,7 @@ import zipfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import IntEnum
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -194,6 +195,41 @@ def decode_image(encoded: str) -> np.ndarray:
     return _load_torch_tensor_without_torch(data).astype(np.uint8)
 
 
+def load_frame(path: str | Path) -> np.ndarray:
+    """One frame from disk as HxWx3 uint8, whichever way it was written.
+
+    Public because two things read staged frames -- `Observation.image` and any
+    adapter that takes `image_paths` and does its own decoding -- and a private
+    copy of this rule is a copy that drifts. One did: an adapter's version read
+    `.npy` without coercing the dtype, which is the failure below with nothing
+    to catch it.
+
+    The `.npy` branch exists for speed. A harness staging raw frames for a node
+    on the same machine writes arrays rather than PNGs because compressing them
+    only to decompress them again put 59% of a comma2k19 sweep's wall clock in
+    PIL's decoder against 10% in the model. Anything else goes through PIL and
+    is converted to RGB, because a dataset ships whatever it ships.
+
+    The `.npy` path is checked rather than trusted, because it bypasses the
+    conversion PIL would have done. A float32 array in [0, 1] cast blindly to
+    uint8 is an entirely black frame: no exception, no warning, a model scored
+    on darkness. Raising here names the file instead.
+    """
+    if str(path).endswith(".npy"):
+        array = np.load(path)
+        if array.dtype != np.uint8 or array.ndim != 3 or array.shape[2] != 3:
+            raise ValueError(
+                f"staged frame {path} is {array.dtype} {array.shape}; expected uint8 "
+                f"(H, W, 3). A float array in [0, 1] becomes a black frame if cast, "
+                f"which scores as a model driving in the dark rather than as an error."
+            )
+        return np.ascontiguousarray(array)
+
+    from PIL import Image as _Image
+
+    return np.asarray(_Image.open(path).convert("RGB"), dtype=np.uint8)
+
+
 # --------------------------------------------------------------------------
 # Geometry
 # --------------------------------------------------------------------------
@@ -337,12 +373,7 @@ class Observation:
                 f"observation has no image for {camera!r} "
                 f"(has {sorted(self.images) or sorted(self.image_paths)})"
             )
-        if str(path).endswith(".npy"):
-            array = np.ascontiguousarray(np.load(path), dtype=np.uint8)
-        else:
-            from PIL import Image as _Image
-
-            array = np.asarray(_Image.open(path).convert("RGB"), dtype=np.uint8)
+        array = load_frame(path)
         self.images[camera] = array
         return array
 
@@ -572,6 +603,40 @@ def validate_extras(extras: dict[str, Any] | None, n_waypoints: int | None = Non
     road = extras.get("road")
     if road is not None and not isinstance(road, dict):
         raise ValueError(f"extras['road'] must be a dict, got {type(road).__name__}")
+
+    _reject_nan(extras)
+
+
+def _reject_nan(extras: dict[str, Any], where: str = "extras") -> None:
+    """Find the NaN here, where the key can still be named.
+
+    The schema above says in so many words that a scalar the model did not
+    measure is `None` and not NaN, because starlette encodes the response with
+    `allow_nan=False` -- so a NaN does not arrive as a missing measurement, it
+    raises inside the encoder and fails the whole sample with a 500 naming
+    neither the key nor the model. That was the documented consequence of a
+    check that only ever looked at shapes.
+
+    Walks the whole structure rather than the known keys: model-native blocks
+    are passed through to the same encoder and break it just as thoroughly.
+    """
+    for key, value in extras.items():
+        path = f"{where}[{key!r}]"
+        if isinstance(value, dict):
+            _reject_nan(value, path)
+            continue
+        if isinstance(value, (str, bytes)) or value is None:
+            continue
+        try:
+            arr = np.asarray(value, dtype=np.float64)
+        except (TypeError, ValueError):
+            continue  # not numeric; JSON's problem, not this check's
+        if arr.size and not np.isfinite(arr).all():
+            raise ValueError(
+                f"{path} contains NaN or infinity. A scalar the model did not measure is "
+                f"`None`, not NaN: extras are encoded with allow_nan=False, so a NaN here "
+                f"fails the whole sample with a 500 that names neither the key nor the model."
+            )
 
 
 def constant_velocity(speed: float, n: int = N_WAYPOINTS, dt: float = 0.5) -> Trajectory:
