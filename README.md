@@ -374,7 +374,8 @@ counts in its row are the recorded totals over all 50 routes. The scores are in
 [OpenPilot, by recording set](#openpilot-by-recording-set), and its tracked run
 carries the same split in `by_group` with `valid: false` on the pooled mean.
 DriveJEPA uses a NAVSIM-v2 checkpoint zero-shot; VisionPilot uses a synthesized trajectory with an extrapolated tail.
-‡ QwenDrive is zero-shot, front camera only, through the same tracker; its route
+‡ QwenDrive is zero-shot, on the three cameras it was trained for (front,
+front-left, front-right), through the same tracker as every other row; its route
 24333 entry is the valid rerun after a startup-guard fix. Its adapter is not in
 this tree yet, so the row is provisional — [`docs/models/qwendrive.md`](docs/models/qwendrive.md).
 (nav) marks the Alpamayo run that receives the route's navigation instruction (manoeuvre and distance) on the wire each tick.
