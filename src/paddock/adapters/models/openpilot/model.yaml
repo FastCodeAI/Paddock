@@ -84,8 +84,16 @@ capabilities:
   # a parked car. Not fixable in an adapter.
   needs_speed: false
   trained_on:
-    # comma's internal fleet, ~6,670 h, not released. No overlap with any
-    # paddock dataset, which is the claim that matters here.
+    # comma's internal fleet, ~6,670 h, not released.
+    #
+    # This used to say "no overlap with any paddock dataset". That stopped
+    # being safe when comma2k19 was added: comma2k19 is comma's own released
+    # fleet data, collected on the same two cars by the same device, and the
+    # training corpus is not published segment by segment, so whether these
+    # 2035 segments are inside it cannot be checked from outside comma. It is
+    # declared as one dataset rather than two because asserting the overlap
+    # would be as unverified as denying it; what the overlap would mean for
+    # reading that column is in docs/models/comparison.md.
     - dataset: comma-fleet
 
 # NAVSIM is measurable only with nuPlan's full-rate sensor data configured

@@ -202,6 +202,66 @@ with `infer_sequence` overrides for drivejepa and alpamayo (one forward pass
 per scenario, not four) and four nodes for visionpilot. Projected ~5 h wall
 against ~26 h sequential.
 
+**M8 — comma2k19.** `paddock run --bench comma2k19 --model <m>` scores the full
+released dataset: 2035 one-minute segments of 20 Hz California highway driving,
+10,165 samples, six models on the board. It is the first benchmark here whose
+sensor rate is high enough for openpilot to perceive its own motion, which is
+what makes an openpilot open-loop number possible at all — NAVSIM's 2 Hz is
+exactly the pairing `min_input_hz` refuses.
+
+| model | horizon | ADE@3s | |
+|---|---:|---:|---|
+| alpamayo15 | 4 s | **0.900** | 2 of 4 camera slots filled; a mono dataset |
+| qwendrive | 5 s | 1.159 | side slots replicated from the road camera |
+| openpilot | 10 s | 1.507 | see the two re-sweeps below |
+| constant velocity | 3 s | 1.639 | registered policy, 6 waypoints |
+| visionpilot | 4 s | 4.045 | synthesised trajectory |
+| drivejepa_free | 4 s | 16.048 | perception-free agent, NAVSIM v1 |
+
+**Verified:** every row is over the *identical* sample set — `sequences_sha256`
+`293a225a0b5cbaff` in all six run records, which is a stronger statement than
+six matching values of `n` and is the evidence that makes the column
+comparable. The 2033 × 5 = 10,165 derivation names the two truncated segments
+rather than counting them. Pose maths is delegated to a pinned
+`commaai/comma2k19` clone rather than reimplemented, and a reference
+implementation in the test suite is asserted against it wherever that clone
+exists. **Argued:** the calibration estimate (3.5–3.8° pitch on the RAV4,
+1.7–1.8° on the Civic) uses calibrationd's own formula with recorded pose
+substituted for the model's `cameraOdometry`; that substitution is reasoned
+from, not measured against, openpilot's own calibration.
+
+Two re-sweeps are owed on the openpilot row, and it carries a footnote in the
+README and the benchmark doc until they land:
+
+- **Re-sweep openpilot on comma2k19 at the `repos.yaml` pin.** The recorded
+  1.507 was produced from a clone at `4df40d2c1` (split graph); the pin is
+  `555f48c5d` (combined graph), and the two plan from different hidden states.
+  The pin was left alone rather than moved to match, because moving it to a
+  revision chosen to fit one row is how a pin stops meaning anything. Runs now
+  record `repo_sha` and `provenance.repo.at_pin`, so this cannot recur unseen.
+- **Re-sweep openpilot wherever the ONNX backend was used.** `_infer_onnx` fed
+  the road camera's image to the wide view; the tinygrad path did not. Fixed,
+  and the backend is now on the record as `provenance.policy.backend`, but rows
+  produced before the fix are not bit-reproducible from this tree.
+
+Landed alongside it, none comma2k19-specific:
+
+- **`drivejepa_free`, the eighth model adapter** — Drive-JEPA's perception-free
+  agent as its own registry entry, because it is a different model from the
+  perception-based v2 every other Drive-JEPA column refers to and sharing a row
+  with it would misattribute both.
+- **`paddock new` and `paddock verify` (M3).** Not `paddock setup` — no cloning,
+  no patching — but the scaffolding half: `new` copies the `_template/` adapter
+  and rewrites its names, `verify` checks an adapter against the contracts
+  before a run rather than eight minutes into one. `setup` itself is still
+  unimplemented and still exits 2 saying so.
+- **Parallel open-loop nodes and open-loop `--resume`.** comma2k19 is the first
+  open-loop benchmark large enough to need either: `node_count` runs N policy
+  nodes against one harness, and a journal lets an interrupted sweep continue in
+  place keeping its run id. This is the orchestration the nuScenes-openpilot
+  item under "Beyond reproduction" asks for; what remains there is re-making
+  that particular record with it.
+
 ## Open questions
 
 **The NAVSIM headline — settled.** The CSV and its run log disagree (0.90673 vs
@@ -264,6 +324,7 @@ Not started, and larger than everything above:
   only fix: about 4 h and 3.5 h of proxy time each.
 - **nuScenes openpilot record is not regenerable with tracked code** — the
   tracked run (`20260908T110028-b71f4f`) was assembled by four-worker site
-  orchestration; land that orchestration (or a `--workers` path in the open-loop
-  runner) so the record can be re-made anywhere. Number not in question; provenance is.
+  orchestration. The orchestration itself has now landed with M8 (`node_count`
+  plus open-loop `--resume`), so what is left is narrower than it was: point it
+  at nuScenes and re-make the record. Number not in question; provenance is.
 - **Training** — the framework's eventual purpose; out of scope until evaluation is trustworthy.

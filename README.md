@@ -89,9 +89,11 @@ flowchart LR
     class res store
 ```
 
-Four models times seven benchmarks, and nobody wrote twenty-eight adapters. A fifth
-model is one new directory under `adapters/models/`; a sixth benchmark is one
-new directory under `adapters/benchmarks/`.
+Four models times seven benchmarks in the sketch above, and nobody wrote
+twenty-eight adapters. The tree now holds eight of each — the diagram names the
+ones worth drawing, not all of them; `paddock list` is authoritative. Another
+model is one new directory under `adapters/models/`, another benchmark one new
+directory under `adapters/benchmarks/`.
 
 What crosses the wire between paddock, the model node and a simulator is
 drawn step by step in [docs/architecture.md](docs/architecture.md#on-the-wire).
@@ -108,7 +110,7 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 
 | | 🟢 nuScenes cumulative L2 avg ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟢 comma2k19 ADE@3s ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🟡 NAVSIM v1 PDMS ↑ (0–1) | 🔴 Bench2Drive driving score ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim nuRec scene score ↑ (0–1) |
 |---|---|---|---|---|---|---|---|---|
-| OpenPilot | 2.477 △ | 1.599 | 1.507 ✦ | 0.747 (10 Hz) ‡ | 0.807 (10 Hz) ‡ | 30.09 ≈ ◆ | **3.60** ‖ | **0.9566** ¶ |
+| OpenPilot | 2.477 △ | 1.599 | 1.507 ✦ ⊗ | 0.747 (10 Hz) ‡ | 0.807 (10 Hz) ‡ | 30.09 ≈ ◆ | **3.60** ‖ | **0.9566** ¶ |
 | Alpamayo 1.5 | 0.787 △ | 1.002 | **0.900** ✦ | 0.691 (10 Hz) † | 0.753 (10 Hz) † | 44.58 ◆ | **3.73** ‖ | 0.9000 ¶¶ |
 | Drive-JEPA | 0.912 △ | 2.364 | 16.048 ✦ | 0.843 | 0.892 † | 31.11 ◆ | **3.57** ‖ | 0.5030 ¶ |
 | VisionPilot | 1.441 △ | 1.534 ∗ | 4.045 ✦ ∗ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.8488 ¶ |
@@ -154,8 +156,12 @@ is the mean of cumulative L2 through 1, 2 and 3 seconds, not ADE at 3 seconds.
 OpenPilot uses real approximately 12 Hz front-camera history; scoring stays at
 2 Hz. See the nuScenes table below for point L2, cumulative L2 and ADE.
 
-✦ comma2k19 is the full dataset: **2035 one-minute segments, 5 keyframes each,
-10,165 scored samples**, with every row over the identical sample set
+✦ comma2k19 is the full dataset: **2035 one-minute segments, 5 keyframes each —
+10,165 scored samples**, not 10,175: two truncated segments are too short to
+place a keyframe at all, so it is 2033 × 5 (`{0: 2, 5: 2033}`) — derived, with
+both segments named, in
+[docs/datasets/comma2k19.md](docs/datasets/comma2k19.md). Every row is over the
+identical sample set
 (`sequences_sha256 = 293a225a0b5cbaff` in all six `run.json`). METEOR has not
 been swept on it. Read the mean *and* the median: OpenPilot's 3 s mean beats
 constant velocity by 8% (1.507 vs 1.639) while its **median is worse** (1.555 vs
@@ -176,6 +182,18 @@ any model here (0.609 m lateral error at matched arc length, against OpenPilot's
 1.155) but reach only ~67% as far as the car travelled, because 4 s of NAVSIM
 city driving saturates near 64 m while I-280 runs at 30 m/s. See the comma2k19
 table below.
+
+⊗ **OpenPilot's comma2k19 row was not produced at the `repos.yaml` pin.** It
+comes from a clone at `4df40d2c1`, which ships the driving model as two graphs;
+the pin names `555f48c5d`, which ships it as one, and the two plan from
+different hidden states. The same row also predates a fix to the ONNX backend,
+which was feeding the road camera's image to the wide view. The figure is left
+as measured — it is a real openpilot over the same 10,165 samples as every other
+row — and is due to be replaced when openpilot is next evaluated at the pin;
+[docs/ROADMAP.md](docs/ROADMAP.md) tracks it and
+[docs/benchmarks/comma2k19.md](docs/benchmarks/comma2k19.md#recorded-results)
+gives the detail. Runs made from here on record their clone's sha and their
+backend in `run.json`, so a row cannot lose its provenance this way again.
 
 † Every NAVSIM figure is the full navtest split, 12,146 real recorded
 scenarios, scored through paddock's proxy agent. This is NAVSIM v2's **stage
@@ -366,7 +384,9 @@ on this dataset. Only it and Alpamayo 1.5 beat the constant-velocity baseline.
 ### comma2k19
 
 The full dataset: 2035 one-minute segments of 20 Hz California highway driving,
-5 keyframes each, **10,165 scored samples**, every row over the identical sample
+5 keyframes each — **10,165 scored samples**, ten short of 2035 × 5 because two
+truncated segments (9.7 s and 11.1 s) place no keyframe at all. Every row over
+the identical sample
 set. Each sample feeds the model **160 real frames — 7.95 s of history ending at
 the scored moment** — and scores the waypoints it plans against the 20 poses the
 car actually reached, on a 0.5 s grid out to 10 s. A model is scored only as far
@@ -377,7 +397,7 @@ padded. Lower is better throughout.
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Alpamayo 1.5 | 4 s | **0.386** | **0.616** | **0.900** | **1.263** | — | — | **1.654** | **0.823** | — |
 | Qwen-Drive 1.0 | 5 s | 0.475 | 0.801 | 1.159 | 1.570 | **2.045** | — | 2.094 | 1.138 | 0.511 |
-| OpenPilot | 10 s | 0.598 | 1.035 | 1.507 | 2.017 | 2.571 | **6.032** | 2.712 | 1.555 | 0.410 |
+| OpenPilot ⊗ | 10 s | 0.598 | 1.035 | 1.507 | 2.017 | 2.571 | **6.032** | 2.712 | 1.555 | 0.410 |
 | Baseline (Constant Velocity) | 3 s | 0.537 | 1.017 | 1.639 | — | — | — | 3.286 | 1.475 | 0.417 |
 | VisionPilot ∗ | 4 s | 1.149 | 2.462 | 4.045 | 5.835 | — | — | 8.146 | 2.195 | 0.406 |
 | Drive-JEPA (perception-free) | 4 s | 7.800 | 12.077 | 16.048 | 20.501 | — | — | 26.248 | 19.801 | 0.541 |

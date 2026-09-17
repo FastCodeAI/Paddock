@@ -7,7 +7,10 @@
 A working reference for this checkout: what the system is, how it's wired, what the
 neural nets consume and emit, and how to run it on sample data.
 
-Snapshot: branch `master`, commit `053d9c446`, working tree clean.
+Snapshot: branch `master`, commit `053d9c446`, working tree clean. `repos.yaml`
+now pins `555f48c5d`; both ship the **combined** graph, so §§1–7 below still
+describe what a clone at the pin contains. Where the two layouts differ, §6 says
+so explicitly.
 
 ---
 
@@ -758,3 +761,30 @@ What `adapters/models/openpilot/policy.py` does in closed loop, and why.
   first nudge) and assisted \* (full run). See `docs/benchmarks/bench2drive.md`.
 * **Not a route follower.** No navigation input reaches the model (its desire
   pulses are zeros), so junction turns are missed by construction.
+
+### Which backend ran, and one number it used to change
+
+`_resolve_backend` picks between tinygrad and onnxruntime by **trying an
+import**, and `setup.sh` makes a failed `scons` non-fatal — so whether a site
+gets the compiled JIT pickles or falls back to the raw ONNX graphs is a
+property of that site's build, not of anything in `model.yaml`. That is
+deliberate (a box without a working clang should still be able to score
+openpilot), but it means the backend is part of a number's provenance.
+
+Until this was fixed, it was part of a number's *value* as well. The tinygrad
+path branched on the two-camera comma rig and the ONNX path did not: it built
+one camera from the road view and passed that same frame as both `img` and
+`big_img`, so on the ONNX backend the wide view — the one the model uses to see
+what is beside the car — received a crop of the road camera. Both paths now bind
+cameras through one function, and a test asserts the two views receive different
+arrays when the rig supplies two.
+
+**What this invalidates.** Any recorded openpilot row produced on the ONNX
+backend is no longer bit-reproducible from this tree; the same run today will
+plan from a different wide input. Which rows those are is not fully answerable
+from the record, because `/diagnostics` was not being fetched when they were
+made — that is the same gap as the revision one above, and it is closed the same
+way: `run.json` now carries `provenance.policy.backend`. The comma2k19 openpilot
+row is the known case, and it is flagged in
+[docs/benchmarks/comma2k19.md](../benchmarks/comma2k19.md#recorded-results); the
+re-sweep is in the [ROADMAP](../ROADMAP.md).

@@ -29,11 +29,48 @@ _LOWER_IS_BETTER_EXACT = {
     "offroad",
     "open_loop_collision",
     "dist_to_gt_trajectory",
+    # comma2k19. A miss rate is the fraction of samples whose endpoint fell
+    # outside the threshold, and `ttc_below_2s` the fraction of the plan spent
+    # inside two seconds of the lead -- both fractions of something going
+    # wrong, both rendered with an up arrow until this list named them.
+    "miss_rate@2s",
+    "miss_rate@3s",
+    "miss_rate@4s",
+    "ttc_below_2s",
+    # The comfort maxima are the worst value the plan reaches, in m/s^2, m/s^3
+    # and rad/s. "max" is not a marker above on purpose: plenty of maxima are
+    # higher-is-better, so these are named one at a time.
+    "comfort_lon_accel_max",
+    "comfort_lon_decel_max",
+    "comfort_lat_accel_max",
+    "comfort_lon_jerk_max",
+    "comfort_yaw_rate_max",
 }
 #: Explicitly higher-is-better: `reference_speed` matches a marker above, and
 #: Bench2Drive's `infraction_penalty` is a 0-1 multiplier on the score, not a
 #: count -- the name reads the other way.
 _HIGHER_IS_BETTER_EXACT = {"reference_speed", "infraction_penalty"}
+#: Metrics with **no** better direction, which is not the same as not knowing
+#: one. A signed bias is best at zero and worse in either direction, so an
+#: arrow of either kind asserts something false: `lead_range_err` is signed, so
+#: a down arrow ranks a model that thinks the lead is 40 m nearer than it is
+#: above one that is exactly right. `path_length_ratio` is best at 1, and the
+#: coverage fractions are best at their nominal 0.68 / 0.95 -- a model above
+#: them is not calibrated, it is under-confident. These render with no arrow,
+#: and a benchmark that wants them ranked must say so with a real target.
+#: `scored_horizon_s` is the last of them and the one that was actually on the
+#: rendered page: it is how far the model plans, not how well, and comma2k19
+#: says in so many words that a shorter horizon is "where its own horizon ends,
+#: not a failure" -- while the leaderboard drew it as a column a 10 s planner won.
+_NO_DIRECTION_MARKERS = ("_bias", "within_1sigma", "within_2sigma")
+_NO_DIRECTION_EXACT = {"lead_range_err", "path_length_ratio", "scored_horizon_s"}
+
+
+def has_direction(name: str) -> bool:
+    """Whether "better" is a direction for this metric at all."""
+    if name in _NO_DIRECTION_EXACT:
+        return False
+    return not any(marker in name for marker in _NO_DIRECTION_MARKERS)
 
 
 def lower_is_better(name: str) -> bool:
@@ -79,8 +116,9 @@ def markdown(root: Path = RESULTS_ROOT, include_invalid: bool = False) -> str:
                     names.append(name)
         names = [n for n in names if n][:7]
 
-        arrow = {n: ("↓" if lower_is_better(n) else "↑") for n in names}
-        lines.append("| model | run | n | site | " + " | ".join(f"{n} {arrow[n]}" for n in names) + " |")
+        arrow = {n: ("↓" if lower_is_better(n) else "↑") if has_direction(n) else "" for n in names}
+        header = " | ".join(f"{n} {arrow[n]}".rstrip() for n in names)
+        lines.append("| model | run | n | site | " + header + " |")
         lines.append("|---|---|---:|---|" + "---:|" * len(names))
 
         def sort_key(pair: tuple[RunRecord, MetricsRecord], _primary: str = primary) -> tuple[int, float]:
@@ -88,7 +126,10 @@ def markdown(root: Path = RESULTS_ROOT, include_invalid: bool = False) -> str:
             # the loop variable would read whatever the last benchmark set.
             _, metrics = pair
             value = metrics.metrics.get(_primary, {}).get("mean")
-            if value is None:
+            if value is None or not has_direction(_primary):
+                # A benchmark whose primary metric has no better direction is
+                # not rankable by it; leave the rows in store order rather than
+                # inventing a winner.
                 return (1, 0.0)
             return (0, value if lower_is_better(_primary) else -value)
 
@@ -109,8 +150,10 @@ def markdown(root: Path = RESULTS_ROOT, include_invalid: bool = False) -> str:
     lines += [
         "---",
         "",
-        "Arrows show direction of better. Aggregates are recomputed by paddock from "
-        "per-sample records, never taken from the producer.",
+        "Arrows show direction of better; a column with no arrow has none -- a signed "
+        "bias, a ratio best at one, or a description of the model rather than a score. "
+        "Aggregates are recomputed by paddock from per-sample records, never taken "
+        "from the producer.",
         "",
     ]
     return "\n".join(lines)

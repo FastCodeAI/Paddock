@@ -63,8 +63,9 @@ are non-commercial by default; VisionPilot's and OpenPilot's are not.
 
 ## What this changes about reading the support matrix
 
-One of the four models has training exposure to a benchmark's own dataset. The
-score table cannot show that, and it changes how one column should be read.
+One of the models has training exposure to a benchmark's own dataset, and a
+second may have it without anyone being able to check. The score table cannot
+show either, and both change how a column should be read.
 
 **Every such pair gets its own section here**, named for the model and the
 dataset. `test_training_on_a_benchmarks_own_dataset_is_documented` requires one
@@ -74,10 +75,12 @@ situation and pass on the strength of having a row in the tables above.
 
 ### Drive-JEPA × navsim
 
-**Drive-JEPA is the only one of the four with training exposure to a paddock
-benchmark's dataset, and it leads that benchmark by 0.235 EPDMS.** It was
-post-trained on NAVSIM `navtrain` and pre-trained partly on OpenScene — which
-*is* the NAVSIM dataset. The other three meet `navtest` zero-shot.
+**Drive-JEPA is the only model here with *declared* training exposure to a
+paddock benchmark's dataset, and it leads that benchmark by 0.235 EPDMS.** It
+was post-trained on NAVSIM `navtrain` and pre-trained partly on OpenScene —
+which *is* the NAVSIM dataset. Every other model meets `navtest` zero-shot.
+(OpenPilot × comma2k19 below is the undeclared case: same fleet, no way to
+check.)
 
 To be precise about what this is and is not: training on `navtrain` and testing
 on `navtest` is **the protocol NAVSIM intends**. Drive-JEPA is not cheating; it
@@ -150,6 +153,30 @@ windscreen-mounted mono camera on a Californian highway, and paddock has to
 replicate that one frame into three view slots for the model to read it at all.
 Second place on that board is therefore a claim about a model driven outside
 both its rig and its domain.
+
+### OpenPilot × comma2k19 — same fleet, unverifiable overlap
+
+comma2k19 is **comma's own released fleet data**: 2035 segments of I-280,
+recorded on a RAV4 and a Civic with an EON, and released by comma in 2018.
+OpenPilot's driving model is trained on comma's internal fleet — 400 k
+one-minute segments, not released, not enumerated. Whether these particular
+2035 segments are inside that corpus is **not answerable from outside comma**,
+and nothing in this repository can settle it.
+
+What can be said: this is not the zero-shot situation the other comma2k19 rows
+are in. Alpamayo, Qwen-Drive, Drive-JEPA and VisionPilot meet this dataset
+having never seen a comma device; OpenPilot meets a route recorded by the
+hardware it ships on, in the domain its fleet drives, with the camera geometry
+it was trained against. Even under the most favourable reading — none of these
+2035 segments in training — it is the only model here being scored **in**
+distribution, and the 1.507 should be read as such rather than as a like-for-like
+win over models driven outside their rig and domain.
+
+`model.yaml` declares one dataset (`comma-fleet`) rather than two, so the
+contract test that requires this section does not fire for OpenPilot; the
+section exists because the situation is real, not because a test asked for it.
+Declaring `comma2k19` there would assert an overlap nobody has evidence for,
+which is the same failure as the sentence it replaced denying one.
 
 ### AutoE2E × kitscenes — unconfirmed, and not yet a paddock model
 

@@ -617,10 +617,26 @@ failure. Lower is better except `pdm_style_score`.
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | alpamayo15 (`Alpamayo-1.5-10B`, 2 of 4 camera slots) | 4 s | 0.386 | 0.616 | **0.900** | 1.263 | — | — | 1.654 | 0.823 | — | — |
 | qwendrive (`Qwen-Drive-1.0-4B`, side slots replicated) | 5 s | 0.475 | 0.801 | 1.159 | 1.570 | 2.045 | — | 2.094 | 1.138 | 0.505 | 0.511 |
-| openpilot (`small`, split graph, `4df40d2c1`) | 10 s | 0.598 | 1.035 | 1.507 | 2.017 | 2.571 | 6.032 | 2.712 | 1.555 | 0.647 | 0.410 |
+| openpilot (`small`, split graph, `4df40d2c1`) ∗ | 10 s | 0.598 | 1.035 | 1.507 | 2.017 | 2.571 | 6.032 | 2.712 | 1.555 | 0.647 | 0.410 |
 | constant velocity (registered policy, 6 waypoints) | 3 s | 0.537 | 1.017 | 1.639 | — | — | — | 3.286 | 1.475 | 0.658 | 0.417 |
 | visionpilot (synthesised trajectory) | 4 s | 1.149 | 2.462 | 4.045 | 5.835 | — | — | 8.146 | 2.195 | 0.864 | 0.406 |
 | drivejepa_free (perception-free agent, NAVSIM v1) | 4 s | 7.800 | 12.077 | 16.048 | 20.501 | — | — | 26.248 | 19.801 | 0.831 | 0.541 |
+
+∗ **The openpilot row was not produced at the `repos.yaml` pin.** It comes from
+a clone at `4df40d2c1`, which ships the model as two graphs; the pin names
+`555f48c5d`, which ships it as one, and the two plan from different hidden
+states — see [Which openpilot revision produced a
+number](#which-openpilot-revision-produced-a-number) for what differs. The row
+is left as measured rather than deleted or re-swept: it is a real measurement of
+a real openpilot, on the same 10,165 samples as every other row, and what it is
+missing is a label, which this note supplies. It will be replaced when openpilot
+is next evaluated at the pin ([ROADMAP](../ROADMAP.md)). Runs made from here on
+carry their clone's sha in `run.json` (`repo_sha`, and `provenance.repo.at_pin`),
+so this particular ambiguity cannot recur silently.
+
+The same row also predates the fix for a bug in the ONNX backend, which fed the
+road camera's image to the wide view; see [the openpilot
+guide](../models/openpilot-guide.md) for which figures that touches.
 
 One row carries `—` in the last column: `alpamayo15` predates it and is
 `stochastic: true`, so re-running for two proxy columns would replace a
@@ -754,7 +770,10 @@ the other.
 **The previously published number for this pair was wrong.** It is recorded here
 because it is instructive, not to be re-derived.
 
-`results/comma2k19/openpilot/20260904T011824-9a8260` reported, on 100 segments:
+That attempt never landed on `main`, so there is no path here to open: it was
+made and discarded on the branch this benchmark came in on, and its run id was
+`20260904T011824-9a8260`. The figures are transcribed rather than cited, on 100
+segments:
 
 | metric | mean |
 |---|---:|
@@ -770,7 +789,9 @@ model was predicting a **stationary car**. `lateral_mae` was low not because
 lane tracking worked but because the prediction sat at the origin and the
 ground truth's own lateral excursion is small.
 
-The cause was one line in the removed `loader.py`:
+The cause was one line in that attempt's loader — an earlier file, not the
+`loader.py` this adapter ships, which is a different implementation that landed
+with the fix:
 
 ```python
 CAMERA2EGO = np.eye(4)
@@ -831,12 +852,20 @@ one a checkout has is not something a tag ordering tells you:
 
 | layout | files | revisions |
 |---|---|---|
-| split | `driving_vision.onnx` + `driving_policy.onnx` | v0.11.1 (`4df40d2c1`, 2026-05-29) |
-| combined | `driving_supercombo.onnx` | `555f48c5d` (2026-08-19, the `repos.yaml` pin), `675ff5698` (2026-09-04) |
+| split | `driving_vision.onnx` + `driving_policy.onnx` | v0.11.1 (`4df40d2c1`, 2026-05-29) — **the comma2k19 row above** |
+| combined | `driving_supercombo.onnx` | `053d9c446` (the pin until this benchmark landed), `555f48c5d` (2026-08-19, the current `repos.yaml` pin), `675ff5698` (2026-09-04) |
 
-The combined graph is the *later* one. The recorded kitscenes / neuroncap /
-bench2drive runs were all produced against it, which is why the pin is left
-alone: moving it would silently make those numbers incomparable.
+The combined graph is the *later* one, and the pin has only ever named a
+combined-graph revision: it moved `053d9c446 → 555f48c5d` when this benchmark
+landed, a refresh within one layout rather than a change of layout.
+
+What the recorded kitscenes / neuroncap / bench2drive numbers were produced
+against is **not recoverable from the record** — those runs predate `repo_sha`
+being written, so the honest statement is that they were made while the pin read
+`053d9c446`, not that they were made from a clone at it. Both shas ship the
+combined graph, so the layout those runs used is not in doubt; the exact
+revision is. Runs made from here on record their clone's sha, so this is a
+closed gap rather than a standing one.
 
 `policy._open_session` therefore selects on **what is on disk**, not on a version
 string — a checkout is a sha, openpilot has shipped both, and the files are the
@@ -862,11 +891,12 @@ drives each layout with fake graphs and asserts which frame's feature the policy
 actually sees.
 
 `diagnostics()` names every graph file loaded — `diag["onnx"]` is a dict, not a
-path, for this reason — and the node serves it at `/diagnostics`. Note that
-nothing in paddock currently *fetches* that endpoint, so it does not reach
-`run.json`: which layout produced a recorded number is answerable by looking at
-the checkout, not by reading the run. Worth closing, but it is a framework
-change and not this adapter's to make unilaterally.
+path, for this reason — and the node serves it at `/diagnostics`. The runner
+fetches it once per run, after the sweep rather than before (a policy that has
+seen no frame cannot answer most of it), and stores the reply under
+`provenance.policy` in `run.json` alongside `provenance.repo`. So which layout
+and which backend produced a number is now answerable by reading the run, which
+it was not for the row above.
 
 ## Splits
 
