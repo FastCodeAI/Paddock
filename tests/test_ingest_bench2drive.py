@@ -14,7 +14,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from paddock.results import store
+import pytest
+
+from paddock.config import ConfigError, SiteConfig
+from paddock.results import legacy, store
 from paddock.results.ingest import bench2drive
 
 
@@ -335,3 +338,36 @@ def test_without_setups_nothing_changes(tmp_path: Path) -> None:
     root = _tree(tmp_path)
     ((run, metrics, _),) = bench2drive.ingest(root, model="modelx", site="s")
     assert run.valid and metrics.by_group == {}
+
+
+# --- the site config is read by a stranger, so it fails by name --------------
+
+
+def _site(tmp_path: Path, toml: str) -> SiteConfig:
+    source = tmp_path / "paddock.toml"
+    source.write_text(toml)
+    return SiteConfig(
+        site="s",
+        repos=tmp_path,
+        runs=tmp_path,
+        weights=tmp_path,
+        datasets={},
+        models={},
+        benchmarks={},
+        gpu=None,  # type: ignore[arg-type]
+        source=source,
+    )
+
+
+def test_a_single_bracket_ingest_table_is_named_not_a_typeerror(tmp_path: Path) -> None:
+    """`[ingest.bench2drive]` iterated the dict's keys; `entry["runs"]` then raised
+    `TypeError: string indices must be integers`, an hour from its cause."""
+    cfg = _site(tmp_path, '[ingest.bench2drive]\nmodel = "drivejepa"\nruns = "/nowhere"\n')
+    with pytest.raises(ConfigError, match=r"\[\[ingest.bench2drive\]\]"):
+        legacy.ingest_all(cfg, dry_run=True)
+
+
+def test_a_missing_key_names_the_key(tmp_path: Path) -> None:
+    cfg = _site(tmp_path, '[[ingest.bench2drive]]\nmodel = "drivejepa"\n')
+    with pytest.raises(ConfigError, match="missing 'runs'"):
+        legacy.ingest_all(cfg, dry_run=True)

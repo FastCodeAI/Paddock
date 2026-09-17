@@ -13,7 +13,7 @@ alongside everything else machine-shaped:
 
     [ingest.kitscenes_pkl]
     drivejepa  = "/path/to/exp/inference/kitscenes_e2e_final.pkl"
-    [[ingest.bench2drive]]
+    [[ingest.bench2drive]]           # an array of tables: one block per run
     model  = "drivejepa"
     runs   = "/path/to/paddock-runs/bench2drive/drivejepa"
     label  = "pooled50"
@@ -28,7 +28,7 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-from paddock.config import SiteConfig
+from paddock.config import ConfigError, SiteConfig
 from paddock.results import store
 from paddock.results.ingest import bench2drive, kitscenes, navsim, neuroncap
 
@@ -68,7 +68,19 @@ def ingest_all(cfg: SiteConfig, dry_run: bool = False) -> tuple[int, list[str]]:
             skipped.append(f"kitscenes_pkl.{model} does not exist: {pkl_path}")
 
     # One pooled closed-loop run per entry: see results/ingest/bench2drive.py.
-    for entry in section.get("bench2drive") or []:
+    entries = section.get("bench2drive") or []
+    if not isinstance(entries, list):
+        # `[ingest.bench2drive]` instead of `[[ingest.bench2drive]]`: iterating it
+        # walks the dict's keys, and `entry["runs"]` on a string raised a bare
+        # `TypeError: string indices must be integers` an hour from the cause.
+        raise ConfigError(
+            "[ingest.bench2drive] must be an array of tables -- write [[ingest.bench2drive]] "
+            "(double brackets), one block per model or speed band"
+        )
+    for entry in entries:
+        for key in ("model", "runs"):
+            if key not in entry:
+                raise ConfigError(f"[[ingest.bench2drive]] entry is missing {key!r}: {entry}")
         runs = entry["runs"]
         roots = [Path(r) for r in (runs if isinstance(runs, list) else [runs])]
         if all(r.exists() for r in roots):
@@ -86,6 +98,7 @@ def ingest_all(cfg: SiteConfig, dry_run: bool = False) -> tuple[int, list[str]]:
             )
         else:
             skipped.append(f"bench2drive.{entry.get('model', '?')} runs do not exist: {runs}")
+
     csv_path = section.get("navsim_csv")
     if csv_path and Path(csv_path).exists():
         model = section.get("navsim_model", "drivejepa")
