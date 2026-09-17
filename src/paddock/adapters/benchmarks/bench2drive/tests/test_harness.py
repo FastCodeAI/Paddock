@@ -343,6 +343,38 @@ def test_host_pinning_reaches_the_evaluator(tmp_path, monkeypatch) -> None:
     assert "SOME_UNRELATED_VAR" not in env
 
 
+def test_segment_mode_is_off_unless_asked_for_and_then_reaches_the_agent(tmp_path, monkeypatch) -> None:
+    """PADDOCK_SEGMENT is the only switch for the sim2real capture / frame-swap path.
+
+    A standard run must not see it: segment.py teleports the ego and spawns a depth camera,
+    neither of which belongs in a scored route.
+    """
+    cfg = _site(tmp_path, monkeypatch, COMPLETED)
+    off = tmp_path / "off"
+    _harness(cfg).run_episode(_episode(), "http://127.0.0.1:9000", off)
+    assert "PADDOCK_SEGMENT" not in json.loads((off / "env.json").read_text())
+
+    spec = tmp_path / "vp_capture.json"
+    monkeypatch.setenv("PADDOCK_SEGMENT", str(spec))
+    on = tmp_path / "on"
+    _harness(cfg).run_episode(_episode(), "http://127.0.0.1:9000", on)
+    assert json.loads((on / "env.json").read_text())["PADDOCK_SEGMENT"] == str(spec)
+
+
+def test_camera_override_replaces_the_declared_rig(tmp_path, monkeypatch) -> None:
+    """PADDOCK_CAMERAS_OVERRIDE renders a rig the running model did not declare.
+
+    The sim2real capture needs one model's cameras behind a cheap node; empty entries are
+    dropped so a trailing comma is not a camera id.
+    """
+    cfg = _site(tmp_path, monkeypatch, COMPLETED)
+    monkeypatch.setenv("PADDOCK_CAMERAS_OVERRIDE", "CAM_FRONT,CAM_FRONT_LEFT,,CAM_OP_WIDE,")
+    out = tmp_path / "out"
+    _harness(cfg).run_episode(_episode(), "http://127.0.0.1:9000", out)
+    env = json.loads((out / "env.json").read_text())
+    assert env["PADDOCK_CAMERAS"] == "CAM_FRONT,CAM_FRONT_LEFT,CAM_OP_WIDE"
+
+
 def test_recording_is_gated_on_the_record_setting(tmp_path, monkeypatch) -> None:
     cfg = _site(tmp_path, monkeypatch, COMPLETED, record="true")
     out = tmp_path / "out"

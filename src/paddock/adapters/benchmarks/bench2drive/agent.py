@@ -49,6 +49,7 @@ from agents.navigation.local_planner import RoadOption
 from leaderboard.autoagents.autonomous_agent import AutonomousAgent, Track
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 
+from paddock.adapters.benchmarks.bench2drive import segment
 from paddock.adapters.benchmarks.bench2drive.pid import WaypointTracker
 from paddock.policy.protocol import CANBUS_ACCEL, CANBUS_VELOCITY, Command, Trajectory, encode_image
 
@@ -182,6 +183,18 @@ class PaddockB2DAgent(AutonomousAgent):
             self._http.post(f"{SERVER}/reset", json={}, timeout=30)
         except Exception as exc:  # a fresh node has nothing to reset; not fatal
             print("[paddock-b2d] reset warning:", exc)
+        # Segment mode (PADDOCK_SEGMENT): capture a recorded run tick by tick, or replay it to
+        # T0 and then hand over with converted frames. Off for every standard run; the spec
+        # names the cameras it touches. See segment.py.
+        self._seg = None
+        seg_path = os.environ.get(segment.ENV)
+        if seg_path:
+            self._seg = segment.Segment(
+                seg_path,
+                {c: CAM_TF[c] for c in CAMS},
+                {c: _res(c) for c in CAMS},
+                {c: CAM_FOV[c] for c in CAMS},
+            )
         self._log = None
         if RECORD_DIR:
             os.makedirs(os.path.join(RECORD_DIR, "front"), exist_ok=True)
@@ -195,6 +208,9 @@ class PaddockB2DAgent(AutonomousAgent):
             )
 
     def destroy(self):
+        if self._seg is not None:
+            self._seg.close()
+            self._seg = None
         if self._log is not None:
             self._log.close()
             self._log = None
@@ -326,7 +342,9 @@ class PaddockB2DAgent(AutonomousAgent):
                 dist += plan[j][0].location.distance(plan[j + 1][0].location)
         return None, None
 
-    def run_step(self, input_data, timestamp):
+    def tick_inputs(self, input_data, timestamp):
+        """Everything one tick contributes to the wire body, with the camera frames still
+        raw (RGB arrays), so a caller may swap a frame before ``infer`` encodes it."""
         us = int(timestamp * 1e6)
         # No speedometer is a broken sensor setup, not a stationary car: let the
         # KeyError surface, so the leaderboard records the route as crashed.
@@ -343,11 +361,7 @@ class PaddockB2DAgent(AutonomousAgent):
         for cid in CAMS:
             if cid in input_data:
                 bgra = input_data[cid][1]
-                rgb = bgra[:, :, :3][:, :, ::-1]  # BGRA -> RGB
-                # raw .npy for the small frames the multi-camera models stack; JPEG (q95)
-                # for multi-megapixel frames, where raw pixels would be ~20 MB a tick
-                big = rgb.shape[0] * rgb.shape[1] >= 1_000_000
-                images[cid] = encode_image(rgb, codec="jpeg" if big else None)
+                images[cid] = bgra[:, :, :3][:, :, ::-1]  # BGRA -> RGB
         if RECORD_DIR and RECORD_CAM in input_data:
             front_bgr = input_data[RECORD_CAM][1][:, :, :3].copy()
 
@@ -364,34 +378,75 @@ class PaddockB2DAgent(AutonomousAgent):
             lim_kmh = 0.0
         speed_limit = lim_kmh / 3.6 if lim_kmh > 0 else None
         nav_maneuver, nav_distance_m = self._nav()
-
-        body = {
+        return {
+            "us": us,
+            "speed": speed,
             "images": images,
-            "ego2world": self._ego2world().tolist(),
+            "front_bgr": front_bgr,
             "canbus": canbus,
-            "timestamp": us,
+            "ego2world": self._ego2world().tolist(),
             "command": self._command(),
             "speed_limit": speed_limit,
             "nav_maneuver": nav_maneuver,
             "nav_distance_m": nav_distance_m,
+        }
+
+    def infer(self, inputs, override_images=None):
+        """POST one tick to the node. ``override_images`` replaces the raw frame of the
+        cameras it names (segment mode) before encoding; everything else is untouched."""
+        images = {}
+        for cid, rgb in inputs["images"].items():
+            if override_images and cid in override_images:
+                rgb = override_images[cid]
+            # raw .npy for the small frames the multi-camera models stack; JPEG (q95)
+            # for multi-megapixel frames, where raw pixels would be ~20 MB a tick
+            big = rgb.shape[0] * rgb.shape[1] >= 1_000_000
+            images[cid] = encode_image(np.ascontiguousarray(rgb), codec="jpeg" if big else None)
+        body = {
+            "images": images,
+            "ego2world": inputs["ego2world"],
+            "canbus": inputs["canbus"],
+            "timestamp": inputs["us"],
+            "command": inputs["command"],
+            "speed_limit": inputs["speed_limit"],
+            "nav_maneuver": inputs["nav_maneuver"],
+            "nav_distance_m": inputs["nav_distance_m"],
             "calibration": {
                 "camera2image": self._cam2img,
                 "camera2ego": self._cam2ego,
                 "lidar2ego": np.eye(4).tolist(),  # lidar coincident with ego
             },
         }
-
         r = self._http.post(f"{SERVER}/infer", json=body, timeout=INFER_TIMEOUT_S)
         r.raise_for_status()
-        # Validated here: a NaN from a mis-warmed model is an error, not a steer
-        # value CARLA accepts silently.
-        payload = r.json()
+        return r.json()
+
+    def decide(self, payload, speed):
+        """Node reply -> (control, desired_speed, plan, native). Validated here: a NaN
+        from a mis-warmed model is an error, not a steer value CARLA accepts silently."""
         plan = Trajectory(payload["trajectory"], dt=WAYPOINT_DT)
         native = (payload.get("extras") or {}).get("native_long")
         if native:
             control, desired_speed = self._control_native(plan.xy, speed, native)
         else:
             control, desired_speed = self._control(plan.xy, speed)
+        return control, desired_speed, plan, native
+
+    def run_step(self, input_data, timestamp):
+        if self._seg is not None:
+            control = self._seg.step(
+                self, self._hero_actor(), CarlaDataProvider.get_world(), input_data, timestamp
+            )
+            if self._metric_path:
+                self._record_metric_info()
+            self._t += 1
+            return control
+
+        inputs = self.tick_inputs(input_data, timestamp)
+        speed, front_bgr = inputs["speed"], inputs["front_bgr"]
+        nav_maneuver, nav_distance_m = inputs["nav_maneuver"], inputs["nav_distance_m"]
+        payload = self.infer(inputs)
+        control, desired_speed, plan, native = self.decide(payload, speed)
 
         if self._metric_path:
             self._record_metric_info()

@@ -591,6 +591,13 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         repo = self.repo
         python = self.setting("python")
         cameras = episode.config.get("cameras") or ["CAM_FRONT"]
+        # Diagnostic: render and ship only these cameras. The sim2real capture uses it to
+        # record another model's rig behind a cheap node; it also proves a model ignores the
+        # cameras it declares. Host-set, never part of a standard run, and the adapter must
+        # tolerate the gap.
+        override = [c for c in os.environ.get("PADDOCK_CAMERAS_OVERRIDE", "").split(",") if c.strip()]
+        if override:
+            cameras = override
         runs = int(episode.config.get("runs", 1))
         timeout_s = int(self.setting("per_route_timeout_s") or DEFAULT_ROUTE_TIMEOUT_S)
         requested_port = int(self.setting("carla_port") or 2000)
@@ -614,6 +621,11 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         # foreign-interpreter agent that honours it.
         if os.environ.get("PADDOCK_INFER_TIMEOUT_S"):
             extra["PADDOCK_INFER_TIMEOUT_S"] = os.environ["PADDOCK_INFER_TIMEOUT_S"]
+        # Segment mode (sim2real diagnostics: capture a recording, or replay it to T0 and then
+        # swap the frames); see bench2drive/segment.py. Host-set like the timeout above, and
+        # never part of a standard run.
+        if os.environ.get("PADDOCK_SEGMENT"):
+            extra["PADDOCK_SEGMENT"] = os.environ["PADDOCK_SEGMENT"]
         if self.record:
             extra["PADDOCK_RECORD_DIR"] = str(out_dir)
             # agent_wrapper reads SAVE_PATH as its "Bench2Drive mode" flag, which
