@@ -13,6 +13,15 @@ Counts and distance are pooled across all 50 routes. Progress is estimated from 
 Background speed averages all background-role vehicles. A missing/zero background-speed measurement defaults to 100%.
 Lawful stops can produce ratios below 100%; early termination leaves checkpoints unmeasured.
 
+`entries_per_km` stays in the JSON but is **not published in the README**, and it
+should not be read as a speed measure. Each route is split into checkpoints of
+that route's own length, so a route contributes about 20 entries however long it
+is: over the 450 records `mean |entries − 20 × RC/100|` is 1.18, and the quantity
+reduces to `20 / (completion-weighted mean route length)` — 181.7 to 183.8 across
+all five systems, a 1.1% spread. The published range only reflects the route mix
+and how far each system got. `below_100_percent` is the field that carries the
+speed signal.
+
 Checked `MinimumSpeedRouteTest`, `route_scenario.py` and `statistics_manager.py`:
 20 checkpoints are configured per route, and upstream aggregate counts use the same kilometre normalization.
 Original scores and controller code are unchanged.

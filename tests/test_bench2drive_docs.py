@@ -157,6 +157,43 @@ def test_fifty_route_table_reproduces(data: dict) -> None:
         assert row[-1] == f"{s['collision_routes']}/50", label
 
 
+def test_progress_km_column_reproduces(data: dict) -> None:
+    """The denominator has to be visible, and right."""
+    rows = {r[0]: r for r in _readme_table("### Bench2Drive — 50 routes")[1:]}
+    for label, key in PUBLISHED.items():
+        s = data["summaries"]["all50"][key]
+        assert rows[label][4] == f"{s['route_progress_km']:.2f}", label
+
+
+def test_collisions_per_km_table_reproduces(data: dict) -> None:
+    rows = {r[0]: r for r in _readme_table("#### Collisions per progress km")[1:]}
+    assert "OpenPilot †" not in rows, "OpenPilot's two recording sets are not pooled into a rate"
+    for label, row in rows.items():
+        s = data["summaries"]["all50"][PUBLISHED[label]]
+        km = s["route_progress_km"]
+        assert row[1] == f"{km:.2f}", label
+        for cell, name in zip(
+            row[2:5],
+            ("collisions_pedestrian", "collisions_vehicle", "collisions_layout"),
+            strict=True,
+        ):
+            assert cell == f"{s['counts'][name] / km:.2f}", f"{label} {name}"
+        assert row[5] == f"{s['collision_entries'] / km:.2f}", label
+
+
+def test_entries_per_km_is_not_published(data: dict) -> None:
+    """It reduces to the checkpoint grid: 20 / completion-weighted mean route length."""
+    spread = []
+    for key in PUBLISHED.values():
+        recs = [r for r in data["records"] if r["model"] == key]
+        weight = sum(r["scores"]["score_route"] / 100 for r in recs)
+        weighted_len_km = sum(r["route_length_m"] * r["scores"]["score_route"] / 100 for r in recs)
+        spread.append(20 / (weighted_len_km / weight / 1000))
+    assert max(spread) / min(spread) - 1 < 0.02, spread
+    table = _readme_table("#### Minimum-speed normalization")
+    assert not any("Entries / progress km" in c for c in table[0])
+
+
 def test_minimum_speed_table_reproduces(data: dict) -> None:
     rows = {r[0]: r for r in _readme_table("#### Minimum-speed normalization")[1:]}
     assert "OpenPilot †" not in rows, "OpenPilot's entries belong in its own block"

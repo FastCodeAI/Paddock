@@ -344,15 +344,20 @@ future scores 0.946 against the paper's 94.8 (privileged; stored `valid: false`)
 ### Bench2Drive — 50 routes
 
 Four models and CV (fixed 6 m/s), evaluated on the same 50 routes.
-DS = mean driving score; RC = mean route completion. Infraction columns are recorded counts.
+DS = mean driving score; RC = mean route completion. **Progress km** is
+`Σ route_length_m × RC/100 / 1000` — how far each system was actually exposed,
+and the denominator Bench2Drive's own aggregate uses. The infraction columns are
+**recorded counts, not rates**, and the exposures differ by nearly 2× (DriveJEPA
+2.14 km against VisionPilot's 3.92), so compare them through the per-km table
+below rather than across this one.
 
-| Model/system | Routes | DS ↑ | RC ↑ (%) | Ped. collision ↓ | Vehicle collision ↓ | Layout collision ↓ | Red light ↓ | Stop sign ↓ | Outside lanes ↓ | Deviation ↓ | Blocked ↓ | Emergency yield ↓ | Min-speed entries | Route timeout ↓ | Scenario timeout ↓ | Collisions total ↓ | Routes with collision ↓ |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| DriveJEPA | 50/50 | 31.71 | 39.10 | 2 | 3 | 3 | 1 | 1 | 7 | 6 | 17 | 3 | 338 | 0 | 0 | 8 | 8/50 |
-| VisionPilot | 50/50 | 47.82 | 71.19 | 6 | 23 | 13 | 11 | 3 | 11 | 10 | 2 | 4 | 655 | 0 | 0 | 42 | 29/50 |
-| Alpamayo 1.5 (nav) | 50/50 | 43.04 | 72.32 | 3 | 42 | 1 | 0 | 0 | 22 | 3 | 9 | 1 | 660 | 0 | 0 | 46 | 27/50 |
-| OpenPilot † | 50/50 | — | — | 3 | 10 | 5 | 5 | 4 | 4 | 9 | 10 | 4 | 587 | 0 | 0 | 18 | 14/50 |
-| CV (fixed 6 m/s) | 50/50 | 40.39 | 73.08 | 9 | 24 | 26 | 11 | 4 | 14 | 14 | 4 | 5 | 673 | 0 | 0 | 59 | 31/50 |
+| Model/system | Routes | DS ↑ | RC ↑ (%) | Progress km | Ped. collision ↓ | Vehicle collision ↓ | Layout collision ↓ | Red light ↓ | Stop sign ↓ | Outside lanes ↓ | Deviation ↓ | Blocked ↓ | Emergency yield ↓ | Min-speed entries | Route timeout ↓ | Scenario timeout ↓ | Collisions total ↓ | Routes with collision ↓ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| DriveJEPA | 50/50 | 31.71 | 39.10 | 2.14 | 2 | 3 | 3 | 1 | 1 | 7 | 6 | 17 | 3 | 338 | 0 | 0 | 8 | 8/50 |
+| VisionPilot | 50/50 | 47.82 | 71.19 | 3.92 | 6 | 23 | 13 | 11 | 3 | 11 | 10 | 2 | 4 | 655 | 0 | 0 | 42 | 29/50 |
+| Alpamayo 1.5 (nav) | 50/50 | 43.04 | 72.32 | 3.98 | 3 | 42 | 1 | 0 | 0 | 22 | 3 | 9 | 1 | 660 | 0 | 0 | 46 | 27/50 |
+| OpenPilot † | 50/50 | — | — | 3.46 | 3 | 10 | 5 | 5 | 4 | 4 | 9 | 10 | 4 | 587 | 0 | 0 | 18 | 14/50 |
+| CV (fixed 6 m/s) | 50/50 | 40.39 | 73.08 | 3.98 | 9 | 24 | 26 | 11 | 4 | 14 | 14 | 4 | 5 | 673 | 0 | 0 | 59 | 31/50 |
 
 † **OpenPilot has no DS or RC cell here, deliberately.** Its 24 historical routes
 were driven with human resume assistance on 16 of them, and its 26 expansion
@@ -362,18 +367,43 @@ counts in its row are the recorded totals over all 50 routes. The scores are in
 [OpenPilot, by recording set](#openpilot-by-recording-set).
 DriveJEPA uses a NAVSIM-v2 checkpoint zero-shot; VisionPilot uses a synthesized trajectory with an extrapolated tail.
 
+#### Collisions per progress km
+
+Upstream divides every infraction except `outside_route_lanes` by the same
+`km_driven`, so this is the form the counts above are comparable in. Raw counts
+are the one form Bench2Drive itself never publishes.
+
+| Model/system | Progress km | Ped. ↓ | Vehicle ↓ | Layout ↓ | Total ↓ |
+|---|---:|---:|---:|---:|---:|
+| DriveJEPA | 2.14 | 0.94 | 1.40 | 1.40 | 3.74 |
+| VisionPilot | 3.92 | 1.53 | 5.87 | 3.32 | 10.72 |
+| Alpamayo 1.5 (nav) | 3.98 | 0.75 | 10.56 | 0.25 | 11.56 |
+| CV (fixed 6 m/s) | 3.98 | 2.26 | 6.02 | 6.53 | 14.81 |
+
+DriveJEPA's 3 vehicle collisions against VisionPilot's 23 is 1.40/km against
+5.87/km once exposure is divided out, and part of even that is DriveJEPA having
+the table's highest blocked count (17) — stationary, not safe. OpenPilot is in
+its own block below; its two recording sets are not pooled into a rate either.
+
 #### Minimum-speed normalization
 
-| Model/system | Recorded entries | Entries / progress km | Below 100% ↓ (%) |
-| --- | ---: | ---: | ---: |
-| DriveJEPA | 338 | 158.03 | 59.17 |
-| VisionPilot | 655 | 167.16 | 21.22 |
-| Alpamayo 1.5 (nav) | 660 | 165.93 | 44.09 |
-| CV (fixed 6 m/s) | 673 | 168.93 | 46.66 |
+| Model/system | Recorded entries | Below 100% ↓ (%) |
+| --- | ---: | ---: |
+| DriveJEPA | 338 | 59.17 |
+| VisionPilot | 655 | 21.22 |
+| Alpamayo 1.5 (nav) | 660 | 44.09 |
+| CV (fixed 6 m/s) | 673 | 46.66 |
 
-`Entries/km = total entries / sum(route_length_m × RC/100 / 1000)`.
-B2D records speed at distance checkpoints, even above traffic speed; fewer entries can reflect less route progress.
-“Below 100%” is the share of recorded ratios below traffic speed, not a safety violation rate.
+“Below 100%” is the share of recorded ratios below background-traffic speed, not
+a safety violation rate: B2D records a ratio at each distance checkpoint even
+when the ego is faster than traffic, and lawful stops produce ratios below 100%.
+**Entries per progress km is not published**, because it cannot separate these
+systems: the checkpoint grid splits *each* route into 20 parts of its own length,
+so a route contributes ~20 entries however long it is, and the quantity reduces
+to 20 / (completion-weighted mean route length) — 181.7 to 183.8 across all five
+systems, a 1.1% spread. What is left is the route mix and how far each system
+got, not how fast it drove. `below_100_percent` is the column carrying the speed
+signal; `entries_per_progress_km` stays in the JSON with that caveat attached.
 OpenPilot's entries are in its own block; the two recording sets are not pooled here either.
 
 #### OpenPilot, by recording set
