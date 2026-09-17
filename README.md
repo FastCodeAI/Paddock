@@ -188,8 +188,10 @@ in CARLA. See [Bench2Drive protocol](docs/benchmarks/bench2drive.md).
 
 ♣ The Bench2Drive baseline uses a **fixed 3 m/s target**, with straight ego-frame
 waypoints and the shared controller; actual vehicle speed can differ. nuScenes
-constant velocity instead extrapolates the recorded ego velocity. These are
-different speed settings of the baseline, as detailed below.
+constant velocity instead extrapolates the recorded ego velocity. 47.94 is that
+3 m/s target on the historical 24 routes; the whole speed sweep, and why the
+50-route table shows 40.39, is in
+[Constant velocity — the speed sweep](#constant-velocity--the-speed-sweep).
 
 △ nuScenes val, open loop, zero-shot (none of these models was trained on
 nuScenes): the average L2 over 0-3 s on the official 150-scene val split (5119
@@ -424,6 +426,29 @@ intervention. Its per-route values are
 [`openpilot-24-infractions.csv`](docs/benchmarks/openpilot-24-infractions.csv), and
 every record in the pooled JSON now carries an `assistance` block, so the assisted
 and unassisted subsets can be recomputed from the linked file alone.
+
+#### Constant velocity — the speed sweep
+
+The baseline is not one experiment. All five targets were driven over the same
+50 routes; the 6 m/s row is the one carried into the tables above.
+
+| Target speed (m/s) | Routes | DS ↑ | RC ↑ (%) |
+|---:|---:|---:|---:|
+| 3 | 50/50 | 48.31 | 74.65 |
+| 6 | 50/50 | 40.39 | 73.08 |
+| 9 | 50/50 | 43.57 | 72.70 |
+| 12 | 50/50 | 42.19 | 72.12 |
+| 15 | 50/50 | 41.45 | 73.68 |
+
+This fixes the target speed rather than holding the zero speed at route start;
+the path is straight in the ego frame, not a route-following reference. The
+**47.94 ♣** in the support matrix is the 3 m/s target over the *historical 24*
+routes (RC 74.68) — the same setting scores 48.31 over all 50 — and it is the one
+row here with a tracked run:
+[run configuration](results/bench2drive/constant_velocity/20260908T084921-804913/run.json)
+· [full metrics](results/bench2drive/constant_velocity/20260908T084921-804913/metrics.json).
+The other rows are not in `results/` yet; see the provenance item in
+[the roadmap](docs/ROADMAP.md#beyond-reproduction).
 
 [Calculation](docs/benchmarks/bench2drive-speed-normalization.md) · [Recorded data](docs/benchmarks/bench2drive-speed-normalization.json)
 

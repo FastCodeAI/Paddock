@@ -258,3 +258,37 @@ def test_video_manifest_points_outside_the_repo() -> None:
     for name in manifest["video_sha256"]:
         assert f"{{runs}}/bench2drive/evidence/driving-videos/{name}" in doc, name
         assert not (REPO_ROOT / "docs/evidence/driving-videos" / name).exists()
+
+
+# ---------------------------------------------------------------------------
+# The constant-velocity baseline is a sweep, and the README says which row is which
+# ---------------------------------------------------------------------------
+
+
+def test_speed_sweep_reproduces(data: dict) -> None:
+    rows = _readme_table("#### Constant velocity — the speed sweep")[1:]
+    assert [r[0] for r in rows] == ["3", "6", "9", "12", "15"]
+    for row in rows:
+        s = data["summaries"]["all50"][f"constant_velocity_{row[0]}mps"]
+        assert row[1] == f"{s['n']}/50"
+        assert row[2] == f"{s['driving_score']:.2f}", row[0]
+        assert row[3] == f"{s['route_completion']:.2f}", row[0]
+
+
+def test_support_matrix_baseline_cell_is_the_historical_24_three_mps(data: dict) -> None:
+    """♣ 47.94 and the table's 40.39 are different experiments; both must be stated."""
+    s = data["summaries"]["original24"]["constant_velocity_3mps"]
+    readme = README.read_text()
+    assert f"**{s['driving_score']:.2f} ♣**" in readme
+    line = next(ln for ln in readme.split("\n") if ln.startswith("| Baseline (Constant Velocity) |"))
+    cell = [c.strip() for c in line.strip().strip("|").split("|")][5]
+    assert cell.startswith(f"{s['driving_score']:.2f}"), cell
+
+
+def test_readme_still_links_a_tracked_bench2drive_run() -> None:
+    """The section must not be the one that drops the last results/ link."""
+    readme = README.read_text()
+    links = re.findall(r"\((results/bench2drive/[^)]+)\)", readme)
+    assert links, "no docs link a results/bench2drive run any more"
+    for link in links:
+        assert (REPO_ROOT / link).exists(), link

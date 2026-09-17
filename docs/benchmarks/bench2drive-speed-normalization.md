@@ -22,8 +22,24 @@ all five systems, a 1.1% spread. The published range only reflects the route mix
 and how far each system got. `below_100_percent` is the field that carries the
 speed signal.
 
-Checked `MinimumSpeedRouteTest`, `route_scenario.py` and `statistics_manager.py`:
-20 checkpoints are configured per route, and upstream aggregate counts use the same kilometre normalization.
+Checked `MinimumSpeedRouteTest`, `route_scenario.py` and `statistics_manager.py`
+in the Bench2Drive checkout pinned at `7ec25d1` in [`repos.yaml`](../../repos.yaml):
+**20** checkpoints are configured per route, and upstream aggregate counts use the
+same kilometre normalization.
+
+Two details behind that 20:
+
+- `leaderboard/leaderboard/scenarios/route_scenario.py:427` is the file that
+  passes `checkpoints=20`, and it is the one `leaderboard_evaluator.py` imports
+  (`from leaderboard.scenarios.route_scenario import RouteScenario`). The
+  checkout carries a second copy —
+  `scenario_runner/srunner/scenarios/route_scenario.py:308` — which passes
+  `checkpoints=4` and is not on this path. Read the wrong one and the denominator
+  is off by five.
+- 20 is the configuration, not always the count. `MinimumSpeedRouteTest.terminate()`
+  (`atomic_criteria.py:2081-2084`) records one extra checkpoint whenever the route
+  ends past 95% — "Routes end at around 99%, so make sure the last checkpoint is
+  recorded". Five of the 450 records here have 21 entries.
 Original scores and controller code are unchanged.
 
 Every record carries an `assistance` block. For OpenPilot's 24 historical routes those
