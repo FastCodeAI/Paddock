@@ -427,7 +427,7 @@ and unassisted subsets can be recomputed from the linked file alone.
 
 [Calculation](docs/benchmarks/bench2drive-speed-normalization.md) · [Recorded data](docs/benchmarks/bench2drive-speed-normalization.json)
 
-[VisionPilot and OpenPilot videos](docs/evidence/driving-videos/README.md)
+[VisionPilot and OpenPilot failure videos](docs/evidence/driving-videos/README.md) — manifest and hashes tracked; the MP4s live under `{runs}`, not in the repo.
 
 ### neuroNCAP
 

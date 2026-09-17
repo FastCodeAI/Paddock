@@ -20,6 +20,7 @@ from __future__ import annotations
 import csv
 import json
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -226,3 +227,34 @@ def test_support_matrix_openpilot_cell_is_the_unassisted_estimate(data: dict) ->
         f"the support matrix publishes {cell!r} for Bench2Drive; it must stay the "
         "unassisted estimate, not a pooled mean"
     )
+
+
+# ---------------------------------------------------------------------------
+# Run artifacts stay outside the repo
+# ---------------------------------------------------------------------------
+
+VIDEO_SUFFIXES = {".mp4", ".avi", ".mov", ".webm", ".mkv"}
+
+
+def test_no_video_is_tracked() -> None:
+    """`.gitignore`: run artifacts live outside the repo, and there is no LFS here."""
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split("\0")
+    offenders = [p for p in tracked if p and Path(p).suffix.lower() in VIDEO_SUFFIXES]
+    assert not offenders, (
+        f"{offenders} are run artifacts; move them under [roots.runs] and keep the "
+        "manifest, as docs/evidence/driving-videos/README.md does"
+    )
+
+
+def test_video_manifest_points_outside_the_repo() -> None:
+    doc = (REPO_ROOT / "docs/evidence/driving-videos/README.md").read_text()
+    manifest = json.loads((REPO_ROOT / "docs/evidence/driving-videos/manifest.json").read_text())
+    for name in manifest["video_sha256"]:
+        assert f"{{runs}}/bench2drive/evidence/driving-videos/{name}" in doc, name
+        assert not (REPO_ROOT / "docs/evidence/driving-videos" / name).exists()
