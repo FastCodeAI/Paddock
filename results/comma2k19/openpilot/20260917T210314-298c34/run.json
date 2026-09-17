@@ -1,0 +1,95 @@
+{
+  "run_id": "20260917T210314-298c34",
+  "site": "hpcai-skodate",
+  "benchmark": "comma2k19",
+  "model": "openpilot",
+  "mode": "open_loop",
+  "started_utc": "2026-09-17T21:03:14+00:00",
+  "duration_s": 437.3,
+  "repo_sha": "4df40d2c1946a57242230186edd073c4073060a6",
+  "dataset": {
+    "name": "comma2k19",
+    "n_samples": 850,
+    "sequences_sha256": "a81bf32b450ba202",
+    "n_expected": 850
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_OP_ROAD",
+      "CAM_OP_WIDE",
+      "CAM_FRONT"
+    ],
+    "history_frames": 160,
+    "keyframes_per_segment": 85,
+    "eval_horizon_s": 3.0,
+    "interval_s": 0.5,
+    "gt_horizon_s": 10.0,
+    "input_hz": 20.0,
+    "calibration": "route-pooled, calibrationd formula on recorded pose",
+    "scene_set": "viewer10",
+    "stride": 1,
+    "history_span_s": 7.95,
+    "model_env": {
+      "PADDOCK_FFMPEG": "ffmpeg"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "openpilot",
+      "sha": "4df40d2c1946a57242230186edd073c4073060a6",
+      "pinned_sha": "555f48c5d",
+      "at_pin": false
+    },
+    "policy": {
+      "backend": "onnx",
+      "model": "small",
+      "source_size": [
+        1164,
+        874
+      ],
+      "resample_mode": "native",
+      "source_hfov_deg": 65.2,
+      "source_vfov_deg": 51.3,
+      "margin_deg": {
+        "img": {
+          "horizontal": 33.8,
+          "vertical": 35.4
+        },
+        "big_img": {
+          "horizontal": 6.5,
+          "vertical": 20.0
+        }
+      },
+      "rpy_deg": [
+        -0.0,
+        2.0416,
+        2.0598
+      ],
+      "frames_seen": 160,
+      "feature_buffer_frames": 130,
+      "onnx": {
+        "vision": "driving_vision.onnx",
+        "policy": "driving_policy.onnx"
+      },
+      "providers": [
+        "CUDAExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "model_checkpoint": "vision 6a7d09ad-bcc9-43bc-916d-29287e60cee2/200 / policy a27b3122-733e-4a65-938b-acfebebbe5e8/100",
+      "warp_in_bounds": {
+        "img": 1.0,
+        "big_img": 1.0
+      },
+      "warmup_frames": 97,
+      "warmed_up": true,
+      "desiredCurvature": 4.4760593134003825e-05,
+      "desiredAcceleration": -0.058842929501922395
+    }
+  },
+  "status": "complete",
+  "valid": false,
+  "notes": "restricted to scene set 'viewer10' (10 of 2035 segments), so this scores a chosen subset rather than the benchmark",
+  "ingested_from": ""
+}

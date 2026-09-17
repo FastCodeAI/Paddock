@@ -1,0 +1,67 @@
+{
+  "run_id": "20260917T220335-e6be88",
+  "site": "hpcai-skodate",
+  "benchmark": "comma2k19",
+  "model": "alpamayo15",
+  "mode": "open_loop",
+  "started_utc": "2026-09-17T22:03:35+00:00",
+  "duration_s": 645.9,
+  "repo_sha": "24179cfa8b2eeaf775e9e21698b23af0f899522d",
+  "dataset": {
+    "name": "comma2k19",
+    "n_samples": 850,
+    "sequences_sha256": "a81bf32b450ba202",
+    "n_expected": 850
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT"
+    ],
+    "history_frames": 160,
+    "keyframes_per_segment": 85,
+    "eval_horizon_s": 3.0,
+    "interval_s": 0.5,
+    "gt_horizon_s": 10.0,
+    "input_hz": 20.0,
+    "calibration": "route-pooled, calibrationd formula on recorded pose",
+    "scene_set": "viewer10",
+    "stride": 1,
+    "history_span_s": 7.95,
+    "model_env": {
+      "HF_HOME": "models",
+      "ALPAMAYO_CHECKPOINT": "7aba8293c09993f2e125c6819df05d7fa3e873ea",
+      "ALPAMAYO_COSMOS": "a9fae2cf89dc64db96b12860417f0eb403013bb9"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "alpamayo1.5",
+      "sha": "24179cfa8b2eeaf775e9e21698b23af0f899522d",
+      "pinned_sha": "7a8f1c7",
+      "at_pin": false
+    },
+    "policy": {
+      "num_traj_samples": 1,
+      "temperature": 0.6,
+      "top_p": 0.98,
+      "nav": true,
+      "nav_text": "Continue straight",
+      "camera_slots": [
+        "1:CAM_FRONT:fill",
+        "6:CAM_FRONT:zoom"
+      ],
+      "history_frames": 16,
+      "expected_dt_s": 0.1,
+      "request_dt_s": 0.05,
+      "reasoning": "Keep distance to the lead vehicle since it is directly ahead in our lane"
+    }
+  },
+  "status": "complete",
+  "valid": false,
+  "notes": "restricted to scene set 'viewer10' (10 of 2035 segments), so this scores a chosen subset rather than the benchmark",
+  "ingested_from": ""
+}

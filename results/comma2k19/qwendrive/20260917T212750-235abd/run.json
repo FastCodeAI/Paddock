@@ -1,0 +1,76 @@
+{
+  "run_id": "20260917T212750-235abd",
+  "site": "hpcai-skodate",
+  "benchmark": "comma2k19",
+  "model": "qwendrive",
+  "mode": "open_loop",
+  "started_utc": "2026-09-17T21:27:50+00:00",
+  "duration_s": 740.1,
+  "repo_sha": "28091c1532e869bc7aee91fc0aef6b3e6fd0b2e0",
+  "dataset": {
+    "name": "comma2k19",
+    "n_samples": 850,
+    "sequences_sha256": "a81bf32b450ba202",
+    "n_expected": 850
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT"
+    ],
+    "history_frames": 160,
+    "keyframes_per_segment": 85,
+    "eval_horizon_s": 3.0,
+    "interval_s": 0.5,
+    "gt_horizon_s": 10.0,
+    "input_hz": 20.0,
+    "calibration": "route-pooled, calibrationd formula on recorded pose",
+    "scene_set": "viewer10",
+    "stride": 1,
+    "history_span_s": 7.95,
+    "model_env": {
+      "HF_HOME": "models",
+      "QWENDRIVE_CHECKPOINT": "28484089a7cc8c335cf5089fb0745cf7c49b6eaa",
+      "QWENDRIVE_VIEWS": "replicate"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "Qwen-Drive-1.0",
+      "sha": "28091c1532e869bc7aee91fc0aef6b3e6fd0b2e0",
+      "pinned_sha": "28091c1",
+      "at_pin": true
+    },
+    "policy": {
+      "planner": "planner-sft",
+      "mode": "direct",
+      "views": "replicate",
+      "cameras": [
+        "CAM_FRONT"
+      ],
+      "num_samples": 1,
+      "attn": "sdpa",
+      "seed": null,
+      "history_span_s": 2.5,
+      "request_dt_s": 0.05,
+      "frames_repeated_total": 0,
+      "frames_off_grid_total": 0,
+      "last_frame_gaps_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "last_command": "STRAIGHT",
+      "infer_seconds_mean": 4.173,
+      "reasoning": ""
+    }
+  },
+  "status": "complete",
+  "valid": false,
+  "notes": "restricted to scene set 'viewer10' (10 of 2035 segments), so this scores a chosen subset rather than the benchmark",
+  "ingested_from": ""
+}
