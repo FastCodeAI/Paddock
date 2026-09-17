@@ -17,4 +17,12 @@ Checked `MinimumSpeedRouteTest`, `route_scenario.py` and `statistics_manager.py`
 20 checkpoints are configured per route, and upstream aggregate counts use the same kilometre normalization.
 Original scores and controller code are unchanged.
 
+Every record carries an `assistance` block. For OpenPilot's 24 historical routes those
+labels come from [`openpilot-24-infractions.csv`](openpilot-24-infractions.csv), which is
+the unassisted reconstruction behind README footnote ◆: on the 16 routes it marks
+`pre_intervention_estimate` its driving score is the run censored at the first human
+resume, so it is lower than — and not the same measurement as — the recorded score for
+the same route in the pooled JSON. The pooled 50-route OpenPilot mean is withheld from
+`summaries.all50.openpilot` for that reason.
+
 [All-50 table](../../README.md#bench2drive--50-routes) · [Inputs and source hashes](bench2drive-speed-normalization.json)

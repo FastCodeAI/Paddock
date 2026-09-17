@@ -181,7 +181,9 @@ driving scores, not per-ability scores. OpenPilot ≈ is the **unassisted
 pre-resume estimate**, reconstructed from the assisted recordings: 16 routes
 are censored before intervention and eight had no intervention. It is not a
 separate unassisted sweep. The historical OpenPilot scores predate later
-controller fixes. Drive-JEPA uses its released NAVSIM-v2 checkpoint zero-shot
+controller fixes. The assisted and expansion recordings are reported
+separately in [OpenPilot, by recording set](#openpilot-by-recording-set); they are
+never pooled into one mean. Drive-JEPA uses its released NAVSIM-v2 checkpoint zero-shot
 in CARLA. See [Bench2Drive protocol](docs/benchmarks/bench2drive.md).
 
 ♣ The Bench2Drive baseline uses a **fixed 3 m/s target**, with straight ego-frame
@@ -344,30 +346,54 @@ future scores 0.946 against the paper's 94.8 (privileged; stored `valid: false`)
 Four models and CV (fixed 6 m/s), evaluated on the same 50 routes.
 DS = mean driving score; RC = mean route completion. Infraction columns are recorded counts.
 
-| Model/system | Routes | DS | RC (%) | Ped. collision | Vehicle collision | Layout collision | Red light | Stop sign | Outside lanes | Deviation | Blocked | Emergency yield | Min-speed entries | Route timeout | Scenario timeout | Collisions total | Routes with collision |
+| Model/system | Routes | DS ↑ | RC ↑ (%) | Ped. collision ↓ | Vehicle collision ↓ | Layout collision ↓ | Red light ↓ | Stop sign ↓ | Outside lanes ↓ | Deviation ↓ | Blocked ↓ | Emergency yield ↓ | Min-speed entries | Route timeout ↓ | Scenario timeout ↓ | Collisions total ↓ | Routes with collision ↓ |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | DriveJEPA | 50/50 | 31.71 | 39.10 | 2 | 3 | 3 | 1 | 1 | 7 | 6 | 17 | 3 | 338 | 0 | 0 | 8 | 8/50 |
 | VisionPilot | 50/50 | 47.82 | 71.19 | 6 | 23 | 13 | 11 | 3 | 11 | 10 | 2 | 4 | 655 | 0 | 0 | 42 | 29/50 |
 | Alpamayo 1.5 (nav) | 50/50 | 43.04 | 72.32 | 3 | 42 | 1 | 0 | 0 | 22 | 3 | 9 | 1 | 660 | 0 | 0 | 46 | 27/50 |
-| OpenPilot (mixed setups) † | 50/50 | 48.11 | 63.50 | 3 | 10 | 5 | 5 | 4 | 4 | 9 | 10 | 4 | 587 | 0 | 0 | 18 | 14/50 |
+| OpenPilot † | 50/50 | — | — | 3 | 10 | 5 | 5 | 4 | 4 | 9 | 10 | 4 | 587 | 0 | 0 | 18 | 14/50 |
 | CV (fixed 6 m/s) | 50/50 | 40.39 | 73.08 | 9 | 24 | 26 | 11 | 4 | 14 | 14 | 4 | 5 | 673 | 0 | 0 | 59 | 31/50 |
 
-† OpenPilot combines controller versions and includes 16 assisted recordings.
+† **OpenPilot has no DS or RC cell here, deliberately.** Its 24 historical routes
+were driven with human resume assistance on 16 of them, and its 26 expansion
+routes use a different upstream longitudinal setup; no single mean describes both,
+so none is published and nothing ranks OpenPilot against the other four. The
+counts in its row are the recorded totals over all 50 routes. The scores are in
+[OpenPilot, by recording set](#openpilot-by-recording-set).
 DriveJEPA uses a NAVSIM-v2 checkpoint zero-shot; VisionPilot uses a synthesized trajectory with an extrapolated tail.
 
 #### Minimum-speed normalization
 
-| Model/system | Recorded entries | Entries / progress km | Below 100% (%) |
+| Model/system | Recorded entries | Entries / progress km | Below 100% ↓ (%) |
 | --- | ---: | ---: | ---: |
 | DriveJEPA | 338 | 158.03 | 59.17 |
 | VisionPilot | 655 | 167.16 | 21.22 |
 | Alpamayo 1.5 (nav) | 660 | 165.93 | 44.09 |
-| OpenPilot (mixed setups) † | 587 | 169.85 | 47.02 |
 | CV (fixed 6 m/s) | 673 | 168.93 | 46.66 |
 
 `Entries/km = total entries / sum(route_length_m × RC/100 / 1000)`.
 B2D records speed at distance checkpoints, even above traffic speed; fewer entries can reflect less route progress.
 “Below 100%” is the share of recorded ratios below traffic speed, not a safety violation rate.
+OpenPilot's entries are in its own block; the two recording sets are not pooled here either.
+
+#### OpenPilot, by recording set
+
+Three different experiments, kept apart. They are never averaged together, and the
+pooled 50-route mean they would produce is withheld from
+`bench2drive-speed-normalization.json` for the same reason.
+
+| Recording set | Routes | DS ↑ | RC ↑ (%) | Min-speed entries | Below 100% ↓ (%) |
+|---|---:|---:|---:|---:|---:|
+| Historical 24 — **assisted**, human resume on 16 of 24 | 24 | 53.62 | 66.81 | 300 | 36.00 |
+| Expansion 26 — unassisted, different upstream longitudinal setup | 26 | 43.01 | 60.45 | 287 | 58.54 |
+| Unassisted 24 estimate ◆ — assisted runs censored at the first resume | 24 | 30.09 | 30.76 | — | — |
+
+The third row is the reconstruction behind ◆ and the 30.09 in the support matrix,
+not a measurement: 16 routes are censored before intervention and eight had no
+intervention. Its per-route values are
+[`openpilot-24-infractions.csv`](docs/benchmarks/openpilot-24-infractions.csv), and
+every record in the pooled JSON now carries an `assistance` block, so the assisted
+and unassisted subsets can be recomputed from the linked file alone.
 
 [Calculation](docs/benchmarks/bench2drive-speed-normalization.md) · [Recorded data](docs/benchmarks/bench2drive-speed-normalization.json)
 
