@@ -1,10 +1,10 @@
 {
-  "run_id": "pooled50-3mps-40c29d24c37d542a",
+  "run_id": "pooled50-40c29d24c37d542a-d94009",
   "site": "fastcode-navvrat-b2d-pooled",
   "benchmark": "bench2drive",
-  "model": "constant_velocity",
+  "model": "visionpilot",
   "mode": "closed_loop",
-  "started_utc": "2026-09-08T08:49:21+00:00",
+  "started_utc": "2026-09-04T09:02:42+00:00",
   "duration_s": null,
   "repo_sha": null,
   "dataset": {
@@ -69,19 +69,31 @@
       "4669"
     ],
     "source_runs": [
-      "20260908T084921-804913",
-      "20260915T083210-abb89b",
-      "20260915T084705-43f82c"
+      "20260904T090242-824382",
+      "20260904T093049-7e90bb",
+      "20260904T095501-763452",
+      "20260904T101613-0c2011",
+      "20260904T101613-42aa59",
+      "20260909T124158-19404f",
+      "20260909T124158-1c6288",
+      "20260909T124158-93c0b5",
+      "20260909T124158-b34815"
     ],
+    "source_sites": [],
     "waypoint_dt": 0.5,
     "model_env": {
-      "PADDOCK_CV_SPEED_SOURCE": "fixed",
-      "PADDOCK_CV_SPEED_M_S": "3"
+      "LD_LIBRARY_PATH": "x86_64-linux-gnu",
+      "VISIONPILOT_ORT_THREADS": "2",
+      "VISIONPILOT_PROVIDERS": "cuda"
+    },
+    "source_config_read": "4/9 source runs",
+    "routes_never_scored": {
+      "11715": "20260904T101613-0c2011: no records in _checkpoint (the route did not score)"
     }
   },
   "hardware": {},
   "status": "complete",
   "valid": true,
-  "notes": "Fixed 3 m/s target on all 50 routes: original 24 from the 08 Sep speed-band campaign, 26 from the 15 Sep expansion.",
-  "ingested_from": "bench2drive/constant_velocity/3mps; reports/constant-speed-bands-20260908/3mps"
+  "notes": "Set-speed latch fix in place. 24 routes from the 03-04 Sep campaign, 26 from the 09 Sep expansion. attempted outside the configured route subset and never scored: 11715 (20260904T101613-0c2011: no records in _checkpoint (the route did not score)). 9 of 9 source runs kept no run.json, so their routes are attributed to visionpilot on the tree they were found in; config.model_env and the rest of config are what 4/9 source runs recorded.",
+  "ingested_from": "paddock-runs/bench2drive/visionpilot"
 }

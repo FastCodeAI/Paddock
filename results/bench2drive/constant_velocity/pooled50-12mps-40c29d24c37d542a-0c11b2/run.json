@@ -1,10 +1,10 @@
 {
-  "run_id": "pooled50-40c29d24c37d542a",
+  "run_id": "pooled50-12mps-40c29d24c37d542a-0c11b2",
   "site": "fastcode-navvrat-b2d-pooled",
   "benchmark": "bench2drive",
-  "model": "visionpilot",
+  "model": "constant_velocity",
   "mode": "closed_loop",
-  "started_utc": "2026-09-04T09:02:42+00:00",
+  "started_utc": "2026-09-08T19:35:54+00:00",
   "duration_s": null,
   "repo_sha": null,
   "dataset": {
@@ -69,22 +69,21 @@
       "4669"
     ],
     "source_runs": [
-      "20260904T090242-824382",
-      "20260904T093049-7e90bb",
-      "20260904T095501-763452",
-      "20260904T101613-0c2011",
-      "20260904T101613-42aa59",
-      "20260909T124158-19404f",
-      "20260909T124158-1c6288",
-      "20260909T124158-93c0b5",
-      "20260909T124158-b34815"
+      "20260908T193554-eae4b6",
+      "20260915T092816-2b7584",
+      "20260915T135412-f8081e"
     ],
+    "source_sites": [],
     "waypoint_dt": 0.5,
-    "model_env": {}
+    "model_env": {
+      "PADDOCK_CV_SPEED_M_S": "12",
+      "PADDOCK_CV_SPEED_SOURCE": "fixed"
+    },
+    "source_config_read": "3/3 source runs"
   },
   "hardware": {},
   "status": "complete",
   "valid": true,
-  "notes": "Set-speed latch fix in place. 24 routes from the 03-04 Sep campaign, 26 from the 09 Sep expansion.",
-  "ingested_from": "paddock-runs/bench2drive/visionpilot"
+  "notes": "Fixed 12 m/s target on all 50 routes: original 24 from the 08 Sep speed-band campaign, 26 from the 15 Sep expansion. 3 of 3 source runs kept no run.json, so their routes are attributed to constant_velocity on the tree they were found in; config.model_env and the rest of config are what 3/3 source runs recorded.",
+  "ingested_from": "bench2drive/constant_velocity/12mps; reports/constant-speed-bands-20260908/12mps"
 }

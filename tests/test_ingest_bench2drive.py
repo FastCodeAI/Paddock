@@ -321,7 +321,7 @@ def test_a_tree_without_run_records_says_so(tmp_path: Path) -> None:
     ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s")
     assert run.config["source_config_read"] == "0/2 source runs"
     assert run.config["source_sites"] == []
-    assert "kept no run.json" in run.notes
+    assert "kept no run.json" in run.notes and "0/2 source runs recorded" in run.notes
 
 
 # --- a pooled run says which setup each route was driven under ---------------

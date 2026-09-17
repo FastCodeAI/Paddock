@@ -1,5 +1,5 @@
 {
-  "run_id": "pooled50-40c29d24c37d542a",
+  "run_id": "pooled50-40c29d24c37d542a-f250e0",
   "site": "fastcode-navvrat-b2d-pooled",
   "benchmark": "bench2drive",
   "model": "qwendrive",
@@ -74,12 +74,23 @@
       "20260915T204253-e3a4a3",
       "20260916T143243-afb990"
     ],
+    "source_sites": [],
     "waypoint_dt": 0.5,
-    "model_env": {}
+    "model_env": {
+      "MKL_NUM_THREADS": "2",
+      "OMP_NUM_THREADS": "2",
+      "QWEN_DRIVE_TRACE": [
+        "/workspace/qwen-drive-eval/epic50-20260916/worker-0-model-trace.jsonl",
+        "/workspace/qwen-drive-eval/epic50-20260916/worker-1-model-trace.jsonl",
+        "/workspace/qwen-drive-eval/epic50-20260916/worker-2-model-trace.jsonl",
+        "/workspace/qwen-drive-eval/epic50-20260916/worker-3-model-trace.jsonl"
+      ]
+    },
+    "source_config_read": "4/4 source runs"
   },
   "hardware": {},
   "status": "complete",
   "valid": true,
-  "notes": "Zero-shot, front camera, Paddock tracker. Route 24333 is the valid rerun after the prepare_history edge-padding fix; its crashed first attempts are not measurements and are skipped.",
+  "notes": "Zero-shot, the three cameras the model was trained on (front, front-left, front-right), through the same Paddock tracker as every other row. Route 24333 is the valid rerun after the prepare_history edge-padding fix; its crashed first attempts are not measurements and are skipped. 4 of 4 source runs kept no run.json, so their routes are attributed to qwendrive on the tree they were found in; config.model_env and the rest of config are what 4/4 source runs recorded.",
   "ingested_from": "paddock-runs/bench2drive/qwendrive"
 }

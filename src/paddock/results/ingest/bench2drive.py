@@ -309,8 +309,8 @@ def ingest(
         "routes_file": _agreed([c.get("routes_file") for c in configs]) or DEFAULT_ROUTES_FILE,
         "routes_subset": wanted,
         "source_runs": source_runs,
-        # nit 8: `site` names the operation that pooled these runs; the machines
-        # that produced them are here, as far as the recordings state them.
+        # `site` names the operation that pooled these runs; the machines that
+        # produced them are here, as far as the recordings state them.
         "source_sites": sorted({rec["site"] for rec in used if rec.get("site")}),
         "waypoint_dt": _agreed([c.get("waypoint_dt") for c in configs]) or _registered_waypoint_dt(model),
         # The operator's entry is an override of what ran, not a substitute for it.
@@ -343,8 +343,9 @@ def ingest(
     unverified = sum(1 for rec in used if not rec.get("model"))
     if unverified:
         note = (note + " " if note else "") + (
-            f"{unverified} of {len(used)} source runs kept no run.json, "
-            f"so their routes are attributed to {model} on the tree they were found in."
+            f"{unverified} of {len(used)} source runs kept no run.json, so their routes are "
+            f"attributed to {model} on the tree they were found in; config.model_env and the "
+            f"rest of config are what {config['source_config_read']} recorded."
         )
     if missing:
         lost = ", ".join(f"{r} ({attempted.get(r, 'no attempt found')})" for r in missing)

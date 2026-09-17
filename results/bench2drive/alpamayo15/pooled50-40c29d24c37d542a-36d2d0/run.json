@@ -1,10 +1,10 @@
 {
-  "run_id": "pooled50-9mps-40c29d24c37d542a",
+  "run_id": "pooled50-40c29d24c37d542a-36d2d0",
   "site": "fastcode-navvrat-b2d-pooled",
   "benchmark": "bench2drive",
-  "model": "constant_velocity",
+  "model": "alpamayo15",
   "mode": "closed_loop",
-  "started_utc": "2026-09-08T19:05:33+00:00",
+  "started_utc": "2026-09-04T16:05:51+00:00",
   "duration_s": null,
   "repo_sha": null,
   "dataset": {
@@ -69,19 +69,26 @@
       "4669"
     ],
     "source_runs": [
-      "20260908T190533-18ef6e",
-      "20260915T090040-afbc39",
-      "20260915T130144-a989a1"
+      "20260904T160551-9ed9d5",
+      "20260904T164020-d97a08",
+      "20260910T105820-130d4f",
+      "20260913T133113-73c2cc",
+      "20260913T133403-c08bbc",
+      "20260913T133536-aa2984"
     ],
+    "source_sites": [],
     "waypoint_dt": 0.5,
     "model_env": {
-      "PADDOCK_CV_SPEED_SOURCE": "fixed",
-      "PADDOCK_CV_SPEED_M_S": "9"
-    }
+      "ALPAMAYO_NAV": "1",
+      "ALPAMAYO_RESERVE_GB": "0",
+      "MKL_NUM_THREADS": "2",
+      "OMP_NUM_THREADS": "2"
+    },
+    "source_config_read": "4/6 source runs"
   },
   "hardware": {},
   "status": "complete",
   "valid": true,
-  "notes": "Fixed 9 m/s target on all 50 routes: original 24 from the 08 Sep speed-band campaign, 26 from the 15 Sep expansion.",
-  "ingested_from": "bench2drive/constant_velocity/9mps; reports/constant-speed-bands-20260908/9mps"
+  "notes": "Route navigation text (nav_maneuver, nav_distance_m) on the wire. Expansion split 13 local / 13 pod. 6 of 6 source runs kept no run.json, so their routes are attributed to alpamayo15 on the tree they were found in; config.model_env and the rest of config are what 4/6 source runs recorded.",
+  "ingested_from": "paddock-runs/bench2drive/alpamayo15"
 }
