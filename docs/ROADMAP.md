@@ -216,12 +216,18 @@ component of EPDMS. No model behind an HTTP node can do that. Its recorded
 0.90673 is therefore not a baseline the other three can be measured against;
 the comparable set is runs through `paddock_proxy`.
 
-## Bench2Drive / CARLA — adapter landed, not yet run
+## Bench2Drive / CARLA — adapter landed and driven; the runs are not in `results/`
 
 `adapters/benchmarks/bench2drive`: a model-agnostic CARLA `agent.py`, the
 vendored dual-PID tracker, and a harness that fails a route on every failure
 the evaluator distinguishes rather than scoring it. All five models
 (openpilot, visionpilot, alpamayo15, drivejepa, meteor) declare it.
+
+Models **have** driven: 50 routes each for DriveJEPA, VisionPilot, Alpamayo 1.5,
+OpenPilot and five constant-velocity speeds, 450 per-route records published in
+[`bench2drive-speed-normalization.json`](benchmarks/bench2drive-speed-normalization.json)
+and aggregated in the README. What is still missing is the `results/` side of it
+— see the provenance item under "Beyond reproduction".
 
 | Claim | Verified how | Strength |
 |---|---|---|
@@ -229,7 +235,8 @@ the evaluator distinguishes rather than scoring it. All five models
 | crashes fail, poor outcomes score | parametrised over the evaluator's status strings at 7ec25d1 | **strong** |
 | launch, timeout, CARLA cleanup | stand-in evaluator under test; real flags read from the checkout | **strong** / argued |
 | agent imports in the CARLA-client env | exercised in a Python 3.8 env with the 0.9.15 egg, no server | moderate |
-| a model drives a route through paddock | nothing yet | **unverified** |
+| a model drives a route through paddock | 450 route records over 50 routes and 9 systems, scores and infractions published; every README cell recomputed from them by `tests/test_bench2drive_docs.py` | **strong** for the tables; the records' faithfulness to the evaluator output is a transcription nobody has re-derived from the raw `results.json` files |
+| the runs are reproducible at another site | nothing yet — no `run.json`, so no `routes_file`, `routes_subset`, repetitions or `site` | **unverified** |
 
 Needs a site with CARLA 0.9.15 and the pinned checkout wired in
 `[benchmarks.bench2drive]`. Detail in `docs/benchmarks/bench2drive.md`.
@@ -246,6 +253,15 @@ Needs a site with CARLA 0.9.15 and the pinned checkout wired in
 Not started, and larger than everything above:
 
 - **alpamayo2, vjepa2, sunnypilot** — never evaluated.
+- **Bench2Drive's 50-route runs are published but not ingested** — the README's
+  five 50-route rows and the 450 records behind them exist in no `results/`
+  record, so nothing in the repo says which `routes_file`, which `routes_subset`,
+  how many repetitions or which `site` produced them; the only pointers are
+  `source_id` strings into one workstation's `runs/` tree. `results/bench2drive/`
+  still holds one run, the 3 m/s CV over the historical 24. Needs a bench2drive
+  ingester beside `results/ingest/{neuroncap,navsim,kitscenes}.py` — writing the
+  `run.json` by hand is what `docs/CONTRIBUTING.md` and `/pr-fix` both forbid.
+  Numbers not in question; provenance is. (PR #21 review, finding 2.)
 - **nuScenes openpilot record is not regenerable with tracked code** — the
   tracked run (`20260908T110028-b71f4f`) was assembled by four-worker site
   orchestration; land that orchestration (or a `--workers` path in the open-loop
