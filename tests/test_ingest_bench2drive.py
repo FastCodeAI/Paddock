@@ -4,7 +4,9 @@ Pure: a synthetic results tree in ``tmp_path`` stands in for the site's
 recordings. What it must get right: per route the latest attempt that scored
 wins, a crashed attempt never shadows its rerun, a requested route with no
 valid attempt marks the run partial, the aggregate is recomputed from the
-per-route records, and nothing written into ``results/`` names this machine.
+per-route records, a route that was attempted and never scored is reported as
+lost rather than dropped, and nothing written into ``results/`` names this
+machine.
 """
 
 from __future__ import annotations
@@ -40,6 +42,11 @@ def _write(root: Path, run_id: str, folder: str, payload: dict) -> None:
     path = root / run_id / folder / "results.json"
     path.parent.mkdir(parents=True)
     path.write_text(json.dumps(payload))
+
+
+def _unscored(route: str) -> dict:
+    """What CARLA leaves behind when the route never ran: an empty checkpoint."""
+    return {"_checkpoint": {"records": []}}
 
 
 def _tree(tmp_path: Path) -> Path:
@@ -109,3 +116,65 @@ def test_written_run_record_names_no_machine_path(tmp_path: Path) -> None:
     samples_file = tmp_path / "artifacts" / "bench2drive" / "modelx" / run.run_id / "samples.jsonl"
     lines = samples_file.read_text().splitlines()
     assert len(lines) == 3 and all("sha256" in line for line in lines)
+
+
+def test_a_route_that_never_scored_is_expected_not_absent(tmp_path: Path) -> None:
+    """The 11715 case: every attempt crashed, and `routes` is unset.
+
+    Before this was fixed the expected set was built from the samples that
+    survived, so `missing` was empty by construction: the route left no trace in
+    `routes_subset`, `n_failed` stayed 0, the run claimed `complete`/`valid`, and
+    the mean silently came from a smaller route set.
+    """
+    root = _tree(tmp_path)
+    # Route 11715 in this repo's real trees: several attempts, every one of them
+    # with an empty `_checkpoint.records`.
+    for run in ("20260904T000000-dddddd", "20260905T000000-eeeeee"):
+        _write(root, run, "11715-Town12-EnterActorFlow", _unscored("11715"))
+
+    ((run, metrics, samples),) = bench2drive.ingest(root, model="modelx", site="s")
+
+    assert "11715" not in {s["native_id"]["route_id"] for s in samples}, "it did not score"
+    assert "11715" in run.config["routes_subset"], "but it was attempted, so it was expected"
+    assert run.dataset["n_expected"] == 4 and run.dataset["n_failed"] == 1
+    assert run.status == "partial" and not run.valid
+    assert "11715" in run.notes and "did not score" in run.notes
+    assert metrics.n == 3, "the three routes that scored are what the mean is over"
+
+
+def test_the_rejection_reason_names_the_run_and_no_machine_path(tmp_path: Path) -> None:
+    """`notes` is tracked, so the reason may name a run id but never a disk."""
+    root = _tree(tmp_path)
+    _write(root, "20260904T000000-dddddd", "11715-Town12-EnterActorFlow", _unscored("11715"))
+    ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s")
+    assert "20260904T000000-dddddd" in run.notes
+    assert str(tmp_path) not in run.notes and "/" not in run.notes.split("11715", 1)[1]
+
+
+def test_an_unreadable_results_file_is_a_rejection_not_a_crash(tmp_path: Path) -> None:
+    """One truncated file on a network mount used to abort the whole walk."""
+    root = _tree(tmp_path)
+    truncated = root / "20260904T000000-dddddd" / "11715-Town12-EnterActorFlow" / "results.json"
+    truncated.parent.mkdir(parents=True)
+    truncated.write_text('{"_checkpoint": {"records": [')
+
+    ((run, metrics, _),) = bench2drive.ingest(root, model="modelx", site="s")
+
+    assert metrics.n == 3, "the routes that did score are still ingested"
+    assert run.status == "partial" and "unreadable" in run.notes
+
+
+def test_duration_ignores_the_repetitions_the_parser_dropped(tmp_path: Path) -> None:
+    """QwenDrive's real 24333: two crashed attempts at 1.0 s, one drive at 1245.3."""
+    root = tmp_path / "bench2drive" / "modely"
+    payload = _results_json("24333", 16.59, 44.06, status="Failed - Agent got blocked")
+    crashed = _results_json("24333", 0.0, 0.0, status="Failed - Agent crashed")["_checkpoint"]["records"][0]
+    crashed["meta"]["duration_system"] = 1.002
+    payload["_checkpoint"]["records"][0]["meta"]["duration_system"] = 1245.267
+    payload["_checkpoint"]["records"].insert(0, crashed)
+    _write(root, "20260903T000000-cccccc", "24333-Town15-DynamicObjectCrossing", payload)
+
+    ((_, _, samples),) = bench2drive.ingest(root, model="modely", site="s")
+
+    assert samples[0]["metrics"]["n_runs"] == 1
+    assert samples[0]["metrics"]["duration_s"] == 1245.3
