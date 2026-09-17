@@ -216,12 +216,18 @@ component of EPDMS. No model behind an HTTP node can do that. Its recorded
 0.90673 is therefore not a baseline the other three can be measured against;
 the comparable set is runs through `paddock_proxy`.
 
-## Bench2Drive / CARLA — adapter landed, not yet run
+## Bench2Drive / CARLA — adapter landed, driven, and the runs are tracked
 
 `adapters/benchmarks/bench2drive`: a model-agnostic CARLA `agent.py`, the
 vendored dual-PID tracker, and a harness that fails a route on every failure
 the evaluator distinguishes rather than scoring it. All five models
 (openpilot, visionpilot, alpamayo15, drivejepa, meteor) declare it.
+
+Models **have** driven: 50 routes each for DriveJEPA, VisionPilot, Alpamayo 1.5,
+OpenPilot, QwenDrive and five constant-velocity speeds, 500 per-route records
+published in
+[`bench2drive-speed-normalization.json`](benchmarks/bench2drive-speed-normalization.json),
+aggregated in the README and tracked as ten `results/` runs (below).
 
 | Claim | Verified how | Strength |
 |---|---|---|
@@ -229,19 +235,25 @@ the evaluator distinguishes rather than scoring it. All five models
 | crashes fail, poor outcomes score | parametrised over the evaluator's status strings at 7ec25d1 | **strong** |
 | launch, timeout, CARLA cleanup | stand-in evaluator under test; real flags read from the checkout | **strong** / argued |
 | agent imports in the CARLA-client env | exercised in a Python 3.8 env with the 0.9.15 egg, no server | moderate |
-| a model drives a route through paddock | nothing yet | **unverified** |
+| a model drives a route through paddock | 500 route records over 50 routes and 10 systems, scores and infractions published; every README cell recomputed from them by `tests/test_bench2drive_docs.py` | **strong** for the tables; the records' faithfulness to the evaluator output is a transcription nobody has re-derived from the raw `results.json` files |
+| the runs carry their own provenance | ten `results/bench2drive/*/pooled50-*` records written by `paddock ingest` from the per-route `results.json` trees: `routes_file`, `routes_subset`, `waypoint_dt`, `model_env` and `site` read from the source runs, every source run id and file digest kept | **strong** |
+| the runs are reproducible at another site | nothing yet — a site without the recording trees cannot regenerate them, and CARLA re-runs are not bit-reproducible | **unverified** |
 
 Needs a site with CARLA 0.9.15 and the pinned checkout wired in
 `[benchmarks.bench2drive]`. Detail in `docs/benchmarks/bench2drive.md`.
 
-**Recorded results are tracked (16 Sep 2026).** The 50-route driving results for
+**Recorded results are tracked (17 Sep 2026).** The 50-route driving results for
 Drive-JEPA, VisionPilot, Alpamayo 1.5, OpenPilot, QwenDrive and constant velocity at
 five fixed speeds live in `results/bench2drive/<model>/pooled50-*`, produced by
 `paddock ingest` from the per-route `results.json` trees at the site that ran them
 (`[[ingest.bench2drive]]`), not transcribed from a README. Landing them needed no
 re-run: the ingest pools the recorded routes and keeps every source run id and
 file digest. A site without the trees cannot regenerate them, which is the
-intended meaning of a tracked result.
+intended meaning of a tracked result. Route 11715 crashes CARLA for every model,
+so it is recorded as attempted and never scored — `n_failed: 1`, `status:
+partial` — rather than dropped, and OpenPilot's pooled record is `valid: false`
+because its samples span three recording setups; its per-setup means are in
+`by_group`.
 
 ## Beyond reproduction
 
@@ -255,6 +267,13 @@ intended meaning of a tracked result.
 Not started, and larger than everything above:
 
 - **alpamayo2, vjepa2, sunnypilot** — never evaluated.
+- **QwenDrive has a leaderboard row and no adapter in this tree** — its 50-route
+  run is ingested from the recordings like any other, but
+  `src/paddock/adapters/models/qwendrive/` lives on another branch of this repo,
+  so `paddock run --model qwendrive` does not work here and the row is
+  **provisional** until that adapter lands with a pinned sha.
+  [`docs/models/qwendrive.md`](models/qwendrive.md) names the checkout,
+  checkpoint and camera setup meanwhile. (PR #52 review, finding 5.)
 - **nuScenes openpilot record is not regenerable with tracked code** — the
   tracked run (`20260908T110028-b71f4f`) was assembled by four-worker site
   orchestration; land that orchestration (or a `--workers` path in the open-loop
