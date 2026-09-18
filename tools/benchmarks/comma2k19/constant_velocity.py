@@ -9,13 +9,20 @@ rather than assumed weak.
     python -m tools.benchmarks.comma2k19.constant_velocity            # full sweep
     python -m tools.benchmarks.comma2k19.constant_velocity --limit 20 # pipeline check
 
-Written as a tool rather than a registered model because it cannot be one:
-`ModelSpec` requires a `repo` and `Runtime.interpreter()` a declared venv, and
-there is no repository for four lines of arithmetic. The precedent is NAVSIM's,
-stored under the pseudo-model `constant_velocity`
-(`results/navsim/constant_velocity/`), and this writes the same kind of record
+**It is not here because the floor cannot be a registered model.** It can and
+is: `adapters/models/constant_velocity/` declares `repo: ""`, lists comma2k19
+among its benchmarks, and `paddock run --model constant_velocity --bench
+comma2k19` produced the row the docs cite
+(`results/comma2k19/constant_velocity/20260916T162837-b89038`). An earlier
+version of this docstring claimed `ModelSpec` requires a `repo` and
+`Runtime.interpreter()` a declared venv; neither is true, and the registered
+floor is the normal path. Use it.
+
+What is left here is the one thing that path cannot do, below: score the floor
+without decoding 2035 segments of video. That is worth keeping for a pipeline
+check or a site short of NFS bandwidth, and it writes the same kind of record
 through `results.store` -- a real run with real provenance, not a hand-written
-metrics file.
+metrics file -- so the two are comparable where the decode does not matter.
 
 The one thing it changes about the benchmark is that it decodes no video. A
 policy that reads no pixels does not need 2035 segments staged to disk, and

@@ -121,11 +121,24 @@ of truth with nothing watching it, on the toolkit's own dataset.
 no clone, so the tests that exercise this maths **skip on a pull request** and
 are run by the reviewer at a real site — the arrangement in
 [reviewing](../reviewing.md) §1. That is a real loss: `camera2ego = np.eye(4)`,
-the defect described below, is exactly what those tests exist to catch. Two
-things partly compensate, and both do run in CI: the toolkit is pinned (checked
-by a test), and `test_the_toolkit_rotations_match_an_independent_reference`
-checks the toolkit against algebra written out again in the test file rather
-than checking paddock against itself.
+the defect described below, is exactly what those tests exist to catch.
+
+Two things partly compensate, and it is worth being exact about which of them a
+pull request actually gets:
+
+- The toolkit is **pinned**, checked by `test_the_toolkit_is_pinned_in_repos_yaml`.
+  That one needs no clone and does run in CI.
+- `test_the_toolkit_rotations_match_an_independent_reference` checks the toolkit
+  against algebra written out again in the test file rather than checking
+  paddock against itself. It takes the `toolkit` fixture, so it needs the clone
+  and **skips in CI like the rest** — it is a check the reviewer runs at a site,
+  not one the PR proves. An earlier version of this paragraph claimed both ran
+  in CI; only the first does.
+
+What the clean environment does still exercise is everything downstream of the
+rotations: the metric decomposition, the evaluation grid and the horizon rules
+take no fixture at all, and the staging, cache-lifetime and `--resume` tests take
+`rotations`, which substitutes the reference algebra where there is no clone.
 
 ## What is scored
 
@@ -172,9 +185,19 @@ to waypoint 0 — the longest one. At 30 m/s over a 3 s horizon that is 75 m
 reported for 90 m travelled. Fixed in the metric; the published runs were not
 re-swept, so `predicted_path_length` and `recorded_path_length` in
 `results/comma2k19/**` are still the short figures and a re-run will not
-reproduce them. `path_length_ratio` is unaffected and always was: both sides
-lost the same leg, so the quotient is unchanged, which is why this was invisible
-in the column anyone actually reads.
+reproduce them.
+
+**`path_length_ratio` moved too, slightly.** An earlier version of this note
+said the ratio was unaffected because "both sides lost the same leg". They do
+not: the missing leg is the prediction's own first step on one side and the
+recording's on the other, and those differ by exactly the speed error the ratio
+is there to measure. Dropping both pulls the quotient toward 1 — the error it
+hides is largest for the samples furthest from 1, which are the ones the metric
+exists to find. The second-order effect is the gate: `MIN_GT_PATH_LENGTH_M`
+tests the recorded length, so a sample just under 2 m by the short measure and
+just over it by the correct one is NaN in the published runs and scored in a
+re-run. Both effects are small at 10 s horizons and neither is zero; treat the
+published ratio column as the old definition.
 
 ### Auxiliary heads
 

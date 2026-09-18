@@ -8,7 +8,14 @@
 
 **You touch one registry file and one new directory. You do not edit anything
 under `src/paddock/` outside your own adapter.** If you cannot add a model
-without changing the core, that is a framework bug — please open an issue.
+without changing the core, that is a framework bug — raise it, and fix it *as* a
+framework change with its own reasoning, rather than working around it inside
+the adapter. That has happened and is the intended outcome, not a violation of
+the rule above: comma2k19 needed parallel open-loop nodes and an open-loop
+`--resume` in `runner.py`, and a declared `ground_truth_dt` on
+`OpenLoopBenchmark`, because a per-adapter copy of either would have been a
+second scheduler and a second definition of the ground-truth grid. The rule the
+sentence is defending is that the *core must not learn your adapter's name*.
 
 Budget roughly half a day for a model whose repo already runs, most of it spent
 on coordinate frames.

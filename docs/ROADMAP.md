@@ -230,6 +230,17 @@ exists. **Argued:** the calibration estimate (3.5–3.8° pitch on the RAV4,
 substituted for the model's `cameraOdometry`; that substitution is reasoned
 from, not measured against, openpilot's own calibration.
 
+**Unverified, and load-bearing for the openpilot row:** the ONNX backend's
+preprocessing is a numpy reimplementation of `compile_modeld.py` —
+`warp_perspective_tinygrad`, the channel packing and `make_input_queues`, all in
+`adapters/models/openpilot/supercombo.py`. Its tests assert it against its own
+reference, and the two backends are asserted to bind the same cameras, but
+**the two paths have never been run over the same frames and compared
+numerically on this hardware**: tinygrad needs a GPU and a compiled pickle, ONNX
+does not, so no machine here has produced both. The 1.507 came from the ONNX
+path. A parity harness across the two backends is the check that would retire
+this line, and it is not written.
+
 Two re-sweeps are owed on the openpilot row, and it carries a footnote in the
 README and the benchmark doc until they land:
 

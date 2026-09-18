@@ -180,11 +180,16 @@ it was trained against. Even under the most favourable reading — none of these
 distribution, and the 1.507 should be read as such rather than as a like-for-like
 win over models driven outside their rig and domain.
 
-`model.yaml` declares one dataset (`comma-fleet`) rather than two, so the
-contract test that requires this section does not fire for OpenPilot; the
-section exists because the situation is real, not because a test asked for it.
-Declaring `comma2k19` there would assert an overlap nobody has evidence for,
-which is the same failure as the sentence it replaced denying one.
+`model.yaml` declares one dataset (`comma-fleet`) rather than two, because
+declaring `comma2k19` there would assert an overlap nobody has evidence for —
+the same failure as the sentence it replaced denying one. The cost is that
+`test_training_on_a_benchmarks_own_dataset_is_documented`, which fires off
+`trained_on`, cannot fire for the pairing where the question is sharpest. So a
+second test reads this file from the other end:
+`test_an_overlap_section_nobody_declared_is_still_held_to_the_same_standard`
+requires every `model × dataset` heading here to carry real prose about a
+pairing that can actually happen. This section is held to the same standard as a
+declared one; it is no longer surviving on goodwill.
 
 ### AutoE2E × kitscenes — unconfirmed, and not yet a paddock model
 
