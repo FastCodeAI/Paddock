@@ -36,6 +36,7 @@ from __future__ import annotations
 import base64
 import io
 import pickle
+import types
 import zipfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -44,6 +45,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+from paddock.policy.trace import ATTRIBUTIONS, observed
 
 try:  # openpilot's environment is deliberately torch-free (it runs tinygrad)
     import torch
@@ -665,8 +668,122 @@ def empty_aux() -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------
+# What an adapter takes on faith
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Assumption:
+    """One thing an adapter takes to be true about the model it wraps.
+
+    Data rather than prose in a docstring, so it can be printed beside the step
+    that relies on it and shown at the moment it is being questioned. What
+    belongs here is what a score cannot reveal: the frame and units the network
+    was trained in, the grid and horizon it *natively* emits, and what paddock
+    does to reach the benchmark's. "Never trained to output this format" is a
+    sentence about a model that no metric can produce; this is where it is said.
+
+    `source` is where the claim comes from -- an upstream file, a paper, a config
+    -- because this is read off someone else's repository rather than derived.
+    That makes it auditable, not proven, which is the honest standing for it.
+    `step` names the observed step that acts on it, so a reader can go from the
+    assumption to the code and back. `attribution` says whose problem it is if
+    the assumption is wrong, in `trace`'s three values.
+    """
+
+    what: str
+    source: str
+    step: str = ""
+    attribution: str = "adapter"
+
+    def __post_init__(self) -> None:
+        if self.attribution not in ATTRIBUTIONS:
+            raise ValueError(f"attribution must be one of {ATTRIBUTIONS}, got {self.attribution!r}")
+
+    def record(self) -> dict[str, str]:
+        """JSON-able, for the trace that crosses out of the model's interpreter."""
+        return {
+            "what": self.what,
+            "source": self.source,
+            "step": self.step,
+            "attribution": self.attribution,
+        }
+
+
+# --------------------------------------------------------------------------
 # The contract
 # --------------------------------------------------------------------------
+
+#: Invariants asserted on the plan where the model returns it. Attached to every
+#: subclass's `infer` automatically, so they hold for a model that has annotated
+#: nothing -- which is the point: the conventions in this file's docstring are
+#: the ones adapters break silently, and they are checked here rather than
+#: restated and hoped for.
+INFER_CHECKS = (
+    "trajectory.not_a_commanded_stop",
+    "trajectory.moves_forward",
+    "trajectory.spacing_matches_speed",
+    "trajectory.turn_direction_matches_yaw_rate",
+    "observation.mounting_is_level",
+)
+
+#: Invariants about the history a sequence was assembled from, asserted at the
+#: one step that can see the whole of it.
+SEQUENCE_CHECKS = ("observation.history_is_ordered",)
+
+#: method -> (the assumption the step encodes, the checks it asserts).
+_PROTOCOL_STEPS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "load": (
+        "Weights, sessions and warm-up happen once, before any inference. Anything here that "
+        "is really per-frame shows up as a first frame that is seconds slower than the rest.",
+        (),
+    ),
+    "reset": (
+        "Per-episode state -- frame history, filters, a fitted camera adapter -- is cleared. "
+        "State that survives a reset is the KITScenes defect: every scene after the first was "
+        "scored through the first scene's camera.",
+        (),
+    ),
+    "observe": (
+        "One frame of history, with no plan wanted. The default runs a full `infer` and drops "
+        "the result, which is right for a model whose state advances with each forward pass "
+        "and wasteful for one that is a pure function of its recorded history.",
+        (),
+    ),
+    "infer": (
+        "The plan: ego frame, x forward and y LEFT, metres, evenly spaced by `waypoint_dt` "
+        "starting at t = waypoint_dt. There is no waypoint for where the car is now.",
+        INFER_CHECKS,
+    ),
+    "infer_sequence": (
+        "Open-loop scoring: the model is shown the real past and scored on the last frame "
+        "only. Self-priming is off for the duration, so it sees the recorded history rather "
+        "than one it invented.",
+        SEQUENCE_CHECKS,
+    ),
+}
+
+
+def _observe_protocol_steps(cls: type) -> None:
+    """Wrap this class's own protocol methods so they record when traced.
+
+    Only what the class defines itself: an inherited method was already wrapped
+    where it was defined, and wrapping it again would nest a step inside a copy
+    of itself. An abstract body is skipped -- there is nothing to observe about a
+    method that only raises -- and so is one an adapter decorated by hand, which
+    chose a richer `why` or an extra check. `INFER_CHECKS` is public so a hand
+    annotation can keep these too:
+
+        @observed("infer", why="...", checks=(*INFER_CHECKS, "openpilot.warp_in_bounds"))
+        def infer(self, obs): ...
+    """
+    for name, (why, checks) in _PROTOCOL_STEPS.items():
+        fn = cls.__dict__.get(name)
+        if not isinstance(fn, types.FunctionType):
+            continue  # not defined here, or not a plain method for us to wrap
+        if getattr(fn, "__isabstractmethod__", False) or hasattr(fn, "__paddock_step__"):
+            continue
+        setattr(cls, name, observed(name, why=why, checks=checks)(fn))
 
 
 class Policy(ABC):
@@ -675,7 +792,19 @@ class Policy(ABC):
     Subclass this in `adapters/models/<name>/policy.py`. `paddock.policy.server`
     wraps any Policy into the HTTP node closed-loop benchmarks drive, and
     open-loop harnesses call `infer` directly, so one implementation covers both.
+
+    Subclassing also makes the model observable: `load`, `reset`, `observe`,
+    `infer` and `infer_sequence` are wrapped so that a trace records their
+    timings, their inputs and the protocol's own invariants on what they return.
+    **A model that annotates nothing still produces a useful trace**; per-step
+    annotation with `paddock.policy.trace.observed` deepens it, and costs
+    one `ContextVar` lookup per call when nothing is listening.
     """
+
+    #: What this adapter takes on faith about the model it wraps -- native grid,
+    #: training frame, units. Empty by default, so an adapter that has declared
+    #: nothing reads as thin rather than as complete. See `Assumption`.
+    ASSUMPTIONS: tuple[Assumption, ...] = ()
 
     #: Cameras this model consumes. Requesting fewer makes the renderer cheaper,
     #: which dominates closed-loop wall-clock -- so declare only what you use.
@@ -693,6 +822,10 @@ class Policy(ABC):
     #: primes anyway is evaluated on a different input sequence than intended.
     #: `infer_sequence` clears this for the duration of a sequence.
     self_prime: bool = True
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        _observe_protocol_steps(cls)
 
     def load(self) -> None:  # noqa: B027 - optional hook; a stateless policy needs no setup
         """Bring weights up. Called once, before any `infer`."""
@@ -748,3 +881,10 @@ class Policy(ABC):
         camera saw, which is invisible in the score and obvious here.
         """
         return {}
+
+
+# `__init_subclass__` does not run for the class that defines it, and the
+# defaults here are real behaviour: `infer_sequence` owns the reset and the
+# self-prime bookkeeping, and the default `observe` spends a whole forward pass
+# per history frame. Both are worth seeing in a trace.
+_observe_protocol_steps(Policy)

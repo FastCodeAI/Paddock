@@ -100,6 +100,13 @@ class Finding:
     detail: str = ""
     #: Why this check exists -- usually a defect it would have caught.
     rationale: str = ""
+    #: Whose defect a failure is: "adapter", "harness" or "model" (see
+    #: `paddock.policy.trace`). Empty for the contract checks below, which are
+    #: adapter checks by construction -- this exists so that the findings
+    #: `paddock explain` collects from a trace can be rendered with the same
+    #: vocabulary as these, carrying the one field that makes a number into a
+    #: thing to go and fix.
+    attribution: str = ""
 
     @property
     def failed(self) -> bool:
@@ -108,6 +115,8 @@ class Finding:
     def render(self) -> str:
         mark = "ok  " if self.ok else ("FAIL" if self.severity == "error" else "warn")
         line = f"  [{mark}] {self.check}"
+        if self.attribution:
+            line += f" ({self.attribution})"
         if self.detail:
             line += f"\n         {self.detail}"
         if not self.ok and self.rationale:

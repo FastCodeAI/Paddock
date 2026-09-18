@@ -1168,3 +1168,84 @@ def test_a_run_with_no_scene_set_configures_exactly_as_it_did(monkeypatch, tmp_p
         "stride": 1,
         "history_span_s": 7.95,
     }
+
+
+# --------------------------------------------------------------------------
+# Reaching one keyframe: `paddock explain`
+# --------------------------------------------------------------------------
+
+
+def test_a_scene_names_its_keyframes_without_opening_a_video(monkeypatch, tmp_path):
+    """`scene_sample_ids` is the bridge from the viewer to `paddock explain`.
+
+    The viewer lists segments by `<chunk>/<route_id>/<segment>` and sample ids
+    carry the benchmark name in front, so both spellings have to reach the same
+    segment -- trimming the keyframe off an id is the obvious way to reach for
+    this and must not silently return nothing.
+    """
+    bench = _scene_bench(monkeypatch, tmp_path, "ten", ONE_SCENE)
+    monkeypatch.setattr(type(bench), "_n_frames", staticmethod(lambda segment: 1200))
+
+    ids = bench.scene_sample_ids("2/bbb|2018-02-02--00-00-00/7")
+    assert len(ids) == 85  # the set's own density
+    assert ids[0].startswith("comma2k19/2/bbb|2018-02-02--00-00-00/7/")
+    assert bench.scene_sample_ids("comma2k19/2/bbb|2018-02-02--00-00-00/7") == ids
+    assert bench.scene_sample_ids("2/bbb|2018-02-02--00-00-00/9") == []
+
+
+def test_reaching_outside_the_scene_set_is_refused_rather_than_answered(monkeypatch, tmp_path):
+    """The quiet way to explain a *different* sample than the one that was scored.
+
+    `RouteCalibrations.get` pools every active segment of a route to estimate
+    its calibration and falls back to the segment alone when it finds none, so
+    which segments are in `_segments` decides what `camera2ego` a sample gets.
+    Answering from `_all_segments` here would hand back an observation built
+    from a different calibration under the id of one that was scored -- the
+    exact class of defect this command exists to find. So it names the scene
+    set instead.
+    """
+    bench = _scene_bench(monkeypatch, tmp_path, "ten", ONE_SCENE)
+    outside = "comma2k19/1/aaa|2018-01-01--00-00-00/3/40"
+
+    with pytest.raises(ValueError) as caught:
+        list(bench.samples_by_id([outside]))
+    message = str(caught.value)
+    assert "1/aaa|2018-01-01--00-00-00/3" in message
+    assert "outside the active scene set 'ten'" in message
+    assert H.ENV_SCENE_SET in message
+    assert "different observation under the same sample id" in message
+
+
+def test_an_id_from_another_dataset_is_simply_not_ours(monkeypatch, tmp_path):
+    """Malformed and foreign ids yield nothing; only a *reachable* comma2k19
+    segment held out by the scene set is worth raising about."""
+    bench = _scene_bench(monkeypatch, tmp_path, "ten", ONE_SCENE)
+    assert list(bench.samples_by_id(["nuscenes/scene-0103/12", "comma2k19/nope", ""])) == []
+    assert list(bench.samples_by_id([])) == []
+
+    # On disk but not in any scene set: no set is active, so nothing to say.
+    monkeypatch.delenv(H.ENV_SCENE_SET)
+    plain = _bench()
+    plain.__dict__["_all_segments"] = [_ref(k) for k in SITE_KEYS]
+    monkeypatch.setattr(type(plain), "_segment_samples", lambda self, segment, cals: iter(()))
+    assert list(plain.samples_by_id(["comma2k19/9/zzz|2020-01-01--00-00-00/1/40"])) == []
+
+
+def test_only_the_named_keyframes_of_only_the_named_segments_are_built(monkeypatch, tmp_path):
+    """One keyframe in segment 1,900 must not decode the 1,899 before it."""
+    from paddock.benchmark import Sample
+
+    bench = _scene_bench(monkeypatch, tmp_path, "ten", ONE_SCENE)
+    key = "2/bbb|2018-02-02--00-00-00/7"
+    opened: list[str] = []
+
+    def _fake(self, segment, cals):
+        opened.append(segment.sample_key)
+        for keyframe in (40, 80, 120):
+            yield Sample(sample_id=self._sample_id(segment, keyframe), observations=[])
+
+    monkeypatch.setattr(type(bench), "_segment_samples", _fake)
+    got = list(bench.samples_by_id([f"comma2k19/{key}/80", f"comma2k19/{key}/999"]))
+
+    assert [s.sample_id for s in got] == [f"comma2k19/{key}/80"]
+    assert opened == [key], "one segment opened, once"

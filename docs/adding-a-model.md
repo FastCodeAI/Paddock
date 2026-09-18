@@ -192,6 +192,23 @@ Rendering is scoped to the benchmark, because debugging means putting several
 models side by side and a model cannot draw that — it does not know about its
 rivals. See [architecture.md](architecture.md#where-does-a-file-belong).
 
+### Declare what your adapter takes on faith
+
+`paddock explain` traces every model's protocol steps without you doing
+anything, so a new adapter is already dissectible on day one. Two things are
+worth adding by hand, and the first is cheap:
+
+1. **`ASSUMPTIONS`** on the `Policy` — the model's *native* output grid, horizon
+   and rate, its training frame and units, and what your adapter does to reach
+   paddock's 0.5 s × 20 grid. "This model was never trained to emit a 3 s plan"
+   is a sentence no metric can produce, and this is where it is said.
+2. **`@observed`** on the seams your `policy.py` already has — the warp, the
+   resample, the frame flip. Decorate what exists; do not invent functions to
+   decorate.
+
+Both are in [observability.md](observability.md), including why the decorator
+costs nothing when nobody is tracing.
+
 ## Step 10 — document
 
 Write `docs/models/<name>.md`: environment, weights and where they come from,

@@ -22,6 +22,11 @@ app = typer.Typer(
 )
 
 
+def _commas(value: str | None) -> list[str]:
+    """Split a comma-separated option, tolerating the spaces a paste brings along."""
+    return [part.strip() for part in (value or "").split(",") if part.strip()]
+
+
 @app.command()
 def doctor(
     model: str = typer.Option(None, "--model", "-m", help="Check only this model's environment."),
@@ -179,6 +184,55 @@ def verify(
         raise typer.Exit(code=1) from exc
 
     code = do_verify(cfg, model=model, bench=bench, echo=typer.echo)
+    raise typer.Exit(code=code)
+
+
+@app.command()
+def explain(
+    bench: str = typer.Option(..., "--bench", "-b", help="Benchmark the sample belongs to."),
+    model: str = typer.Option("all", "--model", "-m", help="Model to trace, or 'all'."),
+    sample: str = typer.Option(None, "--sample", "-s", help="Sample id(s) to dissect, comma-separated."),
+    scene: str = typer.Option(
+        None, "--scene", help="Dissect every sample in this scene; comma-separated for several."
+    ),
+    capture: str = typer.Option(
+        "summary", "--capture", help="'summary' (default) or 'full' to keep every array verbatim."
+    ),
+    fmt: str = typer.Option("text", "--format", help="text | json"),
+) -> None:
+    """Dissect one scored moment: every step, its assumption, and whose bug it is.
+
+    A leaderboard says which model is wrong and a viewer says where; neither
+    says why. This runs the same path `paddock run` uses -- the model's own
+    interpreter, answering `/infer_sequence` -- with tracing on, adds the
+    scoring arithmetic from paddock's side, and sorts every failed invariant
+    into **adapter** (paddock's bug), **harness** (the benchmark is asking
+    something this pairing cannot support) or **model** (the input was faithful
+    and the plan is still wrong). Only the last says anything about the model.
+
+    Writes each dissection to `{runs}/<bench>/_explain/`, and changes nothing
+    under `results/`. Benchmark settings are read from the environment exactly
+    as `paddock run` reads them, so trace a sample with the same settings the
+    run used -- for comma2k19 that means `PADDOCK_COMMA2K19_SCENE_SET`.
+    """
+    from paddock.explain import explain as do_explain
+
+    try:
+        cfg = SiteConfig.load()
+    except ConfigError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    code = do_explain(
+        cfg,
+        model=model,
+        bench=bench,
+        sample_ids=_commas(sample),
+        scenes=_commas(scene),
+        capture=capture,
+        fmt=fmt,
+        echo=typer.echo,
+    )
     raise typer.Exit(code=code)
 
 

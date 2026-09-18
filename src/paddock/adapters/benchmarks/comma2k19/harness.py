@@ -81,7 +81,7 @@ import os
 import shutil
 import tempfile
 import threading
-from collections.abc import Container, Iterator
+from collections.abc import Container, Iterable, Iterator
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from functools import cached_property
@@ -992,6 +992,82 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         # file-not-founds in the last eight samples of a four-node run, reported
         # from inside the model as an HTTP 500. `_frame_root` hands the directory
         # to `atexit` instead: by then nothing holds a path to it.
+
+    def samples_by_id(self, ids: Iterable[str]) -> Iterator[Sample]:
+        """Only the segments the named samples live in, and only those samples.
+
+        A sample id is `comma2k19/<chunk>/<route_id>/<segment>/<keyframe>`, so
+        the segment is legible straight off the id and the other 2,034 are never
+        opened. The base class's walk-the-stream default would decode a minute of
+        HEVC per segment to reach one keyframe in segment 1,900, which is the
+        difference between `paddock explain` taking seconds and taking an
+        afternoon.
+
+        Built through `_segment_samples` like every other sample, and against
+        `_segments` rather than every segment on disk, so an explained sample is
+        the *same* sample the run scored: the active `scene_set` decides which
+        segments pool into a route's calibration, and reaching outside it would
+        silently produce a differently-calibrated observation under the id of one
+        already in a results file. A segment that is present but filtered out
+        says so rather than yielding nothing.
+        """
+        by_segment: dict[str, set[str]] = {}
+        for sample_id in {str(i) for i in ids}:
+            parts = sample_id.split("/")
+            if len(parts) == 5 and parts[0] == "comma2k19":
+                by_segment.setdefault("/".join(parts[1:4]), set()).add(sample_id)
+        if not by_segment:
+            return
+
+        segments = [s for s in self._segments if s.sample_key in by_segment]
+        self._refuse_filtered_out(set(by_segment) - {s.sample_key for s in segments})
+        cals = self._calibrations
+        for segment in segments:
+            here = by_segment[segment.sample_key]
+            for sample in self._segment_samples(segment, cals):
+                if sample.sample_id in here:
+                    yield sample
+
+    def scene_sample_ids(self, scene: str) -> list[str]:
+        """Every keyframe of one segment, by its `<chunk>/<route_id>/<segment>` key.
+
+        The same key `scenes/*.yaml` lists and `--scene-set` selects on, so a
+        segment picked out in the viewer can be handed straight to
+        `paddock explain --scene`. Accepts the id-shaped form with the benchmark
+        name in front as well, since that is what a sample id looks like and
+        trimming the keyframe off one is the obvious way to reach for this.
+
+        Reads one `.npy` per segment via `_segment_sample_ids` -- no video is
+        opened until the samples are actually built.
+        """
+        key = scene[len("comma2k19/") :] if scene.startswith("comma2k19/") else scene
+        for segment in self._segments:
+            if segment.sample_key == key:
+                return self._segment_sample_ids(segment)
+        return []
+
+    def _refuse_filtered_out(self, missing: set[str]) -> None:
+        """Name the scene set, when that is why a wanted segment is unreachable.
+
+        The alternative is an empty result for a sample id that is plainly on
+        disk and plainly in a results file, which reads as a broken command
+        rather than as a narrowed working set.
+        """
+        if not missing:
+            return
+        scenes = self.scene_set
+        if scenes is None:
+            return
+        on_disk = sorted(missing & {s.sample_key for s in self._all_segments})
+        if on_disk:
+            raise ValueError(
+                f"{len(on_disk)} requested segment(s) are on disk but outside the active scene "
+                f"set {scenes.name!r}: {', '.join(on_disk[:3])}"
+                f"{'...' if len(on_disk) > 3 else ''}. Set {ENV_SCENE_SET} to the set the run "
+                f"used (or to an empty value for the whole dataset) -- reaching outside it here "
+                f"would pool a different set of segments into the route calibration and produce "
+                f"a different observation under the same sample id."
+            )
 
     @staticmethod
     def _sample_id(segment: L.SegmentRef, keyframe: int) -> str:

@@ -70,6 +70,18 @@ Two details that look like off-by-ones and are not:
 environment runs tinygrad and has no torch at all — installing torch there just
 to unpickle an image would be absurd, and would change what is being evaluated.
 
+### Every model is traceable without asking
+
+`Policy.__init_subclass__` wraps each adapter's own `load`, `reset`, `observe`,
+`infer` and `infer_sequence`, so `/infer_sequence` carries a `trace` flag that
+returns the whole step tree — timings, input summaries, the mounting angle of
+every camera, and the protocol invariants asserted on the plan — for a model
+with zero annotations. When nothing is listening, the wrapper is one
+`ContextVar.get()` and a direct call (57 ns, measured), so a published sweep is
+unaffected. `paddock explain` is the command that reads it, and sorts every
+failed invariant into **adapter**, **harness** or **model**. See
+[observability.md](observability.md).
+
 ### On the wire
 
 Paddock is one Python 3.11 process. It never imports a model. It launches the
@@ -224,6 +236,8 @@ model comes out a different colour in every panel. Pass legend text separately;
 | `doctor.py` | readiness reporting |
 | `policy/protocol.py` | `Policy`, `Observation`, `Trajectory`, the wire codec |
 | `policy/server.py` | wrap any `Policy` into an HTTP node |
+| `policy/trace.py` + `policy/checks.py` | per-step recording and the invariants a step asserts — see [observability.md](observability.md) |
+| `explain.py` | `paddock explain`: one sample dissected, and whose bug it is |
 | `benchmark.py` | `OpenLoopBenchmark`, `ClosedLoopBenchmark`, `Sample`, `Episode` |
 | `runtime/env.py` | per-model environment construction |
 | `runtime/proc.py` | launch, health-check, tear down model nodes |

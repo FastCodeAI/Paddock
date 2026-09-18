@@ -10,6 +10,8 @@ and each drifted a little from the others.
 The endpoints are NeuroNCAP's: `/alive`, `/infer`, `/reset`, plus
 `/diagnostics`, which is where model-specific reporting goes (openpilot's
 field-of-view margin check, for instance) rather than into a bespoke route.
+Open-loop scoring adds `/infer_sequence`, which also carries the `trace` flag
+`paddock explain` uses; see `paddock.policy.trace` and docs/observability.md.
 """
 
 from __future__ import annotations
@@ -20,7 +22,8 @@ import logging
 import time
 from typing import Any, Optional
 
-from paddock.policy.protocol import Observation, Policy
+from paddock.policy import trace
+from paddock.policy.protocol import Observation, Policy, Trajectory
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +42,19 @@ def _plan_reach(result: dict) -> tuple[float, float]:
         return float((first[0] ** 2 + first[1] ** 2) ** 0.5), float((last[0] ** 2 + last[1] ** 2) ** 0.5)
     except (KeyError, IndexError, TypeError, ValueError):
         return float("nan"), float("nan")
+
+
+def _sequence_result(trajectory: Trajectory) -> dict[str, Any]:
+    """The plan half of an `/infer_sequence` response, traced or not.
+
+    One builder for both branches: whether a recorder was listening must not be
+    able to change what is scored, and the surest way to guarantee that is for
+    the scored fields to be written in exactly one place.
+    """
+    result: dict[str, Any] = {"trajectory": trajectory.waypoints.tolist(), "dt": trajectory.dt}
+    if trajectory.extras:
+        result["extras"] = trajectory.extras
+    return result
 
 
 def build_app(policy: Policy, model: str | None = None, nonce: str | None = None):
@@ -103,12 +119,27 @@ def build_app(policy: Policy, model: str | None = None, nonce: str | None = None
         path forwards it: the auxiliary heads are predictions the benchmark can
         score against its own recorded truth, and dropping them here would make
         open loop the one path where a model is judged on less than it produced.
+
+        `trace: true` makes the same call under a recorder and sends the step
+        tree back beside the plan. A flag rather than a second endpoint, because
+        the traced run has to *be* the scored run: openpilot's `_bind_cameras`
+        records what happens when one decision has two code paths -- the ONNX
+        branch had no two-camera case and silently scored the narrow frame in the
+        wide view. Here the flag decides only whether anyone is listening.
         """
         observations = [Observation.from_wire(item, cameras=policy.cameras) for item in body["observations"]]
-        trajectory = policy.infer_sequence(observations)
-        result: dict[str, Any] = {"trajectory": trajectory.waypoints.tolist(), "dt": trajectory.dt}
-        if trajectory.extras:
-            result["extras"] = trajectory.extras
+        if not body.get("trace"):
+            return _sequence_result(policy.infer_sequence(observations))
+        capture = str(body.get("capture") or "summary")
+        label = f"{model or type(policy).__name__}.infer_sequence"
+        with trace.recording(label, capture=capture) as recorder:
+            trajectory = policy.infer_sequence(observations)
+        result = _sequence_result(trajectory)
+        result["trace"] = recorder.document()
+        # The assumptions live on the class, so they cross here rather than being
+        # restated by the caller -- which could only guess at them, and would
+        # then be stating a claim about a model it has never imported.
+        result["assumptions"] = [a.record() for a in type(policy).ASSUMPTIONS]
         return result
 
     @app.post("/reset")

@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import os
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Container, Iterator
+from collections.abc import Callable, Container, Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -295,6 +295,42 @@ class OpenLoopBenchmark(Benchmark):
         still to do rather than the run's total. The runner subtracts what is
         already on disk before calling.
         """
+
+    def samples_by_id(self, ids: Iterable[str]) -> Iterator[Sample]:
+        """Just these samples, built as directly as this benchmark can manage.
+
+        `paddock explain` dissects the one moment a viewer raised a question
+        about, so it needs a sample by name rather than a stream. The default
+        below is correct everywhere and fast nowhere -- it walks `samples()` and
+        keeps the matches, which for comma2k19 means decoding a minute of HEVC
+        per segment to reach one keyframe in segment 1,900.
+
+        A benchmark that can seek overrides this. The split is the same one
+        `skip` documents: filtering what is yielded is the easy half, and not
+        *building* the rest is the half that decides whether the command is
+        usable. Yields in `samples()` order, not the caller's.
+        """
+        wanted = set(ids)
+        if not wanted:
+            return
+        for sample in self.samples():
+            if sample.sample_id in wanted:
+                yield sample
+
+    def scene_sample_ids(self, scene: str) -> list[str]:
+        """Every sample id belonging to a named scene, cheaply if possible.
+
+        `paddock explain --scene` dissects a whole scene at once, which is what
+        turns a set of single-sample traces into a conclusion: "18 of 85
+        keyframes tripped a harness check and none tripped an adapter check" is
+        a statement a leaderboard row cannot make.
+
+        What a scene *is* belongs to the benchmark -- comma2k19's is a segment
+        key, nuScenes' is a scene token -- so the default is none, and a
+        benchmark that cannot name one says so by returning nothing rather than
+        silently explaining zero samples.
+        """
+        return []
 
     @abstractmethod
     def score(self, sample: Sample, prediction: Trajectory) -> dict[str, float]:

@@ -730,6 +730,28 @@ in a second way: `bev.draw` inverts the x axis so left plots leftward, so limits
 set on that axis afterwards must go in descending order or the panel silently
 mirrors every plan on it.
 
+### From "where" to "why"
+
+The viewer answers *where* a model is wrong. When a keyframe raises a question —
+a plan that sits at the origin, a plan bending the wrong way through a curve —
+copy its sample id and dissect it:
+
+```bash
+export PADDOCK_COMMA2K19_SCENE_SET=viewer10     # the settings the run used
+paddock explain --bench comma2k19 --model openpilot --sample comma2k19/3/99c9.../16/519
+paddock explain --bench comma2k19 --model all --scene 3/99c9.../16
+```
+
+The scene set matters here and the harness enforces it: a route's calibration is
+pooled over the *active* segments, so explaining a sample from outside the set
+would build a differently-calibrated observation under the id of one that was
+scored. The command refuses and names the variable rather than answering.
+
+Sample ids are seeked directly — one `.npy` read per segment to list its
+keyframes, then only the segments named are opened — so reaching keyframe 519 of
+segment 1,900 does not decode the 1,899 before it. See
+[observability.md](../observability.md).
+
 ## Calibration: the thing that was wrong before
 
 openpilot's model never sees a raw frame. `modeld` warps every frame with
