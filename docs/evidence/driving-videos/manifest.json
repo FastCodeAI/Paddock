@@ -1,0 +1,15 @@
+{
+  "fps": 20,
+  "visionpilot_frames": 232,
+  "openpilot_frames": 93,
+  "source_hashes": {
+    "replay.json": "41330e12fa21e46e04483f35fc2588af5f3648d4f1a5dacdedf32263cd559ee5",
+    "manifest.json": "3568b726737c954abc5c095562e68b0394e1e7503bff46c69b9d354d160445f2",
+    "original-plans.npy": "d7ed0de83982eb728804beb793f4ced49d9864877d7fc2e42a97176bce0540a0",
+    "base-plans.npy": "17d1d70e3425a785207f506e6cd436e0437028a1b07ff5e072e4ed7237cf8f40"
+  },
+  "video_sha256": {
+    "visionpilot-cipo-collision.mp4": "acf56be2648c1a893c320fc0819bfbb4cebeca24476d88ab819e9a14409f8fc5",
+    "openpilot-converted-comparison.mp4": "d2647ec6ee9675aeb06061ebff16d8c8b8373f81471cf96b62f2bd0d899ed8c5"
+  }
+}
