@@ -253,6 +253,20 @@ Needs a site with CARLA 0.9.15 and the pinned checkout wired in
   exist here). Detail in `docs/benchmarks/nuscenes.md`. Fusion is still not viable
   (the local copy has no `sweeps/` and empty radar); camera-only is what runs.
 
+- **nuPlan open-loop** — **done (adapter); measured on one camera shard of
+  nine, so every record is `valid: false`.** `paddock run --bench nuplan` scores
+  ADE/FDE against the recorded future on nuPlan v1.1's original logs at their
+  native 10 Hz cameras and 100 Hz poses — the rate NAVSIM's 2 Hz OpenScene
+  redistribution loses, and the reason openpilot can be scored here at all.
+  Calibration is decoded from the pickled devkit blobs by a restricted
+  unpickler, so no site needs nuplan-devkit, torch or hydra in paddock's
+  interpreter. Five models on one shared 25-sample set; the golden tests build
+  a synthetic log and need no dataset, devkit or GPU. What is not done:
+  coverage is 25 of 351 scorable anchors across 7 of 59 scenario types (the
+  other eight shards are ~405 GB), `Observation.speed_limit` is unpopulated
+  because reading it means adding a map dependency, and alpamayo15 has no
+  record (gated `Cosmos-Reason2-8B`). Detail in `docs/benchmarks/nuplan.md`.
+
 Not started, and larger than everything above:
 
 - **alpamayo2, vjepa2, sunnypilot** — never evaluated.

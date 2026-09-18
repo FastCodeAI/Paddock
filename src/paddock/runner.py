@@ -16,6 +16,7 @@ because skipping it cost a run:
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import importlib
 import json
 import os
@@ -80,10 +81,27 @@ def _measurement_config(cfg: SiteConfig, harness, model_spec: ModelSpec, **given
     return config
 
 
-#: Stands in for a site path in a tracked record. The key still appears, so a
-#: reader can see an override was in effect and the run id still changes when
-#: one is added or removed; only the machine-specific value is withheld.
-SITE_PATH = "<site path>"
+#: Stands in for a site path in a tracked record, followed by a digest of the
+#: value withheld. The key still appears, so a reader can see an override was in
+#: effect; only the machine-specific value is withheld.
+SITE_PATH = "<site path:{digest}>"
+
+
+def _withheld(segment: str) -> str:
+    """The marker, plus enough of a digest to tell two different paths apart.
+
+    The digest is load-bearing rather than decoration. `_measurement_config`
+    feeds both `store.make_run_id` and the `--resume` config check, so a bare
+    marker would make two runs that differ only in a checkpoint directory hash
+    identically -- and `--resume` would then continue one into the other, which
+    it refused before these values were redacted. A checkpoint path is exactly
+    the override that changes what was measured, so the id has to move with it.
+
+    Eight hex of SHA-256 distinguishes two paths without naming either: it is
+    not reversible, and it says nothing about the machine beyond "not the same
+    one as that other run".
+    """
+    return SITE_PATH.format(digest=hashlib.sha256(segment.encode()).hexdigest()[:8])
 
 
 def _portable_value(value: str) -> str:
@@ -101,8 +119,24 @@ def _portable_value(value: str) -> str:
     Relative values pass through unchanged, since those are portable and often
     the interesting part (`"cuda"`, `"2"`, `"auto"`).
     """
-    parts = [SITE_PATH if segment.startswith("/") else segment for segment in value.split(os.pathsep)]
-    return os.pathsep.join(parts)
+    return os.pathsep.join(_portable_segment(s) for s in value.split(os.pathsep))
+
+
+def _portable_segment(segment: str) -> str:
+    """One `os.pathsep`-delimited piece, with any absolute path in it withheld.
+
+    Three shapes reach here, and the gate catches only the first at commit time:
+    a bare path (`/opt/weights`), a flag carrying one (`--ckpt=/opt/w.pt`), and
+    a home-relative path (`~/weights`), machine-specific for the same reason an
+    absolute one is. The flag name is kept -- it says what the override does
+    without saying where this machine keeps it.
+    """
+    if segment.startswith(("/", "~")):
+        return _withheld(segment)
+    flag, sep, rest = segment.partition("=")
+    if sep and rest.startswith(("/", "~")):
+        return f"{flag}={_withheld(rest)}"
+    return segment
 
 
 def _validity(

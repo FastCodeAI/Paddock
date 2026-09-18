@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
 76 runs across 7 benchmarks.
-46 run(s) excluded as invalid — shown at the end, never averaged in.
+44 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
@@ -126,7 +126,6 @@
 - **nuplan/openpilot/20260917T220353-9e4f44** — camera images cover 25 of 351 scorable anchors (53 logs have no images); not comparable with a full-coverage run
 - **nuplan/visionpilot/20260917T220044-97873a** — camera images cover 25 of 351 scorable anchors (53 logs have no images); not comparable with a full-coverage run
 - **nuplan/constant_velocity/20260917T214417-f827db** — camera images cover 25 of 351 scorable anchors (53 logs have no images); not comparable with a full-coverage run
-- **nuplan/openpilot/20260917T212920-194efc** — camera images cover 26 of 375 anchors (53 logs have no images); not comparable with a full-coverage run
 - **nuplan/meteor/20260917T195335-1b447c** — camera images cover 26 of 375 anchors (53 logs have no images); not comparable with a full-coverage run
 - **nuplan/drivejepa/20260916T204900-6a17de** — camera images cover 26 of 375 anchors (53 logs have no images); not comparable with a full-coverage run
 - **neuroncap/meteor/20260915T192353-6ed840** — 1 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes)
@@ -144,7 +143,6 @@
 - **navsim/openpilot/20260911T004312-98f3dc** — --limit 12: a subset of the benchmark, run to test the pipeline
 - **navsim/alpamayo15/20260911T003908-ed7b86** — --limit 12: a subset of the benchmark, run to test the pipeline
 - **navsim/openpilot/20260911T002247-98f3dc** — --limit 12: a subset of the benchmark, run to test the pipeline
-- **nuplan/visionpilot/20260909T233310-741a32** — camera images cover 26 of 375 anchors (53 logs have no images); not comparable with a full-coverage run
 - **navsim/alpamayo15/20260903T183459-753b33** — --limit 12: a subset of the benchmark, run to test the pipeline
 - **navsim/drivejepa/20260902T172532-9c2de7** — SMOKE, not a result: 8 scenarios, isolated on PADDOCK_BASE_PORT=9100 to prove the launcher identity check and the infer_sequence override against a genuine drivejepa node (plans have three columns). Superseded by the full-split run.
 - **navsim/drivejepa/20260902T172248-9c2de7** — INVALID -- cross-talk. This run's health check passed against a concurrently launched visionpilot node on the same port while drivejepa's own node was still loading; every request was then served by visionpilot. The recorded plans have two columns (visionpilot's shape; drivejepa emits x, y, heading) and the score is identical to visionpilot's on the same scenarios. Fixed: nodes answer /whoami, the launcher verifies identity, PADDOCK_BASE_PORT isolates concurrent runs.

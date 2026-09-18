@@ -119,16 +119,17 @@ focal length without anything failing.
 ## Results
 
 Five models over the same 25 samples, `valid: false` at one camera shard. Every
-cell has a committed record under `results/nuplan/`.
+cell is the mean from one committed record under `results/nuplan/`, and each
+model has exactly one — no column mixes two runs.
 
 | n=25 | openpilot | meteor | **constant velocity** | drivejepa | visionpilot |
 |---|---:|---:|---:|---:|---:|
-| ade | **0.807** | 1.273 | 1.393 | 1.512 | 3.192 |
-| fde@1s | 0.416 | 0.483 | **0.462** | 0.568 | 1.715 |
-| fde@2s | **0.878** | 1.333 | 1.433 | 1.593 | 3.234 |
-| fde@3s | **1.539** | 2.803 | 3.199 | 3.305 | 5.851 |
-| longitudinal_mae | **0.658** | 0.831 | 1.036 | 1.429 | 2.565 |
-| lateral_mae | 0.316 | 0.778 | 0.630 | **0.299** | 1.328 |
+| ade | **0.807** | 1.273 | 1.393 | 1.512 | 2.246 |
+| fde@1s | **0.416** | 0.483 | 0.462 | 0.568 | 1.488 |
+| fde@2s | **0.878** | 1.333 | 1.433 | 1.593 | 2.246 |
+| fde@3s | **1.539** | 2.803 | 3.199 | 3.305 | 3.589 |
+| longitudinal_mae | **0.658** | 0.831 | 1.036 | 1.429 | 1.491 |
+| lateral_mae | 0.316 | 0.778 | 0.630 | **0.299** | 1.324 |
 
 **Read these as a 25-sample subset, not as nuPlan.** They cover **7 of the 59
 scenario types**, six of them stop-sign or traffic-light decelerations, because
@@ -168,12 +169,19 @@ full-coverage run. `--dry-run` reports the split before anything starts.
 One camera shard covers 8 logs, giving **25 scorable anchors** — the arithmetic
 behind the `valid: false` on every run above.
 
-VisionPilot is beaten by a straight line by more than a factor of two on every
-metric, and that is worth three qualifications before it reads as a verdict on
-the model: the subset is small and skewed toward decelerations; VisionPilot's
-recorded strength is closed-loop NCAP rather than open-loop imitation; and it
-has no goal or command interface, so at a junction it goes straight — a
-limitation already visible on nuScenes and Bench2Drive.
+VisionPilot is beaten by a straight line on every metric — by 1.6× on ADE and
+by 3.2× at the 1 s horizon — and that is worth three qualifications before it
+reads as a verdict on the model: the subset is small and skewed toward
+decelerations; VisionPilot's recorded strength is closed-loop NCAP rather than
+open-loop imitation; and it has no goal or command interface, so at a junction
+it goes straight — a limitation already visible on nuScenes and Bench2Drive.
+
+Its row moved between the first measurement and this one, from ADE 3.192 to
+2.246, and not because of anything in this adapter: merging `main` brought
+`VISIONPILOT_SETPOINT` from #24, which latches the ACC set-speed at the scored
+frame instead of at the first history frame. The earlier run is deleted rather
+than kept beside the new one, so `results/nuplan/` holds one record per model
+and no reader has to know a commit message to tell which counts.
 
 Roughly 3 minutes wall-clock for the 25 samples on CPU, including model load;
 meteor does the same set in 27 s on GPU.

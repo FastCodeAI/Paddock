@@ -48,6 +48,7 @@ flowchart LR
         direction TB
         ns["nuScenes<br/>val · 5,119 anchors"]
         ks["KITScenes<br/>ADE / FDE"]
+        npl["nuPlan<br/>v1.1 · 10 Hz · ADE / FDE"]
     end
     subgraph pseudo ["pseudo-closed-loop"]
         nv["NAVSIM<br/>v1 PDMS · v2 EPDMS"]
@@ -81,16 +82,16 @@ flowchart LR
     classDef store   fill:#f6f8fa,stroke:#57606a,stroke-width:1.5px,color:#1f2328
     class op,al,dj,vp model
     class pol waist
-    class ns,ks ol
+    class ns,ks,npl ol
     class nv pcl
     class b2d,nc,alp cl
     class alp planned
     class res store
 ```
 
-Four models times five benchmarks, and nobody wrote twenty adapters. A fifth
-model is one new directory under `adapters/models/`; a sixth benchmark is one
-new directory under `adapters/benchmarks/`.
+Four models times seven benchmarks, and nobody wrote twenty-eight adapters. A
+fifth model is one new directory under `adapters/models/`; an eighth benchmark
+is one new directory under `adapters/benchmarks/`.
 
 What crosses the wire between paddock, the model node and a simulator is
 drawn step by step in [docs/architecture.md](docs/architecture.md#on-the-wire).
@@ -105,15 +106,15 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 
 🟢 open-loop · 🟡 pseudo-closed-loop · 🔴 closed-loop · ↑ higher is better · ↓ lower is better
 
-| | 🟢 nuScenes cumulative L2 avg ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🟡 NAVSIM v1 PDMS ↑ (0–1) | 🔴 Bench2Drive driving score ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim nuRec scene score ↑ (0–1) |
-|---|---|---|---|---|---|---|---|
-| OpenPilot | 2.477 △ | 1.599 | 0.747 (10 Hz) ‡ | 0.807 (10 Hz) ‡ | 30.09 ≈ ◆ | **3.60** ‖ | **0.9566** ¶ |
-| Alpamayo 1.5 | 0.787 △ | 1.002 | 0.691 (10 Hz) † | 0.753 (10 Hz) † | 44.58 ◆ | **3.73** ‖ | 0.9000 ¶¶ |
-| Drive-JEPA | 0.912 △ | 2.364 | 0.843 | 0.892 † | 31.11 ◆ | **3.57** ‖ | 0.5030 ¶ |
-| VisionPilot | 1.441 △ | 1.534 ∗ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.8488 ¶ |
-| METEOR | 0.977 △ | 1.879 ◇ | 0.303 ◊ | 0.366 ◊ | — | **2.64** ‖ | — |
-| Qwen-Drive 1.0 | 0.450 | 0.806 | 0.840 | 0.876 | planned | **2.49** | — |
-| Baseline (Constant Velocity) | 0.641 △ | 1.381 | 0.239 | 0.207 † | 47.94 ♣ | 0 § | *0.8850* ¶ |
+| | 🟢 nuScenes cumulative L2 avg ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟢 nuPlan ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🟡 NAVSIM v1 PDMS ↑ (0–1) | 🔴 Bench2Drive driving score ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim nuRec scene score ↑ (0–1) |
+|---|---|---|---|---|---|---|---|---|
+| OpenPilot | 2.477 △ | 1.599 | 0.807 ◐ | 0.747 (10 Hz) ‡ | 0.807 (10 Hz) ‡ | 30.09 ≈ ◆ | **3.60** ‖ | **0.9566** ¶ |
+| Alpamayo 1.5 | 0.787 △ | 1.002 | — ◐◐ | 0.691 (10 Hz) † | 0.753 (10 Hz) † | 44.58 ◆ | **3.73** ‖ | 0.9000 ¶¶ |
+| Drive-JEPA | 0.912 △ | 2.364 | 1.512 ◐ | 0.843 | 0.892 † | 31.11 ◆ | **3.57** ‖ | 0.5030 ¶ |
+| VisionPilot | 1.441 △ | 1.534 ∗ | 2.246 ◐ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.8488 ¶ |
+| METEOR | 0.977 △ | 1.879 ◇ | 1.273 ◐ | 0.303 ◊ | 0.366 ◊ | — | **2.64** ‖ | — |
+| Qwen-Drive 1.0 | 0.450 | 0.806 | — | 0.840 | 0.876 | planned | **2.49** | — |
+| Baseline (Constant Velocity) | 0.641 △ | 1.381 | 1.393 ◐ | 0.239 | 0.207 † | 47.94 ♣ | 0 § | *0.8850* ¶ |
 
 ∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
 KITScenes, Paddock constructs sampled XY points from its projected image-space
@@ -147,6 +148,23 @@ nuScenes, with all six cameras, its L2 sits with Drive-JEPA's; its collisions
 are concentrated at standstill, where the planner creeps ~1 m into the queue
 ahead (22.6 % of stopped anchors), and its plans carry a left bias twice as
 large in Boston as in Singapore. See `docs/models/meteor.md`.
+
+◐ **Every nuPlan figure is `valid: false` and excluded from `paddock report`.**
+This site holds one of nuPlan's nine camera shards, so of the 351 scorable
+anchors in the balanced manifest only **25** have images — and those 25 fall in
+**7 of the 59 scenario types**, six of them stop-sign or traffic-light
+decelerations. The runs are recorded and comparable *with each other* (one
+shared sample set, one record per model, `sequences_sha256` pinned), but a
+ranking over near-homogeneous deceleration moments is not a ranking on nuPlan,
+and these are not comparable with a full-coverage run. The remaining shards are
+~405 GB. OpenPilot's figure additionally comes from a v0.11.1 checkout rather
+than the sha `repos.yaml` pins, so its record carries `repo_sha: null`.
+See [docs/benchmarks/nuplan.md](docs/benchmarks/nuplan.md).
+
+◐◐ Alpamayo 1.5 has no nuPlan figure: it needs `nvidia/Cosmos-Reason2-8B`,
+which is gated. Only its config and tokenizer are read, and the one measurement
+made with a substitute is deliberately not committed, so there is no record to
+cite.
 
 △ nuScenes uses 5,119 scoring anchors across 150 validation scenes. The headline
 is the mean of cumulative L2 through 1, 2 and 3 seconds, not ADE at 3 seconds.
@@ -338,6 +356,39 @@ on this dataset. Only it and Alpamayo 1.5 beat the constant-velocity baseline.
 | METEOR | 1.879 ◇ | 4.034 ◇ |
 | Qwen-Drive 1.0 | **0.806** | **1.777** |
 | Baseline (Constant Velocity) | 1.381 | 3.091 |
+
+### nuPlan
+
+Open-loop displacement error against the recorded future, on nuPlan v1.1's
+original logs at their native **10 Hz** cameras and 100 Hz ego poses — not
+NAVSIM's 2 Hz OpenScene redistribution of the same source. That rate is what
+makes the dataset scorable for a model like OpenPilot, which infers ego motion
+from frame-to-frame change and declares `min_input_hz: 10.0`.
+
+**These are a 25-sample subset, not nuPlan** (see ◐). One camera shard of nine
+is present, so 25 of 351 scorable anchors have images, and they fall in 7 of 59
+scenario types. Every run below is `valid: false` and excluded from the
+leaderboard; they are comparable with each other and with nothing else.
+
+| Model | ADE ↓ (m) | FDE@1s ↓ (m) | FDE@2s ↓ (m) | FDE@3s ↓ (m) | Longitudinal MAE ↓ (m) | Lateral MAE ↓ (m) |
+|---|---:|---:|---:|---:|---:|---:|
+| OpenPilot | **0.807** | **0.416** | **0.878** | **1.539** | **0.658** | 0.316 |
+| Alpamayo 1.5 | — ◐◐ | — | — | — | — | — |
+| Drive-JEPA | 1.512 | 0.568 | 1.593 | 3.305 | 1.429 | **0.299** |
+| VisionPilot | 2.246 | 1.488 | 2.246 | 3.589 | 1.491 | 1.324 |
+| METEOR | 1.273 | 0.483 | 1.333 | 2.803 | 0.831 | 0.778 |
+| Baseline (Constant Velocity) | 1.393 | 0.462 | 1.433 | 3.199 | 1.036 | 0.630 |
+
+Two of the four models clear the constant-velocity floor: OpenPilot, which
+leads every metric but lateral error, and METEOR. Drive-JEPA and VisionPilot
+do not — expected on a subset this skewed toward decelerations, where holding
+the current speed is already close to right. `constant_velocity` is a stored
+run like any other, declared in its `model.yaml` and scored through the same
+harness, so the floor and the rows it anchors regenerate together.
+
+Protocol, the three sampling rules that build the balanced set, and why the
+calibration is decoded without nuplan-devkit are in
+[docs/benchmarks/nuplan.md](docs/benchmarks/nuplan.md).
 
 ### NAVSIM v2
 
