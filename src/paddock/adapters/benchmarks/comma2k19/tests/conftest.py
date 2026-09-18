@@ -12,7 +12,9 @@ of defect these tests exist to catch, and it is one they can no longer catch on
 a pull request alone. The compensation is
 `test_the_toolkit_rotations_match_an_independent_reference`, which checks the
 toolkit against a reference written out in the test file rather than checking
-paddock against itself.
+paddock against itself -- but it takes the `toolkit` fixture, so it is a check
+the *reviewer* runs at a site and not one CI performs. The only part of this
+that a pull request proves by itself is that the toolkit is pinned.
 
 Tests that need nothing but numpy -- the metric decomposition, the evaluation
 grid, the horizon rules -- deliberately do *not* take this fixture, so most of

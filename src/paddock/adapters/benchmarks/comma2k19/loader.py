@@ -160,6 +160,10 @@ _DEVICE_TO_EGO = np.diag([1.0, -1.0, -1.0])
 
 POSE_FILES = ("frame_times", "frame_positions", "frame_orientations", "frame_velocities")
 
+#: Both arrays every `processed_log/CAN/<signal>` directory holds. See
+#: `_can_signal` for why the pair is checked rather than the timestamp alone.
+CAN_FILES = ("t", "value")
+
 #: Names served from the toolkit on first access. Module-level `__getattr__`
 #: rather than eager constants, so the toolkit is loaded when the maths is
 #: actually used and not when this module is imported -- see the note on the
@@ -372,18 +376,31 @@ def load_pose(seg_path: Path) -> SegmentPose:
     )
 
 
+def _can_signal(seg_path: Path, signal: str) -> tuple[np.ndarray, np.ndarray] | None:
+    """(t, value) for one `processed_log/CAN/<signal>`, or None if not both here.
+
+    Both names, not just `t`. Checking one of a pair and opening the other is
+    the defect `_is_segment` had: a half-extracted `processed_log` passes the
+    guard and raises `FileNotFoundError` out of `samples()` hours into a sweep,
+    where the runner catches only `NodeStartupError` and `RuntimeError`.
+    """
+    d = Path(seg_path) / "processed_log" / "CAN" / signal
+    if not all((d / name).exists() for name in CAN_FILES):
+        return None
+    return np.load(d / "t"), np.load(d / "value")
+
+
 def load_can_speed(seg_path: Path) -> tuple[np.ndarray, np.ndarray] | None:
     """(t, speed m/s) from `processed_log/CAN/speed`, or None.
 
     This is comma2k19's closest analogue of `carState.vEgo`, which is what
     openpilot feeds to its action head. The network itself has no speed input.
     """
-    d = Path(seg_path) / "processed_log" / "CAN" / "speed"
-    if not (d / "t").exists():
+    arrays = _can_signal(seg_path, "speed")
+    if arrays is None:
         return None
-    t = np.load(d / "t")
-    v = np.asarray(np.load(d / "value")).reshape(len(t), -1)[:, 0]
-    return t, v
+    t, raw = arrays
+    return t, np.asarray(raw).reshape(len(t), -1)[:, 0]
 
 
 def load_radar(seg_path: Path) -> tuple[np.ndarray, np.ndarray] | None:
@@ -395,10 +412,7 @@ def load_radar(seg_path: Path) -> tuple[np.ndarray, np.ndarray] | None:
     the measurement behind that, which is not what the constant in openpilot's
     source would lead you to expect.
     """
-    d = Path(seg_path) / "processed_log" / "CAN" / "radar"
-    if not (d / "t").exists():
-        return None
-    return np.load(d / "t"), np.load(d / "value")
+    return _can_signal(seg_path, "radar")
 
 
 def radar_tracks(radar_t, radar_v, t: float, window: float = RADAR_WINDOW_S) -> np.ndarray:
@@ -599,7 +613,7 @@ def decode_frames(
         "-",
     ]
     frame_bytes = width * height * 3
-    with _stderr_log(video.parent.name) as (log, log_path):
+    with _stderr_log(video.parent.name) as (log, _):
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=log)
         try:
             i = 0
@@ -617,7 +631,10 @@ def decode_frames(
                 yield np.frombuffer(buf, dtype=np.uint8).reshape(height, width, 3)
                 i += 1
             if proc.wait() != 0:
-                raise RuntimeError(f"{video}: ffmpeg failed: {_drain(log)} (log was {log_path})")
+                # The drained text, not the log's name: this is raised inside
+                # the `with`, so by the time anyone reads the message
+                # `_stderr_log` has already unlinked the file it would point at.
+                raise RuntimeError(f"{video}: ffmpeg failed: {_drain(log) or '(nothing)'}")
         finally:
             if proc.poll() is None:
                 proc.kill()

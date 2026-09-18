@@ -415,20 +415,38 @@ def test_node_count_is_capped_by_what_the_card_will_hold(monkeypatch, free_gb, v
     that do not fit poll for two hours and then raise. Dividing up front is
     what makes the sweep finish.
     """
-    monkeypatch.setattr(H.gpu, "free_gb", lambda: free_gb)
+    monkeypatch.setattr(H.gpu, "free_gb", lambda _env=None: free_gb)
     assert _bench(nodes=nodes).node_count(_model(vram_gb)) == expected
+
+
+def test_the_card_asked_about_is_the_one_this_model_will_land_on(monkeypatch):
+    """Headroom has to be read through the *node's* environment, not paddock's.
+
+    `free_gb` honours `CUDA_VISIBLE_DEVICES`, and the one that decides is the
+    model's, set in its `model.yaml`. Reading paddock's own left a free card 0
+    beside a full card 1 choosing four nodes for a model pinned to card 1, and
+    parking three of them in `wait_for`'s two-hour poll -- the exact outcome
+    `node_count` exists to prevent.
+    """
+    asked: list[dict | None] = []
+    node_env = {"CUDA_VISIBLE_DEVICES": "1"}
+    monkeypatch.setattr(H.env_builder, "build", lambda _model, _cfg: node_env)
+    monkeypatch.setattr(H.gpu, "free_gb", lambda env=None: asked.append(env) or 90.0)
+
+    assert _bench(nodes=4).node_count(_model(18.0)) == 4
+    assert asked == [node_env]
 
 
 def test_node_count_falls_back_to_the_site_budget_without_nvidia_smi(monkeypatch):
     """No usable nvidia-smi is not a licence to start eight 18 GB nodes."""
-    monkeypatch.setattr(H.gpu, "free_gb", lambda: None)
+    monkeypatch.setattr(H.gpu, "free_gb", lambda _env=None: None)
     assert _bench(nodes=8).node_count(_model(18.0)) == 1  # 24 GB budget // 18
     assert _bench(nodes=8).node_count(_model(0.0)) == 8
 
 
 def test_node_count_without_a_model_is_the_site_setting(monkeypatch):
     """`_retain_segments` calls this with None and must keep sizing the ring."""
-    monkeypatch.setattr(H.gpu, "free_gb", lambda: 8.0)
+    monkeypatch.setattr(H.gpu, "free_gb", lambda _env=None: 8.0)
     assert _bench(nodes=6).node_count(None) == 6
 
 
@@ -450,16 +468,24 @@ def test_a_ring_left_by_a_dead_run_is_swept_and_a_live_one_is_not(tmp_path, monk
     This box was found carrying an 888 MB ring whose pid had been dead for five
     days. On the tmpfs the docs recommend, that is unaccounted RAM; the pid is
     in the directory name precisely so the next run can tell.
+
+    A pid only answers for this kernel, so the host tag decides which rings the
+    question may even be asked about: `{runs}` on NFS and `/dev/shm` shared
+    between containers both put another machine's live ring in this directory,
+    where its pid is simply absent and the sweep would delete it mid-run.
     """
     bench = _bench()
     bench.cfg.runs = tmp_path / "runs"
     cache = bench._frame_cache
     cache.mkdir(parents=True)
 
-    dead = cache / "run-999999999-aaaaaaaa"  # above pid_max; cannot be running
-    live = cache / f"run-{os.getpid()}-bbbbbbbb"
+    tag = H._host_tag()
+    dead = cache / f"run-{tag}-999999999-aaaaaaaa"  # above pid_max; cannot be running
+    live = cache / f"run-{tag}-{os.getpid()}-bbbbbbbb"
+    elsewhere = cache / "run-otherhost-999999999-cccccccc"  # same dead pid, another kernel
+    untagged = cache / "run-999999999-dddddddd"  # written before the tag existed
     stranger = cache / "not-a-ring"
-    for d in (dead, live, stranger):
+    for d in (dead, live, elsewhere, untagged, stranger):
         d.mkdir()
         (d / "frame.npy").write_bytes(b"x")
 
@@ -467,8 +493,11 @@ def test_a_ring_left_by_a_dead_run_is_swept_and_a_live_one_is_not(tmp_path, monk
 
     assert not dead.exists()
     assert live.exists(), "swept a ring whose process is still staging into it"
+    assert elsewhere.exists(), "swept another host's ring on the strength of a local pid"
+    assert untagged.exists(), "swept a ring whose host cannot be established"
     assert stranger.exists(), "swept something this cache did not create"
     assert mine.exists() and mine.parent == cache
+    assert mine.name.startswith(f"run-{tag}-{os.getpid()}-"), "and names the host it is on"
 
 
 def test_preflight_says_so_when_the_frame_cache_cannot_be_written(tmp_path):

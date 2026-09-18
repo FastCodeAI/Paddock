@@ -78,7 +78,9 @@ from __future__ import annotations
 import atexit
 import math
 import os
+import re
 import shutil
+import socket
 import tempfile
 import threading
 from collections.abc import Container, Iterator
@@ -105,6 +107,7 @@ from paddock.policy.protocol import (
     Observation,
     Trajectory,
 )
+from paddock.runtime import env as env_builder
 from paddock.runtime import gpu
 
 #: Waypoint spacing of the recorded future handed to `score`. Independent of the
@@ -182,6 +185,32 @@ SEGMENT_S = 60.0
 #: it is here -- a site with three of them is normal, not broken.
 TOTAL_CHUNKS = 10
 
+#: Segments the published dataset has, across all ten chunks.
+#:
+#: The full sweep is 10,165 samples: 2033 of these times five keyframes, plus
+#: two segments too short to yield any. A partial copy is a perfectly normal
+#: state at a new site and scores fine -- what it must not do is *rank*, and
+#: counting only the segments present cannot tell the two apart. `coverage()`
+#: answers "did we score what is here", this answers "is what is here the
+#: dataset the other rows were measured on". See `invalid_reasons`.
+TOTAL_SEGMENTS = 2035
+
+
+def _host_tag() -> str:
+    """A short token for this machine and this boot, for a staging ring's name.
+
+    `_sweep_stale_rings` decides a ring is abandoned with `kill(pid, 0)`, which
+    is only meaningful for pids on this kernel. The boot id where the kernel
+    publishes one, so a pid recycled across a reboot is not mistaken for the
+    sweep that died in it; a sanitised hostname otherwise. No dashes, because
+    the ring name is parsed by splitting on them.
+    """
+    try:
+        token = Path("/proc/sys/kernel/random/boot_id").read_text().strip().replace("-", "")[:12]
+    except OSError:
+        token = ""
+    return token or re.sub(r"[^A-Za-z0-9]", "", socket.gethostname())[:12] or "unknown"
+
 
 class UnreachableRate(ValueError):
     """An `input_hz` that is not `SRC_HZ / n` for a whole n."""
@@ -257,6 +286,12 @@ class EvalGrid:
 
 
 class Comma2k19Benchmark(OpenLoopBenchmark):
+    #: This harness's ground truth is on `INTERVAL_S`, and `conformance.py`
+    #: reads this rather than assuming the 0.5 s it used to hardcode. Declared
+    #: from the constant, not repeated as a literal: the two must not be able
+    #: to disagree.
+    ground_truth_dt: float = INTERVAL_S
+
     # ---- settings -------------------------------------------------------
 
     @property
@@ -336,7 +371,7 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         if self.keep_frames:
             return root
         self._sweep_stale_rings(root)
-        run_root = Path(tempfile.mkdtemp(prefix=f"run-{os.getpid()}-", dir=root))
+        run_root = Path(tempfile.mkdtemp(prefix=f"run-{_host_tag()}-{os.getpid()}-", dir=root))
         # At exit, not at the end of `samples()`: the runner is still scoring
         # the last batches when the iterator ends, and they hold paths into
         # here. Registered where the directory is created so its lifetime is
@@ -348,7 +383,7 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
 
     @staticmethod
     def _sweep_stale_rings(root: Path) -> None:
-        """Remove rings left by runs that are no longer running.
+        """Remove rings left by runs on *this* machine that are no longer running.
 
         `atexit` is the only cleanup a ring gets, and `atexit` does not run on
         SIGTERM -- which is how a sweep on a shared machine usually ends: a
@@ -363,13 +398,22 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         and only the ones nothing owns; a live sibling sweep is left alone.
         Cleanup is never worth failing a run over, so every error here is
         swallowed -- the next sweep will try again.
+
+        **`kill(pid, 0)` only answers for this kernel**, so the host tag in the
+        name is what makes the question well posed. `frame_cache` is routinely
+        `/dev/shm` (shared between containers on one box) and may be under a
+        network `{runs}`; without the tag, another host's live sweep is a pid
+        that is simply absent here, and the ring would be deleted out from under
+        it mid-run. Rings written before the tag existed, and rings from any
+        other host, are left for that host's own sweep to reap.
         """
-        for ring in root.glob("run-*-*"):
+        tag = _host_tag()
+        for ring in root.glob(f"run-{tag}-*-*"):
             parts = ring.name.split("-")
-            if not ring.is_dir() or len(parts) < 3 or not parts[1].isdigit():
+            if not ring.is_dir() or len(parts) < 4 or not parts[2].isdigit():
                 continue
             try:
-                os.kill(int(parts[1]), 0)
+                os.kill(int(parts[2]), 0)
             except ProcessLookupError:
                 shutil.rmtree(ring, ignore_errors=True)
             except (PermissionError, OSError):
@@ -402,17 +446,26 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         site's node count.
 
         Reads the card's *actual* free VRAM, falling back to the site's
-        `[gpu] budget_gb` when there is no usable nvidia-smi. `free_gb` honours
-        `CUDA_VISIBLE_DEVICES`, so this divides up the card the nodes will
-        really land on. Wall clock only: `node_count` is absent from
-        `run_config`, and every node scores a self-contained `infer_sequence`,
-        so this cannot move a number.
+        `[gpu] budget_gb` when there is no usable nvidia-smi. The card asked
+        about is the one **this model** will land on: `free_gb` honours
+        `CUDA_VISIBLE_DEVICES`, and the one that decides is the model's own node
+        environment, not paddock's. Reading paddock's divided card 0's headroom
+        among nodes pinned by `[models.X] env.CUDA_VISIBLE_DEVICES = "1"` to
+        card 1 -- so a free card 0 beside a full card 1 picked four nodes and
+        parked three of them in `wait_for`'s two-hour poll, which is the
+        outcome this whole method exists to avoid. Wall clock only:
+        `node_count` is absent from `run_config`, and every node scores a
+        self-contained `infer_sequence`, so this cannot move a number.
         """
         nodes = max(1, int(self.setting("nodes", DEFAULT_NODES)))
         wanted = float(getattr(model, "vram_gb", 0.0) or 0.0)
         if wanted <= 0:
             return nodes
-        available = gpu.free_gb()
+        try:
+            node_env = env_builder.build(model, self.cfg)
+        except Exception:  # noqa: BLE001 - a node count is never worth failing a run over
+            node_env = None
+        available = gpu.free_gb(node_env)
         if available is None:
             available = float(self.cfg.gpu.budget_gb)
         return max(1, min(nodes, int(available // wanted)))
@@ -448,12 +501,32 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         return config
 
     def invalid_reasons(self) -> list[str]:
-        if not os.environ.get(ENV_ALLOW_SLOW):
-            return []
-        return [
-            f"{ENV_ALLOW_SLOW} is set: a model was scored below its declared min_input_hz, "
-            "which measures the observation-rate gap rather than the model"
-        ]
+        """Why a run made here cannot be ranked beside the published rows.
+
+        Two reasons, and the second is the one a new site hits. comma2k19
+        arrives as ten separately-downloaded chunks and `docs/data-setup.md`
+        invites a partial copy -- the benchmark scores what is here, which is
+        right, and every doc says the rows are over one identical sample set,
+        which is also right. Nothing joined the two: a 204-segment copy scored
+        204 segments' worth, recorded `n_expected == n_samples` because
+        `coverage()` counts only what it can see, and sorted onto the
+        leaderboard beside a 10,165-sample sweep. The runner's `_coverage_reason`
+        catches samples dropped from the segments present; this catches the
+        segments that are not.
+        """
+        reasons = []
+        if os.environ.get(ENV_ALLOW_SLOW):
+            reasons.append(
+                f"{ENV_ALLOW_SLOW} is set: a model was scored below its declared min_input_hz, "
+                "which measures the observation-rate gap rather than the model"
+            )
+        held = len(self._segments) if self.dataset is not None else 0
+        if 0 < held < TOTAL_SEGMENTS:
+            reasons.append(
+                f"partial dataset: {held} of the published {TOTAL_SEGMENTS} segments are here, "
+                "so this run is not over the sample set the other rows were measured on"
+            )
+        return reasons
 
     # ---- description ----------------------------------------------------
 
