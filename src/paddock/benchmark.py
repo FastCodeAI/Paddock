@@ -252,6 +252,17 @@ class Benchmark(ABC):
 
 
 class OpenLoopBenchmark(Benchmark):
+    #: Seconds between consecutive poses of `Sample.ground_truth`.
+    #:
+    #: `conformance.benchmark_findings` scores the recorded future against
+    #: itself and has to hand `score()` a `Trajectory` on the grid the benchmark
+    #: actually uses. It hardcoded 0.5 s, which is right for every benchmark in
+    #: the repo today and silently wrong for the first one on another interval:
+    #: the check would then report a displacement against a future resampled to
+    #: a spacing nothing measures on. Override where the recorded future is not
+    #: half-second spaced.
+    ground_truth_dt: float = 0.5
+
     def model_problems(self, model, limit: int | None = None) -> list[str]:
         """Why *model* cannot be scored here at all, decided before it is loaded.
 
@@ -294,6 +305,11 @@ class OpenLoopBenchmark(Benchmark):
         `limit` counts what is yielded, so on a resume it caps the samples
         still to do rather than the run's total. The runner subtracts what is
         already on disk before calling.
+
+        **Runs on its own thread once `node_count` exceeds 1**, concurrently
+        with `score()` on the pool. Anything this generator memoises on the
+        harness -- a calibration table, a decoded segment, a counter -- is
+        shared mutable state the moment a benchmark asks for a second node.
         """
 
     @abstractmethod
@@ -302,6 +318,12 @@ class OpenLoopBenchmark(Benchmark):
 
         Per-sample, not aggregated: paddock aggregates, so that every benchmark
         aggregates the same way and per-sample records stay inspectable.
+
+        **Called from `node_count` worker threads at once, while `samples()`
+        runs on another.** A pure function of its two arguments needs nothing
+        further; a `score` that writes to the harness has to say how it is safe,
+        and one that mutates state `samples()` also touches is a race whatever
+        the numbers look like on the day. See `node_count`.
         """
 
 

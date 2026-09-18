@@ -745,6 +745,35 @@ def _scored_samples(artifacts: Path) -> list[dict]:
     return list(merged.values())
 
 
+def _carry_forward_provenance(benchmark: str, model: str, run_id: str, prov: dict) -> dict:
+    """Keep what an earlier attempt of this same run recorded and this one cannot.
+
+    `--resume` rebuilds provenance from nothing, and `policy` is filled only
+    when a node actually ran. So resuming a run with nothing left to do replaced
+    the previous attempt's `/diagnostics` with `{}` -- losing the only record of
+    which backend and which graph layout produced the samples, for a run whose
+    samples had not changed.
+
+    The repo sha gets the opposite treatment. A resume across a `git pull` is
+    part one revision and part another, and storing only the last attempt's sha
+    names a revision that did not produce most of the run. Earlier distinct shas
+    are kept beside it rather than overwritten, so a mixed-revision run says so.
+    """
+    path = store.run_dir(benchmark, model, run_id) / "run.json"
+    try:
+        previous = json.loads(path.read_text()).get("provenance") or {}
+    except (OSError, ValueError):
+        return prov
+    if not prov.get("policy") and previous.get("policy"):
+        prov["policy"] = previous["policy"]
+    was = previous.get("repo") or {}
+    now = (prov.get("repo") or {}).get("sha")
+    earlier = sorted({s for s in [*(was.get("earlier_shas") or []), was.get("sha")] if s and s != now})
+    if earlier:
+        prov.setdefault("repo", {})["earlier_shas"] = earlier
+    return prov
+
+
 def _batches(source: Iterator, size: int, prefetch: bool) -> Iterator[list]:
     """Group an iterator into lists of `size`, optionally one batch ahead.
 
@@ -773,7 +802,11 @@ def _batches(source: Iterator, size: int, prefetch: bool) -> Iterator[list]:
     import queue
     import threading
 
-    handoff: queue.Queue = queue.Queue(maxsize=PIPELINE_BATCHES - 2)
+    # `max(1, ...)`, because `Queue(maxsize=0)` is unbounded: at
+    # `PIPELINE_BATCHES = 2` the arithmetic alone would let the pull thread run
+    # the whole dataset ahead of the scorer, which is the one thing the
+    # published depth exists to stop.
+    handoff: queue.Queue = queue.Queue(maxsize=max(1, PIPELINE_BATCHES - 2))
 
     def pull() -> None:
         try:
@@ -858,6 +891,17 @@ def _run_open_loop(
     # `limit` counts the run's samples, not this attempt's, or resuming a
     # `--limit 20` run that got to 15 would score 20 more.
     outstanding = None if limit is None else max(0, limit - reused)
+    # Whether there is work left, which is not the same question as
+    # `outstanding`. A full sweep has no limit, so `outstanding` is None and a
+    # guard on it alone could never fire for the case it was written for:
+    # re-issuing a finished 10,165-sample comma2k19 run still paid four
+    # checkpoint reads and four VRAM waits to rewrite a record it already had.
+    # Without a limit the count to compare against is the harness's own
+    # `coverage()` -- the same one `_expected_samples` puts on the record.
+    nothing_left = outstanding == 0
+    if resume and outstanding is None:
+        expected = (_expected_samples(harness) or {}).get("n_expected")
+        nothing_left = bool(expected) and reused >= expected
 
     failures = 0
     nodes = max(1, harness.node_count(model_spec))
@@ -910,7 +954,7 @@ def _run_open_loop(
         # a checkpoint read and a VRAM wait, and comma2k19 starts four of them.
         # Re-resuming a finished run paid all four to write a record it already
         # had. The closed-loop path has a test pinning this; so does this one now.
-        if outstanding == 0:
+        if nothing_left:
             echo("  nothing outstanding; no node started")
         else:
             with contextlib.ExitStack() as stack:
@@ -936,15 +980,21 @@ def _run_open_loop(
                 # enforced here and the saving is left to the harness.
                 stream = (s for s in stream if s.sample_id not in done)
 
-                consecutive = 0
+                # Per node, not per run. One counter over the whole stream
+                # could not fire above one node: a batch of four with one
+                # wedged node comes back fail, ok, ok, ok, the successes reset
+                # it, and the sweep ran its full length paying a 600 s timeout
+                # a batch. Which is the fortnight this guard exists to end.
+                consecutive: dict[str, int] = dict.fromkeys(urls, 0)
                 for batch in _batches(stream, nodes, prefetch=nodes > 1):
                     before = len(samples)
-                    for record in pool.map(score_one, zip(urls, batch, strict=False)):
+                    jobs = list(zip(urls, batch, strict=False))
+                    for (node_url, _), record in zip(jobs, pool.map(score_one, jobs), strict=False):
                         if record is None:
                             failures += 1
-                            consecutive += 1
+                            consecutive[node_url] += 1
                             continue
-                        consecutive = 0
+                        consecutive[node_url] = 0
                         samples.append(record)
                         # Flushed per batch, not per sample: a killed run loses
                         # at most one batch, and `--resume` re-scores it.
@@ -958,7 +1008,8 @@ def _run_open_loop(
                         seen = [s["metrics"][key] for s in samples if key in s["metrics"]]
                         running = sum(seen) / len(seen) if seen else float("nan")
                         echo(f"  {len(samples)} samples, running {key} {running:.3f}")
-                    if consecutive >= MAX_CONSECUTIVE_FAILURES:
+                    wedged = max(consecutive, key=lambda url: consecutive[url])
+                    if consecutive[wedged] >= MAX_CONSECUTIVE_FAILURES:
                         # A wedged node fails every sample it is handed and
                         # nothing here noticed: `score_one` swallows per sample
                         # so one bad sample cannot end a sweep, and
@@ -966,8 +1017,8 @@ def _run_open_loop(
                         # samples that is two weeks of four pinned nodes to
                         # produce a run `_validity` marks invalid anyway.
                         aborted = (
-                            f"aborted after {consecutive} consecutive sample failures; "
-                            "the node is not scoring, not the samples"
+                            f"aborted after {consecutive[wedged]} consecutive sample failures on "
+                            f"{wedged}; that node is not scoring, and the samples are not the cause"
                         )
                         echo("  " + aborted)
                         break
@@ -985,6 +1036,9 @@ def _run_open_loop(
     if not samples:
         echo("  no samples scored; nothing recorded")
         return 1
+
+    if resume:
+        prov = _carry_forward_provenance(spec.name, model_spec.name, run_id, prov)
 
     _, metrics_record = _store_run(
         cfg,

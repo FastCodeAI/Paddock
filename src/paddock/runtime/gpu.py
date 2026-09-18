@@ -44,18 +44,22 @@ def visible_device(env: Mapping[str, str] | None = None) -> int | None:
     which card that process lands on; a model sharding itself across several is
     outside what a single free-VRAM number can describe anyway.
 
-    Returns None for an explicitly empty value -- `CUDA_VISIBLE_DEVICES=""` is
-    how CUDA is told there is no device, and gating on card 0 for a model that
-    has deliberately been pushed onto the CPU is a wait for headroom it will
-    never use. Falls back to device 0 when the variable is unset or non-numeric
-    (`MIG-...` UUIDs are legal there and are not an index we can look up by
-    position).
+    Returns None for the two ways of saying "no device": an explicitly empty
+    value, and a negative index. `""` is CUDA's own, `-1` is the one people
+    actually write -- and `-1` is not `isdigit()`, so it used to fall through to
+    device 0 and a model deliberately pushed onto the CPU waited two hours for
+    VRAM it would never open. Falls back to device 0 when the variable is unset
+    or non-numeric (`MIG-...` UUIDs are legal there and are not an index we can
+    look up by position).
     """
     source = os.environ if env is None else env
     if source.get("CUDA_VISIBLE_DEVICES", "__unset__").strip() == "":
         return None
     raw = (source.get("CUDA_VISIBLE_DEVICES") or "").split(",")[0].strip()
-    return int(raw) if raw.isdigit() else 0
+    if raw.lstrip("+-").isdigit():
+        index = int(raw)
+        return index if index >= 0 else None
+    return 0
 
 
 def free_gb(env: Mapping[str, str] | None = None) -> float | None:

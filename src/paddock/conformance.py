@@ -75,6 +75,16 @@ __all__ = [
 #: magnitude outside it.
 MAX_MOUNT_DEG = 15.0
 
+#: Cameras paddock's own contract says point down the road. Their bearing is
+#: not the rig's business the way a ring camera's is: a `CAM_FRONT` facing
+#: sideways is a sign flip or a swapped axis, not a design decision.
+FORWARD_CAMERAS = frozenset({"CAM_FRONT", "CAM_OP_ROAD", "CAM_OP_WIDE"})
+
+#: How far one of those may point off straight ahead. Generous, because a real
+#: bracket is allowed a few degrees and a wide camera is sometimes toed out;
+#: the errors this exists to catch are 90 and 180 degrees away.
+MAX_FRONT_BEARING_DEG = 30.0
+
 #: paddock ego [forward, left, up] <-> a camera-frame [right, down, forward].
 #: An *unrotated* camera is this matrix, not the identity.
 UNROTATED_CAMERA2EGO = np.array([[0.0, 0.0, 1.0], [-1.0, 0.0, 0.0], [0.0, -1.0, 0.0]])
@@ -225,6 +235,11 @@ def check_camera_mounting(camera2ego, name: str = "CAM_FRONT") -> Finding:
     of those correctly-mounted cameras. What the check is actually looking for
     is a camera that is not *level* -- pitched or rolled away from the horizon,
     which is what a frame slip produces and what no real bracket does.
+
+    **Except for the cameras whose name fixes their bearing.** Dividing yaw out
+    unconditionally passed a `CAM_FRONT` facing sideways or backwards, which is
+    exactly the sign flip the check was meant to catch; `FORWARD_CAMERAS` get
+    their bearing checked as well as their level.
     """
     m = np.asarray(camera2ego, dtype=np.float64)
     if m.shape != (4, 4):
@@ -259,13 +274,24 @@ def check_camera_mounting(camera2ego, name: str = "CAM_FRONT") -> Finding:
     about_ego_up = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
     residual = r @ (about_ego_up @ UNROTATED_CAMERA2EGO).T
     angle = float(np.degrees(np.arccos(np.clip((np.trace(residual) - 1.0) / 2.0, -1.0, 1.0))))
-    ok = angle <= MAX_MOUNT_DEG
-    bearing = f" (facing {np.degrees(yaw):+.0f} deg, which is not counted)" if abs(yaw) > 1e-3 else ""
-    return _finding(
-        "benchmark.camera_mounting_is_plausible",
-        ok,
-        f"{name}: mounting is {angle:.2f} deg off level{bearing} (limit {MAX_MOUNT_DEG:g} deg)",
-    )
+    bearing_deg = float(np.degrees(yaw))
+    # Dividing yaw out is right for a ring camera, whose bearing is a rig
+    # decision -- and it let a `CAM_FRONT` built from `Rz(-90) @ ...` through
+    # perfectly level and facing out of the driver's window. For the cameras
+    # paddock's contract says face forward, the bearing is checked rather than
+    # merely reported.
+    off_axis = name in FORWARD_CAMERAS and abs(bearing_deg) > MAX_FRONT_BEARING_DEG
+    ok = angle <= MAX_MOUNT_DEG and not off_axis
+    if off_axis:
+        detail = (
+            f"{name}: faces {bearing_deg:+.2f} deg off straight ahead "
+            f"(limit {MAX_FRONT_BEARING_DEG:g} deg); a forward camera's optical axis is "
+            "column 2 of camera2ego, so this is a swapped or negated axis rather than a mounting"
+        )
+    else:
+        seen = f" (facing {bearing_deg:+.0f} deg, which is not counted)" if abs(yaw) > 1e-3 else ""
+        detail = f"{name}: mounting is {angle:.2f} deg off level{seen} (limit {MAX_MOUNT_DEG:g} deg)"
+    return _finding("benchmark.camera_mounting_is_plausible", ok, detail)
 
 
 def synthetic_observation(
@@ -538,8 +564,13 @@ def benchmark_findings(bench, spec=None, sample_limit: int = 2) -> list[Finding]
 
     # --- the two that matter -------------------------------------------
     gt_xy = gt[:, :2]
+    # The benchmark's own grid, not a constant: the recorded future has to be
+    # handed back on the spacing it was sampled at, or the two checks below
+    # score it against a resampled version of itself. See
+    # `OpenLoopBenchmark.ground_truth_dt`.
+    gt_dt = float(getattr(bench, "ground_truth_dt", 0.5) or 0.5)
     try:
-        perfect = bench.score(sample, Trajectory(gt_xy, dt=0.5))
+        perfect = bench.score(sample, Trajectory(gt_xy, dt=gt_dt))
         primary = (spec.primary_metric if spec else None) or "ade"
         value = perfect.get(primary, float("nan"))
         ok = np.isfinite(value) and abs(value) < 0.05
@@ -555,7 +586,7 @@ def benchmark_findings(bench, spec=None, sample_limit: int = 2) -> list[Finding]
         perfect = {}
 
     try:
-        stationary = bench.score(sample, Trajectory(np.zeros_like(gt_xy), dt=0.5))
+        stationary = bench.score(sample, Trajectory(np.zeros_like(gt_xy), dt=gt_dt))
         primary = (spec.primary_metric if spec else None) or "ade"
         travelled = float(np.linalg.norm(np.diff(gt_xy, axis=0), axis=1).sum())
         # An all-zero plan's error is the distance travelled. Either the primary

@@ -157,7 +157,11 @@ def path_length_ratio(pred_xy, gt_xy) -> tuple[float, float, float]:
     gt_xy = np.asarray(gt_xy, dtype=np.float64)[:, :2]
     n = min(len(pred_xy), len(gt_xy))
     if n < 1:
-        return 0.0, 0.0, float("nan")
+        # NaN, not 0.0. Nothing paired, so there is no length to report, and
+        # `summarise` treats the two differently on purpose: a NaN is dropped
+        # and counted in `n_missing`, while a zero averages in as a measured
+        # metre count of nothing and pulls the published column down.
+        return float("nan"), float("nan"), float("nan")
     origin = np.zeros((1, 2))
 
     def length(xy: np.ndarray) -> float:

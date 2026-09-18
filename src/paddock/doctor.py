@@ -19,6 +19,7 @@ from pathlib import Path
 
 from paddock.config import ConfigError, SiteConfig
 from paddock.registry import Registry
+from paddock.runtime import env as env_builder
 from paddock.runtime import gpu
 
 
@@ -115,6 +116,35 @@ def _git_sha(repo: Path) -> str | None:
         return out.stdout.strip()
     except (subprocess.SubprocessError, FileNotFoundError):
         return None
+
+
+def _model_cards(
+    registry: Registry, cfg: SiteConfig, model_filter: str | None
+) -> dict[int | None, tuple[dict[str, str] | None, float]]:
+    """`{device: (an env that selects it, the largest VRAM landing there)}`.
+
+    Which card a model lands on is decided by the environment it is *launched*
+    with -- `model.yaml`'s `env` block and the site's `[models.X] env` override
+    -- and `runtime.gpu.visible_device` is the one definition of that. Reading
+    paddock's own environment instead reports card 0's headroom next to the
+    VRAM figure of a model pinned to card 1, which is the wrong answer to the
+    only question this section is asked.
+
+    A site with no models registered still gets one row: paddock's own
+    environment, which is the honest answer when nothing declares otherwise.
+    """
+    cards: dict[int | None, tuple[dict[str, str] | None, float]] = {}
+    for name, spec in registry.models.items():
+        if model_filter and name != model_filter:
+            continue
+        try:
+            node_env = env_builder.build(spec, cfg)
+        except Exception:  # noqa: BLE001 - a diagnosis must not fail on one model's config
+            continue
+        device = gpu.visible_device(node_env)
+        _, largest = cards.get(device, (node_env, 0.0))
+        cards[device] = (node_env, max(largest, spec.vram_gb))
+    return cards or {gpu.visible_device(): (None, 0.0)}
 
 
 def run(model_filter: str | None = None) -> Report:
@@ -308,25 +338,31 @@ def run(model_filter: str | None = None) -> Report:
     # carry its own copy that always read row 0. On a two-card box pinned with
     # CUDA_VISIBLE_DEVICES=1 that reported the wrong headroom twice over -- the
     # opposite of what this command is for.
-    free = gpu.free_gb()
-    if free is None:
-        pinned_off = gpu.visible_device() is None
+    #
+    # Once per card the models actually land on, not once for paddock's own.
+    # `[models.X] env.CUDA_VISIBLE_DEVICES = "1"` sends that model to card 1,
+    # and reporting card 0's headroom beside its VRAM figure is the same defect
+    # one call site away -- it is the answer to a question nobody asked.
+    cards = _model_cards(registry, cfg, model_filter)
+    for device, (env, wanted) in sorted(cards.items(), key=lambda item: str(item[0])):
+        label = "gpu" if len(cards) == 1 else f"gpu:{device}"
+        free = gpu.free_gb(env)
+        if free is None:
+            report.add(
+                "hardware",
+                label,
+                Status.WARN,
+                "no device" if device is None else "nvidia-smi unavailable",
+                "CPU-only models will still run; GPU models need a working driver",
+            )
+            continue
+        status = Status.OK if free >= wanted else Status.WARN
         report.add(
             "hardware",
-            "gpu",
-            Status.WARN,
-            'CUDA_VISIBLE_DEVICES="" -- no device' if pinned_off else "nvidia-smi unavailable",
-            "CPU-only models will still run; GPU models need a working driver",
-        )
-    else:
-        needed = max((m.vram_gb for m in registry.models.values()), default=0.0)
-        status = Status.OK if free >= needed else Status.WARN
-        report.add(
-            "hardware",
-            "gpu",
+            label,
             status,
-            f"device {gpu.visible_device()}: {free:.1f} GB free of "
-            f"{cfg.gpu.budget_gb:.0f} GB budget (largest model wants {needed:.0f} GB)",
+            f"device {device}: {free:.1f} GB free of "
+            f"{cfg.gpu.budget_gb:.0f} GB budget (largest model landing here wants {wanted:.0f} GB)",
             "another process is holding the card; paddock will wait rather than OOM mid-load",
         )
 

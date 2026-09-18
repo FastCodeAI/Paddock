@@ -27,6 +27,7 @@ from paddock.adapters.models.drivejepa_free.policy import (
     to_model_image,
 )
 from paddock.policy.protocol import (
+    CANBUS_ACCEL,
     CANBUS_VELOCITY,
     CANBUS_YAW_RATE,
     Command,
@@ -268,7 +269,7 @@ def test_a_recorded_acceleration_channel_is_preferred() -> None:
     policy = POLICY(checkpoint="/x.ckpt", pretrain="/x.pt")
     for i in range(20):
         obs = _observation(i / 20.0, speed=20.0)
-        obs.canbus[7] = 1.75
+        obs.canbus[CANBUS_ACCEL] = 1.75
         policy._record(obs)
     ax, _ = policy._acceleration()
     assert policy._accel_source == "canbus"

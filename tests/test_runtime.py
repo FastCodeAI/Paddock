@@ -160,12 +160,19 @@ def test_a_model_pinned_to_no_device_does_not_wait_for_one(monkeypatch) -> None:
 
     Read as an index it was device 0, so a model deliberately pushed onto the
     CPU sat waiting up to two hours for headroom on a card it could not open.
+
+    `-1` is the form people actually write -- it is what the CUDA docs and most
+    READMEs show -- and it is not `isdigit()`, so it fell through to the same
+    device 0 the empty string used to.
     """
     monkeypatch.setattr(gpu.shutil, "which", lambda _name: "/usr/bin/nvidia-smi")
     monkeypatch.setattr(gpu.subprocess, "run", _nvidia_smi_returning("1024\n"))
-    assert gpu.visible_device({"CUDA_VISIBLE_DEVICES": ""}) is None
-    assert gpu.free_gb({"CUDA_VISIBLE_DEVICES": ""}) is None
-    gpu.wait_for(24.0, timeout_s=0.0, poll_s=0.0, env={"CUDA_VISIBLE_DEVICES": ""})
+    for value in ("", "-1", " -1 ", "-1,-1"):
+        assert gpu.visible_device({"CUDA_VISIBLE_DEVICES": value}) is None, value
+        assert gpu.free_gb({"CUDA_VISIBLE_DEVICES": value}) is None, value
+        gpu.wait_for(24.0, timeout_s=0.0, poll_s=0.0, env={"CUDA_VISIBLE_DEVICES": value})
+    # And a leading `+` is still an index, not a refusal.
+    assert gpu.visible_device({"CUDA_VISIBLE_DEVICES": "+0"}) == 0
 
 
 def test_free_vram_is_unknown_rather_than_wrong_for_a_device_that_is_not_there(monkeypatch) -> None:

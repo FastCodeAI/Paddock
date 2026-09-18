@@ -533,11 +533,13 @@ class _OpenLoop(OpenLoopBenchmark):
         return {"ade": 1.0}
 
 
-def _stub_open_loop_nodes(monkeypatch, waypoints: int = 8):
+def _stub_open_loop_nodes(monkeypatch, waypoints: int = 8, extras: dict | None = None):
     """Start no subprocess and answer `/infer_sequence` from memory.
 
     Returns `(urls, requests)`, both filled as the run goes: which nodes were
-    started, and which sample each one was asked about.
+    started, and which sample each one was asked about. `extras` is what the
+    node puts beside the trajectory -- the auxiliary heads a real policy sends
+    and the runner has to carry through to the harness and the record.
     """
     import contextlib
 
@@ -565,7 +567,10 @@ def _stub_open_loop_nodes(monkeypatch, waypoints: int = 8):
 
     def _post(url, json=None, timeout=None, **_kwargs):
         requests.append((url.rsplit("/", 1)[0], int(json["observations"][0]["timestamp"])))
-        return _Response({"trajectory": [[float(i), 0.0] for i in range(1, waypoints + 1)]})
+        body: dict = {"trajectory": [[float(i), 0.0] for i in range(1, waypoints + 1)]}
+        if extras is not None:
+            body["extras"] = extras
+        return _Response(body)
 
     def _get(url, timeout=None, **_kwargs):
         # `/diagnostics`, fetched once while the node is still up. Answered
@@ -749,6 +754,58 @@ def test_every_node_a_benchmark_asks_for_is_started_and_used(tmp_path, monkeypat
     assert len(urls) == 3 and len(set(urls)) == 3, "three nodes on three ports"
     assert len(set(url for url, _ in requests)) == 3, "and every one of them was asked something"
     assert sorted(stamp for _, stamp in requests) == list(range(7))
+
+
+def test_the_auxiliary_heads_a_node_sends_reach_both_the_harness_and_the_record(
+    tmp_path, monkeypatch
+) -> None:
+    """`extras` is the only part of a prediction the runner does not compute.
+
+    It arrives on the wire and has to survive two hops: into the `Trajectory`
+    the harness scores (a metric like `lead_mae` is computed from nothing else),
+    and into `samples.jsonl`, because re-running a 10,165-sample sweep to get a
+    lead distance back costs hours. Neither hop had a test; the stub node
+    returned no `extras` at all, so the plumbing was exercised only in the
+    branch where it does nothing.
+    """
+    from paddock import runner
+
+    _isolate_results(tmp_path, monkeypatch)
+    aux = {"pose": {"v": [1.0, 0.0, 0.0]}, "lead": [{"x": 30.0, "v": 12.0, "a": 0.0, "prob": 0.9}]}
+    _stub_open_loop_nodes(monkeypatch, extras=aux)
+    cfg = _cfg(tmp_path)
+
+    seen: list[dict | None] = []
+
+    class _Scoring(_OpenLoop):
+        def score(self, sample, prediction) -> dict[str, float]:
+            seen.append(prediction.extras)
+            return super().score(sample, prediction)
+
+    harness = _Scoring(cfg, n=3)
+    rc = runner._run_open_loop(cfg, harness, harness.spec, _model_spec(), 9000, None, lambda _s: None)
+
+    assert rc == 0
+    assert seen == [aux] * 3, "the harness scores what the node sent, not a stripped copy"
+    records = [json.loads(line) for line in (_artifacts(cfg) / "samples.jsonl").read_text().splitlines()]
+    assert [r["extras"] for r in records] == [aux] * 3
+
+
+def test_a_model_with_no_auxiliary_heads_writes_no_extras_key(tmp_path, monkeypatch) -> None:
+    """`"extras": null` on every sample of every model that has none is noise in
+    a file a dashboard reads by key. Absent is the honest encoding, and the
+    runner's `if prediction.extras` is what makes it so."""
+    from paddock import runner
+
+    _isolate_results(tmp_path, monkeypatch)
+    _stub_open_loop_nodes(monkeypatch)
+    cfg = _cfg(tmp_path)
+
+    harness = _OpenLoop(cfg, n=2)
+    runner._run_open_loop(cfg, harness, harness.spec, _model_spec(), 9000, None, lambda _s: None)
+
+    records = [json.loads(line) for line in (_artifacts(cfg) / "samples.jsonl").read_text().splitlines()]
+    assert records and all("extras" not in r for r in records)
 
 
 # --------------------------------------------------------------------------
