@@ -844,6 +844,42 @@ def test_a_finished_open_loop_resume_never_starts_a_node(tmp_path, monkeypatch) 
     assert any("no node started" in line for line in said)
 
 
+def test_a_finished_full_sweep_resume_never_starts_a_node_either(tmp_path, monkeypatch) -> None:
+    """The case the guard above was written for and could not reach.
+
+    `outstanding` is None whenever there is no `--limit`, so a guard on it
+    alone only ever fired for `--limit` runs -- while comma2k19's sweep, the
+    run that motivated it, has no limit. Re-issuing a finished 10,165-sample
+    run still paid four checkpoint reads and four VRAM waits to rewrite the
+    record it already had. Without a limit the count to compare against is the
+    harness's own `coverage()`.
+    """
+    from paddock import runner
+
+    _isolate_results(tmp_path, monkeypatch)
+    urls, _ = _stub_open_loop_nodes(monkeypatch)
+    cfg = _cfg(tmp_path)
+
+    class _Counted(_OpenLoop):
+        def coverage(self):
+            return [{"sample_key": str(i)} for i in range(self.n)], []
+
+    first = _Counted(cfg, n=3, nodes=4)
+    assert runner._run_open_loop(cfg, first, first.spec, _model_spec(), 9000, None, lambda _s: None) == 0
+    artifacts = _artifacts(cfg)
+    started_by_the_first = len(urls)
+
+    said: list[str] = []
+    again = _Counted(cfg, n=3, nodes=4)
+    rc = runner._run_open_loop(
+        cfg, again, again.spec, _model_spec(), 9000, None, said.append, resume=artifacts.name
+    )
+
+    assert rc == 0
+    assert len(urls) == started_by_the_first, "four nodes started for a sweep with nothing left to do"
+    assert any("no node started" in line for line in said)
+
+
 def test_a_wedged_node_stops_the_sweep_instead_of_grinding(tmp_path, monkeypatch) -> None:
     """A node that fails everything costs two weeks and produces an invalid run.
 
@@ -875,6 +911,44 @@ def test_a_wedged_node_stops_the_sweep_instead_of_grinding(tmp_path, monkeypatch
     assert rc == 1, "nothing scored, so nothing is recorded"
     assert len(attempts) <= runner.MAX_CONSECUTIVE_FAILURES + 1, "kept handing samples to a dead node"
     assert any("consecutive sample failures" in line for line in said)
+
+
+def test_one_wedged_node_among_four_stops_the_sweep_too(tmp_path, monkeypatch) -> None:
+    """The count has to be per node, or four nodes make it unreachable.
+
+    A batch of four with one wedged node comes back fail, ok, ok, ok. A single
+    counter is reset by the three that worked, so the guard above never fires
+    and the sweep runs its full length paying a 600 s timeout a batch -- about
+    a fortnight over 10,165 samples, which is the thing it exists to end.
+    """
+    import httpx
+
+    from paddock import runner
+
+    _isolate_results(tmp_path, monkeypatch)
+    _stub_open_loop_nodes(monkeypatch)
+    cfg = _cfg(tmp_path)
+    answering = httpx.post
+    wedged_url = "http://127.0.0.1:9000"
+    attempts: list[str] = []
+
+    def _one_node_wedged(url, json=None, timeout=None, **kwargs):
+        attempts.append(url)
+        if url.startswith(wedged_url):
+            raise httpx.ReadTimeout("node stopped answering")
+        return answering(url, json=json, timeout=timeout, **kwargs)
+
+    monkeypatch.setattr(httpx, "post", _one_node_wedged)
+
+    said: list[str] = []
+    bench = _OpenLoop(cfg, n=4_000, nodes=4)
+    runner._run_open_loop(cfg, bench, bench.spec, _model_spec(), 9000, None, said.append)
+
+    dead = [url for url in attempts if url.startswith(wedged_url)]
+    assert len(dead) <= runner.MAX_CONSECUTIVE_FAILURES + 1, "kept handing samples to the dead node"
+    assert len(attempts) < 4_000, "the other three nodes carried the sweep to the end regardless"
+    assert any("consecutive sample failures" in line for line in said)
+    assert any(wedged_url in line for line in said), "the abort has to name which node wedged"
 
 
 def test_a_run_records_the_revision_and_the_policy_that_produced_it(tmp_path, monkeypatch) -> None:
