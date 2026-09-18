@@ -114,10 +114,26 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 | OpenPilot | 2.477 △ | 1.599 | 1.507 ✦ ⊗ | 0.807 ◐ | 0.747 (10 Hz) ‡ | 0.807 (10 Hz) ‡ | 30.09 ≈ ◆ | **3.60** ‖ | **0.9566** ¶ |
 | Alpamayo 1.5 | 0.787 △ | 1.002 | **0.900** ✦ | — ◐◐ | 0.691 (10 Hz) † | 0.753 (10 Hz) † | 44.58 ◆ | **3.73** ‖ | 0.9000 ¶¶ |
 | Drive-JEPA | 0.912 △ | 2.364 | 16.048 ✦ | 1.512 ◐ | 0.843 | 0.892 † | 31.11 ◆ | **3.57** ‖ | 0.5030 ¶ |
+| Drive-JEPA, KITScenes re-ranker ⊛ | 0.620 ⊛ | 0.973 ⊛ | not run | not run | not run | not run | — | not run ⊛ | — |
 | VisionPilot | 1.441 △ | 1.534 ∗ | 4.045 ✦ ∗ | 2.246 ◐ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.8488 ¶ |
 | METEOR | 0.977 △ | 1.879 ◇ | — ✦ | 1.273 ◐ | 0.303 ◊ | 0.366 ◊ | — | **2.64** ‖ | — |
 | Qwen-Drive 1.0 | 0.450 | 0.806 | 1.159 ✦ | — | 0.840 | 0.876 | 12.92 ◆◆ | **2.49** | — |
 | Baseline (Constant Velocity) | 0.641 △ | 1.381 | 1.639 ✦ | 1.393 ◐ | 0.239 | 0.207 † | 47.94 ♣ | 0 § | *0.8850* ¶ |
+
+⊛ `drivejepa_rerank` is Drive-JEPA unchanged up to its 32 candidate
+trajectories. A small selector then chooses among them, in place of Drive-JEPA's
+NAVSIM-trained scorer. That selector was trained on KITScenes **train** (5,711
+keyframes, 373 scenes, none of them in the benchmark), so its KITScenes cell is
+*adapted*, not zero-shot like the rows around it; its nuScenes cell is zero-shot.
+It sees the cameras cropped onto the OpenScene lens and gets no route hint.
+Through that same path, Drive-JEPA's own pick scores 2.521 and the best of its 32
+scores 0.409. The selector learned closeness to the human path and nothing about
+collisions, so it has no closed-loop cells until it has been through neuroNCAP.
+On nuScenes it is 0.021 below constant velocity on cumulative L2, which is not
+separated (paired over 150 scenes, t −1.3). It beats constant velocity on ADE@3s
+(0.985 against 1.069, t −3.2). Its point collision rate, 1.82%, is the one column
+worse than Drive-JEPA's 1.46%: it keeps speed where the human slowed.
+See `docs/models/drivejepa_rerank.md`.
 
 ∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
 KITScenes, Paddock constructs sampled XY points from its projected image-space
@@ -376,6 +392,7 @@ history, CUDA inference, CPU camera warping and resume assistance disabled.
 | OpenPilot | 1.925 | 4.054 | 6.194 | 4.057 | 2.477 | 3.535 | 2.624 |
 | Alpamayo 1.5 | 0.509 | 1.351 | 2.602 | 1.487 | 0.787 | 1.249 | 1.582 |
 | Drive-JEPA | 0.540 | 1.587 | 3.519 | 1.882 | 0.912 | 1.536 | 1.459 |
+| Drive-JEPA, KITScenes re-ranker ⊛ | 0.394 | 1.051 | 2.075 | 1.173 | 0.620 | 0.985 | 1.823 |
 | VisionPilot | 1.031 | 2.213 | 3.837 | 2.360 | 1.441 | 2.058 | 3.816 |
 | METEOR | 0.616 | 1.683 | 3.356 | 1.885 | 0.977 | 1.570 | 6.152 ◇ |
 | Qwen-Drive 1.0 | 0.318 | 0.722 | 1.360 | 0.800 | 0.450 | 0.678 | 0.770 |
@@ -407,13 +424,17 @@ Open-loop displacement error in metres over the 3 s horizon, full 223-sample
 split. Alpamayo 1.5 is its nav-conditioned single-draw run. VisionPilot's
 trajectory is synthesised by the adapter (see ∗); METEOR sees six of its eight
 cameras (see ◇). Qwen-Drive 1.0 reads three of the ring's six and is zero-shot
-on this dataset. Only it and Alpamayo 1.5 beat the constant-velocity baseline.
+on this dataset. Among zero-shot models, only it and Alpamayo 1.5 beat the
+constant-velocity baseline. The re-ranked Drive-JEPA row also beats it, but it is
+adapted to KITScenes train (see ⊛): 1.002 on the 186 val samples, 0.828 on the 37
+from scenes whose area overlaps train.
 
 | Model | ADE@3s ↓ (m) | FDE@3s ↓ (m) |
 |---|---:|---:|
 | OpenPilot | 1.599 | 2.894 |
 | Alpamayo 1.5 | 1.002 | 2.158 |
 | Drive-JEPA | 2.364 | 4.199 |
+| Drive-JEPA, KITScenes re-ranker ⊛ | 0.973 | 2.082 |
 | VisionPilot | 1.534 ∗ | 3.089 ∗ |
 | METEOR | 1.879 ◇ | 4.034 ◇ |
 | Qwen-Drive 1.0 | **0.806** | **1.777** |
