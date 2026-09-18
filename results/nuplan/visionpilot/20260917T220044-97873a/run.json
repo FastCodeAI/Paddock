@@ -1,0 +1,33 @@
+{
+  "run_id": "20260917T220044-97873a",
+  "site": "renesas-sjc",
+  "benchmark": "nuplan",
+  "model": "visionpilot",
+  "mode": "open_loop",
+  "started_utc": "2026-09-17T22:00:44+00:00",
+  "duration_s": 188.4,
+  "repo_sha": null,
+  "dataset": {
+    "name": "nuplan",
+    "n_samples": 25,
+    "sequences_sha256": "00e2136107adfa1a"
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT"
+    ],
+    "split": "mini",
+    "scenarios_per_type": 8,
+    "min_separation_s": 20.0,
+    "history_frames": 48,
+    "interval_s": 0.5,
+    "eval_horizon_s": 3.0,
+    "camera": "CAM_F0"
+  },
+  "hardware": {},
+  "status": "complete",
+  "valid": false,
+  "notes": "camera images cover 25 of 351 scorable anchors (53 logs have no images); not comparable with a full-coverage run",
+  "ingested_from": ""
+}

@@ -74,4 +74,4 @@ capabilities:
 # before loading the model, rather than silently recording the artefact.
 # `navsim_v1` is not declared: no 10 Hz run under the v1 devkit yet, and the v1
 # harness would need its own [benchmarks.navsim_v1] nuplan setting.
-benchmarks: [kitscenes, neuroncap, bench2drive, navsim, nuscenes]
+benchmarks: [kitscenes, neuroncap, bench2drive, navsim, nuscenes, nuplan]

@@ -296,6 +296,9 @@ class OpenpilotPolicy(Policy):
         from openpilot.system.camerad.cameras.nv12_info import get_nv12_info
 
         self.model = self._new_model()
+        import inspect
+
+        self._run_takes_prepare_only = "prepare_only" in inspect.signature(self.model.run).parameters
         # ModelState caches its device tensors by buffer address, so this array
         # must be allocated once and written in place -- never reallocated.
         self.nv12_info = get_nv12_info(TARGET_W, TARGET_H)
@@ -322,6 +325,9 @@ class OpenpilotPolicy(Policy):
         were being fed a subtly wrong view, with nothing failing.
         """
         self.model = self._new_model()
+        import inspect
+
+        self._run_takes_prepare_only = "prepare_only" in inspect.signature(self.model.run).parameters
         self.camera = None
         self.cam_road = None
         self.cam_wide = None
@@ -419,7 +425,13 @@ class OpenpilotPolicy(Policy):
         for _ in range(repeats):
             for buf, packed in packs:
                 pack_nv12(buf, packed, TARGET_W, TARGET_H, stride, y_height)
-            out = self.model.run(self.bufs, transforms, inputs)
+            # openpilot 0.11 added a `prepare_only` positional to ModelState.run.
+            # Probed rather than pinned: the sha in repos.yaml predates it, and
+            # hardcoding either arity breaks whichever checkout a site has.
+            if self._run_takes_prepare_only:
+                out = self.model.run(self.bufs, transforms, inputs, False)
+            else:
+                out = self.model.run(self.bufs, transforms, inputs)
         self.frames_seen += 1
 
         if out is None or "plan" not in out:
@@ -507,6 +519,13 @@ class OpenpilotPolicy(Policy):
         A negative margin means the warp samples outside what the camera saw --
         black wedges at the edges of the model's input, invisible in the score.
         """
+        # Which ModelState.run arity was probed at load. Worth reporting because
+        # it is the visible sign of the checkout's generation: the sha in
+        # repos.yaml predates `prepare_only`, so True means the run was made
+        # against a newer tree and its number is not attributable to the pin.
+        # Served at /diagnostics only -- nothing persists that into `run.json`
+        # for an open-loop run yet, so this is a live check, not provenance.
+        probe = {"run_takes_prepare_only": bool(getattr(self, "_run_takes_prepare_only", False))}
         if self.camera is None:
             return {"status": "no frame seen yet"}
         # Each view's margin from the camera that actually feeds it: in the
@@ -519,6 +538,7 @@ class OpenpilotPolicy(Policy):
             else {"img": self.camera, "big_img": self.camera}
         )
         return {
+            **probe,
             "source_hfov_deg": round(self.camera.src.hfov_deg, 2),
             "source_vfov_deg": round(self.camera.src.vfov_deg, 2),
             "margin_deg": {

@@ -51,6 +51,23 @@ def data() -> dict:
     return json.loads(RECORDS.read_text())
 
 
+def _matrix_cell(row_label: str, column_header: str) -> str:
+    """One support-matrix cell, addressed by row label and column header.
+
+    The column is found rather than counted. Its index is not stable -- adding
+    the nuPlan column moved Bench2Drive from 5 to 6 -- and a hardcoded index
+    fails by reading a *different* benchmark's number, which is a confusing way
+    to learn that the matrix grew.
+    """
+    lines = README.read_text().split("\n")
+    header = next(ln for ln in lines if ln.startswith("| | ") and column_header in ln)
+    index = next(
+        i for i, c in enumerate(c.strip() for c in header.strip().strip("|").split("|")) if column_header in c
+    )
+    row = next(ln for ln in lines if ln.startswith(f"| {row_label} |"))
+    return [c.strip() for c in row.strip().strip("|").split("|")][index]
+
+
 def _readme_table(after: str) -> list[list[str]]:
     """The first markdown table following a heading or marker line."""
     lines = README.read_text().split("\n")
@@ -239,8 +256,7 @@ def test_openpilot_block_reproduces(data: dict) -> None:
 
 def test_support_matrix_openpilot_cell_is_the_unassisted_estimate(data: dict) -> None:
     est = data["summaries"]["openpilot_unassisted24_estimate"]["driving_score"]
-    line = next(ln for ln in README.read_text().split("\n") if ln.startswith("| OpenPilot |"))
-    cell = [c.strip() for c in line.strip().strip("|").split("|")][5]
+    cell = _matrix_cell("OpenPilot", "Bench2Drive")
     assert re.match(rf"^{est:.2f}\b", cell), (
         f"the support matrix publishes {cell!r} for Bench2Drive; it must stay the "
         "unassisted estimate, not a pooled mean"
@@ -298,8 +314,7 @@ def test_support_matrix_baseline_cell_is_the_historical_24_three_mps(data: dict)
     s = data["summaries"]["original24"]["constant_velocity_3mps"]
     readme = README.read_text()
     assert f"**{s['driving_score']:.2f} ♣**" in readme
-    line = next(ln for ln in readme.split("\n") if ln.startswith("| Baseline (Constant Velocity) |"))
-    cell = [c.strip() for c in line.strip().strip("|").split("|")][5]
+    cell = _matrix_cell("Baseline (Constant Velocity)", "Bench2Drive")
     assert cell.startswith(f"{s['driving_score']:.2f}"), cell
 
 
