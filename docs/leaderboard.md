@@ -1,7 +1,17 @@
 # Paddock leaderboard
 
-72 runs across 6 benchmarks.
-32 run(s) excluded as invalid — shown at the end, never averaged in.
+85 runs across 7 benchmarks.
+40 run(s) excluded as invalid — shown at the end, never averaged in.
+
+## alpasim
+
+| model | run | n | site | scene_score ↑ | progress ↑ | collision_rate ↓ | collision_at_fault ↓ | offroad ↓ | duration_frac_20s ↑ | dist_to_gt_trajectory ↓ |
+|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| openpilot | openpilot_020_pilot10 | 10 | fastcode-shakaal | 0.957 | 0.901 | 0.100 | 0.000 | 0.000 | 0.777 | 1.454 |
+| alpamayo15 | alpamayo_proxy_referee_20hz | 10 | fastcode-shakaal | 0.900 | 0.960 | 0.100 | 0.100 | 0.000 | 0.740 | 3.170 |
+| constant_velocity | cv_023_20hz_pilot10 | 10 | fastcode-shakaal | 0.885 | 0.829 | 0.200 | 0.000 | 0.000 | 0.653 | 2.507 |
+| visionpilot | visionpilot_v2_smoke_pilot10_handover_blend | 10 | fastcode-shakaal | 0.849 | 0.820 | 0.300 | 0.100 | 0.000 | 0.699 | 1.467 |
+| drivejepa | drivejepa_014_20hz | 10 | fastcode-shakaal | 0.503 | 0.565 | 0.400 | 0.200 | 0.100 | 0.462 | 2.443 |
 
 ## bench2drive
 
@@ -24,6 +34,7 @@
 |---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
 | alpamayo15 | streamtest2-nonav | 8 | fastcode-shakaal | 0.574 | 0.270 | 0.664 | 1.067 | 0.280 | 0.372 | 0.581 |
 | alpamayo15 | streamtest-nonav | 5 | fastcode-shakaal | 0.619 | 0.317 | 0.740 | 1.067 | 0.329 | 0.405 | 0.587 |
+| qwendrive | 20260914T220841-5a91fd | 223 | fastcode-shakaal | 0.806 | 0.289 | 0.852 | 1.777 | - | - | - |
 | alpamayo15 | phase3-nav | 7 | fastcode-shakaal | 0.819 | 0.411 | 0.932 | 1.533 | 0.561 | 0.937 | 1.817 |
 | alpamayo15 | phase3-nonav | 7 | fastcode-shakaal | 0.845 | 0.414 | 0.960 | 1.590 | 0.708 | 1.156 | 2.282 |
 | alpamayo15 | full-nonav | 223 | fastcode-shakaal | 0.921 | 0.332 | 0.990 | 2.003 | 0.552 | 0.892 | 1.902 |
@@ -52,10 +63,12 @@
 |---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
 | drivejepa | 2026.08.08.02.26.44 | 242 | fastcode-shakaal | 0.907 | 0.994 | 0.992 | 0.998 | 1.000 | 0.923 | 0.979 |
 | drivejepa | 20260902T173156-7e208f | 12146 | fastcode-shakaal | 0.843 | 0.984 | 0.985 | 0.991 | 0.998 | 0.889 | 0.979 |
+| qwendrive | 20260914T221802-80457c | 12146 | fastcode-shakaal | 0.840 | 0.982 | 0.964 | 0.993 | 0.998 | 0.820 | 0.977 |
 | openpilot | 20260911T161513-3a4c90 | 12146 | fastcode-shakaal | 0.747 | 0.970 | 0.913 | 0.954 | 0.998 | 0.712 | 0.965 |
 | alpamayo15 | 20260912T040211-a9562c | 12146 | fastcode-shakaal | 0.691 | 0.957 | 0.856 | 0.933 | 0.997 | 0.681 | 0.951 |
 | alpamayo15 | 20260903T183818-5879c1 | 12146 | fastcode-shakaal | 0.608 | 0.941 | 0.788 | 0.890 | 0.998 | 0.596 | 0.939 |
 | visionpilot | 20260902T175642-df5291 | 12146 | fastcode-shakaal | 0.431 | 0.727 | 0.819 | 0.926 | 0.975 | 0.404 | 0.700 |
+| meteor | 20260914T234307-e56cfc | 12146 | fastcode-shakaal | 0.303 | 0.694 | 0.687 | 0.805 | 0.979 | 0.317 | 0.683 |
 | constant_velocity | 20260902T175923-feba73 | 12146 | fastcode-shakaal | 0.239 | 0.681 | 0.578 | 0.805 | 0.981 | 0.209 | 0.669 |
 
 ## navsim_v1
@@ -63,10 +76,12 @@
 | model | run | n | site | pdms ↑ | no_at_fault_collisions ↑ | drivable_area_compliance ↑ | ego_progress ↑ | time_to_collision_within_bound ↑ | comfort ↑ | driving_direction_compliance ↑ |
 |---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
 | drivejepa | 20260911T082329-575df6 | 12146 | fastcode-shakaal | 0.892 | 0.984 | 0.985 | 0.887 | 0.881 | 0.999 | 0.988 |
+| qwendrive | 20260915T021715-02aab4 | 12146 | fastcode-shakaal | 0.876 | 0.982 | 0.964 | 0.817 | 0.941 | 1.000 | 0.987 |
 | openpilot | 20260914T181009-dbcef4 | 12146 | fastcode-shakaal | 0.807 | 0.969 | 0.913 | 0.719 | 0.936 | 1.000 | 0.948 |
 | alpamayo15 | 20260914T175447-89a9ca | 12146 | fastcode-shakaal | 0.753 | 0.957 | 0.856 | 0.690 | 0.896 | 0.991 | 0.927 |
 | alpamayo15 | 20260911T044805-0aea35 | 12146 | fastcode-shakaal | 0.676 | 0.941 | 0.788 | 0.604 | 0.878 | 0.979 | 0.885 |
 | visionpilot | 20260911T083323-c07583 | 12146 | fastcode-shakaal | 0.488 | 0.771 | 0.818 | 0.451 | 0.617 | 0.996 | 0.920 |
+| meteor | 20260915T005223-071c0b | 12146 | fastcode-shakaal | 0.366 | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | 0.800 |
 | constant_velocity | 20260911T034553-8f28ac | 12146 | fastcode-shakaal | 0.207 | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 |
 
 ## neuroncap
@@ -82,6 +97,8 @@
 | drivejepa | 20260901T001634-44b6bb | 2 | fastcode-shakaal | 3.536 | - | - | 0.500 | 140.000 |
 | visionpilot | 20260901T000037-c950bd | 1 | fastcode-shakaal | 2.827 | - | - | 1.000 | 89.100 |
 | visionpilot | runs10 | 5 | fastcode-shakaal | 2.792 | 2.510 | 8.314 | 1.000 | - |
+| meteor | 20260915T193036-d34559 | 200 | fastcode-shakaal | 2.644 | 5.051 | 8.604 | 0.480 | - |
+| qwendrive | 20260915T023604-12d5eb | 200 | fastcode-shakaal | 2.487 | 4.514 | 8.604 | 0.690 | - |
 | alpamayo | runs5 | 15 | fastcode-shakaal | 2.458 | 4.731 | 11.226 | 0.667 | - |
 | alpamayo | runs1 | 3 | fastcode-shakaal | 2.059 | 6.393 | 11.557 | 0.667 | - |
 | visionpilot | runs1 | 3 | fastcode-shakaal | 1.968 | 5.133 | 9.902 | 1.000 | - |
@@ -97,6 +114,7 @@
 
 | model | run | n | site | l2_avg ↓ | l2_1s ↓ | l2_uniad_1s ↓ | col_1s ↓ | col_uniad_1s ↓ | l2_2s ↓ | l2_uniad_2s ↓ |
 |---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| qwendrive | 20260915T190350-47479e | 5119 | fastcode-shakaal | 0.800 | 0.318 | 0.245 | 0.007 | 0.007 | 0.722 | 0.427 |
 | constant_velocity | 20260914T225156-e5170c | 5119 | fastcode-shakaal | 1.288 | 0.372 | 0.260 | 0.008 | 0.008 | 1.151 | 0.594 |
 | constant_velocity | 20260907T093007-9697fe | 5119 | fastcode-navvrat-nusc-dj | 1.288 | 0.372 | 0.259 | 0.008 | 0.008 | 1.151 | 0.594 |
 | alpamayo15 | 20260905T093547-3dd7cd | 5119 | fastcode-navvrat-nusc-al | 1.487 | 0.509 | 0.369 | 0.008 | 0.008 | 1.351 | 0.742 |
@@ -115,6 +133,14 @@
 - **neuroncap/drivejepa/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **neuroncap/openpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **neuroncap/visionpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
+- **neuroncap/meteor/20260915T192353-6ed840** — 1 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes)
+- **nuscenes/qwendrive/20260915T190154-9212ce** — --limit 50: a subset of the benchmark, run to test the pipeline
+- **nuscenes/qwendrive/20260915T185751-94386b** — --limit 5: a subset of the benchmark, run to test the pipeline
+- **neuroncap/qwendrive/20260915T022633-f5592e** — 3 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes)
+- **navsim/meteor/20260914T234143-046cae** — --limit 12: a subset of the benchmark, run to test the pipeline
+- **navsim/qwendrive/20260914T221555-9aa1c1** — --limit 12: a subset of the benchmark, run to test the pipeline
+- **kitscenes/qwendrive/20260914T220507-b60641** — --limit 5: a subset of the benchmark, run to test the pipeline
+- **navsim/meteor/20260914T205802-4cc7fb** — --limit 12: a subset of the benchmark, run to test the pipeline
 - **nuscenes/meteor/20260914T202008-98df65** — --limit 5: a subset of the benchmark, run to test the pipeline
 - **kitscenes/meteor/20260914T185332-24b8ff** — --limit 5: a subset of the benchmark, run to test the pipeline
 - **navsim_v1/human/20260911T041230-67c4f3** — privileged: the human agent returns the recorded future the scorer measures against; an anchor for the scoring path, not a model; no model process ran: the recorded human future through the devkit scorer

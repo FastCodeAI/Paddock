@@ -1,0 +1,3 @@
+renderer-0-1    | [NuRec::NRend][INFO] ::: Model nre::sh-gaussians => nre_sh-gaussians@26.4.149 opened
+runtime-0-1     | Connected to driver at driver-0:9105: version_id: "alpamayo1_5-driver-0.91.0"
+runtime-0-1     | git_hash: "unknown"

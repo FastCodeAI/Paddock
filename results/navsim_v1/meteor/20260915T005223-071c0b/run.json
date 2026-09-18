@@ -1,0 +1,50 @@
+{
+  "run_id": "20260915T005223-071c0b",
+  "site": "fastcode-shakaal",
+  "benchmark": "navsim_v1",
+  "model": "meteor",
+  "mode": "open_loop",
+  "started_utc": "2026-09-15T00:52:23+00:00",
+  "duration_s": 728.6,
+  "repo_sha": null,
+  "dataset": {
+    "name": "navsim",
+    "split": "navtest",
+    "n_samples": 12146,
+    "sequences_sha256": "013e89176339021d",
+    "n_failed": 0,
+    "n_unscored": 0,
+    "n_expected": 12146
+  },
+  "config": {
+    "limit": null,
+    "cameras": [],
+    "split": "navtest",
+    "agent": "paddock_replay",
+    "allow_partial": false,
+    "allow_slow": false,
+    "overrides": [],
+    "chunk_order": "by_size",
+    "merged_from": null,
+    "input_hz": 2.0,
+    "history_source": "openscene",
+    "history_s": 1.5,
+    "model_env": {
+      "METEOR_HORIZON_S": "4.0"
+    },
+    "node": null,
+    "replayed_from": "navsim/meteor/20260914T234307-e56cfc",
+    "plans": {
+      "n": 12146,
+      "sha256": "202bb2f7da5cffbc",
+      "from": [
+        "20260914T234307-e56cfc"
+      ]
+    }
+  },
+  "hardware": {},
+  "status": "complete",
+  "valid": true,
+  "notes": "no model process ran: 12146 plans replayed from navsim/meteor/20260914T234307-e56cfc (that run: epdms 0.3027); the same plans, this benchmark's scorer",
+  "ingested_from": ""
+}

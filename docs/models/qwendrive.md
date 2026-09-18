@@ -7,17 +7,7 @@ a trajectory. The VLM is unchanged, so it also answers driving questions. Paddoc
 runs the planning path only. Vendor repo: `Qwen-Drive-1.0` in `repos.yaml`
 (`28091c1`), weights `Qwen-Drive-1.0-4B/` under `[roots.weights]`.
 
-> **The adapter is not on this branch.** `src/paddock/adapters/models/qwendrive/`,
-> its `model.yaml` and the `Qwen-Drive-1.0` entry in `repos.yaml` live on
-> `model/qwendrive` (`b11cade`), so `paddock run --model qwendrive` does not work
-> from here and `Registry.load().models` does not list it. The 50-route
-> Bench2Drive row in the README is **provisional** until that lands: the number
-> is real and ingested from the recordings like every other row, but nothing in
-> *this* tree can re-drive it. This page is here so the row can at least be read
-> — which checkpoint, which cameras, which planner — from the repo rather than
-> from one operator's memory. See the roadmap's Bench2Drive section.
-
-Adapter: `src/paddock/adapters/models/qwendrive/` (on `model/qwendrive`). Run it with
+Adapter: `src/paddock/adapters/models/qwendrive/`. Run it with
 
 ```bash
 paddock doctor --model qwendrive
@@ -95,6 +85,78 @@ the recorded frames, poses and CAN bus, and at each plan:
 the vendor's best-of-N figures select with the ground truth and are not
 reproducible here.
 
+## Training exposure
+
+The vendor states the planner was trained on trajectories "standardized from
+multiple public driving datasets" and reports NAVSIM navtest as its headline
+number, so `trained_on` declares NAVSIM `navtrain`; see the Qwen-Drive × navsim
+section of [comparison.md](comparison.md) for what that does to the NAVSIM
+column. Bench2Drive (CARLA), KITScenes and neuroNCAP (nuScenes, rendered) are
+zero-shot.
+
+## Results
+
+All on `planner-sft`, direct mode, one seeded sample. The first five ran on one
+RTX PRO 6000; the Bench2Drive row pools five source runs over four workers.
+
+| benchmark | n | score | wall clock | run |
+|---|---:|---:|---:|---|
+| KITScenes ADE@3s ↓ | 223 | 0.806 m | 6.6 min | `20260914T220841-5a91fd` |
+| nuScenes cumulative L2 ↓ | 5,119 | 0.450 m | 88 min | `20260915T190350-47479e` |
+| NAVSIM v2 EPDMS ↑ | 12,146 | 0.840 | 4.0 h | `20260914T221802-80457c` |
+| NAVSIM v1 PDMS ↑ | 12,146 | 0.876 | 9 min, no GPU | `20260915T021715-02aab4` |
+| neuroNCAP score ↑ | 200 | 2.49 | 7.7 h | `20260915T023604-12d5eb` |
+| Bench2Drive driving score ↑ | 50 | 12.92 | 3,457 s per route | `pooled50-40c29d24c37d542a-f250e0` |
+
+The v1 figure is worth one line on its own: the vendor reports 87.8 PDMS on this
+split for exactly this configuration, and paddock measures 87.6. That agreement
+covers the camera mapping, the pose history, the 8-pose conversion and the
+scorer together, which is a stronger check than any one of them alone. It is
+also an in-distribution number — the model declares `navtrain`.
+
+nuScenes is the widest margin: lower than every other model on all seven
+columns, collision included, and the first model here to beat the
+constant-velocity baseline outright. Zero-shot — nuScenes is not among the
+datasets the model declares.
+
+## Why neuroNCAP is the exception
+
+First or near-first on every open-loop column, fourth of five closed-loop. The
+recorded artifacts say what the difference is, and it is not braking.
+
+Over all 50 frontal episodes, per model, the mean peak lateral offset of the 3 s
+plan against the collision rate:
+
+| model | collisions | speed change over the episode | mean peak \|lateral\| |
+|---|---:|---:|---:|
+| alpamayo15 | 32% | −2.31 m/s | 10.44 m |
+| drivejepa | 78% | −5.47 m/s | 0.11 m |
+| openpilot | 84% | −1.88 m/s | 1.00 m |
+| **qwendrive** | **86%** | **−2.48 m/s** | **1.22 m** |
+| visionpilot | 90% | −2.45 m/s | 1.91 m |
+
+Qwen-Drive brakes about as hard as Alpamayo, and harder than OpenPilot: on
+`frontal-0103` seed 5 it goes from 7.3 to 2.3 m/s with its planned reach
+collapsing from 21 m to under 5 m. Its lateral offset stays near zero
+throughout. Drive-JEPA brakes hardest of anyone and still collides in 78% of
+episodes. In a staged head-on the closing vehicle arrives whatever the ego's
+speed, so the escape is lateral, and Alpamayo is the only model that takes it.
+
+**This is the model, not the adapter.** Through the same code path on NAVSIM the
+model produces lateral offsets up to 19.92 m at 4 s, 286 plans beyond 10 m, so
+it can express evasion and does at junctions. Across all 200 neuroNCAP episodes
+its peak is 6.40 m and its frontal mean is 1.22 m.
+
+Interpretation, not measurement: neuroNCAP stages collisions that do not occur
+in ordinary driving logs, and this model is trained on recordings of ordinary
+driving. It answers a closing obstacle the way a careful driver answers a slow
+one. Note the sample is five models with a single point at high lateral, so read
+it as where to look next rather than as a fitted relationship.
+
+Side-by-side clips of the frontal episodes, and the figure behind that table,
+are reproducible from the recorded runs — the sweep already writes one mp4 per
+stream per episode (`[benchmarks.neuroncap] video`).
+
 ## The 50-route Bench2Drive run
 
 Five source runs over four workers, 15-16 Sep 2026, `planner-sft` in direct mode
@@ -110,20 +172,22 @@ progress km against 3.7 for Drive-JEPA, and 45 of 50 routes with a collision. It
 is a zero-shot NAVSIM-trained planner meeting CARLA's 20 Hz closed loop, which is
 what the row should be read as.
 
-## Training exposure
-
-The vendor states the planner was trained on trajectories "standardized from
-multiple public driving datasets" and reports NAVSIM navtest as its headline
-number, so `trained_on` declares NAVSIM `navtrain` on the adapter branch, where
-[comparison.md](comparison.md) also carries the Qwen-Drive × navsim section that
-says what that does to the NAVSIM column. Bench2Drive (CARLA), KITScenes and
-neuroNCAP (nuScenes, rendered) are zero-shot.
+**The row is ingested, not re-drivable from this tree.** `model.yaml` declares
+`kitscenes`, `nuscenes`, `navsim`, `navsim_v1` and `neuroncap`, not
+`bench2drive`, so `paddock run --model qwendrive --bench bench2drive` is refused
+here; `results/bench2drive/qwendrive/pooled50-*` was written by `paddock ingest`
+from the per-route `results.json` trees, like every other row in that table.
 
 ## Cost
 
-No latency is published for the model. The adapter's `/diagnostics` reports
-`infer_seconds_mean`; measure it on a `--limit` smoke before projecting a full
-run. Expectations before measurement, direct mode, one sample, this card:
-KITScenes n=223 in well under an hour; NAVSIM navtest in 4–8 h; neuroNCAP's
-200 episodes in 8–11 h. Reasoning mode adds a 256-token decode per plan and
-multiplies closed-loop cost several times over.
+No latency is published for the model. Measured here, direct mode, one sample:
+
+| | |
+|---|---|
+| checkpoint load | 121 s cold, 17 s warm |
+| inference | ~1.0–1.5 s per plan |
+| VRAM | ~15 GB |
+
+`/diagnostics` reports `infer_seconds_mean` live. Reasoning mode adds a
+256-token decode per plan and multiplies closed-loop cost several times over;
+nothing here was run that way.

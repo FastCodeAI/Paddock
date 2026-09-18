@@ -179,6 +179,16 @@ Three things found on the way, none NAVSIM-specific:
 - **`gpu.serialize` is parsed and never enforced.** Only real free VRAM gates a
   node start. Left as-is -- it is what allowed the concurrent sweep -- but the
   key should either do something or go.
+- **A run whose inputs were altered to fit a benchmark is ranked as if they
+  were not** (#48). METEOR plans 3 s where NAVSIM scores 4 s, so its run set
+  `METEOR_HORIZON_S=4.0` and a quarter of every scored trajectory is paddock's
+  continuation of the model's last segment. `run.json` records it and the run
+  id hashes it, but `paddock report` prints the row beside Drive-JEPA's with no
+  marker: `notes` renders only for excluded runs, and `invalid_reasons()` is a
+  benchmark hook that cannot see a model-side env var. `valid: false` is the
+  wrong answer -- the measurement is sound, it is not comparable in kind.
+  **Open.**
+
 - **Two concurrent runs could score each other's model.** `/alive` only proves
   *a* node is answering; a run whose node was still loading passed its health
   check against a sibling's node on the same port and recorded the sibling's
@@ -267,13 +277,21 @@ because its samples span three recording setups; its per-setup means are in
 Not started, and larger than everything above:
 
 - **alpamayo2, vjepa2, sunnypilot** — never evaluated.
-- **QwenDrive has a leaderboard row and no adapter in this tree** — its 50-route
-  run is ingested from the recordings like any other, but
-  `src/paddock/adapters/models/qwendrive/` lives on another branch of this repo,
-  so `paddock run --model qwendrive` does not work here and the row is
-  **provisional** until that adapter lands with a pinned sha.
-  [`docs/models/qwendrive.md`](models/qwendrive.md) names the checkout,
-  checkpoint and camera setup meanwhile. (PR #52 review, finding 5.)
+- **Drive-JEPA and VisionPilot cannot be drawn in a NAVSIM comparison.** Their
+  full-split runs predate the proxy labelling its plan dumps with scenario
+  tokens, so no plan can be tied to a scenario and `paddock render --bench
+  navsim` names them as omitted. They are the two most useful rows to compare
+  against (one leads the benchmark, one sits mid-field). Re-running them is the
+  only fix: about 4 h and 3.5 h of proxy time each.
+- **QwenDrive's Bench2Drive row cannot be re-driven from this tree** — the
+  adapter landed on `main` (#43) with a pinned sha, but its `model.yaml`
+  declares `[kitscenes, nuscenes, navsim, navsim_v1, neuroncap]` and not
+  `bench2drive`, so `paddock run --model qwendrive --bench bench2drive` is
+  refused here. Its 50-route row is ingested from the recordings like every
+  other row in that table; declaring the benchmark needs a route driven through
+  the adapter, not a line in the YAML.
+  [`docs/models/qwendrive.md`](models/qwendrive.md) names the checkpoint and
+  camera setup meanwhile. (PR #52 review, finding 5.)
 - **nuScenes openpilot record is not regenerable with tracked code** — the
   tracked run (`20260908T110028-b71f4f`) was assembled by four-worker site
   orchestration; land that orchestration (or a `--workers` path in the open-loop

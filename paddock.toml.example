@@ -232,6 +232,44 @@ serialize = true
 # PADDOCK_OPENPILOT_NATIVE_LONG = "0"
 # PADDOCK_OPENPILOT_RESUME_S = "0"
 
+# ---------------------------------------------------------------------------
+# [ingest] -- where results that predate paddock live on this machine.
+#
+# Only needed for `paddock ingest`. Absent sources are reported and skipped, so
+# no site is expected to have all of them; the full key list is the docstring of
+# src/paddock/results/legacy.py.
+# ---------------------------------------------------------------------------
+# [ingest]
+#
+# AlpaSim writes into a bucket named for the model, so a site has several roots
+# rather than one. Name the run directories to publish rather than walking a
+# root: everything under a root is not necessarily a row worth publishing.
+# alpasim_runs walks one root instead, one run per directory under it -- only
+# for a root that holds nothing but runs worth publishing.
+# alpasim_runs = "/path/to/alpasim-runs"
+# alpasim_run_dirs = [
+#   "/path/to/runs/openpilot/openpilot_020_pilot10",
+#   "/path/to/runs/baselines/cv_023_20hz_pilot10",
+# ]
+#
+# A run that is known-bad is still ingested, marked valid:false with the reason,
+# because deleting it loses the record that it happened. Keyed by directory name.
+# [ingest.alpasim_invalid]
+# some_run_dir = "actor never rendered; scored against an empty road"
+#
+# A sweep driven one scene per wizard invocation leaves one directory per scene
+# -- which is how anything behind the referee proxy runs, since the container is
+# torn down between scenes. Ingested individually those are runs of n=1 and the
+# ten-scene mean that was actually measured is nowhere in the store. Listed here
+# they become one run; the merge is refused if the directories disagree about the
+# driver or the tick config, or if two of them hold the same scene.
+# [ingest.alpasim_campaigns.legacy-my_campaign_20hz]
+# dirs  = ["/path/to/runs/alpamayo/my_campaign_scene01", "..."]
+# split = "public_2601"  # a sweep driven by explicit scene ids records no
+#                        # test_suite_id; name the suite its scenes came from
+# notes = ""      # required by the results store when valid = false
+# valid = true
+#
 # Recorded Bench2Drive route results, pooled into one run per model (or per
 # speed band). An ARRAY of tables -- double brackets -- one block per run.
 # `runs` may be one root or a list; routes default to every route found under
