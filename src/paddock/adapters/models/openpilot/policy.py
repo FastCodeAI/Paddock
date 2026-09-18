@@ -109,13 +109,6 @@ MODEL_HZ = 20.0  # the rate supercombo believes its input arrives at
 #: error, not a mounting. See the module docstring.
 MAX_MOUNT_DEG = 15.0
 
-#: Sources whose geometry openpilot already describes, so no resampling is
-#: needed on the ONNX backend. Keyed by (width, height) -> focal length.
-#: comma2k19's EON is `("neo", "unknown").narrow_road` in openpilot's own
-#: `DEVICE_CAMERAS` table: 1164x874 at fl 910, which is also the medmodel
-#: frame's focal length -- the model frame is a plain crop of an EON image.
-NATIVE_CAMERAS = {(1164, 874): 910.0, (1928, 1208): 2648.0}
-
 #: Emit openpilot's own longitudinal intent (desired accel + should_stop) so the
 #: closed-loop client can drive it natively instead of through the TCP tracker's
 #: brake-below-0.4 m/s rule. Off by default: the standard tracker path is what
@@ -126,7 +119,6 @@ NATIVE_LONG = os.environ.get("PADDOCK_OPENPILOT_NATIVE_LONG", "").strip().lower(
     "yes",
     "on",
 )
-LONG_ACTION_T = 0.5  # the action_t[1] this adapter feeds the model
 LONG_SMOOTH_SECONDS = 0.3  # openpilot modeld's longitudinal smoothing
 #: Which openpilot longitudinal mode to reproduce (selfdriveState.experimentalMode):
 #: "chill" = lead-follow + cruise only (default openpilot; does not stop for lights),
@@ -445,6 +437,10 @@ class OpenpilotPolicy(Policy):
         self.prev_timestamp: int | None = None
         #: Seconds between the last two observations, measured in `_repeats`.
         self.dt_s = 1.0 / MODEL_HZ
+        #: The cadence of the sequence currently being scored, set by
+        #: `infer_sequence` so the *first* frame has a step to measure too.
+        #: None in closed loop, where there is no sequence to read it from.
+        self._seed_dt_s: float | None = None
         self.prev_accel = 0.0
         self.a_cruise_prev = 0.0
         self.still_s = 0.0
@@ -540,6 +536,25 @@ class OpenpilotPolicy(Policy):
             "vision": models / f"{prefix}driving_vision.onnx",
             "policy": models / f"{prefix}driving_policy.onnx",
         }
+
+    @staticmethod
+    def _in_clone(path: Path) -> str:
+        """A graph path as the *clone* sees it, for a tracked run record.
+
+        `diagnostics()` lands in `run.json` through `provenance.policy`, which is
+        committed -- so an absolute path here is both a portability-gate failure
+        and provenance the other site cannot resolve. Relative to `PADDOCK_REPO`
+        it is exactly what a reader needs: which file inside the pinned checkout
+        produced the number. `store.scrub` would otherwise reduce it to a bare
+        filename, losing the split-layout directory that says which graph it was.
+        """
+        repo = os.environ.get("PADDOCK_REPO")
+        try:
+            return str(path.resolve().relative_to(Path(repo).resolve())) if repo else path.name
+        except (OSError, ValueError):
+            # Outside the clone -- an explicit `PADDOCK_OPENPILOT_ONNX`, usually.
+            # The name is all that can be said without naming a disk.
+            return path.name
 
     def _open_session(self):
         """Whichever graph layout the checkout ships. See `supercombo`'s docstring.
@@ -667,6 +682,28 @@ class OpenpilotPolicy(Policy):
             raise RuntimeError("load() must be called before infer()")
         return self._infer_tinygrad(obs) if self.backend == "tinygrad" else self._infer_onnx(obs)
 
+    def infer_sequence(self, observations: list[Observation]) -> Trajectory:
+        """Tell `_repeats` the cadence before the first frame, then run the base.
+
+        `_repeats` measures the step against the *previous* observation, which
+        leaves the first one with nothing to measure and falling back to one
+        repeat. On a 10 Hz benchmark every later frame is shown twice, so the
+        history the model got was one tick short and the motion across the
+        opening pair read as half of what it was -- the same class of error the
+        repetition exists to prevent, confined to the oldest frame in the
+        buffer. The sequence states its own cadence before any of it is shown.
+
+        Median rather than first difference: a dropped frame in the middle of a
+        recording should not redefine the rate for the frame at the start.
+        """
+        stamps = [int(o.timestamp_us) for o in observations]
+        steps = [b - a for a, b in zip(stamps, stamps[1:], strict=False) if b > a]
+        self._seed_dt_s = float(np.median(steps)) / 1e6 if steps else None
+        try:
+            return super().infer_sequence(observations)
+        finally:
+            self._seed_dt_s = None
+
     def _repeats(self, obs: Observation) -> int:
         """How many times to show one rendered frame.
 
@@ -680,18 +717,25 @@ class OpenpilotPolicy(Policy):
 
         The step is measured rather than assumed, so this follows whatever time
         step the run was launched with. comma2k19 is natively 20 Hz, so there it
-        comes out to exactly 1 throughout and no repetition happens.
+        comes out to exactly 1 throughout and no repetition happens. The first
+        frame of an open-loop sequence has nothing behind it to measure against
+        and takes the sequence's own cadence from `infer_sequence`; in closed
+        loop there is no sequence, and the first frame is the self-primed one
+        below.
 
         Also records `self.dt_s`, the measured step, which the native
         longitudinal planner integrates over.
         """
         repeats = 1
         self.dt_s = 1.0 / MODEL_HZ
-        if self.prev_timestamp is not None:
-            dt = (obs.timestamp_us - self.prev_timestamp) / 1e6
-            if dt > 0:
-                self.dt_s = dt
-                repeats = max(1, round(dt * MODEL_HZ))
+        dt = (
+            (obs.timestamp_us - self.prev_timestamp) / 1e6
+            if self.prev_timestamp is not None
+            else self._seed_dt_s
+        )
+        if dt is not None and dt > 0:
+            self.dt_s = dt
+            repeats = max(1, round(dt * MODEL_HZ))
         if self.frames_seen == 0 and self.self_prime:
             # No history supplied, so manufacture one deep enough to fill the
             # feature buffer. `infer_sequence` clears `self_prime`, so this only
@@ -834,11 +878,15 @@ class OpenpilotPolicy(Policy):
             a_lead = float(np.clip(K_ROOM * room + K_VREL * (v_lead - v_ego), ACCEL_MIN, max_accel))
             cands.append((a_lead, "lead", upstream.stopped(v_ego, a_lead)))
         # e2e candidate (modeld get_action_from_model, plan branch, 0.3 s smoothed)
+        # The horizon the model was told to plan for, read back off the model
+        # rather than restated here -- the two disagreed by 25 ms while this was
+        # a constant. See `Supercombo.long_action_t`.
+        long_action_t = self.model.long_action_t
         a_raw, _ = upstream.accel_and_stop(
             plan33[:, Plan.VELOCITY][:, 0],
             plan33[:, Plan.ACCELERATION][:, 0],
             ModelConstants.T_IDXS,
-            action_t=LONG_ACTION_T,
+            action_t=long_action_t,
             v_ego=v_ego,
         )
         alpha = dt_s / (LONG_SMOOTH_SECONDS + dt_s) if dt_s > 0 else 1.0
@@ -857,7 +905,7 @@ class OpenpilotPolicy(Policy):
             source = source + "+resume"
         return {
             "accel": a_target,
-            "v_target": max(0.0, v_ego + a_target * LONG_ACTION_T),
+            "v_target": max(0.0, v_ego + a_target * long_action_t),
             "should_stop": any(c[2] for c in cands),
             "source": source,
             "mode": OP_MODE,
@@ -905,14 +953,19 @@ class OpenpilotPolicy(Policy):
         if self.session is not None:
             # A dict, not a string: the split layout is two files, and a run
             # record that names only one of them cannot be reproduced from.
-            diag["onnx"] = {k: str(v) for k, v in self.session.paths.items()}
+            diag["onnx"] = {k: self._in_clone(v) for k, v in self.session.paths.items()}
             diag["providers"] = self.session.providers
             diag["model_checkpoint"] = self.session.spec.model_checkpoint
             if getattr(self, "_plans", None):
                 diag["warp_in_bounds"] = {k: round(p.in_bounds_frac, 5) for k, p in self._plans.items()}
             if self.model is not None:
                 diag["warmup_frames"] = self.model.warmup_frames
-                diag["warmed_up"] = self.frames_seen >= self.model.warmup_frames
+                # The model's own tick count, not the policy's call count. They
+                # differ by `_repeats`: one `infer` at 10 Hz drives two ticks, so
+                # the policy count reached the threshold half as fast and
+                # reported "not warmed up" for samples whose queues were full.
+                diag["model_ticks"] = self.model.frames_seen
+                diag["warmed_up"] = self.model.frames_seen >= self.model.warmup_frames
         diag.update(self._last_diag)
         return diag
 

@@ -47,7 +47,7 @@ infer from a tag ordering -- both of these are real revisions of this repo:
   traffic_convention}`, and they run in series. This is openpilot v0.11.1
   (`4df40d2c1`, 2026-05-29). `SplitSession`.
 
-The two differ in three ways that change the numbers, which is why the split
+The two differ in two ways that change the numbers, which is why the split
 path is a separate class rather than a path resolution:
 
 - The vision graph runs *first*, so the feature it produces is pushed into
@@ -56,7 +56,14 @@ path is a separate class rather than a path resolution:
   deep so that `[::frame_skip]` samples the newest entry (no item 2 either).
 - The policy graph has no `action_t` input and no `action` output, so the
   action is always derived from the plan.
-- Its tensors are float16 end to end; the combined graph's are float32.
+
+Precision is **not** one of the differences, though an earlier version of this
+note claimed it was ("float16 end to end; the combined graph's are float32").
+Read off `driving_supercombo.onnx` at the pinned `555f48c5d`: every float input
+and the output are float16 there too, and the two image inputs are uint8 on both
+layouts. Nothing in this module depends on that being float32 -- `Graph.run`
+feeds each input at whatever dtype the graph declares and casts the output back
+to float32 either way -- so the claim was wrong without being load-bearing.
 
 Everything above the graph -- queues, warp, parsing, the action head -- is
 shared, so a number from one layout is comparable with a number from the other
@@ -242,8 +249,8 @@ class Graph:
 
         The tinygrad path casts to float32 before parsing (`run_policy`:
         `.cast('float32')`), and `parse_model_outputs.safe_exp` behaves
-        differently in float16, so this is not cosmetic -- and the split
-        layout's graphs are float16 throughout.
+        differently in float16, so this is not cosmetic -- and *both* layouts'
+        graphs are float16 throughout at the pinned sha, not only the split one.
         """
         typed = {k: np.ascontiguousarray(feed[k], dtype=dt) for k, dt in self.input_dtypes.items()}
         (out,) = self.session.run([self.output_name], typed)
@@ -537,6 +544,18 @@ class SupercomboRunner:
         layout, so this is read off the queue rather than recomputed.
         """
         return int(self.queues.feat_q.shape[0])
+
+    @property
+    def long_action_t(self) -> float:
+        """The `action_t[1]` this adapter actually feeds the model, seconds.
+
+        A property rather than a constant beside the planner that consumes it,
+        because a constant there was written as 0.5 and the model is fed
+        `long_actuator_delay + 0.3 + DT_MDL + DT_MDL/2` = 0.525. The plan was
+        then converted to an acceleration over a horizon 25 ms shorter than the
+        one the network was told to plan for. Small, but free to get right.
+        """
+        return float(self._action_t()[1])
 
     def _action_t(self) -> np.ndarray:
         from openpilot.common.realtime import DT_MDL

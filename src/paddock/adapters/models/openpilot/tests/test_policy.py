@@ -466,3 +466,70 @@ def test_the_two_backends_bind_the_same_cameras(monkeypatch) -> None:
     assert bound["onnx"][:2] == bound["tinygrad"][:2] == ("CAM_OP_ROAD", "CAM_OP_WIDE")
     assert bound["onnx"][2:] == (False, False)
     assert bound["tinygrad"][2:] == (True, True)
+
+
+def _counting_policy(monkeypatch):
+    """An ONNX policy that records one entry per model tick."""
+    policy, _ = _onnx_policy(monkeypatch)
+    ticks: list[float] = []
+    policy.model = type("M", (), {"run": staticmethod(lambda img, big, speed: ticks.append(speed) or {})})()
+    # `reset` would rebuild the runner from the stub session, which has no
+    # graph behind it. Everything else `reset` clears is what is under test.
+    monkeypatch.setattr(policy, "_new_onnx_runner", lambda: None)
+    return policy, ticks
+
+
+def _sequence(hz: float, n: int):
+    out = []
+    for i in range(n):
+        obs = _two_camera_observation()
+        obs.timestamp_us = int(round(i * 1e6 / hz))
+        out.append(obs)
+    return out
+
+
+def test_the_first_frame_of_a_sequence_is_repeated_like_every_other(monkeypatch) -> None:
+    """supercombo runs at 20 Hz; a 10 Hz benchmark must show each frame twice.
+
+    `_repeats` measures against the previous observation, so the first frame of
+    a sequence had nothing to measure and fell back to one tick -- the history
+    was a tick short of what the sequence paid for, and the motion across the
+    opening pair read as half of what it was. Every recorded 10 Hz run here
+    (KITScenes, nuScenes, NAVSIM) went through this path.
+    """
+    policy, ticks = _counting_policy(monkeypatch)
+    policy.infer_sequence(_sequence(hz=10.0, n=4))
+    assert len(ticks) == 8, "two ticks per frame at 10 Hz, the first frame included"
+
+
+def test_a_native_rate_sequence_is_not_repeated_at_all(monkeypatch) -> None:
+    """comma2k19 is recorded at the model's own rate: one tick per frame."""
+    policy, ticks = _counting_policy(monkeypatch)
+    policy.infer_sequence(_sequence(hz=20.0, n=5))
+    assert len(ticks) == 5
+
+
+def test_one_dropped_frame_does_not_redefine_the_rate(monkeypatch) -> None:
+    """The seed is the median step, so a gap in the middle stays a local gap."""
+    policy, ticks = _counting_policy(monkeypatch)
+    frames = _sequence(hz=20.0, n=6)
+    for obs in frames[3:]:
+        obs.timestamp_us += 50_000  # one frame missing partway through
+    policy.infer_sequence(frames)
+    # Five frames at the native rate, plus the doubled step across the gap.
+    assert len(ticks) == 7
+
+
+def test_closed_loop_still_primes_its_own_history(monkeypatch) -> None:
+    """There is no sequence to read a rate from, so the first frame self-primes.
+
+    The seed is scoped to `infer_sequence`; a simulator handing over one frame
+    at a time must keep getting the manufactured warm-up instead.
+    """
+    from paddock.adapters.models.openpilot.policy import FEATURE_BUFFER_FRAMES
+
+    policy, ticks = _counting_policy(monkeypatch)
+    policy.self_prime = True
+    policy.infer(_sequence(hz=10.0, n=1)[0])
+    assert len(ticks) == FEATURE_BUFFER_FRAMES
+    assert policy._seed_dt_s is None
