@@ -118,3 +118,53 @@ def test_infer_sequence_records_the_history_and_runs_the_model_once() -> None:
     assert stub.recorded == frames[:-1], "history must be recorded without inference"
     assert stub.inferred == [frames[-1]], "exactly one forward pass, on the scored frame"
     assert stub.self_prime is True, "self_prime must be restored after the sequence"
+
+
+def test_an_unknown_image_geometry_is_refused(monkeypatch) -> None:
+    monkeypatch.setenv("DRIVEJEPA_IMAGE_GEOMETRY", "fisheye")
+    with pytest.raises(ValueError, match="DRIVEJEPA_IMAGE_GEOMETRY"):
+        POLICY(checkpoint="/x.ckpt")
+
+
+def test_the_default_geometry_is_the_one_published_rows_used(monkeypatch) -> None:
+    monkeypatch.delenv("DRIVEJEPA_IMAGE_GEOMETRY", raising=False)
+    assert POLICY(checkpoint="/x.ckpt").image_geometry == "native"
+
+
+def _counting_observation(t_s: float, opened: list) -> Observation:
+    """An observation whose images are counted as they are opened."""
+
+    class Counted(Observation):
+        def image(self, camera: str = "CAM_FRONT") -> np.ndarray:
+            opened.append((t_s, camera))
+            return np.full((4, 4, 3), int(t_s * 10), dtype=np.uint8)
+
+    k = np.eye(3)
+    return Counted(
+        images={},
+        ego2world=np.eye(4),
+        canbus=np.zeros(18),
+        timestamp_us=int(t_s * 1e6),
+        command=Command.STRAIGHT,
+        camera2image={c: k for c in CAMERA_MAP.values()},
+        camera2ego={c: np.eye(4) for c in CAMERA_MAP.values()},
+        lidar2ego=np.eye(4),
+    )
+
+
+def test_only_the_selected_history_frames_are_decoded() -> None:
+    """A 10 Hz harness sends 49 frames; the model reads four. Only those are opened."""
+    policy = POLICY(checkpoint="/x.ckpt")
+    opened: list = []
+    for tick in range(49):
+        policy.observe(_counting_observation(tick / 10, opened))
+    assert opened == [], "recording must not decode"
+
+    frames = policy._select_history()
+    policy._decode(frames)
+    assert sorted({t for t, _ in opened}) == [3.3, 3.8, 4.3, 4.8]
+    assert len(opened) == 4 * len(CAMERA_MAP), "each selected frame, each camera, once"
+    assert all(f["images"]["CAM_FRONT"][0, 0, 0] == int(round(f["timestamp"] / 1e5)) for f in frames)
+
+    policy._decode(frames)
+    assert len(opened) == 4 * len(CAMERA_MAP), "a decoded frame is not decoded again"

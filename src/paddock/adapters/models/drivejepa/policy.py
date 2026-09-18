@@ -35,6 +35,7 @@ static.
 from __future__ import annotations
 
 import os
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import numpy as np
@@ -50,6 +51,11 @@ CAMERA_MAP = {
     "cam_b0": "CAM_BACK",
 }
 NEEDED_CAMERAS = tuple(CAMERA_MAP.values())
+
+IMAGE_GEOMETRIES = ("native", "openscene")
+
+#: Threads decoding the selected history frames' images; see `_decode`.
+DECODE_THREADS = 4
 
 HISTORY_FRAMES = 4  # NAVSIM agent input depth
 HISTORY_DT = 0.5  # seconds between history frames, NAVSIM's rate
@@ -83,6 +89,17 @@ class DriveJepaPolicy(Policy):
         # no code change.
         self.checkpoint = checkpoint or os.environ.get("DRIVEJEPA_CHECKPOINT")
         self.device = device
+        # "native" hands each camera over at its own intrinsics, which is how
+        # every published drivejepa row was made. "openscene" crops and rescales
+        # it onto the OpenScene camera the checkpoint trained on -- what the
+        # devkit's own KITScenes loader does. It matters there: the ring is 87
+        # degrees against OpenScene's 64, and on the benchmark's first samples
+        # the uncropped images made the best of the 32 candidates worse.
+        self.image_geometry = os.environ.get("DRIVEJEPA_IMAGE_GEOMETRY", "native")
+        if self.image_geometry not in IMAGE_GEOMETRIES:
+            raise ValueError(
+                f"DRIVEJEPA_IMAGE_GEOMETRY={self.image_geometry!r}; expected one of {IMAGE_GEOMETRIES}"
+            )
         self.agent = None
         self.feature_builder = None
         self.history: list[dict[str, Any]] = []
@@ -110,12 +127,16 @@ class DriveJepaPolicy(Policy):
         self.history: list[dict[str, Any]] = []
 
     def _record(self, obs: Observation) -> None:
+        # Images are decoded later, and only for the four frames
+        # `_select_history` picks (`_decode`). An open-loop harness hands over
+        # every 10 Hz frame of its history window -- 49 on KITScenes, four ring
+        # cameras each -- as paths; decoding them all here cost ~10 s a sample
+        # to use 16 of 196.
         self.history.append(
             {
+                "obs": obs,
                 "timestamp": obs.timestamp_us,
                 "ego2world": obs.ego2world,
-                "images": {c: obs.image(c) for c in self.cameras},
-                "camera2image": obs.camera2image,
                 "camera2ego": obs.camera2ego,
                 "speed": obs.speed,
                 "accel": obs.accel,
@@ -126,6 +147,55 @@ class DriveJepaPolicy(Policy):
         # keeps six decoded camera images per entry from growing without bound.
         if len(self.history) > 128:
             self.history = self.history[-128:]
+
+    def _decode(self, frames: list[dict[str, Any]]) -> None:
+        """Give each frame its `images` and `camera2image`, decoding in parallel.
+
+        PIL releases the GIL while decoding a JPEG, so four threads overlap four
+        8-megapixel reads. A frame keeps its pixels once decoded and drops the
+        observation it came from.
+        """
+        pending = {id(f): f for f in frames if "images" not in f}.values()
+        if not pending:
+            return
+        jobs = [(frame, camera) for frame in pending for camera in self.cameras]
+        with ThreadPoolExecutor(DECODE_THREADS) as pool:
+            pixels = list(pool.map(lambda job: job[0]["obs"].image(job[1]), jobs))
+        decoded = {(id(frame), camera): pixels[i] for i, (frame, camera) in enumerate(jobs)}
+        for frame in pending:
+            obs = frame.pop("obs")
+            images = {camera: decoded[(id(frame), camera)] for camera in self.cameras}
+            camera2image = obs.camera2image
+            if self.image_geometry == "openscene":
+                images, camera2image = self._to_openscene(images, camera2image)
+            frame["images"], frame["camera2image"] = images, camera2image
+
+    def _to_openscene(self, images: dict[str, np.ndarray], camera2image: dict[str, np.ndarray]):
+        """Crop and rescale every camera onto the OpenScene pinhole.
+
+        The window is the devkit KITScenes loader's own (`_crop_box`), imported
+        rather than restated, so a paddock run and that loader feed the model
+        the same pixels. Extrinsics are untouched: a crop about the principal
+        point changes only the intrinsics, which become OpenScene's exactly.
+        """
+        from PIL import Image
+
+        from paddock.adapters.models.drivejepa.kitscenes_adapter import (
+            TARGET_HEIGHT,
+            TARGET_WIDTH,
+            _crop_box,
+            target_intrinsics,
+        )
+
+        out_images, out_k = {}, {}
+        for camera, image in images.items():
+            k = camera2image[camera]
+            pinhole = {"focal_length": k[0, 0], "principal_point_u": k[0, 2], "principal_point_v": k[1, 2]}
+            cropped = Image.fromarray(image).crop(_crop_box(pinhole)[:4])
+            cropped = cropped.resize((TARGET_WIDTH, TARGET_HEIGHT), Image.BILINEAR)
+            out_images[camera] = np.asarray(cropped)
+            out_k[camera] = target_intrinsics().astype(np.float64)
+        return out_images, out_k
 
     def _select_history(self) -> list[dict[str, Any]]:
         """Four frames at ~0.5 s spacing, oldest first, clamped at the run start.
@@ -170,6 +240,7 @@ class DriveJepaPolicy(Policy):
         from navsim.common.dataclasses import AgentInput, EgoStatus
 
         frames = self._select_history()
+        self._decode(frames)
         current = frames[-1]["ego2world"]
 
         ego_statuses = []
@@ -200,7 +271,15 @@ class DriveJepaPolicy(Policy):
         """
         self._record(obs)
 
-    def infer(self, obs: Observation) -> Trajectory:
+    def forward(self, obs: Observation) -> dict[str, Any]:
+        """Record *obs* and return the agent's raw output for it.
+
+        Besides the chosen ``trajectory`` this holds all 32 ``proposals``, the
+        scorer's six ``pred_logit`` per proposal and its ``pdm_score``. `infer`
+        keeps only the pick; `drivejepa_rerank` and the candidate dumps under
+        `tools/models/drivejepa/` need the rest, and read it from here so they
+        see exactly the input path `infer` does.
+        """
         if self.agent is None:
             raise RuntimeError("load() must be called before infer()")
 
@@ -216,8 +295,10 @@ class DriveJepaPolicy(Policy):
         }
 
         with torch.no_grad():
-            output = self.agent.forward(features)
+            return self.agent.forward(features)
 
+    def infer(self, obs: Observation) -> Trajectory:
+        output = self.forward(obs)
         # NAVSIM plans eight poses at 0.5 s as (x, y, heading), ego frame,
         # x forward and y left -- exactly the grid paddock uses, so nothing is
         # resampled. All eight are returned: closed-loop takes the first six,
