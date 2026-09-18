@@ -156,6 +156,20 @@ def test_the_ground_offset_lifts_every_camera_alike(tmp_path, monkeypatch) -> No
         assert scored.camera_height(camera) == pytest.approx(POD_Z + POD_HEIGHT_M)
 
 
+def test_the_lidar_frame_is_the_ego_frame(tmp_path, monkeypatch) -> None:
+    """KITScenes calibrates against lidar_top itself, so lidar2ego is the identity.
+
+    Drive-JEPA builds `sensor2lidar` from camera2ego and this; without it the
+    observation is refused (`require_lidar2ego`) and the model cannot run here.
+    """
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+    scored = _scored_observation(_benchmark(tmp_path, monkeypatch, [archive]))
+    np.testing.assert_array_equal(scored.require_lidar2ego(), np.eye(4))
+    # And it survives the trip to a node.
+    np.testing.assert_array_equal(Observation.from_wire(scored.to_wire()).require_lidar2ego(), np.eye(4))
+
+
 def test_the_history_carries_the_ring_at_every_frame(tmp_path, monkeypatch) -> None:
     archive = tmp_path / "archive"
     _write_scene(archive, RING)
