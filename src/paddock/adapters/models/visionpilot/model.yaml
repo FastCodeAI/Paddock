@@ -73,4 +73,4 @@ capabilities:
 # analytically, so nothing dataset-specific is needed to feed it. Run it with
 # `VISIONPILOT_PROVIDERS=cuda` from the site config: 160 history frames x 3 nets
 # x 10,165 samples is not a CPU workload.
-benchmarks: [kitscenes, neuroncap, navsim, navsim_v1, bench2drive, nuscenes, comma2k19]
+benchmarks: [kitscenes, neuroncap, navsim, navsim_v1, bench2drive, nuscenes, comma2k19, nuplan]

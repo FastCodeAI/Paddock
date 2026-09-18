@@ -39,6 +39,22 @@ datasets:
       on different, easier data and is not comparable to those figures. Training
       needs navtrain / trainval_sensor, another separate and much larger download.
 
+  nuplan:
+    description: nuPlan v1.1 -- the original 10 Hz camera logs behind NAVSIM's OpenScene; open-loop ADE/FDE
+    requires: [nuplan-v1.1, maps]
+    splits: [mini, trainval, test]
+    notes: >
+      The logs (13 GB for mini) and the camera blobs (~450 GB, one shard per
+      split) are separate downloads, and holding the first without the second is
+      the normal half-way state -- `paddock doctor` reports it, because scenario
+      selection and ground truth work from the logs alone but no model can be
+      scored without the images. Two directory layouts are in the wild: nuPlan
+      documents nuplan-v1.1/splits/<split>, while the mini archive on S3 unpacks
+      to nuplan-v1.1/splits/data/cache/<split>; both are searched. Unlike the
+      2 Hz OpenScene redistribution under [datasets.navsim], these logs keep the
+      native 10 Hz cameras and 100 Hz ego poses, so models that infer ego motion
+      from frame-to-frame change can be scored here.
+
   neurad_checkpoints:
     description: per-scene NeuRAD renderer checkpoints, required by neuroNCAP
     notes: >

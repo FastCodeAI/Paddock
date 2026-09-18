@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
-82 runs across 8 benchmarks.
-43 run(s) excluded as invalid — shown at the end, never averaged in.
+91 runs across 8 benchmarks.
+49 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
@@ -15,9 +15,18 @@
 
 ## bench2drive
 
-| model | run | n | site | driving_score ↑ | route_completion ↑ | infraction_penalty ↑ | collision_rate ↓ | n_crashed ↑ | duration_s ↑ |
-|---|---|---:|---|---:|---:|---:|---:|---:|---:|
-| constant_velocity | 20260908T084921-804913 | 24 | fastcode-navvrat-cv-b2d | 47.943 | 74.682 | 0.635 | 0.583 | 0.000 | 451.080 |
+| model | run | n | site | driving_score ↑ | route_completion ↑ | infraction_penalty ↑ | collision_rate ↓ | n_runs ↑ | n_crashed ↑ | duration_s ↑ |
+|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| constant_velocity | pooled50-3mps-40c29d24c37d542a-02b6ac | 50 | fastcode-navvrat-b2d-pooled | 48.308 | 74.651 | 0.615 | 0.540 | 1.000 | 0.000 | 194.900 |
+| constant_velocity | 20260908T084921-804913 | 24 | fastcode-navvrat-cv-b2d | 47.943 | 74.682 | 0.635 | 0.583 | - | 0.000 | 451.080 |
+| visionpilot | pooled50-40c29d24c37d542a-d94009 | 50 | fastcode-navvrat-b2d-pooled | 47.821 | 71.191 | 0.622 | 0.580 | 1.000 | 0.000 | 257.252 |
+| constant_velocity | pooled50-9mps-40c29d24c37d542a-13c440 | 50 | fastcode-navvrat-b2d-pooled | 43.574 | 72.699 | 0.577 | 0.580 | 1.000 | 0.000 | 123.802 |
+| alpamayo15 | pooled50-40c29d24c37d542a-36d2d0 | 50 | fastcode-navvrat-b2d-pooled | 43.043 | 72.317 | 0.655 | 0.540 | 1.000 | 0.000 | 3555.930 |
+| constant_velocity | pooled50-12mps-40c29d24c37d542a-0c11b2 | 50 | fastcode-navvrat-b2d-pooled | 42.193 | 72.125 | 0.558 | 0.560 | 1.000 | 0.000 | 108.372 |
+| constant_velocity | pooled50-15mps-40c29d24c37d542a-06f021 | 50 | fastcode-navvrat-b2d-pooled | 41.448 | 73.684 | 0.546 | 0.560 | 1.000 | 0.000 | 107.988 |
+| constant_velocity | pooled50-6mps-40c29d24c37d542a-35a5cb | 50 | fastcode-navvrat-b2d-pooled | 40.388 | 73.075 | 0.539 | 0.620 | 1.000 | 0.000 | 157.368 |
+| drivejepa | pooled50-40c29d24c37d542a-1de367 | 50 | fastcode-navvrat-b2d-pooled | 31.706 | 39.101 | 0.862 | 0.160 | 1.000 | 0.000 | 1068.316 |
+| qwendrive | pooled50-40c29d24c37d542a-f250e0 | 50 | fastcode-navvrat-b2d-pooled | 12.921 | 50.191 | 0.300 | 0.900 | 1.000 | 0.000 | 3457.266 |
 
 ## comma2k19
 
@@ -127,6 +136,7 @@
 
 ## Excluded runs
 
+- **bench2drive/openpilot/pooled50-40c29d24c37d542a-32d680** — Pooled recordings, not one configuration: driver-resume assistance on 16 of the original 24 routes; upstream longitudinal controller on the 26 expansion routes. Not comparable to an unassisted estimate. attempted outside the configured route subset and never scored: 11715 (20260903T171306-b348e3: no records in _checkpoint (the route did not score)). pooled across 3 recording setups (assisted, native-long, unassisted); one mean describes none of them, so this run does not rank -- the per-setup figures are in metrics.json by_group. 9 of 9 source runs kept no run.json, so their routes are attributed to openpilot on the tree they were found in; config.model_env and the rest of config are what 4/9 source runs recorded.
 - **neuroncap/openpilot/legacy-scene0108_runs5** — openpilot closed-loop scores recorded before 12f3250 fixed the traffic_convention one-hot: the node passed [0, 1], telling supercombo it was a right-hand-drive car in a left-hand-drive city. Superseded; re-measure rather than compare. See docs/benchmarks/neuroncap.md.
 - **neuroncap/openpilot/legacy-runs5** — openpilot closed-loop scores recorded before 12f3250 fixed the traffic_convention one-hot: the node passed [0, 1], telling supercombo it was a right-hand-drive car in a left-hand-drive city. Superseded; re-measure rather than compare. See docs/benchmarks/neuroncap.md.
 - **neuroncap/openpilot/legacy-runs1** — openpilot closed-loop scores recorded before 12f3250 fixed the traffic_convention one-hot: the node passed [0, 1], telling supercombo it was a right-hand-drive car in a left-hand-drive city. Superseded; re-measure rather than compare. See docs/benchmarks/neuroncap.md.
@@ -134,6 +144,11 @@
 - **neuroncap/drivejepa/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **neuroncap/openpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **neuroncap/visionpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
+- **nuplan/openpilot/20260917T220353-9e4f44** — camera images cover 25 of 351 scorable anchors (53 logs have no images); not comparable with a full-coverage run
+- **nuplan/visionpilot/20260917T220044-97873a** — camera images cover 25 of 351 scorable anchors (53 logs have no images); not comparable with a full-coverage run
+- **nuplan/constant_velocity/20260917T214417-f827db** — camera images cover 25 of 351 scorable anchors (53 logs have no images); not comparable with a full-coverage run
+- **nuplan/meteor/20260917T195335-1b447c** — camera images cover 26 of 375 anchors (53 logs have no images); not comparable with a full-coverage run
+- **nuplan/drivejepa/20260916T204900-6a17de** — camera images cover 26 of 375 anchors (53 logs have no images); not comparable with a full-coverage run
 - **comma2k19/qwendrive/20260915T214115-405f64** — Superseded by 20260916T220846-971379: the adapter that produced it no longer exists, so no paddock run can reproduce 1.016; it emitted all 50 poses at waypoint_dt 0.1 and score() aligns the ground truth onto the prediction's grid, which is also why comfort read 1932 m/s**3 of quantiser jerk
 - **neuroncap/meteor/20260915T192353-6ed840** — 1 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes)
 - **nuscenes/qwendrive/20260915T190154-9212ce** — --limit 50: a subset of the benchmark, run to test the pipeline

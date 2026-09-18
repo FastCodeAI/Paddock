@@ -54,4 +54,4 @@ capabilities:
     # comment citing carla_garage for an augmentation recipe. See comparison.md.
     - dataset: navsim
       split: navtrain
-benchmarks: [navsim, navsim_v1, kitscenes, neuroncap, bench2drive, nuscenes]
+benchmarks: [navsim, navsim_v1, kitscenes, neuroncap, bench2drive, nuscenes, nuplan]

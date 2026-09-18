@@ -53,4 +53,4 @@ capabilities:
 # benchmark landed, but `--model all` and `paddock render` walk the registry
 # rather than the results directory, so the floor was absent from every figure
 # it was supposed to anchor. A row nobody can see is not a reference.
-benchmarks: [alpasim, nuscenes, bench2drive, comma2k19]
+benchmarks: [alpasim, nuscenes, bench2drive, comma2k19, nuplan]

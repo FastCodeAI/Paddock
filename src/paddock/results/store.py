@@ -204,11 +204,21 @@ class MetricsRecord:
         return asdict(self)
 
 
+def config_hash(config: dict[str, Any] | None = None) -> str:
+    """Short fingerprint of a run's configuration.
+
+    Two runs with the same hash were configured identically. A run id built from
+    the data alone cannot say that -- and `write_run` overwrites a directory that
+    already exists -- so a run id that has to distinguish two settings of the
+    same data (one speed band from another) folds this in.
+    """
+    return hashlib.sha256(json.dumps(config or {}, sort_keys=True, default=str).encode()).hexdigest()[:6]
+
+
 def make_run_id(started: datetime | None = None, config: dict[str, Any] | None = None) -> str:
     """`<UTC timestamp>-<short config hash>`, stable for the same configuration."""
     when = (started or datetime.now(UTC)).strftime("%Y%m%dT%H%M%S")
-    digest = hashlib.sha256(json.dumps(config or {}, sort_keys=True).encode()).hexdigest()[:6]
-    return f"{when}-{digest}"
+    return f"{when}-{config_hash(config)}"
 
 
 def run_dir(benchmark: str, model: str, run_id: str, root: Path = RESULTS_ROOT) -> Path:

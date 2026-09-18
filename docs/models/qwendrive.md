@@ -67,7 +67,7 @@ the recorded frames, poses and CAN bus, and at each plan:
 | NAVSIM v2 / v1 | `native_input_hz: 10` selects nuPlan's 10 Hz path (`[benchmarks.navsim] nuplan`): 16 observations over 1.5 s, frames picked every 0.5 s | 16 real poses with velocity, acceleration, yaw rate | NAVSIM's one-hot, round-tripped exactly | the model's own NAVSIM cameras (`cam_f0/l0/r0`) and history rate |
 | neuroNCAP | one 1600×900 frame per 0.1 s tick, three cameras rendered | from `ego2world` each tick | the engine's | the adapter plans every tick, as every other model here |
 | comma2k19 | 160 observations at 20 Hz per sample, one `/infer_sequence`; **one** camera, replicated into all three view slots | real, 8 s of 20 Hz pose; CAN speed, acceleration differenced | always STRAIGHT — the dataset ships no route | zero-shot on a rig nothing in the corpus resembles; see below |
-| Bench2Drive | one frame per 20 Hz tick | from `ego2world` | route-derived | not yet run; 20 Hz × a VLM is the cost to plan for |
+| Bench2Drive | one frame per 20 Hz tick; the three trained views, `CAM_FRONT` / `CAM_FRONT_LEFT` / `CAM_FRONT_RIGHT` | from `ego2world` | route-derived | driven: 50 routes, DS 12.92 / RC 50.19, `results/bench2drive/qwendrive/pooled50-*`; `duration_s` averages 3457 s per route, the slowest row in that table |
 
 ## Filling three views from one camera
 
@@ -137,14 +137,16 @@ The vendor states the planner was trained on trajectories "standardized from
 multiple public driving datasets" and reports NAVSIM navtest as its headline
 number, so `trained_on` declares NAVSIM `navtrain`; see the Qwen-Drive × navsim
 section of [comparison.md](comparison.md) for what that does to the NAVSIM
-column. KITScenes, neuroNCAP (nuScenes, rendered) and comma2k19 are zero-shot —
-and comma2k19 doubly so, since nothing the report names is a windscreen-mounted
-mono camera on a Californian highway.
+column. Bench2Drive (CARLA), KITScenes, neuroNCAP (nuScenes, rendered) and
+comma2k19 are zero-shot — and comma2k19 doubly so, since nothing the report
+names is a windscreen-mounted mono camera on a Californian highway.
 
 ## Results
 
-All six on `planner-sft`, direct mode, one seeded sample. The first five on one
-RTX PRO 6000; comma2k19 on an H200, seven nodes, `QWENDRIVE_VIEWS=replicate`.
+All seven on `planner-sft`, direct mode, one seeded sample. The first five ran
+on one RTX PRO 6000; comma2k19 on an H200, seven nodes,
+`QWENDRIVE_VIEWS=replicate`; the Bench2Drive row pools five source runs over
+four workers.
 
 | benchmark | n | score | wall clock | run |
 |---|---:|---:|---:|---|
@@ -154,6 +156,7 @@ RTX PRO 6000; comma2k19 on an H200, seven nodes, `QWENDRIVE_VIEWS=replicate`.
 | NAVSIM v1 PDMS ↑ | 12,146 | 0.876 | 9 min, no GPU | `20260915T021715-02aab4` |
 | neuroNCAP score ↑ | 200 | 2.49 | 7.7 h | `20260915T023604-12d5eb` |
 | comma2k19 ADE@3s ↓ | 10,165 | 1.159 m | 2.0 h | `20260916T220846-971379` |
+| Bench2Drive driving score ↑ | 50 | 12.92 | 3,457 s per route | `pooled50-40c29d24c37d542a-f250e0` |
 
 The comma2k19 row replaces an earlier one, and the earlier one is still here.
 `20260915T214115-405f64` (ADE@3s 1.016) was produced by the pre-merge adapter,
@@ -214,6 +217,27 @@ it as where to look next rather than as a fitted relationship.
 Side-by-side clips of the frontal episodes, and the figure behind that table,
 are reproducible from the recorded runs — the sweep already writes one mp4 per
 stream per episode (`[benchmarks.neuroncap] video`).
+
+## The 50-route Bench2Drive run
+
+Five source runs over four workers, 15-16 Sep 2026, `planner-sft` in direct mode
+with one sample, `QWENDRIVE_ATTN=sdpa`, the three trained cameras and paddock's
+own dual-PID tracker — the same tracker every other model in that table drove
+through, so the row compares planners and not controllers. Route 24333's first
+two attempts are `Failed - Agent crashed` (a `prepare_history` edge-padding bug,
+fixed before the rerun); they are not measurements and the ingest drops them, as
+it does for every model.
+
+The result is the weakest row in the table by a wide margin: 41 collisions per
+progress km against 3.7 for Drive-JEPA, and 45 of 50 routes with a collision. It
+is a zero-shot NAVSIM-trained planner meeting CARLA's 20 Hz closed loop, which is
+what the row should be read as.
+
+**The row is ingested, not re-drivable from this tree.** `model.yaml` declares
+`kitscenes`, `nuscenes`, `navsim`, `navsim_v1` and `neuroncap`, not
+`bench2drive`, so `paddock run --model qwendrive --bench bench2drive` is refused
+here; `results/bench2drive/qwendrive/pooled50-*` was written by `paddock ingest`
+from the per-route `results.json` trees, like every other row in that table.
 
 ## Cost
 

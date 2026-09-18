@@ -448,6 +448,9 @@ class OpenpilotPolicy(Policy):
         self.nv12_info = None
         self.buf: np.ndarray | None = None
         self.bufs: dict[str, np.ndarray] = {}
+        #: Whether this checkout's `ModelState.run` takes `prepare_only`, probed
+        #: in `_new_model`. False on the ONNX backend, which never calls it.
+        self._run_takes_prepare_only = False
         self._last_diag: dict[str, Any] = {}
 
     # ---- loading --------------------------------------------------------
@@ -484,7 +487,7 @@ class OpenpilotPolicy(Policy):
 
         artifact = os.environ.get("PADDOCK_OPENPILOT_CUDA_MODEL")
         if not artifact:
-            return modeld.ModelState(TARGET_W, TARGET_H, usbgpu=False)
+            return self._probe_run_arity(modeld.ModelState(TARGET_W, TARGET_H, usbgpu=False))
         path = Path(artifact)
         if not path.is_file():
             raise FileNotFoundError(f"Openpilot CUDA artifact missing: {path}")
@@ -494,7 +497,28 @@ class OpenpilotPolicy(Policy):
                 modeld, "get_tg_input_devices", return_value={"WARP_DEV": "CPU", "QUEUE_DEV": "CUDA"}
             ),
         ):
-            return modeld.ModelState(TARGET_W, TARGET_H, usbgpu=False)
+            return self._probe_run_arity(modeld.ModelState(TARGET_W, TARGET_H, usbgpu=False))
+
+    def _probe_run_arity(self, model):
+        """Record which `ModelState.run` signature this checkout has.
+
+        openpilot 0.11 added a `prepare_only` positional. Probed rather than
+        pinned: the sha in `repos.yaml` predates it, and hardcoding either arity
+        breaks whichever checkout a site has. Here rather than at each call site
+        because `reset` builds a new model per sample and the answer has to
+        follow it.
+        """
+        import inspect
+
+        run = getattr(model, "run", None)
+        try:
+            takes = run is not None and "prepare_only" in inspect.signature(run).parameters
+        except (TypeError, ValueError):
+            # Not introspectable -- a C-level or wrapped `run`. Fall back to the
+            # arity of the sha in repos.yaml rather than failing construction.
+            takes = False
+        self._run_takes_prepare_only = takes
+        return model
 
     def load(self) -> None:
         # Imported here, not at module scope: openpilot's package only exists
@@ -771,7 +795,12 @@ class OpenpilotPolicy(Policy):
         for _ in range(self._repeats(obs)):
             for buf, packed in packs:
                 pack_nv12(buf, packed, TARGET_W, TARGET_H, stride, y_height)
-            out = self.model.run(self.bufs, transforms, inputs)
+            # openpilot 0.11 added a `prepare_only` positional to ModelState.run;
+            # see `_probe_run_arity` for why the arity is probed, not pinned.
+            if self._run_takes_prepare_only:
+                out = self.model.run(self.bufs, transforms, inputs, False)
+            else:
+                out = self.model.run(self.bufs, transforms, inputs)
         self.frames_seen += 1
         if out is None or "plan" not in out:
             return constant_velocity(obs.speed, dt=self.waypoint_dt)
@@ -924,8 +953,15 @@ class OpenpilotPolicy(Policy):
         measured fraction of the model's input that came from real pixels. Less
         than 1.0 means border smearing, which no score will show.
         """
+        # Which ModelState.run arity was probed at load. Worth reporting because
+        # it is the visible sign of the checkout's generation: the sha in
+        # repos.yaml predates `prepare_only`, so True means the run was made
+        # against a newer tree and its number is not attributable to the pin.
+        # Served at /diagnostics only -- nothing persists that into `run.json`
+        # for an open-loop run yet, so this is a live check, not provenance.
+        probe = {"run_takes_prepare_only": bool(getattr(self, "_run_takes_prepare_only", False))}
         if self.camera is None:
-            return {"status": "no frame seen yet", "backend": self.backend}
+            return {"status": "no frame seen yet", "backend": self.backend, **probe}
         # Each view's margin from the camera that actually feeds it: in the
         # two-camera rig the road cam feeds "img" and the wide cam "big_img", so
         # reading both off one camera reports a false deficit for the other. A
@@ -936,6 +972,7 @@ class OpenpilotPolicy(Policy):
             else {"img": self.camera, "big_img": self.camera}
         )
         diag: dict[str, Any] = {
+            **probe,
             "backend": self.backend,
             "model": self.model_name,
             "source_size": [self.camera.src.width, self.camera.src.height],

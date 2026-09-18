@@ -54,6 +54,24 @@ def _benchmark_setting_keys(harness: Path) -> set[str]:
     return set(re.findall(r'self\.setting\(\s*"([^"]+)"', harness.read_text()))
 
 
+def _example_section(header: str) -> str:
+    """The lines of paddock.toml.example belonging to one `[section]`.
+
+    Commented headers count, since the example documents most sections commented
+    out, and so does a trailing comment on the header line -- bench2drive's
+    carries one. Runs to the next header at any comment depth, so a key is only
+    credited to the section that actually shows it.
+    """
+    text = (REPO_ROOT / "paddock.toml.example").read_text()
+    pattern = re.compile(rf"^#?\s*\[{re.escape(header)}\]\s*(?:#.*)?$", re.MULTILINE)
+    match = pattern.search(text)
+    if match is None:
+        return ""
+    rest = text[match.end() :]
+    following = re.search(r"^#?\s*\[[^\]]+\]\s*(?:#.*)?$", rest, re.MULTILINE)
+    return rest[: following.start()] if following else rest
+
+
 @pytest.mark.parametrize(
     "harness",
     sorted(p for p in ADAPTERS.glob("benchmarks/*/harness.py") if not p.parent.name.startswith("_")),
@@ -62,7 +80,11 @@ def _benchmark_setting_keys(harness: Path) -> set[str]:
 def test_every_config_key_a_harness_reads_is_in_the_example_toml(harness: Path) -> None:
     """A key the code reads but the example never names is one that silently
     does nothing at the next site (docs/reviewing.md §7)."""
-    example = (REPO_ROOT / "paddock.toml.example").read_text()
+    # Scoped to the harness's own [benchmarks.<name>] block. Searching the
+    # whole file let one benchmark's key satisfy another's: nuplan reads
+    # `split`, and NAVSIM's commented `split = "navtest"` passed for it while
+    # paddock.toml.example named no nuplan section at all.
+    example = _example_section(f"benchmarks.{harness.parent.name}")
     missing = sorted(
         key
         for key in _benchmark_setting_keys(harness)

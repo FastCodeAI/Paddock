@@ -61,6 +61,16 @@ weights = "/path/to/weights"
 # demo parquet) or compression_challenge/, which are different artefacts.
 # path = "/path/to/comma2k19/raw_data"
 
+# [datasets.nuplan]
+# The original nuPlan release, not NAVSIM's 2 Hz OpenScene redistribution of it.
+# Two layouts are in the wild and both are searched, so point this at whichever
+# directory holds maps/ and nuplan-v1.1/:
+#   nuplan-v1.1/splits/<split>/*.db          (nuPlan's documented layout)
+#   nuplan-v1.1/splits/data/cache/<split>/   (what the mini archive unpacks to)
+# The camera blobs are a separate ~450 GB download per shard; holding the logs
+# without them is a normal state that `paddock doctor` reports.
+# path = "/path/to/nuplan"
+
 # [datasets.neurad_checkpoints]
 # path = "/path/to/neuroncap/checkpoints"      # per-scene NeuRAD renderers
 
@@ -211,6 +221,11 @@ serialize = true
 # run_retries  = 2
 # nodes        = 4
 
+# [benchmarks.nuplan]
+# Which nuPlan split to score. Default "mini"; the scored set is otherwise
+# fixed in the adapter, because two sites must score the same anchors.
+# split = "mini"
+
 # [benchmarks.kitscenes]
 # The shared keyframe list every model is scored on. It *is* the benchmark:
 # two models scored on different lists are not comparable.
@@ -315,6 +330,36 @@ serialize = true
 #                        # test_suite_id; name the suite its scenes came from
 # notes = ""      # required by the results store when valid = false
 # valid = true
+#
+# Recorded Bench2Drive route results, pooled into one run per model (or per
+# speed band). An ARRAY of tables -- double brackets -- one block per run.
+# `runs` may be one root or a list; routes default to every route found under
+# them. The run id is <label>-<route hash>-<config hash>, so two blocks that
+# differ only in `model_env` do not overwrite each other.
+# See src/paddock/results/ingest/bench2drive.py and docs/benchmarks/bench2drive.md.
+# [[ingest.bench2drive]]
+# model  = "drivejepa"
+# runs   = "/path/to/paddock-runs/bench2drive/drivejepa"
+# label  = "pooled50"
+# routes = ["1711", "1852", "2802"]
+# notes  = "24 routes from the 03-04 Sep campaign, 26 from the 09 Sep expansion"
+#
+# Environment overrides recorded in the run's config. The ingest reads what the
+# source runs recorded; this is layered on top, for what they did not. For the
+# constant-velocity baseline it is the only machine-readable statement of which
+# speed band a row is -- without it five bands are indistinguishable.
+# [ingest.bench2drive.model_env]
+# PADDOCK_CV_SPEED_SOURCE = "fixed"
+# PADDOCK_CV_SPEED_M_S = "6"
+#
+# The recording setup each route was driven under, if they differ. Lands on the
+# samples as `group`, so metrics.json carries a per-setup breakdown in
+# `by_group`. A run pooling more than one setup is written `valid: false`: its
+# mean describes no configuration anybody drove, and the leaderboard lists it as
+# excluded rather than ranking it.
+# [ingest.bench2drive.setups]
+# assisted    = ["1711", "2802"]
+# unassisted  = ["1852"]
 
 # ---------------------------------------------------------------------------
 # Environment variables paddock reads

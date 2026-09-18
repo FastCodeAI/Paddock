@@ -481,6 +481,46 @@ def test_a_real_reason_still_invalidates_alongside_a_remark() -> None:
     assert "2 of the 20 official pairs" in notes and "resumed" in notes
 
 
+def test_site_paths_are_withheld_from_a_tracked_record() -> None:
+    """`run.json` is tracked, so no `[models.*] env` value may name a machine."""
+    from paddock.runner import _portable_value
+
+    assert "/opt/weights" not in _portable_value("/opt/weights")
+    # A flag keeps its name -- that says what the override does, not where it lives.
+    assert _portable_value("--ckpt=/opt/w.pt").startswith("--ckpt=<site path:")
+    # Home-relative is machine-specific for the same reason absolute is.
+    assert "weights" not in _portable_value("~/weights")
+    # Relative values are portable and are the interesting part; they pass through.
+    assert _portable_value("cuda") == "cuda"
+    assert _portable_value("2") == "2"
+
+
+def test_two_different_site_paths_do_not_redact_to_the_same_value() -> None:
+    """The redaction must not collapse the run id.
+
+    `_measurement_config` feeds `store.make_run_id` and the `--resume` config
+    check, so if two checkpoint directories redacted identically, `--resume`
+    would continue a run made against one into a run made against the other --
+    silently, and only for sites that set an override at all.
+    """
+    from paddock.runner import _portable_value
+
+    assert _portable_value("/opt/a") != _portable_value("/opt/b")
+    assert _portable_value("--ckpt=/w/a.pt") != _portable_value("--ckpt=/w/b.pt")
+    # Same path, same digest: an unchanged override must not move the run id.
+    assert _portable_value("/opt/a") == _portable_value("/opt/a")
+
+
+def test_every_segment_of_a_path_list_is_withheld() -> None:
+    """`LD_LIBRARY_PATH`-shaped values are the ones that leaked in the first place."""
+    from paddock.runner import _portable_value
+
+    out = _portable_value("/opt/x/lib:relative/lib:/srv/y/lib")
+    assert "/opt/x" not in out and "/srv/y" not in out
+    assert "relative/lib" in out, "a relative segment stays readable"
+    assert out.count("<site path:") == 2
+
+
 # ---- open-loop dispatch: batching, parallel nodes, resume ---------------
 
 
