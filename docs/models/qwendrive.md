@@ -63,7 +63,7 @@ the recorded frames, poses and CAN bus, and at each plan:
 | KITScenes | 49 at 10 Hz, one `/infer_sequence`; ring cameras front, front-left, front-right | real, 4.8 s; speed only | always STRAIGHT | ring cameras sit at +60.9/−58.5° with ~87° HFOV against the ~70° nuPlan cameras the model trained on; zero-shot, not warped |
 | NAVSIM v2 / v1 | `native_input_hz: 10` selects nuPlan's 10 Hz path (`[benchmarks.navsim] nuplan`): 16 observations over 1.5 s, frames picked every 0.5 s | 16 real poses with velocity, acceleration, yaw rate | NAVSIM's one-hot, round-tripped exactly | the model's own NAVSIM cameras (`cam_f0/l0/r0`) and history rate |
 | neuroNCAP | one 1600×900 frame per 0.1 s tick, three cameras rendered | from `ego2world` each tick | the engine's | the adapter plans every tick, as every other model here |
-| Bench2Drive | one frame per 20 Hz tick | from `ego2world` | route-derived | not yet run; 20 Hz × a VLM is the cost to plan for |
+| Bench2Drive | one frame per 20 Hz tick; the three trained views, `CAM_FRONT` / `CAM_FRONT_LEFT` / `CAM_FRONT_RIGHT` | from `ego2world` | route-derived | driven: 50 routes, DS 12.92 / RC 50.19, `results/bench2drive/qwendrive/pooled50-*`; `duration_s` averages 3457 s per route, the slowest row in that table |
 
 ## Environment
 
@@ -91,11 +91,13 @@ The vendor states the planner was trained on trajectories "standardized from
 multiple public driving datasets" and reports NAVSIM navtest as its headline
 number, so `trained_on` declares NAVSIM `navtrain`; see the Qwen-Drive × navsim
 section of [comparison.md](comparison.md) for what that does to the NAVSIM
-column. KITScenes and neuroNCAP (nuScenes, rendered) are zero-shot.
+column. Bench2Drive (CARLA), KITScenes and neuroNCAP (nuScenes, rendered) are
+zero-shot.
 
 ## Results
 
-All five on `planner-sft`, direct mode, one seeded sample, one RTX PRO 6000.
+All on `planner-sft`, direct mode, one seeded sample. The first five ran on one
+RTX PRO 6000; the Bench2Drive row pools five source runs over four workers.
 
 | benchmark | n | score | wall clock | run |
 |---|---:|---:|---:|---|
@@ -104,6 +106,7 @@ All five on `planner-sft`, direct mode, one seeded sample, one RTX PRO 6000.
 | NAVSIM v2 EPDMS ↑ | 12,146 | 0.840 | 4.0 h | `20260914T221802-80457c` |
 | NAVSIM v1 PDMS ↑ | 12,146 | 0.876 | 9 min, no GPU | `20260915T021715-02aab4` |
 | neuroNCAP score ↑ | 200 | 2.49 | 7.7 h | `20260915T023604-12d5eb` |
+| Bench2Drive driving score ↑ | 50 | 12.92 | 3,457 s per route | `pooled50-40c29d24c37d542a-f250e0` |
 
 The v1 figure is worth one line on its own: the vendor reports 87.8 PDMS on this
 split for exactly this configuration, and paddock measures 87.6. That agreement
@@ -153,6 +156,27 @@ it as where to look next rather than as a fitted relationship.
 Side-by-side clips of the frontal episodes, and the figure behind that table,
 are reproducible from the recorded runs — the sweep already writes one mp4 per
 stream per episode (`[benchmarks.neuroncap] video`).
+
+## The 50-route Bench2Drive run
+
+Five source runs over four workers, 15-16 Sep 2026, `planner-sft` in direct mode
+with one sample, `QWENDRIVE_ATTN=sdpa`, the three trained cameras and paddock's
+own dual-PID tracker — the same tracker every other model in that table drove
+through, so the row compares planners and not controllers. Route 24333's first
+two attempts are `Failed - Agent crashed` (a `prepare_history` edge-padding bug,
+fixed before the rerun); they are not measurements and the ingest drops them, as
+it does for every model.
+
+The result is the weakest row in the table by a wide margin: 41 collisions per
+progress km against 3.7 for Drive-JEPA, and 45 of 50 routes with a collision. It
+is a zero-shot NAVSIM-trained planner meeting CARLA's 20 Hz closed loop, which is
+what the row should be read as.
+
+**The row is ingested, not re-drivable from this tree.** `model.yaml` declares
+`kitscenes`, `nuscenes`, `navsim`, `navsim_v1` and `neuroncap`, not
+`bench2drive`, so `paddock run --model qwendrive --bench bench2drive` is refused
+here; `results/bench2drive/qwendrive/pooled50-*` was written by `paddock ingest`
+from the per-route `results.json` trees, like every other row in that table.
 
 ## Cost
 
