@@ -350,6 +350,38 @@ def ingest(
 
 
 @app.command()
+def supersede(
+    bench: str = typer.Option(..., "--bench", "-b"),
+    model: str = typer.Option(..., "--model", "-m"),
+    run_id: str = typer.Option(..., "--run-id", help="The older run, the one to stop ranking."),
+    by: str = typer.Option(..., "--by", help="Run id of the later run that replaces it."),
+    reason: str = typer.Option(..., "--reason", help="Why, in one sentence, for the record."),
+) -> None:
+    """Mark an older run as replaced by a later one of the same model.
+
+    Two runs of one model on one benchmark are both valid as their runner left
+    them, and the leaderboard has no way to pick. This is how the choice is
+    recorded -- the alternative people reach for is editing `valid` in the file,
+    which is the thing `results/` most needs nobody to do.
+
+    Changes `valid`, `superseded_by` and `notes`. The measured numbers and the
+    run's own identity are left exactly as produced, and `metrics.json` is not
+    touched: the older run still happened and still measured what it measured.
+    """
+    from paddock.config import REPO_ROOT
+    from paddock.results.store import SupersedeError
+    from paddock.results.store import supersede as do_supersede
+
+    try:
+        path = do_supersede(bench, model, run_id, by=by, reason=reason)
+    except SupersedeError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"{run_id} superseded by {by}; rewrote {path.relative_to(REPO_ROOT)}")
+    typer.echo("Commit the change: results/ is tracked.")
+
+
+@app.command()
 def report(
     include_invalid: bool = typer.Option(False, "--include-invalid"),
     out: str = typer.Option(None, "--out", help="Write to a file instead of stdout."),

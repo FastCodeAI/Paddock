@@ -42,8 +42,23 @@ def test_scrub_removes_machine_paths_but_keeps_the_name() -> None:
     machine_path = "/" + "/".join(["shakaal_hdd_1", "workspace", "someone", "outputs", "runs1"])
     assert scrub({"from": machine_path, "n": 3}) == {"from": "runs1", "n": 3}
 
-    for root in ("mnt", "home", "proj", "scratch", "datadrive"):
+    # Every root `test_portability.py` bans, not the subset one workspace uses.
+    # `Users` and `spiral` are the two an allowlist-shaped scrubber missed, so a
+    # run committed from a mac or the other cluster failed the gate it was
+    # supposed to satisfy -- with no fix short of editing the record by hand.
+    for root in ("mnt", "home", "proj", "scratch", "datadrive", "Users", "spiral"):
         assert scrub("/" + root + "/x/y/runs5") == "runs5"
+
+
+def test_scrub_keeps_what_is_not_a_machine_path() -> None:
+    """A scrubber that eats URLs and relative paths loses real provenance.
+
+    `provenance.repo.remote` and a policy's reported graph name are both things
+    a reader at the other site can resolve, and both contain slashes.
+    """
+    assert scrub("https://github.com/commaai/openpilot") == "https://github.com/commaai/openpilot"
+    assert scrub("models/supercombo.onnx") == "models/supercombo.onnx"
+    assert scrub("20260917T101500-a1b2c3") == "20260917T101500-a1b2c3"
 
 
 def test_sequence_hash_is_order_independent_and_content_sensitive() -> None:

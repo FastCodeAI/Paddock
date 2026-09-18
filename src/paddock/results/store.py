@@ -30,9 +30,23 @@ from paddock.config import REPO_ROOT
 
 RESULTS_ROOT = REPO_ROOT / "results"
 
-# Any leading path component that identifies one machine. Provenance keeps the
-# tail (a run directory name is informative); the root is dropped.
-_ABSOLUTE = re.compile(r"(?:/[A-Za-z0-9_.+-]+)*/(?:shakaal|mnt|home|proj|scratch|datadrive)\S*")
+# Any absolute filesystem path. Provenance keeps the tail (a run directory name
+# is informative); everything above it is dropped.
+#
+# Deliberately *not* a list of the roots this workspace happens to use. That is
+# what it was, and it was narrower than `MACHINE_ROOTS` in
+# `tests/test_portability.py` -- the gate this scrubber exists to keep green --
+# so a contributor whose home directory sits under a root the gate bans and the
+# scrubber did not got a red build and no way to fix it short of editing the
+# record by hand. A tracked file may not name *any* machine's location, so
+# "starts at the root" is the whole test and there is no list to keep in step
+# with the gate. (Naming those roots here would put this file on the gate's own
+# failure list, which is why the two are related by behaviour and not by a
+# shared constant.)
+#
+# The lookbehind keeps URLs intact: the `//` of `http://host/path` is not the
+# start of a path, and neither is any `/` inside one.
+_ABSOLUTE = re.compile(r"(?<![\w:/])/(?:[A-Za-z0-9_.+-]+/)+[A-Za-z0-9_.+-]*")
 
 
 def scrub(value: Any) -> Any:
@@ -81,6 +95,13 @@ class RunRecord:
     #: silently averaging it in, and the record of it having happened survives --
     #: which deleting the directory would not.
     valid: bool = True
+    #: Run id of the later run that replaced this one, when there is one.
+    #:
+    #: A separate field rather than a sentence in `notes` because "this is not
+    #: the current row" is a fact the tooling has to act on -- `paddock report`
+    #: ranks one row per model -- and prose in `notes` is not something it can
+    #: act on. Written only by `supersede`; see there for why not by hand.
+    superseded_by: str = ""
     notes: str = ""
     #: Where this came from, when it predates paddock.
     ingested_from: str = ""
@@ -214,6 +235,74 @@ def write_run(
             for sample in samples:
                 fh.write(json.dumps(sample, default=json_default) + "\n")
     return directory
+
+
+class SupersedeError(Exception):
+    """Why a supersession was refused, in terms the caller can act on."""
+
+
+def supersede(
+    benchmark: str,
+    model: str,
+    run_id: str,
+    by: str,
+    reason: str,
+    root: Path = RESULTS_ROOT,
+) -> Path:
+    """Mark an older run as replaced by a later one, and stop ranking it.
+
+    The one supported way to retire a row. Two runs of the same model on the
+    same benchmark both land in `results/`, both are `valid: true` as their
+    runner left them, and `paddock report` has no basis for choosing -- so
+    somebody has to say which is current. That somebody used to be a text
+    editor: the two comma2k19 rows this verb was written for had `valid` flipped
+    and a paragraph pasted into `notes` by hand, which is precisely what
+    "never hand-edit a result; regenerate it" exists to prevent. The fields are
+    the same either way; what differs is that this leaves a record of *how* the
+    edit happened and refuses the edits that are wrong.
+
+    Deliberately narrow. It changes `valid`, `superseded_by` and `notes` and
+    nothing else: the run id, the start time, the duration and every measured
+    number stay as the run produced them, because they are still true. It never
+    touches `metrics.json`. `_validity()` in `runner.py` remains the only thing
+    that decides validity *at write time*; this is the one post-hoc exception,
+    and it is a curation decision rather than a measurement one.
+
+    Raises `SupersedeError` if either run is missing, if a run is pointed at
+    itself, or if the replacement is itself superseded -- a chain whose end is
+    not a valid row leaves the model with no row at all.
+    """
+    path = run_dir(benchmark, model, run_id, root) / "run.json"
+    replacement = run_dir(benchmark, model, by, root) / "run.json"
+    if run_id == by:
+        raise SupersedeError(f"{run_id} cannot supersede itself")
+    if not path.exists():
+        raise SupersedeError(f"no such run: {path.relative_to(root.parent)}")
+    if not replacement.exists():
+        raise SupersedeError(
+            f"no such run to supersede it: {replacement.relative_to(root.parent)}. "
+            "The replacement must already be in the store -- a row pointing at a run "
+            "nobody has is worse than two rows."
+        )
+    later = json.loads(replacement.read_text())
+    if later.get("superseded_by"):
+        raise SupersedeError(
+            f"{by} is itself superseded by {later['superseded_by']}; point at that one instead"
+        )
+    if not later.get("valid", True):
+        raise SupersedeError(f"{by} is marked invalid; superseding {run_id} with it leaves no valid row")
+    if not reason.strip():
+        raise SupersedeError("--reason is required: a row retired without one cannot be reviewed")
+
+    record = RunRecord(**json.loads(path.read_text()))
+    record.valid = False
+    record.superseded_by = by
+    note = f"Superseded by {by}: {reason.strip()}"
+    # Appended, not replaced. Whatever the run already said about itself is
+    # still true; this is one more thing that became true afterwards.
+    record.notes = f"{record.notes.rstrip()} {note}".strip() if record.notes else note
+    path.write_text(json.dumps(record.to_json(), indent=2) + "\n")
+    return path
 
 
 def json_default(obj: Any) -> Any:

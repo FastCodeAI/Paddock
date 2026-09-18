@@ -54,6 +54,15 @@ def test_each_run_is_filed_consistently_and_explains_itself(run_json: Path) -> N
     )
     if not run.valid:
         assert run.notes.strip(), f"{rel}: valid=false with no note saying why"
+    if run.superseded_by:
+        # The replacement has to exist, under the same model, and be the one a
+        # reader would actually land on. A chain ending nowhere leaves the model
+        # with no ranked row, which is worse than the two rows it was fixing.
+        later = RESULTS_ROOT / benchmark / model / run.superseded_by / "run.json"
+        assert later.exists(), f"{rel}: superseded by {run.superseded_by}, which is not in results/"
+        replacement = RunRecord(**json.loads(later.read_text()))
+        assert replacement.valid, f"{rel}: superseded by {run.superseded_by}, which is itself invalid"
+        assert not run.valid, f"{rel}: superseded but still ranked"
     if run.status == "partial":
         assert run.notes.strip(), f"{rel}: partial with no note saying what was lost"
     assert run.site, f"{rel}: no site recorded"
@@ -93,6 +102,80 @@ def test_a_replay_names_a_source_run_that_is_in_the_store(run_json: Path) -> Non
     assert src["model"] == run["model"], (
         f"{rel}: filed under {run['model']} but replays {src['model']}'s plans"
     )
+
+
+# --- supersede: the verb that exists so nobody edits `valid` by hand ---------
+
+
+def _store(tmp_path: Path, run_id: str, **fields) -> Path:
+    from paddock.results.store import RunRecord as R
+
+    directory = tmp_path / "comma2k19" / "openpilot" / run_id
+    directory.mkdir(parents=True)
+    record = R(run_id=run_id, site="test", benchmark="comma2k19", model="openpilot", **fields)
+    (directory / "run.json").write_text(json.dumps(record.to_json(), indent=2) + "\n")
+    return directory / "run.json"
+
+
+def test_supersede_retires_the_older_row_and_leaves_its_measurements_alone(tmp_path: Path) -> None:
+    """The point of the verb: the numbers are still true, the ranking is not."""
+    from paddock.results.store import supersede
+
+    old = _store(tmp_path, "20260912T053225-2a91ca", duration_s=1234.0, notes="ran clean.")
+    _store(tmp_path, "20260916T051616-2a91ca")
+
+    supersede(
+        "comma2k19",
+        "openpilot",
+        "20260912T053225-2a91ca",
+        by="20260916T051616-2a91ca",
+        reason="the later run carries the proxy metrics",
+        root=tmp_path,
+    )
+
+    after = RunRecord(**json.loads(old.read_text()))
+    assert after.valid is False
+    assert after.superseded_by == "20260916T051616-2a91ca"
+    assert after.notes.startswith("ran clean."), "what the run said about itself is still true"
+    assert "the later run carries the proxy metrics" in after.notes
+    # Identity and measurement untouched: a superseded run still happened.
+    assert (after.run_id, after.duration_s, after.status) == ("20260912T053225-2a91ca", 1234.0, "complete")
+
+
+def test_supersede_refuses_the_edits_that_leave_no_ranked_row(tmp_path: Path) -> None:
+    """Each of these is a state a hand-edit produces silently."""
+    from paddock.results.store import SupersedeError, supersede
+
+    _store(tmp_path, "a-run")
+    _store(tmp_path, "b-run")
+    args = ("comma2k19", "openpilot")
+
+    with pytest.raises(SupersedeError, match="itself"):
+        supersede(*args, "a-run", by="a-run", reason="x", root=tmp_path)
+    with pytest.raises(SupersedeError, match="no such run"):
+        supersede(*args, "missing", by="b-run", reason="x", root=tmp_path)
+    with pytest.raises(SupersedeError, match="no such run to supersede it"):
+        supersede(*args, "a-run", by="missing", reason="x", root=tmp_path)
+    with pytest.raises(SupersedeError, match="reason"):
+        supersede(*args, "a-run", by="b-run", reason="   ", root=tmp_path)
+
+    supersede(*args, "b-run", by="a-run", reason="a is current", root=tmp_path)
+    with pytest.raises(SupersedeError, match="point at that one instead"):
+        # b is retired, so pointing a at it would retire every row there is.
+        supersede(*args, "a-run", by="b-run", reason="circular", root=tmp_path)
+
+
+def test_supersede_output_is_what_the_store_would_have_written(tmp_path: Path) -> None:
+    """It goes through `RunRecord`, so it cannot invent a field or skip `scrub`."""
+    from paddock.results.store import supersede
+
+    old = _store(tmp_path, "a-run", ingested_from="/" + "/".join(["home", "someone", "old-runs"]))
+    _store(tmp_path, "b-run")
+    supersede("comma2k19", "openpilot", "a-run", by="b-run", reason="newer", root=tmp_path)
+
+    raw = json.loads(old.read_text())
+    assert set(raw) == set(RunRecord(run_id="", site="", benchmark="", model="").to_json())
+    assert raw["ingested_from"] == "old-runs", "the rewrite scrubs like every other write"
 
 
 def test_by_group_aggregates_each_group_separately() -> None:

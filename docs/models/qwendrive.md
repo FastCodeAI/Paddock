@@ -155,6 +155,17 @@ RTX PRO 6000; comma2k19 on an H200, seven nodes, `QWENDRIVE_VIEWS=replicate`.
 | neuroNCAP score ↑ | 200 | 2.49 | 7.7 h | `20260915T023604-12d5eb` |
 | comma2k19 ADE@3s ↓ | 10,165 | 1.159 m | 2.0 h | `20260916T220846-971379` |
 
+The comma2k19 row replaces an earlier one, and the earlier one is still here.
+`20260915T214115-405f64` (ADE@3s 1.016) was produced by the pre-merge adapter,
+which emitted all 50 poses at `waypoint_dt` 0.1 s; `score()` aligns the ground
+truth onto *the prediction's* grid, so the same predictions on the merged
+adapter's 0.5 s grid give 1.159, and the 0.1 s spacing also turned 4 cm of output
+quantisation into 1932 m/s³ of "jerk", which is why that row carried `-` in the
+comfort columns. The re-sweep was the right call; deleting the old record in the
+merge that did it was not, so it is restored and marked `superseded_by` instead
+— `paddock report` leaves it out, and the swap is visible in `results/` rather
+than only in a merge message.
+
 The v1 figure is worth one line on its own: the vendor reports 87.8 PDMS on this
 split for exactly this configuration, and paddock measures 87.6. That agreement
 covers the camera mapping, the pose history, the eight poses NAVSIM reads and the

@@ -36,6 +36,7 @@
   "provenance": {},
   "status": "complete",
   "valid": false,
-  "notes": "superseded by 20260916T051616-2a91ca, which is the row the docs cite. The two are bit-identical on all 65 shared metrics -- same 10,165 samples, same sequences_sha256 -- and the later one additionally carries the nine proxy/miss-rate metrics added after this ran. Kept rather than deleted so the record of it having happened survives; marked invalid so `paddock report` ranks one openpilot row on this benchmark rather than two.",
+  "superseded_by": "20260916T051616-2a91ca",
+  "notes": "Superseded by 20260916T051616-2a91ca: that is the row the docs cite. The two are bit-identical on all 65 shared metrics -- same 10,165 samples, same sequences_sha256 -- and the later one additionally carries the nine proxy and miss-rate metrics added after this ran. Kept rather than deleted so the record of it having happened survives.",
   "ingested_from": ""
 }
