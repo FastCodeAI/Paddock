@@ -1,0 +1,63 @@
+name: drivejepa_free
+description: Drive-JEPA perception-free agent (V-JEPA-2 ViT-L + transformer decoder), NAVSIM v1
+
+repo: Drive-JEPA
+
+runtime:
+  # A venv, not the conda env `drivejepa` uses: this agent needs neither
+  # mmcv-full nor mmdet, which is what forced conda there. See setup.sh.
+  kind: shell
+  python: "3.9"
+  venv: "{repo}/.venv-perception-free"
+  pythonpath: ["{repo}/navsim_v1"]
+  # Load-bearing. `drive_jepa_model.py` resolves
+  # "./vjepa2/configs/eval/vitl/in1k.yaml" against the *process* working
+  # directory, so constructing the agent from anywhere else fails -- and a run
+  # has been lost to writing its output inside the repo tree for the same
+  # reason.
+  cwd: "{repo}/navsim_v1"
+  env:
+    NAVSIM_DEVKIT_ROOT: "{repo}/navsim_v1"
+    # Both files are required and they are not interchangeable: the agent
+    # constructor builds the V-JEPA encoder *from* the pretrain weights and only
+    # then overwrites everything with the agent checkpoint. Supplying only the
+    # checkpoint fails at load.
+    DRIVEJEPA_FREE_CHECKPOINT: "{weights}/drive-jepa/drive_jepa_perception_free_agent_vitl.ckpt"
+    DRIVEJEPA_VJEPA_WEIGHTS: "{weights}/drive-jepa/vitl_merge_3dataset_e50.pt"
+
+capabilities:
+  cameras: [CAM_FRONT]
+  # ViT-L over two 256x512 frames, fp32. The 3.5 GB checkpoint carries optimizer
+  # state; the loaded state_dict is ~1.2 GB.
+  vram_gb: 10
+  startup_timeout_s: 900
+  waypoint_dt: 0.5
+  # Two frames 0.5 s apart, selected by timestamp. A source slower than 2 Hz
+  # cannot supply the pair at all, and the encoder's temporal difference is real
+  # input -- identical frames cost about as much as blanking the camera.
+  min_input_hz: 2.0
+  native_input_hz: 2.0
+  history_s: 0.5
+
+  # -- model card (docs/models/comparison.md) --
+  architecture: "V-JEPA-2 ViT-L encoder (2 frames) + 3-layer transformer decoder"
+  params_m: 307
+  size_gb: 1.2
+  precision: fp32
+  input_size: [512, 256]
+  history_frames: 2
+  output_kind: waypoints
+  horizon_s: 4.0
+  # Greedy decode from a fixed checkpoint; no sampling anywhere in the path.
+  stochastic: false
+  needs_speed: true
+  trained_on:
+    # Same provenance as the perception-based sibling, sourced the same way:
+    # Drive-JEPA @ e21f474, navsim_v1/scripts/evaluation/eval_drive_jepa_perception_free.sh
+    # evaluates on navtest, and the training script for this agent uses navtrain.
+    # That matters for reading the comma2k19 row: this model is NOT zero-shot in
+    # general -- it is zero-shot on *comma2k19*, which is a different claim, and
+    # the 4 s speed saturation below is exactly the nuPlan urban prior showing.
+    - dataset: navsim
+      split: navtrain
+benchmarks: [comma2k19]

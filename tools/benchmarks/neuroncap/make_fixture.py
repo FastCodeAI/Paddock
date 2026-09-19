@@ -20,6 +20,7 @@ from nuscenes import NuScenes
 from PIL import Image
 from pyquaternion import Quaternion
 
+from paddock.policy.protocol import CANBUS_VELOCITY
 from tools import paths
 
 DATAROOT = str(paths.nuscenes())
@@ -59,7 +60,7 @@ def build_request(nusc: NuScenes, sample: dict) -> dict:
     lidar2ego = pose_matrix(nusc.get("calibrated_sensor", lidar_sd["calibrated_sensor_token"]))
 
     canbus = np.zeros(18)
-    canbus[13] = EGO_SPEED  # forward velocity, ego frame
+    canbus[CANBUS_VELOCITY] = EGO_SPEED  # forward velocity, ego frame
 
     return {
         "images": images,

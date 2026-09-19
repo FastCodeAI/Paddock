@@ -1,5 +1,5 @@
 name: openpilot
-description: comma.ai openpilot supercombo, run through tinygrad
+description: comma.ai openpilot supercombo, through tinygrad where available and onnxruntime otherwise
 repo: openpilot
 
 runtime:
@@ -20,6 +20,28 @@ runtime:
     # compiles the pickles with DEV=CPU:LLVM (selfdrive/modeld/SConscript);
     # the node runs them on the same device, pinned here.
     DEV: "CPU:LLVM"
+    # "auto" prefers openpilot's own tinygrad JIT -- upstream's exact execution
+    # path -- and falls back to onnxruntime on the shipped ONNX files when the
+    # JIT pickle is absent, which is the case on a machine with no GPU or an
+    # unpopulated tinygrad_repo submodule. Set to "tinygrad" or "onnx" to pin it.
+    #
+    # The two are not identical and the difference is recorded in every run's
+    # diagnostics: the tinygrad warp is compiled for one camera geometry
+    # (1928x1208), so any other source has to be resampled into it first, while
+    # the ONNX path builds its warp at the source's native resolution and
+    # resamples nothing. That matters most for a small sensor -- comma2k19's
+    # 1164x874 EON was previously upscaled 66 % and then warped back down.
+    PADDOCK_OPENPILOT_BACKEND: "auto"
+    # "small" (driving_supercombo, 61 MB) or "big" (big_driving_supercombo,
+    # 766 MB, LFS-excluded by setup.sh unless PADDOCK_OPENPILOT_BIG=1).
+    PADDOCK_OPENPILOT_MODEL: "small"
+    # onnxruntime intra-op threads per policy node. The shipped graphs are
+    # float16 and onnxruntime's CPU provider has no float16 kernels, so they run
+    # ~45x slower there than the same graph widened to float32. If CPU
+    # throughput matters, widen one with onnxruntime.transformers.float16
+    # (convert_float_to_float16 in reverse) and point PADDOCK_OPENPILOT_ONNX at
+    # the result.
+    PADDOCK_OPENPILOT_THREADS: "8"
 
 capabilities:
   cameras: [CAM_OP_ROAD, CAM_OP_WIDE, CAM_FRONT]   # comma-three rig: road cam -> img, wide cam -> big_img; CAM_FRONT = fallback for single-camera sources (KITScenes, neuroNCAP)
@@ -62,8 +84,16 @@ capabilities:
   # a parked car. Not fixable in an adapter.
   needs_speed: false
   trained_on:
-    # comma's internal fleet, ~6,670 h, not released. No overlap with any
-    # paddock dataset, which is the claim that matters here.
+    # comma's internal fleet, ~6,670 h, not released.
+    #
+    # This used to say "no overlap with any paddock dataset". That stopped
+    # being safe when comma2k19 was added: comma2k19 is comma's own released
+    # fleet data, collected on the same two cars by the same device, and the
+    # training corpus is not published segment by segment, so whether these
+    # 2035 segments are inside it cannot be checked from outside comma. It is
+    # declared as one dataset rather than two because asserting the overlap
+    # would be as unverified as denying it; what the overlap would mean for
+    # reading that column is in docs/models/comparison.md.
     - dataset: comma-fleet
 
 # NAVSIM is measurable only with nuPlan's full-rate sensor data configured
@@ -74,4 +104,8 @@ capabilities:
 # before loading the model, rather than silently recording the artefact.
 # `navsim_v1` is not declared: no 10 Hz run under the v1 devkit yet, and the v1
 # harness would need its own [benchmarks.navsim_v1] nuplan setting.
-benchmarks: [kitscenes, neuroncap, bench2drive, navsim, nuscenes, nuplan]
+#
+# comma2k19 needs no such setting: it is native 20 Hz, exactly supercombo's own
+# input rate, so no frame-repeat trick is needed at all -- see
+# docs/benchmarks/comma2k19.md.
+benchmarks: [kitscenes, neuroncap, bench2drive, navsim, nuscenes, comma2k19, nuplan]

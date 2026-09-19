@@ -249,6 +249,48 @@ def test_training_on_a_benchmarks_own_dataset_is_documented(name: str) -> None:
         )
 
 
+def test_an_overlap_section_nobody_declared_is_still_held_to_the_same_standard() -> None:
+    """The test above fires off `trained_on`, and the hardest case declares nothing.
+
+    OpenPilot's card says `comma-fleet`, not `comma2k19`, because comma's
+    training corpus is not published segment by segment and declaring the
+    overlap would assert something nobody outside comma can check. That is the
+    right call, and its cost is that the check above cannot fire for the one
+    pairing where the question is sharpest -- the section survives on goodwill.
+
+    So the doc is read from the other end: every `<model> x <something>` heading
+    in comparison.md has to carry prose, and where the right-hand side names a
+    dataset, it has to be one a benchmark that model runs actually uses.
+    Deleting the OpenPilot section, or reducing it to a heading, now fails here.
+    """
+    doc = DOCS / "models" / "comparison.md"
+    names = {_normalised(n): n for n in REGISTRY.models}
+    datasets = {_normalised(b.dataset): b.dataset for b in REGISTRY.benchmarks.values() if b.dataset}
+    pairs = 0
+    for head, body in _prose_sections(doc.read_text()).items():
+        # `x` as the separator, written as the multiplication sign in the doc.
+        parts = [p.strip() for p in head.replace("×", "x").split(" x ")]
+        if len(parts) != 2 or _normalised(parts[0]) not in names:
+            continue  # not a per-model section, or about something paddock does not run
+        model = names[_normalised(parts[0])]
+        right = _normalised(parts[1].split("--")[0].split("—")[0])
+        assert len(body.split()) >= MIN_OVERLAP_WORDS, (
+            f"'{head}' in comparison.md has {len(body.split())} words of prose; "
+            f"{MIN_OVERLAP_WORDS} is the minimum, the same as for a declared overlap."
+        )
+        if right not in datasets:
+            continue  # "x everything", and other headings that are not a dataset pairing
+        pairs += 1
+        spec = REGISTRY.models[model]
+        used = {REGISTRY.benchmarks[b].dataset for b in spec.benchmarks if b in REGISTRY.benchmarks}
+        assert datasets[right] in used, (
+            f"'{head}' in comparison.md pairs {model} with {datasets[right]!r}, which is not a "
+            f"dataset any benchmark it runs uses ({sorted(used)}). A section about an overlap "
+            "that cannot happen is worse than none."
+        )
+    assert pairs, "comparison.md has no model x dataset overlap section; this test is vacuous"
+
+
 def test_the_loader_refuses_a_malformed_card(tmp_path: Path) -> None:
     """Bad shapes fail at load, not as a confusing error several layers down."""
     from paddock.config import ConfigError
@@ -274,3 +316,54 @@ def test_the_loader_refuses_a_malformed_card(tmp_path: Path) -> None:
     models = load_models(write(good))
     assert models["mymodel"].input_size == (512, 256)
     assert models["mymodel"].trained_on[0].dataset == "nuscenes"
+
+
+# -- paddock's own modules must import in the oldest interpreter a model uses ---
+
+
+def test_the_policy_servers_routes_avoid_syntax_the_oldest_model_python_cannot_evaluate() -> None:
+    """FastAPI evaluates route annotations; `dict | None` is not evaluable on 3.9.
+
+    `policy/server.py` runs inside the *model's* interpreter, not paddock's, and
+    the registry says how old that can be -- Drive-JEPA's perception-free agent
+    is Python 3.9. `from __future__ import annotations` makes annotations
+    strings, which is normally the end of it, but FastAPI asks pydantic to
+    evaluate the ones on a route to build it, and on 3.9 pydantic cannot
+    evaluate PEP 604 without `eval_type_backport`. The node then dies at import,
+    before `load()`, with a pydantic traceback naming neither paddock nor the
+    model. Caught once, on drivejepa_free's first sweep; this is the guard,
+    because on paddock's own 3.11 nothing about it fails.
+    """
+    import ast
+
+    oldest = min(
+        tuple(int(p) for p in spec.runtime.python.split("."))
+        for spec in REGISTRY.models.values()
+        if spec.runtime.python
+    )
+    if oldest >= (3, 10):
+        pytest.skip(f"no model older than 3.10 remains (oldest is {oldest}); the hazard is gone")
+
+    source = (REPO_ROOT / "src" / "paddock" / "policy" / "server.py").read_text()
+    tree = ast.parse(source)
+
+    def routes(node):
+        for child in ast.walk(node):
+            if isinstance(child, ast.AsyncFunctionDef | ast.FunctionDef) and any(
+                isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) for d in child.decorator_list
+            ):
+                yield child
+
+    offenders = []
+    for route in routes(tree):
+        annotations = [a.annotation for a in route.args.args if a.annotation]
+        annotations += [route.returns] if route.returns else []
+        for annotation in annotations:
+            for node in ast.walk(annotation):
+                if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+                    offenders.append(f"{route.name}: {ast.unparse(annotation)}")
+
+    assert not offenders, (
+        f"these route annotations use PEP 604, which pydantic cannot evaluate on Python "
+        f"{'.'.join(str(p) for p in oldest)}: {offenders}. Spell them with typing.Optional/Union."
+    )

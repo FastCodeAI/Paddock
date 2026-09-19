@@ -202,6 +202,110 @@ with `infer_sequence` overrides for drivejepa and alpamayo (one forward pass
 per scenario, not four) and four nodes for visionpilot. Projected ~5 h wall
 against ~26 h sequential.
 
+**M8 — comma2k19.** `paddock run --bench comma2k19 --model <m>` scores the full
+released dataset: 2035 one-minute segments of 20 Hz California highway driving,
+10,165 samples, six models on the board. It is the first benchmark here whose
+sensor rate is high enough for openpilot to perceive its own motion, which is
+what makes an openpilot open-loop number possible at all — NAVSIM's 2 Hz is
+exactly the pairing `min_input_hz` refuses.
+
+| model | horizon | ADE@3s | |
+|---|---:|---:|---|
+| alpamayo15 | 4 s | **0.900** | 2 of 4 camera slots filled; a mono dataset |
+| qwendrive | 5 s | 1.159 | side slots replicated from the road camera |
+| openpilot | 10 s | 1.507 | see the two re-sweeps below |
+| constant velocity | 3 s | 1.639 | registered policy, 6 waypoints |
+| visionpilot | 4 s | 4.045 | synthesised trajectory |
+| drivejepa_free | 4 s | 16.048 | perception-free agent, NAVSIM v1 |
+
+**Verified:** every row is over the *identical* sample set — `sequences_sha256`
+`293a225a0b5cbaff` in all six run records, which is a stronger statement than
+six matching values of `n` and is the evidence that makes the column
+comparable. The 2033 × 5 = 10,165 derivation names the two truncated segments
+rather than counting them. Pose maths is delegated to a pinned
+`commaai/comma2k19` clone rather than reimplemented, and a reference
+implementation in the test suite is asserted against it wherever that clone
+exists. **Argued:** the calibration estimate (3.5–3.8° pitch on the RAV4,
+1.7–1.8° on the Civic) uses calibrationd's own formula with recorded pose
+substituted for the model's `cameraOdometry`; that substitution is reasoned
+from, not measured against, openpilot's own calibration.
+
+**Unverified, and load-bearing for the openpilot row:** the ONNX backend's
+preprocessing is a numpy reimplementation of `compile_modeld.py` —
+`warp_perspective_tinygrad`, the channel packing and `make_input_queues`, all in
+`adapters/models/openpilot/supercombo.py`. Its tests assert it against its own
+reference, and the two backends are asserted to bind the same cameras, but
+**the two paths have never been run over the same frames and compared
+numerically on this hardware**: tinygrad needs a GPU and a compiled pickle, ONNX
+does not, so no machine here has produced both. The 1.507 came from the ONNX
+path. A parity harness across the two backends is the check that would retire
+this line, and it is not written.
+
+Two re-sweeps are owed on the openpilot row, and it carries a footnote in the
+README and the benchmark doc until they land:
+
+- **Re-sweep openpilot on comma2k19 at the `repos.yaml` pin.** The recorded
+  1.507 was produced from a clone at `4df40d2c1` (split graph); the pin is
+  `555f48c5d` (combined graph), and the two plan from different hidden states.
+  The pin was left alone rather than moved to match, because moving it to a
+  revision chosen to fit one row is how a pin stops meaning anything. Runs now
+  record `repo_sha` and `provenance.repo.at_pin`, so this cannot recur unseen.
+- **Re-sweep openpilot wherever the ONNX backend was used.** `_infer_onnx` fed
+  the road camera's image to the wide view; the tinygrad path did not. Fixed,
+  and the backend is now on the record as `provenance.policy.backend`, but rows
+  produced before the fix are not bit-reproducible from this tree.
+
+A third re-sweep is owed across every benchmark, and it is not openpilot's:
+
+- **Re-sweep VisionPilot everywhere.** Its adapter carried `CURV_SCALE = 1.0`
+  where the stack has 0.21, so `IDM`'s `sqrt(mu*g/|kappa|)` speed cap bound on a
+  curvature 4.8x too large. Fixed September 2026; on a 20-sample comma2k19 smoke
+  ADE@3s moved 15.09 -> 5.28. **Every VisionPilot row in the README and in
+  `docs/models/comparison.md` predates it.** Expect the open-loop rows to move
+  most: Bench2Drive and neuroNCAP are urban and slow enough that the cap rarely
+  binds, which is how this survived them. Marked `∗` in the README until it
+  lands.
+
+Two known weaknesses are documented rather than fixed, because fixing either
+moves a published column and this branch launched no sweep. Both are argued from
+a reproduction, not from reading the code:
+
+- **`pdm_dac_proxy` rewards not moving.** `path_tangent_split` pairs waypoint
+  *i* with waypoint *i*, so a crawling plan never leaves the corridor drawn
+  around a straight recording: a 0.2 m/s plan against a 30 m/s recording takes
+  DAC 1.0 and composites to `pdm_style_score` **0.586**, above every model on
+  the comma2k19 board, with EP (0.0067) carrying the whole objection alone.
+  Pinned by `test_the_composite_rewards_a_plan_that_barely_moves`, and set out
+  in `score.py`'s proxy table. It is survivable only because `primary_metric` is
+  `ade` and the composite is outside the leaderboard's seven columns. **Fix:**
+  pair by arc length rather than by index — which re-derives a published column,
+  so it needs its own PR and its own sweep.
+- **Comfort rates do not share a denominator across models.** A plan too short
+  or too coarse to resample is NaN, not a failure, and the aggregate drops it:
+  `n = 9148` for constant_velocity against `n = 10165` for four other models on
+  the same sample set. `metrics.json` already carries `n` and `n_missing` per
+  metric, so nothing is lost — the rendered table shows the mean alone. **Fix:**
+  surface coverage beside the number in `results/report.py`, which changes every
+  benchmark's table and should land once, on its own.
+
+Landed alongside it, none comma2k19-specific:
+
+- **`drivejepa_free`, the eighth model adapter** — Drive-JEPA's perception-free
+  agent as its own registry entry, because it is a different model from the
+  perception-based v2 every other Drive-JEPA column refers to and sharing a row
+  with it would misattribute both.
+- **`paddock new` and `paddock verify` (M3).** Not `paddock setup` — no cloning,
+  no patching — but the scaffolding half: `new` copies the `_template/` adapter
+  and rewrites its names, `verify` checks an adapter against the contracts
+  before a run rather than eight minutes into one. `setup` itself is still
+  unimplemented and still exits 2 saying so.
+- **Parallel open-loop nodes and open-loop `--resume`.** comma2k19 is the first
+  open-loop benchmark large enough to need either: `node_count` runs N policy
+  nodes against one harness, and a journal lets an interrupted sweep continue in
+  place keeping its run id. This is the orchestration the nuScenes-openpilot
+  item under "Beyond reproduction" asks for; what remains there is re-making
+  that particular record with it.
+
 ## Open questions
 
 **The NAVSIM headline — settled.** The CSV and its run log disagree (0.90673 vs
@@ -308,6 +412,7 @@ Not started, and larger than everything above:
   camera setup meanwhile. (PR #52 review, finding 5.)
 - **nuScenes openpilot record is not regenerable with tracked code** — the
   tracked run (`20260908T110028-b71f4f`) was assembled by four-worker site
-  orchestration; land that orchestration (or a `--workers` path in the open-loop
-  runner) so the record can be re-made anywhere. Number not in question; provenance is.
+  orchestration. The orchestration itself has now landed with M8 (`node_count`
+  plus open-loop `--resume`), so what is left is narrower than it was: point it
+  at nuScenes and re-make the record. Number not in question; provenance is.
 - **Training** — the framework's eventual purpose; out of scope until evaluation is trustworthy.

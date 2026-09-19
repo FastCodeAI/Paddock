@@ -58,6 +58,7 @@ from typing import Any
 from paddock.adapters.benchmarks.navsim.convert import CAMERA_SLOTS, NAVSIM_INTERVAL_S
 from paddock.adapters.benchmarks.navsim.dense import NUPLAN_HZ
 from paddock.benchmark import Evaluation, ExternallyScoredBenchmark
+from paddock.benchmark import input_rate_problems as shared_input_rate_problems
 from paddock.results.ingest import navsim as navsim_ingest
 from paddock.runtime.proc import tail as _tail
 
@@ -294,32 +295,34 @@ SCORER = "navsim/planning/script/run_pdm_score_sequential.py"
 def input_rate_problems(min_input_hz: float, model_name: str, supplied_hz: float = INPUT_HZ) -> list[str]:
     """Why a model needing denser input than this run supplies cannot be scored.
 
-    `supplied_hz` is OpenScene's 2 Hz, or nuPlan's 10 Hz when the site holds
-    the full-rate data (`SETTING_NUPLAN`). Pure, so the runner can ask before
-    loading the model and `--dry-run` can report it. `PADDOCK_NAVSIM_ALLOW_SLOW`
-    overrides -- for investigating the gap, not for producing a score, and the
-    run is then stored `valid: false`.
+    `supplied_hz` is OpenScene's 2 Hz, or nuPlan's 10 Hz when the site holds the
+    full-rate data (`SETTING_NUPLAN`). At nuPlan's rate there is no remedy left
+    to offer -- nothing denser was ever recorded -- so that refusal is NAVSIM's
+    own. Below it the refusal is `paddock.benchmark.input_rate_problems`, shared
+    with comma2k19: both benchmarks refuse for the same reason and must say the
+    same thing, and this wrapper supplies the facts only NAVSIM knows.
     """
-    if min_input_hz <= supplied_hz or os.environ.get(ENV_ALLOW_SLOW):
-        return []
     if supplied_hz > INPUT_HZ:
+        if min_input_hz <= supplied_hz or os.environ.get(ENV_ALLOW_SLOW):
+            return []
         return [
             f"{model_name} needs {min_input_hz:g} Hz observations and nuPlan's cameras run at "
             f"{supplied_hz:g} Hz; nothing denser was ever recorded."
         ]
-    return [
-        f"{model_name} needs {min_input_hz:g} Hz observations and NAVSIM "
-        f"supplies {INPUT_HZ:g} Hz. OpenScene stores one keyframe per 0.5 s and one image "
-        f"per keyframe, so a denser history cannot be built from it without inventing frames.\n"
-        f"A model that infers ego motion from frame-to-frame change reads this as a "
-        f"stationary world and plans accordingly, which scores near the constant-velocity "
-        f"baseline while measuring the rate gap rather than the model. See "
-        f"docs/benchmarks/navsim.md.\n"
-        f"The frames exist upstream: set [benchmarks.navsim] {SETTING_NUPLAN} to nuPlan's "
-        f"full-rate sensor data and the model is fed {NUPLAN_HZ:g} Hz from it.\n"
-        f"Or set {ENV_ALLOW_SLOW}=1 to run anyway -- for investigating the gap, "
-        f"not for producing a score."
-    ]
+    return shared_input_rate_problems(
+        model_name=model_name,
+        min_input_hz=min_input_hz,
+        benchmark_name="NAVSIM",
+        benchmark_hz=INPUT_HZ,
+        allow_env=ENV_ALLOW_SLOW,
+        why=(
+            "OpenScene stores one keyframe per 0.5 s and one image per keyframe, "
+            "so a denser history cannot be built without inventing frames.\n"
+            f"The frames exist upstream: set [benchmarks.navsim] {SETTING_NUPLAN} to nuPlan's "
+            f"full-rate sensor data and the model is fed {NUPLAN_HZ:g} Hz from it."
+        ),
+        doc="docs/benchmarks/navsim.md",
+    )
 
 
 def supplied_cameras(cameras: list[str]) -> list[str]:

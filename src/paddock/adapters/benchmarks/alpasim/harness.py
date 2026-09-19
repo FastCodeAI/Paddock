@@ -439,7 +439,7 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
                 deploy=self.setting("deploy") or launcher.DEFAULT_DEPLOY,
                 topology=self.setting("topology") or launcher.DEFAULT_TOPOLOGY,
                 scene_cache=self.setting("scene_cache"),
-                video=bool(self.setting("video")),
+                video=self.flag("video"),
                 video_every_nth_frame=int(self.setting("video_every_nth_frame") or 1),
             )
             returncode, timed_out, elapsed = launcher.run_wizard(

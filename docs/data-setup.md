@@ -118,6 +118,56 @@ export KITSCENES_ROOT=/some/data/disk/kitscenes
 usually on the smallest partition on the box. `doctor` warns when it is unset or
 resolves onto `/`.
 
+## comma2k19
+
+Not on Hugging Face: comma2k19 is a Harvard Dataverse release, ten zips
+(`Chunk_1.zip` … `Chunk_10.zip`) totalling ~100 GB unpacked. Download them from
+the Dataverse record linked in comma's
+[README](https://github.com/commaai/comma2k19) and unpack them side by side:
+
+```
+<root>/raw_data/Chunk_1/<dongle_id>|<start_time>/<segment>/
+                            ├── video.hevc          # one ~60 s HEVC stream
+                            ├── global_pose/         # frame_times, positions, orientations, velocities
+                            └── processed_log/       # CAN, GNSS, IMU
+```
+
+Point `[datasets.comma2k19] path` at the directory **containing** `raw_data`'s
+chunks — that is, at `raw_data` itself:
+
+```toml
+[datasets.comma2k19]
+path = "/some/data/disk/comma2k19/raw_data"
+```
+
+Three traps, all of which produce a benchmark that reports zero segments or the
+wrong ones:
+
+* A full download has siblings next to `raw_data/` — a `data/` directory (a
+  Hugging Face demo parquet) and `compression_challenge/`. Neither is this
+  dataset; pointing at them finds nothing.
+* Route directories are named `<dongle_id>|<start_time>`, with a literal pipe.
+  Shells and some archive tools mangle it. `paddock doctor` reports malformed
+  route names rather than silently skipping them.
+* There is no image directory. Frames are decoded from `video.hevc` on demand,
+  which is why this benchmark needs PyAV or ffmpeg — see
+  [docs/benchmarks/comma2k19.md](benchmarks/comma2k19.md).
+
+This benchmark also needs comma's **toolkit** cloned into `[roots] repos`; the
+pose maths under every score comes from it, and `preflight` refuses without it.
+That page has the command.
+
+A partial copy is fine and is the normal state while the other nine chunks
+download — the benchmark scores what is here. `paddock doctor` says how much
+that is, chunk by chunk, and
+`python -m tools.benchmarks.comma2k19.metadata_report` writes the full
+inventory; see [Inspecting the dataset](benchmarks/comma2k19.md#inspecting-the-dataset).
+Write that report under `{roots.runs}` rather than into the repo — it names real
+paths, which is exactly what `tests/test_portability.py` rejects in a tracked
+file. The portable half is [docs/datasets/comma2k19.md](datasets/comma2k19.md):
+what the dataset is, what its sensors are worth, the two traps in its own
+documentation, and where the scored-sample count comes from.
+
 ## Symlinks
 
 Paddock creates symlinks in exactly two situations:

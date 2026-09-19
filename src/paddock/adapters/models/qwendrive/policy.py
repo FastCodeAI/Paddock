@@ -21,10 +21,26 @@ model a history five times longer than its label says. Velocity and
 acceleration come from the CAN bus where a source records them; KITScenes
 records speed only, so acceleration is differenced from it.
 
-*Output.* 50 waypoints at 10 Hz become 8 on the 0.5 s grid, indices 4, 9, ...
-39 -- the vendor's own NAVSIM conversion (`qwen_drive.trajectory.resample_10hz_to_2hz`).
-Eight rather than six because NAVSIM scores 4 s; neuroNCAP takes the first
-six and KITScenes truncates at 3 s, so the extra two cost nothing there.
+*Views.* The model wants three cameras and `DrivingScene` refuses a missing
+slot, so a monocular source has to fill all three from one frame or not run at
+all. `QWENDRIVE_VIEWS` picks which: `ring` (the default, and the model as
+trained) takes one real camera per slot; `replicate` puts the true forward
+frame in all three; `crop` cuts overlapping thirds out of it. The mode also
+decides what the policy *declares*, so `cameras` always names exactly what
+`infer()` reads and a benchmark is never asked for a camera it does not have.
+Between the two monocular modes the measurement says replicate: 1.47 / 2.00 ADE
+on comma2k19's city and highway segments against crop's 1.78 / 2.13. That is
+choosing between two lies -- a replicated frame claims a bearing it does not
+have, a crop claims extrinsics a crop does not have -- and the measured one
+wins.
+
+*Output.* 50 waypoints at 10 Hz become 10 on the 0.5 s grid, indices 4, 9, ...
+49 -- the vendor's own NAVSIM conversion (`qwen_drive.trajectory.resample_10hz_to_2hz`)
+carried to the end of the plan rather than stopped at 4 s. Every benchmark here
+reads the prefix it scores and drops the rest: NAVSIM takes 4 s, neuroNCAP the
+first six points, KITScenes truncates at 3 s, and comma2k19 scores whatever is
+offered against horizons it labels honestly -- so emitting the full 5 s costs
+those four nothing and is the only way the fifth second is scored at all.
 
 The model's package (torch, transformers 5.14) exists only in its own
 environment and is imported inside `load()`. Everything that can be checked
@@ -48,6 +64,7 @@ from paddock.policy.protocol import (
     Observation,
     Policy,
     Trajectory,
+    load_frame,
 )
 
 _log = logging.getLogger(__name__)
@@ -80,12 +97,21 @@ KEEP_S = 2.5
 MAX_RECORDED = 64
 
 #: Model output: 50 poses at 10 Hz. Index i is at (i+1)/10 s, so the 0.5 s
-#: grid is 4, 9, ... 39 -- eight points, 4 s.
+#: grid is 4, 9, ... 49 -- ten points, the whole 5 s the model plans.
 OUTPUT_POINTS = 50
-GRID_INDICES = (4, 9, 14, 19, 24, 29, 34, 39)
+GRID_INDICES = (4, 9, 14, 19, 24, 29, 34, 39, 44, 49)
 
 DEFAULT_PLANNER = "planner-sft"
 MODES = ("direct", "reasoning")
+
+#: How the three view slots are filled. `ring` is the model as trained, one
+#: real camera per slot; the other two exist for a source that has a road
+#: camera and nothing else (comma2k19), where `DrivingScene`'s refusal to accept
+#: a missing view leaves no third option. See the module docstring for which.
+VIEW_MODES = ("ring", "replicate", "crop")
+#: Width of each `crop` slice as a fraction of the frame. Overlapping thirds:
+#: the centre keeps the vanishing point, the sides keep the shoulders.
+CROP_SPAN = 0.55
 
 #: paddock's 4-way command -> the model's text command (scene.py NAV_COMMANDS:
 #: 0 GO STRAIGHT, 1 TURN LEFT, 2 TURN RIGHT) and its one-hot ego-status
@@ -181,6 +207,21 @@ def resample_history(
     return history, velocity, acceleration
 
 
+def crop_box(size: tuple[int, int], view: str) -> tuple[int, int, int, int]:
+    """The `CROP_SPAN` slice of a front frame that stands in for `view`.
+
+    Kept apart from the cropping itself so the geometry is checkable in
+    paddock's own interpreter, which has no PIL-free way to build a frame.
+    """
+    width, height = size
+    span = int(width * CROP_SPAN)
+    if view == "<FRONT LEFT VIEW>":
+        return (0, 0, span, height)
+    if view == "<FRONT RIGHT VIEW>":
+        return (width - span, 0, width, height)
+    return ((width - span) // 2, 0, (width + span) // 2, height)
+
+
 def medoid_index(trajectories: np.ndarray) -> int:
     """The draw closest to all the others; not a mean, which can land between modes."""
     flat = trajectories.reshape(len(trajectories), -1)
@@ -199,7 +240,16 @@ class QwenDrivePolicy(Policy):
         num_samples: int | None = None,
         attn: str | None = None,
         seed: int | None = None,
+        views: str | None = None,
     ) -> None:
+        self.views = views or _env_or("QWENDRIVE_VIEWS", "ring")
+        if self.views not in VIEW_MODES:
+            raise ValueError(f"QWENDRIVE_VIEWS must be one of {VIEW_MODES}, got {self.views!r}")
+        # Declared, not merely used: `Observation.from_wire` keeps the cameras
+        # this names and a closed-loop simulator renders exactly them, so a
+        # monocular mode that still claimed three would cost two renders a frame
+        # and make `paddock verify` refuse a benchmark this can in fact run.
+        self.cameras = NEEDED_CAMERAS if self.views == "ring" else NEEDED_CAMERAS[:1]
         self.planner = planner or _env_or("QWENDRIVE_PLANNER", DEFAULT_PLANNER)
         self.mode = mode or _env_or("QWENDRIVE_MODE", "direct")
         if self.mode not in MODES:
@@ -365,19 +415,64 @@ class QwenDrivePolicy(Policy):
         }
 
     def _scene(self, obs: Observation, inputs: dict[str, Any]):
-        """A `DrivingScene` from `scene_inputs` plus the four frames per view."""
+        """A `DrivingScene` from `scene_inputs` plus the four frames per view.
+
+        A slot whose camera was never recorded is filled from the front frame,
+        the way `self.views` says. Crops go in as a loader rather than an image:
+        `CameraFrame` accepts a callable and the processor decides when a frame
+        is worth opening, so a source that sends paths -- every open-loop
+        benchmark -- still decodes the four frames it reads and not the 160 it
+        was handed.
+        """
         from PIL import Image
         from qwen_drive import CameraFrame, DrivingScene
 
         inputs = dict(inputs)
         indices = inputs.pop("frame_indices")
         inputs.pop("frame_gaps_s")
+
+        def open_image(source: Any) -> Any:
+            """One frame as a PIL image, whatever the benchmark handed over.
+
+            Paths go through `protocol.load_frame`, which is the same rule
+            `Observation.image` uses, rather than a copy of it: a `.npy` path is
+            a *staged raw frame* that PIL cannot open, and the copy that used to
+            live here had already drifted -- it read the array without checking
+            its dtype, so a float32 frame would have arrived here as noise.
+            """
+            if not isinstance(source, str):
+                return Image.fromarray(source)
+            return Image.fromarray(load_frame(source))
+
         views: dict[str, list[Any]] = {}
         for camera, view in CAMERA_VIEWS:
             frames = []
             for index in indices:
-                source = self.frames[index][camera]
-                frames.append(CameraFrame(source if isinstance(source, str) else Image.fromarray(source)))
+                record = self.frames[index]
+                if self.views == "crop":
+                    # The centre is cut too, not passed through whole: three
+                    # slices of one width is the point, and a wide centre beside
+                    # two narrow sides would put the model's three views at two
+                    # different scales.
+                    front = record[NEEDED_CAMERAS[0]]
+
+                    def cut(source: Any = front, view: str = view) -> Any:
+                        image = open_image(source).convert("RGB")
+                        return image.crop(crop_box(image.size, view))
+
+                    frames.append(CameraFrame(cut))
+                    continue
+                source = record[camera if self.views == "ring" else NEEDED_CAMERAS[0]]
+                if isinstance(source, str) and not source.endswith(".npy"):
+                    # An encoded path goes in as a path: the vendor's own loader
+                    # opens it when -- and only if -- the processor reads it.
+                    frames.append(CameraFrame(source))
+                    continue
+
+                def read(source: Any = source) -> Any:
+                    return open_image(source).convert("RGB")
+
+                frames.append(CameraFrame(read))
             views[view] = frames
         return DrivingScene(views=views, token=str(obs.timestamp_us), **inputs)
 
@@ -441,6 +536,8 @@ class QwenDrivePolicy(Policy):
         return {
             "planner": self.planner,
             "mode": self.mode,
+            "views": self.views,
+            "cameras": list(self.cameras),
             "num_samples": self.num_samples,
             "attn": self.attn,
             "seed": self.seed,

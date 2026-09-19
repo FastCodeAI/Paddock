@@ -19,7 +19,7 @@ numbers are not comparable however close the counts look.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Container, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -288,8 +288,25 @@ class NuPlanBenchmark(OpenLoopBenchmark):
         self._manifest = sorted(best.values(), key=lambda r: (r[0].name, r[2], r[1]))
         return self._manifest
 
-    def samples(self, limit: int | None = None, split: str | None = None) -> Iterator[Sample]:
+    def _sample_id(self, db: Path, scenario_type: str, timestamp: int) -> str:
+        """The id of the anchor a coverage row describes.
+
+        Derivable from the row alone, before any log is opened -- which is what
+        lets `skip` drop work rather than only drop output.
+        """
+        return f"nuplan/{self.split}/{db.stem}/{scenario_type}/{timestamp}"
+
+    def samples(
+        self,
+        limit: int | None = None,
+        split: str | None = None,
+        skip: Container[str] = (),
+    ) -> Iterator[Sample]:
         rows, _ = self.coverage()
+        # Filtered on the manifest, not on built samples: a skipped row costs
+        # nothing, and a log whose rows are all done is never opened at all.
+        if skip:
+            rows = [row for row in rows if self._sample_id(*row) not in skip]
         located = L.log_locations(self.dataset.resolve())
         yielded = 0
         current: Path | None = None
@@ -373,7 +390,7 @@ class NuPlanBenchmark(OpenLoopBenchmark):
             for i in range(anchor - HISTORY_FRAMES, anchor + 1)
         ]
         return Sample(
-            sample_id=f"nuplan/{self.split}/{db.stem}/{scenario_type}/{timestamp}",
+            sample_id=self._sample_id(db, scenario_type, timestamp),
             observations=observations,
             ground_truth=ground_truth,
             split=scenario_type,

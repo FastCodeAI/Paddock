@@ -122,6 +122,66 @@ def list_(
         show("repos", [(r.name, f"{r.url} @ {r.sha}") for r in registry.repos.values()])
 
 
+@app.command("new")
+def new_(
+    kind: str = typer.Argument(..., help="model | benchmark"),
+    name: str = typer.Argument(..., help="lowercase identifier, e.g. 'mymodel'"),
+    dataset: str = typer.Option(
+        None, "--dataset", help="Benchmarks only: the dataset key. Default: the adapter's name."
+    ),
+    force: bool = typer.Option(False, "--force", help="Overwrite an existing adapter directory."),
+) -> None:
+    """Scaffold a new model or benchmark adapter from the template.
+
+    Creating the directory *is* the registration -- discovery is a directory
+    walk, so there is no registry file to edit and none to forget.
+    """
+    from paddock.scaffold import ScaffoldError, create
+
+    try:
+        result = create(kind, name, dataset=dataset, force=force)
+    except ScaffoldError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(result.render())
+
+
+@app.command()
+def verify(
+    model: str = typer.Option(None, "--model", "-m", help="Check this model's Policy contract."),
+    bench: str = typer.Option(None, "--bench", "-b", help="Check this benchmark's contract."),
+    explain: bool = typer.Option(
+        False, "--explain", help="Print what every contract check is for, and exit."
+    ),
+) -> None:
+    """Check an adapter against the contract before running it for real.
+
+    Every serious defect found in this repo so far has been a silent contract
+    violation rather than a crash -- a camera2ego of `np.eye(4)` (a 90 degree
+    error that reads as "no rotation"), episode state surviving `reset()`, a
+    metric set that cannot tell "predicted nothing" from "tracked the lane".
+    These checks are chosen from failures that actually happened.
+
+    Run it on a new adapter before its first real sweep, and on an existing one
+    after touching anything to do with frames or calibration.
+    """
+    from paddock import conformance as conformance_mod
+    from paddock.verify import verify as do_verify
+
+    if explain:
+        typer.echo(conformance_mod.explain())
+        raise typer.Exit(code=0)
+
+    try:
+        cfg = SiteConfig.load()
+    except ConfigError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    code = do_verify(cfg, model=model, bench=bench, echo=typer.echo)
+    raise typer.Exit(code=code)
+
+
 @app.command()
 def config() -> None:
     """Show the resolved site configuration."""
@@ -196,7 +256,8 @@ def run(
         None,
         "--resume",
         help="Run id of an earlier run of this model to continue in place: its completed "
-        "chunks are kept, only the rest are scored, and it keeps its id.",
+        "samples, episodes or chunks are kept, only the rest are scored, and it keeps its id. "
+        "Refused if the switches differ from the ones the run was started under.",
     ),
 ) -> None:
     """Run a model against a benchmark."""
@@ -228,6 +289,7 @@ def render_(
     bench: str = typer.Option(..., "--bench", "-b"),
     model: str = typer.Option(None, "--model", "-m", help="Comma-separated; default every model."),
     run_id: str = typer.Option(None, "--run-id", help="Comma-separated specific runs."),
+    sample: str = typer.Option(None, "--sample", help="Draw one sample by id instead of the run figures."),
     out: str = typer.Option(None, "--out", help="Where to write; default the run store."),
 ) -> None:
     """Draw a comparison of several models on one benchmark.
@@ -235,8 +297,12 @@ def render_(
     Rendering is scoped to the benchmark: it knows what its ground truth is and
     what a comparison means. Uses the newest valid run per model unless --run-id
     names specific ones.
+
+    With --sample, draws that one sample instead -- the aggregate says how often
+    a model is wrong and only a sample says how. Sample ids are in the run's
+    samples.jsonl; not every benchmark implements it.
     """
-    from paddock.render import render as do_render
+    from paddock import render as rendering
 
     try:
         cfg = SiteConfig.load()
@@ -244,14 +310,17 @@ def render_(
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
 
-    code = do_render(
-        cfg,
-        benchmark=bench,
-        models=model.split(",") if model else None,
-        run_ids=run_id.split(",") if run_id else None,
-        out_dir=Path(out) if out else None,
-        echo=typer.echo,
-    )
+    common = {
+        "benchmark": bench,
+        "models": model.split(",") if model else None,
+        "run_ids": run_id.split(",") if run_id else None,
+        "out_dir": Path(out) if out else None,
+        "echo": typer.echo,
+    }
+    if sample:
+        code = rendering.render_sample(cfg, sample_id=sample, **common)
+    else:
+        code = rendering.render(cfg, **common)
     raise typer.Exit(code=code)
 
 
@@ -278,6 +347,38 @@ def ingest(
         typer.echo(f"  skipped: {line}")
     verb = "would write" if dry_run else "wrote"
     typer.echo(f"{verb} {written} run(s) to results/")
+
+
+@app.command()
+def supersede(
+    bench: str = typer.Option(..., "--bench", "-b"),
+    model: str = typer.Option(..., "--model", "-m"),
+    run_id: str = typer.Option(..., "--run-id", help="The older run, the one to stop ranking."),
+    by: str = typer.Option(..., "--by", help="Run id of the later run that replaces it."),
+    reason: str = typer.Option(..., "--reason", help="Why, in one sentence, for the record."),
+) -> None:
+    """Mark an older run as replaced by a later one of the same model.
+
+    Two runs of one model on one benchmark are both valid as their runner left
+    them, and the leaderboard has no way to pick. This is how the choice is
+    recorded -- the alternative people reach for is editing `valid` in the file,
+    which is the thing `results/` most needs nobody to do.
+
+    Changes `valid`, `superseded_by` and `notes`. The measured numbers and the
+    run's own identity are left exactly as produced, and `metrics.json` is not
+    touched: the older run still happened and still measured what it measured.
+    """
+    from paddock.config import REPO_ROOT
+    from paddock.results.store import SupersedeError
+    from paddock.results.store import supersede as do_supersede
+
+    try:
+        path = do_supersede(bench, model, run_id, by=by, reason=reason)
+    except SupersedeError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"{run_id} superseded by {by}; rewrote {path.relative_to(REPO_ROOT)}")
+    typer.echo("Commit the change: results/ is tracked.")
 
 
 @app.command()

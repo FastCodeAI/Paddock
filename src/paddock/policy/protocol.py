@@ -40,6 +40,7 @@ import zipfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import IntEnum
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -194,6 +195,41 @@ def decode_image(encoded: str) -> np.ndarray:
     return _load_torch_tensor_without_torch(data).astype(np.uint8)
 
 
+def load_frame(path: str | Path) -> np.ndarray:
+    """One frame from disk as HxWx3 uint8, whichever way it was written.
+
+    Public because two things read staged frames -- `Observation.image` and any
+    adapter that takes `image_paths` and does its own decoding -- and a private
+    copy of this rule is a copy that drifts. One did: an adapter's version read
+    `.npy` without coercing the dtype, which is the failure below with nothing
+    to catch it.
+
+    The `.npy` branch exists for speed. A harness staging raw frames for a node
+    on the same machine writes arrays rather than PNGs because compressing them
+    only to decompress them again put 59% of a comma2k19 sweep's wall clock in
+    PIL's decoder against 10% in the model. Anything else goes through PIL and
+    is converted to RGB, because a dataset ships whatever it ships.
+
+    The `.npy` path is checked rather than trusted, because it bypasses the
+    conversion PIL would have done. A float32 array in [0, 1] cast blindly to
+    uint8 is an entirely black frame: no exception, no warning, a model scored
+    on darkness. Raising here names the file instead.
+    """
+    if str(path).endswith(".npy"):
+        array = np.load(path)
+        if array.dtype != np.uint8 or array.ndim != 3 or array.shape[2] != 3:
+            raise ValueError(
+                f"staged frame {path} is {array.dtype} {array.shape}; expected uint8 "
+                f"(H, W, 3). A float array in [0, 1] becomes a black frame if cast, "
+                f"which scores as a model driving in the dark rather than as an error."
+            )
+        return np.ascontiguousarray(array)
+
+    from PIL import Image as _Image
+
+    return np.asarray(_Image.open(path).convert("RGB"), dtype=np.uint8)
+
+
 # --------------------------------------------------------------------------
 # Geometry
 # --------------------------------------------------------------------------
@@ -319,6 +355,15 @@ class Observation:
         """The frame for one camera, loading it from disk if that is where it is.
 
         Cached in `images`, so repeated access within a step is free.
+
+        A `.npy` path is read as the raw array it is. That is not a convenience:
+        an open-loop harness that stages frames for a node on the same machine
+        compresses them only to have the node decompress them again, and
+        profiling a comma2k19 sweep found 59% of the node's wall clock in PIL's
+        PNG decoder against 10% in the model. A harness that stages raw pays a
+        memcpy at both ends instead, and this is the one place that has to know.
+        Dataset frames on disk are whatever the dataset ships, and still go
+        through PIL.
         """
         if camera in self.images:
             return self.images[camera]
@@ -328,9 +373,7 @@ class Observation:
                 f"observation has no image for {camera!r} "
                 f"(has {sorted(self.images) or sorted(self.image_paths)})"
             )
-        from PIL import Image as _Image
-
-        array = np.asarray(_Image.open(path).convert("RGB"), dtype=np.uint8)
+        array = load_frame(path)
         self.images[camera] = array
         return array
 
@@ -443,6 +486,157 @@ class Trajectory:
         if self.extras:
             wire["extras"] = self.extras
         return wire
+
+
+# --------------------------------------------------------------------------
+# Optional auxiliary predictions
+# --------------------------------------------------------------------------
+
+#: Keys of the model-agnostic auxiliary schema carried in `Trajectory.extras`.
+#:
+#: A trajectory is the only thing every model produces, but most produce more,
+#: and scoring only the trajectory throws away the heads a benchmark could check
+#: against its own recorded truth. These keys are the common ground: a model
+#: fills whichever it has, a harness scores whichever are present, and a metric
+#: whose input is absent is NaN rather than missing -- so the metric list a
+#: benchmark declares does not change with the model under test.
+#:
+#: Every key is optional and `extras` may also carry model-native blocks outside
+#: this schema (openpilot's `native_long`); `validate_extras` ignores those.
+#:
+#: **A scalar the model did not measure is `None`, not NaN.** Extras cross to the
+#: harness as JSON, which starlette renders with `allow_nan=False`, so a NaN does
+#: not arrive as a missing measurement -- it raises inside the response encoder
+#: and fails the whole sample with a 500 that names neither the key nor the model.
+#: Scorers already read `None` as not-measured (`auxiliary._finite`), so `None` is
+#: both the safe and the meaningful spelling. Where a key is required as part of a
+#: group -- `lead` wants `d`, `y` and `prob` together -- send it as `None` rather
+#: than omitting it, so "I have no lateral for this lead" stays distinguishable
+#: from "I have no lead head at all".
+#:
+#: Shapes, all in the ego frame (x forward, y LEFT, metres) unless stated:
+#:
+#:   pose   {"velocity": [vx, vy, vz],                    m/s
+#:           "rotation_rate": [roll, pitch, yaw]}         rad/s
+#:   lead   [{"d": float,        longitudinal gap, metres, measured from the
+#:                               CAMERA -- not from a radar, which sits ahead
+#:                               of it (openpilot's RADAR_TO_CAMERA)
+#:            "y": float,        lateral offset, positive left
+#:            "v_rel": float,    closing rate, m/s, negative when closing
+#:            "a_rel": float,    relative acceleration, m/s^2
+#:            "prob": float},    0..1
+#:           ...]                nearest first; [] means "nothing ahead"
+#:   sigma  [[sx, sy], ...]      per-waypoint 1-sigma, metres; same length and
+#:                               same dt as `waypoints`
+#:   lane   {"lines": [[[x, y], ...], ...],   4 polylines, left to right
+#:           "line_probs": [p, ...],          one per line, 0..1
+#:           "edges": [[[x, y], ...], ...]}   2 polylines, left then right
+#:   road   {"camera_height": float,          metres above the road surface
+#:           "pitch": float, "yaw": float}    rad, device relative to the road
+EXTRAS_KEYS = ("pose", "lead", "sigma", "lane", "road")
+
+
+def validate_extras(extras: dict[str, Any] | None, n_waypoints: int | None = None) -> None:
+    """Raise if a known `extras` key has the wrong shape. Unknown keys pass.
+
+    Called by a model once, at the point it builds the payload, so a shape
+    mistake surfaces in that model's own tests rather than as a NaN column in a
+    ten-thousand-sample sweep. `n_waypoints`, when given, ties `sigma` to the
+    trajectory it belongs to -- a per-waypoint uncertainty that is not
+    per-waypoint is the one error this schema cannot express as NaN.
+    """
+    if not extras:
+        return
+
+    def _floats(value: Any, n: int, where: str) -> None:
+        arr = np.asarray(value, dtype=np.float64)
+        if arr.shape != (n,):
+            raise ValueError(f"extras[{where}] must be {n} floats, got shape {arr.shape}")
+
+    pose = extras.get("pose")
+    if pose is not None:
+        if not isinstance(pose, dict):
+            raise ValueError(f"extras['pose'] must be a dict, got {type(pose).__name__}")
+        for key in ("velocity", "rotation_rate"):
+            if key in pose:
+                _floats(pose[key], 3, f"'pose'][{key!r}")
+
+    leads = extras.get("lead")
+    if leads is not None:
+        if not isinstance(leads, list):
+            raise ValueError(f"extras['lead'] must be a list, got {type(leads).__name__}")
+        for index, lead in enumerate(leads):
+            if not isinstance(lead, dict):
+                raise ValueError(f"extras['lead'][{index}] must be a dict")
+            missing = {"d", "y", "prob"} - set(lead)
+            if missing:
+                raise ValueError(f"extras['lead'][{index}] is missing {sorted(missing)}")
+
+    sigma = extras.get("sigma")
+    if sigma is not None:
+        arr = np.asarray(sigma, dtype=np.float64)
+        if arr.ndim != 2 or arr.shape[1] != 2:
+            raise ValueError(f"extras['sigma'] must be (N, 2), got shape {arr.shape}")
+        if n_waypoints is not None and arr.shape[0] != n_waypoints:
+            raise ValueError(
+                f"extras['sigma'] has {arr.shape[0]} rows for {n_waypoints} waypoints; "
+                "it is one sigma per waypoint, on the same grid"
+            )
+        if (arr < 0).any():
+            raise ValueError("extras['sigma'] contains a negative standard deviation")
+
+    lane = extras.get("lane")
+    if lane is not None:
+        if not isinstance(lane, dict):
+            raise ValueError(f"extras['lane'] must be a dict, got {type(lane).__name__}")
+        for key in ("lines", "edges"):
+            for index, line in enumerate(lane.get(key) or []):
+                arr = np.asarray(line, dtype=np.float64)
+                if arr.ndim != 2 or arr.shape[1] != 2:
+                    raise ValueError(
+                        f"extras['lane'][{key!r}][{index}] must be (N, 2), got shape {arr.shape}"
+                    )
+        probs = lane.get("line_probs")
+        if probs is not None and len(probs) != len(lane.get("lines") or []):
+            raise ValueError("extras['lane']['line_probs'] must have one entry per line")
+
+    road = extras.get("road")
+    if road is not None and not isinstance(road, dict):
+        raise ValueError(f"extras['road'] must be a dict, got {type(road).__name__}")
+
+    _reject_nan(extras)
+
+
+def _reject_nan(extras: dict[str, Any], where: str = "extras") -> None:
+    """Find the NaN here, where the key can still be named.
+
+    The schema above says in so many words that a scalar the model did not
+    measure is `None` and not NaN, because starlette encodes the response with
+    `allow_nan=False` -- so a NaN does not arrive as a missing measurement, it
+    raises inside the encoder and fails the whole sample with a 500 naming
+    neither the key nor the model. That was the documented consequence of a
+    check that only ever looked at shapes.
+
+    Walks the whole structure rather than the known keys: model-native blocks
+    are passed through to the same encoder and break it just as thoroughly.
+    """
+    for key, value in extras.items():
+        path = f"{where}[{key!r}]"
+        if isinstance(value, dict):
+            _reject_nan(value, path)
+            continue
+        if isinstance(value, (str, bytes)) or value is None:
+            continue
+        try:
+            arr = np.asarray(value, dtype=np.float64)
+        except (TypeError, ValueError):
+            continue  # not numeric; JSON's problem, not this check's
+        if arr.size and not np.isfinite(arr).all():
+            raise ValueError(
+                f"{path} contains NaN or infinity. A scalar the model did not measure is "
+                f"`None`, not NaN: extras are encoded with allow_nan=False, so a NaN here "
+                f"fails the whole sample with a 500 that names neither the key nor the model."
+            )
 
 
 def constant_velocity(speed: float, n: int = N_WAYPOINTS, dt: float = 0.5) -> Trajectory:

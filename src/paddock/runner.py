@@ -18,21 +18,32 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import importlib
+import itertools
 import json
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
 
-from paddock.benchmark import ClosedLoopBenchmark, ExternallyScoredBenchmark, OpenLoopBenchmark
+from paddock.benchmark import (
+    PIPELINE_BATCHES,
+    ClosedLoopBenchmark,
+    ExternallyScoredBenchmark,
+    OpenLoopBenchmark,
+)
 from paddock.config import SiteConfig
 from paddock.policy.protocol import Trajectory
 from paddock.registry import BenchmarkSpec, ModelSpec, Registry
 from paddock.results import store
 from paddock.runtime import ports, proc
+
+# Aliased: `_store_run` takes a `provenance=` argument, and a module of the
+# same name in scope is a shadowing bug waiting to be written.
+from paddock.runtime import provenance as prov_info
 
 #: Where port selection starts. Not assumed free -- on a shared machine 9000 is
 #: somebody else's service as often as not, and `ports.find_free` scans past it.
@@ -179,6 +190,7 @@ def _store_run(
     hardware: dict | None = None,
     split: str | None = None,
     extra_dataset: dict | None = None,
+    provenance: dict | None = None,
 ) -> tuple[Path, store.MetricsRecord]:
     """Write one run to the results store. Every path stores through here.
 
@@ -198,6 +210,7 @@ def _store_run(
     )
     if extra_dataset:
         dataset.update(extra_dataset)
+    provenance = dict(provenance or {})
     run = store.RunRecord(
         run_id=run_id,
         site=cfg.site,
@@ -206,8 +219,13 @@ def _store_run(
         mode=spec.mode,
         started_utc=started.isoformat(timespec="seconds"),
         duration_s=round(time.time() - began, 1),
+        # Promoted out of `provenance` because it is the one field a reader
+        # looks for first, and it has been declared on `RunRecord` since the
+        # store was written without anything ever filling it in.
+        repo_sha=(provenance.get("repo") or {}).get("sha"),
         dataset=dataset,
         config=config,
+        provenance=provenance,
         hardware=hardware or {},
         status=status,
         valid=valid,
@@ -267,6 +285,54 @@ def _config_marker_problems(artifacts: Path, config: dict) -> list[str]:
 
 def _limit_reason(limit: int | None) -> list[str]:
     return [f"--limit {limit}: a subset of the benchmark, run to test the pipeline"] if limit else []
+
+
+#: Consecutive per-sample failures that mean the node, not the samples.
+#:
+#: `score_one` swallows one bad sample deliberately -- a truncated video must
+#: not end a ten-thousand-sample sweep -- and `infer_sequence` waits 600 s. A
+#: node that has wedged therefore fails silently and slowly: at comma2k19's
+#: 10,165 samples, two weeks of four pinned nodes to produce a run `_validity`
+#: marks invalid anyway. Generous, because a genuinely bad patch of data is a
+#: real thing: a whole batch's worth at the default four nodes, several times
+#: over, is not.
+MAX_CONSECUTIVE_FAILURES = 25
+
+
+def _expected_samples(harness) -> dict | None:
+    """`{"n_expected": N}` where the harness can say how many it should serve.
+
+    On the record because `n` alone cannot distinguish a complete run from one
+    that quietly dropped samples -- a route whose calibration failed, a window
+    running off the end of a truncated video. A comma2k19 run that produced
+    10,105 of 10,165 stored `n: 10105`, `valid: true`, `notes: ""`, and nothing
+    anywhere said 60 were missing.
+    """
+    if not hasattr(harness, "coverage"):
+        return None
+    try:
+        found, _ = harness.coverage()
+    except Exception:  # noqa: BLE001 - a count is never worth losing a sweep over
+        return None
+    return {"n_expected": len(found)} if found else None
+
+
+def _coverage_reason(harness, samples: list[dict], limit: int | None) -> list[str]:
+    """Scoring fewer samples than the dataset holds makes a run unrankable.
+
+    The pair to `_expected_samples`: recording the shortfall is worth little if
+    the row still sorts beside complete ones. `--limit` is excluded because it
+    is a deliberate subset with its own reason already.
+    """
+    if limit is not None:
+        return []
+    expected = (_expected_samples(harness) or {}).get("n_expected")
+    if not expected or len(samples) >= expected:
+        return []
+    return [
+        f"scored {len(samples)} of {expected} available sample(s): "
+        f"{expected - len(samples)} were not produced"
+    ]
 
 
 def load_benchmark(spec: BenchmarkSpec, cfg: SiteConfig):
@@ -366,6 +432,15 @@ def run_benchmark(
             echo(f"  {len(found)} sample(s) available" + (f", {len(missing)} missing" if missing else ""))
             if missing:
                 echo(f"    missing scenes: {', '.join(missing[:5])}" + (" ..." if len(missing) > 5 else ""))
+            for m in models:
+                problems = harness.model_problems(m, limit)
+                if problems:
+                    echo(f"  {m.name} cannot be scored here:")
+                    for problem in problems:
+                        echo("    - " + problem.replace("\n", "\n      "))
+            reasons = [*harness.invalid_reasons(), *_limit_reason(limit)]
+            if reasons:
+                echo("  would be stored valid=false: " + "; ".join(reasons))
         else:
             episodes = list(harness.episodes(scenes, runs=runs, scenarios=scenarios))
             for m in models:
@@ -383,7 +458,7 @@ def run_benchmark(
     if isinstance(harness, OpenLoopBenchmark):
         failures = 0
         for model_spec in models:
-            failures += _run_open_loop(cfg, harness, spec, model_spec, base, limit, echo)
+            failures += _run_open_loop(cfg, harness, spec, model_spec, base, limit, echo, resume=resume)
         return 1 if failures else 0
 
     failures = 0
@@ -458,6 +533,7 @@ def _run_one_model(
     if resume and not outstanding:
         echo(f"  all {len(episodes)} episode(s) already scored; recording without starting a node")
 
+    prov: dict = {"repo": prov_info.repo_provenance(cfg, model_spec)}
     try:
         with contextlib.ExitStack() as stack:
             policy_url = (
@@ -491,6 +567,9 @@ def _run_one_model(
                     + ", ".join(f"{k} {v:.4g}" for k, v in sorted(metrics.items()))
                 )
                 samples.extend(harness.episode_samples(episode, metrics, out_dir))
+            # Before the ExitStack closes the node, and only where one ran.
+            if policy_url:
+                prov["policy"] = prov_info.policy_diagnostics(policy_url)
     except (proc.NodeStartupError, RuntimeError) as exc:
         echo(f"  node failed: {exc}")
         return 1
@@ -510,6 +589,7 @@ def _run_one_model(
         config,
         failure_note=f"{failures} episode(s) failed" if failures else None,
         invalid_reasons=harness.invalid_reasons(),
+        provenance=prov,
         # A remark, not a reason: resuming does not make a run unrankable, and
         # everything in `invalid_reasons` sets `valid: false`. But `started_utc`
         # and `duration_s` cover the resumed attempt only, so a 20-episode sweep
@@ -670,6 +750,9 @@ def _run_external(
         by_group=evaluation.by_group,
         split=harness.split,
         extra_dataset=extra_dataset,
+        # No `/diagnostics` here: the external scorer owns the node's lifetime,
+        # so by the time this runs there is nothing left to ask.
+        provenance={"repo": prov_info.repo_provenance(cfg, model_spec)},
     )
     headline = metrics_record.metrics.get(spec.primary_metric, {})
     echo(f"  n={metrics_record.n}  {spec.primary_metric} mean={headline.get('mean')}")
@@ -680,6 +763,127 @@ def _run_external(
     return 1 if failure_note else 0
 
 
+#: Sample records an open-loop run has finished, appended as it goes.
+#:
+#: `store.write_run` owns the final `samples.jsonl`; this is the journal that
+#: makes `--resume` possible, and it is deleted once the real file exists. Two
+#: files rather than one because a partial file that looks exactly like a
+#: finished one is how a half-run gets reported as a result.
+PARTIAL_SAMPLES = "samples.partial.jsonl"
+
+
+def _scored_samples(artifacts: Path) -> list[dict]:
+    """Sample records an interrupted run already wrote, oldest first.
+
+    Reads the journal *and* a completed `samples.jsonl`, so that `--resume` on a
+    run that actually finished is a no-op rather than a repeat. A truncated last
+    line is dropped: the process was killed mid-write, and one lost sample is
+    cheaper than a parse error at the start of a resume.
+
+    Both, not the first of the two. `_store_run` unlinks the journal when it
+    writes `samples.jsonl`, so the only way to hold both is to be interrupted
+    again after a resume completed -- and then returning the journal alone
+    silently discards everything the finished attempt scored, and the run is
+    stored short with no sign of it. Ids are unique per sample, so the union is
+    well defined; the later record of a duplicated id wins.
+    """
+    merged: dict[str, dict] = {}
+    for name in ("samples.jsonl", PARTIAL_SAMPLES):
+        path = artifacts / name
+        if not path.exists():
+            continue
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                break
+            merged[record["sample_id"]] = record
+    return list(merged.values())
+
+
+def _carry_forward_provenance(benchmark: str, model: str, run_id: str, prov: dict) -> dict:
+    """Keep what an earlier attempt of this same run recorded and this one cannot.
+
+    `--resume` rebuilds provenance from nothing, and `policy` is filled only
+    when a node actually ran. So resuming a run with nothing left to do replaced
+    the previous attempt's `/diagnostics` with `{}` -- losing the only record of
+    which backend and which graph layout produced the samples, for a run whose
+    samples had not changed.
+
+    The repo sha gets the opposite treatment. A resume across a `git pull` is
+    part one revision and part another, and storing only the last attempt's sha
+    names a revision that did not produce most of the run. Earlier distinct shas
+    are kept beside it rather than overwritten, so a mixed-revision run says so.
+    """
+    path = store.run_dir(benchmark, model, run_id) / "run.json"
+    try:
+        previous = json.loads(path.read_text()).get("provenance") or {}
+    except (OSError, ValueError):
+        return prov
+    if not prov.get("policy") and previous.get("policy"):
+        prov["policy"] = previous["policy"]
+    was = previous.get("repo") or {}
+    now = (prov.get("repo") or {}).get("sha")
+    earlier = sorted({s for s in [*(was.get("earlier_shas") or []), was.get("sha")] if s and s != now})
+    if earlier:
+        prov.setdefault("repo", {})["earlier_shas"] = earlier
+    return prov
+
+
+def _batches(source: Iterator, size: int, prefetch: bool) -> Iterator[list]:
+    """Group an iterator into lists of `size`, optionally one batch ahead.
+
+    Batching is what keeps a parallel dispatch safe against a harness that
+    releases a sample's inputs once the iterator moves past them: the next pull
+    happens only after every request in the current batch has returned. That
+    rule is the reason this is not a plain thread pool over the whole stream.
+
+    `prefetch` runs the pull on one background thread so a harness that has to
+    decode a minute of video to produce the next batch does it while the nodes
+    are busy with this one -- the two halves of an open-loop sweep are otherwise
+    strictly alternating, and each is idle for the other's half. It is off for a
+    single node, where there is nothing to overlap with.
+
+    How far ahead that is allowed to run is `PIPELINE_BATCHES`, and it is a
+    published number rather than an implementation detail: a harness that frees
+    a sample's inputs as its iterator moves past them has to know. The queue
+    holds one batch, the consumer is scoring one, and the pull thread is
+    building one.
+    """
+    if not prefetch:
+        while batch := list(itertools.islice(source, size)):
+            yield batch
+        return
+
+    import queue
+    import threading
+
+    # `max(1, ...)`, because `Queue(maxsize=0)` is unbounded: at
+    # `PIPELINE_BATCHES = 2` the arithmetic alone would let the pull thread run
+    # the whole dataset ahead of the scorer, which is the one thing the
+    # published depth exists to stop.
+    handoff: queue.Queue = queue.Queue(maxsize=max(1, PIPELINE_BATCHES - 2))
+
+    def pull() -> None:
+        try:
+            while batch := list(itertools.islice(source, size)):
+                handoff.put(batch)
+        except Exception as exc:  # noqa: BLE001 - re-raised on the consumer thread
+            handoff.put(exc)
+            return
+        handoff.put(None)
+
+    thread = threading.Thread(target=pull, name="sample-prefetch", daemon=True)
+    thread.start()
+    while (item := handoff.get()) is not None:
+        if isinstance(item, Exception):
+            raise item
+        yield item
+
+
 def _run_open_loop(
     cfg: SiteConfig,
     harness: OpenLoopBenchmark,
@@ -688,6 +892,7 @@ def _run_open_loop(
     base: int,
     limit: int | None,
     echo: Callable[[str], None],
+    resume: str | None = None,
 ) -> int:
     """Score one model over a benchmark's samples, in its own interpreter.
 
@@ -695,65 +900,194 @@ def _run_open_loop(
     so the work runs as a subprocess through the same node machinery, driven
     over HTTP. Keeping one execution path for both loop types is the point: a
     second in-process path would be where the two quietly diverge.
+
+    `harness.node_count` decides how many of those nodes run at once. Every
+    `infer_sequence` is self-contained, so N nodes score N samples in the time
+    one node scores one, and what is computed does not change -- the aggregate
+    is order-free and `sequence_hash` sorts. On a benchmark where the wall clock
+    is image decoding rather than the forward pass, which is most of them, this
+    is the difference between a sweep that takes a day and one that takes an
+    hour.
     """
     import httpx
+
+    # Before VRAM and a checkpoint read: a pairing the benchmark cannot measure
+    # is refused rather than recorded. Same order as the externally-scored path.
+    problems = harness.model_problems(model_spec, limit)
+    if problems:
+        echo(f"\n=== {model_spec.name} ===")
+        echo(f"  cannot be scored on {spec.name}:")
+        for problem in problems:
+            echo("    - " + problem.replace("\n", "\n      "))
+        return 1
 
     started = datetime.now(UTC)
     began = time.time()
     config = _measurement_config(cfg, harness, model_spec, limit=limit)
-    run_id = store.make_run_id(started, {**config, "bench": spec.name, "model": model_spec.name})
-    artifacts = cfg.runs / spec.name / model_spec.name / run_id
+    if resume:
+        run_id = resume
+        artifacts = cfg.runs / spec.name / model_spec.name / run_id
+        if not artifacts.is_dir():
+            echo(f"  nothing to resume: {artifacts} does not exist")
+            return 2
+    else:
+        run_id = store.make_run_id(started, {**config, "bench": spec.name, "model": model_spec.name})
+        artifacts = cfg.runs / spec.name / model_spec.name / run_id
 
-    echo(f"\n=== {model_spec.name} ===")
-    samples: list[dict] = []
+    echo(f"\n=== {model_spec.name} ===" + (f" (resuming {run_id})" if resume else ""))
+    # Written on the first attempt and compared on every later one, exactly as
+    # the closed-loop path does it: resuming under different switches would
+    # merge two measurements under one run id.
+    for problem in _config_marker_problems(artifacts, config):
+        echo("  " + problem)
+        return 2
+
+    samples: list[dict] = _scored_samples(artifacts) if resume else []
+    done = {s["sample_id"] for s in samples}
+    reused = len(done)
+    if reused:
+        echo(f"  {reused} sample(s) already scored; the harness is asked to skip them")
+    # `limit` counts the run's samples, not this attempt's, or resuming a
+    # `--limit 20` run that got to 15 would score 20 more.
+    outstanding = None if limit is None else max(0, limit - reused)
+    # Whether there is work left, which is not the same question as
+    # `outstanding`. A full sweep has no limit, so `outstanding` is None and a
+    # guard on it alone could never fire for the case it was written for:
+    # re-issuing a finished 10,165-sample comma2k19 run still paid four
+    # checkpoint reads and four VRAM waits to rewrite a record it already had.
+    # Without a limit the count to compare against is the harness's own
+    # `coverage()` -- the same one `_expected_samples` puts on the record.
+    nothing_left = outstanding == 0
+    if resume and outstanding is None:
+        expected = (_expected_samples(harness) or {}).get("n_expected")
+        nothing_left = bool(expected) and reused >= expected
+
     failures = 0
+    nodes = max(1, harness.node_count(model_spec))
 
+    def score_one(job: tuple[str, object]) -> dict | None:
+        """One sample through one node. Runs on a worker thread."""
+        policy_url, sample = job
+        try:
+            payload = {"observations": [o.to_wire() for o in sample.observations]}
+            response = httpx.post(f"{policy_url}/infer_sequence", json=payload, timeout=600.0)
+            response.raise_for_status()
+            body = response.json()
+            prediction = Trajectory(
+                body["trajectory"],
+                dt=model_spec.waypoint_dt,
+                # Auxiliary heads (pose, lead, sigma, lane geometry), when
+                # the model produces them. A harness scores what is here
+                # and returns NaN for what is not, so the same metric list
+                # holds across models -- see `protocol.EXTRAS_KEYS`.
+                extras=body.get("extras"),
+            )
+            metrics = harness.score(sample, prediction)
+        except Exception as exc:  # noqa: BLE001 - one bad sample must not end the run
+            echo(f"  {sample.sample_id}: FAILED - {exc}")
+            return None
+        return {
+            "sample_id": sample.sample_id,
+            "native_id": sample.native_id,
+            "split": sample.split,
+            "group": sample.group,
+            "metrics": metrics,
+            # Kept so a result can be looked at, not just ranked.
+            # These live outside the repo with the rest of the run
+            # artifacts, so the cost is disk rather than git.
+            "prediction": prediction.xy.tolist(),
+            "ground_truth": np.asarray(sample.ground_truth)[:, :2].tolist()
+            if sample.ground_truth is not None
+            else None,
+            # What the model predicted beyond the path. Kept because
+            # a dashboard replays it frame by frame and a report
+            # tabulates it; re-running the sweep to get it back costs
+            # hours, and disk is cheap out here.
+            **({"extras": prediction.extras} if prediction.extras else {}),
+        }
+
+    prov: dict = {"repo": prov_info.repo_provenance(cfg, model_spec)}
+    aborted: str | None = None
     try:
-        with proc.model_node(
-            model_spec, cfg, ports.find_free(base), artifacts, echo=echo, nonce=run_id
-        ) as policy_url:
-            for index, sample in enumerate(harness.samples(limit=limit)):
-                try:
-                    payload = {
-                        "observations": [o.to_wire() for o in sample.observations],
-                    }
-                    response = httpx.post(f"{policy_url}/infer_sequence", json=payload, timeout=600.0)
-                    response.raise_for_status()
-                    prediction = Trajectory(response.json()["trajectory"], dt=model_spec.waypoint_dt)
-                    metrics = harness.score(sample, prediction)
-                except Exception as exc:  # noqa: BLE001 - one bad sample must not end the run
-                    echo(f"  {sample.sample_id}: FAILED - {exc}")
-                    failures += 1
-                    continue
+        # Above the ExitStack, exactly as `_run_one_model` decides it: a node is
+        # a checkpoint read and a VRAM wait, and comma2k19 starts four of them.
+        # Re-resuming a finished run paid all four to write a record it already
+        # had. The closed-loop path has a test pinning this; so does this one now.
+        if nothing_left:
+            echo("  nothing outstanding; no node started")
+        else:
+            with contextlib.ExitStack() as stack:
+                urls: list[str] = []
+                next_port = base
+                for _ in range(nodes):
+                    next_port = ports.find_free(next_port)
+                    urls.append(
+                        stack.enter_context(
+                            proc.model_node(model_spec, cfg, next_port, artifacts, echo=echo, nonce=run_id)
+                        )
+                    )
+                    next_port += 1
+                if nodes > 1:
+                    echo(f"  {nodes} policy nodes on ports {urls[0].rsplit(':', 1)[1]}+")
 
-                samples.append(
-                    {
-                        "sample_id": sample.sample_id,
-                        "native_id": sample.native_id,
-                        "split": sample.split,
-                        "group": sample.group,
-                        "metrics": metrics,
-                        # Kept so a result can be looked at, not just ranked.
-                        # These live outside the repo with the rest of the run
-                        # artifacts, so the cost is disk rather than git.
-                        "prediction": prediction.xy.tolist(),
-                        "ground_truth": np.asarray(sample.ground_truth)[:, :2].tolist()
-                        if sample.ground_truth is not None
-                        else None,
-                    }
-                )
-                # Preserve completed predictions if a long validation is stopped.
-                # This partial file is evidence, not a completed metrics record.
-                with (artifacts / "samples.partial.jsonl").open("a") as checkpoint:
-                    checkpoint.write(json.dumps(samples[-1]) + "\n")
-                if (index + 1) % 25 == 0:
-                    # The benchmark's own headline, not `ade`: nuScenes calls its
-                    # displacement metric `l2_avg`, and 0.000 for 5,119 samples told
-                    # nobody anything.
-                    key = spec.primary_metric
-                    seen = [s["metrics"][key] for s in samples if key in s["metrics"]]
-                    running = sum(seen) / len(seen) if seen else float("nan")
-                    echo(f"  {index + 1} samples, running {key} {running:.3f}")
+                pool = stack.enter_context(ThreadPoolExecutor(nodes, thread_name_prefix="infer"))
+                journal = stack.enter_context((artifacts / PARTIAL_SAMPLES).open("a"))
+                stream = harness.samples(limit=outstanding, skip=done)
+                # `skip` is an optimisation the harness may decline; scoring a
+                # sample twice is not. One id appearing twice in samples.jsonl
+                # double-counts it in every aggregate, so the guarantee is
+                # enforced here and the saving is left to the harness.
+                stream = (s for s in stream if s.sample_id not in done)
+
+                # Per node, not per run. One counter over the whole stream
+                # could not fire above one node: a batch of four with one
+                # wedged node comes back fail, ok, ok, ok, the successes reset
+                # it, and the sweep ran its full length paying a 600 s timeout
+                # a batch. Which is the fortnight this guard exists to end.
+                consecutive: dict[str, int] = dict.fromkeys(urls, 0)
+                for batch in _batches(stream, nodes, prefetch=nodes > 1):
+                    before = len(samples)
+                    jobs = list(zip(urls, batch, strict=False))
+                    for (node_url, _), record in zip(jobs, pool.map(score_one, jobs), strict=False):
+                        if record is None:
+                            failures += 1
+                            consecutive[node_url] += 1
+                            continue
+                        consecutive[node_url] = 0
+                        samples.append(record)
+                        # Flushed per batch, not per sample: a killed run loses
+                        # at most one batch, and `--resume` re-scores it.
+                        journal.write(json.dumps(record, default=store.json_default) + "\n")
+                    journal.flush()
+                    if len(samples) // 25 != before // 25:
+                        # The benchmark's own headline, not `ade`: nuScenes calls
+                        # its displacement metric `l2_avg`, and 0.000 for 5,119
+                        # samples told nobody anything.
+                        key = spec.primary_metric
+                        seen = [s["metrics"][key] for s in samples if key in s["metrics"]]
+                        running = sum(seen) / len(seen) if seen else float("nan")
+                        echo(f"  {len(samples)} samples, running {key} {running:.3f}")
+                    wedged = max(consecutive, key=lambda url: consecutive[url])
+                    if consecutive[wedged] >= MAX_CONSECUTIVE_FAILURES:
+                        # A wedged node fails every sample it is handed and
+                        # nothing here noticed: `score_one` swallows per sample
+                        # so one bad sample cannot end a sweep, and
+                        # `infer_sequence` has a 600 s timeout. At 10,165
+                        # samples that is two weeks of four pinned nodes to
+                        # produce a run `_validity` marks invalid anyway.
+                        aborted = (
+                            f"aborted after {consecutive[wedged]} consecutive sample failures on "
+                            f"{wedged}; that node is not scoring, and the samples are not the cause"
+                        )
+                        echo("  " + aborted)
+                        break
+
+                # While the node is up and has inferred: most of what a policy
+                # reports about itself -- openpilot's graph layout, its backend,
+                # the fraction of each view that came from real pixels -- is
+                # unanswerable before it has seen a frame.
+                if samples:
+                    prov["policy"] = prov_info.policy_diagnostics(urls[0])
     except (proc.NodeStartupError, RuntimeError) as exc:
         echo(f"  node failed: {exc}")
         return 1
@@ -761,6 +1095,9 @@ def _run_open_loop(
     if not samples:
         echo("  no samples scored; nothing recorded")
         return 1
+
+    if resume:
+        prov = _carry_forward_provenance(spec.name, model_spec.name, run_id, prov)
 
     _, metrics_record = _store_run(
         cfg,
@@ -771,12 +1108,23 @@ def _run_open_loop(
         began,
         samples,
         config,
-        failure_note=f"{failures} sample(s) failed" if failures else None,
-        invalid_reasons=[*harness.invalid_reasons(), *_limit_reason(limit)],
+        failure_note="; ".join(
+            n for n in (f"{failures} sample(s) failed" if failures else None, aborted) if n
+        )
+        or None,
+        invalid_reasons=[
+            *harness.invalid_reasons(),
+            *_limit_reason(limit),
+            *_coverage_reason(harness, samples, limit),
+        ],
+        remarks=[f"resumed: {reused} sample(s) reused from an earlier attempt"] if reused else None,
+        extra_dataset=_expected_samples(harness),
+        provenance=prov,
     )
-    # samples.jsonl now holds every row the checkpoint held; keeping both would
-    # leave a byte-for-byte duplicate beside every finished run.
-    (artifacts / "samples.partial.jsonl").unlink(missing_ok=True)
+    # The journal has served its purpose the moment the real file exists, and
+    # leaving it would make the next `--resume` reuse a finished run's samples
+    # from two places at once.
+    (artifacts / PARTIAL_SAMPLES).unlink(missing_ok=True)
     headline = metrics_record.metrics.get(spec.primary_metric, {})
     echo(
         f"  n={metrics_record.n}  {spec.primary_metric} mean={headline.get('mean')}"

@@ -13,7 +13,8 @@ Same law and constants as TCP (Wu et al., 2022):
 * lateral: a PID on the heading error to an aim point, the waypoint whose
   segment midpoint lies nearest ``AIM_DIST`` ahead;
 * longitudinal: a PID on the speed error, where the desired speed is the mean
-  waypoint spacing divided by the waypoint interval;
+  waypoint spacing divided by the waypoint interval, over the first
+  ``CONTROL_HORIZON_S`` of plan (see there for why the window is fixed);
 * brake when the desired speed is below ``BRAKE_SPEED`` or the car is more
   than ``BRAKE_RATIO`` times faster than desired.
 
@@ -46,6 +47,18 @@ BRAKE_RATIO = 1.1
 #: faster than the car does not produce a lurch.
 CLIP_DELTA = 0.25
 
+#: Seconds of plan the control law reads. TCP's longitudinal term is the *mean*
+#: waypoint spacing, so without this the desired speed is a function of how far
+#: the model happened to plan: a model emitting 4 s of plan and one emitting
+#: 10 s of the same drive get different throttle from the same intent, and
+#: extending any model's horizon would silently move its recorded driving score.
+#: Fixing the window makes the law a property of the controller, which is what
+#: TCP's constants were tuned for. 4.0 s is what every model here reached when
+#: this was introduced, so no recorded number moves: alpamayo15 and openpilot
+#: plan exactly 8 waypoints at 0.5 s, and visionpilot's 3 s plan is shorter than
+#: the window and therefore untouched.
+CONTROL_HORIZON_S = 4.0
+
 
 class PID:
     """TCP's windowed PID: the integral term is the mean of the last ``n`` errors."""
@@ -74,12 +87,12 @@ class WaypointTracker:
         self.turn = PID(TURN_KP, TURN_KI, TURN_KD, TURN_N)
         self.speed = PID(SPEED_KP, SPEED_KI, SPEED_KD, SPEED_N)
 
-    @staticmethod
-    def _as_xy(waypoints) -> np.ndarray:
+    def _as_xy(self, waypoints) -> np.ndarray:
+        """Parse to (N, 2) and clip to `CONTROL_HORIZON_S`. A shorter plan passes through."""
         wps = np.asarray(waypoints, dtype=np.float64)
         if wps.ndim != 2 or wps.shape[0] < 2 or wps.shape[1] < 2:
             raise ValueError(f"need at least two (x, y) waypoints, got shape {wps.shape}")
-        return wps[:, :2]
+        return wps[: max(2, int(round(CONTROL_HORIZON_S / self.waypoint_dt))), :2]
 
     def _steer(self, wps: np.ndarray) -> float:
         """Lateral control from parsed (N, 2) waypoints, advancing the turn PID.

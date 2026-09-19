@@ -9,7 +9,7 @@ after fifty minutes" into "scene 0061 has no renderer checkpoint, here is why".
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Container, Iterator
 from pathlib import Path
 
 import numpy as np
@@ -34,13 +34,22 @@ class TemplateBenchmark(OpenLoopBenchmark):
             problems.append(f"{self.spec.dataset} root does not exist: {root}")
         return problems
 
-    def samples(self, limit: int | None = None, split: str | None = None) -> Iterator[Sample]:
+    def samples(
+        self,
+        limit: int | None = None,
+        split: str | None = None,
+        skip: Container[str] = (),
+    ) -> Iterator[Sample]:
         """Yield samples in a deterministic order.
 
         Determinism matters more than it looks: `--limit 5` must select the same
         five samples at both sites, or two people comparing smoke tests will
         reach different conclusions. Sort explicitly; do not rely on the order
         the filesystem hands back.
+
+        `skip` holds sample ids `--resume` already has on disk. Drop them as
+        early as you can -- before reading or decoding anything a skipped
+        sample would need -- or resuming a long run costs what running it cost.
         """
         raise NotImplementedError("implement samples() for your benchmark")
 

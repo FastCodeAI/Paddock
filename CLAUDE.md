@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-make setup          # uv venv at .venv + editable install of [dev,serve,viz]
+make setup          # uv venv at .venv + editable install of [dev,serve,viz,comma2k19]
 make setup-conda    # alternative: conda env named 'paddock'
 make check          # lint + tests. The pre-PR gate — and exactly what CI runs.
 make test           # pytest only

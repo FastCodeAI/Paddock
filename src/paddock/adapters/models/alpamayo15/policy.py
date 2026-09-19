@@ -18,6 +18,9 @@ KITScenes run hit the same wall at 87 deg and found `fill` still beat
 `letterbox` overall, so `fill` is the default here too -- but this is the single
 largest source of doubt in Alpamayo's numbers on this benchmark, and it biases
 depth. The telephoto slot is exact, because 30 deg is narrower than the source.
+A forward-only source fills fewer slots rather than fewer degrees -- comma2k19
+has one camera, so two of the four go unsent; `slots_for` says why that is
+preferable to filling them.
 
 *History.* The model wants 16 ego poses at dt=0.1 and 4 camera frames, and
 derives its initial speed purely by differencing that history -- a wrong rate
@@ -68,6 +71,7 @@ CAMERA_SLOTS: list[tuple[int, str, str]] = [
     (6, "CAM_FRONT", "zoom"),
 ]
 NEEDED_CAMERAS = ("CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT")
+
 
 TARGET_ASPECT = TARGET_H / TARGET_W  # 9:16, the model frame's height/width
 
@@ -138,6 +142,53 @@ def warp(image: Image.Image, src: WarpPinhole, kind: str) -> np.ndarray:
     return np.asarray(resized.convert("RGB"), dtype=np.uint8)
 
 
+def slots_for(obs: Observation) -> list[tuple[int, str, str]]:
+    """The camera slots this observation can actually fill, in slot order.
+
+    A forward-only dataset -- comma2k19 is one camera behind the windscreen --
+    fills the centre wide slot and the telephoto cropped out of it, and nothing
+    else. The two side slots are dropped rather than filled with the forward
+    view, because `camera_indices` tells the model which bearing each image was
+    taken at: omitting a slot says "there is no +55 deg view", while repeating
+    the centre frame into it says "here is one" and is false. Both are outside
+    what the model was trained on, and only one of them lies.
+    """
+    have = set(obs.images) | set(obs.image_paths)
+    return sorted((slot for slot in CAMERA_SLOTS if slot[1] in have), key=lambda entry: entry[0])
+
+
+class Frame:
+    """One history frame, warped only if the model conditions on it.
+
+    Alpamayo looks at `NUM_CAM_FRAMES` images spanning 0.3 s, but an open-loop
+    harness hands it the whole history it would have had -- comma2k19 sends 160
+    frames, 156 of them read for their pose alone. Warping on record spent two
+    bicubic resizes to 1920x1080 and a 3 MB read on every one of those, about
+    six seconds per sample against one second of inference. Warping on demand
+    and caching the result leaves the closed-loop cost where it was, since there
+    every frame recorded is a frame selected, and makes the rest free.
+    """
+
+    __slots__ = ("_obs", "_slots", "_warped")
+
+    def __init__(self, obs: Observation, slots: list[tuple[int, str, str]]) -> None:
+        self._obs = obs
+        self._slots = slots
+        self._warped: dict[str, np.ndarray] | None = None
+
+    def warped(self) -> dict[str, np.ndarray]:
+        if self._warped is None:
+            warped: dict[str, np.ndarray] = {}
+            for _, camera, kind in self._slots:
+                key = f"{camera}:{kind}"
+                if key in warped:
+                    continue
+                image = Image.fromarray(self._obs.image(camera))
+                warped[key] = warp(image, to_pinhole(self._obs.pinhole(camera)), kind)
+            self._warped = warped
+        return self._warped
+
+
 def medoid_index(trajectories: np.ndarray) -> int:
     """Index of the draw closest to all the others: (K, T, D) -> int."""
     if len(trajectories) == 1:
@@ -201,7 +252,13 @@ class AlpamayoPolicy(Policy):
         """Drop the pose and image history between runs."""
         self.poses: list[np.ndarray] = []
         self.timestamps: list[int] = []
-        self.frames: list[dict[str, np.ndarray]] = []
+        self.frames: list[Frame] = []
+        # Which camera slots this source fills, decided by the first frame and
+        # held for the rest of the sequence: `camera_indices` has to describe
+        # the tensor that accompanies it, so a source that dropped a camera
+        # halfway should fail on the missing image rather than quietly reshape
+        # the model's input.
+        self._slots: list[tuple[int, str, str]] | None = None
 
     def _sample_poses(self, offsets_s: np.ndarray) -> np.ndarray:
         """Ego poses at the given offsets before now, interpolated over time.
@@ -312,29 +369,22 @@ class AlpamayoPolicy(Policy):
         return [self.frames[i] for i in grid]
 
     def _image_frames(self) -> tuple[torch.Tensor, torch.Tensor]:
-        """(N_cam, 4, 3, H, W) uint8, cameras in ascending slot order."""
+        """(N_cam, 4, 3, H, W) uint8, cameras in ascending slot order.
+
+        N_cam is what the source could fill, not always the four slots Alpamayo
+        was trained with -- see `slots_for`.
+        """
         import torch
 
         recent = self._select_frames()
 
-        ordered = sorted(CAMERA_SLOTS, key=lambda entry: entry[0])
+        slots = self._slots or []
         per_camera = []
-        for _, camera, kind in ordered:
-            warped = np.stack([frame[f"{camera}:{kind}"] for frame in recent])
+        for _, camera, kind in slots:
+            warped = np.stack([frame.warped()[f"{camera}:{kind}"] for frame in recent])
             per_camera.append(torch.from_numpy(warped).permute(0, 3, 1, 2))
-        indices = torch.tensor([slot for slot, _, _ in ordered], dtype=torch.int64)
+        indices = torch.tensor([slot for slot, _, _ in slots], dtype=torch.int64)
         return torch.stack(per_camera, dim=0), indices
-
-    def _warp_frame(self, obs: Observation) -> dict[str, np.ndarray]:
-        warped = {}
-        for _, camera, kind in CAMERA_SLOTS:
-            key = f"{camera}:{kind}"
-            if key in warped:
-                continue
-            image = Image.fromarray(obs.image(camera))
-            pinhole = to_pinhole(obs.pinhole(camera))
-            warped[key] = warp(image, pinhole, kind)
-        return warped
 
     def _record(self, obs: Observation) -> None:
         """Append one observation to the pose and frame history.
@@ -346,11 +396,13 @@ class AlpamayoPolicy(Policy):
         """
         if self.timestamps and obs.timestamp_us <= self.timestamps[-1]:
             return
+        if self._slots is None:
+            self._slots = slots_for(obs)
         self.poses.append(obs.ego2world)
         self.timestamps.append(obs.timestamp_us)
-        self.frames.append(self._warp_frame(obs))
-        # A run is at most a few hundred steps, but each entry holds four warped
-        # 1920x1080 frames, so old ones are dropped once they are out of reach.
+        self.frames.append(Frame(obs, self._slots))
+        # A run is at most a few hundred steps, but a frame that has been warped
+        # holds four 1920x1080 images, so old ones are dropped once out of reach.
         if len(self.poses) > 64:
             self.poses, self.timestamps, self.frames = (
                 self.poses[-64:],
@@ -452,6 +504,10 @@ class AlpamayoPolicy(Policy):
             "top_p": self.top_p,
             "nav": self.use_nav,
             "nav_text": self._last_nav,
+            # Which slots the source filled. Two rather than four means a
+            # forward-only dataset, and is the first thing to check when a
+            # number from one benchmark will not line up with another's.
+            "camera_slots": [f"{slot}:{camera}:{kind}" for slot, camera, kind in (self._slots or [])],
             "history_frames": min(len(self.poses), NUM_HISTORY_STEPS),
             "expected_dt_s": HISTORY_DT,
             "request_dt_s": (

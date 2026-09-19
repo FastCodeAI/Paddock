@@ -111,12 +111,33 @@ class BenchmarkOverride:
         [benchmarks.neuroncap]
         python = "/path/to/envs/ncap/bin/python"
         renderer_url = "http://127.0.0.1:8000"
+
+    Values arrive as strings -- `_parse` stringifies every setting so that a
+    harness reading one never has to care whether the site wrote `4` or `"4"`.
+    That makes `bool(get(...))` a trap: TOML `false` becomes the string
+    `"False"`, which is true. Use `flag()` for anything a site writes as a
+    boolean.
     """
 
     settings: dict[str, str] = field(default_factory=dict)
 
     def get(self, key: str, default: str | None = None) -> str | None:
         return self.settings.get(key, default)
+
+    def flag(self, key: str, default: bool = False) -> bool:
+        """A boolean setting, read the way a site would expect to write it.
+
+        Every falsehood TOML or a shell-shaped habit can produce -- `false`,
+        `0`, `no`, `off`, an empty value -- means off. This exists because
+        `bool(self.setting("keep_frames", False))` returned **True** for a site
+        that had written `keep_frames = false`, so the one setting whose job is
+        to stop comma2k19 retaining ~5 TB of staged frames turned retention on
+        for anybody who set it explicitly. Only leaving it *out* worked.
+        """
+        raw = self.settings.get(key)
+        if raw is None:
+            return default
+        return str(raw).strip().lower() not in {"false", "0", "no", "off", ""}
 
 
 @dataclass(frozen=True)
@@ -154,8 +175,7 @@ class SiteConfig:
                 f"  cp {REPO_ROOT / 'paddock.toml.example'} {cfg_path}\n"
                 f"  then edit the paths for this machine (see docs/site-setup.md)"
             )
-        with cfg_path.open("rb") as fh:
-            raw = tomllib.load(fh)
+        raw = _parse(cfg_path)
 
         roots = raw.get("roots", {})
         missing = [k for k in ("repos", "runs", "weights") if k not in roots]
@@ -263,3 +283,32 @@ class SiteConfig:
 
 def _abs(value: str | Path) -> Path:
     return Path(value).expanduser()
+
+
+#: Parsed `paddock.toml`, keyed by identity *and* contents.
+_PARSED: dict[tuple[str, int, int], dict] = {}
+
+
+def _parse(cfg_path: Path) -> dict:
+    """The TOML, parsed once per (path, mtime, size).
+
+    `SiteConfig.load()` is called from places that turn out to be per-frame --
+    `comma2k19.toolkit.load()` resolves the clone through it on every call, and
+    the loader asks the toolkit for a rotation matrix per pose. Profiling a
+    comma2k19 sweep put roughly half the runner's CPU in this one `open` and
+    `tomllib.load`, most of it waiting on a network filesystem.
+
+    Keyed on mtime and size rather than path alone because tests rewrite a
+    config in place and expect the next `load()` to see it; an identity-only
+    cache would make that silently stale, which is a far worse bug than the
+    parse was slow.
+    """
+    stat = cfg_path.stat()
+    key = (str(cfg_path), stat.st_mtime_ns, stat.st_size)
+    cached = _PARSED.get(key)
+    if cached is None:
+        with cfg_path.open("rb") as fh:
+            cached = tomllib.load(fh)
+        _PARSED.clear()  # one live config per process; this is a cache, not a registry
+        _PARSED[key] = cached
+    return cached

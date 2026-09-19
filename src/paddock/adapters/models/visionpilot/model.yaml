@@ -65,4 +65,12 @@ capabilities:
     - dataset: openlane
     - dataset: tusimple
     - dataset: curvelanes
-benchmarks: [kitscenes, neuroncap, navsim, navsim_v1, bench2drive, nuscenes, nuplan]
+# One list, appended to. Two `benchmarks:` keys is valid YAML and keeps only the
+# last, which is how a model has silently dropped off a board before.
+#
+# comma2k19 supplies exactly what `infer` reads -- one front camera, its pinhole
+# and its `camera2ego` -- and `project_to_ground` intersects the road plane
+# analytically, so nothing dataset-specific is needed to feed it. Run it with
+# `VISIONPILOT_PROVIDERS=cuda` from the site config: 160 history frames x 3 nets
+# x 10,165 samples is not a CPU workload.
+benchmarks: [kitscenes, neuroncap, navsim, navsim_v1, bench2drive, nuscenes, comma2k19, nuplan]

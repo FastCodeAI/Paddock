@@ -22,14 +22,31 @@ runtime:
     # `paddock doctor --model qwendrive` and /diagnostics both report them
     # meanwhile.
     QWENDRIVE_PLANNER: "planner-sft"
+    # direct, not reasoning. Reasoning is worth roughly 1.47 against 1.55 ADE on
+    # comma2k19's city segment at about twice the latency -- and it is the one
+    # thing here that is not reproducible, because the arithmetic under
+    # `vlm.generate()` varies: five rollouts on a fixed input gave four
+    # identical plans and one 0.64 m away at the 90 m end of the 5 s horizon.
+    # Direct mode is bit-exact across the same five, which is what `stochastic`
+    # below declares. QWENDRIVE_MODE=reasoning runs the other side.
     QWENDRIVE_MODE: "direct"
     QWENDRIVE_NUM_SAMPLES: "1"
+    # One real camera per view slot: what the model was trained on, and what
+    # every benchmark here but comma2k19 supplies. A site whose source is
+    # monocular sets `replicate` (or the `crop` ablation) in its own
+    # [models.qwendrive.env] -- the choice belongs to the source, not the model,
+    # and the policy re-declares `cameras` to match so nothing renders or asks
+    # for a camera that does not exist. A site that runs both kinds needs two
+    # registry entries, the way drivejepa and drivejepa_free split.
+    QWENDRIVE_VIEWS: "ring"
     # flash-attn does not build for sm_120 on this toolchain (see setup.sh);
     # the model supports sdpa for both the VLM and the expert.
     QWENDRIVE_ATTN: "sdpa"
 
 capabilities:
   # Exactly the three views the model was trained on (scene.py CAMERA_VIEWS).
+  # Under QWENDRIVE_VIEWS=replicate|crop the policy declares CAM_FRONT alone and
+  # fills the other two slots from it; this list is the ring-source default.
   cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT]
   # 9.1 GB VLM + 2.1 GB expert in bf16, plus activations for ~4k vision tokens.
   vram_gb: 18
@@ -47,27 +64,34 @@ capabilities:
 
   # -- model card (docs/models/comparison.md) --
   architecture: "Qwen3.5-4B VLM + 1B flow-matching planning expert (planner-sft)"
-  params_m: 5000
+  # Counted from the checkpoint, not the card: 4539 M in model.safetensors plus
+  # 1040 M in planner-sft/. perception/ (125 M) is not loaded for planning.
+  params_m: 5580
   size_gb: 11.2
   precision: bf16
   # Per-frame pixel budgets, not a fixed size: current frame ~720p
   # (921,600 px), the three history frames ~320p (174,080 px), each snapped
-  # to a 32 px grid. 1280x720 is the current frame's budget at 16:9.
+  # to a 32 px grid. 1280x720 is the current frame's budget at 16:9. Frames
+  # carry no `target_size`, so a source's own aspect ratio is kept.
   input_size: [1280, 720]
   history_frames: 4
   output_kind: waypoints
-  # What the model emits. The adapter hands paddock the first 4 s of it on the
-  # 0.5 s grid (GRID_INDICES), which is what NAVSIM scores and more than
-  # neuroNCAP or KITScenes read; poses 40-49 are dropped.
+  # What the model emits, and now all of what the adapter hands paddock: the
+  # 0.5 s grid (GRID_INDICES) carries all ten points rather than stopping at
+  # 4 s. NAVSIM scores the first eight, neuroNCAP the first six and KITScenes
+  # the first six, so the tail costs them nothing and lets comma2k19 score
+  # ADE@5s at the same spacing every other model on that board is scored at.
   horizon_s: 5.0
-  # Flow matching from seeded noise (noise_seed + k): repeated inference on
-  # identical input is identical.
+  # Flow matching from seeded noise (noise_seed + k) and a greedy reasoning
+  # turn: in the default direct mode, repeated inference on identical input is
+  # identical. QWENDRIVE_MODE=reasoning is not -- see the note there.
   stochastic: false
   needs_speed: true
   # From the technical report's data section (arXiv 2609.00111): trajectories
   # "standardized from multiple public driving datasets", and its reported
   # NAVSIM navtest number is the in-distribution one. Which splits exactly is
   # not stated in the repo; navtrain is the honest assumption for navtest.
+  # comma2k19 is named by neither the report nor the checkout.
   trained_on:
     - dataset: navsim
       split: navtrain
@@ -76,4 +100,7 @@ capabilities:
     - dataset: nvidia-physical-ai
       split: train
 
-benchmarks: [kitscenes, nuscenes, navsim, navsim_v1, neuroncap]
+# One key, not one per benchmark that arrives: two `benchmarks:` lines is valid
+# YAML and keeps only the last, which is how a model has silently dropped off a
+# board before.
+benchmarks: [kitscenes, nuscenes, navsim, navsim_v1, neuroncap, comma2k19]

@@ -390,6 +390,32 @@ def test_limit_is_a_prefix_of_the_full_set(site: SiteConfig) -> None:
     assert [s.sample_id for s in harness.samples(limit=2)] == everything[:2]
 
 
+def test_skip_drops_the_anchors_a_resumed_run_already_scored(site: SiteConfig) -> None:
+    """The runner calls `samples(limit=..., skip=...)` on every resume.
+
+    A harness that never grew `skip` raises TypeError on the first pull of a
+    resumed sweep, and one that ignores it rescores what is already in the run.
+    """
+    harness = _harness(site)
+    everything = [s.sample_id for s in harness.samples()]
+    done = set(everything[:2])
+    assert [s.sample_id for s in harness.samples(skip=done)] == everything[2:]
+    # `limit` counts what is left, not the whole stream: the runner passes the
+    # outstanding count, so a resumed sweep would otherwise stop short.
+    assert [s.sample_id for s in harness.samples(limit=2, skip=done)] == everything[2:4]
+
+
+def test_a_log_with_nothing_left_to_do_is_never_opened(site: SiteConfig, monkeypatch) -> None:
+    """Filtering the manifest, not the built samples, is the point of `skip`."""
+    harness = _harness(site)
+    done = {s.sample_id for s in harness.samples()}
+    opened: list[Path] = []
+    real = L.open_log
+    monkeypatch.setattr(L, "open_log", lambda db: (opened.append(db), real(db))[1])
+    assert list(harness.samples(skip=done)) == []
+    assert opened == [], "a database was read for a log whose anchors were all scored"
+
+
 def test_each_sample_carries_a_full_history(site: SiteConfig) -> None:
     """A short history would measure a model working from one it invented."""
     sample = next(iter(_harness(site).samples()))

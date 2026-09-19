@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 
 from paddock.config import ConfigError, SiteConfig
-from paddock.results.report import lower_is_better
+from paddock.results.report import has_direction, lower_is_better
 from paddock.results.store import scrub, sequence_hash, summarise
 
 # ---------------------------------------------------------------------------
@@ -42,8 +42,23 @@ def test_scrub_removes_machine_paths_but_keeps_the_name() -> None:
     machine_path = "/" + "/".join(["shakaal_hdd_1", "workspace", "someone", "outputs", "runs1"])
     assert scrub({"from": machine_path, "n": 3}) == {"from": "runs1", "n": 3}
 
-    for root in ("mnt", "home", "proj", "scratch", "datadrive"):
+    # Every root `test_portability.py` bans, not the subset one workspace uses.
+    # `Users` and `spiral` are the two an allowlist-shaped scrubber missed, so a
+    # run committed from a mac or the other cluster failed the gate it was
+    # supposed to satisfy -- with no fix short of editing the record by hand.
+    for root in ("mnt", "home", "proj", "scratch", "datadrive", "Users", "spiral"):
         assert scrub("/" + root + "/x/y/runs5") == "runs5"
+
+
+def test_scrub_keeps_what_is_not_a_machine_path() -> None:
+    """A scrubber that eats URLs and relative paths loses real provenance.
+
+    `provenance.repo.remote` and a policy's reported graph name are both things
+    a reader at the other site can resolve, and both contain slashes.
+    """
+    assert scrub("https://github.com/commaai/openpilot") == "https://github.com/commaai/openpilot"
+    assert scrub("models/supercombo.onnx") == "models/supercombo.onnx"
+    assert scrub("20260917T101500-a1b2c3") == "20260917T101500-a1b2c3"
 
 
 def test_sequence_hash_is_order_independent_and_content_sensitive() -> None:
@@ -92,11 +107,59 @@ def test_summarise_of_nothing_is_not_zero() -> None:
         ("scene_score", False),
         ("progress", False),
         ("duration_frac_20s", False),
+        # comma2k19. A miss rate and a time-below-threshold fraction both count
+        # samples that went wrong; the comfort maxima are the worst value the
+        # plan reaches. All nine rendered with an up arrow before they were
+        # named, because no substring marker catches them and "_max" is too
+        # broad to be one.
+        ("miss_rate@2s", True),
+        ("miss_rate@3s", True),
+        ("miss_rate@4s", True),
+        ("ttc_below_2s", True),
+        ("comfort_lon_accel_max", True),
+        ("comfort_lon_decel_max", True),
+        ("comfort_lat_accel_max", True),
+        ("comfort_lon_jerk_max", True),
+        ("comfort_yaw_rate_max", True),
+        ("pdm_style_score", False),
+        ("comfort_within_bounds", False),
     ],
 )
 def test_metric_direction(metric: str, lower_better: bool) -> None:
     """A mis-signed metric silently inverts the leaderboard for that column."""
+    assert has_direction(metric), f"{metric} is listed with a direction; it should have one"
     assert lower_is_better(metric) is lower_better
+
+
+@pytest.mark.parametrize(
+    "metric",
+    [
+        # Signed: best at zero, worse in both directions. A down arrow ranks a
+        # model that thinks the lead is 40 m nearer than it is above one that
+        # is exactly right.
+        "lead_range_err",
+        "along_track_bias",
+        "yaw_rate_bias",
+        # Best at a value that is not an extreme: 1.0 for a ratio of lengths,
+        # and the nominal 0.68 / 0.95 for coverage. A model above a coverage
+        # target is not better calibrated, it is under-confident.
+        "path_length_ratio",
+        "within_1sigma_lateral",
+        "within_2sigma_lateral",
+        # How far the model plans, not how well it plans. comma2k19 renders it
+        # as a column, and an up arrow there says a 10 s planner beat a 3 s one
+        # on a metric that is not a score.
+        "scored_horizon_s",
+    ],
+)
+def test_a_metric_with_no_better_direction_gets_no_arrow(metric: str) -> None:
+    """An arrow is a claim. On these it is a false one, so none is drawn.
+
+    `lower_is_better` still answers for them -- it answers for every string --
+    which is why the check is a separate predicate rather than a third return
+    value: the renderer asks whether to draw an arrow before it asks which way.
+    """
+    assert not has_direction(metric)
 
 
 # ---------------------------------------------------------------------------

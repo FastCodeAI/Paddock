@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import os
 import pickle
-from collections.abc import Iterator
+from collections.abc import Container, Iterator
 from pathlib import Path
 
 import numpy as np
@@ -26,7 +26,7 @@ import numpy as np
 from paddock.adapters.benchmarks.kitscenes import loader as L
 from paddock.benchmark import OpenLoopBenchmark, Sample
 from paddock.metrics import trajectory as M
-from paddock.policy.protocol import Command, Observation, Trajectory
+from paddock.policy.protocol import CANBUS_VELOCITY, Command, Observation, Trajectory
 
 #: Source frames of history fed before the scored keyframe. 48 at the dataset's
 #: 10 Hz is 4.8 s, which is what fills openpilot's 24-deep feature buffer at the
@@ -201,7 +201,12 @@ class KitScenesBenchmark(OpenLoopBenchmark):
 
     # ---- samples --------------------------------------------------------
 
-    def samples(self, limit: int | None = None, split: str | None = None) -> Iterator[Sample]:
+    def samples(
+        self,
+        limit: int | None = None,
+        split: str | None = None,
+        skip: Container[str] = (),
+    ) -> Iterator[Sample]:
         rows, missing = self.coverage()
         if missing:
             raise RuntimeError(
@@ -213,8 +218,16 @@ class KitScenesBenchmark(OpenLoopBenchmark):
             rows = [r for r in rows if r.get("split") == split]
         # Deterministic: --limit N must select the same N at every site.
         rows.sort(key=lambda r: (r["scene_id"], int(r["keyframe_index"])))
+        # Filtered by id before `_sample` reads poses and calibration, so a
+        # resume costs a directory listing rather than a re-read per scene.
+        rows = [r for r in rows if self._sample_id(r) not in skip]
         for row in rows[:limit] if limit else rows:
             yield self._sample(row)
+
+    @staticmethod
+    def _sample_id(row: dict) -> str:
+        """The id `_sample` will give this row. One definition, used twice."""
+        return f"kitscenes/{row['split']}/{row['scene_id']}/{int(row['keyframe_index'])}"
 
     def _sample(self, row: dict) -> Sample:
         scene = self._scene_path(row["scene_id"], row["split_dir"])
@@ -229,7 +242,7 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         # neither side needs to carry 24 MB a frame -- times six, now.
         observations = [self._observation(ring, poses, index, calibration) for index in indices]
         return Sample(
-            sample_id=f"kitscenes/{row['split']}/{row['scene_id']}/{keyframe}",
+            sample_id=self._sample_id(row),
             observations=observations,
             ground_truth=L.ground_truth(poses, keyframe, n=N_GT_POSES),
             split=row["split"],
@@ -313,7 +326,7 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         ego2world[:2, :2] = [[np.cos(yaw), -np.sin(yaw)], [np.sin(yaw), np.cos(yaw)]]
 
         canbus = np.zeros(18)
-        canbus[13] = L.ego_speed(poses, index)
+        canbus[CANBUS_VELOCITY] = L.ego_speed(poses, index)
 
         camera2image, camera2ego = calibration
         image_paths = {

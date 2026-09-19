@@ -6,6 +6,7 @@ constructs the right command and environment, not that a model works.
 
 from __future__ import annotations
 
+import subprocess
 from dataclasses import replace
 
 import pytest
@@ -85,15 +86,102 @@ def test_zero_vram_models_do_not_wait() -> None:
 
 
 def test_impossible_vram_request_fails_with_a_useful_message(monkeypatch) -> None:
-    monkeypatch.setattr(gpu, "free_gb", lambda: 1.0)
+    monkeypatch.setattr(gpu, "free_gb", lambda _env=None: 1.0)
     with pytest.raises(gpu.GpuUnavailable, match="held by other processes"):
         gpu.wait_for(999.0, timeout_s=0.0, poll_s=0.0)
 
 
 def test_no_gpu_present_does_not_block(monkeypatch) -> None:
     """A CPU-only model must still run on a box with no usable nvidia-smi."""
-    monkeypatch.setattr(gpu, "free_gb", lambda: None)
+    monkeypatch.setattr(gpu, "free_gb", lambda _env=None: None)
     gpu.wait_for(24.0, timeout_s=0.0)
+
+
+def _nvidia_smi_returning(rows: str):
+    """Stand in for the nvidia-smi call `free_gb` makes, with `rows` as output."""
+
+    def run(*_args, **_kwargs):
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout=rows, stderr="")
+
+    return run
+
+
+@pytest.mark.parametrize(
+    ("visible", "expected"),
+    [
+        (None, 24.0),  # unset: device 0, as before
+        ("0", 24.0),
+        ("1", 90.0),  # the emptier card, which is the point
+        ("1,0", 90.0),  # a list selects with its first entry
+        # Explicitly empty is how CUDA is told there is no device at all, so
+        # there is no headroom to read and nothing to wait for.
+        ("", None),
+        ("MIG-abc", 24.0),  # a UUID is not an index; do not guess
+    ],
+)
+def test_free_vram_is_read_from_the_card_the_model_will_use(monkeypatch, visible, expected) -> None:
+    """CUDA_VISIBLE_DEVICES reaches the node, so gating must honour it too.
+
+    Before this, a run pinned to a second card waited on the first card's
+    headroom: it blocked on a full GPU it was not using while the one it *was*
+    using sat empty.
+    """
+    monkeypatch.setattr(gpu.shutil, "which", lambda _name: "/usr/bin/nvidia-smi")
+    monkeypatch.setattr(gpu.subprocess, "run", _nvidia_smi_returning("24576\n92160\n"))
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    if visible is not None:
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", visible)
+    assert gpu.free_gb() == (None if expected is None else pytest.approx(expected))
+
+
+def test_gating_reads_the_card_the_model_is_pinned_to_not_the_one_paddock_sees(monkeypatch) -> None:
+    """`[models.X] env.CUDA_VISIBLE_DEVICES = "1"` never reached the gate.
+
+    `runtime.env.build` puts a model's declared environment on the node, so the
+    node lands on card 1 -- while `wait_for`, reading `os.environ`, waited on
+    card 0. The same wrong answer twice over the previous fix set out to stop,
+    one level up: it blocks on a card the run is not using and green-lights a
+    launch into an empty one that is not there.
+    """
+    monkeypatch.setattr(gpu.shutil, "which", lambda _name: "/usr/bin/nvidia-smi")
+    monkeypatch.setattr(gpu.subprocess, "run", _nvidia_smi_returning("1024\n92160\n"))
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")  # paddock's own view: card 0, nearly full
+
+    assert gpu.free_gb() == pytest.approx(1.0)
+    assert gpu.free_gb({"CUDA_VISIBLE_DEVICES": "1"}) == pytest.approx(90.0)
+    # And the model's own view is what decides whether to block.
+    gpu.wait_for(24.0, timeout_s=0.0, poll_s=0.0, env={"CUDA_VISIBLE_DEVICES": "1"})
+    with pytest.raises(gpu.GpuUnavailable):
+        gpu.wait_for(24.0, timeout_s=0.0, poll_s=0.0, env={"CUDA_VISIBLE_DEVICES": "0"})
+
+
+def test_a_model_pinned_to_no_device_does_not_wait_for_one(monkeypatch) -> None:
+    """`CUDA_VISIBLE_DEVICES=""` is CUDA's "there is no GPU here".
+
+    Read as an index it was device 0, so a model deliberately pushed onto the
+    CPU sat waiting up to two hours for headroom on a card it could not open.
+
+    `-1` is the form people actually write -- it is what the CUDA docs and most
+    READMEs show -- and it is not `isdigit()`, so it fell through to the same
+    device 0 the empty string used to.
+    """
+    monkeypatch.setattr(gpu.shutil, "which", lambda _name: "/usr/bin/nvidia-smi")
+    monkeypatch.setattr(gpu.subprocess, "run", _nvidia_smi_returning("1024\n"))
+    for value in ("", "-1", " -1 ", "-1,-1"):
+        assert gpu.visible_device({"CUDA_VISIBLE_DEVICES": value}) is None, value
+        assert gpu.free_gb({"CUDA_VISIBLE_DEVICES": value}) is None, value
+        gpu.wait_for(24.0, timeout_s=0.0, poll_s=0.0, env={"CUDA_VISIBLE_DEVICES": value})
+    # And a leading `+` is still an index, not a refusal.
+    assert gpu.visible_device({"CUDA_VISIBLE_DEVICES": "+0"}) == 0
+
+
+def test_free_vram_is_unknown_rather_than_wrong_for_a_device_that_is_not_there(monkeypatch) -> None:
+    """Reporting some other card's headroom would be worse than admitting ignorance."""
+    monkeypatch.setattr(gpu.shutil, "which", lambda _name: "/usr/bin/nvidia-smi")
+    monkeypatch.setattr(gpu.subprocess, "run", _nvidia_smi_returning("24576\n"))
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "7")
+    assert gpu.free_gb() is None
+    gpu.wait_for(24.0, timeout_s=0.0)  # "cannot tell" must not block the launch
 
 
 def test_port_selection_skips_a_port_in_use() -> None:
@@ -130,6 +218,33 @@ def test_a_wildcard_listener_counts_as_taken() -> None:
         assert not ports.is_free(busy), "a wildcard listener must count as in use"
 
 
+def _a_buildable_model(cfg, needs_env: bool = False):
+    """A model whose env template this site can actually resolve.
+
+    Taking the first model alphabetically instead made these tests a statement
+    about that one model's dependencies: `alpamayo15` names `{data.navsim...}`,
+    so a site holding some datasets but not NAVSIM got a `ConfigError` from
+    `substitute` rather than the skip the guard above was written to give it.
+    A site with a partial paddock.toml is the normal case, not a broken one --
+    it is what `paddock doctor` exists to describe.
+    """
+    from paddock.config import ConfigError
+    from paddock.registry import Registry
+    from paddock.runtime import env as env_builder
+
+    models = Registry.load().models
+    for name in sorted(models):
+        spec = models[name]
+        if needs_env and not spec.runtime.env:
+            continue
+        try:
+            env_builder.build(spec, cfg)
+        except ConfigError:
+            continue
+        return spec
+    pytest.skip("no model's environment resolves against this site configuration")
+
+
 def test_a_site_env_override_reaches_the_model_process() -> None:
     """`[models.<name>] env` in paddock.toml must actually take effect.
 
@@ -138,18 +253,15 @@ def test_a_site_env_override_reaches_the_model_process() -> None:
     the key not existing, because it reads as configured.
     """
     from paddock.config import ModelOverride, SiteConfig
-    from paddock.registry import Registry
     from paddock.runtime import env as env_builder
 
     try:
         cfg = SiteConfig.load()
     except Exception:  # noqa: BLE001
         pytest.skip("no site configuration")
-    registry = Registry.load()
-    name = next(iter(sorted(registry.models)))
-    spec = registry.models[name]
+    spec = _a_buildable_model(cfg)
 
-    patched = replace(cfg, models={**cfg.models, name: ModelOverride(env={"PADDOCK_TEST_KEY": "set"})})
+    patched = replace(cfg, models={**cfg.models, spec.name: ModelOverride(env={"PADDOCK_TEST_KEY": "set"})})
     built = env_builder.build(spec, patched)
     assert built.get("PADDOCK_TEST_KEY") == "set"
 
@@ -157,15 +269,13 @@ def test_a_site_env_override_reaches_the_model_process() -> None:
 def test_a_site_env_override_beats_the_models_declared_default() -> None:
     """The site is the authority on its own machine; model.yaml is the default."""
     from paddock.config import ModelOverride, SiteConfig
-    from paddock.registry import Registry
     from paddock.runtime import env as env_builder
 
     try:
         cfg = SiteConfig.load()
     except Exception:  # noqa: BLE001
         pytest.skip("no site configuration")
-    registry = Registry.load()
-    spec = next(m for m in registry.models.values() if m.runtime.env)
+    spec = _a_buildable_model(cfg, needs_env=True)
     key = next(iter(spec.runtime.env))
 
     patched = replace(cfg, models={**cfg.models, spec.name: ModelOverride(env={key: "site-wins"})})

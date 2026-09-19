@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
-85 runs across 7 benchmarks.
-45 run(s) excluded as invalid — shown at the end, never averaged in.
+91 runs across 8 benchmarks.
+49 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
@@ -27,6 +27,17 @@
 | constant_velocity | pooled50-6mps-40c29d24c37d542a-35a5cb | 50 | fastcode-navvrat-b2d-pooled | 40.388 | 73.075 | 0.539 | 0.620 | 1.000 | 0.000 | 157.368 |
 | drivejepa | pooled50-40c29d24c37d542a-1de367 | 50 | fastcode-navvrat-b2d-pooled | 31.706 | 39.101 | 0.862 | 0.160 | 1.000 | 0.000 | 1068.316 |
 | qwendrive | pooled50-40c29d24c37d542a-f250e0 | 50 | fastcode-navvrat-b2d-pooled | 12.921 | 50.191 | 0.300 | 0.900 | 1.000 | 0.000 | 3457.266 |
+
+## comma2k19
+
+| model | run | n | site | ade ↓ | fde@1s ↓ | fde@2s ↓ | fde@3s ↓ | scored_horizon_s | ade@1s ↓ | ade@2s ↓ |
+|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| alpamayo15 | 20260913T072437-b058c2 | 10165 | hpcai-skodate | 0.900 | 0.499 | 0.973 | 1.654 | 4.000 | 0.386 | 0.616 |
+| qwendrive | 20260916T220846-971379 | 10165 | hpcai-skodate | 1.159 | 0.632 | 1.296 | 2.094 | 5.000 | 0.475 | 0.801 |
+| openpilot | 20260916T051616-2a91ca | 10165 | hpcai-skodate | 1.507 | 0.804 | 1.703 | 2.712 | 10.000 | 0.598 | 1.035 |
+| constant_velocity | 20260916T162837-b89038 | 10165 | hpcai-skodate | 1.639 | 0.734 | 1.786 | 3.286 | 3.000 | 0.537 | 1.017 |
+| visionpilot | 20260916T012719-03350c | 10165 | hpcai-skodate | 4.045 | 1.652 | 4.553 | 8.146 | 4.000 | 1.149 | 2.462 |
+| drivejepa_free | 20260916T003407-c504e5 | 10165 | hpcai-skodate | 16.048 | 10.887 | 18.016 | 26.248 | 4.000 | 7.800 | 12.077 |
 
 ## kitscenes
 
@@ -138,6 +149,7 @@
 - **nuplan/constant_velocity/20260917T214417-f827db** — camera images cover 25 of 351 scorable anchors (53 logs have no images); not comparable with a full-coverage run
 - **nuplan/meteor/20260917T195335-1b447c** — camera images cover 26 of 375 anchors (53 logs have no images); not comparable with a full-coverage run
 - **nuplan/drivejepa/20260916T204900-6a17de** — camera images cover 26 of 375 anchors (53 logs have no images); not comparable with a full-coverage run
+- **comma2k19/qwendrive/20260915T214115-405f64** — Superseded by 20260916T220846-971379: the adapter that produced it no longer exists, so no paddock run can reproduce 1.016; it emitted all 50 poses at waypoint_dt 0.1 and score() aligns the ground truth onto the prediction's grid, which is also why comfort read 1932 m/s**3 of quantiser jerk
 - **neuroncap/meteor/20260915T192353-6ed840** — 1 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes)
 - **nuscenes/qwendrive/20260915T190154-9212ce** — --limit 50: a subset of the benchmark, run to test the pipeline
 - **nuscenes/qwendrive/20260915T185751-94386b** — --limit 5: a subset of the benchmark, run to test the pipeline
@@ -148,6 +160,9 @@
 - **navsim/meteor/20260914T205802-4cc7fb** — --limit 12: a subset of the benchmark, run to test the pipeline
 - **nuscenes/meteor/20260914T202008-98df65** — --limit 5: a subset of the benchmark, run to test the pipeline
 - **kitscenes/meteor/20260914T185332-24b8ff** — --limit 5: a subset of the benchmark, run to test the pipeline
+- **comma2k19/openpilot/20260912T053225-2a91ca** — Superseded by 20260916T051616-2a91ca: that is the row the docs cite. The two are bit-identical on all 65 shared metrics -- same 10,165 samples, same sequences_sha256 -- and the later one additionally carries the nine proxy and miss-rate metrics added after this ran. Kept rather than deleted so the record of it having happened survives.
+- **comma2k19/openpilot/20260912T051526-e9e08e** — --limit 20: a subset of the benchmark, run to test the pipeline
+- **comma2k19/constant_velocity/20260911T231819-736a8a** — Reference baseline: straight ahead at the recorded speed, no model. Produced by tools/benchmarks/comma2k19/constant_velocity.py against the benchmark's own harness and scoring; video decoding skipped, since the policy reads no pixels. Stored under the pseudo-model 'constant_velocity' because it is not a registered model. Superseded by 20260916T162837-b89038: that is the row the docs cite. This one predates measuring comfort on a common 0.5 s grid, so its comfort and far-horizon columns are not comparable with the rows beside it. Kept rather than deleted so the record of it having happened survives.
 - **navsim_v1/human/20260911T041230-67c4f3** — privileged: the human agent returns the recorded future the scorer measures against; an anchor for the scoring path, not a model; no model process ran: the recorded human future through the devkit scorer
 - **navsim/alpamayo15/20260911T024038-d518fc** — 1 scenario(s) failed in the scorer and are excluded
 - **navsim/openpilot/20260911T004312-98f3dc** — --limit 12: a subset of the benchmark, run to test the pipeline
@@ -173,5 +188,4 @@
 
 ---
 
-Arrows show direction of better. Aggregates are recomputed by paddock from per-sample records, never taken from the producer.
-
+Arrows show direction of better; a column with no arrow has none -- a signed bias, a ratio best at one, or a description of the model rather than a score. Aggregates are recomputed by paddock from per-sample records, never taken from the producer.

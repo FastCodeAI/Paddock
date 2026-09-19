@@ -1,5 +1,11 @@
 # Adding a benchmark
 
+> **Start with `paddock new benchmark <name>`** — it scaffolds the directory below
+> and renames the template consistently. Then `paddock verify --bench <name>`
+> checks the contract before you spend a sweep on it. The shared mechanics and the
+> full contract are in [adding-an-adapter.md](adding-an-adapter.md); this page is the
+> benchmark-specific detail.
+
 Same shape as [adding a model](adding-a-model.md): one registry file, one new
 directory, no changes to `src/paddock/`.
 
@@ -28,6 +34,7 @@ place at every site. So a benchmark is declared in two halves — **what it need
 | 4 | `src/paddock/adapters/benchmarks/<name>/harness.py` | **create** |
 | 5 | `src/paddock/adapters/benchmarks/<name>/tests/test_harness.py` | **create** — golden test |
 | 6 | `docs/benchmarks/<name>.md` | **create** |
+| 7 | `docs/datasets/<dataset>.md` | **create**, if the dataset is new to paddock |
 
 If the benchmark uses a dataset that is already declared, skip step 1.
 
@@ -115,7 +122,7 @@ actually drive.
 ```python
 class MyBenchmark(OpenLoopBenchmark):
     def preflight(self) -> list[str]: ...
-    def samples(self, limit=None, split=None) -> Iterator[Sample]: ...
+    def samples(self, limit=None, split=None, skip=()) -> Iterator[Sample]: ...
     def score(self, sample, prediction) -> dict[str, float]: ...
 
 BENCHMARK = MyBenchmark
@@ -132,6 +139,15 @@ BENCHMARK = MyBenchmark
   catches people out: interpolate ground truth onto the prediction's timestamps,
   and never extrapolate past the end of the recorded future — trim instead. A
   hand-rolled ADE that extrapolates flatters long-horizon predictions.
+- **`skip` is what makes `--resume` worth having.** It holds the ids an
+  interrupted run already scored. Dropping them from what you yield is correct
+  but pointless; the win is not *building* them, as early as your data lets you
+  decide — comma2k19 rebuilds a segment's ids from its frame count and never
+  opens the video. The runner drops a repeat either way, so a benchmark whose
+  samples are cheap may accept the parameter and ignore it.
+- **Override `node_count` if a sample costs more to prepare than to infer.**
+  Open-loop requests are self-contained, so the runner will score N at a time
+  across N nodes, and decode-bound work scales with them. The default is one.
 
 ### Closed loop
 
@@ -170,6 +186,30 @@ scenario stationary/0061 needs renderer checkpoint 0061, which is not present
 Check the data root, the splits, and any per-scene assets the run will reach for
 an hour in.
 
+### `status()` — the other half of the same question
+
+`preflight` says what is wrong. It cannot say what is *right*, and at a new site
+that is the more useful half: "2035 segments, no decoder" tells someone far more
+than the refusal alone. So `Benchmark` has a second, optional hook:
+
+```python
+def status(self) -> list[tuple[str, str]]:
+    """Informational rows about what this benchmark's data actually holds."""
+```
+
+`paddock doctor` prints the pairs indented under the benchmark's row with no
+status glyph and no fix arrow, because they are **facts, not verdicts** — the
+moment a row implies a judgement it belongs in `preflight` instead. It defaults
+to returning nothing, so this costs other adapters nothing.
+
+Two rules make it safe to leave on. `doctor` calls it for every benchmark on
+every machine, so it must stay interactive: walk directories if you must, but do
+not read arrays, and sample rather than sweep. And it must not be the reason a
+diagnosis fails — `doctor` catches what it raises and turns that into a row, but
+a benchmark whose description throws has lost the point of the exercise. Reuse
+whatever `preflight` already computed rather than paying for it twice.
+`adapters/benchmarks/comma2k19/inventory.py` is the worked example.
+
 ## Step 7 — golden test
 
 Pin a handful of samples and their expected metric values, so a refactor that
@@ -203,6 +243,35 @@ Rendering belongs to the benchmark rather than to a model because debugging
 means putting several models side by side. See
 [architecture.md](architecture.md#where-does-a-file-belong).
 
+### One sample, drawn
+
+`render.py` may also define a second, independent hook:
+
+```python
+def render_sample(runs: list[LoadedRun], sample_id: str, out_dir: Path, cfg) -> list[Path]:
+    """Draw the one sample `sample_id`; return what was written."""
+```
+
+`paddock render --bench <name> --sample <sample_id>` finds it, and says so
+plainly if the benchmark does not define it. The two hooks answer different
+questions and neither implies the other: `render` says *how often* a model is
+wrong across a run, `render_sample` says *how* it was wrong on one — which is
+the question a long tail in the first figure always raises next.
+
+What makes this implementable is `native_id`. The runner stores it with every
+per-sample record, and it is the benchmark's own handle on the sample — scene
+id, frame index, whatever is needed to find the raw data again. Put enough in
+it to re-decode the sample without re-deriving anything, and a stored run stays
+inspectable months later. comma2k19 stores the route, the keyframe, the window
+and the input rate, and re-decodes the video from that
+([comma2k19/render.py](../src/paddock/adapters/benchmarks/comma2k19/render.py)).
+
+Raise `LookupError` when the sample is not in the loaded runs, or when the raw
+data behind it is not present at this site. The message is shown verbatim and
+the CLI exits non-zero, so name what *is* available rather than only what is
+not — the usual cause is a run whose artifacts under `[roots] runs` were cleaned
+up, and a bare "not found" sends the reader looking in the wrong place.
+
 ## Step 9 — verify and document
 
 ```bash
@@ -213,3 +282,24 @@ make check
 
 Then write `docs/benchmarks/<name>.md`: what data is required, what the metrics
 mean, roughly what a run costs in wall-clock, and reference numbers.
+
+If the dataset itself is new to paddock, write `docs/datasets/<dataset>.md` as
+well, and keep the line between them: the **benchmark** page documents paddock's
+protocol — history length, horizons, what is scored — all of which are choices
+that can change; the **dataset** page documents what is true of the data on any
+machine — sensors and their limits, coordinate frames and units, coverage, the
+traps in its own documentation, and what it cannot answer. Two rules make the
+dataset page worth having rather than a second copy of the first:
+
+* **Derive counts, do not assert them.** Any sample count a leaderboard row is
+  conditioned on should be produced by a script against the harness's own
+  methods, with the output pasted in, so it cannot drift from what a sweep does.
+  [comma2k19](datasets/comma2k19.md#where-10165-comes-from) is the worked example.
+* **Tracked means portable.** A machine-specific inventory belongs under
+  `{roots.runs}` with the command that regenerates it, not in the repo;
+  `tests/test_portability.py` will reject the paths otherwise.
+
+[SKILLS.md](../SKILLS.md) is the companion to this page: not what to write, but
+what went wrong writing it — vendored tools missing the flags you would reach
+for, quaternion conventions that need verifying against the data rather than the
+docs, and a `--dry-run` sample count that reads 0 for a new benchmark.

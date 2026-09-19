@@ -18,8 +18,9 @@ classes instead of two frameworks.
 
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Container, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,63 @@ from typing import Any
 from paddock.config import SiteConfig
 from paddock.policy.protocol import Observation, Trajectory
 from paddock.registry import BenchmarkSpec
+
+#: How many batches of `Benchmark.node_count` samples an open-loop run may be
+#: holding at once: the one being scored, the one queued behind it, and the one
+#: the prefetch thread is building. `runner._batches` sizes its handoff queue
+#: from this, so the two cannot drift.
+#:
+#: It is a contract because a harness may release a sample's inputs once its
+#: iterator moves past them -- comma2k19 stages decoded frames and deletes them
+#: as it goes -- and anything it releases sooner than this vanishes mid-request,
+#: surfacing as a file-not-found from inside a model rather than as anything
+#: about staging. The count of *samples* that must stay alive is this times the
+#: node count, and the harness's own cleanup at the end of the stream is part of
+#: it: `--limit` stops the iterator while the last batches are still out.
+PIPELINE_BATCHES = 3
+
+
+def input_rate_problems(
+    *,
+    model_name: str,
+    min_input_hz: float,
+    benchmark_name: str,
+    benchmark_hz: float,
+    allow_env: str,
+    why: str,
+    doc: str,
+) -> list[str]:
+    """Why a model needing denser observations than a benchmark supplies cannot be scored.
+
+    `min_input_hz` in model.yaml is load-bearing: a model that infers ego motion
+    from frame-to-frame change reads a too-slow stream as a stationary world and
+    plans accordingly. The resulting number scores near the constant-velocity
+    baseline and measures the rate gap rather than the model, so the harness
+    refuses the pairing instead of recording the artefact.
+
+    Pure in its arguments, so the runner can ask before waiting for VRAM and
+    reading a checkpoint, and `--dry-run` can report it. `allow_env` overrides --
+    for investigating the gap, not for producing a score, and the benchmark must
+    then add an `invalid_reasons()` entry so the run is stored `valid: false`.
+
+    `why` is the one fact only the benchmark knows: what it is about this data
+    that makes a denser history impossible (or, where the rate is a deliberate
+    setting, that it was chosen). `doc` is where the full story lives.
+
+    Shared rather than restated: NAVSIM and comma2k19 refuse for the same reason
+    and must say the same thing, and two copies of a refusal drift.
+    """
+    if min_input_hz <= benchmark_hz or os.environ.get(allow_env):
+        return []
+    return [
+        f"{model_name} needs {min_input_hz:g} Hz observations and {benchmark_name} "
+        f"supplies {benchmark_hz:g} Hz. {why}\n"
+        f"A model that infers ego motion from frame-to-frame change reads this as a "
+        f"stationary world and plans accordingly, which scores near the constant-velocity "
+        f"baseline while measuring the rate gap rather than the model. See {doc}.\n"
+        f"Set {allow_env}=1 to run anyway -- for investigating the gap, "
+        f"not for producing a score."
+    ]
 
 
 @dataclass
@@ -96,6 +154,16 @@ class Benchmark(ABC):
         settings = self.settings
         return settings.get(key, default) if settings is not None else default
 
+    def flag(self, key: str, default: bool = False) -> bool:
+        """One *boolean* key from that block. Never `bool(setting(...))`.
+
+        Settings reach a harness as strings, so `bool()` on one is true for
+        every value a site can write, `false` included. `BenchmarkOverride.flag`
+        has the detail and the bug that prompted it.
+        """
+        settings = self.settings
+        return settings.flag(key, default) if settings is not None else default
+
     def run_config(self) -> dict[str, Any]:
         """Site settings and switches that change *what is measured*.
 
@@ -128,6 +196,51 @@ class Benchmark(ABC):
         """
         return {}
 
+    def status(self) -> list[tuple[str, str]]:
+        """Informational `(label, detail)` rows about what this data actually holds.
+
+        Facts, not verdicts: `preflight` already owns problems, and a row here
+        carries no ok/warn symbol. The audience is a developer who has just
+        pointed `paddock.toml` at a dataset and wants to know what paddock found
+        there -- how many segments, at what rate, with which decoder -- before
+        spending an hour discovering it from a sweep.
+
+        Must stay fast enough for `paddock doctor` to call on every benchmark:
+        sample rather than walk. Anything expensive belongs in a `tools/`
+        report. Default: no rows, so a benchmark opts in by overriding.
+        """
+        return []
+
+    def node_count(self, model) -> int:
+        """How many policy nodes to start for *model*. One unless the benchmark
+        knows better.
+
+        A benchmark that issues N requests at a time serialises on one node: a
+        model that answers one request at a time leaves N-1 of them waiting.
+        Starting N nodes and spreading the requests across them is an N-fold
+        speedup with no change to what is computed, since every request is a
+        self-contained `infer` or `infer_sequence`.
+
+        The ceiling is the model, not the benchmark: a node that holds the GPU
+        for the whole of a request gains nothing from a sibling, while one whose
+        wall clock is decode and preprocessing -- which is most open-loop work
+        -- scales until the cores run out. `runtime.gpu.wait_for` still gates
+        each launch on the model's declared VRAM, so asking for more nodes than
+        the card can hold waits rather than fails.
+
+        **A harness that releases a sample's inputs when its iterator moves past
+        them must keep `PIPELINE_BATCHES * node_count` samples alive**, not one.
+        See that constant.
+
+        **Returning more than 1 makes the harness concurrent, and the harness is
+        the same object.** The runner advances `samples()` on a prefetch thread
+        while `score()` runs on `node_count` pool threads, so anything either
+        touches -- a cache, a counter, a lazily-built table -- is shared mutable
+        state under real contention. Returning 1 is the only value that needs no
+        thought here; anything else is a claim that this harness is thread-safe.
+        """
+        return 1
+
     @abstractmethod
     def preflight(self) -> list[str]:
         """Return human-readable reasons this benchmark cannot run here.
@@ -139,9 +252,65 @@ class Benchmark(ABC):
 
 
 class OpenLoopBenchmark(Benchmark):
+    #: Seconds between consecutive poses of `Sample.ground_truth`.
+    #:
+    #: `conformance.benchmark_findings` scores the recorded future against
+    #: itself and has to hand `score()` a `Trajectory` on the grid the benchmark
+    #: actually uses. It hardcoded 0.5 s, which is right for every benchmark in
+    #: the repo today and silently wrong for the first one on another interval:
+    #: the check would then report a displacement against a future resampled to
+    #: a spacing nothing measures on. Override where the recorded future is not
+    #: half-second spaced.
+    ground_truth_dt: float = 0.5
+
+    def model_problems(self, model, limit: int | None = None) -> list[str]:
+        """Why *model* cannot be scored here at all, decided before it is loaded.
+
+        The same hook `ExternallyScoredBenchmark` has, for the same reason: an
+        input-rate gap or a sample count the benchmark cannot serve is knowable
+        from the model spec alone, so the runner asks before waiting for VRAM
+        and reading a checkpoint, and `--dry-run` reports it.
+
+        Refusing here rather than in `samples()` is the point. A benchmark that
+        yields samples a model cannot use produces a number, and a number that
+        measures the harness instead of the model is worse than no number.
+        Default: none.
+        """
+        return []
+
     @abstractmethod
-    def samples(self, limit: int | None = None, split: str | None = None) -> Iterator[Sample]:
-        """Yield samples to evaluate, in a deterministic order."""
+    def samples(
+        self,
+        limit: int | None = None,
+        split: str | None = None,
+        skip: Container[str] = (),
+    ) -> Iterator[Sample]:
+        """Yield samples to evaluate, in a deterministic order.
+
+        `limit` caps the count of **samples**, matching what `paddock run
+        --limit` documents. A benchmark whose samples are grouped (several
+        keyframes per segment) must stop mid-group rather than slicing the
+        groups, or `--limit 5` quietly means something else.
+
+        `skip` holds sample ids an interrupted run already scored; this is what
+        makes `--resume` possible for open loop. Filtering the yielded samples
+        is correct but not the point -- the runner can do that itself. The
+        point is to avoid *building* them: comma2k19 decodes a minute of HEVC
+        per segment before it can yield a single sample, so a resume at 8000 of
+        10165 that still walks every segment saves nothing at all. A benchmark
+        whose samples are cheap may ignore it: the runner drops a repeat rather
+        than scoring it twice, at the cost of `limit` then counting from the
+        start of the stream.
+
+        `limit` counts what is yielded, so on a resume it caps the samples
+        still to do rather than the run's total. The runner subtracts what is
+        already on disk before calling.
+
+        **Runs on its own thread once `node_count` exceeds 1**, concurrently
+        with `score()` on the pool. Anything this generator memoises on the
+        harness -- a calibration table, a decoded segment, a counter -- is
+        shared mutable state the moment a benchmark asks for a second node.
+        """
 
     @abstractmethod
     def score(self, sample: Sample, prediction: Trajectory) -> dict[str, float]:
@@ -149,6 +318,12 @@ class OpenLoopBenchmark(Benchmark):
 
         Per-sample, not aggregated: paddock aggregates, so that every benchmark
         aggregates the same way and per-sample records stay inspectable.
+
+        **Called from `node_count` worker threads at once, while `samples()`
+        runs on another.** A pure function of its two arguments needs nothing
+        further; a `score` that writes to the harness has to say how it is safe,
+        and one that mutates state `samples()` also touches is a race whatever
+        the numbers look like on the day. See `node_count`.
         """
 
 
@@ -279,18 +454,6 @@ class ExternallyScoredBenchmark(Benchmark):
         benchmark can resume -- retrying a scorer that starts from scratch
         would only repeat the loss."""
         return 0
-
-    def node_count(self, model) -> int:
-        """How many policy nodes to start for *model*. One unless the benchmark
-        knows better.
-
-        A scorer that runs N worker processes against one node serialises on
-        it: a CPU-bound model that answers one request at a time leaves N-1
-        workers waiting. Starting N nodes and spreading workers across them is
-        an N-fold speedup with no change to what is computed, since every
-        request is a self-contained `infer_sequence`.
-        """
-        return 1
 
     def model_problems(self, model, limit: int | None = None) -> list[str]:
         """Why *model* cannot be scored here at all, decided before it is loaded.

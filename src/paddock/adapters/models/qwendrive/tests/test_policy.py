@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace as NS
 
 import numpy as np
 import pytest
+import yaml
 
 from paddock.adapters.models.qwendrive.policy import (
+    CROP_SPAN,
     DRIVING_COMMAND,
     FRAME_DT,
     FRAME_TOLERANCE_S,
@@ -16,10 +19,13 @@ from paddock.adapters.models.qwendrive.policy import (
     KEEP_S,
     MAX_RECORDED,
     NAV_COMMAND,
+    NEEDED_CAMERAS,
     NUM_CAM_FRAMES,
     NUM_HISTORY_STEPS,
     OUTPUT_POINTS,
     POLICY,
+    VIEW_MODES,
+    crop_box,
     medoid_index,
     pose_xy_yaw,
     resample_history,
@@ -59,6 +65,8 @@ def make_observation(
 
 
 def _policy(**kwargs) -> POLICY:
+    """Every knob named, so a site's own QWENDRIVE_* cannot move a test."""
+    kwargs.setdefault("views", "ring")
     return POLICY(planner="planner-sft", mode="direct", num_samples=1, attn="sdpa", **kwargs)
 
 
@@ -93,10 +101,12 @@ def test_defaults_come_from_the_environment(monkeypatch) -> None:
         "QWENDRIVE_NUM_SAMPLES",
         "QWENDRIVE_ATTN",
         "QWENDRIVE_SEED",
+        "QWENDRIVE_VIEWS",
     ):
         monkeypatch.delenv(key, raising=False)
     p = POLICY()
     assert (p.planner, p.mode, p.num_samples, p.attn, p.seed) == ("planner-sft", "direct", 1, "sdpa", None)
+    assert p.views == "ring"
     monkeypatch.setenv("QWENDRIVE_NUM_SAMPLES", "6")
     monkeypatch.setenv("QWENDRIVE_SEED", "7")
     q = POLICY()
@@ -107,12 +117,22 @@ def test_defaults_come_from_the_environment(monkeypatch) -> None:
 
 
 def test_grid_indices_land_on_the_half_second_grid() -> None:
-    """The model emits 50 poses at 10 Hz; pose i is at (i+1)/10 s. Eight points,
-    4 s, because NAVSIM scores 4 s; neuroNCAP takes six, KITScenes three seconds."""
-    grid = (0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0)
+    """The model emits 50 poses at 10 Hz; pose i is at (i+1)/10 s. Ten points,
+    the whole 5 s: NAVSIM scores the first eight, neuroNCAP the first six and
+    KITScenes three seconds, so the tail costs them nothing and comma2k19 scores
+    ADE@5s on the same spacing as everything else on that board."""
+    grid = (0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0)
     assert list(GRID_INDICES) == [int(round(t / 0.1)) - 1 for t in grid]
     assert len(GRID_INDICES) >= N_WAYPOINTS
-    assert GRID_INDICES[-1] < OUTPUT_POINTS
+    assert GRID_INDICES[-1] == OUTPUT_POINTS - 1
+
+
+def test_the_grid_reaches_the_horizon_the_card_declares() -> None:
+    """`horizon_s` in model.yaml is what the dashboard's time axis reads. A grid
+    that stopped short would draw a 5 s plan over 4 s of waypoints."""
+    spec = yaml.safe_load((Path(__file__).resolve().parents[1] / "model.yaml").read_text())
+    caps = spec["capabilities"]
+    assert len(GRID_INDICES) * caps["waypoint_dt"] == pytest.approx(caps["horizon_s"])
 
 
 def test_medoid_picks_the_consensus_draw() -> None:
@@ -465,8 +485,8 @@ def test_infer_obeys_the_contract() -> None:
         p.observe(make_observation(i * 100_000, x=i * 1.0))
     traj = p.infer(make_observation(20 * 100_000, x=20.0))
     assert isinstance(traj, Trajectory) and traj.dt == 0.5
-    assert traj.waypoints.shape == (8, 3)
-    np.testing.assert_allclose(traj.xy[:, 0], [5, 10, 15, 20, 25, 30, 35, 40])
+    assert traj.waypoints.shape == (10, 3)
+    np.testing.assert_allclose(traj.xy[:, 0], [5, 10, 15, 20, 25, 30, 35, 40, 45, 50])
     assert np.isfinite(traj.waypoints).all()
     assert not np.allclose(traj.xy, 0.0)
     assert p.model.calls[0]["num_samples"] == 1
@@ -476,7 +496,7 @@ def test_several_draws_execute_the_medoid() -> None:
     p = _loaded(draws=3)
     p.num_samples = 3
     traj = p.infer(make_observation(0))
-    assert traj.waypoints.shape == (8, 3)
+    assert traj.waypoints.shape == (10, 3)
 
 
 def test_infer_sequence_records_the_history_and_runs_the_model_once() -> None:
@@ -486,7 +506,7 @@ def test_infer_sequence_records_the_history_and_runs_the_model_once() -> None:
     assert len(p.model.calls) == 1, "exactly one forward pass, on the scored frame"
     assert p.timestamps == [f.timestamp_us for f in frames]
     assert p.self_prime is True
-    assert traj.waypoints.shape == (8, 3)
+    assert traj.waypoints.shape == (10, 3)
 
 
 def test_diagnostics_report_cadence_and_stand_ins() -> None:
@@ -498,3 +518,155 @@ def test_diagnostics_report_cadence_and_stand_ins() -> None:
     assert d["request_dt_s"] == 0.1
     assert d["frames_repeated_total"] == 3 + 2, "one frame fills four slots, then two fill four"
     assert d["last_command"] == "STRAIGHT" and d["infer_seconds_mean"] is not None
+
+
+# ---- filling three view slots from one camera ------------------------------
+
+
+def _mono(t_us: int, **kwargs) -> Observation:
+    """One observation from a source with a road camera and nothing else."""
+    obs = make_observation(t_us, **kwargs)
+    for camera in CAMERAS[1:]:
+        obs.image_paths.pop(camera)
+        obs.camera2image.pop(camera)
+        obs.camera2ego.pop(camera)
+    return obs
+
+
+def test_a_monocular_mode_declares_the_one_camera_it_reads() -> None:
+    """`cameras` is what a simulator renders and what `paddock verify` checks a
+    benchmark can supply, so it has to follow the view mode rather than stay at
+    the three the model was trained on."""
+    assert tuple(_policy(views="ring").cameras) == CAMERAS
+    for mode in ("replicate", "crop"):
+        assert tuple(_policy(views=mode).cameras) == (NEEDED_CAMERAS[0],)
+
+
+def test_an_unknown_view_mode_is_refused_at_construction() -> None:
+    with pytest.raises(ValueError, match="QWENDRIVE_VIEWS"):
+        _policy(views="stereo")
+    assert set(VIEW_MODES) == {"ring", "replicate", "crop"}
+
+
+def test_the_view_mode_comes_from_the_environment(monkeypatch) -> None:
+    monkeypatch.delenv("QWENDRIVE_VIEWS", raising=False)
+    assert POLICY().views == "ring"
+    monkeypatch.setenv("QWENDRIVE_VIEWS", "replicate")
+    assert POLICY().views == "replicate"
+
+
+def test_a_monocular_source_records_without_a_missing_camera_error() -> None:
+    """The same observation that `ring` refuses, `replicate` accepts. Both are
+    right: the refusal is what stops a ring model reading a third of its input
+    and calling the result a number."""
+    p = _policy(views="replicate")
+    p._record(_mono(0))
+    assert p.frames[0] == {"CAM_FRONT": "/frames/CAM_FRONT/0.jpg"}
+    with pytest.raises(KeyError, match="CAM_FRONT_LEFT"):
+        _policy(views="ring")._record(_mono(0))
+
+
+def test_crop_boxes_are_overlapping_thirds_of_one_frame() -> None:
+    size = (1164, 874)
+    left = crop_box(size, "<FRONT LEFT VIEW>")
+    front = crop_box(size, "<FRONT VIEW>")
+    right = crop_box(size, "<FRONT RIGHT VIEW>")
+    widths = {box[2] - box[0] for box in (left, front, right)}
+    assert widths == {int(1164 * CROP_SPAN)}, "one width, so the three read at one scale"
+    assert all(box[1] == 0 and box[3] == 874 for box in (left, front, right)), "full height"
+    assert left[0] == 0 and right[2] == 1164, "the sides keep the shoulders"
+    assert left[2] > front[0] and right[0] < front[2], "and overlap the centre"
+    assert front[0] + front[2] == 1164, "which keeps the vanishing point centred"
+
+
+class _FakeQwenDrive:
+    """Just enough of the vendor package to build a scene without importing it.
+
+    `_scene` is the one method the other tests stub out, and it is where the
+    view slots are actually filled -- so it gets a fake rather than a skip.
+    """
+
+    class CameraFrame:
+        def __init__(self, image, target_size=None):
+            self.image = image
+            self.target_size = target_size
+
+    class DrivingScene:
+        def __init__(self, views, token="", **rest):
+            self.views = views
+            self.token = token
+            self.rest = rest
+
+
+@pytest.fixture
+def qwen_drive(monkeypatch):
+    import sys
+
+    monkeypatch.setitem(sys.modules, "qwen_drive", _FakeQwenDrive)
+    return _FakeQwenDrive
+
+
+def _scene_of(policy: POLICY, obs: Observation):
+    policy._record(obs)
+    return policy._scene(obs, policy.scene_inputs(obs.command))
+
+
+def test_replicate_puts_the_true_forward_frame_in_all_three_slots(qwen_drive) -> None:
+    """Measured against the alternative: 1.47 / 2.00 ADE on comma2k19's city and
+    highway segments, against crop's 1.78 / 2.13."""
+    scene = _scene_of(_policy(views="replicate"), _mono(0))
+    assert sorted(scene.views) == ["<FRONT LEFT VIEW>", "<FRONT RIGHT VIEW>", "<FRONT VIEW>"]
+    sources = {frame.image for frames in scene.views.values() for frame in frames}
+    assert sources == {"/frames/CAM_FRONT/0.jpg"}, "the path, unopened: the processor decides when"
+
+
+def test_crop_defers_the_decode_and_cuts_the_slot_it_was_asked_for(qwen_drive, tmp_path) -> None:
+    """A loader, not an image. comma2k19 hands over 160 frames and the model
+    reads four; opening on scene build would decode all of them."""
+    from PIL import Image
+
+    path = tmp_path / "frame.png"
+    Image.new("RGB", (1164, 874), (10, 20, 30)).save(path)
+    obs = _mono(0)
+    obs.image_paths["CAM_FRONT"] = str(path)
+
+    scene = _scene_of(_policy(views="crop"), obs)
+    for view, frames in scene.views.items():
+        assert all(callable(frame.image) for frame in frames), "nothing opened yet"
+        cut = frames[-1].image()
+        assert cut.size == (int(1164 * CROP_SPAN), 874)
+        assert cut.tobytes() == Image.open(path).convert("RGB").crop(crop_box((1164, 874), view)).tobytes()
+
+
+def test_a_staged_raw_frame_is_read_as_an_array_and_still_deferred(qwen_drive, tmp_path) -> None:
+    """comma2k19 stages `.npy`, because PNG decode was 59% of a node's wall
+    clock. PIL cannot open one, so the path cannot go through as a path -- but
+    it must still not be read until the processor asks for it."""
+    pixels = np.random.default_rng(0).integers(0, 255, (874, 1164, 3), dtype=np.uint8)
+    path = tmp_path / "000966.npy"
+    np.save(path, pixels)
+    obs = _mono(0)
+    obs.image_paths["CAM_FRONT"] = str(path)
+
+    scene = _scene_of(_policy(views="replicate"), obs)
+    for frames in scene.views.values():
+        assert all(callable(frame.image) for frame in frames), "nothing read yet"
+        assert np.array_equal(np.asarray(frames[-1].image()), pixels)
+
+
+def test_a_ring_source_still_gets_one_real_camera_per_slot(qwen_drive) -> None:
+    scene = _scene_of(_policy(views="ring"), make_observation(0))
+    assert {view: frames[-1].image for view, frames in scene.views.items()} == {
+        "<FRONT VIEW>": "/frames/CAM_FRONT/0.jpg",
+        "<FRONT LEFT VIEW>": "/frames/CAM_FRONT_LEFT/0.jpg",
+        "<FRONT RIGHT VIEW>": "/frames/CAM_FRONT_RIGHT/0.jpg",
+    }
+
+
+def test_diagnostics_name_the_view_mode_and_the_cameras_it_implies() -> None:
+    p = _loaded()
+    p.views = "replicate"
+    p.cameras = (NEEDED_CAMERAS[0],)
+    p.infer(_mono(0))
+    d = p.diagnostics()
+    assert d["views"] == "replicate" and d["cameras"] == ["CAM_FRONT"]
