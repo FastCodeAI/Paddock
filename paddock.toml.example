@@ -360,6 +360,50 @@ serialize = true
 # [ingest.bench2drive.setups]
 # assisted    = ["1711", "2802"]
 # unassisted  = ["1852"]
+#
+# The native-rate campaign (18-20 Sep 2026), as it was actually ingested. It is
+# the same 50 routes as the pooled50 blocks above with one thing changed: each
+# model drove at the rate its model.yaml declares, set with PADDOCK_INFER_HZ.
+# Two things in here are load-bearing, and both have bitten before:
+#
+#   * PADDOCK_INFER_HZ must be in `model_env`. The harness did not record it in
+#     the source runs' run_config.json, and the run id hashes the config -- so
+#     without this override a native-rate run and the 20 Hz run of the same
+#     model differ only by their label, and `store.write_run` overwrites.
+#   * `routes` must list all 50 even for the models that could not score one of
+#     them. Route 3800 segfaults CARLA for alpamayo15 and qwendrive, and its
+#     route directory holds an UNSCORABLE.txt marker rather than a results.json,
+#     so with `routes` unset the ingest cannot see it at all: the route would
+#     vanish from the record instead of landing in n_failed with status
+#     "partial". A route that was requested and never scored is evidence.
+#
+# See docs/benchmarks/bench2drive-native-rate.md.
+# [[ingest.bench2drive]]
+# model  = "drivejepa"
+# runs   = "/path/to/paddock-runs/bench2drive-diagnostics/native-50/drivejepa"
+# label  = "native50-2hz"
+# routes = ["14194", "1711", "17752", "18305", "18311", "18356", "1852", "2050", "2084", "2086", "2201", "2273", "2286", "24211", "24224", "24240", "24252", "24333", "24795", "24816", "2509", "2534", "25378", "2539", "25857", "25863", "26956", "26990", "27018", "27515", "27529", "27582", "2790", "2802", "3307", "3364", "3373", "3378", "3380", "3410", "3564", "3572", "3575", "3749", "3800", "3813", "3936", "4183", "4468", "4669"]
+# notes  = "Native-rate campaign, 18-20 Sep 2026, RunPod RTX PRO 6000, CARLA 0.9.15 Epic."
+# [ingest.bench2drive.model_env]
+# PADDOCK_INFER_HZ = "2"
+#
+# [[ingest.bench2drive]]
+# model  = "alpamayo15"
+# runs   = "/path/to/paddock-runs/bench2drive-diagnostics/native-50/alpamayo15"
+# label  = "native50-10hz"
+# routes = ["14194", "1711", "17752", "18305", "18311", "18356", "1852", "2050", "2084", "2086", "2201", "2273", "2286", "24211", "24224", "24240", "24252", "24333", "24795", "24816", "2509", "2534", "25378", "2539", "25857", "25863", "26956", "26990", "27018", "27515", "27529", "27582", "2790", "2802", "3307", "3364", "3373", "3378", "3380", "3410", "3564", "3572", "3575", "3749", "3800", "3813", "3936", "4183", "4468", "4669"]
+# notes  = "Native-rate campaign, 18-20 Sep 2026. Route 3800 segfaults CARLA (Signal=11) for this model; six attempts, no scoring checkpoint."
+# [ingest.bench2drive.model_env]
+# PADDOCK_INFER_HZ = "10"
+#
+# [[ingest.bench2drive]]
+# model  = "qwendrive"
+# runs   = "/path/to/paddock-runs/bench2drive-diagnostics/native-50/qwendrive"
+# label  = "native50-2hz"
+# routes = ["14194", "1711", "17752", "18305", "18311", "18356", "1852", "2050", "2084", "2086", "2201", "2273", "2286", "24211", "24224", "24240", "24252", "24333", "24795", "24816", "2509", "2534", "25378", "2539", "25857", "25863", "26956", "26990", "27018", "27515", "27529", "27582", "2790", "2802", "3307", "3364", "3373", "3378", "3380", "3410", "3564", "3572", "3575", "3749", "3800", "3813", "3936", "4183", "4468", "4669"]
+# notes  = "Native-rate campaign, 18-20 Sep 2026. Route 3800 segfaults CARLA (Signal=11) for this model; six attempts, no scoring checkpoint."
+# [ingest.bench2drive.model_env]
+# PADDOCK_INFER_HZ = "2"
 
 # ---------------------------------------------------------------------------
 # Environment variables paddock reads
