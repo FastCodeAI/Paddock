@@ -43,6 +43,23 @@ CAMPAIGN = {
 #: The models whose route 3800 never scored, and what their record must say.
 UNSCORABLE_3800 = ("alpamayo15", "qwendrive")
 
+#: Every `model_env` key that differs between each model's native-rate run and its
+#: 20 Hz run, the rate itself excluded. The page argues each one immaterial; this
+#: is the set it argues about, so a new difference fails rather than slipping under
+#: an argument that was made about something else.
+EXPECTED_ENV_DRIFT = {
+    "drivejepa": {"MKL_NUM_THREADS", "OMP_NUM_THREADS"},
+    "qwendrive": {"MKL_NUM_THREADS", "OMP_NUM_THREADS", "QWEN_DRIVE_TRACE"},
+    "alpamayo15": {
+        "ALPAMAYO_CHECKPOINT",
+        "ALPAMAYO_COSMOS",
+        "ALPAMAYO_NAV",
+        "ALPAMAYO_RESERVE_GB",
+        "MKL_NUM_THREADS",
+        "OMP_NUM_THREADS",
+    },
+}
+
 #: `min_speed_infractions` is a per-checkpoint speed-ratio log, not a violation
 #: (see bench2drive-speed-normalization.md), so it is not in any total.
 TOTALLED = (
@@ -98,6 +115,10 @@ def _summarise(records: list[dict]) -> dict:
         "routes_completed": sum(1 for r in records if str(r["status"]).startswith("Completed")),
         "counts": counts,
         "total": sum(sum(r["infractions"][k] for r in records) for k in TOTALLED),
+        # In the published total and in no published row: zero everywhere today.
+        "unrowed": {
+            k: sum(r["infractions"][k] for r in records) for k in set(TOTALLED) - set(BREAKDOWN.values())
+        },
         "min_speed": sum(r["infractions"]["min_speed_infractions"] for r in records),
     }
 
@@ -202,7 +223,7 @@ def test_every_record_names_the_run_and_the_file_it_came_from(native: dict, mode
 
 @pytest.mark.parametrize("model", sorted(CAMPAIGN))
 def test_the_rate_is_in_the_ingested_config(model: str) -> None:
-    """Without this the native run and the 20 Hz run hash to the same config."""
+    """The rate is recorded per run; nothing else records it."""
     hz, run_id, _ = CAMPAIGN[model]
     run = json.loads((_run_dir(model) / "run.json").read_text())
     assert run["config"]["model_env"]["PADDOCK_INFER_HZ"] == str(hz)
@@ -216,6 +237,49 @@ def test_the_rate_is_in_the_ingested_config(model: str) -> None:
     assert run["config"]["waypoint_dt"] == old["config"]["waypoint_dt"]
     assert "PADDOCK_INFER_HZ" not in old["config"]["model_env"]
     assert run["run_id"] != old["run_id"]
+
+
+@pytest.mark.parametrize("model", sorted(CAMPAIGN))
+def test_the_environment_difference_is_the_one_the_page_argues(model: str) -> None:
+    """The page argues each non-rate difference immaterial. Pin the set it argues about.
+
+    The claim that only the rate changed was published once and was not true. If a
+    later campaign introduces another difference, this fails rather than letting the
+    page keep saying the same thing about a different set.
+    """
+    run = json.loads((_run_dir(model) / "run.json").read_text())
+    pooled = next((REPO_ROOT / "results/bench2drive" / model).glob("pooled50-*/run.json"))
+    old = json.loads(pooled.read_text())
+    new_env, old_env = run["config"]["model_env"], old["config"]["model_env"]
+    differing = {
+        k for k in set(new_env) | set(old_env) if new_env.get(k) != old_env.get(k) and k != "PADDOCK_INFER_HZ"
+    }
+    assert differing == EXPECTED_ENV_DRIFT[model], (
+        f"{model}: model_env differs from the 20 Hz run in {sorted(differing)}, and "
+        f"bench2drive-native-rate.md argues about {sorted(EXPECTED_ENV_DRIFT[model])}"
+    )
+    # Whatever differs, the page must name it rather than claim nothing did.
+    page = (REPO_ROOT / "docs/benchmarks/bench2drive-native-rate.md").read_text()
+    for key in differing:
+        named = key in page or (key.endswith("_NUM_THREADS") and "MKL/OMP_NUM_THREADS" in page)
+        assert named, f"{model}: {key} differs from the 20 Hz run and the page does not name it"
+
+
+@pytest.mark.parametrize("model", sorted(CAMPAIGN))
+def test_a_native_rate_run_does_not_rank(model: str) -> None:
+    """A rate other than the benchmark's 20 Hz is a different protocol.
+
+    Ranking it beside 20 Hz rows asserts they measure the same thing, which is the
+    claim this campaign exists to deny -- and it put DriveJEPA at #1 on a board of
+    runs driven at another rate.
+    """
+    run = json.loads((_run_dir(model) / "run.json").read_text())
+    assert run["valid"] is False
+    assert "does not rank" in run["notes"]
+    board = (REPO_ROOT / "docs/leaderboard.md").read_text()
+    table = board.split("## bench2drive", 1)[1].split("\n## ", 1)[0]
+    assert run["run_id"] not in table, f"{run['run_id']} is ranked in the bench2drive table"
+    assert run["run_id"] in board, "an excluded run is still listed, with its reason"
 
 
 # ---------------------------------------------------------------------------
@@ -292,6 +356,14 @@ def test_doc_per_model_table_reproduces(native: dict, twenty: dict, model: str) 
     for lbl, key in BREAKDOWN.items():
         if old["counts"][key] or new["counts"][key]:
             assert lbl in published, f"{model}: {lbl} is non-zero and not in the table"
+    # Two keys go into the published total and into no published row. They are
+    # zero everywhere today; if one ever is not, the total stops adding up and
+    # this is where that is caught rather than in a reader's arithmetic.
+    for key, count in new["unrowed"].items():
+        assert not count and not old["unrowed"][key], (
+            f"{model}: {key} is counted in the total and has no row in the breakdown, "
+            "so the total no longer equals the rows above it"
+        )
 
     ms = rows["Min-speed entries (not a violation)"]
     assert int(_number(ms[1])) == old["min_speed"] and int(_number(ms[2])) == new["min_speed"]
@@ -321,7 +393,7 @@ def test_readme_does_not_pool_openpilot_into_this_block() -> None:
     """The by-recording-set block is upstream of here and stays untouched."""
     readme = README.read_text()
     start = readme.index("#### Native inference rate")
-    end = readme.index("[Calculation](docs/benchmarks/bench2drive-speed-normalization.md)", start)
+    end = readme.index("[Protocol, full infraction breakdown", start)
     block = readme[start:end]
     assert "OpenPilot's native rate is\n20 Hz" in block
     # No DS/RC number is published for openpilot anywhere in the new block.
@@ -331,6 +403,42 @@ def test_readme_does_not_pool_openpilot_into_this_block() -> None:
 # ---------------------------------------------------------------------------
 # The exposure caveat is stated where the numbers are
 # ---------------------------------------------------------------------------
+
+
+#: Collisions per progress-km, as the page publishes them. Recomputed below.
+PER_KM = {
+    "drivejepa": (2.14, 3.93, 8, 12, 3.74, 3.05),
+    "alpamayo15": (3.91, 4.15, 46, 27, 11.76, 6.50),
+    "qwendrive": (2.63, 3.36, 109, 105, 41.48, 31.25),
+}
+COLLISION_KEYS = ("collisions_vehicle", "collisions_pedestrian", "collisions_layout")
+
+
+@pytest.mark.parametrize("model", sorted(CAMPAIGN))
+def test_the_exposure_normalization_reproduces(native: dict, twenty: dict, model: str) -> None:
+    """Progress km and collisions per km, recomputed from the two tracked JSONs.
+
+    Route length is a property of the route, so it joins from the
+    speed-normalization records; the page's whole argument about exposure rests on
+    this table, so it is recomputed rather than transcribed.
+    """
+    length = {r["route_id"]: r["route_length_m"] for r in twenty["records"]}
+    old_by = {(r["model"], r["route_id"]): r for r in twenty["records"]}
+    km_old = km_new = coll_old = coll_new = 0.0
+    for rec in (r for r in native["records"] if r["model"] == model):
+        route = rec["route_id"]
+        prev = old_by[(model, route)]
+        km_new += length[route] * rec["scores"]["score_route"] / 100 / 1000
+        km_old += length[route] * prev["scores"]["score_route"] / 100 / 1000
+        coll_new += sum(rec["infractions"][k] for k in COLLISION_KEYS)
+        coll_old += sum(prev["infractions"][k] for k in COLLISION_KEYS)
+    want = PER_KM[model]
+    assert (round(km_old, 2), round(km_new, 2)) == want[:2], (model, "progress km")
+    assert (int(coll_old), int(coll_new)) == want[2:4], (model, "collisions")
+    assert (round(coll_old / km_old, 2), round(coll_new / km_new, 2)) == want[4:], (model, "per km")
+    page = (REPO_ROOT / "docs/benchmarks/bench2drive-native-rate.md").read_text()
+    for value in want[4:]:
+        assert f"{value:.2f}" in page, (model, value, "not published")
 
 
 def test_the_exposure_caveat_is_published_in_both_places() -> None:
