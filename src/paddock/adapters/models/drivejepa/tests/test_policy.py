@@ -168,3 +168,17 @@ def test_only_the_selected_history_frames_are_decoded() -> None:
 
     policy._decode(frames)
     assert len(opened) == 4 * len(CAMERA_MAP), "a decoded frame is not decoded again"
+
+
+@pytest.mark.parametrize("geometry", ["native", "openscene"])
+def test_the_image_geometry_reaches_the_run_record(monkeypatch, geometry: str) -> None:
+    """The geometry changes the pixels the model sees, so every run records it.
+
+    An explicit env override also lands in `model_env`, but the default does not;
+    `diagnostics()` is what the runner stores as `provenance.policy` either way.
+    """
+    monkeypatch.setenv("DRIVEJEPA_IMAGE_GEOMETRY", geometry)
+    policy = POLICY(checkpoint="/x.ckpt")
+    assert policy.diagnostics()["image_geometry"] == geometry, "before any frame"
+    policy.observe(_counting_observation(0.0, []))
+    assert policy.diagnostics()["image_geometry"] == geometry, "after a frame"

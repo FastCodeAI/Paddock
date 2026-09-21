@@ -307,17 +307,23 @@ class DriveJepaPolicy(Policy):
         return Trajectory(trajectory, dt=HISTORY_DT)
 
     def diagnostics(self) -> dict[str, Any]:
-        """History depth actually achieved.
+        """History depth actually achieved, and the image geometry in use.
 
-        The reason this matters: history is selected by timestamp, so a
+        The reason history matters: it is selected by timestamp, so a
         simulator stepping faster than 0.5 s still yields ~1.5 s of context. If
         this collapses toward zero the model is reading a near-static scene and
         its plans will look plausible while being badly under-informed.
+
+        The geometry is here because it changes the pixels the model sees, and
+        the runner stores this dict in run.json as `provenance.policy`. An
+        explicit env override also lands in `model_env`; the default does not,
+        so without this a `native` run would carry no record of being one.
         """
         if not self.history:
-            return {"status": "no frame seen yet"}
+            return {"status": "no frame seen yet", "image_geometry": self.image_geometry}
         chosen = self._select_history()
         return {
+            "image_geometry": self.image_geometry,
             "frames_recorded": len(self.history),
             "history_span_s": round((self.history[-1]["timestamp"] - chosen[0]["timestamp"]) / 1e6, 2),
             "history_target_s": round((HISTORY_FRAMES - 1) * HISTORY_DT, 2),

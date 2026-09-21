@@ -293,6 +293,13 @@ serialize = true
 # PADDOCK_OPENPILOT_NATIVE_LONG = "0"
 # PADDOCK_OPENPILOT_RESUME_S = "0"
 
+# Drive-JEPA reads each camera at its own intrinsics by default ("native"), which
+# is how every published drivejepa row was made. "openscene" crops each camera
+# onto the 64 deg OpenScene lens the checkpoint trained on, as the devkit's own
+# KITScenes loader does. Either way it is recorded under provenance.policy.
+# [models.drivejepa.env]
+# DRIVEJEPA_IMAGE_GEOMETRY = "native"   # or "openscene"
+
 # ---------------------------------------------------------------------------
 # [ingest] -- where results that predate paddock live on this machine.
 #
