@@ -346,8 +346,11 @@ class KitScenesBenchmark(OpenLoopBenchmark):
             # the road for the cameras. The lidar frame is therefore this ego
             # frame, and a model that projects through it (Drive-JEPA builds
             # `sensor2lidar` from camera2ego and this) gets the extrinsics its
-            # own KITScenes loader computes. Without it that model cannot run
-            # here at all: `require_lidar2ego` refuses the observation.
+            # own KITScenes loader computes at the same pod height. That loader
+            # measures the height per scene from the lidar ground return and
+            # falls back to 2.2 m; this harness uses `ground_offset_m`, 2.2 m by
+            # default. Without lidar2ego that model cannot run here at all:
+            # `require_lidar2ego` refuses the observation.
             lidar2ego=np.eye(4),
         )
 

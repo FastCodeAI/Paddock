@@ -143,8 +143,10 @@ class DriveJepaPolicy(Policy):
                 "command": int(obs.command),
             }
         )
-        # 12 s of 10 Hz history is far more than the 1.5 s ever used; trimming
-        # keeps six decoded camera images per entry from growing without bound.
+        # 12 s of 10 Hz history is far more than the 1.5 s ever used. An entry
+        # holds its Observation until `_decode` picks it -- paths open-loop,
+        # pixels closed-loop -- then the four decoded cameras; trimming keeps
+        # either from growing without bound.
         if len(self.history) > 128:
             self.history = self.history[-128:]
 
