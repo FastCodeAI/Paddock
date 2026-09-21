@@ -216,7 +216,10 @@ Paired against constant velocity on the same 5,119 samples, with SEs over the
   error up to 1, 2 and 3 s, so it weights the early waypoints most. That is
   where driving straight on at the current speed is hardest to beat.
 - ADE@3s: −0.084 m, t −3.2.
-- collisions: +0.16 points, t +0.6. Not separated.
+- collisions, point metric (`col_avg`): +0.16 points, t +0.6. Not separated.
+- collisions, UniAD's cumulative metric (`col_uniad_avg`): 1.89% against
+  1.07%, +0.82 points, t +1.6. Also not separated, but in the same direction
+  and larger.
 
 The `drivejepa` run's per-sample records are not on this site, so the gap to it
 is unpaired here. The candidate-dump transfer test, which was paired on the
