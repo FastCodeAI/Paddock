@@ -760,13 +760,16 @@ separate runs in the store:
 [historical 24](results/bench2drive/constant_velocity/20260908T084921-804913/run.json)
 · all 50 under `results/bench2drive/constant_velocity/pooled50-3mps-*`.
 
+[Calculation](docs/benchmarks/bench2drive-speed-normalization.md) · [Recorded data](docs/benchmarks/bench2drive-speed-normalization.json)
+
 #### Native inference rate — three models re-driven
 
 Every row above is driven at **20 Hz**: one inference per simulator tick, which is
 a property of the protocol, not of the models. Three of them were built to replan
 far more slowly. Re-driving the same 50 routes at that slower rate — 18–20 Sep 2026,
-`PADDOCK_INFER_HZ` the only thing changed, same routes, same `waypoint_dt`, same
-tracker — scores all three higher, so **the 20 Hz protocol understates them**.
+same routes, same `waypoint_dt`, same tracker, `PADDOCK_INFER_HZ` the only knob
+turned deliberately — scores all three higher, so **the 20 Hz protocol understates
+them**.
 
 | Model | Native rate | Routes | DS 20 Hz | DS native ↑ | RC 20 Hz | RC native ↑ | Routes completed |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -780,14 +783,21 @@ table above. DriveJEPA and QwenDrive gain by driving further instead of stalling
 (blocked 17 → 7 and 16 → 10), which also raises their collision counts; Alpamayo 1.5
 is the only one that gets safer — infraction penalty 0.648 → 0.725, vehicle
 collisions 42 → 23. **A higher score here is partly more exposure, not only better
-driving.** Route 3800 is unscorable for Alpamayo 1.5 and QwenDrive (CARLA segfaults;
+driving** — though normalized for that exposure all three collide *less* often per
+progress-km (DriveJEPA 3.74 → 3.05, Alpamayo 1.5 11.76 → 6.50, QwenDrive 41.48 →
+31.25), so the extra distance is not bought with a higher collision rate. Route 3800 is unscorable for Alpamayo 1.5 and QwenDrive (CARLA segfaults;
 DriveJEPA completes it and scores 100) and is recorded as requested-and-never-scored
 — `n_failed: 1`, `status: partial` — never as a zero. **OpenPilot's native rate is
 20 Hz**, so its published run is already its native-rate run, and VisionPilot was not
 re-run; nothing here restates either. The rate is recorded per run in
 `config.model_env`, not derived from `model.yaml`, and the adapter support for
 `PADDOCK_INFER_HZ` is not on `main` yet — so these are landed results, not runs a
-clean checkout can re-drive.
+clean checkout can re-drive. The three runs are `valid: false` and **do not rank**
+on the board: a 2 or 10 Hz run is not the protocol the other rows were driven
+under. `model_env` also differs in more than the rate — thread counts, a trace
+sink, `ALPAMAYO_NAV` — each argued immaterial and none measured to be; the
+[page](docs/benchmarks/bench2drive-native-rate.md) books that as argued, not
+verified.
 
 Tracked runs, one per model:
 [DriveJEPA](results/bench2drive/drivejepa/native50-2hz-40c29d24c37d542a-447e23/run.json) ·
@@ -795,8 +805,6 @@ Tracked runs, one per model:
 [QwenDrive](results/bench2drive/qwendrive/native50-2hz-084418258d833a9f-9b2bc9/run.json)
 
 [Protocol, full infraction breakdown, and what is argued rather than measured](docs/benchmarks/bench2drive-native-rate.md) · [Per-route records](docs/benchmarks/bench2drive-native-rate.json)
-
-[Calculation](docs/benchmarks/bench2drive-speed-normalization.md) · [Recorded data](docs/benchmarks/bench2drive-speed-normalization.json)
 
 Tracked run records for every row above, recomputed from the per-route `results.json`
 files by `paddock ingest` (`[[ingest.bench2drive]]`, one pooled closed-loop run per

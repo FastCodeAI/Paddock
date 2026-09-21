@@ -67,7 +67,7 @@ the recorded frames, poses and CAN bus, and at each plan:
 | NAVSIM v2 / v1 | `native_input_hz: 10` selects nuPlan's 10 Hz path (`[benchmarks.navsim] nuplan`): 16 observations over 1.5 s, frames picked every 0.5 s | 16 real poses with velocity, acceleration, yaw rate | NAVSIM's one-hot, round-tripped exactly | the model's own NAVSIM cameras (`cam_f0/l0/r0`) and history rate |
 | neuroNCAP | one 1600×900 frame per 0.1 s tick, three cameras rendered | from `ego2world` each tick | the engine's | the adapter plans every tick, as every other model here |
 | comma2k19 | 160 observations at 20 Hz per sample, one `/infer_sequence`; **one** camera, replicated into all three view slots | real, 8 s of 20 Hz pose; CAN speed, acceleration differenced | always STRAIGHT — the dataset ships no route | zero-shot on a rig nothing in the corpus resembles; see below |
-| Bench2Drive | one frame per 20 Hz tick; the three trained views, `CAM_FRONT` / `CAM_FRONT_LEFT` / `CAM_FRONT_RIGHT` | from `ego2world` | route-derived | driven: 50 routes, DS 12.92 / RC 50.19, `results/bench2drive/qwendrive/pooled50-*`; `duration_s` averages 3457 s per route, the slowest row in that table |
+| Bench2Drive | one frame per 20 Hz tick by default, and one per 10th tick in the native-rate campaign; the three trained views, `CAM_FRONT` / `CAM_FRONT_LEFT` / `CAM_FRONT_RIGHT` | from `ego2world` | route-derived | driven: 50 routes, DS 12.92 / RC 50.19, `results/bench2drive/qwendrive/pooled50-*`; `duration_s` averages 3457 s per route, the slowest row in that table. Re-driven at 2 Hz it scores 17.08 over the 49 routes that scored at both rates — [native-rate campaign](../benchmarks/bench2drive-native-rate.md) |
 
 ## Filling three views from one camera
 
@@ -157,6 +157,7 @@ four workers.
 | neuroNCAP score ↑ | 200 | 2.49 | 7.7 h | `20260915T023604-12d5eb` |
 | comma2k19 ADE@3s ↓ | 10,165 | 1.159 m | 2.0 h | `20260916T220846-971379` |
 | Bench2Drive driving score ↑ | 50 | 12.92 | 3,457 s per route | `pooled50-40c29d24c37d542a-f250e0` |
+| Bench2Drive driving score ↑, driven at 2 Hz | 49 | 17.08 | — | `native50-2hz-084418258d833a9f-9b2bc9` (`valid: false`: not the 20 Hz protocol) |
 
 The comma2k19 row replaces an earlier one, and the earlier one is still here.
 `20260915T214115-405f64` (ADE@3s 1.016) was produced by the pre-merge adapter,

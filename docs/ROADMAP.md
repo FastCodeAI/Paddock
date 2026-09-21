@@ -376,8 +376,8 @@ because its samples span three recording setups; its per-setup means are in
 **Native-rate re-run (18-20 Sep 2026).** The 20 Hz protocol is a property of the
 harness, not of the models, so the same 50 routes were re-driven with each model
 at the rate it was built to replan at — DriveJEPA 2 Hz, QwenDrive 2 Hz,
-Alpamayo 1.5 10 Hz — with `PADDOCK_INFER_HZ` the only thing changed. **All three
-score higher**, so the published 20 Hz rows understate them. That much is
+Alpamayo 1.5 10 Hz — with `PADDOCK_INFER_HZ` the only knob turned deliberately.
+**All three score higher**, so the published 20 Hz rows understate them. That much is
 measured. What is *not*: only three models were re-run, the rate is recorded per
 run rather than derived from `model.yaml` (which disagrees for QwenDrive), no
 rate sweep was done, and route 3800 is unscorable for alpamayo15 and qwendrive —
@@ -385,7 +385,12 @@ CARLA segfaults for those two while DriveJEPA completes it and scores 100 — so
 their means are over 49 routes and their records are `status: partial`,
 `n_failed: 1`. Part of the gain is extra exposure rather than better driving: the
 two models that stalled now drive further and collide more in absolute terms.
-Tracked as `results/bench2drive/<model>/native50-*`; tables, breakdown and the
+The three runs are `valid: false` and do not rank: a 2 or 10 Hz run is not the
+protocol the other bench2drive rows were driven under, so `paddock ingest` keeps
+them and leaves them out of the board. Their `model_env` also differs from the
+20 Hz runs in more than the rate — thread counts, a trace sink, `ALPAMAYO_NAV` —
+each argued immaterial and none measured to be. Tracked as
+`results/bench2drive/<model>/native50-*`; tables, breakdown and the
 verified/argued split in
 [`bench2drive-native-rate.md`](benchmarks/bench2drive-native-rate.md). The
 adapter support for `PADDOCK_INFER_HZ` is **not on `main`**: this landed the
