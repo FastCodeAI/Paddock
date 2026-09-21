@@ -148,3 +148,18 @@ def test_infer_drives_the_rerankers_choice_not_the_models(tmp_path) -> None:
     np.testing.assert_allclose(plan.waypoints, proposals[expected])
     assert policy.last == {"chosen": expected, "model_pick": model_pick}
     assert policy.diagnostics()["reranker"]["train_run"] == "t"
+
+
+def test_weights_without_their_sidecar_are_refused(tmp_path) -> None:
+    """The sidecar says what the weights were trained on; the train/test guard
+    in `rerank.py report` and the run record both depend on it. Copying only
+    reranker.npz must fail loudly, not run with an empty provenance."""
+    directory = write_weights(tmp_path / "w")
+    (directory / "checkpoint.json").unlink()
+    with pytest.raises(ranker.RerankerError, match="checkpoint.json"):
+        ranker.load(directory)
+
+
+def test_the_loaded_sidecar_travels_with_the_weights(tmp_path) -> None:
+    reranker = ranker.load(write_weights(tmp_path / "w"))
+    assert reranker.sidecar["train_run"] == "t"

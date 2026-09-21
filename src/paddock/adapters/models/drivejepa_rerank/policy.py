@@ -18,9 +18,7 @@ never saw.
 
 from __future__ import annotations
 
-import json
 import os
-from pathlib import Path
 from typing import Any
 
 from paddock.adapters.models.drivejepa.policy import HISTORY_DT, DriveJepaPolicy
@@ -49,8 +47,7 @@ class DriveJepaRerankPolicy(DriveJepaPolicy):
 
     def _load_reranker(self) -> None:
         self.reranker = ranker.load(self.weights)
-        sidecar = Path(self.weights) / "checkpoint.json"
-        self.sidecar = json.loads(sidecar.read_text()) if sidecar.exists() else {}
+        self.sidecar = self.reranker.sidecar
 
     def infer(self, obs: Observation) -> Trajectory:
         if self.reranker is None:

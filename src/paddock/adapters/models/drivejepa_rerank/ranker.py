@@ -24,6 +24,7 @@ numpy only, and Python 3.9-compatible: this runs inside Drive-JEPA's own env.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -105,7 +106,11 @@ class Reranker:
     ``w1``/``b1`` are absent for a linear ranker.
     """
 
-    def __init__(self, arrays: dict[str, np.ndarray]) -> None:
+    def __init__(self, arrays: dict[str, np.ndarray], sidecar: dict | None = None) -> None:
+        #: The gallops checkpoint.json beside the weights: what they were trained
+        #: and selected on. `load` requires it; the train/test guard in
+        #: `tools/models/drivejepa/rerank.py report` and the run record read it.
+        self.sidecar = sidecar or {}
         self.mean = arrays["mean"]
         self.std = arrays["std"]
         self.w1 = arrays.get("w1")
@@ -126,12 +131,24 @@ class Reranker:
 
 
 def load(path: Path | str) -> Reranker:
-    """Read and verify a `reranker.npz`. Raises `RerankerError` naming the file."""
+    """Read and verify a `reranker.npz` and its `checkpoint.json`.
+
+    Raises `RerankerError` naming the file. The sidecar is required: without it
+    nothing says what the weights were trained on, and a guard that refuses to
+    score on training data would silently have nothing to check against.
+    """
     path = Path(path)
     if path.is_dir():
         path = path / "reranker.npz"
     if not path.exists():
         raise RerankerError(f"no re-ranker weights at {path}")
+    sidecar_path = path.parent / "checkpoint.json"
+    if not sidecar_path.exists():
+        raise RerankerError(
+            f"no checkpoint.json beside {path}; copy the whole checkpoint directory, "
+            "since the sidecar records what these weights were trained on"
+        )
+    sidecar = json.loads(sidecar_path.read_text())
     with np.load(path, allow_pickle=False) as npz:
         arrays = {key: npz[key] for key in npz.files}
 
@@ -144,7 +161,7 @@ def load(path: Path | str) -> Reranker:
             f"{path}: trained on features {names}, but candidate_features builds {FEATURE_NAMES}"
         )
 
-    reranker = Reranker(arrays)
+    reranker = Reranker(arrays, sidecar)
     replayed = reranker.score(arrays["probe_x"])
     if not np.allclose(replayed, arrays["probe_scores"], atol=1e-6, rtol=1e-6):
         worst = float(np.abs(replayed - arrays["probe_scores"]).max())

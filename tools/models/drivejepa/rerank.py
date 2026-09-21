@@ -156,9 +156,13 @@ def summarise(rows: list[dict], chosen: np.ndarray) -> dict:
 
 
 def report(args: argparse.Namespace) -> None:
-    reranker = ranker.load(args.weights)
-    sidecar_path = Path(args.weights) / "checkpoint.json"
-    sidecar = json.loads(sidecar_path.read_text()) if sidecar_path.exists() else {}
+    reranker = ranker.load(args.weights)  # refuses weights without their checkpoint.json
+    sidecar = reranker.sidecar
+    if not sidecar.get("trained_on"):
+        raise SystemExit(
+            f"{args.weights}/checkpoint.json records no trained_on, so this report cannot "
+            "check it is not scoring the re-ranker's own training data"
+        )
     held = set(sidecar.get("notes", {}).get("holdout_scenes", []))
 
     rows = load_rows(args.candidates)
