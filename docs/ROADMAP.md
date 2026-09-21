@@ -306,6 +306,20 @@ Landed alongside it, none comma2k19-specific:
   item under "Beyond reproduction" asks for; what remains there is re-making
   that particular record with it.
 
+**`drivejepa_rerank` — before any closed-loop use.** The selector over
+Drive-JEPA's 32 candidates is scored open-loop only: KITScenes (adapted) and
+nuScenes. `model.yaml` declares nothing else, and that stays true until two runs
+exist:
+- **neuroNCAP**, the full official set, paired against `drivejepa` at the
+  scenario-pair level (n=20). The selector learned closeness to the human path
+  and nothing about collisions, and its nuScenes collision columns moved the
+  wrong way (not separated).
+- **NAVSIM v2 and v1**, by replaying chosen plans. It is expected to cost
+  EPDMS, since NAVSIM scores what the original scorer was trained for. How much
+  is unmeasured.
+
+See `docs/models/drivejepa_rerank.md`.
+
 ## Open questions
 
 **The NAVSIM headline — settled.** The CSV and its run log disagree (0.90673 vs
