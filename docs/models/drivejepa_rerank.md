@@ -21,6 +21,49 @@ paddock run --model drivejepa_rerank --bench kitscenes
 paddock run --model drivejepa_rerank --bench nuscenes
 ```
 
+## Getting the weights
+
+`model.yaml` loads `{weights}/drivejepa_rerank/kitscenes-train-h128-t1/step_000000325/`.
+That directory holds two files, and both are required:
+- `reranker.npz`, 43 KB, sha256 `2050b799e8e88d4f…6b91fa`
+- `checkpoint.json`, which records what the weights were trained on
+
+Neither is in git. A run stops at `no re-ranker weights at …` until the
+directory exists. There are two ways to get it.
+
+**Copy it.** It exists at the `fastcode-shakaal` site under that site's
+`[roots.weights]`. Copy the whole directory. `ranker.load` refuses
+`reranker.npz` without its `checkpoint.json`, because the report's train/test
+guard reads it.
+
+**Rebuild it.** You need KITScenes train, Drive-JEPA's env, and about 3 GPU
+hours at this site's speed. Every step writes files outside the repo.
+
+```bash
+# 1. the 5,711 train keyframes: the scenes in rerank_train_scenes.txt, keyframes by rule
+python tools/models/drivejepa/train_keyframes.py -o train_samples.pkl
+
+# 2. Drive-JEPA's 32 candidates for each, through paddock's own path, with the crop the weights need
+#    (Drive-JEPA env; set model.yaml's env, including DRIVEJEPA_IMAGE_GEOMETRY=openscene)
+python tools/models/drivejepa/paddock_candidates.py --bench kitscenes --rows train_samples.pkl --output train.jsonl
+
+# 3. features and per-candidate ADE (paddock env)
+python tools/models/drivejepa/rerank.py dataset train.jsonl --dataset kitscenes --split train -o train.npz
+
+# 4. train (gallops), with the settings recorded in checkpoint.json
+gallops train-rerank train.npz --train-run kitscenes-train-h128-t1 --hidden 128 --temperature 1.0
+```
+
+Step 1 regenerates the exact list this checkpoint was trained on (checked:
+identical, 5,711 keyframes). The scene set is not a rule. It is the first 373
+of the split's 533 scenes to finish downloading, at dataset revision `213352cf`,
+so it is tracked as `tools/models/drivejepa/rerank_train_scenes.txt`.
+
+Step 4 picks its epoch on held-out scenes. Training is seeded, so the same
+dataset should give the same step, but that has not been checked at a second
+site. If the step differs, point `model.yaml` at the new directory. That diff is
+the record that the weights changed.
+
 ## Why the choice, and not the inputs
 
 Every input-side explanation was tested first, paired on the benchmark's 223
