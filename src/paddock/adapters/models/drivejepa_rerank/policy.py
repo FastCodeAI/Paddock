@@ -67,7 +67,10 @@ class DriveJepaRerankPolicy(DriveJepaPolicy):
         out = super().diagnostics()
         out.update(self.last)
         out["reranker"] = {
-            key: self.sidecar.get(key) for key in ("train_run", "step", "train_git_sha", "selection_split")
+            # weights_sha256 is the one field that names the file's contents:
+            # train_run and step name a directory, which can be overwritten.
+            key: self.sidecar.get(key)
+            for key in ("train_run", "step", "train_git_sha", "selection_split", "weights_sha256")
         }
         return out
 

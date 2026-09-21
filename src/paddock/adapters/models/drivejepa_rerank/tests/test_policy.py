@@ -39,7 +39,9 @@ def write_weights(directory, *, fmt=ranker.FORMAT, names=ranker.FEATURE_NAMES, t
     arrays["feature_names"] = np.array(names)
     directory.mkdir(parents=True, exist_ok=True)
     np.savez(directory / "reranker.npz", **arrays)
-    (directory / "checkpoint.json").write_text(json.dumps({"train_run": "t", "step": 5}))
+    (directory / "checkpoint.json").write_text(
+        json.dumps({"train_run": "t", "step": 5, "weights_sha256": "ab" * 32})
+    )
     return directory
 
 
@@ -148,6 +150,7 @@ def test_infer_drives_the_rerankers_choice_not_the_models(tmp_path) -> None:
     np.testing.assert_allclose(plan.waypoints, proposals[expected])
     assert policy.last == {"chosen": expected, "model_pick": model_pick}
     assert policy.diagnostics()["reranker"]["train_run"] == "t"
+    assert policy.diagnostics()["reranker"]["weights_sha256"] == "ab" * 32
 
 
 def test_weights_without_their_sidecar_are_refused(tmp_path) -> None:
