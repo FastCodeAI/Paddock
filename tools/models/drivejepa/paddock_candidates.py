@@ -1,11 +1,16 @@
 """Dump Drive-JEPA's 32 candidates through paddock's own input path.
 
 The ingested 2.364 row was made through the Drive-JEPA devkit's own KITScenes
-loader. A `paddock run` does not use that loader:
-the KITScenes harness hands the policy the ring cameras at their own intrinsics,
-and the policy builds the agent input itself. A re-ranker applied inside
-`drivejepa_rerank` sees *these* candidates, so these are the ones it must be
-trained and reported on.
+loader. A `paddock run` does not use that loader: the KITScenes harness hands
+the policy the ring cameras, and the policy builds the agent input itself --
+cropping them onto the OpenScene lens only under DRIVEJEPA_IMAGE_GEOMETRY=openscene.
+A re-ranker applied inside `drivejepa_rerank` sees *these* candidates, so these
+are the ones it must be trained and reported on.
+
+The geometry is taken from the caller's environment and defaults to `native`;
+`drivejepa_rerank`'s weights need `openscene`, as its model.yaml sets. Each row
+records it as `variant.image_geometry`, and `rerank.py` refuses a dump whose
+geometry is mixed or differs from model.yaml's.
 
 Every row is what `DriveJepaPolicy.forward` returns for one sample, plus the
 logged future. `rerank.py dataset` turns a dump into training data for gallops,

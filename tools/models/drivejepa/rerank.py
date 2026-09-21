@@ -41,6 +41,7 @@ if str(_SRC) not in sys.path:
 
 from paddock.adapters.models.drivejepa_rerank import ranker  # noqa: E402
 from paddock.metrics.trajectory import displacement_errors  # noqa: E402
+from paddock.registry import load_models  # noqa: E402
 
 L2_CUM_STEPS = (2, 4, 6)  # 1 s / 2 s / 3 s at 0.5 s
 
@@ -71,6 +72,27 @@ def speed(row: dict) -> float:
     return float(np.linalg.norm(row["ego_velocity"]))
 
 
+def geometry_of(rows: list[dict]) -> str:
+    """The one DRIVEJEPA_IMAGE_GEOMETRY a dump was made with; refuses mixed or unrecorded.
+
+    The same sample gives different candidates under `native` and `openscene`,
+    so a dump is only comparable with weights fitted on the same geometry.
+    """
+    found = {(r.get("variant") or {}).get("image_geometry") for r in rows}
+    if None in found or len(found) != 1:
+        raise SystemExit(
+            f"dump records image_geometry {sorted(map(str, found))}; expected exactly one. "
+            "Re-dump with paddock_candidates.py, which records it per row."
+        )
+    return found.pop()
+
+
+def model_geometry() -> str:
+    """What `drivejepa_rerank`'s model.yaml gives the model at run time."""
+    env = load_models()["drivejepa_rerank"].runtime.env
+    return env.get("DRIVEJEPA_IMAGE_GEOMETRY", "native")
+
+
 def features_and_errors(rows: list[dict]):
     """(N, 32, F) features, (N, 32) ADE@3s, (N,) model pick, (N,) scene id."""
     x, ade, picks, scenes = [], [], [], []
@@ -86,6 +108,7 @@ def features_and_errors(rows: list[dict]):
 
 def export(args: argparse.Namespace) -> None:
     rows = load_rows(args.candidates)
+    geometry = geometry_of(rows)
     x, ade, picks, scenes = features_and_errors(rows)
     np.savez(
         args.output,
@@ -97,6 +120,7 @@ def export(args: argparse.Namespace) -> None:
         feature_names=np.array(ranker.FEATURE_NAMES),
         dataset=np.array(args.dataset),
         split=np.array(args.split),
+        image_geometry=np.array(geometry),
     )
     print(
         f"wrote {args.output}: {len(rows)} samples, {len(set(scenes.tolist()))} scenes, {x.shape[-1]} features"
@@ -166,6 +190,12 @@ def report(args: argparse.Namespace) -> None:
     held = set(sidecar.get("notes", {}).get("holdout_scenes", []))
 
     rows = load_rows(args.candidates)
+    geometry, expected = geometry_of(rows), model_geometry()
+    if geometry != expected:
+        raise SystemExit(
+            f"dump made with image_geometry={geometry!r}, but drivejepa_rerank runs with "
+            f"{expected!r} (model.yaml); its scores here would not be the model's"
+        )
     trained_on = {(t["dataset"], t["split"]) for t in sidecar.get("trained_on", [])}
     for row in rows:
         if (row.get("tier"), row.get("split")) in trained_on or row["scene_id"] in held:
@@ -178,6 +208,7 @@ def report(args: argparse.Namespace) -> None:
     )
     summary = {
         "weights": {k: sidecar.get(k) for k in ("train_run", "step", "train_git_sha", "weights_sha256")},
+        "image_geometry": geometry,
         **summarise(rows, chosen),
     }
     text = json.dumps(summary, indent=1)
