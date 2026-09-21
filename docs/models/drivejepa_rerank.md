@@ -147,6 +147,16 @@ read.
 - With the crop, paddock's path gives a pick ADE of 2.521 and best-of-32 of
   0.409 on the 223 samples. Without it, best-of-32 was worse on every one of
   the first six samples checked.
+- `model.yaml` sets it for every benchmark, so it changes nuScenes too. Computed
+  from the `v1.0-trainval` calibrations:
+  - `CAM_BACK` narrows from 89–90° to 64°.
+  - The front and side cameras (64–65°) are rescaled, and the crop window runs
+    past the 1600×900 image. That leaves up to 53 rows and 29 columns of black
+    padding in the 1920×1080 output, of which the pipeline's `[28:-28]` row
+    crop removes part.
+
+  So nuScenes 0.912 → 0.620 changes the pixels as well as the selector. This
+  sits on top of the gap being unpaired (see Results).
 
 **Route command.** Paddock's KITScenes harness sends STRAIGHT for every sample,
 as it does for every model. The devkit run derived a turn command from the
