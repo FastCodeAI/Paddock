@@ -20,15 +20,20 @@ tracked by the Bench2Drive dual-PID controller, vendored in `pid.py` (see
 | `route_completion` | % of the route driven before the episode ended | higher better |
 | `infraction_penalty` | product of per-infraction coefficients, starts at 1.0 — a 0–1 **multiplier**, not a count | higher better |
 | `collision_rate` | fraction of routes with ≥1 collision | lower better |
+| `progress_km` | `Σ route_length_m × route_completion/100 / 1000` — distance actually exposed, and the denominator upstream's aggregate uses | context, not a score |
+| collisions per progress km | a collision count divided by `progress_km`; the form upstream publishes (`statistics_manager.py:489-501`) | lower better |
+| `min_speed_entries` | number of ego-to-traffic speed ratios `MinimumSpeedRouteTest` recorded — about 20 per route by construction, so a **count of checkpoints reached**, not of violations | context, not a score |
+| `below_100_percent` | share of those recorded ratios below background-traffic speed | lower better |
 
 The infraction-penalty coefficients are CARLA Leaderboard's: collision-vehicle
 ×0.60, collision-pedestrian ×0.50, collision-static ×0.65, red light ×0.70, stop
 sign ×0.80, scenario timeout ×0.70, yield-to-emergency ×0.70. **Two terms are
 switched off at the pinned revision** (`statistics_manager.py`): off-road is
-weighted 0 and `MIN_SPEED_INFRACTION` is tagged `'unused'`. So the driving score
-cannot see slow driving at all — a model that crawls a route at 1.2 m/s and
-one that drives it at 10 m/s both score 100 if neither hits anything. The
-efficiency/comfort tool (below) is what separates them. An episode ends when the
+weighted 0 and `MIN_SPEED_INFRACTION` is tagged `'unused'`. There is no direct
+minimum-speed multiplier. Slow driving can still reduce
+completion through blocking or timeout. Recorded minimum-speed entries include
+checkpoint percentages above 100%, so their count alone is not speed compliance;
+see the [harness audit and normalized tables](bench2drive-speed-normalization.md). An episode ends when the
 car finishes, gets **blocked** (stuck too long), **deviates** >30 m off route,
 **times out**, or hits the evaluator's 4000-frame cap; `route_completion`
 freezes at whatever % was reached. All of those are the benchmark working and
@@ -200,6 +205,48 @@ stderr, streamed as it runs, so a hung route can be read while it hangs) under
 the run's artifact dir, alongside the canonical `run.json` / `metrics.json`
 paddock writes. With `record = "true"` it also leaves front/BEV frames and a
 per-tick `log.csv`.
+
+## Pooling recorded routes into a run (`paddock ingest`)
+
+A Bench2Drive campaign is rarely one process: a route is re-run after a crash,
+an expansion set is driven a week later, half a sweep runs on a second box. The
+recordings are per route, so the pooled run that a leaderboard row needs is
+assembled afterwards, by `paddock ingest --all` from `[[ingest.bench2drive]]`:
+
+```toml
+[[ingest.bench2drive]]                      # an array of tables: one block per run
+model  = "drivejepa"
+runs   = "/path/to/paddock-runs/bench2drive/drivejepa"   # or a list of roots
+label  = "pooled50"
+routes = ["1711", "1852"]                   # optional; default: every route found
+notes  = "24 routes from the 03-04 Sep campaign, 26 from the 09 Sep expansion"
+
+[ingest.bench2drive.model_env]              # recorded in config, over what ran
+PADDOCK_CV_SPEED_M_S = "6"
+
+[ingest.bench2drive.setups]                 # recording setup -> route ids
+assisted = ["1711"]
+```
+
+What it guarantees, and what each key is for:
+
+| | |
+|---|---|
+| `model` | checked against the `model` in each source run's own `run.json`. A route recorded for another model is refused, so `runs` pointed one component too high cannot pool two models into one row |
+| `runs` | one root or several. Everything below them is walked: `<run_id>/<route>-<Town>-<Scenario>/results.json` |
+| `routes` | the route subset to score. It selects what is scored, not what is seen: a route attempted and never scored is recorded in `config.routes_never_scored` either way |
+| `label` | the run id is `<label>-<route hash>-<config hash>`. The config hash is why five constant-velocity speed bands over the same 50 routes are five directories and not one overwritten one |
+| `model_env` | recorded in `config.model_env`, layered over what the source runs recorded. For the CV baseline it is the only machine-readable statement of which speed band a row is |
+| `setups` | the configuration each route was actually driven under, aggregated into `metrics.json`'s `by_group`. A run pooling more than one is written `valid: false` — its mean is not a measurement — and `paddock report` lists it as excluded instead of ranking it |
+
+Per route the ingest keeps the latest run id whose `results.json` *scores*: a
+crashed attempt never shadows its rerun, because `parse_results` refuses a route
+that did not run (see *What does not score*). `routes_file`, `waypoint_dt`,
+`model_env` and the contributing sites are read from the harness's own `run.json`
+(or the older `run_config.json`) beside the route folders rather than typed into
+the ingest, and `config.source_config_read` says how many source runs kept one.
+Aggregates are recomputed by the store from the per-route metrics; nothing is
+transcribed from a report.
 
 ## Shared-machine behaviour
 

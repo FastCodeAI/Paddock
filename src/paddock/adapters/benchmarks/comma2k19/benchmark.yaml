@@ -1,0 +1,117 @@
+name: comma2k19
+description: >-
+  comma2k19 open-loop trajectory accuracy - ADE and FDE against the recorded
+  INS/GNSS/vision-fused future pose, on 33 h of California I-280 highway driving.
+  Reports the path-tangent split (along/cross-track) and lateral error at matched
+  arc length alongside the axis-aligned one, because a supercombo-style plan is a
+  path plus a speed profile and the two fail independently. Scores the model's
+  non-trajectory heads too, where it publishes them: speed and yaw rate against
+  CAN and the fused pose, the lead vehicle against radar, and the plan's own
+  sigma against its realised error - plus comfort and time-to-collision read off
+  the plan alone, which need no extras and are reported for every model.
+mode: open_loop
+dataset: comma2k19
+metrics:
+  # ---- trajectory ----------------------------------------------------------
+  - ade
+  - fde@1s
+  - fde@2s
+  - fde@3s
+  # Every horizon out to supercombo's own 10 s. `ade@3s` is not a duplicate of
+  # `ade`: the headline averages over whatever the plan reached, this one is NaN
+  # unless it reached 3 s. See `metrics.REPORTED_HORIZONS_S`.
+  - ade@1s
+  - ade@2s
+  - ade@3s
+  - ade@4s
+  - fde@4s
+  - ade@5s
+  - fde@5s
+  - ade@6s
+  - fde@6s
+  - ade@8s
+  - fde@8s
+  - ade@10s
+  - fde@10s
+  - scored_horizon_s
+  - longitudinal_mae
+  - lateral_mae
+  - along_track_mae
+  - cross_track_mae
+  - lateral_at_arclength_mae
+  # Signed, unlike the MAEs above: a model that is consistently short reads as a
+  # bias, while one that is equally early and late averages to zero here and is
+  # only visible in `along_track_mae`.
+  - along_track_bias
+  # Progress against the human: > 1 overshoots the distance driven, < 1 falls
+  # short. There is no second key for this; it is the progress component.
+  - path_length_ratio
+  # The ratio's two halves, because the ratio alone cannot separate "the model
+  # stopped short" from "the car was stopped".
+  - predicted_path_length
+  - recorded_path_length
+  # ---- auxiliary heads -----------------------------------------------------
+  # Everything below comes from `Trajectory.extras` and is NaN for a model that
+  # publishes none, which is how one declared list describes runs from models
+  # with very different heads. `auxiliary.ALL_KEYS` is the same list in code.
+  - speed_abs_err
+  - speed_rel_err
+  - yaw_rate_abs_err
+  - yaw_rate_bias
+  - lead_prob
+  - lead_precision
+  - lead_recall
+  - lead_range_err
+  - lead_range_abs_err
+  - lead_lateral_abs_err
+  - lead_rel_speed_abs_err
+  - within_1sigma_x
+  - within_1sigma_y
+  - within_2sigma_x
+  - within_2sigma_y
+  # comma2k19 has no lane labels, so these are plausibility gates, not errors.
+  - lane_width_m
+  - lane_offset_m
+  - lane_prob
+  - road_width_m
+  - camera_height_m
+  - gate_speed
+  - gate_lane_width
+  - gate_camera_height
+  - sanity_pass
+  # ---- safety, against the radar lead --------------------------------------
+  - lead_gap_min_m
+  - lead_ttc_min_s
+  - ttc_below_2s
+  # ---- comfort, read off the plan alone ------------------------------------
+  # `paddock.metrics.comfort`, shared with any other open-loop benchmark, so a
+  # comfort number here and one elsewhere are the same statement.
+  - comfort_lon_accel_max
+  - comfort_lon_decel_max
+  - comfort_lat_accel_max
+  - comfort_lon_jerk_max
+  - comfort_yaw_rate_max
+  - comfort_lon_accel_within_bounds
+  - comfort_lon_decel_within_bounds
+  - comfort_lat_accel_within_bounds
+  - comfort_lon_jerk_within_bounds
+  - comfort_yaw_rate_within_bounds
+  - comfort_within_bounds
+  # ---- miss rate, and a sourced composite ----------------------------------
+  # `adapters/benchmarks/comma2k19/score.py`. Nothing new is measured here: all
+  # of it is derived from the keys above, so these columns can be recomputed --
+  # or reweighted by someone who disagrees with NAVSIM -- from the per-sample
+  # records alone. `pdm_style_score` is deliberately NOT `primary_metric`; two
+  # of its five terms are proxies for things comma2k19 cannot observe (there is
+  # no map and there are no other-agent tracks), which is why it carries
+  # "style" in its name and may not be compared with a NAVSIM PDMS.
+  - miss_rate@2s
+  - miss_rate@3s
+  - miss_rate@4s
+  - pdm_nc_proxy
+  - pdm_dac_proxy
+  - pdm_ttc
+  - pdm_ep
+  - pdm_comfort
+  - pdm_style_score
+primary_metric: ade

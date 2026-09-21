@@ -13,8 +13,13 @@
 repos:
   openpilot:
     url: https://github.com/commaai/openpilot.git
-    sha: 053d9c446
+    sha: 555f48c5d
     description: comma.ai openpilot; supercombo driving model via tinygrad
+
+  comma2k19:
+    url: https://github.com/commaai/comma2k19.git
+    sha: 4c7f1a6e1
+    description: comma2k19 dataset toolkit; the ECEF pose maths and EON camera model under adapters/benchmarks/comma2k19
 
   sunnypilot:
     url: https://github.com/sunnypilot/sunnypilot.git
@@ -86,7 +91,7 @@ repos:
   Qwen-Drive-1.0:
     url: https://github.com/QwenLM/Qwen-Drive-1.0.git
     sha: 28091c1
-    description: Qwen-Drive-1.0-4B inference code; Qwen3.5 VLM with planning expert and BEV perception head
+    description: Qwen-Drive-1.0-4B inference code; Qwen3.5 VLM with a flow-matching planning expert and BEV perception head, imported as a library from src/
 
   cosmos-framework:
     url: https://github.com/NVIDIA/cosmos-framework.git

@@ -1,0 +1,42 @@
+{
+  "run_id": "20260912T053225-2a91ca",
+  "site": "hpcai-skodate",
+  "benchmark": "comma2k19",
+  "model": "openpilot",
+  "mode": "open_loop",
+  "started_utc": "2026-09-12T05:32:25+00:00",
+  "duration_s": 58354.3,
+  "repo_sha": null,
+  "dataset": {
+    "name": "comma2k19",
+    "n_samples": 10165,
+    "sequences_sha256": "293a225a0b5cbaff"
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_OP_ROAD",
+      "CAM_OP_WIDE",
+      "CAM_FRONT"
+    ],
+    "history_frames": 160,
+    "keyframes_per_segment": 5,
+    "eval_horizon_s": 3.0,
+    "interval_s": 0.5,
+    "gt_horizon_s": 10.0,
+    "input_hz": 20.0,
+    "calibration": "route-pooled, calibrationd formula on recorded pose",
+    "stride": 1,
+    "history_span_s": 7.95,
+    "model_env": {
+      "PADDOCK_FFMPEG": "ffmpeg"
+    }
+  },
+  "hardware": {},
+  "provenance": {},
+  "status": "complete",
+  "valid": false,
+  "superseded_by": "20260916T051616-2a91ca",
+  "notes": "Superseded by 20260916T051616-2a91ca: that is the row the docs cite. The two are bit-identical on all 65 shared metrics -- same 10,165 samples, same sequences_sha256 -- and the later one additionally carries the nine proxy and miss-rate metrics added after this ran. Kept rather than deleted so the record of it having happened survives.",
+  "ingested_from": ""
+}

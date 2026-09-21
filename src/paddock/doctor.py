@@ -11,14 +11,16 @@ Nothing here mutates anything. It is safe to run at any time.
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
 from paddock.config import ConfigError, SiteConfig
 from paddock.registry import Registry
+from paddock.runtime import env as env_builder
+from paddock.runtime import gpu
 
 
 class Status(Enum):
@@ -37,14 +39,25 @@ class Check:
     status: Status
     detail: str = ""
     fix: str = ""
+    #: `(label, value)` facts about this check's subject, printed under it with
+    #: no symbol. Description, not judgement -- see `Benchmark.status`.
+    info: tuple[tuple[str, str], ...] = ()
 
 
 class Report:
     def __init__(self) -> None:
         self.checks: list[Check] = []
 
-    def add(self, section: str, name: str, status: Status, detail: str = "", fix: str = "") -> None:
-        self.checks.append(Check(section, name, status, detail, fix))
+    def add(
+        self,
+        section: str,
+        name: str,
+        status: Status,
+        detail: str = "",
+        fix: str = "",
+        info: Sequence[tuple[str, str]] = (),
+    ) -> None:
+        self.checks.append(Check(section, name, status, detail, fix, tuple(info)))
 
     @property
     def failed(self) -> bool:
@@ -60,6 +73,11 @@ class Report:
                 if check.fix and check.status is not Status.OK:
                     for fixline in check.fix.splitlines():
                         lines.append(f"         -> {fixline}")
+                # No symbol and no arrow: these are facts about the subject, and
+                # a verdict glyph beside one would read as a fourth status.
+                width = max((len(label) for label, _ in check.info), default=0)
+                for label, value in check.info:
+                    lines.append(f"         {label:<{width}}  {value}")
 
         ok = sum(c.status is Status.OK for c in self.checks)
         warn = sum(c.status is Status.WARN for c in self.checks)
@@ -68,22 +86,6 @@ class Report:
         if fail:
             lines.append("Fix the failures above, then re-run. See docs/site-setup.md.")
         return "\n".join(lines)
-
-
-def _free_vram_gb() -> float | None:
-    if not shutil.which("nvidia-smi"):
-        return None
-    try:
-        out = subprocess.run(
-            ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=30,
-        )
-        return int(out.stdout.strip().splitlines()[0]) / 1024
-    except (subprocess.SubprocessError, ValueError, IndexError):
-        return None
 
 
 def _on_root_filesystem(path: Path) -> bool:
@@ -114,6 +116,35 @@ def _git_sha(repo: Path) -> str | None:
         return out.stdout.strip()
     except (subprocess.SubprocessError, FileNotFoundError):
         return None
+
+
+def _model_cards(
+    registry: Registry, cfg: SiteConfig, model_filter: str | None
+) -> dict[int | None, tuple[dict[str, str] | None, float]]:
+    """`{device: (an env that selects it, the largest VRAM landing there)}`.
+
+    Which card a model lands on is decided by the environment it is *launched*
+    with -- `model.yaml`'s `env` block and the site's `[models.X] env` override
+    -- and `runtime.gpu.visible_device` is the one definition of that. Reading
+    paddock's own environment instead reports card 0's headroom next to the
+    VRAM figure of a model pinned to card 1, which is the wrong answer to the
+    only question this section is asked.
+
+    A site with no models registered still gets one row: paddock's own
+    environment, which is the honest answer when nothing declares otherwise.
+    """
+    cards: dict[int | None, tuple[dict[str, str] | None, float]] = {}
+    for name, spec in registry.models.items():
+        if model_filter and name != model_filter:
+            continue
+        try:
+            node_env = env_builder.build(spec, cfg)
+        except Exception:  # noqa: BLE001 - a diagnosis must not fail on one model's config
+            continue
+        device = gpu.visible_device(node_env)
+        _, largest = cards.get(device, (node_env, 0.0))
+        cards[device] = (node_env, max(largest, spec.vram_gb))
+    return cards or {gpu.visible_device(): (None, 0.0)}
 
 
 def run(model_filter: str | None = None) -> Report:
@@ -248,7 +279,8 @@ def run(model_filter: str | None = None) -> Report:
 
     for name, spec in registry.benchmarks.items():
         try:
-            problems = load_benchmark(spec, cfg).preflight()
+            bench = load_benchmark(spec, cfg)
+            problems = bench.preflight()
         except Exception as exc:  # noqa: BLE001 - doctor reports, it never raises
             report.add(
                 "benchmarks",
@@ -258,10 +290,18 @@ def run(model_filter: str | None = None) -> Report:
                 f"fix the adapter's import; see docs/benchmarks/{name}.md",
             )
             continue
+        # Reported even when preflight found problems: "2035 segments, no
+        # decoder" is a far more useful thing to read than the refusal alone.
+        try:
+            info = bench.status()
+        except Exception as exc:  # noqa: BLE001 - a description must not break the diagnosis
+            info = [("status", f"unavailable: {type(exc).__name__}: {exc}")]
         if problems:
-            report.add("benchmarks", name, Status.WARN, f"{len(problems)} problem(s)", "\n".join(problems))
+            report.add(
+                "benchmarks", name, Status.WARN, f"{len(problems)} problem(s)", "\n".join(problems), info
+            )
         else:
-            report.add("benchmarks", name, Status.OK, "preflight passed")
+            report.add("benchmarks", name, Status.OK, "preflight passed", info=info)
 
     # -- model environments ------------------------------------------------
     if not registry.models:
@@ -293,23 +333,36 @@ def run(model_filter: str | None = None) -> Report:
             )
 
     # -- hardware ----------------------------------------------------------
-    free = _free_vram_gb()
-    if free is None:
+    # Whichever card the models will land on, not whichever one nvidia-smi lists
+    # first: `runtime.gpu` is the single definition of that, and doctor used to
+    # carry its own copy that always read row 0. On a two-card box pinned with
+    # CUDA_VISIBLE_DEVICES=1 that reported the wrong headroom twice over -- the
+    # opposite of what this command is for.
+    #
+    # Once per card the models actually land on, not once for paddock's own.
+    # `[models.X] env.CUDA_VISIBLE_DEVICES = "1"` sends that model to card 1,
+    # and reporting card 0's headroom beside its VRAM figure is the same defect
+    # one call site away -- it is the answer to a question nobody asked.
+    cards = _model_cards(registry, cfg, model_filter)
+    for device, (env, wanted) in sorted(cards.items(), key=lambda item: str(item[0])):
+        label = "gpu" if len(cards) == 1 else f"gpu:{device}"
+        free = gpu.free_gb(env)
+        if free is None:
+            report.add(
+                "hardware",
+                label,
+                Status.WARN,
+                "no device" if device is None else "nvidia-smi unavailable",
+                "CPU-only models will still run; GPU models need a working driver",
+            )
+            continue
+        status = Status.OK if free >= wanted else Status.WARN
         report.add(
             "hardware",
-            "gpu",
-            Status.WARN,
-            "nvidia-smi unavailable",
-            "CPU-only models will still run; GPU models need a working driver",
-        )
-    else:
-        needed = max((m.vram_gb for m in registry.models.values()), default=0.0)
-        status = Status.OK if free >= needed else Status.WARN
-        report.add(
-            "hardware",
-            "gpu",
+            label,
             status,
-            f"{free:.1f} GB free of {cfg.gpu.budget_gb:.0f} GB budget (largest model wants {needed:.0f} GB)",
+            f"device {device}: {free:.1f} GB free of "
+            f"{cfg.gpu.budget_gb:.0f} GB budget (largest model landing here wants {wanted:.0f} GB)",
             "another process is holding the card; paddock will wait rather than OOM mid-load",
         )
 

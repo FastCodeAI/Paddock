@@ -468,8 +468,15 @@ def test_carla_is_found_by_the_port_it_printed_and_reaped_after_a_timeout(tmp_pa
 
 
 def test_reap_carla_matches_the_port_token_exactly() -> None:
-    """Port 4731 must not match a server on 47311, nor a process merely mentioning the string."""
-    argv = ["sh", "-c", "sleep 30", "sh", "-carla-rpc-port=47312"]
+    """Port 4731 must not match a server on 47311, nor a process merely mentioning the string.
+
+    The stand-in is this interpreter and not `sh -c 'sleep 30' sh -carla-rpc-port=...`,
+    because a shell running a single command `exec`s it: under dash the process
+    becomes `sleep 30`, its `/proc/<pid>/cmdline` loses the token the test is
+    about, and the test fails on the host rather than on the code. Whether it
+    passed depended on which shell `/bin/sh` pointed at.
+    """
+    argv = [sys.executable, "-c", "import time; time.sleep(30)", "-carla-rpc-port=47312"]
     bystander = subprocess.Popen(argv, start_new_session=True)
     try:
         time.sleep(0.2)

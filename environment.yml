@@ -3,9 +3,10 @@
 #   make setup-conda        # or: conda env create -f environment.yml
 #   conda activate paddock
 #
-# Either environment works identically -- paddock is pure Python with no
-# compiled dependencies, so there is nothing conda does here that venv cannot.
-# Pick whichever your team already uses.
+# Either environment works identically -- paddock is pure Python, and its one
+# compiled dependency (PyAV, for comma2k19's HEVC streams) ships manylinux
+# wheels, so there is nothing conda does here that venv cannot. Pick whichever
+# your team already uses.
 #
 # Note this is paddock's OWN environment, not any model's. Model environments
 # are separate by necessity (five Python versions across three managers are in
@@ -21,4 +22,4 @@ dependencies:
   - python=3.11
   - pip
   - pip:
-      - -e .[dev,serve,viz]
+      - -e .[dev,serve,viz,comma2k19]

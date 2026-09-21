@@ -39,6 +39,22 @@ datasets:
       on different, easier data and is not comparable to those figures. Training
       needs navtrain / trainval_sensor, another separate and much larger download.
 
+  nuplan:
+    description: nuPlan v1.1 -- the original 10 Hz camera logs behind NAVSIM's OpenScene; open-loop ADE/FDE
+    requires: [nuplan-v1.1, maps]
+    splits: [mini, trainval, test]
+    notes: >
+      The logs (13 GB for mini) and the camera blobs (~450 GB, one shard per
+      split) are separate downloads, and holding the first without the second is
+      the normal half-way state -- `paddock doctor` reports it, because scenario
+      selection and ground truth work from the logs alone but no model can be
+      scored without the images. Two directory layouts are in the wild: nuPlan
+      documents nuplan-v1.1/splits/<split>, while the mini archive on S3 unpacks
+      to nuplan-v1.1/splits/data/cache/<split>; both are searched. Unlike the
+      2 Hz OpenScene redistribution under [datasets.navsim], these logs keep the
+      native 10 Hz cameras and 100 Hz ego poses, so models that infer ego motion
+      from frame-to-frame change can be scored here.
+
   neurad_checkpoints:
     description: per-scene NeuRAD renderer checkpoints, required by neuroNCAP
     notes: >
@@ -47,3 +63,36 @@ datasets:
 
   openlane_sample:
     description: short OpenLane clips (video + speed trace) used to smoke-test VisionPilot
+
+  comma2k19:
+    description: comma.ai comma2k19 -- 33 hours of 20 Hz highway driving -- open-loop ADE/FDE
+    requires: [Chunk_1]
+    splits: [rav4, civic]
+    notes: >
+      Point this at raw_data/ (Chunk_1..10/<dongle_id>|<start_time>/<segment>/), not the
+      sibling data/ or compression_challenge/ directories the HuggingFace redistribution
+      also ships -- those are a small parquet sample and a separate video-codec contest,
+      not this dataset.
+
+      Ground truth needs no post-processing: every segment carries
+      global_pose/frame_{times,positions,orientations,velocities}, an INS/GNSS/vision-fused
+      ECEF track with one row per video frame. The quaternion in frame_orientations is
+      ecef_from_device, NOT device_from_ecef -- the dataset README states this backwards and
+      comma2k19's own utils/camera.py transposes before use. Getting it wrong raises no error;
+      it mirrors every relative position through the direction of travel.
+
+      video.hevc is a raw HEVC elementary stream with no per-frame images and no container
+      index, so decode is sequential and single-pass; the harness streams frames and caches
+      nothing to disk. Needs PyAV in paddock's environment or PADDOCK_FFMPEG pointing at an
+      ffmpeg binary.
+
+      Native camera rate is 20 Hz -- measured 19.95 Hz from frame_times, and equal to
+      openpilot's ModelConstants.MODEL_RUN_FREQ, so nothing needs resampling. The HEVC
+      container claims 25 fps and a frame count of 0; both are wrong, and frame_times is
+      authoritative.
+
+      There are no lane-line, road-edge or object labels. CAN radar is the only object
+      ground truth, and it is a stream of individual tracked points with no lead label.
+      There is no published model-evaluation protocol either -- comma2k19's own benchmark
+      scores GNSS positioning, not driving models -- so this benchmark defines its metrics;
+      see docs/benchmarks/comma2k19.md.

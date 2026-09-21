@@ -151,9 +151,14 @@ def model_node(
     block, as a `NodeStartupError`: whatever the block computed was served by
     a process that died under it.
     """
+    # Built before the gate, not after: the model's own environment is what
+    # decides which card it lands on, so it is also what decides which card's
+    # headroom is worth waiting for. See `gpu.visible_device`.
+    node_env = env_builder.build(spec, cfg)
     gpu.wait_for(
         spec.vram_gb,
         on_wait=lambda need, have: echo(f"  waiting for {need:.0f} GB VRAM ({have:.1f} GB free)"),
+        env=node_env,
     )
 
     interpreter = spec.runtime.interpreter(cfg, **spec.context(cfg))
@@ -186,7 +191,7 @@ def model_node(
         proc = subprocess.Popen(
             command,
             cwd=env_builder.working_dir(spec, cfg),
-            env=env_builder.build(spec, cfg),
+            env=node_env,
             stdout=handle,
             stderr=subprocess.STDOUT,
         )

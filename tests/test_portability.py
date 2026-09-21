@@ -36,6 +36,9 @@ MACHINE_ROOTS = (
     "/proj/",
     "/scratch/",
     "/Users/",
+    # Renesas homes are /users/<name>; the first machine paths to reach
+    # this repo got in because only the macOS spelling was listed.
+    "/users/",
 )
 
 # Universal on any Linux box, so not a portability risk.

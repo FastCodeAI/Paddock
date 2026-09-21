@@ -56,6 +56,21 @@ weights = "/path/to/weights"
 # path = "/path/to/navsim_workspace/dataset"   # navsim_logs/, sensor_blobs/, maps/
 # exp  = "/path/to/navsim_workspace/exp"       # checkpoints + metric cache
 
+# [datasets.comma2k19]
+# raw_data/, holding Chunk_1..Chunk_10 -- NOT the sibling data/ (a HuggingFace
+# demo parquet) or compression_challenge/, which are different artefacts.
+# path = "/path/to/comma2k19/raw_data"
+
+# [datasets.nuplan]
+# The original nuPlan release, not NAVSIM's 2 Hz OpenScene redistribution of it.
+# Two layouts are in the wild and both are searched, so point this at whichever
+# directory holds maps/ and nuplan-v1.1/:
+#   nuplan-v1.1/splits/<split>/*.db          (nuPlan's documented layout)
+#   nuplan-v1.1/splits/data/cache/<split>/   (what the mini archive unpacks to)
+# The camera blobs are a separate ~450 GB download per shard; holding the logs
+# without them is a normal state that `paddock doctor` reports.
+# path = "/path/to/nuplan"
+
 # [datasets.neurad_checkpoints]
 # path = "/path/to/neuroncap/checkpoints"      # per-scene NeuRAD renderers
 
@@ -64,6 +79,47 @@ weights = "/path/to/weights"
 # What each benchmark measures is declared in its tracked benchmark.yaml; this
 # section is only paths for this machine. See docs/benchmarks/<name>.md.
 # ---------------------------------------------------------------------------
+
+# [benchmarks.comma2k19]                       # docs/benchmarks/comma2k19.md
+# The first three change what is measured and are hashed into the run id, so
+# two runs with different values never share a config hash. Defaults shown.
+# history_frames        = 160    # observations fed before the scored one
+# keyframes_per_segment = 5      # scored frames per 60 s segment
+# input_hz              = 20     # observation rate; only 20/n is reachable, and
+#                                # PADDOCK_COMMA2K19_INPUT_HZ overrides this for
+#                                # a single run (sweeping rates is the point)
+# The rest change only how fast the run goes, never what it measures, so none
+# of them is hashed into the run id.
+# nodes                 = 4      # policy nodes scored in parallel. A comma2k19
+#                                # sample is 160 frames a node must read and
+#                                # colour-convert before the model sees them,
+#                                # and that part is per-process CPU: profiling
+#                                # put ~90% of a node's wall clock there. Raise
+#                                # it to the cores you can spare; each node
+#                                # still waits for the model's declared VRAM.
+# frame_cache = "/dev/shm/paddock-comma2k19-$USER"
+#                                # where decoded frames are staged. Each is
+#                                # written once and read once, seconds apart,
+#                                # by two processes on this machine -- so a
+#                                # tmpfs or local NVMe belongs here if {runs}
+#                                # is a network mount. Template variables and
+#                                # $USER are expanded; keep the $USER, because
+#                                # /dev/shm is shared by everyone on the box and
+#                                # the second person to copy this line would
+#                                # otherwise inherit the first one's directory
+#                                # and fail mid-sweep. preflight checks that this
+#                                # is writable and has room, so a wrong value
+#                                # here costs a dry run rather than an hour.
+#                                # Default: {runs}/comma2k19/_frames.
+# keep_frames           = false  # keep the staged frames instead of releasing
+#                                # them as the sweep moves on. Not hashed: it
+#                                # changes nothing a model is shown. Raw frames
+#                                # are ~2.4 GB per segment, so all 2033 want
+#                                # about 4.9 TB -- say yes only with that free
+#                                # and several runs to amortise the decode over.
+#                                # Leaving it out and writing `false` mean the
+#                                # same thing; every spelling of off (false, 0,
+#                                # no, off) is read as off.
 
 # [benchmarks.bench2drive]                     # CARLA closed-loop; docs/benchmarks/bench2drive.md
 # python      = "/path/to/conda/envs/b2d/bin/python"  # CARLA-client env: imports carla, cv2, numpy, requests
@@ -164,6 +220,11 @@ serialize = true
 # chunk_logs   = 4
 # run_retries  = 2
 # nodes        = 4
+
+# [benchmarks.nuplan]
+# Which nuPlan split to score. Default "mini"; the scored set is otherwise
+# fixed in the adapter, because two sites must score the same anchors.
+# split = "mini"
 
 # [benchmarks.kitscenes]
 # The shared keyframe list every model is scored on. It *is* the benchmark:
@@ -269,3 +330,74 @@ serialize = true
 #                        # test_suite_id; name the suite its scenes came from
 # notes = ""      # required by the results store when valid = false
 # valid = true
+#
+# Recorded Bench2Drive route results, pooled into one run per model (or per
+# speed band). An ARRAY of tables -- double brackets -- one block per run.
+# `runs` may be one root or a list; routes default to every route found under
+# them. The run id is <label>-<route hash>-<config hash>, so two blocks that
+# differ only in `model_env` do not overwrite each other.
+# See src/paddock/results/ingest/bench2drive.py and docs/benchmarks/bench2drive.md.
+# [[ingest.bench2drive]]
+# model  = "drivejepa"
+# runs   = "/path/to/paddock-runs/bench2drive/drivejepa"
+# label  = "pooled50"
+# routes = ["1711", "1852", "2802"]
+# notes  = "24 routes from the 03-04 Sep campaign, 26 from the 09 Sep expansion"
+#
+# Environment overrides recorded in the run's config. The ingest reads what the
+# source runs recorded; this is layered on top, for what they did not. For the
+# constant-velocity baseline it is the only machine-readable statement of which
+# speed band a row is -- without it five bands are indistinguishable.
+# [ingest.bench2drive.model_env]
+# PADDOCK_CV_SPEED_SOURCE = "fixed"
+# PADDOCK_CV_SPEED_M_S = "6"
+#
+# The recording setup each route was driven under, if they differ. Lands on the
+# samples as `group`, so metrics.json carries a per-setup breakdown in
+# `by_group`. A run pooling more than one setup is written `valid: false`: its
+# mean describes no configuration anybody drove, and the leaderboard lists it as
+# excluded rather than ranking it.
+# [ingest.bench2drive.setups]
+# assisted    = ["1711", "2802"]
+# unassisted  = ["1852"]
+
+# ---------------------------------------------------------------------------
+# Environment variables paddock reads
+#
+# These are not config keys -- there is nowhere in this file to set them -- so
+# they are listed here because otherwise the only record of them is the source.
+# Anything under `[models.<name>.env]` or `[benchmarks.<name>]` above is a
+# better place to pin behaviour for a run; these are the escape hatches.
+#
+#   PADDOCK_CONFIG          use a different site config than ./paddock.toml
+#   PADDOCK_BASE_PORT       first port a run scans from. Two concurrent runs
+#                           both scanning from 9000 collide; give each its own.
+#   PADDOCK_FFMPEG          ffmpeg binary, when it is not on PATH. Also settable
+#                           as [benchmarks.neuroncap] ffmpeg.
+#   PADDOCK_FFPROBE         ffprobe binary. Unset, paddock looks beside
+#                           PADDOCK_FFMPEG first and then on PATH -- a site that
+#                           pointed PADDOCK_FFMPEG into another project's venv
+#                           has both there.
+#   PADDOCK_FONT            TrueType font for the comma2k19 overlay's captions,
+#                           for a site whose Pillow ships no usable bundled one.
+#
+# openpilot's node, all read inside its own interpreter. Set them under
+# [models.openpilot.env] rather than exporting them, so they are on the record
+# in run.json:
+#
+#   PADDOCK_OPENPILOT_BACKEND       "tinygrad" or "onnx". Unset, the node picks
+#                                   by trying the import, and records which it
+#                                   got under provenance.policy.
+#   PADDOCK_OPENPILOT_MODEL         "small" (driving_supercombo, the default)
+#                                   or "big" (big_driving_supercombo)
+#   PADDOCK_OPENPILOT_CUDA_MODEL    path to the CUDA-compiled tinygrad pickle
+#   PADDOCK_OPENPILOT_ONNX          path to a *combined* ONNX graph. Set, it is
+#                                   the only candidate, so a typo fails loudly
+#                                   instead of falling back to the split pair.
+#   PADDOCK_OPENPILOT_MODE          "experimental" (the default: openpilot's
+#                                   end-to-end longitudinal head) or ""
+#   PADDOCK_OPENPILOT_NATIVE_LONG   "1" to let openpilot's own longitudinal
+#                                   planner set speed instead of the harness
+#   PADDOCK_OPENPILOT_RESUME_S      seconds stopped with no lead before the
+#                                   driver-resume rule pulls away; "0" disables
+#   PADDOCK_OPENPILOT_THREADS       onnxruntime thread count (default 8)

@@ -31,6 +31,22 @@ ASSIGNED: dict[str, str] = {
     # Added when METEOR's hashed fallback (#9467bd) turned out to be
     # indistinguishable from alpamayo15's #7570b3 in the NAVSIM comparison.
     "meteor": "#e6ab02",
+    # Red because it is the one hue nothing else here occupies. The obvious
+    # choices were taken: the comma2k19 branch originally gave Qwen-Drive
+    # #e6ab02, which METEOR had already claimed above, and Qwen-Drive now
+    # appears on every board METEOR does. Against openpilot's #d95f02 -- the
+    # nearest neighbour -- it separates on lightness as well as hue, which is
+    # what has to hold once red and orange both desaturate under deuteranopia.
+    "qwendrive": "#cb181d",
+    # Deliberately a sibling of drivejepa's green: same V-JEPA backbone, a
+    # different agent head. Where a reader meets both, the kinship is the useful
+    # signal and the hue difference still separates them.
+    "drivejepa_free": "#0f766e",
+    # The floor gets grey, and gets an entry at all because the hash handed it
+    # #e377c2 -- a pink two steps from visionpilot's #e7298a, on a board where
+    # both now appear. Grey also says what it is: the line every other line is
+    # being read against, not a competitor.
+    "constant_velocity": "#666666",
 }
 
 #: Drawn from for models with no assigned colour.

@@ -17,6 +17,11 @@ organisations see one history. Predictions, frames and videos stay outside the
 repo.
 
 `run_id` is `<UTC timestamp>-<short config hash>`, e.g. `20260901T031500-a1b2c3`.
+A run pooled from recordings has no single start, so the ingests name it after
+what it covers instead: `<label>-<sample-set hash>-<config hash>`, e.g.
+`pooled50-40c29d24c37d542a-1de367`. Both end in the same config hash, and for
+the same reason — two runs over the same data with different settings must not
+land in one directory, because `write_run` overwrites.
 
 ---
 

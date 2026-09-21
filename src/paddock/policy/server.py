@@ -18,6 +18,7 @@ import argparse
 import importlib
 import logging
 import time
+from typing import Any, Optional
 
 from paddock.policy.protocol import Observation, Policy
 
@@ -97,13 +98,31 @@ def build_app(policy: Policy, model: str | None = None, nonce: str | None = None
         The model runs in its own environment, so the sequence crosses a process
         boundary. That is deliberate -- open and closed loop share one execution
         path, and a second in-process path is where the two would diverge.
+
+        `extras` crosses with the trajectory for the same reason the closed-loop
+        path forwards it: the auxiliary heads are predictions the benchmark can
+        score against its own recorded truth, and dropping them here would make
+        open loop the one path where a model is judged on less than it produced.
         """
         observations = [Observation.from_wire(item, cameras=policy.cameras) for item in body["observations"]]
         trajectory = policy.infer_sequence(observations)
-        return {"trajectory": trajectory.waypoints.tolist(), "dt": trajectory.dt}
+        result: dict[str, Any] = {"trajectory": trajectory.waypoints.tolist(), "dt": trajectory.dt}
+        if trajectory.extras:
+            result["extras"] = trajectory.extras
+        return result
 
     @app.post("/reset")
-    async def reset(body: dict | None = None) -> bool:
+    # `Optional[dict]`, not `dict | None`, and it is not a style choice. This
+    # module runs inside the *model's* interpreter, which is as old as the model
+    # needs -- Drive-JEPA's perception-free agent is Python 3.9. `from __future__
+    # import annotations` makes the annotation a string, FastAPI asks pydantic to
+    # evaluate it to build the route, and on 3.9 pydantic cannot evaluate PEP 604
+    # without the `eval_type_backport` package. The node then dies at import,
+    # before load(), with a pydantic traceback that names neither paddock nor the
+    # model. Every other annotation here is either a builtin or behind the
+    # `__future__` import and never evaluated, so this is the only one that has
+    # to be spelled the old way.
+    async def reset(body: Optional[dict] = None) -> bool:  # noqa: UP045
         policy.reset()
         return True
 

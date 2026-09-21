@@ -535,3 +535,21 @@ on-screen display support:
   search (`VISIONPILOT_GPU_MEM_MB`).
 * **No route input.** VisionPilot has no goal or command interface, so on
   junction routes it goes straight; nuScenes and Bench2Drive both show it.
+* **Curvature scale (fixed September 2026; earlier runs are stale).**
+  `auto_drive.hpp` documents `curvature_1pm = curvature_raw * CURV_SCALE` and
+  then deliberately does not apply it — "Domain conversion is the caller's job"
+  — so the constant is not in `auto_drive.cpp`, and grepping for it there finds
+  nothing. It lives in the caller:
+  `lateral_fusion.hpp::Config::ad_curvature_scale = 0.21f`, annotated "CURV_SCALE
+  = 0.21 in training", with `debug_draw.hpp` carrying the same 0.21 sourced to
+  `load_data_auto_drive.py`. The adapter had 1.0. That is not a harmless
+  default: `IDM` caps the set-speed at `sqrt(mu*g/|kappa|)` and raises the
+  overshoot to the fourth power, so a curvature 4.8× too large made the planner
+  demand ~-60 m/s² on a 30 m/s comma2k19 keyframe and reach 5 m in four seconds
+  instead of 120. On comma2k19 the correction moved ADE@3s from 15.09 to 5.28
+  over a 20-sample smoke and `path_length_ratio` from 0.60 to 0.84, leaving
+  every lateral number unchanged — curvature reaches the plan only through the
+  longitudinal cap. It surfaced there rather than on the closed-loop benchmarks
+  because those are urban and slow enough that the cap rarely binds, but
+  **every VisionPilot result recorded before this change used 1.0** and will not
+  be reproduced by a re-run.

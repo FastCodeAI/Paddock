@@ -13,6 +13,7 @@ from paddock.adapters.models.alpamayo15.policy import (
     NUM_HISTORY_STEPS,
     POLICY,
     medoid,
+    slots_for,
 )
 from paddock.policy.protocol import Policy
 
@@ -56,6 +57,72 @@ def test_medoid_picks_the_consensus_draw() -> None:
 def test_medoid_of_one_is_that_one() -> None:
     only = np.arange(12, dtype=float).reshape(6, 2)
     np.testing.assert_array_equal(medoid(np.stack([only])), only)
+
+
+class _StubObs:
+    """Just enough Observation for the history bookkeeping, counting image reads.
+
+    A real one would need pixels on disk; what these tests are about is how many
+    times the policy goes and gets them.
+    """
+
+    def __init__(self, timestamp_us: int, cameras: tuple[str, ...]) -> None:
+        self.ego2world = np.eye(4)
+        self.timestamp_us = timestamp_us
+        self.images: dict[str, np.ndarray] = {}
+        self.image_paths = {c: f"/nowhere/{c}.npy" for c in cameras}
+        self.reads = 0
+
+    def image(self, camera: str = "CAM_FRONT") -> np.ndarray:
+        self.reads += 1
+        return np.zeros((874, 1164, 3), dtype=np.uint8)
+
+    def pinhole(self, camera: str = "CAM_FRONT"):
+        from paddock.policy.protocol import Pinhole
+
+        return Pinhole(fx=910.0, fy=910.0, cx=582.0, cy=437.0, width=1164, height=874)
+
+
+def _stub_obs(timestamp_us: int, cameras: tuple[str, ...] = ("CAM_FRONT",)) -> _StubObs:
+    return _StubObs(timestamp_us, cameras)
+
+
+def test_a_forward_only_source_fills_the_slots_it_has() -> None:
+    """comma2k19 has one camera, so two of Alpamayo's four slots go unsent.
+
+    Filling the +/-55 deg slots with the forward view would tell the model it is
+    looking sideways at a road that is straight ahead; `camera_indices` lets the
+    slot be omitted instead, which is merely missing rather than wrong.
+    """
+    mono = slots_for(_stub_obs(0, ("CAM_FRONT",)))
+    assert [(slot, camera) for slot, camera, _ in mono] == [(1, "CAM_FRONT"), (6, "CAM_FRONT")]
+    assert [kind for _, _, kind in mono] == ["fill", "zoom"]
+
+    surround = slots_for(_stub_obs(0, ("CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT")))
+    assert surround == sorted(CAMERA_SLOTS, key=lambda entry: entry[0])
+
+
+def test_recording_history_does_not_read_a_pixel() -> None:
+    """The 160-frame comma2k19 history costs poses, not decodes.
+
+    Alpamayo conditions on four images spanning 0.3 s. Warping every recorded
+    frame read 3 MB and ran two bicubic resizes for each of the 156 it would
+    never look at -- several times the cost of the inference itself.
+    """
+    p = POLICY()
+    history = [_stub_obs(t * 50_000) for t in range(160)]
+    for obs in history:
+        p._record(obs)
+    assert sum(obs.reads for obs in history) == 0, "history was decoded on the way in"
+
+    # ... and the frames it does select are warped once each, not once per slot.
+    selected = p._select_frames()
+    assert len(selected) == NUM_CAM_FRAMES
+    for frame in selected:
+        warped = frame.warped()
+        assert set(warped) == {"CAM_FRONT:fill", "CAM_FRONT:zoom"}
+        assert frame.warped() is warped, "a second look must not warp again"
+    assert sum(obs.reads for obs in history) == 2 * NUM_CAM_FRAMES
 
 
 def test_camera_slots_cover_the_declared_cameras() -> None:
@@ -120,15 +187,12 @@ def test_nav_text_uses_the_reference_phrasing() -> None:
     assert nav_text_for(None, None) == "Continue straight"
 
 
-def test_repeated_frames_are_recorded_once(monkeypatch) -> None:
+def test_repeated_frames_are_recorded_once() -> None:
     """KITScenes clamps its warm-up at frame 0, so early keyframes repeat it; the
     time-resampled history must not see duplicate timestamps."""
-    from types import SimpleNamespace as NS
-
     p = POLICY()
-    monkeypatch.setattr(p, "_warp_frame", lambda obs: None)
     for t in (0, 0, 0, 100_000, 100_000, 200_000):
-        p._record(NS(ego2world=np.eye(4), timestamp_us=t))
+        p._record(_stub_obs(t))
     assert p.timestamps == [0, 100_000, 200_000] and len(p.poses) == 3
 
 

@@ -11,6 +11,17 @@ Each benchmark adapter may supply a `render.py` exposing:
 
 returning what it wrote. Adapters without one are simply not renderable, which
 is a fine state to be in.
+
+A second, optional hook draws **one sample** rather than a whole run, reached by
+`paddock render --sample <id>`:
+
+    def render_sample(runs, sample_id: str, out_dir: Path, cfg) -> list[Path]
+
+It exists because an aggregate says how often a model is wrong and only a single
+sample says how. The signature is deliberately the same shape -- runs from any
+models, the benchmark decides what drawing them together means -- and an adapter
+that cannot find the sample raises `LookupError` with a message naming what it
+did find, which is turned into output and a non-zero exit here.
 """
 
 from __future__ import annotations
@@ -104,6 +115,23 @@ def load_runs(
     return loaded
 
 
+def _adapter(benchmark: str, echo: Callable[[str], None]):
+    """The benchmark's `render` module, or None with the reason echoed."""
+    registry = Registry.load()
+    spec = registry.benchmarks.get(benchmark)
+    if spec is None:
+        echo(f"unknown benchmark {benchmark!r}; known: {', '.join(sorted(registry.benchmarks))}")
+        return None
+    try:
+        return importlib.import_module(f"paddock.adapters.benchmarks.{spec.directory.name}.render")
+    except ModuleNotFoundError:
+        echo(
+            f"{benchmark} has no render.py. Adding one is optional -- see "
+            f"docs/adding-a-benchmark.md for the contract."
+        )
+        return None
+
+
 def render(
     cfg: SiteConfig,
     benchmark: str,
@@ -112,19 +140,8 @@ def render(
     out_dir: Path | None = None,
     echo: Callable[[str], None] = print,
 ) -> int:
-    registry = Registry.load()
-    spec = registry.benchmarks.get(benchmark)
-    if spec is None:
-        echo(f"unknown benchmark {benchmark!r}; known: {', '.join(sorted(registry.benchmarks))}")
-        return 2
-
-    try:
-        module = importlib.import_module(f"paddock.adapters.benchmarks.{spec.directory.name}.render")
-    except ModuleNotFoundError:
-        echo(
-            f"{benchmark} has no render.py. Adding one is optional -- see "
-            f"docs/adding-a-benchmark.md for the contract."
-        )
+    module = _adapter(benchmark, echo)
+    if module is None:
         return 2
 
     runs = load_runs(cfg, benchmark, models, run_ids)
@@ -151,6 +168,53 @@ def render(
 
     try:
         written = module.render(runs, destination, cfg)
+    except ImportError as exc:
+        echo(
+            f"rendering needs the 'viz' extra, which is not installed here: {exc}\n"
+            f"  uv pip install -e '.[viz]'    (or re-run 'make setup')"
+        )
+        return 2
+    for path in written:
+        echo(f"  wrote {path}")
+    return 0
+
+
+def render_sample(
+    cfg: SiteConfig,
+    benchmark: str,
+    sample_id: str,
+    models: list[str] | None = None,
+    run_ids: list[str] | None = None,
+    out_dir: Path | None = None,
+    echo: Callable[[str], None] = print,
+) -> int:
+    """Draw one sample from whichever runs hold it. See the module docstring."""
+    module = _adapter(benchmark, echo)
+    if module is None:
+        return 2
+    draw = getattr(module, "render_sample", None)
+    if draw is None:
+        echo(
+            f"{benchmark} draws whole runs but not single samples: its render.py has no "
+            f"render_sample. See docs/adding-a-benchmark.md for the hook."
+        )
+        return 2
+
+    runs = load_runs(cfg, benchmark, models, run_ids)
+    if not runs:
+        echo(f"no valid runs found for {benchmark}. Run one first, or pass --run-id.")
+        return 1
+    echo(f"{benchmark} {sample_id}: {len(runs)} run(s) - " + ", ".join(f"{r.model}/{r.run_id}" for r in runs))
+
+    destination = out_dir or (cfg.runs / benchmark / "_samples")
+    destination.mkdir(parents=True, exist_ok=True)
+    try:
+        written = draw(runs, sample_id, destination, cfg)
+    except LookupError as exc:
+        # The adapter knows what it has and this layer does not, so its message
+        # is the whole message -- no prefix guessing at what went wrong.
+        echo(f"  {exc}")
+        return 1
     except ImportError as exc:
         echo(
             f"rendering needs the 'viz' extra, which is not installed here: {exc}\n"

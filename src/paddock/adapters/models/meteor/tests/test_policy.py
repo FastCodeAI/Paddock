@@ -27,7 +27,7 @@ from paddock.adapters.models.meteor.policy import (
     extend_horizon,
     fit_frame,
 )
-from paddock.policy.protocol import N_WAYPOINTS, Command, Observation, Policy
+from paddock.policy.protocol import CANBUS_VELOCITY, N_WAYPOINTS, Command, Observation, Policy
 from paddock.registry import Registry
 
 NUSCENES_K = np.array([[1266.0, 0.0, 816.0], [0.0, 1266.0, 491.0], [0.0, 0.0, 1.0]])
@@ -46,7 +46,7 @@ def cam2ego(x: float, y: float, z: float, yaw_deg: float = 0.0) -> np.ndarray:
 
 def make_observation(cameras: tuple[str, ...] = ("CAM_FRONT",), speed: float = 10.0) -> Observation:
     canbus = np.zeros(18)
-    canbus[13] = speed
+    canbus[CANBUS_VELOCITY] = speed
     return Observation(
         images={c: np.full((900, 1600, 3), 90, dtype=np.uint8) for c in cameras},
         ego2world=np.eye(4),

@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Iterator
+from collections.abc import Container, Iterator
 from pathlib import Path
 
 import numpy as np
@@ -220,7 +220,20 @@ class NuScenesBenchmark(OpenLoopBenchmark):
             )
         return self._index_cache
 
-    def samples(self, limit: int | None = None, split: str | None = None) -> Iterator[Sample]:
+    def samples(
+        self,
+        limit: int | None = None,
+        split: str | None = None,
+        skip: Container[str] = (),
+    ) -> Iterator[Sample]:
+        """See `OpenLoopBenchmark.samples`.
+
+        `skip` is honoured by filtering what is built rather than by avoiding
+        the build, which the base contract allows for a benchmark whose samples
+        are cheap. A sample here is keyframe metadata and image *paths* -- no
+        decode happens until the node reads them -- so there is nothing to save
+        by reconstructing ids ahead of `_sample`, the way comma2k19 must.
+        """
         if split not in (None, "", "val"):
             raise ValueError(f"nuscenes open-loop scores the official val split only, not {split!r}")
         emitted = 0
@@ -235,7 +248,13 @@ class NuScenesBenchmark(OpenLoopBenchmark):
                 if frames[i + N_STEPS].index_in_scene - frames[i].index_in_scene != N_STEPS:
                     skipped += 1
                     continue
-                yield self._sample(frames, i)
+                sample = self._sample(frames, i)
+                # Not counted against `limit`: the contract is that `limit`
+                # caps what is yielded, so on a resume it caps the samples
+                # still to do rather than the run's total.
+                if sample.sample_id in skip:
+                    continue
+                yield sample
                 emitted += 1
                 if limit and emitted >= limit:
                     return

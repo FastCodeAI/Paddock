@@ -36,7 +36,12 @@ which:
 
 setup:
 	uv venv --python 3.11 .venv
-	uv pip install --python .venv/bin/python -e ".[dev,serve,viz]"
+	# comma2k19 is in the default install because it is the one benchmark that
+	# needs a decoder in paddock's OWN environment (raw HEVC, no per-frame
+	# images) -- leaving it out meant a clean `make setup` could not run a
+	# benchmark this repo ships results for. It stays an extra in pyproject.toml
+	# so a site that already has ffmpeg on PATH can install without it.
+	uv pip install --python .venv/bin/python -e ".[dev,serve,viz,comma2k19]"
 	@echo
 	@echo "Next:"
 	@echo "  source .venv/bin/activate      # puts 'paddock' on PATH"

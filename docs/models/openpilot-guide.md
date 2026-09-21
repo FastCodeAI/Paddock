@@ -7,7 +7,10 @@
 A working reference for this checkout: what the system is, how it's wired, what the
 neural nets consume and emit, and how to run it on sample data.
 
-Snapshot: branch `master`, commit `053d9c446`, working tree clean.
+Snapshot: branch `master`, commit `053d9c446`, working tree clean. `repos.yaml`
+now pins `555f48c5d`; both ship the **combined** graph, so §§1–7 below still
+describe what a clone at the pin contains. Where the two layouts differ, §6 says
+so explicitly.
 
 ---
 
@@ -161,12 +164,16 @@ exactly what the replay tools consume.
 
 ## 4. The models
 
-Three ONNX files in [openpilot/selfdrive/modeld/models/](openpilot/selfdrive/modeld/models/):
+ONNX files in [openpilot/selfdrive/modeld/models/](openpilot/selfdrive/modeld/models/).
+**Which ones you have depends on the revision** — comma has shipped the driving
+model both as one combined graph and as a vision/policy pair, and the pair is the
+*earlier* of the two (see "Two layouts" at the end of §4.1):
 
 | File | LFS size | Role |
 |---|---:|---|
-| `driving_supercombo.onnx` | 60.9 MB | the driving policy — default model |
-| `big_driving_supercombo.onnx` | 1.76 GB | high-capacity variant, runs on the "chestnut" external AMD GPU |
+| `driving_supercombo.onnx` | 60.9 MB | combined layout: the whole driving policy in one graph |
+| `driving_vision.onnx` + `driving_policy.onnx` | 44.7 MB + 13.4 MB | split layout: the same model as two graphs |
+| `big_*` variants | up to 1.76 GB | high-capacity, runs on the "chestnut" external AMD GPU |
 | `dmonitoring_model.onnx` | 7.5 MB | driver monitoring |
 
 There is no training code in this repo — comma trains offline and ships weights.
@@ -245,6 +252,31 @@ from the `plan` trajectory. See `get_action_from_model` in
 - `drivingModelData` — a compact subset for the UI/downstream (polyfit paths).
 - `cameraOdometry` — the `pose` head as a velocity/rotation measurement, consumed
   by `locationd` and `calibrationd`.
+
+**Two layouts.** Everything above describes the **combined** graph
+(`driving_supercombo.onnx`), which is what `repos.yaml`'s pin `555f48c5d`
+(2026-08-19) ships. v0.11.1 (`4df40d2c1`, 2026-05-29) ships the same model
+**split** in two, and the differences matter to anyone driving it directly:
+
+| | combined | split |
+|---|---|---|
+| graphs | `driving_supercombo.onnx` | `driving_vision.onnx` → `driving_policy.onnx` |
+| vision inputs | — | `{img, big_img}`, uint8 |
+| policy inputs | all six above | `{features_buffer, desire_pulse, traffic_convention}` — **no `action_t`** |
+| output dtype | float32 | float16 |
+| `action` head | yes | no — control comes from the `plan` |
+| feature the policy sees | the **previous** frame's `hidden_state` | the **current** frame's |
+
+That last row is the one that bites. `ModelState.run` writes `prev_feat` *after*
+the call and `run_policy` pushes it *before*, so the combined graph plans from a
+one-tick-stale hidden state; the split layout runs vision first and pushes its
+feature between the two calls, so there is no lag to reproduce. The queue depths
+differ to match: `frame_skip * D` combined (so `[::frame_skip]` never reaches the
+newest entry) versus `frame_skip * (D - 1) + 1` split (so it lands exactly on it).
+
+Paddock's `supercombo.SupercomboSession` / `SplitSession` own one layout each and
+`policy._open_session` picks by what is on disk. Both refuse a graph from the
+other layout at load time, with both input sets named.
 
 ### 4.2 dmonitoring — the driver monitoring model
 
@@ -729,3 +761,30 @@ What `adapters/models/openpilot/policy.py` does in closed loop, and why.
   first nudge) and assisted \* (full run). See `docs/benchmarks/bench2drive.md`.
 * **Not a route follower.** No navigation input reaches the model (its desire
   pulses are zeros), so junction turns are missed by construction.
+
+### Which backend ran, and one number it used to change
+
+`_resolve_backend` picks between tinygrad and onnxruntime by **trying an
+import**, and `setup.sh` makes a failed `scons` non-fatal — so whether a site
+gets the compiled JIT pickles or falls back to the raw ONNX graphs is a
+property of that site's build, not of anything in `model.yaml`. That is
+deliberate (a box without a working clang should still be able to score
+openpilot), but it means the backend is part of a number's provenance.
+
+Until this was fixed, it was part of a number's *value* as well. The tinygrad
+path branched on the two-camera comma rig and the ONNX path did not: it built
+one camera from the road view and passed that same frame as both `img` and
+`big_img`, so on the ONNX backend the wide view — the one the model uses to see
+what is beside the car — received a crop of the road camera. Both paths now bind
+cameras through one function, and a test asserts the two views receive different
+arrays when the rig supplies two.
+
+**What this invalidates.** Any recorded openpilot row produced on the ONNX
+backend is no longer bit-reproducible from this tree; the same run today will
+plan from a different wide input. Which rows those are is not fully answerable
+from the record, because `/diagnostics` was not being fetched when they were
+made — that is the same gap as the revision one above, and it is closed the same
+way: `run.json` now carries `provenance.policy.backend`. The comma2k19 openpilot
+row is the known case, and it is flagged in
+[docs/benchmarks/comma2k19.md](../benchmarks/comma2k19.md#recorded-results); the
+re-sweep is in the [ROADMAP](../ROADMAP.md).
