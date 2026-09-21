@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import sys
+import types
+
 import numpy as np
 import pytest
 
@@ -118,3 +121,112 @@ def test_infer_sequence_records_the_history_and_runs_the_model_once() -> None:
     assert stub.recorded == frames[:-1], "history must be recorded without inference"
     assert stub.inferred == [frames[-1]], "exactly one forward pass, on the scored frame"
     assert stub.self_prime is True, "self_prime must be restored after the sequence"
+
+
+def test_an_unknown_image_geometry_is_refused(monkeypatch) -> None:
+    monkeypatch.setenv("DRIVEJEPA_IMAGE_GEOMETRY", "fisheye")
+    with pytest.raises(ValueError, match="DRIVEJEPA_IMAGE_GEOMETRY"):
+        POLICY(checkpoint="/x.ckpt")
+
+
+def test_the_default_geometry_is_the_one_published_rows_used(monkeypatch) -> None:
+    monkeypatch.delenv("DRIVEJEPA_IMAGE_GEOMETRY", raising=False)
+    assert POLICY(checkpoint="/x.ckpt").image_geometry == "native"
+
+
+def _counting_observation(t_s: float, opened: list) -> Observation:
+    """An observation whose images are counted as they are opened."""
+
+    class Counted(Observation):
+        def image(self, camera: str = "CAM_FRONT") -> np.ndarray:
+            opened.append((t_s, camera))
+            return np.full((4, 4, 3), int(t_s * 10), dtype=np.uint8)
+
+    k = np.eye(3)
+    return Counted(
+        images={},
+        ego2world=np.eye(4),
+        canbus=np.zeros(18),
+        timestamp_us=int(t_s * 1e6),
+        command=Command.STRAIGHT,
+        camera2image={c: k for c in CAMERA_MAP.values()},
+        camera2ego={c: np.eye(4) for c in CAMERA_MAP.values()},
+        lidar2ego=np.eye(4),
+    )
+
+
+def test_only_the_selected_history_frames_are_decoded() -> None:
+    """A 10 Hz harness sends 49 frames; the model reads four. Only those are opened."""
+    policy = POLICY(checkpoint="/x.ckpt")
+    opened: list = []
+    for tick in range(49):
+        policy.observe(_counting_observation(tick / 10, opened))
+    assert opened == [], "recording must not decode"
+
+    frames = policy._select_history()
+    policy._decode(frames)
+    assert sorted({t for t, _ in opened}) == [3.3, 3.8, 4.3, 4.8]
+    assert len(opened) == 4 * len(CAMERA_MAP), "each selected frame, each camera, once"
+    assert all(f["images"]["CAM_FRONT"][0, 0, 0] == int(round(f["timestamp"] / 1e5)) for f in frames)
+
+    policy._decode(frames)
+    assert len(opened) == 4 * len(CAMERA_MAP), "a decoded frame is not decoded again"
+
+
+@pytest.mark.parametrize("geometry", ["native", "openscene"])
+def test_the_image_geometry_reaches_the_run_record(monkeypatch, geometry: str) -> None:
+    """The geometry changes the pixels the model sees, so every run records it.
+
+    An explicit env override also lands in `model_env`, but the default does not;
+    `diagnostics()` is what the runner stores as `provenance.policy` either way.
+    """
+    monkeypatch.setenv("DRIVEJEPA_IMAGE_GEOMETRY", geometry)
+    policy = POLICY(checkpoint="/x.ckpt")
+    assert policy.diagnostics()["image_geometry"] == geometry, "before any frame"
+    policy.observe(_counting_observation(0.0, []))
+    assert policy.diagnostics()["image_geometry"] == geometry, "after a frame"
+
+
+@pytest.fixture
+def devkit_crop(monkeypatch):
+    """The devkit loader's crop, importable without navsim.
+
+    `kitscenes_adapter` imports five navsim dataclasses at module level and uses
+    none of them in the crop, so stand-ins are enough to reach `_crop_box`.
+    """
+    stub = types.ModuleType("navsim.common.dataclasses")
+    for name in ("AgentInput", "Camera", "Cameras", "EgoStatus", "Lidar"):
+        setattr(stub, name, type(name, (), {}))
+    for name, module in (
+        ("navsim", types.ModuleType("navsim")),
+        ("navsim.common", types.ModuleType("navsim.common")),
+        ("navsim.common.dataclasses", stub),
+    ):
+        monkeypatch.setitem(sys.modules, name, module)
+    adapter = "paddock.adapters.models.drivejepa.kitscenes_adapter"
+    monkeypatch.delitem(sys.modules, adapter, raising=False)
+    import importlib
+
+    yield importlib.import_module(adapter)
+    sys.modules.pop(adapter, None)
+
+
+def test_openscene_crops_every_camera_onto_the_openscene_pinhole(devkit_crop, monkeypatch) -> None:
+    """A KITScenes-like 87-degree camera comes out 1920x1080 at OpenScene's K.
+
+    The principal point must land at OpenScene's (960, 560): a marker placed
+    there in the source is found there in the output.
+    """
+    monkeypatch.setenv("DRIVEJEPA_IMAGE_GEOMETRY", "openscene")
+    policy = POLICY(checkpoint="/x.ckpt")
+    k = np.array([[1841.0, 0.0, 1752.0], [0.0, 1841.0, 1136.0], [0.0, 0.0, 1.0]])
+    image = np.zeros((2272, 3504, 3), dtype=np.uint8)
+    image[1116:1156, 1732:1772] = 255  # 40 px square on the principal point
+
+    images, intrinsics = policy._to_openscene({"CAM_FRONT": image}, {"CAM_FRONT": k})
+
+    out = images["CAM_FRONT"]
+    assert out.shape == (devkit_crop.TARGET_HEIGHT, devkit_crop.TARGET_WIDTH, 3)
+    np.testing.assert_array_equal(intrinsics["CAM_FRONT"], devkit_crop.target_intrinsics())
+    assert out[560, 960].min() == 255, "the principal point moved"
+    assert out[560, 960 + 60].max() == 0 and out[560 - 60, 960].max() == 0, "the marker grew"
