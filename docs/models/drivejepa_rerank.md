@@ -238,6 +238,22 @@ clearest reason this model stays open-loop only.
   about collisions. `model.yaml` declares only KITScenes and nuScenes until it
   has been through neuroNCAP, where it must be compared pair by pair against
   `drivejepa`.
+- **On neuroNCAP it is measured worse, not merely unmeasured.** These weights
+  were replayed over Drive-JEPA's own candidate dumps from seven neuroNCAP
+  scenario pairs — 1,190 ticks, each carrying all 32 proposals and a
+  per-candidate collision verdict — so the choice can be read beside what that
+  choice would have hit. On the 322 ticks where Drive-JEPA's own pick hits
+  although one of the 32 was clear, this selector chose a clear one **0 times**.
+  Every one of its 1,190 choices was a "go" candidate: it never picks a stop,
+  because the human paths it imitates never contain one. It travels 7.7 m in 3 s
+  against the model's own 6.2 m, and is clear on 45% of ticks against 51%. So a
+  neuroNCAP run should be expected to score lower, with harder impacts, and the
+  benchmark is a gate this selector is not expected to pass as it stands. Two
+  caveats on that measurement: it is open loop one tick at a time, so it shows
+  which option each picker prefers and not what a closed-loop episode would do;
+  and the dumps were produced with native camera images while these weights were
+  trained on the OpenScene crop, so a real run sees slightly different
+  candidates.
 - **NAVSIM is expected to get worse, not better.** NAVSIM scores PDM, which is
   exactly what the original scorer was trained for. A selector trained on
   imitation gives that up. It has not been measured.
