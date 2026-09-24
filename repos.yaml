@@ -70,7 +70,7 @@ repos:
 
   vision_pilot:
     url: https://github.com/autowarefoundation/vision_pilot.git
-    sha: e93eceaa
+    sha: d4d9be13
     description: Autoware VisionPilot; C++ ONNX Runtime stack with an MPC planner
 
   vjepa2:
