@@ -191,7 +191,12 @@ class LongitudinalFusion:
     PROCESS_NOISE_VEL_MS = 0.50
     AUTODRIVE_NOISE_MIN_M = 1.5  # noise floor when AutoDrive is fully confident
     AUTODRIVE_NOISE_M = 8.0  # noise ceiling at minimum AutoDrive confidence
-    CIPO_NOISE_M = 3.0  # AutoSpeed bbox-projected distance noise
+    CIPO_NOISE_M = 3.0  # AutoSpeed bbox-projected distance noise, *at the reference range*
+    #: Range at which ``CIPO_NOISE_M`` describes the homography, and the floor
+    #: and ceiling upstream clamps the scaled value to.
+    HOMOGRAPHY_REF_RANGE_M = 30.0
+    CIPO_NOISE_MIN_FACTOR = 0.25
+    CIPO_NOISE_MAX_M = 200.0
     RESET_GATE_M = 25.0  # a jump this far past the cloud is a real cut-in/cut-out
 
     def __init__(self, seed: int = 0, process_noise_dist_m: float | None = None) -> None:
@@ -258,13 +263,39 @@ class LongitudinalFusion:
                 best[cls] = min(best[cls], float(ranges[j]))
 
         have_l1, have_l2 = np.isfinite(best[1]), np.isfinite(best[2])
+        stddev = LongitudinalFusion.cipo_stddev
         if have_l2 and have_l1 and best[2] < best[1]:
-            return Meas(best[2], LongitudinalFusion.CIPO_NOISE_M, True), True
+            return Meas(best[2], stddev(best[2]), True), True
         if have_l1:
-            return Meas(best[1], LongitudinalFusion.CIPO_NOISE_M, True), False
+            return Meas(best[1], stddev(best[1]), True), False
         if have_l2:
-            return Meas(best[2], LongitudinalFusion.CIPO_NOISE_M, True), False
+            return Meas(best[2], stddev(best[2]), True), False
         return Meas(), False
+
+    @staticmethod
+    def cipo_stddev(distance_m: float) -> float:
+        """Bbox-projection noise at ``distance_m``, growing with the square of range.
+
+        The homography inverts ``d = f*h / (v - v_horizon)``, so a fixed pixel
+        error on the box bottom maps to a distance error growing with d squared:
+        the two pixels worth 0.3 m at 30 m are worth 8 m at 150 m. A flat figure
+        therefore states a far reading far more confidently than it has any
+        right to, and upstream records the consequence -- "a 155 m reading
+        outvoted a 90 m one that was measured far better". Since the particle
+        filter weights each measurement by 1/stddev squared, an overconfident
+        far reading does not merely add error, it outvotes a better near one.
+
+        Ported from `select_cipo` in fusion/src/radar_association.cpp at
+        d4d9be13, which despite the filename is the camera-only path.
+        """
+        scale = distance_m / LongitudinalFusion.HOMOGRAPHY_REF_RANGE_M
+        return float(
+            np.clip(
+                LongitudinalFusion.CIPO_NOISE_M * scale * scale,
+                LongitudinalFusion.CIPO_NOISE_MIN_FACTOR * LongitudinalFusion.CIPO_NOISE_M,
+                LongitudinalFusion.CIPO_NOISE_MAX_M,
+            )
+        )
 
     def update(
         self,

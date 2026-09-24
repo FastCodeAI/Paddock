@@ -287,3 +287,40 @@ def test_ort_thread_cap_is_off_unless_asked_for() -> None:
         os.environ.pop("VISIONPILOT_ORT_THREADS", None)
         if saved is not None:
             os.environ["VISIONPILOT_ORT_THREADS"] = saved
+
+
+def test_cipo_noise_at_the_reference_range_is_the_shipped_figure() -> None:
+    """30 m is where CIPO_NOISE_M was measured; the scaling must be a no-op there."""
+    assert LongitudinalFusion.cipo_stddev(30.0) == pytest.approx(LongitudinalFusion.CIPO_NOISE_M)
+
+
+def test_cipo_noise_grows_with_the_square_of_range() -> None:
+    """Doubling the range quadruples the noise -- that is the homography's own geometry."""
+    near = LongitudinalFusion.cipo_stddev(30.0)
+    far = LongitudinalFusion.cipo_stddev(60.0)
+    assert far == pytest.approx(4.0 * near)
+
+
+def test_cipo_noise_is_clamped_at_both_ends() -> None:
+    """Unclamped, a box at 1 m would claim millimetre precision the projection has not got."""
+    floor = LongitudinalFusion.CIPO_NOISE_MIN_FACTOR * LongitudinalFusion.CIPO_NOISE_M
+    assert LongitudinalFusion.cipo_stddev(1.0) == pytest.approx(floor)
+    assert LongitudinalFusion.cipo_stddev(1e6) == pytest.approx(LongitudinalFusion.CIPO_NOISE_MAX_M)
+
+
+def test_a_far_box_is_reported_less_confidently_than_a_near_one() -> None:
+    """The point of the change: the filter weights by 1/stddev**2, so a flat figure
+    let a 155 m reading outvote a 90 m one that was measured far better."""
+    dets = np.array([[0.0, 0.0, 10.0, 10.0, 0.9, 1]])
+    near, _ = LongitudinalFusion.select_cipo(dets, np.array([15.0]))
+    far, _ = LongitudinalFusion.select_cipo(dets, np.array([55.0]))
+    assert near.valid and far.valid
+    assert far.stddev_m > near.stddev_m
+
+
+def test_init_from_still_uses_the_flat_figure() -> None:
+    """Upstream scales the *measurement* stddev only; the initial particle spread
+    stays at cipo_noise_m. Scaling both would double-count the range penalty."""
+    fusion = LongitudinalFusion(seed=0)
+    fusion._init_from(55.0, LongitudinalFusion.CIPO_NOISE_M)
+    assert fusion.distance.std() == pytest.approx(LongitudinalFusion.CIPO_NOISE_M, rel=0.35)
