@@ -91,6 +91,7 @@ signal the model produces was then tested as the picker:
 | the KITScenes re-ranker (`drivejepa_rerank`) | no | no: 0 of 322 ticks; it never picks a stop |
 | the scorer's TTC logit | yes, within a tick | only by braking everywhere: rescuing 17 of 322 costs KITScenes ADE 0.97 -> 3.96 |
 | `pred_col_agent`, the training-only collision head | yes: 85-94% (stationary), 77-91% (frontal), blind on side | no: 0 of 322 |
+| a linear probe on the features every scorer head reads | yes, and no better than the head once plan length is matched: 94% (stationary), 95% (frontal), 41% (side) | no: 0 of 322 |
 
 "When it matters" is the 322 ticks where the plan Drive-JEPA drove hits although
 one of the 32 was clear. The collision head is the sharpest of these signals and
@@ -100,12 +101,62 @@ drive far into an obstacle, which is where its good ranking comes from, and miss
 the slow creep that makes contact two seconds later -- which is how Drive-JEPA
 actually crashes in stationary scenarios.
 
+The probe is the one that settles whether the heads are simply failing to express
+something the model knows. It is a leave-one-pair-out ridge fit on
+`proposal_feature`, the 256 numbers every scorer head reads, over 38,080 candidate
+rows, and it is judged by the same two tests. Its ranking looks strong until the
+comparison is length-matched, at which point it lands where the collision head
+already is -- so the head is close to the linear ceiling of those features and a
+head-only finetune has little headroom. Two things it does establish: the features
+carry nothing linear about a car crossing our flank (41%, against 33% for plan
+length alone), so side is not a head problem; and every signal found here is
+dominated by plan length (the probe's risk correlates 0.97 with it, and its safest
+candidate is the shortest one on all 322 ticks), which is why nothing turns a good
+ranking into "stop now" without also braking everywhere.
+
 Two cautions on those numbers. "Clear" is an open-loop verdict: one candidate
 followed for 4 s with no replanning, so it shows an option existed, not that
 choosing it would have saved the episode. And the collision head's own label is
 NAVSIM's at-fault collision, judged by NAVSIM's simulation, which is not the same
 as the box overlap checked here -- the side blindness may simply be that a car
 driving into our flank is not our fault by that definition.
+
+## Would a wider set of candidates fix it?
+
+Selection is exhausted, but that is a statement about a set of 32 candidates that
+never moves sideways. The obvious cheaper repair is to leave the scorer alone and
+widen what it chooses from -- proposal diversity is trainable on data already held,
+and needs no rendered collision scenes at all. So the swerves were handed to it
+directly.
+
+Six were injected per tick across the three frontal pairs, at +/-1.5, 2.5 and 3.5 m,
+each with the same forward travel as the plan the model picked and a heading
+recomputed to follow the displaced path. They enter at the last refinement, so
+`Bev_refiner` samples the image along the swerve and the scorer reads real features
+for it rather than a pasted trajectory. Driving is untouched: the plan comes from a
+clean first pass, so the three episodes reproduce their recorded scores exactly
+(2.171, 1.865, 1.747) and every candidate slot left alone scores bit-identically --
+`0.00e+00` drift across all 509 ticks, which is what makes the comparison a
+measurement rather than a demonstration.
+
+| | clear of the target | mean `pdm_score` | preferred over the driven plan |
+|---|---:|---:|---:|
+| the plan it drove | 27.6% | 0.805 | -- |
+| swerve +3.5 m | 69.4% | 0.163 | 0 of 434 |
+| swerve -3.5 m | 77.4% | 0.039 | 0 of 434 |
+| best of the six | 84.6% | 0.168 | 0 of 434 |
+
+On the 248 of 314 hitting ticks where a swerve would have been clear, the best clear
+swerve scores 0.151 against 0.808 for the plan that drives into the target, and is
+never preferred. **So the missing swerve is not only absent from what the model
+proposes; it is refused when supplied.** Widening the proposal set alone would
+change no decision, because the half that chooses discards the wider options.
+
+One caveat the result carries: these candidates are far outside anything the scorer
+was trained on, so a low score may be unfamiliarity rather than a judgement about
+danger. That does not reopen the cheap path -- an unfamiliar option is refused as
+firmly as a disliked one -- but it does suggest the scorer may retrain more easily
+than a five-fold gap implies.
 
 ## Reproducing this
 
@@ -140,15 +191,30 @@ about 200 MB of candidates and another 180 MB with the heads.
 
 ## What is left
 
-Fine-tuning, and two things to teach:
+Fine-tuning **both halves**, and the injection is what makes that "both" rather
+than "one":
 
 * **propose evasive swerves** -- no candidate ever does, and forcing the command
   to LEFT or RIGHT for a whole episode moves the plan only 0.2-0.5 m, so it is
   not the command;
+* **choose one when it is there** -- handed six, the scorer preferred none of
+  them on any of 434 frontal ticks, so widening the proposals without retraining
+  the scorer would move no decision;
 * **score an imminent slow collision sharply** -- the collision head exists and
-  is weak exactly where the crashes are.
+  is weak exactly where the crashes are, though the probe puts it near the linear
+  ceiling of the features it reads, so this is unlikely to be a head-only repair.
 
 Training is also where the acceleration feedback should be addressed. No
 benchmark scene may enter that training: neuroNCAP's 20 pairs over 14 nuScenes
-val scenes are the test set, so collision data has to come from elsewhere --
-nuScenes train boxes, or neuroNCAP-style actor insertion on non-benchmark scenes.
+val scenes are the test set, so collision data has to come from elsewhere.
+Two sources were weighed and only one survives. **nuScenes train boxes are
+nearly free and nearly empty**: over its 700 train scenes there are 7.7 s of
+braking at or below -4 m/s2 and 0.1 s of lateral acceleration at or above
+4 m/s2, and NAVSIM's own trainval -- the corpus this model was trained on --
+holds 1.5 s and 2.4 s of the same in 20.1 h. The habits are a faithful
+reflection of what it was shown, so more of it teaches nothing. That leaves
+**neuroNCAP-style actor insertion on non-benchmark scenes**, which is the
+expensive answer: a NeuRAD reconstruction costs about 6-8 h of GPU per scene
+(0.137-0.181 s/step over the 150,001 steps the benchmark's own reconstructions
+used), and the target trajectories have to come from a planner that can see the
+inserted actor's future, since no human in any log ever swerved around it.
