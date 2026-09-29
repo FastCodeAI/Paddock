@@ -619,13 +619,23 @@ highlighted, a HUD of the logs at that frame, a north-up minimap of the whole
 segment, and — only in the first case — the model's plan, coloured by
 `viz.palette` so a model keeps its colour here as in every other figure.
 
-Two things to know before trusting what you see:
+Three things to know before trusting what you see:
 
 - **A mirrored plan is a bug, not a model.** Plans arrive in paddock's ego frame
   (y **left**) and the toolkit projects comma2k19's device frame (y **right**).
   The conversion is a sign, a wrong one mirrors the drawn path about the
   direction of travel, raises nothing, and on a straight road is invisible.
   `test_a_plan_to_the_left_is_drawn_to_the_left` exists for exactly this.
+- **A plan is in the car's frame, like the radar.** `camera2ego` carries the
+  route calibration (see [Calibration](#calibration-the-thing-that-was-wrong-before)),
+  so the overlay turns each plan into the camera's frame with the calibration its
+  model was handed, `native_id.rpy_calib_deg`, exactly as it turns a radar box.
+  Clips rendered before that was fixed drew every plan `focal·tan(yaw)` px
+  sideways and `focal·tan(pitch)` px low — up to 37 px and 16–61 px across this
+  dataset's routes — so a plan running straight down the lane sat beside the
+  recorded path with its far end folded onto the road 18–67 m ahead. They show
+  a model that plans short, or hooks, and it was doing neither.
+  `test_the_overlay_draws_a_plan_through_the_mount_rotation` pins it.
 - **Encoding needs a video backend**, the same one scoring needs: PyAV from the
   `comma2k19` extra, or an external ffmpeg named by `PADDOCK_FFMPEG`. Drawing
   additionally needs Pillow, which the `viz` extra declares.

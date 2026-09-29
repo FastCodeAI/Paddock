@@ -30,6 +30,16 @@ Getting the sign wrong mirrors the drawn path about the direction of travel and
 raises nothing at all -- on a straight road it is invisible, and a curve just
 looks like a bad prediction. `tests/test_overlay.py` pins it down instead.
 
+Nor is the ego frame the camera's. On this benchmark `camera2ego` carries the
+route's mount rotation (`loader.camera2ego_from_rpy`), so a model plans in the
+car-aligned frame the radar measures in, and a plan needs the same
+`calib_to_device` a radar box gets: `plan_to_device` is both steps. Leaving the
+rotation out raises nothing either. It draws every plan `focal * tan(yaw)` px
+sideways and `focal * tan(pitch)` px low -- up to 37 px and 16-61 px over the
+routes of this dataset -- so a plan running straight down the lane sat beside
+the recorded path, and its far end, which belongs on the horizon, folded onto
+the road 18-67 m ahead: a model that plans short, or hooks, when it does neither.
+
 ## Fonts
 
 The script this came from named a DejaVu .ttf under `/usr/share`, which
@@ -192,10 +202,12 @@ def radar_to_device(fwd: float, left: float, rpy=None, height: float = L.EON_HEI
 
 
 def ego_to_road(xy, height: float = L.EON_HEIGHT) -> np.ndarray:
-    """paddock ego [x fwd, y left] -> device points on the road plane.
+    """paddock ego [x fwd, y left] -> [fwd, right, down] points on the road plane.
 
     Accepts (N, 2) or (N, 3); a third column is taken as ego z (up). See the
-    module docstring for why both halves of this matter.
+    module docstring for why both halves of this matter. The points stay in the
+    frame they came in, which for a plan is the car's -- draw one with
+    `plan_to_device`, not with this alone.
     """
     pts = np.atleast_2d(np.asarray(xy, dtype=np.float64))
     if pts.ndim != 2 or pts.shape[1] < 2:
@@ -205,6 +217,18 @@ def ego_to_road(xy, height: float = L.EON_HEIGHT) -> np.ndarray:
     device = L.device_from_ego(ego)
     device[:, 2] += height  # device z is *down*: the road is below the camera
     return device
+
+
+def plan_to_device(xy, rpy=None, height: float = L.EON_HEIGHT) -> np.ndarray:
+    """A plan in paddock's ego frame -> device points on the road plane.
+
+    The ego frame a model plans in is the *calibrated* one: the harness builds
+    `camera2ego` out of the route's mount rotation (`loader.camera2ego_from_rpy`).
+    So a plan needs what a radar return needs -- onto the road plane of the
+    car's frame, then `calib_to_device` into the camera's. `rpy` is the
+    calibration the model was handed; None draws the plan unrotated.
+    """
+    return calib_to_device(ego_to_road(xy, height), rpy)
 
 
 def _finite(pixels: np.ndarray) -> np.ndarray:
@@ -240,15 +264,24 @@ class Plan:
     `label` reaches the legend, so it is the place to put the number the plan
     scored -- the picture and the metric belong side by side or the reader has
     to hold one of them in their head.
+
+    `rpy` is the calibration the model was handed, which fixes the frame the
+    plan is in (see `plan_to_device`). None draws it with the overlay's own.
     """
 
     label: str
     xy: np.ndarray
     color: str
+    rpy: np.ndarray | None = None
 
     @classmethod
-    def for_model(cls, model: str, xy, label: str | None = None) -> Plan:
-        return cls(label=label or model, xy=np.asarray(xy, dtype=np.float64), color=palette.color(model))
+    def for_model(cls, model: str, xy, label: str | None = None, rpy=None) -> Plan:
+        return cls(
+            label=label or model,
+            xy=np.asarray(xy, dtype=np.float64),
+            color=palette.color(model),
+            rpy=None if rpy is None else np.asarray(rpy, dtype=np.float64),
+        )
 
 
 @dataclass(frozen=True)
@@ -436,10 +469,12 @@ class SegmentOverlay:
     ) -> None:
         self.path = Path(seg_path)
         self.layers = layers or Layers()
-        #: The route's mount rotation, for anything measured in the car's frame
-        #: rather than the camera's. Estimated from the route if not supplied --
-        #: a caller that already holds a `RouteCalibrations` should pass its
-        #: answer rather than paying for a second pooled estimate.
+        #: The route's mount rotation, for anything in the car's frame rather
+        #: than the camera's: the radar, and any plan that does not carry the
+        #: calibration its model was handed. Estimated from the route if not
+        #: supplied -- a caller that already holds a `RouteCalibrations`, or a
+        #: stored sample's `rpy_calib_deg`, should pass its answer rather than
+        #: paying for a second pooled estimate.
         self.rpy = self._rpy(rpy)
         self.path_horizon_s = path_horizon_s
         self.path_skip_s = path_skip_s
@@ -521,7 +556,7 @@ class SegmentOverlay:
             pen = ImageDraw.Draw(img)
 
         for plan in plans:
-            draw_plan(pen, ego_to_road(plan.xy), plan.color)
+            draw_plan(pen, plan_to_device(plan.xy, self.rpy if plan.rpy is None else plan.rpy), plan.color)
 
         tracks = radar_tracks(*self.radar, t, self.radar_window_s)
         lead = lead_track(tracks)
