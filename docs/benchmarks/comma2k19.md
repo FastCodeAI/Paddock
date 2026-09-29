@@ -652,9 +652,10 @@ a whole route**, because all segments of a route share one mounting and because
 those at `rpy = 0`, silently; openpilot never hits this because it persists
 `CalibrationParams` across drives.
 
-Result on this dataset: 3.5–3.8° of pitch on the RAV4, 1.7–1.8° on the Civic,
-consistent within each vehicle. Correcting it is worth roughly 1.7× in
-cross-track error.
+Result on this dataset: 3.3–3.8° of pitch on the RAV4 (39 of its 42 routes) and
+1.6–2.2° on the Civic (126 of 135), consistent within each vehicle and never
+overlapping between them — the Civic's highest is 2.35°, the RAV4's lowest
+2.57°. Correcting it is worth roughly 1.7× in cross-track error.
 
 ## Recorded results
 

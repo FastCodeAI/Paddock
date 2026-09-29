@@ -134,8 +134,8 @@ def radar_to_device(fwd: float, left: float, rpy=None, height: float = L.EON_HEI
     **The radar is bolted to the car; the camera is stuck to the windscreen.**
     A radar return arrives in the car-aligned (calibrated) frame and `project`
     consumes the device frame, so without `calib_to_device` the mount rotation
-    is simply left out. On this dataset the mount pitch is 1.7-3.8 deg, which at
-    fl 910 is **27-58 px** of vertical error on every box -- far more than the
+    is simply left out. On this dataset the mount pitch is 1.0-3.8 deg, which at
+    fl 910 is **16-61 px** of vertical error on every box -- far more than the
     gap between a lead vehicle's bumper and the road under it, which is why the
     box looked slightly low against the car it was drawn on. The reference
     script has the same defect: it rotates lanes, edges and paths, and not radar.

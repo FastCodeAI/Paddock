@@ -91,8 +91,8 @@ def test_a_radar_range_is_drawn_at_the_range_it_reports(toolkit):
 def test_the_mount_rotation_moves_a_radar_box_by_the_pitch_it_encodes(toolkit):
     """The bug this was written for: radar is car-frame, the camera is not.
 
-    comma2k19's mount pitch runs 1.7-3.8 deg across the two vehicles. At fl 910
-    that is 27-58 px of vertical error on every box -- far more than the gap
+    comma2k19's mount pitch runs 1.0-3.8 deg across the two vehicles. At fl 910
+    that is 16-61 px of vertical error on every box -- far more than the gap
     between a lead vehicle's bumper and the road under it, which is why the
     box looked "slightly off" against the car it was drawn on.
 
