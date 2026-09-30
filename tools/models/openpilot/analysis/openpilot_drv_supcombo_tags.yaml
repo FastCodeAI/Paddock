@@ -24,8 +24,9 @@ version: 1
 params:
   # -- windows --
   horizon_s: 3.0           # H: response tags compare plan and GT over [0, H]; = the runs' eval_horizon_s
-  intent_horizon_s: 10.0   # I: GT look-ahead for intent tags only (the *_I columns); the model is never told
-                          # the route. kitscenes' GT is 4 s long, so bench_params shortens it there
+  intent_horizon_s: 10.0   # I: GT look-ahead for intent tags only (the *_I columns); the model is not told
+                          # the route unless a run sends it as a desire (the kitscenes notebook's §17).
+                          # kitscenes' GT is 4 s long, so bench_params shortens it there
   # -- when a number is defined at all --
   min_step_m: 0.25         # a 0.5 s step shorter than this has no usable heading
   min_ratio_len_m: 5.0     # speed_ratio is NaN when the GT path over H is shorter than this
@@ -234,8 +235,10 @@ classes:
     default: full
 
   # ---------------- intent: what the GT does after H (experimental) ---------
-  # The model gets no route or desire input (the adapter sends zeros), so these
-  # describe information it never had. Reported apart from the failure modes.
+  # The model gets no route or desire input: the adapter sends zeros, unless a kitscenes run sends
+  # the command as a desire (command_source = "gt" with PADDOCK_OPENPILOT_DESIRE, the kitscenes
+  # notebook's §17). Otherwise these describe information it never had. Reported apart from the
+  # failure modes.
   # _I columns are over intent_horizon_s: 10 s on comma2k19, 4 s on kitscenes.
   gt_stop_I:
     group: intent
@@ -327,9 +330,9 @@ classes:
       That offset is most of too_fast_cruise: divided out (speed_ratio_net), the cruise keyframes past
       ratio_fast go from 483 to 77, and those under ratio_slow from 157 to 93. On the recorded kitscenes
       run it goes the other way and further: the plan starts at 0.91 of the GT's speed at the median
-      (the pose head reads 0.875 of the poses'), 165 of 223 keyframes are `slow`, and 92 of the 100
+      (the pose head reads 0.877 of the poses'), 165 of 223 keyframes are `slow`, and 93 of the 101
       too_slow_cruise keyframes start slow. Divided out, the moving cruise keyframes under ratio_slow go
-      from 100 to 23 (median speed_ratio_net 1.00), and those past ratio_fast from 13 to 21: the plan's
+      from 101 to 23 (median speed_ratio_net 1.00), and those past ratio_fast from 14 to 21: the plan's
       speed follows the GT's once its start is right. The start follows cam_h_read: a median v0_ratio
       of 0.88 in its low mode, 0.92 in its high one
     requires: [v0_ratio]
@@ -344,11 +347,13 @@ classes:
     doc: >-
       the camera height the road head believes (op_cam_h, extras.road.camera_height), the scale of
       everything the model reads off the image. On the recorded kitscenes run it sits in one of two
-      modes, near 1.39 m (131 of 223 keyframes) or near 1.62 m (92), never above 1.65 m, while the
+      modes, near 1.39 m (130 of 223 keyframes) or near 1.62 m (93), never above 1.65 m, while the
       front camera is 1.88 m up (ctx_height_ring_front_m). The pose head's speed follows it: 0.82 of
-      the poses' in the low mode and 0.92 in the high one, in every speed band from 2 to 30 m/s, on
-      every mount and with either history. The low mode mostly has no lane lines (89% lanes=none,
-      against 53%), and the mode changes within 15 of the 51 scenes with more than one keyframe
+      the poses' in the low mode and 0.92 in the high one, in every speed band above 2 m/s, on every
+      mount and with either history. The low mode mostly has no lane lines (89% lanes=none, against
+      54%), and the mode changes within 17 of the 51 scenes with more than one keyframe. It follows
+      the lane lines more than anything else measured; the rig and the city do not separate it (the
+      kitscenes notebook's §14)
     requires: [op_cam_h]
     rules:
       low: {when: "op_cam_h < @cam_h_split_m", doc: "under cam_h_split_m"}
@@ -593,7 +598,7 @@ failure_modes:
     when: "comfort == 'harsh' and gt_comfort_H == 1"
     severity: "pred_comfort_excess_H"
     doc: "over H the plan breaks a comfort bound that the GT, over the same window, stays within; severity is its worst peak over that bound"
-  # -- intent: the model was never told; reported apart --
+  # -- intent: what the model is not told, unless a run sends a desire; reported apart --
   lane_change_unanticipated:
     group: intent
     when: "gt_lane_change_I in ['left', 'right'] and abs(pred_shift_I) < @lc_pred_m"
@@ -605,7 +610,8 @@ failure_modes:
     severity: "abs(gt_dpsi_I_deg)"
     doc: "GT turns within intent_horizon_s; over the same time the plan turns under turn_pred_deg"
   # kitscenes knows the route: each sample carries the driving command and the
-  # navigation text (cmd, nav), which the model is never given. The plan's whole
+  # navigation text (cmd, nav). The model never gets the text, and gets the command only in a
+  # run that sends it as a desire (the kitscenes notebook's §17). The plan's whole
   # 10 s is compared with it, since a commanded turn can lie past the 4 s GT.
   turn_not_planned:
     group: intent
@@ -634,8 +640,9 @@ failure_modes:
       the route goes straight on (the command and the navigation text both say so), yet the moving
       plan turns turn_intent_deg or more over its 10 s. The GT covers only intent_horizon_s, so a
       road that bends after that is not ruled out: look at the camera. A straight command alone is
-      not enough, because the command switches later than the text: "Turn right in 41m" still
-      comes with a straight command
+      not enough: kitscenes' command is a turn exactly where the 4 s GT ends 5 m or more to one side
+      (the kitscenes notebook's §17), while the text looks further along the route, so "Turn right
+      in 41m" still comes with a straight command
 
 # Named strengths, alongside the ones §12 finds from the data.
 strengths:
@@ -660,4 +667,5 @@ strengths:
     when: "(cmd == 'left' and pred_dpsi_full_deg >= @turn_pred_deg) or (cmd == 'right' and pred_dpsi_full_deg <= -@turn_pred_deg)"
     doc: >-
       the route commands a turn and the plan turns turn_pred_deg or more that way over its 10 s,
-      though the model is never told the route: whatever it turns for, it is in the scene
+      though, unless the run sends a desire (the kitscenes notebook's §17), the model is not told
+      the route: whatever it turns for, it is in the scene
