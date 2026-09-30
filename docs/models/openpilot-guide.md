@@ -759,8 +759,48 @@ What `adapters/models/openpilot/policy.py` does in closed loop, and why.
   steers and never fires with a lead present. Each firing is a rising edge of
   the `resume` column in log.csv; routes are scored unassisted (frozen at the
   first nudge) and assisted \* (full run). See `docs/benchmarks/bench2drive.md`.
-* **Not a route follower.** No navigation input reaches the model (its desire
-  pulses are zeros), so junction turns are missed by construction.
+* **Not a route follower.** By default no navigation input reaches the model
+  (its desire pulses are zeros), so junction turns are missed by construction.
+  `PADDOCK_OPENPILOT_DESIRE` changes that; see the next section.
+
+### A route command reaches the desire input only when asked
+
+`desire_pulse` is supercombo's one channel for intent (§4.1): a one-hot over
+`log.Desire`, fed as a rising-edge pulse and max-pooled into 25 bins of 0.2 s,
+so a pulse stays in view for 5 s. By default the adapter sends none, and every
+run recorded before this setting fed zeros. `PADDOCK_OPENPILOT_DESIRE`, under
+`[models.openpilot.env]`, sends the observation's route command instead:
+
+| mode | LEFT | RIGHT | STRAIGHT, FOLLOW_REFERENCE |
+|---|---|---|---|
+| `off` (default) | none | none | none |
+| `turn` | turnLeft | turnRight | none |
+| `lane_change` | laneChangeLeft | laneChangeRight | none |
+
+`turn` is what a route command means, and it is off openpilot's deployment
+distribution. `DesireHelper` sends only the lane-change pair, on the blinker
+above 20 mph, and no Python or C++ file in openpilot's history names a turn
+desire. The code cannot say whether training covered the turn slots; only a run
+can. `lane_change` is in distribution but a different manoeuvre, which makes it
+the control arm. The table is explicit because the two enums do not line up:
+`Command.RIGHT` is 0 and slot 0 is `none`, so a command passed straight through
+as a slot would quietly drop every right turn.
+
+The adapter holds the desire level for the frame that carries it, and both
+backends turn it into the edge, as openpilot's own `modeld` does. So a
+benchmark that stamps a command on one frame delivers it once, on that frame,
+and one that stamps every frame delivers it on the first. KITScenes'
+`command_source = "gt"` stamps the scored keyframe alone
+([The route hint](../benchmarks/kitscenes.md#the-route-hint)).
+
+Every record's extras carry:
+- `desire`: `input`, the slot this frame sent, and `state`, the model's own
+  8-way `desire_state`;
+- `plan_v0`: the plan's speed at t = 0, beside the pose head's.
+
+The mode is recorded in `provenance.policy.desire_mode`. Set in a site's env
+block, it is also in `config.model_env`, so a desire run gets its own id and
+its own leaderboard row.
 
 ### Which backend ran, and one number it used to change
 

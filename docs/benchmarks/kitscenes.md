@@ -44,8 +44,9 @@ All six carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
 so the column compares. Caveats the hash cannot express:
 
 - **Route hint.** Drive-JEPA was run with `--command gt`, which derives a turn
-  command from the recorded future on 39 of the 223 samples; openpilot and
-  VisionPilot have no such input, and Alpamayo's equivalent is its `nav` arm.
+  command from the recorded future on 39 of the 223 samples. VisionPilot has
+  no such input, openpilot reads one only under `PADDOCK_OPENPILOT_DESIRE`,
+  and Alpamayo's equivalent is its `nav` arm.
   Recorded as `command_source` in that run's `config`. A paddock run can be
   given the same hint; see [The route hint](#the-route-hint).
 - **Domain.** The checkpoint is trained on nuPlan/OpenScene — US cities, a
@@ -145,7 +146,9 @@ into an event -- openpilot's desire input is a rising-edge pulse -- would
 otherwise see that event at the start of the history, not at the scored moment.
 
 Whether the hint changes anything is the model's business: one that never
-reads `obs.command` scores the same under either setting.
+reads `obs.command` scores the same under either setting. openpilot is one of
+those unless its node is also told which desire a turn is sent as; see
+[the openpilot guide](../models/openpilot-guide.md#a-route-command-reaches-the-desire-input-only-when-asked).
 
 ## The camera ring
 

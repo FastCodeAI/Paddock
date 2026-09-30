@@ -64,6 +64,7 @@ from PIL import Image
 
 from paddock.adapters.models.openpilot.nv12 import pack_nv12, rgb_to_nv12_batch
 from paddock.policy.protocol import (
+    Command,
     Observation,
     Pinhole,
     Policy,
@@ -142,6 +143,32 @@ V_CRUISE_FALLBACK = 13.9  # m/s when the source sends no road limit
 #: the car is rolling (>= 1 m/s), then experimental resumes control. 0 disables.
 RESUME_S = float(os.environ.get("PADDOCK_OPENPILOT_RESUME_S", "3.0"))
 RESUME_UNTIL_V = 1.0
+
+#: openpilot's `log.Desire` (cereal/log.capnp): the slots of the one-hot
+#: `desire_pulse` input and of the `desire_state` output. Restated because
+#: cereal cannot be imported at module scope; `test_desire_slots_are_openpilots_own`
+#: pins them to the enum. They do not line up with `Command` -- RIGHT is 0, and
+#: slot 0 is `none` -- so a command is never usable as a slot directly.
+DESIRE_NONE = 0
+DESIRE_TURN_LEFT, DESIRE_TURN_RIGHT = 1, 2
+DESIRE_LANE_CHANGE_LEFT, DESIRE_LANE_CHANGE_RIGHT = 3, 4
+
+#: `PADDOCK_OPENPILOT_DESIRE`: which desire a route command is sent as.
+#:
+#: "off", the default, sends none on every frame, as every recorded run did.
+#: "turn" sends LEFT/RIGHT as turnLeft/turnRight -- the slots a route command
+#: means, and ones openpilot's own runtime never sends: `DesireHelper` sets only
+#: none and the lane-change pair (on the blinker, above 20 mph), and no Python
+#: or C++ file in openpilot's history names a turn desire. So "turn" is off the
+#: deployment distribution; whether training covered it cannot be read from the
+#: code, only measured. "lane_change" sends laneChangeLeft/laneChangeRight: in
+#: distribution but a different manoeuvre, which makes it the control for "turn".
+#: STRAIGHT and FOLLOW_REFERENCE are none in every mode.
+DESIRE_MODES: dict[str, dict[Command, int]] = {
+    "off": {},
+    "turn": {Command.LEFT: DESIRE_TURN_LEFT, Command.RIGHT: DESIRE_TURN_RIGHT},
+    "lane_change": {Command.LEFT: DESIRE_LANE_CHANGE_LEFT, Command.RIGHT: DESIRE_LANE_CHANGE_RIGHT},
+}
 
 
 class ImplausibleMounting(ValueError):
@@ -331,7 +358,31 @@ def _polyline(points, x_idxs) -> list[list[float]]:
     return [[float(x), -float(row[0])] for x, row in zip(x_idxs, np.asarray(points), strict=False)]
 
 
-def build_extras(out: dict, plan33: np.ndarray, grid_s: np.ndarray = GRID_S) -> dict:
+def desire_index(command: Command, mode: str) -> int:
+    """The `log.Desire` slot a route command is sent as under `mode`."""
+    return DESIRE_MODES[mode].get(command, DESIRE_NONE)
+
+
+def desire_pulse(command: Command, mode: str, width: int) -> np.ndarray:
+    """One frame's `desire_pulse` input: one-hot on its desire, all zeros for none.
+
+    Held level, not pulsed: both backends pulse it themselves on the rising
+    edge (`ModelState.run`, `SupercomboRunner.run`), which is how openpilot
+    feeds its own desire -- the model decides when the manoeuvre is over. So a
+    command stamped on one frame arrives once, on that frame, and one stamped on
+    every frame arrives on the first of them; either way the 25-bin queue then
+    carries it for 5 s.
+    """
+    pulse = np.zeros(width, dtype=np.float32)
+    slot = desire_index(command, mode)
+    if slot != DESIRE_NONE:
+        pulse[slot] = 1.0
+    return pulse
+
+
+def build_extras(
+    out: dict, plan33: np.ndarray, grid_s: np.ndarray = GRID_S, desire: int = DESIRE_NONE
+) -> dict:
     """supercombo's non-trajectory heads, in `protocol.EXTRAS_KEYS` form.
 
     supercombo predicts a great deal more than a path -- its own speed and
@@ -343,6 +394,10 @@ def build_extras(out: dict, plan33: np.ndarray, grid_s: np.ndarray = GRID_S) -> 
 
     Everything is converted to paddock's ego frame here, at the one place that
     knows supercombo's conventions, so no harness has to learn them.
+
+    `desire` is the slot this frame was sent (`desire_index`), reported beside
+    the model's own `desire_state` so a record says both what was asked and
+    what the model made of it.
     """
     from openpilot.selfdrive.modeld.constants import ModelConstants, Plan
 
@@ -366,7 +421,20 @@ def build_extras(out: dict, plan33: np.ndarray, grid_s: np.ndarray = GRID_S) -> 
                 strict=True,
             )
         ],
+        # The plan's own speed at t = 0, beside the pose head's reading of the
+        # same quantity in `pose.velocity`. They are separate outputs, and this
+        # is the one openpilot's longitudinal control reads (`modeld.py`,
+        # `get_accel_from_plan`), so the plan's start speed is on the record
+        # without differencing its waypoints.
+        "plan_v0": float(plan33[:, Plan.VELOCITY][0, 0]),
     }
+
+    if "desire_state" in out:
+        # Same eight slots as the pulse, softmaxed by openpilot's parser.
+        extras["desire"] = {
+            "input": int(desire),
+            "state": [float(p) for p in np.asarray(out["desire_state"])[0]],
+        }
 
     if "lead" in out and "lead_prob" in out:
         # (batch, 3 time offsets, 6 trajectory points, 4 = x, y, v, a). The three
@@ -422,11 +490,16 @@ class OpenpilotPolicy(Policy):
     )  # CAM_FRONT: single-camera fallback for open-loop sources
     waypoint_dt = 0.5
 
-    def __init__(self, backend: str | None = None, model: str | None = None) -> None:
+    def __init__(
+        self, backend: str | None = None, model: str | None = None, desire: str | None = None
+    ) -> None:
         #: "tinygrad" (openpilot's own JIT) or "onnx". Auto-detected in `load`.
         self.backend = backend or os.environ.get("PADDOCK_OPENPILOT_BACKEND", "auto")
         #: "small" (driving_supercombo) or "big" (big_driving_supercombo).
         self.model_name = model or os.environ.get("PADDOCK_OPENPILOT_MODEL", "small")
+        #: A `DESIRE_MODES` key. Checked here so a typo stops the node at
+        #: startup, not minutes later at the first frame of the run.
+        self.desire_mode = self._desire_mode(desire or os.environ.get("PADDOCK_OPENPILOT_DESIRE", "off"))
         self.model = None
         self.session = None
         self.camera: CameraAdapter | None = None
@@ -452,6 +525,16 @@ class OpenpilotPolicy(Policy):
         #: in `_new_model`. False on the ONNX backend, which never calls it.
         self._run_takes_prepare_only = False
         self._last_diag: dict[str, Any] = {}
+
+    @staticmethod
+    def _desire_mode(raw: str) -> str:
+        mode = raw.strip().lower() or "off"
+        if mode not in DESIRE_MODES:
+            raise ValueError(
+                f"PADDOCK_OPENPILOT_DESIRE = {raw!r}: expected one of {', '.join(DESIRE_MODES)}. "
+                "See DESIRE_MODES in the openpilot adapter's policy.py."
+            )
+        return mode
 
     # ---- loading --------------------------------------------------------
 
@@ -787,7 +870,7 @@ class OpenpilotPolicy(Policy):
         transforms = {"img": road.transforms["img"], "big_img": wide.transforms["big_img"]}
 
         inputs = {
-            "desire_pulse": np.zeros(ModelConstants.DESIRE_LEN, dtype=np.float32),
+            "desire_pulse": desire_pulse(obs.command, self.desire_mode, ModelConstants.DESIRE_LEN),
             "traffic_convention": TRAFFIC_CONVENTION,
             "action_t": np.array([0.3, 0.5], dtype=np.float32),
         }
@@ -841,9 +924,14 @@ class OpenpilotPolicy(Policy):
             y, u, v = rgb_to_yuv420(wide.prepare(obs.image(wide_key)))
         big = self._plans["big_img"].apply(y, u, v)
 
+        # As wide as the graph's own desire input, which is what the runner's
+        # queue is built from (`InputQueues.build`). With the mode "off" this is
+        # the zeros `SupercomboRunner.run` substitutes for `desire=None`.
+        width = self.session.spec.input_shapes["desire_pulse"][-1]
+        desire = desire_pulse(obs.command, self.desire_mode, width)
         out = None
         for _ in range(self._repeats(obs)):
-            out = self.model.run(img, big, max(float(obs.speed), 0.0))
+            out = self.model.run(img, big, max(float(obs.speed), 0.0), desire=desire)
         self.frames_seen += 1
         if out is None or "plan" not in out:
             return constant_velocity(obs.speed, dt=self.waypoint_dt)
@@ -863,7 +951,7 @@ class OpenpilotPolicy(Policy):
         """
         plan33 = np.asarray(out["plan"])[0]
         traj = Trajectory(plan_to_grid(plan33), dt=self.waypoint_dt)
-        traj.extras = build_extras(out, plan33)
+        traj.extras = build_extras(out, plan33, desire=desire_index(obs.command, self.desire_mode))
         if NATIVE_LONG:
             traj.extras["native_long"] = self._native_long(out, plan33, obs.speed, self.dt_s, obs.speed_limit)
         validate_extras(traj.extras, n_waypoints=len(traj.waypoints))
@@ -961,7 +1049,12 @@ class OpenpilotPolicy(Policy):
         # for an open-loop run yet, so this is a live check, not provenance.
         probe = {"run_takes_prepare_only": bool(getattr(self, "_run_takes_prepare_only", False))}
         if self.camera is None:
-            return {"status": "no frame seen yet", "backend": self.backend, **probe}
+            return {
+                "status": "no frame seen yet",
+                "backend": self.backend,
+                "desire_mode": self.desire_mode,
+                **probe,
+            }
         # Each view's margin from the camera that actually feeds it: in the
         # two-camera rig the road cam feeds "img" and the wide cam "big_img", so
         # reading both off one camera reports a false deficit for the other. A
@@ -975,6 +1068,10 @@ class OpenpilotPolicy(Policy):
             **probe,
             "backend": self.backend,
             "model": self.model_name,
+            # What the node did with route commands. `config.model_env` records
+            # only a site's env block, so a mode set anywhere else would leave no
+            # other trace in the run record.
+            "desire_mode": self.desire_mode,
             "source_size": [self.camera.src.width, self.camera.src.height],
             "resample_mode": self.camera.mode,
             "source_hfov_deg": round(self.camera.src.hfov_deg, 2),

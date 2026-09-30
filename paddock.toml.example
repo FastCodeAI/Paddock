@@ -415,3 +415,7 @@ serialize = true
 #   PADDOCK_OPENPILOT_RESUME_S      seconds stopped with no lead before the
 #                                   driver-resume rule pulls away; "0" disables
 #   PADDOCK_OPENPILOT_THREADS       onnxruntime thread count (default 8)
+#   PADDOCK_OPENPILOT_DESIRE        "off" (the default: no desire, as every
+#                                   run before it), "turn" or "lane_change":
+#                                   which desire a LEFT/RIGHT route command is
+#                                   sent as. See docs/models/openpilot-guide.md.

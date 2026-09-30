@@ -11,14 +11,21 @@ import numpy as np
 import pytest
 
 from paddock.adapters.models.openpilot.policy import (
+    DESIRE_LANE_CHANGE_LEFT,
+    DESIRE_LANE_CHANGE_RIGHT,
+    DESIRE_NONE,
+    DESIRE_TURN_LEFT,
+    DESIRE_TURN_RIGHT,
     GRID_S,
     POLICY,
     TARGET_H,
     TARGET_W,
     CameraFit,
+    desire_index,
+    desire_pulse,
     plan_to_grid,
 )
-from paddock.policy.protocol import Pinhole, Policy
+from paddock.policy.protocol import Command, Pinhole, Policy
 
 
 def test_policy_imports_without_openpilot_installed() -> None:
@@ -254,6 +261,7 @@ def test_build_extras_matches_supercombos_own_output_layout() -> None:
     """Against the real `ModelConstants`, so a head's width cannot drift unseen."""
     pytest.importorskip("openpilot", reason="needs openpilot's environment")
     from openpilot.selfdrive.modeld.constants import ModelConstants as MC
+    from openpilot.selfdrive.modeld.constants import Plan
 
     from paddock.adapters.models.openpilot.policy import build_extras
     from paddock.policy.protocol import validate_extras
@@ -261,6 +269,7 @@ def test_build_extras_matches_supercombos_own_output_layout() -> None:
     n = MC.IDX_N
     plan = np.zeros((n, MC.PLAN_WIDTH))
     plan[:, 0] = np.asarray(MC.T_IDXS) * 10.0
+    plan[0, Plan.VELOCITY.start] = 9.5  # the plan's own forward speed at t = 0
     lead = np.zeros((1, MC.LEAD_MHP_SELECTION, MC.LEAD_TRAJ_LEN, MC.LEAD_WIDTH))
     lead[0, 0, 0] = [42.0, 1.5, 25.0, -0.2]  # x, y(right), absolute speed, accel
     out = {
@@ -273,9 +282,10 @@ def test_build_extras_matches_supercombos_own_output_layout() -> None:
         "lane_lines": np.zeros((1, MC.NUM_LANE_LINES, n, MC.LANE_LINES_WIDTH)),
         "lane_lines_prob": np.tile([0.1, 0.9], (1, MC.NUM_LANE_LINES)),
         "road_edges": np.zeros((1, MC.NUM_ROAD_EDGES, n, MC.LANE_LINES_WIDTH)),
+        "desire_state": np.eye(MC.DESIRE_PRED_WIDTH)[None, DESIRE_TURN_LEFT],
     }
 
-    extras = build_extras(out, plan)
+    extras = build_extras(out, plan, desire=DESIRE_TURN_LEFT)
     validate_extras(extras, n_waypoints=len(GRID_S))
 
     assert extras["pose"]["velocity"] == [30.0, -0.5, -0.1]
@@ -294,6 +304,11 @@ def test_build_extras_matches_supercombos_own_output_layout() -> None:
     assert len(extras["lane"]["lines"]) == MC.NUM_LANE_LINES
     assert len(extras["lane"]["edges"]) == MC.NUM_ROAD_EDGES
     assert len(extras["lane"]["lines"][0]) == n
+
+    assert extras["plan_v0"] == pytest.approx(9.5), "velocity x, not position, at the first T_IDX"
+    assert extras["desire"]["input"] == DESIRE_TURN_LEFT
+    assert len(extras["desire"]["state"]) == MC.DESIRE_PRED_WIDTH
+    assert extras["desire"]["state"][DESIRE_TURN_LEFT] == 1.0
 
 
 @pytest.mark.parametrize("fail", [False, True])
@@ -398,11 +413,12 @@ def _onnx_policy(monkeypatch):
     policy = POLICY()
     policy.backend = "onnx"
     policy.self_prime = False
-    policy.session = type("S", (), {"spec": type("Spec", (), {"input_shapes": {"img": (1, 12, 128, 256)}})})()
+    shapes = {"img": (1, 12, 128, 256), "desire_pulse": (1, 25, 8)}
+    policy.session = type("S", (), {"spec": type("Spec", (), {"input_shapes": shapes})})()
     seen = {}
 
-    def run(img, big, speed):
-        seen["img"], seen["big_img"] = img, big
+    def run(img, big, speed, desire=None):
+        seen["img"], seen["big_img"], seen["desire"] = img, big, desire
         return {}
 
     policy.model = type("M", (), {"run": staticmethod(run)})()
@@ -472,7 +488,9 @@ def _counting_policy(monkeypatch):
     """An ONNX policy that records one entry per model tick."""
     policy, _ = _onnx_policy(monkeypatch)
     ticks: list[float] = []
-    policy.model = type("M", (), {"run": staticmethod(lambda img, big, speed: ticks.append(speed) or {})})()
+    policy.model = type(
+        "M", (), {"run": staticmethod(lambda img, big, speed, desire=None: ticks.append(speed) or {})}
+    )()
     # `reset` would rebuild the runner from the stub session, which has no
     # graph behind it. Everything else `reset` clears is what is under test.
     monkeypatch.setattr(policy, "_new_onnx_runner", lambda: None)
@@ -533,3 +551,86 @@ def test_closed_loop_still_primes_its_own_history(monkeypatch) -> None:
     policy.infer(_sequence(hz=10.0, n=1)[0])
     assert len(ticks) == FEATURE_BUFFER_FRAMES
     assert policy._seed_dt_s is None
+
+
+# --------------------------------------------------------------------------
+# A route command reaches the desire input
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("mode", "command", "slot"),
+    [
+        ("off", Command.LEFT, DESIRE_NONE),
+        ("off", Command.RIGHT, DESIRE_NONE),
+        ("turn", Command.LEFT, DESIRE_TURN_LEFT),
+        ("turn", Command.RIGHT, DESIRE_TURN_RIGHT),
+        ("turn", Command.STRAIGHT, DESIRE_NONE),
+        ("turn", Command.FOLLOW_REFERENCE, DESIRE_NONE),
+        ("lane_change", Command.LEFT, DESIRE_LANE_CHANGE_LEFT),
+        ("lane_change", Command.RIGHT, DESIRE_LANE_CHANGE_RIGHT),
+        ("lane_change", Command.STRAIGHT, DESIRE_NONE),
+    ],
+)
+def test_a_route_command_is_sent_as_the_desire_its_mode_names(mode, command, slot) -> None:
+    """An explicit table, because the two enums do not line up.
+
+    `Command.RIGHT` is 0 and desire 0 is `none`, so passing a command through
+    as a slot would turn every right turn into no desire and every left into a
+    left turn -- a plausible-looking asymmetry nobody would think to question.
+    """
+    assert desire_index(command, mode) == slot
+    # What arrives off the wire is the enum's value; the table must take it.
+    assert desire_index(int(command), mode) == slot
+
+    pulse = desire_pulse(command, mode, width=8)
+    assert pulse.dtype == np.float32
+    assert np.flatnonzero(pulse).tolist() == ([] if slot == DESIRE_NONE else [slot])
+
+
+@pytest.mark.parametrize(("mode", "sent"), [("off", []), ("turn", [DESIRE_TURN_LEFT])])
+def test_the_desire_reaches_the_graph(monkeypatch, mode, sent) -> None:
+    """Held at the frame's level; `SupercomboRunner.run` makes the rising edge.
+
+    "off" must hand over the all-zero vector the runner substitutes for
+    `desire=None`, which is what every recorded run was fed.
+    """
+    policy, seen = _onnx_policy(monkeypatch)
+    policy.desire_mode = mode
+    obs = _two_camera_observation()
+    obs.command = Command.LEFT
+
+    policy.infer(obs)
+
+    assert seen["desire"].shape == (8,), "as wide as the graph's desire_pulse input"
+    assert np.flatnonzero(seen["desire"]).tolist() == sent
+
+
+def test_the_desire_mode_is_read_from_the_env(monkeypatch) -> None:
+    monkeypatch.delenv("PADDOCK_OPENPILOT_DESIRE", raising=False)
+    assert POLICY().desire_mode == "off"
+    monkeypatch.setenv("PADDOCK_OPENPILOT_DESIRE", " Lane_Change ")
+    assert POLICY().desire_mode == "lane_change"
+    assert POLICY().diagnostics()["desire_mode"] == "lane_change", "and it is on the run record"
+
+
+def test_an_unknown_desire_mode_stops_the_node(monkeypatch) -> None:
+    """At construction: unchecked, the same typo fails every sample's first frame."""
+    monkeypatch.setenv("PADDOCK_OPENPILOT_DESIRE", "turns")
+    with pytest.raises(ValueError, match="'turns': expected one of off, turn, lane_change"):
+        POLICY()
+
+
+def test_desire_slots_are_openpilots_own() -> None:
+    """Restated at module scope, so pinned here to cereal's enum itself."""
+    pytest.importorskip("openpilot", reason="needs openpilot's environment")
+    from openpilot.cereal import log
+    from openpilot.selfdrive.modeld.constants import ModelConstants
+
+    assert DESIRE_NONE == log.Desire.none
+    assert (DESIRE_TURN_LEFT, DESIRE_TURN_RIGHT) == (log.Desire.turnLeft, log.Desire.turnRight)
+    assert (DESIRE_LANE_CHANGE_LEFT, DESIRE_LANE_CHANGE_RIGHT) == (
+        log.Desire.laneChangeLeft,
+        log.Desire.laneChangeRight,
+    )
+    assert ModelConstants.DESIRE_LEN == 8, "the width the ONNX stub above declares"
