@@ -237,6 +237,13 @@ serialize = true
 # level -- otherwise every projected point lands behind the car. Default 2.2;
 # override only if you have measured this rig.
 # ground_offset_m = 2.2
+#
+# The route command the scored keyframe carries. KITScenes has no route
+# annotation, so the default tells every model "straight". "gt" gives the
+# keyframe the sample list's own driving_command, derived from the recorded
+# future: an oracle hint, recorded in run.json and hashed into the run id.
+# See docs/benchmarks/kitscenes.md, "The route hint".
+# command_source = "straight"   # or "gt"
 
 # [benchmarks.neuroncap]
 # Closed-loop NCAP scoring against a NeuRAD render; docs/benchmarks/neuroncap.md.
