@@ -802,6 +802,57 @@ The mode is recorded in `provenance.policy.desire_mode`. Set in a site's env
 block, it is also in `config.model_env`, so a desire run gets its own id and
 its own leaderboard row.
 
+### A camera higher than openpilot's, shown from openpilot's height
+
+The warp is a pure rotation: `get_warp_matrix` takes the mounting angles and
+the intrinsics, and nothing tells the model how high the camera sits. openpilot's
+sits 1.22 m over the road (`calibrationd.HEIGHT_INIT`, which the
+`road_transform` head reads back on
+[comma2k19](../datasets/comma2k19.md)). From a camera h metres up, a road point
+lands on the model pixel where openpilot's camera would see the road at 1.22/h
+of the distance, so the road looks nearer and narrower than it is.
+
+`PADDOCK_OPENPILOT_HEIGHT_SCALE`, under `[models.openpilot.env]`, takes
+s = h / 1.22 and puts `diag(1, 1, s)` between the model ray and the mounting
+rotation:
+
+```
+K @ view_frame_from_device_frame @ rot_from_euler(rpy) @ diag(1, 1, s) @ calib_from_model
+```
+
+A camera 1.87 m over the road is s = 1.87 / 1.22 = 1.53. In the calibrated
+frame z points down and the road is the plane z = h, so:
+
+- the road plane comes out as openpilot's camera would have seen it: the model
+  pixel that shows the road X m ahead and Y m across from openpilot's camera
+  shows this camera's road point at the same X and Y;
+- rays level with the camera do not move, so the horizon row stays put and
+  every pixel keeps its bearing;
+- nothing off the road plane is right: a vertical object looks 1/s as tall.
+
+So the scale measures what the model makes of the road geometry it was trained
+on. It is not a correction for the camera. At 1.0, the default, the warp is
+`get_warp_matrix`'s, bit for bit. `extras.road.camera_height`, the
+`road_transform` head's reading of its own height, shows what the model made of
+the scaled view.
+
+There are two refusals:
+- a value that is not a positive number stops the node at startup;
+- for s > 1 each view is taller and needs more of the sensor. A scale that
+  pushes a view further past the sensor's edge than the unscaled warp does is
+  refused at the first frame, with the fraction of real pixels before and
+  after. Past the edge the warp smears border pixels into the input, and the
+  run would measure the smear. On nuScenes' 1600×900 front camera, 1.53 is
+  refused for `big_img`. KITScenes' three rigs (3504×2272) stay entirely on the
+  sensor up to 1.53.
+
+The margins in `diagnostics()` are the scaled views'. The scale is recorded in
+`provenance.policy.height_scale`. Set in a site's env block, it is also in
+`config.model_env`, so a scaled run gets its own id and, over a full set, its
+own leaderboard row. Nothing in the record tells a scale measured on the rig
+from one fitted to the benchmark's own errors, and the second is tuned on the
+test set.
+
 ### Which backend ran, and one number it used to change
 
 `_resolve_backend` picks between tinygrad and onnxruntime by **trying an

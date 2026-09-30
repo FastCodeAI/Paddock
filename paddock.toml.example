@@ -419,3 +419,9 @@ serialize = true
 #                                   run before it), "turn" or "lane_change":
 #                                   which desire a LEFT/RIGHT route command is
 #                                   sent as. See docs/models/openpilot-guide.md.
+#   PADDOCK_OPENPILOT_HEIGHT_SCALE  the camera's height over the road divided
+#                                   by openpilot's 1.22 m, to show the model
+#                                   the road as its own camera would have seen
+#                                   it. "1" (the default) is openpilot's own
+#                                   warp. A measurement, not a correction: see
+#                                   docs/models/openpilot-guide.md.

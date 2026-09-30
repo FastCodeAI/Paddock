@@ -16,10 +16,12 @@ from paddock.adapters.models.openpilot.policy import (
     DESIRE_NONE,
     DESIRE_TURN_LEFT,
     DESIRE_TURN_RIGHT,
+    DEVICE_FROM_EGO,
     GRID_S,
     POLICY,
     TARGET_H,
     TARGET_W,
+    CameraAdapter,
     CameraFit,
     desire_index,
     desire_pulse,
@@ -374,9 +376,10 @@ class _FakeCameraAdapter:
     in for the one part that cannot and leaves the wiring under test.
     """
 
-    def __init__(self, pinhole, camera2ego, resample: bool = True) -> None:
+    def __init__(self, pinhole, camera2ego, resample: bool = True, height_scale: float = 1.0) -> None:
         self.src = pinhole
         self.resample = resample
+        self.height_scale = height_scale
         self.size = (pinhole.width, pinhole.height)
         self.transforms = {"img": np.eye(3, dtype=np.float32), "big_img": np.eye(3, dtype=np.float32)}
 
@@ -445,13 +448,19 @@ def test_the_onnx_path_feeds_the_wide_camera_to_the_wide_view(monkeypatch) -> No
     assert seen["big_img"].max() > seen["img"].max()
 
 
-def test_one_camera_still_feeds_both_views(monkeypatch) -> None:
-    """Every dataset here but the comma rigs has one camera; it fills both."""
-    policy, seen = _onnx_policy(monkeypatch)
+def _one_camera_observation():
+    """Every other rig: one front camera."""
     obs = _two_camera_observation()
     obs.images = {"CAM_FRONT": obs.images["CAM_OP_ROAD"]}
     obs.camera2image = {"CAM_FRONT": obs.camera2image["CAM_OP_ROAD"]}
     obs.camera2ego = {"CAM_FRONT": obs.camera2ego["CAM_OP_ROAD"]}
+    return obs
+
+
+def test_one_camera_still_feeds_both_views(monkeypatch) -> None:
+    """Every dataset here but the comma rigs has one camera; it fills both."""
+    policy, seen = _onnx_policy(monkeypatch)
+    obs = _one_camera_observation()
 
     policy.infer(obs)
 
@@ -634,3 +643,129 @@ def test_desire_slots_are_openpilots_own() -> None:
         log.Desire.laneChangeRight,
     )
     assert ModelConstants.DESIRE_LEN == 8, "the width the ONNX stub above declares"
+
+
+# --------------------------------------------------------------------------
+# A camera's height, shown to the model as openpilot's
+# --------------------------------------------------------------------------
+
+#: KITScenes' ring_front and a nuScenes camera: 63 and 39 degrees of vertical field.
+KITSCENES_RING = Pinhole(1841, 1841, 1740, 1139, 3504, 2272)
+NUSCENES_FRONT = Pinhole(1266, 1266, 800, 450, 1600, 900)
+
+
+def _mount(pitch_deg: float = 0.0) -> np.ndarray:
+    """camera2ego for a camera facing forward, pitched down by `pitch_deg`."""
+    p = np.radians(pitch_deg)
+    nose_down = np.array([[np.cos(p), 0.0, np.sin(p)], [0.0, 1.0, 0.0], [-np.sin(p), 0.0, np.cos(p)]])
+    mount = np.eye(4)
+    mount[:3, :3] = nose_down @ np.array([[0, 0, 1], [-1, 0, 0], [0, -1, 0]])
+    return mount
+
+
+def _pixel(m, ray) -> np.ndarray:
+    p = np.asarray(m, dtype=np.float64) @ np.asarray(ray, dtype=np.float64)
+    return p[:2] / p[2]
+
+
+def test_the_height_scale_is_read_from_the_env(monkeypatch) -> None:
+    monkeypatch.delenv("PADDOCK_OPENPILOT_HEIGHT_SCALE", raising=False)
+    assert POLICY().height_scale == 1.0
+    monkeypatch.setenv("PADDOCK_OPENPILOT_HEIGHT_SCALE", " 1.53 ")
+    assert POLICY().height_scale == 1.53
+    assert POLICY().diagnostics()["height_scale"] == 1.53, "and it is on the run record"
+    assert POLICY(height_scale=1.3).height_scale == 1.3, "an argument wins over the env"
+
+
+@pytest.mark.parametrize("raw", ["0", "-1.53", "nan", "inf", "1.87 m"])
+def test_a_height_scale_that_is_not_a_positive_number_stops_the_node(monkeypatch, raw) -> None:
+    """Zero puts every row on the horizon, and a negative scale puts sky on the road."""
+    monkeypatch.setenv("PADDOCK_OPENPILOT_HEIGHT_SCALE", raw)
+    with pytest.raises(ValueError, match="expected a positive number"):
+        POLICY()
+
+
+@pytest.mark.parametrize("two", [True, False], ids=["two cameras", "one camera"])
+def test_every_camera_is_warped_at_the_height_scale(monkeypatch, two) -> None:
+    import paddock.adapters.models.openpilot.policy as P
+
+    monkeypatch.setattr(P, "CameraAdapter", _FakeCameraAdapter)
+    policy = POLICY(height_scale=1.3)
+    assert policy._bind_cameras(_two_camera_observation() if two else _one_camera_observation()) is two
+    road, wide, _, _ = policy._views(two)
+    assert road.height_scale == wide.height_scale == 1.3
+
+
+@pytest.mark.parametrize("resample", [False, True], ids=["onnx", "tinygrad"])
+def test_a_unit_height_scale_is_openpilots_own_warp(resample) -> None:
+    """Bit for bit: it is the warp every recorded run was made with."""
+    pytest.importorskip("openpilot", reason="needs openpilot's environment")
+    from openpilot.common.transformations.model import get_warp_matrix
+
+    for scale in ({}, {"height_scale": 1.0}):
+        cam = CameraAdapter(KITSCENES_RING, _mount(3.0), resample=resample, **scale)
+        for slot, big in (("img", False), ("big_img", True)):
+            own = get_warp_matrix(cam.rpy, cam.intrinsics, big).astype(np.float32)
+            assert np.array_equal(cam.transforms[slot], own)
+        assert cam.view_fov == CameraAdapter.VIEW_FOV
+
+
+def test_a_height_scale_shows_the_road_as_openpilots_camera_would() -> None:
+    """A road point lands on the model pixel openpilot's 1.22 m camera saw it on.
+
+    Where this camera sees the point is projected straight from camera2ego, not
+    through the adapter's rpy, so the test does not share the code it checks;
+    and the camera is pitched, so a scale on the wrong side of the rotation
+    fails it.
+    """
+    pytest.importorskip("openpilot", reason="needs openpilot's environment")
+    from openpilot.common.transformations.model import calib_from_medmodel, calib_from_sbigmodel
+
+    height, mount = 1.87, _mount(3.0)
+    scaled = CameraAdapter(KITSCENES_RING, mount, resample=False, height_scale=height / 1.22)
+    plain = CameraAdapter(KITSCENES_RING, mount, resample=False)
+    camera_from_ego = scaled.intrinsics @ mount[:3, :3].T
+    for slot, calib_from_model in (("img", calib_from_medmodel), ("big_img", calib_from_sbigmodel)):
+        model_from_calib = np.linalg.inv(calib_from_model)
+        for x in (6.0, 10.0, 20.0, 40.0, 80.0):
+            for y in (-3.5, 0.0, 3.5):  # the calibrated frame is y right, z down
+                seen = _pixel(camera_from_ego, DEVICE_FROM_EGO @ [x, y, height])
+                shown = np.append(_pixel(model_from_calib, [x, y, 1.22]), 1.0)
+                assert np.allclose(_pixel(scaled.transforms[slot], shown), seen, atol=0.05)
+                off = np.abs(_pixel(plain.transforms[slot], shown) - seen).max()
+                assert off > 10.0, "the plain warp shows openpilot a nearer road"
+            # The horizon row does not move.
+            horizon = np.append(_pixel(model_from_calib, [x, x / 10.0, 0.0]), 1.0)
+            assert np.allclose(
+                _pixel(scaled.transforms[slot], horizon), _pixel(plain.transforms[slot], horizon), atol=0.05
+            )
+
+
+@pytest.mark.parametrize("resample", [False, True], ids=["onnx", "tinygrad letterbox"])
+def test_a_height_scale_that_takes_a_view_off_the_sensor_is_refused(resample) -> None:
+    """A nuScenes camera has 39 degrees of vertical field; big_img at s = 1.53 wants 46."""
+    pytest.importorskip("openpilot", reason="needs openpilot's environment")
+
+    plain = CameraAdapter(NUSCENES_FRONT, _mount(), resample=resample)
+    assert plain._real_pixels(plain.transforms["big_img"], (512, 256)) == 1.0, "on the sensor unscaled"
+    if resample:
+        # Letterboxed: a view laid over the frame's top rows is partly padding.
+        on_top_rows = plain._real_pixels(np.eye(3), (512, 256))
+        assert plain.pad_top > 0 and on_top_rows == pytest.approx(1 - plain.pad_top / 256)
+    with pytest.raises(ValueError, match="takes the big_img view off this 1600x900 camera"):
+        CameraAdapter(NUSCENES_FRONT, _mount(), resample=resample, height_scale=1.53)
+    CameraAdapter(KITSCENES_RING, _mount(3.0), resample=resample, height_scale=1.53)  # 63 degrees has room
+
+
+def test_the_margin_is_the_scaled_views() -> None:
+    """Checked against the rows the warp itself puts the view's top and bottom on."""
+    pytest.importorskip("openpilot", reason="needs openpilot's environment")
+
+    for s in (0.8, 1.0, 1.53):
+        cam = CameraAdapter(KITSCENES_RING, _mount(), resample=False, height_scale=s)
+        for slot in ("img", "big_img"):
+            rows = [_pixel(cam.transforms[slot], [256.0, v, 1.0])[1] for v in (0.0, 256.0)]
+            top, bottom = (np.degrees(np.arctan((r - KITSCENES_RING.cy) / KITSCENES_RING.fy)) for r in rows)
+            vfov = KITSCENES_RING.vfov_deg - cam.margin_deg(slot)["vertical"]
+            # VIEW_FOV, the unscaled figure, is rounded to 0.1 degree.
+            assert vfov == pytest.approx(bottom - top, abs=0.06 if s == 1.0 else 1e-3)
