@@ -12,7 +12,9 @@ views, roughly 31.4 x 15.9 deg (`img`) and 58.7 x 31.3 deg (`big_img`), built by
 `get_warp_matrix` from the camera intrinsics and the mounting rotation. Both
 views must fit inside what the source camera actually saw, or the warp samples
 past the edge and border pixels are smeared into the model's input.
-`diagnostics()` reports the measured in-bounds fraction, not an estimate.
+`diagnostics()` reports the measured in-bounds fraction, not an estimate. The
+camera's height never enters that warp; `PADDOCK_OPENPILOT_HEIGHT_SCALE` adds
+it, for measurement, as described on `CameraAdapter`.
 
 *Two backends.* `tinygrad` runs openpilot's own `ModelState`, which loads the
 `TinyJit` pickle SConstruct builds -- upstream's exact execution path, and the
@@ -64,6 +66,7 @@ from PIL import Image
 
 from paddock.adapters.models.openpilot.nv12 import pack_nv12, rgb_to_nv12_batch
 from paddock.policy.protocol import (
+    Command,
     Observation,
     Pinhole,
     Policy,
@@ -142,6 +145,32 @@ V_CRUISE_FALLBACK = 13.9  # m/s when the source sends no road limit
 #: the car is rolling (>= 1 m/s), then experimental resumes control. 0 disables.
 RESUME_S = float(os.environ.get("PADDOCK_OPENPILOT_RESUME_S", "3.0"))
 RESUME_UNTIL_V = 1.0
+
+#: openpilot's `log.Desire` (cereal/log.capnp): the slots of the one-hot
+#: `desire_pulse` input and of the `desire_state` output. Restated because
+#: cereal cannot be imported at module scope; `test_desire_slots_are_openpilots_own`
+#: pins them to the enum. They do not line up with `Command` -- RIGHT is 0, and
+#: slot 0 is `none` -- so a command is never usable as a slot directly.
+DESIRE_NONE = 0
+DESIRE_TURN_LEFT, DESIRE_TURN_RIGHT = 1, 2
+DESIRE_LANE_CHANGE_LEFT, DESIRE_LANE_CHANGE_RIGHT = 3, 4
+
+#: `PADDOCK_OPENPILOT_DESIRE`: which desire a route command is sent as.
+#:
+#: "off", the default, sends none on every frame, as every recorded run did.
+#: "turn" sends LEFT/RIGHT as turnLeft/turnRight -- the slots a route command
+#: means, and ones openpilot's own runtime never sends: `DesireHelper` sets only
+#: none and the lane-change pair (on the blinker, above 20 mph), and no Python
+#: or C++ file in openpilot's history names a turn desire. So "turn" is off the
+#: deployment distribution; whether training covered it cannot be read from the
+#: code, only measured. "lane_change" sends laneChangeLeft/laneChangeRight: in
+#: distribution but a different manoeuvre, which makes it the control for "turn".
+#: STRAIGHT and FOLLOW_REFERENCE are none in every mode.
+DESIRE_MODES: dict[str, dict[Command, int]] = {
+    "off": {},
+    "turn": {Command.LEFT: DESIRE_TURN_LEFT, Command.RIGHT: DESIRE_TURN_RIGHT},
+    "lane_change": {Command.LEFT: DESIRE_LANE_CHANGE_LEFT, Command.RIGHT: DESIRE_LANE_CHANGE_RIGHT},
+}
 
 
 class ImplausibleMounting(ValueError):
@@ -228,9 +257,32 @@ class CameraFit:
 
 
 class CameraAdapter:
-    """A `CameraFit` plus the openpilot warp matrices it implies."""
+    """A `CameraFit` plus the openpilot warp matrices it implies.
 
-    def __init__(self, pinhole: Pinhole, camera2ego: np.ndarray, resample: bool = True) -> None:
+    `height_scale` is `PADDOCK_OPENPILOT_HEIGHT_SCALE`: this camera's height over
+    the road divided by openpilot's, 1.22 m (`calibrationd.HEIGHT_INIT`). The
+    warp is a pure rotation, so it cannot say that a camera sits higher than
+    openpilot's, and a road point h metres below this one lands on the model
+    pixel where openpilot's camera would see the road at 1.22/h of the distance.
+    Any scale but 1 puts `diag(1, 1, s)` between the model ray and the mounting
+    rotation:
+
+        K @ view_frame_from_device_frame @ rot_from_euler(rpy) @ diag(1, 1, s) @ calib_from_model
+
+    In the calibrated frame (z down) the road is the plane z = h, so a model
+    pixel that shows the road X metres ahead of openpilot's camera is sent to
+    the ray that meets it X metres ahead of this one when s = h / 1.22: the road
+    plane is resampled as openpilot's camera would have seen it. Rays with z = 0
+    do not move, so the horizon row stays put and every pixel keeps its bearing.
+    Nothing off the road plane comes out right -- a vertical object looks 1/s as
+    tall -- so the scale measures what the model makes of the road geometry it
+    was trained on; it does not correct the camera. At 1.0, the default, the
+    warp is `get_warp_matrix`'s, untouched.
+    """
+
+    def __init__(
+        self, pinhole: Pinhole, camera2ego: np.ndarray, resample: bool = True, height_scale: float = 1.0
+    ) -> None:
         self.src = pinhole
         self.fit = CameraFit.compute(pinhole) if resample else CameraFit.identity(pinhole)
         self.mode = self.fit.mode
@@ -254,6 +306,61 @@ class CameraAdapter:
             "img": get_warp_matrix(self.rpy, self.intrinsics, False).astype(np.float32),
             "big_img": get_warp_matrix(self.rpy, self.intrinsics, True).astype(np.float32),
         }
+        #: The (hfov, vfov) each model view carves out of this source, degrees.
+        self.view_fov = dict(self.VIEW_FOV)
+        self.height_scale = float(height_scale)
+        if self.height_scale != 1.0:
+            self.transforms = self._height_scaled(self.transforms)
+
+    def _height_scaled(self, unscaled: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+        """`transforms` with the road plane shown from openpilot's height; see the class."""
+        from openpilot.common.transformations.camera import view_frame_from_device_frame
+        from openpilot.common.transformations.model import (
+            MEDMODEL_INPUT_SIZE,
+            SBIGMODEL_INPUT_SIZE,
+            calib_from_medmodel,
+            calib_from_sbigmodel,
+        )
+        from openpilot.common.transformations.orientation import rot_from_euler
+
+        s = self.height_scale
+        camera_from_calib = self.intrinsics @ view_frame_from_device_frame @ rot_from_euler(self.rpy)
+        views = {
+            "img": (calib_from_medmodel, MEDMODEL_INPUT_SIZE),
+            "big_img": (calib_from_sbigmodel, SBIGMODEL_INPUT_SIZE),
+        }
+        scaled = {}
+        for slot, (calib_from_model, size) in views.items():
+            scaled[slot] = (camera_from_calib @ np.diag([1.0, 1.0, s]) @ calib_from_model).astype(np.float32)
+            before, after = self._real_pixels(unscaled[slot], size), self._real_pixels(scaled[slot], size)
+            if after < before:
+                raise ValueError(
+                    f"PADDOCK_OPENPILOT_HEIGHT_SCALE = {s:g} takes the {slot} view off this "
+                    f"{self.src.width}x{self.src.height} camera: {after:.2%} of it would be real "
+                    f"pixels, against {before:.2%} unscaled. Past the sensor's edge the warp smears "
+                    "border pixels into the model's input, so the run would measure the smear, "
+                    "not the height."
+                )
+            # Down the view's centre column. Each row keeps its bearing and has
+            # the tangent of its elevation multiplied by s, which stretches the
+            # view's height for s > 1 and shrinks it below.
+            top, bottom = (calib_from_model @ [size[0] / 2, row, 1.0] for row in (0.0, size[1]))
+            vfov = np.arctan(s * bottom[2] / bottom[0]) - np.arctan(s * top[2] / top[0])
+            self.view_fov[slot] = (self.VIEW_FOV[slot][0], float(np.degrees(vfov)))
+        return scaled
+
+    def _real_pixels(self, warp: np.ndarray, view_size: tuple[int, int]) -> float:
+        """The fraction of a model view that `warp` fills from pixels the camera recorded.
+
+        Gathered the way `WarpPlan` gathers, but against the part of the prepared
+        frame the camera filled, so a letterbox's padding counts as outside.
+        """
+        from paddock.adapters.models.openpilot.supercombo import perspective_index_map
+
+        below_padding = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, -float(self.pad_top)], [0.0, 0.0, 1.0]])
+        w, h = self.scaled_size
+        _, inside = perspective_index_map(below_padding @ warp, view_size, (h, w))
+        return float(inside.mean())
 
     def _check_mounting(self, camera2ego: np.ndarray) -> None:
         deg = np.degrees(self.rpy)
@@ -296,8 +403,9 @@ class CameraAdapter:
         tighter one when a single frame feeds both views) or "img" for a
         dedicated narrow road camera. Negative means the warp samples outside
         what the camera saw -- black wedges at the edges of the model's input.
+        Under a height scale it is the scaled view's margin.
         """
-        h, v = self.VIEW_FOV[slot]
+        h, v = self.view_fov[slot]
         return {"horizontal": self.src.hfov_deg - h, "vertical": self.src.vfov_deg - v}
 
 
@@ -331,7 +439,31 @@ def _polyline(points, x_idxs) -> list[list[float]]:
     return [[float(x), -float(row[0])] for x, row in zip(x_idxs, np.asarray(points), strict=False)]
 
 
-def build_extras(out: dict, plan33: np.ndarray, grid_s: np.ndarray = GRID_S) -> dict:
+def desire_index(command: Command, mode: str) -> int:
+    """The `log.Desire` slot a route command is sent as under `mode`."""
+    return DESIRE_MODES[mode].get(command, DESIRE_NONE)
+
+
+def desire_pulse(command: Command, mode: str, width: int) -> np.ndarray:
+    """One frame's `desire_pulse` input: one-hot on its desire, all zeros for none.
+
+    Held level, not pulsed: both backends pulse it themselves on the rising
+    edge (`ModelState.run`, `SupercomboRunner.run`), which is how openpilot
+    feeds its own desire -- the model decides when the manoeuvre is over. So a
+    command stamped on one frame arrives once, on that frame, and one stamped on
+    every frame arrives on the first of them; either way the 25-bin queue then
+    carries it for 5 s.
+    """
+    pulse = np.zeros(width, dtype=np.float32)
+    slot = desire_index(command, mode)
+    if slot != DESIRE_NONE:
+        pulse[slot] = 1.0
+    return pulse
+
+
+def build_extras(
+    out: dict, plan33: np.ndarray, grid_s: np.ndarray = GRID_S, desire: int = DESIRE_NONE
+) -> dict:
     """supercombo's non-trajectory heads, in `protocol.EXTRAS_KEYS` form.
 
     supercombo predicts a great deal more than a path -- its own speed and
@@ -343,6 +475,10 @@ def build_extras(out: dict, plan33: np.ndarray, grid_s: np.ndarray = GRID_S) -> 
 
     Everything is converted to paddock's ego frame here, at the one place that
     knows supercombo's conventions, so no harness has to learn them.
+
+    `desire` is the slot this frame was sent (`desire_index`), reported beside
+    the model's own `desire_state` so a record says both what was asked and
+    what the model made of it.
     """
     from openpilot.selfdrive.modeld.constants import ModelConstants, Plan
 
@@ -366,7 +502,20 @@ def build_extras(out: dict, plan33: np.ndarray, grid_s: np.ndarray = GRID_S) -> 
                 strict=True,
             )
         ],
+        # The plan's own speed at t = 0, beside the pose head's reading of the
+        # same quantity in `pose.velocity`. They are separate outputs, and this
+        # is the one openpilot's longitudinal control reads (`modeld.py`,
+        # `get_accel_from_plan`), so the plan's start speed is on the record
+        # without differencing its waypoints.
+        "plan_v0": float(plan33[:, Plan.VELOCITY][0, 0]),
     }
+
+    if "desire_state" in out:
+        # Same eight slots as the pulse, softmaxed by openpilot's parser.
+        extras["desire"] = {
+            "input": int(desire),
+            "state": [float(p) for p in np.asarray(out["desire_state"])[0]],
+        }
 
     if "lead" in out and "lead_prob" in out:
         # (batch, 3 time offsets, 6 trajectory points, 4 = x, y, v, a). The three
@@ -422,11 +571,25 @@ class OpenpilotPolicy(Policy):
     )  # CAM_FRONT: single-camera fallback for open-loop sources
     waypoint_dt = 0.5
 
-    def __init__(self, backend: str | None = None, model: str | None = None) -> None:
+    def __init__(
+        self,
+        backend: str | None = None,
+        model: str | None = None,
+        desire: str | None = None,
+        height_scale: float | None = None,
+    ) -> None:
         #: "tinygrad" (openpilot's own JIT) or "onnx". Auto-detected in `load`.
         self.backend = backend or os.environ.get("PADDOCK_OPENPILOT_BACKEND", "auto")
         #: "small" (driving_supercombo) or "big" (big_driving_supercombo).
         self.model_name = model or os.environ.get("PADDOCK_OPENPILOT_MODEL", "small")
+        #: A `DESIRE_MODES` key. Checked here so a typo stops the node at
+        #: startup, not minutes later at the first frame of the run.
+        self.desire_mode = self._desire_mode(desire or os.environ.get("PADDOCK_OPENPILOT_DESIRE", "off"))
+        #: The camera's height over openpilot's, handed to every `CameraAdapter`;
+        #: 1.0 is openpilot's own warp. Checked here for the same reason.
+        self.height_scale = self._height_scale(
+            os.environ.get("PADDOCK_OPENPILOT_HEIGHT_SCALE", "") if height_scale is None else height_scale
+        )
         self.model = None
         self.session = None
         self.camera: CameraAdapter | None = None
@@ -452,6 +615,31 @@ class OpenpilotPolicy(Policy):
         #: in `_new_model`. False on the ONNX backend, which never calls it.
         self._run_takes_prepare_only = False
         self._last_diag: dict[str, Any] = {}
+
+    @staticmethod
+    def _desire_mode(raw: str) -> str:
+        mode = raw.strip().lower() or "off"
+        if mode not in DESIRE_MODES:
+            raise ValueError(
+                f"PADDOCK_OPENPILOT_DESIRE = {raw!r}: expected one of {', '.join(DESIRE_MODES)}. "
+                "See DESIRE_MODES in the openpilot adapter's policy.py."
+            )
+        return mode
+
+    @staticmethod
+    def _height_scale(raw: str | float) -> float:
+        text = str(raw).strip()
+        try:
+            scale = float(text) if text else 1.0
+        except ValueError:
+            scale = float("nan")
+        if not (np.isfinite(scale) and scale > 0):
+            raise ValueError(
+                f"PADDOCK_OPENPILOT_HEIGHT_SCALE = {raw!r}: expected a positive number, the "
+                "camera's height over the road divided by openpilot's 1.22 m. See CameraAdapter "
+                "in the openpilot adapter's policy.py."
+            )
+        return scale
 
     # ---- loading --------------------------------------------------------
 
@@ -674,21 +862,21 @@ class OpenpilotPolicy(Policy):
         have = set(obs.images) | set(obs.image_paths)
         two = "CAM_OP_ROAD" in have and "CAM_OP_WIDE" in have
         resample = self.backend == "tinygrad"
+
+        def adapter(key: str) -> CameraAdapter:
+            return CameraAdapter(
+                obs.pinhole(key), obs.camera2ego[key], resample=resample, height_scale=self.height_scale
+            )
+
         if two:
             if self.cam_road is None:
-                self.cam_road = CameraAdapter(
-                    obs.pinhole("CAM_OP_ROAD"), obs.camera2ego["CAM_OP_ROAD"], resample=resample
-                )
-                self.cam_wide = CameraAdapter(
-                    obs.pinhole("CAM_OP_WIDE"), obs.camera2ego["CAM_OP_WIDE"], resample=resample
-                )
+                self.cam_road = adapter("CAM_OP_ROAD")
+                self.cam_wide = adapter("CAM_OP_WIDE")
                 self.camera = self.cam_road
                 if self.buf is not None:
                     self.bufs = {"img": self.buf, "big_img": self.buf_wide}
         elif self.camera is None:
-            self.camera = CameraAdapter(
-                obs.pinhole("CAM_FRONT"), obs.camera2ego["CAM_FRONT"], resample=resample
-            )
+            self.camera = adapter("CAM_FRONT")
             if self.buf is not None:
                 self.bufs = {"img": self.buf, "big_img": self.buf}
         return two
@@ -787,7 +975,7 @@ class OpenpilotPolicy(Policy):
         transforms = {"img": road.transforms["img"], "big_img": wide.transforms["big_img"]}
 
         inputs = {
-            "desire_pulse": np.zeros(ModelConstants.DESIRE_LEN, dtype=np.float32),
+            "desire_pulse": desire_pulse(obs.command, self.desire_mode, ModelConstants.DESIRE_LEN),
             "traffic_convention": TRAFFIC_CONVENTION,
             "action_t": np.array([0.3, 0.5], dtype=np.float32),
         }
@@ -841,9 +1029,14 @@ class OpenpilotPolicy(Policy):
             y, u, v = rgb_to_yuv420(wide.prepare(obs.image(wide_key)))
         big = self._plans["big_img"].apply(y, u, v)
 
+        # As wide as the graph's own desire input, which is what the runner's
+        # queue is built from (`InputQueues.build`). With the mode "off" this is
+        # the zeros `SupercomboRunner.run` substitutes for `desire=None`.
+        width = self.session.spec.input_shapes["desire_pulse"][-1]
+        desire = desire_pulse(obs.command, self.desire_mode, width)
         out = None
         for _ in range(self._repeats(obs)):
-            out = self.model.run(img, big, max(float(obs.speed), 0.0))
+            out = self.model.run(img, big, max(float(obs.speed), 0.0), desire=desire)
         self.frames_seen += 1
         if out is None or "plan" not in out:
             return constant_velocity(obs.speed, dt=self.waypoint_dt)
@@ -863,7 +1056,7 @@ class OpenpilotPolicy(Policy):
         """
         plan33 = np.asarray(out["plan"])[0]
         traj = Trajectory(plan_to_grid(plan33), dt=self.waypoint_dt)
-        traj.extras = build_extras(out, plan33)
+        traj.extras = build_extras(out, plan33, desire=desire_index(obs.command, self.desire_mode))
         if NATIVE_LONG:
             traj.extras["native_long"] = self._native_long(out, plan33, obs.speed, self.dt_s, obs.speed_limit)
         validate_extras(traj.extras, n_waypoints=len(traj.waypoints))
@@ -961,7 +1154,13 @@ class OpenpilotPolicy(Policy):
         # for an open-loop run yet, so this is a live check, not provenance.
         probe = {"run_takes_prepare_only": bool(getattr(self, "_run_takes_prepare_only", False))}
         if self.camera is None:
-            return {"status": "no frame seen yet", "backend": self.backend, **probe}
+            return {
+                "status": "no frame seen yet",
+                "backend": self.backend,
+                "desire_mode": self.desire_mode,
+                "height_scale": self.height_scale,
+                **probe,
+            }
         # Each view's margin from the camera that actually feeds it: in the
         # two-camera rig the road cam feeds "img" and the wide cam "big_img", so
         # reading both off one camera reports a false deficit for the other. A
@@ -975,6 +1174,11 @@ class OpenpilotPolicy(Policy):
             **probe,
             "backend": self.backend,
             "model": self.model_name,
+            # What the node did with route commands and camera height.
+            # `config.model_env` records only a site's env block, so a setting
+            # made anywhere else would leave no other trace in the run record.
+            "desire_mode": self.desire_mode,
+            "height_scale": self.height_scale,
             "source_size": [self.camera.src.width, self.camera.src.height],
             "resample_mode": self.camera.mode,
             "source_hfov_deg": round(self.camera.src.hfov_deg, 2),
