@@ -759,8 +759,99 @@ What `adapters/models/openpilot/policy.py` does in closed loop, and why.
   steers and never fires with a lead present. Each firing is a rising edge of
   the `resume` column in log.csv; routes are scored unassisted (frozen at the
   first nudge) and assisted \* (full run). See `docs/benchmarks/bench2drive.md`.
-* **Not a route follower.** No navigation input reaches the model (its desire
-  pulses are zeros), so junction turns are missed by construction.
+* **Not a route follower.** By default no navigation input reaches the model
+  (its desire pulses are zeros), so junction turns are missed by construction.
+  `PADDOCK_OPENPILOT_DESIRE` changes that; see the next section.
+
+### A route command reaches the desire input only when asked
+
+`desire_pulse` is supercombo's one channel for intent (§4.1): a one-hot over
+`log.Desire`, fed as a rising-edge pulse and max-pooled into 25 bins of 0.2 s,
+so a pulse stays in view for 5 s. By default the adapter sends none, and every
+run recorded before this setting fed zeros. `PADDOCK_OPENPILOT_DESIRE`, under
+`[models.openpilot.env]`, sends the observation's route command instead:
+
+| mode | LEFT | RIGHT | STRAIGHT, FOLLOW_REFERENCE |
+|---|---|---|---|
+| `off` (default) | none | none | none |
+| `turn` | turnLeft | turnRight | none |
+| `lane_change` | laneChangeLeft | laneChangeRight | none |
+
+`turn` is what a route command means, and it is off openpilot's deployment
+distribution. `DesireHelper` sends only the lane-change pair, on the blinker
+above 20 mph, and no Python or C++ file in openpilot's history names a turn
+desire. The code cannot say whether training covered the turn slots; only a run
+can. `lane_change` is in distribution but a different manoeuvre, which makes it
+the control arm. The table is explicit because the two enums do not line up:
+`Command.RIGHT` is 0 and slot 0 is `none`, so a command passed straight through
+as a slot would quietly drop every right turn.
+
+The adapter holds the desire level for the frame that carries it, and both
+backends turn it into the edge, as openpilot's own `modeld` does. So a
+benchmark that stamps a command on one frame delivers it once, on that frame,
+and one that stamps every frame delivers it on the first. KITScenes'
+`command_source = "gt"` stamps the scored keyframe alone
+([The route hint](../benchmarks/kitscenes.md#the-route-hint)).
+
+Every record's extras carry:
+- `desire`: `input`, the slot this frame sent, and `state`, the model's own
+  8-way `desire_state`;
+- `plan_v0`: the plan's speed at t = 0, beside the pose head's.
+
+The mode is recorded in `provenance.policy.desire_mode`. Set in a site's env
+block, it is also in `config.model_env`, so a desire run gets its own id and
+its own leaderboard row.
+
+### A camera higher than openpilot's, shown from openpilot's height
+
+The warp is a pure rotation: `get_warp_matrix` takes the mounting angles and
+the intrinsics, and nothing tells the model how high the camera sits. openpilot's
+sits 1.22 m over the road (`calibrationd.HEIGHT_INIT`, which the
+`road_transform` head reads back on
+[comma2k19](../datasets/comma2k19.md)). From a camera h metres up, a road point
+lands on the model pixel where openpilot's camera would see the road at 1.22/h
+of the distance, so the road looks nearer and narrower than it is.
+
+`PADDOCK_OPENPILOT_HEIGHT_SCALE`, under `[models.openpilot.env]`, takes
+s = h / 1.22 and puts `diag(1, 1, s)` between the model ray and the mounting
+rotation:
+
+```
+K @ view_frame_from_device_frame @ rot_from_euler(rpy) @ diag(1, 1, s) @ calib_from_model
+```
+
+A camera 1.87 m over the road is s = 1.87 / 1.22 = 1.53. In the calibrated
+frame z points down and the road is the plane z = h, so:
+
+- the road plane comes out as openpilot's camera would have seen it: the model
+  pixel that shows the road X m ahead and Y m across from openpilot's camera
+  shows this camera's road point at the same X and Y;
+- rays level with the camera do not move, so the horizon row stays put and
+  every pixel keeps its bearing;
+- nothing off the road plane is right: a vertical object looks 1/s as tall.
+
+So the scale measures what the model makes of the road geometry it was trained
+on. It is not a correction for the camera. At 1.0, the default, the warp is
+`get_warp_matrix`'s, bit for bit. `extras.road.camera_height`, the
+`road_transform` head's reading of its own height, shows what the model made of
+the scaled view.
+
+There are two refusals:
+- a value that is not a positive number stops the node at startup;
+- for s > 1 each view is taller and needs more of the sensor. A scale that
+  pushes a view further past the sensor's edge than the unscaled warp does is
+  refused at the first frame, with the fraction of real pixels before and
+  after. Past the edge the warp smears border pixels into the input, and the
+  run would measure the smear. On nuScenes' 1600×900 front camera, 1.53 is
+  refused for `big_img`. KITScenes' three rigs (3504×2272) stay entirely on the
+  sensor up to 1.53.
+
+The margins in `diagnostics()` are the scaled views'. The scale is recorded in
+`provenance.policy.height_scale`. Set in a site's env block, it is also in
+`config.model_env`, so a scaled run gets its own id and, over a full set, its
+own leaderboard row. Nothing in the record tells a scale measured on the rig
+from one fitted to the benchmark's own errors, and the second is tuned on the
+test set.
 
 ### Which backend ran, and one number it used to change
 

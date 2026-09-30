@@ -1,4 +1,4 @@
-"""The KITScenes harness: the camera ring, where it is found and how it is checked.
+"""The KITScenes harness: the camera ring, where it is found and how it is checked, and the route hint.
 
 No dataset. A synthetic KITScenes with the real file layout -- `calib.json`,
 `poses.txt`, one directory of frame files per ring camera -- is written under
@@ -19,8 +19,9 @@ import pytest
 from paddock.adapters.benchmarks.kitscenes import harness as H
 from paddock.adapters.benchmarks.kitscenes.harness import BENCHMARK, POD_HEIGHT_M, RING
 from paddock.config import SiteConfig
-from paddock.policy.protocol import CAMERAS, Observation
+from paddock.policy.protocol import CAMERAS, Command, Observation
 from paddock.registry import Registry
+from paddock.results.ingest.kitscenes import STRAIGHT_COMMAND
 
 SCENE = "0a1b2c3d-0000-4000-8000-000000000001"
 N_FRAMES = 100
@@ -89,12 +90,20 @@ def _write_scene(root: Path, sensors, split: str = "val") -> Path:
     return scene
 
 
-def _site(tmp_path: Path, monkeypatch, tiers: list[Path]) -> SiteConfig:
-    """A throwaway site config, written and loaded the way a real one is."""
+def _site(
+    tmp_path: Path, monkeypatch, tiers: list[Path], settings: str = "", row: dict | None = None
+) -> SiteConfig:
+    """A throwaway site config, written and loaded the way a real one is.
+
+    *settings* are extra `[benchmarks.kitscenes]` lines; *row* extra fields of
+    the one sample-list row.
+    """
     for sub in ("repos", "runs", "weights"):
         (tmp_path / sub).mkdir(exist_ok=True)
     sample_list = tmp_path / "sample_list.pkl"
-    sample_list.write_bytes(pickle.dumps([{"scene_id": SCENE, "keyframe_index": KEYFRAME, "split": "val"}]))
+    sample_list.write_bytes(
+        pickle.dumps([{"scene_id": SCENE, "keyframe_index": KEYFRAME, "split": "val", **(row or {})}])
+    )
     config = tmp_path / "site.toml"
     config.write_text(
         'site = "test-site"\n'
@@ -105,14 +114,14 @@ def _site(tmp_path: Path, monkeypatch, tiers: list[Path]) -> SiteConfig:
         "[datasets.kitscenes]\n"
         f"tiers = [{', '.join(f'{str(t)!r}' for t in tiers)}]\n"
         "[benchmarks.kitscenes]\n"
-        f'sample_list = "{sample_list}"\n'
+        f'sample_list = "{sample_list}"\n' + settings
     )
     monkeypatch.setenv("PADDOCK_CONFIG", str(config))
     return SiteConfig.load()
 
 
-def _benchmark(tmp_path: Path, monkeypatch, tiers: list[Path]):
-    return BENCHMARK(Registry.load().benchmarks["kitscenes"], _site(tmp_path, monkeypatch, tiers))
+def _benchmark(tmp_path: Path, monkeypatch, tiers: list[Path], **site):
+    return BENCHMARK(Registry.load().benchmarks["kitscenes"], _site(tmp_path, monkeypatch, tiers, **site))
 
 
 def _scored_observation(bench) -> Observation:
@@ -234,6 +243,72 @@ def test_the_run_record_says_which_ring_cameras_the_model_was_given(tmp_path, mo
     assert bench.model_run_config(six) == {"cameras_supplied": list(CAMERAS)}, (
         "the protocol's order, not the model's"
     )
+
+
+# ---------------------------------------------------------------------------
+# The route hint
+# ---------------------------------------------------------------------------
+
+
+def test_without_a_route_hint_every_frame_is_straight(tmp_path, monkeypatch) -> None:
+    """The default ignores the list's command, so every earlier run stands as it was."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+    bench = _benchmark(tmp_path, monkeypatch, [archive], row={"driving_command": [1, 0, 0, 0]})
+
+    (sample,) = list(bench.samples())
+    assert {obs.command for obs in sample.observations} == {Command.STRAIGHT}
+    assert bench.run_config() == {"ground_offset_m": POD_HEIGHT_M}, "no new key, so no new run id"
+
+
+@pytest.mark.parametrize(
+    ("one_hot", "expected"),
+    [
+        ([1, 0, 0, 0], Command.LEFT),
+        (STRAIGHT_COMMAND, Command.STRAIGHT),
+        ([0, 0, 1, 0], Command.RIGHT),
+        ([0, 0, 0, 1], Command.STRAIGHT),  # unknown: no hint
+        ([0, 0, 0, 0], Command.STRAIGHT),
+        ([1, 0, 1, 0], Command.STRAIGHT),
+    ],
+)
+def test_a_route_hint_reaches_the_keyframe_alone(tmp_path, monkeypatch, one_hot, expected) -> None:
+    """The list's one-hot is read in ingest's order, and only the scored frame carries it."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+    bench = _benchmark(
+        tmp_path,
+        monkeypatch,
+        [archive],
+        settings='command_source = "gt"\n',
+        row={"driving_command": np.asarray(one_hot)},
+    )
+
+    (sample,) = list(bench.samples())
+    *history, scored = sample.observations
+    assert scored.command == expected
+    assert {obs.command for obs in history} == {Command.STRAIGHT}
+    # And it survives the trip to a node.
+    assert Observation.from_wire(scored.to_wire()).command == expected
+
+
+def test_a_route_hint_is_a_different_measurement(tmp_path, monkeypatch) -> None:
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+    bench = _benchmark(tmp_path, monkeypatch, [archive], settings='command_source = "gt"\n')
+
+    assert bench.run_config() == {"ground_offset_m": POD_HEIGHT_M, "command_source": "gt"}
+
+
+def test_preflight_names_an_unknown_command_source(tmp_path, monkeypatch) -> None:
+    """A typo must not quietly run as `straight` and be recorded as something else."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+    bench = _benchmark(tmp_path, monkeypatch, [archive], settings='command_source = "sample_list"\n')
+
+    (problem,) = bench.preflight()
+    assert "command_source = 'sample_list'" in problem
+    assert "straight, gt" in problem
 
 
 # ---------------------------------------------------------------------------
