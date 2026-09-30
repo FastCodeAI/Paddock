@@ -203,6 +203,7 @@ def test_reset_clears_the_camera_adapter() -> None:
     """
     policy = POLICY()
     policy.camera = object()  # stand-in for an adapter built from another scene
+    policy._plans, policy._plans_for = {"img": object()}, (policy.camera, policy.camera)
     policy.frames_seen = 12
     policy.model = object()  # so reset() does not need openpilot to be installed
 
@@ -212,6 +213,7 @@ def test_reset_clears_the_camera_adapter() -> None:
         pytest.skip("reset() constructs a ModelState; needs openpilot's environment")
 
     assert policy.camera is None, "a stale camera adapter would warp the next scene wrongly"
+    assert policy._plans is None and policy._plans_for is None, "so would the warps built from it"
     assert policy.frames_seen == 0
 
 
@@ -234,6 +236,71 @@ def test_calibration_changes_between_scenes_are_material() -> None:
     a = DEVICE_FROM_EGO @ upright[:3, :3]
     b = DEVICE_FROM_EGO @ tilted[:3, :3]
     assert not np.allclose(a, b), "a 1 degree change must not be silently equivalent"
+
+
+def test_a_new_scene_is_warped_with_its_own_calibration_at_the_old_address(monkeypatch) -> None:
+    """The ONNX warps must not outlive the sample, however the ids fall.
+
+    `_infer_onnx` kept its warps keyed on the `id()`s of the camera adapters.
+    `reset()` dropped the adapters, CPython often built the next sample's at the
+    same address, and the ids matched: the scene was warped with the previous
+    scene's calibration. Only sometimes, which is why it survived. On the
+    223-keyframe KITScenes run, 48 samples follow one from another rig, and
+    replaying two of the ones that disagreed across runs with the previous
+    scene's warp reproduced the recorded plans bit for bit.
+
+    CPython gives no way to force an address to be reused, so every `id()` the
+    policy takes is made equal here, which is the state that reuse produces.
+    """
+    import paddock.adapters.models.openpilot.policy as P
+    import paddock.adapters.models.openpilot.supercombo as S
+
+    policy, _ = _onnx_policy(monkeypatch)
+    # `reset` would rebuild the runner from the stub session; the warps are
+    # what is under test.
+    monkeypatch.setattr(policy, "_new_onnx_runner", lambda: None)
+
+    def mounted(pinhole, camera2ego, *args, **kwargs):
+        adapter = _FakeCameraAdapter(pinhole, camera2ego, *args, **kwargs)
+        rotation = np.asarray(camera2ego[:3, :3], dtype=np.float32)
+        adapter.transforms = {"img": rotation, "big_img": rotation}
+        return adapter
+
+    built: list[np.ndarray] = []
+
+    class Plan:
+        in_bounds_frac = 1.0
+
+        @classmethod
+        def build(cls, transform, size, src_size):
+            built.append(np.asarray(transform))
+            return cls()
+
+        def apply(self, y, u, v):
+            return np.zeros((6, 64, 128), dtype=np.uint8)
+
+    monkeypatch.setattr(P, "CameraAdapter", mounted)
+    monkeypatch.setattr(S, "WarpPlan", Plan)
+    monkeypatch.setattr(P, "id", lambda obj: 0, raising=False)
+
+    def scene(yaw_deg: float):
+        obs = _two_camera_observation()
+        mount = obs.camera2ego["CAM_OP_ROAD"].copy()
+        c, s = np.cos(np.radians(yaw_deg)), np.sin(np.radians(yaw_deg))
+        mount[:3, :3] = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]]) @ mount[:3, :3]
+        obs.images = {"CAM_FRONT": obs.images["CAM_OP_ROAD"]}
+        obs.camera2image = {"CAM_FRONT": obs.camera2image["CAM_OP_ROAD"]}
+        obs.camera2ego = {"CAM_FRONT": mount}
+        return obs
+
+    first, second = scene(0.0), scene(0.97)  # KITScenes' rigs differ by up to 0.97 degrees
+    policy.infer(first)
+    policy.reset()
+    policy.infer(second)
+
+    assert len(built) == 4, "the second scene reused the first scene's warps"
+    assert np.allclose(built[-1], second.camera2ego["CAM_FRONT"][:3, :3])
+    assert not np.allclose(built[-1], first.camera2ego["CAM_FRONT"][:3, :3])
 
 
 def test_auxiliary_heads_are_converted_out_of_the_device_frame() -> None:
