@@ -84,6 +84,25 @@ RING = {
     "camera_ring_rear_right": "CAM_BACK_RIGHT",
 }
 
+#: Where the scored keyframe's route command comes from:
+#: `[benchmarks.kitscenes] command_source`.
+#:
+#: KITScenes has no route annotation, so there is no honest route hint to give,
+#: and `straight`, the default, stamps `Command.STRAIGHT` on every frame -- what
+#: every paddock row on this benchmark was scored with. `gt` gives the keyframe
+#: the sample list's `driving_command` instead: the command Drive-JEPA's row was
+#: run with, which its `--command gt` derived from the recorded future. That
+#: makes it an oracle -- the model is told which way the car is about to go --
+#: so a `gt` run is a different measurement, recorded in `run_config()`. The
+#: two names are the ones `paddock ingest` already records that row under.
+COMMAND_SOURCES = ("straight", "gt")
+
+#: The sample list's `driving_command`, a one-hot over NAVSIM's `[left,
+#: straight, right, unknown]` (`results/ingest/kitscenes.py::STRAIGHT_COMMAND`),
+#: as the protocol's commands. `unknown`, or anything not one-hot, is no hint
+#: and reads as STRAIGHT, the same as `command_source = "straight"`.
+LIST_COMMANDS = (Command.LEFT, Command.STRAIGHT, Command.RIGHT)
+
 
 class KitScenesBenchmark(OpenLoopBenchmark):
     # ---- readiness ------------------------------------------------------
@@ -100,6 +119,10 @@ class KitScenesBenchmark(OpenLoopBenchmark):
             problems.append(
                 "no configured kitscenes tier exists: " + ", ".join(str(r) for r in dataset.roots)
             )
+        try:
+            self._command_source()
+        except ValueError as exc:
+            problems.append(str(exc))
         try:
             self._sample_list()
         except RuntimeError as exc:
@@ -237,10 +260,16 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         indices = L.frame_indices(keyframe, HISTORY_FRAMES)
         calibration = _read_calibration(scene, ground_offset=self._ground_offset())
         ring = self._ring(row["scene_id"], row["split_dir"])
+        command = self._command(row)
 
         # Paths, not pixels. The node is a subprocess on this filesystem, so
         # neither side needs to carry 24 MB a frame -- times six, now.
-        observations = [self._observation(ring, poses, index, calibration) for index in indices]
+        observations = [
+            self._observation(
+                ring, poses, index, calibration, command if index == keyframe else Command.STRAIGHT
+            )
+            for index in indices
+        ]
         return Sample(
             sample_id=self._sample_id(row),
             observations=observations,
@@ -253,14 +282,48 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         """Roof-pod height above the road, from the site config or `POD_HEIGHT_M`."""
         return float(self.setting("ground_offset_m") or POD_HEIGHT_M)
 
+    def _command_source(self) -> str:
+        """`straight` (the default) or `gt`; see `COMMAND_SOURCES`."""
+        source = str(self.setting("command_source") or "straight").strip().lower()
+        if source not in COMMAND_SOURCES:
+            raise ValueError(
+                f"[benchmarks.kitscenes] command_source = {source!r}: expected one of "
+                f"{', '.join(COMMAND_SOURCES)}. See docs/benchmarks/kitscenes.md."
+            )
+        return source
+
+    def _command(self, row: dict) -> Command:
+        """The route command the scored keyframe carries.
+
+        Only the keyframe: every history frame stays STRAIGHT. The list's
+        command is derived from the keyframe's own future, so it is not what a
+        frame 4.8 s earlier would have been told. And a model that turns a
+        change of command into an event -- openpilot's desire is a rising-edge
+        pulse -- would otherwise see that event at the start of the history,
+        not at the moment being scored.
+        """
+        if self._command_source() == "straight":
+            return Command.STRAIGHT
+        one_hot = [int(value) for value in row["driving_command"]]
+        if one_hot.count(1) == 1 and one_hot.count(0) == len(one_hot) - 1:
+            index = one_hot.index(1)
+            if index < len(LIST_COMMANDS):
+                return LIST_COMMANDS[index]
+        return Command.STRAIGHT
+
     def run_config(self) -> dict:
         """The ground offset changes every projected point, so it is measured-with.
 
         Recorded and hashed into the run id: two runs made with different
         offsets put the camera at different heights and are not the same
-        measurement, which a bare ADE would not reveal.
+        measurement, which a bare ADE would not reveal. A route hint is the
+        same kind of difference, but it is recorded only when one was given, so
+        every run made before the setting existed keeps its id and `--resume`.
         """
-        return {"ground_offset_m": self._ground_offset()}
+        config: dict = {"ground_offset_m": self._ground_offset()}
+        if self._command_source() != "straight":
+            config["command_source"] = self._command_source()
+        return config
 
     def model_run_config(self, model) -> dict:
         """Which ring cameras this model was given: the ones it declares.
@@ -313,12 +376,20 @@ class KitScenesBenchmark(OpenLoopBenchmark):
             ring[sensor] = scene
         return ring
 
-    def _observation(self, ring: dict[str, Path], poses: np.ndarray, index: int, calibration) -> Observation:
+    def _observation(
+        self,
+        ring: dict[str, Path],
+        poses: np.ndarray,
+        index: int,
+        calibration,
+        command: Command = Command.STRAIGHT,
+    ) -> Observation:
         """One frame of every ring camera, in the protocol's shape.
 
         Intrinsics and extrinsics come from the scene's calibration, one pair
         per camera; the ego pose is the recorded one, so a model differencing
-        history recovers the true speed rather than an assumed one.
+        history recovers the true speed rather than an assumed one. *command*
+        is STRAIGHT unless this is a keyframe given a route hint (`_command`).
         """
         ego2world = np.eye(4)
         ego2world[:2, 3] = poses[index, :2]
@@ -338,9 +409,20 @@ class KitScenesBenchmark(OpenLoopBenchmark):
             ego2world=ego2world,
             canbus=canbus,
             timestamp_us=int(index / SRC_HZ * 1e6),
-            command=Command.STRAIGHT,
+            command=command,
             camera2image={camera: camera2image[camera] for camera in image_paths},
             camera2ego={camera: camera2ego[camera] for camera in image_paths},
+            # KITScenes calibrates every sensor against `base_frame`, which is
+            # `lidar_top` itself, and `_read_calibration` lowers that origin to
+            # the road for the cameras. The lidar frame is therefore this ego
+            # frame, and a model that projects through it (Drive-JEPA builds
+            # `sensor2lidar` from camera2ego and this) gets the extrinsics its
+            # own KITScenes loader computes at the same pod height. That loader
+            # measures the height per scene from the lidar ground return and
+            # falls back to 2.2 m; this harness uses `ground_offset_m`, 2.2 m by
+            # default. Without lidar2ego that model cannot run here at all:
+            # `require_lidar2ego` refuses the observation.
+            lidar2ego=np.eye(4),
         )
 
     # ---- scoring --------------------------------------------------------

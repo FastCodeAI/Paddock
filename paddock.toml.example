@@ -237,6 +237,13 @@ serialize = true
 # level -- otherwise every projected point lands behind the car. Default 2.2;
 # override only if you have measured this rig.
 # ground_offset_m = 2.2
+#
+# The route command the scored keyframe carries. KITScenes has no route
+# annotation, so the default tells every model "straight". "gt" gives the
+# keyframe the sample list's own driving_command, derived from the recorded
+# future: an oracle hint, recorded in run.json and hashed into the run id.
+# See docs/benchmarks/kitscenes.md, "The route hint".
+# command_source = "straight"   # or "gt"
 
 # [benchmarks.neuroncap]
 # Closed-loop NCAP scoring against a NeuRAD render; docs/benchmarks/neuroncap.md.
@@ -292,6 +299,13 @@ serialize = true
 # WARP_DEV = "CPU"
 # PADDOCK_OPENPILOT_NATIVE_LONG = "0"
 # PADDOCK_OPENPILOT_RESUME_S = "0"
+
+# Drive-JEPA reads each camera at its own intrinsics by default ("native"), which
+# is how every published drivejepa row was made. "openscene" crops each camera
+# onto the 64 deg OpenScene lens the checkpoint trained on, as the devkit's own
+# KITScenes loader does. Either way it is recorded under provenance.policy.
+# [models.drivejepa.env]
+# DRIVEJEPA_IMAGE_GEOMETRY = "native"   # or "openscene"
 
 # ---------------------------------------------------------------------------
 # [ingest] -- where results that predate paddock live on this machine.
@@ -401,3 +415,13 @@ serialize = true
 #   PADDOCK_OPENPILOT_RESUME_S      seconds stopped with no lead before the
 #                                   driver-resume rule pulls away; "0" disables
 #   PADDOCK_OPENPILOT_THREADS       onnxruntime thread count (default 8)
+#   PADDOCK_OPENPILOT_DESIRE        "off" (the default: no desire, as every
+#                                   run before it), "turn" or "lane_change":
+#                                   which desire a LEFT/RIGHT route command is
+#                                   sent as. See docs/models/openpilot-guide.md.
+#   PADDOCK_OPENPILOT_HEIGHT_SCALE  the camera's height over the road divided
+#                                   by openpilot's 1.22 m, to show the model
+#                                   the road as its own camera would have seen
+#                                   it. "1" (the default) is openpilot's own
+#                                   warp. A measurement, not a correction: see
+#                                   docs/models/openpilot-guide.md.

@@ -44,9 +44,11 @@ All six carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
 so the column compares. Caveats the hash cannot express:
 
 - **Route hint.** Drive-JEPA was run with `--command gt`, which derives a turn
-  command from the recorded future on 39 of the 223 samples; openpilot and
-  VisionPilot have no such input, and Alpamayo's equivalent is its `nav` arm.
-  Recorded as `command_source` in that run's `config`.
+  command from the recorded future on 39 of the 223 samples. VisionPilot has
+  no such input, openpilot reads one only under `PADDOCK_OPENPILOT_DESIRE`,
+  and Alpamayo's equivalent is its `nav` arm.
+  Recorded as `command_source` in that run's `config`. A paddock run can be
+  given the same hint; see [The route hint](#the-route-hint).
 - **Domain.** The checkpoint is trained on nuPlan/OpenScene — US cities, a
   windshield rig — and KITScenes is European driving from a roof pod. Its rank
   here is a zero-shot transfer result, which is why it sits last on this
@@ -55,7 +57,7 @@ so the column compares. Caveats the hash cannot express:
 - **Camera geometry, and no route hint at all.** Qwen-Drive is the only row read
   on three cameras: the ring's front, front-left and front-right, at
   +60.9 / +0.97 / −58.5 degrees and ~87° horizontally, against the ~70° nuPlan
-  rig it trained on. It is zero-shot here. The benchmark supplies no navigation
+  rig it trained on. It is zero-shot here. That run was given no navigation
   command, so every one of its samples is driven as "go straight" — a channel
   the model uses on NAVSIM is inert on this one.
 
@@ -115,6 +117,38 @@ measure a model working from a history it invented.
 `Policy.infer_sequence` feeds the sequence and scores the last frame, disabling
 self-priming for its duration. A model that primes *and* receives real history
 sees a manufactured past followed by a real one.
+
+## The route hint
+
+KITScenes has no route annotation, so by default every frame carries
+`Command.STRAIGHT` and a model is told nothing about where the car is going.
+Every paddock run so far was scored that way. A site can instead give the
+scored keyframe the sample list's own `driving_command`:
+
+```toml
+[benchmarks.kitscenes]
+command_source = "gt"   # default "straight"
+```
+
+That one-hot is the command Drive-JEPA's row was run with, and its `--command
+gt` derived it from the recorded future, as a lateral offset at the end of the
+horizon. So it is an **oracle**: the model is told which way the car is about
+to go, and 39 of the 223 keyframes (21 left, 18 right) are told to turn. A `gt`
+run is therefore a different measurement from a `straight` one. It hashes to
+its own run id with `command_source` in its `config`, the key and values
+`paddock ingest` already records Drive-JEPA's row under. `straight` adds no
+key, so every run made before the setting existed keeps its id and `--resume`.
+
+Only the keyframe carries the hint; the 48 history frames stay STRAIGHT. The
+command is derived from the keyframe's own future, so it is not what a frame
+4.8 s earlier would have been told. And a model that turns a change of command
+into an event -- openpilot's desire input is a rising-edge pulse -- would
+otherwise see that event at the start of the history, not at the scored moment.
+
+Whether the hint changes anything is the model's business: one that never
+reads `obs.command` scores the same under either setting. openpilot is one of
+those unless its node is also told which desire a turn is sent as; see
+[the openpilot guide](../models/openpilot-guide.md#a-route-command-reaches-the-desire-input-only-when-asked).
 
 ## The camera ring
 
