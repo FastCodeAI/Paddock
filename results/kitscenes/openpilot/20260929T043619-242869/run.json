@@ -85,8 +85,8 @@
     }
   },
   "status": "complete",
-  "valid": true,
-  "superseded_by": "",
-  "notes": "",
+  "valid": false,
+  "superseded_by": "20260930T154018-242869",
+  "notes": "Superseded by 20260930T154018-242869: The warp-cache bug fixed in f8dce3b warped 14 of its 223 samples with another rig's calibration; the re-run on the fixed code equals it bit for bit on the other 209, and equals a fresh-warp replay on each of the 51 samples checked (every sample that follows a change of rig, and the 3 that inherited a hit within their rig).",
   "ingested_from": ""
 }
