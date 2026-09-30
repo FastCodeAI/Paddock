@@ -432,6 +432,9 @@ class OpenpilotPolicy(Policy):
         self.camera: CameraAdapter | None = None
         self.cam_road: CameraAdapter | None = None
         self.cam_wide: CameraAdapter | None = None
+        #: The ONNX path's warps, and the (road, wide) adapters they were built from.
+        self._plans: dict | None = None
+        self._plans_for: tuple[CameraAdapter, CameraAdapter] | None = None
         self.buf_wide: np.ndarray | None = None
         self.frames_seen = 0
         self.prev_timestamp: int | None = None
@@ -628,6 +631,9 @@ class OpenpilotPolicy(Policy):
         bug: it is built from the first frame's calibration and was surviving
         across samples, so every KITScenes scene after the first was warped with
         the first scene's mounting rotation.
+
+        So are the ONNX path's warps, which are built from it, and forgetting
+        those was the same bug again, only intermittent: see `_infer_onnx`.
         """
         if self.backend == "tinygrad":
             self.model = self._new_model()
@@ -636,6 +642,8 @@ class OpenpilotPolicy(Policy):
         self.camera = None
         self.cam_road = None
         self.cam_wide = None
+        self._plans = None
+        self._plans_for = None
         if self.buf is not None:
             # Back to one source feeding both views; `_bind_cameras` rebinds
             # "big_img" to buf_wide again if the next sample has two cameras.
@@ -825,12 +833,20 @@ class OpenpilotPolicy(Policy):
         # Keyed on the pair, not on `self.camera`: on a two-camera rig the two
         # views have different source geometry, so one plan built from the road
         # camera and applied to both is the defect this branch exists to fix.
-        if getattr(self, "_plans_for", None) != (id(road), id(wide)):
+        #
+        # And keyed on the adapters themselves, never on their `id()`s. An id
+        # names an object only while it is alive, and nothing kept the last
+        # sample's adapters alive: `reset()` dropped them, CPython often built
+        # the next sample's at the same address, the ids matched, and that
+        # scene was warped with the previous scene's calibration. Whenever the
+        # two came from different KITScenes rigs, that was a wrong view with
+        # nothing on the record to show it.
+        if self._plans_for is None or self._plans_for[0] is not road or self._plans_for[1] is not wide:
             self._plans = {
                 "img": WarpPlan.build(road.transforms["img"], self._model_size("img"), road.size),
                 "big_img": WarpPlan.build(wide.transforms["big_img"], self._model_size("big_img"), wide.size),
             }
-            self._plans_for = (id(road), id(wide))
+            self._plans_for = (road, wide)
 
         y, u, v = rgb_to_yuv420(road.prepare(obs.image(road_key)))
         img = self._plans["img"].apply(y, u, v)
