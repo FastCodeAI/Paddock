@@ -225,10 +225,11 @@ comparable. The 2033 × 5 = 10,165 derivation names the two truncated segments
 rather than counting them. Pose maths is delegated to a pinned
 `commaai/comma2k19` clone rather than reimplemented, and a reference
 implementation in the test suite is asserted against it wherever that clone
-exists. **Argued:** the calibration estimate (3.5–3.8° pitch on the RAV4,
-1.7–1.8° on the Civic) uses calibrationd's own formula with recorded pose
-substituted for the model's `cameraOdometry`; that substitution is reasoned
-from, not measured against, openpilot's own calibration.
+exists. **Argued:** the calibration estimate (3.3–3.8° pitch on the RAV4,
+1.6–2.2° on the Civic, for nine routes in ten) uses calibrationd's own formula
+with recorded pose substituted for the model's `cameraOdometry`; that
+substitution is reasoned from, not measured against, openpilot's own
+calibration.
 
 **Unverified, and load-bearing for the openpilot row:** the ONNX backend's
 preprocessing is a numpy reimplementation of `compile_modeld.py` —
