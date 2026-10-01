@@ -1,6 +1,6 @@
 # openpilot's driving model on KITScenes: four questions
 
-This note answers four questions about openpilot's driving model (supercombo) on KITScenes, run open loop through paddock, and records what each answer assumes. Every measured number comes from [the analysis notebook](openpilot_drv_supcombo_kitscenes_openloop_analysis.ipynb) beside it, which recomputes them from the runs below each time it executes. The § numbers are the notebook's sections, and the figures are there, not here.
+This note answers four questions about openpilot's driving model (supercombo) on KITScenes, run open loop through paddock, and records what each answer assumes. Every measured number comes from [the analysis notebook](openpilot_drv_supcombo_kitscenes_openloop_analysis.ipynb) beside it, which recomputes them from the runs below each time it executes. The § numbers are the notebook's sections, and the figures are there, not here. The section after Q4 takes the four as one problem, with numbers from [the image calibration notebook](openpilot_drv_supcombo_kitscenes_image_calibration.ipynb), and there the § numbers are that notebook's.
 
 ## The short answers
 
@@ -17,6 +17,10 @@ This note answers four questions about openpilot's driving model (supercombo) on
 4. **Which image calibration makes the model read the right speed at t = 0?** (§15)
     - Showing the road as from about 1.55 m instead of the camera's 1.88 m: a height scale s\* = 1.22 (CI 1.17–1.26), measured on the 54 moving keyframes of a 60-keyframe sweep.
     - At the sweep points either side, 1.15 and 1.30, ADE falls from 1.44 to 0.97 and 1.03 m. Rescaling the plan by the speed from odometry does as well (0.97 m), without touching the image.
+
+**Taken together** ([the four questions as one problem](#the-four-questions-as-one-problem), on the 39 turn keyframes): the plan's error has two parts, with different causes.
+- **Its speed starts in the image.** A height scale near 1.2 fixes part of it. Rescaling the plan by the car's speed does nearly as well on the ten turns the image settings were searched on, and better on the other 29: there, ADE goes from 1.77 to 1.44 m with the image, and to 0.83 m with the rescale.
+- **Its turn does not start in the image.** Over 95 image settings, at most one more of ten plans turns toward the route. The route as a desire makes more of them turn, but later than the driver did, which costs ADE once the speed is right.
 
 ## How to read this note
 
@@ -538,7 +542,114 @@ The bound, the plan rescaled so its first step is the GT's, is 0.57 m.
     - A keyframe the sweep does not bracket reads `< 1` or `> 1.53`. It still counts in the median, at the end it falls beyond, so the medians are order statistics.
     - That matters little for the speed, bracketed on 51 of 54 keyframes, and most for the along-track target, bracketed on 37.
 - **The knob changes only the image's geometry.** The mount's rotation comes from calib.json, as in every run. A lane-line pitch correction barely moves the speed (OPI's R1: ratio 0.861 → 0.862).
-- **A focal zoom was not tested.** Scaling fx and fy by k, keeping the principal point, would stretch the world k× along the direction of travel. It would need a fourth knob.
+- **A focal zoom was tested later,** as the image calibration notebook's `zoom`. Zoomed out to 0.9, it cuts ADE on that notebook's ten turns nearly as much as the height scale does: 0.99 m, against 0.88 m at 1.22 ([the four questions as one problem](#the-four-questions-as-one-problem)).
+
+---
+
+## The four questions as one problem
+
+**The four questions are links in one chain,** from the image the model is handed to the score its plan gets:
+
+| link | question | what goes wrong, as that question found it |
+|---|---|---|
+| the image → what the model reads | Q2, Q4 | The warp only rotates, so the road shows as from the camera's 1.88 m, where openpilot's own camera sits at 1.22 m. The road head reads the camera at 1.39 or 1.62 m, and the pose head reads the speed 12% slow, 18% in the low mode. |
+| what it reads → the plan's speed | Q4 | The plan starts where the pose head reads: 1.02 of it (median). |
+| what it sees and is told → the plan's turn | Q1 | Unaided, the model sees the near turns and not the far ones. Sent the route as a desire, it turns later on the near ones, and brakes for the far ones. |
+| the plan → the score | Q3 | Over all keyframes, 64% of ADE is the start speed. So a fix to the speed alone can cut ADE a lot, whether or not the plan turns. |
+
+So the plan's error has two parts with different causes (argued): its **scale along the path**, which starts in the image, and its **turn**, which starts in what the model sees and is told.
+
+**[The image calibration notebook](openpilot_drv_supcombo_kitscenes_image_calibration.ipynb) tests both from the image end.**
+- **Ten turn keyframes,** five left and five right, chosen to cover every way stock gets a turn wrong, plus two controls.
+- **About a hundred image settings:** the height scale, a focal zoom, a horizontal stretch, yaw, pitch and roll, a shift over the road, sampling, tone, model ticks per frame, and blanking a view. Each is a field of one `Setting`, drawn as the model sees it, and can be tweaked by hand.
+- **Three other fixes to beat:** the route as a desire (Q1's arm), scales a car could choose from the model's own readings, and rescaling the plan so its first step runs at the car's speed. That rescale is Q3's `pose` calibration, divided by the plan's first step instead of the pose head.
+- **The other 29 turn keyframes,** which nothing was chosen on, for every setting a car could use.
+
+**In this section, § numbers and measured numbers are that notebook's,** except where a Q is cited.
+- Its node reproduces the recorded runs within 0.03 m over H: stock and the desire to 0.016 m, and the sweep's 1.15 and 1.30 to 0.018 and 0.029 m (measured, its §4 and §9).
+- Its CIs resample scenes, as here. The ten are ten scenes. The 29 span 25, and two of those also hold one of the ten.
+
+### The image fixes the speed (measured)
+
+On the ten turns, against stock's 1.60 m:
+- **The height scale is the lever.** At Q4's s\* = 1.22, ADE falls to 0.88 m (−0.72, CI −1.11 to −0.31), better on 9 of 10. The plan's start speed goes from 0.87 to 1.01 of the GT's.
+- **A focal zoom pulls the same lever.** The model reads distance along the road as height_scale / zoom times stock's (§3). Zoomed out to 0.9, as at a height scale of 1.11, ADE is 0.99 m.
+- **Little adds to it.** §8's best cell, height 1.15 with the view pitched 1° down, gives 0.82 m. Choosing on nine turns and scoring the tenth gives 0.95 m (§10), so 0.13 m of that gain came from choosing on these turns.
+- **The model's own reading can set the scale.** s = h / `cam_h`, the camera's real height over the height the road head reads, chosen per turn with no GT, gives 0.94 m.
+
+On the other 29, against stock's 1.77 m, the gain is under half as large: 1.44 m at 1.22 (−0.33, CI −0.73 to +0.07), better on 18 of 29.
+- **Stock's plans there start nearer the right speed:** at 0.96 of the GT's, against 0.87 on the ten. The pose head reads 0.82 of the car's speed on both.
+- **So one scale overshoots there,** to 1.07.
+- **Scales chosen per turn from the model's own readings do no better:** −0.20 to −0.32 m.
+
+### The image does not fix the turn (measured)
+
+- **The heading hardly moves.** Over 95 image settings, the heading error over H stays between −21.4° and −15.8°, against stock's −19.4°. At most 6 of the 10 plans turn toward the route, against stock's 5.
+- **So ADE nearly halves while the plans turn little more.** What moves is the speed.
+    - Setting only the plan's start speed right, the oracle row below, takes 0.62 m off stock's 1.60 m.
+    - The image takes off more, 0.72 m at 1.22, so it changes more of the plan than its start.
+- **More of the turn in view does not help.** Zooming the wide view out, or turning it toward the route, puts up to 48% of the GT's waypoints inside it, against 30%. Neither ADE nor the heading gets better by more than §6's noise floor, what a half-pixel shift does.
+- **The plan comes from the narrow view.** Blanking it adds 9.0 m to ADE. Blanking the wide view changes ADE by −0.14 m.
+
+### On new turns, the output fixes the speed better (measured)
+
+| ADE (m) | ten turns (§12) | 29 turns (§13) |
+|---|---|---|
+| stock | 1.60 | 1.77 |
+| image, height 1.22 | 0.88 | 1.44 |
+| image, chosen on nine turns and scored on the tenth | 0.95 | |
+| image, scaled per turn by the road head's height (`height from cam_h`) | 0.94 | 1.57 |
+| **output: the plan × v / v_plan,** the car's speed over the plan's first step | 1.02 | **0.83** |
+| image chosen on the ten, then the output rescale | 0.88 | 0.84 |
+| oracle: the plan × the GT's first step / v_plan | 0.98 | 0.74 |
+
+- **On the 29, the rescale gains about three times what the image does:** −0.94 m (CI −1.35 to −0.57) against −0.33, better on 24 of 29. It gains both on the turns stock matched (−0.79 m) and on the rest (−1.33 m).
+- **With the rescale, the image adds nothing there:** 0.84 m against 0.83. So on turns it was not chosen on, the image's whole gain in ADE was the start speed (argued).
+- **On the ten, the image is a little ahead,** 0.95 m held out against 1.02, and ahead even of the oracle's 0.98. Its plans turn 1–2° more within H than stock's, which a rescale cannot do: it scales the path's length, not its shape. That edge does not carry over to the 29.
+
+### The route turns the plan, later (measured)
+
+- **Sent as a desire, the route makes more plans take the turn:** 8 of 10, instead of 5. The plan's turn over the whole GT goes from 0.41 to 0.81 of the GT's (median).
+- **Within H, those plans turn less** (−25.8°, against −19.4°), and ADE rises to 2.11 m.
+    - Nearly all of the rise is on the two turns 64–66 m ahead, +2.43 m on average. On the other eight it is +0.04 m.
+    - That is Q1's split at 40 m, on these ten.
+- **Sent only on turns under 40 m ahead, the far turns' cost goes, and the later turn stays.** These rows are composed from the runs, not run, and the 40 m is Q1's, chosen after seeing all 39 turns:
+
+    | | ten: ADE (m) | ten: plans toward the route | 29: ADE (m) |
+    |---|---|---|---|
+    | stock | 1.60 | 5 | 1.77 |
+    | the desire under 40 m | 1.63 | 7 | 1.69 |
+    | image chosen on the ten | 0.82 | 5 | 1.44 |
+    | the same, with the desire under 40 m | 1.19 | 8 | 1.41 |
+    | output rescale | 1.02 | 5 | 0.83 |
+    | the same, with the desire under 40 m | 1.31 | 7 | 0.92 |
+
+- **With the speed fixed, the gated desire costs more on the ten than it did alone:** +0.37 m with the image and +0.29 m with the rescale, against +0.03 m. On the 29 it gains nothing: −0.03 and +0.09 m, against −0.08 m alone.
+- **Within H, the gated plans turn less than stock's:** −24.6° to −26.8°, against −19.4°, on the ten, and −9.3° to −11.0°, against −4.3°, on the 29.
+
+### What it means (argued)
+
+1. **The speed and the turn are two problems.** On the ten, each fix moves one and leaves the other.
+    - The image and the rescale bring the plan's start speed from 0.87 of the GT's to 1.01 at a height scale of 1.22, or 1.02 rescaled. At most one more plan turns toward the route, and in §12's rows the plans make 0.40–0.46 of the GT's turn, against stock's 0.41.
+    - The desire brings 8 of 10 plans to turn toward the route, making 0.81 of the GT's turn, and moves the start speed only to 0.93.
+    - So no one knob solves both, and a score has to show both (point 5).
+2. **Fix the speed at the output.**
+    - The rescale reads the speed per keyframe, from odometry, as a car could. It is chosen on nothing, and on the turns nothing was chosen on, it gained about three times what the image did.
+    - The rescale sets the plan's own start. The image can only set what the pose head reads, and the plan does not start exactly there: 5% above it in the low mode, level with it in the high one (Q4). Searched per turn until the head read the car's speed, the 29's plans started 11% fast.
+3. **Keep the image fix for what the output cannot reach.**
+    - The rescale corrects one number, the plan's scale. The height scale corrects what the model reads from the road: the pose head, from 0.82 to 0.95 of the car's speed at 1.22 on the ten, and, by Q4's exponents, the lane width as well.
+    - So the image is the fix to test where the model's other outputs are used, or where the plan's speed changes what the model sees next, as in closed loop.
+    - **Use a scale near 1.15–1.22, chosen outside the scored set.** Q4's s\* and §8's best cell were each chosen on what they score, and §10 puts that optimism at 0.13 m on ten turns. A fair number takes s from KITScenes' train or test split, then runs val.
+4. **The turn is not an image problem. It is what the model is told, and when.**
+    - Over 95 settings, at most one more plan of the ten turns toward the route. The plan comes from the narrow view, and more of the turn in the wide view changes nothing.
+    - Told the route at the keyframe, the model reads "a turn starts here" (Q1), and Q1 found half of the 39 turns already underway there. So the plan turns late, and ADE within H charges for that once the speed is right.
+    - Gating by distance removes the far turns' cost, not the lateness.
+    - So the next test of intent is timing: the desire's rising edge where the driver's turn begins, which for a turn already underway is on the history frames. Those frames would have to carry the command, which `command_source = "gt"` does not do (Q1). Whether turning later matters at all is a closed-loop question (Q1).
+5. **Score turns by more than ADE.** On the ten, ADE nearly halved while no more plans turned, and the desire raised ADE while more did. Beside ADE, report:
+    - `planned`: whether the plan turns toward the route at all;
+    - the heading error over H (`dpsi_err`), negative for too little turn;
+    - `turn_frac`: how much of the whole turn the plan makes;
+    - ADE with the start speed set right (the oracle row here, Q3's `ade_net_H`), so the speed does not cover the turn.
 
 ---
 
@@ -547,6 +658,10 @@ The bound, the plan rescaled so its first step is the GT's, is 0.57 m.
 **The notebook.** `.venv/bin/jupyter execute --inplace` on it re-runs everything from the recorded runs. It executes in about a minute here, without a GPU.
 - §1 pins `RUN_ID`. `INTENT_RUN` and `SWEEP` find the other runs by the settings they recorded.
 - `FOCUS` restricts every section to one scene or a list of keyframes, and the §17 side by side draws each of them.
+
+**The image calibration notebook.** It needs [`openpilot_drv_supcombo_image_node.py`](openpilot_drv_supcombo_image_node.py) beside it: the adapter, subclassed, which the notebook launches in openpilot's own interpreter as `paddock run` would.
+- Every result is cached under `{runs}/kitscenes/_analysis/openpilot/image_calibration/`, so a re-execution takes about a minute on CPU.
+- From cold, it runs up to about 1,500 keyframes, at about 4 s each on CPU over §1's five `NODES`: about 20 minutes.
 
 **The runs.** A run's model env comes only from `[models.openpilot.env]`, and exports in the shell never reach the node. So each run uses a copy of `paddock.toml`, kept outside the repo and passed with `PADDOCK_CONFIG`.
 
@@ -578,6 +693,9 @@ paddock run --model openpilot --bench kitscenes --limit 60
 ## Open
 
 - **A held-out s\*.** Choose the scale on scenes outside the scored set, then run val at it.
-- **A distance-gated desire,** or one driven by `nav_text`: an arm that sends the desire only when the turn is near.
+- **A desire timed to the turn:** the command stamped on the history frames from where the driver's turn begins, so the pulse arrives as the manoeuvre does.
+    - Gating by distance alone, composed in [the four questions as one problem](#the-four-questions-as-one-problem), removed the far turns' cost but not the late turn.
+    - An arm driven by `nav_text` is unmeasured too.
+- **The image against the output, closed loop.** There the plan's speed changes what the model sees next, so the height scale and the rescale may part ways.
 - **The `lane_change` control.**
 - **The 2.2 m ground offset** is 0.10–0.15 m above what the map implies. openpilot does not use it, but models that read `camera_height()` do.
