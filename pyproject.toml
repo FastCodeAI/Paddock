@@ -54,6 +54,16 @@ analysis = [
     "ipykernel>=6.29",
     "ipywidgets>=8.1",
     "nbclient>=0.10",
+    # What the nuScenes devkit imports. The nuScenes notebook reads the map
+    # expansion through `{repos}/nuscenes-devkit/python-sdk` put on sys.path, not
+    # an install: the devkit pins numpy<2 and would downgrade this env.
+    "shapely>=2.0",
+    "pyquaternion>=0.9.5",
+    "descartes>=1.1",
+    "scikit-learn>=1.5",
+    "opencv-python-headless>=4.10",
+    "cachetools>=5.0",
+    "tqdm>=4.66",
 ]
 dev = [
     "pytest>=8.0",
