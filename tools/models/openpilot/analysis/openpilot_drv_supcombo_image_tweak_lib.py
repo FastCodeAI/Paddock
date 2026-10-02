@@ -7,8 +7,11 @@ before openpilot sees it, plan them better? Everything it calls is a method of `
   planned them, the four images the model was handed, and the warp that cut them;
 - `show_measurements` (part 2): how the camera heights and the speeds are measured;
 - `checks`: that the node is the stock adapter, and that what is drawn is what it fed;
-- `tweak` (part 3): one config on one turn, drawn beside stock, with what half-pixel shifts alone change;
-- `compare` (part 4): one config on every turn, scored against stock and a noise floor.
+- `show_cameras` (part 1): the two front cameras a config can feed the model, and comma's 65 deg cut of each;
+- `tweak` (part 3): one config on one turn, drawn beside stock (or any other config), with what half-pixel
+  shifts alone change;
+- `compare` (part 4): one config on every turn, scored against stock (or any other config) and a noise floor;
+- `arms` (part 5): several configs on every turn, side by side.
 
 Paddock never imports a model, and neither does this module. The model runs in
 `openpilot_drv_supcombo_image_node.py`, beside it: launched in openpilot's own interpreter
@@ -16,8 +19,10 @@ as `paddock run` launches the adapter, and driven over localhost HTTP. Here a co
 becomes the 3x3 matrices and lookup tables the node applies, and the node's own `View`
 rebuilds what the model was handed, so it can be drawn.
 
-The knobs and their geometry are the image-calibration notebook's, without the two that
-are not image changes (the tick rate and the desire).
+The image knobs and their geometry are the image-calibration notebook's. Three kinds of knob are this
+notebook's own: which front camera the model is fed (`camera`), a cut of it to another field of view
+(`fov_*`, staged as raw frames under the cache), and the route's turn sent as openpilot's desire
+(`desire`). The tick rate is not a knob here.
 """
 
 from __future__ import annotations
@@ -49,8 +54,18 @@ from matplotlib import patheffects
 from PIL import Image
 
 from paddock.adapters.benchmarks.kitscenes import loader as L
-from paddock.adapters.benchmarks.kitscenes.harness import INTERVAL_S, POD_HEIGHT_M, _read_calibration
-from paddock.adapters.models.openpilot.policy import MODEL_HZ
+from paddock.adapters.benchmarks.kitscenes.harness import (
+    HISTORY_FRAMES,
+    INTERVAL_S,
+    POD_HEIGHT_M,
+    _read_calibration,
+)
+from paddock.adapters.models.openpilot.policy import (
+    DESIRE_MODES,
+    DESIRE_TURN_LEFT,
+    DESIRE_TURN_RIGHT,
+    MODEL_HZ,
+)
 from paddock.adapters.models.openpilot.supercombo import rgb_to_yuv420
 from paddock.config import REPO_ROOT, SiteConfig
 from paddock.policy.protocol import Command, Trajectory, load_frame
@@ -91,12 +106,25 @@ ROAD_Y = (-6, -3, 0, 3, 6)  # and its lines along the road (m, left +)
 
 GT_C = palette.GROUND_TRUTH
 STOCK_C = palette.color(MODEL)  # the recorded plan, and stock run here
-CONFIG_C = "#9467bd"  # the config's plan
+CONFIG_C = "#7700bb"  # the config's plan
+# arms(): one colour per arm, in this order, never cycled. With GT_C, every pair is >= 8 dE apart under
+# protan and deutan simulation and >= 15 in normal vision (the dataviz skill's validator, all pairs);
+# the two lightest sit under 3:1 against white, so every plot that uses them has a legend.
+ARM_C = (STOCK_C, CONFIG_C, "#dd0099", "#00bb77", "#bb99dd")
 GREY = "#8c8c8c"
 VIEW_STYLE = {"img": ("#ffd92f", "-"), "big_img": ("#00e5ff", "--")}  # each view's footprint on the camera
 OUTLINE = [patheffects.withStroke(linewidth=3.5, foreground="black")]  # a path stays visible on any road
 # The four model inputs, in the order drawn: each view's older frame, then its keyframe.
 PANELS = (("img", True), ("img", False), ("big_img", True), ("big_img", False))
+# The front cameras a config can feed the model, by the knob's name: KITScenes' sensor directories.
+# "ring" is the one the harness supplies as CAM_FRONT; "base" is the rig's centre front camera, 0.2 m
+# lower and 0.2 m further forward, at a longer focal length on a larger sensor.
+CAMERAS = {"ring": "camera_ring_front", "base": "camera_base_front_center"}
+# comma's EON road camera, the one supercombo's views were defined on: 1164 x 874 at a 910 px focal
+# length, so img (medmodel, 910 px) is one camera pixel per model pixel on it.
+EON_W, EON_H, EON_F = 1164, 874, 910.0
+EON_FOV = float(np.degrees(2 * np.arctan(EON_W / 2 / EON_F)))  # 65.2 deg across
+FILTERS = {"area": Image.BOX, "bilinear": Image.BILINEAR, "lanczos": Image.LANCZOS, "nearest": Image.NEAREST}
 
 
 def _load_node():
@@ -158,6 +186,16 @@ class Setting:
     brightness: float = 0.0
     saturation: float = 1.0
     blank: str = ""
+    # the source: which camera, and a cut of it (see `cut`)
+    camera: str = "ring"
+    fov_deg: float = 0.0
+    fov_aspect: float = EON_W / EON_H
+    fov_width: int = EON_W
+    fov_told_deg: float = 0.0
+    fov_filter: str = "area"
+    # the route's turn, sent as openpilot's desire
+    desire: str = "off"
+    desire_lead_s: float = 0.0
 
     def __post_init__(self):
         # One type per field, so {"zoom": 1} and {"zoom": 1.0} are one config and one cache entry.
@@ -165,15 +203,26 @@ class Setting:
             if isinstance(f.default, float):
                 object.__setattr__(self, f.name, float(getattr(self, f.name)))
         object.__setattr__(self, "supersample", int(self.supersample))
+        object.__setattr__(self, "fov_width", int(self.fov_width))
         for name, allowed in (
             ("views", ("both", *VIEWS)),
             ("ss_views", ("both", *VIEWS)),
             ("blank", ("", *VIEWS)),
+            ("camera", tuple(CAMERAS)),
+            ("fov_filter", tuple(FILTERS)),
+            ("desire", tuple(DESIRE_MODES)),
         ):
             if getattr(self, name) not in allowed:
                 raise ValueError(f"{name} = {getattr(self, name)!r}: it must be one of {allowed}")
         if min(self.height_scale, self.zoom, self.hstretch) <= 0 or self.supersample < 1:
             raise ValueError("height_scale, zoom and hstretch must be positive, and supersample 1 or more")
+        if not (0 <= self.fov_deg < 170 and 0 <= self.fov_told_deg < 170):
+            raise ValueError("fov_deg and fov_told_deg are degrees across, 0 (as recorded) or under 170")
+        if self.fov_aspect <= 0 or self.fov_width < 0 or 0 < self.fov_width < 64:
+            raise ValueError("fov_aspect must be positive, and fov_width 0 (no resample) or 64 px or more")
+        if not 0 <= self.desire_lead_s <= HISTORY_FRAMES / L.SRC_HZ:
+            # The sample holds 4.8 s of frames before the keyframe; the desire can start on none earlier.
+            raise ValueError(f"desire_lead_s must be 0 to {HISTORY_FRAMES / L.SRC_HZ:g} s")
 
     def changed(self):
         """{knob: value} of the knobs that change anything; empty for stock."""
@@ -182,7 +231,22 @@ class Setting:
             out.pop("views", None)
         if self.supersample == 1:
             out.pop("ss_views", None)
+        if not self.fov_deg:  # the frame as recorded: the cut's own knobs do nothing
+            for k in ("fov_aspect", "fov_width", "fov_told_deg", "fov_filter"):
+                out.pop(k, None)
+        elif not self.fov_width:  # a crop, not resampled
+            out.pop("fov_filter", None)
+        if self.desire == "off":
+            out.pop("desire_lead_s", None)
         return out
+
+    def source(self):
+        """What the model's frames are made from: the camera, and the cut's knobs when there is one. Two
+        configs with one source share their frames and their `/geometry`."""
+        if not self.fov_deg:
+            return (self.camera,)
+        filt = self.fov_filter if self.fov_width else ""
+        return (self.camera, self.fov_deg, self.fov_aspect, self.fov_width, self.fov_told_deg, filt)
 
     def geometric(self):
         return any(k in GEOMETRY for k in self.changed())
@@ -193,6 +257,7 @@ class Setting:
 
 
 STOCK = Setting()
+STOCK_SOURCE = STOCK.source()
 # Eight shifts of half a model pixel: no geometry to speak of (0.03 deg in img), but every model pixel comes
 # from a different camera pixel. What they do to a score is what any change at all does: compare()'s noise floor.
 SHIFTS = tuple(
@@ -201,6 +266,12 @@ SHIFTS = tuple(
 )
 # checks(): one config down every path the node's `View` has (shift, supersampling, filter, tables, fill).
 EVERY_PATH = Setting(dx_px=0.5, supersample=3, sharpen=0.5, gamma=0.8, saturation=1.3, blank="img")
+
+
+def shifted(base, shift):
+    """`base` with a half-pixel SHIFTS entry added to its own grid shift: the noise around any config. On
+    STOCK it is the shift itself, so stock's noise runs are shared."""
+    return replace(base, dx_px=base.dx_px + shift.dx_px, dy_px=base.dy_px + shift.dy_px)
 
 
 def as_setting(x=None, **knobs):
@@ -291,15 +362,83 @@ def view_specs(st, sc, g):
 
 
 def request(st, sc, g):
-    """The /run body for one config on one sample. Every command is STRAIGHT, as the recorded run sent."""
+    """The /run body for one config on one sample. Every command is STRAIGHT, as the recorded run sent, unless
+    the config sends a desire: then the frames within desire_lead_s of the keyframe carry the route's side
+    (LEFT or RIGHT), and the node sends it as `DESIRE_MODES[desire]`. openpilot pulses a desire on its rising
+    edge, so it reaches the model once, on the first of those frames, and its queue carries it for 5 s."""
     wire = [dict(o) for o in sc.wire]
+    turn = {"left": Command.LEFT, "right": Command.RIGHT}.get(sc.side)
+    send = st.desire != "off" and turn is not None
+    t_k = wire[-1]["timestamp"]
     for o in wire:
-        o["command"] = int(Command.STRAIGHT)
+        on = send and t_k - o["timestamp"] <= st.desire_lead_s * 1e6
+        o["command"] = int(turn if on else Command.STRAIGHT)
     body = {"observations": wire}
+    if send:
+        body["desire"] = st.desire
     specs = view_specs(st, sc, g)
     if specs:
         body["views"] = specs
     return body
+
+
+def cut(st, K, size):
+    """The cut the fov knobs make of a camera frame (size = w, h; intrinsics K), or None for the frame as
+    recorded. Centred on the principal point, fov_deg across, at fov_aspect.
+
+    fov_width w > 0 resamples the cut to w px across with `fov_filter` (PIL's `resize` over the float box: an
+    output pixel's centre i + 0.5 is the box's x0 + (i + 0.5) * s, s the cut's px per output px). Its true
+    intrinsics are then f / s and (c + 0.5 - x0) / s - 0.5. fov_width 0 crops whole pixels, resampling
+    nothing: f as recorded, c - x0.
+
+    The model is told the cut's true intrinsics, unless fov_told_deg says what field of view to tell it: then
+    its focal length is that view's, (w / 2) / tan(told / 2), and only the warp openpilot computes changes.
+    Raises ValueError if the cut does not fit in the frame."""
+    if not st.fov_deg:
+        return None
+    f, cx, cy = K[0, 0], K[0, 2], K[1, 2]
+    wc = 2.0 * f * np.tan(np.radians(st.fov_deg) / 2)  # the cut's width in camera pixels
+    if st.fov_width:
+        w = 2 * round(st.fov_width / 2)  # even: openpilot's YUV 4:2:0 halves both sides
+        h = 2 * round(w / st.fov_aspect / 2)
+        s = wc / w
+        x0, y0 = cx + 0.5 - wc / 2, cy + 0.5 - h * s / 2
+        box = (x0, y0, x0 + wc, y0 + h * s)
+        Kc = np.array(
+            [[f / s, 0.0, (cx + 0.5 - x0) / s - 0.5], [0.0, f / s, (cy + 0.5 - y0) / s - 0.5], [0, 0, 1]]
+        )
+        filt = st.fov_filter
+    else:
+        w = 2 * round(wc / 2)
+        h = 2 * round(w / st.fov_aspect / 2)
+        s, x0, y0 = 1.0, round(cx - w / 2), round(cy - h / 2)
+        box = (x0, y0, x0 + w, y0 + h)
+        Kc = np.array([[f, 0.0, cx - x0], [0.0, f, cy - y0], [0.0, 0.0, 1.0]])
+        filt = None
+    if box[0] < 0 or box[1] < 0 or box[2] > size[0] or box[3] > size[1]:
+        raise ValueError(
+            f"a {st.fov_deg:g} deg cut at aspect {st.fov_aspect:.3f} is {box[2] - box[0]:.0f} x "
+            f"{box[3] - box[1]:.0f} px; it does not fit in the {size[0]} x {size[1]} frame about its centre"
+        )
+    told = Kc.copy()
+    if st.fov_told_deg:
+        told[0, 0] = told[1, 1] = (w / 2) / np.tan(np.radians(st.fov_told_deg) / 2)
+    return SimpleNamespace(box=box, size=(w, h), scale=s, K=Kc, K_told=told, filter=filt)
+
+
+def _stage(src, dst, c):
+    """One frame, cut as `c` says, saved as the raw (h, w, 3) uint8 array `load_frame` reads: written aside,
+    then renamed, so a frame half-written by an interrupted run is never read."""
+    if dst.exists():
+        return
+    img = Image.open(src).convert("RGB")
+    if c.filter is None:
+        arr = np.asarray(img.crop(tuple(int(v) for v in c.box)))
+    else:
+        arr = np.asarray(img.resize(c.size, FILTERS[c.filter], box=c.box))
+    tmp = dst.with_name(f"{dst.stem}.{uuid.uuid4().hex[:8]}.tmp.npy")
+    np.save(tmp, arr)
+    os.replace(tmp, dst)
 
 
 def warp(st, sc, view, g):
@@ -339,16 +478,34 @@ def _road_to_px(sc):
     return sc.K @ np.linalg.inv(sc.E0)[:3, [0, 1, 3]]
 
 
-def road_map(st, sc, g):
-    """F: a road point (camera-centred, metres) -> the point stock shows at the model pixel where this config
-    shows it. So the model sees the road at F(road). Exact on the road plane for the camera at its real
-    height; img's, unless the config touches big_img alone."""
-    if not st.geometric():
+def road_map(st, sc, g, base=STOCK, sc0=None, g0=None):
+    """F: a road point (camera-centred, metres) -> the point `base` shows at the model pixel where this config
+    shows it. So the model sees the road at F(road). Exact on the road plane for each camera at its real
+    height; img's, unless the configs touch big_img alone. sc0, g0: base's scene and geometry, when its source
+    is not the config's."""
+    sc0, g0 = sc0 or sc, g0 or g
+    if sc0 is sc and not st.geometric() and not base.geometric():
         return np.eye(3)
-    view = "img" if st.views == "both" else st.views
-    G = _road_to_px(sc)
-    F = np.linalg.inv(G) @ warp(STOCK, sc, view, g) @ np.linalg.inv(warp(st, sc, view, g)) @ G
+    which = {s.views for s in (st, base) if s.geometric()}
+    view = which.pop() if len(which) == 1 and "both" not in which else "img"
+    G, G0 = _road_to_px(sc), _road_to_px(sc0)
+    F = np.linalg.inv(G0) @ warp(base, sc0, view, g0) @ np.linalg.inv(warp(st, sc, view, g)) @ G
     return F / (F @ [10.0, 0.0, 1.0])[2]
+
+
+def real_camera(sc, g):
+    """camera_from_calib with the camera's true intrinsics: the same as /geometry's unless the config tells the
+    model a field of view the frame does not have (fov_told_deg), when the model's warp is cut with the told
+    one and the camera still sees through the true one."""
+    C = np.array(g["camera_from_calib"])
+    return C if sc.K_told is sc.K else sc.K @ np.linalg.inv(sc.K_told) @ C
+
+
+def expected_row(g, view):
+    """The row of `view`'s horizon in the model's own pixels, as openpilot defines the view: 47.6 of img's 256
+    rows, 151.8 of big_img's. Where a camera at openpilot's calibration puts the horizon."""
+    p = np.linalg.inv(np.array(g["calib_from_model"][view])) @ [1.0, 0.0, 0.0]
+    return float(p[1] / p[2])
 
 
 def _plan_in_view(xy, g, view, h_b):
@@ -418,7 +575,9 @@ def _yuv_rgb(t):
 
 
 def _frame_half(path):
-    """A camera frame at half size (JPEG draft mode), and that scale."""
+    """A camera frame at half size (JPEG draft mode; a staged cut, every other pixel), and that scale."""
+    if str(path).endswith(".npy"):
+        return np.load(path)[::2, ::2], 0.5
     img = Image.open(path)
     full = img.width
     img.draft("RGB", (img.width // 2, img.height // 2))
@@ -720,7 +879,7 @@ class Lab:
         if len(set(self.keys)) != len(self.keys):
             raise ValueError("scenes names a keyframe twice")
         self.cache = self.cfg.runs / BENCH / "_analysis" / MODEL / "image_tweak"
-        for sub in ("results", "geometry", "logs"):
+        for sub in ("results", "geometry", "logs", "frames"):
             (self.cache / sub).mkdir(parents=True, exist_ok=True)
         sha = reg.repos["openpilot"].sha
         self.code = hashlib.sha1(b"".join(p.read_bytes() for p in CODE_FILES) + sha.encode()).hexdigest()[:10]
@@ -766,11 +925,19 @@ class Lab:
             return float(E[2, 3]), "the harness's"
         return float(self.height), "set"
 
-    def scene(self, key):
-        """Everything about one keyframe that no config changes, read once."""
+    def scene(self, key, config=None):
+        """Everything about one keyframe that no image knob changes, read once per source: the recorded
+        camera by default, or the source a config feeds the model (its `camera` and `fov_*` knobs)."""
+        if isinstance(key, SimpleNamespace):
+            return key
         sid = self.sid(key)
-        if sid in self._sc:
-            return self._sc[sid]
+        src = STOCK_SOURCE if config is None else as_setting(config).source()
+        if (sid, src) not in self._sc:
+            self._sc[(sid, src)] = self._ring_scene(sid) if src == STOCK_SOURCE else self._source(sid, config)
+        return self._sc[(sid, src)]
+
+    def _ring_scene(self, sid):
+        """The keyframe as the harness supplies it: the ring's front camera, as recorded."""
         row = self._rows[sid]
         path = self.harness._scene_path(row["scene_id"], row["split_dir"])
         kf = int(row["keyframe_index"])
@@ -791,8 +958,20 @@ class Lab:
         reps = _repeats(stamps)
         older = _older(reps)
         pair_dt = (stamps[-1] - stamps[older]) / 1e6
-        self._sc[sid] = SimpleNamespace(
+        idx = L.frame_indices(kf, HISTORY_FRAMES)
+        if [int(i / L.SRC_HZ * 1e6) for i in idx] != stamps:
+            raise AssertionError(
+                f"{_label(sid)}: the harness's frames are not frame_indices({kf}, {HISTORY_FRAMES})"
+            )
+        return SimpleNamespace(
             sid=sid,
+            src=STOCK_SOURCE,
+            camera="ring",
+            source="the ring's front camera, as recorded",
+            cut=None,
+            idx=idx,  # each observation's frame index
+            frames=[o.image_paths["CAM_FRONT"] for o in obs],
+            size=Image.open(obs[-1].image_paths["CAM_FRONT"]).size,
             label=_label(sid),
             split=row["split"],
             scene_id=row["scene_id"],
@@ -814,14 +993,103 @@ class Lab:
             gt=np.vstack([gt, np.full((N_LONG - len(gt), 2), np.nan)]),
             gt_n=len(gt),
             K=K,
+            K_told=K,  # the intrinsics the model is told: the same object unless a config tells it others
             E=Eh,
+            E_harness=E,
             E0=E0,
             h=h,
             h_how=how,
             h_harness=float(E[2, 3]),
             h_map=self.mined.get(f"{row['split']}/{row['scene_id']}", np.nan),
         )
-        return self._sc[sid]
+
+    def _source(self, sid, config):
+        """The keyframe as a config's source feeds it: the ring scene with the front camera swapped in the
+        observations (its frames, intrinsics and pose) and every height moved by the camera's. A cut is staged
+        under the cache's frames/ once, as raw arrays the node reads directly."""
+        st, base, row = as_setting(config), self.scene(sid), self._rows[sid]
+        sensor = CAMERAS[st.camera]
+        if st.camera == "ring":
+            K, E, frames = base.K, base.E_harness, list(base.frames)
+        else:
+            path = self.harness._scene_path(row["scene_id"], row["split_dir"])
+            Ks, Es = _read_calibration(
+                path, {sensor: "CAM_FRONT"}, ground_offset=self.harness._ground_offset()
+            )
+            K, E = np.asarray(Ks["CAM_FRONT"], float)[:3, :3], np.array(Es["CAM_FRONT"], float)
+            where = self.harness._sensor_scene(row["scene_id"], row["split_dir"], sensor)
+            if where is None:
+                raise FileNotFoundError(f"{_label(sid)} has no {sensor} on any configured kitscenes tier")
+            frames = [str(L.frame_path(where, i, sensor)) for i in base.idx]
+        size = Image.open(frames[-1]).size
+        c = cut(st, K, size)
+        what = f"the {st.camera} front camera ({sensor})"
+        K_cam, K_told = K, K
+        if c is not None:
+            frames = self._stage_cut(row, sensor, frames, base.idx, c)
+            K_cam, K_told, size = c.K, (c.K if not st.fov_told_deg else c.K_told), c.size
+            how = (
+                f"resampled to {c.size[0]} x {c.size[1]} ({c.filter})"
+                if c.filter
+                else "cropped, not resampled"
+            )
+            what += f", cut to {st.fov_deg:g} deg across and {how}"
+            if st.fov_told_deg:
+                what += f"; the model is told {st.fov_told_deg:g} deg"
+        dz = float(E[2, 3] - base.E_harness[2, 3])  # this camera's height over the ring camera's
+        Eh = E.copy()
+        Eh[2, 3] = base.h + dz
+        E0 = Eh.copy()
+        E0[:2, 3] = 0.0
+        wire = []
+        for o, frame in zip(base.wire, frames):
+            o = json.loads(json.dumps(o))  # a deep copy: the ring scene's wire is shared
+            o["image_paths"]["CAM_FRONT"] = str(frame)
+            o["calibration"]["camera2image"]["CAM_FRONT"] = K_told.tolist()
+            o["calibration"]["camera2ego"]["CAM_FRONT"] = E.tolist()
+            wire.append(o)
+        return SimpleNamespace(
+            **(
+                vars(base)
+                | dict(
+                    src=st.source(),
+                    camera=st.camera,
+                    source=what,
+                    cut=c,
+                    frames=frames,
+                    size=size,
+                    wire=wire,
+                    frame=frames[-1],
+                    older_frame=frames[base.older],
+                    K=K_cam,
+                    K_told=K_told,
+                    E=Eh,
+                    E_harness=E,
+                    E0=E0,
+                    h=base.h + dz,
+                    h_how=base.h_how if st.camera == "ring" else f"{base.h_how}, {dz:+.2f} m to this camera",
+                    h_harness=float(E[2, 3]),
+                    h_map=base.h_map + dz,
+                )
+            )
+        )
+
+    def _stage_cut(self, row, sensor, frames, idx, c):
+        """The cut of each frame, as .npy under frames/, keyed by the scene, the camera and the cut itself (its
+        box, size and filter), so a change to how a cut is computed never reuses an old one's frames."""
+        key = f"{row['split']}/{row['scene_id']} {sensor} {np.round(c.box, 6).tolist()} {c.size} {c.filter}"
+        d = self.cache / "frames" / hashlib.sha1(key.encode()).hexdigest()[:16]
+        d.mkdir(exist_ok=True)
+        out = [d / f"{i:010d}.npy" for i in idx]
+        todo = {o: f for o, f in zip(out, frames) if not o.exists()}
+        if todo:
+            t0 = time.time()
+            with ThreadPoolExecutor(8) as ex:
+                list(ex.map(lambda kv: _stage(kv[1], kv[0], c), todo.items()))
+            print(
+                f"staged {len(todo)} frame(s) of {_label(self.harness._sample_id(row))}'s cut in {time.time() - t0:.0f} s"
+            )
+        return [str(o) for o in out]
 
     def recorded(self, key):
         """(plan, extras) as the recorded run planned this turn."""
@@ -866,42 +1134,48 @@ class Lab:
         out["head_ratio"] = _head(ex) / sc.v if sc.v >= p["v_go"] else np.nan
         out["plan_v0"] = float(ex.get("plan_v0", np.nan))
         out["cam_h"] = float((ex.get("road") or {}).get("camera_height", np.nan))
+        # The model's own desire_state: the probability it gives the route's turn, sent or not.
+        state = (ex.get("desire") or {}).get("state")
+        slot = {"left": DESIRE_TURN_LEFT, "right": DESIRE_TURN_RIGHT}.get(sc.side)
+        out["p_turn"] = float(state[slot]) if state and slot else np.nan
         return out
 
     # ---- the model ----
 
-    def _geo_path(self, sid):
-        return (
-            self.cache / "geometry" / (hashlib.sha1(f"{sid} {self.code}".encode()).hexdigest()[:16] + ".json")
-        )
+    def _geo_path(self, sc):
+        # The ring's own key is the one it had before there were sources, so its cache still applies.
+        what = f"{sc.sid} {self.code}" if sc.src == STOCK_SOURCE else f"{sc.sid} {list(sc.src)} {self.code}"
+        return self.cache / "geometry" / (hashlib.sha1(what.encode()).hexdigest()[:16] + ".json")
 
-    def geometry(self, key):
-        """The camera as openpilot sees it for one sample (`/geometry`), cached on disk. Also decodes the
-        sample's frames in its node."""
-        sid = self.sid(key)
-        if sid not in self._geo:
-            path = self._geo_path(sid)
+    def geometry(self, key, config=None):
+        """The camera as openpilot sees it for one sample and source (`/geometry`), cached on disk. Also decodes
+        the source's frames in the sample's node. key: a key, or a scene."""
+        sc = self.scene(key, config)
+        k = (sc.sid, sc.src)
+        if k not in self._geo:
+            path = self._geo_path(sc)
             if path.exists():
-                self._geo[sid] = json.loads(path.read_text())
+                self._geo[k] = json.loads(path.read_text())
             else:
-                g = self.pool.node(sid).post("/geometry", {"observations": self.scene(sid).wire})
+                g = self.pool.node(sc.sid).post("/geometry", {"observations": sc.wire})
                 path.write_text(json.dumps(g))
-                self._geo[sid] = g
-        return self._geo[sid]
+                self._geo[k] = g
+        return self._geo[k]
 
-    def _prefetch(self, sids):
-        """`/geometry` for each sample not yet on disk, in parallel across nodes."""
-        need = [s for s in dict.fromkeys(sids) if s not in self._geo and not self._geo_path(s).exists()]
+    def _prefetch(self, scenes):
+        """`/geometry` for each scene not yet on disk, in parallel across nodes."""
+        need = {(s.sid, s.src): s for s in scenes}
+        need = [s for k, s in need.items() if k not in self._geo and not self._geo_path(s).exists()]
         if need:
-            self.pool.start({self.pool.assign(s) for s in need})
-            for f in [self.pool.node(s).ex.submit(self.geometry, s) for s in need]:
+            self.pool.start({self.pool.assign(s.sid) for s in need})
+            for f in [self.pool.node(s.sid).ex.submit(self.geometry, s) for s in need]:
                 f.result()
 
     def planes(self, key, older=False):
         """The keyframe's (Y, U, V) planes, or (older) those of the frame `img` pairs it with, converted as
-        the adapter converts them."""
+        the adapter converts them. key: a key (the recorded camera), or a scene."""
         sc = self.scene(key)
-        k = (sc.sid, older)
+        k = (sc.sid, sc.src, older)
         if k not in self._planes:
             self._planes[k] = rgb_to_yuv420(load_frame(sc.older_frame if older else sc.frame))
         return self._planes[k]
@@ -910,8 +1184,9 @@ class Lab:
         """(6, 128, 256) uint8: what the model is handed for this view under a config, on the keyframe or
         (older) the frame `img` pairs it with. Built with the node's own `View`, so it can be drawn without
         running the model; every fresh result checks it against what the node fed."""
-        st, sc = as_setting(config), self.scene(key)
-        g = self.geometry(sc.sid)
+        st = as_setting(config)
+        sc = self.scene(key, st)
+        g = self.geometry(sc)
         spec = view_specs(st, sc, g).get(view, {})
         v = NODE.View.from_warp(
             warp(st, sc, view, g).astype(np.float32),
@@ -919,11 +1194,17 @@ class Lab:
             tuple(g["model_size"][view]),
             tuple(g["source_size"]),
         )
-        return v.apply(*self.planes(sc.sid, older))
+        return v.apply(*self.planes(sc, older))
 
-    def _job(self, sid, body):
-        """A result's cache key: the exact matrices and tables sent, the sample, the device and the code."""
-        blob = {"sample": sid, "views": body.get("views"), "device": self.device, "code": self.code}
+    def _job(self, sc, body):
+        """A result's cache key: the exact matrices and tables sent, the sample, its source, the desire and the
+        commands it was sent on, the device and the code. A key adds nothing for the recorded camera and no
+        desire, so results cached before those knobs existed still apply."""
+        blob = {"sample": sc.sid, "views": body.get("views"), "device": self.device, "code": self.code}
+        if sc.src != STOCK_SOURCE:
+            blob["source"] = list(sc.src)
+        if "desire" in body:
+            blob["desire"] = [body["desire"], [o["command"] for o in body["observations"]]]
         return hashlib.sha1(json.dumps(blob, sort_keys=True).encode()).hexdigest()[:16]
 
     def fetch(self, jobs, inputs=False):
@@ -932,15 +1213,21 @@ class Lab:
         A result is /run's reply (trajectory, extras, warps, in_bounds, ticks, ms), or {"error": ...} for a
         config that cannot be shown. inputs=True runs afresh and keeps the model's keyframe tensors."""
         jobs = [(as_setting(st), self.sid(k)) for st, k in jobs]
-        self._prefetch([sid for _, sid in jobs])
-        out, where, todo = [None] * len(jobs), {}, {}
+        out, where, todo, scenes = [None] * len(jobs), {}, {}, {}
         for i, (st, sid) in enumerate(jobs):
             try:
-                body = request(st, self.scene(sid), self.geometry(sid))
+                scenes[i] = self.scene(sid, st)
+            except ValueError as e:  # a cut that does not fit the frame
+                out[i] = {"error": str(e)}
+        self._prefetch(scenes.values())
+        for i, sc in scenes.items():
+            st, sid = jobs[i]
+            try:
+                body = request(st, sc, self.geometry(sc))
             except ValueError as e:
                 out[i] = {"error": str(e)}
                 continue
-            h = self._job(sid, body)
+            h = self._job(sc, body)
             where.setdefault(h, []).append(i)
             have = self._res.get(h)
             if inputs:
@@ -977,7 +1264,7 @@ class Lab:
                 self._res[h], failed = {"error": f"{type(e).__name__}: {e}"}, failed + 1
                 continue
             for v in VIEWS:
-                w, hh = self.geometry(sid)["model_size"][v]
+                w, hh = self.geometry(sid, st)["model_size"][v]
                 fed = np.frombuffer(base64.b64decode(r["inputs"][v]), np.uint8).reshape(6, hh // 2, w // 2)
                 if not np.array_equal(self.model_input(st, sid, v), fed):
                     raise AssertionError(
@@ -995,7 +1282,8 @@ class Lab:
     # ---- drawing ----
 
     def _headline(self, sc):
-        return f"{sc.label}: {sc.nav} at {sc.v:.1f} m/s; camera {sc.h:.2f} m over the road ({sc.h_how})"
+        out = f"{sc.label}: {sc.nav} at {sc.v:.1f} m/s; camera {sc.h:.2f} m over the road ({sc.h_how})"
+        return out if sc.src == STOCK_SOURCE else f"{out}\nfed {sc.source}"
 
     @staticmethod
     def _summary(name, m):
@@ -1040,16 +1328,19 @@ class Lab:
                 if last:
                     for line in _lattice(W, w, h):
                         ax.plot(line[:, 0] * s, line[:, 1] * s, color=c, lw=0.5, alpha=0.6)
-        hz = _rays_to(np.array(g["camera_from_calib"])) * s
+        hz = _rays_to(real_camera(sc, g)) * s
         ax.plot(hz[:, 0], hz[:, 1], ":", color="white", lw=1.2)
         ax.set_xlim(0, photo.shape[1])
         ax.set_ylim(photo.shape[0], 0)
         ax.set_axis_off()
+        return s
 
     def _view(self, ax, sc, g, st, view, older, overlay=False, plans=(), horizons=False, title=None):
         """One model input as the model was handed it, YUV drawn as RGB at its full 512 x 256. overlay: the GT
         and each plan on it, through the real camera at its real height, then the view's own warp; the title
-        counts the waypoints in view, since a sharp turn leaves img's 31 deg within a few metres."""
+        counts the waypoints in view, since a sharp turn leaves img's 31 deg within a few metres. horizons: the
+        row openpilot expects the horizon on (`expected_row`, solid, labelled) and the camera's real horizon
+        through this config's warp (dashed)."""
         w, h = g["model_size"][view]
         ax.imshow(_yuv_rgb(self.model_input(st, sc.sid, view, older)), extent=(0, w, h, 0))
         Wi = np.linalg.inv(warp(st, sc, view, g))
@@ -1061,10 +1352,15 @@ class Lab:
                 ax.plot(uv[:, 0], uv[:, 1], "o-", color=c, lw=lw, ms=3, path_effects=OUTLINE)
                 counts.append(f"{name} {int(_inside(uv, w, h).sum())}/{len(xy)}")
         if horizons:
-            real = apply_h(Wi, _rays_to(np.array(g["camera_from_calib"])))
+            real = apply_h(Wi, _rays_to(real_camera(sc, g)))
             ax.plot(real[:, 0], real[:, 1], "--", color="white", lw=1)
-            trained = _rays_to(np.linalg.inv(np.array(g["calib_from_model"][view])))
-            ax.plot(trained[:, 0], trained[:, 1], ":", color="white", lw=1)
+            row = expected_row(g, view)
+            stroke = [patheffects.withStroke(linewidth=2.5, foreground="black")]
+            ax.axhline(row, color="white", lw=1.4, path_effects=stroke)
+            ax.text(
+                4, row - 2, f"expected horizon, row {row:.1f} of {h}", color="white", fontsize=8, va="bottom",
+                path_effects=stroke, clip_on=True,
+            )  # fmt: skip
         ax.set_xlim(0, w)
         ax.set_ylim(h, 0)
         ax.set_xticks([])
@@ -1119,10 +1415,10 @@ class Lab:
         ax.set_xlabel("t (s)")
         ax.set_title(f"heading per step, toward the route ({sc.side}) (deg)", fontsize=10)
 
-    def _road_map(self, ax, sc, g, st):
-        """Where the config moves the road in the model's eyes, relative to stock (`road_map`): a grid of 5 m
-        squares to 60 m, grey as it is and red as the model sees it."""
-        F = road_map(st, sc, g)
+    def _road_map(self, ax, sc, g, st, base=STOCK, sc0=None, g0=None, name0="stock"):
+        """Where the config moves the road in the model's eyes, relative to the baseline (`road_map`): a grid of
+        5 m squares to 60 m, grey as it is and red as the model sees it."""
+        F = road_map(st, sc, g, base, sc0, g0)
         for x in np.arange(5, 61, 5):
             seg = np.c_[np.full(41, x), np.linspace(-10, 10, 41)]
             ax.plot(seg[:, 1], seg[:, 0], color="#cccccc", lw=0.8)
@@ -1137,7 +1433,7 @@ class Lab:
         ax.set_ylim(0, 75)
         ax.set_xlabel("lateral (m, left +)")
         ax.set_ylabel("forward (m)")
-        ax.set_title("the road (grey), as the config shows it to the model (red)", fontsize=10)
+        ax.set_title(f"the road as {name0} shows it (grey), as the config does (red)", fontsize=10)
 
     # ---- part 1 ----
 
@@ -1274,6 +1570,72 @@ class Lab:
         print("every camera's views span (right and down +): " + "; ".join(span))
         display(pd.DataFrame(rows).set_index("key").round(2))
 
+    def show_cameras(self, key=None, quality=80):
+        """Part 1: the two front cameras a config can feed the model (`camera`), on one turn, the first by
+        default. For each: the keyframe with its views' footprints and the cut comma's EON camera would make of
+        it (`fov_deg=T.EON_FOV`); then img and big_img at the keyframe, with the row openpilot expects the
+        horizon on; then a table of the two. Runs no model: it reads each camera's /geometry."""
+        sid = self.sid(key or self.keys[0])
+        eon = Setting(fov_deg=EON_FOV)
+        fig = plt.figure(figsize=(22, 12.5))
+        gs = fig.add_gridspec(
+            2, 3, width_ratios=[1.45, 1, 1], hspace=0.18, wspace=0.08, top=0.92, bottom=0.02, left=0.02, right=0.98
+        )  # fmt: skip
+        stroke = [patheffects.withStroke(linewidth=2, foreground="black")]
+        rows = []
+        for i, cam in enumerate(CAMERAS):
+            st = Setting(camera=cam)
+            sc = self.scene(sid, st)
+            g = self.geometry(sc)
+            ax = fig.add_subplot(gs[i, 0])
+            s = self._camera(ax, sc, g, [(st, None)])
+            c = cut(eon, sc.K, sc.size)
+            x0, y0, x1, y1 = (v * s for v in c.box)
+            ax.plot([x0, x1, x1, x0, x0], [y0, y0, y1, y1, y0], "-.", color="white", lw=1.6)
+            ax.text(
+                x0 + 8, y0 + 8, f"comma's EON: {EON_FOV:.1f} deg across, {c.box[2] - c.box[0]:.0f} x "
+                f"{c.box[3] - c.box[1]:.0f} px here", color="white", fontsize=9, va="top", path_effects=stroke,
+            )  # fmt: skip
+            ax.set_title(
+                f"{cam} ({CAMERAS[cam]}): the keyframe, img (yellow) and big_img (cyan, dashed) as cut from it;\n"
+                "dash-dot, the EON's cut; dotted, the camera's horizon",
+                fontsize=10,
+            )
+            for j, v in enumerate(VIEWS):
+                self._view(
+                    fig.add_subplot(gs[i, 1 + j]),
+                    sc,
+                    g,
+                    st,
+                    v,
+                    False,
+                    horizons=True,
+                    title=f"{cam}: {v} at t",
+                )
+            w, h = sc.size
+            row = {
+                "camera": f"{cam} ({CAMERAS[cam]})",
+                "frame (px)": f"{w} x {h}",
+                "focal length (px)": sc.K[0, 0],
+                "field of view (deg)": f"{np.degrees(2 * np.arctan(w / 2 / sc.K[0, 0])):.1f} x "
+                f"{np.degrees(2 * np.arctan(h / 2 / sc.K[1, 1])):.1f}",
+                "height over the road (m)": sc.h,
+                "roll, pitch, yaw (deg)": ", ".join(f"{np.degrees(a):+.2f}" for a in g["rpy"]),
+            }
+            for v in VIEWS:
+                (mw, mh), W = g["model_size"][v], warp(STOCK, sc, v, g)
+                pc = [apply_h(W, [[mw / 2 + dx, mh / 2]])[0] for dx in (0, 1)]
+                row[f"{v}: camera px per model px"] = float(np.linalg.norm(pc[1] - pc[0]))
+            row["EON cut: camera px per EON px"] = c.scale
+            rows.append(row)
+        fig.suptitle(
+            f"{_label(sid)}: the two front cameras, as openpilot cuts its views from each. White, solid: the row "
+            "openpilot expects the horizon on; dashed: the camera's own",
+            fontsize=12,
+        )
+        _show_photo(fig, quality)
+        display(pd.DataFrame(rows).set_index("camera").round(3))
+
     # ---- part 2 ----
 
     def show_measurements(self, key=None, quality=80):
@@ -1402,9 +1764,10 @@ class Lab:
         """Raise unless: (1) the node is the stock adapter, bit for bit, with no config and with an identity
         config sent as every config is (calib and post); (2) what this module draws is what the model was fed,
         on every path through `View`; (3) the node's stock reproduces the recorded run on every turn, within
-        tol_m; (4) the ticks counted here, from which the older frame is found, are the node's."""
+        tol_m; (4) the ticks counted here, from which the older frame is found, are the node's; (5) a cut of the
+        frame (the EON's 65.2 deg) shows the model every pixel along the ray the recorded frame does."""
         sc = self.scene(key or self.keys[0])
-        self._prefetch(self.keys)
+        self._prefetch([self.scene(k) for k in self.keys])
         nd, g = self.pool.node(sc.sid), self.geometry(sc.sid)
         body = request(STOCK, sc, g)
         ref = nd.post("/stock", {"observations": body["observations"]})
@@ -1456,21 +1819,53 @@ class Lab:
             "the ticks counted here are not the node's"
         )
 
+        # 5. A cut's geometry: openpilot, told the cut's intrinsics, must see each model pixel along the ray it
+        # saw it along in the frame as recorded. A maps a recorded pixel to the cut's, so A @ W = W_cut.
+        eon = Setting(fov_deg=EON_FOV)
+        sc5 = self.scene(sc.sid, eon)
+        g5, c = self.geometry(sc5), sc5.cut
+        A = np.array(
+            [
+                [1 / c.scale, 0.0, (0.5 - c.box[0]) / c.scale - 0.5],
+                [0.0, 1 / c.scale, (0.5 - c.box[1]) / c.scale - 0.5],
+                [0.0, 0.0, 1.0],
+            ]
+        )
+        same_rpy = np.allclose(g5["rpy"], g["rpy"], atol=1e-6)
+        for v in VIEWS:
+            w, h = g["model_size"][v]
+            grid = np.stack(np.meshgrid(np.linspace(0, w, 17), np.linspace(0, h, 9)), -1).reshape(-1, 2)
+            err = np.abs(
+                apply_h(warp(STOCK, sc5, v, g5), grid) - apply_h(A @ warp(STOCK, sc, v, g), grid)
+            ).max()
+            print(
+                f"5. {sc.label}, {v}: the {EON_FOV:.1f} deg cut ({c.size[0]} x {c.size[1]}, {c.scale:.3f} camera px "
+                f"each) sees every model pixel where the recorded frame does, to {err:.4f} cut px; rpy the same: "
+                f"{same_rpy}"
+            )
+            assert err < 0.01 and same_rpy, f"the cut's geometry is not the recorded frame's ({v})"
+
     # ---- part 3 ----
 
-    def tweak(self, key, config=None, run=True, overlay=("img",), noise=True, quality=80):
-        """Part 3: one config on one turn, beside stock, both run here. run=False draws only what the model would
-        be shown, in a second or two. overlay: where the GT and the plans are drawn: "img" and "big_img", on that
-        view's keyframe, with the camera's horizon (dashed) and the one the model was trained to expect (dotted);
-        "camera", on the keyframe as the camera took it. noise: add a row of the largest change any of the eight
-        half-pixel SHIFTS makes on this turn, which a change must beat to be the config's doing."""
+    def tweak(self, key, config=None, run=True, overlay=("img",), noise=True, quality=80, against=None):
+        """Part 3: one config on one turn, beside stock (or `against`, any other config), both run here.
+        run=False draws only what the model would be shown, in a second or two. overlay: where the GT and the
+        plans are drawn: "img" and "big_img", on that view's keyframe; "camera", on the keyframe as the
+        camera took it. Every keyframe panel draws the row openpilot expects the horizon on (solid) and the
+        camera's horizon (dashed). noise: add a row of the largest change any of the eight half-pixel SHIFTS
+        of the baseline makes on this turn, which a change must beat to be the config's doing."""
         st = as_setting(config)
-        sc = self.scene(key)
-        g = self.geometry(sc.sid)
+        base = STOCK if against is None else as_setting(against)
+        name0 = "stock" if base == STOCK else "against"
+        sc, sc0 = self.scene(key, st), self.scene(key, base)
+        g, g0 = self.geometry(sc), self.geometry(sc0)
         view_specs(st, sc, g)  # a view that would look behind the camera raises here, before anything runs
-        shifts = list(SHIFTS) if run and noise else []
-        res = self.fetch([(STOCK, sc.sid)] + ([(st, sc.sid)] if run else []) + [(s, sc.sid) for s in shifts])
-        plans = [(plan(res[0]), res[0]["extras"], STOCK_C, "stock")]
+        view_specs(base, sc0, g0)
+        shifts = [shifted(base, x) for x in SHIFTS] if run and noise else []
+        res = self.fetch([(base, sc.sid)] + ([(st, sc.sid)] if run else []) + [(x, sc.sid) for x in shifts])
+        if "error" in res[0]:
+            raise ValueError(f"{base.label()}: {res[0]['error']}")
+        plans = [(plan(res[0]), res[0]["extras"], STOCK_C, name0)]
         if run and "error" in res[1]:
             print(f"{st.label()}: {res[1]['error']}")
         elif run:
@@ -1480,39 +1875,45 @@ class Lab:
             3, 4, height_ratios=[2.35, 1.1, 2.0], hspace=0.25, wspace=0.2, top=0.94, bottom=0.01, left=0.02,
             right=0.98,
         )  # fmt: skip
-        views = gs[2, :].subgridspec(2, 4, hspace=0.25, wspace=0.2)  # stock's four inputs over the config's
+        views = gs[2, :].subgridspec(
+            2, 4, hspace=0.25, wspace=0.2
+        )  # the baseline's four inputs over the config's
         ax = fig.add_subplot(gs[0, 0:2])
-        self._camera(ax, sc, g, [(STOCK, GREY), (st, None)], plans=plans if "camera" in overlay else ())
+        same = sc0.src == sc.src
+        layers = ([(base, GREY)] if same else []) + [(st, None)]
+        self._camera(ax, sc, g, layers, plans=plans if "camera" in overlay else ())
+        grey = f"{name0}'s footprints grey; " if same else f"the config's source ({name0} is fed another); "
         ax.set_title(
-            "the keyframe: stock's footprints grey; the config's img (yellow) and big_img (cyan, dashed),\n"
+            f"the keyframe: {grey}the config's img (yellow) and big_img (cyan, dashed),\n"
             "their model pixels every 64; the camera's horizon (dotted) and the road",
             fontsize=10,
         )
-        self._road_map(fig.add_subplot(gs[0, 2]), sc, g, st)
+        self._road_map(fig.add_subplot(gs[0, 2]), sc, g, st, base, sc0, g0, name0)
         self._bev(fig.add_subplot(gs[0, 3]), sc, plans)
         self._speed(fig.add_subplot(gs[1, 0:2]), sc, plans)
         self._heading(fig.add_subplot(gs[1, 2:4]), sc, plans)
-        for i, (which, name, pl) in enumerate(((STOCK, "stock", plans[:1]), (st, "config", plans[1:]))):
+        rows_ = ((base, sc0, g0, name0, plans[:1]), (st, sc, g, "config", plans[1:]))
+        for i, (which, s_, g_, name, pl) in enumerate(rows_):
             for j, (v, older) in enumerate(PANELS):
                 when = f"t - {sc.pair_dt:.1f} s" if older else "t"
-                drawn = v in overlay and not older
                 self._view(
-                    fig.add_subplot(views[i, j]), sc, g, which, v, older, overlay=drawn, plans=pl,
-                    horizons=drawn, title=f"{name}: {v} at {when}",
+                    fig.add_subplot(views[i, j]), s_, g_, which, v, older, overlay=v in overlay and not older,
+                    plans=pl, horizons=not older, title=f"{name}: {v} at {when}",
                 )  # fmt: skip
-        fig.suptitle(f"{self._headline(sc)}\nconfig: {st.label()}", fontsize=12)
+        vs = "" if base == STOCK else f"\nagainst: {base.label()}"
+        fig.suptitle(f"{self._headline(sc)}\nconfig: {st.label()}{vs}", fontsize=12)
         _show_photo(fig, quality)
 
-        rows = {"stock": self.metrics(sc.sid, plans[0][0], plans[0][1])}
+        rows = {name0: self.metrics(sc.sid, plans[0][0], plans[0][1])}
         if len(plans) > 1:
             rows["config"] = self.metrics(sc.sid, plans[1][0], plans[1][1])
             rows["change"] = {
-                k: v - rows["stock"][k] for k, v in rows["config"].items() if isinstance(v, float)
+                k: v - rows[name0][k] for k, v in rows["config"].items() if isinstance(v, float)
             }
-            rows["change"]["mode"] = f"{rows['stock']['mode']} -> {rows['config']['mode']}"
-        if shifts:  # res[2:], after stock's and the config's
+            rows["change"]["mode"] = f"{rows[name0]['mode']} -> {rows['config']['mode']}"
+        if shifts:  # res[2:], after the baseline's and the config's
             ms = [self.metrics(sc.sid, plan(r), r["extras"]) for r in res[2:] if "error" not in r]
-            d = {k: [abs(m[k] - v) for m in ms] for k, v in rows["stock"].items() if isinstance(v, float)}
+            d = {k: [abs(m[k] - v) for m in ms] for k, v in rows[name0].items() if isinstance(v, float)}
             rows["noise"] = {k: max((x for x in xs if np.isfinite(x)), default=np.nan) for k, xs in d.items()}
             rows["noise"]["mode"] = ", ".join(sorted({m["mode"] for m in ms}))
         cols = [
@@ -1528,15 +1929,19 @@ class Lab:
             "turn_frac",
             "speed_rmse",
         ]
-        cols += ["v0_ratio", "head_ratio", "plan_v0", "cam_h"]
+        cols += ["v0_ratio", "head_ratio", "plan_v0", "cam_h", "p_turn"]
         display(pd.DataFrame(rows).T[cols].infer_objects().round(3))
         if shifts:
             print(
-                f"noise: the largest change that any of the {len(ms)} half-pixel shifts (T.SHIFTS) makes on this "
-                "turn, and every class they give; a change within it is not the config's doing"
+                f"noise: the largest change that any of the {len(ms)} half-pixel shifts (T.SHIFTS) of {name0} makes "
+                "on this turn, and every class they give; a change within it is not the config's doing"
             )
-        lam, mu = st.height_scale / st.zoom, st.height_scale * st.hstretch
-        line = f"the config shows a road point (X, Y) about where stock shows (X x {lam:.3f}, Y x {mu:.3f})"
+        F = road_map(st, sc, g, base, sc0, g0)
+        p0, p1 = apply_h(F, [[20.0, 0.0], [20.0, 1.0]])
+        line = (
+            f"the config shows a road point (X, Y) about where {name0} shows (X x {p0[0] / 20:.3f}, "
+            f"Y x {p1[1] - p0[1]:.3f}), measured 20 m ahead"
+        )
         if len(plans) > 1:
             inb = res[1].get("in_bounds") or {}
             line += "; share of each view inside the camera frame: " + ", ".join(
@@ -1550,40 +1955,71 @@ class Lab:
         m = self.metrics(sid, plan(r), r["extras"])
         return np.array([f(m) for _, _, f in CRITERIA], float), m
 
-    def noise_floor(self, keys=None):
-        """{criterion: (per turn, for the mean)}: what the eight half-pixel SHIFTS do to each criterion. Per turn,
-        the median |change| on one turn; for the mean, the largest |change| of the mean over the turns."""
+    def noise_floor(self, keys=None, base=None):
+        """{criterion: (per turn, for the mean)}: what the eight half-pixel SHIFTS of `base` (stock by default)
+        do to each criterion. Per turn, the median |change| on one turn; for the mean, the largest |change| of
+        the mean over the turns."""
         keys = tuple(self.sid(k) for k in (keys or self.keys))
-        if keys not in self._floor:
-            res = self.fetch([(st, k) for st in (STOCK, *SHIFTS) for k in keys])
+        base = STOCK if base is None else as_setting(base)
+        if (keys, base) not in self._floor:
+            res = self.fetch([(st, k) for st in (base, *(shifted(base, x) for x in SHIFTS)) for k in keys])
+            bad = sorted({r["error"] for r in res if "error" in r})
+            if bad:
+                raise ValueError(f"{base.label()}'s shifts cannot all be shown: {bad}")
             n = len(keys)
-            base = [self._crit(k, r)[0] for k, r in zip(keys, res[:n])]
+            ref = [self._crit(k, r)[0] for k, r in zip(keys, res[:n])]
             d = np.array(
                 [
-                    [self._crit(k, r)[0] - b for k, r, b in zip(keys, res[n * (i + 1) : n * (i + 2)], base)]
+                    [self._crit(k, r)[0] - b for k, r, b in zip(keys, res[n * (i + 1) : n * (i + 2)], ref)]
                     for i in range(len(SHIFTS))
                 ]
             )  # (shift, turn, criterion)
-            self._floor[keys] = {
+            self._floor[(keys, base)] = {
                 name: (
                     float(np.nanmedian(np.abs(d[:, :, i]))),
                     float(np.nanmax(np.abs(np.nanmean(d[:, :, i], axis=1)))),
                 )
                 for i, (name, _, _) in enumerate(CRITERIA)
             }
-        return self._floor[keys]
+        return self._floor[(keys, base)]
 
-    def compare(self, config, keys=None, noise=True):
-        """Part 4: the config against stock on every turn, both run here. noise: judge each change against what
-        the half-pixel SHIFTS do (noise_floor); without it any change at all counts."""
+    @staticmethod
+    def _verdict(d, per_turn, for_mean):
+        """(verdict, better, same, worse) for per-turn changes d of a lower-is-better criterion: a turn counts
+        when its change beats per_turn; the verdict needs the mean's change to beat for_mean, and more turns
+        to move that way than the other."""
+        better, worse = int((d < -per_turn).sum()), int((d > per_turn).sum())
+        same = int(np.isfinite(d).sum()) - better - worse
+        mean = float(np.nanmean(d))
+        if mean < -for_mean and better > worse:
+            return "better", better, same, worse
+        if mean > for_mean and worse > better:
+            return "worse", better, same, worse
+        return "no clear change", better, same, worse
+
+    def _run_all(self, settings, keys):
+        """[[result per turn] per setting], raising if a setting cannot be shown on some turn."""
+        n = len(keys)
+        res = self.fetch([(st, k) for st in settings for k in keys])
+        out = [res[i * n : (i + 1) * n] for i in range(len(settings))]
+        for st, part in zip(settings, out):
+            bad = [(self.scene(k).label, r["error"]) for k, r in zip(keys, part) if "error" in r]
+            if bad:
+                raise ValueError(f"{st.label()} cannot be shown: {bad}")
+        return out
+
+    def compare(self, config, keys=None, noise=True, against=None):
+        """Part 4: the config against stock (or `against`, any other config) on every turn, both run here.
+        noise: judge each change against what the half-pixel SHIFTS of the baseline do (noise_floor); without it
+        any change at all counts."""
         st = as_setting(config)
+        base = STOCK if against is None else as_setting(against)
+        name0 = "stock" if base == STOCK else "against"
         keys = [self.sid(k) for k in (keys or self.keys)]
         n = len(keys)
-        res = self.fetch([(STOCK, k) for k in keys] + [(st, k) for k in keys])
-        bad = [(self.scene(k).label, r["error"]) for k, r in zip(keys, res[n:]) if "error" in r]
-        if bad:
-            raise ValueError(f"{st.label()} cannot be shown: {bad}")
-        crit = [[self._crit(k, r) for k, r in zip(keys, part)] for part in (res[:n], res[n:])]
+        r0, r1 = self._run_all([base, st], keys)
+        res = r0 + r1
+        crit = [[self._crit(k, r) for k, r in zip(keys, part)] for part in (r0, r1)]
         (cs, ms), (cc, mc) = ([np.array([c for c, _ in part]), [m for _, m in part]] for part in crit)
 
         cols = (
@@ -1597,39 +2033,35 @@ class Lab:
             "v0_ratio",
             "head_ratio",
             "cam_h",
+            "p_turn",
         )
         per = {}
         for c in cols:
             a, b = np.array([m[c] for m in ms], float), np.array([m[c] for m in mc], float)
-            per |= {(c, "stock"): a, (c, "config"): b, (c, "change"): b - a}
-        per[("mode", "stock -> config")] = [f"{a['mode']} -> {b['mode']}" for a, b in zip(ms, mc)]
+            per |= {(c, name0): a, (c, "config"): b, (c, "change"): b - a}
+        per[("mode", f"{name0} -> config")] = [f"{a['mode']} -> {b['mode']}" for a, b in zip(ms, mc)]
         per_df = pd.DataFrame(per, index=[self.scene(k).label for k in keys])
         per_df.columns = pd.MultiIndex.from_tuples(per_df.columns)
-        display(Markdown(f"**Each turn, stock and config: {st.label()}** (both run here on {self.device})"))
+        vs = "" if base == STOCK else f", against {base.label()}"
+        display(
+            Markdown(f"**Each turn, {name0} and config: {st.label()}**{vs} (both run here on {self.device})")
+        )
         display(per_df.round(3))
 
-        floor = self.noise_floor(keys) if noise else {name: (0.0, 0.0) for name, _, _ in CRITERIA}
+        floor = self.noise_floor(keys, base) if noise else {name: (0.0, 0.0) for name, _, _ in CRITERIA}
         rows, groups = [], {}
         for i, (name, group, _) in enumerate(CRITERIA):
             d = cc[:, i] - cs[:, i]
             per_turn, for_mean = floor[name]
-            better, worse = int((d < -per_turn).sum()), int((d > per_turn).sum())
-            same = int(np.isfinite(d).sum()) - better - worse
-            mean = float(np.nanmean(d))
-            if mean < -for_mean and better > worse:
-                verdict = "better"
-            elif mean > for_mean and worse > better:
-                verdict = "worse"
-            else:
-                verdict = "no clear change"
+            verdict, better, same, worse = self._verdict(d, per_turn, for_mean)
             groups.setdefault(group, []).append(verdict)
             rows.append(
                 {
                     "criterion": name,
                     "judges": group,
-                    "stock": float(np.nanmean(cs[:, i])),
+                    name0: float(np.nanmean(cs[:, i])),
                     "config": float(np.nanmean(cc[:, i])),
-                    "change": mean,
+                    "change": float(np.nanmean(d)),
                     "noise, mean": for_mean,
                     "noise, per turn": per_turn,
                     "better / same / worse": f"{better} / {same} / {worse}",
@@ -1645,7 +2077,7 @@ class Lab:
             {
                 "criterion": "turns planned toward the route (count, higher is better)",
                 "judges": "alignment",
-                "stock": planned[0],
+                name0: planned[0],
                 "config": planned[1],
                 "change": planned[1] - planned[0],
                 "better / same / worse": "",
@@ -1655,25 +2087,27 @@ class Lab:
         display(Markdown("**Means over the turns, and the verdict**"))
         display(pd.DataFrame(rows).set_index("criterion").round(3))
         lines = []
-        for group, vs in groups.items():
+        for group, vs_ in groups.items():
             word = (
                 "better"
-                if "better" in vs and "worse" not in vs
+                if "better" in vs_ and "worse" not in vs_
                 else "worse"
-                if "worse" in vs and "better" not in vs
+                if "worse" in vs_ and "better" not in vs_
                 else "mixed"
-                if "better" in vs
+                if "better" in vs_
                 else "no clear change"
             )
-            lines.append(f"- **{group}: {word}** ({', '.join(vs)})")
+            lines.append(f"- **{group}: {word}** ({', '.join(vs_)})")
         how = "beyond what eight half-pixel shifts do" if noise else "any change counts (noise=False)"
-        display(Markdown(f"**{st.label()}**, against stock on {n} turns ({how}):\n\n" + "\n".join(lines)))
+        display(
+            Markdown(f"**{st.label()}**, against {name0}{vs} on {n} turns ({how}):\n\n" + "\n".join(lines))
+        )
 
         fig, axes = plt.subplots(3, n, figsize=(4.4 * n, 13), squeeze=False)
         for j, k in enumerate(keys):
             sc = self.scene(k)
             plans = [
-                (plan(res[j]), res[j]["extras"], STOCK_C, "stock"),
+                (plan(res[j]), res[j]["extras"], STOCK_C, name0),
                 (plan(res[n + j]), res[n + j]["extras"], CONFIG_C, "config"),
             ]
             self._bev(axes[0, j], sc, plans)
@@ -1685,6 +2119,95 @@ class Lab:
             )
             axes[1, j].set_title("speed (m/s); t = 0: ▶ pose, ◀ head, ◆ plan_v0", fontsize=9)
             axes[2, j].set_title("heading toward the route (deg)", fontsize=9)
-        fig.suptitle(f"stock (orange) and the config (purple): {st.label()}", fontsize=12)
+        fig.suptitle(f"{name0} (orange) and the config (purple): {st.label()}{vs}", fontsize=12)
+        fig.tight_layout(rect=(0, 0, 1, 1 - 0.8 / fig.get_figheight()))
+        plt.show()
+
+    # ---- part 5 ----
+
+    def arms(self, arms, keys=None, noise=True):
+        """Part 5: several configs on every turn, side by side. arms: {name: config}, at most five, the first
+        the reference: each other arm's change is judged against it, beyond what the half-pixel SHIFTS of the
+        first arm do (noise=False: any change counts). Each arm keeps its colour (ARM_C) by its place in the
+        dict, so reordering the dict repaints it; adding an arm at the end does not."""
+        if not 1 <= len(arms) <= len(ARM_C):
+            raise ValueError(f"arms takes 1 to {len(ARM_C)} configs; split a longer list over several calls")
+        names = list(arms)
+        sts = [as_setting(c) for c in arms.values()]
+        keys = [self.sid(k) for k in (keys or self.keys)]
+        n = len(keys)
+        res = self._run_all(sts, keys)
+        crit = [[self._crit(k, r) for k, r in zip(keys, part)] for part in res]
+        cs = [np.array([c for c, _ in part]) for part in crit]
+        ms = [[m for _, m in part] for part in crit]
+
+        display(
+            Markdown("**The arms**\n\n" + "\n".join(f"- **{a}**: {st.label()}" for a, st in zip(names, sts)))
+        )
+        cols = (
+            "ade",
+            "path_err",
+            "dpsi_err",
+            "turn_frac",
+            "speed_rmse",
+            "v0_ratio",
+            "head_ratio",
+            "p_turn",
+            "mode",
+        )
+        per = {(c, a): [m[c] for m in ma] for c in cols for a, ma in zip(names, ms)}
+        per_df = pd.DataFrame(per, index=[self.scene(k).label for k in keys])
+        per_df.columns = pd.MultiIndex.from_tuples(per_df.columns)
+        display(Markdown(f"**Each turn** (run here on {self.device})"))
+        display(per_df.round(3))
+
+        floor = self.noise_floor(keys, sts[0]) if noise else {name: (0.0, 0.0) for name, _, _ in CRITERIA}
+        rows = []
+        for i, (name, group, _) in enumerate(CRITERIA):
+            row = {"criterion": name, "judges": group}
+            for a, c in zip(names, cs):
+                row[a] = float(np.nanmean(c[:, i]))
+            row["noise, mean"] = floor[name][1]
+            for a, c in zip(names[1:], cs[1:]):
+                v, b, sm, w = self._verdict(c[:, i] - cs[0][:, i], *floor[name])
+                row[f"{a}: verdict"] = f"{v} ({b} / {sm} / {w})"
+            rows.append(row)
+        planned = {
+            "criterion": "turns planned toward the route (count, higher is better)",
+            "judges": "alignment",
+        }
+        planned |= {a: sum(m["planned"] for m in ma) for a, ma in zip(names, ms)}
+        p_turn = {
+            "criterion": "p_turn: the model's probability of the route's turn (mean)",
+            "judges": "desire",
+        }
+        p_turn |= {a: float(np.nanmean([m["p_turn"] for m in ma])) for a, ma in zip(names, ms)}
+        rows += [planned, p_turn]
+        how = "beyond what eight half-pixel shifts of it do" if noise else "any change counts (noise=False)"
+        display(
+            Markdown(
+                f"**Means over the {n} turns.** Each verdict is that arm against **{names[0]}**, {how}; in "
+                "brackets, the turns better / the same / worse."
+            )
+        )
+        display(pd.DataFrame(rows).set_index("criterion").round(3))
+
+        colours = ARM_C[: len(names)]
+        fig, axes = plt.subplots(3, n, figsize=(4.4 * n, 13), squeeze=False)
+        for j, k in enumerate(keys):
+            sc = self.scene(k)
+            plans = [(plan(part[j]), part[j]["extras"], c, a) for part, c, a in zip(res, colours, names)]
+            self._bev(axes[0, j], sc, plans)
+            self._speed(axes[1, j], sc, plans, legend=j == 0)
+            self._heading(axes[2, j], sc, plans)
+            axes[0, j].set_title(
+                f"{sc.label}: {sc.side} in {sc.nav_m:g} m\nADE "
+                + ", ".join(f"{m[j]['ade']:.2f}" for m in ms)
+                + " m",
+                fontsize=10,
+            )
+            axes[1, j].set_title("speed (m/s); t = 0: ▶ pose, ◀ head, ◆ plan_v0", fontsize=9)
+            axes[2, j].set_title("heading toward the route (deg)", fontsize=9)
+        fig.suptitle("the arms, in the legend's order: " + ", ".join(names), fontsize=12)
         fig.tight_layout(rect=(0, 0, 1, 1 - 0.8 / fig.get_figheight()))
         plt.show()
