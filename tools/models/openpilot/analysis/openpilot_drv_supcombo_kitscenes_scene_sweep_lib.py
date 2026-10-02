@@ -34,6 +34,7 @@ import json
 import multiprocessing as mp
 import os
 import time
+import warnings
 from concurrent.futures import ProcessPoolExecutor
 
 import matplotlib.pyplot as plt
@@ -70,6 +71,15 @@ COLS = [
 ]  # fmt: skip
 # The figures and scores are this file's as much as the image-tweak lib's: both hashes key their directory.
 SWEEP_CODE = hashlib.sha1(open(__file__, "rb").read()).hexdigest()[:6]
+# What timeline() returns adds three errors against references it draws (absolute: smaller is closer), so a
+# config's effect on the plan's heading, start speed and read camera height can be scored, not only seen.
+ERRORS = {
+    "heading_err": ("dpsi_l", "gt_dpsi_l"),
+    "v0_err": ("v0_plan", "v0_gt"),
+    "cam_h_err": ("cam_h", None),
+}
+REFS = ("gt_dpsi_l", "v", "v0_gt")  # the GT and pose values timeline() draws beside the model's
+LOWER_IS_BETTER = ("ade", "fde_1s", "fde_2s", "fde_3s", "lat", "lon", "path_err", "ade_long", *ERRORS)
 NOISE_COLS = ("ade", "fde_3s", "lat", "path_err", "dpsi_l", "v0_plan", "head", "cam_h", "p_left", "p_right")
 
 
@@ -352,7 +362,9 @@ class SceneLab(T.Lab):
     def timeline(self, config=None, against=None, cols=None, figsize=None):
         """Part 4: every keyframe's scores and the model's heads along the scene, one panel per group (cols:
         {title: [column, ...]} to draw others). The baseline's noise floor is the grey band about it; the
-        listed keyframes are dotted; the route's turns are shaded (blue left, red right, by the list's rule)."""
+        listed keyframes are dotted; the route's turns are shaded (blue left, red right, by the list's rule).
+
+        Returns what it drew, one row per keyframe and arm (see `_plotted`), for `compare` or your own tests."""
         arms = self._arms(config, against)
         s = self.sweep(config, against)
         groups = cols or {
@@ -396,6 +408,71 @@ class SceneLab(T.Lab):
         fig.suptitle(self._title(arms), fontsize=12)
         fig.tight_layout(rect=(0, 0, 1, 0.985))
         plt.show()
+        return self._plotted(s, groups)
+
+    def _plotted(self, s, groups):
+        """The timeline's numbers: the keyframe (t_s, listed, route, side), every column drawn, the references
+        drawn beside them (gt_dpsi_l, v, v0_gt), the ERRORS against those references, and `noise_<col>` for
+        the drawn columns that have one (on the baseline's rows; NaN on the config's)."""
+        cs = list(dict.fromkeys(c for g in groups.values() for c in g))
+        refs = [c for c in REFS if c not in cs]
+        out = s[["t_s", "listed", "route", "side", *cs, *refs]].copy()
+        h = self.scene(self.keys[0]).h  # the map's height: one per scene
+        for name, (c, ref) in ERRORS.items():
+            out[name] = (s[c] - (h if ref is None else s[ref])).abs()
+        return out.join(s[[f"noise_{c}" for c in cs if f"noise_{c}" in s]])
+
+    def compare(self, plotted, ks=None, block=10, n_boot=2000, seed=0):
+        """The config against the baseline, keyframe by keyframe, on every number in `plotted` (timeline's
+        return); ks: a slice or list of keyframes, e.g. slice(110, 137) for the turn the model misses.
+
+        Per column: each arm's mean and median, and the paired difference (config - baseline) as a mean, a
+        median and a 95 % interval for the mean. The interval is a moving-block bootstrap over `block`
+        keyframes, not a paired test over keyframes: neighbours share 47 of 48 history frames, so 120
+        keyframes are far fewer independent samples, and a test that counted them as 120 would be overconfident.
+        `beyond noise -` / `+`: the keyframes where the difference exceeds the baseline's half-pixel noise floor
+        that way (columns with a floor only). `verdict`: for the LOWER_IS_BETTER columns, "better" or "worse"
+        when the interval excludes 0; for the rest, "down" or "up". With one arm (CONFIG None) the baseline is
+        compared with itself: every difference 0, the identity output."""
+        arms = list(dict.fromkeys(plotted.index.get_level_values("arm")))
+        b, c = plotted.xs(arms[0], level="arm"), plotted.xs(arms[-1], level="arm")
+        if ks is not None:
+            b, c = b.loc[ks], c.loc[ks]
+        n = len(b)
+        block = max(1, min(block, n))
+        rng = np.random.default_rng(seed)
+        starts = rng.integers(0, n - block + 1, size=(n_boot, -(-n // block)))
+        boot = (starts[..., None] + np.arange(block)).reshape(n_boot, -1)[:, :n]
+        rows = []
+        for col in b.select_dtypes("number").columns:
+            if col.startswith("noise_") or col in ("t_s", *REFS):  # REFS: the same in every arm
+                continue
+            d = (c[col] - b[col]).to_numpy(float)
+            if not np.isfinite(d).any():
+                continue
+            with np.errstate(all="ignore"), warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)  # an all-NaN draw: a straight-only column
+                means = np.nanmean(d[boot], axis=1)
+            lo, hi = np.nanpercentile(means, [2.5, 97.5])
+            row = {
+                "column": col, "n": int(np.isfinite(d).sum()),
+                f"{arms[0]} mean": b[col].mean(), f"{arms[-1]} mean": c[col].mean(),
+                f"{arms[0]} median": b[col].median(), f"{arms[-1]} median": c[col].median(),
+                "diff mean": np.nanmean(d), "diff median": np.nanmedian(d), "95% lo": lo, "95% hi": hi,
+            }  # fmt: skip
+            if f"noise_{col}" in b:
+                e = b[f"noise_{col}"].to_numpy(float)
+                row["beyond noise -"], row["beyond noise +"] = int((d < -e).sum()), int((d > e).sum())
+            sign = "down" if hi < 0 else "up" if lo > 0 else "no change shown"
+            if col in LOWER_IS_BETTER and sign != "no change shown":
+                sign = "better" if sign == "down" else "worse"
+            rows.append(row | {"verdict": sign})
+        what = f"{arms[-1]} - {arms[0]}" if len(arms) > 1 else f"{arms[0]} against itself (no CONFIG)"
+        span = f"keyframes {b.index.min()}-{b.index.max()}" if n else "no keyframes"
+        print(f"{what}, {span} ({n}); interval: {n_boot} moving-block bootstraps of {block} keyframes")
+        out = pd.DataFrame(rows).set_index("column")
+        counts = [c for c in ("beyond noise -", "beyond noise +") if c in out]
+        return out.astype({c: "Int64" for c in counts})  # integers, blank where a column has no floor
 
     def _shade(self, ax, base, at=None):
         k = base.index.to_numpy()
