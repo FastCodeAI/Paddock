@@ -1,0 +1,117 @@
+{
+  "run_id": "20261005T205400-a369d1",
+  "site": "hpcai-skodate",
+  "benchmark": "kitscenes",
+  "model": "openpilot",
+  "mode": "open_loop",
+  "started_utc": "2026-10-05T20:54:00+00:00",
+  "duration_s": 1745.6,
+  "repo_sha": "555f48c5d28709f039b79f3f6105e51305edd4b5",
+  "dataset": {
+    "name": "kitscenes",
+    "n_samples": 223,
+    "sequences_sha256": "80665529bea7f500",
+    "n_expected": 223
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_OP_ROAD",
+      "CAM_OP_WIDE",
+      "CAM_FRONT"
+    ],
+    "ground_offset_m": 2.2,
+    "command_source": "gt",
+    "front_camera": "base",
+    "cameras_supplied": [
+      "CAM_FRONT"
+    ],
+    "model_env": {
+      "PADDOCK_FFMPEG": "<site path:31abb8b2>",
+      "PYTHONPATH": "<site path:c29e1412>:{repo}:{repo}/opendbc_repo",
+      "PADDOCK_OPENPILOT_BACKEND": "onnx",
+      "PADDOCK_OPENPILOT_HEIGHT_SCALE": "1.22",
+      "PADDOCK_OPENPILOT_PITCH_DEG": "-1.7",
+      "PADDOCK_OPENPILOT_FOV_DEG": "55",
+      "PADDOCK_OPENPILOT_DESIRE": "turn"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "openpilot",
+      "sha": "555f48c5d28709f039b79f3f6105e51305edd4b5",
+      "pinned_sha": "555f48c5d",
+      "at_pin": true
+    },
+    "policy": {
+      "run_takes_prepare_only": false,
+      "backend": "onnx",
+      "model": "small",
+      "desire_mode": "turn",
+      "height_scale": 1.22,
+      "pitch_deg": -1.7,
+      "fov_deg": 55.0,
+      "source_size": [
+        5856,
+        3104
+      ],
+      "resample_mode": "cut",
+      "source_hfov_deg": 88.19,
+      "source_vfov_deg": 54.37,
+      "margin_deg": {
+        "img": {
+          "horizontal": 23.6,
+          "vertical": 23.44
+        },
+        "big_img": {
+          "horizontal": -3.7,
+          "vertical": 4.94
+        }
+      },
+      "rpy_deg": [
+        0.4924,
+        0.5123,
+        -0.6436
+      ],
+      "frames_seen": 49,
+      "feature_buffer_frames": 130,
+      "cut": {
+        "size": [
+          1164,
+          874
+        ],
+        "box": [
+          1351.35,
+          364.28,
+          4497.65,
+          2726.72
+        ],
+        "hfov_deg": 55.0,
+        "vfov_deg": 42.7
+      },
+      "onnx": {
+        "supercombo": "openpilot/selfdrive/modeld/models/driving_supercombo.onnx"
+      },
+      "providers": [
+        "CUDAExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "model_checkpoint": "6a7d09ad-bcc9-43bc-916d-29287e60cee2/200/a27b3122-733e-4a65-938b-acfebebbe5e8/100",
+      "warp_in_bounds": {
+        "img": 1.0,
+        "big_img": 0.92635
+      },
+      "warmup_frames": 96,
+      "model_ticks": 90,
+      "warmed_up": false,
+      "desiredCurvature": -0.036054272412598315,
+      "desiredAcceleration": -0.61658780684352
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "",
+  "ingested_from": ""
+}
