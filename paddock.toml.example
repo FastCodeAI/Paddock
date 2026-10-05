@@ -425,3 +425,12 @@ serialize = true
 #                                   it. "1" (the default) is openpilot's own
 #                                   warp. A measurement, not a correction: see
 #                                   docs/models/openpilot-guide.md.
+#   PADDOCK_OPENPILOT_PITCH_DEG     degrees the model's view is tilted over
+#                                   the camera's, positive up. "0" (the
+#                                   default) is openpilot's own warp.
+#   PADDOCK_OPENPILOT_FOV_DEG       warp the views from a cut of this many
+#                                   degrees across, resampled to comma's
+#                                   1164x874, instead of the frame as recorded.
+#                                   "0" (the default) is no cut. Needs
+#                                   PADDOCK_OPENPILOT_BACKEND = "onnx". Both:
+#                                   see docs/models/openpilot-guide.md.
