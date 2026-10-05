@@ -305,6 +305,25 @@ serialize = true
 # PADDOCK_OPENPILOT_NATIVE_LONG = "0"
 # PADDOCK_OPENPILOT_RESUME_S = "0"
 
+# A pairing: settings for one model on one benchmark and nowhere else, its env
+# over [models.<model>.env] and its settings over [benchmarks.<benchmark>]. This
+# is how a site makes a configuration tuned on one benchmark its default there,
+# without it reaching the model's other benchmarks or the benchmark's other
+# models. It is recorded in run.json and hashed into the run id exactly as the
+# same values set globally would be, and `paddock run` names it before it
+# starts. Delete the tables to reset: the next run hashes as it did before them.
+# openpilot on KITScenes, from the base front camera as comma's own would see it
+# (docs/models/openpilot-guide.md):
+# [models.openpilot.benchmarks.kitscenes.env]
+# PADDOCK_OPENPILOT_BACKEND = "onnx"
+# PADDOCK_OPENPILOT_HEIGHT_SCALE = "1.22"
+# PADDOCK_OPENPILOT_PITCH_DEG = "-1.7"
+# PADDOCK_OPENPILOT_FOV_DEG = "55"
+# PADDOCK_OPENPILOT_DESIRE = "turn"
+# [models.openpilot.benchmarks.kitscenes.settings]
+# command_source = "gt"
+# front_camera = "base"
+
 # Drive-JEPA reads each camera at its own intrinsics by default ("native"), which
 # is how every published drivejepa row was made. "openscene" crops each camera
 # onto the 64 deg OpenScene lens the checkpoint trained on, as the devkit's own
@@ -438,4 +457,7 @@ serialize = true
 #                                   1164x874, instead of the frame as recorded.
 #                                   "0" (the default) is no cut. Needs
 #                                   PADDOCK_OPENPILOT_BACKEND = "onnx". Both:
-#                                   see docs/models/openpilot-guide.md.
+#                                   see docs/models/openpilot-guide.md. Both
+#                                   are set for one camera rig, so set them in
+#                                   a pairing table (above) for the benchmark
+#                                   whose rig they were measured on.
