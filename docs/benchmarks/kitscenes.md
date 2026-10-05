@@ -230,6 +230,45 @@ the archive behind it holds all six for all 127; the 13 scenes on the local
 disk hold all six. Resolving the scene once, as before, would have pointed
 five cameras at files one tier further down.
 
+## The front camera
+
+The rig has a second forward camera, `camera_base_front_center`, and a site
+can score with it in the ring front's place:
+
+```toml
+[benchmarks.kitscenes]
+front_camera = "base"   # default "ring"
+```
+
+| | `camera_ring_front` | `camera_base_front_center` |
+|---|---|---|
+| frame | 3504x2272 | 5856x3104 |
+| focal length | 1841 px | 3022 px |
+| field of view | 87 x 63 deg | 88 x 54 deg |
+| in the rig reference | x 0.21, z -0.18 m | x 0.42, z -0.38 m |
+
+So the base camera has 1.6 times the pixels per degree, about the same width
+of view and less height. It sits 0.2 m lower and 0.2 m further forward, about
+1.82 m over the road at the default ground offset against the ring's 2.02. The
+intrinsics are the same in all 140 listed scenes. The mounting values are those
+of 110 of them; the other 30 have both cameras about 7 cm further back and 2 cm
+lower, still 0.2 m apart.
+
+Every observation's `CAM_FRONT` is then the base camera's frame, with its own
+pinhole and extrinsics, at every history frame as well as the keyframe. The
+other five cameras, the poses and the ground offset are unchanged, and
+`cameras_supplied` still says `CAM_FRONT`. The ring check runs on the camera
+that will be read: with `base`, a scene without the base camera, or with a
+base frame count out of step with its poses, is refused by name, and the ring's
+own front is not needed.
+
+Like the route hint, another camera is another measurement. A `base` run hashes
+to its own run id with `front_camera` in its `config`. `ring` adds no key, so
+every run made before the setting existed keeps its id and `--resume`. The
+setting was added for the openpilot analysis of KITScenes, which warps a 55°
+cut of this camera; see
+[the openpilot guide](../models/openpilot-guide.md#a-view-tilted-over-the-cameras-and-cut-to-commas-size).
+
 **What is checked, and what is assumed.** Frame *i* of every camera is treated
 as the sample taken at pose *i*. That is how the dataset is written -- one frame
 index across every sensor of a scene, named `{index:010d}.jpg`, against one
