@@ -14,7 +14,9 @@ views must fit inside what the source camera actually saw, or the warp samples
 past the edge and border pixels are smeared into the model's input.
 `diagnostics()` reports the measured in-bounds fraction, not an estimate. The
 camera's height never enters that warp; `PADDOCK_OPENPILOT_HEIGHT_SCALE` adds
-it, for measurement, as described on `CameraAdapter`.
+it, for measurement, as described on `CameraAdapter`, which also describes the
+two knobs that go with it: `PADDOCK_OPENPILOT_PITCH_DEG` tilts the view and
+`PADDOCK_OPENPILOT_FOV_DEG` cuts the frame comma's camera would have recorded.
 
 *Two backends.* `tinygrad` runs openpilot's own `ModelState`, which loads the
 `TinyJit` pickle SConstruct builds -- upstream's exact execution path, and the
@@ -77,6 +79,11 @@ from paddock.policy.protocol import (
 
 # The camera geometry openpilot's tinygrad JIT is compiled for.
 TARGET_W, TARGET_H = 1928, 1208
+
+#: comma's EON road camera, the frame supercombo's views were defined on
+#: (`DEVICE_CAMERAS[("neo", "unknown")].narrow_road`): what a
+#: `PADDOCK_OPENPILOT_FOV_DEG` cut is resampled to. See `CameraFit.cut`.
+CUT_SIZE = (1164, 874)
 
 # nuScenes/paddock ego frame is x-forward, y-left, z-up; openpilot's device and
 # calibrated frames are x-forward, y-right, z-down.
@@ -181,11 +188,12 @@ class ImplausibleMounting(ValueError):
 class CameraFit:
     """How a source frame maps into openpilot's fixed 1928x1208 tinygrad input.
 
-    Only used by the `tinygrad` backend, whose warp is compiled for one camera
+    Used by the `tinygrad` backend, whose warp is compiled for one camera
     geometry. The `onnx` backend warps from the source resolution directly and
-    skips all of this -- which matters for a small sensor: comma2k19's 1164x874
-    EON was previously being upscaled 66 % to fill 1928x1208 and then warped
-    back down, two resamples where zero are needed.
+    skips all of this unless asked for a cut (below) -- which matters for a
+    small sensor: comma2k19's 1164x874 EON was previously being upscaled 66 %
+    to fill 1928x1208 and then warped back down, two resamples where zero are
+    needed.
 
     Two strategies, chosen from the source's aspect:
 
@@ -195,10 +203,16 @@ class CameraFit:
     *Letterbox* when the source is wider. Cropping would trim width, and
     horizontal field of view is the scarce resource: the wide model view wants
     58.7 deg and a nuScenes camera has about 64 to give.
+
+    And one the `onnx` backend takes only when asked, by
+    `PADDOCK_OPENPILOT_FOV_DEG`: a *cut* (`cut`), the frame comma's own camera
+    would have recorded.
     """
 
     mode: str
-    crop: tuple[int, int, int, int]
+    #: (x0, y0, x1, y1) of the source the frame is made from: whole pixels,
+    #: except a cut's, which is resampled over a box in floats.
+    crop: tuple[float, float, float, float]
     scale: float
     scaled_size: tuple[int, int]
     pad_top: int
@@ -255,6 +269,54 @@ class CameraFit:
             ),
         )
 
+    @classmethod
+    def cut(cls, pinhole: Pinhole, fov_deg: float) -> CameraFit:
+        """`fov_deg` across, about the principal point, resampled to `CUT_SIZE`.
+
+        The frame comma's EON road camera would have recorded at that field of
+        view: its 1164x874, its aspect. The ONNX warp is a nearest-pixel gather,
+        so straight off a 5856 px KITScenes frame it keeps about one pixel in
+        six across and drops the rest; averaging by area into comma's size
+        first is what a sensor of that size would have done.
+
+        The box is in floats and `prepare` resamples it with PIL's BOX, so
+        output pixel i's centre, i + 0.5, is the box's x0 + (i + 0.5) * s, s
+        source pixels per output pixel. The cut's focal length is then f / s and
+        its principal point (c + 0.5 - x0) / s - 0.5. Computed in the analysis
+        lib's order, operation for operation (`cut` in
+        tools/models/openpilot/analysis/openpilot_drv_supcombo_image_tweak_lib.py),
+        because that order is what makes this frame and warp bit for bit the
+        ones its runs measured.
+        """
+        if pinhole.fx != pinhole.fy:
+            raise ValueError(
+                f"PADDOCK_OPENPILOT_FOV_DEG = {fov_deg:g} needs square pixels to cut to a field of "
+                f"view, and this camera's focal lengths are {pinhole.fx:g} and {pinhole.fy:g}."
+            )
+        f, cx, cy = pinhole.fx, pinhole.cx, pinhole.cy
+        wc = 2.0 * f * np.tan(np.radians(fov_deg) / 2)  # the cut's width in source pixels
+        w, h = CUT_SIZE
+        s = wc / w
+        x0, y0 = cx + 0.5 - wc / 2, cy + 0.5 - h * s / 2
+        box = (x0, y0, x0 + wc, y0 + h * s)
+        if box[0] < 0 or box[1] < 0 or box[2] > pinhole.width or box[3] > pinhole.height:
+            raise ValueError(
+                f"PADDOCK_OPENPILOT_FOV_DEG = {fov_deg:g} cuts {box[2] - box[0]:.0f}x{box[3] - box[1]:.0f} "
+                f"px about the principal point, more than this {pinhole.width}x{pinhole.height} camera "
+                "recorded there. Past its edge the cut would be padding, not road."
+            )
+        return cls(
+            mode="cut",
+            crop=box,
+            scale=w / wc,
+            scaled_size=CUT_SIZE,
+            pad_top=0,
+            # f / s, never f * scale: the two differ in the last bit, and so would the warp.
+            intrinsics=np.array(
+                [[f / s, 0.0, (cx + 0.5 - x0) / s - 0.5], [0.0, f / s, (cy + 0.5 - y0) / s - 0.5], [0, 0, 1]]
+            ),
+        )
+
 
 class CameraAdapter:
     """A `CameraFit` plus the openpilot warp matrices it implies.
@@ -278,19 +340,50 @@ class CameraAdapter:
     tall -- so the scale measures what the model makes of the road geometry it
     was trained on; it does not correct the camera. At 1.0, the default, the
     warp is `get_warp_matrix`'s, untouched.
+
+    `pitch_deg` is `PADDOCK_OPENPILOT_PITCH_DEG`: the model's view tilted over
+    the camera's, positive up. It is a rotation about y in the calibrated
+    frame, `R_y(p)`, ahead of the scale, `R_y(p) @ diag(1, 1, s)`, so the
+    camera is sampled along a ray p degrees off the one the model pixel casts.
+    Where the scale keeps the horizon row, the tilt moves it: at p = -1.7 the
+    model's horizon row shows the road 1.7 deg below the camera's horizon, as
+    if the camera sat 1.7 deg more nose-down than its calibration says. At 0,
+    the default, nothing is composed.
+
+    `fov_deg` is `PADDOCK_OPENPILOT_FOV_DEG`: the views are warped from a
+    `CameraFit.cut` of the frame instead of the frame as recorded. ONNX only:
+    the tinygrad warp is compiled for 1928x1208. A cut narrower than big_img's
+    58.7 deg leaves that view's edges past the cut on purpose -- at 55 deg
+    about 7.4 % of it is smeared border, and `warp_in_bounds` says so. At 0,
+    the default, there is no cut.
     """
 
     def __init__(
-        self, pinhole: Pinhole, camera2ego: np.ndarray, resample: bool = True, height_scale: float = 1.0
+        self,
+        pinhole: Pinhole,
+        camera2ego: np.ndarray,
+        resample: bool = True,
+        height_scale: float = 1.0,
+        pitch_deg: float = 0.0,
+        fov_deg: float = 0.0,
     ) -> None:
+        if resample and fov_deg:
+            raise ValueError(
+                f"PADDOCK_OPENPILOT_FOV_DEG = {fov_deg:g} needs the onnx backend: the tinygrad warp is "
+                f"compiled for {TARGET_W}x{TARGET_H}, and a cut is {CUT_SIZE[0]}x{CUT_SIZE[1]}."
+            )
         self.src = pinhole
-        self.fit = CameraFit.compute(pinhole) if resample else CameraFit.identity(pinhole)
+        if fov_deg:
+            self.fit = CameraFit.cut(pinhole, fov_deg)
+        else:
+            self.fit = CameraFit.compute(pinhole) if resample else CameraFit.identity(pinhole)
         self.mode = self.fit.mode
         self.crop = self.fit.crop
         self.scaled_size = self.fit.scaled_size
         self.pad_top = self.fit.pad_top
         self.intrinsics = self.fit.intrinsics
-        self.size = (TARGET_W, TARGET_H) if resample else (pinhole.width, pinhole.height)
+        # A native fit's scaled size is the source's own, so this is what it was.
+        self.size = (TARGET_W, TARGET_H) if resample else self.scaled_size
 
         from openpilot.common.transformations.camera import view_frame_from_device_frame
         from openpilot.common.transformations.model import get_warp_matrix
@@ -309,11 +402,13 @@ class CameraAdapter:
         #: The (hfov, vfov) each model view carves out of this source, degrees.
         self.view_fov = dict(self.VIEW_FOV)
         self.height_scale = float(height_scale)
-        if self.height_scale != 1.0:
+        self.pitch_deg = float(pitch_deg)
+        self.fov_deg = float(fov_deg)
+        if self.height_scale != 1.0 or self.pitch_deg != 0.0:
             self.transforms = self._height_scaled(self.transforms)
 
     def _height_scaled(self, unscaled: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
-        """`transforms` with the road plane shown from openpilot's height; see the class."""
+        """`transforms` with the road plane shown from openpilot's height, and tilted; see the class."""
         from openpilot.common.transformations.camera import view_frame_from_device_frame
         from openpilot.common.transformations.model import (
             MEDMODEL_INPUT_SIZE,
@@ -325,22 +420,22 @@ class CameraAdapter:
 
         s = self.height_scale
         camera_from_calib = self.intrinsics @ view_frame_from_device_frame @ rot_from_euler(self.rpy)
+        calib = np.diag([1.0, 1.0, s])
+        if self.pitch_deg:
+            # Built here, not with `rot_from_euler`: this is the analysis lib's
+            # matrix, and its runs are only reproduced bit for bit by its bits.
+            c, sin = np.cos(np.radians(self.pitch_deg)), np.sin(np.radians(self.pitch_deg))
+            calib = np.array([[c, 0.0, sin], [0.0, 1.0, 0.0], [-sin, 0.0, c]]) @ calib
         views = {
             "img": (calib_from_medmodel, MEDMODEL_INPUT_SIZE),
             "big_img": (calib_from_sbigmodel, SBIGMODEL_INPUT_SIZE),
         }
         scaled = {}
         for slot, (calib_from_model, size) in views.items():
-            scaled[slot] = (camera_from_calib @ np.diag([1.0, 1.0, s]) @ calib_from_model).astype(np.float32)
+            scaled[slot] = (camera_from_calib @ calib @ calib_from_model).astype(np.float32)
             before, after = self._real_pixels(unscaled[slot], size), self._real_pixels(scaled[slot], size)
             if after < before:
-                raise ValueError(
-                    f"PADDOCK_OPENPILOT_HEIGHT_SCALE = {s:g} takes the {slot} view off this "
-                    f"{self.src.width}x{self.src.height} camera: {after:.2%} of it would be real "
-                    f"pixels, against {before:.2%} unscaled. Past the sensor's edge the warp smears "
-                    "border pixels into the model's input, so the run would measure the smear, "
-                    "not the height."
-                )
+                raise self._off_the_frame(slot, before, after)
             # Down the view's centre column. Each row keeps its bearing and has
             # the tangent of its elevation multiplied by s, which stretches the
             # view's height for s > 1 and shrinks it below.
@@ -348,6 +443,30 @@ class CameraAdapter:
             vfov = np.arctan(s * bottom[2] / bottom[0]) - np.arctan(s * top[2] / top[0])
             self.view_fov[slot] = (self.VIEW_FOV[slot][0], float(np.degrees(vfov)))
         return scaled
+
+    def _off_the_frame(self, slot: str, before: float, after: float) -> ValueError:
+        """The refusal for a view the knobs move off the frame, naming the knobs that did.
+
+        The height scale alone keeps the wording it had before the tilt existed.
+        """
+        knobs: list[str] = []
+        what: list[str] = []
+        if self.height_scale != 1.0:
+            knobs.append(f"PADDOCK_OPENPILOT_HEIGHT_SCALE = {self.height_scale:g}")
+            what.append("height")
+        if self.pitch_deg:
+            knobs.append(f"PADDOCK_OPENPILOT_PITCH_DEG = {self.pitch_deg:g}")
+            what.append("tilt")
+        w, h = self.scaled_size
+        cut = self.mode == "cut"
+        frame = f"camera's {w}x{h} cut" if cut else f"{self.src.width}x{self.src.height} camera"
+        plain = "unscaled" if what == ["height"] else "without " + ("it" if len(knobs) == 1 else "them")
+        return ValueError(
+            f"{' and '.join(knobs)} take{'s' if len(knobs) == 1 else ''} the {slot} view off this {frame}: "
+            f"{after:.2%} of it would be real pixels, against {before:.2%} {plain}. Past the "
+            f"{'cut' if cut else 'sensor'}'s edge the warp smears border pixels into the model's input, "
+            f"so the run would measure the smear, not the {' and '.join(what)}."
+        )
 
     def _real_pixels(self, warp: np.ndarray, view_size: tuple[int, int]) -> float:
         """The fraction of a model view that `warp` fills from pixels the camera recorded.
@@ -385,7 +504,11 @@ class CameraAdapter:
         """Source frame -> the frame `intrinsics` describes."""
         if self.mode == "native":
             return image
-        x0, y0, x1, y1 = self.crop
+        if self.mode == "cut":
+            # Over the float box, by area: see `CameraFit.cut`. The crop below
+            # would round the box to whole pixels and move the frame off its K.
+            return np.asarray(Image.fromarray(image).resize(self.scaled_size, Image.BOX, box=self.crop))
+        x0, y0, x1, y1 = (int(v) for v in self.crop)
         resized = np.asarray(Image.fromarray(image[y0:y1, x0:x1]).resize(self.scaled_size, Image.BILINEAR))
         if self.scaled_size[1] == TARGET_H:
             return resized
@@ -403,10 +526,14 @@ class CameraAdapter:
         tighter one when a single frame feeds both views) or "img" for a
         dedicated narrow road camera. Negative means the warp samples outside
         what the camera saw -- black wedges at the edges of the model's input.
-        Under a height scale it is the scaled view's margin.
+        Under a height scale it is the scaled view's margin, and under a cut it
+        is measured against the cut, which is all the views are warped from.
         """
         h, v = self.view_fov[slot]
-        return {"horizontal": self.src.hfov_deg - h, "vertical": self.src.vfov_deg - v}
+        seen = self.src
+        if self.mode == "cut":
+            seen = Pinhole.from_calibration(self.intrinsics, *self.scaled_size)
+        return {"horizontal": seen.hfov_deg - h, "vertical": seen.vfov_deg - v}
 
 
 def plan_to_grid(plan: np.ndarray, grid_s: np.ndarray = GRID_S) -> np.ndarray:
@@ -577,6 +704,8 @@ class OpenpilotPolicy(Policy):
         model: str | None = None,
         desire: str | None = None,
         height_scale: float | None = None,
+        pitch_deg: float | None = None,
+        fov_deg: float | None = None,
     ) -> None:
         #: "tinygrad" (openpilot's own JIT) or "onnx". Auto-detected in `load`.
         self.backend = backend or os.environ.get("PADDOCK_OPENPILOT_BACKEND", "auto")
@@ -589,6 +718,15 @@ class OpenpilotPolicy(Policy):
         #: 1.0 is openpilot's own warp. Checked here for the same reason.
         self.height_scale = self._height_scale(
             os.environ.get("PADDOCK_OPENPILOT_HEIGHT_SCALE", "") if height_scale is None else height_scale
+        )
+        #: Degrees the model's view is tilted over the camera's, positive up,
+        #: and the field of view of the comma-sized cut it is warped from; 0
+        #: is openpilot's own warp of the frame as recorded. See CameraAdapter.
+        self.pitch_deg = self._pitch_deg(
+            os.environ.get("PADDOCK_OPENPILOT_PITCH_DEG", "") if pitch_deg is None else pitch_deg
+        )
+        self.fov_deg = self._fov_deg(
+            os.environ.get("PADDOCK_OPENPILOT_FOV_DEG", "") if fov_deg is None else fov_deg
         )
         self.model = None
         self.session = None
@@ -643,6 +781,39 @@ class OpenpilotPolicy(Policy):
                 "in the openpilot adapter's policy.py."
             )
         return scale
+
+    @staticmethod
+    def _degrees(raw: str | float) -> float:
+        """An env value in degrees; unset is 0, and anything unreadable is NaN, for the caller to refuse."""
+        text = str(raw).strip()
+        try:
+            return float(text) if text else 0.0
+        except ValueError:
+            return float("nan")
+
+    @classmethod
+    def _pitch_deg(cls, raw: str | float) -> float:
+        pitch = cls._degrees(raw)
+        # No further than a real mount may be off level (MAX_MOUNT_DEG): past
+        # that the tilt is no mounting's, and a typo is the likelier story.
+        if not (np.isfinite(pitch) and abs(pitch) <= MAX_MOUNT_DEG):
+            raise ValueError(
+                f"PADDOCK_OPENPILOT_PITCH_DEG = {raw!r}: expected degrees within +-{MAX_MOUNT_DEG:g}, "
+                "the model's view tilted over the camera's, positive up. See CameraAdapter in the "
+                "openpilot adapter's policy.py."
+            )
+        return pitch
+
+    @classmethod
+    def _fov_deg(cls, raw: str | float) -> float:
+        fov = cls._degrees(raw)
+        if not (np.isfinite(fov) and 0 <= fov < 180):
+            raise ValueError(
+                f"PADDOCK_OPENPILOT_FOV_DEG = {raw!r}: expected degrees across in [0, 180), the "
+                "field of view of the comma-sized cut the views are warped from, or 0 for no cut. "
+                "See CameraFit.cut in the openpilot adapter's policy.py."
+            )
+        return fov
 
     # ---- loading --------------------------------------------------------
 
@@ -716,6 +887,13 @@ class OpenpilotPolicy(Policy):
         # inside its own environment, and this module is imported by
         # `paddock list` and the test suite, which run in paddock's.
         self.backend = self._resolve_backend()
+        if self.backend == "tinygrad" and self.fov_deg:
+            # Here, at startup, rather than at the first frame's CameraAdapter.
+            raise ValueError(
+                f"PADDOCK_OPENPILOT_FOV_DEG = {self.fov_deg:g} needs the onnx backend: the tinygrad warp "
+                f"is compiled for {TARGET_W}x{TARGET_H}, and a cut is {CUT_SIZE[0]}x{CUT_SIZE[1]}. Set "
+                'PADDOCK_OPENPILOT_BACKEND = "onnx" beside it.'
+            )
         if self.backend == "tinygrad":
             from openpilot.system.camerad.cameras.nv12_info import get_nv12_info
 
@@ -873,7 +1051,12 @@ class OpenpilotPolicy(Policy):
 
         def adapter(key: str) -> CameraAdapter:
             return CameraAdapter(
-                obs.pinhole(key), obs.camera2ego[key], resample=resample, height_scale=self.height_scale
+                obs.pinhole(key),
+                obs.camera2ego[key],
+                resample=resample,
+                height_scale=self.height_scale,
+                pitch_deg=self.pitch_deg,
+                fov_deg=self.fov_deg,
             )
 
         if two:
@@ -1175,6 +1358,8 @@ class OpenpilotPolicy(Policy):
                 "backend": self.backend,
                 "desire_mode": self.desire_mode,
                 "height_scale": self.height_scale,
+                "pitch_deg": self.pitch_deg,
+                "fov_deg": self.fov_deg,
                 **probe,
             }
         # Each view's margin from the camera that actually feeds it: in the
@@ -1190,11 +1375,13 @@ class OpenpilotPolicy(Policy):
             **probe,
             "backend": self.backend,
             "model": self.model_name,
-            # What the node did with route commands and camera height.
+            # What the node did with route commands and the camera's geometry.
             # `config.model_env` records only a site's env block, so a setting
             # made anywhere else would leave no other trace in the run record.
             "desire_mode": self.desire_mode,
             "height_scale": self.height_scale,
+            "pitch_deg": self.pitch_deg,
+            "fov_deg": self.fov_deg,
             "source_size": [self.camera.src.width, self.camera.src.height],
             "resample_mode": self.camera.mode,
             "source_hfov_deg": round(self.camera.src.hfov_deg, 2),
@@ -1207,6 +1394,16 @@ class OpenpilotPolicy(Policy):
             "frames_seen": self.frames_seen,
             "feature_buffer_frames": FEATURE_BUFFER_FRAMES,
         }
+        if self.camera.mode == "cut":
+            # What the views were warped from instead of the source; the margins
+            # above are measured against it.
+            cut = Pinhole.from_calibration(self.camera.intrinsics, *self.camera.scaled_size)
+            diag["cut"] = {
+                "size": list(self.camera.scaled_size),
+                "box": [round(float(v), 2) for v in self.camera.crop],
+                "hfov_deg": round(cut.hfov_deg, 2),
+                "vfov_deg": round(cut.vfov_deg, 2),
+            }
         if self.session is not None:
             # A dict, not a string: the split layout is two files, and a run
             # record that names only one of them cannot be reproduced from.
