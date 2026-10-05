@@ -40,6 +40,10 @@ HEADING_DEG = {
     "camera_ring_rear_right": -120.0,
 }
 REAR = tuple(sensor for sensor in RING if sensor.startswith("camera_ring_rear"))
+#: The rig's other forward camera, and where the real calibration puts it in
+#: the rig reference: 0.2 m further forward than the ring's front, and 0.2 m lower.
+BASE = "camera_base_front_center"
+BASE_XYZ = (0.421, 0.011, -0.384)
 
 
 def _t_to_reference(heading_deg: float) -> np.ndarray:
@@ -59,7 +63,10 @@ def _t_to_reference(heading_deg: float) -> np.ndarray:
 
 
 def _calib() -> dict:
-    """Six distinct pinholes: a shared or guessed value must be caught, not averaged in."""
+    """Seven distinct pinholes, the ring's and the base camera's.
+
+    A shared or guessed value must be caught, not averaged in.
+    """
     calib: dict = {"reference": "base_frame"}
     for i, sensor in enumerate(RING):
         calib[sensor] = {
@@ -72,6 +79,14 @@ def _calib() -> dict:
                 "principal_point_v": 1139.0,
             },
         }
+    base = _t_to_reference(0.0)
+    base[:3, 3] = BASE_XYZ
+    calib[BASE] = {
+        "T_to_reference": base.tolist(),
+        "camera_model": "pinhole",
+        "resolution": {"width": 5856, "height": 3104},
+        "intrinsics": {"focal_length": 3022.0, "principal_point_u": 2924.0, "principal_point_v": 1545.0},
+    }
     return calib
 
 
@@ -309,6 +324,74 @@ def test_preflight_names_an_unknown_command_source(tmp_path, monkeypatch) -> Non
     (problem,) = bench.preflight()
     assert "command_source = 'sample_list'" in problem
     assert "straight, gt" in problem
+
+
+# ---------------------------------------------------------------------------
+# The front camera
+# ---------------------------------------------------------------------------
+
+
+def test_the_base_camera_stands_in_for_the_ring_front(tmp_path, monkeypatch) -> None:
+    """Its frames, its pinhole and its mounting, at every frame; the other five stay the ring's."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, [*RING, BASE])
+    bench = _benchmark(tmp_path, monkeypatch, [archive], settings='front_camera = "base"\n')
+
+    assert bench.preflight() == []
+    (sample,) = list(bench.samples())
+    assert {Path(obs.image_paths["CAM_FRONT"]).parent.name for obs in sample.observations} == {BASE}
+    scored = sample.observations[-1]
+    assert scored.camera2image["CAM_FRONT"][0, 0] == scored.camera2image["CAM_FRONT"][1, 1] == 3022.0
+    assert scored.camera2image["CAM_FRONT"][:2, 2].tolist() == [2924.0, 1545.0]
+    assert np.allclose(scored.camera2ego["CAM_FRONT"][:2, 3], BASE_XYZ[:2])
+    assert scored.camera_height("CAM_FRONT") == pytest.approx(BASE_XYZ[2] + POD_HEIGHT_M), (
+        "the rig's offset too"
+    )
+    for i, (sensor, camera) in enumerate(RING.items()):
+        if camera != "CAM_FRONT":
+            assert Path(scored.image_paths[camera]).parent.name == sensor
+            assert scored.camera2image[camera][0, 0] == 1841.0 + i
+
+
+def test_another_front_camera_is_a_different_measurement(tmp_path, monkeypatch) -> None:
+    """Hashed into the run id when given; `ring`, the default, adds nothing even said aloud."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, [*RING, BASE])
+    base = _benchmark(tmp_path, monkeypatch, [archive], settings='front_camera = "base"\n')
+
+    assert base.run_config() == {"ground_offset_m": POD_HEIGHT_M, "front_camera": "base"}
+    comma_three = SimpleNamespace(cameras=("CAM_OP_ROAD", "CAM_OP_WIDE", "CAM_FRONT"))
+    assert base.model_run_config(comma_three) == {"cameras_supplied": ["CAM_FRONT"]}, "the protocol's name"
+    ring = _benchmark(tmp_path, monkeypatch, [archive], settings='front_camera = "ring"\n')
+    assert ring.run_config() == {"ground_offset_m": POD_HEIGHT_M}, "so every earlier run keeps its id"
+
+
+def test_preflight_names_an_unknown_front_camera(tmp_path, monkeypatch) -> None:
+    """A typo must not quietly run as `ring` and be recorded as something else."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, [*RING, BASE])
+    bench = _benchmark(tmp_path, monkeypatch, [archive], settings='front_camera = "wide"\n')
+
+    (problem,) = bench.preflight()
+    assert "front_camera = 'wide'" in problem
+    assert "ring, base" in problem
+
+
+def test_preflight_checks_the_front_camera_that_will_be_read(tmp_path, monkeypatch) -> None:
+    """The base camera is checked in the front's place, and the ring's front is then not needed."""
+    ring_only, base_only = tmp_path / "ring_only", tmp_path / "base_only"
+    _write_scene(ring_only, RING)
+    _write_scene(base_only, [BASE, *(sensor for sensor in RING if sensor != "camera_ring_front")])
+
+    assert _benchmark(tmp_path, monkeypatch, [ring_only]).preflight() == []
+    (problem,) = _benchmark(
+        tmp_path, monkeypatch, [ring_only], settings='front_camera = "base"\n'
+    ).preflight()
+    assert "1 of 1 listed scenes lack a ring camera on every configured tier" in problem
+    assert f"{SCENE}: {BASE}" in problem
+    assert (
+        _benchmark(tmp_path, monkeypatch, [base_only], settings='front_camera = "base"\n').preflight() == []
+    )
 
 
 # ---------------------------------------------------------------------------
