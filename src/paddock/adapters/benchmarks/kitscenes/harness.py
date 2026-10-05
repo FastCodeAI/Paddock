@@ -103,6 +103,18 @@ COMMAND_SOURCES = ("straight", "gt")
 #: and reads as STRAIGHT, the same as `command_source = "straight"`.
 LIST_COMMANDS = (Command.LEFT, Command.STRAIGHT, Command.RIGHT)
 
+#: Which of the rig's two forward cameras is the protocol's CAM_FRONT:
+#: `[benchmarks.kitscenes] front_camera`.
+#:
+#: `ring`, the default, is the ring's own front camera, what every paddock row
+#: on this benchmark was scored with. `base` is `camera_base_front_center`:
+#: 5856x3104 against the ring's 3504x2272, about the same 88 deg across but 54
+#: deg high against 63, so 1.6 times the pixels per degree, and mounted 0.2 m
+#: lower and 0.2 m further forward. The other five cameras stay the ring's.
+#: Another camera is another measurement, so it is recorded in `run_config()`,
+#: again only when given, so every earlier run keeps its id.
+FRONT_CAMERAS = {"ring": "camera_ring_front", "base": "camera_base_front_center"}
+
 
 class KitScenesBenchmark(OpenLoopBenchmark):
     # ---- readiness ------------------------------------------------------
@@ -119,10 +131,11 @@ class KitScenesBenchmark(OpenLoopBenchmark):
             problems.append(
                 "no configured kitscenes tier exists: " + ", ".join(str(r) for r in dataset.roots)
             )
-        try:
-            self._command_source()
-        except ValueError as exc:
-            problems.append(str(exc))
+        for setting in (self._command_source, self._front_camera):
+            try:
+                setting()
+            except ValueError as exc:
+                problems.append(str(exc))
         try:
             self._sample_list()
         except RuntimeError as exc:
@@ -198,7 +211,7 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         for scene_id, split in sorted(scenes.items()):
             n_poses = len(L.load_poses(self._scene_path(scene_id, split)))
             missing: list[str] = []
-            for sensor in RING:
+            for sensor in self._sensors():
                 scene = self._sensor_scene(scene_id, split, sensor)
                 if scene is None:
                     missing.append(sensor)
@@ -258,15 +271,16 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         poses = L.load_poses(scene)
 
         indices = L.frame_indices(keyframe, HISTORY_FRAMES)
-        calibration = _read_calibration(scene, ground_offset=self._ground_offset())
-        ring = self._ring(row["scene_id"], row["split_dir"])
+        sensors = self._sensors()
+        calibration = _read_calibration(scene, sensors, ground_offset=self._ground_offset())
+        ring = self._ring(row["scene_id"], row["split_dir"], sensors)
         command = self._command(row)
 
         # Paths, not pixels. The node is a subprocess on this filesystem, so
         # neither side needs to carry 24 MB a frame -- times six, now.
         observations = [
             self._observation(
-                ring, poses, index, calibration, command if index == keyframe else Command.STRAIGHT
+                ring, poses, index, calibration, command if index == keyframe else Command.STRAIGHT, sensors
             )
             for index in indices
         ]
@@ -311,18 +325,36 @@ class KitScenesBenchmark(OpenLoopBenchmark):
                 return LIST_COMMANDS[index]
         return Command.STRAIGHT
 
+    def _front_camera(self) -> str:
+        """`ring` (the default) or `base`; see `FRONT_CAMERAS`."""
+        camera = str(self.setting("front_camera") or "ring").strip().lower()
+        if camera not in FRONT_CAMERAS:
+            raise ValueError(
+                f"[benchmarks.kitscenes] front_camera = {camera!r}: expected one of "
+                f"{', '.join(FRONT_CAMERAS)}. See docs/benchmarks/kitscenes.md."
+            )
+        return camera
+
+    def _sensors(self) -> dict[str, str]:
+        """`RING` with `front_camera`'s sensor as CAM_FRONT: dataset sensor -> protocol camera."""
+        front = FRONT_CAMERAS[self._front_camera()]
+        return {(front if camera == "CAM_FRONT" else sensor): camera for sensor, camera in RING.items()}
+
     def run_config(self) -> dict:
         """The ground offset changes every projected point, so it is measured-with.
 
         Recorded and hashed into the run id: two runs made with different
         offsets put the camera at different heights and are not the same
-        measurement, which a bare ADE would not reveal. A route hint is the
-        same kind of difference, but it is recorded only when one was given, so
-        every run made before the setting existed keeps its id and `--resume`.
+        measurement, which a bare ADE would not reveal. A route hint and another
+        front camera are the same kind of difference, but each is recorded only
+        when given, so every run made before the setting existed keeps its id
+        and `--resume`.
         """
         config: dict = {"ground_offset_m": self._ground_offset()}
         if self._command_source() != "straight":
             config["command_source"] = self._command_source()
+        if self._front_camera() != "ring":
+            config["front_camera"] = self._front_camera()
         return config
 
     def model_run_config(self, model) -> dict:
@@ -363,10 +395,10 @@ class KitScenesBenchmark(OpenLoopBenchmark):
                 return candidate
         return None
 
-    def _ring(self, scene_id: str, split: str) -> dict[str, Path]:
+    def _ring(self, scene_id: str, split: str, sensors: dict[str, str] = RING) -> dict[str, Path]:
         """Sensor -> the scene directory its frames are read from, for all six."""
         ring: dict[str, Path] = {}
-        for sensor in RING:
+        for sensor in sensors:
             scene = self._sensor_scene(scene_id, split, sensor)
             if scene is None:
                 raise FileNotFoundError(
@@ -383,6 +415,7 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         index: int,
         calibration,
         command: Command = Command.STRAIGHT,
+        sensors: dict[str, str] = RING,
     ) -> Observation:
         """One frame of every ring camera, in the protocol's shape.
 
@@ -401,7 +434,7 @@ class KitScenesBenchmark(OpenLoopBenchmark):
 
         camera2image, camera2ego = calibration
         image_paths = {
-            RING[sensor]: str(L.frame_path(scene, index, sensor)) for sensor, scene in ring.items()
+            sensors[sensor]: str(L.frame_path(scene, index, sensor)) for sensor, scene in ring.items()
         }
         return Observation(
             images={},

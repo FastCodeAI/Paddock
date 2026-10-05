@@ -244,6 +244,11 @@ serialize = true
 # future: an oracle hint, recorded in run.json and hashed into the run id.
 # See docs/benchmarks/kitscenes.md, "The route hint".
 # command_source = "straight"   # or "gt"
+#
+# Which forward camera is CAM_FRONT: the ring's own, or the rig's 5856x3104
+# camera_base_front_center. Recorded in run.json and hashed into the run id.
+# See docs/benchmarks/kitscenes.md, "The front camera".
+# front_camera = "ring"   # or "base"
 
 # [benchmarks.neuroncap]
 # Closed-loop NCAP scoring against a NeuRAD render; docs/benchmarks/neuroncap.md.
