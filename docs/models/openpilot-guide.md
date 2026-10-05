@@ -906,6 +906,11 @@ vfov), and has its margins measured against the cut. At 0, the defaults,
 nothing is composed and nothing is cut: the warp is `get_warp_matrix`'s, bit
 for bit.
 
+Like the scale, both knobs describe one camera rig. A site that adopts them
+sets them in a pairing table, `[models.openpilot.benchmarks.kitscenes.env]`,
+not in `[models.openpilot.env]`, where they would reach comma2k19's camera too.
+See [site-setup.md](../site-setup.md#2-configure).
+
 ### Which backend ran, and one number it used to change
 
 `_resolve_backend` picks between tinygrad and onnxruntime by **trying an
