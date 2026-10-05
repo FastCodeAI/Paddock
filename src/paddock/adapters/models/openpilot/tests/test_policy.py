@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from paddock.adapters.models.openpilot.policy import (
+    CUT_SIZE,
     DESIRE_LANE_CHANGE_LEFT,
     DESIRE_LANE_CHANGE_RIGHT,
     DESIRE_NONE,
@@ -443,10 +444,20 @@ class _FakeCameraAdapter:
     in for the one part that cannot and leaves the wiring under test.
     """
 
-    def __init__(self, pinhole, camera2ego, resample: bool = True, height_scale: float = 1.0) -> None:
+    def __init__(
+        self,
+        pinhole,
+        camera2ego,
+        resample: bool = True,
+        height_scale: float = 1.0,
+        pitch_deg: float = 0.0,
+        fov_deg: float = 0.0,
+    ) -> None:
         self.src = pinhole
         self.resample = resample
         self.height_scale = height_scale
+        self.pitch_deg = pitch_deg
+        self.fov_deg = fov_deg
         self.size = (pinhole.width, pinhole.height)
         self.transforms = {"img": np.eye(3, dtype=np.float32), "big_img": np.eye(3, dtype=np.float32)}
 
@@ -836,3 +847,224 @@ def test_the_margin_is_the_scaled_views() -> None:
             vfov = KITSCENES_RING.vfov_deg - cam.margin_deg(slot)["vertical"]
             # VIEW_FOV, the unscaled figure, is rounded to 0.1 degree.
             assert vfov == pytest.approx(bottom - top, abs=0.06 if s == 1.0 else 1e-3)
+
+
+# --------------------------------------------------------------------------
+# A tilted view, cut from the camera at comma's own size
+# --------------------------------------------------------------------------
+
+#: KITScenes' base front camera: a longer lens on a larger sensor than the ring's.
+BASE_FRONT = Pinhole(3022, 3022, 2924, 1545, 5856, 3104)
+
+
+def test_the_tilt_and_the_cut_are_read_from_the_env(monkeypatch) -> None:
+    for var in ("PADDOCK_OPENPILOT_PITCH_DEG", "PADDOCK_OPENPILOT_FOV_DEG"):
+        monkeypatch.delenv(var, raising=False)
+    policy = POLICY()
+    assert (policy.pitch_deg, policy.fov_deg) == (0.0, 0.0), "openpilot's own warp of the frame as recorded"
+    monkeypatch.setenv("PADDOCK_OPENPILOT_PITCH_DEG", " -1.7 ")
+    monkeypatch.setenv("PADDOCK_OPENPILOT_FOV_DEG", "55")
+    policy = POLICY()
+    assert (policy.pitch_deg, policy.fov_deg) == (-1.7, 55.0)
+    diag = policy.diagnostics()
+    assert (diag["pitch_deg"], diag["fov_deg"]) == (-1.7, 55.0), "and they are on the run record"
+    policy = POLICY(pitch_deg=2.0, fov_deg=60.0)
+    assert (policy.pitch_deg, policy.fov_deg) == (2.0, 60.0), "an argument wins over the env"
+
+
+@pytest.mark.parametrize(
+    ("var", "raw"),
+    [
+        ("PADDOCK_OPENPILOT_PITCH_DEG", "16"),
+        ("PADDOCK_OPENPILOT_PITCH_DEG", "-15.5"),
+        ("PADDOCK_OPENPILOT_PITCH_DEG", "nan"),
+        ("PADDOCK_OPENPILOT_PITCH_DEG", "-1.7 deg"),
+        ("PADDOCK_OPENPILOT_FOV_DEG", "-1"),
+        ("PADDOCK_OPENPILOT_FOV_DEG", "180"),
+        ("PADDOCK_OPENPILOT_FOV_DEG", "inf"),
+        ("PADDOCK_OPENPILOT_FOV_DEG", "55 deg"),
+    ],
+)
+def test_a_tilt_or_cut_that_is_not_degrees_stops_the_node(monkeypatch, var, raw) -> None:
+    """At construction, naming the variable, as the height scale does."""
+    monkeypatch.setenv(var, raw)
+    with pytest.raises(ValueError, match=f"{var} = '{raw}'"):
+        POLICY()
+
+
+def test_a_cut_needs_the_onnx_backend(monkeypatch) -> None:
+    """At load, not at the first frame: tinygrad's warp is compiled for 1928x1208."""
+    policy = POLICY(fov_deg=55.0)
+    monkeypatch.setattr(policy, "_resolve_backend", lambda: "tinygrad")
+    with pytest.raises(ValueError, match="FOV_DEG = 55 needs the onnx backend"):
+        policy.load()
+    with pytest.raises(ValueError, match="needs the onnx backend"):
+        CameraAdapter(BASE_FRONT, _mount(), resample=True, fov_deg=55.0)
+
+
+@pytest.mark.parametrize("two", [True, False], ids=["two cameras", "one camera"])
+def test_every_camera_is_tilted_and_cut_alike(monkeypatch, two) -> None:
+    import paddock.adapters.models.openpilot.policy as P
+
+    monkeypatch.setattr(P, "CameraAdapter", _FakeCameraAdapter)
+    policy = POLICY(pitch_deg=-1.7, fov_deg=55.0)
+    assert policy._bind_cameras(_two_camera_observation() if two else _one_camera_observation()) is two
+    road, wide, _, _ = policy._views(two)
+    assert road.pitch_deg == wide.pitch_deg == -1.7
+    assert road.fov_deg == wide.fov_deg == 55.0
+
+
+def test_a_cut_is_the_field_of_view_it_was_asked_for() -> None:
+    """Read back off its own intrinsics, and placed where its box says.
+
+    The second half is the one that matters: PIL puts output pixel j's centre
+    at the box's x0 + (j + 0.5) * s, so a ray must land on the same spot
+    through the cut's K as through the camera's K and the box. A K built as
+    f * scale about a rounded corner is off by up to a pixel, which is the
+    whole of the model's input moved under its warp.
+    """
+    fit = CameraFit.cut(BASE_FRONT, 55.0)
+    assert (fit.mode, fit.scaled_size, fit.pad_top) == ("cut", CUT_SIZE, 0)
+    cut = Pinhole.from_calibration(fit.intrinsics, *fit.scaled_size)
+    assert cut.hfov_deg == pytest.approx(55.0, abs=1e-9)
+    assert cut.fx == cut.fy
+    x0, y0, x1, y1 = fit.crop
+    assert 0 <= x0 < x1 <= BASE_FRONT.width and 0 <= y0 < y1 <= BASE_FRONT.height
+    s = (x1 - x0) / CUT_SIZE[0]
+    assert (y1 - y0) / CUT_SIZE[1] == pytest.approx(s), "square pixels in, square pixels out"
+    k = np.array([[BASE_FRONT.fx, 0.0, BASE_FRONT.cx], [0.0, BASE_FRONT.fy, BASE_FRONT.cy], [0.0, 0.0, 1.0]])
+    for ray in ([0.0, 0.0, 1.0], [0.3, -0.2, 1.0], [-0.45, 0.35, 1.0]):
+        u, v = _pixel(k, ray)
+        j, i = _pixel(fit.intrinsics, ray)
+        assert x0 + (j + 0.5) * s == pytest.approx(u + 0.5)
+        assert y0 + (i + 0.5) * s == pytest.approx(v + 0.5)
+
+
+def test_a_cut_wider_than_the_camera_is_refused() -> None:
+    """A nuScenes camera is 64.6 degrees across; past its edge a cut is padding."""
+    with pytest.raises(ValueError, match="PADDOCK_OPENPILOT_FOV_DEG = 70 cuts .* this 1600x900 camera"):
+        CameraFit.cut(NUSCENES_FRONT, 70.0)
+
+
+def test_a_cut_needs_square_pixels() -> None:
+    """One focal length makes the cut's K; a second would be silently dropped."""
+    with pytest.raises(ValueError, match="square pixels"):
+        CameraFit.cut(Pinhole(3022, 3000, 2924, 1545, 5856, 3104), 55.0)
+
+
+def test_the_cut_is_the_size_of_commas_own_camera() -> None:
+    """Restated at module scope, so pinned here to openpilot's own camera table."""
+    pytest.importorskip("openpilot", reason="needs openpilot's environment")
+    from openpilot.common.transformations.camera import DEVICE_CAMERAS
+
+    eon = DEVICE_CAMERAS[("neo", "unknown")].narrow_road
+    assert CUT_SIZE == (eon.width, eon.height)
+
+
+@pytest.mark.parametrize("resample", [False, True], ids=["onnx", "tinygrad"])
+def test_no_tilt_and_no_cut_is_openpilots_own_warp(resample) -> None:
+    """Bit for bit, so a site that sets neither runs what every recorded run ran."""
+    pytest.importorskip("openpilot", reason="needs openpilot's environment")
+    from openpilot.common.transformations.model import get_warp_matrix
+
+    for knobs in ({}, {"pitch_deg": 0.0, "fov_deg": 0.0}, {"height_scale": 1.0, "pitch_deg": 0.0}):
+        cam = CameraAdapter(KITSCENES_RING, _mount(3.0), resample=resample, **knobs)
+        assert cam.mode == ("crop" if resample else "native")
+        for slot, big in (("img", False), ("big_img", True)):
+            own = get_warp_matrix(cam.rpy, cam.intrinsics, big).astype(np.float32)
+            assert np.array_equal(cam.transforms[slot], own)
+
+
+def test_the_height_scale_alone_is_composed_as_it_was() -> None:
+    """The tilt went in beside the scale; a scaled run must not move by a bit."""
+    pytest.importorskip("openpilot", reason="needs openpilot's environment")
+    from openpilot.common.transformations.camera import view_frame_from_device_frame
+    from openpilot.common.transformations.model import calib_from_medmodel, calib_from_sbigmodel
+    from openpilot.common.transformations.orientation import rot_from_euler
+
+    cam = CameraAdapter(KITSCENES_RING, _mount(3.0), resample=False, height_scale=1.53)
+    camera_from_calib = cam.intrinsics @ view_frame_from_device_frame @ rot_from_euler(cam.rpy)
+    for slot, calib_from_model in (("img", calib_from_medmodel), ("big_img", calib_from_sbigmodel)):
+        before = (camera_from_calib @ np.diag([1.0, 1.0, 1.53]) @ calib_from_model).astype(np.float32)
+        assert np.array_equal(cam.transforms[slot], before)
+
+
+@pytest.mark.parametrize("pitch", [-1.7, 2.0])
+def test_a_tilt_moves_the_horizon_row(pitch) -> None:
+    """Where the scale keeps the horizon, the tilt is what moves it: f tan p, down for p < 0."""
+    pytest.importorskip("openpilot", reason="needs openpilot's environment")
+    from openpilot.common.transformations.model import calib_from_medmodel, calib_from_sbigmodel
+
+    cam = CameraAdapter(KITSCENES_RING, _mount(), resample=False, height_scale=1.22, pitch_deg=pitch)
+    row = KITSCENES_RING.cy - KITSCENES_RING.fy * np.tan(np.radians(pitch))
+    for slot, calib_from_model in (("img", calib_from_medmodel), ("big_img", calib_from_sbigmodel)):
+        horizon = np.linalg.inv(calib_from_model) @ [1.0, 0.0, 0.0]
+        assert np.allclose(_pixel(cam.transforms[slot], horizon), [KITSCENES_RING.cx, row], atol=0.01)
+
+
+def test_a_tilted_cut_is_judged_against_its_own_untilted_warp() -> None:
+    """The edge is the cut's, and the guard names every knob that crossed it.
+
+    55 degrees is narrower than big_img's 58.7, so a level cut already smears
+    7.6 % of that view at its sides; the refusal is for making it worse. Scaled
+    alone, big_img grows past the cut's top; tilted down as well, it fits. On a
+    camera 4 degrees nose-down the view already starts above the cut, and the
+    same two knobs take more of it off.
+    """
+    pytest.importorskip("openpilot", reason="needs openpilot's environment")
+
+    with pytest.raises(
+        ValueError, match="HEIGHT_SCALE = 1.22 takes the big_img view off this camera's 1164x874 cut"
+    ):
+        CameraAdapter(BASE_FRONT, _mount(), resample=False, height_scale=1.22, fov_deg=55.0)
+    CameraAdapter(BASE_FRONT, _mount(), resample=False, height_scale=1.22, pitch_deg=-1.7, fov_deg=55.0)
+    with pytest.raises(
+        ValueError, match="HEIGHT_SCALE = 1.22 and PADDOCK_OPENPILOT_PITCH_DEG = -1.7 take the big_img view"
+    ):
+        CameraAdapter(
+            BASE_FRONT, _mount(4.0), resample=False, height_scale=1.22, pitch_deg=-1.7, fov_deg=55.0
+        )
+
+
+def test_the_margin_of_a_cut_is_the_cuts() -> None:
+    """Against the cut the views are warped from, not the camera it was cut from."""
+    pytest.importorskip("openpilot", reason="needs openpilot's environment")
+
+    cam = CameraAdapter(BASE_FRONT, _mount(), resample=False, fov_deg=55.0)
+    assert cam.size == CUT_SIZE
+    assert cam.margin_deg("big_img")["horizontal"] == pytest.approx(55.0 - 58.7)
+    assert cam.margin_deg("img")["horizontal"] == pytest.approx(55.0 - 31.4)
+
+
+def test_a_cut_shows_the_pixels_its_intrinsics_say_it_does() -> None:
+    """On two ramps, one per axis, each output pixel holds the source value K puts there.
+
+    Two grey levels a pixel: steep enough that a frame half a pixel off its K
+    -- a box rounded to whole pixels, a centre without its + 0.5 -- reads a
+    grey level off on average, and even, because BOX averages two neighbours
+    to a half on an odd ramp and PIL rounds every half up.
+    """
+    pytest.importorskip("openpilot", reason="needs openpilot's environment")
+
+    pinhole = Pinhole(1500, 1500, 1200, 700, 2400, 1400)
+    cam = CameraAdapter(pinhole, _mount(), resample=False, fov_deg=55.0)
+    foot_x, foot_y = pinhole.cx - 60, pinhole.cy - 60  # so each ramp crosses the cut's middle
+    ys, xs = np.mgrid[: pinhole.height, : pinhole.width]
+    frame = np.zeros((pinhole.height, pinhole.width, 3), dtype=np.uint8)
+    frame[..., 0], frame[..., 1] = np.clip(2 * (xs - foot_x), 0, 254), np.clip(2 * (ys - foot_y), 0, 254)
+    out = cam.prepare(frame)
+    assert out.shape == (CUT_SIZE[1], CUT_SIZE[0], 3) and out.dtype == np.uint8
+
+    k = cam.intrinsics
+    # The source pixel each output column and row shows: through the cut's K, back out of the camera's.
+    u = pinhole.cx + pinhole.fx * (np.arange(CUT_SIZE[0]) - k[0, 2]) / k[0, 0]
+    v = pinhole.cy + pinhole.fy * (np.arange(CUT_SIZE[1]) - k[1, 2]) / k[1, 1]
+    for shown, ramp in (
+        (out[CUT_SIZE[1] // 2, :, 0], 2 * (u - foot_x)),
+        (out[:, CUT_SIZE[0] // 2, 1], 2 * (v - foot_y)),
+    ):
+        on = (ramp > 4) & (ramp < 250)  # clear of the ramp's knees by more than one output pixel
+        assert on.sum() > 80
+        off = shown[on].astype(float) - ramp[on]
+        assert np.abs(off).max() <= 1.0, "more than half a source pixel from where K puts it"
+        assert abs(off.mean()) < 0.1

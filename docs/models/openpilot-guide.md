@@ -853,6 +853,59 @@ own leaderboard row. Nothing in the record tells a scale measured on the rig
 from one fitted to the benchmark's own errors, and the second is tuned on the
 test set.
 
+### A view tilted over the camera's, and cut to comma's size
+
+Two more knobs go with the scale. Both were fitted in the KITScenes analysis
+notebooks (`tools/models/openpilot/analysis/`) to KITScenes' own keyframes, so
+a run with them is tuned on the test set.
+
+`PADDOCK_OPENPILOT_PITCH_DEG` tilts the model's view over the camera's,
+positive up. It is a rotation about y in the calibrated frame, ahead of the
+scale:
+
+```
+K @ view_frame_from_device_frame @ rot_from_euler(rpy) @ R_y(p) @ diag(1, 1, s) @ calib_from_model
+```
+
+The scale keeps the horizon row; the tilt moves it. At p = -1.7 the model's
+horizon row shows a level camera's row `cy + f tan 1.7°`, as if the camera sat
+1.7° more nose-down than its calibration says. `R_y` is built in numpy,
+not with `rot_from_euler`, so the analysis runs it came from are reproduced bit
+for bit.
+
+`PADDOCK_OPENPILOT_FOV_DEG` warps the views from a *cut*: F degrees across
+about the principal point, at comma's aspect, resampled by area to 1164×874.
+That is the frame comma's EON road camera would have recorded at that field of
+view. Without it, the ONNX warp gathers the nearest pixel straight from the
+source. On KITScenes' 5856 px base front camera that keeps about one pixel in
+six across `big_img` and aliases the rest. With s source pixels per cut
+pixel and the box's edge x0 kept in floats, the cut's focal length is f / s and
+its principal point (c + 0.5 - x0) / s - 0.5. A box rounded to whole pixels
+would move the frame off its K.
+
+A cut narrower than `big_img`'s 58.7° leaves that view's sides past the cut on
+purpose. At 55° about 7.4 % of `big_img` is smeared border, and `warp_in_bounds`
+says so. `img` (31.4°) stays whole.
+
+The refusals:
+- a tilt beyond ±15° or a field of view outside [0, 180) stops the node at
+  startup, naming the variable;
+- a cut stops the node at load on the tinygrad backend, whose warp is compiled
+  for 1928×1208. Set `PADDOCK_OPENPILOT_BACKEND = "onnx"` beside it;
+- at the first frame, a camera without square pixels, or a cut wider than the
+  camera recorded about its principal point, is refused;
+- the scale's guard covers the tilt too, against the cut's edge when there is
+  a cut: the composed warp is judged against the warp without the knobs. On
+  KITScenes' base camera with a 55° cut, s = 1.22 alone takes `big_img`'s top
+  off the cut (89.9 % real pixels against 92.4 %) and is refused. Tilted by
+  p = -1.7 as well, it fits (92.7 %).
+
+Both are recorded in `provenance.policy` as `pitch_deg` and `fov_deg`. A cut
+also sets `resample_mode` to `"cut"`, adds a `cut` block (size, box, hfov,
+vfov), and has its margins measured against the cut. At 0, the defaults,
+nothing is composed and nothing is cut: the warp is `get_warp_matrix`'s, bit
+for bit.
+
 ### Which backend ran, and one number it used to change
 
 `_resolve_backend` picks between tinygrad and onnxruntime by **trying an
