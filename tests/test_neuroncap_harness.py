@@ -535,6 +535,27 @@ def test_managing_renderers_makes_the_whole_official_set_one_valid_run(tmp_path,
     assert per_scene.invalid_reasons(), "a single-scene run must not rank as a sweep"
 
 
+def test_close_stops_the_renderer_this_harness_started(tmp_path, monkeypatch) -> None:
+    """A sweep split by a pairing builds a harness per model; each must let its renderer go."""
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
+    calls: list[str] = []
+
+    class _Renderer:
+        def terminate(self) -> None:
+            calls.append("terminate")
+
+        def wait(self, timeout=None) -> int:
+            calls.append("wait")
+            return 0
+
+    harness._renderer_proc, harness._renderer_scene = _Renderer(), "0103"
+    harness.close()
+    assert calls == ["terminate", "wait"]
+    assert harness._renderer_proc is None and harness._renderer_scene is None
+    harness.close()  # nothing left: a second close touches nothing
+    assert calls == ["terminate", "wait"]
+
+
 def test_a_renderer_we_did_not_start_is_never_stopped(tmp_path, monkeypatch) -> None:
     """On a shared box that renderer may be another person's sweep."""
     harness = _harness_for(_ncap_site(tmp_path, monkeypatch))

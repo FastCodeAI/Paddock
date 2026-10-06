@@ -196,6 +196,36 @@ def test_a_sweep_gives_each_model_its_own_config(tmp_path, monkeypatch) -> None:
     assert [one is not cfg for one in seen] == [name == "openpilot" for name in declaring]
 
 
+def test_a_split_sweep_lets_each_harness_go_before_the_next_starts(tmp_path, monkeypatch) -> None:
+    """neuroNCAP's renderer outlived its harness, and the next model's preflight found it and refused."""
+    cfg = _site(tmp_path, monkeypatch, PAIRING)
+    events: list[tuple[str, int]] = []
+
+    class _Harness:
+        def __init__(self, n: int) -> None:
+            self.n = n
+
+        def preflight(self) -> list[str]:
+            events.append(("preflight", self.n))
+            return ["stopped by the test"]
+
+        def close(self) -> None:
+            events.append(("close", self.n))
+
+    built: list[_Harness] = []
+
+    def _build(_spec, _cfg) -> _Harness:
+        built.append(_Harness(len(built)))
+        return built[-1]
+
+    monkeypatch.setattr(runner, "load_benchmark", _build)
+    monkeypatch.delenv("PADDOCK_BASE_PORT", raising=False)
+
+    runner.run_benchmark(cfg, "kitscenes", "all", echo=lambda _line: None)
+    assert len(built) > 1, "a pairing splits the sweep"
+    assert events == [step for n in range(len(built)) for step in (("preflight", n), ("close", n))]
+
+
 def test_a_sweep_without_a_pairing_still_shares_one_harness(tmp_path, monkeypatch) -> None:
     cfg = _site(tmp_path, monkeypatch, GLOBAL)
     seen = _stopped_at_preflight(monkeypatch)

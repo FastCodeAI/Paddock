@@ -31,6 +31,7 @@ import numpy as np
 
 from paddock.benchmark import (
     PIPELINE_BATCHES,
+    Benchmark,
     ClosedLoopBenchmark,
     ExternallyScoredBenchmark,
     OpenLoopBenchmark,
@@ -404,7 +405,33 @@ def run_benchmark(
         cfg = paired
 
     harness = load_benchmark(spec, cfg)
+    try:
+        return _run_harness(
+            cfg, spec, harness, models, bench, scene, scenarios, runs, limit, dry_run, resume, echo
+        )
+    finally:
+        # What a harness started of its own -- neuroNCAP's managed renderer -- is let go once the harness is
+        # done with, not at exit. A sweep split by a pairing builds one harness per model, and the next one's
+        # preflight would otherwise find the last one's renderer still answering and refuse to start.
+        if hasattr(harness, "close"):
+            harness.close()
 
+
+def _run_harness(
+    cfg: SiteConfig,
+    spec: BenchmarkSpec,
+    harness: Benchmark,
+    models: list[ModelSpec],
+    bench: str,
+    scene: str | None,
+    scenarios: list[str] | None,
+    runs: int,
+    limit: int | None,
+    dry_run: bool,
+    resume: str | None,
+    echo: Callable[[str], None],
+) -> int:
+    """`run_benchmark` from its harness on: preflight, then the dry run or the models in turn."""
     try:
         base = base_port()
     except ValueError as exc:
