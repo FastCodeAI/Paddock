@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import calendar
 import json
+import multiprocessing
 import os
 import re
 import shutil
@@ -172,8 +173,11 @@ class Builder:
         self.routes_out = self.out / "routes"
         self.runs = [Path(p).resolve() for p in args.runs]
         self.expert = args.expert
+        self.features = args.features
         self.table = runs.route_table(args.routes_xml)
-        self.pool = ProcessPoolExecutor(max_workers=args.jobs)
+        # Spawned, not forked: a forked worker inherits the server's listening socket and holds
+        # the port after the server is gone, so a restart fails with "address already in use".
+        self.pool = ProcessPoolExecutor(max_workers=args.jobs, mp_context=multiprocessing.get_context("spawn"))
         self.pending: dict[str, Future] = {}
         self.errors: dict[str, str] = {}
         self.lock = threading.Lock()
@@ -208,6 +212,15 @@ class Builder:
         marker = self.routes_out / att.route_id / ".failed"
         return not marker.exists() or (att.path / "results.json").stat().st_mtime > marker.stat().st_mtime
 
+    def load_features(self) -> dict[str, dict[str, str]]:
+        """``--features`` by route id. Generic on purpose: this tool knows the benchmark, not the model."""
+        if not self.features or not Path(self.features).exists():
+            return {}
+        import csv
+
+        with Path(self.features).open() as handle:
+            return {row["route_id"]: row for row in csv.DictReader(handle) if row.get("route_id")}
+
     def build(self) -> dict:
         started = time.time()
         everything = runs.attempts(self.runs) if self.runs else []
@@ -230,7 +243,11 @@ class Builder:
         running = [live_state(a, self.root) for a in everything if a.running]
         with self.lock:
             rendering, errors = sorted(self.pending), dict(self.errors)
+        extra = self.load_features()
         for row in rows:
+            if row["route_id"] in extra:
+                row["features"] = extra[row["route_id"]]
+                row["cause"] = extra[row["route_id"]].get("cause")
             row["rendering"] = row["route_id"] in rendering
             if row["route_id"] in errors:
                 row["render_error"] = errors[row["route_id"]]
@@ -355,6 +372,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--every", type=float, default=60.0, help="seconds between builder passes")
     ap.add_argument("--jobs", type=int, default=3, help="routes rendered at once (CPU; the GPU is CARLA's)")
+    ap.add_argument(
+        "--features",
+        type=Path,
+        help="a per-route CSV keyed by route_id (e.g. a model's analysis); its columns are shown beside each route",
+    )
     args = ap.parse_args(argv)
 
     builder = Builder(args)

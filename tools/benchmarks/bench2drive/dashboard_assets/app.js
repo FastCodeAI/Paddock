@@ -195,6 +195,17 @@ function renderCharts(rows) {
   const groupItem = (g) => ({ label: g.key.replace(/_/g, " "), value: g.ds, tip: [["mean driving score", fmt(g.ds, 1)], ["routes scored", g.n], ["mean route completion", fmt(g.rc, 1) + " %"], ["successes", `${g.succ} / ${g.n}`]] });
   const groupCols = [{ label: "group", get: (i) => i.label }, { label: "mean DS", num: 1, get: (i) => fmt(i.value, 1) }, { label: "n", num: 1, get: (i) => i.tip[1][1] }];
 
+  const causes = {};
+  for (const r of rows) if (r.cause) causes[r.cause] = (causes[r.cause] || 0) + 1;
+  const causeItems = Object.entries(causes).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({
+    label: k, value: v, valueText: String(v),
+    tip: [[k, `${v} routes`], ["scenarios", [...new Set(rows.filter((r) => r.cause === k).map((r) => r.scenario))].slice(0, 6).join(", ")]],
+  }));
+  card(document.querySelector('[data-chart="cause"]'), "Primary cause of each route's score",
+    "From the per-tick record (openpilot analysis): standstills and what was ahead, lights, turns, collisions. One cause per route.", causeItems,
+    [{ label: "cause", get: (i) => i.label }, { label: "routes", num: 1, get: (i) => String(i.value) }],
+    (n, w) => hbars(n, w, causeItems, { labelW: 290, valueFmt: (v) => fmt(v, 0), counts: true }));
+
   const ab = groupBars(rows, (r) => r.abilities || [], ABILITIES).map(groupItem);
   card(document.querySelector('[data-chart="ability"]'), "Mean driving score by ability", "Bench2Drive's five ability groups (a scenario can count towards two).", ab, groupCols,
     (n, w) => hbars(n, w, ab, { max: 100, labelW: 120 }));
@@ -261,6 +272,7 @@ const COLUMNS = [
   { key: "ds", label: "DS", num: 1, get: (r) => fmt(r.ds, 1) },
   { key: "rc", label: "RC %", num: 1, get: (r) => fmt(r.rc, 1) },
   { key: "penalty", label: "Penalty", num: 1, get: (r) => fmt(r.penalty, 2) },
+  { key: "cause", label: "Cause", get: (r) => r.cause || "" },
   { key: "infractions", label: "Infractions", get: (r) => Object.entries(r.infractions || {}).map(([k, v]) => `${v}× ${INFRACTION_NAMES[k] || k}`).join(", "), sort: (r) => Object.values(r.infractions || {}).reduce((a, b) => a + b, 0) },
   { key: "game_s", label: "Game s", num: 1, get: (r) => fmt(r.game_s, 1) },
   { key: "mean_speed", label: "Speed m/s", num: 1, get: (r) => fmt(r.mean_speed, 2) },
