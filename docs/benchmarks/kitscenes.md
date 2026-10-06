@@ -25,9 +25,11 @@ keyframes are not comparable however close the counts look. `paddock run
 That file is not a hand-written list. It is the output of the Drive-JEPA run
 that went first, kept because whichever 223 keyframes it happened to score
 became the set every later model had to match. Reading it as a sample list uses
-`scene_id`, `keyframe_index` and `split` and ignores the predictions sitting
-beside them; `paddock ingest` reads the same file for the predictions, which is
-how Drive-JEPA has a row on this benchmark without a paddock run.
+`scene_id`, `keyframe_index` and `split` -- and, only under `command_source =
+"gt"`, `driving_command` ([The route hint](#the-route-hint)) -- and ignores the
+predictions sitting beside them; `paddock ingest` reads the same file for the
+predictions, which is how Drive-JEPA has a row on this benchmark without a
+paddock run.
 
 ### The six rows, and where each came from
 
@@ -41,7 +43,16 @@ how Drive-JEPA has a row on this benchmark without a paddock run.
 | drivejepa | `legacy-kitscenes_e2e_final` | 223 | 2.364 | `inference/kitscenes_e2e_final.pkl` |
 
 All six carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
-so the column compares. Caveats the hash cannot express:
+so the column compares.
+
+openpilot also has a ranked paddock run on the same 223 keyframes, made at
+another site after the warp-cache fix: `20260930T154018-242869`, ADE 1.595
+against `legacy-full223`'s 1.599, with the median at 1.401 against 1.323. What
+moved the median was not checked. The two runs from the openpilot KITScenes
+analysis that were given the route hint are stored invalid
+([The route hint](#the-route-hint)).
+
+Caveats the hash cannot express:
 
 - **Route hint.** Drive-JEPA was run with `--command gt`, which derives a turn
   command from the recorded future on 39 of the 223 samples. VisionPilot has
@@ -122,8 +133,9 @@ sees a manufactured past followed by a real one.
 
 KITScenes has no route annotation, so by default every frame carries
 `Command.STRAIGHT` and a model is told nothing about where the car is going.
-Every paddock run so far was scored that way. A site can instead give the
-scored keyframe the sample list's own `driving_command`:
+Every paddock run before `20260930T014333-d329a6` was scored that way, and so
+is every ranked one. A site can instead give the scored keyframe the sample
+list's own `driving_command`:
 
 ```toml
 [benchmarks.kitscenes]

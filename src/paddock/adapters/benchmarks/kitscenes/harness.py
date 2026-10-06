@@ -89,7 +89,8 @@ RING = {
 #:
 #: KITScenes has no route annotation, so there is no honest route hint to give,
 #: and `straight`, the default, stamps `Command.STRAIGHT` on every frame -- what
-#: every paddock row on this benchmark was scored with. `gt` gives the keyframe
+#: every paddock run here before `20260930T014333-d329a6` was scored with, and
+#: every ranked one still is (`invalid_reasons()`). `gt` gives the keyframe
 #: the sample list's `driving_command` instead: the command Drive-JEPA's row was
 #: run with, which its `--command gt` derived from the recorded future. That
 #: makes it an oracle -- the model is told which way the car is about to go --
@@ -106,8 +107,8 @@ LIST_COMMANDS = (Command.LEFT, Command.STRAIGHT, Command.RIGHT)
 #: Which of the rig's two forward cameras is the protocol's CAM_FRONT:
 #: `[benchmarks.kitscenes] front_camera`.
 #:
-#: `ring`, the default, is the ring's own front camera, what every paddock row
-#: on this benchmark was scored with. `base` is `camera_base_front_center`:
+#: `ring`, the default, is the ring's own front camera, what every paddock run
+#: here before `20261005T205400-a369d1` was scored with. `base` is `camera_base_front_center`:
 #: 5856x3104 against the ring's 3504x2272, about the same 88 deg across but 54
 #: deg high against 63, so 1.6 times the pixels per degree, and mounted 0.2 m
 #: lower and 0.2 m further forward. The other five cameras stay the ring's.

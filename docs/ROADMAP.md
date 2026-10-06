@@ -85,6 +85,12 @@ launcher, `runtime/proc.py` and `runtime/gpu.py`.
 recorded `runs/full223` exactly: ADE 1.599424, median 1.322747, FDE@3s 2.893613,
 with all 892 metric comparisons identical at full float precision.
 
+*Qualified 2026-10-06 (#60).*
+- At another site the same command, on the same 223 keyframes, gives ADE 1.595359 and median 1.401
+  (`20260930T154018-242869`). That run is after the warp-cache fix. What moved the median was not checked.
+- A site with a pairing table for openpilot on KITScenes measures that table's configuration under this
+  command, not the stock one (`docs/site-setup.md`, §2).
+
 Getting there found a real bug — the adapter was reusing the first scene's
 camera calibration for all 223 samples — which a three-sample check had missed
 because those three shared a rotation group. See `docs/benchmarks/kitscenes.md`.
