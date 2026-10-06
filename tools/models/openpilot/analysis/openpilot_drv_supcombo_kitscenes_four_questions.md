@@ -56,7 +56,7 @@ This note answers four questions about openpilot's driving model (supercombo) on
     - the arm's outputs, other than the plan, equal the fixed baseline's on all 223 keyframes, which a stale warp would break;
     - the s = 1 point equals the baseline on all 60.
 - **The sweep points are subsets**, so they are `valid: false` and `paddock report` leaves them out.
-- **The arm is valid,** and `paddock report` lists it as a second openpilot row. That is why the notebook pins `RUN_ID`.
+- **The arm was stored valid,** so `paddock report` listed it as a second openpilot row. That is why the notebook pins `RUN_ID`. Since the review on #60 it is stored `valid: false`, as every `command_source = "gt"` run now is, because its route is read from the recorded future.
 
 ---
 

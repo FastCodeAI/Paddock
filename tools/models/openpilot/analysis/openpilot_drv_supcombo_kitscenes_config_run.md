@@ -42,7 +42,9 @@ That makes 90 tuned keyframes over 61 scenes. The other 133 are held out, and al
 | intent | `20260930T014333-d329a6` | ring | `command_source = "gt"`, `PADDOCK_OPENPILOT_DESIRE = "turn"` | 1.649 |
 | config | `20261005T205400-a369d1` | base | the scene sweep's `CONFIG`, below | 1.248 |
 
-Each is in `results/kitscenes/openpilot/<run_id>/`, with its per-keyframe records under `{runs}`. All three are valid and score the same 223 keyframes.
+Each is in `results/kitscenes/openpilot/<run_id>/`, with its per-keyframe records under `{runs}`. All three score the same 223 keyframes.
+
+Only stock is valid. Intent and the config read the route from the recorded future (`command_source = "gt"`). Kitscenes stores every such run `valid: false`, and these two were re-stored that way by `paddock run --resume`, after the review on #60. Their samples and metrics did not change.
 
 **The config is the scene sweep's `CONFIG`, knob for knob:**
 
@@ -60,7 +62,7 @@ Each is in `results/kitscenes/openpilot/<run_id>/`, with its per-keyframe record
     - for the config, 0.5895184985529843 and 2.061547588237582;
     - for stock, 1.2108458054936533 and 2.3175400615269024.
 - **The warp stays in the frame, except big_img's edges.** `img` is fully in bounds. `big_img` is 0.926 in bounds: its 58.7° is wider than the 55° cut, so its outer 7.4% is smeared from the cut's border.
-- **It took 29 minutes** (`duration_s`, 1,746 s).
+- **It took 29 minutes:** 1,746 s in the run's first record. The record now in `results/` is the `--resume` that re-stored it, so its `duration_s` and `started_utc` are that attempt's.
 
 ## The gate (verified)
 
@@ -68,8 +70,8 @@ The bar was fixed before the run: the config becomes this site's default only if
 
 - **This site's `paddock.toml` carries the two pairing tables,** with a comment naming this run and this note. A plain run of openpilot on KITScenes measures the config here, and `--dry-run` names the pairing.
 - **Nothing else changed.** The tables reach only openpilot on KITScenes. The code's defaults are stock, so CI and other sites run stock.
-- **Stock stays valid** as the untuned baseline. `paddock report` lists every valid run, so it shows stock, intent and the config as three openpilot rows.
-- **`paddock render --bench kitscenes` now draws the config by default,** since it takes each model's newest valid run unless given `--run-id`.
+- **The default is an analysis run, not a leaderboard row.** The config reads the route from the recorded future, so this run, and every plain run here while the tables are in place, is stored `valid: false`. Stock stays valid, the untuned baseline. Of the three, it is the only row `paddock report` ranks.
+- **`paddock render --bench kitscenes` draws stock by default,** since it takes each model's newest valid run. Pass `--run-id` to draw the config.
 
 ## What changed (measured)
 
@@ -183,7 +185,7 @@ The base camera sits 0.20 m below the ring's, by either measure.
 
 ## Caveats
 
-- **Tuned on the test set.** 90 of the 223 keyframes were used to choose or score a knob, and the run is kept valid anyway, by decision. For what the config would do on new straights, read the held-out rows, not the headline.
+- **Tuned on the test set.** 90 of the 223 keyframes were used to choose or score a knob. The run was first stored valid anyway, by decision. It is now invalid for its route hint, not for the tuning: a run with the camera knobs alone would still be ranked. For what the config would do on new straights, read the held-out rows, not the headline.
 - **Not all of the four-questions note's "other 29" turns are untouched** (verified, against the lib's `CHOSEN`).
     - That note calls them the turn keyframes "which nothing was chosen on". But 6 of them are in sweep60, the 60 keyframes s\* was measured on.
     - Here those 6 count as tuned, which leaves 23 turns not chosen on.
