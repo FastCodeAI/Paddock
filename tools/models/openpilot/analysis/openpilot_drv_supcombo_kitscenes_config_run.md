@@ -193,7 +193,7 @@ The base camera sits 0.20 m below the ring's, by either measure.
 
 ## Reproducing and resetting
 
-**The notebook.** Running `.venv/bin/jupyter execute --inplace` on it reads the three runs' records. It re-executes in seconds, with no GPU and no node.
+**The notebook.** Running `.venv/bin/jupyter execute --inplace` on it reads the three runs' records. It re-executes in seconds, with no GPU and no node. `jupyter` comes with the `analysis` extra, which `make setup` leaves out: `uv pip install --python .venv/bin/python -e ".[analysis]"`.
 - Part 1's `RUNS` pins the runs.
 - `ON`, `FOCUS` and `OVERRIDES` move every part to another subset, keyframe or threshold.
 

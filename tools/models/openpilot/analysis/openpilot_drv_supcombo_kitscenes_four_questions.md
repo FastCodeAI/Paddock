@@ -655,7 +655,7 @@ On the other 29, against stock's 1.77 m, the gain is under half as large: 1.44 m
 
 ## Reproducing
 
-**The notebook.** `.venv/bin/jupyter execute --inplace` on it re-runs everything from the recorded runs. It executes in about a minute here, without a GPU.
+**The notebook.** `.venv/bin/jupyter execute --inplace` on it re-runs everything from the recorded runs. It executes in about a minute here, without a GPU. `jupyter` comes with the `analysis` extra, which `make setup` leaves out: `uv pip install --python .venv/bin/python -e ".[analysis]"`.
 - §1 pins `RUN_ID`. `INTENT_RUN` and `SWEEP` find the other runs by the settings they recorded.
 - `FOCUS` restricts every section to one scene or a list of keyframes, and the §17 side by side draws each of them.
 
