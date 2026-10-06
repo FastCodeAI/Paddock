@@ -15,7 +15,10 @@ come from the environment, set by ``harness.run_episode``:
     PADDOCK_WAYPOINT_DT   spacing of the returned waypoints, s   (default 0.5)
     PADDOCK_RECORD_DIR    if set, write front/BEV frames + a per-tick log.csv
                           here; the harness sets SAVE_PATH alongside it so the
-                          leaderboard allows the BEV camera's 30 m mount
+                          leaderboard allows the BEV camera's 30 m mount. Also
+                          the analysis record (``recorder.py``): every tick's
+                          full node reply beside privileged world state, the
+                          route plan, and thumbnails of the model's cameras
     PADDOCK_METRICS_DIR   if set, write <dir>/<save_name>/metric_info.json: the
                           per-tick ego kinematics Bench2Drive's
                           efficiency_smoothness_benchmark.py scores. The
@@ -40,6 +43,7 @@ import csv
 import json
 import math
 import os
+import time
 
 import carla
 import cv2
@@ -49,6 +53,7 @@ from agents.navigation.local_planner import RoadOption
 from leaderboard.autoagents.autonomous_agent import AutonomousAgent, Track
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 
+from paddock.adapters.benchmarks.bench2drive import recorder
 from paddock.adapters.benchmarks.bench2drive.pid import WaypointTracker
 from paddock.policy.protocol import CANBUS_ACCEL, CANBUS_VELOCITY, Command, Trajectory, encode_image
 
@@ -128,6 +133,19 @@ R_OPT = np.array([[0.0, 0.0, 1.0], [-1.0, 0.0, 0.0], [0.0, -1.0, 0.0]])
 #: Columns of waypoints written to log.csv when recording.
 LOGGED_WAYPOINTS = 6
 
+#: The model's own cameras, kept as thumbnails in the analysis record.
+MODEL_VIEWS = {"CAM_OP_ROAD": "model_road", "CAM_OP_WIDE": "model_wide"}
+
+#: Ticks between refreshes of the candidate actor list. Poses are read every
+#: tick from the client's own copy of the last snapshot; only *which* actors
+#: exist is re-listed, so a new one appears in the record within half a second.
+ACTOR_REFRESH_TICKS = 10
+
+#: Blueprint prefixes of what the analysis record tracks: cars and bikes,
+#: pedestrians, and the props scenarios place in the lane (cones, warning
+#: signs, and the parked cars Bench2Drive spawns as static meshes).
+TRACKED = ("vehicle.", "walker.pedestrian.", "static.prop.")
+
 #: Seconds to wait for one /infer reply. Under heavy GPU contention a single
 #: DriveJEPA step can stall well past 120 s; raise via PADDOCK_INFER_TIMEOUT_S.
 INFER_TIMEOUT_S = int(os.environ.get("PADDOCK_INFER_TIMEOUT_S", "120"))
@@ -193,11 +211,232 @@ class PaddockB2DAgent(AutonomousAgent):
                 + [f"wp{i}{ax}" for i in range(LOGGED_WAYPOINTS) for ax in ("x", "y")]
                 + ["ego_x", "ego_y", "ego_yaw", "resume", "nav_maneuver", "nav_distance_m"]
             )
+        self._ticks = None
+        if RECORD_DIR:
+            self._open_analysis_record()
+
+    # ---- the analysis record (recorder.py): never allowed to stop a route ----
+
+    def set_global_plan(self, global_plan_gps, global_plan_world_coord):
+        """Keep the route at the leaderboard's own spacing for the analysis record.
+
+        The base class stores only a 50 m downsample of it
+        (``autonomous_agent.py:132`` at 7ec25d1), which is what ``_command`` and
+        ``_nav`` read and go on reading; a 133 m route is four points there, too
+        few to say how far along it the car got. The route handed in here is
+        the RouteScenario's own, interpolated at 1 m.
+        """
+        self._dense_plan = list(global_plan_world_coord)
+        super().set_global_plan(global_plan_gps, global_plan_world_coord)
+
+    def _open_analysis_record(self):
+        """route_plan.json, ticks.jsonl and actors.jsonl; see ``recorder.py``.
+
+        Called from ``setup``, which the leaderboard runs after
+        ``set_global_plan`` (leaderboard_evaluator.py:362-364 at 7ec25d1), so
+        the route is already known. A failure here costs the record, not the
+        route: an exception out of ``setup`` would score as "Agent couldn't be
+        set up".
+        """
+        self._record_failed = False
+        self._tracked = []
+        self._seen = set()
+        self._lights_by_id = {}
+        try:
+            plan = getattr(self, "_dense_plan", None) or []
+            self._route = recorder.Route(
+                [[tf.location.x, tf.location.y] for tf, _ in plan], [opt.name for _, opt in plan]
+            )
+            try:
+                self._route_lights, self._route_stops = self._route_marks()
+            except Exception as exc:  # the lights are context; the rest of the record still stands
+                print("[paddock-b2d] route lights not recorded:", repr(exc))
+                self._route_lights, self._route_stops = [], []
+            with open(os.path.join(RECORD_DIR, "route_plan.json"), "w") as handle:
+                json.dump(self._route.plan_json(self._route_lights, self._route_stops), handle)
+            for view in MODEL_VIEWS.values():
+                os.makedirs(os.path.join(RECORD_DIR, view), exist_ok=True)
+            self._ticks = open(os.path.join(RECORD_DIR, "ticks.jsonl"), "w")
+            self._actors_log = open(os.path.join(RECORD_DIR, "actors.jsonl"), "w")
+        except Exception as exc:
+            print("[paddock-b2d] analysis record disabled:", repr(exc))
+            self._ticks = None
+
+    def _route_marks(self):
+        """Traffic lights and stop signs on the route, by route index.
+
+        A light is on the route when one of the stop-line waypoints it governs
+        (``get_affected_lane_waypoints``) lies on the route *and* points the way
+        the route does there -- the stop line of the opposing lane is a lane
+        width from the route too, and without the heading test it would be
+        counted. Stop signs carry no such list, so theirs is the trigger
+        volume's centre within ``recorder.ON_ROUTE_M``.
+        """
+        world = CarlaDataProvider.get_world()
+        route = self._route
+        lights, stops = [], []
+        if world is None or not len(route.xy):
+            return lights, stops
+        lo, hi = route.xy.min(axis=0) - 50.0, route.xy.max(axis=0) + 50.0
+        for light in world.get_actors().filter("traffic.traffic_light*"):
+            loc = light.get_location()
+            if not (lo[0] <= loc.x <= hi[0] and lo[1] <= loc.y <= hi[1]):
+                continue
+            for wp in light.get_affected_lane_waypoints():
+                tl = wp.transform.location
+                i = route.on_route(tl.x, tl.y, radius=2.5)
+                if i is None:
+                    continue
+                j = min(i + 1, len(route.xy) - 1)
+                k = max(j - 2, 0)
+                heading = math.degrees(
+                    math.atan2(route.xy[j, 1] - route.xy[k, 1], route.xy[j, 0] - route.xy[k, 0])
+                )
+                if abs(recorder.wrap_deg(wp.transform.rotation.yaw - heading)) < 60.0:
+                    lights.append({"id": light.id, "i": i, "x": round(tl.x, 2), "y": round(tl.y, 2)})
+                    self._lights_by_id[light.id] = light
+                    break
+        for stop in world.get_actors().filter("traffic.stop"):
+            loc = stop.get_transform().transform(stop.trigger_volume.location)
+            i = route.on_route(loc.x, loc.y)
+            if i is not None:
+                stops.append({"id": stop.id, "i": i, "x": round(loc.x, 2), "y": round(loc.y, 2)})
+        return lights, stops
+
+    def _write_analysis_record(self, input_data, game_time, infer_ms, sent, payload, control, desired_speed):
+        """One line of ticks.jsonl, plus model-camera thumbnails every few ticks."""
+        hero = self._hero_actor()
+        if hero is None:
+            return
+        tf = hero.get_transform()
+        yaw = tf.rotation.yaw
+        rad = math.radians(yaw)
+        c, s = math.cos(rad), math.sin(rad)
+        v, a, w = hero.get_velocity(), hero.get_acceleration(), hero.get_angular_velocity()
+        ego = {
+            "x": tf.location.x,
+            "y": tf.location.y,
+            "z": tf.location.z,
+            "yaw": yaw,
+            "pitch": tf.rotation.pitch,
+            "roll": tf.rotation.roll,
+            "speed": sent["speed"],
+            # World vectors into the ego frame (x forward, y left), as recorder.to_ego.
+            "v": [v.x * c + v.y * s, v.x * s - v.y * c],
+            "a": [a.x * c + a.y * s, a.x * s - a.y * c],
+            # CARLA's yaw grows clockwise seen from above; left-positive here.
+            "yaw_rate": -w.z,
+            "speed_limit": sent["speed_limit"],
+        }
+        index, off = self._route.locate(tf.location.x, tf.location.y)
+        route = {
+            "i": index,
+            "s": float(self._route.s[index]) if len(self._route.s) else 0.0,
+            "dev": off,
+            "frac": float(self._route.s[index]) / self._route.length if self._route.length > 0 else 0.0,
+        }
+        lane = None
+        wp = CarlaDataProvider.get_map().get_waypoint(tf.location)
+        if wp is not None:
+            wyaw = math.radians(wp.transform.rotation.yaw)
+            dx, dy = tf.location.x - wp.transform.location.x, tf.location.y - wp.transform.location.y
+            lane = {
+                "road": wp.road_id,
+                "lane": wp.lane_id,
+                "junction": bool(wp.is_junction),
+                "width": wp.lane_width,
+                # Left-positive offset from the lane centre, and heading against it.
+                "offset": dx * math.sin(wyaw) - dy * math.cos(wyaw),
+                "heading": recorder.wrap_deg(yaw - wp.transform.rotation.yaw),
+            }
+        lights = {"at": bool(hero.is_at_traffic_light()), "state": str(hero.get_traffic_light_state())}
+        nxt = recorder.next_on_route(self._route_lights, index, self._route)
+        if nxt is not None:
+            light = self._lights_by_id.get(nxt["id"])
+            nxt["state"] = str(light.get_state()) if light is not None else None
+            lights["next"] = nxt
+        stop = recorder.next_on_route(self._route_stops, index, self._route)
+        if stop is not None:
+            lights["stop"] = stop
+
+        if self._t % ACTOR_REFRESH_TICKS == 0 or not self._tracked:
+            world = CarlaDataProvider.get_world()
+            self._tracked = [
+                actor
+                for actor in world.get_actors()
+                if actor.type_id.startswith(TRACKED) and actor.id != hero.id
+            ]
+        rows = []
+        for actor in self._tracked:
+            try:
+                atf, av = actor.get_transform(), actor.get_velocity()
+            except RuntimeError:  # destroyed since the last refresh
+                continue
+            row = recorder.actor_row(
+                actor.id, atf.location.x, atf.location.y, atf.rotation.yaw, av.x, av.y, ego
+            )
+            if row is None:
+                continue
+            rows.append(row)
+            if actor.id not in self._seen:
+                self._seen.add(actor.id)
+                ext = actor.bounding_box.extent
+                meta = {
+                    "id": actor.id,
+                    "type": actor.type_id,
+                    "role": actor.attributes.get("role_name", ""),
+                    "mesh": actor.attributes.get("mesh_path", ""),
+                    "ext": [round(ext.x, 2), round(ext.y, 2), round(ext.z, 2)],
+                    "t": self._t,
+                }
+                self._actors_log.write(recorder.dumps(meta) + "\n")
+                self._actors_log.flush()  # rare, and a live dashboard reads it mid-route
+
+        record = recorder.tick_record(
+            self._t,
+            game_time,
+            infer_ms,
+            ego,
+            sent,
+            payload,
+            {
+                "steer": control.steer,
+                "throttle": control.throttle,
+                "brake": control.brake,
+                "v_des": desired_speed,
+            },
+            route=route,
+            lane=lane,
+            lights=lights,
+            actors=rows,
+        )
+        self._ticks.write(recorder.dumps(record) + "\n")
+        self._ticks.flush()
+
+        if self._t % recorder.MODEL_VIEW_EVERY == 0:
+            for cid, view in MODEL_VIEWS.items():
+                if cid in input_data:
+                    bgr = input_data[cid][1][:, :, :3]
+                    h, w = bgr.shape[:2]
+                    small = cv2.resize(
+                        bgr,
+                        (w // recorder.MODEL_VIEW_SCALE, h // recorder.MODEL_VIEW_SCALE),
+                        interpolation=cv2.INTER_AREA,
+                    )
+                    cv2.imwrite(
+                        os.path.join(RECORD_DIR, view, f"{self._t:05d}.jpg"),
+                        small,
+                        [cv2.IMWRITE_JPEG_QUALITY, 85],
+                    )
 
     def destroy(self):
         if self._log is not None:
             self._log.close()
             self._log = None
+        for handle in ("_ticks", "_actors_log"):
+            if getattr(self, handle, None) is not None:
+                getattr(self, handle).close()
+                setattr(self, handle, None)
         if self._metric_path and self._metric_info:
             os.makedirs(os.path.dirname(self._metric_path), exist_ok=True)
             with open(self._metric_path, "w") as handle:
@@ -381,8 +620,10 @@ class PaddockB2DAgent(AutonomousAgent):
             },
         }
 
+        sent_at = time.monotonic()
         r = self._http.post(f"{SERVER}/infer", json=body, timeout=INFER_TIMEOUT_S)
         r.raise_for_status()
+        infer_ms = (time.monotonic() - sent_at) * 1000.0
         # Validated here: a NaN from a mis-warmed model is an error, not a steer
         # value CARLA accepts silently.
         payload = r.json()
@@ -395,6 +636,23 @@ class PaddockB2DAgent(AutonomousAgent):
 
         if self._metric_path:
             self._record_metric_info()
+
+        if self._ticks is not None and not self._record_failed:
+            sent = {
+                "command": body["command"],
+                "nav_maneuver": nav_maneuver,
+                "nav_distance_m": nav_distance_m,
+                "speed": speed,
+                "accel": accel,
+                "speed_limit": speed_limit,
+            }
+            try:
+                self._write_analysis_record(
+                    input_data, timestamp, infer_ms, sent, payload, control, desired_speed
+                )
+            except Exception as exc:  # the record is for analysis; the route must go on without it
+                self._record_failed = True
+                print("[paddock-b2d] analysis record stopped at tick", self._t, ":", repr(exc))
 
         if self._log is not None and front_bgr is not None:
             cv2.imwrite(
