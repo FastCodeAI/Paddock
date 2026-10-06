@@ -404,8 +404,31 @@ class CameraAdapter:
         self.height_scale = float(height_scale)
         self.pitch_deg = float(pitch_deg)
         self.fov_deg = float(fov_deg)
+        if self.mode == "cut":
+            self._check_cut()
         if self.height_scale != 1.0 or self.pitch_deg != 0.0:
             self.transforms = self._height_scaled(self.transforms)
+
+    def _check_cut(self) -> None:
+        """Refuse a cut that does not hold img whole.
+
+        big_img's edges past a cut narrower than its 58.7 deg are smeared on
+        purpose, and `warp_in_bounds` says how much. img is not allowed that: a
+        cut too narrow for it -- 5.5 typed for 55 -- would be stored as a valid
+        run that measured the smear. The height and tilt guard cannot see this,
+        because it judges those knobs against the knob-free warp of this same
+        cut, which is already off it. Checked on that knob-free warp, so with
+        img whole here the guard keeps it whole after them.
+        """
+        from openpilot.common.transformations.model import MEDMODEL_INPUT_SIZE
+
+        whole = self._real_pixels(self.transforms["img"], MEDMODEL_INPUT_SIZE)
+        if whole < 1.0:
+            raise ValueError(
+                f"PADDOCK_OPENPILOT_FOV_DEG = {self.fov_deg:g} cuts into the img view: {whole:.2%} of it "
+                f"would be real pixels. img spans {self.VIEW_FOV['img'][0]:g} deg across and must lie wholly "
+                "inside the cut, as it does at 55. See CameraFit.cut in the openpilot adapter's policy.py."
+            )
 
     def _height_scaled(self, unscaled: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
         """`transforms` with the road plane shown from openpilot's height, and tilted; see the class."""

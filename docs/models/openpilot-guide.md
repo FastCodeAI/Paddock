@@ -887,7 +887,9 @@ would move the frame off its K.
 
 A cut narrower than `big_img`'s 58.7° leaves that view's sides past the cut on
 purpose. At 55° about 7.4 % of `big_img` is smeared border, and `warp_in_bounds`
-says so. `img` (31.4°) stays whole.
+says so. `img` (31.4°) stays whole, and a cut that does not hold it whole is
+refused when the adapter is built: `5.5` typed for `55` would leave `img` 4 %
+real pixels on the base camera, and the run would measure the smear.
 
 The refusals:
 - a tilt beyond ±15° or a field of view outside [0, 180) stops the node at

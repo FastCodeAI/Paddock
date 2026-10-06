@@ -1026,6 +1026,16 @@ def test_a_tilted_cut_is_judged_against_its_own_untilted_warp() -> None:
         )
 
 
+def test_a_cut_too_narrow_for_img_is_refused() -> None:
+    """5.5 typed for 55 left img 4 % real pixels, and nothing refused it: the guard only judges the knobs."""
+    pytest.importorskip("openpilot", reason="needs openpilot's environment")
+
+    for fov in (5.5, 30.0):
+        with pytest.raises(ValueError, match=f"PADDOCK_OPENPILOT_FOV_DEG = {fov:g} cuts into the img view"):
+            CameraAdapter(BASE_FRONT, _mount(), resample=False, fov_deg=fov)
+    CameraAdapter(BASE_FRONT, _mount(), resample=False, fov_deg=55.0)  # img whole, big_img's edges smeared
+
+
 def test_the_margin_of_a_cut_is_the_cuts() -> None:
     """Against the cut the views are warped from, not the camera it was cut from."""
     pytest.importorskip("openpilot", reason="needs openpilot's environment")
