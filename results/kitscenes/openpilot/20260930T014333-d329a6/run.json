@@ -4,8 +4,8 @@
   "benchmark": "kitscenes",
   "model": "openpilot",
   "mode": "open_loop",
-  "started_utc": "2026-09-30T01:43:33+00:00",
-  "duration_s": 1114.0,
+  "started_utc": "2026-10-06T02:07:28+00:00",
+  "duration_s": 0.0,
   "repo_sha": "555f48c5d28709f039b79f3f6105e51305edd4b5",
   "dataset": {
     "name": "kitscenes",
@@ -89,8 +89,8 @@
     }
   },
   "status": "complete",
-  "valid": true,
+  "valid": false,
   "superseded_by": "",
-  "notes": "",
+  "notes": "command_source = \"gt\": the scored keyframe was given a route command derived from its own recorded future, an oracle hint no ranked row gets; resumed: 223 sample(s) reused from an earlier attempt",
   "ingested_from": ""
 }
