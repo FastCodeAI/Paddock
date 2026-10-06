@@ -569,6 +569,36 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
                 config={"route_id": rid, "town": town, "runs": runs},
             )
 
+    def completed_metrics(self, episode: Episode, out_dir: Path, runs: int = 1) -> dict[str, float] | None:
+        """The route's metrics if its ``results.json`` already holds every repetition, else None.
+
+        This is what ``--resume`` reuses; without it the base class answers None
+        and a resumed sweep re-drives every route it had already scored. The
+        evaluator writes ``results.json`` at startup and rewrites it as each
+        repetition ends, so the file existing proves nothing: a route killed
+        mid-drive -- a reboot, a per-route timeout -- holds no record, or fewer
+        than the repetitions asked for, and is driven again. One record per
+        repetition is a finished route, and it reads exactly as it did when it
+        was driven: through :func:`parse_results`, which drops crashed
+        repetitions and refuses a route where every one crashed, so a crash is
+        driven again too.
+
+        ``duration_s`` is the one metric not on disk -- it is the harness's own
+        clock around the evaluator, CARLA's boot included -- so a reused route
+        leaves it out rather than invent it, and the store counts it missing.
+        """
+        results = Path(out_dir) / "results.json"
+        try:
+            records = (json.loads(results.read_text()).get("_checkpoint") or {}).get("records") or []
+        except (OSError, ValueError):
+            return None
+        if len(records) < max(1, runs):
+            return None
+        try:
+            return parse_results(results)
+        except NotScored:
+            return None
+
     # ---- run one episode ----------------------------------------------
 
     def run_episode(
