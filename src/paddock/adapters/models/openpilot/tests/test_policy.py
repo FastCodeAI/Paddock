@@ -711,6 +711,8 @@ def test_an_unknown_desire_mode_stops_the_node(monkeypatch) -> None:
 def test_desire_slots_are_openpilots_own() -> None:
     """Restated at module scope, so pinned here to cereal's enum itself."""
     pytest.importorskip("openpilot", reason="needs openpilot's environment")
+    # cereal is capnp schemas: a checkout on PYTHONPATH without openpilot's env has the one and not the other
+    pytest.importorskip("capnp", reason="needs openpilot's environment (cereal reads capnp schemas)")
     from openpilot.cereal import log
     from openpilot.selfdrive.modeld.constants import ModelConstants
 

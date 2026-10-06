@@ -354,7 +354,8 @@ class CameraAdapter:
     `CameraFit.cut` of the frame instead of the frame as recorded. ONNX only:
     the tinygrad warp is compiled for 1928x1208. A cut narrower than big_img's
     58.7 deg leaves that view's edges past the cut on purpose -- at 55 deg
-    about 7.4 % of it is smeared border, and `warp_in_bounds` says so. At 0,
+    about 7.6 % of it is smeared border on a level mount (7.4 % with the config
+    run's height and tilt), and `warp_in_bounds` says so. At 0,
     the default, there is no cut.
     """
 
@@ -1372,8 +1373,8 @@ class OpenpilotPolicy(Policy):
         # it is the visible sign of the checkout's generation: the sha in
         # repos.yaml predates `prepare_only`, so True means the run was made
         # against a newer tree and its number is not attributable to the pin.
-        # Served at /diagnostics only -- nothing persists that into `run.json`
-        # for an open-loop run yet, so this is a live check, not provenance.
+        # Served at /diagnostics, which an open-loop run copies into `run.json`'s
+        # `provenance.policy` once its node has inferred.
         probe = {"run_takes_prepare_only": bool(getattr(self, "_run_takes_prepare_only", False))}
         if self.camera is None:
             return {
