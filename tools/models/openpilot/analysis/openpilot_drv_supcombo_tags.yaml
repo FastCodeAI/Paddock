@@ -1,6 +1,8 @@
 # Scenario, perception and response tags for openpilot's driving model on the
-# open-loop benchmarks. Shared by every openpilot_drv_supcombo_*_openloop_analysis
-# notebook here, so a tag means the same thing on every benchmark.
+# open-loop benchmarks. Written to be shared by each benchmark's
+# openpilot_drv_supcombo_*_openloop_analysis notebook, so a tag means the same
+# thing on every benchmark. Here that is the KITScenes one; the comma2k19 one is
+# on openpilot/model-analysis (#58), and its `only: [comma2k19]` rules stay here.
 #
 # How a rule is read:
 #   - `when` is a pandas expression over the notebook's feature table (its §5
