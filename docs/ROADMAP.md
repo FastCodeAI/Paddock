@@ -336,6 +336,19 @@ component of EPDMS. No model behind an HTTP node can do that. Its recorded
 0.90673 is therefore not a baseline the other three can be measured against;
 the comparable set is runs through `paddock_proxy`.
 
+**What a KITScenes `gt` run was told: open (follow-up from #60).**
+- **The gap.** `command_source = "gt"` records the source in `run_config()`, but not the commands it sent.
+  `sequences_sha256` hashes sample ids only. A site whose copy of the sample list came from a
+  `--command straight` Drive-JEPA run has the same 223 ids. Its `gt` run would get the same run id as
+  one that sent 39 turns, while sending none.
+- **Status.** Argued: only one list exists here, and it holds 39 turns.
+- **Why it is deferred.** A `gt` run is stored `valid: false` and never ranked, so no leaderboard number
+  depends on this. Adding the turn count, or a digest of the per-row commands, to `run_config()` changes
+  the id of every `gt` run. That would orphan `20260930T014333-d329a6` and `20261005T205400-a369d1` from
+  their `--resume` and from the analysis that cites them by id.
+- **To close it.** Either record the digest beside `sequences_sha256` in `run.json`'s dataset block,
+  which is not hashed, or accept the id change on the next `gt` run.
+
 ## Bench2Drive / CARLA — adapter landed, driven, and the runs are tracked
 
 `adapters/benchmarks/bench2drive`: a model-agnostic CARLA `agent.py`, the
