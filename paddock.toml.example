@@ -299,6 +299,15 @@ serialize = true
 # KITScenes loader does. Either way it is recorded under provenance.policy.
 # [models.drivejepa.env]
 # DRIVEJEPA_IMAGE_GEOMETRY = "native"   # or "openscene"
+#
+# Momentum-aware selection (the paper's section 3.5) is "off" by default, which
+# is how every published drivejepa row was made: the node drives the raw argmax
+# of the learned score. "on" hands each replan the plan the node chose ~0.5 s
+# earlier, so the model's own calibrate_score runs before the argmax -- what
+# upstream's evaluation loop does. It changes which proposal is driven in closed
+# loop; an open-loop sequence resets first and is unaffected. Recorded under
+# provenance.policy with how often a previous plan was actually fed.
+# DRIVEJEPA_MOMENTUM = "off"            # or "on"
 
 # ---------------------------------------------------------------------------
 # [ingest] -- where results that predate paddock live on this machine.

@@ -30,6 +30,11 @@ stepping at 10 Hz to suit the other models, so the history is selected by
 timestamp at ~0.5 s spacing rather than by taking the last four requests --
 otherwise the model would see 0.3 s of history and read the scene as nearly
 static.
+
+*Momentum-aware selection* (paper section 3.5) is off unless
+``DRIVEJEPA_MOMENTUM=on``. With it on, each replan is handed the plan this node
+chose about 0.5 s earlier, the way upstream's own evaluation loop hands it over,
+so the model's ``calibrate_score`` runs before the argmax. See `momentum.py`.
 """
 
 from __future__ import annotations
@@ -40,6 +45,7 @@ from typing import Any
 
 import numpy as np
 
+from paddock.adapters.models.drivejepa import momentum
 from paddock.policy.protocol import Observation, Policy, Trajectory
 
 # Drive-JEPA camera slot -> nuScenes camera. The perception branch reads these
@@ -100,6 +106,15 @@ class DriveJepaPolicy(Policy):
             raise ValueError(
                 f"DRIVEJEPA_IMAGE_GEOMETRY={self.image_geometry!r}; expected one of {IMAGE_GEOMETRIES}"
             )
+        # Off is how every published drivejepa row was made: the node took the
+        # raw argmax of the learned score. On adds the stage upstream's own
+        # evaluation runs before that argmax (`momentum.py`). It changes which
+        # of the 32 proposals is driven, so it is refused if misspelt rather
+        # than read as off.
+        switch = os.environ.get(momentum.SWITCH_ENV, "off")
+        if switch not in momentum.SWITCHES:
+            raise ValueError(f"{momentum.SWITCH_ENV}={switch!r}; expected one of {momentum.SWITCHES}")
+        self.momentum = momentum.Momentum() if switch == "on" else None
         self.agent = None
         self.feature_builder = None
         self.history: list[dict[str, Any]] = []
@@ -123,8 +138,10 @@ class DriveJepaPolicy(Policy):
         self.reset()
 
     def reset(self) -> None:
-        """Drop the frame history between runs."""
+        """Drop the frame history, and the previous plan, between runs."""
         self.history: list[dict[str, Any]] = []
+        if self.momentum is not None:
+            self.momentum.reset()
 
     def _record(self, obs: Observation) -> None:
         # Images are decoded later, and only for the four frames
@@ -268,6 +285,12 @@ class DriveJepaPolicy(Policy):
         `_select_history`, same features, same forward. Bit-identical, four
         times cheaper.
 
+        That holds with momentum on as well, for a narrower reason: a frame
+        that is only recorded is never planned from, so it leaves no previous
+        plan behind, and `infer_sequence` resets before it starts. A sequence
+        therefore always selects on the plain score -- which is why the NAVSIM
+        proxy, which scores through `infer_sequence`, is untouched by the switch.
+
         Not a pattern to copy into openpilot or visionpilot: both carry state
         that each forward pass advances, so for them every pass is load-bearing.
         """
@@ -296,8 +319,37 @@ class DriveJepaPolicy(Policy):
             k: (v.unsqueeze(0).to(self.device) if torch.is_tensor(v) else v) for k, v in features.items()
         }
 
+        if self.momentum is None:
+            with torch.no_grad():
+                return self.agent.forward(features)
+
+        if self.momentum.upstream is None:
+            self.momentum.upstream = momentum.Upstream(self.agent._trajectory_sampling)
+        extra, ego_state = self.momentum.features(*self._ego_now(obs))
+        features.update(extra)
         with torch.no_grad():
-            return self.agent.forward(features)
+            output = self.agent.forward(features)
+            # What the argmax would have been without the stage: the same
+            # expression, on the same tensor, as drive_jepa_model.py:85.
+            plain = torch.argmax(torch.sigmoid(output["pred_logit"])[:, :, -1], dim=1)
+            changed = bool((plain != torch.argmax(output["pdm_score"], dim=1)).any())
+        chosen = output["trajectory"][0].float().cpu().numpy()
+        self.momentum.remember(chosen, ego_state, obs.timestamp_us, changed=changed)
+        return output
+
+    @staticmethod
+    def _ego_now(obs: Observation) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+        """Pose, velocity, acceleration and time the momentum stage is given.
+
+        Velocity and acceleration are the newest `EgoStatus` row `_agent_input`
+        builds -- the numbers the model itself is given -- which is upstream's
+        pairing: one frame record feeds both the model and the stage. The pose
+        is ego2world, which plays the part of upstream's global frame.
+        """
+        pose = np.array([obs.ego2world[0, 3], obs.ego2world[1, 3], yaw_of(obs.ego2world)], dtype=np.float64)
+        velocity = np.array([obs.speed, 0.0], dtype=np.float32)
+        acceleration = np.array([obs.accel, 0.0], dtype=np.float32)
+        return pose, velocity, acceleration, int(obs.timestamp_us)
 
     def infer(self, obs: Observation) -> Trajectory:
         output = self.forward(obs)
@@ -309,7 +361,7 @@ class DriveJepaPolicy(Policy):
         return Trajectory(trajectory, dt=HISTORY_DT)
 
     def diagnostics(self) -> dict[str, Any]:
-        """History depth actually achieved, and the image geometry in use.
+        """History depth actually achieved, the image geometry, and momentum.
 
         The reason history matters: it is selected by timestamp, so a
         simulator stepping faster than 0.5 s still yields ~1.5 s of context. If
@@ -320,12 +372,22 @@ class DriveJepaPolicy(Policy):
         the runner stores this dict in run.json as `provenance.policy`. An
         explicit env override also lands in `model_env`; the default does not,
         so without this a `native` run would carry no record of being one.
+
+        Momentum is here for the same reason, and with its counts: `fed` of
+        `replans` is how often the stage actually had a previous plan, and a
+        run with the switch on and `fed` at zero selected on the plain score
+        throughout -- an open-loop sequence, or a simulator stepping slower
+        than the 0.55 s cutoff.
         """
+        selection: dict[str, Any] = {"momentum": "off"}
+        if self.momentum is not None:
+            selection = {"momentum": "on", "momentum_counts": dict(self.momentum.counts)}
         if not self.history:
-            return {"status": "no frame seen yet", "image_geometry": self.image_geometry}
+            return {"status": "no frame seen yet", "image_geometry": self.image_geometry, **selection}
         chosen = self._select_history()
         return {
             "image_geometry": self.image_geometry,
+            **selection,
             "frames_recorded": len(self.history),
             "history_span_s": round((self.history[-1]["timestamp"] - chosen[0]["timestamp"]) / 1e6, 2),
             "history_target_s": round((HISTORY_FRAMES - 1) * HISTORY_DT, 2),

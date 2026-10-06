@@ -326,9 +326,17 @@ support matrix still carry the unqualified name. Closing it means ~95 GB of
 **Drive-JEPA's NAVSIM agent is scorer-aware.** It receives `metric_cache` and
 `past_ego_simulated_states` from the scoring loop and re-runs the PDM simulator
 at inference time to re-rank its proposals by predicted two-frame comfort — a
-component of EPDMS. No model behind an HTTP node can do that. Its recorded
-0.90673 is therefore not a baseline the other three can be measured against;
-the comparable set is runs through `paddock_proxy`.
+component of EPDMS. No model behind the proxy is handed those arguments. Its
+recorded 0.90673 is therefore not a baseline the other three can be measured
+against; the comparable set is runs through `paddock_proxy`.
+
+The same stage is available to the drivejepa node in closed loop, off by
+default (`DRIVEJEPA_MOMENTUM=on`): it needs only the node's own previous plan
+and the ego state it is already sent. **Verified at Fastcode:** the node's
+bookkeeping reproduces 810 of 810 recorded picks of the AlpaSim driver that
+first carried the stage (`drivejepa-v2-driver-0.1.4b`), and its 32 scores per
+replan to a maximum difference of 0.0. **Unverified:** no benchmark has been run through paddock with the switch
+on, so no row in `results/` was made with it.
 
 ## Bench2Drive / CARLA — adapter landed, driven, and the runs are tracked
 
