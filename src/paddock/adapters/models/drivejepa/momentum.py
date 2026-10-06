@@ -47,6 +47,14 @@ old: the stage's overlap offset is ``int(interval / 0.1)``, which is 0 there and
 leaves it an empty window. So the previous plan is chosen the way
 `DriveJepaPolicy._select_history` chooses history frames -- by timestamp, the
 one nearest 0.5 s ago -- and at upstream's own cadence that is upstream's rule.
+
+Only a plan 0.45 to 0.55 s old is fed, and the stage always works at offset 5.
+The two trajectories are compared sample against sample on a 0.1 s grid, so an
+offset that does not match the real interval compares states from different
+moments: ``int(0.3 / 0.1)`` is 2, a 0.3 s-old plan read 0.1 s out of step. The
+first replans of an episode at 10 Hz, which have nothing older than 0.4 s to
+compare with, therefore select on the plain score rather than on a comparison
+the stage was never evaluated at.
 """
 
 from __future__ import annotations
@@ -63,9 +71,12 @@ SWITCHES = ("off", "on")
 MAX_AGE_S = 0.55
 #: The spacing upstream's loop steps at, and the age a previous plan is sought at.
 TARGET_AGE_S = 0.5
-#: drive_jepa_model.py:120 -- the simulated states' spacing. A plan younger than
-#: this has an overlap offset of 0, which the stage cannot slice.
-SIM_INTERVAL_S = 0.1
+#: The youngest plan fed: as far below the target as upstream's cutoff is above
+#: it. Anything younger belongs to another overlap offset (module docstring).
+MIN_AGE_S = 0.45
+#: Ages are compared in whole microseconds, the unit timestamps arrive in, so
+#: the window's edges do not depend on how a difference of two floats rounds.
+MIN_AGE_US, MAX_AGE_US = round(MIN_AGE_S * 1e6), round(MAX_AGE_S * 1e6)
 
 
 class Upstream:
@@ -145,11 +156,12 @@ class Momentum:
     """The previous plan, kept per episode, and the three keys built from it."""
 
     def __init__(self, upstream: Any = None) -> None:
-        # Injected by the tests, which have no nuPlan; built from the agent on
-        # the first replan otherwise (`DriveJepaPolicy.forward`).
+        # Injected by the tests, which have no nuPlan; built from the agent in
+        # `DriveJepaPolicy.load` otherwise, so an environment that cannot
+        # import upstream's functions fails when the node starts.
         self.upstream = upstream
         self.reset()
-        self.counts = {"replans": 0, "fed": 0, "no_previous": 0, "dropped_age": 0, "picks_changed": 0}
+        self.counts = {"replans": 0, "fed": 0, "no_previous": 0, "out_of_window": 0, "picks_changed": 0}
 
     def reset(self) -> None:
         """Forget the previous plan. Counts survive: they describe the run."""
@@ -162,13 +174,20 @@ class Momentum:
         starts a new rollout without `/reset` restarts or jumps its clock, and
         a plan from before the jump is either in the future or too old.
         """
-        aged = [((time_us - at_us) / 1e6, states) for at_us, states in self._plans]
-        usable = [(age, states) for age, states in aged if SIM_INTERVAL_S <= age <= MAX_AGE_S]
+        aged = [(time_us - at_us, states) for at_us, states in self._plans]
+        usable = [(age_us, states) for age_us, states in aged if MIN_AGE_US <= age_us <= MAX_AGE_US]
         if not usable:
-            self.counts["dropped_age" if aged else "no_previous"] += 1
+            # `out_of_window`: plans are kept, but none is the right age -- too
+            # old after a gap, or too young in an episode's first half second.
+            self.counts["out_of_window" if aged else "no_previous"] += 1
             return None, None
-        age, states = min(usable, key=lambda entry: abs(entry[0] - TARGET_AGE_S))
-        return states, age
+        age_us, states = min(usable, key=lambda entry: abs(entry[0] - TARGET_AGE_S * 1e6))
+        # The stage reads the interval for one thing, its overlap offset
+        # `int(interval / 0.1)` (drive_jepa_model.py:120-121). A plan 0.48 s old
+        # would floor to offset 4 and be read 0.08 s out of step; held at the
+        # target it is read at offset 5, 0.02 s out. From 0.5 s up upstream's
+        # own arithmetic already gives 5 and the interval is passed as it is.
+        return states, max(age_us / 1e6, TARGET_AGE_S)
 
     def features(
         self, pose: np.ndarray, velocity: np.ndarray, acceleration: np.ndarray, time_us: int
@@ -200,4 +219,4 @@ class Momentum:
         # Nothing older than the cutoff can be fed again. A clock that went
         # backwards (a new episode without a reset) makes every kept plan
         # "newer" than now; those go too.
-        self._plans = [(at_us, s) for at_us, s in self._plans if 0 <= (time_us - at_us) / 1e6 <= MAX_AGE_S]
+        self._plans = [(at_us, s) for at_us, s in self._plans if 0 <= time_us - at_us <= MAX_AGE_US]

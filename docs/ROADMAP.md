@@ -332,11 +332,17 @@ against; the comparable set is runs through `paddock_proxy`.
 
 The same stage is available to the drivejepa node in closed loop, off by
 default (`DRIVEJEPA_MOMENTUM=on`): it needs only the node's own previous plan
-and the ego state it is already sent. **Verified at Fastcode:** the node's
-bookkeeping reproduces 810 of 810 recorded picks of the AlpaSim driver that
-first carried the stage (`drivejepa-v2-driver-0.1.4b`), and its 32 scores per
-replan to a maximum difference of 0.0. **Unverified:** no benchmark has been run through paddock with the switch
-on, so no row in `results/` was made with it.
+and the ego state it is already sent. A plan is fed only when it is 0.45 to
+0.55 s old, so a node called at 10 or 20 Hz compares against the plan of half a
+second ago and selects on the plain score until it has one. **Verified at
+Fastcode:** fed the recorded menus of 30 AlpaSim drives (810 replans), the
+node's bookkeeping and upstream's stage reproduce every pick of the AlpaSim
+driver that first carried the stage (`drivejepa-v2-driver-0.1.4b`), and its 32
+scores per replan exactly. One of those drives is tracked as a fixture, and
+`adapters/models/drivejepa/tests/test_momentum.py` reruns it in Drive-JEPA's
+environment; it skips under `make check`, which has no nuPlan. **Unverified:**
+no benchmark has been run through paddock with the switch on, so no row in
+`results/` was made with it.
 
 ## Bench2Drive / CARLA — adapter landed, driven, and the runs are tracked
 

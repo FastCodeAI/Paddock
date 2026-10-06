@@ -135,6 +135,12 @@ class DriveJepaPolicy(Policy):
         self.agent.initialize()
         self.agent.eval().to(self.device)
         self.feature_builder = self.agent.get_feature_builders()[0]
+        if self.momentum is not None:
+            # Here rather than on the first replan: the stage needs nuPlan's
+            # simulator and four more upstream modules, and a node that cannot
+            # import them should fail to start, not fail its first `/infer`
+            # after the simulator and renderer are already up.
+            self.momentum.upstream = momentum.Upstream(self.agent._trajectory_sampling)
         self.reset()
 
     def reset(self) -> None:
@@ -323,8 +329,6 @@ class DriveJepaPolicy(Policy):
             with torch.no_grad():
                 return self.agent.forward(features)
 
-        if self.momentum.upstream is None:
-            self.momentum.upstream = momentum.Upstream(self.agent._trajectory_sampling)
         extra, ego_state = self.momentum.features(*self._ego_now(obs))
         features.update(extra)
         with torch.no_grad():
@@ -376,8 +380,8 @@ class DriveJepaPolicy(Policy):
         Momentum is here for the same reason, and with its counts: `fed` of
         `replans` is how often the stage actually had a previous plan, and a
         run with the switch on and `fed` at zero selected on the plain score
-        throughout -- an open-loop sequence, or a simulator stepping slower
-        than the 0.55 s cutoff.
+        throughout -- an open-loop sequence, or a simulator whose calls never
+        fall 0.45 to 0.55 s apart.
         """
         selection: dict[str, Any] = {"momentum": "off"}
         if self.momentum is not None:
