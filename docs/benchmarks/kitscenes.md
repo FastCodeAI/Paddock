@@ -139,6 +139,11 @@ its own run id with `command_source` in its `config`, the key and values
 `paddock ingest` already records Drive-JEPA's row under. `straight` adds no
 key, so every run made before the setting existed keeps its id and `--resume`.
 
+A `gt` run is also stored `valid: false` (`invalid_reasons()`), with the reason
+in `notes`. It is worth keeping -- it is how the openpilot intent analysis
+measures what a route input does -- but its ADE beside rows told nothing would
+rank an oracle as a model, so `paddock report` leaves it out.
+
 Only the keyframe carries the hint; the 48 history frames stay STRAIGHT. The
 command is derived from the keyframe's own future, so it is not what a frame
 4.8 s earlier would have been told. And a model that turns a change of command

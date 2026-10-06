@@ -315,6 +315,20 @@ def test_a_route_hint_is_a_different_measurement(tmp_path, monkeypatch) -> None:
     assert bench.run_config() == {"ground_offset_m": POD_HEIGHT_M, "command_source": "gt"}
 
 
+def test_a_route_hint_keeps_the_run_off_the_leaderboard(tmp_path, monkeypatch) -> None:
+    """`gt` is read from the scored keyframe's own future, so a run made with it is stored invalid."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, [*RING, BASE])
+    hinted = _benchmark(tmp_path, monkeypatch, [archive], settings='command_source = "gt"\n')
+    (reason,) = hinted.invalid_reasons()
+    assert "command_source" in reason and "future" in reason, "the note has to say why"
+
+    plain = _benchmark(tmp_path, monkeypatch, [archive], settings='command_source = "straight"\n')
+    assert plain.invalid_reasons() == [], "what every ranked row was scored with"
+    base = _benchmark(tmp_path, monkeypatch, [archive], settings='front_camera = "base"\n')
+    assert base.invalid_reasons() == [], "another camera is another input, not a look at the answer"
+
+
 def test_preflight_names_an_unknown_command_source(tmp_path, monkeypatch) -> None:
     """A typo must not quietly run as `straight` and be recorded as something else."""
     archive = tmp_path / "archive"

@@ -357,6 +357,23 @@ class KitScenesBenchmark(OpenLoopBenchmark):
             config["front_camera"] = self._front_camera()
         return config
 
+    def invalid_reasons(self) -> list[str]:
+        """A `gt` route hint keeps the run off the leaderboard.
+
+        The hint is derived from the keyframe's own recorded future, so the
+        model is told part of the answer it is scored against. Such a run is
+        worth keeping -- it is how the intent analysis measures what a route
+        input does -- but its ADE beside the rows that were told nothing would
+        rank an oracle as a model. The base front camera is a different input,
+        not a look at the answer, so it does not invalidate.
+        """
+        if self._command_source() == "gt":
+            return [
+                'command_source = "gt": the scored keyframe was given a route command derived from '
+                "its own recorded future, an oracle hint no ranked row gets"
+            ]
+        return []
+
     def model_run_config(self, model) -> dict:
         """Which ring cameras this model was given: the ones it declares.
 
