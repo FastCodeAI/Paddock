@@ -551,3 +551,49 @@ def test_the_sites_own_routes_subset_is_the_full_set(tmp_path, monkeypatch) -> N
     harness = _harness(_site(tmp_path, monkeypatch, COMPLETED, routes_subset="1773"))
     list(harness.episodes(None, runs=1))
     assert harness.invalid_reasons() == []
+
+
+# ---------------------------------------------------------------------------
+# completed_metrics: what --resume reuses
+# ---------------------------------------------------------------------------
+
+
+def _resume_harness():
+    """completed_metrics reads only out_dir, so no site settings are needed."""
+    return BENCHMARK(Registry.load().benchmarks["bench2drive"], None)
+
+
+def test_resume_reuses_a_scored_route_exactly_as_it_was_read(tmp_path: Path) -> None:
+    shutil.copy(FIXTURES / "results_collisions.json", tmp_path / "results.json")
+    reused = _resume_harness().completed_metrics(_episode(), tmp_path, runs=1)
+    assert reused == parse_results(tmp_path / "results.json")
+    assert "duration_s" not in reused  # the harness's clock, which is not on disk
+
+
+@pytest.mark.parametrize(
+    "doc",
+    [
+        None,  # never started: no results.json
+        {"_checkpoint": {"records": []}},  # killed mid-route: the evaluator's startup checkpoint
+        "not json",  # torn write
+    ],
+)
+def test_resume_drives_again_a_route_that_never_finished(tmp_path: Path, doc) -> None:
+    if doc is not None:
+        (tmp_path / "results.json").write_text(doc if isinstance(doc, str) else json.dumps(doc))
+    assert _resume_harness().completed_metrics(_episode(), tmp_path, runs=1) is None
+
+
+def test_resume_drives_again_a_route_whose_every_repetition_crashed(tmp_path: Path) -> None:
+    shutil.copy(FIXTURES / "results_agent_crashed.json", tmp_path / "results.json")
+    assert _resume_harness().completed_metrics(_episode(), tmp_path, runs=1) is None
+
+
+def test_resume_drives_again_a_route_with_fewer_repetitions_than_asked(tmp_path: Path) -> None:
+    """Two of three repetitions on disk is an interrupted route, not a two-run mean."""
+    doc = json.loads((FIXTURES / "results_collisions.json").read_text())
+    doc["_checkpoint"]["records"] = doc["_checkpoint"]["records"] * 2
+    (tmp_path / "results.json").write_text(json.dumps(doc))
+    harness = _resume_harness()
+    assert harness.completed_metrics(_episode(runs=3), tmp_path, runs=3) is None
+    assert harness.completed_metrics(_episode(runs=2), tmp_path, runs=2)["n_runs"] == 2
