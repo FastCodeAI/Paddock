@@ -239,6 +239,70 @@ python -m tools.benchmarks.bench2drive.dashboard serve --root <dir> --runs {runs
     [--routes 1711,1852] [--title "checkpoint, rate"] [--port 8765]
 ```
 
+`paddock run ... --resume <run_id>` continues a run in place: a route whose
+`results.json` holds a record for every repetition is reused as it was read
+(`harness.completed_metrics`), and every other route -- killed mid-drive,
+crashed, never started -- is driven. A reused route carries no `duration_s`;
+that is the harness's own clock and is not on disk.
+
+## Running a sweep in parallel, and after a reboot
+
+A full sweep is 220 routes of up to ~40 minutes each at the real-time factors in
+*Cost*, so it runs as several `paddock run` workers side by side, one CARLA each.
+`campaign.py` in this adapter keeps such a sweep moving, and
+`tools/benchmarks/bench2drive/restart_campaign.sh` wraps it in one idempotent
+command for after a reboot, a shutdown, or when finished workers leave the rest
+of the routes unevenly spread:
+
+```bash
+export PADDOCK_CONFIG=/path/to/paddock.toml PADDOCK_PYTHON=/path/to/paddock/venv/bin/python
+tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --workers 5 --held 11715
+tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --workers 5 --held 11715 --rebalance
+tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --status
+# also serve the dashboard (tools/benchmarks/bench2drive/dashboard.py); --dashboard-root must
+# contain {runs}, because live frames are served by path relative to it
+tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --workers 5 \
+    --dashboard-root /path/to/experiment --expert /path/to/expert [--features analysis.csv]
+```
+
+It starts, each in its own session so it outlives the shell, only what is not
+already running:
+
+| Piece | What it does |
+|---|---|
+| `campaign guard` | kills an evaluator that can no longer finish -- its log silent 15 min (a driving route logs every ~0.3 s), or its CARLA gone for 2 min -- so the worker records the route FAILED and moves on instead of waiting out `per_route_timeout_s` |
+| `campaign launch` | every route with no scored attempt under `{runs}/bench2drive/<model>/` (any run id) and not queued in an alive worker, sorted and dealt longest-expected-first to the free worker slots; each worker is a fresh `paddock run --scene <its routes>` with a copy of the site config whose CARLA / traffic-manager ports sit 150 above the previous slot's, and its own node port base |
+| `--held` | routes driven last, by one worker, once everything else has scored and no worker is alive |
+| `--rebalance` | stops the alive workers first (their current routes are driven again) and deals everything left anew |
+| `--dashboard-root` | the per-route video dashboard, on 127.0.0.1 |
+
+The expected cost of a route is the mean wall time of its scenario's finished
+routes in the same sweep, so a resumed sweep is dealt by what its scenarios
+actually cost: a car that stops behind an obstacle rides the scenario timeout or
+the tick cap (the blocked test is switched off while it "waits for a gap"),
+which is ~30 minutes against ~5 for a route it completes.
+
+Two failure modes this exists for, both met on a 220-route sweep at one site:
+
+* **A CARLA that dies mid-route does not end it.** CARLA stopped delivering
+  sensor data ("A sensor took too long to send their data"), or died inside
+  `route_scenario.spawn_parked_vehicles`; the evaluator then deadlocked in its
+  own shutdown, logging a "failed to destroy actor" line every 600 s, so the
+  worker sat idle for the full 90-minute route timeout. The guard's second test
+  -- the CARLA on the port the evaluator logged is gone -- catches the case
+  silence alone never would.
+* **A CARLA crash can take every worker down.** On a crash the evaluator runs
+  `ps | grep -graphicsadapter=<rank> | kill -9` (see *Shared-machine
+  behaviour*), which is every worker's CARLA on that GPU. Routes known to crash
+  CARLA belong in `--held`: 11715 at the pin, and at that site the Town12/13
+  `InterurbanAdvancedActorFlow` routes 23695, 23708 and 24078.
+
+Worker configs, logs (`logs/worker<slot>.log`) and a launch history
+(`workers.json`) live in `{runs}/bench2drive/_campaign/<model>/`. Every attempt
+lands under `{runs}/bench2drive/<model>/<run_id>/` as usual, so the dashboard,
+the analysis tools and `paddock ingest` (below, which takes the latest scored
+attempt per route) see one sweep however many launches it took.
+
 ## Pooling recorded routes into a run (`paddock ingest`)
 
 A Bench2Drive campaign is rarely one process: a route is re-run after a crash,
@@ -332,6 +396,8 @@ transcribed from a report.
 | `metric_info.json` matches what the upstream tool reads | field names and layout taken from `get_metric_info` and `efficiency_smoothness_benchmark.read_from_json` at 7ec25d1; not yet fed through the tool end to end | argued |
 | crashed repetitions are dropped, not averaged | unit-tested over crashed, blocked and all-crashed triples | **strong** |
 | an edited CARLA launch line is refused | unit-tested against a stub evaluator with and without the flag | **strong** |
+| `--resume` reuses scored routes and drives the rest | unit-tested (scored, killed, torn, all-crashed, short of repetitions); on a real interrupted sweep it reused the 34 scored routes and drove the other 185 | **strong** |
+| `campaign` deals what is left and the guard frees hung workers | selection, dealing, per-slot config and `--held` unit-tested (`tests/test_campaign.py`); the process side used on one 220-route sweep, where the guard freed two evaluators whose CARLA had died | moderate |
 
 ## September 2026 runs: what changed and what the numbers are
 
