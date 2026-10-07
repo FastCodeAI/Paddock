@@ -349,6 +349,17 @@ the comparable set is runs through `paddock_proxy`.
 - **To close it.** Either record the digest beside `sequences_sha256` in `run.json`'s dataset block,
   which is not hashed, or accept the id change on the next `gt` run.
 
+**Which KITScenes rows a look at the answer keeps off the board: open (follow-up from #60).**
+- **Paddock runs.** A run with `command_source = "gt"` is stored `valid: false` (kitscenes'
+  `invalid_reasons()`).
+- **The ingested row is not.** Drive-JEPA's `legacy-kitscenes_e2e_final` was made with the same hint
+  (`turn_commands: 39`) and is ranked at 2.364, because `paddock ingest` does not consult that rule.
+  Invalidating it on ingest would take Drive-JEPA's only KITScenes row off the leaderboard and the
+  README. That is a decision for the row's owners, not a side effect of an openpilot PR.
+- **A run tuned on the test set is not recorded as one.** A run with only the scene sweep's camera
+  knobs (height 1.22, pitch −1.7°, a 55° cut, all fitted on 90 of the 223 scored keyframes) would be
+  stored valid and ranked. Nothing in its record says the values were fitted on the set it is scored on.
+
 ## Bench2Drive / CARLA — adapter landed, driven, and the runs are tracked
 
 `adapters/benchmarks/bench2drive`: a model-agnostic CARLA `agent.py`, the

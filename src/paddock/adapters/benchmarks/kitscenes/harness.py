@@ -90,7 +90,7 @@ RING = {
 #: KITScenes has no route annotation, so there is no honest route hint to give,
 #: and `straight`, the default, stamps `Command.STRAIGHT` on every frame -- what
 #: every paddock run here before `20260930T014333-d329a6` was scored with, and
-#: every ranked one still is (`invalid_reasons()`). `gt` gives the keyframe
+#: every ranked paddock run still is (`invalid_reasons()`). `gt` gives the keyframe
 #: the sample list's `driving_command` instead: the command Drive-JEPA's row was
 #: run with, which its `--command gt` derived from the recorded future. That
 #: makes it an oracle -- the model is told which way the car is about to go --
@@ -367,11 +367,15 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         input does -- but its ADE beside the rows that were told nothing would
         rank an oracle as a model. The base front camera is a different input,
         not a look at the answer, so it does not invalidate.
+
+        Drive-JEPA's ingested row was made with the same hint and is ranked:
+        `paddock ingest` does not consult this, and whether it should is open
+        (docs/ROADMAP.md). So the reason claims no more than paddock runs.
         """
         if self._command_source() == "gt":
             return [
                 'command_source = "gt": the scored keyframe was given a route command derived from '
-                "its own recorded future, an oracle hint no ranked row gets"
+                "its own recorded future, an oracle hint no ranked paddock run gets"
             ]
         return []
 

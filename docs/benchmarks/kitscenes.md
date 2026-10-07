@@ -134,8 +134,8 @@ sees a manufactured past followed by a real one.
 KITScenes has no route annotation, so by default every frame carries
 `Command.STRAIGHT` and a model is told nothing about where the car is going.
 Every paddock run before `20260930T014333-d329a6` was scored that way, and so
-is every ranked one. A site can instead give the scored keyframe the sample
-list's own `driving_command`:
+is every ranked paddock run. A site can instead give the scored keyframe the
+sample list's own `driving_command`:
 
 ```toml
 [benchmarks.kitscenes]
@@ -155,6 +155,12 @@ A `gt` run is also stored `valid: false` (`invalid_reasons()`), with the reason
 in `notes`. It is worth keeping -- it is how the openpilot intent analysis
 measures what a route input does -- but its ADE beside rows told nothing would
 rank an oracle as a model, so `paddock report` leaves it out.
+
+The one exception is Drive-JEPA's ingested row (`legacy-kitscenes_e2e_final`).
+It was made with the same hint (`command_source: "gt"`, `turn_commands: 39` in
+its `config`) and is still ranked, with the route-hint caveat above:
+`paddock ingest` does not apply this rule. Whether it should is an open question
+in `docs/ROADMAP.md`.
 
 Only the keyframe carries the hint; the 48 history frames stay STRAIGHT. The
 command is derived from the keyframe's own future, so it is not what a frame
