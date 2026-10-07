@@ -150,6 +150,26 @@ def test_a_route_that_never_scored_is_expected_not_absent(tmp_path: Path) -> Non
     assert metrics.n == 3, "the three routes that scored are what the mean is over"
 
 
+def test_a_scenario_name_with_a_digit_or_an_underscore_is_scored_not_skipped(tmp_path: Path) -> None:
+    """Ten of Bench2Drive-220's routes are MergerIntoSlowTrafficV2 or T_Junction.
+
+    A folder pattern that read only letters in the scenario skipped them before
+    `parse_results` ever saw them: not scored, not rejected, not expected, so the
+    pooled run lost ten routes and said nothing.
+    """
+    root = _tree(tmp_path)
+    run_id = "20260904T000000-dddddd"
+    _write(root, run_id, "26401-Town06-MergerIntoSlowTrafficV2", _results_json("26401", 100.0, 100.0))
+    _write(root, run_id, "28154-Town10HD-T_Junction", _results_json("28154", 20.0, 40.0))
+
+    ((run, metrics, samples),) = bench2drive.ingest(root, model="modelx", site="s")
+
+    scenarios = {s["native_id"]["route_id"]: s["native_id"]["scenario"] for s in samples}
+    assert scenarios["26401"] == "MergerIntoSlowTrafficV2"
+    assert scenarios["28154"] == "T_Junction"
+    assert metrics.n == 5 and run.dataset["n_expected"] == 5
+
+
 def test_a_route_excluded_by_the_subset_and_never_scored_is_still_recorded(tmp_path: Path) -> None:
     """11715 exactly: excluded for every model because CARLA crashes on it.
 
