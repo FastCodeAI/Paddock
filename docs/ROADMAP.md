@@ -86,8 +86,12 @@ recorded `runs/full223` exactly: ADE 1.599424, median 1.322747, FDE@3s 2.893613,
 with all 892 metric comparisons identical at full float precision.
 
 *Qualified 2026-10-06 (#60).*
-- At another site the same command, on the same 223 keyframes, gives ADE 1.595359 and median 1.401
-  (`20260930T154018-242869`). That run is after the warp-cache fix. What moved the median was not checked.
+- At another site the same command, on the same 223 keyframes, gives a different ADE. Before the
+  warp-cache fix it gave 1.594999, median 1.412 (`20260929T043619-242869`). After it, 1.595359, median
+  1.401 (`20260930T154018-242869`). So the gap from 1.599424 predates the fix.
+- Those runs hash as `242869` and M6's as `cc27fb`. M6's run recorded only `limit`, and 11 commits to the
+  openpilot adapter and the KITScenes harness lie between them. So the code differs as well as the site.
+  What moved the numbers was not checked.
 - A site with a pairing table for openpilot on KITScenes measures that table's configuration under this
   command, not the stock one (`docs/site-setup.md`, §2).
 
@@ -339,8 +343,8 @@ the comparable set is runs through `paddock_proxy`.
 **What a KITScenes `gt` run was told: open (follow-up from #60).**
 - **The gap.** `command_source = "gt"` records the source in `run_config()`, but not the commands it sent.
   `sequences_sha256` hashes sample ids only. A site whose copy of the sample list came from a
-  `--command straight` Drive-JEPA run has the same 223 ids. Its `gt` run would get the same run id as
-  one that sent 39 turns, while sending none.
+  `--command straight` Drive-JEPA run has the same 223 ids. Its `gt` run would get the same config hash,
+  the run id's suffix, as one that sent 39 turns, while sending none.
 - **Status.** Argued: only one list exists here, and it holds 39 turns.
 - **Why it is deferred.** A `gt` run is stored `valid: false` and never ranked, so no leaderboard number
   depends on this. Adding the turn count, or a digest of the per-row commands, to `run_config()` changes
