@@ -33,6 +33,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.ticker import MaxNLocator  # noqa: E402
 
 from tools.benchmarks.bench2drive import runs  # noqa: E402
+from tools.models.openpilot.analysis.openpilot_drv_supcombo_bench2drive_lib import PATTERNS  # noqa: E402
 
 SERIES = "#2a78d6"
 SURFACE, INK, INK2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e1e0d9"
@@ -48,21 +49,6 @@ PUBLISHED = [
     ("VAD", 38.65, 17.27),
     ("ADMLP", 35.39, 0.00),
 ]
-
-#: Causes folded into families for the per-ability breakdown (at most six, so the table stays readable).
-FAMILY = {
-    "success": "success",
-    "completed, collision": "completed with an infraction",
-    "completed, ran a red light": "completed with an infraction",
-    "completed, other infraction": "completed with an infraction",
-    "never pulled away": "standstill trap",
-    "blocked with nothing ahead (standstill trap)": "standstill trap",
-    "blocked at a red light": "standstill trap",
-    "blocked behind an actor in its lane": "stopped behind an obstacle",
-    "blocked behind a detected lead": "stopped behind an obstacle",
-    "left the route at a junction turn": "left the route",
-    "left the route (not at a turn)": "left the route",
-}
 
 
 def read_csv(path: Path) -> list[dict]:
@@ -229,19 +215,14 @@ def build(analysis: Path, routes_xml: Path, config_note: str) -> Path:
     )
 
     # by ability, as families
-    fam_names = [
-        "success",
-        "completed with an infraction",
-        "standstill trap",
-        "stopped behind an obstacle",
-        "left the route",
-        "other",
-    ]
+    fam_names = list(
+        dict.fromkeys(p.family for p in PATTERNS if p.primary is not None and p.family != "not scored")
+    )
     by_ab: dict[str, Counter] = defaultdict(Counter)
     for f in feats:
         for ab in (f["abilities"] or "").split(","):
             if ab:
-                by_ab[ab][FAMILY.get(f["cause"], "other")] += 1
+                by_ab[ab][f["cause_family"] or "other"] += 1
     rows = []
     for ab in runs.ABILITIES:
         c = by_ab.get(ab)
@@ -259,13 +240,13 @@ def build(analysis: Path, routes_xml: Path, config_note: str) -> Path:
     # ---------------------------------------------------------------- standstills
     add("\n## The standstill trap\n")
     never = [f for f in feats if f["cause"] == "never pulled away"]
-    trap = [f for f in feats if f["cause"] == "blocked with nothing ahead (standstill trap)"]
-    reach_trap = [fnum(s["plan_reach_m"]) for s in stills if s["release"] == "route ended"]
-    reach_left = [fnum(s["plan_reach_m"]) for s in stills if s["release"] != "route ended"]
+    trap = [f for f in feats if f["cause_family"] == "standstill trap" and f["cause"] != "never pulled away"]
+    reach_trap = [fnum(s["plan_reach_m"]) for s in stills if s["released"] == "False"]
+    reach_left = [fnum(s["plan_reach_m"]) for s in stills if s["released"] == "True"]
     reach_trap = [x for x in reach_trap if x is not None]
     reach_left = [x for x in reach_left if x is not None]
     by_reason = Counter(
-        (s["reason"], "ended the route" if s["release"] == "route ended" else "moved on") for s in stills
+        (s["ahead_at_start"], "moved on" if s["released"] == "True" else "ended the route") for s in stills
     )
     waits = [fnum(s["green_wait_s"]) for s in stills if fnum(s["green_wait_s"]) is not None]
     launches = [fnum(f["launch_s"]) for f in feats if fnum(f["launch_s"]) is not None]
@@ -277,10 +258,10 @@ def build(analysis: Path, routes_xml: Path, config_note: str) -> Path:
         f"it plans tens of metres). Every Bench2Drive route starts from standstill.\n"
     )
     add(
-        f"* **{len(never)}** route(s) never exceeded 1 m/s; **{len(trap)}** more stopped later with nothing in "
-        f"their lane and never moved again. Where the car did pull away at the start, it took a median "
+        f"* **{len(never)}** route(s) never exceeded 1 m/s; **{len(trap)}** more stopped later and stood until "
+        f"the route ended with a clear lane ahead. Where the car did pull away at the start, it took a median "
         f"{fmt(float(np.median(launches)) if launches else None, 1)} s.\n"
-        f"* At red lights it stopped **{sum(1 for s in stills if s['reason'] == 'red_light')}** time(s); once the "
+        f"* At red lights it stopped **{sum(1 for s in stills if s['ahead_at_start'] == 'red light')}** time(s); once the "
         f"light turned green it stood a median **{fmt(float(np.median(waits)) if waits else None, 1)} s** more "
         f"(max {fmt(max(waits) if waits else None, 1)} s) before moving.\n"
     )
@@ -303,7 +284,7 @@ def build(analysis: Path, routes_xml: Path, config_note: str) -> Path:
     # ---------------------------------------------------------------- obstacles / overtaking
     add("\n## Obstacles in the lane (Overtaking)\n")
     ov = [f for f in feats if "Overtaking" in (f["abilities"] or "")]
-    behind = [f for f in ov if FAMILY.get(f["cause"]) == "stopped behind an obstacle"]
+    behind = [f for f in ov if f["cause_family"] == "blocked, no overtake"]
     lc = sum(int(f["lane_changes"] or 0) for f in ov)
     add(
         f"{len(ov)} overtaking route(s) scored; in **{len(behind)}** the car stopped behind the obstacle and stayed. "
@@ -336,8 +317,15 @@ def build(analysis: Path, routes_xml: Path, config_note: str) -> Path:
     add("\n## Traffic lights\n")
     crossed = [x for x in lights if x["crossed"] == "True"]
     red = [x for x in crossed if x["state_at_cross"] == "Red"]
+    lb_red = sum(
+        int(part.split(":")[1])
+        for f in scored
+        for part in (f["infractions"] or "").split(";")
+        if part.startswith("red_light:")
+    )
     add(
-        f"{len(lights)} route light(s) approached, {len(crossed)} crossed; **{len(red)}** crossed on red "
+        f"{len(lights)} route light(s) approached, {len(crossed)} crossed; the leaderboard recorded **{lb_red}** red-light "
+        f"infraction(s) (the light record finds {len(red)} crossings on red) "
         f"({fmt(mean(x['speed_at_cross'] for x in red), 1)} m/s on average when it did). It stopped for red "
         f"{sum(1 for x in lights if x['stopped_for_red'] == 'True')} time(s).\n"
     )
@@ -365,7 +353,7 @@ def build(analysis: Path, routes_xml: Path, config_note: str) -> Path:
 
     # ---------------------------------------------------------------- speed vs expert
     add("\n## Pace against the expert\n")
-    pairs = [(fnum(f["expert_mean_speed"]), fnum(f["mean_speed_moving"])) for f in scored]
+    pairs = [(fnum(f["expert_mean_speed_moving"]), fnum(f["mean_speed_moving"])) for f in scored]
     pairs = [(e, o) for e, o in pairs if e is not None and o is not None]
     if pairs:
         e, o = np.array(pairs).T
@@ -375,7 +363,7 @@ def build(analysis: Path, routes_xml: Path, config_note: str) -> Path:
         ax.scatter(e, o, s=22, color=SERIES, edgecolor=SURFACE, linewidth=1.2, zorder=3)
         ax.set_xlim(0, top)
         ax.set_ylim(0, top)
-        ax.set_xlabel("Think2Drive mean speed (m/s)", color=INK2, fontsize=9)
+        ax.set_xlabel("Think2Drive mean speed while moving (m/s)", color=INK2, fontsize=9)
         ax.set_ylabel("openpilot mean speed while moving (m/s)", color=INK2, fontsize=9)
         ax.set_title("Pace per route (line: equal)", loc="left", fontsize=11, color=INK)
         style(ax)
