@@ -427,8 +427,10 @@ class CameraAdapter:
         if whole < 1.0:
             raise ValueError(
                 f"PADDOCK_OPENPILOT_FOV_DEG = {self.fov_deg:g} cuts into the img view: {whole:.2%} of it "
-                f"would be real pixels. img spans {self.VIEW_FOV['img'][0]:g} deg across and must lie wholly "
-                "inside the cut, as it does at 55. See CameraFit.cut in the openpilot adapter's policy.py."
+                "would be real pixels. img must lie wholly inside the cut, and it does not sit at the cut's "
+                "centre: it looks down toward the road and turns with the mount, so the cut has to be wider "
+                f"than img's own {self.VIEW_FOV['img'][0]:g} x {self.VIEW_FOV['img'][1]:g} deg, as 55 is. "
+                "See CameraFit.cut in the openpilot adapter's policy.py."
             )
 
     def _height_scaled(self, unscaled: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
