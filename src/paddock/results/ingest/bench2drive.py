@@ -91,7 +91,9 @@ from paddock.results.store import MetricsRecord, RunRecord, config_hash, sequenc
 #: a different protocol, so it is kept and not ranked against runs that were not.
 PROTOCOL_HZ = 20.0
 
-_ROUTE_DIR = re.compile(r"^(?P<route>\d+)-(?P<town>Town\w+?)-(?P<scenario>[A-Za-z]+)$")
+# \w, not letters: MergerIntoSlowTrafficV2 and T_Junction are Bench2Drive-220 scenarios, and a folder this
+# misses is neither scored nor rejected -- it silently leaves the route set.
+_ROUTE_DIR = re.compile(r"^(?P<route>\d+)-(?P<town>Town\w+?)-(?P<scenario>\w+)$")
 _RUN_ID = re.compile(r"^(?P<stamp>\d{8}T\d{6})-[0-9a-f]{6}$")
 
 
