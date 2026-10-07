@@ -331,6 +331,32 @@ class LongitudinalFusion:
 # ─── LongitudinalPlanner, ported from planning/src/longitudinal_planning.cpp ──
 
 
+class ScenarioContext:
+    """Classify driving scenario (urban/highway/suburban) to adapt planner behavior.
+
+    Infers scenario from ego speed, lead distance, detection confidence, and
+    curvature to adjust IDM parameters. Urban environments get tighter headway
+    for responsiveness; highways get longer headway for safety at speed.
+    """
+
+    @staticmethod
+    def classify(speed_ms: float, lead_distance_m: float, lead_prob: float, curvature: float) -> str:
+        """Classify scenario: 'highway', 'urban', or 'suburban'.
+
+        Args:
+            speed_ms: Ego speed in m/s (≈30 highway, ≈12 city)
+            lead_distance_m: Distance to lead vehicle (≈150m highway, ≈30m urban)
+            lead_prob: Lead detection confidence (0-1)
+            curvature: Road curvature in 1/m (≈0 highway, ≈0.05+ urban)
+        """
+        if speed_ms >= 20.0 and (lead_prob < 0.3 or lead_distance_m > 80.0):
+            if abs(curvature) < 0.01:
+                return "highway"
+        if speed_ms < 12.0 or (lead_prob > 0.6 and lead_distance_m < 40.0):
+            return "urban"
+        return "suburban"
+
+
 class IDM:
     """Vision Pilot's longitudinal planner, ported from longitudinal_planning.cpp."""
 
@@ -348,6 +374,17 @@ class IDM:
         self.speed_limit, self.a, self.b = speed_limit, a, b
         self.T, self.s0, self.delta = t_headway, s0, delta
         self.mu, self.g = mu, g
+        self._base_headway = t_headway
+
+    def adjust_for_scenario(self, scenario: str) -> None:
+        """Adjust headway based on scenario context.
+
+        Highway: 1.8s (conservative, high speed)
+        Urban: 1.2s (responsive, dense traffic)
+        Suburban: 1.5s (baseline, mixed)
+        """
+        headway_table = {"highway": 1.8, "suburban": self._base_headway, "urban": 1.2}
+        self.T = headway_table.get(scenario, self._base_headway)
 
     def acceleration(self, kappa: float, ego_v: float, has_cipo: bool, closing_v: float, gap: float) -> float:
         """``closing_v`` is positive when the gap is shrinking.
@@ -916,6 +953,9 @@ class VisionPilotPolicy(Policy):
             self.set_speed = max(obs.speed, 1.0)
         self.idm.speed_limit = self.set_speed
 
+        scenario = ScenarioContext.classify(obs.speed, cipo.distance_m, flag_prob, curvature)
+        self.idm.adjust_for_scenario(scenario)
+
         arc = self._speed_schedule(obs.speed, curvature, cipo.has_cipo, cipo.velocity_ms, cipo.distance_m)
         trajectory = np.stack([arc, path.lateral_at(arc)], axis=1)
 
@@ -954,6 +994,8 @@ class VisionPilotPolicy(Policy):
             "path_points": int(len(ground)),
             "path_extent_m": round(path.x_max, 1),
             "set_speed_ms": round(float(self.set_speed or 0.0), 2),
+            "scenario_context": scenario,
+            "headway_s": round(self.idm.T, 2),
         }
 
         # What the stack already knows, in the schema a harness can score.
