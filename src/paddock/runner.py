@@ -414,7 +414,11 @@ def run_benchmark(
         # done with, not at exit. A sweep split by a pairing builds one harness per model, and the next one's
         # preflight would otherwise find the last one's renderer still answering and refuse to start.
         if hasattr(harness, "close"):
-            harness.close()
+            try:
+                harness.close()
+            except Exception as exc:  # noqa: BLE001 - letting go must not replace the run's own outcome
+                # Whatever it failed to stop is still found, and refused loudly, by the next preflight.
+                echo(f"  could not release what the {bench} harness started: {exc}")
 
 
 def _run_harness(

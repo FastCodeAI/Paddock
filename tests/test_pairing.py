@@ -226,6 +226,32 @@ def test_a_split_sweep_lets_each_harness_go_before_the_next_starts(tmp_path, mon
     assert events == [step for n in range(len(built)) for step in (("preflight", n), ("close", n))]
 
 
+def test_a_close_that_fails_leaves_the_runs_own_outcome(tmp_path, monkeypatch) -> None:
+    """A renderer not reaped in time raised out of the `finally`: the exit code and the sweep were lost."""
+    cfg = _site(tmp_path, monkeypatch, PAIRING)
+    built: list[int] = []
+
+    class _Harness:
+        def preflight(self) -> list[str]:
+            return ["stopped by the test"]
+
+        def close(self) -> None:
+            raise TimeoutError("the renderer would not die")
+
+    def _build(_spec, _cfg) -> _Harness:
+        built.append(len(built))
+        return _Harness()
+
+    monkeypatch.setattr(runner, "load_benchmark", _build)
+    monkeypatch.delenv("PADDOCK_BASE_PORT", raising=False)
+    lines: list[str] = []
+
+    assert runner.run_benchmark(cfg, "kitscenes", "all", echo=lines.append) == 1, "preflight's own exit code"
+    declaring = [m for m in Registry.load().models.values() if "kitscenes" in m.benchmarks]
+    assert len(built) == len(declaring), "every model still gets its turn"
+    assert sum("would not die" in line for line in lines) == len(declaring)
+
+
 def test_a_sweep_without_a_pairing_still_shares_one_harness(tmp_path, monkeypatch) -> None:
     cfg = _site(tmp_path, monkeypatch, GLOBAL)
     seen = _stopped_at_preflight(monkeypatch)
