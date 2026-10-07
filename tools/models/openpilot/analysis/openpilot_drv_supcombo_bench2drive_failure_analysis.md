@@ -231,12 +231,12 @@ says "the light is red". Its longitudinal plan is learned from human drivers, wh
 ## 7. Routes that did not score
 
 Two routes crash CARLA itself (`Signal 11`) on every attempt:
-- **11715** (EnterActorFlow) at 53.65 s, three times here. Paddock's Bench2Drive notes record nine more attempts on
-  three setups.
-- **23695** (InterurbanAdvancedActorFlow) at ~36.5 s, three times.
+- **11715** (EnterActorFlow) at 53.65 s of game time, four times here. Paddock's Bench2Drive notes record nine more
+  attempts on three setups.
+- **23695** (InterurbanAdvancedActorFlow) at 36.45–36.85 s, five times.
 
-Both are ActorFlow scenarios. In each crash the ego was standing at the merge, and a fresh flow vehicle had spawned
-in the second before. That is a correlation, not a diagnosis. Two routes in the same family scored after retries:
+Both are ActorFlow scenarios. In the three crashes checked, the ego was standing at the merge, and a fresh flow
+vehicle had spawned in the second before. That is a correlation, not a diagnosis. Two routes in the same family scored after retries:
 24071 on its 4th attempt, 23708 on its 5th. Their scores are conditional on not hitting the crash.
 
 ## What would test each cause
