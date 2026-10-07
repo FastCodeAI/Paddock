@@ -656,7 +656,7 @@ On the other 29, against stock's 1.77 m, the gain is under half as large: 1.44 m
 ## Reproducing
 
 **The notebook.** `.venv/bin/jupyter execute --inplace` on it re-runs everything from the recorded runs. It executes in about a minute here, without a GPU. `jupyter` comes with the `analysis` extra, which `make setup` leaves out: `uv pip install --python .venv/bin/python -e ".[analysis]"`.
-- §1 pins `RUN_ID`. `INTENT_RUN` and `SWEEP` find the other runs by the settings they recorded.
+- §1 pins `RUN_ID`, `INTENT_RUN` and `SWEEP`. Set to `"auto"`, the last two find runs by the settings they recorded, and would now find the config run (`20261005T205400-a369d1`) for both.
 - `FOCUS` restricts every section to one scene or a list of keyframes, and the §17 side by side draws each of them.
 
 **The image calibration notebook.** It needs [`openpilot_drv_supcombo_image_node.py`](openpilot_drv_supcombo_image_node.py) beside it: the adapter, subclassed, which the notebook launches in openpilot's own interpreter as `paddock run` would.
