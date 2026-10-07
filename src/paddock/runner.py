@@ -1173,7 +1173,17 @@ def _run_open_loop(
             *_limit_reason(limit),
             *_coverage_reason(harness, samples, limit),
         ],
-        remarks=[f"resumed: {reused} sample(s) reused from an earlier attempt"] if reused else None,
+        # As in the closed-loop path: `started_utc` and `duration_s` are this
+        # attempt's, so a run re-stored with nothing left to score reads as
+        # zero seconds today, and the row has to say so itself.
+        remarks=(
+            [
+                f"resumed: {reused} sample(s) reused from an earlier attempt, so "
+                f"started_utc and duration_s describe this attempt only"
+            ]
+            if reused
+            else None
+        ),
         extra_dataset=_expected_samples(harness),
         provenance=prov,
     )
