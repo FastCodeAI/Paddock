@@ -67,6 +67,9 @@ AHEAD_HALF_M = 2.5  # "in the lane": half a lane plus a cone at its edge
 MOVING_V = 0.5  # m/s: an actor faster than this is moving
 MOVING_NEAR_M = 15.0  # a moving vehicle this close is a lead to queue behind, further away it is traffic
 SLOW_GREEN_S = 5.0  # standing longer than this after green is a slow restart
+STOPPED_SHORT_M = (
+    15.0  # centre to centre; queued normally behind a car reads 8-10 m, so beyond this it stopped short
+)
 
 _TYPE = re.compile(r"type=([\w.]+)")
 
@@ -552,6 +555,28 @@ def _ran_red_after_stopping(ctx: RouteContext) -> str | None:
     return f"stopped for red, then crossed {len(lights)} light(s) still on red at {lights[0]['speed_at_cross']} m/s"
 
 
+def _stopped_short(ctx: RouteContext) -> str | None:
+    """Pulled away, stopped for an obstacle still farther than STOPPED_SHORT_M off, and stood there to the end.
+
+    Only after pulling away: many routes start ~35 m behind their scenario's obstacle, so for a car that never
+    moved the distance says where the route starts, not how the car approaches an obstacle. And only a stop
+    that began with the obstacle (or the model's lead) ahead, not one that began at a red light.
+    """
+    fin = ctx.final
+    if fin is None or not ctx.failed or ctx.features.launch_s is None:
+        return None
+    if fin.ahead_at_start not in ("stationary vehicle", "prop", "model lead only"):
+        return None
+    if fin.ahead_at_end not in ("stationary vehicle", "prop") or fin.ahead_m_at_end is None:
+        return None
+    if fin.ahead_m_at_end <= STOPPED_SHORT_M:
+        return None
+    return (
+        f"stopped at t={fin.start_s:.0f} s with the {fin.ahead_at_end} {fin.ahead_m_at_end:.0f} m ahead "
+        f"and stood {fin.duration_s:.0f} s"
+    )
+
+
 def _slow_restart(ctx: RouteContext) -> str | None:
     slow = [e for e in ctx.standstills if e.released and e.green_wait_s and e.green_wait_s > SLOW_GREEN_S]
     if not slow:
@@ -637,6 +662,9 @@ PATTERNS: list[Pattern] = [
             lambda c: f"{sum(1 for x in c.lights if x['stopped_for_red'])} light(s)" if any(x["stopped_for_red"] for x in c.lights) else None),
     Pattern("slow_restart_after_green", "slow to restart after green", "standstill trap", None,
             f"stood more than {SLOW_GREEN_S:.0f} s after the light turned green, then went", _slow_restart),
+    Pattern("stopped_short_of_obstacle", "stopped far short of the obstacle", "blocked, no overtake", None,
+            f"pulled away, stopped for a stationary vehicle or prop still more than {STOPPED_SHORT_M:.0f} m ahead, "
+            "and stood there until the end: it never closed on the obstacle, let alone passed it", _stopped_short),
     Pattern("ran_stop_sign", "ran a stop sign", "traffic rules", None, "stop-sign infraction",
             lambda c: f"{c.infractions('stop_infraction')}" if c.infractions("stop_infraction") else None),
     Pattern("collision_vehicle", "hit a vehicle", "collision", None, "collision with a vehicle",
