@@ -38,19 +38,21 @@ paddock run.
 | qwendrive | `20260914T220841-5a91fd` | 223 | 0.806 | a paddock run; three of the six ring cameras |
 | alpamayo15 | `legacy-full-nonav` | 223 | 0.921 | `eval_kitscenes/runs/full` |
 | visionpilot | `20260909T202724-153b04` | 223 | 1.534 | a paddock run; see below |
-| openpilot | `legacy-full223` | 223 | 1.599 | `eval_kitscenes/runs/full223` |
+| openpilot | `20261008T004723-a369d1` | 223 | 1.248 | a paddock run; base front camera, 55° cut, height 1.22, pitch −1.7°, route as desire (README ⊕) |
 | meteor | `20260914T215457-ab0586` | 223 | 1.879 | a paddock run; six of its eight cameras |
 | drivejepa | `legacy-kitscenes_e2e_final` | 223 | 2.364 | `inference/kitscenes_e2e_final.pkl` |
 
 All six carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
 so the column compares.
 
-openpilot also has a ranked paddock run on the same 223 keyframes, made at
-another site after the warp-cache fix: `20260930T154018-242869`, ADE 1.595
-against `legacy-full223`'s 1.599, with the median at 1.401 against 1.323. What
-moved the median was not checked. The two runs from the openpilot KITScenes
-analysis that were given the route hint are stored invalid
-([The route hint](#the-route-hint)).
+openpilot's row is its configured run. Its other ranked runs on the same 223
+keyframes all use the ring's front camera:
+- stock, `legacy-full223` (`eval_kitscenes/runs/full223`): 1.599, the row shown
+  before;
+- stock again, at another site after the warp-cache fix
+  (`20260930T154018-242869`): 1.595, with the median at 1.401 against 1.323. What
+  moved the median was not checked.
+- the route sent as a desire (`20260930T014333-d329a6`): 1.649.
 
 Caveats the hash cannot express:
 

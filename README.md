@@ -111,7 +111,7 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 
 | | 🟢 nuScenes cumulative L2 avg ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟢 comma2k19 ADE@3s ↓ (m) | 🟢 nuPlan ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🟡 NAVSIM v1 PDMS ↑ (0–1) | 🔴 Bench2Drive driving score ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim nuRec scene score ↑ (0–1) |
 |---|---|---|---|---|---|---|---|---|---|
-| OpenPilot | 2.477 △ | 1.599 | 1.507 ✦ ⊗ | 0.807 ◐ | 0.747 (10 Hz) ‡ | 0.807 (10 Hz) ‡ | 30.09 ≈ ◆ | **3.60** ‖ | **0.9566** ¶ |
+| OpenPilot | 2.477 △ | 1.248 ⊕ | 1.507 ✦ ⊗ | 0.807 ◐ | 0.747 (10 Hz) ‡ | 0.807 (10 Hz) ‡ | 30.09 ≈ ◆ | **3.60** ‖ | **0.9566** ¶ |
 | Alpamayo 1.5 | 0.787 △ | 1.002 | **0.900** ✦ | — ◐◐ | 0.691 (10 Hz) † | 0.753 (10 Hz) † | 44.58 ◆ | **3.73** ‖ | 0.9000 ¶¶ |
 | Drive-JEPA | 0.912 △ | 2.364 | 16.048 ✦ | 1.512 ◐ | 0.843 | 0.892 † | 31.11 ◆ | **3.57** ‖ | 0.5030 ¶ |
 | VisionPilot | 1.441 △ | 1.534 ∗ | 4.045 ✦ ∗ | 2.246 ◐ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.8488 ¶ |
@@ -161,6 +161,23 @@ nuScenes, with all six cameras, its L2 sits with Drive-JEPA's; its collisions
 are concentrated at standstill, where the planner creeps ~1 m into the queue
 ahead (22.6 % of stopped anchors), and its plans carry a left bias twice as
 large in Boston as in Singapore. See `docs/models/meteor.md`.
+
+⊕ **OpenPilot's KITScenes figure is a configured run** (`20261008T004723-a369d1`).
+The stock ring-camera run scores 1.599 (1.595 when re-run here). One pairing
+table in `paddock.toml` sets the configuration (`docs/site-setup.md` §2), and
+the run's `config` records it:
+- the base front camera, 0.2 m lower than the ring's, in CAM_FRONT's place, cut
+  to 55° at comma's 1164×874;
+- the road shown as from a camera 1.22× lower, with the view tilted 1.7° down;
+- the scored keyframe's route command sent to openpilot's desire input as a turn.
+  This is the route signal Drive-JEPA's row and Alpamayo's nav arm receive here,
+  and the kind of command nuScenes gives every model.
+
+The values were chosen by inspecting one scene of this split (dbba76d9) and
+patterns from the earlier analysis. The gain is in speed, along the path. Against
+the stock run re-made here, lateral error rises from 0.286 to 0.339 m, and the 39
+turns get 0.234 m worse. An independent re-run reproduced every keyframe to the bit.
+See `tools/models/openpilot/analysis/openpilot_drv_supcombo_kitscenes_config_run.md`.
 
 ◐ **Every nuPlan figure is `valid: false` and excluded from `paddock report`.**
 This site holds one of nuPlan's nine camera shards, so of the 351 scorable
@@ -404,14 +421,16 @@ these tables report the saved runs, not new evaluations of the merged code.
 ### KITScenes
 
 Open-loop displacement error in metres over the 3 s horizon, full 223-sample
-split. Alpamayo 1.5 is its nav-conditioned single-draw run. VisionPilot's
-trajectory is synthesised by the adapter (see ∗); METEOR sees six of its eight
-cameras (see ◇). Qwen-Drive 1.0 reads three of the ring's six and is zero-shot
-on this dataset. Only it and Alpamayo 1.5 beat the constant-velocity baseline.
+split. Alpamayo 1.5 is its nav-conditioned single-draw run, and OpenPilot is its
+configured run, given the same route signal (see ⊕). VisionPilot's trajectory
+is synthesised by the adapter (see ∗); METEOR sees six of its eight cameras (see
+◇). Qwen-Drive 1.0 reads three of the ring's six and is zero-shot on this
+dataset. Qwen-Drive 1.0, Alpamayo 1.5 and OpenPilot beat the constant-velocity
+baseline.
 
 | Model | ADE@3s ↓ (m) | FDE@3s ↓ (m) |
 |---|---:|---:|
-| OpenPilot | 1.599 | 2.894 |
+| OpenPilot | 1.248 ⊕ | 2.355 ⊕ |
 | Alpamayo 1.5 | 1.002 | 2.158 |
 | Drive-JEPA | 2.364 | 4.199 |
 | VisionPilot | 1.534 ∗ | 3.089 ∗ |
