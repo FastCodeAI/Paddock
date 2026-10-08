@@ -4,8 +4,8 @@
   "benchmark": "kitscenes",
   "model": "openpilot",
   "mode": "open_loop",
-  "started_utc": "2026-10-08T00:47:23+00:00",
-  "duration_s": 1949.8,
+  "started_utc": "2026-10-08T01:24:02+00:00",
+  "duration_s": 0.0,
   "repo_sha": "555f48c5d28709f039b79f3f6105e51305edd4b5",
   "dataset": {
     "name": "kitscenes",
@@ -110,8 +110,8 @@
     }
   },
   "status": "complete",
-  "valid": false,
+  "valid": true,
   "superseded_by": "",
-  "notes": "command_source = \"gt\": the scored keyframe was given a route command derived from its own recorded future, an oracle hint no ranked paddock run gets",
+  "notes": "resumed: 223 sample(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only",
   "ingested_from": ""
 }

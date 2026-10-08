@@ -4,7 +4,7 @@
   "benchmark": "kitscenes",
   "model": "openpilot",
   "mode": "open_loop",
-  "started_utc": "2026-10-07T18:26:16+00:00",
+  "started_utc": "2026-10-08T01:24:42+00:00",
   "duration_s": 0.0,
   "repo_sha": "555f48c5d28709f039b79f3f6105e51305edd4b5",
   "dataset": {
@@ -111,7 +111,7 @@
   },
   "status": "complete",
   "valid": false,
-  "superseded_by": "",
-  "notes": "command_source = \"gt\": the scored keyframe was given a route command derived from its own recorded future, an oracle hint no ranked paddock run gets; resumed: 223 sample(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only",
+  "superseded_by": "20261008T004723-a369d1",
+  "notes": "resumed: 223 sample(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only Superseded by 20261008T004723-a369d1: the same configuration (hash a369d1) run again from #60's head, identical on all 223 keyframes; the newer run is the record",
   "ingested_from": ""
 }
