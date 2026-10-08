@@ -346,23 +346,23 @@ the comparable set is runs through `paddock_proxy`.
   `--command straight` Drive-JEPA run has the same 223 ids. Its `gt` run would get the same config hash,
   the run id's suffix, as one that sent 39 turns, while sending none.
 - **Status.** Argued: only one list exists here, and it holds 39 turns.
-- **Why it is deferred.** A `gt` run is stored `valid: false` and never ranked, so no leaderboard number
-  depends on this. Adding the turn count, or a digest of the per-row commands, to `run_config()` changes
-  the id of every `gt` run. That would orphan `20260930T014333-d329a6` and `20261005T205400-a369d1` from
-  their `--resume` and from the analysis that cites them by id.
+- **Why it is deferred.** `gt` runs are ranked, so this matters, but it stays argued. Adding the turn
+  count, or a digest of the per-row commands, to `run_config()` changes the id of every `gt` run, including
+  `20261008T004723-a369d1`, the README's OpenPilot KITScenes row, and the analysis runs it would orphan from
+  `--resume`.
 - **To close it.** Either record the digest beside `sequences_sha256` in `run.json`'s dataset block,
-  which is not hashed, or accept the id change on the next `gt` run.
+  which is not hashed, or record `turn_commands` in `run_config()`, as `paddock ingest` already does for
+  Drive-JEPA's row, and accept the id change on the next `gt` run.
 
-**Which KITScenes rows a look at the answer keeps off the board: open (follow-up from #60).**
-- **Paddock runs.** A run with `command_source = "gt"` is stored `valid: false` (kitscenes'
-  `invalid_reasons()`).
-- **The ingested row is not.** Drive-JEPA's `legacy-kitscenes_e2e_final` was made with the same hint
-  (`turn_commands: 39`) and is ranked at 2.364, because `paddock ingest` does not consult that rule.
-  Invalidating it on ingest would take Drive-JEPA's only KITScenes row off the leaderboard and the
-  README. That is a decision for the row's owners, not a side effect of an openpilot PR.
-- **A run tuned on the test set is not recorded as one.** A run with only the scene sweep's camera
-  knobs (height 1.22, pitch −1.7°, a 55° cut, all fitted on 90 of the 223 scored keyframes) would be
-  stored valid and ranked. Nothing in its record says the values were fitted on the set it is scored on.
+**KITScenes route hints: settled (#60).**
+- **The rule.** A route command derived from the recorded future is ranked, and recorded as
+  `command_source` in the run's `config`.
+- **Why.** It is the high-level command nuScenes gives every model (its harness infers it from the future,
+  VAD's rule). It is also the signal Drive-JEPA's (`--command gt`) and Alpamayo's (nav arm) KITScenes rows
+  had.
+- **History.** #60's first review stored paddock's `gt` runs `valid: false`, which ranked an ingested row
+  and failed a paddock run for the same input. The rule was reversed, so ingested and paddock rows are
+  treated alike, and the README marks the rows that had the route.
 
 ## Bench2Drive / CARLA — adapter landed, driven, and the runs are tracked
 

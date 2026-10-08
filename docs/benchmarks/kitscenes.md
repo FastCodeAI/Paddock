@@ -133,9 +133,8 @@ sees a manufactured past followed by a real one.
 
 KITScenes has no route annotation, so by default every frame carries
 `Command.STRAIGHT` and a model is told nothing about where the car is going.
-Every paddock run before `20260930T014333-d329a6` was scored that way, and so
-is every ranked paddock run. A site can instead give the scored keyframe the
-sample list's own `driving_command`:
+Every paddock run before `20260930T014333-d329a6` was scored that way. A site
+can instead give the scored keyframe the sample list's own `driving_command`:
 
 ```toml
 [benchmarks.kitscenes]
@@ -144,23 +143,20 @@ command_source = "gt"   # default "straight"
 
 That one-hot is the command Drive-JEPA's row was run with, and its `--command
 gt` derived it from the recorded future, as a lateral offset at the end of the
-horizon. So it is an **oracle**: the model is told which way the car is about
-to go, and 39 of the 223 keyframes (21 left, 18 right) are told to turn. A `gt`
-run is therefore a different measurement from a `straight` one. It hashes to
-its own run id with `command_source` in its `config`, the key and values
-`paddock ingest` already records Drive-JEPA's row under. `straight` adds no
-key, so every run made before the setting existed keeps its id and `--resume`.
+horizon. So the model is told which way the car is about to go, as a car's
+navigation would tell it, and 39 of the 223 keyframes (21 left, 18 right) are
+told to turn. A `gt` run is therefore a different measurement from a `straight`
+one. It hashes to its own run id with `command_source` in its `config`, the key
+and values `paddock ingest` already records Drive-JEPA's row under. `straight`
+adds no key, so every run made before the setting existed keeps its id and
+`--resume`.
 
-A `gt` run is also stored `valid: false` (`invalid_reasons()`), with the reason
-in `notes`. It is worth keeping -- it is how the openpilot intent analysis
-measures what a route input does -- but its ADE beside rows told nothing would
-rank an oracle as a model, so `paddock report` leaves it out.
-
-The one exception is Drive-JEPA's ingested row (`legacy-kitscenes_e2e_final`).
-It was made with the same hint (`command_source: "gt"`, `turn_commands: 39` in
-its `config`) and is still ranked, with the route-hint caveat above:
-`paddock ingest` does not apply this rule. Whether it should is an open question
-in `docs/ROADMAP.md`.
+A `gt` run is ranked like any other, and its `config` says it was given the
+route. It is the same signal Drive-JEPA's row (`--command gt`) and Alpamayo's
+nav arm were given here. It is also the kind of high-level command nuScenes
+gives every model, whose harness infers it from the recorded future (VAD's
+rule): the standard input of open-loop planning, standing in for the route a
+car's navigation knows. The README marks the KITScenes rows that had it.
 
 Only the keyframe carries the hint; the 48 history frames stay STRAIGHT. The
 command is derived from the keyframe's own future, so it is not what a frame

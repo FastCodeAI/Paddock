@@ -811,10 +811,10 @@ Every record's extras carry:
 - `plan_v0`: the plan's speed at t = 0, beside the pose head's.
 
 The mode is recorded in `provenance.policy.desire_mode`. Set in a site's env
-block, it is also in `config.model_env`, so a desire run gets its own id. On
-KITScenes the only commands it can act on come from `command_source = "gt"`,
-which is read from the recorded future, so such a run is stored `valid: false`
-and kept off the leaderboard ([The route hint](../benchmarks/kitscenes.md#the-route-hint)).
+block, it is also in `config.model_env`, so a desire run gets its own id and
+its own leaderboard row. On KITScenes the commands come from
+`command_source = "gt"`, the route signal the benchmark's other route-conditioned
+rows had ([The route hint](../benchmarks/kitscenes.md#the-route-hint)).
 
 ### A camera higher than openpilot's, shown from openpilot's height
 

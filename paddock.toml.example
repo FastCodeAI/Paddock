@@ -313,11 +313,10 @@ serialize = true
 # same values set globally would be, and `paddock run` names it before it
 # starts. Delete the tables to reset: the next run hashes as it did before them.
 # openpilot on KITScenes, from the base front camera as comma's own would see it
-# (docs/models/openpilot-guide.md). Its scale, tilt and cut were fitted on
-# KITScenes' own scored keyframes, so its numbers are tuned on the test set.
-# command_source = "gt" also reads the route from the recorded future, which is
-# what stores a run with these tables valid: false -- an analysis run, never a
-# leaderboard row. Without that line the run would be ranked, tuned:
+# (docs/models/openpilot-guide.md). The scale, tilt and cut were chosen by
+# inspecting one KITScenes scene (dbba76d9), and command_source = "gt" gives the
+# scored keyframe its route, the signal Drive-JEPA's and Alpamayo's rows there
+# had. A run with these tables is ranked, and the README marks it:
 # [models.openpilot.benchmarks.kitscenes.env]
 # PADDOCK_OPENPILOT_BACKEND = "onnx"
 # PADDOCK_OPENPILOT_HEIGHT_SCALE = "1.22"

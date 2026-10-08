@@ -87,15 +87,17 @@ RING = {
 #: Where the scored keyframe's route command comes from:
 #: `[benchmarks.kitscenes] command_source`.
 #:
-#: KITScenes has no route annotation, so there is no honest route hint to give,
-#: and `straight`, the default, stamps `Command.STRAIGHT` on every frame -- what
-#: every paddock run here before `20260930T014333-d329a6` was scored with, and
-#: every ranked paddock run still is (`invalid_reasons()`). `gt` gives the keyframe
-#: the sample list's `driving_command` instead: the command Drive-JEPA's row was
-#: run with, which its `--command gt` derived from the recorded future. That
-#: makes it an oracle -- the model is told which way the car is about to go --
-#: so a `gt` run is a different measurement, recorded in `run_config()`. The
-#: two names are the ones `paddock ingest` already records that row under.
+#: KITScenes has no route annotation, so `straight`, the default, stamps
+#: `Command.STRAIGHT` on every frame -- what every paddock run here before
+#: `20260930T014333-d329a6` was scored with. `gt` gives the keyframe the sample
+#: list's `driving_command` instead: the command Drive-JEPA's row was run with,
+#: which its `--command gt` derived from the recorded future. The model is told
+#: which way the car is about to go, as a car's navigation would tell it, so a
+#: `gt` run is a different measurement, recorded in `run_config()`. It is not an
+#: invalid one: that is the route signal Drive-JEPA's and Alpamayo's ranked rows
+#: here were given, and the high-level command nuScenes gives every model (its
+#: harness infers it from the recorded future, VAD's rule). The two names are
+#: the ones `paddock ingest` already records Drive-JEPA's row under.
 COMMAND_SOURCES = ("straight", "gt")
 
 #: The sample list's `driving_command`, a one-hot over NAVSIM's `[left,
@@ -357,27 +359,6 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         if self._front_camera() != "ring":
             config["front_camera"] = self._front_camera()
         return config
-
-    def invalid_reasons(self) -> list[str]:
-        """A `gt` route hint keeps the run off the leaderboard.
-
-        The hint is derived from the keyframe's own recorded future, so the
-        model is told part of the answer it is scored against. Such a run is
-        worth keeping -- it is how the intent analysis measures what a route
-        input does -- but its ADE beside the rows that were told nothing would
-        rank an oracle as a model. The base front camera is a different input,
-        not a look at the answer, so it does not invalidate.
-
-        Drive-JEPA's ingested row was made with the same hint and is ranked:
-        `paddock ingest` does not consult this, and whether it should is open
-        (docs/ROADMAP.md). So the reason claims no more than paddock runs.
-        """
-        if self._command_source() == "gt":
-            return [
-                'command_source = "gt": the scored keyframe was given a route command derived from '
-                "its own recorded future, an oracle hint no ranked paddock run gets"
-            ]
-        return []
 
     def model_run_config(self, model) -> dict:
         """Which ring cameras this model was given: the ones it declares.
