@@ -33,7 +33,10 @@ weighted 0 and `MIN_SPEED_INFRACTION` is tagged `'unused'`. There is no direct
 minimum-speed multiplier. Slow driving can still reduce
 completion through blocking or timeout. Recorded minimum-speed entries include
 checkpoint percentages above 100%, so their count alone is not speed compliance;
-see the [harness audit and normalized tables](bench2drive-speed-normalization.md). An episode ends when the
+see the [harness audit and normalized tables](bench2drive-speed-normalization.md).
+The published campaign calls every model once per simulator tick (20 Hz); what the
+same routes score with each model driven at its own replan rate instead is in
+[native inference rate](bench2drive-native-rate.md). An episode ends when the
 car finishes, gets **blocked** (stuck too long), **deviates** >30 m off route,
 **times out**, or hits the evaluator's 4000-frame cap; `route_completion`
 freezes at whatever % was reached. All of those are the benchmark working and
