@@ -86,6 +86,11 @@ from paddock.adapters.benchmarks.bench2drive.harness import (
 from paddock.registry import Registry
 from paddock.results.store import MetricsRecord, RunRecord, config_hash, sequence_hash
 
+#: Bench2Drive's published protocol calls the model once per simulator tick --
+#: 20 Hz (docs/benchmarks/bench2drive.md). A run driven at another rate measures
+#: a different protocol, so it is kept and not ranked against runs that were not.
+PROTOCOL_HZ = 20.0
+
 _ROUTE_DIR = re.compile(r"^(?P<route>\d+)-(?P<town>Town\w+?)-(?P<scenario>[A-Za-z]+)$")
 _RUN_ID = re.compile(r"^(?P<stamp>\d{8}T\d{6})-[0-9a-f]{6}$")
 
@@ -154,6 +159,22 @@ def _read_json(path: Path) -> Any:
         return json.loads(path.read_bytes())
     except (ValueError, OSError):
         return None
+
+
+def _driven_off_protocol(model_env: dict[str, Any]) -> float | None:
+    """The rate this run was driven at, when that is not the benchmark's protocol.
+
+    ``None`` for every run driven at 20 Hz, which is every run that does not say
+    otherwise -- the rate is only in the record when an operator put it there.
+    """
+    raw = (model_env or {}).get("PADDOCK_INFER_HZ")
+    if raw in (None, ""):
+        return None
+    try:
+        hz = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return None if hz <= 0 or hz == PROTOCOL_HZ else hz
 
 
 def _agreed(values: Sequence[Any]) -> Any:
@@ -340,12 +361,30 @@ def ingest(
             "one mean describes none of them, so this run does not rank -- the per-setup "
             "figures are in metrics.json by_group."
         )
+    # The override is layered on top of what the runs recorded, so a key that is
+    # only in the override is an operator's assertion -- the note has to say so,
+    # or `results/` claims the source runs recorded a value they never held.
+    overridden = sorted(k for k in dict(model_env or {}) if k not in recorded_env)
     unverified = sum(1 for rec in used if not rec.get("model"))
     if unverified:
         note = (note + " " if note else "") + (
             f"{unverified} of {len(used)} source runs kept no run.json, so their routes are "
             f"attributed to {model} on the tree they were found in; config.model_env and the "
             f"rest of config are what {config['source_config_read']} recorded."
+        )
+    if overridden:
+        keys = ", ".join(overridden)
+        was = "was" if len(overridden) == 1 else "were"
+        note = (note + " " if note else "") + (
+            f"{keys} {was} supplied by the ingest config and recorded by no source run, "
+            "so it is the operator's assertion about the campaign, not a reading from it."
+        )
+    off_protocol = _driven_off_protocol(config["model_env"])
+    if off_protocol is not None:
+        note = (note + " " if note else "") + (
+            f"driven at {off_protocol:g} Hz, not the {PROTOCOL_HZ:g} Hz the benchmark's published "
+            "protocol calls the model at, so this run is kept and does not rank against runs that "
+            "were -- the paired comparison is docs/benchmarks/bench2drive-native-rate.md."
         )
     if missing:
         lost = ", ".join(f"{r} ({attempted.get(r, 'no attempt found')})" for r in missing)
@@ -368,8 +407,10 @@ def ingest(
         status="complete" if not missing else "partial",
         # More than one recording setup is not one experiment: its mean is not a
         # measurement of anything, so it is kept and not ranked rather than
-        # published as a number nobody drove.
-        valid=not missing and len(pooled_setups) <= 1,
+        # published as a number nobody drove. A run driven at another rate is a
+        # different protocol, and ranking it beside 20 Hz rows says they measure
+        # the same thing -- which is the claim this campaign exists to deny.
+        valid=not missing and len(pooled_setups) <= 1 and off_protocol is None,
         notes=note,
         # A relative tail only: results/ is tracked and must not name a machine's disk.
         ingested_from="; ".join("/".join(r.parts[-3:]) for r in roots),
