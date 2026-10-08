@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
-92 runs across 8 benchmarks.
-56 run(s) excluded as invalid — shown at the end, never averaged in.
+94 runs across 8 benchmarks.
+55 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
@@ -52,6 +52,7 @@
 | alpamayo15 | full-nav | 223 | fastcode-shakaal | 1.002 | 0.362 | 1.088 | 2.158 | 0.543 | 0.875 | 1.862 |
 | alpamayo15 | full-letterbox | 223 | fastcode-shakaal | 1.176 | 0.418 | 1.284 | 2.535 | 0.619 | 1.009 | 2.085 |
 | alpamayo15 | phase3-letterbox | 7 | fastcode-shakaal | 1.188 | 0.506 | 1.357 | 2.338 | 0.750 | 1.182 | 2.288 |
+| openpilot | 20261008T004723-a369d1 | 223 | hpcai-skodate | 1.248 | 0.618 | 1.398 | 2.355 | - | - | - |
 | openpilot | local20 | 20 | fastcode-shakaal | 1.291 | 0.726 | 1.460 | 2.274 | - | - | - |
 | openpilot | ablate_0 | 15 | fastcode-shakaal | 1.412 | 0.805 | 1.582 | 2.462 | - | - | - |
 | visionpilot | 20260909T202724-153b04 | 223 | fastcode-shakaal | 1.534 | 0.700 | 1.567 | 3.089 | - | - | - |
@@ -60,6 +61,7 @@
 | openpilot | 20260930T154018-242869 | 223 | hpcai-skodate | 1.595 | 0.828 | 1.801 | 2.904 | - | - | - |
 | openpilot | full223 | 223 | fastcode-shakaal | 1.599 | 0.836 | 1.808 | 2.894 | - | - | - |
 | openpilot | 20260901T175755-cc27fb | 223 | fastcode-shakaal | 1.599 | 0.836 | 1.808 | 2.894 | - | - | - |
+| openpilot | 20260930T014333-d329a6 | 223 | hpcai-skodate | 1.649 | 0.826 | 1.848 | 3.070 | - | - | - |
 | openpilot | smoke | 1 | fastcode-shakaal | 1.697 | 0.752 | 1.895 | 3.298 | - | - | - |
 | meteor | 20260914T215457-ab0586 | 223 | fastcode-shakaal | 1.879 | 0.695 | 2.040 | 4.034 | - | - | - |
 | openpilot | rate_r2 | 3 | fastcode-shakaal | 1.905 | 0.998 | 2.162 | 3.425 | - | - | - |
@@ -145,11 +147,10 @@
 - **neuroncap/drivejepa/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **neuroncap/openpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **neuroncap/visionpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
-- **kitscenes/openpilot/20261005T205400-a369d1** — command_source = "gt": the scored keyframe was given a route command derived from its own recorded future, an oracle hint no ranked paddock run gets; resumed: 223 sample(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only
+- **kitscenes/openpilot/20261005T205400-a369d1** — resumed: 223 sample(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only Superseded by 20261008T004723-a369d1: the same configuration (hash a369d1) run again from #60's head, identical on all 223 keyframes; the newer run is the record
 - **kitscenes/openpilot/20260930T161429-4576f3** — --limit 60: a subset of the benchmark, run to test the pipeline
 - **kitscenes/openpilot/20260930T160954-02dd77** — --limit 60: a subset of the benchmark, run to test the pipeline
 - **kitscenes/openpilot/20260930T160509-57c362** — --limit 60: a subset of the benchmark, run to test the pipeline
-- **kitscenes/openpilot/20260930T014333-d329a6** — command_source = "gt": the scored keyframe was given a route command derived from its own recorded future, an oracle hint no ranked paddock run gets; resumed: 223 sample(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only
 - **kitscenes/openpilot/20260930T014333-5811fc** — --limit 60: a subset of the benchmark, run to test the pipeline
 - **kitscenes/openpilot/20260929T043619-242869** — Superseded by 20260930T154018-242869: The warp-cache bug fixed in f8dce3b warped 14 of its 223 samples with another rig's calibration; the re-run on the fixed code equals it bit for bit on the other 209, and equals a fresh-warp replay on each of the 51 samples checked (every sample that follows a change of rig, and the 3 that inherited a hit within their rig).
 - **nuplan/openpilot/20260917T220353-9e4f44** — camera images cover 25 of 351 scorable anchors (53 logs have no images); not comparable with a full-coverage run
