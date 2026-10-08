@@ -7,6 +7,8 @@ which is what a reviewer can actually verify on a PR.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
@@ -19,11 +21,14 @@ from paddock.adapters.models.openpilot.policy import (
     DESIRE_TURN_RIGHT,
     DEVICE_FROM_EGO,
     GRID_S,
+    LANE_CHANGE_LEAD_S,
     POLICY,
     TARGET_H,
     TARGET_W,
+    TURN_REARM_S,
     CameraAdapter,
     CameraFit,
+    RouteDesire,
     desire_index,
     desire_pulse,
     plan_to_grid,
@@ -706,6 +711,117 @@ def test_an_unknown_desire_mode_stops_the_node(monkeypatch) -> None:
     monkeypatch.setenv("PADDOCK_OPENPILOT_DESIRE", "turns")
     with pytest.raises(ValueError, match="'turns': expected one of off, turn, lane_change"):
         POLICY()
+
+
+# --------------------------------------------------------------------------
+# PADDOCK_OPENPILOT_DESIRE=route: the route's lane changes and turns, on time
+# --------------------------------------------------------------------------
+
+HZ = 20  # Bench2Drive's tick, and supercombo's
+
+
+def _nav(t_s, command=Command.FOLLOW_REFERENCE, speed=8.0, **fields):
+    """One frame of what the route scheduler reads, at `t_s` seconds."""
+    base = dict(nav_maneuver=None, nav_distance_m=None, nav_lane_change=None, nav_lane_change_m=None)
+    return SimpleNamespace(
+        command=command, speed=speed, timestamp_us=int(round(t_s * 1e6)), **(base | fields)
+    )
+
+
+def _edges(slots, slot):
+    """Frames where `slot` rises: `SupercomboRunner.run`'s rule, the only frames the model is told."""
+    level = np.array([s == slot for s in slots], dtype=float)
+    return [i for i in range(len(level)) if level[i] - (level[i - 1] if i else 0.0) > 0.99]
+
+
+def test_a_turn_desire_outlasts_a_wait_at_a_red_light() -> None:
+    """Route 2215: the right turn is known from the start, the car then waits 10 s
+    at a red light before the junction. One edge would have left the model's 5 s
+    window long before the car moved; re-sent, one is always inside it."""
+    route = RouteDesire()
+    frames = [_nav(i / HZ, Command.RIGHT, speed=0.0) for i in range(20 * HZ)]
+    slots = [route.slot(f) for f in frames]
+
+    edges = _edges(slots, DESIRE_TURN_RIGHT)
+    assert edges[0] == 0, "sent from the first frame the turn is near"
+    gaps_s = np.diff(edges) / HZ
+    assert len(edges) == 5 and np.all(gaps_s <= 5.0), "never longer than the model remembers a desire"
+    assert np.all(gaps_s >= TURN_REARM_S)
+    assert slots.count(DESIRE_NONE) == len(edges) - 1, "each re-send costs one frame off, no more"
+
+
+def test_a_turn_is_sent_only_when_near() -> None:
+    route = RouteDesire()
+    far = _nav(0.0, nav_maneuver="TURN_LEFT", nav_distance_m=60.0)
+    near = _nav(0.05, nav_maneuver="TURN_LEFT", nav_distance_m=30.0)
+    assert [route.slot(far), route.slot(near)] == [DESIRE_NONE, DESIRE_TURN_LEFT]
+    straight = _nav(0.1, Command.STRAIGHT, nav_maneuver="STRAIGHT", nav_distance_m=0.0)
+    assert route.slot(straight) == DESIRE_NONE, "straight through a junction is no desire"
+
+
+def test_each_lane_change_on_the_route_is_one_edge() -> None:
+    """Route 17598: two left lane changes, 32 m and 67 m along, at 8 m/s. Each
+    rises once, LANE_CHANGE_LEAD_S of travel ahead, and is never re-sent."""
+    route = RouteDesire()
+    slots, sent_at = [], []
+    for i in range(15 * HZ):
+        s = 8.0 * i / HZ
+        nxt = 32.0 if s <= 33.0 else 67.0 if s <= 68.0 else None
+        frame = _nav(
+            i / HZ, nav_lane_change="LEFT" if nxt else None, nav_lane_change_m=nxt - s if nxt else None
+        )
+        slots.append(route.slot(frame))
+        if len(slots) > 1 and slots[-1] == DESIRE_LANE_CHANGE_LEFT != slots[-2]:
+            sent_at.append(frame.nav_lane_change_m)
+
+    assert len(_edges(slots, DESIRE_LANE_CHANGE_LEFT)) == 2
+    assert sent_at == pytest.approx([8.0 * LANE_CHANGE_LEAD_S] * 2, abs=0.5)
+    assert DESIRE_TURN_LEFT not in slots and DESIRE_TURN_RIGHT not in slots
+
+
+def test_two_lane_changes_in_reach_together_still_get_an_edge_each() -> None:
+    """The second is already within reach when the first is passed: the level
+    would stay up and the model hear one lane change. One frame off splits them."""
+    route = RouteDesire()
+    metres = [6.0, 4.0, 2.0, 0.0, 7.0, 5.0, 3.0, 1.0]  # passed the first, the next 7 m on
+    slots = [
+        route.slot(_nav(i / HZ, speed=2.0, nav_lane_change="RIGHT", nav_lane_change_m=m))
+        for i, m in enumerate(metres)
+    ]
+    assert len(_edges(slots, DESIRE_LANE_CHANGE_RIGHT)) == 2
+    assert slots[4] == DESIRE_NONE
+
+
+def test_a_route_without_maneuvers_is_no_desire_and_reset_forgets_the_last() -> None:
+    route = RouteDesire()
+    assert {route.slot(_nav(i / HZ)) for i in range(40)} == {DESIRE_NONE}
+    route.slot(_nav(2.0, Command.LEFT))
+    route.reset()
+    assert (route.prev_slot, route.turn_since_us, route.lane_change_m) == (DESIRE_NONE, None, None)
+
+
+def test_route_mode_reaches_the_graph_and_the_record(monkeypatch) -> None:
+    """What the scheduler picks is what the graph is handed and what the
+    record's `extras.desire.input` reports -- including the lane change a
+    bare command cannot express."""
+    policy, seen = _onnx_policy(monkeypatch)
+    policy.desire_mode = "route"
+    obs = _two_camera_observation()
+    obs.command = Command.STRAIGHT  # how the agent sends a lane change's command
+    obs.nav_lane_change, obs.nav_lane_change_m = "LEFT", 5.0
+
+    policy.infer(obs)
+
+    assert np.flatnonzero(seen["desire"]).tolist() == [DESIRE_LANE_CHANGE_LEFT]
+    assert policy.desire_slot == DESIRE_LANE_CHANGE_LEFT
+    policy.session = None  # reset() would rebuild the runner, which needs openpilot
+    policy.reset()
+    assert policy.desire_slot == DESIRE_NONE and policy.route_desire.prev_slot == DESIRE_NONE
+
+
+def test_the_route_mode_is_read_from_the_env(monkeypatch) -> None:
+    monkeypatch.setenv("PADDOCK_OPENPILOT_DESIRE", "route")
+    assert POLICY().desire_mode == "route"
 
 
 def test_desire_slots_are_openpilots_own() -> None:

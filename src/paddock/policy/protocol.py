@@ -16,6 +16,9 @@ The wire contract, unchanged from NeuroNCAP:
               nav_maneuver   optional: next junction maneuver on the route,
                              "TURN_LEFT" | "TURN_RIGHT" | "STRAIGHT" | null
               nav_distance_m optional: along-route metres to that maneuver
+              nav_lane_change   optional: next lane change on the route,
+                                "LEFT" | "RIGHT" | null
+              nav_lane_change_m optional: along-route metres to it
               calibration  camera2image (3x3 per camera), camera2ego (4x4)
 
     response  trajectory   ego frame, x forward and y LEFT, spaced by waypoint dt
@@ -300,6 +303,14 @@ class Observation:
     #: where the source has no route, or no junction ahead of the ego.
     nav_maneuver: str | None = None
     nav_distance_m: float | None = None
+    #: The next lane change on the route ("LEFT", "RIGHT") and the along-route
+    #: distance to it. Separate from `nav_maneuver`, which names junction
+    #: maneuvers only and is read as such by policies that take navigation text:
+    #: folding lane changes into it would change what those policies are told.
+    #: openpilot sends it as its laneChange desire. None where the source has no
+    #: route, or no lane change ahead of the ego.
+    nav_lane_change: str | None = None
+    nav_lane_change_m: float | None = None
     #: Frames that live on disk, loaded on first use instead of being carried.
     #:
     #: Open-loop benchmarks read from a local dataset, and the node is a
@@ -335,6 +346,10 @@ class Observation:
             nav_maneuver=(str(body["nav_maneuver"]) if body.get("nav_maneuver") else None),
             nav_distance_m=(
                 float(body["nav_distance_m"]) if body.get("nav_distance_m") is not None else None
+            ),
+            nav_lane_change=(str(body["nav_lane_change"]) if body.get("nav_lane_change") else None),
+            nav_lane_change_m=(
+                float(body["nav_lane_change_m"]) if body.get("nav_lane_change_m") is not None else None
             ),
         )
 
@@ -416,6 +431,8 @@ class Observation:
             "speed_limit": self.speed_limit,
             "nav_maneuver": self.nav_maneuver,
             "nav_distance_m": self.nav_distance_m,
+            "nav_lane_change": self.nav_lane_change,
+            "nav_lane_change_m": self.nav_lane_change_m,
             "calibration": calibration,
         }
 

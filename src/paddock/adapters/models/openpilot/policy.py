@@ -173,11 +173,36 @@ DESIRE_LANE_CHANGE_LEFT, DESIRE_LANE_CHANGE_RIGHT = 3, 4
 #: code, only measured. "lane_change" sends laneChangeLeft/laneChangeRight: in
 #: distribution but a different manoeuvre, which makes it the control for "turn".
 #: STRAIGHT and FOLLOW_REFERENCE are none in every mode.
+#:
+#: "route" is the one mode that is not a table: the route's lane changes and
+#: junction turns are each sent when they are near and for as long as they
+#: apply, frame by frame (`RouteDesire`). Its entry here is the turn table, what
+#: a bare command means under it.
 DESIRE_MODES: dict[str, dict[Command, int]] = {
     "off": {},
     "turn": {Command.LEFT: DESIRE_TURN_LEFT, Command.RIGHT: DESIRE_TURN_RIGHT},
     "lane_change": {Command.LEFT: DESIRE_LANE_CHANGE_LEFT, Command.RIGHT: DESIRE_LANE_CHANGE_RIGHT},
+    "route": {Command.LEFT: DESIRE_TURN_LEFT, Command.RIGHT: DESIRE_TURN_RIGHT},
 }
+
+#: `RouteDesire`: metres before a junction turn its desire is first sent. On
+#: KITScenes the turn desire cost ADE when sent for turns 40 m or more ahead --
+#: the model cannot see them yet -- and nothing nearer (the image-calibration
+#: notebook in tools/models/openpilot/analysis, the route sent "only when the
+#: turn is near").
+TURN_NEAR_M = 40.0
+#: `RouteDesire`: seconds between re-sent turn desires. openpilot feeds a desire
+#: only on its rising edge and the model keeps it 5 s (25 bins of 0.2 s). A car
+#: that waits 10 s at a red light before its turn -- Bench2Drive route 2215 --
+#: would otherwise enter the junction with the desire long gone; re-sent inside
+#: 5 s, one is always in the window.
+TURN_REARM_S = 4.0
+#: `RouteDesire`: a lane change is sent once it is this many seconds of travel
+#: ahead at the current speed, or `LANE_CHANGE_MIN_M`, whichever is further:
+#: openpilot's model takes a few seconds to cross a lane, and the route marks
+#: the point the lane is already changed by.
+LANE_CHANGE_LEAD_S = 2.5
+LANE_CHANGE_MIN_M = 10.0
 
 
 class ImplausibleMounting(ValueError):
@@ -588,6 +613,88 @@ def desire_pulse(command: Command, mode: str, width: int) -> np.ndarray:
     return pulse
 
 
+class RouteDesire:
+    """`PADDOCK_OPENPILOT_DESIRE=route`: the desire each frame is sent as, from the route.
+
+    A level per frame, like `desire_pulse`; both backends turn it into openpilot's
+    rising-edge pulse. What the level does decides what the model is told:
+
+    *Lane change* (`Observation.nav_lane_change`, within `LANE_CHANGE_LEAD_S`
+    of travel or `LANE_CHANGE_MIN_M`): held until the agent reports it passed,
+    so it arrives as exactly one edge -- as openpilot's `DesireHelper` sends one
+    per lane change. Never re-sent: a second edge asks for a second lane change.
+    Two lane changes in a row each get their own edge, the level dropping for
+    one frame between them if they are close enough to run together.
+
+    *Junction turn* (command LEFT/RIGHT, where the car is now, else
+    `nav_maneuver` TURN_* within `TURN_NEAR_M`): held while the turn is near or
+    under way, and dropped for one frame every `TURN_REARM_S` so a fresh edge
+    reaches the model -- a turn can wait out a red light, a lane change cannot
+    sensibly be repeated. A lane change in reach takes precedence; turns are
+    off openpilot's deployment distribution (see `DESIRE_MODES`).
+
+    Everything else -- STRAIGHT, lane follow, no route -- is none.
+    """
+
+    def __init__(self) -> None:
+        self.reset()
+
+    def reset(self) -> None:
+        self.prev_slot = DESIRE_NONE
+        #: When the turn desire last rose, for the re-send clock; None when no turn is held.
+        self.turn_since_us: int | None = None
+        #: The distance to the lane change last frame, to tell the next one from this one.
+        self.lane_change_m: float | None = None
+
+    def slot(self, obs: Observation) -> int:
+        lane_change = self._lane_change(obs)
+        if lane_change is None:  # between two lane changes: this frame is off
+            slot = DESIRE_NONE
+        elif lane_change == DESIRE_NONE:
+            slot = self._turn(obs)
+        else:
+            slot = lane_change
+            self.turn_since_us = None
+        self.prev_slot = slot
+        return slot
+
+    def _lane_change(self, obs: Observation) -> int | None:
+        """The lane-change slot in reach, `DESIRE_NONE` if none is, None for the frame between two."""
+        side = getattr(obs, "nav_lane_change", None)
+        metres = getattr(obs, "nav_lane_change_m", None)
+        previous, self.lane_change_m = self.lane_change_m, metres
+        if side not in ("LEFT", "RIGHT") or metres is None:
+            return DESIRE_NONE
+        if metres > max(LANE_CHANGE_MIN_M, LANE_CHANGE_LEAD_S * max(float(obs.speed), 0.0)):
+            return DESIRE_NONE
+        slot = DESIRE_LANE_CHANGE_LEFT if side == "LEFT" else DESIRE_LANE_CHANGE_RIGHT
+        if self.prev_slot == slot and previous is not None and metres > previous + 1.0:
+            # Further than last frame: that lane change is behind, this is the
+            # next one, already in reach. One frame off makes it its own edge.
+            return None
+        return slot
+
+    def _turn(self, obs: Observation) -> int:
+        command = int(obs.command)
+        if command in (Command.LEFT, Command.RIGHT):
+            slot = DESIRE_TURN_LEFT if command == Command.LEFT else DESIRE_TURN_RIGHT
+        elif obs.nav_maneuver in ("TURN_LEFT", "TURN_RIGHT") and (
+            obs.nav_distance_m is not None and obs.nav_distance_m <= TURN_NEAR_M
+        ):
+            slot = DESIRE_TURN_LEFT if obs.nav_maneuver == "TURN_LEFT" else DESIRE_TURN_RIGHT
+        else:
+            self.turn_since_us = None
+            return DESIRE_NONE
+        now = int(obs.timestamp_us)
+        if self.prev_slot != slot or self.turn_since_us is None:
+            self.turn_since_us = now
+            return slot
+        if now - self.turn_since_us >= TURN_REARM_S * 1e6:
+            self.turn_since_us = None  # off for this frame; the next rises again
+            return DESIRE_NONE
+        return slot
+
+
 def build_extras(
     out: dict, plan33: np.ndarray, grid_s: np.ndarray = GRID_S, desire: int = DESIRE_NONE
 ) -> dict:
@@ -749,6 +856,10 @@ class OpenpilotPolicy(Policy):
         self.a_cruise_prev = 0.0
         self.still_s = 0.0
         self.resuming = False
+        #: The route-mode scheduler, and the desire slot the last frame was sent
+        #: as -- what the record reports, whichever mode chose it.
+        self.route_desire = RouteDesire()
+        self.desire_slot = DESIRE_NONE
         self.nv12_info = None
         self.buf: np.ndarray | None = None
         self.bufs: dict[str, np.ndarray] = {}
@@ -1021,6 +1132,8 @@ class OpenpilotPolicy(Policy):
         self.a_cruise_prev = 0.0
         self.still_s = 0.0
         self.resuming = False
+        self.route_desire.reset()
+        self.desire_slot = DESIRE_NONE
 
     # ---- inference -------------------------------------------------------
 
@@ -1079,6 +1192,21 @@ class OpenpilotPolicy(Policy):
             return self.cam_road, self.cam_wide, "CAM_OP_ROAD", "CAM_OP_WIDE"
         assert self.camera is not None
         return self.camera, self.camera, "CAM_FRONT", "CAM_FRONT"
+
+    def _desire(self, obs: Observation, width: int) -> np.ndarray:
+        """This frame's `desire_pulse` level under the node's mode; see `desire_pulse` and `RouteDesire`.
+
+        One place for both backends, so a route-mode frame is scheduled once
+        per observation, never once per repeat of it.
+        """
+        if self.desire_mode != "route":
+            self.desire_slot = desire_index(obs.command, self.desire_mode)
+            return desire_pulse(obs.command, self.desire_mode, width)
+        self.desire_slot = self.route_desire.slot(obs)
+        pulse = np.zeros(width, dtype=np.float32)
+        if self.desire_slot != DESIRE_NONE:
+            pulse[self.desire_slot] = 1.0
+        return pulse
 
     def infer(self, obs: Observation) -> Trajectory:
         if self.model is None:
@@ -1166,7 +1294,7 @@ class OpenpilotPolicy(Policy):
         transforms = {"img": road.transforms["img"], "big_img": wide.transforms["big_img"]}
 
         inputs = {
-            "desire_pulse": desire_pulse(obs.command, self.desire_mode, ModelConstants.DESIRE_LEN),
+            "desire_pulse": self._desire(obs, ModelConstants.DESIRE_LEN),
             "traffic_convention": TRAFFIC_CONVENTION,
             "action_t": np.array([0.3, 0.5], dtype=np.float32),
         }
@@ -1232,7 +1360,7 @@ class OpenpilotPolicy(Policy):
         # queue is built from (`InputQueues.build`). With the mode "off" this is
         # the zeros `SupercomboRunner.run` substitutes for `desire=None`.
         width = self.session.spec.input_shapes["desire_pulse"][-1]
-        desire = desire_pulse(obs.command, self.desire_mode, width)
+        desire = self._desire(obs, width)
         out = None
         for _ in range(self._repeats(obs)):
             out = self.model.run(img, big, max(float(obs.speed), 0.0), desire=desire)
@@ -1255,7 +1383,7 @@ class OpenpilotPolicy(Policy):
         """
         plan33 = np.asarray(out["plan"])[0]
         traj = Trajectory(plan_to_grid(plan33), dt=self.waypoint_dt)
-        traj.extras = build_extras(out, plan33, desire=desire_index(obs.command, self.desire_mode))
+        traj.extras = build_extras(out, plan33, desire=self.desire_slot)
         if NATIVE_LONG:
             traj.extras["native_long"] = self._native_long(out, plan33, obs.speed, self.dt_s, obs.speed_limit)
         validate_extras(traj.extras, n_waypoints=len(traj.waypoints))
