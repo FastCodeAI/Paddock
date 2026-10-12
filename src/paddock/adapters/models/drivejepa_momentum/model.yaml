@@ -1,0 +1,48 @@
+name: drivejepa_momentum
+description: Drive-JEPA with the paper's momentum-aware trajectory selection (two-frame comfort bonus), which `drivejepa` leaves off
+repo: Drive-JEPA
+
+# The same environment, checkout and checkpoint as `drivejepa`: everything up to
+# the 32 scored candidates is that model unchanged. Only the pick differs. See
+# docs/models/drivejepa_momentum.md.
+runtime:
+  kind: conda
+  python: "3.9"
+  venv: "{repos}/.conda-envs/drive-jepa"
+  pythonpath: ["{repo}/navsim_v2"]
+  # Load-bearing: the agent does np.load("./data/8192.npy") relative to cwd.
+  cwd: "{repo}/navsim_v2"
+  env:
+    NAVSIM_DEVKIT_ROOT: "{repo}/navsim_v2"
+    NAVSIM_EXP_ROOT: "{data.navsim.exp}"
+    OPENSCENE_DATA_ROOT: "{data.navsim}"
+    NUPLAN_MAPS_ROOT: "{data.navsim}/maps"
+    NUPLAN_MAP_VERSION: "nuplan-maps-v1.0"
+    DRIVEJEPA_CHECKPOINT: "{data.navsim.exp}/Drive-JEPA-cache/drive_jepa_perception_based_agent_vitl_v2.ckpt"
+    DRIVE_JEPA_MSDA: "auto"
+
+capabilities:
+  cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT, CAM_BACK]
+  vram_gb: 12
+  startup_timeout_s: 900
+  waypoint_dt: 0.5
+
+  # -- model card (docs/models/comparison.md) --
+  architecture: "Drive-JEPA (V-JEPA-2 ViT-L + proposal planner) with momentum-aware selection"
+  params_m: 307
+  size_gb: 1.23
+  precision: fp32
+  input_size: [512, 256]
+  history_frames: 2
+  output_kind: waypoints
+  horizon_s: 4.0
+  trained_on:
+    # The base model, exactly as `drivejepa` declares it. The selection step
+    # has no weights.
+    - dataset: navsim
+      split: navtrain
+
+# Closed loop only. The bonus compares this tick's candidates with the plan the
+# model drove on the previous tick, and an open-loop harness has no previous
+# plan that was actually driven.
+benchmarks: [neuroncap]

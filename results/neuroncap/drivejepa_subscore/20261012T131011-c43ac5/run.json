@@ -1,0 +1,50 @@
+{
+  "run_id": "20261012T131011-c43ac5",
+  "site": "fastcode-shakaal",
+  "benchmark": "neuroncap",
+  "model": "drivejepa_subscore",
+  "mode": "closed_loop",
+  "started_utc": "2026-10-12T13:10:11+00:00",
+  "duration_s": 2457.4,
+  "repo_sha": "e21f47410b4d26b61f05f9bd23e169c0390cae2a",
+  "dataset": {
+    "name": "nuscenes",
+    "n_samples": 9,
+    "sequences_sha256": "68827db0691cc7d0",
+    "n_expected": 9,
+    "n_failed": 0,
+    "n_reused": 0
+  },
+  "config": {
+    "scene": "0103",
+    "runs": 3,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT",
+      "CAM_BACK"
+    ]
+  },
+  "hardware": {
+    "gpu_free_gb_at_start": null
+  },
+  "provenance": {
+    "repo": {
+      "repo": "Drive-JEPA",
+      "sha": "e21f47410b4d26b61f05f9bd23e169c0390cae2a",
+      "pinned_sha": "e21f474",
+      "at_pin": true
+    },
+    "policy": {
+      "image_geometry": "native",
+      "frames_recorded": 63,
+      "history_span_s": 1.5,
+      "history_target_s": 1.5
+    }
+  },
+  "status": "complete",
+  "valid": false,
+  "superseded_by": "",
+  "notes": "3 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes)",
+  "ingested_from": ""
+}

@@ -1,0 +1,66 @@
+name: drivejepa_subscore
+description: "ANALYSIS ONLY -- drivejepa + 32 swerves + a sub-score scorer trained on rendered neuroNCAP-style scenes (gallops-cache); neuroNCAP only"
+repo: Drive-JEPA
+
+runtime:
+  kind: conda
+  python: "3.9"
+  # Built by setup.sh. Conda rather than uv because the upstream install pins
+  # torch 2.1/cu121 and an mmcv built against it.
+  venv: "{repos}/.conda-envs/drive-jepa"
+  pythonpath: ["{repo}/navsim_v2"]
+  # Load-bearing: the agent does np.load("./data/8192.npy") relative to cwd.
+  cwd: "{repo}/navsim_v2"
+  env:
+    NAVSIM_DEVKIT_ROOT: "{repo}/navsim_v2"
+    NAVSIM_EXP_ROOT: "{data.navsim.exp}"
+    OPENSCENE_DATA_ROOT: "{data.navsim}"
+    NUPLAN_MAPS_ROOT: "{data.navsim}/maps"
+    NUPLAN_MAP_VERSION: "nuplan-maps-v1.0"
+    DRIVEJEPA_CHECKPOINT: "{data.navsim.exp}/Drive-JEPA-cache/drive_jepa_perception_based_agent_vitl_v2.ckpt"
+    # mmcv-full's compiled kernel has no SASS above sm_86; 'auto' falls back to
+    # the equivalent pure-PyTorch path on newer cards. See patches/Drive-JEPA/.
+    DRIVE_JEPA_MSDA: "auto"
+    # the trained scorer: seed_*.pt + scorer.json + checkpoint.json (gallops-cache scorer_folds recipe)
+    DRIVEJEPA_SUBSCORE_DIR: "{weights}/drivejepa_subscore/realmask-attngeo-v1/step_000000020"
+    # "on": override the released pick when the collision answer says it hits; "off": always the released pick
+    DRIVEJEPA_SUBSCORE_GATE: "on"
+    # per-tick decisions (released pick, scorer pick, override, no-collision answers)
+    DRIVEJEPA_SUBSCORE_LOG: "{runs}/drivejepa_subscore_logs_relative"
+    # switching rule; see policy.py. 0.2 = the margin most consistent on the Boston folds (a dev choice)
+    DRIVEJEPA_SUBSCORE_RULE: "relative"
+    DRIVEJEPA_SUBSCORE_MARGIN: "0.2"
+
+capabilities:
+  cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT, CAM_BACK]
+  vram_gb: 12
+  startup_timeout_s: 900
+  waypoint_dt: 0.5
+
+  # -- model card (docs/models/comparison.md) --
+  architecture: "V-JEPA-2-init ViT-L encoder + proposal-centric planner"
+  params_m: 307
+  size_gb: 1.23
+  precision: fp32
+  input_size: [512, 256]
+  history_frames: 2
+  output_kind: waypoints
+  horizon_s: 4.0
+  trained_on:
+    # The only training exposure to a paddock benchmark's data among the four
+    # models -- and it leads that benchmark by 0.235 EPDMS. navtrain -> navtest
+    # is the protocol NAVSIM intends; what makes the column hard to read is that
+    # the other three meet navtest zero-shot.
+    #
+    # Sourced at the pinned sha, not taken on trust: Drive-JEPA @ e21f474,
+    # navsim_v2/scripts/training/train_drive_jepa_perception_based.sh line 4 is
+    # `TRAIN_TEST_SPLIT=navtrain`, and line 7 is
+    # `agent=drive_jepa_perception_based_agent` -- the same agent whose
+    # checkpoint DRIVEJEPA_CHECKPOINT above loads. See comparison.md.
+    #
+    # CARLA post-training is reported but NOT declared here, because it cannot
+    # be sourced from the checkout: the only CARLA mention is a URL in a code
+    # comment citing carla_garage for an augmentation recipe. See comparison.md.
+    - dataset: navsim
+      split: navtrain
+benchmarks: [neuroncap]

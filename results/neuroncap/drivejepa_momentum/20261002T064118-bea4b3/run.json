@@ -1,0 +1,90 @@
+{
+  "run_id": "20261002T064118-bea4b3",
+  "site": "fastcode-shakaal",
+  "benchmark": "neuroncap",
+  "model": "drivejepa_momentum",
+  "mode": "closed_loop",
+  "started_utc": "2026-10-02T06:41:18+00:00",
+  "duration_s": 780.1,
+  "repo_sha": "e21f47410b4d26b61f05f9bd23e169c0390cae2a",
+  "dataset": {
+    "name": "nuscenes",
+    "n_samples": 6,
+    "sequences_sha256": "bae0a31c7be79e85",
+    "n_expected": 6,
+    "n_failed": 0,
+    "n_reused": 0
+  },
+  "config": {
+    "scene": "0103",
+    "runs": 2,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT",
+      "CAM_BACK"
+    ]
+  },
+  "hardware": {
+    "gpu_free_gb_at_start": null
+  },
+  "provenance": {
+    "repo": {
+      "repo": "Drive-JEPA",
+      "sha": "e21f47410b4d26b61f05f9bd23e169c0390cae2a",
+      "pinned_sha": "e21f474",
+      "at_pin": true
+    },
+    "policy": {
+      "image_geometry": "native",
+      "frames_recorded": 63,
+      "history_span_s": 1.5,
+      "history_target_s": 1.5,
+      "momentum": {
+        "ticks": 366,
+        "ticks_with_previous_plan": 360,
+        "pick_changed": 5,
+        "pick_changed_frac": 0.0139,
+        "argmax_failed_comfort_frac": 0.0139,
+        "mean_candidates_passing_frac": 0.3834,
+        "per_episode": [
+          {
+            "ticks": 63,
+            "with_previous": 62,
+            "pick_changed": 0
+          },
+          {
+            "ticks": 63,
+            "with_previous": 62,
+            "pick_changed": 1
+          },
+          {
+            "ticks": 46,
+            "with_previous": 45,
+            "pick_changed": 1
+          },
+          {
+            "ticks": 68,
+            "with_previous": 67,
+            "pick_changed": 1
+          },
+          {
+            "ticks": 63,
+            "with_previous": 62,
+            "pick_changed": 1
+          },
+          {
+            "ticks": 63,
+            "with_previous": 62,
+            "pick_changed": 1
+          }
+        ]
+      }
+    }
+  },
+  "status": "complete",
+  "valid": false,
+  "superseded_by": "",
+  "notes": "3 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes)",
+  "ingested_from": ""
+}
