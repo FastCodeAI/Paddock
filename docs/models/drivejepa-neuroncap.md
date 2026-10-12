@@ -1,5 +1,14 @@
 # Why Drive-JEPA crashes on neuroNCAP
 
+> **Correction (2026-10-12): everything on this page was measured on a camera-blind
+> model.** Until #62 the adapter placed Drive-JEPA's cameras relative to nuScenes'
+> LIDAR_TOP, yawed −90°, so none of the points the model reads the image at landed
+> in the front image and it planned from ego status alone (a black frame gave the
+> identical plan). The "fixed habits" below — the speed decay, the creep, no swerve
+> among the 32 — are that blindness. With the fix it brakes hard for an oncoming
+> car on 0103 and drives at a normal pace; see #62 and
+> `docs/models/drivejepa-camera-blind.md` on `record/drivejepa-camera-blind`.
+
 Drive-JEPA scores 3.57 on the full neuroNCAP set, which is not separable from the
 best model there (Alpamayo 3.73). That number hides three fixed habits, and this
 page records what each of them is, how it was measured, and which of them a

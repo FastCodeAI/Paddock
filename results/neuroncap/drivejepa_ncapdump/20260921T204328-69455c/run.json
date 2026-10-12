@@ -1,0 +1,41 @@
+{
+  "run_id": "20260921T204328-69455c",
+  "site": "fastcode-shakaal",
+  "benchmark": "neuroncap",
+  "model": "drivejepa_ncapdump",
+  "mode": "closed_loop",
+  "started_utc": "2026-09-21T20:43:28+00:00",
+  "duration_s": 423.3,
+  "repo_sha": null,
+  "dataset": {
+    "name": "nuscenes",
+    "n_samples": 1,
+    "sequences_sha256": "f813a285c7c03d06",
+    "n_expected": 1,
+    "n_failed": 0,
+    "n_reused": 0
+  },
+  "config": {
+    "scene": "0106",
+    "runs": 1,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT",
+      "CAM_BACK"
+    ],
+    "model_env": {
+      "DRIVEJEPA_ACCEL": "as_is",
+      "DRIVEJEPA_COMMAND": "as_is",
+      "DRIVEJEPA_AUX_HEADS": "1",
+      "DRIVEJEPA_DUMP_DIR": "dumps_aux_smoke"
+    }
+  },
+  "hardware": {
+    "gpu_free_gb_at_start": null
+  },
+  "status": "complete",
+  "valid": false,
+  "notes": "1 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes)",
+  "ingested_from": ""
+}
