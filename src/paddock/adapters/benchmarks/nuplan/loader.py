@@ -162,12 +162,10 @@ def camera_calibration(
 def lidar_calibration(conn: sqlite3.Connection) -> np.ndarray:
     """4x4 lidar-to-ego for this log's merged point cloud.
 
-    Needed even by a camera-only run: BEVFormer-style models build their BEV
-    grid in the lidar frame and project the cameras into it, so `lidar2ego` is
-    the transform that ties the two together. drivejepa calls
-    `Observation.require_lidar2ego()`, which raises rather than assuming
-    identity -- right, because an identity here would silently shift the whole
-    BEV grid by the sensor offset and still produce a plausible trajectory.
+    Sent so a model that wants the lidar mounting has it. Drive-JEPA does not:
+    its "lidar" frame is NAVSIM's, which is the ego frame, so it places cameras
+    by camera2ego alone. Composing a real lidar rotation into that is what made
+    it camera-blind on nuScenes (see the drivejepa adapter's *Frame* note).
 
     nuPlan stores it in the same pickled devkit types as the cameras.
 

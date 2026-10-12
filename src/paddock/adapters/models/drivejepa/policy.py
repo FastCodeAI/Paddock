@@ -14,7 +14,21 @@ dataclass NAVSIM already knows how to consume and calls the shipped feature
 builder and agent. That keeps the BEVFormer projection maths (lidar2img from
 each camera's sensor2lidar and intrinsics) in the code that was trained with it.
 
-Two adaptations:
+Three adaptations:
+
+*Frame.* NAVSIM places every camera relative to the lidar (``sensor2lidar``),
+and in every OpenScene log the lidar frame *is* the ego frame: lidar2ego is the
+identity. The model relies on that without saying so -- the points it samples
+the image at are the candidate plans' box corners, written in ego coordinates
+(x forward, y left), and ``lidar2img`` is applied to them directly. So each
+camera goes in at its pose on the car, ``camera2ego``, whatever lidar the
+benchmark has. Placing it relative to a real lidar was a silent failure:
+nuScenes' LIDAR_TOP is yawed -90 degrees, which turned every sample point a
+quarter turn off the front camera. None landed in the image, the spatial
+cross-attention masked all of them, and the plan came from ego status alone --
+bit-identical given a black frame. Every neuroNCAP and nuScenes row made before
+this was that camera-blind model; NAVSIM and KITScenes pass an identity
+lidar2ego and were not.
 
 *Cameras.* Drive-JEPA's perception branch reads four views -- front, front-left,
 front-right and back -- which map onto nuScenes cameras of the same names. The
@@ -213,13 +227,14 @@ class DriveJepaPolicy(Policy):
             chosen.append(nearest)
         return chosen
 
-    def _cameras(self, frame: dict[str, Any], lidar2ego: np.ndarray):
+    def _cameras(self, frame: dict[str, Any]):
         from navsim.common.dataclasses import Camera, Cameras
 
         slots: dict[str, Camera] = {}
-        ego2lidar = np.linalg.inv(lidar2ego)
         for slot, camera in CAMERA_MAP.items():
-            sensor2lidar = ego2lidar @ frame["camera2ego"][camera]
+            # NAVSIM's "lidar" frame is the ego frame (module docstring, *Frame*),
+            # so sensor2lidar is the camera's pose on the car.
+            sensor2lidar = frame["camera2ego"][camera]
             slots[slot] = Camera(
                 image=frame["images"][camera],
                 sensor2lidar_rotation=sensor2lidar[:3, :3].astype(np.float32),
@@ -238,7 +253,7 @@ class DriveJepaPolicy(Policy):
             cam_b0=slots["cam_b0"],
         )
 
-    def _agent_input(self, lidar2ego: np.ndarray):
+    def _agent_input(self):
         from navsim.common.dataclasses import AgentInput, EgoStatus
 
         frames = self._select_history()
@@ -255,7 +270,7 @@ class DriveJepaPolicy(Policy):
                     driving_command=np.array(COMMAND_ONE_HOT[frame["command"]], dtype=np.int64),
                 )
             )
-        cameras = [self._cameras(frame, lidar2ego) for frame in frames]
+        cameras = [self._cameras(frame) for frame in frames]
         return AgentInput(ego_statuses=ego_statuses, cameras=cameras, lidars=[])
 
     def observe(self, obs: Observation) -> None:
@@ -288,9 +303,7 @@ class DriveJepaPolicy(Policy):
         import torch
 
         self._record(obs)
-        lidar2ego = obs.require_lidar2ego()
-
-        agent_input = self._agent_input(lidar2ego)
+        agent_input = self._agent_input()
         features = self.feature_builder.compute_features(agent_input)
         features = {
             k: (v.unsqueeze(0).to(self.device) if torch.is_tensor(v) else v) for k, v in features.items()
@@ -320,12 +333,19 @@ class DriveJepaPolicy(Policy):
         the runner stores this dict in run.json as `provenance.policy`. An
         explicit env override also lands in `model_env`; the default does not,
         so without this a `native` run would carry no record of being one.
+        `camera_frame` marks runs made with each camera placed on the ego frame;
+        a run.json without it predates that fix and saw no image on nuScenes.
         """
         if not self.history:
-            return {"status": "no frame seen yet", "image_geometry": self.image_geometry}
+            return {
+                "status": "no frame seen yet",
+                "image_geometry": self.image_geometry,
+                "camera_frame": "ego",
+            }
         chosen = self._select_history()
         return {
             "image_geometry": self.image_geometry,
+            "camera_frame": "ego",
             "frames_recorded": len(self.history),
             "history_span_s": round((self.history[-1]["timestamp"] - chosen[0]["timestamp"]) / 1e6, 2),
             "history_target_s": round((HISTORY_FRAMES - 1) * HISTORY_DT, 2),
