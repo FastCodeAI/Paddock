@@ -194,6 +194,11 @@ holds: the conversion to the `Policy` contract changed the seams and nothing els
 | drivejepa | frontal | 2.0723314376255617 | 2.0723314376255617 | **exact** |
 | visionpilot | stationary | 3.145 (27 Aug) / 3.388 (29 Aug) | 2.827 | **differs — explained below** |
 
+(Both sides of the drivejepa match shared a bug, fixed since: the August node and
+the adapter both placed the cameras relative to nuScenes' LIDAR_TOP, so the model
+never read the image. The match still shows the pipeline was unchanged; it says
+nothing about what drivejepa sees. See the adapter's *Frame* note.)
+
 drivejepa reproduces to full float precision, which is the strongest evidence
 available that the pipeline as a whole — renderer, engine, node, scoring — is
 behaving as it did in August.

@@ -4,8 +4,8 @@ A V-JEPA-2 ViT-L encoder over two front frames 0.5 s apart, plus an eight-number
 ego status, feeding a three-layer transformer decoder that emits eight poses at
 0.5 s -- 4 s of plan. There is no BEVFormer, no lidar, no map and no anchor
 scorer, which is exactly why this variant exists in paddock: the perception-based
-sibling in `adapters/models/drivejepa/` needs four cameras and `lidar2ego`, and a
-dashcam dataset has neither.
+sibling in `adapters/models/drivejepa/` needs four cameras and where each sits on
+the car, and a dashcam dataset has neither.
 
 **Why a second registry entry rather than a mode on the first.** `runtime:` is
 global to a model. This agent lives in `navsim_v1/`, not `navsim_v2/`; its

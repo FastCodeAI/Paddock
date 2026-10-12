@@ -201,6 +201,11 @@ def test_the_switch_and_its_counts_reach_the_run_record(monkeypatch) -> None:
     report = policy.diagnostics()
     assert report["momentum"] == "on"
     assert report["momentum_counts"]["replans"] == 2 and report["momentum_counts"]["fed"] == 1
+    # Both, in one record: a momentum run made before the cameras were placed on
+    # the ego frame measured a model that saw no image, and its run.json has no
+    # `camera_frame`. A run that carries the two keys together is not one of those.
+    assert report["camera_frame"] == "ego"
+    assert POLICY(checkpoint="/x.ckpt").diagnostics()["camera_frame"] == "ego", "before any frame"
 
 
 def test_policy_reset_forgets_the_previous_plan(monkeypatch) -> None:

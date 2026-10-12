@@ -32,6 +32,7 @@ That distinction matters, so it is spelled out:
 | Adapters obey the Policy contract | per-model contract tests: frame convention, shapes, guards, reset semantics | **moderate** — no GPU, no weights |
 | Adapters produce the same output as the original nodes | head-to-head on neuroNCAP (both return `2.8269616956051293`), and KITScenes n=223 with 892/892 metrics identical | **proof** |
 | Adapters reproduce the **August** recorded numbers | drivejepa matches to full float precision; visionpilot differs because its node was edited after its last scored run | **strong** |
+| drivejepa sees the camera on nuScenes-calibrated benchmarks | **it did not, until the camera-frame fix.** The adapter placed cameras relative to nuScenes' LIDAR_TOP (yawed −90°); the model treats its sample points as lidar-frame points because NAVSIM's lidar frame *is* the ego frame, so 0.0% of them landed in the front image and a black frame gave the identical plan. Fixed: 36% land in it and the image moves the plan by 9.6 m on a frontal frame. Every neuroNCAP and nuScenes drivejepa row before the fix — including the August match above, which reproduced the same bug — is camera-blind; NAVSIM, nuPlan and KITScenes pass an identity lidar2ego and are not | **strong** (adapter run old vs fixed on real frames; regression test in `make check`) |
 
 M5 closed the first of those rows. Running paddock's adapters against the same
 renderer as the recorded August runs:
@@ -341,8 +342,15 @@ driver that first carried the stage (`drivejepa-v2-driver-0.1.4b`), and its 32
 scores per replan exactly. One of those drives is tracked as a fixture, and
 `adapters/models/drivejepa/tests/test_momentum.py` reruns it in Drive-JEPA's
 environment; it skips under `make check`, which has no nuPlan. **Unverified:**
-no benchmark has been run through paddock with the switch on, so no row in
-`results/` was made with it.
+its effect on any benchmark. One neuroNCAP comparison exists (the full set,
+n=200: 3.618 with the stage against 3.568 without, read as no measurable
+effect), but it was made with a separate copy of the adapter before the
+cameras were placed on the ego frame, on a model that read no image on
+nuScenes and planned from ego status alone. It is kept on the branch
+`record/drivejepa-camera-blind` and is not evidence for or against the stage
+on the model that drives now. The comparison has to be made again on this
+node; a run made with it records `camera_frame: ego` beside `momentum: on` in
+`run.json`. No row in `results/` was made with the switch on.
 
 ## Bench2Drive / CARLA — adapter landed, driven, and the runs are tracked
 
@@ -366,6 +374,10 @@ aggregated in the README and tracked as ten `results/` runs (below).
 | a model drives a route through paddock | 500 route records over 50 routes and 10 systems, scores and infractions published; every README cell recomputed from them by `tests/test_bench2drive_docs.py` | **strong** for the tables; the records' faithfulness to the evaluator output is a transcription nobody has re-derived from the raw `results.json` files |
 | the runs carry their own provenance | ten `results/bench2drive/*/pooled50-*` records written by `paddock ingest` from the per-route `results.json` trees: `routes_file`, `routes_subset`, `waypoint_dt`, `model_env` and `site` read from the source runs, every source run id and file digest kept | **strong** |
 | the runs are reproducible at another site | nothing yet — a site without the recording trees cannot regenerate them, and CARLA re-runs are not bit-reproducible | **unverified** |
+| the 20 Hz protocol understates models built to replan slower | the same 50 routes re-driven at each model's own rate (`PADDOCK_INFER_HZ`), everything else held: DriveJEPA 31.71 → 57.60, Alpamayo 1.5 43.20 → 55.82, QwenDrive 12.94 → 17.08; three `results/bench2drive/*/native50-*` records, every cell recomputed by `tests/test_bench2drive_native_rate_docs.py` | **strong** for the three models measured; **not general** — one rate per model, no sweep, so nothing here locates an optimum |
+| why each of the three improved | DriveJEPA and QwenDrive drive further instead of stalling (blocked 17 → 7, 16 → 10) at flat-to-worse penalty; only Alpamayo 1.5's penalty rises (0.648 → 0.725, vehicle collisions 42 → 23) | **argued** from the infraction breakdown; no per-tick analysis |
+| the native-rate result holds for every model | only DriveJEPA, Alpamayo 1.5 and QwenDrive were re-run; OpenPilot's native rate is already 20 Hz and VisionPilot was not re-run | **not measured** |
+| the native-rate runs cover the whole route set | route 3800 never scored for alpamayo15 or qwendrive — CARLA segfaults (`Signal=11`), six attempts; recorded `n_failed: 1`, `status: partial`, never a zero, so both means are over 49 routes | **verified**, and a stated limit of those two rows |
 
 Needs a site with CARLA 0.9.15 and the pinned checkout wired in
 `[benchmarks.bench2drive]`. Detail in `docs/benchmarks/bench2drive.md`.
@@ -382,6 +394,29 @@ so it is recorded as attempted and never scored — `n_failed: 1`, `status:
 partial` — rather than dropped, and OpenPilot's pooled record is `valid: false`
 because its samples span three recording setups; its per-setup means are in
 `by_group`.
+
+**Native-rate re-run (18-20 Sep 2026).** The 20 Hz protocol is a property of the
+harness, not of the models, so the same 50 routes were re-driven with each model
+at the rate it was built to replan at — DriveJEPA 2 Hz, QwenDrive 2 Hz,
+Alpamayo 1.5 10 Hz — with `PADDOCK_INFER_HZ` the only knob turned deliberately.
+**All three score higher**, so the published 20 Hz rows understate them. That much is
+measured. What is *not*: only three models were re-run, the rate is recorded per
+run rather than derived from `model.yaml` (which disagrees for QwenDrive), no
+rate sweep was done, and route 3800 is unscorable for alpamayo15 and qwendrive —
+CARLA segfaults for those two while DriveJEPA completes it and scores 100 — so
+their means are over 49 routes and their records are `status: partial`,
+`n_failed: 1`. Part of the gain is extra exposure rather than better driving: the
+two models that stalled now drive further and collide more in absolute terms.
+The three runs are `valid: false` and do not rank: a 2 or 10 Hz run is not the
+protocol the other bench2drive rows were driven under, so `paddock ingest` keeps
+them and leaves them out of the board. Their `model_env` also differs from the
+20 Hz runs in more than the rate — thread counts, a trace sink, `ALPAMAYO_NAV` —
+each argued immaterial and none measured to be. Tracked as
+`results/bench2drive/<model>/native50-*`; tables, breakdown and the
+verified/argued split in
+[`bench2drive-native-rate.md`](benchmarks/bench2drive-native-rate.md). The
+adapter support for `PADDOCK_INFER_HZ` is **not on `main`**: this landed the
+results, not the knob.
 
 ## Beyond reproduction
 
