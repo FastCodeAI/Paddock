@@ -152,6 +152,25 @@ V_CRUISE_FALLBACK = 13.9  # m/s when the source sends no road limit
 #: the car is rolling (>= 1 m/s), then experimental resumes control. 0 disables.
 RESUME_S = float(os.environ.get("PADDOCK_OPENPILOT_RESUME_S", "3.0"))
 RESUME_UNTIL_V = 1.0
+#: The same driver-resume nudge on the default tracker path, to measure the
+#: resume alone. NATIVE_LONG + RESUME_S also swaps the whole longitudinal law
+#: for openpilot's planner, so a score from it cannot say which of the two moved
+#: it. Here, after RESUME_S stopped with no lead (lead_prob < 0.5), the
+#: trajectory returned is a launch straight ahead at RESUME_PLAN_V until the car
+#: rolls at RESUME_UNTIL_V; the tracker drives it like any plan, and every other
+#: frame is the model's own plan, untouched. Straight, because at standstill the
+#: plan reaches ~0.1 m, too short to steer by. Ignored under NATIVE_LONG, which
+#: has its own nudge. Off by default.
+RESUME_PLAN = os.environ.get("PADDOCK_OPENPILOT_RESUME_PLAN", "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+#: m/s: the launch plan's speed, which the TCP tracker reads as its target. Over
+#: its 0.4 m/s brake threshold and past RESUME_UNTIL_V, so the nudge ends by
+#: itself; a walking pace, so a nudge into something the model missed is slow.
+RESUME_PLAN_V = 2.0
 
 #: openpilot's `log.Desire` (cereal/log.capnp): the slots of the one-hot
 #: `desire_pulse` input and of the `desire_state` output. Restated because
@@ -856,6 +875,8 @@ class OpenpilotPolicy(Policy):
         self.a_cruise_prev = 0.0
         self.still_s = 0.0
         self.resuming = False
+        #: Nudges `RESUME_PLAN` has given on this route; reported in `extras["resume"]`.
+        self.resumes = 0
         #: The route-mode scheduler, and the desire slot the last frame was sent
         #: as -- what the record reports, whichever mode chose it.
         self.route_desire = RouteDesire()
@@ -1132,6 +1153,7 @@ class OpenpilotPolicy(Policy):
         self.a_cruise_prev = 0.0
         self.still_s = 0.0
         self.resuming = False
+        self.resumes = 0
         self.route_desire.reset()
         self.desire_slot = DESIRE_NONE
 
@@ -1386,8 +1408,39 @@ class OpenpilotPolicy(Policy):
         traj.extras = build_extras(out, plan33, desire=self.desire_slot)
         if NATIVE_LONG:
             traj.extras["native_long"] = self._native_long(out, plan33, obs.speed, self.dt_s, obs.speed_limit)
+        elif RESUME_PLAN:
+            traj = self._resume_plan(traj, out, obs.speed, self.dt_s)
         validate_extras(traj.extras, n_waypoints=len(traj.waypoints))
         return traj
+
+    def _resume_plan(self, traj: Trajectory, out: dict, v_ego: float, dt_s: float) -> Trajectory:
+        """`RESUME_PLAN`: the model's plan, or the launch that stands in for a driver's resume press.
+
+        The same trigger as `_native_long`'s nudge -- `RESUME_S` stopped, the
+        model seeing no lead -- held until the car rolls at `RESUME_UNTIL_V`.
+        `extras["resume"]` puts every frame's state on the record, nudges or not,
+        so a score can be read with and without them.
+        """
+        prob = float(np.asarray(out["lead_prob"])[0, 0]) if "lead_prob" in out else 0.0
+        self.still_s = self.still_s + dt_s if v_ego < 0.3 else 0.0
+        if v_ego >= RESUME_UNTIL_V:
+            self.resuming = False
+        if RESUME_S > 0 and not self.resuming and self.still_s >= RESUME_S and prob < 0.5:
+            self.resuming = True
+            self.resumes += 1
+        traj.extras["resume"] = {
+            "active": self.resuming,
+            "count": self.resumes,
+            "still_s": round(self.still_s, 2),
+            "lead_prob": prob,
+        }
+        if not self.resuming:
+            return traj
+        steps = np.asarray(traj.waypoints, dtype=np.float64).shape[0]
+        t = np.arange(1, steps + 1) * self.waypoint_dt
+        launch = Trajectory(np.stack([RESUME_PLAN_V * t, np.zeros_like(t)], axis=-1), dt=self.waypoint_dt)
+        launch.extras = traj.extras
+        return launch
 
     def _native_long(self, out, plan33, v_ego: float, dt_s: float, speed_limit) -> dict:
         """openpilot 0.11 longitudinal planner, reproduced (longitudinal_planner.py:128-149):

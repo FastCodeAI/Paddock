@@ -824,6 +824,68 @@ def test_the_route_mode_is_read_from_the_env(monkeypatch) -> None:
     assert POLICY().desire_mode == "route"
 
 
+# --------------------------------------------------------------------------
+# PADDOCK_OPENPILOT_RESUME_PLAN: the driver-resume nudge on the default tracker
+# --------------------------------------------------------------------------
+
+
+def _stalled_plan():
+    """A plan the way a car that will not pull away gets it: 0.1 m in 10 s, extras as `_trajectory` builds."""
+    from paddock.policy.protocol import Trajectory
+
+    traj = Trajectory(np.stack([np.arange(1, 21) * 0.005, np.zeros(20)], axis=-1), dt=0.5)
+    traj.extras = {}
+    return traj
+
+
+def _stopped_frames(policy, n, lead_prob=0.1, v_ego=0.0):
+    """`n` 20 Hz frames through `_resume_plan`; each frame's returned trajectory."""
+    out = {"lead_prob": np.array([[lead_prob]])}
+    return [policy._resume_plan(_stalled_plan(), out, v_ego, 1.0 / HZ) for _ in range(n)]
+
+
+def test_the_resume_nudge_launches_a_car_stalled_with_nothing_ahead() -> None:
+    """Route 24784: the plan reaches 0.1 m for 60 s with nothing but debris ahead.
+    After RESUME_S still, the launch replaces it, at a speed the tracker drives."""
+    import paddock.adapters.models.openpilot.policy as P
+    from paddock.adapters.benchmarks.bench2drive.pid import BRAKE_SPEED, WaypointTracker
+
+    policy = POLICY()
+    trajs = _stopped_frames(policy, int(P.RESUME_S * HZ) + 5)
+    first = next(i for i, tr in enumerate(trajs) if tr.extras["resume"]["active"])
+    assert abs(trajs[first].extras["resume"]["still_s"] - P.RESUME_S) <= 1.0 / HZ, "at RESUME_S, not before"
+    assert trajs[-1].extras["resume"]["count"] == 1, "one press, held until the car rolls"
+    launch = trajs[-1]
+    assert len(launch.waypoints) == 20 and np.allclose(launch.waypoints[:, 1], 0.0)
+    _, throttle, brake, target = WaypointTracker(0.5).control(launch.to_wire()["trajectory"], 0.0)
+    assert target == pytest.approx(P.RESUME_PLAN_V) and target > BRAKE_SPEED
+    assert throttle > 0 and brake == 0.0
+
+    rolling = policy._resume_plan(_stalled_plan(), {"lead_prob": np.array([[0.1]])}, 1.2, 1.0 / HZ)
+    assert not rolling.extras["resume"]["active"], "the model drives again once the car rolls"
+    assert rolling.waypoints[-1, 0] < 1.0, "its own plan, untouched"
+
+
+def test_no_nudge_while_the_model_sees_a_lead() -> None:
+    """A car stopped behind another is not a stall: nothing is pressed."""
+    policy = POLICY()
+    trajs = _stopped_frames(policy, 10 * HZ, lead_prob=0.9)
+    assert not any(tr.extras["resume"]["active"] for tr in trajs)
+    assert policy.resumes == 0
+
+
+def test_the_resume_plan_is_off_by_default_and_reset_forgets_it(monkeypatch) -> None:
+    import paddock.adapters.models.openpilot.policy as P
+
+    monkeypatch.delenv("PADDOCK_OPENPILOT_RESUME_PLAN", raising=False)
+    assert P.RESUME_PLAN is False, "every recorded run drove without it"
+    policy = POLICY()
+    _stopped_frames(policy, int(P.RESUME_S * HZ) + 1)
+    assert policy.resumes == 1 and policy.resuming
+    policy.reset()
+    assert (policy.resumes, policy.resuming, policy.still_s) == (0, False, 0.0)
+
+
 def test_desire_slots_are_openpilots_own() -> None:
     """Restated at module scope, so pinned here to cereal's enum itself."""
     pytest.importorskip("openpilot", reason="needs openpilot's environment")
