@@ -344,6 +344,21 @@ environment; it skips under `make check`, which has no nuPlan. **Unverified:**
 no benchmark has been run through paddock with the switch on, so no row in
 `results/` was made with it.
 
+**The AlpaSim driver itself is now tracked, at 0.1.7**
+(`tools/models/drivejepa/alpasim_driver/`, documented in
+`docs/models/drivejepa.md`): the divider, the momentum stage, and the inputs a
+checkpoint retrained on Physical AI AV needs (a 37-row bonnet mask,
+acceleration zeroed, a batch fix). It is a native gRPC driver, not a paddock
+`Policy`, and `drivejepa` still does not declare `alpasim`.
+
+| Claim | Evidence | Strength |
+|---|---|---|
+| the promoted driver differs from the one that ran only in paths, imports and removed switches | hunk-by-hunk diff against the as-run files, in the PR | **proof** |
+| it starts against the real checkpoint | `--check-only`: size and sha256 accepted, batch fix installed on 2 modules, both provenance lines | **strong** |
+| its tests pass | 92 in AlpaSim's interpreter with the Drive-JEPA environment, 87 + 5 skipped without; **not collected by `make check`** | **strong** |
+| 0.1.7 scores 0.7697 on 30 scenes against 0.1.4b's 0.5433 | the recorded runs' `totals.json`; one rollout per scene, made before promotion | **moderate** |
+| the promoted driver drives a scene | — | **unverified** |
+
 ## Bench2Drive / CARLA — adapter landed, driven, and the runs are tracked
 
 `adapters/benchmarks/bench2drive`: a model-agnostic CARLA `agent.py`, the

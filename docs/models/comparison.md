@@ -126,6 +126,28 @@ recipe; there is no CARLA training script, config or doc. It is therefore
 adapter is run — should not be labelled on the strength of it. Worth resolving
 before that sweep, not after.
 
+**Every Drive-JEPA row on this page is the released checkpoint.** A second
+checkpoint exists for the same architecture and is not in any table above:
+
+| | Drive-JEPA (released) | Drive-JEPA, retrained (AlpaSim driver 0.1.7) |
+|---|---|---|
+| Architecture, parameters | V-JEPA-2 ViT-L encoder + proposal-centric planner, 307 M | the same; encoder untouched (294 tensors bit-identical) |
+| Trained parts | — | generator (2.38 M) and scorer (4.70 M) in a first run; generator again, alone, in a second |
+| Trajectory vocabulary | 8,192 anchors | 10,240 (the 8,192 plus 2,048 faster shapes) |
+| Inputs | four cameras; acceleration as reported | one front camera, bottom 37 rows masked; acceleration slots zeroed |
+| `trained_on` | `navsim` / `navtrain` | `navsim` / `navtrain` (inherited) **+ `physicalai_av` / `train`** |
+| Runs in paddock | every Drive-JEPA row | none — `tools/models/drivejepa/alpasim_driver/` only |
+
+`physicalai_av` is NVIDIA's Physical AI AV dataset. It is **not a key in
+`datasets.yaml`**, so no test here can cross-check that declaration against a
+benchmark's scene list: some AlpaSim scenes are reconstructions of clips in
+that dataset, and their exclusion from training (126,981 samples, 4,018 clips,
+`train` split, evaluation scenes asserted absent in every script) is a property
+of the training code in the gallops repository, taken on that code's word. No
+row in `results/` was made with these weights, so nothing in the support matrix
+is affected yet; a row made with them would need its own section here, as
+Drive-JEPA × navsim has. Detail in [drivejepa.md](drivejepa.md).
+
 **Every Drive-JEPA row on this page is the perception-*based* v2 agent.** The
 comma2k19 board carries a second, separate registry entry —
 [`drivejepa_free`](drivejepa_free.md), the perception-free NAVSIM v1 agent —

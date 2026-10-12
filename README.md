@@ -876,6 +876,14 @@ uuid-pinned, one rollout per scene — **n = 10**. Every row is under
 `results/alpasim/` and `paddock report` reads it; the protocol is in
 [docs/benchmarks/alpasim.md](docs/benchmarks/alpasim.md).
 
+Drive-JEPA's row below is its released checkpoint behind the native driver at
+0.1.4. That driver has since been promoted to
+[`tools/models/drivejepa/alpasim_driver/`](tools/models/drivejepa/alpasim_driver/)
+at 0.1.7, which drives a checkpoint retrained on Physical AI AV; it has no row
+here, because none of its runs went through paddock or used this scene set
+alone. What it reads, how it picks and what it scored on 30 scenes are in
+[docs/models/drivejepa.md](docs/models/drivejepa.md).
+
 **Every row ran under the shared 20 Hz referee**: one control rate, one force-GT
 duration and one `eval-config.yaml` (md5 `68cf4aaa…`), so the rows differ by the
 model rather than by the harness. Camera count still changes what is measured —
