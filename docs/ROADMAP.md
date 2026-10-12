@@ -353,11 +353,23 @@ acceleration zeroed, a batch fix). It is a native gRPC driver, not a paddock
 
 | Claim | Evidence | Strength |
 |---|---|---|
-| the promoted driver differs from the one that ran only in paths, imports and removed switches | hunk-by-hunk diff against the as-run files, in the PR | **proof** |
+| the promoted driver differs from the one that ran only in paths, imports and removed switches | `diff` against the as-run files, which exist only at the training site; done by the author and repeated by the reviewer of #61 there. Not reproducible elsewhere | **strong** |
 | it starts against the real checkpoint | `--check-only`: size and sha256 accepted, batch fix installed on 2 modules, both provenance lines | **strong** |
-| its tests pass | 92 in AlpaSim's interpreter with the Drive-JEPA environment, 87 + 5 skipped without; **not collected by `make check`** | **strong** |
+| its tests pass | `make check-alpasim-driver`: 94 in AlpaSim's interpreter with the Drive-JEPA environment, 89 + 5 skipped without; **not collected by `make check`** | **strong** |
 | 0.1.7 scores 0.7697 on 30 scenes against 0.1.4b's 0.5433 | the recorded runs' `totals.json`; one rollout per scene, made before promotion | **moderate** |
 | the promoted driver drives a scene | — | **unverified** |
+
+Open work on this driver, in the order it bites:
+
+- **Its tests run in no CI job.** They need AlpaSim's interpreter, so CI and
+  `make check` skip them while still gating the scaffold the driver imports. A
+  change to `adapters/benchmarks/alpasim/scaffold.py` can therefore go green
+  and break the driver. Until a CI job has AlpaSim's environment, the only
+  guard is a reviewer running `make check-alpasim-driver` (`docs/reviewing.md` §1).
+- **The retrained checkpoint has no download location**, and at the training
+  site it is not yet at the `{weights}` layout the docs give. Another site
+  cannot run 0.1.7 without being handed the file.
+- **The promoted driver has not driven a scene.**
 
 ## Bench2Drive / CARLA — adapter landed, driven, and the runs are tracked
 

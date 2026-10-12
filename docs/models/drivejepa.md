@@ -94,7 +94,25 @@ scorer that rates them and picks one.
    rollout has no previous plan and also uses plain *S*.
 
 This is the step [PR #59](https://github.com/FastCodeAI/Paddock/pull/59) put
-into the paddock node; here it has been on since 0.1.4b. `DRIVEJEPA_MOMENTUM=off`
+into the paddock node; here it has been on since 0.1.4b. The effect #59
+measured for it on neuroNCAP was measured on a paddock node that could not see
+the camera (next paragraph) and is to be re-measured; the 0.1.4b figure on this
+page comes from this driver and does not depend on that.
+
+**The paddock node was camera-blind on nuScenes-based benchmarks; this driver
+is not.** The model reads the image at points written in the car's own frame
+and projects them with each camera's matrix as if they were lidar coordinates.
+The paddock node composed nuScenes' real lidar pose into that matrix, which put
+every such point off the front image, so on neuroNCAP and nuScenes open-loop
+the model planned from ego status alone
+([PR #62](https://github.com/FastCodeAI/Paddock/pull/62) corrects it). This
+driver has no lidar in the chain: AlpaSim's `rig_to_camera` is used as the
+camera's pose in the car's frame, unchanged. With the front camera AlpaSim
+declares, a point 10 m ahead projects to the image centre, a point to the left
+lands left, and a point behind has negative depth;
+`test_a_point_ahead_of_the_car_lands_in_the_front_image` keeps it so. The
+training samples in gallops were built with this driver's own projection
+functions, so the retrained weights saw the image too. `DRIVEJEPA_MOMENTUM=off`
 selects on plain *S*; an unknown value refuses to start.
 
 ## The 20 Hz divider and the re-anchor
@@ -157,10 +175,15 @@ The worker adds one more line to its own log once the model is loaded:
 | Layout | upstream's state dict (`agent._pad_model.*`), 495 tensors |
 
 The worker checks size and sha256 before the 90-second load and refuses any
-other file. Weights are never committed. The location above is the layout
-gallops and paddock share; at the site that trained it the file still sits in
-the training run's own output directory, with the sidecar beside it, so lay it
-out as above when copying it.
+other file. Weights are never committed.
+
+**Where to get the file.** There is no download location yet. The checkpoint
+exists only at the site that trained it, and there it still sits in the
+training run's own output directory with the sidecar beside it, not at the
+location above. The location above is the layout gallops and paddock share and
+is where a copy belongs; until the file is published, another site gets it by
+asking the training site for a copy and checking the size and sha256 above.
+Publishing it is open work in `docs/ROADMAP.md`.
 
 Drive-JEPA has two parts: a generator that proposes 32 candidate paths, and a
 scorer that rates them and picks one. Both were trained together in the first
@@ -179,7 +202,7 @@ What is in the file, by part:
 Training, in the three sentences a reader of a score needs:
 
 - **Data:** NVIDIA Physical AI AV, `train` split only — 126,981 samples from
-  4,018 clips. The 30 AlpaSim evaluation scenes and NVIDIA's `test` split were
+  4,015 clips. The 30 AlpaSim evaluation scenes and NVIDIA's `test` split were
   excluded, and every script asserts it.
 - **Vocabulary:** extended from 8,192 to 10,240 anchors, because the released
   vocabulary tops out near 15 m/s and highway scenes need more.
@@ -245,6 +268,13 @@ first 10 of these 30 scenes. Its 30-scene figure is 0.4209, in the table above.
   this page is the only place their numbers appear.
 - **Nothing here runs through the paddock bridge.** `drivejepa` still does not
   declare `alpasim` in its `model.yaml`.
-- **The scorer's own check failed in training.** On held-out clips the
-  scorer picks the truly best proposal 37.9 % of the time (released: 34.2 %),
-  against a target of 50 %.
+- **The scorer's own check failed in training, and that figure is not this
+  checkpoint's.** The check asked the scorer to pick the truly best proposal at
+  least 50 % of the time on validation clips. The first training run's
+  checkpoint did so 37.9 % of the time (released: 34.2 %), which is why the
+  scorer was frozen. The shipped file keeps those scorer weights unchanged, but
+  the scorer reads features produced by the generator, and the second run
+  retrained the generator, so the shipped checkpoint picks differently: 54.6 %
+  (52.1 to 56.9) on the same validation examples, against 38.3 % for the first
+  run's checkpoint measured the same way, one example at a time. Both figures
+  are in gallops, `experiments/drivejepa_retrain/12_second_training_run/unseen_clip_evaluation.md`.

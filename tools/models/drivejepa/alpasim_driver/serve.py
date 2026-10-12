@@ -4,7 +4,7 @@
 
     # in AlpaSim's own interpreter, from the paddock checkout:
     python tools/models/drivejepa/alpasim_driver/serve.py \\
-        --host 0.0.0.0 --port 9149 --device cpu --control-timestep-us 50000
+        --port 9149 --device cpu --control-timestep-us 50000
 
 This is the driver that produced the 30-scene numbers in
 docs/models/drivejepa.md. It is NOT the paddock bridge: AlpaSim's runtime talks
@@ -195,7 +195,14 @@ def build_parser() -> argparse.ArgumentParser:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--host", default="0.0.0.0", help="Interface to bind.")
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Interface to bind. Loopback by default: the port is an "
+        "unauthenticated gRPC service, and this driver runs on shared hosts. "
+        "Pass 0.0.0.0 when AlpaSim's runtime is on another machine or in a "
+        "container without host networking.",
+    )
     parser.add_argument(
         "--port",
         type=int,

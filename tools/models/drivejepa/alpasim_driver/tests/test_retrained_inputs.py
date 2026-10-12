@@ -2,6 +2,7 @@
 """What 0.1.7 adds to 0.1.4b: the inputs the retrained weights were trained with.
 
     mask        the bottom 37 rows of every model frame are zero, and only those
+    camera      a point ahead of the car projects into the front image
     accel       ego_status[5:7] is zero in the model input and in the ego state
                 the §3.5 re-score simulates from; the slot is still there
     checkpoint  the worker refuses a file of the wrong size or the wrong sha256
@@ -82,6 +83,40 @@ def test_the_mask_reaches_the_features_the_model_reads():
         assert frame[..., :-37, :].max() > 0.0, key
 
 
+# ---------------------------------------------------------------- camera frame
+
+
+def test_a_point_ahead_of_the_car_lands_in_the_front_image():
+    """The model reads the image at points written in the car's own frame.
+
+    It applies `lidar2img` to them as if they were lidar coordinates, so the
+    camera has to be placed on the car's frame directly. The paddock node once
+    composed a real lidar pose into that matrix and every sample point fell off
+    the image: the model planned without seeing it, and nothing failed. This
+    driver passes AlpaSim's `rig_to_camera` through with no lidar in between;
+    the test is here so that stays true. Mount and focal length are the ones
+    AlpaSim's driver config declares for the front camera, at 1920 x 1080.
+    """
+    view = moving_view(accel=(0.0, 0.0))
+    features = planner().build_features(view, view.image_cache[FRONT][0], view.image_cache[FRONT][1])
+    lidar2img = np.asarray(features["lidar2img"], dtype=np.float64)[0, K.FRONT_SLOT_INDEX]
+    width, height = 1920 * K.BEV_SCALE, 1080 * K.BEV_SCALE
+
+    def project(x: float, y: float) -> tuple[float, float, float]:
+        u, v, depth = (lidar2img @ np.array([x, y, 0.5, 1.0]))[:3]
+        return u / depth, v / depth, depth
+
+    for metres in (10.0, 30.0):
+        u, v, depth = project(metres, 0.0)
+        assert depth > 0, f"a point {metres} m ahead is behind the front camera"
+        assert 0 < u < width and 0 < v < height, f"a point {metres} m ahead projects to ({u:.0f}, {v:.0f})"
+        assert abs(u - width / 2) < 0.05 * width, "straight ahead must be near the image centre"
+    left, _, _ = project(10.0, 3.0)
+    right, _, _ = project(10.0, -3.0)
+    assert left < width / 2 < right, "the car's left (+y) must be the image's left"
+    assert project(-10.0, 0.0)[2] < 0, "a point behind the car must be behind the camera"
+
+
 # ---------------------------------------------------------------- acceleration
 
 
@@ -134,6 +169,13 @@ def test_a_file_of_the_right_size_and_the_wrong_content_is_refused(tmp_path):
     path = tmp_path / "weights.ckpt"
     path.write_bytes(b"y" * 10)
     with pytest.raises(BridgeError, match="sha256"):
+        _verify_checkpoint(str(path), 10, hashlib.sha256(b"x" * 10).hexdigest())
+
+
+def test_a_missing_file_is_refused_by_name(tmp_path):
+    """Not a bare FileNotFoundError: the worker's log should say which file."""
+    path = tmp_path / "not-there.ckpt"
+    with pytest.raises(BridgeError, match="not-there.ckpt: no such file"):
         _verify_checkpoint(str(path), 10, hashlib.sha256(b"x" * 10).hexdigest())
 
 

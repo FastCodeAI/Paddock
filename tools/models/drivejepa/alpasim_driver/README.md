@@ -46,8 +46,8 @@ file and line beside them.
 | `DRIVEJEPA_ALPASIM_CHECKPOINT` | yes | the retrained checkpoint, `<weights>/drivejepa_physicalai/second-run-generator/step_000000002/drive_jepa_physicalai_generator.ckpt`. The worker checks its size and sha256 and refuses anything else |
 | `DRIVEJEPA_WORKER_PYTHON` | yes | python of the Drive-JEPA environment, `<repos>/.conda-envs/drive-jepa/bin/python` |
 | `NAVSIM_DEVKIT_ROOT` | yes | `<repos>/Drive-JEPA/navsim_v2`, at the sha `repos.yaml` pins, with `patches/Drive-JEPA/` applied |
-| `NAVSIM_EXP_ROOT` | yes | the directory holding `Drive-JEPA-cache/` (the released checkpoint and the V-JEPA encoder weights are still read at construction) |
-| `DRIVEJEPA_WORKER_LOG` | no | where the worker's stderr goes; default is a file in the system temp directory |
+| `NAVSIM_EXP_ROOT` | yes | the directory holding `Drive-JEPA-cache/` (the V-JEPA encoder weights are read at construction; the released checkpoint is not loaded, but the worker still checks that it is there and the right size) |
+| `DRIVEJEPA_WORKER_LOG` | no | where the worker's stderr goes. Default: `drivejepa_worker.<pid>.log` in the system temp directory, one per driver process; the launcher prints the path at start-up |
 | `DRIVEJEPA_MOMENTUM` | no | `on` (default) or `off`. Every recorded 0.1.7 run had it on |
 
 `<weights>` and `<repos>` are `[roots.weights]` and `[roots.repos]` from your
@@ -62,10 +62,13 @@ file and line beside them.
 
 # serve
 <alpasim python> tools/models/drivejepa/alpasim_driver/serve.py \
-    --host 0.0.0.0 --port 9149 --device cuda:0 --control-timestep-us 50000
+    --port 9149 --device cuda:0 --control-timestep-us 50000
 ```
 
-Point AlpaSim's driver config at that host and port, and take `driver` out of
+The driver binds `127.0.0.1` unless `--host` says otherwise, because the port is
+an unauthenticated service on what is usually a shared machine; pass
+`--host 0.0.0.0` when AlpaSim's runtime cannot reach loopback. Point AlpaSim's
+driver config at that host and port, and take `driver` out of
 the services the wizard starts. The port must sit outside the block the wizard
 hands out from its base port.
 
@@ -77,7 +80,8 @@ mismatch.
 ## Tests
 
 ```bash
-<alpasim python> -m pytest tools/models/drivejepa/alpasim_driver/tests -q
+make check-alpasim-driver ALPASIM_PY=<alpasim python>
+# which is: <alpasim python> -m pytest tools/models/drivejepa/alpasim_driver/tests -q
 ```
 
 `make check` does not collect them: `tools/` is outside pytest's `testpaths`,

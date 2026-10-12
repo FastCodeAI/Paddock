@@ -141,7 +141,7 @@ checkpoint exists for the same architecture and is not in any table above:
 `physicalai_av` is NVIDIA's Physical AI AV dataset. It is **not a key in
 `datasets.yaml`**, so no test here can cross-check that declaration against a
 benchmark's scene list: some AlpaSim scenes are reconstructions of clips in
-that dataset, and their exclusion from training (126,981 samples, 4,018 clips,
+that dataset, and their exclusion from training (126,981 samples, 4,015 clips,
 `train` split, evaluation scenes asserted absent in every script) is a property
 of the training code in the gallops repository, taken on that code's word. No
 row in `results/` was made with these weights, so nothing in the support matrix

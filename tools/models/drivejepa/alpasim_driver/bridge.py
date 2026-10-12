@@ -129,6 +129,8 @@ def _verify_checkpoint(path: str, n_bytes: int, sha256: str) -> None:
     """Refuse to serve 0.1.7 on anything but the retrained checkpoint it names."""
     import hashlib
 
+    if not os.path.isfile(path):
+        raise BridgeError(f"{path}: no such file")
     actual = os.path.getsize(path)
     if actual != n_bytes:
         raise BridgeError(f"{path}: size {actual} != expected {n_bytes}")
@@ -201,12 +203,24 @@ class BridgedDriveJEPA:
                 f"Set {WORKER_PYTHON_ENV} to the python of the Drive-JEPA environment "
                 "(src/paddock/adapters/models/drivejepa/setup.sh builds it)"
             )
+        # One file per driver process when nobody names one. A single shared
+        # name in the temp directory belongs to whoever created it first, so a
+        # second user on the host could not open it, and two drivers of one
+        # user would interleave -- with the batch-fix line of an earlier run
+        # standing in for this one's.
         log_path = pathlib.Path(
             stderr_log
             or os.environ.get(WORKER_LOG_ENV)
-            or pathlib.Path(tempfile.gettempdir()) / "drivejepa_worker.log"
+            or pathlib.Path(tempfile.gettempdir()) / f"drivejepa_worker.{os.getpid()}.log"
         )
-        self._log = open(log_path, "ab", buffering=0)
+        try:
+            self._log = open(log_path, "ab", buffering=0)
+        except OSError as exc:
+            raise BridgeError(
+                f"cannot open the worker log {log_path}: {exc}\n"
+                f"Set {WORKER_LOG_ENV} to a file this user can write"
+            ) from exc
+        print(f"drivejepa worker log: {log_path}", file=sys.stderr, flush=True)
         self._proc = subprocess.Popen(
             [str(worker_python), str(HERE / "bridge.py"), "--worker",
              "--device", device, *worker_args],
