@@ -9,12 +9,14 @@ are the ones it must be trained and reported on.
 
 The geometry is taken from the caller's environment and defaults to `native`;
 `drivejepa_rerank`'s weights need `openscene`, as its model.yaml sets. Each row
-records it as `variant.image_geometry`, and `rerank.py` refuses a dump whose
-geometry is mixed or differs from model.yaml's.
+records it as `variant.image_geometry`. `rerank.py report` refuses a dump whose
+geometry is mixed or differs from model.yaml's, and gallops' dataset step refuses
+a mixed or unrecorded one.
 
 Every row is what `DriveJepaPolicy.forward` returns for one sample, plus the
-logged future. `rerank.py dataset` turns a dump into training data for gallops,
-and `rerank.py report` scores a trained re-ranker on one.
+logged future. Gallops turns a train dump into training data (`python -m
+gallops.data.rerank dataset`), and `rerank.py report` scores a trained re-ranker
+on a held-out one.
 
     # a benchmark's own sample list (KITScenes' 223, nuScenes val's 5,119)
     python tools/models/drivejepa/paddock_candidates.py --bench kitscenes --output val.jsonl
@@ -22,7 +24,8 @@ and `rerank.py report` scores a trained re-ranker on one.
     python tools/models/drivejepa/paddock_candidates.py --bench kitscenes \\
         --rows train_samples.pkl --output train.jsonl
 
-`--rows` is a pickled list of ``{scene_id, split, keyframe_index}``; each is built
+`--rows` is a pickled list of ``{scene_id, split, keyframe_index}``. Gallops writes
+the re-ranker's (`python -m gallops.data.rerank keyframes`). Each is built
 by the harness's own `_sample`, so a train keyframe gets exactly the cameras,
 calibration, ground offset, speed and command a benchmark keyframe does.
 

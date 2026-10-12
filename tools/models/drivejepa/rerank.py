@@ -1,4 +1,4 @@
-"""Export re-ranker training data, and report a trained re-ranker on held-out candidates.
+"""Report a trained re-ranker on held-out candidates.
 
 Drive-JEPA's 32 candidates hold a near-human trajectory far more often than its
 NAVSIM-trained scorer picks one (KITScenes: best of 32 0.37 m ADE, pick 2.36 m).
@@ -6,11 +6,11 @@ NAVSIM-trained scorer picks one (KITScenes: best of 32 0.37 m ADE, pick 2.36 m).
 
 1. `paddock_candidates.py` dumps the 32 candidates per sample through paddock's
    own input path.
-2. `rerank.py dataset` (this) turns a dump into features and per-candidate ADE,
-   using the adapter's own `candidate_features` -- paddock alone defines them.
-3. `gallops train-rerank` fits the selector and writes `reranker.npz` plus
-   `checkpoint.json` under `{weights}`.
-4. `rerank.py report` (this) scores that checkpoint on a *different* dump: the
+2. Gallops makes the training data and fits the selector: `python -m
+   gallops.data.rerank dataset` turns a train dump into features and
+   per-candidate ADE labels, and `gallops train-rerank` writes `reranker.npz`
+   plus `checkpoint.json` under `{weights}`. Training and its labels live there.
+3. `rerank.py report` (this) scores that checkpoint on a *different* dump: the
    re-ranker's pick against the model's own, the candidate closest to constant
    velocity (the shortcut a selector must beat) and the best of the 32, as ADE@3s
    and as nuScenes' cumulative L2, paired with scene-clustered SEs.
@@ -19,7 +19,6 @@ NAVSIM-trained scorer picks one (KITScenes: best of 32 0.37 m ADE, pick 2.36 m).
 report is the diagnostic beside it, and the two must agree on the benchmark's
 own samples.
 
-    python tools/models/drivejepa/rerank.py dataset train.jsonl --dataset kitscenes --split train -o train.npz
     python tools/models/drivejepa/rerank.py report <checkpoint dir> val.jsonl [--json out.json]
 
 Runs in paddock's env (numpy only).
@@ -93,38 +92,15 @@ def model_geometry() -> str:
     return env.get("DRIVEJEPA_IMAGE_GEOMETRY", "native")
 
 
-def features_and_errors(rows: list[dict]):
-    """(N, 32, F) features, (N, 32) ADE@3s, (N,) model pick, (N,) scene id."""
-    x, ade, picks, scenes = [], [], [], []
+def errors(rows: list[dict]):
+    """(N, 32) ADE@3s of every candidate, (N,) model pick, (N,) scene id."""
+    ade, picks, scenes = [], [], []
     for row in rows:
-        proposals = np.asarray(row["proposals"])
         human = np.asarray(row["human_poses"])[:, :2]
-        x.append(ranker.candidate_features(proposals, np.asarray(row["logits"]), speed(row)))
-        ade.append([ade3(p[:, :2], human) for p in proposals])
+        ade.append([ade3(p[:, :2], human) for p in np.asarray(row["proposals"])])
         picks.append(int(row["picked"]))
         scenes.append(row["scene_id"])
-    return np.stack(x), np.array(ade), np.array(picks), np.array(scenes)
-
-
-def export(args: argparse.Namespace) -> None:
-    rows = load_rows(args.candidates)
-    geometry = geometry_of(rows)
-    x, ade, picks, scenes = features_and_errors(rows)
-    np.savez(
-        args.output,
-        x=x,
-        ade=ade,
-        model_pick=picks,
-        scene=scenes,
-        sample_id=np.array([r.get("sample_id") or f"{r['scene_id']}/{r['keyframe_index']}" for r in rows]),
-        feature_names=np.array(ranker.FEATURE_NAMES),
-        dataset=np.array(args.dataset),
-        split=np.array(args.split),
-        image_geometry=np.array(geometry),
-    )
-    print(
-        f"wrote {args.output}: {len(rows)} samples, {len(set(scenes.tolist()))} scenes, {x.shape[-1]} features"
-    )
+    return np.array(ade), np.array(picks), np.array(scenes)
 
 
 def scene_stats(diff: np.ndarray, scenes: np.ndarray) -> dict:
@@ -151,7 +127,7 @@ def closest_cv_index(row: dict) -> int:
 
 def summarise(rows: list[dict], chosen: np.ndarray) -> dict:
     """The re-ranker's picks against the model's own, closest-CV and best-of-32."""
-    _, ade, picks, scenes = features_and_errors(rows)
+    ade, picks, scenes = errors(rows)
     cv_idx = np.array([closest_cv_index(r) for r in rows])
     best = ade.argmin(1)
 
@@ -222,13 +198,6 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     sub = parser.add_subparsers(dest="command", required=True)
-
-    ds = sub.add_parser("dataset", help="export a candidate dump for `gallops train-rerank`")
-    ds.add_argument("candidates", type=Path, nargs="+")
-    ds.add_argument("--dataset", required=True, help="datasets.yaml key the samples come from")
-    ds.add_argument("--split", required=True)
-    ds.add_argument("-o", "--output", type=Path, required=True)
-    ds.set_defaults(func=export)
 
     rp = sub.add_parser("report", help="score a trained re-ranker on held-out candidates")
     rp.add_argument("weights", type=Path, help="gallops checkpoint directory")

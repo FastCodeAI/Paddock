@@ -11,13 +11,18 @@ Gallops trains it (`gallops.train.rerank`) and writes `reranker.npz` beside a
 `checkpoint.json`. Neither repo imports the other, so the file carries what
 each side must agree on and this module checks it at load:
 
-- ``feature_names`` must equal `FEATURE_NAMES` here, in order. The features are
-  computed by `candidate_features` in this module for both training (via the
-  dataset export in `tools/models/drivejepa/rerank.py`) and inference, so a
-  mismatch means the weights were fitted to a different definition.
+- ``feature_names`` must equal `FEATURE_NAMES` here, in order. A mismatch means
+  the weights were fitted to a different definition.
 - ``probe_x`` / ``probe_scores`` are inputs and the scores gallops's own forward
   pass gave them. `load` recomputes them with `Reranker.score`; a difference
   means the two forward passes disagree, and the file is refused.
+
+Gallops builds the training data, so it computes the features with its own
+copy of `candidate_features` (`gallops.data.rerank`). The probe cannot catch a
+difference there, since it replays stored features. What holds the copies
+equal is a test on each side against the same input and expected values:
+`test_features_match_gallops` here, `GOLDEN` in gallops'
+tests/test_rerank_data.py. Change one, change both.
 
 numpy only, and Python 3.9-compatible: this runs inside Drive-JEPA's own env.
 """

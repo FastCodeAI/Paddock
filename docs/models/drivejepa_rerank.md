@@ -40,24 +40,31 @@ guard reads it.
 hours at this site's speed. Every step writes files outside the repo.
 
 ```bash
-# 1. the 5,711 train keyframes: the scenes in rerank_train_scenes.txt, keyframes by rule
-python tools/models/drivejepa/train_keyframes.py -o train_samples.pkl
+# 1. the 5,711 train keyframes (gallops): the scenes in its rerank_train_scenes.txt, keyframes by rule
+python -m gallops.data.rerank keyframes -o train_samples.pkl
 
 # 2. Drive-JEPA's 32 candidates for each, through paddock's own path, with the crop the weights need
 #    (Drive-JEPA env; set model.yaml's env, including DRIVEJEPA_IMAGE_GEOMETRY=openscene)
 python tools/models/drivejepa/paddock_candidates.py --bench kitscenes --rows train_samples.pkl --output train.jsonl
 
-# 3. features and per-candidate ADE (paddock env)
-python tools/models/drivejepa/rerank.py dataset train.jsonl --dataset kitscenes --split train -o train.npz
+# 3. features and per-candidate ADE labels (gallops)
+python -m gallops.data.rerank dataset train.jsonl --dataset kitscenes --split train -o train.npz
 
 # 4. train (gallops), with the settings recorded in checkpoint.json
 gallops train-rerank train.npz --train-run kitscenes-train-h128-t1 --hidden 128 --temperature 1.0
 ```
 
-Step 1 regenerates the exact list this checkpoint was trained on (checked:
-identical, 5,711 keyframes). The scene set is not a rule. It is the first 373
-of the split's 533 scenes to finish downloading, at dataset revision `213352cf`,
-so it is tracked as `tools/models/drivejepa/rerank_train_scenes.txt`.
+Step 2 runs the model, so it is paddock's. Steps 1, 3 and 4 make and use
+training data, so they are gallops'. Checked against this checkpoint's own
+files:
+- step 1 lists the same 5,711 keyframes it was trained on
+- step 3 on the original dump gives every array of the original `train.npz`
+  unchanged (its sha256 is checkpoint.json's `dataset_sha256`), plus an
+  `image_geometry` key
+
+The scene set is not a rule. It is the first 373 of the split's 533 scenes to
+finish downloading, at dataset revision `213352cf`, so gallops tracks it as
+`src/gallops/data/rerank_train_scenes.txt`.
 
 Step 4 picks its epoch on held-out scenes. Training is seeded, so the same
 dataset should give the same step, but that has not been checked at a second
@@ -125,15 +132,19 @@ paddock's own KITScenes harness and this policy
 for the same 5,711 train keyframes. So the selector was fitted to exactly the
 candidates a `paddock run` produces.
 
-**Who owns what.** Training lives in gallops (`gallops train-rerank`). It writes
-`reranker.npz` and a `checkpoint.json` sidecar. Neither repo imports the other,
-so the npz carries the contract:
+**Who owns what.** Paddock runs the model and dumps its candidates. Gallops
+does the rest of training: `python -m gallops.data.rerank` lists the train
+keyframes and turns a dump into features and ADE labels, and `gallops
+train-rerank` writes `reranker.npz` and a `checkpoint.json` sidecar. Neither
+repo imports the other, so the npz carries the contract:
 - the `feature_names` it was fitted to, which must equal `FEATURE_NAMES`
 - a probe of inputs with gallops' own scores for them, which `ranker.load`
   recomputes
 
 A file that fails either check is refused at load, before the 1.2 GB model is
-read.
+read. The probe replays stored features, so neither check sees gallops' copy of
+`candidate_features` drift from this one. A test on each side holds them equal
+against the same input and expected values (`test_features_match_gallops`).
 
 ## Two inputs differ from `drivejepa`
 

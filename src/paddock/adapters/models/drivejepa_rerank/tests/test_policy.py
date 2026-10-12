@@ -54,6 +54,66 @@ def test_features_have_one_column_per_name() -> None:
     assert np.all(np.diff(features[:, ranker.FEATURE_NAMES.index("travel_3s")]) > 0)
 
 
+def test_features_match_gallops() -> None:
+    """Gallops computes the training features with its own copy of `candidate_features`.
+
+    Neither repo imports the other, and the load-time probe replays stored
+    features, so it cannot see the two definitions part. This input and these
+    values are also in gallops' tests/test_rerank_data.py (`GOLDEN`); if this
+    fails, the definition here moved, and gallops' copy and every trained
+    checkpoint move with it.
+    """
+    t = 0.5 * np.arange(1, 9)
+    proposals = np.stack(
+        [
+            np.column_stack([4.0 * t, np.zeros(8), np.zeros(8)]),
+            np.column_stack([3.0 * t, 0.2 * t**2, np.arctan(0.4 * t / 3.0)]),
+            np.column_stack([2.0 * t - 0.1 * t**2, -0.3 * t, -0.05 * t]),
+        ]
+    )
+    logits = np.array(
+        [
+            [0.5, -1.0, 2.0, 0.0, 1.5, -0.5],
+            [1.0, 0.25, -2.0, 3.0, 0.0, 0.75],
+            [-0.5, 0.5, 1.0, -1.5, 2.5, 0.125],
+        ]
+    )
+    # travel_1s .. total_turning
+    golden = [
+        [4.0, 8.0, 12.0, 0.0, 0.0, 0.0, 2.0, 2.0, 2.0, 0.0, 0.0],
+        [
+            3.0066592756745814,
+            6.053098380168622,
+            9.178235124467012,
+            1.8,
+            0.38050637711236496,
+            1.8,
+            1.5388329608336029,
+            1.5008331019803633,
+            1.5976545308670458,
+            0.0340556209568158,
+            0.31393821333654115,
+        ],
+        [
+            1.9235384061671343,
+            3.6496575181789317,
+            5.1788029504896205,
+            -0.8999999999999999,
+            -0.15000000000000002,
+            0.8999999999999999,
+            0.8632635125463421,
+            0.7403546447480419,
+            0.9864709828474428,
+            0.08407005752833539,
+            0.12500000000000003,
+        ],
+    ]
+    features = ranker.candidate_features(proposals, logits, 4.2)
+    np.testing.assert_array_equal(features[:, :6], logits)
+    np.testing.assert_allclose(features[:, 6:17], golden, rtol=0, atol=1e-9)
+    np.testing.assert_array_equal(features[:, 17], 4.2)
+
+
 @pytest.mark.parametrize("hidden", [4, 0])
 def test_consistent_weights_load(tmp_path, hidden) -> None:
     reranker = ranker.load(write_weights(tmp_path / "ok", hidden=hidden))
