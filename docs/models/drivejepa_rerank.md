@@ -166,8 +166,8 @@ against the same input and expected values (`test_features_match_gallops`).
     padding in the 1920×1080 output, of which the pipeline's `[28:-28]` row
     crop removes part.
 
-  So nuScenes 0.912 → 0.620 changes the pixels as well as the selector. This
-  sits on top of the gap being unpaired (see Results).
+  So a nuScenes run of this model differs from `drivejepa`'s in the pixels as
+  well as the selector.
 
 **Route command.** Paddock's KITScenes harness sends STRAIGHT for every sample,
 as it does for every model. The devkit run derived a turn command from the
@@ -212,36 +212,11 @@ about the same on 22.
 Figures: `paddock-runs/analysis/drivejepa_kitscenes_selection/plots/` at this
 site. They are not tracked.
 
-**nuScenes** val, run `20260918T221353-6194bd`, all 5,119 samples over 150
-scenes, valid. No nuScenes data went into the selector.
-
-| | cumulative L2 (m) | ADE@3s (m) | L2 at 1 / 2 / 3 s (m) | point collision (%) |
-|---|---:|---:|---|---:|
-| drivejepa_rerank | **0.620** | **0.985** | 0.394 / 1.051 / 2.075 | 1.823 |
-| `drivejepa` | 0.912 | 1.536 | 0.540 / 1.587 / 3.519 | 1.459 |
-| constant velocity | 0.641 | 1.069 | 0.372 / 1.151 / 2.340 | 1.661 |
-
-Paired against constant velocity on the same 5,119 samples, with SEs over the
-150 scenes:
-- cumulative L2: −0.021 m, t −1.3. **Not separated.** This metric averages the
-  error up to 1, 2 and 3 s, so it weights the early waypoints most. That is
-  where driving straight on at the current speed is hardest to beat.
-- ADE@3s: −0.084 m, t −3.2.
-- collisions, point metric (`col_avg`): +0.16 points, t +0.6. Not separated.
-- collisions, UniAD's cumulative metric (`col_uniad_avg`): 1.89% against
-  1.07%, +0.82 points, t +1.6. Also not separated, but in the same direction
-  and larger.
-
-The `drivejepa` run's per-sample records are not on this site, so the gap to it
-is unpaired here. The candidate-dump transfer test, which was paired on the
-same anchors through the uncropped path, had the selector ahead of Drive-JEPA's
-own pick at scene t −9.7.
-
-**The collision column is the one that got worse:** 1.82% against Drive-JEPA's
-1.46%. The likely cause is what the KITScenes plots show: where the human slowed for
-traffic, the selector keeps speed. That is argued from KITScenes; which nuScenes
-samples collide has not been examined. It is the
-clearest reason this model stays open-loop only.
+**nuScenes: withdrawn, re-measure pending.** The zero-shot run,
+`20260918T221353-6194bd`, was made before the camera-frame fix (#62). On nuScenes
+Drive-JEPA then saw no image, so the selector chose among candidates planned
+from ego motion alone. That run is not in the repo. A re-measure with the fix
+comes in its own PR.
 
 ## Limits
 
@@ -249,22 +224,15 @@ clearest reason this model stays open-loop only.
   about collisions. `model.yaml` declares only KITScenes and nuScenes until it
   has been through neuroNCAP, where it must be compared pair by pair against
   `drivejepa`.
-- **On neuroNCAP it is measured worse, not merely unmeasured.** These weights
-  were replayed over Drive-JEPA's own candidate dumps from seven neuroNCAP
-  scenario pairs — 1,190 ticks, each carrying all 32 proposals and a
-  per-candidate collision verdict — so the choice can be read beside what that
-  choice would have hit. On the 322 ticks where Drive-JEPA's own pick hits
-  although one of the 32 was clear, this selector chose a clear one **0 times**.
-  Every one of its 1,190 choices was a "go" candidate: it never picks a stop,
-  because the human paths it imitates never contain one. It travels 7.7 m in 3 s
-  against the model's own 6.2 m, and is clear on 45% of ticks against 51%. So a
-  neuroNCAP run should be expected to score lower, with harder impacts, and the
-  benchmark is a gate this selector is not expected to pass as it stands. Two
-  caveats on that measurement: it is open loop one tick at a time, so it shows
-  which option each picker prefers and not what a closed-loop episode would do;
-  and the dumps were produced with native camera images while these weights were
-  trained on the OpenScene crop, so a real run sees slightly different
-  candidates.
+- **On neuroNCAP it is measured worse, not merely unmeasured.** A smoke on
+  scene 0103 with the camera-frame fix gave 1.85 against `drivejepa`'s 3.01 on
+  the same nine episodes (three scenario pairs, seeds 0–2), and it was hit in 6
+  of them against 5. That is a subset, not a neuroNCAP score. Runs:
+  `neuroncap/drivejepa_rerank/20261012T231620-01570a` (not tracked) and
+  `neuroncap/drivejepa/20261012T205915-7153f0`. The benchmark is a gate this
+  selector is not expected to pass as it stands. An earlier offline replay over
+  neuroNCAP candidate dumps pointed the same way, but those dumps were made
+  camera-blind, so its numbers are not quoted here.
 - **NAVSIM is expected to get worse, not better.** NAVSIM scores PDM, which is
   exactly what the original scorer was trained for. A selector trained on
   imitation gives that up. It has not been measured.

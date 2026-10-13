@@ -321,13 +321,14 @@ Landed alongside it, none comma2k19-specific:
   that particular record with it.
 
 **`drivejepa_rerank` — before any closed-loop use.** The selector over
-Drive-JEPA's 32 candidates is scored open-loop only: KITScenes (adapted) and
-nuScenes. `model.yaml` declares nothing else, and that stays true until two runs
-exist:
+Drive-JEPA's 32 candidates is scored open-loop only, on KITScenes (adapted). Its
+nuScenes run was made before the camera-frame fix (#62) and is withdrawn; a
+re-measure with the fix comes in its own PR. `model.yaml` declares KITScenes and
+nuScenes and nothing else, and that stays true until two runs exist:
 - **neuroNCAP**, the full official set, paired against `drivejepa` at the
   scenario-pair level (n=20). The selector learned closeness to the human path
-  and nothing about collisions, and its nuScenes collision columns moved the
-  wrong way (not separated).
+  and nothing about collisions. A smoke on scene 0103 with the fix (three pairs,
+  seeds 0–2, not a neuroNCAP score) gave 1.85 against `drivejepa`'s 3.01.
 - **NAVSIM v2 and v1**, by replaying chosen plans. It is expected to cost
   EPDMS, since NAVSIM scores what the original scorer was trained for. How much
   is unmeasured.

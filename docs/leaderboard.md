@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
-93 runs across 8 benchmarks.
-49 run(s) excluded as invalid — shown at the end, never averaged in.
+92 runs across 8 benchmarks.
+53 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
@@ -127,7 +127,6 @@
 | model | run | n | site | l2_avg ↓ | l2_1s ↓ | l2_uniad_1s ↓ | col_1s ↓ | col_uniad_1s ↓ | l2_2s ↓ | l2_uniad_2s ↓ |
 |---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
 | qwendrive | 20260915T190350-47479e | 5119 | fastcode-shakaal | 0.800 | 0.318 | 0.245 | 0.007 | 0.007 | 0.722 | 0.427 |
-| drivejepa_rerank | 20260918T221353-6194bd | 5119 | fastcode-shakaal | 1.173 | 0.394 | 0.290 | 0.022 | 0.023 | 1.051 | 0.584 |
 | constant_velocity | 20260914T225156-e5170c | 5119 | fastcode-shakaal | 1.288 | 0.372 | 0.260 | 0.008 | 0.008 | 1.151 | 0.594 |
 | constant_velocity | 20260907T093007-9697fe | 5119 | fastcode-navvrat-nusc-dj | 1.288 | 0.372 | 0.259 | 0.008 | 0.008 | 1.151 | 0.594 |
 | alpamayo15 | 20260905T093547-3dd7cd | 5119 | fastcode-navvrat-nusc-al | 1.487 | 0.509 | 0.369 | 0.008 | 0.008 | 1.351 | 0.742 |
@@ -149,6 +148,7 @@
 - **neuroncap/drivejepa/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **neuroncap/openpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **neuroncap/visionpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
+- **neuroncap/drivejepa/20261012T205915-7153f0** — 3 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes); resumed: 2 episode(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only
 - **nuplan/openpilot/20260917T220353-9e4f44** — camera images cover 25 of 351 scorable anchors (53 logs have no images); not comparable with a full-coverage run
 - **nuplan/visionpilot/20260917T220044-97873a** — camera images cover 25 of 351 scorable anchors (53 logs have no images); not comparable with a full-coverage run
 - **nuplan/constant_velocity/20260917T214417-f827db** — camera images cover 25 of 351 scorable anchors (53 logs have no images); not comparable with a full-coverage run
@@ -194,4 +194,3 @@
 ---
 
 Arrows show direction of better; a column with no arrow has none -- a signed bias, a ratio best at one, or a description of the model rather than a score. Aggregates are recomputed by paddock from per-sample records, never taken from the producer.
-
