@@ -213,6 +213,24 @@ requires every `model × dataset` heading here to carry real prose about a
 pairing that can actually happen. This section is held to the same standard as a
 declared one; it is no longer surviving on goodwill.
 
+### Drive-JEPA rerank × kitscenes
+
+**`drivejepa_rerank` is adapted to KITScenes, not zero-shot on it.** It is
+Drive-JEPA unchanged up to its 32 candidate trajectories. A selector then
+chooses among them in place of the NAVSIM-trained scorer, and that selector was
+fitted to KITScenes' **train** split: 5,711 keyframes from 373 scenes. Its
+epoch was chosen on a held-out slice of those same train scenes.
+
+The benchmark's 223 keyframes come from the 140 scenes of the val and
+overlap_train_val splits. None of those scenes is among the 373, which was
+checked by scene id. So the row has seen the dataset's cameras, cities and
+driving, but not its test scenes. That is the same relation Drive-JEPA has to
+navtest through navtrain.
+
+Read its KITScenes cell beside the zero-shot rows, never as one of them. The
+zero-shot `drivejepa` row stays as it is. On nuScenes the selector is
+zero-shot: no nuScenes data went into it. See [drivejepa_rerank.md](drivejepa_rerank.md).
+
 ### AutoE2E × kitscenes — unconfirmed, and not yet a paddock model
 
 AutoE2E's pre-training row reads KITScenes, marked unconfirmed. If it is right,

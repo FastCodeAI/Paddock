@@ -146,7 +146,8 @@ present, `ay` is the centripetal term `v · yaw_rate`, and `diagnostics()` repor
 
 **No lidar.** The perception-free path never projects anything, so there is no
 `require_lidar2ego()` and `lidars` are placeholders. The existing `drivejepa`
-policy does require it, correctly — its BEVFormer branch computes `lidar2img`.
+policy does not read lidar2ego either: its BEVFormer branch computes `lidar2img`,
+but NAVSIM's lidar frame is the ego frame, so it places cameras by `camera2ego`.
 
 **Ego frame** is NAVSIM/nuPlan's: x forward, y left, heading CCW — already
 paddock's, so the eight output poses are returned unresampled as

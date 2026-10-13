@@ -324,9 +324,8 @@ class PaddockProxyAgent(_PaddockAgentBase):
             command=self._command_of(status),
             camera2image=camera2image,
             camera2ego=camera2ego,
-            # Identity, but sent explicitly: models that project through the
-            # lidar frame call require_lidar2ego() and must not have to assume
-            # what this benchmark's convention is.
+            # Identity, but sent explicitly, so a model that projects through
+            # the lidar frame need not assume this benchmark's convention.
             lidar2ego=np.eye(4),
         )
 

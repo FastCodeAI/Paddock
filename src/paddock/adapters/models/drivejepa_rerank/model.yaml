@@ -1,0 +1,59 @@
+name: drivejepa_rerank
+description: Drive-JEPA with its 32 candidates re-ranked by a selector trained on KITScenes train (adapted, not zero-shot)
+repo: Drive-JEPA
+
+# The same environment, checkout and checkpoint as `drivejepa`: everything up to
+# the 32 candidates is that model unchanged. See docs/models/drivejepa_rerank.md.
+runtime:
+  kind: conda
+  python: "3.9"
+  venv: "{repos}/.conda-envs/drive-jepa"
+  pythonpath: ["{repo}/navsim_v2"]
+  # Load-bearing: the agent does np.load("./data/8192.npy") relative to cwd.
+  cwd: "{repo}/navsim_v2"
+  env:
+    NAVSIM_DEVKIT_ROOT: "{repo}/navsim_v2"
+    NAVSIM_EXP_ROOT: "{data.navsim.exp}"
+    OPENSCENE_DATA_ROOT: "{data.navsim}"
+    NUPLAN_MAPS_ROOT: "{data.navsim}/maps"
+    NUPLAN_MAP_VERSION: "nuplan-maps-v1.0"
+    DRIVEJEPA_CHECKPOINT: "{data.navsim.exp}/Drive-JEPA-cache/drive_jepa_perception_based_agent_vitl_v2.ckpt"
+    DRIVE_JEPA_MSDA: "auto"
+    # The re-ranker was trained on candidates made from cameras cropped onto the
+    # OpenScene pinhole, as the devkit's KITScenes loader does; it must be run
+    # on the same. `drivejepa` itself keeps "native".
+    DRIVEJEPA_IMAGE_GEOMETRY: "openscene"
+    # A gallops checkpoint: reranker.npz + checkpoint.json. The directory names
+    # the exact training run and step, so changing weights is a diff here.
+    DRIVEJEPA_RERANK_WEIGHTS: "{weights}/drivejepa_rerank/kitscenes-train-h128-t1/step_000000325"
+
+capabilities:
+  cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT, CAM_BACK]
+  vram_gb: 12
+  startup_timeout_s: 900
+  waypoint_dt: 0.5
+
+  # -- model card (docs/models/comparison.md) --
+  architecture: "Drive-JEPA (V-JEPA-2 ViT-L + proposal planner), 32 candidates re-ranked by an 18-feature MLP"
+  params_m: 307
+  size_gb: 1.23
+  precision: fp32
+  input_size: [512, 256]
+  history_frames: 2
+  output_kind: waypoints
+  horizon_s: 4.0
+  trained_on:
+    # The base model, exactly as `drivejepa` declares it.
+    - dataset: navsim
+      split: navtrain
+    # The re-ranker. KITScenes' geographic train split: no scene in it is in
+    # the 223-keyframe benchmark, which draws on val and overlap_train_val only.
+    # So a KITScenes row from this model is adapted to the dataset but not to
+    # its test scenes. The held-out slice used to pick the epoch is part of
+    # train as well (checkpoint.json `selection_split`).
+    - dataset: kitscenes
+      split: train
+
+# Open-loop only until it has been through neuroNCAP: the re-ranker learned
+# closeness to a human path and nothing about collisions.
+benchmarks: [kitscenes, nuscenes]

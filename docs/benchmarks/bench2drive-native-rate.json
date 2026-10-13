@@ -1,0 +1,4468 @@
+{
+ "definition": "Per-route Bench2Drive results for the native-rate campaign (18-20 Sep 2026, RunPod RTX PRO 6000, CARLA 0.9.15 Epic), one record per route per model. Each record is the attempt the ingest scored -- the latest source run id whose results.json parses as a measurement -- so these records and the tracked results/bench2drive/<model>/<run_id> aggregates come from the same files. `scores` are the evaluator's own; `infractions` are recorded counts, not rates. `min_speed_infractions` is a per-checkpoint speed-ratio log, not a violation (see bench2drive-speed-normalization.md), so it is excluded from any total. The 20 Hz side of every published comparison comes from bench2drive-speed-normalization.json, restricted to the routes scored at both rates. Routes listed in `unscorable` were requested and never scored; they are absent from `records` and are n_failed in the tracked run.json, never a zero.",
+ "rates_hz": {
+  "drivejepa": 2,
+  "alpamayo15": 10,
+  "qwendrive": 2
+ },
+ "tracked_runs": {
+  "drivejepa": "native50-2hz-40c29d24c37d542a-447e23",
+  "alpamayo15": "native50-10hz-084418258d833a9f-c4d076",
+  "qwendrive": "native50-2hz-084418258d833a9f-9b2bc9"
+ },
+ "twenty_hz_runs": {
+  "drivejepa": "pooled50-40c29d24c37d542a-1de367",
+  "alpamayo15": "pooled50-40c29d24c37d542a-36d2d0",
+  "qwendrive": "pooled50-40c29d24c37d542a-f250e0"
+ },
+ "unscorable": {
+  "alpamayo15": {
+   "3800": "CARLA segfaults (Signal=11) at ~1300-1411 frames; no attempt wrote a scoring checkpoint, so no results.json reached the tree"
+  },
+  "qwendrive": {
+   "3800": "CARLA segfaults (Signal=11) at ~1300-1411 frames; the one attempt that wrote a results.json has no records in _checkpoint"
+  }
+ },
+ "records": [
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "1711",
+   "town": "Town12",
+   "scenario": "ParkingCutIn",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 70.71,
+    "score_penalty": 0.915009,
+    "score_composed": 64.700262
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 13,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T041532-96a005",
+   "source_sha256": "dc2fe5e089e1d8ea7394b4a545250fcb71a03dbe5733748eb368bc9dc78f92b9"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "1852",
+   "town": "Town12",
+   "scenario": "AccidentTwoWays",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 36.15,
+    "score_penalty": 1.0,
+    "score_composed": 36.15
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 6,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T035045-7c0fe6",
+   "source_sha256": "4ff54b4f860f1319caf115e0648466a55cd2017b5d2e8e63866afe26832db5fd"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "2050",
+   "town": "Town12",
+   "scenario": "SignalizedJunctionRightTurn",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 30.63,
+    "score_penalty": 0.65,
+    "score_composed": 19.9095
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 1,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 6,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T044401-585a84",
+   "source_sha256": "3763f366ffc71e801cc033f72a8fe371e7e1007db0dd5006bf21236f951757ef"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "2084",
+   "town": "Town12",
+   "scenario": "NonSignalizedJunctionLeftTurn",
+   "status": "Failed - Agent deviated from the route",
+   "scores": {
+    "score_route": 50.76,
+    "score_penalty": 1.0,
+    "score_composed": 50.76
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 1,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 9,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T040933-038e96",
+   "source_sha256": "88ff856e29c00a1d1b450ee2e712485528722d3e27f8f29ee68daae95cabe30f"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "2086",
+   "town": "Town12",
+   "scenario": "NonSignalizedJunctionLeftTurn",
+   "status": "Failed - Agent deviated from the route",
+   "scores": {
+    "score_route": 52.35,
+    "score_penalty": 0.8,
+    "score_composed": 41.88
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 1,
+    "outside_route_lanes": 0,
+    "route_dev": 1,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 9,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T050059-89d55b",
+   "source_sha256": "08d16b5e37bdd94eea7ed62cf6f0b947c4e9201b3296b25a08c5f78b4a7041ba"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "2201",
+   "town": "Town12",
+   "scenario": "EnterActorFlow",
+   "status": "Failed - Agent deviated from the route",
+   "scores": {
+    "score_route": 45.92,
+    "score_penalty": 0.7,
+    "score_composed": 32.144
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 1,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 1,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 7,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T041252-1c832c",
+   "source_sha256": "49fca033a64f135fa1ec45d5036709250de2c92e1d1eb53781cdf8a406d8d3b1"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "2273",
+   "town": "Town12",
+   "scenario": "MergerIntoSlowTraffic",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 1.0,
+    "score_composed": 100.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 21,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T050357-88bc0b",
+   "source_sha256": "687e115bca92b0b8eec56e285b6708f077cd0c3ea8f592710ed6c5cb4e3a24d5"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "2286",
+   "town": "Town12",
+   "scenario": "HighwayCutIn",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 50.16,
+    "score_penalty": 1.0,
+    "score_composed": 50.16
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 8,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T041633-eb044b",
+   "source_sha256": "3fcda7953d3277149d7f8372f3dc11b3af49700743c18de7eed238d13d432445"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "2509",
+   "town": "Town12",
+   "scenario": "ConstructionObstacle",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 30.14,
+    "score_penalty": 1.0,
+    "score_composed": 30.14
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 5,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T044609-aa4c3a",
+   "source_sha256": "4081d12ddd006f6aa0ec296940ac8c6b7094d36a91fb15a8f4ed90889d713952"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "2534",
+   "town": "Town12",
+   "scenario": "Accident",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.36,
+    "score_composed": 36.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 2,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T055336-927d9b",
+   "source_sha256": "e597b435d05afa582f46d1d038650ed54833e79daccc5976a028a0f256f03485"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "2539",
+   "town": "Town12",
+   "scenario": "Accident",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 1.0,
+    "score_composed": 100.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T055840-9ddde0",
+   "source_sha256": "5fbab3d5341164486380aa761f280bd659f130e3a5a0163601e60814f79e4790"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "2790",
+   "town": "Town12",
+   "scenario": "InvadingTurn",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 1.0,
+    "score_composed": 100.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T054635-87f334",
+   "source_sha256": "3b264cac8806860cb910826cf3e865198fbb07bcf926419818504b7d3e1981b8"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "2802",
+   "town": "Town12",
+   "scenario": "InvadingTurn",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 1.0,
+    "score_composed": 100.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 20,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T061841-56df43",
+   "source_sha256": "84aa236ecb2ac7ea57ab08c5765f573ccceb4718b8ad1d28a593ad6d9cb1c1ac"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "3307",
+   "town": "Town13",
+   "scenario": "Accident",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 30.86,
+    "score_penalty": 1.0,
+    "score_composed": 30.86
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 5,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T055011-52d38e",
+   "source_sha256": "dd518ad8384f49ef4da1c20162427da1f9b43386e10f00a9d09de49426a34725"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "3364",
+   "town": "Town13",
+   "scenario": "YieldToEmergencyVehicle",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 95.15,
+    "score_penalty": 0.36,
+    "score_composed": 34.254
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 2,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 18,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T061256-0bd875",
+   "source_sha256": "a910ee70c7385773750060ed98f43c9aa1f47fb2622fa7ff21dc5969bd938d8c"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "3373",
+   "town": "Town13",
+   "scenario": "YieldToEmergencyVehicle",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 1.0,
+    "score_composed": 100.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T055926-4db959",
+   "source_sha256": "871b8fdbea3d09384e653c0f9c507a44a904001f078a6fcd081f5c6f58615d0e"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "3378",
+   "town": "Town13",
+   "scenario": "YieldToEmergencyVehicle",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 62.77,
+    "score_penalty": 0.7,
+    "score_composed": 43.939
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 1,
+    "min_speed_infractions": 10,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T060319-85a11c",
+   "source_sha256": "c19930fab3609a6f2231bb54cd5deee3f71f371d566e17dc74db67198db6e0e7"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "3380",
+   "town": "Town13",
+   "scenario": "YieldToEmergencyVehicle",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.7,
+    "score_composed": 70.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 1,
+    "min_speed_infractions": 18,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T053659-aa9b6b",
+   "source_sha256": "1341faed4e750a7fbd38f4df042c4fc4057e16a4b90916a5af20f83b71ef1b3b"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "3410",
+   "town": "Town13",
+   "scenario": "AccidentTwoWays",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 37.65,
+    "score_penalty": 1.0,
+    "score_composed": 37.65
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 7,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T054123-9fd5df",
+   "source_sha256": "d2d577f003e1e18b6afdd0f73e3d73c96a458cf6bf675273e2a25136320ff944"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "3564",
+   "town": "Town13",
+   "scenario": "InvadingTurn",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 1.0,
+    "score_composed": 100.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T052551-e8d84d",
+   "source_sha256": "96bf7692ae7e9500ed71de3b9b2cfcf6d12163b7ec7dd3f62194de994dc63b1c"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "3572",
+   "town": "Town13",
+   "scenario": "InvadingTurn",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 93.08,
+    "score_penalty": 1.0,
+    "score_composed": 93.08
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 15,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T052951-1fbcf6",
+   "source_sha256": "f0943822a2c77466ed850c5cdd644e335b38cf99f929948134c2591d48343d90"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "3575",
+   "town": "Town13",
+   "scenario": "InvadingTurn",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 1.0,
+    "score_composed": 100.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T051003-257723",
+   "source_sha256": "a56c4e0ef0da8d73e1a8bafd141e439a50c58ae65c0c2103c0d91d9211271bf2"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "3749",
+   "town": "Town13",
+   "scenario": "EnterActorFlow",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 26.15,
+    "score_penalty": 1.0,
+    "score_composed": 26.15
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 4,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T051307-711cd6",
+   "source_sha256": "46b6db3bdda437b2d3ba7d71b521c7569900f855737d114c3d172c1c8b51d876"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "3800",
+   "town": "Town13",
+   "scenario": "MergerIntoSlowTraffic",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100.0,
+    "score_penalty": 1.0,
+    "score_composed": 100.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 1,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 20,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T050144-892d9d",
+   "source_sha256": "1bb022d1fa6de9c6f1014692c73217b0af4ea7c143a0d7c08b5c4aa4b95b1b81"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "3813",
+   "town": "Town13",
+   "scenario": "HighwayCutIn",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 1.0,
+    "score_composed": 100.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T050624-1207df",
+   "source_sha256": "9d4ddf8637c5e0e4c0b07e213ad367ae5c2aa618fc55ae33dd06514448600d1c"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "3936",
+   "town": "Town12",
+   "scenario": "SignalizedJunctionLeftTurn",
+   "status": "Failed - Agent deviated from the route",
+   "scores": {
+    "score_route": 40.89,
+    "score_penalty": 1.0,
+    "score_composed": 40.89
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 1,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 7,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T045420-5b3ded",
+   "source_sha256": "10f56ab273193c57070bfc06e42eaefd45625e7ca792f673c2e15f1ae6497fe1"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "4183",
+   "town": "Town12",
+   "scenario": "SignalizedJunctionLeftTurn",
+   "status": "Failed - Agent deviated from the route",
+   "scores": {
+    "score_route": 37.05,
+    "score_penalty": 1.0,
+    "score_composed": 37.05
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 1,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 6,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T045800-a54b55",
+   "source_sha256": "72ab2dbdd88e7ea47f4e991eea672d2299272da120ed973ed3a0a1d39e6ff5cf"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "4468",
+   "town": "Town12",
+   "scenario": "SignalizedJunctionLeftTurn",
+   "status": "Failed - Agent deviated from the route",
+   "scores": {
+    "score_route": 54.73,
+    "score_penalty": 1.0,
+    "score_composed": 54.73
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 1,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 10,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T043304-b40c97",
+   "source_sha256": "af7eef9cc0a6ae3f7fde53cf9bfb4e1dfc39cb81e1674842ded7f661823da698"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "4669",
+   "town": "Town12",
+   "scenario": "SignalizedJunctionLeftTurn",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 20.76,
+    "score_penalty": 1.0,
+    "score_composed": 20.76
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 4,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T043634-6a6bff",
+   "source_sha256": "9470833461962a2566238cac06a8af6f13e03daf5ef09ca0b8bce9c6c0b1b47b"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "14194",
+   "town": "Town12",
+   "scenario": "PedestrianCrossing",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 33.38,
+    "score_penalty": 1.0,
+    "score_composed": 33.38
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 6,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T033610-540a02",
+   "source_sha256": "e16018ded295474d58744afbb07ac79a4a8674bf8e656c312a8141a9e71be248"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "17752",
+   "town": "Town12",
+   "scenario": "DynamicObjectCrossing",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.5,
+    "score_composed": 50.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 1,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 20,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T034255-a0a071",
+   "source_sha256": "3122ea08c71b4f9728b43dc0f4061b7f54b950006fbb9f31315120b0d2b54a40"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "18305",
+   "town": "Town12",
+   "scenario": "ParkingCutIn",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 1.0,
+    "score_composed": 100.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 20,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T042454-83cc5c",
+   "source_sha256": "d3063a241197de62fd5a3aa5adb1a708d82d4f164b3b3de89566d5702284261f"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "18311",
+   "town": "Town12",
+   "scenario": "ParkingCutIn",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 1.0,
+    "score_composed": 100.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T034702-1ab920",
+   "source_sha256": "efebe59648f31e2cbb10d8eaa0fd26150a563ede01efeac93f0a062f21f48d91"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "18356",
+   "town": "Town12",
+   "scenario": "ParkingCutIn",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 42.45,
+    "score_penalty": 1.0,
+    "score_composed": 42.45
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 7,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T042900-4804bb",
+   "source_sha256": "3e47a687fddfcdd1bf72618148fbebc2dfaa2d0a45de30976ddc1a9ba515a0ba"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "24211",
+   "town": "Town01",
+   "scenario": "DynamicObjectCrossing",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.5,
+    "score_composed": 50.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 1,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 18,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T050734-3dba5f",
+   "source_sha256": "e042f61cb1793cf762b301506d563b67aff5c007631f65fe5812a478081f7a12"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "24224",
+   "town": "Town02",
+   "scenario": "DynamicObjectCrossing",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.5,
+    "score_composed": 50.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 1,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 20,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T042330-1c7d28",
+   "source_sha256": "5bf7d55fe449bf93e601d1e71432f273d506f0de1b5ddf74bba25105b43ea717"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "24240",
+   "town": "Town10HD",
+   "scenario": "Accident",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 49.48,
+    "score_penalty": 1.0,
+    "score_composed": 49.48
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 8,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T051016-b591f0",
+   "source_sha256": "52a0de96d695896ee4efb92f68bdee7e07790d66b0663c94e15134dac6770716"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "24252",
+   "town": "Town11",
+   "scenario": "DynamicObjectCrossing",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 1.0,
+    "score_composed": 100.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 20,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T042527-a4938a",
+   "source_sha256": "fe4eed93ea31a3e4dd756e5ee9c4dbea5b45192540d0408507b9618ecb2fc658"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "24333",
+   "town": "Town15",
+   "scenario": "DynamicObjectCrossing",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 1.0,
+    "score_composed": 100.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 18,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T052905-db9cd9",
+   "source_sha256": "ff29f7c4daef9574a1c51bdd883ab334908379ca73369bbfb145b86cac36b6a9"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "24795",
+   "town": "Town04",
+   "scenario": "ConstructionObstacle",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 30.04,
+    "score_penalty": 1.0,
+    "score_composed": 30.04
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 5,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T042836-b7d784",
+   "source_sha256": "ce310c4f4d63b529397816c643d366eaf5f344f6678939ae3a620f7f7f5f88d4"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "24816",
+   "town": "Town03",
+   "scenario": "Accident",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 38.47,
+    "score_penalty": 1.0,
+    "score_composed": 38.47
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 6,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T053229-7f877f",
+   "source_sha256": "50cef3b47884ec2132ad20b5cb6e073db1459ee827a04e2547cd7245b3628c3d"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "25378",
+   "town": "Town03",
+   "scenario": "YieldToEmergencyVehicle",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.243141,
+    "score_composed": 24.314107
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T050305-84c22a",
+   "source_sha256": "077826ff7f3a797ea05903086c6c35b29f92f771ea918598beb220ba022140c9"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "25857",
+   "town": "Town05",
+   "scenario": "AccidentTwoWays",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 41.33,
+    "score_penalty": 1.0,
+    "score_composed": 41.33
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 7,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T050627-895f2c",
+   "source_sha256": "dbc3d657cc2372567cfa36712db2bee045e713ba86b0e7d49f898640bca17630"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "25863",
+   "town": "Town07",
+   "scenario": "PedestrianCrossing",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.35,
+    "score_composed": 35.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 1,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 1,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 17,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T060359-054329",
+   "source_sha256": "f454d9337b3aaaa29c7ac75790e90d4753f594754e1de1316845170e4ff7259d"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "26956",
+   "town": "Town05",
+   "scenario": "SignalizedJunctionRightTurn",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.6,
+    "score_composed": 60.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 20,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T052121-c9abc5",
+   "source_sha256": "e359d97fdbc9f0c44f6a62219d64273abdaf04ab6b909665a0c77cdd0ca91a09"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "26990",
+   "town": "Town03",
+   "scenario": "NonSignalizedJunctionLeftTurn",
+   "status": "Failed - Agent deviated from the route",
+   "scores": {
+    "score_route": 39.59,
+    "score_penalty": 1.0,
+    "score_composed": 39.59
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 1,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 6,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T063744-99fd96",
+   "source_sha256": "45fa8f40e99a6ab5dff5bd87a49cf6e27511b1a8fa1550c6b1490e151c5956bc"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "27018",
+   "town": "Town15",
+   "scenario": "SignalizedJunctionRightTurn",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 57.59,
+    "score_penalty": 0.6,
+    "score_composed": 34.554
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 11,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T052416-5b53dc",
+   "source_sha256": "cdc1638c32c9405665fa2233ed17dde1d8e1789f71ed1795eaaadf7345add12f"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "27515",
+   "town": "Town03",
+   "scenario": "PedestrianCrossing",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.648697,
+    "score_composed": 64.869679
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 1,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 18,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T062434-ffc1a0",
+   "source_sha256": "8bc3ef55027bdf7ae799ed539f1ead96af54374ae4785296ce38fd5242efd0f9"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "27529",
+   "town": "Town04",
+   "scenario": "PedestrianCrossing",
+   "status": "Failed - Agent deviated from the route",
+   "scores": {
+    "score_route": 50.02,
+    "score_penalty": 0.8,
+    "score_composed": 40.016
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 1,
+    "outside_route_lanes": 0,
+    "route_dev": 1,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 8,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T054434-fa276a",
+   "source_sha256": "1e38c5cddaf9ec79b1b958afe2c795dba0045ddb20f8b412cb6c3ab6bd47a4f5"
+  },
+  {
+   "model": "drivejepa",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-40c29d24c37d542a-447e23",
+   "route_id": "27582",
+   "town": "Town11",
+   "scenario": "PedestrianCrossing",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.455,
+    "score_composed": 45.5
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 1,
+    "red_light": 1,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T062200-15e580",
+   "source_sha256": "0d55a949340862a227bc227a2b37948a22dfb57996c4814b0939ac368977332d"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "1711",
+   "town": "Town12",
+   "scenario": "ParkingCutIn",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.455072,
+    "score_composed": 45.507218
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 20,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T135833-72bff0",
+   "source_sha256": "dd4d27beca888acd4ec2e3f7b60724390e3b1df4b62f28ee535eef6cdc740e1a"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "1852",
+   "town": "Town12",
+   "scenario": "AccidentTwoWays",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.947017,
+    "score_composed": 94.70172
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 20,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T081805-c6fb34",
+   "source_sha256": "388b8c0f3c3fb5b74ca024ef65268c3c1a56e4200076ca04b58f457be0522766"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "2050",
+   "town": "Town12",
+   "scenario": "SignalizedJunctionRightTurn",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 45.65,
+    "score_penalty": 0.56655,
+    "score_composed": 25.863015
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 8,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T152342-d481a0",
+   "source_sha256": "ead716d96973fc8bf68d1332f380aeb3177d8091c283598854e6632798de9543"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "2084",
+   "town": "Town12",
+   "scenario": "NonSignalizedJunctionLeftTurn",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 30.42,
+    "score_penalty": 1.0,
+    "score_composed": 30.42
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 6,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T223816-779403",
+   "source_sha256": "1e6bc64d9ad6e131e8fe4a241157630eebfa835c0ef002e46cb940b6a2e69494"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "2086",
+   "town": "Town12",
+   "scenario": "NonSignalizedJunctionLeftTurn",
+   "status": "Failed - Agent deviated from the route",
+   "scores": {
+    "score_route": 52.35,
+    "score_penalty": 0.6,
+    "score_composed": 31.41
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 1,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 9,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T084400-6ccf12",
+   "source_sha256": "98da7538250f9a858a53ed7e72e95500d88bfb9d18e18f89aec49533d484eb58"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "2201",
+   "town": "Town12",
+   "scenario": "EnterActorFlow",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.336183,
+    "score_composed": 33.618345
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 2,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 17,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T165125-21d85e",
+   "source_sha256": "8b59397e356a189d4879facc596b9e7685a96c474e220fc1db1720126b675aab"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "2273",
+   "town": "Town12",
+   "scenario": "MergerIntoSlowTraffic",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.927161,
+    "score_composed": 92.716057
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 21,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260919T000243-bd011f",
+   "source_sha256": "0d8a3d737a9e76c94a9c6c6f2197d46bf14a9f7b51001ce37a0f9753dcc4a40a"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "2286",
+   "town": "Town12",
+   "scenario": "HighwayCutIn",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.903912,
+    "score_composed": 90.391156
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T135432-b62504",
+   "source_sha256": "d15366a85a9ed5c5ab1506838b876dd3d7ff9dff2891684b2e62a3f38fd24869"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "2509",
+   "town": "Town12",
+   "scenario": "ConstructionObstacle",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.902341,
+    "score_composed": 90.234124
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 20,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260919T031454-95cc42",
+   "source_sha256": "05914759ebd10afb183eab29e16dc0efe859ff9b9c307f81c32bb984aefc0873"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "2534",
+   "town": "Town12",
+   "scenario": "Accident",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.6,
+    "score_composed": 60.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T144159-e2d853",
+   "source_sha256": "e745ecfe86d020e57d7e82ff7253e0a06dfa47cffe616740245f0226ea34cb4e"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "2539",
+   "town": "Town12",
+   "scenario": "Accident",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.6,
+    "score_composed": 60.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260919T030733-30588c",
+   "source_sha256": "c116408acabe94aac7d98ac9ad433b7f52e35b0911ce5e6081e675e96cf16888"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "2790",
+   "town": "Town12",
+   "scenario": "InvadingTurn",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 1.0,
+    "score_composed": 100.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260919T023208-b7796b",
+   "source_sha256": "d19292a4203f40903a14366d39518350f998a6f6d43034b7babc568e62af250d"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "2802",
+   "town": "Town12",
+   "scenario": "InvadingTurn",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 60.73,
+    "score_penalty": 0.476617,
+    "score_composed": 28.944963
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 11,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T170112-fccca1",
+   "source_sha256": "a861643925de12ea8653509d48ba9e1f6e0b5e637745ae734283e61490960518"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "3307",
+   "town": "Town13",
+   "scenario": "Accident",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.36,
+    "score_composed": 36.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 2,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 20,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T204542-da8b35",
+   "source_sha256": "6bce70b25133bb67b9ac7fe247bcef04f009d8c25a9b231e33eac950771a049c"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "3364",
+   "town": "Town13",
+   "scenario": "YieldToEmergencyVehicle",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.6,
+    "score_composed": 60.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260919T022240-7392ab",
+   "source_sha256": "bab674c71b546e462eef48121abfb3935eb7099a532a2c9b34be92c81bd20bfd"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "3373",
+   "town": "Town13",
+   "scenario": "YieldToEmergencyVehicle",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.6,
+    "score_composed": 60.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T183558-b62156",
+   "source_sha256": "a0ab346862ae8d455e89f7739bd7656d0f41094334c82d98ddf979fa6ec36175"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "3378",
+   "town": "Town13",
+   "scenario": "YieldToEmergencyVehicle",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.227309,
+    "score_composed": 22.73085
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 2,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 1,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T205859-d96bdf",
+   "source_sha256": "acffda0acb1a38aa3bcc2f66df0bfe0da9f53651e0fabacfc206e68d7647cf97"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "3380",
+   "town": "Town13",
+   "scenario": "YieldToEmergencyVehicle",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 1.0,
+    "score_composed": 100.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 18,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260919T021139-d01159",
+   "source_sha256": "27e1ae6c3d1e2997d40c200bd9c637b50689baa820af0c604bab72c52655fd34"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "3410",
+   "town": "Town13",
+   "scenario": "AccidentTwoWays",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 16.61,
+    "score_penalty": 0.36,
+    "score_composed": 5.9796
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 2,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 3,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T184158-bf29df",
+   "source_sha256": "307cf33a07fc0b1f5d69686e29306b457d772ab63526ead943ccb58d6ea5b9a8"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "3564",
+   "town": "Town13",
+   "scenario": "InvadingTurn",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 74.53,
+    "score_penalty": 0.4225,
+    "score_composed": 31.488925
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 2,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 12,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T211217-f2aa0b",
+   "source_sha256": "0fe2d66ef3811abf88f454550437d29e6eb08bb88b761f6b1f682bcdc70a383d"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "3572",
+   "town": "Town13",
+   "scenario": "InvadingTurn",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.920108,
+    "score_composed": 92.010779
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 18,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260919T012903-6b6b77",
+   "source_sha256": "8d2a920a6df6ad9b572ff5852d9e2636793ade5e97b67333bdd8948dfd7f5d81"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "3575",
+   "town": "Town13",
+   "scenario": "InvadingTurn",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 1.0,
+    "score_composed": 100.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T200248-eb4639",
+   "source_sha256": "c2a50d6ce31cc3cc408f3e5af0feed59dcfca4a80421d4f5e1c8b0e8972848c1"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "3749",
+   "town": "Town13",
+   "scenario": "EnterActorFlow",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 65.34,
+    "score_penalty": 0.94006,
+    "score_composed": 61.423536
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 10,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T223104-118a5f",
+   "source_sha256": "423eaa1309995b0e5db74463d52a112fbd57e269af6059894f3f2a036c426cad"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "3813",
+   "town": "Town13",
+   "scenario": "HighwayCutIn",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.836321,
+    "score_composed": 83.63207
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T201523-ad1eda",
+   "source_sha256": "3e7f4c8003adcbcad3e3df2c9853a25d232e1362a30651cef57c77383d5a4e0e"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "3936",
+   "town": "Town12",
+   "scenario": "SignalizedJunctionLeftTurn",
+   "status": "Failed - Agent deviated from the route",
+   "scores": {
+    "score_route": 55.13,
+    "score_penalty": 0.972653,
+    "score_composed": 53.622338
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 1,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 9,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T235643-a35c48",
+   "source_sha256": "aa7d4b2411cc39d5504ae45e1696d00422e87df86d94bef23ffebd5bffd12a5f"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "4183",
+   "town": "Town12",
+   "scenario": "SignalizedJunctionLeftTurn",
+   "status": "Failed - Agent deviated from the route",
+   "scores": {
+    "score_route": 53.52,
+    "score_penalty": 1.0,
+    "score_composed": 53.52
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 1,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 9,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260919T003209-2290b3",
+   "source_sha256": "67ed0d53181676cdc0fb955b31fb2b73c9ba6ea0c55c2d62372d3c910061c94e"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "4468",
+   "town": "Town12",
+   "scenario": "SignalizedJunctionLeftTurn",
+   "status": "Failed - Agent deviated from the route",
+   "scores": {
+    "score_route": 54.73,
+    "score_penalty": 1.0,
+    "score_composed": 54.73
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 1,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 10,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T204340-adde22",
+   "source_sha256": "2ec55929077376f5ea8aaf673504a0afb9a527a2a345049ea8cffd3342e993a7"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "4669",
+   "town": "Town12",
+   "scenario": "SignalizedJunctionLeftTurn",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.587726,
+    "score_composed": 58.772573
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 20,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260919T001250-b3c219",
+   "source_sha256": "a362ffa6b264826a3f8d35ad63a8bfcd9c1f89945c588cf5cbc855ae6698dc8f"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "14194",
+   "town": "Town12",
+   "scenario": "PedestrianCrossing",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 48.72,
+    "score_penalty": 0.91817,
+    "score_composed": 44.733228
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 9,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T070042-acecee",
+   "source_sha256": "9cc556284993d15601a5b007561518965d4cd0408a2ec549fbcc2373e579dfd5"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "17752",
+   "town": "Town12",
+   "scenario": "DynamicObjectCrossing",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.909178,
+    "score_composed": 90.917846
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 20,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T210041-0d4cc1",
+   "source_sha256": "e45d352ec41d0b824773c5643f976103afcf19ebdb6763f6b6f99c4c8252e452"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "18305",
+   "town": "Town12",
+   "scenario": "ParkingCutIn",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 1.0,
+    "score_composed": 100.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 20,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T075833-0f2bf2",
+   "source_sha256": "84a3ea64b947a325738da533c188743747a32423d07b87ba0e682bb32f79deec"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "18311",
+   "town": "Town12",
+   "scenario": "ParkingCutIn",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 39.45,
+    "score_penalty": 0.94243,
+    "score_composed": 37.178866
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 6,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T144457-1d30bf",
+   "source_sha256": "0edcb90260daf879008d5b7c6fde31ced36e809340d02a9be11fa6459bf34b0b"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "18356",
+   "town": "Town12",
+   "scenario": "ParkingCutIn",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 38.66,
+    "score_penalty": 0.941251,
+    "score_composed": 36.38878
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 6,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T213600-d0192f",
+   "source_sha256": "d16b9f6e8485a8346346eeef2a9d4ab740aca95ed77f68bfe130493fad57aa27"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "24211",
+   "town": "Town01",
+   "scenario": "DynamicObjectCrossing",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.492428,
+    "score_composed": 49.242777
+   },
+   "infractions": {
+    "collisions_pedestrian": 1,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 18,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T174530-1bd3dc",
+   "source_sha256": "87dba47073bcd9c03d2ec0742766522589958cde64f7ab4f2e969ddb822a0de5"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "24224",
+   "town": "Town02",
+   "scenario": "DynamicObjectCrossing",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 83.34,
+    "score_penalty": 0.918232,
+    "score_composed": 76.525447
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 15,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260919T004107-156113",
+   "source_sha256": "4cb9c84672aa149bf139bb50400dd3275444ee5d46f0a100f2016e9357899c4b"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "24240",
+   "town": "Town10HD",
+   "scenario": "Accident",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 1.0,
+    "score_composed": 100.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T140623-ad355f",
+   "source_sha256": "13ce0d99315b922e6e3c5e236680386bcd8f1182a617eedb5b638081894c7060"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "24252",
+   "town": "Town11",
+   "scenario": "DynamicObjectCrossing",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.53642,
+    "score_composed": 53.641965
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 20,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T180340-27eab3",
+   "source_sha256": "0c233f6ed7f15ece84f048468d37c196e477447f9918bff261399c160942dce9"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "24333",
+   "town": "Town15",
+   "scenario": "DynamicObjectCrossing",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 39.51,
+    "score_penalty": 0.3,
+    "score_composed": 11.853
+   },
+   "infractions": {
+    "collisions_pedestrian": 1,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 6,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260919T015956-f5ec9f",
+   "source_sha256": "56998019f4c62592d8160414575b9b97f42c2c29c25451a69338b7403149a6fc"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "24795",
+   "town": "Town04",
+   "scenario": "ConstructionObstacle",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 1.0,
+    "score_composed": 100.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 20,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T143007-aa7846",
+   "source_sha256": "729e3748d7b7972eeca0bf33015173c9ff5f437721daef24a765bc07003513a9"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "24816",
+   "town": "Town03",
+   "scenario": "Accident",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.872147,
+    "score_composed": 87.214678
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T182037-e6d09e",
+   "source_sha256": "1aa658fd0c6abf79ca59c1b819444b643a1f3d1f57b1800b38054ed13113db58"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "25378",
+   "town": "Town03",
+   "scenario": "YieldToEmergencyVehicle",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.366646,
+    "score_composed": 36.664612
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T184031-caf316",
+   "source_sha256": "73593d5225c1a0f5d90dacf6020e6f68ac4fa4fa4626bb0b8bd28d8fb06807b4"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "25857",
+   "town": "Town05",
+   "scenario": "AccidentTwoWays",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.572358,
+    "score_composed": 57.235768
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 18,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T145518-09bdb9",
+   "source_sha256": "106982982b89518e4919a19295e0caf1f379da1eec4e97f65646d15d65ef9d3b"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "25863",
+   "town": "Town07",
+   "scenario": "PedestrianCrossing",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 22.72,
+    "score_penalty": 0.84308,
+    "score_composed": 19.154779
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 3,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T190314-4f9bcb",
+   "source_sha256": "d866dd8f0f7a924a943e1468970c5a3093f6fd466e69732c3744798da0fd5611"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "26956",
+   "town": "Town05",
+   "scenario": "SignalizedJunctionRightTurn",
+   "status": "Failed - Agent deviated from the route",
+   "scores": {
+    "score_route": 46.98,
+    "score_penalty": 0.36,
+    "score_composed": 16.9128
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 2,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 1,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 8,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260919T025115-500196",
+   "source_sha256": "5ff695dce80ea36f1c786e1ab3fa395b972318b1b8a10420973c181470170eda"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "26990",
+   "town": "Town03",
+   "scenario": "NonSignalizedJunctionLeftTurn",
+   "status": "Failed - Agent deviated from the route",
+   "scores": {
+    "score_route": 54.66,
+    "score_penalty": 0.974933,
+    "score_composed": 53.289858
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 1,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 8,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T160725-ba1551",
+   "source_sha256": "7692b43b32cf3e82f348fd346f001ad2006ab94c0389efe722f16eacda1e8e14"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "27018",
+   "town": "Town15",
+   "scenario": "SignalizedJunctionRightTurn",
+   "status": "Failed - Agent deviated from the route",
+   "scores": {
+    "score_route": 52.46,
+    "score_penalty": 0.6,
+    "score_composed": 31.476
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 1,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 10,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T193559-d2e6f2",
+   "source_sha256": "07de90f90e44417b0e85a318d7972d9b8960b0c70faf4b67d857dee1c7ddd6dd"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "27515",
+   "town": "Town03",
+   "scenario": "PedestrianCrossing",
+   "status": "Failed - Agent deviated from the route",
+   "scores": {
+    "score_route": 40.15,
+    "score_penalty": 0.608637,
+    "score_composed": 24.436775
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 1,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 6,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260919T023909-7785f9",
+   "source_sha256": "d59195357b24a57c4568f8aecf3b5dabe02030021ffb6efe96e44848197465c3"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "27529",
+   "town": "Town04",
+   "scenario": "PedestrianCrossing",
+   "status": "Failed - Agent deviated from the route",
+   "scores": {
+    "score_route": 50.02,
+    "score_penalty": 0.8,
+    "score_composed": 40.016
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 1,
+    "outside_route_lanes": 0,
+    "route_dev": 1,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 8,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T163804-4ef4a9",
+   "source_sha256": "f95448c7e99719cf47ec10454c681d92d0624af4b9437610a5882a92ff6f5c4f"
+  },
+  {
+   "model": "alpamayo15",
+   "rate_hz": 10,
+   "run_id": "native50-10hz-084418258d833a9f-c4d076",
+   "route_id": "27582",
+   "town": "Town11",
+   "scenario": "PedestrianCrossing",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 23.59,
+    "score_penalty": 0.451156,
+    "score_composed": 10.642768
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 4,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T200344-d1e952",
+   "source_sha256": "32ecf1c938fcb24b2ae0f67b8d78b3f27196ed0e0b2c6e4ce9dbd4036243f5ba"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "1711",
+   "town": "Town12",
+   "scenario": "ParkingCutIn",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 48.92,
+    "score_penalty": 0.4225,
+    "score_composed": 20.6687
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 2,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 9,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T033615-fb14a4",
+   "source_sha256": "63e4751ec8163f7a9c528ba14d4ba6fc2c7ec5317b4732e79a364921c98b84f5"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "1852",
+   "town": "Town12",
+   "scenario": "AccidentTwoWays",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 30.89,
+    "score_penalty": 0.200241,
+    "score_composed": 6.185436
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 3,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 5,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T072116-ab9a72",
+   "source_sha256": "126e1216b11eab70532e92fb772c145268851d18cdd9f9fe91c73f5debb4e068"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "2050",
+   "town": "Town12",
+   "scenario": "SignalizedJunctionRightTurn",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 52.4,
+    "score_penalty": 0.273,
+    "score_composed": 14.3052
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 1,
+    "red_light": 1,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 9,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T063909-7e3d59",
+   "source_sha256": "6f77eb772a4820f07b7f36ff265548e775229accc326117495ae68cbc4fc6acf"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "2084",
+   "town": "Town12",
+   "scenario": "NonSignalizedJunctionLeftTurn",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 47.5,
+    "score_penalty": 0.36,
+    "score_composed": 17.1
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 2,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 9,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T075625-8e838f",
+   "source_sha256": "5eb26bdcabd0da9464ea740cb61146a6d6898ff2fcf5bbf9882a5bbb45fc69f1"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "2086",
+   "town": "Town12",
+   "scenario": "NonSignalizedJunctionLeftTurn",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 41.12,
+    "score_penalty": 0.48,
+    "score_composed": 19.7376
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 1,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 8,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T065936-aaf733",
+   "source_sha256": "c4a306f25d74be21bdd9654a93adbe3806347107c027c98ce657734cde67f0ac"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "2201",
+   "town": "Town12",
+   "scenario": "EnterActorFlow",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.161139,
+    "score_composed": 16.11393
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 3,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 17,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T123812-798add",
+   "source_sha256": "b7e0940e85294c5f42a6dfcd482ff783a9fe8bc3792d034bc94cead283f876d1"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "2273",
+   "town": "Town12",
+   "scenario": "MergerIntoSlowTraffic",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 51.93,
+    "score_penalty": 0.410598,
+    "score_composed": 21.322354
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 2,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 10,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T074120-bd1ff3",
+   "source_sha256": "f540bb2c9a6389b54e2abc927ea3e0ddbec6dceb2a55f6728356a10daf2130ef"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "2286",
+   "town": "Town12",
+   "scenario": "HighwayCutIn",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 89.53,
+    "score_penalty": 0.332672,
+    "score_composed": 29.7841
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 2,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 15,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T090354-d752c8",
+   "source_sha256": "a0a4af2a9b34a1321043b0088536eaba268411daed810bf9f20767437764aed9"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "2509",
+   "town": "Town12",
+   "scenario": "ConstructionObstacle",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 65.44,
+    "score_penalty": 0.163295,
+    "score_composed": 10.686009
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 2,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 12,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T095205-f4079a",
+   "source_sha256": "943ff72d58483d1abced32b258ac364a85c8b661ee71b675bdb6605dfa68bd13"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "2534",
+   "town": "Town12",
+   "scenario": "Accident",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.113008,
+    "score_composed": 11.300765
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 2,
+    "collisions_layout": 2,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T093526-28305b",
+   "source_sha256": "a28e34ee3461ce7521f4acedbdf16f7d0ac3e1fb7f4a52a5bf94a4685641756e"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "2539",
+   "town": "Town12",
+   "scenario": "Accident",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.230976,
+    "score_composed": 23.097576
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 1,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T093905-af094a",
+   "source_sha256": "8fb2ad266a3e385f728b1c904f8339e5f323f3708608d38d02ebe12a65ee8ba0"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "2790",
+   "town": "Town12",
+   "scenario": "InvadingTurn",
+   "status": "Failed - Agent deviated from the route",
+   "scores": {
+    "score_route": 67.54,
+    "score_penalty": 0.179803,
+    "score_composed": 12.143919
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 1,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 12,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T122724-58e0bb",
+   "source_sha256": "aa6a493319948a22aeb2eece70194392e2bccdc3b5550b6424a1be7a42c5574e"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "2802",
+   "town": "Town12",
+   "scenario": "InvadingTurn",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 57.16,
+    "score_penalty": 0.20665,
+    "score_composed": 11.812094
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 10,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T100257-013ddb",
+   "source_sha256": "4445013ef6a6c7d0ce042a3566e0543ccc18c7af4fa342745f62456b48311018"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "3307",
+   "town": "Town13",
+   "scenario": "Accident",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 75.2,
+    "score_penalty": 0.351025,
+    "score_composed": 26.397062
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 1,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 13,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T115029-376c67",
+   "source_sha256": "319d09eb002746cf55c207063e88f4804abbc0310ddf7f414e538ce229c2b53e"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "3364",
+   "town": "Town13",
+   "scenario": "YieldToEmergencyVehicle",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.011557,
+    "score_composed": 1.155721
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 7,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T102236-c73420",
+   "source_sha256": "aceee1499150dfbf00336a660311d8e2655c65fb1cd6b0d278cebf6e3f226c99"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "3373",
+   "town": "Town13",
+   "scenario": "YieldToEmergencyVehicle",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.6,
+    "score_composed": 60.0
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T120840-29e30f",
+   "source_sha256": "7b1a087c3da3b1f37aed7661f043c9883a70d74bc25f1568996957b7519083c4"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "3378",
+   "town": "Town13",
+   "scenario": "YieldToEmergencyVehicle",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 29.45,
+    "score_penalty": 0.33617,
+    "score_composed": 9.900198
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 1,
+    "min_speed_infractions": 5,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T102623-79403b",
+   "source_sha256": "a69773842393859bdd9064e11d283f05ed6b49dd08178c2deb33f0a869c04d2b"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "3380",
+   "town": "Town13",
+   "scenario": "YieldToEmergencyVehicle",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.325034,
+    "score_composed": 32.503399
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 1,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T121200-a741ef",
+   "source_sha256": "56e9058cd2f1ec91dbcdcb0a8c31f7f146efce9e788b5a282f2428d0dbc6487f"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "3410",
+   "town": "Town13",
+   "scenario": "AccidentTwoWays",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 27.88,
+    "score_penalty": 0.26389,
+    "score_composed": 7.357266
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 1,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 5,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T103440-3f2674",
+   "source_sha256": "b59e2d0a0f8501d01e9826aeecdafc93cf8b310b4da745416f07e411481bc84f"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "3564",
+   "town": "Town13",
+   "scenario": "InvadingTurn",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 37.29,
+    "score_penalty": 0.265416,
+    "score_composed": 9.897353
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 2,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 6,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260919T055851-e9a15e",
+   "source_sha256": "a1164c03e588ae6ce5b5d55f98c3b837390854995b29b408d3ca9c21a8484dfa"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "3572",
+   "town": "Town13",
+   "scenario": "InvadingTurn",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 75.28,
+    "score_penalty": 0.027553,
+    "score_composed": 2.074224
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 5,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 12,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T105340-1444ae",
+   "source_sha256": "4a050413af1c4b1003aa8432bdc07d490cd410234efcd961aba035f263380214"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "3575",
+   "town": "Town13",
+   "scenario": "InvadingTurn",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.080708,
+    "score_composed": 8.070791
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 2,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T123223-20029e",
+   "source_sha256": "bb0c3ede37fd43eb21e2c40ebd3e431ea7c67bd223d0c714b6239dfdfdae9793"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "3749",
+   "town": "Town13",
+   "scenario": "EnterActorFlow",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 65.34,
+    "score_penalty": 0.292731,
+    "score_composed": 19.12703
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 1,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 10,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T110926-6ef11f",
+   "source_sha256": "0e4c448e7f0c112a2d8679760c8c5253d2f51cae132605d92f0c9e212b0d850c"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "3813",
+   "town": "Town13",
+   "scenario": "HighwayCutIn",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.29285,
+    "score_composed": 29.285003
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 2,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T112438-936eec",
+   "source_sha256": "35a80ad71dbbcc3bd8c12646905fecc153c56785022c72eb5f1cab6bff0c265a"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "3936",
+   "town": "Town12",
+   "scenario": "SignalizedJunctionLeftTurn",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 31.92,
+    "score_penalty": 0.108492,
+    "score_composed": 3.463059
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 3,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 5,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T075615-be73bb",
+   "source_sha256": "6a1d13016cc964b838c76bb1a43f49b9483138307909669ea74e233d69c29529"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "4183",
+   "town": "Town12",
+   "scenario": "SignalizedJunctionLeftTurn",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 42.16,
+    "score_penalty": 0.6,
+    "score_composed": 25.296
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 7,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T083548-249c94",
+   "source_sha256": "eae1beff4b13d880d1457604d1d9bac8c2ffaaf5051eb267bd77ed64b84bb603"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "4468",
+   "town": "Town12",
+   "scenario": "SignalizedJunctionLeftTurn",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 47.06,
+    "score_penalty": 0.517842,
+    "score_composed": 24.369647
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 8,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T063914-ae9928",
+   "source_sha256": "d9770ff049ea881cd879ac2a39a9b4f306ffc24a111cfc1d9b96105774b8c946"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "4669",
+   "town": "Town12",
+   "scenario": "SignalizedJunctionLeftTurn",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 48.71,
+    "score_penalty": 0.536546,
+    "score_composed": 26.135144
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 9,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T070203-402e8c",
+   "source_sha256": "1a6ef9d807b68db4a7b8d020c73520f5aa9af253a2bbd403a9b111ba2fa5b577"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "14194",
+   "town": "Town12",
+   "scenario": "PedestrianCrossing",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 62.79,
+    "score_penalty": 0.168572,
+    "score_composed": 10.584651
+   },
+   "infractions": {
+    "collisions_pedestrian": 1,
+    "collisions_vehicle": 2,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 11,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T063904-2b1993",
+   "source_sha256": "60df2e63f2f27dcab2b2e485b2368d228a8eb9bc6876700d3e7194400f95c844"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "17752",
+   "town": "Town12",
+   "scenario": "DynamicObjectCrossing",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 21.88,
+    "score_penalty": 0.414603,
+    "score_composed": 9.071517
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 4,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T064836-3232bb",
+   "source_sha256": "33113b646e73502a428c10fa00ace3dcdc4f0b982ad2cfc303a451c919633fa1"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "18305",
+   "town": "Town12",
+   "scenario": "ParkingCutIn",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 20.37,
+    "score_penalty": 0.489365,
+    "score_composed": 9.968368
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 3,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T034907-def258",
+   "source_sha256": "b4ebf5b674895e012e9c37ced120587c47f8fd275be53a3bf1d9c8a1c1620133"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "18311",
+   "town": "Town12",
+   "scenario": "ParkingCutIn",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 34.9,
+    "score_penalty": 0.250707,
+    "score_composed": 8.74969
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 2,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 5,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T065751-d2f885",
+   "source_sha256": "5fae794dbd6197d6ee5bf6425eebf4a1b9714bd320026a1df84a975b41acc61e"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "18356",
+   "town": "Town12",
+   "scenario": "ParkingCutIn",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 19.73,
+    "score_penalty": 0.461864,
+    "score_composed": 9.112571
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 3,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T035601-322587",
+   "source_sha256": "3f1727ad87ba3acdbfd91b22b52ceef980495c58b9b20642b0c276d9b309e1ed"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "24211",
+   "town": "Town01",
+   "scenario": "DynamicObjectCrossing",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 57.6,
+    "score_penalty": 0.060791,
+    "score_composed": 3.50155
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 3,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 9,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T080544-0a249b",
+   "source_sha256": "5950bb18513e1955fd2ef1eef7ea97b6351bde808cd336f03bf1d25de77e2195"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "24224",
+   "town": "Town02",
+   "scenario": "DynamicObjectCrossing",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 55.32,
+    "score_penalty": 0.124819,
+    "score_composed": 6.904979
+   },
+   "infractions": {
+    "collisions_pedestrian": 1,
+    "collisions_vehicle": 0,
+    "collisions_layout": 1,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 10,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T093434-1e2d42",
+   "source_sha256": "1b56ee3b965b1cb11187f3413bbc13bb2d57c303b6756722ef190c7e868170c5"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "24240",
+   "town": "Town10HD",
+   "scenario": "Accident",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 51.77,
+    "score_penalty": 1.0,
+    "score_composed": 51.77
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 9,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T082617-342641",
+   "source_sha256": "e22c27e5d71d7f2b436315d7ae9855feab5d4943ceb34663bee33acd246bdcb3"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "24252",
+   "town": "Town11",
+   "scenario": "DynamicObjectCrossing",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100.0,
+    "score_penalty": 0.162782,
+    "score_composed": 16.278161
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 1,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 20,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T094612-9d9ef7",
+   "source_sha256": "be8a82fb9902cdaefb43f7666aeb1415c1c3e7f08fa5d0950bc4bc600fa85d43"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "24333",
+   "town": "Town15",
+   "scenario": "DynamicObjectCrossing",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.146073,
+    "score_composed": 14.607281
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 1,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 18,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T085634-ca0e63",
+   "source_sha256": "723dbbf167d7d3f54997494e3d23a6c7af5d27269d81889282436c76e708b6f2"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "24795",
+   "town": "Town04",
+   "scenario": "ConstructionObstacle",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.098865,
+    "score_composed": 9.8865
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 2,
+    "collisions_layout": 3,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 20,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T094911-7fc716",
+   "source_sha256": "729b3953da9b3b6179468ad153c229b1ec6bad40bc6d6fae728f79a4fd01a65d"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "24816",
+   "town": "Town03",
+   "scenario": "Accident",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 51.25,
+    "score_penalty": 0.102638,
+    "score_composed": 5.260172
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 2,
+    "collisions_layout": 1,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 9,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T091200-b07349",
+   "source_sha256": "aecceacb3605cf615f3db789d262e03c26a6f10dec2a2a49754ca8a52b898dc5"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "25378",
+   "town": "Town03",
+   "scenario": "YieldToEmergencyVehicle",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.175136,
+    "score_composed": 17.513567
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 3,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 19,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T100833-77255c",
+   "source_sha256": "39eedeb845b841deea2c77fc045eeb76b055f2475b0815de57865b3bd264e1f6"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "25857",
+   "town": "Town05",
+   "scenario": "AccidentTwoWays",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 51.76,
+    "score_penalty": 0.085747,
+    "score_composed": 4.438263
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 2,
+    "collisions_layout": 2,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 8,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T101117-fb5745",
+   "source_sha256": "74a175f11b36ca4dcaa9f1d9240736ae0b0b94b3428f24632dafd676bfba1f7e"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "25863",
+   "town": "Town07",
+   "scenario": "PedestrianCrossing",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.303656,
+    "score_composed": 30.365558
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 1,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 17,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T094329-b0b6e5",
+   "source_sha256": "89435fa6bbe9e711b7316a6f059694e4bf1c638cf669b92a93e01709b4b9803d"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "26956",
+   "town": "Town05",
+   "scenario": "SignalizedJunctionRightTurn",
+   "status": "Failed - Agent deviated from the route",
+   "scores": {
+    "score_route": 54.47,
+    "score_penalty": 0.216,
+    "score_composed": 11.76552
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 3,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 1,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 9,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T102429-fc54c7",
+   "source_sha256": "3e09b692238ea94cf30fd17013a55e5f54cfc667aed86c083df238a5ce117c7e"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "26990",
+   "town": "Town03",
+   "scenario": "NonSignalizedJunctionLeftTurn",
+   "status": "Completed",
+   "scores": {
+    "score_route": 100,
+    "score_penalty": 0.149438,
+    "score_composed": 14.943751
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 3,
+    "collisions_layout": 0,
+    "red_light": 1,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 17,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T094605-802b39",
+   "source_sha256": "badc3b28201394d535622b57539f57cc3acee7b538f92672992873d455038207"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "27018",
+   "town": "Town15",
+   "scenario": "SignalizedJunctionRightTurn",
+   "status": "Failed - TickRuntime",
+   "scores": {
+    "score_route": 49.33,
+    "score_penalty": 0.252,
+    "score_composed": 12.43116
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 2,
+    "collisions_layout": 0,
+    "red_light": 1,
+    "stop_infraction": 0,
+    "outside_route_lanes": 0,
+    "route_dev": 0,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 9,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T102713-9946ab",
+   "source_sha256": "1ee2a5a1df8959fc267b0c547e8c575376fe778614132eebdb876b64b68902ea"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "27515",
+   "town": "Town03",
+   "scenario": "PedestrianCrossing",
+   "status": "Failed - Agent deviated from the route",
+   "scores": {
+    "score_route": 44.24,
+    "score_penalty": 0.680869,
+    "score_composed": 30.121651
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 1,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 7,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T095644-547f54",
+   "source_sha256": "56d5934d31cd95bf13adfbf1a891e0751b2a6a4c0c78eb472acda1fd01f31f77"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "27529",
+   "town": "Town04",
+   "scenario": "PedestrianCrossing",
+   "status": "Failed - Agent got blocked",
+   "scores": {
+    "score_route": 54.26,
+    "score_penalty": 0.239672,
+    "score_composed": 13.00461
+   },
+   "infractions": {
+    "collisions_pedestrian": 1,
+    "collisions_vehicle": 0,
+    "collisions_layout": 1,
+    "red_light": 0,
+    "stop_infraction": 1,
+    "outside_route_lanes": 1,
+    "route_dev": 0,
+    "vehicle_blocked": 1,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 9,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T104237-cd2eb4",
+   "source_sha256": "e47f4efcfc30a90034f955c48dbb64d80a54bf11025180b06f80057131465b5f"
+  },
+  {
+   "model": "qwendrive",
+   "rate_hz": 2,
+   "run_id": "native50-2hz-084418258d833a9f-9b2bc9",
+   "route_id": "27582",
+   "town": "Town11",
+   "scenario": "PedestrianCrossing",
+   "status": "Failed - Agent deviated from the route",
+   "scores": {
+    "score_route": 88.25,
+    "score_penalty": 0.534015,
+    "score_composed": 47.126837
+   },
+   "infractions": {
+    "collisions_pedestrian": 0,
+    "collisions_vehicle": 0,
+    "collisions_layout": 0,
+    "red_light": 0,
+    "stop_infraction": 0,
+    "outside_route_lanes": 1,
+    "route_dev": 1,
+    "vehicle_blocked": 0,
+    "yield_emergency_vehicle_infractions": 0,
+    "min_speed_infractions": 15,
+    "route_timeout": 0,
+    "scenario_timeouts": 0
+   },
+   "source_run_id": "20260918T095938-69c754",
+   "source_sha256": "064e3f2f42d0125ffc2c87da1a283975d4e6b83ab156062c96b6074c4ea9b085"
+  }
+ ]
+}
