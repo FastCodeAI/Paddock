@@ -147,6 +147,18 @@ def test_policy_imports_without_navsim_installed() -> None:
     assert isinstance(policy, Policy)
 
 
+def test_the_momentum_switch_is_refused(monkeypatch) -> None:
+    """With it on, the stage would be fed the model's pick, not the plan that was driven."""
+    monkeypatch.setenv("DRIVEJEPA_MOMENTUM", "on")
+    with pytest.raises(ValueError, match="not supported by drivejepa_rerank"):
+        POLICY(weights="/w", checkpoint="/x.ckpt")
+
+
+def test_momentum_off_is_accepted_and_recorded(monkeypatch) -> None:
+    monkeypatch.setenv("DRIVEJEPA_MOMENTUM", "off")
+    assert POLICY(weights="/w", checkpoint="/x.ckpt").diagnostics()["momentum"] == "off"
+
+
 def test_load_without_weights_says_which_setting(monkeypatch) -> None:
     monkeypatch.delenv("DRIVEJEPA_RERANK_WEIGHTS", raising=False)
     with pytest.raises(RuntimeError, match="DRIVEJEPA_RERANK_WEIGHTS"):

@@ -21,6 +21,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from paddock.adapters.models.drivejepa import momentum
 from paddock.adapters.models.drivejepa.policy import HISTORY_DT, DriveJepaPolicy
 from paddock.adapters.models.drivejepa_rerank import ranker
 from paddock.policy.protocol import Observation, Trajectory
@@ -29,6 +30,15 @@ from paddock.policy.protocol import Observation, Trajectory
 class DriveJepaRerankPolicy(DriveJepaPolicy):
     def __init__(self, weights: str | None = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
+        # The momentum stage compares each replan with the plan `forward`
+        # remembered, which is the model's own pick. This policy drives the
+        # re-ranker's pick instead, so the stage would be fed a plan the car
+        # never followed. Refused until `forward` can be told what was driven.
+        if self.momentum is not None:
+            raise ValueError(
+                f"{momentum.SWITCH_ENV}=on is not supported by drivejepa_rerank: the stage would be "
+                "fed the model's own previous pick, not the plan the re-ranker drove"
+            )
         # The checkpoint directory gallops wrote: reranker.npz + checkpoint.json.
         self.weights = weights or os.environ.get("DRIVEJEPA_RERANK_WEIGHTS")
         self.reranker: ranker.Reranker | None = None

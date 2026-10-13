@@ -378,7 +378,10 @@ nuScenes and planned from ego status alone. It is kept on the branch
 `record/drivejepa-camera-blind` and is not evidence for or against the stage
 on the model that drives now. The comparison has to be made again on this
 node; a run made with it records `camera_frame: ego` beside `momentum: on` in
-`run.json`. No row in `results/` was made with the switch on.
+`run.json`. No row in `results/` was made with the switch on. `drivejepa_rerank`
+refuses the switch: the stage remembers the model's own pick, and that policy
+drives the re-ranker's pick, so it would be compared against a plan the car
+never followed. Supporting it means telling the stage which plan was driven.
 
 ## Bench2Drive / CARLA — adapter landed, driven, and the runs are tracked
 
