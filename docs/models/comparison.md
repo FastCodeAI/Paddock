@@ -205,6 +205,10 @@ release reports its own figures on nuPlan test, which suggests those were held
 out. That is argued, not verified, and `model.yaml` declares `nuplan / train`
 on that reading.
 
+Its inputs differ from training too: NAVSIM sends no route and paddock no map,
+which is upstream's own KITScenes test track (`camera_only_missing_map_route`),
+while every training and validation sample had both.
+
 The fine-tune pulls the other way: the last thing the checkpoint learned is a
 different rig, KIT's ring cameras seen from a reference frame 2.1 m up. The
 release's `nuplan-epoch-5` would be the in-distribution choice for this column

@@ -43,8 +43,8 @@ From the release `config.json` and upstream's KITScenes evaluation path
   current observation lacks one. The seven history frames are the held frames
   nearest t−3.5 … t−0.5 s within 0.06 s that carry all six views. Where the
   past does not reach that far (a route or log start) the oldest six-view frame
-  is repeated with its own pose, and `diagnostics()` counts how many were
-  (`history_repeated`).
+  is repeated with its own pose; each plan's `extras` and `diagnostics()`'s
+  last call say how many were (`history_repeated`).
 - **Reference frame.** Projections start from paddock's ego frame raised by
   `AUTOE2E_REF_HEIGHT_M` (default 2.1 m): KITScenes' top-LiDAR frame, whose
   ground sits at z = −2.1 m (`kit_scenes/dataset.py`), is what the fine-tune
@@ -59,7 +59,11 @@ From the release `config.json` and upstream's KITScenes evaluation path
   benchmark sends one: a corridor 1.75 m either side, clipped 10 m behind, and
   a 2 m destination disk where the polyline stops short of 200 m. Bench2Drive
   sends the leaderboard's route; NAVSIM has none, so its scenes run camera +
-  ego only. `AUTOE2E_ROUTE=0` forces the camera-only track.
+  ego only. `AUTOE2E_ROUTE=0` forces the camera-only track. That track is
+  upstream's official KITScenes *test* input (`camera_only_missing_map_route`);
+  training and validation always had map and route
+  (`distributed_training/reactive_data.py` at `40a75cf8`), so NAVSIM shows this
+  checkpoint an input it was evaluated on but never trained on.
 - **Output.** The 64 controls are integrated with upstream's rollout
   (`training/losses/control_rollout.py`: dt 0.1, speed clamped at zero first,
   heading from the new speed), starting from the history's t−0.1 s speed, and
@@ -116,13 +120,13 @@ logs at 10 Hz, rear views from OpenScene's keyframes, which are exactly the
 
 | EPDMS | NC | DAC | DDC | TLC | EP | TTC | LK | HC | EC |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| **0.5002** | 0.824 | 0.777 | 0.865 | 0.990 | 0.491 | 0.814 | 0.830 | 0.984 | 0.813 |
+| **0.5002** | 0.824 | 0.777 | 0.865 | 0.990 | 0.491 | 0.814 | 0.830 | 0.984 | 0.812 |
 
 Between the constant-velocity floor (0.2385) and Alpamayo 1.5 at 2 Hz
 (0.6081). Where the score goes: plans lean left (on straight roads the plan
 ends a median 0.41 m left of the human's, growing with speed), right turns are
 under-turned, and starts from a standstill are timid (2.3 m planned against
-8.4 m driven). Comfort (0.984 history, 0.813 extended) is its strongest column.
+8.4 m driven). Comfort (0.984 history, 0.812 extended) is its strongest column.
 
 **Bench2Drive: not recorded here.** The 50-route sweep (`PADDOCK_INFER_HZ=10`,
 a forward every call, route raster on) was paused part-way. Every route run so
