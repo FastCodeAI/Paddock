@@ -202,9 +202,14 @@ serialize = true
 # workers      = 4
 # chunk_logs   = 4        # logs per scorer invocation; 0 = one invocation (no resume)
 # run_retries  = 2        # restart nodes and resume from completed chunks this many times
-# nodes        = 4        # policy nodes per CPU-only model; GPU models always get one
+# nodes        = 4        # policy nodes per CPU-only model; GPU models get `gpu_nodes`
 #                        # with >1 visionpilot node, also set VISIONPILOT_ORT_THREADS (e.g. "2")
 #                        # under [models.visionpilot.env], or each node claims every core
+# gpu_nodes    = 1        # policy nodes per GPU model; more only for a small model bound by
+#                        # its per-request forward, not by memory (autoe2e: ~3 GB each)
+# keyframe_cameras = false  # dense path: a view the nuplan pull lacks (it may hold F0/L0/R0 only)
+#                        # comes from OpenScene's 2 Hz keyframes; for a model whose camera
+#                        # history is itself 2 Hz (autoe2e). Recorded in run.json.
 
 # [benchmarks.navsim_v1]
 # NAVSIM v1.1 PDMS on the same OpenScene data, scored by the v1 devkit that sits

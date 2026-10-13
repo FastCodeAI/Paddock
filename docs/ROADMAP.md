@@ -419,6 +419,22 @@ results, not the knob.
   because reading it means adding a map dependency, and alpamayo15 has no
   record (gated `Cosmos-Reason2-8B`). Detail in `docs/benchmarks/nuplan.md`.
 
+- **AutoE2E v1.0** — **adapter landed; NAVSIM scored, Bench2Drive paused.** The
+  Autoware Foundation's release checkpoint `kitscenes-epoch-5`, imported from
+  upstream at the release revision. NAVSIM `navtest` 0.500 EPDMS (12,146
+  scenarios, valid) on the 10 Hz nuPlan path, with the rear views from
+  OpenScene's keyframes (`keyframe_cameras`). Bench2Drive needed the route as
+  an observation field (`route_xy`); its 50-route sweep is paused with no
+  record here. Detail in [`docs/models/autoe2e.md`](models/autoe2e.md).
+
+  | Claim | Verified how | Strength |
+  |---|---|---|
+  | the two speed patches change no output | `torch.equal` against upstream's forward, 9 Oct | **verified**, on the shapes run |
+  | route raster and rollout follow upstream | read against `navigation/geometry.py` and `control_rollout.py` at `40a75cf8`; conventions pinned by the adapter's tests | **strong** |
+  | `route_xy` has the right sign | stand-in CARLA test (left lane arrives at y > 0) and, live, the B2D projection overlay | **strong** |
+  | the Bench2Drive swerve is the model, not the adapter | projection overlay, raster mapping, and a y-mirror / rot-180 A/B on 80 navtest scenes where the deployed convention scores best | **argued** — no upstream closed-loop reference exists |
+  | NAVSIM is out of its training logs | the release names no nuPlan split; its own nuPlan-test figures suggest test was held out | **argued** |
+
 Not started, and larger than everything above:
 
 - **alpamayo2, vjepa2, sunnypilot** — never evaluated.
