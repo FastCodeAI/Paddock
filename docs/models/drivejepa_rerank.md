@@ -236,13 +236,19 @@ Paired on the same 5,119 samples, with SEs over the 150 scenes:
   point collisions −0.61 points (t −2.3)
 - against `drivejepa` with the fix: cumulative L2 −0.772 m (t −16)
 
-**Seeing the camera made Drive-JEPA's own pick worse on nuScenes** (1.360
-against 0.912 blind). Under the crop this model uses, its 32 candidates still
-hold good plans, and the selector finds them. That last comparison mixes two
-changes: `drivejepa` runs on native cameras, and this model on the OpenScene
-crop (see above). The selector's own effect at the same pixels has not been
-measured on nuScenes, because the run records only the driven trajectory, not
-Drive-JEPA's own pick.
+**Plain `drivejepa` with the fix scores 1.360, against the recorded row's 0.912,
+but those two runs are not paired.** The 0.912 run was made at another site
+(`fastcode-navvrat-nusc-dj`, 5 Sep 2026), before the nuScenes harness reached
+main (#38) and before #55 changed how the adapter decodes frames. Its run.json
+records no Drive-JEPA commit, and its per-sample records are not at this site.
+So the 0.45 m between them includes more than the fix.
+
+Under the crop this model uses, Drive-JEPA's 32 candidates hold good plans, and
+the selector finds them. The −0.772 m against `drivejepa` with the fix is
+paired, but it mixes two changes: `drivejepa` runs on native cameras, and this
+model on the OpenScene crop (see above). The selector's own effect at the same
+pixels has not been measured on nuScenes, because the run records only the
+driven trajectory, not Drive-JEPA's own pick.
 
 ## Limits
 
