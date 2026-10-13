@@ -302,8 +302,11 @@ class Observation:
     nav_distance_m: float | None = None
     #: The route ahead as an (N, 2) polyline in the ego frame (x forward, y left, metres), starting a few
     #: metres behind the ego. Closed-loop sources that hold a route send it (Bench2Drive: the leaderboard's
-    #: global plan, 10 m behind to 200 m ahead); None where the source has no route (NAVSIM, open loop).
-    #: A policy that rasterises the route (AutoE2E's navigation tile) reads it.
+    #: global plan, from the first plan point at least 10 m behind to the first at least 200 m ahead); None
+    #: where the source has no route (NAVSIM, open loop). Points are only as dense as the source's route:
+    #: Bench2Drive's is downsampled to a point per road-option change and otherwise every ~50 m, so a
+    #: segment can cut a bend by metres. A policy that rasterises the route (AutoE2E's navigation tile)
+    #: reads it.
     route_xy: np.ndarray | None = None
     #: Frames that live on disk, loaded on first use instead of being carried.
     #:

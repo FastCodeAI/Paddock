@@ -99,13 +99,18 @@ def _agent(agent_module, hero: _Hero, plan_xy: list[tuple[float, float]]):
 
 
 def test_a_route_on_the_egos_left_arrives_with_positive_y(agent_module) -> None:
-    """CARLA's y points right: a lane 3 m to the left is CARLA y = -3, paddock y = +3."""
-    plan = [(float(x), -3.0) for x in range(-50, 400)]  # 1 m spacing, as the leaderboard's plan
+    """CARLA's y points right: a lane 3 m to the left is CARLA y = -3, paddock y = +3.
+
+    The plan is spaced as the agent receives it. The leaderboard hands `set_global_plan`
+    a 1 m route and the base class keeps `downsample_route(route, 50)` of it (Bench2Drive
+    7ec25d1, autonomous_agent.py): a point at each road-option change, otherwise every
+    ~50 m. `route_xy` adds no points between them."""
+    plan = [(float(x), -3.0) for x in range(-50, 401, 50)]
     route = np.array(_agent(agent_module, _Hero(0.0, 0.0, 0.0), plan)._route_xy())
     assert np.allclose(route[:, 1], 3.0)
-    assert route[0, 0] == pytest.approx(-10.0, abs=1.0), "10 m behind the nearest plan point"
-    assert route[-1, 0] == pytest.approx(200.0, abs=1.0), "200 m ahead of it"
-    assert np.all(np.diff(route[:, 0]) > 0)
+    assert route[0, 0] == pytest.approx(-50.0), "the first plan point at least 10 m behind the nearest"
+    assert route[-1, 0] == pytest.approx(200.0), "the first at least 200 m ahead of it"
+    assert np.allclose(np.diff(route[:, 0]), 50.0), "no denser than the leaderboard's plan"
 
 
 def test_the_polyline_turns_with_the_ego(agent_module) -> None:

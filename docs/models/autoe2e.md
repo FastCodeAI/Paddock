@@ -133,3 +133,8 @@ front matrix land on the cars, with left cars at y > 0; the route raster maps
 pixels exactly as upstream's `navigation/geometry.py`; and on 80 NAVSIM scenes
 the deployed convention beats a y-mirrored BEV and a 180° rotation (4 s ADE
 1.81 m against 1.88 and 1.92). The same left lean is visible open loop above.
+Not ruled out: the route raster is drawn from the leaderboard's downsampled
+plan, a point every ~50 m within one road option, so on a bend the corridor
+runs as a chord up to ~3 m off the lane at a 100 m radius; and a route with no
+map (`route_valid` true, `map_valid` false) is an input upstream never produces
+(`navigation/rasterizer.py` sets `route_valid` only with a map).

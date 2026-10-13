@@ -328,10 +328,16 @@ class PaddockB2DAgent(AutonomousAgent):
 
     def _route_xy(self, behind_m: float = 10.0, ahead_m: float = 200.0):
         """The leaderboard's global plan near the ego as an ego-frame polyline (x forward,
-        y left, metres): from ``behind_m`` before the plan point nearest the ego to
-        ``ahead_m`` after it. None without a plan. A policy that rasterises the route
-        (AutoE2E's navigation tile) reads it; a polyline ending short of ``ahead_m`` is
-        the route's end."""
+        y left, metres): from the first plan point at least ``behind_m`` before the one
+        nearest the ego to the first at least ``ahead_m`` after it. None without a plan.
+        A policy that rasterises the route (AutoE2E's navigation tile) reads it; a
+        polyline ending short of ``ahead_m`` is the route's end.
+
+        The points are the plan's own, and the plan is sparse: the leaderboard hands
+        ``set_global_plan`` a 1 m route and the base class keeps
+        ``downsample_route(route, 50)`` of it, a point at each road-option change and
+        otherwise every ~50 m. A straight segment between two of them cuts a bend by its
+        sagitta, ~3 m at a 100 m radius."""
         plan = getattr(self, "_global_plan_world_coord", None)
         hero = self._hero_actor()
         if not plan or hero is None:

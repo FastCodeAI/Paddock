@@ -432,7 +432,7 @@ results, not the knob.
   | the two speed patches change no output | `torch.equal` against upstream's forward, 9 Oct | **verified**, on the shapes run |
   | route raster and rollout follow upstream | read against `navigation/geometry.py` and `control_rollout.py` at `40a75cf8`; conventions pinned by the adapter's tests | **strong** |
   | `route_xy` has the right sign | stand-in CARLA test (left lane arrives at y > 0) and, live, the B2D projection overlay | **strong** |
-  | the Bench2Drive swerve is the model, not the adapter | projection overlay, raster mapping, and a y-mirror / rot-180 A/B on 80 navtest scenes where the deployed convention scores best | **argued** — no upstream closed-loop reference exists |
+  | the Bench2Drive swerve is the model, not the adapter | projection overlay, raster mapping, and a y-mirror / rot-180 A/B on 80 navtest scenes where the deployed convention scores best; not ruled out: the route comes from the leaderboard's 50 m-downsampled plan, and route-without-map is an input upstream never produces | **argued** — no upstream closed-loop reference exists |
   | NAVSIM is out of its training logs | the release names no nuPlan split; its own nuPlan-test figures suggest test was held out | **argued** |
 
 Not started, and larger than everything above:
