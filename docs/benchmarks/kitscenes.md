@@ -39,7 +39,7 @@ how Drive-JEPA has a row on this benchmark without a paddock run.
 | openpilot | `legacy-full223` | 223 | 1.599 | `eval_kitscenes/runs/full223` |
 | meteor | `20260914T215457-ab0586` | 223 | 1.879 | a paddock run; six of its eight cameras |
 | drivejepa | `legacy-kitscenes_e2e_final` | 223 | 2.364 | `inference/kitscenes_e2e_final.pkl` |
-| drivejepa_rerank | `20260918T220628-d7ed08` | 223 | 0.973 | a paddock run; **adapted**, trained on KITScenes train, see below |
+| drivejepa_rerank | `20260921T210621-d7ed08` | 223 | 0.973 | a paddock run; **adapted**, trained on KITScenes train, see below |
 
 All seven carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
 so the column compares. Caveats the hash cannot express:

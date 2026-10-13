@@ -180,7 +180,7 @@ They were trained on 4,858 keyframes from 318 train scenes; the epoch was chosen
 on the other 853 keyframes from 55 train scenes. On those held-out scenes the
 pick's ADE went from 2.515 to 1.050, against a best-of-32 of 0.502.
 
-**KITScenes**, run `20260918T220628-d7ed08`, all 223 samples, valid:
+**KITScenes**, run `20260921T210621-d7ed08`, all 223 samples, valid:
 
 | | ADE@3s (m) | FDE@3s (m) |
 |---|---:|---:|
