@@ -115,6 +115,7 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 | Alpamayo 1.5 | 0.787 △ | 1.002 | **0.900** ✦ | — ◐◐ | 0.691 (10 Hz) † | 0.753 (10 Hz) † | 55.82 (10 Hz) ※ | **3.73** ‖ | 0.9000 ¶¶ |
 | Drive-JEPA | 0.912 △ ⊘ | 2.364 | 16.048 ✦ | 1.512 ◐ | 0.843 | 0.892 † | 57.60 (2 Hz) ※ | **3.57** ‖ ⊘ | 0.5030 ¶ |
 | Drive-JEPA, KITScenes re-ranker ⊛ | 0.587 ⊛ | 0.973 ⊛ | not run | not run | not run | not run | — | not run ⊛ | — |
+| Drive-JEPA, retrained on Physical AI AV ⊕ | not run | not run | not run | not run | not run | not run | not run | not run | 0.9956 ⊕ |
 | VisionPilot | 1.441 △ | 1.534 ∗ | 4.045 ✦ ∗ | 2.246 ◐ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.8488 ¶ |
 | METEOR | 0.977 △ | 1.879 ◇ | — ✦ | 1.273 ◐ | 0.303 ◊ | 0.366 ◊ | — | **2.64** ‖ | — |
 | Qwen-Drive 1.0 | 0.450 | 0.806 | 1.159 ✦ | — | 0.840 | 0.876 | 17.08 (2 Hz) ※ | **2.49** | — |
@@ -136,6 +137,21 @@ below constant velocity on cumulative L2 (t −2.8); its point collision rate,
 camera-blind one (⊘), and this row also differs from it in the camera crop, so
 the two are not a like-for-like comparison.
 See `docs/models/drivejepa_rerank.md`.
+
+⊕ The same architecture with a second checkpoint: Drive-JEPA's trajectory
+generator retrained on NVIDIA's Physical AI AV dataset (`train` split). It is
+driven by the native AlpaSim driver at 0.1.7
+(`tools/models/drivejepa/alpasim_driver/`), not through a paddock node, and the
+row was ingested from that driver's recorded runs, as the Drive-JEPA row was.
+Its AlpaSim cell is *adapted*, not zero-shot: AlpaSim's scenes are
+reconstructions of clips from that dataset. The training code excludes the
+evaluation scenes, which is taken on that code's word, and these ten scenes
+were driven repeatedly while the driver was developed, so the number is not a
+held-out one. Referee, scenes and scorer are those of the other rows (¶), one
+rollout per scene. On 30 scenes (these ten plus twenty more) it scores 0.7697,
+beside 0.7726 for OpenPilot and 0.4876 for constant velocity. Its other cells
+are not run: the checkpoint has no download location yet and no paddock node.
+See `docs/models/drivejepa.md`.
 
 ∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
 KITScenes, Paddock constructs sampled XY points from its projected image-space
@@ -341,8 +357,9 @@ is a mean over runs, which is what the model rows above are.
 scorer `affc2ea`, under the **shared 20 Hz referee** — one control rate, one
 force-GT duration and one `eval-config.yaml` (md5 `68cf4aaa…`) across every row,
 so the rows differ by the model rather than by the harness. The files are in
-`results/alpasim/` and `paddock report` reads them. **Only OpenPilot clears the
-constant-velocity floor**, by +0.0716. That is a property of the metric as much
+`results/alpasim/` and `paddock report` reads them. **Of the released checkpoints, only
+OpenPilot clears the constant-velocity floor**, by +0.0716; the retrained
+Drive-JEPA row (⊕) also clears it, and is an adapted result read on its own. That is a property of the metric as much
 as of the models: `scene_score` saturates at `progress_clipped_rel ≥ 0.8` and
 zeroes a scene only on an at-fault collision or an offroad event, neither of
 which a blind constant velocity commits — it rear-ends things, and a rear-end is
@@ -961,12 +978,15 @@ uuid-pinned, one rollout per scene — **n = 10**. Every row is under
 `results/alpasim/` and `paddock report` reads it; the protocol is in
 [docs/benchmarks/alpasim.md](docs/benchmarks/alpasim.md).
 
-Drive-JEPA's row below is its released checkpoint behind the native driver at
-0.1.4. That driver has since been promoted to
-[`tools/models/drivejepa/alpasim_driver/`](tools/models/drivejepa/alpasim_driver/)
-at 0.1.7, which drives a checkpoint retrained on Physical AI AV; it has no row
-here, because none of its runs went through paddock or used this scene set
-alone. What it reads, how it picks and what it scored on 30 scenes are in
+Drive-JEPA has two rows below. The first is its released checkpoint behind the
+native driver at 0.1.4. The second is that driver at 0.1.7, promoted to
+[`tools/models/drivejepa/alpasim_driver/`](tools/models/drivejepa/alpasim_driver/),
+driving a checkpoint whose trajectory generator was retrained on Physical AI
+AV. The second row is an *adapted* result: AlpaSim's scenes are reconstructions
+of clips from that dataset (the evaluation scenes are excluded from training),
+and these ten scenes were driven repeatedly while the driver was developed. It
+is the first ten scenes of a 30-scene sweep; on all 30 it scores 0.7697. What
+it reads and how it picks are in
 [docs/models/drivejepa.md](docs/models/drivejepa.md).
 
 **Every row ran under the shared 20 Hz referee**: one control rate, one force-GT
@@ -981,6 +1001,7 @@ group, and it has no constant-velocity floor of its own.
 | *floor* | *`1cam-20Hz`* | *0.8850* | *—* | *0.8290* | *0.654* | *0 / 10* | *2 / 10* | *0 / 10* |
 | VisionPilot | `1cam-20Hz` | 0.8488 | −0.0362 | 0.8202 | 0.699 | 1 / 10 | 3 / 10 | 0 / 10 |
 | Drive-JEPA | `1cam-20Hz` | 0.5030 | **−0.3820** | 0.5652 | 0.462 | 2 / 10 | 4 / 10 | 1 / 10 |
+| Drive-JEPA, retrained ⊕ | `1cam-20Hz` | 0.9956 | +0.1106 | 0.9765 | 0.663 | 0 / 10 | 0 / 10 | 0 / 10 |
 | Alpamayo 1.5 | `4cam-20Hz` | 0.9000 | no floor | 0.9603 | 0.740 | 1 / 10 | 1 / 10 | 0 / 10 |
 
 **An at-fault collision or an off-road event zeroes the scene outright**, whatever
@@ -996,7 +1017,7 @@ same 0.0 as never moving. That rule is why constant velocity is a serious
 opponent rather than a formality: it does not steer and it rear-ends things, but
 a rear-end is *not at fault*, so the hard-failure rule leaves it standing while
 the at-fault collisions and off-road events a real policy commits zero it. At
-20 Hz the floor scores 0.8850 and **only OpenPilot beats it**. A model that does
+20 Hz the floor scores 0.8850 and **of the released checkpoints only OpenPilot beats it**. A model that does
 not clear its own floor has not demonstrated competence here, whatever the
 absolute number looks like — and because the score saturates, progress is the
 column that separates the floor (0.8290) from OpenPilot (0.9010).

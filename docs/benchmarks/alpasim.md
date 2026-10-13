@@ -134,7 +134,8 @@ That rule produces the result that most needs stating plainly:
 | VisionPilot v2 2.0.0 | 0.8488 | 0.8202 | −0.0362 |
 | Drive-JEPA 0.1.4 | 0.5030 | 0.5652 | −0.3820 |
 
-**Two of the three models score below constant velocity.** This is not a bug in
+**Two of the three released models score below constant velocity.** (The
+retrained Drive-JEPA checkpoint, an adapted result, is in the table further down.) This is not a bug in
 the metric and not a claim that constant velocity drives well — it does not
 steer, and it rear-ends things. But a rear-end collision is *not at fault*, so
 the hard-failure rule does not zero it, while the at-fault collisions and
@@ -165,19 +166,21 @@ filed under `results/alpasim/`, so `paddock report` agrees with these tables.
 > benchmark yields**, not evidence about this PR's code path. The live path
 > through the bridge is unverified, as the PR says.
 >
-> **Later versions of the Drive-JEPA driver exist and add no row here.**
+> **Two later versions of the Drive-JEPA driver exist; one has a row here.**
 > `drivejepa-v2-driver-0.1.4b` adds momentum-aware selection to 0.1.4, and
 > `drivejepa-v2-driver-0.1.7` drives a retrained checkpoint; 0.1.7's source is
 > tracked at `tools/models/drivejepa/alpasim_driver/`. Both were measured on
 > 30 scenes (these ten plus twenty more), one rollout each, outside paddock,
-> so their numbers are in [docs/models/drivejepa.md](../models/drivejepa.md)
-> and not in `results/alpasim/`. The Drive-JEPA row below is still 0.1.4.
+> and those numbers are in [docs/models/drivejepa.md](../models/drivejepa.md).
+> The ten of 0.1.7's runs that are this benchmark's scenes are ingested as
+> `results/alpasim/drivejepa/legacy-drivejepa_017_20hz`, the same way the
+> 0.1.4 row was. 0.1.4b has no row.
 
 ### `1cam-20Hz` — the shared referee
 
-These are the only AlpaSim numbers this repo records. Four rows on one referee: same control rate, same force-GT duration, same
+These are the only AlpaSim numbers this repo records. Five rows on one referee: same control rate, same force-GT duration, same
 `eval-config.yaml` (md5 `68cf4aaa89356e0f6053d76eb4ef2321`, byte-identical
-across all five 20 Hz rows including Alpamayo's).
+across all six 20 Hz rows including Alpamayo's).
 
 | model | `scene_score` | sd | progress | passed | failures |
 |---|---|---|---|---|---|
@@ -185,8 +188,9 @@ across all five 20 Hz rows including Alpamayo's).
 | *constant-velocity floor 0.2.3* | *0.8850* | *0.2312* | *0.8290* | *10/10* | *—* |
 | VisionPilot v2 2.0.0 | 0.8488 | 0.3170 | 0.8202 | 9/10 | at-fault 1 |
 | Drive-JEPA 0.1.4 | 0.5030 | 0.4306 | 0.5652 | 7/10 | at-fault 2, offroad 1 |
+| Drive-JEPA 0.1.7, retrained checkpoint (adapted) | 0.9956 | 0.0131 | 0.9765 | 10/10 | — |
 
-**Only OpenPilot clears the floor**, by +0.0716. This is the finding, not a
+**Of the released checkpoints, only OpenPilot clears the floor**, by +0.0716. This is the finding, not a
 measurement artefact: `scene_score` saturates at `progress_clipped_rel ≥ 0.8`
 and zeroes only on `collision_at_fault` or `offroad`, so a blind constant
 velocity that never commits either scores 1.0 on 8 of 10 scenes. Progress
@@ -201,6 +205,15 @@ Two rows need their caveat quoted with the number:
   reads `ok: false` on 3 of 12 gates (two Prometheus ports, two that look like
   gate-side indexing); none touch the referee pins, which were read from the
   resolved config and are on-pin.
+- **Drive-JEPA 0.1.7** is not the released model and not a zero-shot result.
+  Its trajectory generator was retrained on Physical AI AV (`train` split), and
+  AlpaSim's scenes are reconstructions of clips from that dataset. The training
+  code excludes the evaluation scenes, which is taken on that code's word. These
+  ten scenes were also driven repeatedly while the driver was developed, so
+  0.9956 is not a held-out number. The ten runs are the first ten of a
+  30-scene sweep made on 2026-10-10; on all 30 the mean is 0.7697, with three
+  at-fault collisions and two off-road events, all on the other twenty scenes.
+  Nine of the ten scenes score 1.0000 and the tenth 0.9563.
 - **Drive-JEPA**'s 0.5030 is a mean over six early-terminated or hard-gated
   scenes and four full-distance runs that all scored 1.0000. It is a pattern —
   it wins 1, ties 3 and loses 6 against the floor — not one bad scene.
