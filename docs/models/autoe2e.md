@@ -64,7 +64,7 @@ From the release `config.json` and upstream's KITScenes evaluation path
   (`training/losses/control_rollout.py`: dt 0.1, speed clamped at zero first,
   heading from the new speed), starting from the history's t−0.1 s speed, and
   sampled every 0.5 s: 12 waypoints to 6.0 s with heading. Non-finite controls
-  fall back to constant velocity and are logged.
+  raise, so the scenario fails visibly instead of being scored on a substitute plan.
 
 | env | default | meaning |
 |---|---|---|

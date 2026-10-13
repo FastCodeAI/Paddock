@@ -25,6 +25,7 @@ from paddock.adapters.models.autoe2e.policy import (
     VIEW_ORDER,
     _Frame,
     egomotion_rows,
+    finite_controls,
     integrate_controls,
     route_raster,
 )
@@ -106,6 +107,18 @@ def test_braking_stops_and_never_reverses() -> None:
     out = integrate_controls(controls, v0=4.0)
     assert out[7, 0] == pytest.approx(out[-1, 0]), "stopped after 0.8 s"
     assert np.all(np.diff(out[:, 0]) >= 0)
+
+
+def test_non_finite_controls_fail_the_call_instead_of_becoming_a_plan() -> None:
+    """A crash must not become a score: NaN or inf from the model raises, so the scenario is
+    counted as failed, never scored on a substitute plan under AutoE2E's name."""
+    controls = np.zeros((OUT_STEPS, 2))
+    assert finite_controls(controls) is controls
+    for bad in (np.nan, np.inf):
+        broken = controls.copy()
+        broken[10, 1] = bad
+        with pytest.raises(RuntimeError, match="non-finite controls at 1 of 64 steps"):
+            finite_controls(broken)
 
 
 def test_positive_curvature_turns_left() -> None:

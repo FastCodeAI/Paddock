@@ -51,7 +51,7 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
-from paddock.policy.protocol import Observation, Policy, Trajectory, constant_velocity
+from paddock.policy.protocol import Observation, Policy, Trajectory
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +185,21 @@ def route_raster(route_xy: np.ndarray | None) -> tuple[np.ndarray, bool, bool]:
             out[1] = disk
             dest_drawn = bool(disk.any())
     return out, bool(corridor.any()), dest_drawn
+
+
+def finite_controls(controls: np.ndarray) -> np.ndarray:
+    """The model's [64, 2] controls, or RuntimeError if any is not finite.
+
+    A crash must not become a score: a plan substituted here would be scored under
+    AutoE2E's name with nothing in the record to tell it apart. Raising fails the
+    scenario visibly instead (METEOR's adapter does the same).
+    """
+    bad = ~np.isfinite(controls)
+    if bad.any():
+        raise RuntimeError(
+            f"AutoE2E returned non-finite controls at {int(bad.any(axis=1).sum())} of {len(controls)} steps"
+        )
+    return controls
 
 
 def integrate_controls(controls: np.ndarray, v0: float) -> np.ndarray:
@@ -665,11 +680,7 @@ class AutoE2EPolicy(Policy):
             )
         controls = (out[0] if isinstance(out, tuple) else out).float().reshape(OUT_STEPS, 2).cpu().numpy()
         t2 = time.time()
-        if not np.isfinite(controls).all():
-            logger.warning("AutoE2E returned non-finite controls; constant velocity instead")
-            self.last = {"nonfinite": True}
-            return constant_velocity(obs.speed, n=12, dt=self.waypoint_dt)
-        rollout = integrate_controls(controls, v0)
+        rollout = integrate_controls(finite_controls(controls), v0)
         waypoints = rollout[4::5][:12]  # t = 0.5, 1.0, ..., 6.0 s
         self._plan = (now.t_s, now.ego2world.copy(), waypoints.copy())
         self.calls += 1
