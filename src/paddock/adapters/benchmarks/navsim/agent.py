@@ -43,9 +43,12 @@ and anchoring the scoring path against the devkit's published human figure.
 
 The privileged arguments (``metric_cache``, ``past_ego_simulated_states``) are
 accepted and **ignored**. Drive-JEPA's native agent uses them to re-rank its
-proposals against the scorer's own comfort metric; a model behind an HTTP node
-structurally cannot, and letting one model see the scorer's state while the
-others do not is not a comparison. See docs/benchmarks/navsim.md.
+proposals against the scorer's own comfort metric, and letting one model be
+handed them by the scorer while the others are not is not a comparison. (The
+drivejepa node can rebuild them from its own previous plan --
+``DRIVEJEPA_MOMENTUM`` -- but each scenario here arrives through
+``/infer_sequence``, which resets the node, so on this benchmark it never has a
+previous plan to use.) See docs/benchmarks/navsim.md.
 """
 
 from __future__ import annotations
@@ -328,9 +331,8 @@ class PaddockProxyAgent(_PaddockAgentBase):
             command=self._command_of(status),
             camera2image=camera2image,
             camera2ego=camera2ego,
-            # Identity, but sent explicitly: models that project through the
-            # lidar frame call require_lidar2ego() and must not have to assume
-            # what this benchmark's convention is.
+            # Identity, but sent explicitly, so a model that projects through
+            # the lidar frame need not assume this benchmark's convention.
             lidar2ego=np.eye(4),
         )
 

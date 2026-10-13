@@ -147,6 +147,11 @@ which differences its history for speed, plans badly there (L2 avg 9.47 m on
 those 150 keyframes vs 1.23 m with a full 2 s); Drive-JEPA and VisionPilot are
 unaffected. The protocol keeps all 5119.
 
+**The Drive-JEPA row is camera-blind.** It was measured before the camera-frame
+fix: the adapter placed the cameras relative to LIDAR_TOP, which nuScenes yaws
+−90°, so none of the model's image samples landed in the front image and it
+planned from ego status alone. A re-measure with the fix replaces it.
+
 Overlays for every scored keyframe (camera with the human future and each
 model's plan, BEV with annotated boxes, per-scene videos) are on the NAS:
 `<site video root>/Nuscenes/Simulation/<model>/<scene>/`. The root is site-specific and not a paddock setting; ask the site that made the run.

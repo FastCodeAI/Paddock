@@ -126,6 +126,28 @@ recipe; there is no CARLA training script, config or doc. It is therefore
 adapter is run — should not be labelled on the strength of it. Worth resolving
 before that sweep, not after.
 
+**Every Drive-JEPA row on this page is the released checkpoint.** A second
+checkpoint exists for the same architecture and is not in any table above:
+
+| | Drive-JEPA (released) | Drive-JEPA, retrained (AlpaSim driver 0.1.7) |
+|---|---|---|
+| Architecture, parameters | V-JEPA-2 ViT-L encoder + proposal-centric planner, 307 M | the same; encoder untouched (294 tensors bit-identical) |
+| Trained parts | — | generator (2.38 M) and scorer (4.70 M) in a first run; generator again, alone, in a second |
+| Trajectory vocabulary | 8,192 anchors | 10,240 (the 8,192 plus 2,048 faster shapes) |
+| Inputs | four cameras; acceleration as reported | one front camera, bottom 37 rows masked; acceleration slots zeroed |
+| `trained_on` | `navsim` / `navtrain` | `navsim` / `navtrain` (inherited) **+ `physicalai_av` / `train`** |
+| Runs in paddock | every Drive-JEPA row | none — `tools/models/drivejepa/alpasim_driver/` only |
+
+`physicalai_av` is NVIDIA's Physical AI AV dataset. It is **not a key in
+`datasets.yaml`**, so no test here can cross-check that declaration against a
+benchmark's scene list: some AlpaSim scenes are reconstructions of clips in
+that dataset, and their exclusion from training (126,981 samples, 4,015 clips,
+`train` split, evaluation scenes asserted absent in every script) is a property
+of the training code in the gallops repository, taken on that code's word. No
+row in `results/` was made with these weights, so nothing in the support matrix
+is affected yet; a row made with them would need its own section here, as
+Drive-JEPA × navsim has. Detail in [drivejepa.md](drivejepa.md).
+
 **Every Drive-JEPA row on this page is the perception-*based* v2 agent.** The
 comma2k19 board carries a second, separate registry entry —
 [`drivejepa_free`](drivejepa_free.md), the perception-free NAVSIM v1 agent —
@@ -190,6 +212,24 @@ second test reads this file from the other end:
 requires every `model × dataset` heading here to carry real prose about a
 pairing that can actually happen. This section is held to the same standard as a
 declared one; it is no longer surviving on goodwill.
+
+### Drive-JEPA rerank × kitscenes
+
+**`drivejepa_rerank` is adapted to KITScenes, not zero-shot on it.** It is
+Drive-JEPA unchanged up to its 32 candidate trajectories. A selector then
+chooses among them in place of the NAVSIM-trained scorer, and that selector was
+fitted to KITScenes' **train** split: 5,711 keyframes from 373 scenes. Its
+epoch was chosen on a held-out slice of those same train scenes.
+
+The benchmark's 223 keyframes come from the 140 scenes of the val and
+overlap_train_val splits. None of those scenes is among the 373, which was
+checked by scene id. So the row has seen the dataset's cameras, cities and
+driving, but not its test scenes. That is the same relation Drive-JEPA has to
+navtest through navtrain.
+
+Read its KITScenes cell beside the zero-shot rows, never as one of them. The
+zero-shot `drivejepa` row stays as it is. On nuScenes the selector is
+zero-shot: no nuScenes data went into it. See [drivejepa_rerank.md](drivejepa_rerank.md).
 
 ### AutoE2E × navsim — nuPlan-trained, scored on nuPlan's test logs
 

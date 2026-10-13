@@ -164,6 +164,14 @@ filed under `results/alpasim/`, so `paddock report` agrees with these tables.
 > demonstrates that. So these rows are **reference values for what the
 > benchmark yields**, not evidence about this PR's code path. The live path
 > through the bridge is unverified, as the PR says.
+>
+> **Later versions of the Drive-JEPA driver exist and add no row here.**
+> `drivejepa-v2-driver-0.1.4b` adds momentum-aware selection to 0.1.4, and
+> `drivejepa-v2-driver-0.1.7` drives a retrained checkpoint; 0.1.7's source is
+> tracked at `tools/models/drivejepa/alpasim_driver/`. Both were measured on
+> 30 scenes (these ten plus twenty more), one rollout each, outside paddock,
+> so their numbers are in [docs/models/drivejepa.md](../models/drivejepa.md)
+> and not in `results/alpasim/`. The Drive-JEPA row below is still 0.1.4.
 
 ### `1cam-20Hz` — the shared referee
 

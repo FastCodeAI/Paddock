@@ -152,10 +152,27 @@ agent uses them: `drive_jepa_model.py:98` re-runs the PDM simulator at inference
 time to re-rank its 32 proposals by predicted two-frame extended comfort — a
 component of EPDMS itself.
 
-No model behind an HTTP node can do that, and no other model in paddock has an
-equivalent. **The vendor's recorded 0.90673 is therefore not a baseline the
-other three can be measured against.** The proxy agent accepts those arguments
-and ignores them; runs through `paddock_proxy` are the comparable set.
+No other model in paddock has an equivalent. **The vendor's recorded 0.90673 is
+therefore not a baseline the other three can be measured against.** The proxy
+agent accepts those arguments and ignores them; runs through `paddock_proxy`
+are the comparable set.
+
+What the stage reads is narrower than those argument names suggest, and it
+matters outside NAVSIM. `calibrate_score` takes the previous *chosen* plan run
+through the PDM simulator, the seconds since it, and `metric_cache.ego_state` —
+the only attribute of the cache it touches (`drive_jepa_model.py:101-102`). No
+ground truth, no map, no other agents. A node is sent the ego state with every
+observation and knows its own previous plan, so it can build all three itself:
+`DRIVEJEPA_MOMENTUM=on` makes the drivejepa node do so
+(`adapters/models/drivejepa/momentum.py`), for closed-loop benchmarks where
+consecutive calls belong to one drive.
+
+That switch does not change this benchmark. The proxy scores each scenario
+through `/infer_sequence`, which resets the node first, so no previous plan
+survives from one scenario to the next and the stage never runs: proxy rows are
+the raw argmax with the switch on or off. Feeding the proxy's plans back across
+scenarios — which is what would close the 0.02705 below — is a separate
+decision about this benchmark's comparability and is not made here.
 
 ## The fork's own baselines do not run
 

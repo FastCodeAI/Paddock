@@ -159,8 +159,8 @@ def test_the_ground_offset_lifts_every_camera_alike(tmp_path, monkeypatch) -> No
 def test_the_lidar_frame_is_the_ego_frame(tmp_path, monkeypatch) -> None:
     """KITScenes calibrates against lidar_top itself, so lidar2ego is the identity.
 
-    Drive-JEPA builds `sensor2lidar` from camera2ego and this; without it the
-    observation is refused (`require_lidar2ego`) and the model cannot run here.
+    Sent explicitly so a model that projects through the lidar frame need not
+    assume this benchmark's convention.
     """
     archive = tmp_path / "archive"
     _write_scene(archive, RING)

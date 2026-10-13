@@ -112,13 +112,31 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 | | 🟢 nuScenes cumulative L2 avg ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟢 comma2k19 ADE@3s ↓ (m) | 🟢 nuPlan ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🟡 NAVSIM v1 PDMS ↑ (0–1) | 🔴 Bench2Drive driving score ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim nuRec scene score ↑ (0–1) |
 |---|---|---|---|---|---|---|---|---|---|
 | OpenPilot | 2.477 △ | 1.599 | 1.507 ✦ ⊗ | 0.807 ◐ | 0.747 (10 Hz) ‡ | 0.807 (10 Hz) ‡ | 30.09 ≈ ◆ | **3.60** ‖ | **0.9566** ¶ |
-| Alpamayo 1.5 | 0.787 △ | 1.002 | **0.900** ✦ | — ◐◐ | 0.691 (10 Hz) † | 0.753 (10 Hz) † | 44.58 ◆ | **3.73** ‖ | 0.9000 ¶¶ |
-| Drive-JEPA | 0.912 △ | 2.364 | 16.048 ✦ | 1.512 ◐ | 0.843 | 0.892 † | 31.11 ◆ | **3.57** ‖ | 0.5030 ¶ |
+| Alpamayo 1.5 | 0.787 △ | 1.002 | **0.900** ✦ | — ◐◐ | 0.691 (10 Hz) † | 0.753 (10 Hz) † | 55.82 (10 Hz) ※ | **3.73** ‖ | 0.9000 ¶¶ |
+| Drive-JEPA | 0.912 △ ⊘ | 2.364 | 16.048 ✦ | 1.512 ◐ | 0.843 | 0.892 † | 57.60 (2 Hz) ※ | **3.57** ‖ ⊘ | 0.5030 ¶ |
+| Drive-JEPA, KITScenes re-ranker ⊛ | 0.587 ⊛ | 0.973 ⊛ | not run | not run | not run | not run | — | not run ⊛ | — |
 | VisionPilot | 1.441 △ | 1.534 ∗ | 4.045 ✦ ∗ | 2.246 ◐ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.8488 ¶ |
 | METEOR | 0.977 △ | 1.879 ◇ | — ✦ | 1.273 ◐ | 0.303 ◊ | 0.366 ◊ | — | **2.64** ‖ | — |
-| Qwen-Drive 1.0 | 0.450 | 0.806 | 1.159 ✦ | — | 0.840 | 0.876 | 12.92 ◆◆ | **2.49** | — |
+| Qwen-Drive 1.0 | 0.450 | 0.806 | 1.159 ✦ | — | 0.840 | 0.876 | 17.08 (2 Hz) ※ | **2.49** | — |
 | AutoE2E | — | — | — | — | 0.500 (10 Hz) ☉ | — | — ☉ | — | — |
 | Baseline (Constant Velocity) | 0.641 △ | 1.381 | 1.639 ✦ | 1.393 ◐ | 0.239 | 0.207 † | 47.94 ♣ | 0 § | *0.8850* ¶ |
+
+⊛ `drivejepa_rerank` is Drive-JEPA unchanged up to its 32 candidate
+trajectories. A small selector then chooses among them, in place of Drive-JEPA's
+NAVSIM-trained scorer. That selector was trained on KITScenes **train** (5,711
+keyframes, 373 scenes, none of them in the benchmark), so its KITScenes cell is
+*adapted*, not zero-shot like the rows around it.
+It sees the cameras cropped onto the OpenScene lens and gets no route hint.
+Through that same path, Drive-JEPA's own pick scores 2.521 and the best of its 32
+scores 0.409. The selector learned closeness to the human path and nothing about
+collisions, so it has no closed-loop cells until it has been through neuroNCAP.
+Its nuScenes cell is zero-shot (no nuScenes data went into the selector) and was
+measured with the camera-frame fix (#62). Paired over 150 scenes, it is 0.054
+below constant velocity on cumulative L2 (t −2.8); its point collision rate,
+1.21% against 1.66%, is not separated (t −1.5). The Drive-JEPA row is still the
+camera-blind one (⊘), and this row also differs from it in the camera crop, so
+the two are not a like-for-like comparison.
+See `docs/models/drivejepa_rerank.md`.
 
 ∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
 KITScenes, Paddock constructs sampled XY points from its projected image-space
@@ -184,6 +202,11 @@ cite.
 is the mean of cumulative L2 through 1, 2 and 3 seconds, not ADE at 3 seconds.
 OpenPilot uses real approximately 12 Hz front-camera history; scoring stays at
 2 Hz. See the nuScenes table below for point L2, cumulative L2 and ADE.
+
+⊘ Measured camera-blind: until the camera-frame fix (#62) Drive-JEPA's adapter
+placed the cameras so that no sample point landed in the image on nuScenes and
+neuroNCAP, and the plan came from ego status alone. Re-measure pending; its
+other columns are not affected.
 
 ✦ comma2k19 is the full dataset: **2035 one-minute segments, 5 keyframes each —
 10,165 scored samples**, not 10,175: two truncated segments are too short to
@@ -278,13 +301,21 @@ are censored before intervention and eight had no intervention. It is not a
 separate unassisted sweep. The historical OpenPilot scores predate later
 controller fixes. The assisted and expansion recordings are reported
 separately in [OpenPilot, by recording set](#openpilot-by-recording-set); they are
-never pooled into one mean. Drive-JEPA uses its released NAVSIM-v2 checkpoint zero-shot
-in CARLA. See [Bench2Drive protocol](docs/benchmarks/bench2drive.md).
+never pooled into one mean. See [Bench2Drive protocol](docs/benchmarks/bench2drive.md).
 
-◆◆ Qwen-Drive was not in the 24-route cohort. Its cell is the 50-route run
-instead, so it is **not comparable with the four ◆ cells above it**; the routes
-every system in that run shares are in
-[Bench2Drive — 50 routes](#bench2drive--50-routes).
+※ Bench2Drive driving score at the model's **native inference rate** — Drive-JEPA
+and Qwen-Drive replan at 2 Hz, Alpamayo 1.5 at 10 Hz — over the 50-route set,
+18–20 Sep 2026. Alpamayo 1.5 and Qwen-Drive are means over 49 routes: route 3800
+crashes CARLA for both at their native rate and is reported as never scored, not
+as a zero. Every other cell in this column is driven at 20 Hz, one inference per
+simulator tick; OpenPilot's native rate *is* 20 Hz, and VisionPilot was not
+re-run. So the ※ cells are **not comparable with the ◆ cells**: a different rate
+and a different route set. At 20 Hz the same three scored Alpamayo 1.5 44.58 and
+Drive-JEPA 31.11 (24 routes, ◆) and Qwen-Drive 12.92 (50 routes). Drive-JEPA uses
+its released NAVSIM-v2 checkpoint zero-shot in CARLA. The runs stay
+`valid: false` and off the ranked [leaderboard](docs/leaderboard.md), which ranks
+the 20 Hz protocol only. Per-route detail and the 20 Hz comparison are in
+[Native inference rate](#native-inference-rate--three-models-re-driven).
 
 ♣ The Bench2Drive baseline uses a **fixed 3 m/s target**, with straight ego-frame
 waypoints and the shared controller; actual vehicle speed can differ. nuScenes
@@ -387,7 +418,8 @@ history, CUDA inference, CPU camera warping and resume assistance disabled.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | OpenPilot | 1.925 | 4.054 | 6.194 | 4.057 | 2.477 | 3.535 | 2.624 |
 | Alpamayo 1.5 | 0.509 | 1.351 | 2.602 | 1.487 | 0.787 | 1.249 | 1.582 |
-| Drive-JEPA | 0.540 | 1.587 | 3.519 | 1.882 | 0.912 | 1.536 | 1.459 |
+| Drive-JEPA ⊘ | 0.540 | 1.587 | 3.519 | 1.882 | 0.912 | 1.536 | 1.459 |
+| Drive-JEPA, KITScenes re-ranker ⊛ | 0.373 | 0.953 | 2.126 | 1.151 | 0.587 | 0.949 | 1.211 |
 | VisionPilot | 1.031 | 2.213 | 3.837 | 2.360 | 1.441 | 2.058 | 3.816 |
 | METEOR | 0.616 | 1.683 | 3.356 | 1.885 | 0.977 | 1.570 | 6.152 ◇ |
 | Qwen-Drive 1.0 | 0.318 | 0.722 | 1.360 | 0.800 | 0.450 | 0.678 | 0.770 |
@@ -396,6 +428,8 @@ history, CUDA inference, CPU camera warping and resume assistance disabled.
 Point L2 averages errors at 1, 2 and 3 seconds. Cumulative L2 averages the three
 prefix means; ADE at 3 seconds averages all six half-second errors. Collision
 is predicted ego-footprint overlap with annotated boxes, not an observed crash.
+
+⊘ Measured camera-blind; re-measure pending, see #62.
 
 **Constant velocity was the lowest L2 on this recorded split until Qwen-Drive,
 which is below it on every column**, collision included, and is the first model
@@ -419,13 +453,17 @@ Open-loop displacement error in metres over the 3 s horizon, full 223-sample
 split. Alpamayo 1.5 is its nav-conditioned single-draw run. VisionPilot's
 trajectory is synthesised by the adapter (see ∗); METEOR sees six of its eight
 cameras (see ◇). Qwen-Drive 1.0 reads three of the ring's six and is zero-shot
-on this dataset. Only it and Alpamayo 1.5 beat the constant-velocity baseline.
+on this dataset. Among zero-shot models, only it and Alpamayo 1.5 beat the
+constant-velocity baseline. The re-ranked Drive-JEPA row also beats it, but it is
+adapted to KITScenes train (see ⊛): 1.002 on the 186 val samples, 0.828 on the 37
+from scenes whose area overlaps train.
 
 | Model | ADE@3s ↓ (m) | FDE@3s ↓ (m) |
 |---|---:|---:|
 | OpenPilot | 1.599 | 2.894 |
 | Alpamayo 1.5 | 1.002 | 2.158 |
 | Drive-JEPA | 2.364 | 4.199 |
+| Drive-JEPA, KITScenes re-ranker ⊛ | 0.973 | 2.082 |
 | VisionPilot | 1.534 ∗ | 3.089 ∗ |
 | METEOR | 1.879 ◇ | 4.034 ◇ |
 | Qwen-Drive 1.0 | **0.806** | **1.777** |
@@ -807,7 +845,8 @@ re-run; nothing here restates either. The rate is recorded per run in
 `PADDOCK_INFER_HZ` is not on `main` yet — so these are landed results, not runs a
 clean checkout can re-drive. The three runs are `valid: false` and **do not rank**
 on the board: a 2 or 10 Hz run is not the protocol the other rows were driven
-under. `model_env` also differs in more than the rate — thread counts, a trace
+under. Their native scores are the Bench2Drive cells of the support matrix for
+these three models (※). `model_env` also differs in more than the rate — thread counts, a trace
 sink, `ALPAMAYO_NAV` — each argued immaterial and none measured to be; the
 [page](docs/benchmarks/bench2drive-native-rate.md) books that as argued, not
 verified.
@@ -836,11 +875,13 @@ all 200 runs. Runs are seeded 0-9, so every model met identical scenario jitter.
 |---|---:|---:|---:|---:|---:|
 | Alpamayo 1.5 | 4.41 ±1.48 | 3.64 ±2.01 | 2.45 ±1.93 | **3.73** | 32.5% |
 | OpenPilot | 4.52 ±1.34 | 2.30 ±1.24 | 3.08 ±2.25 | **3.60** | 38.0% |
-| Drive-JEPA | 4.23 ±1.33 | 2.42 ±1.43 | 3.39 ±2.07 | **3.57** | 45.5% |
+| Drive-JEPA ⊘ | 4.23 ±1.33 | 2.42 ±1.43 | 3.39 ±2.07 | **3.57** | 45.5% |
 | METEOR | 2.44 ±2.42 | 3.20 ±2.39 | 2.50 ±2.50 | **2.64** | 48.0% |
 | Qwen-Drive 1.0 | 2.71 ±1.73 | 1.52 ±1.49 | 3.00 ±2.04 | **2.49** | 69.0% |
 | VisionPilot | 2.53 ±1.60 | 1.17 ±1.38 | 0.08 ±0.18 | **1.58** | 85.5% |
 | Baseline (Constant Velocity) | 0.00 | 0.00 | 0.00 | 0.00 § | 100.0% |
+
+⊘ Measured camera-blind; re-measure pending, see #62.
 
 **Qwen-Drive is the widest open-loop-to-closed-loop gap in the table.** It leads
 KITScenes and ties Drive-JEPA on NAVSIM, then places fourth here, below three
@@ -850,7 +891,7 @@ models it beat on every open-loop column. The frontal column is where it goes:
 path reaches a mean peak lateral offset of 1.22 m, against 10.44 m for
 Alpamayo — which decelerates no harder (−2.31 m/s against Qwen-Drive's −2.48)
 and collides in 32% of episodes rather than 86%. Drive-JEPA brakes hardest of
-the five, −5.47 m/s, and still collides in 78%. In a staged head-on the closing
+the five, −5.47 m/s, and still collides in 78% (⊘ measured camera-blind). In a staged head-on the closing
 vehicle arrives whatever the ego's speed, so the escape is lateral, and Alpamayo
 is the only model of the five that takes it. This is not an adapter limit: on
 NAVSIM the same code path produces lateral offsets to 19.92 m. The full table,
@@ -932,6 +973,14 @@ meaned over scenes. The set is the first 10 scenes of the `public_2601` suite,
 uuid-pinned, one rollout per scene — **n = 10**. Every row is under
 `results/alpasim/` and `paddock report` reads it; the protocol is in
 [docs/benchmarks/alpasim.md](docs/benchmarks/alpasim.md).
+
+Drive-JEPA's row below is its released checkpoint behind the native driver at
+0.1.4. That driver has since been promoted to
+[`tools/models/drivejepa/alpasim_driver/`](tools/models/drivejepa/alpasim_driver/)
+at 0.1.7, which drives a checkpoint retrained on Physical AI AV; it has no row
+here, because none of its runs went through paddock or used this scene set
+alone. What it reads, how it picks and what it scored on 30 scenes are in
+[docs/models/drivejepa.md](docs/models/drivejepa.md).
 
 **Every row ran under the shared 20 Hz referee**: one control rate, one force-GT
 duration and one `eval-config.yaml` (md5 `68cf4aaa…`), so the rows differ by the

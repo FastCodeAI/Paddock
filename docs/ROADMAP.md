@@ -32,6 +32,7 @@ That distinction matters, so it is spelled out:
 | Adapters obey the Policy contract | per-model contract tests: frame convention, shapes, guards, reset semantics | **moderate** — no GPU, no weights |
 | Adapters produce the same output as the original nodes | head-to-head on neuroNCAP (both return `2.8269616956051293`), and KITScenes n=223 with 892/892 metrics identical | **proof** |
 | Adapters reproduce the **August** recorded numbers | drivejepa matches to full float precision; visionpilot differs because its node was edited after its last scored run | **strong** |
+| drivejepa sees the camera on nuScenes-calibrated benchmarks | **it did not, until the camera-frame fix.** The adapter placed cameras relative to nuScenes' LIDAR_TOP (yawed −90°); the model treats its sample points as lidar-frame points because NAVSIM's lidar frame *is* the ego frame, so 0.0% of them landed in the front image and a black frame gave the identical plan. Fixed: 36% land in it and the image moves the plan by 9.6 m on a frontal frame. Every neuroNCAP and nuScenes drivejepa row before the fix — including the August match above, which reproduced the same bug — is camera-blind; NAVSIM, nuPlan, KITScenes and Bench2Drive pass an identity lidar2ego and are not. `camera_frame: "ego"` in `provenance.policy` marks a fixed node, but it describes the attempt that wrote `run.json`: a resumed run can still carry blind episodes from an earlier attempt (see *Resume does not check the node* under Remaining work) | **strong** (adapter run old vs fixed on real frames; regression test in `make check`) |
 
 M5 closed the first of those rows. Running paddock's adapters against the same
 renderer as the recorded August runs:
@@ -67,6 +68,19 @@ Still unrun: the third scenario (`side`), scene 0108, and multi-run seeds.
 **M3 — `paddock setup`.** Clone or adopt vendor repos, build the `external/`
 symlink farm, apply patches, run per-model `setup.sh`. Today `doctor` reports
 what is missing; `setup` does not yet fix it.
+
+**Resume does not check the node.** `--resume` compares only the run's config
+before reusing finished episodes, and writes `provenance.policy` from the last
+attempt's node alone. A fix that changes the adapter but no config, such as the
+Drive-JEPA camera-frame fix, is therefore invisible to it: resuming a partial
+run made before the fix reuses its camera-blind episodes, drives the rest with
+the camera, and records `camera_frame: "ego"` for the whole run. The smoke run
+`neuroncap/drivejepa/20261012T205915-7153f0` is such a resume (6 of its 9
+episodes come from its first attempt; they were confirmed by reproducing them in
+a fresh run). To do: store the node's diagnostics next to the config on the
+first attempt and refuse a resume whose node reports different ones. The
+open-loop path has the same gap: `_carry_forward_provenance` keeps an earlier
+attempt's `policy` only when the new one is empty.
 
 **M5 — closed loop.** `paddock run --bench neuroncap --model all --runs 1
 --scene 0103` must reproduce `ladder_current.log`:
@@ -306,6 +320,20 @@ Landed alongside it, none comma2k19-specific:
   item under "Beyond reproduction" asks for; what remains there is re-making
   that particular record with it.
 
+**`drivejepa_rerank` — before any closed-loop use.** The selector over
+Drive-JEPA's 32 candidates is scored open-loop only: KITScenes (adapted) and
+nuScenes (zero-shot, measured with the camera-frame fix). `model.yaml` declares
+nothing else, and that stays true until two runs exist:
+- **neuroNCAP**, the full official set, paired against `drivejepa` at the
+  scenario-pair level (n=20). The selector learned closeness to the human path
+  and nothing about collisions. A smoke on scene 0103 with the fix (three pairs,
+  seeds 0–2, not a neuroNCAP score) gave 1.85 against `drivejepa`'s 3.01.
+- **NAVSIM v2 and v1**, by replaying chosen plans. It is expected to cost
+  EPDMS, since NAVSIM scores what the original scorer was trained for. How much
+  is unmeasured.
+
+See `docs/models/drivejepa_rerank.md`.
+
 ## Open questions
 
 **The NAVSIM headline — settled.** The CSV and its run log disagree (0.90673 vs
@@ -326,9 +354,60 @@ support matrix still carry the unqualified name. Closing it means ~95 GB of
 **Drive-JEPA's NAVSIM agent is scorer-aware.** It receives `metric_cache` and
 `past_ego_simulated_states` from the scoring loop and re-runs the PDM simulator
 at inference time to re-rank its proposals by predicted two-frame comfort — a
-component of EPDMS. No model behind an HTTP node can do that. Its recorded
-0.90673 is therefore not a baseline the other three can be measured against;
-the comparable set is runs through `paddock_proxy`.
+component of EPDMS. No model behind the proxy is handed those arguments. Its
+recorded 0.90673 is therefore not a baseline the other three can be measured
+against; the comparable set is runs through `paddock_proxy`.
+
+The same stage is available to the drivejepa node in closed loop, off by
+default (`DRIVEJEPA_MOMENTUM=on`): it needs only the node's own previous plan
+and the ego state it is already sent. A plan is fed only when it is 0.45 to
+0.55 s old, so a node called at 10 or 20 Hz compares against the plan of half a
+second ago and selects on the plain score until it has one. **Verified at
+Fastcode:** fed the recorded menus of 30 AlpaSim drives (810 replans), the
+node's bookkeeping and upstream's stage reproduce every pick of the AlpaSim
+driver that first carried the stage (`drivejepa-v2-driver-0.1.4b`), and its 32
+scores per replan exactly. One of those drives is tracked as a fixture, and
+`adapters/models/drivejepa/tests/test_momentum.py` reruns it in Drive-JEPA's
+environment; it skips under `make check`, which has no nuPlan. **Unverified:**
+its effect on any benchmark. One neuroNCAP comparison exists (the full set,
+n=200: 3.618 with the stage against 3.568 without, read as no measurable
+effect), but it was made with a separate copy of the adapter before the
+cameras were placed on the ego frame, on a model that read no image on
+nuScenes and planned from ego status alone. It is kept on the branch
+`record/drivejepa-camera-blind` and is not evidence for or against the stage
+on the model that drives now. The comparison has to be made again on this
+node; a run made with it records `camera_frame: ego` beside `momentum: on` in
+`run.json`. No row in `results/` was made with the switch on. `drivejepa_rerank`
+refuses the switch: the stage remembers the model's own pick, and that policy
+drives the re-ranker's pick, so it would be compared against a plan the car
+never followed. Supporting it means telling the stage which plan was driven.
+
+**The AlpaSim driver itself is now tracked, at 0.1.7**
+(`tools/models/drivejepa/alpasim_driver/`, documented in
+`docs/models/drivejepa.md`): the divider, the momentum stage, and the inputs a
+checkpoint retrained on Physical AI AV needs (a 37-row bonnet mask,
+acceleration zeroed, a batch fix). It is a native gRPC driver, not a paddock
+`Policy`, and `drivejepa` still does not declare `alpasim`.
+
+| Claim | Evidence | Strength |
+|---|---|---|
+| the promoted driver differs from the one that ran only in paths, imports and removed switches | `diff` against the as-run files, which exist only at the training site; done by the author and repeated by the reviewer of #61 there. Not reproducible elsewhere | **strong** |
+| it starts against the real checkpoint | `--check-only`: size and sha256 accepted, batch fix installed on 2 modules, both provenance lines | **strong** |
+| its tests pass | `make check-alpasim-driver`: 94 in AlpaSim's interpreter with the Drive-JEPA environment, 89 + 5 skipped without; **not collected by `make check`** | **strong** |
+| 0.1.7 scores 0.7697 on 30 scenes against 0.1.4b's 0.5433 | the recorded runs' `totals.json`; one rollout per scene, made before promotion | **moderate** |
+| the promoted driver drives a scene | — | **unverified** |
+
+Open work on this driver, in the order it bites:
+
+- **Its tests run in no CI job.** They need AlpaSim's interpreter, so CI and
+  `make check` skip them while still gating the scaffold the driver imports. A
+  change to `adapters/benchmarks/alpasim/scaffold.py` can therefore go green
+  and break the driver. Until a CI job has AlpaSim's environment, the only
+  guard is a reviewer running `make check-alpasim-driver` (`docs/reviewing.md` §1).
+- **The retrained checkpoint has no download location**, and at the training
+  site it is not yet at the `{weights}` layout the docs give. Another site
+  cannot run 0.1.7 without being handed the file.
+- **The promoted driver has not driven a scene.**
 
 ## Bench2Drive / CARLA — adapter landed, driven, and the runs are tracked
 
