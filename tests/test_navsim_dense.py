@@ -423,7 +423,10 @@ def test_keyframe_cameras_is_declared_by_both_proxy_configs(tmp_path, monkeypatc
 
 
 def test_gpu_nodes_opts_a_gpu_model_into_several_nodes(tmp_path, monkeypatch) -> None:
+    from paddock.runtime import gpu
+
     models = Registry.load().models
+    monkeypatch.setattr(gpu, "free_gb", lambda _env=None: 30.0)
     plain = _harness(_navsim_site(tmp_path / "plain", monkeypatch))
     assert plain.node_count(models["autoe2e"]) == 1, (
         "a GPU model gets one node unless the site says otherwise"
@@ -431,3 +434,22 @@ def test_gpu_nodes_opts_a_gpu_model_into_several_nodes(tmp_path, monkeypatch) ->
     many = _harness(_navsim_site(tmp_path / "many", monkeypatch, gpu_nodes="4", nodes="2"))
     assert many.node_count(models["autoe2e"]) == 4
     assert many.node_count(models["visionpilot"]) == 2, "CPU models still follow `nodes`"
+
+
+def test_gpu_nodes_is_capped_by_what_the_card_holds(tmp_path, monkeypatch) -> None:
+    """`gpu_nodes` reaches every GPU model in a `--model all` sweep, not only the one it
+    was set for. Four 26 GB alpamayo nodes into 30 GB free would start one and park
+    three in `gpu.wait_for`'s two-hour poll; the count is divided up front instead."""
+    from paddock.runtime import gpu
+
+    models = Registry.load().models
+    many = _harness(_navsim_site(tmp_path / "many", monkeypatch, gpu_nodes="4"))
+    monkeypatch.setattr(gpu, "free_gb", lambda _env=None: 30.0)
+    assert many.node_count(models["alpamayo15"]) == 1
+    assert many.node_count(models["autoe2e"]) == 4, "a small model still gets the site's width"
+    monkeypatch.setattr(gpu, "free_gb", lambda _env=None: 60.0)
+    assert many.node_count(models["alpamayo15"]) == 2
+    # No usable nvidia-smi: the site's [gpu] budget_gb (24 by default), never zero nodes.
+    monkeypatch.setattr(gpu, "free_gb", lambda _env=None: None)
+    assert many.node_count(models["alpamayo15"]) == 1
+    assert many.node_count(models["autoe2e"]) == 4

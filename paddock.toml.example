@@ -206,7 +206,8 @@ serialize = true
 #                        # with >1 visionpilot node, also set VISIONPILOT_ORT_THREADS (e.g. "2")
 #                        # under [models.visionpilot.env], or each node claims every core
 # gpu_nodes    = 1        # policy nodes per GPU model; more only for a small model bound by
-#                        # its per-request forward, not by memory (autoe2e: ~3 GB each)
+#                        # its per-request forward, not by memory (autoe2e: ~3 GB each).
+#                        # Reaches every GPU model the run scores; capped by free VRAM / vram_gb
 # keyframe_cameras = false  # dense path: a view the nuplan pull lacks (it may hold F0/L0/R0 only)
 #                        # comes from OpenScene's 2 Hz keyframes; for a model whose camera
 #                        # history is itself 2 Hz (autoe2e). Recorded in run.json.

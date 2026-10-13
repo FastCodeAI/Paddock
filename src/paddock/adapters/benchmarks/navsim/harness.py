@@ -60,6 +60,8 @@ from paddock.adapters.benchmarks.navsim.dense import NUPLAN_HZ
 from paddock.benchmark import Evaluation, ExternallyScoredBenchmark
 from paddock.benchmark import input_rate_problems as shared_input_rate_problems
 from paddock.results.ingest import navsim as navsim_ingest
+from paddock.runtime import env as env_builder
+from paddock.runtime import gpu
 from paddock.runtime.proc import tail as _tail
 
 #: Logs per scorer invocation. The vendor scorer keeps every result in worker
@@ -805,15 +807,30 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         node claims every core, and four of them measured at ~16 cores for one
         node's throughput. OMP_NUM_THREADS=1 bounds MUMPS, not ORT.
 
-        GPU models stay at one node. The card is shared, and a second 26 GB
-        alpamayo would not start into the headroom left by the first; the
-        `infer_sequence` override already took them off the critical path.
+        GPU models get `gpu_nodes`, default 1: the card is shared, and the
+        `infer_sequence` override already took most of them off the critical
+        path. A site raises it for a small model bound by its per-request
+        forward, not by memory (AutoE2E: ~3 GB a node). The setting reaches
+        **every** GPU model the run scores, so it is capped by what the card
+        holds, as `Comma2k19Benchmark.node_count` explains: `gpu.wait_for` gates
+        each launch on declared VRAM, and four 26 GB alpamayo nodes into 30 GB
+        free start one and park three in a two-hour poll. The card read is the
+        one this model's node environment will land on; without nvidia-smi it is
+        the site's `[gpu] budget_gb`.
         """
         wanted = int(self.setting("nodes", "1") or 1)
         if model.vram_gb > 0:
-            # `gpu_nodes` opts a small GPU model into several nodes on the shared card
-            # (AutoE2E: ~3 GB each, bound by its per-request forward, not by memory).
-            return max(1, int(self.setting("gpu_nodes", "1") or 1))
+            nodes = max(1, int(self.setting("gpu_nodes", "1") or 1))
+            if nodes == 1:
+                return 1
+            try:
+                node_env = env_builder.build(model, self.cfg)
+            except Exception:  # noqa: BLE001 - a node count is never worth failing a run over
+                node_env = None
+            available = gpu.free_gb(node_env)
+            if available is None:
+                available = float(self.cfg.gpu.budget_gb)
+            return max(1, min(nodes, int(available // model.vram_gb)))
         return max(1, wanted)
 
     def _scene_filter_value(self, key: str) -> list | None:

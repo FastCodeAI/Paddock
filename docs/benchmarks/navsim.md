@@ -434,7 +434,10 @@ at 10 Hz from the logs. A model reading a rear view at 10 Hz would get it at
 `config.keyframe_cameras` in `run.json`, hashed into the run id.
 `gpu_nodes = N` gives a GPU model N nodes on the shared card (default 1; `nodes`
 still applies to CPU-only models): AutoE2E is ~3 GB a node and bound by its
-per-request forward, so its full split ran on four.
+per-request forward, so its full split ran on four. The setting reaches every
+GPU model a run scores, not only the one it was set for, so it is capped by the
+card's free VRAM divided by the model's `vram_gb`: under `--model all` with
+`gpu_nodes = 4`, alpamayo15 (26 GB) still gets one node on a card with 30 GB free.
 
 What it does not fix: alpamayo's field of view (nuPlan's cameras are the same
 ~65 deg the model gets from OpenScene) and the proxy's blindness to the
