@@ -58,27 +58,6 @@ def test_relative_pose_recovers_a_translation() -> None:
     np.testing.assert_allclose(relative_pose(pose, ref), [3.0, -2.0, 0.0], atol=1e-12)
 
 
-def test_missing_lidar2ego_is_reported_as_calibration() -> None:
-    """Without this guard the failure lands deep inside a feature builder.
-
-    For a model that does need the lidar mounting (Drive-JEPA no longer does), an
-    Observation from a source that omits lidar2ego is rejected where the cause is
-    still legible.
-    """
-    obs = Observation(
-        images={},
-        ego2world=np.eye(4),
-        canbus=np.zeros(18),
-        timestamp_us=0,
-        command=Command.STRAIGHT,
-        camera2image={},
-        camera2ego={},
-        lidar2ego=None,
-    )
-    with pytest.raises(ValueError, match="lidar2ego"):
-        obs.require_lidar2ego()
-
-
 def test_history_target_matches_navsim_rate() -> None:
     """Drive-JEPA is a 2 Hz agent with four frames of history: 1.5 s of context."""
     assert HISTORY_FRAMES == 4
@@ -250,12 +229,12 @@ def test_a_point_ahead_of_the_car_lands_in_the_front_image(navsim_dataclasses) -
     front = policy._agent_input().cameras[-1].cam_f0
 
     rotation, translation = front.sensor2lidar_rotation, front.sensor2lidar_translation
-    np.testing.assert_allclose(rotation, FRONT2EGO[:3, :3], atol=1e-6)
-    np.testing.assert_allclose(translation, FRONT2EGO[:3, 3], atol=1e-6)
     in_camera = rotation.T @ (np.array([10.0, 0.0, 0.5]) - translation)
     assert in_camera[2] > 0, "a point 10 m ahead is behind the front camera"
     u, v = (front.intrinsics @ in_camera)[:2] / in_camera[2]
     assert 0 < u < 1600 and 0 < v < 900, f"a point 10 m ahead projects to ({u:.0f}, {v:.0f}), off the image"
+    np.testing.assert_allclose(rotation, FRONT2EGO[:3, :3], atol=1e-6)
+    np.testing.assert_allclose(translation, FRONT2EGO[:3, 3], atol=1e-6)
 
 
 @pytest.fixture

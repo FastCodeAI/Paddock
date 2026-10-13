@@ -333,8 +333,11 @@ class DriveJepaPolicy(Policy):
         the runner stores this dict in run.json as `provenance.policy`. An
         explicit env override also lands in `model_env`; the default does not,
         so without this a `native` run would carry no record of being one.
-        `camera_frame` marks runs made with each camera placed on the ego frame;
-        a run.json without it predates that fix and saw no image on nuScenes.
+        `camera_frame` marks a node that places each camera on the ego frame; a
+        run.json without it predates that fix and saw no image on nuScenes. It
+        describes the attempt that wrote run.json, not every episode in it: a
+        resumed run keeps the episodes of its earlier attempts, and the runner
+        does not yet check that those came from a node reporting the same.
         """
         if not self.history:
             return {

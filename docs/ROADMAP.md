@@ -32,7 +32,7 @@ That distinction matters, so it is spelled out:
 | Adapters obey the Policy contract | per-model contract tests: frame convention, shapes, guards, reset semantics | **moderate** — no GPU, no weights |
 | Adapters produce the same output as the original nodes | head-to-head on neuroNCAP (both return `2.8269616956051293`), and KITScenes n=223 with 892/892 metrics identical | **proof** |
 | Adapters reproduce the **August** recorded numbers | drivejepa matches to full float precision; visionpilot differs because its node was edited after its last scored run | **strong** |
-| drivejepa sees the camera on nuScenes-calibrated benchmarks | **it did not, until the camera-frame fix.** The adapter placed cameras relative to nuScenes' LIDAR_TOP (yawed −90°); the model treats its sample points as lidar-frame points because NAVSIM's lidar frame *is* the ego frame, so 0.0% of them landed in the front image and a black frame gave the identical plan. Fixed: 36% land in it and the image moves the plan by 9.6 m on a frontal frame. Every neuroNCAP and nuScenes drivejepa row before the fix — including the August match above, which reproduced the same bug — is camera-blind; NAVSIM, nuPlan and KITScenes pass an identity lidar2ego and are not | **strong** (adapter run old vs fixed on real frames; regression test in `make check`) |
+| drivejepa sees the camera on nuScenes-calibrated benchmarks | **it did not, until the camera-frame fix.** The adapter placed cameras relative to nuScenes' LIDAR_TOP (yawed −90°); the model treats its sample points as lidar-frame points because NAVSIM's lidar frame *is* the ego frame, so 0.0% of them landed in the front image and a black frame gave the identical plan. Fixed: 36% land in it and the image moves the plan by 9.6 m on a frontal frame. Every neuroNCAP and nuScenes drivejepa row before the fix — including the August match above, which reproduced the same bug — is camera-blind; NAVSIM, nuPlan, KITScenes and Bench2Drive pass an identity lidar2ego and are not. `camera_frame: "ego"` in `provenance.policy` marks a fixed node, but it describes the attempt that wrote `run.json`: a resumed run can still carry blind episodes from an earlier attempt (see *Resume does not check the node* under Remaining work) | **strong** (adapter run old vs fixed on real frames; regression test in `make check`) |
 
 M5 closed the first of those rows. Running paddock's adapters against the same
 renderer as the recorded August runs:
@@ -68,6 +68,19 @@ Still unrun: the third scenario (`side`), scene 0108, and multi-run seeds.
 **M3 — `paddock setup`.** Clone or adopt vendor repos, build the `external/`
 symlink farm, apply patches, run per-model `setup.sh`. Today `doctor` reports
 what is missing; `setup` does not yet fix it.
+
+**Resume does not check the node.** `--resume` compares only the run's config
+before reusing finished episodes, and writes `provenance.policy` from the last
+attempt's node alone. A fix that changes the adapter but no config, such as the
+Drive-JEPA camera-frame fix, is therefore invisible to it: resuming a partial
+run made before the fix reuses its camera-blind episodes, drives the rest with
+the camera, and records `camera_frame: "ego"` for the whole run. The smoke run
+`neuroncap/drivejepa/20261012T205915-7153f0` is such a resume (6 of its 9
+episodes come from its first attempt; they were confirmed by reproducing them in
+a fresh run). To do: store the node's diagnostics next to the config on the
+first attempt and refuse a resume whose node reports different ones. The
+open-loop path has the same gap: `_carry_forward_provenance` keeps an earlier
+attempt's `policy` only when the new one is empty.
 
 **M5 — closed loop.** `paddock run --bench neuroncap --model all --runs 1
 --scene 0103` must reproduce `ladder_current.log`:
