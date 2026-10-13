@@ -278,8 +278,9 @@ trustworthy of the two as a statement about new scenes.
   ten runs were made by the native driver and read by `paddock`'s AlpaSim
   ingester, as the 0.1.4 row was. The row's `run.json` records the driver
   version and describes the weights in its notes. The driver's log of those
-  runs names the weights by label and not by hash, so the row cannot prove
-  which file drove. The 30-scene figures for 0.1.4 and 0.1.7 are rows too, as the
+  runs names the weights by label only, but each run's launch log records the
+  checkpoint's sha256, and in all 30 it is the one in the Weights table above.
+  The 30-scene figures for 0.1.4 and 0.1.7 are rows too, as the
   `…_30scenes` runs. 0.1.4b has no row.
 - **Nothing here runs through the paddock bridge.** `drivejepa` still does not
   declare `alpasim` in its `model.yaml`.

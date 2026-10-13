@@ -31,6 +31,6 @@
   "status": "complete",
   "valid": true,
   "superseded_by": "",
-  "notes": "30 scenes: the benchmark's first ten public_2601 scenes plus twenty more drawn from the same suite (seed 20260922, stratified by speed and turn). One rollout per scene, same referee config as the ten-scene row. Retrained checkpoint, not the released one: the trajectory generator retrained on Physical AI AV train, behind the native AlpaSim driver at 0.1.7 (tools/models/drivejepa/alpasim_driver). The driver's log names the weights by label, not by hash, so this row cannot prove which file drove. Adapted, not zero-shot. See docs/models/drivejepa.md.",
+  "notes": "30 scenes: the benchmark's first ten public_2601 scenes plus twenty more drawn from the same suite (seed 20260922, stratified by speed and turn; listed in adapters/benchmarks/alpasim/scenes/public_2601_30scenes.yaml). One rollout per scene, same referee config as the ten-scene row. Retrained checkpoint, not the released one: the trajectory generator retrained on Physical AI AV train, behind the native AlpaSim driver at 0.1.7 (tools/models/drivejepa/alpasim_driver). Each run's launch log records the checkpoint's sha256, 29d5f9517c2ea8789f35c51f0934493e0727bde2d40b573ecc3eb33f5922d916, the one docs/models/drivejepa.md gives; the driver's own log names the weights by label only. Adapted, not zero-shot. See docs/models/drivejepa.md.",
   "ingested_from": "alpasim/drivejepa_017_20hz_30scenes"
 }

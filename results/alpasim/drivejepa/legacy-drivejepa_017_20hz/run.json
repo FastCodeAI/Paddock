@@ -31,6 +31,6 @@
   "status": "complete",
   "valid": true,
   "superseded_by": "",
-  "notes": "Retrained checkpoint, not the released one: the trajectory generator retrained on Physical AI AV train, behind the native AlpaSim driver at 0.1.7 (tools/models/drivejepa/alpasim_driver). The driver's log names the weights by label only (retrained generator with the first run's scorer, batch fix on, bonnet mask 37 rows, acceleration zeroed); it does not record the checkpoint's hash, so this row cannot prove which file drove. Adapted, not zero-shot: these ten scenes are the first ten of a 30-scene sweep and were also driven while the driver was developed. See docs/models/drivejepa.md.",
+  "notes": "Retrained checkpoint, not the released one: the trajectory generator retrained on Physical AI AV train, behind the native AlpaSim driver at 0.1.7 (tools/models/drivejepa/alpasim_driver). Each run's launch log records the checkpoint's sha256, 29d5f9517c2ea8789f35c51f0934493e0727bde2d40b573ecc3eb33f5922d916, the one docs/models/drivejepa.md gives; the driver's own log names the weights by label only (retrained generator with the first run's scorer, batch fix on, bonnet mask 37 rows, acceleration zeroed). Adapted, not zero-shot: these ten scenes are the first ten of a 30-scene sweep and were also driven while the driver was developed. See docs/models/drivejepa.md.",
   "ingested_from": "alpasim/drivejepa_017_20hz"
 }

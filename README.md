@@ -150,7 +150,9 @@ driven repeatedly while the driver was developed, so the number is not a
 held-out one. Referee, scenes and scorer are those of the other rows (¶), one
 rollout per scene. On the first ten scenes alone it scores 0.9956. Its other
 cells are not run: the checkpoint has no download location yet and no paddock
-node.
+node. The launch log of each of its 30 runs records the checkpoint's sha256,
+the one `docs/models/drivejepa.md` gives, so the file is identified even though
+another site cannot yet fetch it.
 See `docs/models/drivejepa.md`.
 
 ∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
