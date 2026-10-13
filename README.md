@@ -133,9 +133,8 @@ Its nuScenes cell is zero-shot (no nuScenes data went into the selector) and was
 measured with the camera-frame fix (#62). Paired over 150 scenes, it is 0.054
 below constant velocity on cumulative L2 (t −2.8); its point collision rate,
 1.21% against 1.66%, is not separated (t −1.5). The Drive-JEPA row is still the
-camera-blind one (⊘). With the fix, plain `drivejepa` scores 1.360 there (run
-`20261012T215049-798a0d`, not yet tracked), and this row differs from it in the
-camera crop as well as the selector.
+camera-blind one (⊘), and this row also differs from it in the camera crop, so
+the two are not a like-for-like comparison.
 See `docs/models/drivejepa_rerank.md`.
 
 ∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
