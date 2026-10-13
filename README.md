@@ -113,7 +113,7 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 |---|---|---|---|---|---|---|---|---|---|
 | OpenPilot | 2.477 △ | 1.599 | 1.507 ✦ ⊗ | 0.807 ◐ | 0.747 (10 Hz) ‡ | 0.807 (10 Hz) ‡ | 30.09 ≈ ◆ | **3.60** ‖ | **0.9566** ¶ |
 | Alpamayo 1.5 | 0.787 △ | 1.002 | **0.900** ✦ | — ◐◐ | 0.691 (10 Hz) † | 0.753 (10 Hz) † | 44.58 ◆ | **3.73** ‖ | 0.9000 ¶¶ |
-| Drive-JEPA | 0.912 △ | 2.364 | 16.048 ✦ | 1.512 ◐ | 0.843 | 0.892 † | 31.11 ◆ | **3.57** ‖ | 0.5030 ¶ |
+| Drive-JEPA | 0.912 △ ⊘ | 2.364 | 16.048 ✦ | 1.512 ◐ | 0.843 | 0.892 † | 31.11 ◆ | **3.57** ‖ ⊘ | 0.5030 ¶ |
 | VisionPilot | 1.441 △ | 1.534 ∗ | 4.045 ✦ ∗ | 2.246 ◐ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.8488 ¶ |
 | METEOR | 0.977 △ | 1.879 ◇ | — ✦ | 1.273 ◐ | 0.303 ◊ | 0.366 ◊ | — | **2.64** ‖ | — |
 | Qwen-Drive 1.0 | 0.450 | 0.806 | 1.159 ✦ | — | 0.840 | 0.876 | 12.92 ◆◆ | **2.49** | — |
@@ -183,6 +183,11 @@ cite.
 is the mean of cumulative L2 through 1, 2 and 3 seconds, not ADE at 3 seconds.
 OpenPilot uses real approximately 12 Hz front-camera history; scoring stays at
 2 Hz. See the nuScenes table below for point L2, cumulative L2 and ADE.
+
+⊘ Measured camera-blind: until the camera-frame fix (#62) Drive-JEPA's adapter
+placed the cameras so that no sample point landed in the image on nuScenes and
+neuroNCAP, and the plan came from ego status alone. Re-measure pending; its
+other columns are not affected.
 
 ✦ comma2k19 is the full dataset: **2035 one-minute segments, 5 keyframes each —
 10,165 scored samples**, not 10,175: two truncated segments are too short to
@@ -375,7 +380,7 @@ history, CUDA inference, CPU camera warping and resume assistance disabled.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | OpenPilot | 1.925 | 4.054 | 6.194 | 4.057 | 2.477 | 3.535 | 2.624 |
 | Alpamayo 1.5 | 0.509 | 1.351 | 2.602 | 1.487 | 0.787 | 1.249 | 1.582 |
-| Drive-JEPA | 0.540 | 1.587 | 3.519 | 1.882 | 0.912 | 1.536 | 1.459 |
+| Drive-JEPA ⊘ | 0.540 | 1.587 | 3.519 | 1.882 | 0.912 | 1.536 | 1.459 |
 | VisionPilot | 1.031 | 2.213 | 3.837 | 2.360 | 1.441 | 2.058 | 3.816 |
 | METEOR | 0.616 | 1.683 | 3.356 | 1.885 | 0.977 | 1.570 | 6.152 ◇ |
 | Qwen-Drive 1.0 | 0.318 | 0.722 | 1.360 | 0.800 | 0.450 | 0.678 | 0.770 |
@@ -384,6 +389,8 @@ history, CUDA inference, CPU camera warping and resume assistance disabled.
 Point L2 averages errors at 1, 2 and 3 seconds. Cumulative L2 averages the three
 prefix means; ADE at 3 seconds averages all six half-second errors. Collision
 is predicted ego-footprint overlap with annotated boxes, not an observed crash.
+
+⊘ Measured camera-blind; re-measure pending, see #62.
 
 **Constant velocity was the lowest L2 on this recorded split until Qwen-Drive,
 which is below it on every column**, collision included, and is the first model
@@ -823,11 +830,13 @@ all 200 runs. Runs are seeded 0-9, so every model met identical scenario jitter.
 |---|---:|---:|---:|---:|---:|
 | Alpamayo 1.5 | 4.41 ±1.48 | 3.64 ±2.01 | 2.45 ±1.93 | **3.73** | 32.5% |
 | OpenPilot | 4.52 ±1.34 | 2.30 ±1.24 | 3.08 ±2.25 | **3.60** | 38.0% |
-| Drive-JEPA | 4.23 ±1.33 | 2.42 ±1.43 | 3.39 ±2.07 | **3.57** | 45.5% |
+| Drive-JEPA ⊘ | 4.23 ±1.33 | 2.42 ±1.43 | 3.39 ±2.07 | **3.57** | 45.5% |
 | METEOR | 2.44 ±2.42 | 3.20 ±2.39 | 2.50 ±2.50 | **2.64** | 48.0% |
 | Qwen-Drive 1.0 | 2.71 ±1.73 | 1.52 ±1.49 | 3.00 ±2.04 | **2.49** | 69.0% |
 | VisionPilot | 2.53 ±1.60 | 1.17 ±1.38 | 0.08 ±0.18 | **1.58** | 85.5% |
 | Baseline (Constant Velocity) | 0.00 | 0.00 | 0.00 | 0.00 § | 100.0% |
+
+⊘ Measured camera-blind; re-measure pending, see #62.
 
 **Qwen-Drive is the widest open-loop-to-closed-loop gap in the table.** It leads
 KITScenes and ties Drive-JEPA on NAVSIM, then places fourth here, below three
@@ -837,7 +846,7 @@ models it beat on every open-loop column. The frontal column is where it goes:
 path reaches a mean peak lateral offset of 1.22 m, against 10.44 m for
 Alpamayo — which decelerates no harder (−2.31 m/s against Qwen-Drive's −2.48)
 and collides in 32% of episodes rather than 86%. Drive-JEPA brakes hardest of
-the five, −5.47 m/s, and still collides in 78%. In a staged head-on the closing
+the five, −5.47 m/s, and still collides in 78% (⊘ measured camera-blind). In a staged head-on the closing
 vehicle arrives whatever the ego's speed, so the escape is lateral, and Alpamayo
 is the only model of the five that takes it. This is not an adapter limit: on
 NAVSIM the same code path produces lateral offsets to 19.92 m. The full table,

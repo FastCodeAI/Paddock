@@ -396,10 +396,13 @@ class DriveJepaPolicy(Policy):
         throughout -- an open-loop sequence, or a simulator whose calls never
         fall 0.45 to 0.55 s apart.
 
-        `camera_frame` marks runs made with each camera placed on the ego frame;
-        a run.json without it predates that fix and saw no image on nuScenes.
+        `camera_frame` marks a node that places each camera on the ego frame; a
+        run.json without it predates that fix and saw no image on nuScenes.
         That matters for momentum in particular: its first neuroNCAP comparison
-        was made before the fix, on a model planning from ego status alone.
+        was made before the fix, on a model planning from ego status alone. The
+        marker describes the attempt that wrote run.json, not every episode in
+        it: a resumed run keeps the episodes of its earlier attempts, and the
+        runner does not yet check that those came from a node reporting the same.
         """
         selection: dict[str, Any] = {"momentum": "off"}
         if self.momentum is not None:
