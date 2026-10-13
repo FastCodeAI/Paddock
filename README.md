@@ -112,11 +112,11 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 | | 🟢 nuScenes cumulative L2 avg ↓ (m) | 🟢 KITScenes ADE ↓ (m) | 🟢 comma2k19 ADE@3s ↓ (m) | 🟢 nuPlan ADE ↓ (m) | 🟡 NAVSIM v2 EPDMS ↑ (0–1) | 🟡 NAVSIM v1 PDMS ↑ (0–1) | 🔴 Bench2Drive driving score ↑ (0–100) | 🔴 neuroNCAP score ↑ (0–5) | 🔴 AlpaSim nuRec scene score ↑ (0–1) |
 |---|---|---|---|---|---|---|---|---|---|
 | OpenPilot | 2.477 △ | 1.599 | 1.507 ✦ ⊗ | 0.807 ◐ | 0.747 (10 Hz) ‡ | 0.807 (10 Hz) ‡ | 30.09 ≈ ◆ | **3.60** ‖ | **0.9566** ¶ |
-| Alpamayo 1.5 | 0.787 △ | 1.002 | **0.900** ✦ | — ◐◐ | 0.691 (10 Hz) † | 0.753 (10 Hz) † | 44.58 ◆ | **3.73** ‖ | 0.9000 ¶¶ |
-| Drive-JEPA | 0.912 △ | 2.364 | 16.048 ✦ | 1.512 ◐ | 0.843 | 0.892 † | 31.11 ◆ | **3.57** ‖ | 0.5030 ¶ |
+| Alpamayo 1.5 | 0.787 △ | 1.002 | **0.900** ✦ | — ◐◐ | 0.691 (10 Hz) † | 0.753 (10 Hz) † | 55.82 (10 Hz) ※ | **3.73** ‖ | 0.9000 ¶¶ |
+| Drive-JEPA | 0.912 △ | 2.364 | 16.048 ✦ | 1.512 ◐ | 0.843 | 0.892 † | 57.60 (2 Hz) ※ | **3.57** ‖ | 0.5030 ¶ |
 | VisionPilot | 1.441 △ | 1.534 ∗ | 4.045 ✦ ∗ | 2.246 ◐ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.8488 ¶ |
 | METEOR | 0.977 △ | 1.879 ◇ | — ✦ | 1.273 ◐ | 0.303 ◊ | 0.366 ◊ | — | **2.64** ‖ | — |
-| Qwen-Drive 1.0 | 0.450 | 0.806 | 1.159 ✦ | — | 0.840 | 0.876 | 12.92 ◆◆ | **2.49** | — |
+| Qwen-Drive 1.0 | 0.450 | 0.806 | 1.159 ✦ | — | 0.840 | 0.876 | 17.08 (2 Hz) ※ | **2.49** | — |
 | Baseline (Constant Velocity) | 0.641 △ | 1.381 | 1.639 ✦ | 1.393 ◐ | 0.239 | 0.207 † | 47.94 ♣ | 0 § | *0.8850* ¶ |
 
 ∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
@@ -267,13 +267,21 @@ are censored before intervention and eight had no intervention. It is not a
 separate unassisted sweep. The historical OpenPilot scores predate later
 controller fixes. The assisted and expansion recordings are reported
 separately in [OpenPilot, by recording set](#openpilot-by-recording-set); they are
-never pooled into one mean. Drive-JEPA uses its released NAVSIM-v2 checkpoint zero-shot
-in CARLA. See [Bench2Drive protocol](docs/benchmarks/bench2drive.md).
+never pooled into one mean. See [Bench2Drive protocol](docs/benchmarks/bench2drive.md).
 
-◆◆ Qwen-Drive was not in the 24-route cohort. Its cell is the 50-route run
-instead, so it is **not comparable with the four ◆ cells above it**; the routes
-every system in that run shares are in
-[Bench2Drive — 50 routes](#bench2drive--50-routes).
+※ Bench2Drive driving score at the model's **native inference rate** — Drive-JEPA
+and Qwen-Drive replan at 2 Hz, Alpamayo 1.5 at 10 Hz — over the 50-route set,
+18–20 Sep 2026. Alpamayo 1.5 and Qwen-Drive are means over 49 routes: route 3800
+crashes CARLA for both at their native rate and is reported as never scored, not
+as a zero. Every other cell in this column is driven at 20 Hz, one inference per
+simulator tick; OpenPilot's native rate *is* 20 Hz, and VisionPilot was not
+re-run. So the ※ cells are **not comparable with the ◆ cells**: a different rate
+and a different route set. At 20 Hz the same three scored Alpamayo 1.5 44.58 and
+Drive-JEPA 31.11 (24 routes, ◆) and Qwen-Drive 12.92 (50 routes). Drive-JEPA uses
+its released NAVSIM-v2 checkpoint zero-shot in CARLA. The runs stay
+`valid: false` and off the ranked [leaderboard](docs/leaderboard.md), which ranks
+the 20 Hz protocol only. Per-route detail and the 20 Hz comparison are in
+[Native inference rate](#native-inference-rate--three-models-re-driven).
 
 ♣ The Bench2Drive baseline uses a **fixed 3 m/s target**, with straight ego-frame
 waypoints and the shared controller; actual vehicle speed can differ. nuScenes
@@ -794,7 +802,8 @@ re-run; nothing here restates either. The rate is recorded per run in
 `PADDOCK_INFER_HZ` is not on `main` yet — so these are landed results, not runs a
 clean checkout can re-drive. The three runs are `valid: false` and **do not rank**
 on the board: a 2 or 10 Hz run is not the protocol the other rows were driven
-under. `model_env` also differs in more than the rate — thread counts, a trace
+under. Their native scores are the Bench2Drive cells of the support matrix for
+these three models (※). `model_env` also differs in more than the rate — thread counts, a trace
 sink, `ALPAMAYO_NAV` — each argued immaterial and none measured to be; the
 [page](docs/benchmarks/bench2drive-native-rate.md) books that as argued, not
 verified.

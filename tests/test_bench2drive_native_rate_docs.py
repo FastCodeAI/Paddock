@@ -383,6 +383,31 @@ def test_readme_block_reproduces(native: dict, twenty: dict, model: str) -> None
     assert row[7] == f"{old['routes_completed']} → {new['routes_completed']}"
 
 
+#: model -> its row label in the README support matrix.
+MATRIX_ROW = {"drivejepa": "Drive-JEPA", "alpamayo15": "Alpamayo 1.5", "qwendrive": "Qwen-Drive 1.0"}
+
+
+def _matrix_cell(row_label: str, column_header: str) -> str:
+    """One support-matrix cell, addressed by row label and column header."""
+    lines = README.read_text().split("\n")
+    header = next(ln for ln in lines if ln.startswith("| | ") and column_header in ln)
+    index = next(
+        i for i, c in enumerate(c.strip() for c in header.strip().strip("|").split("|")) if column_header in c
+    )
+    row = next(ln for ln in lines if ln.startswith(f"| {row_label} |"))
+    return [c.strip() for c in row.strip().strip("|").split("|")][index]
+
+
+@pytest.mark.parametrize("model", sorted(CAMPAIGN))
+def test_support_matrix_publishes_the_native_score(model: str) -> None:
+    """The matrix's Bench2Drive cell for a re-driven model is its native-rate run, rate named."""
+    hz = CAMPAIGN[model][0]
+    metrics = json.loads((_run_dir(model) / "metrics.json").read_text())
+    score = metrics["metrics"]["driving_score"]["mean"]
+    cell = _matrix_cell(MATRIX_ROW[model], "Bench2Drive")
+    assert cell == f"{score:.2f} ({hz} Hz) ※", f"{model}: the support matrix publishes {cell!r}"
+
+
 def test_readme_block_lists_exactly_the_models_that_were_re_run() -> None:
     """OpenPilot and VisionPilot were not re-run; they must not appear as rows."""
     rows = _readme_rows()
