@@ -28,8 +28,9 @@ from paddock.adapters.benchmarks.alpasim.harness import (
     scorer_sha,
 )
 from paddock.benchmark import Episode
-from paddock.config import SiteConfig
+from paddock.config import REPO_ROOT, SiteConfig
 from paddock.registry import Registry
+from paddock.results.store import sequence_hash
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SUMMARY = FIXTURES / "results_summary_two_scenes.json"
@@ -191,6 +192,19 @@ def test_the_pinned_scene_set_is_ten_scenes() -> None:
     scenes = load_scene_set(DEFAULT_SCENE_SET)
     assert len(scenes) == 10
     assert CLEAN in scenes and OFFROAD in scenes
+
+
+def test_the_thirty_scene_set_is_the_one_the_stored_rows_cover() -> None:
+    """The 30-scene rows were ingested, not driven from this list, so the list
+    is only worth tracking if it names the scenes those rows actually cover."""
+    thirty = load_scene_set("public_2601_30scenes")
+    assert len(thirty) == len(set(thirty)) == 30
+    assert thirty[:10] == load_scene_set(DEFAULT_SCENE_SET)
+    rows = sorted((REPO_ROOT / "results" / "alpasim").glob("*/legacy-*_30scenes/run.json"))
+    assert rows, "no 30-scene row to check the list against"
+    want = sequence_hash([f"alpasim/{scene}" for scene in thirty])
+    for row in rows:
+        assert json.loads(row.read_text())["dataset"]["sequences_sha256"] == want, row
 
 
 def test_scene_order_is_the_pinned_order_not_the_filesystems(tmp_path: Path, monkeypatch) -> None:

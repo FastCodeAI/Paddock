@@ -407,6 +407,12 @@ Open work on this driver, in the order it bites:
 - **The retrained checkpoint has no download location**, and at the training
   site it is not yet at the `{weights}` layout the docs give. Another site
   cannot run 0.1.7 without being handed the file.
+- **The retrained checkpoint's rows are stored under `drivejepa`.** The ingester
+  names a row by its driver, so `results/alpasim/drivejepa/` holds the released
+  checkpoint and the retrained one, and `paddock report` lists both as
+  `drivejepa`, told apart only by run name. It also ranks ten-scene and
+  30-scene rows in one table. The retrained checkpoint needs its own model
+  name, and the report needs to group by scene set (issue #69).
 - **The promoted driver has not driven a scene.**
 
 ## Bench2Drive / CARLA — adapter landed, driven, and the runs are tracked

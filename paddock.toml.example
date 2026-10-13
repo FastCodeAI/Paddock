@@ -140,7 +140,8 @@ weights = "/path/to/weights"
 # repo   = "/path/to/alpasim"
 # python = "/path/to/alpasim/.venv/bin/python"
 #
-# Which pinned scene list to drive. See adapters/benchmarks/alpasim/scenes/.
+# Which pinned scene list to drive. See adapters/benchmarks/alpasim/scenes/:
+# public_2601_first10 (the default) or public_2601_30scenes.
 # scene_set = "public_2601_first10"
 #
 # Where AlpaSim caches the USDZ scene artifacts. Large and site-specific; an

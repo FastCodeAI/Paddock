@@ -247,8 +247,20 @@ scores 0.7726.
 scene is in both lists; two of 0.1.7's are new. The mean rose and the collision
 count fell by one, but a scene 0.1.4b drove cleanly can be one 0.1.7 does not.
 
-*Footnote.* The README's AlpaSim Drive-JEPA row, 0.5030, is driver 0.1.4 on the
-first 10 of these 30 scenes. Its 30-scene figure is 0.4209, in the table above.
+**On the benchmark's own ten scenes.** The AlpaSim benchmark is the first 10
+of these 30 scenes, and the README's rows are on those ten:
+
+| Version | `scene_score` ↑, 10 scenes | `scene_score` ↑, 30 scenes | `results/alpasim/drivejepa/` |
+|---|---:|---:|---|
+| 0.1.4 | 0.5030 | 0.4209 | `legacy-drivejepa_014_20hz` |
+| 0.1.7 | 0.9956 | 0.7697 | `legacy-drivejepa_017_20hz` |
+
+0.1.7's ten are the same recorded runs as its 30-scene figure, not a second
+sweep: nine scenes at 1.0000 and one at 0.9563, with no collision and no
+off-road event. All five of its failures on the 30 are among the other twenty
+scenes, which is why the two figures are so far apart. The ten scenes were
+driven repeatedly while the driver was developed, so 0.9956 is the less
+trustworthy of the two as a statement about new scenes.
 
 ## Not verified
 
@@ -259,13 +271,17 @@ first 10 of these 30 scenes. Its 30-scene figure is 0.4209, in the table above.
   variables and its imports to paddock's scaffold. Since then it has passed its tests and a
   `--check-only` start against the real checkpoint (size, sha256, batch fix
   installed, both provenance lines) — and nothing more.
-- **The 30 scenes are not the benchmark's set.** The benchmark's set is the
-  first 10 of these 30, so a 30-scene mean is not comparable to any row in
-  `docs/benchmarks/alpasim.md`; for driver 0.1.4 the two figures are 0.5030 and
-  0.4209.
-- **No `results/` row was added**, for the retrained weights or for 0.1.4b. The
-  recorded runs were made by a native driver, not through `paddock run`, and
-  this page is the only place their numbers appear.
+- **A 30-scene mean and a ten-scene mean are not comparable.** `paddock run`
+  drives the first 10 of these 30, and `docs/benchmarks/alpasim.md` has a table
+  for each set; for driver 0.1.4 the two figures are 0.5030 and 0.4209.
+- **The `results/` row for 0.1.7 is ingested, not run through paddock.** Its
+  ten runs were made by the native driver and read by `paddock`'s AlpaSim
+  ingester, as the 0.1.4 row was. The row's `run.json` records the driver
+  version and describes the weights in its notes. The driver's log of those
+  runs names the weights by label only, but each run's launch log records the
+  checkpoint's sha256, and in all 30 it is the one in the Weights table above.
+  The 30-scene figures for 0.1.4 and 0.1.7 are rows too, as the
+  `…_30scenes` runs. 0.1.4b has no row.
 - **Nothing here runs through the paddock bridge.** `drivejepa` still does not
   declare `alpasim` in its `model.yaml`.
 - **The scorer's own check failed in training, and that figure is not this
