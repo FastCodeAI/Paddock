@@ -218,6 +218,35 @@ Two rows need their caveat quoted with the number:
   scenes and four full-distance runs that all scored 1.0000. It is a pattern —
   it wins 1, ties 3 and loses 6 against the floor — not one bad scene.
 
+### `1cam-20Hz` on 30 scenes — what the README's support matrix quotes
+
+The same drivers, referee config and scorer, on 30 scenes: the ten above plus
+twenty more drawn from `public_2601` (seed 20260922, stratified by speed and
+turn, from the scenes of the suite available at renderer version 26.1.112 and
+not already among the ten). One rollout per scene. The rows are in
+`results/alpasim/` as the `…_30scenes` runs; each merges the ten-scene run with
+twenty single-scene runs, and the ingester refuses the merge if the driver or
+the control rate differs between them.
+
+| model | `scene_score` | sd | progress | at-fault | off-road | vs floor |
+|---|---|---|---|---|---|---|
+| OpenPilot supercombo 0.2.0 | **0.7726** | 0.3627 | 0.7238 | 0/30 | 3/30 | +0.2850 |
+| Drive-JEPA 0.1.7, retrained checkpoint (adapted) | 0.7697 | 0.4022 | 0.8284 | 3/30 | 2/30 | +0.2821 |
+| VisionPilot v2 2.0.0 | 0.6289 | 0.4106 | 0.6355 | 4/30 | 1/30 | +0.1413 |
+| *constant-velocity floor 0.2.3* | *0.4876* | *0.4252* | *0.5411* | *2/30* | *5/30* | *—* |
+| Drive-JEPA 0.1.4 | 0.4209 | 0.4378 | 0.5091 | 7/30 | 5/30 | −0.0667 |
+
+Three things to read with it:
+
+- **The floor moves with the scene set**, from 0.8850 on the ten to 0.4876 on
+  the 30. A mean over one set says nothing against a mean over the other, so
+  quote the difference from the floor and the number of scenes with any figure.
+- **Alpamayo 1.5 has no 30-scene row.** It was run on the first ten scenes
+  only, and its 0.9000 is a ten-scene mean in a different camera group.
+- **`paddock run --bench alpasim` still drives the ten.** The benchmark's
+  `scene_set` is unchanged; the twenty extra scenes were driven by each model's
+  native driver and ingested.
+
 ### `4cam-20Hz`
 
 | model | `scene_score` | sd | progress | passed | failures |

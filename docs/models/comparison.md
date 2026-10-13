@@ -143,10 +143,11 @@ checkpoint exists for the same architecture and is not in any table above:
 benchmark's scene list: some AlpaSim scenes are reconstructions of clips in
 that dataset, and their exclusion from training (126,981 samples, 4,015 clips,
 `train` split, evaluation scenes asserted absent in every script) is a property
-of the training code in the gallops repository, taken on that code's word. One
-row in `results/` was made with these weights: AlpaSim, the benchmark's ten
-scenes, 0.9956 (`results/alpasim/drivejepa/legacy-drivejepa_017_20hz`). It has
-its own row in the support matrix, marked as adapted, and the section below
+of the training code in the gallops repository, taken on that code's word. Two
+rows in `results/` were made with these weights, both on AlpaSim: 30 scenes,
+0.7697 (`legacy-drivejepa_017_20hz_30scenes`), and the benchmark's ten scenes
+alone, 0.9956 (`legacy-drivejepa_017_20hz`). The 30-scene figure has its own
+row in the support matrix, marked as adapted, and the section below
 says how to read it. Detail in [drivejepa.md](drivejepa.md).
 
 **Every Drive-JEPA row on this page is the perception-*based* v2 agent.** The
@@ -243,12 +244,12 @@ a key in `datasets.yaml` and no test here can check it.
 
 Two more things separate it from the rows beside it. The ten scenes were driven
 many times while the driver was developed, so choices in the driver were made
-with their outcomes in view. And the row is the first ten scenes of a 30-scene
-sweep, where the mean over all 30 is 0.7697: every failure it has is on the
-other twenty.
+with their outcomes in view. And the two figures are far apart, 0.9956 on the first ten scenes
+against 0.7697 on all 30: every failure it has is on the other twenty.
 
-Read 0.9956 beside the released rows, never as one of them. The released
-`drivejepa` row, 0.5030, stays as it is.
+Read either figure beside the released rows, never as one of them. The
+released `drivejepa` rows, 0.4209 on the 30 scenes and 0.5030 on the ten, stay
+as they are.
 
 ### AutoE2E × kitscenes — unconfirmed, and not yet a paddock model
 

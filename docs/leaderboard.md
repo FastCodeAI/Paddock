@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-94 runs across 8 benchmarks.
+99 runs across 8 benchmarks.
 53 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -12,7 +12,12 @@
 | alpamayo15 | alpamayo_proxy_referee_20hz | 10 | fastcode-shakaal | 0.900 | 0.960 | 0.100 | 0.100 | 0.000 | 0.740 | 3.170 |
 | constant_velocity | cv_023_20hz_pilot10 | 10 | fastcode-shakaal | 0.885 | 0.829 | 0.200 | 0.000 | 0.000 | 0.653 | 2.507 |
 | visionpilot | visionpilot_v2_smoke_pilot10_handover_blend | 10 | fastcode-shakaal | 0.849 | 0.820 | 0.300 | 0.100 | 0.000 | 0.699 | 1.467 |
+| openpilot | openpilot_020_30scenes | 30 | fastcode-shakaal | 0.773 | 0.724 | 0.200 | 0.000 | 0.100 | 0.671 | 1.787 |
+| drivejepa | drivejepa_017_20hz_30scenes | 30 | fastcode-shakaal | 0.770 | 0.828 | 0.100 | 0.100 | 0.067 | 0.661 | 3.024 |
+| visionpilot | visionpilot_v2_30scenes | 30 | fastcode-shakaal | 0.629 | 0.636 | 0.367 | 0.133 | 0.033 | 0.570 | 1.740 |
 | drivejepa | drivejepa_014_20hz | 10 | fastcode-shakaal | 0.503 | 0.565 | 0.400 | 0.200 | 0.100 | 0.462 | 2.443 |
+| constant_velocity | cv_023_20hz_30scenes | 30 | fastcode-shakaal | 0.488 | 0.541 | 0.267 | 0.067 | 0.167 | 0.447 | 2.189 |
+| drivejepa | drivejepa_014_20hz_30scenes | 30 | fastcode-shakaal | 0.421 | 0.509 | 0.400 | 0.233 | 0.167 | 0.465 | 2.056 |
 
 ## bench2drive
 

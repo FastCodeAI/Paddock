@@ -1,0 +1,87 @@
+{
+  "run_id": "legacy-visionpilot_v2_30scenes",
+  "primary_metric": "scene_score",
+  "n": 30,
+  "metrics": {
+    "scene_score": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 0.628914,
+      "median": 0.841836,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.410629
+    },
+    "progress": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 0.635514,
+      "median": 0.739243,
+      "p90": 0.999814,
+      "max": 1.0,
+      "std": 0.345112
+    },
+    "collision_rate": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 0.366667,
+      "median": 0.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.481894
+    },
+    "collision_at_fault": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 0.133333,
+      "median": 0.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.339935
+    },
+    "offroad": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 0.033333,
+      "median": 0.0,
+      "p90": 0.0,
+      "max": 1.0,
+      "std": 0.179505
+    },
+    "duration_frac_20s": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 0.569833,
+      "median": 0.64625,
+      "p90": 0.84,
+      "max": 0.8425,
+      "std": 0.265944
+    },
+    "dist_to_gt_trajectory": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 1.740358,
+      "median": 1.042414,
+      "p90": 4.145342,
+      "max": 4.201994,
+      "std": 1.563262
+    },
+    "open_loop_collision": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 0.126955,
+      "median": 0.0,
+      "p90": 0.352994,
+      "max": 0.772152,
+      "std": 0.189714
+    }
+  },
+  "by_split": {},
+  "by_group": {
+    "tick_config": {
+      "1cam-20Hz": {
+        "n": 30
+      }
+    }
+  }
+}
