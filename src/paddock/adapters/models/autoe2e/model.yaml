@@ -1,0 +1,54 @@
+name: autoe2e
+description: Autoware Foundation AutoE2E v1.0 Reactive model (ResNet-50 + BEVFormer V2 T8, GRU control planner), KITScenes epoch 5
+repo: auto_e2e
+
+runtime:
+  # uv, Python 3.12, torch 2.7.1+cu128 (upstream pins torch 2.7.1; the cu128 build has the
+  # Blackwell kernels the PyPI cu126 wheel lacks). The model is imported from the upstream
+  # checkout at the release revision 40a75cf8; see setup.sh.
+  kind: uv
+  python: "3.12"
+  venv: "{repo}/.venv"
+  pythonpath: ["{repo}/Model"]
+  cwd: "{repo}"
+  env:
+    AUTOE2E_REPO: "{repo}"
+    # Hugging Face AutowareFoundation/auto_e2e v1.0, models/kitscenes-epoch-5/checkpoint.pt
+    # (sha256 120a2163...). setup.sh downloads and checks it.
+    AUTOE2E_CHECKPOINT: "{weights}/auto_e2e/models/kitscenes-epoch-5/checkpoint.pt"
+    # Projection reference frame height above the ground (KITScenes top-LiDAR frame: 2.1 m).
+    AUTOE2E_REF_HEIGHT_M: "2.1"
+    # Route raster from obs.route_xy when the benchmark sends one ("0": camera-only track).
+    AUTOE2E_ROUTE: "1"
+    # Forward-pass cadence in seconds (0 = every call). Closed loop sets 0.5 with 10 Hz calls.
+    AUTOE2E_REPLAN_S: "0"
+    OMP_NUM_THREADS: "2"
+
+capabilities:
+  # Slot order front, front-left, front-right, rear-left, rear, rear-right
+  # (KITScenes base_front_center + ring; nuPlan F0, L0, R0, L2, B0, R2).
+  cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT, CAM_BACK_LEFT, CAM_BACK, CAM_BACK_RIGHT]
+  vram_gb: 4
+  startup_timeout_s: 900
+  waypoint_dt: 0.5
+  min_input_hz: 0.0
+  # Ego history is 64 rows at 10 Hz (6.4 s); camera history 8 frames at 0.5 s (3.5 s).
+  native_input_hz: 10.0
+  history_s: 6.5
+  architecture: "ResNet-50 + BEVFormer V2 T8 (300x200 BEV, 8 frames at 0.5 s), deformable map/route fusion, GRU planner over (accel, curvature)"
+  params_m: 79.9
+  size_gb: 0.33
+  precision: bf16
+  input_size: [512, 512]
+  history_frames: 8
+  output_kind: controls
+  horizon_s: 6.4
+  stochastic: false
+  needs_speed: true
+  trained_on:
+    - dataset: nuplan
+      split: train
+    - dataset: kitscenes
+      split: train
+
+benchmarks: [bench2drive, navsim]
