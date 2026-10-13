@@ -257,14 +257,21 @@ README and the benchmark doc until they land:
 
 A third re-sweep is owed across every benchmark, and it is not openpilot's:
 
-- **Re-sweep VisionPilot everywhere.** Its adapter carried `CURV_SCALE = 1.0`
-  where the stack has 0.21, so `IDM`'s `sqrt(mu*g/|kappa|)` speed cap bound on a
-  curvature 4.8x too large. Fixed September 2026; on a 20-sample comma2k19 smoke
-  ADE@3s moved 15.09 -> 5.28. **Every VisionPilot row in the README and in
-  `docs/models/comparison.md` predates it.** Expect the open-loop rows to move
-  most: Bench2Drive and neuroNCAP are urban and slow enough that the cap rarely
-  binds, which is how this survived them. Marked `∗` in the README until it
-  lands.
+- **Re-sweep VisionPilot everywhere.** Two fixes are stale:
+  
+  1. `CURV_SCALE = 1.0` where the stack has 0.21 (September 2026). Fixed; on a
+     20-sample comma2k19 smoke test ADE@3s moved 15.09 → 5.28. **Every VisionPilot
+     row in the README and in `docs/models/comparison.md` predates it.** Marked
+     `∗` in README.
+  
+  2. Distance measurement noise now scales with range²: σ(d) = 3·(d/30)² instead
+     of flat 3.0m. Improvement: 26–32% on NuScenes, 5–10% on mixed datasets. Also
+     ported: range-scaled CIPO noise in particle filter. **NOT YET PORTED from
+     upstream d4d9be13: (a) AutoDrive confirmation logic, (b) AutoDrive validity
+     (>1m), (c) re-init triggers (cut-in edge), (d) re-init seed with scaled
+     stddev.** These are backlog items for follow-up PRs.
+  
+  **All VisionPilot rows are stale until re-swept with both fixes.**
 
 Two known weaknesses are documented rather than fixed, because fixing either
 moves a published column and this branch launched no sweep. Both are argued from

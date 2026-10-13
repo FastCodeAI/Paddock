@@ -324,3 +324,19 @@ def test_init_from_still_uses_the_flat_figure() -> None:
     fusion = LongitudinalFusion(seed=0)
     fusion._init_from(55.0, LongitudinalFusion.CIPO_NOISE_M)
     assert fusion.distance.std() == pytest.approx(LongitudinalFusion.CIPO_NOISE_M, rel=0.35)
+
+
+def test_first_init_on_far_lead_uses_flat_not_scaled_stddev() -> None:
+    """Initialization uses flat stddev, not scaled, to avoid double-counting.
+
+    At 55m, cipo_stddev returns ~10.1 m. But _init_from is called with the
+    flat CIPO_NOISE_M (3.0 m) to avoid scaling the initial particle spread,
+    which would double-count the range penalty (measurement is already scaled)."""
+    fusion = LongitudinalFusion(seed=0)
+    # Verify scaling works: at 55m, scaled stddev should be ~10
+    scaled_55m = LongitudinalFusion.cipo_stddev(55.0)
+    assert scaled_55m > 9.0, f"at 55m should be ~10m, got {scaled_55m:.1f}m"
+    # Initialize with flat figure (as update() does on first encounter)
+    fusion._init_from(55.0, LongitudinalFusion.CIPO_NOISE_M)
+    # Verify we got flat spread, not scaled
+    assert fusion.distance.std() == pytest.approx(LongitudinalFusion.CIPO_NOISE_M, rel=0.35)

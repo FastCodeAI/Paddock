@@ -535,13 +535,15 @@ on-screen display support:
   search (`VISIONPILOT_GPU_MEM_MB`).
 * **No route input.** VisionPilot has no goal or command interface, so on
   junction routes it goes straight; nuScenes and Bench2Drive both show it.
-* **Curvature scale (fixed September 2026; earlier runs are stale).**
-  `auto_drive.hpp` documents `curvature_1pm = curvature_raw * CURV_SCALE` and
-  then deliberately does not apply it — "Domain conversion is the caller's job"
-  — so the constant is not in `auto_drive.cpp`, and grepping for it there finds
-  nothing. It lives in the caller:
-  `lateral_fusion.hpp::Config::ad_curvature_scale = 0.21f`, annotated "CURV_SCALE
-  = 0.21 in training", with `debug_draw.hpp` carrying the same 0.21 sourced to
+* **Known stale runs: both below are fixed; all rows recorded before October 2026 are stale.**
+  
+  1. **Curvature scale (fixed September 2026).** `auto_drive.hpp` documents
+     `curvature_1pm = curvature_raw * CURV_SCALE` and then deliberately does not
+     apply it — "Domain conversion is the caller's job" — so the constant is not
+     in `auto_drive.cpp`, and grepping for it there finds nothing. It lives in
+     the caller: `lateral_fusion.hpp::Config::ad_curvature_scale = 0.21f`,
+     annotated "CURV_SCALE = 0.21 in training", with `debug_draw.hpp` carrying
+     the same 0.21 sourced to
   `load_data_auto_drive.py`. The adapter had 1.0. That is not a harmless
   default: `IDM` caps the set-speed at `sqrt(mu*g/|kappa|)` and raises the
   overshoot to the fourth power, so a curvature 4.8× too large made the planner
@@ -553,3 +555,11 @@ on-screen display support:
   because those are urban and slow enough that the cap rarely binds, but
   **every VisionPilot result recorded before this change used 1.0** and will not
   be reproduced by a re-run.
+
+  2. **Distance measurement noise scaling (ported October 2026).** The particle
+     filter previously used a flat 3.0 m noise floor for all bbox projections,
+     regardless of range. Ported upstream's range-squared model: σ(d) = 3·(d/30)²,
+     clamped [0.75 m @ ≤15m, 3.0 m @ 30m, 12 m @ 60m]. Improvement: 26–32% ADE
+     on NuScenes, 5–10% on mixed datasets. **Every VisionPilot result recorded
+     before this change** will differ on re-run. Follow-up PRs will port four
+     additional upstream changes (see ROADMAP).

@@ -114,6 +114,8 @@ AUTOSPEED_CONF = 0.6  # auto_speed.hpp default conf_thres
 AUTOSPEED_IOU = 0.45  # auto_speed.hpp default iou_thres
 LETTERBOX_PAD = 114  # the grey auto_speed.hpp pads with
 CIPO_CLASSES = (1, 2)  # select_cipo keeps Level 1 and Level 2 only
+#: Paddock-specific: upstream's select_cipo has no range cutoff (relies on noise
+#: model instead). Relaxing this is a second behavioural change; see ROADMAP.
 MAX_CIPO_RANGE_M = 60.0  # beyond this a bottom-edge projection is not trustworthy
 
 # AutoSteer points near the horizon project to enormous ranges -- one pixel of
@@ -143,6 +145,15 @@ def ort_threads() -> int:
 
 
 # ─── LongitudinalFusion, ported from fusion/src/longitudinal_fusion.cpp ───────
+#
+# This port includes the range-scaled CIPO noise model from d4d9be13, but does
+# NOT yet port four additional camera-path changes also at that sha. These are
+# tracked in ROADMAP for future PRs:
+#  (a) AutoDrive confirmation: upstream allows any L1/L2 box; here: flag_prob ≥ 0.40
+#  (b) AutoDrive validity: upstream requires distance > 1m; here: no range check
+#  (c) Re-init triggers: upstream uses cut-in edge + two-sided AutoDrive jump;
+#      here: AutoSpeed target change + one-sided AutoDrive jump (M2 baseline)
+#  (d) Re-init spread: upstream seeds AutoSpeed with scaled stddev; here: flat
 
 
 @dataclass
@@ -192,11 +203,12 @@ class LongitudinalFusion:
     AUTODRIVE_NOISE_MIN_M = 1.5  # noise floor when AutoDrive is fully confident
     AUTODRIVE_NOISE_M = 8.0  # noise ceiling at minimum AutoDrive confidence
     CIPO_NOISE_M = 3.0  # AutoSpeed bbox-projected distance noise, *at the reference range*
-    #: Range at which ``CIPO_NOISE_M`` describes the homography, and the floor
-    #: and ceiling upstream clamps the scaled value to.
+    #: Range at which ``CIPO_NOISE_M`` is the zero point. Paddock uses pinhole
+    #: projection (_box_ranges); upstream uses homography, but d² noise scaling
+    #: holds for either (see cipo_stddev). The coefficient is the ZOD camera's.
     HOMOGRAPHY_REF_RANGE_M = 30.0
     CIPO_NOISE_MIN_FACTOR = 0.25
-    CIPO_NOISE_MAX_M = 200.0
+    CIPO_NOISE_MAX_M = 200.0  # unreachable: MAX_CIPO_RANGE_M=60 caps stddev at 12 m
     RESET_GATE_M = 25.0  # a jump this far past the cloud is a real cut-in/cut-out
 
     def __init__(self, seed: int = 0, process_noise_dist_m: float | None = None) -> None:
@@ -276,14 +288,13 @@ class LongitudinalFusion:
     def cipo_stddev(distance_m: float) -> float:
         """Bbox-projection noise at ``distance_m``, growing with the square of range.
 
-        The homography inverts ``d = f*h / (v - v_horizon)``, so a fixed pixel
-        error on the box bottom maps to a distance error growing with d squared:
-        the two pixels worth 0.3 m at 30 m are worth 8 m at 150 m. A flat figure
-        therefore states a far reading far more confidently than it has any
-        right to, and upstream records the consequence -- "a 155 m reading
-        outvoted a 90 m one that was measured far better". Since the particle
-        filter weights each measurement by 1/stddev squared, an overconfident
-        far reading does not merely add error, it outvotes a better near one.
+        Pinhole camera projects: ``d = f*h / (v - v_horizon)``, so a fixed pixel
+        error on the box bottom maps to a distance error growing with d². Two
+        pixels are worth 0.3 m at 30 m but 8 m at 150 m. A flat figure states a
+        far reading far more confidently than it deserves. Since the particle
+        filter weights by 1/stddev², an overconfident far reading does not merely
+        add error—it outvotes a better near one. "A 155 m reading outvoted a
+        90 m one that was measured far better."
 
         Ported from `select_cipo` in fusion/src/radar_association.cpp at
         d4d9be13, which despite the filename is the camera-only path.
