@@ -354,9 +354,33 @@ support matrix still carry the unqualified name. Closing it means ~95 GB of
 **Drive-JEPA's NAVSIM agent is scorer-aware.** It receives `metric_cache` and
 `past_ego_simulated_states` from the scoring loop and re-runs the PDM simulator
 at inference time to re-rank its proposals by predicted two-frame comfort — a
-component of EPDMS. No model behind an HTTP node can do that. Its recorded
-0.90673 is therefore not a baseline the other three can be measured against;
-the comparable set is runs through `paddock_proxy`.
+component of EPDMS. No model behind the proxy is handed those arguments. Its
+recorded 0.90673 is therefore not a baseline the other three can be measured
+against; the comparable set is runs through `paddock_proxy`.
+
+The same stage is available to the drivejepa node in closed loop, off by
+default (`DRIVEJEPA_MOMENTUM=on`): it needs only the node's own previous plan
+and the ego state it is already sent. A plan is fed only when it is 0.45 to
+0.55 s old, so a node called at 10 or 20 Hz compares against the plan of half a
+second ago and selects on the plain score until it has one. **Verified at
+Fastcode:** fed the recorded menus of 30 AlpaSim drives (810 replans), the
+node's bookkeeping and upstream's stage reproduce every pick of the AlpaSim
+driver that first carried the stage (`drivejepa-v2-driver-0.1.4b`), and its 32
+scores per replan exactly. One of those drives is tracked as a fixture, and
+`adapters/models/drivejepa/tests/test_momentum.py` reruns it in Drive-JEPA's
+environment; it skips under `make check`, which has no nuPlan. **Unverified:**
+its effect on any benchmark. One neuroNCAP comparison exists (the full set,
+n=200: 3.618 with the stage against 3.568 without, read as no measurable
+effect), but it was made with a separate copy of the adapter before the
+cameras were placed on the ego frame, on a model that read no image on
+nuScenes and planned from ego status alone. It is kept on the branch
+`record/drivejepa-camera-blind` and is not evidence for or against the stage
+on the model that drives now. The comparison has to be made again on this
+node; a run made with it records `camera_frame: ego` beside `momentum: on` in
+`run.json`. No row in `results/` was made with the switch on. `drivejepa_rerank`
+refuses the switch: the stage remembers the model's own pick, and that policy
+drives the re-ranker's pick, so it would be compared against a plan the car
+never followed. Supporting it means telling the stage which plan was driven.
 
 ## Bench2Drive / CARLA — adapter landed, driven, and the runs are tracked
 

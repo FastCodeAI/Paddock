@@ -19,7 +19,7 @@ What happens on `paddock run --bench navsim --model X`:
 **A note on comparability.** Drive-JEPA's native NAVSIM agent receives
 `metric_cache` and `past_ego_simulated_states` from the scoring loop and uses
 them to re-rank its proposals against the scorer's own comfort metric. No model
-behind an HTTP node can do that, and no other model in paddock has an
+behind the proxy is handed them, and no other model in paddock has an
 equivalent. Runs through `paddock_proxy` are therefore the comparable set;
 the vendor's recorded 0.90673 is not a baseline the other three can be measured
 against. Set `PADDOCK_NAVSIM_AGENT` to a hydra agent group name to run a
