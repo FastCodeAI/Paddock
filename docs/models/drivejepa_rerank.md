@@ -212,11 +212,37 @@ about the same on 22.
 Figures: `paddock-runs/analysis/drivejepa_kitscenes_selection/plots/` at this
 site. They are not tracked.
 
-**nuScenes: withdrawn, re-measure pending.** The zero-shot run,
-`20260918T221353-6194bd`, was made before the camera-frame fix (#62). On nuScenes
-Drive-JEPA then saw no image, so the selector chose among candidates planned
-from ego motion alone. That run is not in the repo. A re-measure with the fix
-comes in its own PR.
+**nuScenes** val, run `20261012T220930-6194bd`, all 5,119 samples over 150
+scenes, valid, made with the camera-frame fix (#62): its `run.json` records
+`camera_frame: "ego"`. No nuScenes data went into the selector, so this is
+zero-shot.
+
+| | cumulative L2 (m) | ADE@3s (m) | L2 at 1 / 2 / 3 s (m) | point collision (%) |
+|---|---:|---:|---|---:|
+| drivejepa_rerank | **0.587** | **0.949** | 0.373 / 0.953 / 2.126 | 1.21 |
+| `drivejepa` with the fix, native cameras (run `20261012T215049-798a0d`, not yet tracked) | 1.360 | 2.031 | 0.983 / 2.201 / 3.957 | 1.35 |
+| `drivejepa` recorded row, camera-blind | 0.912 | 1.536 | 0.540 / 1.587 / 3.519 | 1.46 |
+| this re-ranker before the fix (run `20260918T221353-6194bd`, withdrawn) | 0.620 | 0.985 | 0.394 / 1.051 / 2.075 | 1.82 |
+| constant velocity | 0.641 | 1.069 | 0.372 / 1.151 / 2.340 | 1.66 |
+
+Paired on the same 5,119 samples, with SEs over the 150 scenes:
+- against constant velocity:
+  - cumulative L2 −0.054 m, t −2.8
+  - ADE@3s −0.120 m, t −3.4
+  - point collisions −0.45 points, t −1.5, not separated
+  - UniAD's cumulative collisions (`col_uniad_avg`) 1.37% against 1.07%,
+    +0.31 points, t +0.7, not separated
+- against the same selector before the fix: cumulative L2 −0.032 m (t −1.6),
+  point collisions −0.61 points (t −2.3)
+- against `drivejepa` with the fix: cumulative L2 −0.772 m (t −16)
+
+**Seeing the camera made Drive-JEPA's own pick worse on nuScenes** (1.360
+against 0.912 blind). Under the crop this model uses, its 32 candidates still
+hold good plans, and the selector finds them. That last comparison mixes two
+changes: `drivejepa` runs on native cameras, and this model on the OpenScene
+crop (see above). The selector's own effect at the same pixels has not been
+measured on nuScenes, because the run records only the driven trajectory, not
+Drive-JEPA's own pick.
 
 ## Limits
 

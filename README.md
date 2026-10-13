@@ -114,7 +114,7 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 | OpenPilot | 2.477 △ | 1.599 | 1.507 ✦ ⊗ | 0.807 ◐ | 0.747 (10 Hz) ‡ | 0.807 (10 Hz) ‡ | 30.09 ≈ ◆ | **3.60** ‖ | **0.9566** ¶ |
 | Alpamayo 1.5 | 0.787 △ | 1.002 | **0.900** ✦ | — ◐◐ | 0.691 (10 Hz) † | 0.753 (10 Hz) † | 55.82 (10 Hz) ※ | **3.73** ‖ | 0.9000 ¶¶ |
 | Drive-JEPA | 0.912 △ ⊘ | 2.364 | 16.048 ✦ | 1.512 ◐ | 0.843 | 0.892 † | 57.60 (2 Hz) ※ | **3.57** ‖ ⊘ | 0.5030 ¶ |
-| Drive-JEPA, KITScenes re-ranker ⊛ | pending ⊛ | 0.973 ⊛ | not run | not run | not run | not run | — | not run ⊛ | — |
+| Drive-JEPA, KITScenes re-ranker ⊛ | 0.587 ⊛ | 0.973 ⊛ | not run | not run | not run | not run | — | not run ⊛ | — |
 | VisionPilot | 1.441 △ | 1.534 ∗ | 4.045 ✦ ∗ | 2.246 ◐ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.8488 ¶ |
 | METEOR | 0.977 △ | 1.879 ◇ | — ✦ | 1.273 ◐ | 0.303 ◊ | 0.366 ◊ | — | **2.64** ‖ | — |
 | Qwen-Drive 1.0 | 0.450 | 0.806 | 1.159 ✦ | — | 0.840 | 0.876 | 17.08 (2 Hz) ※ | **2.49** | — |
@@ -129,9 +129,13 @@ It sees the cameras cropped onto the OpenScene lens and gets no route hint.
 Through that same path, Drive-JEPA's own pick scores 2.521 and the best of its 32
 scores 0.409. The selector learned closeness to the human path and nothing about
 collisions, so it has no closed-loop cells until it has been through neuroNCAP.
-Its nuScenes cell is pending: the zero-shot run was made before the camera-frame
-fix (#62), when Drive-JEPA saw no image on nuScenes, so it is withdrawn until it
-is re-measured with the fix.
+Its nuScenes cell is zero-shot (no nuScenes data went into the selector) and was
+measured with the camera-frame fix (#62). Paired over 150 scenes, it is 0.054
+below constant velocity on cumulative L2 (t −2.8); its point collision rate,
+1.21% against 1.66%, is not separated (t −1.5). The Drive-JEPA row is still the
+camera-blind one (⊘). With the fix, plain `drivejepa` scores 1.360 there (run
+`20261012T215049-798a0d`, not yet tracked), and this row differs from it in the
+camera crop as well as the selector.
 See `docs/models/drivejepa_rerank.md`.
 
 ∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
@@ -404,6 +408,7 @@ history, CUDA inference, CPU camera warping and resume assistance disabled.
 | OpenPilot | 1.925 | 4.054 | 6.194 | 4.057 | 2.477 | 3.535 | 2.624 |
 | Alpamayo 1.5 | 0.509 | 1.351 | 2.602 | 1.487 | 0.787 | 1.249 | 1.582 |
 | Drive-JEPA ⊘ | 0.540 | 1.587 | 3.519 | 1.882 | 0.912 | 1.536 | 1.459 |
+| Drive-JEPA, KITScenes re-ranker ⊛ | 0.373 | 0.953 | 2.126 | 1.151 | 0.587 | 0.949 | 1.211 |
 | VisionPilot | 1.031 | 2.213 | 3.837 | 2.360 | 1.441 | 2.058 | 3.816 |
 | METEOR | 0.616 | 1.683 | 3.356 | 1.885 | 0.977 | 1.570 | 6.152 ◇ |
 | Qwen-Drive 1.0 | 0.318 | 0.722 | 1.360 | 0.800 | 0.450 | 0.678 | 0.770 |
