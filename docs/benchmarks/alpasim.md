@@ -113,7 +113,7 @@ assume nothing about comparability of fidelity numbers across runs.
 treat cross-run fidelity comparisons as invalid unless the scored fractions
 match.**
 
-## `scene_score`, and why the floor beats most models
+## `scene_score`, and why the floor beats most models on the ten scenes
 
 ```
 progress_score = min(clamp(progress_clipped_rel, 0, 1) / 0.8, 1.0)
@@ -223,7 +223,9 @@ Two rows need their caveat quoted with the number:
 The same drivers, referee config and scorer, on 30 scenes: the ten above plus
 twenty more drawn from `public_2601` (seed 20260922, stratified by speed and
 turn, from the scenes of the suite available at renderer version 26.1.112 and
-not already among the ten). One rollout per scene. The rows are in
+not already among the ten). The list is tracked as
+`adapters/benchmarks/alpasim/scenes/public_2601_30scenes.yaml`, and a test
+checks it against the rows' `sequences_sha256`. One rollout per scene. The rows are in
 `results/alpasim/` as the `…_30scenes` runs; each merges the ten-scene run with
 twenty single-scene runs, and the ingester refuses the merge if the driver or
 the control rate differs between them.
@@ -243,9 +245,18 @@ Three things to read with it:
   quote the difference from the floor and the number of scenes with any figure.
 - **Alpamayo 1.5 has no 30-scene row.** It was run on the first ten scenes
   only, and its 0.9000 is a ten-scene mean in a different camera group.
-- **`paddock run --bench alpasim` still drives the ten.** The benchmark's
-  `scene_set` is unchanged; the twenty extra scenes were driven by each model's
-  native driver and ingested.
+- **One rollout per scene, so the differences are loose.** Paired over the 30
+  scenes, the standard error of the difference from the floor is 0.077 for
+  OpenPilot, 0.076 for the retrained Drive-JEPA, 0.080 for VisionPilot and
+  0.089 for Drive-JEPA 0.1.4. VisionPilot's +0.1413 and Drive-JEPA's −0.0667
+  are both under two standard errors. OpenPilot against the retrained row is
+  +0.003 ± 0.045: level, and the bold marks the best released checkpoint, not
+  a win over the retrained one.
+- **`paddock run --bench alpasim` still drives the ten by default.** The
+  default `scene_set` is unchanged; the twenty extra scenes were driven by each
+  model's native driver and ingested. `--scenarios public_2601_30scenes` (or
+  `scene_set` in `[benchmarks.alpasim]`) selects the 30, and no row has been
+  produced that way yet.
 
 ### `4cam-20Hz`
 

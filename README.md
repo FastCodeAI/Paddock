@@ -362,7 +362,11 @@ the model rather than by the harness. The files are in `results/alpasim/`, as
 the `…_30scenes` runs, and `paddock report` reads them. Against the
 constant-velocity floor (0.4876): OpenPilot +0.2850, VisionPilot +0.1413,
 Drive-JEPA −0.0667; the retrained Drive-JEPA row (⊕), +0.2821, is an adapted
-result read on its own. `scene_score` saturates at `progress_clipped_rel ≥ 0.8`
+result read on its own. With one rollout per scene these differences carry a
+paired standard error of about 0.08, so VisionPilot's margin and Drive-JEPA's
+deficit are both under two standard errors, and OpenPilot and the retrained row
+are level (+0.003 ± 0.045). The scene list is tracked as
+`adapters/benchmarks/alpasim/scenes/public_2601_30scenes.yaml`. `scene_score` saturates at `progress_clipped_rel ≥ 0.8`
 and zeroes a scene on an at-fault collision or an off-road event, so quote
 progress beside it (floor 0.5411, OpenPilot 0.7238, VisionPilot 0.6355,
 Drive-JEPA 0.5091). The floor falls from 0.8850 on the first ten scenes to
@@ -989,7 +993,8 @@ native driver at 0.1.4. The second is that driver at 0.1.7, promoted to
 [`tools/models/drivejepa/alpasim_driver/`](tools/models/drivejepa/alpasim_driver/),
 driving a checkpoint whose trajectory generator was retrained on Physical AI
 AV. The second row is an *adapted* result: AlpaSim's scenes are reconstructions
-of clips from that dataset (the evaluation scenes are excluded from training),
+of clips from that dataset (the training code excludes the evaluation scenes,
+which is taken on that code's word),
 and these ten scenes were driven repeatedly while the driver was developed. It
 is the first ten scenes of a 30-scene sweep; on all 30 it scores 0.7697. What
 it reads and how it picks are in
@@ -1000,12 +1005,16 @@ support matrix quotes — the same drivers under the same referee score:
 
 | Model | Group | `scene_score` ↑ | Δ vs its floor | Progress ↑ | `duration_frac_20s` ↑ | At-fault collisions ↓ | Any collision ↓ | Off-road ↓ |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
-| OpenPilot | `1cam-20Hz` | 0.7726 | **+0.2850** | 0.7238 | 0.672 | 0 / 30 | 6 / 30 | 3 / 30 |
+| OpenPilot | `1cam-20Hz` | 0.7726 | **+0.2850** | 0.7238 | 0.671 | 0 / 30 | 6 / 30 | 3 / 30 |
 | Drive-JEPA, retrained ⊕ | `1cam-20Hz` | 0.7697 | +0.2821 | 0.8284 | 0.661 | 3 / 30 | 3 / 30 | 2 / 30 |
 | VisionPilot | `1cam-20Hz` | 0.6289 | **+0.1413** | 0.6355 | 0.570 | 4 / 30 | 11 / 30 | 1 / 30 |
 | *floor* | *`1cam-20Hz`* | *0.4876* | *—* | *0.5411* | *0.447* | *2 / 30* | *8 / 30* | *5 / 30* |
 | Drive-JEPA | `1cam-20Hz` | 0.4209 | −0.0667 | 0.5091 | 0.465 | 7 / 30 | 12 / 30 | 5 / 30 |
 
+One rollout per scene, so read the differences with their spread: paired over
+the 30 scenes, the standard error of each model's difference from the floor is
+about 0.08 (OpenPilot 0.077, retrained Drive-JEPA 0.076, VisionPilot 0.080,
+Drive-JEPA 0.089), and OpenPilot against the retrained row is +0.003 ± 0.045.
 Alpamayo 1.5 has not been run on the twenty extra scenes. The floor is far
 lower here than on the ten: on the twenty extra scenes constant velocity has two
 at-fault collisions and five off-road events, and none of either on the first
@@ -1023,7 +1032,7 @@ group, and it has no constant-velocity floor of its own.
 | *floor* | *`1cam-20Hz`* | *0.8850* | *—* | *0.8290* | *0.654* | *0 / 10* | *2 / 10* | *0 / 10* |
 | VisionPilot | `1cam-20Hz` | 0.8488 | −0.0362 | 0.8202 | 0.699 | 1 / 10 | 3 / 10 | 0 / 10 |
 | Drive-JEPA | `1cam-20Hz` | 0.5030 | **−0.3820** | 0.5652 | 0.462 | 2 / 10 | 4 / 10 | 1 / 10 |
-| Drive-JEPA, retrained ⊕ | `1cam-20Hz` | 0.9956 | +0.1106 | 0.9765 | 0.663 | 0 / 10 | 0 / 10 | 0 / 10 |
+| Drive-JEPA, retrained ⊕ | `1cam-20Hz` | 0.9956 | +0.1106 | 0.9765 | 0.662 | 0 / 10 | 0 / 10 | 0 / 10 |
 | Alpamayo 1.5 | `4cam-20Hz` | 0.9000 | no floor | 0.9603 | 0.740 | 1 / 10 | 1 / 10 | 0 / 10 |
 
 **An at-fault collision or an off-road event zeroes the scene outright**, whatever
