@@ -17,12 +17,13 @@ PY := $(shell \
   elif [ -x .venv/bin/python ]; then echo ".venv/bin/python"; \
   else echo "python3"; fi)
 
-.PHONY: help setup setup-conda check test lint fmt typecheck doctor which clean
+.PHONY: help setup setup-conda check check-alpasim-driver test lint fmt typecheck doctor which clean
 
 help:
 	@echo "make setup        — create .venv and install paddock (uv; the default)"
 	@echo "make setup-conda  — create a conda env named 'paddock' instead"
 	@echo "make check        — lint + tests + portability gate. Run before every PR."
+	@echo "make check-alpasim-driver ALPASIM_PY=<python> — the Drive-JEPA AlpaSim driver's own tests"
 	@echo "make test         — pytest only"
 	@echo "make lint         — ruff only"
 	@echo "make fmt          — ruff format + autofix"
@@ -57,6 +58,17 @@ setup-conda:
 	@echo "  paddock doctor"
 
 check: lint test
+
+# The native AlpaSim driver under tools/ imports grpc, alpasim_grpc and cv2,
+# which paddock's own environment deliberately lacks, so `make check` and CI
+# cannot collect its tests. They run in AlpaSim's interpreter instead, and a
+# reviewer at a site that has one runs this target (docs/reviewing.md §1).
+# It fails rather than skips when the interpreter is missing: a skipped
+# directory reads as a pass.
+check-alpasim-driver:
+	@test -n "$(ALPASIM_PY)" || { echo "set ALPASIM_PY to AlpaSim's python, e.g. <alpasim>/.venv/bin/python"; exit 2; }
+	@$(ALPASIM_PY) -c "import grpc, alpasim_grpc, cv2" || { echo "$(ALPASIM_PY) is not AlpaSim's environment (needs grpc, alpasim_grpc, cv2)"; exit 2; }
+	$(ALPASIM_PY) -m pytest tools/models/drivejepa/alpasim_driver/tests -q
 
 test:
 	$(PY) -m pytest -q
