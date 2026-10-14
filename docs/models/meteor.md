@@ -387,8 +387,9 @@ this repository, and ingested from its recorded runs. `meteor` does not declare
   `meteor_v157c3Z.onnx` (sha256 `50397b4d…`, logged by each of the 30 runs),
   raw uint8 into the graph's own `/255`, no mean/std normalisation, on the CUDA
   provider.
-- **Six cameras, rendered as pinholes.** Front wide, front left and right,
-  rear left and right, and the front telephoto fill six slots; the rear wide
+- **Six cameras, rendered as pinholes.** Front wide, cross left and right
+  (in METEOR's front-left and front-right slots), rear left and right, and
+  the front telephoto fill six slots; the rear wide
   and rear telephoto slots are absent and fed as zeros with a neighbour's
   calibration. This is a different six from the nuScenes six the node gets,
   which has a rear wide camera and no telephoto. Each camera is rendered at
