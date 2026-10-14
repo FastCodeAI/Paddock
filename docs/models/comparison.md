@@ -295,6 +295,22 @@ seconds and needs no extension, its L2 sits with Drive-JEPA's. Both numbers are
 real; they are not measuring the same object. `docs/models/meteor.md` has the
 measurements.
 
+### METEOR × alpasim — six cameras, a group of its own, and a driver that is not tracked
+
+METEOR's AlpaSim cell, 0.4232 on 30 scenes, shares the scenes, the referee
+config and the scorer of the one-camera rows and nothing else. It was shown six
+rendered cameras, so it is the only row in `6cam-20Hz`, with no
+constant-velocity floor to read it against. The cameras are pinhole renders
+narrower than the recorded fisheyes, with the bonnet mask off. The mode is
+chosen by the selector of METEOR's deployed runtime, where every other METEOR
+cell takes the argmax. And the run came from a native driver that is not in
+this repository, where the other METEOR cells came through the paddock node.
+The graph and its pixel scaling are the same as elsewhere: the released ONNX,
+as shipped. Read the cell as "the released model on AlpaSim's cameras, once",
+beside the one-camera rows and not among them. Detail in
+[meteor.md](meteor.md) and
+[docs/benchmarks/alpasim.md](../benchmarks/alpasim.md).
+
 ### VisionPilot × everything — every figure predates a constant that moved
 
 VisionPilot's adapter carried `CURV_SCALE = 1.0`. The stack's own

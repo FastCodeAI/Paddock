@@ -415,6 +415,31 @@ Open work on this driver, in the order it bites:
   name, and the report needs to group by scene set (issue #69).
 - **The promoted driver has not driven a scene.**
 
+**METEOR has AlpaSim rows and no tracked driver.** `results/alpasim/meteor/`
+holds a 30-scene row (0.4232) and its first ten scenes (0.6869), ingested from
+runs of a native driver, `meteor-0.1.1`, whose source exists only at the
+Fastcode site. The rows are in a camera group of their own, `6cam-20Hz`.
+
+| Claim | Evidence | Strength |
+|---|---|---|
+| the 30 runs served the released ONNX | each run's driver log records sha256 `50397b4d…`, the published file's | **strong** |
+| they ran under the shared referee config | control step, force-GT duration and step count read from all 30 resolved configs; `eval-config.yaml` md5 `68cf4aaa…` on all 30 | **strong** |
+| they cover the tracked 30-scene list | `test_the_thirty_scene_set_is_the_one_the_stored_rows_cover` checks the row's `sequences_sha256` | **strong** |
+| the score does not depend on host load | one scene re-run three weeks apart gave identical scorer metrics; 18 of 30 scenes were over the driver's 200 ms step budget | **weak** |
+| another site can reproduce the row | — | **unverified** |
+
+Open work, in the order it bites:
+
+- **The driver is not in the repository.** Promote it under
+  `tools/models/meteor/alpasim_driver/`, as Drive-JEPA's was, or drive METEOR
+  through the paddock bridge and declare `alpasim` in its `model.yaml`.
+- **No floor in `6cam-20Hz`.** A constant-velocity run on the six-camera
+  config would give the row something to be read against.
+- **The camera widths were fixed from the first ten scenes.** On four of the
+  twenty extra scenes one rear camera is rendered up to 0.24° wider than
+  recorded. Re-deriving the widths over all 30 would remove that.
+- **The low scores on the twenty extra scenes are not diagnosed.**
+
 ## Bench2Drive / CARLA — adapter landed, driven, and the runs are tracked
 
 `adapters/benchmarks/bench2drive`: a model-agnostic CARLA `agent.py`, the

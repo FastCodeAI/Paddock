@@ -58,8 +58,9 @@ choices change what is being measured**, not merely how precisely:
 |---|---|---|---|
 | `1cam-20Hz` | 1 forward | 20 Hz | 3,000,000 |
 | `4cam-20Hz` | 4 (front wide, front tele, cross L/R) | 20 Hz | 3,000,000 |
+| `6cam-20Hz` | 6 (front wide, front tele, cross L/R, rear L/R) | 20 Hz | 3,000,000 |
 
-Both groups are the **shared referee**: one control rate, one force-GT
+All three groups are the **shared referee**: one control rate, one force-GT
 duration and one `eval-config.yaml` across every model, so that for the first
 time the rows differ by the model rather than by the harness. How much that
 matters is visible in the floor itself — constant velocity scores 0.3562 at
@@ -175,12 +176,17 @@ filed under `results/alpasim/`, so `paddock report` agrees with these tables.
 > The ten of 0.1.7's runs that are this benchmark's scenes are ingested as
 > `results/alpasim/drivejepa/legacy-drivejepa_017_20hz`, the same way the
 > 0.1.4 row was. 0.1.4b has no row.
+>
+> **METEOR's rows come from a driver that is not tracked here.** `meteor-0.1.1`
+> is a native AlpaSim driver written at the Fastcode site; its source is not in
+> this repository, so its two rows (`6cam-20Hz`, below) are reference values
+> another site cannot yet reproduce.
 
 ### `1cam-20Hz` — the shared referee
 
-These are the only AlpaSim numbers this repo records. Five rows on one referee: same control rate, same force-GT duration, same
+Five rows on one referee: same control rate, same force-GT duration, same
 `eval-config.yaml` (md5 `68cf4aaa89356e0f6053d76eb4ef2321`, byte-identical
-across all six 20 Hz rows including Alpamayo's).
+across every 20 Hz row, including Alpamayo's and METEOR's).
 
 | model | `scene_score` | sd | progress | passed | failures |
 |---|---|---|---|---|---|
@@ -271,6 +277,50 @@ not a substitute. Its environment is verified identical to the reference rows'
 all ten scenes. Scene-level variance on this model is large — `04749bb9` has
 produced 0.0, 0.9148 and 1.0 across identical environments — so neither this
 mean nor any other single-rollout mean here should be read to four figures.
+
+### `6cam-20Hz`
+
+| model | scenes | `scene_score` | sd | progress | passed | failures |
+|---|---|---|---|---|---|---|
+| METEOR, released ONNX as shipped, driver 0.1.1 | first 10 | 0.6869 | 0.3103 | 0.6073 | 10/10 | — |
+| METEOR, released ONNX as shipped, driver 0.1.1 | 30 | 0.4232 | 0.3673 | 0.4301 | 24/30 | off-road 5, at-fault 1 |
+
+One sweep of the 30 scenes of `public_2601_30scenes`, one scene per run
+directory, made on 2026-10-13/14 and ingested as
+`results/alpasim/meteor/legacy-meteor_011_published_30scenes`; the ten-scene
+row, `…_first10`, is the first ten of those directories, not a second sweep.
+Same control rate, force-GT duration, step count and `eval-config.yaml` as the
+other groups, read from each run's resolved config.
+
+- **No floor, so no "vs floor" column.** Constant velocity has not been run on
+  six cameras. It reads no camera, so its score would probably be the
+  `1cam-20Hz` floor's, but that has not been measured and the one-camera floor
+  is not quoted against this row.
+- **The cameras are not the recorded ones.** METEOR expects pinhole images, so
+  the six cameras are rendered as pinholes with square pixels and no
+  distortion, each at the narrower of METEOR's own camera and the recorded
+  one: 97.70° for the three wide cameras (recorded about 120°), 69.66° and
+  69.72° for the rear pair, 29.60° for the telephoto. The bonnet mask the
+  other groups apply is off, because it was drawn for the recorded fisheye
+  image and does not line up with a pinhole one. The rendered widths were
+  fixed from the first ten scenes' rigs. On four of the twenty extra scenes
+  (`cdd9448c`, `6725df2d`, `bd07fb91`, `b1b170d0`) the rear-right camera is
+  therefore rendered wider than that scene's recorded camera: by 0.24° on
+  `6725df2d`, 0.05° on `cdd9448c` and 0.006° on the other two.
+- **Two of METEOR's eight camera slots are empty** (the rear wide and rear
+  telephoto), fed as zeros with a neighbour's calibration, as in the model's
+  own training for a missing camera.
+- **The step-time check failed on 18 of 30 scenes.** The driver's own run
+  checks budget 200 ms (the 95th percentile of pre-processing plus inference)
+  per fresh plan, and on those scenes it was 201 to 313 ms; the host was
+  shared and under load. Whether a late plan changes a score has been checked
+  on one scene only: the first scene's 29 scorer metrics are identical to
+  those of a run of the same scene made on 2026-09-22, and both runs were
+  over the budget on that scene, by different amounts (206 and 283 ms).
+- **The first ten and the twenty extra differ sharply**: 0.6869 against
+  0.2913. All five off-road events and the at-fault collision are on the
+  twenty extra scenes. What the model does on them is in
+  [docs/models/meteor.md](../models/meteor.md).
 
 ## Reproducing this
 

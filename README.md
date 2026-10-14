@@ -117,7 +117,7 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 | Drive-JEPA, KITScenes re-ranker ⊛ | 0.587 ⊛ | 0.973 ⊛ | not run | not run | not run | not run | — | not run ⊛ | — |
 | Drive-JEPA, retrained on Physical AI AV ⊕ | not run | not run | not run | not run | not run | not run | not run | not run | 0.7697 ⊕ |
 | VisionPilot | 1.441 △ | 1.534 ∗ | 4.045 ✦ ∗ | 2.246 ◐ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.6289 ¶ |
-| METEOR | 0.977 △ | 1.879 ◇ | — ✦ | 1.273 ◐ | 0.303 ◊ | 0.366 ◊ | — | **2.64** ‖ | — |
+| METEOR | 0.977 △ | 1.879 ◇ | — ✦ | 1.273 ◐ | 0.303 ◊ | 0.366 ◊ | — | **2.64** ‖ | 0.4232 ⬡ |
 | Qwen-Drive 1.0 | 0.450 | 0.806 | 1.159 ✦ | — | 0.840 | 0.876 | 17.08 (2 Hz) ※ | **2.49** | — |
 | Baseline (Constant Velocity) | 0.641 △ | 1.381 | 1.639 ✦ | 1.393 ◐ | 0.239 | 0.207 † | 47.94 ♣ | 0 § | *0.4876* ¶ |
 
@@ -377,8 +377,8 @@ The ten-scene figures and the per-row caveats, including the gates
 VisionPilot's run did not pass, are in the AlpaSim section below and in
 [docs/benchmarks/alpasim.md](docs/benchmarks/alpasim.md).
 
-¶¶ Alpamayo ran 4 cameras at 20 Hz (`4cam-20Hz`), the other rows 1 camera
-at 20 Hz. **Different group, not comparable** — and it has no constant-velocity
+¶¶ Alpamayo ran 4 cameras at 20 Hz (`4cam-20Hz`), METEOR 6 (⬡), the other rows
+1 camera at 20 Hz. **Different group, not comparable** — and it has no constant-velocity
 floor in its own group, so it cannot be quoted against one. Scene-level variance
 on this model is large enough that no single-rollout mean here should be read to
 four figures.
@@ -386,7 +386,25 @@ four figures.
 \* Alpamayo 1.5 was run on the first 10 of the 30 scenes only, so 0.9000 is its
 10-scene mean and not a 30-scene one. On those same 10 scenes the other rows
 score: OpenPilot 0.9566, VisionPilot 0.8488, Drive-JEPA 0.5030, retrained
-Drive-JEPA 0.9956, constant-velocity floor 0.8850.
+Drive-JEPA 0.9956, constant-velocity floor 0.8850, and METEOR, on six cameras,
+0.6869.
+
+⬡ METEOR's AlpaSim cell is the same 30 scenes, referee config and scorer as the
+¶ rows, one rollout per scene, but it was shown **six cameras** where they were
+shown one, so it is a group of its own (`6cam-20Hz`). Like Alpamayo's cell it
+has no constant-velocity floor in its group and is not to be ranked against the
+one-camera rows. It is the released ONNX fed as shipped, the convention of every
+other METEOR cell (◇): raw pixels into the graph's own `/255`, no mean/std
+normalisation, the two absent camera slots as zeros. The six cameras are
+rendered as pinholes, narrower than the recorded fisheyes (a 120° camera is
+rendered at 97.7°), with the bonnet mask off. The plan's mode is chosen by the
+selector of METEOR's deployed runtime, not by the argmax the paddock node
+uses. The run was made by a native AlpaSim driver that is **not tracked in
+this repository**, so another site cannot reproduce the row yet. On the 30
+scenes it has five off-road events and one at-fault collision, all on the
+twenty extra scenes; on the first ten alone it scores 0.6869. The rows are
+`results/alpasim/meteor/legacy-meteor_011_published_30scenes` and
+`…_first10`. See `docs/models/meteor.md`.
 
 ### What these models are
 
@@ -1012,12 +1030,16 @@ support matrix quotes — the same drivers under the same referee score:
 | VisionPilot | `1cam-20Hz` | 0.6289 | **+0.1413** | 0.6355 | 0.570 | 4 / 30 | 11 / 30 | 1 / 30 |
 | *floor* | *`1cam-20Hz`* | *0.4876* | *—* | *0.5411* | *0.447* | *2 / 30* | *8 / 30* | *5 / 30* |
 | Drive-JEPA | `1cam-20Hz` | 0.4209 | −0.0667 | 0.5091 | 0.465 | 7 / 30 | 12 / 30 | 5 / 30 |
+| METEOR ⬡ | `6cam-20Hz` | 0.4232 | no floor | 0.4301 | 0.469 | 1 / 30 | 10 / 30 | 5 / 30 |
 
 One rollout per scene, so read the differences with their spread: paired over
 the 30 scenes, the standard error of each model's difference from the floor is
 about 0.08 (OpenPilot 0.077, retrained Drive-JEPA 0.076, VisionPilot 0.080,
 Drive-JEPA 0.089), and OpenPilot against the retrained row is +0.003 ± 0.045.
-Alpamayo 1.5 has not been run on the twenty extra scenes. The floor is far
+Alpamayo 1.5 has not been run on the twenty extra scenes. METEOR's row is the
+released ONNX on six cameras, a group with no floor of its own (⬡); it scores
+0.6869 on the first ten scenes and 0.2913 on the twenty extra, where all five
+of its off-road events and its one at-fault collision are. The floor is far
 lower here than on the ten: on the twenty extra scenes constant velocity has two
 at-fault collisions and five off-road events, and none of either on the first
 ten. The rest of this section is about the first ten scenes.
@@ -1025,8 +1047,9 @@ ten. The rest of this section is about the first ten scenes.
 **Every row ran under the shared 20 Hz referee**: one control rate, one force-GT
 duration and one `eval-config.yaml` (md5 `68cf4aaa…`), so the rows differ by the
 model rather than by the harness. Camera count still changes what is measured —
-four cameras see what one cannot — so Alpamayo's `4cam-20Hz` row is a separate
-group, and it has no constant-velocity floor of its own.
+four cameras see what one cannot — so Alpamayo's `4cam-20Hz` row and METEOR's
+`6cam-20Hz` row are separate groups, and neither has a constant-velocity floor
+of its own.
 
 | Model | Group | `scene_score` ↑ | Δ vs its floor | Progress ↑ | `duration_frac_20s` ↑ | At-fault collisions ↓ | Any collision ↓ | Off-road ↓ |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
@@ -1036,6 +1059,7 @@ group, and it has no constant-velocity floor of its own.
 | Drive-JEPA | `1cam-20Hz` | 0.5030 | **−0.3820** | 0.5652 | 0.462 | 2 / 10 | 4 / 10 | 1 / 10 |
 | Drive-JEPA, retrained ⊕ | `1cam-20Hz` | 0.9956 | +0.1106 | 0.9765 | 0.662 | 0 / 10 | 0 / 10 | 0 / 10 |
 | Alpamayo 1.5 | `4cam-20Hz` | 0.9000 | no floor | 0.9603 | 0.740 | 1 / 10 | 1 / 10 | 0 / 10 |
+| METEOR ⬡ | `6cam-20Hz` | 0.6869 | no floor | 0.6073 | 0.589 | 0 / 10 | 3 / 10 | 0 / 10 |
 
 **An at-fault collision or an off-road event zeroes the scene outright**, whatever
 progress preceded it:
