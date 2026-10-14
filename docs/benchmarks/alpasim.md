@@ -317,6 +317,23 @@ other groups, read from each run's resolved config.
   on one scene only: the first scene's 29 scorer metrics are identical to
   those of a run of the same scene made on 2026-09-22, and both runs were
   over the budget on that scene, by different amounts (206 and 283 ms).
+- **The driver's other run checks.** Each run directory records the driver's
+  own checks, and the step-time check is not the only one that failed. None
+  of them is a scorer result and none marks the row invalid; the table says
+  what each failure was, read from the runs' logs.
+
+  | driver check | failed on | what the failures are |
+  |---|---|---|
+  | referee settings and scene list match the pinned run | 30 / 30 | every setting and the renderer version (`26.1.112-59673f88`) match; only the scene-list file differs, because the check pins the ten-scene list and this sweep used the 30-scene one |
+  | step time within 200 ms | 18 / 30 | above |
+  | plan shape: no heading step over 0.35 rad between waypoints | 17 / 30 | on 14, every such step is at under 1.3 m/s on a plan segment under 0.4 m long: near-stop wiggles where a heading is barely defined. On `04749bb9`, `acd22430` and `b1b170d0` they are real, at up to 25 m/s on segments up to 5.3 m, and those three scenes score 0.23, 0 and 0 |
+  | consecutive plans agree within 2 m | 5 / 30 | `02eadd92`: one jump, at 0.2 s, while the simulator still drives the recorded path. `2e1ce314`, `04749bb9`, `acd22430`, `b1b170d0`: jumps of 2 to 5 m at 11 to 24 m/s in the 1.4 s after handover. These are the model's plans changing, not a harness fault |
+  | warm-up guard fires on the zeroed-state ticks | 4 / 30 | `5f064b02`, `b44a4a44`, `d2715023`, `e3ed554f`: the car was stationary throughout the zeroed window, so there was nothing to guard. The guard never fired where the state was real and the starting speed was never wrong |
+  | rendered camera no wider than recorded | 4 / 30 | above |
+
+  So the failures are either the check's own scope (scene list, near-stop
+  wiggles, a stationary start) or the model's plans at speed, which the
+  scores on those scenes already show.
 - **The first ten and the twenty extra differ sharply**: 0.6869 against
   0.2913. All five off-road events and the at-fault collision are on the
   twenty extra scenes. What the model does on them is in
