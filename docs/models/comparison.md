@@ -143,10 +143,12 @@ checkpoint exists for the same architecture and is not in any table above:
 benchmark's scene list: some AlpaSim scenes are reconstructions of clips in
 that dataset, and their exclusion from training (126,981 samples, 4,015 clips,
 `train` split, evaluation scenes asserted absent in every script) is a property
-of the training code in the gallops repository, taken on that code's word. No
-row in `results/` was made with these weights, so nothing in the support matrix
-is affected yet; a row made with them would need its own section here, as
-Drive-JEPA × navsim has. Detail in [drivejepa.md](drivejepa.md).
+of the training code in the gallops repository, taken on that code's word. Two
+rows in `results/` were made with these weights, both on AlpaSim: 30 scenes,
+0.7697 (`legacy-drivejepa_017_20hz_30scenes`), and the benchmark's ten scenes
+alone, 0.9956 (`legacy-drivejepa_017_20hz`). The 30-scene figure has its own
+row in the support matrix, marked as adapted, and the section below
+says how to read it. Detail in [drivejepa.md](drivejepa.md).
 
 **Every Drive-JEPA row on this page is the perception-*based* v2 agent.** The
 comma2k19 board carries a second, separate registry entry —
@@ -255,6 +257,39 @@ release's `nuplan-epoch-5` would be the in-distribution choice for this column
 and is not what was scored. A KITScenes number from this checkpoint would be
 in-distribution while the other models there are zero-shot; paddock does not
 score AutoE2E on KITScenes yet.
+
+### Drive-JEPA retrained × AlpaSim
+
+**The retrained checkpoint's AlpaSim row is adapted, not zero-shot, and not
+held out.** Its trajectory generator was retrained on Physical AI AV's `train`
+split, and AlpaSim's scenes are reconstructions of clips from that same
+dataset. The training code asserts the evaluation scenes absent; that lives in
+the gallops repository and is taken on its word, because `physicalai_av` is not
+a key in `datasets.yaml` and no test here can check it.
+
+Two more things separate it from the rows beside it. The ten scenes were driven
+many times while the driver was developed, so choices in the driver were made
+with their outcomes in view. And the two figures are far apart, 0.9956 on the first ten scenes
+against 0.7697 on all 30: every failure it has is on the other twenty.
+
+Read either figure beside the released rows, never as one of them. The
+released `drivejepa` rows, 0.4209 on the 30 scenes and 0.5030 on the ten, stay
+as they are.
+
+### AutoE2E × kitscenes — unconfirmed, and not yet a paddock model
+
+AutoE2E's pre-training row reads KITScenes, marked unconfirmed. If it is right,
+an AutoE2E KITScenes ADE would be in-distribution while all four current models
+are zero-shot there — and `alpamayo15-eval-notes.md` states plainly that neither
+Alpamayo nor Drive-JEPA was trained on KITScenes, which is what makes that
+column a fair comparison today.
+
+AutoE2E has no merged adapter, so nothing enforces this yet. Confirm the
+pre-training corpus before scoring it, and give it a section here if it holds.
+
+None of this makes any recorded number wrong. It makes one of them mean
+something different from what a reader assumes, which is the same class of
+problem `sequences_sha256` and `valid: false` exist to prevent.
 
 ### METEOR × kitscenes — six cameras of eight, and the graph as shipped
 
