@@ -113,7 +113,7 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 |---|---|---|---|---|---|---|---|---|---|
 | OpenPilot | 2.477 △ | 1.599 | 1.507 ✦ ⊗ | 0.807 ◐ | 0.747 (10 Hz) ‡ | 0.807 (10 Hz) ‡ | 30.09 ≈ ◆ | **3.60** ‖ | **0.7726** ¶ |
 | Alpamayo 1.5 | 0.787 △ | 1.002 | **0.900** ✦ | — ◐◐ | 0.691 (10 Hz) † | 0.753 (10 Hz) † | 55.82 (10 Hz) ※ | **3.73** ‖ | 0.9000 \* ¶¶ |
-| Drive-JEPA | 0.912 △ ⊘ | 2.364 | 16.048 ✦ | 1.512 ◐ | 0.843 | 0.892 † | 57.60 (2 Hz) ※ | **3.57** ‖ ⊘ | 0.4209 ¶ |
+| Drive-JEPA | 0.912 △ ⊘ | 2.364 | 16.048 ✦ | 1.512 ◐ | 0.843 | 0.892 † | 57.60 (2 Hz) ※ | **4.13** ‖ ⊙ | 0.4209 ¶ |
 | Drive-JEPA, KITScenes re-ranker ⊛ | 0.587 ⊛ | 0.973 ⊛ | not run | not run | not run | not run | — | not run ⊛ | — |
 | Drive-JEPA, retrained on Physical AI AV ⊕ | not run | not run | not run | not run | not run | not run | not run | not run | 0.7697 ⊕ |
 | VisionPilot | 1.441 △ | 1.534 ∗ | 4.045 ✦ ∗ | 2.246 ◐ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.6289 ¶ |
@@ -222,8 +222,11 @@ OpenPilot uses real approximately 12 Hz front-camera history; scoring stays at
 
 ⊘ Measured camera-blind: until the camera-frame fix (#62) Drive-JEPA's adapter
 placed the cameras so that no sample point landed in the image on nuScenes and
-neuroNCAP, and the plan came from ego status alone. Re-measure pending; its
-other columns are not affected.
+neuroNCAP, and the plan came from ego status alone. Re-measure pending for
+nuScenes; its other columns are not affected.
+
+⊙ Re-measured with the camera-frame fix (#62): 4.13, against 3.57 camera-blind.
+See the neuroNCAP table.
 
 ✦ comma2k19 is the full dataset: **2035 one-minute segments, 5 keyframes each —
 10,165 scored samples**, not 10,175: two truncated segments are too short to
@@ -889,15 +892,18 @@ all 200 runs. Runs are seeded 0-9, so every model met identical scenario jitter.
 
 | Model | stationary ↑ (0–5) | frontal ↑ (0–5) | side ↑ (0–5) | overall ↑ (0–5) | CR ↓ (of 200) |
 |---|---:|---:|---:|---:|---:|
+| Drive-JEPA ⊙ | 5.00 ±0.00 | 2.51 ±1.42 | 4.01 ±2.00 | **4.13** | 24.5% |
 | Alpamayo 1.5 | 4.41 ±1.48 | 3.64 ±2.01 | 2.45 ±1.93 | **3.73** | 32.5% |
 | OpenPilot | 4.52 ±1.34 | 2.30 ±1.24 | 3.08 ±2.25 | **3.60** | 38.0% |
-| Drive-JEPA ⊘ | 4.23 ±1.33 | 2.42 ±1.43 | 3.39 ±2.07 | **3.57** | 45.5% |
 | METEOR | 2.44 ±2.42 | 3.20 ±2.39 | 2.50 ±2.50 | **2.64** | 48.0% |
 | Qwen-Drive 1.0 | 2.71 ±1.73 | 1.52 ±1.49 | 3.00 ±2.04 | **2.49** | 69.0% |
 | VisionPilot | 2.53 ±1.60 | 1.17 ±1.38 | 0.08 ±0.18 | **1.58** | 85.5% |
 | Baseline (Constant Velocity) | 0.00 | 0.00 | 0.00 | 0.00 § | 100.0% |
 
-⊘ Measured camera-blind; re-measure pending, see #62.
+⊙ Measured after the camera-frame fix (#62), run `20261012T224707-f11ac0`. The
+camera-blind run (`20260905T220225-f11ac0`) scored 4.23 / 2.42 / 3.39, overall 3.57,
+with 45.5% collisions. Paired over the 20 scenario-scene pairs the fix is worth
++0.56 (SE 0.44, t 1.28), mostly stationary (+0.77, SE 0.30) and side.
 
 **Qwen-Drive is the widest open-loop-to-closed-loop gap in the table.** It leads
 KITScenes and ties Drive-JEPA on NAVSIM, then places fourth here, below three
@@ -906,8 +912,10 @@ models it beat on every open-loop column. The frontal column is where it goes:
 **It brakes; it does not steer.** Over the 50 frontal episodes its planned 3 s
 path reaches a mean peak lateral offset of 1.22 m, against 10.44 m for
 Alpamayo — which decelerates no harder (−2.31 m/s against Qwen-Drive's −2.48)
-and collides in 32% of episodes rather than 86%. Drive-JEPA brakes hardest of
-the five, −5.47 m/s, and still collides in 78% (⊘ measured camera-blind). In a staged head-on the closing
+and collides in 32% of episodes rather than 86%. Drive-JEPA brakes hard and still
+collides in 78%, with or without the camera: seeing the car, it now plans a little
+sideways movement (mean peak 1.80 m, against 0.11 m blind) and slows by 4.67 m/s
+over the episode (5.76 blind, same measure), but not enough of either. In a staged head-on the closing
 vehicle arrives whatever the ego's speed, so the escape is lateral, and Alpamayo
 is the only model of the five that takes it. This is not an adapter limit: on
 NAVSIM the same code path produces lateral offsets to 19.92 m. The full table,
@@ -916,8 +924,8 @@ and what is interpretation rather than measurement, are in
 
 **METEOR is the mirror image: it steers, and it does not brake.** Its mean
 places it fourth, level with Qwen-Drive; counted over scenario-scene pairs, it is
-only marginally below Alpamayo and not clearly separated from Drive-JEPA or
-OpenPilot (paired below). Over the
+only marginally below Alpamayo, clearly below Drive-JEPA, and not clearly
+separated from OpenPilot (paired below). Over the
 50 frontal episodes its planned 3 s path reaches a mean peak lateral offset of
 5.17 m, second only to Alpamayo's 10.44 m, and it collides in 36% of them, also
 second best. But it speeds up through every scenario type rather than slowing:
@@ -938,22 +946,24 @@ compared paired sample for sample rather than as means:
 | paired difference | mean | SE over 200 episodes | t | SE over 20 pairs | t |
 |---|---:|---:|---:|---:|---:|
 | Alpamayo − OpenPilot | +0.12 | 0.15 | 0.80 | 0.32 | 0.38 |
-| Alpamayo − Drive-JEPA | +0.16 | 0.14 | 1.12 | 0.32 | 0.50 |
+| Drive-JEPA − Alpamayo | +0.40 | 0.15 | 2.63 | 0.36 | 1.13 |
+| Drive-JEPA − OpenPilot | +0.53 | 0.15 | 3.55 | 0.35 | 1.49 |
 | Alpamayo − VisionPilot | **+2.15** | 0.17 | **12.89** | 0.38 | **5.73** |
-| METEOR − Drive-JEPA | −0.92 | 0.22 | −4.25 | 0.58 | −1.60 |
+| METEOR − Drive-JEPA | −1.49 | 0.21 | −7.16 | 0.48 | **−3.07** |
 | METEOR − Qwen-Drive | +0.16 | 0.19 | 0.83 | 0.41 | 0.39 |
 
 **Read the pair-level columns.** The 200 episodes are 10 seeded runs of each of
 20 scenario-scene pairs, not 200 independent draws, and this benchmark's error
 is dominated by the between-scene term (`docs/benchmarks/neuroncap.md`). The
-pair-level standard error averages each pair's ten runs first. The Alpamayo rows
-reach the same conclusions at both levels. METEOR's do not: over the 20 pairs
-it is not separable from Drive-JEPA (t −1.60) or OpenPilot (t −1.89), only
-marginally below Alpamayo (t −2.47) and above VisionPilot (t +2.21), and level
-with Qwen-Drive either way.
+pair-level standard error averages each pair's ten runs first. For the top three the two
+levels disagree: over 200 episodes Drive-JEPA is ahead of Alpamayo (t 2.63) and
+OpenPilot (t 3.55); over the 20 pairs it is not (t 1.13, 1.49). Over the 20 pairs
+METEOR is clearly below Drive-JEPA (t −3.07), not separable from OpenPilot
+(t −1.89), only marginally below Alpamayo (t −2.47) and above VisionPilot
+(t +2.21), and level with Qwen-Drive either way.
 
-The top three are **statistically indistinguishable**. Only VisionPilot is
-separated, and decisively. On scene 0103 alone the order was Drive-JEPA 4.04,
+The top three are **statistically indistinguishable** over the 20 pairs, though
+Drive-JEPA now leads on the mean. Only VisionPilot is separated, and decisively. On scene 0103 alone the order was Drive-JEPA 4.04,
 OpenPilot 3.80, Alpamayo 2.46 — which put Alpamayo last of the three and
 Drive-JEPA clearly first. Neither holds up. Alpamayo moved most, from 2.46 to
 3.73, because scene 0103's side scenario is one of its worst and n = 15 could
