@@ -300,6 +300,19 @@ class Observation:
     #: where the source has no route, or no junction ahead of the ego.
     nav_maneuver: str | None = None
     nav_distance_m: float | None = None
+    #: Privileged ground truth, current-step only: each entry is
+    #: {uuid, cls_name, length, width, x, y, heading, vx, vy} in the world
+    #: frame -- current pose and velocity, never a scripted future path. Only
+    #: neuroNCAP's engine sends this (see neuro-ncap patch
+    #: 0003-expose-current-actor-state-to-model.patch), and only a privileged
+    #: model (Alpamayo's teacher-data planner) should read it; every other model leaves
+    #: this None and infers from pixels like it always has.
+    actors: list[dict] | None = None
+    #: Which recorded scene is being replayed (e.g. "scene-0103"), when the
+    #: source knows and sends one -- static per-episode identity, not a
+    #: future-looking signal. Only neuroNCAP's engine sends this today (same
+    #: patch as `actors`); every other source leaves it None.
+    scene_name: str | None = None
     #: Frames that live on disk, loaded on first use instead of being carried.
     #:
     #: Open-loop benchmarks read from a local dataset, and the node is a
@@ -336,6 +349,8 @@ class Observation:
             nav_distance_m=(
                 float(body["nav_distance_m"]) if body.get("nav_distance_m") is not None else None
             ),
+            actors=body.get("actors"),
+            scene_name=body.get("scene_name"),
         )
 
     def require_lidar2ego(self) -> np.ndarray:

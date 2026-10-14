@@ -348,6 +348,49 @@ def test_encode_writes_one_video_per_run_and_prunes_the_frames(tmp_path, monkeyp
     assert not list(tmp_path.rglob("*.concat")), "the concat list is a temp file"
 
 
+def test_keep_raw_frames_false_prunes_cam_dirs_once_a_stream_encodes(tmp_path, monkeypatch) -> None:
+    """Opt-in storage cut: raw CAM_* goes too once at least one derived stream exists.
+
+    Default (unset / true) is covered by
+    test_encode_writes_one_video_per_run_and_prunes_the_frames, which asserts
+    the opposite -- CAM_FRONT survives -- so this is the explicit opt-out.
+    """
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch, video="encode", keep_raw_frames="false"))
+    if harness._ffmpeg() is None:
+        pytest.skip("no ffmpeg")
+
+    run = tmp_path / "run_0"
+    _frames(run, "FC_TRAJ")
+    (run / "CAM_FRONT").mkdir()
+    (run / "CAM_FRONT_LEFT").mkdir()
+    (run / "trajectories.json").write_text("{}")
+
+    written = harness.render_videos(tmp_path, echo=lambda _: None)
+
+    assert [p.relative_to(tmp_path).as_posix() for p in written] == ["run_0/FC_TRAJ.mp4"]
+    assert not (run / "CAM_FRONT").exists(), "raw frames should be pruned when keep_raw_frames = false"
+    assert not (run / "CAM_FRONT_LEFT").exists()
+    assert (run / "trajectories.json").exists(), "non-camera artifacts are never touched"
+
+
+def test_keep_raw_frames_false_does_not_delete_anything_if_nothing_encoded(tmp_path, monkeypatch) -> None:
+    """A run with no successful encode keeps its only visual record regardless."""
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch, video="encode", keep_raw_frames="false"))
+
+    def _no_ffmpeg():
+        return None
+
+    monkeypatch.setattr(harness, "_ffmpeg", _no_ffmpeg)
+
+    run = tmp_path / "run_0"
+    (run / "CAM_FRONT").mkdir(parents=True)
+
+    written = harness.render_videos(tmp_path, echo=lambda _: None)
+
+    assert written == []
+    assert (run / "CAM_FRONT").is_dir()
+
+
 def test_keep_encodes_without_deleting_anything(tmp_path, monkeypatch) -> None:
     harness = _harness_with_video("keep", tmp_path, monkeypatch)
     if harness._ffmpeg() is None:

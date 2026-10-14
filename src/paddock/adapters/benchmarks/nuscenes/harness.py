@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from collections.abc import Container, Iterator
 from pathlib import Path
 
@@ -236,6 +237,12 @@ class NuScenesBenchmark(OpenLoopBenchmark):
         """
         if split not in (None, "", "val"):
             raise ValueError(f"nuscenes open-loop scores the official val split only, not {split!r}")
+        # Debugging escape hatch, not a normal run mode: point this at a JSON
+        # file of sample_ids to re-score only those (e.g. a prior run's
+        # worst-cases list), without a --scene flag this benchmark doesn't
+        # support. Unset by default, so ordinary runs are untouched.
+        only_path = os.environ.get("NUSCENES_ONLY_SAMPLES")
+        only = set(json.loads(Path(only_path).read_text())) if only_path else None
         emitted = 0
         skipped = 0
         for frames in self._index():
@@ -253,6 +260,8 @@ class NuScenesBenchmark(OpenLoopBenchmark):
                 # caps what is yielded, so on a resume it caps the samples
                 # still to do rather than the run's total.
                 if sample.sample_id in skip:
+                    continue
+                if only is not None and sample.sample_id not in only:
                     continue
                 yield sample
                 emitted += 1

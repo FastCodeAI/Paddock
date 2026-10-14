@@ -34,6 +34,45 @@ if not _STUDIO:
     )
 sys.path.insert(0, _STUDIO)
 
+# torch 2.6 flipped torch.load's default to weights_only=True, which refuses to
+# unpickle the numpy scalar nerfstudio's own checkpoint format embeds, and
+# nerfstudio.utils.eval_utils.eval_load_checkpoint calls torch.load with no
+# weights_only kwarg at all -- so on this box's torch (2.14), loading *any*
+# locally-trained checkpoint through the closed-loop server dies with
+# "Unsupported global: GLOBAL numpy.core.multiarray.scalar" before it ever
+# reaches the dataparser or model. The pre-downloaded official 14 checkpoints
+# never hit this because nothing had tried loading a freshly-trained one
+# through this path before.
+#
+# Tried the narrow fix first: torch.serialization.add_safe_globals([...]) with
+# every numpy global the error messages named (numpy.core.multiarray.scalar,
+# bare numpy.dtype, the parametrized numpy.dtype[float64]/[float32] generic
+# aliases). The scalar and bare-dtype globals passed, but numpy.dtype[float64]
+# still failed even after confirming it was registered
+# (torch.serialization.get_safe_globals() listed it) -- torch 2.14's
+# weights_only unpickler has a hardcoded check for the *reconstructed*
+# numpy-dtype object's type that doesn't consult the general allowlist, so no
+# list of safe globals clears it. Confirmed in isolation with a minimal
+# torch.save/torch.load repro, not just in the full pipeline.
+#
+# Explicit, scoped exception approved for this file only: this loads nothing
+# but our own locally-trained NeuRAD checkpoints (never a third-party file),
+# so bypassing the guard here doesn't carry the arbitrary-code-execution risk
+# it exists for.
+import numpy as np
+
+torch.serialization.add_safe_globals([np.core.multiarray.scalar, np.dtype])
+
+_original_torch_load = torch.load
+
+
+def _torch_load_trusting_own_checkpoints(*args, **kwargs):
+    kwargs.setdefault("weights_only", False)
+    return _original_torch_load(*args, **kwargs)
+
+
+torch.load = _torch_load_trusting_own_checkpoints
+
 from nerfstudio.data.dataparsers import nuscenes_dataparser as ndp
 from nerfstudio.scripts.closed_loop import server as cl_server_mod
 
