@@ -486,7 +486,17 @@ class AlpamayoPolicy(Policy):
                 float(np.linalg.norm(waypoints[-1])),
                 cot[:240],
             )
-        return Trajectory(waypoints, dt=self.waypoint_dt)
+        extras: dict = {}
+        # Off by default: persisting the reasoning for every sample would bloat
+        # samples.jsonl on a 5000+ sample run. Opt in for a small targeted run
+        # (e.g. re-scoring only a prior run's worst-cases list) instead.
+        if _env_or("ALPAMAYO_SAVE_REASONING", 0) == 1:
+            extras["reasoning"] = cot[:400]
+        if self.num_traj_samples > 1:
+            extras["all_trajectories"] = [
+                samples[i][GRID_INDICES][:, :2].tolist() for i in range(len(samples))
+            ]
+        return Trajectory(waypoints, dt=self.waypoint_dt, extras=extras or None)
 
     def diagnostics(self) -> dict[str, Any]:
         """Request cadence and history depth, plus the latest reasoning trace.
