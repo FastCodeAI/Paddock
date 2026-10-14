@@ -292,6 +292,19 @@ serialize = true
 #                     # "off" logs no frames at all -- fastest, smallest.
 # ffmpeg = "/path/to/ffmpeg"   # else $PADDOCK_FFMPEG, else PATH. Without one,
 #                              # frames are kept and the run is not failed.
+#
+# The raw CAM_* jpegs are small next to the derived streams and are what makes
+# pruning FC_TRAJ/COMBINED_OUTPUTS safe at all (see `render_videos`). Set false
+# for a sweep where even that is too much disk.
+# keep_raw_frames = true
+#
+# Skip NeuRAD entirely: the vendor engine's own `--spoof-renderer` flag swaps
+# in `DummyRendererAPI`, serving the dataset's real camera images straight off
+# disk instead of rendering. No renderer process is started or needed -- for
+# fast scenario sweeps that don't care about render fidelity, not for a model
+# actually being scored on realism. Also settable as
+# PADDOCK_NCAP_SPOOF_RENDERER=true.
+# spoof_renderer = false
 
 # [benchmarks.nuscenes]
 # nuScenes val open-loop planning (L2 + collision, UniAD/VAD protocol). Reads the

@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import json
 import logging
+import os
 import time
 from typing import Any, Optional
 
@@ -43,9 +45,29 @@ def _plan_reach(result: dict) -> tuple[float, float]:
 
 def build_app(policy: Policy, model: str | None = None, nonce: str | None = None):
     """Wrap a loaded Policy in the endpoints a simulator expects."""
+    from contextlib import asynccontextmanager
+
     from fastapi import FastAPI
 
-    app = FastAPI()
+    @asynccontextmanager
+    async def lifespan(_app):
+        yield
+        # A closed-loop run's *last* episode has no later `/reset` to flush it
+        # (ExpertPolicy's SFT recorder only flushes a buffered episode from the
+        # next one's `reset()`/scene change) -- and `atexit` cannot stand in for
+        # that: uvicorn's graceful SIGTERM handling runs this lifespan's
+        # shutdown to completion, then re-raises the original signal with
+        # default disposition to exit with the right status
+        # (uvicorn/server.py's `signal.raise_signal`), which kills the
+        # process outright and skips every `atexit` callback (confirmed by
+        # direct test -- a bare FastAPI app's `atexit`-registered callback
+        # never ran under SIGTERM, while an `on_event("shutdown")`/lifespan
+        # one did). `reset()` is called at every episode boundary already and
+        # every `Policy` must tolerate being reset with nothing to flush, so
+        # one more call here is never a new kind of input.
+        policy.reset()
+
+    app = FastAPI(lifespan=lifespan)
 
     @app.get("/alive")
     async def alive() -> bool:
@@ -73,6 +95,10 @@ def build_app(policy: Policy, model: str | None = None, nonce: str | None = None
         # unpickle per camera and the simulator sends what it rendered, so a
         # single-camera model should not pay for six.
         t0 = time.monotonic()
+        capture_path = os.environ.get("PADDOCK_CAPTURE_INFER")
+        if capture_path:
+            with open(capture_path, "a") as f:
+                f.write(json.dumps(body) + "\n")
         obs = Observation.from_wire(body, cameras=policy.cameras)
         result = policy.infer(obs).to_wire()
         calls["n"] += 1

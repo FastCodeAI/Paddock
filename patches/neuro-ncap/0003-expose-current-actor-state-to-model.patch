@@ -1,0 +1,107 @@
+diff --git a/neuro_ncap/components/model_api.py b/neuro_ncap/components/model_api.py
+index 837f5e1..8893c43 100644
+--- a/neuro_ncap/components/model_api.py
++++ b/neuro_ncap/components/model_api.py
+@@ -42,6 +42,17 @@ class ModelInput:
+     timestamp: int  # microseconds
+     command: Command
+     calibration: Calibration
++    actors: list[dict] | None = None
++    """Current-step ground-truth actor state (current pose + velocity only,
++    never a scripted future path -- see utils/math.py's `current_actor_state`).
++    None for every model that doesn't ask for it; only a privileged
++    ground-truth-driven model (e.g. the expert planner) should read this."""
++    scene_name: str | None = None
++    """Which recorded nuScenes scene is being replayed (e.g. "scene-0103").
++    Static per-episode identity, not a future-looking signal -- equivalent to
++    an onboard HD-map system already knowing its own location. A model that
++    needs a precomputed per-scene map/route (the expert planner) uses this to
++    know when to rebuild it; every other model ignores the field."""
+ 
+     def to_json_dict(self) -> dict:
+         return {
+@@ -51,6 +62,8 @@ class ModelInput:
+             "timestamp": self.timestamp,
+             "command": self.command.value,
+             "calibration": self.calibration.to_json_dict(),
++            "actors": self.actors,
++            "scene_name": self.scene_name,
+         }
+ 
+ 
+diff --git a/neuro_ncap/engine.py b/neuro_ncap/engine.py
+index 4cd95fe..d734ddc 100644
+--- a/neuro_ncap/engine.py
++++ b/neuro_ncap/engine.py
+@@ -13,7 +13,7 @@ from torch import Tensor
+ from neuro_ncap.components.logger import LoggerConfig, NCAPLogger
+ from neuro_ncap.components.scenario import Scenario, ScenarioConfig
+ from neuro_ncap.utils.config import InstantiateConfig
+-from neuro_ncap.utils.math import get_velocity_at_timestamp
++from neuro_ncap.utils.math import current_actor_state, get_velocity_at_timestamp
+ 
+ from .components.evaluator import Evaluator, EvaluatorConfig
+ from .components.model_api import Calibration, ModelAPI, ModelConfig, ModelInput, ModelOutput
+@@ -186,6 +186,8 @@ class Engine:
+                 timestamp=state.timestamp,
+                 command=command,
+                 calibration=calibration,
++                actors=current_actor_state(self.current_actors, state.timestamp),
++                scene_name=self.dataset.scene["name"],
+             )
+             model_output = await self.model.run_model(model_input)
+ 
+diff --git a/neuro_ncap/utils/math.py b/neuro_ncap/utils/math.py
+index ac5336c..ee8be90 100644
+--- a/neuro_ncap/utils/math.py
++++ b/neuro_ncap/utils/math.py
+@@ -45,6 +45,49 @@ def get_velocity_at_timestamp(trajectory: ActorTrajectory, timestamp_us: int) ->
+     return posdiff / timediff_s
+ 
+ 
++def current_actor_state(actors: list[ActorTrajectory], timestamp_us: int) -> list[dict]:
++    """Current-step-only actor state for a privileged ground-truth model
++    (e.g. an expert planner): current world pose and a strictly backward-
++    looking finite-difference velocity, never a scripted future path.
++
++    Unlike `get_velocity_at_timestamp` above (which can difference forward
++    to the *next* logged sample when the nearest sample precedes
++    `timestamp_us`), this only ever reads samples with
++    timestamp <= timestamp_us, so it cannot leak anything about where the
++    actor is headed next -- the one information-rule distinction that
++    matters for a model that isn't allowed to see the future.
++    """
++    out = []
++    for actor in actors:
++        past = np.nonzero(actor.timestamps <= timestamp_us)[0]
++        idx = int(past[-1]) if len(past) else 0
++        pose = actor.poses[idx]
++        x, y = float(pose[0, 3]), float(pose[1, 3])
++        # actor poses use the y-forward/x-right convention (see
++        # get_polygons_from_poses3d below); the world heading of the
++        # forward direction is convention-independent once extracted.
++        forward = pose[:2, 1]
++        heading = float(np.arctan2(forward[1], forward[0]))
++
++        if idx > 0:
++            prev_pose = actor.poses[idx - 1]
++            dt = (actor.timestamps[idx] - actor.timestamps[idx - 1]).astype(np.float64) / 1e6
++            vx = (pose[0, 3] - prev_pose[0, 3]) / dt if dt > 0 else 0.0
++            vy = (pose[1, 3] - prev_pose[1, 3]) / dt if dt > 0 else 0.0
++        else:
++            vx = vy = 0.0  # no prior sample yet -- first step of the episode
++
++        out.append({
++            "uuid": actor.uuid,
++            "cls_name": actor.cls_name,
++            "length": float(actor.dims[1]),
++            "width": float(actor.dims[0]),
++            "x": x, "y": y, "heading": heading,
++            "vx": float(vx), "vy": float(vy),
++        })
++    return out
++
++
+ def interpolate_trajectory(
+     times: np.ndarray, positions: np.ndarray, query_times: np.ndarray, fallback_yaw: float = 0.0
+ ) -> np.ndarray:

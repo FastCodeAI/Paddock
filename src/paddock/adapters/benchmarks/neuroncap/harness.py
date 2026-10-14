@@ -247,7 +247,8 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
                 "`repo`, `renderer_url` and `checkpoints` (see docs/benchmarks/neuroncap.md)"
             ]
 
-        for key in ("python", "repo", "renderer_url"):
+        required_keys = ("python", "repo") if self.spoof_renderer() else ("python", "repo", "renderer_url")
+        for key in required_keys:
             if not self.setting(key):
                 problems.append(f"[benchmarks.neuroncap] {key} is not set in paddock.toml")
 
@@ -292,7 +293,7 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         # scenario files exist while not verifying their scenes can render.
         problems += self._lidar_problems(DEFAULT_SCENE)
 
-        url = self.setting("renderer_url")
+        url = self.setting("renderer_url") if not self.spoof_renderer() else None
         if url and self.manages_renderer():
             # We start one per scene; a live one here would be someone else's,
             # and our port must be free rather than occupied.
@@ -473,14 +474,19 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
 
         `policy_url` is a node paddock has already started and health-checked.
         """
-        # The renderer serves one scene; a multi-scene sweep restarts it here so
-        # the whole official set is one run rather than one run per scene.
-        self._renderer_log_dir = out_dir.parent
-        self._ensure_renderer(episode.scene, echo)
+        spoofed = self.spoof_renderer()
+        if spoofed:
+            # No renderer process: DummyRendererAPI reads straight off disk.
+            echo("  renderer: spoofed (DummyRendererAPI, no NeuRAD)")
+        else:
+            # The renderer serves one scene; a multi-scene sweep restarts it
+            # here so the whole official set is one run rather than one run
+            # per scene.
+            self._renderer_log_dir = out_dir.parent
+            self._ensure_renderer(episode.scene, echo)
 
         repo = Path(self.setting("repo"))
         port = policy_url.rsplit(":", 1)[-1]
-        renderer_port = self.setting("renderer_url").rsplit(":", 1)[-1]
         runs = int(episode.config.get("runs", 1))
         # Keep only cameras this dataset can render; a model that also declares
         # simulator-only cameras (openpilot's comma rig) falls back to CAM_FRONT
@@ -492,8 +498,6 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             self.setting("python"),
             "-u",
             "main.py",
-            "--engine.renderer.port",
-            renderer_port,
             "--engine.model.port",
             port,
             "--engine.dataset.data_root",
@@ -513,6 +517,23 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             "--runs",
             str(runs),
         ]
+        if os.environ.get("EXPERT_RECORD_SFT_DIR"):
+            # The vendor logger's own default (`allowed_cams=("CAM_FRONT",)`,
+            # see neuro_ncap/components/logger.py) writes raw per-step jpegs for
+            # CAM_FRONT only, regardless of how many cameras `--engine.cameras`
+            # above actually rendered and sent to the policy -- fine for the
+            # ordinary case, where COMBINED_OUTPUTS/FC_TRAJ debug video only
+            # ever reads CAM_FRONT, but wrong for SFT collection, which needs
+            # every camera the model conditions on (alpamayo15_teacher_sft's
+            # three-camera rig) joined to `EXPERT_RECORD_SFT_DIR`'s per-step records by
+            # timestamp. `None` here means "don't filter", not "log nothing" --
+            # see the flag's own help text.
+            command += ["--engine.logger.allowed-cams", "None"]
+        if spoofed:
+            command += ["--spoof-renderer"]
+        else:
+            renderer_port = self.setting("renderer_url").rsplit(":", 1)[-1]
+            command += ["--engine.renderer.port", renderer_port]
         if self.video_mode() == "off":
             # No frames at all: skips the per-step jpeg and matplotlib writes,
             # which is most of what the logger costs.
@@ -546,6 +567,22 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         return metrics
 
     # ---- renderer ------------------------------------------------------
+
+    def spoof_renderer(self) -> bool:
+        """Skip NeuRAD entirely: the vendor engine's own `--spoof-renderer`
+        flag swaps in `DummyRendererAPI`, which serves the dataset's real
+        camera images straight off disk instead of rendering. No renderer
+        process is started or needed -- the whole point is to make a sweep
+        that doesn't care about render fidelity (fast scenario sweeps, the
+        closed-loop behavior tests in spec 7.3, log replay) run in seconds
+        rather than needing a trained NeuRAD checkpoint per scene at all.
+
+        Off by default, same reasoning as `manage_renderer`: a model actually
+        being scored on realism needs the real renderer, so this has to be
+        opted into, never silently assumed.
+        """
+        raw = os.environ.get("PADDOCK_NCAP_SPOOF_RENDERER") or self.setting("spoof_renderer", "false")
+        return str(raw).strip().lower() in ("true", "1", "yes")
 
     def manages_renderer(self) -> bool:
         """Whether this harness starts and stops renderers itself.
@@ -646,6 +683,18 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             )
         return mode
 
+    def _keep_raw_frames(self) -> bool:
+        """`[benchmarks.neuroncap] keep_raw_frames` -- default true.
+
+        The raw CAM_* jpegs are small next to the derived streams and are what
+        makes pruning FC_TRAJ/COMBINED_OUTPUTS safe at all (see `render_videos`),
+        so the default keeps them. Set false for a sweep where even that is too
+        much disk -- a 20-pair x 10-run x 4-model sweep's raw frames alone are
+        the bulk of the ~5 GB `encode` costs today.
+        """
+        raw = self.setting("keep_raw_frames", "true")
+        return str(raw).strip().lower() in ("true", "1", "yes")
+
     def _ffmpeg(self) -> str | None:
         """`[benchmarks.neuroncap] ffmpeg`, then `PADDOCK_FFMPEG`, then PATH."""
         return resolve_ffmpeg(self.setting("ffmpeg"))
@@ -682,6 +731,7 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
 
         written: list[Path] = []
         for run_dir in run_dirs:
+            any_encoded = False
             for stream in VIDEO_STREAMS:
                 frames_dir = run_dir / stream
                 if not frames_dir.is_dir():
@@ -690,10 +740,24 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
                 if video is None:
                     continue
                 written.append(video)
+                any_encoded = True
                 if mode == "encode":
                     # Only the stream that actually encoded, so a partial
                     # failure never deletes frames that have no video.
                     shutil.rmtree(frames_dir, ignore_errors=True)
+            if mode == "encode" and any_encoded and not self._keep_raw_frames():
+                # Both derived streams are built from the in-memory render, not
+                # by re-reading these files, so once at least one has actually
+                # encoded for this run the raw CAM_* jpegs are pure storage
+                # cost -- opt in with `keep_raw_frames = false`, since the
+                # default (true) is what tests/test_neuroncap_harness.py
+                # documents as the safety margin for pruning the derived
+                # streams at all. Gated on any_encoded so a run with no
+                # successful encode (missing ffmpeg mid-sweep, a failed stream)
+                # still keeps its only visual record.
+                for cam_dir in run_dir.iterdir():
+                    if cam_dir.is_dir() and cam_dir.name in NUSC_CAMERAS:
+                        shutil.rmtree(cam_dir, ignore_errors=True)
         return written
 
     @staticmethod

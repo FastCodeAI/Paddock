@@ -26,8 +26,6 @@ from nuscenes import NuScenes
 from PIL import Image
 from pyquaternion import Quaternion
 
-from tools import paths
-
 CAM = "CAM_FRONT"
 
 
@@ -57,11 +55,24 @@ def psnr(a: np.ndarray, b: np.ndarray) -> float:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="http://localhost:8000")
-    ap.add_argument("--dataroot", default=str(paths.nuscenes()))
+    ap.add_argument("--dataroot", help="nuScenes root (matches [datasets.nuscenes].path in paddock.toml)")
     ap.add_argument("--scene", default="scene-0103")
     ap.add_argument("--frames", type=int, default=4)
-    ap.add_argument("--out", default=str(paths.ncap() / "validation"))
+    ap.add_argument("--out", help="output dir for side-by-side JPEGs (defaults to {ncap}/validation if omitted)")
     args = ap.parse_args()
+
+    if args.dataroot is None or args.out is None:
+        # Deferred import: paddock.config needs py3.11+'s tomllib, which the
+        # `ncap`/`neurad` envs (py3.10, but with a working nuscenes-devkit
+        # already installed) don't have. Passing both flags explicitly -- as
+        # every caller in this project now does -- skips this import
+        # entirely, so the script runs in those envs too.
+        from tools import paths
+
+        if args.dataroot is None:
+            args.dataroot = str(paths.nuscenes())
+        if args.out is None:
+            args.out = str(paths.ncap() / "validation")
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
