@@ -724,14 +724,17 @@ def _run_one_model(
         # everything in `invalid_reasons` sets `valid: false`. But `started_utc`
         # and `duration_s` cover the resumed attempt only, so a 20-episode sweep
         # can read as forty minutes, and the row should say so itself.
-        remarks=(
-            [
-                f"resumed: {reused} episode(s) reused from an earlier attempt, so "
-                f"started_utc and duration_s describe this attempt only"
-            ]
-            if reused
-            else None
-        ),
+        remarks=[
+            *harness.remarks(),
+            *(
+                [
+                    f"resumed: {reused} episode(s) reused from an earlier attempt, so "
+                    f"started_utc and duration_s describe this attempt only"
+                ]
+                if reused
+                else []
+            ),
+        ],
         hardware={"gpu_free_gb_at_start": None},
         # In samples, not episodes: docs/results-schema.md defines the completion
         # ratio as `n_samples / n_expected`, so the two have to count the same
@@ -875,6 +878,7 @@ def _run_external(
         config,
         failure_note=failure_note,
         invalid_reasons=invalid_reasons,
+        remarks=harness.remarks(),
         # The scorer's own headline and aggregate rows, kept in the tracked
         # metrics.json exactly where the ingest path puts them.
         by_group=evaluation.by_group,
@@ -1250,14 +1254,17 @@ def _run_open_loop(
         # As in the closed-loop path: `started_utc` and `duration_s` are this
         # attempt's, so a run re-stored with nothing left to score reads as
         # zero seconds today, and the row has to say so itself.
-        remarks=(
-            [
-                f"resumed: {reused} sample(s) reused from an earlier attempt, so "
-                f"started_utc and duration_s describe this attempt only"
-            ]
-            if reused
-            else None
-        ),
+        remarks=[
+            *harness.remarks(),
+            *(
+                [
+                    f"resumed: {reused} sample(s) reused from an earlier attempt, so "
+                    f"started_utc and duration_s describe this attempt only"
+                ]
+                if reused
+                else []
+            ),
+        ],
         extra_dataset=_expected_samples(harness),
         provenance=prov,
     )

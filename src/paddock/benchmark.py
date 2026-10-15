@@ -197,6 +197,16 @@ class Benchmark(ABC):
         Default: nothing.
         """
 
+    def remarks(self) -> list[str]:
+        """What a reader of a run made under the current settings should know, without it ranking less.
+
+        The other kind of note: the runner joins these into `notes` too, but
+        leaves `valid` alone -- a setting that changes how an episode ends,
+        where the benchmark's own scoring still holds, is said here rather than
+        in `invalid_reasons`. Default: none.
+        """
+        return []
+
     def model_run_config(self, model) -> dict[str, Any]:
         """Measurement-changing settings that depend on which model is paired.
 
