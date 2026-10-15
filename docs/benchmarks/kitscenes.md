@@ -158,13 +158,13 @@ command_source = "gt"   # default "straight"
 
 That one-hot is the command Drive-JEPA's row was run with, and its `--command
 gt` derived it from the recorded future, as a lateral offset at the end of the
-horizon. So the model is told which way the car is about to go, as a car's
-navigation would tell it, and 39 of the 223 keyframes (21 left, 18 right) are
-told to turn. A `gt` run is therefore a different measurement from a `straight`
-one. It hashes to its own run id with `command_source` in its `config`, the key
-and values `paddock ingest` already records Drive-JEPA's row under. `straight`
-adds no key, so every run made before the setting existed keeps its id and
-`--resume`.
+horizon. So the model is told which way the car is about to go, from the scored
+future, standing in for the route a car's navigation knows, and 39 of the 223
+keyframes (21 left, 18 right) are told to turn. A `gt` run is therefore a
+different measurement from a `straight` one. It hashes to its own run id with
+`command_source` in its `config`, the key and values `paddock ingest` already
+records Drive-JEPA's row under. `straight` adds no key, so every run made before
+the setting existed keeps its id and `--resume`.
 
 A `gt` run is ranked like any other, and its `config` says it was given the
 route. It is the same signal Drive-JEPA's row (`--command gt`) and Alpamayo's

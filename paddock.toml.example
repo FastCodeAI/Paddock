@@ -242,7 +242,9 @@ serialize = true
 # The route command the scored keyframe carries. KITScenes has no route
 # annotation, so the default tells every model "straight". "gt" gives the
 # keyframe the sample list's own driving_command, derived from the recorded
-# future: an oracle hint, recorded in run.json and hashed into the run id.
+# future and standing in for the route a car's navigation knows: recorded in
+# run.json, hashed into the run id, and ranked like the benchmark's other
+# route-conditioned rows.
 # See docs/benchmarks/kitscenes.md, "The route hint".
 # command_source = "straight"   # or "gt"
 #

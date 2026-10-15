@@ -92,12 +92,13 @@ RING = {
 #: `20260930T014333-d329a6` was scored with. `gt` gives the keyframe the sample
 #: list's `driving_command` instead: the command Drive-JEPA's row was run with,
 #: which its `--command gt` derived from the recorded future. The model is told
-#: which way the car is about to go, as a car's navigation would tell it, so a
-#: `gt` run is a different measurement, recorded in `run_config()`. It is not an
-#: invalid one: that is the route signal Drive-JEPA's and Alpamayo's ranked rows
-#: here were given, and the high-level command nuScenes gives every model (its
-#: harness infers it from the recorded future, VAD's rule). The two names are
-#: the ones `paddock ingest` already records Drive-JEPA's row under.
+#: which way the car is about to go, from the scored future, standing in for the
+#: route a car's navigation knows, so a `gt` run is a different measurement,
+#: recorded in `run_config()`. It is not an invalid one: that is the route
+#: signal Drive-JEPA's and Alpamayo's ranked rows here were given, and the
+#: high-level command nuScenes gives every model (its harness infers it from the
+#: recorded future, VAD's rule). The two names are the ones `paddock ingest`
+#: already records Drive-JEPA's row under.
 COMMAND_SOURCES = ("straight", "gt")
 
 #: The sample list's `driving_command`, a one-hot over NAVSIM's `[left,
