@@ -1,10 +1,11 @@
 """A supercombo node whose image manipulation comes from the caller.
 
-`openpilot_drv_supcombo_kitscenes_image_calibration.ipynb` launches this in openpilot's own
-interpreter and environment, as `paddock run` launches the adapter's node
-(`proc.model_node`), and drives it over localhost HTTP. Paddock never imports a model and
-neither does the notebook: everything that needs openpilot runs in this process, and the
-notebook only composes matrices and lookup tables.
+The image notebooks beside it -- the KITScenes image calibration and scene sweep, and the
+image-tweak notebooks for KITScenes, comma2k19 and Bench2Drive -- launch this in openpilot's
+own interpreter and environment, as `paddock run` launches the adapter's node
+(`proc.model_node`), and drive it over localhost HTTP. Paddock never imports a model and
+neither does a notebook: everything that needs openpilot runs in this process, and the
+notebooks only compose matrices and lookup tables.
 
 The node is the adapter, not a copy of it. `ImagePolicy` subclasses `OpenpilotPolicy` and
 changes what happens between a frame's (Y, U, V) planes and the (6, 128, 256) tensor each
