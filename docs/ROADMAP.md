@@ -470,7 +470,8 @@ Open work on this driver, in the order it bites:
   had.
 - **History.** #60's first review stored paddock's `gt` runs `valid: false`, which ranked an ingested row
   and failed a paddock run for the same input. The rule was reversed, so ingested and paddock rows are
-  treated alike, and the README marks the rows that had the route.
+  treated alike. In the README only OpenPilot's cells carry a mark for it (⊜); that footnote names the
+  other rows that had the route.
 
 ## Bench2Drive / CARLA — adapter landed, driven, and the runs are tracked
 
