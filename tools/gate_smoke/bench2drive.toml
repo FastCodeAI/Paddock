@@ -1,0 +1,36 @@
+# Bench2Drive smoke tier: 10 of the 50 routes this site's Bench2Drive results use,
+# stratified by scenario type.
+#
+# The 50 are the routes_subset recorded in results/bench2drive/*/pooled50-40c29d24c37d542a-*
+# (bench2drive220.xml route ids; 14 scenario types among them). Rule:
+# tools.gate.stratified_pick(routes grouped by scenario type, n=10, seed=20261016, floor=0).
+# Ten picks over 14 types cannot cover every type; proportional allocation gives one route
+# to each type holding 3 or more of the 50, and none to the four types holding 2
+# (ConstructionObstacle, EnterActorFlow, HighwayCutIn, MergerIntoSlowTraffic).
+#
+# Run as `--scene <the 10 ids>`. Stored valid=false (a route subset). The baselines on this
+# site were ingested without per-route records, so this pair reports NO RECORDS until a
+# baseline smoke has been run through `paddock run`.
+#
+# Fixed once, on 2026-10-16. It must never be re-picked, re-seeded or edited to make a
+# result look better: a gate whose subset moves can be steered. If the subset turns
+# out to be wrong (a scene that cannot run, say), replace it in its own commit that
+# says why, and re-run every baseline paired with it.
+
+bench = "bench2drive"
+unit = "route"
+seed = 20261016
+rule = "stratified_pick(by scenario type, n=10)"
+count = 10
+
+[strata]
+Accident = ["3307"]
+AccidentTwoWays = ["25857"]
+DynamicObjectCrossing = ["24211"]
+InvadingTurn = ["3572"]
+NonSignalizedJunctionLeftTurn = ["2084"]
+ParkingCutIn = ["18305"]
+PedestrianCrossing = ["14194"]
+SignalizedJunctionLeftTurn = ["3936"]
+SignalizedJunctionRightTurn = ["26956"]
+YieldToEmergencyVehicle = ["3364"]
