@@ -1,6 +1,6 @@
 # openpilot's driving model on KITScenes: the scene sweep's config, run by paddock
 
-This note records what happened when paddock itself ran the scene-sweep notebook's `CONFIG` on all 223 KITScenes keyframes, and why that run is now this site's default for openpilot on KITScenes. Every measured number comes from [the config-run notebook](openpilot_drv_supcombo_kitscenes_config_run.ipynb) beside it, which recomputes them from the recorded runs each time it executes. The part numbers are its parts, and the figures are there, not here. Keyframes, H, the pose speed, the pose head and the low and high modes mean what they mean in [the four-questions note](openpilot_drv_supcombo_kitscenes_four_questions.md#how-to-read-this-note).
+This note records what happened when paddock itself ran the scene-sweep notebook's `CONFIG` on all 223 KITScenes keyframes, and why that run is now this site's default for openpilot on KITScenes. Every measured number comes from [the config-run notebook](openpilot_drv_supcombo_kitscenes_config_run.ipynb) beside it, which recomputes them from the recorded runs each time it executes. The part numbers are its parts, and the figures are there once it is run, not here: its outputs are not committed. Keyframes, H, the pose speed, the pose head and the low and high modes mean what they mean in [the four-questions note](openpilot_drv_supcombo_kitscenes_four_questions.md#how-to-read-this-note).
 
 ## The short answer
 
@@ -191,7 +191,7 @@ The base camera sits 0.20 m below the ring's, by either measure.
 
 ## Reproducing and resetting
 
-**The notebook.** Running `.venv/bin/jupyter execute --inplace` on it reads the three runs' records. It re-executes in seconds, with no GPU and no node.
+**The notebook.** Its first cell says how to run it; a run reads the three runs' records, in seconds, with no GPU and no node.
 - Part 1's `RUNS` pins the runs.
 - `ON`, `FOCUS` and `OVERRIDES` move every part to another subset, keyframe or threshold.
 
