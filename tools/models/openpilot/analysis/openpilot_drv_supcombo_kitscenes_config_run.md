@@ -171,7 +171,7 @@ The base camera sits 0.20 m below the ring's, by either measure.
 ## What it means (argued)
 
 - **The config fixes the speed it was built to fix, then overshoots.**
-    - The four-questions note's rule is to show the road as from about 1.55 m. s\* = 1.22 was fitted on ring frames, where it does that.
+    - The four-questions note's rule is to show the road as from about 1.55 m. s\* = 1.22 was measured on ring frames, where it does that.
     - On the base camera, 1.22 shows the road from 1.37 m, and a road seen from lower reads as faster. That fits the sign of the over-read: pose head 1.033, plan start 1.051.
     - It does not obviously explain the over-read's pattern: 1.14–1.15 at 2–6 m/s, but about 1.03 above 8 m/s.
     - By the same rule, the base camera wants s ≈ 1.08 (1.674 / 1.55). That is untested, and it would take one more run.
