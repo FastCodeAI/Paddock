@@ -58,7 +58,7 @@ Recording the model's outputs and the privileged world side by side, per tick, i
 mechanical: they compare the two. For example, the lead head reported the obstacle, yet the car stopped 33 m short
 of it. Or: the model's own turn desire averaged 0.01 inside left turns it was never told about.
 
-The analysis forced two fixes on the record (verified, commits `6322969` and `6473c40`):
+The analysis forced two fixes on the record (verified, commits `87ababd` and `0214a69`):
 - The base agent kept only a 50 m downsample of the route, too coarse to place a turn or a light. The agent now
   keeps the dense plan.
 - The dataset's top-level x/y for the expert are GNSS: ~1.5 m off, and far noisier than the ground-truth pose of
@@ -135,7 +135,7 @@ Adding a mode means adding one `Pattern` (§3).
 
 The classifier was wrong twice on the finished campaign. The checks below are what found it.
 
-1. **Each label against the scenarios it landed on** (verified, `02760ec`). The first classifier was one if-chain,
+1. **Each label against the scenarios it landed on** (verified, `331271a`). The first classifier was one if-chain,
    and two of its labels did not fit their scenarios' stories.
    - Its "left the route (not at a turn)" held 46 routes that had all missed their one junction turn. It compared
      where the deviation was flagged with where the turn was, but the leaderboard flags a deviation only once the
