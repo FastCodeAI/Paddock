@@ -4,8 +4,9 @@
 #
 # How a rule is read:
 #   - `when` is a pandas expression over the notebook's feature table (its §5
-#     glossary lists every column). Thresholds are `@name`, looked up in
-#     `params` below -- after the notebook's OVERRIDES, if any.
+#     glossary, drawn when the notebook runs, lists every column). Thresholds
+#     are `@name`, looked up in `params` below -- after the notebook's
+#     OVERRIDES, if any.
 #   - It runs as `df.eval(when, engine="python", local_dict=params)`. NaN
 #     compares False under <, <=, >, >=, ==, so an undefined value never raises
 #     a flag. `!=` and `not in` are the opposite: NaN != x is True, so give
