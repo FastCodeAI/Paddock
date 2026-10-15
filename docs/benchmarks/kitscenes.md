@@ -31,7 +31,7 @@ predictions sitting beside them; `paddock ingest` reads the same file for the
 predictions, which is how Drive-JEPA has a row on this benchmark without a
 paddock run.
 
-### The six rows, and where each came from
+### The seven rows, and where each came from
 
 | model | run | n | ADE | source |
 |---|---|---:|---:|---|
@@ -41,8 +41,9 @@ paddock run.
 | openpilot | `20261008T004723-a369d1` | 223 | 1.248 | a paddock run; base front camera, 55° cut, height 1.22, pitch −1.7°, route as desire (README ⊕) |
 | meteor | `20260914T215457-ab0586` | 223 | 1.879 | a paddock run; six of its eight cameras |
 | drivejepa | `legacy-kitscenes_e2e_final` | 223 | 2.364 | `inference/kitscenes_e2e_final.pkl` |
+| drivejepa_rerank | `20260921T210621-d7ed08` | 223 | 0.973 | a paddock run; **adapted**, trained on KITScenes train, see below |
 
-All six carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
+All seven carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
 so the column compares.
 
 openpilot's row is its configured run. Its other ranked runs on the same 223
@@ -73,6 +74,18 @@ Caveats the hash cannot express:
   rig it trained on. It is zero-shot here. That run was given no navigation
   command, so every one of its samples is driven as "go straight" — a channel
   the model uses on NAVSIM is inert on this one.
+
+- **Adapted, not zero-shot.** `drivejepa_rerank` is Drive-JEPA with a selector
+  choosing among its 32 candidates. The selector was trained on 5,711 keyframes
+  from 373 KITScenes **train** scenes. None of those scenes is in this list,
+  which was checked by scene id. It is 1.002 on the 186 val samples and 0.828 on
+  the 37 overlap_train_val ones, whose area overlaps train. It is the first
+  paddock run of Drive-JEPA on this benchmark. Before it, the harness sent no
+  `lidar2ego`, and Drive-JEPA refuses an observation without one. It reads the
+  ring cropped onto the OpenScene lens (`DRIVEJEPA_IMAGE_GEOMETRY=openscene`),
+  with no route hint. Through that path Drive-JEPA's own pick scores 2.521; the
+  2.364 row's devkit loader also sent acceleration and the route hint. See
+  [drivejepa_rerank.md](../models/drivejepa_rerank.md).
 
 Nearly all of Drive-JEPA's error is longitudinal (2.317 m against 0.209 m
 lateral, an 11:1 split, from the original report, which decomposed it against

@@ -32,6 +32,7 @@ That distinction matters, so it is spelled out:
 | Adapters obey the Policy contract | per-model contract tests: frame convention, shapes, guards, reset semantics | **moderate** — no GPU, no weights |
 | Adapters produce the same output as the original nodes | head-to-head on neuroNCAP (both return `2.8269616956051293`), and KITScenes n=223 with 892/892 metrics identical | **proof** |
 | Adapters reproduce the **August** recorded numbers | drivejepa matches to full float precision; visionpilot differs because its node was edited after its last scored run | **strong** |
+| drivejepa sees the camera on nuScenes-calibrated benchmarks | **it did not, until the camera-frame fix.** The adapter placed cameras relative to nuScenes' LIDAR_TOP (yawed −90°); the model treats its sample points as lidar-frame points because NAVSIM's lidar frame *is* the ego frame, so 0.0% of them landed in the front image and a black frame gave the identical plan. Fixed: 36% land in it and the image moves the plan by 9.6 m on a frontal frame. Every neuroNCAP and nuScenes drivejepa row before the fix — including the August match above, which reproduced the same bug — is camera-blind; NAVSIM, nuPlan, KITScenes and Bench2Drive pass an identity lidar2ego and are not. `camera_frame: "ego"` in `provenance.policy` marks a fixed node, but it describes the attempt that wrote `run.json`: a resumed run can still carry blind episodes from an earlier attempt (see *Resume does not check the node* under Remaining work) | **strong** (adapter run old vs fixed on real frames; regression test in `make check`) |
 
 M5 closed the first of those rows. Running paddock's adapters against the same
 renderer as the recorded August runs:
@@ -67,6 +68,19 @@ Still unrun: the third scenario (`side`), scene 0108, and multi-run seeds.
 **M3 — `paddock setup`.** Clone or adopt vendor repos, build the `external/`
 symlink farm, apply patches, run per-model `setup.sh`. Today `doctor` reports
 what is missing; `setup` does not yet fix it.
+
+**Resume does not check the node.** `--resume` compares only the run's config
+before reusing finished episodes, and writes `provenance.policy` from the last
+attempt's node alone. A fix that changes the adapter but no config, such as the
+Drive-JEPA camera-frame fix, is therefore invisible to it: resuming a partial
+run made before the fix reuses its camera-blind episodes, drives the rest with
+the camera, and records `camera_frame: "ego"` for the whole run. The smoke run
+`neuroncap/drivejepa/20261012T205915-7153f0` is such a resume (6 of its 9
+episodes come from its first attempt; they were confirmed by reproducing them in
+a fresh run). To do: store the node's diagnostics next to the config on the
+first attempt and refuse a resume whose node reports different ones. The
+open-loop path has the same gap: `_carry_forward_provenance` keeps an earlier
+attempt's `policy` only when the new one is empty.
 
 **M5 — closed loop.** `paddock run --bench neuroncap --model all --runs 1
 --scene 0103` must reproduce `ladder_current.log`:
@@ -235,10 +249,11 @@ comparable. The 2033 × 5 = 10,165 derivation names the two truncated segments
 rather than counting them. Pose maths is delegated to a pinned
 `commaai/comma2k19` clone rather than reimplemented, and a reference
 implementation in the test suite is asserted against it wherever that clone
-exists. **Argued:** the calibration estimate (3.5–3.8° pitch on the RAV4,
-1.7–1.8° on the Civic) uses calibrationd's own formula with recorded pose
-substituted for the model's `cameraOdometry`; that substitution is reasoned
-from, not measured against, openpilot's own calibration.
+exists. **Argued:** the calibration estimate (3.3–3.8° pitch on the RAV4,
+1.6–2.2° on the Civic, for nine routes in ten) uses calibrationd's own formula
+with recorded pose substituted for the model's `cameraOdometry`; that
+substitution is reasoned from, not measured against, openpilot's own
+calibration.
 
 **Unverified, and load-bearing for the openpilot row:** the ONNX backend's
 preprocessing is a numpy reimplementation of `compile_modeld.py` —
@@ -316,6 +331,20 @@ Landed alongside it, none comma2k19-specific:
   item under "Beyond reproduction" asks for; what remains there is re-making
   that particular record with it.
 
+**`drivejepa_rerank` — before any closed-loop use.** The selector over
+Drive-JEPA's 32 candidates is scored open-loop only: KITScenes (adapted) and
+nuScenes (zero-shot, measured with the camera-frame fix). `model.yaml` declares
+nothing else, and that stays true until two runs exist:
+- **neuroNCAP**, the full official set, paired against `drivejepa` at the
+  scenario-pair level (n=20). The selector learned closeness to the human path
+  and nothing about collisions. A smoke on scene 0103 with the fix (three pairs,
+  seeds 0–2, not a neuroNCAP score) gave 1.85 against `drivejepa`'s 3.01.
+- **NAVSIM v2 and v1**, by replaying chosen plans. It is expected to cost
+  EPDMS, since NAVSIM scores what the original scorer was trained for. How much
+  is unmeasured.
+
+See `docs/models/drivejepa_rerank.md`.
+
 ## Open questions
 
 **The NAVSIM headline — settled.** The CSV and its run log disagree (0.90673 vs
@@ -336,9 +365,66 @@ support matrix still carry the unqualified name. Closing it means ~95 GB of
 **Drive-JEPA's NAVSIM agent is scorer-aware.** It receives `metric_cache` and
 `past_ego_simulated_states` from the scoring loop and re-runs the PDM simulator
 at inference time to re-rank its proposals by predicted two-frame comfort — a
-component of EPDMS. No model behind an HTTP node can do that. Its recorded
-0.90673 is therefore not a baseline the other three can be measured against;
-the comparable set is runs through `paddock_proxy`.
+component of EPDMS. No model behind the proxy is handed those arguments. Its
+recorded 0.90673 is therefore not a baseline the other three can be measured
+against; the comparable set is runs through `paddock_proxy`.
+
+The same stage is available to the drivejepa node in closed loop, off by
+default (`DRIVEJEPA_MOMENTUM=on`): it needs only the node's own previous plan
+and the ego state it is already sent. A plan is fed only when it is 0.45 to
+0.55 s old, so a node called at 10 or 20 Hz compares against the plan of half a
+second ago and selects on the plain score until it has one. **Verified at
+Fastcode:** fed the recorded menus of 30 AlpaSim drives (810 replans), the
+node's bookkeeping and upstream's stage reproduce every pick of the AlpaSim
+driver that first carried the stage (`drivejepa-v2-driver-0.1.4b`), and its 32
+scores per replan exactly. One of those drives is tracked as a fixture, and
+`adapters/models/drivejepa/tests/test_momentum.py` reruns it in Drive-JEPA's
+environment; it skips under `make check`, which has no nuPlan. **Unverified:**
+its effect on any benchmark. One neuroNCAP comparison exists (the full set,
+n=200: 3.618 with the stage against 3.568 without, read as no measurable
+effect), but it was made with a separate copy of the adapter before the
+cameras were placed on the ego frame, on a model that read no image on
+nuScenes and planned from ego status alone. It is kept on the branch
+`record/drivejepa-camera-blind` and is not evidence for or against the stage
+on the model that drives now. The comparison has to be made again on this
+node; a run made with it records `camera_frame: ego` beside `momentum: on` in
+`run.json`. No row in `results/` was made with the switch on. `drivejepa_rerank`
+refuses the switch: the stage remembers the model's own pick, and that policy
+drives the re-ranker's pick, so it would be compared against a plan the car
+never followed. Supporting it means telling the stage which plan was driven.
+
+**The AlpaSim driver itself is now tracked, at 0.1.7**
+(`tools/models/drivejepa/alpasim_driver/`, documented in
+`docs/models/drivejepa.md`): the divider, the momentum stage, and the inputs a
+checkpoint retrained on Physical AI AV needs (a 37-row bonnet mask,
+acceleration zeroed, a batch fix). It is a native gRPC driver, not a paddock
+`Policy`, and `drivejepa` still does not declare `alpasim`.
+
+| Claim | Evidence | Strength |
+|---|---|---|
+| the promoted driver differs from the one that ran only in paths, imports and removed switches | `diff` against the as-run files, which exist only at the training site; done by the author and repeated by the reviewer of #61 there. Not reproducible elsewhere | **strong** |
+| it starts against the real checkpoint | `--check-only`: size and sha256 accepted, batch fix installed on 2 modules, both provenance lines | **strong** |
+| its tests pass | `make check-alpasim-driver`: 94 in AlpaSim's interpreter with the Drive-JEPA environment, 89 + 5 skipped without; **not collected by `make check`** | **strong** |
+| 0.1.7 scores 0.7697 on 30 scenes against 0.1.4b's 0.5433 | the recorded runs' `totals.json`; one rollout per scene, made before promotion | **moderate** |
+| the promoted driver drives a scene | — | **unverified** |
+
+Open work on this driver, in the order it bites:
+
+- **Its tests run in no CI job.** They need AlpaSim's interpreter, so CI and
+  `make check` skip them while still gating the scaffold the driver imports. A
+  change to `adapters/benchmarks/alpasim/scaffold.py` can therefore go green
+  and break the driver. Until a CI job has AlpaSim's environment, the only
+  guard is a reviewer running `make check-alpasim-driver` (`docs/reviewing.md` §1).
+- **The retrained checkpoint has no download location**, and at the training
+  site it is not yet at the `{weights}` layout the docs give. Another site
+  cannot run 0.1.7 without being handed the file.
+- **The retrained checkpoint's rows are stored under `drivejepa`.** The ingester
+  names a row by its driver, so `results/alpasim/drivejepa/` holds the released
+  checkpoint and the retrained one, and `paddock report` lists both as
+  `drivejepa`, told apart only by run name. It also ranks ten-scene and
+  30-scene rows in one table. The retrained checkpoint needs its own model
+  name, and the report needs to group by scene set (issue #69).
+- **The promoted driver has not driven a scene.**
 
 **What a KITScenes `gt` run was told: open (follow-up from #60).**
 - **The gap.** `command_source = "gt"` records the source in `run_config()`, but not the commands it sent.
@@ -386,6 +472,10 @@ aggregated in the README and tracked as ten `results/` runs (below).
 | a model drives a route through paddock | 500 route records over 50 routes and 10 systems, scores and infractions published; every README cell recomputed from them by `tests/test_bench2drive_docs.py` | **strong** for the tables; the records' faithfulness to the evaluator output is a transcription nobody has re-derived from the raw `results.json` files |
 | the runs carry their own provenance | ten `results/bench2drive/*/pooled50-*` records written by `paddock ingest` from the per-route `results.json` trees: `routes_file`, `routes_subset`, `waypoint_dt`, `model_env` and `site` read from the source runs, every source run id and file digest kept | **strong** |
 | the runs are reproducible at another site | nothing yet — a site without the recording trees cannot regenerate them, and CARLA re-runs are not bit-reproducible | **unverified** |
+| the 20 Hz protocol understates models built to replan slower | the same 50 routes re-driven at each model's own rate (`PADDOCK_INFER_HZ`), everything else held: DriveJEPA 31.71 → 57.60, Alpamayo 1.5 43.20 → 55.82, QwenDrive 12.94 → 17.08; three `results/bench2drive/*/native50-*` records, every cell recomputed by `tests/test_bench2drive_native_rate_docs.py` | **strong** for the three models measured; **not general** — one rate per model, no sweep, so nothing here locates an optimum |
+| why each of the three improved | DriveJEPA and QwenDrive drive further instead of stalling (blocked 17 → 7, 16 → 10) at flat-to-worse penalty; only Alpamayo 1.5's penalty rises (0.648 → 0.725, vehicle collisions 42 → 23) | **argued** from the infraction breakdown; no per-tick analysis |
+| the native-rate result holds for every model | only DriveJEPA, Alpamayo 1.5 and QwenDrive were re-run; OpenPilot's native rate is already 20 Hz and VisionPilot was not re-run | **not measured** |
+| the native-rate runs cover the whole route set | route 3800 never scored for alpamayo15 or qwendrive — CARLA segfaults (`Signal=11`), six attempts; recorded `n_failed: 1`, `status: partial`, never a zero, so both means are over 49 routes | **verified**, and a stated limit of those two rows |
 
 Needs a site with CARLA 0.9.15 and the pinned checkout wired in
 `[benchmarks.bench2drive]`. Detail in `docs/benchmarks/bench2drive.md`.
@@ -402,6 +492,29 @@ so it is recorded as attempted and never scored — `n_failed: 1`, `status:
 partial` — rather than dropped, and OpenPilot's pooled record is `valid: false`
 because its samples span three recording setups; its per-setup means are in
 `by_group`.
+
+**Native-rate re-run (18-20 Sep 2026).** The 20 Hz protocol is a property of the
+harness, not of the models, so the same 50 routes were re-driven with each model
+at the rate it was built to replan at — DriveJEPA 2 Hz, QwenDrive 2 Hz,
+Alpamayo 1.5 10 Hz — with `PADDOCK_INFER_HZ` the only knob turned deliberately.
+**All three score higher**, so the published 20 Hz rows understate them. That much is
+measured. What is *not*: only three models were re-run, the rate is recorded per
+run rather than derived from `model.yaml` (which disagrees for QwenDrive), no
+rate sweep was done, and route 3800 is unscorable for alpamayo15 and qwendrive —
+CARLA segfaults for those two while DriveJEPA completes it and scores 100 — so
+their means are over 49 routes and their records are `status: partial`,
+`n_failed: 1`. Part of the gain is extra exposure rather than better driving: the
+two models that stalled now drive further and collide more in absolute terms.
+The three runs are `valid: false` and do not rank: a 2 or 10 Hz run is not the
+protocol the other bench2drive rows were driven under, so `paddock ingest` keeps
+them and leaves them out of the board. Their `model_env` also differs from the
+20 Hz runs in more than the rate — thread counts, a trace sink, `ALPAMAYO_NAV` —
+each argued immaterial and none measured to be. Tracked as
+`results/bench2drive/<model>/native50-*`; tables, breakdown and the
+verified/argued split in
+[`bench2drive-native-rate.md`](benchmarks/bench2drive-native-rate.md). The
+adapter support for `PADDOCK_INFER_HZ` is **not on `main`**: this landed the
+results, not the knob.
 
 ## Beyond reproduction
 
