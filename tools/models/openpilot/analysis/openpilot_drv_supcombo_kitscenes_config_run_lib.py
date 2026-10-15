@@ -181,8 +181,8 @@ class Study:
     """The runs on every keyframe, side by side.
 
     runs: {arm: run id}. "stock" and "config" are required, and "intent" is needed only by `decompose`. tags: the
-    stock run's tags table, which the open-loop notebook's §6 writes under {runs}; "auto" finds it, a path names
-    it, None goes without (part 6 then has only this module's columns). overrides: any of PARAMS.
+    stock run's tags table, which the open-loop notebook's §18 export writes under {runs}; "auto" finds it, a
+    path names it, None goes without (part 6 then has only this module's columns). overrides: any of PARAMS.
     """
 
     def __init__(self, runs=None, *, tags="auto", overrides=None, cfg=None):
@@ -288,7 +288,7 @@ class Study:
         else:
             path = Path(self.cfg.resolve(str(tags)))
         if not path.exists():
-            print("no tags table for the stock run here: run the open-loop notebook's §6 to write one")
+            print("no tags table for the stock run here: the open-loop notebook's §18 export writes one")
             return pd.DataFrame(index=self.scores.index)
         t = pd.read_csv(path)
         return t.set_index(t.sample_id.map(T._label)).reindex(self.scores.index)
