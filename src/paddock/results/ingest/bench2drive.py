@@ -39,6 +39,12 @@ names a *different* model is refused -- pointing ``runs`` one component too high
 otherwise pools two models into one row. ``source_config_read`` says how many of
 the source runs kept such a record at all.
 
+An early stop (``stop_*`` in ``[benchmarks.bench2drive]``, see
+``adapters/benchmarks/bench2drive/early_stop.py``) is read the same way: the
+pooled ``config.early_stop`` is what the source runs recorded, every route says
+in ``ended_stuck`` / ``ended_over_time`` whether a rule ended it, and the run
+does not rank, because a route ended early is not scored as Bench2Drive scores it.
+
 The run id is ``<label>-<route-set hash>-<config hash>``. The route set alone
 cannot distinguish two settings of the same routes -- five constant-velocity
 speed bands, say -- and ``store.write_run`` overwrites a directory that already
@@ -77,10 +83,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, NamedTuple
 
+from paddock.adapters.benchmarks.bench2drive import early_stop
 from paddock.adapters.benchmarks.bench2drive.harness import (
     DEFAULT_ROUTES_FILE,
     NotScored,
     crash_reason,
+    ended_early,
     parse_results,
 )
 from paddock.registry import Registry
@@ -293,6 +301,7 @@ def ingest(
         ]
         if durations:
             metrics["duration_s"] = round(sum(durations) / len(durations), 1)
+        metrics.update(ended_early(attempt.results.parent))
         samples.append(
             {
                 "sample_id": f"bench2drive/{folder}",
@@ -346,6 +355,12 @@ def ingest(
     # `n_failed` -- and without this line `results/` would not say it happened.
     if attempted:
         config["routes_never_scored"] = dict(sorted(attempted.items()))
+    # The early stop as the source runs recorded it; absent from the config of a
+    # pool none of whose runs had it, so such a pool keeps its run id.
+    stopped = [c.get("early_stop") for c in configs]
+    stop_rules = _agreed(stopped)
+    if stop_rules is not None:
+        config["early_stop"] = stop_rules
     pooled_setups = sorted({s["group"] for s in samples if s["group"]})
     if setups:
         config["recording_setups"] = {label: sorted(group) for label, group in sorted(setups.items())}
@@ -388,6 +403,14 @@ def ingest(
             "protocol calls the model at, so this run is kept and does not rank against runs that "
             "were -- the paired comparison is docs/benchmarks/bench2drive-native-rate.md."
         )
+    if stop_rules is not None:
+        note = (note + " " if note else "") + early_stop.invalid_reason(stop_rules) + "."
+        without = sum(1 for rules in stopped if not rules)
+        if without:
+            note += (
+                f" {without} of {len(stopped)} source runs ran without it; their routes went to "
+                "Bench2Drive's own end."
+            )
     if missing:
         lost = ", ".join(f"{r} ({attempted.get(r, 'no attempt found')})" for r in missing)
         note = (note + " " if note else "") + f"routes expected but never scored: {lost}."
@@ -412,7 +435,9 @@ def ingest(
         # published as a number nobody drove. A run driven at another rate is a
         # different protocol, and ranking it beside 20 Hz rows says they measure
         # the same thing -- which is the claim this campaign exists to deny.
-        valid=not missing and len(pooled_setups) <= 1 and off_protocol is None,
+        # Routes ended early are not scored as Bench2Drive scores them, so they do
+        # not rank either.
+        valid=not missing and len(pooled_setups) <= 1 and off_protocol is None and stop_rules is None,
         notes=note,
         # A relative tail only: results/ is tracked and must not name a machine's disk.
         ingested_from="; ".join("/".join(r.parts[-3:]) for r in roots),
