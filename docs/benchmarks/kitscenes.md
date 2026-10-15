@@ -50,6 +50,8 @@ openpilot's row is its configured run. Its other ranked runs on the same 223
 keyframes all use the ring's front camera:
 - stock, `legacy-full223` (`eval_kitscenes/runs/full223`): 1.599, the row shown
   before;
+- stock, M6's paddock reproduction at `fastcode-shakaal`
+  (`20260901T175755-cc27fb`): 1.599, its `config` recording only `limit`;
 - stock again, at another site after the warp-cache fix
   (`20260930T154018-242869`): 1.595, with the median at 1.401 against 1.323. What
   moved the median was not checked.
