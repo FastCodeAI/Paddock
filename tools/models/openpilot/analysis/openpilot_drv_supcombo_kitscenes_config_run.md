@@ -25,7 +25,7 @@ This note records what happened when paddock itself ran the scene-sweep notebook
 
 **CIs** are 95% bootstrap intervals over scenes (2,000 draws), since keyframes of one scene are not independent. **Changes are config − stock**, in metres of ADE unless named. A keyframe that moves less than 0.05 m is a tie, neither better nor worse.
 
-**Tuned and held out.** A keyframe is tuned if any knob of the config was chosen or scored on it, and held out otherwise. The sets are restated in the notebook's lib (`CHOSEN`, `SCORED`), each from the cell that defines it:
+**Tuned and held out.** The config was chosen by inspecting one scene, dbba76d9, and the patterns the earlier analysis found. "Tuned" here does not mean fitted. It marks every keyframe one of those earlier notebooks looked at, and "held out" every keyframe none did. The sets are restated in the notebook's lib (`CHOSEN`, `SCORED`), each from the cell that defines it:
 - **sweep60**: the first 60 keyframes by (scene, keyframe), the open-loop notebook's height sweep, where s\* = 1.22 was measured;
 - **ten**: the image-calibration notebook's ten turns, about 114 settings each, the height-by-pitch grids among them;
 - **five**: five of the ten, where the image-tweak notebook set the pitch, camera, cut and desire by hand;
@@ -183,7 +183,7 @@ The base camera sits 0.20 m below the ring's, by either measure.
 
 ## Caveats
 
-- **Tuned on the test set.** 90 of the 223 keyframes were used to choose or score a knob, and the run is kept valid anyway, by decision. For what the config would do on new straights, read the held-out rows, not the headline.
+- **How the config was chosen.** By inspecting one scene of this split, dbba76d9, and the patterns the earlier analysis found. That analysis saw 90 of the 223 keyframes (the tuned set above), though none was fitted. For what the config does on keyframes no analysis looked at, read the held-out rows, which are all straight.
 - **Not all of the four-questions note's "other 29" turns are untouched** (verified, against the lib's `CHOSEN`).
     - That note calls them the turn keyframes "which nothing was chosen on". But 6 of them are in sweep60, the 60 keyframes s\* was measured on.
     - Here those 6 count as tuned, which leaves 23 turns not chosen on.
