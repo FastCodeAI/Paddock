@@ -647,10 +647,10 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             config["early_stop"] = self.early_stop
         return config
 
-    def invalid_reasons(self) -> list[str]:
-        """A route ended early is not scored as Bench2Drive scores it."""
+    def remarks(self) -> list[str]:
+        """The early stop, when on: which rules, and why a route they end is a failed drive."""
         rules = self.early_stop
-        return [early_stop.invalid_reason(rules)] if rules else []
+        return [early_stop.remark(rules)] if rules else []
 
     # ---- episodes ------------------------------------------------------
 

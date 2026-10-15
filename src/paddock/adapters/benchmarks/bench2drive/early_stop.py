@@ -24,9 +24,13 @@ Raising from the agent instead would score as "Agent crashed" -- not a
 measurement, so a sweep would drive the route again. What ended it, and when,
 the agent writes to :data:`RECORD` beside ``results.json``.
 
-A route ended early is not scored as Bench2Drive scores it -- had it gone on, it
-might yet have moved, or collided -- so a run with either rule on is stored
-``valid: false`` (:func:`invalid_reason`).
+A route either rule ends is a failed drive. A car in a driving scene is expected
+to move, and one that gets no further along its route for that long, or needs
+that many times the expert's time, has failed the scene -- so the route is
+scored as it stood when it ended, and a run with the rules on ranks. Its notes
+say which rules it ran under, and why its scores stand (:func:`remark`). Routes
+stopped under *different* rules are not one experiment, so a pool of them does
+not rank (:func:`mixed_reason`).
 
 Kept 3.8-compatible: ``agent.py`` runs :class:`EarlyStop` every tick inside the
 CARLA client, and :func:`replay` runs the same rule over a recorded
@@ -130,10 +134,15 @@ def describe(rules: dict[str, Any]) -> str:
     return " or ".join(parts)
 
 
-def invalid_reason(rules: Any) -> str:
-    """Why a run with these early-stop rules does not rank; also given rules that disagree."""
-    said = describe(rules) if isinstance(rules, dict) else "settings that differ between source runs"
+def remark(rules: dict[str, Any]) -> str:
+    """The note a run with these rules carries: which rules, and why its scores stand."""
     return (
-        f"early stop ({said}): routes end before Bench2Drive would end them, "
-        "so their driving scores are not the benchmark's"
+        f"early stop ({describe(rules)}): a car in a driving scene is expected to move, so a route "
+        "ended this way is a failed drive, scored as it stood when it ended"
     )
+
+
+def mixed_reason(rules: list[Any]) -> str:
+    """Why a pool whose source runs stopped routes under different rules does not rank."""
+    said = "; ".join(describe(r) if isinstance(r, dict) else str(r) for r in rules)
+    return f"early stop settings differ between source runs ({said}): one mean describes none of them"

@@ -135,7 +135,7 @@ weights = "/path/to/weights"
 # stop_stuck_s       = "30"                            # optional: end a route 30 s after its last 3 m of progress
 # stop_expert_factor = "4"                             # optional: end a route at 4x the expert's time on it
 # expert = "/path/to/expert"                           # tools.benchmarks.bench2drive.expert summarize's output
-#                                                      # either stop_* makes the run valid: false; see the docs
+#                                                      # a route either stop_* ends is a failed drive; see the docs
 
 # [benchmarks.alpasim]
 # AlpaSim runs its services through docker compose and attaches a driver over

@@ -42,8 +42,10 @@ the source runs kept such a record at all.
 An early stop (``stop_*`` in ``[benchmarks.bench2drive]``, see
 ``adapters/benchmarks/bench2drive/early_stop.py``) is read the same way: the
 pooled ``config.early_stop`` is what the source runs recorded, every route says
-in ``ended_stuck`` / ``ended_over_time`` whether a rule ended it, and the run
-does not rank, because a route ended early is not scored as Bench2Drive scores it.
+in ``ended_stuck`` / ``ended_over_time`` whether a rule ended it, and the notes
+say why the run still ranks: a route the early stop ended is a failed drive,
+scored as it stood. Source runs that stopped routes under different rules do
+not pool into a ranked run.
 
 The run id is ``<label>-<route-set hash>-<config hash>``. The route set alone
 cannot distinguish two settings of the same routes -- five constant-velocity
@@ -403,8 +405,12 @@ def ingest(
             "protocol calls the model at, so this run is kept and does not rank against runs that "
             "were -- the paired comparison is docs/benchmarks/bench2drive-native-rate.md."
         )
+    # A route the early stop ended is a failed drive, and the pool ranks with it;
+    # routes stopped under different rules are as much one experiment as two setups.
+    mixed_stops = isinstance(stop_rules, list)
     if stop_rules is not None:
-        note = (note + " " if note else "") + early_stop.invalid_reason(stop_rules) + "."
+        said = early_stop.mixed_reason(stop_rules) if mixed_stops else early_stop.remark(stop_rules)
+        note = (note + " " if note else "") + said + "."
         without = sum(1 for rules in stopped if not rules)
         if without:
             note += (
@@ -435,8 +441,8 @@ def ingest(
         # published as a number nobody drove. A run driven at another rate is a
         # different protocol, and ranking it beside 20 Hz rows says they measure
         # the same thing -- which is the claim this campaign exists to deny.
-        # Routes ended early are not scored as Bench2Drive scores them either.
-        valid=not missing and len(pooled_setups) <= 1 and off_protocol is None and stop_rules is None,
+        # An early stop ranks; a pool of routes stopped under different rules does not.
+        valid=not missing and len(pooled_setups) <= 1 and off_protocol is None and not mixed_stops,
         notes=note,
         # A relative tail only: results/ is tracked and must not name a machine's disk.
         ingested_from="; ".join("/".join(r.parts[-3:]) for r in roots),

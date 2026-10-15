@@ -422,8 +422,8 @@ def _with_early_stop(record: dict, rules: dict) -> dict:
     return record
 
 
-def test_an_early_stop_is_read_from_the_source_runs_and_stops_the_row_ranking(tmp_path: Path) -> None:
-    """A route ended early is not scored as Bench2Drive scores it; each route says whether one was."""
+def test_an_early_stop_is_read_from_the_source_runs_and_the_row_still_ranks(tmp_path: Path) -> None:
+    """A route the early stop ended is a failed drive; each route says whether one was, and the notes why."""
     root = _tree(tmp_path)
     rules = {"stuck_s": 30.0, "expert_factor": 4.0, "progress_m": 3.0}
     for run_id in ("20260901T000000-aaaaaa", "20260903T000000-cccccc"):
@@ -438,8 +438,9 @@ def test_an_early_stop_is_read_from_the_source_runs_and_stops_the_row_ranking(tm
     ((run, metrics, samples),) = bench2drive.ingest(root, model="modelx", site="s")
 
     assert run.config["early_stop"] == rules
-    assert not run.valid
+    assert run.valid and run.status == "complete"
     assert "early stop (30 s without 3 m of route progress or 4x the expert's time" in run.notes
+    assert "expected to move" in run.notes and "failed drive" in run.notes
     assert "ran without it" not in run.notes
     by_route = {s["native_id"]["route_id"]: s["metrics"] for s in samples}
     assert by_route["24333"]["ended_stuck"] == 1.0
@@ -466,3 +467,22 @@ def test_a_pool_without_an_early_stop_records_none(tmp_path: Path) -> None:
     ((run, _, samples),) = bench2drive.ingest(_tree(tmp_path), model="modelx", site="s")
     assert "early_stop" not in run.config
     assert not any("ended_stuck" in s["metrics"] for s in samples)
+
+
+def test_routes_stopped_under_different_rules_do_not_rank(tmp_path: Path) -> None:
+    """Two thresholds are two experiments; one mean over both describes neither."""
+    root = _tree(tmp_path)
+    for run_id, stuck_s in (("20260901T000000-aaaaaa", 30.0), ("20260903T000000-cccccc", 60.0)):
+        rules = {"stuck_s": stuck_s, "progress_m": 3.0}
+        (root / run_id / "run.json").write_text(
+            json.dumps(_with_early_stop(_source_run_json("modelx", [], {}), rules))
+        )
+
+    ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s")
+
+    assert run.config["early_stop"] == [
+        {"progress_m": 3.0, "stuck_s": 30.0},
+        {"progress_m": 3.0, "stuck_s": 60.0},
+    ]
+    assert not run.valid
+    assert "early stop settings differ between source runs" in run.notes
