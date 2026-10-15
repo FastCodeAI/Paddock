@@ -481,6 +481,14 @@ Open work on this driver, in the order it bites:
 - **Why it is open.** A record field naming where a setting came from would carry it, but any new key in
   `run_config()` changes the run id, here `20261008T004723-a369d1`, the README's OpenPilot KITScenes row.
 
+**`run.json` records no paddock revision: open (follow-up from #60's first review).**
+- **The gap.** A run records its model checkout's sha (`repo_sha`, `provenance.repo`) but not paddock's own.
+  `20260929T043619-242869` and `20260930T154018-242869` share a config hash, yet differ by the warp-cache
+  fix (`f8dce3b`). Only `superseded_by` tells them apart. The kitscenes harness's `model_run_config()`
+  works around the same gap for its ring cameras.
+- **Fix.** Record paddock's commit, and whether its tree was clean, in `provenance`. That is not part of the
+  config hash, so no run id would change.
+
 ## Bench2Drive / CARLA — adapter landed, driven, and the runs are tracked
 
 `adapters/benchmarks/bench2drive`: a model-agnostic CARLA `agent.py`, the
