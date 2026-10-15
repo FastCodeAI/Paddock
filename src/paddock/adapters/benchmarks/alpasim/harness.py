@@ -303,15 +303,16 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
             return [f"docker daemon is not answering: {(probe.stderr or '').strip()[:200]}"]
         return []
 
-    def scene_problems(self, scenes: list[str] | None) -> list[str]:
-        """Scene ids that are not in the pinned set, named before a model loads."""
-        if not scenes:
+    def scene_problems(self, scene: str) -> list[str]:
+        """``--scene`` names a clip id outside the pinned set; say so before a model loads.
+
+        One id per call, like every other harness: `run_benchmark` splits
+        ``--scene a,b`` and calls this once per id. Taking a list here made it
+        iterate the id's characters and reject every scene.
+        """
+        if scene in set(load_scene_set(self.scene_set)):
             return []
-        known = set(load_scene_set(self.scene_set))
-        unknown = [s for s in scenes if s not in known]
-        if not unknown:
-            return []
-        return [f"scene id(s) not in scene set {self.scene_set!r}: {', '.join(sorted(unknown))}"]
+        return [f"scene id not in scene set {self.scene_set!r}: {scene}"]
 
     # -- episodes ----------------------------------------------------------
 
