@@ -199,9 +199,9 @@ ahead (22.6 % of stopped anchors), and its plans carry a left bias twice as
 large in Boston as in Singapore. See `docs/models/meteor.md`.
 
 ⊜ **OpenPilot's KITScenes figure is a configured run** (`20261008T004723-a369d1`).
-The stock ring-camera run scores 1.599 (1.595 when re-run here). One pairing
-table in `paddock.toml` sets the configuration (`docs/site-setup.md` §2), and
-the run's `config` records it:
+The stock ring-camera run scores 1.599 (1.595 when re-run here). Two pairing
+tables in `paddock.toml`, `.env` and `.settings`, set the configuration
+(`docs/site-setup.md` §2), and the run's `config` records them:
 - the base front camera, 0.2 m lower than the ring's, in CAM_FRONT's place, cut
   to 55° at comma's 1164×874;
 - the road shown as from a camera 1.22× lower, with the view tilted 1.7° down;
@@ -492,14 +492,14 @@ these tables report the saved runs, not new evaluations of the merged code.
 
 Open-loop displacement error in metres over the 3 s horizon, full 223-sample
 split. Alpamayo 1.5 is its nav-conditioned single-draw run, and OpenPilot is its
-configured run, given the same route signal (see ⊜). VisionPilot's trajectory
-is synthesised by the adapter (see ∗); METEOR sees six of its eight cameras (see
+configured run, given the same route signal (see ⊜). VisionPilot's trajectory is
+synthesised by the adapter (see ∗); METEOR sees six of its eight cameras (see
 ◇). Qwen-Drive 1.0 reads three of the ring's six and is zero-shot on this
 dataset. It, Alpamayo 1.5 and OpenPilot's configured run beat the
 constant-velocity baseline; OpenPilot's configuration was chosen by inspecting
-one scene of this split (see ⊜). The re-ranked Drive-JEPA row also beats it, but
-it is adapted to KITScenes train (see ⊛): 1.002 on the 186 val samples, 0.828 on
-the 37 from scenes whose area overlaps train.
+one scene of this split (see ⊜). The re-ranked Drive-JEPA row also beats the
+baseline, but it is adapted to KITScenes train (see ⊛): 1.002 on the 186 val
+samples, 0.828 on the 37 from scenes whose area overlaps train.
 
 | Model | ADE@3s ↓ (m) | FDE@3s ↓ (m) |
 |---|---:|---:|
