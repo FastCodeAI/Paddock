@@ -1,0 +1,87 @@
+{
+  "run_id": "legacy-drivejepa_014_20hz_30scenes",
+  "primary_metric": "scene_score",
+  "n": 30,
+  "metrics": {
+    "scene_score": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 0.420877,
+      "median": 0.267917,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.437755
+    },
+    "progress": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 0.509118,
+      "median": 0.355711,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.358478
+    },
+    "collision_rate": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 0.4,
+      "median": 0.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.489898
+    },
+    "collision_at_fault": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 0.233333,
+      "median": 0.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.422953
+    },
+    "offroad": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 0.166667,
+      "median": 0.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.372678
+    },
+    "duration_frac_20s": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 0.46525,
+      "median": 0.4425,
+      "p90": 0.84,
+      "max": 0.8425,
+      "std": 0.309971
+    },
+    "dist_to_gt_trajectory": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 2.05621,
+      "median": 1.676732,
+      "p90": 4.05942,
+      "max": 4.378479,
+      "std": 1.520617
+    },
+    "open_loop_collision": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 0.183283,
+      "median": 0.0,
+      "p90": 0.465723,
+      "max": 1.0,
+      "std": 0.247697
+    }
+  },
+  "by_split": {},
+  "by_group": {
+    "tick_config": {
+      "1cam-20Hz": {
+        "n": 30
+      }
+    }
+  }
+}

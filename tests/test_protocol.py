@@ -351,3 +351,23 @@ def test_both_readers_of_a_staged_frame_go_through_one_rule(tmp_path) -> None:
         camera2ego={},
     )
     assert np.array_equal(obs.image("CAM_FRONT"), load_frame(path))
+
+
+def test_missing_lidar2ego_is_reported_as_calibration() -> None:
+    """Without this guard the failure lands deep inside a feature builder.
+
+    For a model that needs the lidar mounting, an Observation from a source that
+    omits lidar2ego is rejected where the cause is still legible.
+    """
+    obs = Observation(
+        images={},
+        ego2world=np.eye(4),
+        canbus=np.zeros(18),
+        timestamp_us=0,
+        command=Command.STRAIGHT,
+        camera2image={},
+        camera2ego={},
+        lidar2ego=None,
+    )
+    with pytest.raises(ValueError, match="lidar2ego"):
+        obs.require_lidar2ego()
