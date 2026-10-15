@@ -140,7 +140,8 @@ weights = "/path/to/weights"
 # repo   = "/path/to/alpasim"
 # python = "/path/to/alpasim/.venv/bin/python"
 #
-# Which pinned scene list to drive. See adapters/benchmarks/alpasim/scenes/.
+# Which pinned scene list to drive. See adapters/benchmarks/alpasim/scenes/:
+# public_2601_first10 (the default) or public_2601_30scenes.
 # scene_set = "public_2601_first10"
 #
 # Where AlpaSim caches the USDZ scene artifacts. Large and site-specific; an
@@ -330,6 +331,15 @@ serialize = true
 # KITScenes loader does. Either way it is recorded under provenance.policy.
 # [models.drivejepa.env]
 # DRIVEJEPA_IMAGE_GEOMETRY = "native"   # or "openscene"
+#
+# Momentum-aware selection (the paper's section 3.5) is "off" by default, which
+# is how every published drivejepa row was made: the node drives the raw argmax
+# of the learned score. "on" hands each replan the plan the node chose ~0.5 s
+# earlier, so the model's own calibrate_score runs before the argmax -- what
+# upstream's evaluation loop does. It changes which proposal is driven in closed
+# loop; an open-loop sequence resets first and is unaffected. Recorded under
+# provenance.policy with how often a previous plan was actually fed.
+# DRIVEJEPA_MOMENTUM = "off"            # or "on"
 
 # ---------------------------------------------------------------------------
 # [ingest] -- where results that predate paddock live on this machine.
@@ -398,6 +408,60 @@ serialize = true
 # [ingest.bench2drive.setups]
 # assisted    = ["1711", "2802"]
 # unassisted  = ["1852"]
+#
+# The native-rate campaign (18-20 Sep 2026), as it was actually ingested. It is
+# the same 50 routes as the pooled50 blocks above with one knob turned: each model
+# drove at the rate it replans at, set with PADDOCK_INFER_HZ. That rate is not read
+# from model.yaml -- drivejepa declares none, and qwendrive's native_input_hz is
+# its ego-pose history, not a planning rate -- so it is the operator's statement,
+# and each run's notes say so.
+# Two things in here are load-bearing, and both have bitten before:
+#
+#   * PADDOCK_INFER_HZ must be in `model_env`, because it is the only place the
+#     rate is recorded at all: the harness did not write it into the source runs'
+#     run_config.json. (The run ids would not collide without it -- the label is
+#     part of the id and `source_runs` is hashed into the config -- but the record
+#     would then say nothing about what rate was driven, which is the one thing
+#     this campaign varied.) The ingest marks such a run `valid: false`: a rate
+#     other than the benchmark's 20 Hz is a different protocol, so it is kept and
+#     not ranked against rows that were driven at 20 Hz.
+#   * `routes` must list all 50 even for the models that could not score one of
+#     them. Route 3800 never scored for alpamayo15 or qwendrive, and what it left
+#     behind differs by attempt: an UNSCORABLE.txt marker, or -- for
+#     qwendrive/20260918T091245-f19361 -- a results.json with an empty
+#     _checkpoint, which is why that record gets routes_never_scored and
+#     alpamayo15's does not. Either way there is no score, so with `routes` unset
+#     the ingest cannot see the route at all: it would vanish from the record
+#     instead of landing in n_failed with status "partial". A route that was
+#     requested and never scored is evidence.
+#
+# See docs/benchmarks/bench2drive-native-rate.md.
+# [[ingest.bench2drive]]
+# model  = "drivejepa"
+# runs   = "/path/to/paddock-runs/bench2drive-diagnostics/native-50/drivejepa"
+# label  = "native50-2hz"
+# routes = ["14194", "1711", "17752", "18305", "18311", "18356", "1852", "2050", "2084", "2086", "2201", "2273", "2286", "24211", "24224", "24240", "24252", "24333", "24795", "24816", "2509", "2534", "25378", "2539", "25857", "25863", "26956", "26990", "27018", "27515", "27529", "27582", "2790", "2802", "3307", "3364", "3373", "3378", "3380", "3410", "3564", "3572", "3575", "3749", "3800", "3813", "3936", "4183", "4468", "4669"]
+# notes  = "Native-rate campaign, 18-20 Sep 2026, RunPod RTX PRO 6000, CARLA 0.9.15 Epic. Driven at 2 Hz, set with PADDOCK_INFER_HZ; drivejepa/model.yaml declares no planning rate, so 2 Hz is the operator's choice and not a registry value. ..."  # the full string is in the run.json
+# [ingest.bench2drive.model_env]
+# PADDOCK_INFER_HZ = "2"
+#
+# [[ingest.bench2drive]]
+# model  = "alpamayo15"
+# runs   = "/path/to/paddock-runs/bench2drive-diagnostics/native-50/alpamayo15"
+# label  = "native50-10hz"
+# routes = ["14194", "1711", "17752", "18305", "18311", "18356", "1852", "2050", "2084", "2086", "2201", "2273", "2286", "24211", "24224", "24240", "24252", "24333", "24795", "24816", "2509", "2534", "25378", "2539", "25857", "25863", "26956", "26990", "27018", "27515", "27529", "27582", "2790", "2802", "3307", "3364", "3373", "3378", "3380", "3410", "3564", "3572", "3575", "3749", "3800", "3813", "3936", "4183", "4468", "4669"]
+# notes  = "Native-rate campaign, 18-20 Sep 2026, RunPod RTX PRO 6000, CARLA 0.9.15 Epic. Driven at 10 Hz, set with PADDOCK_INFER_HZ; alpamayo15/model.yaml declares native_input_hz 10.0, which agrees. ..."  # the full string is in the run.json
+# [ingest.bench2drive.model_env]
+# PADDOCK_INFER_HZ = "10"
+#
+# [[ingest.bench2drive]]
+# model  = "qwendrive"
+# runs   = "/path/to/paddock-runs/bench2drive-diagnostics/native-50/qwendrive"
+# label  = "native50-2hz"
+# routes = ["14194", "1711", "17752", "18305", "18311", "18356", "1852", "2050", "2084", "2086", "2201", "2273", "2286", "24211", "24224", "24240", "24252", "24333", "24795", "24816", "2509", "2534", "25378", "2539", "25857", "25863", "26956", "26990", "27018", "27515", "27529", "27582", "2790", "2802", "3307", "3364", "3373", "3378", "3380", "3410", "3564", "3572", "3575", "3749", "3800", "3813", "3936", "4183", "4468", "4669"]
+# notes  = "Native-rate campaign, 18-20 Sep 2026, RunPod RTX PRO 6000, CARLA 0.9.15 Epic. Driven at 2 Hz, set with PADDOCK_INFER_HZ; qwendrive/model.yaml declares native_input_hz 10.0 for the ego-pose history it reads, which is not a planning rate. ..."  # the full string is in the run.json
+# [ingest.bench2drive.model_env]
+# PADDOCK_INFER_HZ = "2"
 
 # ---------------------------------------------------------------------------
 # Environment variables paddock reads

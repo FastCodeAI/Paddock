@@ -1,17 +1,23 @@
 # Paddock leaderboard
 
-91 runs across 8 benchmarks.
-49 run(s) excluded as invalid — shown at the end, never averaged in.
+99 runs across 8 benchmarks.
+53 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
 | model | run | n | site | scene_score ↑ | progress ↑ | collision_rate ↓ | collision_at_fault ↓ | offroad ↓ | duration_frac_20s ↑ | dist_to_gt_trajectory ↓ |
 |---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| drivejepa | drivejepa_017_20hz | 10 | fastcode-shakaal | 0.996 | 0.976 | 0.000 | 0.000 | 0.000 | 0.662 | 4.270 |
 | openpilot | openpilot_020_pilot10 | 10 | fastcode-shakaal | 0.957 | 0.901 | 0.100 | 0.000 | 0.000 | 0.777 | 1.454 |
 | alpamayo15 | alpamayo_proxy_referee_20hz | 10 | fastcode-shakaal | 0.900 | 0.960 | 0.100 | 0.100 | 0.000 | 0.740 | 3.170 |
 | constant_velocity | cv_023_20hz_pilot10 | 10 | fastcode-shakaal | 0.885 | 0.829 | 0.200 | 0.000 | 0.000 | 0.653 | 2.507 |
 | visionpilot | visionpilot_v2_smoke_pilot10_handover_blend | 10 | fastcode-shakaal | 0.849 | 0.820 | 0.300 | 0.100 | 0.000 | 0.699 | 1.467 |
+| openpilot | openpilot_020_30scenes | 30 | fastcode-shakaal | 0.773 | 0.724 | 0.200 | 0.000 | 0.100 | 0.671 | 1.787 |
+| drivejepa | drivejepa_017_20hz_30scenes | 30 | fastcode-shakaal | 0.770 | 0.828 | 0.100 | 0.100 | 0.067 | 0.661 | 3.024 |
+| visionpilot | visionpilot_v2_30scenes | 30 | fastcode-shakaal | 0.629 | 0.636 | 0.367 | 0.133 | 0.033 | 0.570 | 1.740 |
 | drivejepa | drivejepa_014_20hz | 10 | fastcode-shakaal | 0.503 | 0.565 | 0.400 | 0.200 | 0.100 | 0.462 | 2.443 |
+| constant_velocity | cv_023_20hz_30scenes | 30 | fastcode-shakaal | 0.488 | 0.541 | 0.267 | 0.067 | 0.167 | 0.447 | 2.189 |
+| drivejepa | drivejepa_014_20hz_30scenes | 30 | fastcode-shakaal | 0.421 | 0.509 | 0.400 | 0.233 | 0.167 | 0.465 | 2.056 |
 
 ## bench2drive
 
@@ -49,6 +55,7 @@
 | alpamayo15 | phase3-nav | 7 | fastcode-shakaal | 0.819 | 0.411 | 0.932 | 1.533 | 0.561 | 0.937 | 1.817 |
 | alpamayo15 | phase3-nonav | 7 | fastcode-shakaal | 0.845 | 0.414 | 0.960 | 1.590 | 0.708 | 1.156 | 2.282 |
 | alpamayo15 | full-nonav | 223 | fastcode-shakaal | 0.921 | 0.332 | 0.990 | 2.003 | 0.552 | 0.892 | 1.902 |
+| drivejepa_rerank | 20260921T210621-d7ed08 | 223 | fastcode-shakaal | 0.973 | 0.383 | 1.029 | 2.082 | - | - | - |
 | alpamayo15 | full-nav | 223 | fastcode-shakaal | 1.002 | 0.362 | 1.088 | 2.158 | 0.543 | 0.875 | 1.862 |
 | alpamayo15 | full-letterbox | 223 | fastcode-shakaal | 1.176 | 0.418 | 1.284 | 2.535 | 0.619 | 1.009 | 2.085 |
 | alpamayo15 | phase3-letterbox | 7 | fastcode-shakaal | 1.188 | 0.506 | 1.357 | 2.338 | 0.750 | 1.182 | 2.288 |
@@ -126,6 +133,7 @@
 | model | run | n | site | l2_avg ↓ | l2_1s ↓ | l2_uniad_1s ↓ | col_1s ↓ | col_uniad_1s ↓ | l2_2s ↓ | l2_uniad_2s ↓ |
 |---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
 | qwendrive | 20260915T190350-47479e | 5119 | fastcode-shakaal | 0.800 | 0.318 | 0.245 | 0.007 | 0.007 | 0.722 | 0.427 |
+| drivejepa_rerank | 20261012T220930-6194bd | 5119 | fastcode-shakaal | 1.151 | 0.373 | 0.283 | 0.016 | 0.016 | 0.953 | 0.530 |
 | constant_velocity | 20260914T225156-e5170c | 5119 | fastcode-shakaal | 1.288 | 0.372 | 0.260 | 0.008 | 0.008 | 1.151 | 0.594 |
 | constant_velocity | 20260907T093007-9697fe | 5119 | fastcode-navvrat-nusc-dj | 1.288 | 0.372 | 0.259 | 0.008 | 0.008 | 1.151 | 0.594 |
 | alpamayo15 | 20260905T093547-3dd7cd | 5119 | fastcode-navvrat-nusc-al | 1.487 | 0.509 | 0.369 | 0.008 | 0.008 | 1.351 | 0.742 |
@@ -137,6 +145,9 @@
 ## Excluded runs
 
 - **bench2drive/openpilot/pooled50-40c29d24c37d542a-32d680** — Pooled recordings, not one configuration: driver-resume assistance on 16 of the original 24 routes; upstream longitudinal controller on the 26 expansion routes. Not comparable to an unassisted estimate. attempted outside the configured route subset and never scored: 11715 (20260903T171306-b348e3: no records in _checkpoint (the route did not score)). pooled across 3 recording setups (assisted, native-long, unassisted); one mean describes none of them, so this run does not rank -- the per-setup figures are in metrics.json by_group. 9 of 9 source runs kept no run.json, so their routes are attributed to openpilot on the tree they were found in; config.model_env and the rest of config are what 4/9 source runs recorded.
+- **bench2drive/drivejepa/native50-2hz-40c29d24c37d542a-447e23** — Native-rate campaign, 18-20 Sep 2026, RunPod RTX PRO 6000, CARLA 0.9.15 Epic. Driven at 2 Hz, set with PADDOCK_INFER_HZ; drivejepa/model.yaml declares no planning rate, so 2 Hz is the operator's choice and not a registry value. routes_file, routes_subset and waypoint_dt are identical to the 20 Hz pooled50 run; that run recorded MKL/OMP_NUM_THREADS=2 and this one 4, which changes throughput and not the trajectory. The simulator build and the shared tracker and controller were the same, and are recorded in neither run. NAVSIM-v2 checkpoint zero-shot, front pair. 50 of 50 source runs kept no run.json, so their routes are attributed to drivejepa on the tree they were found in; config.model_env and the rest of config are what 50/50 source runs recorded. PADDOCK_INFER_HZ was supplied by the ingest config and recorded by no source run, so it is the operator's assertion about the campaign, not a reading from it. driven at 2 Hz, not the 20 Hz the benchmark's published protocol calls the model at, so this run is kept and does not rank against runs that were -- the paired comparison is docs/benchmarks/bench2drive-native-rate.md.
+- **bench2drive/qwendrive/native50-2hz-084418258d833a9f-9b2bc9** — Native-rate campaign, 18-20 Sep 2026, RunPod RTX PRO 6000, CARLA 0.9.15 Epic. Driven at 2 Hz, set with PADDOCK_INFER_HZ; qwendrive/model.yaml declares native_input_hz 10.0 for the ego-pose history it reads, which is not a planning rate and does not agree with the rate driven. routes_file, routes_subset and waypoint_dt are identical to the 20 Hz pooled50 run; that run recorded MKL/OMP_NUM_THREADS=2 against 4 here and a QWEN_DRIVE_TRACE sink this one did not write. The simulator build and the shared tracker and controller were the same, and are recorded in neither run. Route 3800 (Town13 MergerIntoSlowTraffic) segfaults CARLA for this model: Signal=11 in the evaluator log of attempt 20260918T091245-f19361, at about 1300 frames. DriveJEPA completes the same route at 2 Hz and scores 100, and this model scored it 12.18 at 20 Hz, so the failure follows the rate under test rather than the route. Two routes were re-driven after a crashed first attempt (2201, 3564); parse_results refuses a crash status, so source_runs lists only the attempts that were kept. 49 of 49 source runs kept no run.json, so their routes are attributed to qwendrive on the tree they were found in; config.model_env and the rest of config are what 49/49 source runs recorded. PADDOCK_INFER_HZ was supplied by the ingest config and recorded by no source run, so it is the operator's assertion about the campaign, not a reading from it. driven at 2 Hz, not the 20 Hz the benchmark's published protocol calls the model at, so this run is kept and does not rank against runs that were -- the paired comparison is docs/benchmarks/bench2drive-native-rate.md. routes expected but never scored: 3800 (20260918T091245-f19361: no records in _checkpoint (the route did not score)).
+- **bench2drive/alpamayo15/native50-10hz-084418258d833a9f-c4d076** — Native-rate campaign, 18-20 Sep 2026, RunPod RTX PRO 6000, CARLA 0.9.15 Epic. Driven at 10 Hz, set with PADDOCK_INFER_HZ; alpamayo15/model.yaml declares native_input_hz 10.0, which agrees. routes_file, routes_subset and waypoint_dt are identical to the 20 Hz pooled50 run; that run also set ALPAMAYO_NAV=1, ALPAMAYO_RESERVE_GB=0 and MKL/OMP_NUM_THREADS=2, and this one set none of them -- ALPAMAYO_NAV defaults to 1 in policy.py, so both campaigns ran with the nav instruction on. The simulator build and the shared tracker and controller were the same, and are recorded in neither run. Route 3800 (Town13 MergerIntoSlowTraffic) left no scoring checkpoint at this rate: two attempts, 20260919T004052-2ce451 stopping after infer #601 and 20260919T062659-2ce451 after infer #701, about 1200 and 1400 sim frames. Neither wrote an evaluator log, so the CARLA Signal=11 is recorded for qwendrive on this route and not for this model; the node logs are the evidence here. DriveJEPA completes the same route at 2 Hz and scores 100, and this model scored it 35.33 at 20 Hz, so the failure follows the rate under test rather than the route. 49 of 49 source runs kept no run.json, so their routes are attributed to alpamayo15 on the tree they were found in; config.model_env and the rest of config are what 49/49 source runs recorded. PADDOCK_INFER_HZ was supplied by the ingest config and recorded by no source run, so it is the operator's assertion about the campaign, not a reading from it. driven at 10 Hz, not the 20 Hz the benchmark's published protocol calls the model at, so this run is kept and does not rank against runs that were -- the paired comparison is docs/benchmarks/bench2drive-native-rate.md. routes expected but never scored: 3800 (no attempt found).
 - **neuroncap/openpilot/legacy-scene0108_runs5** — openpilot closed-loop scores recorded before 12f3250 fixed the traffic_convention one-hot: the node passed [0, 1], telling supercombo it was a right-hand-drive car in a left-hand-drive city. Superseded; re-measure rather than compare. See docs/benchmarks/neuroncap.md.
 - **neuroncap/openpilot/legacy-runs5** — openpilot closed-loop scores recorded before 12f3250 fixed the traffic_convention one-hot: the node passed [0, 1], telling supercombo it was a right-hand-drive car in a left-hand-drive city. Superseded; re-measure rather than compare. See docs/benchmarks/neuroncap.md.
 - **neuroncap/openpilot/legacy-runs1** — openpilot closed-loop scores recorded before 12f3250 fixed the traffic_convention one-hot: the node passed [0, 1], telling supercombo it was a right-hand-drive car in a left-hand-drive city. Superseded; re-measure rather than compare. See docs/benchmarks/neuroncap.md.
@@ -144,6 +155,7 @@
 - **neuroncap/drivejepa/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **neuroncap/openpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **neuroncap/visionpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
+- **neuroncap/drivejepa/20261012T205915-7153f0** — 3 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes); resumed: 2 episode(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only
 - **nuplan/openpilot/20260917T220353-9e4f44** — camera images cover 25 of 351 scorable anchors (53 logs have no images); not comparable with a full-coverage run
 - **nuplan/visionpilot/20260917T220044-97873a** — camera images cover 25 of 351 scorable anchors (53 logs have no images); not comparable with a full-coverage run
 - **nuplan/constant_velocity/20260917T214417-f827db** — camera images cover 25 of 351 scorable anchors (53 logs have no images); not comparable with a full-coverage run
