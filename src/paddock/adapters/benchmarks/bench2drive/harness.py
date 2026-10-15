@@ -45,6 +45,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
+from paddock.adapters.benchmarks.bench2drive import early_stop
 from paddock.benchmark import ClosedLoopBenchmark, Episode
 from paddock.config import REPO_ROOT
 from paddock.runtime import ports
@@ -243,6 +244,36 @@ def parse_results(results_json: Path) -> dict[str, float]:
     }
 
 
+def ended_early(route_dir: Path) -> dict[str, float]:
+    """``ended_stuck`` / ``ended_over_time`` for one route: 1 for the rule that ended it, else 0.
+
+    Read from the ``early_stop.json`` the agent writes beside ``results.json``
+    whenever the early stop is on -- with ``"reason": null`` for a route that went
+    to Bench2Drive's own end -- so this reads only the route's directory, as
+    ``--resume`` and the ingest need. Empty without one: the stop was off, and a
+    0 would claim a rule was there to fire. Per route 0/1, so a run's aggregate is
+    the share of its routes each rule ended.
+    """
+    try:
+        record = json.loads((Path(route_dir) / early_stop.RECORD).read_text())
+    except (OSError, ValueError):
+        return {}
+    reason = record.get("reason") if isinstance(record, dict) else None
+    return {
+        "ended_stuck": 1.0 if reason == early_stop.STUCK else 0.0,
+        "ended_over_time": 1.0 if reason == early_stop.OVER_TIME else 0.0,
+    }
+
+
+def _positive(value: Any) -> float | None:
+    """A site setting as a number above zero, or None for anything else."""
+    try:
+        number = float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
 # ---------------------------------------------------------------------------
 # Process hygiene: we kill only what we started
 # ---------------------------------------------------------------------------
@@ -366,6 +397,43 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         """
         return (self.setting("record") or "false").strip().lower() in ("1", "true", "yes", "on")
 
+    @property
+    def early_stop(self) -> dict[str, float] | None:
+        """The early-stop rules the site set (``early_stop.py``), or None when both are off.
+
+        ``stop_stuck_s``: game seconds without :data:`early_stop.PROGRESS_M` of
+        progress along the route. ``stop_expert_factor``: a multiple of the
+        expert's time on the route, read from ``expert``. A malformed value reads
+        as off here; ``preflight`` is what reports it.
+        """
+        rules = {}
+        for key, name in (("stop_stuck_s", "stuck_s"), ("stop_expert_factor", "expert_factor")):
+            value = _positive(self.setting(key))
+            if value is not None:
+                rules[name] = value
+        if not rules:
+            return None
+        rules["progress_m"] = early_stop.PROGRESS_M
+        return rules
+
+    def expert_budget_s(self, route_id: str) -> float | None:
+        """``stop_expert_factor`` x the expert's game time on ``route_id``, or None.
+
+        The expert's time is ``duration_s`` of ``<expert>/<route>/expert_traj.json``
+        as ``tools.benchmarks.bench2drive.expert summarize`` writes it: Think2Drive's
+        drive of the same route, start to end. Nine of the 220 routes have no
+        expert clip; those get the stuck rule alone.
+        """
+        rules, expert = self.early_stop, self.setting("expert")
+        if not rules or "expert_factor" not in rules or not expert:
+            return None
+        try:
+            traj = json.loads((Path(expert) / route_id / "expert_traj.json").read_text())
+            duration = float(traj["duration_s"])
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+        return round(rules["expert_factor"] * duration, 2) if duration > 0 else None
+
     def _pythonpath(self) -> list[str]:
         """What the client interpreter needs, in the checkout's own order.
 
@@ -473,8 +541,35 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
                 f"[benchmarks.bench2drive] per_route_timeout_s must be an integer, got {timeout!r}"
             )
 
+        problems += self._early_stop_problems()
         if not problems:
             problems += self._import_problems()
+        return problems
+
+    def _early_stop_problems(self) -> list[str]:
+        """The stop_* settings parse, the expert's drives exist, and the cap the agent ends routes by does."""
+        problems = []
+        for key in ("stop_stuck_s", "stop_expert_factor"):
+            value = self.setting(key)
+            if value not in (None, "") and _positive(value) is None:
+                problems.append(f"[benchmarks.bench2drive] {key} must be a number above zero, got {value!r}")
+        if self.setting("stop_expert_factor") not in (None, ""):
+            expert = self.setting("expert")
+            if not expert:
+                problems.append(
+                    "[benchmarks.bench2drive] stop_expert_factor needs `expert`, the directory "
+                    "`python -m tools.benchmarks.bench2drive.expert summarize` wrote"
+                )
+            elif not Path(expert).is_dir():
+                problems.append(f"expert drives not found: {expert}")
+        if self.early_stop and self.repo is not None:
+            manager = self.repo / "leaderboard" / "leaderboard" / "scenarios" / "scenario_manager.py"
+            text = manager.read_text(errors="replace") if manager.exists() else ""
+            if "def _tick_scenario" not in text or f"tick_count > {early_stop.TICK_CAP}" not in text:
+                problems.append(
+                    f"{manager} has no `tick_count > {early_stop.TICK_CAP}` cap in _tick_scenario; "
+                    f"the early stop ends a route through it, so with this leaderboard it would end none"
+                )
         return problems
 
     def _import_problems(self) -> list[str]:
@@ -542,11 +637,20 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         the record; recorded here and hashed into the run id by the runner.
         """
         routes = self.routes_file
-        return {
+        config: dict[str, Any] = {
             "routes_file": routes.name if routes is not None else None,
             "routes_subset": sorted(self.routes_subset) if self.routes_subset else None,
             "waypoint_dt": WAYPOINT_DT,
         }
+        # Only when on, so the config hash -- and the run id -- of a run without it is unchanged.
+        if self.early_stop:
+            config["early_stop"] = self.early_stop
+        return config
+
+    def invalid_reasons(self) -> list[str]:
+        """A route ended early is not scored as Bench2Drive scores it."""
+        rules = self.early_stop
+        return [early_stop.invalid_reason(rules)] if rules else []
 
     # ---- episodes ------------------------------------------------------
 
@@ -595,9 +699,11 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         if len(records) < max(1, runs):
             return None
         try:
-            return parse_results(results)
+            metrics = parse_results(results)
         except NotScored:
             return None
+        metrics.update(ended_early(Path(out_dir)))
+        return metrics
 
     # ---- run one episode ----------------------------------------------
 
@@ -649,6 +755,20 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             # agent_wrapper reads SAVE_PATH as its "Bench2Drive mode" flag, which
             # lifts the 3 m sensor-radius limit the BEV camera at z=30 needs.
             extra["SAVE_PATH"] = str(out_dir)
+        # A route driven again in the same run directory must not inherit the
+        # last attempt's verdict.
+        stop_record = out_dir / early_stop.RECORD
+        stop_record.unlink(missing_ok=True)
+        rules = self.early_stop
+        if rules:
+            extra["PADDOCK_STOP_RECORD"] = str(stop_record)
+            if "stuck_s" in rules:
+                extra["PADDOCK_STOP_STUCK_S"] = str(rules["stuck_s"])
+            budget = self.expert_budget_s(episode.config["route_id"])
+            if budget is not None:
+                extra["PADDOCK_STOP_AFTER_S"] = str(budget)
+            elif "expert_factor" in rules:
+                echo(f"  {episode.episode_id}: no expert drive, so no time budget; the stuck rule alone")
 
         command = [
             str(python),
@@ -731,6 +851,7 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
                 f"{episode.episode_id}: {exc}\n--- tail of {log_path.name} ---\n{_tail(log_path)}"
             ) from exc
         metrics["duration_s"] = round(elapsed, 1)
+        metrics.update(ended_early(out_dir))
         return metrics
 
 

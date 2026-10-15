@@ -75,10 +75,14 @@ routes_file = "bench2drive220.xml"                   # under repo/leaderboard/da
 # tm_port    = "8000"                # traffic manager port, likewise
 # gpu_rank   = "0"                   # CARLA's -graphicsadapter
 # record     = "false"               # per-tick front/BEV JPEGs + log.csv; ~40 GB per full sweep
+# stop_stuck_s       = "30"          # end a route 30 s after its last 3 m of progress; see Ending routes early
+# stop_expert_factor = "4"           # end a route at 4x the expert's time on it; needs `expert`
+# expert = "/path/to/expert"         # what `python -m tools.benchmarks.bench2drive.expert summarize` wrote
 ```
 
 Every key above is read by the adapter; nothing else is. `routes_subset` changes
 *what is measured*, so it is written to `run.json` and hashed into the run id.
+So do the `stop_*` settings, which also make the run `valid: false`.
 
 Prerequisites (all outside this repo):
 
@@ -138,6 +142,39 @@ with a handful of route ids, or `routes_subset`) until every model completes
 routes cleanly. The evaluator's own start-up (`time.sleep(30)` then a 600 s
 client timeout, retried) does not add to this: the first connection attempt
 returns as soon as CARLA answers, so the wait *is* the map load, not extra.
+
+## Ending routes early
+
+Off unless the site sets it. A route the car will not finish still drives until
+the leaderboard ends it, and the leaderboard is patient: its blocked test waits
+60 s under 0.1 m/s, and the scenarios that make the ego wait for a gap
+(AccidentTwoWays, ConstructionObstacleTwoWays, HazardAtSideLane, ...) switch that
+test off, which leaves the 4000-tick cap. In the first 25 routes of the October
+openpilot sweep, three stood still for 130–195 s of game time each, 27–42 min
+of wall clock apiece.
+
+Two settings end a route sooner (`early_stop.py`):
+
+| setting | ends the route when |
+|---|---|
+| `stop_stuck_s` | the ego has gone this many game seconds without getting 3 m further along the route (the blocked test's 0.1 m/s over 30 s). Progress, not speed, so a car that a driver-resume nudge keeps creeping counts too |
+| `stop_expert_factor` + `expert` | the game clock reaches this multiple of Think2Drive's time on the route (`duration_s` of `<expert>/<route>/expert_traj.json`). The nine routes with no expert clip get the stuck rule alone |
+
+The agent ends the route through the leaderboard's own tick cap, which `preflight`
+checks the checkout still has, so the route is scored as it stands: the route
+completion and infractions of that moment, status `Failed - TickRuntime`. Beside
+`results.json` it writes `early_stop.json` with the rule that fired (`null` if
+none did), the game time, and the route's own budget; the metrics carry it per
+route as `ended_stuck` / `ended_over_time` (0 or 1).
+
+A route ended early is not scored as Bench2Drive scores it — a car that would
+have moved after the window, or collided after its budget, gets a different
+number — so a run with either rule on is `valid: false`, `paddock report` leaves
+it out, and the ingest pools it the same way. Choose the factor from what the
+model needs, not from the expert: on the five routes openpilot completed in the
+sweep above it took 1.6–2.9× Think2Drive's time, so a factor of 1 would have cut
+every one of them short. Of Think2Drive's own 211 drives, 3 stand still for
+longer than 30 s.
 
 ## Repetitions
 

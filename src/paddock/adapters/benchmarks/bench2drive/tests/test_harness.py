@@ -28,6 +28,7 @@ from paddock.adapters.benchmarks.bench2drive.harness import (
     NotScored,
     carla_pids,
     carla_port_from_log,
+    ended_early,
     parse_results,
     parse_routes,
     reap_carla,
@@ -580,3 +581,110 @@ def test_resume_drives_again_a_route_with_fewer_repetitions_than_asked(tmp_path:
     harness = _resume_harness()
     assert harness.completed_metrics(_episode(runs=3), tmp_path, runs=3) is None
     assert harness.completed_metrics(_episode(runs=2), tmp_path, runs=2)["n_runs"] == 2
+
+
+# ---------------------------------------------------------------------------
+# early stop: the site's rules reach the agent, and its verdict the metrics
+# ---------------------------------------------------------------------------
+
+STOPPED_STUCK = COMPLETED + textwrap.dedent(
+    """\
+    stop = os.environ.get("PADDOCK_STOP_RECORD")
+    if stop:
+        json.dump({"reason": "stuck", "game_time_s": 35.4, "stuck_s": 30.0, "after_s": None}, open(stop, "w"))
+    """
+)
+
+
+def _expert(tmp_path: Path, route: str, duration_s: float) -> Path:
+    """An expert directory as ``tools.benchmarks.bench2drive.expert summarize`` writes it."""
+    root = tmp_path / "expert"
+    (root / route).mkdir(parents=True)
+    traj = {"route_id": route, "hz": 10.0, "duration_s": duration_s, "frames": []}
+    (root / route / "expert_traj.json").write_text(json.dumps(traj))
+    return root
+
+
+def test_early_stop_is_off_unless_the_site_sets_it(tmp_path, monkeypatch) -> None:
+    """Off, nothing about a run changes: its config (so its run id), its validity, the agent's env."""
+    harness = _harness(_site(tmp_path, monkeypatch, COMPLETED))
+    assert "early_stop" not in harness.run_config()
+    assert harness.invalid_reasons() == []
+    out = tmp_path / "out"
+    metrics = harness.run_episode(_episode(), "http://127.0.0.1:9000", out)
+    env = json.loads((out / "env.json").read_text())
+    assert not any(key.startswith("PADDOCK_STOP_") for key in env)
+    assert "ended_stuck" not in metrics
+
+
+def test_the_early_stop_reaches_the_agent_and_its_verdict_the_metrics(tmp_path, monkeypatch) -> None:
+    expert = _expert(tmp_path, "1773", 21.3)
+    settings = {"stop_stuck_s": "30", "stop_expert_factor": "4", "expert": str(expert)}
+    harness = _harness(_site(tmp_path, monkeypatch, STOPPED_STUCK, **settings))
+    out = tmp_path / "out"
+    metrics = harness.run_episode(_episode(), "http://127.0.0.1:9000", out)
+
+    env = json.loads((out / "env.json").read_text())
+    assert float(env["PADDOCK_STOP_STUCK_S"]) == 30.0
+    assert float(env["PADDOCK_STOP_AFTER_S"]) == pytest.approx(85.2), "4 x the expert's 21.3 s on this route"
+    assert env["PADDOCK_STOP_RECORD"] == str(out / "early_stop.json")
+    assert metrics["ended_stuck"] == 1.0 and metrics["ended_over_time"] == 0.0
+    assert metrics["driving_score"] == 36.0, "scored as the leaderboard recorded it"
+
+    assert harness.run_config()["early_stop"] == {"stuck_s": 30.0, "expert_factor": 4.0, "progress_m": 3.0}
+    (reason,) = harness.invalid_reasons()
+    assert "early stop" in reason and "not the benchmark's" in reason
+    # What --resume reuses reads the same verdict, from the route's directory alone.
+    assert _resume_harness().completed_metrics(_episode(), out, runs=1)["ended_stuck"] == 1.0
+
+
+def test_a_route_without_an_expert_drive_gets_the_stuck_rule_alone(tmp_path, monkeypatch) -> None:
+    expert = _expert(tmp_path, "1711", 21.8)  # nine routes have no expert clip; 1773 is one here
+    settings = {"stop_stuck_s": "30", "stop_expert_factor": "4", "expert": str(expert)}
+    out, said = tmp_path / "out", []
+    _harness(_site(tmp_path, monkeypatch, COMPLETED, **settings)).run_episode(
+        _episode(), "http://127.0.0.1:9000", out, echo=said.append
+    )
+    env = json.loads((out / "env.json").read_text())
+    assert "PADDOCK_STOP_AFTER_S" not in env
+    assert float(env["PADDOCK_STOP_STUCK_S"]) == 30.0
+    assert any("no expert drive" in line for line in said)
+
+
+def test_a_stale_early_stop_verdict_does_not_outlive_its_attempt(tmp_path, monkeypatch) -> None:
+    """A route driven again in the same directory must not be read with the last attempt's verdict."""
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "early_stop.json").write_text(json.dumps({"reason": "stuck"}))
+    metrics = _harness(_site(tmp_path, monkeypatch, COMPLETED)).run_episode(
+        _episode(), "http://127.0.0.1:9000", out
+    )
+    assert not (out / "early_stop.json").exists()
+    assert "ended_stuck" not in metrics
+
+
+def test_a_route_that_went_to_its_end_says_so_and_no_record_says_nothing(tmp_path) -> None:
+    (tmp_path / "early_stop.json").write_text(json.dumps({"reason": None, "stuck_s": 30.0, "after_s": 85.2}))
+    assert ended_early(tmp_path) == {"ended_stuck": 0.0, "ended_over_time": 0.0}
+    assert ended_early(tmp_path / "elsewhere") == {}, "the stop was off; a 0 would say a rule was there"
+
+
+def test_preflight_refuses_early_stop_settings_it_cannot_honour(tmp_path, monkeypatch) -> None:
+    cfg = _site(tmp_path, monkeypatch, COMPLETED, stop_stuck_s="half a minute", stop_expert_factor="4")
+    problems = "\n".join(_harness(cfg).preflight())
+    assert "stop_stuck_s must be a number above zero" in problems
+    assert "stop_expert_factor needs `expert`" in problems
+    assert "tick_count > 4000" in problems, "this checkout has no tick cap to end a route through"
+
+
+def test_preflight_accepts_the_pinned_leaderboards_tick_cap(tmp_path, monkeypatch) -> None:
+    expert = _expert(tmp_path, "1773", 21.3)
+    settings = {"stop_stuck_s": "30", "stop_expert_factor": "4", "expert": str(expert)}
+    cfg = _site(tmp_path, monkeypatch, COMPLETED, **settings)
+    scenarios = tmp_path / "Bench2Drive" / "leaderboard" / "leaderboard" / "scenarios"
+    scenarios.mkdir()
+    (scenarios / "scenario_manager.py").write_text(
+        "def _tick_scenario(self):\n    if self.tick_count > 4000:\n        raise TickRuntimeError()\n"
+    )
+    problems = _harness(cfg).preflight()
+    assert not any("stop_" in p or "tick_count" in p or "expert" in p for p in problems), problems

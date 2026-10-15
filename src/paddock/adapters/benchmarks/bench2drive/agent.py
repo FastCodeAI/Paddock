@@ -25,6 +25,12 @@ come from the environment, set by ``harness.run_episode``:
                           leaderboard hands the agent its `save_name` by
                           appending "+<save_name>" to the agent-config string
                           (leaderboard_evaluator.py:363 at 7ec25d1)
+    PADDOCK_STOP_STUCK_S  if set, end the route once the ego has gone this many
+                          game seconds without getting 3 m further along it
+    PADDOCK_STOP_AFTER_S  if set, end the route at this game time (the harness
+                          sets it to a multiple of the expert's time on the route)
+    PADDOCK_STOP_RECORD   where to write why and when a route was ended early;
+                          see ``early_stop.py``
 
 It runs inside the CARLA client's interpreter (Python 3.8 at the one site that
 has one), with ``REPO_ROOT/src`` on PYTHONPATH like every process paddock
@@ -53,7 +59,7 @@ from agents.navigation.local_planner import RoadOption
 from leaderboard.autoagents.autonomous_agent import AutonomousAgent, Track
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 
-from paddock.adapters.benchmarks.bench2drive import navigation, recorder
+from paddock.adapters.benchmarks.bench2drive import early_stop, navigation, recorder
 from paddock.adapters.benchmarks.bench2drive.pid import WaypointTracker
 from paddock.policy.protocol import CANBUS_ACCEL, CANBUS_VELOCITY, Command, Trajectory, encode_image
 
@@ -62,6 +68,9 @@ CAMS = [c.strip() for c in os.environ.get("PADDOCK_CAMERAS", "CAM_FRONT").split(
 WAYPOINT_DT = float(os.environ.get("PADDOCK_WAYPOINT_DT", "0.5"))
 RECORD_DIR = os.environ.get("PADDOCK_RECORD_DIR") or None
 METRICS_DIR = os.environ.get("PADDOCK_METRICS_DIR") or None
+STOP_STUCK_S = float(os.environ["PADDOCK_STOP_STUCK_S"]) if os.environ.get("PADDOCK_STOP_STUCK_S") else None
+STOP_AFTER_S = float(os.environ["PADDOCK_STOP_AFTER_S"]) if os.environ.get("PADDOCK_STOP_AFTER_S") else None
+STOP_RECORD = os.environ.get("PADDOCK_STOP_RECORD") or None
 
 # Placement (x, y, z, roll, pitch, yaw) in the CARLA ego frame for every nuScenes
 # camera a model might ask for; radius < 3m (the leaderboard sensor limit).
@@ -212,6 +221,13 @@ class PaddockB2DAgent(AutonomousAgent):
                 + ["ego_x", "ego_y", "ego_yaw", "resume", "nav_maneuver", "nav_distance_m"]
             )
         self._nav_route = self._dense_route()
+        self._early_stop = None
+        # What early_stop.json says: written when a rule ends the route, or at the
+        # end with "reason": null, so a route's record also names its own budget.
+        self._stop_record = None
+        if STOP_STUCK_S is not None or STOP_AFTER_S is not None:
+            self._early_stop = early_stop.EarlyStop(STOP_STUCK_S, STOP_AFTER_S)
+            self._stop_record = {"reason": None, "stuck_s": STOP_STUCK_S, "after_s": STOP_AFTER_S}
         self._ticks = None
         if RECORD_DIR:
             self._open_analysis_record()
@@ -449,6 +465,8 @@ class PaddockB2DAgent(AutonomousAgent):
                     )
 
     def destroy(self):
+        if self._stop_record is not None and self._stop_record["reason"] is None:
+            self._write_stop_record()  # on, and the route went to the leaderboard's own end
         if self._log is not None:
             self._log.close()
             self._log = None
@@ -731,8 +749,45 @@ class PaddockB2DAgent(AutonomousAgent):
                 ]
             )
             self._log.flush()
+        if self._early_stop is not None:
+            self._check_early_stop(timestamp)
         self._t += 1
         return control
+
+    def _check_early_stop(self, game_time):
+        """Feed this tick to ``early_stop``; when a rule fires, have the leaderboard end the route.
+
+        After the tick's control is decided and recorded, so a rule changes nothing
+        about a drive until the tick it fires on (``early_stop.replay`` relies on it).
+        """
+        route, hero = self._nav_route, self._hero_actor()
+        if route is None or hero is None:
+            return
+        loc = hero.get_location()
+        index, _ = route.locate(loc.x, loc.y)
+        along = float(route.s[index])
+        self._stop_record.update(
+            game_time_s=round(float(game_time), 2), tick=self._t, route_m=round(along, 1)
+        )
+        reason = self._early_stop.update(game_time, along)
+        if reason is None:
+            return
+        self._early_stop = None  # once: the manager ends the route before calling us again
+        if not early_stop.end_route():
+            print(f"[paddock-b2d] early stop ({reason}): no ScenarioManager to end the route; driving on")
+            return
+        print(f"[paddock-b2d] early stop at {game_time:.2f} s, {along:.0f} m along: {reason}", flush=True)
+        self._stop_record["reason"] = reason
+        self._write_stop_record()
+
+    def _write_stop_record(self):
+        if not STOP_RECORD or self._stop_record is None:
+            return
+        try:
+            with open(STOP_RECORD, "w") as handle:
+                json.dump(self._stop_record, handle)
+        except OSError as exc:  # the route still ends; the harness just cannot say why
+            print("[paddock-b2d] early stop record not written:", repr(exc))
 
     def _control(self, wps, speed):
         """Waypoints (ego frame, x fwd, y LEFT) -> CARLA control via the dual-PID."""
