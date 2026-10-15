@@ -647,7 +647,7 @@ def test_early_stop_is_off_unless_the_site_sets_it(tmp_path, monkeypatch) -> Non
     """Off, nothing about a run changes: its config (so its run id), its validity, the agent's env."""
     harness = _harness(_site(tmp_path, monkeypatch, COMPLETED))
     assert "early_stop" not in harness.run_config()
-    assert harness.invalid_reasons() == []
+    assert harness.invalid_reasons() == [] and harness.remarks() == []
     out = tmp_path / "out"
     metrics = harness.run_episode(_episode(), "http://127.0.0.1:9000", out)
     env = json.loads((out / "env.json").read_text())
@@ -670,8 +670,12 @@ def test_the_early_stop_reaches_the_agent_and_its_verdict_the_metrics(tmp_path, 
     assert metrics["driving_score"] == 36.0, "scored as the leaderboard recorded it"
 
     assert harness.run_config()["early_stop"] == {"stuck_s": 30.0, "expert_factor": 4.0, "progress_m": 3.0}
-    (reason,) = harness.invalid_reasons()
-    assert "early stop" in reason and "not the benchmark's" in reason
+    # A route the rule ends is a failed drive: the run ranks, and its notes say why.
+    assert harness.invalid_reasons() == []
+    (remark,) = harness.remarks()
+    assert (
+        remark.startswith("early stop (30 s without 3 m of route progress or 4x") and "failed drive" in remark
+    )
     # What --resume reuses reads the same verdict, from the route's directory alone.
     assert _resume_harness().completed_metrics(_episode(), out, runs=1)["ended_stuck"] == 1.0
 

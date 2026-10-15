@@ -647,6 +647,11 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             config["early_stop"] = self.early_stop
         return config
 
+    def remarks(self) -> list[str]:
+        """The early stop, when on: which rules, and why a route they end is a failed drive."""
+        rules = self.early_stop
+        return [early_stop.remark(rules)] if rules else []
+
     # ---- episodes ------------------------------------------------------
 
     def episodes(
@@ -678,17 +683,13 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         or the whole routes file) would otherwise be stored `valid: true` and
         ranked beside the full runs; the regression gate's 7-route smoke was.
         The site's own `routes_subset` is the set, not a subset: it is on the
-        record (`run_config`) and every full run on the site uses it.
-
-        A route ended early is not scored as Bench2Drive scores it either.
+        record (`run_config`) and every full run on the site uses it. An early
+        stop is not a reason: a route it ends is a failed drive (`remarks`).
         """
-        reasons = [early_stop.invalid_reason(self.early_stop)] if self.early_stop else []
         ran, total = getattr(self, "_routes_scope", (None, None))
-        if ran is not None and ran < total:
-            reasons.append(
-                f"{ran} of the {total} routes this site runs (--scene/--scenarios); a subset, not a score"
-            )
-        return reasons
+        if ran is None or ran >= total:
+            return []
+        return [f"{ran} of the {total} routes this site runs (--scene/--scenarios); a subset, not a score"]
 
     def completed_metrics(self, episode: Episode, out_dir: Path, runs: int = 1) -> dict[str, float] | None:
         """The route's metrics if its ``results.json`` already holds every repetition, else None.

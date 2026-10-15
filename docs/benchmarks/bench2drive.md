@@ -85,7 +85,7 @@ routes_file = "bench2drive220.xml"                   # under repo/leaderboard/da
 
 Every key above is read by the adapter; nothing else is. `routes_subset` changes
 *what is measured*, so it is written to `run.json` and hashed into the run id.
-So do the `stop_*` settings, which also make the run `valid: false`.
+So do the `stop_*` settings, whose rules the run's notes also state.
 
 Prerequisites (all outside this repo):
 
@@ -170,14 +170,23 @@ completion and infractions of that moment, status `Failed - TickRuntime`. Beside
 none did), the game time, and the route's own budget; the metrics carry it per
 route as `ended_stuck` / `ended_over_time` (0 or 1).
 
-A route ended early is not scored as Bench2Drive scores it — a car that would
-have moved after the window, or collided after its budget, gets a different
-number — so a run with either rule on is `valid: false`, `paddock report` leaves
-it out, and the ingest pools it the same way. Choose the factor from what the
-model needs, not from the expert: on the five routes openpilot completed in the
-sweep above it took 1.6–2.9× Think2Drive's time, so a factor of 1 would have cut
-every one of them short. Of Think2Drive's own 211 drives, 3 stand still for
-longer than 30 s.
+A route either rule ends is a **failed drive**, and the run ranks. A car in a
+driving scene is expected to move; one that gets no further along its route for
+`stop_stuck_s`, or needs `stop_expert_factor` times the expert's time, has failed
+the scene, so the route is scored as it stood when it ended. The rules are in the
+run's config, and so in its run id, and its notes say which rules it ran under
+and why its scores stand; the ingest carries both into a pooled run. What it
+changes against a run to Bench2Drive's own end: a car that would have crept on
+after the window, or finished just after its budget, scores what it had at the
+cut. 1825 crept from 14 m to 20 m between 34 s and the 4000-tick cap (RC 15.19
+without the rule, 10.65 with it), and 2802 was cut at 4x the expert's 19.1 s,
+104 m along a 112 m route (RC 92.86). A pool of runs that stopped routes under
+*different* rules does not rank: one mean describes none of them.
+
+Choose the factor from what the model needs, not from the expert: on the five
+routes openpilot completed in the sweep above it took 1.6–2.9× Think2Drive's
+time, so a factor of 1 would have cut every one of them short. Of Think2Drive's
+own 211 drives, 3 stand still for longer than 30 s.
 
 ## Repetitions
 

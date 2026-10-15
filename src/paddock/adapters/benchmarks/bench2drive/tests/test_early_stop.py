@@ -127,8 +127,10 @@ def test_outside_a_leaderboard_tick_end_route_says_it_ended_nothing() -> None:
     assert end_route() is False
 
 
-def test_the_invalid_reason_says_which_rules() -> None:
-    reason = early_stop.invalid_reason({"stuck_s": 30.0, "expert_factor": 4.0, "progress_m": 3.0})
-    assert "30 s without 3 m of route progress" in reason
-    assert "4x the expert's time" in reason
-    assert "settings that differ" in early_stop.invalid_reason([{"stuck_s": 30.0}, {"stuck_s": 60.0}])
+def test_the_remark_says_which_rules_and_why_the_scores_stand() -> None:
+    remark = early_stop.remark({"stuck_s": 30.0, "expert_factor": 4.0, "progress_m": 3.0})
+    assert "30 s without 3 m of route progress" in remark
+    assert "4x the expert's time" in remark
+    assert "expected to move" in remark and "failed drive" in remark
+    mixed = early_stop.mixed_reason([{"stuck_s": 30.0}, {"stuck_s": 60.0}])
+    assert "differ between source runs" in mixed and "30 s" in mixed and "60 s" in mixed
