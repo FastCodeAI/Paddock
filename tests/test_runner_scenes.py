@@ -244,6 +244,9 @@ def test_resume_drives_only_the_episodes_that_did_not_finish(tmp_path, monkeypat
         def invalid_reasons(self):
             return []
 
+        def remarks(self):
+            return []
+
     monkeypatch.setattr(proc, "model_node", _stub_model_node())
     _isolate_results(tmp_path, monkeypatch)
     cfg = _cfg(tmp_path)
@@ -384,6 +387,9 @@ def test_a_fully_complete_resume_never_starts_a_node(tmp_path, monkeypatch) -> N
         def invalid_reasons(self):
             return []
 
+        def remarks(self):
+            return []
+
     monkeypatch.setattr(proc, "model_node", _never)
     _isolate_results(tmp_path, monkeypatch)
     cfg = _cfg(tmp_path)
@@ -446,6 +452,9 @@ def test_a_resumed_run_is_still_rankable(tmp_path, monkeypatch) -> None:
             return {}
 
         def invalid_reasons(self):
+            return []
+
+        def remarks(self):
             return []
 
     monkeypatch.setattr(proc, "model_node", _stub_model_node())
@@ -1081,3 +1090,61 @@ def test_resuming_reads_both_a_finished_file_and_a_later_journal(tmp_path) -> No
     (tmp_path / runner.PARTIAL_SAMPLES).write_text('{"sample_id": "b"}\n{"sample_id": "c"}\n')
 
     assert sorted(r["sample_id"] for r in runner._scored_samples(tmp_path)) == ["a", "b", "c"]
+
+
+def test_a_benchmarks_remark_reaches_the_notes_and_the_run_still_ranks(tmp_path, monkeypatch) -> None:
+    """`remarks()` is the benchmark's own channel for what does not invalidate.
+
+    Bench2Drive's early stop ends a route its owner scores as a failed drive: the
+    row must say the rule was on, and must not be excluded for it.
+    """
+    from paddock import runner
+    from paddock.benchmark import Episode
+
+    class _Harness:
+        spec = type(
+            "S", (), {"name": "fake", "dataset": "d", "mode": "closed_loop", "primary_metric": "score"}
+        )()
+
+        def episodes(self, scenes=None, runs=1, scenarios=None):
+            yield Episode(episode_id="a", scenario="frontal", scene="a")
+
+        def completed_metrics(self, episode, out_dir, runs=1):
+            return {"score": 4.0}
+
+        def episode_samples(self, episode, metrics, out_dir):
+            return [{"sample_id": "fake/a", "native_id": {}, "split": "frontal", "metrics": metrics}]
+
+        def samples_per_episode(self, runs=1):
+            return 1
+
+        def run_config(self):
+            return {}
+
+        def model_run_config(self, model):
+            return {}
+
+        def invalid_reasons(self):
+            return []
+
+        def remarks(self):
+            return ["early stop (30 s without 3 m of route progress): a failed drive"]
+
+    def _never(*args, **kwargs):
+        raise AssertionError("every episode is already scored; no node may start")
+
+    from paddock.runtime import proc
+
+    monkeypatch.setattr(proc, "model_node", _never)
+    _isolate_results(tmp_path, monkeypatch)
+    cfg = _cfg(tmp_path)
+    (cfg.runs / "fake" / "visionpilot" / "r").mkdir(parents=True)
+
+    runner._run_one_model(
+        cfg, _Harness(), _Harness.spec, _model_spec(), None, None, 1, 9999, lambda _s: None, resume="r"
+    )
+
+    written = json.loads((tmp_path / "results" / "fake" / "visionpilot" / "r" / "run.json").read_text())
+    assert written["valid"] is True
+    assert written["notes"].startswith("early stop (30 s without 3 m of route progress): a failed drive")
+    assert "resumed" in written["notes"], "the benchmark's remark sits beside the runner's own"
