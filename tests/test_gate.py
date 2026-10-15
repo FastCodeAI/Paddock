@@ -493,8 +493,9 @@ def test_check_reads_a_baseline_from_another_results_store(tmp_path: Path) -> No
     assert r.matched == 4 and r.baseline_mean == pytest.approx(2.0)
 
 
-def test_the_site_config_gains_the_env_override_and_loses_nothing(tmp_path: Path) -> None:
-    """The derived PADDOCK_CONFIG is the site config plus [models.X.env], round-tripping through TOML."""
+def test_the_site_config_gains_the_smoke_overrides_and_loses_nothing(tmp_path: Path) -> None:
+    """The derived PADDOCK_CONFIG is the site config plus [models.X.env] and the smoke's
+    renderer port, round-tripping through TOML."""
     import tomllib
 
     site = tmp_path / "paddock.toml"
@@ -503,8 +504,21 @@ def test_the_site_config_gains_the_env_override_and_loses_nothing(tmp_path: Path
         '[datasets.navsim]\npath = "p"\ntiers = ["a", "b"]\n'
         '[models.drivejepa]\nvenv = "v"\n[models.drivejepa.env]\nOMP_NUM_THREADS = "2"\n'
         "[gpu]\nbudget_gb = 96\nserialize = true\n[benchmarks.navsim]\nworkers = 4\n"
+        '[benchmarks.neuroncap]\nrenderer_url = "http://127.0.0.1:8000"\nmanage_renderer = false\n'
     )
-    derived = tomllib.loads(gate.site_config_with_env(site, "drivejepa", {"DRIVEJEPA_CHECKPOINT": "ck.pt"}))
+    derived = tomllib.loads(gate.smoke_config(site, "drivejepa", {"DRIVEJEPA_CHECKPOINT": "ck.pt"}, 8700))
     expected = tomllib.loads(site.read_text())
     expected["models"]["drivejepa"]["env"]["DRIVEJEPA_CHECKPOINT"] = "ck.pt"
+    expected["benchmarks"]["neuroncap"]["renderer_url"] = "http://127.0.0.1:8700"
     assert derived == expected
+
+
+def test_the_smoke_renderer_port_is_set_even_without_a_site_renderer_url(tmp_path: Path) -> None:
+    """With no env override and no neuroNCAP table, the smoke still gets its own renderer port."""
+    import tomllib
+
+    site = tmp_path / "paddock.toml"
+    site.write_text('site = "test"\n[roots]\nruns = "u"\n')
+    derived = tomllib.loads(gate.smoke_config(site, "drivejepa", {}, 8711))
+    assert derived["benchmarks"]["neuroncap"]["renderer_url"] == "http://127.0.0.1:8711"
+    assert derived["roots"] == {"runs": "u"}

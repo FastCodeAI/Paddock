@@ -691,10 +691,20 @@ def to_toml(data: dict[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def site_config_with_env(site_config: Path, model: str, env: dict[str, str]) -> str:
-    """The site config with `env` merged into `[models.<model>.env]`, as TOML text."""
+def smoke_config(site_config: Path, model: str, env: dict[str, str], renderer_port: int) -> str:
+    """The site config the smoke runs under, as TOML text.
+
+    Two changes from the site's: `env` merged into `[models.<model>.env]`, and the
+    neuroNCAP `renderer_url` moved to `renderer_port`. The smoke starts its own
+    renderers on that port, and the site's is usually where someone's long-lived
+    `paddock renderer` already listens; the harness's preflight refuses to start
+    beside one, so the smoke would stop at neuroNCAP every time.
+    """
     raw = tomllib.loads(site_config.read_text())
     raw.setdefault("models", {}).setdefault(model, {}).setdefault("env", {}).update(env)
+    ncap = raw.setdefault("benchmarks", {}).setdefault("neuroncap", {})
+    host = str(ncap.get("renderer_url") or "http://127.0.0.1:8000").rsplit(":", 1)[0]
+    ncap["renderer_url"] = f"{host}:{renderer_port}"
     return to_toml(raw)
 
 
@@ -856,7 +866,7 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = print) -> int:
     cfg = SiteConfig.load()
     label = args.label or _env_label(args.model, env_pairs)
     out = Path(args.out) if args.out else cfg.runs / "gate" / "smoke" / label
-    config_path = out / "paddock.toml" if env_pairs else None
+    config_path = out / "paddock.toml"
     state_path = out / "state.json"
     state: dict[str, dict[str, Any]] = json.loads(state_path.read_text()) if state_path.is_file() else {}
     baselines = load_baselines(args.baseline)
@@ -875,8 +885,10 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = print) -> int:
 
     echo(f"smoke tier for {label} ({'executing' if args.execute else 'plan only; add --execute to run it'})")
     echo(f"  state directory: {out}")
-    if config_path is not None:
-        echo(f"  PADDOCK_CONFIG: {cfg.source} plus [models.{args.model}.env] {', '.join(env_pairs)}")
+    overrides = [f"neuroNCAP renderer_url port {args.renderer_port}"]
+    if env_pairs:
+        overrides.append(f"[models.{args.model}.env] {', '.join(env_pairs)}")
+    echo(f"  PADDOCK_CONFIG: {cfg.source} with {' and '.join(overrides)}")
     for step in steps:
         tag = {"finished": "done", "resume": "resume", "new": "launch", "skipped": "skip"}[step.status]
         echo(
@@ -897,8 +909,7 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = print) -> int:
         return 0
 
     out.mkdir(parents=True, exist_ok=True)
-    if config_path is not None:
-        config_path.write_text(site_config_with_env(cfg.source, args.model, env_pairs))
+    config_path.write_text(smoke_config(cfg.source, args.model, env_pairs, args.renderer_port))
 
     def save() -> None:
         state_path.write_text(json.dumps(state, indent=2) + "\n")
@@ -975,6 +986,12 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--label", help="names the state directory (default: the model and a digest of --env)")
     s.add_argument("--out", help="state directory (default: {runs}/gate/smoke/<label>)")
     s.add_argument("--base-port", type=int, default=9700, help="PADDOCK_BASE_PORT for every launch")
+    s.add_argument(
+        "--renderer-port",
+        type=int,
+        default=8700,
+        help="port for the neuroNCAP renderers the smoke starts (default 8700, away from the site's)",
+    )
     s.add_argument("--cores", default="4-7", help="taskset CPU list for every launch")
     s.add_argument("--python", default=sys.executable, help="interpreter with paddock's dependencies")
     u = sub.add_parser("subset", help="print one benchmark's smoke subset")

@@ -110,7 +110,9 @@ Without `--execute` it prints, per benchmark, the exact `paddock run` line
 
 1. writes `PADDOCK_CONFIG` for the candidate: the site `paddock.toml` with the
    `--env` values merged into `[models.<model>.env]`, so the override reaches the
-   node and is recorded as `model_env`;
+   node and is recorded as `model_env`, and the neuroNCAP `renderer_url` moved to
+   `--renderer-port` (default 8700), so the renderers the smoke starts do not
+   land on the site's port, where a long-lived `paddock renderer` usually is;
 2. launches one benchmark at a time, each after `nvidia-smi` shows 14 GB free on
    the card the model will use (it gives up after 12 h);
 3. streams each run's output to `<state>/<bench>.log`;
@@ -177,9 +179,10 @@ the missing smoke baselines get made; put their run ids in the manifest after.
   recorded in `config.overrides` but is not one of its `invalid_reasons`
   (`src/paddock/adapters/benchmarks/navsim/harness.py:710`). The smoke's NAVSIM
   run is invalid through `--limit` regardless.
-- **The neuroNCAP smoke starts its own renderers** on the site's `renderer_url`
-  port, one scene at a time. Two smokes at once, or a smoke beside someone's
-  `paddock renderer` on that port, collide.
+- **The neuroNCAP smoke starts its own renderers** on `--renderer-port`, one
+  scene at a time. Two smokes at once need different `--renderer-port` (and
+  `--base-port`) values; if the port is taken, neuroNCAP's preflight says so and
+  that benchmark does not start.
 - Smoke runs write their `run.json` into this checkout's `results/` like any
   run. They are `valid: false` and are evidence for a decision, not leaderboard
   rows; whether to commit them is the reviewer's call.
