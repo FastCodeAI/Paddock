@@ -636,6 +636,9 @@ Three things to know before trusting what you see:
   recorded path with its far end folded onto the road 18–67 m ahead. They show
   a model that plans short, or hooks, and it was doing neither.
   `test_the_overlay_draws_a_plan_through_the_mount_rotation` pins it.
+  The scorer does not do the same for the ground truth yet, so a clip can show
+  a plan on the recorded path beside an ADE that still carries the mount yaw
+  (see [Recorded results](#recorded-results)).
 - **Encoding needs a video backend**, the same one scoring needs: PyAV from the
   `comma2k19` extra, or an external ffmpeg named by `PADDOCK_FFMPEG`. Drawing
   additionally needs Pillow, which the `viz` extra declares.
@@ -673,6 +676,14 @@ The full dataset, 10,165 samples, every row on the identical sample set
 (`sequences_sha256` `293a225a0b5cbaff` in all six run records). A model is
 scored only as far as it plans; `—` is where its own horizon ends, not a
 failure. Lower is better except `pdm_style_score`.
+
+**Every row is scored against a ground truth in the camera's frame, while the
+plans are in the car's.** The two differ by the mount rotation, about 2° of yaw
+on the Civic, and every number below carries it. Re-scored from the stored
+records with the ground truth in the calibrated frame, ADE@3s is 0.602 for
+qwendrive, 0.858 for alpamayo15 and openpilot, and 1.137 for constant velocity,
+which reorders the table. It is left as scored until that re-score lands in its
+own PR ([ROADMAP](../ROADMAP.md), M8).
 
 | | horizon | ADE@1s | ADE@2s | **ADE@3s** | ADE@4s | ADE@5s | ADE@10s | FDE@3s | median ADE@3s | miss@3s | PDMS-style ↑ |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
