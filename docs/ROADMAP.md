@@ -291,9 +291,10 @@ A third re-sweep is owed across every benchmark, and it is not openpilot's:
   binds, which is how this survived them. Marked `∗` in the README until it
   lands.
 
-Two known weaknesses are documented rather than fixed, because fixing either
-moves a published column and this branch launched no sweep. Both are argued from
-a reproduction, not from reading the code:
+Three known weaknesses are documented rather than fixed, because fixing any of
+them moves a published column and this branch launched no sweep. The first two
+are argued from a reproduction, not from reading the code; the third is
+measured from the stored records:
 
 - **`pdm_dac_proxy` rewards not moving.** `path_tangent_split` pairs waypoint
   *i* with waypoint *i*, so a crawling plan never leaves the corridor drawn
@@ -312,6 +313,27 @@ a reproduction, not from reading the code:
   metric, so nothing is lost — the rendered table shows the mean alone. **Fix:**
   surface coverage beside the number in `results/report.py`, which changes every
   benchmark's table and should land once, on its own.
+- **The ground truth is scored in the camera's frame, every plan in the car's.**
+  `loader.future_in_ego_frame` rotates the recorded future into the device frame
+  and stops there, while every model is handed `camera2ego_from_rpy(cal.rpy)`,
+  whose ego frame is the calibrated one. A plan and its ground truth are off by
+  the mount rotation, about 2° of yaw on the Civic (median 1.99° over the 10,165
+  records), and the gap grows sideways with distance. Re-scored from the stored
+  records with each ground truth rotated by its own `rpy_calib_deg` yaw, ADE@3s
+  goes from 1.507 to 0.858 for openpilot (lateral MAE 1.092 to 0.137 m), 1.159
+  to 0.602 for qwendrive, 0.900 to 0.858 for alpamayo15 and 1.639 to 1.137 for
+  constant velocity, so the board reorders with qwendrive first. Before the
+  rotation every stored value reproduces to the last digit, and rotating the
+  other way gives openpilot 2.448, so the sign is not in doubt. The
+  calibration's "about 3×" and "roughly 1.7×" in cross-track error, in the
+  dataset and benchmark docs, were measured against this ground truth too.
+  **Fix:** rotate the ground truth by `rot_from_euler(cal.rpy).T` before
+  `ego_from_device`, leaving the overlay's recorded-path ribbon in the device
+  frame. The records hold prediction, ground truth and calibration, so the
+  re-score needs no inference, but it moves every comma2k19 number, so it needs
+  its own PR. Found in review on #78, whose overlay now draws each plan through
+  its calibration and whose comma2k19 notebook already re-scores with
+  `GT_FRAME = "calibrated"`.
 
 Landed alongside it, none comma2k19-specific:
 

@@ -869,9 +869,11 @@ test set.
 
 ### A view tilted over the camera's, and cut to comma's size
 
-Two more knobs go with the scale. Both were fitted in the KITScenes analysis
-notebooks (`tools/models/openpilot/analysis/`) to KITScenes' own keyframes, so
-a run with them is tuned on the test set.
+Two more knobs go with the scale. The values the config run uses were chosen
+in the KITScenes analysis notebooks (`tools/models/openpilot/analysis/`) by
+inspecting one KITScenes scene, dbba76d9, and the patterns the earlier analysis
+found, not fitted. That scene is in the scored set, so a run with them is not a
+zero-shot measurement.
 
 `PADDOCK_OPENPILOT_PITCH_DEG` tilts the model's view over the camera's,
 positive up. It is a rotation about y in the calibrated frame, ahead of the
