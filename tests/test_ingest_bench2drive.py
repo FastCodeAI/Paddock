@@ -415,3 +415,54 @@ def test_a_missing_key_names_the_key(tmp_path: Path) -> None:
     cfg = _site(tmp_path, '[[ingest.bench2drive]]\nmodel = "drivejepa"\n')
     with pytest.raises(ConfigError, match="missing 'runs'"):
         legacy.ingest_all(cfg, dry_run=True)
+
+
+def _with_early_stop(record: dict, rules: dict) -> dict:
+    record["config"]["early_stop"] = rules
+    return record
+
+
+def test_an_early_stop_is_read_from_the_source_runs_and_stops_the_row_ranking(tmp_path: Path) -> None:
+    """A route ended early is not scored as Bench2Drive scores it; each route says whether one was."""
+    root = _tree(tmp_path)
+    rules = {"stuck_s": 30.0, "expert_factor": 4.0, "progress_m": 3.0}
+    for run_id in ("20260901T000000-aaaaaa", "20260903T000000-cccccc"):
+        record = _with_early_stop(_source_run_json("modelx", [], {}), rules)
+        (root / run_id / "run.json").write_text(json.dumps(record))
+    route_dir = root / "20260903T000000-cccccc" / "24333-Town15-DynamicObjectCrossing"
+    (route_dir / "early_stop.json").write_text(json.dumps({"reason": "stuck", "game_time_s": 41.2}))
+    (root / "20260901T000000-aaaaaa" / "1711-Town12-ParkingCutIn" / "early_stop.json").write_text(
+        json.dumps({"reason": None})
+    )
+
+    ((run, metrics, samples),) = bench2drive.ingest(root, model="modelx", site="s")
+
+    assert run.config["early_stop"] == rules
+    assert not run.valid
+    assert "early stop (30 s without 3 m of route progress or 4x the expert's time" in run.notes
+    assert "ran without it" not in run.notes
+    by_route = {s["native_id"]["route_id"]: s["metrics"] for s in samples}
+    assert by_route["24333"]["ended_stuck"] == 1.0
+    assert by_route["1711"]["ended_stuck"] == 0.0 and by_route["1711"]["ended_over_time"] == 0.0
+    assert metrics.metrics["ended_stuck"]["n"] == 2, "2802's run wrote no record, so says nothing"
+
+
+def test_routes_driven_before_the_early_stop_are_counted_out_loud(tmp_path: Path) -> None:
+    root = _tree(tmp_path)
+    rules = {"stuck_s": 30.0, "progress_m": 3.0}
+    (root / "20260903T000000-cccccc" / "run.json").write_text(
+        json.dumps(_with_early_stop(_source_run_json("modelx", [], {}), rules))
+    )
+    (root / "20260901T000000-aaaaaa" / "run.json").write_text(json.dumps(_source_run_json("modelx", [], {})))
+
+    ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s")
+
+    assert run.config["early_stop"] == rules
+    assert "1 of 2 source runs ran without it" in run.notes
+
+
+def test_a_pool_without_an_early_stop_records_none(tmp_path: Path) -> None:
+    """No key in the config, so the config hash and run id of every earlier pool are unchanged."""
+    ((run, _, samples),) = bench2drive.ingest(_tree(tmp_path), model="modelx", site="s")
+    assert "early_stop" not in run.config
+    assert not any("ended_stuck" in s["metrics"] for s in samples)
