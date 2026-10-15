@@ -39,6 +39,9 @@ runtime:
     # used -- on KITScenes that is 4.8 s earlier and pins 39 of 223 samples to
     # the 1 m/s floor. Set it in [models.visionpilot.env]: a shell variable does
     # not reach the node, since only runtime.env.PASSTHROUGH is inherited.
+  # Site overrides of these change speed or memory, not the plan, so they
+  # leave a run valid; any other [models.visionpilot.env] key makes it valid: false.
+  tuning_env: [VISIONPILOT_ORT_THREADS, VISIONPILOT_GPU_MEM_MB]
 
 capabilities:
   cameras: [CAM_FRONT]

@@ -19,6 +19,9 @@ runtime:
     KITSCENES_ROOT: "{data.kitscenes.parent}"
     KITSCENES_REPO: "{repos}/kitscenes"
     KITSCENES_SAMPLE_LIST: "{data.navsim.exp}/inference/kitscenes_e2e_final.pkl"
+  # Site overrides of these change speed or memory, not the plan, so they
+  # leave a run valid; any other [models.alpamayo15.env] key makes it valid: false.
+  tuning_env: [ALPAMAYO_RESERVE_GB]
 
 capabilities:
   cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT]

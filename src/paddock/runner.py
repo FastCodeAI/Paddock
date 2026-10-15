@@ -150,6 +150,41 @@ def _portable_segment(segment: str) -> str:
     return segment
 
 
+#: OpenMP/BLAS thread counts: how fast a node runs, never what it computes,
+#: and set per site to fit the box (shakaal fails at 90% CPU). Allowed for
+#: every model, on top of each model's own `runtime.tuning_env`.
+THREAD_ENV = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS")
+
+#: Where a site keeps libraries and caches: the same code and weights found in
+#: another place. Also allowed for every model. Not on this list, on purpose:
+#: `*_CHECKPOINT`/`*_WEIGHTS` (a moved checkpoint and a finetune are the same
+#: string to the runner) and `PADDOCK_FFMPEG` (openpilot pins its ffmpeg so the
+#: RGB -> NV12 conversion matches; another binary can change the input).
+LOCATION_ENV = ("LD_LIBRARY_PATH", "HF_HOME", "NVRTC_PATH", "TMPDIR", "CUDA_VISIBLE_DEVICES")
+
+
+def _env_override_reasons(cfg: SiteConfig, model_spec: ModelSpec) -> list[str]:
+    """Why a site `[models.<name>.env]` block keeps this run from being ranked.
+
+    Fail-closed: every overridden key counts unless the model declares it as
+    tuning (`runtime.tuning_env`), it is a thread count, or it only says where a
+    library or cache lives (`LOCATION_ENV`). A key nobody
+    classified is assumed to change the result, because the costly mistake is
+    the other one: a `DRIVEJEPA_CHECKPOINT` pointing at a finetune used to be
+    recorded `valid: true` and ranked as the released model. Restating the
+    declared default value is not an override.
+    """
+    override = cfg.models.get(model_spec.name)
+    if override is None or not override.env:
+        return []
+    tuning = {*THREAD_ENV, *LOCATION_ENV, *model_spec.runtime.tuning_env}
+    declared = model_spec.runtime.env
+    keys = sorted(k for k, v in override.env.items() if k not in tuning and declared.get(k) != v)
+    if not keys:
+        return []
+    return [f"site env override may change what was measured: {', '.join(keys)} (values in config.model_env)"]
+
+
 def _validity(
     failure_note: str | None,
     invalid_reasons: list[str],
@@ -198,6 +233,9 @@ def _store_run(
     recorded in `dataset` too so run.json answers "which split" without
     opening samples.jsonl.
     """
+    # Here, not at each caller: every path stores through this function, and a
+    # rule applied in two of three places is how the checkpoint gap happened.
+    invalid_reasons = [*invalid_reasons, *_env_override_reasons(cfg, model_spec)]
     status, valid, notes = _validity(failure_note, invalid_reasons, remarks)
     dataset: dict = {"name": spec.dataset}
     if split is not None:

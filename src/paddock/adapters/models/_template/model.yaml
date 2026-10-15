@@ -42,6 +42,13 @@ runtime:
   env: {}
     # EXAMPLE_DATA_ROOT: "{data.kitscenes}"
 
+  # Env keys a site may override in [models.<name>.env] without changing the
+  # plan: thread counts, memory caps. Any other overridden key -- a checkpoint,
+  # a horizon, a mode -- records the run as valid: false. OMP/BLAS thread
+  # counts and library/cache locations (runner.LOCATION_ENV) are always
+  # allowed and need not be listed.
+  tuning_env: []
+
 capabilities:
   # Only what infer() actually reads. Rendering unused cameras is the single
   # largest closed-loop cost, and the simulator renders what you declare here.
