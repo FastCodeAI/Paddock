@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
-99 runs across 8 benchmarks.
-53 run(s) excluded as invalid — shown at the end, never averaged in.
+104 runs across 8 benchmarks.
+58 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
@@ -28,6 +28,7 @@
 | visionpilot | pooled50-40c29d24c37d542a-d94009 | 50 | fastcode-navvrat-b2d-pooled | 47.821 | 71.191 | 0.622 | 0.580 | 1.000 | 0.000 | 257.252 |
 | constant_velocity | pooled50-9mps-40c29d24c37d542a-13c440 | 50 | fastcode-navvrat-b2d-pooled | 43.574 | 72.699 | 0.577 | 0.580 | 1.000 | 0.000 | 123.802 |
 | alpamayo15 | pooled50-40c29d24c37d542a-36d2d0 | 50 | fastcode-navvrat-b2d-pooled | 43.043 | 72.317 | 0.655 | 0.540 | 1.000 | 0.000 | 3555.930 |
+| openpilot | best220-86aa45e768a29a64-9e7394 | 220 | a100-gpu-vm-002 | 42.749 | 53.376 | 0.815 | 0.255 | 1.000 | 0.000 | 289.018 |
 | constant_velocity | pooled50-12mps-40c29d24c37d542a-0c11b2 | 50 | fastcode-navvrat-b2d-pooled | 42.193 | 72.125 | 0.558 | 0.560 | 1.000 | 0.000 | 108.372 |
 | constant_velocity | pooled50-15mps-40c29d24c37d542a-06f021 | 50 | fastcode-navvrat-b2d-pooled | 41.448 | 73.684 | 0.546 | 0.560 | 1.000 | 0.000 | 107.988 |
 | constant_velocity | pooled50-6mps-40c29d24c37d542a-35a5cb | 50 | fastcode-navvrat-b2d-pooled | 40.388 | 73.075 | 0.539 | 0.620 | 1.000 | 0.000 | 157.368 |
@@ -59,13 +60,16 @@
 | alpamayo15 | full-nav | 223 | fastcode-shakaal | 1.002 | 0.362 | 1.088 | 2.158 | 0.543 | 0.875 | 1.862 |
 | alpamayo15 | full-letterbox | 223 | fastcode-shakaal | 1.176 | 0.418 | 1.284 | 2.535 | 0.619 | 1.009 | 2.085 |
 | alpamayo15 | phase3-letterbox | 7 | fastcode-shakaal | 1.188 | 0.506 | 1.357 | 2.338 | 0.750 | 1.182 | 2.288 |
+| openpilot | 20261005T205400-a369d1 | 223 | hpcai-skodate | 1.248 | 0.618 | 1.398 | 2.355 | - | - | - |
 | openpilot | local20 | 20 | fastcode-shakaal | 1.291 | 0.726 | 1.460 | 2.274 | - | - | - |
 | openpilot | ablate_0 | 15 | fastcode-shakaal | 1.412 | 0.805 | 1.582 | 2.462 | - | - | - |
 | visionpilot | 20260909T202724-153b04 | 223 | fastcode-shakaal | 1.534 | 0.700 | 1.567 | 3.089 | - | - | - |
 | openpilot | 20260901T025750-fd824c | 3 | fastcode-shakaal | 1.592 | 0.581 | 1.785 | 3.340 | - | - | - |
 | openpilot | 20260901T021743-fd824c | 3 | fastcode-shakaal | 1.592 | 0.581 | 1.785 | 3.340 | - | - | - |
+| openpilot | 20260930T154018-242869 | 223 | hpcai-skodate | 1.595 | 0.828 | 1.801 | 2.904 | - | - | - |
 | openpilot | full223 | 223 | fastcode-shakaal | 1.599 | 0.836 | 1.808 | 2.894 | - | - | - |
 | openpilot | 20260901T175755-cc27fb | 223 | fastcode-shakaal | 1.599 | 0.836 | 1.808 | 2.894 | - | - | - |
+| openpilot | 20260930T014333-d329a6 | 223 | hpcai-skodate | 1.649 | 0.826 | 1.848 | 3.070 | - | - | - |
 | openpilot | smoke | 1 | fastcode-shakaal | 1.697 | 0.752 | 1.895 | 3.298 | - | - | - |
 | meteor | 20260914T215457-ab0586 | 223 | fastcode-shakaal | 1.879 | 0.695 | 2.040 | 4.034 | - | - | - |
 | openpilot | rate_r2 | 3 | fastcode-shakaal | 1.905 | 0.998 | 2.162 | 3.425 | - | - | - |
@@ -107,6 +111,7 @@
 | model | run | n | site | ncap_score ↑ | impact_speed ↓ | reference_speed ↑ | collision_rate ↓ | duration_s ↑ |
 |---|---|---:|---|---:|---:|---:|---:|---:|
 | alpamayo15 | 20260901T002333-6dae70 | 2 | fastcode-shakaal | 5.000 | - | - | 0.000 | 267.700 |
+| drivejepa | 20261012T224707-f11ac0 | 200 | fastcode-shakaal | 4.130 | 2.199 | 8.604 | 0.245 | - |
 | drivejepa | runs5 | 15 | fastcode-shakaal | 4.042 | 2.073 | 13.279 | 0.333 | - |
 | drivejepa | runs1 | 3 | fastcode-shakaal | 4.024 | 2.133 | 13.279 | 0.333 | - |
 | alpamayo15 | 20260906T034647-bc409f | 200 | fastcode-shakaal | 3.727 | 2.346 | 8.604 | 0.325 | - |
@@ -156,6 +161,11 @@
 - **neuroncap/openpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **neuroncap/visionpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **neuroncap/drivejepa/20261012T205915-7153f0** — 3 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes); resumed: 2 episode(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only
+- **kitscenes/openpilot/20260930T161429-4576f3** — --limit 60: a subset of the benchmark, run to test the pipeline
+- **kitscenes/openpilot/20260930T160954-02dd77** — --limit 60: a subset of the benchmark, run to test the pipeline
+- **kitscenes/openpilot/20260930T160509-57c362** — --limit 60: a subset of the benchmark, run to test the pipeline
+- **kitscenes/openpilot/20260930T014333-5811fc** — --limit 60: a subset of the benchmark, run to test the pipeline
+- **kitscenes/openpilot/20260929T043619-242869** — Superseded by 20260930T154018-242869: The warp-cache bug fixed in f8dce3b warped 14 of its 223 samples with another rig's calibration; the re-run on the fixed code equals it bit for bit on the other 209, and equals a fresh-warp replay on each of the 51 samples checked (every sample that follows a change of rig, and the 3 that inherited a hit within their rig).
 - **nuplan/openpilot/20260917T220353-9e4f44** — camera images cover 25 of 351 scorable anchors (53 logs have no images); not comparable with a full-coverage run
 - **nuplan/visionpilot/20260917T220044-97873a** — camera images cover 25 of 351 scorable anchors (53 logs have no images); not comparable with a full-coverage run
 - **nuplan/constant_velocity/20260917T214417-f827db** — camera images cover 25 of 351 scorable anchors (53 logs have no images); not comparable with a full-coverage run
