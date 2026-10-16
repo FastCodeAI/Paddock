@@ -85,8 +85,9 @@ A setting meant for one model on one benchmark only belongs in a pairing table,
 model's `[models.<model>.env]` and its `settings` table over
 `[benchmarks.<benchmark>]`, for that pairing and no other. `run.json` records it
 as it would the same values set globally, and `paddock run` names it before
-anything starts, so `--dry-run` answers "is this site running stock?". Delete
-the tables to reset. `paddock.toml.example` shows one.
+anything starts, so `--dry-run` answers "is this site running stock?". A
+misspelt key in the table, or a benchmark name that does not exist, stops the
+run. Delete the tables to reset. `paddock.toml.example` shows one.
 
 Set `PADDOCK_CONFIG=/path/to/other.toml` to use a different file, so one checkout
 can serve several layouts.
