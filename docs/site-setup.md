@@ -87,7 +87,10 @@ model's `[models.<model>.env]` and its `settings` table over
 as it would the same values set globally, and `paddock run` names it before
 anything starts, so `--dry-run` answers "is this site running stock?". A
 misspelt key in the table, or a benchmark name that does not exist, stops the
-run. Delete the tables to reset. `paddock.toml.example` shows one.
+run. Delete the tables to reset. `paddock.toml.example` shows one. Only `paddock run`
+applies a pairing: `paddock verify` and `doctor` check the plain tables, so a
+`verify --model M --bench B` whose pairing swaps a camera checks the camera the
+pairing replaced.
 
 Set `PADDOCK_CONFIG=/path/to/other.toml` to use a different file, so one checkout
 can serve several layouts.

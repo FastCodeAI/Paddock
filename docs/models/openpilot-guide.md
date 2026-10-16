@@ -655,6 +655,18 @@ openpilot/selfdrive/test/process_replay/test_processes.py --whitelist-procs cont
 DISABLE_FILEREADER_CACHE=1 ...test_processes.py                      # bypass log cache
 ```
 
+Paddock's own adapter tests skip whatever needs openpilot in `make check` and
+CI: the warp geometry, the cut, and the guards. Those tests have no automated
+gate. To run them, put the pinned checkout on `PYTHONPATH` in paddock's env:
+
+```bash
+env PYTHONPATH=<openpilot checkout>:<openpilot checkout>/opendbc_repo \
+  .venv/bin/python -m pytest src/paddock/adapters/models/openpilot/tests/test_policy.py
+```
+
+The one that reads cereal's capnp schemas, `test_desire_slots_are_openpilots_own`,
+still skips there. It runs in openpilot's own interpreter.
+
 ### 6.8 Snags — the two that actually bit, plus the usual suspects
 
 **1. `git lfs pull` silently does nothing (hit here).** If `git lfs install` was
@@ -800,7 +812,9 @@ Every record's extras carry:
 
 The mode is recorded in `provenance.policy.desire_mode`. Set in a site's env
 block, it is also in `config.model_env`, so a desire run gets its own id and
-its own leaderboard row.
+its own leaderboard row. On KITScenes the commands come from
+`command_source = "gt"`, the route signal the benchmark's other route-conditioned
+rows had ([The route hint](../benchmarks/kitscenes.md#the-route-hint)).
 
 ### A camera higher than openpilot's, shown from openpilot's height
 
@@ -886,8 +900,11 @@ its principal point (c + 0.5 - x0) / s - 0.5. A box rounded to whole pixels
 would move the frame off its K.
 
 A cut narrower than `big_img`'s 58.7° leaves that view's sides past the cut on
-purpose. At 55° about 7.4 % of `big_img` is smeared border, and `warp_in_bounds`
-says so. `img` (31.4°) stays whole.
+purpose. At 55° about 7.6 % of `big_img` is smeared border on a level mount, and
+7.4 % with the config run's height and tilt on the base camera. `warp_in_bounds`
+says so. `img` (31.4°) stays whole, and a cut that does not hold it whole is
+refused when the adapter is built: `5.5` typed for `55` would leave `img` 4 %
+real pixels on the base camera, and the run would measure the smear.
 
 The refusals:
 - a tilt beyond ±15° or a field of view outside [0, 180) stops the node at

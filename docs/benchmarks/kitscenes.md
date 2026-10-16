@@ -25,9 +25,11 @@ keyframes are not comparable however close the counts look. `paddock run
 That file is not a hand-written list. It is the output of the Drive-JEPA run
 that went first, kept because whichever 223 keyframes it happened to score
 became the set every later model had to match. Reading it as a sample list uses
-`scene_id`, `keyframe_index` and `split` and ignores the predictions sitting
-beside them; `paddock ingest` reads the same file for the predictions, which is
-how Drive-JEPA has a row on this benchmark without a paddock run.
+`scene_id`, `keyframe_index` and `split` -- and, only under `command_source =
+"gt"`, `driving_command` ([The route hint](#the-route-hint)) -- and ignores the
+predictions sitting beside them; `paddock ingest` reads the same file for the
+predictions, which is how Drive-JEPA has a row on this benchmark without a
+paddock run.
 
 ### The seven rows, and where each came from
 
@@ -36,13 +38,26 @@ how Drive-JEPA has a row on this benchmark without a paddock run.
 | qwendrive | `20260914T220841-5a91fd` | 223 | 0.806 | a paddock run; three of the six ring cameras |
 | alpamayo15 | `legacy-full-nonav` | 223 | 0.921 | `eval_kitscenes/runs/full` |
 | visionpilot | `20260909T202724-153b04` | 223 | 1.534 | a paddock run; see below |
-| openpilot | `legacy-full223` | 223 | 1.599 | `eval_kitscenes/runs/full223` |
+| openpilot | `20261008T004723-a369d1` | 223 | 1.248 | a paddock run; base front camera, 55° cut, height 1.22, pitch −1.7°, route as desire (README ⊜) |
 | meteor | `20260914T215457-ab0586` | 223 | 1.879 | a paddock run; six of its eight cameras |
 | drivejepa | `legacy-kitscenes_e2e_final` | 223 | 2.364 | `inference/kitscenes_e2e_final.pkl` |
 | drivejepa_rerank | `20260921T210621-d7ed08` | 223 | 0.973 | a paddock run; **adapted**, trained on KITScenes train, see below |
 
 All seven carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
-so the column compares. Caveats the hash cannot express:
+so the column compares.
+
+openpilot's row is its configured run. Its other ranked runs on the same 223
+keyframes all use the ring's front camera:
+- stock, `legacy-full223` (`eval_kitscenes/runs/full223`): 1.599, the row shown
+  before;
+- stock, M6's paddock reproduction at `fastcode-shakaal`
+  (`20260901T175755-cc27fb`): 1.599, its `config` recording only `limit`;
+- stock again, at another site after the warp-cache fix
+  (`20260930T154018-242869`): 1.595, with the median at 1.401 against 1.323. What
+  moved the median was not checked.
+- the route sent as a desire (`20260930T014333-d329a6`): 1.649.
+
+Caveats the hash cannot express:
 
 - **Route hint.** Drive-JEPA was run with `--command gt`, which derives a turn
   command from the recorded future on 39 of the 223 samples. VisionPilot has
@@ -135,8 +150,8 @@ sees a manufactured past followed by a real one.
 
 KITScenes has no route annotation, so by default every frame carries
 `Command.STRAIGHT` and a model is told nothing about where the car is going.
-Every paddock run so far was scored that way. A site can instead give the
-scored keyframe the sample list's own `driving_command`:
+Every paddock run before `20260930T014333-d329a6` was scored that way. A site
+can instead give the scored keyframe the sample list's own `driving_command`:
 
 ```toml
 [benchmarks.kitscenes]
@@ -145,12 +160,21 @@ command_source = "gt"   # default "straight"
 
 That one-hot is the command Drive-JEPA's row was run with, and its `--command
 gt` derived it from the recorded future, as a lateral offset at the end of the
-horizon. So it is an **oracle**: the model is told which way the car is about
-to go, and 39 of the 223 keyframes (21 left, 18 right) are told to turn. A `gt`
-run is therefore a different measurement from a `straight` one. It hashes to
-its own run id with `command_source` in its `config`, the key and values
-`paddock ingest` already records Drive-JEPA's row under. `straight` adds no
-key, so every run made before the setting existed keeps its id and `--resume`.
+horizon. So the model is told which way the car is about to go, from the scored
+future, standing in for the route a car's navigation knows, and 39 of the 223
+keyframes (21 left, 18 right) are told to turn. A `gt` run is therefore a
+different measurement from a `straight` one. It hashes to its own run id with
+`command_source` in its `config`, the key and values `paddock ingest` already
+records Drive-JEPA's row under. `straight` adds no key, so every run made before
+the setting existed keeps its id and `--resume`.
+
+A `gt` run is ranked like any other, and its `config` says it was given the
+route. It is the same signal Drive-JEPA's row (`--command gt`) and Alpamayo's
+nav arm were given here. It is also the kind of high-level command nuScenes
+gives every model, whose harness infers it from the recorded future (VAD's
+rule): the standard input of open-loop planning, standing in for the route a
+car's navigation knows. In the README only OpenPilot's cells carry a mark for
+it (⊜); that footnote names the two other rows that had it.
 
 Only the keyframe carries the hint; the 48 history frames stay STRAIGHT. The
 command is derived from the keyframe's own future, so it is not what a frame

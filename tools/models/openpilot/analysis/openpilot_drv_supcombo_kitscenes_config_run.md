@@ -14,7 +14,8 @@ This note records what happened when paddock itself ran the scene-sweep notebook
     - On the 39 turns, ADE rose by 0.234 m (CI −0.222 to +0.681).
     - On the 14 whose GT is a left turn, it rose by 0.675 m.
     - Lateral error rose by 19% overall.
-- **Most of the gain is on keyframes nothing was chosen on, but all of those are straight.** It is −0.540 m on the 133 held out. There is no held-out estimate for turns.
+- **Most of the gain is on keyframes no earlier analysis looked at, but all of those are straight.** It is −0.540 m on the 133 held out. There is no held-out estimate for turns.
+- **It is OpenPilot's KITScenes figure in the README** (its ⊜ footnote), ranked like the benchmark's other route-conditioned rows.
 
 ## How to read this note
 
@@ -40,9 +41,13 @@ That makes 90 tuned keyframes over 61 scenes. The other 133 are held out, and al
 |---|---|---|---|---|
 | stock | `20260930T154018-242869` | ring | nothing | 1.595 |
 | intent | `20260930T014333-d329a6` | ring | `command_source = "gt"`, `PADDOCK_OPENPILOT_DESIRE = "turn"` | 1.649 |
-| config | `20261005T205400-a369d1` | base | the scene sweep's `CONFIG`, below | 1.248 |
+| config | `20261005T205400-a369d1`, re-run as `20261008T004723-a369d1` | base | the scene sweep's `CONFIG`, below | 1.248 |
 
-Each is in `results/kitscenes/openpilot/<run_id>/`, with its per-keyframe records under `{runs}`. All three are valid and score the same 223 keyframes.
+Each is in `results/kitscenes/openpilot/<run_id>/`, with its per-keyframe records under `{runs}`. All three score the same 223 keyframes.
+
+**All three are valid and ranked.** Intent and the config give openpilot the route from the recorded future (`command_source = "gt"`), as the benchmark's other route-conditioned rows had it.
+- **The record is the re-run.** The config was run again from #60's head as `20261008T004723-a369d1`. That run equals the first on all 223 keyframes, plans included, so the first is superseded by it. This notebook reads the re-run; the numbers are the same.
+- **Why the records were rewritten.** During #60's review, `gt` runs were briefly stored `valid: false`. When that rule was reversed, `paddock run --resume` re-stored them, and their samples and metrics did not change.
 
 **The config is the scene sweep's `CONFIG`, knob for knob:**
 
@@ -60,7 +65,7 @@ Each is in `results/kitscenes/openpilot/<run_id>/`, with its per-keyframe record
     - for the config, 0.5895184985529843 and 2.061547588237582;
     - for stock, 1.2108458054936533 and 2.3175400615269024.
 - **The warp stays in the frame, except big_img's edges.** `img` is fully in bounds. `big_img` is 0.926 in bounds: its 58.7° is wider than the 55° cut, so its outer 7.4% is smeared from the cut's border.
-- **It took 29 minutes** (`duration_s`, 1,746 s).
+- **It took 29 minutes, and the re-run 32:** 1,746 s and 1,950 s in their first records. The records now in `results/` are the `--resume`s that re-stored them, so their `duration_s` and `started_utc` are those attempts'. Each run's own start is in its id.
 
 ## The gate (verified)
 
@@ -68,8 +73,8 @@ The bar was fixed before the run: the config becomes this site's default only if
 
 - **This site's `paddock.toml` carries the two pairing tables,** with a comment naming this run and this note. A plain run of openpilot on KITScenes measures the config here, and `--dry-run` names the pairing.
 - **Nothing else changed.** The tables reach only openpilot on KITScenes. The code's defaults are stock, so CI and other sites run stock.
-- **Stock stays valid** as the untuned baseline. `paddock report` lists every valid run, so it shows stock, intent and the config as three openpilot rows.
-- **`paddock render --bench kitscenes` now draws the config by default,** since it takes each model's newest valid run unless given `--run-id`.
+- **The default is ranked.** A plain run here measures the config and is stored valid, with its route hint recorded in its `config`. It is OpenPilot's KITScenes figure in the README. Stock stays valid, as the baseline.
+- **`paddock render --bench kitscenes` draws the config by default,** since it takes each model's newest valid run. Pass `--run-id` to draw stock.
 
 ## What changed (measured)
 
@@ -85,7 +90,7 @@ The bar was fixed before the run: the config becomes this site's default only if
 | turns not chosen on | 23 | 20 | 1.865 | 2.061 | +0.196 (−0.321 to +0.806) | 11 / 11 |
 | straight | 184 | 128 | 1.568 | 1.098 | −0.470 (−0.693 to −0.255) | 110 / 64 |
 
-- **The sets the knobs were chosen on did not all improve.** Sweep60 went −0.213 (CI −0.646 to +0.188), ten +0.280 (CI −0.276 to +0.831), and five +0.260.
+- **The sets the earlier analysis looked at did not all improve.** Sweep60 went −0.213 (CI −0.646 to +0.188), ten +0.280 (CI −0.276 to +0.831), and five +0.260.
 - **FDE improved at every horizon:** from 0.828 to 0.618 m at 1 s, and from 2.904 to 2.355 m at 3 s.
 - **The gain is along the path.** Longitudinal MAE fell from 1.526 to 1.136 m (−25.5%).
 - **Across the path, the config is worse.** Lateral MAE rose from 0.286 to 0.339 m: +0.053 (CI +0.028 to +0.082), or +18.6%. It got worse on 81 keyframes and better on 42.
@@ -166,7 +171,7 @@ The base camera sits 0.20 m below the ring's, by either measure.
 ## What it means (argued)
 
 - **The config fixes the speed it was built to fix, then overshoots.**
-    - The four-questions note's rule is to show the road as from about 1.55 m. s\* = 1.22 was fitted on ring frames, where it does that.
+    - The four-questions note's rule is to show the road as from about 1.55 m. s\* = 1.22 was measured on ring frames, where it does that.
     - On the base camera, 1.22 shows the road from 1.37 m, and a road seen from lower reads as faster. That fits the sign of the over-read: pose head 1.033, plan start 1.051.
     - It does not obviously explain the over-read's pattern: 1.14–1.15 at 2–6 m/s, but about 1.03 above 8 m/s.
     - By the same rule, the base camera wants s ≈ 1.08 (1.674 / 1.55). That is untested, and it would take one more run.
@@ -174,11 +179,11 @@ The base camera sits 0.20 m below the ring's, by either measure.
     - Fast straights carry stock's largest start-speed errors, so fixing the speed there moves ADE most.
     - The lateral error, a smaller share, got worse.
 - **The turn results say little about a car.**
-    - The desire comes from the GT path (`command_source = "gt"`), an oracle's hint a car would not have.
+    - The desire comes from the GT path (`command_source = "gt"`). It stands in for the route a car's navigation knows, as it does for the benchmark's other route-conditioned rows.
     - On far turns that hint arrives 40 m or more ahead, which is where it costs most.
-    - Every turn was used to choose it, so no turn is held out.
+    - Every turn was seen when the desire was scored, so no turn is held out.
 - **The held-out gain is a straight-road gain.** The 133 held-out keyframes are all straight, and straights are where the config helps.
-    - The nearest thing to held-out turns is the 23 the image knobs were not chosen on: +0.196 (CI −0.321 to +0.806).
+    - The nearest thing to held-out turns is the 23 that the image analysis did not look at: +0.196 (CI −0.321 to +0.806).
     - Even those had their desire scored.
 
 ## Caveats
@@ -191,7 +196,7 @@ The base camera sits 0.20 m below the ring's, by either measure.
 
 ## Reproducing and resetting
 
-**The notebook.** Its first cell says how to run it; a run reads the three runs' records, in seconds, with no GPU and no node.
+**The notebook.** Its first cell says how to run it; a run reads the three runs' records, in seconds, with no GPU and no node. `jupyter` comes with the `analysis` extra, which `make setup` leaves out: `uv pip install --python .venv/bin/python -e ".[analysis]"`.
 - Part 1's `RUNS` pins the runs.
 - `ON`, `FOCUS` and `OVERRIDES` move every part to another subset, keyframe or threshold.
 

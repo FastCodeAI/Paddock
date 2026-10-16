@@ -108,6 +108,9 @@ bench_params:
 
 # Per-benchmark scene metadata, joined as ctx_<column>. Templates are expanded
 # with the site's paddock.toml ({repos}, {data.NAME}); nothing here names a disk.
+# Both point into a scenario-mining checkout under {repos}. It is optional, and
+# not in repos.yaml: where a site has none, the KITScenes notebook has no ctx_
+# columns, and its §14-§15 take the harness's camera height as the true one.
 context:
   comma2k19:
     csv: "{repos}/scenario_mining/comma2k19/data/scenario_metadata.csv"

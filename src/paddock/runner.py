@@ -31,6 +31,7 @@ import numpy as np
 
 from paddock.benchmark import (
     PIPELINE_BATCHES,
+    Benchmark,
     ClosedLoopBenchmark,
     ExternallyScoredBenchmark,
     OpenLoopBenchmark,
@@ -431,7 +432,37 @@ def run_benchmark(
         cfg = paired
 
     harness = load_benchmark(spec, cfg)
+    try:
+        return _run_harness(
+            cfg, spec, harness, models, bench, scene, scenarios, runs, limit, dry_run, resume, echo
+        )
+    finally:
+        # What a harness started of its own -- neuroNCAP's managed renderer -- is let go once the harness is
+        # done with, not at exit. A sweep split by a pairing builds one harness per model, and the next one's
+        # preflight would otherwise find the last one's renderer still answering and refuse to start.
+        if hasattr(harness, "close"):
+            try:
+                harness.close()
+            except Exception as exc:  # noqa: BLE001 - letting go must not replace the run's own outcome
+                # Whatever it failed to stop is still found, and refused loudly, by the next preflight.
+                echo(f"  could not release what the {bench} harness started: {exc}")
 
+
+def _run_harness(
+    cfg: SiteConfig,
+    spec: BenchmarkSpec,
+    harness: Benchmark,
+    models: list[ModelSpec],
+    bench: str,
+    scene: str | None,
+    scenarios: list[str] | None,
+    runs: int,
+    limit: int | None,
+    dry_run: bool,
+    resume: str | None,
+    echo: Callable[[str], None],
+) -> int:
+    """`run_benchmark` from its harness on: preflight, then the dry run or the models in turn."""
     try:
         base = base_port()
     except ValueError as exc:
@@ -1173,7 +1204,17 @@ def _run_open_loop(
             *_limit_reason(limit),
             *_coverage_reason(harness, samples, limit),
         ],
-        remarks=[f"resumed: {reused} sample(s) reused from an earlier attempt"] if reused else None,
+        # As in the closed-loop path: `started_utc` and `duration_s` are this
+        # attempt's, so a run re-stored with nothing left to score reads as
+        # zero seconds today, and the row has to say so itself.
+        remarks=(
+            [
+                f"resumed: {reused} sample(s) reused from an earlier attempt, so "
+                f"started_utc and duration_s describe this attempt only"
+            ]
+            if reused
+            else None
+        ),
         extra_dataset=_expected_samples(harness),
         provenance=prov,
     )

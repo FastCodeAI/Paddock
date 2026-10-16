@@ -315,6 +315,18 @@ def test_a_route_hint_is_a_different_measurement(tmp_path, monkeypatch) -> None:
     assert bench.run_config() == {"ground_offset_m": POD_HEIGHT_M, "command_source": "gt"}
 
 
+def test_a_route_hint_is_recorded_and_ranked(tmp_path, monkeypatch) -> None:
+    """`gt` is the route signal ranked rows here and every nuScenes model get: recorded, not invalid."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, [*RING, BASE])
+    hinted = _benchmark(tmp_path, monkeypatch, [archive], settings='command_source = "gt"\n')
+    assert hinted.invalid_reasons() == [], "a navigation command is an input, not a look at the scorer"
+    assert hinted.run_config()["command_source"] == "gt", "and the record says the model was given it"
+
+    base = _benchmark(tmp_path, monkeypatch, [archive], settings='front_camera = "base"\n')
+    assert base.invalid_reasons() == [], "another camera is another input, not a look at the answer"
+
+
 def test_preflight_names_an_unknown_command_source(tmp_path, monkeypatch) -> None:
     """A typo must not quietly run as `straight` and be recorded as something else."""
     archive = tmp_path / "archive"

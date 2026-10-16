@@ -99,6 +99,16 @@ launcher, `runtime/proc.py` and `runtime/gpu.py`.
 recorded `runs/full223` exactly: ADE 1.599424, median 1.322747, FDE@3s 2.893613,
 with all 892 metric comparisons identical at full float precision.
 
+*Qualified 2026-10-06 (#60).*
+- At another site the same command, on the same 223 keyframes, gives a different ADE. Before the
+  warp-cache fix it gave 1.594999, median 1.412 (`20260929T043619-242869`). After it, 1.595359, median
+  1.401 (`20260930T154018-242869`). So the gap from 1.599424 predates the fix.
+- Those runs hash as `242869` and M6's as `cc27fb`. M6's run recorded only `limit`, and 11 commits to the
+  openpilot adapter and the KITScenes harness lie between them. So the code differs as well as the site.
+  What moved the numbers was not checked.
+- A site with a pairing table for openpilot on KITScenes measures that table's configuration under this
+  command, not the stock one (`docs/site-setup.md`, §2).
+
 Getting there found a real bug — the adapter was reusing the first scene's
 camera calibration for all 223 samples — which a three-sample check had missed
 because those three shared a rotation group. See `docs/benchmarks/kitscenes.md`.
@@ -437,6 +447,47 @@ Open work on this driver, in the order it bites:
   30-scene rows in one table. The retrained checkpoint needs its own model
   name, and the report needs to group by scene set (issue #69).
 - **The promoted driver has not driven a scene.**
+
+**What a KITScenes `gt` run was told: open (follow-up from #60).**
+- **The gap.** `command_source = "gt"` records the source in `run_config()`, but not the commands it sent.
+  `sequences_sha256` hashes sample ids only. A site whose copy of the sample list came from a
+  `--command straight` Drive-JEPA run has the same 223 ids. Its `gt` run would get the same config hash,
+  the run id's suffix, as one that sent 39 turns, while sending none.
+- **Status.** Argued: only one list exists here, and it holds 39 turns.
+- **Why it is deferred.** `gt` runs are ranked, so this matters, but it stays argued. Adding the turn
+  count, or a digest of the per-row commands, to `run_config()` changes the id of every `gt` run, including
+  `20261008T004723-a369d1`, the README's OpenPilot KITScenes row, and the analysis runs it would orphan from
+  `--resume`.
+- **To close it.** Either record the digest beside `sequences_sha256` in `run.json`'s dataset block,
+  which is not hashed, or record `turn_commands` in `run_config()`, as `paddock ingest` already does for
+  Drive-JEPA's row, and accept the id change on the next `gt` run.
+
+**KITScenes route hints: settled (#60).**
+- **The rule.** A route command derived from the recorded future is ranked, and recorded as
+  `command_source` in the run's `config`.
+- **Why.** It is the high-level command nuScenes gives every model (its harness infers it from the future,
+  VAD's rule). It is also the signal Drive-JEPA's (`--command gt`) and Alpamayo's (nav arm) KITScenes rows
+  had.
+- **History.** #60's first review stored paddock's `gt` runs `valid: false`, which ranked an ingested row
+  and failed a paddock run for the same input. The rule was reversed, so ingested and paddock rows are
+  treated alike. In the README only OpenPilot's cells carry a mark for it (⊜); that footnote names the
+  other rows that had the route.
+
+**A run whose settings were chosen on the scored split is not recorded as one: open (follow-up from #60).**
+- **The gap.** A run with the scene sweep's camera knobs (height 1.22, pitch −1.7°, a 55° cut) is stored
+  valid and ranked. Those values were chosen by inspecting one scene of the 223 scored keyframes, and
+  patterns from an analysis that looked at 90 of them. Nothing in the run's record says so: the README's ⊜
+  footnote and the config-run note do. The openpilot guide states the same gap for a height scale.
+- **Why it is open.** A record field naming where a setting came from would carry it, but any new key in
+  `run_config()` changes the run id, here `20261008T004723-a369d1`, the README's OpenPilot KITScenes row.
+
+**`run.json` records no paddock revision: open (follow-up from #60's first review).**
+- **The gap.** A run records its model checkout's sha (`repo_sha`, `provenance.repo`) but not paddock's own.
+  `20260929T043619-242869` and `20260930T154018-242869` share a config hash, yet differ by the warp-cache
+  fix (`f8dce3b`). Only `superseded_by` tells them apart. The kitscenes harness's `model_run_config()`
+  works around the same gap for its ring cameras.
+- **Fix.** Record paddock's commit, and whether its tree was clean, in `provenance`. That is not part of the
+  config hash, so no run id would change.
 
 ## Bench2Drive / CARLA — adapter landed, driven, and the runs are tracked
 

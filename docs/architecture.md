@@ -162,7 +162,9 @@ Paddock owns model processes; benchmarks own simulators. For closed loop:
    waits for the driver to reclaim the memory.
 3. The next model starts only then. With `gpu.serialize = true` exactly one model
    is resident at a time. The simulator's renderer stays up throughout: it is
-   model-independent and expensive to start.
+   model-independent and expensive to start. The exception is a sweep that a
+   pairing table splits into one harness per model (`docs/site-setup.md` §2):
+   each harness then stops its renderer in `close()` when its model is done.
 
 Every model sees identical episodes and identical seeds, derived from the run
 index. The comparison is paired, not merely averaged — which is worth far more

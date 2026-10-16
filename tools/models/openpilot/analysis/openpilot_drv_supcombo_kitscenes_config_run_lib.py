@@ -54,7 +54,9 @@ WIDGETS = os.environ.get("PADDOCK_ANALYSIS_WIDGETS") == "1"  # part 1's switch; 
 RUNS = {
     "stock": "20260930T154018-242869",  # nothing set: the open-loop notebook's baseline
     "intent": "20260930T014333-d329a6",  # the route as a desire, on the ring camera (the note's Q1)
-    "config": "20261005T205400-a369d1",  # the scene sweep's CONFIG, run by paddock from a pairing table
+    # the scene sweep's CONFIG, run by paddock from a pairing table: the re-run that superseded
+    # 20261005T205400-a369d1, equal to it on all 223 keyframes, plans included
+    "config": "20261008T004723-a369d1",
 }
 COLOURS = {"stock": T.STOCK_C, "config": T.CONFIG_C, "intent": T.ARM_C[2]}
 # Intent is stock to the last bit on every straight keyframe, so drawn solid over it, it would hide stock's line.

@@ -354,7 +354,8 @@ class CameraAdapter:
     `CameraFit.cut` of the frame instead of the frame as recorded. ONNX only:
     the tinygrad warp is compiled for 1928x1208. A cut narrower than big_img's
     58.7 deg leaves that view's edges past the cut on purpose -- at 55 deg
-    about 7.4 % of it is smeared border, and `warp_in_bounds` says so. At 0,
+    about 7.6 % of it is smeared border on a level mount (7.4 % with the config
+    run's height and tilt), and `warp_in_bounds` says so. At 0,
     the default, there is no cut.
     """
 
@@ -404,8 +405,33 @@ class CameraAdapter:
         self.height_scale = float(height_scale)
         self.pitch_deg = float(pitch_deg)
         self.fov_deg = float(fov_deg)
+        if self.mode == "cut":
+            self._check_cut()
         if self.height_scale != 1.0 or self.pitch_deg != 0.0:
             self.transforms = self._height_scaled(self.transforms)
+
+    def _check_cut(self) -> None:
+        """Refuse a cut that does not hold img whole.
+
+        big_img's edges past a cut narrower than its 58.7 deg are smeared on
+        purpose, and `warp_in_bounds` says how much. img is not allowed that: a
+        cut too narrow for it -- 5.5 typed for 55 -- would be stored as a valid
+        run that measured the smear. The height and tilt guard cannot see this,
+        because it judges those knobs against the knob-free warp of this same
+        cut, which is already off it. Checked on that knob-free warp, so with
+        img whole here the guard keeps it whole after them.
+        """
+        from openpilot.common.transformations.model import MEDMODEL_INPUT_SIZE
+
+        whole = self._real_pixels(self.transforms["img"], MEDMODEL_INPUT_SIZE)
+        if whole < 1.0:
+            raise ValueError(
+                f"PADDOCK_OPENPILOT_FOV_DEG = {self.fov_deg:g} cuts into the img view: {whole:.2%} of it "
+                "would be real pixels. img must lie wholly inside the cut, and it does not sit at the cut's "
+                "centre: it looks down toward the road and turns with the mount, so the cut has to be wider "
+                f"than img's own {self.VIEW_FOV['img'][0]:g} x {self.VIEW_FOV['img'][1]:g} deg, as 55 is. "
+                "See CameraFit.cut in the openpilot adapter's policy.py."
+            )
 
     def _height_scaled(self, unscaled: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
         """`transforms` with the road plane shown from openpilot's height, and tilted; see the class."""
@@ -1349,8 +1375,8 @@ class OpenpilotPolicy(Policy):
         # it is the visible sign of the checkout's generation: the sha in
         # repos.yaml predates `prepare_only`, so True means the run was made
         # against a newer tree and its number is not attributable to the pin.
-        # Served at /diagnostics only -- nothing persists that into `run.json`
-        # for an open-loop run yet, so this is a live check, not provenance.
+        # Served at /diagnostics, which an open-loop run copies into `run.json`'s
+        # `provenance.policy` once its node has inferred.
         probe = {"run_takes_prepare_only": bool(getattr(self, "_run_takes_prepare_only", False))}
         if self.camera is None:
             return {
