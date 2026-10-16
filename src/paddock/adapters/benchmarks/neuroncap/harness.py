@@ -496,12 +496,17 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             str(out_dir),
             # The vendor logger's own default is CAM_FRONT only
             # (components/logger.py: `allowed_cams: tuple[str] | None =
-            # ("CAM_FRONT",)`), so a multi-camera model's closed-loop run
-            # would otherwise keep raw frames for only one of the cameras it
-            # actually used -- silently making the run unreplayable later.
-            # Log everything the model was fed instead.
+            # ("CAM_FRONT",)`, which tyro's CLI exposes as exactly one STR or
+            # the literal `None` -- the field is typed `tuple[str]`, fixed
+            # arity one, not `tuple[str, ...]`, so passing more than one name
+            # is a parse error, confirmed against `main.py --help`), so a
+            # multi-camera model's closed-loop run would otherwise keep raw
+            # frames for only one of the cameras it actually used -- silently
+            # making the run unreplayable later. `None` logs every camera the
+            # engine actually has images for, i.e. whatever `--engine.cameras`
+            # above already restricted it to.
             "--engine.logger.allowed-cams",
-            *cameras,
+            "None",
             "--runs",
             str(runs),
         ]
