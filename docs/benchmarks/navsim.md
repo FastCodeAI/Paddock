@@ -86,6 +86,8 @@ metric_cache = ".../exp/metric_cache_v2"          # run_metric_caching.py builds
 split        = "navtest"
 workers      = 4
 nuplan       = ".../nuplan-v1.1"                   # optional: 10 Hz frames, see "10 Hz from nuPlan"
+keyframe_cameras = false                          # optional: rear views from OpenScene's keyframes, same section
+gpu_nodes    = 1                                  # policy nodes per GPU model
 ```
 
 Four environment switches, all deliberate and all narrow. Every one is
@@ -428,6 +430,7 @@ Results, full navtest (records in `results/navsim/`):
 |---|---:|---:|---:|
 | openpilot | refused (0.302 on 4 scenarios under `ALLOW_SLOW`, a parked car) | **0.7468** | 49 |
 | alpamayo15 | 0.6081 | **0.6910** | 16 |
+| autoe2e | not run | **0.5002** (rear views at the 2 Hz keyframes) | 66 |
 
 Alpamayo paired on all 12,146 scenarios: every sub-metric up except traffic
 light (tied); ego progress 0.596 -> 0.681. openpilot's 12,146 plans: 49 frames
@@ -436,6 +439,22 @@ planned 4 s travel is a median 0.82 of constant velocity and 2 plans in 12,146
 look parked (under 0.15), against every plan at 2 Hz. openpilot ran on 8 CPU
 nodes at ~42 s of inference per scenario (98 supercombo passes); alpamayo on
 one GPU node shared with other users' work, ~25 h each.
+
+**Views the pull does not hold.** The pull above is the three front cameras.
+`[benchmarks.navsim] keyframe_cameras = true` lets a model that also reads
+L2/B0/R2 onto the dense path: those views come from OpenScene's own blobs, at
+its 2 Hz keyframes only, attached to the dense frame whose image token is that
+keyframe and to no frame in between. For AutoE2E, whose camera history is eight
+frames 0.5 s apart, that is every image it reads, with the ego history still
+at 10 Hz from the logs. A model reading a rear view at 10 Hz would get it at
+2 Hz, so the switch is off by default and recorded as
+`config.keyframe_cameras` in `run.json`, hashed into the run id.
+`gpu_nodes = N` gives a GPU model N nodes on the shared card (default 1; `nodes`
+still applies to CPU-only models): AutoE2E is ~3 GB a node and bound by its
+per-request forward, so its full split ran on four. The setting reaches every
+GPU model a run scores, not only the one it was set for, so it is capped by the
+card's free VRAM divided by the model's `vram_gb`: under `--model all` with
+`gpu_nodes = 4`, alpamayo15 (26 GB) still gets one node on a card with 30 GB free.
 
 What it does not fix: alpamayo's field of view (nuPlan's cameras are the same
 ~65 deg the model gets from OpenScene) and the proxy's blindness to the

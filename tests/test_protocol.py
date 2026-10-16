@@ -78,6 +78,27 @@ def test_to_wire_is_the_inverse_of_from_wire() -> None:
     assert Observation.from_wire(obs.to_wire()).lidar2ego is None
 
 
+def test_the_route_polyline_crosses_the_wire_and_its_absence_stays_none() -> None:
+    """A closed-loop source with a route sends it as an ego-frame polyline; one
+    without (NAVSIM, every open-loop harness) sends nothing, and a policy reads None."""
+    route = np.array([[-10.0, 0.0], [0.0, 0.0], [50.0, 3.5]])
+    obs = Observation(
+        images={},
+        ego2world=np.eye(4),
+        canbus=np.zeros(18),
+        timestamp_us=0,
+        command=Command.STRAIGHT,
+        camera2image={},
+        camera2ego={},
+        route_xy=route,
+    )
+    back = Observation.from_wire(obs.to_wire(), cameras=())
+    assert back.route_xy.shape == (3, 2) and np.allclose(back.route_xy, route)
+    obs.route_xy = None
+    assert obs.to_wire()["route_xy"] is None
+    assert Observation.from_wire(obs.to_wire(), cameras=()).route_xy is None
+
+
 def test_a_staged_frame_is_read_as_an_array_and_a_dataset_frame_through_pil(tmp_path) -> None:
     """A harness staging frames for a node on the same machine may write raw.
 

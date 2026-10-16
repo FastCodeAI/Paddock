@@ -18,6 +18,10 @@ nuplan_root: null
 nuplan_split: null
 dense_hz: 0.0
 history_s: 0.0
+# Views with no nuPlan frames (the full-rate pull holds F0/L0/R0 only) taken from
+# OpenScene's own blobs at its 2 Hz keyframes; the 10 Hz frames in between carry no
+# image for them. Set by the harness when [benchmarks.navsim] keyframe_cameras is on.
+keyframe_cameras: false
 
 trajectory_sampling:
   _target_: nuplan.planning.simulation.trajectory.trajectory_sampling.TrajectorySampling
