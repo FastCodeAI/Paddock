@@ -119,7 +119,8 @@ per-metric tables follow. How each was produced is in `docs/benchmarks/`.
 | VisionPilot | 1.441 △ | 1.534 ∗ | 4.045 ✦ ∗ | 2.246 ◐ | 0.431 | 0.488 † | 49.85 ◆ | **1.58** ‖ | 0.6289 ¶ |
 | METEOR | 0.977 △ | 1.879 ◇ | — ✦ | 1.273 ◐ | 0.303 ◊ | 0.366 ◊ | — | **2.64** ‖ | — |
 | Qwen-Drive 1.0 | 0.450 | 0.806 | 1.159 ✦ | — | 0.840 | 0.876 | 17.08 (2 Hz) ※ | **2.49** | — |
-| Baseline (Constant Velocity) | 0.641 △ | 1.381 | 1.639 ✦ | 1.393 ◐ | 0.239 | 0.207 † | 47.94 ♣ | 0 § | *0.4876* ¶ |
+| AutoE2E | — | — | — | — | 0.500 (10 Hz) ☉ | — | — ☉ | — | — |
+| Baseline (Constant Velocity) | 0.641 △ | 1.381 | 1.639 ✦ | 1.393 ◐ | 0.239 | 0.207 † | 47.94 ♣ | 0 § | *0.8850* ¶ |
 
 ⊛ `drivejepa_rerank` is Drive-JEPA unchanged up to its 32 candidate
 trajectories. A small selector then chooses among them, in place of Drive-JEPA's
@@ -311,6 +312,16 @@ plans their 10 Hz v2 runs recorded -- the same plans, the other scorer -- so eac
 model's two columns describe one run; Alpamayo's 2 Hz pair (0.608 / 0.676) is in
 the tables below. Drive-JEPA and VisionPilot are fresh proxy runs at 2 Hz.
 
+☉ AutoE2E v1.0, the `kitscenes-epoch-5` checkpoint: the release's nuPlan model
+fine-tuned on KITScenes. NAVSIM is fed from nuPlan at 10 Hz with the rear views
+taken from OpenScene's keyframes (`keyframe_cameras`), which are exactly the
+0.5 s frames its camera history reads, and no route. AutoE2E was pre-trained on
+nuPlan, whose test logs `navtest` is drawn from; see *AutoE2E × navsim* in
+[comparison.md](docs/models/comparison.md). Bench2Drive has no cell: its
+50-route sweep at 10 Hz is paused part-way, and every route run so far scores
+3–27 the same way, leaving the lane at 4–5 s. See
+[docs/models/autoe2e.md](docs/models/autoe2e.md).
+
 ‡ OpenScene is a 2 Hz dataset and OpenPilot infers motion from frame-to-frame
 change, so on it OpenPilot plans a parked car — 0.30 m of travel in 4 s at
 4.8 m/s. Its model has no speed input at all (`{desire_pulse, traffic_convention,
@@ -429,6 +440,7 @@ machine-readable form is in each `model.yaml` and prints with
 | VisionPilot | three YOLO-family conv nets | **28.1 M** | 0.112 | 1 cam @10 Hz · 1024×512 | lane curvature + closest in-path object | OpenLane, TuSimple, CurveLanes |
 | METEOR | ResNet-34 + FPN per camera, depth-gated IPM lift to one BEV grid, 12 task heads | 54 M | 0.35 | 8 cam · 768×432 · 1 frame (paddock fills 6) | 3 paths × 6 waypoints, 3 s, + steer / accel / brake and 11 perception heads | TIER IV Co-MLOps DRS, Japan + a US subset, 953 GB / 12,595 scenes @5 Hz, auto-labelled (hours not published) |
 | Qwen-Drive 1.0 | Qwen3.5-4B VLM + 1 B flow-matching planning expert | ≈5 B | 11.2 | 3 cam · 4 frames 0.5 s apart · current ~720p, history ~320p | 50 poses (x, y, heading), 5 s @10 Hz | Qwen3.5's corpus + public driving sets, incl. **NAVSIM `navtrain`** ✦ |
+| AutoE2E | ResNet-50 + BEVFormer V2 T8, deformable route/map fusion, GRU planner | 79.9 M | 0.33 | 6 cam · 512×512 (front also 1024) · 8 frames 0.5 s apart | 64 × (accel, curvature), 6.4 s @10 Hz | nuPlan, then a KITScenes fine-tune |
 
 ✦ **Two models here declare training exposure to a benchmark's own dataset.**
 Drive-JEPA leads that benchmark by 0.096 EPDMS on v2 and 0.085 PDMS on v1 over
@@ -679,6 +691,7 @@ was first run on, for reference only.
 | VisionPilot | 0.431 | 0.727 | 0.819 | 0.926 | 0.975 | 0.404 | 0.700 | 0.899 | 0.968 | 0.518 | 0.447 |
 | METEOR ◊ | 0.303 | 0.694 | 0.687 | 0.805 | 0.979 | 0.317 | 0.683 | 0.795 | 0.973 | 0.451 | — |
 | Qwen-Drive 1.0, 10 Hz nuPlan history ‡ | 0.840 | 0.982 | 0.964 | 0.993 | 0.998 | 0.820 | 0.977 | 0.975 | 0.982 | **0.867** | — |
+| AutoE2E, 10 Hz nuPlan history ☉ | 0.500 | 0.824 | 0.777 | 0.865 | 0.990 | 0.491 | 0.814 | 0.830 | 0.984 | 0.812 | — |
 | Baseline (Constant Velocity) | 0.239 | 0.681 | 0.578 | 0.805 | 0.981 | 0.209 | 0.669 | 0.827 | 0.979 | 0.567 | 0.257 |
 
 ### NAVSIM v1
