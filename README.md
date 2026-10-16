@@ -24,10 +24,13 @@ machine, against whatever copy of the data they already have.
 ## What it does
 
 Every model implements one `Policy` — `load()`, `reset()`, `infer(observation) -> trajectory` —
-and runs as its own process behind a small HTTP node. Every benchmark drives
-that same class: open-loop benchmarks replay a recording through it, and
-closed-loop simulators move the car with what comes back. Scores land in one
-schema with provenance, so an ADE and an NCAP score are statements about the
+and runs as its own process behind a small HTTP node. **The model node is the
+server; the benchmark side is the client.** Open-loop harnesses post a
+recording's frames to it (`/infer_sequence`, image paths), and closed-loop
+simulators post rendered frames every tick (`/infer`) and move the car with the
+plan that comes back. AlpaSim's runtime calls its driver over gRPC instead, so a
+bridge answers it as a gRPC server and calls the node over HTTP. Scores land in
+one schema with provenance, so an ADE and an NCAP score are statements about the
 same model, run the same way.
 
 ```mermaid
@@ -42,7 +45,7 @@ flowchart LR
         vp["VisionPilot<br/>onnxruntime"]
     end
 
-    pol["Policy<br/>load() · reset()<br/>infer(obs) → trajectory"]
+    pol["model node · HTTP server<br/>Policy: load() · reset()<br/>infer(obs) → trajectory"]
 
     subgraph open ["open-loop"]
         direction TB
@@ -64,9 +67,9 @@ flowchart LR
     res[("results/<br/>one schema, with provenance")]
 
     op & al & dj & vp --> pol
-    pol -- "replays a recording" --> open
-    pol -- "recording in,<br/>simulator scores" --> pseudo
-    pol -- "simulator in,<br/>the plan moves the car" --> closed
+    pol -- "harness posts a recording<br/>/infer_sequence" --> open
+    pol -- "scorer posts a recording,<br/>then simulates the plan" --> pseudo
+    pol -- "simulator posts /infer<br/>every tick, the plan<br/>moves the car<br/>(AlpaSim: via a gRPC bridge)" --> closed
     open & pseudo & closed --> res
 
     style models fill:#fff8f1,stroke:#c2410c,stroke-width:1.5px,color:#9a3412
@@ -96,8 +99,8 @@ diagram names the ones worth drawing, not all of them; `paddock list` is
 authoritative. Another model is one new directory under `adapters/models/`,
 another benchmark one new directory under `adapters/benchmarks/`.
 
-What crosses the wire between paddock, the model node and a simulator is
-drawn step by step in [docs/architecture.md](docs/architecture.md#on-the-wire).
+What crosses the wire between paddock, the model node, a simulator and AlpaSim's
+bridge is drawn step by step in [docs/architecture.md](docs/architecture.md#on-the-wire).
 
 Paddock does **not** copy datasets and does **not** vendor model code. It points
 existing clones at existing data using each repo's own configuration mechanism.
