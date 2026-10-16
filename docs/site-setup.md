@@ -85,8 +85,9 @@ A setting meant for one model on one benchmark only belongs in a pairing table,
 model's `[models.<model>.env]` and its `settings` table over
 `[benchmarks.<benchmark>]`, for that pairing and no other. `run.json` records it
 as it would the same values set globally, and `paddock run` names it before
-anything starts, so `--dry-run` answers "is this site running stock?". Delete
-the tables to reset. `paddock.toml.example` shows one. Only `paddock run`
+anything starts, so `--dry-run` answers "is this site running stock?". A
+misspelt key in the table, or a benchmark name that does not exist, stops the
+run. Delete the tables to reset. `paddock.toml.example` shows one. Only `paddock run`
 applies a pairing: `paddock verify` and `doctor` check the plain tables, so a
 `verify --model M --bench B` whose pairing swaps a camera checks the camera the
 pairing replaced.

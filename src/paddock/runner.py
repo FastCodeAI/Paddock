@@ -355,6 +355,26 @@ def _pairing_line(cfg: SiteConfig, model: str, bench: str) -> str:
     return f"{model} on {bench}: [models.{model}.benchmarks.{bench}] in {cfg.source} sets {', '.join(values)}"
 
 
+def _unknown_pairings(cfg: SiteConfig, models: list[ModelSpec], registry: Registry) -> list[str]:
+    """Pairing tables of these models that name no benchmark, said as the refusal.
+
+    `kitscene` for `kitscenes` would otherwise apply to nothing: the run measures
+    stock and the only sign is a `_pairing_line` that never prints. `config.py`
+    refuses a misspelt key inside the table, but cannot see the registry, so the
+    benchmark's name is checked here, before anything starts.
+    """
+    lines = []
+    for m in models:
+        override = cfg.models.get(m.name)
+        for name in sorted(override.benchmarks if override is not None else {}):
+            if name not in registry.benchmarks:
+                lines.append(
+                    f"[models.{m.name}.benchmarks.{name}] in {cfg.source}: there is no benchmark named "
+                    f"{name!r}; known: {', '.join(sorted(registry.benchmarks))}"
+                )
+    return lines
+
+
 def run_benchmark(
     cfg: SiteConfig,
     bench: str,
@@ -382,21 +402,28 @@ def run_benchmark(
         if not models:
             echo(f"no models declare benchmark {bench!r}")
             return 2
-        # A pairing table gives one model its own benchmark settings, which a
-        # harness shared by every model cannot hold. So a sweep that meets one
-        # runs each model in turn as though it had been named alone, and
-        # returns the worst exit code of the lot.
-        if len(models) > 1 and any(cfg.paired(m.name, bench) is not cfg for m in models):
-            return max(
-                run_benchmark(cfg, bench, m.name, scene, scenarios, runs, limit, dry_run, echo=echo)
-                for m in models
-            )
     else:
         chosen = registry.models.get(model)
         if chosen is None:
             echo(f"unknown model {model!r}; known: {', '.join(sorted(registry.models)) or 'none'}")
             return 2
         models = [chosen]
+
+    unknown = _unknown_pairings(cfg, models, registry)
+    if unknown:
+        for line in unknown:
+            echo(line)
+        return 2
+
+    # A pairing table gives one model its own benchmark settings, which a
+    # harness shared by every model cannot hold. So a sweep that meets one
+    # runs each model in turn as though it had been named alone, and
+    # returns the worst exit code of the lot.
+    if len(models) > 1 and any(cfg.paired(m.name, bench) is not cfg for m in models):
+        return max(
+            run_benchmark(cfg, bench, m.name, scene, scenarios, runs, limit, dry_run, echo=echo)
+            for m in models
+        )
 
     if len(models) == 1:
         paired = cfg.paired(models[0].name, bench)

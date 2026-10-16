@@ -338,6 +338,19 @@ def test_preflight_names_an_unknown_command_source(tmp_path, monkeypatch) -> Non
     assert "straight, gt" in problem
 
 
+def test_preflight_names_a_route_hint_the_sample_list_cannot_give(tmp_path, monkeypatch) -> None:
+    """`gt` reads each row's `driving_command`; a list without one is refused before the first sample."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+
+    bench = _benchmark(tmp_path, monkeypatch, [archive], settings='command_source = "gt"\n')
+    (problem,) = bench.preflight()
+    assert "1 of 1 row(s)" in problem and "driving_command" in problem
+
+    # `straight` never reads it, so the same list is fine without the hint.
+    assert _benchmark(tmp_path, monkeypatch, [archive]).preflight() == []
+
+
 # ---------------------------------------------------------------------------
 # The front camera
 # ---------------------------------------------------------------------------

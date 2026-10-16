@@ -146,8 +146,29 @@ class KitScenesBenchmark(OpenLoopBenchmark):
             problems.append(str(exc))
             return problems
         if not problems:
+            problems += self._route_hint_problems()
+        if not problems:
             problems += self.ring_problems()
         return problems
+
+    def _route_hint_problems(self) -> list[str]:
+        """Under `gt`, the rows that have no `driving_command` to give.
+
+        `_command` reads it from every row, so a list without it would stop the
+        run with a KeyError at the first sample instead of here. The shared list
+        carries it on all 223 rows; `straight` never reads it.
+        """
+        if self._command_source() != "gt":
+            return []
+        rows = pickle.loads(self._sample_list().read_bytes())
+        missing = sum(1 for row in rows if "driving_command" not in row)
+        if not missing:
+            return []
+        return [
+            f'[benchmarks.kitscenes] command_source = "gt" reads each row\'s driving_command, and '
+            f"{missing} of {len(rows)} row(s) in {self._sample_list()} have none. Use a sample list "
+            'that carries it, or command_source = "straight".'
+        ]
 
     def _sample_list(self) -> Path:
         """The shared keyframe list every KITScenes run is scored on.

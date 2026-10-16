@@ -257,3 +257,21 @@ def test_a_sweep_without_a_pairing_still_shares_one_harness(tmp_path, monkeypatc
     seen = _stopped_at_preflight(monkeypatch)
     runner.run_benchmark(cfg, "kitscenes", "all", echo=lambda _line: None)
     assert len(seen) == 1 and seen[0] is cfg
+
+
+@pytest.mark.parametrize("model", ["openpilot", "all"])
+def test_a_pairing_for_a_benchmark_that_does_not_exist_stops_the_run(tmp_path, monkeypatch, model) -> None:
+    """`kitscene` for `kitscenes` must not leave the run measuring stock while reading as configured.
+
+    `_pairing` refuses a misspelt key inside the table; the benchmark's name is
+    the other half of the same mistake, and only the registry can check it.
+    """
+    typo = PAIRING.replace("benchmarks.kitscenes.env", "benchmarks.kitscene.env")
+    cfg = _site(tmp_path, monkeypatch, typo)
+    seen = _stopped_at_preflight(monkeypatch)
+    lines: list[str] = []
+
+    assert runner.run_benchmark(cfg, "kitscenes", model, echo=lines.append) == 2
+    assert seen == []
+    said = "\n".join(lines)
+    assert "[models.openpilot.benchmarks.kitscene]" in said and "no benchmark named 'kitscene'" in said
