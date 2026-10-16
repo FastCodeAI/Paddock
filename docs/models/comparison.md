@@ -276,21 +276,6 @@ Read either figure beside the released rows, never as one of them. The
 released `drivejepa` rows, 0.4209 on the 30 scenes and 0.5030 on the ten, stay
 as they are.
 
-### AutoE2E × kitscenes — unconfirmed, and not yet a paddock model
-
-AutoE2E's pre-training row reads KITScenes, marked unconfirmed. If it is right,
-an AutoE2E KITScenes ADE would be in-distribution while all four current models
-are zero-shot there — and `alpamayo15-eval-notes.md` states plainly that neither
-Alpamayo nor Drive-JEPA was trained on KITScenes, which is what makes that
-column a fair comparison today.
-
-AutoE2E has no merged adapter, so nothing enforces this yet. Confirm the
-pre-training corpus before scoring it, and give it a section here if it holds.
-
-None of this makes any recorded number wrong. It makes one of them mean
-something different from what a reader assumes, which is the same class of
-problem `sequences_sha256` and `valid: false` exist to prevent.
-
 ### METEOR × kitscenes — six cameras of eight, and the graph as shipped
 
 METEOR trained on none of paddock's datasets, so it has no exposure section;
