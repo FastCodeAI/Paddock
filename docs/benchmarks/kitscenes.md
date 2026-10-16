@@ -296,3 +296,34 @@ What made it hard to see:
 The lesson generalises past this adapter: **anything derived from calibration is
 episode state.** If a model caches it, `reset()` must clear it, and a test should
 say so. `tests/test_policy.py::test_reset_clears_the_camera_adapter` does.
+
+## Support-matrix results
+
+The per-metric results behind this benchmark's column in the
+[README's support matrix](../../README.md#support-matrix), and the notes on its
+cells. Moved here from the README unchanged except for links; the symbols are
+the README's former footnote marks, and each note below starts with the mark it
+explains. Marks about a model rather than this benchmark (⊛ ⊕ ∗ ◊ ◇ ✦ ✧) are
+explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
+
+### KITScenes
+
+Open-loop displacement error in metres over the 3 s horizon, full 223-sample
+split. Alpamayo 1.5 is its nav-conditioned single-draw run. VisionPilot's
+trajectory is synthesised by the adapter (see ∗); METEOR sees six of its eight
+cameras (see ◇). Qwen-Drive 1.0 reads three of the ring's six and is zero-shot
+on this dataset. Among zero-shot models, only it and Alpamayo 1.5 beat the
+constant-velocity baseline. The re-ranked Drive-JEPA row also beats it, but it is
+adapted to KITScenes train (see ⊛): 1.002 on the 186 val samples, 0.828 on the 37
+from scenes whose area overlaps train.
+
+| Model | ADE@3s ↓ (m) | FDE@3s ↓ (m) |
+|---|---:|---:|
+| OpenPilot | 1.599 | 2.894 |
+| Alpamayo 1.5 | 1.002 | 2.158 |
+| Drive-JEPA | 2.364 | 4.199 |
+| Drive-JEPA, KITScenes re-ranker ⊛ | 0.973 | 2.082 |
+| VisionPilot | 1.534 ∗ | 3.089 ∗ |
+| METEOR | 1.879 ◇ | 4.034 ◇ |
+| Qwen-Drive 1.0 | **0.806** | **1.777** |
+| Baseline (Constant Velocity) | 1.381 | 3.091 |

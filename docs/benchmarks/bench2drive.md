@@ -358,3 +358,233 @@ Videos with the driven trajectory overlaid, every route, every model:
 plus `route_table.md`. Raw runs: `{runs}/bench2drive/<model>/<run>/<route>/`. Machine-specific locations for this site are kept in the top-level repo's `docs/RUNNING_BENCH2DRIVE.md`, not here.
 Per-scenario infractions, the nudge, and the metric definitions are on the
 "Paddock Benchmark Metrics" artifact.
+
+## Support-matrix results
+
+The per-metric results behind this benchmark's column in the
+[README's support matrix](../../README.md#support-matrix), and the notes on its
+cells. Moved here from the README unchanged except for links; the symbols are
+the README's former footnote marks, and each note below starts with the mark it
+explains. Marks about a model rather than this benchmark (⊛ ⊕ ∗ ◊ ◇ ✦ ✧) are
+explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
+
+### Notes on the matrix cells
+
+◆ Historical Bench2Drive mean driving score on 24 routes (04–06 Sep 2026),
+one run per route; route 11715 was excluded after CARLA crashes. These are
+driving scores, not per-ability scores. OpenPilot ≈ is the **unassisted
+pre-resume estimate**, reconstructed from the assisted recordings: 16 routes
+are censored before intervention and eight had no intervention. It is not a
+separate unassisted sweep. The historical OpenPilot scores predate later
+controller fixes. The assisted and expansion recordings are reported
+separately in [OpenPilot, by recording set](#openpilot-by-recording-set); they are
+never pooled into one mean. See [Bench2Drive protocol](bench2drive.md).
+
+※ Bench2Drive driving score at the model's **native inference rate** — Drive-JEPA
+and Qwen-Drive replan at 2 Hz, Alpamayo 1.5 at 10 Hz — over the 50-route set,
+18–20 Sep 2026. Alpamayo 1.5 and Qwen-Drive are means over 49 routes: route 3800
+crashes CARLA for both at their native rate and is reported as never scored, not
+as a zero. Every other cell in this column is driven at 20 Hz, one inference per
+simulator tick; OpenPilot's native rate *is* 20 Hz, and VisionPilot was not
+re-run. So the ※ cells are **not comparable with the ◆ cells**: a different rate
+and a different route set. At 20 Hz the same three scored Alpamayo 1.5 44.58 and
+Drive-JEPA 31.11 (24 routes, ◆) and Qwen-Drive 12.92 (50 routes). Drive-JEPA uses
+its released NAVSIM-v2 checkpoint zero-shot in CARLA. The runs stay
+`valid: false` and off the ranked [leaderboard](../leaderboard.md), which ranks
+the 20 Hz protocol only. Per-route detail and the 20 Hz comparison are in
+[Native inference rate](#native-inference-rate--three-models-re-driven).
+
+♣ The Bench2Drive baseline uses a **fixed 3 m/s target**, with straight ego-frame
+waypoints and the shared controller; actual vehicle speed can differ. nuScenes
+constant velocity instead extrapolates the recorded ego velocity. 47.94 is that
+3 m/s target on the historical 24 routes; the whole speed sweep, and why the
+50-route table shows 40.39, is in
+[Constant velocity — the speed sweep](#constant-velocity--the-speed-sweep).
+
+✦ Bench2Drive constant velocity is a do-nothing floor: "constant velocity" means holding the current speed, and every route starts from a standstill, so the baseline holds zero and never departs -- blocked after 60 s, driving score 0 on every route (confirmed on 3 routes, structural for all 24). Unlike nuScenes, where the logged ego is already moving, it is not an informative baseline in closed loop.
+
+### Bench2Drive — 50 routes
+
+Five models and constant velocity at five fixed target speeds, evaluated on the
+same 50 routes. DS = mean driving score; RC = mean route completion.
+**Progress km** is `Σ route_length_m × RC/100 / 1000` — how far each system was
+actually exposed, and the denominator Bench2Drive's own aggregate uses. The
+infraction columns are **recorded counts, not rates**, and the exposures differ
+by nearly 2× (DriveJEPA 2.14 km against CV 3 m/s's 4.09), so compare them through
+the per-km table below rather than across this one.
+
+| Model/system | Routes | DS ↑ | RC ↑ (%) | Progress km | Ped. collision ↓ | Vehicle collision ↓ | Layout collision ↓ | Red light ↓ | Stop sign ↓ | Outside lanes ↓ | Deviation ↓ | Blocked ↓ | Emergency yield ↓ | Min-speed entries | Route timeout ↓ | Scenario timeout ↓ | Collisions total ↓ | Routes with collision ↓ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| DriveJEPA | 50/50 | 31.71 | 39.10 | 2.14 | 2 | 3 | 3 | 1 | 1 | 7 | 6 | 17 | 3 | 338 | 0 | 0 | 8 | 8/50 |
+| VisionPilot | 50/50 | 47.82 | 71.19 | 3.92 | 6 | 23 | 13 | 11 | 3 | 11 | 10 | 2 | 4 | 655 | 0 | 0 | 42 | 29/50 |
+| Alpamayo 1.5 (nav) | 50/50 | 43.04 | 72.32 | 3.98 | 3 | 42 | 1 | 0 | 0 | 22 | 3 | 9 | 1 | 660 | 0 | 0 | 46 | 27/50 |
+| OpenPilot † | 50/50 | — | — | 3.46 | 3 | 10 | 5 | 5 | 4 | 4 | 9 | 10 | 4 | 587 | 0 | 0 | 18 | 14/50 |
+| QwenDrive ‡ | 50/50 | 12.92 | 50.19 | 2.68 | 0 | 50 | 60 | 1 | 0 | 46 | 9 | 16 | 0 | 437 | 0 | 0 | 110 | 45/50 |
+| CV (fixed 3 m/s) | 50/50 | 48.31 | 74.65 | 4.09 | 8 | 27 | 14 | 5 | 4 | 11 | 11 | 1 | 5 | 688 | 0 | 0 | 49 | 27/50 |
+| CV (fixed 6 m/s) | 50/50 | 40.39 | 73.08 | 3.98 | 9 | 24 | 26 | 11 | 4 | 14 | 14 | 4 | 5 | 673 | 0 | 0 | 59 | 31/50 |
+| CV (fixed 9 m/s) | 50/50 | 43.57 | 72.70 | 3.97 | 6 | 24 | 14 | 11 | 4 | 13 | 15 | 3 | 4 | 667 | 0 | 0 | 44 | 29/50 |
+| CV (fixed 12 m/s) | 50/50 | 42.19 | 72.12 | 3.92 | 4 | 35 | 16 | 11 | 4 | 14 | 13 | 3 | 4 | 659 | 0 | 0 | 55 | 28/50 |
+| CV (fixed 15 m/s) | 50/50 | 41.45 | 73.68 | 4.02 | 4 | 37 | 17 | 11 | 4 | 15 | 15 | 4 | 4 | 676 | 0 | 0 | 58 | 28/50 |
+
+† **OpenPilot has no DS or RC cell here, deliberately.** Its 24 historical routes
+were driven with human resume assistance on 16 of them, and its 26 expansion
+routes use a different upstream longitudinal setup; no single mean describes both,
+so none is published and nothing ranks OpenPilot against the other systems. The
+counts in its row are the recorded totals over all 50 routes. The scores are in
+[OpenPilot, by recording set](#openpilot-by-recording-set), and its tracked run
+carries the same split in `by_group` with `valid: false` on the pooled mean.
+DriveJEPA uses a NAVSIM-v2 checkpoint zero-shot; VisionPilot uses a synthesized trajectory with an extrapolated tail.
+‡ QwenDrive is zero-shot, on the three cameras it was trained for (front,
+front-left, front-right), through the same tracker as every other row; its route
+24333 entry is the valid rerun after a startup-guard fix. Its adapter is in this
+tree, but its `model.yaml` does not declare `bench2drive`, so this row is
+ingested from the recordings rather than re-drivable with `paddock run` —
+[`docs/models/qwendrive.md`](../models/qwendrive.md).
+(nav) marks the Alpamayo run that receives the route's navigation instruction (manoeuvre and distance) on the wire each tick.
+CV rows hold the stated fixed target speed; the score depends strongly on the chosen speed, so all five bands are shown.
+
+#### Collisions per progress km
+
+Upstream divides every infraction except `outside_route_lanes` by the same
+`km_driven`, so this is the form the counts above are comparable in. Raw counts
+are the one form Bench2Drive itself never publishes.
+
+| Model/system | Progress km | Ped. ↓ | Vehicle ↓ | Layout ↓ | Total ↓ |
+|---|---:|---:|---:|---:|---:|
+| DriveJEPA | 2.14 | 0.94 | 1.40 | 1.40 | 3.74 |
+| VisionPilot | 3.92 | 1.53 | 5.87 | 3.32 | 10.72 |
+| Alpamayo 1.5 (nav) | 3.98 | 0.75 | 10.56 | 0.25 | 11.56 |
+| QwenDrive ‡ | 2.68 | 0.00 | 18.66 | 22.40 | 41.06 |
+| CV (fixed 3 m/s) | 4.09 | 1.95 | 6.60 | 3.42 | 11.97 |
+| CV (fixed 6 m/s) | 3.98 | 2.26 | 6.02 | 6.53 | 14.81 |
+| CV (fixed 9 m/s) | 3.97 | 1.51 | 6.05 | 3.53 | 11.09 |
+| CV (fixed 12 m/s) | 3.92 | 1.02 | 8.93 | 4.08 | 14.03 |
+| CV (fixed 15 m/s) | 4.02 | 1.00 | 9.21 | 4.23 | 14.44 |
+
+DriveJEPA's 3 vehicle collisions against VisionPilot's 23 is 1.40/km against
+5.87/km once exposure is divided out, and part of even that is DriveJEPA having
+the table's highest blocked count (17) — stationary, not safe. QwenDrive is the
+other direction: 41.06 collisions per progress km, an order of magnitude above
+every other row. OpenPilot is in its own block below; its two recording sets are
+not pooled into a rate either.
+
+#### Minimum-speed normalization
+
+| Model/system | Recorded entries | Below 100% ↓ (%) |
+| --- | ---: | ---: |
+| DriveJEPA | 338 | 59.17 |
+| VisionPilot | 655 | 21.22 |
+| Alpamayo 1.5 (nav) | 660 | 44.09 |
+| QwenDrive ‡ | 437 | 53.32 |
+| CV (fixed 3 m/s) | 688 | 67.73 |
+| CV (fixed 6 m/s) | 673 | 46.66 |
+| CV (fixed 9 m/s) | 667 | 13.04 |
+| CV (fixed 12 m/s) | 659 | 9.71 |
+| CV (fixed 15 m/s) | 676 | 7.99 |
+
+“Below 100%” is the share of recorded ratios below background-traffic speed, not
+a safety violation rate: B2D records a ratio at each distance checkpoint even
+when the ego is faster than traffic, and lawful stops produce ratios below 100%.
+**Entries per progress km is not published**, because it cannot separate these
+systems: the checkpoint grid splits *each* route into 20 parts of its own length,
+so a route contributes ~20 entries however long it is, and the quantity reduces
+to 20 / (completion-weighted mean route length) — 181.7 to 187.3 across all ten
+systems, a 3.1% spread, against the 8.5× spread the speed column shows over the
+same rows. What is left is the route mix and how far each system got, not how
+fast it drove. `below_100_percent` is the column carrying the speed signal;
+`entries_per_progress_km` stays in the JSON with that caveat attached.
+OpenPilot's entries are in its own block; the two recording sets are not pooled here either.
+
+#### OpenPilot, by recording set
+
+Three different experiments, kept apart. They are never averaged together, and the
+pooled 50-route mean they would produce is withheld from
+`bench2drive-speed-normalization.json` for the same reason.
+
+| Recording set | Routes | DS ↑ | RC ↑ (%) | Min-speed entries | Below 100% ↓ (%) |
+|---|---:|---:|---:|---:|---:|
+| Historical 24 — **assisted**, human resume on 16 of 24 | 24 | 53.62 | 66.81 | 300 | 36.00 |
+| Expansion 26 — unassisted, different upstream longitudinal setup | 26 | 43.01 | 60.45 | 287 | 58.54 |
+| Unassisted 24 estimate ◆ — assisted runs censored at the first resume | 24 | 30.09 | 30.76 | — | — |
+
+The third row is the reconstruction behind ◆ and the 30.09 in the support matrix,
+not a measurement: 16 routes are censored before intervention and eight had no
+intervention. Its per-route values are
+[`openpilot-24-infractions.csv`](openpilot-24-infractions.csv), and
+every record in the pooled JSON now carries an `assistance` block, so the assisted
+and unassisted subsets can be recomputed from the linked file alone.
+
+#### Constant velocity — the speed sweep
+
+The baseline is not one experiment. All five targets were driven over the same
+50 routes; the 6 m/s row is the one carried into the tables above.
+
+| Target speed (m/s) | Routes | DS ↑ | RC ↑ (%) |
+|---:|---:|---:|---:|
+| 3 | 50/50 | 48.31 | 74.65 |
+| 6 | 50/50 | 40.39 | 73.08 |
+| 9 | 50/50 | 43.57 | 72.70 |
+| 12 | 50/50 | 42.19 | 72.12 |
+| 15 | 50/50 | 41.45 | 73.68 |
+
+This fixes the target speed rather than holding the zero speed at route start;
+the path is straight in the ego frame, not a route-following reference. The
+**47.94 ♣** in the support matrix is the 3 m/s target over the *historical 24*
+routes (RC 74.68) — the same setting scores 48.31 over all 50, and the two are
+separate runs in the store:
+[historical 24](../../results/bench2drive/constant_velocity/20260908T084921-804913/run.json)
+· all 50 under `results/bench2drive/constant_velocity/pooled50-3mps-*`.
+
+[Calculation](bench2drive-speed-normalization.md) · [Recorded data](bench2drive-speed-normalization.json)
+
+#### Native inference rate — three models re-driven
+
+Every row above is driven at **20 Hz**: one inference per simulator tick, which is
+a property of the protocol, not of the models. Three of them were built to replan
+far more slowly. Re-driving the same 50 routes at that slower rate — 18–20 Sep 2026,
+same routes, same `waypoint_dt`, same tracker, `PADDOCK_INFER_HZ` the only knob
+turned deliberately — scores all three higher, so **the 20 Hz protocol understates
+them**.
+
+| Model | Native rate | Routes | DS 20 Hz | DS native ↑ | RC 20 Hz | RC native ↑ | Routes completed |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| DriveJEPA | 2 Hz | 50/50 | 31.71 | **57.60** | 39.10 | 70.97 | 5 → 23 |
+| Alpamayo 1.5 (nav) | 10 Hz | 49/50 | 43.20 | **55.82** | 73.07 | 76.52 | 24 → 27 |
+| QwenDrive ‡ | 2 Hz | 49/50 | 12.94 | **17.08** | 50.64 | 64.30 | 6 → 14 |
+
+The 20 Hz columns are the published recordings **restricted to the routes scored at
+both rates**, so for Alpamayo 1.5 and QwenDrive they are not the all-50 means in the
+table above. DriveJEPA and QwenDrive gain by driving further instead of stalling
+(blocked 17 → 7 and 16 → 10), which also raises their collision counts; Alpamayo 1.5
+is the only one that gets safer — infraction penalty 0.648 → 0.725, vehicle
+collisions 42 → 23. **A higher score here is partly more exposure, not only better
+driving** — though normalized for that exposure all three collide *less* often per
+progress-km (DriveJEPA 3.74 → 3.05, Alpamayo 1.5 11.76 → 6.50, QwenDrive 41.48 →
+31.25), so the extra distance is not bought with a higher collision rate. Route 3800 is unscorable for Alpamayo 1.5 and QwenDrive (CARLA segfaults;
+DriveJEPA completes it and scores 100) and is recorded as requested-and-never-scored
+— `n_failed: 1`, `status: partial` — never as a zero. **OpenPilot's native rate is
+20 Hz**, so its published run is already its native-rate run, and VisionPilot was not
+re-run; nothing here restates either. The rate is recorded per run in
+`config.model_env`, not derived from `model.yaml`, and the adapter support for
+`PADDOCK_INFER_HZ` is not on `main` yet — so these are landed results, not runs a
+clean checkout can re-drive. The three runs are `valid: false` and **do not rank**
+on the board: a 2 or 10 Hz run is not the protocol the other rows were driven
+under. Their native scores are the Bench2Drive cells of the support matrix for
+these three models (※). `model_env` also differs in more than the rate — thread counts, a trace
+sink, `ALPAMAYO_NAV` — each argued immaterial and none measured to be; the
+[page](bench2drive-native-rate.md) books that as argued, not
+verified.
+
+Tracked runs, one per model:
+[DriveJEPA](../../results/bench2drive/drivejepa/native50-2hz-40c29d24c37d542a-447e23/run.json) ·
+[Alpamayo 1.5](../../results/bench2drive/alpamayo15/native50-10hz-084418258d833a9f-c4d076/run.json) ·
+[QwenDrive](../../results/bench2drive/qwendrive/native50-2hz-084418258d833a9f-9b2bc9/run.json)
+
+[Protocol, full infraction breakdown, and what is argued rather than measured](bench2drive-native-rate.md) · [Per-route records](bench2drive-native-rate.json)
+
+Tracked run records for every row above, recomputed from the per-route `results.json`
+files by `paddock ingest` (`[[ingest.bench2drive]]`, one pooled closed-loop run per
+model or speed band): `results/bench2drive/<model>/pooled50-*`. `paddock report` reads
+them like any other run.
+
+[VisionPilot and OpenPilot failure videos](../evidence/driving-videos/README.md) — manifest and hashes tracked; the MP4s live under `{runs}`, not in the repo.

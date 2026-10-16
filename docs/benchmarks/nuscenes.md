@@ -129,7 +129,7 @@ runner) is the open item that makes it regenerable; see `docs/ROADMAP.md`.
 The completed 8 September 2026 run scored all 5,119 anchors in 150 scenes with
 zero failures: point L2 average 4.057 m, cumulative L2 average 2.477 m, ADE at
 3 seconds 3.535 m, point collision average 2.624%. See the
-[README result](../../README.md#nuscenes--openpilot-gpu-validation) and
+[support-matrix result](#support-matrix-results) and
 [run record](../../results/nuscenes/openpilot/20260908T110028-b71f4f/run.json).
 Its historical `repo_sha` remains null; publication does not retroactively assign
 a code revision to that run. Saved-plan videos cover all 150 scenes.
@@ -214,3 +214,74 @@ core changes folded into an adapter:
 * **Numerical-parity fixture.** Establishing parity with the original UniAD/VAD
   scorers needs a recorded `(plan, future, boxes)` case scored by that code to
   diff against; none is vendored here (see the Tests section).
+
+## Support-matrix results
+
+The per-metric results behind this benchmark's column in the
+[README's support matrix](../../README.md#support-matrix), and the notes on its
+cells. Moved here from the README unchanged except for links; the symbols are
+the README's former footnote marks, and each note below starts with the mark it
+explains. Marks about a model rather than this benchmark (⊛ ⊕ ∗ ◊ ◇ ✦ ✧) are
+explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
+
+### Notes on the matrix cells
+
+△ nuScenes uses 5,119 scoring anchors across 150 validation scenes. The headline
+is the mean of cumulative L2 through 1, 2 and 3 seconds, not ADE at 3 seconds.
+OpenPilot uses real approximately 12 Hz front-camera history; scoring stays at
+2 Hz. See the nuScenes table below for point L2, cumulative L2 and ADE.
+
+⊘ Measured camera-blind: until the camera-frame fix (#62) Drive-JEPA's adapter
+placed the cameras so that no sample point landed in the image on nuScenes and
+neuroNCAP, and the plan came from ego status alone. Re-measure pending for
+nuScenes; its other columns are not affected.
+
+△ nuScenes val, open loop, zero-shot (none of these models was trained on
+nuScenes): the average L2 over 0-3 s on the official 150-scene val split (5119
+keyframes), UniAD/VAD protocol, `--bench nuscenes` -- the cumulative (per-step)
+average, comparable to published tables (the `l2_avg` in `docs/leaderboard.md`
+is the point value at 1/2/3 s). OpenPilot now uses real approximately 12 Hz
+front-camera history while retaining the same 2 Hz scoring anchors; its completed
+GPU run is detailed below. VisionPilot's plan here is its acceleration/steering
+integrated to a path, as in NAVSIM, so unlike KITScenes it does yield an L2.
+Alpamayo's figure is inflated by the first keyframe of each scene, where it has
+no history to difference (9.5 m there vs 1.2 m elsewhere). See `docs/benchmarks/nuscenes.md`. A constant-velocity baseline scores 0.64 here (point-avg L2 1.29), **better than every learned model** — nuScenes ego motion is largely straight, so open-loop L2 rewards a straight line; read these numbers with that in mind.
+
+### nuScenes
+
+Recorded validation results, 5,119 anchors across 150 scenes. Lower is better.
+OpenPilot completed with zero failures using up to five seconds of real CAM_FRONT
+history, CUDA inference, CPU camera warping and resume assistance disabled.
+
+| Model | L2 at 1 s (m) | L2 at 2 s (m) | L2 at 3 s (m) | Point L2 avg (m) | Cumulative L2 avg (m) | ADE at 3 s (m) | Point collision avg (%) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| OpenPilot | 1.925 | 4.054 | 6.194 | 4.057 | 2.477 | 3.535 | 2.624 |
+| Alpamayo 1.5 | 0.509 | 1.351 | 2.602 | 1.487 | 0.787 | 1.249 | 1.582 |
+| Drive-JEPA ⊘ | 0.540 | 1.587 | 3.519 | 1.882 | 0.912 | 1.536 | 1.459 |
+| Drive-JEPA, KITScenes re-ranker ⊛ | 0.373 | 0.953 | 2.126 | 1.151 | 0.587 | 0.949 | 1.211 |
+| VisionPilot | 1.031 | 2.213 | 3.837 | 2.360 | 1.441 | 2.058 | 3.816 |
+| METEOR | 0.616 | 1.683 | 3.356 | 1.885 | 0.977 | 1.570 | 6.152 ◇ |
+| Qwen-Drive 1.0 | 0.318 | 0.722 | 1.360 | 0.800 | 0.450 | 0.678 | 0.770 |
+| Baseline (Constant Velocity) | 0.372 | 1.151 | 2.340 | 1.288 | 0.641 | 1.069 | 1.661 |
+
+Point L2 averages errors at 1, 2 and 3 seconds. Cumulative L2 averages the three
+prefix means; ADE at 3 seconds averages all six half-second errors. Collision
+is predicted ego-footprint overlap with annotated boxes, not an observed crash.
+
+⊘ Measured camera-blind; re-measure pending, see #62.
+
+**Constant velocity was the lowest L2 on this recorded split until Qwen-Drive,
+which is below it on every column**, collision included, and is the first model
+here to beat the baseline outright rather than on one metric. That is worth
+reading with the split's shape in mind: nuScenes val is 20-second urban clips
+scored open-loop against what the log did, so a model that predicts the recorded
+future well scores well whether or not it would drive. The same model places
+fourth of five on neuroNCAP, which stages the collisions this split never
+contains. nuScenes is also not in its declared training data (NAVSIM `navtrain`,
+Waymo E2E, NVIDIA PhysicalAI), so unlike its NAVSIM columns this one is
+zero-shot.
+
+[nuScenes implementation and result records (PR #14)](https://github.com/FastCodeAI/Paddock/pull/14)
+· [OpenPilot full metrics](https://github.com/FastCodeAI/Paddock/blob/a75d30418248c33e5a9a76de837887cd1e19a1e8/results/nuscenes/openpilot/20260908T110028-b71f4f/metrics.json).
+Older model results predate the geometry/navigation corrections noted in #14;
+these tables report the saved runs, not new evaluations of the merged code.
