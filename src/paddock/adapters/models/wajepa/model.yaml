@@ -1,0 +1,57 @@
+name: wajepa
+description: AFARI Research WA-JEPA - V-JEPA 2.1 ViT-L/16 world-action model with a joint flow predictor, NAVSIM v2 (released stage-2 checkpoint)
+repo: WA-JEPA
+
+runtime:
+  # uv rather than upstream's conda recipe: the adapter imports only the model
+  # package, not NAVSIM, so NAVSIM's torch 2.0.1 pin (no Blackwell kernels) never
+  # applies. See setup.sh.
+  kind: uv
+  python: "3.10"
+  venv: "{repo}/.venv"
+  pythonpath: ["{repo}"]
+  cwd: "{repo}"
+  env:
+    # model_state_dict.pt from Hugging Face AFARI-Research/WA-JEPA; setup.sh fetches it.
+    WAJEPA_CHECKPOINT: "{weights}/wa-jepa/model_state_dict.pt"
+    # Upstream's closed-loop preset: the NAVSIM architecture with the pretrained
+    # V-JEPA 2.1 encoder load switched off, because the full state dict above
+    # replaces it. Same checkpoint, same weights, as the EPDMS preset.
+    WAJEPA_CONFIG: "{repo}/configs/wa_jepa_hugsim.yaml"
+    # The node is GPU-bound; torch's CPU pool would otherwise take every core on
+    # a shared box that fails above ~90% CPU.
+    OMP_NUM_THREADS: "2"
+
+capabilities:
+  # In the model's slot order (cam_l0, cam_f0, cam_r0, cam_b0); see policy.py.
+  cameras: [CAM_FRONT_LEFT, CAM_FRONT, CAM_FRONT_RIGHT, CAM_BACK]
+  vram_gb: 6  # measured peak 4.8 GB (load 3.2 GB) on a 4-camera plan
+  startup_timeout_s: 900
+  waypoint_dt: 0.5
+  # History is read 0.5 s apart; a source slower than 2 Hz cannot supply it.
+  min_input_hz: 2.0
+
+  # -- the model card (docs/models/wajepa.md) ----------------------------
+  architecture: "V-JEPA 2.1 ViT-L/16 encoder + 12-layer joint flow predictor over future scene tokens and ego trajectory"
+  # Upstream docs/installation.md: 480.9M trainable, 787.7M with the frozen EMA
+  # encoder. The released state dict holds both; 1,575,763,741 bytes.
+  params_m: 788
+  size_gb: 1.58
+  precision: mixed           # fp32 weights under bf16 autocast, as trained
+  input_size: [512, 256]
+  history_frames: 4
+  output_kind: waypoints
+  horizon_s: 4.0
+  # Flow sampling noise comes from a generator re-seeded (flow_inference_seed=1)
+  # on every call, so identical input gives an identical plan.
+  stochastic: false
+  needs_speed: true
+  trained_on:
+    # Stage 1, future scene prediction with the trajectory head off.
+    - dataset: nuplan
+      split: train
+    # Stage 2, the released weights.
+    - dataset: navsim
+      split: navtrain
+
+benchmarks: [neuroncap]
