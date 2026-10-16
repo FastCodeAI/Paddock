@@ -759,8 +759,159 @@ What `adapters/models/openpilot/policy.py` does in closed loop, and why.
   steers and never fires with a lead present. Each firing is a rising edge of
   the `resume` column in log.csv; routes are scored unassisted (frozen at the
   first nudge) and assisted \* (full run). See `docs/benchmarks/bench2drive.md`.
-* **Not a route follower.** No navigation input reaches the model (its desire
-  pulses are zeros), so junction turns are missed by construction.
+* **Not a route follower.** By default no navigation input reaches the model
+  (its desire pulses are zeros), so junction turns are missed by construction.
+  `PADDOCK_OPENPILOT_DESIRE` changes that; see the next section.
+
+### A route command reaches the desire input only when asked
+
+`desire_pulse` is supercombo's one channel for intent (§4.1): a one-hot over
+`log.Desire`, fed as a rising-edge pulse and max-pooled into 25 bins of 0.2 s,
+so a pulse stays in view for 5 s. By default the adapter sends none, and every
+run recorded before this setting fed zeros. `PADDOCK_OPENPILOT_DESIRE`, under
+`[models.openpilot.env]`, sends the observation's route command instead:
+
+| mode | LEFT | RIGHT | STRAIGHT, FOLLOW_REFERENCE |
+|---|---|---|---|
+| `off` (default) | none | none | none |
+| `turn` | turnLeft | turnRight | none |
+| `lane_change` | laneChangeLeft | laneChangeRight | none |
+
+`turn` is what a route command means, and it is off openpilot's deployment
+distribution. `DesireHelper` sends only the lane-change pair, on the blinker
+above 20 mph, and no Python or C++ file in openpilot's history names a turn
+desire. The code cannot say whether training covered the turn slots; only a run
+can. `lane_change` is in distribution but a different manoeuvre, which makes it
+the control arm. The table is explicit because the two enums do not line up:
+`Command.RIGHT` is 0 and slot 0 is `none`, so a command passed straight through
+as a slot would quietly drop every right turn.
+
+The adapter holds the desire level for the frame that carries it, and both
+backends turn it into the edge, as openpilot's own `modeld` does. So a
+benchmark that stamps a command on one frame delivers it once, on that frame,
+and one that stamps every frame delivers it on the first. KITScenes'
+`command_source = "gt"` stamps the scored keyframe alone
+([The route hint](../benchmarks/kitscenes.md#the-route-hint)).
+
+Every record's extras carry:
+- `desire`: `input`, the slot this frame sent, and `state`, the model's own
+  8-way `desire_state`;
+- `plan_v0`: the plan's speed at t = 0, beside the pose head's.
+
+The mode is recorded in `provenance.policy.desire_mode`. Set in a site's env
+block, it is also in `config.model_env`, so a desire run gets its own id and
+its own leaderboard row.
+
+### A camera higher than openpilot's, shown from openpilot's height
+
+The warp is a pure rotation: `get_warp_matrix` takes the mounting angles and
+the intrinsics, and nothing tells the model how high the camera sits. openpilot's
+sits 1.22 m over the road (`calibrationd.HEIGHT_INIT`, which the
+`road_transform` head reads back on
+[comma2k19](../datasets/comma2k19.md)). From a camera h metres up, a road point
+lands on the model pixel where openpilot's camera would see the road at 1.22/h
+of the distance, so the road looks nearer and narrower than it is.
+
+`PADDOCK_OPENPILOT_HEIGHT_SCALE`, under `[models.openpilot.env]`, takes
+s = h / 1.22 and puts `diag(1, 1, s)` between the model ray and the mounting
+rotation:
+
+```
+K @ view_frame_from_device_frame @ rot_from_euler(rpy) @ diag(1, 1, s) @ calib_from_model
+```
+
+A camera 1.87 m over the road is s = 1.87 / 1.22 = 1.53. In the calibrated
+frame z points down and the road is the plane z = h, so:
+
+- the road plane comes out as openpilot's camera would have seen it: the model
+  pixel that shows the road X m ahead and Y m across from openpilot's camera
+  shows this camera's road point at the same X and Y;
+- rays level with the camera do not move, so the horizon row stays put and
+  every pixel keeps its bearing;
+- nothing off the road plane is right: a vertical object looks 1/s as tall.
+
+So the scale measures what the model makes of the road geometry it was trained
+on. It is not a correction for the camera. At 1.0, the default, the warp is
+`get_warp_matrix`'s, bit for bit. `extras.road.camera_height`, the
+`road_transform` head's reading of its own height, shows what the model made of
+the scaled view.
+
+There are two refusals:
+- a value that is not a positive number stops the node at startup;
+- for s > 1 each view is taller and needs more of the sensor. A scale that
+  pushes a view further past the sensor's edge than the unscaled warp does is
+  refused at the first frame, with the fraction of real pixels before and
+  after. Past the edge the warp smears border pixels into the input, and the
+  run would measure the smear. On nuScenes' 1600×900 front camera, 1.53 is
+  refused for `big_img`. KITScenes' three rigs (3504×2272) stay entirely on the
+  sensor up to 1.53.
+
+The margins in `diagnostics()` are the scaled views'. The scale is recorded in
+`provenance.policy.height_scale`. Set in a site's env block, it is also in
+`config.model_env`, so a scaled run gets its own id and, over a full set, its
+own leaderboard row. Nothing in the record tells a scale measured on the rig
+from one fitted to the benchmark's own errors, and the second is tuned on the
+test set.
+
+### A view tilted over the camera's, and cut to comma's size
+
+Two more knobs go with the scale. The values the config run uses were chosen
+in the KITScenes analysis notebooks (`tools/models/openpilot/analysis/`) by
+inspecting one KITScenes scene, dbba76d9, and the patterns the earlier analysis
+found, not fitted. That scene is in the scored set, so a run with them is not a
+zero-shot measurement.
+
+`PADDOCK_OPENPILOT_PITCH_DEG` tilts the model's view over the camera's,
+positive up. It is a rotation about y in the calibrated frame, ahead of the
+scale:
+
+```
+K @ view_frame_from_device_frame @ rot_from_euler(rpy) @ R_y(p) @ diag(1, 1, s) @ calib_from_model
+```
+
+The scale keeps the horizon row; the tilt moves it. At p = -1.7 the model's
+horizon row shows a level camera's row `cy + f tan 1.7°`, as if the camera sat
+1.7° more nose-down than its calibration says. `R_y` is built in numpy,
+not with `rot_from_euler`, so the analysis runs it came from are reproduced bit
+for bit.
+
+`PADDOCK_OPENPILOT_FOV_DEG` warps the views from a *cut*: F degrees across
+about the principal point, at comma's aspect, resampled by area to 1164×874.
+That is the frame comma's EON road camera would have recorded at that field of
+view. Without it, the ONNX warp gathers the nearest pixel straight from the
+source. On KITScenes' 5856 px base front camera that keeps about one pixel in
+six across `big_img` and aliases the rest. With s source pixels per cut
+pixel and the box's edge x0 kept in floats, the cut's focal length is f / s and
+its principal point (c + 0.5 - x0) / s - 0.5. A box rounded to whole pixels
+would move the frame off its K.
+
+A cut narrower than `big_img`'s 58.7° leaves that view's sides past the cut on
+purpose. At 55° about 7.4 % of `big_img` is smeared border, and `warp_in_bounds`
+says so. `img` (31.4°) stays whole.
+
+The refusals:
+- a tilt beyond ±15° or a field of view outside [0, 180) stops the node at
+  startup, naming the variable;
+- a cut stops the node at load on the tinygrad backend, whose warp is compiled
+  for 1928×1208. Set `PADDOCK_OPENPILOT_BACKEND = "onnx"` beside it;
+- at the first frame, a camera without square pixels, or a cut wider than the
+  camera recorded about its principal point, is refused;
+- the scale's guard covers the tilt too, against the cut's edge when there is
+  a cut: the composed warp is judged against the warp without the knobs. On
+  KITScenes' base camera with a 55° cut, s = 1.22 alone takes `big_img`'s top
+  off the cut (89.9 % real pixels against 92.4 %) and is refused. Tilted by
+  p = -1.7 as well, it fits (92.7 %).
+
+Both are recorded in `provenance.policy` as `pitch_deg` and `fov_deg`. A cut
+also sets `resample_mode` to `"cut"`, adds a `cut` block (size, box, hfov,
+vfov), and has its margins measured against the cut. At 0, the defaults,
+nothing is composed and nothing is cut: the warp is `get_warp_matrix`'s, bit
+for bit.
+
+Like the scale, both knobs describe one camera rig. A site that adopts them
+sets them in a pairing table, `[models.openpilot.benchmarks.kitscenes.env]`,
+not in `[models.openpilot.env]`, where they would reach comma2k19's camera too.
+See [site-setup.md](../site-setup.md#2-configure).
 
 ### Which backend ran, and one number it used to change
 

@@ -255,7 +255,11 @@ any model here (0.609 m lateral error at matched arc length, against OpenPilot's
 1.155) but reach only ~67% as far as the car travelled, because 4 s of NAVSIM
 city driving saturates near 64 m while I-280 runs at 30 m/s. See
 [docs/models/drivejepa_free.md](docs/models/drivejepa_free.md) and the comma2k19
-table below.
+table below. Every comma2k19 row is also scored against a ground truth left in
+the camera's frame while the plans are in the car's. Re-scored with both in the
+car's frame, the order changes: Qwen-Drive 0.602, Alpamayo 1.5 and OpenPilot
+0.858, constant velocity 1.137. That re-score is a tracked follow-up
+([ROADMAP](docs/ROADMAP.md), M8).
 
 ⊗ **OpenPilot's comma2k19 row was not produced at the `repos.yaml` pin.** It
 comes from a clone at `4df40d2c1`, which ships the driving model as two graphs;

@@ -1,4 +1,4 @@
-"""The KITScenes harness: the camera ring, where it is found and how it is checked.
+"""The KITScenes harness: the camera ring, where it is found and how it is checked, and the route hint.
 
 No dataset. A synthetic KITScenes with the real file layout -- `calib.json`,
 `poses.txt`, one directory of frame files per ring camera -- is written under
@@ -19,8 +19,9 @@ import pytest
 from paddock.adapters.benchmarks.kitscenes import harness as H
 from paddock.adapters.benchmarks.kitscenes.harness import BENCHMARK, POD_HEIGHT_M, RING
 from paddock.config import SiteConfig
-from paddock.policy.protocol import CAMERAS, Observation
+from paddock.policy.protocol import CAMERAS, Command, Observation
 from paddock.registry import Registry
+from paddock.results.ingest.kitscenes import STRAIGHT_COMMAND
 
 SCENE = "0a1b2c3d-0000-4000-8000-000000000001"
 N_FRAMES = 100
@@ -39,6 +40,10 @@ HEADING_DEG = {
     "camera_ring_rear_right": -120.0,
 }
 REAR = tuple(sensor for sensor in RING if sensor.startswith("camera_ring_rear"))
+#: The rig's other forward camera, and where the real calibration puts it in
+#: the rig reference: 0.2 m further forward than the ring's front, and 0.2 m lower.
+BASE = "camera_base_front_center"
+BASE_XYZ = (0.421, 0.011, -0.384)
 
 
 def _t_to_reference(heading_deg: float) -> np.ndarray:
@@ -58,7 +63,10 @@ def _t_to_reference(heading_deg: float) -> np.ndarray:
 
 
 def _calib() -> dict:
-    """Six distinct pinholes: a shared or guessed value must be caught, not averaged in."""
+    """Seven distinct pinholes, the ring's and the base camera's.
+
+    A shared or guessed value must be caught, not averaged in.
+    """
     calib: dict = {"reference": "base_frame"}
     for i, sensor in enumerate(RING):
         calib[sensor] = {
@@ -71,6 +79,14 @@ def _calib() -> dict:
                 "principal_point_v": 1139.0,
             },
         }
+    base = _t_to_reference(0.0)
+    base[:3, 3] = BASE_XYZ
+    calib[BASE] = {
+        "T_to_reference": base.tolist(),
+        "camera_model": "pinhole",
+        "resolution": {"width": 5856, "height": 3104},
+        "intrinsics": {"focal_length": 3022.0, "principal_point_u": 2924.0, "principal_point_v": 1545.0},
+    }
     return calib
 
 
@@ -89,12 +105,20 @@ def _write_scene(root: Path, sensors, split: str = "val") -> Path:
     return scene
 
 
-def _site(tmp_path: Path, monkeypatch, tiers: list[Path]) -> SiteConfig:
-    """A throwaway site config, written and loaded the way a real one is."""
+def _site(
+    tmp_path: Path, monkeypatch, tiers: list[Path], settings: str = "", row: dict | None = None
+) -> SiteConfig:
+    """A throwaway site config, written and loaded the way a real one is.
+
+    *settings* are extra `[benchmarks.kitscenes]` lines; *row* extra fields of
+    the one sample-list row.
+    """
     for sub in ("repos", "runs", "weights"):
         (tmp_path / sub).mkdir(exist_ok=True)
     sample_list = tmp_path / "sample_list.pkl"
-    sample_list.write_bytes(pickle.dumps([{"scene_id": SCENE, "keyframe_index": KEYFRAME, "split": "val"}]))
+    sample_list.write_bytes(
+        pickle.dumps([{"scene_id": SCENE, "keyframe_index": KEYFRAME, "split": "val", **(row or {})}])
+    )
     config = tmp_path / "site.toml"
     config.write_text(
         'site = "test-site"\n'
@@ -105,14 +129,14 @@ def _site(tmp_path: Path, monkeypatch, tiers: list[Path]) -> SiteConfig:
         "[datasets.kitscenes]\n"
         f"tiers = [{', '.join(f'{str(t)!r}' for t in tiers)}]\n"
         "[benchmarks.kitscenes]\n"
-        f'sample_list = "{sample_list}"\n'
+        f'sample_list = "{sample_list}"\n' + settings
     )
     monkeypatch.setenv("PADDOCK_CONFIG", str(config))
     return SiteConfig.load()
 
 
-def _benchmark(tmp_path: Path, monkeypatch, tiers: list[Path]):
-    return BENCHMARK(Registry.load().benchmarks["kitscenes"], _site(tmp_path, monkeypatch, tiers))
+def _benchmark(tmp_path: Path, monkeypatch, tiers: list[Path], **site):
+    return BENCHMARK(Registry.load().benchmarks["kitscenes"], _site(tmp_path, monkeypatch, tiers, **site))
 
 
 def _scored_observation(bench) -> Observation:
@@ -233,6 +257,153 @@ def test_the_run_record_says_which_ring_cameras_the_model_was_given(tmp_path, mo
     six = SimpleNamespace(cameras=tuple(reversed(CAMERAS)))
     assert bench.model_run_config(six) == {"cameras_supplied": list(CAMERAS)}, (
         "the protocol's order, not the model's"
+    )
+
+
+# ---------------------------------------------------------------------------
+# The route hint
+# ---------------------------------------------------------------------------
+
+
+def test_without_a_route_hint_every_frame_is_straight(tmp_path, monkeypatch) -> None:
+    """The default ignores the list's command, so every earlier run stands as it was."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+    bench = _benchmark(tmp_path, monkeypatch, [archive], row={"driving_command": [1, 0, 0, 0]})
+
+    (sample,) = list(bench.samples())
+    assert {obs.command for obs in sample.observations} == {Command.STRAIGHT}
+    assert bench.run_config() == {"ground_offset_m": POD_HEIGHT_M}, "no new key, so no new run id"
+
+
+@pytest.mark.parametrize(
+    ("one_hot", "expected"),
+    [
+        ([1, 0, 0, 0], Command.LEFT),
+        (STRAIGHT_COMMAND, Command.STRAIGHT),
+        ([0, 0, 1, 0], Command.RIGHT),
+        ([0, 0, 0, 1], Command.STRAIGHT),  # unknown: no hint
+        ([0, 0, 0, 0], Command.STRAIGHT),
+        ([1, 0, 1, 0], Command.STRAIGHT),
+    ],
+)
+def test_a_route_hint_reaches_the_keyframe_alone(tmp_path, monkeypatch, one_hot, expected) -> None:
+    """The list's one-hot is read in ingest's order, and only the scored frame carries it."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+    bench = _benchmark(
+        tmp_path,
+        monkeypatch,
+        [archive],
+        settings='command_source = "gt"\n',
+        row={"driving_command": np.asarray(one_hot)},
+    )
+
+    (sample,) = list(bench.samples())
+    *history, scored = sample.observations
+    assert scored.command == expected
+    assert {obs.command for obs in history} == {Command.STRAIGHT}
+    # And it survives the trip to a node.
+    assert Observation.from_wire(scored.to_wire()).command == expected
+
+
+def test_a_route_hint_is_a_different_measurement(tmp_path, monkeypatch) -> None:
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+    bench = _benchmark(tmp_path, monkeypatch, [archive], settings='command_source = "gt"\n')
+
+    assert bench.run_config() == {"ground_offset_m": POD_HEIGHT_M, "command_source": "gt"}
+
+
+def test_preflight_names_an_unknown_command_source(tmp_path, monkeypatch) -> None:
+    """A typo must not quietly run as `straight` and be recorded as something else."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+    bench = _benchmark(tmp_path, monkeypatch, [archive], settings='command_source = "sample_list"\n')
+
+    (problem,) = bench.preflight()
+    assert "command_source = 'sample_list'" in problem
+    assert "straight, gt" in problem
+
+
+def test_preflight_names_a_route_hint_the_sample_list_cannot_give(tmp_path, monkeypatch) -> None:
+    """`gt` reads each row's `driving_command`; a list without one is refused before the first sample."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+
+    bench = _benchmark(tmp_path, monkeypatch, [archive], settings='command_source = "gt"\n')
+    (problem,) = bench.preflight()
+    assert "1 of 1 row(s)" in problem and "driving_command" in problem
+
+    # `straight` never reads it, so the same list is fine without the hint.
+    assert _benchmark(tmp_path, monkeypatch, [archive]).preflight() == []
+
+
+# ---------------------------------------------------------------------------
+# The front camera
+# ---------------------------------------------------------------------------
+
+
+def test_the_base_camera_stands_in_for_the_ring_front(tmp_path, monkeypatch) -> None:
+    """Its frames, its pinhole and its mounting, at every frame; the other five stay the ring's."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, [*RING, BASE])
+    bench = _benchmark(tmp_path, monkeypatch, [archive], settings='front_camera = "base"\n')
+
+    assert bench.preflight() == []
+    (sample,) = list(bench.samples())
+    assert {Path(obs.image_paths["CAM_FRONT"]).parent.name for obs in sample.observations} == {BASE}
+    scored = sample.observations[-1]
+    assert scored.camera2image["CAM_FRONT"][0, 0] == scored.camera2image["CAM_FRONT"][1, 1] == 3022.0
+    assert scored.camera2image["CAM_FRONT"][:2, 2].tolist() == [2924.0, 1545.0]
+    assert np.allclose(scored.camera2ego["CAM_FRONT"][:2, 3], BASE_XYZ[:2])
+    assert scored.camera_height("CAM_FRONT") == pytest.approx(BASE_XYZ[2] + POD_HEIGHT_M), (
+        "the rig's offset too"
+    )
+    for i, (sensor, camera) in enumerate(RING.items()):
+        if camera != "CAM_FRONT":
+            assert Path(scored.image_paths[camera]).parent.name == sensor
+            assert scored.camera2image[camera][0, 0] == 1841.0 + i
+
+
+def test_another_front_camera_is_a_different_measurement(tmp_path, monkeypatch) -> None:
+    """Hashed into the run id when given; `ring`, the default, adds nothing even said aloud."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, [*RING, BASE])
+    base = _benchmark(tmp_path, monkeypatch, [archive], settings='front_camera = "base"\n')
+
+    assert base.run_config() == {"ground_offset_m": POD_HEIGHT_M, "front_camera": "base"}
+    comma_three = SimpleNamespace(cameras=("CAM_OP_ROAD", "CAM_OP_WIDE", "CAM_FRONT"))
+    assert base.model_run_config(comma_three) == {"cameras_supplied": ["CAM_FRONT"]}, "the protocol's name"
+    ring = _benchmark(tmp_path, monkeypatch, [archive], settings='front_camera = "ring"\n')
+    assert ring.run_config() == {"ground_offset_m": POD_HEIGHT_M}, "so every earlier run keeps its id"
+
+
+def test_preflight_names_an_unknown_front_camera(tmp_path, monkeypatch) -> None:
+    """A typo must not quietly run as `ring` and be recorded as something else."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, [*RING, BASE])
+    bench = _benchmark(tmp_path, monkeypatch, [archive], settings='front_camera = "wide"\n')
+
+    (problem,) = bench.preflight()
+    assert "front_camera = 'wide'" in problem
+    assert "ring, base" in problem
+
+
+def test_preflight_checks_the_front_camera_that_will_be_read(tmp_path, monkeypatch) -> None:
+    """The base camera is checked in the front's place, and the ring's front is then not needed."""
+    ring_only, base_only = tmp_path / "ring_only", tmp_path / "base_only"
+    _write_scene(ring_only, RING)
+    _write_scene(base_only, [BASE, *(sensor for sensor in RING if sensor != "camera_ring_front")])
+
+    assert _benchmark(tmp_path, monkeypatch, [ring_only]).preflight() == []
+    (problem,) = _benchmark(
+        tmp_path, monkeypatch, [ring_only], settings='front_camera = "base"\n'
+    ).preflight()
+    assert "1 of 1 listed scenes lack a ring camera on every configured tier" in problem
+    assert f"{SCENE}: {BASE}" in problem
+    assert (
+        _benchmark(tmp_path, monkeypatch, [base_only], settings='front_camera = "base"\n').preflight() == []
     )
 
 

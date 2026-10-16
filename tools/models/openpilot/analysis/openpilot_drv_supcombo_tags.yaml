@@ -1,0 +1,766 @@
+# Scenario, perception and response tags for openpilot's driving model on the
+# open-loop benchmarks. Shared by every openpilot_drv_supcombo_*_openloop_analysis
+# notebook here, so a tag means the same thing on every benchmark.
+#
+# How a rule is read:
+#   - `when` is a pandas expression over the notebook's feature table (its §5
+#     glossary, drawn when the notebook runs, lists every column). Thresholds
+#     are `@name`, looked up in `params` below -- after the notebook's
+#     OVERRIDES, if any.
+#   - It runs as `df.eval(when, engine="python", local_dict=params)`. NaN
+#     compares False under <, <=, >, >=, ==, so an undefined value never raises
+#     a flag. `!=` and `not in` are the opposite: NaN != x is True, so give
+#     those a `requires:` instead of relying on them.
+#   - A name that is not a column raises. A typo fails loudly rather than
+#     silently tagging nothing. A rule that only makes sense on some benchmarks
+#     says `only: [...]`, and the notebook lists every rule it skipped.
+#
+# Changing a tag: edit this file to change it for good; for one run, set
+# OVERRIDES in the notebook's §1 (params only) or edit its §6 scratch copy of
+# CFG. Either way, re-run from §6.
+version: 1
+
+# Every number a rule uses. Units in the comments. (guess) marks a starting
+# point to tune from the threshold plots in the notebook's §8.
+params:
+  # -- windows --
+  horizon_s: 3.0           # H: response tags compare plan and GT over [0, H]; = the runs' eval_horizon_s
+  intent_horizon_s: 10.0   # I: GT look-ahead for intent tags only (the *_I columns); the model is not told
+                          # the route unless a run sends it as a desire (the kitscenes notebook's §17).
+                          # kitscenes' GT is 4 s long, so bench_params shortens it there
+  # -- when a number is defined at all --
+  min_step_m: 0.25         # a 0.5 s step shorter than this has no usable heading
+  min_ratio_len_m: 5.0     # speed_ratio is NaN when the GT path over H is shorter than this
+  curve_min_deg: 3.0       # curv_ratio is NaN unless the GT heading changes at least this much over H
+  # -- speed (m/s) --
+  v_stop: 0.5              # below this the car is stopped
+  v_go: 2.0                # above this it is clearly moving
+  v_low: 13.4              # 30 mph: low | mid boundary
+  v_mid: 22.4              # 50 mph: mid | high boundary
+  # -- longitudinal (m/s², mean over H) --
+  a_brake: -0.5
+  a_hard_brake: -2.5
+  a_accel: 0.5
+  a_hard_accel: 2.0
+  # -- lateral --
+  k_straight: 0.001        # 1/m; |kappa| below this is straight (R > 1 km)
+  k_sharp: 0.005           # 1/m; |kappa| at or above this is sharp (R < 200 m)
+  turn_deg: 30.0           # heading change over H that makes a turn
+  # -- radar lead (comma2k19) --
+  lead_near_m: 60.0        # = auxiliary.LEAD_NEAR_M, the range lead_recall/precision are scored within
+  lead_prob: 0.5           # = auxiliary.LEAD_PROB_THRESHOLD: the model "has a lead", as openpilot reads it
+  closing_mps: -1.0        # radar v_rel below this: closing
+  opening_mps: 1.0         # above this: opening
+  headway_tailgate_s: 1.0  # (guess)
+  headway_close_s: 2.0     # (guess)
+  lead_range_tol_m: 5.0    # |model - radar| range error beyond this is a misread (guess)
+  lead_static_mps: 1.0     # a radar lead whose own speed (ref_lead_v_abs) is under this is stationary
+  lead_pass_m: 5.0         # a stationary one the GT then gets this far past was driven by, not stopped behind
+  # -- ego state and perception --
+  yaw_turning: 0.05        # rad/s; |reference yaw rate| at or above this: the car is turning now (guess)
+  lane_none: 0.5           # op_lane_prob below this: no lane lines
+  lane_weak: 0.9           # below this: weak
+  speed_read_tol: 0.05     # the sanity gate's own bound on |v_model - v_ref| / v_ref
+  yaw_bias_tol: 0.02       # rad/s (guess)
+  start_slow: 0.97         # v0_ratio at or under this: the plan starts slower than the GT (guess)
+  start_fast: 1.03         # at or over this: faster (guess)
+  cam_h_split_m: 1.5       # op_cam_h under this: the lower of the road head's two modes on kitscenes (cam_h_read)
+  lane_w_ratio_lo: 0.9     # lane_width_ratio (model / map) under this: the model reads its lane narrow (nuscenes) (guess)
+  lane_w_ratio_hi: 1.1     # over this: wide (guess)
+  lane_pos_tol_m: 0.5      # |lane_offset_err| at or over this: the model puts the car elsewhere in its lane (guess)
+  # -- response --
+  ratio_much_slow: 0.8     # speed_ratio bin edges
+  ratio_slow: 0.95
+  ratio_fast: 1.05
+  ratio_much_fast: 1.2
+  curv_under: 0.7          # curv_ratio bin edges
+  curv_over: 1.3
+  accel_resp_min: 0.5      # accel_response only where |GT accel| is at least this (m/s²)
+  accel_tol: 0.5           # |plan accel - GT accel| within this: matched (m/s²)
+  side_m: 0.5              # |cross_H| beyond this: left or right of the GT at H
+  z1: 1.0                  # confidence bands, in the model's own sigma at H
+  z2: 2.0
+  z_bad: 4.0
+  # -- failure-mode thresholds --
+  fde_bad_m: 1.0           # confidently_wrong needs at least this FDE at H
+  drift_m: 1.0             # drift_on_straight: |cross_H| at least this
+  curve_err_deg: 3.0       # phantom_curve, early_curve: |dpsi_err_deg| at least this; 0 = any curve-class mismatch
+  creep_m: 1.0             # creep_at_stop: plan moves at least this far over H while GT stands
+  launch_ratio: 0.5        # fails_to_launch: plan covers less than this fraction of the GT distance
+  hold_m: 0.5              # holds_curve: |cross_H| under this
+  # -- intent over intent_horizon_s (experimental) --
+  turn_intent_deg: 45.0    # GT heading change within intent_horizon_s that makes a turn
+  turn_pred_deg: 15.0      # a plan turning less than this did not anticipate it
+  lc_min_m: 2.0            # GT lateral shift (net of curvature) that makes a lane change
+  lc_max_m: 6.0
+  lc_max_dpsi_deg: 1.5     # ... provided the heading ends within this of where it started. Kept tight:
+                          # entering a 3 deg curve half-way through 300 m reads as a 4 m shift
+  lc_pred_m: 1.0           # a plan shifting less than this did not anticipate it
+  # -- scoring (§7) --
+  miss_m: 2.0              # FDE at a horizon beyond this is a miss (= comma2k19 score.MISS_THRESHOLD_M)
+
+# Per-benchmark values that replace `params` above, before the notebook's
+# OVERRIDES. Only for a number the benchmark itself fixes, never for a judgement:
+# a threshold that seems to need a different value per benchmark is a finding.
+bench_params:
+  kitscenes:
+    intent_horizon_s: 4.0  # its GT is 8 poses at 0.5 s (harness N_GT_POSES); at 10 s every *_I column would be NaN
+
+# Per-benchmark scene metadata, joined as ctx_<column>. Templates are expanded
+# with the site's paddock.toml ({repos}, {data.NAME}); nothing here names a disk.
+context:
+  comma2k19:
+    csv: "{repos}/scenario_mining/comma2k19/data/scenario_metadata.csv"
+    key: scene_id            # the CSV's "chunk/route/segment", matched to the keyframe's segment
+    columns: [time_of_day, season, is_weekend, is_freeway, is_highway_kinematic, is_curvy_road,
+              is_stop_and_go_traffic, entering_freeway, exiting_freeway, lead_present_fraction,
+              close_lead_fraction, tailgating_fraction, cut_in_count, lane_change_left_count,
+              lane_change_right_count, hard_brake_count, tag_*]
+  kitscenes:
+    json: "{repos}/scenario_mining/kitscenes/data"
+    files: [features_kinematics.json, features_map.json, features_traffic.json]
+    key: scene               # each file's "scenes" is keyed <split>/<scene_id>, the notebook's `scene`
+    columns: [speed_band, is_highway_kinematic, is_stop_and_go_traffic, is_curvy_road, curve_direction,
+              straight_fraction, mean_speed_mps, location, lane_width_m, at_intersection_fraction,
+              speed_limit_kmh, height_ring_front_m, is_dense_traffic, is_vru_rich, vehicle_ahead_fraction,
+              close_vehicle_ahead_fraction, mean_vehicles, mean_vrus]
+  nuscenes:
+    # No mined features for nuScenes. Each scene carries a free-text description
+    # ("Night, parking lot, peds, ..."); every flag is a case-insensitive regex
+    # over it and gives a boolean ctx_<flag>. Per-keyframe map context (map_*)
+    # comes from the devkit's map expansion in the notebook's §3, not from here.
+    flags:
+      night: '\bnight\b'
+      rain: '\brain'
+      parking_lot: 'parking lot'
+      intersection: 'intersection|roundabout'
+      waits: '\b(?:wait|waiting|stop|stopped) at\b'
+      peds: '\bpeds?\b|pedestrian|jaywalk'
+      construction: 'construction'
+      large_vehicle: '\bbus|truck|bendy'
+      parked: '\bparked\b'
+      turn: '\bturn(?:ing)? (?:left|right)\b'
+
+# Categorical tags. Rules are tried in order and the first match wins; rows no
+# rule matches get `default`. `sides: [gt, pred]` runs the same rules once on
+# the GT's columns and once on the plan's (gt_v_max -> v_max, ...), giving
+# gt_<name> and pred_<name>, so the GT and the plan are always classified alike.
+# `requires` gives rows where any listed column is NaN the label `missing`.
+classes:
+  # A label is a YAML key, so never a bare yes/no/on/off: YAML reads those as booleans, which
+  # makes the tag's value True/False and breaks export()'s hash of this file.
+  # ---------------- scenario: what the car and the world did ----------------
+  speed_band:
+    group: scenario
+    doc: "ego speed at the keyframe, from the reference: CAN on comma2k19 and nuscenes, the harness's pose-derived speed on kitscenes"
+    requires: [ref_speed]
+    rules:
+      standstill: {when: "ref_speed < @v_stop", doc: "below v_stop"}
+      low:        {when: "ref_speed < @v_low", doc: "below v_low (30 mph)"}
+      mid:        {when: "ref_speed < @v_mid", doc: "below v_mid (50 mph)"}
+    default: high
+    default_doc: "v_mid and above"
+
+  long:
+    group: scenario
+    sides: [gt, pred]
+    doc: "longitudinal behaviour over H, from per-step speeds of the path"
+    rules:
+      stationary: {when: "v_max < @v_stop", doc: "never faster than v_stop over H"}
+      starting:   {when: "v_first < @v_stop and v_last > @v_go", doc: "pulls away from a stop"}
+      stopping:   {when: "v_first > @v_go and v_last < @v_stop", doc: "comes to a stop within H"}
+      hard_brake: {when: "accel <= @a_hard_brake", doc: "mean accel at or below a_hard_brake"}
+      brake:      {when: "accel <= @a_brake", doc: "mean accel at or below a_brake"}
+      hard_accel: {when: "accel >= @a_hard_accel", doc: "mean accel at or above a_hard_accel"}
+      accel:      {when: "accel >= @a_accel", doc: "mean accel at or above a_accel"}
+    default: cruise
+    default_doc: "holds speed: mean accel within (a_brake, a_accel)"
+
+  lat:
+    group: scenario
+    sides: [gt, pred]
+    doc: "lateral behaviour over H, from the heading change between the first and last usable steps"
+    rules:
+      na:       {when: "not lat_ok", doc: "fewer than two steps of min_step_m: no heading to speak of"}
+      turn_L:   {when: "dpsi_deg >= @turn_deg", doc: "heading change of turn_deg or more, left"}
+      turn_R:   {when: "dpsi_deg <= -@turn_deg", doc: "heading change of turn_deg or more, right"}
+      sharp_L:  {when: "kappa >= @k_sharp", doc: "mean curvature k_sharp or more, left (R < 200 m)"}
+      sharp_R:  {when: "kappa <= -@k_sharp", doc: "mean curvature k_sharp or more, right"}
+      straight: {when: "abs(kappa) < @k_straight", doc: "mean curvature under k_straight (R > 1 km)"}
+      curve_L:  {when: "kappa > 0", doc: "a gentle curve, left"}
+    default: curve_R
+    default_doc: "a gentle curve, right"
+
+  lead:
+    group: scenario
+    only: [comma2k19]
+    doc: >-
+      the radar's lead at the keyframe: the closest radar track inside a straight +-1.8 m corridor
+      (loader.lead_track), whatever it is. On a curve that corridor runs into the roadside, so the
+      "lead" can be a sign or a guardrail, and the recorded lead metrics score the model against it
+      all the same. `clutter` is the part the recording itself rules out: stationary, and the driver
+      then goes past its range without stopping, so it was never in the car's path. On the recorded
+      comma2k19 run that is 133 keyframes, 2.8% of near radar leads: 0.9% on straight road, 4-9% on
+      curves, 17-31% on sharp curves and turns. It was 26 of the 28 keyframes tailgates_lead flagged,
+      70 of 255 missed_lead and 46 of 469 lead_range_misread. The model reports a lead on 47% of them,
+      against 96% of the other near radar leads
+    rules:
+      none:    {when: "not ref_has_lead", doc: "no radar lead"}
+      clutter: {when: "ref_lead_d < @lead_near_m and ref_speed >= @v_go and abs(ref_lead_v_abs) < @lead_static_mps and gt_x_max_I >= ref_lead_d + @lead_pass_m", doc: "radar lead within lead_near_m that is stationary and that the driver goes lead_pass_m past within intent_horizon_s: roadside or overhead, not in the car's path"}
+      near:    {when: "ref_lead_d < @lead_near_m", doc: "radar lead within lead_near_m"}
+    default: far
+    default_doc: "radar lead beyond lead_near_m"
+
+  lead_motion:
+    group: scenario
+    only: [comma2k19]
+    doc: "radar lead's speed relative to ego"
+    requires: [ref_lead_v_rel]
+    missing: none
+    rules:
+      none:    {when: "lead == 'clutter'", doc: "no radar lead, or it is clutter (lead)"}
+      closing: {when: "ref_lead_v_rel < @closing_mps", doc: "gap shrinking faster than |closing_mps|"}
+      opening: {when: "ref_lead_v_rel > @opening_mps", doc: "gap growing faster than opening_mps"}
+    default: steady
+
+  headway:
+    group: scenario
+    only: [comma2k19]
+    doc: "time gap to the radar lead, lead range / CAN speed (NaN below v_go)"
+    requires: [headway_s]
+    missing: none
+    rules:
+      none:       {when: "lead == 'clutter'", doc: "no radar lead, below v_go, or the lead is clutter (lead)"}
+      tailgating: {when: "headway_s < @headway_tailgate_s", doc: "under headway_tailgate_s"}
+      close:      {when: "headway_s < @headway_close_s", doc: "under headway_close_s"}
+    default: normal
+
+  ego_turning:
+    group: scenario
+    doc: "whether the car is yawing at the keyframe itself (reference yaw rate: CAN on comma2k19 and nuscenes, the poses on kitscenes), as opposed to later in H"
+    requires: [ref_yaw_rate]
+    rules:
+      turning: {when: "abs(ref_yaw_rate) >= @yaw_turning", doc: "|yaw rate| at or above yaw_turning"}
+    default: steady
+
+  history:
+    group: scenario
+    only: [kitscenes, nuscenes]
+    doc: >-
+      how much history the model had. On kitscenes the harness feeds the 48 source frames (4.8 s)
+      before the keyframe, and at the scene start it repeats frame 0 instead (loader.frame_indices).
+      The model is ticked twice per 10 Hz frame and once per repeat, so at keyframe 40 it gets 90
+      ticks, under the 96 its feature queue needs (warmup_frames). On nuscenes it gets the CAM_FRONT
+      sweeps of the history_seconds (5 s) before the keyframe, inside the scene, then the keyframe
+      itself; a 50 ms step is one tick and a 100 ms step two. A scene's first 5 s have less, and its
+      keyframe 0 has one image, shown twice
+    requires: [model_ticks, warmup_frames]
+    rules:
+      clamped: {when: "model_ticks < warmup_frames", doc: "fewer ticks than warmup_frames: some queue still holds its initial zeros"}
+    default: full
+
+  static_tail:
+    group: scenario
+    only: [nuscenes]
+    doc: >-
+      how many of the model's last ticks show no motion (static_ticks). The keyframe's own CAM_FRONT
+      image is exposed about 36 ms before the keyframe, so it is also the last history sweep, and the
+      harness then appends the keyframe with that same image: the last tick always repeats the
+      image before it. After a 100 ms step that image was already shown twice (the adapter repeats a
+      frame dt * 20 times), so the model's last two ticks see a parked car. The pose head's speed
+      follows: NUMBERS_STATIC_TAIL
+    requires: [static_ticks]
+    rules:
+      one: {when: "static_ticks <= 1", doc: "one static tick: the image repeated once at the end"}
+    default: two_plus
+    default_doc: "two or more static ticks at the end"
+
+  # ---------------- intent: what the GT does after H (experimental) ---------
+  # The model gets no route or desire input: the adapter sends zeros, unless a kitscenes run sends
+  # the command as a desire (command_source = "gt" with PADDOCK_OPENPILOT_DESIRE, the kitscenes
+  # notebook's §17). Otherwise these describe information it never had. Reported apart from the
+  # failure modes.
+  # _I columns are over intent_horizon_s: 10 s on comma2k19, 4 s on kitscenes.
+  gt_stop_I:
+    group: intent
+    doc: "the GT comes to a stop within intent_horizon_s"
+    requires: [gt_vmin_I]
+    rules:
+      stops: {when: "gt_vmin_I < @v_stop", doc: "some step within intent_horizon_s slower than v_stop"}
+    default: none
+
+  gt_turn_I:
+    group: intent
+    doc: "the GT turns within intent_horizon_s"
+    requires: [gt_dpsi_I_deg]
+    rules:
+      turn_L: {when: "gt_dpsi_I_deg >= @turn_intent_deg", doc: "heading change of turn_intent_deg or more, left"}
+      turn_R: {when: "gt_dpsi_I_deg <= -@turn_intent_deg", doc: "... right"}
+    default: none
+
+  gt_lane_change_I:
+    group: intent
+    doc: >-
+      the GT shifts sideways within intent_horizon_s by more than its own curvature explains
+      (gt_shift_I). Uses lateral position, so it depends on GT_FRAME
+    requires: [gt_shift_I]
+    rules:
+      none:  {when: "abs(gt_dpsi_I_deg) >= @lc_max_dpsi_deg", doc: "the heading does not come back: a curve, a turn, or a lane change still under way"}
+      left:  {when: "gt_shift_I >= @lc_min_m and gt_shift_I <= @lc_max_m", doc: "shift of lc_min_m to lc_max_m, left"}
+      right: {when: "gt_shift_I <= -@lc_min_m and gt_shift_I >= -@lc_max_m", doc: "... right"}
+    default: none
+
+  # ---------------- perception: what the model believed ---------------------
+  lead_detect:
+    group: perception
+    only: [comma2k19]
+    doc: >-
+      the model's lead (prob >= lead_prob) against the radar's. The benchmark compares the two only
+      within lead_near_m. rec_lead_precision alone cannot say "phantom": it scores a model lead at
+      any range, so it is 0 whenever the model reports a lead that the radar puts past lead_near_m.
+      On the recorded comma2k19 run that is 30% of keyframes; in 85% of them the model's lead is
+      itself past 60 m, and only 1.2% of keyframes have a model lead within 60 m and no radar lead
+      at all. Hence `far`, and a `phantom` that needs the radar to see nothing
+    rules:
+      clutter: {when: "lead == 'clutter'", doc: "the radar's lead is clutter (lead); rec_lead_* still score the model against it, so this is neither a hit nor a miss"}
+      missed:  {when: "rec_lead_recall == 0", doc: "radar lead within lead_near_m, no model lead"}
+      both:    {when: "rec_lead_recall == 1", doc: "radar lead within lead_near_m and a model lead; lead_range says whether their ranges agree"}
+      phantom: {when: "op_lead_prob >= @lead_prob and op_lead_d < @lead_near_m and not ref_has_lead", doc: "model lead within lead_near_m; the radar reports no lead at any range"}
+      far:     {when: "op_lead_prob >= @lead_prob or ref_has_lead", doc: "a lead, but at least one of the two puts it past lead_near_m, where the benchmark does not compare them"}
+    default: none
+    default_doc: "neither has a lead"
+
+  lead_range:
+    group: perception
+    only: [comma2k19]
+    doc: "model lead range minus radar lead range"
+    requires: [rec_lead_range_err]
+    rules:
+      na:    {when: "lead == 'clutter'", doc: "no range error to read: no pair of leads to compare, or the radar's is clutter (lead)"}
+      under: {when: "rec_lead_range_err <= -@lead_range_tol_m", doc: "model puts the lead closer than it is"}
+      over:  {when: "rec_lead_range_err >= @lead_range_tol_m", doc: "model puts the lead further than it is"}
+    default: ok
+
+  lanes:
+    group: perception
+    doc: "model's own confidence in the two ego lane lines, mean of line_probs[1:3] (= auxiliary lane_prob)"
+    requires: [op_lane_prob]
+    rules:
+      none: {when: "op_lane_prob < @lane_none", doc: "below lane_none"}
+      weak: {when: "op_lane_prob < @lane_weak", doc: "below lane_weak"}
+    default: clear
+
+  lane_width_read:
+    group: perception
+    only: [nuscenes]
+    doc: >-
+      the model's ego-lane width against the map's (lane_width_ratio, both 10 m ahead): the spatial
+      scale the model reads off the image, as the speed is the temporal one. The ratio is only
+      defined where the map has a lane at the car (not a lane connector through an intersection), and
+      only read where the model sees its lines. NUMBERS_LANE_WIDTH
+    requires: [lane_width_ratio]
+    missing: na
+    rules:
+      na:     {when: "op_lane_prob < @lane_none", doc: "the model does not see its lane lines (lanes = none), so its width is a guess"}
+      narrow: {when: "lane_width_ratio < @lane_w_ratio_lo", doc: "under lane_w_ratio_lo of the map's width"}
+      wide:   {when: "lane_width_ratio > @lane_w_ratio_hi", doc: "over lane_w_ratio_hi"}
+    default: ok
+
+  lane_pos_read:
+    group: perception
+    only: [nuscenes]
+    doc: >-
+      where the model puts the car in its lane against the map (lane_offset_err: the model's lane
+      centre offset minus the map's, at the car, left positive), on the same keyframes as
+      lane_width_read. The map's lane centre is where the lane is drawn, not where drivers keep, so
+      a steady offset is the map's as much as the model's
+    requires: [lane_offset_err]
+    missing: na
+    rules:
+      na:  {when: "op_lane_prob < @lane_none", doc: "the model does not see its lane lines (lanes = none)"}
+      shifted: {when: "abs(lane_offset_err) >= @lane_pos_tol_m", doc: "lane_pos_tol_m or more apart"}
+    default: ok
+
+  speed_read:
+    group: perception
+    doc: >-
+      model's pose-head speed against the reference speed (CAN on comma2k19 and nuscenes, the poses on kitscenes).
+      The poses' speed has no sign, so on kitscenes a reversing car reads as a misread even when the
+      pose head gets it right (backwards)
+    requires: [ego_speed_rel_err]
+    rules:
+      misread: {when: "ego_speed_rel_err > @speed_read_tol", doc: "off by more than speed_read_tol"}
+    default: ok
+
+  start_speed:
+    group: perception
+    doc: >-
+      the plan's own first-step speed against the GT's (v0_ratio): the speed the model believes the
+      car has now, read off the plan rather than the pose head, and against the recorded path rather
+      than CAN. On the recorded comma2k19 run the plan starts 1.0% faster than the GT at the median,
+      on both vehicles, while CAN reads 0.9% over the GT on the civic and 0.8% under it on the rav4.
+      That offset is most of too_fast_cruise: divided out (speed_ratio_net), the cruise keyframes past
+      ratio_fast go from 483 to 77, and those under ratio_slow from 157 to 93. On the recorded kitscenes
+      run it goes the other way and further: the plan starts at 0.91 of the GT's speed at the median
+      (the pose head reads 0.877 of the poses'), 165 of 223 keyframes are `slow`, and 93 of the 101
+      too_slow_cruise keyframes start slow. Divided out, the moving cruise keyframes under ratio_slow go
+      from 101 to 23 (median speed_ratio_net 1.00), and those past ratio_fast from 14 to 21: the plan's
+      speed follows the GT's once its start is right. The start follows cam_h_read: a median v0_ratio
+      of 0.88 in its low mode, 0.92 in its high one
+    requires: [v0_ratio]
+    rules:
+      fast: {when: "v0_ratio >= @start_fast", doc: "the plan starts at start_fast or more times the GT's speed"}
+      slow: {when: "v0_ratio <= @start_slow", doc: "at start_slow or less"}
+    default: ok
+
+  cam_h_read:
+    group: perception
+    only: [kitscenes]
+    doc: >-
+      the camera height the road head believes (op_cam_h, extras.road.camera_height), the scale of
+      everything the model reads off the image. On the recorded kitscenes run it sits in one of two
+      modes, near 1.39 m (130 of 223 keyframes) or near 1.62 m (93), never above 1.65 m, while the
+      front camera is 1.88 m up (ctx_height_ring_front_m). The pose head's speed follows it: 0.82 of
+      the poses' in the low mode and 0.92 in the high one, in every speed band above 2 m/s, on every
+      mount and with either history. The low mode mostly has no lane lines (89% lanes=none, against
+      54%), and the mode changes within 17 of the 51 scenes with more than one keyframe. It follows
+      the lane lines more than anything else measured; the rig and the city do not separate it (the
+      kitscenes notebook's §14)
+    requires: [op_cam_h]
+    rules:
+      low: {when: "op_cam_h < @cam_h_split_m", doc: "under cam_h_split_m"}
+    default: high
+    default_doc: "cam_h_split_m or more"
+
+  yaw_read:
+    group: perception
+    doc: "model's pose-head yaw rate minus the reference yaw rate"
+    requires: [ego_yaw_bias]
+    rules:
+      biased: {when: "abs(ego_yaw_bias) >= @yaw_bias_tol", doc: "off by yaw_bias_tol or more"}
+    default: ok
+
+  sanity:
+    group: perception
+    only: [comma2k19]
+    doc: "the benchmark's own plausibility gates: speed, lane width, camera height"
+    requires: [rec_sanity_pass]
+    rules:
+      pass: {when: "rec_sanity_pass == 1", doc: "every applicable gate passed"}
+    default: fail
+
+  # ---------------- response: what the plan did against the GT --------------
+  accel_response:
+    group: response
+    doc: "plan accel minus GT accel, where the GT itself clearly accelerates or brakes"
+    requires: [accel_delta]
+    rules:
+      na:          {when: "abs(gt_accel) < @accel_resp_min", doc: "GT neither accelerates nor brakes enough to judge"}
+      matched:     {when: "abs(accel_delta) < @accel_tol", doc: "within accel_tol of the GT"}
+      over_reacts: {when: "accel_delta * gt_accel > 0", doc: "further in the GT's own direction: brakes or accelerates harder"}
+    default: under_reacts
+    default_doc: "not as far as the GT goes"
+
+  side_H:
+    group: response
+    doc: "which side of the GT path the plan is at H (cross-track, left positive). Depends on GT_FRAME"
+    requires: [cross_H]
+    rules:
+      left:  {when: "cross_H > @side_m", doc: "more than side_m left"}
+      right: {when: "cross_H < -@side_m", doc: "more than side_m right"}
+    default: "on"
+
+  confidence:
+    group: response
+    doc: "error at H in the model's own sigma, worse axis: z_H = max(|dx|/sigma_x, |dy|/sigma_y)"
+    requires: [z_H]
+    rules:
+      within_1sigma: {when: "z_H <= @z1", doc: "within z1 sigma"}
+      within_2sigma: {when: "z_H <= @z2", doc: "within z2 sigma"}
+      beyond_4sigma: {when: "z_H > @z_bad", doc: "beyond z_bad sigma"}
+    default: beyond_2sigma
+
+  comfort:
+    group: response
+    doc: >-
+      the plan against paddock's comfort bounds (paddock.metrics.comfort: accel, decel, lateral accel,
+      jerk, yaw rate) over [0, H], not the recorded 10 s. Over 10 s openpilot's plan breaks the
+      jerk bound on 70% of moving comma2k19 keyframes, against 0.2% for the GT. Almost all of it
+      sits in the plan's last second, where decimetres of noise 300 m out make a large third
+      difference. rec_comfort_* still carry the 10 s numbers
+    requires: [pred_comfort_H]
+    missing: na
+    rules:
+      na:          {when: "pred_v_max < @v_go", doc: "the plan barely moves, so its headings, and with them its yaw rate, are noise"}
+      comfortable: {when: "pred_comfort_H == 1", doc: "within every bound over H"}
+    default: harsh
+    default_doc: "breaks a bound over H; pred_comfort_broken_H names it"
+
+  lead_safety:
+    group: response
+    only: [comma2k19]
+    doc: "whether the plan, driven, would come within 2 s TTC of the radar lead (recorded)"
+    requires: [rec_ttc_below_2s]
+    rules:
+      na:        {when: "lead == 'clutter'", doc: "no near radar lead, or it is clutter (lead): the recorded TTC is to a sign or guardrail"}
+      ttc_alert: {when: "rec_ttc_below_2s == 1", doc: "TTC under 2 s somewhere along the plan"}
+    default: ok
+
+# Numeric columns cut into labelled bands; intervals are right-open [a, b).
+# Edges may name params ("@ratio_slow"). NaN gets `missing`.
+bins:
+  speed_ratio_bin:
+    group: response
+    col: speed_ratio
+    edges: ["@ratio_much_slow", "@ratio_slow", "@ratio_fast", "@ratio_much_fast"]
+    labels: [much_slower, slower, matched, faster, much_faster]
+    missing: na
+    doc: "plan path length over H / GT path length over H, i.e. the ratio of mean speeds; NaN when the GT moves under min_ratio_len_m"
+  curv_ratio_bin:
+    group: response
+    col: curv_ratio
+    edges: [0.0, "@curv_under", "@curv_over"]
+    labels: [wrong_direction, understeer, matched, oversteer]
+    missing: na
+    doc: "plan heading change / GT heading change over H; NaN unless |GT heading change| >= curve_min_deg"
+
+# Each becomes a boolean fm_<name> column, so a failure mode is also a tag.
+# `severity` is an expression, bigger is worse; it ranks the keyframes shown.
+failure_modes:
+  # -- longitudinal --
+  too_slow_cruise:
+    group: long
+    when: "gt_long == 'cruise' and speed_band != 'standstill' and speed_ratio < @ratio_slow"
+    severity: "1 - speed_ratio"
+    doc: "GT holds speed while moving; the plan covers less than ratio_slow of its distance"
+  too_fast_cruise:
+    group: long
+    when: "gt_long == 'cruise' and speed_band != 'standstill' and speed_ratio > @ratio_fast"
+    severity: "speed_ratio - 1"
+    doc: "GT holds speed while moving; the plan covers more than ratio_fast of its distance"
+  under_accelerates:
+    group: long
+    when: "gt_long in ['accel', 'hard_accel'] and pred_long in ['cruise', 'brake', 'hard_brake', 'stopping', 'stationary']"
+    severity: "gt_accel - pred_accel"
+    doc: "GT accelerates; the plan holds speed or slows"
+  under_brakes:
+    group: long
+    when: "gt_long in ['brake', 'hard_brake', 'stopping'] and pred_long in ['cruise', 'accel', 'hard_accel']"
+    severity: "pred_accel - gt_accel"
+    doc: "GT brakes or stops; the plan holds speed or speeds up"
+  phantom_brake:
+    group: long
+    when: "gt_long in ['cruise', 'accel', 'hard_accel'] and pred_long in ['brake', 'hard_brake', 'stopping', 'stationary']"
+    severity: "gt_accel - pred_accel"
+    doc: "GT holds speed or accelerates; the plan brakes or stops"
+  creep_at_stop:
+    group: long
+    when: "gt_long == 'stationary' and pred_s >= @creep_m"
+    severity: "pred_s"
+    doc: "GT stands still; the plan moves creep_m or more over H"
+  fails_to_launch:
+    group: long
+    when: "gt_long == 'starting' and pred_s < @launch_ratio * gt_s"
+    severity: "gt_s - pred_s"
+    doc: "GT pulls away; the plan covers under launch_ratio of its distance"
+  misses_stop:
+    group: long
+    when: "gt_stop_I == 'stops' and pred_vmin_I >= @v_go"
+    severity: "pred_vmin_I"
+    doc: "GT stops within intent_horizon_s; over the same time the plan never drops below v_go"
+  # -- lead (radar) --
+  late_for_lead:
+    group: lead
+    only: [comma2k19]
+    when: "lead == 'near' and lead_motion == 'closing' and gt_long in ['brake', 'hard_brake', 'stopping'] and pred_long in ['cruise', 'accel', 'hard_accel']"
+    severity: "pred_accel - gt_accel"
+    doc: "radar lead near and closing and the driver brakes; the plan does not"
+  tailgates_lead:
+    group: lead
+    only: [comma2k19]
+    when: "lead_safety == 'ttc_alert'"
+    severity: "2 - rec_lead_ttc_min_s"
+    doc: "the plan comes within 2 s TTC of the radar lead"
+  # -- lateral --
+  understeer:
+    group: lat
+    when: "curv_ratio_bin == 'understeer'"
+    severity: "1 - curv_ratio"
+    doc: "GT curves; the plan turns under curv_under of the GT heading change"
+  oversteer:
+    group: lat
+    when: "curv_ratio_bin == 'oversteer'"
+    severity: "curv_ratio - 1"
+    doc: "GT curves; the plan turns over curv_over of the GT heading change"
+  wrong_way_curve:
+    group: lat
+    when: "curv_ratio_bin == 'wrong_direction'"
+    severity: "abs(pred_dpsi_deg - gt_dpsi_deg)"
+    doc: "GT curves one way; the plan the other"
+  phantom_curve:
+    group: lat
+    when: "gt_lat == 'straight' and pred_lat in ['curve_L', 'curve_R', 'sharp_L', 'sharp_R', 'turn_L', 'turn_R'] and abs(dpsi_err_deg) >= @curve_err_deg and not (gt_dpsi_I_deg * pred_dpsi_deg > 0 and abs(gt_dpsi_I_deg) >= @curve_min_deg)"
+    severity: "abs(dpsi_err_deg)"
+    doc: >-
+      GT goes straight over H; the plan curves, turning at least curve_err_deg more than the GT, and
+      not into a curve the GT takes later (early_curve). The heading gate is what makes this a
+      hallucinated curve rather than a class boundary: the recorded comma2k19 run has 2 with it, and
+      52 without it (curve_err_deg 0), 44 of those at low speed, where a median 0.8 deg over a 9 m
+      path crosses k_straight, leaning left 43:9. On all 6,828 moving GT-straight keyframes the
+      plan's heading change is within 0.6 deg of the GT's at p90, and 1.9 deg at p99
+  early_curve:
+    group: lat
+    when: "gt_lat == 'straight' and pred_lat in ['curve_L', 'curve_R', 'sharp_L', 'sharp_R', 'turn_L', 'turn_R'] and abs(dpsi_err_deg) >= @curve_err_deg and gt_dpsi_I_deg * pred_dpsi_deg > 0 and abs(gt_dpsi_I_deg) >= @curve_min_deg"
+    severity: "abs(dpsi_err_deg)"
+    doc: >-
+      GT goes straight over H but turns the same way within intent_horizon_s, and the plan already
+      turns at least curve_err_deg more than the GT: anticipation, not a hallucination. The recorded
+      comma2k19 run (10 s) has 5 with the heading gate and 85 without it. Of the 87 plans that curve
+      on a GT straight where the GT curves within 10 s, 85 go its way; but 71 of those 85 are within
+      2 deg of the GT's own heading change, because at speed the GT is already bending, just under
+      k_straight. With kitscenes' 4 s GT this sees only 1 s past H, so there a phantom_curve can
+      still be a curve the GT takes after 4 s
+  drift_on_straight:
+    group: lat
+    when: "gt_lat == 'straight' and abs(cross_H) >= @drift_m and not ((gt_lane_change_I == 'left' and cross_H < 0) or (gt_lane_change_I == 'right' and cross_H > 0))"
+    severity: "abs(cross_H)"
+    doc: >-
+      GT goes straight; the plan ends drift_m or more to one side at H, and not on the side a GT
+      changing lanes within intent_horizon_s is leaving: that is the plan staying in lane, which the intent mode
+      lane_change_unanticipated covers. On the recorded comma2k19 run 28 of the 32 drifts before a
+      lane change were on that side, where chance would put about 16, and in 22 of them the GT had
+      already begun moving by H. Depends on GT_FRAME
+  # -- perception --
+  missed_lead:
+    group: perception
+    only: [comma2k19]
+    when: "lead_detect == 'missed'"
+    severity: "@lead_near_m - ref_lead_d"
+    doc: "radar lead within range, no model lead; closer is worse"
+  phantom_lead:
+    group: perception
+    only: [comma2k19]
+    when: "lead_detect == 'phantom'"
+    severity: "@lead_near_m - op_lead_d"
+    doc: "model lead within lead_near_m and no radar lead at any range; closer is worse"
+  lead_range_misread:
+    group: perception
+    only: [comma2k19]
+    when: "lead_range in ['under', 'over']"
+    severity: "abs(rec_lead_range_err)"
+    doc: "model lead range off by lead_range_tol_m or more"
+  ego_speed_misread:
+    group: perception
+    when: "speed_read == 'misread'"
+    severity: "ego_speed_rel_err"
+    doc: "pose-head speed off the reference by more than speed_read_tol"
+  yaw_misread:
+    group: perception
+    when: "yaw_read == 'biased'"
+    severity: "abs(ego_yaw_bias)"
+    doc: "pose-head yaw rate off the reference by yaw_bias_tol or more"
+  lane_width_misread:
+    group: perception
+    only: [nuscenes]
+    when: "lane_width_read in ['narrow', 'wide']"
+    severity: "abs(lane_width_ratio - 1)"
+    doc: "the model's lane width is off the map's by more than lane_w_ratio_lo..lane_w_ratio_hi"
+  lane_offset_misread:
+    group: perception
+    only: [nuscenes]
+    when: "lane_pos_read == 'shifted'"
+    severity: "abs(lane_offset_err)"
+    doc: "the model puts the car lane_pos_tol_m or more from where the map does, within its lane"
+  # -- collision (nuScenes' annotated boxes) --
+  plan_collides:
+    group: collision
+    only: [nuscenes]
+    when: "rec_col_uniad_3s > 0 and gt_col_uniad_3s == 0"
+    severity: "rec_col_uniad_3s"
+    doc: >-
+      the plan's footprint overlaps an annotated box at some 0.5 s step within 3 s (the recorded
+      col_* metrics), while the GT's own footprint, scored the same way, overlaps none. Severity is
+      the fraction of the six steps in collision. The boxes move as annotated, whatever the plan does,
+      so a plan slower than the GT can be hit from behind: NUMBERS_COLLIDES
+  # -- confidence and comfort --
+  confidently_wrong:
+    group: confidence
+    when: "z_H >= @z_bad and fde_H >= @fde_bad_m"
+    severity: "z_H"
+    doc: "at H the plan is fde_bad_m or more off and z_bad sigma or more outside its own uncertainty"
+  harsh_plan:
+    group: comfort
+    when: "comfort == 'harsh' and gt_comfort_H == 1"
+    severity: "pred_comfort_excess_H"
+    doc: "over H the plan breaks a comfort bound that the GT, over the same window, stays within; severity is its worst peak over that bound"
+  # -- intent: what the model is not told, unless a run sends a desire; reported apart --
+  lane_change_unanticipated:
+    group: intent
+    when: "gt_lane_change_I in ['left', 'right'] and abs(pred_shift_I) < @lc_pred_m"
+    severity: "abs(gt_shift_I)"
+    doc: "GT changes lane within intent_horizon_s; over the same time the plan shifts under lc_pred_m"
+  turn_unanticipated:
+    group: intent
+    when: "gt_turn_I in ['turn_L', 'turn_R'] and abs(pred_dpsi_I_deg) < @turn_pred_deg"
+    severity: "abs(gt_dpsi_I_deg)"
+    doc: "GT turns within intent_horizon_s; over the same time the plan turns under turn_pred_deg"
+  # kitscenes knows the route: each sample carries the driving command and the
+  # navigation text (cmd, nav). The model never gets the text, and gets the command only in a
+  # run that sends it as a desire (the kitscenes notebook's §17). The plan's whole
+  # 10 s is compared with it, since a commanded turn can lie past the 4 s GT.
+  turn_not_planned:
+    group: intent
+    only: [kitscenes]
+    when: "cmd in ['left', 'right'] and abs(pred_dpsi_full_deg) < @turn_pred_deg"
+    severity: "abs(gt_dpsi_I_deg)"
+    doc: >-
+      the route commands a turn; the plan's whole 10 s turns under turn_pred_deg either way. Severity
+      is how far the GT turns within intent_horizon_s, so the worst are turns already under way. A
+      plan that is too short to have a heading (stopped at a light) is never flagged
+  turn_wrong_way:
+    group: intent
+    only: [kitscenes]
+    when: "(cmd == 'left' and pred_dpsi_full_deg <= -@turn_pred_deg) or (cmd == 'right' and pred_dpsi_full_deg >= @turn_pred_deg)"
+    severity: "abs(pred_dpsi_full_deg)"
+    doc: >-
+      the route commands a turn one way; the plan turns turn_pred_deg or more the other way. Compare
+      the count with how often the plan turns that way under a straight command: at the same rate it
+      is the plan's own habit rather than a response to the junction
+  turns_off_route:
+    group: intent
+    only: [kitscenes]
+    when: "cmd == 'straight' and nav == 'straight' and abs(pred_dpsi_full_deg) >= @turn_intent_deg and ref_speed >= @v_go"
+    severity: "abs(pred_dpsi_full_deg)"
+    doc: >-
+      the route goes straight on (the command and the navigation text both say so), yet the moving
+      plan turns turn_intent_deg or more over its 10 s. The GT covers only intent_horizon_s, so a
+      road that bends after that is not ruled out: look at the camera. A straight command alone is
+      not enough: kitscenes' command is a turn exactly where the 4 s GT ends 5 m or more to one side
+      (the kitscenes notebook's §17), while the text looks further along the route, so "Turn right
+      in 41m" still comes with a straight command
+
+# Named strengths, alongside the ones §12 finds from the data.
+strengths:
+  holds_speed:
+    when: "gt_long == 'cruise' and speed_band != 'standstill' and speed_ratio_bin == 'matched'"
+    doc: "GT holds speed; the plan covers the same distance within ratio_slow..ratio_fast"
+  holds_curve:
+    when: "gt_lat in ['curve_L', 'curve_R', 'sharp_L', 'sharp_R'] and curv_ratio_bin == 'matched' and abs(cross_H) < @hold_m"
+    doc: "GT curves; the plan's heading change matches and it ends within hold_m of the GT"
+  brakes_for_lead:
+    only: [comma2k19]
+    when: "lead == 'near' and lead_motion == 'closing' and gt_long in ['brake', 'hard_brake', 'stopping'] and pred_long in ['brake', 'hard_brake', 'stopping', 'stationary']"
+    doc: "radar lead near and closing, the driver brakes, and so does the plan"
+  launches_with_gt:
+    when: "gt_long == 'starting' and pred_long == 'starting'"
+    doc: "GT pulls away from a stop and so does the plan"
+  stops_with_gt:
+    when: "gt_long in ['stopping', 'stationary'] and pred_long in ['stopping', 'stationary']"
+    doc: "GT stops or stands and so does the plan"
+  takes_routed_turn:
+    only: [kitscenes]
+    when: "(cmd == 'left' and pred_dpsi_full_deg >= @turn_pred_deg) or (cmd == 'right' and pred_dpsi_full_deg <= -@turn_pred_deg)"
+    doc: >-
+      the route commands a turn and the plan turns turn_pred_deg or more that way over its 10 s,
+      though, unless the run sends a desire (the kitscenes notebook's §17), the model is not told
+      the route: whatever it turns for, it is in the scene

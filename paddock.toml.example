@@ -244,6 +244,18 @@ serialize = true
 # level -- otherwise every projected point lands behind the car. Default 2.2;
 # override only if you have measured this rig.
 # ground_offset_m = 2.2
+#
+# The route command the scored keyframe carries. KITScenes has no route
+# annotation, so the default tells every model "straight". "gt" gives the
+# keyframe the sample list's own driving_command, derived from the recorded
+# future: an oracle hint, recorded in run.json and hashed into the run id.
+# See docs/benchmarks/kitscenes.md, "The route hint".
+# command_source = "straight"   # or "gt"
+#
+# Which forward camera is CAM_FRONT: the ring's own, or the rig's 5856x3104
+# camera_base_front_center. Recorded in run.json and hashed into the run id.
+# See docs/benchmarks/kitscenes.md, "The front camera".
+# front_camera = "ring"   # or "base"
 
 # [benchmarks.neuroncap]
 # Closed-loop NCAP scoring against a NeuRAD render; docs/benchmarks/neuroncap.md.
@@ -299,6 +311,25 @@ serialize = true
 # WARP_DEV = "CPU"
 # PADDOCK_OPENPILOT_NATIVE_LONG = "0"
 # PADDOCK_OPENPILOT_RESUME_S = "0"
+
+# A pairing: settings for one model on one benchmark and nowhere else, its env
+# over [models.<model>.env] and its settings over [benchmarks.<benchmark>]. This
+# is how a site makes a configuration tuned on one benchmark its default there,
+# without it reaching the model's other benchmarks or the benchmark's other
+# models. It is recorded in run.json and hashed into the run id exactly as the
+# same values set globally would be, and `paddock run` names it before it
+# starts. Delete the tables to reset: the next run hashes as it did before them.
+# openpilot on KITScenes, from the base front camera as comma's own would see it
+# (docs/models/openpilot-guide.md):
+# [models.openpilot.benchmarks.kitscenes.env]
+# PADDOCK_OPENPILOT_BACKEND = "onnx"
+# PADDOCK_OPENPILOT_HEIGHT_SCALE = "1.22"
+# PADDOCK_OPENPILOT_PITCH_DEG = "-1.7"
+# PADDOCK_OPENPILOT_FOV_DEG = "55"
+# PADDOCK_OPENPILOT_DESIRE = "turn"
+# [models.openpilot.benchmarks.kitscenes.settings]
+# command_source = "gt"
+# front_camera = "base"
 
 # Drive-JEPA reads each camera at its own intrinsics by default ("native"), which
 # is how every published drivejepa row was made. "openscene" crops each camera
@@ -478,3 +509,25 @@ serialize = true
 #   PADDOCK_OPENPILOT_RESUME_S      seconds stopped with no lead before the
 #                                   driver-resume rule pulls away; "0" disables
 #   PADDOCK_OPENPILOT_THREADS       onnxruntime thread count (default 8)
+#   PADDOCK_OPENPILOT_DESIRE        "off" (the default: no desire, as every
+#                                   run before it), "turn" or "lane_change":
+#                                   which desire a LEFT/RIGHT route command is
+#                                   sent as. See docs/models/openpilot-guide.md.
+#   PADDOCK_OPENPILOT_HEIGHT_SCALE  the camera's height over the road divided
+#                                   by openpilot's 1.22 m, to show the model
+#                                   the road as its own camera would have seen
+#                                   it. "1" (the default) is openpilot's own
+#                                   warp. A measurement, not a correction: see
+#                                   docs/models/openpilot-guide.md.
+#   PADDOCK_OPENPILOT_PITCH_DEG     degrees the model's view is tilted over
+#                                   the camera's, positive up. "0" (the
+#                                   default) is openpilot's own warp.
+#   PADDOCK_OPENPILOT_FOV_DEG       warp the views from a cut of this many
+#                                   degrees across, resampled to comma's
+#                                   1164x874, instead of the frame as recorded.
+#                                   "0" (the default) is no cut. Needs
+#                                   PADDOCK_OPENPILOT_BACKEND = "onnx". Both:
+#                                   see docs/models/openpilot-guide.md. Both
+#                                   are set for one camera rig, so set them in
+#                                   a pairing table (above) for the benchmark
+#                                   whose rig they were measured on.
