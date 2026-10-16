@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -89,6 +90,65 @@ def scorer_sha() -> str:
     from paddock.registry import Registry
 
     return Registry.load().repos["alpasim"].sha
+
+
+@dataclass(frozen=True)
+class DriverProfile:
+    """The simulation settings and bridge translation one model is driven with.
+
+    Every model gets the default unless it is listed in `DRIVER_PROFILES`, and
+    the default is exactly what this adapter did before profiles existed: the
+    `paddock_bridge` driver config, no bridge flags, scenes named by id, video
+    as the site asks.
+    """
+
+    #: Driver config under configs/driver/, passed as `driver=`.
+    driver: str = "paddock_bridge"
+    #: Extra `bridge.py` flags: camera renames, placeholders, intrinsics.
+    bridge_args: tuple[str, ...] = ()
+    #: A file under scenes/ pinning each scene to one artifact uuid, or None to
+    #: name scenes by id alone.
+    scenes_csv: str | None = None
+    #: (render_video, render_every_nth_frame) when the profile fixes them, or
+    #: None for the site's `video` settings. They are part of the eval config
+    #: the scorer writes, so a profile that must reproduce one fixes them.
+    video: tuple[bool, int] | None = None
+
+
+DEFAULT_PROFILE = DriverProfile()
+
+#: Models driven on settings other than the default, keyed by model name.
+#:
+#: drivejepa: the settings of Drive-JEPA's native AlpaSim driver (adapter
+#: 0.1.4b), whose 30-scene runs are the baseline a Paddock-route run is checked
+#: against -- one front pinhole camera at 20 Hz, 3.0 s warm-up with the driver
+#: called, 400 steps, the shared 20 Hz eval config, 26.01 artifacts by uuid.
+#: The node reads CAM_FRONT plus three more cameras; AlpaSim renders one, so
+#: the other three are that driver's placeholder (see bridge.PLACEHOLDER_RGB).
+DRIVER_PROFILES: dict[str, DriverProfile] = {
+    "drivejepa": DriverProfile(
+        driver="paddock_bridge_drivejepa",
+        bridge_args=(
+            "--camera-name",
+            "camera_front_wide_120fov=CAM_FRONT",
+            "--placeholder",
+            "CAM_FRONT_LEFT",
+            "--placeholder",
+            "CAM_FRONT_RIGHT",
+            "--placeholder",
+            "CAM_BACK",
+            "--placeholder-source",
+            "CAM_FRONT",
+            "--pinhole-intrinsics",
+        ),
+        scenes_csv="public_2601_30scenes_26p01.csv",
+        video=(True, 1),
+    ),
+}
+
+
+def profile_for(model: str) -> DriverProfile:
+    return DRIVER_PROFILES.get(model, DEFAULT_PROFILE)
 
 
 #: Metrics we lift out of a rollout record, mapped to canonical names.
@@ -231,6 +291,23 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
             "scorer_repo_sha": scorer_sha(),
             "renderer": self.renderer,
             "topology": self.setting("topology") or launcher.DEFAULT_TOPOLOGY,
+        }
+
+    def model_run_config(self, model) -> dict[str, Any]:
+        """A model's profile, when it has one, so the run id and run.json say so.
+
+        Empty for the default profile, so a model without one records exactly
+        what it recorded before profiles existed.
+        """
+        if model.name not in DRIVER_PROFILES:
+            return {}
+        profile = DRIVER_PROFILES[model.name]
+        return {
+            "driver_profile": model.name,
+            "driver_config": profile.driver,
+            "bridge_args": list(profile.bridge_args),
+            "scenes_csv": profile.scenes_csv,
+            "video": list(profile.video) if profile.video else None,
         }
 
     # -- preflight ---------------------------------------------------------
@@ -430,6 +507,14 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
                 "[benchmarks.alpasim] needs `repo` and `python`; preflight should have caught this"
             )
 
+        model = launcher.serving_model(policy_url)
+        profile = profile_for(model)
+        site_video = (self.flag("video"), int(self.setting("video_every_nth_frame") or 1))
+        video, every_nth = profile.video or site_video
+        scenes_csv = SCENES_DIR / profile.scenes_csv if profile.scenes_csv else None
+        if scenes_csv is not None and not scenes_csv.is_file():
+            raise RuntimeError(f"{model}'s driver profile pins scenes in {scenes_csv}, which does not exist")
+
         out_dir.mkdir(parents=True, exist_ok=True)
         bridge_port = ports.find_free(BRIDGE_PORT_BASE)
         bridge_log = out_dir / "bridge.log"
@@ -442,6 +527,7 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
             port=bridge_port,
             version_id=f"paddock-bridge/{episode.scenario}",
             log_path=bridge_log,
+            extra_args=profile.bridge_args,
         ):
             command = launcher.wizard_command(
                 repo=repo,
@@ -450,12 +536,14 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
                 out_dir=out_dir,
                 bridge_port=bridge_port,
                 searchpath=None,
+                driver=profile.driver,
                 startup_timeout_s=self.startup_timeout_s,
                 deploy=self.setting("deploy") or launcher.DEFAULT_DEPLOY,
                 topology=self.setting("topology") or launcher.DEFAULT_TOPOLOGY,
                 scene_cache=self.setting("scene_cache"),
-                video=self.flag("video"),
-                video_every_nth_frame=int(self.setting("video_every_nth_frame") or 1),
+                video=video,
+                video_every_nth_frame=every_nth,
+                scenes_csv=scenes_csv,
             )
             returncode, timed_out, elapsed = launcher.run_wizard(
                 command,

@@ -463,6 +463,8 @@ def fake_repo(tmp_path: Path, monkeypatch) -> Path:
         ]
 
     monkeypatch.setattr(harness.launcher, "wizard_command", fake_command)
+    # No node answers here; the stand-in serves a model with the default profile.
+    monkeypatch.setattr(harness.launcher, "serving_model", lambda url: "constant_velocity")
     return repo
 
 
@@ -575,3 +577,37 @@ def test_a_scene_subset_is_not_a_score(tmp_path: Path, monkeypatch) -> None:
     list(bench.episodes([CLEAN]))
     (reason,) = bench.invalid_reasons()
     assert f"1 of the {len(load_scene_set(DEFAULT_SCENE_SET))} clips" in reason
+
+
+def test_a_model_without_a_profile_is_driven_exactly_as_before(tmp_path: Path, monkeypatch) -> None:
+    """alpamayo15 and every other unlisted model: default driver, no bridge flags, nothing recorded."""
+    from types import SimpleNamespace
+
+    from paddock.adapters.benchmarks.alpasim import harness
+
+    profile = harness.profile_for("alpamayo15")
+    assert profile == harness.DriverProfile()
+    assert (profile.driver, profile.bridge_args, profile.scenes_csv, profile.video) == (
+        "paddock_bridge",
+        (),
+        None,
+        None,
+    )
+    bench = _benchmark(tmp_path, monkeypatch)
+    assert bench.model_run_config(SimpleNamespace(name="alpamayo15")) == {}
+
+
+def test_the_drivejepa_profile_pins_every_scene_it_can_be_asked_for() -> None:
+    """Its driver config exists, and its catalog pins each 30-scene id to one 26.01 artifact."""
+    import csv
+
+    from paddock.adapters.benchmarks.alpasim import harness, launcher
+
+    profile = harness.profile_for("drivejepa")
+    assert (launcher.CONFIGS_DIR / "driver" / f"{profile.driver}.yaml").is_file()
+    rows = list(csv.DictReader((harness.SCENES_DIR / profile.scenes_csv).open()))
+    ids = [row["scene_id"] for row in rows]
+    assert sorted(ids) == sorted(load_scene_set("public_2601_30scenes"))
+    assert set(load_scene_set("public_2601_first10")) <= set(ids)
+    assert {row["nre_version_string"] for row in rows} == {"26.1.112-59673f88"}
+    assert len({row["uuid"] for row in rows}) == len(rows)

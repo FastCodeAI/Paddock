@@ -74,8 +74,12 @@ class BridgeProcess:
         version_id: str,
         log_path: Path,
         env: dict[str, str] | None = None,
+        extra_args: tuple[str, ...] = (),
     ) -> None:
         self.python = python
+        # Per-model translation flags (`harness.DRIVER_PROFILES`); empty for
+        # every model that does not need one, so their command is unchanged.
+        self.extra_args = tuple(extra_args)
         self.policy_url = policy_url
         self.port = port
         self.version_id = version_id
@@ -104,6 +108,7 @@ class BridgeProcess:
             str(self.port),
             "--version-id",
             self.version_id,
+            *self.extra_args,
         ]
         environment = dict(self.env or os.environ)
         # The bridge imports paddock's own package from the source tree while
@@ -203,11 +208,18 @@ def wizard_command(
     video: bool = False,
     video_every_nth_frame: int = 1,
     scene_cache: str | None = None,
+    scenes_csv: Path | None = None,
 ) -> list[str]:
     """The wizard invocation for one scene.
 
     `+key=value` for `startup_timeout_s` because the key is absent from the
     Hydra struct and plain assignment would be rejected.
+
+    *scenes_csv* pins each scene to one artifact uuid. Named by id alone, the
+    wizard takes the newest catalog row for a scene, which for some of
+    public_2601 is a 26.04 reconstruction rather than the 26.01 one a baseline
+    was scored on. With a catalog of the pinned rows, and the suite selection
+    switched off, the id resolves to that row only.
     """
     # `-m alpasim_wizard`, not `-m alpasim_wizard.main`: the package's entry
     # point is __main__.py, exposed as the console script
@@ -256,6 +268,12 @@ def wizard_command(
         # makes min_ade a different quantity under the same name.
         "eval.scorers.min_ade.time_deltas=[0.5,1.0,2.5]",
     ]
+    if scenes_csv is not None:
+        command += [
+            f"scenes.scenes_csv=[{scenes_csv}]",
+            "scenes.test_suite_id=null",
+            "scenes.limit_to_first_n=0",
+        ]
     if scene_cache:
         # Where the USDZ artifacts are cached. Site-specific and large, so it is
         # a paddock.toml key rather than a default -- an unset cache re-fetches
@@ -336,3 +354,20 @@ def node_alive(policy_url: str, timeout_s: float = 5.0) -> bool:
             return response.status == 200
     except (urllib.error.URLError, OSError):
         return False
+
+
+def serving_model(policy_url: str, timeout_s: float = 10.0) -> str:
+    """The model the node at *policy_url* says it serves (`/whoami`).
+
+    Asked of the node rather than passed in, because `run_episode` is handed a
+    URL and nothing else, and the node is the one thing that cannot be wrong
+    about which model is answering. Raises when it cannot say: guessing would
+    drive a model on another model's simulation settings.
+    """
+    import json
+
+    try:
+        with urllib.request.urlopen(f"{policy_url.rstrip('/')}/whoami", timeout=timeout_s) as response:
+            return str(json.loads(response.read())["model"])
+    except (urllib.error.URLError, OSError, KeyError, ValueError) as exc:
+        raise RuntimeError(f"policy node at {policy_url} did not say which model it serves: {exc}") from exc

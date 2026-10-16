@@ -349,3 +349,102 @@ def test_a_frame_survives_the_whole_path_to_the_node(bridge) -> None:
     assert "camera_front_wide_120fov" in images, "the node was sent no frame"
     recovered = decode_image(images["camera_front_wide_120fov"])
     assert recovered.shape == (16, 32, 3)
+
+
+# ---------------------------------------------------------------------------
+# per-model camera translation (Drive-JEPA's profile)
+# ---------------------------------------------------------------------------
+
+DRIVEJEPA_TRANSLATION = {
+    "camera_names": {"camera_front_wide_120fov": "CAM_FRONT"},
+    "placeholders": ("CAM_FRONT_LEFT", "CAM_FRONT_RIGHT", "CAM_BACK"),
+    "placeholder_source": "CAM_FRONT",
+    "pinhole_intrinsics": True,
+}
+
+
+def _translating_bridge(stub_node, **translation):
+    url, _ = stub_node
+    planner = PolicyPlanner(url, **translation)
+    scaffold = DriverScaffold(planner=planner, version_id="test-bridge-0.0.0", keep_images=True)
+    server = grpc.server(__import__("concurrent.futures", fromlist=["x"]).ThreadPoolExecutor(4))
+    from alpasim_grpc.v0.egodriver_pb2_grpc import add_EgodriverServiceServicer_to_server
+
+    add_EgodriverServiceServicer_to_server(scaffold, server)
+    port = server.add_insecure_port("127.0.0.1:0")
+    server.start()
+    return server, EgodriverServiceStub(grpc.insecure_channel(f"127.0.0.1:{port}"))
+
+
+def _open_pinhole_session(stub, session="s-1", lens="pinhole"):
+    """start_session with the camera Drive-JEPA's profile renders."""
+    request = DriveSessionRequest()
+    request.session_uuid = session
+    camera = request.rollout_spec.vehicle.available_cameras.add()
+    camera.logical_id = "camera_front_wide_120fov"
+    camera.rig_to_camera.vec.x = 1.5
+    camera.rig_to_camera.quat.w = 1.0
+    if lens == "pinhole":
+        p = camera.intrinsics.opencv_pinhole_param
+        p.focal_length_x, p.focal_length_y = 1545.0, 1540.0
+        p.principal_point_x, p.principal_point_y = 960.0, 560.0
+    else:
+        camera.intrinsics.ftheta_param.principal_point_x = 960.0
+    return stub.start_session(request)
+
+
+def _drive_once(stub):
+    _push_image(stub)
+    _push_egomotion(stub)
+    return _drive(stub)
+
+
+def test_without_translation_flags_the_body_is_what_it_always_was(bridge) -> None:
+    """Every model without a profile must see exactly the old input."""
+    stub, node = bridge
+    _open_pinhole_session(stub)
+    _drive_once(stub)
+    body = node.bodies[-1]
+    assert sorted(body["images"]) == ["camera_front_wide_120fov"]
+    assert body["calibration"]["camera2image"] == {}
+    assert sorted(body["calibration"]["camera2ego"]) == ["camera_front_wide_120fov"]
+
+
+def test_drivejepa_gets_cam_front_its_k_and_three_placeholders(stub_node) -> None:
+    server, stub = _translating_bridge(stub_node, **DRIVEJEPA_TRANSLATION)
+    try:
+        _open_pinhole_session(stub)
+        _drive_once(stub)
+    finally:
+        server.stop(None)
+    body = stub_node[1].bodies[-1]
+    cameras = ["CAM_BACK", "CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT"]
+    assert sorted(body["images"]) == cameras
+    for key in ("camera2image", "camera2ego"):
+        assert sorted(body["calibration"][key]) == cameras
+        for placeholder in DRIVEJEPA_TRANSLATION["placeholders"]:
+            assert body["calibration"][key][placeholder] == body["calibration"][key]["CAM_FRONT"]
+    assert body["calibration"]["camera2image"]["CAM_FRONT"] == [
+        [1545.0, 0.0, 960.0],
+        [0.0, 1540.0, 560.0],
+        [0.0, 0.0, 1.0],
+    ]
+    from paddock.policy.protocol import decode_image
+
+    front = decode_image(body["images"]["CAM_FRONT"])
+    for placeholder in DRIVEJEPA_TRANSLATION["placeholders"]:
+        filled = decode_image(body["images"][placeholder])
+        assert filled.shape == front.shape
+        assert (filled == np.array([17, 42, 99], dtype=np.uint8)).all()
+
+
+def test_a_lens_that_is_not_a_pinhole_is_refused_by_name(stub_node) -> None:
+    server, stub = _translating_bridge(stub_node, **DRIVEJEPA_TRANSLATION)
+    try:
+        _open_pinhole_session(stub, lens="ftheta")
+        with pytest.raises(grpc.RpcError) as caught:
+            _drive_once(stub)
+    finally:
+        server.stop(None)
+    assert "ftheta_param" in str(caught.value.details())
+    assert stub_node[1].bodies == []
