@@ -25,9 +25,11 @@ keyframes are not comparable however close the counts look. `paddock run
 That file is not a hand-written list. It is the output of the Drive-JEPA run
 that went first, kept because whichever 223 keyframes it happened to score
 became the set every later model had to match. Reading it as a sample list uses
-`scene_id`, `keyframe_index` and `split` and ignores the predictions sitting
-beside them; `paddock ingest` reads the same file for the predictions, which is
-how Drive-JEPA has a row on this benchmark without a paddock run.
+`scene_id`, `keyframe_index` and `split` -- and, only under `command_source =
+"gt"`, `driving_command` ([The route hint](#the-route-hint)) -- and ignores the
+predictions sitting beside them; `paddock ingest` reads the same file for the
+predictions, which is how Drive-JEPA has a row on this benchmark without a
+paddock run.
 
 ### The seven rows, and where each came from
 
@@ -36,18 +38,33 @@ how Drive-JEPA has a row on this benchmark without a paddock run.
 | qwendrive | `20260914T220841-5a91fd` | 223 | 0.806 | a paddock run; three of the six ring cameras |
 | alpamayo15 | `legacy-full-nonav` | 223 | 0.921 | `eval_kitscenes/runs/full` |
 | visionpilot | `20260909T202724-153b04` | 223 | 1.534 | a paddock run; see below |
-| openpilot | `legacy-full223` | 223 | 1.599 | `eval_kitscenes/runs/full223` |
+| openpilot | `20261008T004723-a369d1` | 223 | 1.248 | a paddock run; base front camera, 55° cut, height 1.22, pitch −1.7°, route as desire (README ⊜) |
 | meteor | `20260914T215457-ab0586` | 223 | 1.879 | a paddock run; six of its eight cameras |
 | drivejepa | `legacy-kitscenes_e2e_final` | 223 | 2.364 | `inference/kitscenes_e2e_final.pkl` |
 | drivejepa_rerank | `20260921T210621-d7ed08` | 223 | 0.973 | a paddock run; **adapted**, trained on KITScenes train, see below |
 
 All seven carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
-so the column compares. Caveats the hash cannot express:
+so the column compares.
+
+openpilot's row is its configured run. Its other ranked runs on the same 223
+keyframes all use the ring's front camera:
+- stock, `legacy-full223` (`eval_kitscenes/runs/full223`): 1.599, the row shown
+  before;
+- stock, M6's paddock reproduction at `fastcode-shakaal`
+  (`20260901T175755-cc27fb`): 1.599, its `config` recording only `limit`;
+- stock again, at another site after the warp-cache fix
+  (`20260930T154018-242869`): 1.595, with the median at 1.401 against 1.323. What
+  moved the median was not checked.
+- the route sent as a desire (`20260930T014333-d329a6`): 1.649.
+
+Caveats the hash cannot express:
 
 - **Route hint.** Drive-JEPA was run with `--command gt`, which derives a turn
-  command from the recorded future on 39 of the 223 samples; openpilot and
-  VisionPilot have no such input, and Alpamayo's equivalent is its `nav` arm.
-  Recorded as `command_source` in that run's `config`.
+  command from the recorded future on 39 of the 223 samples. VisionPilot has
+  no such input, openpilot reads one only under `PADDOCK_OPENPILOT_DESIRE`,
+  and Alpamayo's equivalent is its `nav` arm.
+  Recorded as `command_source` in that run's `config`. A paddock run can be
+  given the same hint; see [The route hint](#the-route-hint).
 - **Domain.** The checkpoint is trained on nuPlan/OpenScene — US cities, a
   windshield rig — and KITScenes is European driving from a roof pod. Its rank
   here is a zero-shot transfer result, which is why it sits last on this
@@ -56,7 +73,7 @@ so the column compares. Caveats the hash cannot express:
 - **Camera geometry, and no route hint at all.** Qwen-Drive is the only row read
   on three cameras: the ring's front, front-left and front-right, at
   +60.9 / +0.97 / −58.5 degrees and ~87° horizontally, against the ~70° nuPlan
-  rig it trained on. It is zero-shot here. The benchmark supplies no navigation
+  rig it trained on. It is zero-shot here. That run was given no navigation
   command, so every one of its samples is driven as "go straight" — a channel
   the model uses on NAVSIM is inert on this one.
 
@@ -128,6 +145,47 @@ measure a model working from a history it invented.
 `Policy.infer_sequence` feeds the sequence and scores the last frame, disabling
 self-priming for its duration. A model that primes *and* receives real history
 sees a manufactured past followed by a real one.
+
+## The route hint
+
+KITScenes has no route annotation, so by default every frame carries
+`Command.STRAIGHT` and a model is told nothing about where the car is going.
+Every paddock run before `20260930T014333-d329a6` was scored that way. A site
+can instead give the scored keyframe the sample list's own `driving_command`:
+
+```toml
+[benchmarks.kitscenes]
+command_source = "gt"   # default "straight"
+```
+
+That one-hot is the command Drive-JEPA's row was run with, and its `--command
+gt` derived it from the recorded future, as a lateral offset at the end of the
+horizon. So the model is told which way the car is about to go, from the scored
+future, standing in for the route a car's navigation knows, and 39 of the 223
+keyframes (21 left, 18 right) are told to turn. A `gt` run is therefore a
+different measurement from a `straight` one. It hashes to its own run id with
+`command_source` in its `config`, the key and values `paddock ingest` already
+records Drive-JEPA's row under. `straight` adds no key, so every run made before
+the setting existed keeps its id and `--resume`.
+
+A `gt` run is ranked like any other, and its `config` says it was given the
+route. It is the same signal Drive-JEPA's row (`--command gt`) and Alpamayo's
+nav arm were given here. It is also the kind of high-level command nuScenes
+gives every model, whose harness infers it from the recorded future (VAD's
+rule): the standard input of open-loop planning, standing in for the route a
+car's navigation knows. In the README only OpenPilot's cells carry a mark for
+it (⊜); that footnote names the two other rows that had it.
+
+Only the keyframe carries the hint; the 48 history frames stay STRAIGHT. The
+command is derived from the keyframe's own future, so it is not what a frame
+4.8 s earlier would have been told. And a model that turns a change of command
+into an event -- openpilot's desire input is a rising-edge pulse -- would
+otherwise see that event at the start of the history, not at the scored moment.
+
+Whether the hint changes anything is the model's business: one that never
+reads `obs.command` scores the same under either setting. openpilot is one of
+those unless its node is also told which desire a turn is sent as; see
+[the openpilot guide](../models/openpilot-guide.md#a-route-command-reaches-the-desire-input-only-when-asked).
 
 ## The camera ring
 
@@ -208,6 +266,45 @@ the front camera for all 127 of its listed scenes and the rear-right for 53;
 the archive behind it holds all six for all 127; the 13 scenes on the local
 disk hold all six. Resolving the scene once, as before, would have pointed
 five cameras at files one tier further down.
+
+## The front camera
+
+The rig has a second forward camera, `camera_base_front_center`, and a site
+can score with it in the ring front's place:
+
+```toml
+[benchmarks.kitscenes]
+front_camera = "base"   # default "ring"
+```
+
+| | `camera_ring_front` | `camera_base_front_center` |
+|---|---|---|
+| frame | 3504x2272 | 5856x3104 |
+| focal length | 1841 px | 3022 px |
+| field of view | 87 x 63 deg | 88 x 54 deg |
+| in the rig reference | x 0.21, z -0.18 m | x 0.42, z -0.38 m |
+
+So the base camera has 1.6 times the pixels per degree, about the same width
+of view and less height. It sits 0.2 m lower and 0.2 m further forward, about
+1.82 m over the road at the default ground offset against the ring's 2.02. The
+intrinsics are the same in all 140 listed scenes. The mounting values are those
+of 110 of them; the other 30 have both cameras about 7 cm further back and 2 cm
+lower, still 0.2 m apart.
+
+Every observation's `CAM_FRONT` is then the base camera's frame, with its own
+pinhole and extrinsics, at every history frame as well as the keyframe. The
+other five cameras, the poses and the ground offset are unchanged, and
+`cameras_supplied` still says `CAM_FRONT`. The ring check runs on the camera
+that will be read: with `base`, a scene without the base camera, or with a
+base frame count out of step with its poses, is refused by name, and the ring's
+own front is not needed.
+
+Like the route hint, another camera is another measurement. A `base` run hashes
+to its own run id with `front_camera` in its `config`. `ring` adds no key, so
+every run made before the setting existed keeps its id and `--resume`. The
+setting was added for the openpilot analysis of KITScenes, which warps a 55°
+cut of this camera; see
+[the openpilot guide](../models/openpilot-guide.md#a-view-tilted-over-the-cameras-and-cut-to-commas-size).
 
 **What is checked, and what is assumed.** Frame *i* of every camera is treated
 as the sample taken at pose *i*. That is how the dataset is written -- one frame

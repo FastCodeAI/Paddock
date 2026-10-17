@@ -17,7 +17,7 @@ PY := $(shell \
   elif [ -x .venv/bin/python ]; then echo ".venv/bin/python"; \
   else echo "python3"; fi)
 
-.PHONY: help setup setup-conda check check-alpasim-driver test lint fmt typecheck doctor which clean
+.PHONY: help setup setup-conda check check-alpasim-driver check-openpilot test lint fmt typecheck doctor which clean
 
 help:
 	@echo "make setup        — create .venv and install paddock (uv; the default)"
@@ -69,6 +69,18 @@ check-alpasim-driver:
 	@test -n "$(ALPASIM_PY)" || { echo "set ALPASIM_PY to AlpaSim's python, e.g. <alpasim>/.venv/bin/python"; exit 2; }
 	@$(ALPASIM_PY) -c "import grpc, alpasim_grpc, cv2" || { echo "$(ALPASIM_PY) is not AlpaSim's environment (needs grpc, alpasim_grpc, cv2)"; exit 2; }
 	$(ALPASIM_PY) -m pytest tools/models/drivejepa/alpasim_driver/tests -q
+
+# The openpilot adapter's geometry tests (height scale, tilt, cut) need
+# openpilot's own transforms, which paddock's environment deliberately lacks,
+# so `make check` and CI skip them. They are pure numpy over openpilot's
+# source, so they run in paddock's interpreter with the checkout on
+# PYTHONPATH; a reviewer at a site that has one runs this target
+# (docs/reviewing.md §1). It fails rather than skips when the checkout is
+# missing, for the same reason as above.
+check-openpilot:
+	@test -n "$(OPENPILOT_REPO)" || { echo "set OPENPILOT_REPO to the openpilot checkout, e.g. <repos>/openpilot"; exit 2; }
+	@PYTHONPATH="$(OPENPILOT_REPO)" $(PY) -c "import openpilot.common.transformations.model" || { echo "$(OPENPILOT_REPO) is not an openpilot checkout paddock's python can import"; exit 2; }
+	PYTHONPATH="$(OPENPILOT_REPO)" $(PY) -m pytest src/paddock/adapters/models/openpilot/tests -q -rs
 
 test:
 	$(PY) -m pytest -q

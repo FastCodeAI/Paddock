@@ -171,8 +171,8 @@ shared `kitscenes_e2e_final` list, the six-camera ring, native 3 s plan,
 | **1.879** (median 1.419) | 0.695 | 2.040 | 4.034 | 1.563 | 0.688 |
 
 Constant velocity scores 1.381 on the same list; Alpamayo 1.002, VisionPilot
-1.534, OpenPilot 1.599, Drive-JEPA 2.364. A second run reproduced all 223
-predictions exactly.
+1.534, OpenPilot 1.248 (its configured run; 1.599 stock), Drive-JEPA 2.364. A
+second run reproduced all 223 predictions exactly.
 
 **Front camera only, kept as an ablation:**
 `results/kitscenes/meteor/20260914T185351-5e5223`, made before #40 when the

@@ -619,13 +619,26 @@ highlighted, a HUD of the logs at that frame, a north-up minimap of the whole
 segment, and — only in the first case — the model's plan, coloured by
 `viz.palette` so a model keeps its colour here as in every other figure.
 
-Two things to know before trusting what you see:
+Three things to know before trusting what you see:
 
 - **A mirrored plan is a bug, not a model.** Plans arrive in paddock's ego frame
   (y **left**) and the toolkit projects comma2k19's device frame (y **right**).
   The conversion is a sign, a wrong one mirrors the drawn path about the
   direction of travel, raises nothing, and on a straight road is invisible.
   `test_a_plan_to_the_left_is_drawn_to_the_left` exists for exactly this.
+- **A plan is in the car's frame, like the radar.** `camera2ego` carries the
+  route calibration (see [Calibration](#calibration-the-thing-that-was-wrong-before)),
+  so the overlay turns each plan into the camera's frame with the calibration its
+  model was handed, `native_id.rpy_calib_deg`, exactly as it turns a radar box.
+  Clips rendered before that was fixed drew every plan `focal·tan(yaw)` px
+  sideways and `focal·tan(pitch)` px low — up to 37 px and 16–61 px across this
+  dataset's routes — so a plan running straight down the lane sat beside the
+  recorded path with its far end folded onto the road 18–67 m ahead. They show
+  a model that plans short, or hooks, and it was doing neither.
+  `test_the_overlay_draws_a_plan_through_the_mount_rotation` pins it.
+  The scorer does not do the same for the ground truth yet, so a clip can show
+  a plan on the recorded path beside an ADE that still carries the mount yaw
+  (see [Recorded results](#recorded-results)).
 - **Encoding needs a video backend**, the same one scoring needs: PyAV from the
   `comma2k19` extra, or an external ffmpeg named by `PADDOCK_FFMPEG`. Drawing
   additionally needs Pillow, which the `viz` extra declares.
@@ -652,9 +665,10 @@ a whole route**, because all segments of a route share one mounting and because
 those at `rpy = 0`, silently; openpilot never hits this because it persists
 `CalibrationParams` across drives.
 
-Result on this dataset: 3.5–3.8° of pitch on the RAV4, 1.7–1.8° on the Civic,
-consistent within each vehicle. Correcting it is worth roughly 1.7× in
-cross-track error.
+Result on this dataset: 3.3–3.8° of pitch on the RAV4 (39 of its 42 routes) and
+1.6–2.2° on the Civic (126 of 135), consistent within each vehicle and never
+overlapping between them — the Civic's highest is 2.35°, the RAV4's lowest
+2.57°. Correcting it is worth roughly 1.7× in cross-track error.
 
 ## Recorded results
 
@@ -662,6 +676,14 @@ The full dataset, 10,165 samples, every row on the identical sample set
 (`sequences_sha256` `293a225a0b5cbaff` in all six run records). A model is
 scored only as far as it plans; `—` is where its own horizon ends, not a
 failure. Lower is better except `pdm_style_score`.
+
+**Every row is scored against a ground truth in the camera's frame, while the
+plans are in the car's.** The two differ by the mount rotation, about 2° of yaw
+on the Civic, and every number below carries it. Re-scored from the stored
+records with the ground truth in the calibrated frame, ADE@3s is 0.602 for
+qwendrive, 0.858 for alpamayo15 and openpilot, and 1.137 for constant velocity,
+which reorders the table. It is left as scored until that re-score lands in its
+own PR ([ROADMAP](../ROADMAP.md), M8).
 
 | | horizon | ADE@1s | ADE@2s | **ADE@3s** | ADE@4s | ADE@5s | ADE@10s | FDE@3s | median ADE@3s | miss@3s | PDMS-style ↑ |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|

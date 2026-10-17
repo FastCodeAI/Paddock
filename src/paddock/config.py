@@ -28,7 +28,7 @@ from __future__ import annotations
 import os
 import re
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 # Repo root: src/paddock/config.py -> src/paddock -> src -> <root>
@@ -85,6 +85,27 @@ class Dataset:
 
 
 @dataclass(frozen=True)
+class PairingOverride:
+    """Settings for one model on one benchmark, over both of their own.
+
+        [models.openpilot.benchmarks.kitscenes.env]       # over [models.openpilot.env]
+        PADDOCK_OPENPILOT_HEIGHT_SCALE = "1.22"
+        [models.openpilot.benchmarks.kitscenes.settings]  # over [benchmarks.kitscenes]
+        front_camera = "base"
+
+    Neither existing scope can hold a setting tuned for one pairing. A model's
+    env reaches every benchmark it runs, so a height scale tuned for KITScenes'
+    rig would also warp comma2k19 -- the camera openpilot was trained on. A
+    benchmark's settings reach every model, so openpilot's front camera would
+    become drivejepa's too. Deleting the table is the reset: `paired` then
+    returns the config untouched, and the next run hashes as before it existed.
+    """
+
+    env: dict[str, str] = field(default_factory=dict)
+    settings: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class ModelOverride:
     """Site-local corrections to a model's declared runtime.
 
@@ -95,10 +116,14 @@ class ModelOverride:
 
         [models.drivejepa]
         venv = "/wherever/this/site/keeps/conda/envs/drive-jepa"
+
+    `benchmarks` holds this model's pairing tables, by benchmark name; see
+    `PairingOverride`.
     """
 
     venv: Path | None = None
     env: dict[str, str] = field(default_factory=dict)
+    benchmarks: dict[str, PairingOverride] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -187,6 +212,10 @@ class SiteConfig:
             name: ModelOverride(
                 venv=_abs(body["venv"]) if "venv" in body else None,
                 env={k: str(v) for k, v in (body.get("env") or {}).items()},
+                benchmarks={
+                    bench: _pairing(cfg_path, name, bench, table)
+                    for bench, table in (body.get("benchmarks") or {}).items()
+                },
             )
             for name, body in raw.get("models", {}).items()
         }
@@ -279,6 +308,50 @@ class SiteConfig:
     def repo(self, name: str) -> Path:
         """Where a vendor clone lives here."""
         return self.repos / name
+
+    def paired(self, model: str, bench: str) -> SiteConfig:
+        """This config as `model` sees it on `bench`: its pairing table applied.
+
+        Itself, unchanged, when the site has no such table (or an empty one).
+        Otherwise a copy with the pairing's env over the model's and its
+        settings over the benchmark's, so everything downstream -- the node's
+        environment, the harness's settings, `run.json` and the run id -- reads
+        the pairing without knowing that pairings exist.
+        """
+        override = self.models.get(model)
+        pairing = override.benchmarks.get(bench) if override is not None else None
+        if override is None or pairing is None or not (pairing.env or pairing.settings):
+            return self
+        models, benchmarks = self.models, self.benchmarks
+        if pairing.env:
+            models = {**models, model: replace(override, env={**override.env, **pairing.env})}
+        if pairing.settings:
+            own = benchmarks.get(bench)
+            settings = {**(own.settings if own is not None else {}), **pairing.settings}
+            benchmarks = {**benchmarks, bench: BenchmarkOverride(settings=settings)}
+        return replace(self, models=models, benchmarks=benchmarks)
+
+
+def _pairing(cfg_path: Path, model: str, bench: str, body: object) -> PairingOverride:
+    """One `[models.<model>.benchmarks.<bench>]` table, refused if misspelt.
+
+    A pairing exists to change what is measured, so a key it does not know --
+    `setting` for `settings`, say -- must stop the run rather than leave it
+    measuring stock while reading as configured.
+    """
+    table = f"[models.{model}.benchmarks.{bench}]"
+    if not isinstance(body, dict):
+        raise ConfigError(f"{cfg_path}: {table} must be a table holding 'env' and/or 'settings'")
+    unknown = sorted(set(body) - {"env", "settings"})
+    if unknown:
+        raise ConfigError(
+            f"{cfg_path}: {table} has {', '.join(map(repr, unknown))}; "
+            f"a pairing holds only an 'env' and a 'settings' table"
+        )
+    return PairingOverride(
+        env={k: str(v) for k, v in (body.get("env") or {}).items()},
+        settings={k: str(v) for k, v in (body.get("settings") or {}).items()},
+    )
 
 
 def _abs(value: str | Path) -> Path:

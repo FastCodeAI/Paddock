@@ -31,6 +31,7 @@ import numpy as np
 
 from paddock.benchmark import (
     PIPELINE_BATCHES,
+    Benchmark,
     ClosedLoopBenchmark,
     ExternallyScoredBenchmark,
     OpenLoopBenchmark,
@@ -79,6 +80,8 @@ def _measurement_config(cfg: SiteConfig, harness, model_spec: ModelSpec, **given
     benchmark's own measurement-changing settings (`run_config()`), and any
     site `[models.<name>] env` block -- an environment override can change a
     model's input (alpamayo's frame selection, say), so it is on the record.
+    A pairing table arrives already merged into both (`SiteConfig.paired`), so
+    it is recorded, and hashed, exactly as the same values set globally would be.
     """
     config = {
         **given,
@@ -340,6 +343,38 @@ def load_benchmark(spec: BenchmarkSpec, cfg: SiteConfig):
     return module.BENCHMARK(spec, cfg)
 
 
+def _pairing_line(cfg: SiteConfig, model: str, bench: str) -> str:
+    """What a pairing table sets, said before anything runs.
+
+    A pairing is a site's default for one model on one benchmark, so it is the
+    one override a reader is least likely to remember is there; a `--dry-run`
+    that names it answers "is this stock?" without opening the file.
+    """
+    pairing = cfg.models[model].benchmarks[bench]
+    values = [f"{k}={v}" for k, v in [*pairing.env.items(), *pairing.settings.items()]]
+    return f"{model} on {bench}: [models.{model}.benchmarks.{bench}] in {cfg.source} sets {', '.join(values)}"
+
+
+def _unknown_pairings(cfg: SiteConfig, models: list[ModelSpec], registry: Registry) -> list[str]:
+    """Pairing tables of these models that name no benchmark, said as the refusal.
+
+    `kitscene` for `kitscenes` would otherwise apply to nothing: the run measures
+    stock and the only sign is a `_pairing_line` that never prints. `config.py`
+    refuses a misspelt key inside the table, but cannot see the registry, so the
+    benchmark's name is checked here, before anything starts.
+    """
+    lines = []
+    for m in models:
+        override = cfg.models.get(m.name)
+        for name in sorted(override.benchmarks if override is not None else {}):
+            if name not in registry.benchmarks:
+                lines.append(
+                    f"[models.{m.name}.benchmarks.{name}] in {cfg.source}: there is no benchmark named "
+                    f"{name!r}; known: {', '.join(sorted(registry.benchmarks))}"
+                )
+    return lines
+
+
 def run_benchmark(
     cfg: SiteConfig,
     bench: str,
@@ -374,8 +409,60 @@ def run_benchmark(
             return 2
         models = [chosen]
 
-    harness = load_benchmark(spec, cfg)
+    unknown = _unknown_pairings(cfg, models, registry)
+    if unknown:
+        for line in unknown:
+            echo(line)
+        return 2
 
+    # A pairing table gives one model its own benchmark settings, which a
+    # harness shared by every model cannot hold. So a sweep that meets one
+    # runs each model in turn as though it had been named alone, and
+    # returns the worst exit code of the lot.
+    if len(models) > 1 and any(cfg.paired(m.name, bench) is not cfg for m in models):
+        return max(
+            run_benchmark(cfg, bench, m.name, scene, scenarios, runs, limit, dry_run, echo=echo)
+            for m in models
+        )
+
+    if len(models) == 1:
+        paired = cfg.paired(models[0].name, bench)
+        if paired is not cfg:
+            echo(_pairing_line(cfg, models[0].name, bench))
+        cfg = paired
+
+    harness = load_benchmark(spec, cfg)
+    try:
+        return _run_harness(
+            cfg, spec, harness, models, bench, scene, scenarios, runs, limit, dry_run, resume, echo
+        )
+    finally:
+        # What a harness started of its own -- neuroNCAP's managed renderer -- is let go once the harness is
+        # done with, not at exit. A sweep split by a pairing builds one harness per model, and the next one's
+        # preflight would otherwise find the last one's renderer still answering and refuse to start.
+        if hasattr(harness, "close"):
+            try:
+                harness.close()
+            except Exception as exc:  # noqa: BLE001 - letting go must not replace the run's own outcome
+                # Whatever it failed to stop is still found, and refused loudly, by the next preflight.
+                echo(f"  could not release what the {bench} harness started: {exc}")
+
+
+def _run_harness(
+    cfg: SiteConfig,
+    spec: BenchmarkSpec,
+    harness: Benchmark,
+    models: list[ModelSpec],
+    bench: str,
+    scene: str | None,
+    scenarios: list[str] | None,
+    runs: int,
+    limit: int | None,
+    dry_run: bool,
+    resume: str | None,
+    echo: Callable[[str], None],
+) -> int:
+    """`run_benchmark` from its harness on: preflight, then the dry run or the models in turn."""
     try:
         base = base_port()
     except ValueError as exc:
@@ -1117,7 +1204,17 @@ def _run_open_loop(
             *_limit_reason(limit),
             *_coverage_reason(harness, samples, limit),
         ],
-        remarks=[f"resumed: {reused} sample(s) reused from an earlier attempt"] if reused else None,
+        # As in the closed-loop path: `started_utc` and `duration_s` are this
+        # attempt's, so a run re-stored with nothing left to score reads as
+        # zero seconds today, and the row has to say so itself.
+        remarks=(
+            [
+                f"resumed: {reused} sample(s) reused from an earlier attempt, so "
+                f"started_utc and duration_s describe this attempt only"
+            ]
+            if reused
+            else None
+        ),
         extra_dataset=_expected_samples(harness),
         provenance=prov,
     )
