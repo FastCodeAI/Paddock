@@ -24,10 +24,13 @@ machine, against whatever copy of the data they already have.
 ## What it does
 
 Every model implements one `Policy` — `load()`, `reset()`, `infer(observation) -> trajectory` —
-and runs as its own process behind a small HTTP node. Every benchmark drives
-that same class: open-loop benchmarks replay a recording through it, and
-closed-loop simulators move the car with what comes back. Scores land in one
-schema with provenance, so an ADE and an NCAP score are statements about the
+and runs as its own process behind a small HTTP node. **The model node is the
+server; the benchmark side is the client.** Open-loop harnesses post a
+recording's frames to it (`/infer_sequence`, image paths), and closed-loop
+simulators post rendered frames every tick (`/infer`) and move the car with the
+plan that comes back. AlpaSim's runtime calls its driver over gRPC instead, so a
+bridge answers it as a gRPC server and calls the node over HTTP. Scores land in
+one schema with provenance, so an ADE and an NCAP score are statements about the
 same model, run the same way.
 
 ```mermaid
@@ -42,7 +45,7 @@ flowchart LR
         vp["VisionPilot<br/>onnxruntime"]
     end
 
-    pol["Policy<br/>load() · reset()<br/>infer(obs) → trajectory"]
+    pol["model node · HTTP server<br/>Policy: load() · reset()<br/>infer(obs) → trajectory"]
 
     subgraph open ["open-loop"]
         direction TB
@@ -64,9 +67,9 @@ flowchart LR
     res[("results/<br/>one schema, with provenance")]
 
     op & al & dj & vp --> pol
-    pol -- "replays a recording" --> open
-    pol -- "recording in,<br/>simulator scores" --> pseudo
-    pol -- "simulator in,<br/>the plan moves the car" --> closed
+    pol -- "harness posts a recording<br/>/infer_sequence" --> open
+    pol -- "scorer posts a recording,<br/>then simulates the plan" --> pseudo
+    pol -- "simulator posts /infer<br/>every tick, the plan<br/>moves the car<br/>(AlpaSim: via a gRPC bridge)" --> closed
     open & pseudo & closed --> res
 
     style models fill:#fff8f1,stroke:#c2410c,stroke-width:1.5px,color:#9a3412
@@ -96,8 +99,8 @@ diagram names the ones worth drawing, not all of them; `paddock list` is
 authoritative. Another model is one new directory under `adapters/models/`,
 another benchmark one new directory under `adapters/benchmarks/`.
 
-What crosses the wire between paddock, the model node and a simulator is
-drawn step by step in [docs/architecture.md](docs/architecture.md#on-the-wire).
+What crosses the wire between paddock, the model node, a simulator and AlpaSim's
+bridge is drawn step by step in [docs/architecture.md](docs/architecture.md#on-the-wire).
 
 Paddock does **not** copy datasets and does **not** vendor model code. It points
 existing clones at existing data using each repo's own configuration mechanism.
@@ -112,7 +115,7 @@ tables and every note on these cells.
 
 | | [🟢 nuScenes](docs/benchmarks/nuscenes.md#support-matrix-results) cumulative L2 avg ↓ (m) | [🟢 KITScenes](docs/benchmarks/kitscenes.md#support-matrix-results) ADE ↓ (m) | [🟢 comma2k19](docs/benchmarks/comma2k19.md#support-matrix-results) ADE@3s ↓ (m) | [🟢 nuPlan](docs/benchmarks/nuplan.md#support-matrix-results) ADE ↓ (m), 25 anchors, not ranked | [🟡 NAVSIM v2](docs/benchmarks/navsim.md#support-matrix-results) EPDMS ↑ (0–1) | [🟡 NAVSIM v1](docs/benchmarks/navsim_v1.md#support-matrix-results) PDMS ↑ (0–1) | [🔴 Bench2Drive](docs/benchmarks/bench2drive.md#support-matrix-results) driving score ↑ (0–100) | [🔴 neuroNCAP](docs/benchmarks/neuroncap.md#support-matrix-results) score ↑ (0–5) | [🔴 AlpaSim](docs/benchmarks/alpasim.md#support-matrix-results) nuRec scene score ↑ (0–1) |
 |---|---|---|---|---|---|---|---|---|---|
-| OpenPilot | 2.477 | 1.599 | 1.507 <sup>S</sup> | 0.807 | 0.747 (10 Hz) <sup>R</sup> | 0.807 (10 Hz) <sup>R</sup> | 30.09 <sup>R</sup> | 3.60 | 0.7726 |
+| OpenPilot | 2.477 | 1.248 <sup>A</sup> | 1.507 <sup>S</sup> | 0.807 | 0.747 (10 Hz) <sup>R</sup> | 0.807 (10 Hz) <sup>R</sup> | 30.09 <sup>R</sup> | 3.60 | 0.7726 |
 | Alpamayo 1.5 | 0.787 | 1.002 | 0.900 | — | 0.691 (10 Hz) <sup>R</sup> | 0.753 (10 Hz) <sup>R</sup> | 55.82 (10 Hz) <sup>R</sup> | 3.73 | 0.9000 <sup>R</sup> |
 | Drive-JEPA | 0.912 <sup>S</sup> | 2.364 | 16.048 <sup>R</sup> | 1.512 | 0.843 <sup>A</sup> | 0.892 <sup>A</sup> | 57.60 (2 Hz) <sup>R</sup> | 4.13 | 0.4209 |
 | Drive-JEPA, KITScenes re-ranker | 0.587 | 0.973 <sup>A</sup> | not run | not run | not run | not run | — | not run | — |
@@ -120,14 +123,19 @@ tables and every note on these cells.
 | VisionPilot <sup>P S</sup> | 1.441 | 1.534 | 4.045 | 2.246 | 0.431 | 0.488 | 49.85 | 1.58 | 0.6289 |
 | METEOR | 0.977 | 1.879 | — | 1.273 | 0.303 <sup>P</sup> | 0.366 <sup>P</sup> | — | 2.64 | — |
 | Qwen-Drive 1.0 | 0.450 | 0.806 | 1.159 | — | 0.840 <sup>A</sup> | 0.876 <sup>A</sup> | 17.08 (2 Hz) <sup>R</sup> | 2.49 | — |
+| AutoE2E | — | — | — | — | 0.500 (10 Hz) <sup>A R</sup> | — | — | — | — |
 | Baseline (Constant Velocity) | 0.641 | 1.381 | 1.639 | 1.393 | 0.239 | 0.207 | 47.94 | 0, by construction | 0.4876 |
 
 A mark on a model's name applies to every cell in its row. A cell without a mark
 was measured the same way as the rest of its column.
 
 - **A — adapted, not zero-shot.** The model was trained on data from this
-  benchmark. Drive-JEPA and Qwen-Drive on NAVSIM (both trained on `navtrain`),
-  the re-ranker on KITScenes, the retrained Drive-JEPA on AlpaSim.
+  benchmark, or its settings were chosen on it. Drive-JEPA and Qwen-Drive on
+  NAVSIM (both trained on `navtrain`), AutoE2E on NAVSIM (pre-trained on nuPlan,
+  the source of NAVSIM's scenes), the re-ranker on KITScenes, the retrained
+  Drive-JEPA on AlpaSim. OpenPilot's KITScenes cell is a configured run, and its
+  configuration was chosen by inspecting one scene of the scored split; the stock
+  run scores 1.599.
 - **P — grades a pipeline built around the model.** VisionPilot has no
   trajectory output, so paddock builds one from its lane and speed outputs.
   METEOR plans 3 s and NAVSIM scores 4 s, so the last second is extrapolated.
@@ -178,9 +186,10 @@ machine-readable form is in each `model.yaml` and prints with
 | VisionPilot | three YOLO-family conv nets | **28.1 M** | 0.112 | 1 cam @10 Hz · 1024×512 | lane curvature + closest in-path object | OpenLane, TuSimple, CurveLanes |
 | METEOR | ResNet-34 + FPN per camera, depth-gated IPM lift to one BEV grid, 12 task heads | 54 M | 0.35 | 8 cam · 768×432 · 1 frame (paddock fills 6) | 3 paths × 6 waypoints, 3 s, + steer / accel / brake and 11 perception heads | TIER IV Co-MLOps DRS, Japan + a US subset, 953 GB / 12,595 scenes @5 Hz, auto-labelled (hours not published) |
 | Qwen-Drive 1.0 | Qwen3.5-4B VLM + 1 B flow-matching planning expert | ≈5 B | 11.2 | 3 cam · 4 frames 0.5 s apart · current ~720p, history ~320p | 50 poses (x, y, heading), 5 s @10 Hz | Qwen3.5's corpus + public driving sets, incl. **NAVSIM `navtrain`** |
+| AutoE2E | ResNet-50 + BEVFormer V2 T8, deformable route/map fusion, GRU planner | 79.9 M | 0.33 | 6 cam · 512×512 (front also 1024) · 8 frames 0.5 s apart | 64 × (accel, curvature), 6.4 s @10 Hz | nuPlan, then a KITScenes fine-tune |
 
-Two of these models were trained on NAVSIM's own `navtrain`, which is why their
-NAVSIM cells carry **A**. Why Drive-JEPA declares four cameras when its paper
+Two of these models were trained on NAVSIM's own `navtrain`, and AutoE2E on the
+nuPlan logs NAVSIM's scenes come from, which is why their NAVSIM cells carry **A**. Why Drive-JEPA declares four cameras when its paper
 reads one, and the rest of the model-specific notes, are in
 [docs/models/comparison.md](docs/models/comparison.md#notes-moved-from-the-readme-support-matrix).
 

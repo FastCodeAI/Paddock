@@ -99,6 +99,16 @@ launcher, `runtime/proc.py` and `runtime/gpu.py`.
 recorded `runs/full223` exactly: ADE 1.599424, median 1.322747, FDE@3s 2.893613,
 with all 892 metric comparisons identical at full float precision.
 
+*Qualified 2026-10-06 (#60).*
+- At another site the same command, on the same 223 keyframes, gives a different ADE. Before the
+  warp-cache fix it gave 1.594999, median 1.412 (`20260929T043619-242869`). After it, 1.595359, median
+  1.401 (`20260930T154018-242869`). So the gap from 1.599424 predates the fix.
+- Those runs hash as `242869` and M6's as `cc27fb`. M6's run recorded only `limit`, and 11 commits to the
+  openpilot adapter and the KITScenes harness lie between them. So the code differs as well as the site.
+  What moved the numbers was not checked.
+- A site with a pairing table for openpilot on KITScenes measures that table's configuration under this
+  command, not the stock one (`docs/site-setup.md`, §2).
+
 Getting there found a real bug — the adapter was reusing the first scene's
 camera calibration for all 223 samples — which a three-sample check had missed
 because those three shared a rotation group. See `docs/benchmarks/kitscenes.md`.
@@ -239,10 +249,11 @@ comparable. The 2033 × 5 = 10,165 derivation names the two truncated segments
 rather than counting them. Pose maths is delegated to a pinned
 `commaai/comma2k19` clone rather than reimplemented, and a reference
 implementation in the test suite is asserted against it wherever that clone
-exists. **Argued:** the calibration estimate (3.5–3.8° pitch on the RAV4,
-1.7–1.8° on the Civic) uses calibrationd's own formula with recorded pose
-substituted for the model's `cameraOdometry`; that substitution is reasoned
-from, not measured against, openpilot's own calibration.
+exists. **Argued:** the calibration estimate (3.3–3.8° pitch on the RAV4,
+1.6–2.2° on the Civic, for nine routes in ten) uses calibrationd's own formula
+with recorded pose substituted for the model's `cameraOdometry`; that
+substitution is reasoned from, not measured against, openpilot's own
+calibration.
 
 **Unverified, and load-bearing for the openpilot row:** the ONNX backend's
 preprocessing is a numpy reimplementation of `compile_modeld.py` —
@@ -280,9 +291,10 @@ A third re-sweep is owed across every benchmark, and it is not openpilot's:
   binds, which is how this survived them. Marked `∗` in the README until it
   lands.
 
-Two known weaknesses are documented rather than fixed, because fixing either
-moves a published column and this branch launched no sweep. Both are argued from
-a reproduction, not from reading the code:
+Three known weaknesses are documented rather than fixed, because fixing any of
+them moves a published column and this branch launched no sweep. The first two
+are argued from a reproduction, not from reading the code; the third is
+measured from the stored records:
 
 - **`pdm_dac_proxy` rewards not moving.** `path_tangent_split` pairs waypoint
   *i* with waypoint *i*, so a crawling plan never leaves the corridor drawn
@@ -301,6 +313,27 @@ a reproduction, not from reading the code:
   metric, so nothing is lost — the rendered table shows the mean alone. **Fix:**
   surface coverage beside the number in `results/report.py`, which changes every
   benchmark's table and should land once, on its own.
+- **The ground truth is scored in the camera's frame, every plan in the car's.**
+  `loader.future_in_ego_frame` rotates the recorded future into the device frame
+  and stops there, while every model is handed `camera2ego_from_rpy(cal.rpy)`,
+  whose ego frame is the calibrated one. A plan and its ground truth are off by
+  the mount rotation, about 2° of yaw on the Civic (median 1.99° over the 10,165
+  records), and the gap grows sideways with distance. Re-scored from the stored
+  records with each ground truth rotated by its own `rpy_calib_deg` yaw, ADE@3s
+  goes from 1.507 to 0.858 for openpilot (lateral MAE 1.092 to 0.137 m), 1.159
+  to 0.602 for qwendrive, 0.900 to 0.858 for alpamayo15 and 1.639 to 1.137 for
+  constant velocity, so the board reorders with qwendrive first. Before the
+  rotation every stored value reproduces to the last digit, and rotating the
+  other way gives openpilot 2.448, so the sign is not in doubt. The
+  calibration's "about 3×" and "roughly 1.7×" in cross-track error, in the
+  dataset and benchmark docs, were measured against this ground truth too.
+  **Fix:** rotate the ground truth by `rot_from_euler(cal.rpy).T` before
+  `ego_from_device`, leaving the overlay's recorded-path ribbon in the device
+  frame. The records hold prediction, ground truth and calibration, so the
+  re-score needs no inference, but it moves every comma2k19 number, so it needs
+  its own PR. Found in review on #78, whose overlay now draws each plan through
+  its calibration and whose comma2k19 notebook already re-scores with
+  `GT_FRAME = "calibrated"`.
 
 Landed alongside it, none comma2k19-specific:
 
@@ -415,6 +448,47 @@ Open work on this driver, in the order it bites:
   name, and the report needs to group by scene set (issue #69).
 - **The promoted driver has not driven a scene.**
 
+**What a KITScenes `gt` run was told: open (follow-up from #60).**
+- **The gap.** `command_source = "gt"` records the source in `run_config()`, but not the commands it sent.
+  `sequences_sha256` hashes sample ids only. A site whose copy of the sample list came from a
+  `--command straight` Drive-JEPA run has the same 223 ids. Its `gt` run would get the same config hash,
+  the run id's suffix, as one that sent 39 turns, while sending none.
+- **Status.** Argued: only one list exists here, and it holds 39 turns.
+- **Why it is deferred.** `gt` runs are ranked, so this matters, but it stays argued. Adding the turn
+  count, or a digest of the per-row commands, to `run_config()` changes the id of every `gt` run, including
+  `20261008T004723-a369d1`, the README's OpenPilot KITScenes row, and the analysis runs it would orphan from
+  `--resume`.
+- **To close it.** Either record the digest beside `sequences_sha256` in `run.json`'s dataset block,
+  which is not hashed, or record `turn_commands` in `run_config()`, as `paddock ingest` already does for
+  Drive-JEPA's row, and accept the id change on the next `gt` run.
+
+**KITScenes route hints: settled (#60).**
+- **The rule.** A route command derived from the recorded future is ranked, and recorded as
+  `command_source` in the run's `config`.
+- **Why.** It is the high-level command nuScenes gives every model (its harness infers it from the future,
+  VAD's rule). It is also the signal Drive-JEPA's (`--command gt`) and Alpamayo's (nav arm) KITScenes rows
+  had.
+- **History.** #60's first review stored paddock's `gt` runs `valid: false`, which ranked an ingested row
+  and failed a paddock run for the same input. The rule was reversed, so ingested and paddock rows are
+  treated alike. In `docs/benchmarks/kitscenes.md` only OpenPilot's cells carry a mark for it (⊜); that note names
+  the other rows that had the route.
+
+**A run whose settings were chosen on the scored split is not recorded as one: open (follow-up from #60).**
+- **The gap.** A run with the scene sweep's camera knobs (height 1.22, pitch −1.7°, a 55° cut) is stored
+  valid and ranked. Those values were chosen by inspecting one scene of the 223 scored keyframes, and
+  patterns from an analysis that looked at 90 of them. Nothing in the run's record says so: the ⊜
+  note in `docs/benchmarks/kitscenes.md` and the config-run note do. The openpilot guide states the same gap for a height scale.
+- **Why it is open.** A record field naming where a setting came from would carry it, but any new key in
+  `run_config()` changes the run id, here `20261008T004723-a369d1`, the README's OpenPilot KITScenes row.
+
+**`run.json` records no paddock revision: open (follow-up from #60's first review).**
+- **The gap.** A run records its model checkout's sha (`repo_sha`, `provenance.repo`) but not paddock's own.
+  `20260929T043619-242869` and `20260930T154018-242869` share a config hash, yet differ by the warp-cache
+  fix (`f8dce3b`). Only `superseded_by` tells them apart. The kitscenes harness's `model_run_config()`
+  works around the same gap for its ring cameras.
+- **Fix.** Record paddock's commit, and whether its tree was clean, in `provenance`. That is not part of the
+  config hash, so no run id would change.
+
 ## Bench2Drive / CARLA — adapter landed, driven, and the runs are tracked
 
 `adapters/benchmarks/bench2drive`: a model-agnostic CARLA `agent.py`, the
@@ -503,6 +577,22 @@ results, not the knob.
   other eight shards are ~405 GB), `Observation.speed_limit` is unpopulated
   because reading it means adding a map dependency, and alpamayo15 has no
   record (gated `Cosmos-Reason2-8B`). Detail in `docs/benchmarks/nuplan.md`.
+
+- **AutoE2E v1.0** — **adapter landed; NAVSIM scored, Bench2Drive paused.** The
+  Autoware Foundation's release checkpoint `kitscenes-epoch-5`, imported from
+  upstream at the release revision. NAVSIM `navtest` 0.500 EPDMS (12,146
+  scenarios, valid) on the 10 Hz nuPlan path, with the rear views from
+  OpenScene's keyframes (`keyframe_cameras`). Bench2Drive needed the route as
+  an observation field (`route_xy`); its 50-route sweep is paused with no
+  record here. Detail in [`docs/models/autoe2e.md`](models/autoe2e.md).
+
+  | Claim | Verified how | Strength |
+  |---|---|---|
+  | the two speed patches change no output | `torch.equal` against upstream's forward, 9 Oct | **verified**, on the shapes run |
+  | route raster and rollout follow upstream | read against `navigation/geometry.py` and `control_rollout.py` at `40a75cf8`; conventions pinned by the adapter's tests | **strong** |
+  | `route_xy` has the right sign | stand-in CARLA test (left lane arrives at y > 0) and, live, the B2D projection overlay | **strong** |
+  | the Bench2Drive swerve is the model, not the adapter | projection overlay, raster mapping, and a y-mirror / rot-180 A/B on 80 navtest scenes where the deployed convention scores best; not ruled out: the route comes from the leaderboard's 50 m-downsampled plan, and route-without-map is an input upstream never produces | **argued** — no upstream closed-loop reference exists |
+  | NAVSIM is out of its training logs | the release names no nuPlan split; its own nuPlan-test figures suggest test was held out | **argued** |
 
 Not started, and larger than everything above:
 

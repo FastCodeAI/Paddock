@@ -134,6 +134,17 @@ zero failures: point L2 average 4.057 m, cumulative L2 average 2.477 m, ADE at
 Its historical `repo_sha` remains null; publication does not retroactively assign
 a code revision to that run. Saved-plan videos cover all 150 scenes.
 
+**A second record, written by `paddock run`.**
+`results/nuscenes/openpilot/20260929T174538-b479ee` scored the same 5,119
+anchors (the same `sequences_sha256`) with the tracked runner, at the pinned
+openpilot sha (`provenance.repo.at_pin`), on the ONNX backend, and with the
+`camera_history` keys the record above predates. It is within 0.03 m of it on
+every headline: point L2 average 4.029 m, cumulative L2 average 2.451 m, ADE at
+3 seconds 3.508 m, point collision average 2.61%. The leaderboard lists both,
+`b479ee` first. The README keeps the 8 September figures, the run this section
+and the GPU validation were written from; `b479ee` is the one the other site can
+regenerate with the tracked code.
+
 ## Results (05 Sep 2026, n = 5119)
 
 | model | L2 1 / 2 / 3 s (m) | L2 avg | L2 cumulative avg | collision % avg (point / cumulative) |

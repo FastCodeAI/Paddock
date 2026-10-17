@@ -210,6 +210,16 @@ a benchmark whose description throws has lost the point of the exercise. Reuse
 whatever `preflight` already computed rather than paying for it twice.
 `adapters/benchmarks/comma2k19/inventory.py` is the worked example.
 
+### `close()` — let go of what the harness started
+
+A harness that launches a process of its own (neuroNCAP's managed renderer)
+stops it in `close()`. The runner calls it once the harness is done with,
+whatever the outcome, and reports rather than raises anything it raises. It
+matters when a pairing table splits a sweep into one harness per model: a
+renderer the last harness left running is what the next one's `preflight`
+finds answering, and refuses. A harness that starts nothing needs nothing here;
+the default does nothing.
+
 ## Step 7 — golden test
 
 Pin a handful of samples and their expected metric values, so a refactor that

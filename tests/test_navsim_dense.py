@@ -345,3 +345,111 @@ def test_the_borrowed_and_clamped_frame_counts_reach_the_record(tmp_path: Path) 
     summary = dense_history_summary(out)
     assert summary == {"scenarios": 3, "clamped": 1, "approximate": 0}, "b's retry line wins"
     assert dense_history_summary(tmp_path / "nowhere") == {"scenarios": 0, "clamped": 0, "approximate": 0}
+
+
+def _keyframe_only(root: Path, keyframes: Path, log: str, channel: str, every: int = 5) -> None:
+    """Move a channel out of the nuPlan root into an OpenScene-style root, keeping
+    only its 2 Hz keyframes: what a site holds when its full-rate pull is F0/L0/R0."""
+    src = root / "sensor_blobs" / "test" / log / channel
+    dst = keyframes / log / channel
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    src.rename(dst)
+    for image in dst.iterdir():
+        if int(image.stem[-4:]) % every:
+            image.unlink()
+
+
+def test_a_view_the_nuplan_pull_lacks_comes_from_openscene_at_its_keyframes_only(tmp_path: Path) -> None:
+    """AutoE2E reads its camera history at 0.5 s: every frame it reads is a keyframe,
+    and the 10 Hz frames in between carry the pose and no rear image."""
+    root = _nuplan_root(tmp_path, channels={"CAM_F0": 0.0, "CAM_B0": 4.0})
+    keyframes = tmp_path / "openscene"
+    _keyframe_only(root, keyframes, "log_a", "CAM_B0")
+    history = DenseHistory(str(root), "test", ["CAM_FRONT", "CAM_BACK"], keyframe_root=str(keyframes))
+    assert history.keyframe_only("log_a", "CAM_B0") and not history.keyframe_only("log_a", "CAM_F0")
+
+    frames = history.frames("log_a/CAM_F0/cam_f00020.jpg", 1.5)
+    assert len(frames) == 16 and all("CAM_FRONT" in f.paths for f in frames)
+    with_back = [f.time_us for f in frames if "CAM_BACK" in f.paths]
+    assert with_back == [-1_500_000, -1_000_000, -500_000, 0]
+    assert frames[-1].paths["CAM_BACK"] == str(keyframes / "log_a/CAM_B0/cam_b00020.jpg")
+    # Without the switch the same channel is read from the nuPlan root as before.
+    assert not DenseHistory(str(root), "test", ["CAM_FRONT"]).keyframe_only("log_a", "CAM_B0")
+
+
+def test_keyframe_cameras_lets_a_six_view_model_onto_the_dense_path(tmp_path, monkeypatch) -> None:
+    autoe2e = Registry.load().models["autoe2e"]
+    root = _nuplan_root(tmp_path, channels={"CAM_F0": 0.0, "CAM_L0": 8.0, "CAM_R0": 4.0})
+
+    off = _harness(_navsim_site(tmp_path / "off", monkeypatch, nuplan=str(root)))
+    assert "keyframe_cameras" not in off.model_run_config(autoe2e)
+    problems = off.model_problems(autoe2e)
+    assert any("6 log/camera directories have no nuPlan frames" in p and "CAM_B0" in p for p in problems), (
+        problems
+    )
+
+    site = _navsim_site(tmp_path / "on", monkeypatch, nuplan=str(root), keyframe_cameras="true")
+    on = _harness(site)
+    for log in ("log_a", "log_b"):
+        for channel in ("CAM_L2", "CAM_B0", "CAM_R2"):
+            blobs = tmp_path / "on" / "data" / "sensor_blobs" / "test" / log / channel
+            blobs.mkdir(parents=True)
+            (blobs / "k.jpg").write_bytes(b"")
+    assert on.model_run_config(autoe2e) == {
+        "input_hz": 10.0,
+        "history_source": "nuplan",
+        "history_s": 6.5,
+        "keyframe_cameras": True,
+    }
+    assert on.model_problems(autoe2e) == []
+    asks = {"cameras": list(autoe2e.cameras), "model": "autoe2e", "native_input_hz": 10.0, "history_s": 6.5}
+    assert "agent.keyframe_cameras=true" in on._command("http://h:1", tmp_path / "out", asks, None)
+    # A model that stays on OpenScene's own frames is untouched by the switch.
+    drivejepa = Registry.load().models["drivejepa"]
+    assert on.model_run_config(drivejepa)["history_source"] == "openscene"
+    assert "keyframe_cameras" not in on.model_run_config(drivejepa)
+
+
+def test_keyframe_cameras_is_declared_by_both_proxy_configs(tmp_path, monkeypatch) -> None:
+    """Same hydra rule as the four dense keys: an override the config does not declare fails every chunk."""
+    import yaml
+
+    from paddock.adapters.benchmarks.navsim.harness import CONF_DIR as V2_CONF
+    from paddock.adapters.benchmarks.navsim_v1.harness import CONF_DIR as V1_CONF
+
+    for conf in (V2_CONF, V1_CONF):
+        declared = yaml.safe_load((conf / "agent" / "paddock_proxy.yaml").read_text())
+        assert declared.get("keyframe_cameras") is False, conf
+
+
+def test_gpu_nodes_opts_a_gpu_model_into_several_nodes(tmp_path, monkeypatch) -> None:
+    from paddock.runtime import gpu
+
+    models = Registry.load().models
+    monkeypatch.setattr(gpu, "free_gb", lambda _env=None: 30.0)
+    plain = _harness(_navsim_site(tmp_path / "plain", monkeypatch))
+    assert plain.node_count(models["autoe2e"]) == 1, (
+        "a GPU model gets one node unless the site says otherwise"
+    )
+    many = _harness(_navsim_site(tmp_path / "many", monkeypatch, gpu_nodes="4", nodes="2"))
+    assert many.node_count(models["autoe2e"]) == 4
+    assert many.node_count(models["visionpilot"]) == 2, "CPU models still follow `nodes`"
+
+
+def test_gpu_nodes_is_capped_by_what_the_card_holds(tmp_path, monkeypatch) -> None:
+    """`gpu_nodes` reaches every GPU model in a `--model all` sweep, not only the one it
+    was set for. Four 26 GB alpamayo nodes into 30 GB free would start one and park
+    three in `gpu.wait_for`'s two-hour poll; the count is divided up front instead."""
+    from paddock.runtime import gpu
+
+    models = Registry.load().models
+    many = _harness(_navsim_site(tmp_path / "many", monkeypatch, gpu_nodes="4"))
+    monkeypatch.setattr(gpu, "free_gb", lambda _env=None: 30.0)
+    assert many.node_count(models["alpamayo15"]) == 1
+    assert many.node_count(models["autoe2e"]) == 4, "a small model still gets the site's width"
+    monkeypatch.setattr(gpu, "free_gb", lambda _env=None: 60.0)
+    assert many.node_count(models["alpamayo15"]) == 2
+    # No usable nvidia-smi: the site's [gpu] budget_gb (24 by default), never zero nodes.
+    monkeypatch.setattr(gpu, "free_gb", lambda _env=None: None)
+    assert many.node_count(models["alpamayo15"]) == 1
+    assert many.node_count(models["autoe2e"]) == 4

@@ -403,6 +403,10 @@ constant velocity instead extrapolates the recorded ego velocity. 47.94 is that
 
 ✦ Bench2Drive constant velocity is a do-nothing floor: "constant velocity" means holding the current speed, and every route starts from a standstill, so the baseline holds zero and never departs -- blocked after 60 s, driving score 0 on every route (confirmed on 3 routes, structural for all 24). Unlike nuScenes, where the logged ego is already moving, it is not an informative baseline in closed loop.
 
+☉ AutoE2E has no Bench2Drive cell: its 50-route sweep at 10 Hz is paused
+part-way, and every route run so far scores 3–27 the same way, leaving the lane
+at 4–5 s. See [docs/models/autoe2e.md](../models/autoe2e.md).
+
 ### Bench2Drive — 50 routes
 
 Five models and constant velocity at five fixed target speeds, evaluated on the
