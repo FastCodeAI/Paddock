@@ -91,8 +91,8 @@ def test_a_radar_range_is_drawn_at_the_range_it_reports(toolkit):
 def test_the_mount_rotation_moves_a_radar_box_by_the_pitch_it_encodes(toolkit):
     """The bug this was written for: radar is car-frame, the camera is not.
 
-    comma2k19's mount pitch runs 1.7-3.8 deg across the two vehicles. At fl 910
-    that is 27-58 px of vertical error on every box -- far more than the gap
+    comma2k19's mount pitch runs 1.0-3.8 deg across the two vehicles. At fl 910
+    that is 16-61 px of vertical error on every box -- far more than the gap
     between a lead vehicle's bumper and the road under it, which is why the
     box looked "slightly off" against the car it was drawn on.
 
@@ -111,6 +111,27 @@ def test_the_mount_rotation_moves_a_radar_box_by_the_pitch_it_encodes(toolkit):
     # silently applying a zero that looks like a measurement.
     assert np.allclose(OV.calib_to_device([[1.0, 2.0, 3.0]], None), [[1.0, 2.0, 3.0]])
     assert np.allclose(OV.calib_to_device([[1.0, 2.0, 3.0]], [0.0, 0.0, 0.0]), [[1.0, 2.0, 3.0]], atol=1e-12)
+
+
+def test_a_plan_is_drawn_in_the_frame_the_radar_is_drawn_in(toolkit):
+    """Plans are car-frame too: `camera2ego` carries the mount rotation.
+
+    `loader.camera2ego_from_rpy` builds paddock's ego frame on this benchmark
+    out of the route calibration, so a model plans in the same car-aligned frame
+    a radar return is measured in, and needs the same rotation to be drawn.
+
+    Stated as the invariant rather than a pixel count: a waypoint and a radar
+    return at the same place on the road are the same device-frame point,
+    whatever the mount.
+    """
+    rpy = np.radians([0.4, 3.6, -1.8])
+    waypoint = OV.plan_to_device([[40.0, 2.0]], rpy)[0]
+    # The first two corners are the box's base edge, whose midpoint is the
+    # return itself, on the road plane.
+    base = OV.radar_to_device(40.0, 2.0, rpy=rpy)[:2].mean(axis=0)
+    assert np.allclose(waypoint, base, atol=1e-9), (waypoint, base)
+    # With no estimate, a plan is drawn exactly where it always was.
+    assert np.allclose(OV.plan_to_device([[40.0, 2.0]], None), OV.ego_to_road([[40.0, 2.0]]))
 
 
 def test_a_plan_behind_the_camera_is_not_drawn(toolkit):
@@ -151,6 +172,35 @@ def test_a_frame_is_drawn_without_changing_its_shape(toolkit, segment):
     # different part of the frame; if any layer silently did nothing the count
     # of touched columns collapses.
     assert (drawn.any(axis=(0, 2))).sum() > L.EON_WIDTH // 2
+
+
+def test_the_overlay_draws_a_plan_through_the_mount_rotation(toolkit, segment):
+    """`draw` must use the rotation, not merely have `plan_to_device` exist.
+
+    Drawn without it, every plan sat off the road it was planned on by the
+    mount's yaw and pitch, which reads as a model that drifts or plans short.
+
+    A pure yaw moves a point straight ahead sideways by `focal * tan(yaw)`
+    whatever its depth, so the whole drawn plan moves by that many columns --
+    rightwards for a positive yaw, the sign `calib_to_device` gives the radar.
+    """
+    pytest.importorskip("PIL")
+    frame = np.zeros((L.EON_HEIGHT_PX, L.EON_WIDTH, 3), dtype=np.uint8)
+    ahead = [[x, 0.0] for x in range(10, 50, 5)]
+    plans_only = OV.Layers(path=False, radar=False, hud=False, minimap=False)
+    yaw = np.radians(2.0)
+
+    def column(overlay_rpy, plan_rpy=None) -> float:
+        overlay = OV.SegmentOverlay(segment, layers=plans_only, rpy=overlay_rpy)
+        drawn = overlay.draw(frame, 10, plans=[OV.Plan.for_model("openpilot", ahead, rpy=plan_rpy)])
+        return float(np.nonzero(drawn.any(axis=2))[1].mean())
+
+    level = column(np.zeros(3))
+    assert level == pytest.approx(L.EON_WIDTH / 2, abs=1.0)
+    assert column([0.0, 0.0, yaw]) - level == pytest.approx(L.EON_FOCAL * np.tan(yaw), abs=1.0)
+    # A plan that says which calibration its model was handed is drawn with
+    # that, whatever the overlay estimated for the radar.
+    assert column(np.zeros(3), plan_rpy=[0.0, 0.0, yaw]) == pytest.approx(column([0.0, 0.0, yaw]), abs=0.5)
 
 
 def test_a_missing_log_degrades_to_n_a_rather_than_raising(toolkit, segment):
@@ -245,6 +295,19 @@ def test_the_sample_id_may_be_given_without_the_benchmark_prefix():
     assert R._record(run, "1/abc|t/40/300") is record
     assert R._record(run, "comma2k19/1/abc|t/40/300") is record
     assert R._record(run, "1/abc|t/40/301") is None
+
+
+def test_a_plan_is_drawn_with_the_calibration_its_run_was_given():
+    """The record's `rpy_calib_deg`, not a second estimate of the route's.
+
+    The harness handed each model a calibration and stored it with the sample,
+    and the plan is in the frame that calibration defines -- so it is the one to
+    draw the plan back with, run by run. Estimating again would also be a
+    pooled pass over the whole route before the first frame is drawn.
+    """
+    assert np.allclose(R._calibration({"rpy_calib_deg": [0.1, 3.6, -1.8]}), np.radians([0.1, 3.6, -1.8]))
+    # A record from before the harness stored it leaves the overlay to estimate.
+    assert R._calibration({"chunk": 1}) is None
 
 
 def test_the_legend_carries_the_number_the_plan_scored():

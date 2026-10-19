@@ -31,6 +31,7 @@ def test_driver_identity_comes_from_the_console_not_the_directory_name() -> None
     assert alpasim.driver_version_id(RUN) == "alpamayo1_5-driver-0.91.0"
     assert alpasim.model_name("alpamayo1_5-driver-0.91.0") == "alpamayo15"
     assert alpasim.model_name("constant_velocity-driver-0.2.0") == "constant_velocity"
+    assert alpasim.model_name("meteor-0.1.1") == "meteor"
     assert alpasim.model_name(None) is None
     assert alpasim.model_name("something-we-have-never-seen-1.0") is None
 

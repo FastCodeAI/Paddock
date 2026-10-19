@@ -30,6 +30,12 @@ venv/
 # nuScenes val index pickle (adapters/benchmarks/nuscenes) defaults here.
 .cache/
 .mypy_cache/
+# Jupyter autosaves beside the notebook, outputs and all -- and saved outputs
+# can hold machine paths, which tests/test_portability.py scans for.
+.ipynb_checkpoints/
+# The same holds for an executed copy of an analysis notebook, which is written
+# beside it (`jupyter execute --output='{notebook_name}_all_executed'`).
+*_executed.ipynb
 dist/
 build/
 

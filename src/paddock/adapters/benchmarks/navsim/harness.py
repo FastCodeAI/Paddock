@@ -60,6 +60,8 @@ from paddock.adapters.benchmarks.navsim.dense import NUPLAN_HZ
 from paddock.benchmark import Evaluation, ExternallyScoredBenchmark
 from paddock.benchmark import input_rate_problems as shared_input_rate_problems
 from paddock.results.ingest import navsim as navsim_ingest
+from paddock.runtime import env as env_builder
+from paddock.runtime import gpu
 from paddock.runtime.proc import tail as _tail
 
 #: Logs per scorer invocation. The vendor scorer keeps every result in worker
@@ -288,6 +290,11 @@ NAVSIM_HISTORY_S = 1.5
 #: history built from it (dense.py); without it such a model is refused, as
 #: `input_rate_problems` explains. Which rate a run used is in `run.json`.
 SETTING_NUPLAN = "nuplan"
+#: [benchmarks.navsim] switch: on the dense path, a view the nuPlan pull does not hold (it has
+#: F0/L0/R0) comes from OpenScene's blobs at its 2 Hz keyframes only. For a model whose camera
+#: history is itself 2 Hz (AutoE2E: eight frames 0.5 s apart) that is every frame it reads;
+#: the 10 Hz frames in between still carry the ego state. Off unless set.
+SETTING_KEYFRAME_CAMERAS = "keyframe_cameras"
 CONF_DIR = Path(__file__).resolve().parent / "conf"
 SCORER = "navsim/planning/script/run_pdm_score_sequential.py"
 
@@ -323,6 +330,19 @@ def input_rate_problems(min_input_hz: float, model_name: str, supplied_hz: float
         ),
         doc="docs/benchmarks/navsim.md",
     )
+
+
+def _has_jpg(directory: Path) -> bool:
+    """Whether a directory holds any .jpg, stopping at the first.
+
+    `Path.glob` reads the whole directory before yielding (Python 3.12), and a nuPlan camera
+    directory on the NAS is ~4,000 entries: the dense-path check over 136 logs took ~45 min.
+    """
+    try:
+        with os.scandir(directory) as entries:
+            return any(entry.name.endswith(".jpg") for entry in entries)
+    except OSError:
+        return False
 
 
 def supplied_cameras(cameras: list[str]) -> list[str]:
@@ -657,11 +677,18 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
 
     def model_run_config(self, model) -> dict[str, Any]:
         hz = self.input_rate(model.min_input_hz, getattr(model, "native_input_hz", 0.0))
-        return {
+        config = {
             "input_hz": hz,
             "history_source": "nuplan" if hz > INPUT_HZ else "openscene",
             "history_s": self.history_s(getattr(model, "history_s", 0.0), hz),
         }
+        if hz > INPUT_HZ and self.keyframe_cameras:
+            config["keyframe_cameras"] = True
+        return config
+
+    @property
+    def keyframe_cameras(self) -> bool:
+        return str(self.setting(SETTING_KEYFRAME_CAMERAS, "") or "").lower() in ("1", "true", "yes")
 
     def _dense_problems(self, cameras: list[str]) -> list[str]:
         """Why nuPlan's data cannot feed this model's cameras for this split's logs."""
@@ -672,11 +699,15 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         logs = sorted(coverage[0]) if isinstance(coverage, tuple) else sorted(self._declared_logs() or [])
         channels = [CAMERA_SLOTS[c].upper() for c in cameras if c in CAMERA_SLOTS]
         no_db = [log for log in logs if not (root / "splits" / self.data_split / f"{log}.db").is_file()]
+        keyframes = (
+            self.dataset.resolve() / "sensor_blobs" / self.data_split if self.keyframe_cameras else None
+        )
         no_cam = [
             f"{log}/{channel}"
             for log in logs
             for channel in channels
-            if not any((root / "sensor_blobs" / self.data_split / log / channel).glob("*.jpg"))
+            if not _has_jpg(root / "sensor_blobs" / self.data_split / log / channel)
+            and not (keyframes is not None and _has_jpg(keyframes / log / channel))
         ]
         problems = []
         if no_db:
@@ -776,13 +807,30 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         node claims every core, and four of them measured at ~16 cores for one
         node's throughput. OMP_NUM_THREADS=1 bounds MUMPS, not ORT.
 
-        GPU models stay at one node. The card is shared, and a second 26 GB
-        alpamayo would not start into the headroom left by the first; the
-        `infer_sequence` override already took them off the critical path.
+        GPU models get `gpu_nodes`, default 1: the card is shared, and the
+        `infer_sequence` override already took most of them off the critical
+        path. A site raises it for a small model bound by its per-request
+        forward, not by memory (AutoE2E: ~3 GB a node). The setting reaches
+        **every** GPU model the run scores, so it is capped by what the card
+        holds, as `Comma2k19Benchmark.node_count` explains: `gpu.wait_for` gates
+        each launch on declared VRAM, and four 26 GB alpamayo nodes into 30 GB
+        free start one and park three in a two-hour poll. The card read is the
+        one this model's node environment will land on; without nvidia-smi it is
+        the site's `[gpu] budget_gb`.
         """
         wanted = int(self.setting("nodes", "1") or 1)
         if model.vram_gb > 0:
-            return 1
+            nodes = max(1, int(self.setting("gpu_nodes", "1") or 1))
+            if nodes == 1:
+                return 1
+            try:
+                node_env = env_builder.build(model, self.cfg)
+            except Exception:  # noqa: BLE001 - a node count is never worth failing a run over
+                node_env = None
+            available = gpu.free_gb(node_env)
+            if available is None:
+                available = float(self.cfg.gpu.budget_gb)
+            return max(1, min(nodes, int(available // model.vram_gb)))
         return max(1, wanted)
 
     def _scene_filter_value(self, key: str) -> list | None:
@@ -888,6 +936,8 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
                     f"agent.dense_hz={hz:g}",
                     f"agent.history_s={self.history_s(config.get('history_s', 0.0), hz):g}",
                 ]
+                if self.keyframe_cameras:
+                    command.append("agent.keyframe_cameras=true")
         if agent == REPLAY_AGENT and config.get("plans_dir"):
             # The run being replayed, by artifacts directory. Passed on the
             # command line rather than through PADDOCK_NAVSIM_OVERRIDES so the

@@ -604,6 +604,16 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         self._renderer_proc = None
         self._renderer_scene = None
 
+    def close(self) -> None:
+        """Stop the renderer this harness started, once the runner is done with it.
+
+        The renderer otherwise lives until exit (the `atexit` above). That was
+        enough while one harness served a whole sweep, but a sweep split by a
+        pairing table builds one harness per model, and the next one's
+        preflight then finds this renderer still answering and refuses.
+        """
+        self._stop_renderer(lambda _msg: None)
+
     # ---- debugging video -----------------------------------------------
 
     def video_mode(self) -> str:

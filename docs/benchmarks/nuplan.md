@@ -202,3 +202,64 @@ dominate this subset. Reading `speed_limit_mps` from nuPlan's maps is the fix;
 it is out of scope here because it adds a map dependency to a benchmark that
 currently reads none. Coverage is one camera shard of nine; the rest are
 ~405 GB.
+
+## Support-matrix results
+
+The per-metric results behind this benchmark's column in the
+[README's support matrix](../../README.md#support-matrix), and the notes on its
+cells. Moved here from the README unchanged except for links; the symbols are
+the README's former footnote marks, and each note below starts with the mark it
+explains. Marks about a model rather than this benchmark (⊛ ⊕ ∗ ◊ ◇ ✦ ✧) are
+explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
+
+### Notes on the matrix cells
+
+◐ **Every nuPlan figure is `valid: false` and excluded from `paddock report`.**
+This site holds one of nuPlan's nine camera shards, so of the 351 scorable
+anchors in the balanced manifest only **25** have images — and those 25 fall in
+**7 of the 59 scenario types**, six of them stop-sign or traffic-light
+decelerations. The runs are recorded and comparable *with each other* (one
+shared sample set, one record per model, `sequences_sha256` pinned), but a
+ranking over near-homogeneous deceleration moments is not a ranking on nuPlan,
+and these are not comparable with a full-coverage run. The remaining shards are
+~405 GB. OpenPilot's figure additionally comes from a v0.11.1 checkout rather
+than the sha `repos.yaml` pins, so its record carries `repo_sha: null`.
+See [docs/benchmarks/nuplan.md](nuplan.md).
+
+◐◐ Alpamayo 1.5 has no nuPlan figure: it needs `nvidia/Cosmos-Reason2-8B`,
+which is gated. Only its config and tokenizer are read, and the one measurement
+made with a substitute is deliberately not committed, so there is no record to
+cite.
+
+### nuPlan
+
+Open-loop displacement error against the recorded future, on nuPlan v1.1's
+original logs at their native **10 Hz** cameras and 100 Hz ego poses — not
+NAVSIM's 2 Hz OpenScene redistribution of the same source. That rate is what
+makes the dataset scorable for a model like OpenPilot, which infers ego motion
+from frame-to-frame change and declares `min_input_hz: 10.0`.
+
+**These are a 25-sample subset, not nuPlan** (see ◐). One camera shard of nine
+is present, so 25 of 351 scorable anchors have images, and they fall in 7 of 59
+scenario types. Every run below is `valid: false` and excluded from the
+leaderboard; they are comparable with each other and with nothing else.
+
+| Model | ADE ↓ (m) | FDE@1s ↓ (m) | FDE@2s ↓ (m) | FDE@3s ↓ (m) | Longitudinal MAE ↓ (m) | Lateral MAE ↓ (m) |
+|---|---:|---:|---:|---:|---:|---:|
+| OpenPilot | **0.807** | **0.416** | **0.878** | **1.539** | **0.658** | 0.316 |
+| Alpamayo 1.5 | — ◐◐ | — | — | — | — | — |
+| Drive-JEPA | 1.512 | 0.568 | 1.593 | 3.305 | 1.429 | **0.299** |
+| VisionPilot | 2.246 | 1.488 | 2.246 | 3.589 | 1.491 | 1.324 |
+| METEOR | 1.273 | 0.483 | 1.333 | 2.803 | 0.831 | 0.778 |
+| Baseline (Constant Velocity) | 1.393 | 0.462 | 1.433 | 3.199 | 1.036 | 0.630 |
+
+Two of the four models clear the constant-velocity floor: OpenPilot, which
+leads every metric but lateral error, and METEOR. Drive-JEPA and VisionPilot
+do not — expected on a subset this skewed toward decelerations, where holding
+the current speed is already close to right. `constant_velocity` is a stored
+run like any other, declared in its `model.yaml` and scored through the same
+harness, so the floor and the rows it anchors regenerate together.
+
+Protocol, the three sampling rules that build the balanced set, and why the
+calibration is decoded without nuplan-devkit are in
+[docs/benchmarks/nuplan.md](nuplan.md).

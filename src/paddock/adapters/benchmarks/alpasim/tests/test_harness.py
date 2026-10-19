@@ -222,8 +222,20 @@ def test_a_scene_filter_selects_only_what_was_asked_for(tmp_path: Path, monkeypa
 
 def test_an_unknown_scene_is_named_before_a_model_loads(tmp_path: Path, monkeypatch) -> None:
     bench = _benchmark(tmp_path, monkeypatch)
-    problems = bench.scene_problems(["clipgt-nope"])
+    problems = bench.scene_problems("clipgt-nope")
     assert problems and "clipgt-nope" in problems[0]
+
+
+def test_every_pinned_scene_passes_the_check_the_runner_makes(tmp_path: Path, monkeypatch) -> None:
+    """`--scene` with a real clip id is accepted, called the way `run_benchmark` calls it.
+
+    The runner splits ``--scene a,b`` and passes each id as a string; when this
+    harness took a list it iterated the characters and refused every scene.
+    """
+    bench = _benchmark(tmp_path, monkeypatch)
+    scene_arg = f"{CLEAN},{load_scene_set(DEFAULT_SCENE_SET)[1]}"
+    scenes = [s.strip() for s in scene_arg.split(",") if s.strip()]  # as runner.run_benchmark does
+    assert [p for one in scenes for p in bench.scene_problems(one)] == []
 
 
 def test_an_unknown_scene_set_says_what_is_available() -> None:
