@@ -59,9 +59,11 @@ neuroncap    ncap_score         3.568     4.130     0.562   0.439   1.28   2.09 
 | NO RECORDS | one side has no `samples.jsonl` on this site; means are shown, nothing is claimed |
 | INCOMPLETE | the candidate lost samples to a failure (`dataset.n_failed`, or `status: partial`). Pairing on shared samples would drop exactly those, usually the hard cases, so the rest is shown and nothing is claimed |
 
-`check` adds one overall line: **FAIL** if any pair is a REGRESSION (exit 1),
-**SHIP** if none is and at least one closed-loop pair is a GAIN, **HOLD**
-otherwise. A `threshold` on a pair also reports whether the point estimate
+`check` adds one overall line: **FAIL** if any pair is a REGRESSION (exit 1);
+**SHIP** only if every pair was decided (GAIN, NEUTRAL or REGRESSION, so no NO
+RECORDS, TOO FEW UNITS or INCOMPLETE), none regressed, and at least one
+closed-loop pair is a GAIN; **HOLD** otherwise. The smoke also holds while any of
+its subsets is unfinished, and names them beside the verdict. A `threshold` on a pair also reports whether the point estimate
 dropped by more than that many metric units.
 
 Read the notes; they are where the gate says what it cannot check:

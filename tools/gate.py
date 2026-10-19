@@ -488,9 +488,22 @@ def compare(
     return result
 
 
-def overall(results: list[PairResult]) -> str:
+#: The verdicts that are a statement about the candidate; anything else
+#: (NO RECORDS, TOO FEW UNITS, INCOMPLETE) means a pair was not compared.
+DECIDED = ("GAIN", "NEUTRAL", "REGRESSION")
+
+
+def overall(results: list[PairResult], unfinished: list[str] | None = None) -> str:
+    """FAIL on any REGRESSION; SHIP only when every pair was decided, nothing is
+    unfinished, and a closed-loop pair is a GAIN; HOLD otherwise.
+
+    A GAIN beside a benchmark that was never compared is not a reason to ship:
+    the uncompared one could be where the candidate broke.
+    """
     if any(r.verdict == "REGRESSION" for r in results):
         return "FAIL"
+    if unfinished or any(r.verdict not in DECIDED for r in results):
+        return "HOLD"
     if any(r.verdict == "GAIN" and r.bench in CLOSED_LOOP for r in results):
         return "SHIP"
     return "HOLD"
@@ -1170,9 +1183,10 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
     if "[[pair]]" not in manifest.read_text():
         echo("no benchmark has both a baseline and a finished candidate; nothing to check")
         return 1 if unfinished else 0
-    verdict, results = check(manifest, cfg.runs, RESULTS_ROOT)
+    _, results = check(manifest, cfg.runs, RESULTS_ROOT)
+    verdict = overall(results, unfinished)
     echo(render(results))
-    echo(f"\noverall: {verdict}")
+    echo(f"\noverall: {verdict}" + (f" (not finished: {', '.join(unfinished)})" if unfinished else ""))
     return 1 if verdict == "FAIL" or unfinished else 0
 
 

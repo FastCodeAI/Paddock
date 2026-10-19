@@ -152,6 +152,16 @@ def test_unpaired_and_invalid_runs_are_reported_not_hidden(tmp_path: Path) -> No
     assert any("unpaired samples" in n for n in r.notes)
 
 
+@pytest.mark.parametrize("undecided", ["NO RECORDS", "TOO FEW UNITS", "INCOMPLETE"])
+def test_a_gain_beside_an_uncompared_pair_is_not_ship(undecided: str) -> None:
+    """Review #80 (2): a closed-loop GAIN next to a pair that was never compared shipped."""
+    gain = gate.PairResult("neuroncap", "ncap_score", "m:a", "m:b", "GAIN", True)
+    other = gate.PairResult("bench2drive", "driving_score", "m:a", "m:b", undecided, True)
+    assert gate.overall([gain]) == "SHIP"
+    assert gate.overall([gain, other]) == "HOLD"
+    assert gate.overall([gain], unfinished=["bench2drive"]) == "HOLD"
+
+
 def test_a_candidate_that_lost_samples_gets_no_verdict(tmp_path: Path) -> None:
     """Review #80 (1): the episodes a candidate crashes on vanish from the pairing.
 
@@ -707,6 +717,8 @@ bench, results, runs, model, ade, hold, stamps = sys.argv[1:8]
 run_id = f"cand-{bench}"
 art = pathlib.Path(runs) / bench / model / run_id
 art.mkdir(parents=True)
+if float(ade) < 0:  # a run that crashes after making its artifacts directory
+    sys.exit(1)
 with open(stamps, "a") as f:
     f.write(f"{bench} start {time.time()}\n")
 print(f"  {model} ready", flush=True)
@@ -738,7 +750,7 @@ def _smoke_site(tmp_path: Path, monkeypatch, ade: dict[str, float], hold: float 
     import paddock.registry
 
     res, runs, stamps = tmp_path / "results", tmp_path / "runs", tmp_path / "stamps"
-    for bench in ("kitscenes", "nuscenes", "bench2drive"):
+    for bench in ("kitscenes", "nuscenes", "bench2drive", "neuroncap"):
         base = [
             {
                 "sample_id": f"{bench}/s{i}",
@@ -753,7 +765,7 @@ def _smoke_site(tmp_path: Path, monkeypatch, ade: dict[str, float], hold: float 
     baselines = tmp_path / "baselines.toml"
     baselines.write_text(
         '[baseline.kitscenes]\nrun = "m:base"\n[baseline.nuscenes]\nrun = "m:base"\n'
-        '[baseline.bench2drive]\nrun = "m:base"\n'
+        '[baseline.bench2drive]\nrun = "m:base"\n[baseline.neuroncap]\nrun = "m:base"\n'
     )
 
     def plan(model, names, declared, state, *, runs_root, results_root, **_):
@@ -790,7 +802,11 @@ def _smoke_site(tmp_path: Path, monkeypatch, ade: dict[str, float], hold: float 
     monkeypatch.setattr(
         paddock.registry,
         "load_models",
-        lambda: {"m": SimpleNamespace(benchmarks=["kitscenes", "nuscenes", "bench2drive"], vram_gb=0.0)},
+        lambda: {
+            "m": SimpleNamespace(
+                benchmarks=["kitscenes", "nuscenes", "bench2drive", "neuroncap"], vram_gb=0.0
+            )
+        },
     )
 
     def args(**over):
@@ -820,6 +836,18 @@ def argparse_ns(**kw):
     import argparse
 
     return argparse.Namespace(**kw)
+
+
+def test_a_smoke_with_an_unfinished_subset_does_not_say_ship(tmp_path: Path, monkeypatch) -> None:
+    """Review #80 (2): neuroNCAP crashed and bench2drive gained; the smoke printed SHIP, then exited 1."""
+    args, stamps = _smoke_site(
+        tmp_path, monkeypatch, {"kitscenes": 2.0, "nuscenes": 2.0, "bench2drive": 1.0, "neuroncap": -1.0}
+    )
+    said: list[str] = []
+    assert gate.smoke(args(tier="closed", bench=["neuroncap", "bench2drive"]), said.append) == 1
+    text = "\n".join(said)
+    assert "overall: HOLD (not finished: neuroncap)" in text
+    assert "SHIP" not in text
 
 
 def test_the_closed_tier_starts_only_after_the_quick_tier_ends(tmp_path: Path, monkeypatch) -> None:
