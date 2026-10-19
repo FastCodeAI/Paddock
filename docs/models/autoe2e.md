@@ -51,9 +51,20 @@ From the release `config.json` and upstream's KITScenes evaluation path
   saw. Set 0 for the ground-level frame nuPlan used.
 - **Ego history** is differenced from the pose stream as `kit_scenes/egomotion.py`
   does (centred `np.gradient` on the real timestamps, curvature floor 0.1 m/s),
-  newest acceleration zeroed (the KITScenes stage's causal mask), rows before
-  the first pose left at zero (upstream's left padding). It is not read from
-  `canbus`, which most harnesses fill only partly.
+  newest acceleration zeroed (the KITScenes stage's causal mask). It is not read
+  from `canbus`, which most harnesses fill only partly. Rows before the first
+  pose depend on who sends the past:
+  - **Open loop** (NAVSIM, KITScenes: the real past, via `infer_sequence`): left
+    at zero, upstream's left padding. Upstream's own KITScenes benchmark pads up
+    to 24 of the 64 rows this way.
+  - **Closed loop** (neuroNCAP, Bench2Drive: one frame per call, no past):
+    steady driving, the first measured speed with no acceleration and no turn
+    (the simulator's speed on the first call, when nothing is measured yet).
+    Training never saw a padded row: KITScenes samples start 64 rows into a
+    scene. Left at zero, an episode carries 32–64 zero rows throughout, which
+    read as a car that stood still a moment ago. On neuroNCAP 0103 stationary
+    that turned the car right within 2 s, into a parked car (score 0.14); with
+    the past filled it drove straight.
 - **Navigation.** No semantic map: zeros with `map_valid` false, upstream's
   own no-map track. The route raster is drawn from `obs.route_xy` when the
   benchmark sends one: a corridor 1.75 m either side, clipped 10 m behind, and
