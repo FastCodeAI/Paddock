@@ -220,8 +220,29 @@ note = "missing: why"                           # no `run`: the pair is written 
 ```
 
 A benchmark with no baseline gets its candidate run and a comment in the
-manifest, not a pair. Smoking the baseline model itself (no `--env`) is how
-the missing smoke baselines get made; put their run ids in the manifest after.
+manifest, not a pair.
+
+**Baselines are made per site, not shipped.** The smoke's subsets are tracked;
+the runs it pairs against are not. Their per-sample records live under the
+site's `{roots.runs}` by design, and a smoke run is a subset, not a result for
+`results/`. (The KITScenes smoke is the exception that proves the point: it is
+the whole sample list, so its `run.json` is `valid: true`, and committing it
+would put a second Drive-JEPA KITScenes row on the leaderboard.) So a site
+that has never run the gate makes its own baselines first:
+
+1. Smoke the released model with no `--env`, every tier:
+   `python -m tools.gate smoke --model <m> --baseline <empty or partial manifest> --tier all --execute`.
+2. Put each finished run in the manifest as `[baseline.<subset>] run = "<m>:<run id>"`,
+   with `results` naming the checkout whose `results/` holds its `run.json` if
+   that is not the one the gate runs from.
+3. Where a full run already exists on the site (a neuroNCAP sweep, full nuScenes
+   val), it can serve instead: the smoke's samples are a subset of it. The gate
+   refuses a pairing whose run configs differ (CONFIG DIFFERS), so a full run
+   made with other settings cannot stand in by accident.
+
+The released model smoked against itself should come out NEUTRAL everywhere; on
+shakaal it did (nuScenes and neuroNCAP identical to three decimals), which is
+the check that the site's baselines are sound.
 
 ## Limits
 
