@@ -562,6 +562,20 @@ def test_the_released_drivejepa_checkpoint_swapped_by_a_site_is_named(tmp_path) 
     assert _env_override_reasons(_cfg(tmp_path), spec) == [], "no env block, nothing to say"
 
 
+def test_autoe2e_logging_where_it_records_is_not_a_change_of_plan(tmp_path) -> None:
+    """AutoE2E's NAVSIM row (`20261009T055926-3ceb18`) set only `AUTOE2E_RECORD_DIR`,
+    a log written after the plan is made. It must stay rankable; its checkpoint must not."""
+    from paddock.registry import Registry
+    from paddock.runner import _env_override_reasons
+
+    spec = Registry.load().models["autoe2e"]
+    cfg = _site_with_env(tmp_path, "autoe2e", {"AUTOE2E_RECORD_DIR": "/scratch/autoe2e_calls"})
+    assert _env_override_reasons(cfg, spec) == []
+    cfg = _site_with_env(tmp_path, "autoe2e", {"AUTOE2E_CHECKPOINT": "/w/other/checkpoint.pt"})
+    (reason,) = _env_override_reasons(cfg, spec)
+    assert "AUTOE2E_CHECKPOINT" in reason
+
+
 def test_every_declared_tuning_key_is_one_the_model_reads() -> None:
     """A misspelt `tuning_env` entry would silently let the real key invalidate,
     or worse, name a key nothing reads. Each must appear in the adapter's source
