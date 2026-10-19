@@ -42,6 +42,9 @@ runtime:
     # (convert_float_to_float16 in reverse) and point PADDOCK_OPENPILOT_ONNX at
     # the result.
     PADDOCK_OPENPILOT_THREADS: "8"
+  # Site overrides of these change speed or memory, not the plan, so they
+  # leave a run valid; any other [models.openpilot.env] key makes it valid: false.
+  tuning_env: [PADDOCK_OPENPILOT_THREADS]
 
 capabilities:
   cameras: [CAM_OP_ROAD, CAM_OP_WIDE, CAM_FRONT]   # comma-three rig: road cam -> img, wide cam -> big_img; CAM_FRONT = fallback for single-camera sources (KITScenes, neuroNCAP)

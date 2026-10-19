@@ -122,6 +122,15 @@ Three fields are worth more thought than they look:
 - **`env`** — the preferred way to point a repo at data. Most research repos
   already read an environment variable for their data root; find it and use it
   rather than patching source.
+- **`tuning_env`** — the `env` keys a site may override in `[models.<name>.env]`
+  without changing what the model computes: thread counts, memory caps. A site
+  override of any other key (a checkpoint, a horizon, a mode) is recorded in
+  `run.json` as `model_env` and makes the run `valid: false`, so a finetune
+  swapped in through a site config is never ranked under the model's name.
+  OpenMP and BLAS thread counts, and keys that only say where a library or
+  cache lives (`LD_LIBRARY_PATH`, `HF_HOME`, ...; `runner.LOCATION_ENV`), are
+  always allowed. A checkpoint path is not: a moved checkpoint and a finetune
+  look the same to the runner.
 
 ## Step 5 — write `setup.sh`
 

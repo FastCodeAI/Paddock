@@ -462,6 +462,38 @@ def test_a_replay_inherits_the_source_runs_validity(tmp_path: Path, monkeypatch)
     )
 
 
+@pytest.mark.parametrize(
+    ("model", "env", "replay"),
+    [
+        ("visionpilot", {"VISIONPILOT_ORT_THREADS": "2"}, True),  # what every shakaal site sets
+        ("visionpilot", {"VISIONPILOT_SETPOINT": "run_start"}, True),  # changes a plan, but none is made
+        ("constant_velocity", {"PADDOCK_CV_SPEED_M_S": "6"}, False),  # Bench2Drive's speed bands
+    ],
+)
+def test_a_site_model_env_does_not_judge_a_run_no_model_process_made(
+    tmp_path: Path, monkeypatch, model, env, replay
+) -> None:
+    """No node starts on this path, so a site's `[models.<name>.env]` reaches nothing.
+
+    The runner's env rule would otherwise judge it against a stand-in spec with
+    no tuning keys, and store a replay of a valid run, or paddock's own
+    baseline, as valid=false. A replay's validity is its source's.
+    """
+    cfg = _stub_v1_site(tmp_path, monkeypatch, chunk_logs="1")
+    body = "".join(f'{k} = "{v}"\n' for k, v in env.items())
+    cfg.source.write_text(cfg.source.read_text() + f"\n[models.{model}.env]\n{body}")
+    cfg = SiteConfig.load(cfg.source)
+    root = _results_root(tmp_path, monkeypatch)
+    if replay:
+        _source_run(cfg, root, "navsim", model, "src1", ["log_a-t0"])
+        assert nodeless.run(cfg, "navsim_v1", replay=f"navsim/{model}/src1", echo=lambda _: None) == 0
+    else:
+        assert nodeless.run(cfg, "navsim_v1", agent=model, echo=lambda _: None) == 0
+    run, _ = _only_run(root, "navsim_v1", model)
+    assert run["valid"] is True, run["notes"]
+    assert "site env override" not in run["notes"]
+
+
 def test_a_replay_refuses_what_it_cannot_vouch_for(tmp_path: Path, monkeypatch) -> None:
     cfg = _stub_v1_site(tmp_path, monkeypatch, chunk_logs="1")
     root = _results_root(tmp_path, monkeypatch)

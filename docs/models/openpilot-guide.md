@@ -811,8 +811,9 @@ Every record's extras carry:
 - `plan_v0`: the plan's speed at t = 0, beside the pose head's.
 
 The mode is recorded in `provenance.policy.desire_mode`. Set in a site's env
-block, it is also in `config.model_env`, so a desire run gets its own id and
-its own leaderboard row. On KITScenes the commands come from
+block, it is also in `config.model_env`, so a desire run gets its own id, and
+the runner stores it `valid: false` as a site env override
+(`runner._env_override_reasons`). On KITScenes the commands come from
 `command_source = "gt"`, the route signal the benchmark's other route-conditioned
 rows had ([The route hint](../benchmarks/kitscenes.md#the-route-hint)).
 
@@ -862,8 +863,8 @@ There are two refusals:
 
 The margins in `diagnostics()` are the scaled views'. The scale is recorded in
 `provenance.policy.height_scale`. Set in a site's env block, it is also in
-`config.model_env`, so a scaled run gets its own id and, over a full set, its
-own leaderboard row. Nothing in the record tells a scale measured on the rig
+`config.model_env`, so a scaled run gets its own id and is stored
+`valid: false`, a site env override. Nothing in the record tells a scale measured on the rig
 from one fitted to the benchmark's own errors, and the second is tuned on the
 test set.
 
