@@ -428,7 +428,7 @@ The ∗ rows are also the ones **`CURV_SCALE` moved**. The adapter carried 1.0
 where the stack's own `lateral_fusion.hpp` has 0.21, so the planner saw a
 curvature 4.8x too large and its `sqrt(mu*g/|kappa|)` speed cap bound where it
 should not have. Fixed September 2026; on a 20-sample comma2k19 smoke the
-correction moved ADE@3s from 15.09 to 5.28. **Every VisionPilot figure in this
+correction moved ADE@3s from 15.09 to 5.28. **Every VisionPilot figure in the
 README predates it** and will not be reproduced by a re-run — the closed-loop
 ones least, since urban scenes rarely reach the cap, and the comma2k19 and
 KITScenes ones most. `docs/models/VISION_PILOT_GUIDE.md` §"Curvature scale" has

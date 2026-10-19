@@ -173,8 +173,8 @@ route. It is the same signal Drive-JEPA's row (`--command gt`) and Alpamayo's
 nav arm were given here. It is also the kind of high-level command nuScenes
 gives every model, whose harness infers it from the recorded future (VAD's
 rule): the standard input of open-loop planning, standing in for the route a
-car's navigation knows. In the README only OpenPilot's cells carry a mark for
-it (⊜); that footnote names the two other rows that had it.
+car's navigation knows. In this page's tables only OpenPilot's cells carry a
+mark for it (⊜); that note names the two other rows that had it.
 
 Only the keyframe carries the hint; the 48 history frames stay STRAIGHT. The
 command is derived from the keyframe's own future, so it is not what a frame
