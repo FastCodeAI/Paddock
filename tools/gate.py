@@ -59,6 +59,7 @@ checkpoint as its baseline. `compare` prints both runs' model_env and says when 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import math
@@ -67,6 +68,7 @@ import random
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -658,6 +660,9 @@ SMOKE_ORDER = TIERS["quick"] + TIERS["closed"]
 READY_WAIT_S = 1200
 #: How often the scheduler looks at its lanes, in seconds.
 POLL_S = 10.0
+#: How long a lane gets, after SIGINT, to tear its model node, renderer or CARLA
+#: down through `paddock run`'s own cleanup before its process group is killed.
+STOP_GRACE_S = 120.0
 #: GPU memory a benchmark's own simulator holds beside the model, in GB. Measured
 #: for neuroNCAP: one NeuRAD renderer was 7.7 GB on 2026-10-16. CARLA's share is
 #: NOT measured; 8 is the same order, and the wait errs on the side of waiting.
@@ -1046,6 +1051,55 @@ def stage_env(env: dict[str, str], stage_dir: Path, echo: Callable[[str], None] 
     return staged
 
 
+class _Stopped(Exception):
+    """SIGTERM or SIGINT reached the gate; the lanes are stopped on the way out."""
+
+
+def _raise_stopped(signum: int, _frame: Any) -> None:
+    raise _Stopped(signal.Signals(signum).name)
+
+
+def _alive(pid: int, command: list[str]) -> bool:
+    """Whether `pid` is still the process the smoke launched with `command`.
+
+    The command is compared too, so a recycled PID is not mistaken for our run.
+    Without /proc the PID alone is all there is to go on.
+    """
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    cmdline = Path(f"/proc/{pid}/cmdline")
+    if not cmdline.exists():
+        return True
+    argv = [a.decode(errors="replace") for a in cmdline.read_bytes().split(b"\0") if a]
+    return argv[: len(command)] == command
+
+
+def _stop_lanes(lanes: list[_Lane], echo: Callable[[str], None]) -> None:
+    """SIGINT to every running lane's process group, then SIGKILL after STOP_GRACE_S.
+
+    SIGINT first, so `paddock run` unwinds and tears down what it started -- the
+    model node, a renderer, and Bench2Drive's evaluator and CARLA, which run in a
+    session of their own that a group kill would not reach.
+    """
+    live = [lane for lane in lanes if lane.proc is not None and lane.proc.poll() is None]
+    for lane in live:
+        echo(f"  stopping {lane.step.name} (pid {lane.proc.pid})")
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(lane.proc.pid, signal.SIGINT)
+    deadline = time.time() + STOP_GRACE_S
+    for lane in live:
+        try:
+            lane.proc.wait(timeout=max(0.0, deadline - time.time()))
+        except subprocess.TimeoutExpired:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(lane.proc.pid, signal.SIGKILL)
+            lane.proc.wait()
+
+
 @dataclass
 class _Lane:
     """One `taskset` core list and port range; a lane runs one step at a time."""
@@ -1144,6 +1198,21 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
         echo(smoke_manifest(args.model, label, baselines, steps))
         return 0
 
+    # A run an earlier smoke launched may still be going (its gate was SIGKILLed,
+    # or is still running); resuming it would put two writers on one run directory
+    # and two models on the card.
+    live = [
+        f"{name} (pid {entry['pid']})"
+        for name, entry in state.items()
+        if entry.get("pid") and _alive(int(entry["pid"]), list(entry.get("command") or []))
+    ]
+    if live:
+        echo(f"\nstill running from an earlier smoke: {', '.join(live)}; stop it or let it finish first")
+        return 2
+    for entry in state.values():
+        entry.pop("pid", None)
+        entry.pop("command", None)
+
     out.mkdir(parents=True, exist_ok=True)
     run_env = stage_env(env_pairs, args.stage_dir, echo) if args.stage_dir else env_pairs
     config_path.write_text(smoke_config(cfg.source, args.model, run_env, args.renderer_port))
@@ -1162,6 +1231,8 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
         lane.log.close()
         lane.step = lane.proc = lane.log = None
         entry = state[step.name]
+        entry.pop("pid", None)
+        entry.pop("command", None)
         entry["run_id"] = step.run_id = _run_id_for(entry, cfg.runs, step.bench, args.model)
         entry["exit"] = rc
         save()
@@ -1178,62 +1249,91 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
         if result.verdict in ("REGRESSION", "INCOMPLETE") and not args.keep_going:
             stop = stop or f"{result.verdict} on {step.name}"
 
-    while pending or any(lane.proc for lane in lanes):
-        for lane in lanes:
-            if lane.proc is not None and lane.proc.poll() is not None:
-                finish(lane)
-        nxt = pending[0] if pending else None
-        if nxt and not stop and not args.keep_going and tier_of[nxt.name] != tiers[0]:
-            # The closed tier is for a candidate the quick tier passed: every quick
-            # step finished and nothing regressed.
-            quick = [n for n in names if tier_of[n] == "quick"]
-            if not any(lane.proc for lane in lanes) and not set(quick) <= done | {
-                s.name for s in steps if s.status == "skipped"
-            }:
-                missing = [n for n in quick if n not in done]
-                stop = f"quick tier did not finish ({', '.join(missing)})"
-        if stop and pending:
-            echo(
-                f"\n{stop}: not launching {', '.join(s.name for s in pending)} (--keep-going runs them anyway)"
+    previous = {sig: signal.signal(sig, _raise_stopped) for sig in (signal.SIGTERM, signal.SIGINT)}
+    try:
+        while pending or any(lane.proc for lane in lanes):
+            for lane in lanes:
+                if lane.proc is not None and lane.proc.poll() is not None:
+                    finish(lane)
+            nxt = pending[0] if pending else None
+            if nxt and not stop and not args.keep_going and tier_of[nxt.name] != tiers[0]:
+                # The closed tier is for a candidate the quick tier passed: every quick
+                # step finished and nothing regressed.
+                quick = [n for n in names if tier_of[n] == "quick"]
+                if not any(lane.proc for lane in lanes) and not set(quick) <= done | {
+                    s.name for s in steps if s.status == "skipped"
+                }:
+                    missing = [n for n in quick if n not in done]
+                    stop = f"quick tier did not finish ({', '.join(missing)})"
+            if stop and pending:
+                echo(
+                    f"\n{stop}: not launching {', '.join(s.name for s in pending)} (--keep-going runs them anyway)"
+                )
+                pending = []
+                continue
+            idle = next((lane for lane in lanes if lane.proc is None), None)
+            busy = [lane.step for lane in lanes if lane.step is not None]
+            blocked = (
+                nxt is None
+                or idle is None
+                or any(b.bench == nxt.bench or tier_of[b.name] != tier_of[nxt.name] for b in busy)
             )
-            pending = []
-            continue
-        idle = next((lane for lane in lanes if lane.proc is None), None)
-        busy = [lane.step for lane in lanes if lane.step is not None]
-        blocked = (
-            nxt is None
-            or idle is None
-            or any(b.bench == nxt.bench or tier_of[b.name] != tier_of[nxt.name] for b in busy)
-        )
-        if blocked:
-            time.sleep(POLL_S)
-            continue
-        pending.pop(0)
-        step_env = {**os.environ, **nxt.env}
-        step_env["PADDOCK_BASE_PORT"] = str(idle.port)
-        if not _wait_for_gpu(step_env, smoke_need_gb(nxt.bench, models[args.model].vram_gb), echo):
-            stop = "no GPU memory after 12 h"
-            pending.insert(0, nxt)
-            continue
-        command = list(nxt.command)
-        if command[:2] == ["taskset", "-c"]:
-            command[2] = idle.cores
-        launched = replace(nxt, command=command, env={**nxt.env, "PADDOCK_BASE_PORT": str(idle.port)})
-        entry = state.setdefault(nxt.name, {})
-        if nxt.status == "new":
-            entry["before"] = sorted(_artifact_ids(cfg.runs, nxt.bench, args.model))
+            if blocked:
+                time.sleep(POLL_S)
+                continue
+            pending.pop(0)
+            step_env = {**os.environ, **nxt.env}
+            step_env["PADDOCK_BASE_PORT"] = str(idle.port)
+            if not _wait_for_gpu(step_env, smoke_need_gb(nxt.bench, models[args.model].vram_gb), echo):
+                stop = "no GPU memory after 12 h"
+                pending.insert(0, nxt)
+                continue
+            command = list(nxt.command)
+            if command[:2] == ["taskset", "-c"]:
+                command[2] = idle.cores
+            launched = replace(nxt, command=command, env={**nxt.env, "PADDOCK_BASE_PORT": str(idle.port)})
+            entry = state.setdefault(nxt.name, {})
+            if nxt.status == "new":
+                entry["before"] = sorted(_artifact_ids(cfg.runs, nxt.bench, args.model))
+                save()
+            log_path = out / f"{nxt.name}.log"
+            log = log_path.open("a")
+            log.write(f"\n$ {shell_line(launched, REPO_ROOT)}\n")
+            log.flush()
+            offset = log.tell()
+            echo(f"\n=== {nxt.name} on cores {idle.cores}, port {idle.port}; log {log_path}")
+            # Streamed to the file as it runs, so a hung episode is diagnosable while it hangs.
+            # A session of its own, so stopping the gate can signal the lane's whole group.
+            proc = subprocess.Popen(
+                command,
+                env=step_env,
+                cwd=REPO_ROOT,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+            idle.step, idle.proc, idle.log = nxt, proc, log
+            entry["pid"], entry["command"] = proc.pid, command
             save()
-        log_path = out / f"{nxt.name}.log"
-        log = log_path.open("a")
-        log.write(f"\n$ {shell_line(launched, REPO_ROOT)}\n")
-        log.flush()
-        offset = log.tell()
-        echo(f"\n=== {nxt.name} on cores {idle.cores}, port {idle.port}; log {log_path}")
-        # Streamed to the file as it runs, so a hung episode is diagnosable while it hangs.
-        proc = subprocess.Popen(command, env=step_env, cwd=REPO_ROOT, stdout=log, stderr=subprocess.STDOUT)
-        idle.step, idle.proc, idle.log = nxt, proc, log
-        # The next launch's GPU check must see this one's memory already taken.
-        _wait_ready(log_path, offset, proc, args.model)
+            # The next launch's GPU check must see this one's memory already taken.
+            _wait_ready(log_path, offset, proc, args.model)
+
+    except _Stopped as why:
+        echo(f"\n{why} received: stopping the running lanes; the same command resumes them")
+        stopped = str(why)
+    else:
+        stopped = ""
+    finally:
+        # Also on an error in the gate itself: no lane outlives it.
+        _stop_lanes(lanes, echo)
+        for entry in state.values():
+            entry.pop("pid", None)
+            entry.pop("command", None)
+        save()
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
+    if stopped:
+        return 130
 
     steps = plan_smoke(args.model, names, declared, state, **common)
     manifest = out / "manifest.toml"

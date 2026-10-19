@@ -955,3 +955,92 @@ def test_a_finished_smoke_rerun_launches_nothing(tmp_path: Path, monkeypatch) ->
     stamps.write_text("")
     assert gate.smoke(args(), lambda _m: None) == 0
     assert stamps.read_text() == ""
+
+
+def _live_stand_ins() -> list[int]:
+    """PIDs of FAKE_RUN processes still alive (Linux /proc)."""
+    pids = []
+    for entry in Path("/proc").iterdir():
+        if entry.name.isdigit():
+            try:
+                if (
+                    b"a run that crashes after making its artifacts directory"
+                    in (entry / "cmdline").read_bytes()
+                ):
+                    pids.append(int(entry.name))
+            except OSError:
+                continue
+    return pids
+
+
+@pytest.mark.skipif(not Path("/proc").is_dir(), reason="reads /proc")
+def test_sigterm_to_the_gate_stops_its_lanes(tmp_path: Path, monkeypatch) -> None:
+    """Review #80 (4): `kill <gate pid>` orphaned every lane, and a re-run resumed the live one."""
+    import multiprocessing
+    import os
+    import signal
+    import time
+
+    args, stamps = _smoke_site(tmp_path, monkeypatch, {"kitscenes": 2.0, "nuscenes": 2.0}, hold=60)
+    monkeypatch.setattr(gate, "STOP_GRACE_S", 10.0)
+    before = set(_live_stand_ins())
+    child = multiprocessing.get_context("fork").Process(
+        target=lambda: os._exit(gate.smoke(args(bench=["kitscenes"]), lambda _m: None))
+    )
+    child.start()
+    deadline = time.time() + 30
+    while time.time() < deadline and not (stamps.exists() and "start" in stamps.read_text()):
+        time.sleep(0.1)
+    assert set(_live_stand_ins()) - before, "the lane never started"
+    os.kill(child.pid, signal.SIGTERM)
+    child.join(30)
+    assert child.exitcode == 130
+    assert not set(_live_stand_ins()) - before, "a lane outlived the gate"
+    state = json.loads((tmp_path / "state" / "state.json").read_text())
+    assert "pid" not in state["kitscenes"]
+
+
+@pytest.mark.skipif(not Path("/proc").is_dir(), reason="reads /proc")
+def test_an_error_in_the_gate_stops_its_lanes(tmp_path: Path, monkeypatch) -> None:
+    """The gate also died with lanes up when finish() raised (e.g. _run_id_for's RuntimeError)."""
+    monkeypatch.setattr(gate, "STOP_GRACE_S", 10.0)
+    real = gate._run_id_for
+
+    def explode(entry, runs_root, bench, model):
+        if bench == "kitscenes" and "pid" not in entry:
+            raise RuntimeError("two new runs appeared")
+        return real(entry, runs_root, bench, model)
+
+    # kitscenes finishes at once (ade < 0: it crashes) and its bookkeeping raises;
+    # nuscenes is mid-run in the other lane when it does.
+    args, _ = _smoke_site(tmp_path, monkeypatch, {"kitscenes": -1.0, "nuscenes": 2.0}, hold=60)
+    monkeypatch.setattr(gate, "_run_id_for", explode)
+    before = set(_live_stand_ins())
+    with pytest.raises(RuntimeError, match="two new runs"):
+        gate.smoke(args(cores=["4-7", "8-11"]), lambda _m: None)
+    assert not set(_live_stand_ins()) - before, "a lane outlived the gate's error"
+
+
+@pytest.mark.skipif(not Path("/proc").is_dir(), reason="reads /proc")
+def test_a_rerun_refuses_while_a_recorded_run_is_still_alive(tmp_path: Path, monkeypatch) -> None:
+    import subprocess
+    import sys
+
+    args, stamps = _smoke_site(tmp_path, monkeypatch, {"kitscenes": 2.0, "nuscenes": 2.0})
+    command = [sys.executable, "-c", "import time; time.sleep(60)"]
+    alive = subprocess.Popen(command)
+    try:
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        (state_dir / "state.json").write_text(
+            json.dumps({"kitscenes": {"pid": alive.pid, "command": command}})
+        )
+        said: list[str] = []
+        assert gate.smoke(args(bench=["kitscenes"]), said.append) == 2
+        assert f"kitscenes (pid {alive.pid})" in "\n".join(said)
+        assert not stamps.exists(), "nothing was launched"
+    finally:
+        alive.kill()
+        alive.wait()
+    # Once it is gone, the record is stale and the smoke goes ahead.
+    assert gate.smoke(args(bench=["kitscenes"]), lambda _m: None) == 0

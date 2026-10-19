@@ -138,6 +138,12 @@ setsid nohup python -m tools.gate smoke ... --tier all --execute \
   against its baseline, nothing else is launched; running ones finish. The
   closed tier never starts after a quick-tier regression or an unfinished quick
   subset. `--keep-going` turns both off.
+- **Stopping it.** `kill <gate pid>` (SIGTERM) or Ctrl-C. Every running lane
+  gets SIGINT, so `paddock run` tears down its model node, renderer or CARLA,
+  and is killed if it has not exited within 2 min; then the gate exits 130. Each
+  lane's PID is in `state.json` while it runs, and a re-run refuses to start
+  while a recorded run is still alive (after a `kill -9` of the gate, say). The
+  same command resumes what was stopped.
 - **`--stage-dir`.** Every `--env` value that names a file, typically the
   candidate's checkpoint, is copied there first (with any file under 1 MB beside
   it, such as gallops' `checkpoint.json`), and the run reads the copy. Point it
