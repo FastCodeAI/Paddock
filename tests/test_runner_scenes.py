@@ -576,6 +576,18 @@ def test_autoe2e_logging_where_it_records_is_not_a_change_of_plan(tmp_path) -> N
     assert "AUTOE2E_CHECKPOINT" in reason
 
 
+def test_restating_alpamayos_nav_default_is_not_an_override(tmp_path) -> None:
+    """`ALPAMAYO_NAV = "1"` is what its Bench2Drive pooled run set: the default, so
+    still rankable. `"0"` is the no-nav baseline, a different plan."""
+    from paddock.registry import Registry
+    from paddock.runner import _env_override_reasons
+
+    spec = Registry.load().models["alpamayo15"]
+    assert _env_override_reasons(_site_with_env(tmp_path, "alpamayo15", {"ALPAMAYO_NAV": "1"}), spec) == []
+    (reason,) = _env_override_reasons(_site_with_env(tmp_path, "alpamayo15", {"ALPAMAYO_NAV": "0"}), spec)
+    assert "ALPAMAYO_NAV" in reason
+
+
 def test_every_declared_tuning_key_is_one_the_model_reads() -> None:
     """A misspelt `tuning_env` entry would silently let the real key invalidate,
     or worse, name a key nothing reads. Each must appear in the adapter's source

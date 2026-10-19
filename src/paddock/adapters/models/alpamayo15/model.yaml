@@ -14,6 +14,10 @@ runtime:
     PADDOCK_WEIGHTS: "{weights}"
     # Claimed before the checkpoint read, which takes ~12 min on a contended card.
     ALPAMAYO_RESERVE_GB: "26"
+    # The route instruction is on; "0" runs the no-nav baseline (policy.py). The
+    # code already defaults to 1. Declared so a site that restates it is not
+    # read as overriding it.
+    ALPAMAYO_NAV: "1"
     # KITScenes addressing: this repo's code wants the directory *containing*
     # data/, where openpilot's wants data/ itself. One registry entry, projected.
     KITSCENES_ROOT: "{data.kitscenes.parent}"
