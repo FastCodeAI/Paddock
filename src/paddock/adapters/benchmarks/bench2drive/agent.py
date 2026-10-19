@@ -326,6 +326,37 @@ class PaddockB2DAgent(AutonomousAgent):
                 dist += plan[j][0].location.distance(plan[j + 1][0].location)
         return None, None
 
+    def _route_xy(self, behind_m: float = 10.0, ahead_m: float = 200.0):
+        """The leaderboard's global plan near the ego as an ego-frame polyline (x forward,
+        y left, metres): from the first plan point at least ``behind_m`` before the one
+        nearest the ego to the first at least ``ahead_m`` after it. None without a plan.
+        A policy that rasterises the route (AutoE2E's navigation tile) reads it; a
+        polyline ending short of ``ahead_m`` is the route's end.
+
+        The points are the plan's own, and the plan is sparse: the leaderboard hands
+        ``set_global_plan`` a 1 m route and the base class keeps
+        ``downsample_route(route, 50)`` of it, a point at each road-option change and
+        otherwise every ~50 m. A straight segment between two of them cuts a bend by its
+        sagitta, ~3 m at a 100 m radius."""
+        plan = getattr(self, "_global_plan_world_coord", None)
+        hero = self._hero_actor()
+        if not plan or hero is None:
+            return None
+        hero_loc = hero.get_location()
+        start = int(np.argmin([tf.location.distance(hero_loc) for tf, _opt in plan]))
+        lo, acc = start, 0.0
+        while lo > 0 and acc < behind_m:
+            acc += plan[lo][0].location.distance(plan[lo - 1][0].location)
+            lo -= 1
+        hi, acc = start, 0.0
+        while hi < len(plan) - 1 and acc < ahead_m:
+            acc += plan[hi][0].location.distance(plan[hi + 1][0].location)
+            hi += 1
+        # CARLA world -> paddock world is the same y-flip `_rh` applies to the ego pose.
+        world = np.array([[tf.location.x, -tf.location.y, 0.0, 1.0] for tf, _opt in plan[lo : hi + 1]])
+        ego = (np.linalg.inv(self._ego2world()) @ world.T).T
+        return np.round(ego[:, :2], 3).tolist()
+
     def run_step(self, input_data, timestamp):
         us = int(timestamp * 1e6)
         # No speedometer is a broken sensor setup, not a stationary car: let the
@@ -374,6 +405,7 @@ class PaddockB2DAgent(AutonomousAgent):
             "speed_limit": speed_limit,
             "nav_maneuver": nav_maneuver,
             "nav_distance_m": nav_distance_m,
+            "route_xy": self._route_xy(),
             "calibration": {
                 "camera2image": self._cam2img,
                 "camera2ego": self._cam2ego,

@@ -34,10 +34,10 @@ the device origin with no rotation of its own and hand openpilot an identity
   the previous comma2k19 result (ADE 38.8 m, of which 38.8 m longitudinal: the
   model, shown a rotated world, predicted a stationary car).
 * There *is* a mount rotation to correct. Estimated from the recorded poses with
-  calibrationd's own formula, it is 3.5-3.8 deg of pitch on the RAV4 and
-  1.7-1.8 deg on the Civic. Correcting it is worth about 3x in cross-track
-  error, because openpilot's model expects the road to sit at a fixed place in
-  its input frame.
+  calibrationd's own formula, it is 3.3-3.8 deg of pitch on the RAV4 and
+  1.6-2.2 deg on the Civic for nine routes in ten. Correcting it is worth about
+  3x in cross-track error, because openpilot's model expects the road to sit at
+  a fixed place in its input frame.
 
 So `camera2ego` here carries the estimated mount rotation, and
 `calibration.py` computes it.

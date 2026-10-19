@@ -832,6 +832,7 @@ def test_an_interrupted_open_loop_run_resumes_from_its_journal(tmp_path, monkeyp
     written = json.loads(stored.read_text())
     assert written["dataset"]["n_samples"] == 6
     assert written["valid"] is True and "resumed" in written["notes"]
+    assert "this attempt only" in written["notes"], "the start and duration are the second attempt's"
 
 
 def test_resume_is_refused_when_the_switches_changed(tmp_path, monkeypatch) -> None:

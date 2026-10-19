@@ -84,6 +84,41 @@ RING = {
     "camera_ring_rear_right": "CAM_BACK_RIGHT",
 }
 
+#: Where the scored keyframe's route command comes from:
+#: `[benchmarks.kitscenes] command_source`.
+#:
+#: KITScenes has no route annotation, so `straight`, the default, stamps
+#: `Command.STRAIGHT` on every frame -- what every paddock run here before
+#: `20260930T014333-d329a6` was scored with. `gt` gives the keyframe the sample
+#: list's `driving_command` instead: the command Drive-JEPA's row was run with,
+#: which its `--command gt` derived from the recorded future. The model is told
+#: which way the car is about to go, from the scored future, standing in for the
+#: route a car's navigation knows, so a `gt` run is a different measurement,
+#: recorded in `run_config()`. It is not an invalid one: that is the route
+#: signal Drive-JEPA's and Alpamayo's ranked rows here were given, and the
+#: high-level command nuScenes gives every model (its harness infers it from the
+#: recorded future, VAD's rule). The two names are the ones `paddock ingest`
+#: already records Drive-JEPA's row under.
+COMMAND_SOURCES = ("straight", "gt")
+
+#: The sample list's `driving_command`, a one-hot over NAVSIM's `[left,
+#: straight, right, unknown]` (`results/ingest/kitscenes.py::STRAIGHT_COMMAND`),
+#: as the protocol's commands. `unknown`, or anything not one-hot, is no hint
+#: and reads as STRAIGHT, the same as `command_source = "straight"`.
+LIST_COMMANDS = (Command.LEFT, Command.STRAIGHT, Command.RIGHT)
+
+#: Which of the rig's two forward cameras is the protocol's CAM_FRONT:
+#: `[benchmarks.kitscenes] front_camera`.
+#:
+#: `ring`, the default, is the ring's own front camera, what every paddock run
+#: here before `20261005T205400-a369d1` was scored with. `base` is `camera_base_front_center`:
+#: 5856x3104 against the ring's 3504x2272, about the same 88 deg across but 54
+#: deg high against 63, so 1.6 times the pixels per degree, and mounted 0.2 m
+#: lower and 0.2 m further forward. The other five cameras stay the ring's.
+#: Another camera is another measurement, so it is recorded in `run_config()`,
+#: again only when given, so every earlier run keeps its id.
+FRONT_CAMERAS = {"ring": "camera_ring_front", "base": "camera_base_front_center"}
+
 
 class KitScenesBenchmark(OpenLoopBenchmark):
     # ---- readiness ------------------------------------------------------
@@ -100,14 +135,40 @@ class KitScenesBenchmark(OpenLoopBenchmark):
             problems.append(
                 "no configured kitscenes tier exists: " + ", ".join(str(r) for r in dataset.roots)
             )
+        for setting in (self._command_source, self._front_camera):
+            try:
+                setting()
+            except ValueError as exc:
+                problems.append(str(exc))
         try:
             self._sample_list()
         except RuntimeError as exc:
             problems.append(str(exc))
             return problems
         if not problems:
+            problems += self._route_hint_problems()
+        if not problems:
             problems += self.ring_problems()
         return problems
+
+    def _route_hint_problems(self) -> list[str]:
+        """Under `gt`, the rows that have no `driving_command` to give.
+
+        `_command` reads it from every row, so a list without it would stop the
+        run with a KeyError at the first sample instead of here. The shared list
+        carries it on all 223 rows; `straight` never reads it.
+        """
+        if self._command_source() != "gt":
+            return []
+        rows = pickle.loads(self._sample_list().read_bytes())
+        missing = sum(1 for row in rows if "driving_command" not in row)
+        if not missing:
+            return []
+        return [
+            f'[benchmarks.kitscenes] command_source = "gt" reads each row\'s driving_command, and '
+            f"{missing} of {len(rows)} row(s) in {self._sample_list()} have none. Use a sample list "
+            'that carries it, or command_source = "straight".'
+        ]
 
     def _sample_list(self) -> Path:
         """The shared keyframe list every KITScenes run is scored on.
@@ -175,7 +236,7 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         for scene_id, split in sorted(scenes.items()):
             n_poses = len(L.load_poses(self._scene_path(scene_id, split)))
             missing: list[str] = []
-            for sensor in RING:
+            for sensor in self._sensors():
                 scene = self._sensor_scene(scene_id, split, sensor)
                 if scene is None:
                     missing.append(sensor)
@@ -235,12 +296,19 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         poses = L.load_poses(scene)
 
         indices = L.frame_indices(keyframe, HISTORY_FRAMES)
-        calibration = _read_calibration(scene, ground_offset=self._ground_offset())
-        ring = self._ring(row["scene_id"], row["split_dir"])
+        sensors = self._sensors()
+        calibration = _read_calibration(scene, sensors, ground_offset=self._ground_offset())
+        ring = self._ring(row["scene_id"], row["split_dir"], sensors)
+        command = self._command(row)
 
         # Paths, not pixels. The node is a subprocess on this filesystem, so
         # neither side needs to carry 24 MB a frame -- times six, now.
-        observations = [self._observation(ring, poses, index, calibration) for index in indices]
+        observations = [
+            self._observation(
+                ring, poses, index, calibration, command if index == keyframe else Command.STRAIGHT, sensors
+            )
+            for index in indices
+        ]
         return Sample(
             sample_id=self._sample_id(row),
             observations=observations,
@@ -253,14 +321,66 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         """Roof-pod height above the road, from the site config or `POD_HEIGHT_M`."""
         return float(self.setting("ground_offset_m") or POD_HEIGHT_M)
 
+    def _command_source(self) -> str:
+        """`straight` (the default) or `gt`; see `COMMAND_SOURCES`."""
+        source = str(self.setting("command_source") or "straight").strip().lower()
+        if source not in COMMAND_SOURCES:
+            raise ValueError(
+                f"[benchmarks.kitscenes] command_source = {source!r}: expected one of "
+                f"{', '.join(COMMAND_SOURCES)}. See docs/benchmarks/kitscenes.md."
+            )
+        return source
+
+    def _command(self, row: dict) -> Command:
+        """The route command the scored keyframe carries.
+
+        Only the keyframe: every history frame stays STRAIGHT. The list's
+        command is derived from the keyframe's own future, so it is not what a
+        frame 4.8 s earlier would have been told. And a model that turns a
+        change of command into an event -- openpilot's desire is a rising-edge
+        pulse -- would otherwise see that event at the start of the history,
+        not at the moment being scored.
+        """
+        if self._command_source() == "straight":
+            return Command.STRAIGHT
+        one_hot = [int(value) for value in row["driving_command"]]
+        if one_hot.count(1) == 1 and one_hot.count(0) == len(one_hot) - 1:
+            index = one_hot.index(1)
+            if index < len(LIST_COMMANDS):
+                return LIST_COMMANDS[index]
+        return Command.STRAIGHT
+
+    def _front_camera(self) -> str:
+        """`ring` (the default) or `base`; see `FRONT_CAMERAS`."""
+        camera = str(self.setting("front_camera") or "ring").strip().lower()
+        if camera not in FRONT_CAMERAS:
+            raise ValueError(
+                f"[benchmarks.kitscenes] front_camera = {camera!r}: expected one of "
+                f"{', '.join(FRONT_CAMERAS)}. See docs/benchmarks/kitscenes.md."
+            )
+        return camera
+
+    def _sensors(self) -> dict[str, str]:
+        """`RING` with `front_camera`'s sensor as CAM_FRONT: dataset sensor -> protocol camera."""
+        front = FRONT_CAMERAS[self._front_camera()]
+        return {(front if camera == "CAM_FRONT" else sensor): camera for sensor, camera in RING.items()}
+
     def run_config(self) -> dict:
         """The ground offset changes every projected point, so it is measured-with.
 
         Recorded and hashed into the run id: two runs made with different
         offsets put the camera at different heights and are not the same
-        measurement, which a bare ADE would not reveal.
+        measurement, which a bare ADE would not reveal. A route hint and another
+        front camera are the same kind of difference, but each is recorded only
+        when given, so every run made before the setting existed keeps its id
+        and `--resume`.
         """
-        return {"ground_offset_m": self._ground_offset()}
+        config: dict = {"ground_offset_m": self._ground_offset()}
+        if self._command_source() != "straight":
+            config["command_source"] = self._command_source()
+        if self._front_camera() != "ring":
+            config["front_camera"] = self._front_camera()
+        return config
 
     def model_run_config(self, model) -> dict:
         """Which ring cameras this model was given: the ones it declares.
@@ -300,10 +420,10 @@ class KitScenesBenchmark(OpenLoopBenchmark):
                 return candidate
         return None
 
-    def _ring(self, scene_id: str, split: str) -> dict[str, Path]:
+    def _ring(self, scene_id: str, split: str, sensors: dict[str, str] = RING) -> dict[str, Path]:
         """Sensor -> the scene directory its frames are read from, for all six."""
         ring: dict[str, Path] = {}
-        for sensor in RING:
+        for sensor in sensors:
             scene = self._sensor_scene(scene_id, split, sensor)
             if scene is None:
                 raise FileNotFoundError(
@@ -313,12 +433,21 @@ class KitScenesBenchmark(OpenLoopBenchmark):
             ring[sensor] = scene
         return ring
 
-    def _observation(self, ring: dict[str, Path], poses: np.ndarray, index: int, calibration) -> Observation:
+    def _observation(
+        self,
+        ring: dict[str, Path],
+        poses: np.ndarray,
+        index: int,
+        calibration,
+        command: Command = Command.STRAIGHT,
+        sensors: dict[str, str] = RING,
+    ) -> Observation:
         """One frame of every ring camera, in the protocol's shape.
 
         Intrinsics and extrinsics come from the scene's calibration, one pair
         per camera; the ego pose is the recorded one, so a model differencing
-        history recovers the true speed rather than an assumed one.
+        history recovers the true speed rather than an assumed one. *command*
+        is STRAIGHT unless this is a keyframe given a route hint (`_command`).
         """
         ego2world = np.eye(4)
         ego2world[:2, 3] = poses[index, :2]
@@ -330,7 +459,7 @@ class KitScenesBenchmark(OpenLoopBenchmark):
 
         camera2image, camera2ego = calibration
         image_paths = {
-            RING[sensor]: str(L.frame_path(scene, index, sensor)) for sensor, scene in ring.items()
+            sensors[sensor]: str(L.frame_path(scene, index, sensor)) for sensor, scene in ring.items()
         }
         return Observation(
             images={},
@@ -338,7 +467,7 @@ class KitScenesBenchmark(OpenLoopBenchmark):
             ego2world=ego2world,
             canbus=canbus,
             timestamp_us=int(index / SRC_HZ * 1e6),
-            command=Command.STRAIGHT,
+            command=command,
             camera2image={camera: camera2image[camera] for camera in image_paths},
             camera2ego={camera: camera2ego[camera] for camera in image_paths},
             # KITScenes calibrates every sensor against `base_frame`, which is

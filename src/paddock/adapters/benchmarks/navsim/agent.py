@@ -189,6 +189,7 @@ class PaddockProxyAgent(_PaddockAgentBase):
         nuplan_split: str | None = None,
         dense_hz: float = 0.0,
         history_s: float = 0.0,
+        keyframe_cameras: bool = False,
     ) -> None:
         super().__init__(trajectory_sampling)
         # One node per scorer worker, when the harness started several. Each
@@ -226,7 +227,13 @@ class PaddockProxyAgent(_PaddockAgentBase):
             split = nuplan_split or (os.path.basename(os.path.normpath(root)) if root else None)
             if not split:
                 raise ValueError("nuplan_split is needed with nuplan_root; sensor_blobs_path names no split")
-            self._dense = DenseHistory(nuplan_root, split, self._cameras, float(dense_hz))
+            self._dense = DenseHistory(
+                nuplan_root,
+                split,
+                self._cameras,
+                float(dense_hz),
+                keyframe_root=root if keyframe_cameras else None,
+            )
 
     def _http(self):
         import httpx

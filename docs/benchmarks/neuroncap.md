@@ -583,3 +583,134 @@ incident record, not a description of the current state -- check with
 Missing lidar for a scene is fixable without re-downloading the dataset. The
 recipe is in [docs/data-setup.md](../data-setup.md) under "nuScenes with cameras
 but no lidar for some scenes".
+
+## Support-matrix results
+
+The per-metric results behind this benchmark's column in the
+[README's support matrix](../../README.md#support-matrix), and the notes on its
+cells. Moved here from the README unchanged except for links; the symbols are
+the README's former footnote marks, and each note below starts with the mark it
+explains. Marks about a model rather than this benchmark (⊛ ⊕ ∗ ◊ ◇ ✦ ✧) are
+explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
+
+### Notes on the matrix cells
+
+⊙ Re-measured with the camera-frame fix (#62): 4.13, against 3.57 camera-blind.
+See the neuroNCAP table.
+
+§ Not run — zero by construction. Every neuroNCAP scenario is staged so that an
+ego holding its current velocity collides at full speed. A run that avoids the
+collision scores a flat **5**; a run that collides scores
+`4 · max(0, 1 − v_impact / v_reference)`, which is 0 when the two speeds are
+equal. The baseline therefore scores 0 in all three scenarios with a 100%
+collision rate.
+
+Note the discontinuity: **a single run scores either exactly 5, or at most 4** —
+grazing an obstacle at walking pace scores 4, not 4.9. Anything between the two
+is a mean over runs, which is what the model rows above are.
+
+### neuroNCAP
+
+The **full official set**: 20 scenario-scene pairs over 14 scenes, 10 runs each,
+n = 200 per model. Mean ± std of the NCAP score; CR is the collision rate over
+all 200 runs. Runs are seeded 0-9, so every model met identical scenario jitter.
+
+| Model | stationary ↑ (0–5) | frontal ↑ (0–5) | side ↑ (0–5) | overall ↑ (0–5) | CR ↓ (of 200) |
+|---|---:|---:|---:|---:|---:|
+| Drive-JEPA ⊙ | 5.00 ±0.00 | 2.51 ±1.42 | 4.01 ±2.00 | **4.13** | 24.5% |
+| Alpamayo 1.5 | 4.41 ±1.48 | 3.64 ±2.01 | 2.45 ±1.93 | **3.73** | 32.5% |
+| OpenPilot | 4.52 ±1.34 | 2.30 ±1.24 | 3.08 ±2.25 | **3.60** | 38.0% |
+| METEOR | 2.44 ±2.42 | 3.20 ±2.39 | 2.50 ±2.50 | **2.64** | 48.0% |
+| Qwen-Drive 1.0 | 2.71 ±1.73 | 1.52 ±1.49 | 3.00 ±2.04 | **2.49** | 69.0% |
+| VisionPilot | 2.53 ±1.60 | 1.17 ±1.38 | 0.08 ±0.18 | **1.58** | 85.5% |
+| Baseline (Constant Velocity) | 0.00 | 0.00 | 0.00 | 0.00 § | 100.0% |
+
+⊙ Measured after the camera-frame fix (#62), run `20261012T224707-f11ac0`. The
+camera-blind run (`20260905T220225-f11ac0`) scored 4.23 / 2.42 / 3.39, overall 3.57,
+with 45.5% collisions. Paired over the 20 scenario-scene pairs the fix is worth
++0.56 (SE 0.44, t 1.28), mostly stationary (+0.77, SE 0.30) and side.
+
+**Qwen-Drive is the widest open-loop-to-closed-loop gap in the table.** It leads
+KITScenes and ties Drive-JEPA on NAVSIM, then places fourth here, below three
+models it beat on every open-loop column. The frontal column is where it goes:
+1.52 with 86% of those runs ending in a collision, against 3.64 for Alpamayo.
+**It brakes; it does not steer.** Over the 50 frontal episodes its planned 3 s
+path reaches a mean peak lateral offset of 1.22 m, against 10.44 m for
+Alpamayo — which decelerates no harder (−2.31 m/s against Qwen-Drive's −2.48)
+and collides in 32% of episodes rather than 86%. Drive-JEPA brakes hard and still
+collides in 78%, with or without the camera: seeing the car, it now plans a little
+sideways movement (mean peak 1.80 m, against 0.11 m blind) and slows by 4.67 m/s
+over the episode (5.76 blind, same measure), but not enough of either. In a staged head-on the closing
+vehicle arrives whatever the ego's speed, so the escape is lateral, and Alpamayo
+is the only model of the five that takes it. This is not an adapter limit: on
+NAVSIM the same code path produces lateral offsets to 19.92 m. The full table,
+and what is interpretation rather than measurement, are in
+[docs/models/qwendrive.md](../models/qwendrive.md).
+
+**METEOR is the mirror image: it steers, and it does not brake.** Its mean
+places it fourth, level with Qwen-Drive; counted over scenario-scene pairs, it is
+only marginally below Alpamayo, clearly below Drive-JEPA, and not clearly
+separated from OpenPilot (paired below). Over the
+50 frontal episodes its planned 3 s path reaches a mean peak lateral offset of
+5.17 m, second only to Alpamayo's 10.44 m, and it collides in 36% of them, also
+second best. But it speeds up through every scenario type rather than slowing:
+the ego's last speed minus its first is +2.37 m/s over frontal episodes, +1.82
+over side and +1.40 over stationary, against −2.81 for Qwen-Drive and −2.29 for
+Alpamayo over the same frontal episodes, last speed minus first
+(`docs/models/qwendrive.md` measures speed change differently, which is why its
+figures for those episodes differ). So the escape that works head-on fails against an
+obstacle standing in the lane, where stationary is its weakest column (2.44,
+53% collisions). The same failure shows on NAVSIM, where its no-at-fault
+collision rate sits at the constant-velocity floor. Detail in
+[docs/models/meteor.md](../models/meteor.md).
+
+**Scene 0103 was not representative, and the ordering it implied was wrong.**
+Every model met identical scenario jitter (runs seeded 0–9), so these can be
+compared paired sample for sample rather than as means:
+
+| paired difference | mean | SE over 200 episodes | t | SE over 20 pairs | t |
+|---|---:|---:|---:|---:|---:|
+| Alpamayo − OpenPilot | +0.12 | 0.15 | 0.80 | 0.32 | 0.38 |
+| Drive-JEPA − Alpamayo | +0.40 | 0.15 | 2.63 | 0.36 | 1.13 |
+| Drive-JEPA − OpenPilot | +0.53 | 0.15 | 3.55 | 0.35 | 1.49 |
+| Alpamayo − VisionPilot | **+2.15** | 0.17 | **12.89** | 0.38 | **5.73** |
+| METEOR − Drive-JEPA | −1.49 | 0.21 | −7.16 | 0.48 | **−3.07** |
+| METEOR − Qwen-Drive | +0.16 | 0.19 | 0.83 | 0.41 | 0.39 |
+
+**Read the pair-level columns.** The 200 episodes are 10 seeded runs of each of
+20 scenario-scene pairs, not 200 independent draws, and this benchmark's error
+is dominated by the between-scene term (`docs/benchmarks/neuroncap.md`). The
+pair-level standard error averages each pair's ten runs first. For the top three the two
+levels disagree: over 200 episodes Drive-JEPA is ahead of Alpamayo (t 2.63) and
+OpenPilot (t 3.55); over the 20 pairs it is not (t 1.13, 1.49). Over the 20 pairs
+METEOR is clearly below Drive-JEPA (t −3.07), not separable from OpenPilot
+(t −1.89), only marginally below Alpamayo (t −2.47) and above VisionPilot
+(t +2.21), and level with Qwen-Drive either way.
+
+The top three are **statistically indistinguishable** over the 20 pairs, though
+Drive-JEPA now leads on the mean. Only VisionPilot is separated, and decisively. On scene 0103 alone the order was Drive-JEPA 4.04,
+OpenPilot 3.80, Alpamayo 2.46 — which put Alpamayo last of the three and
+Drive-JEPA clearly first. Neither holds up. Alpamayo moved most, from 2.46 to
+3.73, because scene 0103's side scenario is one of its worst and n = 15 could
+not show that.
+
+VisionPilot's side score moved the same way in the other direction: 0.54 on
+0103, 0.08 across the set.
+
+**A single run scores either exactly 5.0 or at most 4.0** (see §), so a mean
+between them is an average over runs and the standard deviation matters. The
+per-run rows are in `results/`; VisionPilot's side result is 0.08 with a 100%
+collision rate on all 50 runs — it hits the side obstacle at nearly full speed
+every time, which the 0.54 from one scene did not show.
+
+‖ Full official set, 20 pairs over 14 scenes, 10 runs each (n = 200), stored
+`valid: true`. OpenPilot's earlier closed-loop figures were all produced before
+`12f3250` fixed the `traffic_convention` one-hot — which had been telling
+supercombo it was a right-hand-drive car in Boston — and are stored
+`valid: false`; this is its first valid closed-loop score. Paired by seed on
+frontal-0103 the fix was worth −0.16, and on side-0103 +0.36, so it moved
+scenarios in both directions.
+
+Three scenes (0796, 0921, 0923) initially failed for missing nuScenes lidar and
+were completed after fetching it; both runs record `n_reused` for the episodes
+carried over. See `docs/benchmarks/neuroncap.md`.

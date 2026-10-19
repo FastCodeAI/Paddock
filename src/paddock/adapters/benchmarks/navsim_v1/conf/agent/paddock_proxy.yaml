@@ -19,6 +19,9 @@ nuplan_root: null
 nuplan_split: null
 dense_hz: 0.0
 history_s: 0.0
+# Views the nuPlan pull lacks, from OpenScene's 2 Hz keyframes (navsim/dense.py);
+# emitted when [benchmarks.navsim_v1] keyframe_cameras is on, so declared here too.
+keyframe_cameras: false
 
 trajectory_sampling:
   _target_: nuplan.planning.simulation.trajectory.trajectory_sampling.TrajectorySampling
