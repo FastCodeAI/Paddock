@@ -75,8 +75,8 @@ Read the notes; they are where the gate says what it cannot check:
   launched without its override is just the baseline again. The gate says so
   when the two are identical, and when one side sets a key the other does not.
   Identical is legitimate for a code change on the same weights.
-- **invalid.** A smoke run is always `valid: false` (it is a subset); the note is
-  expected there and a warning anywhere else.
+- **invalid.** A smoke run of a subset is `valid: false`; the note is expected
+  there and a warning anywhere else.
 - **unpaired / different sample sets.** Only shared samples are compared.
 
 ## Full runs and the smoke
@@ -115,8 +115,11 @@ hours for every answer:
 A subset's baseline is `[baseline.<subset>]` in the baseline manifest, else
 `[baseline.<benchmark>]`: one full neuroNCAP sweep serves both neuroNCAP subsets.
 
-Every smoke run is stored `valid: false` with the reason in `notes` (`--limit`,
-a few of 20 pairs, a route subset), so none reaches the leaderboard.
+A smoke run of a subset is stored `valid: false` with the reason in `notes`
+(`--limit`, a few of 20 pairs, a few of the site's routes, a few clips of the
+scene set), so it never reaches the leaderboard. Two smokes are their whole
+benchmark and are ordinary valid runs: KITScenes (all 223 keyframes) and
+AlpaSim (the whole pinned `public_2601_first10`).
 
 ## Running the smoke
 
@@ -280,5 +283,6 @@ the check that the site's baselines are sound.
   `--base-port`) values; if the port is taken, neuroNCAP's preflight says so and
   that benchmark does not start.
 - Smoke runs write their `run.json` into this checkout's `results/` like any
-  run. They are `valid: false` and are evidence for a decision, not leaderboard
-  rows; whether to commit them is the reviewer's call.
+  run. They are evidence for a decision, not results to commit: the subset ones
+  are `valid: false`, and the KITScenes and AlpaSim ones, valid, would add a
+  second row for the model.

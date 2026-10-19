@@ -534,3 +534,20 @@ def test_preflight_refuses_an_evaluator_that_lowers_render_quality(tmp_path, mon
 def test_preflight_accepts_the_pinned_evaluators_launch_line(tmp_path, monkeypatch) -> None:
     cfg = _site(tmp_path, monkeypatch, COMPLETED)
     assert not any("-quality-level" in p for p in _harness(cfg).preflight())
+
+
+def test_a_route_subset_given_on_the_command_line_is_not_a_score(tmp_path, monkeypatch) -> None:
+    """Review #80 (6): a 7-route smoke was stored valid: true and ranked beside 50-route runs."""
+    harness = _harness(_site(tmp_path, monkeypatch, COMPLETED))
+    list(harness.episodes(None, runs=1))
+    assert harness.invalid_reasons() == []
+    list(harness.episodes(["1773"], runs=1))
+    (reason,) = harness.invalid_reasons()
+    assert "1 of the 2 routes" in reason and "subset" in reason
+
+
+def test_the_sites_own_routes_subset_is_the_full_set(tmp_path, monkeypatch) -> None:
+    """routes_subset is the set this site runs (its 50); a run of all of it is a score."""
+    harness = _harness(_site(tmp_path, monkeypatch, COMPLETED, routes_subset="1773"))
+    list(harness.episodes(None, runs=1))
+    assert harness.invalid_reasons() == []
