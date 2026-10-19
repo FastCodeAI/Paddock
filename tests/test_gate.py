@@ -569,6 +569,19 @@ def test_a_new_checkpoint_at_the_same_path_gets_a_new_state(tmp_path: Path) -> N
     assert gate._env_label("m", {"MODE": "on"}) == gate._env_label("m", {"MODE": "on"})
 
 
+def test_the_alpasim_smoke_runs_its_own_scene_set_whatever_the_site_sets(tmp_path: Path) -> None:
+    """Review #80 (12): a site on public_2601_30scenes ran 30 clips that paired with nothing."""
+    import tomllib
+
+    site = tmp_path / "paddock.toml"
+    site.write_text('site = "t"\n[benchmarks.alpasim]\nrepo = "r"\nscene_set = "public_2601_30scenes"\n')
+    derived = tomllib.loads(gate.smoke_config(site, "m", {}, 8700))
+    assert derived["benchmarks"]["alpasim"] == {"repo": "r", "scene_set": "public_2601_first10"}
+    bare = tmp_path / "bare.toml"
+    bare.write_text('site = "t"\n')
+    assert "alpasim" not in tomllib.loads(gate.smoke_config(bare, "m", {}, 8700))["benchmarks"]
+
+
 def test_the_candidates_env_wins_over_a_pairing_table(tmp_path: Path) -> None:
     """A [models.X.benchmarks.Y.env] table is applied over [models.X.env]; it must not undo --env."""
     import tomllib

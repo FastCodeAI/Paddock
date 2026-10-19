@@ -3,8 +3,9 @@
 # src/paddock/adapters/benchmarks/alpasim/scenes/public_2601_first10.yaml. Copied here so
 # the tier is one list; tests/test_gate.py fails if the two disagree.
 #
-# Run with no subset argument (the default set). `--scene` would be the natural filter,
-# but AlpaSim's preflight refused every scene id until #81 fixed it (docs/gate.md).
+# Run as the default set: the smoke's derived config pins [benchmarks.alpasim] scene_set
+# to this set (the one stratum's name), so a site whose own scene_set is another still
+# runs these 10 and pairs with a baseline made the same way.
 #
 # Fixed once, on 2026-10-16. It must never be re-picked, re-seeded or edited to make a
 # result look better: a gate whose subset moves can be steered. If the subset turns

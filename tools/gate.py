@@ -878,6 +878,12 @@ def smoke_config(site_config: Path, model: str, env: dict[str, str], renderer_po
     for pairing in (own.get("benchmarks") or {}).values():
         if isinstance(pairing, dict) and isinstance(pairing.get("env"), dict):
             pairing["env"].update(env)
+    # The AlpaSim subset is a whole pinned scene set, run as the default set; a site
+    # whose own scene_set is another (public_2601_30scenes) would run that and pair
+    # with nothing. Pinned only where the site configures AlpaSim at all.
+    alpasim = (raw.get("benchmarks") or {}).get("alpasim")
+    if isinstance(alpasim, dict):
+        (alpasim["scene_set"],) = load_subset("alpasim").strata
     ncap = raw.setdefault("benchmarks", {}).setdefault("neuroncap", {})
     host = str(ncap.get("renderer_url") or "http://127.0.0.1:8000").rsplit(":", 1)[0]
     ncap["renderer_url"] = f"{host}:{renderer_port}"

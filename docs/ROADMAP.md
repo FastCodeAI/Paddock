@@ -82,6 +82,22 @@ first attempt and refuse a resume whose node reports different ones. The
 open-loop path has the same gap: `_carry_forward_provenance` keeps an earlier
 attempt's `policy` only when the new one is empty.
 
+**Regression gate — not yet proven at speed.** `tools/gate.py`
+([docs/gate.md](gate.md)) pairs a candidate with its baseline benchmark by
+benchmark. Verified: the released Drive-JEPA smoked against itself on shakaal
+reproduced nuScenes (2.497) and neuroNCAP (3.175) to three decimals, and the
+statistics reproduce hand-worked comparisons. Not verified, each argued only:
+
+- the tiered smoke has never been timed: the quick tier's ~40–45 min is
+  estimated from the first, untiered smoke's per-subset times (7.7 h in all, on
+  a day with a slow NAS);
+- lanes are tested with stand-in runs only, not side by side on a shared GPU;
+- CARLA's 8 GB share in the GPU wait is assumed, not measured;
+- the Bench2Drive smoke baseline is mostly "Agent got blocked" and has not been
+  checked against the 50-route runs;
+- the nuScenes subset is a prefix (two of four city areas): open-loop harnesses
+  take no scene filter.
+
 **M5 — closed loop.** `paddock run --bench neuroncap --model all --runs 1
 --scene 0103` must reproduce `ladder_current.log`:
 

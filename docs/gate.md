@@ -114,7 +114,7 @@ hours for every answer:
 | neuroncap_quick | quick | stationary, frontal and side at 0103; 1 run (seed 0) | 3 pairs (4.30) | `--scene 0103 --runs 1`, `PADDOCK_NCAP_MANAGE_RENDERER=true` | a full sweep (its run 0) |
 | neuroncap | closed | stationary/frontal/side at 0103, frontal+side at 0110, stationary at 0796; 3 runs | 6 pairs (2.57) | `--scene 0103,0110,0796 --runs 3`, `PADDOCK_NCAP_MANAGE_RENDERER=true` | a full sweep (its runs 0-2) |
 | bench2drive | closed | 7 routes where the four unassisted systems' scores spread by sd >= 12 | 7 routes (2.45) | `--scene <7 route ids>` | a smoke baseline |
-| alpasim | closed | `public_2601_first10` | 10 clips (2.26) | nothing: the default scene set | a smoke baseline |
+| alpasim | closed | `public_2601_first10` | 10 clips (2.26) | `scene_set` pinned in the derived config | a smoke baseline |
 
 A subset's baseline is `[baseline.<subset>]` in the baseline manifest, else
 `[baseline.<benchmark>]`: one full neuroNCAP sweep serves both neuroNCAP subsets.
@@ -258,9 +258,9 @@ the check that the site's baselines are sound.
 
 - **Bench2Drive and AlpaSim report NO RECORDS** against runs ingested from
   campaigns that kept no per-route or per-clip records. A smoke baseline made
-  through `paddock run` has them; the released Drive-JEPA's Bench2Drive one
-  finished 9 of 10 routes (one timed out), so check it against the 50-route
-  results before trusting it.
+  through `paddock run` has them. The released Drive-JEPA's Bench2Drive smoke
+  baseline holds all 7 routes of the subset, but most ended "Agent got blocked":
+  check it against the 50-route results before trusting it.
 - **NAVSIM smoke pairs only with a NAVSIM smoke.** Two-frame extended comfort
   compares each scenario with the next *scored* one in its log, so a token's
   EPDMS depends on which others were scored.
@@ -272,9 +272,9 @@ the check that the site's baselines are sound.
   argument. `--limit` takes the first N samples in `val_scenes.json` order, so
   the 30 scenes are the first 30: boston-seaport and singapore-onenorth, no
   queenstown or hollandvillage. A stratified choice needs a scene filter there.
-- **The AlpaSim smoke runs the default scene set**, which is the subset.
-  `--scene` refused every id before #81 fixed it; the default set needs no
-  filter either way.
+- **The AlpaSim smoke runs its pinned scene set as the default set**: the
+  derived config sets `[benchmarks.alpasim] scene_set = "public_2601_first10"`,
+  so a site configured for `public_2601_30scenes` still runs the subset's 10.
 - **Drive-JEPA's AlpaSim numbers do not come from `paddock run`.** Its
   `model.yaml` does not declare alpasim; they come from
   `tools/models/drivejepa/alpasim_driver/`. The smoke skips AlpaSim for it
