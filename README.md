@@ -121,7 +121,7 @@ tables and every note on these cells.
 | Drive-JEPA, KITScenes re-ranker | 0.587 | 0.973 <sup>A</sup> | not run | not run | not run | not run | — | not run | — |
 | Drive-JEPA, retrained on Physical AI AV | not run | not run | not run | not run | not run | not run | not run | not run | 0.7697 <sup>A</sup> |
 | VisionPilot <sup>P S</sup> | 1.441 | 1.534 | 4.045 | 2.246 | 0.431 | 0.488 | 49.85 | 1.58 | 0.6289 |
-| METEOR | 0.977 | 1.879 | — | 1.273 | 0.303 <sup>P</sup> | 0.366 <sup>P</sup> | — | 2.64 | — |
+| METEOR | 0.977 | 1.879 | — | 1.273 | 0.303 <sup>P</sup> | 0.366 <sup>P</sup> | — | 2.64 | 0.4232 <sup>R</sup> |
 | Qwen-Drive 1.0 | 0.450 | 0.806 | 1.159 | — | 0.840 <sup>A</sup> | 0.876 <sup>A</sup> | 17.08 (2 Hz) <sup>R</sup> | 2.49 | — |
 | AutoE2E | — | — | — | — | 0.500 (10 Hz) <sup>A R</sup> | — | — | — | — |
 | Baseline (Constant Velocity) | 0.641 | 1.381 | 1.639 | 1.393 | 0.239 | 0.207 | 47.94 | 0, by construction | 0.4876 |
@@ -148,7 +148,7 @@ was measured the same way as the rest of its column.
   the others run at 20 Hz over the historical 24; those gains are
   partly more exposure. OpenPilot's Bench2Drive cell is an unassisted estimate
   rebuilt from assisted recordings. Alpamayo on AlpaSim drove 4 cameras on 10 of the 30
-  scenes. Drive-JEPA on comma2k19 is its perception-free variant,
+  scenes, and METEOR 6 cameras on all 30. Drive-JEPA on comma2k19 is its perception-free variant,
   `drivejepa_free`.
 
 Before comparing numbers:
