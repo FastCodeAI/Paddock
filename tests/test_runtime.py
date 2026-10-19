@@ -273,6 +273,44 @@ def _a_buildable_model(cfg, needs_env: bool = False):
     pytest.skip("no model's environment resolves against this site configuration")
 
 
+def test_env_passthrough_forwards_only_declared_vars_from_the_callers_shell(site, monkeypatch) -> None:
+    """model.yaml's runtime.env_passthrough is an allowlist of *names*: the
+    value comes from whoever's shell launched `paddock run`, not a template.
+
+    Before this, `FOO=1 paddock run ...` silently did nothing for any var not
+    already in runtime.env.PASSTHROUGH, because build() only ever inherited a
+    fixed, model-independent list.
+    """
+    monkeypatch.setenv("ALPAMAYO_NUM_TRAJ_SAMPLES", "8")
+    monkeypatch.delenv("SOME_UNDECLARED_VAR", raising=False)
+    monkeypatch.setenv("SOME_UNDECLARED_VAR", "leaked")
+
+    spec = Registry.load().models["openpilot"]
+    declared = replace(spec, runtime=replace(spec.runtime, env_passthrough=("ALPAMAYO_NUM_TRAJ_SAMPLES",)))
+    built = env_builder.build(declared, site)
+
+    assert built["ALPAMAYO_NUM_TRAJ_SAMPLES"] == "8"
+    assert "SOME_UNDECLARED_VAR" not in built
+
+    # Unset in the shell: a declared-but-absent var is simply not forwarded,
+    # not forwarded as an empty string.
+    monkeypatch.delenv("ALPAMAYO_NUM_TRAJ_SAMPLES", raising=False)
+    assert "ALPAMAYO_NUM_TRAJ_SAMPLES" not in env_builder.build(declared, site)
+
+
+def test_env_passthrough_overrides_a_models_own_declared_default(site, monkeypatch) -> None:
+    """Passthrough is sourced *last* in build(), so the caller's shell always
+    wins over model.yaml's own `runtime.env` default for the same name."""
+    monkeypatch.setenv("SOME_KNOB", "from-shell")
+
+    spec = Registry.load().models["openpilot"]
+    declared = replace(
+        spec,
+        runtime=replace(spec.runtime, env={"SOME_KNOB": "model-default"}, env_passthrough=("SOME_KNOB",)),
+    )
+    assert env_builder.build(declared, site)["SOME_KNOB"] == "from-shell"
+
+
 def test_a_site_env_override_reaches_the_model_process() -> None:
     """`[models.<name>] env` in paddock.toml must actually take effect.
 

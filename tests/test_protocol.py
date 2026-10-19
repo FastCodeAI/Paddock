@@ -99,6 +99,68 @@ def test_the_route_polyline_crosses_the_wire_and_its_absence_stays_none() -> Non
     assert Observation.from_wire(obs.to_wire(), cameras=()).route_xy is None
 
 
+def test_actors_and_scene_name_default_to_none_for_every_ordinary_source() -> None:
+    """Only neuroNCAP's patched engine sends `actors`/`scene_name` on the wire.
+
+    paddock's own `to_wire()` (the open-loop runner, NAVSIM proxy, CARLA
+    client) never sets either key, so every existing model must see `None` for
+    both -- this privileged channel must not change what anything else is
+    scored on.
+    """
+    rng = np.random.default_rng(0)
+    obs = Observation(
+        images={"CAM_FRONT": rng.integers(0, 255, (4, 6, 3), dtype=np.uint8)},
+        ego2world=np.eye(4),
+        canbus=np.arange(18, dtype=np.float64),
+        timestamp_us=1,
+        command=Command.LEFT,
+        camera2image={"CAM_FRONT": np.array([[800.0, 0, 400], [0, 800, 225], [0, 0, 1]])},
+        camera2ego={"CAM_FRONT": np.eye(4)},
+    )
+    assert "actors" not in obs.to_wire()
+    assert "scene_name" not in obs.to_wire()
+    back = Observation.from_wire(obs.to_wire())
+    assert back.actors is None
+    assert back.scene_name is None
+
+
+def test_actors_and_scene_name_decode_when_a_privileged_source_sends_them() -> None:
+    """neuroNCAP's engine sends these directly in the `/infer` body -- not via
+    paddock's own `to_wire()` encoder, since no paddock-side client builds
+    them. `from_wire` must still decode them for a model that reads them."""
+    rng = np.random.default_rng(0)
+    obs = Observation(
+        images={"CAM_FRONT": rng.integers(0, 255, (4, 6, 3), dtype=np.uint8)},
+        ego2world=np.eye(4),
+        canbus=np.arange(18, dtype=np.float64),
+        timestamp_us=1,
+        command=Command.LEFT,
+        camera2image={"CAM_FRONT": np.array([[800.0, 0, 400], [0, 800, 225], [0, 0, 1]])},
+        camera2ego={"CAM_FRONT": np.eye(4)},
+    )
+    body = obs.to_wire()
+    actors = [
+        {
+            "uuid": "a1",
+            "cls_name": "car",
+            "length": 4.5,
+            "width": 1.8,
+            "x": 1.0,
+            "y": 2.0,
+            "heading": 0.0,
+            "vx": 0.0,
+            "vy": 0.0,
+        }
+    ]
+    body["actors"] = actors
+    body["scene_name"] = "scene-0103"
+
+    back = Observation.from_wire(body)
+
+    assert back.actors == actors
+    assert back.scene_name == "scene-0103"
+
+
 def test_a_staged_frame_is_read_as_an_array_and_a_dataset_frame_through_pil(tmp_path) -> None:
     """A harness staging frames for a node on the same machine may write raw.
 

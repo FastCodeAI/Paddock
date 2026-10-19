@@ -93,8 +93,3 @@ repos:
     url: https://github.com/QwenLM/Qwen-Drive-1.0.git
     sha: 28091c1
     description: Qwen-Drive-1.0-4B inference code; Qwen3.5 VLM with a flow-matching planning expert and BEV perception head, imported as a library from src/
-
-  alpamayo-scripts:
-    url: https://gitlab.global.renesas.com/ruhan.gianchandani.xw/alpamayo-scripts.git
-    sha: 88a4170
-    description: internal research repo, not a vendor ML repo -- rl_training/expert/ holds the privileged trajectory planner the adapters/models/alpamayo15_teacher adapter wraps, used only to generate Alpamayo 1.5's SFT training labels; bump the sha whenever that code changes
