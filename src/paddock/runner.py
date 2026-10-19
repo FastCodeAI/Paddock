@@ -226,16 +226,21 @@ def _store_run(
     split: str | None = None,
     extra_dataset: dict | None = None,
     provenance: dict | None = None,
+    model_ran: bool = True,
 ) -> tuple[Path, store.MetricsRecord]:
     """Write one run to the results store. Every path stores through here.
 
     `split` is already in every sample id and therefore in the sequence hash;
     recorded in `dataset` too so run.json answers "which split" without
-    opening samples.jsonl.
+    opening samples.jsonl. `model_ran=False` is for a run no model node took
+    part in (NAVSIM's node-less baseline, human anchor and replays): a site
+    env block reaches nothing there, so it cannot invalidate the run.
     """
     # Here, not at each caller: every path stores through this function, and a
     # rule applied in two of three places is how the checkpoint gap happened.
-    invalid_reasons = [*invalid_reasons, *_env_override_reasons(cfg, model_spec)]
+    # Opting out is explicit, so a new path that forgets is still judged.
+    if model_ran:
+        invalid_reasons = [*invalid_reasons, *_env_override_reasons(cfg, model_spec)]
     status, valid, notes = _validity(failure_note, invalid_reasons, remarks)
     dataset: dict = {"name": spec.dataset}
     if split is not None:
