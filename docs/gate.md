@@ -139,7 +139,10 @@ setsid nohup python -m tools.gate smoke ... --tier all --execute \
   range (`--base-port`, then +100 per lane). Subsets of the same tier run side by
   side, one per lane, never two of one benchmark at once. Each launch waits for
   the GPU memory below, and the next one waits until this one's model has said
-  it is ready, so every GPU check sees the memory already taken. With one
+  it is ready, so every GPU check sees the memory already taken. A subset whose
+  benchmark runs a simulator (neuroNCAP, Bench2Drive, AlpaSim) starts it inside
+  its first episode, after the model is ready, so nothing else launches while
+  one is running: the closed tier runs one subset at a time. With one
   `--cores` (the default, `4-7`) everything runs one after another.
 - **Stop at the first regression.** When a finished subset is a REGRESSION
   against its baseline, nothing else is launched; running ones finish. The
@@ -204,9 +207,9 @@ A day with a healthy NAS saves most of the open-loop time; the closed-loop
 two are most of the cost either way. From those measurements, and not yet timed
 as such: the **quick tier** in three lanes is ~40-45 min on that day, the three
 open-loop subsets side by side (the longest took 35 min) and neuroNCAP's three
-quick episodes (~20 min) in the first lane to come free; the **closed tier** is ~132 min of neuroNCAP plus ~87 min of
-Bench2Drive on its 7 routes (they took 87 of the 240 min), less where two lanes
-and the GPU let them overlap. The same run checked the gate against
+quick episodes (~20 min) in the first lane to come free; the **closed tier**, one subset at a time, is ~132 min of
+neuroNCAP plus ~87 min of Bench2Drive on its 7 routes (they took 87 of the
+240 min). The same run checked the gate against
 itself: nuScenes 2.497 against the released run's 2.497 and neuroNCAP 3.175
 against 3.175 on the shared seeds, both NEUTRAL to the last decimal.
 

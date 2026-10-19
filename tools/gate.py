@@ -675,8 +675,9 @@ STOP_GRACE_S = 120.0
 #: GPU memory a benchmark's own simulator holds beside the model, in GB. Measured
 #: for neuroNCAP: one NeuRAD renderer was 7.7 GB on 2026-10-16. CARLA's share is
 #: NOT measured; 8 is the same order, and the wait errs on the side of waiting.
+#: AlpaSim's ~17 GB is its own documented figure (docs/benchmarks/alpasim.md).
 #: Open-loop benchmarks run no simulator.
-SIMULATOR_GB = {"neuroncap": 8.0, "bench2drive": 8.0}
+SIMULATOR_GB = {"neuroncap": 8.0, "bench2drive": 8.0, "alpasim": 17.0}
 #: Headroom on top, for other users' allocations growing while ours loads.
 SMOKE_MARGIN_GB = 2.0
 
@@ -1282,10 +1283,16 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
                 continue
             idle = next((lane for lane in lanes if lane.proc is None), None)
             busy = [lane.step for lane in lanes if lane.step is not None]
+            # A simulator starts inside its run's first episode, after the model has
+            # said ready, so its memory is not taken yet when a next launch's GPU
+            # check would run: nothing launches while a simulator subset is running.
             blocked = (
                 nxt is None
                 or idle is None
-                or any(b.bench == nxt.bench or tier_of[b.name] != tier_of[nxt.name] for b in busy)
+                or any(
+                    b.bench == nxt.bench or tier_of[b.name] != tier_of[nxt.name] or b.bench in SIMULATOR_GB
+                    for b in busy
+                )
             )
             if blocked:
                 time.sleep(POLL_S)

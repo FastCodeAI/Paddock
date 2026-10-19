@@ -929,6 +929,17 @@ def test_the_closed_tier_starts_only_after_the_quick_tier_ends(tmp_path: Path, m
     assert spans["bench2drive"][0] >= spans["kitscenes"][1]
 
 
+def test_nothing_launches_beside_a_running_simulator_subset(tmp_path: Path, monkeypatch) -> None:
+    """Review #80 (8): a simulator takes its memory after the model says ready, so a
+    second closed-tier lane's GPU check could run before neuroNCAP's renderer loaded."""
+    args, stamps = _smoke_site(tmp_path, monkeypatch, {"neuroncap": 2.0, "bench2drive": 2.0}, hold=1.0)
+    gate.smoke(
+        args(tier="closed", bench=["neuroncap", "bench2drive"], cores=["4-7", "8-11"]), lambda _m: None
+    )
+    spans = _intervals(stamps)
+    assert spans["bench2drive"][0] >= spans["neuroncap"][1], f"overlapped: {spans}"
+
+
 def test_a_quick_tier_regression_keeps_the_closed_tier_from_starting(tmp_path: Path, monkeypatch) -> None:
     args, stamps = _smoke_site(tmp_path, monkeypatch, {"kitscenes": 3.0, "nuscenes": 2.0, "bench2drive": 2.0})
     said: list[str] = []
