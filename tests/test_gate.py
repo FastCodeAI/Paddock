@@ -21,6 +21,8 @@ import pytest
 
 from tools import gate
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 
 def _write_run(
     results_root: Path,
@@ -311,29 +313,110 @@ def test_a_candidate_on_the_baselines_checkpoint_is_called_out(tmp_path: Path) -
 # ---- the smoke tier --------------------------------------------------------
 
 
-SMOKE_BENCHES = ("navsim", "kitscenes", "nuscenes", "neuroncap", "alpasim", "bench2drive")
-
-
-@pytest.mark.parametrize("bench", SMOKE_BENCHES)
-def test_each_smoke_subset_is_a_fixed_list_with_its_rule_written_down(bench: str) -> None:
+@pytest.mark.parametrize("name", gate.SMOKE_ORDER)
+def test_each_smoke_subset_is_a_fixed_list_with_its_rule_written_down(name: str) -> None:
     """Every tracked subset parses, lists each id once, matches its count and says not to re-pick it."""
-    subset = gate.load_subset(bench)
-    text = (gate.SMOKE_DIR / f"{bench}.toml").read_text()
+    subset = gate.load_subset(name)
+    text = (gate.SMOKE_DIR / f"{name}.toml").read_text()
     assert text.startswith("# ")
     assert "never be re-picked" in text.replace("\n# ", " ")
     assert len(subset.ids) == len(set(subset.ids)) == subset.meta["count"]
     assert subset.meta.get("unit")
 
 
+def test_every_tracked_subset_is_in_exactly_one_tier() -> None:
+    """A subset file no tier names would never run; one named twice would run twice."""
+    files = sorted(p.stem for p in gate.SMOKE_DIR.glob("*.toml"))
+    assert sorted(gate.SMOKE_ORDER) == files
+    assert len(set(gate.SMOKE_ORDER)) == len(gate.SMOKE_ORDER)
+
+
+def test_the_quick_tier_runs_no_bench2drive_or_alpasim() -> None:
+    """The quick tier is the one run on every checkpoint; the slow simulators stay out of it."""
+    benches = {gate.load_subset(n).bench for n in gate.TIERS["quick"]}
+    assert benches == {"kitscenes", "nuscenes", "navsim", "neuroncap"}
+
+
+def test_a_subset_file_must_name_its_benchmark(tmp_path: Path) -> None:
+    (tmp_path / "neuroncap_quick.toml").write_text('bench = "bench2drive"\ncount = 0\n[strata]\n')
+    with pytest.raises(ValueError, match="does not name the benchmark"):
+        gate.load_subset("neuroncap_quick", tmp_path)
+
+
+def test_the_quick_neuroncap_subset_is_every_shape_at_0103_once() -> None:
+    from paddock.adapters.benchmarks.neuroncap.harness import OFFICIAL_SET
+
+    subset = gate.load_subset("neuroncap_quick")
+    args, env = gate.smoke_args(subset)
+    assert args == ["--scene", "0103", "--runs", "1"] and env == {gate.NCAP_MANAGE_RENDERER: "true"}
+    assert set(subset.ids) == {
+        f"{shape}-0103" for shape, members in OFFICIAL_SET.items() if "0103" in members
+    }
+
+
+def test_the_bench2drive_subset_follows_its_rule() -> None:
+    """Recomputed from the tracked records: kept routes separate the four systems by sd >= 12."""
+    import statistics
+
+    records = json.loads((REPO_ROOT / "docs/benchmarks/bench2drive-speed-normalization.json").read_text())[
+        "records"
+    ]
+    systems = ("alpamayo15", "drivejepa", "qwendrive", "visionpilot")
+    scores: dict[str, list[float]] = {}
+    for rec in records:
+        if rec["model"] in systems:
+            scores.setdefault(rec["route_id"], []).append(rec["scores"]["score_composed"])
+    kept = gate.load_subset("bench2drive").ids
+    dropped = ["3307", "25857", "2084"]  # the rest of the 2026-10-16 ten
+    assert all(len(scores[r]) == 4 for r in [*kept, *dropped])
+    assert all(statistics.pstdev(scores[r]) >= 12 for r in kept)
+    assert all(statistics.pstdev(scores[r]) < 12 for r in dropped)
+
+
+def test_a_subset_without_its_own_baseline_uses_its_benchmarks() -> None:
+    baselines = {"neuroncap": {"run": "m:full"}, "navsim_x": {"run": "m:own"}}
+    assert gate.baseline_for(
+        baselines, gate.SmokeStep("neuroncap", "new", None, [], {}, name="neuroncap_quick")
+    ) == {"run": "m:full"}
+    assert gate.baseline_for(baselines, gate.SmokeStep("navsim", "new", None, [], {}, name="navsim_x")) == {
+        "run": "m:own"
+    }
+    assert gate.baseline_for(baselines, gate.SmokeStep("kitscenes", "new", None, [], {})) == {}
+
+
+def test_staging_copies_the_file_and_its_small_neighbours_once(tmp_path: Path) -> None:
+    """A checkpoint on a slow share is read from a copy; its provenance comes along, a big state does not."""
+    share, local = tmp_path / "share" / "step_1", tmp_path / "local"
+    share.mkdir(parents=True)
+    (share / "agent.ckpt").write_bytes(b"w" * 4096)
+    (share / "checkpoint.json").write_text('{"train_git_sha": "abc"}')
+    (share / "model.pt").write_bytes(b"s" * (1 << 20))  # 1 MB: a training state, not provenance
+    said: list[str] = []
+    env = gate.stage_env(
+        {"DRIVEJEPA_CHECKPOINT": str(share / "agent.ckpt"), "MODE": "on"}, local, said.append
+    )
+    copy = Path(env["DRIVEJEPA_CHECKPOINT"])
+    assert copy.parent.parent == local and copy.read_bytes() == b"w" * 4096
+    assert (copy.parent / "checkpoint.json").is_file() and not (copy.parent / "model.pt").exists()
+    assert env["MODE"] == "on", "a value that is not a file passes through"
+    assert len(said) == 2
+    said.clear()
+    assert gate.stage_env({"DRIVEJEPA_CHECKPOINT": str(share / "agent.ckpt")}, local, said.append) == {
+        "DRIVEJEPA_CHECKPOINT": str(copy)
+    }
+    assert said == [], "an unchanged source is not copied again"
+
+
 def test_smoke_subset_sizes_are_the_ones_the_gate_was_designed_around() -> None:
-    """NAVSIM 1,000 over all 136 logs (2+ each), KITScenes 223, nuScenes 30 scenes, 6 pairs, 10 routes."""
+    """NAVSIM 1,000 over all 136 logs (2+ each), KITScenes 223, nuScenes 30 scenes, 6 + 3 pairs, 7 routes."""
     navsim = gate.load_subset("navsim")
     assert len(navsim.ids) == 1000 and len(navsim.strata) == 136
     assert min(len(v) for v in navsim.strata.values()) >= 2
     assert len(gate.load_subset("kitscenes").ids) == 223
     assert len(gate.load_subset("nuscenes").strata) == 30
     assert len(gate.load_subset("neuroncap").ids) == 6
-    assert len(gate.load_subset("bench2drive").ids) == 10
+    assert len(gate.load_subset("neuroncap_quick").ids) == 3
+    assert len(gate.load_subset("bench2drive").ids) == 7
 
 
 def test_the_neuroncap_scene_list_drives_exactly_the_subset() -> None:
@@ -493,6 +576,47 @@ def test_check_reads_a_baseline_from_another_results_store(tmp_path: Path) -> No
     assert r.matched == 4 and r.baseline_mean == pytest.approx(2.0)
 
 
+def test_compare_reads_a_baseline_from_another_results_store(tmp_path: Path, monkeypatch, capsys) -> None:
+    """`compare --baseline-results`: the one-off form of a manifest's baseline_results."""
+    other, res, runs = tmp_path / "other", tmp_path / "results", tmp_path / "runs"
+    _write_run(other, runs, "kitscenes", "m", "a", [_kit(f"s{i}", 0, 2.0) for i in range(4)], "ade")
+    _write_run(res, runs, "kitscenes", "m", "b", [_kit(f"s{i}", 0, 2.0) for i in range(4)], "ade")
+    monkeypatch.setattr("tools.paths.runs", lambda: runs)
+    argv = [
+        "compare",
+        "--bench",
+        "kitscenes",
+        "--baseline",
+        "m:a",
+        "--candidate",
+        "m:b",
+        "--results",
+        str(res),
+    ]
+    with pytest.raises(FileNotFoundError):  # without it, the baseline is looked for beside the candidate
+        gate.main(argv)
+    assert gate.main([*argv, "--baseline-results", str(other)]) == 0
+    assert "NEUTRAL" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("bench", "vram", "need"),
+    [
+        ("kitscenes", 12.0, 14.0),
+        ("navsim", 12.0, 14.0),
+        ("neuroncap", 12.0, 22.0),
+        ("bench2drive", 12.0, 22.0),
+    ],
+)
+def test_the_gpu_wait_adds_the_simulators_share_to_the_models(bench: str, vram: float, need: float) -> None:
+    """One 14 GB bar let neuroNCAP launch a renderer and a model into too little memory."""
+    assert gate.smoke_need_gb(bench, vram) == need
+
+
+def test_a_bigger_model_waits_for_more() -> None:
+    assert gate.smoke_need_gb("neuroncap", 26.0) == 36.0
+
+
 def test_the_site_config_gains_the_smoke_overrides_and_loses_nothing(tmp_path: Path) -> None:
     """The derived PADDOCK_CONFIG is the site config plus [models.X.env] and the smoke's
     renderer port, round-tripping through TOML."""
@@ -522,3 +646,205 @@ def test_the_smoke_renderer_port_is_set_even_without_a_site_renderer_url(tmp_pat
     derived = tomllib.loads(gate.smoke_config(site, "drivejepa", {}, 8711))
     assert derived["benchmarks"]["neuroncap"]["renderer_url"] == "http://127.0.0.1:8711"
     assert derived["roots"] == {"runs": "u"}
+
+
+# ---------------------------------------------------------------------------
+# The smoke's scheduler, driven end to end with stand-in runs
+# ---------------------------------------------------------------------------
+
+#: Stands in for `paddock run`: makes its artifacts directory (which is how the
+#: smoke finds the run id), says the model is ready, then writes a finished run
+#: whose ADE is the given value plus a little per scene.
+FAKE_RUN = r"""
+import json, pathlib, sys, time
+bench, results, runs, model, ade, hold, stamps = sys.argv[1:8]
+run_id = f"cand-{bench}"
+art = pathlib.Path(runs) / bench / model / run_id
+art.mkdir(parents=True)
+with open(stamps, "a") as f:
+    f.write(f"{bench} start {time.time()}\n")
+print(f"  {model} ready", flush=True)
+time.sleep(float(hold))
+rows = [
+    {"sample_id": f"{bench}/s{i}", "native_id": {"scene_id": f"s{i}", "scene": f"s{i}"},
+     "metrics": {"ade": float(ade) + 0.01 * i}}
+    for i in range(4)
+]
+(art / "samples.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+tracked = pathlib.Path(results) / bench / model / run_id
+tracked.mkdir(parents=True)
+mean = sum(r["metrics"]["ade"] for r in rows) / len(rows)
+(tracked / "run.json").write_text(json.dumps({"run_id": run_id, "benchmark": bench, "model": model,
+    "valid": False, "config": {}, "dataset": {"sequences_sha256": "same", "n_samples": 4}}))
+(tracked / "metrics.json").write_text(json.dumps({"primary_metric": "ade",
+    "metrics": {"ade": {"mean": mean, "n": 4}}}))
+with open(stamps, "a") as f:
+    f.write(f"{bench} end {time.time()}\n")
+"""
+
+
+def _smoke_site(tmp_path: Path, monkeypatch, ade: dict[str, float], hold: float = 0.3):
+    """A temp site where `smoke --execute` runs FAKE_RUN for kitscenes and nuscenes against a 2.0 baseline."""
+    import sys
+    from types import SimpleNamespace
+
+    import paddock.config
+    import paddock.registry
+
+    res, runs, stamps = tmp_path / "results", tmp_path / "runs", tmp_path / "stamps"
+    for bench in ("kitscenes", "nuscenes", "bench2drive"):
+        base = [
+            {
+                "sample_id": f"{bench}/s{i}",
+                "native_id": {"scene_id": f"s{i}", "scene": f"s{i}"},
+                "metrics": {"ade": 2.0 + 0.01 * i},
+            }
+            for i in range(4)
+        ]
+        _write_run(res, runs, bench, "m", "base", base, "ade")
+    site = tmp_path / "site.toml"
+    site.write_text('site = "t"\n')
+    baselines = tmp_path / "baselines.toml"
+    baselines.write_text(
+        '[baseline.kitscenes]\nrun = "m:base"\n[baseline.nuscenes]\nrun = "m:base"\n'
+        '[baseline.bench2drive]\nrun = "m:base"\n'
+    )
+
+    def plan(model, names, declared, state, *, runs_root, results_root, **_):
+        steps = []
+        for name in names:
+            bench = gate.load_subset(name).bench
+            run_id = gate._run_id_for(state.get(name, {}), runs_root, bench, model)
+            if run_id and (results_root / bench / model / run_id / "run.json").is_file():
+                steps.append(gate.SmokeStep(bench, "finished", run_id, [], {}, name=name))
+                continue
+            cmd = [
+                sys.executable,
+                "-c",
+                FAKE_RUN,
+                bench,
+                str(res),
+                str(runs),
+                model,
+                str(ade[bench]),
+                str(hold),
+            ]
+            steps.append(gate.SmokeStep(bench, "new", None, [*cmd, str(stamps)], {}, name=name))
+        return steps
+
+    monkeypatch.setattr(gate, "plan_smoke", plan)
+    monkeypatch.setattr(gate, "RESULTS_ROOT", res)
+    monkeypatch.setattr(gate, "POLL_S", 0.05)
+    monkeypatch.setattr(gate, "_wait_for_gpu", lambda *a: True)
+    monkeypatch.setattr(
+        paddock.config.SiteConfig,
+        "load",
+        classmethod(lambda cls, *a: SimpleNamespace(runs=runs, source=site)),
+    )
+    monkeypatch.setattr(
+        paddock.registry,
+        "load_models",
+        lambda: {"m": SimpleNamespace(benchmarks=["kitscenes", "nuscenes", "bench2drive"], vram_gb=0.0)},
+    )
+
+    def args(**over):
+        base = dict(
+            model="m",
+            env=[],
+            baseline=baselines,
+            tier="quick",
+            bench=["kitscenes", "nuscenes"],
+            execute=True,
+            label="t",
+            out=str(tmp_path / "state"),
+            base_port=9700,
+            renderer_port=8700,
+            cores=None,
+            python=sys.executable,
+            keep_going=False,
+            stage_dir=None,
+        )
+        base.update(over)
+        return argparse_ns(**base)
+
+    return args, stamps
+
+
+def argparse_ns(**kw):
+    import argparse
+
+    return argparse.Namespace(**kw)
+
+
+def test_the_closed_tier_starts_only_after_the_quick_tier_ends(tmp_path: Path, monkeypatch) -> None:
+    """Even with a free lane, bench2drive (closed) waits for kitscenes (quick) to finish and pass."""
+    args, stamps = _smoke_site(
+        tmp_path, monkeypatch, {"kitscenes": 2.0, "nuscenes": 2.0, "bench2drive": 2.0}, hold=1.0
+    )
+    assert (
+        gate.smoke(
+            args(tier="all", bench=["kitscenes", "bench2drive"], cores=["4-7", "8-11"]), lambda _m: None
+        )
+        == 0
+    )
+    spans = _intervals(stamps)
+    assert spans["bench2drive"][0] >= spans["kitscenes"][1]
+
+
+def test_a_quick_tier_regression_keeps_the_closed_tier_from_starting(tmp_path: Path, monkeypatch) -> None:
+    args, stamps = _smoke_site(tmp_path, monkeypatch, {"kitscenes": 3.0, "nuscenes": 2.0, "bench2drive": 2.0})
+    said: list[str] = []
+    assert gate.smoke(args(tier="all", bench=["kitscenes", "bench2drive"]), said.append) == 1
+    assert set(_intervals(stamps)) == {"kitscenes"}
+    assert "not launching bench2drive" in "\n".join(said)
+
+
+def _intervals(stamps: Path) -> dict[str, tuple[float, float]]:
+    seen: dict[str, dict[str, float]] = {}
+    for line in stamps.read_text().split("\n"):
+        if line:
+            bench, what, when = line.split()
+            seen.setdefault(bench, {})[what] = float(when)
+    return {b: (v["start"], v["end"]) for b, v in seen.items()}
+
+
+def test_a_regression_stops_the_smoke_before_its_next_launch(tmp_path: Path, monkeypatch) -> None:
+    """kitscenes runs first and is 1 m worse; nuscenes is never started, and the smoke fails."""
+    args, stamps = _smoke_site(tmp_path, monkeypatch, {"kitscenes": 3.0, "nuscenes": 2.0})
+    said: list[str] = []
+    assert gate.smoke(args(), said.append) == 1
+    assert set(_intervals(stamps)) == {"kitscenes"}
+    text = "\n".join(said)
+    assert "REGRESSION on kitscenes: not launching nuscenes" in text
+    assert "overall: FAIL" in text
+
+
+def test_keep_going_runs_the_rest_after_a_regression(tmp_path: Path, monkeypatch) -> None:
+    args, stamps = _smoke_site(tmp_path, monkeypatch, {"kitscenes": 3.0, "nuscenes": 2.0})
+    assert gate.smoke(args(keep_going=True), lambda _m: None) == 1
+    assert set(_intervals(stamps)) == {"kitscenes", "nuscenes"}
+
+
+def test_two_lanes_run_two_benchmarks_at_once(tmp_path: Path, monkeypatch) -> None:
+    """With two --cores, the second launch does not wait for the first run to end."""
+    args, stamps = _smoke_site(tmp_path, monkeypatch, {"kitscenes": 2.0, "nuscenes": 2.0}, hold=1.0)
+    said: list[str] = []
+    assert gate.smoke(args(cores=["4-7", "8-11"]), said.append) == 0
+    spans = _intervals(stamps)
+    assert spans["nuscenes"][0] < spans["kitscenes"][1], f"ran one after the other: {spans}"
+    assert "overall: HOLD" in "\n".join(said)
+
+
+def test_one_lane_runs_them_one_after_the_other(tmp_path: Path, monkeypatch) -> None:
+    args, stamps = _smoke_site(tmp_path, monkeypatch, {"kitscenes": 2.0, "nuscenes": 2.0})
+    assert gate.smoke(args(), lambda _m: None) == 0
+    spans = _intervals(stamps)
+    assert spans["nuscenes"][0] >= spans["kitscenes"][1]
+
+
+def test_a_finished_smoke_rerun_launches_nothing(tmp_path: Path, monkeypatch) -> None:
+    args, stamps = _smoke_site(tmp_path, monkeypatch, {"kitscenes": 2.0, "nuscenes": 2.0})
+    assert gate.smoke(args(), lambda _m: None) == 0
+    stamps.write_text("")
+    assert gate.smoke(args(), lambda _m: None) == 0
+    assert stamps.read_text() == ""

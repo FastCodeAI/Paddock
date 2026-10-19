@@ -4,7 +4,7 @@
 # the tier is one list; tests/test_gate.py fails if the two disagree.
 #
 # Run with no subset argument (the default set). `--scene` would be the natural filter,
-# but AlpaSim's preflight refuses every scene id today (docs/gate.md).
+# but AlpaSim's preflight refused every scene id until #81 fixed it (docs/gate.md).
 #
 # Fixed once, on 2026-10-16. It must never be re-picked, re-seeded or edited to make a
 # result look better: a gate whose subset moves can be steered. If the subset turns

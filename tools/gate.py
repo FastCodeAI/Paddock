@@ -66,12 +66,13 @@ import os
 import random
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import time
 import tomllib
 from collections.abc import Callable
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -536,15 +537,46 @@ def check(manifest: Path, runs_root: Path, results_root: Path = RESULTS_ROOT) ->
 # Smoke tier: fixed subsets, chosen once, and a thin wrapper over `paddock run`.
 # ---------------------------------------------------------------------------
 
-#: The tracked subsets, one TOML file per benchmark; each file's header says how it
-#: was chosen.
+#: The tracked subsets, one TOML file each; each file's header says how it was chosen.
 SMOKE_DIR = Path(__file__).resolve().with_name("gate_smoke")
-#: Run order: the cheap open-loop answers first, so an interrupted smoke has them.
-SMOKE_ORDER = ("kitscenes", "nuscenes", "navsim", "neuroncap", "bench2drive", "alpasim")
-#: Free GPU memory to wait for before each launch, in GB: a ~12 GB model plus the
-#: neuroNCAP renderer's share would not fit in less, and a launch into too little
-#: fails minutes later with an OOM that names nobody.
-SMOKE_NEED_GB = 14.0
+#: Two tiers with different jobs. `quick` runs on every checkpoint, about 40 min:
+#: the three open-loop benchmarks and neuroNCAP's three pairs at 0103. `closed`
+#: runs only for a checkpoint worth keeping: the full smoke neuroNCAP subset,
+#: Bench2Drive and AlpaSim, a few hours. Within a tier, the cheap answers first.
+TIERS = {
+    "quick": ("kitscenes", "nuscenes", "navsim", "neuroncap_quick"),
+    "closed": ("neuroncap", "bench2drive", "alpasim"),
+}
+SMOKE_ORDER = TIERS["quick"] + TIERS["closed"]
+#: How long a lane waits for a launched node to report ready before the next
+#: launch's GPU check runs anyway. The check exists to see the last launch's
+#: memory already taken; a node still importing after this long has a problem of
+#: its own, which its log will show.
+READY_WAIT_S = 1200
+#: How often the scheduler looks at its lanes, in seconds.
+POLL_S = 10.0
+#: GPU memory a benchmark's own simulator holds beside the model, in GB. Measured
+#: for neuroNCAP: one NeuRAD renderer was 7.7 GB on 2026-10-16. CARLA's share is
+#: NOT measured; 8 is the same order, and the wait errs on the side of waiting.
+#: Open-loop benchmarks run no simulator.
+SIMULATOR_GB = {"neuroncap": 8.0, "bench2drive": 8.0}
+#: Headroom on top, for other users' allocations growing while ours loads.
+SMOKE_MARGIN_GB = 2.0
+
+
+def smoke_need_gb(bench: str, model_vram_gb: float) -> float:
+    """Free GPU memory to wait for before launching `bench`, in GB.
+
+    The model's declared `vram_gb`, its simulator's share, and a margin. One
+    figure for every benchmark (14 GB) was enough for open loop and too little
+    for neuroNCAP: in run 20261015T235246-42c93e the smoke's renderer and model
+    loaded beside another job's renderer and model, and every /infer of that
+    first pass ended in CUDA out of memory. A launch into too little fails minutes later with an OOM
+    that names nobody, so the wait is the cheap place to be generous.
+    """
+    return model_vram_gb + SIMULATOR_GB.get(bench, 0.0) + SMOKE_MARGIN_GB
+
+
 #: Makes the neuroNCAP harness start (and stop) a renderer per scene, read in
 #: `manages_renderer` in neuroncap/harness.py, which names it as a literal. One
 #: renderer serves one scene and the smoke covers three.
@@ -553,8 +585,13 @@ NCAP_MANAGE_RENDERER = "PADDOCK_NCAP_MANAGE_RENDERER"
 
 @dataclass
 class Subset:
-    """One benchmark's smoke-tier subset, as tracked in `tools/gate_smoke/<bench>.toml`."""
+    """One smoke subset, as tracked in `tools/gate_smoke/<name>.toml`.
 
+    `name` is the file; `bench` the benchmark it runs. They differ when one
+    benchmark has a subset per tier (`neuroncap_quick` and `neuroncap`).
+    """
+
+    name: str
     bench: str
     strata: dict[str, list[str]]
     meta: dict[str, Any]
@@ -564,15 +601,16 @@ class Subset:
         return [i for ids in self.strata.values() for i in ids]
 
 
-def load_subset(bench: str, directory: Path = SMOKE_DIR) -> Subset:
-    path = directory / f"{bench}.toml"
+def load_subset(name: str, directory: Path = SMOKE_DIR) -> Subset:
+    path = directory / f"{name}.toml"
     if not path.is_file():
-        raise FileNotFoundError(f"no smoke subset for {bench} at {path}")
+        raise FileNotFoundError(f"no smoke subset {name} at {path}")
     raw = tomllib.loads(path.read_text())
     strata = {str(k): [str(i) for i in v] for k, v in (raw.pop("strata", None) or {}).items()}
-    if raw.get("bench") != bench:
-        raise ValueError(f"{path}: bench = {raw.get('bench')!r}, expected {bench!r}")
-    return Subset(bench, strata, raw)
+    bench = str(raw.get("bench", ""))
+    if not bench or (name != bench and not name.startswith(f"{bench}_")):
+        raise ValueError(f"{path}: bench = {bench!r} does not name the benchmark of subset {name!r}")
+    return Subset(name, bench, strata, raw)
 
 
 def stratified_pick(strata: dict[str, list[str]], n: int, seed: int, floor: int = 0) -> dict[str, list[str]]:
@@ -635,8 +673,7 @@ def smoke_args(subset: Subset) -> tuple[list[str], dict[str, str]]:
         return ["--scene", ",".join(ids)], {}
     if bench in ("kitscenes", "alpasim"):
         # The subset is the benchmark's own default set: all 223 keyframes, and the
-        # pinned public_2601_first10. (AlpaSim's --scene is refused by its own
-        # preflight today; see docs/gate.md.)
+        # pinned public_2601_first10.
         return [], {}
     raise ValueError(f"no smoke rule for {bench}")
 
@@ -716,6 +753,11 @@ class SmokeStep:
     command: list[str]
     env: dict[str, str]
     reason: str = ""
+    #: The subset this step runs; the benchmark's own name unless it has one per tier.
+    name: str = ""
+
+    def __post_init__(self) -> None:
+        self.name = self.name or self.bench
 
 
 def _artifact_ids(runs_root: Path, bench: str, model: str) -> set[str]:
@@ -747,7 +789,7 @@ def _run_id_for(entry: dict[str, Any], runs_root: Path, bench: str, model: str) 
 
 def plan_smoke(
     model: str,
-    benches: list[str],
+    names: list[str],
     declared: list[str],
     state: dict[str, dict[str, Any]],
     *,
@@ -766,16 +808,18 @@ def plan_smoke(
     never finished is resumed in place (`--resume`), keeping what it completed.
     """
     steps = []
-    for bench in benches:
+    for name in names:
+        subset = load_subset(name, subsets_dir)
+        bench = subset.bench
         if bench not in declared:
             steps.append(
-                SmokeStep(bench, "skipped", None, [], {}, f"{model}'s model.yaml does not declare it")
+                SmokeStep(bench, "skipped", None, [], {}, f"{model}'s model.yaml does not declare it", name)
             )
             continue
-        args, extra = smoke_args(load_subset(bench, subsets_dir))
-        run_id = _run_id_for(state.get(bench, {}), runs_root, bench, model)
+        args, extra = smoke_args(subset)
+        run_id = _run_id_for(state.get(name, {}), runs_root, bench, model)
         if run_id and (results_root / bench / model / run_id / "run.json").is_file():
-            steps.append(SmokeStep(bench, "finished", run_id, [], {}))
+            steps.append(SmokeStep(bench, "finished", run_id, [], {}, name=name))
             continue
         command = ["taskset", "-c", cores, "nice", python, "-m", "paddock.cli", "run"]
         command += ["--bench", bench, "--model", model, *args]
@@ -785,7 +829,7 @@ def plan_smoke(
         if config_path is not None:
             env["PADDOCK_CONFIG"] = str(config_path)
         env.update(extra)
-        steps.append(SmokeStep(bench, "resume" if run_id else "new", run_id, command, env))
+        steps.append(SmokeStep(bench, "resume" if run_id else "new", run_id, command, env, name=name))
     return steps
 
 
@@ -796,16 +840,25 @@ def shell_line(step: SmokeStep, repo: Path) -> str:
     parts = []
     for k, v in step.env.items():
         if len(v) > 200:
-            parts.append(f'{k}="$({shlex.quote(python)} -m tools.gate subset {step.bench} --env {k})"')
+            parts.append(f'{k}="$({shlex.quote(python)} -m tools.gate subset {step.name} --env {k})"')
         else:
             parts.append(f"{k}={shlex.quote(v)}")
     return f"cd {shlex.quote(str(repo))} && " + " ".join([*parts, shlex.join(step.command)])
 
 
 def load_baselines(path: Path) -> dict[str, dict[str, Any]]:
-    """The `[baseline.<bench>]` tables of a baseline manifest (see docs/gate.md)."""
+    """The `[baseline.<name>]` tables of a baseline manifest (see docs/gate.md)."""
     raw = tomllib.loads(path.read_text())
     return {str(k): dict(v) for k, v in (raw.get("baseline") or {}).items()}
+
+
+def baseline_for(baselines: dict[str, dict[str, Any]], step: SmokeStep) -> dict[str, Any]:
+    """The subset's own baseline, else its benchmark's.
+
+    A full neuroNCAP sweep holds runs 0-9 of every pair, so one baseline serves
+    `neuroncap_quick` and `neuroncap` alike; a subset that needs its own names it.
+    """
+    return baselines.get(step.name) or baselines.get(step.bench) or {}
 
 
 def smoke_manifest(
@@ -814,18 +867,16 @@ def smoke_manifest(
     """The `check` manifest pairing each finished smoke run with its baseline."""
     lines = [f"# Smoke tier for {label}, written by `python -m tools.gate smoke`.", ""]
     for step in steps:
-        base = baselines.get(step.bench) or {}
+        base = baseline_for(baselines, step)
         candidate = f"{model}:{step.run_id}" if step.run_id else None
         progress = "not run yet" if candidate is None else f"{candidate}, not finished"
         if step.status == "skipped":
-            lines.append(f"# {step.bench}: skipped, {step.reason}")
+            lines.append(f"# {step.name}: skipped, {step.reason}")
         elif not base.get("run"):
-            lines.append(
-                f"# {step.bench}: no baseline ({base.get('note') or 'not in the baseline manifest'})"
-            )
+            lines.append(f"# {step.name}: no baseline ({base.get('note') or 'not in the baseline manifest'})")
             lines.append(f"#   candidate: {candidate if step.status == 'finished' else progress}")
         elif step.status != "finished":
-            lines.append(f"# {step.bench}: candidate {progress}; baseline {base['run']}")
+            lines.append(f"# {step.name}: candidate {progress}; baseline {base['run']}")
         else:
             lines.append("[[pair]]")
             lines.append(f"bench = {json.dumps(step.bench)}")
@@ -854,7 +905,80 @@ def _wait_for_gpu(env: dict[str, str], need_gb: float, echo: Callable[[str], Non
     return True
 
 
-def smoke(args: argparse.Namespace, echo: Callable[[str], None] = print) -> int:
+def _say(message: str) -> None:
+    """print, flushed: the smoke runs detached for hours with stdout in a file,
+    and block buffering kept that file empty until the run ended."""
+    print(message, flush=True)
+
+
+def stage_env(env: dict[str, str], stage_dir: Path, echo: Callable[[str], None] = _say) -> dict[str, str]:
+    """`env`, with every value that names a file pointed at a copy under `stage_dir`.
+
+    A candidate's checkpoint usually sits on a network share, and every node start
+    reads it; on days the share was slow that read alone outlasted the node's
+    startup timeout. Each source gets its own directory, keyed by its path, and a
+    copy is refreshed only when the source is newer or a different size. Files
+    under 1 MB beside it come along (gallops writes `checkpoint.json` there), so
+    the copy keeps its provenance; big ones, such as a training state, do not.
+    """
+    staged = {}
+    for key, value in env.items():
+        src = Path(value)
+        if not src.is_file():
+            staged[key] = value
+            continue
+        dest_dir = stage_dir / hashlib.sha256(str(src.resolve()).encode()).hexdigest()[:12]
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        small = [f for f in src.parent.iterdir() if f.is_file() and f != src and f.stat().st_size < 1 << 20]
+        for f in [src, *small]:
+            dest = dest_dir / f.name
+            st = f.stat()
+            if dest.is_file() and dest.stat().st_size == st.st_size and dest.stat().st_mtime >= st.st_mtime:
+                continue
+            echo(f"  staging {f} -> {dest}")
+            part = dest.with_name(dest.name + ".part")
+            shutil.copy2(f, part)
+            os.replace(part, dest)
+        staged[key] = str(dest_dir / src.name)
+    return staged
+
+
+@dataclass
+class _Lane:
+    """One `taskset` core list and port range; a lane runs one step at a time."""
+
+    cores: str
+    port: int
+    step: SmokeStep | None = None
+    proc: subprocess.Popen | None = None
+    log: Any = None
+
+
+def _wait_ready(log_path: Path, offset: int, proc: subprocess.Popen, model: str) -> None:
+    """Return once the launched node prints `<model> ready`, or its run ends, or READY_WAIT_S passes."""
+    deadline = time.time() + READY_WAIT_S
+    marker = f"  {model} ready"
+    while time.time() < deadline and proc.poll() is None:
+        with log_path.open() as log:
+            log.seek(offset)
+            if marker in log.read():
+                return
+        time.sleep(POLL_S / 2)
+
+
+def _step_verdict(step: SmokeStep, base: dict[str, Any], model: str, runs_root: Path) -> PairResult | None:
+    """The finished step against its baseline, or None when there is nothing to pair yet."""
+    if not step.run_id or not base.get("run"):
+        return None
+    if not (RESULTS_ROOT / step.bench / model / step.run_id / "run.json").is_file():
+        return None
+    base_results = Path(base["results"]) if base.get("results") else RESULTS_ROOT
+    b = load_run(step.bench, str(base["run"]), runs_root, base_results)
+    c = load_run(step.bench, f"{model}:{step.run_id}", runs_root, RESULTS_ROOT)
+    return compare(b, c, unit_of=_unit_for(b, c, runs_root))
+
+
+def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
     from paddock.config import SiteConfig
     from paddock.registry import load_models
 
@@ -870,35 +994,44 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = print) -> int:
     state_path = out / "state.json"
     state: dict[str, dict[str, Any]] = json.loads(state_path.read_text()) if state_path.is_file() else {}
     baselines = load_baselines(args.baseline)
-    benches = args.bench or list(SMOKE_ORDER)
+    tiers = ["quick", "closed"] if args.tier == "all" else [args.tier]
+    tier_of = {name: tier for tier in tiers for name in TIERS[tier]}
+    wanted = set(args.bench or [])
+    names = [n for n in tier_of if not wanted or n in wanted or load_subset(n).bench in wanted]
     declared = list(models[args.model].benchmarks)
+    cores = args.cores or ["4-7"]
     common: dict[str, Any] = {
         "runs_root": cfg.runs,
         "results_root": RESULTS_ROOT,
         "python": args.python,
         "repo": REPO_ROOT,
         "port": args.base_port,
-        "cores": args.cores,
+        "cores": cores[0],
         "config_path": config_path,
     }
-    steps = plan_smoke(args.model, benches, declared, state, **common)
+    steps = plan_smoke(args.model, names, declared, state, **common)
 
-    echo(f"smoke tier for {label} ({'executing' if args.execute else 'plan only; add --execute to run it'})")
+    echo(
+        f"smoke for {label}, tier {args.tier} ({'executing' if args.execute else 'plan only; add --execute to run it'})"
+    )
     echo(f"  state directory: {out}")
+    echo(f"  lanes: {', '.join(f'cores {c} / port {args.base_port + 100 * i}' for i, c in enumerate(cores))}")
     overrides = [f"neuroNCAP renderer_url port {args.renderer_port}"]
     if env_pairs:
         overrides.append(f"[models.{args.model}.env] {', '.join(env_pairs)}")
+    if args.stage_dir:
+        overrides.append(f"file values staged under {args.stage_dir}")
     echo(f"  PADDOCK_CONFIG: {cfg.source} with {' and '.join(overrides)}")
     for step in steps:
         tag = {"finished": "done", "resume": "resume", "new": "launch", "skipped": "skip"}[step.status]
         echo(
-            f"\n[{tag}] {step.bench}"
+            f"\n[{tag}] {step.name} ({tier_of[step.name]})"
             + (f" {step.run_id}" if step.run_id else "")
             + (f": {step.reason}" if step.reason else "")
         )
         if step.command:
             echo("  " + shell_line(step, REPO_ROOT))
-        base = baselines.get(step.bench) or {}
+        base = baseline_for(baselines, step)
         echo(
             f"  baseline: {base.get('run') or 'none (' + str(base.get('note') or 'not in the manifest') + ')'}"
         )
@@ -909,46 +1042,108 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = print) -> int:
         return 0
 
     out.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(smoke_config(cfg.source, args.model, env_pairs, args.renderer_port))
+    run_env = stage_env(env_pairs, args.stage_dir, echo) if args.stage_dir else env_pairs
+    config_path.write_text(smoke_config(cfg.source, args.model, run_env, args.renderer_port))
 
     def save() -> None:
         state_path.write_text(json.dumps(state, indent=2) + "\n")
 
-    for step in steps:
-        if step.status not in ("new", "resume"):
-            continue
-        echo(f"\n=== {step.bench}")
-        launch_env = {**os.environ, **step.env}
-        if not _wait_for_gpu(launch_env, SMOKE_NEED_GB, echo):
-            return 1
-        entry = state.setdefault(step.bench, {})
-        if step.status == "new":
-            entry["before"] = sorted(_artifact_ids(cfg.runs, step.bench, args.model))
-            save()
-        log_path = out / f"{step.bench}.log"
-        with log_path.open("a") as log:
-            log.write(f"\n$ {shell_line(step, REPO_ROOT)}\n")
-            log.flush()
-            # Streamed to the file as it runs, so a hung episode is diagnosable while it hangs.
-            rc = subprocess.run(
-                step.command, env=launch_env, cwd=REPO_ROOT, stdout=log, stderr=subprocess.STDOUT
-            ).returncode
-        entry["run_id"] = _run_id_for(entry, cfg.runs, step.bench, args.model)
+    lanes = [_Lane(c, args.base_port + 100 * i) for i, c in enumerate(cores)]
+    pending = [s for s in steps if s.status in ("new", "resume")]
+    done = {s.name for s in steps if s.status == "finished"}
+    stop = ""
+
+    def finish(lane: _Lane) -> None:
+        nonlocal stop
+        step, rc = lane.step, lane.proc.returncode
+        lane.log.close()
+        lane.step = lane.proc = lane.log = None
+        entry = state[step.name]
+        entry["run_id"] = step.run_id = _run_id_for(entry, cfg.runs, step.bench, args.model)
         entry["exit"] = rc
         save()
-        echo(f"  exit {rc}, run {entry['run_id'] or 'not created'}; log {log_path}")
+        echo(f"\n  {step.name}: exit {rc}, run {step.run_id or 'not created'}")
+        if step.run_id and (RESULTS_ROOT / step.bench / args.model / step.run_id / "run.json").is_file():
+            done.add(step.name)
+        result = _step_verdict(step, baseline_for(baselines, step), args.model, cfg.runs)
+        if result is None:
+            return
+        t = "-" if result.t is None else f"{result.t:.2f}"
+        echo(
+            f"  {step.name}: {result.verdict} ({result.metric} better by {result.diff}, t {t}, {result.units} units)"
+        )
+        if result.verdict == "REGRESSION" and not args.keep_going:
+            stop = stop or f"REGRESSION on {step.name}"
 
-    steps = plan_smoke(args.model, benches, declared, state, **common)
+    while pending or any(lane.proc for lane in lanes):
+        for lane in lanes:
+            if lane.proc is not None and lane.proc.poll() is not None:
+                finish(lane)
+        nxt = pending[0] if pending else None
+        if nxt and not stop and not args.keep_going and tier_of[nxt.name] != tiers[0]:
+            # The closed tier is for a candidate the quick tier passed: every quick
+            # step finished and nothing regressed.
+            quick = [n for n in names if tier_of[n] == "quick"]
+            if not any(lane.proc for lane in lanes) and not set(quick) <= done | {
+                s.name for s in steps if s.status == "skipped"
+            }:
+                missing = [n for n in quick if n not in done]
+                stop = f"quick tier did not finish ({', '.join(missing)})"
+        if stop and pending:
+            echo(
+                f"\n{stop}: not launching {', '.join(s.name for s in pending)} (--keep-going runs them anyway)"
+            )
+            pending = []
+            continue
+        idle = next((lane for lane in lanes if lane.proc is None), None)
+        busy = [lane.step for lane in lanes if lane.step is not None]
+        blocked = (
+            nxt is None
+            or idle is None
+            or any(b.bench == nxt.bench or tier_of[b.name] != tier_of[nxt.name] for b in busy)
+        )
+        if blocked:
+            time.sleep(POLL_S)
+            continue
+        pending.pop(0)
+        step_env = {**os.environ, **nxt.env}
+        step_env["PADDOCK_BASE_PORT"] = str(idle.port)
+        if not _wait_for_gpu(step_env, smoke_need_gb(nxt.bench, models[args.model].vram_gb), echo):
+            stop = "no GPU memory after 12 h"
+            pending.insert(0, nxt)
+            continue
+        command = list(nxt.command)
+        if command[:2] == ["taskset", "-c"]:
+            command[2] = idle.cores
+        launched = replace(nxt, command=command, env={**nxt.env, "PADDOCK_BASE_PORT": str(idle.port)})
+        entry = state.setdefault(nxt.name, {})
+        if nxt.status == "new":
+            entry["before"] = sorted(_artifact_ids(cfg.runs, nxt.bench, args.model))
+            save()
+        log_path = out / f"{nxt.name}.log"
+        log = log_path.open("a")
+        log.write(f"\n$ {shell_line(launched, REPO_ROOT)}\n")
+        log.flush()
+        offset = log.tell()
+        echo(f"\n=== {nxt.name} on cores {idle.cores}, port {idle.port}; log {log_path}")
+        # Streamed to the file as it runs, so a hung episode is diagnosable while it hangs.
+        proc = subprocess.Popen(command, env=step_env, cwd=REPO_ROOT, stdout=log, stderr=subprocess.STDOUT)
+        idle.step, idle.proc, idle.log = nxt, proc, log
+        # The next launch's GPU check must see this one's memory already taken.
+        _wait_ready(log_path, offset, proc, args.model)
+
+    steps = plan_smoke(args.model, names, declared, state, **common)
     manifest = out / "manifest.toml"
     manifest.write_text(smoke_manifest(args.model, label, baselines, steps))
     echo(f"\nwrote {manifest}")
-    unfinished = [s.bench for s in steps if s.status in ("new", "resume")]
+    unfinished = [s.name for s in steps if s.status in ("new", "resume")]
     if unfinished:
-        echo(f"not finished: {', '.join(unfinished)}; the same command resumes them")
+        why = f" ({stop})" if stop else ""
+        echo(f"not finished: {', '.join(unfinished)}{why}; the same command resumes them")
     if "[[pair]]" not in manifest.read_text():
         echo("no benchmark has both a baseline and a finished candidate; nothing to check")
         return 1 if unfinished else 0
-    verdict, results = check(manifest, cfg.runs)
+    verdict, results = check(manifest, cfg.runs, RESULTS_ROOT)
     echo(render(results))
     echo(f"\noverall: {verdict}")
     return 1 if verdict == "FAIL" or unfinished else 0
@@ -961,6 +1156,11 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--bench", required=True)
     c.add_argument("--baseline", required=True, help="model:run_id")
     c.add_argument("--candidate", required=True, help="model:run_id")
+    c.add_argument(
+        "--baseline-results",
+        type=Path,
+        help="results store holding the baseline's run.json, when it is not the candidate's (default: --results)",
+    )
     c.add_argument("--metric")
     c.add_argument("--threshold", type=float)
     k = sub.add_parser("check", help="every pair in a manifest, one verdict")
@@ -980,7 +1180,23 @@ def main(argv: list[str] | None = None) -> int:
     )
     s.add_argument("--baseline", required=True, type=Path, help="baseline manifest (docs/gate.md)")
     s.add_argument(
-        "--bench", action="append", help="only this benchmark; repeatable (default: the whole tier)"
+        "--tier",
+        choices=("quick", "closed", "all"),
+        default="quick",
+        help="quick: every checkpoint, ~40 min; closed: closed loop, hours; all: quick, then closed if it passed",
+    )
+    s.add_argument(
+        "--bench", action="append", help="only this subset or benchmark; repeatable (default: the whole tier)"
+    )
+    s.add_argument(
+        "--keep-going",
+        action="store_true",
+        help="launch the rest after a regression, and the closed tier after an unfinished quick tier",
+    )
+    s.add_argument(
+        "--stage-dir",
+        type=Path,
+        help="copy each --env value that names a file here first, and run from the copy (a fast local disk)",
     )
     s.add_argument("--execute", action="store_true", help="launch the runs; without it, print the plan only")
     s.add_argument("--label", help="names the state directory (default: the model and a digest of --env)")
@@ -992,15 +1208,20 @@ def main(argv: list[str] | None = None) -> int:
         default=8700,
         help="port for the neuroNCAP renderers the smoke starts (default 8700, away from the site's)",
     )
-    s.add_argument("--cores", default="4-7", help="taskset CPU list for every launch")
+    s.add_argument(
+        "--cores",
+        action="append",
+        metavar="CPULIST",
+        help="taskset CPU list of one lane; repeat it for lanes that run side by side (default: one lane, 4-7)",
+    )
     s.add_argument("--python", default=sys.executable, help="interpreter with paddock's dependencies")
-    u = sub.add_parser("subset", help="print one benchmark's smoke subset")
-    u.add_argument("bench")
+    u = sub.add_parser("subset", help="print one smoke subset")
+    u.add_argument("name", help="a file under tools/gate_smoke/, without .toml")
     u.add_argument("--env", help="print this environment value of its smoke command instead")
     args = ap.parse_args(argv)
 
     if args.cmd == "subset":
-        subset = load_subset(args.bench)
+        subset = load_subset(args.name)
         print(smoke_args(subset)[1][args.env] if args.env else "\n".join(subset.ids))
         return 0
     if args.cmd == "smoke":
@@ -1012,7 +1233,7 @@ def main(argv: list[str] | None = None) -> int:
 
     runs_root = paths.runs()
     if args.cmd == "compare":
-        base = load_run(args.bench, args.baseline, runs_root, args.results)
+        base = load_run(args.bench, args.baseline, runs_root, args.baseline_results or args.results)
         cand = load_run(args.bench, args.candidate, runs_root, args.results)
         results = [compare(base, cand, args.metric, args.threshold, _unit_for(base, cand, runs_root))]
         verdict = overall(results)

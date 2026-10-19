@@ -9,6 +9,8 @@ compares them pair by pair.
 ```bash
 python -m tools.gate compare --bench neuroncap \
     --baseline drivejepa:20260905T220225-f11ac0 --candidate drivejepa:20261012T224707-f11ac0
+python -m tools.gate compare --bench nuscenes --results results \
+    --baseline drivejepa:<run> --baseline-results ../other-worktree/results --candidate drivejepa:<run>
 python -m tools.gate check manifest.toml            # every [[pair]] in it, one overall verdict
 python -m tools.gate smoke --model drivejepa \
     --env DRIVEJEPA_CHECKPOINT=/path/to/candidate.ckpt \
@@ -34,7 +36,7 @@ separable" into t = -4.25.
 
 The verdict compares t with **t crit**, the two-sided 5% critical value of
 Student's t on (units - 1) degrees of freedom. A clustered standard error from G
-units has about G - 1 degrees of freedom, and the smoke tier has few units: on 3
+units has about G - 1 degrees of freedom, and the smoke has few units: on 3
 scenario pairs a fixed |t| >= 2 fires 18% of the time when nothing changed, and
 the 5% bar is 4.30. Paddock's env has no scipy, so the values come from a table
 in `tools/gate.py` (checked against scipy; `tests/test_gate.py` pins it).
@@ -73,36 +75,70 @@ Read the notes; they are where the gate says what it cannot check:
   expected there and a warning anywhere else.
 - **unpaired / different sample sets.** Only shared samples are compared.
 
-## Two tiers
+## Full runs and the smoke
 
-**Full tier**: the full-benchmark runs already in `results/`, compared with
-`compare` or a hand-written `check` manifest. Most power, most GPU time.
+**Full runs**: the full-benchmark runs already in `results/`, compared with
+`compare` or a hand-written `check` manifest. Most power, most GPU time; the
+check before a release.
 
-**Smoke tier**: fixed subsets, tracked in `tools/gate_smoke/<bench>.toml`, each
-chosen once by a documented, seeded rule and headed by how it was chosen. They
-must never be re-picked to make a result look better; a subset that turns out
-wrong is replaced in its own commit, and its baselines re-run. The drawing rule
-is `tools.gate.stratified_pick`.
+**The smoke**: fixed subsets, tracked in `tools/gate_smoke/<name>.toml`, each
+chosen once by a documented rule and headed by how it was chosen. They must never
+be re-picked to make a result look better; a subset that turns out wrong is
+replaced in its own commit, and its baselines re-run. The drawing rule is
+`tools.gate.stratified_pick` where a draw was seeded.
 
-| bench | subset | units (t crit) | how `paddock run` is told | pairs with |
-|---|---|---|---|---|
-| navsim (v2) | 1,000 navtest tokens, every one of its 136 logs, at least 2 per log | 136 logs (1.98) | `--limit 1000` and `PADDOCK_NAVSIM_OVERRIDES=train_test_split.scene_filter.tokens=[...]` | a smoke of the same list only |
-| kitscenes | all 223 keyframes | 140 scenes (1.98) | nothing: the full sample list | any full run |
-| nuscenes | first 30 val scenes, all 1,011 anchors | 30 scenes (2.05) | `--limit 1011` | a full run (a prefix of it) |
-| neuroncap | stationary/frontal/side at 0103, frontal+side at 0110, stationary at 0796; 3 runs | 6 pairs (2.57) | `--scene 0103,0110,0796 --runs 3`, `PADDOCK_NCAP_MANAGE_RENDERER=true` | a full sweep (its runs 0-2) |
-| bench2drive | 10 of the 50 site routes, one per scenario type with 3+ routes | 10 routes (2.26) | `--scene <10 route ids>` | a smoke baseline |
-| alpasim | `public_2601_first10` | 10 clips (2.26) | nothing: the default scene set | a smoke baseline |
+The smoke has two tiers of its own, because one checkpoint at a time cannot wait
+hours for every answer:
+
+- **quick** (`--tier quick`, the default): every checkpoint. The three open-loop
+  benchmarks and neuroNCAP's three pairs at 0103. It catches a pipeline break or
+  a large regression in about 40 minutes.
+- **closed** (`--tier closed`): a checkpoint worth keeping. The finer neuroNCAP
+  subset, Bench2Drive and AlpaSim; a few hours.
+- `--tier all` runs quick, then closed only if every quick subset finished and
+  none regressed.
+
+| subset | tier | what | units (t crit) | how `paddock run` is told | pairs with |
+|---|---|---|---|---|---|
+| kitscenes | quick | all 223 keyframes | 140 scenes (1.98) | nothing: the full sample list | any full run, or a smoke |
+| nuscenes | quick | first 30 val scenes, all 1,011 anchors | 30 scenes (2.05) | `--limit 1011` | a full run (a prefix of it) |
+| navsim (v2) | quick | 1,000 navtest tokens, every one of its 136 logs, at least 2 per log | 136 logs (1.98) | `--limit 1000` and `PADDOCK_NAVSIM_OVERRIDES=train_test_split.scene_filter.tokens=[...]` | a smoke of the same list only |
+| neuroncap_quick | quick | stationary, frontal and side at 0103; 1 run (seed 0) | 3 pairs (4.30) | `--scene 0103 --runs 1`, `PADDOCK_NCAP_MANAGE_RENDERER=true` | a full sweep (its run 0) |
+| neuroncap | closed | stationary/frontal/side at 0103, frontal+side at 0110, stationary at 0796; 3 runs | 6 pairs (2.57) | `--scene 0103,0110,0796 --runs 3`, `PADDOCK_NCAP_MANAGE_RENDERER=true` | a full sweep (its runs 0-2) |
+| bench2drive | closed | 7 routes where the four unassisted systems' scores spread by sd >= 12 | 7 routes (2.45) | `--scene <7 route ids>` | a smoke baseline |
+| alpasim | closed | `public_2601_first10` | 10 clips (2.26) | nothing: the default scene set | a smoke baseline |
+
+A subset's baseline is `[baseline.<subset>]` in the baseline manifest, else
+`[baseline.<benchmark>]`: one full neuroNCAP sweep serves both neuroNCAP subsets.
 
 Every smoke run is stored `valid: false` with the reason in `notes` (`--limit`,
-6 of 20 pairs, a route subset), so none reaches the leaderboard.
+a few of 20 pairs, a route subset), so none reaches the leaderboard.
 
-## Running the smoke tier
+## Running the smoke
 
 ```bash
 python -m tools.gate smoke --model drivejepa --env DRIVEJEPA_CHECKPOINT=/path/to/ckpt \
-    --baseline /path/to/baselines.toml                 # plan only
-setsid nohup python -m tools.gate smoke ... --execute > smoke.out 2>&1 < /dev/null &
+    --baseline /path/to/baselines.toml                 # plan only, quick tier
+setsid nohup python -m tools.gate smoke ... --tier all --execute \
+    --cores 4-7 --cores 8-11 --cores 12-15 \
+    --stage-dir /fast/local/disk/gate_cache > smoke.out 2>&1 < /dev/null &
 ```
+
+- **Lanes.** Each `--cores` is one lane: a `taskset` core list and its own port
+  range (`--base-port`, then +100 per lane). Subsets of the same tier run side by
+  side, one per lane, never two of one benchmark at once. Each launch waits for
+  the GPU memory below, and the next one waits until this one's model has said
+  it is ready, so every GPU check sees the memory already taken. With one
+  `--cores` (the default, `4-7`) everything runs one after another.
+- **Stop at the first regression.** When a finished subset is a REGRESSION
+  against its baseline, nothing else is launched; running ones finish. The
+  closed tier never starts after a quick-tier regression or an unfinished quick
+  subset. `--keep-going` turns both off.
+- **`--stage-dir`.** Every `--env` value that names a file, typically the
+  candidate's checkpoint, is copied there first (with any file under 1 MB beside
+  it, such as gallops' `checkpoint.json`), and the run reads the copy. Point it
+  at a fast local disk: a checkpoint read from a slow network share was enough to
+  make node starts time out.
 
 Without `--execute` it prints, per benchmark, the exact `paddock run` line
 (`taskset -c 4-7 nice`, `PADDOCK_BASE_PORT`, `PYTHONPATH` on this checkout's
@@ -113,9 +149,13 @@ Without `--execute` it prints, per benchmark, the exact `paddock run` line
    node and is recorded as `model_env`, and the neuroNCAP `renderer_url` moved to
    `--renderer-port` (default 8700), so the renderers the smoke starts do not
    land on the site's port, where a long-lived `paddock renderer` usually is;
-2. launches one benchmark at a time, each after `nvidia-smi` shows 14 GB free on
-   the card the model will use (it gives up after 12 h);
-3. streams each run's output to `<state>/<bench>.log`;
+2. launches one benchmark at a time, each after `nvidia-smi` shows enough free
+   memory on the card the model will use: the model's declared `vram_gb`, plus
+   its simulator's share (`SIMULATOR_GB`: 8 GB for neuroNCAP's renderer, as
+   measured; 8 GB assumed for CARLA, not measured), plus 2 GB. For Drive-JEPA
+   that is 14 GB open loop and 22 GB closed loop. It gives up after 12 h;
+3. streams each run's output to `<state>/<bench>.log`, and its own progress,
+   flushed, to stdout;
 4. writes `<state>/manifest.toml` pairing each finished run with its baseline, and
    runs `check` on it.
 
@@ -127,6 +167,31 @@ the rest start fresh. The run id is found as the one new artifacts directory
 since launch; if two appeared (someone ran the same model on the same benchmark
 meanwhile) it stops and asks rather than resume the wrong one. A benchmark the
 model's `model.yaml` does not declare is skipped and said so.
+
+### How long it takes
+
+The first full smoke, the released Drive-JEPA on 2026-10-15/16, ran every subset
+one after another, before the tiers existed, on a day when the NAS read at
+2.8 MB/s and the GPU was shared:
+
+| bench | wall clock | what dominated |
+|---|---|---|
+| kitscenes | 23 min | image reads from the NAS |
+| nuscenes | 35 min | image reads from the NAS |
+| navsim | 30 min | the scorer |
+| neuroncap | 132 min (second attempt) | 18 episodes, ~6 min each, rendering 4 cameras |
+| bench2drive | 240 min | CARLA at 0.06–0.17x real time, one inference per 0.05 s tick; one route hit its 90 min timeout |
+| **total** | **~7.7 h** | |
+
+A day with a healthy NAS saves most of the open-loop time; the closed-loop
+two are most of the cost either way. From those measurements, and not yet timed
+as such: the **quick tier** in three lanes is ~40-45 min on that day, the three
+open-loop subsets side by side (the longest took 35 min) and neuroNCAP's three
+quick episodes (~20 min) in the first lane to come free; the **closed tier** is ~132 min of neuroNCAP plus ~87 min of
+Bench2Drive on its 7 routes (they took 87 of the 240 min), less where two lanes
+and the GPU let them overlap. The same run checked the gate against
+itself: nuScenes 2.497 against the released run's 2.497 and neuroNCAP 3.175
+against 3.175 on the shared seeds, both NEUTRAL to the last decimal.
 
 The baseline manifest is site-local TOML:
 
@@ -150,10 +215,11 @@ the missing smoke baselines get made; put their run ids in the manifest after.
 
 ## Limits
 
-- **Bench2Drive and AlpaSim report NO RECORDS** against every run on this site
-  today: those runs were ingested from campaigns that kept no per-route or
-  per-clip records. A smoke baseline made through `paddock run` fixes that for
-  Bench2Drive.
+- **Bench2Drive and AlpaSim report NO RECORDS** against runs ingested from
+  campaigns that kept no per-route or per-clip records. A smoke baseline made
+  through `paddock run` has them; the released Drive-JEPA's Bench2Drive one
+  finished 9 of 10 routes (one timed out), so check it against the 50-route
+  results before trusting it.
 - **NAVSIM smoke pairs only with a NAVSIM smoke.** Two-frame extended comfort
   compares each scenario with the next *scored* one in its log, so a token's
   EPDMS depends on which others were scored.
@@ -165,20 +231,19 @@ the missing smoke baselines get made; put their run ids in the manifest after.
   argument. `--limit` takes the first N samples in `val_scenes.json` order, so
   the 30 scenes are the first 30: boston-seaport and singapore-onenorth, no
   queenstown or hollandvillage. A stratified choice needs a scene filter there.
-- **AlpaSim's `--scene` is refused for every id.** `run_benchmark` passes each
-  scene string to `scene_problems` (`src/paddock/runner.py:394-396`), and
-  AlpaSim's `scene_problems` takes a list
-  (`src/paddock/adapters/benchmarks/alpasim/harness.py:306`), so it iterates the
-  characters of the id and reports each as unknown. The smoke relies on the
-  default scene set instead, which is the subset.
+- **The AlpaSim smoke runs the default scene set**, which is the subset.
+  `--scene` refused every id before #81 fixed it; the default set needs no
+  filter either way.
 - **Drive-JEPA's AlpaSim numbers do not come from `paddock run`.** Its
   `model.yaml` does not declare alpasim; they come from
-  `tools/models/drivejepa/alpasim_driver/`. The smoke skips AlpaSim for it.
-- **`model_env` does not invalidate a run** (`src/paddock/runner.py:91` records
-  it, `_validity` does not read it), and NAVSIM's `PADDOCK_NAVSIM_OVERRIDES` is
-  recorded in `config.overrides` but is not one of its `invalid_reasons`
-  (`src/paddock/adapters/benchmarks/navsim/harness.py:710`). The smoke's NAVSIM
-  run is invalid through `--limit` regardless.
+  `tools/models/drivejepa/alpasim_driver/`. The smoke skips AlpaSim for it
+  until the bridge can feed it the inputs that driver does.
+- **A checkpoint override does not invalidate a run on its own** until #82
+  (`src/paddock/runner.py:91` records `model_env`, `_validity` does not read
+  it). NAVSIM's `PADDOCK_NAVSIM_OVERRIDES` is recorded in `config.overrides` but
+  is not one of its `invalid_reasons`
+  (`src/paddock/adapters/benchmarks/navsim/harness.py:710`). Every smoke run is
+  invalid through its subset regardless.
 - **The neuroNCAP smoke starts its own renderers** on `--renderer-port`, one
   scene at a time. Two smokes at once need different `--renderer-port` (and
   `--base-port`) values; if the port is taken, neuroNCAP's preflight says so and
