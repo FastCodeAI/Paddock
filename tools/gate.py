@@ -302,6 +302,20 @@ def _mean(xs: list[float]) -> float | None:
     return sum(xs) / len(xs) if xs else None
 
 
+def lost_samples(run: Run) -> int:
+    """How many samples the run lost to a failure, per its own record.
+
+    A closed-loop episode that crashes, hangs or times out loses all of its
+    samples, and they are the hard cases more often than not
+    (docs/results-schema.md). `status: partial` without a count still means
+    something failed.
+    """
+    failed = int((run.run.get("dataset") or {}).get("n_failed") or 0)
+    if failed == 0 and run.run.get("status") == "partial":
+        return 1
+    return failed
+
+
 def _verdict(t: float | None, crit: float) -> str:
     if t is None:
         return "NEUTRAL"
@@ -453,6 +467,19 @@ def compare(
         )
     if threshold is not None:
         result.beyond_threshold = result.diff < -abs(threshold)
+    # Pairing on shared samples drops whatever the candidate failed to record, and
+    # those are the hard cases: a candidate that crashed on 0110 frontal and side
+    # and was slightly better elsewhere scored GAIN on what it kept. So a candidate
+    # that lost samples gets no verdict on the rest.
+    if lost := lost_samples(candidate):
+        result.verdict = "INCOMPLETE"
+        result.notes.append(
+            f"candidate lost {lost} sample(s) to a failure ({candidate.run.get('status') or 'status unknown'}, "
+            f"n_expected {(candidate.run.get('dataset') or {}).get('n_expected', '?')}); "
+            "the statistics cover only what it kept"
+        )
+    if lost := lost_samples(baseline):
+        result.notes.append(f"baseline lost {lost} sample(s) to a failure; those are unpaired, not scored")
     if result.only_baseline or result.only_candidate:
         result.notes.append(
             f"unpaired samples left out: {result.only_baseline} baseline-only, "
@@ -1072,8 +1099,8 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
         echo(
             f"  {step.name}: {result.verdict} ({result.metric} better by {result.diff}, t {t}, {result.units} units)"
         )
-        if result.verdict == "REGRESSION" and not args.keep_going:
-            stop = stop or f"REGRESSION on {step.name}"
+        if result.verdict in ("REGRESSION", "INCOMPLETE") and not args.keep_going:
+            stop = stop or f"{result.verdict} on {step.name}"
 
     while pending or any(lane.proc for lane in lanes):
         for lane in lanes:

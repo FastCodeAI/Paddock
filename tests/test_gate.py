@@ -34,6 +34,8 @@ def _write_run(
     primary: str,
     config: dict | None = None,
     valid: bool = True,
+    status: str = "complete",
+    n_failed: int = 0,
 ) -> None:
     tracked = results_root / bench / model / run_id
     tracked.mkdir(parents=True)
@@ -43,8 +45,9 @@ def _write_run(
         "benchmark": bench,
         "model": model,
         "valid": valid,
+        "status": status,
         "config": config or {},
-        "dataset": {"sequences_sha256": "same", "n_samples": len(values)},
+        "dataset": {"sequences_sha256": "same", "n_samples": len(values), "n_failed": n_failed},
     }
     mean = sum(values) / len(values) if values else 0.5
     metrics = {"primary_metric": primary, "metrics": {primary: {"mean": mean, "n": len(values)}}}
@@ -147,6 +150,49 @@ def test_unpaired_and_invalid_runs_are_reported_not_hidden(tmp_path: Path) -> No
     assert r.only_baseline == 3 and r.only_candidate == 0 and r.matched == 6
     assert any("invalid" in n for n in r.notes)
     assert any("unpaired samples" in n for n in r.notes)
+
+
+def test_a_candidate_that_lost_samples_gets_no_verdict(tmp_path: Path) -> None:
+    """Review #80 (1): the episodes a candidate crashes on vanish from the pairing.
+
+    It lost both 0110 episodes and is better on the four pairs it kept; paired on
+    what it kept it was a GAIN and the run SHIPped.
+    """
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    pairs = [
+        ("stationary", "0103"),
+        ("frontal", "0103"),
+        ("side", "0103"),
+        ("frontal", "0110"),
+        ("side", "0110"),
+    ]
+    base = [_ncap(sc, sh, r, 2.0 + 0.1 * r) for sh, sc in pairs for r in range(3)]
+    kept = [
+        _ncap(sc, sh, r, 2.4 + 0.1 * r + 0.01 * i)
+        for i, (sh, sc) in enumerate(pairs)
+        for r in range(3)
+        if sc != "0110"
+    ]
+    _write_run(res, runs, "neuroncap", "m", "a", base, "ncap_score")
+    _write_run(res, runs, "neuroncap", "m", "b", kept, "ncap_score", status="partial", n_failed=6)
+    r = gate.compare(
+        gate.load_run("neuroncap", "m:a", runs, res), gate.load_run("neuroncap", "m:b", runs, res)
+    )
+    assert r.verdict == "INCOMPLETE"
+    assert any("lost 6 sample(s)" in n for n in r.notes)
+    assert gate.overall([r]) != "SHIP"
+
+
+def test_a_baseline_that_lost_samples_is_noted_not_blocked(tmp_path: Path) -> None:
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    base = [_kit(f"s{i}", 0, 2.0) for i in range(4)]
+    _write_run(res, runs, "kitscenes", "m", "a", base, "ade", status="partial", n_failed=1)
+    _write_run(res, runs, "kitscenes", "m", "b", [_kit(f"s{i}", 0, 2.0 + 0.01 * i) for i in range(4)], "ade")
+    r = gate.compare(
+        gate.load_run("kitscenes", "m:a", runs, res), gate.load_run("kitscenes", "m:b", runs, res)
+    )
+    assert r.verdict == "NEUTRAL"
+    assert any("baseline lost 1 sample(s)" in n for n in r.notes)
 
 
 def test_check_fails_on_any_regression_and_ships_only_on_a_closed_loop_gain(tmp_path: Path) -> None:

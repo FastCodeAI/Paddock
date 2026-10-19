@@ -57,6 +57,7 @@ neuroncap    ncap_score         3.568     4.130     0.562   0.439   1.28   2.09 
 | NEUTRAL | not separable at this many units. Not "the same": read the SE |
 | TOO FEW UNITS | fewer than 2 units, so no standard error and no verdict |
 | NO RECORDS | one side has no `samples.jsonl` on this site; means are shown, nothing is claimed |
+| INCOMPLETE | the candidate lost samples to a failure (`dataset.n_failed`, or `status: partial`). Pairing on shared samples would drop exactly those, usually the hard cases, so the rest is shown and nothing is claimed |
 
 `check` adds one overall line: **FAIL** if any pair is a REGRESSION (exit 1),
 **SHIP** if none is and at least one closed-loop pair is a GAIN, **HOLD**
