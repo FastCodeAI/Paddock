@@ -661,3 +661,81 @@ and a node that dies during the run is reported after it. `PADDOCK_BASE_PORT`
 gives each concurrent run its own range. The bogus run is stored with
 `valid: false` and the reason. This would have applied to any two concurrent
 paddock runs, not only NAVSIM.
+
+## Support-matrix results
+
+The per-metric results behind this benchmark's column in the
+[README's support matrix](../../README.md#support-matrix), and the notes on its
+cells. Moved here from the README unchanged except for links; the symbols are
+the README's former footnote marks, and each note below starts with the mark it
+explains. Marks about a model rather than this benchmark (⊛ ⊕ ∗ ◊ ◇ ✦ ✧) are
+explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
+
+### Notes on the matrix cells
+
+† Every NAVSIM figure is the full navtest split, 12,146 real recorded
+scenarios, scored through paddock's proxy agent. This is NAVSIM v2's **stage
+one** only: the leaderboard's stage two, the pseudo-simulation on synthetic
+scenes (navhard / navsafe two-stage), is not run -- it needs the
+`synthetic_scenes/` download and a second metric cache. Alpamayo's 0.691 is
+with the 10 Hz history from nuPlan (see ‡); at OpenScene's 2 Hz the same model
+scores 0.608 on the same split. Its earlier 242-scenario estimate was 0.653
+against that 0.608, which is why subsets are stored `valid: false`. On the subset Drive-JEPA scored 0.880
+through the proxy — the vendor's own agent scores 0.907 by reading the
+scorer's simulator at inference time, which no other model can do, so the
+proxy figure is the comparable one. `preflight` refuses a partial split unless told
+otherwise, so a subset cannot be reported as full navtest by accident, and the
+subset rows in `results/` are stored `valid: false` -- they appear under
+"Excluded runs" and never average against a full-split row.
+The **NAVSIM v1 PDMS** column scores the same 12,146 scenarios with the v1.1
+devkit -- the composite the 2024 leaderboard uses, on which the NAVSIM paper
+reports constant velocity 20.6 and human 94.8 -- see
+`docs/benchmarks/navsim_v1.md`. Alpamayo's and OpenPilot's v1 figures replay the
+plans their 10 Hz v2 runs recorded -- the same plans, the other scorer -- so each
+model's two columns describe one run; Alpamayo's 2 Hz pair (0.608 / 0.676) is in
+the tables below. Drive-JEPA and VisionPilot are fresh proxy runs at 2 Hz.
+
+‡ OpenScene is a 2 Hz dataset and OpenPilot infers motion from frame-to-frame
+change, so on it OpenPilot plans a parked car — 0.30 m of travel in 4 s at
+4.8 m/s. Its model has no speed input at all (`{desire_pulse, traffic_convention,
+action_t}`), so this is not fixable in the adapter: it declares
+`min_input_hz: 10.0` and the harness refuses the pairing on OpenScene alone. The
+frames OpenScene left out exist upstream — nuPlan's cameras run at 10 Hz — and
+with `[benchmarks.navsim] nuplan` naming that data the harness feeds a 10 Hz
+history to OpenPilot and to Alpamayo (built for 0.1 s frames). On the full
+split OpenPilot scores 0.747 at 10 Hz, its plans tracking ego speed (median
+0.82 of constant-velocity travel over 4 s while moving; 2 of 12,146 plans look
+parked), and Alpamayo 0.691 against 0.608 at 2 Hz, every sub-metric up but
+traffic light. See "10 Hz from nuPlan" in `docs/benchmarks/navsim.md`.
+
+☉ AutoE2E v1.0, the `kitscenes-epoch-5` checkpoint: the release's nuPlan model
+fine-tuned on KITScenes. NAVSIM is fed from nuPlan at 10 Hz with the rear views
+taken from OpenScene's keyframes (`keyframe_cameras`), which are exactly the
+0.5 s frames its camera history reads, and no route. AutoE2E was pre-trained on
+nuPlan, whose test logs `navtest` is drawn from; see *AutoE2E × navsim* in
+[comparison.md](../models/comparison.md). See
+[docs/models/autoe2e.md](../models/autoe2e.md).
+
+### NAVSIM v2
+
+Full navtest (stage one: real recorded scenes, no synthetic stage two), 12,146 scenarios, all sub-metrics 0–1. Every column except EPDMS
+is the mean of a per-scenario pass/fail or ratio, and EPDMS is the weighted
+product the scorer builds from them. Drive-JEPA is scored through paddock's
+proxy agent (see †). Extended comfort is the mean over the scenarios where it
+is defined, 10,040 of the 12,146 -- it compares consecutive frames' plans, so
+it is absent for a log's first frame and for any scenario without a scorable
+predecessor (`docs/results-schema.md`); every other column is over all 12,146.
+The last column is the 242-scenario subset (2% of navtest) that every model
+was first run on, for reference only.
+
+| Model | EPDMS ↑ | No at-fault collisions ↑ | Drivable area ↑ | Driving direction ↑ | Traffic light ↑ | Ego progress ↑ | TTC within bound ↑ | Lane keeping ↑ | History comfort ↑ | Extended comfort ↑ | EPDMS on 242 subset |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| OpenPilot, 10 Hz nuPlan history ‡ | 0.747 | 0.970 | 0.913 | 0.954 | 0.998 | 0.712 | 0.965 | 0.947 | 0.983 | 0.653 | — |
+| Alpamayo 1.5, 10 Hz nuPlan history ‡ | 0.691 | 0.957 | 0.856 | 0.933 | 0.997 | 0.681 | 0.951 | 0.963 | 0.962 | 0.576 | — |
+| Alpamayo 1.5, 2 Hz OpenScene | 0.608 | 0.941 | 0.788 | 0.890 | 0.998 | 0.596 | 0.939 | 0.931 | 0.938 | 0.490 | 0.653 |
+| Drive-JEPA | **0.843** | 0.984 | 0.985 | 0.991 | 0.998 | 0.889 | 0.979 | 0.974 | 0.978 | 0.477 | 0.880 |
+| VisionPilot | 0.431 | 0.727 | 0.819 | 0.926 | 0.975 | 0.404 | 0.700 | 0.899 | 0.968 | 0.518 | 0.447 |
+| METEOR ◊ | 0.303 | 0.694 | 0.687 | 0.805 | 0.979 | 0.317 | 0.683 | 0.795 | 0.973 | 0.451 | — |
+| Qwen-Drive 1.0, 10 Hz nuPlan history ‡ | 0.840 | 0.982 | 0.964 | 0.993 | 0.998 | 0.820 | 0.977 | 0.975 | 0.982 | **0.867** | — |
+| AutoE2E, 10 Hz nuPlan history ☉ | 0.500 | 0.824 | 0.777 | 0.865 | 0.990 | 0.491 | 0.814 | 0.830 | 0.984 | 0.812 | — |
+| Baseline (Constant Velocity) | 0.239 | 0.681 | 0.578 | 0.805 | 0.981 | 0.209 | 0.669 | 0.827 | 0.979 | 0.567 | 0.257 |

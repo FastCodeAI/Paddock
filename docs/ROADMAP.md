@@ -495,14 +495,14 @@ Open work, in the order it bites:
   had.
 - **History.** #60's first review stored paddock's `gt` runs `valid: false`, which ranked an ingested row
   and failed a paddock run for the same input. The rule was reversed, so ingested and paddock rows are
-  treated alike. In the README only OpenPilot's cells carry a mark for it (⊜); that footnote names the
-  other rows that had the route.
+  treated alike. In `docs/benchmarks/kitscenes.md` only OpenPilot's cells carry a mark for it (⊜); that note names
+  the other rows that had the route.
 
 **A run whose settings were chosen on the scored split is not recorded as one: open (follow-up from #60).**
 - **The gap.** A run with the scene sweep's camera knobs (height 1.22, pitch −1.7°, a 55° cut) is stored
   valid and ranked. Those values were chosen by inspecting one scene of the 223 scored keyframes, and
-  patterns from an analysis that looked at 90 of them. Nothing in the run's record says so: the README's ⊜
-  footnote and the config-run note do. The openpilot guide states the same gap for a height scale.
+  patterns from an analysis that looked at 90 of them. Nothing in the run's record says so: the ⊜
+  note in `docs/benchmarks/kitscenes.md` and the config-run note do. The openpilot guide states the same gap for a height scale.
 - **Why it is open.** A record field naming where a setting came from would carry it, but any new key in
   `run_config()` changes the run id, here `20261008T004723-a369d1`, the README's OpenPilot KITScenes row.
 
