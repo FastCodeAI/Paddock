@@ -170,6 +170,20 @@ renderer checkpoint (site-local). `preflight` checks both before any model
 loads — `stationary/0061.yaml` exists with no checkpoint for scene 0061, and
 would otherwise fail deep into a sweep.
 
+`spoof_renderer = true` (or `$PADDOCK_NCAP_SPOOF_RENDERER`) skips NeuRAD
+entirely: the vendor engine's own `--spoof-renderer` flag serves the dataset's
+real camera images straight off disk instead of rendering, so a sweep that
+doesn't care about render fidelity runs in seconds without a trained NeuRAD
+checkpoint per scene. Off by default — a model actually being scored on
+realism needs the real renderer, so this has to be opted into, never silently
+assumed.
+
+`keep_raw_frames = false` (default `true`) drops the raw `CAM_*` jpegs once a
+stream has encoded. They are kept by default because they are small next to
+the derived video streams and are what makes pruning `FC_TRAJ`/
+`COMBINED_OUTPUTS` safe at all (see "It has to be paid for" above) — set this
+only for a sweep where even that is too much disk.
+
 ## Reproduction status
 
 **Paddock's adapters reproduce the original nodes exactly.** Run head to head on

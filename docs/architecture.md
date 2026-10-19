@@ -99,6 +99,25 @@ Two details that look like off-by-ones and are not:
 environment runs tinygrad and has no torch at all — installing torch there just
 to unpickle an image would be absurd, and would change what is being evaluated.
 
+### A privileged channel on the same wire
+
+Two `Observation` fields exist only for a non-learned, privileged consumer —
+a training-data-collection expert that needs ground truth, not perception:
+`actors` (every other vehicle's current pose and velocity, world frame,
+current-step only, never a scripted future path) and `scene_name` (which
+recorded scene is being replayed). Only neuroNCAP's engine sends either, via
+the vendored patch `0003-expose-current-actor-state-to-model.patch`, and only
+a model that asks for them should read them — every ordinary model leaves both
+`None` and keeps inferring from pixels exactly as before. Adding a field here
+rather than a side channel means a privileged consumer still goes through the
+same `Policy.infer()` contract everything else does.
+
+A `model.yaml` can also declare `runtime.env_passthrough`, a tuple of env var
+names to forward into that model's subprocess beyond paddock's own
+`PASSTHROUGH` default (`runtime/env.py`) — for a model whose own environment
+needs a setting (e.g. a cache directory) that no other model does, without
+widening what every subprocess inherits.
+
 ### On the wire
 
 Paddock is one Python 3.11 process. It never imports a model. It launches the
