@@ -1006,21 +1006,15 @@ def smoke_manifest(
     return "\n".join(lines)
 
 
-def _wait_for_gpu(env: dict[str, str], need_gb: float, echo: Callable[[str], None]) -> bool:
-    """Block until the card the launch will use has `need_gb` free; False after 12 h."""
+#: How long one launch may wait for GPU memory before the smoke gives up on it.
+GPU_WAIT_S = 12 * 3600
+
+
+def _gpu_free_gb(env: dict[str, str]) -> float | None:
+    """Free memory on the card a launch with `env` would use; None where unknown."""
     from paddock.runtime import gpu
 
-    announced = False
-    deadline = time.time() + 12 * 3600
-    while (free := gpu.free_gb(env)) is not None and free < need_gb:
-        if time.time() > deadline:
-            echo(f"  gave up after 12 h waiting for {need_gb:.0f} GB of free GPU memory ({free:.1f} GB free)")
-            return False
-        if not announced:
-            echo(f"  waiting for {need_gb:.0f} GB of free GPU memory ({free:.1f} GB free now)")
-            announced = True
-        time.sleep(60)
-    return True
+    return gpu.free_gb(env)
 
 
 def _say(message: str) -> None:
@@ -1234,6 +1228,7 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
     pending = [s for s in steps if s.status in ("new", "resume")]
     done = {s.name for s in steps if s.status == "finished"}
     stop = ""
+    gpu_wait_since: float | None = None
 
     def finish(lane: _Lane) -> None:
         nonlocal stop
@@ -1297,13 +1292,28 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
             if blocked:
                 time.sleep(POLL_S)
                 continue
-            pending.pop(0)
             step_env = {**os.environ, **nxt.env}
             step_env["PADDOCK_BASE_PORT"] = str(idle.port)
-            if not _wait_for_gpu(step_env, smoke_need_gb(nxt.bench, models[args.model].vram_gb), echo):
-                stop = "no GPU memory after 12 h"
-                pending.insert(0, nxt)
+            # Polled, not blocked on: while this waits, the loop keeps reaping lanes,
+            # so a regression found meanwhile stops this launch. A blocking wait
+            # launched nuScenes after kitscenes had regressed, because the
+            # regression is what freed the card.
+            need = smoke_need_gb(nxt.bench, models[args.model].vram_gb)
+            free = _gpu_free_gb(step_env)
+            if free is not None and free < need:
+                if gpu_wait_since is None:
+                    gpu_wait_since = time.time()
+                    echo(
+                        f"  {nxt.name}: waiting for {need:.0f} GB of free GPU memory ({free:.1f} GB free now)"
+                    )
+                elif time.time() - gpu_wait_since > GPU_WAIT_S:
+                    stop = (
+                        f"no {need:.0f} GB of free GPU memory for {nxt.name} after {GPU_WAIT_S / 3600:.0f} h"
+                    )
+                time.sleep(POLL_S)
                 continue
+            gpu_wait_since = None
+            pending.pop(0)
             command = list(nxt.command)
             if command[:2] == ["taskset", "-c"]:
                 command[2] = idle.cores

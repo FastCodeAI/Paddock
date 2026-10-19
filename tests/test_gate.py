@@ -857,7 +857,7 @@ def _smoke_site(tmp_path: Path, monkeypatch, ade: dict[str, float], hold: float 
     monkeypatch.setattr(gate, "plan_smoke", plan)
     monkeypatch.setattr(gate, "RESULTS_ROOT", res)
     monkeypatch.setattr(gate, "POLL_S", 0.05)
-    monkeypatch.setattr(gate, "_wait_for_gpu", lambda *a: True)
+    monkeypatch.setattr(gate, "_gpu_free_gb", lambda env: None)
     monkeypatch.setattr(
         paddock.config.SiteConfig,
         "load",
@@ -938,6 +938,26 @@ def test_nothing_launches_beside_a_running_simulator_subset(tmp_path: Path, monk
     )
     spans = _intervals(stamps)
     assert spans["bench2drive"][0] >= spans["neuroncap"][1], f"overlapped: {spans}"
+
+
+def test_a_regression_found_while_waiting_for_gpu_memory_stops_that_launch(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Review #80 (9): the GPU wait blocked the loop, so nuScenes launched after kitscenes
+    had already regressed -- the regression is what freed the card."""
+    args, stamps = _smoke_site(tmp_path, monkeypatch, {"kitscenes": 3.0, "nuscenes": 2.0}, hold=0.5)
+    calls = {"n": 0}
+
+    def free_gb(env):  # room for the first launch; then none until kitscenes has ended
+        calls["n"] += 1
+        ended = stamps.exists() and "kitscenes end" in stamps.read_text()
+        return 100.0 if calls["n"] == 1 or ended else 0.0
+
+    monkeypatch.setattr(gate, "_gpu_free_gb", free_gb)
+    said: list[str] = []
+    assert gate.smoke(args(cores=["4-7", "8-11"]), said.append) == 1
+    assert set(_intervals(stamps)) == {"kitscenes"}
+    assert "waiting for" in "\n".join(said)
 
 
 def test_a_quick_tier_regression_keeps_the_closed_tier_from_starting(tmp_path: Path, monkeypatch) -> None:
