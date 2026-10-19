@@ -283,10 +283,14 @@ the check that the site's baselines are sound.
 - **The AlpaSim smoke runs its pinned scene set as the default set**: the
   derived config sets `[benchmarks.alpasim] scene_set = "public_2601_first10"`,
   so a site configured for `public_2601_30scenes` still runs the subset's 10.
-- **Drive-JEPA's AlpaSim numbers do not come from `paddock run`.** Its
-  `model.yaml` does not declare alpasim; they come from
-  `tools/models/drivejepa/alpasim_driver/`. The smoke skips AlpaSim for it
-  until the bridge can feed it the inputs that driver does.
+- **Drive-JEPA on AlpaSim runs through the bridge on its native driver's
+  settings.** Its `model.yaml` declares alpasim, so the smoke drives it. With
+  one rollout per scene, a single scene can move by up to about 0.55 between
+  two runs of the same code, from near-ties between two proposals after the
+  handover (71d7d03b, bae463d3 and 5f064b02 in
+  [the 30-scene comparison](models/drivejepa.md#through-paddock-on-alpasim)),
+  while the 30-scene mean moved by 0.013. For this model, compare means, or
+  flag only when several scenes move.
 - **A checkpoint override invalidates a run** (#82: `src/paddock/runner.py:169`
   `_env_override_reasons`), so a candidate run is never ranked as the released
   model. NAVSIM's `PADDOCK_NAVSIM_OVERRIDES` is recorded in `config.overrides`
