@@ -230,10 +230,12 @@ core changes folded into an adapter:
 
 The per-metric results behind this benchmark's column in the
 [README's support matrix](../../README.md#support-matrix), and the notes on its
-cells. Moved here from the README unchanged except for links; the symbols are
-the README's former footnote marks, and each note below starts with the mark it
-explains. Marks about a model rather than this benchmark (⊛ ⊕ ∗ ◊ ◇ ✦ ✧) are
-explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
+cells. Moved here from the README unchanged except for links, and for one
+sentence of the second △ note: it said constant velocity beats every learned
+model, which the table below contradicts, and it now names the two that beat it.
+The symbols are the README's former footnote marks, and each note below starts
+with the mark it explains. Marks about a model rather than this benchmark
+(⊛ ⊕ ∗ ◊ ◇ ✦ ✧) are explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
 
 ### Notes on the matrix cells
 
@@ -256,7 +258,7 @@ front-camera history while retaining the same 2 Hz scoring anchors; its complete
 GPU run is detailed below. VisionPilot's plan here is its acceleration/steering
 integrated to a path, as in NAVSIM, so unlike KITScenes it does yield an L2.
 Alpamayo's figure is inflated by the first keyframe of each scene, where it has
-no history to difference (9.5 m there vs 1.2 m elsewhere). See `docs/benchmarks/nuscenes.md`. A constant-velocity baseline scores 0.64 here (point-avg L2 1.29), **better than every learned model** — nuScenes ego motion is largely straight, so open-loop L2 rewards a straight line; read these numbers with that in mind.
+no history to difference (9.5 m there vs 1.2 m elsewhere). A constant-velocity baseline scores 0.64 here (point-avg L2 1.29), **better than every learned model except Qwen-Drive 1.0 (0.450) and the KITScenes re-ranker (0.587)** — nuScenes ego motion is largely straight, so open-loop L2 rewards a straight line; read these numbers with that in mind.
 
 ### nuScenes
 
