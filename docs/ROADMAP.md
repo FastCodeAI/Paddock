@@ -505,6 +505,10 @@ Open work, in the order it bites:
   note in `docs/benchmarks/kitscenes.md` and the config-run note do. The openpilot guide states the same gap for a height scale.
 - **Why it is open.** A record field naming where a setting came from would carry it, but any new key in
   `run_config()` changes the run id, here `20261008T004723-a369d1`, the README's OpenPilot KITScenes row.
+- **What #82 changes.** These knobs reach the node through a site env block or a pairing table, and a
+  site env override that is not declared tuning now makes a run `valid: false`. So a *re-made* configured
+  run is stored unranked, while the tracked `a369d1` record predates the rule and stays as recorded. Ranking
+  a configuration again means giving it its own model directory, which says in tracked files what it is.
 
 **`run.json` records no paddock revision: open (follow-up from #60's first review).**
 - **The gap.** A run records its model checkout's sha (`repo_sha`, `provenance.repo`) but not paddock's own.
