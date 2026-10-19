@@ -21,7 +21,7 @@ environment; paddock's own has none of them. `launcher.py` spawns it with
 `[benchmarks.alpasim] python`, the same way the Bench2Drive adapter runs its
 CARLA client under the CARLA interpreter.
 
-Three translation decisions worth knowing:
+The translation decisions worth knowing:
 
 **Frames are decoded here, and NOT rectified.** AlpaSim sends encoded bytes,
 so the bridge decodes them before handing pixels to the node. AlpaSim's own
@@ -53,6 +53,19 @@ launched with ``--camera-name``, ``--placeholder`` and ``--pinhole-intrinsics``
 is exactly what it was before those flags existed, so every other model's
 input is unchanged.
 
+**The plan is read the same way for every model.** The node's `/infer`
+answer carries the whole plan as ``plan`` -- every waypoint the model returned,
+with its yaw when the model predicts one (`Trajectory.to_wire`). A plan with
+yaw is driven with the model's headings. A plan of (x, y) only, or an answer
+from a node too old to send ``plan`` (then its six-point ``trajectory`` is
+used), gets headings derived from the path's direction (`derive_headings`).
+Which of the two each plan got is recorded per scene (``--plan-record``) and
+lands in the scene's sample record, so a result says how its car was steered.
+
+**Every scene starts with /reset.** A node that keeps a frame history (most
+of them) would otherwise pair the first frames of a scene with the last ones
+of the previous scene, so `on_session_start` resets it for every model.
+
 **A node failure fails the session loudly.** A bridge that returned a
 straight-ahead plan when the node timed out would score the model on the
 bridge's driving. The RPC raises instead, the runtime marks the rollout failed,
@@ -62,8 +75,11 @@ and the run records fewer samples than it expected.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
+import threading
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -102,6 +118,45 @@ DEFAULT_WAYPOINT_DT = 0.5
 #: a slot so the front camera lands where the model looks. Uniformly this exact
 #: triple is not a real frame, which is what made it a marker there.
 PLACEHOLDER_RGB = (17, 42, 99)
+
+#: A path segment shorter than this says nothing about direction (a stopped
+#: car's plan is a cluster of points within centimetres), so a derived heading
+#: keeps the previous one across it -- starting from the car's own heading, 0.
+MIN_HEADING_SEGMENT_M = 0.05
+
+
+def derive_headings(xy: np.ndarray) -> np.ndarray:
+    """Yaw per waypoint from the path's direction, rig frame, radians.
+
+    Waypoint i faces along the segment from waypoint i-1 to it, the first one
+    along the segment from the car (the origin). A segment shorter than
+    `MIN_HEADING_SEGMENT_M` keeps the previous heading. A straight path along x
+    therefore gets 0 everywhere -- exactly the "keep the current heading" an
+    (x, y) plan used to be sent with.
+    """
+    xy = np.asarray(xy, dtype=np.float64)[:, :2]
+    previous = np.zeros(2)
+    heading = 0.0
+    headings = np.zeros(len(xy), dtype=np.float64)
+    for index, point in enumerate(xy):
+        step = point - previous
+        if float(np.hypot(*step)) >= MIN_HEADING_SEGMENT_M:
+            heading = float(np.arctan2(step[1], step[0]))
+        headings[index] = heading
+        previous = point
+    return headings
+
+
+def yaw_rotations(headings: np.ndarray) -> np.ndarray:
+    """(T,) yaw -> (T, 3, 3) rotations about z."""
+    cos, sin = np.cos(headings), np.sin(headings)
+    rotations = np.zeros((len(headings), 3, 3), dtype=np.float64)
+    rotations[:, 0, 0] = cos
+    rotations[:, 0, 1] = -sin
+    rotations[:, 1, 0] = sin
+    rotations[:, 1, 1] = cos
+    rotations[:, 2, 2] = 1.0
+    return rotations
 
 
 def decode_frame(payload: bytes) -> np.ndarray:
@@ -250,6 +305,8 @@ class PolicyPlanner(Planner):
         placeholders: tuple[str, ...] = (),
         placeholder_source: str | None = None,
         pinhole_intrinsics: bool = False,
+        replan_log: str | Path | None = None,
+        plan_record: str | Path | None = None,
     ) -> None:
         """
         Args:
@@ -262,6 +319,10 @@ class PolicyPlanner(Planner):
             placeholder_source: The (renamed) camera placeholders copy.
             pinhole_intrinsics: Send each camera's pinhole K, refusing any
                 other lens (`calibration_from`).
+            replan_log: Append one JSON line per /infer here, with the
+                server's ``extras`` as it sent them.
+            plan_record: Keep a JSON count here of where each plan's headings
+                came from (`plan_from_answer`), rewritten after every plan.
         """
         self.policy_url = policy_url.rstrip("/")
         self.timeout_s = timeout_s
@@ -275,39 +336,113 @@ class PolicyPlanner(Planner):
         # One encoded placeholder per frame size: the same ~6 MB every tick.
         self._placeholder_cache: dict[tuple[int, int], str] = {}
         self._calls = 0
+        self._log_path = Path(replan_log) if replan_log else None
+        self._log_lock = threading.Lock()
+        self._record_path = Path(plan_record) if plan_record else None
+        self._headings = {"model": 0, "derived": 0}
+        self._plan_key = {"present": 0, "absent": 0}
+
+    # -- lifecycle ------------------------------------------------------------
+
+    def on_session_start(self, observations: Any) -> None:
+        # The node keeps the frames it was sent; the last scene's must not be
+        # paired with this one's. Every model, so no history leaks across scenes.
+        self._post("/reset", {})
 
     # -- the one method the scaffold calls ---------------------------------
 
     def plan(self, view: Any, time_now_us: int, time_query_us: int) -> Any:
         body, source_t_us = self.build_infer_body(view, time_now_us)
         answer = self.post_infer(body)
-        waypoints = np.asarray(answer["trajectory"], dtype=np.float64)
-        if waypoints.ndim != 2 or waypoints.shape[0] < 1:
-            raise ValueError(f"node returned an unusable trajectory of shape {waypoints.shape}")
-
-        positions = np.zeros((len(waypoints), 3), dtype=np.float64)
-        positions[:, :2] = waypoints[:, :2]
-
-        # `/infer` returns exactly {"trajectory", "aux_outputs"} -- only
-        # `/infer_sequence` carries a dt -- so `answer.get("dt")` was always the
-        # default and read as though the node had a say. The spacing is the
-        # policy's declared `waypoint_dt`, which is what the node planned on.
-        step_us = int(round(self._waypoint_dt * 1e6))
+        waypoints, step_us, headings = self.plan_from_answer(answer)
+        result = self.plan_result(waypoints, step_us, source_t_us)
         self._calls += 1
         if self._calls == 1 or self._calls % 50 == 0:
             logger.info(
-                "drive #%d: %d waypoints, step %d us, reach %.2f m",
+                "drive #%d: %d waypoints, step %d us, headings %s, reach %.2f m",
                 self._calls,
-                len(positions),
+                len(waypoints),
                 step_us,
-                float(np.linalg.norm(positions[-1, :2])),
+                headings,
+                float(np.linalg.norm(waypoints[-1, :2])),
             )
+        self.log_row(
+            {
+                "kind": "infer",
+                "call": self._calls,
+                "sim_time_us": int(time_now_us),
+                "query_us": int(time_query_us),
+                "model_t0_us": int(source_t_us),
+                "headings": headings,
+                "extras": answer.get("extras"),
+                "trajectory_rig": waypoints.tolist(),
+            }
+        )
+        return result
+
+    # -- the answer ---------------------------------------------------------
+
+    def plan_from_answer(self, answer: dict[str, Any]) -> tuple[np.ndarray, int, str]:
+        """(N, 3) (x, y, yaw) waypoints, their spacing in us, and where the yaw came from.
+
+        ``plan`` when the node sends it, else the six-point ``trajectory``. Yaw
+        is the model's when the plan has a third column (``"model"``), and
+        `derive_headings` otherwise (``"derived"``). The spacing is the plan's
+        own ``dt``; it must equal the policy's declared `waypoint_dt`, which is
+        what this bridge was launched with -- a mismatch is a mis-timed plan,
+        refused rather than driven.
+        """
+        plan = answer.get("plan")
+        if plan is not None:
+            rows = np.asarray(plan["waypoints"], dtype=np.float64)
+            dt = float(plan["dt"])
+            if abs(dt - self._waypoint_dt) > 1e-9:
+                raise ValueError(
+                    f"the node's plan is spaced {dt} s, but the bridge was launched for the policy's "
+                    f"waypoint_dt {self._waypoint_dt} s"
+                )
+        else:
+            # `/infer` from a node that predates `plan` carries no spacing; the
+            # policy's declared waypoint_dt is what it planned on.
+            rows = np.asarray(answer["trajectory"], dtype=np.float64)
+        if rows.ndim != 2 or rows.shape[0] < 1 or rows.shape[1] not in (2, 3):
+            raise ValueError(f"node returned an unusable plan of shape {rows.shape}")
+        source = "model" if rows.shape[1] == 3 else "derived"
+        headings = rows[:, 2] if source == "model" else derive_headings(rows)
+        waypoints = np.column_stack([rows[:, :2], headings])
+        self._count(source, plan is not None)
+        return waypoints, int(round(self._waypoint_dt * 1e6)), source
+
+    @staticmethod
+    def plan_result(waypoints: np.ndarray, step_us: int, model_t0_us: int) -> PlanResult:
+        """(x, y, yaw) per waypoint -> PlanResult, rotations included."""
+        positions = np.zeros((len(waypoints), 3), dtype=np.float64)
+        positions[:, :2] = waypoints[:, :2]
         return PlanResult(
             positions_in_rig=positions,
             step_us=step_us,
+            rotations_in_rig=yaw_rotations(waypoints[:, 2]),
             # Never None: see "the plan is anchored honestly" in the module docstring.
-            model_t0_us=source_t_us,
+            model_t0_us=model_t0_us,
         )
+
+    def _count(self, headings: str, plan_key: bool) -> None:
+        self._headings[headings] += 1
+        self._plan_key["present" if plan_key else "absent"] += 1
+        if self._record_path is None:
+            return
+        self._record_path.parent.mkdir(parents=True, exist_ok=True)
+        staged = self._record_path.with_suffix(".tmp")
+        staged.write_text(json.dumps({"headings": self._headings, "plan_key": self._plan_key}))
+        staged.replace(self._record_path)
+
+    def log_row(self, row: dict[str, Any]) -> None:
+        if self._log_path is None:
+            return
+        with self._log_lock:
+            self._log_path.parent.mkdir(parents=True, exist_ok=True)
+            with self._log_path.open("a") as handle:
+                handle.write(json.dumps(row) + "\n")
 
     # -- translation, split out so the tests can reach it ------------------
 
@@ -396,7 +531,6 @@ class PolicyPlanner(Planner):
 
     def post_infer(self, body: dict[str, Any]) -> dict[str, Any]:
         """POST /infer, raising on anything that is not a usable answer."""
-        import json
         import urllib.error
         import urllib.request
 
@@ -416,6 +550,22 @@ class PolicyPlanner(Planner):
             raise RuntimeError(f"policy node answered /infer without a trajectory: {sorted(answer)}")
         return answer
 
+    def _post(self, path: str, body: dict) -> Any:
+        """POST anything else the node serves (/reset), raising if it does not answer."""
+        import urllib.error
+        import urllib.request
+
+        request = urllib.request.Request(
+            f"{self.policy_url}{path}",
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout_s) as response:
+                return json.loads(response.read())
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"policy node at {self.policy_url} did not answer {path}: {exc}") from exc
+
 
 def serve(
     policy_url: str,
@@ -423,18 +573,33 @@ def serve(
     version_id: str,
     timeout_s: float,
     waypoint_dt: float = DEFAULT_WAYPOINT_DT,
+    rhythm: dict[str, Any] | None = None,
     **translation: Any,
 ) -> None:
     """Run the bridge until killed. Blocks.
 
-    *translation* is `PolicyPlanner`'s camera keywords, passed through.
+    *translation* is `PolicyPlanner`'s camera and log keywords, passed through. *rhythm*
+    selects `drivejepa_rhythm.DriveJepaPlanner` with its keywords; None is the
+    plain `PolicyPlanner`, asked for a plan at every tick.
     """
+    if rhythm is None:
+        planner: PolicyPlanner = PolicyPlanner(
+            policy_url, timeout_s=timeout_s, waypoint_dt=waypoint_dt, **translation
+        )
+        image_history = 8
+    else:
+        from paddock.adapters.benchmarks.alpasim import drivejepa_rhythm
+
+        planner = drivejepa_rhythm.DriveJepaPlanner(policy_url, timeout_s=timeout_s, **rhythm, **translation)
+        # Reaching 0.5 s back at 50 ms pushes needs the newest frame plus ten.
+        image_history = drivejepa_rhythm.IMAGE_HISTORY
     scaffold = DriverScaffold(
-        planner=PolicyPlanner(policy_url, timeout_s=timeout_s, waypoint_dt=waypoint_dt, **translation),
+        planner=planner,
         version_id=version_id,
         # The node needs pixels, so the scaffold must keep them. Off by default
         # because a blind planner should not pay to decode frames it ignores.
         keep_images=True,
+        image_history=image_history,
     )
     logger.info("bridge on :%d -> %s (version_id %s)", port, policy_url, version_id)
     # serve(host, port, driver) -- host first and the servicer last. 0.0.0.0
@@ -475,7 +640,42 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="send each camera's OpenCV pinhole K and refuse any other lens",
     )
+    parser.add_argument(
+        "--planner",
+        choices=("default", "drivejepa-0.1.4b"),
+        default="default",
+        help="default asks the node at every tick; drivejepa-0.1.4b runs Drive-JEPA's native driver rhythm",
+    )
+    parser.add_argument(
+        "--front-camera", default=None, help="drivejepa-0.1.4b: the AlpaSim id of the front camera"
+    )
+    parser.add_argument(
+        "--frame-interval-us", type=int, default=None, help="drivejepa-0.1.4b: the control step"
+    )
+    parser.add_argument("--force-gt-us", type=int, default=None, help="drivejepa-0.1.4b: the warm-up length")
+    parser.add_argument(
+        "--replan-log", default=None, help="append one JSON line per plan the node is asked for here"
+    )
+    parser.add_argument(
+        "--plan-record",
+        default=None,
+        help="keep a JSON count here of where each plan's headings came from (model or derived)",
+    )
     args = parser.parse_args(argv)
+    rhythm = None
+    if args.planner == "drivejepa-0.1.4b":
+        missing = [
+            f for f in ("front_camera", "frame_interval_us", "force_gt_us") if getattr(args, f) is None
+        ]
+        if missing:
+            parser.error(
+                f"--planner drivejepa-0.1.4b needs {', '.join('--' + m.replace('_', '-') for m in missing)}"
+            )
+        rhythm = {
+            "front_camera": args.front_camera,
+            "expected_frame_interval_us": args.frame_interval_us,
+            "force_gt_us": args.force_gt_us,
+        }
     names = {}
     for item in args.camera_name:
         source, sep, target = item.partition("=")
@@ -489,10 +689,13 @@ def main(argv: list[str] | None = None) -> int:
         args.version_id,
         args.infer_timeout_s,
         args.waypoint_dt,
+        rhythm=rhythm,
         camera_names=names,
         placeholders=tuple(args.placeholder),
         placeholder_source=args.placeholder_source,
         pinhole_intrinsics=args.pinhole_intrinsics,
+        replan_log=args.replan_log,
+        plan_record=args.plan_record,
     )
     return 0
 

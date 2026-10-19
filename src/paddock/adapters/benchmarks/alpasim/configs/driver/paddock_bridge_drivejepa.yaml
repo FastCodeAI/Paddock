@@ -3,7 +3,7 @@
 #
 # Drive-JEPA's native AlpaSim driver (adapter 0.1.4b) was scored on its own
 # simulation settings, not Alpamayo's, and its baseline numbers are only
-# comparable to a Paddock-route run made on the same ones. So this profile does
+# comparable to a run through paddock made on the same ones. So this profile does
 # not inherit alpamayo_configs the way paddock_bridge.yaml does; every value
 # below is the one that driver's runs resolved to (their wizard-config and
 # eval-config, eval md5 68cf4aaa...), and `harness.DRIVER_PROFILES` selects this

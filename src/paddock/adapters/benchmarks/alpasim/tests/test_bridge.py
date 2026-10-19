@@ -46,15 +46,29 @@ STUB_DT = 0.5
 STUB_TRAJECTORY = [[1.0 * i, 0.0] for i in range(1, 7)]
 
 
+def _wire(waypoints, **extras) -> dict:
+    """An /infer answer exactly as a paddock node builds it."""
+    from paddock.policy.protocol import Trajectory
+
+    return Trajectory(np.asarray(waypoints, dtype=np.float64), dt=STUB_DT, extras=extras or None).to_wire()
+
+
 class _StubNode(BaseHTTPRequestHandler):
-    """The smallest thing that answers /infer like a paddock policy node."""
+    """The smallest thing that answers /infer and /reset like a paddock policy node."""
 
     bodies: list[dict] = []
+    resets: int = 0
+    answer: dict = {}
 
     def do_POST(self) -> None:  # noqa: N802  (BaseHTTPRequestHandler's spelling)
         length = int(self.headers.get("Content-Length", 0))
-        _StubNode.bodies.append(json.loads(self.rfile.read(length)))
-        payload = json.dumps({"trajectory": STUB_TRAJECTORY, "dt": STUB_DT}).encode()
+        body = json.loads(self.rfile.read(length))
+        if self.path == "/reset":
+            _StubNode.resets += 1
+            payload = b"true"
+        else:
+            _StubNode.bodies.append(body)
+            payload = json.dumps(_StubNode.answer).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
@@ -67,7 +81,8 @@ class _StubNode(BaseHTTPRequestHandler):
 
 @pytest.fixture
 def stub_node():
-    _StubNode.bodies = []
+    _StubNode.bodies, _StubNode.resets = [], 0
+    _StubNode.answer = _wire(STUB_TRAJECTORY)
     server = HTTPServer(("127.0.0.1", 0), _StubNode)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -448,3 +463,116 @@ def test_a_lens_that_is_not_a_pinhole_is_refused_by_name(stub_node) -> None:
         server.stop(None)
     assert "ftheta_param" in str(caught.value.details())
     assert stub_node[1].bodies == []
+
+
+# ---------------------------------------------------------------------------
+# the plan: read the same way for every model
+# ---------------------------------------------------------------------------
+
+
+def _yaws(response) -> list[float]:
+    """Heading of each returned waypoint after the anchor, from its quaternion."""
+    return [2.0 * float(np.arctan2(p.pose.quat.z, p.pose.quat.w)) for p in response.trajectory.poses[1:]]
+
+
+def test_every_scene_starts_by_resetting_the_node(bridge) -> None:
+    """Any model with a frame history would otherwise carry the last scene into this one."""
+    stub, node = bridge
+    _open_session(stub, session="a")
+    _open_session(stub, session="b")
+    assert node.resets == 2
+
+
+def test_a_plan_with_yaw_is_driven_on_the_models_headings(bridge) -> None:
+    stub, node = bridge
+    rows = [[1.0 * i, 0.1 * i * i, 0.05 * i] for i in range(1, 9)]
+    node.answer = _wire(rows)
+    _open_session(stub)
+    _push_egomotion(stub)
+    response = _drive(stub)
+    assert len(response.trajectory.poses) == 1 + 8, "the whole plan, not the six-point trajectory"
+    np.testing.assert_allclose(_yaws(response), [r[2] for r in rows], atol=1e-6)
+
+
+def test_an_xy_plan_is_steered_along_its_own_path(bridge) -> None:
+    stub, node = bridge
+    rows = [[2.0 * i, 0.2 * i * i] for i in range(1, 9)]
+    node.answer = _wire(rows)
+    _open_session(stub)
+    _push_egomotion(stub)
+    yaws = _yaws(_drive(stub))
+    path = np.vstack([[0.0, 0.0], rows])
+    want = np.arctan2(np.diff(path[:, 1]), np.diff(path[:, 0]))
+    np.testing.assert_allclose(yaws, want, atol=1e-6)
+
+
+def test_a_node_without_a_plan_key_is_driven_on_its_trajectory(stub_node) -> None:
+    url, node = stub_node
+    planner = PolicyPlanner(url)
+    waypoints, step_us, headings = planner.plan_from_answer({"trajectory": STUB_TRAJECTORY})
+    assert headings == "derived" and step_us == 500_000 and len(waypoints) == 6
+    np.testing.assert_array_equal(waypoints[:, 2], 0.0)
+
+
+def test_a_plan_spaced_unlike_the_policys_waypoint_dt_is_refused(stub_node) -> None:
+    planner = PolicyPlanner(stub_node[0], waypoint_dt=0.5)
+    with pytest.raises(ValueError, match="spaced 0.1 s"):
+        planner.plan_from_answer(
+            {"trajectory": STUB_TRAJECTORY, "plan": {"waypoints": STUB_TRAJECTORY, "dt": 0.1}}
+        )
+
+
+def test_a_stopped_plan_keeps_its_heading_rather_than_spinning() -> None:
+    from paddock.adapters.benchmarks.alpasim.bridge import derive_headings
+
+    rows = np.array([[1.0, 1.0], [1.0 + 1e-3, 1.0], [1.0, 1.0 + 1e-3]])
+    np.testing.assert_allclose(derive_headings(rows), [np.pi / 4] * 3)
+    np.testing.assert_array_equal(derive_headings(np.zeros((6, 2))), 0.0)
+
+
+def test_the_constant_velocity_floor_gets_derived_headings_that_are_straight_ahead(stub_node) -> None:
+    """Its plan is (x, y) along x, so the derived yaw is 0: the same identity
+    rotation it was always sent, and its AlpaSim score should not move."""
+    from paddock.adapters.models.constant_velocity.policy import POLICY
+    from paddock.policy.protocol import CANBUS_VELOCITY, Command, Observation
+
+    canbus = np.zeros(18)
+    canbus[CANBUS_VELOCITY] = 7.0
+    obs = Observation(
+        images={},
+        ego2world=np.eye(4),
+        canbus=canbus,
+        timestamp_us=0,
+        command=Command.STRAIGHT,
+        camera2image={},
+        camera2ego={},
+    )
+    answer = POLICY().infer(obs).to_wire()
+    waypoints, _, headings = PolicyPlanner(stub_node[0]).plan_from_answer(answer)
+    assert headings == "derived" and len(waypoints) == 6
+    np.testing.assert_array_equal(waypoints[:, 2], 0.0)
+
+
+def test_an_xy_model_with_eight_waypoints_is_driven_on_all_eight(stub_node) -> None:
+    """Alpamayo 1.5's shape: eight (x, y) rows (alpamayo15/policy.py keeps [:, :2]).
+    The bridge used to drive the six of `trajectory`; it now drives the plan."""
+    rows = [[3.0 * i, 0.05 * i * i] for i in range(1, 9)]
+    waypoints, _, headings = PolicyPlanner(stub_node[0]).plan_from_answer(_wire(rows))
+    assert headings == "derived" and len(waypoints) == 8
+
+
+def test_where_the_headings_came_from_is_recorded_and_extras_are_logged(stub_node, tmp_path) -> None:
+    url, node = stub_node
+    planner = PolicyPlanner(url, replan_log=tmp_path / "log.jsonl", plan_record=tmp_path / "plans.json")
+    node.answer = _wire([[1.0 * i, 0.0, 0.0] for i in range(1, 9)], native={"pick": 3})
+    view = type("View", (), {})()
+    view.latest_pose = _pose(1_000_000)
+    view.image_cache, view.dynamic_states, view.latest_dynamic_state = {}, [], None
+    view.camera_specs = {}
+    planner.build_infer_body = lambda v, now: ({"images": {}}, 1_000_000)
+    planner.plan(view, 1_000_000, 1_000_000)
+    planner.plan_from_answer({"trajectory": STUB_TRAJECTORY})
+    record = json.loads((tmp_path / "plans.json").read_text())
+    assert record == {"headings": {"model": 1, "derived": 1}, "plan_key": {"present": 1, "absent": 1}}
+    (row,) = [json.loads(line) for line in (tmp_path / "log.jsonl").read_text().splitlines()]
+    assert row["extras"] == {"native": {"pick": 3}} and row["headings"] == "model"

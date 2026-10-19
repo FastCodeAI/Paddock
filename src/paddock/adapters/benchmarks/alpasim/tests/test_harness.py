@@ -223,6 +223,18 @@ def test_a_sample_says_which_half_of_the_thirty_its_scene_is_in(tmp_path: Path, 
     assert samples[0]["metrics"] == {"scene_score": 1.0}
 
 
+def test_a_sample_says_how_its_car_was_steered(tmp_path: Path, monkeypatch) -> None:
+    """The bridge's count of model vs derived headings lands in the record."""
+    bench = _benchmark(tmp_path, monkeypatch)
+    episode = next(bench.episodes())
+    (record,) = bench.episode_samples(episode, {"scene_score": 1.0}, tmp_path)
+    assert record["headings"] is None and record["bridge_plans"] is None, "no record, no claim"
+    for counts, want in (({"model": 0, "derived": 9}, "derived"), ({"model": 3, "derived": 1}, "mixed")):
+        (tmp_path / "bridge_plans.json").write_text(json.dumps({"headings": counts}))
+        (record,) = bench.episode_samples(episode, {"scene_score": 1.0}, tmp_path)
+        assert record["headings"] == want and record["bridge_plans"]["headings"] == counts
+
+
 def test_a_clip_is_the_same_sample_whichever_set_drove_it(tmp_path: Path, monkeypatch) -> None:
     """A paired comparison joins on sample_id: a 30-scene run must share its first ten
     with a 10-scene run, and fingerprint like the stored 30-scene rows."""
