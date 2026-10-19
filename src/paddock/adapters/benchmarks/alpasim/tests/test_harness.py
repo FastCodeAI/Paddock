@@ -207,6 +207,34 @@ def test_the_thirty_scene_set_is_the_one_the_stored_rows_cover() -> None:
         assert json.loads(row.read_text())["dataset"]["sequences_sha256"] == want, row
 
 
+def _samples(bench, tmp_path: Path) -> list[dict]:
+    return [
+        record
+        for episode in bench.episodes()
+        for record in bench.episode_samples(episode, {"scene_score": 1.0, "n_runs": 1.0}, tmp_path)
+    ]
+
+
+def test_a_sample_says_which_half_of_the_thirty_its_scene_is_in(tmp_path: Path, monkeypatch) -> None:
+    """Not the run's set name for every scene: the ten are pilot10 and the twenty ext20."""
+    samples = _samples(_benchmark(tmp_path, monkeypatch, scene_set="public_2601_30scenes"), tmp_path)
+    assert [s["split"] for s in samples] == ["pilot10"] * 10 + ["ext20"] * 20
+    assert {s["native_id"]["scene_set"] for s in samples} == {"public_2601_30scenes"}
+    assert samples[0]["metrics"] == {"scene_score": 1.0}
+
+
+def test_a_clip_is_the_same_sample_whichever_set_drove_it(tmp_path: Path, monkeypatch) -> None:
+    """A paired comparison joins on sample_id: a 30-scene run must share its first ten
+    with a 10-scene run, and fingerprint like the stored 30-scene rows."""
+    ten = _samples(_benchmark(tmp_path, monkeypatch), tmp_path)
+    thirty = _samples(_benchmark(tmp_path, monkeypatch, scene_set="public_2601_30scenes"), tmp_path)
+    assert [s["split"] for s in ten] == ["pilot10"] * 10
+    assert {s["sample_id"] for s in ten} < {s["sample_id"] for s in thirty}
+    assert ten[0]["sample_id"] == f"alpasim/{CLEAN}"
+    want = sequence_hash([f"alpasim/{scene}" for scene in load_scene_set("public_2601_30scenes")])
+    assert sequence_hash([s["sample_id"] for s in thirty]) == want
+
+
 def test_scene_order_is_the_pinned_order_not_the_filesystems(tmp_path: Path, monkeypatch) -> None:
     """`--limit 5` must select the same five at both sites."""
     bench = _benchmark(tmp_path, monkeypatch)

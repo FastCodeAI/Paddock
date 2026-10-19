@@ -50,6 +50,13 @@ from paddock.benchmark import ClosedLoopBenchmark, Episode
 SCENES_DIR = Path(__file__).parent / "scenes"
 DEFAULT_SCENE_SET = "public_2601_first10"
 
+#: The two halves of the 30-scene set, in lookup order: "pilot10" is the pinned
+#: ten (`public_2601_first10`), "ext20" the twenty drawn after them. Every
+#: sample records which half its scene is in, whichever set the run drove, so a
+#: 30-scene run can be read back as its ten and its twenty -- the names the
+#: stored `..._pilot10` and `..._30scenes` rows already use.
+SCENE_PARTS = (("pilot10", "public_2601_first10"), ("ext20", "public_2601_30scenes"))
+
 #: Per-scene wall-clock budget. Measured on the site: about 5 min per scene with
 #: a 10B driver at 4 cameras / 10 Hz, and about 50 s for the constant-velocity
 #: floor, whose cost is rendering rather than inference. Generous, because the
@@ -203,6 +210,14 @@ def load_scene_set(name: str = DEFAULT_SCENE_SET) -> list[str]:
         available = ", ".join(sorted(p.stem for p in SCENES_DIR.glob("*.yaml"))) or "none"
         raise FileNotFoundError(f"no scene set {name!r} in {SCENES_DIR} (have: {available})")
     return list(yaml.safe_load(path.read_text())["scenes"])
+
+
+def scene_part(scene: str) -> str | None:
+    """Which half of the 30-scene set *scene* is in (see `SCENE_PARTS`), or None."""
+    for part, scene_set in SCENE_PARTS:
+        if scene in load_scene_set(scene_set):
+            return part
+    return None
 
 
 def parse_summary(summary_json: Path, scene_id: str | None = None) -> dict[str, float]:
@@ -455,6 +470,33 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
         return [
             f"scenario(s) {', '.join(sorted(unknown))} are not this run's scene set "
             f"({self.scene_set!r}); available scene sets: {available}"
+        ]
+
+    def episode_samples(
+        self, episode: Episode, metrics: dict[str, float], out_dir: Path
+    ) -> list[dict[str, Any]]:
+        """One record per scene, identified by the clip alone.
+
+        The default id appends the scene set (`alpasim/<clip>/<set>`), so one
+        clip driven in the 10-scene set and again in the 30-scene set was two
+        different samples. A paired comparison joins two runs on `sample_id`,
+        and a 30-scene run then shared no sample with a 10-scene baseline. The
+        clip is the unit AlpaSim scores, and `alpasim/<clip>` is the id the
+        ingested rows already use (`results/ingest/alpasim.py`), so a run over
+        the 30 also fingerprints (`sequences_sha256`) like the stored 30-scene
+        rows.
+
+        Where the scene came from is kept as data, not in the id: `split` is
+        its half of the 30 (`pilot10` or `ext20`; the set's own name for a
+        scene in neither), and `native_id.scene_set` the set the run drove.
+        """
+        return [
+            {
+                "sample_id": f"{self.spec.name}/{episode.scene}",
+                "native_id": {"scene": episode.scene, "scene_set": episode.scenario},
+                "split": scene_part(episode.scene) or episode.scenario,
+                "metrics": {k: float(v) for k, v in metrics.items() if k not in ("n_runs",)},
+            }
         ]
 
     # -- resume ------------------------------------------------------------
