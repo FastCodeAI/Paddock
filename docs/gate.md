@@ -44,6 +44,13 @@ scenario pairs a fixed |t| >= 2 fires 18% of the time when nothing changed, and
 the 5% bar is 4.30. Paddock's env has no scipy, so the values come from a table
 in `tools/gate.py` (checked against scipy; `tests/test_gate.py` pins it).
 
+**Several pairs at once.** Each pair is tested at 5%, 2.5% per direction, so an
+unchanged model is called a REGRESSION on at least one pair more often than
+that: about 10% of the time on the quick tier's 4 pairs and about 16% on
+`--tier all`'s 7, if the pairs were independent. (They are not quite: both
+neuroNCAP subsets include 0103.) A FAIL on one pair, alone, is a reason to look
+at that pair's numbers, not proof the candidate is worse.
+
 ## Reading a verdict
 
 ```
@@ -75,8 +82,9 @@ Read the notes; they are where the gate says what it cannot check:
 
 - **model_env.** Both runs' `config.model_env` is printed. The runner records a
   `[models.X] env` override such as `DRIVEJEPA_CHECKPOINT` (paths as
-  `<site path:digest>`) but does not make a run invalid on it, so a "candidate"
-  launched without its override is just the baseline again. The gate says so
+  `<site path:digest>`) and, since #82, marks the run `valid: false` unless the
+  key is tuning-only. A "candidate" launched without its override is just the
+  baseline again. The gate says so
   when the two are identical, and when one side sets a key the other does not.
   Identical is legitimate for a code change on the same weights.
 - **invalid.** A smoke run of a subset is `valid: false`; the note is expected
@@ -266,7 +274,7 @@ the check that the site's baselines are sound.
   EPDMS depends on which others were scored.
 - **nuScenes smoke is a prefix, not a stratified draw.** Open-loop benchmarks
   take no scene filter: `paddock run` hands `--scene` to closed-loop harnesses
-  only (`src/paddock/runner.py:461` calls `_run_open_loop` with `limit` and no
+  only (`src/paddock/runner.py:591` calls `_run_open_loop` with `limit` and no
   scenes), and `NuScenesBenchmark.samples`
   (`src/paddock/adapters/benchmarks/nuscenes/harness.py:223`) has no scene
   argument. `--limit` takes the first N samples in `val_scenes.json` order, so
@@ -279,12 +287,15 @@ the check that the site's baselines are sound.
   `model.yaml` does not declare alpasim; they come from
   `tools/models/drivejepa/alpasim_driver/`. The smoke skips AlpaSim for it
   until the bridge can feed it the inputs that driver does.
-- **A checkpoint override does not invalidate a run on its own** until #82
-  (`src/paddock/runner.py:91` records `model_env`, `_validity` does not read
-  it). NAVSIM's `PADDOCK_NAVSIM_OVERRIDES` is recorded in `config.overrides` but
-  is not one of its `invalid_reasons`
-  (`src/paddock/adapters/benchmarks/navsim/harness.py:710`). Every smoke run is
-  invalid through its subset regardless.
+- **A checkpoint override invalidates a run** (#82: `src/paddock/runner.py:169`
+  `_env_override_reasons`), so a candidate run is never ranked as the released
+  model. NAVSIM's `PADDOCK_NAVSIM_OVERRIDES` is recorded in `config.overrides`
+  but is not one of its `invalid_reasons`
+  (`src/paddock/adapters/benchmarks/navsim/harness.py:741`); the NAVSIM smoke is
+  invalid through `--limit` regardless.
+- **AlpaSim is not CPU-capped.** Its simulator runs in `docker compose`
+  containers, which inherit nothing from the lane's `taskset`/`nice`. `--cores`
+  lists that overlap are refused, but the containers' CPU is outside them.
 - **The neuroNCAP smoke starts its own renderers** on `--renderer-port`, one
   scene at a time. Two smokes at once need different `--renderer-port` (and
   `--base-port`) values; if the port is taken, neuroNCAP's preflight says so and

@@ -41,19 +41,24 @@ the two-sided 5% critical value of Student's t on (units - 1) degrees of freedom
     TOO FEW UNITS  fewer than two independent units: no standard error, no verdict
     NO RECORDS     either run has no per-sample records (every ingested Bench2Drive and
                    AlpaSim run today); its unpaired means are shown and nothing is claimed
+    NO UNIT        some paired samples have no independent unit (NAVSIM without plan dumps)
+    INCOMPLETE     the candidate lost samples to a failure; the rest are shown, no verdict
+    CONFIG DIFFERS the runs' configs differ beyond model_env and the subset keys
 Why not a fixed |t| >= 2: a clustered standard error from G units has about G - 1
 degrees of freedom, and the smoke tier has few units. On 3 neuroNCAP scenario pairs
 (2 df) |t| >= 2 happens 18% of the time when nothing changed; the 5% bar there is 4.30.
 At 20 pairs it is 2.09, and it falls to 1.96 as the units grow.
 A `threshold`, when given, adds whether the point estimate drops by more than it.
 
-Overall (`check`): FAIL if any pair is a REGRESSION; SHIP if none is and at least one
-closed-loop pair is a GAIN; HOLD otherwise. The exit status is 1 on FAIL, else 0.
+Overall (`check`): FAIL if any pair is a REGRESSION; SHIP only if every pair is decided
+(GAIN, NEUTRAL or REGRESSION) and at least one closed-loop pair is a GAIN; HOLD
+otherwise. The exit status is 1 on FAIL, else 0.
 
 Model identity. A site `[models.X] env` override such as `DRIVEJEPA_CHECKPOINT` is
-recorded in run.json as `config.model_env` (absolute paths as `<site path:digest>`), but
-it does not make a run invalid, so nothing upstream stops a "candidate" that is the same
-checkpoint as its baseline. `compare` prints both runs' model_env and says when they match.
+recorded in run.json as `config.model_env` (absolute paths as `<site path:digest>`) and
+makes the run `valid: false` unless the key is tuning-only (#82). Nothing stops a
+"candidate" that is the same checkpoint as its baseline, so `compare` prints both runs'
+model_env and says when they match.
 """
 
 from __future__ import annotations
@@ -372,9 +377,8 @@ def _verdict(t: float | None, crit: float) -> str:
 def identity_notes(baseline: Run, candidate: Run) -> list[str]:
     """What the two runs' recorded `model_env` says about which weights each ran.
 
-    The runner records a site env override but does not invalidate a run on it, so a
-    candidate launched without its override, or with the baseline's, is scored as if
-    it were a new model. These are notes: whether it is a mistake is the reader's call
+    A candidate launched without its override, or with the baseline's, is scored as if
+    it were a new model; the runner cannot know which weights were meant. These are notes: whether it is a mistake is the reader's call
     (a code change scored on the same weights is a legitimate candidate).
     """
     if baseline.model != candidate.model:
@@ -507,7 +511,10 @@ def compare(
         result.t_crit = t_crit(result.df)
         if result.se > 0:
             result.t = result.diff / result.se
-        elif result.diff != 0:
+        elif abs(result.diff) > 1e-9 * max(1.0, abs(result.baseline_mean or 0.0)):
+            # Every unit moved by exactly the same amount: a real, deterministic
+            # shift. A difference at float-noise size is not one (a constant 1e-9
+            # drop on 6 pairs read as REGRESSION, t -inf).
             result.t = math.copysign(math.inf, result.diff)
         result.verdict = _verdict(result.t, result.t_crit)
     else:
@@ -1072,6 +1079,26 @@ def _say(message: str) -> None:
     print(message, flush=True)
 
 
+def _cpus(spec: str) -> set[int]:
+    """A taskset CPU list ("4-7,9") as the CPUs it names."""
+    cpus: set[int] = set()
+    for part in spec.split(","):
+        lo, _, hi = part.strip().partition("-")
+        cpus.update(range(int(lo), int(hi or lo) + 1))
+    return cpus
+
+
+def _overlapping_cores(lists: list[str]) -> list[int]:
+    """CPUs named by more than one lane's --cores."""
+    seen: set[int] = set()
+    clash: set[int] = set()
+    for spec in lists:
+        cpus = _cpus(spec)
+        clash |= seen & cpus
+        seen |= cpus
+    return sorted(clash)
+
+
 def stage_env(env: dict[str, str], stage_dir: Path, echo: Callable[[str], None] = _say) -> dict[str, str]:
     """`env`, with every value that names a file pointed at a copy under `stage_dir`.
 
@@ -1218,6 +1245,17 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
     names = [n for n in tier_of if not wanted or n in wanted or load_subset(n).bench in wanted]
     declared = list(models[args.model].benchmarks)
     cores = args.cores or ["4-7"]
+    if clash := _overlapping_cores(cores):
+        echo(f"--cores lists share CPUs {clash}: lanes would compete for them")
+        return 2
+    if any(
+        args.base_port + 100 * i <= args.renderer_port < args.base_port + 100 * (i + 1)
+        for i in range(len(cores))
+    ):
+        echo(
+            f"--renderer-port {args.renderer_port} falls in a lane's port range (from --base-port {args.base_port})"
+        )
+        return 2
     common: dict[str, Any] = {
         "runs_root": cfg.runs,
         "results_root": RESULTS_ROOT,
@@ -1279,7 +1317,10 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
     config_path.write_text(smoke_config(cfg.source, args.model, run_env, args.renderer_port))
 
     def save() -> None:
-        state_path.write_text(json.dumps(state, indent=2) + "\n")
+        # Written whole, then renamed: a gate killed mid-write leaves the old file.
+        part = state_path.with_name(state_path.name + ".part")
+        part.write_text(json.dumps(state, indent=2) + "\n")
+        os.replace(part, state_path)
 
     lanes = [_Lane(c, args.base_port + 100 * i) for i, c in enumerate(cores)]
     pending = [s for s in steps if s.status in ("new", "resume")]
@@ -1350,6 +1391,10 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
                 time.sleep(POLL_S)
                 continue
             step_env = {**os.environ, **nxt.env}
+            # The card the node will use: the site may pin it in the model's env.
+            site_model = cfg.models.get(args.model)
+            if site_model is not None and (cvd := site_model.env.get("CUDA_VISIBLE_DEVICES")):
+                step_env["CUDA_VISIBLE_DEVICES"] = cvd
             step_env["PADDOCK_BASE_PORT"] = str(idle.port)
             # Polled, not blocked on: while this waits, the loop keeps reaping lanes,
             # so a regression found meanwhile stops this launch. A blocking wait

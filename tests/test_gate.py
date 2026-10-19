@@ -222,6 +222,47 @@ def test_navsim_without_plan_dumps_gets_no_verdict_over_tokens(tmp_path: Path) -
     assert gate.compare(a, b, unit_of=lambda s: s["native_id"]["token"].split("_")[0]).verdict == "NEUTRAL"
 
 
+def test_zero_spread_is_a_verdict_only_for_a_real_shift(tmp_path: Path) -> None:
+    """Review #80 (13): a constant 1e-9 drop on 6 pairs read as REGRESSION, t -inf."""
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    base = [_ncap(f"{i:04d}", "frontal", 0, 3.0) for i in range(6)]
+    _write_run(res, runs, "neuroncap", "m", "a", base, "ncap_score")
+    _write_run(
+        res,
+        runs,
+        "neuroncap",
+        "m",
+        "noise",
+        [_ncap(f"{i:04d}", "frontal", 0, 3.0 - 1e-9) for i in range(6)],
+        "ncap_score",
+    )
+    _write_run(
+        res,
+        runs,
+        "neuroncap",
+        "m",
+        "shift",
+        [_ncap(f"{i:04d}", "frontal", 0, 2.5) for i in range(6)],
+        "ncap_score",
+    )
+    a = gate.load_run("neuroncap", "m:a", runs, res)
+    assert gate.compare(a, gate.load_run("neuroncap", "m:noise", runs, res)).verdict == "NEUTRAL"
+    shift = gate.compare(a, gate.load_run("neuroncap", "m:shift", runs, res))
+    assert shift.verdict == "REGRESSION" and shift.t == float("-inf")
+
+
+def test_lanes_must_not_share_cpus_or_the_renderer_port(tmp_path: Path, monkeypatch) -> None:
+    """Review #80 (16, 17): overlapping --cores, or a lane's ports reaching the renderer's."""
+    assert gate._overlapping_cores(["4-7", "6-9"]) == [6, 7]
+    assert gate._overlapping_cores(["4-7", "8-11", "12,13"]) == []
+    args, stamps = _smoke_site(tmp_path, monkeypatch, {"kitscenes": 2.0, "nuscenes": 2.0})
+    said: list[str] = []
+    assert gate.smoke(args(cores=["4-7", "6-9"]), said.append) == 2
+    assert gate.smoke(args(cores=["4-7", "8-11"], base_port=8600), said.append) == 2
+    assert "share CPUs [6, 7]" in said[0] and "renderer-port 8700" in said[1]
+    assert not stamps.exists()
+
+
 def test_a_candidate_that_lost_samples_gets_no_verdict(tmp_path: Path) -> None:
     """Review #80 (1): the episodes a candidate crashes on vanish from the pairing.
 
@@ -944,7 +985,7 @@ def _smoke_site(tmp_path: Path, monkeypatch, ade: dict[str, float], hold: float 
     monkeypatch.setattr(
         paddock.config.SiteConfig,
         "load",
-        classmethod(lambda cls, *a: SimpleNamespace(runs=runs, source=site)),
+        classmethod(lambda cls, *a: SimpleNamespace(runs=runs, source=site, models={})),
     )
     monkeypatch.setattr(
         paddock.registry,
