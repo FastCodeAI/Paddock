@@ -1,10 +1,22 @@
 # alpamayo15_overfit: a wiring smoke test, not a claim about generalization
 
-`alpamayo15` with its diffusion head overfit to a handful of cached scene-0053
-steps. This exists to prove the SFT training wiring end to end (loss,
-optimizer, frozen-VLM isolation, cached-KV reuse) before scaling to a real
-dataset -- it is not evidence the diffusion head can be usefully fine-tuned,
-only that the pipeline that will fine-tune it is plumbed correctly.
+**Status: blocked, not for merge.** This adapter loads a real checkpoint
+(`2scene-overlay.pt`, trained on scenes 0053+0058, ~2,300 steps across 3
+epochs -- the scene-0053-only run that preceded it was superseded and is not
+the checkpoint of record), but that checkpoint has no `checkpoint.json`
+provenance and its own 20-scenario-pair evaluation is net negative (4 better,
+6 worse, 10 unchanged, with two scenes regressing to a hard 0.00 -- consistent
+with overfitting to two scenes). Do not register this as a scored model until
+gallops produces a checkpoint through its real `checkpoint.json`/`{weights}`
+contract; until then this stays evidence that the SFT wiring works, not a
+candidate for the leaderboard.
+
+`alpamayo15` with its diffusion head overfit to cached rollouts from two
+scenes (0053, 0058). This exists to prove the SFT training wiring end to end
+(loss, optimizer, frozen-VLM isolation, cached-KV reuse) before scaling to a
+real dataset -- it is not evidence the diffusion head can be usefully
+fine-tuned, only that the pipeline that will fine-tune it is plumbed
+correctly.
 
 Adapter: `src/paddock/adapters/models/alpamayo15_overfit/`. It subclasses
 `alpamayo15`'s own `AlpamayoPolicy` and replaces three submodules
@@ -62,9 +74,10 @@ a real (best-effort) check against `policy.infer()` on an identical
 
 ## Limits
 
-- **One scene, a handful of steps.** This is a training-wiring check, not a
-  result. Nothing here should be compared against `alpamayo15`'s own scored
-  rows.
+- **Two scenes, ~2,300 steps.** This is a training-wiring check, not a
+  result -- its own 20-scenario-pair evaluation is net negative (4 better, 6
+  worse, 10 unchanged, two scenes regressed to a hard 0.00). Nothing here
+  should be compared against `alpamayo15`'s own scored rows.
 - **No checkpoint contract.** See "Getting the overlay checkpoint" above --
   there is no record of what data or code produced a given `.pt` file beyond
   what the training script's own log says.
