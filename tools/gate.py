@@ -797,9 +797,23 @@ def smoke_args(subset: Subset) -> tuple[list[str], dict[str, str]]:
 
 
 def _env_label(model: str, env: dict[str, str]) -> str:
+    """The state directory's name: the model, and a digest of what `--env` names.
+
+    A value that is a file contributes what the file is (its resolved path, size and
+    modification time), not just the string: a new checkpoint written to the same
+    path found every step "finished" and reported the old one's verdict.
+    """
     if not env:
         return f"{model}-released"
-    return f"{model}-{hashlib.sha256(json.dumps(env, sort_keys=True).encode()).hexdigest()[:8]}"
+    ident: dict[str, Any] = {}
+    for key, value in sorted(env.items()):
+        path = Path(value)
+        if path.is_file():
+            st = path.resolve().stat()
+            ident[key] = [value, str(path.resolve()), st.st_size, st.st_mtime_ns]
+        else:
+            ident[key] = value
+    return f"{model}-{hashlib.sha256(json.dumps(ident, sort_keys=True).encode()).hexdigest()[:8]}"
 
 
 _BARE_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -856,7 +870,14 @@ def smoke_config(site_config: Path, model: str, env: dict[str, str], renderer_po
     beside one, so the smoke would stop at neuroNCAP every time.
     """
     raw = tomllib.loads(site_config.read_text())
-    raw.setdefault("models", {}).setdefault(model, {}).setdefault("env", {}).update(env)
+    own = raw.setdefault("models", {}).setdefault(model, {})
+    own.setdefault("env", {}).update(env)
+    # A `[models.<m>.benchmarks.<b>.env]` table is applied over the model's env
+    # (`SiteConfig.paired`), so on that benchmark it would replace the candidate's
+    # values with the site's: they go into every such table too.
+    for pairing in (own.get("benchmarks") or {}).values():
+        if isinstance(pairing, dict) and isinstance(pairing.get("env"), dict):
+            pairing["env"].update(env)
     ncap = raw.setdefault("benchmarks", {}).setdefault("neuroncap", {})
     host = str(ncap.get("renderer_url") or "http://127.0.0.1:8000").rsplit(":", 1)[0]
     ncap["renderer_url"] = f"{host}:{renderer_port}"
@@ -1050,30 +1071,38 @@ def stage_env(env: dict[str, str], stage_dir: Path, echo: Callable[[str], None] 
 
     A candidate's checkpoint usually sits on a network share, and every node start
     reads it; on days the share was slow that read alone outlasted the node's
-    startup timeout. Each source gets its own directory, keyed by its path, and a
-    copy is refreshed only when the source is newer or a different size. Files
-    under 1 MB beside it come along (gallops writes `checkpoint.json` there), so
-    the copy keeps its provenance; big ones, such as a training state, do not.
+    startup timeout. Each source gets its own directory, keyed by its resolved
+    path. A copy is reused only while its size and modification time equal the
+    source's (`copy2` keeps the time): an older step restored over the same path
+    with `cp -p` was otherwise skipped as "not newer". Symlinks are resolved first,
+    so the files under 1 MB that come along (gallops writes `checkpoint.json`) are
+    the checkpoint's own neighbours, not the link's. `<KEY>_SOURCE` records the
+    path that was named, so the run's `model_env` still says which file it measured.
     """
     staged = {}
     for key, value in env.items():
-        src = Path(value)
-        if not src.is_file():
+        named = Path(value)
+        if not named.is_file():
             staged[key] = value
             continue
-        dest_dir = stage_dir / hashlib.sha256(str(src.resolve()).encode()).hexdigest()[:12]
+        src = named.resolve()
+        dest_dir = stage_dir / hashlib.sha256(str(src).encode()).hexdigest()[:12]
         dest_dir.mkdir(parents=True, exist_ok=True)
         small = [f for f in src.parent.iterdir() if f.is_file() and f != src and f.stat().st_size < 1 << 20]
         for f in [src, *small]:
             dest = dest_dir / f.name
             st = f.stat()
-            if dest.is_file() and dest.stat().st_size == st.st_size and dest.stat().st_mtime >= st.st_mtime:
+            if dest.is_file() and (dest.stat().st_size, dest.stat().st_mtime_ns) == (
+                st.st_size,
+                st.st_mtime_ns,
+            ):
                 continue
             echo(f"  staging {f} -> {dest}")
             part = dest.with_name(dest.name + ".part")
             shutil.copy2(f, part)
             os.replace(part, dest)
         staged[key] = str(dest_dir / src.name)
+        staged[f"{key}_SOURCE"] = value
     return staged
 
 

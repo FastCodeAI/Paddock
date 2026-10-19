@@ -522,9 +522,66 @@ def test_staging_copies_the_file_and_its_small_neighbours_once(tmp_path: Path) -
     assert len(said) == 2
     said.clear()
     assert gate.stage_env({"DRIVEJEPA_CHECKPOINT": str(share / "agent.ckpt")}, local, said.append) == {
-        "DRIVEJEPA_CHECKPOINT": str(copy)
+        "DRIVEJEPA_CHECKPOINT": str(copy),
+        "DRIVEJEPA_CHECKPOINT_SOURCE": str(share / "agent.ckpt"),
     }
     assert said == [], "an unchanged source is not copied again"
+
+
+def test_staging_recopies_a_source_restored_with_an_older_time(tmp_path: Path) -> None:
+    """Review #80 (11): same size, not newer -- the previous copy was run."""
+    import os
+
+    ckpt, local = tmp_path / "agent.ckpt", tmp_path / "local"
+    ckpt.write_bytes(b"A")
+    os.utime(ckpt, (2_000_000_000, 2_000_000_000))
+    gate.stage_env({"K": str(ckpt)}, local, lambda _m: None)
+    ckpt.write_bytes(b"B")
+    os.utime(ckpt, (1_900_000_000, 1_900_000_000))  # an older step, restored with cp -p
+    env = gate.stage_env({"K": str(ckpt)}, local, lambda _m: None)
+    assert Path(env["K"]).read_bytes() == b"B"
+    assert env["K_SOURCE"] == str(ckpt), "the record keeps naming the file that was asked for"
+
+
+def test_staging_a_symlink_takes_the_targets_neighbours(tmp_path: Path) -> None:
+    real = tmp_path / "run" / "step_9"
+    real.mkdir(parents=True)
+    (real / "agent.ckpt").write_bytes(b"W")
+    (real / "checkpoint.json").write_text("{}")
+    links = tmp_path / "links"
+    links.mkdir()
+    (links / "latest.ckpt").symlink_to(real / "agent.ckpt")
+    (links / "other_notes.txt").write_text("x")
+    env = gate.stage_env({"K": str(links / "latest.ckpt")}, tmp_path / "local", lambda _m: None)
+    assert sorted(p.name for p in Path(env["K"]).parent.iterdir()) == ["agent.ckpt", "checkpoint.json"]
+
+
+def test_a_new_checkpoint_at_the_same_path_gets_a_new_state(tmp_path: Path) -> None:
+    """The label digested the --env string only, so a re-run reported the old checkpoint's verdict."""
+    import os
+
+    ckpt = tmp_path / "agent.ckpt"
+    ckpt.write_bytes(b"A")
+    first = gate._env_label("m", {"K": str(ckpt)})
+    ckpt.write_bytes(b"BB")
+    os.utime(ckpt, (2_100_000_000, 2_100_000_000))
+    assert gate._env_label("m", {"K": str(ckpt)}) != first
+    assert gate._env_label("m", {"MODE": "on"}) == gate._env_label("m", {"MODE": "on"})
+
+
+def test_the_candidates_env_wins_over_a_pairing_table(tmp_path: Path) -> None:
+    """A [models.X.benchmarks.Y.env] table is applied over [models.X.env]; it must not undo --env."""
+    import tomllib
+
+    site = tmp_path / "paddock.toml"
+    site.write_text(
+        'site = "t"\n[models.drivejepa.env]\nDRIVEJEPA_CHECKPOINT = "released.ckpt"\n'
+        '[models.drivejepa.benchmarks.kitscenes.env]\nDRIVEJEPA_CHECKPOINT = "kit.ckpt"\nOTHER = "1"\n'
+    )
+    derived = tomllib.loads(gate.smoke_config(site, "drivejepa", {"DRIVEJEPA_CHECKPOINT": "cand.ckpt"}, 8700))
+    assert derived["models"]["drivejepa"]["env"]["DRIVEJEPA_CHECKPOINT"] == "cand.ckpt"
+    kit = derived["models"]["drivejepa"]["benchmarks"]["kitscenes"]["env"]
+    assert kit == {"DRIVEJEPA_CHECKPOINT": "cand.ckpt", "OTHER": "1"}
 
 
 def test_smoke_subset_sizes_are_the_ones_the_gate_was_designed_around() -> None:
