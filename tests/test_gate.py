@@ -162,6 +162,39 @@ def test_a_gain_beside_an_uncompared_pair_is_not_ship(undecided: str) -> None:
     assert gate.overall([gain], unfinished=["bench2drive"]) == "HOLD"
 
 
+def test_runs_measured_differently_get_no_verdict(tmp_path: Path) -> None:
+    """Review #80 (3): the released model 'regressed' against itself on KITScenes.
+
+    The tracked full run used ground-truth commands and no ground offset; the smoke
+    run, neither. Same weights, same samples, t -4.76.
+    """
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    base = [_kit(f"s{i}", 0, 2.0) for i in range(4)]
+    worse = [_kit(f"s{i}", 0, 3.0 + 0.01 * i) for i in range(4)]
+    _write_run(res, runs, "kitscenes", "m", "a", base, "ade", config={"command_source": "gt"})
+    _write_run(res, runs, "kitscenes", "m", "b", worse, "ade", config={"ground_offset_m": 2.2})
+    a, b = gate.load_run("kitscenes", "m:a", runs, res), gate.load_run("kitscenes", "m:b", runs, res)
+    r = gate.compare(a, b)
+    assert r.verdict == "CONFIG DIFFERS"
+    assert any("command_source" in n and "ground_offset_m" in n for n in r.notes)
+    assert gate.overall([r]) == "HOLD"
+    assert gate.compare(a, b, allow_config=["command_source", "ground_offset_m"]).verdict == "REGRESSION"
+
+
+def test_subset_keys_and_model_env_do_not_count_as_a_different_measurement() -> None:
+    """A smoke against a full run differs in what ran, not in how a sample was measured."""
+    full = {"cameras": ["CAM_FRONT"], "runs": 10, "scene": "0099,0103", "limit": None, "model_env": {}}
+    smoke = {"cameras": ["CAM_FRONT"], "runs": 3, "scene": "0103", "limit": 1011, "model_env": {"CKPT": "x"}}
+    assert gate.config_differences(full, smoke) == []
+    tokens = {"overrides": ["train_test_split.scene_filter.tokens=['a','b']"]}
+    assert gate.config_differences({}, tokens) == []
+    other = {"overrides": ["agent.config.horizon=4", "train_test_split.scene_filter.tokens=['a']"]}
+    assert gate.config_differences(tokens, other) == ["overrides"]
+    assert gate.config_differences({"cameras": ["CAM_FRONT"]}, {}) == ["cameras"], (
+        "a key only one run recorded"
+    )
+
+
 def test_a_candidate_that_lost_samples_gets_no_verdict(tmp_path: Path) -> None:
     """Review #80 (1): the episodes a candidate crashes on vanish from the pairing.
 

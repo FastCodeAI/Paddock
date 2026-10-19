@@ -302,6 +302,46 @@ def _mean(xs: list[float]) -> float | None:
     return sum(xs) / len(xs) if xs else None
 
 
+#: `config` keys that say which samples ran, or how the run was driven, never how a
+#: sample was measured. Pairing on shared sample ids already copes with a subset.
+SUBSET_KEYS = frozenset(
+    {
+        "limit",
+        "scene",
+        "runs",
+        "routes_subset",
+        "scene_set",
+        "merged_from",
+        "allow_partial",
+        "allow_slow",
+        "chunk_order",
+    }
+)
+#: NAVSIM's subset rides in `overrides` as this hydra key; other overrides do change
+#: the measurement and still count.
+TOKEN_FILTER = "train_test_split.scene_filter.tokens="
+
+
+def config_differences(baseline: dict[str, Any], candidate: dict[str, Any], allowed: Any = ()) -> list[str]:
+    """The `config` keys on which two runs were measured differently.
+
+    `model_env` is what a candidate is meant to change and is reported on its
+    own; subset keys are handled by the pairing; `allowed` names any other key
+    the candidate is meant to change. A key recorded by one run and not the other
+    counts: an older run that never wrote it may have run with something else.
+    """
+    skip = SUBSET_KEYS | {"model_env"} | set(allowed)
+
+    def norm(cfg: dict[str, Any]) -> dict[str, Any]:
+        out = {k: v for k, v in cfg.items() if k not in skip}
+        if isinstance(out.get("overrides"), list):
+            out["overrides"] = [o for o in out["overrides"] if not str(o).startswith(TOKEN_FILTER)] or None
+        return {k: v for k, v in out.items() if v is not None}
+
+    a, b = norm(baseline), norm(candidate)
+    return sorted(k for k in a.keys() | b.keys() if a.get(k) != b.get(k))
+
+
 def lost_samples(run: Run) -> int:
     """How many samples the run lost to a failure, per its own record.
 
@@ -364,6 +404,7 @@ def compare(
     metric: str | None = None,
     threshold: float | None = None,
     unit_of: Callable[[Sample], str | None] | None = None,
+    allow_config: Any = (),
 ) -> PairResult:
     """Score one candidate run against one baseline run on the same benchmark."""
     if baseline.bench != candidate.bench:
@@ -480,6 +521,21 @@ def compare(
         )
     if lost := lost_samples(baseline):
         result.notes.append(f"baseline lost {lost} sample(s) to a failure; those are unpaired, not scored")
+    # Two runs measured differently differ for that reason too, and the gate would
+    # put the difference on the candidate: the released Drive-JEPA regressed
+    # against itself on KITScenes, one run with ground-truth commands and no ground
+    # offset, the other without and with.
+    base_cfg = baseline.run.get("config") or {}
+    cand_cfg = candidate.run.get("config") or {}
+    if differs := config_differences(base_cfg, cand_cfg, allow_config):
+        result.verdict = "CONFIG DIFFERS"
+        shown = "; ".join(
+            f"{k}: {json.dumps(base_cfg.get(k))[:40]} vs {json.dumps(cand_cfg.get(k))[:40]}" for k in differs
+        )
+        result.notes.append(
+            f"the runs were measured differently ({shown}); allow_config / --allow-config names a key "
+            "the candidate is meant to change"
+        )
     if result.only_baseline or result.only_candidate:
         result.notes.append(
             f"unpaired samples left out: {result.only_baseline} baseline-only, "
@@ -568,7 +624,14 @@ def check(manifest: Path, runs_root: Path, results_root: Path = RESULTS_ROOT) ->
         base = load_run(bench, p["baseline"], runs_root, Path(p.get("baseline_results") or results_root))
         cand = load_run(bench, p["candidate"], runs_root, Path(p.get("candidate_results") or results_root))
         results.append(
-            compare(base, cand, p.get("metric"), p.get("threshold"), _unit_for(base, cand, runs_root))
+            compare(
+                base,
+                cand,
+                p.get("metric"),
+                p.get("threshold"),
+                _unit_for(base, cand, runs_root),
+                allow_config=p.get("allow_config") or (),
+            )
         )
     return overall(results), results
 
@@ -1204,6 +1267,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     c.add_argument("--metric")
     c.add_argument("--threshold", type=float)
+    c.add_argument(
+        "--allow-config",
+        action="append",
+        default=[],
+        metavar="KEY",
+        help="a run config key the candidate is meant to change; repeatable",
+    )
     k = sub.add_parser("check", help="every pair in a manifest, one verdict")
     k.add_argument("manifest", type=Path)
     for p in (c, k):
@@ -1276,7 +1346,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "compare":
         base = load_run(args.bench, args.baseline, runs_root, args.baseline_results or args.results)
         cand = load_run(args.bench, args.candidate, runs_root, args.results)
-        results = [compare(base, cand, args.metric, args.threshold, _unit_for(base, cand, runs_root))]
+        results = [
+            compare(
+                base,
+                cand,
+                args.metric,
+                args.threshold,
+                _unit_for(base, cand, runs_root),
+                allow_config=args.allow_config,
+            )
+        ]
         verdict = overall(results)
     else:
         verdict, results = check(args.manifest, runs_root, args.results)

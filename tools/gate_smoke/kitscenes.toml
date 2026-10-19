@@ -3,7 +3,8 @@
 #
 # Run with no subset argument; listed here so a run can be checked against it. Ids are
 # KitscenesBenchmark._sample_id over the site's [benchmarks.kitscenes] sample_list.
-# A full run is valid=true and pairs with any other full run.
+# A full run is valid=true. It pairs with another run made with the same config; the gate
+# checks, because the tracked legacy run used ground-truth commands and no ground offset.
 #
 # Fixed once, on 2026-10-16. It must never be re-picked, re-seeded or edited to make a
 # result look better: a gate whose subset moves can be steered. If the subset turns

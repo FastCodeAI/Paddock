@@ -57,6 +57,7 @@ neuroncap    ncap_score         3.568     4.130     0.562   0.439   1.28   2.09 
 | NEUTRAL | not separable at this many units. Not "the same": read the SE |
 | TOO FEW UNITS | fewer than 2 units, so no standard error and no verdict |
 | NO RECORDS | one side has no `samples.jsonl` on this site; means are shown, nothing is claimed |
+| CONFIG DIFFERS | the two runs' `config` differs beyond `model_env` and the subset keys (`limit`, `scene`, `runs`, NAVSIM's token filter, ...), so a difference could be the setup's, not the candidate's. The keys are in a note; `allow_config = ["key"]` on the pair (`--allow-config key` on `compare`) accepts one the candidate is meant to change |
 | INCOMPLETE | the candidate lost samples to a failure (`dataset.n_failed`, or `status: partial`). Pairing on shared samples would drop exactly those, usually the hard cases, so the rest is shown and nothing is claimed |
 
 `check` adds one overall line: **FAIL** if any pair is a REGRESSION (exit 1);
