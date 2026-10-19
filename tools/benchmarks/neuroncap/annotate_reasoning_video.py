@@ -264,7 +264,7 @@ def main() -> None:
     font = _font()
 
     print(f"{len(all_runs)} run(s), {len(segments)} reasoning segment(s), stream={STREAM}")
-    for (episode, run_dir), segment in zip(all_runs, segments, strict=False):
+    for (episode, run_dir), segment in zip(all_runs, segments, strict=True):
         _annotate_run(run_dir, segment, ffmpeg, font)
 
 
