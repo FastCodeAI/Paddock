@@ -172,10 +172,11 @@ UNIT: dict[str, Callable[[Sample], str | None]] = {
     "nuplan": lambda s: _nid(s).get("log"),
     "bench2drive": lambda s: _nid(s).get("route_id") or _nid(s).get("scene"),
     "alpasim": lambda s: _nid(s).get("clipgt_id") or _nid(s).get("scene"),
-    # NAVSIM samples carry only the token; one scenario is its own unit unless a
-    # token -> log map is passed in (see `navsim_logs`).
-    "navsim": lambda s: _nid(s).get("token"),
-    "navsim_v1": lambda s: _nid(s).get("token"),
+    # NAVSIM samples carry only the token, and tokens of one log share its scene, so
+    # the unit is the log, known only from the runs' plan dumps (`navsim_logs`,
+    # passed in by `_unit_for`). Without them there is no unit: never the token.
+    "navsim": lambda s: None,
+    "navsim_v1": lambda s: None,
 }
 
 
@@ -481,8 +482,14 @@ def compare(
     if no_value:
         result.notes.append(f"{no_value} shared samples left out: no finite {metric} in one of the runs")
     if no_unit:
+        hint = (
+            " (NAVSIM's unit is the log, read from the runs' plan dumps; none named these tokens)"
+            if bench in ("navsim", "navsim_v1")
+            else ""
+        )
         result.notes.append(
-            f"{no_unit} samples had no unit and count as their own (standard error too small)"
+            f"{no_unit} samples have no independent unit{hint}; clustered as their own the "
+            "standard error is too small, so no verdict"
         )
     if result.matched == 0:
         result.verdict = "NO RECORDS"
@@ -510,6 +517,10 @@ def compare(
         )
     if threshold is not None:
         result.beyond_threshold = result.diff < -abs(threshold)
+    # A sample with no unit counted as its own shrinks the standard error: NAVSIM
+    # on tokens instead of logs turned a true difference of 0 into GAIN, t 3.9.
+    if no_unit:
+        result.verdict = "NO UNIT"
     # Pairing on shared samples drops whatever the candidate failed to record, and
     # those are the hard cases: a candidate that crashed on 0110 frontal and side
     # and was slightly better elsewhere scored GAIN on what it kept. So a candidate
@@ -610,8 +621,6 @@ def _unit_for(base: Run, cand: Run, runs_root: Path) -> Callable[[Sample], str |
     if base.bench not in ("navsim", "navsim_v1"):
         return None
     logs = navsim_log_map([base, cand], runs_root)
-    if not logs:
-        return None
     return lambda s: logs.get(_nid(s).get("token", ""))
 
 

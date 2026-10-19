@@ -195,6 +195,33 @@ def test_subset_keys_and_model_env_do_not_count_as_a_different_measurement() -> 
     )
 
 
+def test_navsim_without_plan_dumps_gets_no_verdict_over_tokens(tmp_path: Path) -> None:
+    """Review #80 (7): with no dumps the unit fell back to the token, silently.
+
+    Ten logs of twenty tokens, a shock shared within each log, true difference 0:
+    on tokens it was GAIN; on logs it is NEUTRAL.
+    """
+    import random
+
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    rng = random.Random(4)
+    base, cand = [], []
+    for log in range(10):
+        shock = rng.gauss(0, 0.05)
+        for tok in range(20):
+            row = {"sample_id": f"navsim/t{log}_{tok}", "native_id": {"token": f"t{log}_{tok}"}}
+            base.append({**row, "metrics": {"epdms": 0.8}})
+            cand.append({**row, "metrics": {"epdms": 0.8 + shock + rng.gauss(0, 0.01)}})
+    _write_run(res, runs, "navsim", "m", "a", base, "epdms")
+    _write_run(res, runs, "navsim", "m", "b", cand, "epdms")
+    a, b = gate.load_run("navsim", "m:a", runs, res), gate.load_run("navsim", "m:b", runs, res)
+    r = gate.compare(a, b, unit_of=gate._unit_for(a, b, runs))
+    assert r.verdict == "NO UNIT"
+    assert any("plan dumps" in n for n in r.notes)
+    assert gate.compare(a, b).verdict == "NO UNIT", "compare called directly falls back the same way"
+    assert gate.compare(a, b, unit_of=lambda s: s["native_id"]["token"].split("_")[0]).verdict == "NEUTRAL"
+
+
 def test_a_candidate_that_lost_samples_gets_no_verdict(tmp_path: Path) -> None:
     """Review #80 (1): the episodes a candidate crashes on vanish from the pairing.
 
@@ -302,12 +329,16 @@ def test_a_resumed_navsim_run_finds_its_logs_through_merged_from(tmp_path: Path)
         ),
         ("nuscenes", {"group": "scene-0003", "native_id": {"scene": "scene-0003"}}, "scene-0003"),
         ("kitscenes", {"group": "", "native_id": {"scene_id": "00fc1b9b", "keyframe_index": 40}}, "00fc1b9b"),
-        ("navsim", {"native_id": {"token": "808e5edcddce51c3"}}, "808e5edcddce51c3"),
+        # Not the token: tokens of one log share it, so the unit is the log, known
+        # only from the runs' plan dumps (`_unit_for`). Review #80 (7).
+        ("navsim", {"native_id": {"token": "808e5edcddce51c3"}}, None),
         ("bench2drive", {"native_id": {"route_id": "1711"}}, "1711"),
         ("alpasim", {"native_id": {"clipgt_id": "clipgt-0245"}}, "clipgt-0245"),
     ],
 )
-def test_each_benchmark_unit_reads_the_field_its_writer_sets(bench: str, sample: dict, unit: str) -> None:
+def test_each_benchmark_unit_reads_the_field_its_writer_sets(
+    bench: str, sample: dict, unit: str | None
+) -> None:
     """Record shapes copied from samples.jsonl files the harnesses and ingests wrote."""
     assert gate.UNIT[bench](sample) == unit
 

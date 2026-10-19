@@ -32,7 +32,10 @@ Its standard error is **clustered on the benchmark's independent unit**: the
 scenario-scene pair on neuroNCAP, the scene on nuScenes and KITScenes, the log on
 NAVSIM, the route on Bench2Drive, the clip on AlpaSim. Samples from one scene
 move together; counting them as independent once turned a neuroNCAP "not
-separable" into t = -4.25.
+separable" into t = -4.25. NAVSIM samples name only their token, so the log
+comes from the runs' plan dumps (`trajectories.jsonl`, following
+`config.merged_from`); a pair whose dumps do not name a sample's log gets NO
+UNIT, never a verdict over tokens.
 
 The verdict compares t with **t crit**, the two-sided 5% critical value of
 Student's t on (units - 1) degrees of freedom. A clustered standard error from G
@@ -57,6 +60,7 @@ neuroncap    ncap_score         3.568     4.130     0.562   0.439   1.28   2.09 
 | NEUTRAL | not separable at this many units. Not "the same": read the SE |
 | TOO FEW UNITS | fewer than 2 units, so no standard error and no verdict |
 | NO RECORDS | one side has no `samples.jsonl` on this site; means are shown, nothing is claimed |
+| NO UNIT | some paired samples have no independent unit (NAVSIM: no plan dump names their log), so the standard error would be computed over samples and come out too small |
 | CONFIG DIFFERS | the two runs' `config` differs beyond `model_env` and the subset keys (`limit`, `scene`, `runs`, NAVSIM's token filter, ...), so a difference could be the setup's, not the candidate's. The keys are in a note; `allow_config = ["key"]` on the pair (`--allow-config key` on `compare`) accepts one the candidate is meant to change |
 | INCOMPLETE | the candidate lost samples to a failure (`dataset.n_failed`, or `status: partial`). Pairing on shared samples would drop exactly those, usually the hard cases, so the rest is shown and nothing is claimed |
 
