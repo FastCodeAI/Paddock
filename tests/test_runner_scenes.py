@@ -569,7 +569,7 @@ def test_autoe2e_logging_where_it_records_is_not_a_change_of_plan(tmp_path) -> N
     from paddock.runner import _env_override_reasons
 
     spec = Registry.load().models["autoe2e"]
-    cfg = _site_with_env(tmp_path, "autoe2e", {"AUTOE2E_RECORD_DIR": "/scratch/autoe2e_calls"})
+    cfg = _site_with_env(tmp_path, "autoe2e", {"AUTOE2E_RECORD_DIR": "/path/to/autoe2e_calls"})
     assert _env_override_reasons(cfg, spec) == []
     cfg = _site_with_env(tmp_path, "autoe2e", {"AUTOE2E_CHECKPOINT": "/w/other/checkpoint.pt"})
     (reason,) = _env_override_reasons(cfg, spec)
