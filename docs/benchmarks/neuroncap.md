@@ -455,6 +455,21 @@ For all four models side by side on one clock, see
 `tools/benchmarks/neuroncap/comparison_video.py` — it reads frames rather than
 videos, so it needs `video = "keep"`.
 
+### Reading a model's reasoning back off a sweep
+
+A model that writes reasoning text (via `/diagnostics`, see `policy/protocol.py`)
+has it captured by `poll_reasoning.py`, which polls the running node
+out-of-band and writes one jsonl line per poll, since the engine's own `/infer`
+reply does not carry it through. `annotate_reasoning_video.py` then burns that
+jsonl onto a sweep's own `COMBINED_OUTPUTS.mp4`, one new
+`COMBINED_OUTPUTS_reasoning.mp4` per run, by wall-clock interpolation between
+`/diagnostics`'s per-reset markers — an approximation good enough to show what
+the model was saying *around* a moment, not frame-exact. `verify_findings.py`
+aggregates a sweep's `metrics.json` files into worst/best/closest-near-miss
+picks per scene, building the reasoning video lazily for whichever runs it
+selects. None of the three touches the simulator or `run_config()`; they are
+read-only, run after the fact against whatever is already on disk.
+
 ## The score is not linear over 0–5
 
 From `neuro_ncap/components/evaluator.py::_compute_ncap_score`:
