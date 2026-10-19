@@ -88,7 +88,12 @@ Two details that look like off-by-ones and are not:
 
 - **Six waypoints is exact, not a floor.** NeuroNCAP builds six waypoint
   timestamps per step and indexes them positionally; a seventh is dropped, a
-  fifth raises `IndexError`.
+  fifth raises `IndexError`. So `/infer`'s `trajectory` is always six (x, y)
+  points, and the whole plan travels beside it as `plan`:
+  `{"waypoints": [[x, y], ...] or [[x, y, yaw], ...], "dt": 0.5}`, every row
+  the model returned, with yaw only when the model predicts one (the same
+  shape `/infer_sequence` returns). NeuroNCAP reads only `trajectory` and
+  `aux_outputs`; AlpaSim's bridge reads `plan`.
 - **An all-zero trajectory is a commanded emergency stop**, not "no plan". A
   model that has not warmed up must return `constant_velocity(obs.speed)`.
   Returning zeros scores as a deliberate brake, which for a collision-avoidance

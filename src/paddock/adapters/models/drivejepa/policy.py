@@ -49,6 +49,13 @@ static.
 ``DRIVEJEPA_MOMENTUM=on``. With it on, each replan is handed the plan this node
 chose about 0.5 s earlier, the way upstream's own evaluation loop hands it over,
 so the model's ``calibrate_score`` runs before the argmax. See `momentum.py`.
+
+*The pick, reported.* Every answer carries ``extras["drivejepa_pick"]``: which
+of the 32 proposals was driven, its score, and whether the momentum stage was
+given a previous plan for it (`_pick`). A closed-loop client can then log the
+model's own choice rather than infer it from the path. Clients that read only
+``trajectory`` (neuroNCAP) never see it; `protocol.validate_extras` passes it
+as a model-native block.
 """
 
 from __future__ import annotations
@@ -132,6 +139,7 @@ class DriveJepaPolicy(Policy):
         self.agent = None
         self.feature_builder = None
         self.history: list[dict[str, Any]] = []
+        self.momentum_fed = False
 
     def load(self) -> None:
         # navsim only exists inside Drive-JEPA's own environment; this module is
@@ -338,11 +346,15 @@ class DriveJepaPolicy(Policy):
             k: (v.unsqueeze(0).to(self.device) if torch.is_tensor(v) else v) for k, v in features.items()
         }
 
+        # Whether this pass's pick was made against a previous plan; read by
+        # `_pick`. Set per call so a stale value cannot survive.
+        self.momentum_fed = False
         if self.momentum is None:
             with torch.no_grad():
                 return self.agent.forward(features)
 
         extra, ego_state = self.momentum.features(*self._ego_now(obs))
+        self.momentum_fed = extra["past_ego_simulated_states"] is not None
         features.update(extra)
         with torch.no_grad():
             output = self.agent.forward(features)
@@ -375,7 +387,24 @@ class DriveJepaPolicy(Policy):
         # resampled. All eight are returned: closed-loop takes the first six,
         # and open-loop scoring wants the full horizon for FDE@3s.
         trajectory = output["trajectory"][0].float().cpu().numpy()
-        return Trajectory(trajectory, dt=HISTORY_DT)
+        return Trajectory(trajectory, dt=HISTORY_DT, extras={"drivejepa_pick": self._pick(output)})
+
+    def _pick(self, output: dict[str, Any]) -> dict[str, Any]:
+        """The proposal driven, as the model chose it (module docstring).
+
+        ``chosen_index`` is the proposal (of 32) whose trajectory `infer`
+        returns and ``chosen_score`` its score: the argmax and max of
+        ``pdm_score``, which is the momentum-recalibrated score when a previous
+        plan was fed and the learned one otherwise (drive_jepa_model.py:85-91).
+        ``momentum_fed`` is whether a previous plan was fed to this pick.
+        """
+        scores = output["pdm_score"][0].float().cpu().numpy()
+        index = int(np.argmax(scores))
+        return {
+            "chosen_index": index,
+            "chosen_score": float(scores[index]),
+            "momentum_fed": bool(self.momentum_fed),
+        }
 
     def diagnostics(self) -> dict[str, Any]:
         """History depth actually achieved, the image geometry, and momentum.
