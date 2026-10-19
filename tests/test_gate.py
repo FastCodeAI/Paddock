@@ -643,15 +643,24 @@ def test_a_rerun_skips_finished_runs_and_resumes_started_ones(tmp_path: Path) ->
     (res / "kitscenes" / "drivejepa" / "k1" / "run.json").write_text("{}")
     for run_id in ("older", "ours"):
         (runs / "neuroncap" / "drivejepa" / run_id).mkdir(parents=True)
-    state = {"kitscenes": {"run_id": "k1"}, "neuroncap": {"before": ["older"]}}
+    (runs / "neuroncap" / "drivejepa" / "ours" / "drivejepa_node_9700.log").write_text("")
+    lane_log = tmp_path / "neuroncap.log"
+    lane_log.write_text("  starting drivejepa node on port 9700\n")
+    started = {"before": ["older"], "log": str(lane_log), "log_offset": 0}
+    state = {"kitscenes": {"run_id": "k1"}, "neuroncap": started}
     kit, ncap, nus = _plan(tmp_path, ["kitscenes", "neuroncap", "nuscenes"], state)
     assert (kit.status, kit.run_id, kit.command) == ("finished", "k1", [])
     assert ncap.status == "resume" and ncap.command[-2:] == ["--resume", "ours"]
     assert nus.status == "new" and "--resume" not in nus.command
 
+    # A colleague's run appearing meanwhile is not ours, and is not mistaken for it
+    # (review #80, 10); two new runs both on our node port cannot be told apart.
     (runs / "neuroncap" / "drivejepa" / "someone_elses").mkdir()
-    with pytest.raises(RuntimeError, match="2 new drivejepa runs"):
-        _plan(tmp_path, ["neuroncap"], {"neuroncap": {"before": ["older"]}})
+    (ncap2,) = _plan(tmp_path, ["neuroncap"], {"neuroncap": dict(started)})
+    assert ncap2.command[-2:] == ["--resume", "ours"]
+    (runs / "neuroncap" / "drivejepa" / "someone_elses" / "drivejepa_node_9700.log").write_text("")
+    with pytest.raises(RuntimeError, match="2 new drivejepa runs hold a node log"):
+        _plan(tmp_path, ["neuroncap"], {"neuroncap": dict(started)})
 
 
 def test_the_smoke_manifest_pairs_only_finished_runs_with_a_baseline(tmp_path: Path) -> None:
@@ -777,10 +786,14 @@ def test_the_smoke_renderer_port_is_set_even_without_a_site_renderer_url(tmp_pat
 #: whose ADE is the given value plus a little per scene.
 FAKE_RUN = r"""
 import json, pathlib, sys, time
+import os
 bench, results, runs, model, ade, hold, stamps = sys.argv[1:8]
 run_id = f"cand-{bench}"
 art = pathlib.Path(runs) / bench / model / run_id
 art.mkdir(parents=True)
+port = os.environ.get("PADDOCK_BASE_PORT", "9700")
+print(f"  starting {model} node on port {port}", flush=True)
+(art / f"{model}_node_{port}.log").write_text("")
 if float(ade) < 0:  # a run that crashes after making its artifacts directory
     sys.exit(1)
 with open(stamps, "a") as f:
@@ -958,6 +971,30 @@ def test_a_regression_found_while_waiting_for_gpu_memory_stops_that_launch(
     assert gate.smoke(args(cores=["4-7", "8-11"]), said.append) == 1
     assert set(_intervals(stamps)) == {"kitscenes"}
     assert "waiting for" in "\n".join(said)
+
+
+def test_the_smoke_does_not_adopt_a_run_it_did_not_start(tmp_path: Path) -> None:
+    """Review #80 (10): our launch died before making a run; a colleague's appeared; it was adopted."""
+    runs, log = tmp_path / "runs", tmp_path / "lane.log"
+    (runs / "kitscenes" / "m" / "20261020T010101-colleague").mkdir(parents=True)
+    (runs / "kitscenes" / "m" / "20261020T010101-colleague" / "m_node_9800.log").write_text("")
+    log.write_text("old attempt: starting m node on port 9800\n$ paddock run ...\npreflight refused\n")
+    entry = {"before": [], "log": str(log), "log_offset": len("old attempt: starting m node on port 9800\n")}
+    assert gate._run_id_for(entry, runs, "kitscenes", "m") is None
+
+
+def test_the_smoke_finds_its_own_run_by_its_node_port_or_its_result_line(tmp_path: Path) -> None:
+    runs, log = tmp_path / "runs", tmp_path / "lane.log"
+    for run, port in (("ours", 9700), ("theirs", 9800)):
+        (runs / "neuroncap" / "m" / run).mkdir(parents=True)
+        (runs / "neuroncap" / "m" / run / f"m_node_{port}.log").write_text("")
+    log.write_text("  starting m node on port 9700\n")
+    entry = {"before": [], "log": str(log), "log_offset": 0}
+    assert gate._run_id_for(entry, runs, "neuroncap", "m") == "ours"
+    log.write_text("  starting m node on port 9700\n  -> results/neuroncap/m/theirs\n")
+    assert gate._run_id_for(entry, runs, "neuroncap", "m") == "theirs", (
+        "the result line is the run's own word"
+    )
 
 
 def test_a_quick_tier_regression_keeps_the_closed_tier_from_starting(tmp_path: Path, monkeypatch) -> None:

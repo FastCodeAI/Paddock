@@ -883,26 +883,48 @@ def _artifact_ids(runs_root: Path, bench: str, model: str) -> set[str]:
     return {p.name for p in parent.iterdir() if p.is_dir()} if parent.is_dir() else set()
 
 
+def _launch_log(entry: dict[str, Any]) -> str:
+    """What this smoke's own launch wrote to its lane log, from where it started."""
+    path = entry.get("log")
+    if not path or not Path(path).is_file():
+        return ""
+    with open(path) as log:
+        log.seek(int(entry.get("log_offset") or 0))
+        return log.read()
+
+
 def _run_id_for(entry: dict[str, Any], runs_root: Path, bench: str, model: str) -> str | None:
     """The run this smoke started for `bench`, if it started one.
 
     `paddock run` names its run id only when it finishes, but creates the artifacts
-    directory at the start. So the directories present before each launch are
-    recorded, and the new one is ours. More than one new one means something else
-    ran the same model on the same benchmark meanwhile, and a guess would resume the
-    wrong run.
+    directory at the start. A new directory is not enough to call it ours: when our
+    launch died before making one, a colleague's run of the same model and
+    benchmark was adopted, and the next attempt resumed it. So the run is
+    identified from our own lane's log -- the `-> results/...` line a finished
+    closed-loop run prints, else the new directory holding the node log for the
+    port our launch said it started. No node started means no run of ours.
     """
     if entry.get("run_id"):
         return str(entry["run_id"])
     if "before" not in entry:
         return None
-    new = sorted(_artifact_ids(runs_root, bench, model) - set(entry["before"]))
-    if len(new) > 1:
+    new = set(_artifact_ids(runs_root, bench, model)) - set(entry["before"])
+    text = _launch_log(entry)
+    done = re.search(rf"-> results/{re.escape(bench)}/{re.escape(model)}/(\S+)", text)
+    if done and done.group(1) in new:
+        return done.group(1)
+    ports = set(re.findall(rf"starting {re.escape(model)} node on port (\d+)", text))
+    ours = sorted(
+        r
+        for r in new
+        if any((runs_root / bench / model / r / f"{model}_node_{port}.log").is_file() for port in ports)
+    )
+    if len(ours) > 1:
         raise RuntimeError(
-            f"{bench}: {len(new)} new {model} runs appeared since this smoke launched one "
-            f"({', '.join(new)}); set run_id for {bench} in the smoke's state.json to its own"
+            f"{bench}: {len(ours)} new {model} runs hold a node log on this smoke's port "
+            f"({', '.join(ours)}); set run_id for {bench} in the smoke's state.json to its own"
         )
-    return new[0] if new else None
+    return ours[0] if ours else None
 
 
 def plan_smoke(
@@ -1327,6 +1349,8 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
             log.write(f"\n$ {shell_line(launched, REPO_ROOT)}\n")
             log.flush()
             offset = log.tell()
+            # Where this launch's own output starts: how its run is told from others'.
+            entry["log"], entry["log_offset"] = str(log_path), offset
             echo(f"\n=== {nxt.name} on cores {idle.cores}, port {idle.port}; log {log_path}")
             # Streamed to the file as it runs, so a hung episode is diagnosable while it hangs.
             # A session of its own, so stopping the gate can signal the lane's whole group.
