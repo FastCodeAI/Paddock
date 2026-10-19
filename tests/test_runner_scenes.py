@@ -594,7 +594,7 @@ def test_every_declared_tuning_key_is_one_the_model_reads() -> None:
     or its declared env."""
     from paddock.registry import Registry
 
-    models_dir = Path("src/paddock/adapters/models")
+    models_dir = Path(__file__).resolve().parents[1] / "src/paddock/adapters/models"
     for name, spec in Registry.load().models.items():
         source = "\n".join(p.read_text() for p in (models_dir / name).glob("*.py"))
         for key in spec.runtime.tuning_env:
