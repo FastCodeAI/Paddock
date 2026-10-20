@@ -137,11 +137,14 @@ the published 20 Hz protocol, so such a run is `valid: false` with
 `AUTOE2E_REPLAN_S` named in its notes.
 
 Cost on one A100 80 GB (20 Oct 2026, idle card): 2.0 s a forward (1.93 s model,
-0.07 s packing), 2.3 GB allocated. Three nodes sharing the card took 6.1 s each,
-so routes gain nothing from being driven side by side. With six 800 × 450
-cameras rendered and sent every tick, a route drives at ~0.04× real time,
-~1.3 s of wall clock a tick: the 4000-tick cap is ~85 min, so
-`per_route_timeout_s` wants 7200.
+0.07 s packing), 2.3 GB allocated. With six 800 × 450 cameras rendered and
+sent every tick, one route drives at ~0.04× real time, ~1.3 s of wall clock a
+tick. Forwards do not overlap on one card: three nodes forwarding back to back
+took 6.1 s each. Three routes driven side by side ran at 0.015–0.018× each,
+~1.25× one route's pace, filling the GPU's idle time between forwards and no
+more. At that pace a route on the 4000-tick cap takes ~3.5 h, so
+`per_route_timeout_s` wants 14400; the early stop (`docs/benchmarks/bench2drive.md`,
+*Ending routes early*) keeps most routes far from the cap.
 
 ## Training exposure
 
