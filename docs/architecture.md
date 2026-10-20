@@ -75,6 +75,7 @@ NeuroNCAP model nodes; the rest were added for open loop and for provenance.
 | `GET /alive` | the runner, after launch | health check |
 | `GET /whoami` | the runner, after launch | names the model and this launch's nonce, so a run never scores a sibling's node on the same port |
 | `POST /infer` | closed-loop simulators; AlpaSim's bridge | one `Observation` (one timestamp) in, one `Trajectory` out |
+| `POST /observe` | AlpaSim's bridge, for a frame it needs no plan from | one `Observation` in, no plan out: the model takes the frame into its history (`Policy.observe`; a model that does not override it plans and drops the plan) |
 | `POST /infer_sequence` | open-loop harnesses; NAVSIM's scorer | a list of `Observation`s, oldest first; the model takes in all but the last and plans on the last |
 | `POST /reset` | the simulator, before each episode | clears the model's history between episodes |
 | `GET /diagnostics` | the runner, at the end of a run | what the loaded policy says it is, for `run.json` provenance |
