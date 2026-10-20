@@ -104,10 +104,11 @@ class DriverProfile:
     """The simulation settings and bridge translation one model is driven with.
 
     Every model gets the default unless it is listed in `DRIVER_PROFILES`: the
-    `paddock_bridge` driver config, no translation flags, scenes named by id,
-    video as the site asks. (What the bridge does for every model, profile or
-    not -- read the plan, reset the node per scene, record where headings came
-    from -- is in bridge.py.)
+    `paddock_bridge` driver config, no translation flags, scenes named by id.
+    Video is the site's choice for every model, profile or not: AlpaSim renders
+    it after its scorer has written the metrics, so it changes no score. (What
+    the bridge does for every model, profile or not -- read the plan, reset the
+    node per scene, record where headings came from -- is in bridge.py.)
     """
 
     #: Driver config under configs/driver/, passed as `driver=`.
@@ -117,10 +118,6 @@ class DriverProfile:
     #: A file under scenes/ pinning each scene to one artifact uuid, or None to
     #: name scenes by id alone.
     scenes_csv: str | None = None
-    #: (render_video, render_every_nth_frame) when the profile fixes them, or
-    #: None for the site's `video` settings. They are part of the eval config
-    #: the scorer writes, so a profile that must reproduce one fixes them.
-    video: tuple[bool, int] | None = None
     #: Write the bridge's per-replan log next to the run's samples.jsonl, as
     #: `<scene>.replans.jsonl`. Only a bridge running a replan rhythm writes one.
     replan_log: bool = False
@@ -166,7 +163,6 @@ DRIVER_PROFILES: dict[str, DriverProfile] = {
             "3000000",
         ),
         scenes_csv="public_2601_30scenes_26p01.csv",
-        video=(True, 1),
         replan_log=True,
     ),
 }
@@ -351,7 +347,6 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
             "driver_config": profile.driver,
             "bridge_args": list(profile.bridge_args),
             "scenes_csv": profile.scenes_csv,
-            "video": list(profile.video) if profile.video else None,
             "replan_log": profile.replan_log,
         }
 
@@ -596,8 +591,6 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
 
         model = launcher.serving_model(policy_url)
         profile = profile_for(model)
-        site_video = (self.flag("video"), int(self.setting("video_every_nth_frame") or 1))
-        video, every_nth = profile.video or site_video
         scenes_csv = SCENES_DIR / profile.scenes_csv if profile.scenes_csv else None
         if scenes_csv is not None and not scenes_csv.is_file():
             raise RuntimeError(f"{model}'s driver profile pins scenes in {scenes_csv}, which does not exist")
@@ -634,8 +627,8 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
                 deploy=self.setting("deploy") or launcher.DEFAULT_DEPLOY,
                 topology=self.setting("topology") or launcher.DEFAULT_TOPOLOGY,
                 scene_cache=self.setting("scene_cache"),
-                video=video,
-                video_every_nth_frame=every_nth,
+                video=self.flag("video"),
+                video_every_nth_frame=int(self.setting("video_every_nth_frame") or 1),
                 scenes_csv=scenes_csv,
             )
             returncode, timed_out, elapsed = launcher.run_wizard(

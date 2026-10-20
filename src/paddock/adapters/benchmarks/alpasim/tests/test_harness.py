@@ -627,12 +627,7 @@ def test_a_model_without_a_profile_is_driven_exactly_as_before(tmp_path: Path, m
 
     profile = harness.profile_for("alpamayo15")
     assert profile == harness.DriverProfile()
-    assert (profile.driver, profile.bridge_args, profile.scenes_csv, profile.video) == (
-        "paddock_bridge",
-        (),
-        None,
-        None,
-    )
+    assert (profile.driver, profile.bridge_args, profile.scenes_csv) == ("paddock_bridge", (), None)
     bench = _benchmark(tmp_path, monkeypatch)
     assert bench.model_run_config(SimpleNamespace(name="alpamayo15")) == {}
 
@@ -677,3 +672,28 @@ def test_the_node_gets_a_minute_to_say_which_model_it_serves(monkeypatch) -> Non
     monkeypatch.setattr(launcher.urllib.request, "urlopen", urlopen)
     assert launcher.serving_model("http://127.0.0.1:9800") == "drivejepa"
     assert waited == [60.0]
+
+
+def test_drivejepa_records_video_only_when_the_site_asks(
+    tmp_path: Path, fake_repo: Path, monkeypatch
+) -> None:
+    """Its profile pins driver, cameras and scenes, but not video: render_video only
+    renders after AlpaSim's scorer has written its metrics, so it changes no score,
+    and every-frame video is about 150 MB a scene."""
+    from paddock.adapters.benchmarks.alpasim import harness
+
+    monkeypatch.setenv("FAKE_WIZARD_MODE", "ok")
+    monkeypatch.setattr(harness.launcher, "serving_model", lambda url: "drivejepa")
+    seen: list[dict] = []
+    fake = harness.launcher.wizard_command
+
+    def capture(**kwargs):
+        seen.append(kwargs)
+        return fake(**kwargs)
+
+    monkeypatch.setattr(harness.launcher, "wizard_command", capture)
+    bench = _benchmark(tmp_path, monkeypatch, repo=str(fake_repo), python=sys.executable)
+    bench.run_episode(_episode(), "http://127.0.0.1:1", tmp_path / "out", echo=lambda _: None)
+    (call,) = seen
+    assert call["driver"] == "paddock_bridge_drivejepa"
+    assert (call["video"], call["video_every_nth_frame"]) == (False, 1)

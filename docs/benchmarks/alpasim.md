@@ -81,9 +81,10 @@ Most models are driven on one shared set of simulation settings
 through as they are. A model whose numbers must be compared with a native
 AlpaSim driver can instead get its own settings: an entry in
 `harness.DRIVER_PROFILES`, which names a driver config, extra bridge flags, a
-scene list pinned to artifact uuids, the video settings and whether the bridge
-writes a per-replan log. A model without an entry gets exactly what every model
-got before profiles existed, and `run.json` records a profile under `config`
+scene list pinned to artifact uuids and whether the bridge writes a per-replan
+log. Video is not among them: it stays the site's `video` setting for every
+model, since AlpaSim renders it after scoring and it changes no number. A
+model without an entry gets exactly what every model got before profiles existed, and `run.json` records a profile under `config`
 only when one is used, so the run id changes with it.
 
 Drive-JEPA is the one model with a profile. It reproduces the settings of
