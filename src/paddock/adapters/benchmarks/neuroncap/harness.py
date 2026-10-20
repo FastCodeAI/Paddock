@@ -110,6 +110,22 @@ VIDEO_MODES = ("encode", "keep", "off")
 RENDERER_STARTUP_S = 900
 
 
+def resolve_ffmpeg(setting: str | None) -> str | None:
+    """`setting` (the resolved `[benchmarks.neuroncap] ffmpeg`), then
+    `PADDOCK_FFMPEG`, then PATH.
+
+    The one place this precedence is decided -- `NeuroNcapBenchmark._ffmpeg`
+    and the `tools/benchmarks/neuroncap/` scripts (which have no harness
+    instance to call a method on) both call this rather than keeping their own
+    copies, after one of those copies silently dropped the `PADDOCK_FFMPEG`
+    branch.
+    """
+    for candidate in (setting, os.environ.get("PADDOCK_FFMPEG")):
+        if candidate and Path(candidate).exists():
+            return candidate
+    return shutil.which("ffmpeg")
+
+
 def _lidar_sample_data(path: Path) -> dict[str, str]:
     """sample_token -> LIDAR_TOP keyframe filename, read without loading the file.
 
@@ -632,10 +648,7 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
 
     def _ffmpeg(self) -> str | None:
         """`[benchmarks.neuroncap] ffmpeg`, then `PADDOCK_FFMPEG`, then PATH."""
-        for candidate in (self.setting("ffmpeg"), os.environ.get("PADDOCK_FFMPEG")):
-            if candidate and Path(candidate).exists():
-                return candidate
-        return shutil.which("ffmpeg")
+        return resolve_ffmpeg(self.setting("ffmpeg"))
 
     def render_videos(self, out_dir: Path, echo: Callable[[str], None] = print) -> list[Path]:
         """One mp4 per stream per run, written beside that run's frames.

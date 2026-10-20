@@ -49,9 +49,7 @@ from __future__ import annotations
 import argparse
 import bisect
 import json
-import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -70,15 +68,15 @@ PAD = 12
 def _ffmpeg(cfg) -> str:
     """`[benchmarks.neuroncap] ffmpeg`, then `PADDOCK_FFMPEG`, then PATH.
 
-    Same three-way fallback as `NeuroNcapBenchmark._ffmpeg` (harness.py) --
-    restated here rather than imported because this script has no harness
-    instance to call it on, but it must check every place that method does.
+    This script has no harness instance to call `NeuroNcapBenchmark._ffmpeg`
+    on, so it goes straight to the one place that precedence is decided
+    (`harness.resolve_ffmpeg`) rather than keeping a second, hand-synchronized
+    copy -- which already drifted out of sync with the harness's once.
     """
+    from paddock.adapters.benchmarks.neuroncap.harness import resolve_ffmpeg
+
     settings = cfg.benchmarks.get("neuroncap") or {}
-    for candidate in (settings.get("ffmpeg"), os.environ.get("PADDOCK_FFMPEG")):
-        if candidate and Path(candidate).exists():
-            return candidate
-    found = shutil.which("ffmpeg")
+    found = resolve_ffmpeg(settings.get("ffmpeg"))
     if not found:
         raise SystemExit("no ffmpeg found -- set [benchmarks.neuroncap] ffmpeg, $PADDOCK_FFMPEG, or PATH")
     return found
