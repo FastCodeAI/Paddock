@@ -55,10 +55,13 @@ sys.path.insert(0, _STUDIO)
 # list of safe globals clears it. Confirmed in isolation with a minimal
 # torch.save/torch.load repro, not just in the full pipeline.
 #
-# Explicit, scoped exception approved for this file only: this loads nothing
-# but our own locally-trained NeuRAD checkpoints (never a third-party file),
-# so bypassing the guard here doesn't carry the arbitrary-code-execution risk
-# it exists for.
+# Explicit, scoped exception: this process only ever loads our own
+# locally-trained NeuRAD checkpoints (never a third-party file), so bypassing
+# the guard doesn't carry the arbitrary-code-execution risk it exists for.
+# Reassigning torch.load is process-wide, not scoped to this file -- every
+# torch.load call made by this renderer subprocess after this import, in any
+# module, gets weights_only=False. Fine here because the renderer subprocess
+# only ever loads NeuRAD's own checkpoints through this one path.
 import numpy as np
 
 torch.serialization.add_safe_globals([np.core.multiarray.scalar, np.dtype])

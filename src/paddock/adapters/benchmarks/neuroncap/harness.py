@@ -318,6 +318,18 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             )
         return problems
 
+    def run_config(self) -> dict[str, Any]:
+        """Whether the renderer was spoofed, hashed into the run id and stored.
+
+        `spoof_renderer` swaps NeuRAD's rendered frames for raw disk images --
+        a materially different measurement, not a faster version of the same
+        one. Recorded here so a spoofed and a real-rendered run of the same
+        scope never share a run id, and `invalid_reasons` below also refuses
+        to score it: it exists for fast scenario sweeps and debugging, not for
+        a model being scored on realism.
+        """
+        return {"spoof_renderer": self.spoof_renderer()}
+
     def invalid_reasons(self) -> list[str]:
         """Why a run under the current scope cannot be ranked against the others.
 
@@ -330,15 +342,23 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         The run *count* is deliberately not checked. Runs are seeded 0..R-1, so
         10 of upstream's 50 is an unbiased subsample of the same protocol rather
         than a different scope -- see docs/benchmarks/neuroncap.md.
+
+        `spoof_renderer` is also refused here, not just recorded in
+        `run_config`: it serves raw disk frames instead of anything NeuRAD
+        rendered, so a run made under it is never a realism score, regardless
+        of scope.
         """
+        reasons: list[str] = []
+        if self.spoof_renderer():
+            reasons.append("renderer was spoofed (spoof_renderer); not a realism score")
         total = sum(len(v) for v in OFFICIAL_SET.values())
         ran = getattr(self, "_pairs_run", None)
-        if ran is None or ran >= total:
-            return []
-        return [
-            f"{ran} of the {total} official scenario-scene pairs; a subset, "
-            f"not a neuroNCAP score ({_official_set_summary()})"
-        ]
+        if ran is not None and ran < total:
+            reasons.append(
+                f"{ran} of the {total} official scenario-scene pairs; a subset, "
+                f"not a neuroNCAP score ({_official_set_summary()})"
+            )
+        return reasons
 
     def scene_problems(self, scene: str) -> list[str]:
         """Per-scene checks: what stops this scene rendering, before anything loads."""
@@ -524,10 +544,12 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             # above actually rendered and sent to the policy -- fine for the
             # ordinary case, where COMBINED_OUTPUTS/FC_TRAJ debug video only
             # ever reads CAM_FRONT, but wrong for SFT collection, which needs
-            # every camera the model conditions on (alpamayo15_teacher_sft's
-            # three-camera rig) joined to `EXPERT_RECORD_SFT_DIR`'s per-step records by
-            # timestamp. `None` here means "don't filter", not "log nothing" --
-            # see the flag's own help text.
+            # every camera a multi-camera model conditions on joined to
+            # `EXPERT_RECORD_SFT_DIR`'s per-step records by timestamp. `None`
+            # here means "don't filter", not "log nothing" -- see the flag's
+            # own help text. Nothing in this repo sets `EXPERT_RECORD_SFT_DIR`
+            # -- it is a stable integration point for Gallops' own SFT-label
+            # collection, documented in docs/benchmarks/neuroncap.md.
             command += ["--engine.logger.allowed-cams", "None"]
         if spoofed:
             command += ["--spoof-renderer"]

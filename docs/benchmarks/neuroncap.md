@@ -176,13 +176,23 @@ real camera images straight off disk instead of rendering, so a sweep that
 doesn't care about render fidelity runs in seconds without a trained NeuRAD
 checkpoint per scene. Off by default — a model actually being scored on
 realism needs the real renderer, so this has to be opted into, never silently
-assumed.
+assumed. It is also hashed into `run.json` and always makes the run
+`valid: false`: a spoofed run is a different measurement wearing the same
+name, not a faster version of the same score, so it never enters
+`paddock report`'s leaderboard.
 
 `keep_raw_frames = false` (default `true`) drops the raw `CAM_*` jpegs once a
 stream has encoded. They are kept by default because they are small next to
 the derived video streams and are what makes pruning `FC_TRAJ`/
 `COMBINED_OUTPUTS` safe at all (see "It has to be paid for" above) — set this
 only for a sweep where even that is too much disk.
+
+`$EXPERT_RECORD_SFT_DIR` is a stable integration point for Gallops' own
+SFT-label collection, not something this repo's own adapters set. When
+present, the harness passes `--engine.logger.allowed-cams None` so the vendor
+logger records every camera a multi-camera model conditions on instead of
+just `CAM_FRONT`, so Gallops can join those per-step records by timestamp.
+Paddock itself never reads this variable.
 
 ## Reproduction status
 

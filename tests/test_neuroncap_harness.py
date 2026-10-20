@@ -554,6 +554,23 @@ def test_run_count_alone_does_not_invalidate(tmp_path, monkeypatch) -> None:
     assert harness.invalid_reasons() == []
 
 
+def test_spoof_renderer_is_hashed_into_run_config(tmp_path, monkeypatch) -> None:
+    """A spoofed and a real-rendered run of the same scope must not share a run id."""
+    off = _harness_for(_ncap_site(tmp_path, monkeypatch))
+    assert off.run_config()["spoof_renderer"] is False
+
+    on = _harness_for(_ncap_site(tmp_path, monkeypatch, spoof_renderer="true"))
+    assert on.run_config()["spoof_renderer"] is True
+
+
+def test_spoof_renderer_is_never_a_valid_score(tmp_path, monkeypatch) -> None:
+    """DummyRendererAPI serves raw disk frames -- never a realism measurement."""
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch, spoof_renderer="true"))
+    list(harness.episodes(harness.available_scenes(), runs=10))
+    reasons = harness.invalid_reasons()
+    assert reasons and "spoof" in reasons[0].lower()
+
+
 # ---- renderer management -----------------------------------------------
 
 

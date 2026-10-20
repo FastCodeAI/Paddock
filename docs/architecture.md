@@ -118,6 +118,15 @@ names to forward into that model's subprocess beyond paddock's own
 needs a setting (e.g. a cache directory) that no other model does, without
 widening what every subprocess inherits.
 
+`policy/server.py`'s lifespan hook calls `policy.reset()` on shutdown: a
+closed-loop run's last episode has no later `/reset` to flush it, and
+uvicorn's graceful SIGTERM handling runs a lifespan shutdown to completion
+before re-raising the signal, where an `atexit` callback would not run at
+all. `PADDOCK_CAPTURE_INFER=<path>` is a debug-only companion: set it and
+every `/infer` request body is appended to that path as one JSON line per
+call, for replaying a recorded run's observations exactly outside a live
+simulator.
+
 ### On the wire
 
 Paddock is one Python 3.11 process. It never imports a model. It launches the
