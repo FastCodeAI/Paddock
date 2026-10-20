@@ -14,7 +14,7 @@ plan the same way and differ in everything around it.
 | Benchmarks | NAVSIM, KITScenes, nuScenes, neuroNCAP, Bench2Drive | AlpaSim only, and **not through paddock** |
 | Weights | the released checkpoint | **retrained** on Physical AI AV (adapter 0.1.7) |
 | Cameras | four | one, front |
-| Momentum-aware selection | off by default (`DRIVEJEPA_MOMENTUM`) | on by default |
+| Momentum-aware selection | on, declared in `model.yaml` (`DRIVEJEPA_MOMENTUM`); acts only in closed loop | on by default |
 | Rows in `results/` | every Drive-JEPA row | none |
 
 The perception-free NAVSIM v1 agent is a third thing with its own page,

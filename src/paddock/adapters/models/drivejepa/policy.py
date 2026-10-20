@@ -45,8 +45,9 @@ timestamp at ~0.5 s spacing rather than by taking the last four requests --
 otherwise the model would see 0.3 s of history and read the scene as nearly
 static.
 
-*Momentum-aware selection* (paper section 3.5) is off unless
-``DRIVEJEPA_MOMENTUM=on``. With it on, each replan is handed the plan this node
+*Momentum-aware selection* (paper section 3.5) is on: ``model.yaml`` declares
+``DRIVEJEPA_MOMENTUM=on``, and ``off`` (unset, here) selects on the plain score.
+With it on, each replan is handed the plan this node
 chose about 0.5 s earlier, the way upstream's own evaluation loop hands it over,
 so the model's ``calibrate_score`` runs before the argmax. See `momentum.py`.
 """

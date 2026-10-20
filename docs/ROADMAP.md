@@ -407,8 +407,8 @@ component of EPDMS. No model behind the proxy is handed those arguments. Its
 recorded 0.90673 is therefore not a baseline the other three can be measured
 against; the comparable set is runs through `paddock_proxy`.
 
-The same stage is available to the drivejepa node in closed loop, off by
-default (`DRIVEJEPA_MOMENTUM=on`): it needs only the node's own previous plan
+The same stage runs in the drivejepa node, on by declaration in its
+`model.yaml` (`DRIVEJEPA_MOMENTUM=on`) and acting only in closed loop: it needs only the node's own previous plan
 and the ego state it is already sent. A plan is fed only when it is 0.45 to
 0.55 s old, so a node called at 10 or 20 Hz compares against the plan of half a
 second ago and selects on the plain score until it has one. **Verified at
