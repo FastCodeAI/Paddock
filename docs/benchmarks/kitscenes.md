@@ -31,7 +31,7 @@ predictions sitting beside them; `paddock ingest` reads the same file for the
 predictions, which is how Drive-JEPA has a row on this benchmark without a
 paddock run.
 
-### The seven rows, and where each came from
+### The eight rows, and where each came from
 
 | model | run | n | ADE | source |
 |---|---|---:|---:|---|
@@ -42,8 +42,9 @@ paddock run.
 | meteor | `20260914T215457-ab0586` | 223 | 1.879 | a paddock run; six of its eight cameras |
 | drivejepa | `legacy-kitscenes_e2e_final` | 223 | 2.364 | `inference/kitscenes_e2e_final.pkl` |
 | drivejepa_rerank | `20260921T210621-d7ed08` | 223 | 0.973 | a paddock run; **adapted**, trained on KITScenes train, see below |
+| autoe2e | `20261020T220509-dee848` | 223 | 0.847 | a paddock run; six cameras, the scene's map and an **oracle route**; **adapted**, fine-tuned on KITScenes train, see below |
 
-All seven carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
+All eight carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
 so the column compares.
 
 openpilot's row is its configured run. Its other ranked runs on the same 223
@@ -88,6 +89,26 @@ Caveats the hash cannot express:
   with no route hint. Through that path Drive-JEPA's own pick scores 2.521; the
   2.364 row's devkit loader also sent acceleration and the route hint. See
   [drivejepa_rerank.md](../models/drivejepa_rerank.md).
+- **Adapted, and given the logged route.** AutoE2E's `kitscenes-epoch-5` was
+  fine-tuned on KITScenes train (upstream's 534 scenes, none of the 140 here,
+  checked by scene id), and is the one row given the scene's Lanelet2 map and a
+  route matched to the logged drive, future included -- upstream's validation
+  protocol ([The map and the route](#the-map-and-the-route)). Four runs over the
+  same 223 keyframes say what each input carries:
+
+  | run | rig | map | route | ADE | val (186) | overlap (37) |
+  |---|---|:-:|:-:|---:|---:|---:|
+  | `20261020T215800-4bd074` | stock: ring front, 2.2 m | ✓ | oracle | 0.847 | 0.848 | 0.842 |
+  | `20261020T220509-dee848` | its own: base front, 2.1 m | ✓ | oracle | **0.847** | 0.848 | 0.842 |
+  | `20261020T220642-d63624` | its own | ✓ | — | 0.837 | 0.849 | 0.775 |
+  | `20261020T220816-0a24e7` | its own | — | — | 0.921 | 0.935 | 0.853 |
+
+  The row is the second: the site's pairing table for AutoE2E's own rig beat
+  the stock rig's bar, set before it ran, by 0.1 mm. The map is worth 0.08 m;
+  the oracle route nothing on the val keyframes and a cost on the overlap ones,
+  as upstream's own route-zeroed counterfactual found on its full val set. See
+  [the AutoE2E page](../models/autoe2e.md#results), which also has these
+  inputs checked against upstream's own packed samples.
 
 Nearly all of Drive-JEPA's error is longitudinal (2.317 m against 0.209 m
 lateral, an 11:1 split, from the original report, which decomposed it against
@@ -460,6 +481,17 @@ the stock run re-made here, lateral error rises from 0.286 to 0.339 m, and the 3
 turns get 0.234 m worse. An independent re-run reproduced every keyframe to the bit.
 See `tools/models/openpilot/analysis/openpilot_drv_supcombo_kitscenes_config_run.md`.
 
+⊞ **AutoE2E's KITScenes figure is adapted, and is given an oracle route**
+(`20261020T220509-dee848`). The checkpoint was fine-tuned on KITScenes train,
+none of whose scenes is in this list. It is given what upstream validated it
+with: the scene's Lanelet2 map and a route matched to the logged drive, future
+included ([The map and the route](#the-map-and-the-route)). It runs on its own
+rig, the base front camera with the reference 2.1 m up, a site pairing table
+adopted because it beat the stock rig's 0.8473 by 0.1 mm. Without the route it
+scores 0.837, and without the map as well 0.921; on the 186 val keyframes 0.848
+and on the 37 whose area overlaps train 0.842. See
+[the AutoE2E page](../models/autoe2e.md#results).
+
 ### KITScenes
 
 Open-loop displacement error in metres over the 3 s horizon, full 223-sample
@@ -471,7 +503,9 @@ dataset. It, Alpamayo 1.5 and OpenPilot's configured run beat the
 constant-velocity baseline; OpenPilot's configuration was chosen by inspecting
 one scene of this split (see ⊜). The re-ranked Drive-JEPA row also beats the
 baseline, but it is adapted to KITScenes train (see ⊛): 1.002 on the 186 val
-samples, 0.828 on the 37 from scenes whose area overlaps train.
+samples, 0.828 on the 37 from scenes whose area overlaps train. AutoE2E is
+adapted too, and is the one row given the scene's map and an oracle route (see
+⊞): 0.848 on the val samples, 0.842 on the overlap ones.
 
 | Model | ADE@3s ↓ (m) | FDE@3s ↓ (m) |
 |---|---:|---:|
@@ -482,4 +516,5 @@ samples, 0.828 on the 37 from scenes whose area overlaps train.
 | VisionPilot | 1.534 ∗ | 3.089 ∗ |
 | METEOR | 1.879 ◇ | 4.034 ◇ |
 | Qwen-Drive 1.0 | **0.806** | **1.777** |
+| AutoE2E | 0.847 ⊞ | 1.903 ⊞ |
 | Baseline (Constant Velocity) | 1.381 | 3.091 |

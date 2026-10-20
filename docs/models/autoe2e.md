@@ -16,6 +16,7 @@ in the release's `config.json`). Adapter: `src/paddock/adapters/models/autoe2e/`
 PADDOCK_REPO=<repos>/auto_e2e PADDOCK_WEIGHTS=<weights> bash src/paddock/adapters/models/autoe2e/setup.sh
 paddock doctor --model autoe2e
 paddock run --model autoe2e --bench navsim          # needs [benchmarks.navsim] nuplan + keyframe_cameras
+paddock run --model autoe2e --bench kitscenes       # the map and the oracle route are on by default
 PADDOCK_INFER_HZ=10 paddock run --model autoe2e --bench bench2drive --scene <route>
 ```
 
@@ -159,6 +160,75 @@ Between the constant-velocity floor (0.2385) and Alpamayo 1.5 at 2 Hz
 ends a median 0.41 m left of the human's, growing with speed), right turns are
 under-turned, and starts from a standstill are timid (2.3 m planned against
 8.4 m driven). Comfort (0.984 history, 0.812 extended) is its strongest column.
+
+**KITScenes, the shared 223 keyframes, valid** (`results/kitscenes/autoe2e/`):
+**0.847** ADE@3s (`20261020T220509-dee848`), second to Qwen-Drive's 0.806 on
+this column. Adapted, and given an oracle route: see *AutoE2E × kitscenes* in
+[comparison.md](comparison.md). Four runs over the same keyframes:
+
+| run | rig | map | route | ADE@3s | FDE@3s | lateral MAE | val (186) | overlap (37) |
+|---|---|:-:|:-:|---:|---:|---:|---:|---:|
+| `20261020T215800-4bd074` | stock: ring front, 2.2 m | ✓ | oracle | 0.847 | 1.903 | 0.417 | 0.848 | 0.842 |
+| `20261020T220509-dee848` | its own: base front, 2.1 m | ✓ | oracle | **0.847** | 1.903 | 0.416 | 0.848 | 0.842 |
+| `20261020T220642-d63624` | its own | ✓ | — | 0.837 | 1.886 | 0.381 | 0.849 | 0.775 |
+| `20261020T220816-0a24e7` | its own | — | — | 0.921 | 2.083 | 0.475 | 0.935 | 0.853 |
+
+The row is the second run: this site's pairing table for AutoE2E's own rig
+(`front_camera = "base"`, `ground_offset_m = 2.1`) was adopted because it beat
+the stock rig's bar, set before it ran, by 0.1 mm -- which says the front
+camera and the 0.1 m make no practical difference. The map is worth 0.08 m. The
+oracle route is worth nothing on the val keyframes and costs on the overlap
+ones and on lateral error; upstream's own route-zeroed counterfactual found the
+same on its full val set (ADE@5s 1.955 without the route, 1.971 with it). 173
+of the 223 keyframes have a matched route: on the other 50 upstream's quality
+gates refuse the match, and the raster stays empty.
+
+**Checked against upstream's own packed samples.** An out-of-tree reproduction
+of the release's KITScenes val figures (1.948 / 5.585 m ADE / FDE@5s against the
+model card's 1.941 / 5.564) packed every val sample with upstream's code at
+`40a75cf8`. 186 of the 223 keyframes are among them, same scene and frame, with
+the ground truth agreeing to 6 mm, so every input the adapter builds was
+compared with upstream's, sample by sample:
+
+| input | agreement on the 186 |
+|---|---|
+| camera tiles, current frame (the six 512 px views and the 1024 px front) | byte-identical |
+| current and native-front projections, on its own rig | exact |
+| `map_valid` / `route_valid` | 186 of 186; a matched route on 145 in both |
+| route raster | median 0 cells differ, max 11 |
+| semantic map | median 0.04 % of cells, max 0.16 %, at polygon edges |
+| ego rows, on the 117 keyframe-40 samples | speed 2e-5, accel 1.8e-4, yaw rate 1.4e-3, curvature 5.8e-3 m/s / s⁻¹ at most; `v0` 1.2e-5 m/s |
+| history projections | 1.0 % relative (median), 7.5 % at most |
+
+Each difference has a cause. KITScenes stores its quaternions to 4 decimals,
+and the harness reads yaw without normalising them (≤ 1.2e-4 rad from
+upstream's), which moves the edge cells and the yaw-rate rows. The harness's
+poses are planar where upstream's history projections use 6-DoF. And on 26 of
+the 186 (31 of the 223) upstream's raster comes from a pose 0.5 s back (above),
+where 8 % of the map's cells differ; those rows are left out of the two raster
+figures.
+
+The plans were compared the same way, each run against the reference made with
+its own inputs: the official run's predictions (map and route), its
+route-zeroed counterfactual (map only), and an input control with neither.
+ADE@3s on the 117 keyframe-40 samples, whose 40-row ego history is the
+protocol's own:
+
+| inputs | paddock | upstream | per-sample Δ at 5 s, median / p95 |
+|---|---:|---:|---:|
+| map and route (`dee848`) | 0.838 | 0.835 | 0.090 / 0.529 m |
+| map only (`d63624`) | 0.831 | 0.830 | 0.119 / 0.516 m |
+| neither (`0a24e7`, the 23 of these the control covers) | 0.984 | 0.980 | 0.067 / 0.255 m |
+
+The bar set before the runs, upstream's own batch-size noise (median ≤ 0.08 m,
+p95 ≤ 0.23 m at 5 s), is met at the median and just missed in the tail where
+the inputs are the same (no map or route: 0.067 / 0.255 m, at most 0.265), and
+missed further in the tail once the rasters are on. Two of upstream's own valid
+runs (FP32 without its stateful cache, BF16 with it) differ by 0.070 / 0.247 m
+on the same measure. That the extra tail comes from the raster differences
+above is argued, not verified. On the other 69 keyframes the harness gives 48 real ego rows where
+upstream's protocol gives 40, and AutoE2E scores better for it (0.865 against
+0.914 on those rows).
 
 **Bench2Drive: not recorded here.** The 50-route sweep (`PADDOCK_INFER_HZ=10`,
 a forward every call, route raster on) was paused part-way. Every route run so
