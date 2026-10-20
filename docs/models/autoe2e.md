@@ -54,16 +54,33 @@ From the release `config.json` and upstream's KITScenes evaluation path
   newest acceleration zeroed (the KITScenes stage's causal mask), rows before
   the first pose left at zero (upstream's left padding). It is not read from
   `canbus`, which most harnesses fill only partly.
-- **Navigation.** No semantic map: zeros with `map_valid` false, upstream's
-  own no-map track. The route raster is drawn from `obs.route_xy` when the
-  benchmark sends one: a corridor 1.75 m either side, clipped 10 m behind, and
-  a 2 m destination disk where the polyline stops short of 200 m. Bench2Drive
-  sends the leaderboard's route; NAVSIM has none, so its scenes run camera +
-  ego only. `AUTOE2E_ROUTE=0` forces the camera-only track. That track is
-  upstream's official KITScenes *test* input (`camera_only_missing_map_route`);
-  training and validation always had map and route
-  (`distributed_training/reactive_data.py` at `40a75cf8`), so NAVSIM shows this
-  checkpoint an input it was evaluated on but never trained on.
+- **Navigation, where the benchmark has a map (KITScenes).** The observation
+  names the scene's Lanelet2 map (`obs.map_files`) and, under KITScenes'
+  default `route = "oracle"`, carries the logged drive (`obs.route_trace`).
+  The adapter draws both with upstream's own code, the calls
+  `kit_scenes/navigation.py` makes when it packs a sample: the map extracted by
+  `navigation/lanelet2_adapter.py`, the route matched to the drive by
+  `navigation/lanelet2_matcher.py` (whose quality gates decide `route_valid`),
+  both rendered by the native
+  `navigation/rasterizer.py`. That is upstream's KITScenes validation input,
+  with which its published numbers were made. The map is read from a scratch
+  copy, because upstream writes a sanitised `map.osm` beside the one it reads
+  for scenes with degenerate lanelets. One difference, kept on purpose:
+  upstream renders at the latest pose on a 0.5 s grid and warps that raster to
+  the sample, while the adapter renders at the sample's own pose. On the
+  KITScenes keyframes these are the same pose, except for 31 of the 223 where
+  upstream's truncation of the log clock to whole nanoseconds puts its grid
+  pose 0.5 s back. KITScenes' `map = false` or `route = "none"` withholds
+  either; `AUTOE2E_ROUTE=0` refuses any route.
+- **Navigation elsewhere.** No semantic map: zeros with `map_valid` false,
+  upstream's own no-map track. The route raster is drawn from `obs.route_xy`
+  when the benchmark sends one: a corridor 1.75 m either side, clipped 10 m
+  behind, and a 2 m destination disk where the polyline stops short of 200 m.
+  Bench2Drive sends the leaderboard's route; NAVSIM has none, so its scenes run
+  camera + ego only. That track is upstream's official KITScenes *test* input
+  (`camera_only_missing_map_route`); training and validation always had map and
+  route (`distributed_training/reactive_data.py` at `40a75cf8`), so NAVSIM shows
+  this checkpoint an input it was evaluated on but never trained on.
 - **Output.** The 64 controls are integrated with upstream's rollout
   (`training/losses/control_rollout.py`: dt 0.1, speed clamped at zero first,
   heading from the new speed), starting from the history's t−0.1 s speed, and
@@ -100,6 +117,21 @@ installing `timm` alongside re-resolves torch from PyPI, whose cu126 build has
 no sm_120 (Blackwell) kernels. `setup.sh` refuses a checkout not at `40a75cf8`
 and checks the downloaded files against the release's `SHA256SUMS`. ~3 GB of
 VRAM per node.
+
+The map needs three more things, installed as upstream's own data-prep image
+installs them (`Platform/docker/data-prep/Dockerfile`):
+
+- **The KITScenes SDK** (`github.com/KIT-MRT/kitscenes`), at the revision
+  upstream pins (`KITSCENES_SDK_REVISION` in
+  `Model/data_parsing/kit_scenes/source.py`, `7765cdec`). Its Lanelet2 1.2.2
+  wheel is vendored in the SDK under git LFS, so `git-lfs` must be installed.
+  The SDK is installed with pip from inside its clone, because its metadata
+  names that wheel by a path relative to the clone, which uv refuses to parse.
+- **NumPy 1.26.4.** The SDK requires NumPy < 2, and pyarrow is pinned to
+  25.0.1, the last release that accepts it. The model runs on it unchanged.
+- **Upstream's C++ rasterizer**, built by `Model/navigation/native/build.py`
+  beside its source, where upstream's loader looks for it. It needs a C++17
+  compiler.
 
 ## Training exposure
 
