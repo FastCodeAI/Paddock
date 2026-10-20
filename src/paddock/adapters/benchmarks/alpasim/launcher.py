@@ -47,6 +47,12 @@ DEFAULT_STARTUP_TIMEOUT_S = 900
 #: How long to wait for the bridge to accept connections before giving up.
 BRIDGE_READY_TIMEOUT_S = 60.0
 
+#: How long the node may take to say which model it serves, once per scene
+#: before the scene starts. 60 s, not 10: on a box whose disk is saturated a
+#: node that is otherwise healthy can take longer than 10 s to answer between
+#: scenes, and in a 30-scene run 3 scenes failed to start on the 10 s limit.
+SERVING_MODEL_TIMEOUT_S = 60.0
+
 #: Config tree this adapter ships, added to Hydra's search path so `driver=`
 #: resolves to the bridge rather than to a driver the wizard would start itself.
 CONFIGS_DIR = Path(__file__).parent / "configs"
@@ -356,7 +362,7 @@ def node_alive(policy_url: str, timeout_s: float = 5.0) -> bool:
         return False
 
 
-def serving_model(policy_url: str, timeout_s: float = 10.0) -> str:
+def serving_model(policy_url: str, timeout_s: float = SERVING_MODEL_TIMEOUT_S) -> str:
     """The model the node at *policy_url* says it serves (`/whoami`).
 
     Asked of the node rather than passed in, because `run_episode` is handed a

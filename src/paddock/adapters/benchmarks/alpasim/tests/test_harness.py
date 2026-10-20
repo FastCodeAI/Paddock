@@ -651,3 +651,29 @@ def test_the_drivejepa_profile_pins_every_scene_it_can_be_asked_for() -> None:
     assert set(load_scene_set("public_2601_first10")) <= set(ids)
     assert {row["nre_version_string"] for row in rows} == {"26.1.112-59673f88"}
     assert len({row["uuid"] for row in rows}) == len(rows)
+
+
+def test_the_node_gets_a_minute_to_say_which_model_it_serves(monkeypatch) -> None:
+    # 10 s failed three scenes of a 30-scene run while the disk was saturated;
+    # the node was healthy and answered the scene after. Startup only: this is
+    # asked once per scene, before the bridge starts.
+    waited: list[float] = []
+
+    class _Answer:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps({"model": "drivejepa"}).encode()
+
+    def urlopen(url, timeout):
+        assert url.endswith("/whoami")
+        waited.append(timeout)
+        return _Answer()
+
+    monkeypatch.setattr(launcher.urllib.request, "urlopen", urlopen)
+    assert launcher.serving_model("http://127.0.0.1:9800") == "drivejepa"
+    assert waited == [60.0]
