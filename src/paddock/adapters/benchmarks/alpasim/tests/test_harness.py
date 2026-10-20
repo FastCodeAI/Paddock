@@ -697,3 +697,24 @@ def test_drivejepa_records_video_only_when_the_site_asks(
     (call,) = seen
     assert call["driver"] == "paddock_bridge_drivejepa"
     assert (call["video"], call["video_every_nth_frame"]) == (False, 1)
+
+
+def test_the_drivejepa_bridge_flags_match_its_driver_config() -> None:
+    """The bridge's control step and warm-up length are the driver config's.
+
+    A different control step would fail the first scene loudly (PushCadenceError);
+    a different warm-up would only mislabel warm-up and after-handover replans.
+    """
+    import yaml
+
+    from paddock.adapters.benchmarks.alpasim import harness, launcher
+
+    profile = harness.profile_for("drivejepa")
+    args = list(profile.bridge_args)
+    flag = {name: int(args[args.index(name) + 1]) for name in ("--frame-interval-us", "--force-gt-us")}
+    config = yaml.safe_load((launcher.CONFIGS_DIR / "driver" / f"{profile.driver}.yaml").read_text())
+    simulation = config["runtime"]["simulation_config"]
+    assert flag["--frame-interval-us"] == simulation["control_timestep_us"]
+    assert flag["--force-gt-us"] == simulation["force_gt_duration_us"]
+    (front,) = [c for c in simulation["cameras"] if c["logical_id"] == args[args.index("--front-camera") + 1]]
+    assert front["frame_interval_us"] == simulation["control_timestep_us"]
