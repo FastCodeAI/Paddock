@@ -72,6 +72,14 @@ class Runtime:
     #: checkpoint or a horizon swapped in by a site would otherwise be ranked
     #: under the model's name.
     tuning_env: tuple[str, ...] = ()
+    #: Names of environment variables whose *value* should come from whatever
+    #: shell launched `paddock run`, not a template resolved here -- ablation
+    #: knobs like ALPAMAYO_NUM_TRAJ_SAMPLES that a debugging script sets ad hoc.
+    #: `env` above is for the opposite case: a fixed value this model always
+    #: needs. Without this, `FOO=1 paddock run ...` silently does nothing,
+    #: because runtime/env.py builds the subprocess's environment from a
+    #: strict allowlist rather than inheriting the caller's wholesale.
+    env_passthrough: tuple[str, ...] = ()
 
     def interpreter(self, cfg: SiteConfig, **ctx: str) -> Path:
         """The interpreter to launch, with any site override applied.
@@ -294,6 +302,7 @@ def load_models(directory: Path = MODELS_DIR) -> dict[str, ModelSpec]:
                 cwd=rt.get("cwd"),
                 env=dict(rt.get("env", {})),
                 tuning_env=tuple(rt.get("tuning_env", ())),
+                env_passthrough=tuple(rt.get("env_passthrough", ())),
             ),
             cameras=tuple(caps.get("cameras", ("CAM_FRONT",))),
             vram_gb=float(caps.get("vram_gb", 0.0)),

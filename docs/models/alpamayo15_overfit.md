@@ -1,15 +1,20 @@
 # alpamayo15_overfit: a wiring smoke test, not a claim about generalization
 
-**Status: blocked, not for merge.** This adapter loads a real checkpoint
+**Status: not a scored model.** This adapter loads a real checkpoint
 (`2scene-overlay.pt`, trained on scenes 0053+0058, ~2,300 steps across 3
 epochs -- the scene-0053-only run that preceded it was superseded and is not
 the checkpoint of record), but that checkpoint has no `checkpoint.json`
 provenance and its own 20-scenario-pair evaluation is net negative (4 better,
 6 worse, 10 unchanged, with two scenes regressing to a hard 0.00 -- consistent
-with overfitting to two scenes). Do not register this as a scored model until
-gallops produces a checkpoint through its real `checkpoint.json`/`{weights}`
-contract; until then this stays evidence that the SFT wiring works, not a
-candidate for the leaderboard.
+with overfitting to two scenes). `model.yaml` declares `benchmarks: []`
+deliberately, so `paddock run --model all --bench neuroncap` never includes
+it and `paddock report` never carries its row -- this is a real mechanism,
+not just this paragraph. `paddock run --model alpamayo15_overfit --bench
+neuroncap` still works directly, the same way it always has; that invocation
+is for exercising the wiring, not for producing a leaderboard number. Leave
+`benchmarks: []` until gallops produces a checkpoint through its real
+`checkpoint.json`/`{weights}` contract; until then this stays evidence that
+the SFT wiring works, not a candidate for the leaderboard.
 
 `alpamayo15` with its diffusion head overfit to cached rollouts from two
 scenes (0053, 0058). This exists to prove the SFT training wiring end to end
@@ -35,6 +40,15 @@ model name, and a flag some runs set would silently fold a materially
 different model into `alpamayo15`'s own row.
 
 ## Getting the overlay checkpoint
+
+`rl_training/sft_convert.py`, `sft_vlm_cache.py` and
+`sft_train_diffusion_head.py` are Gallops' own training tooling -- not part of
+this repo's tree, not pinned in `repos.yaml`, and not reachable from a plain
+checkout of this repo or of `alpamayo1.5`. This section documents the
+contract (what each script reads and writes) so the overlay `.pt` can be
+rebuilt and verified against that contract; it is not a runnable recipe from
+this checkout alone. Per "Paddock scores, Gallops trains," that tooling
+belongs to Gallops, not here.
 
 `ALPAMAYO_OVERLAY_CHECKPOINT` must point at the `.pt` file
 `rl_training/sft_train_diffusion_head.py --save-overlay` wrote. `load()`

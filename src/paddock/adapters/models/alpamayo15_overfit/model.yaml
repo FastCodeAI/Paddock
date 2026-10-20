@@ -1,5 +1,5 @@
 name: alpamayo15_overfit
-description: alpamayo15 with its diffusion head overfit to a handful of cached scene-0053 steps -- a wiring smoke test, not a claim about generalization (see rl_training/sft_train_diffusion_head.py)
+description: alpamayo15 with its diffusion head overfit to cached rollouts from two scenes (0053, 0058) -- a wiring smoke test, not a claim about generalization (see rl_training/sft_train_diffusion_head.py)
 repo: alpamayo1.5
 
 runtime:
@@ -38,7 +38,7 @@ capabilities:
   native_input_hz: 10.0
   history_s: 1.5
 
-  architecture: "Cosmos-Reason2 VLM + diffusion trajectory decoder, diffusion head overfit to scene-0053"
+  architecture: "Cosmos-Reason2 VLM + diffusion trajectory decoder, diffusion head overfit to scenes 0053+0058"
   params_m: 10000
   size_gb: 20
   precision: bf16
@@ -49,6 +49,12 @@ capabilities:
   stochastic: true
   trained_on:
     - dataset: nvidia-internal
-    - dataset: scene-0053-overfit-smoke-test
+    - dataset: 2scene-overfit-smoke-test
 
-benchmarks: [neuroncap]
+# Deliberately empty, not [neuroncap]: this is a wiring smoke test, not a
+# scored model (see docs/models/alpamayo15_overfit.md's "Status"). An empty
+# list only keeps it out of `--model all` sweeps (runner.py filters `all` by
+# `bench in m.benchmarks`); a direct `--model alpamayo15_overfit --bench
+# neuroncap` invocation does not consult this list and still works, which is
+# the documented way to run it.
+benchmarks: []

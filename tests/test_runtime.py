@@ -60,6 +60,34 @@ def test_environment_is_not_inherited_wholesale(site, monkeypatch) -> None:
     assert "CONDA_PREFIX" not in built
 
 
+def test_env_passthrough_forwards_only_declared_vars_from_the_callers_shell(site, monkeypatch) -> None:
+    """model.yaml's runtime.env_passthrough is an allowlist of *names*: the
+    value comes from whoever's shell launched `paddock run`, and a var not
+    named there must not leak through even if it happens to be set."""
+    monkeypatch.setenv("ALPAMAYO_NUM_TRAJ_SAMPLES", "4")
+    monkeypatch.setenv("SOME_UNDECLARED_VAR", "leaked")
+    spec = Registry.load().models["openpilot"]
+    declared = replace(spec, runtime=replace(spec.runtime, env_passthrough=("ALPAMAYO_NUM_TRAJ_SAMPLES",)))
+
+    built = env_builder.build(declared, site)
+
+    assert built["ALPAMAYO_NUM_TRAJ_SAMPLES"] == "4"
+    assert "SOME_UNDECLARED_VAR" not in built
+
+
+def test_env_passthrough_overrides_a_models_own_declared_default(site, monkeypatch) -> None:
+    """`FOO=1 paddock run ...` must win over model.yaml's own `env` default for
+    the same name, or the ablation knob it exists for cannot be exercised."""
+    monkeypatch.setenv("SOME_KNOB", "from-shell")
+    spec = Registry.load().models["openpilot"]
+    declared = replace(
+        spec,
+        runtime=replace(spec.runtime, env={"SOME_KNOB": "model-default"}, env_passthrough=("SOME_KNOB",)),
+    )
+
+    assert env_builder.build(declared, site)["SOME_KNOB"] == "from-shell"
+
+
 def test_template_variables_are_resolved_in_model_env(site) -> None:
     spec = Registry.load().models["openpilot"]
     built = env_builder.build(spec, site)
