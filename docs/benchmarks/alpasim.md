@@ -68,7 +68,7 @@ models that declare `alpasim`:
 | Model | Plan it returns | Headings now | Effect on its AlpaSim results |
 |---|---|---|---|
 | Drive-JEPA | 8 × (x, y, yaw) | the model's | driven on all eight poses (see below) |
-| Alpamayo 1.5 | 8 × (x, y) | derived from the path | now driven on 8 waypoints with headings, where it was driven on 6 with none, so its results will shift; it has not been re-run |
+| Alpamayo 1.5 | 8 × (x, y) | derived from the path | now driven on 8 waypoints with headings, where it was driven on 6 with none; and from the second scene of a sweep on, its frame and pose history starts empty, where it used to carry over from the previous scene (the node stays up for the whole sweep, and its `reset` clears that history). Its results will shift for both reasons; it has not been re-run |
 | constant velocity | 6 × (x, y), straight along x | derived, and all 0 | steered exactly as before (a straight path's derived heading is 0, the "keep the current heading" it was always sent) |
 
 The rows in [Reference numbers](#reference-numbers) were made by each model's
