@@ -16,7 +16,7 @@ in the release's `config.json`). Adapter: `src/paddock/adapters/models/autoe2e/`
 PADDOCK_REPO=<repos>/auto_e2e PADDOCK_WEIGHTS=<weights> bash src/paddock/adapters/models/autoe2e/setup.sh
 paddock doctor --model autoe2e
 paddock run --model autoe2e --bench navsim          # needs [benchmarks.navsim] nuplan + keyframe_cameras
-PADDOCK_INFER_HZ=10 paddock run --model autoe2e --bench bench2drive --scene <route>
+paddock run --model autoe2e --bench bench2drive --scene <route>   # at 10 Hz with the pairing in "On Bench2Drive"
 ```
 
 PR #19 is a different adapter: KITScenes only, written before any weights were
@@ -100,6 +100,31 @@ installing `timm` alongside re-resolves torch from PyPI, whose cu126 build has
 no sm_120 (Blackwell) kernels. `setup.sh` refuses a checkout not at `40a75cf8`
 and checks the downloaded files against the release's `SHA256SUMS`. ~3 GB of
 VRAM per node.
+
+## On Bench2Drive
+
+AutoE2E's own rate is 10 Hz: it reads 64 ego rows at 10 Hz and plans 64
+control steps at 10 Hz (the release `config.json`; `native_input_hz: 10.0`),
+with its camera history sampled every 0.5 s. The Bench2Drive agent calls the
+node on every 20 Hz tick, so a forward on every call runs the model twice as
+often as it was built for, at twice the cost. A pairing runs it at its own rate:
+
+```toml
+[models.autoe2e.benchmarks.bench2drive.env]
+AUTOE2E_REPLAN_S = "0.1"   # a forward every 0.1 s of game time
+```
+
+On the tick between two forwards the node answers with the last plan, moved
+into the current ego frame (`extras.autoe2e.held_s` is its age). That is not
+the published 20 Hz protocol, so such a run is `valid: false` with
+`AUTOE2E_REPLAN_S` named in its notes.
+
+Cost on one A100 80 GB (20 Oct 2026, idle card): 2.0 s a forward (1.93 s model,
+0.07 s packing), 2.3 GB allocated. Three nodes sharing the card took 6.1 s each,
+so routes gain nothing from being driven side by side. With six 800 × 450
+cameras rendered and sent every tick, a route drives at ~0.04× real time,
+~1.3 s of wall clock a tick: the 4000-tick cap is ~85 min, so
+`per_route_timeout_s` wants 7200.
 
 ## Training exposure
 

@@ -335,6 +335,13 @@ serialize = true
 # [models.openpilot.benchmarks.kitscenes.settings]
 # command_source = "gt"
 # front_camera = "base"
+#
+# AutoE2E on Bench2Drive at its own 10 Hz (docs/models/autoe2e.md, "On
+# Bench2Drive"): the agent calls every 20 Hz tick, and this runs the model every
+# 0.1 s and holds the plan on the tick between. Not the published 20 Hz protocol,
+# so a run with it is valid: false. ~1.3 s of wall clock a tick on an A100.
+# [models.autoe2e.benchmarks.bench2drive.env]
+# AUTOE2E_REPLAN_S = "0.1"
 
 # Drive-JEPA reads each camera at its own intrinsics by default ("native"), which
 # is how every published drivejepa row was made. "openscene" crops each camera

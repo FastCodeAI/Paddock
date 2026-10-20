@@ -20,7 +20,8 @@ runtime:
     AUTOE2E_REF_HEIGHT_M: "2.1"
     # Route raster from obs.route_xy when the benchmark sends one ("0": camera-only track).
     AUTOE2E_ROUTE: "1"
-    # Forward-pass cadence in seconds (0 = every call). Closed loop sets 0.5 with 10 Hz calls.
+    # Forward-pass cadence in seconds (0 = every call). Bench2Drive calls every 20 Hz tick;
+    # 0.1 there, as a pairing, is the model's own 10 Hz (docs/models/autoe2e.md, "On Bench2Drive").
     AUTOE2E_REPLAN_S: "0"
     OMP_NUM_THREADS: "2"
   # Site overrides of these change speed, memory or logging, not the plan, so they
