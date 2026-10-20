@@ -46,6 +46,7 @@ import sys
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -200,6 +201,20 @@ def finite_controls(controls: np.ndarray) -> np.ndarray:
             f"AutoE2E returned non-finite controls at {int(bad.any(axis=1).sum())} of {len(controls)} steps"
         )
     return controls
+
+
+def portable_checkpoint(path: str) -> str:
+    """The checkpoint as the release names it, never where this machine keeps it.
+
+    `diagnostics()` lands verbatim in the tracked run.json (runner.py copies `/diagnostics`
+    into its provenance), so an absolute path there commits a site's weights root and fails
+    the portability gate. The release layout `models/<variant>/checkpoint.pt` keeps the
+    variant, the part a reader needs; `checkpoint_sha256` pins the exact file.
+    """
+    parts = Path(path).parts
+    if len(parts) >= 3 and parts[-3] == "models":
+        return "/".join(parts[-3:])
+    return Path(path).name
 
 
 def integrate_controls(controls: np.ndarray, v0: float) -> np.ndarray:
@@ -728,7 +743,7 @@ class AutoE2EPolicy(Policy):
 
     def diagnostics(self) -> dict[str, Any]:
         return {
-            "checkpoint": self.checkpoint,
+            "checkpoint": portable_checkpoint(self.checkpoint),
             "checkpoint_sha256": self._ckpt_sha,
             "config": getattr(self, "config", None),
             "ref_height_m": self.ref_height,
