@@ -1,7 +1,8 @@
 """A live dashboard for a Bench2Drive campaign: results as they land, a video per route.
 
     python -m tools.benchmarks.bench2drive.dashboard serve --root <experiment_dir> --runs <runs_dir> \
-        --expert <dir> --routes-xml <bench2drive220.xml> [--port 8765] [--every 60] [--jobs 3]
+        --expert <dir> --routes-xml <bench2drive220.xml> [--port 8765] [--every 60] [--jobs 3] \
+        [--model NAME] [--title TEXT] [--routes 1711,1852]
     python -m tools.benchmarks.bench2drive.dashboard build ...   # one pass, no server
 
 ``serve`` does two things at once:
@@ -172,7 +173,20 @@ class Builder:
         self.routes_out = self.out / "routes"
         self.runs = [Path(p).resolve() for p in args.runs]
         self.expert = args.expert
+        # The driver's name on the page and the videos. A sweep's runs live in
+        # <runs>/bench2drive/<model>/, so --runs usually names it already.
+        self.model = args.model or (self.runs[0].name if self.runs else "model")
+        self.title = args.title or ""
         self.table = runs.route_table(args.routes_xml)
+        if args.routes:
+            # A campaign over a subset lists that subset, not 220 rows mostly "Queued".
+            wanted = {r.strip() for r in args.routes.split(",") if r.strip()}
+            unknown = sorted(wanted - set(self.table))
+            if unknown:
+                raise SystemExit(
+                    f"--routes names route ids not in {args.routes_xml.name}: {', '.join(unknown)}"
+                )
+            self.table = {rid: meta for rid, meta in self.table.items() if rid in wanted}
         self.pool = ProcessPoolExecutor(max_workers=args.jobs)
         self.pending: dict[str, Future] = {}
         self.errors: dict[str, str] = {}
@@ -210,7 +224,7 @@ class Builder:
 
     def build(self) -> dict:
         started = time.time()
-        everything = runs.attempts(self.runs) if self.runs else []
+        everything = [a for a in (runs.attempts(self.runs) if self.runs else []) if a.route_id in self.table]
         chosen = runs.latest(everything)
         for att in chosen.values():
             if self.needs_render(att):
@@ -220,6 +234,7 @@ class Builder:
                     self.expert,
                     self.routes_out,
                     self.table.get(att.route_id),
+                    model=self.model,
                 )
                 with self.lock:
                     self.pending[att.route_id] = fut
@@ -251,6 +266,8 @@ class Builder:
         finished = [a for a in chosen.values() if a.result is not None]
         data = {
             "generated_at": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
+            "model": self.model,
+            "title": self.title,
             "build_s": round(time.time() - started, 1),
             "expected_routes": len(self.table) or EXPECTED_ROUTES,
             "attempts": len(everything),
@@ -355,6 +372,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--every", type=float, default=60.0, help="seconds between builder passes")
     ap.add_argument("--jobs", type=int, default=3, help="routes rendered at once (CPU; the GPU is CARLA's)")
+    ap.add_argument("--model", help="the driver's name on the page (default: the --runs directory's name)")
+    ap.add_argument("--title", help="a line under the name, e.g. the checkpoint and how it was driven")
+    ap.add_argument(
+        "--routes", help="comma-separated route ids: the campaign's subset (default: every route)"
+    )
     args = ap.parse_args(argv)
 
     builder = Builder(args)

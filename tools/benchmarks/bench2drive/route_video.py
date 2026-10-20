@@ -73,6 +73,10 @@ BEV_PX_PER_M = BEV_PX / (2 * BEV_Z * math.tan(math.radians(BEV_FOV / 2)))
 GREEN, ORANGE, BLUE, WHITE, RED = (60, 220, 60), (0, 150, 255), (255, 160, 40), (255, 255, 255), (60, 60, 230)
 YELLOW, CYAN, MAGENTA, GRAY = (40, 230, 230), (230, 220, 40), (220, 80, 220), (150, 150, 150)
 PANEL_BG = (24, 24, 28)
+SENT_ROUTE = (255, 215, 140)  # light blue: the sparse route the node was sent
+
+#: Captions of the model-camera thumbnails that are not just their camera's name.
+VIEW_LABELS = {"model_wide": "model input: wide (big_img)", "model_road": "model input: road (img)"}
 
 
 # --------------------------------------------------------------------------- geometry
@@ -140,12 +144,56 @@ def rotated_box(img, center, yaw_deg: float, half_l: float, half_w: float, s: fl
 
 # --------------------------------------------------------------------------- data
 
+#: Panel order of the model-camera thumbnails (recorder.model_view_dir names):
+#: openpilot's pair stacked; a surround rig two abreast with each side's cameras
+#: in its own column, front and back first. Anything else follows, by name.
+VIEW_ORDER = (
+    "model_wide", "model_road",
+    "model_front", "model_back",
+    "model_front_left", "model_front_right",
+    "model_back_left", "model_back_right",
+)  # fmt: skip
+
+
+def model_views(route_dir: Path) -> list[str]:
+    """The model-camera thumbnail directories a route recorded, in panel order."""
+    found = {p.name for p in Path(route_dir).glob("model_*") if p.is_dir()}
+    return [v for v in VIEW_ORDER if v in found] + sorted(found - set(VIEW_ORDER))
+
+
+def model_state(ticks: list[dict], model: str) -> list[dict]:
+    """Per tick, the scalars the model reported under its own name in ``extras``.
+
+    A node that replans less often than it is called answers the ticks between
+    with a held plan and fewer fields (AutoE2E: only ``held_s``); those ticks show
+    the last full report with the held fields over it, so the panel does not
+    blank on every other frame. Nested values (lane lines, lead lists) are drawn
+    elsewhere or not at all, and are left out.
+    """
+    out: list[dict] = []
+    last_full: dict = {}
+    for rec in ticks:
+        own = (rec.get("extras") or {}).get(model)
+        own = (
+            {k: v for k, v in own.items() if not isinstance(v, (dict, list))} if isinstance(own, dict) else {}
+        )
+        if len(own) > 1:
+            last_full = own
+            out.append(own)
+        else:
+            out.append({**last_full, **own})
+    return out
+
 
 class RouteData:
     """Everything one route's frames are drawn from, loaded once."""
 
-    def __init__(self, route_dir: Path, expert_root: Path | None, meta: dict | None) -> None:
+    def __init__(
+        self, route_dir: Path, expert_root: Path | None, meta: dict | None, model: str | None = None
+    ) -> None:
         self.dir = Path(route_dir)
+        # <runs>/bench2drive/<model>/<run_id>/<route>: the layout every paddock run writes.
+        self.model = model or self.dir.parent.parent.name
         name = runs._ROUTE_DIR.match(self.dir.name)
         self.route_id = name["rid"] if name else self.dir.name
         self.meta = meta or {
@@ -194,6 +242,8 @@ class RouteData:
         self.lead_prob = np.array(
             [((r.get("extras") or {}).get("lead") or [{}])[0].get("prob", np.nan) for r in tk], dtype=float
         )
+        self.views = model_views(self.dir)
+        self.model_state = model_state(tk, self.model)
         self.infractions = runs.infraction_points(self.result) if self.result else []
         # The tick at which each located infraction happened: the ego's nearest approach.
         for inf in self.infractions:
@@ -272,7 +322,7 @@ def route_map(rd: RouteData, w: int, h: int):
             ax.plot(inf["x"], inf["y"], "x", color="#ff3030", ms=12, mew=3)
             ax.annotate(inf["kind"].replace("collisions_", "coll. "), (inf["x"], inf["y"]), color="#ff7070",
                         fontsize=8, xytext=(5, 5), textcoords="offset points")  # fmt: skip
-    ax.plot([], [], color="white", lw=2, label="openpilot (driven)")
+    ax.plot([], [], color="white", lw=2, label=f"{rd.model} (driven)")
     ax.set_xlim(lo[0], hi[0])
     ax.set_ylim(lo[1], hi[1])
     ax.set_aspect("equal", adjustable="datalim")
@@ -503,22 +553,66 @@ def draw_frame(rd: RouteData, k: int, static: dict) -> np.ndarray:
     for line, prob in zip(lane.get("lines") or [], lane.get("line_probs") or [], strict=False):
         if prob > 0.3:
             polyline(bev, bev_project(np.asarray(line), bs), YELLOW, 1)
+    # The route as the node got it (agent.py `route_xy`, ego frame): the leaderboard's
+    # sparse plan, whose chords a route-rasterising model (AutoE2E) followed.
+    sent_route = np.asarray((rec.get("sent") or {}).get("route_xy") or [], dtype=float).reshape(-1, 2)
+    if len(sent_route):
+        q = bev_project(sent_route, bs)
+        polyline(bev, q, SENT_ROUTE, 1)
+        for u, v in q:
+            if 0 <= u < bs and 0 <= v < bs:
+                cv2.circle(bev, (int(u), int(v)), 4, SENT_ROUTE, 1, cv2.LINE_AA)
     if len(plan):
         p = bev_project(np.vstack([[0.0, 0.0], plan]), bs)
         polyline(bev, p, GREEN, 3)
     rotated_box(bev, (bs / 2, bs / 2), 0.0, 2.4, 1.05, s, WHITE)
-    text(bev, "BEV  plan  expert  route  driven", (8, bs - 10), 0.45)
+    text(
+        bev,
+        "BEV  plan  expert  route" + ("  o sent" if len(sent_route) else "") + "  driven",
+        (8, bs - 10),
+        0.45,
+    )
     canvas[0:bs, fw : fw + bs] = bev
 
-    # -- model cameras (10 Hz thumbnails; nearest even tick)
-    mw, mh = W - fw - bs, 263
+    # -- model cameras (10 Hz thumbnails; nearest even tick), then what the model reported
+    col_x, col_w = fw + bs, W - fw - bs
     t_even = rec["t"] - rec["t"] % 2
-    for j, (view, label) in enumerate(
-        (("model_wide", "model input: wide (big_img)"), ("model_road", "model input: road (img)"))
-    ):
-        img = _read(rd.dir / view / f"{t_even:05d}.jpg", (mw, mh))
-        text(img, label, (6, 18), 0.45)
-        canvas[j * (mh + 14) : j * (mh + 14) + mh, fw + bs : W] = img
+    if len(rd.views) <= 2:  # openpilot's pair, stacked at the column's width
+        cols, cw, ch, gap = 1, col_w, 263, 14
+    else:  # a surround rig, two abreast
+        cols, cw, gap = 2, col_w // 2, 4
+        ch = int(cw * FRONT_H / FRONT_W)
+    y_end = 0
+    for j, view in enumerate(rd.views):
+        row, col = divmod(j, cols)
+        y0 = row * (ch + gap)
+        if y0 + ch > bs:
+            break
+        img = _read(rd.dir / view / f"{t_even:05d}.jpg", (cw, ch))
+        text(img, VIEW_LABELS.get(view, view.removeprefix("model_").replace("_", " ")), (6, 18), 0.45)
+        canvas[y0 : y0 + ch, col_x + col * cw : col_x + (col + 1) * cw] = img
+        y_end = y0 + ch
+    state = rd.model_state[k]
+    if state and bs - y_end > 60:
+        y = y_end + 26
+        text(
+            canvas,
+            f"{rd.model} reported" + (" (plan held)" if "held_s" in state else ""),
+            (col_x + 8, y),
+            0.5,
+        )
+        line = ""
+        for key, value in state.items():
+            item = f"{key} {value:.3g}" if isinstance(value, float) else f"{key} {value}"
+            if line and len(line) + len(item) > 44:
+                y += 20
+                if y > bs - 8:
+                    break
+                text(canvas, line, (col_x + 8, y), 0.45, GRAY)
+                line = ""
+            line = f"{line}  {item}" if line else item
+        if line and y + 20 <= bs - 8:
+            text(canvas, line, (col_x + 8, y + 20), 0.45, GRAY)
 
     # -- route map
     mp = static["map"].copy()
@@ -569,6 +663,7 @@ def route_summary(rd: RouteData) -> dict[str, Any]:
     sc = rd.scores()
     out: dict[str, Any] = {
         "route_id": rd.route_id,
+        "model": rd.model,
         **{k: rd.meta.get(k) for k in ("town", "scenario", "abilities", "length_m")},
         **sc,
         "ticks": len(rd.ticks),
@@ -594,9 +689,14 @@ def route_summary(rd: RouteData) -> dict[str, Any]:
 
 
 def render_route(
-    route_dir: Path, expert_root: Path | None, out_root: Path, meta: dict | None = None, every: int = 2
+    route_dir: Path,
+    expert_root: Path | None,
+    out_root: Path,
+    meta: dict | None = None,
+    every: int = 2,
+    model: str | None = None,
 ) -> dict:
-    rd = RouteData(route_dir, expert_root, meta)
+    rd = RouteData(route_dir, expert_root, meta, model)
     out = Path(out_root) / rd.route_id
     out.mkdir(parents=True, exist_ok=True)
     if not rd.ticks:
@@ -644,13 +744,20 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument("--force", action="store_true", help="re-render routes whose video exists")
+    ap.add_argument("--model", help="the driver's name on the frames (default: the run directory's model)")
     args = ap.parse_args(argv)
     table = runs.route_table(args.routes_xml) if args.routes_xml else {}
     if args.route_dir:
         m = runs._ROUTE_DIR.match(args.route_dir.name)
         print(
             json.dumps(
-                render_route(args.route_dir, args.expert, args.out, table.get(m["rid"]) if m else None),
+                render_route(
+                    args.route_dir,
+                    args.expert,
+                    args.out,
+                    table.get(m["rid"]) if m else None,
+                    model=args.model,
+                ),
                 indent=1,
             )
         )
@@ -665,7 +772,10 @@ def main(argv: list[str] | None = None) -> int:
     failures = 0
     with ProcessPoolExecutor(max_workers=args.jobs) as pool:
         futures = {
-            pool.submit(render_route, a.path, args.expert, args.out, table.get(a.route_id)): a for a in todo
+            pool.submit(
+                render_route, a.path, args.expert, args.out, table.get(a.route_id), model=args.model
+            ): a
+            for a in todo
         }
         for fut in as_completed(futures):
             a = futures[fut]
