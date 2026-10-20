@@ -518,7 +518,10 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
         `headings` says how the car was steered: ``model`` when every plan
         carried the model's own yaw, ``derived`` when the bridge derived them
         from the path, ``mixed`` for both, None when the bridge left no record.
-        `bridge_plans` holds the bridge's counts behind it.
+        `bridge_plans` holds the bridge's counts behind it. `history_frames`
+        says how frames the bridge needed no plan from were sent: ``observe``,
+        ``infer`` (a node without `/observe`, plan dropped), or None when it sent
+        none (a model planned at every tick).
         """
         record = self._plan_record(out_dir)
         return [
@@ -529,6 +532,7 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
                 "metrics": {k: float(v) for k, v in metrics.items() if k not in ("n_runs",)},
                 "headings": record and _headings_source(record),
                 "bridge_plans": record,
+                "history_frames": (record or {}).get("history_frames"),
             }
         ]
 

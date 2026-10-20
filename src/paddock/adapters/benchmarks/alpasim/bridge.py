@@ -341,6 +341,10 @@ class PolicyPlanner(Planner):
         self._record_path = Path(plan_record) if plan_record else None
         self._headings = {"model": 0, "derived": 0}
         self._plan_key = {"present": 0, "absent": 0}
+        #: How frames the planner needed no plan from were sent: "observe", or
+        #: "infer" for a node without /observe. None until one is sent.
+        self._history_frames: str | None = None
+        self._node_observes: bool | None = None
 
     # -- lifecycle ------------------------------------------------------------
 
@@ -430,11 +434,22 @@ class PolicyPlanner(Planner):
     def _count(self, headings: str, plan_key: bool) -> None:
         self._headings[headings] += 1
         self._plan_key["present" if plan_key else "absent"] += 1
+        self._write_record()
+
+    def _write_record(self) -> None:
         if self._record_path is None:
             return
         self._record_path.parent.mkdir(parents=True, exist_ok=True)
         staged = self._record_path.with_suffix(".tmp")
-        staged.write_text(json.dumps({"headings": self._headings, "plan_key": self._plan_key}))
+        staged.write_text(
+            json.dumps(
+                {
+                    "headings": self._headings,
+                    "plan_key": self._plan_key,
+                    "history_frames": self._history_frames,
+                }
+            )
+        )
         staged.replace(self._record_path)
 
     def log_row(self, row: dict[str, Any]) -> None:
@@ -550,6 +565,33 @@ class PolicyPlanner(Planner):
         if "trajectory" not in answer:
             raise RuntimeError(f"policy node answered /infer without a trajectory: {sorted(answer)}")
         return answer
+
+    def observe_frame(self, body: dict[str, Any]) -> str:
+        """Send a frame the node needs for its history but must not plan from.
+
+        POST /observe when the node serves it; a node from before /observe
+        answers 404 (or 405), and then the frame goes to /infer and the plan is
+        dropped, as every frame like this was sent before. Returns which one
+        was used, and records it (``history_frames`` in `--plan-record`).
+        """
+        import urllib.error
+
+        used = "infer"
+        if self._node_observes is not False:
+            try:
+                self._post("/observe", body)
+                self._node_observes, used = True, "observe"
+            except RuntimeError as exc:
+                if not (
+                    isinstance(exc.__cause__, urllib.error.HTTPError) and exc.__cause__.code in (404, 405)
+                ):
+                    raise
+                self._node_observes = False
+        if used == "infer":
+            self.post_infer(body)
+        self._history_frames = used
+        self._write_record()
+        return used
 
     def _post(self, path: str, body: dict) -> Any:
         """POST anything else the node serves (/reset), raising if it does not answer."""

@@ -59,6 +59,9 @@ class _StubNode(BaseHTTPRequestHandler):
     bodies: list[dict] = []
     resets: int = 0
     answer: dict = {}
+    #: False plays a node from before /observe: it answers that path 404.
+    observes: bool = True
+    observed: int = 0
 
     def do_POST(self) -> None:  # noqa: N802  (BaseHTTPRequestHandler's spelling)
         length = int(self.headers.get("Content-Length", 0))
@@ -66,6 +69,12 @@ class _StubNode(BaseHTTPRequestHandler):
         if self.path == "/reset":
             _StubNode.resets += 1
             payload = b"true"
+        elif self.path == "/observe" and not _StubNode.observes:
+            self.send_error(404)
+            return
+        elif self.path == "/observe":
+            _StubNode.observed += 1
+            payload = b'{"observed": true}'
         else:
             _StubNode.bodies.append(body)
             payload = json.dumps(_StubNode.answer).encode()
@@ -82,6 +91,7 @@ class _StubNode(BaseHTTPRequestHandler):
 @pytest.fixture
 def stub_node():
     _StubNode.bodies, _StubNode.resets = [], 0
+    _StubNode.observes, _StubNode.observed = True, 0
     _StubNode.answer = _wire(STUB_TRAJECTORY)
     server = HTTPServer(("127.0.0.1", 0), _StubNode)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -573,6 +583,26 @@ def test_where_the_headings_came_from_is_recorded_and_extras_are_logged(stub_nod
     planner.plan(view, 1_000_000, 1_000_000)
     planner.plan_from_answer({"trajectory": STUB_TRAJECTORY})
     record = json.loads((tmp_path / "plans.json").read_text())
-    assert record == {"headings": {"model": 1, "derived": 1}, "plan_key": {"present": 1, "absent": 1}}
+    assert record == {
+        "headings": {"model": 1, "derived": 1},
+        "plan_key": {"present": 1, "absent": 1},
+        "history_frames": None,  # a planner that plans at every tick sends none
+    }
     (row,) = [json.loads(line) for line in (tmp_path / "log.jsonl").read_text().splitlines()]
     assert row["extras"] == {"native": {"pick": 3}} and row["headings"] == "model"
+
+
+@pytest.mark.parametrize("observes", [True, False])
+def test_a_history_frame_goes_to_observe_or_to_an_infer_whose_plan_is_dropped(
+    stub_node, tmp_path, observes
+) -> None:
+    """Over real HTTP: /observe when the node serves it, else the old thrown-away
+    /infer; which one is recorded for the scene's sample."""
+    url, node = stub_node
+    node.observes = observes
+    record = tmp_path / "bridge_plans.json"
+    planner = PolicyPlanner(url, plan_record=record)
+    used = planner.observe_frame({"timestamp": 1})
+    assert used == ("observe" if observes else "infer")
+    assert (node.observed, len(node.bodies)) == ((1, 0) if observes else (0, 1))
+    assert json.loads(record.read_text())["history_frames"] == used

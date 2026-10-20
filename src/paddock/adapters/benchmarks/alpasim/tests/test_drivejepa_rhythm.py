@@ -78,7 +78,14 @@ def _planner(tmp_path, answer_index: int = 7):
             },
         }
 
-    planner._body, planner.post_infer, planner._post = body, post_infer, lambda path, b: True
+    planner.observed = []
+
+    def post(path, sent):
+        if path == "/observe":
+            planner.observed.append(sent)
+        return True
+
+    planner._body, planner.post_infer, planner._post = body, post_infer, post
     return planner, poses
 
 
@@ -174,8 +181,9 @@ def test_the_first_ask_only_stores_a_frame_and_the_next_replan_drives_the_full_p
     assert planner.plan(_view(1_050_000), 1_050_000, 1_050_000) is None, "no plan cached yet"
     result = planner.plan(_view(1_500_000), 1_500_000, 1_500_000)
 
-    assert [sent["frame"] for sent in planner.sent] == [1_000_000, 1_500_000]
-    assert (planner.sent[1]["speed"], planner.sent[1]["accel"]) == (5.0, 0.5)
+    assert [sent["frame"] for sent in planner.observed] == [1_000_000], "taken in, not planned from"
+    assert [sent["frame"] for sent in planner.sent] == [1_500_000]
+    assert (planner.sent[0]["speed"], planner.sent[0]["accel"]) == (5.0, 0.5)
     assert result.model_t0_us == 1_500_000 and result.step_us == 500_000
     np.testing.assert_array_equal(result.positions_in_rig[:, :2], poses[:, :2])
     assert len(result.positions_in_rig) == 8, "all eight poses, not the wire's six"
@@ -184,6 +192,7 @@ def test_the_first_ask_only_stores_a_frame_and_the_next_replan_drives_the_full_p
 
     first, replan = _log(tmp_path)
     assert first["kind"] == "store_first_frame" and replan["kind"] == "replan"
+    assert first["sent_as"] == "observe"
     assert replan["extras"] == {
         "drivejepa_pick": {"chosen_index": 7, "chosen_score": 0.875, "momentum_fed": False}
     }, "the node's extras, as it sent them"
@@ -227,3 +236,35 @@ def test_the_body_carries_forward_speed_and_acceleration_in_canbus_only(monkeypa
     assert "ego_velocity_xy" not in body and "ego_acceleration_xy" not in body
     assert body["canbus"][13] == 5.0 and body["canbus"][7] == 0.5
     assert body["timestamp"] == 1_000_000 and body["command"] == int(Command.LEFT)
+
+
+def test_a_node_without_observe_gets_the_first_frame_as_an_infer_whose_plan_is_dropped(tmp_path) -> None:
+    """A node from before /observe answers 404; the frame is then sent the old way."""
+    import urllib.error
+
+    planner, _ = _planner(tmp_path)
+
+    def post(path, sent):
+        error = urllib.error.HTTPError(path, 404, "Not Found", {}, None)
+        raise RuntimeError(f"did not answer {path}") from error
+
+    planner._post = post
+    assert planner.plan(_view(1_000_000), 1_000_000, 1_000_000) is None
+    assert [sent["frame"] for sent in planner.sent] == [1_000_000]
+    assert _log(tmp_path)[0]["sent_as"] == "infer"
+
+
+def test_a_node_that_fails_observe_for_another_reason_fails_the_scene(tmp_path) -> None:
+    """Only a missing endpoint falls back; a node that errors is not quietly sent /infer."""
+    import urllib.error
+
+    planner, _ = _planner(tmp_path)
+
+    def post(path, sent):
+        error = urllib.error.HTTPError(path, 500, "Internal Server Error", {}, None)
+        raise RuntimeError(f"did not answer {path}") from error
+
+    planner._post = post
+    with pytest.raises(RuntimeError, match="did not answer /observe"):
+        planner.plan(_view(1_000_000), 1_000_000, 1_000_000)
+    assert planner.sent == []

@@ -233,6 +233,12 @@ def test_a_sample_says_how_its_car_was_steered(tmp_path: Path, monkeypatch) -> N
         (tmp_path / "bridge_plans.json").write_text(json.dumps({"headings": counts}))
         (record,) = bench.episode_samples(episode, {"scene_score": 1.0}, tmp_path)
         assert record["headings"] == want and record["bridge_plans"]["headings"] == counts
+    assert record["history_frames"] is None
+    (tmp_path / "bridge_plans.json").write_text(
+        json.dumps({"headings": {"model": 1}, "history_frames": "observe"})
+    )
+    (record,) = bench.episode_samples(episode, {"scene_score": 1.0}, tmp_path)
+    assert record["history_frames"] == "observe", "how the frame the bridge needed no plan from was sent"
 
 
 def test_a_clip_is_the_same_sample_whichever_set_drove_it(tmp_path: Path, monkeypatch) -> None:

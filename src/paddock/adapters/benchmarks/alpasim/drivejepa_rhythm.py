@@ -25,13 +25,14 @@ What is copied, and from where in that driver:
 What differs, because the node is not the native driver:
 
 * **Scene start.** The node builds its frame pair from the frames it has been
-  sent, and it is sent one only with a plan request. So the session's first
-  replan-grid ask -- where the native driver had one frame and planned nothing --
-  sends that frame and throws the plan away, after a `/reset` that clears the
-  previous scene's frames. The first real plan is 0.5 s later, on the native
-  driver's first replan. The node's momentum stage will have stored the
-  thrown-away plan, so that first replan is compared with it where the native
-  driver had no previous plan.
+  sent. At the session's first replan-grid ask -- where the native driver had
+  one frame and planned nothing -- that frame goes to the node's `/observe`,
+  after a `/reset` that clears the previous scene's frames, so the node takes it
+  into its history and plans nothing. The first real plan is 0.5 s later, on the
+  native driver's first replan, and momentum has no previous plan for it, as
+  there. A node without `/observe` is sent the frame as an `/infer` whose plan
+  is thrown away (`PolicyPlanner.observe_frame`); its momentum stage then keeps
+  that plan, and the first replan is compared with it.
 
 * **Sideways speed and acceleration.** The native driver gave the model and
   its momentum stage (vx, vy) and (ax, ay). The node's input carries forward
@@ -373,13 +374,13 @@ class DriveJepaPlanner(PolicyPlanner):
         if session.sent_frame_us is None:
             # The session's first replan-grid ask. The native driver had one
             # frame here and planned nothing; the node needs that frame for the
-            # next pair, so it is sent and the plan is thrown away.
+            # next pair, so it is sent for the node's history alone.
             if not frames:
                 return None
             vx, vy, derived = newest_velocity(view)
             ax, ay = reported_acceleration(view)
             command = command_from_route(view.route)
-            self.post_infer(self._body(view, frames[-1], vx, ax, command))
+            sent_as = self.observe_frame(self._body(view, frames[-1], vx, ax, command))
             session.sent_frame_us = int(frames[-1][0])
             self.log_row(
                 {
@@ -387,6 +388,7 @@ class DriveJepaPlanner(PolicyPlanner):
                     "sim_time_us": int(time_now_us),
                     "query_us": int(time_query_us),
                     "frame_us": session.sent_frame_us,
+                    "sent_as": sent_as,
                 }
             )
             return None
