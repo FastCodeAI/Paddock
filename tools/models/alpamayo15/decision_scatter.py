@@ -19,14 +19,13 @@ Points more than a fixed threshold off the diagonal are colored as outliers
 categorical palette, the only pair confirmed safe for all-pairs/scatter use
 (see the dataviz skill's references/palette.md). Their sample_ids are written
 to a CSV next to the plot, so you can go straight from "that cluster looks
-wrong" to rendering the actual frames:
-    python tools/analysis/render_category.py <run_id> --sample-id <id>
+wrong" to looking the samples up by id in decisions.csv.
 
 Requires decisions.csv (from decisions.py).
 
 Usage:
-    python tools/analysis/decision_scatter.py <run_id>
-    python tools/analysis/decision_scatter.py <run_id> --out plot.png --outliers-csv outliers.csv
+    python tools/models/alpamayo15/decision_scatter.py <run_id>
+    python tools/models/alpamayo15/decision_scatter.py <run_id> --out plot.png --outliers-csv outliers.csv
 """
 
 from __future__ import annotations
@@ -164,8 +163,6 @@ def main() -> None:
         w.writeheader()
         w.writerows(all_outliers)
     print(f"Written: {outliers_path}  ({len(all_outliers)} outlier points across all panels)")
-    print("\nRender any of them directly, e.g.:")
-    print(f"  python tools/analysis/render_category.py {run_dir.name} --sample-id <id from the csv>")
 
 
 if __name__ == "__main__":

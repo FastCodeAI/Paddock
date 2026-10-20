@@ -338,8 +338,7 @@ def main() -> None:
     if not reasoning:
         print(
             "note: no reasoning.json found -- reasoning coverage will show 0. "
-            "Rerun the baseline with ALPAMAYO_SAVE_REASONING=1 (or rescore a subset and run "
-            "print_reasoning.py) first."
+            "Rerun the baseline with ALPAMAYO_SAVE_REASONING=1 first."
         )
 
     overall_lat = _confusion(rows, "decision_lateral_pred", "decision_lateral_gt", LATERAL_LABELS)
