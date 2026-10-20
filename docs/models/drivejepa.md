@@ -17,6 +17,13 @@ plan the same way and differ in everything around it.
 | Momentum-aware selection | on, declared in `model.yaml` (`DRIVEJEPA_MOMENTUM`); acts only in closed loop | on by default |
 | Rows in `results/` | every Drive-JEPA row | none |
 
+In the paddock node, momentum is declared on in `model.yaml`. The run id does not
+yet record a value a `model.yaml` declares
+([issue #99](https://github.com/FastCodeAI/Paddock/issues/99)), so a
+closed-loop run started before momentum was declared on must not be continued
+with `--resume` after it: the check `--resume` makes would pass, and the run
+would mix episodes driven both ways under one id.
+
 The perception-free NAVSIM v1 agent is a third thing with its own page,
 [drivejepa_free.md](drivejepa_free.md).
 
