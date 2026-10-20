@@ -587,6 +587,14 @@ class PolicyPlanner(Planner):
                 ):
                     raise
                 self._node_observes = False
+                # Inside `paddock run` the node is built from this same source, so
+                # this means a hand-pointed older node. It brings back the
+                # thrown-away first plan /observe exists to avoid, so say so.
+                logger.warning(
+                    "policy node at %s has no /observe: frames it needs no plan from go to "
+                    "/infer and their plans are dropped (history_frames: infer)",
+                    self.policy_url,
+                )
         if used == "infer":
             self.post_infer(body)
         self._history_frames = used

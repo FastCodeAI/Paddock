@@ -238,8 +238,11 @@ def test_the_body_carries_forward_speed_and_acceleration_in_canbus_only(monkeypa
     assert body["timestamp"] == 1_000_000 and body["command"] == int(Command.LEFT)
 
 
-def test_a_node_without_observe_gets_the_first_frame_as_an_infer_whose_plan_is_dropped(tmp_path) -> None:
-    """A node from before /observe answers 404; the frame is then sent the old way."""
+def test_a_node_without_observe_gets_the_first_frame_as_an_infer_whose_plan_is_dropped(
+    tmp_path, caplog
+) -> None:
+    """A node from before /observe answers 404; the frame is then sent the old way, and the log says so."""
+    import logging
     import urllib.error
 
     planner, _ = _planner(tmp_path)
@@ -249,9 +252,11 @@ def test_a_node_without_observe_gets_the_first_frame_as_an_infer_whose_plan_is_d
         raise RuntimeError(f"did not answer {path}") from error
 
     planner._post = post
-    assert planner.plan(_view(1_000_000), 1_000_000, 1_000_000) is None
+    with caplog.at_level(logging.WARNING, logger="alpasim.bridge"):
+        assert planner.plan(_view(1_000_000), 1_000_000, 1_000_000) is None
     assert [sent["frame"] for sent in planner.sent] == [1_000_000]
     assert _log(tmp_path)[0]["sent_as"] == "infer"
+    assert "has no /observe" in caplog.text
 
 
 def test_a_node_that_fails_observe_for_another_reason_fails_the_scene(tmp_path) -> None:
