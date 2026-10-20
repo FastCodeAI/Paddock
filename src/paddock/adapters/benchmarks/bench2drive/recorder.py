@@ -52,6 +52,10 @@ ON_ROUTE_M = 4.0
 MODEL_VIEW_EVERY = 2
 MODEL_VIEW_SCALE = 4
 
+#: Thumbnail directories named before any model but openpilot was recorded, and
+#: which its dashboard reads; every other camera gets :func:`model_view_dir`'s name.
+MODEL_VIEW_DIRS = {"CAM_OP_ROAD": "model_road", "CAM_OP_WIDE": "model_wide"}
+
 #: How far either side of the last match the route search looks before falling
 #: back to the whole plan, in plan points (1 m apart).
 SEARCH_WINDOW = 60
@@ -87,6 +91,17 @@ def to_ego(points_xy: np.ndarray, ego_x: float, ego_y: float, ego_yaw_deg: float
     c, s = math.cos(yaw), math.sin(yaw)
     dx, dy = pts[:, 0] - ego_x, pts[:, 1] - ego_y
     return np.stack([dx * c + dy * s, dx * s - dy * c], axis=-1)
+
+
+def model_view_dir(camera: str) -> str:
+    """Where a camera's thumbnails go: ``model_front_left`` for ``CAM_FRONT_LEFT``.
+
+    Every camera the model declares is kept, so a six-view model's record shows
+    all six views it planned from, not the two openpilot reads.
+    """
+    if camera in MODEL_VIEW_DIRS:
+        return MODEL_VIEW_DIRS[camera]
+    return "model_" + (camera[4:] if camera.startswith("CAM_") else camera).lower()
 
 
 def wrap_deg(angle: float) -> float:
@@ -193,8 +208,8 @@ def tick_record(
 
     ``ego``      CARLA world pose (x, y, z, yaw, pitch, roll), speedometer speed,
                  ego-frame velocity/acceleration, yaw rate, posted limit (m/s)
-    ``sent``     what the node was given besides pixels: command, navigation,
-                 the agent's acceleration estimate
+    ``sent``     what the node was given besides pixels: command, navigation
+                 (the route polyline included), the agent's acceleration estimate
     ``reply``    the node's JSON exactly as returned (trajectory, dt, extras)
     ``control``  steer / throttle / brake and the tracker's target speed
     ``route``    nearest route index, along-route metres, distance off the route

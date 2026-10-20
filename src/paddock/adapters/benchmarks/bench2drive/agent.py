@@ -133,8 +133,9 @@ R_OPT = np.array([[0.0, 0.0, 1.0], [-1.0, 0.0, 0.0], [0.0, -1.0, 0.0]])
 #: Columns of waypoints written to log.csv when recording.
 LOGGED_WAYPOINTS = 6
 
-#: The model's own cameras, kept as thumbnails in the analysis record.
-MODEL_VIEWS = {"CAM_OP_ROAD": "model_road", "CAM_OP_WIDE": "model_wide"}
+#: The model's own cameras -- every one it declares -- kept as thumbnails in the
+#: analysis record, each in its own directory.
+MODEL_VIEWS = {cid: recorder.model_view_dir(cid) for cid in CAMS}
 
 #: Ticks between refreshes of the candidate actor list. Poses are read every
 #: tick from the client's own copy of the last snapshot; only *which* actors
@@ -677,6 +678,10 @@ class PaddockB2DAgent(AutonomousAgent):
                 "speed": speed,
                 "accel": accel,
                 "speed_limit": speed_limit,
+                # The leaderboard's sparse plan as the node got it (ego frame): a
+                # model that rasterises it (AutoE2E) planned from these chords, not
+                # from route_plan.json's dense 1 m route.
+                "route_xy": body["route_xy"],
             }
             try:
                 self._write_analysis_record(

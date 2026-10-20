@@ -32,6 +32,19 @@ def test_to_ego_follows_the_heading() -> None:
     assert ego[1] == pytest.approx([0.0, 2.0], abs=1e-9)
 
 
+def test_model_view_dir_keeps_openpilots_names_and_names_every_other_camera() -> None:
+    # model_road / model_wide are what openpilot's recorded routes already hold.
+    assert recorder.model_view_dir("CAM_OP_ROAD") == "model_road"
+    assert recorder.model_view_dir("CAM_OP_WIDE") == "model_wide"
+    # A six-view model (AutoE2E) gets one directory per view, none colliding.
+    six = ["CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT", "CAM_BACK_LEFT", "CAM_BACK", "CAM_BACK_RIGHT"]
+    dirs = [recorder.model_view_dir(c) for c in six]
+    assert dirs[1] == "model_front_left"
+    assert len(set(dirs)) == len(six)
+    # front/ and bev/ are the recording cameras' own directories; no model view lands there.
+    assert not {"front", "bev"} & set(dirs)
+
+
 def test_wrap_deg() -> None:
     assert recorder.wrap_deg(190.0) == pytest.approx(-170.0)
     assert recorder.wrap_deg(-190.0) == pytest.approx(170.0)
