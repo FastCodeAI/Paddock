@@ -454,8 +454,8 @@ released checkpoint, on the native driver's settings at 0.1.4b (its camera, its
 
 | Claim | Evidence | Strength |
 |---|---|---|
-| the bridge gives the model the native driver's inputs | offline replay of 3 recorded scenes, 117 replans, identical except two known differences; inputs identical up to the handover on all 30 scenes of the run below | **strong** |
-| through paddock it scores 0.5302 on 30 scenes against the native driver's 0.5433 | one `paddock run`, one rollout per scene; stored `valid: false` because momentum is switched on by a site setting, so not a row | **moderate** |
+| the bridge gives the model the native driver's inputs | offline replay of 3 recorded scenes with `/observe`: 114 of 117 replans match, the other 3 from one known difference (sideways speed and acceleration are not passed); inputs identical up to the handover on all 30 scenes of the run below | **strong** |
+| through paddock it scores 0.5302 on 30 scenes against the native driver's 0.5433 | one `paddock run`, one rollout per scene, made before `/observe`, so the code merged here has not driven these 30 scenes; stored `valid: false` because momentum is switched on by a site setting, so not a row | **moderate** |
 | it matches the native driver scene by scene | — (near-ties after the handover move single scenes by up to about 0.55) | **not claimed** |
 
 Open work on this driver, in the order it bites:

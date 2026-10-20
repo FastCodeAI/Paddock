@@ -56,7 +56,9 @@ waypoint. The bridge builds that list the same way for every model:
   driven on its `trajectory`, also with derived headings.
 - **Recorded per scene.** Each scene's sample record says how its plans were
   steered: `headings` is `model`, `derived` or `mixed`, and `bridge_plans`
-  holds the counts.
+  holds the counts. `history_frames` says how a frame the planner needed no
+  plan from was sent: `observe`, `infer` (a node without `/observe`, the plan
+  dropped), or null when the planner sent none.
 - **A clean start.** The bridge calls `/reset` at the start of every scene, for
   every model, so a model that keeps a frame history never pairs one scene's
   first frames with the previous scene's last ones.

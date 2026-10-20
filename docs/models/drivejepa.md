@@ -292,7 +292,8 @@ over from the previous scene.
 
 **Result.** All 30 scenes in one run (the 22 driven first and the 8 that failed
 to start while the disk was busy, re-driven with `--resume`; no scene was
-driven twice), momentum on, against the native 0.1.4b runs on the same scenes:
+driven twice), momentum on, made before the bridge sent the first frame to
+`/observe` (see the first-plan item below), against the native 0.1.4b runs on the same scenes:
 
 | Scenes | Through paddock | Native 0.1.4b | Difference | At-fault collisions | Off-road |
 |---|---:|---:|---:|---|---|
@@ -316,13 +317,17 @@ what the model is given before the handover:
 - **Runtime.** The node is a different process, built differently, on the
   same GPU. Re-run on recorded inputs, the same pick's score differs by up to
   0.004, so proposals that close can be picked either way.
-- **The first plan's momentum.** The node builds its frame pair from frames
-  sent with plan requests, so the bridge's first request of a scene only
-  delivers a frame, and its plan is thrown away. Momentum keeps that plan, so
-  the first real replan is compared with it, where the native driver had no
-  previous plan. That replan's score differs in every scene and its pick in
-  some; in 8 of the 30 the warm-up picks differ from then on (seven of them for
-  this reason, one at a near-tie).
+- **The first plan's momentum: fixed by `/observe`, after the run in the
+  table.** In that run, the bridge's first request of a scene only delivered a
+  frame and its plan was thrown away, but momentum kept that plan, so the first
+  real replan was compared with it where the native driver had no previous
+  plan. In 8 of the 30 scenes the warm-up picks differed from then on (seven of
+  them for this reason, one at a near-tie), and the score changed on two
+  (cdd9448c, 0245ff75). The bridge now sends that frame to `/observe`, which
+  records it and plans nothing. Replayed offline on three recorded scenes, 114
+  of the 117 replans now match the native driver; the three that do not are on
+  04394343, from the sideways difference below. The table has not been re-run
+  since.
 - **Sideways speed and acceleration are not passed.** The native driver gave
   the model and momentum the car's sideways speed and acceleration as well as
   forward ones. The node's input has forward only, so the model gets 0 for
