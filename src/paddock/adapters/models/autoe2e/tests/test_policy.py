@@ -59,6 +59,15 @@ def test_load_names_the_missing_setting(monkeypatch, tmp_path) -> None:
         POLICY().load()
 
 
+def test_diagnostics_name_the_release_checkpoint_not_where_this_site_keeps_it() -> None:
+    """`/diagnostics` is copied verbatim into the tracked run.json: no weights root may reach it."""
+    policy = POLICY()
+    policy.checkpoint = "/path/to/weights/auto_e2e/models/kitscenes-epoch-5/checkpoint.pt"
+    assert policy.diagnostics()["checkpoint"] == "models/kitscenes-epoch-5/checkpoint.pt"
+    policy.checkpoint = "/path/to/finetunes/run7.pt"
+    assert policy.diagnostics()["checkpoint"] == "run7.pt"
+
+
 # -- ego history -------------------------------------------------------------
 
 
