@@ -39,12 +39,17 @@ From the release `config.json` and upstream's KITScenes evaluation path
 
 ## How paddock fills it
 
-- **Views and frames.** All six views are required; `infer` raises if the
-  current observation lacks one. The seven history frames are the held frames
-  nearest t−3.5 … t−0.5 s within 0.06 s that carry all six views. Where the
-  past does not reach that far (a route or log start) the oldest six-view frame
-  is repeated with its own pose; each plan's `extras` and `diagnostics()`'s
-  last call say how many were (`history_repeated`).
+- **Views and frames.** Every view the benchmark has is required, and
+  `CAM_FRONT` always is; `infer` raises if the current observation lacks one.
+  A view the benchmark does not have at all (no image, path or calibration,
+  as on comma2k19's single road camera) is left out: a zero tile with a
+  projection that puts every point behind the camera, so upstream's depth
+  test keeps it out of every BEV cell. Each plan's `extras` say how many
+  views it used (`views`). The seven history frames are the held frames
+  nearest t−3.5 … t−0.5 s within 0.06 s that carry every view the current
+  one does. Where the past does not reach that far (a route or log start)
+  the oldest such frame is repeated with its own pose; each plan's `extras`
+  and `diagnostics()`'s last call say how many were (`history_repeated`).
 - **Reference frame.** Projections start from paddock's ego frame raised by
   `AUTOE2E_REF_HEIGHT_M` (default 2.1 m): KITScenes' top-LiDAR frame, whose
   ground sits at z = −2.1 m (`kit_scenes/dataset.py`), is what the fine-tune

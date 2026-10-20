@@ -24,12 +24,14 @@ from paddock.adapters.models.autoe2e.policy import (
     POLICY,
     VIEW_ORDER,
     _Frame,
+    blank_views,
     egomotion_rows,
     finite_controls,
     integrate_controls,
+    pack_tile,
     route_raster,
 )
-from paddock.policy.protocol import Policy
+from paddock.policy.protocol import Command, Observation, Policy
 
 #: Camera optical (x right, y down, z forward) -> ego FLU, for a camera facing forward.
 OPTICAL = np.array([[0.0, 0.0, 1.0], [-1.0, 0.0, 0.0], [0.0, -1.0, 0.0]])
@@ -221,3 +223,72 @@ def test_projection_is_from_the_raised_reference_frame_and_folds_in_ego_motion()
     u, v, w = policy._projections(past, ref_now2world, 512)[0] @ point_ref
     assert (u / w, v / w, w) == pytest.approx((256.0, 256.0, 15.0))
     assert math.isclose(policy._ref2ego()[2, 3], 2.1)
+
+
+# -- a benchmark with fewer cameras ------------------------------------------------
+
+
+def _obs(images=(), paths=(), calibrated=()) -> Observation:
+    return Observation(
+        images={c: np.zeros((4, 4, 3), dtype=np.uint8) for c in images},
+        image_paths={c: f"/tmp/{c}.npy" for c in paths},
+        ego2world=np.eye(4),
+        canbus=np.zeros(18),
+        timestamp_us=0,
+        command=Command.STRAIGHT,
+        camera2image={c: np.eye(3) for c in calibrated},
+        camera2ego={c: np.eye(4) for c in calibrated},
+    )
+
+
+def test_only_a_view_the_benchmark_says_nothing_about_is_left_out() -> None:
+    """comma2k19 is the road camera alone; a view that lost its pixels, or the front, still refuses."""
+    assert blank_views(_obs(paths=("CAM_FRONT",), calibrated=("CAM_FRONT",))) == frozenset(VIEW_ORDER[1:])
+    assert blank_views(_obs(images=VIEW_ORDER, calibrated=VIEW_ORDER)) == frozenset()
+    # NAVSIM's dense frames: three images, six calibrations -- missing, not absent.
+    with pytest.raises(RuntimeError, match="CAM_BACK"):
+        blank_views(_obs(images=VIEW_ORDER[:3], calibrated=VIEW_ORDER))
+    with pytest.raises(RuntimeError, match="CAM_FRONT"):
+        blank_views(_obs(paths=VIEW_ORDER[1:], calibrated=VIEW_ORDER[1:]))
+    with pytest.raises(RuntimeError, match="intrinsics"):
+        blank_views(_obs(images=VIEW_ORDER, calibrated=VIEW_ORDER[:5]))
+
+
+def test_a_left_out_view_is_a_zero_tile_that_sees_nothing() -> None:
+    """The road camera is packed and projected as in a six-view frame; the five others put every
+    point behind the camera, so upstream's depth test masks them from every BEV cell."""
+    policy = POLICY()
+    blank = frozenset(VIEW_ORDER[1:])
+    front = np.random.default_rng(0).integers(0, 256, (45, 80, 3), dtype=np.uint8)
+    mono = _frame(1.0, 0.0, views=("CAM_FRONT",), size=(80, 45))
+    mono.images["CAM_FRONT"] = front
+    tiles = mono.tiles(blank)
+    assert np.array_equal(tiles[0], pack_tile(front, 512))
+    assert tiles.shape == (6, 512, 512, 3) and not tiles[1:].any()
+    p = policy._projections(mono, None, 512, blank=blank)
+    assert np.array_equal(p[0], policy._projections(_frame(1.0, 0.0, size=(80, 45)), None, 512)[0])
+    for point in ([20.0, 3.0, -1.0, 1.0], [-30.0, -8.0, 0.5, 1.0], [0.0, 0.0, 0.0, 1.0]):
+        assert all((q @ np.array(point))[2] < 0 for q in p[1:])
+
+
+def test_history_on_a_one_camera_source_is_its_own_frames_half_a_second_apart() -> None:
+    """comma2k19 sends the road camera alone at 20 Hz: every frame counts, none is repeated.
+    Counting six-view frames only, as on NAVSIM, finds none and repeats the current one."""
+    policy = POLICY()
+    for k in range(101):  # 5 s at 20 Hz
+        policy.frames.append(_frame(k / 20, 0.0, ("CAM_FRONT",)))
+    picked, gaps = policy._history(policy.frames[-1], frozenset(VIEW_ORDER[1:]))
+    assert [f.t_s for f in picked] == pytest.approx([5.0 + off for off in HISTORY_OFFSETS_S])
+    assert gaps == [0.0] * 7
+    _, six_view_gaps = policy._history(policy.frames[-1])
+    assert six_view_gaps == [None] * 7
+
+
+def test_a_staged_npy_frame_reports_its_size_without_pil(tmp_path) -> None:
+    """comma2k19 stages raw .npy frames; PIL cannot read their header."""
+    path = tmp_path / "frame.npy"
+    np.save(path, np.zeros((874, 1164, 3), dtype=np.uint8))
+    frame = _Frame(
+        t_s=0.0, ego2world=np.eye(4), camera2image={}, camera2ego={}, paths={"CAM_FRONT": str(path)}
+    )
+    assert frame.size("CAM_FRONT") == (1164, 874)
