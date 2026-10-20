@@ -97,13 +97,33 @@ model, since AlpaSim renders it after scoring and it changes no number. A
 model without an entry gets exactly what every model got before profiles existed, and `run.json` records a profile under `config`
 only when one is used, so the run id changes with it.
 
-Drive-JEPA is the one model with a profile. It reproduces the settings of
+Two models have a profile. Drive-JEPA's reproduces the settings of
 Drive-JEPA's native AlpaSim driver (adapter 0.1.4b) so a run through paddock
 can be checked against that driver's runs: one front camera at 20 Hz, a 3.0 s
 replayed warm-up, the shared 20 Hz scoring config and the 30 scenes pinned to
 their 26.01 artifacts. What the bridge does for it, and how the result compares
 with the native driver, is in
 [docs/models/drivejepa.md](../models/drivejepa.md#through-paddock-on-alpasim).
+
+AutoE2E's has no native driver to match. It renders the six cameras the model
+was trained on: AlpaSim's six recorded cameras re-rendered as undistorted
+pinholes at the KITScenes field of view, the view straight back borrowing the
+tele camera's id because AlpaSim can change a scene's camera but not add one
+(`configs/driver/paddock_bridge_autoe2e.yaml`). It shares Drive-JEPA's warm-up,
+control step and 30 pinned scenes. Its bridge flags select a second rhythm,
+`replan_rhythm.py`, which any node can use:
+
+| Flag | What the bridge does |
+|---|---|
+| `--replan-every-us 100000` | asks the node on a 100 ms grid anchored on the scene's first ask; answers the ticks between from the last plan, re-timed onto now and re-anchored to the car (the same computation as Drive-JEPA's rhythm); sends every warm-up frame to `/observe` instead of asking for a plan AlpaSim would not drive |
+| `--force-gt-us`, `--frame-interval-us` | the warm-up length and control step; a test checks both equal the driver config's |
+| `--pad-ego-history` | before the scene's first frame, sends ego-only frames straight back from its pose at the speed measured from poses (AlpaSim reports zero velocity while it replays the warm-up), one per control step back to 6.6 s |
+
+The per-replan log (`<scene>.replans.jsonl`) has one line per tick: whether the
+model was called or its plan reused, the motion-history rows that fall on
+padding, the image frames the node repeated, and the plan's length and spacing.
+What this means for AutoE2E's inputs, and what is not yet known, is in
+[docs/models/autoe2e.md](../models/autoe2e.md#on-alpasim-through-the-bridge).
 
 ## Configuration
 
@@ -226,8 +246,8 @@ filed under `results/alpasim/`, so `paddock report` agrees with these tables.
 > `visionpilot-v2-driver-2.0.0`, `drivejepa-v2-driver-0.1.4`,
 > `alpamayo1_5-driver-0.91.0`, `constant_velocity-driver-0.2.3` — run before the
 > paddock bridge existed. `alpamayo15` and `constant_velocity` declare
-> `alpasim` in their `model.yaml`, and `drivejepa` does too since it has been
-> driven through the bridge on its own settings (see
+> `alpasim` in their `model.yaml`, and `drivejepa` and `autoe2e` do too since
+> each has its own settings in the bridge (see
 > [Per-model settings in the bridge](#per-model-settings-in-the-bridge));
 > OpenPilot and VisionPilot do not, because nothing demonstrates that pairing.
 > So these rows are **reference values for what the benchmark yields**, not

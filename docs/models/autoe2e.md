@@ -173,6 +173,69 @@ is inferred from the release's own nuPlan-test figures, not stated. NAVSIM's
 the rig and cities AutoE2E was pre-trained on. See `comparison.md`,
 *AutoE2E × navsim*.
 
+## On AlpaSim, through the bridge
+
+**Built, not yet run.** The AlpaSim harness gives `autoe2e` its own driver
+profile (`harness.DRIVER_PROFILES`, `configs/driver/paddock_bridge_autoe2e.yaml`);
+the model's adapter is unchanged apart from listing `alpasim` in `model.yaml`.
+It is camera-only, as on NAVSIM: the bridge sends no route and the node sends
+no map.
+
+**Cameras.** AlpaSim's 26.01 scenes record six f-theta cameras, none looking
+straight back. The profile re-renders them as pinholes, every distortion
+coefficient zero, at the KITScenes calibration's field of view (the release's
+`datasets/kitscenes-val/v3.5/rig/*.json` with the image sizes KITScenes ships,
+5856 × 3104 front and 3504 × 2272 ring):
+
+| Slot | Node name | AlpaSim id rendered | Pose | Size, f | Field of view |
+|---|---|---|---|---|---|
+| front | CAM_FRONT | camera_front_wide_120fov | each scene's own (yaw ≈ 0°) | 1920 × 1018, 990.8 px | 88.2° × 54.4° |
+| front-left | CAM_FRONT_LEFT | camera_cross_left_120fov | each scene's own (≈ 67°) | 1024 × 664, 538.9 px | 87.1° × 63.3° |
+| front-right | CAM_FRONT_RIGHT | camera_cross_right_120fov | each scene's own (≈ −67°) | 1024 × 664, 538.9 px | 87.1° × 63.3° |
+| rear-left | CAM_BACK_LEFT | camera_rear_left_70fov | fixed (2.10, 1.04, 1.02) m, 120° | 1024 × 664, 538.9 px | 87.1° × 63.3° |
+| rear | CAM_BACK | camera_front_tele_30fov | fixed (2.09, 0, 1.02) m, 180° | 1024 × 664, 538.9 px | 87.1° × 63.3° |
+| rear-right | CAM_BACK_RIGHT | camera_rear_right_70fov | fixed (2.06, −1.01, 1.02) m, −120° | 1024 × 664, 538.9 px | 87.1° × 63.3° |
+
+AlpaSim can change a scene's camera but not add one, so the rear view takes
+the tele camera's id. One override applies to every scene, so a camera keeps
+its own vehicle's mounting only when the override leaves its pose out; the
+three new directions take one pose, at the recorded rear cameras' median
+mounting point (0.01–0.41 m from any one scene's).
+
+**Rhythm.** The bridge asks the node every 100 ms, which is the model's 10 Hz,
+and answers the 20 Hz ticks between with the last plan, re-timed onto now and
+re-anchored to the car (`replan_rhythm.py`). Warm-up frames go to `/observe`,
+since AlpaSim drives the recorded path during the warm-up. The node's own
+`AUTOE2E_REPLAN_S` is not used: setting it for one benchmark needs a site env
+override, which marks the run `valid: false`, and it re-anchors the held plan
+without re-timing it.
+
+**Motion history.** AlpaSim starts each scene 0.13–0.23 s into its clip and
+hands over 3.0 s later, so the node holds about 3 s of poses where the model
+reads 6.4 s. With `--pad-ego-history` the bridge first sends ego-only frames
+straight back from the first frame's pose at the speed measured from the last
+two poses. The node then reads 34 of the 64 rows at the first plan as that
+speed with no acceleration, yaw rate or curvature. At the join (the first real
+frame) it reads the true speed, half the true yaw rate and three quarters of
+the true acceleration; every later row is as before
+(`alpasim/tests/test_replan_rhythm.py`, through this node's own history code).
+Image history is unchanged: the −3.5 s frame does not exist at handover, and the
+oldest real frame is repeated.
+
+**Known gaps**, none of them measured yet:
+
+| Gap | Why it may matter |
+|---|---|
+| Plan offset 0 m | KITScenes trained the motion of the roof LiDAR point, nuPlan that of the rear axle. AlpaSim drives the plan as the rear axle's. The LiDAR's position on the KITScenes car is not published (the KITScenes dataset's own calibration is gated), so no offset is applied. In a turn of Δθ the two paths differ by 2·d·sin(Δθ/2) for an offset d along the car |
+| Rear views untested | The 120°, 180° and −120° renders point 28–32° away from every camera the scene was reconstructed from |
+| Cameras lower than training | AlpaSim's cameras sit 0.8–1.6 m above the ground; KITScenes' about 1.7–1.9 m, assuming its LiDAR at the 2.1 m this adapter uses |
+| Front-left/right at ±67° | KITScenes' are at ±60°; the recorded pose is kept rather than one fixed pose for every vehicle |
+| No correctness check | the release publishes aggregate evaluation reports only, no per-sample plans to compare against |
+
+Cost, measured on a shared GPU on 21 Oct 2026: about 3.1 s per forward pass
+with full history, so about 9 minutes of model time per scene after handover
+at 10 Hz.
+
 ## Results
 
 **NAVSIM `navtest`, 12,146 scenarios, valid** (`results/navsim/autoe2e/20261009T055926-3ceb18`).
