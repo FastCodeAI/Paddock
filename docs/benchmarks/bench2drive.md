@@ -206,8 +206,38 @@ per-route metrics are the mean over repetitions and `n_runs` records how many.
 Each route leaves `results.json` and `evaluator.log` (the evaluator's stdout and
 stderr, streamed as it runs, so a hung route can be read while it hangs) under
 the run's artifact dir, alongside the canonical `run.json` / `metrics.json`
-paddock writes. With `record = "true"` it also leaves front/BEV frames and a
-per-tick `log.csv`.
+paddock writes. With `record = "true"` it also leaves front/BEV frames, a
+per-tick `log.csv`, and the analysis record (`recorder.py`):
+
+| file | what |
+|---|---|
+| `ticks.jsonl` | one line per tick: the node's whole reply (every waypoint, every `extras` field), what it was sent besides pixels (command, navigation, the `route_xy` polyline, speed), the actuation and `/infer` latency, and state the model never sees: actors within 60 m, the lane under the ego, progress along the route, the next light and stop sign |
+| `route_plan.json` | the leaderboard's route at its own 1 m spacing, with the lights and stop signs on it |
+| `actors.jsonl` | blueprint, role and extent of each actor, once |
+| `model_<camera>/` | quarter-size thumbnails of every camera the model reads, at 10 Hz (openpilot's pair as `model_road` / `model_wide`) |
+
+None of it reaches the model, and a failure in it disables the record without
+stopping the route.
+
+### Seeing a route
+
+Three tools under `tools/benchmarks/bench2drive/` read those recordings, for any
+model; the driver's name comes from `{runs}/bench2drive/<model>/`:
+
+```bash
+# Think2Drive's own drives of the routes (Bench2Drive's expert), anno/ only, SHA-256 checked
+python -m tools.benchmarks.bench2drive.expert fetch --out <expert> --routes 1711,1852
+python -m tools.benchmarks.bench2drive.expert summarize --out <expert>
+# a video and a summary still per route: front camera, BEV with plan / expert / route,
+# the model's cameras and what it reported, route map, speed / progress / controls, score card
+python -m tools.benchmarks.bench2drive.route_video --runs {runs}/bench2drive/<model> \
+    --expert <expert> --routes-xml <repo>/leaderboard/data/bench2drive220.xml --out <dir>
+# a dashboard on 127.0.0.1 that renders each route as it finishes; --root must contain {runs},
+# because live frames are served by their path below it
+python -m tools.benchmarks.bench2drive.dashboard serve --root <dir> --runs {runs}/bench2drive/<model> \
+    --expert <expert> --routes-xml <repo>/leaderboard/data/bench2drive220.xml \
+    [--routes 1711,1852] [--title "checkpoint, rate"] [--port 8765]
+```
 
 ## Pooling recorded routes into a run (`paddock ingest`)
 
