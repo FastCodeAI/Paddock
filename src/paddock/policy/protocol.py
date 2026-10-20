@@ -308,6 +308,17 @@ class Observation:
     #: segment can cut a bend by metres. A policy that rasterises the route (AutoE2E's navigation tile)
     #: reads it.
     route_xy: np.ndarray | None = None
+    #: The HD map the ego drives in, as files on the shared disk (paths, as with `image_paths`), in the
+    #: world frame `ego2world` maps into: {"format": "lanelet2_osm", "map": <map.osm>, "origin":
+    #: <origin.json>}. KITScenes sends each scene's Lanelet2 map unless `[benchmarks.kitscenes] map` is
+    #: false; None where the source has none. A policy that rasterises a map (AutoE2E's semantic tile)
+    #: reads it.
+    map_files: dict[str, str] | None = None
+    #: The logged drive a route is matched to: (N, 4) rows of (t_s, x, y, yaw) in `ego2world`'s world
+    #: frame and the observation's clock. An **oracle** -- it holds the future being scored -- sent only
+    #: where a benchmark is set to give one: KITScenes' `route = "oracle"` sends the whole scene, as
+    #: upstream AutoE2E's validation protocol matches its route to the logged drive. None everywhere else.
+    route_trace: np.ndarray | None = None
     #: Frames that live on disk, loaded on first use instead of being carried.
     #:
     #: Open-loop benchmarks read from a local dataset, and the node is a
@@ -346,6 +357,12 @@ class Observation:
             ),
             route_xy=(
                 np.asarray(body["route_xy"], dtype=np.float64) if body.get("route_xy") is not None else None
+            ),
+            map_files=(dict(body["map_files"]) if body.get("map_files") else None),
+            route_trace=(
+                np.asarray(body["route_trace"], dtype=np.float64)
+                if body.get("route_trace") is not None
+                else None
             ),
         )
 
@@ -428,6 +445,8 @@ class Observation:
             "nav_maneuver": self.nav_maneuver,
             "nav_distance_m": self.nav_distance_m,
             "route_xy": (np.asarray(self.route_xy).tolist() if self.route_xy is not None else None),
+            "map_files": (dict(self.map_files) if self.map_files else None),
+            "route_trace": (np.asarray(self.route_trace).tolist() if self.route_trace is not None else None),
             "calibration": calibration,
         }
 
