@@ -23,8 +23,9 @@ follows upstream's KITScenes evaluation path (pre_extracted.py + kit_scenes/*.py
 - Ego history: 64 rows x [speed, accel, yaw rate, curvature] at 10 Hz for t-6.4 .. t-0.1 s,
   derived from the pose stream as kit_scenes/egomotion.py does (centred gradients on the
   real timestamps, curvature floor 0.1 m/s), the newest acceleration zeroed (the KITScenes
-  stage's causal mask), rows older than the first observation left at zero (upstream's
-  ``left_zero`` padding).
+  stage's causal mask). Rows older than the first observation: left at zero (upstream's
+  ``left_zero`` padding) when the benchmark sends the real past; in closed loop, steady
+  driving at the first known speed (see ``steady_before_start``).
 - Navigation: no semantic map (zeros, ``map_valid`` False). The route raster (corridor
   1.75 m either side of the route polyline, rear-clipped at -10 m, plus a 2 m destination
   disk) is drawn from ``obs.route_xy`` when the benchmark sends one and
@@ -132,6 +133,34 @@ def egomotion_rows(times_s: np.ndarray, xy: np.ndarray, yaw: np.ndarray, t_now: 
     for col, signal in enumerate((speed, accel, yaw_rate, curvature)):
         rows[inside, col] = np.interp(targets[inside], t, signal)
     return rows
+
+
+def steady_before_start(
+    rows: np.ndarray, times_s: np.ndarray, t_now: float, speed: float
+) -> tuple[np.ndarray, int]:
+    """`rows` with every row older than the first pose set to steady driving, and how many.
+
+    Steady driving is the first measured speed with no acceleration and no turn; with fewer
+    than two poses nothing is measured yet and every row takes `speed`, the simulator's.
+
+    Closed loop only. The KITScenes fine-tune always had all 64 rows real (samples start at
+    ``frame_idx >= history_steps``, kit_scenes/egomotion.py) and upstream's own benchmark
+    zero-pads at most 24 of them. A simulator episode starts with no past at all, so zeros
+    fill 32-64 rows for its whole length and read as a car that stood still until a moment
+    ago. On neuroNCAP 0103 that turned the car right within 2 s, into a parked car; with the
+    past filled it drove straight.
+    """
+    out = np.array(rows, dtype=np.float64, copy=True)
+    if len(times_s) < 2:
+        lead = np.ones(EGO_STEPS, dtype=bool)
+    else:
+        targets = t_now - EGO_DT * np.arange(EGO_STEPS, 0, -1)
+        lead = targets < float(np.min(times_s)) - 1e-6  # the rows egomotion_rows left at zero
+    if not lead.any():
+        return out, 0
+    first = float(out[~lead][0, 0]) if (~lead).any() else float(speed)
+    out[lead] = (first, 0.0, 0.0, 0.0)
+    return out, int(lead.sum())
 
 
 def route_raster(route_xy: np.ndarray | None) -> tuple[np.ndarray, bool, bool]:
@@ -479,8 +508,11 @@ class _Frame:
 class AutoE2EPolicy(Policy):
     cameras = VIEW_ORDER
     waypoint_dt = 0.5
-    #: History is real or repeated-oldest, never manufactured from nothing beyond that.
-    self_prime = False
+    #: Closed loop (a simulator calling /infer each tick): the ego history before the first
+    #: pose is filled with steady driving. `infer_sequence` clears this, so open-loop
+    #: benchmarks, which send the real past, keep upstream's zero padding. Camera history is
+    #: never manufactured: a short past repeats the oldest frame, as upstream does.
+    self_prime = True
 
     def __init__(self) -> None:
         self.checkpoint = os.environ.get("AUTOE2E_CHECKPOINT", "")
@@ -651,6 +683,22 @@ class AutoE2EPolicy(Policy):
             out.append(k @ (np.linalg.inv(cam2ref) @ hist_from_now)[:3, :])
         return np.stack(out).astype(np.float32)
 
+    def _ego_history(self, now: _Frame, speed: float) -> tuple[np.ndarray, int]:
+        """[64, 4] ego history at `now` from every frame held, and how many rows were filled.
+
+        All frames held, the current one included, so the newest rows get a centred gradient.
+        Closed loop fills the rows before the first pose (`steady_before_start`); open loop,
+        where `infer_sequence` has cleared `self_prime`, keeps upstream's zero padding.
+        """
+        t = np.array([f.t_s for f in self.frames])
+        e2w = [f.ego2world for f in self.frames]
+        ego = egomotion_rows(
+            t, np.array([m[:2, 3] for m in e2w]), np.array([yaw_of(m) for m in e2w]), now.t_s
+        )
+        if not self.self_prime:
+            return ego, 0
+        return steady_before_start(ego, t, now.t_s, speed)
+
     # ------------------------------------------------------------------ infer
     def infer(self, obs: Observation) -> Trajectory:
         import torch
@@ -698,14 +746,7 @@ class AutoE2EPolicy(Policy):
         PF = torch.from_numpy(self._projections(now, None, FRONT_TILE, views=("CAM_FRONT",)))[None].to(dev)
         PH = [torch.from_numpy(self._projections(f, ref_now2world, TILE))[None].to(dev) for f in history]
 
-        # Ego history from the pose stream (all frames held, current included for the centred gradient).
-        e2w = [f.ego2world for f in self.frames]
-        ego = egomotion_rows(
-            np.array([f.t_s for f in self.frames]),
-            np.array([m[:2, 3] for m in e2w]),
-            np.array([yaw_of(m) for m in e2w]),
-            now.t_s,
-        )
+        ego, filled = self._ego_history(now, float(obs.speed))
         v0 = float(ego[-1, 0])
         ego_in = ego.copy()
         ego_in[-1, 1] = 0.0  # KITScenes stage: newest acceleration masked (dataset_policy.py)
@@ -759,6 +800,7 @@ class AutoE2EPolicy(Policy):
             "history_repeated": sum(g is None for g in gaps),
             "frames_held": len(self.frames),
             "ego_rows_zero": int((np.abs(ego).sum(1) == 0).sum()),
+            "ego_rows_filled": filled,
             "route_valid": route_valid,
             "destination": dest,
             "pack_s": round(t1 - t0, 3),

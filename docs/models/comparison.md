@@ -305,6 +305,22 @@ seconds and needs no extension, its L2 sits with Drive-JEPA's. Both numbers are
 real; they are not measuring the same object. `docs/models/meteor.md` has the
 measurements.
 
+### METEOR × alpasim — six cameras, a group of its own, and a driver that is not tracked
+
+METEOR's AlpaSim cell, 0.4232 on 30 scenes, shares the scenes, the referee
+config and the scorer of the one-camera rows and nothing else. It was shown six
+rendered cameras, so it is the only row in `6cam-20Hz`, with no
+constant-velocity floor to read it against. The cameras are pinhole renders
+narrower than the recorded fisheyes, with the bonnet mask off. The mode is
+chosen by the selector of METEOR's deployed runtime, where every other METEOR
+cell takes the argmax. And the run came from a native driver that is not in
+this repository, where the other METEOR cells came through the paddock node.
+The graph and its pixel scaling are the same as elsewhere: the released ONNX,
+as shipped. Read the cell as "the released model on AlpaSim's cameras, once",
+beside the one-camera rows and not among them. Detail in
+[meteor.md](meteor.md) and
+[docs/benchmarks/alpasim.md](../benchmarks/alpasim.md).
+
 ### VisionPilot × everything — every figure predates a constant that moved
 
 VisionPilot's adapter carried `CURV_SCALE = 1.0`. The stack's own
@@ -357,3 +373,106 @@ inspection rather than from paddock. Paddock has measured none of it, which is
 the gap [docs/design/model-card-and-latency.md](../design/model-card-and-latency.md)
 proposes to close: declared numbers rot, and the fix is a fixture test asserting
 the declaration against the artifact.
+
+## Notes moved from the README support matrix
+
+The README's notes on cells that are about a model rather than one benchmark,
+moved here unchanged except for links. Each starts with the mark it carried in
+the matrix; the benchmark notes are on each benchmark's page under
+"Support-matrix results".
+
+⊛ `drivejepa_rerank` is Drive-JEPA unchanged up to its 32 candidate
+trajectories. A small selector then chooses among them, in place of Drive-JEPA's
+NAVSIM-trained scorer. That selector was trained on KITScenes **train** (5,711
+keyframes, 373 scenes, none of them in the benchmark), so its KITScenes cell is
+*adapted*, not zero-shot like the rows around it.
+It sees the cameras cropped onto the OpenScene lens and gets no route hint.
+Through that same path, Drive-JEPA's own pick scores 2.521 and the best of its 32
+scores 0.409. The selector learned closeness to the human path and nothing about
+collisions, so it has no closed-loop cells until it has been through neuroNCAP.
+Its nuScenes cell is zero-shot (no nuScenes data went into the selector) and was
+measured with the camera-frame fix (#62). Paired over 150 scenes, it is 0.054
+below constant velocity on cumulative L2 (t −2.8); its point collision rate,
+1.21% against 1.66%, is not separated (t −1.5). The Drive-JEPA row is still the
+camera-blind one (⊘), and this row also differs from it in the camera crop, so
+the two are not a like-for-like comparison.
+See `docs/models/drivejepa_rerank.md`.
+
+⊕ The same architecture with a second checkpoint: Drive-JEPA's trajectory
+generator retrained on NVIDIA's Physical AI AV dataset (`train` split). It is
+driven by the native AlpaSim driver at 0.1.7
+(`tools/models/drivejepa/alpasim_driver/`), not through a paddock node, and the
+row was ingested from that driver's recorded runs, as the Drive-JEPA row was.
+Its AlpaSim cell is *adapted*, not zero-shot: AlpaSim's scenes are
+reconstructions of clips from that dataset. The training code excludes the
+evaluation scenes, which is taken on that code's word, and the 30 scenes were
+driven repeatedly while the driver was developed, so the number is not a
+held-out one. Referee, scenes and scorer are those of the other rows (¶), one
+rollout per scene. On the first ten scenes alone it scores 0.9956. Its other
+cells are not run: the checkpoint has no download location yet and no paddock
+node. The launch log of each of its 30 runs records the checkpoint's sha256,
+the one `docs/models/drivejepa.md` gives, so the file is identified even though
+another site cannot yet fetch it.
+See `docs/models/drivejepa.md`.
+
+∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
+KITScenes, Paddock constructs sampled XY points from its projected image-space
+path and speed schedule, so those three figures grade the whole synthesised
+pipeline -- perception, ground projection, curve fit, cruise-speed assumption
+and extrapolation past a 1 s planner horizon -- and are not comparable in kind
+with a model that emits a timed trajectory. The KITScenes run additionally
+needed the ego origin dropped from the roof pod to the road, without which every
+projected path point lands behind the car; see `docs/benchmarks/kitscenes.md`.
+
+The ∗ rows are also the ones **`CURV_SCALE` moved**. The adapter carried 1.0
+where the stack's own `lateral_fusion.hpp` has 0.21, so the planner saw a
+curvature 4.8x too large and its `sqrt(mu*g/|kappa|)` speed cap bound where it
+should not have. Fixed September 2026; on a 20-sample comma2k19 smoke the
+correction moved ADE@3s from 15.09 to 5.28. **Every VisionPilot figure in the
+README predates it** and will not be reproduced by a re-run — the closed-loop
+ones least, since urban scenes rarely reach the cap, and the comma2k19 and
+KITScenes ones most. `docs/models/VISION_PILOT_GUIDE.md` §"Curvature scale" has
+the derivation; re-sweeping VisionPilot is an open item in `docs/ROADMAP.md`.
+
+◊ METEOR plans **3 s**; NAVSIM scores **4 s**. A quarter of every scored plan is
+therefore not the model's: `METEOR_HORIZON_S=4.0` (on the record as `model_env`)
+continues the final 0.5 s segment to 4 s, because `to_navsim_poses` refuses a
+shorter horizon rather than inventing one silently. The metrics that read the far
+end of the plan are where METEOR falls to or below the constant-velocity floor —
+lane keeping 0.795 against the floor's 0.827, extended comfort 0.451 against
+0.567, the lowest in this table. Consecutive plans disagree three times more in
+the extrapolated second (1.62 m of lateral) than inside the model's own horizon
+(0.52 m), measured over 10,040 consecutive pairs. Read these two cells as METEOR
+plus that extension, not as a 4 s planner; its 3 s output is scored without any
+extension on nuScenes and KITScenes. See `docs/models/meteor.md`.
+
+◇ METEOR is TIER IV's 8-camera multi-task network, run from its released
+camera-only ONNX. KITScenes hands it the six-camera ring (#40), so only its two
+telephoto slots are absent; it has no driving-command input. Fed the front
+camera alone, as the harness did before #40, it scored 4.784 -- the run is kept
+as an ablation. With six cameras the residual error is longitudinal above
+13 m/s, where its plans plateau near 35 m at 3 s (a prior from its training
+domain). The feed matches the authors' reference loader byte for byte. On
+nuScenes, with all six cameras, its L2 sits with Drive-JEPA's; its collisions
+are concentrated at standstill, where the planner creeps ~1 m into the queue
+ahead (22.6 % of stopped anchors), and its plans carry a left bias twice as
+large in Boston as in Singapore. See `docs/models/meteor.md`.
+
+✦ **Two models here declare training exposure to a benchmark's own dataset.**
+Drive-JEPA leads that benchmark by 0.096 EPDMS on v2 and 0.085 PDMS on v1 over
+OpenPilot with its 10 Hz history (0.235 and 0.216 over the 2 Hz field): it was
+post-trained on NAVSIM `navtrain` and pre-trained partly on OpenScene, which
+*is* the NAVSIM dataset. Qwen-Drive 1.0 reports navtest as its own headline
+planning result, so its adapter declares `navtrain` too — read off the report
+rather than sourced from code, and the one line to correct if the paper says
+otherwise. OpenPilot, Alpamayo and VisionPilot meet `navtest` zero-shot. That is the protocol NAVSIM intends — it is not cheating —
+but it means both NAVSIM columns conflate "better planner" with
+"in-distribution versus zero-shot". Sourced at
+the pinned sha: `navsim_v2/scripts/training/train_drive_jepa_perception_based.sh`
+sets `TRAIN_TEST_SPLIT=navtrain` for the same agent whose checkpoint paddock
+loads. Detail in [docs/models/comparison.md](comparison.md).
+
+✧ The published architecture reads one front camera; the adapter declares four,
+because it runs the NAVSIM perception-based variant whose BEVFormer stage is
+multi-camera. Unreconciled — and since a simulator renders exactly what is
+declared, it is worth measuring before the next closed-loop sweep.

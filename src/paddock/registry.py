@@ -66,6 +66,12 @@ class Runtime:
     pythonpath: tuple[str, ...] = ()
     cwd: str | None = None
     env: dict[str, str] = field(default_factory=dict)
+    #: Env keys a site may override without changing what is measured: thread
+    #: counts, memory caps. Any other key in a site's `[models.<name>.env]`
+    #: makes the run `valid: false` (`runner._env_override_reasons`), because a
+    #: checkpoint or a horizon swapped in by a site would otherwise be ranked
+    #: under the model's name.
+    tuning_env: tuple[str, ...] = ()
 
     def interpreter(self, cfg: SiteConfig, **ctx: str) -> Path:
         """The interpreter to launch, with any site override applied.
@@ -287,6 +293,7 @@ def load_models(directory: Path = MODELS_DIR) -> dict[str, ModelSpec]:
                 pythonpath=tuple(rt.get("pythonpath", ())),
                 cwd=rt.get("cwd"),
                 env=dict(rt.get("env", {})),
+                tuning_env=tuple(rt.get("tuning_env", ())),
             ),
             cameras=tuple(caps.get("cameras", ("CAM_FRONT",))),
             vram_gb=float(caps.get("vram_gb", 0.0)),

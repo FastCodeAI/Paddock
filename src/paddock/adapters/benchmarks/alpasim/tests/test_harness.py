@@ -565,3 +565,13 @@ def test_a_bridge_that_never_binds_is_killed_not_leaked(tmp_path: Path) -> None:
 
     assert bridge.proc is not None
     assert bridge.proc.poll() is not None, "the bridge survived a failed __enter__"
+
+
+def test_a_scene_subset_is_not_a_score(tmp_path: Path, monkeypatch) -> None:
+    """Review #80 (6): fewer clips than the pinned set would be ranked beside full runs."""
+    bench = _benchmark(tmp_path, monkeypatch)
+    list(bench.episodes(None))
+    assert bench.invalid_reasons() == []
+    list(bench.episodes([CLEAN]))
+    (reason,) = bench.invalid_reasons()
+    assert f"1 of the {len(load_scene_set(DEFAULT_SCENE_SET))} clips" in reason

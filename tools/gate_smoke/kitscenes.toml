@@ -1,0 +1,210 @@
+# KITScenes smoke tier: the whole benchmark, all 223 keyframes of the shared sample list
+# over 140 scenes. Nothing is left out: 223 open-loop samples is already smoke-sized.
+#
+# Run with no subset argument; listed here so a run can be checked against it. Ids are
+# KitscenesBenchmark._sample_id over the site's [benchmarks.kitscenes] sample_list.
+# A full run is valid=true. It pairs with another run made with the same config; the gate
+# checks, because the tracked legacy run used ground-truth commands and no ground offset.
+#
+# Fixed once, on 2026-10-16. It must never be re-picked, re-seeded or edited to make a
+# result look better: a gate whose subset moves can be steered. If the subset turns
+# out to be wrong (a scene that cannot run, say), replace it in its own commit that
+# says why, and re-run every baseline paired with it.
+
+bench = "kitscenes"
+unit = "scene"
+rule = "all"
+count = 223
+
+[strata]
+00fc1b9b-005e-554c-7733-c4c0adeca015 = ["kitscenes/val/00fc1b9b-005e-554c-7733-c4c0adeca015/40"]
+02be7d74-6f74-9167-c8a2-84fc961c0fbd = ["kitscenes/val/02be7d74-6f74-9167-c8a2-84fc961c0fbd/40"]
+03ed2585-0729-92ad-98af-fdd9ac1c3a80 = ["kitscenes/val/03ed2585-0729-92ad-98af-fdd9ac1c3a80/40", "kitscenes/val/03ed2585-0729-92ad-98af-fdd9ac1c3a80/130"]
+04a39028-c434-6cff-b3f4-9f8dbb9aa078 = ["kitscenes/val/04a39028-c434-6cff-b3f4-9f8dbb9aa078/40", "kitscenes/val/04a39028-c434-6cff-b3f4-9f8dbb9aa078/130", "kitscenes/val/04a39028-c434-6cff-b3f4-9f8dbb9aa078/220"]
+0638dbd2-172d-142e-de9f-9bc5c6ca2b0f = ["kitscenes/val/0638dbd2-172d-142e-de9f-9bc5c6ca2b0f/40"]
+0b795c4c-10f2-14bc-41e1-80b92a675aa0 = ["kitscenes/overlap_train_val/0b795c4c-10f2-14bc-41e1-80b92a675aa0/40"]
+0cfdeb83-2a4a-00d2-a500-787346d98e63 = ["kitscenes/val/0cfdeb83-2a4a-00d2-a500-787346d98e63/40"]
+0dd003b2-0988-0da3-bf75-ee91deaa9ce6 = ["kitscenes/val/0dd003b2-0988-0da3-bf75-ee91deaa9ce6/40"]
+0f8ffa88-e84d-eaa2-4ef1-62bb539f8e03 = ["kitscenes/val/0f8ffa88-e84d-eaa2-4ef1-62bb539f8e03/40", "kitscenes/val/0f8ffa88-e84d-eaa2-4ef1-62bb539f8e03/130"]
+10edd8d1-2326-5e5e-6e32-654009fdf287 = ["kitscenes/val/10edd8d1-2326-5e5e-6e32-654009fdf287/40"]
+138e9096-e009-ef33-f5b6-9606f7353cf7 = ["kitscenes/overlap_train_val/138e9096-e009-ef33-f5b6-9606f7353cf7/40"]
+142f1419-b6f2-4215-4055-6eb161f63043 = ["kitscenes/val/142f1419-b6f2-4215-4055-6eb161f63043/40"]
+17719e25-ae9b-87b8-6826-fe7ac9cf5920 = ["kitscenes/overlap_train_val/17719e25-ae9b-87b8-6826-fe7ac9cf5920/40"]
+18775d16-38f0-156e-4733-07553c14186b = ["kitscenes/val/18775d16-38f0-156e-4733-07553c14186b/40"]
+18f9f9c8-e2d2-9f39-39c4-4fd3bc671915 = ["kitscenes/overlap_train_val/18f9f9c8-e2d2-9f39-39c4-4fd3bc671915/40", "kitscenes/overlap_train_val/18f9f9c8-e2d2-9f39-39c4-4fd3bc671915/130"]
+1db9c8a0-d836-07b4-340d-43bd91c97955 = ["kitscenes/val/1db9c8a0-d836-07b4-340d-43bd91c97955/40"]
+1df9975b-4ffd-9669-23ee-abf74f9c47e6 = ["kitscenes/overlap_train_val/1df9975b-4ffd-9669-23ee-abf74f9c47e6/40", "kitscenes/overlap_train_val/1df9975b-4ffd-9669-23ee-abf74f9c47e6/130"]
+1e20c4a2-a93b-ec00-bd03-519814268c23 = ["kitscenes/overlap_train_val/1e20c4a2-a93b-ec00-bd03-519814268c23/40"]
+236144ec-a0fd-6f16-09d8-514f31a202d3 = ["kitscenes/val/236144ec-a0fd-6f16-09d8-514f31a202d3/40"]
+2381584f-2ac6-83c1-cfe8-cbf5b1d2cfda = ["kitscenes/val/2381584f-2ac6-83c1-cfe8-cbf5b1d2cfda/40", "kitscenes/val/2381584f-2ac6-83c1-cfe8-cbf5b1d2cfda/130"]
+2673dca8-c7f5-c2d9-78eb-a06e201776dc = ["kitscenes/val/2673dca8-c7f5-c2d9-78eb-a06e201776dc/40", "kitscenes/val/2673dca8-c7f5-c2d9-78eb-a06e201776dc/130", "kitscenes/val/2673dca8-c7f5-c2d9-78eb-a06e201776dc/220"]
+2a28c841-e21c-ddf5-948b-cf50f021a670 = ["kitscenes/val/2a28c841-e21c-ddf5-948b-cf50f021a670/40"]
+324fb34d-3cc0-7fd5-765c-d3e2266041f4 = ["kitscenes/val/324fb34d-3cc0-7fd5-765c-d3e2266041f4/40"]
+33a55e0a-fd55-9368-0629-293f54ee3afa = ["kitscenes/overlap_train_val/33a55e0a-fd55-9368-0629-293f54ee3afa/40"]
+35b08325-d022-4e7e-23ca-6523644f13d3 = ["kitscenes/val/35b08325-d022-4e7e-23ca-6523644f13d3/40"]
+35eb1fee-cf5c-deda-96db-d9c8007c522d = ["kitscenes/val/35eb1fee-cf5c-deda-96db-d9c8007c522d/40"]
+367b80cc-4f09-5244-f1c1-f065d9f8f0d9 = [
+    "kitscenes/overlap_train_val/367b80cc-4f09-5244-f1c1-f065d9f8f0d9/40",
+    "kitscenes/overlap_train_val/367b80cc-4f09-5244-f1c1-f065d9f8f0d9/130",
+    "kitscenes/overlap_train_val/367b80cc-4f09-5244-f1c1-f065d9f8f0d9/220",
+    "kitscenes/overlap_train_val/367b80cc-4f09-5244-f1c1-f065d9f8f0d9/310",
+    "kitscenes/overlap_train_val/367b80cc-4f09-5244-f1c1-f065d9f8f0d9/400",
+]
+3689ea5c-1275-629a-8fa1-34142129eae5 = ["kitscenes/val/3689ea5c-1275-629a-8fa1-34142129eae5/40"]
+38fd42fe-67df-73e0-670d-27862b697f2c = ["kitscenes/val/38fd42fe-67df-73e0-670d-27862b697f2c/40"]
+3919596d-7f1e-3bd5-ca67-052aba651bf6 = ["kitscenes/val/3919596d-7f1e-3bd5-ca67-052aba651bf6/40"]
+39ed6bdc-3e24-5a74-9d13-19b57dc035d9 = [
+    "kitscenes/val/39ed6bdc-3e24-5a74-9d13-19b57dc035d9/40",
+    "kitscenes/val/39ed6bdc-3e24-5a74-9d13-19b57dc035d9/130",
+    "kitscenes/val/39ed6bdc-3e24-5a74-9d13-19b57dc035d9/220",
+    "kitscenes/val/39ed6bdc-3e24-5a74-9d13-19b57dc035d9/310",
+    "kitscenes/val/39ed6bdc-3e24-5a74-9d13-19b57dc035d9/400",
+]
+3a616875-9aef-1054-c506-2c105451c6e9 = [
+    "kitscenes/val/3a616875-9aef-1054-c506-2c105451c6e9/40",
+    "kitscenes/val/3a616875-9aef-1054-c506-2c105451c6e9/130",
+    "kitscenes/val/3a616875-9aef-1054-c506-2c105451c6e9/220",
+    "kitscenes/val/3a616875-9aef-1054-c506-2c105451c6e9/310",
+    "kitscenes/val/3a616875-9aef-1054-c506-2c105451c6e9/400",
+]
+3acd59be-14aa-6cf1-14df-0bb17bb6595c = ["kitscenes/val/3acd59be-14aa-6cf1-14df-0bb17bb6595c/40"]
+3b1a16a1-ebf3-4190-4fd5-73b459bc6cd6 = ["kitscenes/val/3b1a16a1-ebf3-4190-4fd5-73b459bc6cd6/40"]
+3ba62d26-12d4-c3bc-df8f-fbe7a5c99f47 = ["kitscenes/val/3ba62d26-12d4-c3bc-df8f-fbe7a5c99f47/40"]
+3cd1a6eb-e020-f12a-c1e9-457a883fb969 = ["kitscenes/val/3cd1a6eb-e020-f12a-c1e9-457a883fb969/40", "kitscenes/val/3cd1a6eb-e020-f12a-c1e9-457a883fb969/130"]
+45ac20f8-36b9-92b1-6f91-35811ffc140c = ["kitscenes/val/45ac20f8-36b9-92b1-6f91-35811ffc140c/40", "kitscenes/val/45ac20f8-36b9-92b1-6f91-35811ffc140c/130"]
+4bcb0526-6b76-32f7-0b16-f5e720fa1ca6 = ["kitscenes/val/4bcb0526-6b76-32f7-0b16-f5e720fa1ca6/40"]
+4c944492-078c-d0ea-1948-b9cfe797860d = ["kitscenes/val/4c944492-078c-d0ea-1948-b9cfe797860d/40"]
+50df6381-ca49-2a1c-1360-95660989f096 = ["kitscenes/val/50df6381-ca49-2a1c-1360-95660989f096/40", "kitscenes/val/50df6381-ca49-2a1c-1360-95660989f096/130"]
+51d6f5e5-7c50-2631-8cda-395ac448f247 = ["kitscenes/val/51d6f5e5-7c50-2631-8cda-395ac448f247/40"]
+546bc7e5-42a9-feae-e2a4-11017281ab2e = ["kitscenes/val/546bc7e5-42a9-feae-e2a4-11017281ab2e/40"]
+54cd7acd-3f87-9d32-b605-9cd85fc6b7bb = ["kitscenes/val/54cd7acd-3f87-9d32-b605-9cd85fc6b7bb/40"]
+56e5816f-5c8e-4793-2695-679ef9319cce = ["kitscenes/overlap_train_val/56e5816f-5c8e-4793-2695-679ef9319cce/40"]
+59dc3fbb-355e-a774-0cef-f4c1f7528ae8 = ["kitscenes/val/59dc3fbb-355e-a774-0cef-f4c1f7528ae8/40", "kitscenes/val/59dc3fbb-355e-a774-0cef-f4c1f7528ae8/130"]
+5aaa3555-2bdc-bbd6-b240-35a1bccbe73e = ["kitscenes/val/5aaa3555-2bdc-bbd6-b240-35a1bccbe73e/40"]
+5bf1c78c-46c7-2e4d-7295-00a1de902965 = ["kitscenes/val/5bf1c78c-46c7-2e4d-7295-00a1de902965/40"]
+5c20d8ff-644e-e72f-0fa9-e9e0d6cdb7f3 = ["kitscenes/overlap_train_val/5c20d8ff-644e-e72f-0fa9-e9e0d6cdb7f3/40", "kitscenes/overlap_train_val/5c20d8ff-644e-e72f-0fa9-e9e0d6cdb7f3/130", "kitscenes/overlap_train_val/5c20d8ff-644e-e72f-0fa9-e9e0d6cdb7f3/220"]
+5d443f77-d840-c7ff-55cd-beeec5249316 = ["kitscenes/val/5d443f77-d840-c7ff-55cd-beeec5249316/40"]
+61a2563e-7d1f-afc5-f329-052dceca584d = ["kitscenes/val/61a2563e-7d1f-afc5-f329-052dceca584d/40"]
+6370e4b6-51c9-7019-11b4-9ea71ff01935 = ["kitscenes/overlap_train_val/6370e4b6-51c9-7019-11b4-9ea71ff01935/40"]
+6487419d-a335-56e0-e9c8-07668939fb57 = ["kitscenes/overlap_train_val/6487419d-a335-56e0-e9c8-07668939fb57/40"]
+67abb4e2-88be-bea0-4eb7-b423b5fc7787 = ["kitscenes/val/67abb4e2-88be-bea0-4eb7-b423b5fc7787/40", "kitscenes/val/67abb4e2-88be-bea0-4eb7-b423b5fc7787/130", "kitscenes/val/67abb4e2-88be-bea0-4eb7-b423b5fc7787/220"]
+6848358c-4147-804f-def6-628b1b8bf75f = ["kitscenes/val/6848358c-4147-804f-def6-628b1b8bf75f/40"]
+6f47eb66-9043-845f-5043-6731c294de25 = [
+    "kitscenes/val/6f47eb66-9043-845f-5043-6731c294de25/40",
+    "kitscenes/val/6f47eb66-9043-845f-5043-6731c294de25/130",
+    "kitscenes/val/6f47eb66-9043-845f-5043-6731c294de25/220",
+    "kitscenes/val/6f47eb66-9043-845f-5043-6731c294de25/310",
+    "kitscenes/val/6f47eb66-9043-845f-5043-6731c294de25/400",
+    "kitscenes/val/6f47eb66-9043-845f-5043-6731c294de25/490",
+]
+703ee0c4-7726-5fae-b531-3311110f4706 = ["kitscenes/val/703ee0c4-7726-5fae-b531-3311110f4706/40"]
+7080aa7f-1f6d-0cd9-5efd-352426c5f51d = ["kitscenes/val/7080aa7f-1f6d-0cd9-5efd-352426c5f51d/40"]
+766aceef-95a7-052c-b366-6cae96bdfd08 = ["kitscenes/val/766aceef-95a7-052c-b366-6cae96bdfd08/40", "kitscenes/val/766aceef-95a7-052c-b366-6cae96bdfd08/130"]
+77c7c33c-a491-78cc-4b70-8f3db4527cb8 = ["kitscenes/val/77c7c33c-a491-78cc-4b70-8f3db4527cb8/40", "kitscenes/val/77c7c33c-a491-78cc-4b70-8f3db4527cb8/130"]
+789908e0-9d1d-9a1a-2b48-a549b0d6f83f = ["kitscenes/overlap_train_val/789908e0-9d1d-9a1a-2b48-a549b0d6f83f/40"]
+840e435a-a1d3-500b-58fc-7998ef3758f9 = ["kitscenes/val/840e435a-a1d3-500b-58fc-7998ef3758f9/40"]
+85c30383-7b30-bdbe-c5d0-b500186cfeb1 = ["kitscenes/overlap_train_val/85c30383-7b30-bdbe-c5d0-b500186cfeb1/40", "kitscenes/overlap_train_val/85c30383-7b30-bdbe-c5d0-b500186cfeb1/130"]
+85dbe6d6-47e0-7359-85cc-df98edf61ec3 = ["kitscenes/val/85dbe6d6-47e0-7359-85cc-df98edf61ec3/40", "kitscenes/val/85dbe6d6-47e0-7359-85cc-df98edf61ec3/130"]
+873eebf4-448a-cf6e-7d5e-2dc1cd010723 = ["kitscenes/overlap_train_val/873eebf4-448a-cf6e-7d5e-2dc1cd010723/40", "kitscenes/overlap_train_val/873eebf4-448a-cf6e-7d5e-2dc1cd010723/130", "kitscenes/overlap_train_val/873eebf4-448a-cf6e-7d5e-2dc1cd010723/220"]
+8c501afb-5a9b-e881-1c7d-99c21f39b1cc = ["kitscenes/val/8c501afb-5a9b-e881-1c7d-99c21f39b1cc/40", "kitscenes/val/8c501afb-5a9b-e881-1c7d-99c21f39b1cc/130"]
+8d3308e6-b9d2-1f69-d6b1-ac4dc7fb5db9 = ["kitscenes/val/8d3308e6-b9d2-1f69-d6b1-ac4dc7fb5db9/40", "kitscenes/val/8d3308e6-b9d2-1f69-d6b1-ac4dc7fb5db9/130"]
+8dcfc2ba-200e-154a-4283-95f5a073b488 = ["kitscenes/val/8dcfc2ba-200e-154a-4283-95f5a073b488/40"]
+8fb5bd8e-16c6-7e28-712a-55fe1550d314 = ["kitscenes/val/8fb5bd8e-16c6-7e28-712a-55fe1550d314/40"]
+916b4c97-ff53-61b9-2544-6f118916ac7a = ["kitscenes/val/916b4c97-ff53-61b9-2544-6f118916ac7a/40"]
+93b7a937-b81a-c07e-0479-c84e8acbfd89 = ["kitscenes/val/93b7a937-b81a-c07e-0479-c84e8acbfd89/40"]
+93bcdd59-4141-3fed-17c7-7f1de5026f79 = ["kitscenes/val/93bcdd59-4141-3fed-17c7-7f1de5026f79/40", "kitscenes/val/93bcdd59-4141-3fed-17c7-7f1de5026f79/130"]
+950dda14-fa6e-bb94-1557-3f1c5d50c2db = ["kitscenes/val/950dda14-fa6e-bb94-1557-3f1c5d50c2db/40"]
+95bac4b1-6724-24c5-33d9-12a5955f72b3 = ["kitscenes/val/95bac4b1-6724-24c5-33d9-12a5955f72b3/40"]
+97a94a07-e9a4-fc20-81aa-821b432cae7f = ["kitscenes/val/97a94a07-e9a4-fc20-81aa-821b432cae7f/40", "kitscenes/val/97a94a07-e9a4-fc20-81aa-821b432cae7f/130"]
+97dabcaa-1326-de39-cd3b-a06f172cc391 = ["kitscenes/val/97dabcaa-1326-de39-cd3b-a06f172cc391/40"]
+9d111fa2-93d8-ac50-8ad4-b472b223c9f4 = ["kitscenes/overlap_train_val/9d111fa2-93d8-ac50-8ad4-b472b223c9f4/40"]
+9e40e0fc-78c9-a5df-678b-3ca32593544f = ["kitscenes/val/9e40e0fc-78c9-a5df-678b-3ca32593544f/40"]
+9ffae20c-9fcd-2bf7-363c-4a27aee7b99b = [
+    "kitscenes/val/9ffae20c-9fcd-2bf7-363c-4a27aee7b99b/40",
+    "kitscenes/val/9ffae20c-9fcd-2bf7-363c-4a27aee7b99b/130",
+    "kitscenes/val/9ffae20c-9fcd-2bf7-363c-4a27aee7b99b/220",
+    "kitscenes/val/9ffae20c-9fcd-2bf7-363c-4a27aee7b99b/310",
+]
+a5ef9e38-ce23-04ad-40ce-7e71e5f59e5a = ["kitscenes/val/a5ef9e38-ce23-04ad-40ce-7e71e5f59e5a/40"]
+a724baf7-428b-eadc-9721-9de6195b0c3b = ["kitscenes/val/a724baf7-428b-eadc-9721-9de6195b0c3b/40", "kitscenes/val/a724baf7-428b-eadc-9721-9de6195b0c3b/130"]
+a83fd3b2-984d-7acf-a7f6-c9b91906d294 = ["kitscenes/val/a83fd3b2-984d-7acf-a7f6-c9b91906d294/40"]
+ab1cafcc-a47a-c515-c921-a148afddcc1e = ["kitscenes/val/ab1cafcc-a47a-c515-c921-a148afddcc1e/40"]
+acbbe9df-02f6-68a8-46fe-b2c6acb40d9f = ["kitscenes/val/acbbe9df-02f6-68a8-46fe-b2c6acb40d9f/40"]
+ae85d240-f64e-16a5-f580-ab8a6b4f8653 = ["kitscenes/val/ae85d240-f64e-16a5-f580-ab8a6b4f8653/40"]
+af665a7a-3262-4b3e-6c96-3e8b9fbe90d3 = [
+    "kitscenes/val/af665a7a-3262-4b3e-6c96-3e8b9fbe90d3/40",
+    "kitscenes/val/af665a7a-3262-4b3e-6c96-3e8b9fbe90d3/130",
+    "kitscenes/val/af665a7a-3262-4b3e-6c96-3e8b9fbe90d3/220",
+    "kitscenes/val/af665a7a-3262-4b3e-6c96-3e8b9fbe90d3/310",
+    "kitscenes/val/af665a7a-3262-4b3e-6c96-3e8b9fbe90d3/400",
+]
+b0b4b2b5-63ce-0a08-b371-3577c1f0f8d4 = ["kitscenes/val/b0b4b2b5-63ce-0a08-b371-3577c1f0f8d4/40"]
+b2f44b75-f4f2-6f24-2a84-d54c3ca404ee = ["kitscenes/val/b2f44b75-f4f2-6f24-2a84-d54c3ca404ee/40"]
+b3dd3c95-fe32-d1b6-66d3-3677e8c33ce6 = ["kitscenes/val/b3dd3c95-fe32-d1b6-66d3-3677e8c33ce6/40"]
+b4d2fb1b-c6a2-1fbe-8f8c-8451aefd362f = ["kitscenes/overlap_train_val/b4d2fb1b-c6a2-1fbe-8f8c-8451aefd362f/40"]
+b574fe64-7961-4aed-8fc0-16be9d13360a = ["kitscenes/val/b574fe64-7961-4aed-8fc0-16be9d13360a/40"]
+b8002a79-ac44-b7bb-c7d6-0136e49e016f = ["kitscenes/overlap_train_val/b8002a79-ac44-b7bb-c7d6-0136e49e016f/40", "kitscenes/overlap_train_val/b8002a79-ac44-b7bb-c7d6-0136e49e016f/130"]
+b9c27408-5f4d-6fbb-9fe4-7bd8b2e46969 = ["kitscenes/val/b9c27408-5f4d-6fbb-9fe4-7bd8b2e46969/40"]
+ba2f9a7d-a115-9696-a431-72c7265413ff = ["kitscenes/val/ba2f9a7d-a115-9696-a431-72c7265413ff/40", "kitscenes/val/ba2f9a7d-a115-9696-a431-72c7265413ff/130"]
+ba826f49-37df-54f1-1f9e-b3df77208a5d = [
+    "kitscenes/val/ba826f49-37df-54f1-1f9e-b3df77208a5d/40",
+    "kitscenes/val/ba826f49-37df-54f1-1f9e-b3df77208a5d/130",
+    "kitscenes/val/ba826f49-37df-54f1-1f9e-b3df77208a5d/220",
+    "kitscenes/val/ba826f49-37df-54f1-1f9e-b3df77208a5d/310",
+]
+bb2f22e1-82e1-2aaa-6837-a91792df0dc1 = ["kitscenes/val/bb2f22e1-82e1-2aaa-6837-a91792df0dc1/40", "kitscenes/val/bb2f22e1-82e1-2aaa-6837-a91792df0dc1/130"]
+bc171ed9-da3d-1f58-6321-39e8af48e7eb = ["kitscenes/val/bc171ed9-da3d-1f58-6321-39e8af48e7eb/40"]
+bc3300c2-0bae-0ced-64c5-c5bf8ebc51c2 = ["kitscenes/val/bc3300c2-0bae-0ced-64c5-c5bf8ebc51c2/40"]
+be0dbfb9-9b38-eb6e-df88-7b6ac23c8004 = ["kitscenes/overlap_train_val/be0dbfb9-9b38-eb6e-df88-7b6ac23c8004/40"]
+be5138b4-7c33-c308-455a-4a685e4190d8 = ["kitscenes/val/be5138b4-7c33-c308-455a-4a685e4190d8/40"]
+c16f7986-4705-4a1f-a95d-93635e7f2106 = ["kitscenes/val/c16f7986-4705-4a1f-a95d-93635e7f2106/40"]
+c1bf5a93-e889-43bd-2a51-62789e146bd1 = ["kitscenes/val/c1bf5a93-e889-43bd-2a51-62789e146bd1/40"]
+c1d9c491-7123-504e-f609-6b9cd96b833a = ["kitscenes/val/c1d9c491-7123-504e-f609-6b9cd96b833a/40"]
+c34c778f-ad8c-0aa9-7e1a-c86a73f887c7 = ["kitscenes/val/c34c778f-ad8c-0aa9-7e1a-c86a73f887c7/40", "kitscenes/val/c34c778f-ad8c-0aa9-7e1a-c86a73f887c7/130"]
+c365b427-e79c-bd03-1cd4-a247ee235b7b = ["kitscenes/overlap_train_val/c365b427-e79c-bd03-1cd4-a247ee235b7b/40", "kitscenes/overlap_train_val/c365b427-e79c-bd03-1cd4-a247ee235b7b/130"]
+c542e25e-dc7e-9e5a-e4b8-e751e97f147f = ["kitscenes/val/c542e25e-dc7e-9e5a-e4b8-e751e97f147f/40"]
+c71eb5a2-9d20-3d95-7279-965c62243e04 = ["kitscenes/val/c71eb5a2-9d20-3d95-7279-965c62243e04/40"]
+c73fd01c-40ef-afb3-094a-c6c73e6847bb = ["kitscenes/val/c73fd01c-40ef-afb3-094a-c6c73e6847bb/40", "kitscenes/val/c73fd01c-40ef-afb3-094a-c6c73e6847bb/130"]
+c78f7cc6-635d-92ed-ff81-d8c4edc44804 = ["kitscenes/val/c78f7cc6-635d-92ed-ff81-d8c4edc44804/40", "kitscenes/val/c78f7cc6-635d-92ed-ff81-d8c4edc44804/130"]
+cc31f13d-c543-3a37-5088-8e4b9440a21d = ["kitscenes/val/cc31f13d-c543-3a37-5088-8e4b9440a21d/40"]
+ced33ece-6a08-ef0a-8feb-d2b19cc90208 = ["kitscenes/val/ced33ece-6a08-ef0a-8feb-d2b19cc90208/40", "kitscenes/val/ced33ece-6a08-ef0a-8feb-d2b19cc90208/130", "kitscenes/val/ced33ece-6a08-ef0a-8feb-d2b19cc90208/220"]
+cf8cfcba-f035-8a1c-2d17-65103b910ad4 = ["kitscenes/val/cf8cfcba-f035-8a1c-2d17-65103b910ad4/40", "kitscenes/val/cf8cfcba-f035-8a1c-2d17-65103b910ad4/130"]
+d0d0d336-1b26-abe5-3926-3e334fc2c5ec = ["kitscenes/overlap_train_val/d0d0d336-1b26-abe5-3926-3e334fc2c5ec/40"]
+d398a7a5-c86e-6186-9d8c-cb050429fa2a = ["kitscenes/overlap_train_val/d398a7a5-c86e-6186-9d8c-cb050429fa2a/40", "kitscenes/overlap_train_val/d398a7a5-c86e-6186-9d8c-cb050429fa2a/130"]
+d427b10f-7b2c-824f-a3d2-651e57fc821d = [
+    "kitscenes/val/d427b10f-7b2c-824f-a3d2-651e57fc821d/40",
+    "kitscenes/val/d427b10f-7b2c-824f-a3d2-651e57fc821d/130",
+    "kitscenes/val/d427b10f-7b2c-824f-a3d2-651e57fc821d/220",
+    "kitscenes/val/d427b10f-7b2c-824f-a3d2-651e57fc821d/310",
+]
+d45fc68a-1c3c-5fe8-7864-332f3ae879c0 = ["kitscenes/overlap_train_val/d45fc68a-1c3c-5fe8-7864-332f3ae879c0/40"]
+d5388adc-7931-b637-5d8c-f11ead33c41b = ["kitscenes/val/d5388adc-7931-b637-5d8c-f11ead33c41b/40"]
+d7b1c9c6-e178-e094-81ab-00aee41b6524 = ["kitscenes/val/d7b1c9c6-e178-e094-81ab-00aee41b6524/40", "kitscenes/val/d7b1c9c6-e178-e094-81ab-00aee41b6524/130", "kitscenes/val/d7b1c9c6-e178-e094-81ab-00aee41b6524/220"]
+d96782f8-760b-8970-bfad-2a3552d207a4 = [
+    "kitscenes/val/d96782f8-760b-8970-bfad-2a3552d207a4/40",
+    "kitscenes/val/d96782f8-760b-8970-bfad-2a3552d207a4/130",
+    "kitscenes/val/d96782f8-760b-8970-bfad-2a3552d207a4/220",
+    "kitscenes/val/d96782f8-760b-8970-bfad-2a3552d207a4/310",
+]
+da084a65-8bd0-7d8b-ba1b-3a3c0ea0832b = ["kitscenes/val/da084a65-8bd0-7d8b-ba1b-3a3c0ea0832b/40"]
+dbba76d9-91ec-b44f-f3d3-6348d55f7849 = ["kitscenes/val/dbba76d9-91ec-b44f-f3d3-6348d55f7849/40", "kitscenes/val/dbba76d9-91ec-b44f-f3d3-6348d55f7849/130"]
+dbce1c0b-1db9-0088-49fc-508171f4d52a = ["kitscenes/val/dbce1c0b-1db9-0088-49fc-508171f4d52a/40"]
+dda6802f-9e7b-df89-0f5f-f3382a674e55 = ["kitscenes/val/dda6802f-9e7b-df89-0f5f-f3382a674e55/40"]
+de354ef1-ca5b-01ae-e04e-099d36e2e1c4 = ["kitscenes/val/de354ef1-ca5b-01ae-e04e-099d36e2e1c4/40"]
+e57f9b38-09d1-efd7-fd05-14daa2cafa82 = ["kitscenes/val/e57f9b38-09d1-efd7-fd05-14daa2cafa82/40"]
+e6826f0a-c5c1-c4bb-87cf-8a6dcafad029 = ["kitscenes/val/e6826f0a-c5c1-c4bb-87cf-8a6dcafad029/40", "kitscenes/val/e6826f0a-c5c1-c4bb-87cf-8a6dcafad029/130"]
+e6e18423-1964-2ec2-1abe-302f0eceff32 = ["kitscenes/val/e6e18423-1964-2ec2-1abe-302f0eceff32/40"]
+e8dae25a-d0a9-bac2-dba2-c6e22223d53f = ["kitscenes/val/e8dae25a-d0a9-bac2-dba2-c6e22223d53f/40"]
+e983ab19-07f4-c6a3-2068-96cdde9f516b = ["kitscenes/val/e983ab19-07f4-c6a3-2068-96cdde9f516b/40", "kitscenes/val/e983ab19-07f4-c6a3-2068-96cdde9f516b/130"]
+eca7bf3a-32dd-0761-72e5-c8655aa143dd = ["kitscenes/val/eca7bf3a-32dd-0761-72e5-c8655aa143dd/40", "kitscenes/val/eca7bf3a-32dd-0761-72e5-c8655aa143dd/130", "kitscenes/val/eca7bf3a-32dd-0761-72e5-c8655aa143dd/220"]
+ed483615-48ce-22f2-c4d6-4c99785a652a = ["kitscenes/val/ed483615-48ce-22f2-c4d6-4c99785a652a/40"]
+f0b1b61b-e17e-797b-e65d-065c8a0360e5 = ["kitscenes/val/f0b1b61b-e17e-797b-e65d-065c8a0360e5/40", "kitscenes/val/f0b1b61b-e17e-797b-e65d-065c8a0360e5/130"]
+f0e0c753-301c-c983-937f-e317aa14428c = ["kitscenes/val/f0e0c753-301c-c983-937f-e317aa14428c/40", "kitscenes/val/f0e0c753-301c-c983-937f-e317aa14428c/130"]
+f10a3467-081f-a39b-df28-67eb510457aa = ["kitscenes/val/f10a3467-081f-a39b-df28-67eb510457aa/40", "kitscenes/val/f10a3467-081f-a39b-df28-67eb510457aa/130"]
+f6bb38bc-c2c9-0744-e351-bdeef0ad069c = ["kitscenes/val/f6bb38bc-c2c9-0744-e351-bdeef0ad069c/40"]
+f745d301-740f-2824-3260-7c31c6e6720e = ["kitscenes/val/f745d301-740f-2824-3260-7c31c6e6720e/40"]
+f7a2812c-0b10-0c8a-69a0-019e11f38c5e = ["kitscenes/val/f7a2812c-0b10-0c8a-69a0-019e11f38c5e/40"]
+f88f4a8e-3fe3-7148-2fa9-e450385431d5 = ["kitscenes/val/f88f4a8e-3fe3-7148-2fa9-e450385431d5/40"]
+fbb55f13-3c3d-9d2b-d70f-9b462bd225d3 = ["kitscenes/val/fbb55f13-3c3d-9d2b-d70f-9b462bd225d3/40"]
+fd274f08-b4e8-b13c-d754-a9b24d6cab13 = ["kitscenes/val/fd274f08-b4e8-b13c-d754-a9b24d6cab13/40", "kitscenes/val/fd274f08-b4e8-b13c-d754-a9b24d6cab13/130"]
+fdcc7efa-1a3c-66ac-4889-f19100d33831 = ["kitscenes/val/fdcc7efa-1a3c-66ac-4889-f19100d33831/40"]

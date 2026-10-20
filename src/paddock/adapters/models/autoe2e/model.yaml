@@ -23,6 +23,11 @@ runtime:
     # Forward-pass cadence in seconds (0 = every call). Closed loop sets 0.5 with 10 Hz calls.
     AUTOE2E_REPLAN_S: "0"
     OMP_NUM_THREADS: "2"
+  # Site overrides of these change speed, memory or logging, not the plan, so they
+  # leave a run valid; any other [models.autoe2e.env] key makes it valid: false.
+  # AUTOE2E_RECORD_DIR only names where a per-call log is written, after the plan
+  # is computed (policy.py, _write_record); nothing reads it back.
+  tuning_env: [AUTOE2E_RECORD_DIR]
 
 capabilities:
   # Slot order front, front-left, front-right, rear-left, rear, rear-right

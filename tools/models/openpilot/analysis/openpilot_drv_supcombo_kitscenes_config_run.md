@@ -15,7 +15,7 @@ This note records what happened when paddock itself ran the scene-sweep notebook
     - On the 14 whose GT is a left turn, it rose by 0.675 m.
     - Lateral error rose by 19% overall.
 - **Most of the gain is on keyframes no earlier analysis looked at, but all of those are straight.** It is −0.540 m on the 133 held out. There is no held-out estimate for turns.
-- **It is OpenPilot's KITScenes figure in the README** (its ⊜ footnote), ranked like the benchmark's other route-conditioned rows.
+- **It is OpenPilot's KITScenes figure in the README** (the ⊜ note in `docs/benchmarks/kitscenes.md`), ranked like the benchmark's other route-conditioned rows.
 
 ## How to read this note
 

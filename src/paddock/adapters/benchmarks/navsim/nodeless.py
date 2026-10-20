@@ -317,6 +317,9 @@ def run(
             by_group=evaluation.by_group,
             split=harness.split,
             extra_dataset=extra_dataset,
+            # No node starts here, so the site's [models.<name>.env] reaches
+            # nothing; a replay's validity is its source's (above).
+            model_ran=False,
         )
         headline = metrics_record.metrics.get(spec.primary_metric, {})
         echo(f"  n={metrics_record.n}  {spec.primary_metric} mean={headline.get('mean')}  run {run_id}")

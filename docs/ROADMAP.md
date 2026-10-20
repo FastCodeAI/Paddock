@@ -82,6 +82,22 @@ first attempt and refuse a resume whose node reports different ones. The
 open-loop path has the same gap: `_carry_forward_provenance` keeps an earlier
 attempt's `policy` only when the new one is empty.
 
+**Regression gate — not yet proven at speed.** `tools/gate.py`
+([docs/gate.md](gate.md)) pairs a candidate with its baseline benchmark by
+benchmark. Verified: the released Drive-JEPA smoked against itself on shakaal
+reproduced nuScenes (2.497) and neuroNCAP (3.175) to three decimals, and the
+statistics reproduce hand-worked comparisons. Not verified, each argued only:
+
+- the tiered smoke has never been timed: the quick tier's ~40–45 min is
+  estimated from the first, untiered smoke's per-subset times (7.7 h in all, on
+  a day with a slow NAS);
+- lanes are tested with stand-in runs only, not side by side on a shared GPU;
+- CARLA's 8 GB share in the GPU wait is assumed, not measured;
+- the Bench2Drive smoke baseline is mostly "Agent got blocked" and has not been
+  checked against the 50-route runs;
+- the nuScenes subset is a prefix (two of four city areas): open-loop harnesses
+  take no scene filter.
+
 **M5 — closed loop.** `paddock run --bench neuroncap --model all --runs 1
 --scene 0103` must reproduce `ladder_current.log`:
 
@@ -448,6 +464,31 @@ Open work on this driver, in the order it bites:
   name, and the report needs to group by scene set (issue #69).
 - **The promoted driver has not driven a scene.**
 
+**METEOR has AlpaSim rows and no tracked driver.** `results/alpasim/meteor/`
+holds a 30-scene row (0.4232) and its first ten scenes (0.6869), ingested from
+runs of a native driver, `meteor-0.1.1`, whose source exists only at the
+Fastcode site. The rows are in a camera group of their own, `6cam-20Hz`.
+
+| Claim | Evidence | Strength |
+|---|---|---|
+| the 30 runs served the released ONNX | each run's driver log records sha256 `50397b4d…`, the published file's | **strong** |
+| they ran under the shared referee config | control step, force-GT duration and step count read from all 30 resolved configs; `eval-config.yaml` md5 `68cf4aaa…` on all 30 | **strong** |
+| they cover the tracked 30-scene list | `test_the_thirty_scene_set_is_the_one_the_stored_rows_cover` checks the row's `sequences_sha256` | **strong** |
+| the score does not depend on host load | one scene re-run three weeks apart gave identical scorer metrics; 18 of 30 scenes were over the driver's 200 ms step budget | **weak** |
+| another site can reproduce the row | — | **unverified** |
+
+Open work, in the order it bites:
+
+- **The driver is not in the repository.** Promote it under
+  `tools/models/meteor/alpasim_driver/`, as Drive-JEPA's was, or drive METEOR
+  through the paddock bridge and declare `alpasim` in its `model.yaml`.
+- **No floor in `6cam-20Hz`.** A constant-velocity run on the six-camera
+  config would give the row something to be read against.
+- **The camera widths were fixed from the first ten scenes.** On four of the
+  twenty extra scenes one rear camera is rendered up to 0.24° wider than
+  recorded. Re-deriving the widths over all 30 would remove that.
+- **The low scores on the twenty extra scenes are not diagnosed.**
+
 **What a KITScenes `gt` run was told: open (follow-up from #60).**
 - **The gap.** `command_source = "gt"` records the source in `run_config()`, but not the commands it sent.
   `sequences_sha256` hashes sample ids only. A site whose copy of the sample list came from a
@@ -470,16 +511,20 @@ Open work on this driver, in the order it bites:
   had.
 - **History.** #60's first review stored paddock's `gt` runs `valid: false`, which ranked an ingested row
   and failed a paddock run for the same input. The rule was reversed, so ingested and paddock rows are
-  treated alike. In the README only OpenPilot's cells carry a mark for it (⊜); that footnote names the
-  other rows that had the route.
+  treated alike. In `docs/benchmarks/kitscenes.md` only OpenPilot's cells carry a mark for it (⊜); that note names
+  the other rows that had the route.
 
 **A run whose settings were chosen on the scored split is not recorded as one: open (follow-up from #60).**
 - **The gap.** A run with the scene sweep's camera knobs (height 1.22, pitch −1.7°, a 55° cut) is stored
   valid and ranked. Those values were chosen by inspecting one scene of the 223 scored keyframes, and
-  patterns from an analysis that looked at 90 of them. Nothing in the run's record says so: the README's ⊜
-  footnote and the config-run note do. The openpilot guide states the same gap for a height scale.
+  patterns from an analysis that looked at 90 of them. Nothing in the run's record says so: the ⊜
+  note in `docs/benchmarks/kitscenes.md` and the config-run note do. The openpilot guide states the same gap for a height scale.
 - **Why it is open.** A record field naming where a setting came from would carry it, but any new key in
   `run_config()` changes the run id, here `20261008T004723-a369d1`, the README's OpenPilot KITScenes row.
+- **What #82 changes.** These knobs reach the node through a site env block or a pairing table, and a
+  site env override that is not declared tuning now makes a run `valid: false`. So a *re-made* configured
+  run is stored unranked, while the tracked `a369d1` record predates the rule and stays as recorded. Ranking
+  a configuration again means giving it its own model directory, which says in tracked files what it is.
 
 **`run.json` records no paddock revision: open (follow-up from #60's first review).**
 - **The gap.** A run records its model checkout's sha (`repo_sha`, `provenance.repo`) but not paddock's own.

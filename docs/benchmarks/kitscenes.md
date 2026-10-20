@@ -38,7 +38,7 @@ paddock run.
 | qwendrive | `20260914T220841-5a91fd` | 223 | 0.806 | a paddock run; three of the six ring cameras |
 | alpamayo15 | `legacy-full-nonav` | 223 | 0.921 | `eval_kitscenes/runs/full` |
 | visionpilot | `20260909T202724-153b04` | 223 | 1.534 | a paddock run; see below |
-| openpilot | `20261008T004723-a369d1` | 223 | 1.248 | a paddock run; base front camera, 55° cut, height 1.22, pitch −1.7°, route as desire (README ⊜) |
+| openpilot | `20261008T004723-a369d1` | 223 | 1.248 | a paddock run; base front camera, 55° cut, height 1.22, pitch −1.7°, route as desire ([⊜](#notes-on-the-matrix-cells)) |
 | meteor | `20260914T215457-ab0586` | 223 | 1.879 | a paddock run; six of its eight cameras |
 | drivejepa | `legacy-kitscenes_e2e_final` | 223 | 2.364 | `inference/kitscenes_e2e_final.pkl` |
 | drivejepa_rerank | `20260921T210621-d7ed08` | 223 | 0.973 | a paddock run; **adapted**, trained on KITScenes train, see below |
@@ -173,8 +173,8 @@ route. It is the same signal Drive-JEPA's row (`--command gt`) and Alpamayo's
 nav arm were given here. It is also the kind of high-level command nuScenes
 gives every model, whose harness infers it from the recorded future (VAD's
 rule): the standard input of open-loop planning, standing in for the route a
-car's navigation knows. In the README only OpenPilot's cells carry a mark for
-it (⊜); that footnote names the two other rows that had it.
+car's navigation knows. In this page's tables only OpenPilot's cells carry a
+mark for it (⊜); that note names the two other rows that had it.
 
 Only the keyframe carries the hint; the 48 history frames stay STRAIGHT. The
 command is derived from the keyframe's own future, so it is not what a frame
@@ -393,3 +393,55 @@ What made it hard to see:
 The lesson generalises past this adapter: **anything derived from calibration is
 episode state.** If a model caches it, `reset()` must clear it, and a test should
 say so. `tests/test_policy.py::test_reset_clears_the_camera_adapter` does.
+
+## Support-matrix results
+
+The per-metric results behind this benchmark's column in the
+[README's support matrix](../../README.md#support-matrix), and the notes on its
+cells. Moved here from the README unchanged except for links; the symbols are
+the README's former footnote marks, and each note below starts with the mark it
+explains. Marks about a model rather than this benchmark (⊛ ⊕ ∗ ◊ ◇ ✦ ✧) are
+explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
+
+### Notes on the matrix cells
+
+⊜ **OpenPilot's KITScenes figure is a configured run** (`20261008T004723-a369d1`).
+The stock ring-camera run scores 1.599 (1.595 when re-run here). Two pairing
+tables in `paddock.toml`, `.env` and `.settings`, set the configuration
+([docs/site-setup.md](../site-setup.md) §2), and the run's `config` records them:
+- the base front camera, 0.2 m lower than the ring's, in CAM_FRONT's place, cut
+  to 55° at comma's 1164×874;
+- the road shown as from a camera 1.22× lower, with the view tilted 1.7° down;
+- the scored keyframe's route command sent to openpilot's desire input as a turn.
+  This is the route signal Drive-JEPA's row and Alpamayo's nav arm receive here,
+  and the kind of command nuScenes gives every model.
+
+The values were chosen by inspecting one scene of this split (dbba76d9) and
+patterns from the earlier analysis. The gain is in speed, along the path. Against
+the stock run re-made here, lateral error rises from 0.286 to 0.339 m, and the 39
+turns get 0.234 m worse. An independent re-run reproduced every keyframe to the bit.
+See `tools/models/openpilot/analysis/openpilot_drv_supcombo_kitscenes_config_run.md`.
+
+### KITScenes
+
+Open-loop displacement error in metres over the 3 s horizon, full 223-sample
+split. Alpamayo 1.5 is its nav-conditioned single-draw run, and OpenPilot is its
+configured run, given the same route signal (see ⊜). VisionPilot's trajectory is
+synthesised by the adapter (see ∗); METEOR sees six of its eight cameras (see
+◇). Qwen-Drive 1.0 reads three of the ring's six and is zero-shot on this
+dataset. It, Alpamayo 1.5 and OpenPilot's configured run beat the
+constant-velocity baseline; OpenPilot's configuration was chosen by inspecting
+one scene of this split (see ⊜). The re-ranked Drive-JEPA row also beats the
+baseline, but it is adapted to KITScenes train (see ⊛): 1.002 on the 186 val
+samples, 0.828 on the 37 from scenes whose area overlaps train.
+
+| Model | ADE@3s ↓ (m) | FDE@3s ↓ (m) |
+|---|---:|---:|
+| OpenPilot | 1.248 ⊜ | 2.355 ⊜ |
+| Alpamayo 1.5 | 1.002 | 2.158 |
+| Drive-JEPA | 2.364 | 4.199 |
+| Drive-JEPA, KITScenes re-ranker ⊛ | 0.973 | 2.082 |
+| VisionPilot | 1.534 ∗ | 3.089 ∗ |
+| METEOR | 1.879 ◇ | 4.034 ◇ |
+| Qwen-Drive 1.0 | **0.806** | **1.777** |
+| Baseline (Constant Velocity) | 1.381 | 3.091 |

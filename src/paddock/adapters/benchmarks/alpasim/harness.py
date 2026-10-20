@@ -303,6 +303,17 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
             return [f"docker daemon is not answering: {(probe.stderr or '').strip()[:200]}"]
         return []
 
+    def invalid_reasons(self) -> list[str]:
+        """Fewer clips than the pinned scene set is a subset, not an AlpaSim score.
+
+        `--scene` selects clips of the set; stored `valid: true`, a few clips would
+        be ranked beside full runs of the set.
+        """
+        ran, total = getattr(self, "_scenes_scope", (None, None))
+        if ran is None or ran >= total:
+            return []
+        return [f"{ran} of the {total} clips of {self.scene_set} (--scene); a subset, not an AlpaSim score"]
+
     def scene_problems(self, scene: str) -> list[str]:
         """``--scene`` names a clip id outside the pinned set; say so before a model loads.
 
@@ -338,7 +349,10 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
         wanted = set(scenarios) if scenarios else None
         if wanted is not None and self.scene_set not in wanted:
             return
-        for scene in load_scene_set(self.scene_set):
+        pinned = load_scene_set(self.scene_set)
+        # Recorded for `invalid_reasons`: the pinned set, against what runs.
+        self._scenes_scope = (sum(1 for s in pinned if selected is None or s in selected), len(pinned))
+        for scene in pinned:
             if selected is not None and scene not in selected:
                 continue
             yield Episode(

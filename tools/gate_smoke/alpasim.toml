@@ -1,0 +1,32 @@
+# AlpaSim smoke tier: the benchmark's own default set, public_2601_first10 (the first 10
+# scenes of the public_2601 suite), pinned in
+# src/paddock/adapters/benchmarks/alpasim/scenes/public_2601_first10.yaml. Copied here so
+# the tier is one list; tests/test_gate.py fails if the two disagree.
+#
+# Run as the default set: the smoke's derived config pins [benchmarks.alpasim] scene_set
+# to this set (the one stratum's name), so a site whose own scene_set is another still
+# runs these 10 and pairs with a baseline made the same way.
+#
+# Fixed once, on 2026-10-16. It must never be re-picked, re-seeded or edited to make a
+# result look better: a gate whose subset moves can be steered. If the subset turns
+# out to be wrong (a scene that cannot run, say), replace it in its own commit that
+# says why, and re-run every baseline paired with it.
+
+bench = "alpasim"
+unit = "scene"
+rule = "public_2601_first10"
+count = 10
+
+[strata]
+public_2601_first10 = [
+    "clipgt-01d503d4-449b-46fc-8d78-9085e70d3554",
+    "clipgt-023b7fcc-671c-40e3-9bd2-c66b0b073fbc",
+    "clipgt-0245ff75-aa3f-46b7-ba87-16a7afb841af",
+    "clipgt-026d6a39-bd8f-4175-bc61-fe50ed0403a3",
+    "clipgt-02e075b9-fd24-426b-971b-7cfcb2074cc9",
+    "clipgt-02eadd92-02f1-46d8-86fe-a9e338fed0b6",
+    "clipgt-032b6f21-6799-4ad8-8712-0405f087ac4a",
+    "clipgt-04394343-92f3-409c-9695-e7cd5397fa02",
+    "clipgt-04749bb9-9b37-495b-bed0-77f0e33ac7da",
+    "clipgt-048b974e-1546-488a-b8f9-d32bff77f5aa",
+]
