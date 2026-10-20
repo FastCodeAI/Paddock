@@ -235,8 +235,16 @@ STUB_HEADER = textwrap.dedent(
 )
 
 
+#: The CARLA port every test site requests. A stub evaluator prints no launch line, so
+#: run_episode reaps the *requested* port when it exits, by the `-carla-rpc-port=<port>`
+#: token in /proc -- and at the site default, 2000, that is whatever real CARLA the box is
+#: running. `make check` during a sweep killed the sweep's server that way. Nothing listens here.
+TEST_CARLA_PORT = "47309"
+
+
 def _site(tmp_path: Path, monkeypatch, stub_body: str, **settings: str) -> SiteConfig:
     """A site whose Bench2Drive checkout has a stub evaluator with `stub_body`."""
+    settings.setdefault("carla_port", TEST_CARLA_PORT)
     carla = tmp_path / "carla"
     (carla / "PythonAPI" / "carla" / "agents" / "navigation").mkdir(parents=True)
     (carla / "CarlaUE4.sh").write_text("#!/bin/sh\n")
@@ -418,7 +426,7 @@ def test_carla_is_found_by_the_port_it_printed_and_reaped_after_a_timeout(tmp_pa
         time.sleep(60)
         """
     )
-    cfg = _site(tmp_path, monkeypatch, body, per_route_timeout_s="2", carla_port="2000")
+    cfg = _site(tmp_path, monkeypatch, body, per_route_timeout_s="2")
     out = tmp_path / "out"
     with pytest.raises(RuntimeError, match="timed out"):
         _harness(cfg).run_episode(_episode(), "http://127.0.0.1:9000", out)
@@ -433,6 +441,19 @@ def test_carla_is_found_by_the_port_it_printed_and_reaped_after_a_timeout(tmp_pa
         os.kill(carla_pid, signal.SIGKILL)
         pytest.fail("the stand-in CARLA outlived the timeout")
     assert carla_pids(port) == []
+
+
+def test_the_tests_never_reap_a_real_carla_on_the_default_port(tmp_path, monkeypatch) -> None:
+    """A live CARLA on 2000 outlives a stub route: the incident TEST_CARLA_PORT prevents."""
+    bystander = subprocess.Popen(["sh", "-c", "sleep 60", "sh", "-carla-rpc-port=2000"], preexec_fn=os.setsid)
+    try:
+        _harness(_site(tmp_path, monkeypatch, COMPLETED)).run_episode(
+            _episode(), "http://127.0.0.1:9000", tmp_path / "out"
+        )
+        assert bystander.poll() is None, "run_episode killed a CARLA it did not start"
+    finally:
+        bystander.kill()
+        bystander.wait()
 
 
 def test_reap_carla_matches_the_port_token_exactly() -> None:
