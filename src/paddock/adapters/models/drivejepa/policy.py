@@ -46,10 +46,11 @@ otherwise the model would see 0.3 s of history and read the scene as nearly
 static.
 
 *Momentum-aware selection* (paper section 3.5) is on: ``model.yaml`` declares
-``DRIVEJEPA_MOMENTUM=on``, and ``off`` (unset, here) selects on the plain score.
-With it on, each replan is handed the plan this node
-chose about 0.5 s earlier, the way upstream's own evaluation loop hands it over,
-so the model's ``calibrate_score`` runs before the argmax. See `momentum.py`.
+``DRIVEJEPA_MOMENTUM=on``. ``off`` selects on the plain score, and is also what
+a node gets with the variable unset, for example one launched outside paddock.
+With it on, each replan is handed the plan this node chose about 0.5 s
+earlier, the way upstream's own evaluation loop hands it over, so the model's
+``calibrate_score`` runs before the argmax. See `momentum.py`.
 """
 
 from __future__ import annotations
