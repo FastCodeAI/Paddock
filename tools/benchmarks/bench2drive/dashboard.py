@@ -42,9 +42,11 @@ from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
+from paddock.adapters.benchmarks.bench2drive.harness import STOP_REQUEST  # noqa: E402
 from tools.benchmarks.bench2drive import route_video, runs  # noqa: E402
 
 ASSETS = Path(__file__).resolve().parent / "dashboard_assets"
@@ -66,6 +68,8 @@ def outcome(att: runs.Attempt) -> str:
         return "Perfect"
     if status == "Completed":
         return "Completed"
+    if att.stopped:  # ended through the tick cap, but by a rule (or a person), not by running out
+        return f"Stopped: {att.stopped}"
     for key, name in (
         ("blocked", "Blocked"),
         ("deviated", "Deviated"),
@@ -94,6 +98,7 @@ def live_state(att: runs.Attempt, root: Path) -> dict[str, Any]:
         "scenario": att.scenario,
         "town": att.town,
         "run_id": att.run_id,
+        "stop_requested": (att.path / STOP_REQUEST).exists(),
     }
     log = att.path / "evaluator.log"
     if log.exists():
@@ -150,6 +155,7 @@ def route_row(att: runs.Attempt, meta: dict, out: Path, root: Path) -> dict[str,
         "wall_s": (result.get("meta") or {}).get("duration_system"),
         "run_id": att.run_id,
         "dir": "/" + str(att.path.relative_to(root)),
+        "early_stop": runs.load_json(att.path / "early_stop.json"),
     }
     summary = runs.load_json(out / att.route_id / "route.json")
     if summary and summary.get("source") == str(att.path):
@@ -211,16 +217,33 @@ class Builder:
                 print(f"[dashboard] render {route_id} failed: {exc}", flush=True)
 
     def needs_render(self, att: runs.Attempt) -> bool:
-        if att.result is None or att.route_id in self.pending or not (att.path / "ticks.jsonl").exists():
+        """Every attempt that is over gets a video -- scored, stopped early, crashed or cut off --
+        and gets it again if its outcome changed after it was drawn."""
+        if att.running or att.route_id in self.pending or not (att.path / "ticks.jsonl").exists():
             return False
         done = runs.load_json(self.routes_out / att.route_id / "route.json")
-        if not done or done.get("source") != str(att.path):
+        status = (att.result or {}).get("status", "running")
+        if not done or done.get("source") != str(att.path) or done.get("status") != status:
             return att.route_id not in self.errors or self._changed_since_error(att)
         return False
 
     def _changed_since_error(self, att: runs.Attempt) -> bool:
         marker = self.routes_out / att.route_id / ".failed"
-        return not marker.exists() or (att.path / "results.json").stat().st_mtime > marker.stat().st_mtime
+        results = att.path / "results.json"
+        return not marker.exists() or (results.exists() and results.stat().st_mtime > marker.stat().st_mtime)
+
+    def request_stop(self, route_id: str) -> list[str]:
+        """Ask every attempt of ``route_id`` that is driving now to end, scored as it stands.
+
+        Writes the route's stop-request file (``harness.STOP_REQUEST``), which the
+        agent checks every tick (``early_stop.MANUAL``). Returns the run ids asked.
+        """
+        asked = []
+        for att in runs.attempts(self.runs):
+            if att.route_id == route_id and att.running:
+                (att.path / STOP_REQUEST).write_text(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) + "\n")
+                asked.append(att.run_id)
+        return asked
 
     def build(self) -> dict:
         started = time.time()
@@ -305,7 +328,30 @@ class Builder:
 
 
 class Handler(SimpleHTTPRequestHandler):
-    """Static files with byte ranges (video scrubbing) and no caching of data.json."""
+    """Static files with byte ranges (video scrubbing) and no caching of data.json.
+
+    One action besides reading: ``POST /api/stop?route=<id>`` asks the route
+    driving now to end (:meth:`Builder.request_stop`). The server binds to
+    127.0.0.1 only and has no authentication, so whoever can reach the port can
+    end a route; that is the forwarded port's user.
+    """
+
+    builder: Builder | None = None
+
+    def do_POST(self) -> None:  # noqa: N802 (the stdlib's name)
+        url = urlparse(self.path)
+        route = (parse_qs(url.query).get("route") or [""])[0]
+        if url.path != "/api/stop" or not route.isdigit() or self.builder is None:
+            self.send_error(HTTPStatus.BAD_REQUEST, "POST /api/stop?route=<route id>")
+            return
+        asked = self.builder.request_stop(route)
+        body = json.dumps({"route": route, "runs": asked, "ok": bool(asked)}).encode()
+        self.send_response(HTTPStatus.OK if asked else HTTPStatus.NOT_FOUND)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+        print(f"[dashboard] stop requested for route {route}: {asked or 'not driving'}", flush=True)
 
     def end_headers(self) -> None:
         if self.path.split("?")[0].endswith(".json"):
@@ -403,6 +449,7 @@ def main(argv: list[str] | None = None) -> int:
             time.sleep(args.every)
 
     threading.Thread(target=loop, daemon=True).start()
+    Handler.builder = builder
     server = ThreadingHTTPServer((args.host, args.port), partial(Handler, directory=str(builder.root)))
     print(f"[dashboard] http://{args.host}:{args.port}/dashboard/  (root {builder.root})", flush=True)
     server.serve_forever()

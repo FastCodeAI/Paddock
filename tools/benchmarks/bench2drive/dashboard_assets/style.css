@@ -149,3 +149,6 @@ dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; ma
 dl.kv dt { color: var(--text-secondary); }
 dl.kv dd { margin: 0; font-variant-numeric: tabular-nums; }
 ul.plain { padding-left: 18px; margin: 6px 0; font-size: 13px; }
+
+/* "Stop route" on a live card: deliberate, so it reads as an action and not a status */
+.live button.stop { margin-top: 8px; width: 100%; }

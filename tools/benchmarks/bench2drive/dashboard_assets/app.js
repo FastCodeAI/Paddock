@@ -4,7 +4,9 @@
 
 const REFRESH_MS = 30000;
 const ABILITIES = ["Overtaking", "Merging", "Emergency_Brake", "Give_Way", "Traffic_Signs"];
-const OUTCOMES = ["Perfect", "Completed", "Blocked", "Deviated", "Timed out", "Tick limit", "Failed", "Crashed", "Running", "Incomplete", "Queued"];
+const OUTCOMES = ["Perfect", "Completed", "Blocked", "Deviated", "Timed out", "Tick limit",
+  "Stopped: stuck", "Stopped: collision", "Stopped: over_time", "Stopped: manual",
+  "Failed", "Crashed", "Running", "Incomplete", "Queued"];
 const INFRACTION_NAMES = {
   collisions_vehicle: "collision: vehicle", collisions_pedestrian: "collision: pedestrian",
   collisions_layout: "collision: layout", red_light: "red light", stop_infraction: "stop sign",
@@ -248,7 +250,8 @@ function chip(r) {
   let cls = "neutral", icon = "•";
   if (o === "Perfect" || (o === "Completed" && r.success)) { cls = "good"; icon = "✓"; }
   else if (o === "Completed") { cls = "warning"; icon = "!"; }
-  else if (["Blocked", "Deviated", "Timed out", "Tick limit", "Failed"].includes(o)) { cls = "serious"; icon = "✕"; }
+  else if (["Blocked", "Deviated", "Timed out", "Tick limit", "Failed"].includes(o) || (o.startsWith("Stopped:") && o !== "Stopped: manual")) { cls = "serious"; icon = "✕"; }
+  else if (o === "Stopped: manual") { cls = "warning"; icon = "■"; }
   else if (o === "Crashed") { cls = "critical"; icon = "⚠"; }
   else if (o === "Running") { icon = "▶"; }
   return el("span", { class: "chip " + cls, title: r.status || "" }, el("span", { class: "icon", text: icon }), o);
@@ -303,8 +306,24 @@ function renderLive() {
         r.bev ? el("img", { src: r.bev + bust, alt: `BEV camera, route ${r.route_id}` }) : el("div")),
       el("div", { class: "meter" }, el("div", { style: `width:${Math.max(0, Math.min(100, 100 * frac))}%` })),
       el("div", { class: "row" }, el("span", { text: `${fmt(100 * frac, 0)} % of route` }), el("span", { text: `${fmt(3.6 * (num(r.speed) ?? 0), 0)} km/h` }),
-        el("span", { text: `game ${fmt(r.game_time, 0)} s` }), el("span", { text: `${fmt(r.ratio, 2)}× real time` })));
+        el("span", { text: `game ${fmt(r.game_time, 0)} s` }), el("span", { text: `${fmt(r.ratio, 2)}× real time` })),
+      stopButton(r));
   }));
+}
+
+// Ends a driving route now, scored as it stands (POST /api/stop; the agent checks for the request every tick).
+function stopButton(r) {
+  if (r.stop_requested) return el("button", { class: "stop", disabled: "disabled", text: "stop requested…" });
+  const b = el("button", { class: "stop", text: "■ Stop route", title: "End this route now; it is scored as it stands and the worker moves on" });
+  b.addEventListener("click", async () => {
+    if (!confirm(`Stop route ${r.route_id} now? It is scored as it stands, and the run is marked as stopped by hand.`)) return;
+    b.disabled = true; b.textContent = "stopping…";
+    try {
+      const res = await fetch(`/api/stop?route=${encodeURIComponent(r.route_id)}`, { method: "POST" });
+      b.textContent = res.ok ? "stop requested…" : "not driving";
+    } catch (e) { b.textContent = "request failed"; b.disabled = false; }
+  });
+  return b;
 }
 
 function fillSelect(id, values) {

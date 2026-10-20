@@ -201,6 +201,7 @@ class RouteData:
             "scenario": name["scenario"] if name else "",
         }
         self.result = runs.load_result(self.dir)
+        self.early_stop = runs.load_json(self.dir / "early_stop.json") or {}
         self.ticks = runs.load_ticks(self.dir)
         self.plan = runs.load_json(self.dir / "route_plan.json") or {}
         self.route_xy = np.asarray(self.plan.get("xy") or [], dtype=float).reshape(-1, 2)
@@ -423,6 +424,11 @@ def score_card(rd: RouteData, w: int, h: int) -> np.ndarray:
     color = GREEN if status in ("Perfect", "Completed") else RED if status.startswith("Failed") else WHITE
     text(img, status, (12, y), 0.5, color)
     y += 30
+    stop = rd.early_stop.get("reason")
+    if stop:  # the tick-cap status above is how an early stop ends a route; this is why it did
+        at = rd.early_stop.get("game_time_s")
+        text(img, f"ended early: {stop}" + (f" at {at:.1f} s" if at is not None else ""), (12, y - 6), 0.5, ORANGE)
+        y += 24
 
     def fmt(v, f="{:.2f}"):
         return "-" if v is None else f.format(v)
@@ -671,6 +677,7 @@ def route_summary(rd: RouteData) -> dict[str, Any]:
             {k: v for k, v in i.items() if k != "text"} | {"text": i["text"]} for i in rd.infractions
         ],
         "has_expert": bool(rd.expert),
+        "early_stop": rd.early_stop or None,
     }
     if len(rd.speed):
         out["mean_speed"] = round(float(rd.speed.mean()), 2)

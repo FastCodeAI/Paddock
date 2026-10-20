@@ -132,6 +132,12 @@ class Attempt:
     def scored(self) -> bool:
         return self.result is not None and not any(self.status.endswith(s) for s in CRASH_SUFFIXES)
 
+    @property
+    def stopped(self) -> str | None:
+        """Why the agent ended this route early (``early_stop.json``), or None if nothing did."""
+        record = load_json(self.path / "early_stop.json")
+        return record.get("reason") if isinstance(record, dict) else None
+
 
 def load_json(path: Path) -> Any:
     try:
