@@ -219,7 +219,9 @@ class Builder:
     def needs_render(self, att: runs.Attempt) -> bool:
         """Every attempt that is over gets a video -- scored, stopped early, crashed or cut off --
         and gets it again if its outcome changed after it was drawn."""
-        if att.running or att.route_id in self.pending or not (att.path / "ticks.jsonl").exists():
+        ticks = att.path / "ticks.jsonl"
+        # An attempt cut off before its first tick was written has nothing to draw.
+        if att.running or att.route_id in self.pending or not ticks.exists() or not ticks.stat().st_size:
             return False
         done = runs.load_json(self.routes_out / att.route_id / "route.json")
         status = (att.result or {}).get("status", "running")
