@@ -388,9 +388,10 @@ class PolicyPlanner(Planner):
         ``plan`` when the node sends it, else the six-point ``trajectory``. Yaw
         is the model's when the plan has a third column (``"model"``), and
         `derive_headings` otherwise (``"derived"``). The spacing is the plan's
-        own ``dt``; it must equal the policy's declared `waypoint_dt`, which is
-        what this bridge was launched with -- a mismatch is a mis-timed plan,
-        refused rather than driven.
+        own ``dt``; it must equal the bridge's ``--waypoint-dt`` (0.5 s unless
+        set; the launcher does not set it, and every model declaring alpasim
+        plans at 0.5 s) -- a mismatch is a mis-timed plan, refused rather than
+        driven.
         """
         plan = answer.get("plan")
         if plan is not None:
@@ -398,8 +399,8 @@ class PolicyPlanner(Planner):
             dt = float(plan["dt"])
             if abs(dt - self._waypoint_dt) > 1e-9:
                 raise ValueError(
-                    f"the node's plan is spaced {dt} s, but the bridge was launched for the policy's "
-                    f"waypoint_dt {self._waypoint_dt} s"
+                    f"the node's plan is spaced {dt} s, but the bridge was launched with "
+                    f"--waypoint-dt {self._waypoint_dt} s"
                 )
         else:
             # `/infer` from a node that predates `plan` carries no spacing; the
