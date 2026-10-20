@@ -734,6 +734,10 @@ class Policy(ABC):
         state advances with each forward pass (openpilot, VisionPilot). A model
         that is a pure function of its recorded history overrides this to just
         record -- one forward pass per sequence instead of N, same tensor.
+
+        The server's ``/observe`` calls this too, in closed loop: mid-episode,
+        with no reset before it and self-priming as it is. An override that
+        assumes an open-loop sequence around it has to hold there as well.
         """
         self.infer(obs)
 
