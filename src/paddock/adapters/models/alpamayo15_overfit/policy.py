@@ -6,8 +6,9 @@ for the contract) wrote after overfitting on cached rollouts from two scenes
 identical to plain `alpamayo15`.
 
 Registered as its own model rather than an env-toggled flag on `alpamayo15`
-for the same reason `alpamayo15_teacher_sft` is its own entry rather than a
-flag on `alpamayo15_teacher`: paddock's report/leaderboard keys a result by
+for the same reason Gallops registers `alpamayo15_teacher_sft` as its own
+entry rather than a flag on `alpamayo15_teacher` (that pairing lives in
+Gallops, not this repo): paddock's report/leaderboard keys a result by
 model name, and a flag
 some runs set would silently fold a materially different model into
 `alpamayo15`'s own row.
