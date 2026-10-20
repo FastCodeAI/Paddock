@@ -49,6 +49,7 @@ from __future__ import annotations
 import argparse
 import bisect
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -67,8 +68,14 @@ PAD = 12
 
 
 def _ffmpeg(cfg) -> str:
+    """`[benchmarks.neuroncap] ffmpeg`, then `PADDOCK_FFMPEG`, then PATH.
+
+    Same three-way fallback as `NeuroNcapBenchmark._ffmpeg` (harness.py) --
+    restated here rather than imported because this script has no harness
+    instance to call it on, but it must check every place that method does.
+    """
     settings = cfg.benchmarks.get("neuroncap") or {}
-    for candidate in (settings.get("ffmpeg"), None):
+    for candidate in (settings.get("ffmpeg"), os.environ.get("PADDOCK_FFMPEG")):
         if candidate and Path(candidate).exists():
             return candidate
     found = shutil.which("ffmpeg")
@@ -203,6 +210,52 @@ def _annotate_run(run_dir: Path, segment: list[dict], ffmpeg: str, font: ImageFo
     return dest
 
 
+def _select_runs_and_segments(
+    sweep_dir: Path,
+    segments: list[list[dict]],
+    episode_name: str | None,
+    run_index: int | None,
+) -> tuple[list[tuple[Path, Path]], list[list[dict]]]:
+    """(run, segment) pairs for the whole sweep, or narrowed to one episode/run.
+
+    `segments` is always the whole sweep's, in episode order, one per run --
+    narrowing to one episode must re-slice it to that episode's own span, found
+    by its offset in the *unfiltered* episode list, or every run in it gets
+    paired with another episode's segment (and, once the shorter iterable is
+    exhausted, a crash with no indication the videos already written are
+    wrong -- the exact failure mode this tool exists to prevent).
+    """
+    if run_index is not None and episode_name is None:
+        raise SystemExit("--run narrows a single episode's runs; it requires --episode")
+
+    full_episodes = _episode_dirs(sweep_dir)
+    episodes = full_episodes
+    if episode_name is not None:
+        episodes = [e for e in full_episodes if e.name == episode_name]
+        if not episodes:
+            raise SystemExit(f"no episode dir named {episode_name!r} under {sweep_dir}")
+
+    all_runs = [(ep, run) for ep in episodes for run in _run_dirs(ep)]
+    if len(all_runs) != len(segments) and episode_name is None:
+        print(
+            f"warning: {len(all_runs)} run dirs but {len(segments)} reasoning segments -- "
+            "mapping may be misaligned; consider narrowing with --episode/--run to check"
+        )
+
+    if episode_name is not None:
+        idx = full_episodes.index(episodes[0])
+        offset = sum(len(_run_dirs(full_episodes[i])) for i in range(idx))
+        episode_runs = _run_dirs(episodes[0])
+        if run_index is not None:
+            all_runs = [(episodes[0], episode_runs[run_index])]
+            segments = segments[offset + run_index : offset + run_index + 1]
+        else:
+            all_runs = [(episodes[0], run) for run in episode_runs]
+            segments = segments[offset : offset + len(episode_runs)]
+
+    return all_runs, segments
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("sweep_dir", help="the sweep's top-level artifact directory under [roots.runs]")
@@ -230,27 +283,7 @@ def main() -> None:
     entries = [json.loads(line) for line in reasoning_path.read_text().splitlines() if line.strip()]
     segments = _segment_reasoning(entries)
 
-    episodes = _episode_dirs(sweep_dir)
-    if args.episode:
-        episodes = [e for e in episodes if e.name == args.episode]
-        if not episodes:
-            raise SystemExit(f"no episode dir named {args.episode!r} under {sweep_dir}")
-
-    all_runs = [(ep, run) for ep in episodes for run in _run_dirs(ep)]
-    if len(all_runs) != len(segments) and args.episode is None:
-        print(
-            f"warning: {len(all_runs)} run dirs but {len(segments)} reasoning segments -- "
-            "mapping may be misaligned; consider narrowing with --episode/--run to check"
-        )
-
-    if args.episode is not None and args.run is not None:
-        # `--episode` already narrowed `episodes` to one; find that episode's
-        # segment offset within the *unfiltered* sweep so --run still lines up.
-        full_episodes = _episode_dirs(sweep_dir)
-        idx = full_episodes.index(next(e for e in full_episodes if e.name == args.episode))
-        offset = sum(len(_run_dirs(full_episodes[i])) for i in range(idx))
-        all_runs = [(episodes[0], _run_dirs(episodes[0])[args.run])]
-        segments = segments[offset + args.run : offset + args.run + 1]
+    all_runs, segments = _select_runs_and_segments(sweep_dir, segments, args.episode, args.run)
 
     # `python <full path>` puts this file's own directory on sys.path, not the
     # repo root -- see the same fix in poll_reasoning.py.

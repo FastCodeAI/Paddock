@@ -7,9 +7,16 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools" / "benchmarks" / "neuroncap"))
 
-from annotate_reasoning_video import _episode_dirs, _run_dirs, _segment_reasoning  # noqa: E402
+from annotate_reasoning_video import (  # noqa: E402
+    _episode_dirs,
+    _run_dirs,
+    _segment_reasoning,
+    _select_runs_and_segments,
+)
 
 
 def test_segment_reasoning_splits_on_status_marker() -> None:
@@ -94,3 +101,59 @@ def test_segment_count_matches_run_count_for_a_real_sweep_shape(tmp_path: Path) 
     all_runs = [(ep, run) for ep in _episode_dirs(sweep) for run in _run_dirs(ep)]
 
     assert len(all_runs) == len(segments) == 3
+
+
+def _multi_episode_sweep(tmp_path: Path, episode_run_counts: dict[str, int]) -> tuple[Path, list[list[dict]]]:
+    """A sweep with several episodes, created in dict order -- so the first
+    key is oldest by `stdout.log` mtime and sorts first in episode order.
+    Each run's segment carries its own episode name and run index, so a test
+    can tell "episode 0's segment" from "episode 1's segment" apart, not just
+    count them."""
+    sweep = tmp_path / "sweep"
+    entries: list[dict] = []
+    for name, n_runs in episode_run_counts.items():
+        episode = sweep / name
+        for i in range(n_runs):
+            (episode / f"run_{i}").mkdir(parents=True)
+        (episode / "stdout.log").write_text("")
+        time.sleep(0.01)
+        for i in range(n_runs):
+            entries.append({"status": "no frame seen yet"})
+            entries.append({"wall_time": float(i), "reasoning": f"{name} run {i}"})
+    reasoning_path = sweep / "reasoning.jsonl"
+    reasoning_path.write_text("\n".join(json.dumps(e) for e in entries))
+    segments = _segment_reasoning([json.loads(line) for line in reasoning_path.read_text().splitlines()])
+    return sweep, segments
+
+
+def test_episode_only_narrowing_slices_segments_to_that_episodes_own_span(tmp_path: Path) -> None:
+    """Regression for the bug where `--episode` alone left `segments` as the
+    whole sweep's, so a non-first episode got captioned with episode 0's
+    reasoning. "side-0103" here is the second (newer) episode by mtime, so its
+    segments start at offset 2, not 0."""
+    sweep, segments = _multi_episode_sweep(tmp_path, {"frontal-0103": 2, "side-0103": 3})
+
+    all_runs, narrowed = _select_runs_and_segments(sweep, segments, "side-0103", None)
+
+    assert [rd.name for _, rd in all_runs] == ["run_0", "run_1", "run_2"]
+    assert [seg[0]["reasoning"] for seg in narrowed] == [
+        "side-0103 run 0",
+        "side-0103 run 1",
+        "side-0103 run 2",
+    ]
+
+
+def test_episode_and_run_narrows_to_exactly_one_pair(tmp_path: Path) -> None:
+    sweep, segments = _multi_episode_sweep(tmp_path, {"frontal-0103": 2, "side-0103": 3})
+
+    all_runs, narrowed = _select_runs_and_segments(sweep, segments, "side-0103", 1)
+
+    assert [rd.name for _, rd in all_runs] == ["run_1"]
+    assert [seg[0]["reasoning"] for seg in narrowed] == ["side-0103 run 1"]
+
+
+def test_run_without_episode_is_rejected(tmp_path: Path) -> None:
+    sweep, segments = _multi_episode_sweep(tmp_path, {"frontal-0103": 2})
+
+    with pytest.raises(SystemExit):
+        _select_runs_and_segments(sweep, segments, None, 0)

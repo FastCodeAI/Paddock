@@ -464,7 +464,11 @@ reply does not carry it through. `annotate_reasoning_video.py` then burns that
 jsonl onto a sweep's own `COMBINED_OUTPUTS.mp4`, one new
 `COMBINED_OUTPUTS_reasoning.mp4` per run, by wall-clock interpolation between
 `/diagnostics`'s per-reset markers — an approximation good enough to show what
-the model was saying *around* a moment, not frame-exact. `verify_findings.py`
+the model was saying *around* a moment, not frame-exact. `--episode <name>`
+narrows it to one episode (e.g. `side-0103`); add `--run <i>` to narrow
+further to one run within that episode — `--run` alone, with no `--episode`,
+is rejected rather than silently processing the whole sweep.
+`verify_findings.py`
 aggregates a sweep's `metrics.json` files into worst/best/closest-near-miss
 picks per scene, building the reasoning video lazily for whichever runs it
 selects. None of the three touches the simulator or `run_config()`; they are
