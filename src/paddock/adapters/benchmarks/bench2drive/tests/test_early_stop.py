@@ -11,13 +11,16 @@ import pytest
 
 from paddock.adapters.benchmarks.bench2drive import early_stop
 from paddock.adapters.benchmarks.bench2drive.early_stop import (
+    COLLISION,
     OVER_TIME,
     PROGRESS_M,
     STUCK,
     TICK_CAP,
     EarlyStop,
+    describe,
     end_route,
     replay,
+    scenario_collisions,
 )
 from paddock.adapters.benchmarks.bench2drive.recorder import Route
 
@@ -134,3 +137,49 @@ def test_the_remark_says_which_rules_and_why_the_scores_stand() -> None:
     assert "expected to move" in remark and "failed drive" in remark
     mixed = early_stop.mixed_reason([{"stuck_s": 30.0}, {"stuck_s": 60.0}])
     assert "differ between source runs" in mixed and "30 s" in mixed and "60 s" in mixed
+
+
+def test_a_collision_stops_the_route_only_when_that_rule_is_on() -> None:
+    assert EarlyStop(collision=True).update(1.0, 0.0, collisions=1) == COLLISION
+    assert EarlyStop(collision=True).update(1.0, 0.0, collisions=0) is None
+    assert EarlyStop(stuck_s=30.0).update(1.0, 0.0, collisions=3) is None
+
+
+def test_waiting_at_a_red_light_holds_the_stuck_clock() -> None:
+    rule = EarlyStop(stuck_s=5.0)
+    assert rule.update(0.0, 10.0) is None
+    for t in range(1, 40):  # 39 s at a red light, not one metre on: not stuck
+        assert rule.update(float(t), 10.0, waiting=True) is None
+    assert rule.update(43.0, 10.0) is None, "the clock starts again when the light turns"
+    assert rule.update(44.5, 10.0) == STUCK
+
+
+def test_describe_names_the_collision_rule() -> None:
+    assert describe({"stuck_s": 5.0, "collision": True}) == (
+        "5 s without 3 m of route progress or a collision the leaderboard counts"
+    )
+
+
+def test_the_collision_count_is_the_leaderboards_own_read_up_the_stack() -> None:
+    """``scenario_collisions`` finds the manager by its `_tick_scenario` frame, as `end_route` does."""
+
+    class CollisionTest:  # the leaderboard criterion's class name is what is matched
+        def __init__(self, n):
+            self.actual_value = n
+
+    class RunningRedLightTest:
+        actual_value = 7
+
+    class Scenario:
+        def get_criteria(self):
+            return [CollisionTest(2), RunningRedLightTest()]
+
+    class Manager:
+        tick_count = 10
+        scenario = Scenario()
+
+        def _tick_scenario(self):
+            return scenario_collisions()
+
+    assert Manager()._tick_scenario() == 2
+    assert scenario_collisions() is None, "outside the leaderboard's tick there is nothing to read"

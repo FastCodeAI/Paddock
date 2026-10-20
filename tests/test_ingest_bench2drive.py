@@ -486,3 +486,17 @@ def test_routes_stopped_under_different_rules_do_not_rank(tmp_path: Path) -> Non
     ]
     assert not run.valid
     assert "early stop settings differ between source runs" in run.notes
+
+
+def test_a_route_ended_by_hand_keeps_its_score_and_the_pool_does_not_rank(tmp_path: Path) -> None:
+    """A stop request is an operator's choice, not a rule: the route stays, named; the row does not rank."""
+    root = _tree(tmp_path)
+    route_dir = root / "20260903T000000-cccccc" / "24333-Town15-DynamicObjectCrossing"
+    (route_dir / "early_stop.json").write_text(json.dumps({"reason": "manual", "game_time_s": 12.0}))
+
+    ((run, _metrics, samples),) = bench2drive.ingest(root, model="modelx", site="s")
+
+    assert not run.valid
+    assert "1 route(s) ended by hand" in run.notes
+    by_route = {s["native_id"]["route_id"]: s["metrics"] for s in samples}
+    assert by_route["24333"]["ended_manual"] == 1.0

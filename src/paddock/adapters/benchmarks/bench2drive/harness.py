@@ -80,6 +80,10 @@ WAYPOINT_DT = 0.5
 
 DEFAULT_ROUTES_FILE = "bench2drive220.xml"
 
+#: The file that, appearing in a route's directory while it drives, ends the route
+#: by hand (``early_stop.MANUAL``). The dashboard's "Stop route" button writes it.
+STOP_REQUEST = "stop_request"
+
 #: CARLA's client library as the 0.9.15 release ships it. Put on the client's
 #: path when present, as the checkout's own ``run_evaluation.sh`` does, so a
 #: site need not also ``pip install carla``.
@@ -245,7 +249,7 @@ def parse_results(results_json: Path) -> dict[str, float]:
 
 
 def ended_early(route_dir: Path) -> dict[str, float]:
-    """``ended_stuck`` / ``ended_over_time`` for one route: 1 for the rule that ended it, else 0.
+    """``ended_<reason>`` for one route (stuck, over_time, collision, manual): 1 for what ended it, else 0.
 
     Read from the ``early_stop.json`` the agent writes beside ``results.json``
     whenever the early stop is on -- with ``"reason": null`` for a route that went
@@ -259,10 +263,7 @@ def ended_early(route_dir: Path) -> dict[str, float]:
     except (OSError, ValueError):
         return {}
     reason = record.get("reason") if isinstance(record, dict) else None
-    return {
-        "ended_stuck": 1.0 if reason == early_stop.STUCK else 0.0,
-        "ended_over_time": 1.0 if reason == early_stop.OVER_TIME else 0.0,
-    }
+    return {f"ended_{name}": 1.0 if reason == name else 0.0 for name in early_stop.REASONS}
 
 
 def _positive(value: Any) -> float | None:
@@ -398,19 +399,22 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         return (self.setting("record") or "false").strip().lower() in ("1", "true", "yes", "on")
 
     @property
-    def early_stop(self) -> dict[str, float] | None:
-        """The early-stop rules the site set (``early_stop.py``), or None when both are off.
+    def early_stop(self) -> dict[str, Any] | None:
+        """The early-stop rules the site set (``early_stop.py``), or None when all are off.
 
         ``stop_stuck_s``: game seconds without :data:`early_stop.PROGRESS_M` of
         progress along the route. ``stop_expert_factor``: a multiple of the
-        expert's time on the route, read from ``expert``. A malformed value reads
-        as off here; ``preflight`` is what reports it.
+        expert's time on the route, read from ``expert``. ``stop_on_collision``:
+        the first collision the leaderboard counts. A malformed value reads as
+        off here; ``preflight`` is what reports it.
         """
-        rules = {}
+        rules: dict[str, Any] = {}
         for key, name in (("stop_stuck_s", "stuck_s"), ("stop_expert_factor", "expert_factor")):
             value = _positive(self.setting(key))
             if value is not None:
                 rules[name] = value
+        if (self.setting("stop_on_collision") or "").strip().lower() in ("1", "true", "yes", "on"):
+            rules["collision"] = True
         if not rules:
             return None
         rules["progress_m"] = early_stop.PROGRESS_M
@@ -549,6 +553,11 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
     def _early_stop_problems(self) -> list[str]:
         """The stop_* settings parse, the expert's drives exist, and the cap the agent ends routes by does."""
         problems = []
+        collision = (self.setting("stop_on_collision") or "").strip().lower()
+        if collision not in ("", "1", "true", "yes", "on", "0", "false", "no", "off"):
+            problems.append(
+                f"[benchmarks.bench2drive] stop_on_collision must be true or false, got {collision!r}"
+            )
         for key in ("stop_stuck_s", "stop_expert_factor"):
             value = self.setting(key)
             if value not in (None, "") and _positive(value) is None:
@@ -686,10 +695,21 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         record (`run_config`) and every full run on the site uses it. An early
         stop is not a reason: a route it ends is a failed drive (`remarks`).
         """
+        reasons = []
+        manual = getattr(self, "_ended_by_hand", set())
+        if manual:
+            reasons.append(early_stop.manual_reason(len(manual)))
         ran, total = getattr(self, "_routes_scope", (None, None))
-        if ran is None or ran >= total:
-            return []
-        return [f"{ran} of the {total} routes this site runs (--scene/--scenarios); a subset, not a score"]
+        if ran is not None and ran < total:
+            reasons.append(
+                f"{ran} of the {total} routes this site runs (--scene/--scenarios); a subset, not a score"
+            )
+        return reasons
+
+    def _note_stop(self, episode: Episode, metrics: dict[str, float]) -> None:
+        """Remember a route someone ended by hand, for ``invalid_reasons``."""
+        if metrics.get(f"ended_{early_stop.MANUAL}"):
+            self.__dict__.setdefault("_ended_by_hand", set()).add(episode.episode_id)
 
     def completed_metrics(self, episode: Episode, out_dir: Path, runs: int = 1) -> dict[str, float] | None:
         """The route's metrics if its ``results.json`` already holds every repetition, else None.
@@ -721,6 +741,7 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         except NotScored:
             return None
         metrics.update(ended_early(Path(out_dir)))
+        self._note_stop(episode, metrics)
         return metrics
 
     # ---- run one episode ----------------------------------------------
@@ -777,9 +798,16 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         # last attempt's verdict.
         stop_record = out_dir / early_stop.RECORD
         stop_record.unlink(missing_ok=True)
+        # The file that ends this route by hand when it appears (the dashboard's
+        # "Stop route" writes it), cleared so an old request cannot end a new drive.
+        stop_request = out_dir / STOP_REQUEST
+        stop_request.unlink(missing_ok=True)
+        extra["PADDOCK_STOP_REQUEST"] = str(stop_request)
+        extra["PADDOCK_STOP_RECORD"] = str(stop_record)
         rules = self.early_stop
         if rules:
-            extra["PADDOCK_STOP_RECORD"] = str(stop_record)
+            if rules.get("collision"):
+                extra["PADDOCK_STOP_ON_COLLISION"] = "1"
             if "stuck_s" in rules:
                 extra["PADDOCK_STOP_STUCK_S"] = str(rules["stuck_s"])
             budget = self.expert_budget_s(episode.config["route_id"])
@@ -870,6 +898,7 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             ) from exc
         metrics["duration_s"] = round(elapsed, 1)
         metrics.update(ended_early(out_dir))
+        self._note_stop(episode, metrics)
         return metrics
 
 

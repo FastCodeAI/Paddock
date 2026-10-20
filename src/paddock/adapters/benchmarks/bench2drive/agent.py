@@ -29,6 +29,10 @@ come from the environment, set by ``harness.run_episode``:
                           game seconds without getting 3 m further along it
     PADDOCK_STOP_AFTER_S  if set, end the route at this game time (the harness
                           sets it to a multiple of the expert's time on the route)
+    PADDOCK_STOP_ON_COLLISION  "1": end the route at the first collision the
+                          leaderboard counts
+    PADDOCK_STOP_REQUEST  a file whose appearance ends the route by hand (the
+                          dashboard's "Stop route" writes it)
     PADDOCK_STOP_RECORD   where to write why and when a route was ended early;
                           see ``early_stop.py``
 
@@ -70,6 +74,8 @@ RECORD_DIR = os.environ.get("PADDOCK_RECORD_DIR") or None
 METRICS_DIR = os.environ.get("PADDOCK_METRICS_DIR") or None
 STOP_STUCK_S = float(os.environ["PADDOCK_STOP_STUCK_S"]) if os.environ.get("PADDOCK_STOP_STUCK_S") else None
 STOP_AFTER_S = float(os.environ["PADDOCK_STOP_AFTER_S"]) if os.environ.get("PADDOCK_STOP_AFTER_S") else None
+STOP_ON_COLLISION = os.environ.get("PADDOCK_STOP_ON_COLLISION") == "1"
+STOP_REQUEST = os.environ.get("PADDOCK_STOP_REQUEST") or None
 STOP_RECORD = os.environ.get("PADDOCK_STOP_RECORD") or None
 
 # Placement (x, y, z, roll, pitch, yaw) in the CARLA ego frame for every nuScenes
@@ -226,9 +232,16 @@ class PaddockB2DAgent(AutonomousAgent):
         # What early_stop.json says: written when a rule ends the route, or at the
         # end with "reason": null, so a route's record also names its own budget.
         self._stop_record = None
-        if STOP_STUCK_S is not None or STOP_AFTER_S is not None:
-            self._early_stop = early_stop.EarlyStop(STOP_STUCK_S, STOP_AFTER_S)
-            self._stop_record = {"reason": None, "stuck_s": STOP_STUCK_S, "after_s": STOP_AFTER_S}
+        if STOP_STUCK_S is not None or STOP_AFTER_S is not None or STOP_ON_COLLISION:
+            self._early_stop = early_stop.EarlyStop(STOP_STUCK_S, STOP_AFTER_S, STOP_ON_COLLISION)
+            self._stop_record = {
+                "reason": None,
+                "stuck_s": STOP_STUCK_S,
+                "after_s": STOP_AFTER_S,
+                "collision": STOP_ON_COLLISION,
+            }
+        # A stop request is honoured whether or not any rule is on; once is enough.
+        self._stop_requested = False
         self._ticks = None
         if RECORD_DIR:
             self._open_analysis_record()
@@ -768,35 +781,58 @@ class PaddockB2DAgent(AutonomousAgent):
                 ]
             )
             self._log.flush()
-        if self._early_stop is not None:
+        if self._early_stop is not None or (STOP_REQUEST and not self._stop_requested):
             self._check_early_stop(timestamp)
         self._t += 1
         return control
 
     def _check_early_stop(self, game_time):
-        """Feed this tick to ``early_stop``; when a rule fires, have the leaderboard end the route.
+        """Feed this tick to ``early_stop``; when a rule fires, or a stop is requested, end the route.
 
         After the tick's control is decided and recorded, so a rule changes nothing
         about a drive until the tick it fires on (``early_stop.replay`` relies on it).
         """
         route, hero = self._nav_route, self._hero_actor()
-        if route is None or hero is None:
+        along = None
+        if route is not None and hero is not None:
+            loc = hero.get_location()
+            index, _ = route.locate(loc.x, loc.y)
+            along = float(route.s[index])
+        if STOP_REQUEST and not self._stop_requested and os.path.exists(STOP_REQUEST):
+            self._stop_requested = True
+            self._end_early(early_stop.MANUAL, game_time, along)
             return
-        loc = hero.get_location()
-        index, _ = route.locate(loc.x, loc.y)
-        along = float(route.s[index])
+        if self._early_stop is None or along is None:
+            return
         self._stop_record.update(
             game_time_s=round(float(game_time), 2), tick=self._t, route_m=round(along, 1)
         )
-        reason = self._early_stop.update(game_time, along)
-        if reason is None:
-            return
+        # Waiting at a red light is not being stuck (early_stop.py).
+        try:
+            waiting = bool(hero.is_at_traffic_light()) and hero.get_traffic_light_state() in (
+                carla.TrafficLightState.Red,
+                carla.TrafficLightState.Yellow,
+            )
+        except RuntimeError:
+            waiting = False
+        collisions = (early_stop.scenario_collisions() or 0) if self._early_stop.collision else 0
+        reason = self._early_stop.update(game_time, along, collisions=collisions, waiting=waiting)
+        if reason is not None:
+            self._end_early(reason, game_time, along)
+
+    def _end_early(self, reason, game_time, along):
+        """Have the leaderboard end the route now, scored as it stands, and say why in early_stop.json."""
         self._early_stop = None  # once: the manager ends the route before calling us again
         if not early_stop.end_route():
             print(f"[paddock-b2d] early stop ({reason}): no ScenarioManager to end the route; driving on")
             return
-        print(f"[paddock-b2d] early stop at {game_time:.2f} s, {along:.0f} m along: {reason}", flush=True)
-        self._stop_record["reason"] = reason
+        where = "" if along is None else f", {along:.0f} m along"
+        print(f"[paddock-b2d] early stop at {game_time:.2f} s{where}: {reason}", flush=True)
+        if self._stop_record is None:  # a stop request with no rule on
+            self._stop_record = {"reason": None}
+        self._stop_record.update(reason=reason, game_time_s=round(float(game_time), 2), tick=self._t)
+        if along is not None:
+            self._stop_record["route_m"] = round(along, 1)
         self._write_stop_record()
 
     def _write_stop_record(self):

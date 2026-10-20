@@ -408,6 +408,10 @@ def ingest(
     # A route the early stop ended is a failed drive, and the pool ranks with it;
     # routes stopped under different rules are as much one experiment as two setups.
     mixed_stops = isinstance(stop_rules, list)
+    # A route someone ended by hand was scored at a moment a person chose: kept, named, not ranked.
+    by_hand = sum(1 for sample in samples if sample["metrics"].get(f"ended_{early_stop.MANUAL}"))
+    if by_hand:
+        note = (note + " " if note else "") + early_stop.manual_reason(by_hand) + "."
     if stop_rules is not None:
         said = early_stop.mixed_reason(stop_rules) if mixed_stops else early_stop.remark(stop_rules)
         note = (note + " " if note else "") + said + "."
@@ -442,7 +446,11 @@ def ingest(
         # different protocol, and ranking it beside 20 Hz rows says they measure
         # the same thing -- which is the claim this campaign exists to deny.
         # An early stop ranks; a pool of routes stopped under different rules does not.
-        valid=not missing and len(pooled_setups) <= 1 and off_protocol is None and not mixed_stops,
+        valid=not missing
+        and len(pooled_setups) <= 1
+        and off_protocol is None
+        and not mixed_stops
+        and not by_hand,
         notes=note,
         # A relative tail only: results/ is tracked and must not name a machine's disk.
         ingested_from="; ".join("/".join(r.parts[-3:]) for r in roots),

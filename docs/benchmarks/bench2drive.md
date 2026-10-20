@@ -80,6 +80,7 @@ routes_file = "bench2drive220.xml"                   # under repo/leaderboard/da
 # record     = "false"               # per-tick front/BEV JPEGs + log.csv; ~40 GB per full sweep
 # stop_stuck_s       = "30"          # end a route 30 s after its last 3 m of progress; see Ending routes early
 # stop_expert_factor = "4"           # end a route at 4x the expert's time on it; needs `expert`
+# stop_on_collision  = "true"        # end a route at the first collision the leaderboard counts
 # expert = "/path/to/expert"         # what `python -m tools.benchmarks.bench2drive.expert summarize` wrote
 ```
 
@@ -156,19 +157,28 @@ test off, which leaves the 4000-tick cap. In the first 25 routes of the October
 openpilot sweep, three stood still for 130–195 s of game time each, 27–42 min
 of wall clock apiece.
 
-Two settings end a route sooner (`early_stop.py`):
+Three settings end a route sooner (`early_stop.py`):
 
 | setting | ends the route when |
 |---|---|
-| `stop_stuck_s` | the ego has gone this many game seconds without getting 3 m further along the route (the blocked test's 0.1 m/s over 30 s). Progress, not speed, so a car that a driver-resume nudge keeps creeping counts too |
+| `stop_stuck_s` | the ego has gone this many game seconds without getting 3 m further along the route (the blocked test's 0.1 m/s over 30 s). Progress, not speed, so a car that a driver-resume nudge keeps creeping counts too. The clock is held while the ego stands at a red or amber light, so a short window does not end every route that meets a red signal; it does run while the car yields to a pedestrian or waits for a gap, so a window of a few seconds cuts those scenes short too |
 | `stop_expert_factor` + `expert` | the game clock reaches this multiple of Think2Drive's time on the route (`duration_s` of `<expert>/<route>/expert_traj.json`). The nine routes with no expert clip get the stuck rule alone |
+| `stop_on_collision` | the leaderboard's own `CollisionTest` counts a collision: the same count the infraction penalty is computed from, read by the agent through the ScenarioManager, one tick after the contact |
+
+And one stop that is not a rule: a route ends **by hand** when its directory
+grows a `stop_request` file while it drives, which the dashboard's "Stop route"
+button writes (`POST /api/stop?route=<id>`, 127.0.0.1 only). The route is scored
+as it stood, and the run is `valid: false`, its notes counting the routes ended
+by hand: a moment a person chose is not one any rule reproduces.
 
 The agent ends the route through the leaderboard's own tick cap, which `preflight`
 checks the checkout still has, so the route is scored as it stands: the route
 completion and infractions of that moment, status `Failed - TickRuntime`. Beside
 `results.json` it writes `early_stop.json` with the rule that fired (`null` if
 none did), the game time, and the route's own budget; the metrics carry it per
-route as `ended_stuck` / `ended_over_time` (0 or 1).
+route as `ended_stuck` / `ended_over_time` / `ended_collision` / `ended_manual`
+(0 or 1). The dashboard lists such a route as "Stopped: <reason>", and its video
+says why it ended.
 
 A route either rule ends is a **failed drive**, and the run ranks. A car in a
 driving scene is expected to move; one that gets no further along its route for

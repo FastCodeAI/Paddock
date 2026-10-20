@@ -25,6 +25,7 @@ import pytest
 from paddock.adapters.benchmarks.bench2drive.harness import (
     BENCHMARK,
     CRASH_STATUSES,
+    STOP_REQUEST,
     NotScored,
     carla_pids,
     carla_port_from_log,
@@ -651,7 +652,10 @@ def test_early_stop_is_off_unless_the_site_sets_it(tmp_path, monkeypatch) -> Non
     out = tmp_path / "out"
     metrics = harness.run_episode(_episode(), "http://127.0.0.1:9000", out)
     env = json.loads((out / "env.json").read_text())
-    assert not any(key.startswith("PADDOCK_STOP_") for key in env)
+    rules = ("PADDOCK_STOP_STUCK_S", "PADDOCK_STOP_AFTER_S", "PADDOCK_STOP_ON_COLLISION")
+    assert not any(key in env for key in rules)
+    # A stop by hand needs no rule: its request file and where to say so always reach the agent.
+    assert env["PADDOCK_STOP_REQUEST"] == str(out / STOP_REQUEST)
     assert "ended_stuck" not in metrics
 
 
@@ -707,7 +711,12 @@ def test_a_stale_early_stop_verdict_does_not_outlive_its_attempt(tmp_path, monke
 
 def test_a_route_that_went_to_its_end_says_so_and_no_record_says_nothing(tmp_path) -> None:
     (tmp_path / "early_stop.json").write_text(json.dumps({"reason": None, "stuck_s": 30.0, "after_s": 85.2}))
-    assert ended_early(tmp_path) == {"ended_stuck": 0.0, "ended_over_time": 0.0}
+    assert ended_early(tmp_path) == {
+        "ended_stuck": 0.0,
+        "ended_over_time": 0.0,
+        "ended_collision": 0.0,
+        "ended_manual": 0.0,
+    }
     assert ended_early(tmp_path / "elsewhere") == {}, "the stop was off; a 0 would say a rule was there"
 
 
@@ -730,3 +739,35 @@ def test_preflight_accepts_the_pinned_leaderboards_tick_cap(tmp_path, monkeypatc
     )
     problems = _harness(cfg).preflight()
     assert not any("stop_" in p or "tick_count" in p or "expert" in p for p in problems), problems
+
+
+def test_stop_on_collision_is_a_rule_on_the_record_and_reaches_the_agent(tmp_path, monkeypatch) -> None:
+    harness = _harness(_site(tmp_path, monkeypatch, COMPLETED, stop_on_collision="true"))
+    assert harness.run_config()["early_stop"]["collision"] is True
+    assert "a collision the leaderboard counts" in harness.remarks()[0]
+    out = tmp_path / "out"
+    harness.run_episode(_episode(), "http://127.0.0.1:9000", out)
+    assert json.loads((out / "env.json").read_text())["PADDOCK_STOP_ON_COLLISION"] == "1"
+
+
+def test_preflight_refuses_a_stop_on_collision_it_cannot_read(tmp_path, monkeypatch) -> None:
+    harness = _harness(_site(tmp_path, monkeypatch, COMPLETED, stop_on_collision="sometimes"))
+    assert any("stop_on_collision" in p for p in harness.preflight())
+
+
+def test_a_route_ended_by_hand_says_so_and_the_run_does_not_rank(tmp_path, monkeypatch) -> None:
+    """A person choosing when a route ends is not a measurement: the run names it and is not ranked."""
+    (tmp_path / "early_stop.json").write_text(json.dumps({"reason": "manual", "game_time_s": 12.5}))
+    assert ended_early(tmp_path)["ended_manual"] == 1.0
+    harness = _harness(_site(tmp_path, monkeypatch, COMPLETED))
+    harness._note_stop(_episode(), ended_early(tmp_path))
+    (reason,) = harness.invalid_reasons()
+    assert "1 route(s) ended by hand" in reason
+
+
+def test_an_old_stop_request_cannot_end_a_new_drive(tmp_path, monkeypatch) -> None:
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / STOP_REQUEST).write_text("")
+    _harness(_site(tmp_path, monkeypatch, COMPLETED)).run_episode(_episode(), "http://127.0.0.1:9000", out)
+    assert not (out / STOP_REQUEST).exists()
