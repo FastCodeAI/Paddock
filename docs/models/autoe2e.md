@@ -51,9 +51,26 @@ From the release `config.json` and upstream's KITScenes evaluation path
   saw. Set 0 for the ground-level frame nuPlan used.
 - **Ego history** is differenced from the pose stream as `kit_scenes/egomotion.py`
   does (centred `np.gradient` on the real timestamps, curvature floor 0.1 m/s),
-  newest acceleration zeroed (the KITScenes stage's causal mask), rows before
-  the first pose left at zero (upstream's left padding). It is not read from
-  `canbus`, which most harnesses fill only partly.
+  newest acceleration zeroed (the KITScenes stage's causal mask). It is not read
+  from `canbus`, which most harnesses fill only partly. Rows before the first
+  pose depend on who sends the past:
+  - **Open loop** (NAVSIM, KITScenes: the real past, via `infer_sequence`): left
+    at zero, upstream's left padding. Upstream's own KITScenes benchmark pads up
+    to 24 of the 64 rows this way.
+  - **Closed loop** (neuroNCAP, Bench2Drive: one frame per call, no past):
+    steady driving, the first measured speed with no acceleration and no turn
+    (the simulator's speed on the first call, when nothing is measured yet).
+    Training never saw a padded row: KITScenes samples start 64 rows into a
+    scene. Left at zero, an episode carries 32–64 zero rows throughout, which
+    read as a car that stood still a moment ago. On neuroNCAP 0103 stationary
+    that turned the car right within 2 s, into a parked car (score 0.14). With
+    the past filled it drives straight for the first 2 s, then turns left, and
+    the turn grows each call until the car spins: all three 0103 scenarios,
+    seed 0, scored 5.00 / 0.59 / 5.00, and both 5.00s are misses, not
+    avoidance. Two other fills, braking ramped in over the last filled second
+    and the recorded nuScenes past from before the episode, loop the same way,
+    so the loop is not this input. AutoE2E's neuroNCAP scores are not
+    meaningful until it is understood.
 - **Navigation.** No semantic map: zeros with `map_valid` false, upstream's
   own no-map track. The route raster is drawn from `obs.route_xy` when the
   benchmark sends one: a corridor 1.75 m either side, clipped 10 m behind, and
@@ -166,4 +183,8 @@ Not ruled out: the route raster is drawn from the leaderboard's downsampled
 plan, a point every ~50 m within one road option, so on a bend the corridor
 runs as a chord up to ~3 m off the lane at a 100 m radius; and a route with no
 map (`route_valid` true, `map_valid` false) is an input upstream never produces
-(`navigation/rasterizer.py` sets `route_valid` only with a map).
+(`navigation/rasterizer.py` sets `route_valid` only with a map). And these runs
+predate the closed-loop history fill above, so each route spent its first 6.4 s
+with zero rows in the ego history. On neuroNCAP the fill removed the early turn
+but not the later loop, so it is unlikely to explain a departure at 4–5 s, but
+Bench2Drive has not been re-run with it.
