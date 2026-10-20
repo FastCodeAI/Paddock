@@ -332,6 +332,44 @@ set was pruned from. A site that genuinely holds only the front camera cannot
 run this benchmark for any model until it does, and that is the intended
 trade.
 
+## The map and the route
+
+Every KITScenes scene ships its Lanelet2 HD map, `maps/map.osm`, with the
+geodetic origin of its local frame in `maps/origin.json`. `poses.txt`, and so
+every `ego2world` here, is in that frame. The scored keyframe names both files
+(`Observation.map_files`) and carries the scene's whole logged drive
+(`Observation.route_trace`: time, x, y and yaw per frame) for a model to match
+a route to through the map:
+
+```toml
+[benchmarks.kitscenes]
+map = true          # default
+route = "oracle"    # default; or "none"
+```
+
+Only a policy that reads them sees either. Today that is AutoE2E alone, which
+draws its 14-channel semantic map and route raster with upstream's own code
+([the AutoE2E page](../models/autoe2e.md)). Every other model's observation
+names two files it never opens, so its numbers are unchanged.
+
+The route is an **oracle**: matched to the logged drive, future included. That
+is upstream AutoE2E's KITScenes validation protocol, the one its published
+numbers were made with, and the same kind of input as `command_source = "gt"`:
+the destination a car's navigation would know, stood in for by the log. It
+needs the map, and preflight refuses `route = "oracle"` with `map = false`.
+Only the keyframe carries either, as only it carries the route hint.
+
+Each departs from the default only by being switched off, and is recorded
+then: `map = false` or `route = "none"` hashes to its own run id with the key in
+its `config`. The defaults add no key, so every run made before the settings
+existed keeps its id and `--resume`. A model that reads them says what it drew
+in its own provenance (AutoE2E: `map_calls` and `route_calls` in `run.json`, and
+`map_valid` / `route_valid` on every sample).
+
+Like a camera, the map is found per tier: a tier pruned of `maps/` reads it
+from the next, and preflight refuses a listed scene whose map no tier holds.
+All 140 listed scenes hold both files at this site.
+
 ## Camera adaptation
 
 openpilot's ModelState compiles its warp for fixed geometries, so a source must
