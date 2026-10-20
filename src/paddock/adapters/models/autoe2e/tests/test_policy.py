@@ -123,6 +123,23 @@ def test_only_closed_loop_fills_the_past(monkeypatch) -> None:
     assert policy.self_prime is True
 
 
+def test_the_adapter_fills_the_past_only_in_closed_loop() -> None:
+    """The history `infer()` builds: filled with `self_prime` on, zero-padded with it off."""
+    frames = []
+    for t in np.arange(0.0, 2.0 + 1e-9, 0.1):
+        m = np.eye(4)
+        m[0, 3] = 5.0 * t
+        frames.append(_Frame(t_s=float(t), ego2world=m, camera2image={}, camera2ego={}))
+    policy = POLICY()
+    policy.frames = frames
+    closed, n_closed = policy._ego_history(frames[-1], speed=9.9)
+    policy.self_prime = False
+    opened, n_open = policy._ego_history(frames[-1], speed=9.9)
+    assert n_closed == 44 and closed[:44] == pytest.approx(np.tile([5.0, 0.0, 0.0, 0.0], (44, 1)))
+    assert n_open == 0 and np.all(opened[:44] == 0)
+    assert np.array_equal(opened[44:], closed[44:]), "the measured rows are the same either way"
+
+
 def test_curvature_divides_by_the_speed_floor_when_stopped() -> None:
     t = np.arange(0.0, 7.0, 0.1)
     rows = egomotion_rows(t, np.zeros((len(t), 2)), 0.05 * t, t_now=7.0)

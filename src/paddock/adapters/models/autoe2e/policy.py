@@ -618,6 +618,22 @@ class AutoE2EPolicy(Policy):
             out.append(k @ (np.linalg.inv(cam2ref) @ hist_from_now)[:3, :])
         return np.stack(out).astype(np.float32)
 
+    def _ego_history(self, now: _Frame, speed: float) -> tuple[np.ndarray, int]:
+        """[64, 4] ego history at `now` from every frame held, and how many rows were filled.
+
+        All frames held, the current one included, so the newest rows get a centred gradient.
+        Closed loop fills the rows before the first pose (`steady_before_start`); open loop,
+        where `infer_sequence` has cleared `self_prime`, keeps upstream's zero padding.
+        """
+        t = np.array([f.t_s for f in self.frames])
+        e2w = [f.ego2world for f in self.frames]
+        ego = egomotion_rows(
+            t, np.array([m[:2, 3] for m in e2w]), np.array([yaw_of(m) for m in e2w]), now.t_s
+        )
+        if not self.self_prime:
+            return ego, 0
+        return steady_before_start(ego, t, now.t_s, speed)
+
     # ------------------------------------------------------------------ infer
     def infer(self, obs: Observation) -> Trajectory:
         import torch
@@ -665,19 +681,7 @@ class AutoE2EPolicy(Policy):
         PF = torch.from_numpy(self._projections(now, None, FRONT_TILE, views=("CAM_FRONT",)))[None].to(dev)
         PH = [torch.from_numpy(self._projections(f, ref_now2world, TILE))[None].to(dev) for f in history]
 
-        # Ego history from the pose stream (all frames held, current included for the centred gradient).
-        e2w = [f.ego2world for f in self.frames]
-        ego = egomotion_rows(
-            np.array([f.t_s for f in self.frames]),
-            np.array([m[:2, 3] for m in e2w]),
-            np.array([yaw_of(m) for m in e2w]),
-            now.t_s,
-        )
-        filled = 0
-        if self.self_prime:
-            ego, filled = steady_before_start(
-                ego, np.array([f.t_s for f in self.frames]), now.t_s, float(obs.speed)
-            )
+        ego, filled = self._ego_history(now, float(obs.speed))
         v0 = float(ego[-1, 0])
         ego_in = ego.copy()
         ego_in[-1, 1] = 0.0  # KITScenes stage: newest acceleration masked (dataset_policy.py)
