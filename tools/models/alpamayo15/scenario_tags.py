@@ -20,6 +20,8 @@ import json
 import re
 from pathlib import Path
 
+from paddock.policy.protocol import Command
+
 
 def load_scene_descriptions(nuscenes_root: Path, version: str) -> dict[str, str]:
     scene_json = nuscenes_root / version / "scene.json"
@@ -41,15 +43,14 @@ def is_turn(cmd: int) -> bool:
     return cmd in (0, 1)
 
 
-# Command enum order from policy/protocol.py: RIGHT=0, LEFT=1, STRAIGHT=2, FOLLOW_REFERENCE=3.
-COMMAND_NAMES = {0: "RIGHT", 1: "LEFT", 2: "STRAIGHT", 3: "FOLLOW_REFERENCE"}
-
-
 def command_name(value) -> str:
     """The raw nav instruction given to the model, by name -- lets you tell
     "it turned left because the route said LEFT" apart from "it turned left
     on its own with a STRAIGHT/FOLLOW_REFERENCE input"."""
-    return COMMAND_NAMES.get(cmd_int(value), "STRAIGHT")
+    try:
+        return Command(cmd_int(value)).name
+    except ValueError:
+        return Command.STRAIGHT.name
 
 
 def tag_maneuver(desc: str, cmd: int) -> str:

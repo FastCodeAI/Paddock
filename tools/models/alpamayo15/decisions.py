@@ -10,14 +10,14 @@ the thing failure taxonomy actually cares about.
 
 Samples at index_in_scene == 0 (the cold-start frame -- no real pose history
 yet, per the egomotion-warmstart discussion) are skipped entirely, so they
-never enter decisions.csv and therefore never show up in decision_confusion.py,
-decision_flicker.py, or anything else built on top of it.
+never enter decisions.csv and therefore never show up in decision_confusion.py
+or anything else built on top of it.
 
 Writes decisions.csv into the run directory (join key: sample_id).
 
 Usage:
-    python tools/analysis/decisions.py [run_id]
-    python tools/analysis/decisions.py --stats   # print lateral-offset / speed-delta
+    python tools/models/alpamayo15/decisions.py [run_id]
+    python tools/models/alpamayo15/decisions.py --stats   # print lateral-offset / speed-delta
                                                   # histograms instead of writing
                                                   # decisions.csv, to help calibrate
                                                   # the thresholds below against real

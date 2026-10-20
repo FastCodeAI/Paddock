@@ -11,8 +11,11 @@ small set of comparison bars for the summary plot. Add a new check by adding
 a function and registering it in CHECKS.
 
 Requires decisions.csv (from decisions.py). Reasoning text in a check's own
-printed detail needs reasoning.json (from print_reasoning.py, or a baseline
-run with ALPAMAYO_SAVE_REASONING=1).
+printed detail needs reasoning.json: a JSON list of {"sample_id", "reasoning"}
+records in the run directory -- no tool in this repo builds it yet (a baseline
+run's `ALPAMAYO_SAVE_REASONING=1` writes reasoning into samples.jsonl's
+extras, not a separate file); without it, checks that quote reasoning text
+fall back to "(no reasoning captured)".
 
 Usage:
     python tools/models/alpamayo15/behavior_gaps.py <run_id>

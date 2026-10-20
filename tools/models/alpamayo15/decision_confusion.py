@@ -28,8 +28,9 @@ decision is actually driven by the nav instruction vs. the model's own
 preference.
 
 Requires decisions.csv (from decisions.py) in the run directory. Optionally
-uses reasoning.json (from print_reasoning.py) for the coverage count --
-everything still works without it, just reports 0 reasoning captured.
+uses reasoning.json -- a JSON list of {"sample_id", "reasoning"} records, no
+tool in this repo builds it yet -- for the coverage count; everything still
+works without it, just reports 0 reasoning captured.
 
 Usage:
     python tools/models/alpamayo15/decision_confusion.py [run_id]
