@@ -1,0 +1,173 @@
+# @package _global_
+# The driver AlpaSim composes when paddock serves AutoE2E through the bridge.
+#
+# AutoE2E (the kitscenes-epoch-5 checkpoint) reads six pinhole cameras laid out
+# like the KITScenes recording car: a front camera of 88.2 x 54.4 degrees and a
+# ring of five at 87.1 x 63.3 degrees, 60 degrees apart. AlpaSim's 26.01 scenes
+# record six f-theta cameras that point elsewhere and have no camera looking
+# straight back, so all six are re-rendered here as pinholes through
+# `extra_cameras`. AlpaSim can only change a camera a scene already has, never
+# add one (camera_catalog.py, "sensorsim only supports changing, not adding"),
+# so the rear view borrows camera_front_tele_30fov, which this profile does not
+# otherwise need. `harness.DRIVER_PROFILES` selects this file only for the
+# autoe2e model, and the bridge renames each id to the node's camera name.
+#
+# What the values are, briefly:
+#   * Field of view and aspect from the KITScenes calibration: the shipped images
+#     are 5856 x 3104 (front) and 3504 x 2272 (ring), so the renders are 1920 x 1018
+#     and 1024 x 664 with f = 990.8 and 538.9 px, square pixels, principal point at
+#     the centre, every distortion coefficient zero (the bridge sends K and does
+#     not undistort).
+#   * Pose: the front and the two cross cameras keep each scene's own recorded
+#     pose (no rig_to_camera, so each vehicle's calibration is used); the cross
+#     cameras therefore look out at about 67 degrees rather than KITScenes' 60.
+#     The two rear cameras and the borrowed rear view need a new direction (120,
+#     -120 and 180 degrees), and an override sets one pose for every scene, at the
+#     recorded rear cameras' median mounting point. Those three views point 28 to
+#     32 degrees away from any recorded camera.
+#   * rig_to_camera is the camera's pose in the rig (rear axle on the ground, x
+#     forward, y left, z up), OpenCV camera axes (x right, y down, z forward), as
+#     sensorsim_service.py composes it: world_camera = world_rig @ rig_to_camera.
+#   * 20 Hz for the control step and every camera; 3.0 s of ground-truth warm-up
+#     with the driver called throughout (the bridge sends those frames to the
+#     node's /observe); 400 steps.
+
+wizard:
+  # driver is absent on purpose: the bridge is already listening.
+  run_sim_services:
+    ["renderer", "physics", "trafficsim", "controller", "runtime"]
+
+  external_services:
+    # Overridden per episode with the port the harness actually reserved; this
+    # value only has to compose.
+    driver:
+      - "localhost:9200"
+
+  debug_flags:
+    # Containers join the host network, so localhost:<port> reaches the bridge.
+    use_localhost: true
+
+# Do NOT set `runtime.endpoints.driver.skip: true`. Combined with
+# external_services it makes the runtime skip the driver entirely, and the run
+# still exits 0 with a full metrics table that is not the model's.
+runtime:
+  simulation_config:
+    force_gt_duration_us: 3_000_000
+    # The driver is called during warm-up, so the node's history is full at
+    # handover. Stated rather than left to the schema default.
+    skip_driver_during_force_gt: false
+    control_timestep_us: 50_000
+    n_sim_steps: 400
+    n_rollouts: 1
+    ego_mask_rig_config_id: null
+    # Each camera's height and width must equal its extra_cameras resolution_hw:
+    # the render request takes its size from here and its intrinsics from there.
+    cameras:
+      - logical_id: camera_front_wide_120fov
+        height: 1018
+        width: 1920
+        frame_interval_us: 50_000
+        shutter_duration_us: 30_000
+      - logical_id: camera_cross_left_120fov
+        height: 664
+        width: 1024
+        frame_interval_us: 50_000
+        shutter_duration_us: 30_000
+      - logical_id: camera_cross_right_120fov
+        height: 664
+        width: 1024
+        frame_interval_us: 50_000
+        shutter_duration_us: 30_000
+      - logical_id: camera_rear_left_70fov
+        height: 664
+        width: 1024
+        frame_interval_us: 50_000
+        shutter_duration_us: 30_000
+      - logical_id: camera_front_tele_30fov
+        height: 664
+        width: 1024
+        frame_interval_us: 50_000
+        shutter_duration_us: 30_000
+      - logical_id: camera_rear_right_70fov
+        height: 664
+        width: 1024
+        frame_interval_us: 50_000
+        shutter_duration_us: 30_000
+
+  extra_cameras:
+    # Front: KITScenes camera_base_front_center, 88.2 x 54.4 degrees.
+    - logical_id: camera_front_wide_120fov
+      intrinsics:
+        model: opencv_pinhole
+        opencv_pinhole:
+          focal_length: [990.8, 990.8]
+          principal_point: [960.0, 509.0]
+          radial: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          tangential: [0.0, 0.0]
+          thin_prism: [0.0, 0.0, 0.0, 0.0]
+      resolution_hw: [1018, 1920]
+    # Front-left: KITScenes camera_ring_front_left, 87.1 x 63.3 degrees.
+    - logical_id: camera_cross_left_120fov
+      intrinsics:
+        model: opencv_pinhole
+        opencv_pinhole:
+          focal_length: [538.9, 538.9]
+          principal_point: [512.0, 332.0]
+          radial: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          tangential: [0.0, 0.0]
+          thin_prism: [0.0, 0.0, 0.0, 0.0]
+      resolution_hw: [664, 1024]
+    # Front-right: KITScenes camera_ring_front_right.
+    - logical_id: camera_cross_right_120fov
+      intrinsics:
+        model: opencv_pinhole
+        opencv_pinhole:
+          focal_length: [538.9, 538.9]
+          principal_point: [512.0, 332.0]
+          radial: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          tangential: [0.0, 0.0]
+          thin_prism: [0.0, 0.0, 0.0, 0.0]
+      resolution_hw: [664, 1024]
+    # Rear-left: KITScenes camera_ring_rear_left, yaw 120, pitch 0, roll 0.
+    - logical_id: camera_rear_left_70fov
+      rig_to_camera:
+        translation_m: [2.10, 1.04, 1.02]
+        rotation_xyzw: [0.683012701892, 0.183012701892, -0.183012701892, -0.683012701892]
+      intrinsics:
+        model: opencv_pinhole
+        opencv_pinhole:
+          focal_length: [538.9, 538.9]
+          principal_point: [512.0, 332.0]
+          radial: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          tangential: [0.0, 0.0]
+          thin_prism: [0.0, 0.0, 0.0, 0.0]
+      resolution_hw: [664, 1024]
+    # Rear: KITScenes camera_ring_rear, yaw 180, pitch 0, roll 0. No recorded
+    # camera looks this way; the tele camera's id carries the render.
+    - logical_id: camera_front_tele_30fov
+      rig_to_camera:
+        translation_m: [2.09, 0.0, 1.02]
+        rotation_xyzw: [0.5, 0.5, -0.5, -0.5]
+      intrinsics:
+        model: opencv_pinhole
+        opencv_pinhole:
+          focal_length: [538.9, 538.9]
+          principal_point: [512.0, 332.0]
+          radial: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          tangential: [0.0, 0.0]
+          thin_prism: [0.0, 0.0, 0.0, 0.0]
+      resolution_hw: [664, 1024]
+    # Rear-right: KITScenes camera_ring_rear_right, yaw -120, pitch 0, roll 0.
+    - logical_id: camera_rear_right_70fov
+      rig_to_camera:
+        translation_m: [2.06, -1.01, 1.02]
+        rotation_xyzw: [0.183012701892, 0.683012701892, -0.683012701892, -0.183012701892]
+      intrinsics:
+        model: opencv_pinhole
+        opencv_pinhole:
+          focal_length: [538.9, 538.9]
+          principal_point: [512.0, 332.0]
+          radial: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          tangential: [0.0, 0.0]
+          thin_prism: [0.0, 0.0, 0.0, 0.0]
+      resolution_hw: [664, 1024]

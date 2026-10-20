@@ -748,3 +748,153 @@ def test_the_drivejepa_bridge_flags_match_its_driver_config() -> None:
     assert flag["--force-gt-us"] == simulation["force_gt_duration_us"]
     (front,) = [c for c in simulation["cameras"] if c["logical_id"] == args[args.index("--front-camera") + 1]]
     assert front["frame_interval_us"] == simulation["control_timestep_us"]
+
+
+def test_autoe2e_is_driven_on_its_own_driver_config_and_bridge_flags(
+    tmp_path: Path, fake_repo: Path, monkeypatch
+) -> None:
+    """The node's model name selects the autoe2e profile: its driver config, its six
+    camera names, its rhythm and padding flags, and a per-replan log beside the samples."""
+    from paddock.adapters.benchmarks.alpasim import harness
+
+    monkeypatch.setenv("FAKE_WIZARD_MODE", "ok")
+    monkeypatch.setattr(harness.launcher, "serving_model", lambda url: "autoe2e")
+    seen: list[dict] = []
+    bridges: list[dict] = []
+    fake = harness.launcher.wizard_command
+    no_bridge = harness.launcher.BridgeProcess
+
+    def capture(**kwargs):
+        seen.append(kwargs)
+        return fake(**kwargs)
+
+    def bridge(**kwargs):
+        bridges.append(kwargs)
+        return no_bridge(**kwargs)
+
+    monkeypatch.setattr(harness.launcher, "wizard_command", capture)
+    monkeypatch.setattr(harness.launcher, "BridgeProcess", bridge)
+    bench = _benchmark(tmp_path, monkeypatch, repo=str(fake_repo), python=sys.executable)
+    bench.run_episode(_episode(), "http://127.0.0.1:1", tmp_path / "out", echo=lambda _: None)
+    (call,) = seen
+    (started,) = bridges
+    assert call["driver"] == "paddock_bridge_autoe2e"
+    args = list(started["extra_args"])
+    names = [args[i + 1] for i, a in enumerate(args) if a == "--camera-name"]
+    assert names == [
+        "camera_front_wide_120fov=CAM_FRONT",
+        "camera_cross_left_120fov=CAM_FRONT_LEFT",
+        "camera_cross_right_120fov=CAM_FRONT_RIGHT",
+        "camera_rear_left_70fov=CAM_BACK_LEFT",
+        "camera_front_tele_30fov=CAM_BACK",
+        "camera_rear_right_70fov=CAM_BACK_RIGHT",
+    ]
+    assert "--placeholder" not in args and "--planner" not in args
+    for flag in ("--pinhole-intrinsics", "--pad-ego-history"):
+        assert flag in args
+    assert int(args[args.index("--replan-every-us") + 1]) == 100_000
+    assert args[args.index("--replan-log") + 1].endswith(".replans.jsonl")
+    # The six node names are the six cameras the model declares, in its slot order.
+    model = Registry.load().models["autoe2e"]
+    assert [n.split("=")[1] for n in names] == list(model.cameras)
+    assert "alpasim" in model.benchmarks
+
+
+def test_the_autoe2e_profile_pins_every_scene_it_can_be_asked_for() -> None:
+    """Its driver config exists, and it uses the same 26.01 uuid catalog as drivejepa."""
+    import csv
+
+    from paddock.adapters.benchmarks.alpasim import harness, launcher
+
+    profile = harness.profile_for("autoe2e")
+    assert (launcher.CONFIGS_DIR / "driver" / f"{profile.driver}.yaml").is_file()
+    assert profile.scenes_csv == harness.profile_for("drivejepa").scenes_csv
+    rows = list(csv.DictReader((harness.SCENES_DIR / profile.scenes_csv).open()))
+    assert sorted(row["scene_id"] for row in rows) == sorted(load_scene_set("public_2601_30scenes"))
+    assert {row["nre_version_string"] for row in rows} == {"26.1.112-59673f88"}
+    assert len({row["uuid"] for row in rows}) == len(rows)
+
+
+def test_the_autoe2e_bridge_flags_match_its_driver_config() -> None:
+    """Control step and warm-up are the driver config's; the six renamed cameras are
+    exactly the six it renders and re-declares, each an undistorted pinhole whose
+    size, focal length and principal point give the KITScenes field of view."""
+    import math
+
+    import yaml
+
+    from paddock.adapters.benchmarks.alpasim import harness, launcher
+
+    profile = harness.profile_for("autoe2e")
+    args = list(profile.bridge_args)
+    flag = {name: int(args[args.index(name) + 1]) for name in ("--frame-interval-us", "--force-gt-us")}
+    config = yaml.safe_load((launcher.CONFIGS_DIR / "driver" / f"{profile.driver}.yaml").read_text())
+    simulation = config["runtime"]["simulation_config"]
+    assert flag["--frame-interval-us"] == simulation["control_timestep_us"]
+    assert flag["--force-gt-us"] == simulation["force_gt_duration_us"]
+    assert simulation["skip_driver_during_force_gt"] is False
+    assert int(args[args.index("--replan-every-us") + 1]) % simulation["control_timestep_us"] == 0
+
+    sources = [args[i + 1].split("=")[0] for i, a in enumerate(args) if a == "--camera-name"]
+    extra = {c["logical_id"]: c for c in config["runtime"]["extra_cameras"]}
+    rendered = {c["logical_id"]: c for c in simulation["cameras"]}
+    assert sorted(sources) == sorted(extra) == sorted(rendered)
+    fov = {"camera_front_wide_120fov": (88.2, 54.4)}
+    for camera_id, camera in extra.items():
+        pinhole = camera["intrinsics"]["opencv_pinhole"]
+        assert camera["intrinsics"]["model"] == "opencv_pinhole"
+        for key, count in (("radial", 6), ("tangential", 2), ("thin_prism", 4)):
+            assert pinhole[key] == [0.0] * count, (camera_id, key)
+        height, width = camera["resolution_hw"]
+        assert (rendered[camera_id]["height"], rendered[camera_id]["width"]) == (height, width)
+        assert rendered[camera_id]["frame_interval_us"] == simulation["control_timestep_us"]
+        fx, fy = pinhole["focal_length"]
+        assert fx == fy
+        assert pinhole["principal_point"] == [width / 2, height / 2]
+        h_fov = 2 * math.degrees(math.atan(width / 2 / fx))
+        v_fov = 2 * math.degrees(math.atan(height / 2 / fy))
+        assert (h_fov, v_fov) == pytest.approx(fov.get(camera_id, (87.1, 63.3)), abs=0.06)
+    # Each scene's own pose for the front and cross cameras; one pose for the three new directions.
+    assert {c for c, v in extra.items() if "rig_to_camera" in v} == {
+        "camera_rear_left_70fov",
+        "camera_front_tele_30fov",
+        "camera_rear_right_70fov",
+    }
+
+
+def test_the_autoe2e_fixed_poses_look_where_the_kitscenes_cameras_look() -> None:
+    """rig_to_camera is the camera's pose in the rig with OpenCV axes (z forward, y down):
+    the optical axis of each fixed view points at its KITScenes yaw, level, image upright."""
+    import math
+
+    import numpy as np
+    import yaml
+
+    from paddock.adapters.benchmarks.alpasim import harness, launcher
+
+    def rotation(x, y, z, w):
+        return np.array(
+            [
+                [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+                [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+                [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+            ]
+        )
+
+    profile = harness.profile_for("autoe2e")
+    config = yaml.safe_load((launcher.CONFIGS_DIR / "driver" / f"{profile.driver}.yaml").read_text())
+    extra = {c["logical_id"]: c for c in config["runtime"]["extra_cameras"]}
+    expected = {
+        "camera_rear_left_70fov": (120.0, [2.10, 1.04, 1.02]),
+        "camera_front_tele_30fov": (180.0, [2.09, 0.0, 1.02]),
+        "camera_rear_right_70fov": (-120.0, [2.06, -1.01, 1.02]),
+    }
+    for camera_id, (yaw, position) in expected.items():
+        pose = extra[camera_id]["rig_to_camera"]
+        assert pose["translation_m"] == position
+        matrix = rotation(*pose["rotation_xyzw"])
+        assert np.allclose(matrix @ matrix.T, np.eye(3), atol=1e-9)
+        optical, down = matrix[:, 2], matrix[:, 1]
+        heading = [math.cos(math.radians(yaw)), math.sin(math.radians(yaw)), 0.0]
+        assert optical == pytest.approx(heading, abs=1e-9)
+        assert down == pytest.approx([0.0, 0.0, -1.0], abs=1e-9)
