@@ -436,7 +436,7 @@ never followed. Supporting it means telling the stage which plan was driven.
 `docs/models/drivejepa.md`): the divider, the momentum stage, and the inputs a
 checkpoint retrained on Physical AI AV needs (a 37-row bonnet mask,
 acceleration zeroed, a batch fix). It is a native gRPC driver, not a paddock
-`Policy`, and `drivejepa` still does not declare `alpasim`.
+`Policy`; the paddock node's own route onto AlpaSim is the next entry.
 
 | Claim | Evidence | Strength |
 |---|---|---|
@@ -445,6 +445,18 @@ acceleration zeroed, a batch fix). It is a native gRPC driver, not a paddock
 | its tests pass | `make check-alpasim-driver`: 94 in AlpaSim's interpreter with the Drive-JEPA environment, 89 + 5 skipped without; **not collected by `make check`** | **strong** |
 | 0.1.7 scores 0.7697 on 30 scenes against 0.1.4b's 0.5433 | the recorded runs' `totals.json`; one rollout per scene, made before promotion | **moderate** |
 | the promoted driver drives a scene | — | **unverified** |
+
+**Drive-JEPA also runs on AlpaSim through the paddock bridge** (#93):
+`drivejepa` declares `alpasim`, and the bridge drives the paddock node, with the
+released checkpoint, on the native driver's settings at 0.1.4b (its camera, its
+2 Hz replanning, its inputs; `harness.DRIVER_PROFILES`). Documented in
+`docs/models/drivejepa.md#through-paddock-on-alpasim`.
+
+| Claim | Evidence | Strength |
+|---|---|---|
+| the bridge gives the model the native driver's inputs | offline replay of 3 recorded scenes, 117 replans, identical except two known differences; inputs identical up to the handover on all 30 scenes of the run below | **strong** |
+| through paddock it scores 0.5302 on 30 scenes against the native driver's 0.5433 | one `paddock run`, one rollout per scene; stored `valid: false` because momentum is switched on by a site setting, so not a row | **moderate** |
+| it matches the native driver scene by scene | — (near-ties after the handover move single scenes by up to about 0.55) | **not claimed** |
 
 Open work on this driver, in the order it bites:
 
