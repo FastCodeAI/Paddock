@@ -357,6 +357,62 @@ def visible_only_cross_attention(original_forward):
     return forward
 
 
+#: Stage name -> submodule attribute on `AutoE2E.Reactive_E2E` whose forward
+#: output is worth a snapshot for a from-scratch walkthrough. `TemporalFusedBEV`
+#: is not here: `_fuse_temporal_camera_bevs` is a plain method, not a submodule
+#: call, so it never reaches `forward` and is monkeypatched instead, below.
+_DEBUG_STAGES = (
+    "Backbone",
+    "FeatureFusion",
+    "NavigationEncoder",
+    "MapBEVFusion",
+    "FusedFeaturePooling",
+    "TemporalMemory",
+    "TrajectoryPlanner",
+)
+
+
+def _install_debug_hooks(re2e, state: dict) -> None:
+    """Make every forward call of `re2e`'s key stages land in `state["stages"]`.
+
+    One list per stage name, appended to on every call within the current
+    `infer()` -- the caller clears `state["stages"]` before each model() call
+    so a dump reflects exactly that call's stages, not a running history.
+    `FeatureFusion` is called eight times per call (seven history frames, oldest
+    first, then the current frame last -- `_fuse_temporal_camera_bevs`), so its
+    list is length 8; every other stage here is called once.
+    """
+    import torch
+
+    state["stages"] = {}
+
+    def stash(name):
+        def hook(_module, _inputs, output):
+            if torch.is_tensor(output):
+                value: Any = output.detach().to("cpu")
+            elif isinstance(output, (tuple, list)):
+                value = tuple(o.detach().to("cpu") if torch.is_tensor(o) else o for o in output)
+            else:
+                value = output
+            state["stages"].setdefault(name, []).append(value)
+
+        return hook
+
+    for name in _DEBUG_STAGES:
+        module = getattr(re2e, name, None)
+        if module is not None:
+            module.register_forward_hook(stash(name))
+
+    original_fuse = re2e._fuse_temporal_camera_bevs
+
+    def fuse_and_stash(current_image_bev, history_bevs):
+        fused = original_fuse(current_image_bev, history_bevs)
+        state["stages"].setdefault("TemporalFusedBEV", []).append(fused.detach().to("cpu"))
+        return fused
+
+    re2e._fuse_temporal_camera_bevs = fuse_and_stash
+
+
 @dataclass
 class _Frame:
     t_s: float
@@ -433,6 +489,12 @@ class AutoE2EPolicy(Policy):
         self.use_route = os.environ.get("AUTOE2E_ROUTE", "1") != "0"
         self.bf16 = os.environ.get("AUTOE2E_BF16", "1") != "0"
         self.record_dir = os.environ.get("AUTOE2E_RECORD_DIR") or None
+        #: Per-call dump of every forward stage (backbone, BEV fusion, temporal
+        #: fusion, navigation, planner) plus the raw packed inputs, one file per
+        #: call -- for a from-scratch, frame-by-frame walkthrough of what the
+        #: model saw and did. Off by default and zero-cost when unset.
+        self.debug_dump_dir = os.environ.get("AUTOE2E_DEBUG_DUMP_DIR") or None
+        self._debug_state: dict[str, Any] = {}
         #: Seconds between forward passes. 0 = every call. Closed loop calls at 10 Hz so the ego
         #: history is real 10 Hz; the plan is refreshed every `replan_s` and held in between,
         #: re-expressed in the current ego frame (what the Bench2Drive client does with a held plan).
@@ -505,6 +567,9 @@ class AutoE2EPolicy(Policy):
         self._ckpt_sha = h.hexdigest()
         if self.record_dir:
             os.makedirs(self.record_dir, exist_ok=True)
+        if self.debug_dump_dir:
+            os.makedirs(self.debug_dump_dir, exist_ok=True)
+            _install_debug_hooks(self.model.Reactive_E2E, self._debug_state)
         logger.info("AutoE2E loaded %s (%s) on %s", self.checkpoint, self.config, self.device)
 
     def reset(self) -> None:
@@ -667,6 +732,8 @@ class AutoE2EPolicy(Policy):
             mode="infer",
         )
         t1 = time.time()
+        if self.debug_dump_dir:
+            self._debug_state["stages"] = {}
         with (
             torch.no_grad(),
             torch.autocast("cuda", dtype=torch.bfloat16, enabled=self.bf16 and dev.type == "cuda"),
@@ -702,11 +769,57 @@ class AutoE2EPolicy(Policy):
         }
         if self.record_dir:
             self._write_record(obs, controls, rollout, ego)
+        if self.debug_dump_dir:
+            self._dump_debug_step(
+                front_1024=front_1024,
+                current=current,
+                history=history,
+                gaps=gaps,
+                ego=ego,
+                route=route,
+                route_valid=route_valid,
+                controls=controls,
+                rollout=rollout,
+                waypoints=waypoints,
+                v0=v0,
+            )
         return Trajectory(
             waypoints,
             dt=self.waypoint_dt,
             extras={"autoe2e": {k: v for k, v in self.last.items() if k != "history_gaps_s"}},
         )
+
+    def _dump_debug_step(
+        self, *, front_1024, current, history, gaps, ego, route, route_valid, controls, rollout, waypoints, v0
+    ) -> None:
+        """One `step_<call>.pt` per `infer()` call: raw packed inputs + every stage's output.
+
+        `self.calls` is already incremented by the time this runs, so `self.calls - 1`
+        is this call's 0-based index -- `step_0000.pt` is the episode's first call.
+        """
+        import torch
+
+        payload = {
+            "call": self.calls - 1,
+            "t_us": int(self.last["t_us"]),
+            "inputs": {
+                "front_1024": front_1024,  # uint8 [1024,1024,3]
+                "current_tiles": current,  # uint8 [6,512,512,3], VIEW_ORDER
+                "history_tiles": np.stack([f.tiles() for f in history]),  # uint8 [7,6,512,512,3]
+                "history_gaps_s": gaps,  # None where a frame is held-oldest, not real
+                "ego_rows": ego,  # float64 [64,4]: speed, accel, yaw_rate, curvature
+                "v0": v0,
+                "route_raster": route,  # float32 [2,450,300]: corridor, destination
+                "route_valid": route_valid,
+            },
+            "stages": dict(self._debug_state.get("stages", {})),
+            "output": {
+                "controls": controls,  # float32 [64,2]: accel, curvature @ 10 Hz
+                "rollout_xy_heading": rollout,  # float64 [64,3] @ 10 Hz
+                "waypoints": waypoints,  # the <=12 @ 0.5 Hz; first 6 go on the wire
+            },
+        }
+        torch.save(payload, os.path.join(self.debug_dump_dir, f"step_{self.calls - 1:04d}.pt"))
 
     def _write_record(self, obs, controls, rollout, ego) -> None:
         import json
