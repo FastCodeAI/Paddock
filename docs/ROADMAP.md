@@ -623,13 +623,15 @@ results, not the knob.
   because reading it means adding a map dependency, and alpamayo15 has no
   record (gated `Cosmos-Reason2-8B`). Detail in `docs/benchmarks/nuplan.md`.
 
-- **AutoE2E v1.0** — **adapter landed; NAVSIM scored, Bench2Drive paused.** The
-  Autoware Foundation's release checkpoint `kitscenes-epoch-5`, imported from
-  upstream at the release revision. NAVSIM `navtest` 0.500 EPDMS (12,146
-  scenarios, valid) on the 10 Hz nuPlan path, with the rear views from
-  OpenScene's keyframes (`keyframe_cameras`). Bench2Drive needed the route as
-  an observation field (`route_xy`); its 50-route sweep is paused with no
-  record here. Detail in [`docs/models/autoe2e.md`](models/autoe2e.md).
+- **AutoE2E v1.0** — **adapter landed; NAVSIM and neuroNCAP scored, Bench2Drive
+  paused.** The Autoware Foundation's release checkpoint `kitscenes-epoch-5`,
+  imported from upstream at the release revision. NAVSIM `navtest` 0.500 EPDMS
+  (12,146 scenarios, valid) on the 10 Hz nuPlan path, with the rear views from
+  OpenScene's keyframes (`keyframe_cameras`). neuroNCAP: the full official 20
+  scenario-scene pairs, 10 runs each (n = 200, valid), ncap_score mean 3.93,
+  collision_rate 25% (worst on frontal 3.33, best on side 4.46). Bench2Drive
+  needed the route as an observation field (`route_xy`); its 50-route sweep is
+  paused with no record here. Detail in [`docs/models/autoe2e.md`](models/autoe2e.md).
 
   | Claim | Verified how | Strength |
   |---|---|---|
