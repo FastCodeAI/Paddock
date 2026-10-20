@@ -650,6 +650,44 @@ def test_every_segment_of_a_path_list_is_withheld() -> None:
     assert out.count("<site path:") == 2
 
 
+def test_an_env_passthrough_knob_set_in_the_shell_is_on_the_record(tmp_path, monkeypatch) -> None:
+    """`FOO=1 paddock run ...` must change `run.json`, not just the process.
+
+    `runtime/env.py` forwards a model's declared `env_passthrough` names from
+    whoever's shell launched `paddock run` into the subprocess -- so two runs
+    that otherwise look identical can score differently depending on an
+    environment variable `run.json` never mentioned. `_measurement_config` has
+    to put it on the record the same way a site `[models.*] env` override
+    already is.
+    """
+    import dataclasses
+
+    from paddock.runner import _measurement_config
+
+    class _Harness:
+        def run_config(self):
+            return {}
+
+        def model_run_config(self, model):
+            return {}
+
+    base = _model_spec()
+    model = dataclasses.replace(
+        base,
+        runtime=dataclasses.replace(
+            base.runtime, env_passthrough=("ALPAMAYO_TEMPERATURE", "ALPAMAYO_UNSET_KNOB")
+        ),
+    )
+    monkeypatch.setenv("ALPAMAYO_TEMPERATURE", "1.2")
+    monkeypatch.delenv("ALPAMAYO_UNSET_KNOB", raising=False)
+
+    config = _measurement_config(_cfg(tmp_path), _Harness(), model)
+
+    assert config["model_env"] == {"ALPAMAYO_TEMPERATURE": "1.2"}, (
+        "only the name actually set in the shell belongs on the record, and an unset one must not appear"
+    )
+
+
 # ---- open-loop dispatch: batching, parallel nodes, resume ---------------
 
 

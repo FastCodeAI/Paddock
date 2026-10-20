@@ -8,10 +8,14 @@ provenance and its own 20-scenario-pair evaluation is net negative (4 better,
 6 worse, 10 unchanged, with two scenes regressing to a hard 0.00 -- consistent
 with overfitting to two scenes). `model.yaml` declares `benchmarks: []`
 deliberately, so `paddock run --model all --bench neuroncap` never includes
-it and `paddock report` never carries its row -- this is a real mechanism,
-not just this paragraph. `paddock run --model alpamayo15_overfit --bench
-neuroncap` still works directly, the same way it always has; that invocation
-is for exercising the wiring, not for producing a leaderboard number. Leave
+it -- that part is a real, enforced mechanism (`runner.py` filters `--model
+all` by `bench in m.benchmarks`). `paddock run --model alpamayo15_overfit
+--bench neuroncap` still works directly, the same way it always has, and
+**does** write a normal, valid, tracked row to `results/` that `paddock
+report` will show: `benchmarks: []` has no effect on `paddock report`'s
+filtering, which goes by `run.valid` alone. Nothing here should be compared
+against `alpamayo15`'s own scored rows, but nothing currently stops it from
+appearing on the shared leaderboard if someone runs it that way. Leave
 `benchmarks: []` until gallops produces a checkpoint through its real
 `checkpoint.json`/`{weights}` contract; until then this stays evidence that
 the SFT wiring works, not a candidate for the leaderboard.

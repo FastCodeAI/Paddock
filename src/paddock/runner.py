@@ -77,9 +77,13 @@ def _measurement_config(cfg: SiteConfig, harness, model_spec: ModelSpec, **given
     """Everything that changes what was measured, for the run id and `run.json`.
 
     What the caller knows (`scene`, `runs`, `limit`), the model's cameras, the
-    benchmark's own measurement-changing settings (`run_config()`), and any
-    site `[models.<name>] env` block -- an environment override can change a
-    model's input (alpamayo's frame selection, say), so it is on the record.
+    benchmark's own measurement-changing settings (`run_config()`), any site
+    `[models.<name>] env` block, and any of the model's own declared
+    `runtime.env_passthrough` names actually set in the launching shell --
+    an environment override can change a model's input (alpamayo's frame
+    selection, say), so it is on the record. `model_env` reflects the same
+    override order `runtime.env.build()` applies: a site override, then a
+    passthrough name set in the shell, wins over a default for the same key.
     A pairing table arrives already merged into both (`SiteConfig.paired`), so
     it is recorded, and hashed, exactly as the same values set globally would be.
     """
@@ -89,9 +93,15 @@ def _measurement_config(cfg: SiteConfig, harness, model_spec: ModelSpec, **given
         **harness.run_config(),
         **harness.model_run_config(model_spec),
     }
+    model_env: dict[str, str] = {}
     override = cfg.models.get(model_spec.name)
     if override is not None and override.env:
-        config["model_env"] = {k: _portable_value(v) for k, v in override.env.items()}
+        model_env.update({k: _portable_value(v) for k, v in override.env.items()})
+    model_env.update(
+        {k: _portable_value(os.environ[k]) for k in model_spec.runtime.env_passthrough if k in os.environ}
+    )
+    if model_env:
+        config["model_env"] = model_env
     return config
 
 
