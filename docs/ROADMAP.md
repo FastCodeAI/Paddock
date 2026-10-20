@@ -538,8 +538,8 @@ Open work, in the order it bites:
 
 `adapters/benchmarks/bench2drive`: a model-agnostic CARLA `agent.py`, the
 vendored dual-PID tracker, and a harness that fails a route on every failure
-the evaluator distinguishes rather than scoring it. All five models
-(openpilot, visionpilot, alpamayo15, drivejepa, meteor) declare it.
+the evaluator distinguishes rather than scoring it. Six models (openpilot,
+visionpilot, alpamayo15, drivejepa, meteor, autoe2e) declare it.
 
 Models **have** driven: 50 routes each for DriveJEPA, VisionPilot, Alpamayo 1.5,
 OpenPilot, QwenDrive and five constant-velocity speeds, 500 per-route records
@@ -560,6 +560,12 @@ aggregated in the README and tracked as ten `results/` runs (below).
 | why each of the three improved | DriveJEPA and QwenDrive drive further instead of stalling (blocked 17 → 7, 16 → 10) at flat-to-worse penalty; only Alpamayo 1.5's penalty rises (0.648 → 0.725, vehicle collisions 42 → 23) | **argued** from the infraction breakdown; no per-tick analysis |
 | the native-rate result holds for every model | only DriveJEPA, Alpamayo 1.5 and QwenDrive were re-run; OpenPilot's native rate is already 20 Hz and VisionPilot was not re-run | **not measured** |
 | the native-rate runs cover the whole route set | route 3800 never scored for alpamayo15 or qwendrive — CARLA segfaults (`Signal=11`), six attempts; recorded `n_failed: 1`, `status: partial`, never a zero, so both means are over 49 routes | **verified**, and a stated limit of those two rows |
+| a recorded route keeps every tick's whole reply and the world beside it (`recorder.py`), and every model camera as a thumbnail | ticks.jsonl / route_plan.json / actors.jsonl and six `model_*` directories on live AutoE2E routes (20 Oct 2026); ~98 KB a tick with recording on, gated on `record` | **strong** |
+| one video per route and a dashboard, for any model | `tools/benchmarks/bench2drive/` rendered AutoE2E's six-camera routes and served them; the page runs without script errors under jsdom | **strong** for AutoE2E; openpilot's two-camera layout is kept, not re-rendered since |
+| `--resume` reuses scored routes and drives the rest | unit-tested (scored, killed, torn, all-crashed, short of repetitions); a live run resumed in place after its CARLA was killed, config marker matched | **strong** for the rule, moderate live (no scored route existed to reuse) |
+| the early stop ends a route scored as it stood | stuck / over-time / collision / by-hand rules unit-tested; live, AutoE2E's 1711 was ended by the collision rule at 3.85 s and scored `Failed - TickRuntime`, DS 8.85; the stuck and over-time rules ran live on openpilot's sweep (`docs/benchmarks/bench2drive.md`) | **strong** for collision, stuck and over time; the red-light hold and the by-hand stop are **unit-tested only** |
+| N workers sharing one GPU, through reboots | `campaign.py` (from openpilot's sweep) drove AutoE2E on three workers, and its sweep restarted after a VM preemption with one command | moderate |
+| `make check` is safe beside a live sweep | the harness tests no longer reap port 2000; a test with a stand-in CARLA on 2000 fails without the fix, and a full `make check` ran beside a live run's CARLA on port 2000 without touching it | **strong** |
 
 Needs a site with CARLA 0.9.15 and the pinned checkout wired in
 `[benchmarks.bench2drive]`. Detail in `docs/benchmarks/bench2drive.md`.
