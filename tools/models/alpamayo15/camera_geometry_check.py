@@ -58,7 +58,13 @@ def _load(root: Path, version: str, table: str):
 
 
 def _first_n_samples(root: Path, version: str, n: int) -> list[dict[str, dict]]:
-    """The first *n* keyframe sample_tokens with all three wide cameras present."""
+    """The first *n* keyframe sample_tokens with all three wide cameras present.
+
+    "First" means first in `sample_data.json` order, which in practice is one
+    scene's worth of consecutive keyframes -- not `n` independent calibrations.
+    Fine for an illustrative contact sheet; not a substitute for a calibration
+    check across distinct `calibrated_sensor_token`s.
+    """
     sensors = {s["token"]: s["channel"] for s in _load(root, version, "sensor")}
     calibrated = {c["token"]: c for c in _load(root, version, "calibrated_sensor")}
 
@@ -73,7 +79,10 @@ def _first_n_samples(root: Path, version: str, n: int) -> list[dict[str, dict]]:
             "filename": sd["filename"],
             "calibrated_sensor_token": sd["calibrated_sensor_token"],
         }
-        if len(per_sample) >= n * 20:  # enough candidates without reading the whole 1.3 GB table
+        # `_load` already parsed the whole 1.3 GB sample_data.json into memory --
+        # this only shortcuts further Python-level iteration over that list,
+        # once enough candidates are in hand, not the read itself.
+        if len(per_sample) >= n * 20:
             break
 
     chosen = [recs for recs in per_sample.values() if all(c in recs for c in NEEDED)][:n]
@@ -101,11 +110,14 @@ def main() -> None:
 
     font = ImageFont.load_default()
     PW, PH, PAD = 420, 236, 24
-    cols = (
-        ["source"]
-        + [f"{cam} fill" for cam in NEEDED]
-        + ["CAM_FRONT zoom"]
-        + [f"{cam} letterbox" for cam in NEEDED]
+    # (cam, mode) pairs, not a combined string -- a substring match against a
+    # combined "CAM_FRONT_RIGHT fill" label previously resolved to CAM_FRONT,
+    # since "CAM_FRONT" is a prefix of "CAM_FRONT_RIGHT".
+    cols: list[tuple[str, str]] = (
+        [(NEEDED[0], "source")]
+        + [(cam, "fill") for cam in NEEDED]
+        + [("CAM_FRONT", "zoom")]
+        + [(cam, "letterbox") for cam in NEEDED]
     )
     sheet = Image.new(
         "RGB", (PW * len(cols) + PAD * (len(cols) + 1), (PH + 60) * len(samples) + PAD), (16, 16, 18)
@@ -114,35 +126,30 @@ def main() -> None:
 
     for row, recs in enumerate(samples):
         y = PAD + row * (PH + 60)
-        thumb_src = None
-        for col, name in enumerate(cols):
+        for col, (cam, mode) in enumerate(cols):
             x = PAD + col * (PW + PAD)
-            if name == "source":
-                cam, rec = NEEDED[0], recs[NEEDED[0]]
-                src, image = _pinhole(rec, root)
-                thumb_src = src
+            rec = recs[cam]
+            src, image = _pinhole(rec, root)
+            if mode == "source":
                 arr = np.asarray(image.resize((PW, int(PW * image.height / image.width))))
                 label = f"{cam} source, {src.width}x{src.height}, {src.hfov_deg():.0f} deg hFOV"
             else:
-                cam = next(c for c in NEEDED if c in name)
-                rec = recs[cam]
-                src, image = _pinhole(rec, root)
-                if "zoom" in name:
+                if mode == "zoom":
                     arr = warp_zoom(image, src)
                     delivered, expected = crop_hfov_deg(src, crop_box(src, TELE_HFOV_DEG)), TELE_HFOV_DEG
-                elif "letterbox" in name:
+                elif mode == "letterbox":
                     arr = warp_letterbox(image, src)
                     delivered, expected = WIDE_HFOV_DEG, WIDE_HFOV_DEG
                 else:
                     arr = warp_fill(image, src)
                     delivered, expected = crop_hfov_deg(src, crop_box(src, None)), WIDE_HFOV_DEG
                 ratio = expected / delivered if delivered else float("nan")
+                name = f"{cam} {mode}"
                 label = f"{name}: delivers {delivered:.0f} deg where {expected:.0f} expected ({ratio:.2f}x)"
                 arr = np.asarray(Image.fromarray(arr).resize((PW, PH)))
             thumb = Image.fromarray(arr).resize((PW, int(PW * arr.shape[0] / arr.shape[1])))
             sheet.paste(thumb, (x, y + 24))
             draw.text((x, y), label, fill=(230, 230, 230), font=font)
-        del thumb_src
 
     out_path = paths.runs() / "alpamayo15_camera_geometry_check.png"
     sheet.save(out_path)
