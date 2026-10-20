@@ -192,7 +192,9 @@ SFT-label collection, not something this repo's own adapters set. When
 present, the harness passes `--engine.logger.allowed-cams None` so the vendor
 logger records every camera a multi-camera model conditions on instead of
 just `CAM_FRONT`, so Gallops can join those per-step records by timestamp.
-Paddock itself never reads this variable.
+Paddock itself never *sets* this variable -- nothing in this repo originates
+a value for it -- but the harness does read its presence to decide the
+logging flag above.
 
 ## Reproduction status
 
