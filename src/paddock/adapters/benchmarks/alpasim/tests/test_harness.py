@@ -25,6 +25,7 @@ from paddock.adapters.benchmarks.alpasim.harness import (
     NotScored,
     load_scene_set,
     parse_summary,
+    port_bases,
     scorer_sha,
 )
 from paddock.benchmark import Episode
@@ -266,6 +267,29 @@ def test_the_wizard_is_invoked_as_the_package_not_a_main_module(tmp_path: Path) 
     )
     assert command[1:3] == ["-m", "alpasim_wizard"]
     assert "alpasim_wizard.main" not in " ".join(command)
+
+
+def test_a_run_with_its_own_port_range_moves_the_bridge_and_the_wizard_into_it(tmp_path: Path) -> None:
+    """Two AlpaSim runs at once (two gate lanes) both found the same free ports from
+    the fixed bases before either bound them. A run given PADDOCK_BASE_PORT keeps
+    to its range; one without keeps the ports it always had."""
+    assert port_bases({}) == (9200, None)
+    assert port_bases({"PADDOCK_BASE_PORT": "9700"}) == (9750, 9760)
+    assert port_bases({"PADDOCK_BASE_PORT": "9800"}) == (9850, 9860)
+
+    def command(**kw) -> list[str]:
+        return launcher.wizard_command(
+            repo=tmp_path,
+            python="python",
+            scene_id="clipgt-x",
+            out_dir=tmp_path / "out",
+            bridge_port=9750,
+            searchpath=None,
+            **kw,
+        )
+
+    assert "wizard.baseport=9760" in command(baseport=9760)
+    assert not any(arg.startswith("wizard.baseport=") for arg in command())
 
 
 def test_the_wizard_is_not_told_to_force_determinism(tmp_path: Path) -> None:

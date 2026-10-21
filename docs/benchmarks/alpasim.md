@@ -40,6 +40,14 @@ Roughly **5 minutes per scene** with a 10B driver at 4 cameras and 10 Hz — a
 read. The constant-velocity floor over the same 10 scenes takes about 8 minutes,
 because the cost is rendering rather than inference.
 
+**Two runs at once.** The bridge starts looking for a port at 9200 and the
+wizard hands its services host ports from 6000, skipping ports already bound.
+Two runs started together both find the same free ones before either binds
+them. A run with `PADDOCK_BASE_PORT` set (the gate sets one per lane) keeps to
+its own range instead: the bridge from base + 50, the wizard's services from
+base + 60. Without it, the ports are 9200 and 6000 as before. The containers run
+outside the run's `taskset`, so their CPU is not capped by it.
+
 ## Configuration
 
 ```toml

@@ -203,6 +203,7 @@ def wizard_command(
     video: bool = False,
     video_every_nth_frame: int = 1,
     scene_cache: str | None = None,
+    baseport: int | None = None,
 ) -> list[str]:
     """The wizard invocation for one scene.
 
@@ -256,6 +257,11 @@ def wizard_command(
         # makes min_ade a different quantity under the same name.
         "eval.scorers.min_ade.time_deltas=[0.5,1.0,2.5]",
     ]
+    if baseport is not None:
+        # Where the wizard starts handing out its services' host ports. It skips
+        # ports already bound, but two runs launched together both see the same
+        # free ones before either binds, so each run gets a base of its own.
+        command.append(f"wizard.baseport={baseport}")
     if scene_cache:
         # Where the USDZ artifacts are cached. Site-specific and large, so it is
         # a paddock.toml key rather than a default -- an unset cache re-fetches
