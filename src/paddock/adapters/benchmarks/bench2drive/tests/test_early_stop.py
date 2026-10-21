@@ -156,7 +156,7 @@ def test_waiting_at_a_red_light_holds_the_stuck_clock() -> None:
 
 def test_describe_names_the_collision_rule() -> None:
     assert describe({"stuck_s": 5.0, "collision": True}) == (
-        "5 s without 3 m of route progress or a collision the leaderboard counts"
+        "5 s without 3 m of route progress or a collision the leaderboard records"
     )
 
 
@@ -165,7 +165,9 @@ def test_the_collision_count_is_the_leaderboards_own_read_up_the_stack() -> None
 
     class CollisionTest:  # the leaderboard criterion's class name is what is matched
         def __init__(self, n):
-            self.actual_value = n
+            self.events = [object()] * n  # what it recorded, and the penalty is computed from
+            # A sidewalk brush raises actual_value without an event: not a collision the score holds.
+            self.actual_value = n + 3
 
     class RunningRedLightTest:
         actual_value = 7

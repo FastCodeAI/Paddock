@@ -80,7 +80,7 @@ routes_file = "bench2drive220.xml"                   # under repo/leaderboard/da
 # record     = "false"               # per-tick front/BEV JPEGs + log.csv; ~40 GB per full sweep
 # stop_stuck_s       = "30"          # end a route 30 s after its last 3 m of progress; see Ending routes early
 # stop_expert_factor = "4"           # end a route at 4x the expert's time on it; needs `expert`
-# stop_on_collision  = "true"        # end a route at the first collision the leaderboard counts
+# stop_on_collision  = "true"        # end a route at the first collision the leaderboard records
 # expert = "/path/to/expert"         # what `python -m tools.benchmarks.bench2drive.expert summarize` wrote
 ```
 
@@ -163,7 +163,7 @@ Three settings end a route sooner (`early_stop.py`):
 |---|---|
 | `stop_stuck_s` | the ego has gone this many game seconds without getting 3 m further along the route (the blocked test's 0.1 m/s over 30 s). Progress, not speed, so a car that a driver-resume nudge keeps creeping counts too. The clock is held while the ego stands at a red or amber light, so a short window does not end every route that meets a red signal; it does run while the car yields to a pedestrian or waits for a gap, so a window of a few seconds cuts those scenes short too |
 | `stop_expert_factor` + `expert` | the game clock reaches this multiple of Think2Drive's time on the route (`duration_s` of `<expert>/<route>/expert_traj.json`). The nine routes with no expert clip get the stuck rule alone |
-| `stop_on_collision` | the leaderboard's own `CollisionTest` counts a collision: the same count the infraction penalty is computed from, read by the agent through the ScenarioManager, one tick after the contact |
+| `stop_on_collision` | the leaderboard's own `CollisionTest` records a collision with a static object, a vehicle or a pedestrian: the events the infraction penalty is computed from, read by the agent through the ScenarioManager, one tick after the contact. Not its `actual_value`, which also counts a brush with the sidewalk that is neither recorded nor penalised |
 
 And one stop that is not a rule: a route ends **by hand** when its directory
 grows a `stop_request` file while it drives, which the dashboard's "Stop route"

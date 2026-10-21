@@ -18,8 +18,9 @@ stop_stuck_s`` / ``stop_expert_factor`` / ``stop_on_collision``, see ``harness.p
   short window does not end every route that meets a red signal.
 * **over_time** -- the game clock has reached ``stop_expert_factor`` times the
   expert's (Think2Drive's) time on the route.
-* **collision** -- the leaderboard's own ``CollisionTest`` has counted a
-  collision: the one the score's penalty is for (:func:`scenario_collisions`).
+* **collision** -- the leaderboard's own ``CollisionTest`` has recorded a
+  collision: one the score's penalty is for, not a brush with the sidewalk
+  (:func:`scenario_collisions`).
 
 And one that is not a rule: **manual** -- someone asked for it, by creating the
 route's stop-request file (the dashboard's "Stop route" button does). A person
@@ -144,14 +145,18 @@ def _scenario_manager() -> Any:
 
 
 def scenario_collisions() -> int | None:
-    """Collisions the leaderboard has counted on this route so far, or None if it cannot be read.
+    """Collisions the leaderboard has recorded on this route so far, or None if it cannot be read.
 
     The route's ``CollisionTest`` criterion (``route_scenario._create_test_criteria``
-    at 7ec25d1) counts each collision once (the same actor within 5 s is one) and
-    is what the infraction penalty is computed from, so stopping on it stops on
-    exactly the collisions the score holds. Read through the manager's
-    ``scenario.get_criteria()``; it is updated after the agent's tick, so a
-    collision is seen one tick after it happens.
+    at 7ec25d1) records each collision with a static object, a vehicle or a
+    pedestrian as an event (the same actor within 5 s is one), and the infraction
+    penalty is computed from those events, so counting them stops on exactly the
+    collisions the score holds. Not its ``actual_value``: that is incremented
+    before the contact is classified, so it also counts a brush with the
+    sidewalk, which the criterion neither records nor penalises -- stopping on it
+    ended routes the leaderboard would have let drive on. Read through the
+    manager's ``scenario.get_criteria()``; it is updated after the agent's tick,
+    so a collision is seen one tick after it happens.
     """
     manager = _scenario_manager()
     scenario = getattr(manager, "scenario", None)
@@ -159,7 +164,7 @@ def scenario_collisions() -> int | None:
         return None
     try:
         return sum(
-            int(getattr(c, "actual_value", 0) or 0)
+            len(getattr(c, "events", None) or [])
             for c in scenario.get_criteria()
             if type(c).__name__ == "CollisionTest"
         )
@@ -192,7 +197,7 @@ def describe(rules: dict[str, Any]) -> str:
     if rules.get("expert_factor"):
         parts.append(f"{rules['expert_factor']:g}x the expert's time on the route")
     if rules.get("collision"):
-        parts.append("a collision the leaderboard counts")
+        parts.append("a collision the leaderboard records")
     return " or ".join(parts)
 
 

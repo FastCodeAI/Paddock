@@ -30,7 +30,7 @@ come from the environment, set by ``harness.run_episode``:
     PADDOCK_STOP_AFTER_S  if set, end the route at this game time (the harness
                           sets it to a multiple of the expert's time on the route)
     PADDOCK_STOP_ON_COLLISION  "1": end the route at the first collision the
-                          leaderboard counts
+                          leaderboard records (and so penalises)
     PADDOCK_STOP_REQUEST  a file whose appearance ends the route by hand (the
                           dashboard's "Stop route" writes it)
     PADDOCK_STOP_RECORD   where to write why and when a route was ended early;

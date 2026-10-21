@@ -405,7 +405,7 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         ``stop_stuck_s``: game seconds without :data:`early_stop.PROGRESS_M` of
         progress along the route. ``stop_expert_factor``: a multiple of the
         expert's time on the route, read from ``expert``. ``stop_on_collision``:
-        the first collision the leaderboard counts. A malformed value reads as
+        the first collision the leaderboard records. A malformed value reads as
         off here; ``preflight`` is what reports it.
         """
         rules: dict[str, Any] = {}

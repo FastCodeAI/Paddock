@@ -744,7 +744,7 @@ def test_preflight_accepts_the_pinned_leaderboards_tick_cap(tmp_path, monkeypatc
 def test_stop_on_collision_is_a_rule_on_the_record_and_reaches_the_agent(tmp_path, monkeypatch) -> None:
     harness = _harness(_site(tmp_path, monkeypatch, COMPLETED, stop_on_collision="true"))
     assert harness.run_config()["early_stop"]["collision"] is True
-    assert "a collision the leaderboard counts" in harness.remarks()[0]
+    assert "a collision the leaderboard records" in harness.remarks()[0]
     out = tmp_path / "out"
     harness.run_episode(_episode(), "http://127.0.0.1:9000", out)
     assert json.loads((out / "env.json").read_text())["PADDOCK_STOP_ON_COLLISION"] == "1"
