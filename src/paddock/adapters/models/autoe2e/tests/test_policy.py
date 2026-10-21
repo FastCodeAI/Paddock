@@ -292,6 +292,7 @@ class _Upstream:
 
     def __init__(self) -> None:
         self.loaded: list[Path] = []
+        self.parsed: list[str] = []
         self.matched: list[dict] = []
         self.rendered: list[tuple] = []
 
@@ -300,9 +301,11 @@ class _Upstream:
 
         class MapAdapter:
             def __init__(self, scene_map, **kwargs) -> None:
-                self.kwargs = kwargs
+                self.scene_map, self.kwargs = scene_map, kwargs
 
             def extract(self):
+                # The SDK's SceneMap parses map.osm on first use, and extract() is that use.
+                calls.parsed.append((self.scene_map / "maps" / "map.osm").read_text())
                 return SimpleNamespace(map_version=self.kwargs["map_version"])
 
         class Matcher:
@@ -324,7 +327,7 @@ class _Upstream:
                 )
 
         return SimpleNamespace(
-            scene_map=lambda path: calls.loaded.append(Path(path)) or "scene map",
+            scene_map=lambda path: calls.loaded.append(Path(path)) or Path(path),
             revision="data-revision",
             map_adapter=MapAdapter,
             file_sha256=lambda path: hashlib.sha256(Path(path).read_bytes()).hexdigest(),
@@ -357,13 +360,27 @@ def test_the_map_is_read_from_a_scratch_copy_and_drawn_at_the_ego_pose(tmp_path)
 
     (read,) = upstream.loaded
     assert read.name == "scene-1" and not read.is_relative_to(tmp_path / "dataset")
-    assert (read / "maps" / "map.osm").read_text() == "<osm/>"
+    assert upstream.parsed == ["<osm/>"]
     assert sorted(p.name for p in Path(files["map"]).parent.iterdir()) == ["map.osm", "origin.json"]
     ((drawn_route, pose),) = upstream.rendered
     assert (pose.x_enu_m, pose.y_enu_m, pose.timestamp_ns) == (3.0, 4.0, 5_000_000_000)
     assert pose.yaw_rad == pytest.approx(0.3)
     assert drawn_route is None and map_valid and not route_valid and not route.any()
     assert semantic.dtype == route.dtype == np.float32 and semantic.shape == (14, NAV_H, NAV_W)
+
+
+def test_nothing_of_the_scratch_copy_outlives_the_parse(tmp_path) -> None:
+    """The runner stops a node with terminate() and then kill(), so no finalizer is sure to run:
+    a copy kept for the node's life was left on the host by every run, 93 MB each."""
+    upstream, files = _Upstream(), _map_files(tmp_path)
+    nav = _Navigation(upstream.modules())
+    trace = np.array([[0.0, 0.0, 0.0, 0.0], [0.1, 1.0, 0.0, 0.01]])
+    for _ in range(2):
+        _, _, map_valid, route_valid = nav.raster(files, trace, _ego2world(1.0, 0.0, 0.01), 100_000)
+        assert map_valid and route_valid
+    (read,) = upstream.loaded
+    assert upstream.parsed == ["<osm/>"], "parsed once, from the copy"
+    assert not read.parent.exists(), "and the copy is gone once it is"
 
 
 def test_the_route_is_matched_to_the_logged_drive_once_per_scene_and_drive(tmp_path) -> None:

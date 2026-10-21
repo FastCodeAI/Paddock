@@ -311,12 +311,13 @@ class _Navigation:
 
     Maps are read from a scratch copy: for a scene with degenerate lanelets, upstream writes a
     sanitised map.osm beside the one it was given (kit_scenes/map.py), and the dataset is not
-    this process's to write to.
+    this process's to write to. The copy lasts only for the load (the SDK parses map.osm on
+    first use, which `extract()` is; the matcher works from memory): a node is stopped with
+    terminate() and then kill(), so a copy held for its life was left on the host by every run.
     """
 
     def __init__(self, modules: SimpleNamespace) -> None:
         self.m = modules
-        self._scratch = tempfile.TemporaryDirectory(prefix="autoe2e-maps-")
         self._maps: dict[str, tuple] = {}
         self._routes: dict[tuple[str, str], Any] = {}
 
@@ -327,19 +328,20 @@ class _Navigation:
         key = map_files["map"]
         if key not in self._maps:
             scene_id = Path(map_files["map"]).parent.parent.name
-            shadow = Path(self._scratch.name) / scene_id
-            (shadow / "maps").mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(map_files["map"], shadow / "maps" / "map.osm")
-            shutil.copyfile(map_files["origin"], shadow / "maps" / "origin.json")
-            sha = self.m.file_sha256(shadow / "maps" / "map.osm")
-            scene_map = self.m.scene_map(shadow)
-            navigation_map = self.m.map_adapter(
-                scene_map,
-                map_version=f"kitscenes:{scene_id}:{sha[:16]}",
-                map_sha256=sha,
-                frame_id=f"kitscenes:{scene_id}:local_enu",
-                source_revision=self.m.revision,
-            ).extract()
+            with tempfile.TemporaryDirectory(prefix="autoe2e-maps-") as scratch:
+                shadow = Path(scratch) / scene_id
+                (shadow / "maps").mkdir(parents=True)
+                shutil.copyfile(map_files["map"], shadow / "maps" / "map.osm")
+                shutil.copyfile(map_files["origin"], shadow / "maps" / "origin.json")
+                sha = self.m.file_sha256(shadow / "maps" / "map.osm")
+                scene_map = self.m.scene_map(shadow)
+                navigation_map = self.m.map_adapter(
+                    scene_map,
+                    map_version=f"kitscenes:{scene_id}:{sha[:16]}",
+                    map_sha256=sha,
+                    frame_id=f"kitscenes:{scene_id}:local_enu",
+                    source_revision=self.m.revision,
+                ).extract()
             self._maps[key] = (scene_id, scene_map, navigation_map, sha)
         return self._maps[key]
 
