@@ -817,8 +817,8 @@ def test_the_autoe2e_profile_pins_every_scene_it_can_be_asked_for() -> None:
 
 def test_the_autoe2e_bridge_flags_match_its_driver_config() -> None:
     """Control step and warm-up are the driver config's; the six renamed cameras are
-    exactly the six it renders and re-declares, each an undistorted pinhole whose
-    size, focal length and principal point give the KITScenes field of view."""
+    exactly the six it renders and re-declares, each an undistorted global-shutter
+    pinhole whose size, focal length and principal point give the KITScenes field of view."""
     import math
 
     import yaml
@@ -843,6 +843,7 @@ def test_the_autoe2e_bridge_flags_match_its_driver_config() -> None:
     for camera_id, camera in extra.items():
         pinhole = camera["intrinsics"]["opencv_pinhole"]
         assert camera["intrinsics"]["model"] == "opencv_pinhole"
+        assert camera["shutter_type"] == "GLOBAL", camera_id
         for key, count in (("radial", 6), ("tangential", 2), ("thin_prism", 4)):
             assert pinhole[key] == [0.0] * count, (camera_id, key)
         height, width = camera["resolution_hw"]

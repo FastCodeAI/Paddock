@@ -183,7 +183,9 @@ no map.
 
 **Cameras.** AlpaSim's 26.01 scenes record six f-theta cameras, none looking
 straight back. The profile re-renders them as pinholes, every distortion
-coefficient zero, at the KITScenes calibration's field of view (the release's
+coefficient zero and with a global shutter (the scenes' own cameras roll top to
+bottom, and the node projects each frame as one instant), at the KITScenes
+calibration's field of view (the release's
 `datasets/kitscenes-val/v3.5/rig/*.json` with the image sizes KITScenes ships,
 5856 × 3104 front and 3504 × 2272 ring):
 
