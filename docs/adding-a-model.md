@@ -121,7 +121,10 @@ Three fields are worth more thought than they look:
   into "waiting for 24 GB (12 GB free)".
 - **`env`** — the preferred way to point a repo at data. Most research repos
   already read an environment variable for their data root; find it and use it
-  rather than patching source.
+  rather than patching source. Every key except the tuning ones below is
+  recorded, as written, in `run.json` as `declared_env` and hashed into the run
+  id, so changing one (a planner head, a switch) gives new runs a new id and
+  `--resume` refuses to continue an old run under it.
 - **`tuning_env`** — the `env` keys a site may override in `[models.<name>.env]`
   without changing what the model computes: thread counts, memory caps. A site
   override of any other key (a checkpoint, a horizon, a mode) is recorded in
