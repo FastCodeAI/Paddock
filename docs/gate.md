@@ -193,12 +193,11 @@ Without `--execute` it prints, per benchmark, the exact `paddock run` line
    node and is recorded as `model_env`; the neuroNCAP `renderer_url` moved to
    `--renderer-port` (default 8700), so the renderers the smoke starts do not
    land on the site's port, where a long-lived `paddock renderer` usually is;
-   neuroNCAP's `video = "keep"`, so frames are kept and never encoded (the
-   serial encode was 12 of 132 minutes; `"off"` would switch off the per-run
-   records the gate pairs on); and nuScenes' `index_cache` in
-   `{roots.runs}/gate/cache/nuscenes`, one index every checkout shares, unless
-   the site names its own. None of these is in a run config, so none changes
-   what is measured;
+   and nuScenes' `index_cache` in `{roots.runs}/gate/cache/nuscenes`, one index
+   every checkout shares, unless the site names its own. Neither is in a run
+   config, so neither changes what is measured. neuroNCAP's `video` stays the
+   site's: with the default `encode`, every episode leaves its mp4s, which is how
+   a regression is looked at;
 2. launches one benchmark at a time, each after `nvidia-smi` shows enough free
    memory on the card the model will use: the model's declared `vram_gb`, plus
    its simulator's share (`SIMULATOR_GB`: 8 GB for neuroNCAP's renderer, as
@@ -233,15 +232,34 @@ one after another, before the tiers existed, on a day when the NAS read at
 | bench2drive | 240 min | CARLA at 0.06–0.17x real time, one inference per 0.05 s tick; one route hit its 90 min timeout |
 | **total** | **~7.7 h** | |
 
-A day with a healthy NAS saves most of the open-loop time; the closed-loop
-two are most of the cost either way. From those measurements, and not yet timed
-as such: the **quick tier** in three lanes is ~40-45 min on that day, the three
-open-loop subsets side by side (the longest took 35 min) and neuroNCAP's three
-quick episodes (~20 min) in the first lane to come free; the **closed tier**, one subset at a time, is ~132 min of
-neuroNCAP plus ~87 min of Bench2Drive on its 7 routes (they took 87 of the
-240 min). The same run checked the gate against
-itself: nuScenes 2.497 against the released run's 2.497 and neuroNCAP 3.175
-against 3.175 on the shared seeds, both NEUTRAL to the last decimal.
+The same run checked the gate against itself: nuScenes 2.497 against the
+released run's 2.497 and neuroNCAP 3.175 against 3.175 on the shared seeds, both
+NEUTRAL to the last decimal.
+
+**The tiered smoke, timed** (released Drive-JEPA, `--tier all`, three lanes for
+the quick tier, 2026-10-20 18:49-21:30 PDT, state dir
+`{roots.runs}/gate/smoke/drivejepa-released-timing-20261021`). A quiet evening:
+box CPU 14%, the NAS reading 65 MB/s, the GPU shared with one other job.
+
+| subset | tier | wall clock | against its baseline |
+|---|---|---|---|
+| kitscenes | quick | 5.7 min | identical (ADE 3.222) |
+| nuscenes | quick | 7.8 min, the shared index built once | identical (L2 2.497) |
+| navsim | quick | 13.4 min | identical (EPDMS 0.875) |
+| neuroncap_quick | quick | 12.8 min | identical (4.000, 3 episodes) |
+| neuroncap | closed | 45.0 min | identical (3.175, 18 episodes) |
+| bench2drive | closed | 95.7 min, 7.4-23.0 min a route | +7.0 driving score, t 0.82, MDE 28.7: NEUTRAL, cannot ship |
+| **total** | | **2 h 40 min**: quick tier 19 min, closed tier 2 h 21 min | overall HOLD |
+
+Most of the difference from the 7.7 h above is the evening, not the code: the
+NAS was about 20x faster, and neuroNCAP's 18 episodes took 45 min in all,
+where on 2026-10-16 their simulation alone took 104 min on a busy GPU. One run
+cannot split the two.
+What the code did, seen in the logs: the nuScenes index was built once into the
+shared cache and is reused by every checkout from now on; one Bench2Drive route
+(3364) found CARLA not yet up and lost 60 s to it instead of 600 s; three lanes
+ran the quick tier side by side. Bench2Drive is now the longest part of the
+closed tier and the least sensitive one.
 
 The baseline manifest is site-local TOML:
 
@@ -318,9 +336,6 @@ the check that the site's baselines are sound.
 - **AlpaSim is not CPU-capped.** Its simulator runs in `docker compose`
   containers, which inherit nothing from the lane's `taskset`/`nice`. `--cores`
   lists that overlap are refused, but the containers' CPU is outside them.
-- **neuroNCAP frames stay on disk** (`video = "keep"`) under each run's
-  artifacts directory, a few hundred MB per smoke. Delete them once the verdict
-  is read if the disk is short.
 - **Bench2Drive needs `patches/Bench2Drive/` applied** to the site's checkout;
   preflight refuses an evaluator without them. Unpatched, a crashed route kills
   every CARLA its user runs on the GPU, other lanes included.

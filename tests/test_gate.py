@@ -959,20 +959,19 @@ def test_the_site_config_gains_the_smoke_overrides_and_loses_nothing(tmp_path: P
     expected = tomllib.loads(site.read_text())
     expected["models"]["drivejepa"]["env"]["DRIVEJEPA_CHECKPOINT"] = "ck.pt"
     expected["benchmarks"]["neuroncap"]["renderer_url"] = "http://127.0.0.1:8700"
-    expected["benchmarks"]["neuroncap"]["video"] = "keep"
     assert derived == expected
 
 
-def test_the_smoke_keeps_frames_and_shares_one_nuscenes_index(tmp_path: Path) -> None:
-    """Video encoding was 12 of neuroNCAP's 132 smoke minutes, and a fresh worktree spent
-    20 of nuScenes' 35 rebuilding its index. Neither is measured, so the smoke skips both;
-    "off" would also switch off the records the gate pairs on, so it is "keep"."""
+def test_the_smoke_shares_one_nuscenes_index_and_keeps_the_sites_videos(tmp_path: Path) -> None:
+    """A fresh worktree spent 20 of nuScenes' 35 smoke minutes rebuilding its index, so
+    every checkout shares one. neuroNCAP's videos are how a regression is looked at, so
+    the site's `video` setting is left alone."""
     import tomllib
 
     site = tmp_path / "paddock.toml"
-    site.write_text('site = "test"\n[benchmarks.neuroncap]\nvideo = "off"\n')
+    site.write_text('site = "test"\n[benchmarks.neuroncap]\nvideo = "encode"\n')
     derived = tomllib.loads(gate.smoke_config(site, "drivejepa", {}, 8700, tmp_path / "cache"))
-    assert derived["benchmarks"]["neuroncap"]["video"] == "keep"
+    assert derived["benchmarks"]["neuroncap"]["video"] == "encode"
     assert derived["benchmarks"]["nuscenes"]["index_cache"] == str(tmp_path / "cache" / "nuscenes")
     site.write_text('site = "test"\n[benchmarks.nuscenes]\nindex_cache = "/site/own.pkl"\n')
     derived = tomllib.loads(gate.smoke_config(site, "drivejepa", {}, 8700, tmp_path / "cache"))

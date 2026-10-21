@@ -985,9 +985,10 @@ def smoke_config(
     neuroNCAP `renderer_url` moved to `renderer_port` (the smoke starts its own
     renderers there, and the site's port is usually where someone's long-lived
     `paddock renderer` already listens, which the harness's preflight refuses to
-    start beside); neuroNCAP's `video = "keep"`; and, unless the site names one,
-    nuScenes' `index_cache` in `cache_dir`. None of these is in a run config, so
-    none changes what is measured or the run id.
+    start beside); and, unless the site names one, nuScenes' `index_cache` in
+    `cache_dir`. Neither is in a run config, so neither changes what is measured
+    or the run id. neuroNCAP's `video` stays the site's: its mp4s are how a
+    regression is looked at.
     """
     raw = tomllib.loads(site_config.read_text())
     own = raw.setdefault("models", {}).setdefault(model, {})
@@ -1007,10 +1008,6 @@ def smoke_config(
     ncap = raw.setdefault("benchmarks", {}).setdefault("neuroncap", {})
     host = str(ncap.get("renderer_url") or "http://127.0.0.1:8000").rsplit(":", 1)[0]
     ncap["renderer_url"] = f"{host}:{renderer_port}"
-    # Frames kept, never encoded: the encode ran after every scenario, serially,
-    # 12 of the 132 minutes of the 2026-10-16 smoke. Not "off": that switches the
-    # engine's logger off, and with it the per-run records the gate pairs on.
-    ncap["video"] = "keep"
     if cache_dir is not None:
         # One index for every checkout the gate runs from: a fresh worktree spent
         # 20 of nuScenes' 35 minutes rebuilding its own from the NAS.
