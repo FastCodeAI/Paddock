@@ -138,6 +138,7 @@ weights = "/path/to/weights"
 # stop_on_collision  = "true"                          # optional: end a route at its first recorded collision
 # expert = "/path/to/expert"                           # tools.benchmarks.bench2drive.expert summarize's output
 #                                                      # a route either stop_* ends is a failed drive; see the docs
+# camera_rig = "paddock"                               # default; "bench2drive" / "kitscenes" make a run valid: false
 
 # [benchmarks.alpasim]
 # AlpaSim runs its services through docker compose and attaches a driver over

@@ -45,7 +45,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
-from paddock.adapters.benchmarks.bench2drive import early_stop
+from paddock.adapters.benchmarks.bench2drive import early_stop, rig
 from paddock.benchmark import ClosedLoopBenchmark, Episode
 from paddock.config import REPO_ROOT
 from paddock.runtime import ports
@@ -447,6 +447,15 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         """
         return (self.setting("record_inputs") or "false").strip().lower() in ("1", "true", "yes", "on")
 
+    @property
+    def camera_rig(self) -> str:
+        """The rig the agent renders the model's cameras with (``rig.py``); paddock's unless named.
+
+        Another rig changes what the model is shown, so it is on the run's record and
+        the run does not rank (``invalid_reasons``). An unknown name is ``preflight``'s to report.
+        """
+        return (self.setting("camera_rig") or rig.DEFAULT).strip()
+
     def _pythonpath(self) -> list[str]:
         """What the client interpreter needs, in the checkout's own order.
 
@@ -552,6 +561,12 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         if timeout and not timeout.strip().isdigit():
             problems.append(
                 f"[benchmarks.bench2drive] per_route_timeout_s must be an integer, got {timeout!r}"
+            )
+
+        if self.camera_rig not in rig.RIGS:
+            problems.append(
+                f"[benchmarks.bench2drive] camera_rig {self.camera_rig!r} is not a rig in rig.py; "
+                f"the rigs are {', '.join(sorted(rig.RIGS))}"
             )
 
         problems += self._early_stop_problems()
@@ -663,6 +678,9 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         # Only when on, so the config hash -- and the run id -- of a run without it is unchanged.
         if self.early_stop:
             config["early_stop"] = self.early_stop
+        # Likewise only when it is not paddock's.
+        if self.camera_rig != rig.DEFAULT:
+            config["camera_rig"] = self.camera_rig
         return config
 
     def remarks(self) -> list[str]:
@@ -703,6 +721,7 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         The site's own `routes_subset` is the set, not a subset: it is on the
         record (`run_config`) and every full run on the site uses it. An early
         stop is not a reason: a route it ends is a failed drive (`remarks`).
+        A camera rig other than paddock's is one: the model was shown other cameras.
         """
         reasons = []
         manual = getattr(self, "_ended_by_hand", set())
@@ -712,6 +731,11 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         if ran is not None and ran < total:
             reasons.append(
                 f"{ran} of the {total} routes this site runs (--scene/--scenarios); a subset, not a score"
+            )
+        if self.camera_rig != rig.DEFAULT:
+            reasons.append(
+                f"camera_rig {self.camera_rig!r}: the model saw other cameras than the "
+                f"{rig.DEFAULT!r} rig every model here is compared through"
             )
         return reasons
 
@@ -786,6 +810,7 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         extra = {
             "PADDOCK_NODE_URL": policy_url,
             "PADDOCK_CAMERAS": ",".join(cameras),
+            "PADDOCK_CAMERA_RIG": self.camera_rig,
             "PADDOCK_WAYPOINT_DT": str(WAYPOINT_DT),
             # Per-tick ego kinematics for Bench2Drive's efficiency/comfort tool,
             # which joins ONE directory with each record's `save_name`. One dir

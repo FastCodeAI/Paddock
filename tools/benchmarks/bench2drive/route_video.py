@@ -22,10 +22,11 @@ Every frame is one CARLA tick in two (10 fps, so the video plays in real time)::
     |  driven path, infractions | ...   score card                |
     +---------------------------+---------------------------------+
 
-Frames: the front and BEV cameras are the agent's recording cameras (CAM_FRONT,
-800x450, 70 deg at x=1.5 z=1.5; BEV 512x512, 60 deg, 30 m up, looking down),
-fixed to the car, so ego-frame points -- x forward, y left, on the ground --
-project with those mounts alone. The route map is CARLA's world, drawn as seen
+Frames: the front and BEV cameras are the agent's recording cameras (CAM_FRONT as
+the route's ``rig.json`` records it -- paddock's rig: 800x450, 70 deg at x=1.5
+z=1.5; BEV 512x512, 60 deg, 30 m up, looking down), fixed to the car, so ego-frame
+points -- x forward, y left, on the ground -- project with those mounts alone.
+The route map is CARLA's world, drawn as seen
 from above (CARLA's y points down the page). The expert's "ghost" is where
 Think2Drive was at the same time since its start: ahead of the ghost is faster
 than the expert, behind it slower.
@@ -44,7 +45,7 @@ import subprocess
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 
@@ -56,6 +57,7 @@ import matplotlib  # noqa: E402
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
+from paddock.adapters.benchmarks.bench2drive import rig  # noqa: E402
 from paddock.adapters.benchmarks.bench2drive.recorder import to_ego  # noqa: E402
 from tools.benchmarks.bench2drive import expert as expert_mod  # noqa: E402
 from tools.benchmarks.bench2drive import runs  # noqa: E402
@@ -64,8 +66,7 @@ W, H = 1920, 1080
 FPS = 10
 TICK_HZ = 20.0
 
-# Recording cameras (agent.py: CAM_TF / CAM_FOV / CAM_RES, and the BEV sensor).
-FRONT_W, FRONT_H, FRONT_FOV, FRONT_X, FRONT_Z = 800, 450, 70.0, 1.5, 1.5
+# The BEV recording camera (agent.py `sensors`); the front camera is the route's own (`front_camera`).
 BEV_PX, BEV_FOV, BEV_Z = 512, 60.0, 30.0
 BEV_PX_PER_M = BEV_PX / (2 * BEV_Z * math.tan(math.radians(BEV_FOV / 2)))
 
@@ -82,14 +83,33 @@ VIEW_LABELS = {"model_wide": "model input: wide (big_img)", "model_road": "model
 # --------------------------------------------------------------------------- geometry
 
 
-def front_project(xy: np.ndarray, z: float = 0.0) -> np.ndarray:
-    """Ego-frame ground points -> CAM_FRONT pixels; NaN behind the camera."""
-    f = FRONT_W / (2 * math.tan(math.radians(FRONT_FOV / 2)))
+class FrontCamera(NamedTuple):
+    """The recording camera, CAM_FRONT, as a route was driven: size, field of view, mount."""
+
+    width: int
+    height: int
+    fov: float
+    x: float
+    z: float
+
+
+def front_camera(route_dir: Path) -> FrontCamera:
+    """CAM_FRONT as the agent rendered it on this route: its ``rig.json``, or paddock's
+    rig for a route recorded before the agent wrote one, which is the rig it had."""
+    record = runs.load_json(Path(route_dir) / rig.RECORD) or {}
+    cam = (record.get("cameras") or {}).get("CAM_FRONT") or rig.cameras(rig.DEFAULT)["CAM_FRONT"]
+    (width, height), pose = cam["size"], cam["pose"]
+    return FrontCamera(int(width), int(height), float(cam["fov"]), float(pose[0]), float(pose[2]))
+
+
+def front_project(xy: np.ndarray, cam: FrontCamera, z: float = 0.0) -> np.ndarray:
+    """Ego-frame ground points -> pixels of ``cam``; NaN behind the camera."""
+    f = cam.width / (2 * math.tan(math.radians(cam.fov / 2)))
     pts = np.asarray(xy, dtype=float).reshape(-1, 2)
-    depth = pts[:, 0] - FRONT_X
+    depth = pts[:, 0] - cam.x
     with np.errstate(divide="ignore", invalid="ignore"):
-        u = FRONT_W / 2 + f * (-pts[:, 1]) / depth
-        v = FRONT_H / 2 + f * (FRONT_Z - z) / depth
+        u = cam.width / 2 + f * (-pts[:, 1]) / depth
+        v = cam.height / 2 + f * (cam.z - z) / depth
     out = np.stack([u, v], axis=-1)
     out[depth < 1.0] = np.nan
     return out
@@ -244,6 +264,7 @@ class RouteData:
             [((r.get("extras") or {}).get("lead") or [{}])[0].get("prob", np.nan) for r in tk], dtype=float
         )
         self.views = model_views(self.dir)
+        self.front = front_camera(self.dir)
         self.model_state = model_state(tk, self.model)
         self.infractions = runs.infraction_points(self.result) if self.result else []
         # The tick at which each located infraction happened: the ego's nearest approach.
@@ -427,7 +448,13 @@ def score_card(rd: RouteData, w: int, h: int) -> np.ndarray:
     stop = rd.early_stop.get("reason")
     if stop:  # the tick-cap status above is how an early stop ends a route; this is why it did
         at = rd.early_stop.get("game_time_s")
-        text(img, f"ended early: {stop}" + (f" at {at:.1f} s" if at is not None else ""), (12, y - 6), 0.5, ORANGE)
+        text(
+            img,
+            f"ended early: {stop}" + (f" at {at:.1f} s" if at is not None else ""),
+            (12, y - 6),
+            0.5,
+            ORANGE,
+        )
         y += 24
 
     def fmt(v, f="{:.2f}"):
@@ -493,16 +520,16 @@ def draw_frame(rd: RouteData, k: int, static: dict) -> np.ndarray:
 
     # -- front camera
     fw, fh = 960, 540
-    front = _read(rd.dir / "front" / f"{rec['t']:05d}.jpg", (FRONT_W, FRONT_H))
+    front = _read(rd.dir / "front" / f"{rec['t']:05d}.jpg", (rd.front.width, rd.front.height))
     lane = ext.get("lane") or {}
     for line, prob in zip(lane.get("lines") or [], lane.get("line_probs") or [], strict=False):
         if prob > 0.3:
             col = tuple(int(c * (0.4 + 0.6 * prob)) for c in YELLOW)
-            polyline(front, front_project(np.asarray(line)), col, 1)
+            polyline(front, front_project(np.asarray(line), rd.front), col, 1)
     for edge in lane.get("edges") or []:
-        polyline(front, front_project(np.asarray(edge)), RED, 1)
+        polyline(front, front_project(np.asarray(edge), rd.front), RED, 1)
     if len(plan):
-        p = front_project(np.vstack([[FRONT_X + 1.0, 0.0], plan]))
+        p = front_project(np.vstack([[rd.front.x + 1.0, 0.0], plan]), rd.front)
         polyline(front, p, GREEN, 3)
         for q in p[1:]:
             if np.isfinite(q).all():
@@ -587,7 +614,7 @@ def draw_frame(rd: RouteData, k: int, static: dict) -> np.ndarray:
         cols, cw, ch, gap = 1, col_w, 263, 14
     else:  # a surround rig, two abreast
         cols, cw, gap = 2, col_w // 2, 4
-        ch = int(cw * FRONT_H / FRONT_W)
+        ch = int(cw * rd.front.height / rd.front.width)
     y_end = 0
     for j, view in enumerate(rd.views):
         row, col = divmod(j, cols)

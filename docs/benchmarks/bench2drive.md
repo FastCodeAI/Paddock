@@ -83,11 +83,13 @@ routes_file = "bench2drive220.xml"                   # under repo/leaderboard/da
 # stop_expert_factor = "4"           # end a route at 4x the expert's time on it; needs `expert`
 # stop_on_collision  = "true"        # end a route at the first collision the leaderboard records
 # expert = "/path/to/expert"         # what `python -m tools.benchmarks.bench2drive.expert summarize` wrote
+# camera_rig = "paddock"             # or "bench2drive" / "kitscenes": see Camera rig; any other is valid: false
 ```
 
 Every key above is read by the adapter; nothing else is. `routes_subset` changes
 *what is measured*, so it is written to `run.json` and hashed into the run id.
-So do the `stop_*` settings, whose rules the run's notes also state.
+So do the `stop_*` settings, whose rules the run's notes also state, and a
+`camera_rig` other than paddock's.
 
 Prerequisites (all outside this repo):
 
@@ -118,6 +120,25 @@ leaves no trace in `run.json`, and it produced a full set of results at one site
 before anyone looked at a frame. `preflight()` now refuses an evaluator that
 contains the flag. If a site genuinely needs Low, make it a patch under
 `patches/Bench2Drive/` so the change is on the record and travels with the pin.
+
+## Camera rig
+
+Every model is driven through the same cameras: paddock's rig, nuScenes' six
+views at half nuScenes' 1600x900, plus openpilot's pair (`rig.py`). A site can
+name another rig to ask how much a model's drive depends on its cameras:
+
+| `camera_rig` | what it renders |
+|---|---|
+| `paddock` (default) | six 800x450 views, 70 deg (back 110), 1.5 m up |
+| `bench2drive` | Bench2Drive's own rig, which its dataset was recorded with (`tools/data_collect.py` at 7ec25d1): the same six at 1600x900, 1.6 m up |
+| `kitscenes` | KITScenes' roof pod, approximated from the calibration in `kitscenes.md`: an 88 x 54 deg front 1.8 m up and 87 x 63 deg side and rear views 2.0 m up |
+
+Another rig changes what the model is shown, so it is in `run.json` and the run
+id, and the run is `valid: false` with the rig named in its notes. The agent
+writes the rig it rendered beside each recorded route as `rig.json`, and
+`route_video` draws plans onto the front camera through it. The `kitscenes`
+front differs in size from its ring: it suits a model that packs each view on its
+own (AutoE2E), not one that stacks the raw frames.
 
 ## Cost
 

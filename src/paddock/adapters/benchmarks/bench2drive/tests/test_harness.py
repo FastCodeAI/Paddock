@@ -784,3 +784,28 @@ def test_the_inputs_are_recorded_only_when_asked_and_only_with_the_record(tmp_pa
     assert "PADDOCK_RECORD_INPUTS" not in env_with(record="true")
     assert env_with(record="true", record_inputs="true")["PADDOCK_RECORD_INPUTS"] == "1"
     assert "PADDOCK_RECORD_INPUTS" not in env_with(record_inputs="true"), "nowhere to put them unrecorded"
+
+
+def test_the_camera_rig_reaches_the_agent_and_another_does_not_rank(tmp_path, monkeypatch) -> None:
+    def drive(**settings):
+        site = tmp_path / ("-".join(f"{k}{v}" for k, v in settings.items()) or "default")
+        site.mkdir()
+        harness = _harness(_site(site, monkeypatch, COMPLETED, **settings))
+        harness.run_episode(_episode(), "http://127.0.0.1:9000", site / "out")
+        return harness, json.loads((site / "out" / "env.json").read_text())
+
+    harness, env = drive()
+    assert env["PADDOCK_CAMERA_RIG"] == "paddock"
+    assert "camera_rig" not in harness.run_config(), "paddock's rig leaves every run id as it was"
+    assert harness.invalid_reasons() == []
+
+    harness, env = drive(camera_rig="bench2drive")
+    assert env["PADDOCK_CAMERA_RIG"] == "bench2drive"
+    assert harness.run_config()["camera_rig"] == "bench2drive"
+    (reason,) = harness.invalid_reasons()
+    assert reason.startswith("camera_rig 'bench2drive'")
+
+
+def test_preflight_names_a_camera_rig_there_is_not(tmp_path, monkeypatch) -> None:
+    problems = _harness(_site(tmp_path, monkeypatch, COMPLETED, camera_rig="bench2driv")).preflight()
+    assert any("camera_rig 'bench2driv'" in p and "bench2drive, kitscenes, paddock" in p for p in problems)

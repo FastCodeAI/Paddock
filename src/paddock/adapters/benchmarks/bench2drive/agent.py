@@ -12,13 +12,16 @@ come from the environment, set by ``harness.run_episode``:
 
     PADDOCK_NODE_URL      policy node base url
     PADDOCK_CAMERAS       comma-separated camera ids       (default CAM_FRONT)
+    PADDOCK_CAMERA_RIG    where those cameras sit and what they render: a rig
+                          named in ``rig.py``          (default paddock)
     PADDOCK_WAYPOINT_DT   spacing of the returned waypoints, s   (default 0.5)
     PADDOCK_RECORD_DIR    if set, write front/BEV frames + a per-tick log.csv
                           here; the harness sets SAVE_PATH alongside it so the
                           leaderboard allows the BEV camera's 30 m mount. Also
                           the analysis record (``recorder.py``): every tick's
                           full node reply beside privileged world state, the
-                          route plan, and thumbnails of the model's cameras
+                          route plan, and thumbnails of the model's cameras;
+                          and ``rig.json``, the cameras as rendered
     PADDOCK_RECORD_INPUTS "1" (with PADDOCK_RECORD_DIR): also keep each tick's
                           whole request -- the model cameras' frames as sent and
                           the rest of the body -- under inputs/, for offline replay
@@ -66,7 +69,7 @@ from agents.navigation.local_planner import RoadOption
 from leaderboard.autoagents.autonomous_agent import AutonomousAgent, Track
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 
-from paddock.adapters.benchmarks.bench2drive import early_stop, recorder
+from paddock.adapters.benchmarks.bench2drive import early_stop, recorder, rig
 from paddock.adapters.benchmarks.bench2drive.pid import WaypointTracker
 from paddock.policy.protocol import CANBUS_ACCEL, CANBUS_VELOCITY, Command, Trajectory, encode_image
 
@@ -83,44 +86,17 @@ STOP_ON_COLLISION = os.environ.get("PADDOCK_STOP_ON_COLLISION") == "1"
 STOP_REQUEST = os.environ.get("PADDOCK_STOP_REQUEST") or None
 STOP_RECORD = os.environ.get("PADDOCK_STOP_RECORD") or None
 
-# Placement (x, y, z, roll, pitch, yaw) in the CARLA ego frame for every nuScenes
-# camera a model might ask for; radius < 3m (the leaderboard sensor limit).
-CAM_TF = {
-    "CAM_FRONT": (1.5, 0.0, 1.5, 0.0, 0.0, 0.0),
-    "CAM_FRONT_LEFT": (1.0, -0.5, 1.5, 0.0, 0.0, -55.0),
-    "CAM_FRONT_RIGHT": (1.0, 0.5, 1.5, 0.0, 0.0, 55.0),
-    "CAM_BACK": (-1.5, 0.0, 1.5, 0.0, 0.0, 180.0),
-    "CAM_BACK_LEFT": (0.0, -0.6, 1.5, 0.0, 0.0, -110.0),
-    "CAM_BACK_RIGHT": (0.0, 0.6, 1.5, 0.0, 0.0, 110.0),
-}
-# openpilot's comma-three rig, reproduced: a narrow road camera (1928x1208, focal
-# 2648 -> 40 deg) and a wide camera (1928x1208, focal 567 -> ~119 deg, modelled as a
-# pinhole, as openpilot does), both at the windshield mount (~1.3 m). Each feeds its
-# own model slot (img / big_img) instead of both views being cut from one 800x450 frame.
-CAM_TF["CAM_OP_ROAD"] = (1.0, 0.0, 1.3, 0.0, 0.0, 0.0)
-CAM_TF["CAM_OP_WIDE"] = (1.0, 0.0, 1.3, 0.0, 0.0, 0.0)
-CAM_FOV = {
-    "CAM_FRONT": 70.0,
-    "CAM_FRONT_LEFT": 70.0,
-    "CAM_FRONT_RIGHT": 70.0,
-    "CAM_BACK": 110.0,
-    "CAM_BACK_LEFT": 70.0,
-    "CAM_BACK_RIGHT": 70.0,
-}
-CAM_FOV["CAM_OP_ROAD"] = 40.0
-CAM_FOV["CAM_OP_WIDE"] = 119.0
-# One resolution for every camera: model feature builders np.stack the images, so
-# unequal sizes raise. Half-res (vs 1600x900) is a big render + payload win and the
-# front is cropped/resized downstream anyway.
-CAM_RES = (800, 450)
-#: Per-camera overrides of CAM_RES (the openpilot rig needs comma's native 1928x1208).
-CAM_RES_BY_ID = {"CAM_OP_ROAD": (1928, 1208), "CAM_OP_WIDE": (1928, 1208)}
+#: The rig the cameras are placed by (``rig.py``); the harness passes a site's ``camera_rig``.
+CAMERA_RIG = os.environ.get("PADDOCK_CAMERA_RIG") or rig.DEFAULT
+#: Every camera a model might ask for: placement in the CARLA ego frame, field of view, size.
+RIG = rig.cameras(CAMERA_RIG)
 #: Rendered for the frames/BEV recording even when the model does not consume it.
 RECORD_CAM = "CAM_FRONT"
 
 
-def _res(cid: str) -> tuple:
-    return CAM_RES_BY_ID.get(cid, CAM_RES)
+def _rendered() -> list:
+    """The cameras this agent renders: the model's own, and the recording camera when recording."""
+    return list(CAMS) + ([RECORD_CAM] if RECORD_DIR and RECORD_CAM not in CAMS else [])
 
 
 # CARLA's route option -> paddock's navigation command. Lane changes are
@@ -208,15 +184,15 @@ class PaddockB2DAgent(AutonomousAgent):
         self._cam2ego = {}
         self._cam2img = {}
         for cid in CAMS:
-            w, h = _res(cid)
-            x, y, z, roll, pitch, yaw = CAM_TF[cid]
+            w, h = RIG[cid]["size"]
+            x, y, z, roll, pitch, yaw = RIG[cid]["pose"]
             tf = carla.Transform(
                 carla.Location(x=x, y=y, z=z), carla.Rotation(roll=roll, pitch=pitch, yaw=yaw)
             )
             m = _rh(tf.get_matrix())
             m[:3, :3] = m[:3, :3] @ R_OPT  # body -> camera-optical (paddock convention)
             self._cam2ego[cid] = m.tolist()
-            self._cam2img[cid] = _intrinsics(w, h, CAM_FOV[cid])
+            self._cam2img[cid] = _intrinsics(w, h, RIG[cid]["fov"])
         try:
             self._http.post(f"{SERVER}/reset", json={}, timeout=30)
         except Exception as exc:  # a fresh node has nothing to reset; not fatal
@@ -225,6 +201,7 @@ class PaddockB2DAgent(AutonomousAgent):
         if RECORD_DIR:
             os.makedirs(os.path.join(RECORD_DIR, "front"), exist_ok=True)
             os.makedirs(os.path.join(RECORD_DIR, "bev"), exist_ok=True)
+            self._write_rig_record()
             self._log = open(os.path.join(RECORD_DIR, "log.csv"), "w", newline="")
             self._w = csv.writer(self._log)
             self._w.writerow(
@@ -271,6 +248,15 @@ class PaddockB2DAgent(AutonomousAgent):
         except Exception as exc:  # a malformed plan costs the measure, not the route
             print("[paddock-b2d] dense route unavailable:", repr(exc))
             return None
+
+    def _write_rig_record(self):
+        """``rig.json``: the rig's name and every camera rendered, so a video of this route
+        draws through the cameras it was driven with rather than paddock's default."""
+        try:
+            with open(os.path.join(RECORD_DIR, rig.RECORD), "w") as handle:
+                json.dump({"name": CAMERA_RIG, "cameras": {cid: RIG[cid] for cid in _rendered()}}, handle)
+        except OSError as exc:  # for the videos only; the route goes on without it
+            print("[paddock-b2d] rig record not written:", repr(exc))
 
     # ---- the analysis record (recorder.py): never allowed to stop a route ----
 
@@ -523,10 +509,9 @@ class PaddockB2DAgent(AutonomousAgent):
 
     def sensors(self):
         s = []
-        render = list(CAMS) + ([RECORD_CAM] if RECORD_DIR and RECORD_CAM not in CAMS else [])
-        for cid in render:
-            w, h = _res(cid)
-            x, y, z, roll, pitch, yaw = CAM_TF[cid]
+        for cid in _rendered():
+            w, h = RIG[cid]["size"]
+            x, y, z, roll, pitch, yaw = RIG[cid]["pose"]
             s.append(
                 {
                     "type": "sensor.camera.rgb",
@@ -538,7 +523,7 @@ class PaddockB2DAgent(AutonomousAgent):
                     "yaw": yaw,
                     "width": w,
                     "height": h,
-                    "fov": CAM_FOV[cid],
+                    "fov": RIG[cid]["fov"],
                     "id": cid,
                 }
             )
