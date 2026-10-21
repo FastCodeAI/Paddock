@@ -80,8 +80,8 @@ repos:
 
   auto_e2e:
     url: https://github.com/autowarefoundation/auto_e2e.git
-    sha: 16d60f0a
-    description: Autoware end-to-end model; AWS/Flyte native, not yet evaluated
+    sha: 40a75cf8
+    description: Autoware AutoE2E; the v1.0 release revision (experimental/reactive-bev-learning), imported by the autoe2e adapter
 
   METEOR:
     url: https://github.com/tier4/METEOR.git

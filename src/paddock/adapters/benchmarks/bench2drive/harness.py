@@ -560,7 +560,10 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         if routes_file is None or not routes_file.exists():
             return
         routes = parse_routes(routes_file)
-        for rid, town, stype in select_routes(routes, scenes, scenarios, self.routes_subset):
+        selected = list(select_routes(routes, scenes, scenarios, self.routes_subset))
+        # Recorded for `invalid_reasons`: the site's whole route set, against what ran.
+        self._routes_scope = (len(selected), len(list(select_routes(routes, None, None, self.routes_subset))))
+        for rid, town, stype in selected:
             yield Episode(
                 episode_id=f"{rid}-{town}-{stype}",
                 scenario=stype,
@@ -568,6 +571,20 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
                 run_index=0,
                 config={"route_id": rid, "town": town, "runs": runs},
             )
+
+    def invalid_reasons(self) -> list[str]:
+        """A run of fewer routes than the site runs is a subset, not a Bench2Drive score.
+
+        `--scene` or `--scenarios` narrowing the site's set (its `routes_subset`,
+        or the whole routes file) would otherwise be stored `valid: true` and
+        ranked beside the full runs; the regression gate's 7-route smoke was.
+        The site's own `routes_subset` is the set, not a subset: it is on the
+        record (`run_config`) and every full run on the site uses it.
+        """
+        ran, total = getattr(self, "_routes_scope", (None, None))
+        if ran is None or ran >= total:
+            return []
+        return [f"{ran} of the {total} routes this site runs (--scene/--scenarios); a subset, not a score"]
 
     # ---- run one episode ----------------------------------------------
 

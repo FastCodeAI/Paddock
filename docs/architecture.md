@@ -3,19 +3,32 @@
 Two axes — models and benchmarks — meeting at one interface.
 
 ```
-                    ┌───────────── Policy ─────────────┐
-                    │  load() · reset() · infer(obs)   │
-   Benchmarks       └──────────────────────────────────┘        Models
-   ──────────                      ▲                            ──────
-   kitscenes   ──┐                 │                ┌── openpilot    (uv, py3.12)
-   nuscenes    ──┤  open loop:     │  closed loop:  ├── alpamayo1.5  (uv, py3.12)
-   navsim      ──┼─ iterate        ┼─ simulator     ┼── drivejepa    (conda, py3.9)
-   neuroncap   ──┤  samples        │  drives over   ├── visionpilot  (C++)
-   bench2drive ──┘  in process     │  HTTP          └── ...
-                                   ▼
+  Benchmark side: the CLIENTS                        Model side: the SERVER
+  ───────────────────────────                        ──────────────────────
+                                                     ┌──────── model node ────────┐
+  open loop   kitscenes · nuscenes · navsim          │ HTTP server, one per       │
+    harness ─── POST /infer_sequence ───────────────▶│ model, in the model's      │
+                image paths, recorded past           │ own environment            │
+                                                     │                            │
+  closed loop neuroncap · bench2drive                │ Policy                     │
+    simulator ─ POST /infer, every tick ────────────▶│  load() · reset()          │
+                rendered pixels                      │  infer(obs) → trajectory   │
+                                                     │                            │
+  closed loop alpasim (speaks gRPC, not HTTP)        │ openpilot · alpamayo1.5    │
+    runtime ─gRPC─▶ bridge ─ POST /infer ───────────▶│ drivejepa · visionpilot …  │
+                       (gRPC server, HTTP client)    │                            │
+                                                     └────────────────────────────┘
+
         results/<bench>/<model>/<run>/{run,metrics}.json    tracked, KB
         {runs}/<bench>/<model>/<run>/{samples.jsonl,...}    external, GB
 ```
+
+**The model is the server; the benchmark side is the client.** Paddock starts
+each model as an HTTP node that only ever answers. Whoever holds an observation
+calls it: the harness in open loop, the simulator in closed loop. The node never
+calls out and never learns which benchmark is driving it. AlpaSim is the one
+simulator that cannot call HTTP, so a bridge stands between it and the node (see
+[AlpaSim's gRPC bridge](#alpasims-grpc-bridge)).
 
 ---
 
@@ -40,8 +53,9 @@ spaced by `waypoint_dt` starting at `t = waypoint_dt`.
 
 ### Why one protocol for both loop types
 
-The same `Policy` serves open-loop scoring (called in-process) and closed-loop
-simulation (wrapped in an HTTP node by `policy/server.py`).
+The same `Policy`, wrapped in an HTTP node by `policy/server.py`, serves both:
+open-loop harnesses post recorded frames to it, and closed-loop simulators post
+rendered ones. There is no second, in-process path for open loop.
 
 This is not tidiness. Before paddock, each model had *two* implementations of its
 camera handling — one in its open-loop eval script and one in its simulator
@@ -52,14 +66,35 @@ once, is what makes cross-benchmark comparison mean anything.
 
 ### The wire contract
 
-Closed-loop benchmarks talk to a model node over three endpoints: `/alive`,
-`/infer`, `/reset`. Ported unchanged from the NeuroNCAP model nodes.
+The node (`policy/server.py`) is the **server**; everything else is a
+**client** of it. `/alive`, `/infer` and `/reset` were ported unchanged from the
+NeuroNCAP model nodes; the rest were added for open loop and for provenance.
+
+| Endpoint | Called by | What it does |
+|---|---|---|
+| `GET /alive` | the runner, after launch | health check |
+| `GET /whoami` | the runner, after launch | names the model and this launch's nonce, so a run never scores a sibling's node on the same port |
+| `POST /infer` | closed-loop simulators; AlpaSim's bridge | one `Observation` (one timestamp) in, one `Trajectory` out |
+| `POST /observe` | AlpaSim's bridge, for a frame it needs no plan from | one `Observation` in, no plan out: the model takes the frame into its history (`Policy.observe`; a model that does not override it plans and drops the plan) |
+| `POST /infer_sequence` | open-loop harnesses; NAVSIM's scorer | a list of `Observation`s, oldest first; the model takes in all but the last and plans on the last |
+| `POST /reset` | the simulator, before each episode | clears the model's history between episodes |
+| `GET /diagnostics` | the runner, at the end of a run | what the loaded policy says it is, for `run.json` provenance |
+
+One `/infer` carries one moment: one timestamp and at most one frame per camera.
+A model that needs past frames gets them either from its own buffer (closed loop:
+the node remembers what it was sent) or from `/infer_sequence` (open loop: the
+harness sends the recorded past).
 
 Two details that look like off-by-ones and are not:
 
 - **Six waypoints is exact, not a floor.** NeuroNCAP builds six waypoint
   timestamps per step and indexes them positionally; a seventh is dropped, a
-  fifth raises `IndexError`.
+  fifth raises `IndexError`. So `/infer`'s `trajectory` is always six (x, y)
+  points, and the whole plan travels beside it as `plan`:
+  `{"waypoints": [[x, y], ...] or [[x, y, yaw], ...], "dt": 0.5}`, every row
+  the model returned, with yaw only when the model predicts one (the same
+  shape `/infer_sequence` returns). NeuroNCAP reads only `trajectory` and
+  `aux_outputs`; AlpaSim's bridge reads `plan`.
 - **An all-zero trajectory is a commanded emergency stop**, not "no plan". A
   model that has not warmed up must return `constant_velocity(obs.speed)`.
   Returning zeros scores as a deliberate brake, which for a collision-avoidance
@@ -88,9 +123,11 @@ point at, so they send rendered pixels per step.
   "activationBkgColor": "#ffedd5", "activationBorderColor": "#ea580c"}}}%%
 sequenceDiagram
     participant R as paddock runner<br/>python 3.11
-    participant H as benchmark harness<br/>adapters/benchmarks/‹bench›
-    participant N as model node<br/>‹model venv›/python<br/>paddock.policy.server
-    participant S as simulator<br/>neuroNCAP · CARLA
+    participant H as benchmark harness<br/>adapters/benchmarks/‹bench›<br/>HTTP client in open loop
+    participant N as model node · HTTP SERVER<br/>‹model venv›/python<br/>paddock.policy.server
+    participant B as AlpaSim bridge<br/>gRPC server · HTTP client<br/>AlpaSim's python
+    participant S as simulator · HTTP client<br/>neuroNCAP · CARLA
+    participant A as AlpaSim runtime<br/>docker · gRPC client
     participant D as dataset on disk
 
     R->>H: preflight() · coverage()
@@ -121,9 +158,65 @@ sequenceDiagram
         S-->>H: episode score: NCAP or driving score
     end
 
+    rect rgb(240, 245, 255)
+        Note over R,A: closed loop through AlpaSim: its runtime calls a gRPC driver, so the bridge is that driver
+        R->>B: start bridge.py --policy-url ‹node› --port 9200
+        R->>A: run the wizard (docker compose up), driver = localhost:9200
+        A->>B: gRPC start_session: scene, camera rig
+        loop every control step
+            A->>B: gRPC submit_image_observation · submit_egomotion_observation
+            A->>B: gRPC drive
+            B->>N: POST /infer: decoded pixels, calibration, speed from the velocity vector
+            N-->>B: waypoints
+            B-->>A: DriveResponse: the waypoints stamped in time, anchored at the pose they came from
+        end
+        A->>B: gRPC close_session
+        A-->>H: rollout written to disk: scene_score
+    end
+
     H->>R: metrics + provenance
     Note over R: results/‹bench›/‹model›/‹run›/ run.json + metrics.json
 ```
+
+### AlpaSim's gRPC bridge
+
+Every other simulator can be pointed at the node's URL and calls `/infer`
+itself. AlpaSim cannot: its runtime calls a **driver over gRPC**
+(`EgodriverService`) and expects that driver to be a gRPC server. So
+`adapters/benchmarks/alpasim/bridge.py` is that server, and inside it an HTTP
+client of the model node:
+
+```
+AlpaSim runtime ──gRPC call──▶ bridge.py ──HTTP POST /infer──▶ model node
+ (gRPC client)                (gRPC server │ HTTP client)       (HTTP server)
+```
+
+It runs as an ordinary host process under AlpaSim's own interpreter (it needs
+`grpc` and `alpasim_grpc`); only the simulator services are Docker containers,
+on the host network, which is how the runtime reaches the bridge on `localhost`.
+`launcher.py` tells the wizard not to start a driver of its own and to call the
+bridge instead (`wizard.external_services.driver=[localhost:<port>]`).
+
+The bridge does more than change protocol, because AlpaSim does not send one
+complete observation. It pushes the pieces as separate calls (the session's
+camera rig, each frame, each pose) and then asks for a plan. The bridge:
+
+- keeps that state per session and assembles it into one `/infer` body when
+  `drive` is called;
+- decodes the frames, which arrive as encoded bytes;
+- computes speed as the magnitude of the velocity vector, since the wire
+  carries no scalar speed;
+- stamps the returned waypoints in time, `waypoint_dt` apart, anchored at the
+  timestamp of the pose the plan was built from;
+- fails the rollout loudly if the node does not answer, instead of driving on a
+  plan of its own.
+
+There is one bridge for every model. Model-specific work (cropping, history
+spacing, which cameras to read) stays in each model's adapter, as it does for
+every other benchmark. What the bridge does not do yet is listed in its own
+docstring: frames are not rectified for lens distortion, and camera ids and
+poses are passed in AlpaSim's own convention, so a model that reads images is not
+yet fed what AlpaSim's native drivers feed it.
 
 ## Open loop vs closed loop
 
@@ -133,7 +226,7 @@ sequenceDiagram
 | Errors | do not compound | compound — the point |
 | Cost | cheap, parallel | expensive, serial |
 | Measures | imitation of a recorded expert | whether it can actually drive |
-| Examples | KITScenes, nuScenes, NAVSIM | neuroNCAP, Bench2Drive |
+| Examples | KITScenes, nuScenes, NAVSIM | neuroNCAP, Bench2Drive, AlpaSim |
 
 Both matter, and neither substitutes for the other. Open-loop metrics are
 dominated by ego status — a model that just continues the current motion scores
@@ -152,7 +245,8 @@ subprocess. Five Python versions across three managers are in play — this is w
 evaluating four independent research codebases costs, and the registry makes it
 declarative rather than tribal.
 
-Paddock owns model processes; benchmarks own simulators. For closed loop:
+Paddock owns model processes; benchmarks own simulators (and, for AlpaSim, the
+bridge in front of it). For closed loop:
 
 1. `runtime/gpu.py` waits for the VRAM the model declares, rather than failing
    eight minutes into a checkpoint read with a CUDA OOM traceback that says
@@ -162,7 +256,9 @@ Paddock owns model processes; benchmarks own simulators. For closed loop:
    waits for the driver to reclaim the memory.
 3. The next model starts only then. With `gpu.serialize = true` exactly one model
    is resident at a time. The simulator's renderer stays up throughout: it is
-   model-independent and expensive to start.
+   model-independent and expensive to start. The exception is a sweep that a
+   pairing table splits into one harness per model (`docs/site-setup.md` §2):
+   each harness then stops its renderer in `close()` when its model is done.
 
 Every model sees identical episodes and identical seeds, derived from the run
 index. The comparison is paired, not merely averaged — which is worth far more

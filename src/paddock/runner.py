@@ -31,6 +31,7 @@ import numpy as np
 
 from paddock.benchmark import (
     PIPELINE_BATCHES,
+    Benchmark,
     ClosedLoopBenchmark,
     ExternallyScoredBenchmark,
     OpenLoopBenchmark,
@@ -79,6 +80,8 @@ def _measurement_config(cfg: SiteConfig, harness, model_spec: ModelSpec, **given
     benchmark's own measurement-changing settings (`run_config()`), and any
     site `[models.<name>] env` block -- an environment override can change a
     model's input (alpamayo's frame selection, say), so it is on the record.
+    A pairing table arrives already merged into both (`SiteConfig.paired`), so
+    it is recorded, and hashed, exactly as the same values set globally would be.
     """
     config = {
         **given,
@@ -150,6 +153,41 @@ def _portable_segment(segment: str) -> str:
     return segment
 
 
+#: OpenMP/BLAS thread counts: how fast a node runs, never what it computes,
+#: and set per site to fit the box (shakaal fails at 90% CPU). Allowed for
+#: every model, on top of each model's own `runtime.tuning_env`.
+THREAD_ENV = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS")
+
+#: Where a site keeps libraries and caches: the same code and weights found in
+#: another place. Also allowed for every model. Not on this list, on purpose:
+#: `*_CHECKPOINT`/`*_WEIGHTS` (a moved checkpoint and a finetune are the same
+#: string to the runner) and `PADDOCK_FFMPEG` (openpilot pins its ffmpeg so the
+#: RGB -> NV12 conversion matches; another binary can change the input).
+LOCATION_ENV = ("LD_LIBRARY_PATH", "HF_HOME", "NVRTC_PATH", "TMPDIR", "CUDA_VISIBLE_DEVICES")
+
+
+def _env_override_reasons(cfg: SiteConfig, model_spec: ModelSpec) -> list[str]:
+    """Why a site `[models.<name>.env]` block keeps this run from being ranked.
+
+    Fail-closed: every overridden key counts unless the model declares it as
+    tuning (`runtime.tuning_env`), it is a thread count, or it only says where a
+    library or cache lives (`LOCATION_ENV`). A key nobody
+    classified is assumed to change the result, because the costly mistake is
+    the other one: a `DRIVEJEPA_CHECKPOINT` pointing at a finetune used to be
+    recorded `valid: true` and ranked as the released model. Restating the
+    declared default value is not an override.
+    """
+    override = cfg.models.get(model_spec.name)
+    if override is None or not override.env:
+        return []
+    tuning = {*THREAD_ENV, *LOCATION_ENV, *model_spec.runtime.tuning_env}
+    declared = model_spec.runtime.env
+    keys = sorted(k for k, v in override.env.items() if k not in tuning and declared.get(k) != v)
+    if not keys:
+        return []
+    return [f"site env override may change what was measured: {', '.join(keys)} (values in config.model_env)"]
+
+
 def _validity(
     failure_note: str | None,
     invalid_reasons: list[str],
@@ -191,13 +229,21 @@ def _store_run(
     split: str | None = None,
     extra_dataset: dict | None = None,
     provenance: dict | None = None,
+    model_ran: bool = True,
 ) -> tuple[Path, store.MetricsRecord]:
     """Write one run to the results store. Every path stores through here.
 
     `split` is already in every sample id and therefore in the sequence hash;
     recorded in `dataset` too so run.json answers "which split" without
-    opening samples.jsonl.
+    opening samples.jsonl. `model_ran=False` is for a run no model node took
+    part in (NAVSIM's node-less baseline, human anchor and replays): a site
+    env block reaches nothing there, so it cannot invalidate the run.
     """
+    # Here, not at each caller: every path stores through this function, and a
+    # rule applied in two of three places is how the checkpoint gap happened.
+    # Opting out is explicit, so a new path that forgets is still judged.
+    if model_ran:
+        invalid_reasons = [*invalid_reasons, *_env_override_reasons(cfg, model_spec)]
     status, valid, notes = _validity(failure_note, invalid_reasons, remarks)
     dataset: dict = {"name": spec.dataset}
     if split is not None:
@@ -340,6 +386,38 @@ def load_benchmark(spec: BenchmarkSpec, cfg: SiteConfig):
     return module.BENCHMARK(spec, cfg)
 
 
+def _pairing_line(cfg: SiteConfig, model: str, bench: str) -> str:
+    """What a pairing table sets, said before anything runs.
+
+    A pairing is a site's default for one model on one benchmark, so it is the
+    one override a reader is least likely to remember is there; a `--dry-run`
+    that names it answers "is this stock?" without opening the file.
+    """
+    pairing = cfg.models[model].benchmarks[bench]
+    values = [f"{k}={v}" for k, v in [*pairing.env.items(), *pairing.settings.items()]]
+    return f"{model} on {bench}: [models.{model}.benchmarks.{bench}] in {cfg.source} sets {', '.join(values)}"
+
+
+def _unknown_pairings(cfg: SiteConfig, models: list[ModelSpec], registry: Registry) -> list[str]:
+    """Pairing tables of these models that name no benchmark, said as the refusal.
+
+    `kitscene` for `kitscenes` would otherwise apply to nothing: the run measures
+    stock and the only sign is a `_pairing_line` that never prints. `config.py`
+    refuses a misspelt key inside the table, but cannot see the registry, so the
+    benchmark's name is checked here, before anything starts.
+    """
+    lines = []
+    for m in models:
+        override = cfg.models.get(m.name)
+        for name in sorted(override.benchmarks if override is not None else {}):
+            if name not in registry.benchmarks:
+                lines.append(
+                    f"[models.{m.name}.benchmarks.{name}] in {cfg.source}: there is no benchmark named "
+                    f"{name!r}; known: {', '.join(sorted(registry.benchmarks))}"
+                )
+    return lines
+
+
 def run_benchmark(
     cfg: SiteConfig,
     bench: str,
@@ -374,8 +452,60 @@ def run_benchmark(
             return 2
         models = [chosen]
 
-    harness = load_benchmark(spec, cfg)
+    unknown = _unknown_pairings(cfg, models, registry)
+    if unknown:
+        for line in unknown:
+            echo(line)
+        return 2
 
+    # A pairing table gives one model its own benchmark settings, which a
+    # harness shared by every model cannot hold. So a sweep that meets one
+    # runs each model in turn as though it had been named alone, and
+    # returns the worst exit code of the lot.
+    if len(models) > 1 and any(cfg.paired(m.name, bench) is not cfg for m in models):
+        return max(
+            run_benchmark(cfg, bench, m.name, scene, scenarios, runs, limit, dry_run, echo=echo)
+            for m in models
+        )
+
+    if len(models) == 1:
+        paired = cfg.paired(models[0].name, bench)
+        if paired is not cfg:
+            echo(_pairing_line(cfg, models[0].name, bench))
+        cfg = paired
+
+    harness = load_benchmark(spec, cfg)
+    try:
+        return _run_harness(
+            cfg, spec, harness, models, bench, scene, scenarios, runs, limit, dry_run, resume, echo
+        )
+    finally:
+        # What a harness started of its own -- neuroNCAP's managed renderer -- is let go once the harness is
+        # done with, not at exit. A sweep split by a pairing builds one harness per model, and the next one's
+        # preflight would otherwise find the last one's renderer still answering and refuse to start.
+        if hasattr(harness, "close"):
+            try:
+                harness.close()
+            except Exception as exc:  # noqa: BLE001 - letting go must not replace the run's own outcome
+                # Whatever it failed to stop is still found, and refused loudly, by the next preflight.
+                echo(f"  could not release what the {bench} harness started: {exc}")
+
+
+def _run_harness(
+    cfg: SiteConfig,
+    spec: BenchmarkSpec,
+    harness: Benchmark,
+    models: list[ModelSpec],
+    bench: str,
+    scene: str | None,
+    scenarios: list[str] | None,
+    runs: int,
+    limit: int | None,
+    dry_run: bool,
+    resume: str | None,
+    echo: Callable[[str], None],
+) -> int:
+    """`run_benchmark` from its harness on: preflight, then the dry run or the models in turn."""
     try:
         base = base_port()
     except ValueError as exc:
@@ -1117,7 +1247,17 @@ def _run_open_loop(
             *_limit_reason(limit),
             *_coverage_reason(harness, samples, limit),
         ],
-        remarks=[f"resumed: {reused} sample(s) reused from an earlier attempt"] if reused else None,
+        # As in the closed-loop path: `started_utc` and `duration_s` are this
+        # attempt's, so a run re-stored with nothing left to score reads as
+        # zero seconds today, and the row has to say so itself.
+        remarks=(
+            [
+                f"resumed: {reused} sample(s) reused from an earlier attempt, so "
+                f"started_utc and duration_s describe this attempt only"
+            ]
+            if reused
+            else None
+        ),
         extra_dataset=_expected_samples(harness),
         provenance=prov,
     )

@@ -300,6 +300,14 @@ class Observation:
     #: where the source has no route, or no junction ahead of the ego.
     nav_maneuver: str | None = None
     nav_distance_m: float | None = None
+    #: The route ahead as an (N, 2) polyline in the ego frame (x forward, y left, metres), starting a few
+    #: metres behind the ego. Closed-loop sources that hold a route send it (Bench2Drive: the leaderboard's
+    #: global plan, from the first plan point at least 10 m behind to the first at least 200 m ahead); None
+    #: where the source has no route (NAVSIM, open loop). Points are only as dense as the source's route:
+    #: Bench2Drive's is downsampled to a point per road-option change and otherwise every ~50 m, so a
+    #: segment can cut a bend by metres. A policy that rasterises the route (AutoE2E's navigation tile)
+    #: reads it.
+    route_xy: np.ndarray | None = None
     #: Frames that live on disk, loaded on first use instead of being carried.
     #:
     #: Open-loop benchmarks read from a local dataset, and the node is a
@@ -335,6 +343,9 @@ class Observation:
             nav_maneuver=(str(body["nav_maneuver"]) if body.get("nav_maneuver") else None),
             nav_distance_m=(
                 float(body["nav_distance_m"]) if body.get("nav_distance_m") is not None else None
+            ),
+            route_xy=(
+                np.asarray(body["route_xy"], dtype=np.float64) if body.get("route_xy") is not None else None
             ),
         )
 
@@ -416,6 +427,7 @@ class Observation:
             "speed_limit": self.speed_limit,
             "nav_maneuver": self.nav_maneuver,
             "nav_distance_m": self.nav_distance_m,
+            "route_xy": (np.asarray(self.route_xy).tolist() if self.route_xy is not None else None),
             "calibration": calibration,
         }
 
@@ -472,8 +484,17 @@ class Trajectory:
     def to_wire(self, aux: dict[str, Any] | None = None) -> dict[str, Any]:
         """Package for a simulator expecting exactly `N_WAYPOINTS` waypoints.
 
-        Anything past the sixth is dropped: the engine has no timestamp to
-        attach to it and indexes the list positionally.
+        In ``trajectory`` anything past the sixth is dropped: neuroNCAP has no
+        timestamp to attach to it and indexes the list positionally, and it
+        reads only ``trajectory`` and ``aux_outputs``.
+
+        ``plan`` is the whole plan as the model returned it, in the same shape
+        `/infer_sequence` returns its waypoints: every row, with the yaw column
+        when the model gives one, and the spacing. A model that plans only
+        (x, y) sends two columns and no yaw is invented here -- a client that
+        needs headings derives them itself and can say it did. A simulator
+        that steers a full pose (AlpaSim) reads this key; one that does not
+        never sees it.
         """
         if len(self.waypoints) < N_WAYPOINTS:
             raise ValueError(
@@ -482,6 +503,7 @@ class Trajectory:
         wire: dict[str, Any] = {
             "trajectory": self.xy[:N_WAYPOINTS].tolist(),
             "aux_outputs": aux if aux is not None else empty_aux(),
+            "plan": {"waypoints": self.waypoints.tolist(), "dt": self.dt},
         }
         if self.extras:
             wire["extras"] = self.extras
@@ -712,6 +734,10 @@ class Policy(ABC):
         state advances with each forward pass (openpilot, VisionPilot). A model
         that is a pure function of its recorded history overrides this to just
         record -- one forward pass per sequence instead of N, same tensor.
+
+        The server's ``/observe`` calls this too, in closed loop: mid-episode,
+        with no reset before it and self-priming as it is. An override that
+        assumes an open-loop sequence around it has to hold there as well.
         """
         self.infer(obs)
 

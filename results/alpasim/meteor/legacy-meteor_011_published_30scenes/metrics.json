@@ -1,0 +1,87 @@
+{
+  "run_id": "legacy-meteor_011_published_30scenes",
+  "primary_metric": "scene_score",
+  "n": 30,
+  "metrics": {
+    "scene_score": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 0.423188,
+      "median": 0.330043,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.367255
+    },
+    "progress": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 0.430101,
+      "median": 0.323885,
+      "p90": 0.979361,
+      "max": 1.0,
+      "std": 0.317565
+    },
+    "collision_rate": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 0.333333,
+      "median": 0.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.471405
+    },
+    "collision_at_fault": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 0.033333,
+      "median": 0.0,
+      "p90": 0.0,
+      "max": 1.0,
+      "std": 0.179505
+    },
+    "offroad": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 0.166667,
+      "median": 0.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.372678
+    },
+    "duration_frac_20s": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 0.46875,
+      "median": 0.3475,
+      "p90": 0.84,
+      "max": 0.8425,
+      "std": 0.314607
+    },
+    "dist_to_gt_trajectory": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 1.694041,
+      "median": 1.116755,
+      "p90": 4.080715,
+      "max": 4.360447,
+      "std": 1.512408
+    },
+    "open_loop_collision": {
+      "n": 30,
+      "n_missing": 0,
+      "mean": 0.199035,
+      "median": 0.0,
+      "p90": 0.551606,
+      "max": 0.968254,
+      "std": 0.270528
+    }
+  },
+  "by_split": {},
+  "by_group": {
+    "tick_config": {
+      "6cam-20Hz": {
+        "n": 30
+      }
+    }
+  }
+}

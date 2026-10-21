@@ -50,4 +50,4 @@ resume, so it is lower than — and not the same measurement as — the recorded
 the same route in the pooled JSON. The pooled 50-route OpenPilot mean is withheld from
 `summaries.all50.openpilot` for that reason.
 
-[All-50 table](../../README.md#bench2drive--50-routes) · [Inputs and source hashes](bench2drive-speed-normalization.json)
+[All-50 table](bench2drive.md#bench2drive--50-routes) · [Inputs and source hashes](bench2drive-speed-normalization.json)

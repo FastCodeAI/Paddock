@@ -324,6 +324,6 @@ paddock ingest --all
 The run ids above fall out of the config; they are not chosen. Never hand-edit a
 `run.json` or `metrics.json` — regenerate.
 
-[50-route tables](../../README.md#bench2drive--50-routes) ·
+[50-route tables](bench2drive.md#bench2drive--50-routes) ·
 [Bench2Drive protocol](bench2drive.md) ·
 [Per-route records](bench2drive-native-rate.json)

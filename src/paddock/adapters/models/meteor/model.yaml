@@ -33,6 +33,9 @@ runtime:
     # That is an extrapolation the model never made, which is why it is opt-in
     # and lands in run.json as model_env rather than being the default.
     # METEOR_HORIZON_S: "4.0"
+  # Site overrides of these change speed or memory, not the plan, so they
+  # leave a run valid; any other [models.meteor.env] key makes it valid: false.
+  tuning_env: [METEOR_ORT_THREADS, METEOR_GPU_MEM_MB]
 
 capabilities:
   # paddock's six nuScenes cameras fill six of METEOR's eight slots (the two

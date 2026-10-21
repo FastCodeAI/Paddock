@@ -3,7 +3,8 @@
 Two things are guarded here, both of which a reviewer had to recompute by hand
 on PR #21:
 
-* **Every cell reproduces from the committed records.** The README tables are
+* **Every cell reproduces from the committed records.** The tables in
+  `docs/benchmarks/bench2drive.md` (moved there from the README) are
   transcribed by a human from `bench2drive-speed-normalization.json`; this
   recomputes them and fails on any drift, in either direction.
 * **OpenPilot's two recording sets are never pooled into one mean.** Its 24
@@ -29,6 +30,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 RECORDS = REPO_ROOT / "docs/benchmarks/bench2drive-speed-normalization.json"
 UNASSISTED_CSV = REPO_ROOT / "docs/benchmarks/openpilot-24-infractions.csv"
 README = REPO_ROOT / "README.md"
+#: The page that holds the Bench2Drive tables; the README keeps only the matrix.
+PAGE = REPO_ROOT / "docs/benchmarks/bench2drive.md"
 
 # README label -> key in the records file.
 PUBLISHED = {
@@ -69,8 +72,8 @@ def _matrix_cell(row_label: str, column_header: str) -> str:
 
 
 def _readme_table(after: str) -> list[list[str]]:
-    """The first markdown table following a heading or marker line."""
-    lines = README.read_text().split("\n")
+    """The first markdown table following a heading or marker line on the Bench2Drive page."""
+    lines = PAGE.read_text().split("\n")
     start = next(i for i, ln in enumerate(lines) if ln.strip() == after)
     rows = []
     for ln in lines[start:]:
@@ -312,16 +315,14 @@ def test_speed_sweep_reproduces(data: dict) -> None:
 def test_support_matrix_baseline_cell_is_the_historical_24_three_mps(data: dict) -> None:
     """♣ 47.94 and the table's 40.39 are different experiments; both must be stated."""
     s = data["summaries"]["original24"]["constant_velocity_3mps"]
-    readme = README.read_text()
-    assert f"**{s['driving_score']:.2f} ♣**" in readme
+    assert f"**{s['driving_score']:.2f} ♣**" in PAGE.read_text()
     cell = _matrix_cell("Baseline (Constant Velocity)", "Bench2Drive")
     assert cell.startswith(f"{s['driving_score']:.2f}"), cell
 
 
-def test_readme_still_links_a_tracked_bench2drive_run() -> None:
+def test_bench2drive_page_still_links_a_tracked_run() -> None:
     """The section must not be the one that drops the last results/ link."""
-    readme = README.read_text()
-    links = re.findall(r"\((results/bench2drive/[^)]+)\)", readme)
+    links = re.findall(r"\((\.\./\.\./results/bench2drive/[^)]+)\)", PAGE.read_text())
     assert links, "no docs link a results/bench2drive run any more"
     for link in links:
-        assert (REPO_ROOT / link).exists(), link
+        assert (PAGE.parent / link).resolve().exists(), link

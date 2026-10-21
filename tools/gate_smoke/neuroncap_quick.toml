@@ -1,0 +1,28 @@
+# neuroNCAP quick tier: the three scenario-scene pairs at scene 0103 (stationary,
+# frontal, side), one run each (seed 0) -- 3 episodes, about 20 min.
+#
+# 0103 is the one official scene in all three shapes, and the scene most of the
+# gallops work was smoked on, so a change that breaks braking or steering shows
+# here first. With 3 units the gate's bar is |t| >= 4.303: this tier catches a
+# large break, not a small regression; the closed-loop tier's neuroncap subset
+# (6 pairs, 3 runs) is the finer check. Seed 0 is run 0 of every full sweep, so
+# these samples pair with one directly.
+#
+# Run as `--scene 0103 --runs 1` with PADDOCK_NCAP_MANAGE_RENDERER=true.
+# Stored valid=false (3 of 20 pairs).
+#
+# Fixed once, on 2026-10-20. It must never be re-picked, re-seeded or edited to make a
+# result look better: a gate whose subset moves can be steered. If the subset turns
+# out to be wrong (a scene that cannot run, say), replace it in its own commit that
+# says why, and re-run every baseline paired with it.
+
+bench = "neuroncap"
+unit = "scenario-scene pair"
+rule = "every shape at scene 0103"
+runs = 1
+count = 3
+
+[strata]
+stationary = ["stationary-0103"]
+frontal = ["frontal-0103"]
+side = ["side-0103"]

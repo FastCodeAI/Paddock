@@ -74,6 +74,8 @@ _MODEL_BY_DRIVER = {
     "openpilot": "openpilot",
     "visionpilot": "visionpilot",
     "drivejepa": "drivejepa",
+    # METEOR's native driver reports `meteor-<version>`, with no `-driver-` infix.
+    "meteor": "meteor",
 }
 
 
