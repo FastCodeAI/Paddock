@@ -22,12 +22,21 @@
 #
 # Run as `--scene <the 7 ids>`. Stored valid=false (a route subset).
 #
+# can_ship = false, since 2026-10-21: seven routes detect only a large change. Paired
+# route differences between two control rates of one model have a route-level sd of
+# 13.6-30.4 driving-score points (bench2drive-native-rate.json against
+# bench2drive-speed-normalization.json, 49-50 routes each), so at 7 routes the
+# smallest drop found 80% of the time is 17-38 points. A REGRESSION that large is
+# real and still fails the gate; a GAIN from so few routes is too likely to be chance
+# to ship a checkpoint on.
+#
 # Fixed on 2026-10-20 by the rule above. It must never be re-picked, re-seeded or
 # edited to make a result look better: a gate whose subset moves can be steered. If
 # the subset turns out to be wrong (a route that cannot run, say), replace it in its
 # own commit that says why, and re-run every baseline paired with it.
 
 bench = "bench2drive"
+can_ship = false
 unit = "route"
 rule = "the 2026-10-16 ten, kept where the four unassisted systems' driving scores have sd >= 12"
 count = 7

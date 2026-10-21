@@ -54,11 +54,19 @@ at that pair's numbers, not proof the candidate is worse.
 ## Reading a verdict
 
 ```
-bench        metric          baseline candidate better by      SE      t t crit   units  verdict
-neuroncap    ncap_score         3.568     4.130     0.562   0.439   1.28   2.09      20  NEUTRAL
+bench        metric          baseline candidate better by      SE      t t crit     MDE   units  verdict
+neuroncap    ncap_score         3.568     4.130     0.562   0.439   1.28   2.09   1.297      20  NEUTRAL
              model_env: baseline {}, candidate {}
              note: neither run overrides drivejepa's env, so both ran model.yaml's own weights: ...
 ```
+
+**MDE** is the smallest true difference the pair detects 80% of the time,
+(t crit + t80) x SE, in the metric's units. It is how a NEUTRAL is read: a
+NEUTRAL with an MDE of 1.3 points says the candidate is not worse by 1.3 or more;
+it says nothing about a 0.5-point drop. It comes from the pair's own SE, so it
+moves with how different the candidate is: on neuroNCAP 20 pairs, a small
+finetune of the same model gives about 0.55, a change of what the model sees
+about 1.5 (measured from the 200-episode sweeps, 2026-10-21).
 
 | verdict | means |
 |---|---|
@@ -74,7 +82,10 @@ neuroncap    ncap_score         3.568     4.130     0.562   0.439   1.28   2.09 
 `check` adds one overall line: **FAIL** if any pair is a REGRESSION (exit 1);
 **SHIP** only if every pair was decided (GAIN, NEUTRAL or REGRESSION, so no NO
 RECORDS, TOO FEW UNITS or INCOMPLETE), none regressed, and at least one
-closed-loop pair is a GAIN; **HOLD** otherwise. The smoke also holds while any of
+closed-loop pair that may ship is a GAIN; **HOLD** otherwise. A pair with
+`can_ship = false` (the Bench2Drive subset: seven routes detect only a 17-38
+point drop) still fails the gate on a REGRESSION, and its GAIN never ships a
+checkpoint; the line says `(cannot ship)`. The smoke also holds while any of
 its subsets is unfinished, and names them beside the verdict. A `threshold` on a pair also reports whether the point estimate
 dropped by more than that many metric units.
 
@@ -89,6 +100,11 @@ Read the notes; they are where the gate says what it cannot check:
   Identical is legitimate for a code change on the same weights.
 - **invalid.** A smoke run of a subset is `valid: false`; the note is expected
   there and a warning anywhere else.
+- **code.** `run.json` records the paddock commit a run was made with
+  (`provenance.paddock`, since 2026-10-21) and the model's own repo revision.
+  When the two runs differ, or one ran from a checkout with uncommitted edits,
+  the gate says so: an adapter change between baseline and candidate is part of
+  the difference. Older runs have no paddock commit, and the note says that too.
 - **unpaired / different sample sets.** Only shared samples are compared.
 
 ## Full runs and the smoke
@@ -121,7 +137,7 @@ hours for every answer:
 | navsim (v2) | quick | 1,000 navtest tokens, every one of its 136 logs, at least 2 per log | 136 logs (1.98) | `--limit 1000` and `PADDOCK_NAVSIM_OVERRIDES=train_test_split.scene_filter.tokens=[...]` | a smoke of the same list only |
 | neuroncap_quick | quick | stationary, frontal and side at 0103; 1 run (seed 0) | 3 pairs (4.30) | `--scene 0103 --runs 1`, `PADDOCK_NCAP_MANAGE_RENDERER=true` | a full sweep (its run 0) |
 | neuroncap | closed | stationary/frontal/side at 0103, frontal+side at 0110, stationary at 0796; 3 runs | 6 pairs (2.57) | `--scene 0103,0110,0796 --runs 3`, `PADDOCK_NCAP_MANAGE_RENDERER=true` | a full sweep (its runs 0-2) |
-| bench2drive | closed | 7 routes where the four unassisted systems' scores spread by sd >= 12 | 7 routes (2.45) | `--scene <7 route ids>` | a smoke baseline |
+| bench2drive | closed | 7 routes where the four unassisted systems' scores spread by sd >= 12; cannot ship | 7 routes (2.45) | `--scene <7 route ids>` | a smoke baseline |
 | alpasim | closed | `public_2601_first10` | 10 clips (2.26) | `scene_set` pinned in the derived config | a smoke baseline |
 
 A subset's baseline is `[baseline.<subset>]` in the baseline manifest, else
@@ -174,9 +190,15 @@ Without `--execute` it prints, per benchmark, the exact `paddock run` line
 
 1. writes `PADDOCK_CONFIG` for the candidate: the site `paddock.toml` with the
    `--env` values merged into `[models.<model>.env]`, so the override reaches the
-   node and is recorded as `model_env`, and the neuroNCAP `renderer_url` moved to
+   node and is recorded as `model_env`; the neuroNCAP `renderer_url` moved to
    `--renderer-port` (default 8700), so the renderers the smoke starts do not
    land on the site's port, where a long-lived `paddock renderer` usually is;
+   neuroNCAP's `video = "keep"`, so frames are kept and never encoded (the
+   serial encode was 12 of 132 minutes; `"off"` would switch off the per-run
+   records the gate pairs on); and nuScenes' `index_cache` in
+   `{roots.runs}/gate/cache/nuscenes`, one index every checkout shares, unless
+   the site names its own. None of these is in a run config, so none changes
+   what is measured;
 2. launches one benchmark at a time, each after `nvidia-smi` shows enough free
    memory on the card the model will use: the model's declared `vram_gb`, plus
    its simulator's share (`SIMULATOR_GB`: 8 GB for neuroNCAP's renderer, as
@@ -296,6 +318,17 @@ the check that the site's baselines are sound.
 - **AlpaSim is not CPU-capped.** Its simulator runs in `docker compose`
   containers, which inherit nothing from the lane's `taskset`/`nice`. `--cores`
   lists that overlap are refused, but the containers' CPU is outside them.
+- **neuroNCAP frames stay on disk** (`video = "keep"`) under each run's
+  artifacts directory, a few hundred MB per smoke. Delete them once the verdict
+  is read if the disk is short.
+- **Bench2Drive needs `patches/Bench2Drive/` applied** to the site's checkout;
+  preflight refuses an evaluator without them. Unpatched, a crashed route kills
+  every CARLA its user runs on the GPU, other lanes included.
+- **Launches onto one card take turns** (`runtime/lease.py`): the last memory
+  check and the model's load hold that card's lock, shared by every user, so two
+  lanes or two people never start into the same free memory. A simulator that
+  starts inside the first episode loads after the lock is released; the wait
+  above counts its memory.
 - **The neuroNCAP smoke starts its own renderers** on `--renderer-port`, one
   scene at a time. Two smokes at once need different `--renderer-port` (and
   `--base-port`) values; if the port is taken, neuroNCAP's preflight says so and
