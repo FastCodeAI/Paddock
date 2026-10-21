@@ -199,6 +199,14 @@ class NuScenesBenchmark(OpenLoopBenchmark):
                 pass
         if not VAL_SCENES.exists():
             problems.append(f"{VAL_SCENES} (vendored official val split) is missing")
+        only_path = os.environ.get("NUSCENES_ONLY_SAMPLES")
+        if only_path:
+            try:
+                json.loads(Path(only_path).read_text())
+            except OSError as exc:
+                problems.append(f"NUSCENES_ONLY_SAMPLES={only_path!r}: {exc}")
+            except ValueError as exc:
+                problems.append(f"NUSCENES_ONLY_SAMPLES={only_path!r} is not valid JSON: {exc}")
         return problems
 
     # ---- samples --------------------------------------------------------

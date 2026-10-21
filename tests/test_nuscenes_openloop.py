@@ -1,12 +1,27 @@
 """nuScenes open-loop protocol: geometry, the command rule, and the scorer."""
 
 import math
+from types import SimpleNamespace
 
 import numpy as np
 
 from paddock.adapters.benchmarks.nuscenes import loader as L
-from paddock.adapters.benchmarks.nuscenes.harness import plan_headings, plan_on_grid, score_plan
+from paddock.adapters.benchmarks.nuscenes.harness import (
+    NuScenesBenchmark,
+    plan_headings,
+    plan_on_grid,
+    score_plan,
+)
 from paddock.policy.protocol import Trajectory
+
+
+def _harness_with_dataset(root):
+    harness = object.__new__(NuScenesBenchmark)
+    harness.spec = SimpleNamespace(dataset="nuscenes", name="nuscenes")
+    dataset = SimpleNamespace(resolve=lambda: root, version=None)
+    harness.cfg = SimpleNamespace(datasets={"nuscenes": dataset}, benchmarks={})
+    harness._boxes = {}
+    return harness
 
 
 def test_quaternion_identity_and_yaw():
@@ -141,3 +156,26 @@ def test_index_cache_is_rebuilt_when_the_dataset_key_changes(tmp_path, monkeypat
     # Different version: rebuild again.
     L.load_or_build_index(root, "v1.0-mini", ["a", "b"], cache)
     assert calls["n"] == 3
+
+
+def test_preflight_refuses_a_missing_or_malformed_only_samples_file(tmp_path, monkeypatch):
+    """`NUSCENES_ONLY_SAMPLES` is a bare `json.loads(Path(...).read_text())` in
+    `samples()` -- a bad path or malformed JSON should surface here, not as an
+    unhandled exception three functions into a run."""
+    harness = _harness_with_dataset(tmp_path)
+
+    monkeypatch.setenv("NUSCENES_ONLY_SAMPLES", str(tmp_path / "missing.json"))
+    assert any("NUSCENES_ONLY_SAMPLES" in p for p in harness.preflight())
+
+    bad = tmp_path / "bad.json"
+    bad.write_text("not json")
+    monkeypatch.setenv("NUSCENES_ONLY_SAMPLES", str(bad))
+    assert any("not valid JSON" in p for p in harness.preflight())
+
+    good = tmp_path / "good.json"
+    good.write_text("[]")
+    monkeypatch.setenv("NUSCENES_ONLY_SAMPLES", str(good))
+    assert not any("NUSCENES_ONLY_SAMPLES" in p for p in harness.preflight())
+
+    monkeypatch.delenv("NUSCENES_ONLY_SAMPLES")
+    assert not any("NUSCENES_ONLY_SAMPLES" in p for p in harness.preflight())

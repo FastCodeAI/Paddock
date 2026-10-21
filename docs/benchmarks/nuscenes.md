@@ -57,6 +57,13 @@ for the 5119), Alpamayo 2.5 s/sample (~3.5 h). Results:
 `results/nuscenes/<model>/<run>/metrics.json`; per-sample plans and ground truth
 in the run's `samples.jsonl` under the runs root.
 
+## Debug knobs
+
+`NUSCENES_ONLY_SAMPLES` points `samples()` at a JSON file of sample ids
+(a list of strings) and re-scores only those, e.g. a prior run's worst-cases
+list. Not a normal run mode — there is no `--scene` equivalent for this
+benchmark, and ordinary runs are untouched unless the variable is set.
+
 ## Openpilot camera history and GPU inference
 
 Openpilot uses real approximately 12 Hz CAM_FRONT exposures between keyframes.
