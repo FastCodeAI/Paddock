@@ -872,9 +872,11 @@ def closed_loop_table(by_mode: dict[str, dict[str, Route]]) -> pd.DataFrame:
         for rid, r in rs.items():
             df = r.series()
             d = r.describe()
+            # The early-stop rule that ended it, else the leaderboard's own end ("Completed", "deviated ...").
+            ended = d["ended"] or (d["status"] or "").removeprefix("Failed - ").removeprefix("Agent ")
             rows.append(
                 {
-                    "route": rid, "ego history": mode, "DS": d["DS"], "RC": d["RC"], "ended": d["ended"],
+                    "route": rid, "ego history": mode, "DS": d["DS"], "RC": d["RC"], "ended": ended,
                     "at_s": d["at_s"], "infractions": d["infractions"], "max speed": round(df["speed"].max(), 1),
                     "max off route m": round(df["route_dev"].max(), 1),
                     "max |heading vs route| deg": round(df["route_heading"].abs().max(), 1),
