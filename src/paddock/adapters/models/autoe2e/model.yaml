@@ -24,7 +24,8 @@ runtime:
     # 0.1 there, as a pairing, is the model's own 10 Hz (docs/models/autoe2e.md, "On Bench2Drive").
     AUTOE2E_REPLAN_S: "0"
     # The ego history fed: "real" (as measured, upstream's input), "steady" (straight driving at the
-    # current speed: an extrapolated past) or "no_turn" (yaw rate and curvature zeroed). The last two
+    # current speed: an extrapolated past), "no_turn" (yaw rate and curvature zeroed) or "steady_speed"
+    # (speed and acceleration steady at the current speed, the turning as measured). The last three
     # are closed-loop tests of what the measured past does to the plan; see docs/models/autoe2e.md.
     AUTOE2E_EGO_HISTORY: "real"
     OMP_NUM_THREADS: "2"

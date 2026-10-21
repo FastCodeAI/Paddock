@@ -164,7 +164,7 @@ def steady_before_start(
 
 
 #: ``AUTOE2E_EGO_HISTORY``: what the network is told about the car's past.
-EGO_HISTORY_MODES = ("real", "steady", "no_turn")
+EGO_HISTORY_MODES = ("real", "steady", "no_turn", "steady_speed")
 
 
 def ego_history_as(rows: np.ndarray, mode: str) -> np.ndarray:
@@ -172,10 +172,12 @@ def ego_history_as(rows: np.ndarray, mode: str) -> np.ndarray:
 
     ``"steady"`` replaces the past with steady straight driving at the newest
     measured speed -- an extrapolated past, no launch and no turn; ``"no_turn"``
-    keeps the measured speed and acceleration and zeroes yaw rate and curvature.
-    Neither is upstream's input: they exist to test, in closed loop, whether the
-    measured past is what turns AutoE2E off its lane on Bench2Drive (the deep-dive
-    notebook under tools/models/autoe2e/analysis shows it moves the plan offline).
+    keeps the measured speed and acceleration and zeroes yaw rate and curvature;
+    ``"steady_speed"`` is its other half: speed and acceleration steady at the
+    newest measured speed, yaw rate and curvature as measured. None of them is
+    upstream's input: they exist to test, in closed loop, whether the measured
+    past is what turns AutoE2E off its lane on Bench2Drive (the deep-dive notebook
+    under tools/models/autoe2e/analysis shows it moves the plan offline).
     """
     if mode not in EGO_HISTORY_MODES:
         raise ValueError(f"AUTOE2E_EGO_HISTORY must be one of {EGO_HISTORY_MODES}, got {mode!r}")
@@ -184,6 +186,8 @@ def ego_history_as(rows: np.ndarray, mode: str) -> np.ndarray:
         out[:] = (float(rows[-1, 0]), 0.0, 0.0, 0.0)
     elif mode == "no_turn":
         out[:, 2:] = 0.0
+    elif mode == "steady_speed":
+        out[:, :2] = (float(rows[-1, 0]), 0.0)
     return out
 
 

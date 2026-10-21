@@ -278,5 +278,8 @@ def test_the_ego_history_modes_change_only_what_they_say() -> None:
     assert np.all(steady[:, 0] == rows[-1, 0]) and not steady[:, 1:].any(), "now's speed, no launch or turn"
     no_turn = ego_history_as(rows, "no_turn")
     assert np.array_equal(no_turn[:, :2], rows[:, :2]) and not no_turn[:, 2:].any()
+    steady_speed = ego_history_as(rows, "steady_speed")
+    assert np.all(steady_speed[:, 0] == rows[-1, 0]) and not steady_speed[:, 1].any()
+    assert np.array_equal(steady_speed[:, 2:], rows[:, 2:]), "the turning rows as measured"
     with pytest.raises(ValueError, match="AUTOE2E_EGO_HISTORY"):
         ego_history_as(rows, "stedy")
