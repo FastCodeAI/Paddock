@@ -673,7 +673,7 @@ overlapping between them — the Civic's highest is 2.35°, the RAV4's lowest
 ## Recorded results
 
 The full dataset, 10,165 samples, every row on the identical sample set
-(`sequences_sha256` `293a225a0b5cbaff` in all six run records). A model is
+(`sequences_sha256` `293a225a0b5cbaff` in all seven run records). A model is
 scored only as far as it plans; `—` is where its own horizon ends, not a
 failure. Lower is better except `pdm_style_score`.
 
@@ -681,7 +681,8 @@ failure. Lower is better except `pdm_style_score`.
 plans are in the car's.** The two differ by the mount rotation, about 2° of yaw
 on the Civic, and every number below carries it. Re-scored from the stored
 records with the ground truth in the calibrated frame, ADE@3s is 0.602 for
-qwendrive, 0.858 for alpamayo15 and openpilot, and 1.137 for constant velocity,
+qwendrive, 0.858 for alpamayo15 and openpilot, 1.137 for constant velocity and
+1.358 for autoe2e,
 which reorders the table. It is left as scored until that re-score lands in its
 own PR ([ROADMAP](../ROADMAP.md), M8).
 
@@ -691,6 +692,7 @@ own PR ([ROADMAP](../ROADMAP.md), M8).
 | qwendrive (`Qwen-Drive-1.0-4B`, side slots replicated) | 5 s | 0.475 | 0.801 | 1.159 | 1.570 | 2.045 | — | 2.094 | 1.138 | 0.505 | 0.511 |
 | openpilot (`small`, split graph, `4df40d2c1`) ∗ | 10 s | 0.598 | 1.035 | 1.507 | 2.017 | 2.571 | 6.032 | 2.712 | 1.555 | 0.647 | 0.410 |
 | constant velocity (registered policy, 6 waypoints) | 3 s | 0.537 | 1.017 | 1.639 | — | — | — | 3.286 | 1.475 | 0.658 | 0.417 |
+| autoe2e (`kitscenes-epoch-5`, the road camera alone, five views left out) | 6 s | 1.160 | 1.593 | 2.016 | 2.507 | 3.185 | — | 3.084 | 2.068 | 0.775 | 0.364 |
 | visionpilot (synthesised trajectory) | 4 s | 1.149 | 2.462 | 4.045 | 5.835 | — | — | 8.146 | 2.195 | 0.864 | 0.406 |
 | drivejepa_free (perception-free agent, NAVSIM v1) | 4 s | 7.800 | 12.077 | 16.048 | 20.501 | — | — | 26.248 | 19.801 | 0.831 | 0.541 |
 
@@ -1069,6 +1071,7 @@ padded. Lower is better throughout.
 | Qwen-Drive 1.0 | 5 s | 0.475 | 0.801 | 1.159 | 1.570 | **2.045** | — | 2.094 | 1.138 | 0.511 |
 | OpenPilot ⊗ | 10 s | 0.598 | 1.035 | 1.507 | 2.017 | 2.571 | **6.032** | 2.712 | 1.555 | 0.410 |
 | Baseline (Constant Velocity) | 3 s | 0.537 | 1.017 | 1.639 | — | — | — | 3.286 | 1.475 | 0.417 |
+| AutoE2E | 6 s | 1.160 | 1.593 | 2.016 | 2.507 | 3.185 | — | 3.084 | 2.068 | 0.364 |
 | VisionPilot ∗ | 4 s | 1.149 | 2.462 | 4.045 | 5.835 | — | — | 8.146 | 2.195 | 0.406 |
 | Drive-JEPA (perception-free) | 4 s | 7.800 | 12.077 | 16.048 | 20.501 | — | — | 26.248 | 19.801 | 0.541 |
 

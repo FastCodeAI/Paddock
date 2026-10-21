@@ -16,6 +16,7 @@ in the release's `config.json`). Adapter: `src/paddock/adapters/models/autoe2e/`
 PADDOCK_REPO=<repos>/auto_e2e PADDOCK_WEIGHTS=<weights> bash src/paddock/adapters/models/autoe2e/setup.sh
 paddock doctor --model autoe2e
 paddock run --model autoe2e --bench navsim          # needs [benchmarks.navsim] nuplan + keyframe_cameras
+paddock run --model autoe2e --bench comma2k19       # the road camera alone; the other five views left out
 PADDOCK_INFER_HZ=10 paddock run --model autoe2e --bench bench2drive --scene <route>
 ```
 
@@ -132,6 +133,35 @@ Between the constant-velocity floor (0.2385) and Alpamayo 1.5 at 2 Hz
 ends a median 0.41 m left of the human's, growing with speed), right turns are
 under-turned, and starts from a standstill are timid (2.3 m planned against
 8.4 m driven). Comfort (0.984 history, 0.812 extended) is its strongest column.
+
+**comma2k19, 10,165 samples, valid** (`results/comma2k19/autoe2e/20261020T213543-417344`):
+**2.016** ADE@3s, from the road camera alone, the five views it does not have left
+out. With the ground truth rotated into the calibrated frame the plans are in
+(ROADMAP M8), 1.358. Either way it trails constant velocity (1.639 / 1.137), as
+an out-of-tree study of this checkpoint on comma2k19 also found.
+
+| horizon | ADE@1s | ADE@2s | ADE@3s | ADE@4s | ADE@5s | FDE@3s | median ADE@3s | miss@3s |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 6 s | 1.160 | 1.593 | **2.016** | 2.507 | 3.185 | 3.084 | 2.068 | 0.775 |
+
+**Checked against that study.** It fed the same checkpoint the same way: the
+front camera alone, the other five slots blank with a projection that sees
+nothing. It also used its own calibration, pose velocities for the ego rows,
+and an anchor every 0.5 s of each drive. On the 1,359 paddock samples that fall
+on the same video frame as one of its anchors:
+
+| | agreement |
+|---|---|
+| `v0`, the speed the rollout starts from | 0.012 m/s apart (median), 0.20 at most |
+| controls, the model's raw output | 0.005 m/s² and 1e-4 1/m apart (mean) |
+| plans | 0.11 m apart at 3 s, 0.21 m at 5 s (median) |
+| ADE@3s, ground truth in the calibrated frame | 1.370 here, 1.353 there |
+
+The plans differ by more than the controls suggest because the inputs differ
+in known ways. Paddock differences 20 Hz positions for the ego rows where the
+study used pose velocities, uses the route-pooled `rpyCalib` where it used its
+own calibration, and builds the history projections from device-frame poses
+(the same M8 frame issue).
 
 **Bench2Drive: not recorded here.** The 50-route sweep (`PADDOCK_INFER_HZ=10`,
 a forward every call, route raster on) was paused part-way. Every route run so
