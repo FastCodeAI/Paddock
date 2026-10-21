@@ -57,7 +57,7 @@ def _load(root: Path, version: str, table: str):
         return json.load(handle)
 
 
-def _first_n_samples(root: Path, version: str, n: int) -> list[dict[str, dict]]:
+def _first_n_samples(root: Path, version: str, n: int) -> list[tuple[str, dict[str, dict]]]:
     """The first *n* keyframe sample_tokens with all three wide cameras present.
 
     "First" means first in `sample_data.json` order, which in practice is one
@@ -85,11 +85,20 @@ def _first_n_samples(root: Path, version: str, n: int) -> list[dict[str, dict]]:
         if len(per_sample) >= n * 20:
             break
 
-    chosen = [recs for recs in per_sample.values() if all(c in recs for c in NEEDED)][:n]
-    for recs in chosen:
+    chosen = [(token, recs) for token, recs in per_sample.items() if all(c in recs for c in NEEDED)][:n]
+    for _, recs in chosen:
         for cam, rec in recs.items():
             rec["intrinsic"] = calibrated[rec["calibrated_sensor_token"]]["camera_intrinsic"]
     return chosen
+
+
+def _font() -> ImageFont.ImageFont:
+    for candidate in ("DejaVuSans-Bold.ttf", "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf"):
+        try:
+            return ImageFont.truetype(candidate, 14)
+        except OSError:
+            continue
+    return ImageFont.load_default()
 
 
 def _pinhole(rec: dict, root: Path) -> tuple[WarpPinhole, Image.Image]:
@@ -108,7 +117,7 @@ def main() -> None:
     if not samples:
         raise SystemExit(f"found no keyframe with all of {NEEDED} under {root}/{version}")
 
-    font = ImageFont.load_default()
+    font = _font()
     PW, PH, PAD = 420, 236, 24
     # (cam, mode) pairs, not a combined string -- a substring match against a
     # combined "CAM_FRONT_RIGHT fill" label previously resolved to CAM_FRONT,
@@ -124,7 +133,8 @@ def main() -> None:
     )
     draw = ImageDraw.Draw(sheet)
 
-    for row, recs in enumerate(samples):
+    for row, (token, recs) in enumerate(samples):
+        print(f"{token[:8]}: {', '.join(Path(recs[c]['filename']).name for c in NEEDED)}")
         y = PAD + row * (PH + 60)
         for col, (cam, mode) in enumerate(cols):
             x = PAD + col * (PW + PAD)
