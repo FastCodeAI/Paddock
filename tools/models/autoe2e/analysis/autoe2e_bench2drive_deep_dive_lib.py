@@ -35,10 +35,11 @@ from paddock.registry import Registry
 from paddock.runtime import env as env_builder
 
 # `tools` is a package at the repo root, which neither a notebook kernel (started in this
-# directory) nor a script elsewhere has on its path.
+# directory) nor a script elsewhere has on its path. Not route_video: it switches matplotlib to
+# Agg on import, which takes a notebook's inline figures away.
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
-from tools.benchmarks.bench2drive import route_video, runs  # noqa: E402
+from tools.benchmarks.bench2drive import runs  # noqa: E402
 
 MODEL = "autoe2e"
 BENCH = "bench2drive"
@@ -241,6 +242,22 @@ def plan_rollout(controls: np.ndarray, v0: float) -> np.ndarray:
     out[:, 2] = heading_k
     del heading, x, y
     return out
+
+
+def project(points_xy: np.ndarray, camera2ego: np.ndarray, camera2image: np.ndarray) -> np.ndarray:
+    """Ground points in the ego frame -> pixels of a camera, through the calibration the model was sent.
+
+    ``camera2ego`` is in paddock's optical convention (x right, y down, z forward); NaN behind the camera.
+    """
+    pts = np.column_stack(
+        [points_xy[:, 0], points_xy[:, 1], np.zeros(len(points_xy)), np.ones(len(points_xy))]
+    )
+    cam = (np.linalg.inv(camera2ego) @ pts.T).T[:, :3]
+    uv = (camera2image[:3, :3] @ cam.T).T
+    with np.errstate(divide="ignore", invalid="ignore"):
+        uv = uv[:, :2] / uv[:, 2:3]
+    uv[cam[:, 2] < 1.0] = np.nan
+    return uv
 
 
 def actor_boxes(route: Route, tick: int) -> list[dict]:
@@ -641,7 +658,8 @@ def outputs(route: Route, tick: int, focus: dict, variants=("live",)) -> plt.Fig
                 color="tab:red",
                 label=f"aim point; target {v_des:.1f} m/s (car {v0:.1f})",
             )
-            proj = route_video.front_project(wps[:, :2])
+            front = VIEWS.index("CAM_FRONT")  # the model's own front camera is the one recorded
+            proj = project(wps[:, :2], focus["camera2ego"][front], focus["camera2image"][front])
             img = plt.imread(route.dir / "front" / f"{tick:05d}.jpg")
             a_cam.imshow(img)
             ok = np.isfinite(proj).all(1)
