@@ -629,6 +629,27 @@ Missing lidar for a scene is fixable without re-downloading the dataset. The
 recipe is in [docs/data-setup.md](../data-setup.md) under "nuScenes with cameras
 but no lidar for some scenes".
 
+## The renderer subprocess loosens `torch.load`'s default, process-wide
+
+torch 2.6 flipped `torch.load`'s default to `weights_only=True`, which refuses
+to unpickle the numpy scalar nerfstudio's own checkpoint format embeds, and
+`nerfstudio.utils.eval_utils.eval_load_checkpoint` calls `torch.load` with no
+`weights_only` kwarg at all. So loading a freshly-trained local checkpoint
+through the closed-loop server failed outright on a current torch
+([renderer.py:37](../../src/paddock/adapters/benchmarks/neuroncap/renderer.py#L37)
+has the full story, including the narrower fixes tried first and why they
+didn't clear it).
+
+The fix reassigns `torch.load` to default `weights_only=False` -- not scoped to
+NeuRAD's own checkpoint-loading call, but for the lifetime of the renderer
+subprocess: every `torch.load` call any module in that process makes
+afterward inherits the weaker default. This is safe here specifically because
+the renderer subprocess only ever loads our own locally-trained NeuRAD
+checkpoints, never a third-party file -- the arbitrary-code-execution risk
+`weights_only=True` exists to close doesn't apply to this process's inputs.
+It does not reach any other paddock process; the engine, the node and every
+model's own interpreter are unaffected.
+
 ## Support-matrix results
 
 The per-metric results behind this benchmark's column in the
