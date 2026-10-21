@@ -103,6 +103,35 @@ def test_segment_count_matches_run_count_for_a_real_sweep_shape(tmp_path: Path) 
     assert len(all_runs) == len(segments) == 3
 
 
+def test_mismatched_run_and_segment_counts_raise_instead_of_silently_misaligning(tmp_path: Path) -> None:
+    """Regression guard for the `strict=True` zip in `main()`: unlike
+    `test_segment_count_matches_run_count_for_a_real_sweep_shape` above (which
+    only covers the well-formed case), this builds a sweep with one more run
+    dir than reasoning segment and asserts the zip actually raises, rather
+    than silently dropping the extra run -- the bug `strict=True` was added to
+    fix."""
+    sweep = tmp_path / "sweep"
+    episode = sweep / "side-0103"
+    for i in range(3):
+        (episode / f"run_{i}").mkdir(parents=True)
+    (episode / "stdout.log").write_text("")
+
+    entries: list[dict] = []
+    for i in range(2):
+        entries.append({"status": "no frame seen yet"})
+        entries.append({"wall_time": float(i), "reasoning": f"run {i}"})
+    reasoning_path = sweep / "reasoning.jsonl"
+    reasoning_path.write_text("\n".join(json.dumps(e) for e in entries))
+
+    segments = _segment_reasoning([json.loads(line) for line in reasoning_path.read_text().splitlines()])
+    all_runs, segments = _select_runs_and_segments(sweep, segments, None, None)
+
+    assert len(all_runs) == 3
+    assert len(segments) == 2
+    with pytest.raises(ValueError):
+        list(zip(all_runs, segments, strict=True))
+
+
 def _multi_episode_sweep(tmp_path: Path, episode_run_counts: dict[str, int]) -> tuple[Path, list[list[dict]]]:
     """A sweep with several episodes, created in dict order -- so the first
     key is oldest by `stdout.log` mtime and sorts first in episode order.
