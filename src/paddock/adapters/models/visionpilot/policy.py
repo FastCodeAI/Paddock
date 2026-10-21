@@ -577,8 +577,12 @@ class VisionPilotPolicy(Policy):
         scored frame, which is the speed an ACC would actually be holding when
         asked to plan. Still the present, not the recorded future.
 
-        Closed-loop never reaches this -- `/infer` calls `infer` every tick -- so
-        the episode-start latch neuroNCAP and Bench2Drive rely on is unchanged.
+        Closed-loop does not reach this today -- `/infer` calls `infer` every
+        tick -- so the episode-start latch neuroNCAP and Bench2Drive rely on is
+        unchanged. The server's ``/observe`` would reach it mid-episode and clear
+        the set-speed there; only the AlpaSim bridge calls ``/observe``, for
+        Drive-JEPA alone. Issue #94 would send every model's in-between frames
+        to it, and has to decide this first.
         NAVSIM *does* go through `/infer_sequence`, so its history is shorter but
         this applies there too: the recorded EPDMS 0.431 was measured under the
         old behaviour and a re-run will not reproduce it.

@@ -174,6 +174,17 @@ def test_extras_survive_the_closed_loop_wire_and_validate() -> None:
     validate_extras(None)
 
 
+@pytest.mark.parametrize("columns", [2, 3])
+def test_the_wire_carries_the_whole_plan_as_the_model_returned_it(columns: int) -> None:
+    """`plan` holds every row, with yaw only if the model gave one, and the spacing;
+    `trajectory` stays the six (x, y) a neuroNCAP-style client indexes."""
+    waypoints = np.arange(8 * columns, dtype=np.float64).reshape(8, columns)
+    wire = Trajectory(waypoints, dt=0.5).to_wire()
+    assert wire["plan"] == {"waypoints": waypoints.tolist(), "dt": 0.5}
+    assert wire["trajectory"] == waypoints[:6, :2].tolist()
+    assert list(wire) == ["trajectory", "aux_outputs", "plan"]
+
+
 @pytest.mark.parametrize(
     ("mutate", "message"),
     [

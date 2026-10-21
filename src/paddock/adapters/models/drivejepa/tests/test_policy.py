@@ -280,3 +280,53 @@ def test_openscene_crops_every_camera_onto_the_openscene_pinhole(devkit_crop, mo
     np.testing.assert_array_equal(intrinsics["CAM_FRONT"], devkit_crop.target_intrinsics())
     assert out[560, 960].min() == 255, "the principal point moved"
     assert out[560, 960 + 60].max() == 0 and out[560 - 60, 960].max() == 0, "the marker grew"
+
+
+class _Tensor:
+    """Just enough of a torch tensor for `infer`: index, .float(), .cpu(), .numpy()."""
+
+    def __init__(self, array):
+        self.array = np.asarray(array)
+
+    def __getitem__(self, index):
+        return _Tensor(self.array[index])
+
+    def float(self):
+        return self
+
+    def cpu(self):
+        return self
+
+    def numpy(self):
+        return self.array.astype(np.float32)
+
+
+def _answering(policy, fed: bool):
+    """Stub `forward` with a canned output whose pick is proposal 5."""
+    rng = np.random.default_rng(1)
+    proposals = rng.normal(size=(1, 32, 8, 3))
+    scores = np.full((1, 32), 0.25)
+    scores[0, 5] = 0.75
+
+    def forward(obs):
+        policy.momentum_fed = fed
+        return {"trajectory": _Tensor(proposals[:, 5]), "pdm_score": _Tensor(scores)}
+
+    policy.forward = forward
+    return proposals[0, 5].astype(np.float32).astype(np.float64)
+
+
+@pytest.mark.parametrize("fed", [True, False])
+def test_the_answer_carries_all_eight_poses_and_the_pick(fed: bool) -> None:
+    """`plan`: the eight (x, y, heading) rows at 0.5 s; `trajectory`: the six (x, y)
+    it always was; extras: which proposal was driven, its score, and whether the
+    momentum stage had a previous plan for it."""
+    policy = POLICY(checkpoint="/x.ckpt")
+    chosen = _answering(policy, fed=fed)
+    wire = policy.infer(_nuscenes_observation(0.0)).to_wire()
+    np.testing.assert_array_equal(np.asarray(wire["plan"]["waypoints"]), chosen)
+    assert wire["plan"]["dt"] == HISTORY_DT
+    np.testing.assert_array_equal(np.asarray(wire["trajectory"]), chosen[:6, :2])
+    assert wire["extras"] == {
+        "drivejepa_pick": {"chosen_index": 5, "chosen_score": 0.75, "momentum_fed": fed}
+    }

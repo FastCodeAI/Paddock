@@ -484,8 +484,17 @@ class Trajectory:
     def to_wire(self, aux: dict[str, Any] | None = None) -> dict[str, Any]:
         """Package for a simulator expecting exactly `N_WAYPOINTS` waypoints.
 
-        Anything past the sixth is dropped: the engine has no timestamp to
-        attach to it and indexes the list positionally.
+        In ``trajectory`` anything past the sixth is dropped: neuroNCAP has no
+        timestamp to attach to it and indexes the list positionally, and it
+        reads only ``trajectory`` and ``aux_outputs``.
+
+        ``plan`` is the whole plan as the model returned it, in the same shape
+        `/infer_sequence` returns its waypoints: every row, with the yaw column
+        when the model gives one, and the spacing. A model that plans only
+        (x, y) sends two columns and no yaw is invented here -- a client that
+        needs headings derives them itself and can say it did. A simulator
+        that steers a full pose (AlpaSim) reads this key; one that does not
+        never sees it.
         """
         if len(self.waypoints) < N_WAYPOINTS:
             raise ValueError(
@@ -494,6 +503,7 @@ class Trajectory:
         wire: dict[str, Any] = {
             "trajectory": self.xy[:N_WAYPOINTS].tolist(),
             "aux_outputs": aux if aux is not None else empty_aux(),
+            "plan": {"waypoints": self.waypoints.tolist(), "dt": self.dt},
         }
         if self.extras:
             wire["extras"] = self.extras
@@ -724,6 +734,10 @@ class Policy(ABC):
         state advances with each forward pass (openpilot, VisionPilot). A model
         that is a pure function of its recorded history overrides this to just
         record -- one forward pass per sequence instead of N, same tensor.
+
+        The server's ``/observe`` calls this too, in closed loop: mid-episode,
+        with no reset before it and self-priming as it is. An override that
+        assumes an open-loop sequence around it has to hold there as well.
         """
         self.infer(obs)
 

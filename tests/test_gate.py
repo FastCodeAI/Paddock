@@ -819,7 +819,7 @@ def test_smoke_commands_for_neuroncap_and_kitscenes(tmp_path: Path) -> None:
 
 
 def test_a_benchmark_the_model_does_not_declare_is_skipped(tmp_path: Path) -> None:
-    """drivejepa declares no alpasim, so the smoke says so instead of launching it."""
+    """A benchmark missing from the declared list is reported as skipped, not launched."""
     (step,) = _plan(tmp_path, ["alpasim"], {})
     assert step.status == "skipped" and not step.command
 
