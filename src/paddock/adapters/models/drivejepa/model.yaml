@@ -23,7 +23,8 @@ runtime:
     DRIVE_JEPA_MSDA: "auto"
     # Momentum-aware selection (paper section 3.5) is part of the published
     # method, so it is on for every benchmark. It can only act where the node
-    # has its own plan from 0.5 s earlier: closed loop (neuroNCAP, Bench2Drive).
+    # has its own plan from 0.5 s earlier: closed loop (neuroNCAP, Bench2Drive,
+    # and AlpaSim through paddock's bridge).
     # Open-loop samples arrive through /infer_sequence, which resets the node,
     # so they always select on the plain score. See momentum.py.
     DRIVEJEPA_MOMENTUM: "on"
