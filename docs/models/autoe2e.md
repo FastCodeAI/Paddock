@@ -172,7 +172,7 @@ on the same video frame as one of its anchors:
 | `v0`, the speed the rollout starts from | 0.012 m/s apart (median), 0.20 at most |
 | controls, the model's raw output | 0.005 m/s² and 1e-4 1/m apart (mean) |
 | plans | 0.11 m apart at 3 s, 0.21 m at 5 s (median) |
-| ADE@3s, ground truth in the calibrated frame | 1.370 here, 1.353 there |
+| ADE@3s, ground truth in the calibrated frame | 1.370 here, 1.352 there |
 
 The plans differ by more than the controls suggest because the inputs differ
 in known ways. Paddock differences 20 Hz positions for the ego rows where the

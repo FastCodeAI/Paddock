@@ -643,7 +643,7 @@ results, not the knob.
   | `route_xy` has the right sign | stand-in CARLA test (left lane arrives at y > 0) and, live, the B2D projection overlay | **strong** |
   | the Bench2Drive swerve is the model, not the adapter | projection overlay, raster mapping, and a y-mirror / rot-180 A/B on 80 navtest scenes where the deployed convention scores best; not ruled out: the route comes from the leaderboard's 50 m-downsampled plan, and route-without-map is an input upstream never produces | **argued** — no upstream closed-loop reference exists |
   | NAVSIM is out of its training logs | the release names no nuPlan split; its own nuPlan-test figures suggest test was held out | **argued** |
-  | its comma2k19 plans are those of the same checkpoint fed the same way out of tree | an out-of-tree comma2k19 study of this checkpoint (front camera alone, the other slots blank): on the 1,359 samples on the same video frame as one of its anchors, `v0` 0.012 m/s apart (median), controls 0.005 m/s² and 1e-4 1/m apart (mean), ADE@3s 1.370 against its 1.353, both with the ground truth in the calibrated frame | **verified** |
+  | its comma2k19 plans are those of the same checkpoint fed the same way out of tree | an out-of-tree comma2k19 study of this checkpoint (front camera alone, the other slots blank): on the 1,359 samples on the same video frame as one of its anchors, `v0` 0.012 m/s apart (median), controls 0.005 m/s² and 1e-4 1/m apart (mean), ADE@3s 1.370 against its 1.352, both with the ground truth in the calibrated frame | **verified** |
 
 Not started, and larger than everything above:
 
