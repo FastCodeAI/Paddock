@@ -6,7 +6,9 @@ paddock half.
 The lifecycle mirrors what the pre-paddock ladder driver did, because the
 reasons behind it were learned the hard way:
 
-* wait for VRAM *before* spawning, so a shortage is reported as a shortage;
+* wait for VRAM *before* spawning, so a shortage is reported as a shortage,
+  and hold the card's launch lock (`runtime.lease`) from the last check until
+  the node is ready, so two launches never both start into the same free memory;
 * poll `/alive` rather than sleeping, and allow a long timeout -- a 21 GB
   checkpoint read on a contended box legitimately takes tens of minutes;
 * alive is not identity: a port is chosen before the node binds it, and on a
@@ -31,7 +33,7 @@ import httpx
 from paddock.config import SiteConfig
 from paddock.registry import ModelSpec
 from paddock.runtime import env as env_builder
-from paddock.runtime import gpu
+from paddock.runtime import gpu, lease
 
 
 class NodeStartupError(RuntimeError):
@@ -132,6 +134,39 @@ def check_identity(port: int, served: dict, expect_model: str | None, expect_non
 
 
 @contextlib.contextmanager
+def gpu_launch(needed_gb: float, env: dict[str, str], echo=print) -> Iterator[None]:
+    """Wait for `needed_gb` on the card `env` lands on, then hold its launch lock.
+
+    The block is the launch: it should end once the model has loaded. The wait
+    itself happens outside the lock, so a small model is not queued behind a
+    large one waiting for memory; the lock is taken only to check again and
+    launch. If someone loaded into the memory while this one waited for the
+    lock, it waits again. Without a card, or for a model that needs none, there
+    is nothing to wait for or to lock.
+    """
+
+    def short(need: float, have: float) -> None:
+        echo(f"  waiting for {need:.0f} GB VRAM ({have:.1f} GB free)")
+
+    device = gpu.visible_device(env)
+    if needed_gb <= 0 or device is None or gpu.free_gb(env) is None:
+        gpu.wait_for(needed_gb, on_wait=short, env=env)
+        yield
+        return
+
+    def queued(path: Path) -> None:
+        echo(f"  waiting for another paddock launch on GPU {device} to finish loading ({path})")
+
+    while True:
+        gpu.wait_for(needed_gb, on_wait=short, env=env)
+        with lease.held(lease.gpu_lock_name(device), on_wait=queued):
+            if (gpu.free_gb(env) or 0.0) >= needed_gb:
+                yield
+                return
+        echo(f"  GPU {device} filled while this launch waited for the lock; waiting again")
+
+
+@contextlib.contextmanager
 def model_node(
     spec: ModelSpec,
     cfg: SiteConfig,
@@ -155,12 +190,24 @@ def model_node(
     # decides which card it lands on, so it is also what decides which card's
     # headroom is worth waiting for. See `gpu.visible_device`.
     node_env = env_builder.build(spec, cfg)
-    gpu.wait_for(
-        spec.vram_gb,
-        on_wait=lambda need, have: echo(f"  waiting for {need:.0f} GB VRAM ({have:.1f} GB free)"),
-        env=node_env,
-    )
+    with contextlib.ExitStack() as launch:
+        launch.enter_context(gpu_launch(spec.vram_gb, node_env, echo))
+        with _started_node(spec, cfg, port, log_dir, echo, nonce, node_env, launch) as url:
+            yield url
 
+
+@contextlib.contextmanager
+def _started_node(
+    spec: ModelSpec,
+    cfg: SiteConfig,
+    port: int,
+    log_dir: Path,
+    echo,
+    nonce: str | None,
+    node_env: dict[str, str],
+    launch: contextlib.ExitStack,
+) -> Iterator[str]:
+    """`model_node`'s process, started inside the GPU launch; `launch` is closed once it is ready."""
     interpreter = spec.runtime.interpreter(cfg, **spec.context(cfg))
     if not interpreter.exists():
         raise NodeStartupError(
@@ -199,6 +246,8 @@ def model_node(
             wait_alive(
                 port, spec.startup_timeout_s, proc, log, expect_model=spec.directory.name, expect_nonce=nonce
             )
+            # Loaded: the next launch's memory check must see this model's share taken.
+            launch.close()
             echo(f"  {spec.name} ready")
             yield f"http://127.0.0.1:{port}"
             if proc.poll() is not None:
