@@ -28,6 +28,11 @@ import re
 import sys
 from pathlib import Path
 
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+from tools.benchmarks.neuroncap import annotate_reasoning_video as arv
+
 _EPISODE = re.compile(r"^(stationary|frontal|side)-(\d+)$")
 
 
@@ -44,29 +49,15 @@ def _sweep_dirs(given: Path) -> list[Path]:
     return sweeps
 
 
-def _episode_dirs(sweep_dir: Path) -> list[Path]:
-    episodes = [p for p in sweep_dir.iterdir() if p.is_dir() and (p / "stdout.log").exists()]
-    return sorted(episodes, key=lambda p: (p / "stdout.log").stat().st_mtime)
-
-
-def _run_dirs(episode_dir: Path) -> list[Path]:
-    run_re = re.compile(r"^run_(\d+)$")
-    runs = sorted(
-        (p for p in episode_dir.iterdir() if p.is_dir() and run_re.match(p.name)),
-        key=lambda p: int(run_re.match(p.name).group(1)),
-    )
-    return runs or [episode_dir]
-
-
 def _load_runs(sweep_dir: Path) -> list[dict]:
     """One row per run: category, scene, sweep, episode/run dirs, score, collided."""
     rows = []
-    for episode_dir in _episode_dirs(sweep_dir):
+    for episode_dir in arv._episode_dirs(sweep_dir):
         m = _EPISODE.match(episode_dir.name)
         if not m:
             continue
         category, scene = m.groups()
-        for run_dir in _run_dirs(episode_dir):
+        for run_dir in arv._run_dirs(episode_dir):
             metrics_path = run_dir / "metrics.json"
             if not metrics_path.exists():
                 continue
@@ -168,10 +159,7 @@ _REASONING_CACHE: dict[Path, tuple[list[Path], list[list[dict]]] | None] = {}
 
 
 def _try_build_reasoning_video(row: dict, repo_root: Path) -> Path | None:
-    if str(repo_root) not in sys.path:
-        sys.path.insert(0, str(repo_root))
     from tools import paths
-    from tools.benchmarks.neuroncap import annotate_reasoning_video as arv
 
     sweep_dir = row["sweep"]
     if sweep_dir not in _REASONING_CACHE:
