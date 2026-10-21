@@ -77,6 +77,29 @@ VARIANT_COLOR = {
 # --------------------------------------------------------------------------- the routes
 
 
+def heading_vs_route(xy: np.ndarray, i: int | None, yaw_deg: float, min_step_m: float = 0.5) -> float:
+    """The ego's yaw against the route's own direction at route point ``i``, degrees in [-180, 180).
+
+    Signed like the recorded lane heading (CARLA's yaw, so right-positive). Unlike it, defined
+    inside a junction too, where the nearest lane waypoint can belong to any crossing lane. The
+    direction is taken to the next point at least ``min_step_m`` on: the leaderboard's route
+    repeats a point where two of its segments meet, and a zero-length step has none.
+    """
+    if i is None or len(xy) < 2:
+        return float("nan")
+    j = min(max(int(i), 0), len(xy) - 1)
+    steps = np.hypot(*(xy - xy[j]).T)
+    on = np.nonzero(steps[j + 1 :] >= min_step_m)[0]
+    if len(on):
+        dx, dy = xy[j + 1 + on[0]] - xy[j]
+    else:  # the route's end: from the last point far enough before it
+        back = np.nonzero(steps[:j] >= min_step_m)[0]
+        if not len(back):
+            return float("nan")
+        dx, dy = xy[j] - xy[back[-1]]
+    return (yaw_deg - math.degrees(math.atan2(dy, dx)) + 180.0) % 360.0 - 180.0
+
+
 @dataclass
 class Route:
     """One recorded drive: what the leaderboard scored and what every tick held."""
@@ -109,12 +132,14 @@ class Route:
         return next(r for r in self.ticks if r["t"] == tick)
 
     def series(self) -> pd.DataFrame:
-        """One row per tick: time, speed, controls, lane offset, the model's own report."""
+        """One row per tick: time, speed, controls, lane and route offsets, the model's own report."""
         rows = []
         t0 = self.ticks[0]["time"]
+        xy = np.asarray(self.plan.get("xy") or [], dtype=float).reshape(-1, 2)
         for r in self.ticks:
             a = (r.get("extras") or {}).get("autoe2e") or {}
             lane = r.get("lane") or {}
+            route = r.get("route") or {}
             rows.append(
                 {
                     "tick": r["t"], "t": r["time"] - t0, "speed": r["ego"]["speed"], "v_des": r["ctrl"].get("v_des"),
@@ -124,6 +149,7 @@ class Route:
                     "ego_rows_filled": a.get("ego_rows_filled"), "kappa_0": a.get("kappa_0"),
                     "accel_0": a.get("accel_0"), "lane_offset": lane.get("offset"), "lane_heading": lane.get("heading"),
                     "yaw_rate": r["ego"].get("yaw_rate"), "x": r["ego"]["x"], "y": r["ego"]["y"], "yaw": r["ego"]["yaw"],
+                    "route_dev": route.get("dev"), "route_heading": heading_vs_route(xy, route.get("i"), r["ego"]["yaw"]),
                 }
             )  # fmt: skip
         df = pd.DataFrame(rows)
@@ -836,7 +862,11 @@ def drives(cfg: SiteConfig, route_ids: list[str]) -> dict[str, dict[str, Route]]
 
 
 def closed_loop_table(by_mode: dict[str, dict[str, Route]]) -> pd.DataFrame:
-    """Per route and ego history: how it scored, what ended it, and how far off its lane it got."""
+    """Per route and ego history: how it scored, what ended it, and how far off its route it got.
+
+    Off the *route*, not the lane: these routes cross junctions, where the nearest lane can be
+    any crossing lane and a car going the right way can read 150 degrees off it.
+    """
     rows = []
     for mode, rs in by_mode.items():
         for rid, r in rs.items():
@@ -846,8 +876,8 @@ def closed_loop_table(by_mode: dict[str, dict[str, Route]]) -> pd.DataFrame:
                 {
                     "route": rid, "ego history": mode, "DS": d["DS"], "RC": d["RC"], "ended": d["ended"],
                     "at_s": d["at_s"], "infractions": d["infractions"], "max speed": round(df["speed"].max(), 1),
-                    "max |lane offset| m": round(df["lane_offset"].abs().max(), 2),
-                    "max |heading vs lane| deg": round(df["lane_heading"].abs().max(), 1),
+                    "max off route m": round(df["route_dev"].max(), 1),
+                    "max |heading vs route| deg": round(df["route_heading"].abs().max(), 1),
                 }
             )  # fmt: skip
     return pd.DataFrame(rows).set_index(["route", "ego history"]).sort_index()
@@ -856,7 +886,7 @@ def closed_loop_table(by_mode: dict[str, dict[str, Route]]) -> pd.DataFrame:
 def closed_loop_figure(by_mode: dict[str, dict[str, Route]], route_id: str) -> plt.Figure:
     """The same route driven with each ego history: where the car went, and its speed and lane offset."""
     fig, (a_map, a_spd, a_off) = plt.subplots(1, 3, figsize=(17, 5))
-    colors = {"real": "black", "steady": "tab:blue", "no_turn": "tab:green"}
+    colors = {"real": "black", "steady": "tab:blue", "no_turn": "tab:green", "steady_speed": "tab:orange"}
     plan = None
     for mode, rs in by_mode.items():
         if route_id not in rs:
@@ -876,19 +906,19 @@ def closed_loop_figure(by_mode: dict[str, dict[str, Route]], route_id: str) -> p
         )
         a_map.plot(df["x"].iloc[-1], df["y"].iloc[-1], "x", color=c, ms=10, mew=2)
         a_spd.plot(df["t"], df["speed"], color=c, label=mode)
-        a_off.plot(df["t"], df["lane_offset"], color=c, label=mode)
+        a_off.plot(df["t"], df["route_dev"], color=c, label=mode)
     a_map.set_aspect("equal", adjustable="datalim")
     a_map.invert_yaxis()
     a_map.legend(fontsize=7)
     a_map.set_title("world, metres", fontsize=9)
     a_spd.set_title("speed (m/s)", fontsize=9)
-    a_off.set_title("lane offset (m, left +)", fontsize=9)
+    a_off.set_title("distance from the route (m)", fontsize=9)
     for a in (a_spd, a_off):
         a.set_xlabel("game time (s)")
         a.grid(alpha=0.3)
         a.legend(fontsize=8)
     fig.suptitle(
-        f"Route {route_id}: driven with the measured ego history, and with an extrapolated one", fontsize=10
+        f"Route {route_id}: driven with the measured ego history, and with parts of it replaced", fontsize=10
     )
     fig.tight_layout()
     return fig
