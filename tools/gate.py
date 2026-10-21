@@ -56,6 +56,13 @@ Overall (`check`): FAIL if any pair is a REGRESSION; SHIP only if every pair is 
 otherwise. The exit status is 1 on FAIL, else 0. Each pair also reports its MDE, the
 smallest true difference it detects 80% of the time, which is how a NEUTRAL is read.
 
+Terms. Beside the primary, each pair scores the parts benchmark.yaml's `terms` says it
+is built from (NAVSIM's NC, DAC, EP, ...; Bench2Drive's route completion and infraction
+penalty), with the same pairing, units and refusals. A composite can hold still while
+the candidate trades one part for another. Terms never change a verdict: one test per
+term at 5% calls an unchanged model worse somewhere far more often than the gate's own
+pairs do, so a term beyond t crit is named under the overall line, for a reader.
+
 Model identity. A site `[models.X] env` override such as `DRIVEJEPA_CHECKPOINT` is
 recorded in run.json as `config.model_env` (absolute paths as `<site path:digest>`) and
 makes the run `valid: false` unless the key is tuning-only (#82). Nothing stops a
@@ -67,6 +74,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import functools
 import hashlib
 import json
 import math
@@ -291,6 +299,9 @@ class PairResult:
     baseline_env: dict[str, str] = field(default_factory=dict)
     candidate_env: dict[str, str] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
+    #: The primary's parts (`terms` in benchmark.yaml), each paired the same way
+    #: as the primary. Read beside its verdict; never part of `overall`.
+    terms: list[PairResult] = field(default_factory=list)
 
 
 def parse_spec(spec: str) -> tuple[str, str]:
@@ -501,6 +512,23 @@ def identity_notes(baseline: Run, candidate: Run) -> list[str]:
     return notes
 
 
+@functools.cache
+def _benchmark_terms() -> dict[str, tuple[str, tuple[str, ...]]]:
+    from paddock.registry import load_benchmarks
+
+    return {name: (spec.primary_metric, spec.terms) for name, spec in load_benchmarks().items()}
+
+
+def headline_terms(bench: str, metric: str) -> tuple[str, ...]:
+    """The terms benchmark.yaml declares for `metric`, if it is that benchmark's primary."""
+    primary, terms = _benchmark_terms().get(bench, ("", ()))
+    return terms if metric == primary else ()
+
+
+def _recorded(run: Run, metric: str) -> bool:
+    return any(_value(s, metric) is not None for s in run.samples)
+
+
 def compare(
     baseline: Run,
     candidate: Run,
@@ -508,8 +536,42 @@ def compare(
     threshold: float | None = None,
     unit_of: Callable[[Sample], str | None] | None = None,
     allow_config: Any = (),
+    terms: Any = None,
 ) -> PairResult:
-    """Score one candidate run against one baseline run on the same benchmark."""
+    """Score one candidate run against one baseline run on the same benchmark.
+
+    `terms` (default: the benchmark's own, when `metric` is its primary) are
+    scored by the same pairing, on the same units and under the same refusals,
+    and kept on the result beside the primary. They never change its verdict:
+    at 5% each, the quick tier's 17 terms would call an unchanged model worse
+    on at least one about a third of the time.
+    """
+    result = _compare(baseline, candidate, metric, threshold, unit_of, allow_config)
+    terms = headline_terms(result.bench, result.metric) if terms is None else tuple(terms)
+    unrecorded = []
+    for term in terms:
+        # A run with records but none for this term predates it (or its harness
+        # does not write it): say so once on the primary, not as a row of dashes.
+        if any(r.samples and not _recorded(r, term) for r in (baseline, candidate)):
+            unrecorded.append(term)
+            continue
+        part = _compare(baseline, candidate, term, None, unit_of, allow_config)
+        part.notes = [n for n in part.notes if n not in result.notes]
+        result.terms.append(part)
+    if unrecorded:
+        result.notes.append(f"terms not recorded by one of the runs, so not compared: {', '.join(unrecorded)}")
+    return result
+
+
+def _compare(
+    baseline: Run,
+    candidate: Run,
+    metric: str | None,
+    threshold: float | None,
+    unit_of: Callable[[Sample], str | None] | None,
+    allow_config: Any,
+) -> PairResult:
+    """One metric of one pair: `compare` without its terms."""
     if baseline.bench != candidate.bench:
         raise ValueError(f"benchmarks differ: {baseline.bench} vs {candidate.bench}")
     bench = baseline.bench
@@ -692,21 +754,46 @@ def _fmt(x: float | None, digits: int = 3) -> str:
     return f"{x:.{digits}f}"
 
 
+TERMS_WORSE = "terms worse beyond t crit, not part of the verdict: "
+
+
+def term_regressions(results: list[PairResult]) -> list[str]:
+    """`bench metric (t ...)` for every term that is worse beyond its t crit."""
+    return [
+        f"{r.bench} {p.metric} (t {_fmt(p.t, 2)})"
+        for r in results
+        for p in r.terms
+        if p.verdict == "REGRESSION"
+    ]
+
+
 def render(results: list[PairResult]) -> str:
+    # NAVSIM's term names run to 30 characters; one column for all keeps t aligned.
+    width = max([14] + [len(p.metric) + 2 for r in results for p in r.terms])
     head = (
-        f"{'bench':<12} {'metric':<14} {'baseline':>9} {'candidate':>9} {'better by':>9} {'SE':>7} "
+        f"{'bench':<12} {'metric':<{width}} {'baseline':>9} {'candidate':>9} {'better by':>9} {'SE':>7} "
         f"{'t':>6} {'t crit':>6} {'MDE':>7}  {'units':>6}  verdict"
     )
     lines = [head, "-" * len(head)]
-    for r in results:
-        lines.append(
-            f"{r.bench:<12} {r.metric:<14} {_fmt(r.baseline_mean):>9} {_fmt(r.candidate_mean):>9} "
+
+    def row(bench: str, metric: str, r: PairResult) -> str:
+        return (
+            f"{bench:<12} {metric:<{width}} {_fmt(r.baseline_mean):>9} {_fmt(r.candidate_mean):>9} "
             f"{_fmt(r.diff):>9} {_fmt(r.se):>7} {_fmt(r.t, 2):>6} {_fmt(r.t_crit, 2):>6} {_fmt(r.mde):>7}  "
             f"{r.units:>6}  "
             f"{r.verdict}"
+        )
+
+    for r in results:
+        lines.append(
+            row(r.bench, r.metric, r)
             + (" (drop beyond threshold)" if r.beyond_threshold else "")
             + ("" if r.can_ship else " (cannot ship)")
         )
+        for p in r.terms:
+            lines.append(row("", f"  {p.metric}", p))
+            for note in p.notes:
+                lines.append(f"{'':<12}   {p.metric}: {note}")
         lines.append(
             f"{'':<12} model_env: baseline {json.dumps(r.baseline_env, sort_keys=True)}, "
             f"candidate {json.dumps(r.candidate_env, sort_keys=True)}"
@@ -728,6 +815,13 @@ def render(results: list[PairResult]) -> str:
     if any(not r.can_ship for r in results):
         lines.append(
             "'cannot ship': too few units for a GAIN to be trusted; its REGRESSION still fails the gate."
+        )
+    if any(r.terms for r in results):
+        lines.append(
+            "Indented rows are the primary's terms (benchmark.yaml), paired the same way. They show where a"
+        )
+        lines.append(
+            "difference comes from and never decide the gate: each is tested at 5%, so across many, some cross by chance."
         )
     return "\n".join(lines)
 
@@ -1494,6 +1588,8 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
         echo(
             f"  {step.name}: {result.verdict} ({result.metric} better by {result.diff}, t {t}, {result.units} units)"
         )
+        if worse := term_regressions([result]):
+            echo(f"  {step.name}: {TERMS_WORSE}{', '.join(worse)}")
         if result.verdict in ("REGRESSION", "INCOMPLETE") and not args.keep_going:
             stop = stop or f"{result.verdict} on {step.name}"
 
@@ -1625,6 +1721,8 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
     verdict = overall(results, unfinished)
     echo(render(results))
     echo(f"\noverall: {verdict}" + (f" (not finished: {', '.join(unfinished)})" if unfinished else ""))
+    if worse := term_regressions(results):
+        echo(TERMS_WORSE + ", ".join(worse))
     return 1 if verdict == "FAIL" or unfinished else 0
 
 
@@ -1736,6 +1834,8 @@ def main(argv: list[str] | None = None) -> int:
         verdict, results = check(args.manifest, runs_root, args.results)
     print(render(results))
     print(f"\noverall: {verdict}")
+    if worse := term_regressions(results):
+        print(TERMS_WORSE + ", ".join(worse))
     if args.json:
         args.json.write_text(
             json.dumps({"overall": verdict, "pairs": [asdict(r) for r in results]}, indent=2)

@@ -4,3 +4,7 @@ mode: closed_loop
 dataset: nuscenes
 metrics: [ncap_score, collision_rate, impact_speed, reference_speed]
 primary_metric: ncap_score
+# Read beside ncap_score by the regression gate: a run scores exactly 5 with no
+# collision and at most 4 with one. Not impact_speed: the engine prints it only
+# for a run that collided, so pairing it compares the runs both sides crashed in.
+terms: [collision_rate]

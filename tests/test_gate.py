@@ -6,9 +6,10 @@ signed so that positive is better, the standard error is clustered on the
 benchmark's independent unit, the bar is Student's t for that many units,
 runs without per-sample records (or with one unit) get no verdict, a candidate
 on its baseline's checkpoint is called out, and a resumed NAVSIM run still finds
-its token -> log map. The smoke tier's tests pin the tracked subsets, the
-commands that run them, and that an interrupted smoke resumes rather than
-starting over. None needs a GPU, a dataset or a site config.
+its token -> log map. A benchmark's terms are paired like its primary, on the
+same unit and under the same refusals, and never decide the gate. The smoke
+tier's tests pin the tracked subsets, the commands that run them, and that an
+interrupted smoke resumes rather than starting over. None needs a GPU, a dataset or a site config.
 """
 
 from __future__ import annotations
@@ -546,6 +547,135 @@ def test_a_candidate_on_the_baselines_checkpoint_is_called_out(tmp_path: Path) -
     new = gate.compare(released, b)
     assert not any("same model_env" in n for n in new.notes)
     assert any(n.startswith("candidate sets DRIVEJEPA_CHECKPOINT") for n in new.notes)
+
+
+# ---- terms beside the score ------------------------------------------------
+
+
+def _b2d(route: str, ds: float, rc: float, ip: float, col: float = 0.0) -> dict:
+    return {
+        "sample_id": f"bench2drive/{route}",
+        "native_id": {"route_id": route},
+        "metrics": {
+            "driving_score": ds,
+            "route_completion": rc,
+            "infraction_penalty": ip,
+            "collision_rate": col,
+        },
+    }
+
+
+def _b2d_trade(tmp_path: Path, **run_kw) -> tuple[gate.Run, gate.Run]:
+    """Eight routes on which the candidate completes more of each route and is penalised
+    more on it, for the same driving score: the trade a composite hides."""
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    routes = [str(1700 + i) for i in range(8)]
+    base = [_b2d(r, 50.0 + i, 60.0 + i, 0.8) for i, r in enumerate(routes)]
+    cand = [
+        _b2d(r, 50.0 + i + (1.0 if i % 2 else -1.0), 95.0 + i % 2, 0.5 + 0.01 * (i % 3))
+        for i, r in enumerate(routes)
+    ]
+    _write_run(res, runs, "bench2drive", "m", "a", base, "driving_score")
+    _write_run(res, runs, "bench2drive", "m", "b", cand, "driving_score", **run_kw)
+    return gate.load_run("bench2drive", "m:a", runs, res), gate.load_run("bench2drive", "m:b", runs, res)
+
+
+def test_a_term_that_regresses_is_shown_beside_a_neutral_score_and_decides_nothing(tmp_path: Path) -> None:
+    from dataclasses import asdict
+
+    r = gate.compare(*_b2d_trade(tmp_path))
+    assert r.verdict == "NEUTRAL"
+    assert [p.metric for p in r.terms] == ["route_completion", "infraction_penalty", "collision_rate"]
+    assert [p.verdict for p in r.terms] == ["GAIN", "REGRESSION", "NEUTRAL"]
+    assert all(p.units == r.units == 8 for p in r.terms), "a term is clustered on the primary's unit"
+    assert gate.overall([r]) == "HOLD", "a term's REGRESSION is not the pair's"
+    (worse,) = gate.term_regressions([r])
+    assert worse.startswith("bench2drive infraction_penalty (t -")
+    text = gate.render([r])
+    assert "\n               infraction_penalty " in text, "indented under the primary"
+    assert "never decide the gate" in text
+    assert asdict(r)["terms"][1]["verdict"] == "REGRESSION", "--json carries the terms"
+
+
+def test_a_term_is_refused_whatever_its_primary_is_refused(tmp_path: Path) -> None:
+    """Pairing a term on what an incomplete candidate kept drops the same hard cases."""
+    r = gate.compare(*_b2d_trade(tmp_path, status="partial", n_failed=2))
+    assert r.verdict == "INCOMPLETE"
+    assert {p.verdict for p in r.terms} == {"INCOMPLETE"}
+    assert not any("lost 2 sample(s)" in n for p in r.terms for n in p.notes), "said once, on the primary"
+
+
+def test_terms_belong_to_the_primary_only(tmp_path: Path) -> None:
+    a, b = _b2d_trade(tmp_path)
+    assert gate.compare(a, b, metric="route_completion").terms == []
+    assert gate.compare(a, b, terms=()).terms == []
+    assert [p.metric for p in gate.compare(a, b, terms=["collision_rate"]).terms] == ["collision_rate"]
+
+
+def test_a_term_a_run_never_recorded_is_named_once_not_compared(tmp_path: Path) -> None:
+    """An older run without the term would otherwise pair as a row of NO RECORDS."""
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    scenes = [f"s{i}" for i in range(4)]
+    base = [_kit(s, 0, 1.0) for s in scenes]
+    cand = [{**_kit(s, 0, 1.1), "metrics": {"ade": 1.1, "lateral_mae": 0.4}} for s in scenes]
+    _write_run(res, runs, "kitscenes", "m", "a", base, "ade")
+    _write_run(res, runs, "kitscenes", "m", "b", cand, "ade")
+    r = gate.compare(
+        gate.load_run("kitscenes", "m:a", runs, res), gate.load_run("kitscenes", "m:b", runs, res)
+    )
+    assert r.terms == []
+    assert any(n.endswith("not compared: longitudinal_mae, lateral_mae, fde@3s") for n in r.notes)
+
+
+def test_navsim_terms_are_clustered_on_the_log(tmp_path: Path) -> None:
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    dumps = []
+    base, cand = [], []
+    for log in range(3):
+        for tok in range(4):
+            t = f"t{log}_{tok}"
+            dumps.append(json.dumps({"token": t, "log_name": f"log{log}"}))
+            row = {"sample_id": f"navsim/navtest/{t}", "native_id": {"token": t}}
+            base.append({**row, "metrics": {"epdms": 0.8, "ego_progress": 0.7}})
+            cand.append({**row, "metrics": {"epdms": 0.8 + 0.01 * tok, "ego_progress": 0.7 + 0.01 * log}})
+    _write_run(res, runs, "navsim", "m", "a", base, "epdms")
+    _write_run(res, runs, "navsim", "m", "b", cand, "epdms")
+    (runs / "navsim" / "m" / "a" / "trajectories.jsonl").write_text("\n".join(dumps) + "\n")
+    a, b = gate.load_run("navsim", "m:a", runs, res), gate.load_run("navsim", "m:b", runs, res)
+    r = gate.compare(a, b, unit_of=gate._unit_for(a, b, runs), terms=["ego_progress"])
+    assert r.units == 3 and r.terms[0].units == 3 and r.terms[0].verdict != "NO UNIT"
+
+
+def test_every_benchmarks_terms_are_declared_metrics_with_a_direction() -> None:
+    """`load_benchmarks` refuses them otherwise; this pins that the shipped ones load,
+    and that the benchmarks the smoke runs all declare some."""
+    from paddock.registry import load_benchmarks
+
+    specs = load_benchmarks()
+    for name in {gate.load_subset(s).bench for s in gate.SMOKE_ORDER}:
+        assert specs[name].terms, f"{name} is smoked and declares no terms"
+    assert "impact_speed" not in specs["neuroncap"].terms, "recorded only for runs that collided"
+
+
+@pytest.mark.parametrize(
+    ("terms", "problem"),
+    [
+        ("[fde@2s]", "'fde@2s' is not in metrics"),
+        ("[lead_range_err]", "'lead_range_err' has no better direction"),
+        ("[ade]", "'ade' is the primary metric"),
+        ("[fde@3s, fde@3s]", "listed twice"),
+    ],
+)
+def test_a_benchmark_with_unreadable_terms_does_not_load(tmp_path: Path, terms: str, problem: str) -> None:
+    from paddock.config import ConfigError
+    from paddock.registry import load_benchmarks
+
+    (tmp_path / "b").mkdir()
+    (tmp_path / "b" / "benchmark.yaml").write_text(
+        f"name: b\nmetrics: [ade, fde@3s, lead_range_err]\nprimary_metric: ade\nterms: {terms}\n"
+    )
+    with pytest.raises(ConfigError, match=problem):
+        load_benchmarks(tmp_path)
 
 
 # ---- the smoke tier --------------------------------------------------------

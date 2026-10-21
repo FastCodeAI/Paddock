@@ -8,3 +8,7 @@ mode: open_loop
 dataset: nuscenes
 metrics: [l2_1s, l2_2s, l2_3s, l2_avg, col_1s, col_2s, col_3s, col_avg, l2_uniad_1s, l2_uniad_2s, l2_uniad_3s, l2_uniad_avg, col_uniad_1s, col_uniad_2s, col_uniad_3s, col_uniad_avg, ade_3s]
 primary_metric: l2_avg
+# l2_avg is the mean of the three horizons; the regression gate reads them
+# beside it, and col_avg, which L2 cannot see: a plan can get closer to the
+# human's and drive through a box.
+terms: [l2_1s, l2_2s, l2_3s, col_avg]

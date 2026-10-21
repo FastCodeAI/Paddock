@@ -107,6 +107,59 @@ Read the notes; they are where the gate says what it cannot check:
   the difference. Older runs have no paddock commit, and the note says that too.
 - **unpaired / different sample sets.** Only shared samples are compared.
 
+### Terms beside the score
+
+A composite can stay flat while its parts move: NAVSIM's EPDMS is the product
+of NC, DAC, DDC and TLC times a weighted mean of EP, TTC, LK and comfort, so a
+candidate that collides more and makes more progress can score the same.
+Bench2Drive's driving score is route completion times infraction penalty, and
+the same trade happens there. So each pair also scores the metrics its
+`benchmark.yaml` lists as `terms`. They use the same pairing and the same unit,
+and they get the same refusals: an INCOMPLETE or CONFIG DIFFERS pair has
+INCOMPLETE or CONFIG DIFFERS terms. They print as indented rows under the
+primary:
+
+```
+bench        metric                baseline candidate better by      SE      t t crit     MDE   units  verdict
+bench2drive  driving_score           53.500    53.500     0.000   0.378   0.00   2.37   1.233       8  NEUTRAL
+               route_completion      63.500    95.500    32.000   0.845  37.86   2.37   2.756       8  GAIN
+               infraction_penalty     0.800     0.509    -0.291   0.003 -98.71   2.37   0.010       8  REGRESSION
+               collision_rate         0.000     0.000     0.000   0.000      -   2.37   0.000       8  NEUTRAL
+```
+
+(That table comes from a test fixture, not a real run.)
+
+**Terms never change a verdict or the overall line.** Each one is a test of its
+own at 5%. If the terms were independent, an unchanged model would show at
+least one term beyond t crit in the wrong direction about 35% of the time over
+the quick tier's 17 terms, and about 46% over `--tier all`'s 24. They are not
+independent, which makes the real rate lower, by an amount nobody has measured.
+That rate is too high for a FAIL to rest on. A term that is worse beyond t crit
+is named under the overall line (`terms worse beyond t crit, not part of the
+verdict: ...`), and in the smoke's per-subset line, as a pointer for whoever
+reads the pair.
+
+A term is declared only when it is part of the score, or is the one outcome the
+score cannot see (nuScenes' `col_avg` beside L2). Terms apply only when the pair
+is scored on the benchmark's primary metric: `--metric` with another metric
+pairs that metric alone. A run with per-sample records and no values for a term
+(a run older than the term, say) is not compared on it, and one note on the
+primary names it.
+
+| benchmark | primary | terms |
+|---|---|---|
+| navsim | epdms | all nine EPDMS terms |
+| navsim_v1 | pdms | NC, DAC, EP, TTC, comfort (DDC has weight 0 in v1) |
+| neuroncap | ncap_score | collision_rate. Not impact_speed: the engine prints it only for runs that collided, so pairing it would compare only the runs that crashed on both sides |
+| bench2drive | driving_score | route_completion, infraction_penalty, collision_rate |
+| alpasim | scene_score | collision_at_fault, offroad, progress |
+| nuscenes | l2_avg | l2_1s, l2_2s, l2_3s, col_avg |
+| kitscenes, nuplan | ade | longitudinal_mae, lateral_mae, fde@3s |
+| comma2k19 | ade | along_track_mae, cross_track_mae, fde@3s |
+
+`load_benchmarks` refuses a term that is not in `metrics`, a term with no better
+direction, a term that is the primary itself, and a term listed twice.
+
 ## Full runs and the smoke
 
 **Full runs**: the full-benchmark runs already in `results/`, compared with

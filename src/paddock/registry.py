@@ -199,6 +199,10 @@ class BenchmarkSpec:
     dataset: str
     metrics: tuple[str, ...] = ()
     primary_metric: str = ""
+    #: The declared metrics the primary is built from, read beside it by the
+    #: regression gate: a composite can hold still while one of its parts gets
+    #: worse (NAVSIM's EPDMS with fewer collisions and less progress).
+    terms: tuple[str, ...] = ()
     description: str = ""
     directory: Path = REPO_ROOT
 
@@ -321,6 +325,24 @@ def load_models(directory: Path = MODELS_DIR) -> dict[str, ModelSpec]:
     return models
 
 
+def _term_problems(terms: tuple[str, ...], metrics: tuple[str, ...], primary: str) -> list[str]:
+    """Why a declared `terms` list cannot be read beside `primary`.
+
+    A term the harness never records pairs as NO RECORDS on every run, and one
+    with no better direction cannot be signed: both would look like a check
+    that is being made when it is not.
+    """
+    from paddock.results.report import has_direction
+
+    problems = [f"{t!r} is not in metrics" for t in terms if t not in metrics]
+    problems += [f"{t!r} has no better direction" for t in terms if not has_direction(t)]
+    if primary in terms:
+        problems.append(f"{primary!r} is the primary metric, not a term of it")
+    if len(set(terms)) != len(terms):
+        problems.append("a term is listed twice")
+    return problems
+
+
 def load_benchmarks(directory: Path = BENCHMARKS_DIR) -> dict[str, BenchmarkSpec]:
     benchmarks: dict[str, BenchmarkSpec] = {}
     for path in sorted(directory.glob("*/benchmark.yaml")):
@@ -331,12 +353,18 @@ def load_benchmarks(directory: Path = BENCHMARKS_DIR) -> dict[str, BenchmarkSpec
         mode = body.get("mode", "open_loop")
         if mode not in ("open_loop", "closed_loop"):
             raise ConfigError(f"{path}: mode must be open_loop or closed_loop, got {mode!r}")
+        metrics = tuple(body.get("metrics", ()))
+        primary = body.get("primary_metric", "")
+        terms = tuple(body.get("terms", ()))
+        if problems := _term_problems(terms, metrics, primary):
+            raise ConfigError(f"{path}: terms: {'; '.join(problems)}")
         benchmarks[name] = BenchmarkSpec(
             name=name,
             mode=mode,
             dataset=body.get("dataset", ""),
-            metrics=tuple(body.get("metrics", ())),
-            primary_metric=body.get("primary_metric", ""),
+            metrics=metrics,
+            primary_metric=primary,
+            terms=terms,
             description=body.get("description", ""),
             directory=path.parent,
         )

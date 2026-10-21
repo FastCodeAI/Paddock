@@ -10,3 +10,6 @@ dataset: ""
 # CARLA Leaderboard driving score = route_completion x infraction_penalty.
 metrics: [driving_score, route_completion, infraction_penalty, collision_rate]
 primary_metric: driving_score
+# driving_score is route_completion times infraction_penalty, per route; the
+# regression gate reads both beside it, and collision_rate for what the penalty mixes in.
+terms: [route_completion, infraction_penalty, collision_rate]

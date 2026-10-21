@@ -14,3 +14,11 @@ metrics:
   - comfort
   - driving_direction_compliance
 primary_metric: pdms
+# PDMS's parts, read beside it by the regression gate. Not
+# driving_direction_compliance: v1 records it with weight 0, so it is not in the score.
+terms:
+  - no_at_fault_collisions
+  - drivable_area_compliance
+  - ego_progress
+  - time_to_collision_within_bound
+  - comfort

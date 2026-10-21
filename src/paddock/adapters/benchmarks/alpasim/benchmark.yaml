@@ -20,3 +20,6 @@ dataset: ""
 metrics: [scene_score, progress, collision_rate, collision_at_fault, offroad,
           open_loop_collision, duration_frac_20s, dist_to_gt_trajectory]
 primary_metric: scene_score
+# scene_score is 0 on an at-fault collision or offroad, else the progress
+# score; the regression gate reads all three beside it.
+terms: [collision_at_fault, offroad, progress]

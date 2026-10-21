@@ -96,7 +96,17 @@ mode: open_loop            # open_loop | closed_loop
 dataset: mydataset
 metrics: [ade, fde@3s]
 primary_metric: ade
+terms: [fde@3s]            # optional: what the primary is built from
 ```
+
+**`terms`** lists the declared metrics the primary is made of. The regression
+gate pairs each one beside the primary, so a candidate that trades one part for
+another shows up even when the headline does not move
+([gate.md](gate.md#terms-beside-the-score)). A term may be missing on some
+samples, as long as which ones does not depend on what the model did (NAVSIM's
+two-frame comfort has no value on a log's first frame). Do not list a term that
+is recorded only on some outcomes: neuroNCAP's `impact_speed` exists only for
+runs that collided, so pairing it compares a subset chosen by the result.
 
 **Reuse canonical metric names.** `ade`, `fde@1s`, `fde@2s`, `fde@3s`,
 `min_ade@6`, `ncap_score`, `collision_rate`, `pdms`, `epdms`. A new name should

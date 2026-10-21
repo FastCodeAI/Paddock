@@ -19,3 +19,9 @@ metrics: [ade, fde@3s]
 
 # The one number that ranks models on this benchmark.
 primary_metric: ade
+
+# Optional: the metrics above that the primary is built from. The regression
+# gate (docs/gate.md) pairs each beside the primary, so a candidate that trades
+# one part for another is visible even when the headline holds still. Each must
+# be in `metrics` and have a better direction.
+terms: [fde@3s]

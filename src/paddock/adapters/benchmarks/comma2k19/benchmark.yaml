@@ -115,3 +115,7 @@ metrics:
   - pdm_comfort
   - pdm_style_score
 primary_metric: ade
+# Read beside ade by the regression gate. A supercombo-style plan is a path
+# plus a speed profile and the two fail independently (see the description), so
+# the path-tangent split, and fde@3s where the plan ends.
+terms: [along_track_mae, cross_track_mae, fde@3s]
