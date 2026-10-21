@@ -183,9 +183,8 @@ no map.
 
 **Cameras.** AlpaSim's 26.01 scenes record six f-theta cameras, none looking
 straight back. The profile re-renders them as pinholes, every distortion
-coefficient zero and with a global shutter (the scenes' own cameras roll top to
-bottom, and the node projects each frame as one instant), at the KITScenes
-calibration's field of view (the release's
+coefficient zero and with a global shutter open for 1 µs (see "Camera setup on
+AlpaSim" below), at the KITScenes calibration's field of view (the release's
 `datasets/kitscenes-val/v3.5/rig/*.json` with the image sizes KITScenes ships,
 5856 × 3104 front and 3504 × 2272 ring):
 
@@ -268,6 +267,14 @@ scenes:
 1.93 m is the tallest car in the 30 scenes (1.823 m) plus 0.10 m, so the camera
 is above every roof. KITScenes' rear camera is about 1.9 m up. AlpaSim applies
 one camera pose to every scene, so it cannot follow each car's height.
+
+Every view uses a global shutter open for 1 µs. The recorded cameras read
+their rows top to bottom over 30 ms, so a fast car or the car's own turn bends
+across one image, while AutoE2E treats each image as a single instant. With a
+global shutter AlpaSim draws the whole image at the moment the shutter opens,
+but the bridge tells the model the car's pose at the moment it closes. A 1 µs
+opening makes those the same moment. (0 cannot be used: AlpaSim reads it as
+"use the recorded 30 ms".)
 
 Remaining known gaps (table above): the plan is driven from the rear axle with
 no offset; the three rear views point 28–32° away from any recorded camera; and

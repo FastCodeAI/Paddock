@@ -35,10 +35,14 @@
 #   * rig_to_camera is the camera's pose in the rig (rear axle on the ground, x
 #     forward, y left, z up), OpenCV camera axes (x right, y down, z forward), as
 #     sensorsim_service.py composes it: world_camera = world_rig @ rig_to_camera.
-#   * Global shutter on all six. The scenes' cameras roll top to bottom over
-#     the frame, but KITScenes' do not, and the node projects each frame as
-#     one instant: rolling, a car crossing at 30 m/s or the car's own turn moves
-#     5-40 px between the top and bottom rows of one render.
+#   * Global shutter on all six, open for 1 us. The scenes' cameras roll top to
+#     bottom over the frame, but KITScenes' do not, and the node projects each
+#     frame as one instant: rolling, a car crossing at 30 m/s or the car's own
+#     turn moves 5-40 px between the top and bottom rows of one render. A global
+#     render is drawn at the shutter's opening (frame_start_us), while the bridge
+#     sends the pose at its closing (frame_end_us), so the opening time is 1 us,
+#     not the recorded 30 ms. 0 would not do: AlpaSim reads 0 as "use the
+#     recorded duration" (runtime types.py, RuntimeCamera.from_camera_config).
 #   * 20 Hz for the control step and every camera; 3.0 s of ground-truth warm-up
 #     with the driver called throughout (the bridge sends those frames to the
 #     node's /observe); 400 steps.
@@ -78,32 +82,32 @@ runtime:
         height: 1018
         width: 1920
         frame_interval_us: 50_000
-        shutter_duration_us: 30_000
+        shutter_duration_us: 1
       - logical_id: camera_cross_left_120fov
         height: 664
         width: 1024
         frame_interval_us: 50_000
-        shutter_duration_us: 30_000
+        shutter_duration_us: 1
       - logical_id: camera_cross_right_120fov
         height: 664
         width: 1024
         frame_interval_us: 50_000
-        shutter_duration_us: 30_000
+        shutter_duration_us: 1
       - logical_id: camera_rear_left_70fov
         height: 664
         width: 1024
         frame_interval_us: 50_000
-        shutter_duration_us: 30_000
+        shutter_duration_us: 1
       - logical_id: camera_front_tele_30fov
         height: 664
         width: 1024
         frame_interval_us: 50_000
-        shutter_duration_us: 30_000
+        shutter_duration_us: 1
       - logical_id: camera_rear_right_70fov
         height: 664
         width: 1024
         frame_interval_us: 50_000
-        shutter_duration_us: 30_000
+        shutter_duration_us: 1
 
   extra_cameras:
     # Front: KITScenes camera_base_front_center, 88.2 x 54.4 degrees.

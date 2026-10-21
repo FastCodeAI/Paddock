@@ -817,8 +817,9 @@ def test_the_autoe2e_profile_pins_every_scene_it_can_be_asked_for() -> None:
 
 def test_the_autoe2e_bridge_flags_match_its_driver_config() -> None:
     """Control step and warm-up are the driver config's; the six renamed cameras are
-    exactly the six it renders and re-declares, each an undistorted global-shutter
-    pinhole whose size, focal length and principal point give the KITScenes field of view."""
+    exactly the six it renders and re-declares, each an undistorted pinhole with a 1 us
+    global shutter, whose size, focal length and principal point give the KITScenes
+    field of view."""
     import math
 
     import yaml
@@ -849,6 +850,8 @@ def test_the_autoe2e_bridge_flags_match_its_driver_config() -> None:
         height, width = camera["resolution_hw"]
         assert (rendered[camera_id]["height"], rendered[camera_id]["width"]) == (height, width)
         assert rendered[camera_id]["frame_interval_us"] == simulation["control_timestep_us"]
+        # The image is drawn at shutter open and labelled with the pose at shutter close.
+        assert rendered[camera_id]["shutter_duration_us"] == 1, camera_id
         fx, fy = pinhole["focal_length"]
         assert fx == fy
         assert pinhole["principal_point"] == [width / 2, height / 2]
