@@ -12,7 +12,6 @@ counts, not percentages:
       predicted: straight+stop=6, straight+keep_speed=3
       input command: STRAIGHT=9
     reasoning captured: 29/29
-    worst 5 frame(s) -> .../scenario_frames/traffic_light_traffic_light/
 
 Categories overlap on purpose -- a sample is independently counted in the
 "intersection" block, the "construction" block, the "dynamic_agents_ped"

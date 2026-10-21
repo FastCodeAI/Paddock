@@ -37,20 +37,21 @@ from pathlib import Path
 DIR = Path(__file__).resolve().parent
 REPO_ROOT = DIR.parents[2]
 sys.path.insert(0, str(REPO_ROOT / "src"))
+from paddock.adapters.benchmarks.nuscenes.loader import TURN_THRESHOLD_M
 from paddock.config import SiteConfig
 
 # ---------------------------------------------------------------------------
 # Tunable thresholds.
 #
-# LATERAL_TURN_M anchors to the same 2.0 m / 3 s cutoff nuScenes' own nav
-# command derivation uses (adapters/benchmarks/nuscenes/loader.py:
-# TURN_THRESHOLD_M), so "turn" here stays comparable to the existing
-# native_command-based analysis. The rest are first-pass defaults — run with
-# --stats on your baseline and look at the actual lateral-offset / speed-delta
-# distributions before trusting these at scale; they are not derived from data.
+# LATERAL_TURN_M reuses nuScenes' own nav command derivation cutoff
+# (adapters/benchmarks/nuscenes/loader.py: TURN_THRESHOLD_M, the 3 s horizon),
+# so "turn" here stays comparable to the existing native_command-based
+# analysis. The rest are first-pass defaults — run with --stats on your
+# baseline and look at the actual lateral-offset / speed-delta distributions
+# before trusting these at scale; they are not derived from data.
 DT = 0.5  # seconds, matches Trajectory.dt
 
-LATERAL_TURN_M = 2.0
+LATERAL_TURN_M = TURN_THRESHOLD_M
 LATERAL_LANE_CHANGE_M = 1.0
 LATERAL_NUDGE_M = 0.3
 HEADING_TURN_DEG = 20.0
