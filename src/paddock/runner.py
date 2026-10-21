@@ -77,9 +77,11 @@ def _measurement_config(cfg: SiteConfig, harness, model_spec: ModelSpec, **given
     """Everything that changes what was measured, for the run id and `run.json`.
 
     What the caller knows (`scene`, `runs`, `limit`), the model's cameras, the
-    benchmark's own measurement-changing settings (`run_config()`), and any
-    site `[models.<name>] env` block -- an environment override can change a
-    model's input (alpamayo's frame selection, say), so it is on the record.
+    benchmark's own measurement-changing settings (`run_config()`), the env the
+    model's own `model.yaml` declares (`declared_env`), and any site
+    `[models.<name>] env` block -- an environment override can change a model's
+    input (alpamayo's frame selection, say), so it is on the record. Where both
+    name a key, the node runs the site's value.
     A pairing table arrives already merged into both (`SiteConfig.paired`), so
     it is recorded, and hashed, exactly as the same values set globally would be.
     """
@@ -89,6 +91,9 @@ def _measurement_config(cfg: SiteConfig, harness, model_spec: ModelSpec, **given
         **harness.run_config(),
         **harness.model_run_config(model_spec),
     }
+    declared = _declared_env(model_spec)
+    if declared:
+        config["declared_env"] = declared
     override = cfg.models.get(model_spec.name)
     if override is not None and override.env:
         config["model_env"] = {k: _portable_value(v) for k, v in override.env.items()}
@@ -166,6 +171,27 @@ THREAD_ENV = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS")
 LOCATION_ENV = ("LD_LIBRARY_PATH", "HF_HOME", "NVRTC_PATH", "TMPDIR", "CUDA_VISIBLE_DEVICES")
 
 
+def _tuning_keys(model_spec: ModelSpec) -> set[str]:
+    """Env keys that change how fast or where a node runs, never what it plans."""
+    return {*THREAD_ENV, *LOCATION_ENV, *model_spec.runtime.tuning_env}
+
+
+def _declared_env(model_spec: ModelSpec) -> dict[str, str]:
+    """The env a model's `model.yaml` sets, as written, without its tuning keys.
+
+    The env is how an adapter picks which variant of a model runs (Qwen-Drive's
+    planner head, Drive-JEPA's momentum), so it belongs in the run id: before it
+    was hashed, turning `DRIVEJEPA_MOMENTUM` on in `model.yaml` left the id
+    unchanged, and `--resume` continued a momentum-off run with momentum on
+    under one number (#99). Values stay unexpanded (`{weights}/...`), so the
+    hash is the same at every site and no machine path reaches `run.json`.
+    Tuning keys are left out for the reason they leave a run valid: changing
+    them moves no plan, so it should neither move the id nor refuse a resume.
+    """
+    tuning = _tuning_keys(model_spec)
+    return {k: _portable_value(str(v)) for k, v in sorted(model_spec.runtime.env.items()) if k not in tuning}
+
+
 def _env_override_reasons(cfg: SiteConfig, model_spec: ModelSpec) -> list[str]:
     """Why a site `[models.<name>.env]` block keeps this run from being ranked.
 
@@ -180,7 +206,7 @@ def _env_override_reasons(cfg: SiteConfig, model_spec: ModelSpec) -> list[str]:
     override = cfg.models.get(model_spec.name)
     if override is None or not override.env:
         return []
-    tuning = {*THREAD_ENV, *LOCATION_ENV, *model_spec.runtime.tuning_env}
+    tuning = _tuning_keys(model_spec)
     declared = model_spec.runtime.env
     keys = sorted(k for k, v in override.env.items() if k not in tuning and declared.get(k) != v)
     if not keys:
@@ -318,11 +344,20 @@ def _config_marker_problems(artifacts: Path, config: dict) -> list[str]:
         recorded = json.loads(marker.read_text())
         differing = sorted(k for k in set(recorded) | set(config) if recorded.get(k) != config.get(k))
         if differing:
-            return [
+            problem = (
                 f"--resume refused: {marker} was written under a different configuration; "
                 f"differs in {', '.join(differing)}. Start a new run, or restore the switches "
                 f"it was made under."
-            ]
+            )
+            if "declared_env" in differing and "declared_env" not in recorded:
+                # Usually not a switch anyone can restore: every run started
+                # before #99 lacks the key, and nothing says which model.yaml
+                # env its finished episodes ran.
+                problem += (
+                    " Its marker records no declared_env, as every run started before #99 does, "
+                    "so which model.yaml env its finished samples ran is not known: start a new run."
+                )
+            return [problem]
         return []
     artifacts.mkdir(parents=True, exist_ok=True)
     marker.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
