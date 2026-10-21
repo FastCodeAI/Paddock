@@ -146,7 +146,10 @@ installs them (`Platform/docker/data-prep/Dockerfile`):
   The SDK is installed with pip from inside its clone, because its metadata
   names that wheel by a path relative to the clone, which uv refuses to parse.
 - **NumPy 1.26.4.** The SDK requires NumPy < 2, and pyarrow is pinned to
-  25.0.1, the last release that accepts it. The model runs on it unchanged.
+  25.0.1, the last release that accepts it. The model runs on it unchanged,
+  and the KITScenes runs below were made on it. The NAVSIM row and the paused
+  Bench2Drive routes were not: they were made on NumPy 2.2.6, `setup.sh`'s pin
+  before the map, and have not been re-run on 1.26.4.
 - **Upstream's C++ rasterizer**, built by `Model/navigation/native/build.py`
   beside its source, where upstream's loader looks for it. It needs a C++17
   compiler.
