@@ -37,6 +37,8 @@ def b2d_site(tmp_path, monkeypatch) -> SiteConfig:
     ):
         (repo / relative).parent.mkdir(parents=True, exist_ok=True)
         (repo / relative).write_text("")
+    # The evaluator as patches/Bench2Drive/ leaves it, which preflight checks for.
+    (repo / "leaderboard/leaderboard/leaderboard_evaluator.py").write_text("# --connect-timeout\n")
     (repo / "leaderboard" / "data").mkdir()
     shutil.copy(FIXTURES / "routes_sample.xml", repo / "leaderboard" / "data" / "routes_sample.xml")
     for sub in ("repos", "runs", "weights"):

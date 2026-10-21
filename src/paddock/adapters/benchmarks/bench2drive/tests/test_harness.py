@@ -24,7 +24,10 @@ import pytest
 
 from paddock.adapters.benchmarks.bench2drive.harness import (
     BENCHMARK,
+    CONNECT_TIMEOUT_FLAG,
     CRASH_STATUSES,
+    DEFAULT_CONNECT_TIMEOUT_S,
+    KILL_ALL_LINE,
     NotScored,
     carla_pids,
     carla_port_from_log,
@@ -222,6 +225,7 @@ def test_routes_subset_restricts_to_chosen_ids() -> None:
 
 STUB_HEADER = textwrap.dedent(
     """\
+    # Stands in for the evaluator with patches/Bench2Drive/ applied: takes --connect-timeout.
     import json, os, sys, time
     args = sys.argv[1:]
     checkpoint = args[args.index("--checkpoint") + 1]
@@ -310,6 +314,7 @@ def test_a_completed_route_is_scored_and_the_launch_matches_the_evaluator(tmp_pa
         ("--port", "2010"),
         ("--traffic-manager-port", "8010"),
         ("--gpu-rank", "1"),
+        (CONNECT_TIMEOUT_FLAG, str(DEFAULT_CONNECT_TIMEOUT_S)),
     ):
         assert argv[argv.index(flag) + 1] == value, flag
     assert argv[argv.index("--agent") + 1].endswith("bench2drive/agent.py")
@@ -534,6 +539,39 @@ def test_preflight_refuses_an_evaluator_that_lowers_render_quality(tmp_path, mon
 def test_preflight_accepts_the_pinned_evaluators_launch_line(tmp_path, monkeypatch) -> None:
     cfg = _site(tmp_path, monkeypatch, COMPLETED)
     assert not any("-quality-level" in p for p in _harness(cfg).preflight())
+
+
+def test_preflight_refuses_an_evaluator_without_paddocks_patches(tmp_path, monkeypatch) -> None:
+    """Unpatched, one crashed route kills every CARLA its user runs on the GPU
+    (parallel sweep workers, other gate lanes), and the harness passes a flag the
+    evaluator does not know. Both are refusals before CARLA boots."""
+    cfg = _site(tmp_path, monkeypatch, COMPLETED)
+    evaluator = tmp_path / "Bench2Drive" / "leaderboard" / "leaderboard" / "leaderboard_evaluator.py"
+    upstream = evaluator.read_text().replace(CONNECT_TIMEOUT_FLAG, "")
+    evaluator.write_text(upstream + f'\ncmd2 = "ps -ef | grep x | awk {{print}} | {KILL_ALL_LINE}"\n')
+    problems = _harness(cfg).preflight()
+    assert any("0001-kill-only-own-carla-on-crash" in p for p in problems), problems
+    assert any("0002-connect-timeout-for-a-booting-server" in p for p in problems), problems
+
+
+def test_the_patches_are_what_preflight_looks_for() -> None:
+    """The refusal above keys on two strings; the tracked patches must remove the
+    one and add the other, or preflight and the patches disagree."""
+    patches = Path(__file__).resolve().parents[6] / "patches" / "Bench2Drive"
+    kill = (patches / "0001-kill-only-own-carla-on-crash.patch").read_text().splitlines()
+    connect = (patches / "0002-connect-timeout-for-a-booting-server.patch").read_text().splitlines()
+    assert any(line.startswith("-") and KILL_ALL_LINE in line for line in kill)
+    assert not any(line.startswith("+") and KILL_ALL_LINE in line for line in kill)
+    assert any(line.startswith("+") and CONNECT_TIMEOUT_FLAG in line for line in connect)
+
+
+def test_a_site_sets_the_connect_timeout(tmp_path, monkeypatch) -> None:
+    cfg = _site(tmp_path, monkeypatch, COMPLETED, connect_timeout_s="90")
+    out = tmp_path / "out"
+    _harness(cfg).run_episode(_episode(), "http://127.0.0.1:9123", out)
+    argv = json.loads((out / "argv.json").read_text())
+    assert argv[argv.index(CONNECT_TIMEOUT_FLAG) + 1] == "90"
+    assert "connect_timeout_s" not in _harness(cfg).run_config(), "it never changes what is measured"
 
 
 def test_a_route_subset_given_on_the_command_line_is_not_a_score(tmp_path, monkeypatch) -> None:
