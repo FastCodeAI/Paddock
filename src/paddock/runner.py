@@ -663,7 +663,10 @@ def _run_one_model(
     if resume and not outstanding:
         echo(f"  all {len(episodes)} episode(s) already scored; recording without starting a node")
 
-    prov: dict = {"repo": prov_info.repo_provenance(cfg, model_spec)}
+    prov: dict = {
+        "repo": prov_info.repo_provenance(cfg, model_spec),
+        "paddock": prov_info.paddock_provenance(),
+    }
     try:
         with contextlib.ExitStack() as stack:
             policy_url = (
@@ -882,7 +885,10 @@ def _run_external(
         extra_dataset=extra_dataset,
         # No `/diagnostics` here: the external scorer owns the node's lifetime,
         # so by the time this runs there is nothing left to ask.
-        provenance={"repo": prov_info.repo_provenance(cfg, model_spec)},
+        provenance={
+            "repo": prov_info.repo_provenance(cfg, model_spec),
+            "paddock": prov_info.paddock_provenance(),
+        },
     )
     headline = metrics_record.metrics.get(spec.primary_metric, {})
     echo(f"  n={metrics_record.n}  {spec.primary_metric} mean={headline.get('mean')}")
@@ -1136,7 +1142,10 @@ def _run_open_loop(
             **({"extras": prediction.extras} if prediction.extras else {}),
         }
 
-    prov: dict = {"repo": prov_info.repo_provenance(cfg, model_spec)}
+    prov: dict = {
+        "repo": prov_info.repo_provenance(cfg, model_spec),
+        "paddock": prov_info.paddock_provenance(),
+    }
     aborted: str | None = None
     try:
         # Above the ExitStack, exactly as `_run_one_model` decides it: a node is

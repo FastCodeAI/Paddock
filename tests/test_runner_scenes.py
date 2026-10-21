@@ -16,7 +16,7 @@ import pytest
 from paddock import doctor
 from paddock.adapters.benchmarks.bench2drive.harness import Bench2DriveBenchmark
 from paddock.benchmark import OpenLoopBenchmark, Sample
-from paddock.config import SiteConfig
+from paddock.config import REPO_ROOT, SiteConfig
 from paddock.runner import run_benchmark
 
 FIXTURES = Path("src/paddock/adapters/benchmarks/bench2drive/tests/fixtures")
@@ -1166,6 +1166,28 @@ def test_a_run_records_the_revision_and_the_policy_that_produced_it(tmp_path, mo
     # Not in `config`: config is hashed into the run id and compared by
     # `--resume`, so a `git pull` between attempts must not refuse the resume.
     assert "repo" not in written["config"] and "backend" not in written["config"]
+    # Which paddock code ran: a baseline on older adapter code is another measurement.
+    assert written["provenance"]["paddock"]["sha"] == provenance.git_sha(REPO_ROOT)
+    assert "paddock" not in written["config"]
+
+
+def test_paddock_provenance_says_when_tracked_files_were_edited(tmp_path) -> None:
+    import subprocess
+
+    from paddock.runtime import provenance
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / "f").write_text("x")
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "one"], cwd=tmp_path, check=True
+    )
+    (tmp_path / "untracked").write_text("results and site files are always here")
+    clean = provenance.paddock_provenance(tmp_path)
+    assert clean == {"sha": provenance.git_sha(tmp_path), "dirty": False}
+    (tmp_path / "f").write_text("edited")
+    assert provenance.paddock_provenance(tmp_path)["dirty"] is True
+    assert provenance.paddock_provenance(tmp_path / "missing") == {"sha": None}
 
 
 def test_a_run_that_scored_fewer_samples_than_it_should_have_says_so(tmp_path, monkeypatch) -> None:

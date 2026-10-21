@@ -72,6 +72,12 @@ Three fields do the real work:
   bad. Reporting excludes them and never silently averages them in. Deleting a
   bad run loses the record that it happened; marking it keeps it.
 
+- **`provenance.paddock`** — the paddock checkout's commit (`sha`) and whether
+  its tracked files were edited (`dirty`). A baseline measured on older adapter
+  code is another measurement under the same model name; the regression gate
+  notes when two runs differ here. Outside `config`, so a `git pull` never
+  changes a run id or refuses a `--resume`.
+
 Paths never appear in `run.json` — it is tracked, so the portability gate applies.
 
 ## `metrics.json` — aggregates
