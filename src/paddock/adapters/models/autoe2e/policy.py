@@ -140,8 +140,13 @@ def steady_before_start(
 ) -> tuple[np.ndarray, int]:
     """`rows` with every row older than the first pose set to steady driving, and how many.
 
-    Steady driving is the first measured speed with no acceleration and no turn; with fewer
-    than two poses nothing is measured yet and every row takes `speed`, the simulator's.
+    Steady driving is the first measured row -- speed, acceleration, yaw rate and curvature
+    all held at whatever the earliest real measurement reads, not speed alone with the other
+    three assumed zero: a scenario that starts mid-turn or mid-brake should read as having
+    been mid-turn or mid-brake for the whole unseen past, the same way it reads as having
+    been at the first measured speed rather than standing still. With fewer than two poses
+    nothing is measured yet and every row takes `(speed, 0, 0, 0)`, the simulator's speed with
+    no acceleration or turn assumed, since no derivative exists to hold instead.
 
     Closed loop only. The KITScenes fine-tune always had all 64 rows real (samples start at
     ``frame_idx >= history_steps``, kit_scenes/egomotion.py) and upstream's own benchmark
@@ -158,8 +163,8 @@ def steady_before_start(
         lead = targets < float(np.min(times_s)) - 1e-6  # the rows egomotion_rows left at zero
     if not lead.any():
         return out, 0
-    first = float(out[~lead][0, 0]) if (~lead).any() else float(speed)
-    out[lead] = (first, 0.0, 0.0, 0.0)
+    first_row = out[~lead][0].copy() if (~lead).any() else np.array([speed, 0.0, 0.0, 0.0])
+    out[lead] = first_row
     return out, int(lead.sum())
 
 
@@ -505,6 +510,94 @@ class _Frame:
         return self._tiles
 
 
+def _nuscenes_lead_in_frames(
+    root: str, version: str, now_t_us: int, camera2image: dict, camera2ego: dict, max_frames: int = 7
+) -> list[_Frame]:
+    """Real nuScenes frames from before `now_t_us` in the same scene, oldest first.
+
+    EXPERIMENTAL, opt-in via `AUTOE2E_NUSCENES_ROOT`: closes the cold-start gap `_history()`
+    otherwise fills by repeating the single available frame, by reading the real frames the
+    scenario's own `start-frame` left unused -- most official scenes have several seconds of
+    real lead-in on disk (``start-frame: 8`` on nuScenes' 2 Hz keyframes is 4 s), never sent
+    over the wire because the vendor engine only ever starts a scenario at `start-frame`.
+
+    Walks `sample.json`'s own `prev` chain backward from the sample matching `now_t_us`, up
+    to `max_frames` steps or the scene's own start, whichever comes first -- a scenario with
+    less lead-in than the model's 3.5 s history window gets fewer real frames, and the rest
+    still fall back to `_history()`'s held-oldest frame rather than fabricated ones.
+
+    Calibration is reused from `now`, not re-read per frame: nuScenes calibration is constant
+    for a whole scene (the vendor engine's own `get_camera_calibration` always reads the
+    scene's first sample regardless of frame index), so there is nothing left to look up.
+
+    Loads `sample_data.json` and `ego_pose.json` whole (reduced to the handful of tokens this
+    needs) once per episode -- acceptable here as a one-time cost while this is being
+    evaluated, not yet optimised for a full sweep's worth of repeated episodes.
+    """
+    import json
+    from pathlib import Path
+
+    from paddock.adapters.benchmarks.nuscenes.loader import pose_matrix
+
+    meta = Path(root) / version
+    samples = {s["token"]: s for s in json.loads((meta / "sample.json").read_text())}
+    match = min(samples.values(), key=lambda s: abs(s["timestamp"] - now_t_us), default=None)
+    if match is None or abs(match["timestamp"] - now_t_us) > 1000:  # 1 ms
+        return []
+
+    chain = []
+    token = match["prev"]
+    while token and len(chain) < max_frames:
+        chain.append(token)
+        token = samples[token]["prev"]
+    if not chain:
+        return []
+    chain.reverse()  # oldest first
+
+    wanted = frozenset(chain)
+    channels = (*VIEW_ORDER, "LIDAR_TOP")
+    by_sample: dict[str, dict[str, dict]] = {}
+    for d in json.loads((meta / "sample_data.json").read_text()):
+        if d.get("sample_token") not in wanted or not d.get("is_key_frame"):
+            continue
+        filename = d.get("filename", "")
+        channel = next((c for c in channels if filename.startswith(f"samples/{c}/")), None)
+        if channel is not None:
+            by_sample.setdefault(d["sample_token"], {})[channel] = d
+
+    pose_tokens = frozenset(
+        rec["LIDAR_TOP"]["ego_pose_token"] for rec in by_sample.values() if "LIDAR_TOP" in rec
+    )
+    ego_poses = {
+        p["token"]: pose_matrix(p["translation"], p["rotation"])
+        for p in json.loads((meta / "ego_pose.json").read_text())
+        if p["token"] in pose_tokens
+    }
+
+    frames = []
+    for token in chain:
+        rec = by_sample.get(token)
+        if rec is None or "LIDAR_TOP" not in rec or any(c not in rec for c in VIEW_ORDER):
+            continue  # this sample is missing a view or lidar; skip rather than fabricate
+        ego2world = ego_poses.get(rec["LIDAR_TOP"]["ego_pose_token"])
+        if ego2world is None:
+            continue
+        images = {
+            c: np.asarray(Image.open(Path(root) / rec[c]["filename"]).convert("RGB"), dtype=np.uint8)
+            for c in VIEW_ORDER
+        }
+        frames.append(
+            _Frame(
+                t_s=samples[token]["timestamp"] / 1e6,
+                ego2world=ego2world,
+                camera2image=camera2image,
+                camera2ego=camera2ego,
+                images=images,
+            )
+        )
+    return frames
+
+
 class AutoE2EPolicy(Policy):
     cameras = VIEW_ORDER
     waypoint_dt = 0.5
@@ -527,6 +620,12 @@ class AutoE2EPolicy(Policy):
         #: model saw and did. Off by default and zero-cost when unset.
         self.debug_dump_dir = os.environ.get("AUTOE2E_DEBUG_DUMP_DIR") or None
         self._debug_state: dict[str, Any] = {}
+        #: EXPERIMENTAL: real nuScenes frames from before the scenario's own `start-frame`,
+        #: primed into camera history once per episode instead of repeating the first frame.
+        #: Off by default; see `_nuscenes_lead_in_frames`.
+        self.nuscenes_root = os.environ.get("AUTOE2E_NUSCENES_ROOT") or None
+        self.nuscenes_version = os.environ.get("AUTOE2E_NUSCENES_VERSION", "v1.0-trainval")
+        self._primed_lead_in = False
         #: Seconds between forward passes. 0 = every call. Closed loop calls at 10 Hz so the ego
         #: history is real 10 Hz; the plan is refreshed every `replan_s` and held in between,
         #: re-expressed in the current ego frame (what the Bench2Drive client does with a held plan).
@@ -608,6 +707,7 @@ class AutoE2EPolicy(Policy):
         self.frames = []
         self.last = {}
         self._plan = None
+        self._primed_lead_in = False
         if self._record is not None:
             self._record.close()
             self._record = None
@@ -711,6 +811,17 @@ class AutoE2EPolicy(Policy):
             raise RuntimeError(
                 f"AutoE2E plans from all six views; the current observation has none for {missing}"
             )
+        if self.nuscenes_root and not self._primed_lead_in and len(self.frames) == 1:
+            lead_in = _nuscenes_lead_in_frames(
+                self.nuscenes_root,
+                self.nuscenes_version,
+                int(obs.timestamp_us),
+                now.camera2image,
+                now.camera2ego,
+            )
+            self.frames = [*lead_in, *self.frames]
+            self._primed_lead_in = True
+            logger.info("AutoE2E: primed %d real nuScenes frame(s) before episode start", len(lead_in))
         if (
             self.replan_s > 0
             and self._plan is not None

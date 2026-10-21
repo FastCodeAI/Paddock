@@ -97,6 +97,27 @@ def test_closed_loop_fills_the_past_with_steady_driving() -> None:
     assert np.array_equal(filled[44:], rows[44:]), "the measured rows are left as they are"
 
 
+def test_the_fill_holds_the_whole_first_row_not_just_its_speed() -> None:
+    """Starting mid-turn and mid-acceleration: the filled rows hold that, not (speed, 0, 0, 0).
+
+    A scenario can start the ego already turning and already accelerating, not just already
+    moving in a straight line -- the fill should read as having been doing *that* for the
+    whole unseen past, not silently reset acceleration and yaw rate to zero.
+    """
+    t = np.arange(0.0, 3.0 + 1e-9, 0.1)
+    speed = 2.0 + 1.0 * t  # constant 1.0 m/s^2 acceleration
+    x = 2.0 * t + 0.5 * t**2
+    yaw = 0.3 * t  # constant 0.3 rad/s yaw rate
+    xy = np.column_stack([x, np.zeros_like(t)])
+    rows = egomotion_rows(t, xy, yaw, t_now=3.0)
+    filled, n = steady_before_start(rows, t, t_now=3.0, speed=float(speed[0]))
+    first_real = rows[n]  # the oldest measured row, held backward
+    assert n == 34
+    assert first_real[1] != 0.0 and first_real[2] != 0.0, "fixture must exercise a real turn+accel"
+    assert filled[:n] == pytest.approx(np.tile(first_real, (n, 1)))
+    assert np.array_equal(filled[n:], rows[n:]), "the measured rows are left as they are"
+
+
 def test_the_first_call_takes_the_simulators_speed() -> None:
     """One pose measures nothing; a zero speed would plan a stop for a car doing 8 m/s."""
     filled, n = steady_before_start(np.zeros((EGO_STEPS, 4)), np.array([0.0]), t_now=0.0, speed=8.3)
