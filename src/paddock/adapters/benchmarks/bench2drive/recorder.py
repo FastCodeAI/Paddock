@@ -56,7 +56,7 @@ MODEL_VIEW_SCALE = 4
 #: Where each tick's whole request goes when the inputs are recorded (``record_inputs``):
 #: one compressed ``.npz`` per tick, the model's camera frames exactly as sent (uint8,
 #: lossless) beside the rest of the request as JSON, so a route can be fed to a model
-#: again offline (``tools/benchmarks/bench2drive/replay.py``). ~3 MB a tick for six
+#: again offline (``tools/benchmarks/bench2drive/replay.py``). ~2.5 MB a tick for six
 #: 800x450 views, so it is its own setting, off unless asked for.
 INPUTS_DIR = "inputs"
 

@@ -78,7 +78,7 @@ routes_file = "bench2drive220.xml"                   # under repo/leaderboard/da
 # tm_port    = "8000"                # traffic manager port, likewise
 # gpu_rank   = "0"                   # CARLA's -graphicsadapter
 # record     = "false"               # per-tick front/BEV JPEGs + log.csv; ~40 GB per full sweep
-# record_inputs = "false"            # with record: each tick's whole request, for offline replay; ~3 MB a tick
+# record_inputs = "false"            # with record: each tick's whole request, for offline replay; ~2.5 MB a tick
 # stop_stuck_s       = "30"          # end a route 30 s after its last 3 m of progress; see Ending routes early
 # stop_expert_factor = "4"           # end a route at 4x the expert's time on it; needs `expert`
 # stop_on_collision  = "true"        # end a route at the first collision the leaderboard records
@@ -272,7 +272,7 @@ per-tick `log.csv`, and the analysis record (`recorder.py`):
 | `route_plan.json` | the leaderboard's route at its own 1 m spacing, with the lights and stop signs on it |
 | `actors.jsonl` | blueprint, role and extent of each actor, once |
 | `model_<camera>/` | quarter-size thumbnails of every camera the model reads, at 10 Hz (openpilot's pair as `model_road` / `model_wide`) |
-| `inputs/<tick>.npz` | only with `record_inputs = "true"` as well: the tick's whole request -- every model camera's frame exactly as sent (uint8, lossless) and the rest of the body -- so the route can be fed to a model again offline (`tools/benchmarks/bench2drive/replay.py`). ~3 MB a tick for six 800×450 views: a few routes' worth for a deep dive, not a sweep's |
+| `inputs/<tick>.npz` | only with `record_inputs = "true"` as well: the tick's whole request -- every model camera's frame exactly as sent (uint8, lossless) and the rest of the body -- so the route can be fed to a model again offline (`tools/benchmarks/bench2drive/replay.py`). ~2.5 MB a tick for six 800×450 views: a few routes' worth for a deep dive, not a sweep's |
 
 None of it reaches the model, and a failure in it disables the record without
 stopping the route.

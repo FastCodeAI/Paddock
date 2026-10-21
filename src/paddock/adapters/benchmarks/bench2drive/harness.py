@@ -442,7 +442,7 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
     def record_inputs(self) -> bool:
         """Each tick's whole request under ``inputs/`` (``recorder.write_inputs``): off unless asked for.
 
-        ~3 MB a tick for six 800x450 views, a replay's worth of a few routes and not
+        ~2.5 MB a tick for six 800x450 views, a replay's worth of a few routes and not
         a sweep's; it needs ``record`` on, and changes nothing the model is shown.
         """
         return (self.setting("record_inputs") or "false").strip().lower() in ("1", "true", "yes", "on")
