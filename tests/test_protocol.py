@@ -99,6 +99,31 @@ def test_the_route_polyline_crosses_the_wire_and_its_absence_stays_none() -> Non
     assert Observation.from_wire(obs.to_wire(), cameras=()).route_xy is None
 
 
+def test_the_map_files_and_route_trace_cross_the_wire_and_their_absence_stays_none() -> None:
+    """KITScenes points at each scene's Lanelet2 map and, under its oracle route, sends the logged
+    drive; every other source sends neither, and a policy reads None."""
+    files = {"format": "lanelet2_osm", "map": "/data/s/maps/map.osm", "origin": "/data/s/maps/origin.json"}
+    trace = np.array([[0.0, 1.0, 2.0, 0.1], [0.1, 2.0, 2.1, 0.1], [0.2, 3.0, 2.2, 0.12]])
+    obs = Observation(
+        images={},
+        ego2world=np.eye(4),
+        canbus=np.zeros(18),
+        timestamp_us=0,
+        command=Command.STRAIGHT,
+        camera2image={},
+        camera2ego={},
+        map_files=files,
+        route_trace=trace,
+    )
+    back = Observation.from_wire(obs.to_wire(), cameras=())
+    assert back.map_files == files
+    assert back.route_trace.shape == (3, 4) and np.allclose(back.route_trace, trace)
+    obs.map_files, obs.route_trace = None, None
+    assert obs.to_wire()["map_files"] is None and obs.to_wire()["route_trace"] is None
+    back = Observation.from_wire(obs.to_wire(), cameras=())
+    assert back.map_files is None and back.route_trace is None
+
+
 def test_a_staged_frame_is_read_as_an_array_and_a_dataset_frame_through_pil(tmp_path) -> None:
     """A harness staging frames for a node on the same machine may write raw.
 

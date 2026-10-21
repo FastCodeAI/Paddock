@@ -635,13 +635,18 @@ results, not the knob.
   because reading it means adding a map dependency, and alpamayo15 has no
   record (gated `Cosmos-Reason2-8B`). Detail in `docs/benchmarks/nuplan.md`.
 
-- **AutoE2E v1.0** — **adapter landed; NAVSIM scored, Bench2Drive paused.** The
+- **AutoE2E v1.0** — **adapter landed; NAVSIM and KITScenes scored, Bench2Drive paused.** The
   Autoware Foundation's release checkpoint `kitscenes-epoch-5`, imported from
   upstream at the release revision. NAVSIM `navtest` 0.500 EPDMS (12,146
   scenarios, valid) on the 10 Hz nuPlan path, with the rear views from
   OpenScene's keyframes (`keyframe_cameras`). Bench2Drive needed the route as
   an observation field (`route_xy`); its 50-route sweep is paused with no
-  record here. Detail in [`docs/models/autoe2e.md`](models/autoe2e.md).
+  record here. KITScenes 0.847 ADE@3s on the 223 keyframes (valid, adapted),
+  given what upstream validated it with: the scene's Lanelet2 map and a route
+  matched to the logged drive (an oracle), both drawn by upstream's own code
+  through two new observation fields (`map_files`, `route_trace`); 0.837
+  without the route, 0.921 without either. Detail in
+  [`docs/models/autoe2e.md`](models/autoe2e.md).
 
   | Claim | Verified how | Strength |
   |---|---|---|
@@ -650,6 +655,8 @@ results, not the knob.
   | `route_xy` has the right sign | stand-in CARLA test (left lane arrives at y > 0) and, live, the B2D projection overlay | **strong** |
   | the Bench2Drive swerve is the model, not the adapter | projection overlay, raster mapping, and a y-mirror / rot-180 A/B on 80 navtest scenes where the deployed convention scores best; not ruled out: the route comes from the leaderboard's 50 m-downsampled plan, and route-without-map is an input upstream never produces | **argued** — no upstream closed-loop reference exists |
   | NAVSIM is out of its training logs | the release names no nuPlan split; its own nuPlan-test figures suggest test was held out | **argued** |
+  | its KITScenes inputs are upstream's | compared with upstream's own packed v3.5 samples on the 186 shared val keyframes: tiles byte-identical, projections exact, `map_valid` / `route_valid` 186 of 186, semantic map ≤ 0.16 % of cells and route ≤ 11 cells apart (outside 26 rows whose upstream raster is anchored 0.5 s back), keyframe-40 ego rows ≤ 5.8e-3 | **verified** |
+  | its KITScenes plans are upstream's | ADE@3s on the 117 keyframe-40 samples within 0.4 % of upstream's, for each of map + route, map only, and neither (neither: the 23 of them the control covers); the per-sample tail is wider than upstream's own two-run spread once the rasters are on, put down to their measured differences | **verified** for the aggregate, **argued** for the tail |
 
 Not started, and larger than everything above:
 
