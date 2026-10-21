@@ -95,6 +95,10 @@ def build_app(policy: Policy, model: str | None = None, nonce: str | None = None
         # unpickle per camera and the simulator sends what it rendered, so a
         # single-camera model should not pay for six.
         t0 = time.monotonic()
+        # Debug-only replay dump, opt-in via env var -- never cap/rotated.
+        # `encode_image`'s own docstring puts raw pixels at ~20 MB a tick, so a
+        # multi-camera closed-loop episode left running with this set writes
+        # tens of GB with no warning; leave this off for an unattended sweep.
         capture_path = os.environ.get("PADDOCK_CAPTURE_INFER")
         if capture_path:
             with open(capture_path, "a") as f:
