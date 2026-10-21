@@ -644,7 +644,7 @@ results, not the knob.
   | the Bench2Drive swerve is the model, not the adapter | projection overlay, raster mapping, and a y-mirror / rot-180 A/B on 80 navtest scenes where the deployed convention scores best; not ruled out: the route comes from the leaderboard's 50 m-downsampled plan, and route-without-map is an input upstream never produces | **argued** — no upstream closed-loop reference exists |
   | NAVSIM is out of its training logs | the release names no nuPlan split; its own nuPlan-test figures suggest test was held out | **argued** |
   | its KITScenes inputs are upstream's | compared with upstream's own packed v3.5 samples on the 186 shared val keyframes: tiles byte-identical, projections exact, `map_valid` / `route_valid` 186 of 186, semantic map ≤ 0.16 % of cells and route ≤ 11 cells apart (outside 26 rows whose upstream raster is anchored 0.5 s back), keyframe-40 ego rows ≤ 5.8e-3 | **verified** |
-  | its KITScenes plans are upstream's | ADE@3s on the 117 keyframe-40 samples within 0.4 % of upstream's, for each of map + route, map only, and neither; the per-sample tail is wider than upstream's own two-run spread once the rasters are on, put down to their measured differences | **verified** for the aggregate, **argued** for the tail |
+  | its KITScenes plans are upstream's | ADE@3s on the 117 keyframe-40 samples within 0.4 % of upstream's, for each of map + route, map only, and neither (neither: the 23 of them the control covers); the per-sample tail is wider than upstream's own two-run spread once the rasters are on, put down to their measured differences | **verified** for the aggregate, **argued** for the tail |
 
 Not started, and larger than everything above:
 
