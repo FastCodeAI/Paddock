@@ -51,3 +51,25 @@ def test_infer_does_not_write_a_capture_file_when_unset(tmp_path, monkeypatch) -
     client = TestClient(build_app(_Constant()))
     assert client.post("/infer", json=_wire_body()).status_code == 200
     assert list(tmp_path.iterdir()) == []
+
+
+def test_app_shutdown_calls_policy_reset_to_flush_the_last_episode() -> None:
+    """The lifespan hook's whole job: a run's last episode has no later `/reset`
+    to flush it, so shutdown must call `policy.reset()` itself. `TestClient`
+    used as a context manager drives FastAPI's startup/shutdown lifespan, the
+    same path uvicorn's graceful SIGTERM handling runs."""
+
+    class _Flagging(Policy):
+        def __init__(self):
+            self.reset_calls = 0
+
+        def infer(self, obs):
+            return constant_velocity(1.0)
+
+        def reset(self):
+            self.reset_calls += 1
+
+    policy = _Flagging()
+    with TestClient(build_app(policy)):
+        assert policy.reset_calls == 0
+    assert policy.reset_calls == 1
