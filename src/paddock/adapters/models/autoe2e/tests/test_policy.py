@@ -24,6 +24,7 @@ from paddock.adapters.models.autoe2e.policy import (
     POLICY,
     VIEW_ORDER,
     _Frame,
+    ego_history_as,
     egomotion_rows,
     finite_controls,
     integrate_controls,
@@ -267,3 +268,15 @@ def test_projection_is_from_the_raised_reference_frame_and_folds_in_ego_motion()
     u, v, w = policy._projections(past, ref_now2world, 512)[0] @ point_ref
     assert (u / w, v / w, w) == pytest.approx((256.0, 256.0, 15.0))
     assert math.isclose(policy._ref2ego()[2, 3], 2.1)
+
+
+def test_the_ego_history_modes_change_only_what_they_say() -> None:
+    rng = np.random.default_rng(0)
+    rows = rng.normal(size=(64, 4))
+    assert np.array_equal(ego_history_as(rows, "real"), rows)
+    steady = ego_history_as(rows, "steady")
+    assert np.all(steady[:, 0] == rows[-1, 0]) and not steady[:, 1:].any(), "now's speed, no launch or turn"
+    no_turn = ego_history_as(rows, "no_turn")
+    assert np.array_equal(no_turn[:, :2], rows[:, :2]) and not no_turn[:, 2:].any()
+    with pytest.raises(ValueError, match="AUTOE2E_EGO_HISTORY"):
+        ego_history_as(rows, "stedy")

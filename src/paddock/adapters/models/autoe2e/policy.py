@@ -163,6 +163,30 @@ def steady_before_start(
     return out, int(lead.sum())
 
 
+#: ``AUTOE2E_EGO_HISTORY``: what the network is told about the car's past.
+EGO_HISTORY_MODES = ("real", "steady", "no_turn")
+
+
+def ego_history_as(rows: np.ndarray, mode: str) -> np.ndarray:
+    """The 64 ego rows as ``mode`` feeds them; ``"real"`` returns them unchanged.
+
+    ``"steady"`` replaces the past with steady straight driving at the newest
+    measured speed -- an extrapolated past, no launch and no turn; ``"no_turn"``
+    keeps the measured speed and acceleration and zeroes yaw rate and curvature.
+    Neither is upstream's input: they exist to test, in closed loop, whether the
+    measured past is what turns AutoE2E off its lane on Bench2Drive (the deep-dive
+    notebook under tools/models/autoe2e/analysis shows it moves the plan offline).
+    """
+    if mode not in EGO_HISTORY_MODES:
+        raise ValueError(f"AUTOE2E_EGO_HISTORY must be one of {EGO_HISTORY_MODES}, got {mode!r}")
+    out = np.array(rows, dtype=np.float64, copy=True)
+    if mode == "steady":
+        out[:] = (float(rows[-1, 0]), 0.0, 0.0, 0.0)
+    elif mode == "no_turn":
+        out[:, 2:] = 0.0
+    return out
+
+
 def route_raster(route_xy: np.ndarray | None) -> tuple[np.ndarray, bool, bool]:
     """(2, 450, 300) float32 corridor + destination in the ego frame.
 
@@ -469,6 +493,8 @@ class AutoE2EPolicy(Policy):
         #: history is real 10 Hz; the plan is refreshed every `replan_s` and held in between,
         #: re-expressed in the current ego frame (what the Bench2Drive client does with a held plan).
         self.replan_s = float(os.environ.get("AUTOE2E_REPLAN_S", "0") or 0)
+        self.ego_history_mode = os.environ.get("AUTOE2E_EGO_HISTORY", "real") or "real"
+        ego_history_as(np.zeros((EGO_STEPS, 4)), self.ego_history_mode)  # refuse a typo before any load
         self._plan: tuple[float, np.ndarray, np.ndarray] | None = None
         self.model = None
         self.device = None
@@ -682,6 +708,7 @@ class AutoE2EPolicy(Policy):
         PH = [torch.from_numpy(self._projections(f, ref_now2world, TILE))[None].to(dev) for f in history]
 
         ego, filled = self._ego_history(now, float(obs.speed))
+        ego = ego_history_as(ego, self.ego_history_mode)
         v0 = float(ego[-1, 0])
         ego_in = ego.copy()
         ego_in[-1, 1] = 0.0  # KITScenes stage: newest acceleration masked (dataset_policy.py)
@@ -777,6 +804,7 @@ class AutoE2EPolicy(Policy):
             "route": self.use_route,
             "bf16": self.bf16,
             "replan_s": self.replan_s,
+            "ego_history": self.ego_history_mode,
             "calls": self.calls,
             "last_inference": self.last,
         }

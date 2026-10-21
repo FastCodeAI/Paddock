@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import math
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -28,11 +29,16 @@ import pandas as pd
 from matplotlib.patches import FancyArrowPatch, Polygon, Rectangle
 
 from paddock.adapters.benchmarks.bench2drive import pid, recorder
-from paddock.config import SiteConfig
+from paddock.config import REPO_ROOT, SiteConfig
 from paddock.policy.protocol import N_WAYPOINTS
 from paddock.registry import Registry
 from paddock.runtime import env as env_builder
-from tools.benchmarks.bench2drive import route_video, runs
+
+# `tools` is a package at the repo root, which neither a notebook kernel (started in this
+# directory) nor a script elsewhere has on its path.
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+from tools.benchmarks.bench2drive import route_video, runs  # noqa: E402
 
 MODEL = "autoe2e"
 BENCH = "bench2drive"
@@ -283,7 +289,7 @@ def draw_scene(ax, route: Route, tick: int, sent_route=True, dense_route=True, a
     """The privileged truth at ``tick`` on a NAV axes: actors, the 1 m route, the route the model was sent."""
     if dense_route:
         d = dense_route_ego(route, tick)
-        ax.plot(d[:, 1], d[:, 0], color="tab:blue", lw=1.0, ls="--", label="route (1 m, truth)")
+        ax.plot(d[:, 1], d[:, 0], color="dimgray", lw=1.0, ls="--", label="route (1 m, truth)")
     if sent_route:
         sr = np.asarray(route.by_tick(tick)["sent"].get("route_xy") or [], dtype=float).reshape(-1, 2)
         if len(sr):
@@ -431,7 +437,16 @@ def handover_timeline(route: Route, events: dict[str, float] | None = None) -> p
     for name, t in (events or {}).items():
         for a in axes:
             a.axvline(t, color="gray", ls=":", lw=1)
-        axes[0].text(t, axes[0].get_ylim()[1], f" {name}", fontsize=8, va="top", color="gray")
+        axes[0].text(
+            t,
+            axes[0].get_ylim()[1],
+            f" {name}",
+            fontsize=7,
+            va="top",
+            ha="right",
+            rotation=90,
+            color="dimgray",
+        )
     for a in axes:
         a.grid(alpha=0.3)
     fig.tight_layout()
@@ -446,16 +461,17 @@ def cameras(route: Route, tick: int, focus: dict) -> plt.Figure:
         axes[0, k].imshow(images[v])
         axes[0, k].set_title(f"{v}\nas rendered, {images[v].shape[1]}x{images[v].shape[0]}", fontsize=8)
         axes[1, k].imshow(focus["tiles"][k])
-        axes[1, k].set_title(
-            "tile the network got: 512x512\n(squashed, JPEG q90; front: from 1024)", fontsize=8
-        )
+        axes[1, k].set_title("network tile, 512x512", fontsize=8)
     axes[2, 0].imshow(focus["front_1024"])
     axes[2, 0].set_title("front at 1024x1024", fontsize=8)
     for a in axes.flat:
         a.axis("off")
     for k in range(1, 6):
         axes[2, k].remove()
-    fig.suptitle(f"Route {route.route_id}, tick {tick}: what the model was shown", fontsize=11)
+    fig.suptitle(
+        f"Route {route.route_id}, tick {tick}: what the model was shown (top: rendered; middle: network tiles)",
+        fontsize=11,
+    )
     fig.tight_layout()
     return fig
 
@@ -643,7 +659,9 @@ def outputs(route: Route, tick: int, focus: dict, variants=("live",)) -> plt.Fig
     a_cam.set_title(f"waypoints on the front camera; the car sent steer {ctrl['steer']:+.2f}, throttle {ctrl['throttle']:.2f}, brake {ctrl['brake']:.0f}", fontsize=9)  # fmt: skip
     a_cam.axis("off")
     fig.suptitle(
-        f"Route {route.route_id}, tick {tick}: the network's output and how it becomes a control", fontsize=10
+        f"Route {route.route_id}, tick {tick}: the network's output and how it becomes a control",
+        fontsize=10,
+        y=1.04,
     )
     return fig
 
@@ -738,7 +756,16 @@ def series_plot(route: Route, series: dict, events: dict[str, float] | None = No
     for name, tt in (events or {}).items():
         for a in axes:
             a.axvline(tt, color="gray", ls=":", lw=1)
-        axes[0].text(tt, axes[0].get_ylim()[1], f" {name}", fontsize=8, va="top", color="gray")
+        axes[0].text(
+            tt,
+            axes[0].get_ylim()[1],
+            f" {name}",
+            fontsize=7,
+            va="top",
+            ha="right",
+            rotation=90,
+            color="dimgray",
+        )
     for a in axes:
         a.grid(alpha=0.3)
         a.axhline(0, color="gray", lw=0.6)
@@ -752,3 +779,20 @@ def replay_fidelity(series: dict) -> pd.DataFrame:
         {"tick": r["tick"], "max |waypoint diff| (m)": r.get("replay_vs_carla_m")} for r in series["series"]
     ]
     return pd.DataFrame(rows).describe().T
+
+
+def events(route: Route) -> dict[str, float]:
+    """The moments the timelines mark, read off the recording (game seconds since the start)."""
+    df = route.series()
+    out = {}
+    real_cam = df[df["history_repeated"] == 0]
+    if len(real_cam):
+        out["camera history all real"] = float(real_cam["t"].iloc[0])
+    real_ego = df[df["ego_rows_filled"] == 0]
+    if len(real_ego):
+        out["ego history all real"] = float(real_ego["t"].iloc[0])
+    off = df[(df["lane_offset"].abs() > 1.0) | (df["lane_heading"].abs() > 8.0)]
+    if len(off):
+        out["leaves the lane line"] = float(off["t"].iloc[0])
+    out[f"end ({route.early_stop.get('reason') or route.result.get('status')})"] = float(df["t"].iloc[-1])
+    return out

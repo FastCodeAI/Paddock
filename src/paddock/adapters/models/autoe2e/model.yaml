@@ -23,6 +23,10 @@ runtime:
     # Forward-pass cadence in seconds (0 = every call). Bench2Drive calls every 20 Hz tick;
     # 0.1 there, as a pairing, is the model's own 10 Hz (docs/models/autoe2e.md, "On Bench2Drive").
     AUTOE2E_REPLAN_S: "0"
+    # The ego history fed: "real" (as measured, upstream's input), "steady" (straight driving at the
+    # current speed: an extrapolated past) or "no_turn" (yaw rate and curvature zeroed). The last two
+    # are closed-loop tests of what the measured past does to the plan; see docs/models/autoe2e.md.
+    AUTOE2E_EGO_HISTORY: "real"
     OMP_NUM_THREADS: "2"
   # Site overrides of these change speed, memory or logging, not the plan, so they
   # leave a run valid; any other [models.autoe2e.env] key makes it valid: false.

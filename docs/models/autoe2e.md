@@ -95,6 +95,7 @@ From the release `config.json` and upstream's KITScenes evaluation path
 | `AUTOE2E_ROUTE` | `1` | `0`: never draw the route raster |
 | `AUTOE2E_REPLAN_S` | `0` | seconds between forward passes; the plan is held and re-expressed in between. `0` = every call |
 | `AUTOE2E_BF16` | `1` | bf16 autocast on CUDA |
+| `AUTOE2E_EGO_HISTORY` | `real` | the ego history fed: `real` (as measured), `steady` (all 64 rows straight driving at the current speed: an extrapolated past) or `no_turn` (yaw rate and curvature zeroed). The last two are not upstream's input; they test in closed loop what the deep-dive notebook shows offline, that the measured past moves the plan |
 | `AUTOE2E_RECORD_DIR` | unset | append one JSON line per forward pass (controls, rollout, ego rows) |
 | `AUTOE2E_CACHE_CONSTS`, `AUTOE2E_VISIBLE_ONLY` | `1` | the two speed patches below; `0` runs upstream's code |
 
