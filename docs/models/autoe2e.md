@@ -182,8 +182,8 @@ under-turned, and starts from a standstill are timid (2.3 m planned against
 8.4 m driven). Comfort (0.984 history, 0.812 extended) is its strongest column.
 
 **KITScenes, the shared 223 keyframes, valid** (`results/kitscenes/autoe2e/`):
-**0.847** ADE@3s (`20261020T220509-dee848`), second to Qwen-Drive's 0.806 on
-this column. Adapted, and given an oracle route: see *AutoE2E × kitscenes* in
+**0.847** ADE@3s (`20261020T220509-dee848`). Adapted, and given an oracle
+route: see *AutoE2E × kitscenes* in
 [comparison.md](comparison.md). Four runs over the same keyframes:
 
 | run | rig | map | route | ADE@3s | FDE@3s | lateral MAE | val (186) | overlap (37) |
