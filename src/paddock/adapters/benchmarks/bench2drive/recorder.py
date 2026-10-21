@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from typing import Any
 
 import numpy as np
@@ -51,6 +52,13 @@ ON_ROUTE_M = 4.0
 #: (CARLA ticks at 20 Hz, so 2 is 10 Hz) at 1/MODEL_VIEW_SCALE of each side.
 MODEL_VIEW_EVERY = 2
 MODEL_VIEW_SCALE = 4
+
+#: Where each tick's whole request goes when the inputs are recorded (``record_inputs``):
+#: one compressed ``.npz`` per tick, the model's camera frames exactly as sent (uint8,
+#: lossless) beside the rest of the request as JSON, so a route can be fed to a model
+#: again offline (``tools/benchmarks/bench2drive/replay.py``). ~3 MB a tick for six
+#: 800x450 views, so it is its own setting, off unless asked for.
+INPUTS_DIR = "inputs"
 
 #: Thumbnail directories named before any model but openpilot was recorded, and
 #: which its dashboard reads; every other camera gets :func:`model_view_dir`'s name.
@@ -102,6 +110,27 @@ def model_view_dir(camera: str) -> str:
     if camera in MODEL_VIEW_DIRS:
         return MODEL_VIEW_DIRS[camera]
     return "model_" + (camera[4:] if camera.startswith("CAM_") else camera).lower()
+
+
+def write_inputs(path: str, images: dict, body: dict) -> None:
+    """One tick's request: ``images`` (camera id -> uint8 HxWx3, as sent) and the rest of the body.
+
+    Written to a temporary name and renamed, so a route cut off mid-write leaves
+    no torn file for a replay to trip on.
+    """
+    arrays = {"image_" + cid: np.ascontiguousarray(img, dtype=np.uint8) for cid, img in images.items()}
+    text = np.frombuffer(json.dumps(body, separators=(",", ":")).encode(), dtype=np.uint8)
+    partial = path + ".partial.npz"
+    np.savez_compressed(partial, body=text, **arrays)
+    os.replace(partial, path)
+
+
+def read_inputs(path: str) -> tuple[dict, dict]:
+    """``(images, body)`` as :func:`write_inputs` wrote them."""
+    with np.load(path) as stored:
+        body = json.loads(bytes(stored["body"]).decode())
+        images = {name[len("image_") :]: stored[name] for name in stored.files if name.startswith("image_")}
+    return images, body
 
 
 def wrap_deg(angle: float) -> float:

@@ -132,6 +132,7 @@ weights = "/path/to/weights"
 # tm_port     = "8000"                                 # traffic manager port, likewise
 # gpu_rank    = "0"                                    # CARLA's -graphicsadapter
 # record      = "false"                                # per-tick front/BEV JPEGs + log.csv: ~40 GB per full sweep
+# record_inputs = "false"                              # with record: each tick's whole request, for offline replay; ~3 MB a tick
 # stop_stuck_s       = "30"                            # optional: end a route 30 s after its last 3 m of progress
 # stop_expert_factor = "4"                             # optional: end a route at 4x the expert's time on it
 # stop_on_collision  = "true"                          # optional: end a route at its first recorded collision

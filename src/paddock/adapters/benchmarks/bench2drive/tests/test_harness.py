@@ -771,3 +771,16 @@ def test_an_old_stop_request_cannot_end_a_new_drive(tmp_path, monkeypatch) -> No
     (out / STOP_REQUEST).write_text("")
     _harness(_site(tmp_path, monkeypatch, COMPLETED)).run_episode(_episode(), "http://127.0.0.1:9000", out)
     assert not (out / STOP_REQUEST).exists()
+
+
+def test_the_inputs_are_recorded_only_when_asked_and_only_with_the_record(tmp_path, monkeypatch) -> None:
+    def env_with(**settings):
+        site = tmp_path / "-".join(f"{k}{v}" for k, v in settings.items())  # a site of its own each
+        site.mkdir()
+        harness = _harness(_site(site, monkeypatch, COMPLETED, **settings))
+        harness.run_episode(_episode(), "http://127.0.0.1:9000", site / "out")
+        return json.loads((site / "out" / "env.json").read_text())
+
+    assert "PADDOCK_RECORD_INPUTS" not in env_with(record="true")
+    assert env_with(record="true", record_inputs="true")["PADDOCK_RECORD_INPUTS"] == "1"
+    assert "PADDOCK_RECORD_INPUTS" not in env_with(record_inputs="true"), "nowhere to put them unrecorded"

@@ -19,6 +19,9 @@ come from the environment, set by ``harness.run_episode``:
                           the analysis record (``recorder.py``): every tick's
                           full node reply beside privileged world state, the
                           route plan, and thumbnails of the model's cameras
+    PADDOCK_RECORD_INPUTS "1" (with PADDOCK_RECORD_DIR): also keep each tick's
+                          whole request -- the model cameras' frames as sent and
+                          the rest of the body -- under inputs/, for offline replay
     PADDOCK_METRICS_DIR   if set, write <dir>/<save_name>/metric_info.json: the
                           per-tick ego kinematics Bench2Drive's
                           efficiency_smoothness_benchmark.py scores. The
@@ -71,6 +74,8 @@ SERVER = os.environ.get("PADDOCK_NODE_URL", "http://127.0.0.1:9000")
 CAMS = [c.strip() for c in os.environ.get("PADDOCK_CAMERAS", "CAM_FRONT").split(",") if c.strip()]
 WAYPOINT_DT = float(os.environ.get("PADDOCK_WAYPOINT_DT", "0.5"))
 RECORD_DIR = os.environ.get("PADDOCK_RECORD_DIR") or None
+#: "1": also keep each tick's whole request under RECORD_DIR/inputs/ (recorder.write_inputs)
+RECORD_INPUTS = os.environ.get("PADDOCK_RECORD_INPUTS") == "1" and RECORD_DIR is not None
 METRICS_DIR = os.environ.get("PADDOCK_METRICS_DIR") or None
 STOP_STUCK_S = float(os.environ["PADDOCK_STOP_STUCK_S"]) if os.environ.get("PADDOCK_STOP_STUCK_S") else None
 STOP_AFTER_S = float(os.environ["PADDOCK_STOP_AFTER_S"]) if os.environ.get("PADDOCK_STOP_AFTER_S") else None
@@ -245,6 +250,9 @@ class PaddockB2DAgent(AutonomousAgent):
         self._ticks = None
         if RECORD_DIR:
             self._open_analysis_record()
+        self._inputs_failed = False
+        if RECORD_INPUTS:
+            os.makedirs(os.path.join(RECORD_DIR, recorder.INPUTS_DIR), exist_ok=True)
 
     def _dense_route(self):
         """The leaderboard's own route as a ``recorder.Route``: what the early stop measures progress on.
@@ -660,6 +668,7 @@ class PaddockB2DAgent(AutonomousAgent):
         self._prev_speed, self._prev_us = speed, us
 
         images = {}
+        raw = {}  # the frames as sent, for the inputs record
         front_bgr = None
         for cid in CAMS:
             if cid in input_data:
@@ -669,6 +678,8 @@ class PaddockB2DAgent(AutonomousAgent):
                 # for multi-megapixel frames, where raw pixels would be ~20 MB a tick
                 big = rgb.shape[0] * rgb.shape[1] >= 1_000_000
                 images[cid] = encode_image(rgb, codec="jpeg" if big else None)
+                if RECORD_INPUTS:
+                    raw[cid] = rgb
         if RECORD_DIR and RECORD_CAM in input_data:
             front_bgr = input_data[RECORD_CAM][1][:, :, :3].copy()
 
@@ -702,6 +713,17 @@ class PaddockB2DAgent(AutonomousAgent):
                 "lidar2ego": np.eye(4).tolist(),  # lidar coincident with ego
             },
         }
+
+        if RECORD_INPUTS and not self._inputs_failed:
+            try:
+                recorder.write_inputs(
+                    os.path.join(RECORD_DIR, recorder.INPUTS_DIR, f"{self._t:05d}.npz"),
+                    raw,
+                    {k: v for k, v in body.items() if k != "images"},
+                )
+            except Exception as exc:  # for analysis only; the route goes on without it
+                self._inputs_failed = True
+                print("[paddock-b2d] inputs record stopped at tick", self._t, ":", repr(exc))
 
         sent_at = time.monotonic()
         r = self._http.post(f"{SERVER}/infer", json=body, timeout=INFER_TIMEOUT_S)

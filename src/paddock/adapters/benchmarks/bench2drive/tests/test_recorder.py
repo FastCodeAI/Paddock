@@ -124,3 +124,21 @@ def test_tick_record_keeps_the_whole_reply() -> None:
     assert record["extras"]["lead"][0]["d"] == 12.346
     line = recorder.dumps(record)
     assert "\n" not in line and json.loads(line)["t"] == 3
+
+
+def test_inputs_round_trip_exactly(tmp_path) -> None:
+    """A recorded request reads back bit for bit: a replay feeds the model what it was fed."""
+    rng = np.random.default_rng(0)
+    images = {
+        "CAM_FRONT": rng.integers(0, 255, (45, 80, 3), dtype=np.uint8),
+        "CAM_BACK": np.zeros((45, 80, 3), np.uint8),
+    }
+    body = {"timestamp": 1_050_000, "ego2world": np.eye(4).tolist(), "route_xy": [[-10.0, 0.0], [40.0, 1.5]]}
+    path = str(tmp_path / "00021.npz")
+    recorder.write_inputs(path, images, body)
+    back_images, back_body = recorder.read_inputs(path)
+    assert back_body == body
+    assert set(back_images) == set(images)
+    for cid, img in images.items():
+        assert back_images[cid].dtype == np.uint8 and np.array_equal(back_images[cid], img)
+    assert [p.name for p in tmp_path.iterdir()] == ["00021.npz"], "no partial file left behind"

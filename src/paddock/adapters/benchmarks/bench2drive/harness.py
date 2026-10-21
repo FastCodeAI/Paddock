@@ -438,6 +438,15 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             return None
         return round(rules["expert_factor"] * duration, 2) if duration > 0 else None
 
+    @property
+    def record_inputs(self) -> bool:
+        """Each tick's whole request under ``inputs/`` (``recorder.write_inputs``): off unless asked for.
+
+        ~3 MB a tick for six 800x450 views, a replay's worth of a few routes and not
+        a sweep's; it needs ``record`` on, and changes nothing the model is shown.
+        """
+        return (self.setting("record_inputs") or "false").strip().lower() in ("1", "true", "yes", "on")
+
     def _pythonpath(self) -> list[str]:
         """What the client interpreter needs, in the checkout's own order.
 
@@ -791,6 +800,8 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             extra["PADDOCK_INFER_TIMEOUT_S"] = os.environ["PADDOCK_INFER_TIMEOUT_S"]
         if self.record:
             extra["PADDOCK_RECORD_DIR"] = str(out_dir)
+            if self.record_inputs:
+                extra["PADDOCK_RECORD_INPUTS"] = "1"
             # agent_wrapper reads SAVE_PATH as its "Bench2Drive mode" flag, which
             # lifts the 3 m sensor-radius limit the BEV camera at z=30 needs.
             extra["SAVE_PATH"] = str(out_dir)
