@@ -30,6 +30,7 @@ from paddock.adapters.models.autoe2e.policy import (
     integrate_controls,
     pack_tile,
     route_raster,
+    steady_before_start,
 )
 from paddock.policy.protocol import Command, Observation, Policy
 
@@ -94,6 +95,60 @@ def test_rows_older_than_the_first_pose_stay_zero() -> None:
     held = (np.abs(rows).sum(1) > 0).sum()
     assert held == 20, "t-2.0 .. t-0.1 s are inside the 2 s held"
     assert np.all(rows[:-20] == 0) and rows[-20:, 0] == pytest.approx(5.0)
+
+
+def test_closed_loop_fills_the_past_with_steady_driving() -> None:
+    """2 s into an episode at 5 m/s: the 44 older rows read 5 m/s, no acceleration, no turn."""
+    t = np.arange(0.0, 2.0 + 1e-9, 0.1)
+    xy = np.column_stack([5.0 * t, np.zeros_like(t)])
+    rows = egomotion_rows(t, xy, np.zeros_like(t), t_now=2.0)
+    filled, n = steady_before_start(rows, t, t_now=2.0, speed=9.9)
+    assert n == 44
+    assert filled[:44] == pytest.approx(np.tile([5.0, 0.0, 0.0, 0.0], (44, 1)))
+    assert np.array_equal(filled[44:], rows[44:]), "the measured rows are left as they are"
+
+
+def test_the_first_call_takes_the_simulators_speed() -> None:
+    """One pose measures nothing; a zero speed would plan a stop for a car doing 8 m/s."""
+    filled, n = steady_before_start(np.zeros((EGO_STEPS, 4)), np.array([0.0]), t_now=0.0, speed=8.3)
+    assert n == EGO_STEPS
+    assert filled == pytest.approx(np.tile([8.3, 0.0, 0.0, 0.0], (EGO_STEPS, 1)))
+
+
+def test_a_full_past_is_not_touched() -> None:
+    t = np.arange(0.0, 7.0, 0.1)
+    rows = egomotion_rows(t, np.column_stack([3.0 * t, np.zeros_like(t)]), np.zeros_like(t), t_now=6.9)
+    filled, n = steady_before_start(rows, t, t_now=6.9, speed=0.0)
+    assert n == 0 and np.array_equal(filled, rows)
+
+
+def test_only_closed_loop_fills_the_past(monkeypatch) -> None:
+    """The fill is gated on `self_prime`, which `infer_sequence` (every open-loop benchmark) clears."""
+    seen = []
+    monkeypatch.setattr(POLICY, "observe", lambda self, obs: None)
+    monkeypatch.setattr(POLICY, "infer", lambda self, obs: seen.append(self.self_prime))
+    policy = POLICY()
+    policy.infer(object())
+    policy.infer_sequence([object(), object()])
+    assert seen == [True, False]
+    assert policy.self_prime is True
+
+
+def test_the_adapter_fills_the_past_only_in_closed_loop() -> None:
+    """The history `infer()` builds: filled with `self_prime` on, zero-padded with it off."""
+    frames = []
+    for t in np.arange(0.0, 2.0 + 1e-9, 0.1):
+        m = np.eye(4)
+        m[0, 3] = 5.0 * t
+        frames.append(_Frame(t_s=float(t), ego2world=m, camera2image={}, camera2ego={}))
+    policy = POLICY()
+    policy.frames = frames
+    closed, n_closed = policy._ego_history(frames[-1], speed=9.9)
+    policy.self_prime = False
+    opened, n_open = policy._ego_history(frames[-1], speed=9.9)
+    assert n_closed == 44 and closed[:44] == pytest.approx(np.tile([5.0, 0.0, 0.0, 0.0], (44, 1)))
+    assert n_open == 0 and np.all(opened[:44] == 0)
+    assert np.array_equal(opened[44:], closed[44:]), "the measured rows are the same either way"
 
 
 def test_curvature_divides_by_the_speed_floor_when_stopped() -> None:
