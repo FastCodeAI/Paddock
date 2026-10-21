@@ -796,3 +796,81 @@ def events(route: Route) -> dict[str, float]:
         out["leaves the lane line"] = float(off["t"].iloc[0])
     out[f"end ({route.early_stop.get('reason') or route.result.get('status')})"] = float(df["t"].iloc[-1])
     return out
+
+
+# --------------------------------------------------------------------------- closed loop: does another past drive better?
+
+
+def drives(cfg: SiteConfig, route_ids: list[str]) -> dict[str, dict[str, Route]]:
+    """The latest scored drive of each route under ``{runs}``, by the ego history it was driven with.
+
+    ``"real"`` unless the run's own ``run_config.json`` names another ``AUTOE2E_EGO_HISTORY``.
+    """
+    root = cfg.runs / BENCH / MODEL
+    out: dict[str, dict[str, Route]] = {}
+    for att in sorted(runs.attempts([root]), key=lambda a: a.run_id):
+        if att.route_id not in route_ids or not att.scored:
+            continue
+        config = runs.load_json(att.path.parent / "run_config.json") or {}
+        mode = (config.get("model_env") or {}).get("AUTOE2E_EGO_HISTORY", "real")
+        out.setdefault(mode, {})[att.route_id] = Route.load(att.path)
+    return out
+
+
+def closed_loop_table(by_mode: dict[str, dict[str, Route]]) -> pd.DataFrame:
+    """Per route and ego history: how it scored, what ended it, and how far off its lane it got."""
+    rows = []
+    for mode, rs in by_mode.items():
+        for rid, r in rs.items():
+            df = r.series()
+            d = r.describe()
+            rows.append(
+                {
+                    "route": rid, "ego history": mode, "DS": d["DS"], "RC": d["RC"], "ended": d["ended"],
+                    "at_s": d["at_s"], "infractions": d["infractions"], "max speed": round(df["speed"].max(), 1),
+                    "max |lane offset| m": round(df["lane_offset"].abs().max(), 2),
+                    "max |heading vs lane| deg": round(df["lane_heading"].abs().max(), 1),
+                }
+            )  # fmt: skip
+    return pd.DataFrame(rows).set_index(["route", "ego history"]).sort_index()
+
+
+def closed_loop_figure(by_mode: dict[str, dict[str, Route]], route_id: str) -> plt.Figure:
+    """The same route driven with each ego history: where the car went, and its speed and lane offset."""
+    fig, (a_map, a_spd, a_off) = plt.subplots(1, 3, figsize=(17, 5))
+    colors = {"real": "black", "steady": "tab:blue", "no_turn": "tab:green"}
+    plan = None
+    for mode, rs in by_mode.items():
+        if route_id not in rs:
+            continue
+        r = rs[route_id]
+        df = r.series()
+        if plan is None:
+            plan = np.asarray(r.plan.get("xy") or [], dtype=float).reshape(-1, 2)
+            a_map.plot(plan[:, 0], plan[:, 1], color="tab:gray", lw=4, alpha=0.3, label="route")
+        c = colors.get(mode, "tab:red")
+        a_map.plot(
+            df["x"],
+            df["y"],
+            color=c,
+            lw=1.5,
+            label=f"ego history: {mode} ({r.early_stop.get('reason') or r.result.get('status')})",
+        )
+        a_map.plot(df["x"].iloc[-1], df["y"].iloc[-1], "x", color=c, ms=10, mew=2)
+        a_spd.plot(df["t"], df["speed"], color=c, label=mode)
+        a_off.plot(df["t"], df["lane_offset"], color=c, label=mode)
+    a_map.set_aspect("equal", adjustable="datalim")
+    a_map.invert_yaxis()
+    a_map.legend(fontsize=7)
+    a_map.set_title("world, metres", fontsize=9)
+    a_spd.set_title("speed (m/s)", fontsize=9)
+    a_off.set_title("lane offset (m, left +)", fontsize=9)
+    for a in (a_spd, a_off):
+        a.set_xlabel("game time (s)")
+        a.grid(alpha=0.3)
+        a.legend(fontsize=8)
+    fig.suptitle(
+        f"Route {route_id}: driven with the measured ego history, and with an extrapolated one", fontsize=10
+    )
+    fig.tight_layout()
+    return fig
