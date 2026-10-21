@@ -3,6 +3,7 @@
 import math
 
 import numpy as np
+import pytest
 
 from paddock.adapters.benchmarks.nuscenes import loader as L
 from paddock.adapters.benchmarks.nuscenes.harness import plan_headings, plan_on_grid, score_plan
@@ -117,6 +118,37 @@ def test_absent_boxes_omit_collision_metrics_rather_than_zeroing_them():
     m = score_plan(future.copy(), future, None)
     assert m["l2_avg"] == 0.0 and "ade_3s" in m
     assert not any(k.startswith("col_") for k in m)
+
+
+def test_a_shared_cache_directory_keeps_one_file_per_dataset_key(tmp_path):
+    """Two roots in one directory must not evict each other; the name carries the key."""
+    shared = tmp_path / "cache"
+    nas = L.cache_file(shared, tmp_path / "nas", "v1.0-trainval", ["a", "b"])
+    staged = L.cache_file(shared, tmp_path / "staged", "v1.0-trainval", ["b", "a"])
+    assert nas.parent == staged.parent == shared
+    assert nas != staged
+    same = L.cache_file(shared, tmp_path / "nas", "v1.0-trainval", ["b", "a"])
+    assert nas == same, "scene order is not part of the key"
+
+
+def test_a_failed_cache_write_leaves_the_old_cache_whole(tmp_path, monkeypatch):
+    """Parallel lanes read one cache; a write that dies half-way must not be what they read."""
+    monkeypatch.setattr(L, "build_index", lambda root, version, scene_names, log=print: [["fresh"]])
+    cache = tmp_path / "idx.pkl"
+    root = tmp_path / "data"
+    first = L.load_or_build_index(root, "v1.0-trainval", ["a"], cache)
+    good = cache.read_bytes()
+
+    def dies_half_way(obj, handle):
+        handle.write(b"\x80\x04 half a pickle")
+        raise OSError("disk full")
+
+    monkeypatch.setattr(L.pickle, "dump", dies_half_way)
+    with pytest.raises(OSError, match="disk full"):
+        L.load_or_build_index(root, "v1.0-trainval", ["a", "b"], cache)
+    assert cache.read_bytes() == good
+    assert [p.name for p in tmp_path.iterdir() if p.name.endswith(".part")] == []
+    assert first == [["fresh"]]
 
 
 def test_index_cache_is_rebuilt_when_the_dataset_key_changes(tmp_path, monkeypatch):

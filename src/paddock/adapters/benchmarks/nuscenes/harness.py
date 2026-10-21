@@ -203,9 +203,18 @@ class NuScenesBenchmark(OpenLoopBenchmark):
     # ---- samples --------------------------------------------------------
 
     def _cache_path(self) -> Path:
+        """`index_cache` names the file (`*.pkl`) or a directory checkouts share.
+
+        In a directory the file is named by its dataset key (`L.cache_file`), so
+        one directory can serve every worktree and every dataset root.
+        """
         raw = self.setting("index_cache")
         if raw:
-            return Path(raw).expanduser()
+            path = Path(raw).expanduser()
+            if path.suffix != ".pkl":
+                scenes = json.loads(VAL_SCENES.read_text())["val"]
+                return L.cache_file(path, self.dataset.resolve(), self.version, scenes)
+            return path
         return Path(__file__).resolve().parents[5] / ".cache" / f"nuscenes_{self.version}_val_index.pkl"
 
     def _index(self):
