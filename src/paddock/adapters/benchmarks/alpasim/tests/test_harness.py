@@ -207,6 +207,52 @@ def test_the_thirty_scene_set_is_the_one_the_stored_rows_cover() -> None:
         assert json.loads(row.read_text())["dataset"]["sequences_sha256"] == want, row
 
 
+def _samples(bench, tmp_path: Path) -> list[dict]:
+    return [
+        record
+        for episode in bench.episodes()
+        for record in bench.episode_samples(episode, {"scene_score": 1.0, "n_runs": 1.0}, tmp_path)
+    ]
+
+
+def test_a_sample_says_which_half_of_the_thirty_its_scene_is_in(tmp_path: Path, monkeypatch) -> None:
+    """Not the run's set name for every scene: the ten are pilot10 and the twenty ext20."""
+    samples = _samples(_benchmark(tmp_path, monkeypatch, scene_set="public_2601_30scenes"), tmp_path)
+    assert [s["split"] for s in samples] == ["pilot10"] * 10 + ["ext20"] * 20
+    assert {s["native_id"]["scene_set"] for s in samples} == {"public_2601_30scenes"}
+    assert samples[0]["metrics"] == {"scene_score": 1.0}
+
+
+def test_a_sample_says_how_its_car_was_steered(tmp_path: Path, monkeypatch) -> None:
+    """The bridge's count of model vs derived headings lands in the record."""
+    bench = _benchmark(tmp_path, monkeypatch)
+    episode = next(bench.episodes())
+    (record,) = bench.episode_samples(episode, {"scene_score": 1.0}, tmp_path)
+    assert record["headings"] is None and record["bridge_plans"] is None, "no record, no claim"
+    for counts, want in (({"model": 0, "derived": 9}, "derived"), ({"model": 3, "derived": 1}, "mixed")):
+        (tmp_path / "bridge_plans.json").write_text(json.dumps({"headings": counts}))
+        (record,) = bench.episode_samples(episode, {"scene_score": 1.0}, tmp_path)
+        assert record["headings"] == want and record["bridge_plans"]["headings"] == counts
+    assert record["history_frames"] is None
+    (tmp_path / "bridge_plans.json").write_text(
+        json.dumps({"headings": {"model": 1}, "history_frames": "observe"})
+    )
+    (record,) = bench.episode_samples(episode, {"scene_score": 1.0}, tmp_path)
+    assert record["history_frames"] == "observe", "how the frame the bridge needed no plan from was sent"
+
+
+def test_a_clip_is_the_same_sample_whichever_set_drove_it(tmp_path: Path, monkeypatch) -> None:
+    """A paired comparison joins on sample_id: a 30-scene run must share its first ten
+    with a 10-scene run, and fingerprint like the stored 30-scene rows."""
+    ten = _samples(_benchmark(tmp_path, monkeypatch), tmp_path)
+    thirty = _samples(_benchmark(tmp_path, monkeypatch, scene_set="public_2601_30scenes"), tmp_path)
+    assert [s["split"] for s in ten] == ["pilot10"] * 10
+    assert {s["sample_id"] for s in ten} < {s["sample_id"] for s in thirty}
+    assert ten[0]["sample_id"] == f"alpasim/{CLEAN}"
+    want = sequence_hash([f"alpasim/{scene}" for scene in load_scene_set("public_2601_30scenes")])
+    assert sequence_hash([s["sample_id"] for s in thirty]) == want
+
+
 def test_scene_order_is_the_pinned_order_not_the_filesystems(tmp_path: Path, monkeypatch) -> None:
     """`--limit 5` must select the same five at both sites."""
     bench = _benchmark(tmp_path, monkeypatch)
@@ -463,6 +509,8 @@ def fake_repo(tmp_path: Path, monkeypatch) -> Path:
         ]
 
     monkeypatch.setattr(harness.launcher, "wizard_command", fake_command)
+    # No node answers here; the stand-in serves a model with the default profile.
+    monkeypatch.setattr(harness.launcher, "serving_model", lambda url: "constant_velocity")
     return repo
 
 
@@ -575,3 +623,104 @@ def test_a_scene_subset_is_not_a_score(tmp_path: Path, monkeypatch) -> None:
     list(bench.episodes([CLEAN]))
     (reason,) = bench.invalid_reasons()
     assert f"1 of the {len(load_scene_set(DEFAULT_SCENE_SET))} clips" in reason
+
+
+def test_a_model_without_a_profile_is_driven_exactly_as_before(tmp_path: Path, monkeypatch) -> None:
+    """alpamayo15 and every other unlisted model: default driver, no bridge flags, nothing recorded."""
+    from types import SimpleNamespace
+
+    from paddock.adapters.benchmarks.alpasim import harness
+
+    profile = harness.profile_for("alpamayo15")
+    assert profile == harness.DriverProfile()
+    assert (profile.driver, profile.bridge_args, profile.scenes_csv) == ("paddock_bridge", (), None)
+    bench = _benchmark(tmp_path, monkeypatch)
+    assert bench.model_run_config(SimpleNamespace(name="alpamayo15")) == {}
+
+
+def test_the_drivejepa_profile_pins_every_scene_it_can_be_asked_for() -> None:
+    """Its driver config exists, and its catalog pins each 30-scene id to one 26.01 artifact."""
+    import csv
+
+    from paddock.adapters.benchmarks.alpasim import harness, launcher
+
+    profile = harness.profile_for("drivejepa")
+    assert (launcher.CONFIGS_DIR / "driver" / f"{profile.driver}.yaml").is_file()
+    rows = list(csv.DictReader((harness.SCENES_DIR / profile.scenes_csv).open()))
+    ids = [row["scene_id"] for row in rows]
+    assert sorted(ids) == sorted(load_scene_set("public_2601_30scenes"))
+    assert set(load_scene_set("public_2601_first10")) <= set(ids)
+    assert {row["nre_version_string"] for row in rows} == {"26.1.112-59673f88"}
+    assert len({row["uuid"] for row in rows}) == len(rows)
+
+
+def test_the_node_gets_a_minute_to_say_which_model_it_serves(monkeypatch) -> None:
+    # 10 s failed three scenes of a 30-scene run while the disk was saturated;
+    # the node was healthy and answered the scene after. Startup only: this is
+    # asked once per scene, before the bridge starts.
+    waited: list[float] = []
+
+    class _Answer:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps({"model": "drivejepa"}).encode()
+
+    def urlopen(url, timeout):
+        assert url.endswith("/whoami")
+        waited.append(timeout)
+        return _Answer()
+
+    monkeypatch.setattr(launcher.urllib.request, "urlopen", urlopen)
+    assert launcher.serving_model("http://127.0.0.1:9800") == "drivejepa"
+    assert waited == [60.0]
+
+
+def test_drivejepa_records_video_only_when_the_site_asks(
+    tmp_path: Path, fake_repo: Path, monkeypatch
+) -> None:
+    """Its profile pins driver, cameras and scenes, but not video: render_video only
+    renders after AlpaSim's scorer has written its metrics, so it changes no score,
+    and every-frame video is about 150 MB a scene."""
+    from paddock.adapters.benchmarks.alpasim import harness
+
+    monkeypatch.setenv("FAKE_WIZARD_MODE", "ok")
+    monkeypatch.setattr(harness.launcher, "serving_model", lambda url: "drivejepa")
+    seen: list[dict] = []
+    fake = harness.launcher.wizard_command
+
+    def capture(**kwargs):
+        seen.append(kwargs)
+        return fake(**kwargs)
+
+    monkeypatch.setattr(harness.launcher, "wizard_command", capture)
+    bench = _benchmark(tmp_path, monkeypatch, repo=str(fake_repo), python=sys.executable)
+    bench.run_episode(_episode(), "http://127.0.0.1:1", tmp_path / "out", echo=lambda _: None)
+    (call,) = seen
+    assert call["driver"] == "paddock_bridge_drivejepa"
+    assert (call["video"], call["video_every_nth_frame"]) == (False, 1)
+
+
+def test_the_drivejepa_bridge_flags_match_its_driver_config() -> None:
+    """The bridge's control step and warm-up length are the driver config's.
+
+    A different control step would fail the first scene loudly (PushCadenceError);
+    a different warm-up would only mislabel warm-up and after-handover replans.
+    """
+    import yaml
+
+    from paddock.adapters.benchmarks.alpasim import harness, launcher
+
+    profile = harness.profile_for("drivejepa")
+    args = list(profile.bridge_args)
+    flag = {name: int(args[args.index(name) + 1]) for name in ("--frame-interval-us", "--force-gt-us")}
+    config = yaml.safe_load((launcher.CONFIGS_DIR / "driver" / f"{profile.driver}.yaml").read_text())
+    simulation = config["runtime"]["simulation_config"]
+    assert flag["--frame-interval-us"] == simulation["control_timestep_us"]
+    assert flag["--force-gt-us"] == simulation["force_gt_duration_us"]
+    (front,) = [c for c in simulation["cameras"] if c["logical_id"] == args[args.index("--front-camera") + 1]]
+    assert front["frame_interval_us"] == simulation["control_timestep_us"]
