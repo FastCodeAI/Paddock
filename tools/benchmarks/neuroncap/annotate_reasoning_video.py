@@ -234,11 +234,6 @@ def _select_runs_and_segments(
             raise SystemExit(f"no episode dir named {episode_name!r} under {sweep_dir}")
 
     all_runs = [(ep, run) for ep in episodes for run in _run_dirs(ep)]
-    if len(all_runs) != len(segments) and episode_name is None:
-        print(
-            f"warning: {len(all_runs)} run dirs but {len(segments)} reasoning segments -- "
-            "mapping may be misaligned; consider narrowing with --episode/--run to check"
-        )
 
     if episode_name is not None:
         idx = full_episodes.index(episodes[0])
