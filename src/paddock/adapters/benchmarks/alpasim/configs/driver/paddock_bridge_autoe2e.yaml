@@ -22,9 +22,16 @@
 #     pose (no rig_to_camera, so each vehicle's calibration is used); the cross
 #     cameras therefore look out at about 67 degrees rather than KITScenes' 60.
 #     The two rear cameras and the borrowed rear view need a new direction (120,
-#     -120 and 180 degrees), and an override sets one pose for every scene, at the
-#     recorded rear cameras' median mounting point. Those three views point 28 to
-#     32 degrees away from any recorded camera.
+#     -120 and 180 degrees), and an override sets one pose for every scene. The
+#     rear-left and rear-right views sit at the recorded rear cameras' median
+#     mounting point and point 28 to 32 degrees away from any recorded camera.
+#   * The rear view sits on the roof, 1.0 m ahead of the rear axle and 1.93 m up.
+#     Every recorded camera is near the front of the car, so a camera there looks
+#     back through our own car, which the renderer never draws: the ground under
+#     it was never seen and comes out as a smudge in the bottom rows. On the roof
+#     the camera sees over the car. 1.93 m is the tallest car in the 30 scenes
+#     (1.823 m; the others are 1.439 and 1.503 m) plus 0.10 m, near KITScenes'
+#     rear camera at about 1.9 m; one value, since an override cannot vary by scene.
 #   * rig_to_camera is the camera's pose in the rig (rear axle on the ground, x
 #     forward, y left, z up), OpenCV camera axes (x right, y down, z forward), as
 #     sensorsim_service.py composes it: world_camera = world_rig @ rig_to_camera.
@@ -150,11 +157,11 @@ runtime:
           thin_prism: [0.0, 0.0, 0.0, 0.0]
       resolution_hw: [664, 1024]
       shutter_type: GLOBAL
-    # Rear: KITScenes camera_ring_rear, yaw 180, pitch 0, roll 0. No recorded
-    # camera looks this way; the tele camera's id carries the render.
+    # Rear: KITScenes camera_ring_rear, yaw 180, pitch 0, roll 0, on the roof.
+    # No recorded camera looks this way; the tele camera's id carries the render.
     - logical_id: camera_front_tele_30fov
       rig_to_camera:
-        translation_m: [2.09, 0.0, 1.02]
+        translation_m: [1.0, 0.0, 1.93]
         rotation_xyzw: [0.5, 0.5, -0.5, -0.5]
       intrinsics:
         model: opencv_pinhole

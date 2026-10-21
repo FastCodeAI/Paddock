@@ -195,14 +195,15 @@ calibration's field of view (the release's
 | front-left | CAM_FRONT_LEFT | camera_cross_left_120fov | each scene's own (≈ 67°) | 1024 × 664, 538.9 px | 87.1° × 63.3° |
 | front-right | CAM_FRONT_RIGHT | camera_cross_right_120fov | each scene's own (≈ −67°) | 1024 × 664, 538.9 px | 87.1° × 63.3° |
 | rear-left | CAM_BACK_LEFT | camera_rear_left_70fov | fixed (2.10, 1.04, 1.02) m, 120° | 1024 × 664, 538.9 px | 87.1° × 63.3° |
-| rear | CAM_BACK | camera_front_tele_30fov | fixed (2.09, 0, 1.02) m, 180° | 1024 × 664, 538.9 px | 87.1° × 63.3° |
+| rear | CAM_BACK | camera_front_tele_30fov | fixed (1.0, 0, 1.93) m, 180°, on the roof | 1024 × 664, 538.9 px | 87.1° × 63.3° |
 | rear-right | CAM_BACK_RIGHT | camera_rear_right_70fov | fixed (2.06, −1.01, 1.02) m, −120° | 1024 × 664, 538.9 px | 87.1° × 63.3° |
 
 AlpaSim can change a scene's camera but not add one, so the rear view takes
 the tele camera's id. One override applies to every scene, so a camera keeps
 its own vehicle's mounting only when the override leaves its pose out; the
-three new directions take one pose, at the recorded rear cameras' median
-mounting point (0.01–0.41 m from any one scene's).
+three new directions take one pose each. Rear-left and rear-right sit at the
+recorded rear cameras' median mounting point (0.01–0.41 m from any one
+scene's); the rear view sits on the roof (see "Camera setup on AlpaSim" below).
 
 **Rhythm.** The bridge asks the node every 100 ms, which is the model's 10 Hz,
 and answers the 20 Hz ticks between with the last plan, re-timed onto now and
@@ -229,14 +230,48 @@ oldest real frame is repeated.
 | Gap | Why it may matter |
 |---|---|
 | Plan offset 0 m | KITScenes trained the motion of the roof LiDAR point, nuPlan that of the rear axle. AlpaSim drives the plan as the rear axle's. The LiDAR's position on the KITScenes car is not published (the KITScenes dataset's own calibration is gated), so no offset is applied. In a turn of Δθ the two paths differ by 2·d·sin(Δθ/2) for an offset d along the car |
-| Rear views untested | The 120°, 180° and −120° renders point 28–32° away from every camera the scene was reconstructed from |
-| Cameras lower than training | AlpaSim's cameras sit 0.8–1.6 m above the ground; KITScenes' about 1.7–1.9 m, assuming its LiDAR at the 2.1 m this adapter uses |
+| Rear views far from any recorded camera | The 120°, 180° and −120° renders point 28–32° away from every camera the scene was reconstructed from. Checked by eye on two scenes only: fast cars behind can come out torn or ghosted |
+| Cameras lower than training | Five of AlpaSim's views sit 0.8–1.6 m above the ground (the rear view 1.93 m); KITScenes' about 1.7–1.9 m, assuming its LiDAR at the 2.1 m this adapter uses |
 | Front-left/right at ±67° | KITScenes' are at ±60°; the recorded pose is kept rather than one fixed pose for every vehicle |
 | No correctness check | the release publishes aggregate evaluation reports only, no per-sample plans to compare against |
 
 Cost, measured on a shared GPU on 21 Oct 2026: about 3.1 s per forward pass
 with full history, so about 9 minutes of model time per scene after handover
 at 10 Hz.
+
+## Camera setup on AlpaSim
+
+AutoE2E was trained on six cameras around the car: one ahead, one each at
+front-left and front-right, rear-left and rear-right, and one looking straight
+back. AlpaSim's scenes are rebuilt from six recorded cameras that point
+elsewhere, and none looks back. AlpaSim can draw a scene from any viewpoint,
+but views far from the recorded cameras come out worse.
+
+- **Front, front-left, front-right** are drawn from the scene's own recorded
+  front and side cameras, with the lens changed to KITScenes'.
+- **Rear-left and rear-right** have no recorded camera at their angle. They are
+  drawn from the recorded rear cameras' mounting point, turned to 120° and −120°.
+- **Rear** has no recorded camera at all. It is drawn from the roof, 1.0 m
+  ahead of the rear axle and 1.93 m up, looking straight back.
+
+Why the roof: every recorded camera is near the front of the car. A
+rear-facing camera mounted there looks back *through our own car*, which the
+renderer never draws, so the road beneath the car was never seen by any camera
+and comes out as a smudge in the bottom rows. Three spots were tried on two
+scenes:
+- the recorded rear cameras' mounting point, 0.3–0.6 m from a recorded camera:
+  smudge;
+- just behind the bumper, 3.2 m from any recorded camera: no smudge, but nearby
+  cars behind are smeared and ghosted;
+- the roof, 1.0 m from a recorded camera: no smudge, the cleanest image.
+
+1.93 m is the tallest car in the 30 scenes (1.823 m) plus 0.10 m, so the camera
+is above every roof. KITScenes' rear camera is about 1.9 m up. AlpaSim applies
+one camera pose to every scene, so it cannot follow each car's height.
+
+Remaining known gaps (table above): the plan is driven from the rear axle with
+no offset; the three rear views point 28–32° away from any recorded camera; and
+five of the six views sit lower than KITScenes' cameras.
 
 ## Results
 

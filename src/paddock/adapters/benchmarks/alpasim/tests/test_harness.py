@@ -887,7 +887,7 @@ def test_the_autoe2e_fixed_poses_look_where_the_kitscenes_cameras_look() -> None
     extra = {c["logical_id"]: c for c in config["runtime"]["extra_cameras"]}
     expected = {
         "camera_rear_left_70fov": (120.0, [2.10, 1.04, 1.02]),
-        "camera_front_tele_30fov": (180.0, [2.09, 0.0, 1.02]),
+        "camera_front_tele_30fov": (180.0, [1.0, 0.0, 1.93]),
         "camera_rear_right_70fov": (-120.0, [2.06, -1.01, 1.02]),
     }
     for camera_id, (yaw, position) in expected.items():
