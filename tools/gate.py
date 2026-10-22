@@ -590,33 +590,35 @@ def compare(
     same refusals, and kept on the result beside the primary. When all five
     terms are there and no composite is, the gate composes `pdm_style_score`
     per sample. PDM rows never change the verdict: at 5% each, the quick tier's
-    12 would call an unchanged model worse on at least one about a quarter of
-    the time.
+    17 would call an unchanged model worse on at least one about a third of the
+    time.
     """
     result = _compare(baseline, candidate, metric, threshold, unit_of, allow_config)
     slots = dict(pdm_terms(result.bench, result.metric) if pdm is None else pdm)
     if not slots:
         return result
     result.pdm_missing = [PDM.LABELS[s] for s in PDM.SLOTS if s not in slots]
-    rows = [(slot, m, baseline, candidate) for slot, m in slots.items()]
+    # The last field says whether the gate built the row. Not read from the name:
+    # neuroNCAP and comma2k19 record a composite of their own called `COMPOSED` too.
+    rows = [(slot, m, baseline, candidate, False) for slot, m in slots.items()]
     # Higher-is-better, so each is a pass rate the formula can multiply.
     if PDM.SCORE not in slots and all(
         slot in slots and not lower_is_better(slots[slot]) for slot in PDM.SLOTS
     ):
-        rows.append((PDM.SCORE, COMPOSED, _composed(baseline, slots), _composed(candidate, slots)))
+        rows.append((PDM.SCORE, COMPOSED, _composed(baseline, slots), _composed(candidate, slots), True))
     unrecorded = []
-    for slot, m, base, cand in rows:
+    for slot, m, base, cand, composed in rows:
         if m == result.metric:
             continue  # the primary is this term (navsim_v1's pdms): its row is the headline
         # A run with records but none for this term predates it (or its harness
         # does not write it): say so once on the primary, not as a row of dashes.
-        if m != COMPOSED and any(r.samples and not _recorded(r, m) for r in (base, cand)):
+        if not composed and any(r.samples and not _recorded(r, m) for r in (base, cand)):
             unrecorded.append(m)
             continue
         part = _compare(base, cand, m, None, unit_of, allow_config)
         part.slot = slot
         part.notes = [n for n in part.notes if n not in result.notes]
-        if m == COMPOSED:
+        if composed:
             part.notes.insert(0, "composed by the gate from the five terms with NAVSIM v1's weights")
         result.pdm.append(part)
     if unrecorded:

@@ -669,6 +669,30 @@ def test_navsim_v2_gets_a_pdm_style_score_composed_from_its_terms(tmp_path: Path
     assert r.pdm_missing == []
 
 
+def test_a_benchmarks_own_composite_is_not_said_to_be_the_gates(tmp_path: Path) -> None:
+    """neuroNCAP records its own `pdm_style_score`, the name the gate gives one it builds."""
+    from paddock.metrics.pdm import PDM_KEYS
+
+    def row(pair: str, value: float) -> dict:
+        scenario, scene = pair.split("-")
+        return {
+            "sample_id": f"neuroncap/{scene}/{scenario}/run_0",
+            "native_id": {"scenario": scenario, "scene": scene, "run": 0},
+            "metrics": {"ncap_score": 4.0, **{k: value for k in PDM_KEYS}},
+        }
+
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    pairs = ["stationary-0103", "frontal-0103", "side-0110", "stationary-0796"]
+    _write_run(res, runs, "neuroncap", "m", "a", [row(p, 0.8) for p in pairs], "ncap_score")
+    _write_run(res, runs, "neuroncap", "m", "b", [row(p, 0.9) for p in pairs], "ncap_score")
+    r = gate.compare(
+        gate.load_run("neuroncap", "m:a", runs, res), gate.load_run("neuroncap", "m:b", runs, res)
+    )
+    (score,) = [p for p in r.pdm if p.slot == "score"]
+    assert score.metric == "pdm_style_score" and score.baseline_mean == pytest.approx(0.8)
+    assert not any("composed by the gate" in n for n in score.notes)
+
+
 def test_a_composed_score_with_a_missing_term_is_not_a_pass(tmp_path: Path) -> None:
     tokens = {f"t{i}": f"log{i % 3}" for i in range(6)}
     base = [_navsim_row(t, 1.0, 0.8) for t in tokens]
