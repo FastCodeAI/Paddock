@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Trial ladder: from no setup to the customer's own model</title>
+<link rel="stylesheet" href="figures.css">
+<style>
+  .stairs { display: flex; gap: 12px; align-items: flex-end; height: 560px; }
+  .step { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; border: 2px solid var(--yellow);
+          border-radius: 12px; background: var(--yellow-w); overflow: hidden; }
+  .step .sh { background: var(--yellow-t); padding: 8px 12px; border-bottom: 2px solid var(--yellow); }
+  .step .lvl { font-size: 17px; font-weight: 700; color: var(--ink2); letter-spacing: 0.04em; }
+  .step .nm { font-size: 22px; font-weight: 700; line-height: 1.15; }
+  .step .bd { padding: 9px 12px 10px; display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; }
+  .step .k { font-size: 16px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .step .v { font-size: 17px; line-height: 1.25; }
+  .step .ft { padding: 0 12px 12px; }
+  .step.ip { border: 4px solid var(--ink); }
+  .step.ip .sh { border-bottom-color: var(--ink); }
+  .axis { display: flex; align-items: center; gap: 12px; margin-top: 14px; font-size: 17px; color: var(--ink2); }
+  .axis .arrow { flex: 1 1 auto; }
+  .agents { margin-top: 12px; }
+</style>
+</head>
+<body>
+<div class="figure" id="trial-ladder">
+  <div class="fig-head">
+    <div class="fig-title">How a customer tries Paddock: five rungs, from no setup to their own model</div>
+    <div class="fig-sub">Each rung asks a little more of the customer and shows them more. v1.0.0 on 25 November delivers rungs 0 to 2 and the self-install kit.</div>
+  </div>
+
+  <div class="stairs">
+    <div class="step" style="height: 340px">
+      <div class="sh"><div class="lvl">L0</div><div class="nm">Evidence pack</div></div>
+      <div class="bd">
+        <div><div class="k">They see</div><div class="v">the results matrix, side-by-side videos, reproduction proofs, failure case studies</div></div>
+        <div><div class="k">Their setup</div><div class="v">none</div></div>
+        <div><div class="k">For</div><div class="v">a first meeting, any audience</div></div>
+      </div>
+      <div class="ft"><span class="chip done">v1.0</span></div>
+    </div>
+    <div class="step" style="height: 395px">
+      <div class="sh"><div class="lvl">L1</div><div class="nm">Laptop demo</div></div>
+      <div class="bd">
+        <div><div class="k">They see</div><div class="v">run, render and report in minutes: CPU-only models on a small public slice</div></div>
+        <div><div class="k">Their setup</div><div class="v">a laptop with a container runtime</div></div>
+        <div><div class="k">For</div><div class="v">an engineer's first look</div></div>
+      </div>
+      <div class="ft"><span class="chip wip">v1.0 stretch</span></div>
+    </div>
+    <div class="step" style="height: 450px">
+      <div class="sh"><div class="lvl">L2</div><div class="nm">Guided live demo</div></div>
+      <div class="bd">
+        <div><div class="k">They see</div><div class="v">open loop, NAVSIM and a closed-loop drive with video, on our GPUs, driven by us</div></div>
+        <div><div class="k">Their setup</div><div class="v">none</div></div>
+        <div><div class="k">For</div><div class="v">evaluators and leadership</div></div>
+      </div>
+      <div class="ft"><span class="chip done">v1.0</span></div>
+    </div>
+    <div class="step" style="height: 505px">
+      <div class="sh"><div class="lvl">L3</div><div class="nm">Hands-on project</div></div>
+      <div class="bd">
+        <div><div class="k">They do</div><div class="v">their engineers and AI agents run experiments in an isolated project on our GPUs</div></div>
+        <div><div class="k">Their setup</div><div class="v">none: an account</div></div>
+        <div><div class="k">For</div><div class="v">model teams trying it themselves</div></div>
+      </div>
+      <div class="ft"><span class="chip plan">v1.1</span></div>
+    </div>
+    <div class="step ip" style="height: 560px">
+      <div class="sh"><div class="lvl">L4</div><div class="nm">Proof of value</div></div>
+      <div class="bd">
+        <div><div class="k">They do</div><div class="v">score and diagnose their own model, on public data and their own</div></div>
+        <div><div class="k">Their setup</div><div class="v">the kit on their own GPU workstation, or none if hosted under NDA</div></div>
+        <div><div class="k">For</div><div class="v">a team deciding to adopt</div></div>
+      </div>
+      <div class="ft chips"><span class="chip done">kit: v1.0</span><span class="chip plan">hosted: v1.1</span></div>
+    </div>
+  </div>
+
+  <div class="axis"><span>no setup, our models</span><span class="arrow"></span><span>their setup, their model</span></div>
+
+  <div class="legend agents">
+    <span><span class="sw" style="border-color: var(--ink); border-width: 4px"></span>thick outline: the customer's own model or data is involved</span>
+    <span>Their AI agents can drive every step: through the CLI in v1.0, through an agent gateway in v1.1.</span>
+  </div>
+</div>
+</body>
+</html>
