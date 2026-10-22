@@ -405,6 +405,8 @@ against it, move on. That is 14 renderer starts rather than 56.
 
 Every run's sample also carries NAVSIM's five PDM terms and their composite
 (`pdm_nc`, `pdm_dac`, `pdm_ttc`, `pdm_ep`, `pdm_comfort`, `pdm_style_score`),
+unless `video = "off"`: that turns off the engine's logger, which writes the
+files the terms are read from, so such a run has none. They are
 reported beside the NCAP score; the regression gate shows them in the rows it
 uses on every benchmark (docs/gate.md) and never decides on them.
 
@@ -502,7 +504,7 @@ the full 20-pair set at 10 runs for four models that is **~66 GB**.
 |---|---|---:|
 | `encode` (default) | videos, raw `CAM_*` jpegs, all json | ~5 GB |
 | `keep` | the above plus every source PNG | ~66 GB |
-| `off` | no frames at all (`--engine.logger.enabled False`) | ~0 |
+| `off` | no frames and no per-run json (`--engine.logger.enabled False`), so no PDM terms | ~0 |
 
 `encode` prunes only the derived PNG streams, and only ones that actually
 encoded. Nothing is lost that cannot be rebuilt: the raw camera frames and the
