@@ -82,16 +82,18 @@ first attempt and refuse a resume whose node reports different ones. The
 open-loop path has the same gap: `_carry_forward_provenance` keeps an earlier
 attempt's `policy` only when the new one is empty.
 
-**Regression gate — not yet proven at speed.** `tools/gate.py`
+**Regression gate — timed once.** `tools/gate.py`
 ([docs/gate.md](gate.md)) pairs a candidate with its baseline benchmark by
 benchmark. Verified: the released Drive-JEPA smoked against itself on shakaal
 reproduced nuScenes (2.497) and neuroNCAP (3.175) to three decimals, and the
-statistics reproduce hand-worked comparisons. Not verified, each argued only:
+statistics reproduce hand-worked comparisons. The tiered smoke, `--tier all`,
+took 2 h 40 min on 2026-10-20: the quick tier 19 min in three lanes side by side
+on the shared GPU, the closed tier 2 h 21 min. The first, untiered smoke took
+7.7 h. Not verified, each argued only:
 
-- the tiered smoke has never been timed: the quick tier's ~40–45 min is
-  estimated from the first, untiered smoke's per-subset times (7.7 h in all, on
-  a day with a slow NAS);
-- lanes are tested with stand-in runs only, not side by side on a shared GPU;
+- that 2 h 40 min holds on a busy day: that evening was quiet (the NAS read
+  65 MB/s, one other job on the GPU), and one run cannot separate the quiet
+  evening from the code;
 - CARLA's 8 GB share in the GPU wait is assumed, not measured;
 - the Bench2Drive smoke baseline is mostly "Agent got blocked" and has not been
   checked against the 50-route runs;
