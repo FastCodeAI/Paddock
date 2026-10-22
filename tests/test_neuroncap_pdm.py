@@ -117,7 +117,8 @@ def test_categories_follow_the_engines_rule_and_static_objects_cost_half() -> No
     assert cone.agent is False and unknown.agent is True
 
 
-def test_the_harness_adds_the_terms_to_each_runs_sample(tmp_path: Path, monkeypatch) -> None:
+def _harness(tmp_path: Path, monkeypatch, *, raster: bool = True):
+    """A neuroNCAP harness on a stand-in site: nuScenes' category tables, and scene 0103's raster."""
     from paddock.adapters.benchmarks.neuroncap.harness import BENCHMARK
     from paddock.config import SiteConfig
     from paddock.registry import Registry
@@ -128,8 +129,9 @@ def test_the_harness_adds_the_terms_to_each_runs_sample(tmp_path: Path, monkeypa
     (tables / "instance.json").write_text(json.dumps([{"token": "car-token", "category_token": "c1"}]))
     geometry = tmp_path / "geometry"
     geometry.mkdir()
-    area = road()
-    np.savez_compressed(geometry / "scene-0103.npz", mask=area.mask, origin=area.origin, cell=area.cell)
+    if raster:
+        area = road()
+        np.savez_compressed(geometry / "scene-0103.npz", mask=area.mask, origin=area.origin, cell=area.cell)
     for sub in ("repos", "runs", "weights"):
         (tmp_path / sub).mkdir()
     (tmp_path / "site.toml").write_text(
@@ -138,17 +140,48 @@ def test_the_harness_adds_the_terms_to_each_runs_sample(tmp_path: Path, monkeypa
         f'[benchmarks.neuroncap]\npdm_geometry = "{geometry}"\n'
     )
     monkeypatch.setenv("PADDOCK_CONFIG", str(tmp_path / "site.toml"))
-    harness = BENCHMARK(Registry.load().benchmarks["neuroncap"], SiteConfig.load())
+    return BENCHMARK(Registry.load().benchmarks["neuroncap"], SiteConfig.load())
+
+
+EPISODE = Episode(episode_id="frontal-0103", scenario="frontal", scene="0103", config={})
+
+
+def test_the_harness_adds_the_terms_to_each_runs_sample(tmp_path: Path, monkeypatch) -> None:
+    harness = _harness(tmp_path, monkeypatch)
     out_dir = tmp_path / "frontal-0103"
     write_run(out_dir / "run_0")
     write_run(out_dir / "run_1", car_x=200.0)
-    episode = Episode(episode_id="frontal-0103", scenario="frontal", scene="0103", config={})
-    samples = harness.episode_samples(episode, {}, out_dir)
+    samples = harness.episode_samples(EPISODE, {}, out_dir)
     by_run = {s["native_id"]["run"]: s["metrics"] for s in samples}
     assert by_run[0]["ncap_score"] == 5.0 and by_run[0]["pdm_nc"] == pytest.approx(6 / 31)
     assert by_run[1]["pdm_nc"] == 1.0 and by_run[1]["pdm_dac"] == 1.0
     assert set(pdm.PDM_KEYS) <= set(harness.spec.metrics)
     assert dict(harness.spec.pdm)["score"] == "pdm_style_score"
+
+
+def test_one_unreadable_run_loses_only_its_own_terms(tmp_path: Path, monkeypatch) -> None:
+    """Review of #102 (6): one bad file dropped the PDM terms of every run in the episode."""
+    harness = _harness(tmp_path, monkeypatch)
+    out_dir = tmp_path / "frontal-0103"
+    write_run(out_dir / "run_0")
+    write_run(out_dir / "run_1")
+    (out_dir / "run_1" / "trajectories.json").write_text("{")
+    by_run = {s["native_id"]["run"]: s["metrics"] for s in harness.episode_samples(EPISODE, {}, out_dir)}
+    assert by_run[0]["pdm_nc"] == pytest.approx(6 / 31)
+    assert by_run[1]["ncap_score"] == 5.0 and not set(pdm.PDM_KEYS) & set(by_run[1])
+
+
+def test_an_error_in_the_pdm_code_leaves_the_ncap_score(tmp_path: Path, monkeypatch) -> None:
+    harness = _harness(tmp_path, monkeypatch)
+    out_dir = tmp_path / "frontal-0103"
+    write_run(out_dir / "run_0")
+
+    def broken(*_a, **_k):
+        raise RuntimeError("a bug in the PDM code")
+
+    monkeypatch.setattr(pdm_terms, "run_terms", broken)
+    (sample,) = harness.episode_samples(EPISODE, {}, out_dir)
+    assert sample["metrics"]["ncap_score"] == 5.0 and not set(pdm.PDM_KEYS) & set(sample["metrics"])
 
 
 def test_the_geometry_builder_covers_every_neuroncap_scene() -> None:

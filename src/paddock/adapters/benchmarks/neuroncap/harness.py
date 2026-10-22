@@ -846,14 +846,19 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         out: dict[int, dict[str, float]] = {}
         try:
             area, categories = self._pdm_area(scene), self._categories()
-            for run_dir in run_dirs:
-                match = _RUN_DIR.match(run_dir.name)
-                terms = pdm_terms.run_terms(run_dir, area, categories)
-                if terms:
-                    out[int(match.group(1)) if match else 0] = terms
         except Exception as exc:  # noqa: BLE001 -- report-only terms must never cost an episode
             print(f"  PDM terms not computed for {out_dir.name}: {exc!r}", flush=True)
             return {}
+        for run_dir in run_dirs:
+            match = _RUN_DIR.match(run_dir.name)
+            # Per run: one unreadable file costs that run its terms, not the episode.
+            try:
+                terms = pdm_terms.run_terms(run_dir, area, categories)
+            except Exception as exc:  # noqa: BLE001 -- report-only terms must never cost an episode
+                print(f"  PDM terms not computed for {out_dir.name}/{run_dir.name}: {exc!r}", flush=True)
+                continue
+            if terms:
+                out[int(match.group(1)) if match else 0] = terms
         return out
 
     @staticmethod
