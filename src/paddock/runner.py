@@ -698,7 +698,10 @@ def _run_one_model(
     if resume and not outstanding:
         echo(f"  all {len(episodes)} episode(s) already scored; recording without starting a node")
 
-    prov: dict = {"repo": prov_info.repo_provenance(cfg, model_spec)}
+    prov: dict = {
+        "repo": prov_info.repo_provenance(cfg, model_spec),
+        "paddock": prov_info.paddock_provenance(),
+    }
     try:
         with contextlib.ExitStack() as stack:
             policy_url = (
@@ -917,7 +920,10 @@ def _run_external(
         extra_dataset=extra_dataset,
         # No `/diagnostics` here: the external scorer owns the node's lifetime,
         # so by the time this runs there is nothing left to ask.
-        provenance={"repo": prov_info.repo_provenance(cfg, model_spec)},
+        provenance={
+            "repo": prov_info.repo_provenance(cfg, model_spec),
+            "paddock": prov_info.paddock_provenance(),
+        },
     )
     headline = metrics_record.metrics.get(spec.primary_metric, {})
     echo(f"  n={metrics_record.n}  {spec.primary_metric} mean={headline.get('mean')}")
@@ -978,10 +984,11 @@ def _carry_forward_provenance(benchmark: str, model: str, run_id: str, prov: dic
     which backend and which graph layout produced the samples, for a run whose
     samples had not changed.
 
-    The repo sha gets the opposite treatment. A resume across a `git pull` is
-    part one revision and part another, and storing only the last attempt's sha
-    names a revision that did not produce most of the run. Earlier distinct shas
-    are kept beside it rather than overwritten, so a mixed-revision run says so.
+    The model repo's sha and paddock's own get the opposite treatment. A resume
+    across a `git pull` is part one revision and part another, and storing only
+    the last attempt's sha names a revision that did not produce most of the run.
+    Earlier distinct shas are kept beside it rather than overwritten, so a
+    mixed-revision run says so.
     """
     path = store.run_dir(benchmark, model, run_id) / "run.json"
     try:
@@ -990,11 +997,12 @@ def _carry_forward_provenance(benchmark: str, model: str, run_id: str, prov: dic
         return prov
     if not prov.get("policy") and previous.get("policy"):
         prov["policy"] = previous["policy"]
-    was = previous.get("repo") or {}
-    now = (prov.get("repo") or {}).get("sha")
-    earlier = sorted({s for s in [*(was.get("earlier_shas") or []), was.get("sha")] if s and s != now})
-    if earlier:
-        prov.setdefault("repo", {})["earlier_shas"] = earlier
+    for key in ("repo", "paddock"):
+        was = previous.get(key) or {}
+        now = (prov.get(key) or {}).get("sha")
+        earlier = sorted({s for s in [*(was.get("earlier_shas") or []), was.get("sha")] if s and s != now})
+        if earlier:
+            prov.setdefault(key, {})["earlier_shas"] = earlier
     return prov
 
 
@@ -1171,7 +1179,10 @@ def _run_open_loop(
             **({"extras": prediction.extras} if prediction.extras else {}),
         }
 
-    prov: dict = {"repo": prov_info.repo_provenance(cfg, model_spec)}
+    prov: dict = {
+        "repo": prov_info.repo_provenance(cfg, model_spec),
+        "paddock": prov_info.paddock_provenance(),
+    }
     aborted: str | None = None
     try:
         # Above the ExitStack, exactly as `_run_one_model` decides it: a node is

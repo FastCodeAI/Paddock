@@ -23,6 +23,8 @@ they cannot decide that from a diff alone.
 | `Drive-JEPA` | `0001-msda-compat-for-newer-gpus` | mmcv-full's compiled kernel has no SASS above sm_86 and no PTX, so it cannot run on newer cards. Falls back to the equivalent pure-PyTorch path. |
 | `Drive-JEPA` | `0002-score-runs-with-failed-scenarios` | **Correctness.** One failed scenario destroyed a whole run: `compute_final_scores` stacked a column mixing arrays and scalar NaN, and the failed-token report used `not` on a Series. Scores valid rows, leaves failed rows NaN, negates with `~`. Upstreamable. |
 | `Drive-JEPA` | `0003-navsim-v1-camera-path` | Adds `Camera.camera_path` to the **v1** devkit, the field navsim v2 already has, so paddock's proxy can ship image paths instead of pixels under `navsim_v1`. Additive; nothing in the devkit reads it. |
+| `Bench2Drive` | `0001-kill-only-own-carla-on-crash` | **Safety.** On "Simulation crashed" the evaluator killed every CARLA its user ran on the GPU (`grep -graphicsadapter=N | kill -9`), so one crashed route took parallel workers and other gate lanes down with it. Kills only its own server's process group. Should go upstream. |
+| `Bench2Drive` | `0002-connect-timeout-for-a-booting-server` | Adds `--connect-timeout`. Each attempt to reach a just-launched CARLA waited the full client timeout (600 s), so a server slower than the 30 s sleep cost ten minutes before a retry that connected at once. `--timeout` itself also bounds the world load and the watchdogs, so it could not just be lowered. Without the flag, upstream behaviour. Upstreamable. |
 
 ## Verifying a patch
 

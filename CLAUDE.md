@@ -106,7 +106,8 @@ Copy from the `_template/` directory in each.
 **Runtime** ([runtime/](src/paddock/runtime/)): `env.py` builds the per-model
 environment (`PASSTHROUGH` is the one definition of what a subprocess inherits),
 `gpu.py` waits for declared VRAM before launch instead of failing eight minutes
-into a checkpoint read, `proc.py` starts/health-checks/tears down nodes. With
+into a checkpoint read, `lease.py` makes the last check and the launch one step
+per card across processes and users, `proc.py` starts/health-checks/tears down nodes. With
 `gpu.serialize = true` exactly one model is resident at a time; the simulator's
 renderer stays up across models.
 

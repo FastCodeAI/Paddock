@@ -51,8 +51,10 @@ At 20 pairs it is 2.09, and it falls to 1.96 as the units grow.
 A `threshold`, when given, adds whether the point estimate drops by more than it.
 
 Overall (`check`): FAIL if any pair is a REGRESSION; SHIP only if every pair is decided
-(GAIN, NEUTRAL or REGRESSION) and at least one closed-loop pair is a GAIN; HOLD
-otherwise. The exit status is 1 on FAIL, else 0.
+(GAIN, NEUTRAL or REGRESSION) and at least one closed-loop pair that may ship is a GAIN
+(`can_ship = false` marks a subset too small for its GAIN to be trusted); HOLD
+otherwise. The exit status is 1 on FAIL, else 0. Each pair also reports its MDE, the
+smallest true difference it detects 80% of the time, which is how a NEUTRAL is read.
 
 Model identity. A site `[models.X] env` override such as `DRIVEJEPA_CHECKPOINT` is
 recorded in run.json as `config.model_env` (absolute paths as `<site path:digest>`) and
@@ -135,25 +137,81 @@ T975: dict[float, float] = {
     math.inf: 1.960,
 }
 
+#: One-sided 80% quantiles of Student's t by degrees of freedom (scipy's
+#: `t.ppf(0.80, df)` to three decimals, checked the same way as `T975`). With
+#: `T975` it gives the smallest true difference a pair reaches t crit for 80% of
+#: the time: (t crit + t80) x SE, the column `render` calls MDE.
+T80: dict[float, float] = {
+    1: 1.376,
+    2: 1.061,
+    3: 0.978,
+    4: 0.941,
+    5: 0.920,
+    6: 0.906,
+    7: 0.896,
+    8: 0.889,
+    9: 0.883,
+    10: 0.879,
+    11: 0.876,
+    12: 0.873,
+    13: 0.870,
+    14: 0.868,
+    15: 0.866,
+    16: 0.865,
+    17: 0.863,
+    18: 0.862,
+    19: 0.861,
+    20: 0.860,
+    21: 0.859,
+    22: 0.858,
+    23: 0.858,
+    24: 0.857,
+    25: 0.856,
+    26: 0.856,
+    27: 0.855,
+    28: 0.855,
+    29: 0.854,
+    30: 0.854,
+    40: 0.851,
+    60: 0.848,
+    120: 0.845,
+    math.inf: 0.842,
+}
+
 #: The fewest independent units a verdict needs: one unit has no spread to measure.
 MIN_UNITS = 2
 
 Sample = dict[str, Any]
 
 
-def t_crit(df: float) -> float:
-    """The two-sided 5% critical value of Student's t on `df` degrees of freedom."""
+def _t_table(table: dict[float, float], df: float) -> float:
     if df < 1:
-        raise ValueError(f"t_crit needs at least 1 degree of freedom, got {df}")
-    if df in T975:
-        return T975[df]
-    rows = sorted(T975)
+        raise ValueError(f"Student's t needs at least 1 degree of freedom, got {df}")
+    if df in table:
+        return table[df]
+    rows = sorted(table)
     hi = next(r for r in rows if r > df)
     lo = max(r for r in rows if r < df)
     # Linear in 1/df, the textbook rule: the quantile is nearly linear in it, and
     # 1/inf = 0 makes the last interval (120, inf) well defined.
     x, x_lo, x_hi = 1 / df, 1 / lo, (0.0 if math.isinf(hi) else 1 / hi)
-    return T975[lo] + (x - x_lo) / (x_hi - x_lo) * (T975[hi] - T975[lo])
+    return table[lo] + (x - x_lo) / (x_hi - x_lo) * (table[hi] - table[lo])
+
+
+def t_crit(df: float) -> float:
+    """The two-sided 5% critical value of Student's t on `df` degrees of freedom."""
+    return _t_table(T975, df)
+
+
+def mde(se: float, df: float) -> float:
+    """The smallest true difference this pair detects 80% of the time, in metric units.
+
+    (t crit + t80) x SE: a candidate truly this much worse is called a
+    REGRESSION four times in five. It reads a NEUTRAL: below it, NEUTRAL says
+    little; well above it, NEUTRAL says the change is smaller. It is computed from
+    the pair's own SE, so it is an estimate too.
+    """
+    return (t_crit(df) + _t_table(T80, df)) * se
 
 
 def _nid(sample: Sample) -> dict[str, Any]:
@@ -225,6 +283,11 @@ class PairResult:
     only_candidate: int = 0
     threshold: float | None = None
     beyond_threshold: bool | None = None
+    #: The smallest true difference this pair detects 80% of the time (`mde`).
+    mde: float | None = None
+    #: False for a subset too small to be trusted with a GAIN (`can_ship` in its
+    #: TOML): its REGRESSION still fails the gate, its GAIN never ships it.
+    can_ship: bool = True
     baseline_env: dict[str, str] = field(default_factory=dict)
     candidate_env: dict[str, str] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
@@ -365,6 +428,39 @@ def lost_samples(run: Run) -> int:
     return failed
 
 
+def code_notes(baseline: Run, candidate: Run) -> list[str]:
+    """What the runs' provenance says about the code each was measured with.
+
+    The same model name on older adapter code is another measurement (PR #93
+    changed what AlpaSim sends every model), and the gate would put the
+    difference on the candidate. Notes, not a verdict: a code change can be
+    exactly what the candidate is.
+    """
+
+    def paddock(run: Run) -> dict[str, Any]:
+        return dict((run.run.get("provenance") or {}).get("paddock") or {})
+
+    notes = []
+    a, b = paddock(baseline), paddock(candidate)
+    if a.get("sha") and b.get("sha") and a["sha"] != b["sha"]:
+        notes.append(
+            f"the runs used different paddock code ({a['sha'][:9]} vs {b['sha'][:9]}): "
+            "an adapter change between them is part of the difference"
+        )
+    elif bool(a.get("sha")) != bool(b.get("sha")):
+        older = "baseline" if not a.get("sha") else "candidate"
+        notes.append(
+            f"the {older} predates recording paddock's commit, so which code it used is not on record"
+        )
+    for who, info in (("baseline", a), ("candidate", b)):
+        if info.get("dirty"):
+            notes.append(f"the {who} ran from a paddock checkout with uncommitted edits")
+    ra, rb = baseline.run.get("repo_sha"), candidate.run.get("repo_sha")
+    if ra and rb and ra != rb:
+        notes.append(f"the model's own repo was at different revisions ({str(ra)[:9]} vs {str(rb)[:9]})")
+    return notes
+
+
 def _verdict(t: float | None, crit: float) -> str:
     if t is None:
         return "NEUTRAL"
@@ -465,6 +561,7 @@ def compare(
             result.notes.append(f"{who} run is marked invalid: {r.run.get('notes') or 'no reason given'}")
     result.notes += declared_env_notes(baseline, candidate)
     result.notes += identity_notes(baseline, candidate)
+    result.notes += code_notes(baseline, candidate)
     seq_a = (baseline.run.get("dataset") or {}).get("sequences_sha256")
     seq_b = (candidate.run.get("dataset") or {}).get("sequences_sha256")
     if seq_a and seq_b and seq_a != seq_b:
@@ -530,6 +627,7 @@ def compare(
         result.se = math.sqrt(var)
         result.df = g - 1
         result.t_crit = t_crit(result.df)
+        result.mde = mde(result.se, result.df)
         if result.se > 0:
             result.t = result.diff / result.se
         elif abs(result.diff) > 1e-9 * max(1.0, abs(result.baseline_mean or 0.0)):
@@ -592,7 +690,8 @@ DECIDED = ("GAIN", "NEUTRAL", "REGRESSION")
 
 def overall(results: list[PairResult], unfinished: list[str] | None = None) -> str:
     """FAIL on any REGRESSION; SHIP only when every pair was decided, nothing is
-    unfinished, and a closed-loop pair is a GAIN; HOLD otherwise.
+    unfinished, and a closed-loop pair that may ship (`can_ship`) is a GAIN;
+    HOLD otherwise.
 
     A GAIN beside a benchmark that was never compared is not a reason to ship:
     the uncompared one could be where the candidate broke.
@@ -601,7 +700,7 @@ def overall(results: list[PairResult], unfinished: list[str] | None = None) -> s
         return "FAIL"
     if unfinished or any(r.verdict not in DECIDED for r in results):
         return "HOLD"
-    if any(r.verdict == "GAIN" and r.bench in CLOSED_LOOP for r in results):
+    if any(r.verdict == "GAIN" and r.bench in CLOSED_LOOP and r.can_ship for r in results):
         return "SHIP"
     return "HOLD"
 
@@ -617,14 +716,17 @@ def _fmt(x: float | None, digits: int = 3) -> str:
 def render(results: list[PairResult]) -> str:
     head = (
         f"{'bench':<12} {'metric':<14} {'baseline':>9} {'candidate':>9} {'better by':>9} {'SE':>7} "
-        f"{'t':>6} {'t crit':>6}  {'units':>6}  verdict"
+        f"{'t':>6} {'t crit':>6} {'MDE':>7}  {'units':>6}  verdict"
     )
     lines = [head, "-" * len(head)]
     for r in results:
         lines.append(
             f"{r.bench:<12} {r.metric:<14} {_fmt(r.baseline_mean):>9} {_fmt(r.candidate_mean):>9} "
-            f"{_fmt(r.diff):>9} {_fmt(r.se):>7} {_fmt(r.t, 2):>6} {_fmt(r.t_crit, 2):>6}  {r.units:>6}  "
-            f"{r.verdict}" + (" (drop beyond threshold)" if r.beyond_threshold else "")
+            f"{_fmt(r.diff):>9} {_fmt(r.se):>7} {_fmt(r.t, 2):>6} {_fmt(r.t_crit, 2):>6} {_fmt(r.mde):>7}  "
+            f"{r.units:>6}  "
+            f"{r.verdict}"
+            + (" (drop beyond threshold)" if r.beyond_threshold else "")
+            + ("" if r.can_ship else " (cannot ship)")
         )
         lines.append(
             f"{'':<12} model_env: baseline {json.dumps(r.baseline_env, sort_keys=True)}, "
@@ -641,6 +743,13 @@ def render(results: list[PairResult]) -> str:
         "A pair is a GAIN or a REGRESSION when |t| reaches 't crit', the two-sided 5% Student-t value"
     )
     lines.append("on (units - 1) degrees of freedom; with fewer than 2 units there is no verdict.")
+    lines.append(
+        "MDE is the smallest true difference the pair detects 80% of the time: a NEUTRAL well below it says little."
+    )
+    if any(not r.can_ship for r in results):
+        lines.append(
+            "'cannot ship': too few units for a GAIN to be trusted; its REGRESSION still fails the gate."
+        )
     return "\n".join(lines)
 
 
@@ -662,16 +771,16 @@ def check(manifest: Path, runs_root: Path, results_root: Path = RESULTS_ROOT) ->
         bench = p["bench"]
         base = load_run(bench, p["baseline"], runs_root, Path(p.get("baseline_results") or results_root))
         cand = load_run(bench, p["candidate"], runs_root, Path(p.get("candidate_results") or results_root))
-        results.append(
-            compare(
-                base,
-                cand,
-                p.get("metric"),
-                p.get("threshold"),
-                _unit_for(base, cand, runs_root),
-                allow_config=p.get("allow_config") or (),
-            )
+        result = compare(
+            base,
+            cand,
+            p.get("metric"),
+            p.get("threshold"),
+            _unit_for(base, cand, runs_root),
+            allow_config=p.get("allow_config") or (),
         )
+        result.can_ship = bool(p.get("can_ship", True))
+        results.append(result)
     return overall(results), results
 
 
@@ -888,14 +997,19 @@ def to_toml(data: dict[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def smoke_config(site_config: Path, model: str, env: dict[str, str], renderer_port: int) -> str:
+def smoke_config(
+    site_config: Path, model: str, env: dict[str, str], renderer_port: int, cache_dir: Path | None = None
+) -> str:
     """The site config the smoke runs under, as TOML text.
 
-    Two changes from the site's: `env` merged into `[models.<model>.env]`, and the
-    neuroNCAP `renderer_url` moved to `renderer_port`. The smoke starts its own
-    renderers on that port, and the site's is usually where someone's long-lived
-    `paddock renderer` already listens; the harness's preflight refuses to start
-    beside one, so the smoke would stop at neuroNCAP every time.
+    Changes from the site's: `env` merged into `[models.<model>.env]`; the
+    neuroNCAP `renderer_url` moved to `renderer_port` (the smoke starts its own
+    renderers there, and the site's port is usually where someone's long-lived
+    `paddock renderer` already listens, which the harness's preflight refuses to
+    start beside); and, unless the site names one, nuScenes' `index_cache` in
+    `cache_dir`. Neither is in a run config, so neither changes what is measured
+    or the run id. neuroNCAP's `video` stays the site's: its mp4s are how a
+    regression is looked at.
     """
     raw = tomllib.loads(site_config.read_text())
     own = raw.setdefault("models", {}).setdefault(model, {})
@@ -915,6 +1029,11 @@ def smoke_config(site_config: Path, model: str, env: dict[str, str], renderer_po
     ncap = raw.setdefault("benchmarks", {}).setdefault("neuroncap", {})
     host = str(ncap.get("renderer_url") or "http://127.0.0.1:8000").rsplit(":", 1)[0]
     ncap["renderer_url"] = f"{host}:{renderer_port}"
+    if cache_dir is not None:
+        # One index for every checkout the gate runs from: a fresh worktree spent
+        # 20 of nuScenes' 35 minutes rebuilding its own from the NAS.
+        nuscenes = raw["benchmarks"].setdefault("nuscenes", {})
+        nuscenes.setdefault("index_cache", str(cache_dir / "nuscenes"))
     return to_toml(raw)
 
 
@@ -928,6 +1047,8 @@ class SmokeStep:
     reason: str = ""
     #: The subset this step runs; the benchmark's own name unless it has one per tier.
     name: str = ""
+    #: From the subset's TOML (`can_ship`, default true); see `PairResult.can_ship`.
+    can_ship: bool = True
 
     def __post_init__(self) -> None:
         self.name = self.name or self.bench
@@ -1014,7 +1135,17 @@ def plan_smoke(
         args, extra = smoke_args(subset)
         run_id = _run_id_for(state.get(name, {}), runs_root, bench, model)
         if run_id and (results_root / bench / model / run_id / "run.json").is_file():
-            steps.append(SmokeStep(bench, "finished", run_id, [], {}, name=name))
+            steps.append(
+                SmokeStep(
+                    bench,
+                    "finished",
+                    run_id,
+                    [],
+                    {},
+                    name=name,
+                    can_ship=bool(subset.meta.get("can_ship", True)),
+                )
+            )
             continue
         command = ["taskset", "-c", cores, "nice", python, "-m", "paddock.cli", "run"]
         command += ["--bench", bench, "--model", model, *args]
@@ -1024,7 +1155,17 @@ def plan_smoke(
         if config_path is not None:
             env["PADDOCK_CONFIG"] = str(config_path)
         env.update(extra)
-        steps.append(SmokeStep(bench, "resume" if run_id else "new", run_id, command, env, name=name))
+        steps.append(
+            SmokeStep(
+                bench,
+                "resume" if run_id else "new",
+                run_id,
+                command,
+                env,
+                name=name,
+                can_ship=bool(subset.meta.get("can_ship", True)),
+            )
+        )
     return steps
 
 
@@ -1079,6 +1220,8 @@ def smoke_manifest(
             if base.get("results"):
                 lines.append(f"baseline_results = {json.dumps(str(base['results']))}")
             lines.append(f"candidate = {json.dumps(candidate)}")
+            if not step.can_ship:
+                lines.append("can_ship = false")
         lines.append("")
     return "\n".join(lines)
 
@@ -1335,7 +1478,9 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
 
     out.mkdir(parents=True, exist_ok=True)
     run_env = stage_env(env_pairs, args.stage_dir, echo) if args.stage_dir else env_pairs
-    config_path.write_text(smoke_config(cfg.source, args.model, run_env, args.renderer_port))
+    config_path.write_text(
+        smoke_config(cfg.source, args.model, run_env, args.renderer_port, cfg.runs / "gate" / "cache")
+    )
 
     def save() -> None:
         # Written whole, then renamed: a gate killed mid-write leaves the old file.

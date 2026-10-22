@@ -40,13 +40,13 @@ path    = "/path/to/nuscenes"
 version = "v1.0-trainval"
 
 [benchmarks.nuscenes]
-index_cache = "/path/to/cache/nuscenes_val_index.pkl"   # optional; default <repo>/.cache/
+index_cache = "/path/to/cache/nuscenes_val_index.pkl"   # optional; default <repo>/.cache/; or a directory
 ```
 
 The loader reads the `v1.0-trainval` JSON tables directly (no devkit): the
 1.3 GB `sample_data`, `ego_pose` and `sample_annotation` tables are each loaded
 once, reduced to the val keyframes and dropped; the 27 MB index is cached at
-`index_cache` (default `<repo>/.cache/`). Building it takes ~25 s. The default path only needs keyframe images (`samples/`). Openpilot additionally
+`index_cache` (default `<repo>/.cache/`). Building it takes ~25 s on a quiet disk; from a busy NAS it took about 20 minutes, once per checkout. An `index_cache` that does not end in `.pkl` is a directory several checkouts can share: the file in it is named by its dataset root, version and scene set, so two roots never evict each other, and it is written whole and renamed into place, so parallel runs never read half of one. The default path only needs keyframe images (`samples/`). Openpilot additionally
 requires the CAM_FRONT sweeps described below.
 
 ## Cost

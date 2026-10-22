@@ -11,12 +11,18 @@
 # Run as `--scene 0103 --runs 1` with PADDOCK_NCAP_MANAGE_RENDERER=true.
 # Stored valid=false (3 of 20 pairs).
 #
+# can_ship = false, since 2026-10-23: three episodes are too few to ship a checkpoint
+# on. The quick tier runs alone on every checkpoint, so without this a GAIN here with
+# the open-loop pairs NEUTRAL made the whole gate say SHIP from 3 episodes. A
+# REGRESSION here still fails the gate; a GAIN waits for the closed tier's 18.
+#
 # Fixed once, on 2026-10-20. It must never be re-picked, re-seeded or edited to make a
 # result look better: a gate whose subset moves can be steered. If the subset turns
 # out to be wrong (a scene that cannot run, say), replace it in its own commit that
 # says why, and re-run every baseline paired with it.
 
 bench = "neuroncap"
+can_ship = false
 unit = "scenario-scene pair"
 rule = "every shape at scene 0103"
 runs = 1

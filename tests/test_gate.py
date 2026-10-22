@@ -340,6 +340,83 @@ def test_check_fails_on_any_regression_and_ships_only_on_a_closed_loop_gain(tmp_
     assert verdict == "SHIP" and results[1].verdict == "GAIN"
 
 
+def test_a_pair_that_cannot_ship_still_fails_and_never_ships(tmp_path: Path) -> None:
+    """Seven Bench2Drive routes detect only a 17-38 point drop: a GAIN there is too likely
+    to be chance to ship a checkpoint on, while a REGRESSION that large still fails it."""
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    scenes = [f"s{i}" for i in range(8)]
+    _write_run(
+        res,
+        runs,
+        "neuroncap",
+        "m",
+        "a",
+        [_ncap(s, "frontal", r, 2.0) for s in scenes for r in range(2)],
+        "ncap_score",
+    )
+    up = [_ncap(s, "frontal", r, 4.0 + 0.1 * r) for s in scenes for r in range(2)]
+    down = [_ncap(s, "frontal", r, 0.5 + 0.1 * r) for s in scenes for r in range(2)]
+    _write_run(res, runs, "neuroncap", "m", "up", up, "ncap_score")
+    _write_run(res, runs, "neuroncap", "m", "down", down, "ncap_score")
+
+    def manifest(cand: str) -> Path:
+        path = tmp_path / f"gate_{cand}.toml"
+        path.write_text(
+            f'[[pair]]\nbench = "neuroncap"\nbaseline = "m:a"\ncandidate = "m:{cand}"\ncan_ship = false\n'
+        )
+        return path
+
+    verdict, results = gate.check(manifest("up"), runs, res)
+    assert results[0].verdict == "GAIN" and verdict == "HOLD"
+    assert "(cannot ship)" in gate.render(results)
+    verdict, results = gate.check(manifest("down"), runs, res)
+    assert verdict == "FAIL"
+
+
+def test_the_mde_is_t_crit_plus_t80_times_the_se(tmp_path: Path) -> None:
+    """A NEUTRAL is readable only beside what the pair could have detected."""
+    assert gate.mde(1.0, 5) == pytest.approx(2.571 + 0.920)
+    assert gate.mde(0.5, 19) == pytest.approx(0.5 * (2.093 + 0.861))
+    assert gate.mde(1.0, math.inf) == pytest.approx(1.960 + 0.842)
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    _write_run(res, runs, "kitscenes", "m", "a", [_kit(f"s{i}", 0, 1.0) for i in range(6)], "ade")
+    _write_run(
+        res, runs, "kitscenes", "m", "b", [_kit(f"s{i}", 0, 1.0 + 0.1 * (i % 3)) for i in range(6)], "ade"
+    )
+    r = gate.compare(
+        gate.load_run("kitscenes", "m:a", runs, res), gate.load_run("kitscenes", "m:b", runs, res)
+    )
+    assert r.mde == pytest.approx(gate.mde(r.se, r.df))
+    assert "MDE" in gate.render([r])
+
+
+def test_runs_on_different_code_are_noted(tmp_path: Path) -> None:
+    """A baseline measured before an adapter change is another measurement under the same name."""
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    for run_id in ("a", "b", "c"):
+        _write_run(res, runs, "kitscenes", "m", run_id, [_kit(f"s{i}", 0, 1.0) for i in range(3)], "ade")
+    for run_id, prov in (
+        ("a", {"paddock": {"sha": "1" * 40}}),
+        ("b", {"paddock": {"sha": "2" * 40, "dirty": True}}),
+    ):
+        path = res / "kitscenes" / "m" / run_id / "run.json"
+        run = json.loads(path.read_text())
+        run["provenance"] = prov
+        path.write_text(json.dumps(run))
+
+    def notes(base: str, cand: str) -> str:
+        r = gate.compare(
+            gate.load_run("kitscenes", f"m:{base}", runs, res),
+            gate.load_run("kitscenes", f"m:{cand}", runs, res),
+        )
+        return " | ".join(r.notes)
+
+    assert "different paddock code (111111111 vs 222222222)" in notes("a", "b")
+    assert "candidate ran from a paddock checkout with uncommitted edits" in notes("a", "b")
+    assert "baseline predates recording paddock's commit" in notes("c", "a")
+    assert "paddock" not in notes("a", "a")
+
+
 def test_a_resumed_navsim_run_finds_its_logs_through_merged_from(tmp_path: Path) -> None:
     """The resumed run keeps few dumps; the run it merged from holds the rest."""
     res, runs = tmp_path / "results", tmp_path / "runs"
@@ -774,6 +851,35 @@ def test_a_rerun_skips_finished_runs_and_resumes_started_ones(tmp_path: Path) ->
         _plan(tmp_path, ["neuroncap"], {"neuroncap": dict(started)})
 
 
+def test_the_small_subsets_cannot_ship_and_their_pairs_say_so() -> None:
+    small = {"bench2drive", "neuroncap_quick"}
+    assert all(gate.load_subset(n).meta["can_ship"] is False for n in small)
+    assert all(gate.load_subset(n).meta.get("can_ship", True) for n in gate.SMOKE_ORDER if n not in small)
+    step = gate.SmokeStep("bench2drive", "finished", "r1", [], {}, name="bench2drive", can_ship=False)
+    text = gate.smoke_manifest("m", "m-released", {"bench2drive": {"run": "m:base"}}, [step])
+    assert "can_ship = false" in text
+
+
+def test_the_quick_tier_alone_never_ships() -> None:
+    """Review of #100 (1): a GAIN on the 3 quick neuroNCAP episodes, the rest NEUTRAL, said SHIP."""
+
+    def pair(name: str, verdict: str) -> gate.PairResult:
+        subset = gate.load_subset(name)
+        return gate.PairResult(
+            bench=subset.bench,
+            metric="m",
+            baseline="m:a",
+            candidate="m:b",
+            higher_is_better=True,
+            verdict=verdict,
+            can_ship=bool(subset.meta.get("can_ship", True)),
+        )
+
+    quick = [pair(n, "NEUTRAL") for n in gate.TIERS["quick"] if n != "neuroncap_quick"]
+    assert gate.overall([*quick, pair("neuroncap_quick", "GAIN")]) == "HOLD"
+    assert gate.overall([*quick, pair("neuroncap_quick", "REGRESSION")]) == "FAIL"
+
+
 def test_the_smoke_manifest_pairs_only_finished_runs_with_a_baseline(tmp_path: Path) -> None:
     """Only finished runs with a baseline become [[pair]]s, with that baseline's results store."""
     steps = [
@@ -875,6 +981,22 @@ def test_the_site_config_gains_the_smoke_overrides_and_loses_nothing(tmp_path: P
     expected["models"]["drivejepa"]["env"]["DRIVEJEPA_CHECKPOINT"] = "ck.pt"
     expected["benchmarks"]["neuroncap"]["renderer_url"] = "http://127.0.0.1:8700"
     assert derived == expected
+
+
+def test_the_smoke_shares_one_nuscenes_index_and_keeps_the_sites_videos(tmp_path: Path) -> None:
+    """A fresh worktree spent 20 of nuScenes' 35 smoke minutes rebuilding its index, so
+    every checkout shares one. neuroNCAP's videos are how a regression is looked at, so
+    the site's `video` setting is left alone."""
+    import tomllib
+
+    site = tmp_path / "paddock.toml"
+    site.write_text('site = "test"\n[benchmarks.neuroncap]\nvideo = "encode"\n')
+    derived = tomllib.loads(gate.smoke_config(site, "drivejepa", {}, 8700, tmp_path / "cache"))
+    assert derived["benchmarks"]["neuroncap"]["video"] == "encode"
+    assert derived["benchmarks"]["nuscenes"]["index_cache"] == str(tmp_path / "cache" / "nuscenes")
+    site.write_text('site = "test"\n[benchmarks.nuscenes]\nindex_cache = "/site/own.pkl"\n')
+    derived = tomllib.loads(gate.smoke_config(site, "drivejepa", {}, 8700, tmp_path / "cache"))
+    assert derived["benchmarks"]["nuscenes"]["index_cache"] == "/site/own.pkl", "the site's own choice stands"
 
 
 def test_the_smoke_renderer_port_is_set_even_without_a_site_renderer_url(tmp_path: Path) -> None:

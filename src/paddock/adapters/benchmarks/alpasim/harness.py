@@ -36,6 +36,7 @@ Three properties of AlpaSim that shape the code below:
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -72,6 +73,28 @@ DEFAULT_SCENE_TIMEOUT_S = 1800
 #: 9100-9107; they do not, at this pin -- the choice is still right, the stated
 #: reason was not.)
 BRIDGE_PORT_BASE = 9200
+
+#: Within a run's own port range (`PADDOCK_BASE_PORT`, set per lane by the gate),
+#: where the bridge and the wizard's services start. The policy node takes the
+#: first ports of the range; the wizard needs about a dozen. Two AlpaSim runs with
+#: different bases then never pick the same host ports, which with fixed bases
+#: (9200 here, the wizard's 6000) they could whenever both started at once.
+BRIDGE_PORT_OFFSET = 50
+WIZARD_PORT_OFFSET = 60
+
+
+def port_bases(environ: dict[str, str] | None = None) -> tuple[int, int | None]:
+    """(bridge port to start from, wizard baseport or None for its own default).
+
+    Only a run that asked for a range of its own moves: without
+    `PADDOCK_BASE_PORT` the ports are what they always were.
+    """
+    raw = (os.environ if environ is None else environ).get("PADDOCK_BASE_PORT", "").strip()
+    if not raw.isdigit():
+        return BRIDGE_PORT_BASE, None
+    base = int(raw)
+    return base + BRIDGE_PORT_OFFSET, base + WIZARD_PORT_OFFSET
+
 
 #: The reconstruction the scene is replayed through, when the site does not say.
 #: NuRec is what the pinned sha wires: `runtime.scene_provider.kind: usdz` with
@@ -600,7 +623,8 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
             raise RuntimeError(f"{model}'s driver profile pins scenes in {scenes_csv}, which does not exist")
 
         out_dir.mkdir(parents=True, exist_ok=True)
-        bridge_port = ports.find_free(BRIDGE_PORT_BASE)
+        bridge_base, wizard_base = port_bases()
+        bridge_port = ports.find_free(bridge_base)
         bridge_log = out_dir / "bridge.log"
         wizard_log = out_dir / "wizard.log"
 
@@ -631,6 +655,7 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
                 deploy=self.setting("deploy") or launcher.DEFAULT_DEPLOY,
                 topology=self.setting("topology") or launcher.DEFAULT_TOPOLOGY,
                 scene_cache=self.setting("scene_cache"),
+                baseport=wizard_base,
                 video=self.flag("video"),
                 video_every_nth_frame=int(self.setting("video_every_nth_frame") or 1),
                 scenes_csv=scenes_csv,

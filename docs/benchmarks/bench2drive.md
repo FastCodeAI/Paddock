@@ -74,6 +74,7 @@ repo        = "/path/to/Bench2Drive"                 # has leaderboard/ + scenar
 routes_file = "bench2drive220.xml"                   # under repo/leaderboard/data/ (default)
 # routes_subset = "1711,1773,1790"   # pin the run to these route ids; recorded in run.json
 # per_route_timeout_s = 5400         # default; must cover CARLA's boot + the route, see Cost
+# connect_timeout_s   = 60           # default; one attempt to reach a booting CARLA, see Cost
 # carla_port = "2000"                # the evaluator moves up to the first free port from here
 # tm_port    = "8000"                # traffic manager port, likewise
 # gpu_rank   = "0"                   # CARLA's -graphicsadapter
@@ -138,9 +139,18 @@ nothing for it, which is why the default is now 5400 s. And a full sweep of all
 four models at three repetitions is on the order of **750 GPU-hours** on one
 card — run the slow model last, and gate on a small subset first (`--scene`
 with a handful of route ids, or `routes_subset`) until every model completes
-routes cleanly. The evaluator's own start-up (`time.sleep(30)` then a 600 s
-client timeout, retried) does not add to this: the first connection attempt
-returns as soon as CARLA answers, so the wait *is* the map load, not extra.
+routes cleanly.
+
+The evaluator's own start-up is `time.sleep(30)`, then up to 20 connection
+attempts. Upstream, each attempt waits the full client timeout (`--timeout`,
+600 s), so a CARLA that needed more than 30 s to come up cost ten minutes before
+the retry that connected at once. That happened on 3 of 10 routes of the
+2026-10-16 gate smoke (`load_world failed , attempts=0` / `time-out of 600000ms`
+/ `load_world success , attempts=1` in `evaluator.log`), about 30 minutes in
+all. Patch `0002` gives the attempts a timeout of their own,
+`--connect-timeout`, which the adapter passes as `connect_timeout_s` (60 s by
+default); the client goes back to `--timeout` once connected, because that same
+value bounds the large towns' world load and the agent and tick watchdogs.
 
 ## Repetitions
 
@@ -262,10 +272,12 @@ transcribed from a report.
   found by the `-carla-rpc-port=<port>` token in its command line — the port the
   evaluator printed, not the one requested — and killed; the port is then
   polled free before the next route. Nothing is killed by process name.
-- Upstream caveat: on `Simulation crashed` the evaluator itself runs
-  `ps | grep -graphicsadapter=<gpu_rank> | kill -9`, which takes down every
-  CARLA on that GPU index, including other people's. That is the checkout's
-  behaviour, not paddock's; on a shared box, use a `gpu_rank` nobody else does.
+- Upstream, on `Simulation crashed` the evaluator runs
+  `ps | grep -graphicsadapter=<gpu_rank> | kill -9`, which kills every CARLA on
+  that GPU index that its user can signal: on a one-GPU box, every parallel
+  sweep worker and gate lane of that user, and every job under a shared account.
+  Patch `0001` makes it kill only its own server's process group. Preflight
+  refuses an evaluator without both patches (`patches/README.md`).
 - The node log (`<model>_node.log` in the run dir) now carries the model's
   load/ready lines and a heartbeat every 100 `/infer` calls with mean latency
   and how far the returned plan reaches. A node that answers but never plans
