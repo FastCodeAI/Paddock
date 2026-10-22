@@ -1190,6 +1190,23 @@ def test_paddock_provenance_says_when_tracked_files_were_edited(tmp_path) -> Non
     assert provenance.paddock_provenance(tmp_path / "missing") == {"sha": None}
 
 
+def test_a_resumed_run_keeps_the_paddock_commits_of_its_earlier_attempts(tmp_path, monkeypatch) -> None:
+    """Review of #100 (3): a resume kept the model repo's earlier commits but not paddock's."""
+    from paddock import runner
+    from paddock.results import store
+
+    monkeypatch.setattr(store, "run_dir", lambda b, m, r: tmp_path / b / m / r)
+    (tmp_path / "b" / "m" / "r").mkdir(parents=True)
+    (tmp_path / "b" / "m" / "r" / "run.json").write_text(
+        json.dumps({"provenance": {"repo": {"sha": "r1"}, "paddock": {"sha": "p1", "dirty": False}}})
+    )
+    prov = runner._carry_forward_provenance(
+        "b", "m", "r", {"repo": {"sha": "r2"}, "paddock": {"sha": "p2", "dirty": False}}
+    )
+    assert prov["repo"]["earlier_shas"] == ["r1"]
+    assert prov["paddock"] == {"sha": "p2", "dirty": False, "earlier_shas": ["p1"]}
+
+
 def test_a_run_that_scored_fewer_samples_than_it_should_have_says_so(tmp_path, monkeypatch) -> None:
     """`n: 10105`, `valid: true`, `notes: ""` -- with 60 samples silently gone.
 

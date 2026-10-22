@@ -160,7 +160,10 @@ def gpu_launch(needed_gb: float, env: dict[str, str], echo=print) -> Iterator[No
     while True:
         gpu.wait_for(needed_gb, on_wait=short, env=env)
         with lease.held(lease.gpu_lock_name(device), on_wait=queued):
-            if (gpu.free_gb(env) or 0.0) >= needed_gb:
+            # No reading launches, as in `gpu.wait_for`: read as 0 GB, an
+            # nvidia-smi that stopped answering would loop here forever.
+            free = gpu.free_gb(env)
+            if free is None or free >= needed_gb:
                 yield
                 return
         echo(f"  GPU {device} filled while this launch waited for the lock; waiting again")

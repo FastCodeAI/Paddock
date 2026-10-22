@@ -76,7 +76,8 @@ Three fields do the real work:
   its tracked files were edited (`dirty`). A baseline measured on older adapter
   code is another measurement under the same model name; the regression gate
   notes when two runs differ here. Outside `config`, so a `git pull` never
-  changes a run id or refuses a `--resume`.
+  changes a run id or refuses a `--resume`. A run resumed at another commit
+  keeps the earlier ones in `earlier_shas`.
 
 Paths never appear in `run.json` — it is tracked, so the portability gate applies.
 
@@ -208,6 +209,20 @@ partial split allowed through, a vendor agent instead of the proxy). The
 reasons are written to `notes`. The same switches reach `config` through the
 benchmark's `run_config()` and are hashed into the run id, so a results file
 never needs a hand edit to say how it was produced.
+
+The model's settings reach `config` the same way, in two keys:
+
+- **`declared_env`** — the env the model's own `model.yaml` sets under
+  `runtime.env`, as written (`"{weights}/..."`, unexpanded, so the hash is the
+  same at every site), without its tuning keys (`tuning_env`, thread counts,
+  `runner.LOCATION_ENV`). Recorded since #99. A run with no such key was made
+  before that, or under a `model.yaml` that declares only tuning keys; for the
+  former it does not mean the model declared nothing.
+- **`model_env`** — a site's `[models.<name>] env` override, absolute paths as
+  `<site path:digest>`. Where both name a key, the node ran this value.
+
+Both are hashed into the run id, so a run whose model settings changed gets a
+new id, and `--resume` refuses a run that was started under different ones.
 
 ## Ingesting existing results
 

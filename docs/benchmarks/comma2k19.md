@@ -599,7 +599,7 @@ recorded samples rather than by eye so that "a curve" means a measured one:
 | sustained curve | speed > 20 m/s, \|yaw rate\| > 0.06 rad/s | `4/99c94dc769b5d96e\|2018-06-27--15-03-44/18/998` |
 | pull-away from low speed | lowest speeds, ranked by distance covered over the horizon — 2.65 m/s travelling 20.7 m, so a real departure and not a parked car | `8/99c94dc769b5d96e\|2018-08-17--15-51-25/6/999` |
 
-One sample id addresses the same scene for every row, because all six runs score
+One sample id addresses the same scene for every row, because all seven runs score
 the identical sample set. The mp4s land in `{runs}/comma2k19/_samples/` and are
 not tracked — they are tens of megabytes and regenerate from the stored runs.
 
@@ -673,7 +673,7 @@ overlapping between them — the Civic's highest is 2.35°, the RAV4's lowest
 ## Recorded results
 
 The full dataset, 10,165 samples, every row on the identical sample set
-(`sequences_sha256` `293a225a0b5cbaff` in all six run records). A model is
+(`sequences_sha256` `293a225a0b5cbaff` in all seven run records). A model is
 scored only as far as it plans; `—` is where its own horizon ends, not a
 failure. Lower is better except `pdm_style_score`.
 
@@ -681,7 +681,8 @@ failure. Lower is better except `pdm_style_score`.
 plans are in the car's.** The two differ by the mount rotation, about 2° of yaw
 on the Civic, and every number below carries it. Re-scored from the stored
 records with the ground truth in the calibrated frame, ADE@3s is 0.602 for
-qwendrive, 0.858 for alpamayo15 and openpilot, and 1.137 for constant velocity,
+qwendrive, 0.858 for alpamayo15 and openpilot, 1.137 for constant velocity and
+1.358 for autoe2e,
 which reorders the table. It is left as scored until that re-score lands in its
 own PR ([ROADMAP](../ROADMAP.md), M8).
 
@@ -691,6 +692,7 @@ own PR ([ROADMAP](../ROADMAP.md), M8).
 | qwendrive (`Qwen-Drive-1.0-4B`, side slots replicated) | 5 s | 0.475 | 0.801 | 1.159 | 1.570 | 2.045 | — | 2.094 | 1.138 | 0.505 | 0.511 |
 | openpilot (`small`, split graph, `4df40d2c1`) ∗ | 10 s | 0.598 | 1.035 | 1.507 | 2.017 | 2.571 | 6.032 | 2.712 | 1.555 | 0.647 | 0.410 |
 | constant velocity (registered policy, 6 waypoints) | 3 s | 0.537 | 1.017 | 1.639 | — | — | — | 3.286 | 1.475 | 0.658 | 0.417 |
+| autoe2e (`kitscenes-epoch-5`, the road camera alone, five views left out) | 6 s | 1.160 | 1.593 | 2.016 | 2.507 | 3.185 | — | 3.084 | 2.068 | 0.775 | 0.364 |
 | visionpilot (synthesised trajectory) | 4 s | 1.149 | 2.462 | 4.045 | 5.835 | — | — | 8.146 | 2.195 | 0.864 | 0.406 |
 | drivejepa_free (perception-free agent, NAVSIM v1) | 4 s | 7.800 | 12.077 | 16.048 | 20.501 | — | — | 26.248 | 19.801 | 0.831 | 0.541 |
 
@@ -791,9 +793,10 @@ Its plan is also much smoother than supercombo's: `comfort_within_bounds` 0.956
 against 0.302, and `comfort_lon_jerk_max` 0.64 m/s³ against 5.04 — see the jerk
 result below, which is the same measurement from the other side.
 
-Of the six, only openpilot and visionpilot publish auxiliary heads through
+Of the seven, only openpilot and visionpilot publish auxiliary heads through
 `Trajectory.extras`; alpamayo15, qwendrive and drivejepa_free emit a trajectory
-and nothing else, so every metric in the next two paragraphs is `NaN` for them.
+and nothing else, and autoe2e's extras are its own diagnostics, so every metric
+in the next two paragraphs is `NaN` for them.
 That is the intended behaviour of one declared metric list rather than a
 per-model one: the run records what the model did not produce instead of quietly
 shortening the list.
@@ -1013,7 +1016,7 @@ place a keyframe at all, so it is 2033 × 5 (`{0: 2, 5: 2033}`) — derived, wit
 both segments named, in
 [docs/datasets/comma2k19.md](../datasets/comma2k19.md). Every row is over the
 identical sample set
-(`sequences_sha256 = 293a225a0b5cbaff` in all six `run.json`). METEOR has not
+(`sequences_sha256 = 293a225a0b5cbaff` in all seven `run.json`). METEOR has not
 been swept on it. Read the mean *and* the median: OpenPilot's 3 s mean beats
 constant velocity by 8% (1.507 vs 1.639) while its **median is worse** (1.555 vs
 1.475), because two thirds of I-280 is straight enough for constant velocity to
@@ -1036,7 +1039,7 @@ city driving saturates near 64 m while I-280 runs at 30 m/s. See
 table below. Every comma2k19 row is also scored against a ground truth left in
 the camera's frame while the plans are in the car's. Re-scored with both in the
 car's frame, the order changes: Qwen-Drive 0.602, Alpamayo 1.5 and OpenPilot
-0.858, constant velocity 1.137. That re-score is a tracked follow-up
+0.858, constant velocity 1.137, AutoE2E 1.358. That re-score is a tracked follow-up
 ([ROADMAP](../ROADMAP.md), M8).
 
 ⊗ **OpenPilot's comma2k19 row was not produced at the `repos.yaml` pin.** It
@@ -1069,6 +1072,7 @@ padded. Lower is better throughout.
 | Qwen-Drive 1.0 | 5 s | 0.475 | 0.801 | 1.159 | 1.570 | **2.045** | — | 2.094 | 1.138 | 0.511 |
 | OpenPilot ⊗ | 10 s | 0.598 | 1.035 | 1.507 | 2.017 | 2.571 | **6.032** | 2.712 | 1.555 | 0.410 |
 | Baseline (Constant Velocity) | 3 s | 0.537 | 1.017 | 1.639 | — | — | — | 3.286 | 1.475 | 0.417 |
+| AutoE2E | 6 s | 1.160 | 1.593 | 2.016 | 2.507 | 3.185 | — | 3.084 | 2.068 | 0.364 |
 | VisionPilot ∗ | 4 s | 1.149 | 2.462 | 4.045 | 5.835 | — | — | 8.146 | 2.195 | 0.406 |
 | Drive-JEPA (perception-free) | 4 s | 7.800 | 12.077 | 16.048 | 20.501 | — | — | 26.248 | 19.801 | 0.541 |
 
@@ -1111,7 +1115,7 @@ why a benchmark that reported ADE alone would be describing the wrong defect.
 
 comma2k19 also carries the car's own CAN bus, radar and fused pose, so it scores
 what a model predicts **besides** the path — one metric list, `NaN` for a model
-that publishes no such head. Two of the six do. Over the same 10,165 samples:
+that publishes no such head. Two of the seven do. Over the same 10,165 samples:
 
 | what | OpenPilot | VisionPilot | reference it is scored against |
 |---|---:|---:|---|

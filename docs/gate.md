@@ -76,7 +76,7 @@ about 1.5 (measured from the 200-episode sweeps, 2026-10-21).
 | TOO FEW UNITS | fewer than 2 units, so no standard error and no verdict |
 | NO RECORDS | one side has no `samples.jsonl` on this site; means are shown, nothing is claimed |
 | NO UNIT | some paired samples have no independent unit (NAVSIM: no plan dump names their log), so the standard error would be computed over samples and come out too small |
-| CONFIG DIFFERS | the two runs' `config` differs beyond `model_env` and the subset keys (`limit`, `scene`, `runs`, NAVSIM's token filter, ...), so a difference could be the setup's, not the candidate's. The keys are in a note; `allow_config = ["key"]` on the pair (`--allow-config key` on `compare`) accepts one the candidate is meant to change |
+| CONFIG DIFFERS | the two runs' `config` differs beyond `model_env`, `declared_env` and the subset keys (`limit`, `scene`, `runs`, NAVSIM's token filter, ...), so a difference could be the setup's, not the candidate's. The keys are in a note; `allow_config = ["key"]` on the pair (`--allow-config key` on `compare`) accepts one the candidate is meant to change |
 | INCOMPLETE | the candidate lost samples to a failure (`dataset.n_failed`, or `status: partial`). Pairing on shared samples would drop exactly those, usually the hard cases, so the rest is shown and nothing is claimed |
 
 `check` adds one overall line: **FAIL** if any pair is a REGRESSION (exit 1);
@@ -84,7 +84,7 @@ about 1.5 (measured from the 200-episode sweeps, 2026-10-21).
 RECORDS, TOO FEW UNITS or INCOMPLETE), none regressed, and at least one
 closed-loop pair that may ship is a GAIN; **HOLD** otherwise. A pair with
 `can_ship = false` (the Bench2Drive subset: seven routes detect only a 17-38
-point drop) still fails the gate on a REGRESSION, and its GAIN never ships a
+point drop; the neuroNCAP quick subset: three episodes) still fails the gate on a REGRESSION, and its GAIN never ships a
 checkpoint; the line says `(cannot ship)`. The smoke also holds while any of
 its subsets is unfinished, and names them beside the verdict. A `threshold` on a pair also reports whether the point estimate
 dropped by more than that many metric units.
@@ -98,6 +98,10 @@ Read the notes; they are where the gate says what it cannot check:
   baseline again. The gate says so
   when the two are identical, and when one side sets a key the other does not.
   Identical is legitimate for a code change on the same weights.
+- **declared_env.** The env a model's own `model.yaml` sets is recorded as
+  `config.declared_env` (#99). A change to it is something a candidate is meant
+  to test, like a code change, so it is not CONFIG DIFFERS: the gate names each
+  key that differs, and says when one run has no such record.
 - **invalid.** A smoke run of a subset is `valid: false`; the note is expected
   there and a warning anywhere else.
 - **code.** `run.json` records the paddock commit a run was made with

@@ -43,7 +43,7 @@ the two-sided 5% critical value of Student's t on (units - 1) degrees of freedom
                    AlpaSim run today); its unpaired means are shown and nothing is claimed
     NO UNIT        some paired samples have no independent unit (NAVSIM without plan dumps)
     INCOMPLETE     the candidate lost samples to a failure; the rest are shown, no verdict
-    CONFIG DIFFERS the runs' configs differ beyond model_env and the subset keys
+    CONFIG DIFFERS the runs' configs differ beyond model_env, declared_env and the subset keys
 Why not a fixed |t| >= 2: a clustered standard error from G units has about G - 1
 degrees of freedom, and the smoke tier has few units. On 3 neuroNCAP scenario pairs
 (2 df) |t| >= 2 happens 18% of the time when nothing changed; the 5% bar there is 4.30.
@@ -418,12 +418,13 @@ TOKEN_FILTER = "train_test_split.scene_filter.tokens="
 def config_differences(baseline: dict[str, Any], candidate: dict[str, Any], allowed: Any = ()) -> list[str]:
     """The `config` keys on which two runs were measured differently.
 
-    `model_env` is what a candidate is meant to change and is reported on its
-    own; subset keys are handled by the pairing; `allowed` names any other key
-    the candidate is meant to change. A key recorded by one run and not the other
-    counts: an older run that never wrote it may have run with something else.
+    `model_env` and `declared_env` are what a candidate is meant to change and
+    are reported on their own; subset keys are handled by the pairing; `allowed`
+    names any other key the candidate is meant to change. A key recorded by one
+    run and not the other counts: an older run that never wrote it may have run
+    with something else.
     """
-    skip = SUBSET_KEYS | {"model_env"} | set(allowed)
+    skip = SUBSET_KEYS | {"model_env", "declared_env"} | set(allowed)
 
     def norm(cfg: dict[str, Any]) -> dict[str, Any]:
         out = {k: v for k, v in cfg.items() if k not in skip}
@@ -554,6 +555,25 @@ def _composed(run: Run, slots: dict[str, str]) -> Run:
     return replace(run, samples=samples)
 
 
+def declared_env_notes(baseline: Run, candidate: Run) -> list[str]:
+    """Which `model.yaml` env keys the two runs were made under differently.
+
+    Like a code change, a changed `model.yaml` is something a candidate is meant
+    to test, so it is a note rather than CONFIG DIFFERS. A run with no
+    `declared_env` was made before it was recorded (#99), or under a model.yaml
+    that declared only tuning keys; that is said rather than read as "the same".
+    """
+    recorded = [(r.run.get("config") or {}).get("declared_env") for r in (baseline, candidate)]
+    if recorded[0] is None and recorded[1] is None:
+        return []
+    if None in recorded:
+        who = "baseline" if recorded[0] is None else "candidate"
+        return [f"the {who} records no config.declared_env (made before #99, or none declared)"]
+    a, b = recorded
+    keys = sorted(k for k in a.keys() | b.keys() if a.get(k) != b.get(k))
+    return [f"model.yaml env differs: {k} {a.get(k)!r} -> {b.get(k)!r}" for k in keys]
+
+
 def compare(
     baseline: Run,
     candidate: Run,
@@ -644,6 +664,7 @@ def _compare(
     for r, who in ((baseline, "baseline"), (candidate, "candidate")):
         if not r.run.get("valid", True):
             result.notes.append(f"{who} run is marked invalid: {r.run.get('notes') or 'no reason given'}")
+    result.notes += declared_env_notes(baseline, candidate)
     result.notes += identity_notes(baseline, candidate)
     result.notes += code_notes(baseline, candidate)
     seq_a = (baseline.run.get("dataset") or {}).get("sequences_sha256")

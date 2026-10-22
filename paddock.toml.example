@@ -259,6 +259,16 @@ serialize = true
 # camera_base_front_center. Recorded in run.json and hashed into the run id.
 # See docs/benchmarks/kitscenes.md, "The front camera".
 # front_camera = "ring"   # or "base"
+#
+# Whether the scored keyframe names its scene's Lanelet2 map, and carries the
+# logged drive a route is matched to through it. Both on by default; only a
+# policy that reads them (AutoE2E) sees either, so every other model's numbers
+# are unchanged. The route is an oracle -- the future being scored, as upstream
+# AutoE2E's validation protocol uses it -- and needs the map. Each is recorded
+# in run.json and hashed into the run id only when switched off.
+# See docs/benchmarks/kitscenes.md, "The map and the route".
+# map = true
+# route = "oracle"   # or "none"
 
 # [benchmarks.neuroncap]
 # Closed-loop NCAP scoring against a NeuRAD render; docs/benchmarks/neuroncap.md.

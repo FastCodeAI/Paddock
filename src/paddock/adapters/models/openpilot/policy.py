@@ -1402,8 +1402,9 @@ class OpenpilotPolicy(Policy):
             "backend": self.backend,
             "model": self.model_name,
             # What the node did with route commands and the camera's geometry.
-            # `config.model_env` records only a site's env block, so a setting
-            # made anywhere else would leave no other trace in the run record.
+            # `config` records only env set in model.yaml or a site's env block,
+            # so a setting made anywhere else would leave no other trace in the
+            # run record.
             "desire_mode": self.desire_mode,
             "height_scale": self.height_scale,
             "pitch_deg": self.pitch_deg,

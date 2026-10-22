@@ -258,6 +258,10 @@ it, producing one `run.json` whose scenarios came from two different models.
 Putting checkpoint identity into `_measurement_config` closes it, and that one
 dict feeds the run-id hash, `run.json["config"]` and the resume marker at once.
 
+*Since #101:* `model.yaml`'s `runtime.env` is in that dict as `declared_env`, so
+repointing `ALPAMAYO_CHECKPOINT` in `model.yaml` is now refused. A different
+file at the same path is not; that half still needs checkpoint identity.
+
 ### Checkpoint identity, cheaply
 
 Identity must be knowable **before the node starts** — the run id is computed

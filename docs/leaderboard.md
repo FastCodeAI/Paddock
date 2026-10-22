@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-107 runs across 8 benchmarks.
+112 runs across 8 benchmarks.
 59 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -44,6 +44,7 @@
 | qwendrive | 20260916T220846-971379 | 10165 | hpcai-skodate | 1.159 | 0.632 | 1.296 | 2.094 | 5.000 | 0.475 | 0.801 |
 | openpilot | 20260916T051616-2a91ca | 10165 | hpcai-skodate | 1.507 | 0.804 | 1.703 | 2.712 | 10.000 | 0.598 | 1.035 |
 | constant_velocity | 20260916T162837-b89038 | 10165 | hpcai-skodate | 1.639 | 0.734 | 1.786 | 3.286 | 3.000 | 0.537 | 1.017 |
+| autoe2e | 20261020T213543-417344 | 10165 | hpcai-skodate | 2.016 | 1.380 | 2.232 | 3.084 | 6.000 | 1.160 | 1.593 |
 | visionpilot | 20260916T012719-03350c | 10165 | hpcai-skodate | 4.045 | 1.652 | 4.553 | 8.146 | 4.000 | 1.149 | 2.462 |
 | drivejepa_free | 20260916T003407-c504e5 | 10165 | hpcai-skodate | 16.048 | 10.887 | 18.016 | 26.248 | 4.000 | 7.800 | 12.077 |
 
@@ -55,7 +56,11 @@
 | alpamayo15 | streamtest-nonav | 5 | fastcode-shakaal | 0.619 | 0.317 | 0.740 | 1.067 | 0.329 | 0.405 | 0.587 |
 | qwendrive | 20260914T220841-5a91fd | 223 | fastcode-shakaal | 0.806 | 0.289 | 0.852 | 1.777 | - | - | - |
 | alpamayo15 | phase3-nav | 7 | fastcode-shakaal | 0.819 | 0.411 | 0.932 | 1.533 | 0.561 | 0.937 | 1.817 |
+| autoe2e | 20261020T220642-d63624 | 223 | hpcai-skodate | 0.837 | 0.274 | 0.885 | 1.886 | - | - | - |
 | alpamayo15 | phase3-nonav | 7 | fastcode-shakaal | 0.845 | 0.414 | 0.960 | 1.590 | 0.708 | 1.156 | 2.282 |
+| autoe2e | 20261020T220509-dee848 | 223 | hpcai-skodate | 0.847 | 0.280 | 0.897 | 1.903 | - | - | - |
+| autoe2e | 20261020T215800-4bd074 | 223 | hpcai-skodate | 0.847 | 0.280 | 0.897 | 1.903 | - | - | - |
+| autoe2e | 20261020T220816-0a24e7 | 223 | hpcai-skodate | 0.921 | 0.288 | 0.984 | 2.083 | - | - | - |
 | alpamayo15 | full-nonav | 223 | fastcode-shakaal | 0.921 | 0.332 | 0.990 | 2.003 | 0.552 | 0.892 | 1.902 |
 | drivejepa_rerank | 20260921T210621-d7ed08 | 223 | fastcode-shakaal | 0.973 | 0.383 | 1.029 | 2.082 | - | - | - |
 | alpamayo15 | full-nav | 223 | fastcode-shakaal | 1.002 | 0.362 | 1.088 | 2.158 | 0.543 | 0.875 | 1.862 |
