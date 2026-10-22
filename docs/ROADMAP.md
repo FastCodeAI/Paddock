@@ -628,8 +628,15 @@ results, not the knob.
   imported from upstream at the release revision. NAVSIM `navtest` 0.500 EPDMS
   (12,146 scenarios, valid) on the 10 Hz nuPlan path, with the rear views from
   OpenScene's keyframes (`keyframe_cameras`). neuroNCAP: the full official 20
-  scenario-scene pairs, 10 runs each (n = 200, valid), ncap_score mean 3.93,
-  collision_rate 25% (worst on frontal 3.33, best on side 4.46). Bench2Drive
+  scenario-scene pairs, 10 runs each (n = 200, run `20261021T175940-844841`),
+  ncap_score mean 3.16, collision_rate 42% (worst on side 2.01, best on
+  frontal 3.71) — with PR #89's closed-loop ego-history fix
+  (`steady_before_start`) in effect. `valid: false`: `#82`'s site-env-override
+  rule flags this run's `AUTOE2E_CHECKPOINT` (a site path, not a different
+  checkpoint) the same way it would flag any other override, since
+  `AUTOE2E_CHECKPOINT` isn't in `autoe2e`'s `tuning_env` allowlist; the
+  superseded `20261018T211838-ee6df9` sweep carried the identical override but
+  predates that rule and so reads `valid: true`. Bench2Drive
   needed the route as an observation field (`route_xy`); its 50-route sweep is
   paused with no record here. Detail in [`docs/models/autoe2e.md`](models/autoe2e.md).
 

@@ -1,11 +1,11 @@
 {
-  "run_id": "20261018T211838-ee6df9",
+  "run_id": "20261021T175940-844841",
   "site": "renesas-sjccomp250",
   "benchmark": "neuroncap",
   "model": "autoe2e",
   "mode": "closed_loop",
-  "started_utc": "2026-10-18T21:18:38+00:00",
-  "duration_s": 44715.0,
+  "started_utc": "2026-10-21T17:59:40+00:00",
+  "duration_s": 43784.7,
   "repo_sha": "40a75cf8a26b60f6b094125e3924fe0bdb427b02",
   "dataset": {
     "name": "nuscenes",
@@ -27,8 +27,7 @@
       "CAM_BACK_RIGHT"
     ],
     "model_env": {
-      "AUTOE2E_CHECKPOINT": "<site path:c4c0ec7d>",
-      "HF_HOME": "<site path:0d07d0dd>"
+      "AUTOE2E_CHECKPOINT": "<site path:c4c0ec7d>"
     }
   },
   "hardware": {
@@ -55,11 +54,11 @@
       "route": true,
       "bf16": true,
       "replan_s": 0.0,
-      "calls": 14934,
+      "calls": 13505,
       "last_inference": {
-        "t_us": 1537852878148620,
-        "v0_history": 2.727,
-        "speed_canbus": 2.29,
+        "t_us": 1537852877448620,
+        "v0_history": 5.89,
+        "speed_canbus": 5.599,
         "history_gaps_s": [
           0.0,
           0.0,
@@ -70,24 +69,25 @@
           0.0
         ],
         "history_repeated": 0,
-        "frames_held": 59,
+        "frames_held": 52,
         "ego_rows_zero": 0,
+        "ego_rows_filled": 6,
         "route_valid": false,
         "destination": false,
-        "pack_s": 0.052,
-        "model_s": 1.412,
-        "accel_0": 0.57,
-        "kappa_0": -1.3984,
+        "pack_s": 0.081,
+        "model_s": 1.441,
+        "accel_0": 1.883,
+        "kappa_0": 0.9492,
         "end_6s": [
-          1.05,
-          -1.01
+          -9.15,
+          -36.87
         ]
       }
     }
   },
   "status": "complete",
-  "valid": true,
+  "valid": false,
   "superseded_by": "",
-  "notes": "",
+  "notes": "site env override may change what was measured: AUTOE2E_CHECKPOINT (values in config.model_env)",
   "ingested_from": ""
 }
