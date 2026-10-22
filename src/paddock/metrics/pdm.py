@@ -400,6 +400,10 @@ def no_at_fault_collision(
     at fault; the ego's front bumper on it -> at fault; else lateral, at fault only
     off the drivable area. A not-at-fault collision drops that track for the rest
     of the path, as NAVSIM's `collided_track_ids` does.
+
+    "Stopped" is the other's speed when it first appears on the path's horizon,
+    not at contact: NAVSIM classifies with `unique_objects[token]`, the object as
+    first seen. A parked car that pulls into the ego's side is the ego's fault.
     """
     if not grid.tracks:
         return 1.0, None
@@ -407,6 +411,8 @@ def no_at_fault_collision(
     hit = convex_overlap(boxes[None], tboxes) & grid.active[:, :, 0]  # (A, K)
     if not hit.any():
         return 1.0, None
+    first_seen = grid.active[:, :, 0].argmax(axis=1)
+    speed_first_seen = grid.speed[np.arange(len(grid.tracks)), first_seen, 0]  # (A,)
     ignored: set[int] = set()
     score, first = 1.0, None
     for step in range(len(states.taus)):
@@ -416,7 +422,7 @@ def no_at_fault_collision(
             track = grid.tracks[a]
             if states.speed[step] <= COLLISION_STOPPED_MPS:
                 fault = False
-            elif not track.agent or grid.speed[a, step, 0] <= COLLISION_STOPPED_MPS:
+            elif not track.agent or speed_first_seen[a] <= COLLISION_STOPPED_MPS:
                 fault = True
             elif relative_angle(states.xy[step], states.yaw[step], grid.centres[a, step, 0]) > math.radians(
                 BEHIND_DEG

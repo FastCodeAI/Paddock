@@ -168,6 +168,18 @@ def test_a_lateral_collision_is_at_fault_only_off_the_drivable_area() -> None:
     assert out["pdm_dac"] == 0.0 and out["pdm_nc"] == 0.0
 
 
+def test_a_parked_car_that_pulls_into_the_egos_side_is_the_egos_fault() -> None:
+    """Review of #102 (4): NAVSIM calls the other "stopped" by its speed when first
+    seen, not at contact. Parked beside the lane for 1 s, then sliding into the
+    ego's flank, behind its front bumper and on the road: at fault in NAVSIM."""
+    t = np.arange(0.0, 6.01, 0.5)
+    y = np.where(t <= 1.0, 2.6, 2.6 - 1.5 * (t - 1.0))
+    pulls_out = pdm.Track(t * 1e6, np.stack([np.full(len(t), 4.0), y], axis=1), np.zeros(len(t)), 4.5, 1.9)
+    assert score(straight(4.0), [pulls_out], area=road())["pdm_nc"] == 0.0
+    moving = track(4.0, 4.1, 0.0, -1.5)  # the same slide, but already moving when first seen
+    assert score(straight(4.0), [moving], area=road())["pdm_nc"] == 1.0
+
+
 def test_leaving_the_road_fails_dac_and_no_map_is_nan_not_a_pass() -> None:
     swerve = np.array([[5, 1], [10, 3], [15, 6], [20, 9], [25, 12], [30, 15]], dtype=float)
     assert score(swerve, [], area=road())["pdm_dac"] == 0.0
