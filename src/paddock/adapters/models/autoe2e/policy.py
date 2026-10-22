@@ -30,10 +30,13 @@ follows upstream's KITScenes evaluation path (pre_extracted.py + kit_scenes/*.py
   stage's causal mask). Rows older than the first observation: left at zero (upstream's
   ``left_zero`` padding) when the benchmark sends the real past; in closed loop, steady
   driving at the first known speed (see ``steady_before_start``).
-- Navigation: no semantic map (zeros, ``map_valid`` False). The route raster (corridor
+- Navigation: where the benchmark names a Lanelet2 map (``obs.map_files``: KITScenes), the
+  14-channel semantic map and the route matched to ``obs.route_trace`` are drawn by
+  upstream's own code (`_Navigation`), as upstream's KITScenes packing draws them.
+  Elsewhere no semantic map (zeros, ``map_valid`` False), and a route raster (corridor
   1.75 m either side of the route polyline, rear-clipped at -10 m, plus a 2 m destination
-  disk) is drawn from ``obs.route_xy`` when the benchmark sends one and
-  ``AUTOE2E_ROUTE`` is not "0"; otherwise zeros with ``route_valid`` False, upstream's
+  disk) drawn from ``obs.route_xy`` when the benchmark sends one. ``AUTOE2E_ROUTE`` "0"
+  draws no route either way; with none, zeros and ``route_valid`` False, upstream's
   camera-only track.
 - Output: 64 x (acceleration, curvature) at 10 Hz, integrated with upstream's rollout
   (dt 0.1, speed first, from the t-0.1 s speed of the history) and sampled every 0.5 s:
@@ -47,11 +50,14 @@ import io
 import logging
 import math
 import os
+import shutil
 import sys
+import tempfile
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -299,6 +305,124 @@ def integrate_controls(controls: np.ndarray, v0: float) -> np.ndarray:
     return np.stack([x, y, heading], axis=1)
 
 
+def navigation_modules() -> SimpleNamespace:
+    """Upstream's map and route code: what kit_scenes/navigation.py calls to pack a sample.
+
+    Imported only when a benchmark sends a map, and refused loudly if it cannot be: a map
+    quietly dropped would score the camera-only track under the map's name.
+    """
+    try:
+        from data_parsing.kit_scenes.map import _cached_scene_map
+        from data_parsing.kit_scenes.source import KITSCENES_DATA_REVISION
+        from navigation.geometry import AUTOE2E_NAVIGATION_GEOMETRY
+        from navigation.lanelet2_adapter import Lanelet2MapAdapter, file_sha256
+        from navigation.lanelet2_matcher import Lanelet2TraceMatcher
+        from navigation.rasterizer import EgoPose, NativeNavigationRasterizer
+
+        rasterizer = NativeNavigationRasterizer(AUTOE2E_NAVIGATION_GEOMETRY)
+    except Exception as exc:  # ImportError, or the rasterizer library not built
+        raise RuntimeError(
+            f"the benchmark sent a map and AutoE2E cannot draw it ({type(exc).__name__}: {exc}); "
+            "setup.sh installs the KITScenes SDK (Lanelet2) and builds upstream's rasterizer"
+        ) from exc
+    return SimpleNamespace(
+        scene_map=_cached_scene_map,
+        revision=KITSCENES_DATA_REVISION,
+        map_adapter=Lanelet2MapAdapter,
+        file_sha256=file_sha256,
+        matcher=Lanelet2TraceMatcher,
+        pose=EgoPose,
+        rasterizer=rasterizer,
+    )
+
+
+class _Navigation:
+    """A scene's semantic map, and the route matched to its logged drive, drawn by upstream.
+
+    The calls kit_scenes/navigation.py makes when it packs a KITScenes sample: the map
+    extracted by navigation/lanelet2_adapter.py, the route matched by
+    navigation/lanelet2_matcher.py (whose quality gates decide `route_valid`, as upstream's
+    do), both rendered by navigation/rasterizer.py in AUTOE2E_NAVIGATION_GEOMETRY. One
+    difference, kept on purpose: upstream renders at the latest pose on a 0.5 s grid and
+    warps that raster to the sample's pose, while this renders at the sample's pose. On
+    paddock's KITScenes keyframes the two are the same pose, except where upstream's
+    nanosecond truncation of the log's clock puts its grid pose 0.5 s back (docs/models/autoe2e.md).
+
+    Maps are read from a scratch copy: for a scene with degenerate lanelets, upstream writes a
+    sanitised map.osm beside the one it was given (kit_scenes/map.py), and the dataset is not
+    this process's to write to. The copy lasts only for the load (the SDK parses map.osm on
+    first use, which `extract()` is; the matcher works from memory): a node is stopped with
+    terminate() and then kill(), so a copy held for its life was left on the host by every run.
+    """
+
+    def __init__(self, modules: SimpleNamespace) -> None:
+        self.m = modules
+        self._maps: dict[str, tuple] = {}
+        self._routes: dict[tuple[str, str], Any] = {}
+
+    def _scene(self, map_files: dict[str, str]) -> tuple:
+        """(scene id, the SDK's scene map, upstream's NavigationMap, map sha256), once per map."""
+        if map_files.get("format") != "lanelet2_osm":
+            raise RuntimeError(f"AutoE2E draws Lanelet2 maps; the benchmark sent {map_files.get('format')!r}")
+        key = map_files["map"]
+        if key not in self._maps:
+            scene_id = Path(map_files["map"]).parent.parent.name
+            with tempfile.TemporaryDirectory(prefix="autoe2e-maps-") as scratch:
+                shadow = Path(scratch) / scene_id
+                (shadow / "maps").mkdir(parents=True)
+                shutil.copyfile(map_files["map"], shadow / "maps" / "map.osm")
+                shutil.copyfile(map_files["origin"], shadow / "maps" / "origin.json")
+                sha = self.m.file_sha256(shadow / "maps" / "map.osm")
+                scene_map = self.m.scene_map(shadow)
+                navigation_map = self.m.map_adapter(
+                    scene_map,
+                    map_version=f"kitscenes:{scene_id}:{sha[:16]}",
+                    map_sha256=sha,
+                    frame_id=f"kitscenes:{scene_id}:local_enu",
+                    source_revision=self.m.revision,
+                ).extract()
+            self._maps[key] = (scene_id, scene_map, navigation_map, sha)
+        return self._maps[key]
+
+    def _route(self, scene: tuple, trace: np.ndarray):
+        """The route upstream's matcher fits to the logged drive, once per scene and drive."""
+        scene_id, scene_map, navigation_map, sha = scene
+        trace = np.asarray(trace, dtype=np.float64)
+        key = (sha, hashlib.sha256(trace.tobytes()).hexdigest())
+        if key not in self._routes:
+            self._routes[key] = self.m.matcher(
+                scene_map, navigation_map, map_sha256=sha, source_revision=self.m.revision
+            ).match(
+                scene_id=scene_id,
+                positions_enu_m=trace[:, 1:3],
+                yaws_rad=trace[:, 3],
+                timestamps_ns=np.round(trace[:, 0] * 1e9).astype(np.int64),
+            )
+        return self._routes[key]
+
+    def raster(
+        self, map_files: dict[str, str], trace: np.ndarray | None, ego2world: np.ndarray, t_us: int
+    ) -> tuple[np.ndarray, np.ndarray, bool, bool]:
+        """(map [14, 450, 300], route [2, 450, 300], map_valid, route_valid), float32, at the ego pose.
+
+        `trace` None draws the map alone (route zeros, `route_valid` False)."""
+        scene = self._scene(map_files)
+        route = self._route(scene, trace) if trace is not None else None
+        pose = self.m.pose(
+            x_enu_m=float(ego2world[0, 3]),
+            y_enu_m=float(ego2world[1, 3]),
+            yaw_rad=yaw_of(ego2world),
+            timestamp_ns=int(t_us) * 1000,
+        )
+        drawn = self.m.rasterizer.render(scene[2], route, pose)
+        return (
+            np.ascontiguousarray(drawn.map_context, dtype=np.float32),
+            np.ascontiguousarray(drawn.route_mask, dtype=np.float32),
+            bool(drawn.map_valid),
+            bool(drawn.route_valid),
+        )
+
+
 class _ConstTensorTorch:
     """`torch` for bevformer_v2_t1, with `torch.tensor([w, h], device=cuda)` built once per value.
 
@@ -541,6 +665,10 @@ class AutoE2EPolicy(Policy):
         self.frames: list[_Frame] = []
         self.last: dict[str, Any] = {}
         self.calls = 0
+        #: Plans made with a semantic map, and with a route raster: what run.json says was drawn.
+        self.map_calls = 0
+        self.route_calls = 0
+        self._nav: _Navigation | None = None
         self._ckpt_sha = None
         self._record = None
 
@@ -770,17 +898,33 @@ class AutoE2EPolicy(Policy):
         ego_in[-1, 1] = 0.0  # KITScenes stage: newest acceleration masked (dataset_policy.py)
         ego_t = torch.from_numpy(ego_in.reshape(1, -1).astype(np.float32)).to(dev)
 
-        route, corridor, dest = route_raster(obs.route_xy if self.use_route else None)
-        route_valid = bool(corridor)
+        semantic = None
+        if obs.map_files:
+            if self._nav is None:
+                self._nav = _Navigation(navigation_modules())
+            semantic, route, map_valid, route_valid = self._nav.raster(
+                obs.map_files, obs.route_trace if self.use_route else None, now.ego2world, obs.timestamp_us
+            )
+            dest = route_valid and bool(route[1].any())
+        else:
+            route, corridor, dest = route_raster(obs.route_xy if self.use_route else None)
+            map_valid, route_valid = False, bool(corridor)
+        map_t = (
+            torch.from_numpy(semantic)[None].to(dev)
+            if map_valid
+            else torch.zeros(1, 14, NAV_H, NAV_W, device=dev)
+        )
         route_t = (
             torch.from_numpy(route)[None].to(dev)
             if route_valid
             else torch.zeros(1, 2, NAV_H, NAV_W, device=dev)
         )
+        self.map_calls += map_valid
+        self.route_calls += route_valid
         Pin = self._Pinhole
         kwargs = dict(
             route_mask=route_t,
-            map_valid=torch.zeros(1, dtype=torch.bool, device=dev),
+            map_valid=torch.tensor([map_valid], dtype=torch.bool, device=dev),
             route_valid=torch.tensor([route_valid], dtype=torch.bool, device=dev),
             projection=Pin(P, geometry_type="pinhole"),
             geometry_type="pinhole",
@@ -795,13 +939,7 @@ class AutoE2EPolicy(Policy):
             torch.no_grad(),
             torch.autocast("cuda", dtype=torch.bfloat16, enabled=self.bf16 and dev.type == "cuda"),
         ):
-            out = self.model(
-                tiles_t,
-                torch.zeros(1, 14, NAV_H, NAV_W, device=dev),
-                torch.zeros(1, 896, device=dev),
-                ego_t,
-                **kwargs,
-            )
+            out = self.model(tiles_t, map_t, torch.zeros(1, 896, device=dev), ego_t, **kwargs)
         controls = (out[0] if isinstance(out, tuple) else out).float().reshape(OUT_STEPS, 2).cpu().numpy()
         t2 = time.time()
         rollout = integrate_controls(finite_controls(controls), v0)
@@ -818,6 +956,7 @@ class AutoE2EPolicy(Policy):
             "frames_held": len(self.frames),
             "ego_rows_zero": int((np.abs(ego).sum(1) == 0).sum()),
             "ego_rows_filled": filled,
+            "map_valid": map_valid,
             "route_valid": route_valid,
             "destination": dest,
             "pack_s": round(t1 - t0, 3),
@@ -862,6 +1001,8 @@ class AutoE2EPolicy(Policy):
             "bf16": self.bf16,
             "replan_s": self.replan_s,
             "calls": self.calls,
+            "map_calls": self.map_calls,
+            "route_calls": self.route_calls,
             "last_inference": self.last,
         }
 

@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-108 runs across 8 benchmarks.
+112 runs across 8 benchmarks.
 59 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -56,7 +56,11 @@
 | alpamayo15 | streamtest-nonav | 5 | fastcode-shakaal | 0.619 | 0.317 | 0.740 | 1.067 | 0.329 | 0.405 | 0.587 |
 | qwendrive | 20260914T220841-5a91fd | 223 | fastcode-shakaal | 0.806 | 0.289 | 0.852 | 1.777 | - | - | - |
 | alpamayo15 | phase3-nav | 7 | fastcode-shakaal | 0.819 | 0.411 | 0.932 | 1.533 | 0.561 | 0.937 | 1.817 |
+| autoe2e | 20261020T220642-d63624 | 223 | hpcai-skodate | 0.837 | 0.274 | 0.885 | 1.886 | - | - | - |
 | alpamayo15 | phase3-nonav | 7 | fastcode-shakaal | 0.845 | 0.414 | 0.960 | 1.590 | 0.708 | 1.156 | 2.282 |
+| autoe2e | 20261020T220509-dee848 | 223 | hpcai-skodate | 0.847 | 0.280 | 0.897 | 1.903 | - | - | - |
+| autoe2e | 20261020T215800-4bd074 | 223 | hpcai-skodate | 0.847 | 0.280 | 0.897 | 1.903 | - | - | - |
+| autoe2e | 20261020T220816-0a24e7 | 223 | hpcai-skodate | 0.921 | 0.288 | 0.984 | 2.083 | - | - | - |
 | alpamayo15 | full-nonav | 223 | fastcode-shakaal | 0.921 | 0.332 | 0.990 | 2.003 | 0.552 | 0.892 | 1.902 |
 | drivejepa_rerank | 20260921T210621-d7ed08 | 223 | fastcode-shakaal | 0.973 | 0.383 | 1.029 | 2.082 | - | - | - |
 | alpamayo15 | full-nav | 223 | fastcode-shakaal | 1.002 | 0.362 | 1.088 | 2.158 | 0.543 | 0.875 | 1.862 |

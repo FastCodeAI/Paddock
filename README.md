@@ -123,7 +123,7 @@ tables and every note on these cells.
 | VisionPilot <sup>P S</sup> | 1.441 | 1.534 | 4.045 | 2.246 | 0.431 | 0.488 | 49.85 | 1.58 | 0.6289 |
 | METEOR | 0.977 | 1.879 | — | 1.273 | 0.303 <sup>P</sup> | 0.366 <sup>P</sup> | — | 2.64 | 0.4232 <sup>R</sup> |
 | Qwen-Drive 1.0 | 0.450 | 0.806 | 1.159 | — | 0.840 <sup>A</sup> | 0.876 <sup>A</sup> | 17.08 (2 Hz) <sup>R</sup> | 2.49 | — |
-| AutoE2E | — | — | 2.016 | — | 0.500 (10 Hz) <sup>A R</sup> | — | — | — | — |
+| AutoE2E | — | 0.847 <sup>A R</sup> | 2.016 | — | 0.500 (10 Hz) <sup>A R</sup> | — | — | — | — |
 | Baseline (Constant Velocity) | 0.641 | 1.381 | 1.639 | 1.393 | 0.239 | 0.207 | 47.94 | 0, by construction | 0.4876 |
 
 A mark on a model's name applies to every cell in its row. A cell without a mark
@@ -132,7 +132,8 @@ was measured the same way as the rest of its column.
 - **A — adapted, not zero-shot.** The model was trained on data from this
   benchmark, or its settings were chosen on it. Drive-JEPA and Qwen-Drive on
   NAVSIM (both trained on `navtrain`), AutoE2E on NAVSIM (pre-trained on nuPlan,
-  the source of NAVSIM's scenes), the re-ranker on KITScenes, the retrained
+  the source of NAVSIM's scenes) and on KITScenes (fine-tuned on its train
+  split), the re-ranker on KITScenes, the retrained
   Drive-JEPA on AlpaSim. OpenPilot's KITScenes cell is a configured run, and its
   configuration was chosen by inspecting one scene of the scored split; the stock
   run scores 1.599.
@@ -149,7 +150,9 @@ was measured the same way as the rest of its column.
   partly more exposure. OpenPilot's Bench2Drive cell is an unassisted estimate
   rebuilt from assisted recordings. Alpamayo on AlpaSim drove 4 cameras on 10 of the 30
   scenes, and METEOR 6 cameras on all 30. Drive-JEPA on comma2k19 is its perception-free variant,
-  `drivejepa_free`.
+  `drivejepa_free`. AutoE2E on KITScenes is given the scene's map and a route matched
+  to the logged drive, upstream's validation protocol, which no other row gets; without
+  the route it scores 0.837.
 
 Before comparing numbers:
 
@@ -189,7 +192,8 @@ machine-readable form is in each `model.yaml` and prints with
 | AutoE2E | ResNet-50 + BEVFormer V2 T8, deformable route/map fusion, GRU planner | 79.9 M | 0.33 | 6 cam · 512×512 (front also 1024) · 8 frames 0.5 s apart | 64 × (accel, curvature), 6.4 s @10 Hz | nuPlan, then a KITScenes fine-tune |
 
 Two of these models were trained on NAVSIM's own `navtrain`, and AutoE2E on the
-nuPlan logs NAVSIM's scenes come from, which is why their NAVSIM cells carry **A**. Why Drive-JEPA declares four cameras when its paper
+nuPlan logs NAVSIM's scenes come from, which is why their NAVSIM cells carry **A**;
+AutoE2E's KITScenes cell carries it for its KITScenes fine-tune. Why Drive-JEPA declares four cameras when its paper
 reads one, and the rest of the model-specific notes, are in
 [docs/models/comparison.md](docs/models/comparison.md#notes-moved-from-the-readme-support-matrix).
 

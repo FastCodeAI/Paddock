@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,13 @@ from paddock.benchmark import ClosedLoopBenchmark, Episode
 #: Pinned scene lists that ship with this adapter.
 SCENES_DIR = Path(__file__).parent / "scenes"
 DEFAULT_SCENE_SET = "public_2601_first10"
+
+#: The two halves of the 30-scene set, in lookup order: "pilot10" is the pinned
+#: ten (`public_2601_first10`), "ext20" the twenty drawn after them. Every
+#: sample records which half its scene is in, whichever set the run drove, so a
+#: 30-scene run can be read back as its ten and its twenty -- the names the
+#: stored `..._pilot10` and `..._30scenes` rows already use.
+SCENE_PARTS = (("pilot10", "public_2601_first10"), ("ext20", "public_2601_30scenes"))
 
 #: Per-scene wall-clock budget. Measured on the site: about 5 min per scene with
 #: a 10B driver at 4 cameras / 10 Hz, and about 50 s for the constant-velocity
@@ -89,6 +97,79 @@ def scorer_sha() -> str:
     from paddock.registry import Registry
 
     return Registry.load().repos["alpasim"].sha
+
+
+@dataclass(frozen=True)
+class DriverProfile:
+    """The simulation settings and bridge translation one model is driven with.
+
+    Every model gets the default unless it is listed in `DRIVER_PROFILES`: the
+    `paddock_bridge` driver config, no translation flags, scenes named by id.
+    Video is the site's choice for every model, profile or not: AlpaSim renders
+    it after its scorer has written the metrics, so it changes no score. (What
+    the bridge does for every model, profile or not -- read the plan, reset the
+    node per scene, record where headings came from -- is in bridge.py.)
+    """
+
+    #: Driver config under configs/driver/, passed as `driver=`.
+    driver: str = "paddock_bridge"
+    #: Extra `bridge.py` flags: camera renames, placeholders, intrinsics.
+    bridge_args: tuple[str, ...] = ()
+    #: A file under scenes/ pinning each scene to one artifact uuid, or None to
+    #: name scenes by id alone.
+    scenes_csv: str | None = None
+    #: Write the bridge's per-replan log next to the run's samples.jsonl, as
+    #: `<scene>.replans.jsonl`. Only a bridge running a replan rhythm writes one.
+    replan_log: bool = False
+
+
+DEFAULT_PROFILE = DriverProfile()
+
+#: Models driven on settings other than the default, keyed by model name.
+#:
+#: drivejepa: the settings of Drive-JEPA's native AlpaSim driver (adapter
+#: 0.1.4b), whose 30-scene runs are the baseline a run through this bridge is
+#: checked against -- one front pinhole camera at 20 Hz, 3.0 s warm-up with the driver
+#: called, 400 steps, the shared 20 Hz eval config, 26.01 artifacts by uuid.
+#: The node reads CAM_FRONT plus three more cameras; AlpaSim renders one, so
+#: the other three are that driver's placeholder (see bridge.PLACEHOLDER_RGB).
+#: The bridge also runs that driver's planning rhythm and inputs: a replan
+#: every 0.5 s on its grid, the cached plan re-anchored in between, its frame
+#: pair, forward speed and command (see drivejepa_rhythm.py).
+DRIVER_PROFILES: dict[str, DriverProfile] = {
+    "drivejepa": DriverProfile(
+        driver="paddock_bridge_drivejepa",
+        bridge_args=(
+            "--camera-name",
+            "camera_front_wide_120fov=CAM_FRONT",
+            "--placeholder",
+            "CAM_FRONT_LEFT",
+            "--placeholder",
+            "CAM_FRONT_RIGHT",
+            "--placeholder",
+            "CAM_BACK",
+            "--placeholder-source",
+            "CAM_FRONT",
+            "--pinhole-intrinsics",
+            "--planner",
+            "drivejepa-0.1.4b",
+            "--front-camera",
+            "camera_front_wide_120fov",
+            # Both must equal paddock_bridge_drivejepa.yaml's control step and
+            # force_gt_duration_us; a test checks they do.
+            "--frame-interval-us",
+            "50000",
+            "--force-gt-us",
+            "3000000",
+        ),
+        scenes_csv="public_2601_30scenes_26p01.csv",
+        replan_log=True,
+    ),
+}
+
+
+def profile_for(model: str) -> DriverProfile:
+    return DRIVER_PROFILES.get(model, DEFAULT_PROFILE)
 
 
 #: Metrics we lift out of a rollout record, mapped to canonical names.
@@ -143,6 +224,25 @@ def load_scene_set(name: str = DEFAULT_SCENE_SET) -> list[str]:
         available = ", ".join(sorted(p.stem for p in SCENES_DIR.glob("*.yaml"))) or "none"
         raise FileNotFoundError(f"no scene set {name!r} in {SCENES_DIR} (have: {available})")
     return list(yaml.safe_load(path.read_text())["scenes"])
+
+
+#: The bridge's per-scene count of where each plan's headings came from, in the
+#: episode's directory (bridge.py `--plan-record`).
+PLAN_RECORD = "bridge_plans.json"
+
+
+def _headings_source(record: dict[str, Any]) -> str | None:
+    counts = record.get("headings") or {}
+    used = [source for source in ("model", "derived") if counts.get(source)]
+    return {0: None, 1: used[0] if used else None, 2: "mixed"}[len(used)]
+
+
+def scene_part(scene: str) -> str | None:
+    """Which half of the 30-scene set *scene* is in (see `SCENE_PARTS`), or None."""
+    for part, scene_set in SCENE_PARTS:
+        if scene in load_scene_set(scene_set):
+            return part
+    return None
 
 
 def parse_summary(summary_json: Path, scene_id: str | None = None) -> dict[str, float]:
@@ -231,6 +331,23 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
             "scorer_repo_sha": scorer_sha(),
             "renderer": self.renderer,
             "topology": self.setting("topology") or launcher.DEFAULT_TOPOLOGY,
+        }
+
+    def model_run_config(self, model) -> dict[str, Any]:
+        """A model's profile, when it has one, so the run id and run.json say so.
+
+        Empty for the default profile, so a model without one records exactly
+        what it recorded before profiles existed.
+        """
+        if model.name not in DRIVER_PROFILES:
+            return {}
+        profile = DRIVER_PROFILES[model.name]
+        return {
+            "driver_profile": model.name,
+            "driver_config": profile.driver,
+            "bridge_args": list(profile.bridge_args),
+            "scenes_csv": profile.scenes_csv,
+            "replan_log": profile.replan_log,
         }
 
     # -- preflight ---------------------------------------------------------
@@ -380,6 +497,52 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
             f"({self.scene_set!r}); available scene sets: {available}"
         ]
 
+    def episode_samples(
+        self, episode: Episode, metrics: dict[str, float], out_dir: Path
+    ) -> list[dict[str, Any]]:
+        """One record per scene, identified by the clip alone.
+
+        The default id appends the scene set (`alpasim/<clip>/<set>`), so one
+        clip driven in the 10-scene set and again in the 30-scene set was two
+        different samples. A paired comparison joins two runs on `sample_id`,
+        and a 30-scene run then shared no sample with a 10-scene baseline. The
+        clip is the unit AlpaSim scores, and `alpasim/<clip>` is the id the
+        ingested rows already use (`results/ingest/alpasim.py`), so a run over
+        the 30 also fingerprints (`sequences_sha256`) like the stored 30-scene
+        rows.
+
+        Where the scene came from is kept as data, not in the id: `split` is
+        its half of the 30 (`pilot10` or `ext20`; the set's own name for a
+        scene in neither), and `native_id.scene_set` the set the run drove.
+
+        `headings` says how the car was steered: ``model`` when every plan
+        carried the model's own yaw, ``derived`` when the bridge derived them
+        from the path, ``mixed`` for both, None when the bridge left no record.
+        `bridge_plans` holds the bridge's counts behind it. `history_frames`
+        says how frames the bridge needed no plan from were sent: ``observe``,
+        ``infer`` (a node without `/observe`, plan dropped), or None when it sent
+        none (a model planned at every tick).
+        """
+        record = self._plan_record(out_dir)
+        return [
+            {
+                "sample_id": f"{self.spec.name}/{episode.scene}",
+                "native_id": {"scene": episode.scene, "scene_set": episode.scenario},
+                "split": scene_part(episode.scene) or episode.scenario,
+                "metrics": {k: float(v) for k, v in metrics.items() if k not in ("n_runs",)},
+                "headings": record and _headings_source(record),
+                "bridge_plans": record,
+                "history_frames": (record or {}).get("history_frames"),
+            }
+        ]
+
+    @staticmethod
+    def _plan_record(out_dir: Path) -> dict[str, Any] | None:
+        try:
+            return json.loads((out_dir / PLAN_RECORD).read_text())
+        except (OSError, json.JSONDecodeError):
+            return None
+
     # -- resume ------------------------------------------------------------
 
     def completed_metrics(self, episode: Episode, out_dir: Path, runs: int = 1) -> dict[str, float] | None:
@@ -430,6 +593,12 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
                 "[benchmarks.alpasim] needs `repo` and `python`; preflight should have caught this"
             )
 
+        model = launcher.serving_model(policy_url)
+        profile = profile_for(model)
+        scenes_csv = SCENES_DIR / profile.scenes_csv if profile.scenes_csv else None
+        if scenes_csv is not None and not scenes_csv.is_file():
+            raise RuntimeError(f"{model}'s driver profile pins scenes in {scenes_csv}, which does not exist")
+
         out_dir.mkdir(parents=True, exist_ok=True)
         bridge_port = ports.find_free(BRIDGE_PORT_BASE)
         bridge_log = out_dir / "bridge.log"
@@ -442,6 +611,13 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
             port=bridge_port,
             version_id=f"paddock-bridge/{episode.scenario}",
             log_path=bridge_log,
+            extra_args=profile.bridge_args
+            + ("--plan-record", str(out_dir / PLAN_RECORD))
+            + (
+                ("--replan-log", str(out_dir.parent / f"{episode.episode_id}.replans.jsonl"))
+                if profile.replan_log
+                else ()
+            ),
         ):
             command = launcher.wizard_command(
                 repo=repo,
@@ -450,12 +626,14 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
                 out_dir=out_dir,
                 bridge_port=bridge_port,
                 searchpath=None,
+                driver=profile.driver,
                 startup_timeout_s=self.startup_timeout_s,
                 deploy=self.setting("deploy") or launcher.DEFAULT_DEPLOY,
                 topology=self.setting("topology") or launcher.DEFAULT_TOPOLOGY,
                 scene_cache=self.setting("scene_cache"),
                 video=self.flag("video"),
                 video_every_nth_frame=int(self.setting("video_every_nth_frame") or 1),
+                scenes_csv=scenes_csv,
             )
             returncode, timed_out, elapsed = launcher.run_wizard(
                 command,

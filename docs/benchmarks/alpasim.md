@@ -40,6 +40,63 @@ Roughly **5 minutes per scene** with a 10B driver at 4 cameras and 10 Hz — a
 read. The constant-velocity floor over the same 10 scenes takes about 8 minutes,
 because the cost is rendering rather than inference.
 
+## How the bridge steers a model
+
+AlpaSim's controller follows a list of poses: a position and a heading per
+waypoint. The bridge builds that list the same way for every model:
+
+- **The whole plan.** It reads `plan` from the node's `/infer` answer, every
+  waypoint the model returned, rather than the six points of `trajectory`
+  (those six exist for neuroNCAP, which indexes them positionally).
+- **Headings from the model when it has them.** A plan whose rows are
+  (x, y, yaw) is driven on the model's own headings. A plan of (x, y) only gets
+  headings from the path's direction: each waypoint faces along the segment
+  that leads to it, and a segment shorter than 5 cm keeps the previous heading,
+  so a plan that stands still does not spin. A node too old to send `plan` is
+  driven on its `trajectory`, also with derived headings.
+- **Recorded per scene.** Each scene's sample record says how its plans were
+  steered: `headings` is `model`, `derived` or `mixed`, and `bridge_plans`
+  holds the counts. `history_frames` says how a frame the planner needed no
+  plan from was sent: `observe`, `infer` (a node without `/observe`, the plan
+  dropped), or null when the planner sent none.
+- **A clean start.** The bridge calls `/reset` at the start of every scene, for
+  every model, so a model that keeps a frame history never pairs one scene's
+  first frames with the previous scene's last ones.
+
+Before this, the bridge drove six (x, y) points and told the controller to keep
+the car's current heading at each of them. What the change means for the
+models that declare `alpasim`:
+
+| Model | Plan it returns | Headings now | Effect on its AlpaSim results |
+|---|---|---|---|
+| Drive-JEPA | 8 × (x, y, yaw) | the model's | driven on all eight poses (see below) |
+| Alpamayo 1.5 | 8 × (x, y) | derived from the path | now driven on 8 waypoints with headings, where it was driven on 6 with none; and from the second scene of a sweep on, its frame and pose history starts empty, where it used to carry over from the previous scene (the node stays up for the whole sweep, and its `reset` clears that history). Its results will shift for both reasons; it has not been re-run |
+| constant velocity | 6 × (x, y), straight along x | derived, and all 0 | steered exactly as before (a straight path's derived heading is 0, the "keep the current heading" it was always sent) |
+
+The rows in [Reference numbers](#reference-numbers) were made by each model's
+native AlpaSim driver, not by this bridge, so none of them changes.
+
+## Per-model settings in the bridge
+
+Most models are driven on one shared set of simulation settings
+(`configs/driver/paddock_bridge.yaml`) and the bridge passes AlpaSim's cameras
+through as they are. A model whose numbers must be compared with a native
+AlpaSim driver can instead get its own settings: an entry in
+`harness.DRIVER_PROFILES`, which names a driver config, extra bridge flags, a
+scene list pinned to artifact uuids and whether the bridge writes a per-replan
+log. Video is not among them: it stays the site's `video` setting for every
+model, since AlpaSim renders it after scoring and it changes no number. A
+model without an entry gets exactly what every model got before profiles existed, and `run.json` records a profile under `config`
+only when one is used, so the run id changes with it.
+
+Drive-JEPA is the one model with a profile. It reproduces the settings of
+Drive-JEPA's native AlpaSim driver (adapter 0.1.4b) so a run through paddock
+can be checked against that driver's runs: one front camera at 20 Hz, a 3.0 s
+replayed warm-up, the shared 20 Hz scoring config and the 30 scenes pinned to
+their 26.01 artifacts. What the bridge does for it, and how the result compares
+with the native driver, is in
+[docs/models/drivejepa.md](../models/drivejepa.md#through-paddock-on-alpasim).
+
 ## Configuration
 
 ```toml
@@ -160,12 +217,15 @@ filed under `results/alpasim/`, so `paddock report` agrees with these tables.
 > AlpaSim's own native drivers — `openpilot-supercombo-driver-0.2.0`,
 > `visionpilot-v2-driver-2.0.0`, `drivejepa-v2-driver-0.1.4`,
 > `alpamayo1_5-driver-0.91.0`, `constant_velocity-driver-0.2.3` — run before the
-> paddock bridge existed. That is also why only `alpamayo15` and
-> `constant_velocity` declare `alpasim` in their `model.yaml`: declaring the
-> other three would claim a pairing runs through the bridge, and nothing here
-> demonstrates that. So these rows are **reference values for what the
-> benchmark yields**, not evidence about this PR's code path. The live path
-> through the bridge is unverified, as the PR says.
+> paddock bridge existed. `alpamayo15` and `constant_velocity` declare
+> `alpasim` in their `model.yaml`, and `drivejepa` does too since it has been
+> driven through the bridge on its own settings (see
+> [Per-model settings in the bridge](#per-model-settings-in-the-bridge));
+> OpenPilot and VisionPilot do not, because nothing demonstrates that pairing.
+> So these rows are **reference values for what the benchmark yields**, not
+> evidence about the bridge. Drive-JEPA's run through the bridge is compared
+> with its native driver in [docs/models/drivejepa.md](../models/drivejepa.md#through-paddock-on-alpasim)
+> and is not one of these rows.
 >
 > **Two later versions of the Drive-JEPA driver exist; one has a row here.**
 > `drivejepa-v2-driver-0.1.4b` adds momentum-aware selection to 0.1.4, and
@@ -260,9 +320,19 @@ Three things to read with it:
   a win over the retrained one.
 - **`paddock run --bench alpasim` still drives the ten by default.** The
   default `scene_set` is unchanged; the twenty extra scenes were driven by each
-  model's native driver and ingested. `--scenarios public_2601_30scenes` (or
-  `scene_set` in `[benchmarks.alpasim]`) selects the 30, and no row has been
-  produced that way yet.
+  model's native driver and ingested. `scene_set = "public_2601_30scenes"` in
+  `[benchmarks.alpasim]` selects the 30. (`--scenarios` only filters by the
+  configured set's name; it does not switch sets.) The one run made that way
+  is Drive-JEPA's through the bridge, compared in
+  [docs/models/drivejepa.md](../models/drivejepa.md#through-paddock-on-alpasim);
+  it is not filed as a row.
+- **A sample is its clip.** Each scene's record has `sample_id`
+  `alpasim/<clip>` whichever set drove it, so a 30-scene run and a 10-scene run
+  pair on their ten shared scenes, and a run over the 30 has the same
+  `sequences_sha256` as the stored 30-scene rows. The record's `split` says
+  which half of the 30 the scene is in, `pilot10` (the ten above) or `ext20`
+  (the twenty drawn after them), and `native_id.scene_set` names the set the
+  run drove.
 
 ### `4cam-20Hz`
 

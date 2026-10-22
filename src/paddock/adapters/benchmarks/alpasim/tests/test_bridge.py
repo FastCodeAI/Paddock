@@ -46,15 +46,38 @@ STUB_DT = 0.5
 STUB_TRAJECTORY = [[1.0 * i, 0.0] for i in range(1, 7)]
 
 
+def _wire(waypoints, **extras) -> dict:
+    """An /infer answer exactly as a paddock node builds it."""
+    from paddock.policy.protocol import Trajectory
+
+    return Trajectory(np.asarray(waypoints, dtype=np.float64), dt=STUB_DT, extras=extras or None).to_wire()
+
+
 class _StubNode(BaseHTTPRequestHandler):
-    """The smallest thing that answers /infer like a paddock policy node."""
+    """The smallest thing that answers /infer and /reset like a paddock policy node."""
 
     bodies: list[dict] = []
+    resets: int = 0
+    answer: dict = {}
+    #: False plays a node from before /observe: it answers that path 404.
+    observes: bool = True
+    observed: int = 0
 
     def do_POST(self) -> None:  # noqa: N802  (BaseHTTPRequestHandler's spelling)
         length = int(self.headers.get("Content-Length", 0))
-        _StubNode.bodies.append(json.loads(self.rfile.read(length)))
-        payload = json.dumps({"trajectory": STUB_TRAJECTORY, "dt": STUB_DT}).encode()
+        body = json.loads(self.rfile.read(length))
+        if self.path == "/reset":
+            _StubNode.resets += 1
+            payload = b"true"
+        elif self.path == "/observe" and not _StubNode.observes:
+            self.send_error(404)
+            return
+        elif self.path == "/observe":
+            _StubNode.observed += 1
+            payload = b'{"observed": true}'
+        else:
+            _StubNode.bodies.append(body)
+            payload = json.dumps(_StubNode.answer).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
@@ -67,7 +90,9 @@ class _StubNode(BaseHTTPRequestHandler):
 
 @pytest.fixture
 def stub_node():
-    _StubNode.bodies = []
+    _StubNode.bodies, _StubNode.resets = [], 0
+    _StubNode.observes, _StubNode.observed = True, 0
+    _StubNode.answer = _wire(STUB_TRAJECTORY)
     server = HTTPServer(("127.0.0.1", 0), _StubNode)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -349,3 +374,235 @@ def test_a_frame_survives_the_whole_path_to_the_node(bridge) -> None:
     assert "camera_front_wide_120fov" in images, "the node was sent no frame"
     recovered = decode_image(images["camera_front_wide_120fov"])
     assert recovered.shape == (16, 32, 3)
+
+
+# ---------------------------------------------------------------------------
+# per-model camera translation (Drive-JEPA's profile)
+# ---------------------------------------------------------------------------
+
+DRIVEJEPA_TRANSLATION = {
+    "camera_names": {"camera_front_wide_120fov": "CAM_FRONT"},
+    "placeholders": ("CAM_FRONT_LEFT", "CAM_FRONT_RIGHT", "CAM_BACK"),
+    "placeholder_source": "CAM_FRONT",
+    "pinhole_intrinsics": True,
+}
+
+
+def _translating_bridge(stub_node, **translation):
+    url, _ = stub_node
+    planner = PolicyPlanner(url, **translation)
+    scaffold = DriverScaffold(planner=planner, version_id="test-bridge-0.0.0", keep_images=True)
+    server = grpc.server(__import__("concurrent.futures", fromlist=["x"]).ThreadPoolExecutor(4))
+    from alpasim_grpc.v0.egodriver_pb2_grpc import add_EgodriverServiceServicer_to_server
+
+    add_EgodriverServiceServicer_to_server(scaffold, server)
+    port = server.add_insecure_port("127.0.0.1:0")
+    server.start()
+    return server, EgodriverServiceStub(grpc.insecure_channel(f"127.0.0.1:{port}"))
+
+
+def _open_pinhole_session(stub, session="s-1", lens="pinhole"):
+    """start_session with the camera Drive-JEPA's profile renders."""
+    request = DriveSessionRequest()
+    request.session_uuid = session
+    camera = request.rollout_spec.vehicle.available_cameras.add()
+    camera.logical_id = "camera_front_wide_120fov"
+    camera.rig_to_camera.vec.x = 1.5
+    camera.rig_to_camera.quat.w = 1.0
+    if lens == "pinhole":
+        p = camera.intrinsics.opencv_pinhole_param
+        p.focal_length_x, p.focal_length_y = 1545.0, 1540.0
+        p.principal_point_x, p.principal_point_y = 960.0, 560.0
+    else:
+        camera.intrinsics.ftheta_param.principal_point_x = 960.0
+    return stub.start_session(request)
+
+
+def _drive_once(stub):
+    _push_image(stub)
+    _push_egomotion(stub)
+    return _drive(stub)
+
+
+def test_without_translation_flags_the_body_is_what_it_always_was(bridge) -> None:
+    """Every model without a profile must see exactly the old input."""
+    stub, node = bridge
+    _open_pinhole_session(stub)
+    _drive_once(stub)
+    body = node.bodies[-1]
+    assert sorted(body["images"]) == ["camera_front_wide_120fov"]
+    assert body["calibration"]["camera2image"] == {}
+    assert sorted(body["calibration"]["camera2ego"]) == ["camera_front_wide_120fov"]
+
+
+def test_drivejepa_gets_cam_front_its_k_and_three_placeholders(stub_node) -> None:
+    server, stub = _translating_bridge(stub_node, **DRIVEJEPA_TRANSLATION)
+    try:
+        _open_pinhole_session(stub)
+        _drive_once(stub)
+    finally:
+        server.stop(None)
+    body = stub_node[1].bodies[-1]
+    cameras = ["CAM_BACK", "CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT"]
+    assert sorted(body["images"]) == cameras
+    for key in ("camera2image", "camera2ego"):
+        assert sorted(body["calibration"][key]) == cameras
+        for placeholder in DRIVEJEPA_TRANSLATION["placeholders"]:
+            assert body["calibration"][key][placeholder] == body["calibration"][key]["CAM_FRONT"]
+    assert body["calibration"]["camera2image"]["CAM_FRONT"] == [
+        [1545.0, 0.0, 960.0],
+        [0.0, 1540.0, 560.0],
+        [0.0, 0.0, 1.0],
+    ]
+    from paddock.policy.protocol import decode_image
+
+    front = decode_image(body["images"]["CAM_FRONT"])
+    for placeholder in DRIVEJEPA_TRANSLATION["placeholders"]:
+        filled = decode_image(body["images"][placeholder])
+        assert filled.shape == front.shape
+        assert (filled == np.array([17, 42, 99], dtype=np.uint8)).all()
+
+
+def test_a_lens_that_is_not_a_pinhole_is_refused_by_name(stub_node) -> None:
+    server, stub = _translating_bridge(stub_node, **DRIVEJEPA_TRANSLATION)
+    try:
+        _open_pinhole_session(stub, lens="ftheta")
+        with pytest.raises(grpc.RpcError) as caught:
+            _drive_once(stub)
+    finally:
+        server.stop(None)
+    assert "ftheta_param" in str(caught.value.details())
+    assert stub_node[1].bodies == []
+
+
+# ---------------------------------------------------------------------------
+# the plan: read the same way for every model
+# ---------------------------------------------------------------------------
+
+
+def _yaws(response) -> list[float]:
+    """Heading of each returned waypoint after the anchor, from its quaternion."""
+    return [2.0 * float(np.arctan2(p.pose.quat.z, p.pose.quat.w)) for p in response.trajectory.poses[1:]]
+
+
+def test_every_scene_starts_by_resetting_the_node(bridge) -> None:
+    """Any model with a frame history would otherwise carry the last scene into this one."""
+    stub, node = bridge
+    _open_session(stub, session="a")
+    _open_session(stub, session="b")
+    assert node.resets == 2
+
+
+def test_a_plan_with_yaw_is_driven_on_the_models_headings(bridge) -> None:
+    stub, node = bridge
+    rows = [[1.0 * i, 0.1 * i * i, 0.05 * i] for i in range(1, 9)]
+    node.answer = _wire(rows)
+    _open_session(stub)
+    _push_egomotion(stub)
+    response = _drive(stub)
+    assert len(response.trajectory.poses) == 1 + 8, "the whole plan, not the six-point trajectory"
+    np.testing.assert_allclose(_yaws(response), [r[2] for r in rows], atol=1e-6)
+
+
+def test_an_xy_plan_is_steered_along_its_own_path(bridge) -> None:
+    stub, node = bridge
+    rows = [[2.0 * i, 0.2 * i * i] for i in range(1, 9)]
+    node.answer = _wire(rows)
+    _open_session(stub)
+    _push_egomotion(stub)
+    yaws = _yaws(_drive(stub))
+    path = np.vstack([[0.0, 0.0], rows])
+    want = np.arctan2(np.diff(path[:, 1]), np.diff(path[:, 0]))
+    np.testing.assert_allclose(yaws, want, atol=1e-6)
+
+
+def test_a_node_without_a_plan_key_is_driven_on_its_trajectory(stub_node) -> None:
+    url, node = stub_node
+    planner = PolicyPlanner(url)
+    waypoints, step_us, headings = planner.plan_from_answer({"trajectory": STUB_TRAJECTORY})
+    assert headings == "derived" and step_us == 500_000 and len(waypoints) == 6
+    np.testing.assert_array_equal(waypoints[:, 2], 0.0)
+
+
+def test_a_plan_spaced_unlike_the_policys_waypoint_dt_is_refused(stub_node) -> None:
+    planner = PolicyPlanner(stub_node[0], waypoint_dt=0.5)
+    with pytest.raises(ValueError, match="spaced 0.1 s"):
+        planner.plan_from_answer(
+            {"trajectory": STUB_TRAJECTORY, "plan": {"waypoints": STUB_TRAJECTORY, "dt": 0.1}}
+        )
+
+
+def test_a_stopped_plan_keeps_its_heading_rather_than_spinning() -> None:
+    from paddock.adapters.benchmarks.alpasim.bridge import derive_headings
+
+    rows = np.array([[1.0, 1.0], [1.0 + 1e-3, 1.0], [1.0, 1.0 + 1e-3]])
+    np.testing.assert_allclose(derive_headings(rows), [np.pi / 4] * 3)
+    np.testing.assert_array_equal(derive_headings(np.zeros((6, 2))), 0.0)
+
+
+def test_the_constant_velocity_floor_gets_derived_headings_that_are_straight_ahead(stub_node) -> None:
+    """Its plan is (x, y) along x, so the derived yaw is 0: the same identity
+    rotation it was always sent, and its AlpaSim score should not move."""
+    from paddock.adapters.models.constant_velocity.policy import POLICY
+    from paddock.policy.protocol import CANBUS_VELOCITY, Command, Observation
+
+    canbus = np.zeros(18)
+    canbus[CANBUS_VELOCITY] = 7.0
+    obs = Observation(
+        images={},
+        ego2world=np.eye(4),
+        canbus=canbus,
+        timestamp_us=0,
+        command=Command.STRAIGHT,
+        camera2image={},
+        camera2ego={},
+    )
+    answer = POLICY().infer(obs).to_wire()
+    waypoints, _, headings = PolicyPlanner(stub_node[0]).plan_from_answer(answer)
+    assert headings == "derived" and len(waypoints) == 6
+    np.testing.assert_array_equal(waypoints[:, 2], 0.0)
+
+
+def test_an_xy_model_with_eight_waypoints_is_driven_on_all_eight(stub_node) -> None:
+    """Alpamayo 1.5's shape: eight (x, y) rows (alpamayo15/policy.py keeps [:, :2]).
+    The bridge used to drive the six of `trajectory`; it now drives the plan."""
+    rows = [[3.0 * i, 0.05 * i * i] for i in range(1, 9)]
+    waypoints, _, headings = PolicyPlanner(stub_node[0]).plan_from_answer(_wire(rows))
+    assert headings == "derived" and len(waypoints) == 8
+
+
+def test_where_the_headings_came_from_is_recorded_and_extras_are_logged(stub_node, tmp_path) -> None:
+    url, node = stub_node
+    planner = PolicyPlanner(url, replan_log=tmp_path / "log.jsonl", plan_record=tmp_path / "plans.json")
+    node.answer = _wire([[1.0 * i, 0.0, 0.0] for i in range(1, 9)], native={"pick": 3})
+    view = type("View", (), {})()
+    view.latest_pose = _pose(1_000_000)
+    view.image_cache, view.dynamic_states, view.latest_dynamic_state = {}, [], None
+    view.camera_specs = {}
+    planner.build_infer_body = lambda v, now: ({"images": {}}, 1_000_000)
+    planner.plan(view, 1_000_000, 1_000_000)
+    planner.plan_from_answer({"trajectory": STUB_TRAJECTORY})
+    record = json.loads((tmp_path / "plans.json").read_text())
+    assert record == {
+        "headings": {"model": 1, "derived": 1},
+        "plan_key": {"present": 1, "absent": 1},
+        "history_frames": None,  # a planner that plans at every tick sends none
+    }
+    (row,) = [json.loads(line) for line in (tmp_path / "log.jsonl").read_text().splitlines()]
+    assert row["extras"] == {"native": {"pick": 3}} and row["headings"] == "model"
+
+
+@pytest.mark.parametrize("observes", [True, False])
+def test_a_history_frame_goes_to_observe_or_to_an_infer_whose_plan_is_dropped(
+    stub_node, tmp_path, observes
+) -> None:
+    """Over real HTTP: /observe when the node serves it, else the old thrown-away
+    /infer; which one is recorded for the scene's sample."""
+    url, node = stub_node
+    node.observes = observes
+    record = tmp_path / "bridge_plans.json"
+    planner = PolicyPlanner(url, plan_record=record)
+    used = planner.observe_frame({"timestamp": 1})
+    assert used == ("observe" if observes else "infer")
+    assert (node.observed, len(node.bodies)) == ((1, 0) if observes else (0, 1))
+    assert json.loads(record.read_text())["history_frames"] == used
