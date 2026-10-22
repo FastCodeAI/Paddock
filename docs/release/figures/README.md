@@ -98,3 +98,4 @@ NODE_PATH=<scratch>/node_modules node docs/release/figures/render.cjs rail-map  
 | [gallops-results](gallops-results.png) | six fine-tuning results, before and after, with how far each gain holds | executive plan §6, strategy 6 |
 | [jockey-candidates](jockey-candidates.png) | four model families rated on six criteria, and what Jockey takes from each | executive plan §7, strategy 7 |
 | [model-to-car](model-to-car.png) | five stages from training to a car, who owns each, and what exists | strategy 7, design: model to car |
+| [release-timeline](release-timeline.png) | v1.0.0 worked back from 25 November: workstreams, milestones, holidays, what follows | executive plan §8, strategy 8 |
