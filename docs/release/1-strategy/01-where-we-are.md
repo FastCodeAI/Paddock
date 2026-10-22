@@ -1,7 +1,8 @@
 # 1 · Where we are
 
-*Level 1, strategy. Answers: what is RAIL building, and how far has each part got?
-Up: [executive plan](../plan-v1.0.0.md) · Next: [2 · What a score says](02-what-a-score-says.md)*
+*Level 1, strategy. Answers: what is RAIL building, and how far has each part got?*
+
+*Up: [executive plan](../plan-v1.0.0.md) · Next: [2 · What a score says](02-what-a-score-says.md)*
 
 **The point**
 - All of this work sits under **Renesas AI Labs (RAIL)**. It has three parts that make

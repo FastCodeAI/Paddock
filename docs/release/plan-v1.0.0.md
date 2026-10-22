@@ -1,8 +1,10 @@
 # RAIL release v1.0.0: executive plan
 
-**Status:** draft for leadership alignment, 22 October 2026
+**Status:** draft for leadership alignment, 22 October 2026.
+
 **Scope:** Renesas AI Labs (RAIL): Paddock, Gallops and Jockey, the in-house model.
 The release is **Paddock 1.0 for customer trials, on Wednesday 25 November 2026.**
+
 **How to read it:**
 - This page is the summary.
 - [`briefing.html`](briefing.html) is the same story as a page to present. Open it in a

@@ -2,8 +2,9 @@
 
 *Level 2, design plan. Decides: how a site gets from nothing to a certified install,
 whether to use containers, and what `paddock setup` does. Names the framework changes;
-does not design them.
-Up: [4 · Using Paddock](../1-strategy/04-using-paddock.md) · [executive plan](../plan-v1.0.0.md)*
+does not design them.*
+
+*Up: [4 · Using Paddock](../1-strategy/04-using-paddock.md) · [executive plan](../plan-v1.0.0.md)*
 
 **The point**
 - **Setup time today goes to four things:**

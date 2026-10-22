@@ -2,8 +2,9 @@
 
 *Level 1, strategy. Answers: how does a finding in Paddock become a better model? What
 has fine-tuning achieved so far, and when should we train a new model instead of
-fine-tuning an existing one?
-Up: [executive plan](../plan-v1.0.0.md) · Previous: [5 · Outcomes](05-outcomes.md) ·
+fine-tuning an existing one?*
+
+*Up: [executive plan](../plan-v1.0.0.md) · Previous: [5 · Outcomes](05-outcomes.md) ·
 Next: [7 · Jockey](07-jockey.md)*
 
 **The point**
@@ -131,6 +132,8 @@ open loop must also pass closed loop.
   - `docs/scorer-cache.md`.
 - The re-ranker's numbers: Paddock `docs/models/drivejepa_rerank.md`.
 - Extra heads and expert imitation: Gallops PRs #20 and #17, their own descriptions.
+- Lesson 1, that training the generator behind a frozen scorer made the pick worse:
+  `docs/drivejepa-aux-heads.md` on Gallops PR #20's branch. Not merged yet.
 - The sweeps estimate: Gallops `docs/architecture.md` §5.1.
 - int8 slowdown: Gallops `docs/STRATEGY.md` §5, from Paddock's
   `docs/models/VISION_PILOT_GUIDE.md`.

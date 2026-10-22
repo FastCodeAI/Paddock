@@ -2,8 +2,9 @@
 
 *Level 2, design plan. Decides: how a customer moves from watching a demo to running
 experiments themselves, including with their own AI agents, and how they bring their
-own model and data.
-Up: [3 · What customers ask](../1-strategy/03-customer-questions.md) · [executive plan](../plan-v1.0.0.md)*
+own model and data.*
+
+*Up: [3 · What customers ask](../1-strategy/03-customer-questions.md) · [executive plan](../plan-v1.0.0.md)*
 
 **The point**
 - **We can always demo Paddock visually, but customers decide by using it.** The trial

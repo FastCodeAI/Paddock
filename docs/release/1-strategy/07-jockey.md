@@ -2,8 +2,9 @@
 
 *Level 1, strategy. Answers: what should RAIL's own model look like? What do the
 candidate architectures teach us? What do we need from Renesas' inference teams? How
-does a model get from training into a car?
-Up: [executive plan](../plan-v1.0.0.md) · Previous: [6 · Pathway to Gallops](06-pathway-to-gallops.md) ·
+does a model get from training into a car?*
+
+*Up: [executive plan](../plan-v1.0.0.md) · Previous: [6 · Pathway to Gallops](06-pathway-to-gallops.md) ·
 Next: [8 · Release v1.0.0](08-release-v1.0.0.md)*
 
 **The point**

@@ -1,8 +1,9 @@
 # 4 · Using Paddock: setup, orchestration, compute, storage, results
 
 *Level 1, strategy. Answers: what infrastructure does a site need, and what are the
-high-level steps to use Paddock?
-Up: [executive plan](../plan-v1.0.0.md) · Previous: [3 · What customers ask](03-customer-questions.md) ·
+high-level steps to use Paddock?*
+
+*Up: [executive plan](../plan-v1.0.0.md) · Previous: [3 · What customers ask](03-customer-questions.md) ·
 Next: [5 · Outcomes](05-outcomes.md)*
 
 **The point**

@@ -1,8 +1,9 @@
 # Open work at 22 October 2026, and what lands before v1.0.0
 
 *Level 3, reference. A snapshot of open pull requests, issues and owed re-runs, with a
-proposed disposition for each against the v1.0.0 feature freeze on 13 November.
-Up: [8 · Release v1.0.0](../1-strategy/08-release-v1.0.0.md)*
+proposed disposition for each against the v1.0.0 feature freeze on 13 November.*
+
+*Up: [8 · Release v1.0.0](../1-strategy/08-release-v1.0.0.md)*
 
 **The rule proposed for the freeze:** before 13 November, land only what changes
 certified numbers or the trial path. Everything else continues on `main` after the

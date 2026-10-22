@@ -1,8 +1,9 @@
 # 5 · Outcomes: failure modes, areas to improve, tools
 
 *Level 1, strategy. Answers: what does a team get from running its model through
-Paddock, beyond a score?
-Up: [executive plan](../plan-v1.0.0.md) · Previous: [4 · Using Paddock](04-using-paddock.md) ·
+Paddock, beyond a score?*
+
+*Up: [executive plan](../plan-v1.0.0.md) · Previous: [4 · Using Paddock](04-using-paddock.md) ·
 Next: [6 · Pathway to Gallops](06-pathway-to-gallops.md)*
 
 **The point**

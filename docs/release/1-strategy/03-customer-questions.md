@@ -1,8 +1,9 @@
 # 3 · What customers ask
 
 *Level 1, strategy. Answers: why would an OEM or a Renesas customer need Paddock, how
-easy is it to use, and how do they try it for themselves?
-Up: [executive plan](../plan-v1.0.0.md) · Previous: [2 · What a score says](02-what-a-score-says.md) ·
+easy is it to use, and how do they try it for themselves?*
+
+*Up: [executive plan](../plan-v1.0.0.md) · Previous: [2 · What a score says](02-what-a-score-says.md) ·
 Next: [4 · Using Paddock](04-using-paddock.md)*
 
 **The point**

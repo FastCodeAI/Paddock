@@ -2,8 +2,9 @@
 
 *Level 3, reference. Each number the executive plan and the briefing rely on, its
 source, and how strong it is. Following `docs/reviewing.md`, what was **measured** is
-kept apart from what is **argued**.
-Up: [executive plan](../plan-v1.0.0.md)*
+kept apart from what is **argued**.*
+
+*Up: [executive plan](../plan-v1.0.0.md)*
 
 Snapshot:
 - Paddock `main` at `3b0b42a`;

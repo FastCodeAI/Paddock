@@ -1,7 +1,8 @@
 # 2 · What a score says, and what it does not
 
-*Level 1, strategy. Answers: can a benchmark number tell us whether a model is good?
-Up: [executive plan](../plan-v1.0.0.md) · Previous: [1 · Where we are](01-where-we-are.md) ·
+*Level 1, strategy. Answers: can a benchmark number tell us whether a model is good?*
+
+*Up: [executive plan](../plan-v1.0.0.md) · Previous: [1 · Where we are](01-where-we-are.md) ·
 Next: [3 · What customers ask](03-customer-questions.md)*
 
 **The point**

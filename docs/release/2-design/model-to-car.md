@@ -1,8 +1,9 @@
 # Design: from a trained model to a car
 
 *Level 2, design plan. Decides: the stages between a Gallops checkpoint and a model
-driving on R-Car, who owns each, and how Paddock keeps one record across all of them.
-Up: [7 · Jockey](../1-strategy/07-jockey.md) · [executive plan](../plan-v1.0.0.md)*
+driving on R-Car, who owns each, and how Paddock keeps one record across all of them.*
+
+*Up: [7 · Jockey](../1-strategy/07-jockey.md) · [executive plan](../plan-v1.0.0.md)*
 
 **The point**
 - **Five stages:**

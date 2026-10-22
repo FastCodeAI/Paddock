@@ -1,8 +1,9 @@
 # 8 · Release v1.0.0: Paddock 1.0 for customer trials, 25 November 2026
 
 *Level 1, strategy. Answers: what ships on 25 November, what does not, how we get there
-working back from the date, what could break it, and what leadership must decide.
-Up: [executive plan](../plan-v1.0.0.md) · Previous: [7 · Jockey](07-jockey.md)*
+working back from the date, what could break it, and what leadership must decide.*
+
+*Up: [executive plan](../plan-v1.0.0.md) · Previous: [7 · Jockey](07-jockey.md)*
 
 **The point**
 - **v1.0.0 is Paddock's first external release.** It ships:

@@ -1,7 +1,8 @@
 # Glossary
 
-*Level 3, reference. The terms used across the release documents, in plain words.
-Up: [executive plan](../plan-v1.0.0.md)*
+*Level 3, reference. The terms used across the release documents, in plain words.*
+
+*Up: [executive plan](../plan-v1.0.0.md)*
 
 ## The programme
 

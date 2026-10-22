@@ -1,8 +1,9 @@
 # Design: the shared workspace and the browser app
 
 *Level 2, design plan. Decides: how our own teams, and later customers' projects, share
-data, models, code and results, and what one browser app shows of all of it.
-Up: [1 · Where we are](../1-strategy/01-where-we-are.md) · [executive plan](../plan-v1.0.0.md)*
+data, models, code and results, and what one browser app shows of all of it.*
+
+*Up: [1 · Where we are](../1-strategy/01-where-we-are.md) · [executive plan](../plan-v1.0.0.md)*
 
 **The point**
 - **Today the work is scattered:**

@@ -2,8 +2,9 @@
 
 *Level 2, design plan. Decides: where Paddock runs for customers, what each kind of
 customer gets, and what infrastructure that needs. It names the services it depends on;
-it does not design them.
-Up: [4 · Using Paddock](../1-strategy/04-using-paddock.md) · [executive plan](../plan-v1.0.0.md)*
+it does not design them.*
+
+*Up: [4 · Using Paddock](../1-strategy/04-using-paddock.md) · [executive plan](../plan-v1.0.0.md)*
 
 **The point**
 - **One pinned distribution, deployed in two places:**
