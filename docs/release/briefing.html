@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAIL release v1.0.0: executive briefing</title>
+<!--
+  The executive plan (plan-v1.0.0.md) as a page to present. Self-contained: no
+  network, no fonts or scripts from elsewhere; it loads only the figures beside
+  it. Laid out for 1680x1050 with nothing scrolling sideways. Keep it in step
+  with plan-v1.0.0.md: change one, change the other.
+-->
+<style>
+  :root {
+    --ink: #0b0b0b; --ink2: #34332f; --muted: #5d5c57; --rule: #d6d5cd; --wash: #f4f3ef; --paper: #fbfbf9;
+    --blue: #2a78d6; --blue-w: #e6f0fb; --green: #008300; --green-w: #e3f2e3;
+    --pink: #e87ba4; --pink-w: #fcedf3; --yellow: #eda100; --yellow-w: #fdf3dc;
+    --side: 236px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; color: var(--ink); background: #fff;
+         font-family: "Segoe UI", Calibri, Carlito, "Helvetica Neue", Arial, "Liberation Sans", sans-serif;
+         font-size: 18px; line-height: 1.45; }
+  a { color: #1d5fae; }
+  code { font-family: Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.88em; background: var(--wash); padding: 0 4px; border-radius: 4px; }
+
+  /* ---- sidebar ---- */
+  nav { position: fixed; top: 0; left: 0; bottom: 0; width: var(--side); overflow-y: auto;
+        background: var(--wash); border-right: 1px solid var(--rule); padding: 22px 14px 18px; }
+  nav .brand { font-weight: 700; font-size: 20px; line-height: 1.2; }
+  nav .brand small { display: block; font-weight: 400; font-size: 15px; color: var(--muted); margin-top: 4px; }
+  nav ol { list-style: none; margin: 18px 0 0; padding: 0; }
+  nav li a { display: block; padding: 6px 10px; border-radius: 7px; color: var(--ink2); text-decoration: none; font-size: 16px; line-height: 1.3; border-left: 4px solid transparent; }
+  nav li a:hover { background: #ebeae4; }
+  nav li a.active { background: #fff; color: var(--ink); font-weight: 600; border-left-color: var(--ink2); }
+  nav li a .n { display: inline-block; width: 22px; color: var(--muted); }
+  nav .keys { margin-top: 18px; font-size: 14px; color: var(--muted); line-height: 1.4; }
+
+  /* ---- screens ---- */
+  main { margin-left: var(--side); }
+  section.screen { min-height: 100vh; padding: 30px 40px 34px; border-bottom: 1px solid var(--rule);
+                   display: flex; flex-direction: column; }
+  .wrap { max-width: 1400px; width: 100%; margin: 0 auto; flex: 1 1 auto; display: flex; flex-direction: column; }
+  .kicker { font-size: 15px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  h1 { font-size: 40px; line-height: 1.12; margin: 6px 0 8px; }
+  h2 { font-size: 32px; line-height: 1.15; margin: 4px 0 6px; }
+  .lead { font-size: 20px; color: var(--ink2); margin: 0 0 16px; max-width: 1150px; }
+  .body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 28px; align-items: start; }
+  .body.wide { grid-template-columns: minmax(0, 1fr); }
+  figure { margin: 0; min-width: 0; }
+  /* A figure is as wide as its column allows, but never so tall that it leaves the
+     screen: its width is capped by the screen height times its aspect ratio (--ar,
+     set per figure). Scaling keeps the aspect, so the map's hotspots stay aligned. */
+  figure button { display: block; padding: 0; margin: 0; border: 1px solid var(--rule); border-radius: 10px; background: #fff;
+                  cursor: zoom-in; width: 100%; max-width: calc((100vh - 230px) * var(--ar, 1.6)); overflow: hidden; }
+  figure img { display: block; width: 100%; height: auto; }
+  figure figcaption { font-size: 14px; color: var(--muted); margin-top: 6px; }
+  .points h3 { font-size: 15px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); margin: 2px 0 8px; }
+  .points ul { margin: 0 0 14px; padding-left: 20px; }
+  .points li { margin: 0 0 9px; }
+  .ask { border: 2px solid var(--ink2); border-radius: 10px; padding: 10px 14px; background: var(--paper); font-size: 17px; margin-bottom: 14px; }
+  .ask b { display: block; font-size: 15px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+  .deeper { margin-top: auto; padding-top: 16px; font-size: 16px; color: var(--muted); }
+  .deeper a { margin-right: 14px; white-space: nowrap; }
+  .deeper .lbl { font-weight: 700; color: var(--ink2); margin-right: 10px; }
+
+  /* accents per part of RAIL */
+  .acc-paddock { border-top: 6px solid var(--blue); }
+  .acc-gallops { border-top: 6px solid var(--green); }
+  .acc-jockey { border-top: 6px solid var(--pink); }
+  .acc-release { border-top: 6px solid var(--yellow); }
+
+  /* ---- cover and decisions ---- */
+  .cover .tag { display: inline-block; font-size: 15px; padding: 2px 10px; border-radius: 999px; background: var(--yellow-w); border: 1.5px solid var(--yellow); margin-right: 6px; }
+  .trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 18px 0 20px; }
+  .trio a { display: block; text-decoration: none; color: var(--ink); border-radius: 12px; padding: 16px 18px; border: 2px solid; }
+  .trio a:hover { filter: brightness(0.97); }
+  .trio .p { border-color: var(--blue); background: var(--blue-w); }
+  .trio .g { border-color: var(--green); background: var(--green-w); }
+  .trio .j { border-color: var(--pink); background: var(--pink-w); }
+  .trio .nm { font-size: 26px; font-weight: 700; letter-spacing: 0.02em; }
+  .trio .rl { font-size: 17px; color: var(--ink2); }
+  .trio .st { font-size: 16px; margin-top: 8px; }
+  table.dec { border-collapse: collapse; width: 100%; font-size: 17px; }
+  table.dec th, table.dec td { text-align: left; vertical-align: top; padding: 8px 12px; border-bottom: 1px solid var(--rule); }
+  table.dec th { font-size: 15px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+  table.dec td.k { font-weight: 700; white-space: nowrap; width: 48px; }
+  table.dec td.d { width: 30%; font-weight: 600; }
+
+  /* ---- hotspots on the RAIL map ---- */
+  .hotwrap { position: relative; width: 100%; max-width: calc((100vh - 230px) * var(--ar, 1.6)); }
+  .hotwrap button { max-width: none; }
+  .hot a.spot { position: absolute; border-radius: 12px; outline: 3px solid transparent; }
+  .hot a.spot:hover, .hot a.spot:focus { outline-color: var(--ink2); background: rgba(255,255,255,0.12); }
+
+  /* ---- tabs (section 7) ---- */
+  .tabs { display: flex; gap: 8px; margin-bottom: 10px; }
+  .tabs button { font: inherit; font-size: 16px; padding: 5px 14px; border-radius: 999px; border: 1.5px solid var(--rule); background: #fff; cursor: pointer; }
+  .tabs button[aria-selected="true"] { background: var(--pink-w); border-color: var(--pink); font-weight: 600; }
+  .tabpanel[hidden] { display: none; }
+
+  /* ---- index ---- */
+  .levels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+  .level { border: 1.5px solid var(--rule); border-radius: 12px; padding: 14px 18px; background: var(--paper); }
+  .level h3 { margin: 0 0 8px; font-size: 20px; }
+  .level ul { margin: 0; padding-left: 18px; font-size: 17px; }
+  .level li { margin-bottom: 6px; }
+  .level li span { color: var(--muted); }
+
+  /* ---- focus mode (F): figures only, near 1:1, for presenting ---- */
+  #unfocus { display: none; position: fixed; top: 12px; right: 14px; z-index: 5; font: inherit; font-size: 15px;
+             padding: 4px 12px; border-radius: 999px; border: 1.5px solid var(--rule); background: #fff; cursor: pointer; }
+  body.focus #unfocus { display: block; }
+  body.focus nav { display: none; }
+  body.focus main { margin-left: 0; }
+  body.focus .body { grid-template-columns: minmax(0, 1fr); }
+  body.focus .points, body.focus .lead, body.focus figcaption { display: none; }
+  body.focus figure button, body.focus .hotwrap { margin: 0 auto; max-width: calc((100vh - 190px) * var(--ar, 1.6)); }
+  body.focus .hotwrap button { max-width: none; }
+  nav button.focus { margin-top: 14px; font: inherit; font-size: 15px; padding: 4px 12px; border-radius: 999px;
+                     border: 1.5px solid var(--rule); background: #fff; cursor: pointer; }
+
+  /* ---- lightbox ---- */
+  #lb { position: fixed; inset: 0; background: rgba(20,20,18,0.86); display: none; align-items: center; justify-content: center; z-index: 10; cursor: zoom-out; padding: 20px; }
+  #lb.on { display: flex; }
+  #lb img { width: min(1280px, 100%); max-height: 100%; object-fit: contain; background: #fff; border-radius: 8px; }
+
+  /* ---- narrower screens: points under the figure, then a top bar ---- */
+  @media (max-width: 1360px) { .body { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 960px) {
+    nav { position: static; width: auto; border-right: none; border-bottom: 1px solid var(--rule); }
+    nav ol { display: flex; flex-wrap: wrap; gap: 4px; }
+    main { margin-left: 0; }
+    .trio, .levels { grid-template-columns: minmax(0, 1fr); }
+  }
+
+  /* ---- print: one topic per landscape page ---- */
+  @page { size: A4 landscape; margin: 10mm; }
+  @media print {
+    nav, .deeper, .tabs, #lb { display: none !important; }
+    main { margin-left: 0; }
+    section.screen { min-height: auto; page-break-after: always; break-after: page; border: none; padding: 0; }
+    .tabpanel[hidden] { display: block; }
+    #tab-car { break-before: page; page-break-before: always; }
+    figure img { max-height: 120mm; }
+    .body { grid-template-columns: minmax(0, 1fr) 80mm; }
+    .trio, .levels { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .trio { margin: 10px 0 12px; }
+    .trio a { padding: 10px 14px; }
+    h1 { font-size: 30px; }
+    table.dec th, table.dec td { padding: 5px 10px; }
+    body.focus #unfocus, nav button.focus { display: none; }
+    a { color: var(--ink); text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav aria-label="Briefing sections">
+  <div class="brand">RAIL release v1.0.0<small>Executive briefing · 22 Oct 2026</small></div>
+  <ol>
+    <li><a href="#top"><span class="n">·</span>Decisions today</a></li>
+    <li><a href="#where"><span class="n">1</span>Where we are</a></li>
+    <li><a href="#risk"><span class="n">2</span>A score is not a verdict</a></li>
+    <li><a href="#customers"><span class="n">3</span>What customers ask</a></li>
+    <li><a href="#using"><span class="n">4</span>Using Paddock</a></li>
+    <li><a href="#outcomes"><span class="n">5</span>What Paddock produces</a></li>
+    <li><a href="#gallops"><span class="n">6</span>Pathway to Gallops</a></li>
+    <li><a href="#jockey"><span class="n">7</span>Next: Jockey</a></li>
+    <li><a href="#release"><span class="n">8</span>Release v1.0.0</a></li>
+    <li><a href="#deeper"><span class="n">→</span>Dive deeper</a></li>
+  </ol>
+  <div class="keys">← → or Page Up / Down to move.<br>Click a figure to see it full size.<br>F shows figures only.<br>Print for a PDF handout.</div>
+  <button type="button" class="focus" data-focus>Figures only (F)</button>
+</nav>
+<button type="button" id="unfocus" data-focus>Show notes (F)</button>
+
+<main>
+
+<!-- ======================= cover: the ask ======================= -->
+<section class="screen cover" id="top">
+  <div class="wrap">
+    <div class="kicker">Renesas AI Labs · executive briefing</div>
+    <h1>Paddock 1.0 for customer trials, on 25 November</h1>
+    <p class="lead"><span class="tag">draft for alignment</span> RAIL is three parts and one loop. We ask for eight decisions today; each comes with a recommendation.</p>
+    <div class="trio">
+      <a class="p" href="#where"><div class="nm">PADDOCK</div><div class="rl">inspects: benchmark and analysis</div>
+        <div class="st">7 models and a baseline, 9 benchmarks, 171 runs; ready to release</div></a>
+      <a class="g" href="#gallops"><div class="nm">GALLOPS</div><div class="rl">trains: fine-tuning toolkit</div>
+        <div class="st">loop proven, six efforts; no closed-loop safety gain yet</div></a>
+      <a class="j" href="#jockey"><div class="nm">JOCKEY</div><div class="rl">drives: the in-house model</div>
+        <div class="st">designed, not built; waits on the inference teams</div></a>
+    </div>
+    <table class="dec" aria-label="Decisions needed today">
+      <thead><tr><th></th><th>Decision</th><th>Recommendation</th></tr></thead>
+      <tbody>
+        <tr><td class="k">D1</td><td class="d">v1.0.0's scope and date</td><td><b>Yes:</b> self-install trial kit (open loop, NAVSIM), certified matrix, evidence pack, guided demo, on 25 Nov. Hosted hands-on trials in v1.1</td></tr>
+        <tr><td class="k">D2</td><td class="d">The trial matrix</td><td>4 benchmarks × 6 models and a baseline</td></tr>
+        <tr><td class="k">D3</td><td class="d">Licence review</td><td>Start this week, with a named legal owner: it is on the critical path</td></tr>
+        <tr><td class="k">D4</td><td class="d">Customer zero, design partner</td><td>A Renesas team installs the release candidate unaided; one OEM partner for v1.1</td></tr>
+        <tr><td class="k">D5</td><td class="d">Hosting and budget</td><td>One dedicated 4-GPU server and ~5 TB; our data centre or the cloud</td></tr>
+        <tr><td class="k">D6</td><td class="d">Jockey's direction</td><td>Confirm it; name an inference-team counterpart to answer six questions by 13 Nov</td></tr>
+        <tr><td class="k">D7</td><td class="d">The name "Jockey"</td><td>Adopt it for the in-house model family; its first design is <code>gallops-v0</code></td></tr>
+        <tr><td class="k">D8</td><td class="d">Ownership</td><td>A release owner and a review rotation; freeze non-release changes from 13 Nov</td></tr>
+      </tbody>
+    </table>
+    <div class="deeper"><span class="lbl">Dive deeper</span><a href="plan-v1.0.0.md">Executive plan</a><a href="1-strategy/08-release-v1.0.0.md">8 · Release and decisions</a></div>
+  </div>
+</section>
+
+<!-- ======================= 1 ======================= -->
+<section class="screen acc-paddock" id="where">
+  <div class="wrap">
+    <div class="kicker">1 · Where we are</div>
+    <h2>Paddock inspects, Gallops trains, Jockey drives</h2>
+    <p class="lead">All of this sits under Renesas AI Labs. The parts make one loop: measure, explain, train, measure again.</p>
+    <div class="body">
+      <figure class="hot"><div class="hotwrap" style="--ar: 1.5256">
+        <button type="button" data-full="figures/rail-map.png" aria-label="Open the RAIL map full size"><img src="figures/rail-map.png" alt="RAIL map: inputs at the top; Paddock, Gallops and Jockey with the loop between them; what customers and the inference teams receive at the bottom"></button>
+        <a class="spot" href="#using" style="left: 3.91%; top: 32.70%; width: 22.81%; height: 45.96%" aria-label="Paddock: go to Using Paddock"></a>
+        <a class="spot" href="#gallops" style="left: 38.59%; top: 32.70%; width: 22.81%; height: 45.96%" aria-label="Gallops: go to Pathway to Gallops"></a>
+        <a class="spot" href="#jockey" style="left: 73.28%; top: 32.70%; width: 22.81%; height: 45.96%" aria-label="Jockey: go to What comes next"></a></div>
+        <figcaption>The three pillars are links. Click elsewhere on the figure for full size.</figcaption>
+      </figure>
+      <div class="points">
+        <h3>Key points</h3>
+        <ul>
+          <li><b>Paddock</b> scores every model through one adapter interface, on the same samples. Earlier evaluations reproduce bit for bit (892/892, 2,379/2,379).</li>
+          <li><b>Gallops</b> has proven the loop with six training efforts on Drive-JEPA.</li>
+          <li><b>Jockey</b> is designed (<code>gallops-v0</code>) and waits on the chip's constraints.</li>
+          <li>71 PRs merged since September; 14 open, none approved. <b>Review is the critical path.</b></li>
+        </ul>
+      </div>
+    </div>
+    <div class="deeper"><span class="lbl">Dive deeper</span><a href="1-strategy/01-where-we-are.md">1 · Where we are</a><a href="3-reference/open-work.md">Open work</a></div>
+  </div>
+</section>
+
+<!-- ======================= 2 ======================= -->
+<section class="screen acc-paddock" id="risk">
+  <div class="wrap">
+    <div class="kicker">2 · Risk</div>
+    <h2>A score is not a verdict</h2>
+    <p class="lead">Each benchmark measures one slice of driving. A high or low score does not settle whether a model is good.</p>
+    <div class="body">
+      <figure><button type="button" style="--ar: 1.7753" data-full="figures/score-vs-driving.png" aria-label="Open the chart full size"><img src="figures/score-vs-driving.png" alt="Slope chart: six models ranked on nuScenes open loop against neuroNCAP closed loop; Qwen-Drive goes 1st to 5th, openpilot 6th to 3rd, constant velocity 2nd to 6th"></button></figure>
+      <div class="points">
+        <h3>Key points</h3>
+        <ul>
+          <li><b>openpilot ships in customers' cars,</b> yet ranks last open loop. Closed loop, it is in the top group.</li>
+          <li><b>Qwen-Drive predicts the log best,</b> and is fifth when it has to drive.</li>
+          <li><b>Doing nothing clever</b> (constant velocity) beats most models open loop.</li>
+          <li><b>Our answer:</b> several benchmarks side by side, paired comparisons, invalid runs marked, the failure behind each score.</li>
+        </ul>
+        <div class="ask"><b>Also at risk</b>licences, review capacity, the date, reproducing numbers across sites</div>
+      </div>
+    </div>
+    <div class="deeper"><span class="lbl">Dive deeper</span><a href="1-strategy/02-what-a-score-says.md">2 · What a score says</a><a href="3-reference/evidence.md">Evidence</a></div>
+  </div>
+</section>
+
+<!-- ======================= 3 ======================= -->
+<section class="screen acc-paddock" id="customers">
+  <div class="wrap">
+    <div class="kicker">3 · What customers ask</div>
+    <h2>Why Paddock, how easy it is, and how to try it</h2>
+    <p class="lead">Five rungs, each asking a little more of the customer and showing them more.</p>
+    <div class="body">
+      <figure><button type="button" style="--ar: 1.6976" data-full="figures/trial-ladder.png" aria-label="Open the trial ladder full size"><img src="figures/trial-ladder.png" alt="Trial ladder: evidence pack, laptop demo, guided live demo, hands-on project, proof of value"></button></figure>
+      <div class="points">
+        <h3>Key points</h3>
+        <ul>
+          <li><b>Why:</b> every model reports itself on its own terms. Paddock makes them comparable, trustworthy and explained, and next it reports cost on R-Car.</li>
+          <li><b>How easy:</b> today, an expert's days. v1.0.0 aims at install to first certified run in under a day.</li>
+          <li><b>Hands-on:</b> v1.0.0 gives the evidence pack, a guided demo and the self-install kit. v1.1 adds hosted projects for their engineers and AI agents.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="deeper"><span class="lbl">Dive deeper</span><a href="1-strategy/03-customer-questions.md">3 · What customers ask</a><a href="2-design/hands-on-access.md">Hands-on access</a><a href="2-design/hosted-twin-and-on-prem-kit.md">Hosted twin and on-prem kit</a></div>
+  </div>
+</section>
+
+<!-- ======================= 4 ======================= -->
+<section class="screen acc-paddock" id="using">
+  <div class="wrap">
+    <div class="kicker">4 · Using Paddock</div>
+    <h2>Setup, orchestration, compute, storage, results</h2>
+    <p class="lead">Today each step is done by hand. v1.0.0 automates setup and makes results portable and certifiable.</p>
+    <div class="body">
+      <figure><button type="button" style="--ar: 1.7582" data-full="figures/using-paddock.png" aria-label="Open the figure full size"><img src="figures/using-paddock.png" alt="Five steps, each as today, in v1.0.0, and later"></button></figure>
+      <div class="points">
+        <h3>Key points</h3>
+        <ul>
+          <li><b>Containers, yes, within limits:</b> one image per model, never data or licensed weights inside.</li>
+          <li><b><code>paddock setup</code></b> by profile, gated by <code>doctor</code>, ending in a certification run.</li>
+          <li><b>Sizes:</b> S is one 48–96 GB GPU for open loop. M is 2–4 GPUs, adding NAVSIM and one closed loop.</li>
+          <li><b>Customer IP stays theirs:</b> adapters outside our repo, results in their own location.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="deeper"><span class="lbl">Dive deeper</span><a href="1-strategy/04-using-paddock.md">4 · Using Paddock</a><a href="2-design/packaging-and-setup.md">Packaging and setup</a><a href="2-design/shared-workspace.md">Shared workspace</a></div>
+  </div>
+</section>
+
+<!-- ======================= 5 ======================= -->
+<section class="screen acc-paddock" id="outcomes">
+  <div class="wrap">
+    <div class="kicker">5 · What Paddock produces</div>
+    <h2>The failure behind each score, and the cheapest fix</h2>
+    <p class="lead">Failure modes, the areas to improve, and the tools that find them. Every change is judged against its baseline.</p>
+    <div class="body">
+      <figure><button type="button" style="--ar: 1.9784" data-full="figures/analysis-loop.png" aria-label="Open the figure full size"><img src="figures/analysis-loop.png" alt="The analysis loop: evaluate, diagnose, choose the cheapest remedy, re-score"></button></figure>
+      <div class="points">
+        <h3>Found so far</h3>
+        <ul>
+          <li><b>openpilot</b> reads its speed 12% slow on KITScenes. Fixed in the adapter: −21.8%, no training.</li>
+          <li><b>openpilot</b> stalls at standstill: 53% of its lost Bench2Drive points.</li>
+          <li><b>Drive-JEPA</b> could not see its camera until an adapter fix: 3.57 → 4.13.</li>
+          <li><b>Drive-JEPA</b> picks about the 15th best of its own 32 plans.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="deeper"><span class="lbl">Dive deeper</span><a href="1-strategy/05-outcomes.md">5 · Outcomes</a></div>
+  </div>
+</section>
+
+<!-- ======================= 6 ======================= -->
+<section class="screen acc-gallops" id="gallops">
+  <div class="wrap">
+    <div class="kicker">6 · Pathway to Gallops</div>
+    <h2>Fine-tuned results, and how far each holds</h2>
+    <p class="lead">Gallops trains against the gaps Paddock measures, and Paddock scores the result: the trainee never grades itself.</p>
+    <div class="body">
+      <figure><button type="button" style="--ar: 2.1405" data-full="figures/gallops-results.png" aria-label="Open the figure full size"><img src="figures/gallops-results.png" alt="Six fine-tuning results, before and after, each with how far it holds"></button></figure>
+      <div class="points">
+        <h3>Key points</h3>
+        <ul>
+          <li><b>Real gains:</b> the re-ranker, open loop (2.52 → 0.97 m); a retrain on NVIDIA's data, on AlpaSim (0.543 → 0.770).</li>
+          <li><b>Not yet:</b> a closed-loop safety gain on scenes nothing was chosen on.</li>
+          <li><b>New or existing model?</b> Fix the input, then the choice, then fine-tune. Train new only when no model can meet the constraints.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="deeper"><span class="lbl">Dive deeper</span><a href="1-strategy/06-pathway-to-gallops.md">6 · Pathway to Gallops</a></div>
+  </div>
+</section>
+
+<!-- ======================= 7 ======================= -->
+<section class="screen acc-jockey" id="jockey">
+  <div class="wrap">
+    <div class="kicker">7 · What comes next</div>
+    <h2>Jockey: borrow the strengths, build for R-Car</h2>
+    <p class="lead">None of the four families is strong everywhere. Jockey is one small student that takes the best of each.</p>
+    <div class="tabs" role="tablist" aria-label="Jockey figures">
+      <button type="button" role="tab" aria-selected="true" aria-controls="tab-cand" id="t-cand">The candidates</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="tab-car" id="t-car">The road to a car</button>
+    </div>
+    <div class="body">
+      <div>
+        <figure class="tabpanel" id="tab-cand" role="tabpanel" aria-labelledby="t-cand"><button type="button" style="--ar: 1.6203" data-full="figures/jockey-candidates.png" aria-label="Open the scorecard full size"><img src="figures/jockey-candidates.png" alt="Scorecard: Drive-JEPA, AutoE2E and VisionPilot, Alpamayo, openpilot, and Jockey's target, on six criteria"></button></figure>
+        <figure class="tabpanel" id="tab-car" role="tabpanel" aria-labelledby="t-car" hidden><button type="button" style="--ar: 1.5238" data-full="figures/model-to-car.png" aria-label="Open the figure full size"><img src="figures/model-to-car.png" alt="From a trained model to a car: five stages, their owners, and what exists today"></button></figure>
+      </div>
+      <div class="points">
+        <h3>Recommendation</h3>
+        <ul>
+          <li>Learn from a self-supervised video encoder; stay small and temporal like openpilot; read its own speed; three front cameras; choose on closed loop; integer-friendly from day one.</li>
+        </ul>
+        <div class="ask"><b>Ask the inference teams, by 13 Nov</b>the target chip's envelope · supported ops and precision · how many cameras · the size and latency budget · the toolchain · the output contract</div>
+      </div>
+    </div>
+    <div class="deeper"><span class="lbl">Dive deeper</span><a href="1-strategy/07-jockey.md">7 · Jockey</a><a href="2-design/model-to-car.md">Model to car</a></div>
+  </div>
+</section>
+
+<!-- ======================= 8 ======================= -->
+<section class="screen acc-release" id="release">
+  <div class="wrap">
+    <div class="kicker">8 · Release v1.0.0</div>
+    <h2>Worked back from Wednesday 25 November</h2>
+    <p class="lead">Four and a half weeks. Review capacity and licences are the critical path, not code.</p>
+    <div class="body">
+      <figure><button type="button" style="--ar: 1.8338" data-full="figures/release-timeline.png" aria-label="Open the timeline full size"><img src="figures/release-timeline.png" alt="Timeline: scope freeze 30 Oct, trial path 6 Nov, feature freeze 13 Nov, go / no-go 20 Nov, v1.0.0 on 25 Nov"></button></figure>
+      <div class="points">
+        <h3>Exit criteria, 20 Nov</h3>
+        <ul>
+          <li>Customer zero goes from install to a certified run in a day, unaided.</li>
+          <li>Reference numbers reproduce; no stale numbers.</li>
+          <li>An adapter outside the repo passes <code>verify</code>.</li>
+          <li>The licence review is closed.</li>
+        </ul>
+        <div class="ask"><b>After v1.0.0, proposed</b>v1.1 late Jan: hosted trials, browser app, agent gateway · v1.2 March: on-prem pilot, chip profile, Jockey v0</div>
+      </div>
+    </div>
+    <div class="deeper"><span class="lbl">Dive deeper</span><a href="1-strategy/08-release-v1.0.0.md">8 · Release v1.0.0</a><a href="3-reference/open-work.md">Open work</a></div>
+  </div>
+</section>
+
+<!-- ======================= index ======================= -->
+<section class="screen" id="deeper">
+  <div class="wrap">
+    <div class="kicker">Dive deeper</div>
+    <h2>Every document, from strategy to evidence</h2>
+    <p class="lead">Markdown files beside this page. They read best on GitHub or in an editor's preview.</p>
+    <div class="levels">
+      <div class="level"><h3>1 · Strategy</h3><ul>
+        <li><a href="1-strategy/01-where-we-are.md">Where we are</a> <span>what RAIL has built</span></li>
+        <li><a href="1-strategy/02-what-a-score-says.md">What a score says</a> <span>the metric risk</span></li>
+        <li><a href="1-strategy/03-customer-questions.md">What customers ask</a> <span>why, how easy, trials</span></li>
+        <li><a href="1-strategy/04-using-paddock.md">Using Paddock</a> <span>the five steps</span></li>
+        <li><a href="1-strategy/05-outcomes.md">Outcomes</a> <span>failures and tools</span></li>
+        <li><a href="1-strategy/06-pathway-to-gallops.md">Pathway to Gallops</a> <span>fine-tuning</span></li>
+        <li><a href="1-strategy/07-jockey.md">Jockey</a> <span>candidates, asks, the car</span></li>
+        <li><a href="1-strategy/08-release-v1.0.0.md">Release v1.0.0</a> <span>scope, dates, decisions</span></li>
+      </ul></div>
+      <div class="level"><h3>2 · Design</h3><ul>
+        <li><a href="2-design/hosted-twin-and-on-prem-kit.md">Hosted twin and on-prem kit</a> <span>where it runs</span></li>
+        <li><a href="2-design/packaging-and-setup.md">Packaging and setup</a> <span>containers, stages</span></li>
+        <li><a href="2-design/shared-workspace.md">Shared workspace</a> <span>and the browser app</span></li>
+        <li><a href="2-design/hands-on-access.md">Hands-on access</a> <span>agents, guardrails</span></li>
+        <li><a href="2-design/model-to-car.md">Model to car</a> <span>stages and owners</span></li>
+      </ul></div>
+      <div class="level"><h3>3 · Reference</h3><ul>
+        <li><a href="3-reference/evidence.md">Evidence</a> <span>every number's source</span></li>
+        <li><a href="3-reference/open-work.md">Open work</a> <span>PRs, issues, re-runs</span></li>
+        <li><a href="3-reference/glossary.md">Glossary</a> <span>terms in plain words</span></li>
+        <li><a href="figures/README.md">Figures</a> <span>how they are made</span></li>
+        <li><a href="plan-v1.0.0.md">The executive plan</a> <span>this page, as text</span></li>
+      </ul></div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<div id="lb" role="dialog" aria-label="Figure, full size"><img alt=""></div>
+
+<script>
+  // Keyboard paging, the active section in the sidebar, the figure lightbox, the tabs.
+  const screens = [...document.querySelectorAll("section.screen")];
+  const links = [...document.querySelectorAll("nav a")];
+  let current = 0;
+
+  const watch = new IntersectionObserver((entries) => {
+    entries.forEach((e) => {
+      if (!e.isIntersecting) return;
+      current = screens.indexOf(e.target);
+      links.forEach((a) => a.classList.toggle("active", a.getAttribute("href") === "#" + e.target.id));
+    });
+  }, { rootMargin: "-45% 0px -50% 0px" });
+  screens.forEach((s) => watch.observe(s));
+
+  const lb = document.getElementById("lb");
+  const lbImg = lb.querySelector("img");
+  document.querySelectorAll("figure button[data-full]").forEach((b) => {
+    b.addEventListener("click", () => {
+      lbImg.src = b.dataset.full;
+      lbImg.alt = b.querySelector("img").alt;
+      lb.classList.add("on");
+    });
+  });
+  lb.addEventListener("click", () => lb.classList.remove("on"));
+
+  // Focus mode keeps the reader on the same section while the layout changes.
+  const toggleFocus = () => {
+    const here = screens[current];
+    document.body.classList.toggle("focus");
+    here.scrollIntoView();
+  };
+  document.querySelectorAll("[data-focus]").forEach((b) => b.addEventListener("click", toggleFocus));
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { lb.classList.remove("on"); return; }
+    if (lb.classList.contains("on") || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.key === "f" || e.key === "F") { toggleFocus(); return; }
+    const next = { ArrowRight: 1, ArrowDown: 0, PageDown: 1, ArrowLeft: -1, PageUp: -1 }[e.key];
+    if (!next) return;
+    e.preventDefault();
+    const i = Math.max(0, Math.min(screens.length - 1, current + next));
+    screens[i].scrollIntoView({ behavior: "smooth" });
+  });
+
+  const tabs = [...document.querySelectorAll('.tabs [role="tab"]')];
+  tabs.forEach((t) => t.addEventListener("click", () => {
+    tabs.forEach((u) => {
+      const on = u === t;
+      u.setAttribute("aria-selected", on);
+      document.getElementById(u.getAttribute("aria-controls")).hidden = !on;
+    });
+  }));
+</script>
+</body>
+</html>
