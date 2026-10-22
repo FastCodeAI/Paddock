@@ -14,8 +14,8 @@
 //
 // It fails, and writes nothing for that figure, when the figure breaks its budget:
 // - not 1280 px wide, or taller than 860 px;
-// - any text overflowing its box, which is how a figure usually breaks after an
-//   edit.
+// - any text overflowing its box, or spilling out of its parent, which is how a
+//   figure usually breaks after an edit.
 // Set FIGURE_DRAFT=1 to write the PNG anyway, to look at what broke.
 
 const fs = require("fs");
@@ -40,12 +40,34 @@ async function render(browser, name) {
   if (Math.round(box.width) !== WIDTH) problems.push(`width ${box.width}, not ${WIDTH}`);
   if (box.height > MAX_HEIGHT) problems.push(`height ${Math.round(box.height)} > ${MAX_HEIGHT}`);
 
-  const overflowing = await page.evaluate(() =>
-    [...document.querySelectorAll(".figure *")]
-      .filter((el) => [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()))
+  const overflowing = await page.evaluate(() => {
+    const texty = [...document.querySelectorAll(".figure *")].filter((el) =>
+      [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()),
+    );
+    const name = (el) => `"${el.textContent.trim().slice(0, 50)}"`;
+    const inside = texty
       .filter((el) => el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 1)
-      .map((el) => `text overflows: "${el.textContent.trim().slice(0, 50)}"`),
-  );
+      .map((el) => `text overflows: ${name(el)}`);
+    // A box can fit its text and still be wider than its parent, as a centred
+    // flex item in a narrow gap is. Labels placed with position:absolute are
+    // meant to sit outside their anchor and are not checked.
+    // The parent to measure against is the nearest one that draws a box: a
+    // wrapper with display:contents has none.
+    const boxParent = (el) => {
+      let p = el.parentElement;
+      while (p && getComputedStyle(p).display === "contents") p = p.parentElement;
+      return p;
+    };
+    const spill = texty
+      .filter((el) => getComputedStyle(el).position !== "absolute" && boxParent(el))
+      .filter((el) => {
+        const a = el.getBoundingClientRect();
+        const b = boxParent(el).getBoundingClientRect();
+        return a.left < b.left - 1 || a.right > b.right + 1;
+      })
+      .map((el) => `text spills out of its box: ${name(el)}`);
+    return [...inside, ...spill];
+  });
   problems.push(...overflowing);
 
   if (problems.length === 0 || process.env.FIGURE_DRAFT) {

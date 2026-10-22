@@ -99,3 +99,5 @@ NODE_PATH=<scratch>/node_modules node docs/release/figures/render.cjs rail-map  
 | [jockey-candidates](jockey-candidates.png) | four model families rated on six criteria, and what Jockey takes from each | executive plan §7, strategy 7 |
 | [model-to-car](model-to-car.png) | five stages from training to a car, who owns each, and what exists | strategy 7, design: model to car |
 | [release-timeline](release-timeline.png) | v1.0.0 worked back from 25 November: workstreams, milestones, holidays, what follows | executive plan §8, strategy 8 |
+| [system-context](system-context.png) | public sources, our hosted twin and an OEM site, with every artifact coloured by type | design: hosted twin and on-prem kit |
+| [setup-stages](setup-stages.png) | the ten automated setup stages, each with its gate and release | design: packaging and setup |

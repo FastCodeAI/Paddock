@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Automated setup: ten stages, each with a gate</title>
+<link rel="stylesheet" href="figures.css">
+<style>
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+  .stack { display: flex; flex-direction: column; }
+  .st { display: grid; grid-template-columns: 44px 1fr auto; column-gap: 12px; row-gap: 2px; align-items: center;
+        border: 2px solid var(--blue); background: var(--blue-w); border-radius: 10px; padding: 8px 12px; }
+  .st .no { grid-row: 1 / span 2; width: 40px; height: 40px; border-radius: 50%; background: var(--ink2); color: #fff;
+            display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 20px; }
+  .st .nm { font-size: 20px; font-weight: 700; line-height: 1.15; }
+  .st .wh { grid-column: 2 / span 2; font-size: 16px; color: var(--ink2); line-height: 1.2; }
+  .st .gt { grid-column: 2 / span 2; font-size: 16px; line-height: 1.2; }
+  .st .gt b { color: var(--ink2); }
+  .st.human { border-color: var(--muted); border-style: dashed; background: #fff; }
+  .st.later { border-color: var(--line); border-style: dashed; background: var(--paper); }
+  .st.cert { border-color: var(--yellow); background: var(--yellow-w); border-width: 3px; }
+  .st.cust { border: 4px solid var(--ink); background: #fff; }
+  .dn { display: flex; justify-content: center; height: 22px; }
+  .dn .arrow.down { height: 9px; margin: 1px 0 12px; }
+  .cont { font-size: 16px; color: var(--muted); text-align: center; margin-top: 4px; }
+  .notes { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 26px; font-size: 16px; color: var(--ink2); }
+  .notes ul { margin: 0; padding-left: 18px; }
+</style>
+</head>
+<body>
+<div class="figure" id="setup-stages">
+  <div class="fig-head">
+    <div class="fig-title">If every stage of setup were automated: ten stages, each with a gate</div>
+    <div class="fig-sub"><code>paddock setup</code> runs the stages for a chosen profile; <code>paddock doctor</code> checks each gate before the next stage starts.</div>
+  </div>
+
+  <div class="two">
+    <div class="stack">
+      <div class="st"><div class="no">0</div><div class="nm">Host check</div><span class="chip done">v1.0</span>
+        <div class="wh">OS, GPU driver, container runtime, disk, network</div><div class="gt"><b>Done when</b> the host checks pass</div></div>
+      <div class="dn"><span class="arrow down"></span></div>
+      <div class="st"><div class="no">1</div><div class="nm">Install core, write the site config</div><span class="chip done">v1.0</span>
+        <div class="wh">Paddock itself; where data, weights and runs live</div><div class="gt"><b>Done when</b> the config is valid and storage is writable</div></div>
+      <div class="dn"><span class="arrow down"></span></div>
+      <div class="st human"><div class="no">2</div><div class="nm">Licences and credentials</div><span class="chip plan">human step</span>
+        <div class="wh">accept dataset and model terms; issue access tokens</div><div class="gt"><b>Done when</b> recorded in the site manifest</div></div>
+      <div class="dn"><span class="arrow down"></span></div>
+      <div class="st"><div class="no">3</div><div class="nm">Vendor code</div><span class="chip done">v1.0</span>
+        <div class="wh">each model's repository at its pinned commit, patches applied</div><div class="gt"><b>Done when</b> every repository is at its pin</div></div>
+      <div class="dn"><span class="arrow down"></span></div>
+      <div class="st"><div class="no">4</div><div class="nm">Model environments</div><span class="chip done">v1.0</span>
+        <div class="wh">pull, or build, one image per model in the profile</div><div class="gt"><b>Done when</b> each model passes <code>paddock verify</code></div></div>
+      <div class="cont">continues at 5 →</div>
+    </div>
+
+    <div class="stack">
+      <div class="st"><div class="no">5</div><div class="nm">Weights</div><span class="chip done">v1.0</span>
+        <div class="wh">fetch with the customer's own access, then checksum</div><div class="gt"><b>Done when</b> every hash matches</div></div>
+      <div class="dn"><span class="arrow down"></span></div>
+      <div class="st"><div class="no">6</div><div class="nm">Datasets</div><span class="chip done">v1.0</span>
+        <div class="wh">fetch or link the evaluation subset; verify; build caches</div><div class="gt"><b>Done when</b> each sample set matches its expected hash</div></div>
+      <div class="dn"><span class="arrow down"></span></div>
+      <div class="st later"><div class="no">7</div><div class="nm">Simulators</div><span class="chip plan">closed loop: v1.1</span>
+        <div class="wh">CARLA, the neural renderer, AlpaSim; closed-loop profiles only</div><div class="gt"><b>Done when</b> each health check passes</div></div>
+      <div class="dn"><span class="arrow down"></span></div>
+      <div class="st cert"><div class="no">8</div><div class="nm">Certification run</div><span class="chip done">v1.0</span>
+        <div class="wh">re-run the reference models on the reference samples</div><div class="gt"><b>Done when</b> reference numbers reproduce: the site is certified</div></div>
+      <div class="dn"><span class="arrow down"></span></div>
+      <div class="st cust"><div class="no">9</div><div class="nm">Their model and data</div><span class="chip done">v1.0</span>
+        <div class="wh">an adapter outside our repository; their own benchmark if they bring data</div><div class="gt"><b>Done when</b> <code>verify</code> and a smoke run are green</div></div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <ul><li>Every stage is safe to re-run, and resumes where it stopped.</li>
+        <li>Each stage writes to a site manifest, recorded with every run.</li></ul>
+    <ul><li>Upgrades re-run stages 3 to 8. Air-gapped sites run the same stages from an offline bundle.</li>
+        <li>The hosted twin runs this same pipeline to create each customer project.</li></ul>
+  </div>
+</div>
+</body>
+</html>
