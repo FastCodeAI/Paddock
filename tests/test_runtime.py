@@ -519,6 +519,22 @@ def test_a_launch_checks_the_memory_again_once_it_holds_the_lock(tmp_path, monke
         pass  # released when the launch is done
 
 
+def test_a_launch_goes_ahead_when_nvidia_smi_stops_answering_under_the_lock(tmp_path, monkeypatch) -> None:
+    """Review of #100 (2): no reading under the lock counted as 0 GB free, so the launch looped forever."""
+    from paddock.runtime import lease, proc
+
+    monkeypatch.setenv(lease.LOCK_DIR_ENV, str(tmp_path / "locks"))
+    readings = iter([30.0, None])  # pre-check, then under the lock
+
+    def free_gb(_env=None):
+        return next(readings)  # a third call is the loop: StopIteration fails the test
+
+    monkeypatch.setattr(gpu, "free_gb", free_gb)
+    monkeypatch.setattr(gpu, "wait_for", lambda *a, **k: None)
+    with proc.gpu_launch(20.0, {"CUDA_VISIBLE_DEVICES": "0"}, print):
+        pass
+
+
 def test_a_launch_with_no_card_or_no_memory_need_takes_no_lock(tmp_path, monkeypatch) -> None:
     from paddock.runtime import lease, proc
 
