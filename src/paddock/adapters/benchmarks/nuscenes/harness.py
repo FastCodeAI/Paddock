@@ -39,7 +39,7 @@ from paddock.benchmark import OpenLoopBenchmark, Sample
 from paddock.metrics import pdm
 from paddock.policy.protocol import Command, Observation, Trajectory
 
-HISTORY_KEYFRAMES = 4  # 2 s of real past before the scored keyframe
+HISTORY_KEYFRAMES = 4  # 2 s of real past before the scored keyframe, unless the model asks for more
 STEP_S = L.KEYFRAME_DT_S
 N_STEPS = L.FUTURE_STEPS
 HORIZONS = {"1s": 2, "2s": 4, "3s": 6}  # step index (1-based) of each horizon
@@ -114,11 +114,39 @@ class NuScenesBenchmark(OpenLoopBenchmark):
         super().__init__(spec, cfg)
         self._index_cache = None
         self._camera_history_cache = None
+        #: Past keyframes per sample, set per model by `model_run_config`.
+        self._history_keyframes = HISTORY_KEYFRAMES
         #: sample_id -> future boxes per step. `Sample.ground_truth` stays the
         #: (6, 3) future-pose array the runner records for every open-loop
         #: benchmark; the boxes are large and only the scorer needs them. Held
         #: per instance, not on the class, so two benchmarks never share state.
         self._boxes: dict[str, list] = {}
+
+    def history_keyframes(self, model) -> int:
+        """Past keyframes fed before the scored one: 2 s, or the model's declared `history_s`
+        when it asks for more -- NAVSIM's rule (navsim/harness.py `history_s`).
+
+        AutoE2E reads 6.4 s of ego motion and 3.5 s of six-view camera history; with 2 s,
+        44 of its 64 ego-history rows were zero on every sample, though 61.5% of scored
+        keyframes have the full 6.4 s recorded. Every other model here declares 2 s or less,
+        so its input is unchanged. With `camera_history` set the keyframes are not the
+        history at all (the sweeps are), so the window stays where it was.
+        """
+        if self.setting("camera_history"):
+            return HISTORY_KEYFRAMES
+        wanted = math.ceil(float(getattr(model, "history_s", 0.0) or 0.0) / STEP_S - 1e-9)
+        return max(HISTORY_KEYFRAMES, wanted)
+
+    def model_run_config(self, model) -> dict:
+        """The keyframe window this model is fed, recorded and hashed when it is not the default.
+
+        Also sets the window `samples()` builds with. The runner calls this for each model
+        before that model's `samples()` (runner `_run_open_loop`: `_measurement_config`,
+        then `samples`), and `samples()` is not told the model, so this is where it learns.
+        """
+        n = self.history_keyframes(model)
+        self._history_keyframes = n
+        return {} if n == HISTORY_KEYFRAMES else {"history_seconds": n * STEP_S}
 
     def run_config(self) -> dict:
         return {
@@ -291,7 +319,7 @@ class NuScenesBenchmark(OpenLoopBenchmark):
             ]
         )
         cmd, maneuver, distance = L.command_from_future(future_xy)
-        history = frames[max(0, i - HISTORY_KEYFRAMES) : i + 1]
+        history = frames[max(0, i - getattr(self, "_history_keyframes", HISTORY_KEYFRAMES)) : i + 1]
         if self.setting("camera_history") == "CAM_FRONT":
             if self._camera_history_cache is None:
                 self._camera_history_cache = H.load(
