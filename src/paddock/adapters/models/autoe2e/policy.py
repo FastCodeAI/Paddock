@@ -11,11 +11,15 @@ follows upstream's KITScenes evaluation path (pre_extracted.py + kit_scenes/*.py
   Each frame is squashed to 512x512 with PIL bilinear and JPEG q90 round-tripped, the
   current front also to 1024x1024; slot 0 of the current views is the antialiased
   bilinear downsample of the normalised 1024 tile. ImageNet normalisation; the model
-  converts to its caffe BGR input itself.
+  converts to its caffe BGR input itself. A view the benchmark does not have at all
+  (no image, path or calibration: comma2k19 is one road camera) is left out -- a zero
+  tile with a projection under which nothing is visible, so it reaches no BEV cell.
+  CAM_FRONT is always required.
 - BEVFormer V2 T8: the current frame plus seven frames at -3.5 .. -0.5 s, oldest first,
   each with a projection that maps the *current* reference frame into that frame's
-  cameras (ego motion folded in). Where the past does not reach back far enough (a
-  closed-loop route start) the oldest frame held is repeated with its own pose.
+  cameras (ego motion folded in), taken from the frames that carry every view the
+  current one does. Where the past does not reach back far enough (a closed-loop route
+  start) the oldest such frame held is repeated with its own pose.
 - Reference frame: paddock's ego frame (x forward, y left, on the ground) raised by
   ``AUTOE2E_REF_HEIGHT_M`` (default 2.1 m). The KITScenes fine-tune saw projections from
   its top-LiDAR frame, whose ground plane sits at z = -2.1 m (kit_scenes/dataset.py
@@ -88,6 +92,10 @@ TILE_CACHE_FRAMES = 48
 _TILE_CACHE: OrderedDict[tuple, tuple[dict, np.ndarray]] = OrderedDict()
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+#: A left-out view's projection: every point lands at depth -1, behind the camera, so upstream's
+#: depth test masks it (it clamps the depth before dividing, so no NaN) and the visible-only patch
+#: skips the view outright.
+INVISIBLE_PROJECTION = np.array([[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, -1]], dtype=np.float32)
 
 
 def _jpeg_roundtrip(image: Image.Image) -> np.ndarray:
@@ -236,6 +244,37 @@ def finite_controls(controls: np.ndarray) -> np.ndarray:
             f"AutoE2E returned non-finite controls at {int(bad.any(axis=1).sum())} of {len(controls)} steps"
         )
     return controls
+
+
+def blank_views(obs: Observation) -> frozenset:
+    """The views to leave out of a plan: the ones this benchmark does not have at all.
+
+    A view is absent only if the observation carries no image, no path *and* no calibration
+    for it -- comma2k19 is one road camera and says nothing about the other five. Anything
+    short of that raises: a view with calibration but no pixels is a frame that lost its
+    image (NAVSIM's dense frames keep all six calibrations), pixels without calibration
+    cannot be projected, and CAM_FRONT is never left out. A benchmark that should have sent
+    a view must not be scored as if it had none.
+    """
+    blank = frozenset(
+        c
+        for c in VIEW_ORDER[1:]
+        if c not in obs.images
+        and c not in obs.image_paths
+        and c not in obs.camera2image
+        and c not in obs.camera2ego
+    )
+    missing = [c for c in VIEW_ORDER if c not in blank and c not in obs.images and c not in obs.image_paths]
+    if missing:
+        raise RuntimeError(
+            f"AutoE2E plans from every view the benchmark has; the current observation has none for {missing}"
+        )
+    uncalibrated = [
+        c for c in VIEW_ORDER if c not in blank and (c not in obs.camera2image or c not in obs.camera2ego)
+    ]
+    if uncalibrated:
+        raise RuntimeError(f"AutoE2E needs intrinsics and extrinsics for {uncalibrated}")
+    return blank
 
 
 def portable_checkpoint(path: str) -> str:
@@ -559,16 +598,22 @@ class _Frame:
         if cam not in self._sizes:
             if cam in self.images:
                 self._sizes[cam] = (self.images[cam].shape[1], self.images[cam].shape[0])
+            elif str(self.paths[cam]).endswith(".npy"):
+                # A raw staged frame (comma2k19): PIL cannot open it, and the header holds the shape.
+                shape = np.load(self.paths[cam], mmap_mode="r").shape
+                self._sizes[cam] = (int(shape[1]), int(shape[0]))
             else:
                 with Image.open(self.paths[cam]) as im:
                     self._sizes[cam] = im.size
         return self._sizes[cam]
 
-    def tiles(self) -> np.ndarray:
+    def tiles(self, blank: frozenset = frozenset()) -> np.ndarray:
         """uint8 [6, 512, 512, 3], computed once (also the history copy of the front).
 
-        Frames read from disk are cached by their six paths across episodes: consecutive NAVSIM
-        scenes of a log share seven of their eight camera keyframes, and the pixels are the same.
+        A view in `blank` (`blank_views`) is a zero tile, never read; `infer` zeroes it again
+        after normalisation. Frames read from disk are cached by their six paths across
+        episodes: consecutive NAVSIM scenes of a log share seven of their eight camera
+        keyframes, and the pixels are the same.
         """
         if self._tiles is None:
             key = tuple(self.paths.get(c) for c in VIEW_ORDER) if not self.images else None
@@ -578,8 +623,14 @@ class _Frame:
                 self._sizes, self._tiles = dict(hit[0]), hit[1]
                 return self._tiles
             for c in VIEW_ORDER:
-                self.size(c)
-            self._tiles = np.stack([pack_tile(self.rgb(c), TILE) for c in VIEW_ORDER])
+                if c not in blank:
+                    self.size(c)
+            self._tiles = np.stack(
+                [
+                    np.zeros((TILE, TILE, 3), dtype=np.uint8) if c in blank else pack_tile(self.rgb(c), TILE)
+                    for c in VIEW_ORDER
+                ]
+            )
             self.images = {}  # pixels no longer needed once packed
             if key is not None:
                 _TILE_CACHE[key] = (dict(self._sizes), self._tiles)
@@ -723,9 +774,12 @@ class AutoE2EPolicy(Policy):
     def observe(self, obs: Observation) -> None:
         self._push(obs)
 
-    def _history(self, now: _Frame) -> tuple[list[_Frame], list[float]]:
-        """Seven frames at -3.5 .. -0.5 s, oldest first, from the frames that carry all six views."""
-        full = [f for f in self.frames if f.full and f is not now] or [now]
+    def _history(self, now: _Frame, blank: frozenset = frozenset()) -> tuple[list[_Frame], list[float]]:
+        """Seven frames at -3.5 .. -0.5 s, oldest first, from the frames that carry every view not
+        in `blank`: all six on NAVSIM, whose 10 Hz frames between keyframes carry three and never
+        count; the road camera alone on comma2k19."""
+        needed = frozenset(VIEW_ORDER) - blank
+        full = [f for f in self.frames if needed <= f.views and f is not now] or [now]
         times = np.array([f.t_s for f in full])
         picked, gaps = [], []
         for off in HISTORY_OFFSETS_S:
@@ -735,7 +789,7 @@ class AutoE2EPolicy(Policy):
                 picked.append(full[i])
                 gaps.append(round(float(times[i] - target), 3))
             else:
-                # Not that far back: the oldest six-view frame held, with its own pose (route / log start).
+                # Not that far back: the oldest such frame held, with its own pose (route / log start).
                 picked.append(full[0])
                 gaps.append(None)
         return picked, gaps
@@ -747,14 +801,24 @@ class AutoE2EPolicy(Policy):
         return m
 
     def _projections(
-        self, frame: _Frame, ref_now2world: np.ndarray | None, size: int, views=VIEW_ORDER
+        self,
+        frame: _Frame,
+        ref_now2world: np.ndarray | None,
+        size: int,
+        views=VIEW_ORDER,
+        blank: frozenset = frozenset(),
     ) -> np.ndarray:
-        """[V, 3, 4]: current reference frame -> pixels of `frame`'s cameras at `size` x `size`."""
+        """[V, 3, 4]: current reference frame -> pixels of `frame`'s cameras at `size` x `size`.
+
+        A view in `blank` gets INVISIBLE_PROJECTION."""
         ref2ego = self._ref2ego()
         ref_frame2world = frame.ego2world @ ref2ego
         hist_from_now = np.eye(4) if ref_now2world is None else np.linalg.inv(ref_frame2world) @ ref_now2world
         out = []
         for c in views:
+            if c in blank:
+                out.append(INVISIBLE_PROJECTION)
+                continue
             w, h = frame.size(c)
             k = scaled_intrinsic(frame.camera2image[c], w, h, size)
             cam2ref = np.linalg.inv(ref2ego) @ frame.camera2ego[c]
@@ -784,11 +848,7 @@ class AutoE2EPolicy(Policy):
 
         t0 = time.time()
         now = self._push(obs)
-        if not now.full:
-            missing = [c for c in VIEW_ORDER if c not in now.views]
-            raise RuntimeError(
-                f"AutoE2E plans from all six views; the current observation has none for {missing}"
-            )
+        blank = blank_views(obs)
         if (
             self.replan_s > 0
             and self._plan is not None
@@ -802,7 +862,7 @@ class AutoE2EPolicy(Policy):
             return Trajectory(
                 held, dt=self.waypoint_dt, extras={"autoe2e": {"held_s": round(now.t_s - t_plan, 3)}}
             )
-        history, gaps = self._history(now)
+        history, gaps = self._history(now, blank)
         dev = self.device
 
         def normalise(arr: np.ndarray) -> torch.Tensor:  # uint8 [..., H, W, 3] -> float [..., 3, H, W]
@@ -811,18 +871,26 @@ class AutoE2EPolicy(Policy):
             return x.movedim(-1, -3).contiguous()
 
         front_1024 = pack_tile(now.rgb("CAM_FRONT"), FRONT_TILE)
-        current = now.tiles()
+        current = now.tiles(blank)
         front_t = normalise(front_1024)[None]  # [1, 3, 1024, 1024]
         tiles_t = normalise(current)[None]  # [1, 6, 3, 512, 512]
         tiles_t[:, 0] = F.interpolate(
             front_t, size=(TILE, TILE), mode="bilinear", align_corners=False, antialias=True
         )
-        hist_t = normalise(np.stack([f.tiles() for f in history]))[None]  # [1, 7, 6, 3, 512, 512]
+        hist_t = normalise(np.stack([f.tiles(blank) for f in history]))[None]  # [1, 7, 6, 3, 512, 512]
+        if blank:
+            # A left-out view is no image at all, not a black one: zero after normalisation.
+            slots = [VIEW_ORDER.index(c) for c in sorted(blank)]
+            tiles_t[:, slots] = 0.0
+            hist_t[:, :, slots] = 0.0
 
         ref_now2world = now.ego2world @ self._ref2ego()
-        P = torch.from_numpy(self._projections(now, None, TILE))[None].to(dev)
+        P = torch.from_numpy(self._projections(now, None, TILE, blank=blank))[None].to(dev)
         PF = torch.from_numpy(self._projections(now, None, FRONT_TILE, views=("CAM_FRONT",)))[None].to(dev)
-        PH = [torch.from_numpy(self._projections(f, ref_now2world, TILE))[None].to(dev) for f in history]
+        PH = [
+            torch.from_numpy(self._projections(f, ref_now2world, TILE, blank=blank))[None].to(dev)
+            for f in history
+        ]
 
         ego, filled = self._ego_history(now, float(obs.speed))
         v0 = float(ego[-1, 0])
@@ -882,6 +950,7 @@ class AutoE2EPolicy(Policy):
             "t_us": int(obs.timestamp_us),
             "v0_history": round(v0, 3),
             "speed_canbus": round(float(obs.speed), 3),
+            "views": len(VIEW_ORDER) - len(blank),
             "history_gaps_s": gaps,
             "history_repeated": sum(g is None for g in gaps),
             "frames_held": len(self.frames),

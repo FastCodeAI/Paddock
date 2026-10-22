@@ -255,11 +255,12 @@ exactly the pairing `min_input_hz` refuses.
 | qwendrive | 5 s | 1.159 | side slots replicated from the road camera |
 | openpilot | 10 s | 1.507 | see the two re-sweeps below |
 | constant velocity | 3 s | 1.639 | registered policy, 6 waypoints |
+| autoe2e | 6 s | 2.016 | the road camera alone; the five views it lacks left out |
 | visionpilot | 4 s | 4.045 | synthesised trajectory |
 | drivejepa_free | 4 s | 16.048 | perception-free agent, NAVSIM v1 |
 
 **Verified:** every row is over the *identical* sample set — `sequences_sha256`
-`293a225a0b5cbaff` in all six run records, which is a stronger statement than
+`293a225a0b5cbaff` in all seven run records, which is a stronger statement than
 six matching values of `n` and is the evidence that makes the column
 comparable. The 2033 × 5 = 10,165 derivation names the two truncated segments
 rather than counting them. Pose maths is delegated to a pinned
@@ -337,8 +338,9 @@ measured from the stored records:
   records), and the gap grows sideways with distance. Re-scored from the stored
   records with each ground truth rotated by its own `rpy_calib_deg` yaw, ADE@3s
   goes from 1.507 to 0.858 for openpilot (lateral MAE 1.092 to 0.137 m), 1.159
-  to 0.602 for qwendrive, 0.900 to 0.858 for alpamayo15 and 1.639 to 1.137 for
-  constant velocity, so the board reorders with qwendrive first. Before the
+  to 0.602 for qwendrive, 0.900 to 0.858 for alpamayo15, 1.639 to 1.137 for
+  constant velocity and 2.016 to 1.358 for autoe2e, so the board reorders with
+  qwendrive first. Before the
   rotation every stored value reproduces to the last digit, and rotating the
   other way gives openpilot 2.448, so the sign is not in doubt. The
   calibration's "about 3×" and "roughly 1.7×" in cross-track error, in the
@@ -635,7 +637,7 @@ results, not the knob.
   because reading it means adding a map dependency, and alpamayo15 has no
   record (gated `Cosmos-Reason2-8B`). Detail in `docs/benchmarks/nuplan.md`.
 
-- **AutoE2E v1.0** — **adapter landed; NAVSIM and KITScenes scored, Bench2Drive paused.** The
+- **AutoE2E v1.0** — **adapter landed; NAVSIM, KITScenes and comma2k19 scored, Bench2Drive paused.** The
   Autoware Foundation's release checkpoint `kitscenes-epoch-5`, imported from
   upstream at the release revision. NAVSIM `navtest` 0.500 EPDMS (12,146
   scenarios, valid) on the 10 Hz nuPlan path, with the rear views from
@@ -645,7 +647,10 @@ results, not the knob.
   given what upstream validated it with: the scene's Lanelet2 map and a route
   matched to the logged drive (an oracle), both drawn by upstream's own code
   through two new observation fields (`map_files`, `route_trace`); 0.837
-  without the route, 0.921 without either. Detail in
+  without the route, 0.921 without either. comma2k19 2.016 ADE@3s over the
+  10,165 samples (valid; 1.358 with the ground truth in the calibrated frame),
+  from the road camera alone: the adapter now leaves out the views a benchmark
+  does not have instead of refusing every sample. Detail in
   [`docs/models/autoe2e.md`](models/autoe2e.md).
 
   | Claim | Verified how | Strength |
@@ -657,6 +662,7 @@ results, not the knob.
   | NAVSIM is out of its training logs | the release names no nuPlan split; its own nuPlan-test figures suggest test was held out | **argued** |
   | its KITScenes inputs are upstream's | compared with upstream's own packed v3.5 samples on the 186 shared val keyframes: tiles byte-identical, projections exact, `map_valid` / `route_valid` 186 of 186, semantic map ≤ 0.16 % of cells and route ≤ 11 cells apart (outside 26 rows whose upstream raster is anchored 0.5 s back), keyframe-40 ego rows ≤ 5.8e-3 | **verified** |
   | its KITScenes plans are upstream's | ADE@3s on the 117 keyframe-40 samples within 0.4 % of upstream's, for each of map + route, map only, and neither (neither: the 23 of them the control covers); the per-sample tail is wider than upstream's own two-run spread once the rasters are on, put down to their measured differences | **verified** for the aggregate, **argued** for the tail |
+  | its comma2k19 plans are those of the same checkpoint fed the same way out of tree | an out-of-tree comma2k19 study of this checkpoint (front camera alone, the other slots blank): on the 1,359 samples on the same video frame as one of its anchors, `v0` 0.012 m/s apart (median), controls 0.005 m/s² and 1e-4 1/m apart (mean), ADE@3s 1.370 against its 1.352, both with the ground truth in the calibrated frame | **verified** |
 
 Not started, and larger than everything above:
 

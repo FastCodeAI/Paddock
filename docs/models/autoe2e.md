@@ -17,6 +17,7 @@ PADDOCK_REPO=<repos>/auto_e2e PADDOCK_WEIGHTS=<weights> bash src/paddock/adapter
 paddock doctor --model autoe2e
 paddock run --model autoe2e --bench navsim          # needs [benchmarks.navsim] nuplan + keyframe_cameras
 paddock run --model autoe2e --bench kitscenes       # the map and the oracle route are on by default
+paddock run --model autoe2e --bench comma2k19       # the road camera alone; the other five views left out
 PADDOCK_INFER_HZ=10 paddock run --model autoe2e --bench bench2drive --scene <route>
 ```
 
@@ -40,12 +41,17 @@ From the release `config.json` and upstream's KITScenes evaluation path
 
 ## How paddock fills it
 
-- **Views and frames.** All six views are required; `infer` raises if the
-  current observation lacks one. The seven history frames are the held frames
-  nearest t−3.5 … t−0.5 s within 0.06 s that carry all six views. Where the
-  past does not reach that far (a route or log start) the oldest six-view frame
-  is repeated with its own pose; each plan's `extras` and `diagnostics()`'s
-  last call say how many were (`history_repeated`).
+- **Views and frames.** Every view the benchmark has is required, and
+  `CAM_FRONT` always is; `infer` raises if the current observation lacks one.
+  A view the benchmark does not have at all (no image, path or calibration,
+  as on comma2k19's single road camera) is left out: a zero tile with a
+  projection that puts every point behind the camera, so upstream's depth
+  test keeps it out of every BEV cell. Each plan's `extras` say how many
+  views it used (`views`). The seven history frames are the held frames
+  nearest t−3.5 … t−0.5 s within 0.06 s that carry every view the current
+  one does. Where the past does not reach that far (a route or log start)
+  the oldest such frame is repeated with its own pose; each plan's `extras`
+  and `diagnostics()`'s last call say how many were (`history_repeated`).
 - **Reference frame.** Projections start from paddock's ego frame raised by
   `AUTOE2E_REF_HEIGHT_M` (default 2.1 m): KITScenes' top-LiDAR frame, whose
   ground sits at z = −2.1 m (`kit_scenes/dataset.py`), is what the fine-tune
@@ -249,6 +255,35 @@ on the same measure. That the extra tail comes from the raster differences
 above is argued, not verified. On the other 69 keyframes the harness gives 48 real ego rows where
 upstream's protocol gives 40, and AutoE2E scores better for it (0.865 against
 0.914 on those rows).
+
+**comma2k19, 10,165 samples, valid** (`results/comma2k19/autoe2e/20261020T213543-417344`):
+**2.016** ADE@3s, from the road camera alone, the five views it does not have left
+out. With the ground truth rotated into the calibrated frame the plans are in
+(ROADMAP M8), 1.358. Either way it trails constant velocity (1.639 / 1.137), as
+an out-of-tree study of this checkpoint on comma2k19 also found.
+
+| horizon | ADE@1s | ADE@2s | ADE@3s | ADE@4s | ADE@5s | FDE@3s | median ADE@3s | miss@3s |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 6 s | 1.160 | 1.593 | **2.016** | 2.507 | 3.185 | 3.084 | 2.068 | 0.775 |
+
+**Checked against that study.** It fed the same checkpoint the same way: the
+front camera alone, the other five slots blank with a projection that sees
+nothing. It also used its own calibration, pose velocities for the ego rows,
+and an anchor every 0.5 s of each drive. On the 1,359 paddock samples that fall
+on the same video frame as one of its anchors:
+
+| | agreement |
+|---|---|
+| `v0`, the speed the rollout starts from | 0.012 m/s apart (median), 0.20 at most |
+| controls, the model's raw output | 0.005 m/s² and 1e-4 1/m apart (mean) |
+| plans | 0.11 m apart at 3 s, 0.21 m at 5 s (median) |
+| ADE@3s, ground truth in the calibrated frame | 1.370 here, 1.352 there |
+
+The plans differ by more than the controls suggest because the inputs differ
+in known ways. Paddock differences 20 Hz positions for the ego rows where the
+study used pose velocities, uses the route-pooled `rpyCalib` where it used its
+own calibration, and builds the history projections from device-frame poses
+(the same M8 frame issue).
 
 **Bench2Drive: not recorded here.** The 50-route sweep (`PADDOCK_INFER_HZ=10`,
 a forward every call, route raster on) was paused part-way. Every route run so
