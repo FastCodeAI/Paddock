@@ -95,3 +95,4 @@ NODE_PATH=<scratch>/node_modules node docs/release/figures/render.cjs rail-map  
 | [trial-ladder](trial-ladder.png) | five rungs from an evidence pack to the customer's own model, and which release delivers each | executive plan §3, strategy 3, hands-on access |
 | [using-paddock](using-paddock.png) | setup, orchestration, compute, storage and results: today, in v1.0.0, later | executive plan §4, strategy 4 |
 | [analysis-loop](analysis-loop.png) | evaluate, diagnose, choose the cheapest remedy (input, choice, fine-tune, new model), re-score with the gate | executive plan §5, strategy 5 |
+| [gallops-results](gallops-results.png) | six fine-tuning results, before and after, with how far each gain holds | executive plan §6, strategy 6 |
