@@ -80,6 +80,27 @@ result ("nothing beyond the diff" is an honest row), then findings grouped
 and carrying a concrete failure scenario. A finding with no failure scenario is
 a preference and belongs in 🟡.
 
+### Write it so the user can read it
+
+The person who asked for the review reads it first, and a review they cannot
+follow has not done its job. Re-read every finding as them before posting:
+
+- **Say what happens, in one plain sentence, first.** "When CARLA crashes, the
+  evaluator kills every CARLA its user runs on that GPU." Then what goes wrong
+  and the fix, naming the concrete file, setting, run or number.
+- **Plain words, short sentences.** No formulas where a sentence works: "the
+  smallest real change this many samples would catch 4 times out of 5", not
+  "(t crit + t80) × SE".
+- **Define every term the reader may not share** the first time it appears:
+  "the baseline, the earlier run of the released model the gate compares
+  against".
+- **No shorthand from your own session.** A label you coined while working
+  ("crop on both sides", "the f11ac0 sweep") means nothing to them. If a
+  sentence needs context from your session to make sense, rewrite it.
+- **Say what the reader has to do**, if anything ("apply these two patches to
+  your Bench2Drive checkout once").
+- **No "X rather than Y" constructions.** Say the thing.
+
 ## 5. Post it
 
 Print the review in the terminal **and post it to the PR**. Finishing means the
