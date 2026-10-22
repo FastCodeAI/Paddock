@@ -161,8 +161,10 @@ it too. A sample missing any term gets no composite, which is never a pass.
 
 **PDM rows never change a verdict or the overall line.** Each row is a test of
 its own at 5%. If the rows were independent, an unchanged model would show at
-least one row beyond t crit in the wrong direction about 26% of the time over
-the quick tier's 12 rows, and about 37% over `--tier all`'s 18. They are not
+least one row beyond t crit in the wrong direction about 35% of the time over
+the quick tier's 17 rows, and about 51% over `--tier all`'s 28 (KITScenes 2,
+nuScenes 3, NAVSIM 6, each neuroNCAP subset 6, Bench2Drive 2, AlpaSim 3; a
+pass counts the composite the gate builds for NAVSIM v2). They are not
 independent, so the real rate is lower, by an amount nobody has measured. That
 rate is too high for a FAIL to rest on. A row that is worse beyond t crit is
 named under the overall line (`PDM terms worse beyond t crit, not part of the
