@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RAIL map: Paddock, Gallops, Jockey</title>
+<link rel="stylesheet" href="figures.css">
+<style>
+  .inputs .box, .outputs .box { padding: 10px 14px; }
+  .pillar { display: flex; flex-direction: column; border-width: 3px; padding: 0; overflow: hidden; }
+  .pillar .ph { padding: 10px 14px 8px; border-bottom: 2px solid; }
+  .pillar .ph .name { font-size: 26px; font-weight: 700; letter-spacing: 0.02em; }
+  .pillar .ph .role { font-size: 18px; color: var(--ink2); }
+  .pillar ul { margin: 10px 0 10px; padding: 0 14px 0 32px; flex: 1 1 auto; }
+  .pillar li { margin: 4px 0; }
+  .pillar .chips { padding: 0 12px 12px; }
+  .p-paddock .ph { background: var(--blue-t); border-color: var(--blue); }
+  .p-gallops .ph { background: var(--green-t); border-color: var(--green); }
+  .p-jockey .ph { background: var(--pink-t); border-color: var(--pink); }
+  .link { display: flex; flex-direction: column; justify-content: center; gap: 22px; flex: 0 0 124px; }
+  .link .lab { font-size: 16px; color: var(--ink2); text-align: center; line-height: 1.2; margin-bottom: 4px; }
+  .link .arrow { flex: 0 0 auto; width: 104px; align-self: center; }
+  .downs { display: flex; justify-content: space-around; height: 36px; padding-top: 2px; }
+</style>
+</head>
+<body>
+<div class="figure" id="rail-map">
+  <div class="fig-head">
+    <div class="fig-title">Where we are: Paddock inspects, Gallops trains, Jockey drives</div>
+    <div class="fig-sub">Renesas AI Labs (RAIL): three parts, one loop. Status at 22 October 2026.</div>
+  </div>
+
+  <div class="row inputs">
+    <div class="box p-ext grow"><div class="h">Public driving models</div>
+      <span class="s">openpilot · Alpamayo 1.5 · Drive-JEPA · VisionPilot · METEOR · Qwen-Drive · AutoE2E</span></div>
+    <div class="box p-ext grow"><div class="h">Public datasets and simulators</div>
+      <span class="s">nuScenes · KITScenes · comma2k19 · nuPlan · NAVSIM · Bench2Drive · neuroNCAP · AlpaSim</span></div>
+    <div class="box p-ext grow" style="border-style: dashed"><div class="h">OEM models and data</div>
+      <span class="s">under each OEM's own terms; enters with the v1.0 trials</span></div>
+  </div>
+
+  <div class="downs"><span class="arrow down"></span><span class="arrow down"></span><span class="arrow down"></span></div>
+
+  <div class="zone title-in">
+    <div class="zt">RAIL · Renesas AI Labs</div>
+    <div class="row">
+      <div class="box pillar p-paddock grow" data-link="paddock">
+        <div class="ph"><div class="name">PADDOCK</div><div class="role">inspects: benchmark and analysis</div></div>
+        <ul>
+          <li>Every model scored on the same samples, the same way, through one adapter each</li>
+          <li>Open loop, NAVSIM and closed-loop simulation</li>
+          <li>Explains failures, not only scores</li>
+        </ul>
+        <div class="chips">
+          <span class="chip blue">7 models + baseline</span><span class="chip blue">9 benchmarks</span>
+          <span class="chip blue">171 runs</span><span class="chip done">reproductions bit-exact</span>
+          <span class="chip solid">v1.0.0 on 25 Nov</span>
+        </div>
+      </div>
+
+      <div class="link">
+        <div><div class="lab">failure modes become<br>the training brief</div><span class="arrow"></span></div>
+        <div><div class="lab">every checkpoint<br>comes back to be scored</div><span class="arrow left"></span></div>
+      </div>
+
+      <div class="box pillar p-gallops grow" data-link="gallops">
+        <div class="ph"><div class="name">GALLOPS</div><div class="role">trains: fine-tuning toolkit</div></div>
+        <ul>
+          <li>Takes an existing model and closes a gap Paddock measured</li>
+          <li>Re-ranking, retraining, teacher and expert labels, extra heads</li>
+          <li>Never scores itself: Paddock does</li>
+        </ul>
+        <div class="chips">
+          <span class="chip done">6 training efforts</span><span class="chip done">first checkpoints scored</span>
+          <span class="chip wip">no closed-loop safety gain yet</span>
+        </div>
+      </div>
+
+      <div class="link">
+        <div><div class="lab">techniques, data<br>and lessons</div><span class="arrow"></span></div>
+        <div><div class="lab">the bar to beat,<br>and the gate</div><span class="arrow dashed"></span></div>
+      </div>
+
+      <div class="box pillar p-jockey grow" data-link="jockey">
+        <div class="ph"><div class="name">JOCKEY</div><div class="role">drives: in-house model</div></div>
+        <ul>
+          <li>Small, camera-only, integer-friendly: built for R-Car from the first checkpoint</li>
+          <li>Distils self-supervised video features into a small student</li>
+          <li>Designed (as gallops-v0), not built</li>
+        </ul>
+        <div class="chips">
+          <span class="chip plan">needs inference-team input</span>
+          <span class="chip pink">cameras · size · ops</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="downs"><span class="arrow down"></span><span class="arrow down"></span></div>
+
+  <div class="row outputs">
+    <div class="box p-out grow"><div class="h">OEMs and Renesas customers</div>
+      <span class="s">trial kit · evidence pack · their own model scored and explained</span></div>
+    <div class="box p-ext grow"><div class="h">Renesas inference teams</div>
+      <span class="s">a model sized for R-Car, with its int8 delta and on-target latency</span></div>
+  </div>
+
+  <div class="fig-foot">Colour marks the part: <b>blue</b> Paddock, <b>green</b> Gallops, <b>pink</b> Jockey, <b>yellow</b> what customers receive.
+    Counts from Paddock <code>main</code> at 3b0b42a and Gallops <code>main</code>.</div>
+</div>
+</body>
+</html>

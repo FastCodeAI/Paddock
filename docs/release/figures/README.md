@@ -85,3 +85,9 @@ NODE_PATH=<scratch>/node_modules node docs/release/figures/render.cjs rail-map  
   move.
 - After rendering, open the PNG at 100% and read it. A figure that renders without
   error can still have a label in the wrong place.
+
+## Index
+
+| Figure | Shows | Used in |
+|---|---|---|
+| [rail-map](rail-map.png) | Paddock, Gallops and Jockey, the loop between them, inputs and outputs | executive plan §1, strategy 1, briefing home |
