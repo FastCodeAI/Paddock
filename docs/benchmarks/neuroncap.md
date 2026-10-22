@@ -425,7 +425,9 @@ comes from the files the engine writes per run (`trajectories.json`,
 `adapters/benchmarks/neuroncap/pdm_terms.py`), about 0.65 s a run, no GPU.
 
 **What it needs.** A drivable raster per scene, built once with neuroNCAP's own
-interpreter, which has the nuScenes map API:
+interpreter, which has the nuScenes map API. The builder reads nuScenes' **map
+expansion pack** (`<nuScenes root>/maps/expansion/*.json`), a separate download
+from nuscenes.org that the base dataset does not include:
 
 ```bash
 <ncap python> tools/benchmarks/nuscenes/build_pdm_geometry.py \
@@ -433,8 +435,11 @@ interpreter, which has the nuScenes map API:
 ```
 
 The harness reads `[benchmarks.neuroncap] pdm_geometry`, else
-`{roots.runs}/geometry/nuscenes-drivable`. Without a raster, DAC and the
-composite are NaN for that scene and the run says so. Actor categories come from
+`{roots.runs}/geometry/nuscenes-drivable`. **A scene without its raster records
+no PDM terms at all**, and the run prints why. Without the drivable area a
+sideways collision could never be at fault, and TTC and EP would change with
+it, so terms measured that way would not be NAVSIM's. `paddock doctor` lists
+the scenes that have no raster. Actor categories come from
 the dataset's own `instance.json` and `category.json`: every actor in
 `actors.json` is a nuScenes instance, the inserted one included.
 

@@ -93,6 +93,12 @@ _SCORE_LINE = re.compile(
 )
 _RUN_DIR = re.compile(r"^run_(\d+)$")
 
+#: How a site gets the drivable rasters the PDM terms need, said wherever one is missing.
+PDM_MAP_HOWTO = (
+    "build them with tools/benchmarks/nuscenes/build_pdm_geometry.py, which needs nuScenes' "
+    "map expansion pack (maps/expansion/*.json, a separate download from nuscenes.org)"
+)
+
 # The engine already writes a frame per step per run; these are the two derived
 # streams worth watching. FC_TRAJ is the front camera with the planned
 # trajectory drawn on it -- what the model saw and what it decided -- and
@@ -816,11 +822,31 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             self._pdm_areas[scene] = pdm.DrivableArea.load(path) if path.is_file() else None
             if self._pdm_areas[scene] is None:
                 print(
-                    f"  no drivable raster {path}: DAC and the PDM score are NaN for scene {scene}; "
-                    "build it with tools/benchmarks/nuscenes/build_pdm_geometry.py",
+                    f"  no drivable raster {path}: no PDM terms for scene {scene}; {PDM_MAP_HOWTO}",
                     flush=True,
                 )
         return self._pdm_areas[scene]
+
+    def pdm_maps_missing(self) -> list[str]:
+        """The official scenes with no drivable raster, which therefore record no PDM terms."""
+        scenes = sorted({s for v in OFFICIAL_SET.values() for s in v})
+        return [s for s in scenes if not (self.pdm_geometry() / f"scene-{s}.npz").is_file()]
+
+    def status(self) -> list[tuple[str, str]]:
+        """For `paddock doctor`: whether every official scene has the map its PDM terms need."""
+        if self.settings is None:
+            return []
+        missing, where = self.pdm_maps_missing(), self.pdm_geometry()
+        total = len({s for v in OFFICIAL_SET.values() for s in v})
+        if not missing:
+            return [("PDM maps", f"all {total} scenes in {where}")]
+        return [
+            (
+                "PDM maps",
+                f"{len(missing)} of {total} scenes have none in {where} ({', '.join(missing)}): "
+                f"they record no PDM terms; {PDM_MAP_HOWTO}",
+            )
+        ]
 
     def _categories(self) -> dict[str, str]:
         """nuScenes instance token -> category, read once; {} (every actor an agent) if unreadable."""

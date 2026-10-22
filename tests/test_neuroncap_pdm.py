@@ -82,13 +82,12 @@ def test_a_run_planning_into_a_stopped_car_loses_nc_on_the_decisions_that_reach_
     assert 0.0 < terms["pdm_style_score"] < terms["pdm_nc"]
 
 
-def test_without_a_map_dac_and_the_composite_are_nan_and_the_rest_stand(tmp_path: Path) -> None:
+def test_without_a_map_there_are_no_terms_at_all(tmp_path: Path) -> None:
+    """Review of #102 (3): with no map, NC, TTC and EP were still recorded, under looser rules."""
     run = tmp_path / "run_0"
     write_run(run, car_x=200.0)
-    terms = pdm_terms.run_terms(run, None, CATEGORIES)
-    assert math.isnan(terms["pdm_dac"]) and math.isnan(terms["pdm_style_score"])
-    assert terms["pdm_nc"] == 1.0 and terms["pdm_ttc"] == 1.0
-    assert terms["pdm_ep"] == pytest.approx(1.0), "the plan keeps the human's pace"
+    assert pdm_terms.run_terms(run, None, CATEGORIES) == {}
+    assert pdm_terms.run_terms(run, road(), CATEGORIES)["pdm_ep"] == pytest.approx(1.0)
 
 
 def test_a_run_without_its_files_has_no_terms(tmp_path: Path) -> None:
@@ -169,6 +168,17 @@ def test_one_unreadable_run_loses_only_its_own_terms(tmp_path: Path, monkeypatch
     by_run = {s["native_id"]["run"]: s["metrics"] for s in harness.episode_samples(EPISODE, {}, out_dir)}
     assert by_run[0]["pdm_nc"] == pytest.approx(6 / 31)
     assert by_run[1]["ncap_score"] == 5.0 and not set(pdm.PDM_KEYS) & set(by_run[1])
+
+
+def test_a_scene_without_its_map_records_no_terms_and_doctor_says_so(tmp_path: Path, monkeypatch) -> None:
+    harness = _harness(tmp_path, monkeypatch, raster=False)
+    out_dir = tmp_path / "frontal-0103"
+    write_run(out_dir / "run_0")
+    (sample,) = harness.episode_samples(EPISODE, {}, out_dir)
+    assert sample["metrics"]["ncap_score"] == 5.0 and not set(pdm.PDM_KEYS) & set(sample["metrics"])
+    ((label, detail),) = harness.status()
+    assert label == "PDM maps" and detail.startswith("14 of 14 scenes have none")
+    assert "0103" in detail and "map expansion" in detail
 
 
 def test_an_error_in_the_pdm_code_leaves_the_ncap_score(tmp_path: Path, monkeypatch) -> None:

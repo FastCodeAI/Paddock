@@ -92,11 +92,16 @@ def _poses(path: Path) -> tuple[np.ndarray, np.ndarray]:
 
 
 def run_terms(run_dir: Path, area: pdm.DrivableArea | None, categories: dict[str, str]) -> dict[str, float]:
-    """The mean of each PDM term over a run's decisions, or {} without its files."""
+    """The mean of each PDM term over a run's decisions, or {} without its files or a map.
+
+    No map means no terms at all, not only no DAC: without the drivable area a
+    sideways collision is never at fault, and TTC and EP's best safe path change
+    with it, so the other terms would be measured under looser rules.
+    """
     files = {
         n: run_dir / f"{n}.json" for n in ("trajectories", "ego_poses", "actors", "reference_trajectory")
     }
-    if not all(p.is_file() for p in files.values()):
+    if area is None or not all(p.is_file() for p in files.values()):
         return {}
     plans = json.loads(files["trajectories"].read_text())
     stamps, poses = _poses(files["ego_poses"])
