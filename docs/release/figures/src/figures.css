@@ -1,0 +1,212 @@
+/*
+ * Shared style for every release figure.
+ *
+ * A figure is one fixed canvas, 1280 CSS px wide and at most 860 tall. That shows
+ * 1:1 on a 1680x1050 screen with no scrolling, and stays legible when GitHub
+ * scales it into its ~1000 px column. That scaling is why no text here goes below
+ * 16 px: at GitHub's scale 16 px lands near 12.5, the smallest size that still
+ * reads comfortably.
+ *
+ * Colour: four hues, a colour-blind-safe set that passed an all-pairs check in
+ * light and dark modes. A six-hue set failed (green/orange and pink/orange could
+ * not be told apart), so do not add a fifth hue. Colour is never the only cue:
+ * every coloured thing also has a label, and most have a shape or outline too.
+ */
+
+:root {
+  --ink: #0b0b0b;
+  --ink2: #34332f;
+  --muted: #52514e;
+  --line: #898781;
+  --rule: #c3c2b7;
+  --wash: #f1f0ec;
+  --paper: #fcfcfb;
+
+  --blue: #2a78d6;
+  --blue-t: #aac9ef;
+  --blue-w: #e6f0fb;
+  --green: #008300;
+  --green-t: #99cd99;
+  --green-w: #e3f2e3;
+  --pink: #e87ba4;
+  --pink-t: #f6cadb;
+  --pink-w: #fcedf3;
+  --yellow: #eda100;
+  --yellow-t: #f8d999;
+  --yellow-w: #fdf3dc;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; background: #fff; }
+body {
+  font-family: Carlito, Calibri, "Liberation Sans", Arial, "DejaVu Sans", sans-serif;
+  font-size: 18px;
+  line-height: 1.3;
+  color: var(--ink);
+}
+
+/* ---- the canvas ------------------------------------------------------------ */
+
+.figure { width: 1280px; padding: 24px 32px 22px; background: #fff; }
+.fig-head { margin-bottom: 16px; }
+.fig-title { font-size: 30px; font-weight: 700; line-height: 1.15; }
+.fig-sub { font-size: 19px; color: var(--muted); margin-top: 4px; }
+.fig-foot { margin-top: 14px; font-size: 16px; color: var(--muted); }
+.fig-foot b { color: var(--ink2); }
+
+/* ---- layout ------------------------------------------------------------------ */
+
+.row { display: flex; gap: 14px; align-items: stretch; }
+.col { display: flex; flex-direction: column; gap: 12px; }
+.grow { flex: 1 1 0; min-width: 0; }
+.center { align-items: center; justify-content: center; text-align: center; }
+
+/* A zone is a place: a site, a repo, a stage. Its title sits on the border. */
+.zone {
+  border: 2px solid var(--rule);
+  border-radius: 14px;
+  background: var(--paper);
+  padding: 22px 16px 16px;
+  position: relative;
+}
+.zone > .zt {
+  position: absolute;
+  top: -13px;
+  left: 14px;
+  padding: 0 8px;
+  background: #fff;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+/* When arrows enter a zone from above, its title moves inside, off the border. */
+.zone.title-in { padding-top: 12px; }
+.zone.title-in > .zt { position: static; display: block; padding: 0; margin-bottom: 10px; background: none; }
+
+/* A box is a thing: a component, an artifact, a step. */
+.box {
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  padding: 9px 13px;
+}
+.box > .h { font-weight: 700; }
+.box > .s, .s { display: block; font-size: 16px; color: var(--ink2); }
+.small { font-size: 16px; }
+.muted { color: var(--muted); }
+.num { font-variant-numeric: tabular-nums; font-weight: 700; }
+ul.tight { margin: 4px 0 0; padding-left: 20px; }
+ul.tight li { margin: 2px 0; }
+
+/* ---- the RAIL programme: one hue per pillar ------------------------------------ */
+
+.p-paddock { border-color: var(--blue); background: var(--blue-w); }
+.p-gallops { border-color: var(--green); background: var(--green-w); }
+.p-jockey { border-color: var(--pink); background: var(--pink-w); }
+.p-out { border-color: var(--yellow); background: var(--yellow-w); }
+.p-ext { border-color: var(--line); background: var(--wash); }
+
+/* ---- artifact types, for the design figures ----------------------------------- */
+
+.t-data { border-color: var(--blue); background: var(--blue-t); }
+.t-model { border-color: var(--pink); background: var(--pink-t); border-radius: 999px; }
+.t-code { border: 5px double var(--green); background: var(--green-t); }
+.t-out { border-color: var(--yellow); background: var(--yellow-t); }
+.t-contract { border: 2px dashed var(--muted); background: #fff; }
+.t-ip { border: 4px solid var(--ink); }
+.t-svc { border: 1.5px solid var(--line); background: #fff; }
+.t-actor { border: 1.5px solid var(--line); background: var(--wash); }
+
+/* ---- chips: status and release tags ------------------------------------------- */
+
+.chip {
+  display: inline-block;
+  font-size: 16px;
+  line-height: 1.25;
+  padding: 1px 9px;
+  border-radius: 999px;
+  border: 1.5px solid var(--line);
+  background: #fff;
+  color: var(--ink2);
+  white-space: nowrap;
+}
+.chip.done { border-color: var(--green); background: var(--green-w); }
+.chip.wip { border-color: var(--yellow); background: var(--yellow-w); }
+.chip.plan { border-style: dashed; }
+.chip.blue { border-color: var(--blue); background: var(--blue-w); }
+.chip.pink { border-color: var(--pink); background: var(--pink-w); }
+.chip.solid { background: var(--ink2); border-color: var(--ink2); color: #fff; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* ---- arrows: a shaft and a head, drawn in CSS so they scale with the canvas ---- */
+
+.arrow {
+  display: block;
+  position: relative;
+  flex: 0 0 40px;
+  align-self: center;
+  height: 3px;
+  margin-right: 10px;
+  background: var(--muted);
+}
+.arrow::after {
+  content: "";
+  position: absolute;
+  right: -11px;
+  top: -6px;
+  border-style: solid;
+  border-width: 7.5px 0 7.5px 12px;
+  border-color: transparent transparent transparent var(--muted);
+}
+.arrow.down {
+  flex: none;
+  width: 3px;
+  height: 22px;
+  align-self: center;
+  margin: 0 0 12px;
+}
+.arrow.down::after {
+  right: auto;
+  left: -6px;
+  top: auto;
+  bottom: -12px;
+  border-width: 12px 7.5px 0 7.5px;
+  border-color: var(--muted) transparent transparent transparent;
+}
+.arrow.left { transform: scaleX(-1); margin-right: 0; margin-left: 10px; }
+.arrow.dashed { background: repeating-linear-gradient(90deg, var(--muted) 0 7px, transparent 7px 12px); }
+
+/* ---- ratings: filled dots, drawn in CSS (the half-dot glyph falls back badly) -- */
+
+.dots { display: inline-flex; gap: 4px; vertical-align: -1px; }
+.dots i {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--ink2);
+  background: #fff;
+}
+.dots i.on { background: var(--ink2); }
+
+/* ---- legend -------------------------------------------------------------------- */
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  font-size: 16px;
+  color: var(--ink2);
+}
+.legend .sw {
+  display: inline-block;
+  width: 26px;
+  height: 16px;
+  margin-right: 6px;
+  vertical-align: -2px;
+  border: 2px solid var(--line);
+  border-radius: 4px;
+}
