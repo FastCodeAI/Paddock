@@ -57,4 +57,4 @@ capabilities:
     - dataset: kitscenes
       split: train
 
-benchmarks: [bench2drive, comma2k19, kitscenes, navsim, neuroncap]
+benchmarks: [bench2drive, comma2k19, kitscenes, navsim, neuroncap, nuscenes]
