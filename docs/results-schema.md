@@ -144,6 +144,7 @@ spelling of an existing one.
 | `driving_score` | CARLA Leaderboard driving score, 0–100: `route_completion × infraction_penalty` |
 | `route_completion` | % of a closed-loop route driven before it ended |
 | `infraction_penalty` | product of CARLA's per-infraction coefficients, a 0–1 multiplier — **higher is better**, despite the name; `report.py` lists it explicitly |
+| `pdm_ep`, `pdm_comfort` | NAVSIM v1's EP and C terms computed on an open-loop plan (`paddock.metrics.pdm.plan_terms`): distance covered against the human's, capped at 1, and 1 if the whole plan stays inside nuPlan's five comfort bounds (NaN for a plan too short to have a jerk). Both higher is better. Which metric fills which PDM term is `pdm:` in `benchmark.yaml` |
 | `inference_seconds` | wall-clock per sample (the `seconds` suffix is what marks it lower-is-better in `report.py`) |
 | `scene_score` | AlpaSim closed-loop scene score, 0–1, **higher is better**. Saturating progress, **zeroed outright** by an at-fault collision or an offroad event — no partial credit for a scene that ends in either. See [benchmarks/alpasim.md](benchmarks/alpasim.md) |
 | `progress` | fraction of the human's recorded path covered, 0–1, higher is better |

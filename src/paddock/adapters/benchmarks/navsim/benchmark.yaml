@@ -17,16 +17,13 @@ metrics:
   - history_comfort
   - two_frame_extended_comfort
 primary_metric: epdms
-# The composite's own parts, read beside it by the regression gate: EPDMS is
-# the product of NC, DAC, DDC and TLC times a weighted mean of the rest, so a
-# candidate can trade collisions for progress and leave the headline still.
-terms:
-  - no_at_fault_collisions
-  - drivable_area_compliance
-  - driving_direction_compliance
-  - traffic_light_compliance
-  - ego_progress
-  - time_to_collision_within_bound
-  - lane_keeping
-  - history_comfort
-  - two_frame_extended_comfort
+# Which metric fills which term of NAVSIM v1's PDM score (paddock.metrics.pdm),
+# so the regression gate lays every benchmark out in the same rows.
+# EPDMS's own extras (DDC, TLC, LK, two-frame comfort) are not PDMS terms. With
+# all five filled and no `score`, the gate composes a v1-shape pdm_style_score.
+pdm:
+  nc: no_at_fault_collisions
+  dac: drivable_area_compliance
+  ttc: time_to_collision_within_bound
+  ep: ego_progress
+  comfort: history_comfort

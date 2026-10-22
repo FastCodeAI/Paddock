@@ -107,58 +107,74 @@ Read the notes; they are where the gate says what it cannot check:
   the difference. Older runs have no paddock commit, and the note says that too.
 - **unpaired / different sample sets.** Only shared samples are compared.
 
-### Terms beside the score
+### PDM terms beside the score
 
-A composite can stay flat while its parts move: NAVSIM's EPDMS is the product
-of NC, DAC, DDC and TLC times a weighted mean of EP, TTC, LK and comfort, so a
-candidate that collides more and makes more progress can score the same.
-Bench2Drive's driving score is route completion times infraction penalty, and
-the same trade happens there. So each pair also scores the metrics its
-`benchmark.yaml` lists as `terms`. They use the same pairing and the same unit,
-and they get the same refusals: an INCOMPLETE or CONFIG DIFFERS pair has
-INCOMPLETE or CONFIG DIFFERS terms. They print as indented rows under the
-primary:
+Each benchmark has its own headline, and a headline can stay flat while what
+drives it moves. A candidate that collides more and makes more progress can keep
+the same EPDMS or driving score. So each pair also shows NAVSIM v1's PDM score
+terms, as far as its benchmark can measure them:
+
+    PDM score = NC x DAC x (5*TTC + 5*EP + 2*C) / 12
+
+`pdm:` in each `benchmark.yaml` says which of its metrics fills which term. The
+formula, NAVSIM's weights and the open-loop EP and C live in
+`paddock.metrics.pdm`. The terms always print in the same order (NC, DAC, TTC,
+EP, C, then the composite), labelled by term, under the primary. They use the
+same pairing and the same unit as the primary, and they get the same refusals:
+an INCOMPLETE pair has INCOMPLETE terms. The terms a benchmark cannot measure
+are named in a `not measured on <bench>` line, never filled with a pass.
 
 ```
-bench        metric                baseline candidate better by      SE      t t crit     MDE   units  verdict
-bench2drive  driving_score           53.500    53.500     0.000   0.378   0.00   2.37   1.233       8  NEUTRAL
-               route_completion      63.500    95.500    32.000   0.845  37.86   2.37   2.756       8  GAIN
-               infraction_penalty     0.800     0.509    -0.291   0.003 -98.71   2.37   0.010       8  REGRESSION
-               collision_rate         0.000     0.000     0.000   0.000      -   2.37   0.000       8  NEUTRAL
+bench        metric                  baseline candidate better by      SE      t t crit     MDE   units  verdict
+bench2drive  driving_score             53.500    53.500     0.000   0.378   0.00   2.37   1.233       8  NEUTRAL
+               NC  collision_rate       0.000     0.687    -0.687   0.030 -23.30   2.37   0.096       8  REGRESSION
+               EP  route_completion    63.500    95.500    32.000   0.845  37.86   2.37   2.756       8  GAIN
+               not measured on bench2drive: DAC, TTC, C
 ```
 
 (That table comes from a test fixture, not a real run.)
 
-**Terms never change a verdict or the overall line.** Each one is a test of its
-own at 5%. If the terms were independent, an unchanged model would show at
-least one term beyond t crit in the wrong direction about 35% of the time over
-the quick tier's 17 terms, and about 46% over `--tier all`'s 24. They are not
-independent, which makes the real rate lower, by an amount nobody has measured.
-That rate is too high for a FAIL to rest on. A term that is worse beyond t crit
-is named under the overall line (`terms worse beyond t crit, not part of the
+| benchmark | NC | DAC | TTC | EP | C | composite |
+|---|---|---|---|---|---|---|
+| navsim_v1 | NAVSIM | NAVSIM | NAVSIM | NAVSIM | NAVSIM | `pdms`, the real one (it is the headline) |
+| navsim | NAVSIM | NAVSIM | NAVSIM | NAVSIM | `history_comfort` | `pdm_style_score`, composed by the gate |
+| comma2k19 | radar-lead proxy | own-lane proxy | radar lead | path length | plan | `pdm_style_score` (its `score.py`) |
+| alpasim | `collision_at_fault` | `offroad` | - | `progress` | - | - |
+| nuscenes | `col_avg`: box overlap, any category, no at-fault call | - (no map loaded) | - | `pdm_ep` | `pdm_comfort` | - |
+| bench2drive | `collision_rate` | - | - | `route_completion` | - | - |
+| kitscenes, nuplan | - | - | - | `pdm_ep` | `pdm_comfort` | - |
+| neuroncap | `collision_rate` | - | - | - | - | - |
+
+A slot says which question a metric answers, not that two benchmarks answer it
+the same way: NAVSIM's NC re-simulates the agents, nuScenes' NC is an overlap
+with recorded boxes. Read the rows within a benchmark, candidate against
+baseline. Do not compare them across benchmarks.
+
+**The composite.** It appears only where all five terms are measured. When a
+benchmark has all five and no composite of its own (NAVSIM v2), the gate builds
+`pdm_style_score` per sample from the five terms, so runs already on disk have
+it too. A sample missing any term gets no composite, which is never a pass.
+
+**PDM rows never change a verdict or the overall line.** Each row is a test of
+its own at 5%. If the rows were independent, an unchanged model would show at
+least one row beyond t crit in the wrong direction about 26% of the time over
+the quick tier's 12 rows, and about 37% over `--tier all`'s 18. They are not
+independent, so the real rate is lower, by an amount nobody has measured. That
+rate is too high for a FAIL to rest on. A row that is worse beyond t crit is
+named under the overall line (`PDM terms worse beyond t crit, not part of the
 verdict: ...`), and in the smoke's per-subset line, as a pointer for whoever
 reads the pair.
 
-A term is declared only when it is part of the score, or is the one outcome the
-score cannot see (nuScenes' `col_avg` beside L2). Terms apply only when the pair
-is scored on the benchmark's primary metric: `--metric` with another metric
-pairs that metric alone. A run with per-sample records and no values for a term
-(a run older than the term, say) is not compared on it, and one note on the
-primary names it.
+PDM rows apply only when the pair is scored on the benchmark's primary metric:
+`--metric` with another metric pairs that metric alone. A run with per-sample
+records but no values for a term (a run scored before `pdm_ep` existed, say) is
+not compared on that term, and one note on the primary names it.
 
-| benchmark | primary | terms |
-|---|---|---|
-| navsim | epdms | all nine EPDMS terms |
-| navsim_v1 | pdms | NC, DAC, EP, TTC, comfort (DDC has weight 0 in v1) |
-| neuroncap | ncap_score | collision_rate. Not impact_speed: the engine prints it only for runs that collided, so pairing it would compare only the runs that crashed on both sides |
-| bench2drive | driving_score | route_completion, infraction_penalty, collision_rate |
-| alpasim | scene_score | collision_at_fault, offroad, progress |
-| nuscenes | l2_avg | l2_1s, l2_2s, l2_3s, col_avg |
-| kitscenes, nuplan | ade | longitudinal_mae, lateral_mae, fde@3s |
-| comma2k19 | ade | along_track_mae, cross_track_mae, fde@3s |
-
-`load_benchmarks` refuses a term that is not in `metrics`, a term with no better
-direction, a term that is the primary itself, and a term listed twice.
+What the empty cells would take: for neuroNCAP and AlpaSim, reading the ego and
+actor poses each run already writes; for Bench2Drive, `outside_route_lanes` and
+the 20 Hz `metric_info.json`, both written per route and not yet read. Those
+need fresh baselines. For nuScenes and nuPlan, loading their maps and agent
+tracks.
 
 ## Full runs and the smoke
 

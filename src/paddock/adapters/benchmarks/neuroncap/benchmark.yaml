@@ -4,7 +4,9 @@ mode: closed_loop
 dataset: nuscenes
 metrics: [ncap_score, collision_rate, impact_speed, reference_speed]
 primary_metric: ncap_score
-# Read beside ncap_score by the regression gate: a run scores exactly 5 with no
-# collision and at most 4 with one. Not impact_speed: the engine prints it only
-# for a run that collided, so pairing it compares the runs both sides crashed in.
-terms: [collision_rate]
+# Which metric fills which term of NAVSIM v1's PDM score (paddock.metrics.pdm),
+# so the regression gate lays every benchmark out in the same rows.
+# Any collision, from the simulator. DAC, TTC, EP and C would need the actor and
+# ego-pose files each run writes, which no scorer reads yet.
+pdm:
+  nc: collision_rate

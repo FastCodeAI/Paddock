@@ -199,10 +199,11 @@ class BenchmarkSpec:
     dataset: str
     metrics: tuple[str, ...] = ()
     primary_metric: str = ""
-    #: The declared metrics the primary is built from, read beside it by the
-    #: regression gate: a composite can hold still while one of its parts gets
-    #: worse (NAVSIM's EPDMS with fewer collisions and less progress).
-    terms: tuple[str, ...] = ()
+    #: (slot, metric) pairs: which declared metric fills which term of NAVSIM
+    #: v1's PDM score (`paddock.metrics.pdm.SLOTS`, plus `score`), in slot
+    #: order. The regression gate lays every benchmark out in these rows, so a
+    #: candidate that trades collisions for progress reads the same everywhere.
+    pdm: tuple[tuple[str, str], ...] = ()
     description: str = ""
     directory: Path = REPO_ROOT
 
@@ -325,22 +326,29 @@ def load_models(directory: Path = MODELS_DIR) -> dict[str, ModelSpec]:
     return models
 
 
-def _term_problems(terms: tuple[str, ...], metrics: tuple[str, ...], primary: str) -> list[str]:
-    """Why a declared `terms` list cannot be read beside `primary`.
+def _pdm(body: object, metrics: tuple[str, ...], path: Path) -> tuple[tuple[str, str], ...]:
+    """`pdm:` as (slot, metric) pairs in slot order, refused when the gate could not read it.
 
-    A term the harness never records pairs as NO RECORDS on every run, and one
-    with no better direction cannot be signed: both would look like a check
-    that is being made when it is not.
+    A metric the harness never declares pairs as NO RECORDS on every run, and
+    one with no better direction cannot be signed: both would look like a term
+    that is being checked when it is not.
     """
+    from paddock.metrics.pdm import SCORE, SLOTS
     from paddock.results.report import has_direction
 
-    problems = [f"{t!r} is not in metrics" for t in terms if t not in metrics]
-    problems += [f"{t!r} has no better direction" for t in terms if not has_direction(t)]
-    if primary in terms:
-        problems.append(f"{primary!r} is the primary metric, not a term of it")
-    if len(set(terms)) != len(terms):
-        problems.append("a term is listed twice")
-    return problems
+    if body is None:
+        return ()
+    if not isinstance(body, dict):
+        raise ConfigError(f"{path}: pdm must map a term to a metric, got {body!r}")
+    order = (*SLOTS, SCORE)
+    problems = [f"{k!r} is not a PDM term (one of {', '.join(order)})" for k in body if k not in order]
+    problems += [f"{v!r} is not in metrics" for v in body.values() if v not in metrics]
+    problems += [f"{v!r} has no better direction" for v in body.values() if not has_direction(str(v))]
+    if len(set(body.values())) != len(body):
+        problems.append("one metric fills two terms")
+    if problems:
+        raise ConfigError(f"{path}: pdm: {'; '.join(problems)}")
+    return tuple((k, str(body[k])) for k in order if k in body)
 
 
 def load_benchmarks(directory: Path = BENCHMARKS_DIR) -> dict[str, BenchmarkSpec]:
@@ -354,17 +362,13 @@ def load_benchmarks(directory: Path = BENCHMARKS_DIR) -> dict[str, BenchmarkSpec
         if mode not in ("open_loop", "closed_loop"):
             raise ConfigError(f"{path}: mode must be open_loop or closed_loop, got {mode!r}")
         metrics = tuple(body.get("metrics", ()))
-        primary = body.get("primary_metric", "")
-        terms = tuple(body.get("terms", ()))
-        if problems := _term_problems(terms, metrics, primary):
-            raise ConfigError(f"{path}: terms: {'; '.join(problems)}")
         benchmarks[name] = BenchmarkSpec(
             name=name,
             mode=mode,
             dataset=body.get("dataset", ""),
             metrics=metrics,
-            primary_metric=primary,
-            terms=terms,
+            primary_metric=body.get("primary_metric", ""),
+            pdm=_pdm(body.get("pdm"), metrics, path),
             description=body.get("description", ""),
             directory=path.parent,
         )

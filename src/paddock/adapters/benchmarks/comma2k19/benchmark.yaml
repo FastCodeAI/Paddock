@@ -115,7 +115,13 @@ metrics:
   - pdm_comfort
   - pdm_style_score
 primary_metric: ade
-# Read beside ade by the regression gate. A supercombo-style plan is a path
-# plus a speed profile and the two fail independently (see the description), so
-# the path-tangent split, and fde@3s where the plan ends.
-terms: [along_track_mae, cross_track_mae, fde@3s]
+# Which metric fills which term of NAVSIM v1's PDM score (paddock.metrics.pdm),
+# so the regression gate lays every benchmark out in the same rows.
+# NC and DAC are proxies (radar lead, the human's own lane); score.py says how.
+pdm:
+  nc: pdm_nc_proxy
+  dac: pdm_dac_proxy
+  ttc: pdm_ttc
+  ep: pdm_ep
+  comfort: pdm_comfort
+  score: pdm_style_score

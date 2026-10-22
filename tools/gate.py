@@ -56,12 +56,15 @@ Overall (`check`): FAIL if any pair is a REGRESSION; SHIP only if every pair is 
 otherwise. The exit status is 1 on FAIL, else 0. Each pair also reports its MDE, the
 smallest true difference it detects 80% of the time, which is how a NEUTRAL is read.
 
-Terms. Beside the primary, each pair scores the parts benchmark.yaml's `terms` says it
-is built from (NAVSIM's NC, DAC, EP, ...; Bench2Drive's route completion and infraction
-penalty), with the same pairing, units and refusals. A composite can hold still while
-the candidate trades one part for another. Terms never change a verdict: one test per
-term at 5% calls an unchanged model worse somewhere far more often than the gate's own
-pairs do, so a term beyond t crit is named under the overall line, for a reader.
+PDM terms. Beside the primary, each pair scores the terms of NAVSIM v1's PDM score
+that its benchmark can fill (`pdm:` in benchmark.yaml: NC, DAC, TTC, EP, C and a
+composite), in the same rows on every benchmark, with the same pairing, units and
+refusals. A composite can hold still while the candidate trades collisions for
+progress. Where all five terms are filled and the benchmark has no composite of its
+own (NAVSIM v2), the gate composes `pdm_style_score` per sample. PDM rows never change
+a verdict: one test per row at 5% calls an unchanged model worse somewhere far more
+often than the gate's own pairs do, so a row beyond t crit is named under the overall
+line, for a reader.
 
 Model identity. A site `[models.X] env` override such as `DRIVEJEPA_CHECKPOINT` is
 recorded in run.json as `config.model_env` (absolute paths as `<site path:digest>`) and
@@ -97,6 +100,7 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
+from paddock.metrics import pdm as PDM  # noqa: E402
 from paddock.results.report import has_direction, lower_is_better  # noqa: E402
 from paddock.results.store import RESULTS_ROOT  # noqa: E402
 
@@ -299,9 +303,13 @@ class PairResult:
     baseline_env: dict[str, str] = field(default_factory=dict)
     candidate_env: dict[str, str] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
-    #: The primary's parts (`terms` in benchmark.yaml), each paired the same way
-    #: as the primary. Read beside its verdict; never part of `overall`.
-    terms: list[PairResult] = field(default_factory=list)
+    #: Which PDM term this row is (`metrics.pdm.SLOTS` or `score`), on a PDM row.
+    slot: str = ""
+    #: The PDM terms (`pdm:` in benchmark.yaml), each paired the same way as the
+    #: primary, in slot order. Read beside its verdict; never part of `overall`.
+    pdm: list[PairResult] = field(default_factory=list)
+    #: The PDM terms this benchmark cannot measure, as `metrics.pdm.LABELS`.
+    pdm_missing: list[str] = field(default_factory=list)
 
 
 def parse_spec(spec: str) -> tuple[str, str]:
@@ -513,20 +521,34 @@ def identity_notes(baseline: Run, candidate: Run) -> list[str]:
 
 
 @functools.cache
-def _benchmark_terms() -> dict[str, tuple[str, tuple[str, ...]]]:
+def _benchmark_pdm() -> dict[str, tuple[str, tuple[tuple[str, str], ...]]]:
     from paddock.registry import load_benchmarks
 
-    return {name: (spec.primary_metric, spec.terms) for name, spec in load_benchmarks().items()}
+    return {name: (spec.primary_metric, spec.pdm) for name, spec in load_benchmarks().items()}
 
 
-def headline_terms(bench: str, metric: str) -> tuple[str, ...]:
-    """The terms benchmark.yaml declares for `metric`, if it is that benchmark's primary."""
-    primary, terms = _benchmark_terms().get(bench, ("", ()))
-    return terms if metric == primary else ()
+def pdm_terms(bench: str, metric: str) -> tuple[tuple[str, str], ...]:
+    """(slot, metric) for the PDM terms benchmark.yaml declares, when `metric` is its primary."""
+    primary, slots = _benchmark_pdm().get(bench, ("", ()))
+    return slots if metric == primary else ()
+
+
+#: What the gate calls a composite it computes itself, from the five terms.
+COMPOSED = "pdm_style_score"
 
 
 def _recorded(run: Run, metric: str) -> bool:
     return any(_value(s, metric) is not None for s in run.samples)
+
+
+def _composed(run: Run, slots: dict[str, str]) -> Run:
+    """The run with `COMPOSED` on every sample, from its five PDM terms."""
+    samples = []
+    for sample in run.samples:
+        terms = [_value(sample, slots[slot]) for slot in PDM.SLOTS]
+        value = PDM.composite(*(math.nan if t is None else t for t in terms))
+        samples.append({**sample, "metrics": {**(sample.get("metrics") or {}), COMPOSED: value}})
+    return replace(run, samples=samples)
 
 
 def compare(
@@ -536,30 +558,48 @@ def compare(
     threshold: float | None = None,
     unit_of: Callable[[Sample], str | None] | None = None,
     allow_config: Any = (),
-    terms: Any = None,
+    pdm: Any = None,
 ) -> PairResult:
     """Score one candidate run against one baseline run on the same benchmark.
 
-    `terms` (default: the benchmark's own, when `metric` is its primary) are
-    scored by the same pairing, on the same units and under the same refusals,
-    and kept on the result beside the primary. They never change its verdict:
-    at 5% each, the quick tier's 17 terms would call an unchanged model worse
-    on at least one about a third of the time.
+    `pdm` ((slot, metric) pairs; default: the benchmark's own, when `metric` is
+    its primary) is scored by the same pairing, on the same units and under the
+    same refusals, and kept on the result beside the primary. When all five
+    terms are there and no composite is, the gate composes `pdm_style_score`
+    per sample. PDM rows never change the verdict: at 5% each, the quick tier's
+    12 would call an unchanged model worse on at least one about a quarter of
+    the time.
     """
     result = _compare(baseline, candidate, metric, threshold, unit_of, allow_config)
-    terms = headline_terms(result.bench, result.metric) if terms is None else tuple(terms)
+    slots = dict(pdm_terms(result.bench, result.metric) if pdm is None else pdm)
+    if not slots:
+        return result
+    result.pdm_missing = [PDM.LABELS[s] for s in PDM.SLOTS if s not in slots]
+    rows = [(slot, m, baseline, candidate) for slot, m in slots.items()]
+    # Higher-is-better, so each is a pass rate the formula can multiply.
+    if PDM.SCORE not in slots and all(
+        slot in slots and not lower_is_better(slots[slot]) for slot in PDM.SLOTS
+    ):
+        rows.append((PDM.SCORE, COMPOSED, _composed(baseline, slots), _composed(candidate, slots)))
     unrecorded = []
-    for term in terms:
+    for slot, m, base, cand in rows:
+        if m == result.metric:
+            continue  # the primary is this term (navsim_v1's pdms): its row is the headline
         # A run with records but none for this term predates it (or its harness
         # does not write it): say so once on the primary, not as a row of dashes.
-        if any(r.samples and not _recorded(r, term) for r in (baseline, candidate)):
-            unrecorded.append(term)
+        if m != COMPOSED and any(r.samples and not _recorded(r, m) for r in (base, cand)):
+            unrecorded.append(m)
             continue
-        part = _compare(baseline, candidate, term, None, unit_of, allow_config)
+        part = _compare(base, cand, m, None, unit_of, allow_config)
+        part.slot = slot
         part.notes = [n for n in part.notes if n not in result.notes]
-        result.terms.append(part)
+        if m == COMPOSED:
+            part.notes.insert(0, "composed by the gate from the five terms with NAVSIM v1's weights")
+        result.pdm.append(part)
     if unrecorded:
-        result.notes.append(f"terms not recorded by one of the runs, so not compared: {', '.join(unrecorded)}")
+        result.notes.append(
+            f"PDM terms not recorded by one of the runs, so not compared: {', '.join(unrecorded)}"
+        )
     return result
 
 
@@ -754,22 +794,26 @@ def _fmt(x: float | None, digits: int = 3) -> str:
     return f"{x:.{digits}f}"
 
 
-TERMS_WORSE = "terms worse beyond t crit, not part of the verdict: "
+PDM_WORSE = "PDM terms worse beyond t crit, not part of the verdict: "
 
 
-def term_regressions(results: list[PairResult]) -> list[str]:
-    """`bench metric (t ...)` for every term that is worse beyond its t crit."""
+def pdm_regressions(results: list[PairResult]) -> list[str]:
+    """`bench TERM metric (t ...)` for every PDM row that is worse beyond its t crit."""
     return [
-        f"{r.bench} {p.metric} (t {_fmt(p.t, 2)})"
+        f"{r.bench} {PDM.LABELS[p.slot]} {p.metric} (t {_fmt(p.t, 2)})"
         for r in results
-        for p in r.terms
+        for p in r.pdm
         if p.verdict == "REGRESSION"
     ]
 
 
+def _pdm_label(p: PairResult) -> str:
+    return f"  {PDM.LABELS[p.slot]:<4}{p.metric}"
+
+
 def render(results: list[PairResult]) -> str:
     # NAVSIM's term names run to 30 characters; one column for all keeps t aligned.
-    width = max([14] + [len(p.metric) + 2 for r in results for p in r.terms])
+    width = max([14] + [len(_pdm_label(p)) for r in results for p in r.pdm])
     head = (
         f"{'bench':<12} {'metric':<{width}} {'baseline':>9} {'candidate':>9} {'better by':>9} {'SE':>7} "
         f"{'t':>6} {'t crit':>6} {'MDE':>7}  {'units':>6}  verdict"
@@ -790,10 +834,12 @@ def render(results: list[PairResult]) -> str:
             + (" (drop beyond threshold)" if r.beyond_threshold else "")
             + ("" if r.can_ship else " (cannot ship)")
         )
-        for p in r.terms:
-            lines.append(row("", f"  {p.metric}", p))
+        for p in r.pdm:
+            lines.append(row("", _pdm_label(p), p))
             for note in p.notes:
                 lines.append(f"{'':<12}   {p.metric}: {note}")
+        if r.pdm_missing:
+            lines.append(f"{'':<12}   not measured on {r.bench}: {', '.join(r.pdm_missing)}")
         lines.append(
             f"{'':<12} model_env: baseline {json.dumps(r.baseline_env, sort_keys=True)}, "
             f"candidate {json.dumps(r.candidate_env, sort_keys=True)}"
@@ -816,12 +862,12 @@ def render(results: list[PairResult]) -> str:
         lines.append(
             "'cannot ship': too few units for a GAIN to be trusted; its REGRESSION still fails the gate."
         )
-    if any(r.terms for r in results):
+    if any(r.pdm for r in results):
         lines.append(
-            "Indented rows are the primary's terms (benchmark.yaml), paired the same way. They show where a"
+            "Indented rows are NAVSIM's PDM terms as each benchmark fills them (benchmark.yaml `pdm:`), paired the"
         )
         lines.append(
-            "difference comes from and never decide the gate: each is tested at 5%, so across many, some cross by chance."
+            "same way. They never decide the gate: each is tested at 5%, so across many, some cross by chance."
         )
     return "\n".join(lines)
 
@@ -1588,8 +1634,8 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
         echo(
             f"  {step.name}: {result.verdict} ({result.metric} better by {result.diff}, t {t}, {result.units} units)"
         )
-        if worse := term_regressions([result]):
-            echo(f"  {step.name}: {TERMS_WORSE}{', '.join(worse)}")
+        if worse := pdm_regressions([result]):
+            echo(f"  {step.name}: {PDM_WORSE}{', '.join(worse)}")
         if result.verdict in ("REGRESSION", "INCOMPLETE") and not args.keep_going:
             stop = stop or f"{result.verdict} on {step.name}"
 
@@ -1721,8 +1767,8 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
     verdict = overall(results, unfinished)
     echo(render(results))
     echo(f"\noverall: {verdict}" + (f" (not finished: {', '.join(unfinished)})" if unfinished else ""))
-    if worse := term_regressions(results):
-        echo(TERMS_WORSE + ", ".join(worse))
+    if worse := pdm_regressions(results):
+        echo(PDM_WORSE + ", ".join(worse))
     return 1 if verdict == "FAIL" or unfinished else 0
 
 
@@ -1834,8 +1880,8 @@ def main(argv: list[str] | None = None) -> int:
         verdict, results = check(args.manifest, runs_root, args.results)
     print(render(results))
     print(f"\noverall: {verdict}")
-    if worse := term_regressions(results):
-        print(TERMS_WORSE + ", ".join(worse))
+    if worse := pdm_regressions(results):
+        print(PDM_WORSE + ", ".join(worse))
     if args.json:
         args.json.write_text(
             json.dumps({"overall": verdict, "pairs": [asdict(r) for r in results]}, indent=2)
