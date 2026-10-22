@@ -248,6 +248,10 @@ that did not run (see *What does not score*). `routes_file`, `waypoint_dt`,
 `model_env` and the contributing sites are read from the harness's own `run.json`
 (or the older `run_config.json`) beside the route folders rather than typed into
 the ingest, and `config.source_config_read` says how many source runs kept one.
+So is `declared_env`, the model's own `model.yaml` env. Source runs that recorded
+different ones, or a mix of runs that recorded one and runs from before it was
+recorded (#99), are pooled `valid: false` with a note: two settings of the model
+behind one mean, the same reason as two recording setups.
 Aggregates are recomputed by the store from the per-route metrics; nothing is
 transcribed from a report.
 

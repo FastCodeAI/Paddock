@@ -9,7 +9,9 @@ and each drifted a little from the others.
 
 The endpoints are NeuroNCAP's: `/alive`, `/infer`, `/reset`, plus
 `/diagnostics`, which is where model-specific reporting goes (openpilot's
-field-of-view margin check, for instance) rather than into a bespoke route.
+field-of-view margin check, for instance) rather than into a bespoke route,
+and `/observe`, which hands the model a frame of history without asking it to
+plan.
 """
 
 from __future__ import annotations
@@ -90,6 +92,21 @@ def build_app(policy: Policy, model: str | None = None, nonce: str | None = None
                 last,
             )
         return result
+
+    @app.post("/observe")
+    async def observe(body: dict) -> dict:
+        """Take in one frame of history; plan nothing the car could drive.
+
+        The same body as `/infer`, passed to `Policy.observe`. A model that
+        does not override it runs `infer` and drops the plan, which is exactly
+        what a client sending `/infer` and ignoring the answer got before. A
+        model that only records the frame (Drive-JEPA) then has no plan from
+        that frame -- so its momentum stage has no previous plan to compare the
+        next one with, as when the frame was never planned from.
+        """
+        obs = Observation.from_wire(body, cameras=policy.cameras)
+        policy.observe(obs)
+        return {"observed": True}
 
     @app.post("/infer_sequence")
     async def infer_sequence(body: dict) -> dict:

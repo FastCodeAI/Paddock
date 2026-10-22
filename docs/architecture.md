@@ -75,6 +75,7 @@ NeuroNCAP model nodes; the rest were added for open loop and for provenance.
 | `GET /alive` | the runner, after launch | health check |
 | `GET /whoami` | the runner, after launch | names the model and this launch's nonce, so a run never scores a sibling's node on the same port |
 | `POST /infer` | closed-loop simulators; AlpaSim's bridge | one `Observation` (one timestamp) in, one `Trajectory` out |
+| `POST /observe` | AlpaSim's bridge, for a frame it needs no plan from | one `Observation` in, no plan out: the model takes the frame into its history (`Policy.observe`; a model that does not override it plans and drops the plan) |
 | `POST /infer_sequence` | open-loop harnesses; NAVSIM's scorer | a list of `Observation`s, oldest first; the model takes in all but the last and plans on the last |
 | `POST /reset` | the simulator, before each episode | clears the model's history between episodes |
 | `GET /diagnostics` | the runner, at the end of a run | what the loaded policy says it is, for `run.json` provenance |
@@ -88,7 +89,12 @@ Two details that look like off-by-ones and are not:
 
 - **Six waypoints is exact, not a floor.** NeuroNCAP builds six waypoint
   timestamps per step and indexes them positionally; a seventh is dropped, a
-  fifth raises `IndexError`.
+  fifth raises `IndexError`. So `/infer`'s `trajectory` is always six (x, y)
+  points, and the whole plan travels beside it as `plan`:
+  `{"waypoints": [[x, y], ...] or [[x, y, yaw], ...], "dt": 0.5}`, every row
+  the model returned, with yaw only when the model predicts one (the same
+  shape `/infer_sequence` returns). NeuroNCAP reads only `trajectory` and
+  `aux_outputs`; AlpaSim's bridge reads `plan`.
 - **An all-zero trajectory is a commanded emergency stop**, not "no plan". A
   model that has not warmed up must return `constant_velocity(obs.speed)`.
   Returning zeros scores as a deliberate brake, which for a collision-avoidance

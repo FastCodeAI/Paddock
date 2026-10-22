@@ -11,11 +11,15 @@ follows upstream's KITScenes evaluation path (pre_extracted.py + kit_scenes/*.py
   Each frame is squashed to 512x512 with PIL bilinear and JPEG q90 round-tripped, the
   current front also to 1024x1024; slot 0 of the current views is the antialiased
   bilinear downsample of the normalised 1024 tile. ImageNet normalisation; the model
-  converts to its caffe BGR input itself.
+  converts to its caffe BGR input itself. A view the benchmark does not have at all
+  (no image, path or calibration: comma2k19 is one road camera) is left out -- a zero
+  tile with a projection under which nothing is visible, so it reaches no BEV cell.
+  CAM_FRONT is always required.
 - BEVFormer V2 T8: the current frame plus seven frames at -3.5 .. -0.5 s, oldest first,
   each with a projection that maps the *current* reference frame into that frame's
-  cameras (ego motion folded in). Where the past does not reach back far enough (a
-  closed-loop route start) the oldest frame held is repeated with its own pose.
+  cameras (ego motion folded in), taken from the frames that carry every view the
+  current one does. Where the past does not reach back far enough (a closed-loop route
+  start) the oldest such frame held is repeated with its own pose.
 - Reference frame: paddock's ego frame (x forward, y left, on the ground) raised by
   ``AUTOE2E_REF_HEIGHT_M`` (default 2.1 m). The KITScenes fine-tune saw projections from
   its top-LiDAR frame, whose ground plane sits at z = -2.1 m (kit_scenes/dataset.py
@@ -23,12 +27,16 @@ follows upstream's KITScenes evaluation path (pre_extracted.py + kit_scenes/*.py
 - Ego history: 64 rows x [speed, accel, yaw rate, curvature] at 10 Hz for t-6.4 .. t-0.1 s,
   derived from the pose stream as kit_scenes/egomotion.py does (centred gradients on the
   real timestamps, curvature floor 0.1 m/s), the newest acceleration zeroed (the KITScenes
-  stage's causal mask), rows older than the first observation left at zero (upstream's
-  ``left_zero`` padding).
-- Navigation: no semantic map (zeros, ``map_valid`` False). The route raster (corridor
+  stage's causal mask). Rows older than the first observation: left at zero (upstream's
+  ``left_zero`` padding) when the benchmark sends the real past; in closed loop, steady
+  driving at the first known speed (see ``steady_before_start``).
+- Navigation: where the benchmark names a Lanelet2 map (``obs.map_files``: KITScenes), the
+  14-channel semantic map and the route matched to ``obs.route_trace`` are drawn by
+  upstream's own code (`_Navigation`), as upstream's KITScenes packing draws them.
+  Elsewhere no semantic map (zeros, ``map_valid`` False), and a route raster (corridor
   1.75 m either side of the route polyline, rear-clipped at -10 m, plus a 2 m destination
-  disk) is drawn from ``obs.route_xy`` when the benchmark sends one and
-  ``AUTOE2E_ROUTE`` is not "0"; otherwise zeros with ``route_valid`` False, upstream's
+  disk) drawn from ``obs.route_xy`` when the benchmark sends one. ``AUTOE2E_ROUTE`` "0"
+  draws no route either way; with none, zeros and ``route_valid`` False, upstream's
   camera-only track.
 - Output: 64 x (acceleration, curvature) at 10 Hz, integrated with upstream's rollout
   (dt 0.1, speed first, from the t-0.1 s speed of the history) and sampled every 0.5 s:
@@ -42,10 +50,14 @@ import io
 import logging
 import math
 import os
+import shutil
 import sys
+import tempfile
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -80,6 +92,10 @@ TILE_CACHE_FRAMES = 48
 _TILE_CACHE: OrderedDict[tuple, tuple[dict, np.ndarray]] = OrderedDict()
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+#: A left-out view's projection: every point lands at depth -1, behind the camera, so upstream's
+#: depth test masks it (it clamps the depth before dividing, so no NaN) and the visible-only patch
+#: skips the view outright.
+INVISIBLE_PROJECTION = np.array([[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, -1]], dtype=np.float32)
 
 
 def _jpeg_roundtrip(image: Image.Image) -> np.ndarray:
@@ -132,6 +148,34 @@ def egomotion_rows(times_s: np.ndarray, xy: np.ndarray, yaw: np.ndarray, t_now: 
     for col, signal in enumerate((speed, accel, yaw_rate, curvature)):
         rows[inside, col] = np.interp(targets[inside], t, signal)
     return rows
+
+
+def steady_before_start(
+    rows: np.ndarray, times_s: np.ndarray, t_now: float, speed: float
+) -> tuple[np.ndarray, int]:
+    """`rows` with every row older than the first pose set to steady driving, and how many.
+
+    Steady driving is the first measured speed with no acceleration and no turn; with fewer
+    than two poses nothing is measured yet and every row takes `speed`, the simulator's.
+
+    Closed loop only. The KITScenes fine-tune always had all 64 rows real (samples start at
+    ``frame_idx >= history_steps``, kit_scenes/egomotion.py) and upstream's own benchmark
+    zero-pads at most 24 of them. A simulator episode starts with no past at all, so zeros
+    fill 32-64 rows for its whole length and read as a car that stood still until a moment
+    ago. On neuroNCAP 0103 that turned the car right within 2 s, into a parked car; with the
+    past filled it drove straight.
+    """
+    out = np.array(rows, dtype=np.float64, copy=True)
+    if len(times_s) < 2:
+        lead = np.ones(EGO_STEPS, dtype=bool)
+    else:
+        targets = t_now - EGO_DT * np.arange(EGO_STEPS, 0, -1)
+        lead = targets < float(np.min(times_s)) - 1e-6  # the rows egomotion_rows left at zero
+    if not lead.any():
+        return out, 0
+    first = float(out[~lead][0, 0]) if (~lead).any() else float(speed)
+    out[lead] = (first, 0.0, 0.0, 0.0)
+    return out, int(lead.sum())
 
 
 def route_raster(route_xy: np.ndarray | None) -> tuple[np.ndarray, bool, bool]:
@@ -202,6 +246,51 @@ def finite_controls(controls: np.ndarray) -> np.ndarray:
     return controls
 
 
+def blank_views(obs: Observation) -> frozenset:
+    """The views to leave out of a plan: the ones this benchmark does not have at all.
+
+    A view is absent only if the observation carries no image, no path *and* no calibration
+    for it -- comma2k19 is one road camera and says nothing about the other five. Anything
+    short of that raises: a view with calibration but no pixels is a frame that lost its
+    image (NAVSIM's dense frames keep all six calibrations), pixels without calibration
+    cannot be projected, and CAM_FRONT is never left out. A benchmark that should have sent
+    a view must not be scored as if it had none.
+    """
+    blank = frozenset(
+        c
+        for c in VIEW_ORDER[1:]
+        if c not in obs.images
+        and c not in obs.image_paths
+        and c not in obs.camera2image
+        and c not in obs.camera2ego
+    )
+    missing = [c for c in VIEW_ORDER if c not in blank and c not in obs.images and c not in obs.image_paths]
+    if missing:
+        raise RuntimeError(
+            f"AutoE2E plans from every view the benchmark has; the current observation has none for {missing}"
+        )
+    uncalibrated = [
+        c for c in VIEW_ORDER if c not in blank and (c not in obs.camera2image or c not in obs.camera2ego)
+    ]
+    if uncalibrated:
+        raise RuntimeError(f"AutoE2E needs intrinsics and extrinsics for {uncalibrated}")
+    return blank
+
+
+def portable_checkpoint(path: str) -> str:
+    """The checkpoint as the release names it, never where this machine keeps it.
+
+    `diagnostics()` lands verbatim in the tracked run.json (runner.py copies `/diagnostics`
+    into its provenance), so an absolute path there commits a site's weights root and fails
+    the portability gate. The release layout `models/<variant>/checkpoint.pt` keeps the
+    variant, the part a reader needs; `checkpoint_sha256` pins the exact file.
+    """
+    parts = Path(path).parts
+    if len(parts) >= 3 and parts[-3] == "models":
+        return "/".join(parts[-3:])
+    return Path(path).name
+
+
 def integrate_controls(controls: np.ndarray, v0: float) -> np.ndarray:
     """[64, 2] (accel, curvature) -> [64, 3] (x, y, heading); training/losses/control_rollout.py."""
     accel, kappa = controls[:, 0].astype(np.float64), controls[:, 1].astype(np.float64)
@@ -214,6 +303,124 @@ def integrate_controls(controls: np.ndarray, v0: float) -> np.ndarray:
     x = np.cumsum(v * np.cos(heading) * EGO_DT)
     y = np.cumsum(v * np.sin(heading) * EGO_DT)
     return np.stack([x, y, heading], axis=1)
+
+
+def navigation_modules() -> SimpleNamespace:
+    """Upstream's map and route code: what kit_scenes/navigation.py calls to pack a sample.
+
+    Imported only when a benchmark sends a map, and refused loudly if it cannot be: a map
+    quietly dropped would score the camera-only track under the map's name.
+    """
+    try:
+        from data_parsing.kit_scenes.map import _cached_scene_map
+        from data_parsing.kit_scenes.source import KITSCENES_DATA_REVISION
+        from navigation.geometry import AUTOE2E_NAVIGATION_GEOMETRY
+        from navigation.lanelet2_adapter import Lanelet2MapAdapter, file_sha256
+        from navigation.lanelet2_matcher import Lanelet2TraceMatcher
+        from navigation.rasterizer import EgoPose, NativeNavigationRasterizer
+
+        rasterizer = NativeNavigationRasterizer(AUTOE2E_NAVIGATION_GEOMETRY)
+    except Exception as exc:  # ImportError, or the rasterizer library not built
+        raise RuntimeError(
+            f"the benchmark sent a map and AutoE2E cannot draw it ({type(exc).__name__}: {exc}); "
+            "setup.sh installs the KITScenes SDK (Lanelet2) and builds upstream's rasterizer"
+        ) from exc
+    return SimpleNamespace(
+        scene_map=_cached_scene_map,
+        revision=KITSCENES_DATA_REVISION,
+        map_adapter=Lanelet2MapAdapter,
+        file_sha256=file_sha256,
+        matcher=Lanelet2TraceMatcher,
+        pose=EgoPose,
+        rasterizer=rasterizer,
+    )
+
+
+class _Navigation:
+    """A scene's semantic map, and the route matched to its logged drive, drawn by upstream.
+
+    The calls kit_scenes/navigation.py makes when it packs a KITScenes sample: the map
+    extracted by navigation/lanelet2_adapter.py, the route matched by
+    navigation/lanelet2_matcher.py (whose quality gates decide `route_valid`, as upstream's
+    do), both rendered by navigation/rasterizer.py in AUTOE2E_NAVIGATION_GEOMETRY. One
+    difference, kept on purpose: upstream renders at the latest pose on a 0.5 s grid and
+    warps that raster to the sample's pose, while this renders at the sample's pose. On
+    paddock's KITScenes keyframes the two are the same pose, except where upstream's
+    nanosecond truncation of the log's clock puts its grid pose 0.5 s back (docs/models/autoe2e.md).
+
+    Maps are read from a scratch copy: for a scene with degenerate lanelets, upstream writes a
+    sanitised map.osm beside the one it was given (kit_scenes/map.py), and the dataset is not
+    this process's to write to. The copy lasts only for the load (the SDK parses map.osm on
+    first use, which `extract()` is; the matcher works from memory): a node is stopped with
+    terminate() and then kill(), so a copy held for its life was left on the host by every run.
+    """
+
+    def __init__(self, modules: SimpleNamespace) -> None:
+        self.m = modules
+        self._maps: dict[str, tuple] = {}
+        self._routes: dict[tuple[str, str], Any] = {}
+
+    def _scene(self, map_files: dict[str, str]) -> tuple:
+        """(scene id, the SDK's scene map, upstream's NavigationMap, map sha256), once per map."""
+        if map_files.get("format") != "lanelet2_osm":
+            raise RuntimeError(f"AutoE2E draws Lanelet2 maps; the benchmark sent {map_files.get('format')!r}")
+        key = map_files["map"]
+        if key not in self._maps:
+            scene_id = Path(map_files["map"]).parent.parent.name
+            with tempfile.TemporaryDirectory(prefix="autoe2e-maps-") as scratch:
+                shadow = Path(scratch) / scene_id
+                (shadow / "maps").mkdir(parents=True)
+                shutil.copyfile(map_files["map"], shadow / "maps" / "map.osm")
+                shutil.copyfile(map_files["origin"], shadow / "maps" / "origin.json")
+                sha = self.m.file_sha256(shadow / "maps" / "map.osm")
+                scene_map = self.m.scene_map(shadow)
+                navigation_map = self.m.map_adapter(
+                    scene_map,
+                    map_version=f"kitscenes:{scene_id}:{sha[:16]}",
+                    map_sha256=sha,
+                    frame_id=f"kitscenes:{scene_id}:local_enu",
+                    source_revision=self.m.revision,
+                ).extract()
+            self._maps[key] = (scene_id, scene_map, navigation_map, sha)
+        return self._maps[key]
+
+    def _route(self, scene: tuple, trace: np.ndarray):
+        """The route upstream's matcher fits to the logged drive, once per scene and drive."""
+        scene_id, scene_map, navigation_map, sha = scene
+        trace = np.asarray(trace, dtype=np.float64)
+        key = (sha, hashlib.sha256(trace.tobytes()).hexdigest())
+        if key not in self._routes:
+            self._routes[key] = self.m.matcher(
+                scene_map, navigation_map, map_sha256=sha, source_revision=self.m.revision
+            ).match(
+                scene_id=scene_id,
+                positions_enu_m=trace[:, 1:3],
+                yaws_rad=trace[:, 3],
+                timestamps_ns=np.round(trace[:, 0] * 1e9).astype(np.int64),
+            )
+        return self._routes[key]
+
+    def raster(
+        self, map_files: dict[str, str], trace: np.ndarray | None, ego2world: np.ndarray, t_us: int
+    ) -> tuple[np.ndarray, np.ndarray, bool, bool]:
+        """(map [14, 450, 300], route [2, 450, 300], map_valid, route_valid), float32, at the ego pose.
+
+        `trace` None draws the map alone (route zeros, `route_valid` False)."""
+        scene = self._scene(map_files)
+        route = self._route(scene, trace) if trace is not None else None
+        pose = self.m.pose(
+            x_enu_m=float(ego2world[0, 3]),
+            y_enu_m=float(ego2world[1, 3]),
+            yaw_rad=yaw_of(ego2world),
+            timestamp_ns=int(t_us) * 1000,
+        )
+        drawn = self.m.rasterizer.render(scene[2], route, pose)
+        return (
+            np.ascontiguousarray(drawn.map_context, dtype=np.float32),
+            np.ascontiguousarray(drawn.route_mask, dtype=np.float32),
+            bool(drawn.map_valid),
+            bool(drawn.route_valid),
+        )
 
 
 class _ConstTensorTorch:
@@ -391,16 +598,22 @@ class _Frame:
         if cam not in self._sizes:
             if cam in self.images:
                 self._sizes[cam] = (self.images[cam].shape[1], self.images[cam].shape[0])
+            elif str(self.paths[cam]).endswith(".npy"):
+                # A raw staged frame (comma2k19): PIL cannot open it, and the header holds the shape.
+                shape = np.load(self.paths[cam], mmap_mode="r").shape
+                self._sizes[cam] = (int(shape[1]), int(shape[0]))
             else:
                 with Image.open(self.paths[cam]) as im:
                     self._sizes[cam] = im.size
         return self._sizes[cam]
 
-    def tiles(self) -> np.ndarray:
+    def tiles(self, blank: frozenset = frozenset()) -> np.ndarray:
         """uint8 [6, 512, 512, 3], computed once (also the history copy of the front).
 
-        Frames read from disk are cached by their six paths across episodes: consecutive NAVSIM
-        scenes of a log share seven of their eight camera keyframes, and the pixels are the same.
+        A view in `blank` (`blank_views`) is a zero tile, never read; `infer` zeroes it again
+        after normalisation. Frames read from disk are cached by their six paths across
+        episodes: consecutive NAVSIM scenes of a log share seven of their eight camera
+        keyframes, and the pixels are the same.
         """
         if self._tiles is None:
             key = tuple(self.paths.get(c) for c in VIEW_ORDER) if not self.images else None
@@ -410,8 +623,14 @@ class _Frame:
                 self._sizes, self._tiles = dict(hit[0]), hit[1]
                 return self._tiles
             for c in VIEW_ORDER:
-                self.size(c)
-            self._tiles = np.stack([pack_tile(self.rgb(c), TILE) for c in VIEW_ORDER])
+                if c not in blank:
+                    self.size(c)
+            self._tiles = np.stack(
+                [
+                    np.zeros((TILE, TILE, 3), dtype=np.uint8) if c in blank else pack_tile(self.rgb(c), TILE)
+                    for c in VIEW_ORDER
+                ]
+            )
             self.images = {}  # pixels no longer needed once packed
             if key is not None:
                 _TILE_CACHE[key] = (dict(self._sizes), self._tiles)
@@ -423,8 +642,11 @@ class _Frame:
 class AutoE2EPolicy(Policy):
     cameras = VIEW_ORDER
     waypoint_dt = 0.5
-    #: History is real or repeated-oldest, never manufactured from nothing beyond that.
-    self_prime = False
+    #: Closed loop (a simulator calling /infer each tick): the ego history before the first
+    #: pose is filled with steady driving. `infer_sequence` clears this, so open-loop
+    #: benchmarks, which send the real past, keep upstream's zero padding. Camera history is
+    #: never manufactured: a short past repeats the oldest frame, as upstream does.
+    self_prime = True
 
     def __init__(self) -> None:
         self.checkpoint = os.environ.get("AUTOE2E_CHECKPOINT", "")
@@ -443,6 +665,10 @@ class AutoE2EPolicy(Policy):
         self.frames: list[_Frame] = []
         self.last: dict[str, Any] = {}
         self.calls = 0
+        #: Plans made with a semantic map, and with a route raster: what run.json says was drawn.
+        self.map_calls = 0
+        self.route_calls = 0
+        self._nav: _Navigation | None = None
         self._ckpt_sha = None
         self._record = None
 
@@ -548,9 +774,12 @@ class AutoE2EPolicy(Policy):
     def observe(self, obs: Observation) -> None:
         self._push(obs)
 
-    def _history(self, now: _Frame) -> tuple[list[_Frame], list[float]]:
-        """Seven frames at -3.5 .. -0.5 s, oldest first, from the frames that carry all six views."""
-        full = [f for f in self.frames if f.full and f is not now] or [now]
+    def _history(self, now: _Frame, blank: frozenset = frozenset()) -> tuple[list[_Frame], list[float]]:
+        """Seven frames at -3.5 .. -0.5 s, oldest first, from the frames that carry every view not
+        in `blank`: all six on NAVSIM, whose 10 Hz frames between keyframes carry three and never
+        count; the road camera alone on comma2k19."""
+        needed = frozenset(VIEW_ORDER) - blank
+        full = [f for f in self.frames if needed <= f.views and f is not now] or [now]
         times = np.array([f.t_s for f in full])
         picked, gaps = [], []
         for off in HISTORY_OFFSETS_S:
@@ -560,7 +789,7 @@ class AutoE2EPolicy(Policy):
                 picked.append(full[i])
                 gaps.append(round(float(times[i] - target), 3))
             else:
-                # Not that far back: the oldest six-view frame held, with its own pose (route / log start).
+                # Not that far back: the oldest such frame held, with its own pose (route / log start).
                 picked.append(full[0])
                 gaps.append(None)
         return picked, gaps
@@ -572,19 +801,45 @@ class AutoE2EPolicy(Policy):
         return m
 
     def _projections(
-        self, frame: _Frame, ref_now2world: np.ndarray | None, size: int, views=VIEW_ORDER
+        self,
+        frame: _Frame,
+        ref_now2world: np.ndarray | None,
+        size: int,
+        views=VIEW_ORDER,
+        blank: frozenset = frozenset(),
     ) -> np.ndarray:
-        """[V, 3, 4]: current reference frame -> pixels of `frame`'s cameras at `size` x `size`."""
+        """[V, 3, 4]: current reference frame -> pixels of `frame`'s cameras at `size` x `size`.
+
+        A view in `blank` gets INVISIBLE_PROJECTION."""
         ref2ego = self._ref2ego()
         ref_frame2world = frame.ego2world @ ref2ego
         hist_from_now = np.eye(4) if ref_now2world is None else np.linalg.inv(ref_frame2world) @ ref_now2world
         out = []
         for c in views:
+            if c in blank:
+                out.append(INVISIBLE_PROJECTION)
+                continue
             w, h = frame.size(c)
             k = scaled_intrinsic(frame.camera2image[c], w, h, size)
             cam2ref = np.linalg.inv(ref2ego) @ frame.camera2ego[c]
             out.append(k @ (np.linalg.inv(cam2ref) @ hist_from_now)[:3, :])
         return np.stack(out).astype(np.float32)
+
+    def _ego_history(self, now: _Frame, speed: float) -> tuple[np.ndarray, int]:
+        """[64, 4] ego history at `now` from every frame held, and how many rows were filled.
+
+        All frames held, the current one included, so the newest rows get a centred gradient.
+        Closed loop fills the rows before the first pose (`steady_before_start`); open loop,
+        where `infer_sequence` has cleared `self_prime`, keeps upstream's zero padding.
+        """
+        t = np.array([f.t_s for f in self.frames])
+        e2w = [f.ego2world for f in self.frames]
+        ego = egomotion_rows(
+            t, np.array([m[:2, 3] for m in e2w]), np.array([yaw_of(m) for m in e2w]), now.t_s
+        )
+        if not self.self_prime:
+            return ego, 0
+        return steady_before_start(ego, t, now.t_s, speed)
 
     # ------------------------------------------------------------------ infer
     def infer(self, obs: Observation) -> Trajectory:
@@ -593,11 +848,7 @@ class AutoE2EPolicy(Policy):
 
         t0 = time.time()
         now = self._push(obs)
-        if not now.full:
-            missing = [c for c in VIEW_ORDER if c not in now.views]
-            raise RuntimeError(
-                f"AutoE2E plans from all six views; the current observation has none for {missing}"
-            )
+        blank = blank_views(obs)
         if (
             self.replan_s > 0
             and self._plan is not None
@@ -611,7 +862,7 @@ class AutoE2EPolicy(Policy):
             return Trajectory(
                 held, dt=self.waypoint_dt, extras={"autoe2e": {"held_s": round(now.t_s - t_plan, 3)}}
             )
-        history, gaps = self._history(now)
+        history, gaps = self._history(now, blank)
         dev = self.device
 
         def normalise(arr: np.ndarray) -> torch.Tensor:  # uint8 [..., H, W, 3] -> float [..., 3, H, W]
@@ -620,43 +871,60 @@ class AutoE2EPolicy(Policy):
             return x.movedim(-1, -3).contiguous()
 
         front_1024 = pack_tile(now.rgb("CAM_FRONT"), FRONT_TILE)
-        current = now.tiles()
+        current = now.tiles(blank)
         front_t = normalise(front_1024)[None]  # [1, 3, 1024, 1024]
         tiles_t = normalise(current)[None]  # [1, 6, 3, 512, 512]
         tiles_t[:, 0] = F.interpolate(
             front_t, size=(TILE, TILE), mode="bilinear", align_corners=False, antialias=True
         )
-        hist_t = normalise(np.stack([f.tiles() for f in history]))[None]  # [1, 7, 6, 3, 512, 512]
+        hist_t = normalise(np.stack([f.tiles(blank) for f in history]))[None]  # [1, 7, 6, 3, 512, 512]
+        if blank:
+            # A left-out view is no image at all, not a black one: zero after normalisation.
+            slots = [VIEW_ORDER.index(c) for c in sorted(blank)]
+            tiles_t[:, slots] = 0.0
+            hist_t[:, :, slots] = 0.0
 
         ref_now2world = now.ego2world @ self._ref2ego()
-        P = torch.from_numpy(self._projections(now, None, TILE))[None].to(dev)
+        P = torch.from_numpy(self._projections(now, None, TILE, blank=blank))[None].to(dev)
         PF = torch.from_numpy(self._projections(now, None, FRONT_TILE, views=("CAM_FRONT",)))[None].to(dev)
-        PH = [torch.from_numpy(self._projections(f, ref_now2world, TILE))[None].to(dev) for f in history]
+        PH = [
+            torch.from_numpy(self._projections(f, ref_now2world, TILE, blank=blank))[None].to(dev)
+            for f in history
+        ]
 
-        # Ego history from the pose stream (all frames held, current included for the centred gradient).
-        e2w = [f.ego2world for f in self.frames]
-        ego = egomotion_rows(
-            np.array([f.t_s for f in self.frames]),
-            np.array([m[:2, 3] for m in e2w]),
-            np.array([yaw_of(m) for m in e2w]),
-            now.t_s,
-        )
+        ego, filled = self._ego_history(now, float(obs.speed))
         v0 = float(ego[-1, 0])
         ego_in = ego.copy()
         ego_in[-1, 1] = 0.0  # KITScenes stage: newest acceleration masked (dataset_policy.py)
         ego_t = torch.from_numpy(ego_in.reshape(1, -1).astype(np.float32)).to(dev)
 
-        route, corridor, dest = route_raster(obs.route_xy if self.use_route else None)
-        route_valid = bool(corridor)
+        semantic = None
+        if obs.map_files:
+            if self._nav is None:
+                self._nav = _Navigation(navigation_modules())
+            semantic, route, map_valid, route_valid = self._nav.raster(
+                obs.map_files, obs.route_trace if self.use_route else None, now.ego2world, obs.timestamp_us
+            )
+            dest = route_valid and bool(route[1].any())
+        else:
+            route, corridor, dest = route_raster(obs.route_xy if self.use_route else None)
+            map_valid, route_valid = False, bool(corridor)
+        map_t = (
+            torch.from_numpy(semantic)[None].to(dev)
+            if map_valid
+            else torch.zeros(1, 14, NAV_H, NAV_W, device=dev)
+        )
         route_t = (
             torch.from_numpy(route)[None].to(dev)
             if route_valid
             else torch.zeros(1, 2, NAV_H, NAV_W, device=dev)
         )
+        self.map_calls += map_valid
+        self.route_calls += route_valid
         Pin = self._Pinhole
         kwargs = dict(
             route_mask=route_t,
-            map_valid=torch.zeros(1, dtype=torch.bool, device=dev),
+            map_valid=torch.tensor([map_valid], dtype=torch.bool, device=dev),
             route_valid=torch.tensor([route_valid], dtype=torch.bool, device=dev),
             projection=Pin(P, geometry_type="pinhole"),
             geometry_type="pinhole",
@@ -671,13 +939,7 @@ class AutoE2EPolicy(Policy):
             torch.no_grad(),
             torch.autocast("cuda", dtype=torch.bfloat16, enabled=self.bf16 and dev.type == "cuda"),
         ):
-            out = self.model(
-                tiles_t,
-                torch.zeros(1, 14, NAV_H, NAV_W, device=dev),
-                torch.zeros(1, 896, device=dev),
-                ego_t,
-                **kwargs,
-            )
+            out = self.model(tiles_t, map_t, torch.zeros(1, 896, device=dev), ego_t, **kwargs)
         controls = (out[0] if isinstance(out, tuple) else out).float().reshape(OUT_STEPS, 2).cpu().numpy()
         t2 = time.time()
         rollout = integrate_controls(finite_controls(controls), v0)
@@ -688,10 +950,13 @@ class AutoE2EPolicy(Policy):
             "t_us": int(obs.timestamp_us),
             "v0_history": round(v0, 3),
             "speed_canbus": round(float(obs.speed), 3),
+            "views": len(VIEW_ORDER) - len(blank),
             "history_gaps_s": gaps,
             "history_repeated": sum(g is None for g in gaps),
             "frames_held": len(self.frames),
             "ego_rows_zero": int((np.abs(ego).sum(1) == 0).sum()),
+            "ego_rows_filled": filled,
+            "map_valid": map_valid,
             "route_valid": route_valid,
             "destination": dest,
             "pack_s": round(t1 - t0, 3),
@@ -728,7 +993,7 @@ class AutoE2EPolicy(Policy):
 
     def diagnostics(self) -> dict[str, Any]:
         return {
-            "checkpoint": self.checkpoint,
+            "checkpoint": portable_checkpoint(self.checkpoint),
             "checkpoint_sha256": self._ckpt_sha,
             "config": getattr(self, "config", None),
             "ref_height_m": self.ref_height,
@@ -736,6 +1001,8 @@ class AutoE2EPolicy(Policy):
             "bf16": self.bf16,
             "replan_s": self.replan_s,
             "calls": self.calls,
+            "map_calls": self.map_calls,
+            "route_calls": self.route_calls,
             "last_inference": self.last,
         }
 
