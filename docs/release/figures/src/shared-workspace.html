@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The shared workspace: read-only originals, a writable area per person, promotion by review</title>
+<link rel="stylesheet" href="figures.css">
+<style>
+  .who { display: flex; gap: 12px; justify-content: center; }
+  .who .b { flex: 0 0 auto; }
+  .b { border-width: 2px; border-style: solid; border-radius: 8px; padding: 6px 11px; font-size: 16px; line-height: 1.2; background: #fff; }
+  .b b { font-size: 18px; }
+  .b.t-model { border-radius: 999px; padding-left: 16px; }
+  .b.t-contract { border-style: dashed; border-color: var(--muted); }
+  .b.t-ip { border: 4px solid var(--ink); }
+  .three { display: grid; grid-template-columns: 1.05fr 72px 1fr 72px 1fr; align-items: stretch; }
+  .three .zone { display: flex; flex-direction: column; gap: 8px; }
+  .three .zone .zt { font-size: 16px; }
+  .gap { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+  .gap .arrow { flex: 0 0 auto; width: 24px; margin-right: 10px; }
+  .gap .l { font-size: 16px; color: var(--ink2); text-align: center; line-height: 1.1; writing-mode: horizontal-tb; }
+  .downs { display: grid; grid-template-columns: 1.05fr 72px 1fr 72px 1fr; height: 32px; }
+  .downs > div { display: flex; justify-content: center; }
+  .downs .arrow.down { height: 14px; margin: 3px 0 12px; }
+  .app { border: 2px solid var(--line); border-radius: 10px; padding: 10px 16px; background: #fff; font-size: 17px; }
+  .app b { font-size: 20px; }
+  .rule { font-size: 16px; color: var(--muted); margin-top: 2px; }
+</style>
+</head>
+<body>
+<div class="figure" id="shared-workspace">
+  <div class="fig-head">
+    <div class="fig-title">One shared workspace: originals read-only, a writable area per person, promotion by review</div>
+    <div class="fig-sub">Today the work is spread over several checkouts, folders and two sites, with weights and sample lists copied by hand. The target puts every input, run, video and report in one findable place, for people and agents alike.</div>
+  </div>
+
+  <div class="who">
+    <div class="b t-actor"><b>Engineers</b></div>
+    <div class="b t-actor"><b>AI agents</b></div>
+    <div class="b t-actor t-ip"><b>Customer projects</b>, isolated</div>
+  </div>
+  <div class="downs"><div></div><div></div><div><span class="arrow down"></span></div><div></div><div></div></div>
+
+  <div class="three">
+    <div class="zone title-in"><div class="zt">Shared originals · read-only</div>
+      <div class="b t-data"><b>Dataset buckets</b><br>one per dataset, versioned manifest, a fast cache in front</div>
+      <div class="b t-contract"><b>Licence ledger</b><br>grants each dataset per person and project</div>
+      <div class="b t-model"><b>Original model files</b><br>checksummed; every run records the hash</div>
+      <div class="b t-code"><b>Vendor code and images</b><br>pinned commits; images pinned by digest</div>
+    </div>
+    <div class="gap"><span class="arrow"></span><span class="l">read-only</span></div>
+    <div class="zone title-in"><div class="zt">Per person · writable</div>
+      <div class="b t-code"><b>Own branch copies</b><br>Paddock, Gallops, adapters</div>
+      <div class="b t-svc"><b>Experiments</b><br><code>paddock run</code>, <code>gallops train</code></div>
+      <div class="b t-out"><b>New artifacts</b><br>runs, frames, videos, checkpoints, notebooks with their outputs</div>
+    </div>
+    <div class="gap"><span class="arrow"></span><span class="l">review</span></div>
+    <div class="zone title-in"><div class="zt">Promoted · reviewed and shared</div>
+      <div class="b t-code"><b>Mainline code</b><br>only by pull request</div>
+      <div class="b t-model"><b>Promoted models</b><br>after the regression gate</div>
+      <div class="b t-out"><b>Results and reports</b><br>leaderboard, evidence packs</div>
+    </div>
+  </div>
+
+  <div class="downs"><div><span class="arrow down"></span></div><div></div><div><span class="arrow down"></span></div><div></div><div><span class="arrow down"></span></div></div>
+
+  <div class="app"><b>Browser app</b> reads all three areas: runs with their settings and validity · videos and plots · graphs by benchmark and failure type · the code behind any run · Gallops training · reports · an experiment launcher</div>
+  <div class="rule">Rule: nothing is copied by hand between sites. An original changes only by a new version; an artifact becomes shared only by review.</div>
+</div>
+</body>
+</html>

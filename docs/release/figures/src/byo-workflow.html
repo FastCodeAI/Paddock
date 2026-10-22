@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bring your own model, your own data, and chip deltas</title>
+<link rel="stylesheet" href="figures.css">
+<style>
+  .flow { display: grid; grid-template-columns: 1fr 236px; gap: 14px; align-items: stretch; }
+  .tracks { display: flex; flex-direction: column; gap: 12px; }
+  .track { display: grid; grid-template-columns: 168px 1fr; gap: 10px; align-items: stretch; }
+  .tl { border-radius: 10px; padding: 8px 11px; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+  .tl .n { font-size: 20px; font-weight: 700; line-height: 1.1; }
+  .tl.model { border: 4px solid var(--ink); background: var(--pink-t); border-radius: 30px; padding-left: 16px; }
+  .tl.data { border: 4px solid var(--ink); background: var(--blue-t); }
+  .tl.chip { border: 2px solid var(--line); background: #fff; }
+  .steps { display: flex; align-items: stretch; }
+  .s { flex: 1 1 0; min-width: 0; padding: 14px 12px 14px 24px; background: var(--blue-w); font-size: 16px; line-height: 1.2;
+       display: flex; align-items: center;
+       clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 0 100%, 14px 50%); margin-right: -6px; }
+  .s:first-child { clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 0 100%); padding-left: 12px; }
+  .s.alt { background: #e9e8e2; }
+  .s.later { background: #f6f5f1; color: var(--ink2); }
+  .end { border: 2px solid var(--yellow); background: var(--yellow-t); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+  .end .n { font-size: 22px; font-weight: 700; line-height: 1.15; }
+  .end .d { font-size: 16px; line-height: 1.25; }
+  .joins { display: flex; flex-direction: column; justify-content: space-around; }
+  .notes { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-size: 16px; color: var(--ink2); }
+  .notes b { color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="figure" id="byo-workflow">
+  <div class="fig-head">
+    <div class="fig-title">Bring your own: a model, a dataset, a chip</div>
+    <div class="fig-sub">Three tracks, one ending: the customer's model is scored, rendered and diagnosed beside the reference models, on their own site if they choose.</div>
+  </div>
+
+  <div class="flow">
+    <div class="tracks">
+      <div class="track">
+        <div class="tl model"><div class="n">Their model</div><div><span class="chip done">v1.0</span></div><div class="small">half a day to a few days</div></div>
+        <div class="steps">
+          <div class="s"><span><code>paddock new model</code></span></div>
+          <div class="s"><span>write <code>load</code>, <code>reset</code>, <code>infer</code> outside our repo</span></div>
+          <div class="s"><span><code>paddock verify</code>: frames, shapes, guards</span></div>
+          <div class="s"><span>a five-sample smoke run</span></div>
+          <div class="s"><span>full runs on the trial matrix</span></div>
+        </div>
+      </div>
+      <div class="track">
+        <div class="tl data"><div class="n">Their data</div><div><span class="chip done">v1.0</span></div><div class="small">days; it never leaves</div></div>
+        <div class="steps">
+          <div class="s alt"><span><code>paddock new benchmark</code></span></div>
+          <div class="s alt"><span>write <code>preflight</code>, <code>samples</code>, <code>score</code></span></div>
+          <div class="s alt"><span>point the site config at the data</span></div>
+          <div class="s alt"><span>verify on a few samples</span></div>
+          <div class="s alt"><span>score the reference models and theirs</span></div>
+        </div>
+      </div>
+      <div class="track">
+        <div class="tl chip"><div class="n">Their chip</div><div><span class="chip plan">v1.2</span></div><div class="small">Renesas' toolchain</div></div>
+        <div class="steps">
+          <div class="s later"><span>an int8 copy as its own adapter</span></div>
+          <div class="s later"><span>the fp32-vs-int8 delta on identical samples</span></div>
+          <div class="s later"><span>R-Car latency from a board harness</span></div>
+          <div class="s later"><span><code>paddock ingest</code> puts it in the same report</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="end">
+      <div class="n">Render, report, analyse failures</div>
+      <div class="d">the same tools the reference models get: side-by-side figures, failure classes, the regression gate</div>
+      <div class="d"><b>The data never leaves their site.</b></div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div><b>Agents:</b> every step is a command-line verb, so a customer's AI agent can run the whole workflow; through the gateway from v1.1.</div>
+    <div><b>Limits to state up front:</b> pinhole cameras only (fisheye needs adapter work); a model must output a trajectory in the car's frame, or controls an adapter converts.</div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>A customer's AI agent runs an experiment through the agent gateway</title>
+<link rel="stylesheet" href="figures.css">
+<style>
+  .sw { display: grid; grid-template-columns: 44px repeat(4, 1fr); column-gap: 8px; row-gap: 6px; }
+  .lh { border-radius: 8px; padding: 7px 11px; border: 2px solid var(--line); background: #fff; }
+  .lh .n { font-size: 18px; font-weight: 700; line-height: 1.15; }
+  .lh .d { font-size: 16px; color: var(--ink2); }
+  .lh.cust { background: var(--wash); border: 4px solid var(--ink); }
+  .no { width: 34px; height: 34px; border-radius: 50%; background: var(--ink2); color: #fff; font-weight: 700; font-size: 17px;
+        display: flex; align-items: center; justify-content: center; align-self: center; }
+  .lane { background: #f6f5f1; border-radius: 6px; min-height: 46px; display: flex; }
+  .step { flex: 1 1 auto; border: 2px solid var(--line); border-radius: 7px; background: #fff; padding: 5px 10px; font-size: 16px; line-height: 1.2; display: flex; align-items: center; }
+  .step.cust { background: var(--wash); }
+  .step.pad { border-color: var(--blue); background: var(--blue-w); }
+  .step.out { border-color: var(--yellow); background: var(--yellow-w); }
+  .step.loop { border-style: dashed; }
+  .row { display: contents; }
+  .guard { margin-top: 12px; border: 2px dashed var(--muted); border-radius: 10px; padding: 8px 14px; font-size: 16px; background: #fff; }
+  .guard b { font-size: 17px; }
+</style>
+</head>
+<body>
+<div class="figure" id="agent-experiment">
+  <div class="fig-head">
+    <div class="fig-title">Hands-on: a customer's AI agent runs an experiment</div>
+    <div class="fig-sub">The agent uses the same verbs an engineer types (<code>list</code>, <code>run</code>, <code>render</code>, <code>report</code>) through a gateway scoped to the customer's project. Gateway: v1.1.</div>
+  </div>
+
+  <div class="sw">
+    <div></div>
+    <div class="lh cust"><div class="n">OEM engineer and their AI agent</div><div class="d">customer side</div></div>
+    <div class="lh"><div class="n">Agent gateway</div><div class="d">MCP, API, CLI; licence ledger</div></div>
+    <div class="lh" style="border-color: var(--blue)"><div class="n">Paddock</div><div class="d">orchestrator and model node</div></div>
+    <div class="lh" style="border-color: var(--yellow)"><div class="n">Storage and browser app</div><div class="d">the project's own area</div></div>
+
+    <div class="row"><div class="no">1</div>
+      <div class="lane"><div class="step cust">The engineer: “score our model on KITScenes; explain the worst turns”</div></div>
+      <div class="lane"></div><div class="lane"></div><div class="lane"></div></div>
+
+    <div class="row"><div class="no">2</div><div class="lane"></div>
+      <div class="lane"><div class="step">The agent lists what this project may use; the ledger answers</div></div>
+      <div class="lane"></div><div class="lane"></div></div>
+
+    <div class="row"><div class="no">3</div><div class="lane"></div>
+      <div class="lane"><div class="step">The agent asks for a run, with settings, inside the project's GPU quota</div></div>
+      <div class="lane"></div><div class="lane"></div></div>
+
+    <div class="row"><div class="no">4</div><div class="lane"></div><div class="lane"></div>
+      <div class="lane"><div class="step pad">The model's container starts; its image and weights are checked</div></div>
+      <div class="lane"></div></div>
+
+    <div class="row"><div class="no">5</div><div class="lane"></div><div class="lane"></div>
+      <div class="lane"><div class="step pad loop">For every sample: an observation in, a trajectory out</div></div>
+      <div class="lane"></div></div>
+
+    <div class="row"><div class="no">6</div><div class="lane"></div><div class="lane"></div><div class="lane"></div>
+      <div class="lane"><div class="step out">Results and artifacts land in the project's area, with provenance</div></div></div>
+
+    <div class="row"><div class="no">7</div><div class="lane"></div>
+      <div class="lane"><div class="step">Run id, status and validity go back to the agent</div></div>
+      <div class="lane"></div><div class="lane"></div></div>
+
+    <div class="row"><div class="no">8</div><div class="lane"></div>
+      <div class="lane"><div class="step">The agent asks for renders and a report, and gets findings with links</div></div>
+      <div class="lane"></div><div class="lane"></div></div>
+
+    <div class="row"><div class="no">9</div>
+      <div class="lane"><div class="step cust">The agent summarises for the engineer, with links</div></div>
+      <div class="lane"></div><div class="lane"></div><div class="lane"></div></div>
+
+    <div class="row"><div class="no">10</div><div class="lane"></div><div class="lane"></div><div class="lane"></div>
+      <div class="lane"><div class="step out">The engineer opens the run in the browser app: videos, graphs, code</div></div></div>
+  </div>
+
+  <div class="guard"><b>Guardrails:</b> tokens scoped to one project · originals read-only, and the ledger decides which datasets a project sees · no outbound network from customer containers · every agent action logged · GPU quotas per project · customer data deleted at the end of a proof of value</div>
+</div>
+</body>
+</html>

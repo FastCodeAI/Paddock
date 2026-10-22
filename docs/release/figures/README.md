@@ -101,3 +101,6 @@ NODE_PATH=<scratch>/node_modules node docs/release/figures/render.cjs rail-map  
 | [release-timeline](release-timeline.png) | v1.0.0 worked back from 25 November: workstreams, milestones, holidays, what follows | executive plan §8, strategy 8 |
 | [system-context](system-context.png) | public sources, our hosted twin and an OEM site, with every artifact coloured by type | design: hosted twin and on-prem kit |
 | [setup-stages](setup-stages.png) | the ten automated setup stages, each with its gate and release | design: packaging and setup |
+| [shared-workspace](shared-workspace.png) | read-only originals, a writable area per person, promotion by review, one browser app | design: shared workspace |
+| [agent-experiment](agent-experiment.png) | a customer's AI agent runs an experiment through the gateway, in ten steps | design: hands-on access |
+| [byo-workflow](byo-workflow.png) | bring your own model, data or chip: three tracks, one ending | design: hands-on access |
