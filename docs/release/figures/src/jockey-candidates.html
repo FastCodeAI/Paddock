@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Jockey: what each candidate family offers, and what Jockey takes from it</title>
+<link rel="stylesheet" href="figures.css">
+<style>
+  .sc { display: grid; grid-template-columns: 172px repeat(4, 1fr) 1.08fr; gap: 6px; }
+  .hd { border-radius: 10px 10px 0 0; padding: 8px 10px; background: var(--wash); border: 1.5px solid var(--rule); }
+  .hd .n { font-size: 19px; font-weight: 700; line-height: 1.15; }
+  .hd .a { font-size: 16px; color: var(--ink2); line-height: 1.2; margin-top: 2px; }
+  .hd.jk { background: var(--pink-t); border: 2px solid var(--pink); }
+  .rl { font-size: 17px; font-weight: 700; padding: 6px 4px 6px 0; display: flex; align-items: center; line-height: 1.15; }
+  .c { border: 1.5px solid var(--rule); border-radius: 6px; padding: 5px 9px; font-size: 16px; line-height: 1.2; background: #fff; }
+  .c .dots { margin-bottom: 3px; display: flex; }
+  .c.jk { background: var(--pink-w); border: 2px solid var(--pink); }
+  .c.jk .tg { font-size: 16px; font-weight: 700; color: var(--ink2); margin-bottom: 1px; }
+  .take .c { background: var(--yellow-w); border-color: var(--yellow); font-size: 16px; }
+  .take .rl { color: var(--ink); }
+  .row { display: contents; }
+</style>
+</head>
+<body>
+<div class="figure" id="jockey-candidates">
+  <div class="fig-head">
+    <div class="fig-title">What comes next: four model families, and what Jockey takes from each</div>
+    <div class="fig-sub">Ratings summarise what Paddock has measured; none of the four is strong everywhere, which is why Jockey borrows instead of adopting one.</div>
+  </div>
+
+  <div class="sc">
+    <div></div>
+    <div class="hd"><div class="n">Drive-JEPA</div><div class="a">self-supervised video encoder, 32 plans, a learned scorer</div></div>
+    <div class="hd"><div class="n">AutoE2E · VisionPilot</div><div class="a">Autoware's open stack: bird's-eye view, or modular convnets</div></div>
+    <div class="hd"><div class="n">Alpamayo</div><div class="a">a 10 B reasoning model with a diffusion planner</div></div>
+    <div class="hd"><div class="n">openpilot</div><div class="a">compact encoder, policy with memory, 20 Hz</div></div>
+    <div class="hd jk"><div class="n">Jockey target</div><div class="a">the gallops-v0 design, to be confirmed with the inference team</div></div>
+
+    <div class="row">
+      <div class="rl">Closed-loop safety</div>
+      <div class="c"><span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></span>top on neuroNCAP, 4.13 (tied)</div>
+      <div class="c"><span class="dots"><i class="on"></i><i></i><i></i></span>VisionPilot last (1.58); AutoE2E pending</div>
+      <div class="c"><span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></span>3.73, tied; very noisy run to run</div>
+      <div class="c"><span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></span>3.60, tied; best on AlpaSim</div>
+      <div class="c jk"><div class="tg">selected on it</div>closed loop chooses the checkpoint</div>
+    </div>
+
+    <div class="row">
+      <div class="rl">Open-loop accuracy</div>
+      <div class="c"><span class="dots"><i class="on"></i><i></i><i></i></span>picks ~15th best of its own 32 plans</div>
+      <div class="c"><span class="dots"><i class="on"></i><i class="on"></i><i></i></span>AutoE2E 0.85 m on KITScenes, with a map</div>
+      <div class="c"><span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></span>best on comma2k19</div>
+      <div class="c"><span class="dots"><i class="on"></i><i></i><i></i></span>last on nuScenes</div>
+      <div class="c jk"><div class="tg">a tripwire only</div>never the target</div>
+    </div>
+
+    <div class="row">
+      <div class="rl">Fits an SoC</div>
+      <div class="c"><span class="dots"><i class="on"></i><i></i><i></i></span>307 M; ops an NPU avoids</div>
+      <div class="c"><span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></span>28 M (VisionPilot) to 80 M</div>
+      <div class="c"><span class="dots"><i></i><i></i><i></i></span>10 B; 26 GB of GPU memory</div>
+      <div class="c"><span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></span>61 MB; runs on a CPU</div>
+      <div class="c jk"><div class="tg">from day one</div>small backbone; integer-friendly ops only</div>
+    </div>
+
+    <div class="row">
+      <div class="rl">Camera coverage</div>
+      <div class="c"><span class="dots"><i class="on"></i><i></i><i></i></span>one front camera</div>
+      <div class="c"><span class="dots"><i class="on"></i><i class="on"></i><i></i></span>one (VisionPilot) to six (AutoE2E)</div>
+      <div class="c"><span class="dots"><i class="on"></i><i class="on"></i><i></i></span>four cameras</div>
+      <div class="c"><span class="dots"><i class="on"></i><i></i><i></i></span>two front cameras</div>
+      <div class="c jk"><div class="tg">three front, ~177°</div>or what the platform offers</div>
+    </div>
+
+    <div class="row">
+      <div class="rl">Licence and retraining</div>
+      <div class="c"><span class="dots"><i class="on"></i><i class="on"></i><i></i></span>code Apache-2.0; we retrain it today</div>
+      <div class="c"><span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></span>Apache-2.0, built to be retrained</div>
+      <div class="c"><span class="dots"><i></i><i></i><i></i></span>weights non-commercial</div>
+      <div class="c"><span class="dots"><i class="on"></i><i></i><i></i></span>MIT weights, no training code</div>
+      <div class="c jk"><div class="tg">ours</div>if its training data allows it</div>
+    </div>
+
+    <div class="row">
+      <div class="rl">In cars today</div>
+      <div class="c"><span class="dots"><i></i><i></i><i></i></span>academic research</div>
+      <div class="c"><span class="dots"><i class="on"></i><i></i><i></i></span>deployable software; no fleet known</div>
+      <div class="c"><span class="dots"><i></i><i></i><i></i></span>NVIDIA research</div>
+      <div class="c"><span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></span>ships on comma devices</div>
+      <div class="c jk"><div class="tg">R-Car</div>the target named in its design</div>
+    </div>
+
+    <div class="row take">
+      <div class="rl">Jockey takes</div>
+      <div class="c">its video encoder, as the teacher Jockey learns from</div>
+      <div class="c">small convnets, separate steering and speed parts, an open licence</div>
+      <div class="c">reasoning as an offline labeller, never on the chip</div>
+      <div class="c">small, temporal, 20 Hz, plus its own speed and side cameras</div>
+      <div class="c jk">one small student that keeps the strengths and leaves the bulk behind</div>
+    </div>
+  </div>
+
+  <div class="fig-foot">● strong · ○ weak, judged from Paddock's measurements where they exist. AutoE2E's closed-loop scores are still being re-run (open PRs #92, #96).
+    Sources: strategy doc 7.</div>
+</div>
+</body>
+</html>

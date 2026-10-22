@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>From a trained model to a car: stages, owners, and what exists</title>
+<link rel="stylesheet" href="figures.css">
+<style>
+  .lanes { display: grid; grid-template-columns: 150px repeat(5, 1fr); gap: 6px; }
+  .chev { padding: 8px 18px 8px 24px; background: var(--wash); border: none;
+          clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 0 100%, 14px 50%); }
+  .chev .n { font-size: 20px; font-weight: 700; }
+  .chev .w { font-size: 16px; color: var(--ink2); }
+  .lab { display: flex; flex-direction: column; justify-content: center; padding: 8px 10px; border-radius: 8px; border-width: 2px; border-style: solid; }
+  .lab .t { font-size: 18px; font-weight: 700; line-height: 1.15; }
+  .lab .d { font-size: 16px; color: var(--ink2); }
+  .cell { background: #f6f5f1; border-radius: 8px; min-height: 92px; padding: 6px; display: flex; }
+  .cell .box { flex: 1 1 auto; padding: 7px 10px; border-width: 2px; display: flex; flex-direction: column; gap: 3px; }
+  .cell .box .h { font-size: 18px; }
+  .cell .box .s { font-size: 16px; line-height: 1.2; flex: 1 1 auto; }
+  .cell .box .chip { align-self: flex-start; }
+  .rules { margin: 10px 0 0; display: grid; grid-template-columns: 150px repeat(5, 1fr); gap: 6px; }
+  .rules .band { grid-column: 2 / span 3; border: 2px solid var(--pink); background: var(--pink-w); border-radius: 8px; padding: 7px 12px; font-size: 16px; }
+  .rules .band2 { grid-column: 5 / span 2; border: 2px solid var(--blue); background: var(--blue-w); border-radius: 8px; padding: 7px 12px; font-size: 16px; }
+  .row { display: contents; }
+</style>
+</head>
+<body>
+<div class="figure" id="model-to-car">
+  <div class="fig-head">
+    <div class="fig-title">From a trained model to a car: who does what, and what exists today</div>
+    <div class="fig-sub">One report follows Jockey from training to the road: the fp32 score, the int8 delta, on-chip latency and closed-loop driving sit side by side.</div>
+  </div>
+
+  <div class="lanes">
+    <div></div>
+    <div class="chev"><div class="n">1 Train</div><div class="w">in Gallops</div></div>
+    <div class="chev"><div class="n">2 Score</div><div class="w">full precision</div></div>
+    <div class="chev"><div class="n">3 Export</div><div class="w">and quantise</div></div>
+    <div class="chev"><div class="n">4 On the chip</div><div class="w">R-Car board</div></div>
+    <div class="chev"><div class="n">5 In the car</div><div class="w">step by step</div></div>
+
+    <div class="row">
+      <div class="lab p-gallops"><div class="t">Gallops</div><div class="d">trains</div></div>
+      <div class="cell"><div class="box p-gallops"><div class="h">Train Jockey</div>
+        <span class="s">a checkpoint and its card: size, compute, precision</span><span class="chip wip">loop exists; Jockey designed</span></div></div>
+      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+    </div>
+
+    <div class="row">
+      <div class="lab p-paddock"><div class="t">Paddock</div><div class="d">measures</div></div>
+      <div class="cell"></div>
+      <div class="cell"><div class="box p-paddock"><div class="h">Score fp32</div>
+        <span class="s">open and closed loop, through the gate</span><span class="chip done">exists</span></div></div>
+      <div class="cell"><div class="box p-paddock"><div class="h">Score the int8 copy</div>
+        <span class="s">on identical samples: the int8 delta</span><span class="chip wip">designed</span></div></div>
+      <div class="cell"><div class="box p-paddock"><div class="h">Import latency</div>
+        <span class="s">the board's numbers into the same report</span><span class="chip wip">designed</span></div></div>
+      <div class="cell"><div class="box p-paddock"><div class="h">Test on real drives</div>
+        <span class="s">shadow-mode logs become a private benchmark</span><span class="chip plan">new</span></div></div>
+    </div>
+
+    <div class="row">
+      <div class="lab p-ext"><div class="t">Renesas inference</div><div class="d">deploys</div></div>
+      <div class="cell"></div><div class="cell"></div>
+      <div class="cell"><div class="box p-ext"><div class="h">Export gates</div>
+        <span class="s">allowed ops only; fp32 ONNX into the toolchain</span><span class="chip plan">needs your input</span></div></div>
+      <div class="cell"><div class="box p-ext"><div class="h">Compile, profile, HIL</div>
+        <span class="s">on the board; then the board drives the simulator</span><span class="chip plan">needs your input</span></div></div>
+      <div class="cell"></div>
+    </div>
+
+    <div class="row">
+      <div class="lab p-out"><div class="t">Vehicle team</div><div class="d">with the OEM</div></div>
+      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <div class="cell"><div class="box p-out"><div class="h">Shadow, track, road</div>
+        <span class="s">logs only, then a test track, then a road with a safety driver</span><span class="chip plan">later</span></div></div>
+    </div>
+  </div>
+
+  <div class="rules">
+    <div></div>
+    <div class="band"><b>From the first checkpoint:</b> allowed ops only, integer-friendly, sized to the chip</div>
+    <div class="band2"><b>Bridging the gap:</b> one Paddock record, every stage</div>
+  </div>
+
+  <div class="fig-foot">"Designed": written up in <code>docs/design/model-card-and-latency.md</code>, not built. HIL: hardware in the loop.</div>
+</div>
+</body>
+</html>
