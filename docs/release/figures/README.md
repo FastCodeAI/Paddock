@@ -93,3 +93,4 @@ NODE_PATH=<scratch>/node_modules node docs/release/figures/render.cjs rail-map  
 | [rail-map](rail-map.png) | Paddock, Gallops and Jockey, the loop between them, inputs and outputs | executive plan §1, strategy 1, briefing home |
 | [score-vs-driving](score-vs-driving.png) | six models ranked open loop (nuScenes) against closed loop (neuroNCAP): the ranks flip | executive plan §2, strategy 2 |
 | [trial-ladder](trial-ladder.png) | five rungs from an evidence pack to the customer's own model, and which release delivers each | executive plan §3, strategy 3, hands-on access |
+| [using-paddock](using-paddock.png) | setup, orchestration, compute, storage and results: today, in v1.0.0, later | executive plan §4, strategy 4 |
