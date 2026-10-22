@@ -2,11 +2,19 @@ name: neuroncap
 description: NeuroNCAP closed-loop safety scoring - a NeuRAD render drives the model into staged collisions
 mode: closed_loop
 dataset: nuscenes
-metrics: [ncap_score, collision_rate, impact_speed, reference_speed]
+metrics: [ncap_score, collision_rate, impact_speed, reference_speed, pdm_nc, pdm_dac, pdm_ttc, pdm_ep, pdm_comfort, pdm_style_score]
 primary_metric: ncap_score
 # Which metric fills which term of NAVSIM v1's PDM score (paddock.metrics.pdm),
 # so the regression gate lays every benchmark out in the same rows.
-# Any collision, from the simulator. DAC, TTC, EP and C would need the actor and
-# ego-pose files each run writes, which no scorer reads yet.
+# All five, by NAVSIM's rules, from the files each run writes: every plan the
+# model made, against the actors' real motion over its 3 s and nuScenes'
+# drivable area (pdm_terms.py). A run's term is the mean over its decisions.
+# The geometry reproduces the engine's own collision verdict on every one of
+# 600 stored runs (tools/benchmarks/neuroncap/check_pdm_geometry.py).
 pdm:
-  nc: collision_rate
+  nc: pdm_nc
+  dac: pdm_dac
+  ttc: pdm_ttc
+  ep: pdm_ep
+  comfort: pdm_comfort
+  score: pdm_style_score

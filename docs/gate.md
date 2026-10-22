@@ -143,7 +143,7 @@ bench2drive  driving_score             53.500    53.500     0.000   0.378   0.00
 | nuscenes | `col_avg`: box overlap, any category, no at-fault call | - (no map loaded) | - | `pdm_ep` | `pdm_comfort` | - |
 | bench2drive | `collision_rate` | - | - | `route_completion` | - | - |
 | kitscenes, nuplan | - | - | - | `pdm_ep` | `pdm_comfort` | - |
-| neuroncap | `collision_rate` | - | - | - | - | - |
+| neuroncap | `pdm_nc`: NAVSIM's at-fault rules, every plan against the actors' real motion | `pdm_dac`: nuScenes' drivable area | `pdm_ttc` | `pdm_ep` | `pdm_comfort` | `pdm_style_score`, the mean of every decision's composite |
 
 A slot says which question a metric answers, not that two benchmarks answer it
 the same way: NAVSIM's NC re-simulates the agents, nuScenes' NC is an overlap
@@ -170,10 +170,25 @@ PDM rows apply only when the pair is scored on the benchmark's primary metric:
 records but no values for a term (a run scored before `pdm_ep` existed, say) is
 not compared on that term, and one note on the primary names it.
 
-What the empty cells would take: for neuroNCAP and AlpaSim, reading the ego and
-actor poses each run already writes; for Bench2Drive, `outside_route_lanes` and
-the 20 Hz `metric_info.json`, both written per route and not yet read. Those
-need fresh baselines. For nuScenes and nuPlan, loading their maps and agent
+**neuroNCAP has all five, by NAVSIM's rules** (`paddock.metrics.pdm.score_plan`,
+fed by `adapters/benchmarks/neuroncap/pdm_terms.py`): at every decision, the
+model's 3 s plan against the actors' real motion and nuScenes' drivable area, the
+human's logged path as EP's centreline and reference. Its boxes reproduce the
+engine's own collision verdict on all 600 runs of three stored sweeps
+(`tools/benchmarks/neuroncap/check_pdm_geometry.py`, 223 of them collided). A
+sweep made before the terms existed gets them from its stored episodes, in about
+2 minutes, with `tools/benchmarks/neuroncap/pdm_rescore.py`: a new run of the
+same model, `replayed_from` its source (a subset key here), stored `valid: false`.
+Re-scored, the camera fix (Drive-JEPA blind against camera-fixed, 20 pairs x 10)
+leaves the NCAP score NEUTRAL (+0.56, MDE 1.30) and the PDM composite level
+(0.638 to 0.639, MDE 0.20), and moves comfort the wrong way beyond t crit (0.997
+to 0.815: jerkier plans at speed) and drivable area slightly (0.995 to 0.967).
+Details in docs/benchmarks/neuroncap.md.
+
+What the other empty cells would take: for AlpaSim, the ego and actor poses each
+run already writes; for Bench2Drive, `outside_route_lanes` and the 20 Hz
+`metric_info.json`, both written per route and not yet read, or PR #79's recorder.
+Those need fresh baselines. For nuScenes and nuPlan, loading their maps and agent
 tracks.
 
 ## Full runs and the smoke

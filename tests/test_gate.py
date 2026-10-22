@@ -688,7 +688,14 @@ def test_every_smoked_benchmark_fills_a_pdm_term_and_none_fills_one_with_a_guess
     specs = load_benchmarks()
     for name in {gate.load_subset(s).bench for s in gate.SMOKE_ORDER}:
         assert specs[name].pdm, f"{name} is smoked and fills no PDM term"
-    assert dict(specs["neuroncap"].pdm) == {"nc": "collision_rate"}, "no map, and the poses are not read yet"
+    assert dict(specs["neuroncap"].pdm) == {
+        "nc": "pdm_nc",
+        "dac": "pdm_dac",
+        "ttc": "pdm_ttc",
+        "ep": "pdm_ep",
+        "comfort": "pdm_comfort",
+        "score": "pdm_style_score",
+    }, "every term, from the poses each run writes and nuScenes' drivable area"
     assert "dac" not in dict(specs["nuscenes"].pdm), "the nuScenes loader reads no map"
 
 

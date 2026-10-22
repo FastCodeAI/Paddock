@@ -402,6 +402,9 @@ SUBSET_KEYS = frozenset(
         "routes_subset",
         "scene_set",
         "merged_from",
+        # A re-scored run (tools/benchmarks/neuroncap/pdm_rescore.py) names the
+        # run whose episodes it read; the episodes and their settings are the same.
+        "replayed_from",
         "allow_partial",
         "allow_slow",
         "chunk_order",

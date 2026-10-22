@@ -401,6 +401,77 @@ The renderer serves one scene at a time and is slow to start, so the loop is
 scene-outer, model-inner — restart the renderer per scene, run all four models
 against it, move on. That is 14 renderer starts rather than 56.
 
+## PDM-style terms
+
+Every run's sample also carries NAVSIM's five PDM terms and their composite
+(`pdm_nc`, `pdm_dac`, `pdm_ttc`, `pdm_ep`, `pdm_comfort`, `pdm_style_score`),
+reported beside the NCAP score; the regression gate shows them in the rows it
+uses on every benchmark (docs/gate.md) and never decides on them.
+
+**What is scored.** At every 10 Hz step, the plan the model made (six waypoints,
+3 s) against what the actors actually did over those 3 s, on nuScenes' drivable
+area, by NAVSIM's rules as `paddock.metrics.pdm.score_plan` ports them:
+at-fault collision (0, or 0.5 for a static object), every footprint corner on the
+drivable area, time to collision (the footprint carried on 0-0.9 s at its
+velocity, against an agent ahead), progress along the human's logged path over
+the best safe path's (the human's own motion over the same 3 s counts only when
+it neither crashes nor leaves the road; the human never saw the inserted actor),
+and nuPlan's comfort bounds on the plan. A run's term is the mean over its
+decisions; its composite is the mean of the decisions' composites. All of it
+comes from the files the engine writes per run (`trajectories.json`,
+`ego_poses.json`, `actors.json`, `reference_trajectory.json`;
+`adapters/benchmarks/neuroncap/pdm_terms.py`), about 0.65 s a run, no GPU.
+
+**What it needs.** A drivable raster per scene, built once with neuroNCAP's own
+interpreter, which has the nuScenes map API:
+
+```bash
+<ncap python> tools/benchmarks/nuscenes/build_pdm_geometry.py \
+    --nuscenes <nuScenes root> --out <runs>/geometry/nuscenes-drivable --neuroncap
+```
+
+The harness reads `[benchmarks.neuroncap] pdm_geometry`, else
+`{roots.runs}/geometry/nuscenes-drivable`. Without a raster, DAC and the
+composite are NaN for that scene and the run says so. Actor categories come from
+the dataset's own `instance.json` and `category.json`: every actor in
+`actors.json` is a nuScenes instance, the inserted one included.
+
+**How the geometry is held to the benchmark's** (2026-10-21, shakaal):
+
+| check | result |
+|---|---|
+| The engine's own collision check, restated on the realised path (`collides_like_neuroncap`), against its `any_collide@0.0s` | 600 of 600 runs agree (three Drive-JEPA sweeps of 200; 223 collided). `tools/benchmarks/neuroncap/check_pdm_geometry.py` |
+| The plan's frame: y left, as stored | a plan's 1 s point lies 0.28 m from where the car was 1 s later on plans that move sideways, 1.47 m with y flipped (863 decisions) |
+| The raster's frame | the human's logged footprint is on the drivable area at 100% of its keyframes in all 14 scenes |
+
+**Re-scoring a stored sweep.** `tools/benchmarks/neuroncap/pdm_rescore.py
+<model>:<run id>` writes a new run of the same model from the source's stored
+episodes, `replayed_from` the source in its config (a subset key for the gate),
+stored `valid: false` so one result never ranks twice. The three Drive-JEPA
+sweeps, re-scored (20 pairs x 10 runs each):
+
+| run | NCAP score | NC | DAC | TTC | EP | C | PDM |
+|---|---|---|---|---|---|---|---|
+| released, camera-blind (`20260905T220225-f11ac0`) | 3.568 | 0.739 | 0.995 | 0.681 | 0.582 | 0.997 | 0.638 |
+| a finetune of it (`20261008T021909-55974f`) | 3.671 | 0.737 | 0.957 | 0.656 | 0.557 | 0.814 | 0.586 |
+| released, camera fixed (`20261012T224707-f11ac0`) | 4.130 | 0.817 | 0.967 | 0.731 | 0.580 | 0.815 | 0.639 |
+
+Paired on the 20 scenario pairs: the camera fix is NEUTRAL on the NCAP score
+(+0.56, MDE 1.30) and on the composite (0.000, MDE 0.20), and worse beyond t crit
+on comfort (-0.18, t -6.6) and drivable area (-0.029, t -2.4). The blind model
+plans the same smooth deceleration whatever it sees; the seeing one varies its
+speed within a plan, and 18-34% of its plans above 5 m break the jerk bound. The
+finetune is NEUTRAL on the NCAP score (+0.10, MDE 0.23) and worse on the
+composite (-0.053, t -2.4), through comfort.
+
+**What it cannot say.** There are no traffic lights here, so no TLC. A lateral
+collision counts as the ego's fault only off the drivable area (NAVSIM also when
+straddling two lanes; there are no lane polygons). Actors are known at the
+nuScenes keyframes, about 2 Hz, and interpolated between. Comfort reads the plan,
+not the driven path. A plan near a standstill has no heading below 0.5 m/s
+(`metrics.comfort.MIN_HEADING_STEP_M`): before that rule, centimetre steps read as
+1 rad/s turns, and Drive-JEPA's plans under 2 m broke the yaw bound 95% of the time.
+
 ## Debugging video
 
 The engine writes a frame per simulation step, per run, into the episode's

@@ -270,6 +270,7 @@ serialize = true
 # renderer_cwd    = "/path/to/neuroncap"
 # neurad_studio   = "/path/to/neurad-studio"
 # checkpoints     = "/path/to/neuroncap/checkpoints"     # one per scene; also [datasets.neurad_checkpoints]
+# pdm_geometry    = "/path/to/geometry/nuscenes-drivable" # drivable rasters for the PDM terms; default {roots.runs}/geometry/nuscenes-drivable
 #
 # A full-set sweep spans 14 scenes, and the renderer loads one scene's hash
 # grids at startup and cannot switch. With this on, the harness starts and stops
