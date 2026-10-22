@@ -192,8 +192,8 @@ full rewrite of someone's description needs the user's OK first.
 ### Write it so the user can read it
 
 The outcome table, every thread reply and any description change are read by
-the user first, and text they cannot follow has not done its job. Re-read each
-one as them before posting:
+the user first, and text they cannot follow has not done its job. Keep each
+thread reply to one or two sentences. Re-read each one as them before posting:
 
 - **Say what happens, in one plain sentence, first.** "A crashing CARLA now
   kills only the server it started." Then what was wrong and what changed,

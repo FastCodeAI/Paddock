@@ -73,12 +73,33 @@ reaches the review. An unverified subagent finding is a lead, not a result.
 
 ## 4. Write the review
 
-Follow §10 exactly: verdict and legend line first, then what is specifically
-right about the PR, then a ✅ table of what you actually verified with its
-result ("nothing beyond the diff" is an honest row), then findings grouped
-🔴 → 🟠 → 🟡, numbered, each anchored to `file:line` **in the PR's head commit**
-and carrying a concrete failure scenario. A finding with no failure scenario is
-a preference and belongs in 🟡.
+Use §10's markers (🔴 / 🟠 / 🟡) and its rules for which finding gets which.
+**Keep the review short: the user does not read a long one.** This layout
+replaces the longer one in §10:
+
+- **One verdict line:** is anything broken, and how many things must be fixed
+  before merge.
+- **One line per finding**, numbered, 🔴 first, then 🟠, then 🟡: the problem,
+  then the fix, then a link to `file:line` **in the PR's head commit**. A
+  finding with no concrete failure is a preference and is 🟡.
+- **One "Checked:" line:** what you actually ran or read, and what it showed.
+- **One "Not checked:" line.**
+- **Inline comments:** one or two sentences, with the same marker as the
+  summary.
+- **No tables, no statistics jargon, no § references.**
+
+The model is review 5621674058 on #100, which starts:
+
+```markdown
+Nothing is broken. Fix 4 things before merging.
+
+🟠 **1. 3 neuroNCAP scenarios can still approve a checkpoint.** Add `can_ship = false` to `tools/gate_smoke/neuroncap_quick.toml`. ([gate.py:682](https://github.com/FastCodeAI/Paddock/blob/33d4843/tools/gate.py#L682))
+
+🟠 **2. A launch hangs forever if `nvidia-smi` stops answering.** No answer counts as 0 GB free, so it waits forever. If there is no answer, launch the model anyway. ([proc.py:163](https://github.com/FastCodeAI/Paddock/blob/33d4843/src/paddock/runtime/proc.py#L163))
+
+**Checked:** `make check` passes. Both Bench2Drive patches apply and match this machine's copy.
+**Not checked:** the lock between two users, and AlpaSim with `PADDOCK_BASE_PORT`.
+```
 
 ### Write it so the user can read it
 
