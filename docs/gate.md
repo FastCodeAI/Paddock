@@ -84,7 +84,7 @@ about 1.5 (measured from the 200-episode sweeps, 2026-10-21).
 RECORDS, TOO FEW UNITS or INCOMPLETE), none regressed, and at least one
 closed-loop pair that may ship is a GAIN; **HOLD** otherwise. A pair with
 `can_ship = false` (the Bench2Drive subset: seven routes detect only a 17-38
-point drop) still fails the gate on a REGRESSION, and its GAIN never ships a
+point drop; the neuroNCAP quick subset: three episodes) still fails the gate on a REGRESSION, and its GAIN never ships a
 checkpoint; the line says `(cannot ship)`. The smoke also holds while any of
 its subsets is unfinished, and names them beside the verdict. A `threshold` on a pair also reports whether the point estimate
 dropped by more than that many metric units.

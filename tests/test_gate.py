@@ -851,12 +851,33 @@ def test_a_rerun_skips_finished_runs_and_resumes_started_ones(tmp_path: Path) ->
         _plan(tmp_path, ["neuroncap"], {"neuroncap": dict(started)})
 
 
-def test_the_bench2drive_subset_cannot_ship_and_its_pairs_say_so() -> None:
-    assert gate.load_subset("bench2drive").meta["can_ship"] is False
-    assert all(gate.load_subset(n).meta.get("can_ship", True) for n in gate.SMOKE_ORDER if n != "bench2drive")
+def test_the_small_subsets_cannot_ship_and_their_pairs_say_so() -> None:
+    small = {"bench2drive", "neuroncap_quick"}
+    assert all(gate.load_subset(n).meta["can_ship"] is False for n in small)
+    assert all(gate.load_subset(n).meta.get("can_ship", True) for n in gate.SMOKE_ORDER if n not in small)
     step = gate.SmokeStep("bench2drive", "finished", "r1", [], {}, name="bench2drive", can_ship=False)
     text = gate.smoke_manifest("m", "m-released", {"bench2drive": {"run": "m:base"}}, [step])
     assert "can_ship = false" in text
+
+
+def test_the_quick_tier_alone_never_ships() -> None:
+    """Review of #100 (1): a GAIN on the 3 quick neuroNCAP episodes, the rest NEUTRAL, said SHIP."""
+
+    def pair(name: str, verdict: str) -> gate.PairResult:
+        subset = gate.load_subset(name)
+        return gate.PairResult(
+            bench=subset.bench,
+            metric="m",
+            baseline="m:a",
+            candidate="m:b",
+            higher_is_better=True,
+            verdict=verdict,
+            can_ship=bool(subset.meta.get("can_ship", True)),
+        )
+
+    quick = [pair(n, "NEUTRAL") for n in gate.TIERS["quick"] if n != "neuroncap_quick"]
+    assert gate.overall([*quick, pair("neuroncap_quick", "GAIN")]) == "HOLD"
+    assert gate.overall([*quick, pair("neuroncap_quick", "REGRESSION")]) == "FAIL"
 
 
 def test_the_smoke_manifest_pairs_only_finished_runs_with_a_baseline(tmp_path: Path) -> None:
