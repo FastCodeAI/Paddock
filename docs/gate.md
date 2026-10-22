@@ -187,9 +187,11 @@ sweep made before the terms existed gets them from its stored episodes, in about
 same model, `replayed_from` its source (a subset key here), stored `valid: false`.
 Re-scored, the camera fix (Drive-JEPA blind against camera-fixed, 20 pairs x 10)
 leaves the NCAP score NEUTRAL (+0.56, MDE 1.30) and the PDM composite level
-(0.638 to 0.639, MDE 0.20), and moves comfort the wrong way beyond t crit (0.997
-to 0.815: jerkier plans at speed) and drivable area slightly (0.995 to 0.967).
-Details in docs/benchmarks/neuroncap.md.
+(0.638 to 0.640, MDE 0.20), and moves drivable area the wrong way beyond t crit
+(0.995 to 0.967). neuroNCAP's terms are scored on the plan itself, while NAVSIM
+scores the path its vehicle simulator drives from the plan; so its C is plan
+comfort, and its fall (0.997 to 0.815) is not evidence the model drives less
+comfortably. Details in docs/benchmarks/neuroncap.md.
 
 What the other empty cells would take: for AlpaSim, the ego and actor poses each
 run already writes; for Bench2Drive, `outside_route_lanes` and the 20 Hz

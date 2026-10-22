@@ -424,6 +424,16 @@ comes from the files the engine writes per run (`trajectories.json`,
 `ego_poses.json`, `actors.json`, `reference_trajectory.json`;
 `adapters/benchmarks/neuroncap/pdm_terms.py`), about 0.65 s a run, no GPU.
 
+**Every term is scored on the plan itself, and NAVSIM's are not.** NAVSIM first
+drives each plan through its own vehicle simulator (a controller and a bicycle
+model, starting from the car's measured state) and scores the path that comes
+out (`navsim/evaluate/pdm_score.py`, `simulate_proposals`). Paddock has no port
+of that simulator yet. The gap is largest for comfort, because the simulator
+smooths a plan: on 235 stored Drive-JEPA decisions, the review of #102 found the
+plan fails comfort on 51 that NAVSIM's simulated path passes (mean 0.78 against
+1.00). So **C here is plan comfort**, not NAVSIM's comfort, and the other four
+terms can differ from NAVSIM's by whatever the simulator changes about the path.
+
 **What it needs.** A drivable raster per scene, built once with neuroNCAP's own
 interpreter, which has the nuScenes map API. The builder reads nuScenes' **map
 expansion pack** (`<nuScenes root>/maps/expansion/*.json`), a separate download
@@ -455,27 +465,30 @@ the dataset's own `instance.json` and `category.json`: every actor in
 <model>:<run id>` writes a new run of the same model from the source's stored
 episodes, `replayed_from` the source in its config (a subset key for the gate),
 stored `valid: false` so one result never ranks twice. The three Drive-JEPA
-sweeps, re-scored (20 pairs x 10 runs each):
+sweeps, re-scored (20 pairs x 10 runs each; 2026-10-22, with the review fixes of
+#102):
 
-| run | NCAP score | NC | DAC | TTC | EP | C | PDM |
+| run | NCAP score | NC | DAC | TTC | EP | C (plan) | PDM |
 |---|---|---|---|---|---|---|---|
 | released, camera-blind (`20260905T220225-f11ac0`) | 3.568 | 0.739 | 0.995 | 0.681 | 0.582 | 0.997 | 0.638 |
 | a finetune of it (`20261008T021909-55974f`) | 3.671 | 0.737 | 0.957 | 0.656 | 0.557 | 0.814 | 0.586 |
-| released, camera fixed (`20261012T224707-f11ac0`) | 4.130 | 0.817 | 0.967 | 0.731 | 0.580 | 0.815 | 0.639 |
+| released, camera fixed (`20261012T224707-f11ac0`) | 4.130 | 0.818 | 0.967 | 0.731 | 0.582 | 0.815 | 0.640 |
 
 Paired on the 20 scenario pairs: the camera fix is NEUTRAL on the NCAP score
-(+0.56, MDE 1.30) and on the composite (0.000, MDE 0.20), and worse beyond t crit
-on comfort (-0.18, t -6.6) and drivable area (-0.029, t -2.4). The blind model
-plans the same smooth deceleration whatever it sees; the seeing one varies its
-speed within a plan, and 18-34% of its plans above 5 m break the jerk bound. The
-finetune is NEUTRAL on the NCAP score (+0.10, MDE 0.23) and worse on the
-composite (-0.053, t -2.4), through comfort.
+(+0.56, MDE 1.30) and on the composite (+0.002, MDE 0.20), and worse beyond t
+crit on drivable area (-0.029, t -2.4). Plan comfort also falls, 0.997 to 0.815
+(t -6.6), but that is **not evidence that the model drives less comfortably**:
+NAVSIM checks comfort on the smoother path its simulator drives from the plan,
+and this port checks the plan (above). The finetune is NEUTRAL on the NCAP score
+(+0.10, MDE 0.23); its composite is 0.053 lower (t -2.4), all of it through the
+same plan comfort, so it carries the same doubt.
 
 **What it cannot say.** There are no traffic lights here, so no TLC. A lateral
 collision counts as the ego's fault only off the drivable area (NAVSIM also when
 straddling two lanes; there are no lane polygons). Actors are known at the
-nuScenes keyframes, about 2 Hz, and interpolated between. Comfort reads the plan,
-not the driven path. A plan near a standstill has no heading below 0.5 m/s
+nuScenes keyframes, about 2 Hz, and interpolated between. Every term reads the
+plan: not the path NAVSIM's simulator would drive from it, and not the path the
+car drove. A plan near a standstill has no heading below 0.5 m/s
 (`metrics.comfort.MIN_HEADING_STEP_M`): before that rule, centimetre steps read as
 1 rad/s turns, and Drive-JEPA's plans under 2 m broke the yaw bound 95% of the time.
 
