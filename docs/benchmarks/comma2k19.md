@@ -280,7 +280,7 @@ derived from a column already in the tables above.
 | `pdm_nc_proxy` | *no-collision proxy*: 0 if the plan would have closed the radar gap to zero, else 1. 1 on an empty road | higher |
 | `pdm_dac_proxy` | *drivable-area proxy*: 1 if every scored waypoint stayed within ±1.85 m (half a US lane) cross-track of the recorded path | higher |
 | `pdm_ttc` | `1 − ttc_below_2s` | higher |
-| `pdm_ep` | *ego progress*: `min(1, predicted / recorded)` path length, so overshooting is not extra credit. 1 where the car was stopped and there was no distance to cover | higher |
+| `pdm_ep` | *ego progress*, NAVSIM's rule (`metrics.pdm.ego_progress`): the plan's progress along the recorded path over the recorded path's length, at most 1, so overshooting is not extra credit; 1 when neither covers 5 m | higher |
 | `pdm_comfort` | `comfort_within_bounds`, unchanged | higher |
 | `pdm_style_score` | the composite above. **Not** the headline | higher |
 

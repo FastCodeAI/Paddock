@@ -39,7 +39,7 @@ opinion:
 | NC | no at-fault collision with any agent | the plan does not close the **radar** gap to zero |
 | DAC | stays inside the mapped drivable area | stays within half a lane of the **human's own path** |
 | TTC | no sub-2 s time-to-collision | same, against the radar lead |
-| EP | progress / expert progress, capped at 1 | same, by path length |
+| EP | progress / expert progress, capped at 1 | same, along the recorded path |
 | C | nuPlan's five comfort bounds | same bounds, `paddock.metrics.comfort` |
 
 NC and DAC are the proxies, and they are weaker than what they stand in for:
