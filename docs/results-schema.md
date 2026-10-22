@@ -76,7 +76,8 @@ Three fields do the real work:
   its tracked files were edited (`dirty`). A baseline measured on older adapter
   code is another measurement under the same model name; the regression gate
   notes when two runs differ here. Outside `config`, so a `git pull` never
-  changes a run id or refuses a `--resume`.
+  changes a run id or refuses a `--resume`. A run resumed at another commit
+  keeps the earlier ones in `earlier_shas`.
 
 Paths never appear in `run.json` — it is tracked, so the portability gate applies.
 

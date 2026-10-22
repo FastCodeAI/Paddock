@@ -949,10 +949,11 @@ def _carry_forward_provenance(benchmark: str, model: str, run_id: str, prov: dic
     which backend and which graph layout produced the samples, for a run whose
     samples had not changed.
 
-    The repo sha gets the opposite treatment. A resume across a `git pull` is
-    part one revision and part another, and storing only the last attempt's sha
-    names a revision that did not produce most of the run. Earlier distinct shas
-    are kept beside it rather than overwritten, so a mixed-revision run says so.
+    The model repo's sha and paddock's own get the opposite treatment. A resume
+    across a `git pull` is part one revision and part another, and storing only
+    the last attempt's sha names a revision that did not produce most of the run.
+    Earlier distinct shas are kept beside it rather than overwritten, so a
+    mixed-revision run says so.
     """
     path = store.run_dir(benchmark, model, run_id) / "run.json"
     try:
@@ -961,11 +962,12 @@ def _carry_forward_provenance(benchmark: str, model: str, run_id: str, prov: dic
         return prov
     if not prov.get("policy") and previous.get("policy"):
         prov["policy"] = previous["policy"]
-    was = previous.get("repo") or {}
-    now = (prov.get("repo") or {}).get("sha")
-    earlier = sorted({s for s in [*(was.get("earlier_shas") or []), was.get("sha")] if s and s != now})
-    if earlier:
-        prov.setdefault("repo", {})["earlier_shas"] = earlier
+    for key in ("repo", "paddock"):
+        was = previous.get(key) or {}
+        now = (prov.get(key) or {}).get("sha")
+        earlier = sorted({s for s in [*(was.get("earlier_shas") or []), was.get("sha")] if s and s != now})
+        if earlier:
+            prov.setdefault(key, {})["earlier_shas"] = earlier
     return prov
 
 
