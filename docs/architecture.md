@@ -252,7 +252,7 @@ bridge in front of it). For closed loop:
    eight minutes into a checkpoint read with a CUDA OOM traceback that says
    nothing about the real cause (someone else has the card). The last check and
    the launch happen under the card's machine-wide lock (`runtime/lease.py`,
-   `flock` in the system temp directory, shared by every user), held until the
+   `flock` in `/tmp/paddock-locks`, shared by every user), held until the
    node is ready, so two runs never both start into the same free memory. A
    simulator that starts inside the first episode loads after the lock is let go;
    the gate's own wait counts its memory (`SIMULATOR_GB` in `tools/gate.py`).

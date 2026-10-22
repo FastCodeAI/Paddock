@@ -8,9 +8,10 @@ neuroNCAP pass that way). A launch therefore takes this lock, checks the
 memory again while holding it, and keeps it until its node says ready, so the
 next launch's check sees this one's model already loaded.
 
-The default directory is the system's temporary directory, which every user
-on the machine shares: runs by different people coordinate with no
-configuration. `PADDOCK_LOCK_DIR` points somewhere else (a filesystem without
+The default directory is under `/tmp`, which every user on the machine shares:
+runs by different people coordinate with no configuration. It is `/tmp` itself,
+not `tempfile.gettempdir()`: that follows `TMPDIR`, so a user who sets it would
+lock a directory nobody else checks. `PADDOCK_LOCK_DIR` points somewhere else (a filesystem without
 working `flock`, such as some NFS mounts, must not be used). A lock file left
 behind is harmless: `flock` belongs to the open file, so a killed holder
 releases it.
@@ -21,16 +22,16 @@ from __future__ import annotations
 import contextlib
 import fcntl
 import os
-import tempfile
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
 LOCK_DIR_ENV = "PADDOCK_LOCK_DIR"
+DEFAULT_LOCK_DIR = Path("/tmp/paddock-locks")
 
 
 def lock_dir() -> Path:
     override = os.environ.get(LOCK_DIR_ENV)
-    return Path(override).expanduser() if override else Path(tempfile.gettempdir()) / "paddock-locks"
+    return Path(override).expanduser() if override else DEFAULT_LOCK_DIR
 
 
 def _open(path: Path) -> int:

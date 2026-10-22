@@ -546,3 +546,15 @@ def test_a_launch_with_no_card_or_no_memory_need_takes_no_lock(tmp_path, monkeyp
     with proc.gpu_launch(0.0, {}, print):
         pass
     assert not (tmp_path / "locks").exists()
+
+
+def test_every_user_locks_the_same_folder_whatever_their_tmpdir(tmp_path, monkeypatch) -> None:
+    """Review of #100 (5): the lock folder followed TMPDIR, so a user who set it locked alone."""
+    import tempfile
+
+    from paddock.runtime import lease
+
+    monkeypatch.delenv(lease.LOCK_DIR_ENV, raising=False)
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    monkeypatch.setattr(tempfile, "tempdir", None)  # gettempdir() caches its first answer
+    assert str(lease.lock_dir()) == "/tmp/paddock-locks"
