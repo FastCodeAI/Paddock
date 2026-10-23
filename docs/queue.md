@@ -133,31 +133,38 @@ directory and `<store>` the large one. Steps marked *as paddock* run under
 2. **Git, as paddock.** `git config --global safe.directory '*'`. Git refuses a
    clone owned by another account ("dubious ownership"), and the vendor clones
    under `[roots] repos` belong to whoever made them.
-3. **Read access.** `paddock` must read everything the site config names. Grant
-   the group read access where it is missing, without changing owners:
-   `setfacl -R -m g:paddock:rX <dir>`, plus `setfacl -d -m g:paddock:rX` on its
-   directories so new files are readable too. On shakaal these were the NeuRAD
-   checkpoints and the NAVSIM metric cache. CARLA needs no write access to its
+3. **Read access.** `paddock` must read everything the site config names, and
+   run every model's interpreter. Grant the group read access where it is
+   missing, without changing owners: `setfacl -R -m g:paddock:rX <dir>`, plus
+   `setfacl -d -m g:paddock:rX` on its directories so new files are readable
+   too. On shakaal these were the NeuRAD checkpoints and the NAVSIM metric
+   cache. Look also at where each model environment's `bin/python` link points
+   (`readlink -f`): an environment built on a Python inside someone's home
+   folder cannot be run by another account. CARLA needs no write access to its
    own folder: it writes its logs under the running account's home.
 4. **The worker's Python, as paddock.** `uv venv <root>/venv --python 3.11`, then
    `uv pip install --python <root>/venv/bin/python '<a paddock checkout>[serve,viz,comma2k19]'`.
-   Each job runs its own checkout's code on top (the gate puts that checkout's
-   `src/` first on the path), so this needs redoing only when dependencies change.
+   (If `uv` is in your home folder, `paddock` cannot run it; give it a copy, such
+   as `<root>/bin/uv`.)
 5. **The queue, as paddock.** `PADDOCK_CONFIG=<root>/paddock.toml <root>/venv/bin/python -m tools.gate_queue init`,
    from a paddock checkout. It makes the directories and `<root>/queue/repo.git`,
    the repository submitters push each job's commit into.
-6. **The worker's own checkout, as paddock.**
-   `git -C <root>/queue/repo.git worktree add --detach <root>/worker <commit>`,
-   with any commit a job has pushed (`refs/jobs/<job>`). To update it later:
-   `git -C <root>/worker checkout --detach <newer commit>`.
-7. **The service, as paddock.** From `<root>/worker`:
+6. **The first job.** Submit each model's `--baseline` job (above). It waits
+   for the worker, and puts its commit in `repo.git` for the next step.
+7. **The worker's own checkout, as paddock.**
+   `git -C <root>/queue/repo.git worktree add --detach <root>/worker refs/jobs/<job>`,
+   then `uv pip install --python <root>/venv/bin/python -e '<root>/worker[serve,viz,comma2k19]'`,
+   so that the venv's own `paddock` is that checkout's: `paddock doctor` run as
+   `paddock` then sees its models. Each job still runs its own checkout's code
+   (the gate puts that checkout's `src/` first on the path). To update the
+   worker later: `git -C <root>/worker checkout --detach <newer commit>`.
+8. **The service, as paddock.** From `<root>/worker`:
    `PADDOCK_CONFIG=<root>/paddock.toml <root>/venv/bin/python -m tools.gate_queue service > ~/.config/systemd/user/paddock-queue.service`,
    then `systemctl --user daemon-reload && systemctl --user enable --now paddock-queue`.
    Under `sudo -u paddock`, `systemctl --user` also needs
    `XDG_RUNTIME_DIR=/run/user/$(id -u paddock)`, and the account needs lingering
    (`loginctl enable-linger paddock`) so the worker keeps running with nobody
    logged in. `journalctl --user -u paddock-queue` shows what it is doing.
-8. **Baselines.** Submit each model's `--baseline` job (above).
 
 ## Limits
 
