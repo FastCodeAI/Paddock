@@ -996,7 +996,9 @@ def compare_pair(
     The one place a subset's `decide_on` is applied, so the check that can stop
     the smoke and the final verdict can never disagree about which samples count.
     """
-    left_out = _left_out(load_subset(subset), base, cand) if subset else None
+    spec = load_subset(subset) if subset else None
+    short = _short_of(spec, {"baseline": base, "candidate": cand}) if spec else []
+    left_out = _left_out(spec, base, cand) if spec else None
     if left_out:
         base, cand = (_only(r, left_out.drop, keep=False) for r in (base, cand))
     result = compare(
@@ -1004,7 +1006,45 @@ def compare_pair(
     )
     if left_out:
         result.notes.append(left_out.note(metric))
+    if spec and short:
+        # A baseline made on an older draw of the subset still pairs on whatever
+        # both runs share (192 of nuScenes' 1,000, 5 of neuroNCAP's 15 pairs), and
+        # that is not the measurement the subset defines. INCOMPLETE (the candidate
+        # lost samples to a failure) is the more useful answer, so it stands.
+        if result.verdict in DECIDED:
+            result.verdict = SUBSET_DIFFERS
+        result.notes.extend(
+            f"the {who} holds {have} of subset {spec.name}'s {len(spec.ids)}; run it again on this subset"
+            for who, have in short
+        )
     return result
+
+
+#: The verdict of a pair whose runs do not both hold their whole subset.
+SUBSET_DIFFERS = "SUBSET DIFFERS"
+
+
+def _subset_key(bench: str, sample: Sample) -> str:
+    """The id a sample has in its subset's TOML (tools/gate_subsets.py)."""
+    nid = _nid(sample)
+    if bench == "neuroncap":
+        return f"{nid.get('scenario')}-{nid.get('scene')}"
+    if bench == "navsim":
+        return str(nid.get("token", ""))
+    if bench in ("bench2drive", "alpasim"):
+        return str(nid.get("scene", ""))
+    return str(sample.get("sample_id", ""))
+
+
+def _short_of(spec: Subset, runs: dict[str, Run]) -> list[tuple[str, int]]:
+    """(which run, how many of the subset it holds) for each run that lacks part of it."""
+    want = set(spec.ids)
+    out = []
+    for who, run in runs.items():
+        have = len(want & {_subset_key(run.bench, s) for s in run.samples})
+        if have < len(want):
+            out.append((who, have))
+    return out
 
 
 # ---------------------------------------------------------------------------

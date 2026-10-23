@@ -1390,6 +1390,21 @@ def _smoke_site(tmp_path: Path, monkeypatch, ade: dict[str, float], hold: float 
         return steps
 
     monkeypatch.setattr(gate, "plan_smoke", plan)
+    # Each subset is the four samples FAKE_RUN and the baselines above hold: these
+    # tests are about when the smoke stops, and a real subset would be SUBSET DIFFERS.
+    real_load = gate.load_subset
+
+    def fake_subset(name, directory=gate.SMOKE_DIR):
+        s = real_load(name, directory)
+        rows = [
+            {"sample_id": f"{s.bench}/s{i}", "native_id": {"scene_id": f"s{i}", "scene": f"s{i}"}}
+            for i in range(4)
+        ]
+        ids = [gate._subset_key(s.bench, row) for row in rows]
+        meta = {k: v for k, v in s.meta.items() if k != "decide_on"}
+        return gate.Subset(s.name, s.bench, {"all": ids}, meta)
+
+    monkeypatch.setattr(gate, "load_subset", fake_subset)
     monkeypatch.setattr(gate, "RESULTS_ROOT", res)
     monkeypatch.setattr(gate, "POLL_S", 0.05)
     monkeypatch.setattr(gate, "_gpu_free_gb", lambda env: None)
@@ -1665,3 +1680,34 @@ def test_a_rerun_refuses_while_a_recorded_run_is_still_alive(tmp_path: Path, mon
         alive.wait()
     # Once it is gone, the record is stale and the smoke goes ahead.
     assert gate.smoke(args(bench=["kitscenes"]), lambda _m: None) == 0
+
+
+def test_a_baseline_on_an_older_draw_of_the_subset_gets_no_verdict(tmp_path: Path) -> None:
+    """Review of #105 (3): a baseline holding 5 of the 15 neuroNCAP pairs was a GAIN on those 5."""
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    pairs = gate.load_subset("neuroncap").ids
+
+    def row(pair: str, score: float) -> dict:
+        scenario, scene = pair.split("-")
+        return {
+            "sample_id": f"neuroncap/{scene}/{scenario}/run_0",
+            "native_id": {"scenario": scenario, "scene": scene, "run": 0},
+            "metrics": {"ncap_score": score},
+        }
+
+    _write_run(res, runs, "neuroncap", "m", "old", [row(p, 3.0) for p in pairs[:5]], "ncap_score")
+    _write_run(
+        res,
+        runs,
+        "neuroncap",
+        "m",
+        "new",
+        [row(p, 3.5 + 0.1 * (i % 2)) for i, p in enumerate(pairs)],
+        "ncap_score",
+    )
+    old, new = (gate.load_run("neuroncap", f"m:{r}", runs, res) for r in ("old", "new"))
+    r = gate.compare_pair(old, new, runs, subset="neuroncap")
+    assert r.verdict == "SUBSET DIFFERS" and r.units == 5, "compared and shown, not decided"
+    assert "the baseline holds 5 of subset neuroncap's 15; run it again on this subset" in r.notes
+    assert gate.overall([r]) == "HOLD"
+    assert gate.compare_pair(new, new, runs, subset="neuroncap").verdict != "SUBSET DIFFERS"

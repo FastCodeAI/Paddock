@@ -78,6 +78,7 @@ about 1.5 (measured from the 200-episode sweeps, 2026-10-21).
 | NO UNIT | some paired samples have no independent unit (NAVSIM: no plan dump names their log), so the standard error would be computed over samples and come out too small |
 | CONFIG DIFFERS | the two runs' `config` differs beyond `model_env`, `declared_env` and the subset keys (`limit`, `scene`, `runs`, NAVSIM's token filter, ...), so a difference could be the setup's, not the candidate's. The keys are in a note; `allow_config = ["key"]` on the pair (`--allow-config key` on `compare`) accepts one the candidate is meant to change |
 | INCOMPLETE | the candidate lost samples to a failure (`dataset.n_failed`, or `status: partial`). Pairing on shared samples would drop exactly those, usually the hard cases, so the rest is shown and nothing is claimed |
+| SUBSET DIFFERS | the pair names its subset (`subset = "<name>"`, which the smoke writes) and one of the runs does not hold all of it, most often a baseline made on an older draw of the subset. The shared samples are compared and shown, but they are not the measurement the subset defines, so nothing is claimed. The note says which run holds how many; run that one again on this subset |
 
 `check` adds one overall line: **FAIL** if any pair is a REGRESSION (exit 1);
 **SHIP** only if every pair was decided (GAIN, NEUTRAL or REGRESSION, so no NO
