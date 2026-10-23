@@ -382,6 +382,8 @@ mean nor any other single-rollout mean here should be read to four figures.
 |---|---|---|---|---|---|---|
 | METEOR, released ONNX as shipped, driver 0.1.1 | first 10 | 0.6869 | 0.3103 | 0.6073 | 10/10 | — |
 | METEOR, released ONNX as shipped, driver 0.1.1 | 30 | 0.4232 | 0.3673 | 0.4301 | 24/30 | off-road 5, at-fault 1 |
+| AutoE2E `kitscenes-epoch-5`, through paddock's bridge | first 10 | 0.3175 | 0.1938 | 0.2924 | 8/10 | at-fault 2 |
+| AutoE2E `kitscenes-epoch-5`, through paddock's bridge | 30 | 0.1694 | 0.2034 | 0.2867 | 14/30 | at-fault 9, off-road 7 |
 
 One sweep of the 30 scenes of `public_2601_30scenes`, one scene per run
 directory, made on 2026-10-13/14 and ingested as
@@ -436,6 +438,20 @@ other groups, read from each run's resolved config.
   0.2913. All five off-road events and the at-fault collision are on the
   twenty extra scenes. What the model does on them is in
   [docs/models/meteor.md](../models/meteor.md).
+
+**AutoE2E** (`results/alpasim/autoe2e/20261022T045847-86b955`, valid) is the
+first six-camera row driven through paddock's own bridge, so any site can
+reproduce it with `paddock run --model autoe2e --bench alpasim` and
+`scene_set = "public_2601_30scenes"`. Its cameras are not METEOR's: the
+KITScenes field of view, a rear view drawn from the roof, a 1 µs global
+shutter ([Per-model settings in the bridge](#per-model-settings-in-the-bridge),
+[docs/models/autoe2e.md](../models/autoe2e.md#camera-setup-on-alpasim)). So it
+shares the group's name, not its inputs, and the two rows are not ranked
+against each other. The score is low for one reason seen on almost every scene: the car
+leaves the human's path to the left within about a second at speed, so the
+scored window ends early (a median 1.55 s after handover) and 6 of its 15
+at-fault collisions fall after it. Detail in
+[docs/models/autoe2e.md](../models/autoe2e.md#results).
 
 ## Reproducing this
 
@@ -569,6 +585,14 @@ scenes it has five off-road events and one at-fault collision, all on the
 twenty extra scenes; on the first ten alone it scores 0.6869. The rows are
 `results/alpasim/meteor/legacy-meteor_011_published_30scenes` and
 `…_first10`. See `docs/models/meteor.md`.
+
+AutoE2E's AlpaSim cell is the same 30 scenes, referee scorer and 20 Hz
+control step, driven through **paddock's bridge** on six pinhole cameras at the
+KITScenes field of view (`6cam-20Hz`, its own cameras: see the row's notes
+above). Not ranked against the one-camera rows. Run
+`results/alpasim/autoe2e/20261022T045847-86b955`, valid, resumed after
+start-up failures on a shared host (the reused scenes are recorded in
+`run.json`; wall time does not change a drive). See `docs/models/autoe2e.md`.
 
 ### AlpaSim (nuRec)
 

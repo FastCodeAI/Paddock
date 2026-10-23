@@ -123,7 +123,7 @@ tables and every note on these cells.
 | VisionPilot <sup>P S</sup> | 1.441 | 1.534 | 4.045 | 2.246 | 0.431 | 0.488 | 49.85 | 1.58 | 0.6289 |
 | METEOR | 0.977 | 1.879 | — | 1.273 | 0.303 <sup>P</sup> | 0.366 <sup>P</sup> | — | 2.64 | 0.4232 <sup>R</sup> |
 | Qwen-Drive 1.0 | 0.450 | 0.806 | 1.159 | — | 0.840 <sup>A</sup> | 0.876 <sup>A</sup> | 17.08 (2 Hz) <sup>R</sup> | 2.49 | — |
-| AutoE2E | 0.839 <sup>R</sup> | 0.847 <sup>A R</sup> | 2.016 | — | 0.500 (10 Hz) <sup>A R</sup> | — | — | 3.16 <sup>V</sup> | — |
+| AutoE2E | 0.839 <sup>R</sup> | 0.847 <sup>A R</sup> | 2.016 | — | 0.500 (10 Hz) <sup>A R</sup> | — | — | 3.16 <sup>V</sup> | 0.1694 <sup>R</sup> |
 | Baseline (Constant Velocity) | 0.641 | 1.381 | 1.639 | 1.393 | 0.239 | 0.207 | 47.94 | 0, by construction | 0.4876 |
 
 A mark on a model's name applies to every cell in its row. A cell without a mark
@@ -155,7 +155,7 @@ was measured the same way as the rest of its column.
   the others run at 20 Hz over the historical 24; those gains are
   partly more exposure. OpenPilot's Bench2Drive cell is an unassisted estimate
   rebuilt from assisted recordings. Alpamayo on AlpaSim drove 4 cameras on 10 of the 30
-  scenes, and METEOR 6 cameras on all 30. Drive-JEPA on comma2k19 is its perception-free variant,
+  scenes, METEOR 6 cameras on all 30, and AutoE2E 6 pinhole cameras at its training field of view on all 30, through paddock's bridge. Drive-JEPA on comma2k19 is its perception-free variant,
   `drivejepa_free`. AutoE2E on KITScenes is given the scene's map and a route matched
   to the logged drive, upstream's validation protocol, which no other row gets; without
   the route it scores 0.837. AutoE2E on nuScenes is fed the 6.5 s of past keyframes it
@@ -177,7 +177,8 @@ Before comparing numbers:
   scores 0 on neuroNCAP by construction: every scenario is staged so that
   holding speed collides.
 - **The AlpaSim rows come from AlpaSim's native drivers**, not paddock's bridge,
-  and were imported into `results/`.
+  and were imported into `results/`; AutoE2E's is the exception, run through
+  paddock's bridge.
 
 ### What these models are
 

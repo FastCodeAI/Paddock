@@ -175,7 +175,7 @@ the rig and cities AutoE2E was pre-trained on. See `comparison.md`,
 
 ## On AlpaSim, through the bridge
 
-**Built, not yet run.** The AlpaSim harness gives `autoe2e` its own driver
+**Run on the 30 scenes: 0.1694** (results below). The AlpaSim harness gives `autoe2e` its own driver
 profile (`harness.DRIVER_PROFILES`, `configs/driver/paddock_bridge_autoe2e.yaml`);
 the model's adapter is unchanged apart from listing `alpasim` in `model.yaml`.
 It is camera-only, as on NAVSIM: the bridge sends no route and the node sends
@@ -234,9 +234,11 @@ oldest real frame is repeated.
 | Front-left/right at ±67° | KITScenes' are at ±60°; the recorded pose is kept rather than one fixed pose for every vehicle |
 | No correctness check | the release publishes aggregate evaluation reports only, no per-sample plans to compare against |
 
-Cost, measured on a shared GPU on 21 Oct 2026: about 3.1 s per forward pass
-with full history, so about 9 minutes of model time per scene after handover
-at 10 Hz.
+Cost, measured in the 30-scene run: a median 0.80–0.86 s per call with the
+GPU to itself (168–169 calls per scene after handover, about 2.3 minutes of
+model time), and a scene in 5.6–7.5 minutes; 1.2–3.7 s per call and 18–38
+minutes per scene with the GPU shared. AlpaSim waits for each plan, so this
+changes wall time, not the drive.
 
 ## Camera setup on AlpaSim
 
@@ -408,6 +410,55 @@ declares instead of 2 s, so the 64 ego rows are real wherever the log reaches ba
 Between Alpamayo 1.5 (0.787) and Drive-JEPA (0.912); constant velocity scores 0.641.
 On the 28 keyframes of scene-0003, run before and after the two input changes, the point
 L2 fell from 0.957 to 0.899 (one scene, a check of the inputs, not a score).
+
+**AlpaSim, the 30 scenes of `public_2601_30scenes`, valid**
+(`results/alpasim/autoe2e/20261022T045847-86b955`): **0.1694** `scene_score`
+through paddock's bridge, six pinhole cameras at 20 Hz, one rollout per scene.
+A group of its own (six cameras through the bridge), not ranked against the
+one-camera rows. On the same scenes, for context: OpenPilot 0.7726, Drive-JEPA
+0.1.4b 0.5433 natively and 0.5302 through the bridge, the constant-velocity
+floor 0.4876.
+
+| scenes | `scene_score` | sd | progress | `duration_frac_20s` | at-fault, scored | off-road, scored |
+|---|---:|---:|---:|---:|---:|---:|
+| 30 | **0.1694** | 0.2034 | 0.2867 | 0.121 | 9 / 30 | 7 / 30 |
+| first 10 | 0.3175 | 0.1938 | 0.2924 | 0.120 | 2 / 10 | 0 / 10 |
+| other 20 | 0.0954 | 0.1638 | 0.2838 | 0.122 | 7 / 20 | 7 / 20 |
+
+The car leaves the human's path to the left, as on neuroNCAP and Bench2Drive:
+
+- **It crosses a lane line to the left in 28 of 30 scenes.** The two to the
+  right are the stopped-car pull-outs (`b44a4a44`, `d2715023`). Above 6 m/s at
+  handover (16 scenes) the crossing comes a median 0.93 s after handover; on
+  the 14 slower scenes, 3.4 s. It is off the road at some point in 28 of 30.
+- **The first plan is close; the drift feeds itself.** Each plan's 2 s point,
+  placed on the human's path, is 0.1–3.1 m to the left at the first call on
+  the fast scenes, and each later plan bends further left as the car drifts:
+  on `04394343` (14.9 m/s) 1.4 → 1.6 → 2.5 → 4.0 → 6.2 → 9.4 m over the first
+  0.5 s. The car follows; 2 s after each early plan it is 0.8–8.0 m further left
+  than that plan's own 2 s point. On the fast scenes the plans also brake
+  (3–4.5 m/s² in the first 2 s on 14 of 16), and the car holds about two thirds
+  of the human's speed.
+- **The score mostly measures how far the car got before the cut.** Scoring
+  stops at the first of: 4 m from the human's path, an at-fault collision, or
+  off road. That came a median 1.55 s after handover, 12% of the clip. 15 of the
+  30 scenes have an at-fault collision somewhere in the clip; 6 of those
+  collisions come after scoring stopped and so do not count. The best score,
+  0.621 on `16b83346`, is a scene where the car crossed the lane line at 0.9 s
+  and was off the road at 1.3 s.
+
+The inputs were as the profile intends on every scene: 168–169 model calls
+after handover, 34 padded motion-history rows at the first call, no repeated
+image frame from 0.5 s on. The run was made before this adapter gained the
+closed-loop history fill (#89), the map and route rasters (#97), left-out
+views (#98) and the history-frame tolerance of #107. None of them reaches
+AlpaSim, which sends no map or route, all six views, frames 50 ms apart (so the
+tolerance stays 0.06 s), and a history the bridge has already padded. Checked on one scene
+(`01d503d4`) driven again with the current code: all 396 per-tick log rows and
+every plan identical, the eight scene metrics equal, and the new log fields at
+`views` 6, `ego_rows_filled` 0, `map_valid` false. The run's id hash (`86b955`)
+predates #101, which adds `model.yaml`'s env to the id, so a rerun gets a new
+id.
 
 **Bench2Drive: not recorded here.** The 50-route sweep (`PADDOCK_INFER_HZ=10`,
 a forward every call, route raster on) was paused part-way. Every route run so
