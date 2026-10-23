@@ -189,6 +189,17 @@ budget_gb = 24
 # have room for every model in `paddock run --model all` simultaneously.
 serialize = true
 
+# The shared gate queue (docs/queue.md). Submitters need `root` and `store`; the
+# rest is read only by the worker, which runs as the `paddock` account.
+# [queue]
+# root          = "/path/to/local/paddock/queue"     # jobs, code checkouts, baselines
+# store         = "/path/to/big/paddock/checkpoints" # submitted checkpoints, by content
+# stage         = "/path/to/local/paddock/stage"     # fast copy of a running job's checkpoint
+# python        = "/path/to/paddock/venv/bin/python"
+# cores         = ["12-15"]                          # one taskset lane per entry
+# base_port     = 9800
+# renderer_port = 8800
+
 # Benchmarks that bring their own environment and assets. Uncomment and fill in
 # the ones this site can run; `paddock doctor` reports the rest as unavailable.
 
