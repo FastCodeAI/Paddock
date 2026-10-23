@@ -579,7 +579,7 @@ aggregated in the README and tracked as ten `results/` runs (below).
 | a recorded route keeps every tick's whole reply and the world beside it (`recorder.py`), and every model camera as a thumbnail | ticks.jsonl / route_plan.json / actors.jsonl and six `model_*` directories on live AutoE2E routes (20 Oct 2026); ~98 KB a tick with recording on, gated on `record` | **strong** |
 | one video per route and a dashboard, for any model | `tools/benchmarks/bench2drive/` rendered AutoE2E's six-camera routes and served them; the page runs without script errors under jsdom | **strong** for AutoE2E; openpilot's two-camera layout is kept, not re-rendered since |
 | `--resume` reuses scored routes and drives the rest | unit-tested (scored, killed, torn, all-crashed, short of repetitions); a live run resumed in place after its CARLA was killed, config marker matched | **strong** for the rule, moderate live (no scored route existed to reuse) |
-| the early stop ends a route scored as it stood | stuck / over-time / collision / by-hand rules unit-tested; live, AutoE2E's 1711 was ended by the collision rule at 3.85 s and scored `Failed - TickRuntime`, DS 8.85; the stuck and over-time rules ran live on openpilot's sweep (`docs/benchmarks/bench2drive.md`) | **strong** for collision, stuck and over time, and for the stop by hand (a live one-route run: ended on the tick after its request, scored as it stood, the run `valid: false` naming it); the red-light hold is **unit-tested only** |
+| the early stop ends a route scored as it stood | stuck / over-time / collision / by-hand rules unit-tested; live, AutoE2E's 1773 was ended at its first recorded collision at 14.6 s and scored `Failed - TickRuntime`, DS 20.0 (23 Oct, at `20e6a1d`, after `2e1e011` made the rule count only recorded collisions; a run with it is `valid: false`); the stuck and over-time rules ran live on openpilot's sweep (`docs/benchmarks/bench2drive.md`) | **strong** for collision, stuck and over time, and for the stop by hand (a live one-route run: ended on the tick after its request, scored as it stood, the run `valid: false` naming it); the red-light hold is tested through the agent and replayed on one recorded drive (route 25975, no longer stopped while it waits 45 s short of a red), **not yet live** |
 | N workers sharing one GPU, through reboots | `campaign.py` (from openpilot's sweep) drove AutoE2E on three workers, and its sweep restarted after a VM preemption with one command | moderate |
 | `make check` is safe beside a live sweep | the harness tests no longer reap port 2000; a test with a stand-in CARLA on 2000 fails without the fix, and a full `make check` ran beside a live run's CARLA on port 2000 without touching it | **strong** |
 
@@ -646,7 +646,7 @@ results, not the knob.
   record (gated `Cosmos-Reason2-8B`). Detail in `docs/benchmarks/nuplan.md`.
 
 - **AutoE2E v1.0** — **adapter landed; NAVSIM, KITScenes, comma2k19 and
-  neuroNCAP scored, Bench2Drive paused.** The Autoware Foundation's release
+  neuroNCAP scored; Bench2Drive driven, not recorded.** The Autoware Foundation's release
   checkpoint `kitscenes-epoch-5`, imported from upstream at the release
   revision. NAVSIM `navtest` 0.500 EPDMS (12,146 scenarios, valid) on the
   10 Hz nuPlan path, with the rear views from OpenScene's keyframes
@@ -667,8 +667,10 @@ results, not the knob.
   10,165 samples (valid; 1.358 with the ground truth in the calibrated frame),
   from the road camera alone: the adapter now leaves out the views a benchmark
   does not have instead of refusing every sample. Bench2Drive needed the route
-  as an observation field (`route_xy`); its 50-route sweep is paused with no
-  record here. Detail in [`docs/models/autoe2e.md`](models/autoe2e.md).
+  as an observation field (`route_xy`) and its own 10 Hz (`AUTOE2E_REPLAN_S`);
+  a full 220-route sweep with a steady ego history and no route raster
+  (`valid: false`) started on 23 Oct 2026, with no record here, and the deep
+  dive of why the model swerves is in the model doc. Detail in [`docs/models/autoe2e.md`](models/autoe2e.md).
 
   | Claim | Verified how | Strength |
   |---|---|---|

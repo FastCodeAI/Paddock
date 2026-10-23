@@ -314,21 +314,40 @@ study used pose velocities, uses the route-pooled `rpyCalib` where it used its
 own calibration, and builds the history projections from device-frame poses
 (the same M8 frame issue).
 
-**Bench2Drive: not recorded here.** The 50-route sweep (`PADDOCK_INFER_HZ=10`,
-a forward every call, route raster on) was paused part-way. Every route run so
-far scores DS 3–27 the same way: the car reaches ~12 m/s, the plan curves
-further left on each call, and it leaves the lane at 4–5 s. Checked before
-calling it the model's behaviour: CARLA actors projected through the model's
-front matrix land on the cars, with left cars at y > 0; the route raster maps
-pixels exactly as upstream's `navigation/geometry.py`; and on 80 NAVSIM scenes
-the deployed convention beats a y-mirrored BEV and a 180° rotation (4 s ADE
-1.81 m against 1.88 and 1.92). The same left lean is visible open loop above.
-Not ruled out: the route raster is drawn from the leaderboard's downsampled
-plan, a point every ~50 m within one road option, so on a bend the corridor
-runs as a chord up to ~3 m off the lane at a 100 m radius; and a route with no
-map (`route_valid` true, `map_valid` false) is an input upstream never produces
-(`navigation/rasterizer.py` sets `route_valid` only with a map). And these runs
-predate the closed-loop history fill above, so each route spent its first 6.4 s
-with zero rows in the ego history. On neuroNCAP the fill removed the early turn
-but not the later loop, so it is unlikely to explain a departure at 4–5 s, but
-Bench2Drive has not been re-run with it.
+**Bench2Drive: not recorded here.** No run is pooled into a record; each below
+is `valid: false` (a 10 Hz rate, or inputs upstream never produces).
+
+- The first 50-route sweep (`PADDOCK_INFER_HZ=10`, route raster on) ran a
+  forward on every 20 Hz call -- the Bench2Drive agent never read that variable
+  -- and predates the closed-loop history fill. Every route scored DS 3–27 the
+  same way: the car reaches ~12 m/s, the plan curves further left on each call,
+  and it leaves the lane at 4–5 s. Checked before calling it the model's
+  behaviour: CARLA actors projected through the model's front matrix land on
+  the cars, with left cars at y > 0; the route raster maps pixels exactly as
+  upstream's `navigation/geometry.py`; and on 80 NAVSIM scenes the deployed
+  convention beats a y-mirrored BEV and a 180° rotation (4 s ADE 1.81 m
+  against 1.88 and 1.92).
+- At the model's own 10 Hz (*On Bench2Drive*), with the history fill and the
+  route raster on: 59 routes scored, mean DS 13.7, before that sweep was
+  stopped on 21 Oct 2026 for the deep dive below.
+- A full 220-route sweep with a steady ego history and no route raster started
+  on 23 Oct 2026.
+
+Why it swerves, from three routes (1711, 2286, 2373) whose every request was
+recorded and replayed into the model to within 0.5 mm of the plan CARLA's node
+sent (`tools/models/autoe2e/analysis/`, 21 Oct 2026). The 64 ego-history rows
+set the plan's turn and acceleration; the cameras, the route raster and the
+projection height move it by centimetres. The network continues the launch
+every route starts with (+2 to +3.4 m/s², to 12 m/s on 8.3 m/s streets), and
+once the car yaws, its own turning, fed back through the yaw-rate and
+curvature rows, grows the plan's curvature into a spin. Driven closed loop
+with each `AUTOE2E_EGO_HISTORY` (three routes): mean DS 51.3 with `steady` (a
+straight past at the current speed), 21.4 `no_turn`, 16.2 `real`, 14.0
+`steady_speed`; all four run the red light on 2373. With `steady`, the route
+raster off kept 1711 in its lane (DS 91.7, ended by a 2x-expert clock with no
+infraction, against 30.8 with it on; one route) -- a route with no map is an
+input upstream never produces. Bench2Drive's and KITScenes' camera rigs
+(`camera_rig`) scored 88.7 and 88.0 on that route, so no better; those rigs
+also send JPEG where paddock's sends raw pixels. Not established: whether the
+model sees the cars it hits -- its BEV segmentation shows no structure on
+CARLA frames.
