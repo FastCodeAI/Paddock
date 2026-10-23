@@ -7,11 +7,14 @@ shape the 7ec25d1 ScenarioManager has. No CARLA.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from paddock.adapters.benchmarks.bench2drive import early_stop
 from paddock.adapters.benchmarks.bench2drive.early_stop import (
     COLLISION,
+    LIGHT_QUEUE_M,
     OVER_TIME,
     PROGRESS_M,
     STUCK,
@@ -21,6 +24,7 @@ from paddock.adapters.benchmarks.bench2drive.early_stop import (
     end_route,
     replay,
     scenario_collisions,
+    waiting_at_light,
 )
 from paddock.adapters.benchmarks.bench2drive.recorder import Route
 
@@ -150,8 +154,79 @@ def test_waiting_at_a_red_light_holds_the_stuck_clock() -> None:
     assert rule.update(0.0, 10.0) is None
     for t in range(1, 40):  # 39 s at a red light, not one metre on: not stuck
         assert rule.update(float(t), 10.0, waiting=True) is None
-    assert rule.update(43.0, 10.0) is None, "the clock starts again when the light turns"
+    assert rule.update(43.0, 10.0) is None, "the clock runs on when the light turns"
     assert rule.update(44.5, 10.0) == STUCK
+
+
+def test_the_wait_pauses_the_stuck_clock_it_does_not_restart_it() -> None:
+    """A car that stood 20 s on a green has 10 s left after the red: a light that keeps
+    cycling must not keep a stalled car from ever being stuck."""
+    rule = EarlyStop(stuck_s=30.0)
+    ticks = [(t / 20, t / 20 >= 20.0 and t / 20 < 60.0) for t in range(0, 20 * 80)]
+    fired = next(t for t, waiting in ticks if rule.update(t, 5.0, waiting=waiting) is not None)
+    assert fired == pytest.approx(70.0, abs=0.06)
+
+
+def test_a_car_queued_short_of_a_red_light_is_waiting() -> None:
+    """CARLA's `is_at_traffic_light` is true only inside the light's trigger box at the
+    stop line; route 25975's drive stood 9.8 m short of a red one for 45 s."""
+    red_ahead = {"id": 7, "d": 9.8, "state": "Red"}
+    assert waiting_at_light(False, "Green", red_ahead)
+    assert waiting_at_light(False, "Green", {**red_ahead, "state": "Yellow"})
+    assert waiting_at_light(True, "Red", None), "inside the box, as before"
+    assert not waiting_at_light(False, "Green", {**red_ahead, "state": "Green"})
+    assert not waiting_at_light(False, "Green", {**red_ahead, "d": LIGHT_QUEUE_M + 1.0})
+    assert not waiting_at_light(False, "Green", None)
+    assert not waiting_at_light(True, "Green", {**red_ahead, "state": "Green"})
+
+
+class _Light:
+    def __init__(self, state: str) -> None:
+        self.state = state
+
+    def get_state(self) -> str:
+        return self.state
+
+
+class _Hero:
+    """The ego standing at ``y`` on a straight route, outside every light's trigger box."""
+
+    def __init__(self, y: float) -> None:
+        self.y = y
+
+    def get_location(self) -> SimpleNamespace:
+        return SimpleNamespace(x=0.0, y=self.y)
+
+    def is_at_traffic_light(self) -> bool:
+        return False
+
+    def get_traffic_light_state(self) -> str:
+        return "Green"
+
+
+def _stand_short_of_a_light(load_agent, state: str) -> list[tuple[float, str]]:
+    """45 s of the agent's own early-stop glue, the car 10 m short of a light in ``state``."""
+    client = object.__new__(load_agent().PaddockB2DAgent)
+    client._nav_route = Route([[0.0, float(y)] for y in range(101)], ["LANEFOLLOW"] * 101)
+    client._stop_lights = [{"id": 7, "i": 50, "x": 0.0, "y": 50.0}]
+    client._lights_by_id = {7: _Light(state)}
+    client._hero = _Hero(40.0)
+    client._early_stop = EarlyStop(stuck_s=30.0)
+    client._stop_record = {"reason": None}
+    client._stop_requested, client._t = False, 0
+    ended: list[tuple[float, str]] = []
+    client._end_early = lambda reason, t, along: ended.append((t, reason))
+    for k in range(1, 20 * 45):
+        client._check_early_stop(k / 20)
+        if ended:
+            break
+    return ended
+
+
+def test_the_agent_holds_the_clock_for_a_car_waiting_short_of_a_red_light(load_agent) -> None:
+    assert _stand_short_of_a_light(load_agent, "Red") == []
+    ((t, reason),) = _stand_short_of_a_light(load_agent, "Green")
+    assert reason == STUCK and t == pytest.approx(30.05, abs=0.06)
 
 
 def test_describe_names_the_collision_rule() -> None:

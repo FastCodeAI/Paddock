@@ -224,6 +224,14 @@ class PaddockB2DAgent(AutonomousAgent):
             }
         # A stop request is honoured whether or not any rule is on; once is enough.
         self._stop_requested = False
+        # The lights on the route, so a car waiting short of a red one is not stuck.
+        self._lights_by_id = {}
+        self._stop_lights = []
+        if self._early_stop is not None and self._nav_route is not None:
+            try:
+                self._stop_lights, _ = self._route_marks(self._nav_route)
+            except Exception as exc:  # the hold falls back to CARLA's own "at a light"
+                print("[paddock-b2d] route lights unavailable to the early stop:", repr(exc))
         self._ticks = None
         if RECORD_DIR:
             self._open_analysis_record()
@@ -284,14 +292,13 @@ class PaddockB2DAgent(AutonomousAgent):
         self._record_failed = False
         self._tracked = []
         self._seen = set()
-        self._lights_by_id = {}
         try:
             plan = getattr(self, "_dense_plan", None) or []
             self._route = recorder.Route(
                 [[tf.location.x, tf.location.y] for tf, _ in plan], [opt.name for _, opt in plan]
             )
             try:
-                self._route_lights, self._route_stops = self._route_marks()
+                self._route_lights, self._route_stops = self._route_marks(self._route)
             except Exception as exc:  # the lights are context; the rest of the record still stands
                 print("[paddock-b2d] route lights not recorded:", repr(exc))
                 self._route_lights, self._route_stops = [], []
@@ -305,8 +312,8 @@ class PaddockB2DAgent(AutonomousAgent):
             print("[paddock-b2d] analysis record disabled:", repr(exc))
             self._ticks = None
 
-    def _route_marks(self):
-        """Traffic lights and stop signs on the route, by route index.
+    def _route_marks(self, route):
+        """Traffic lights and stop signs on ``route`` (a ``recorder.Route``), by route index.
 
         A light is on the route when one of the stop-line waypoints it governs
         (``get_affected_lane_waypoints``) lies on the route *and* points the way
@@ -316,7 +323,6 @@ class PaddockB2DAgent(AutonomousAgent):
         volume's centre within ``recorder.ON_ROUTE_M``.
         """
         world = CarlaDataProvider.get_world()
-        route = self._route
         lights, stops = [], []
         if world is None or not len(route.xy):
             return lights, stops
@@ -814,11 +820,15 @@ class PaddockB2DAgent(AutonomousAgent):
         self._stop_record.update(
             game_time_s=round(float(game_time), 2), tick=self._t, route_m=round(along, 1)
         )
-        # Waiting at a red light is not being stuck (early_stop.py).
+        # Waiting at a red light is not being stuck: inside its trigger box, or short of the
+        # next light on the route (early_stop.waiting_at_light).
         try:
-            waiting = bool(hero.is_at_traffic_light()) and hero.get_traffic_light_state() in (
-                carla.TrafficLightState.Red,
-                carla.TrafficLightState.Yellow,
+            ahead = recorder.next_on_route(self._stop_lights, index, route)
+            if ahead is not None:
+                light = self._lights_by_id.get(ahead["id"])
+                ahead["state"] = str(light.get_state()) if light is not None else None
+            waiting = early_stop.waiting_at_light(
+                bool(hero.is_at_traffic_light()), str(hero.get_traffic_light_state()), ahead
             )
         except RuntimeError:
             waiting = False

@@ -14,8 +14,9 @@ stop_stuck_s`` / ``stop_expert_factor`` / ``stop_on_collision``, see ``harness.p
 * **stuck** -- the ego has not got :data:`PROGRESS_M` further along the route in
   ``stop_stuck_s`` game seconds. Progress along the route, not speed, so a car
   that creeps without getting anywhere counts too. Standing at a red light is
-  waiting, not being stuck: the clock is held while the ego is at one, so a
-  short window does not end every route that meets a red signal.
+  waiting, not being stuck: the clock is paused while the ego waits at one
+  (:func:`waiting_at_light`), so a short window does not end every route that
+  meets a red signal, and runs on when it turns.
 * **over_time** -- the game clock has reached ``stop_expert_factor`` times the
   expert's (Think2Drive's) time on the route.
 * **collision** -- the leaderboard's own ``CollisionTest`` has recorded a
@@ -70,6 +71,31 @@ REASONS = (STUCK, OVER_TIME, COLLISION, MANUAL)
 #: What the agent writes beside ``results.json`` when it ends a route early.
 RECORD = "early_stop.json"
 
+#: How far short of the next light on the route the ego still waits for it: CARLA
+#: says a car is "at" a light only inside its trigger box at the stop line, so a
+#: car stopped a few metres early, or queued behind others, is not. Route 25975's
+#: drive stood 9.8 m short of a red for 45 s, longer than a 30 s window.
+LIGHT_QUEUE_M = 50.0
+
+#: The light states a car waits at, as ``str()`` of CARLA's ``TrafficLightState`` names them.
+RED_OR_AMBER = ("Red", "Yellow")
+
+
+def waiting_at_light(at: bool, state: str | None, ahead: dict | None) -> bool:
+    """Whether the ego is waiting at a red or amber light.
+
+    ``at`` and ``state`` are CARLA's own (``is_at_traffic_light``, and the state
+    of that light), ``ahead`` the next light on the route with its ``d`` metres
+    along the route and ``state`` (``recorder.next_on_route``), or None. The
+    agent decides with this live, and ``ticks.jsonl``'s ``lights`` field holds
+    the same three, so a replay decides the same way.
+    """
+    if at and state in RED_OR_AMBER:
+        return True
+    if not ahead or ahead.get("state") not in RED_OR_AMBER:
+        return False
+    return float(ahead.get("d", LIGHT_QUEUE_M + 1.0)) <= LIGHT_QUEUE_M
+
 
 class EarlyStop:
     """Fed each tick's game time and along-route position; says when to stop, and why.
@@ -85,20 +111,29 @@ class EarlyStop:
         self.collision = collision
         # (metres along, game time) when the car last got PROGRESS_M further on
         self._mark: tuple[float, float] | None = None
+        # game seconds since then spent waiting at a light, which the stuck clock does not count
+        self._waited = 0.0
+        self._last_t: float | None = None
 
     def update(self, t: float, s: float, collisions: int = 0, waiting: bool = False) -> str | None:
         """The reason to stop at game time ``t``, the ego ``s`` m along the route, or None.
 
         ``collisions`` is the leaderboard's count so far; ``waiting`` says the ego
-        stands at a red light, which holds the stuck clock rather than running it.
+        waits at a red light (:func:`waiting_at_light`), which pauses the stuck
+        clock. Paused, not restarted: a car that stood still on a green keeps
+        that time, so a light that goes on cycling cannot keep a stalled car
+        from ever being stuck.
         """
-        if self._mark is None or s >= self._mark[0] + PROGRESS_M or waiting:
-            self._mark = (s, t)
+        if self._mark is None or s >= self._mark[0] + PROGRESS_M:
+            self._mark, self._waited = (s, t), 0.0
+        elif waiting and self._last_t is not None:
+            self._waited += t - self._last_t
+        self._last_t = t
         if self.collision and collisions > 0:
             return COLLISION
         if self.after_s is not None and t >= self.after_s:
             return OVER_TIME
-        if self.stuck_s is not None and t - self._mark[1] >= self.stuck_s:
+        if self.stuck_s is not None and t - self._mark[1] - self._waited >= self.stuck_s:
             return STUCK
         return None
 
