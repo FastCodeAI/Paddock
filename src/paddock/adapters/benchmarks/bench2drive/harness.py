@@ -437,10 +437,13 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
 
     @property
     def record(self) -> bool:
-        """Per-tick front/BEV JPEGs and a log.csv: off unless asked for.
+        """The per-tick record (front/BEV JPEGs, model-camera thumbnails, log.csv, ticks.jsonl,
+        actors.jsonl, route_plan.json, rig.json): off unless asked for.
 
-        Roughly 50 KB x 4000 frames x 220 routes, about 40 GB a sweep, plus an
-        extra render on CARLA's side every tick.
+        Measured ~100 KB a tick on paddock's rig (59 routes, 8,077 ticks), so ~22 GB
+        for 220 routes of 1,000 ticks and ~90 GB if every route rode the 4000-tick
+        cap; ~280 KB a tick through the ``bench2drive`` rig and ~390 KB through
+        ``kitscenes`` (one route each). Plus an extra render on CARLA's side every tick.
         """
         return (self.setting("record") or "false").strip().lower() in ("1", "true", "yes", "on")
 

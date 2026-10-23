@@ -132,13 +132,13 @@ weights = "/path/to/weights"
 # carla_port  = "2000"                                 # evaluator moves up to the first free port from here
 # tm_port     = "8000"                                 # traffic manager port, likewise
 # gpu_rank    = "0"                                    # CARLA's -graphicsadapter
-# record      = "false"                                # per-tick front/BEV JPEGs + log.csv: ~40 GB per full sweep
-# record_inputs = "false"                              # with record: each tick's whole request, for offline replay; ~2.5 MB a tick
+# record      = "false"                                # the per-tick record: ~100 KB a tick on paddock's rig
+# record_inputs = "false"                              # with record: each tick's whole request, for offline replay; ~2.5-3 MB a tick
 # stop_stuck_s       = "30"                            # optional: end a route 30 s after its last 3 m of progress
 # stop_expert_factor = "4"                             # optional: end a route at 4x the expert's time on it
 # stop_on_collision  = "true"                          # optional: end a route at its first recorded collision (valid: false)
 # expert = "/path/to/expert"                           # tools.benchmarks.bench2drive.expert summarize's output
-#                                                      # a route either stop_* ends is a failed drive; see the docs
+#                                                      # a route the stuck or over-time rule ends is a failed drive; see the docs
 # camera_rig = "paddock"                               # default; "bench2drive" / "kitscenes" make a run valid: false
 
 # [benchmarks.alpasim]

@@ -80,7 +80,7 @@ routes_file = "bench2drive220.xml"                   # under repo/leaderboard/da
 # carla_port = "2000"                # the evaluator moves up to the first free port from here
 # tm_port    = "8000"                # traffic manager port, likewise
 # gpu_rank   = "0"                   # CARLA's -graphicsadapter
-# record     = "false"               # per-tick front/BEV JPEGs + log.csv; ~40 GB per full sweep
+# record     = "false"               # the per-tick record; ~100 KB a tick on paddock's rig
 # record_inputs = "false"            # with record: each tick's whole request, for offline replay; ~2.5 MB a tick
 # stop_stuck_s       = "30"          # end a route 30 s after its last 3 m of progress; see Ending routes early
 # stop_expert_factor = "4"           # end a route at 4x the expert's time on it; needs `expert`
@@ -479,8 +479,11 @@ transcribed from a report.
   is what "blocked at exactly 60 s with brake held" looks like from CARLA's
   side, and it is now visible from the node's.
 - Recording is off by default: a JPEG per camera per tick, a 512² BEV render per
-  tick and a CSV flush, inside the synchronous tick, come to roughly 40 GB for a
-  220-route sweep.
+  tick and a CSV flush, inside the synchronous tick. Measured ~100 KB a tick on
+  paddock's rig (59 routes, 8,077 ticks): ~22 GB for 220 routes of 1,000 ticks,
+  ~90 GB if every route rode the 4000-tick cap. The other rigs' larger frames
+  make it ~280 KB a tick (`bench2drive`) and ~390 KB (`kitscenes`), one route
+  each. `record_inputs` adds ~2.5–3 MB a tick on paddock's rig, for a few routes.
 
 ## Notes
 
