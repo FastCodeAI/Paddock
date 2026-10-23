@@ -21,12 +21,25 @@ runtime:
     # mmcv-full's compiled kernel has no SASS above sm_86; 'auto' falls back to
     # the equivalent pure-PyTorch path on newer cards. See patches/Drive-JEPA/.
     DRIVE_JEPA_MSDA: "auto"
+    # Crop and rescale every camera onto the OpenScene camera the checkpoint was
+    # trained on (64 degrees), the way the devkit's own KITScenes loader does.
+    # Uncropped, a wider camera reaches the model squeezed: on KITScenes (87
+    # degrees) objects arrive 0.65x as wide and 0.55x as tall as in training and
+    # the bonnet fills the bottom of the frame, and ADE was 3.222 m against
+    # 2.521 m cropped (t -4.0, 223 keyframes). The model's own setting, so every
+    # benchmark and every gate run gets it; a site that sets "native" is the
+    # override and its runs are not valid.
+    DRIVEJEPA_IMAGE_GEOMETRY: "openscene"
 
 capabilities:
   cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT, CAM_BACK]
   vram_gb: 12
   startup_timeout_s: 900
   waypoint_dt: 0.5
+  # It replans every 0.5 s, the spacing of its training plans. Asked at
+  # Bench2Drive's 20 Hz it scored 31.71 on the 50 routes; at 2 Hz, the last plan
+  # held between, 57.60 (docs/benchmarks/bench2drive-native-rate.md).
+  planning_hz: 2.0
 
   # -- model card (docs/models/comparison.md) --
   architecture: "V-JEPA-2-init ViT-L encoder + proposal-centric planner"
