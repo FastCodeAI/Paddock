@@ -438,9 +438,11 @@ def stop(cfg: SiteConfig, model: str, echo=print) -> int:
     for w in alive:
         echo(f"stopping worker pid {w.pid} ({len(w.routes)} routes queued)")
         if not _signal_and_wait(w.pid, signal.SIGINT, 180.0):
-            echo(f"  pid {w.pid} ignored SIGINT for 3 min; SIGTERM")
-            if not _signal_and_wait(w.pid, signal.SIGTERM, 30.0):
-                _signal_and_wait(w.pid, signal.SIGKILL, 10.0)
+            # Past SIGINT, the worker's whole process group: its model node runs in it, and a
+            # worker killed alone leaves the node on the GPU (workers lead their own session).
+            echo(f"  pid {w.pid} ignored SIGINT for 3 min; SIGTERM to its process group")
+            if not _signal_and_wait(w.pid, signal.SIGTERM, 30.0, group=True):
+                _signal_and_wait(w.pid, signal.SIGKILL, 10.0, group=True)
     # A worker killed past its SIGINT handler leaves its evaluator (own session) and CARLA behind.
     for pid, route_dir in evaluators(root):
         echo(f"cleaning up orphaned evaluator pid {pid} ({route_dir.name})")

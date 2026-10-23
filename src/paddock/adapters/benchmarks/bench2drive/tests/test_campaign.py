@@ -116,9 +116,11 @@ def test_free_slots_skip_ports_a_worker_holds_or_anything_binds() -> None:
     assert slot_ports(3, 2000, 8000, 9100) == (2000 + 3 * SLOT_STRIDE, 8000 + 3 * SLOT_STRIDE, 9130)
 
 
-def test_stop_signals_only_the_workers_the_campaign_started(tmp_path: Path, monkeypatch) -> None:
-    """A run of the same model on the same runs root, started by hand (with or without
-    PADDOCK_CONFIG), or another user's whose environment cannot be read, is not ours to stop."""
+def _processes(tmp_path: Path, monkeypatch, answers: dict[int, bool] | None = None):
+    """A site, the campaign's state, and a stand-in process table: one worker the campaign
+    started, and three `paddock run`s of the same model it did not. Returns the loaded site
+    and the list every ``(pid, signal, group)`` sent goes to; ``answers`` says, per signal,
+    whether the process exits on it (default: it does)."""
     from paddock.adapters.benchmarks.bench2drive import campaign
     from paddock.config import SiteConfig
 
@@ -143,16 +145,38 @@ def test_stop_signals_only_the_workers_the_campaign_started(tmp_path: Path, monk
     monkeypatch.setattr(campaign, "_argv", lambda pid: table[pid][0])
     monkeypatch.setattr(campaign, "_environ", lambda pid: table[pid][1])
     monkeypatch.setattr(campaign, "evaluators", lambda root: [])
-    signalled: list[int] = []
-    monkeypatch.setattr(
-        campaign, "_signal_and_wait", lambda pid, sig, wait_s, group=False: signalled.append(pid) or True
-    )
+    sent: list[tuple[int, int, bool]] = []
 
-    cfg = SiteConfig.load(site)
+    def signal_and_wait(pid, sig, wait_s, group=False):
+        sent.append((pid, sig, group))
+        return (answers or {}).get(sig, True)
+
+    monkeypatch.setattr(campaign, "_signal_and_wait", signal_and_wait)
+    return SiteConfig.load(site), sent
+
+
+def test_stop_signals_only_the_workers_the_campaign_started(tmp_path: Path, monkeypatch) -> None:
+    """A run of the same model on the same runs root, started by hand (with or without
+    PADDOCK_CONFIG), or another user's whose environment cannot be read, is not ours to stop."""
+    from paddock.adapters.benchmarks.bench2drive import campaign
+
+    cfg, sent = _processes(tmp_path, monkeypatch)
     claimed = {w.pid: w.routes for w in campaign.workers("m", campaign._runs_root(cfg, "m"))}
     assert claimed == {101: ["1711"], 102: ["1852"], 103: ["2050"]}, "their routes are still not dealt twice"
     campaign.stop(cfg, "m", echo=lambda line: None)
-    assert signalled == [101]
+    assert [pid for pid, _, _ in sent] == [101]
+
+
+def test_a_stop_past_sigint_takes_the_workers_whole_process_group(tmp_path: Path, monkeypatch) -> None:
+    """The model node runs in its worker's process group and nothing forwards SIGTERM to it:
+    signalled alone, the worker would leave its node holding the GPU."""
+    import signal
+
+    from paddock.adapters.benchmarks.bench2drive import campaign
+
+    cfg, sent = _processes(tmp_path, monkeypatch, answers={signal.SIGINT: False, signal.SIGTERM: False})
+    campaign.stop(cfg, "m", echo=lambda line: None)
+    assert sent == [(101, signal.SIGINT, False), (101, signal.SIGTERM, True), (101, signal.SIGKILL, True)]
 
 
 def test_held_routes_wait_for_everything_else_and_then_run_alone(tmp_path: Path, monkeypatch) -> None:
