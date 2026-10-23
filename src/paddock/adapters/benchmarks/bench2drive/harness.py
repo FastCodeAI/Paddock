@@ -73,6 +73,20 @@ DEFAULT_ROUTE_TIMEOUT_S = 5400
 #: evaluator that leaves no trace in run.json, hence a preflight refusal.
 QUALITY_FLAG = "-quality-level"
 
+#: How the evaluator reads with patches/Bench2Drive/ applied. Unpatched, a crashed
+#: route kills every CARLA its user runs on the GPU (the `kill -9` line), and a
+#: server slower than the evaluator's 30 s sleep costs a 600 s wait before the
+#: connection retry (`--connect-timeout` is the fix).
+CONNECT_TIMEOUT_FLAG = "--connect-timeout"
+KILL_ALL_LINE = "xargs -r kill -9"
+
+#: Seconds each connection attempt to a just-launched CARLA may take before the
+#: evaluator asks again (patch 0002). It bounds one attempt, not the boot: the
+#: evaluator makes up to 20. Override per site with ``connect_timeout_s``. Not in
+#: ``run_config``: it decides only how soon a server that is not up yet is asked
+#: again, never what is measured.
+DEFAULT_CONNECT_TIMEOUT_S = 60
+
 #: Spacing of the waypoints the node returns. Every closed-loop model plans on a
 #: 0.5 s grid (see ``neuroncap/harness.py``); the agent turns waypoint spacing
 #: into a target speed with it, so it is a measurement parameter, not a knob.
@@ -175,6 +189,27 @@ def select_routes(
         if scenario_filter is not None and stype not in scenario_filter:
             continue
         yield rid, town, stype
+
+
+def patch_problems(evaluator_source: str, evaluator: Path) -> list[str]:
+    """Why ``evaluator_source`` is not the evaluator with patches/Bench2Drive/ applied.
+
+    Both patches matter beyond one run: without 0001 a crashed route kills every
+    CARLA its user runs on the GPU, a parallel sweep worker's or another gate
+    lane's included; without 0002 the harness passes a flag the evaluator rejects.
+    """
+    problems = []
+    if KILL_ALL_LINE in evaluator_source:
+        problems.append(
+            f"{evaluator} still kills every CARLA on its GPU when a route crashes; apply "
+            f"patches/Bench2Drive/0001-kill-only-own-carla-on-crash.patch (patches/README.md)"
+        )
+    if CONNECT_TIMEOUT_FLAG not in evaluator_source:
+        problems.append(
+            f"{evaluator} has no {CONNECT_TIMEOUT_FLAG}; apply "
+            f"patches/Bench2Drive/0002-connect-timeout-for-a-booting-server.patch (patches/README.md)"
+        )
+    return problems
 
 
 def crash_reason(status: str) -> str | None:
@@ -543,6 +578,8 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
                     f"benchmark's (black sky, speckled road). Revert the edit, or make it a patch "
                     f"under patches/Bench2Drive/ so it is on the record"
                 )
+            if evaluator is not None and evaluator.exists():
+                problems.extend(patch_problems(evaluator.read_text(errors="replace"), evaluator))
 
         routes = self.routes_file
         if routes is not None:
@@ -557,11 +594,10 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
                         f"{routes.name}: {', '.join(unknown)}"
                     )
 
-        timeout = self.setting("per_route_timeout_s")
-        if timeout and not timeout.strip().isdigit():
-            problems.append(
-                f"[benchmarks.bench2drive] per_route_timeout_s must be an integer, got {timeout!r}"
-            )
+        for key in ("per_route_timeout_s", "connect_timeout_s"):
+            value = self.setting(key)
+            if value and not value.strip().isdigit():
+                problems.append(f"[benchmarks.bench2drive] {key} must be an integer, got {value!r}")
 
         if self.camera_rig not in rig.RIGS:
             problems.append(
@@ -874,6 +910,8 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             str(self.setting("tm_port") or 8000),
             "--gpu-rank",
             str(self.setting("gpu_rank") or 0),
+            CONNECT_TIMEOUT_FLAG,
+            str(int(self.setting("connect_timeout_s") or DEFAULT_CONNECT_TIMEOUT_S)),
         ]
 
         started = time.time()

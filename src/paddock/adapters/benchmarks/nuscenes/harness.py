@@ -36,6 +36,7 @@ import numpy as np
 from paddock.adapters.benchmarks.nuscenes import history as H
 from paddock.adapters.benchmarks.nuscenes import loader as L
 from paddock.benchmark import OpenLoopBenchmark, Sample
+from paddock.metrics import pdm
 from paddock.policy.protocol import Command, Observation, Trajectory
 
 HISTORY_KEYFRAMES = 4  # 2 s of real past before the scored keyframe
@@ -203,9 +204,18 @@ class NuScenesBenchmark(OpenLoopBenchmark):
     # ---- samples --------------------------------------------------------
 
     def _cache_path(self) -> Path:
+        """`index_cache` names the file (`*.pkl`) or a directory checkouts share.
+
+        In a directory the file is named by its dataset key (`L.cache_file`), so
+        one directory can serve every worktree and every dataset root.
+        """
         raw = self.setting("index_cache")
         if raw:
-            return Path(raw).expanduser()
+            path = Path(raw).expanduser()
+            if path.suffix != ".pkl":
+                scenes = json.loads(VAL_SCENES.read_text())["val"]
+                return L.cache_file(path, self.dataset.resolve(), self.version, scenes)
+            return path
         return Path(__file__).resolve().parents[5] / ".cache" / f"nuscenes_{self.version}_val_index.pkl"
 
     def _index(self):
@@ -339,7 +349,12 @@ class NuScenesBenchmark(OpenLoopBenchmark):
         # boxes are genuinely absent (scored outside the process that built the
         # index) score_plan omits the collision metrics rather than zeroing them.
         boxes = self._boxes.get(sample.sample_id)
-        return score_plan(plan_on_grid(prediction), future_xy, boxes)
+        grid = plan_on_grid(prediction)
+        out = score_plan(grid, future_xy, boxes)
+        # The two PDM terms a plan and its recorded future can fill, read by the
+        # gate beside NC (`col_avg`) in the rows NAVSIM's terms use.
+        out.update(pdm.plan_terms(grid, future_xy, prediction.xy, prediction.dt))
+        return out
 
 
 BENCHMARK = NuScenesBenchmark

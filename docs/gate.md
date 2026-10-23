@@ -54,11 +54,19 @@ at that pair's numbers, not proof the candidate is worse.
 ## Reading a verdict
 
 ```
-bench        metric          baseline candidate better by      SE      t t crit   units  verdict
-neuroncap    ncap_score         3.568     4.130     0.562   0.439   1.28   2.09      20  NEUTRAL
+bench        metric          baseline candidate better by      SE      t t crit     MDE   units  verdict
+neuroncap    ncap_score         3.568     4.130     0.562   0.439   1.28   2.09   1.297      20  NEUTRAL
              model_env: baseline {}, candidate {}
              note: neither run overrides drivejepa's env, so both ran model.yaml's own weights: ...
 ```
+
+**MDE** is the smallest true difference the pair detects 80% of the time,
+(t crit + t80) x SE, in the metric's units. It is how a NEUTRAL is read: a
+NEUTRAL with an MDE of 1.3 points says the candidate is not worse by 1.3 or more;
+it says nothing about a 0.5-point drop. It comes from the pair's own SE, so it
+moves with how different the candidate is: on neuroNCAP 20 pairs, a small
+finetune of the same model gives about 0.55, a change of what the model sees
+about 1.5 (measured from the 200-episode sweeps, 2026-10-21).
 
 | verdict | means |
 |---|---|
@@ -68,13 +76,16 @@ neuroncap    ncap_score         3.568     4.130     0.562   0.439   1.28   2.09 
 | TOO FEW UNITS | fewer than 2 units, so no standard error and no verdict |
 | NO RECORDS | one side has no `samples.jsonl` on this site; means are shown, nothing is claimed |
 | NO UNIT | some paired samples have no independent unit (NAVSIM: no plan dump names their log), so the standard error would be computed over samples and come out too small |
-| CONFIG DIFFERS | the two runs' `config` differs beyond `model_env` and the subset keys (`limit`, `scene`, `runs`, NAVSIM's token filter, ...), so a difference could be the setup's, not the candidate's. The keys are in a note; `allow_config = ["key"]` on the pair (`--allow-config key` on `compare`) accepts one the candidate is meant to change |
+| CONFIG DIFFERS | the two runs' `config` differs beyond `model_env`, `declared_env` and the subset keys (`limit`, `scene`, `runs`, NAVSIM's token filter, ...), so a difference could be the setup's, not the candidate's. The keys are in a note; `allow_config = ["key"]` on the pair (`--allow-config key` on `compare`) accepts one the candidate is meant to change |
 | INCOMPLETE | the candidate lost samples to a failure (`dataset.n_failed`, or `status: partial`). Pairing on shared samples would drop exactly those, usually the hard cases, so the rest is shown and nothing is claimed |
 
 `check` adds one overall line: **FAIL** if any pair is a REGRESSION (exit 1);
 **SHIP** only if every pair was decided (GAIN, NEUTRAL or REGRESSION, so no NO
 RECORDS, TOO FEW UNITS or INCOMPLETE), none regressed, and at least one
-closed-loop pair is a GAIN; **HOLD** otherwise. The smoke also holds while any of
+closed-loop pair that may ship is a GAIN; **HOLD** otherwise. A pair with
+`can_ship = false` (the Bench2Drive subset: seven routes detect only a 17-38
+point drop; the neuroNCAP quick subset: three episodes) still fails the gate on a REGRESSION, and its GAIN never ships a
+checkpoint; the line says `(cannot ship)`. The smoke also holds while any of
 its subsets is unfinished, and names them beside the verdict. A `threshold` on a pair also reports whether the point estimate
 dropped by more than that many metric units.
 
@@ -87,9 +98,106 @@ Read the notes; they are where the gate says what it cannot check:
   baseline again. The gate says so
   when the two are identical, and when one side sets a key the other does not.
   Identical is legitimate for a code change on the same weights.
+- **declared_env.** The env a model's own `model.yaml` sets is recorded as
+  `config.declared_env` (#99). A change to it is something a candidate is meant
+  to test, like a code change, so it is not CONFIG DIFFERS: the gate names each
+  key that differs, and says when one run has no such record.
 - **invalid.** A smoke run of a subset is `valid: false`; the note is expected
   there and a warning anywhere else.
+- **code.** `run.json` records the paddock commit a run was made with
+  (`provenance.paddock`, since 2026-10-21) and the model's own repo revision.
+  When the two runs differ, or one ran from a checkout with uncommitted edits,
+  the gate says so: an adapter change between baseline and candidate is part of
+  the difference. Older runs have no paddock commit, and the note says that too.
 - **unpaired / different sample sets.** Only shared samples are compared.
+
+### PDM terms beside the score
+
+Each benchmark has its own headline, and a headline can stay flat while what
+drives it moves. A candidate that collides more and makes more progress can keep
+the same EPDMS or driving score. So each pair also shows NAVSIM v1's PDM score
+terms, as far as its benchmark can measure them:
+
+    PDM score = NC x DAC x (5*TTC + 5*EP + 2*C) / 12
+
+`pdm:` in each `benchmark.yaml` says which of its metrics fills which term. The
+formula, NAVSIM's weights and the open-loop EP and C live in
+`paddock.metrics.pdm`. The terms always print in the same order (NC, DAC, TTC,
+EP, C, then the composite), labelled by term, under the primary. They use the
+same pairing and the same unit as the primary, and they get the same refusals:
+an INCOMPLETE pair has INCOMPLETE terms. The terms a benchmark cannot measure
+are named in a `not measured on <bench>` line, never filled with a pass.
+
+```
+bench        metric                  baseline candidate better by      SE      t t crit     MDE   units  verdict
+bench2drive  driving_score             53.500    53.500     0.000   0.378   0.00   2.37   1.233       8  NEUTRAL
+               NC  collision_rate       0.000     0.687    -0.687   0.030 -23.30   2.37   0.096       8  REGRESSION
+               EP  route_completion    63.500    95.500    32.000   0.845  37.86   2.37   2.756       8  GAIN
+               not measured on bench2drive: DAC, TTC, C
+```
+
+(That table comes from a test fixture, not a real run.)
+
+| benchmark | NC | DAC | TTC | EP | C | composite |
+|---|---|---|---|---|---|---|
+| navsim_v1 | NAVSIM | NAVSIM | NAVSIM | NAVSIM | NAVSIM | `pdms`, the real one (it is the headline) |
+| navsim | NAVSIM | NAVSIM | NAVSIM | NAVSIM | `history_comfort` | `pdm_style_score`, composed by the gate |
+| comma2k19 | radar-lead proxy | own-lane proxy | radar lead | path length | plan | `pdm_style_score` (its `score.py`) |
+| alpasim | `collision_at_fault` | `offroad` | - | `progress` | - | - |
+| nuscenes | `col_avg`: box overlap, any category, no at-fault call | - (no map loaded) | - | `pdm_ep` | `pdm_comfort` | - |
+| bench2drive | `collision_rate` | - | - | `route_completion` | - | - |
+| kitscenes, nuplan | - | - | - | `pdm_ep` | `pdm_comfort` | - |
+| neuroncap | `pdm_nc`: NAVSIM's at-fault rules, every plan against the actors' real motion | `pdm_dac`: nuScenes' drivable area | `pdm_ttc` | `pdm_ep` | `pdm_comfort` | `pdm_style_score`, the mean of every decision's composite |
+
+A slot says which question a metric answers, not that two benchmarks answer it
+the same way: NAVSIM's NC re-simulates the agents, nuScenes' NC is an overlap
+with recorded boxes. Read the rows within a benchmark, candidate against
+baseline. Do not compare them across benchmarks.
+
+**The composite.** It appears only where all five terms are measured. When a
+benchmark has all five and no composite of its own (NAVSIM v2), the gate builds
+`pdm_style_score` per sample from the five terms, so runs already on disk have
+it too. A sample missing any term gets no composite, which is never a pass.
+
+**PDM rows never change a verdict or the overall line.** Each row is a test of
+its own at 5%. If the rows were independent, an unchanged model would show at
+least one row beyond t crit in the wrong direction about 35% of the time over
+the quick tier's 17 rows, and about 51% over `--tier all`'s 28 (KITScenes 2,
+nuScenes 3, NAVSIM 6, each neuroNCAP subset 6, Bench2Drive 2, AlpaSim 3; a
+pass counts the composite the gate builds for NAVSIM v2). They are not
+independent, so the real rate is lower, by an amount nobody has measured. That
+rate is too high for a FAIL to rest on. A row that is worse beyond t crit is
+named under the overall line (`PDM terms worse beyond t crit, not part of the
+verdict: ...`), and in the smoke's per-subset line, as a pointer for whoever
+reads the pair.
+
+PDM rows apply only when the pair is scored on the benchmark's primary metric:
+`--metric` with another metric pairs that metric alone. A run with per-sample
+records but no values for a term (a run scored before `pdm_ep` existed, say) is
+not compared on that term, and one note on the primary names it.
+
+**neuroNCAP has all five, by NAVSIM's rules** (`paddock.metrics.pdm.score_plan`,
+fed by `adapters/benchmarks/neuroncap/pdm_terms.py`): at every decision, the
+model's 3 s plan against the actors' real motion and nuScenes' drivable area, the
+human's logged path as EP's centreline and reference. Its boxes reproduce the
+engine's own collision verdict on all 600 runs of three stored sweeps
+(`tools/benchmarks/neuroncap/check_pdm_geometry.py`, 223 of them collided). A
+sweep made before the terms existed gets them from its stored episodes, in about
+2 minutes, with `tools/benchmarks/neuroncap/pdm_rescore.py`: a new run of the
+same model, `replayed_from` its source (a subset key here), stored `valid: false`.
+Re-scored, the camera fix (Drive-JEPA blind against camera-fixed, 20 pairs x 10)
+leaves the NCAP score NEUTRAL (+0.56, MDE 1.30) and the PDM composite level
+(0.638 to 0.640, MDE 0.20), and moves drivable area the wrong way beyond t crit
+(0.995 to 0.967). neuroNCAP's terms are scored on the plan itself, while NAVSIM
+scores the path its vehicle simulator drives from the plan; so its C is plan
+comfort, and its fall (0.997 to 0.815) is not evidence the model drives less
+comfortably. Details in docs/benchmarks/neuroncap.md.
+
+What the other empty cells would take: for AlpaSim, the ego and actor poses each
+run already writes; for Bench2Drive, `outside_route_lanes` and the 20 Hz
+`metric_info.json`, both written per route and not yet read, or PR #79's recorder.
+Those need fresh baselines. For nuScenes and nuPlan, loading their maps and agent
+tracks.
 
 ## Full runs and the smoke
 
@@ -121,7 +229,7 @@ hours for every answer:
 | navsim (v2) | quick | 1,000 navtest tokens, every one of its 136 logs, at least 2 per log | 136 logs (1.98) | `--limit 1000` and `PADDOCK_NAVSIM_OVERRIDES=train_test_split.scene_filter.tokens=[...]` | a smoke of the same list only |
 | neuroncap_quick | quick | stationary, frontal and side at 0103; 1 run (seed 0) | 3 pairs (4.30) | `--scene 0103 --runs 1`, `PADDOCK_NCAP_MANAGE_RENDERER=true` | a full sweep (its run 0) |
 | neuroncap | closed | stationary/frontal/side at 0103, frontal+side at 0110, stationary at 0796; 3 runs | 6 pairs (2.57) | `--scene 0103,0110,0796 --runs 3`, `PADDOCK_NCAP_MANAGE_RENDERER=true` | a full sweep (its runs 0-2) |
-| bench2drive | closed | 7 routes where the four unassisted systems' scores spread by sd >= 12 | 7 routes (2.45) | `--scene <7 route ids>` | a smoke baseline |
+| bench2drive | closed | 7 routes where the four unassisted systems' scores spread by sd >= 12; cannot ship | 7 routes (2.45) | `--scene <7 route ids>` | a smoke baseline |
 | alpasim | closed | `public_2601_first10` | 10 clips (2.26) | `scene_set` pinned in the derived config | a smoke baseline |
 
 A subset's baseline is `[baseline.<subset>]` in the baseline manifest, else
@@ -174,9 +282,14 @@ Without `--execute` it prints, per benchmark, the exact `paddock run` line
 
 1. writes `PADDOCK_CONFIG` for the candidate: the site `paddock.toml` with the
    `--env` values merged into `[models.<model>.env]`, so the override reaches the
-   node and is recorded as `model_env`, and the neuroNCAP `renderer_url` moved to
+   node and is recorded as `model_env`; the neuroNCAP `renderer_url` moved to
    `--renderer-port` (default 8700), so the renderers the smoke starts do not
    land on the site's port, where a long-lived `paddock renderer` usually is;
+   and nuScenes' `index_cache` in `{roots.runs}/gate/cache/nuscenes`, one index
+   every checkout shares, unless the site names its own. Neither is in a run
+   config, so neither changes what is measured. neuroNCAP's `video` stays the
+   site's: with the default `encode`, every episode leaves its mp4s, which is how
+   a regression is looked at;
 2. launches one benchmark at a time, each after `nvidia-smi` shows enough free
    memory on the card the model will use: the model's declared `vram_gb`, plus
    its simulator's share (`SIMULATOR_GB`: 8 GB for neuroNCAP's renderer, as
@@ -211,15 +324,34 @@ one after another, before the tiers existed, on a day when the NAS read at
 | bench2drive | 240 min | CARLA at 0.06–0.17x real time, one inference per 0.05 s tick; one route hit its 90 min timeout |
 | **total** | **~7.7 h** | |
 
-A day with a healthy NAS saves most of the open-loop time; the closed-loop
-two are most of the cost either way. From those measurements, and not yet timed
-as such: the **quick tier** in three lanes is ~40-45 min on that day, the three
-open-loop subsets side by side (the longest took 35 min) and neuroNCAP's three
-quick episodes (~20 min) in the first lane to come free; the **closed tier**, one subset at a time, is ~132 min of
-neuroNCAP plus ~87 min of Bench2Drive on its 7 routes (they took 87 of the
-240 min). The same run checked the gate against
-itself: nuScenes 2.497 against the released run's 2.497 and neuroNCAP 3.175
-against 3.175 on the shared seeds, both NEUTRAL to the last decimal.
+The same run checked the gate against itself: nuScenes 2.497 against the
+released run's 2.497 and neuroNCAP 3.175 against 3.175 on the shared seeds, both
+NEUTRAL to the last decimal.
+
+**The tiered smoke, timed** (released Drive-JEPA, `--tier all`, three lanes for
+the quick tier, 2026-10-20 18:49-21:30 PDT, state dir
+`{roots.runs}/gate/smoke/drivejepa-released-timing-20261021`). A quiet evening:
+box CPU 14%, the NAS reading 65 MB/s, the GPU shared with one other job.
+
+| subset | tier | wall clock | against its baseline |
+|---|---|---|---|
+| kitscenes | quick | 5.7 min | identical (ADE 3.222) |
+| nuscenes | quick | 7.8 min, the shared index built once | identical (L2 2.497) |
+| navsim | quick | 13.4 min | identical (EPDMS 0.875) |
+| neuroncap_quick | quick | 12.8 min | identical (4.000, 3 episodes) |
+| neuroncap | closed | 45.0 min | identical (3.175, 18 episodes) |
+| bench2drive | closed | 95.7 min, 7.4-23.0 min a route | +7.0 driving score, t 0.82, MDE 28.7: NEUTRAL, cannot ship |
+| **total** | | **2 h 40 min**: quick tier 19 min, closed tier 2 h 21 min | overall HOLD |
+
+Most of the difference from the 7.7 h above is the evening, not the code: the
+NAS was about 20x faster, and neuroNCAP's 18 episodes took 45 min in all,
+where on 2026-10-16 their simulation alone took 104 min on a busy GPU. One run
+cannot split the two.
+What the code did, seen in the logs: the nuScenes index was built once into the
+shared cache and is reused by every checkout from now on; one Bench2Drive route
+(3364) found CARLA not yet up and lost 60 s to it instead of 600 s; three lanes
+ran the quick tier side by side. Bench2Drive is now the longest part of the
+closed tier and the least sensitive one.
 
 The baseline manifest is site-local TOML:
 
@@ -283,10 +415,14 @@ the check that the site's baselines are sound.
 - **The AlpaSim smoke runs its pinned scene set as the default set**: the
   derived config sets `[benchmarks.alpasim] scene_set = "public_2601_first10"`,
   so a site configured for `public_2601_30scenes` still runs the subset's 10.
-- **Drive-JEPA's AlpaSim numbers do not come from `paddock run`.** Its
-  `model.yaml` does not declare alpasim; they come from
-  `tools/models/drivejepa/alpasim_driver/`. The smoke skips AlpaSim for it
-  until the bridge can feed it the inputs that driver does.
+- **Drive-JEPA on AlpaSim runs through the bridge on its native driver's
+  settings.** Its `model.yaml` declares alpasim, so the smoke drives it. With
+  one rollout per scene, a single scene can move by up to about 0.55 between
+  two runs of the same code, from near-ties between two proposals after the
+  handover (71d7d03b, bae463d3 and 5f064b02 in
+  [the 30-scene comparison](models/drivejepa.md#through-paddock-on-alpasim)),
+  while the 30-scene mean moved by 0.013. For this model, compare means, or
+  flag only when several scenes move.
 - **A checkpoint override invalidates a run** (#82: `src/paddock/runner.py:169`
   `_env_override_reasons`), so a candidate run is never ranked as the released
   model. NAVSIM's `PADDOCK_NAVSIM_OVERRIDES` is recorded in `config.overrides`
@@ -296,6 +432,14 @@ the check that the site's baselines are sound.
 - **AlpaSim is not CPU-capped.** Its simulator runs in `docker compose`
   containers, which inherit nothing from the lane's `taskset`/`nice`. `--cores`
   lists that overlap are refused, but the containers' CPU is outside them.
+- **Bench2Drive needs `patches/Bench2Drive/` applied** to the site's checkout;
+  preflight refuses an evaluator without them. Unpatched, a crashed route kills
+  every CARLA its user runs on the GPU, other lanes included.
+- **Launches onto one card take turns** (`runtime/lease.py`): the last memory
+  check and the model's load hold that card's lock, shared by every user, so two
+  lanes or two people never start into the same free memory. A simulator that
+  starts inside the first episode loads after the lock is released; the wait
+  above counts its memory.
 - **The neuroNCAP smoke starts its own renderers** on `--renderer-port`, one
   scene at a time. Two smokes at once need different `--renderer-port` (and
   `--base-port`) values; if the port is taken, neuroNCAP's preflight says so and

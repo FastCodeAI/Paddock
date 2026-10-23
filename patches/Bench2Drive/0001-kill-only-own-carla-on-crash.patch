@@ -1,0 +1,41 @@
+Subject: [PATCH 1/2] on a crash, kill only this evaluator's own CARLA
+
+Safety fix. On "Simulation crashed" the evaluator ran
+
+    ps -ef | grep '-graphicsadapter=<gpu_rank>' | ... | xargs -r kill -9
+
+which kills every CARLA server on that GPU that the same Unix user can signal,
+not just the one this evaluator launched. On a machine with one GPU that is
+every CARLA the user runs: parallel sweep workers, a second gate lane, a
+colleague's job under a shared service account. One crashed route took all of
+them down.
+
+The server this evaluator owns is already known: `_setup_simulation` launches
+it with `preexec_fn=os.setsid`, so its process group is exactly that server and
+its children. Killing that group is what the crash handler needs. No setting
+reaches this code, so it has to be a patch.
+
+Should go upstream.
+
+diff --git a/leaderboard/leaderboard/leaderboard_evaluator.py b/leaderboard/leaderboard/leaderboard_evaluator.py
+index 2f91b57..0958f7d 100644
+--- a/leaderboard/leaderboard/leaderboard_evaluator.py
++++ b/leaderboard/leaderboard/leaderboard_evaluator.py
+@@ -498,9 +498,14 @@ class LeaderboardEvaluator(object):
+             self.statistics_manager.validate_and_write_statistics(self.sensors_initialized, crashed)
+         
+         if crashed:
+-            cmd2 = "ps -ef | grep '-graphicsadapter="+ str(args.gpu_rank) + "' | grep -v grep | awk '{print $2}' | xargs -r kill -9"
+-            server = subprocess.Popen(cmd2, shell=True, preexec_fn=os.setsid)
+-            atexit.register(os.killpg, server.pid, signal.SIGKILL)
++            # Only this evaluator's own CARLA: its server runs in a session of its
++            # own (setsid above), so its process group is exactly that server.
++            # Matching every '-graphicsadapter=N' process killed each CARLA the
++            # same user ran on that GPU, parallel workers' included.
++            try:
++                os.killpg(self.server.pid, signal.SIGKILL)
++            except ProcessLookupError:
++                pass
+ 
+         return crashed
+ 

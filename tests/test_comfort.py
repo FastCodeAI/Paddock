@@ -112,6 +112,16 @@ def test_a_stopped_plan_has_no_yaw_rate_rather_than_a_zero_one():
     assert m["comfort_lon_accel_max"] == 0.0
 
 
+def test_a_near_stop_has_no_heading_from_its_jitter():
+    """Centimetre steps with millimetre wobble read as a 1 rad/s turn when every step
+    got a heading; Drive-JEPA's neuroNCAP plans under 2 m broke the yaw bound 95% of
+    the time that way. Below MIN_HEADING_STEP_M a step has no heading."""
+    creep = np.array([[0.02 * (i + 1), 0.004 * (-1) ** i] for i in range(8)])
+    m = comfort(creep, DT)
+    assert np.isnan(m["comfort_yaw_rate_max"]), "jitter is not a turn"
+    assert m["comfort_lon_accel_max"] < 1.0
+
+
 def test_a_plan_that_stops_once_still_reports_the_turn_that_follows():
     """One stationary interval used to void the yaw channel for the whole plan.
 

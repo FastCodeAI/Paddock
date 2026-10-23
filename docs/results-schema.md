@@ -72,6 +72,13 @@ Three fields do the real work:
   bad. Reporting excludes them and never silently averages them in. Deleting a
   bad run loses the record that it happened; marking it keeps it.
 
+- **`provenance.paddock`** — the paddock checkout's commit (`sha`) and whether
+  its tracked files were edited (`dirty`). A baseline measured on older adapter
+  code is another measurement under the same model name; the regression gate
+  notes when two runs differ here. Outside `config`, so a `git pull` never
+  changes a run id or refuses a `--resume`. A run resumed at another commit
+  keeps the earlier ones in `earlier_shas`.
+
 Paths never appear in `run.json` — it is tracked, so the portability gate applies.
 
 ## `metrics.json` — aggregates
@@ -138,6 +145,8 @@ spelling of an existing one.
 | `driving_score` | CARLA Leaderboard driving score, 0–100: `route_completion × infraction_penalty` |
 | `route_completion` | % of a closed-loop route driven before it ended |
 | `infraction_penalty` | product of CARLA's per-infraction coefficients, a 0–1 multiplier — **higher is better**, despite the name; `report.py` lists it explicitly |
+| `pdm_ep`, `pdm_comfort` | NAVSIM v1's EP and C terms. On an open-loop plan (`paddock.metrics.pdm.plan_terms`): progress along the human's path over the human's, at most 1, and 1 when neither covers 5 m (NAVSIM's rule); and 1 if the plan stays inside nuPlan's five comfort bounds, a plan standing still passing as a stopped car does in NAVSIM (NaN for a plan too short to have a jerk). Both higher is better. Which metric fills which PDM term is `pdm:` in `benchmark.yaml` |
+| `pdm_nc`, `pdm_dac`, `pdm_ttc`, `pdm_style_score` | NAVSIM's other terms and its composite, where the other road users' motion is known (`paddock.metrics.pdm.score_plan`, neuroNCAP: `adapters/benchmarks/neuroncap/pdm_terms.py`): no at-fault collision (1, 0.5 for a static object, 0), every footprint corner on the drivable area, no time-to-collision violation within 0.9 s, and NC x DAC x (5 TTC + 5 EP + 2 C) / 12. Per decision, then the mean over a run's decisions. All higher is better |
 | `inference_seconds` | wall-clock per sample (the `seconds` suffix is what marks it lower-is-better in `report.py`) |
 | `scene_score` | AlpaSim closed-loop scene score, 0–1, **higher is better**. Saturating progress, **zeroed outright** by an at-fault collision or an offroad event — no partial credit for a scene that ends in either. See [benchmarks/alpasim.md](benchmarks/alpasim.md) |
 | `progress` | fraction of the human's recorded path covered, 0–1, higher is better |
@@ -200,6 +209,20 @@ partial split allowed through, a vendor agent instead of the proxy). The
 reasons are written to `notes`. The same switches reach `config` through the
 benchmark's `run_config()` and are hashed into the run id, so a results file
 never needs a hand edit to say how it was produced.
+
+The model's settings reach `config` the same way, in two keys:
+
+- **`declared_env`** — the env the model's own `model.yaml` sets under
+  `runtime.env`, as written (`"{weights}/..."`, unexpanded, so the hash is the
+  same at every site), without its tuning keys (`tuning_env`, thread counts,
+  `runner.LOCATION_ENV`). Recorded since #99. A run with no such key was made
+  before that, or under a `model.yaml` that declares only tuning keys; for the
+  former it does not mean the model declared nothing.
+- **`model_env`** — a site's `[models.<name>] env` override, absolute paths as
+  `<site path:digest>`. Where both name a key, the node ran this value.
+
+Both are hashed into the run id, so a run whose model settings changed gets a
+new id, and `--resume` refuses a run that was started under different ones.
 
 ## Ingesting existing results
 

@@ -401,6 +401,97 @@ The renderer serves one scene at a time and is slow to start, so the loop is
 scene-outer, model-inner — restart the renderer per scene, run all four models
 against it, move on. That is 14 renderer starts rather than 56.
 
+## PDM-style terms
+
+Every run's sample also carries NAVSIM's five PDM terms and their composite
+(`pdm_nc`, `pdm_dac`, `pdm_ttc`, `pdm_ep`, `pdm_comfort`, `pdm_style_score`),
+unless `video = "off"`: that turns off the engine's logger, which writes the
+files the terms are read from, so such a run has none. They are
+reported beside the NCAP score; the regression gate shows them in the rows it
+uses on every benchmark (docs/gate.md) and never decides on them.
+
+**What is scored.** At every 10 Hz step, the plan the model made (six waypoints,
+3 s) against what the actors actually did over those 3 s, on nuScenes' drivable
+area, by NAVSIM's rules as `paddock.metrics.pdm.score_plan` ports them:
+at-fault collision (0, or 0.5 for a static object), every footprint corner on the
+drivable area, time to collision (the footprint carried on 0-0.9 s at its
+velocity, against an agent ahead), progress along the human's logged path over
+the best safe path's (the human's own motion over the same 3 s counts only when
+it neither crashes nor leaves the road; the human never saw the inserted actor),
+and nuPlan's comfort bounds on the plan. A run's term is the mean over its
+decisions; its composite is the mean of the decisions' composites. All of it
+comes from the files the engine writes per run (`trajectories.json`,
+`ego_poses.json`, `actors.json`, `reference_trajectory.json`;
+`adapters/benchmarks/neuroncap/pdm_terms.py`), about 0.65 s a run, no GPU.
+
+**Every term is scored on the plan itself, and NAVSIM's are not.** NAVSIM first
+drives each plan through its own vehicle simulator (a controller and a bicycle
+model, starting from the car's measured state) and scores the path that comes
+out (`navsim/evaluate/pdm_score.py`, `simulate_proposals`). Paddock has no port
+of that simulator yet. The gap is largest for comfort, because the simulator
+smooths a plan: on 235 stored Drive-JEPA decisions, the review of #102 found the
+plan fails comfort on 51 that NAVSIM's simulated path passes (mean 0.78 against
+1.00). So **C here is plan comfort**, not NAVSIM's comfort, and the other four
+terms can differ from NAVSIM's by whatever the simulator changes about the path.
+
+**What it needs.** A drivable raster per scene, built once with neuroNCAP's own
+interpreter, which has the nuScenes map API. The builder reads nuScenes' **map
+expansion pack** (`<nuScenes root>/maps/expansion/*.json`), a separate download
+from nuscenes.org that the base dataset does not include:
+
+```bash
+<ncap python> tools/benchmarks/nuscenes/build_pdm_geometry.py \
+    --nuscenes <nuScenes root> --out <runs>/geometry/nuscenes-drivable --neuroncap
+```
+
+The harness reads `[benchmarks.neuroncap] pdm_geometry`, else
+`{roots.runs}/geometry/nuscenes-drivable`. **A scene without its raster records
+no PDM terms at all**, and the run prints why. Without the drivable area a
+sideways collision could never be at fault, and TTC and EP would change with
+it, so terms measured that way would not be NAVSIM's. `paddock doctor` lists
+the scenes that have no raster. Actor categories come from
+the dataset's own `instance.json` and `category.json`: every actor in
+`actors.json` is a nuScenes instance, the inserted one included.
+
+**How the geometry is held to the benchmark's** (2026-10-21, shakaal):
+
+| check | result |
+|---|---|
+| The engine's own collision check, restated on the realised path (`collides_like_neuroncap`), against its `any_collide@0.0s` | 600 of 600 runs agree (three Drive-JEPA sweeps of 200; 223 collided). `tools/benchmarks/neuroncap/check_pdm_geometry.py` |
+| The plan's frame: y left, as stored | a plan's 1 s point lies 0.28 m from where the car was 1 s later on plans that move sideways, 1.47 m with y flipped (863 decisions) |
+| The raster's frame | the human's logged footprint is on the drivable area at 100% of its keyframes in all 14 scenes |
+
+**Re-scoring a stored sweep.** `tools/benchmarks/neuroncap/pdm_rescore.py
+<model>:<run id>` writes a new run of the same model from the source's stored
+episodes, `replayed_from` the source in its config (a subset key for the gate),
+stored `valid: false` so one result never ranks twice. The three Drive-JEPA
+sweeps, re-scored (20 pairs x 10 runs each; 2026-10-22, with the review fixes of
+#102):
+
+| run | NCAP score | NC | DAC | TTC | EP | C (plan) | PDM |
+|---|---|---|---|---|---|---|---|
+| released, camera-blind (`20260905T220225-f11ac0`) | 3.568 | 0.739 | 0.995 | 0.681 | 0.582 | 0.997 | 0.638 |
+| a finetune of it (`20261008T021909-55974f`) | 3.671 | 0.737 | 0.957 | 0.656 | 0.557 | 0.814 | 0.586 |
+| released, camera fixed (`20261012T224707-f11ac0`) | 4.130 | 0.818 | 0.967 | 0.731 | 0.582 | 0.815 | 0.640 |
+
+Paired on the 20 scenario pairs: the camera fix is NEUTRAL on the NCAP score
+(+0.56, MDE 1.30) and on the composite (+0.002, MDE 0.20), and worse beyond t
+crit on drivable area (-0.029, t -2.4). Plan comfort also falls, 0.997 to 0.815
+(t -6.6), but that is **not evidence that the model drives less comfortably**:
+NAVSIM checks comfort on the smoother path its simulator drives from the plan,
+and this port checks the plan (above). The finetune is NEUTRAL on the NCAP score
+(+0.10, MDE 0.23); its composite is 0.053 lower (t -2.4), all of it through the
+same plan comfort, so it carries the same doubt.
+
+**What it cannot say.** There are no traffic lights here, so no TLC. A lateral
+collision counts as the ego's fault only off the drivable area (NAVSIM also when
+straddling two lanes; there are no lane polygons). Actors are known at the
+nuScenes keyframes, about 2 Hz, and interpolated between. Every term reads the
+plan: not the path NAVSIM's simulator would drive from it, and not the path the
+car drove. A plan near a standstill has no heading below 0.5 m/s
+(`metrics.comfort.MIN_HEADING_STEP_M`): before that rule, centimetre steps read as
+1 rad/s turns, and Drive-JEPA's plans under 2 m broke the yaw bound 95% of the time.
+
 ## Debugging video
 
 The engine writes a frame per simulation step, per run, into the episode's
@@ -431,7 +522,7 @@ the full 20-pair set at 10 runs for four models that is **~66 GB**.
 |---|---|---:|
 | `encode` (default) | videos, raw `CAM_*` jpegs, all json | ~5 GB |
 | `keep` | the above plus every source PNG | ~66 GB |
-| `off` | no frames at all (`--engine.logger.enabled False`) | ~0 |
+| `off` | no frames and no per-run json (`--engine.logger.enabled False`), so no PDM terms | ~0 |
 
 `encode` prunes only the derived PNG streams, and only ones that actually
 encoded. Nothing is lost that cannot be rebuilt: the raw camera frames and the
@@ -620,6 +711,7 @@ all 200 runs. Runs are seeded 0-9, so every model met identical scenario jitter.
 | Drive-JEPA ⊙ | 5.00 ±0.00 | 2.51 ±1.42 | 4.01 ±2.00 | **4.13** | 24.5% |
 | Alpamayo 1.5 | 4.41 ±1.48 | 3.64 ±2.01 | 2.45 ±1.93 | **3.73** | 32.5% |
 | OpenPilot | 4.52 ±1.34 | 2.30 ±1.24 | 3.08 ±2.25 | **3.60** | 38.0% |
+| AutoE2E ‖ | 3.46 ±2.16 | 3.71 ±1.82 | 2.01 ±2.30 | **3.16** | 42.0% |
 | METEOR | 2.44 ±2.42 | 3.20 ±2.39 | 2.50 ±2.50 | **2.64** | 48.0% |
 | Qwen-Drive 1.0 | 2.71 ±1.73 | 1.52 ±1.49 | 3.00 ±2.04 | **2.49** | 69.0% |
 | VisionPilot | 2.53 ±1.60 | 1.17 ±1.38 | 0.08 ±0.18 | **1.58** | 85.5% |
@@ -703,13 +795,19 @@ per-run rows are in `results/`; VisionPilot's side result is 0.08 with a 100%
 collision rate on all 50 runs — it hits the side obstacle at nearly full speed
 every time, which the 0.54 from one scene did not show.
 
-‖ Full official set, 20 pairs over 14 scenes, 10 runs each (n = 200), stored
-`valid: true`. OpenPilot's earlier closed-loop figures were all produced before
-`12f3250` fixed the `traffic_convention` one-hot — which had been telling
-supercombo it was a right-hand-drive car in Boston — and are stored
-`valid: false`; this is its first valid closed-loop score. Paired by seed on
-frontal-0103 the fix was worth −0.16, and on side-0103 +0.36, so it moved
-scenarios in both directions.
+‖ Full official set, 20 pairs over 14 scenes, 10 runs each (n = 200). Every row
+above is stored `valid: true` except AutoE2E's: run `20261021T175940-844841`
+carries a site-env override, `AUTOE2E_CHECKPOINT` (a site path, not a different
+checkpoint), which `#82`'s site-env-override rule flags regardless of what the
+override actually changed, since `AUTOE2E_CHECKPOINT` isn't in `autoe2e`'s
+`tuning_env` allowlist — the superseded `20261018T211838-ee6df9` sweep carried
+the identical override but predates that rule and so reads `valid: true`.
+`paddock report` excludes the stored run. OpenPilot's earlier closed-loop
+figures were all produced before `12f3250` fixed the `traffic_convention`
+one-hot — which had been telling supercombo it was a right-hand-drive car in
+Boston — and were stored `valid: false`; the row above is its first valid
+closed-loop score. Paired by seed on frontal-0103 the fix was worth −0.16, and
+on side-0103 +0.36, so it moved scenarios in both directions.
 
 Three scenes (0796, 0921, 0923) initially failed for missing nuScenes lidar and
 were completed after fetching it; both runs record `n_reused` for the episodes

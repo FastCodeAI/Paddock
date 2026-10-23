@@ -351,6 +351,14 @@ def ingest(
         "model_env": {**recorded_env, **dict(model_env or {})},
         "source_config_read": f"{sum(1 for c in configs if c)}/{len(used)} source runs",
     }
+    # The model.yaml env each source run was made under (#99). Two values are
+    # two settings of the model, not one experiment. `_agreed` skips a missing
+    # value, so a run that recorded none (every run before #99) is counted
+    # rather than read as agreeing with the others.
+    declared = _agreed([c.get("declared_env") for c in configs])
+    undeclared = sum(1 for c in configs if "declared_env" not in c) if declared is not None else 0
+    if declared is not None:
+        config["declared_env"] = declared
     # Every route that was attempted and never scored, whether or not the
     # configured subset asked for it. Route 11715 is the case: excluded for every
     # model because CARLA crashes on it, so it is not in `routes` and not in
@@ -379,6 +387,16 @@ def ingest(
             f"pooled across {len(pooled_setups)} recording setups ({', '.join(pooled_setups)}); "
             "one mean describes none of them, so this run does not rank -- the per-setup "
             "figures are in metrics.json by_group."
+        )
+    if isinstance(declared, list):
+        note = (note + " " if note else "") + (
+            f"source runs were made under {len(declared)} different model.yaml envs "
+            "(config.declared_env); one mean describes none of them, so this run does not rank."
+        )
+    if undeclared:
+        note = (note + " " if note else "") + (
+            f"{undeclared} of {len(used)} source runs recorded no declared_env (made before #99), "
+            "so which model.yaml env their routes ran is not known and this run does not rank."
         )
     # The override is layered on top of what the runs recorded, so a key that is
     # only in the override is an operator's assertion -- the note has to say so,
@@ -445,10 +463,14 @@ def ingest(
         # published as a number nobody drove. A run driven at another rate is a
         # different protocol, and ranking it beside 20 Hz rows says they measure
         # the same thing -- which is the claim this campaign exists to deny.
+        # Source runs under different, or unrecorded, model.yaml envs are the
+        # first case again: two settings of the model behind one mean.
         # An early stop ranks; a pool of routes stopped under different rules does not.
         valid=not missing
         and len(pooled_setups) <= 1
         and off_protocol is None
+        and not isinstance(declared, list)
+        and not undeclared
         and not mixed_stops
         and not by_hand,
         notes=note,

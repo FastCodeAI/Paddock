@@ -19,8 +19,10 @@ Frames and conventions follow UniAD/VAD's nuScenes planning evaluation:
 from __future__ import annotations
 
 import bisect
+import hashlib
 import json
 import math
+import os
 import pickle
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -404,6 +406,20 @@ def _cache_key(root: Path, version: str, scene_names: list[str]) -> dict:
     }
 
 
+def cache_file(directory: Path, root: Path, version: str, scene_names: list[str]) -> Path:
+    """The index file for this root, version and scene set inside a shared cache directory.
+
+    The key is in the file's name as well as inside it. With one name per
+    directory, two roots sharing it (the NAS copy and a staged one, or two sites'
+    mounts) evicted each other on every run, and a fresh checkout with the
+    default `<repo>/.cache/` rebuilt the whole index: about 20 minutes from a busy
+    NAS in the 2026-10-16 gate smoke.
+    """
+    key = _cache_key(root, version, sorted(scene_names))
+    digest = hashlib.sha256(json.dumps(key, sort_keys=True).encode()).hexdigest()[:12]
+    return Path(directory) / f"nuscenes_{version}_val_index-{digest}.pkl"
+
+
 def load_or_build_index(root: Path, version: str, scene_names: list[str], cache: Path | None, log=print):
     # Canonicalize the scene order so a cache hit and a cold build return the
     # SAME ordering (the key is order-independent, so the build must be too).
@@ -421,6 +437,13 @@ def load_or_build_index(root: Path, version: str, scene_names: list[str], cache:
     index = build_index(root, version, scene_names, log=log)
     if cache is not None:
         cache.parent.mkdir(parents=True, exist_ok=True)
-        with cache.open("wb") as handle:
-            pickle.dump({"key": key, "index": index}, handle)
+        # Written whole under another name, then renamed: parallel lanes share one
+        # cache, and a reader must never meet a half-written pickle.
+        part = cache.with_name(f".{cache.name}.{os.getpid()}.part")
+        try:
+            with part.open("wb") as handle:
+                pickle.dump({"key": key, "index": index}, handle)
+            os.replace(part, cache)
+        finally:
+            part.unlink(missing_ok=True)
     return index
