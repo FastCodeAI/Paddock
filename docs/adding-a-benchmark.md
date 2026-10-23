@@ -96,7 +96,23 @@ mode: open_loop            # open_loop | closed_loop
 dataset: mydataset
 metrics: [ade, fde@3s]
 primary_metric: ade
+pdm:                       # optional: which metric fills which PDM term
+  ep: pdm_ep
+  comfort: pdm_comfort
 ```
+
+**`pdm`** maps NAVSIM v1's PDM terms (`nc`, `dac`, `ttc`, `ep`, `comfort`,
+and `score` for a composite) to the declared metrics that measure them here. The
+regression gate shows them in the same rows on every benchmark
+([gate.md](gate.md#pdm-terms-beside-the-score)). Any open-loop benchmark can
+fill EP and C: `paddock.metrics.pdm.plan_terms` gives `pdm_ep` and
+`pdm_comfort` from the plan and its recorded future. Leave out a term the
+benchmark cannot measure; never fill one with a constant. A term may be missing
+on some samples, as long as which ones does not depend on what the model did
+(NAVSIM's two-frame comfort has no value on a log's first frame). Do not use a
+metric that is recorded only on some outcomes: neuroNCAP's `impact_speed`
+exists only for runs that collided, so pairing it compares a subset chosen by
+the result.
 
 **Reuse canonical metric names.** `ade`, `fde@1s`, `fde@2s`, `fde@3s`,
 `min_ade@6`, `ncap_score`, `collision_rate`, `pdms`, `epdms`. A new name should

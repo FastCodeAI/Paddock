@@ -16,9 +16,10 @@ weights unchanged:
 
     pdm_style_score = NC x DAC x (5*TTC + 5*EP + 2*C) / 12
 
-and reports **every sub-score as its own column**, so that nobody has to trust
-the sum and anyone who disagrees with the weights can reweigh them from the
-stored per-sample records.
+(the formula, the weights and EP now live in `paddock.metrics.pdm`, which every
+benchmark that fills a term shares) and reports **every sub-score as its own
+column**, so that nobody has to trust the sum and anyone who disagrees with the
+weights can reweigh them from the stored per-sample records.
 
 Three rules keep it honest, and breaking any of them turns it back into an
 opinion:
@@ -38,7 +39,7 @@ opinion:
 | NC | no at-fault collision with any agent | the plan does not close the **radar** gap to zero |
 | DAC | stays inside the mapped drivable area | stays within half a lane of the **human's own path** |
 | TTC | no sub-2 s time-to-collision | same, against the radar lead |
-| EP | progress / expert progress, capped at 1 | same, by path length |
+| EP | progress / expert progress, capped at 1 | same, along the recorded path |
 | C | nuPlan's five comfort bounds | same bounds, `paddock.metrics.comfort` |
 
 NC and DAC are the proxies, and they are weaker than what they stand in for:
@@ -78,7 +79,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from paddock.metrics.openloop import MIN_GT_PATH_LENGTH_M, path_length_ratio, path_tangent_split
+from paddock.metrics.openloop import path_tangent_split
+from paddock.metrics.pdm import WEIGHTS, composite, ego_progress
 
 __all__ = [
     "CORRIDOR_HALF_WIDTH_M",
@@ -112,12 +114,6 @@ MISS_HORIZONS_S = (2.0, 3.0, 4.0)
 #: in", not "would the car's body have stayed on the tarmac", and the difference
 #: is roughly one vehicle half-width in the model's favour.
 CORRIDOR_HALF_WIDTH_M = 1.85
-
-#: NAVSIM v1's weights for the additive half of PDMS. Restated rather than
-#: imported -- nuplan-devkit is not a paddock dependency -- so they are cited at
-#: the strength of published constants, the same standing as
-#: `metrics.comfort.BOUNDS`.
-WEIGHTS = {"ttc": 5.0, "ep": 5.0, "comfort": 2.0}
 
 _PDM_KEYS = (
     "pdm_nc_proxy",
@@ -165,27 +161,6 @@ def _corridor(pred_xy, gt_xy) -> float:
     return float(np.max(np.abs(finite)) <= CORRIDOR_HALF_WIDTH_M)
 
 
-def _progress(pred_xy, gt_xy) -> float:
-    """Distance covered against the distance the human covered, capped at 1.
-
-    The cap is NAVSIM's -- EP is `min(1, ego / expert)` -- so overshooting the
-    human's distance earns nothing extra. Driving too far is caught by the
-    collision terms; rewarding it here would pay a model twice for the same
-    speed prior.
-
-    A car that barely moved scores 1.0 rather than NaN, which is where this and
-    the reported `path_length_ratio` deliberately differ. The ratio is undefined
-    at a standstill because its denominator is ~0 and it is published as a
-    ratio; the question here is only "did the plan fall short of the human", and
-    against a human who went nowhere nothing falls short. Whether sitting still
-    was *right* is the collision terms' business, not progress's.
-    """
-    pred_len, gt_len, _ = path_length_ratio(pred_xy, gt_xy)
-    if gt_len < MIN_GT_PATH_LENGTH_M:
-        return 1.0
-    return float(np.clip(pred_len / gt_len, 0.0, 1.0))
-
-
 def score(
     scored: dict[str, float],
     pred_xy,
@@ -230,16 +205,13 @@ def score(
     gt_xy = np.asarray(gt_xy, dtype=np.float64)[:end, :2]
 
     out["pdm_dac_proxy"] = _corridor(pred_xy, gt_xy)
-    out["pdm_ep"] = _progress(pred_xy, gt_xy)
+    out["pdm_ep"] = ego_progress(pred_xy, gt_xy)
     # NaN here is a plan too short to have a jerk (fewer than three waypoints).
     # It stays NaN: a model that cannot be shown to be comfortable must not be
     # scored as though it had been.
     out["pdm_comfort"] = _finite(scored.get("comfort_within_bounds"))
 
-    weighted = (
-        WEIGHTS["ttc"] * out["pdm_ttc"]
-        + WEIGHTS["ep"] * out["pdm_ep"]
-        + WEIGHTS["comfort"] * out["pdm_comfort"]
-    ) / sum(WEIGHTS.values())
-    out["pdm_style_score"] = out["pdm_nc_proxy"] * out["pdm_dac_proxy"] * weighted
+    out["pdm_style_score"] = composite(
+        out["pdm_nc_proxy"], out["pdm_dac_proxy"], out["pdm_ttc"], out["pdm_ep"], out["pdm_comfort"]
+    )
     return out

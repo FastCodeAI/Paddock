@@ -111,6 +111,94 @@ Read the notes; they are where the gate says what it cannot check:
   the difference. Older runs have no paddock commit, and the note says that too.
 - **unpaired / different sample sets.** Only shared samples are compared.
 
+### PDM terms beside the score
+
+Each benchmark has its own headline, and a headline can stay flat while what
+drives it moves. A candidate that collides more and makes more progress can keep
+the same EPDMS or driving score. So each pair also shows NAVSIM v1's PDM score
+terms, as far as its benchmark can measure them:
+
+    PDM score = NC x DAC x (5*TTC + 5*EP + 2*C) / 12
+
+`pdm:` in each `benchmark.yaml` says which of its metrics fills which term. The
+formula, NAVSIM's weights and the open-loop EP and C live in
+`paddock.metrics.pdm`. The terms always print in the same order (NC, DAC, TTC,
+EP, C, then the composite), labelled by term, under the primary. They use the
+same pairing and the same unit as the primary, and they get the same refusals:
+an INCOMPLETE pair has INCOMPLETE terms. The terms a benchmark cannot measure
+are named in a `not measured on <bench>` line, never filled with a pass.
+
+```
+bench        metric                  baseline candidate better by      SE      t t crit     MDE   units  verdict
+bench2drive  driving_score             53.500    53.500     0.000   0.378   0.00   2.37   1.233       8  NEUTRAL
+               NC  collision_rate       0.000     0.687    -0.687   0.030 -23.30   2.37   0.096       8  REGRESSION
+               EP  route_completion    63.500    95.500    32.000   0.845  37.86   2.37   2.756       8  GAIN
+               not measured on bench2drive: DAC, TTC, C
+```
+
+(That table comes from a test fixture, not a real run.)
+
+| benchmark | NC | DAC | TTC | EP | C | composite |
+|---|---|---|---|---|---|---|
+| navsim_v1 | NAVSIM | NAVSIM | NAVSIM | NAVSIM | NAVSIM | `pdms`, the real one (it is the headline) |
+| navsim | NAVSIM | NAVSIM | NAVSIM | NAVSIM | `history_comfort` | `pdm_style_score`, composed by the gate |
+| comma2k19 | radar-lead proxy | own-lane proxy | radar lead | path length | plan | `pdm_style_score` (its `score.py`) |
+| alpasim | `collision_at_fault` | `offroad` | - | `progress` | - | - |
+| nuscenes | `col_avg`: box overlap, any category, no at-fault call | - (no map loaded) | - | `pdm_ep` | `pdm_comfort` | - |
+| bench2drive | `collision_rate` | - | - | `route_completion` | - | - |
+| kitscenes, nuplan | - | - | - | `pdm_ep` | `pdm_comfort` | - |
+| neuroncap | `pdm_nc`: NAVSIM's at-fault rules, every plan against the actors' real motion | `pdm_dac`: nuScenes' drivable area | `pdm_ttc` | `pdm_ep` | `pdm_comfort` | `pdm_style_score`, the mean of every decision's composite |
+
+A slot says which question a metric answers, not that two benchmarks answer it
+the same way: NAVSIM's NC re-simulates the agents, nuScenes' NC is an overlap
+with recorded boxes. Read the rows within a benchmark, candidate against
+baseline. Do not compare them across benchmarks.
+
+**The composite.** It appears only where all five terms are measured. When a
+benchmark has all five and no composite of its own (NAVSIM v2), the gate builds
+`pdm_style_score` per sample from the five terms, so runs already on disk have
+it too. A sample missing any term gets no composite, which is never a pass.
+
+**PDM rows never change a verdict or the overall line.** Each row is a test of
+its own at 5%. If the rows were independent, an unchanged model would show at
+least one row beyond t crit in the wrong direction about 35% of the time over
+the quick tier's 17 rows, and about 51% over `--tier all`'s 28 (KITScenes 2,
+nuScenes 3, NAVSIM 6, each neuroNCAP subset 6, Bench2Drive 2, AlpaSim 3; a
+pass counts the composite the gate builds for NAVSIM v2). They are not
+independent, so the real rate is lower, by an amount nobody has measured. That
+rate is too high for a FAIL to rest on. A row that is worse beyond t crit is
+named under the overall line (`PDM terms worse beyond t crit, not part of the
+verdict: ...`), and in the smoke's per-subset line, as a pointer for whoever
+reads the pair.
+
+PDM rows apply only when the pair is scored on the benchmark's primary metric:
+`--metric` with another metric pairs that metric alone. A run with per-sample
+records but no values for a term (a run scored before `pdm_ep` existed, say) is
+not compared on that term, and one note on the primary names it.
+
+**neuroNCAP has all five, by NAVSIM's rules** (`paddock.metrics.pdm.score_plan`,
+fed by `adapters/benchmarks/neuroncap/pdm_terms.py`): at every decision, the
+model's 3 s plan against the actors' real motion and nuScenes' drivable area, the
+human's logged path as EP's centreline and reference. Its boxes reproduce the
+engine's own collision verdict on all 600 runs of three stored sweeps
+(`tools/benchmarks/neuroncap/check_pdm_geometry.py`, 223 of them collided). A
+sweep made before the terms existed gets them from its stored episodes, in about
+2 minutes, with `tools/benchmarks/neuroncap/pdm_rescore.py`: a new run of the
+same model, `replayed_from` its source (a subset key here), stored `valid: false`.
+Re-scored, the camera fix (Drive-JEPA blind against camera-fixed, 20 pairs x 10)
+leaves the NCAP score NEUTRAL (+0.56, MDE 1.30) and the PDM composite level
+(0.638 to 0.640, MDE 0.20), and moves drivable area the wrong way beyond t crit
+(0.995 to 0.967). neuroNCAP's terms are scored on the plan itself, while NAVSIM
+scores the path its vehicle simulator drives from the plan; so its C is plan
+comfort, and its fall (0.997 to 0.815) is not evidence the model drives less
+comfortably. Details in docs/benchmarks/neuroncap.md.
+
+What the other empty cells would take: for AlpaSim, the ego and actor poses each
+run already writes; for Bench2Drive, `outside_route_lanes` and the 20 Hz
+`metric_info.json`, both written per route and not yet read, or PR #79's recorder.
+Those need fresh baselines. For nuScenes and nuPlan, loading their maps and agent
+tracks.
+
 ## Full runs and the smoke
 
 **Full runs**: the full-benchmark runs already in `results/`, compared with

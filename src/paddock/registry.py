@@ -199,6 +199,11 @@ class BenchmarkSpec:
     dataset: str
     metrics: tuple[str, ...] = ()
     primary_metric: str = ""
+    #: (slot, metric) pairs: which declared metric fills which term of NAVSIM
+    #: v1's PDM score (`paddock.metrics.pdm.SLOTS`, plus `score`), in slot
+    #: order. The regression gate lays every benchmark out in these rows, so a
+    #: candidate that trades collisions for progress reads the same everywhere.
+    pdm: tuple[tuple[str, str], ...] = ()
     description: str = ""
     directory: Path = REPO_ROOT
 
@@ -321,6 +326,31 @@ def load_models(directory: Path = MODELS_DIR) -> dict[str, ModelSpec]:
     return models
 
 
+def _pdm(body: object, metrics: tuple[str, ...], path: Path) -> tuple[tuple[str, str], ...]:
+    """`pdm:` as (slot, metric) pairs in slot order, refused when the gate could not read it.
+
+    A metric the harness never declares pairs as NO RECORDS on every run, and
+    one with no better direction cannot be signed: both would look like a term
+    that is being checked when it is not.
+    """
+    from paddock.metrics.pdm import SCORE, SLOTS
+    from paddock.results.report import has_direction
+
+    if body is None:
+        return ()
+    if not isinstance(body, dict):
+        raise ConfigError(f"{path}: pdm must map a term to a metric, got {body!r}")
+    order = (*SLOTS, SCORE)
+    problems = [f"{k!r} is not a PDM term (one of {', '.join(order)})" for k in body if k not in order]
+    problems += [f"{v!r} is not in metrics" for v in body.values() if v not in metrics]
+    problems += [f"{v!r} has no better direction" for v in body.values() if not has_direction(str(v))]
+    if len(set(body.values())) != len(body):
+        problems.append("one metric fills two terms")
+    if problems:
+        raise ConfigError(f"{path}: pdm: {'; '.join(problems)}")
+    return tuple((k, str(body[k])) for k in order if k in body)
+
+
 def load_benchmarks(directory: Path = BENCHMARKS_DIR) -> dict[str, BenchmarkSpec]:
     benchmarks: dict[str, BenchmarkSpec] = {}
     for path in sorted(directory.glob("*/benchmark.yaml")):
@@ -331,12 +361,14 @@ def load_benchmarks(directory: Path = BENCHMARKS_DIR) -> dict[str, BenchmarkSpec
         mode = body.get("mode", "open_loop")
         if mode not in ("open_loop", "closed_loop"):
             raise ConfigError(f"{path}: mode must be open_loop or closed_loop, got {mode!r}")
+        metrics = tuple(body.get("metrics", ()))
         benchmarks[name] = BenchmarkSpec(
             name=name,
             mode=mode,
             dataset=body.get("dataset", ""),
-            metrics=tuple(body.get("metrics", ())),
+            metrics=metrics,
             primary_metric=body.get("primary_metric", ""),
+            pdm=_pdm(body.get("pdm"), metrics, path),
             description=body.get("description", ""),
             directory=path.parent,
         )

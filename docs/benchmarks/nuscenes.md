@@ -169,8 +169,8 @@ model's plan, BEV with annotated boxes, per-scene videos) are on the NAS:
 
 ## Metrics
 
-Every metric `benchmark.yaml` declares, with its direction (all lower is better
-.
+Every metric `benchmark.yaml` declares. All are lower is better except the two
+`pdm_*` terms.
 
 | metric | meaning |
 |---|---|
@@ -183,6 +183,7 @@ Every metric `benchmark.yaml` declares, with its direction (all lower is better
 | `col_uniad_1s`, `col_uniad_2s`, `col_uniad_3s` | collision averaged over every step up to that horizon (cumulative) |
 | `col_uniad_avg` | mean of the three cumulative collision values |
 | `ade_3s` | average displacement over all six 0.5 s steps, m |
+| `pdm_ep`, `pdm_comfort` | NAVSIM v1's EP and C terms on the 0.5 s plan, higher is better ([results-schema](../results-schema.md)). With `col_avg` as NC they are this benchmark's PDM rows in the gate; there is no map, so no DAC |
 
 ## Tests
 

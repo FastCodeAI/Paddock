@@ -19,3 +19,13 @@ metrics: [ade, fde@3s]
 
 # The one number that ranks models on this benchmark.
 primary_metric: ade
+
+# Optional: which declared metric fills which term of NAVSIM v1's PDM score --
+# nc, dac, ttc, ep, comfort, and `score` for a composite of them. The regression
+# gate (docs/gate.md) shows them in the same rows on every benchmark. Leave out
+# a term the benchmark cannot measure; never fill one with a constant.
+# `paddock.metrics.pdm.plan_terms` gives any open-loop benchmark `pdm_ep` and
+# `pdm_comfort` from the plan and its recorded future.
+# pdm:
+#   ep: pdm_ep
+#   comfort: pdm_comfort
