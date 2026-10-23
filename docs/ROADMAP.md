@@ -613,8 +613,8 @@ each argued immaterial and none measured to be. Tracked as
 `results/bench2drive/<model>/native50-*`; tables, breakdown and the
 verified/argued split in
 [`bench2drive-native-rate.md`](benchmarks/bench2drive-native-rate.md). The
-adapter support for `PADDOCK_INFER_HZ` is **not on `main`**: this landed the
-results, not the knob.
+knob landed later, on 2026-10-22: a model's `planning_hz`, which the Bench2Drive
+client honours; Drive-JEPA declares 2 Hz.
 
 ## Beyond reproduction
 

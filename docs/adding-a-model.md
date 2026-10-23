@@ -101,6 +101,7 @@ capabilities:
   vram_gb: 24
   startup_timeout_s: 600
   waypoint_dt: 0.5
+  planning_hz: 2.0               # closed loop: replan this often; omit to be asked every tick
 
 benchmarks: [kitscenes, neuroncap]
 ```
