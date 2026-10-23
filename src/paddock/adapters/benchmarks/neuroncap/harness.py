@@ -494,6 +494,16 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             *cameras,
             "--engine.logger.log-dir",
             str(out_dir),
+            # The vendor logger's `allowed_cams` is `tuple[str]`, fixed arity
+            # one -- tyro's CLI can take exactly one STR or the literal
+            # `None`, never a multi-camera list. `None` logs every camera the
+            # engine has images for (i.e. whatever `--engine.cameras` above
+            # already restricted it to); the field's own default of
+            # `("CAM_FRONT",)` would otherwise silently drop every other
+            # camera a multi-camera model used. See the PR description for
+            # the full investigation.
+            "--engine.logger.allowed-cams",
+            "None",
             "--runs",
             str(runs),
         ]

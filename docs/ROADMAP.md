@@ -639,21 +639,30 @@ results, not the knob.
   because reading it means adding a map dependency, and alpamayo15 has no
   record (gated `Cosmos-Reason2-8B`). Detail in `docs/benchmarks/nuplan.md`.
 
-- **AutoE2E v1.0** — **adapter landed; NAVSIM, KITScenes and comma2k19 scored, Bench2Drive paused.** The
-  Autoware Foundation's release checkpoint `kitscenes-epoch-5`, imported from
-  upstream at the release revision. NAVSIM `navtest` 0.500 EPDMS (12,146
-  scenarios, valid) on the 10 Hz nuPlan path, with the rear views from
-  OpenScene's keyframes (`keyframe_cameras`). Bench2Drive needed the route as
-  an observation field (`route_xy`); its 50-route sweep is paused with no
-  record here. KITScenes 0.847 ADE@3s on the 223 keyframes (valid, adapted),
+- **AutoE2E v1.0** — **adapter landed; NAVSIM, KITScenes, comma2k19 and
+  neuroNCAP scored, Bench2Drive paused.** The Autoware Foundation's release
+  checkpoint `kitscenes-epoch-5`, imported from upstream at the release
+  revision. NAVSIM `navtest` 0.500 EPDMS (12,146 scenarios, valid) on the
+  10 Hz nuPlan path, with the rear views from OpenScene's keyframes
+  (`keyframe_cameras`). neuroNCAP: the full official 20 scenario-scene pairs,
+  10 runs each (n = 200, run `20261021T175940-844841`), ncap_score mean 3.16,
+  collision_rate 42% (worst on side 2.01, best on frontal 3.71) — with PR
+  #89's closed-loop ego-history fix (`steady_before_start`) in effect.
+  `valid: false`: `#82`'s site-env-override rule flags this run's
+  `AUTOE2E_CHECKPOINT` (a site path, not a different checkpoint) the same way
+  it would flag any other override, since `AUTOE2E_CHECKPOINT` isn't in
+  `autoe2e`'s `tuning_env` allowlist; the superseded `20261018T211838-ee6df9`
+  sweep carried the identical override but predates that rule and so reads
+  `valid: true`. KITScenes 0.847 ADE@3s on the 223 keyframes (valid, adapted),
   given what upstream validated it with: the scene's Lanelet2 map and a route
   matched to the logged drive (an oracle), both drawn by upstream's own code
   through two new observation fields (`map_files`, `route_trace`); 0.837
   without the route, 0.921 without either. comma2k19 2.016 ADE@3s over the
   10,165 samples (valid; 1.358 with the ground truth in the calibrated frame),
   from the road camera alone: the adapter now leaves out the views a benchmark
-  does not have instead of refusing every sample. Detail in
-  [`docs/models/autoe2e.md`](models/autoe2e.md).
+  does not have instead of refusing every sample. Bench2Drive needed the route
+  as an observation field (`route_xy`); its 50-route sweep is paused with no
+  record here. Detail in [`docs/models/autoe2e.md`](models/autoe2e.md).
 
   | Claim | Verified how | Strength |
   |---|---|---|

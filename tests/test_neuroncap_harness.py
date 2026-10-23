@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -509,6 +510,38 @@ def test_run_count_alone_does_not_invalidate(tmp_path, monkeypatch) -> None:
     harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
     list(harness.episodes(harness.available_scenes(), runs=1))
     assert harness.invalid_reasons() == []
+
+
+# ---- the built command line ---------------------------------------------
+
+
+def test_run_episode_passes_allowed_cams_none(tmp_path, monkeypatch) -> None:
+    """`--engine.logger.allowed-cams None` must reach the subprocess, not just the comment above it.
+
+    The vendor logger's own default keeps only CAM_FRONT; without this flag a
+    multi-camera model's closed-loop run would silently lose every other
+    camera's frames. Nothing previously inspected the built command line, so a
+    regression here had no test to break.
+    """
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
+    scene = OFFICIAL_SET["stationary"][0]
+    episode = next(iter(harness.episodes([scene], runs=1, scenarios=["stationary"])))
+    episode.config["cameras"] = ["CAM_FRONT"]
+
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    harness.run_episode(episode, "http://127.0.0.1:9000", tmp_path / "out")
+
+    command = captured["command"]
+    assert "--engine.logger.allowed-cams" in command
+    idx = command.index("--engine.logger.allowed-cams")
+    assert command[idx + 1] == "None"
 
 
 # ---- renderer management -----------------------------------------------
