@@ -128,9 +128,10 @@ class NuScenesBenchmark(OpenLoopBenchmark):
 
         AutoE2E reads 6.4 s of ego motion and 3.5 s of six-view camera history; with 2 s,
         44 of its 64 ego-history rows were zero on every sample, though 61.5% of scored
-        keyframes have the full 6.4 s recorded. Every other model here declares 2 s or less,
-        so its input is unchanged. With `camera_history` set the keyframes are not the
-        history at all (the sweeps are), so the window stays where it was.
+        keyframes have the full 6.4 s recorded. With `camera_history` set the keyframes are
+        not the history at all (the sweeps are), so the window stays where it was. Every other
+        model paired with nuScenes declares 2 s or less, except OpenPilot (4.8 s), which runs
+        only with `camera_history` (`input_problems`), so no other model's input changes.
         """
         if self.setting("camera_history"):
             return HISTORY_KEYFRAMES

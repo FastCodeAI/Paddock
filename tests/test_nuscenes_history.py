@@ -116,3 +116,6 @@ def test_a_model_declaring_more_history_gets_more_keyframes_and_the_run_says_so(
 
     settings.update(camera_history="CAM_FRONT")  # the sweeps are the history there, not keyframes
     assert harness.model_run_config(SimpleNamespace(history_s=6.5)) == {}
+    # OpenPilot declares 4.8 s and can run only with camera_history set, so its input is unchanged.
+    assert harness.model_run_config(SimpleNamespace(history_s=4.8)) == {}
+    assert harness._history_keyframes == 4
