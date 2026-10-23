@@ -140,6 +140,12 @@ class ModelSpec:
     #: unstated, and a benchmark with a history of its own feeds that. openpilot
     #: fills a 96-frame feature buffer at 20 Hz, so it asks for 4.8 s.
     history_s: float = 0.0
+    #: How often the model replans in closed loop, Hz; 0 means every simulator
+    #: tick. A harness that honours it (Bench2Drive) asks the node for a plan
+    #: this often and follows the last one, unchanged, in between. Drive-JEPA
+    #: plans every 0.5 s: driven at Bench2Drive's 20 Hz it scored 31.71 on the 50
+    #: routes, at 2 Hz 57.60 (docs/benchmarks/bench2drive-native-rate.md).
+    planning_hz: float = 0.0
 
     # -- the model card ---------------------------------------------------
     # What the model IS, as opposed to how to launch it. Each field is here
@@ -307,6 +313,7 @@ def load_models(directory: Path = MODELS_DIR) -> dict[str, ModelSpec]:
             min_input_hz=float(caps.get("min_input_hz", 0.0)),
             native_input_hz=float(caps.get("native_input_hz", 0.0)),
             history_s=float(caps.get("history_s", 0.0)),
+            planning_hz=float(caps.get("planning_hz", 0.0)),
             architecture=caps.get("architecture", ""),
             params_m=_optional_float(caps.get("params_m")),
             macs_g=_optional_float(caps.get("macs_g")),
