@@ -642,7 +642,11 @@ def score_plan(
     driven = None
     if simulate:
         driven = drive(states, accel0, yaw_rate0)
-        states = States(states.taus, driven[:, :2], driven[:, pdm_sim.HEADING], driven[:, pdm_sim.VX])
+        # Unsigned, as NAVSIM's scorer reads it (np.hypot of the two components):
+        # the simulator can roll a braking car backwards, and a signed speed would
+        # count every step of that as stopped, so never at fault and never a TTC.
+        speed = np.hypot(driven[:, pdm_sim.VX], driven[:, pdm_sim.VY])
+        states = States(states.taus, driven[:, :2], driven[:, pdm_sim.HEADING], speed)
     boxes = ego_boxes(states, ego)
     offroad = off_road(boxes, area)
     grid = track_grid(tracks, states, t0_us)
