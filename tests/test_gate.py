@@ -1439,6 +1439,7 @@ def _smoke_site(tmp_path: Path, monkeypatch, ade: dict[str, float], hold: float 
             python=sys.executable,
             keep_going=False,
             stage_dir=None,
+            json=None,
         )
         base.update(over)
         return argparse_ns(**base)
@@ -1462,6 +1463,19 @@ def test_a_smoke_with_an_unfinished_subset_does_not_say_ship(tmp_path: Path, mon
     text = "\n".join(said)
     assert "overall: HOLD (not finished: neuroncap)" in text
     assert "SHIP" not in text
+
+
+def test_smoke_json_has_the_verdict_and_each_steps_run(tmp_path: Path, monkeypatch) -> None:
+    """`tools.gate_queue` reads it: a baseline job's finished steps become the queue's baselines."""
+    args, _ = _smoke_site(tmp_path, monkeypatch, {"kitscenes": 2.0, "nuscenes": 2.0, "neuroncap": -1.0})
+    out = tmp_path / "verdict.json"
+    assert gate.smoke(args(bench=["kitscenes", "neuroncap"], json=out), lambda _m: None) == 1
+    data = json.loads(out.read_text())
+    assert data["overall"] == "HOLD" and data["unfinished"] == ["neuroncap_quick"]
+    steps = {s["name"]: s for s in data["steps"]}
+    assert steps["kitscenes"]["status"] == "finished" and steps["kitscenes"]["run_id"]
+    assert steps["neuroncap_quick"]["status"] != "finished"
+    assert [p["bench"] for p in data["pairs"]] == ["kitscenes"]
 
 
 def test_the_closed_tier_starts_only_after_the_quick_tier_ends(tmp_path: Path, monkeypatch) -> None:
