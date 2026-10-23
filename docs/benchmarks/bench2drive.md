@@ -24,6 +24,8 @@ tracked by the Bench2Drive dual-PID controller, vendored in `pid.py` (see
 | collisions per progress km | a collision count divided by `progress_km`; the form upstream publishes (`statistics_manager.py:489-501`) | lower better |
 | `min_speed_entries` | number of ego-to-traffic speed ratios `MinimumSpeedRouteTest` recorded — about 20 per route by construction, so a **count of checkpoints reached**, not of violations | context, not a score |
 | `below_100_percent` | share of those recorded ratios below background-traffic speed | lower better |
+| `ended_stuck`, `ended_over_time`, `ended_collision` | with the early stop on (*Ending routes early*): share of routes that rule ended, 0/1 per route | lower better |
+| `ended_manual` | share of routes a person ended by hand (a run with one is `valid: false`) | context, not a score |
 
 The infraction-penalty coefficients are CARLA Leaderboard's: collision-vehicle
 ×0.60, collision-pedestrian ×0.50, collision-static ×0.65, red light ×0.70, stop

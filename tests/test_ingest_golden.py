@@ -123,6 +123,11 @@ def test_summarise_of_nothing_is_not_zero() -> None:
         ("comfort_yaw_rate_max", True),
         ("pdm_style_score", False),
         ("comfort_within_bounds", False),
+        # Bench2Drive's early stop: the share of a run's routes each rule ended,
+        # a fraction of routes that went wrong, which an up arrow would reward.
+        ("ended_stuck", True),
+        ("ended_over_time", True),
+        ("ended_collision", True),
     ],
 )
 def test_metric_direction(metric: str, lower_better: bool) -> None:
@@ -150,6 +155,9 @@ def test_metric_direction(metric: str, lower_better: bool) -> None:
         # as a column, and an up arrow there says a 10 s planner beat a 3 s one
         # on a metric that is not a score.
         "scored_horizon_s",
+        # The share of routes a person ended by hand: when someone pressed a
+        # button, not how the model drove.
+        "ended_manual",
     ],
 )
 def test_a_metric_with_no_better_direction_gets_no_arrow(metric: str) -> None:
