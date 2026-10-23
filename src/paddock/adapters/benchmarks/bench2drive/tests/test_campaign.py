@@ -1,7 +1,8 @@
 """The campaign bookkeeping: what is left, how it is dealt, and the per-worker config.
 
-All pure; the process side (finding workers, evaluators and CARLA in /proc) is
-exercised by running the sweep, not here.
+All pure. The process side (finding workers, evaluators and CARLA in /proc) is
+exercised by running the sweep; which processes ``stop`` may signal is checked
+here against a stand-in process table.
 """
 
 from __future__ import annotations
@@ -113,6 +114,45 @@ def test_free_slots_skip_ports_a_worker_holds_or_anything_binds() -> None:
     slots = free_slots(3, 2000, 8000, 9100, held, lambda p: p not in bound)
     assert slots == [0, 3, 4]
     assert slot_ports(3, 2000, 8000, 9100) == (2000 + 3 * SLOT_STRIDE, 8000 + 3 * SLOT_STRIDE, 9130)
+
+
+def test_stop_signals_only_the_workers_the_campaign_started(tmp_path: Path, monkeypatch) -> None:
+    """A run of the same model on the same runs root, started by hand (with or without
+    PADDOCK_CONFIG), or another user's whose environment cannot be read, is not ours to stop."""
+    from paddock.adapters.benchmarks.bench2drive import campaign
+    from paddock.config import SiteConfig
+
+    site = tmp_path / "site.toml"
+    site.write_text(
+        f'site = "t"\n[roots]\nrepos = "{tmp_path}"\nruns = "{tmp_path / "runs"}"\nweights = "{tmp_path}"\n'
+        '[benchmarks.bench2drive]\ncarla_port = "2000"\n'
+    )
+    state = tmp_path / "runs" / "bench2drive" / "_campaign" / "m"
+    state.mkdir(parents=True)
+    (state / "worker0.toml").write_text(with_ports(site.read_text(), 2150, 8150))
+    (tmp_path / "paddock.toml").write_text(site.read_text())  # what a run with no PADDOCK_CONFIG reads
+    monkeypatch.setattr(campaign, "REPO_ROOT", tmp_path)
+    argv = ["python", "-m", "paddock.cli", "run", "--bench", "bench2drive", "--model", "m", "--scene"]
+    table = {
+        101: (argv + ["1711"], {"PADDOCK_CONFIG": str(state / "worker0.toml")}),  # the campaign's
+        102: (argv + ["1852"], {"PADDOCK_CONFIG": str(site)}),  # by hand, same runs root
+        103: (argv + ["2050"], {}),  # by hand, no PADDOCK_CONFIG
+        104: (argv + ["2286"], None),  # another user's: its environment cannot be read
+    }
+    monkeypatch.setattr(campaign, "_pids", lambda: iter(table))
+    monkeypatch.setattr(campaign, "_argv", lambda pid: table[pid][0])
+    monkeypatch.setattr(campaign, "_environ", lambda pid: table[pid][1])
+    monkeypatch.setattr(campaign, "evaluators", lambda root: [])
+    signalled: list[int] = []
+    monkeypatch.setattr(
+        campaign, "_signal_and_wait", lambda pid, sig, wait_s, group=False: signalled.append(pid) or True
+    )
+
+    cfg = SiteConfig.load(site)
+    claimed = {w.pid: w.routes for w in campaign.workers("m", campaign._runs_root(cfg, "m"))}
+    assert claimed == {101: ["1711"], 102: ["1852"], 103: ["2050"]}, "their routes are still not dealt twice"
+    campaign.stop(cfg, "m", echo=lambda line: None)
+    assert signalled == [101]
 
 
 def test_held_routes_wait_for_everything_else_and_then_run_alone(tmp_path: Path, monkeypatch) -> None:

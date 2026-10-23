@@ -38,9 +38,13 @@ writes -- no state of its own decides anything:
   so silence alone never fires.
 
 All four go only after this sweep's own processes: workers are found by their
-command line *and* by the runs root of their ``PADDOCK_CONFIG``; evaluators by
-their ``--checkpoint`` lying under it; CARLA by the port in that evaluator's
-log. The evaluator's own crash handler kills every CARLA on its GPU index
+command line *and* by the runs root of their ``PADDOCK_CONFIG``, and ``stop``
+signals only those whose ``PADDOCK_CONFIG`` is one of the campaign's own
+``worker<slot>.toml`` (a run started by hand on the same runs root keeps its
+routes from being dealt twice, and is left running); evaluators by their
+``--checkpoint`` lying under it; CARLA by the port in that evaluator's log. A
+process whose environment cannot be read -- another user's -- is never ours.
+The evaluator's own crash handler kills every CARLA on its GPU index
 (``harness`` docstring), so routes known to crash CARLA are passed as
 ``--held``: they are driven last, by one worker, once nothing else is left.
 
@@ -252,11 +256,12 @@ def _argv(pid: int) -> list[str]:
         return []
 
 
-def _environ(pid: int) -> dict[str, str]:
+def _environ(pid: int) -> dict[str, str] | None:
+    """The process's environment, or None when it cannot be read: another user's, or gone."""
     try:
         raw = Path(f"/proc/{pid}/environ").read_bytes().split(b"\0")
     except OSError:
-        return {}
+        return None
     return dict(item.decode(errors="replace").split("=", 1) for item in raw if b"=" in item)
 
 
@@ -281,6 +286,11 @@ def _runs_root(cfg: SiteConfig, model: str) -> Path:
     return cfg.runs / "bench2drive" / model
 
 
+def _state_dir(cfg: SiteConfig, model: str) -> Path:
+    """The campaign's own files: each worker's config (``worker<slot>.toml``) and the logs."""
+    return cfg.runs / "bench2drive" / "_campaign" / model
+
+
 def workers(model: str, runs_root: Path) -> list[Worker]:
     """Alive ``paddock run --bench bench2drive --model <model>`` processes writing under ``runs_root``."""
     found = []
@@ -298,7 +308,10 @@ def workers(model: str, runs_root: Path) -> list[Worker]:
             continue
         if bench != "bench2drive" or mdl != model:
             continue
-        cfg_path = Path(_environ(pid).get("PADDOCK_CONFIG") or REPO_ROOT / "paddock.toml")
+        env = _environ(pid)
+        if env is None:  # nothing says where it writes: not ours to count, and never to stop
+            continue
+        cfg_path = Path(env.get("PADDOCK_CONFIG") or REPO_ROOT / "paddock.toml")
         try:
             cfg = SiteConfig.load(cfg_path)
         except Exception:  # an unreadable config is not one of ours
@@ -409,9 +422,19 @@ def status(cfg: SiteConfig, model: str, echo=print) -> dict:
 
 
 def stop(cfg: SiteConfig, model: str, echo=print) -> int:
-    """Stop this sweep's workers: SIGINT first, which the harness turns into killing its evaluator + CARLA."""
+    """Stop this sweep's workers: SIGINT first, which the harness turns into killing its evaluator + CARLA.
+
+    Only the workers ``launch`` started, known by their ``PADDOCK_CONFIG``: one of the
+    campaign's ``worker<slot>.toml``. A ``paddock run`` of the same model started by
+    hand counts for ``launch`` (its routes are not dealt twice) but is not ours to stop.
+    """
     root = _runs_root(cfg, model)
-    alive = workers(model, root)
+    state_dir = _state_dir(cfg, model).resolve()
+    alive = [
+        w
+        for w in workers(model, root)
+        if w.config.resolve().parent == state_dir and w.config.name.startswith("worker")
+    ]
     for w in alive:
         echo(f"stopping worker pid {w.pid} ({len(w.routes)} routes queued)")
         if not _signal_and_wait(w.pid, signal.SIGINT, 180.0):
@@ -444,7 +467,7 @@ def launch(
     (the evaluator's crash handler kills all CARLA on its GPU index).
     """
     root = _runs_root(cfg, model)
-    state_dir = cfg.runs / "bench2drive" / "_campaign" / model
+    state_dir = _state_dir(cfg, model)
     alive = workers(model, root)
     if rebalance and alive:
         if dry_run:
