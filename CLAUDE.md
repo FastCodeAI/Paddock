@@ -170,3 +170,11 @@ ignore. Do not add it to the required checks; see `[tool.mypy]` in
 [docs/reviewing.md](docs/reviewing.md) — including the standard that reviews and
 `docs/ROADMAP.md` share: **separate what you verified from what you argued**,
 with the strength of each claim stated.
+
+**Write the PR title and description so the user can read them.** Say what the
+PR does in one plain sentence first. Use plain words and short sentences, define
+every term the first time it appears, use no labels made up during your session,
+and say what the reader has to do. The same rules cover reviews and replies; see
+"Write it so the user can read it" in
+[.claude/commands/pr-review.md](.claude/commands/pr-review.md). The model is the
+description of #100.
