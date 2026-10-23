@@ -107,9 +107,29 @@ existing clones at existing data using each repo's own configuration mechanism.
 
 ## Support matrix
 
-The headline number for each model on each benchmark, measured through paddock.
-Each column header links to that benchmark's page, which has the per-metric
-tables and every note on these cells.
+The headline number for each model on each benchmark, measured through paddock,
+shaded by its rank within that benchmark.
+
+<p align="center">
+  <img src="docs/assets/support-matrix.svg" width="100%" alt="Support matrix heatmap: each model's headline score on each benchmark, shaded by rank within the benchmark. The same numbers are in the table below.">
+</p>
+
+Each benchmark's page has the per-metric tables and every note on these cells:
+[nuScenes](docs/benchmarks/nuscenes.md#support-matrix-results) ·
+[KITScenes](docs/benchmarks/kitscenes.md#support-matrix-results) ·
+[comma2k19](docs/benchmarks/comma2k19.md#support-matrix-results) ·
+[nuPlan](docs/benchmarks/nuplan.md#support-matrix-results) ·
+[NAVSIM v2](docs/benchmarks/navsim.md#support-matrix-results) ·
+[NAVSIM v1](docs/benchmarks/navsim_v1.md#support-matrix-results) ·
+[Bench2Drive](docs/benchmarks/bench2drive.md#support-matrix-results) ·
+[neuroNCAP](docs/benchmarks/neuroncap.md#support-matrix-results) ·
+[AlpaSim](docs/benchmarks/alpasim.md#support-matrix-results).
+
+<details>
+<summary>The same numbers as a table</summary>
+
+<!-- The heatmap above is drawn from this table. After editing it, run
+     python -m tools.readme_matrix; tests/test_readme_matrix.py fails until you do. -->
 
 🟢 open loop · 🟡 pseudo-closed loop · 🔴 closed loop · ↑ higher is better · ↓ lower is better
 
@@ -125,6 +145,8 @@ tables and every note on these cells.
 | Qwen-Drive 1.0 | 0.450 | 0.806 | 1.159 | — | 0.840 <sup>A</sup> | 0.876 <sup>A</sup> | 17.08 (2 Hz) <sup>R</sup> | 2.49 | — |
 | AutoE2E | — | 0.847 <sup>A R</sup> | 2.016 | — | 0.500 (10 Hz) <sup>A R</sup> | — | — | 3.16 <sup>V</sup> | — |
 | Baseline (Constant Velocity) | 0.641 | 1.381 | 1.639 | 1.393 | 0.239 | 0.207 | 47.94 | 0, by construction | 0.4876 |
+
+</details>
 
 A mark on a model's name applies to every cell in its row. A cell without a mark
 was measured the same way as the rest of its column.
