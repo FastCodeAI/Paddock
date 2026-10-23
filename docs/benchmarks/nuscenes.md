@@ -7,10 +7,10 @@ every val keyframe, plan 3 s ahead from the real past and compare with what the
 human drove. Zero-shot for every model here; none was trained on nuScenes.
 
 **Scoring only some samples.** `PADDOCK_NUSCENES_SAMPLES=<id>,<id>,...` (ids as
-`nuscenes/val/<scene>/<index>`) scores those samples and no others; pass `--limit`
-equal to their count so the run is stored `valid: false` as a subset. The
-regression gate's nuScenes subset runs this way (docs/gate.md). The list is
-recorded in `config.sample_filter` as its size and digest.
+`nuscenes/val/<scene>/<index>`) scores those samples and no others. Such a run is
+stored `valid: false` as a subset, with or without `--limit`. The regression
+gate's nuScenes subset runs this way (docs/gate.md). The list is recorded in
+`config.sample_filter` as its size and digest.
 
 ## What is scored
 

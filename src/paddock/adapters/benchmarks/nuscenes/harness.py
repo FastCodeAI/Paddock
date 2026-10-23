@@ -145,6 +145,17 @@ class NuScenesBenchmark(OpenLoopBenchmark):
             config["sample_filter"] = f"{len(wanted)} samples, sha256 {digest}"
         return config
 
+    def invalid_reasons(self) -> list[str]:
+        """A run on a sample list is a subset, whether or not `--limit` came with it.
+
+        Without this, a run on two hand-picked samples was stored `valid: true`
+        and ranked beside full runs: only `--limit` marked a subset.
+        """
+        reasons = list(super().invalid_reasons())
+        if wanted := sample_filter():
+            reasons.append(f"{len(wanted)} samples named by {ENV_SAMPLES}; a subset, not a nuScenes score")
+        return reasons
+
     # ---- readiness ------------------------------------------------------
 
     @property

@@ -194,3 +194,23 @@ def test_a_sample_list_scores_only_its_samples(monkeypatch):
     assert got == ["nuscenes/val/scene-0003/2", "nuscenes/val/scene-0012/1"]
     monkeypatch.delenv(NH.ENV_SAMPLES)
     assert len(list(NH.NuScenesBenchmark.samples(fake))) == 2 * (10 - NH.N_STEPS)
+
+
+def test_a_run_on_a_sample_list_is_never_stored_as_a_full_score(tmp_path, monkeypatch):
+    """Review of #105 (1): with the list set and no --limit, the run was stored valid: true."""
+    from paddock.adapters.benchmarks.nuscenes import harness as NH
+    from paddock.config import SiteConfig
+    from paddock.registry import Registry
+
+    for sub in ("repos", "runs", "weights", "nuscenes"):
+        (tmp_path / sub).mkdir()
+    (tmp_path / "site.toml").write_text(
+        f'site = "t"\n[roots]\nrepos = "{tmp_path / "repos"}"\nruns = "{tmp_path / "runs"}"\n'
+        f'weights = "{tmp_path / "weights"}"\n[datasets.nuscenes]\npath = "{tmp_path / "nuscenes"}"\n'
+    )
+    monkeypatch.setenv("PADDOCK_CONFIG", str(tmp_path / "site.toml"))
+    harness = NH.BENCHMARK(Registry.load().benchmarks["nuscenes"], SiteConfig.load())
+    assert harness.invalid_reasons() == []
+    monkeypatch.setenv(NH.ENV_SAMPLES, "nuscenes/val/scene-0003/0,nuscenes/val/scene-0003/1")
+    (reason,) = harness.invalid_reasons()
+    assert reason.startswith("2 samples named by PADDOCK_NUSCENES_SAMPLES")
