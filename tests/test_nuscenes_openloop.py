@@ -173,3 +173,24 @@ def test_index_cache_is_rebuilt_when_the_dataset_key_changes(tmp_path, monkeypat
     # Different version: rebuild again.
     L.load_or_build_index(root, "v1.0-mini", ["a", "b"], cache)
     assert calls["n"] == 3
+
+
+def test_a_sample_list_scores_only_its_samples(monkeypatch):
+    """The gate's nuScenes subset is spread over every val scene; --limit alone takes a prefix."""
+    from types import SimpleNamespace
+
+    from paddock.adapters.benchmarks.nuscenes import harness as NH
+
+    frames = [
+        [SimpleNamespace(scene=scene, index_in_scene=i) for i in range(10)]
+        for scene in ("scene-0003", "scene-0012")
+    ]
+    fake = SimpleNamespace(
+        _index=lambda: frames,
+        _sample=lambda fr, i: SimpleNamespace(sample_id=f"nuscenes/val/{fr[i].scene}/{fr[i].index_in_scene}"),
+    )
+    monkeypatch.setenv(NH.ENV_SAMPLES, "nuscenes/val/scene-0012/1,nuscenes/val/scene-0003/2")
+    got = [s.sample_id for s in NH.NuScenesBenchmark.samples(fake)]
+    assert got == ["nuscenes/val/scene-0003/2", "nuscenes/val/scene-0012/1"]
+    monkeypatch.delenv(NH.ENV_SAMPLES)
+    assert len(list(NH.NuScenesBenchmark.samples(fake))) == 2 * (10 - NH.N_STEPS)

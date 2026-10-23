@@ -26,8 +26,10 @@ scored keyframe's ego frame; heading of the planned footprint follows the plan
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
+import os
 from collections.abc import Container, Iterator
 from pathlib import Path
 
@@ -44,6 +46,16 @@ STEP_S = L.KEYFRAME_DT_S
 N_STEPS = L.FUTURE_STEPS
 HORIZONS = {"1s": 2, "2s": 4, "3s": 6}  # step index (1-based) of each horizon
 VAL_SCENES = Path(__file__).with_name("val_scenes.json")
+#: A comma list of sample ids (`nuscenes/val/<scene>/<index>`) to score, and no
+#: others. Open-loop runs take no scene filter, and the regression gate's nuScenes
+#: subset is spread over every val scene (`tools/gate_subsets.py`).
+ENV_SAMPLES = "PADDOCK_NUSCENES_SAMPLES"
+
+
+def sample_filter() -> set[str] | None:
+    """The ids `PADDOCK_NUSCENES_SAMPLES` names, or None to score every sample."""
+    raw = os.environ.get(ENV_SAMPLES, "").strip()
+    return {s.strip() for s in raw.split(",") if s.strip()} or None
 
 
 def plan_on_grid(prediction: Trajectory, n_steps: int = N_STEPS, step_s: float = STEP_S) -> np.ndarray:
@@ -121,13 +133,17 @@ class NuScenesBenchmark(OpenLoopBenchmark):
         self._boxes: dict[str, list] = {}
 
     def run_config(self) -> dict:
-        return {
+        config = {
             "camera_history": self.setting("camera_history") or "keyframes",
             "history_seconds": float(self.setting("history_seconds", 5.0))
             if self.setting("camera_history")
             else HISTORY_KEYFRAMES * STEP_S,
             "scoring_hz": 2.0,
         }
+        if wanted := sample_filter():
+            digest = hashlib.sha256(",".join(sorted(wanted)).encode()).hexdigest()[:16]
+            config["sample_filter"] = f"{len(wanted)} samples, sha256 {digest}"
+        return config
 
     # ---- readiness ------------------------------------------------------
 
@@ -248,10 +264,17 @@ class NuScenesBenchmark(OpenLoopBenchmark):
             raise ValueError(f"nuscenes open-loop scores the official val split only, not {split!r}")
         emitted = 0
         skipped = 0
+        wanted = sample_filter()
+        seen: set[str] = set()
         for frames in self._index():
             for i in range(len(frames)):
                 if i + N_STEPS >= len(frames):
                     break  # no full 3 s future: the standard drops these too
+                if wanted is not None:
+                    sid = f"nuscenes/val/{frames[i].scene}/{frames[i].index_in_scene}"
+                    if sid not in wanted:
+                        continue
+                    seen.add(sid)
                 # The 3 s horizon assumes six *consecutive* keyframes. If a
                 # keyframe was dropped (e.g. missing LIDAR_TOP), the window would
                 # silently span more than 3 s -- skip it rather than mis-score.
@@ -275,6 +298,14 @@ class NuScenesBenchmark(OpenLoopBenchmark):
             print(
                 f"  nuscenes: skipped {skipped} keyframe(s) with a non-contiguous 3 s future "
                 f"(damaged metadata); scored {emitted}",
+                flush=True,
+            )
+        if wanted is not None and (missing := wanted - seen):
+            # Said, not raised: by now the run has scored the rest, and the gate
+            # pairs on shared ids, so a short run reads as unpaired samples.
+            print(
+                f"  nuscenes: {len(missing)} of the {len(wanted)} samples in {ENV_SAMPLES} are not "
+                f"scorable val keyframes (e.g. {sorted(missing)[0]})",
                 flush=True,
             )
 
