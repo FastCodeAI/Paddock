@@ -98,6 +98,10 @@ DEFAULT_ROUTES_FILE = "bench2drive220.xml"
 #: by hand (``early_stop.MANUAL``). The dashboard's "Stop route" button writes it.
 STOP_REQUEST = "stop_request"
 
+#: One expert drive's summary, ``<expert>/<route>/expert_traj.json`` as
+#: ``tools.benchmarks.bench2drive.expert summarize`` writes it: where a route's time budget comes from.
+EXPERT_TRAJ = "expert_traj.json"
+
 #: CARLA's client library as the 0.9.15 release ships it. Put on the client's
 #: path when present, as the checkout's own ``run_evaluation.sh`` does, so a
 #: site need not also ``pip install carla``.
@@ -474,7 +478,7 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         if not rules or "expert_factor" not in rules or not expert:
             return None
         try:
-            traj = json.loads((Path(expert) / route_id / "expert_traj.json").read_text())
+            traj = json.loads((Path(expert) / route_id / EXPERT_TRAJ).read_text())
             duration = float(traj["duration_s"])
         except (OSError, ValueError, KeyError, TypeError):
             return None
@@ -638,6 +642,11 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
                 )
             elif not Path(expert).is_dir():
                 problems.append(f"expert drives not found: {expert}")
+            elif not any(Path(expert).glob(f"*/{EXPERT_TRAJ}")):
+                problems.append(
+                    f"no {EXPERT_TRAJ} under {expert}, so no route would have a time budget: "
+                    "run `python -m tools.benchmarks.bench2drive.expert summarize` on the drives first"
+                )
         if self.early_stop and self.repo is not None:
             manager = self.repo / "leaderboard" / "leaderboard" / "scenarios" / "scenario_manager.py"
             text = manager.read_text(errors="replace") if manager.exists() else ""
@@ -720,11 +729,27 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         }
         # Only when on, so the config hash -- and the run id -- of a run without it is unchanged.
         if self.early_stop:
-            config["early_stop"] = self.early_stop
+            rules = dict(self.early_stop)
+            # The site's routes the over-time rule cannot end, having no expert drive: which they
+            # are depends on the expert drives a site has, so it is on the record and in the id.
+            unbudgeted = self._routes_without_expert()
+            if unbudgeted:
+                rules["no_expert"] = unbudgeted
+            config["early_stop"] = rules
         # Likewise only when it is not paddock's.
         if self.camera_rig != rig.DEFAULT:
             config["camera_rig"] = self.camera_rig
         return config
+
+    def _routes_without_expert(self) -> list[str]:
+        """The site's routes (its ``routes_subset``, or the whole file) with no expert time budget."""
+        rules, routes_file = self.early_stop, self.routes_file
+        if not rules or "expert_factor" not in rules or routes_file is None or not routes_file.exists():
+            return []
+        routes = select_routes(parse_routes(routes_file), None, None, self.routes_subset)
+        return sorted(
+            (rid for rid, _, _ in routes if self.expert_budget_s(rid) is None), key=lambda r: (len(r), r)
+        )
 
     def remarks(self) -> list[str]:
         """The early stop, when on: which rules, and why a route they end is a failed drive."""

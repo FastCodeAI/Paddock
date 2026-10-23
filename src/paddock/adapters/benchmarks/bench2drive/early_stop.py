@@ -233,7 +233,10 @@ def describe(rules: dict[str, Any]) -> str:
         progress_m = rules.get("progress_m", PROGRESS_M)
         parts.append(f"{rules['stuck_s']:g} s without {progress_m:g} m of route progress")
     if rules.get("expert_factor"):
-        parts.append(f"{rules['expert_factor']:g}x the expert's time on the route")
+        budget = f"{rules['expert_factor']:g}x the expert's time on the route"
+        if rules.get("no_expert"):
+            budget += f" (none on the {len(rules['no_expert'])} route(s) with no expert drive)"
+        parts.append(budget)
     if rules.get("collision"):
         parts.append("a collision the leaderboard records")
     return " or ".join(parts)

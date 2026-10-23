@@ -711,7 +711,12 @@ def test_the_early_stop_reaches_the_agent_and_its_verdict_the_metrics(tmp_path, 
     assert metrics["ended_stuck"] == 1.0 and metrics["ended_over_time"] == 0.0
     assert metrics["driving_score"] == 36.0, "scored as the leaderboard recorded it"
 
-    assert harness.run_config()["early_stop"] == {"stuck_s": 30.0, "expert_factor": 4.0, "progress_m": 3.0}
+    assert harness.run_config()["early_stop"] == {
+        "stuck_s": 30.0,
+        "expert_factor": 4.0,
+        "progress_m": 3.0,
+        "no_expert": ["1711"],  # the fixture's other route; only 1773 has an expert drive here
+    }
     # A route the rule ends is a failed drive: the run ranks, and its notes say why.
     assert harness.invalid_reasons() == []
     (remark,) = harness.remarks()
@@ -779,6 +784,27 @@ def test_preflight_refuses_early_stop_settings_it_cannot_honour(tmp_path, monkey
     assert "stop_stuck_s must be a number above zero" in problems
     assert "stop_expert_factor needs `expert`" in problems
     assert "tick_count > 4000" in problems, "this checkout has no tick cap to end a route through"
+
+
+def test_the_record_names_the_routes_the_time_budget_cannot_end(tmp_path, monkeypatch) -> None:
+    """A route with no expert drive runs without the over-time rule. The run's config names the
+    site's routes that have none, so it is on the record and in the run id: two sites with
+    different expert drives are not running the same rules."""
+    expert = _expert(tmp_path, "1773", 21.3)
+    harness = _harness(_site(tmp_path, monkeypatch, COMPLETED, stop_expert_factor="4", expert=str(expert)))
+    assert harness.run_config()["early_stop"]["no_expert"] == ["1711"]
+    _expert(tmp_path / "all", "1711", 30.0)
+    shutil.copytree(tmp_path / "all" / "expert" / "1711", expert / "1711")
+    assert "no_expert" not in harness.run_config()["early_stop"], "every route has its budget"
+
+
+def test_preflight_refuses_expert_drives_never_summarized(tmp_path, monkeypatch) -> None:
+    fetched = tmp_path / "expert" / "1773"  # downloaded, `expert summarize` never run
+    fetched.mkdir(parents=True)
+    harness = _harness(
+        _site(tmp_path, monkeypatch, COMPLETED, stop_expert_factor="4", expert=str(fetched.parent))
+    )
+    assert "expert_traj.json" in "\n".join(harness.preflight())
 
 
 def test_preflight_accepts_the_pinned_leaderboards_tick_cap(tmp_path, monkeypatch) -> None:
