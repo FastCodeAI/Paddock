@@ -211,3 +211,38 @@ def test_held_routes_wait_for_everything_else_and_then_run_alone(tmp_path: Path,
         campaign, "workers", lambda model, root: [campaign.Worker(1, ["1711"], Path("x"), 2150)]
     )
     assert any("wait for the 1 alive" in ln for ln in plan())
+
+
+def test_one_evaluator_the_guard_cannot_handle_does_not_end_the_guard(tmp_path: Path, monkeypatch) -> None:
+    """A log removed while it is read, or a process it may not signal, is one evaluator's
+    problem; the guard goes on watching the others."""
+    import os
+    import time
+
+    from paddock.adapters.benchmarks.bench2drive import campaign
+
+    routes = []
+    for name in ("1711-Town12-ParkingCutIn", "1852-Town12-AccidentTwoWays"):
+        route = tmp_path / "runs" / "bench2drive" / "m" / "20261023T000000-aaaaaa" / name
+        route.mkdir(parents=True)
+        (route / "evaluator.log").write_text("silent\n")
+        old = time.time() - 2 * campaign.SILENT_S
+        os.utime(route / "evaluator.log", (old, old))
+        routes.append(route)
+    monkeypatch.setattr(campaign, "evaluators", lambda root: [(101, routes[0]), (102, routes[1])])
+    killed: list[int] = []
+
+    def kill(pid, route_dir):
+        if pid == 101:
+            raise PermissionError(1, "Operation not permitted")
+        killed.append(pid)
+
+    monkeypatch.setattr(campaign, "kill_evaluator", kill)
+
+    class Cfg:
+        runs = tmp_path / "runs"
+
+    said: list[str] = []
+    campaign.guard(Cfg, "m", once=True, echo=said.append)
+    assert killed == [102]
+    assert any("Operation not permitted" in line for line in said)

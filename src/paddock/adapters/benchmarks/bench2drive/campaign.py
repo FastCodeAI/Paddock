@@ -557,6 +557,31 @@ def launch(
     return launched
 
 
+def _guard_one(pid: int, route_dir: Path, now: float, carla_missing_since: dict, once, dry_run, echo) -> None:
+    """The guard's two tests for one evaluator, and the kill when one fires."""
+    log = route_dir / "evaluator.log"
+    try:
+        silent = now - log.stat().st_mtime
+    except OSError:
+        return
+    port = carla_port_from_log(log, 0)
+    reason = None
+    if silent > SILENT_S:
+        reason = f"evaluator.log silent {silent:.0f} s"
+    elif port and _process_age_s(pid) > CARLA_GONE_S and not carla_pids(port):
+        first = carla_missing_since.setdefault(pid, now)
+        if once or now - first >= CARLA_GONE_S:
+            reason = f"its CARLA (port {port}) is gone"
+    else:
+        carla_missing_since.pop(pid, None)
+    if reason:
+        echo(f"{datetime.now(UTC):%F %T} {route_dir.parent.name}/{route_dir.name}: {reason}; "
+             f"{'would kill' if dry_run else 'killing'} evaluator pid {pid}")  # fmt: skip
+        if not dry_run:
+            kill_evaluator(pid, route_dir)
+        carla_missing_since.pop(pid, None)
+
+
 def guard(cfg: SiteConfig, model: str, once: bool = False, dry_run: bool = False, echo=print) -> None:
     """Kill evaluators that cannot finish; see the module docstring for the two signs."""
     root = _runs_root(cfg, model)
@@ -568,27 +593,12 @@ def guard(cfg: SiteConfig, model: str, once: bool = False, dry_run: bool = False
         seen = set()
         for pid, route_dir in evaluators(root):
             seen.add(pid)
-            log = route_dir / "evaluator.log"
+            # One evaluator's trouble -- its log gone mid-read, a process it may not
+            # signal -- is that evaluator's; the guard goes on watching the others.
             try:
-                silent = now - log.stat().st_mtime
-            except OSError:
-                continue
-            port = carla_port_from_log(log, 0)
-            reason = None
-            if silent > SILENT_S:
-                reason = f"evaluator.log silent {silent:.0f} s"
-            elif port and _process_age_s(pid) > CARLA_GONE_S and not carla_pids(port):
-                first = carla_missing_since.setdefault(pid, now)
-                if once or now - first >= CARLA_GONE_S:
-                    reason = f"its CARLA (port {port}) is gone"
-            else:
-                carla_missing_since.pop(pid, None)
-            if reason:
-                echo(f"{datetime.now(UTC):%F %T} {route_dir.parent.name}/{route_dir.name}: {reason}; "
-                     f"{'would kill' if dry_run else 'killing'} evaluator pid {pid}")  # fmt: skip
-                if not dry_run:
-                    kill_evaluator(pid, route_dir)
-                carla_missing_since.pop(pid, None)
+                _guard_one(pid, route_dir, now, carla_missing_since, once, dry_run, echo)
+            except OSError as exc:
+                echo(f"{datetime.now(UTC):%F %T} {route_dir.parent.name}/{route_dir.name}: {exc!r}; skipped")
         for pid in set(carla_missing_since) - seen:
             carla_missing_since.pop(pid)
         if once:
