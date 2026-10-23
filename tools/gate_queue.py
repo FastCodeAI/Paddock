@@ -42,7 +42,8 @@ outcome goes to `jobs/<id>/result.json`; `retry` puts the job back in the queue,
 and its finished runs are kept.
 
 Baselines. A `--baseline` job runs the released model (no `--env`) with an empty
-baseline manifest, and its finished runs become `<root>/baselines/<model>.toml`.
+baseline manifest, and its finished runs replace those subsets' entries in
+`<root>/baselines/<model>.toml`; subsets it did not run keep theirs.
 A candidate job copies that file into its own directory when it first starts, so
 baselines replaced while it waits or runs do not change what it is compared with.
 `submit` refuses a candidate whose model has no queue baselines yet.
@@ -563,8 +564,17 @@ def gate_command(settings: Settings, job: dict[str, Any], job_dir: Path) -> list
     return command
 
 
-def baselines_text(job: dict[str, Any], verdict: dict[str, Any], checkout: Path) -> str | None:
-    """`<root>/baselines/<model>.toml` from a finished baseline job, or None if no run finished."""
+def baselines_text(
+    job: dict[str, Any], verdict: dict[str, Any], checkout: Path, previous: dict[str, dict[str, Any]]
+) -> str | None:
+    """`<root>/baselines/<model>.toml` after a baseline job, or None if no run of it finished.
+
+    The job replaces the baselines of the subsets it ran; `previous` (the file's
+    `[baseline.*]` tables before it) keeps the others. So a quick-tier baseline job
+    and a closed-tier one made later add up to every subset, and `--bench navsim`
+    refreshes navsim's alone. A subset the job ran and did not finish loses its old
+    baseline: the job was meant to replace it.
+    """
     model = job["model"]
     lines = [
         f"# The queue's baselines for {model}: job {job['id']} at commit {job['commit'][:12]},",
@@ -585,6 +595,12 @@ def baselines_text(job: dict[str, Any], verdict: dict[str, Any], checkout: Path)
             ]
         elif step.get("status") != "skipped":
             lines += [f"# {step['name']}: did not finish in job {job['id']}; retry it to fill this in", ""]
+    ran = {step.get("name") for step in verdict.get("steps") or [] if step.get("status") != "skipped"}
+    for name, table in previous.items():
+        if name not in ran:
+            lines.append(f"[baseline.{name}]  # from the previous baselines, not run by job {job['id']}")
+            lines += [f"{key} = {json.dumps(value)}" for key, value in table.items()]
+            lines.append("")
     return "\n".join(lines) if finished else None
 
 
@@ -727,7 +743,9 @@ class Worker:
             "unfinished": verdict["unfinished"],
         }
         if spec["kind"] == "baseline":
-            text = baselines_text(spec, verdict, checkout)
+            current = self.settings.baselines / f"{spec['model']}.toml"
+            previous = gate.load_baselines(current) if current.is_file() else {}
+            text = baselines_text(spec, verdict, checkout, previous)
             if text is None:
                 return self.finish(job, "error", exit=rc, reason="no run finished: no baselines written")
             fields["baselines"] = str(_install_baselines(self.settings, spec["model"], text))

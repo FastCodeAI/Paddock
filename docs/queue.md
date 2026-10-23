@@ -75,10 +75,13 @@ python -m tools.gate_queue submit --model drivejepa --baseline --tier all
 ```
 
 A `--baseline` job runs the released model (no `--env`). When it ends, its
-finished runs become `<root>/baselines/<model>.toml`, and the file it replaces
-moves to `<root>/baselines/replaced/`. A benchmark that did not finish is left
-out with a comment; `retry` the job to fill it in. `submit` refuses a candidate
-until its model has baselines, or a baseline job for it is already queued.
+finished runs replace those benchmarks' entries in
+`<root>/baselines/<model>.toml`, and benchmarks it did not run keep theirs: a
+`--tier quick` baseline job and a `--tier closed` one made later add up to both
+tiers. The file as it was before moves to `<root>/baselines/replaced/`. A
+benchmark the job ran and did not finish loses its entry (a comment says so);
+`retry` the job to fill it in. `submit` refuses a candidate until its model has
+baselines, or a baseline job for it is already queued.
 
 Each candidate copies the baselines into its own directory when it starts, so
 baselines replaced later do not change what it was compared with.

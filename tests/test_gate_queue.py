@@ -221,6 +221,22 @@ def test_a_baseline_job_writes_the_queues_baselines_and_a_candidate_keeps_its_co
     assert (site.settings.jobs / cand / "baseline.toml").read_text() == text
 
 
+def test_a_baseline_job_replaces_only_the_subsets_it_ran(site) -> None:
+    """A quick-tier baseline job and a closed-tier one made later add up."""
+    q._mkdir(site.settings.baselines)
+    (site.settings.baselines / "m.toml").write_text(
+        'model = "m"\n[baseline.alpasim]\nrun = "m:old-a"\n'
+        '[baseline.navsim]\nrun = "m:old-n"\n[baseline.kitscenes]\nrun = "m:old-k"\n'
+    )
+    job_id = _submit(site, baseline=True)
+    q.Worker(site.settings, echo=lambda _: None).run(once=True)
+    now = q.gate.load_baselines(site.settings.baselines / "m.toml")
+    assert now["kitscenes"]["run"] == f"m:r-{job_id}", "ran and finished: replaced"
+    assert now["alpasim"] == {"run": "m:old-a"}, "not run by this job: kept"
+    assert "navsim" not in now, "ran and did not finish: its old baseline is dropped"
+    assert len(list((site.settings.baselines / "replaced").iterdir())) == 1
+
+
 def test_cancel_drops_a_pending_job_and_stops_a_running_one(site) -> None:
     _baselines(site)
     running = _submit(site)
