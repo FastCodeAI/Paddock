@@ -639,8 +639,10 @@ results, not the knob.
   because reading it means adding a map dependency, and alpamayo15 has no
   record (gated `Cosmos-Reason2-8B`). Detail in `docs/benchmarks/nuplan.md`.
 
-- **AutoE2E v1.0** — **adapter landed; NAVSIM, KITScenes, comma2k19 and
-  neuroNCAP scored, Bench2Drive paused.** The Autoware Foundation's release
+- **AutoE2E v1.0** — **adapter landed; NAVSIM, KITScenes, comma2k19,
+  neuroNCAP and nuScenes scored, Bench2Drive paused.** nuScenes val 0.839
+  cumulative L2 (5,119 keyframes, valid), fed the 6.5 s of past keyframes it
+  declares. The Autoware Foundation's release
   checkpoint `kitscenes-epoch-5`, imported from upstream at the release
   revision. NAVSIM `navtest` 0.500 EPDMS (12,146 scenarios, valid) on the
   10 Hz nuPlan path, with the rear views from OpenScene's keyframes

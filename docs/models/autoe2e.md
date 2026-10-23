@@ -18,6 +18,7 @@ paddock doctor --model autoe2e
 paddock run --model autoe2e --bench navsim          # needs [benchmarks.navsim] nuplan + keyframe_cameras
 paddock run --model autoe2e --bench kitscenes       # the map and the oracle route are on by default
 paddock run --model autoe2e --bench comma2k19       # the road camera alone; the other five views left out
+paddock run --model autoe2e --bench nuscenes        # 6.5 s of past keyframes, the history it declares
 PADDOCK_INFER_HZ=10 paddock run --model autoe2e --bench bench2drive --scene <route>
 ```
 
@@ -48,7 +49,9 @@ From the release `config.json` and upstream's KITScenes evaluation path
   projection that puts every point behind the camera, so upstream's depth
   test keeps it out of every BEV cell. Each plan's `extras` say how many
   views it used (`views`). The seven history frames are the held frames
-  nearest t−3.5 … t−0.5 s within 0.06 s that carry every view the current
+  nearest t−3.5 … t−0.5 s within half the frame spacing, never less than
+  0.06 s (0.25 s on nuScenes' 2 Hz keyframes, whose timing jitters 0.45–0.55 s;
+  0.06 s on every 10 Hz or faster stream), that carry every view the current
   one does. Where the past does not reach that far (a route or log start)
   the oldest such frame is repeated with its own pose; each plan's `extras`
   and `diagnostics()`'s last call say how many were (`history_repeated`).
@@ -284,6 +287,20 @@ in known ways. Paddock differences 20 Hz positions for the ego rows where the
 study used pose velocities, uses the route-pooled `rpyCalib` where it used its
 own calibration, and builds the history projections from device-frame poses
 (the same M8 frame issue).
+
+**nuScenes val, 5,119 keyframes, valid** (`results/nuscenes/autoe2e/20261023T004711-eedbe2`):
+**0.839** cumulative L2, 1.565 point L2, 1.319 ADE@3s, 1.86 % predicted collisions.
+Six cameras, no map or route. The harness sends the 6.5 s of past keyframes the model
+declares instead of 2 s, so the 64 ego rows are real wherever the log reaches back (the full
+6.4 s on 61.5 % of samples); before that, 44 of the 64 rows were zero on every sample.
+
+| L2 1 s | L2 2 s | L2 3 s | point avg | cumulative avg | ADE@3s | collision % |
+|---:|---:|---:|---:|---:|---:|---:|
+| 0.553 | 1.444 | 2.697 | 1.565 | **0.839** | 1.319 | 1.86 |
+
+Between Alpamayo 1.5 (0.787) and Drive-JEPA (0.912); constant velocity scores 0.641.
+On the 28 keyframes of scene-0003, run before and after the two input changes, the point
+L2 fell from 0.957 to 0.899 (one scene, a check of the inputs, not a score).
 
 **Bench2Drive: not recorded here.** The 50-route sweep (`PADDOCK_INFER_HZ=10`,
 a forward every call, route raster on) was paused part-way. Every route run so
