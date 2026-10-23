@@ -1,0 +1,623 @@
+"""Draw the README's two pictures: the support matrix and what the models are.
+
+    python -m tools.readme_figures            # rewrite both SVGs in docs/assets/
+    python -m tools.readme_figures --check    # exit 1 if either is stale
+
+Neither picture holds a number of its own. The support matrix is drawn from the
+README's markdown table, the models picture from each adapter's model.yaml, and
+tests/test_readme_figures.py fails the build when a picture and its source disagree.
+
+The support matrix claims what the README's own notes claim, read off the table:
+- A column ranks lower-is-better when its header has a down arrow, else higher.
+- A cell marked R ("run differently from the rest of its column") or V ("stored
+  valid: false"), and every cell of a column whose header says "not ranked", are
+  hatched and carry no rank.
+- A mark on a model's name applies to every cell in its row, as the README says.
+- The baseline row is the floor: never ranked, and a ranked cell strictly worse than it
+  gets a red triangle.
+Ties share a rank. Shading is by rank, not by value, so one outlier (Drive-JEPA's 16 m
+on comma2k19) cannot wash the rest of its column to one shade.
+
+The models picture colours each model as viz/palette.py does in every other paddock
+figure. A training set that is one of paddock's own datasets (a key in datasets.yaml)
+is drawn inverted: that overlap is what the matrix's A mark records.
+
+GitHub shows a README image through <img>, so the SVG cannot load fonts, scripts or
+links. Dark mode is a prefers-color-scheme block inside it; a viewer whose browser
+ignores that still gets the light card, which is opaque and readable on either theme.
+"""
+
+from __future__ import annotations
+
+import argparse
+import math
+import re
+import sys
+from dataclasses import dataclass, field
+from html import escape
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+_SRC = ROOT / "src"
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
+from paddock.registry import ModelSpec, load_datasets, load_models  # noqa: E402
+from paddock.viz.palette import color  # noqa: E402
+
+README = ROOT / "README.md"
+MATRIX_SVG = ROOT / "docs" / "assets" / "support-matrix.svg"
+MODELS_SVG = ROOT / "docs" / "assets" / "models.svg"
+
+LOOP = {"🟢": "open loop", "🟡": "pseudo-closed loop", "🔴": "closed loop"}
+MISSING = ("—", "not run")
+UNRANKED_MARKS = {"R", "V"}
+FLOOR_PREFIX = "Baseline"
+
+# Rank 1..6 (6 also covers anything lower). Light mode runs dark-to-light; dark mode
+# flips the anchor so rank 1 is the step with the most contrast against a dark card.
+# Text colour per step is whichever of white or ink clears 4.5:1 on it.
+RAMP_LIGHT = ["#104281", "#1c5cab", "#3987e5", "#6da7ec", "#9ec5f4", "#cde2fb"]
+TEXT_LIGHT = ["#ffffff", "#ffffff", "#0b0b0b", "#0b0b0b", "#0b0b0b", "#0b0b0b"]
+RAMP_DARK = ["#b7d3f6", "#86b6ef", "#5598e7", "#256abf", "#184f95", "#0d366b"]
+TEXT_DARK = ["#0b0b0b", "#0b0b0b", "#0b0b0b", "#ffffff", "#ffffff", "#ffffff"]
+
+#: The README's models, in its row order, under the names the support matrix uses.
+MODELS = {
+    "openpilot": "OpenPilot",
+    "alpamayo15": "Alpamayo 1.5",
+    "drivejepa": "Drive-JEPA",
+    "visionpilot": "VisionPilot",
+    "meteor": "METEOR",
+    "qwendrive": "Qwen-Drive 1.0",
+    "autoe2e": "AutoE2E",
+}
+
+#: Where each declared camera looks: (view, yaw in degrees left of forward, field of
+#: view). Cameras that share a view are one camera: openpilot's CAM_FRONT is its
+#: fallback for one-camera sources (its model.yaml), the same view as its road camera.
+CAMERA_VIEW = {
+    "CAM_FRONT": ("front", 0, 60),
+    "CAM_OP_ROAD": ("front", 0, 60),
+    "CAM_OP_WIDE": ("front wide", 0, 120),
+    "CAM_FRONT_LEFT": ("front left", 55, 60),
+    "CAM_FRONT_RIGHT": ("front right", -55, 60),
+    "CAM_BACK": ("back", 180, 100),
+    "CAM_BACK_LEFT": ("back left", 110, 60),
+    "CAM_BACK_RIGHT": ("back right", -110, 60),
+}
+
+#: Short names for `trained_on` datasets. Anything missing prints its key.
+DATASET_LABEL = {
+    "comma-fleet": "comma fleet",
+    "nvidia-internal": "NVIDIA internal",
+    "navsim": "NAVSIM",
+    "openlane": "OpenLane",
+    "tusimple": "TuSimple",
+    "curvelanes": "CurveLanes",
+    "tier4_comlops_drs": "TIER IV DRS",
+    "waymo-e2e": "Waymo E2E",
+    "nvidia-physical-ai": "NVIDIA Physical AI",
+    "nuplan": "nuPlan",
+    "kitscenes": "KITScenes",
+}
+
+PAD, LABEL_W, COL_W, CELL_H, GAP = 20, 196, 84, 46, 3
+WIDTH = 2 * PAD + LABEL_W + COL_W * 9
+SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif"
+MONO = "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace"
+
+BASE_LIGHT = [".card{fill:#fcfcfb;stroke:#dddcd7}", ".ink{fill:#0b0b0b}", ".sec{fill:#52514e}"]
+BASE_DARK = [".card{fill:#1a1a19;stroke:#3a3a37}", ".ink{fill:#f0efec}", ".sec{fill:#c3c2b7}"]
+
+
+def _text(x, y, s, cls, size, anchor="start", family=SANS, weight=None, extra="") -> str:
+    w = f' font-weight="{weight}"' if weight else ""
+    return (
+        f'<text x="{x:g}" y="{y:g}" class="{cls}" font-size="{size}" font-family="{family}"'
+        f' text-anchor="{anchor}"{w}{extra}>{s}</text>'
+    )
+
+
+def _document(
+    height: int, title: str, source: str, light: list[str], dark: list[str], defs: str
+) -> list[str]:
+    return [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {WIDTH} {height}" width="{WIDTH}"'
+        f' height="{height}" role="img" aria-labelledby="title">',
+        f'<title id="title">{escape(title)}</title>',
+        f"<!-- Generated by tools/readme_figures.py from {source}. Do not edit. -->",
+        "<style>",
+        *BASE_LIGHT,
+        *light,
+        "@media (prefers-color-scheme: dark) {",
+        *BASE_DARK,
+        *dark,
+        "}",
+        "</style>",
+        f"<defs>{defs}</defs>",
+        f'<rect class="card" x="0.5" y="0.5" width="{WIDTH - 1}" height="{height - 1}" rx="8"/>',
+    ]
+
+
+# -- the support matrix ------------------------------------------------------
+
+
+@dataclass
+class Column:
+    name: str
+    loop: str
+    metric: str
+    lower_is_better: bool
+    ranked: bool
+
+
+@dataclass
+class Cell:
+    text: str
+    value: float | None = None
+    shown: str = ""
+    qualifier: str = ""
+    marks: list[str] = field(default_factory=list)
+    rank: int | None = None
+    below_floor: bool = False
+
+
+@dataclass
+class Row:
+    name: str
+    marks: list[str]
+    cells: list[Cell]
+
+    @property
+    def is_floor(self) -> bool:
+        return self.name.startswith(FLOOR_PREFIX)
+
+
+def _split_marks(text: str) -> tuple[str, list[str]]:
+    marks = [m for sup in re.findall(r"<sup>(.*?)</sup>", text) for m in sup.split()]
+    return re.sub(r"\s*<sup>.*?</sup>", "", text).strip(), marks
+
+
+def _cells(line: str) -> list[str]:
+    return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
+def parse(readme: str) -> tuple[list[Column], list[Row]]:
+    """The first table under '## Support matrix'."""
+    lines = readme.split("## Support matrix", 1)[1].splitlines()
+    start = next(i for i, ln in enumerate(lines) if ln.startswith("|"))
+    header = lines[start]
+    # The table ends at its first non-table line; a later '|' block is another table.
+    body = []
+    for ln in lines[start + 2 :]:
+        if not ln.startswith("|"):
+            break
+        body.append(ln)
+
+    columns = []
+    for head in _cells(header)[1:]:
+        m = re.match(r"\[(\S+)\s+(.+?)\]\(.+?\)\s*(.*)", head)
+        if not m or m.group(1) not in LOOP:
+            raise ValueError(f"support matrix header not understood: {head!r}")
+        emoji, name, metric = m.groups()
+        if ("↓" in metric) == ("↑" in metric):
+            raise ValueError(f"header needs exactly one of ↑ or ↓: {head!r}")
+        columns.append(Column(name, LOOP[emoji], metric, "↓" in metric, "not ranked" not in metric))
+
+    rows = []
+    for line in body:
+        name_cell, *raw = _cells(line)
+        if len(raw) != len(columns):
+            raise ValueError(f"row has {len(raw)} cells, header has {len(columns)}: {line!r}")
+        name, row_marks = _split_marks(name_cell)
+        cells = []
+        for text in raw:
+            shown, marks = _split_marks(text)
+            if shown in MISSING:
+                cells.append(Cell(shown, marks=marks))
+                continue
+            m = re.match(r"(-?\d+(?:\.\d+)?)(.*)", shown)
+            if not m:
+                raise ValueError(f"cell is neither a number nor one of {MISSING}: {text!r}")
+            qualifier = m.group(2).strip(" ,").removeprefix("(").removesuffix(")")
+            cells.append(Cell(shown, float(m.group(1)), m.group(1), qualifier, marks))
+        rows.append(Row(name, row_marks, cells))
+    return columns, rows
+
+
+def rank(columns: list[Column], rows: list[Row]) -> None:
+    floor = next((r for r in rows if r.is_floor), None)
+    for j, col in enumerate(columns):
+        if not col.ranked:
+            continue
+        pool = [
+            r.cells[j]
+            for r in rows
+            if not r.is_floor
+            and r.cells[j].value is not None
+            and not UNRANKED_MARKS & {*r.cells[j].marks, *r.marks}
+        ]
+        sign = 1 if col.lower_is_better else -1
+        for cell in pool:
+            cell.rank = 1 + sum(sign * o.value < sign * cell.value for o in pool)
+            base = floor.cells[j].value if floor else None
+            cell.below_floor = base is not None and sign * cell.value > sign * base
+
+
+def _wrap(text: str, width: int) -> list[str]:
+    out = []
+    for segment in text.split(", "):
+        line = ""
+        for word in segment.split():
+            if line and len(line) + 1 + len(word) > width:
+                out.append(line)
+                line = word
+            else:
+                line = f"{line} {word}".strip()
+        out.append(line)
+    return out
+
+
+def render_matrix(columns: list[Column], rows: list[Row]) -> str:
+    if len(columns) != 9:
+        raise ValueError(f"the layout is drawn for 9 benchmarks, the table has {len(columns)}")
+    metric_lines = [_wrap(c.metric, 14) for c in columns]
+    legend_h, band_h = 34, 24
+    head_h = band_h + 18 + 13 * max(len(m) for m in metric_lines) + 8
+    floor_gap = 10
+    grid_top = PAD + legend_h + head_h
+    height = grid_top + CELL_H * len(rows) + floor_gap * any(r.is_floor for r in rows) + PAD
+    x0 = PAD + LABEL_W
+
+    light = [".miss{fill:#f0efec}", ".floor{fill:#fcfcfb;stroke:#a9a8a3;stroke-dasharray:3 3}"]
+    light += [".hbg{fill:#f0efec}", ".hln{stroke:#c9c8c3}", ".worse{fill:#d03b3b;stroke:#fcfcfb}"]
+    light += [".open{fill:#15803d;stroke:#15803d}", ".pseudo{fill:#b45309;stroke:#b45309}"]
+    light += [".closed{fill:#b91c1c;stroke:#b91c1c}"]
+    light += [f".r{i + 1}{{fill:{c}}}" for i, c in enumerate(RAMP_LIGHT)]
+    light += [f".t{i + 1}{{fill:{c}}}" for i, c in enumerate(TEXT_LIGHT)]
+    dark = [".miss{fill:#2a2a28}", ".floor{fill:#1a1a19;stroke:#6b6a66}"]
+    dark += [".hbg{fill:#2a2a28}", ".hln{stroke:#45453f}", ".worse{fill:#e66767;stroke:#1a1a19}"]
+    dark += [".open{fill:#4ade80;stroke:#4ade80}", ".pseudo{fill:#fbbf24;stroke:#fbbf24}"]
+    dark += [".closed{fill:#f87171;stroke:#f87171}"]
+    dark += [f".r{i + 1}{{fill:{c}}}" for i, c in enumerate(RAMP_DARK)]
+    dark += [f".t{i + 1}{{fill:{c}}}" for i, c in enumerate(TEXT_DARK)]
+    defs = (
+        '<pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse"'
+        ' patternTransform="rotate(45)"><rect class="hbg" width="6" height="6"/>'
+        '<line class="hln" x1="0" y1="0" x2="0" y2="6" stroke-width="2"/></pattern>'
+    )
+    title = (
+        "Paddock support matrix: each model's headline score on each benchmark, "
+        "shaded by rank within the benchmark"
+    )
+    out = _document(height, title, "the README table", light, dark, defs)
+
+    # Legend.
+    y = PAD + 14
+    out.append(_text(PAD, y, "rank 1", "sec", 12))
+    sx = PAD + 42
+    for i in range(len(RAMP_LIGHT)):
+        out.append(f'<rect class="r{i + 1}" x="{sx + 26 * i}" y="{y - 11}" width="24" height="14" rx="3"/>')
+    sx += 26 * len(RAMP_LIGHT) + 4
+    out.append(_text(sx, y, "rank 6+", "sec", 12))
+    sx += 70
+    out.append(f'<rect fill="url(#hatch)" x="{sx}" y="{y - 11}" width="24" height="14" rx="3"/>')
+    out.append(_text(sx + 30, y, "not ranked", "sec", 12))
+    sx += 120
+    out.append(f'<path class="worse" d="M{sx} {y - 10}h11l-5.5 9z" stroke-width="1.5"/>')
+    out.append(_text(sx + 16, y, "worse than constant velocity", "sec", 12))
+    sx += 200
+    out.append(_text(sx, y, "corner letters: see the notes below", "sec", 12))
+
+    # Loop-type bands over runs of adjacent columns.
+    by = PAD + legend_h + 10
+    j = 0
+    while j < len(columns):
+        k = j
+        while k + 1 < len(columns) and columns[k + 1].loop == columns[j].loop:
+            k += 1
+        cls = columns[j].loop.split()[0].split("-")[0]
+        bx, bw = x0 + COL_W * j + GAP, COL_W * (k - j + 1) - GAP
+        out.append(f'<rect class="{cls}" x="{bx}" y="{by - 9}" width="{bw}" height="3" rx="1.5"/>')
+        out.append(_text(bx, by + 8, columns[j].loop.upper(), "sec", 9.5, extra=' letter-spacing="0.8"'))
+        j = k + 1
+
+    # Column headers.
+    for j, col in enumerate(columns):
+        cx = x0 + COL_W * j + (COL_W + GAP) / 2
+        hy = PAD + legend_h + band_h + 14
+        out.append(_text(cx, hy, escape(col.name), "ink", 12, "middle", weight="600"))
+        for i, line in enumerate(metric_lines[j]):
+            out.append(_text(cx, hy + 15 + 13 * i, escape(line), "sec", 10.5, "middle"))
+
+    # Rows.
+    y = grid_top
+    for row in rows:
+        if row.is_floor:
+            y += floor_gap
+        # "Drive-JEPA, KITScenes re-ranker" and "Baseline (Constant Velocity)" are too
+        # long for one line: the part after the comma or bracket goes on a second.
+        main, sub = (re.split(r", | \(", row.name, maxsplit=1) + [""])[:2]
+        sub = sub.removesuffix(")")
+        sup = (
+            f'<tspan dx="3" dy="-6" font-size="9" class="sec">{escape(" ".join(row.marks))}</tspan>'
+            if row.marks
+            else ""
+        )
+        name_cls = "sec" if row.is_floor else "ink"
+        ty = y + CELL_H / 2 + (0 if sub else 5)
+        out.append(_text(PAD, ty - (2 if sub else 0), escape(main) + sup, name_cls, 14, weight="600"))
+        if sub:
+            out.append(_text(PAD, ty + 13, escape(sub), "sec", 11.5))
+
+        for j, cell in enumerate(row.cells):
+            cx, cw = x0 + COL_W * j + GAP, COL_W - GAP
+            cy, ch = y + GAP / 2, CELL_H - GAP
+            mid = cx + cw / 2
+            if cell.value is None:
+                out.append(f'<rect class="miss" x="{cx}" y="{cy}" width="{cw}" height="{ch}" rx="4"/>')
+                out.append(_text(mid, cy + ch / 2 + 4, escape(cell.text), "sec", 11.5, "middle"))
+                continue
+            if row.is_floor:
+                fill, txt, sub_txt = 'class="floor"', "sec", cell.qualifier or "floor"
+            elif cell.rank is None:
+                fill, txt = 'fill="url(#hatch)"', "ink"
+                sub_txt = cell.qualifier or ("not ranked" if columns[j].ranked else "")
+            else:
+                step = min(cell.rank, len(RAMP_LIGHT))
+                fill, txt = f'class="r{step}"', f"t{step}"
+                sub_txt = f"#{cell.rank}" + (f" · {cell.qualifier}" if cell.qualifier else "")
+            out.append(f'<rect {fill} x="{cx}" y="{cy}" width="{cw}" height="{ch}" rx="4"/>')
+            vy = cy + (21 if sub_txt else ch / 2 + 5)
+            out.append(_text(mid, vy, cell.shown, txt, 14, "middle", MONO, weight="600"))
+            if sub_txt:
+                size = 10.5 if len(sub_txt) <= 12 else 9.5  # "by construction" fits at 9.5
+                out.append(_text(mid, cy + 36, escape(sub_txt), txt, size, "middle", extra=' opacity="0.85"'))
+            if cell.marks:
+                marks = " ".join(cell.marks)
+                extra = ' opacity="0.85"'
+                out.append(_text(cx + cw - 4, cy + 10, marks, txt, 9, "end", weight="600", extra=extra))
+            if cell.below_floor:
+                out.append(f'<path class="worse" d="M{cx + 3} {cy + 3}h10l-5 8.5z" stroke-width="1.5"/>')
+        y += CELL_H
+
+    out.append("</svg>")
+    return "\n".join(out) + "\n"
+
+
+def build_matrix(readme: str) -> str:
+    columns, rows = parse(readme)
+    rank(columns, rows)
+    return render_matrix(columns, rows)
+
+
+# -- what the models are -----------------------------------------------------
+
+ROW_H = 62
+X_PARAMS, X_CAMS, X_FRAMES, X_PLAN, X_TRAIN = 186, 436, 562, 658, 810
+PARAMS_TRACK, PLAN_TRACK = 150, 80  # 50 px per decade of parameters, 10 M to 10 B
+
+
+def views(model: ModelSpec) -> list[tuple[str, int, int]]:
+    """The distinct views a model's declared cameras cover, in declaration order."""
+    unknown = [c for c in model.cameras if c not in CAMERA_VIEW]
+    if unknown:
+        raise ValueError(f"{model.name}: no view recorded for camera(s) {unknown}; add them to CAMERA_VIEW")
+    out: dict[str, tuple[str, int, int]] = {}
+    for cam in model.cameras:
+        view = CAMERA_VIEW[cam]
+        out.setdefault(view[0], view)
+    return list(out.values())
+
+
+def chips(model: ModelSpec, own: set[str]) -> list[tuple[str, bool]]:
+    """(label, is one of paddock's own datasets) per training set."""
+    out = []
+    for t in model.trained_on:
+        label = DATASET_LABEL.get(t.dataset, t.dataset)
+        # The split says which part of one of our benchmarks it saw (navtrain, train).
+        out.append((f"{label} {t.split}" if t.dataset in own and t.split else label, t.dataset in own))
+    return out
+
+
+def _params(m: float) -> str:
+    # As `paddock list models` prints it: billions past 1000 M, to one decimal.
+    return f"{round(m / 1000, 1):g} B" if m >= 1000 else f"{m:g} M"
+
+
+def _wedge(gx: float, gy: float, yaw: int, fov: int, r: float, fill: str) -> str:
+    def pt(deg: float) -> str:
+        a = math.radians(deg)
+        return f"{gx - r * math.sin(a):.1f} {gy - r * math.cos(a):.1f}"
+
+    return (
+        f'<path d="M{gx:g} {gy:g} L{pt(yaw + fov / 2)} A{r:g} {r:g} 0 0 1 {pt(yaw - fov / 2)} Z"'
+        f' fill="{fill}" opacity="0.55"/>'
+    )
+
+
+def _chip_width(label: str) -> float:
+    return 6.0 * len(label) + 12
+
+
+def render_models(models: list[tuple[str, ModelSpec]], own: set[str]) -> str:
+    plan_scale = 5 * math.ceil(max(m.horizon_s or 0 for _, m in models) / 5)
+    top = PAD + 72
+    height = top + ROW_H * len(models) + PAD - 4
+
+    light = [".track{fill:#ecebe7}", ".none{fill:none;stroke:#a9a8a3;stroke-dasharray:3 3}"]
+    light += [".car{fill:#8a8984}", ".stripe{stroke:#fcfcfb}"]
+    light += [".chip{fill:#f0efec}", ".chipt{fill:#52514e}", ".own{fill:#2b2b29}", ".ownt{fill:#fcfcfb}"]
+    dark = [".track{fill:#2f2f2c}", ".none{stroke:#6b6a66}", ".stripe{stroke:#1a1a19}"]
+    dark += [".chip{fill:#2a2a28}", ".chipt{fill:#c3c2b7}", ".own{fill:#f0efec}", ".ownt{fill:#1a1a19}"]
+    defs = (
+        '<pattern id="stripes" width="5" height="5" patternUnits="userSpaceOnUse"'
+        ' patternTransform="rotate(45)"><line class="stripe" x1="0" y1="0" x2="0" y2="5"'
+        ' stroke-width="2"/></pattern>'
+    )
+    title = (
+        "What the models are: parameters, cameras, frames of history, plan length and "
+        "training data, from each model.yaml"
+    )
+    out = _document(height, title, "each model.yaml", light, dark, defs)
+
+    # Legend.
+    y = PAD + 14
+    out.append(f'<rect class="car" x="{PAD}" y="{y - 10}" width="24" height="12" rx="6"/>')
+    out.append(f'<rect fill="url(#stripes)" x="{PAD}" y="{y - 10}" width="24" height="12" rx="6"/>')
+    out.append(_text(PAD + 30, y, "outputs controls; paddock turns them into a path", "sec", 12))
+    sx = PAD + 330
+    out.append(f'<rect class="own" x="{sx}" y="{y - 11}" width="24" height="14" rx="7"/>')
+    out.append(_text(sx + 30, y, "trained on one of paddock's own datasets (the A in the matrix)", "sec", 12))
+
+    # Column headers, with the scale of each bar under its header.
+    hy = PAD + 46
+    for x, label, sub in [
+        (PAD, "Model", ""),
+        (X_PARAMS, "Parameters", ""),
+        (X_CAMS, "Cameras", "as paddock sends them"),
+        (X_FRAMES, "History", "camera frames"),
+        (X_PLAN, "Plan length", ""),
+        (X_TRAIN, "Trained on", ""),
+    ]:
+        out.append(_text(x, hy, label, "ink", 12, weight="600"))
+        if sub:
+            out.append(_text(x, hy + 15, sub, "sec", 10))
+    for k, tick in enumerate(["10 M", "100 M", "1 B", "10 B"]):
+        anchor = "start" if k == 0 else "end" if k == 3 else "middle"
+        out.append(_text(X_PARAMS + PARAMS_TRACK / 3 * k, hy + 15, tick, "sec", 10, anchor))
+    for k, tick in enumerate(["0", f"{plan_scale // 2:g}", f"{plan_scale} s"]):
+        anchor = "start" if k == 0 else "end" if k == 2 else "middle"
+        out.append(_text(X_PLAN + PLAN_TRACK / 2 * k, hy + 15, tick, "sec", 10, anchor))
+
+    for i, (label, m) in enumerate(models):
+        cy = top + ROW_H * i + ROW_H / 2
+        hue = color(m.name)
+
+        # Name, with the first part of its architecture under it.
+        out.append(f'<circle cx="{PAD + 5}" cy="{cy - 6}" r="5" fill="{hue}"/>')
+        out.append(_text(PAD + 16, cy - 1, escape(label), "ink", 14, weight="600"))
+        arch = re.split(r" \+ | -- |: |, | \(", m.architecture)[0]
+        out.append(_text(PAD + 16, cy + 15, escape(arch), "sec", 10.5))
+
+        # Parameters, on a log scale.
+        bar_y = cy - 12
+        if m.params_m is None:
+            out.append(
+                f'<rect class="none" x="{X_PARAMS}" y="{bar_y}" width="{PARAMS_TRACK}" height="12" rx="6"/>'
+            )
+            head = "not published"
+        else:
+            w = max(6.0, (math.log10(m.params_m) - 1) / 3 * PARAMS_TRACK)
+            out.append(
+                f'<rect class="track" x="{X_PARAMS}" y="{bar_y}" width="{PARAMS_TRACK}" height="12" rx="6"/>'
+            )
+            out.append(f'<rect x="{X_PARAMS}" y="{bar_y}" width="{w:.1f}" height="12" rx="6" fill="{hue}"/>')
+            head = _params(m.params_m)
+        out.append(_text(X_PARAMS + PARAMS_TRACK + 8, cy - 2, head, "ink", 12.5, weight="600"))
+        if m.size_gb is not None:
+            disk = f"{m.size_gb:g} GB" + (f" {m.precision}" if m.precision else "")
+            out.append(_text(X_PARAMS + PARAMS_TRACK + 8, cy + 13, disk, "sec", 10.5))
+
+        # Cameras: a car seen from above, one wedge per view.
+        gx, gy = X_CAMS + 24, cy
+        seen = views(m)
+        out += [_wedge(gx, gy, yaw, fov, 24, hue) for _, yaw, fov in seen]
+        out.append(f'<rect class="car" x="{gx - 5}" y="{gy - 9}" width="10" height="18" rx="3"/>')
+        cams = f"{len(seen)} camera{'s' if len(seen) != 1 else ''}"
+        out.append(_text(X_CAMS + 56, cy - 2, cams, "ink", 12.5, weight="600"))
+        if m.input_size:
+            out.append(_text(X_CAMS + 56, cy + 13, f"{m.input_size[0]}×{m.input_size[1]}", "sec", 10.5))
+
+        # Frames of history: one square per frame.
+        n = m.history_frames or 0
+        for k in range(n):
+            out.append(
+                f'<rect x="{X_FRAMES + 11 * k}" y="{cy - 13}" width="8" height="12" rx="2" fill="{hue}"/>'
+            )
+        frames = f"{n} frame{'s' if n != 1 else ''}" if n else "not recorded"
+        out.append(_text(X_FRAMES, cy + 13, frames, "sec", 10.5))
+
+        # Plan length; striped when the model emits controls rather than waypoints.
+        if m.horizon_s is None:
+            out.append(
+                f'<rect class="none" x="{X_PLAN}" y="{bar_y}" width="{PLAN_TRACK}" height="12" rx="6"/>'
+            )
+            head = "none"
+        else:
+            w = m.horizon_s / plan_scale * PLAN_TRACK
+            out.append(
+                f'<rect class="track" x="{X_PLAN}" y="{bar_y}" width="{PLAN_TRACK}" height="12" rx="6"/>'
+            )
+            out.append(f'<rect x="{X_PLAN}" y="{bar_y}" width="{w:.1f}" height="12" rx="6" fill="{hue}"/>')
+            if m.output_kind == "controls":
+                out.append(
+                    f'<rect x="{X_PLAN}" y="{bar_y}" width="{w:.1f}" height="12" rx="6" fill="url(#stripes)"/>'
+                )
+            head = f"{m.horizon_s:g} s"
+        out.append(_text(X_PLAN + PLAN_TRACK + 8, cy - 2, head, "ink", 12.5, weight="600"))
+        out.append(_text(X_PLAN + PLAN_TRACK + 8, cy + 13, escape(m.output_kind), "sec", 10.5))
+
+        # Trained on: chips, flowed onto as many lines as they need.
+        lines: list[list[tuple[str, bool]]] = [[]]
+        used = 0.0
+        for chip in chips(m, own):
+            w = _chip_width(chip[0])
+            if lines[-1] and used + 4 + w > WIDTH - PAD - X_TRAIN:
+                lines.append([])
+                used = 0.0
+            used += (4 if lines[-1] else 0) + w
+            lines[-1].append(chip)
+        if not lines[0]:
+            out.append(_text(X_TRAIN, cy + 4, "not recorded", "sec", 10.5))
+        y0 = cy - (21 * len(lines) - 4) / 2
+        for li, line in enumerate(lines):
+            x = X_TRAIN
+            for text, is_own in line:
+                w = _chip_width(text)
+                box, ink = ("own", "ownt") if is_own else ("chip", "chipt")
+                cy0 = y0 + 21 * li
+                out.append(f'<rect class="{box}" x="{x:g}" y="{cy0:g}" width="{w:g}" height="17" rx="8.5"/>')
+                out.append(_text(x + w / 2, cy0 + 12.5, escape(text), ink, 10.5, "middle"))
+                x += w + 4
+
+    out.append("</svg>")
+    return "\n".join(out) + "\n"
+
+
+def build_models() -> str:
+    registry = load_models()
+    missing = [name for name in MODELS if name not in registry]
+    if missing:
+        raise ValueError(f"no model.yaml for {missing}")
+    own = set(load_datasets())
+    return render_models([(label, registry[name]) for name, label in MODELS.items()], own)
+
+
+# -----------------------------------------------------------------------------
+
+
+def figures() -> dict[Path, str]:
+    return {MATRIX_SVG: build_matrix(README.read_text(encoding="utf-8")), MODELS_SVG: build_models()}
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--check", action="store_true", help="exit 1 if either SVG is stale")
+    args = ap.parse_args(argv)
+    stale = []
+    for path, svg in figures().items():
+        if args.check:
+            if not path.exists() or path.read_text(encoding="utf-8") != svg:
+                stale.append(path)
+        else:
+            path.write_text(svg, encoding="utf-8")
+            print(f"wrote {path.relative_to(ROOT)}")
+    for path in stale:
+        print(f"{path.relative_to(ROOT)} is stale: run python -m tools.readme_figures", file=sys.stderr)
+    return int(bool(stale))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

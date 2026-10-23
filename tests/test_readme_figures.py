@@ -1,8 +1,13 @@
-"""The README heatmap is drawn from the README table, and must say what the table says."""
+"""The README's pictures are drawn from their sources, and must say what the sources say."""
 
 from __future__ import annotations
 
-from tools import readme_matrix
+from dataclasses import replace
+
+import pytest
+
+from paddock.registry import TrainedOn, load_models
+from tools import readme_figures
 
 TABLE = """\
 ## Support matrix
@@ -21,18 +26,17 @@ TABLE = """\
 """
 
 
-def test_the_committed_heatmap_is_drawn_from_the_current_table() -> None:
-    readme = readme_matrix.README.read_text(encoding="utf-8")
-    svg = readme_matrix.SVG.read_text(encoding="utf-8")
-    assert svg == readme_matrix.build(readme), (
-        "docs/assets/support-matrix.svg no longer matches the README table: "
-        "run python -m tools.readme_matrix and commit the result"
+@pytest.mark.parametrize("path", [readme_figures.MATRIX_SVG, readme_figures.MODELS_SVG], ids=lambda p: p.name)
+def test_each_committed_picture_is_drawn_from_its_current_source(path) -> None:
+    assert path.read_text(encoding="utf-8") == readme_figures.figures()[path], (
+        f"{path.relative_to(readme_figures.ROOT)} no longer matches its source: "
+        "run python -m tools.readme_figures and commit the result"
     )
 
 
 def test_ranks_follow_the_readme_notes() -> None:
-    columns, rows = readme_matrix.parse(TABLE)
-    readme_matrix.rank(columns, rows)
+    columns, rows = readme_figures.parse(TABLE)
+    readme_figures.rank(columns, rows)
     by = {r.name: r for r in rows}
 
     assert [c.lower_is_better for c in columns] == [True, False, True]
@@ -55,3 +59,25 @@ def test_ranks_follow_the_readme_notes() -> None:
     floor = by["Baseline (Constant Velocity)"].cells[1]
     assert (floor.value, floor.qualifier) == (0.0, "by construction")
     assert by["Bad"].cells[2].value is None
+
+
+def test_cameras_are_counted_by_view() -> None:
+    # openpilot declares CAM_FRONT as a fallback for one-camera sources; it is the same
+    # view as its road camera, so the picture shows two cameras, not three.
+    openpilot = load_models()["openpilot"]
+    assert len(openpilot.cameras) == 3
+    assert [v[0] for v in readme_figures.views(openpilot)] == ["front", "front wide"]
+
+    with pytest.raises(ValueError, match="CAM_ROOF"):
+        readme_figures.views(replace(openpilot, cameras=("CAM_ROOF",)))
+
+
+def test_only_paddocks_own_datasets_are_marked_as_benchmark_data() -> None:
+    model = replace(
+        load_models()["qwendrive"],
+        trained_on=(TrainedOn("navsim", "navtrain"), TrainedOn("waymo-e2e", "train")),
+    )
+    assert readme_figures.chips(model, {"navsim", "kitscenes"}) == [
+        ("NAVSIM navtrain", True),
+        ("Waymo E2E", False),
+    ]

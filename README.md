@@ -12,26 +12,11 @@
   <a href="docs/ROADMAP.md"><img src="https://img.shields.io/badge/roadmap-what_is_verified-B4560A.svg" alt="Roadmap"></a>
 </p>
 
-Paddock runs several independent research codebases against the same
-benchmarks, through one interface, and collects the results in one comparable
-format.
+Many driving models, the same benchmarks, one interface, one results format.
+Shared between **Fastcode** and **Renesas**; each site runs it against the data it
+already has.
 
-Shared between **Fastcode** and **Renesas**. Everyone runs it on their own
-machine, against whatever copy of the data they already have.
-
----
-
-## What it does
-
-Every model implements one `Policy` — `load()`, `reset()`, `infer(observation) -> trajectory` —
-and runs as its own process behind a small HTTP node. **The model node is the
-server; the benchmark side is the client.** Open-loop harnesses post a
-recording's frames to it (`/infer_sequence`, image paths), and closed-loop
-simulators post rendered frames every tick (`/infer`) and move the car with the
-plan that comes back. AlpaSim's runtime calls its driver over gRPC instead, so a
-bridge answers it as a gRPC server and calls the node over HTTP. Scores land in
-one schema with provenance, so an ADE and an NCAP score are statements about the
-same model, run the same way.
+## How it works
 
 ```mermaid
 %%{init: {"theme": "base", "themeVariables": {"primaryTextColor": "#1f2328", "lineColor": "#6e7781",
@@ -93,29 +78,21 @@ flowchart LR
     class res store
 ```
 
-Four models times eight benchmarks in the sketch above, and nobody wrote
-thirty-two adapters. The tree now holds eight models and nine benchmarks — the
-diagram names the ones worth drawing, not all of them; `paddock list` is
-authoritative. Another model is one new directory under `adapters/models/`,
-another benchmark one new directory under `adapters/benchmarks/`.
-
-What crosses the wire between paddock, the model node, a simulator and AlpaSim's
-bridge is drawn step by step in [docs/architecture.md](docs/architecture.md#on-the-wire).
-
-Paddock does **not** copy datasets and does **not** vendor model code. It points
-existing clones at existing data using each repo's own configuration mechanism.
+Each model runs in its own environment as an HTTP server behind one `Policy`:
+`load()`, `reset()`, `infer(observation) -> trajectory`. Benchmarks are its clients.
+A new model or benchmark is one new directory under `adapters/`. Paddock copies no
+data and vendors no model code. What crosses the wire:
+[docs/architecture.md](docs/architecture.md#on-the-wire).
 
 ## Support matrix
-
-The headline number for each model on each benchmark, measured through paddock,
-shaded by its rank within that benchmark.
 
 <p align="center">
   <img src="docs/assets/support-matrix.svg" width="100%" alt="Support matrix heatmap: each model's headline score on each benchmark, shaded by rank within the benchmark. The same numbers are in the table below.">
 </p>
 
-Each benchmark's page has the per-metric tables and every note on these cells:
-[nuScenes](docs/benchmarks/nuscenes.md#support-matrix-results) ·
+**A** adapted to the benchmark · **P** a pipeline around the model is graded ·
+**S** stale · **R** run differently, not ranked · **V** stored `valid: false`, not ranked.
+Per-benchmark tables and notes: [nuScenes](docs/benchmarks/nuscenes.md#support-matrix-results) ·
 [KITScenes](docs/benchmarks/kitscenes.md#support-matrix-results) ·
 [comma2k19](docs/benchmarks/comma2k19.md#support-matrix-results) ·
 [nuPlan](docs/benchmarks/nuplan.md#support-matrix-results) ·
@@ -126,27 +103,7 @@ Each benchmark's page has the per-metric tables and every note on these cells:
 [AlpaSim](docs/benchmarks/alpasim.md#support-matrix-results).
 
 <details>
-<summary>The same numbers as a table</summary>
-
-<!-- The heatmap above is drawn from this table. After editing it, run
-     python -m tools.readme_matrix; tests/test_readme_matrix.py fails until you do. -->
-
-🟢 open loop · 🟡 pseudo-closed loop · 🔴 closed loop · ↑ higher is better · ↓ lower is better
-
-| | [🟢 nuScenes](docs/benchmarks/nuscenes.md#support-matrix-results) cumulative L2 avg ↓ (m) | [🟢 KITScenes](docs/benchmarks/kitscenes.md#support-matrix-results) ADE ↓ (m) | [🟢 comma2k19](docs/benchmarks/comma2k19.md#support-matrix-results) ADE@3s ↓ (m) | [🟢 nuPlan](docs/benchmarks/nuplan.md#support-matrix-results) ADE ↓ (m), 25 anchors, not ranked | [🟡 NAVSIM v2](docs/benchmarks/navsim.md#support-matrix-results) EPDMS ↑ (0–1) | [🟡 NAVSIM v1](docs/benchmarks/navsim_v1.md#support-matrix-results) PDMS ↑ (0–1) | [🔴 Bench2Drive](docs/benchmarks/bench2drive.md#support-matrix-results) driving score ↑ (0–100) | [🔴 neuroNCAP](docs/benchmarks/neuroncap.md#support-matrix-results) score ↑ (0–5) | [🔴 AlpaSim](docs/benchmarks/alpasim.md#support-matrix-results) nuRec scene score ↑ (0–1) |
-|---|---|---|---|---|---|---|---|---|---|
-| OpenPilot | 2.477 | 1.248 <sup>A</sup> | 1.507 <sup>S</sup> | 0.807 | 0.747 (10 Hz) <sup>R</sup> | 0.807 (10 Hz) <sup>R</sup> | 30.09 <sup>R</sup> | 3.60 | 0.7726 |
-| Alpamayo 1.5 | 0.787 | 1.002 | 0.900 | — | 0.691 (10 Hz) <sup>R</sup> | 0.753 (10 Hz) <sup>R</sup> | 55.82 (10 Hz) <sup>R</sup> | 3.73 | 0.9000 <sup>R</sup> |
-| Drive-JEPA | 0.912 <sup>S</sup> | 2.364 | 16.048 <sup>R</sup> | 1.512 | 0.843 <sup>A</sup> | 0.892 <sup>A</sup> | 57.60 (2 Hz) <sup>R</sup> | 4.13 | 0.4209 |
-| Drive-JEPA, KITScenes re-ranker | 0.587 | 0.973 <sup>A</sup> | not run | not run | not run | not run | — | not run | — |
-| Drive-JEPA, retrained on Physical AI AV | not run | not run | not run | not run | not run | not run | not run | not run | 0.7697 <sup>A</sup> |
-| VisionPilot <sup>P S</sup> | 1.441 | 1.534 | 4.045 | 2.246 | 0.431 | 0.488 | 49.85 | 1.58 | 0.6289 |
-| METEOR | 0.977 | 1.879 | — | 1.273 | 0.303 <sup>P</sup> | 0.366 <sup>P</sup> | — | 2.64 | 0.4232 <sup>R</sup> |
-| Qwen-Drive 1.0 | 0.450 | 0.806 | 1.159 | — | 0.840 <sup>A</sup> | 0.876 <sup>A</sup> | 17.08 (2 Hz) <sup>R</sup> | 2.49 | — |
-| AutoE2E | 0.839 <sup>R</sup> | 0.847 <sup>A R</sup> | 2.016 | — | 0.500 (10 Hz) <sup>A R</sup> | — | — | 3.16 <sup>V</sup> | 0.1694 <sup>R</sup> |
-| Baseline (Constant Velocity) | 0.641 | 1.381 | 1.639 | 1.393 | 0.239 | 0.207 | 47.94 | 0, by construction | 0.4876 |
-
-</details>
+<summary>Why each cell is marked, and what to check before comparing</summary>
 
 A mark on a model's name applies to every cell in its row. A cell without a mark
 was measured the same way as the rest of its column.
@@ -202,64 +159,53 @@ Before comparing numbers:
   and were imported into `results/`; AutoE2E's is the exception, run through
   paddock's bridge.
 
-### What these models are
+</details>
 
-The scores above say how well each model drives. This says what each one **is** —
-because a four-order-of-magnitude spread in size sits behind a neuroNCAP column
-whose top three are statistically indistinguishable. Full table, licences and
-provenance in [docs/models/comparison.md](docs/models/comparison.md); the
-machine-readable form is in each `model.yaml` and prints with
-`paddock list models`.
+<details>
+<summary>The same numbers as a table</summary>
 
-| | Architecture | Params | Size (GB) | Input | Output | Trained on |
-|---|---|---:|---:|---|---|---|
-| OpenPilot | supercombo — one ONNX graph, via tinygrad | not published | 0.061 | 2 cam @20 Hz · 512×256 · 2 frames | 33 waypoints, 10 s | comma fleet, ≈6,670 h (not released) |
-| Alpamayo 1.5 | Cosmos-Reason2 VLM + diffusion trajectory decoder | **10 B** | 20 | 4 cam @10 Hz · 448×280 | trajectory 6.4 s + reasoning trace | NVIDIA internal, 80,000 h |
-| Drive-JEPA | V-JEPA-2 ViT-L encoder + proposal-centric planner | 307 M | 1.23 | 1 cam (the adapter declares 4) · 512×256 · 2 frames | trajectory 4 s, one of 32 candidates, chosen by its scorer | OpenScene, then **NAVSIM `navtrain`** |
-| VisionPilot | three YOLO-family conv nets | **28.1 M** | 0.112 | 1 cam @10 Hz · 1024×512 | lane curvature + closest in-path object | OpenLane, TuSimple, CurveLanes |
-| METEOR | ResNet-34 + FPN per camera, depth-gated IPM lift to one BEV grid, 12 task heads | 54 M | 0.35 | 8 cam · 768×432 · 1 frame (paddock fills 6) | 3 paths × 6 waypoints, 3 s, + steer / accel / brake and 11 perception heads | TIER IV Co-MLOps DRS, Japan + a US subset, 953 GB / 12,595 scenes @5 Hz, auto-labelled (hours not published) |
-| Qwen-Drive 1.0 | Qwen3.5-4B VLM + 1 B flow-matching planning expert | ≈5 B | 11.2 | 3 cam · 4 frames 0.5 s apart · current ~720p, history ~320p | 50 poses (x, y, heading), 5 s @10 Hz | Qwen3.5's corpus + public driving sets, incl. **NAVSIM `navtrain`** |
-| AutoE2E | ResNet-50 + BEVFormer V2 T8, deformable route/map fusion, GRU planner | 79.9 M | 0.33 | 6 cam · 512×512 (front also 1024) · 8 frames 0.5 s apart | 64 × (accel, curvature), 6.4 s @10 Hz | nuPlan, then a KITScenes fine-tune |
+<!-- The heatmap above is drawn from this table. After editing it, run
+     python -m tools.readme_figures; tests/test_readme_figures.py fails until you do. -->
 
-Two of these models were trained on NAVSIM's own `navtrain`, and AutoE2E on the
-nuPlan logs NAVSIM's scenes come from, which is why their NAVSIM cells carry **A**;
-AutoE2E's KITScenes cell carries it for its KITScenes fine-tune. Why Drive-JEPA declares four cameras when its paper
-reads one, and the rest of the model-specific notes, are in
-[docs/models/comparison.md](docs/models/comparison.md#notes-moved-from-the-readme-support-matrix).
+🟢 open loop · 🟡 pseudo-closed loop · 🔴 closed loop · ↑ higher is better · ↓ lower is better
 
----
+| | [🟢 nuScenes](docs/benchmarks/nuscenes.md#support-matrix-results) cumulative L2 avg ↓ (m) | [🟢 KITScenes](docs/benchmarks/kitscenes.md#support-matrix-results) ADE ↓ (m) | [🟢 comma2k19](docs/benchmarks/comma2k19.md#support-matrix-results) ADE@3s ↓ (m) | [🟢 nuPlan](docs/benchmarks/nuplan.md#support-matrix-results) ADE ↓ (m), 25 anchors, not ranked | [🟡 NAVSIM v2](docs/benchmarks/navsim.md#support-matrix-results) EPDMS ↑ (0–1) | [🟡 NAVSIM v1](docs/benchmarks/navsim_v1.md#support-matrix-results) PDMS ↑ (0–1) | [🔴 Bench2Drive](docs/benchmarks/bench2drive.md#support-matrix-results) driving score ↑ (0–100) | [🔴 neuroNCAP](docs/benchmarks/neuroncap.md#support-matrix-results) score ↑ (0–5) | [🔴 AlpaSim](docs/benchmarks/alpasim.md#support-matrix-results) nuRec scene score ↑ (0–1) |
+|---|---|---|---|---|---|---|---|---|---|
+| OpenPilot | 2.477 | 1.248 <sup>A</sup> | 1.507 <sup>S</sup> | 0.807 | 0.747 (10 Hz) <sup>R</sup> | 0.807 (10 Hz) <sup>R</sup> | 30.09 <sup>R</sup> | 3.60 | 0.7726 |
+| Alpamayo 1.5 | 0.787 | 1.002 | 0.900 | — | 0.691 (10 Hz) <sup>R</sup> | 0.753 (10 Hz) <sup>R</sup> | 55.82 (10 Hz) <sup>R</sup> | 3.73 | 0.9000 <sup>R</sup> |
+| Drive-JEPA | 0.912 <sup>S</sup> | 2.364 | 16.048 <sup>R</sup> | 1.512 | 0.843 <sup>A</sup> | 0.892 <sup>A</sup> | 57.60 (2 Hz) <sup>R</sup> | 4.13 | 0.4209 |
+| Drive-JEPA, KITScenes re-ranker | 0.587 | 0.973 <sup>A</sup> | not run | not run | not run | not run | — | not run | — |
+| Drive-JEPA, retrained on Physical AI AV | not run | not run | not run | not run | not run | not run | not run | not run | 0.7697 <sup>A</sup> |
+| VisionPilot <sup>P S</sup> | 1.441 | 1.534 | 4.045 | 2.246 | 0.431 | 0.488 | 49.85 | 1.58 | 0.6289 |
+| METEOR | 0.977 | 1.879 | — | 1.273 | 0.303 <sup>P</sup> | 0.366 <sup>P</sup> | — | 2.64 | 0.4232 <sup>R</sup> |
+| Qwen-Drive 1.0 | 0.450 | 0.806 | 1.159 | — | 0.840 <sup>A</sup> | 0.876 <sup>A</sup> | 17.08 (2 Hz) <sup>R</sup> | 2.49 | — |
+| AutoE2E | 0.839 <sup>R</sup> | 0.847 <sup>A R</sup> | 2.016 | — | 0.500 (10 Hz) <sup>A R</sup> | — | — | 3.16 <sup>V</sup> | 0.1694 <sup>R</sup> |
+| Baseline (Constant Velocity) | 0.641 | 1.381 | 1.639 | 1.393 | 0.239 | 0.207 | 47.94 | 0, by construction | 0.4876 |
+
+
+</details>
+
+## What these models are
+
+<p align="center">
+  <img src="docs/assets/models.svg" width="100%" alt="What each model is: parameters, cameras, frames of history, plan length and training data, drawn from each model.yaml.">
+</p>
+
+Drawn from each `model.yaml` (`paddock list models`). Architecture, licences and
+where each number comes from: [docs/models/comparison.md](docs/models/comparison.md).
 
 ## Quickstart
 
 ```bash
 git clone <this repo> && cd paddock
-make setup                                  # .venv + editable install
-source .venv/bin/activate                   # puts `paddock` on PATH
-
-cp paddock.toml.example paddock.toml
-$EDITOR paddock.toml                        # point at YOUR repos, data and scratch space
-
-paddock setup                               # clone/adopt vendor repos, apply patches
-paddock doctor                              # what this machine can actually run
-```
-
-Without activating, the CLI is still there as `.venv/bin/paddock`, and
-`make doctor` works from a cold shell.
-
-`paddock doctor` is the entry point for everything that goes wrong. It reports
-which repos resolved, which datasets are present and valid, which interpreters
-exist, and how much GPU headroom there is — each failure naming the doc section
-that fixes it.
-
-Then:
-
-```bash
+make setup && source .venv/bin/activate     # .venv + editable install
+cp paddock.toml.example paddock.toml        # then point it at YOUR repos, data and scratch space
+paddock doctor                              # what this machine can run, and how to fix the rest
 paddock run --model openpilot --bench kitscenes --limit 5    # smoke test
-paddock run --model all --bench neuroncap --runs 1 --scene 0103
 paddock report                                               # leaderboard
 ```
 
----
+Clone the vendor repos by hand for now: `paddock setup` is not built yet.
 
 ## The one idea worth understanding
 
@@ -271,18 +217,12 @@ paddock report                                               # leaderboard
 | `repos.yaml` — upstream URL, pinned commit, patches | which clones already exist here |
 | `adapters/models/<name>/model.yaml` — interpreter kind, PYTHONPATH, VRAM, cameras | resolved interpreter and repo paths |
 
-Tracked files name locations only through template variables — `{repos}`,
-`{runs}`, `{weights}`, `{data.kitscenes}` — expanded at launch by
-`paddock.config`. `tests/test_portability.py` fails the build if a tracked file
-contains a real machine path, which is what keeps this true over time.
+Tracked files name places only through template variables (`{repos}`,
+`{data.kitscenes}`, …), and `tests/test_portability.py` fails the build on a real
+machine path.
 
-This is also the answer to "do I have to copy the data?" — no. Every model repo
-already accepts external paths through an environment variable, a CLI flag, a
-symlink, or (once) a source patch. Paddock computes the right one per repo.
-
----
-
-## Layout
+<details>
+<summary>Layout</summary>
 
 ```
 paddock.toml.example     copy to paddock.toml — the only file a new site edits
@@ -304,39 +244,31 @@ docs/                    see below
   docs/datasets/         what the data is — true of the dataset on any machine
 ```
 
-Run artifacts — predictions, frames, videos — go to `roots.runs`, outside the
-repo. Only the small `results/` metrics are tracked, so the leaderboard is
-reviewable in a diff.
+Predictions, frames and videos go to `roots.runs`, outside the repo; only the
+kilobyte-sized `results/` metrics are tracked.
 
----
+</details>
 
 ## Documentation
 
 | Doc | Read it when |
 |---|---|
-| [docs/site-setup.md](docs/site-setup.md) | setting paddock up on a new machine |
-| [docs/data-setup.md](docs/data-setup.md) | pointing paddock at datasets, or fetching ones you lack |
-| [docs/adding-a-model.md](docs/adding-a-model.md) | **adding a model** — the full checklist |
-| [docs/adding-a-benchmark.md](docs/adding-a-benchmark.md) | **adding a benchmark** — the full checklist |
-| [docs/models/comparison.md](docs/models/comparison.md) | **what each model is** — size, inputs, outputs, training data, licences |
-| [docs/models/](docs/models/) | one page per model — what the checkpoint is, how the adapter wires it, and what its figures do and do not support |
-| [SKILLS.md](SKILLS.md) | bringing up a model's own environment, and the failures that look nothing like a paddock bug |
-| [docs/architecture.md](docs/architecture.md) | understanding open- vs closed-loop, the Policy protocol |
-| [docs/benchmarks/](docs/benchmarks/) | how each benchmark is run and scored, and every recorded figure with its run id |
-| [docs/datasets/](docs/datasets/) | what the underlying data *is* — sensors, frames, coverage, and what it cannot answer |
-| [docs/leaderboard.md](docs/leaderboard.md) | the full per-run leaderboard, rendered by `paddock report` |
+| [docs/site-setup.md](docs/site-setup.md) | setting up a new machine |
+| [docs/data-setup.md](docs/data-setup.md) | pointing paddock at datasets, or fetching them |
+| [docs/adding-a-model.md](docs/adding-a-model.md) | **adding a model** |
+| [docs/adding-a-benchmark.md](docs/adding-a-benchmark.md) | **adding a benchmark** |
+| [docs/models/comparison.md](docs/models/comparison.md) | what each model is, in full |
+| [docs/models/](docs/models/) | one page per model |
+| [SKILLS.md](SKILLS.md) | a model's own environment will not come up |
+| [docs/architecture.md](docs/architecture.md) | how open and closed loop work |
+| [docs/benchmarks/](docs/benchmarks/) | how each benchmark is scored, every figure with its run id |
+| [docs/datasets/](docs/datasets/) | what each dataset holds, and what it cannot answer |
+| [docs/leaderboard.md](docs/leaderboard.md) | every run, as `paddock report` prints it |
 | [docs/results-schema.md](docs/results-schema.md) | reading or ingesting results |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | something fails in a way that makes no sense |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | before opening a PR |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | what is done, what is verified, and what is not |
-
-Adding a model touches **one registry file and one new directory** — no changes
-to `src/paddock/`. If you cannot add a model without editing the core, that is a
-framework bug; please report it.
-
----
+| [docs/ROADMAP.md](docs/ROADMAP.md) | what is done and what is verified |
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE). Copyright 2026 Renesas Electronics
-Corporation.
+Apache License 2.0 ([LICENSE](LICENSE)). Copyright 2026 Renesas Electronics Corporation.
