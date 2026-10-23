@@ -44,9 +44,11 @@ signals only those whose ``PADDOCK_CONFIG`` is one of the campaign's own
 routes from being dealt twice, and is left running); evaluators by their
 ``--checkpoint`` lying under it; CARLA by the port in that evaluator's log. A
 process whose environment cannot be read -- another user's -- is never ours.
-The evaluator's own crash handler kills every CARLA on its GPU index
-(``harness`` docstring), so routes known to crash CARLA are passed as
-``--held``: they are driven last, by one worker, once nothing else is left.
+A route known to crash CARLA does so on every attempt, and with no score it
+would be dealt again on every launch, so such routes are passed as ``--held``:
+driven last, by one worker, once nothing else is left. (Before patch 0001,
+which preflight now requires, the evaluator's crash handler also killed every
+CARLA on its GPU index, the other workers' with it.)
 
 Run it in paddock's own interpreter; ``PADDOCK_CONFIG`` picks the site config
 the workers copy, exactly as for ``paddock run``.
@@ -465,8 +467,7 @@ def launch(
     """Deal what is left to free worker slots; see the module docstring.
 
     ``held`` routes are driven last and alone: one worker, once every other route has scored and no
-    worker is alive, because a route that crashes CARLA can take every other worker's CARLA with it
-    (the evaluator's crash handler kills all CARLA on its GPU index).
+    worker is alive, because a route that crashes CARLA does so every time (see the module docstring).
     """
     root = _runs_root(cfg, model)
     state_dir = _state_dir(cfg, model)

@@ -395,11 +395,13 @@ Two failure modes this exists for, both met on a 220-route sweep at one site:
   worker sat idle for the full 90-minute route timeout. The guard's second test
   -- the CARLA on the port the evaluator logged is gone -- catches the case
   silence alone never would.
-* **A CARLA crash can take every worker down.** On a crash the evaluator runs
-  `ps | grep -graphicsadapter=<rank> | kill -9` (see *Shared-machine
-  behaviour*), which is every worker's CARLA on that GPU. Routes known to crash
-  CARLA belong in `--held`: 11715 at the pin, and at that site the Town12/13
-  `InterurbanAdvancedActorFlow` routes 23695, 23708 and 24078.
+* **A route that crashes CARLA crashes it every time.** Upstream's evaluator
+  then ran `ps | grep -graphicsadapter=<rank> | kill -9`, every worker's CARLA
+  on that GPU; with patch `0001`, which preflight requires (see *Shared-machine
+  behaviour*), it kills only its own. Such a route is still dealt again on every
+  launch while it has no score, so routes known to crash CARLA belong in
+  `--held`, driven once at the end: 11715 at the pin, and at that site the
+  Town12/13 `InterurbanAdvancedActorFlow` routes 23695, 23708 and 24078.
 
 Worker configs, logs (`logs/worker<slot>.log`) and a launch history
 (`workers.json`) live in `{runs}/bench2drive/_campaign/<model>/`. Every attempt
