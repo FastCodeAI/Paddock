@@ -550,6 +550,13 @@ def test_a_pool_driven_on_another_camera_rig_names_it_and_does_not_rank(tmp_path
     assert run.run_id != default.run_id
 
 
+def test_a_pool_of_routes_ended_at_a_collision_does_not_rank(tmp_path: Path) -> None:
+    rules = {"stuck_s": 30.0, "collision": True, "progress_m": 3.0}
+    run = _pooled_with(tmp_path, ({"early_stop": rules}, {"early_stop": rules}))
+    assert run.config["early_stop"] == rules and not run.valid
+    assert "stop_on_collision" in run.notes
+
+
 def test_a_pool_without_an_early_stop_records_none(tmp_path: Path) -> None:
     """No key in the config, so the config hash and run id of every earlier pool are unchanged."""
     ((run, _, samples),) = bench2drive.ingest(_tree(tmp_path), model="modelx", site="s")

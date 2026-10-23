@@ -136,7 +136,7 @@ weights = "/path/to/weights"
 # record_inputs = "false"                              # with record: each tick's whole request, for offline replay; ~2.5 MB a tick
 # stop_stuck_s       = "30"                            # optional: end a route 30 s after its last 3 m of progress
 # stop_expert_factor = "4"                             # optional: end a route at 4x the expert's time on it
-# stop_on_collision  = "true"                          # optional: end a route at its first recorded collision
+# stop_on_collision  = "true"                          # optional: end a route at its first recorded collision (valid: false)
 # expert = "/path/to/expert"                           # tools.benchmarks.bench2drive.expert summarize's output
 #                                                      # a route either stop_* ends is a failed drive; see the docs
 # camera_rig = "paddock"                               # default; "bench2drive" / "kitscenes" make a run valid: false

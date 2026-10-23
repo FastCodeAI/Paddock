@@ -195,7 +195,7 @@ Three settings end a route sooner (`early_stop.py`):
 |---|---|
 | `stop_stuck_s` | the ego has gone this many game seconds without getting 3 m further along the route (the blocked test's 0.1 m/s over 30 s). Progress, not speed, so a car that a driver-resume nudge keeps creeping counts too. The clock pauses while the ego waits at a red or amber light -- inside the light's trigger box, or up to 50 m short of the next light on the route, which is where a car queued behind others stands -- so a short window does not end every route that meets a red signal, and the clock runs on from where it was when the light turns; it does run while the car yields to a pedestrian or waits for a gap, so a window of a few seconds cuts those scenes short too |
 | `stop_expert_factor` + `expert` | the game clock reaches this multiple of Think2Drive's time on the route (`duration_s` of `<expert>/<route>/expert_traj.json`). The nine routes with no expert clip get the stuck rule alone |
-| `stop_on_collision` | the leaderboard's own `CollisionTest` records a collision with a static object, a vehicle or a pedestrian: the events the infraction penalty is computed from, read by the agent through the ScenarioManager, one tick after the contact. Not its `actual_value`, which also counts a brush with the sidewalk that is neither recorded nor penalised |
+| `stop_on_collision` | the leaderboard's own `CollisionTest` records a collision with a static object, a vehicle or a pedestrian: the events the infraction penalty is computed from, read by the agent through the ScenarioManager, one tick after the contact. Not its `actual_value`, which also counts a brush with the sidewalk that is neither recorded nor penalised. A run with it is `valid: false`: Bench2Drive charges a collision as a penalty (×0.50–0.65) and lets the car drive on, so a route ended at one scores something else |
 
 And one stop that is not a rule: a route ends **by hand** when its directory
 grows a `stop_request` file while it drives, which the dashboard's "Stop route"
@@ -212,7 +212,7 @@ route as `ended_stuck` / `ended_over_time` / `ended_collision` / `ended_manual`
 (0 or 1). The dashboard lists such a route as "Stopped: <reason>", and its video
 says why it ended.
 
-A route either rule ends is a **failed drive**, and the run ranks. A car in a
+A route the stuck or over-time rule ends is a **failed drive**, and the run ranks. A car in a
 driving scene is expected to move; one that gets no further along its route for
 `stop_stuck_s`, or needs `stop_expert_factor` times the expert's time, has failed
 the scene, so the route is scored as it stood when it ended. The rules are in the

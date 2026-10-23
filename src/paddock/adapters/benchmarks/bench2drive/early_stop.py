@@ -40,7 +40,10 @@ that many times the expert's time, has failed the scene -- so the route is
 scored as it stood when it ended, and a run with the rules on ranks. Its notes
 say which rules it ran under, and why its scores stand (:func:`remark`). Routes
 stopped under *different* rules are not one experiment, so a pool of them does
-not rank (:func:`mixed_reason`).
+not rank (:func:`mixed_reason`). The collision rule is another matter: the
+leaderboard charges a collision as a penalty and lets the car drive on, so a
+route ended there scores something else, and a run with it does not rank
+(:func:`collision_reason`).
 
 Kept 3.8-compatible: ``agent.py`` runs :class:`EarlyStop` every tick inside the
 CARLA client, and :func:`replay` runs the same rule over a recorded
@@ -242,6 +245,15 @@ def remark(rules: dict[str, Any]) -> str:
         f"early stop ({describe(rules)}): a car in a driving scene is expected to move, to finish in "
         "reasonable time and not to collide, so a route ended this way is a failed drive, scored as it "
         "stood when it ended (a collision's penalty included)"
+    )
+
+
+def collision_reason() -> str:
+    """Why a run, or a pool, whose routes end at their first collision is not ranked."""
+    return (
+        "stop_on_collision: a route ends at its first collision the leaderboard records, where "
+        "Bench2Drive's own protocol charges the collision as a penalty (x0.50-0.65) and lets the car "
+        "drive on, so its driving score is another measure"
     )
 
 

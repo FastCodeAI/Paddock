@@ -462,6 +462,10 @@ def ingest(
     # are as much one experiment as two setups.
     without = sum(1 for rules in stopped if not rules) if stop_rules is not None else 0
     mixed_stops = isinstance(stop_rules, list) or bool(without)
+    # Ending a route at its first collision is not Bench2Drive's score: the run would not rank.
+    at_collision = isinstance(stop_rules, dict) and bool(stop_rules.get("collision"))
+    if at_collision:
+        note = (note + " " if note else "") + early_stop.collision_reason() + "."
     # A route someone ended by hand was scored at a moment a person chose: kept, named, not ranked.
     by_hand = sum(1 for sample in samples if sample["metrics"].get(f"ended_{early_stop.MANUAL}"))
     if by_hand:
@@ -512,6 +516,7 @@ def ingest(
         and not overrides
         and not other_rig
         and not mixed_stops
+        and not at_collision
         and not by_hand,
         notes=note,
         # A relative tail only: results/ is tracked and must not name a machine's disk.

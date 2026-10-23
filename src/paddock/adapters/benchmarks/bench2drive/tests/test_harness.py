@@ -793,6 +793,16 @@ def test_preflight_refuses_a_stop_on_collision_it_cannot_read(tmp_path, monkeypa
     assert any("stop_on_collision" in p for p in harness.preflight())
 
 
+def test_a_run_that_ends_routes_at_a_collision_does_not_rank(tmp_path, monkeypatch) -> None:
+    """Bench2Drive charges a collision as a penalty and lets the car drive on; a route ended
+    there scores something else, which must not rank beside the leaderboard's own scores."""
+    harness = _harness(_site(tmp_path / "a", monkeypatch, COMPLETED, stop_on_collision="true"))
+    (reason,) = harness.invalid_reasons()
+    assert "stop_on_collision" in reason and "penalty" in reason
+    stuck_only = _harness(_site(tmp_path / "b", monkeypatch, COMPLETED, stop_stuck_s="30"))
+    assert stuck_only.invalid_reasons() == [], "a car that stops getting anywhere has failed the scene"
+
+
 def test_a_route_ended_by_hand_says_so_and_the_run_does_not_rank(tmp_path, monkeypatch) -> None:
     """A person choosing when a route ends is not a measurement: the run names it and is not ranked."""
     (tmp_path / "early_stop.json").write_text(json.dumps({"reason": "manual", "game_time_s": 12.5}))

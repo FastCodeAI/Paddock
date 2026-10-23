@@ -758,9 +758,11 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         or the whole routes file) would otherwise be stored `valid: true` and
         ranked beside the full runs; the regression gate's 7-route smoke was.
         The site's own `routes_subset` is the set, not a subset: it is on the
-        record (`run_config`) and every full run on the site uses it. An early
-        stop is not a reason: a route it ends is a failed drive (`remarks`).
-        A camera rig other than paddock's is one: the model was shown other cameras.
+        record (`run_config`) and every full run on the site uses it. The stuck
+        and over-time rules are not a reason: a route they end is a failed drive
+        (`remarks`). The collision rule is one: it scores a route at its first
+        collision, where Bench2Drive charges a penalty and drives on. A camera rig
+        other than paddock's is one: the model was shown other cameras.
         """
         reasons = []
         manual = getattr(self, "_ended_by_hand", set())
@@ -771,6 +773,8 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             reasons.append(
                 f"{ran} of the {total} routes this site runs (--scene/--scenarios); a subset, not a score"
             )
+        if (self.early_stop or {}).get("collision"):
+            reasons.append(early_stop.collision_reason())
         if self.camera_rig != rig.DEFAULT:
             reasons.append(
                 f"camera_rig {self.camera_rig!r}: the model saw other cameras than the "
