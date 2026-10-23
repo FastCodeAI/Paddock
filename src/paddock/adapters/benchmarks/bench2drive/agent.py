@@ -666,9 +666,8 @@ class PaddockB2DAgent(AutonomousAgent):
                 bgra = input_data[cid][1]
                 rgb = bgra[:, :, :3][:, :, ::-1]  # BGRA -> RGB
                 # raw .npy for the small frames the multi-camera models stack; JPEG (q95)
-                # for multi-megapixel frames, where raw pixels would be ~20 MB a tick
-                big = rgb.shape[0] * rgb.shape[1] >= 1_000_000
-                images[cid] = encode_image(rgb, codec="jpeg" if big else None)
+                # for multi-megapixel frames (recorder.wire_codec)
+                images[cid] = encode_image(rgb, codec=recorder.wire_codec(rgb))
                 if RECORD_INPUTS:
                     raw[cid] = rgb
         if RECORD_DIR and RECORD_CAM in input_data:

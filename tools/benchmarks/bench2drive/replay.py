@@ -33,12 +33,9 @@ def ticks(route_dir: Path) -> list[int]:
 def request(route_dir: Path, tick: int) -> dict:
     """Tick ``tick``'s request body as the agent sent it: the frames encoded the agent's way."""
     images, body = recorder.read_inputs(str(Path(route_dir) / recorder.INPUTS_DIR / f"{tick:05d}.npz"))
-    # The agent sends frames under a megapixel raw and larger ones as JPEG (agent.py); a model reading
+    # The agent's own rule for which frames go as JPEG (recorder.wire_codec); a model reading
     # six 800x450 views got them raw, which is what a lossless record reproduces exactly.
-    body["images"] = {
-        cid: encode_image(img, codec="jpeg" if img.shape[0] * img.shape[1] >= 1_000_000 else None)
-        for cid, img in images.items()
-    }
+    body["images"] = {cid: encode_image(img, codec=recorder.wire_codec(img)) for cid, img in images.items()}
     return body
 
 

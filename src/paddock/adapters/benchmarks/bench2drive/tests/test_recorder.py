@@ -142,3 +142,9 @@ def test_inputs_round_trip_exactly(tmp_path) -> None:
     for cid, img in images.items():
         assert back_images[cid].dtype == np.uint8 and np.array_equal(back_images[cid], img)
     assert [p.name for p in tmp_path.iterdir()] == ["00021.npz"], "no partial file left behind"
+
+
+def test_a_replay_sends_each_frame_the_way_the_agent_did() -> None:
+    """One rule for the agent and a replay: a megapixel or more as JPEG, paddock's 800x450 raw."""
+    assert recorder.wire_codec(np.zeros((450, 800, 3), np.uint8)) is None
+    assert recorder.wire_codec(np.zeros((900, 1600, 3), np.uint8)) == "jpeg"

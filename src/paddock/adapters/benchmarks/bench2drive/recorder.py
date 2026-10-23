@@ -54,11 +54,27 @@ MODEL_VIEW_EVERY = 2
 MODEL_VIEW_SCALE = 4
 
 #: Where each tick's whole request goes when the inputs are recorded (``record_inputs``):
-#: one compressed ``.npz`` per tick, the model's camera frames exactly as sent (uint8,
-#: lossless) beside the rest of the request as JSON, so a route can be fed to a model
-#: again offline (``tools/benchmarks/bench2drive/replay.py``). ~2.5 MB a tick for six
+#: one compressed ``.npz`` per tick, the model's camera frames as rendered (uint8,
+#: lossless; a frame :func:`wire_codec` sends as JPEG is encoded the same way again on
+#: replay) beside the rest of the request as JSON, so a route can be fed to a model
+#: again offline (``tools/benchmarks/bench2drive/replay.py``). ~2.5-3 MB a tick for six
 #: 800x450 views, so it is its own setting, off unless asked for.
 INPUTS_DIR = "inputs"
+
+#: Frames of this many pixels or more go to the node as JPEG (q95), the rest as raw
+#: ``.npy``: raw, a multi-megapixel frame is ~20 MB a tick. Every view of the
+#: ``bench2drive`` and ``kitscenes`` rigs is over it; paddock's 800x450 views are not.
+JPEG_FROM_PX = 1_000_000
+
+
+def wire_codec(frame) -> str | None:
+    """How the agent sends ``frame`` (H, W, 3) to the node: ``"jpeg"`` or raw (None).
+
+    The agent and a replay of its record both decide by this, so a replayed request
+    carries each frame the way the live one did.
+    """
+    return "jpeg" if frame.shape[0] * frame.shape[1] >= JPEG_FROM_PX else None
+
 
 #: Thumbnail directories named before any model but openpilot was recorded, and
 #: which its dashboard reads; every other camera gets :func:`model_view_dir`'s name.

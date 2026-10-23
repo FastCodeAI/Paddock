@@ -137,7 +137,11 @@ name another rig to ask how much a model's drive depends on its cameras:
 | `kitscenes` | KITScenes' roof pod, approximated from the calibration in `kitscenes.md`: an 88 x 54 deg front 1.8 m up and 87 x 63 deg side and rear views 2.0 m up |
 
 Another rig changes what the model is shown, so it is in `run.json` and the run
-id, and the run is `valid: false` with the rig named in its notes. The agent
+id, and the run is `valid: false` with the rig named in its notes. It also
+changes how the frames travel: a frame of a megapixel or more goes to the node
+as JPEG (q95), the rest raw (`recorder.wire_codec`), so both other rigs' views
+arrive JPEG-compressed where paddock's arrive raw, and a comparison between
+rigs changes the two at once. The agent
 writes the rig it rendered beside each recorded route as `rig.json`, and
 `route_video` draws plans onto the front camera through it. The `kitscenes`
 front differs in size from its ring: it suits a model that packs each view on its
