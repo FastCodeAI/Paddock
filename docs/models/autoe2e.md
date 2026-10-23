@@ -18,6 +18,7 @@ paddock doctor --model autoe2e
 paddock run --model autoe2e --bench navsim          # needs [benchmarks.navsim] nuplan + keyframe_cameras
 paddock run --model autoe2e --bench kitscenes       # the map and the oracle route are on by default
 paddock run --model autoe2e --bench comma2k19       # the road camera alone; the other five views left out
+paddock run --model autoe2e --bench nuscenes        # 6.5 s of past keyframes, the history it declares
 PADDOCK_INFER_HZ=10 paddock run --model autoe2e --bench bench2drive --scene <route>
 ```
 
@@ -48,7 +49,9 @@ From the release `config.json` and upstream's KITScenes evaluation path
   projection that puts every point behind the camera, so upstream's depth
   test keeps it out of every BEV cell. Each plan's `extras` say how many
   views it used (`views`). The seven history frames are the held frames
-  nearest t−3.5 … t−0.5 s within 0.06 s that carry every view the current
+  nearest t−3.5 … t−0.5 s within half the frame spacing, never less than
+  0.06 s (0.25 s on nuScenes' 2 Hz keyframes, whose timing jitters 0.45–0.55 s;
+  0.06 s on every 10 Hz or faster stream), that carry every view the current
   one does. Where the past does not reach that far (a route or log start)
   the oldest such frame is repeated with its own pose; each plan's `extras`
   and `diagnostics()`'s last call say how many were (`history_repeated`).
@@ -170,6 +173,115 @@ is inferred from the release's own nuPlan-test figures, not stated. NAVSIM's
 the rig and cities AutoE2E was pre-trained on. See `comparison.md`,
 *AutoE2E × navsim*.
 
+## On AlpaSim, through the bridge
+
+**Run on the 30 scenes: 0.1694** (results below). The AlpaSim harness gives `autoe2e` its own driver
+profile (`harness.DRIVER_PROFILES`, `configs/driver/paddock_bridge_autoe2e.yaml`);
+the model's adapter is unchanged apart from listing `alpasim` in `model.yaml`.
+It is camera-only, as on NAVSIM: the bridge sends no route and the node sends
+no map.
+
+**Cameras.** AlpaSim's 26.01 scenes record six f-theta cameras, none looking
+straight back. The profile re-renders them as pinholes, every distortion
+coefficient zero and with a global shutter open for 1 µs (see "Camera setup on
+AlpaSim" below), at the KITScenes calibration's field of view (the release's
+`datasets/kitscenes-val/v3.5/rig/*.json` with the image sizes KITScenes ships,
+5856 × 3104 front and 3504 × 2272 ring):
+
+| Slot | Node name | AlpaSim id rendered | Pose | Size, f | Field of view |
+|---|---|---|---|---|---|
+| front | CAM_FRONT | camera_front_wide_120fov | each scene's own (yaw ≈ 0°) | 1920 × 1018, 990.8 px | 88.2° × 54.4° |
+| front-left | CAM_FRONT_LEFT | camera_cross_left_120fov | each scene's own (≈ 67°) | 1024 × 664, 538.9 px | 87.1° × 63.3° |
+| front-right | CAM_FRONT_RIGHT | camera_cross_right_120fov | each scene's own (≈ −67°) | 1024 × 664, 538.9 px | 87.1° × 63.3° |
+| rear-left | CAM_BACK_LEFT | camera_rear_left_70fov | fixed (2.10, 1.04, 1.02) m, 120° | 1024 × 664, 538.9 px | 87.1° × 63.3° |
+| rear | CAM_BACK | camera_front_tele_30fov | fixed (1.0, 0, 1.93) m, 180°, on the roof | 1024 × 664, 538.9 px | 87.1° × 63.3° |
+| rear-right | CAM_BACK_RIGHT | camera_rear_right_70fov | fixed (2.06, −1.01, 1.02) m, −120° | 1024 × 664, 538.9 px | 87.1° × 63.3° |
+
+AlpaSim can change a scene's camera but not add one, so the rear view takes
+the tele camera's id. One override applies to every scene, so a camera keeps
+its own vehicle's mounting only when the override leaves its pose out; the
+three new directions take one pose each. Rear-left and rear-right sit at the
+recorded rear cameras' median mounting point (0.01–0.41 m from any one
+scene's); the rear view sits on the roof (see "Camera setup on AlpaSim" below).
+
+**Rhythm.** The bridge asks the node every 100 ms, which is the model's 10 Hz,
+and answers the 20 Hz ticks between with the last plan, re-timed onto now and
+re-anchored to the car (`replan_rhythm.py`). Warm-up frames go to `/observe`,
+since AlpaSim drives the recorded path during the warm-up. The node's own
+`AUTOE2E_REPLAN_S` is not used: setting it for one benchmark needs a site env
+override, which marks the run `valid: false`, and it re-anchors the held plan
+without re-timing it.
+
+**Motion history.** AlpaSim starts each scene 0.13–0.23 s into its clip and
+hands over 3.0 s later, so the node holds about 3 s of poses where the model
+reads 6.4 s. With `--pad-ego-history` the bridge first sends ego-only frames
+straight back from the first frame's pose at the speed measured from the last
+two poses. The node then reads 34 of the 64 rows at the first plan as that
+speed with no acceleration, yaw rate or curvature. At the join (the first real
+frame) it reads the true speed, half the true yaw rate and three quarters of
+the true acceleration; every later row is as before
+(`alpasim/tests/test_replan_rhythm.py`, through this node's own history code).
+Image history is unchanged: the −3.5 s frame does not exist at handover, and the
+oldest real frame is repeated.
+
+**Known gaps**, none of them measured yet:
+
+| Gap | Why it may matter |
+|---|---|
+| Plan offset 0 m | KITScenes trained the motion of the roof LiDAR point, nuPlan that of the rear axle. AlpaSim drives the plan as the rear axle's. The LiDAR's position on the KITScenes car is not published (the KITScenes dataset's own calibration is gated), so no offset is applied. In a turn of Δθ the two paths differ by 2·d·sin(Δθ/2) for an offset d along the car |
+| Rear views far from any recorded camera | The 120°, 180° and −120° renders point 28–32° away from every camera the scene was reconstructed from. Checked by eye on two scenes only: fast cars behind can come out torn or ghosted |
+| Cameras lower than training | Five of AlpaSim's views sit 0.8–1.6 m above the ground (the rear view 1.93 m); KITScenes' about 1.7–1.9 m, assuming its LiDAR at the 2.1 m this adapter uses |
+| Front-left/right at ±67° | KITScenes' are at ±60°; the recorded pose is kept rather than one fixed pose for every vehicle |
+| No correctness check | the release publishes aggregate evaluation reports only, no per-sample plans to compare against |
+
+Cost, measured in the 30-scene run: a median 0.80–0.86 s per call with the
+GPU to itself (168–169 calls per scene after handover, about 2.3 minutes of
+model time), and a scene in 5.6–7.5 minutes; 1.2–3.7 s per call and 18–38
+minutes per scene with the GPU shared. AlpaSim waits for each plan, so this
+changes wall time, not the drive.
+
+## Camera setup on AlpaSim
+
+AutoE2E was trained on six cameras around the car: one ahead, one each at
+front-left and front-right, rear-left and rear-right, and one looking straight
+back. AlpaSim's scenes are rebuilt from six recorded cameras that point
+elsewhere, and none looks back. AlpaSim can draw a scene from any viewpoint,
+but views far from the recorded cameras come out worse.
+
+- **Front, front-left, front-right** are drawn from the scene's own recorded
+  front and side cameras, with the lens changed to KITScenes'.
+- **Rear-left and rear-right** have no recorded camera at their angle. They are
+  drawn from the recorded rear cameras' mounting point, turned to 120° and −120°.
+- **Rear** has no recorded camera at all. It is drawn from the roof, 1.0 m
+  ahead of the rear axle and 1.93 m up, looking straight back.
+
+Why the roof: every recorded camera is near the front of the car. A
+rear-facing camera mounted there looks back *through our own car*, which the
+renderer never draws, so the road beneath the car was never seen by any camera
+and comes out as a smudge in the bottom rows. Three spots were tried on two
+scenes:
+- the recorded rear cameras' mounting point, 0.3–0.6 m from a recorded camera:
+  smudge;
+- just behind the bumper, 3.2 m from any recorded camera: no smudge, but nearby
+  cars behind are smeared and ghosted;
+- the roof, 1.0 m from a recorded camera: no smudge, the cleanest image.
+
+1.93 m is the tallest car in the 30 scenes (1.823 m) plus 0.10 m, so the camera
+is above every roof. KITScenes' rear camera is about 1.9 m up. AlpaSim applies
+one camera pose to every scene, so it cannot follow each car's height.
+
+Every view uses a global shutter open for 1 µs. The recorded cameras read
+their rows top to bottom over 30 ms, so a fast car or the car's own turn bends
+across one image, while AutoE2E treats each image as a single instant. With a
+global shutter AlpaSim draws the whole image at the moment the shutter opens,
+but the bridge tells the model the car's pose at the moment it closes. A 1 µs
+opening makes those the same moment. (0 cannot be used: AlpaSim reads it as
+"use the recorded 30 ms".)
+
+Remaining known gaps (table above): the plan is driven from the rear axle with
+no offset; the three rear views point 28–32° away from any recorded camera; and
+five of the six views sit lower than KITScenes' cameras.
+
 ## Results
 
 **NAVSIM `navtest`, 12,146 scenarios, valid** (`results/navsim/autoe2e/20261009T055926-3ceb18`).
@@ -284,6 +396,69 @@ in known ways. Paddock differences 20 Hz positions for the ego rows where the
 study used pose velocities, uses the route-pooled `rpyCalib` where it used its
 own calibration, and builds the history projections from device-frame poses
 (the same M8 frame issue).
+
+**nuScenes val, 5,119 keyframes, valid** (`results/nuscenes/autoe2e/20261023T004711-eedbe2`):
+**0.839** cumulative L2, 1.565 point L2, 1.319 ADE@3s, 1.86 % predicted collisions.
+Six cameras, no map or route. The harness sends the 6.5 s of past keyframes the model
+declares instead of 2 s, so the 64 ego rows are real wherever the log reaches back (the full
+6.4 s on 61.5 % of samples); before that, 44 of the 64 rows were zero on every sample.
+
+| L2 1 s | L2 2 s | L2 3 s | point avg | cumulative avg | ADE@3s | collision % |
+|---:|---:|---:|---:|---:|---:|---:|
+| 0.553 | 1.444 | 2.697 | 1.565 | **0.839** | 1.319 | 1.86 |
+
+Between Alpamayo 1.5 (0.787) and Drive-JEPA (0.912); constant velocity scores 0.641.
+On the 28 keyframes of scene-0003, run before and after the two input changes, the point
+L2 fell from 0.957 to 0.899 (one scene, a check of the inputs, not a score).
+
+**AlpaSim, the 30 scenes of `public_2601_30scenes`, valid**
+(`results/alpasim/autoe2e/20261022T045847-86b955`): **0.1694** `scene_score`
+through paddock's bridge, six pinhole cameras at 20 Hz, one rollout per scene.
+A group of its own (six cameras through the bridge), not ranked against the
+one-camera rows. On the same scenes, for context: OpenPilot 0.7726, Drive-JEPA
+0.1.4b 0.5433 natively and 0.5302 through the bridge, the constant-velocity
+floor 0.4876.
+
+| scenes | `scene_score` | sd | progress | `duration_frac_20s` | at-fault, scored | off-road, scored |
+|---|---:|---:|---:|---:|---:|---:|
+| 30 | **0.1694** | 0.2034 | 0.2867 | 0.121 | 9 / 30 | 7 / 30 |
+| first 10 | 0.3175 | 0.1938 | 0.2924 | 0.120 | 2 / 10 | 0 / 10 |
+| other 20 | 0.0954 | 0.1638 | 0.2838 | 0.122 | 7 / 20 | 7 / 20 |
+
+The car leaves the human's path to the left, as on neuroNCAP and Bench2Drive:
+
+- **It crosses a lane line to the left in 28 of 30 scenes.** The two to the
+  right are the stopped-car pull-outs (`b44a4a44`, `d2715023`). Above 6 m/s at
+  handover (16 scenes) the crossing comes a median 0.93 s after handover; on
+  the 14 slower scenes, 3.4 s. It is off the road at some point in 28 of 30.
+- **The first plan is close; the drift feeds itself.** Each plan's 2 s point,
+  placed on the human's path, is 0.1–3.1 m to the left at the first call on
+  the fast scenes, and each later plan bends further left as the car drifts:
+  on `04394343` (14.9 m/s) 1.4 → 1.6 → 2.5 → 4.0 → 6.2 → 9.4 m over the first
+  0.5 s. The car follows; 2 s after each early plan it is 0.8–8.0 m further left
+  than that plan's own 2 s point. On the fast scenes the plans also brake
+  (3–4.5 m/s² in the first 2 s on 14 of 16), and the car holds about two thirds
+  of the human's speed.
+- **The score mostly measures how far the car got before the cut.** Scoring
+  stops at the first of: 4 m from the human's path, an at-fault collision, or
+  off road. That came a median 1.55 s after handover, 12% of the clip. 15 of the
+  30 scenes have an at-fault collision somewhere in the clip; 6 of those
+  collisions come after scoring stopped and so do not count. The best score,
+  0.621 on `16b83346`, is a scene where the car crossed the lane line at 0.9 s
+  and was off the road at 1.3 s.
+
+The inputs were as the profile intends on every scene: 168–169 model calls
+after handover, 34 padded motion-history rows at the first call, no repeated
+image frame from 0.5 s on. The run was made before this adapter gained the
+closed-loop history fill (#89), the map and route rasters (#97), left-out
+views (#98) and the history-frame tolerance of #107. None of them reaches
+AlpaSim, which sends no map or route, all six views, frames 50 ms apart (so the
+tolerance stays 0.06 s), and a history the bridge has already padded. Checked on one scene
+(`01d503d4`) driven again with the current code: all 396 per-tick log rows and
+every plan identical, the eight scene metrics equal, and the new log fields at
+`views` 6, `ego_rows_filled` 0, `map_valid` false. The run's id hash (`86b955`)
+predates #101, which adds `model.yaml`'s env to the id, so a rerun gets a new
+id.
 
 **Bench2Drive: not recorded here.** The 50-route sweep (`PADDOCK_INFER_HZ=10`,
 a forward every call, route raster on) was paused part-way. Every route run so

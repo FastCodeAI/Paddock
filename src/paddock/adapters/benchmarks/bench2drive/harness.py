@@ -65,6 +65,22 @@ AGENT = Path(__file__).parent / "agent.py"
 #: Override per site with ``per_route_timeout_s``.
 DEFAULT_ROUTE_TIMEOUT_S = 5400
 
+
+def infer_hz(planning_hz: float | None) -> float:
+    """How often the client asks for a plan, Hz; 0 means every tick.
+
+    The model's `planning_hz`, unless the host sets PADDOCK_INFER_HZ, which
+    drives every model at that rate (the native-rate campaign set it by hand).
+    """
+    raw = os.environ.get("PADDOCK_INFER_HZ")
+    if not raw:
+        return float(planning_hz or 0.0)
+    try:
+        return float(raw)
+    except ValueError:
+        raise ValueError(f"PADDOCK_INFER_HZ={raw!r}: expected a rate in Hz") from None
+
+
 #: The CARLA launch flag that changes what the cameras see. Bench2Drive 7ec25d1
 #: launches CARLA at its default (Epic) quality; ``-quality-level=Low`` renders
 #: the sky black and the wet-road decal layer as white speckle, so frames scored
@@ -571,6 +587,17 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             f"known: {', '.join(known)}"
         ]
 
+    def model_run_config(self, model) -> dict[str, Any]:
+        """The rate the client asks this model for a plan, when not every tick.
+
+        Recorded and hashed: a model asked at 2 Hz and at 20 Hz drives
+        differently (Drive-JEPA 57.60 against 31.71 on the 50 routes), so the
+        two must never share a run id. Absent means every tick, which is what
+        a record without it was driven at.
+        """
+        hz = infer_hz(getattr(model, "planning_hz", 0.0))
+        return {"infer_hz": hz} if hz else {}
+
     def run_config(self) -> dict[str, Any]:
         """Site settings that change *what is measured*, for ``run.json``.
 
@@ -667,6 +694,8 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         # foreign-interpreter agent that honours it.
         if os.environ.get("PADDOCK_INFER_TIMEOUT_S"):
             extra["PADDOCK_INFER_TIMEOUT_S"] = os.environ["PADDOCK_INFER_TIMEOUT_S"]
+        if hz := infer_hz(episode.config.get("planning_hz")):
+            extra["PADDOCK_INFER_HZ"] = f"{hz:g}"
         if self.record:
             extra["PADDOCK_RECORD_DIR"] = str(out_dir)
             # agent_wrapper reads SAVE_PATH as its "Bench2Drive mode" flag, which

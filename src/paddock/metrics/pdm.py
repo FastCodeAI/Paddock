@@ -17,11 +17,13 @@ Two layers live here.
 **Wherever the other road users' motion is known** (`score_plan`): all five,
 following NAVSIM's scorer (`pdm_scorer.py`, `pdm_scorer_utils.py`, nuPlan's
 `collision_utils` / `idm/utils`) term by term. What is scored is the *plan, at
-each decision*, against what the other road users actually did over the plan's
-horizon: the log on an open-loop benchmark, the scripted or replayed actors on a
-closed-loop one. That is NAVSIM's own reading (it never drives the plan either),
-and it means the same thing open and closed loop. What the car then did in
-closed loop is the benchmark's own score's business (NCAP score, driving score).
+each decision, as NAVSIM's vehicle simulator drives it* from the car's measured
+state (`paddock.metrics.pdm_sim`: an LQR tracker on a kinematic bicycle, every
+0.1 s), against what the other road users actually did over the plan's horizon:
+the log on an open-loop benchmark, the scripted or replayed actors on a
+closed-loop one. That is NAVSIM's own reading, and it means the same thing open
+and closed loop. What the car then did in closed loop is the benchmark's own
+score's business (NCAP score, driving score).
 
 * **NC, no at-fault collision**: nuPlan's collision types, ported. A collision
   while the ego is stopped, or with an agent behind it, is not the ego's fault and
@@ -42,9 +44,10 @@ closed loop is the benchmark's own score's business (NCAP score, driving score).
   plan's progress along the human's path over the human's, at most 1
   (`ego_progress`). In closed loop the human's logged path can drive through an
   inserted actor, and then it does not count.
-* **C**: nuPlan's comfort bounds on the plan alone (`paddock.metrics.comfort`),
-  a plan that stands still passing as a stopped car does in NAVSIM (`plan_comfort`).
-  NAVSIM v1 applies them to the tracked plan; v2 also compares consecutive plans.
+* **C**: in `score_plan`, NAVSIM v1's six comfort checks on the simulated path
+  (`pdm_sim.ego_is_comfortable`). In `plan_terms`, open loop, nuPlan's bounds on
+  the plan alone (`paddock.metrics.comfort`), a plan that stands still passing as
+  a stopped car does in NAVSIM (`plan_comfort`): plan comfort, not NAVSIM's.
 * **Horizon**: the plan's own (neuroNCAP's six waypoints are 3 s), on a 0.1 s grid.
 """
 
@@ -57,6 +60,7 @@ from pathlib import Path
 
 import numpy as np
 
+from paddock.metrics import pdm_sim
 from paddock.metrics.comfort import BOUNDS, comfort
 
 __all__ = [
@@ -581,6 +585,32 @@ def plan_terms(pred_xy, gt_xy, plan_xy, plan_dt: float) -> dict[str, float]:
     }
 
 
+def drive(planned: States, accel0: float = 0.0, yaw_rate0: float = 0.0) -> np.ndarray:
+    """A plan on the 0.1 s grid, as NAVSIM's simulator drives it: (K, 11) `pdm_sim` states.
+
+    The car starts at the plan's first pose with its measured speed
+    (`planned.speed[0]`), acceleration and yaw rate. The steering angle is the
+    one the bicycle model needs for that yaw rate at that speed (none below 0.2
+    m/s); NAVSIM reads it from the log, which a benchmark here does not record.
+    """
+    initial = np.zeros(pdm_sim.N_STATE)
+    initial[pdm_sim.X : pdm_sim.Y + 1] = planned.xy[0]
+    initial[pdm_sim.HEADING] = planned.yaw[0]
+    speed = float(planned.speed[0])
+    initial[pdm_sim.VX] = speed
+    initial[pdm_sim.AX] = accel0
+    initial[pdm_sim.YAW_RATE] = yaw_rate0
+    if speed > 0.2:
+        steer = math.atan(pdm_sim.PACIFICA.wheel_base * yaw_rate0 / speed)
+        initial[pdm_sim.STEER] = float(
+            np.clip(steer, -pdm_sim.MAX_STEERING_ANGLE, pdm_sim.MAX_STEERING_ANGLE)
+        )
+    proposal = np.zeros((1, len(planned.taus), pdm_sim.N_STATE))
+    proposal[0, :, pdm_sim.X : pdm_sim.Y + 1] = planned.xy
+    proposal[0, :, pdm_sim.HEADING] = planned.yaw
+    return pdm_sim.simulate(proposal, initial, STEP_S)[0]
+
+
 def score_plan(
     plan: np.ndarray,
     dt: float,
@@ -593,22 +623,40 @@ def score_plan(
     references: Sequence[States] = (),
     ego: Ego = NUSCENES_EGO,
     speed0: float | None = None,
+    accel0: float = 0.0,
+    yaw_rate0: float = 0.0,
+    simulate: bool = True,
 ) -> dict[str, float]:
     """The PDM-style terms of one ego-frame plan made at `t0_us`, against `tracks`.
 
     `area` and `centreline` are optional: without a map DAC is NaN; without a
     centreline EP is. `references` are the other paths EP is normalised against
     (each scored for NC x DAC the same way, and counted only where that holds).
+
+    With `simulate` (NAVSIM's way, the default) the plan is first driven by
+    `pdm_sim.simulate` from the car's measured speed, acceleration and yaw rate,
+    and every term, comfort included, reads the driven path. Without it the plan
+    is read as given and C is `plan_comfort`.
     """
     states = plan_states(plan, dt, ego2world, speed0)
+    driven = None
+    if simulate:
+        driven = drive(states, accel0, yaw_rate0)
+        # Unsigned, as NAVSIM's scorer reads it (np.hypot of the two components):
+        # the simulator can roll a braking car backwards, and a signed speed would
+        # count every step of that as stopped, so never at fault and never a TTC.
+        speed = np.hypot(driven[:, pdm_sim.VX], driven[:, pdm_sim.VY])
+        states = States(states.taus, driven[:, :2], driven[:, pdm_sim.HEADING], speed)
     boxes = ego_boxes(states, ego)
     offroad = off_road(boxes, area)
     grid = track_grid(tracks, states, t0_us)
     nc, _ = no_at_fault_collision(states, boxes, grid, offroad)
     dac = float("nan") if offroad is None else float(not offroad.any())
     ttc = time_to_collision(states, boxes, grid, offroad)
-    plan_xy = np.asarray(plan, dtype=float)[:, :2]
-    c = plan_comfort(plan_xy, dt)
+    if driven is not None:
+        c = float(pdm_sim.ego_is_comfortable(driven[None], states.taus)[0].all())
+    else:
+        c = plan_comfort(np.asarray(plan, dtype=float)[:, :2], dt)
     ep = float("nan")
     if centreline is not None and len(centreline) >= 2:
         refs = []

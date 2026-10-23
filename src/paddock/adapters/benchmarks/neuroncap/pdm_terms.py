@@ -65,6 +65,32 @@ def _yaw(pose: np.ndarray) -> float:
     return math.atan2(pose[1, 0], pose[0, 0])
 
 
+def _measured(stamps: np.ndarray, poses: np.ndarray, i: int) -> tuple[float | None, float, float]:
+    """The car's speed, acceleration and yaw rate at step `i`, from its logged poses.
+
+    Each over the step that ended at it (the first decision: the step that starts
+    there). The state NAVSIM's simulator starts a plan from; a benchmark that logs
+    only poses gives it by differences. Acceleration needs two steps, else 0.
+    """
+
+    def step(a: int, b: int) -> tuple[float, float, float] | None:
+        gap = (stamps[b] - stamps[a]) / 1e6
+        if gap <= 0:
+            return None
+        speed = float(np.linalg.norm(poses[b][:2, 3] - poses[a][:2, 3]) / gap)
+        turn = math.atan2(
+            math.sin(_yaw(poses[b]) - _yaw(poses[a])), math.cos(_yaw(poses[b]) - _yaw(poses[a]))
+        )
+        return speed, turn / gap, gap
+
+    last = step(i - 1, i) if i else step(0, min(1, len(stamps) - 1))
+    if last is None:
+        return None, 0.0, 0.0
+    before = step(i - 2, i - 1) if i >= 2 else None
+    accel = (last[0] - before[0]) / last[2] if before is not None else 0.0
+    return last[0], accel, last[1]
+
+
 def tracks_from_actors(actors: list[dict], categories: dict[str, str]) -> list[pdm.Track]:
     """`actors.json` as `pdm.Track`s. An actor whose category is unknown counts as an agent."""
     tracks = []
@@ -117,11 +143,7 @@ def run_terms(run_dir: Path, area: pdm.DrivableArea | None, categories: dict[str
             continue
         plan = np.asarray(plan, dtype=float)
         horizon = len(plan) * WAYPOINT_DT
-        # The measured speed at the decision: the step that ended at it, or the
-        # one that starts at it on the first.
-        j, k = (i - 1, i) if i else (0, min(1, len(stamps) - 1))
-        gap_s = (stamps[k] - stamps[j]) / 1e6
-        speed0 = float(np.linalg.norm(poses[k][:2, 3] - poses[j][:2, 3]) / gap_s) if gap_s > 0 else None
+        speed0, accel0, yaw_rate0 = _measured(stamps, poses, i)
         human = pdm.world_states((ref_t - stamp) / 1e6, ref_xy, horizon)
         terms = pdm.score_plan(
             plan,
@@ -133,6 +155,8 @@ def run_terms(run_dir: Path, area: pdm.DrivableArea | None, categories: dict[str
             centreline=ref_xy,
             references=[human],
             speed0=speed0,
+            accel0=accel0,
+            yaw_rate0=yaw_rate0,
         )
         for key, value in terms.items():
             per_decision[key].append(value)

@@ -84,6 +84,13 @@ routes_file = "bench2drive220.xml"                   # under repo/leaderboard/da
 Every key above is read by the adapter; nothing else is. `routes_subset` changes
 *what is measured*, so it is written to `run.json` and hashed into the run id.
 
+**How often the model is asked for a plan** is the model's own `planning_hz`
+(`model.yaml`, `capabilities`). The client asks the node once per
+1/`planning_hz` seconds and follows the last plan unchanged in between; a model
+without it is asked every 0.05 s tick. Drive-JEPA declares 2 Hz. The rate is
+recorded as `config.infer_hz` and hashed into the run id, and the host's
+`PADDOCK_INFER_HZ` overrides it for every model.
+
 Prerequisites (all outside this repo):
 
 - **CARLA 0.9.15** installed at `carla_root` (`CarlaUE4.sh` must exist, and
@@ -585,9 +592,10 @@ DriveJEPA completes it and scores 100) and is recorded as requested-and-never-sc
 — `n_failed: 1`, `status: partial` — never as a zero. **OpenPilot's native rate is
 20 Hz**, so its published run is already its native-rate run, and VisionPilot was not
 re-run; nothing here restates either. The rate is recorded per run in
-`config.model_env`, not derived from `model.yaml`, and the adapter support for
-`PADDOCK_INFER_HZ` is not on `main` yet — so these are landed results, not runs a
-clean checkout can re-drive. The three runs are `valid: false` and **do not rank**
+`config.model_env`, not derived from `model.yaml`. They were driven before the
+adapter honoured a rate on `main`; it now does (a model's `planning_hz`, above),
+and Drive-JEPA declares 2 Hz, so a clean checkout drives it at that rate by
+default. CARLA re-runs are not bit-reproducible, so these stay landed results. The three runs are `valid: false` and **do not rank**
 on the board: a 2 or 10 Hz run is not the protocol the other rows were driven
 under. Their native scores are the Bench2Drive cells of the support matrix for
 these three models (※). `model_env` also differs in more than the rate — thread counts, a trace

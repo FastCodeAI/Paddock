@@ -72,7 +72,8 @@ TILE = 512
 FRONT_TILE = 1024
 JPEG_QUALITY = 90
 HISTORY_OFFSETS_S = (-3.5, -3.0, -2.5, -2.0, -1.5, -1.0, -0.5)
-#: A history frame farther than this from its target time is not that frame.
+#: A history frame farther than this from its target time is not that frame -- the floor of
+#: `match_tolerance`, which widens it to half the frame spacing on a sparser stream.
 MATCH_TOLERANCE_S = 0.06
 EGO_STEPS = 64
 EGO_DT = 0.1
@@ -125,6 +126,26 @@ def scaled_intrinsic(k: np.ndarray, width: int, height: int, size: int) -> np.nd
 
 def yaw_of(m: np.ndarray) -> float:
     return math.atan2(m[1, 0], m[0, 0])
+
+
+def match_tolerance(times: np.ndarray) -> float:
+    """How far a history frame may sit from its target time and still be taken for it.
+
+    Half the median spacing of the frames on offer, never below `MATCH_TOLERANCE_S`. A 10 Hz
+    stream (KITScenes, neuroNCAP) keeps 0.06 s exactly, a dropped frame included. nuScenes
+    keyframes are 0.45-0.55 s apart: at 0.06 s, 11% of the real past keyframes within 2 s were
+    refused and replaced by a copy of the oldest frame. At half the spacing the nearest keyframe
+    is the frame meant, since no other one is closer.
+
+    The pick changes only where the nearest frame is between 0.06 s and half the spacing from
+    its target, mid-history. NAVSIM's six-view frames are its 2 Hz keyframes, within
+    milliseconds of 0.5 s steps; on its 136 test logs no history slot falls in that band (a
+    missing keyframe leaves a 0.5 s hole, which still falls back), so its input is unchanged.
+    Before the first frame the nearest one is the oldest, which is what the fallback takes.
+    """
+    if len(times) < 2:
+        return MATCH_TOLERANCE_S
+    return max(MATCH_TOLERANCE_S, 0.5 * float(np.median(np.diff(np.sort(times)))))
 
 
 def egomotion_rows(times_s: np.ndarray, xy: np.ndarray, yaw: np.ndarray, t_now: float) -> np.ndarray:
@@ -781,11 +802,12 @@ class AutoE2EPolicy(Policy):
         needed = frozenset(VIEW_ORDER) - blank
         full = [f for f in self.frames if needed <= f.views and f is not now] or [now]
         times = np.array([f.t_s for f in full])
+        tolerance = match_tolerance(times)
         picked, gaps = [], []
         for off in HISTORY_OFFSETS_S:
             target = now.t_s + off
             i = int(np.argmin(np.abs(times - target)))
-            if abs(times[i] - target) <= MATCH_TOLERANCE_S:
+            if abs(times[i] - target) <= tolerance:
                 picked.append(full[i])
                 gaps.append(round(float(times[i] - target), 3))
             else:

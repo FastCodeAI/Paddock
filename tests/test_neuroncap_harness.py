@@ -958,3 +958,27 @@ def test_an_empty_metadata_file_is_not_a_fallback_loop(tmp_path) -> None:
     empty = tmp_path / "empty.json"
     empty.write_text("")
     assert _lidar_sample_data(empty) == {}
+
+
+def test_a_pair_list_keeps_only_its_pairs_of_the_named_scenes(tmp_path, monkeypatch) -> None:
+    """The gate's subsets are pairs spread over scenes; `--scene` alone runs every shape a scene has."""
+    from paddock.adapters.benchmarks.neuroncap.harness import ENV_PAIRS
+
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
+    monkeypatch.setenv(ENV_PAIRS, "side-0103,stationary-0099")
+    assert [e.episode_id for e in harness.episodes(["0099", "0103"], runs=1)] == [
+        "stationary-0099",
+        "side-0103",
+    ]
+    assert harness.invalid_reasons(), "a pair subset is not a neuroNCAP score"
+    assert harness.run_config() == {"pairs": ["side-0103", "stationary-0099"]}
+    monkeypatch.setenv(ENV_PAIRS, "frontal-0099")
+    with pytest.raises(ValueError, match="not official scenario-scene pairs: frontal-0099"):
+        harness.run_config()
+    monkeypatch.delenv(ENV_PAIRS)
+    assert harness.run_config() == {}
+    assert [e.episode_id for e in harness.episodes(["0103"], runs=1)] == [
+        "stationary-0103",
+        "frontal-0103",
+        "side-0103",
+    ]

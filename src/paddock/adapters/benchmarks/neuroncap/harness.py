@@ -107,6 +107,8 @@ PDM_MAP_HOWTO = (
 # trajectories.json / ego_poses.json / actors.json they are enough to rebuild
 # either derived stream offline, which is why pruning them is safe.
 VIDEO_STREAMS = ("FC_TRAJ", "COMBINED_OUTPUTS")
+#: A comma list of `<scenario>-<scene>` pairs to keep of what `--scene` names (`pair_filter`).
+ENV_PAIRS = "PADDOCK_NCAP_PAIRS"
 #: The simulation steps at 0.1 s, so 10 fps plays back in real time. Worth
 #: keeping: the question these clips answer is whether a model reacted in time.
 VIDEO_FPS = 10
@@ -285,6 +287,10 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         # would never be checked -- the same asymmetry as verifying the 20
         # scenario files exist while not verifying their scenes can render.
         problems += self._lidar_problems(DEFAULT_SCENE)
+        try:
+            self.pair_filter()
+        except ValueError as exc:
+            problems.append(str(exc))
 
         url = self.setting("renderer_url")
         if url and self.manages_renderer():
@@ -435,6 +441,7 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         # a stationary file and no other. Skipping that is right; skipping a
         # pair the caller asked for by name is how a sweep silently shrinks.
         explicit = scenarios is not None
+        keep = self.pair_filter()
         self._pairs_run = 0
         for scene in scenes or [DEFAULT_SCENE]:
             for scenario in scenarios or list(DEFAULT_SCENARIOS):
@@ -447,6 +454,8 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
                             f"{_official_set_summary()}."
                         )
                     continue
+                if keep is not None and f"{scenario}-{scene}" not in keep:
+                    continue
                 self._pairs_run += 1
                 yield Episode(
                     episode_id=f"{scenario}-{scene}",
@@ -455,6 +464,26 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
                     run_index=0,
                     config={"scenario_path": str(path), "runs": runs},
                 )
+
+    def pair_filter(self) -> set[str] | None:
+        """`PADDOCK_NCAP_PAIRS`: run only these `<scenario>-<scene>` pairs, or None for all.
+
+        `--scene` runs every shape a listed scene is in, so a set of pairs spread
+        over scenes (the gate's subsets) cannot be named with it alone: the gate
+        names the scenes and this keeps the pairs. Each must be in the official set.
+        """
+        raw = os.environ.get(ENV_PAIRS, "").strip()
+        if not raw:
+            return None
+        pairs = {p.strip() for p in raw.split(",") if p.strip()}
+        official = {f"{s}-{scene}" for s, scenes in OFFICIAL_SET.items() for scene in scenes}
+        if unknown := sorted(pairs - official):
+            raise ValueError(f"{ENV_PAIRS}: not official scenario-scene pairs: {', '.join(unknown)}")
+        return pairs
+
+    def run_config(self) -> dict:
+        pairs = self.pair_filter()
+        return {"pairs": sorted(pairs)} if pairs else {}
 
     def run_episode(
         self,

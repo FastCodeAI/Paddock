@@ -625,15 +625,27 @@ def serve(
     timeout_s: float,
     waypoint_dt: float = DEFAULT_WAYPOINT_DT,
     rhythm: dict[str, Any] | None = None,
+    replan_rhythm: dict[str, Any] | None = None,
     **translation: Any,
 ) -> None:
     """Run the bridge until killed. Blocks.
 
     *translation* is `PolicyPlanner`'s camera and log keywords, passed through. *rhythm*
-    selects `drivejepa_rhythm.DriveJepaPlanner` with its keywords; None is the
-    plain `PolicyPlanner`, asked for a plan at every tick.
+    selects `drivejepa_rhythm.DriveJepaPlanner` with its keywords, *replan_rhythm*
+    `replan_rhythm.ReplanRhythmPlanner` with its; neither is the plain
+    `PolicyPlanner`, asked for a plan at every tick.
     """
-    if rhythm is None:
+    if rhythm is not None and replan_rhythm is not None:
+        raise ValueError("the Drive-JEPA rhythm and --replan-every-us are two planners; pick one")
+    if replan_rhythm is not None:
+        from paddock.adapters.benchmarks.alpasim import replan_rhythm as fixed_rhythm
+
+        planner = fixed_rhythm.ReplanRhythmPlanner(
+            policy_url, timeout_s=timeout_s, waypoint_dt=waypoint_dt, **replan_rhythm, **translation
+        )
+        # It sends only the newest frame per camera, as the plain planner does.
+        image_history = 8
+    elif rhythm is None:
         planner: PolicyPlanner = PolicyPlanner(
             policy_url, timeout_s=timeout_s, waypoint_dt=waypoint_dt, **translation
         )
@@ -701,9 +713,30 @@ def main(argv: list[str] | None = None) -> int:
         "--front-camera", default=None, help="drivejepa-0.1.4b: the AlpaSim id of the front camera"
     )
     parser.add_argument(
-        "--frame-interval-us", type=int, default=None, help="drivejepa-0.1.4b: the control step"
+        "--frame-interval-us",
+        type=int,
+        default=None,
+        help="drivejepa-0.1.4b and --replan-every-us: the control step",
     )
-    parser.add_argument("--force-gt-us", type=int, default=None, help="drivejepa-0.1.4b: the warm-up length")
+    parser.add_argument(
+        "--force-gt-us",
+        type=int,
+        default=None,
+        help="drivejepa-0.1.4b and --replan-every-us: the warm-up length",
+    )
+    parser.add_argument(
+        "--replan-every-us",
+        type=int,
+        default=None,
+        help="ask the node on this grid, answer the ticks between from the last plan, "
+        "and send warm-up frames to /observe (replan_rhythm.py)",
+    )
+    parser.add_argument(
+        "--pad-ego-history",
+        action="store_true",
+        help="--replan-every-us: before a scene's first frame, send ego-only frames straight back "
+        "from its pose at the measured speed (replan_rhythm.py)",
+    )
     parser.add_argument(
         "--replan-log", default=None, help="append one JSON line per plan the node is asked for here"
     )
@@ -727,6 +760,21 @@ def main(argv: list[str] | None = None) -> int:
             "expected_frame_interval_us": args.frame_interval_us,
             "force_gt_us": args.force_gt_us,
         }
+    replan_rhythm = None
+    if args.replan_every_us is not None:
+        if args.planner != "default":
+            parser.error(f"--replan-every-us is its own planner; drop --planner {args.planner}")
+        missing = [f for f in ("frame_interval_us", "force_gt_us") if getattr(args, f) is None]
+        if missing:
+            parser.error(f"--replan-every-us needs {', '.join('--' + m.replace('_', '-') for m in missing)}")
+        replan_rhythm = {
+            "replan_every_us": args.replan_every_us,
+            "frame_interval_us": args.frame_interval_us,
+            "force_gt_us": args.force_gt_us,
+            "pad_ego_history": args.pad_ego_history,
+        }
+    elif args.pad_ego_history:
+        parser.error("--pad-ego-history needs --replan-every-us")
     names = {}
     for item in args.camera_name:
         source, sep, target = item.partition("=")
@@ -741,6 +789,7 @@ def main(argv: list[str] | None = None) -> int:
         args.infer_timeout_s,
         args.waypoint_dt,
         rhythm=rhythm,
+        replan_rhythm=replan_rhythm,
         camera_names=names,
         placeholders=tuple(args.placeholder),
         placeholder_source=args.placeholder_source,

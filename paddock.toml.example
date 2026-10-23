@@ -434,10 +434,11 @@ serialize = true
 #
 # The native-rate campaign (18-20 Sep 2026), as it was actually ingested. It is
 # the same 50 routes as the pooled50 blocks above with one knob turned: each model
-# drove at the rate it replans at, set with PADDOCK_INFER_HZ. That rate is not read
-# from model.yaml -- drivejepa declares none, and qwendrive's native_input_hz is
-# its ego-pose history, not a planning rate -- so it is the operator's statement,
-# and each run's notes say so.
+# drove at the rate it replans at, set with PADDOCK_INFER_HZ. When it ran, that
+# rate was not read from model.yaml -- drivejepa declared none, and qwendrive's
+# native_input_hz is its ego-pose history, not a planning rate -- so it is the
+# operator's statement, and each run's notes say so. (Since 2026-10-22 a model can
+# declare `planning_hz`, which the Bench2Drive client honours; drivejepa says 2.)
 # Two things in here are load-bearing, and both have bitten before:
 #
 #   * PADDOCK_INFER_HZ must be in `model_env`, because it is the only place the
