@@ -2,10 +2,11 @@
 
 `tests/fixtures/pdm_sim_navsim.json` was recorded in NAVSIM's interpreter by
 `tools/benchmarks/navsim/pdm_sim_fixture.py`: `PDMSimulator.simulate_proposals`
-and v1's `ego_is_comfortable` on eight plans (constant speed, speeding up,
+and v1's `ego_is_comfortable` on ten plans (constant speed, speeding up,
 braking to a stop, standing with jitter, two turns, a swerve, a plan away from
-the car), 3 s and 4 s, from three measured states; and scipy's `savgol_filter`
-on five signals. No GPU, no dataset, no NAVSIM.
+the car, a tight circle, a hard stop from 20 m/s), 3 s and 4 s, from four
+measured states; and scipy's `savgol_filter` on five signals. No GPU, no
+dataset, no NAVSIM.
 """
 
 from __future__ import annotations
@@ -42,10 +43,17 @@ def test_the_simulator_drives_every_plan_as_navsims_does(case) -> None:
     assert (pdm_sim.ego_is_comfortable(driven, times).astype(int) == np.array(case["comfortable"])).all()
 
 
-def test_the_recorded_plans_are_not_all_comfortable() -> None:
-    """The fixture tests both answers of every check that ever fails, not only passes."""
+def test_the_recorded_plans_make_every_check_both_pass_and_fail() -> None:
+    """Review of #106 (2): yaw rate, yaw acceleration and jerk never failed in the
+    first recording, so a wrong version of them would have passed. Lateral
+    acceleration is the exception, in NAVSIM too: v1 reads the rear axle's sideways
+    acceleration, which its bicycle model always sets to 0, so it can never fail."""
     checks = np.array([row for case in FIXTURE["cases"] for row in case["comfortable"]])
-    assert checks.all(axis=1).any() and not checks.all(axis=1).all()
+    for i, name in enumerate(pdm_sim.COMFORT_CHECKS):
+        if name == "lat_accel":
+            assert checks[:, i].all()
+        else:
+            assert checks[:, i].any() and not checks[:, i].all(), name
 
 
 def test_a_plan_is_scored_as_driven_and_comfort_reads_the_driven_path() -> None:

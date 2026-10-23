@@ -11,9 +11,10 @@ scipy: `PDMSimulator.simulate_proposals` (the same code in v1 and v2) and v1's
 
 The plans are made here, deterministically, to cover what a driving model
 plans: constant speed, speeding up, braking to a stop, standing still with
-centimetre jitter, a left and a right turn, a swerve and back, and a plan that
-starts far off the car's own state. Each runs at 3 s (neuroNCAP's plans) and 4 s
-(NAVSIM's), from three different measured states of the car.
+centimetre jitter, a left and a right turn, a swerve and back, a plan that
+starts far off the car's own state, a tight circle and a hard stop from 20 m/s.
+Each runs at 3 s (neuroNCAP's plans) and 4 s (NAVSIM's), from four measured
+states of the car.
 """
 
 from __future__ import annotations
@@ -55,12 +56,21 @@ def plans(seconds: float) -> dict[str, np.ndarray]:
         "right_turn": along(7.0 * t, -0.35 * t**2),
         "swerve": along(9.0 * t, 1.8 * np.sin(np.pi * t / seconds)),
         "off_the_car": along(4.0 + 3.0 * t, 1.5 + 0.0 * t),
+        # A tight circle (5 m radius at 8 m/s) and a hard stop from 20 m/s, so the
+        # yaw-rate, yaw-acceleration and jerk checks fail somewhere, not only pass.
+        "sharp_turn": along(5.0 * np.sin(8.0 * t / 5.0), 5.0 * (1 - np.cos(8.0 * t / 5.0))),
+        "hard_stop_from_20": along(np.where(t < 2.0, 20.0 * t - 5.0 * t**2, 20.0), 0.0 * t),
     }
     return out
 
 
 #: Measured states of the car at the decision: speed, acceleration, steering angle, yaw rate.
-STARTS = {"cruising": (8.0, 0.2, 0.01, 0.02), "slow": (1.5, -0.6, -0.05, -0.03), "stopped": (0.0, 0.0, 0.0, 0.0)}
+STARTS = {
+    "cruising": (8.0, 0.2, 0.01, 0.02),
+    "slow": (1.5, -0.6, -0.05, -0.03),
+    "stopped": (0.0, 0.0, 0.0, 0.0),
+    "fast": (20.0, 0.0, 0.0, 0.0),
+}
 
 
 def main() -> int:
@@ -120,7 +130,13 @@ def main() -> int:
 
     rng = np.random.default_rng(11)
     signals = []
-    for n, window, polyorder, deriv in ((31, 8, 2, 0), (31, 31, 2, 1), (31, 5, 2, 1), (31, 5, 3, 2), (41, 41, 2, 0)):
+    for n, window, polyorder, deriv in (
+        (31, 8, 2, 0),
+        (31, 31, 2, 1),
+        (31, 5, 2, 1),
+        (31, 5, 3, 2),
+        (41, 41, 2, 0),
+    ):
         x = rng.normal(0.0, 1.0, n).cumsum()
         y = savgol_filter(x, window_length=window, polyorder=polyorder, deriv=deriv, delta=DT)
         signals.append(
@@ -135,7 +151,9 @@ def main() -> int:
         )
 
     args.out.write_text(
-        json.dumps({"source": "NAVSIM PDMSimulator + v1 ego_is_comfortable", "cases": cases, "savgol": signals})
+        json.dumps(
+            {"source": "NAVSIM PDMSimulator + v1 ego_is_comfortable", "cases": cases, "savgol": signals}
+        )
         + "\n"
     )
     print(f"{args.out}: {len(cases)} simulator cases, {len(signals)} savgol signals")
