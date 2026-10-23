@@ -732,6 +732,9 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         runs: int = 1,
         scenarios: list[str] | None = None,
     ) -> Iterator[Episode]:
+        # One run's routes ended by hand. The runner calls this once per model and drives
+        # every model of `--model all` through this one harness, so the next run starts empty.
+        self._ended_by_hand = set()
         routes_file = self.routes_file
         if routes_file is None or not routes_file.exists():
             return

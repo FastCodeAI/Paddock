@@ -803,6 +803,17 @@ def test_a_route_ended_by_hand_says_so_and_the_run_does_not_rank(tmp_path, monke
     assert "1 route(s) ended by hand" in reason
 
 
+def test_a_route_ended_by_hand_counts_against_its_own_models_run_only(tmp_path, monkeypatch) -> None:
+    """Under `--model all` the runner drives every model through one harness, calling
+    `episodes()` for each; the next model's run did not stop anything by hand."""
+    harness = _harness(_site(tmp_path, monkeypatch, COMPLETED))
+    list(harness.episodes())
+    harness._note_stop(_episode(), {"ended_manual": 1.0})
+    assert any("ended by hand" in r for r in harness.invalid_reasons())
+    list(harness.episodes())  # the next model
+    assert not any("ended by hand" in r for r in harness.invalid_reasons())
+
+
 def test_an_old_stop_request_cannot_end_a_new_drive(tmp_path, monkeypatch) -> None:
     out = tmp_path / "out"
     out.mkdir()
