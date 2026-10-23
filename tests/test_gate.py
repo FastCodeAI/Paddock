@@ -1035,7 +1035,7 @@ def test_the_neuroncap_draw_repeats_exactly(tmp_path: Path) -> None:
         assert (tmp_path / f"{name}.toml").read_text() == (gate.SMOKE_DIR / f"{name}.toml").read_text()
 
 
-def test_kitscenes_decides_on_val_and_reports_the_left_out_keyframes(tmp_path: Path) -> None:
+def test_kitscenes_decides_on_val_and_reports_the_left_out_keyframes(tmp_path: Path, monkeypatch) -> None:
     """The 37 overlap_train_val keyframes run, stay out of the verdict, and are named in a note."""
     subset = gate.load_subset("kitscenes")
     res, runs = tmp_path / "results", tmp_path / "runs"
@@ -1061,6 +1061,12 @@ def test_kitscenes_decides_on_val_and_reports_the_left_out_keyframes(tmp_path: P
     assert r.matched == 186 and r.verdict == "NEUTRAL", "the 37 worse keyframes do not decide"
     (note,) = [n for n in r.notes if "left out of this verdict" in n]
     assert note.startswith("37 sample(s) of overlap_train_val left out") and "better by -1.000" in note
+    # Review of #105 (2): the check run as each subset finishes, which can stop the
+    # smoke, counted all 223 and said REGRESSION.
+    monkeypatch.setattr(gate, "RESULTS_ROOT", res)
+    step = gate.SmokeStep("kitscenes", "finished", "b", [], {}, name="kitscenes")
+    early = gate._step_verdict(step, {"run": "m:a", "results": str(res)}, "m", runs)
+    assert (early.verdict, early.matched) == ("NEUTRAL", 186)
 
 
 def _plan(tmp_path: Path, benches: list[str], state: dict, config_path: Path | None = None) -> list:

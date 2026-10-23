@@ -949,7 +949,11 @@ def _left_out(subset: Subset, base: Run, cand: Run) -> LeftOut | None:
     other = [g for g in subset.strata if g not in decide]
     out = {i for g in other for i in subset.strata[g]}
     return LeftOut(
-        out, other, str(subset.meta.get("left_out_reason") or "not deciding"), _only(base, out), _only(cand, out)
+        out,
+        other,
+        str(subset.meta.get("left_out_reason") or "not deciding"),
+        _only(base, out),
+        _only(cand, out),
     )
 
 
@@ -963,23 +967,44 @@ def check(manifest: Path, runs_root: Path, results_root: Path = RESULTS_ROOT) ->
         bench = p["bench"]
         base = load_run(bench, p["baseline"], runs_root, Path(p.get("baseline_results") or results_root))
         cand = load_run(bench, p["candidate"], runs_root, Path(p.get("candidate_results") or results_root))
-        subset = load_subset(p["subset"]) if p.get("subset") else None
-        left_out = _left_out(subset, base, cand) if subset else None
-        if left_out:
-            base, cand = (_only(r, left_out.drop, keep=False) for r in (base, cand))
-        result = compare(
+        result = compare_pair(
             base,
             cand,
-            p.get("metric"),
-            p.get("threshold"),
-            _unit_for(base, cand, runs_root),
+            runs_root,
+            subset=p.get("subset"),
+            metric=p.get("metric"),
+            threshold=p.get("threshold"),
             allow_config=p.get("allow_config") or (),
         )
-        if left_out:
-            result.notes.append(left_out.note(p.get("metric")))
         result.can_ship = bool(p.get("can_ship", True))
         results.append(result)
     return overall(results), results
+
+
+def compare_pair(
+    base: Run,
+    cand: Run,
+    runs_root: Path,
+    *,
+    subset: str | None = None,
+    metric: str | None = None,
+    threshold: float | None = None,
+    allow_config: Any = (),
+) -> PairResult:
+    """One pair as `check` and the smoke's after-subset check both score it.
+
+    The one place a subset's `decide_on` is applied, so the check that can stop
+    the smoke and the final verdict can never disagree about which samples count.
+    """
+    left_out = _left_out(load_subset(subset), base, cand) if subset else None
+    if left_out:
+        base, cand = (_only(r, left_out.drop, keep=False) for r in (base, cand))
+    result = compare(
+        base, cand, metric, threshold, _unit_for(base, cand, runs_root), allow_config=allow_config
+    )
+    if left_out:
+        result.notes.append(left_out.note(metric))
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -1624,7 +1649,7 @@ def _step_verdict(step: SmokeStep, base: dict[str, Any], model: str, runs_root: 
     base_results = Path(base["results"]) if base.get("results") else RESULTS_ROOT
     b = load_run(step.bench, str(base["run"]), runs_root, base_results)
     c = load_run(step.bench, f"{model}:{step.run_id}", runs_root, RESULTS_ROOT)
-    return compare(b, c, unit_of=_unit_for(b, c, runs_root))
+    return compare_pair(b, c, runs_root, subset=step.name)
 
 
 def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
