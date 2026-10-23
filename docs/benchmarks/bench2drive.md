@@ -223,7 +223,8 @@ after the window, or finished just after its budget, scores what it had at the
 cut. 1825 crept from 14 m to 20 m between 34 s and the 4000-tick cap (RC 15.19
 without the rule, 10.65 with it), and 2802 was cut at 4x the expert's 19.1 s,
 104 m along a 112 m route (RC 92.86). A pool of runs that stopped routes under
-*different* rules does not rank: one mean describes none of them.
+*different* rules, or of some runs with the rules and some without, does not rank:
+one mean describes none of them.
 
 Choose the factor from what the model needs, not from the expert: on the five
 routes openpilot completed in the sweep above it took 1.6–2.9× Think2Drive's

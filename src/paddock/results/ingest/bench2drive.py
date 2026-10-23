@@ -42,10 +42,14 @@ the source runs kept such a record at all.
 An early stop (``stop_*`` in ``[benchmarks.bench2drive]``, see
 ``adapters/benchmarks/bench2drive/early_stop.py``) is read the same way: the
 pooled ``config.early_stop`` is what the source runs recorded, every route says
-in ``ended_stuck`` / ``ended_over_time`` whether a rule ended it, and the notes
-say why the run still ranks: a route the early stop ended is a failed drive,
-scored as it stood. Source runs that stopped routes under different rules do
-not pool into a ranked run.
+in ``ended_stuck`` / ``ended_over_time`` / ``ended_collision`` / ``ended_manual``
+whether one ended it, and the notes say why the run still ranks: a route the
+early stop ended is a failed drive, scored as it stood. Source runs that stopped
+routes under different rules -- or some with the rules and some without -- do
+not pool into a ranked run, and neither do source runs that would not rank on
+their own: driven through a camera rig other than paddock's (``camera_rig``,
+then in the pooled config), or with a setting the model's ``model.yaml``
+declares set to another value.
 
 The run id is ``<label>-<route-set hash>-<config hash>``. The route set alone
 cannot distinguish two settings of the same routes -- five constant-velocity
@@ -85,7 +89,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from paddock.adapters.benchmarks.bench2drive import early_stop
+from paddock.adapters.benchmarks.bench2drive import early_stop, rig
 from paddock.adapters.benchmarks.bench2drive.harness import (
     DEFAULT_ROUTES_FILE,
     NotScored,
@@ -371,6 +375,21 @@ def ingest(
     stop_rules = _agreed(stopped)
     if stop_rules is not None:
         config["early_stop"] = stop_rules
+    # The camera rig, in a run's config only when it is not paddock's, so a pool of
+    # default-rig runs keeps its run id; a run that predates the setting had paddock's.
+    rigs = _agreed([c.get("camera_rig") or rig.DEFAULT for c in configs])
+    other_rig = rigs is not None and rigs != rig.DEFAULT
+    if other_rig:
+        config["camera_rig"] = rigs
+    # A setting the model's model.yaml declares, set to another value: what keeps a
+    # `paddock run` from ranking (runner._env_override_reasons) keeps the pool from ranking.
+    # Judged against the declared_env the source runs recorded, which leaves tuning keys
+    # out; a key the model does not declare, and a pool that recorded none, are not judged.
+    overrides = (
+        sorted(k for k, v in config["model_env"].items() if k in declared and declared[k] != v)
+        if isinstance(declared, dict)
+        else []
+    )
     pooled_setups = sorted({s["group"] for s in samples if s["group"]})
     if setups:
         config["recording_setups"] = {label: sorted(group) for label, group in sorted(setups.items())}
@@ -423,21 +442,38 @@ def ingest(
             "protocol calls the model at, so this run is kept and does not rank against runs that "
             "were -- the paired comparison is docs/benchmarks/bench2drive-native-rate.md."
         )
+    if overrides:
+        note = (note + " " if note else "") + (
+            f"source runs set {', '.join(overrides)}, which the model's model.yaml declares, to other "
+            "values (config.model_env), so this run does not rank, as a paddock run of them would not."
+        )
+    if other_rig:
+        said = (
+            f"camera rigs differ between source runs ({', '.join(rigs)})"
+            if isinstance(rigs, list)
+            else f"driven through the {rigs!r} camera rig"
+        )
+        note = (note + " " if note else "") + (
+            f"{said}, not the {rig.DEFAULT!r} rig every model here is compared through, "
+            "so this run does not rank."
+        )
     # A route the early stop ended is a failed drive, and the pool ranks with it;
-    # routes stopped under different rules are as much one experiment as two setups.
-    mixed_stops = isinstance(stop_rules, list)
+    # routes stopped under different rules, or some with the rules and some without,
+    # are as much one experiment as two setups.
+    without = sum(1 for rules in stopped if not rules) if stop_rules is not None else 0
+    mixed_stops = isinstance(stop_rules, list) or bool(without)
     # A route someone ended by hand was scored at a moment a person chose: kept, named, not ranked.
     by_hand = sum(1 for sample in samples if sample["metrics"].get(f"ended_{early_stop.MANUAL}"))
     if by_hand:
         note = (note + " " if note else "") + early_stop.manual_reason(by_hand) + "."
     if stop_rules is not None:
-        said = early_stop.mixed_reason(stop_rules) if mixed_stops else early_stop.remark(stop_rules)
+        mixed = isinstance(stop_rules, list)
+        said = early_stop.mixed_reason(stop_rules) if mixed else early_stop.remark(stop_rules)
         note = (note + " " if note else "") + said + "."
-        without = sum(1 for rules in stopped if not rules)
         if without:
             note += (
                 f" {without} of {len(stopped)} source runs ran without it; their routes went to "
-                "Bench2Drive's own end."
+                "Bench2Drive's own end, so this run does not rank."
             )
     if missing:
         lost = ", ".join(f"{r} ({attempted.get(r, 'no attempt found')})" for r in missing)
@@ -466,11 +502,15 @@ def ingest(
         # Source runs under different, or unrecorded, model.yaml envs are the
         # first case again: two settings of the model behind one mean.
         # An early stop ranks; a pool of routes stopped under different rules does not.
+        # A declared setting run at another value, or another camera rig, is what keeps a
+        # single run from ranking, and so the pool of them.
         valid=not missing
         and len(pooled_setups) <= 1
         and off_protocol is None
         and not isinstance(declared, list)
         and not undeclared
+        and not overrides
+        and not other_rig
         and not mixed_stops
         and not by_hand,
         notes=note,

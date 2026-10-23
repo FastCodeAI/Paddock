@@ -507,6 +507,47 @@ def test_routes_driven_before_the_early_stop_are_counted_out_loud(tmp_path: Path
 
     assert run.config["early_stop"] == rules
     assert "1 of 2 source runs ran without it" in run.notes
+    assert not run.valid, "with and without the rule are two experiments, as two rules are"
+
+
+def _pooled_with(tmp_path: Path, configs: tuple[dict, dict]):
+    """Pool `_tree`'s two contributing source runs, each with these keys in its recorded config."""
+    root = _tree(tmp_path)
+    for run_id, extra in zip(("20260901T000000-aaaaaa", "20260903T000000-cccccc"), configs, strict=True):
+        record = _source_run_json("modelx", [], {})
+        record["config"].update(extra)
+        (root / run_id / "run.json").write_text(json.dumps(record))
+    ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s")
+    return run
+
+
+def test_a_pool_whose_runs_override_a_setting_the_model_declares_does_not_rank(tmp_path: Path) -> None:
+    """What makes a `paddock run` valid: false makes the pool so too. AutoE2E's sweep set three of
+    its declared settings (10 Hz, a steady ego history, no route); its record directory is tuning,
+    which model.yaml does not declare, and a key restating its default is no override."""
+    declared = {"AUTOE2E_EGO_HISTORY": "real", "AUTOE2E_REPLAN_S": "0", "AUTOE2E_ROUTE": "1"}
+    env = {"AUTOE2E_EGO_HISTORY": "steady", "AUTOE2E_REPLAN_S": "0.1", "AUTOE2E_RECORD_DIR": "<site path:1>"}
+    sweep = {"declared_env": declared, "model_env": {**env, "AUTOE2E_ROUTE": "0"}}
+    run = _pooled_with(tmp_path / "a", (sweep, sweep))
+    assert not run.valid
+    assert "AUTOE2E_EGO_HISTORY, AUTOE2E_REPLAN_S, AUTOE2E_ROUTE" in run.notes
+    assert "AUTOE2E_RECORD_DIR" not in run.notes
+    restated = {"declared_env": declared, "model_env": {"AUTOE2E_ROUTE": "1", "AUTOE2E_RECORD_DIR": "<x>"}}
+    assert _pooled_with(tmp_path / "b", (restated, restated)).valid
+
+
+def test_a_pool_driven_on_another_camera_rig_names_it_and_does_not_rank(tmp_path: Path) -> None:
+    """The rig is in each run's config only when it is not paddock's, so a pool of default-rig runs
+    keeps its run id; another rig, or a mix, is recorded and does not rank."""
+    kit = {"camera_rig": "kitscenes"}
+    run = _pooled_with(tmp_path / "a", (kit, kit))
+    assert run.config["camera_rig"] == "kitscenes" and not run.valid
+    assert "kitscenes" in run.notes
+    mixed = _pooled_with(tmp_path / "b", (kit, {}))
+    assert mixed.config["camera_rig"] == ["kitscenes", "paddock"] and not mixed.valid
+    default = _pooled_with(tmp_path / "c", ({}, {}))
+    assert "camera_rig" not in default.config and default.valid
+    assert run.run_id != default.run_id
 
 
 def test_a_pool_without_an_early_stop_records_none(tmp_path: Path) -> None:
