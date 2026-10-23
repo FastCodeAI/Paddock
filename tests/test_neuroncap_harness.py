@@ -395,6 +395,30 @@ def test_a_failing_encoder_keeps_the_frames(tmp_path, monkeypatch) -> None:
     assert not list(tmp_path.rglob("*.concat")), "the concat list must be cleaned up"
 
 
+@pytest.mark.parametrize("interpreter", ["unreachable", "missing"])
+def test_an_ffmpeg_that_cannot_start_keeps_the_frames_and_never_raises(
+    tmp_path, monkeypatch, interpreter
+) -> None:
+    """Run as the gate queue's account, the site's ffmpeg was a script whose Python that
+    account could not reach: PermissionError at start, and the finished episode was lost."""
+    python = tmp_path / "python"
+    if interpreter == "unreachable":
+        python.write_text("")
+        python.chmod(0o644)  # not executable, even by root
+    wrapper = tmp_path / "ffmpeg"
+    wrapper.write_text(f"#!{python}\n")
+    wrapper.chmod(0o755)
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch, ffmpeg=str(wrapper)))
+    _frames(tmp_path / "run_0", "FC_TRAJ")
+
+    said = []
+    assert harness.render_videos(tmp_path, echo=said.append) == []
+
+    assert (tmp_path / "run_0" / "FC_TRAJ").is_dir(), "frames must survive"
+    assert said and "cannot run" in said[0]
+    assert not list(tmp_path.rglob("*.concat")), "the concat list must be cleaned up"
+
+
 def test_a_missing_ffmpeg_keeps_the_frames_and_never_raises(tmp_path, monkeypatch) -> None:
     """An episode costs minutes of simulator time; a debugging aid must not lose it."""
     harness = _harness_with_video("encode", tmp_path, monkeypatch)
