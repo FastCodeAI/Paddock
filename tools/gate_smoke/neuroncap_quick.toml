@@ -1,34 +1,27 @@
-# neuroNCAP quick tier: the three scenario-scene pairs at scene 0103 (stationary,
-# frontal, side), one run each (seed 0) -- 3 episodes, about 20 min.
+# neuroNCAP quick tier: 3 of the 20 official scenario-scene pairs, one per crash type,
+# 1 run each -- 3 episodes, about 20 min. With 3 units the bar is |t| >= 4.303: it
+# catches a large break, not a small regression. It can fail the gate but not ship
+# it (can_ship = false); the closed tier's 15 decide.
+# The unit is the scenario-scene pair. Runs are seeded 0..R-1, so a one-run subset is
+# run 0 of every full sweep and pairs with one directly. Run as `--scene <its scenes>
+# --runs 1` with PADDOCK_NCAP_PAIRS naming the pairs (`--scene` alone would run every
+# shape each scene has) and PADDOCK_NCAP_MANAGE_RENDERER=true. Stored valid=false.
 #
-# 0103 is the one official scene in all three shapes, and the scene most of the
-# gallops work was smoked on, so a change that breaks braking or steering shows
-# here first. With 3 units the gate's bar is |t| >= 4.303: this tier catches a
-# large break, not a small regression; the closed-loop tier's neuroncap subset
-# (6 pairs, 3 runs) is the finer check. Seed 0 is run 0 of every full sweep, so
-# these samples pair with one directly.
-#
-# Run as `--scene 0103 --runs 1` with PADDOCK_NCAP_MANAGE_RENDERER=true.
-# Stored valid=false (3 of 20 pairs).
-#
-# can_ship = false, since 2026-10-23: three episodes are too few to ship a checkpoint
-# on. The quick tier runs alone on every checkpoint, so without this a GAIN here with
-# the open-loop pairs NEUTRAL made the whole gate say SHIP from 3 episodes. A
-# REGRESSION here still fails the gate; a GAIN waits for the closed tier's 18.
-#
-# Fixed once, on 2026-10-20. It must never be re-picked, re-seeded or edited to make a
-# result look better: a gate whose subset moves can be steered. If the subset turns
-# out to be wrong (a scene that cannot run, say), replace it in its own commit that
-# says why, and re-run every baseline paired with it.
+# Drawn once, on 2026-10-22, by `python -m tools.gate_subsets neuroncap` (seed 20261022): every
+# group the same share, random within it (tools/gate_subsets.py has the rule). It must
+# never be re-picked, re-drawn or edited to make a result look better: a gate whose
+# subset moves can be steered. If it turns out to be wrong (a sample that cannot run,
+# say), replace it in its own commit that says why, and re-run every baseline paired
+# with it.
 
 bench = "neuroncap"
 can_ship = false
 unit = "scenario-scene pair"
-rule = "every shape at scene 0103"
+seed = 20261023
 runs = 1
 count = 3
 
 [strata]
-stationary = ["stationary-0103"]
-frontal = ["frontal-0103"]
-side = ["side-0103"]
+"frontal" = ["frontal-0103"]
+"side" = ["side-0103"]
+"stationary" = ["stationary-0783"]

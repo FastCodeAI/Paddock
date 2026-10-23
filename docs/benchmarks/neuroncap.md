@@ -16,6 +16,12 @@ paddock run --bench neuroncap --model openpilot --scene 0103 --scenarios station
 paddock run --bench neuroncap --model all --scene 0103 --runs 1
 ```
 
+`--scene` runs every crash type a listed scene has. To run only some
+scenario-scene pairs spread over scenes, name the scenes and set
+`PADDOCK_NCAP_PAIRS=frontal-0103,stationary-0796,...`: only those pairs run, each
+must be in the official set, and the list is recorded in `config.pairs`. The
+regression gate's neuroNCAP subsets run this way (docs/gate.md).
+
 Roughly 1.5–2.5 minutes per scenario per model on this hardware, plus node
 startup — which for Alpamayo is a 21 GB checkpoint read and can take far longer
 than the run itself.
