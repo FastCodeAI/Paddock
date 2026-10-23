@@ -350,7 +350,8 @@ command for after a reboot, a shutdown, or when finished workers leave the rest
 of the routes unevenly spread:
 
 ```bash
-export PADDOCK_CONFIG=/path/to/paddock.toml PADDOCK_PYTHON=/path/to/paddock/venv/bin/python
+# a copy of the site config whose [roots] runs is this sweep's own (below)
+export PADDOCK_CONFIG=/path/to/sweep/paddock.toml PADDOCK_PYTHON=/path/to/paddock/venv/bin/python
 tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --workers 5 --held 11715
 tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --workers 5 --held 11715 --rebalance
 tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --status
@@ -370,6 +371,14 @@ already running:
 | `--held` | routes driven last, by one worker, once everything else has scored and no worker is alive |
 | `--rebalance` | stops the alive workers first (their current routes are driven again) and deals everything left anew |
 | `--dashboard-root` | the per-route video dashboard, on 127.0.0.1 |
+
+**Give each sweep its own runs root** (`[roots] runs` in a copy of the site
+config). `launch` counts a route as done when any run under
+`{runs}/bench2drive/<model>/` scored it, whatever settings that run was made
+under, and `paddock ingest` pools the latest scored attempt per route: on a
+root shared with runs started by hand, or with the gate's Bench2Drive lane, a
+route one of those scored is never driven by the sweep, and its score is pooled
+in with the sweep's.
 
 The expected cost of a route is the mean wall time of its scenario's finished
 routes in the same sweep, so a resumed sweep is dealt by what its scenarios
