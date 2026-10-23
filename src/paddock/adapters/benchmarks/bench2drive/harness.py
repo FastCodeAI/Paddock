@@ -629,6 +629,11 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             problems.append(
                 f"[benchmarks.bench2drive] stop_on_collision must be true or false, got {collision!r}"
             )
+        if self.record_inputs and not self.record:
+            problems.append(
+                '[benchmarks.bench2drive] record_inputs = "true" needs record = "true": each tick\'s '
+                "request is written beside the recorded route, and with record off there is none"
+            )
         for key in ("stop_stuck_s", "stop_expert_factor"):
             value = self.setting(key)
             if value not in (None, "") and _positive(value) is None:

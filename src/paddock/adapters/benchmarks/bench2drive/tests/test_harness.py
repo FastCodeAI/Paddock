@@ -909,3 +909,12 @@ def test_the_camera_rig_reaches_the_agent_and_another_does_not_rank(tmp_path, mo
 def test_preflight_names_a_camera_rig_there_is_not(tmp_path, monkeypatch) -> None:
     problems = _harness(_site(tmp_path, monkeypatch, COMPLETED, camera_rig="bench2driv")).preflight()
     assert any("camera_rig 'bench2driv'" in p and "bench2drive, kitscenes, paddock" in p for p in problems)
+
+
+def test_preflight_refuses_record_inputs_without_record(tmp_path, monkeypatch) -> None:
+    """Each tick's request goes beside the recorded route; with `record` off there is none, and
+    the site would drive its routes at recording's cost for nothing."""
+    alone = _harness(_site(tmp_path / "a", monkeypatch, COMPLETED, record_inputs="true"))
+    assert any("record_inputs" in p and "record" in p for p in alone.preflight())
+    both = _harness(_site(tmp_path / "b", monkeypatch, COMPLETED, record_inputs="true", record="true"))
+    assert not any("record_inputs" in p for p in both.preflight())
