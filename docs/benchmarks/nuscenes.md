@@ -13,7 +13,9 @@ human drove. Zero-shot for every model here; none was trained on nuScenes.
   5119 with six future keyframes (a full 3 s) are scored; the last six of each
   scene are dropped, where the literature pads with masks.
 * **Sample:** up to four preceding keyframes plus the scored one (2 s of real
-  history), so Drive-JEPA gets its four frames 0.5 s apart and Alpamayo a pose
+  history), or as many as a model's declared `history_s` asks for when that is
+  longer, NAVSIM's rule (AutoE2E: 13, 6.5 s, recorded as `history_seconds` in the
+  run's config). With `camera_history` set the window stays at four. So Drive-JEPA gets its four frames 0.5 s apart and Alpamayo a pose
   history to difference. Six cameras as `image_paths` with the dataset's
   intrinsics and `cam2ego`; LIDAR_TOP ego pose; CAN-bus 18-float status
   (nearest `pose` message); `lidar2ego` for models that project through the
@@ -276,11 +278,16 @@ history, CUDA inference, CPU camera warping and resume assistance disabled.
 | VisionPilot | 1.031 | 2.213 | 3.837 | 2.360 | 1.441 | 2.058 | 3.816 |
 | METEOR | 0.616 | 1.683 | 3.356 | 1.885 | 0.977 | 1.570 | 6.152 ◇ |
 | Qwen-Drive 1.0 | 0.318 | 0.722 | 1.360 | 0.800 | 0.450 | 0.678 | 0.770 |
+| AutoE2E ⧗ | 0.553 | 1.444 | 2.697 | 1.565 | 0.839 | 1.319 | 1.862 |
 | Baseline (Constant Velocity) | 0.372 | 1.151 | 2.340 | 1.288 | 0.641 | 1.069 | 1.661 |
 
 Point L2 averages errors at 1, 2 and 3 seconds. Cumulative L2 averages the three
 prefix means; ADE at 3 seconds averages all six half-second errors. Collision
 is predicted ego-footprint overlap with annotated boxes, not an observed crash.
+
+⧗ AutoE2E (`kitscenes-epoch-5`, run `20261023T004711-eedbe2`, valid) is fed the
+6.5 s of past keyframes it declares, where the other rows get 2 s; its BEVFormer V2
+starting weights were trained on nuScenes train, not val.
 
 ⊘ Measured camera-blind; re-measure pending, see #62.
 
