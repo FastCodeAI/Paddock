@@ -408,6 +408,10 @@ SUBSET_KEYS = frozenset(
         "allow_partial",
         "allow_slow",
         "chunk_order",
+        # The gate's own sample lists: neuroNCAP's scenario-scene pairs and
+        # nuScenes' sample ids (tools/gate_subsets.py).
+        "pairs",
+        "sample_filter",
     }
 )
 #: NAVSIM's subset rides in `overrides` as this hydra key; other overrides do change
@@ -906,6 +910,49 @@ def _unit_for(base: Run, cand: Run, runs_root: Path) -> Callable[[Sample], str |
     return lambda s: logs.get(_nid(s).get("token", ""))
 
 
+def _only(run: Run, ids: set[str], keep: bool = True) -> Run:
+    """The run with only the samples in `ids`, or (`keep=False`) all but those."""
+    return replace(run, samples=[s for s in run.samples if (s.get("sample_id") in ids) == keep])
+
+
+@dataclass
+class LeftOut:
+    """A subset's groups that run but do not decide (`decide_on` in its TOML).
+
+    KITScenes runs all 223 keyframes and decides on its 186 `val` ones: the 37
+    of `overlap_train_val` are places in the training data, so a checkpoint
+    trained on KITScenes may have seen them. They are still compared, alone, and
+    said in a note, so nothing about them is hidden.
+    """
+
+    drop: set[str]
+    groups: list[str]
+    reason: str
+    base: Run
+    cand: Run
+
+    def note(self, metric: str | None) -> str:
+        r = compare(self.base, self.cand, metric, pdm=())
+        n = r.matched
+        if r.diff is None:
+            return f"{n} sample(s) of {', '.join(self.groups)} left out of this verdict ({self.reason})"
+        return (
+            f"{n} sample(s) of {', '.join(self.groups)} left out of this verdict ({self.reason}); "
+            f"on them alone, better by {r.diff:.3f}, t {_fmt(r.t, 2)}"
+        )
+
+
+def _left_out(subset: Subset, base: Run, cand: Run) -> LeftOut | None:
+    decide = subset.meta.get("decide_on")
+    if not decide:
+        return None
+    other = [g for g in subset.strata if g not in decide]
+    out = {i for g in other for i in subset.strata[g]}
+    return LeftOut(
+        out, other, str(subset.meta.get("left_out_reason") or "not deciding"), _only(base, out), _only(cand, out)
+    )
+
+
 def check(manifest: Path, runs_root: Path, results_root: Path = RESULTS_ROOT) -> tuple[str, list[PairResult]]:
     spec = tomllib.loads(manifest.read_text())
     pairs = spec.get("pair") or []
@@ -916,6 +963,10 @@ def check(manifest: Path, runs_root: Path, results_root: Path = RESULTS_ROOT) ->
         bench = p["bench"]
         base = load_run(bench, p["baseline"], runs_root, Path(p.get("baseline_results") or results_root))
         cand = load_run(bench, p["candidate"], runs_root, Path(p.get("candidate_results") or results_root))
+        subset = load_subset(p["subset"]) if p.get("subset") else None
+        left_out = _left_out(subset, base, cand) if subset else None
+        if left_out:
+            base, cand = (_only(r, left_out.drop, keep=False) for r in (base, cand))
         result = compare(
             base,
             cand,
@@ -924,6 +975,8 @@ def check(manifest: Path, runs_root: Path, results_root: Path = RESULTS_ROOT) ->
             _unit_for(base, cand, runs_root),
             allow_config=p.get("allow_config") or (),
         )
+        if left_out:
+            result.notes.append(left_out.note(p.get("metric")))
         result.can_ship = bool(p.get("can_ship", True))
         results.append(result)
     return overall(results), results
@@ -1040,6 +1093,41 @@ def stratified_pick(strata: dict[str, list[str]], n: int, seed: int, floor: int 
     }
 
 
+def balanced_pick(strata: dict[str, list[str]], n: int, seed: int) -> dict[str, list[str]]:
+    """`n` ids spread as evenly over `strata` as their sizes allow; deterministic in `seed`.
+
+    The rule the gate's subsets are drawn with since 2026-10-22: every group
+    (a maneuver, a speed band, a city...) gets the same share, so a rare one,
+    a right turn at speed, is as present as straight driving at the gate's size.
+    1. each stratum gets n // k of the k with room left, or all it has if fewer;
+    2. repeat with what is left until n are placed; when fewer remain than
+       strata with room, one each goes to those with the most room, ties to
+       the first name in sorted order;
+    3. within a stratum the ids are `random.Random(f"{seed}:{name}").sample` of
+       its sorted ids, so no stratum's draw depends on any other's.
+    """
+    total = sum(len(v) for v in strata.values())
+    if not 0 < n <= total:
+        raise ValueError(f"cannot pick {n} of {total}")
+    names = sorted(strata)
+    alloc = dict.fromkeys(names, 0)
+    left = n
+    while left:
+        room = [k for k in names if alloc[k] < len(strata[k])]
+        share = left // len(room)
+        if share == 0:
+            for k in sorted(room, key=lambda k: (alloc[k] - len(strata[k]), k))[:left]:
+                alloc[k] += 1
+            break
+        for k in room:
+            take = min(share, len(strata[k]) - alloc[k])
+            alloc[k] += take
+            left -= take
+    return {
+        k: sorted(random.Random(f"{seed}:{k}").sample(sorted(strata[k]), alloc[k])) for k in names if alloc[k]
+    }
+
+
 def smoke_args(subset: Subset) -> tuple[list[str], dict[str, str]]:
     """The `paddock run` arguments and environment that run exactly this subset.
 
@@ -1048,11 +1136,14 @@ def smoke_args(subset: Subset) -> tuple[list[str], dict[str, str]]:
     """
     bench, ids = subset.bench, subset.ids
     if bench == "neuroncap":
-        # `--scene` runs every shape each listed scene has, so the subset was chosen
-        # to be exactly that cross product; tests/test_gate.py checks that it is.
+        # `--scene` runs every shape each listed scene has; the pair list keeps
+        # only the subset's scenario-scene pairs of those.
+        from paddock.adapters.benchmarks.neuroncap.harness import ENV_PAIRS
+
         scenes = sorted({pair.rsplit("-", 1)[1] for pair in ids})
         return ["--scene", ",".join(scenes), "--runs", str(subset.meta["runs"])], {
-            NCAP_MANAGE_RENDERER: "true"
+            NCAP_MANAGE_RENDERER: "true",
+            ENV_PAIRS: ",".join(sorted(ids)),
         }
     if bench == "navsim":
         # The token list as a hydra override, plus --limit. The limit makes the run
@@ -1066,14 +1157,17 @@ def smoke_args(subset: Subset) -> tuple[list[str], dict[str, str]]:
             ENV_OVERRIDES: f"train_test_split.scene_filter.tokens={hydra_list(ids)}"
         }
     if bench == "nuscenes":
-        # Open-loop harnesses get no scene filter, only --limit, which yields samples
-        # in val_scenes.json order: the subset is that order's prefix.
-        return ["--limit", str(len(ids))], {}
+        # The sample list, plus --limit equal to it: the limit records the run
+        # valid=false as a subset, the way NAVSIM's token list does.
+        from paddock.adapters.benchmarks.nuscenes.harness import ENV_SAMPLES
+
+        return ["--limit", str(len(ids))], {ENV_SAMPLES: ",".join(ids)}
     if bench == "bench2drive":
         return ["--scene", ",".join(ids)], {}
     if bench in ("kitscenes", "alpasim"):
-        # The subset is the benchmark's own default set: all 223 keyframes, and the
-        # pinned public_2601_first10.
+        # Run as the benchmark's default set: all 223 KITScenes keyframes (the
+        # verdict reads only the subset's `decide_on` groups), and AlpaSim's scene
+        # set, which `smoke_config` pins to the subset's `scene_set`.
         return [], {}
     raise ValueError(f"no smoke rule for {bench}")
 
@@ -1170,7 +1264,7 @@ def smoke_config(
     # with nothing. Pinned only where the site configures AlpaSim at all.
     alpasim = (raw.get("benchmarks") or {}).get("alpasim")
     if isinstance(alpasim, dict):
-        (alpasim["scene_set"],) = load_subset("alpasim").strata
+        alpasim["scene_set"] = load_subset("alpasim").meta["scene_set"]
     ncap = raw.setdefault("benchmarks", {}).setdefault("neuroncap", {})
     host = str(ncap.get("renderer_url") or "http://127.0.0.1:8000").rsplit(":", 1)[0]
     ncap["renderer_url"] = f"{host}:{renderer_port}"
@@ -1365,6 +1459,7 @@ def smoke_manifest(
             if base.get("results"):
                 lines.append(f"baseline_results = {json.dumps(str(base['results']))}")
             lines.append(f"candidate = {json.dumps(candidate)}")
+            lines.append(f"subset = {json.dumps(step.name)}")
             if not step.can_ship:
                 lines.append("can_ship = false")
         lines.append("")

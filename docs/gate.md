@@ -47,8 +47,8 @@ in `tools/gate.py` (checked against scipy; `tests/test_gate.py` pins it).
 **Several pairs at once.** Each pair is tested at 5%, 2.5% per direction, so an
 unchanged model is called a REGRESSION on at least one pair more often than
 that: about 10% of the time on the quick tier's 4 pairs and about 16% on
-`--tier all`'s 7, if the pairs were independent. (They are not quite: both
-neuroNCAP subsets include 0103.) A FAIL on one pair, alone, is a reason to look
+`--tier all`'s 7, if the pairs were independent. (They are not quite: the two
+neuroNCAP subsets share two pairs.) A FAIL on one pair, alone, is a reason to look
 at that pair's numbers, not proof the candidate is worse.
 
 ## Reading a verdict
@@ -206,31 +206,40 @@ tracks.
 check before a release.
 
 **The smoke**: fixed subsets, tracked in `tools/gate_smoke/<name>.toml`, each
-chosen once by a documented rule and headed by how it was chosen. They must never
-be re-picked to make a result look better; a subset that turns out wrong is
-replaced in its own commit, and its baselines re-run. The drawing rule is
-`tools.gate.stratified_pick` where a draw was seeded.
+drawn once and headed by how it was drawn. They must never be re-picked to make a
+result look better; a subset that turns out wrong is replaced in its own commit,
+and its baselines re-run.
+
+**How the subsets are drawn** (since 2026-10-22, `python -m tools.gate_subsets
+<benchmark>`, seed 20261022). Each benchmark is split into groups that change how
+a model has to drive -- the maneuver (left, right, straight), the speed band
+(slow under 3 m/s, fast from 8 m/s), the city or town, the crash type, the
+Bench2Drive scenario family -- as far as the benchmark records them. **Every group
+gets the same share** (`tools.gate.balanced_pick`), so a right turn at speed is as
+present as straight driving, and the samples within a group are drawn at random.
+The gate's mean therefore weighs rare driving more than the full benchmark does:
+it is a test for what broke, not an estimate of the full score.
 
 The smoke has two tiers of its own, because one checkpoint at a time cannot wait
 hours for every answer:
 
 - **quick** (`--tier quick`, the default): every checkpoint. The three open-loop
-  benchmarks and neuroNCAP's three pairs at 0103. It catches a pipeline break or
+  benchmarks and three neuroNCAP pairs, one per crash type. It catches a pipeline break or
   a large regression in about 40 minutes.
 - **closed** (`--tier closed`): a checkpoint worth keeping. The finer neuroNCAP
   subset, Bench2Drive and AlpaSim; a few hours.
 - `--tier all` runs quick, then closed only if every quick subset finished and
   none regressed.
 
-| subset | tier | what | units (t crit) | how `paddock run` is told | pairs with |
-|---|---|---|---|---|---|
-| kitscenes | quick | all 223 keyframes | 140 scenes (1.98) | nothing: the full sample list | any full run, or a smoke |
-| nuscenes | quick | first 30 val scenes, all 1,011 anchors | 30 scenes (2.05) | `--limit 1011` | a full run (a prefix of it) |
-| navsim (v2) | quick | 1,000 navtest tokens, every one of its 136 logs, at least 2 per log | 136 logs (1.98) | `--limit 1000` and `PADDOCK_NAVSIM_OVERRIDES=train_test_split.scene_filter.tokens=[...]` | a smoke of the same list only |
-| neuroncap_quick | quick | stationary, frontal and side at 0103; 1 run (seed 0) | 3 pairs (4.30) | `--scene 0103 --runs 1`, `PADDOCK_NCAP_MANAGE_RENDERER=true` | a full sweep (its run 0) |
-| neuroncap | closed | stationary/frontal/side at 0103, frontal+side at 0110, stationary at 0796; 3 runs | 6 pairs (2.57) | `--scene 0103,0110,0796 --runs 3`, `PADDOCK_NCAP_MANAGE_RENDERER=true` | a full sweep (its runs 0-2) |
-| bench2drive | closed | 7 routes where the four unassisted systems' scores spread by sd >= 12; cannot ship | 7 routes (2.45) | `--scene <7 route ids>` | a smoke baseline |
-| alpasim | closed | `public_2601_first10` | 10 clips (2.26) | `scene_set` pinned in the derived config | a smoke baseline |
+| subset | tier | what | groups | units (t crit) | how `paddock run` is told | pairs with |
+|---|---|---|---|---|---|---|
+| kitscenes | quick | all 223 keyframes; the verdict reads the 186 `val` ones | KITScenes' split: `val` 186, `overlap_train_val` 37 (places also in its training data, compared alone in a note) | 117 scenes (1.98) | nothing: the full sample list | any full run, or a smoke |
+| nuscenes | quick | 1,000 of the 5,119 val keyframes, from 143 of the 150 scenes | city area x maneuver x speed: 34 | 143 scenes (1.98) | `--limit 1000` and `PADDOCK_NUSCENES_SAMPLES=<the ids>` | any run of the same config, a full one included |
+| navsim (v2) | quick | 1,018 navtest tokens from 126 of its 136 logs: 1,000 drawn, then every log touched once topped up to 2 | city x driving command x speed: 35 | 126 logs (1.98) | `--limit 1018` and `PADDOCK_NAVSIM_OVERRIDES=train_test_split.scene_filter.tokens=[...]` | a smoke of the same list only |
+| neuroncap_quick | quick | 3 pairs, 1 run (seed 0); cannot ship | crash type: 1 each | 3 pairs (4.30) | `--scene <its scenes> --runs 1`, `PADDOCK_NCAP_PAIRS=<the pairs>`, `PADDOCK_NCAP_MANAGE_RENDERER=true` | a full sweep (its run 0) |
+| neuroncap | closed | 15 of the 20 pairs over 13 scenes, 1 run (seed 0) | crash type: 5 each (all frontal and side, 5 of 10 stationary) | 15 pairs (2.14) | as above | a full sweep (its run 0) |
+| bench2drive | closed | 7 of the 220 routes; cannot ship | left turn, right turn, and straight by hazard (junction, highway or high speed, obstacle, pedestrian or cyclist, cut-in or hard brake): 1 each | 7 routes (2.45) | `--scene <7 route ids>` | a smoke baseline |
+| alpasim | closed | 10 of the 913 scenes of `public_2601`, at random (scene set `public_2601_gate10`) | none: no per-scene speed or turn on hand | 10 scenes (2.26) | `scene_set` pinned in the derived config | a smoke baseline |
 
 A subset's baseline is `[baseline.<subset>]` in the baseline manifest, else
 `[baseline.<benchmark>]`: one full neuroNCAP sweep serves both neuroNCAP subsets.
@@ -239,7 +248,12 @@ A smoke run of a subset is stored `valid: false` with the reason in `notes`
 (`--limit`, a few of 20 pairs, a few of the site's routes, a few clips of the
 scene set), so it never reaches the leaderboard. Two smokes are their whole
 benchmark and are ordinary valid runs: KITScenes (all 223 keyframes) and
-AlpaSim (the whole pinned `public_2601_first10`).
+AlpaSim (the whole pinned `public_2601_gate10`).
+
+A pair in a `check` manifest may name its subset (`subset = "<name>"`; the smoke
+writes it). A subset with `decide_on` has groups that run but do not decide:
+KITScenes decides on `val`, and the 37 `overlap_train_val` keyframes are left out
+of the verdict and compared alone in a note on the pair.
 
 ## Running the smoke
 
@@ -404,16 +418,13 @@ the check that the site's baselines are sound.
 - **NAVSIM smoke pairs only with a NAVSIM smoke.** Two-frame extended comfort
   compares each scenario with the next *scored* one in its log, so a token's
   EPDMS depends on which others were scored.
-- **nuScenes smoke is a prefix, not a stratified draw.** Open-loop benchmarks
-  take no scene filter: `paddock run` hands `--scene` to closed-loop harnesses
-  only (`src/paddock/runner.py:591` calls `_run_open_loop` with `limit` and no
-  scenes), and `NuScenesBenchmark.samples`
-  (`src/paddock/adapters/benchmarks/nuscenes/harness.py:223`) has no scene
-  argument. `--limit` takes the first N samples in `val_scenes.json` order, so
-  the 30 scenes are the first 30: boston-seaport and singapore-onenorth, no
-  queenstown or hollandvillage. A stratified choice needs a scene filter there.
+- **The groups need recorded data.** nuScenes' were read from a full run's
+  stored samples (its command and future path) and nuScenes' log table; NAVSIM's
+  from navtest's own log pickles; Bench2Drive's from its route file. AlpaSim has
+  no per-scene speed or turn on hand without downloading every scene, so its 10
+  are a plain random draw.
 - **The AlpaSim smoke runs its pinned scene set as the default set**: the
-  derived config sets `[benchmarks.alpasim] scene_set = "public_2601_first10"`,
+  derived config sets `[benchmarks.alpasim] scene_set = "public_2601_gate10"`,
   so a site configured for `public_2601_30scenes` still runs the subset's 10.
 - **Drive-JEPA on AlpaSim runs through the bridge on its native driver's
   settings.** Its `model.yaml` declares alpasim, so the smoke drives it. With

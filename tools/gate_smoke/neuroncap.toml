@@ -1,31 +1,25 @@
-# neuroNCAP smoke tier: 6 of the 20 official scenario-scene pairs, 3 runs each (seeds 0-2).
+# neuroNCAP closed-loop tier: 15 of the 20 official scenario-scene pairs, 1 run each.
+# Groups: the crash type (frontal 5, side 5, stationary 10 pairs); 5 drawn from each, so frontal
+# and side are all in and stationary is 5 of its 10.
+# The unit is the scenario-scene pair. Runs are seeded 0..R-1, so a one-run subset is
+# run 0 of every full sweep and pairs with one directly. Run as `--scene <its scenes>
+# --runs 1` with PADDOCK_NCAP_PAIRS naming the pairs (`--scene` alone would run every
+# shape each scene has) and PADDOCK_NCAP_MANAGE_RENDERER=true. Stored valid=false.
 #
-# The three pairs at scene 0103, the one scene in all three shapes, plus one more pair
-# per shape. `paddock run --scene` drives every shape a listed scene is in, so the extra
-# pairs are chosen so that the scene list gives exactly these six and nothing else:
-# - frontal and side: 0110, the only other official scene in exactly those two shapes
-#   (forced, not drawn);
-# - stationary: drawn from the six stationary-only scenes (0099, 0101, 0331, 0783, 0796, 0966)
-#   by tools.gate.stratified_pick(n=1, seed=20261016).
-#
-# Run as `--scene 0103,0110,0796 --runs 3` with PADDOCK_NCAP_MANAGE_RENDERER=true (the
-# renderer serves one scene; the harness restarts it per scene). Stored valid=false
-# (6 of 20 pairs). The unit is the scenario pair, so a smoke has 6 units and 5 degrees
-# of freedom: the gate's bar is |t| >= 2.571. Runs are seeded 0..R-1, so these
-# samples are also runs 0-2 of a full 10-run sweep and pair with it directly.
-#
-# Fixed once, on 2026-10-16. It must never be re-picked, re-seeded or edited to make a
-# result look better: a gate whose subset moves can be steered. If the subset turns
-# out to be wrong (a scene that cannot run, say), replace it in its own commit that
-# says why, and re-run every baseline paired with it.
+# Drawn once, on 2026-10-22, by `python -m tools.gate_subsets neuroncap` (seed 20261022): every
+# group the same share, random within it (tools/gate_subsets.py has the rule). It must
+# never be re-picked, re-drawn or edited to make a result look better: a gate whose
+# subset moves can be steered. If it turns out to be wrong (a sample that cannot run,
+# say), replace it in its own commit that says why, and re-run every baseline paired
+# with it.
 
 bench = "neuroncap"
 unit = "scenario-scene pair"
-seed = 20261016
-runs = 3
-count = 6
+seed = 20261022
+runs = 1
+count = 15
 
 [strata]
-stationary = ["stationary-0103", "stationary-0796"]
-frontal = ["frontal-0103", "frontal-0110"]
-side = ["side-0103", "side-0110"]
+"frontal" = ["frontal-0103", "frontal-0106", "frontal-0110", "frontal-0346", "frontal-0923"]
+"side" = ["side-0103", "side-0108", "side-0110", "side-0278", "side-0921"]
+"stationary" = ["stationary-0099", "stationary-0101", "stationary-0331", "stationary-0796", "stationary-0966"]

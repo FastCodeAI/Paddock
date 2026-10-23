@@ -1,0 +1,18 @@
+# The regression gate's AlpaSim scenes: 10 of the 913 scenes of public_2601,
+# drawn at random (seed 20261022) by `python -m tools.gate_subsets alpasim` on 2026-10-22,
+# from the suite list in AlpaSim's data/scenes/sim_suites.csv. Not grouped by maneuver
+# or speed: no per-scene record of either is on hand without downloading every scene.
+# tools/gate_smoke/alpasim.toml lists the same 10; tests/test_gate.py holds them equal.
+suite: public_2601
+selection: 10 drawn at random, seed 20261022, by scene_id
+scenes:
+- clipgt-1c7e2423-77d7-40b6-bf26-f36fb8ebcf52
+- clipgt-29f4242b-7ec5-45a6-b1bc-78f19417390b
+- clipgt-29fb826a-9b22-4a1d-8e51-b8d5bee542e5
+- clipgt-5775a998-77f9-472a-8d12-f2b036a4cfe8
+- clipgt-6f4fc882-8c0b-4be0-9610-7b500d79c11a
+- clipgt-7a3d8529-f5c4-445d-97ed-8303b2ece934
+- clipgt-ad098ec4-eeab-4022-9cc6-fc91a9946027
+- clipgt-fa1f799f-b2f3-48d7-a61b-e06c619a5514
+- clipgt-fb6d1a18-16cd-45f2-b80d-fa963ff59de3
+- clipgt-ffb26632-8c84-433e-bde2-9caf285d8090
