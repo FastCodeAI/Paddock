@@ -284,21 +284,28 @@ def parse_results(results_json: Path) -> dict[str, float]:
 
 
 def ended_early(route_dir: Path) -> dict[str, float]:
-    """``ended_<reason>`` for one route (stuck, over_time, collision, manual): 1 for what ended it, else 0.
+    """``ended_<reason>`` for one route (stuck, over_time, collision, manual): share of repetitions so ended.
 
     Read from the ``early_stop.json`` the agent writes beside ``results.json``
     whenever the early stop is on -- with ``"reason": null`` for a route that went
     to Bench2Drive's own end -- so this reads only the route's directory, as
     ``--resume`` and the ingest need. Empty without one: the stop was off, and a
-    0 would claim a rule was there to fire. Per route 0/1, so a run's aggregate is
-    the share of its routes each rule ended.
+    0 would claim a rule was there to fire. Each repetition's verdict is in its
+    ``repetitions`` (a record from before those has only the one); with one
+    repetition it is 0/1 per route, so a run's aggregate is the share of its
+    routes each rule ended.
     """
     try:
         record = json.loads((Path(route_dir) / early_stop.RECORD).read_text())
     except (OSError, ValueError):
         return {}
-    reason = record.get("reason") if isinstance(record, dict) else None
-    return {f"ended_{name}": 1.0 if reason == name else 0.0 for name in early_stop.REASONS}
+    if not isinstance(record, dict):
+        return {}
+    reps = [r for r in (record.get("repetitions") or [record]) if isinstance(r, dict)] or [record]
+    return {
+        f"ended_{name}": sum(1.0 for r in reps if r.get("reason") == name) / len(reps)
+        for name in early_stop.REASONS
+    }
 
 
 def _positive(value: Any) -> float | None:

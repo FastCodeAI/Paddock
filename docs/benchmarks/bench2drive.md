@@ -203,15 +203,18 @@ And one stop that is not a rule: a route ends **by hand** when its directory
 grows a `stop_request` file while it drives, which the dashboard's "Stop route"
 button writes (`POST /api/stop?route=<id>`, 127.0.0.1 only). The route is scored
 as it stood, and the run is `valid: false`, its notes counting the routes ended
-by hand: a moment a person chose is not one any rule reproduces.
+by hand: a moment a person chose is not one any rule reproduces. With `--runs N`
+the request stops the route, every repetition left of it too: each of those ends
+on its first tick, so the worker moves on.
 
 The agent ends the route through the leaderboard's own tick cap, which `preflight`
 checks the checkout still has, so the route is scored as it stands: the route
 completion and infractions of that moment, status `Failed - TickRuntime`. Beside
 `results.json` it writes `early_stop.json` with the rule that fired (`null` if
-none did), the game time, and the route's own budget; the metrics carry it per
-route as `ended_stuck` / `ended_over_time` / `ended_collision` / `ended_manual`
-(0 or 1). The dashboard lists such a route as "Stopped: <reason>", and its video
+none did), the game time, and the route's own budget, and with `--runs N` one
+such record per repetition under `repetitions`; the metrics carry it per route
+as `ended_stuck` / `ended_over_time` / `ended_collision` / `ended_manual` (the
+share of the route's repetitions, so 0 or 1 with one). The dashboard lists such a route as "Stopped: <reason>", and its video
 says why it ended.
 
 A route the stuck or over-time rule ends is a **failed drive**, and the run ranks. A car in a

@@ -758,6 +758,21 @@ def test_a_route_that_went_to_its_end_says_so_and_no_record_says_nothing(tmp_pat
     assert ended_early(tmp_path / "elsewhere") == {}, "the stop was off; a 0 would say a rule was there"
 
 
+def test_with_repetitions_each_one_keeps_its_verdict(tmp_path, load_agent) -> None:
+    """The evaluator builds a new agent for every repetition of a route (leaderboard_evaluator.py:366
+    at 7ec25d1), and each wrote the route's one early_stop.json: only the last repetition's verdict
+    was left, beside a driving score averaged over all three."""
+    record = tmp_path / "early_stop.json"
+    agent = load_agent(PADDOCK_STOP_RECORD=str(record))
+    for reason in ("stuck", None, None):  # three repetitions; the first one stopped
+        client = object.__new__(agent.PaddockB2DAgent)
+        client._stop_record = {"reason": reason, "stuck_s": 30.0}
+        client._write_stop_record()
+    assert json.loads(record.read_text())["reason"] is None, "the latest repetition on top, for the videos"
+    assert ended_early(tmp_path)["ended_stuck"] == pytest.approx(1 / 3)
+    assert ended_early(tmp_path)["ended_over_time"] == 0.0
+
+
 def test_preflight_refuses_early_stop_settings_it_cannot_honour(tmp_path, monkeypatch) -> None:
     cfg = _site(tmp_path, monkeypatch, COMPLETED, stop_stuck_s="half a minute", stop_expert_factor="4")
     problems = "\n".join(_harness(cfg).preflight())

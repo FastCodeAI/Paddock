@@ -853,11 +853,19 @@ class PaddockB2DAgent(AutonomousAgent):
         self._write_stop_record()
 
     def _write_stop_record(self):
+        """This repetition's verdict, at the top of the route's early_stop.json and added to its
+        ``repetitions``: the evaluator builds a new agent for every repetition, and the harness
+        averages them (``ended_early``). The top stays the latest, which the videos read."""
         if not STOP_RECORD or self._stop_record is None:
             return
         try:
+            with open(STOP_RECORD) as handle:
+                earlier = json.load(handle).get("repetitions") or []
+        except (OSError, ValueError, AttributeError):  # the first repetition (the harness clears it)
+            earlier = []
+        try:
             with open(STOP_RECORD, "w") as handle:
-                json.dump(self._stop_record, handle)
+                json.dump({**self._stop_record, "repetitions": [*earlier, dict(self._stop_record)]}, handle)
         except OSError as exc:  # the route still ends; the harness just cannot say why
             print("[paddock-b2d] early stop record not written:", repr(exc))
 
