@@ -1459,7 +1459,7 @@ def _smoke_site(tmp_path: Path, monkeypatch, ade: dict[str, float], hold: float 
     import paddock.registry
 
     res, runs, stamps = tmp_path / "results", tmp_path / "runs", tmp_path / "stamps"
-    for bench in ("kitscenes", "nuscenes", "bench2drive", "neuroncap"):
+    for bench in ("kitscenes", "nuscenes", "bench2drive", "neuroncap", "alpasim"):
         base = [
             {
                 "sample_id": f"{bench}/s{i}",
@@ -1475,6 +1475,7 @@ def _smoke_site(tmp_path: Path, monkeypatch, ade: dict[str, float], hold: float 
     baselines.write_text(
         '[baseline.kitscenes]\nrun = "m:base"\n[baseline.nuscenes]\nrun = "m:base"\n'
         '[baseline.bench2drive]\nrun = "m:base"\n[baseline.neuroncap]\nrun = "m:base"\n'
+        '[baseline.alpasim]\nrun = "m:base"\n'
     )
 
     def plan(model, names, declared, state, *, runs_root, results_root, **_):
@@ -1528,7 +1529,7 @@ def _smoke_site(tmp_path: Path, monkeypatch, ade: dict[str, float], hold: float 
         "load_models",
         lambda: {
             "m": SimpleNamespace(
-                benchmarks=["kitscenes", "nuscenes", "bench2drive", "neuroncap"], vram_gb=0.0
+                benchmarks=["kitscenes", "nuscenes", "bench2drive", "neuroncap", "alpasim"], vram_gb=0.0
             )
         },
     )
@@ -1615,6 +1616,16 @@ def test_a_simulator_waits_while_a_running_one_may_still_take_its_memory(tmp_pat
     spans = _intervals(stamps)
     assert spans["bench2drive"][0] >= spans["neuroncap"][1], f"overlapped: {spans}"
     assert "waiting for 18 GB of free GPU memory, 8 GB of it held for running simulators" in "\n".join(said)
+
+
+def test_alpasim_runs_alone_until_its_cpu_use_beside_others_is_known(tmp_path: Path, monkeypatch) -> None:
+    """Review of #111 (2): AlpaSim's containers are not held to the lane's cores, and shakaal
+    fails above 90% CPU. With room on the card for both, AlpaSim still waits for neuroNCAP."""
+    args, stamps = _smoke_site(tmp_path, monkeypatch, {"neuroncap": 2.0, "alpasim": 2.0}, hold=1.0)
+    monkeypatch.setattr(gate, "_gpu_free_gb", lambda env: 80.0)
+    gate.smoke(args(tier="closed", bench=["neuroncap", "alpasim"], cores=["4-7", "8-11"]), lambda _m: None)
+    spans = _intervals(stamps)
+    assert spans["alpasim"][0] >= spans["neuroncap"][1], f"overlapped: {spans}"
 
 
 def test_simulators_run_side_by_side_when_the_card_holds_them(tmp_path: Path, monkeypatch) -> None:

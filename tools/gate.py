@@ -1078,6 +1078,13 @@ STOP_GRACE_S = 120.0
 #: AlpaSim's ~17 GB is its own documented figure (docs/benchmarks/alpasim.md).
 #: Open-loop benchmarks run no simulator.
 SIMULATOR_GB = {"neuroncap": 8.0, "bench2drive": 8.0, "alpasim": 17.0}
+#: Simulators that start beside no other simulator, and beside which none starts.
+#: AlpaSim's containers are started by Docker, not by the lane, so the lane's
+#: `taskset` does not hold them to its cores, and shakaal fails above about 90% CPU.
+#: neuroNCAP's renderer and CARLA are the lane's children and keep its cores. Lift
+#: this once a closed tier with AlpaSim beside the others has been watched (review
+#: of #111, 2).
+RUN_ALONE = frozenset({"alpasim"})
 #: Headroom on top, for other users' allocations growing while ours loads.
 SMOKE_MARGIN_GB = 2.0
 
@@ -1908,7 +1915,16 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
             blocked = (
                 nxt is None
                 or idle is None
-                or any(b.bench == nxt.bench or tier_of[b.name] != tier_of[nxt.name] for b in busy)
+                or any(
+                    b.bench == nxt.bench
+                    or tier_of[b.name] != tier_of[nxt.name]
+                    or (
+                        b.bench in SIMULATOR_GB
+                        and nxt.bench in SIMULATOR_GB
+                        and bool({b.bench, nxt.bench} & RUN_ALONE)
+                    )
+                    for b in busy
+                )
             )
             if blocked:
                 time.sleep(POLL_S)
