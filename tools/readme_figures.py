@@ -57,7 +57,7 @@ MODELS_SVG = ROOT / "docs" / "assets" / "models.svg"
 LOOP = {"open": "open loop", "pseudo": "pseudo-closed loop", "closed": "closed loop"}
 MISSING = ("—", "not run")
 UNRANKED_MARKS = {"R", "V"}
-CELL_KEYS = {"run", "value", "source", "marks", "note"}
+CELL_KEYS = {"run", "value", "source", "marks", "note", "model"}
 
 # Rank 1..6 (6 also covers anything lower). Light mode runs dark-to-light; dark mode
 # flips the anchor so rank 1 is the step with the most contrast against a dark card.
@@ -191,7 +191,7 @@ class Row:
     is_floor: bool = False
 
 
-def _cell(spec: object, col: Column, where: str, results: Path, root: Path) -> Cell:
+def _cell(spec: object, col: Column, model: str, where: str, results: Path, root: Path) -> Cell:
     if spec is None:
         return Cell("—")
     if spec in MISSING:
@@ -205,6 +205,13 @@ def _cell(spec: object, col: Column, where: str, results: Path, root: Path) -> C
         run = spec["run"]
         if not run.startswith(f"{col.key}/"):
             raise ValueError(f"{where}: {run!r} is not a {col.key} run")
+        # A line copied from another row and not edited would show that model's number
+        # under this one. A cell that borrows a run on purpose says whose it is.
+        owner = run.split("/")[1]
+        if owner != spec.get("model", model):
+            raise ValueError(
+                f"{where}: {run!r} is a {owner} run; add model = {owner!r} if this row borrows it"
+            )
         folder = results / run
         if not (folder / "metrics.json").exists():
             raise ValueError(f"{where}: no run at results/{run}")
@@ -260,7 +267,9 @@ def load_matrix(
             raise ValueError(
                 f"[cells.{m['key']}] names benchmarks that are not listed: {sorted(set(given) - keys)}"
             )
-        row = [_cell(given.get(c.key), c, f"cells.{m['key']}.{c.key}", results, root) for c in columns]
+        row = [
+            _cell(given.get(c.key), c, m["key"], f"cells.{m['key']}.{c.key}", results, root) for c in columns
+        ]
         rows.append(Row(m["key"], m["name"], m.get("marks", "").split(), row, m.get("floor", False)))
     return columns, rows
 

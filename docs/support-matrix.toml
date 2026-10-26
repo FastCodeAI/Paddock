@@ -11,6 +11,7 @@
 #                                           source page must show the same number
 #   "not run"                               a variant nobody ran here; a cell left out reads "—"
 # with, optionally, `marks` (the README's A P S R V) and `note` (shown under the number).
+# A run must be the row's own model's; a cell that borrows another's names it with `model`.
 
 [[benchmark]]
 key = "nuscenes"
@@ -143,7 +144,7 @@ alpasim = { run = "alpasim/alpamayo15/legacy-alpamayo_proxy_referee_20hz", marks
 [cells.drivejepa]
 nuscenes = { run = "nuscenes/drivejepa/20260905T093335-4513d4", marks = "S" }
 kitscenes = { run = "kitscenes/drivejepa/legacy-kitscenes_e2e_final" }
-comma2k19 = { run = "comma2k19/drivejepa_free/20260916T003407-c504e5", marks = "R" }
+comma2k19 = { run = "comma2k19/drivejepa_free/20260916T003407-c504e5", model = "drivejepa_free", marks = "R" }
 nuplan = { run = "nuplan/drivejepa/20260916T204900-6a17de", marks = "A" }  # 52 of nuPlan mini's 62 logs are navtrain logs
 navsim = { run = "navsim/drivejepa/20260902T173156-7e208f", marks = "A" }
 navsim_v1 = { run = "navsim_v1/drivejepa/20260911T082329-575df6", marks = "A" }
@@ -169,7 +170,7 @@ navsim = "not run"
 navsim_v1 = "not run"
 bench2drive = "not run"
 neuroncap = "not run"
-alpasim = { run = "alpasim/drivejepa/legacy-drivejepa_017_20hz_30scenes", marks = "A" }
+alpasim = { run = "alpasim/drivejepa/legacy-drivejepa_017_20hz_30scenes", model = "drivejepa", marks = "A" }
 
 [cells.visionpilot]
 nuscenes = { run = "nuscenes/visionpilot/20260905T093333-319ef5" }

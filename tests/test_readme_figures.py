@@ -153,6 +153,8 @@ def test_ranks_follow_the_readme_notes(tmp_path: Path) -> None:
         ('open = { run = "closed/good/1" }', "is not a open run"),
         ('open = { value = 0.55, source = "page.md" }', "does not show 0.55"),
         ('open = { run = "open/good/1", mark = "A" }', "a cell is"),
+        # A line copied from another row and left unedited: another model's number.
+        ('open = { run = "open/bad/1" }', "is a bad run"),
     ],
 )
 def test_a_cell_that_cannot_be_traced_fails_loudly(tmp_path: Path, change: str, error: str) -> None:
