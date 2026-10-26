@@ -1,0 +1,22 @@
+# Bench2Drive quick tier: one route, a crash check. The shortest by path length
+# (72 m) of the closed tier's 7 routes (bench2drive.toml), so the
+# quick tier stays short and the closed tier's baseline holds it.
+# One is too few for a verdict: the gate says TOO FEW UNITS and shows the score. What it
+# catches is a checkpoint that cannot drive there at all: a run that fails is INCOMPLETE,
+# which stops the gate before the closed tier's hours. can_ship = false.
+#
+# Drawn once, on 2026-10-27, by `python -m tools.gate_subsets quick_closed` (seed 20261027): every
+# group the same share, random within it (tools/gate_subsets.py has the rule). It must
+# never be re-picked, re-drawn or edited to make a result look better: a gate whose
+# subset moves can be steered. If it turns out to be wrong (a sample that cannot run,
+# say), replace it in its own commit that says why, and re-run every baseline paired
+# with it.
+
+bench = "bench2drive"
+unit = "route"
+can_ship = false
+seed = 20261027
+count = 1
+
+[strata]
+"left turn" = ["3717"]

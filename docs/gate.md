@@ -224,8 +224,12 @@ The smoke has two tiers of its own, because one checkpoint at a time cannot wait
 hours for every answer:
 
 - **quick** (`--tier quick`, the default): every checkpoint. The three open-loop
-  benchmarks and three neuroNCAP pairs, one per crash type. It catches a pipeline break or
-  a large regression in about 40 minutes.
+  benchmarks, three neuroNCAP pairs (one per crash type), and one Bench2Drive route
+  and one AlpaSim scene as crash checks. It catches a pipeline break or a large
+  regression in about 40 minutes. The two crash checks are one sample each, too
+  few for a verdict (TOO FEW UNITS): they show the score, and a checkpoint that
+  cannot drive in CARLA or AlpaSim at all is INCOMPLETE and stops the gate
+  before the closed tier.
 - **closed** (`--tier closed`): a checkpoint worth keeping. The finer neuroNCAP
   subset, Bench2Drive and AlpaSim; a few hours.
 - `--tier all` runs quick, then closed only if every quick subset finished and
@@ -237,6 +241,8 @@ hours for every answer:
 | nuscenes | quick | 1,000 of the 5,119 val keyframes, from 143 of the 150 scenes | city area x maneuver x speed: 34 | 143 scenes (1.98) | `--limit 1000` and `PADDOCK_NUSCENES_SAMPLES=<the ids>` | any run of the same config, a full one included |
 | navsim (v2) | quick | 1,018 navtest tokens from 126 of its 136 logs: 1,000 drawn, then every log touched once topped up to 2 | city x driving command x speed: 35 | 126 logs (1.98) | `--limit 1018` and `PADDOCK_NAVSIM_OVERRIDES=train_test_split.scene_filter.tokens=[...]` | a smoke of the same list only |
 | neuroncap_quick | quick | 3 pairs, 1 run (seed 0); cannot ship | crash type: 1 each | 3 pairs (4.30) | `--scene <its scenes> --runs 1`, `PADDOCK_NCAP_PAIRS=<the pairs>`, `PADDOCK_NCAP_MANAGE_RENDERER=true` | a full sweep (its run 0) |
+| bench2drive_quick | quick | route 3717, the shortest (72 m) of the closed tier's 7; a crash check, cannot ship | none | 1 route (no verdict) | `--scene 3717` | the closed tier's baseline |
+| alpasim_quick | quick | one of the closed tier's 10 scenes, at random (seed 20261027); a crash check, cannot ship | none | 1 scene (no verdict) | `--scene <its clip>` within `public_2601_gate10` | the closed tier's baseline |
 | neuroncap | closed | 15 of the 20 pairs over 13 scenes, 1 run (seed 0) | crash type: 5 each (all frontal and side, 5 of 10 stationary) | 15 pairs (2.14) | as above | a full sweep (its run 0) |
 | bench2drive | closed | 7 of the 220 routes; cannot ship | left turn, right turn, and straight by hazard (junction, highway or high speed, obstacle, pedestrian or cyclist, cut-in or hard brake): 1 each | 7 routes (2.45) | `--scene <7 route ids>` | a smoke baseline |
 | alpasim | closed | 10 of the 50 `public_2601` scenes downloaded on the site (scene set `public_2601_gate10`), not of all 913 | maneuver x speed, read from each scene's recorded drive: 7 | 10 scenes (2.26) | `scene_set` pinned in the derived config | a smoke baseline |

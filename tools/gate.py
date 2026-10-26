@@ -1053,12 +1053,14 @@ def _short_of(spec: Subset, runs: dict[str, Run]) -> list[tuple[str, int]]:
 
 #: The tracked subsets, one TOML file each; each file's header says how it was chosen.
 SMOKE_DIR = Path(__file__).resolve().with_name("gate_smoke")
-#: Two tiers with different jobs. `quick` runs on every checkpoint, about 40 min:
-#: the three open-loop benchmarks and neuroNCAP's three pairs at 0103. `closed`
-#: runs only for a checkpoint worth keeping: the full smoke neuroNCAP subset,
-#: Bench2Drive and AlpaSim, a few hours. Within a tier, the cheap answers first.
+#: Two tiers with different jobs. `quick` runs on every checkpoint: the three
+#: open-loop benchmarks, neuroNCAP's three pairs, and one Bench2Drive route and
+#: one AlpaSim scene as crash checks (too few for a verdict; a checkpoint that
+#: cannot drive there stops before the closed tier). `closed` runs only for a
+#: checkpoint worth keeping: the full smoke neuroNCAP subset, Bench2Drive and
+#: AlpaSim, hours. Within a tier, the cheap answers first.
 TIERS = {
-    "quick": ("kitscenes", "nuscenes", "navsim", "neuroncap_quick"),
+    "quick": ("kitscenes", "nuscenes", "navsim", "neuroncap_quick", "bench2drive_quick", "alpasim_quick"),
     "closed": ("neuroncap", "bench2drive", "alpasim"),
 }
 SMOKE_ORDER = TIERS["quick"] + TIERS["closed"]
@@ -1229,10 +1231,17 @@ def smoke_args(subset: Subset) -> tuple[list[str], dict[str, str]]:
         return ["--limit", str(len(ids))], {ENV_SAMPLES: ",".join(ids)}
     if bench == "bench2drive":
         return ["--scene", ",".join(ids)], {}
-    if bench in ("kitscenes", "alpasim"):
+    if bench == "alpasim":
+        # The whole pinned scene set runs as the default set (`smoke_config`), a valid
+        # run; part of it (the quick tier's one scene) names its clips.
+        from paddock.adapters.benchmarks.alpasim.harness import load_scene_set
+
+        if set(ids) != set(load_scene_set(subset.meta["scene_set"])):
+            return ["--scene", ",".join(ids)], {}
+        return [], {}
+    if bench == "kitscenes":
         # Run as the benchmark's default set: all 223 KITScenes keyframes (the
-        # verdict reads only the subset's `decide_on` groups), and AlpaSim's scene
-        # set, which `smoke_config` pins to the subset's `scene_set`.
+        # verdict reads only the subset's `decide_on` groups).
         return [], {}
     raise ValueError(f"no smoke rule for {bench}")
 

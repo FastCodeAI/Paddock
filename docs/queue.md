@@ -42,7 +42,8 @@ Run these from a paddock checkout, with your site `paddock.toml` (it needs the
   checkout's own state does not matter.
 
 `--tier`, `--bench` and `--keep-going` mean what they do for `tools.gate smoke`.
-The default tier is `quick` (about 40 minutes); `all` adds the closed-loop
+The default tier is `quick` (about 40 minutes, with one Bench2Drive route and one AlpaSim
+scene as crash checks); `all` adds the closed-loop
 benchmarks (hours).
 
 **Where the result is.** `ls` prints each job's outcome: `done: SHIP`,
