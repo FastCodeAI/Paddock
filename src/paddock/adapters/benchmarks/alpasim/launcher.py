@@ -17,7 +17,9 @@ left for the next person to rediscover.
 parent on a timeout leaves the compose project up, holding the GPU and the
 ports, and the next episode then fails on a port clash rather than on the thing
 that actually went wrong. `start_new_session=True` puts the whole tree in its
-own group, and the timeout path kills the group and then runs `compose down`.
+own group, and the timeout path kills the group. Every path then saves the
+containers' logs and runs `compose down`: `compose up --exit-code-from` stops
+the containers when a scene ends but never removes them.
 
 **Big models need a long startup timeout.** `runtime.endpoints.startup_timeout_s`
 defaults to 120 s upstream. A cold 10B checkpoint read answers the runtime's
