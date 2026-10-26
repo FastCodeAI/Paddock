@@ -47,6 +47,7 @@ if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 from paddock.registry import ModelSpec, load_benchmarks, load_datasets, load_models  # noqa: E402
+from paddock.results import report  # noqa: E402
 from paddock.viz.palette import color  # noqa: E402
 
 MATRIX = ROOT / "docs" / "support-matrix.toml"
@@ -251,6 +252,12 @@ def load_matrix(
         metric = b.get("metric") or primary.get(b["key"], "")
         loop = LOOP[b["loop"]]
         lower = "↓" in header
+        # The arrow is typed by hand; paddock's own report already knows the direction.
+        if not report.has_direction(metric) or report.lower_is_better(metric) != lower:
+            said = "lower" if lower else "higher"
+            raise ValueError(
+                f"{b['key']}: the header says {said} is better, which paddock's report does not say of {metric!r}"
+            )
         columns.append(
             Column(b["key"], b["name"], loop, header, metric, b["decimals"], lower, b.get("ranked", True))
         )

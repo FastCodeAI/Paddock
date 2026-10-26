@@ -17,7 +17,7 @@ key = "open"
 name = "Open"
 loop = "open"
 header = "ADE ↓ (m)"
-metric = "score"
+metric = "ade"
 decimals = 2
 
 [[benchmark]]
@@ -25,7 +25,7 @@ key = "closed"
 name = "Closed"
 loop = "closed"
 header = "score ↑ (0–5)"
-metric = "score"
+metric = "ncap_score"
 decimals = 2
 
 [[benchmark]]
@@ -33,7 +33,7 @@ key = "side"
 name = "Side"
 loop = "open"
 header = "ADE ↓ (m), not ranked"
-metric = "score"
+metric = "ade"
 decimals = 2
 ranked = false
 """
@@ -103,7 +103,9 @@ def _load(tmp_path: Path, text: str, runs: dict[str, float], invalid: tuple[str,
     for run, value in runs.items():
         folder = tmp_path / "results" / run
         folder.mkdir(parents=True)
-        (folder / "metrics.json").write_text(json.dumps({"metrics": {"score": {"mean": value}}}))
+        (folder / "metrics.json").write_text(
+            json.dumps({"metrics": {"ade": {"mean": value}, "ncap_score": {"mean": value}}})
+        )
         (folder / "run.json").write_text(json.dumps({"valid": run not in invalid}))
     (tmp_path / "page.md").write_text("constant velocity scores 0.70 here, and 0 on the closed loop")
     (tmp_path / "matrix.toml").write_text(text)
@@ -162,6 +164,13 @@ def test_a_cell_that_cannot_be_traced_fails_loudly(tmp_path: Path, change: str, 
     runs = {k: v for k, v in RUNS.items() if not (k == "open/good/1" and "no run" in error)}
     with pytest.raises(ValueError, match=error):
         _load(tmp_path, HEADER + rows, {**runs, "open/invalid/1": 0.2})
+
+
+def test_a_header_arrow_must_agree_with_paddocks_direction(tmp_path: Path) -> None:
+    # The arrow is typed by hand; an ADE column marked higher-is-better would rank backwards.
+    flipped = HEADER.replace('header = "ADE ↓ (m)"', 'header = "ADE ↑ (m)"', 1)
+    with pytest.raises(ValueError, match="higher is better"):
+        _load(tmp_path, flipped + ROWS, {**RUNS, "open/invalid/1": 0.2})
 
 
 def test_a_run_stored_invalid_cannot_be_ranked(tmp_path: Path) -> None:
