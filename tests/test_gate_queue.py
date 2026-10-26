@@ -47,6 +47,20 @@ def _git(*args: str, cwd: Path) -> str:
     ).stdout.strip()
 
 
+def _model_yaml(work: Path, env: dict[str, str]) -> None:
+    """The stand-in model's model.yaml, as a job's commit holds it."""
+    path = work / "src" / "paddock" / "adapters" / "models" / "m" / "model.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "name: m",
+        "runtime:",
+        "  env:",
+        *(f"    {k}: {v}" for k, v in env.items()),
+        "  tuning_env: [M_THREADS]",
+    ]
+    path.write_text("\n".join(lines) + "\n")
+
+
 @pytest.fixture
 def site(tmp_path: Path, monkeypatch):
     """A queue, an origin with one commit on main, and a clone of it to submit from."""
@@ -55,7 +69,8 @@ def site(tmp_path: Path, monkeypatch):
     work = tmp_path / "work"
     subprocess.run([*GIT, "clone", "-q", str(origin), str(work)], check=True, capture_output=True)
     (work / "README").write_text("one\n")
-    _git("add", "README", cwd=work)
+    _model_yaml(work, {"M_CHECKPOINT": "x", "M_MODE": "a"})
+    _git("add", "README", "src", cwd=work)
     _git("commit", "-q", "-m", "one", cwd=work)
     _git("push", "-q", "origin", "HEAD:main", cwd=work)
     # Newer git (CI's) makes origin/HEAD on fetch; older git, cloning an empty repo, does not.
@@ -113,13 +128,12 @@ def _wait_for(predicate, timeout: float = 20.0) -> None:
 
 
 def test_a_job_may_change_only_keys_its_model_yaml_sets(site) -> None:
-    q.checked_env("m", {"M_CHECKPOINT": "v", "M_THREADS": "2"}, site.models)
-    with pytest.raises(q.QueueError, match="unknown model 'other'"):
-        q.checked_env("other", {}, site.models)
+    spec = {"runtime": {"env": {"M_CHECKPOINT": "x", "M_MODE": "a"}, "tuning_env": ["M_THREADS"]}}
+    q.checked_env("m", {"M_CHECKPOINT": "v", "M_THREADS": "2"}, spec, "a" * 40)
     with pytest.raises(q.QueueError, match="does not set CUDA_VISIBLE_DEVICES"):
-        q.checked_env("m", {"CUDA_VISIBLE_DEVICES": "1"}, site.models)
+        q.checked_env("m", {"CUDA_VISIBLE_DEVICES": "1"}, spec, "a" * 40)
     with pytest.raises(q.QueueError, match="names no file"):
-        q.checked_env("m", {"M_CHECKPOINT": "/no/such/file.ckpt"}, site.models)
+        _submit(site, env=["M_CHECKPOINT=/no/such/file.ckpt"])
 
 
 def test_a_checkpoint_is_stored_by_its_content_with_its_small_siblings(tmp_path: Path) -> None:
@@ -180,6 +194,23 @@ def test_submit_puts_the_commit_and_the_copied_checkpoint_in_the_job(site, tmp_p
     assert job.spec["env"]["M_MODE"] == "b"
     assert job.spec["env"]["M_CHECKPOINT"].startswith(str(site.settings.store))
     assert job.spec["sources"]["M_CHECKPOINT"]["source"] == str(ckpt)
+
+
+def test_env_keys_are_checked_against_the_commit_the_job_runs(site) -> None:
+    """Review of #109 (1): a key set only in the submitter's checkout passed, and the job
+    ran main, where it does nothing. A pushed branch that adds the key may set it."""
+    _baselines(site)
+    site.models["m"].runtime.env["M_NEW"] = "local only"  # the submitter's own registry
+    with pytest.raises(q.QueueError, match="does not set M_NEW"):
+        _submit(site, env=["M_NEW=1"])
+    _git("checkout", "-q", "-b", "feature", cwd=site.work)
+    _model_yaml(site.work, {"M_CHECKPOINT": "x", "M_MODE": "a", "M_NEW": "0"})
+    _git("commit", "-q", "-am", "M_NEW", cwd=site.work)
+    _git("push", "-q", "origin", "feature", cwd=site.work)
+    job = q.load_job(site.settings.jobs / _submit(site, env=["M_NEW=1"], ref="feature"))
+    assert job.spec["env"] == {"M_NEW": "1"}
+    with pytest.raises(q.QueueError, match="unknown model 'other'"):
+        _submit(site, model="other")
 
 
 def test_a_candidate_needs_baselines_or_a_baseline_job_ahead_of_it(site) -> None:

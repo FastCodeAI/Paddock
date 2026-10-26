@@ -72,6 +72,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
@@ -91,6 +93,8 @@ POLL_S = 10.0
 #: 120 s each) before the worker kills it.
 STOP_WAIT_S = 300.0
 TIERS = ("quick", "closed", "all")
+#: Where a commit keeps its models, relative to the repository root.
+MODELS_DIR = "src/paddock/adapters/models"
 
 
 class QueueError(Exception):
@@ -252,20 +256,31 @@ def store_value(value: str, store: Path, echo: Callable[[str], None] = _say) -> 
     return str(dest / src.name), {"source": value, "resolved": str(src), "digest": digest, "files": hashes}
 
 
-def checked_env(model: str, env: dict[str, str], models: dict[str, Any]) -> None:
-    """Refuse a model the registry does not know, or a key its model.yaml does not set."""
-    spec = models.get(model)
-    if spec is None:
-        raise QueueError(f"unknown model {model!r}; known: {', '.join(sorted(models))}")
-    known = set(spec.runtime.env) | set(spec.runtime.tuning_env)
+def model_yaml_at(model: str, commit: str, repo: Path) -> dict[str, Any]:
+    """`model`'s model.yaml at `commit`, the code the job runs. The submitter's own
+    checkout may be another commit: a key it alone sets would be accepted and then
+    do nothing in the job, which still records it."""
+    out = subprocess.run(
+        ["git", "-C", str(repo), "show", f"{commit}:{MODELS_DIR}/{model}/model.yaml"],
+        capture_output=True,
+        text=True,
+    )
+    if out.returncode != 0:
+        names = _git(["ls-tree", "--name-only", f"{commit}:{MODELS_DIR}"], repo).split()
+        known = ", ".join(n for n in names if not n.startswith("_"))
+        raise QueueError(f"unknown model {model!r} at {commit[:12]}; known there: {known}")
+    return yaml.safe_load(out.stdout) or {}
+
+
+def checked_env(model: str, env: dict[str, str], spec: dict[str, Any], commit: str) -> None:
+    """Refuse a key that `spec` (the model's model.yaml at the job's `commit`) does not set."""
+    runtime = spec.get("runtime") or {}
+    known = set(runtime.get("env") or {}) | set(runtime.get("tuning_env") or ())
     if unknown := sorted(set(env) - known):
         raise QueueError(
-            f"{model}'s model.yaml does not set {', '.join(unknown)}; a job may change only "
-            f"{', '.join(sorted(known)) or 'nothing'}"
+            f"{model}'s model.yaml at {commit[:12]} does not set {', '.join(unknown)}; a job may "
+            f"change only {', '.join(sorted(known)) or 'nothing'}"
         )
-    for key, value in env.items():
-        if "/" in value and not Path(value).expanduser().exists():
-            raise QueueError(f"{key}={value} names no file or directory")
 
 
 def resolve_commit(ref: str | None, repo: Path = REPO_ROOT) -> str:
@@ -316,12 +331,18 @@ def push_commit(sha: str, job_id: str, settings: Settings, repo: Path = REPO_ROO
 
 
 def submit(args: argparse.Namespace, settings: Settings, echo: Callable[[str], None] = _say) -> str:
-    from paddock.registry import load_models
-
     env = dict(item.split("=", 1) for item in args.env)
     if args.baseline and env:
         raise QueueError("a --baseline job runs the released model: it takes no --env")
-    checked_env(args.model, env, load_models())
+    for key, value in env.items():
+        if "/" in value and not Path(value).expanduser().exists():
+            raise QueueError(f"{key}={value} names no file or directory")
+    if not settings.repo.is_dir():
+        raise QueueError(
+            f"no queue at {settings.root}: `python -m tools.gate_queue init` first (docs/queue.md)"
+        )
+    commit = resolve_commit(args.ref, args.repo)
+    checked_env(args.model, env, model_yaml_at(args.model, commit, args.repo), commit)
     baseline_queued = any(
         j.spec.get("kind") == "baseline"
         and j.spec.get("model") == args.model
@@ -337,11 +358,6 @@ def submit(args: argparse.Namespace, settings: Settings, echo: Callable[[str], N
             f"the queue has no baselines for {args.model} yet: submit the released model first, "
             f"`python -m tools.gate_queue submit --model {args.model} --baseline --tier all`"
         )
-    if not settings.repo.is_dir():
-        raise QueueError(
-            f"no queue at {settings.root}: `python -m tools.gate_queue init` first (docs/queue.md)"
-        )
-    commit = resolve_commit(args.ref, args.repo)
     user = getpass.getuser()
     job_id = f"{dt.datetime.now(dt.UTC):%Y%m%dT%H%M%S}-{user}-{secrets.token_hex(2)}"
     stored, sources = {}, {}
