@@ -1,0 +1,220 @@
+# The README's support matrix: one line per cell, naming the run its number comes from.
+#
+# To add a result: `paddock run ...`, point its cell below at the new run, then run
+# `python -m tools.readme_figures` and commit docs/assets/support-matrix.svg with this file.
+# tests/test_readme_figures.py fails if a named run is missing, if a ranked cell's run is
+# stored valid: false, or if the picture was not redrawn.
+#
+# A cell is one of
+#   { run = "<bench>/<model>/<run id>" }    the number is read from results/<run>/metrics.json
+#   { value = 30.09, source = "docs/..." }  typed, for a figure with no stored run; the
+#                                           source page must show the same number
+#   "not run"                               a variant nobody ran here; a cell left out reads "—"
+# with, optionally, `marks` (the README's A P S R V) and `note` (shown under the number).
+
+[[benchmark]]
+key = "nuscenes"
+name = "nuScenes"
+loop = "open"
+header = "cumulative L2 avg ↓ (m)"
+metric = "l2_uniad_avg"  # not the primary l2_avg: the column is the UniAD-style cumulative L2
+decimals = 3
+
+[[benchmark]]
+key = "kitscenes"
+name = "KITScenes"
+loop = "open"
+header = "ADE ↓ (m)"
+decimals = 3
+
+[[benchmark]]
+key = "comma2k19"
+name = "comma2k19"
+loop = "open"
+header = "ADE@3s ↓ (m)"
+decimals = 3
+
+[[benchmark]]
+key = "nuplan"
+name = "nuPlan"
+loop = "open"
+header = "ADE ↓ (m), 25 anchors, not ranked"
+decimals = 3
+ranked = false
+
+[[benchmark]]
+key = "navsim"
+name = "NAVSIM v2"
+loop = "pseudo"
+header = "EPDMS ↑ (0–1)"
+decimals = 3
+
+[[benchmark]]
+key = "navsim_v1"
+name = "NAVSIM v1"
+loop = "pseudo"
+header = "PDMS ↑ (0–1)"
+decimals = 3
+
+[[benchmark]]
+key = "bench2drive"
+name = "Bench2Drive"
+loop = "closed"
+header = "driving score ↑ (0–100)"
+decimals = 2
+
+[[benchmark]]
+key = "neuroncap"
+name = "neuroNCAP"
+loop = "closed"
+header = "score ↑ (0–5)"
+decimals = 2
+
+[[benchmark]]
+key = "alpasim"
+name = "AlpaSim"
+loop = "closed"
+header = "nuRec scene score ↑ (0–1)"
+decimals = 4
+
+[[model]]
+key = "openpilot"
+name = "OpenPilot"
+
+[[model]]
+key = "alpamayo15"
+name = "Alpamayo 1.5"
+
+[[model]]
+key = "drivejepa"
+name = "Drive-JEPA"
+
+[[model]]
+key = "drivejepa_rerank"
+name = "Drive-JEPA, KITScenes re-ranker"
+
+[[model]]
+key = "drivejepa_retrained"
+name = "Drive-JEPA, retrained on Physical AI AV"
+
+[[model]]
+key = "visionpilot"
+name = "VisionPilot"
+marks = "P S"  # every cell in the row
+
+[[model]]
+key = "meteor"
+name = "METEOR"
+
+[[model]]
+key = "qwendrive"
+name = "Qwen-Drive 1.0"
+
+[[model]]
+key = "autoe2e"
+name = "AutoE2E"
+
+[[model]]
+key = "constant_velocity"
+name = "Baseline (Constant Velocity)"
+floor = true
+
+[cells.openpilot]
+nuscenes = { run = "nuscenes/openpilot/20260908T110028-b71f4f" }
+kitscenes = { run = "kitscenes/openpilot/20261008T004723-a369d1", marks = "A" }
+comma2k19 = { run = "comma2k19/openpilot/20260916T051616-2a91ca", marks = "S" }
+nuplan = { run = "nuplan/openpilot/20260917T220353-9e4f44" }
+navsim = { run = "navsim/openpilot/20260911T161513-3a4c90", marks = "R", note = "10 Hz" }
+navsim_v1 = { run = "navsim_v1/openpilot/20260914T181009-dbcef4", marks = "R", note = "10 Hz" }
+bench2drive = { value = 30.09, source = "docs/benchmarks/bench2drive.md", marks = "R" }
+neuroncap = { run = "neuroncap/openpilot/20260905T055713-11ac59" }
+alpasim = { run = "alpasim/openpilot/legacy-openpilot_020_30scenes" }
+
+[cells.alpamayo15]
+nuscenes = { run = "nuscenes/alpamayo15/20260905T093547-3dd7cd" }
+kitscenes = { run = "kitscenes/alpamayo15/legacy-full-nav" }
+comma2k19 = { run = "comma2k19/alpamayo15/20260913T072437-b058c2" }
+navsim = { run = "navsim/alpamayo15/20260912T040211-a9562c", marks = "R", note = "10 Hz" }
+navsim_v1 = { run = "navsim_v1/alpamayo15/20260914T175447-89a9ca", marks = "R", note = "10 Hz" }
+bench2drive = { run = "bench2drive/alpamayo15/native50-10hz-084418258d833a9f-c4d076", marks = "R", note = "10 Hz" }
+neuroncap = { run = "neuroncap/alpamayo15/20260906T034647-bc409f" }
+alpasim = { run = "alpasim/alpamayo15/legacy-alpamayo_proxy_referee_20hz", marks = "R" }
+
+[cells.drivejepa]
+nuscenes = { run = "nuscenes/drivejepa/20260905T093335-4513d4", marks = "S" }
+kitscenes = { run = "kitscenes/drivejepa/legacy-kitscenes_e2e_final" }
+comma2k19 = { run = "comma2k19/drivejepa_free/20260916T003407-c504e5", marks = "R" }
+nuplan = { run = "nuplan/drivejepa/20260916T204900-6a17de" }
+navsim = { run = "navsim/drivejepa/20260902T173156-7e208f", marks = "A" }
+navsim_v1 = { run = "navsim_v1/drivejepa/20260911T082329-575df6", marks = "A" }
+bench2drive = { run = "bench2drive/drivejepa/native50-2hz-40c29d24c37d542a-447e23", marks = "R", note = "2 Hz" }
+neuroncap = { run = "neuroncap/drivejepa/20261012T224707-f11ac0" }
+alpasim = { run = "alpasim/drivejepa/legacy-drivejepa_014_20hz_30scenes" }
+
+[cells.drivejepa_rerank]
+nuscenes = { run = "nuscenes/drivejepa_rerank/20261012T220930-6194bd" }
+kitscenes = { run = "kitscenes/drivejepa_rerank/20260921T210621-d7ed08", marks = "A" }
+comma2k19 = "not run"
+nuplan = "not run"
+navsim = "not run"
+navsim_v1 = "not run"
+neuroncap = "not run"
+
+[cells.drivejepa_retrained]
+nuscenes = "not run"
+kitscenes = "not run"
+comma2k19 = "not run"
+nuplan = "not run"
+navsim = "not run"
+navsim_v1 = "not run"
+bench2drive = "not run"
+neuroncap = "not run"
+alpasim = { run = "alpasim/drivejepa/legacy-drivejepa_017_20hz_30scenes", marks = "A" }
+
+[cells.visionpilot]
+nuscenes = { run = "nuscenes/visionpilot/20260905T093333-319ef5" }
+kitscenes = { run = "kitscenes/visionpilot/20260909T202724-153b04" }
+comma2k19 = { run = "comma2k19/visionpilot/20260916T012719-03350c" }
+nuplan = { run = "nuplan/visionpilot/20260917T220044-97873a" }
+navsim = { run = "navsim/visionpilot/20260902T175642-df5291" }
+navsim_v1 = { run = "navsim_v1/visionpilot/20260911T083323-c07583" }
+bench2drive = { value = 49.85, source = "docs/benchmarks/bench2drive.md" }
+neuroncap = { run = "neuroncap/visionpilot/20260905T121810-155d36" }
+alpasim = { run = "alpasim/visionpilot/legacy-visionpilot_v2_30scenes" }
+
+[cells.meteor]
+nuscenes = { run = "nuscenes/meteor/20260914T202122-4320bb" }
+kitscenes = { run = "kitscenes/meteor/20260914T215457-ab0586" }
+nuplan = { run = "nuplan/meteor/20260917T195335-1b447c" }
+navsim = { run = "navsim/meteor/20260914T234307-e56cfc", marks = "P" }
+navsim_v1 = { run = "navsim_v1/meteor/20260915T005223-071c0b", marks = "P" }
+neuroncap = { run = "neuroncap/meteor/20260915T193036-d34559" }
+alpasim = { run = "alpasim/meteor/legacy-meteor_011_published_30scenes", marks = "R" }
+
+[cells.qwendrive]
+nuscenes = { run = "nuscenes/qwendrive/20260915T190350-47479e" }
+kitscenes = { run = "kitscenes/qwendrive/20260914T220841-5a91fd" }
+comma2k19 = { run = "comma2k19/qwendrive/20260916T220846-971379" }
+navsim = { run = "navsim/qwendrive/20260914T221802-80457c", marks = "A" }
+navsim_v1 = { run = "navsim_v1/qwendrive/20260915T021715-02aab4", marks = "A" }
+bench2drive = { run = "bench2drive/qwendrive/native50-2hz-084418258d833a9f-9b2bc9", marks = "R", note = "2 Hz" }
+neuroncap = { run = "neuroncap/qwendrive/20260915T023604-12d5eb" }
+
+[cells.autoe2e]
+nuscenes = { run = "nuscenes/autoe2e/20261023T004711-eedbe2", marks = "R" }
+kitscenes = { run = "kitscenes/autoe2e/20261020T220509-dee848", marks = "A R" }
+comma2k19 = { run = "comma2k19/autoe2e/20261020T213543-417344" }
+navsim = { run = "navsim/autoe2e/20261009T055926-3ceb18", marks = "A R", note = "10 Hz" }
+neuroncap = { run = "neuroncap/autoe2e/20261021T175940-844841", marks = "V" }
+alpasim = { run = "alpasim/autoe2e/20261022T045847-86b955", marks = "R" }
+
+[cells.constant_velocity]
+nuscenes = { run = "nuscenes/constant_velocity/20260914T225156-e5170c" }
+kitscenes = { value = 1.381, source = "docs/benchmarks/kitscenes.md" }
+comma2k19 = { run = "comma2k19/constant_velocity/20260916T162837-b89038" }
+nuplan = { run = "nuplan/constant_velocity/20260917T214417-f827db" }
+navsim = { run = "navsim/constant_velocity/20260902T175923-feba73" }
+navsim_v1 = { run = "navsim_v1/constant_velocity/20260911T034553-8f28ac" }
+bench2drive = { run = "bench2drive/constant_velocity/20260908T084921-804913" }
+neuroncap = { value = 0, source = "docs/benchmarks/neuroncap.md", note = "by construction" }
+alpasim = { run = "alpasim/constant_velocity/legacy-cv_023_20hz_30scenes" }

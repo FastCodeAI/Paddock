@@ -3,18 +3,20 @@
     python -m tools.readme_figures            # rewrite both SVGs in docs/assets/
     python -m tools.readme_figures --check    # exit 1 if either is stale
 
-Neither picture holds a number of its own. The support matrix is drawn from the
-README's markdown table, the models picture from each adapter's model.yaml, and
-tests/test_readme_figures.py fails the build when a picture and its source disagree.
+Neither picture holds a number of its own. Each support-matrix cell in
+docs/support-matrix.toml names the run its number is read from; the models picture
+comes from each adapter's model.yaml. tests/test_readme_figures.py fails the build
+when a picture and its source disagree, a named run is missing, or a run stored
+valid: false would be ranked.
 
-The support matrix claims what the README's own notes claim, read off the table:
+The support matrix claims what the README's notes claim:
 - A column ranks lower-is-better when its header has a down arrow, else higher.
 - A cell marked R ("run differently from the rest of its column") or V ("stored
-  valid: false"), and every cell of a column whose header says "not ranked", are
-  hatched and carry no rank.
-- A mark on a model's name applies to every cell in its row, as the README says.
-- The baseline row is the floor: never ranked, and a ranked cell strictly worse than it
-  gets a red triangle.
+  valid: false"), and every cell of a column declared `ranked = false`, are hatched
+  and carry no rank.
+- A mark on a model applies to every cell in its row, as the README says.
+- The floor row (constant velocity) is never ranked, and a ranked cell strictly worse
+  than it gets a red triangle.
 Ties share a rank. Shading is by rank, not by value, so one outlier (Drive-JEPA's 16 m
 on comma2k19) cannot wash the rest of its column to one shade.
 
@@ -30,9 +32,11 @@ ignores that still gets the light card, which is opaque and readable on either t
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import re
 import sys
+import tomllib
 from dataclasses import dataclass, field
 from html import escape
 from pathlib import Path
@@ -42,17 +46,18 @@ _SRC = ROOT / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from paddock.registry import ModelSpec, load_datasets, load_models  # noqa: E402
+from paddock.registry import ModelSpec, load_benchmarks, load_datasets, load_models  # noqa: E402
 from paddock.viz.palette import color  # noqa: E402
 
-README = ROOT / "README.md"
+MATRIX = ROOT / "docs" / "support-matrix.toml"
+RESULTS = ROOT / "results"
 MATRIX_SVG = ROOT / "docs" / "assets" / "support-matrix.svg"
 MODELS_SVG = ROOT / "docs" / "assets" / "models.svg"
 
-LOOP = {"🟢": "open loop", "🟡": "pseudo-closed loop", "🔴": "closed loop"}
+LOOP = {"open": "open loop", "pseudo": "pseudo-closed loop", "closed": "closed loop"}
 MISSING = ("—", "not run")
 UNRANKED_MARKS = {"R", "V"}
-FLOOR_PREFIX = "Baseline"
+CELL_KEYS = {"run", "value", "source", "marks", "note"}
 
 # Rank 1..6 (6 also covers anything lower). Light mode runs dark-to-light; dark mode
 # flips the anchor so rank 1 is the step with the most contrast against a dark card.
@@ -145,9 +150,12 @@ def _document(
 
 @dataclass
 class Column:
+    key: str
     name: str
     loop: str
+    header: str
     metric: str
+    decimals: int
     lower_is_better: bool
     ranked: bool
 
@@ -159,70 +167,93 @@ class Cell:
     shown: str = ""
     qualifier: str = ""
     marks: list[str] = field(default_factory=list)
+    run: str = ""
+    source: str = ""
+    valid: bool = True
     rank: int | None = None
     below_floor: bool = False
 
 
 @dataclass
 class Row:
+    key: str
     name: str
     marks: list[str]
     cells: list[Cell]
-
-    @property
-    def is_floor(self) -> bool:
-        return self.name.startswith(FLOOR_PREFIX)
+    is_floor: bool = False
 
 
-def _split_marks(text: str) -> tuple[str, list[str]]:
-    marks = [m for sup in re.findall(r"<sup>(.*?)</sup>", text) for m in sup.split()]
-    return re.sub(r"\s*<sup>.*?</sup>", "", text).strip(), marks
+def _cell(spec: object, col: Column, where: str, results: Path, root: Path) -> Cell:
+    if spec is None:
+        return Cell("—")
+    if spec in MISSING:
+        return Cell(str(spec))
+    if not isinstance(spec, dict) or not set(spec) <= CELL_KEYS or ("run" in spec) == ("value" in spec):
+        raise ValueError(
+            f"{where}: a cell is {{ run = ... }} or {{ value = ..., source = ... }}, got {spec!r}"
+        )
+    marks, note = spec.get("marks", "").split(), spec.get("note", "")
+    if "run" in spec:
+        run = spec["run"]
+        if not run.startswith(f"{col.key}/"):
+            raise ValueError(f"{where}: {run!r} is not a {col.key} run")
+        folder = results / run
+        if not (folder / "metrics.json").exists():
+            raise ValueError(f"{where}: no run at results/{run}")
+        metrics = json.loads((folder / "metrics.json").read_text(encoding="utf-8"))["metrics"]
+        if col.metric not in metrics:
+            raise ValueError(f"{where}: results/{run} has no {col.metric!r}")
+        value = metrics[col.metric]
+        value = value["mean"] if isinstance(value, dict) else value
+        valid = json.loads((folder / "run.json").read_text(encoding="utf-8")).get("valid", True)
+        shown = f"{value:.{col.decimals}f}"
+        return Cell(shown, value, shown, note, marks, run=run, valid=valid)
+    if "source" not in spec:
+        raise ValueError(f"{where}: a typed value needs a source page")
+    value, source = spec["value"], spec["source"]
+    # An int is a figure that is exact by construction (neuroNCAP's 0), not a measurement.
+    shown = str(value) if isinstance(value, int) else f"{value:.{col.decimals}f}"
+    page = root / source
+    if not page.exists() or shown not in page.read_text(encoding="utf-8"):
+        raise ValueError(f"{where}: {source} does not show {shown}")
+    return Cell(shown, float(value), shown, note, marks, source=source)
 
 
-def _cells(line: str) -> list[str]:
-    return [c.strip() for c in line.strip().strip("|").split("|")]
-
-
-def parse(readme: str) -> tuple[list[Column], list[Row]]:
-    """The first table under '## Support matrix'."""
-    lines = readme.split("## Support matrix", 1)[1].splitlines()
-    start = next(i for i, ln in enumerate(lines) if ln.startswith("|"))
-    header = lines[start]
-    # The table ends at its first non-table line; a later '|' block is another table.
-    body = []
-    for ln in lines[start + 2 :]:
-        if not ln.startswith("|"):
-            break
-        body.append(ln)
-
+def load_matrix(
+    path: Path | None = None, results: Path | None = None, root: Path = ROOT
+) -> tuple[list[Column], list[Row]]:
+    """docs/support-matrix.toml, with every run's number read out of results/."""
+    path, results = path or MATRIX, results or RESULTS
+    body = tomllib.loads(path.read_text(encoding="utf-8"))
+    primary = {}
     columns = []
-    for head in _cells(header)[1:]:
-        m = re.match(r"\[(\S+)\s+(.+?)\]\(.+?\)\s*(.*)", head)
-        if not m or m.group(1) not in LOOP:
-            raise ValueError(f"support matrix header not understood: {head!r}")
-        emoji, name, metric = m.groups()
-        if ("↓" in metric) == ("↑" in metric):
-            raise ValueError(f"header needs exactly one of ↑ or ↓: {head!r}")
-        columns.append(Column(name, LOOP[emoji], metric, "↓" in metric, "not ranked" not in metric))
+    for b in body["benchmark"]:
+        header = b["header"]
+        if ("↓" in header) == ("↑" in header):
+            raise ValueError(f"{b['key']}: the header needs exactly one of ↑ or ↓: {header!r}")
+        if "metric" not in b and not primary:
+            primary = {k: spec.primary_metric for k, spec in load_benchmarks().items()}
+        metric = b.get("metric") or primary.get(b["key"], "")
+        loop = LOOP[b["loop"]]
+        lower = "↓" in header
+        columns.append(
+            Column(b["key"], b["name"], loop, header, metric, b["decimals"], lower, b.get("ranked", True))
+        )
 
+    keys = {c.key for c in columns}
+    cells = body.get("cells", {})
+    unknown = set(cells) - {m["key"] for m in body["model"]}
+    if unknown:
+        raise ValueError(f"[cells.*] names models that are not listed: {sorted(unknown)}")
     rows = []
-    for line in body:
-        name_cell, *raw = _cells(line)
-        if len(raw) != len(columns):
-            raise ValueError(f"row has {len(raw)} cells, header has {len(columns)}: {line!r}")
-        name, row_marks = _split_marks(name_cell)
-        cells = []
-        for text in raw:
-            shown, marks = _split_marks(text)
-            if shown in MISSING:
-                cells.append(Cell(shown, marks=marks))
-                continue
-            m = re.match(r"(-?\d+(?:\.\d+)?)(.*)", shown)
-            if not m:
-                raise ValueError(f"cell is neither a number nor one of {MISSING}: {text!r}")
-            qualifier = m.group(2).strip(" ,").removeprefix("(").removesuffix(")")
-            cells.append(Cell(shown, float(m.group(1)), m.group(1), qualifier, marks))
-        rows.append(Row(name, row_marks, cells))
+    for m in body["model"]:
+        given = cells.get(m["key"], {})
+        if set(given) - keys:
+            raise ValueError(
+                f"[cells.{m['key']}] names benchmarks that are not listed: {sorted(set(given) - keys)}"
+            )
+        row = [_cell(given.get(c.key), c, f"cells.{m['key']}.{c.key}", results, root) for c in columns]
+        rows.append(Row(m["key"], m["name"], m.get("marks", "").split(), row, m.get("floor", False)))
     return columns, rows
 
 
@@ -240,9 +271,19 @@ def rank(columns: list[Column], rows: list[Row]) -> None:
         ]
         sign = 1 if col.lower_is_better else -1
         for cell in pool:
+            if not cell.valid:
+                # paddock report leaves a valid: false run out; the matrix may not rank it either.
+                raise ValueError(f"results/{cell.run} is stored valid: false, so its cell needs V or R")
             cell.rank = 1 + sum(sign * o.value < sign * cell.value for o in pool)
             base = floor.cells[j].value if floor else None
             cell.below_floor = base is not None and sign * cell.value > sign * base
+
+
+def matrix_cell(model: str, bench: str) -> Cell:
+    """One cell of docs/support-matrix.toml, by model and benchmark key."""
+    columns, rows = load_matrix()
+    j = next(j for j, c in enumerate(columns) if c.key == bench)
+    return next(r for r in rows if r.key == model).cells[j]
 
 
 def _wrap(text: str, width: int) -> list[str]:
@@ -260,9 +301,10 @@ def _wrap(text: str, width: int) -> list[str]:
 
 
 def render_matrix(columns: list[Column], rows: list[Row]) -> str:
-    if len(columns) != 9:
-        raise ValueError(f"the layout is drawn for 9 benchmarks, the table has {len(columns)}")
-    metric_lines = [_wrap(c.metric, 14) for c in columns]
+    # Both pictures share one width so they scale alike on the page; more benchmarks
+    # means narrower columns, not a wider picture.
+    col_w = (WIDTH - 2 * PAD - LABEL_W) // len(columns)
+    metric_lines = [_wrap(c.header, 14) for c in columns]
     legend_h, band_h = 34, 24
     head_h = band_h + 18 + 13 * max(len(m) for m in metric_lines) + 8
     floor_gap = 10
@@ -291,7 +333,7 @@ def render_matrix(columns: list[Column], rows: list[Row]) -> str:
         "Paddock support matrix: each model's headline score on each benchmark, "
         "shaded by rank within the benchmark"
     )
-    out = _document(height, title, "the README table", light, dark, defs)
+    out = _document(height, title, "docs/support-matrix.toml", light, dark, defs)
 
     # Legend.
     y = PAD + 14
@@ -318,14 +360,14 @@ def render_matrix(columns: list[Column], rows: list[Row]) -> str:
         while k + 1 < len(columns) and columns[k + 1].loop == columns[j].loop:
             k += 1
         cls = columns[j].loop.split()[0].split("-")[0]
-        bx, bw = x0 + COL_W * j + GAP, COL_W * (k - j + 1) - GAP
+        bx, bw = x0 + col_w * j + GAP, col_w * (k - j + 1) - GAP
         out.append(f'<rect class="{cls}" x="{bx}" y="{by - 9}" width="{bw}" height="3" rx="1.5"/>')
         out.append(_text(bx, by + 8, columns[j].loop.upper(), "sec", 9.5, extra=' letter-spacing="0.8"'))
         j = k + 1
 
     # Column headers.
     for j, col in enumerate(columns):
-        cx = x0 + COL_W * j + (COL_W + GAP) / 2
+        cx = x0 + col_w * j + (col_w + GAP) / 2
         hy = PAD + legend_h + band_h + 14
         out.append(_text(cx, hy, escape(col.name), "ink", 12, "middle", weight="600"))
         for i, line in enumerate(metric_lines[j]):
@@ -352,7 +394,7 @@ def render_matrix(columns: list[Column], rows: list[Row]) -> str:
             out.append(_text(PAD, ty + 13, escape(sub), "sec", 11.5))
 
         for j, cell in enumerate(row.cells):
-            cx, cw = x0 + COL_W * j + GAP, COL_W - GAP
+            cx, cw = x0 + col_w * j + GAP, col_w - GAP
             cy, ch = y + GAP / 2, CELL_H - GAP
             mid = cx + cw / 2
             if cell.value is None:
@@ -386,8 +428,8 @@ def render_matrix(columns: list[Column], rows: list[Row]) -> str:
     return "\n".join(out) + "\n"
 
 
-def build_matrix(readme: str) -> str:
-    columns, rows = parse(readme)
+def build_matrix() -> str:
+    columns, rows = load_matrix()
     rank(columns, rows)
     return render_matrix(columns, rows)
 
@@ -599,7 +641,7 @@ def build_models() -> str:
 
 
 def figures() -> dict[Path, str]:
-    return {MATRIX_SVG: build_matrix(README.read_text(encoding="utf-8")), MODELS_SVG: build_models()}
+    return {MATRIX_SVG: build_matrix(), MODELS_SVG: build_models()}
 
 
 def main(argv: list[str] | None = None) -> int:

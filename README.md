@@ -87,12 +87,14 @@ data and vendors no model code. What crosses the wire:
 ## Support matrix
 
 <p align="center">
-  <img src="docs/assets/support-matrix.svg" width="100%" alt="Support matrix heatmap: each model's headline score on each benchmark, shaded by rank within the benchmark. The same numbers are in the table below.">
+  <img src="docs/assets/support-matrix.svg" width="100%" alt="Support matrix heatmap: each model's headline score on each benchmark, shaded by rank within the benchmark. Each number comes from the run named in docs/support-matrix.toml.">
 </p>
 
 **A** adapted to the benchmark · **P** a pipeline around the model is graded ·
 **S** stale · **R** run differently, not ranked · **V** stored `valid: false`, not ranked.
-Per-benchmark tables and notes: [nuScenes](docs/benchmarks/nuscenes.md#support-matrix-results) ·
+
+Each number is read from the run [docs/support-matrix.toml](docs/support-matrix.toml)
+names for it. Per-benchmark tables and notes: [nuScenes](docs/benchmarks/nuscenes.md#support-matrix-results) ·
 [KITScenes](docs/benchmarks/kitscenes.md#support-matrix-results) ·
 [comma2k19](docs/benchmarks/comma2k19.md#support-matrix-results) ·
 [nuPlan](docs/benchmarks/nuplan.md#support-matrix-results) ·
@@ -158,30 +160,6 @@ Before comparing numbers:
 - **The AlpaSim rows come from AlpaSim's native drivers**, not paddock's bridge,
   and were imported into `results/`; AutoE2E's is the exception, run through
   paddock's bridge.
-
-</details>
-
-<details>
-<summary>The same numbers as a table</summary>
-
-<!-- The heatmap above is drawn from this table. After editing it, run
-     python -m tools.readme_figures; tests/test_readme_figures.py fails until you do. -->
-
-🟢 open loop · 🟡 pseudo-closed loop · 🔴 closed loop · ↑ higher is better · ↓ lower is better
-
-| | [🟢 nuScenes](docs/benchmarks/nuscenes.md#support-matrix-results) cumulative L2 avg ↓ (m) | [🟢 KITScenes](docs/benchmarks/kitscenes.md#support-matrix-results) ADE ↓ (m) | [🟢 comma2k19](docs/benchmarks/comma2k19.md#support-matrix-results) ADE@3s ↓ (m) | [🟢 nuPlan](docs/benchmarks/nuplan.md#support-matrix-results) ADE ↓ (m), 25 anchors, not ranked | [🟡 NAVSIM v2](docs/benchmarks/navsim.md#support-matrix-results) EPDMS ↑ (0–1) | [🟡 NAVSIM v1](docs/benchmarks/navsim_v1.md#support-matrix-results) PDMS ↑ (0–1) | [🔴 Bench2Drive](docs/benchmarks/bench2drive.md#support-matrix-results) driving score ↑ (0–100) | [🔴 neuroNCAP](docs/benchmarks/neuroncap.md#support-matrix-results) score ↑ (0–5) | [🔴 AlpaSim](docs/benchmarks/alpasim.md#support-matrix-results) nuRec scene score ↑ (0–1) |
-|---|---|---|---|---|---|---|---|---|---|
-| OpenPilot | 2.477 | 1.248 <sup>A</sup> | 1.507 <sup>S</sup> | 0.807 | 0.747 (10 Hz) <sup>R</sup> | 0.807 (10 Hz) <sup>R</sup> | 30.09 <sup>R</sup> | 3.60 | 0.7726 |
-| Alpamayo 1.5 | 0.787 | 1.002 | 0.900 | — | 0.691 (10 Hz) <sup>R</sup> | 0.753 (10 Hz) <sup>R</sup> | 55.82 (10 Hz) <sup>R</sup> | 3.73 | 0.9000 <sup>R</sup> |
-| Drive-JEPA | 0.912 <sup>S</sup> | 2.364 | 16.048 <sup>R</sup> | 1.512 | 0.843 <sup>A</sup> | 0.892 <sup>A</sup> | 57.60 (2 Hz) <sup>R</sup> | 4.13 | 0.4209 |
-| Drive-JEPA, KITScenes re-ranker | 0.587 | 0.973 <sup>A</sup> | not run | not run | not run | not run | — | not run | — |
-| Drive-JEPA, retrained on Physical AI AV | not run | not run | not run | not run | not run | not run | not run | not run | 0.7697 <sup>A</sup> |
-| VisionPilot <sup>P S</sup> | 1.441 | 1.534 | 4.045 | 2.246 | 0.431 | 0.488 | 49.85 | 1.58 | 0.6289 |
-| METEOR | 0.977 | 1.879 | — | 1.273 | 0.303 <sup>P</sup> | 0.366 <sup>P</sup> | — | 2.64 | 0.4232 <sup>R</sup> |
-| Qwen-Drive 1.0 | 0.450 | 0.806 | 1.159 | — | 0.840 <sup>A</sup> | 0.876 <sup>A</sup> | 17.08 (2 Hz) <sup>R</sup> | 2.49 | — |
-| AutoE2E | 0.839 <sup>R</sup> | 0.847 <sup>A R</sup> | 2.016 | — | 0.500 (10 Hz) <sup>A R</sup> | — | — | 3.16 <sup>V</sup> | 0.1694 <sup>R</sup> |
-| Baseline (Constant Velocity) | 0.641 | 1.381 | 1.639 | 1.393 | 0.239 | 0.207 | 47.94 | 0, by construction | 0.4876 |
-
 
 </details>
 
