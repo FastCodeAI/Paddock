@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from paddock.registry import TrainedOn, load_models
+from paddock.registry import TrainedOn, load_datasets, load_models
 from tools import readme_figures
 
 HEADER = """
@@ -209,4 +209,16 @@ def test_only_paddocks_own_datasets_are_marked_as_benchmark_data() -> None:
     assert readme_figures.chips(model, {"navsim", "kitscenes"}) == [
         ("NAVSIM navtrain", True),
         ("Waymo E2E", False),
+    ]
+
+
+def test_drivejepa_shows_every_training_stage() -> None:
+    """V-JEPA 2's video, the driving-video pretraining, then navtrain: all three stages."""
+    own = set(load_datasets())
+    assert readme_figures.chips(load_models()["drivejepa"], own) == [
+        ("VideoMix22M", False),
+        ("CoVLA", False),
+        ("DrivingDojo", False),
+        ("OpenScene trainval", True),
+        ("NAVSIM navtrain", True),
     ]

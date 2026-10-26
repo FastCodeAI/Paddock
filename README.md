@@ -112,7 +112,8 @@ was measured the same way as the rest of its column.
 
 - **A — adapted, not zero-shot.** The model was trained on data from this
   benchmark, or its settings were chosen on it. Drive-JEPA and Qwen-Drive on
-  NAVSIM (both trained on `navtrain`), AutoE2E on NAVSIM (pre-trained on nuPlan,
+  NAVSIM (both trained on `navtrain`), Drive-JEPA on nuPlan (52 of the 62
+  nuPlan mini logs are `navtrain` logs), AutoE2E on NAVSIM (pre-trained on nuPlan,
   the source of NAVSIM's scenes) and on KITScenes (fine-tuned on its train
   split), the re-ranker on KITScenes, the retrained
   Drive-JEPA on AlpaSim. OpenPilot's KITScenes cell is a configured run, and its

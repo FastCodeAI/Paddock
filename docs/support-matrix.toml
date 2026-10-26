@@ -144,7 +144,7 @@ alpasim = { run = "alpasim/alpamayo15/legacy-alpamayo_proxy_referee_20hz", marks
 nuscenes = { run = "nuscenes/drivejepa/20260905T093335-4513d4", marks = "S" }
 kitscenes = { run = "kitscenes/drivejepa/legacy-kitscenes_e2e_final" }
 comma2k19 = { run = "comma2k19/drivejepa_free/20260916T003407-c504e5", marks = "R" }
-nuplan = { run = "nuplan/drivejepa/20260916T204900-6a17de" }
+nuplan = { run = "nuplan/drivejepa/20260916T204900-6a17de", marks = "A" }  # 52 of nuPlan mini's 62 logs are navtrain logs
 navsim = { run = "navsim/drivejepa/20260902T173156-7e208f", marks = "A" }
 navsim_v1 = { run = "navsim_v1/drivejepa/20260911T082329-575df6", marks = "A" }
 bench2drive = { run = "bench2drive/drivejepa/native50-2hz-40c29d24c37d542a-447e23", marks = "R", note = "2 Hz" }

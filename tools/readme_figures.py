@@ -107,6 +107,12 @@ DATASET_LABEL = {
     "nvidia-physical-ai": "NVIDIA Physical AI",
     "nuplan": "nuPlan",
     "kitscenes": "KITScenes",
+    "videomix22m": "VideoMix22M",
+    "covla": "CoVLA",
+    "drivingdojo": "DrivingDojo",
+    # OpenScene is what datasets.yaml calls navsim; its trainval split is the raw
+    # video, of which NAVSIM's navtrain is a filter.
+    "navsim/trainval": "OpenScene trainval",
 }
 
 PAD, LABEL_W, COL_W, CELL_H, GAP = 20, 196, 84, 46, 3
@@ -479,8 +485,23 @@ def chips(model: ModelSpec, own: set[str]) -> list[tuple[str, bool]]:
     for t in model.trained_on:
         label = DATASET_LABEL.get(t.dataset, t.dataset)
         # The split says which part of one of our benchmarks it saw (navtrain, train).
-        out.append((f"{label} {t.split}" if t.dataset in own and t.split else label, t.dataset in own))
+        label = f"{label} {t.split}" if t.dataset in own and t.split else label
+        out.append((DATASET_LABEL.get(f"{t.dataset}/{t.split}", label), t.dataset in own))
     return out
+
+
+def chip_lines(model: ModelSpec, own: set[str]) -> list[list[tuple[str, bool]]]:
+    """The training-set chips, flowed onto as many lines as the column needs."""
+    lines: list[list[tuple[str, bool]]] = [[]]
+    used = 0.0
+    for chip in chips(model, own):
+        w = _chip_width(chip[0])
+        if lines[-1] and used + 4 + w > WIDTH - PAD - X_TRAIN:
+            lines.append([])
+            used = 0.0
+        used += (4 if lines[-1] else 0) + w
+        lines[-1].append(chip)
+    return lines
 
 
 def _params(m: float) -> str:
@@ -513,7 +534,10 @@ def render_models(models: list[tuple[str, ModelSpec]], own: set[str]) -> str:
     hist_scale = 2 * math.ceil(max(ages) / 2)
     past, future = HIST_W / hist_scale, PLAN_W / plan_scale  # px per second
     top = PAD + 72
-    height = top + ROW_H * len(models) + PAD - 6
+    # A row grows to fit its training sets: Drive-JEPA's five take four lines.
+    flowed = [chip_lines(m, own) for _, m in models]
+    heights = [max(ROW_H, 21 * len(lines) + 8) for lines in flowed]
+    height = top + sum(heights) + PAD - 6
 
     light = [".track{fill:#ecebe7}", ".none{fill:none;stroke:#a9a8a3;stroke-dasharray:3 3}"]
     light += [".car{fill:#8a8984}", ".stripe{stroke:#fcfcfb}", ".now{fill:#a9a8a3}"]
@@ -569,7 +593,7 @@ def render_models(models: list[tuple[str, ModelSpec]], own: set[str]) -> str:
         out.append(_text(X_PLAN + PLAN_W / 2 * k, hy + 15, tick, "sec", 10, anchor))
 
     for i, (label, m) in enumerate(models):
-        cy = top + ROW_H * i + ROW_H / 2
+        cy = top + sum(heights[:i]) + heights[i] / 2
         hue = color(m.name)
 
         # Name, with the first part of its architecture under it.
@@ -658,15 +682,7 @@ def render_models(models: list[tuple[str, ModelSpec]], own: set[str]) -> str:
             out.append(_text(X_PLAN + PLAN_W + 6, cy + 11, rate, "sec", 10.5))
 
         # Trained on: chips, flowed onto as many lines as they need.
-        lines: list[list[tuple[str, bool]]] = [[]]
-        used = 0.0
-        for chip in chips(m, own):
-            w = _chip_width(chip[0])
-            if lines[-1] and used + 4 + w > WIDTH - PAD - X_TRAIN:
-                lines.append([])
-                used = 0.0
-            used += (4 if lines[-1] else 0) + w
-            lines[-1].append(chip)
+        lines = flowed[i]
         if not lines[0]:
             out.append(_text(X_TRAIN, cy + 4, "not recorded", "sec", 10.5))
         y0 = cy - (21 * len(lines) - 4) / 2

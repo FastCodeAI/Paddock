@@ -43,7 +43,13 @@ capabilities:
   output_kind: waypoints
   horizon_s: 4.0
   trained_on:
-    # The base model, exactly as `drivejepa` declares it.
+    # The base model, exactly as `drivejepa` declares it (see its model.yaml for
+    # where each stage is sourced): V-JEPA 2's video, then driving video, then navtrain.
+    - dataset: videomix22m
+    - dataset: covla
+    - dataset: drivingdojo
+    - dataset: navsim
+      split: trainval
     - dataset: navsim
       split: navtrain
     # The re-ranker. KITScenes' geographic train split: no scene in it is in

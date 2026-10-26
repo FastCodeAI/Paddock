@@ -51,7 +51,7 @@ are non-commercial by default; VisionPilot's and OpenPilot's are not.
 
 | | Pre-training | Post-training |
 |---|---|---|
-| **Drive-JEPA** | CoVLA + DrivingDojo + **OpenScene**, 208 h, 8-frame clips @512×256, 2 Hz; encoder init from V-JEPA 2 | **NAVSIM `navtrain`** (+ **CARLA** for Bench2Drive) |
+| **Drive-JEPA** | encoder init from V-JEPA 2 (VideoMix22M: SSv2, Kinetics, HowTo100M, YT-Temporal-1B, ImageNet); then CoVLA + DrivingDojo + **OpenScene `trainval`**, 330 h (208 h in paper v1), front camera, 8-frame clips @512×256, 2 Hz, no labels | **NAVSIM `navtrain`**, with simulator-scored vocabulary targets (+ **CARLA** for Bench2Drive: no data, split or checkpoint released; paddock runs the NAVSIM-v2 checkpoint there) |
 | **Alpamayo 1.5** | NVIDIA internal: 80,000 h, >1 B images, 2,500+ cities / 25 countries | chain-of-causation traces: 700 K (AR1) / 3 M (1.5); RL via Cosmos-RL / AlpaGym |
 | **OpenPilot** | comma internal fleet: 400 k × 1-min segments ≈ 6,670 h @5 Hz, not released | on-policy rollouts in reprojective sim + world model; fleet deployment, 500 users, 87 k trips |
 | **VisionPilot** | OpenLane (AutoSpeed CIPO); TuSimple + OpenLane + CurveLanes (AutoSteer); AutoDrive warm-starts from the AutoSpeed backbone | none — single-stage supervised |
@@ -81,6 +81,13 @@ was post-trained on NAVSIM `navtrain` and pre-trained partly on OpenScene —
 which *is* the NAVSIM dataset. Every other model meets `navtest` zero-shot.
 (OpenPilot × comma2k19 below is the undeclared case: same fleet, no way to
 check.)
+
+The pre-training used OpenScene's `trainval` split, not its `test` split, which
+`navtest` is drawn from: paper v2 (arXiv 2601.22032, §3, "OpenScene(trainval
+split)") and the author in [Drive-JEPA issue #10](https://github.com/linhanwang/Drive-JEPA/issues/10#issuecomment-4120088355).
+Checked here too: in the scene filters vendored at the pinned sha, the 1,192
+`navtrain` logs and the 136 `navtest` logs share none. So the overlap is with
+NAVSIM's training data, not its test scenes.
 
 To be precise about what this is and is not: training on `navtrain` and testing
 on `navtest` is **the protocol NAVSIM intends**. Drive-JEPA is not cheating; it
@@ -157,6 +164,19 @@ because comma2k19 supplies neither the four cameras nor the lidar extrinsics v2
 requires. Different checkpoint (`drive_jepa_perception_free_agent_vitl.ckpt`),
 different repo subtree, different inputs; the two are not comparable to each
 other and are deliberately not merged into one column here.
+
+### Drive-JEPA × nuplan — most of nuPlan mini is in its training logs
+
+**Drive-JEPA's nuPlan cell is adapted, not zero-shot.** Paddock's nuPlan
+benchmark scores nuPlan's `mini` split. NAVSIM's `navmini` scene filter names 62
+mini logs (`train_test_split/scene_filter/navmini.yaml`, vendored in Drive-JEPA at
+the pinned sha), and 52 of them are also `navtrain` logs. So Drive-JEPA's planner
+was fine-tuned on those drives, and its encoder was pre-trained on all of OpenScene
+`trainval`, which holds them too. The other 10 are `navtest` logs. Which of the 25
+scored anchors fall in the 52 is not known on this machine: the anchor list lives on
+the site that ran the benchmark. The nuPlan column is unranked and every run in it is
+stored `valid: false` already, so no rank changes; the A says why this number is not
+a zero-shot one.
 
 ### Qwen-Drive 1.0 × navsim
 
