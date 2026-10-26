@@ -58,6 +58,8 @@ def site(tmp_path: Path, monkeypatch):
     _git("add", "README", cwd=work)
     _git("commit", "-q", "-m", "one", cwd=work)
     _git("push", "-q", "origin", "HEAD:main", cwd=work)
+    # Newer git (CI's) makes origin/HEAD on fetch; older git, cloning an empty repo, does not.
+    _git("remote", "set-head", "origin", "main", cwd=work)
     settings = q.Settings(root=tmp_path / "queue", store=tmp_path / "store", python=sys.executable)
     q.init(settings, echo=lambda _: None)
     models = {
@@ -159,6 +161,9 @@ def test_main_is_origins_main_and_an_unpushed_commit_is_refused(site) -> None:
     assert q.resolve_commit(None, site.work) == sha, "main is what origin has, not the local branch"
     with pytest.raises(q.QueueError, match="is not on origin"):
         q.resolve_commit("HEAD", site.work)
+    with pytest.raises(q.QueueError, match="is not on origin"):
+        q.resolve_commit(_git("rev-parse", "HEAD", cwd=site.work), site.work)
+    assert q.resolve_commit("HEAD~1", site.work) == sha, "a commit already on origin, named locally"
     with pytest.raises(q.QueueError, match="neither a branch"):
         q.resolve_commit("no-such-branch", site.work)
 

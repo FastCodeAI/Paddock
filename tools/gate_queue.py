@@ -269,10 +269,22 @@ def checked_env(model: str, env: dict[str, str], models: dict[str, Any]) -> None
 
 
 def resolve_commit(ref: str | None, repo: Path = REPO_ROOT) -> str:
-    """The commit `ref` (default main) names on origin, after fetching it."""
+    """The commit `ref` (default main) names, after fetching origin.
+
+    A branch origin has means that branch as pushed; anything else (HEAD, HEAD~1, a
+    commit id, a tag) is resolved here. `origin/HEAD` is not a branch: tried first,
+    it turned `--ref HEAD`, the submitter's own commit, into origin's main, and git
+    2.48 makes it on every fetch.
+    """
     ref = ref or "main"
     _git(["fetch", "-q", "origin"], repo)
-    for name in (f"origin/{ref}", ref):
+    on_origin = ref != "HEAD" and (
+        subprocess.run(
+            ["git", "-C", str(repo), "show-ref", "--verify", "--quiet", f"refs/remotes/origin/{ref}"]
+        ).returncode
+        == 0
+    )
+    for name in (f"origin/{ref}", ref) if on_origin else (ref,):
         out = subprocess.run(
             ["git", "-C", str(repo), "rev-parse", "--verify", "-q", f"{name}^{{commit}}"],
             capture_output=True,
