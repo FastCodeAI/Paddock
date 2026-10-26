@@ -485,6 +485,8 @@ def history(model: ModelSpec) -> tuple[list[float], list[float], str]:
     hz = model.camera_hz
     frames = [k / hz for k in range(n)] if hz else [0.0]
     cam = f"cam {n} @ {hz:g} Hz" if hz and n > 1 else "cam 1" if n == 1 else f"cam {n}, back to back"
+    if hz and n > 1 and model.camera_frames_by_request:
+        cam += " in training"
     if model.ego_history_steps and model.ego_history_hz:
         ego = [k / model.ego_history_hz for k in range(model.ego_history_steps)]
         said = f"ego {model.ego_history_steps} @ {model.ego_history_hz:g} Hz"
@@ -493,6 +495,13 @@ def history(model: ModelSpec) -> tuple[list[float], list[float], str]:
     else:
         ego, said = [], "no ego input"
     return frames, ego, f"{cam} · {said}"
+
+
+def history_note(model: ModelSpec) -> str:
+    """A second caption line where the frames paddock feeds are not at `camera_hz`."""
+    if model.camera_frames_by_request and (model.history_frames or 1) > 1:
+        return f"paddock feeds the last {model.history_frames} steps, at the benchmark's rate"
+    return ""
 
 
 def chips(model: ModelSpec, own: set[str]) -> list[tuple[str, bool]]:
@@ -665,6 +674,8 @@ def render_models(models: list[tuple[str, ModelSpec]], own: set[str]) -> str:
         out += [_tick(now - a * past, cy - 20, 3, 10, hue) for a in frames]
         out += [_tick(now - a * past, cy - 6.5, 1.5, 7, hue) for a in ego]
         out.append(_text(X_HIST, cy + 15, escape(caption), "sec", 10))
+        if note := history_note(m):
+            out.append(_text(X_HIST, cy + 27, escape(note), "sec", 10))
 
         # Plan: one tick per point the model emits, from now out to its horizon.
         out.append(f'<rect class="now" x="{X_PLAN}" y="{cy - 23}" width="1" height="24"/>')

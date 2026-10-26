@@ -174,6 +174,11 @@ class ModelSpec:
     #: Rate of those camera frames, Hz: 2 means 0.5 s apart. None where it is not
     #: recorded, or the model reads one frame.
     camera_hz: float | None = None
+    #: True where the adapter feeds the last `history_frames` requests as they
+    #: arrive, so their spacing is the benchmark's step and `camera_hz` is only the
+    #: rate the model was trained at. visionpilot pairs the previous request: on a
+    #: 2 Hz benchmark its two frames are 0.5 s apart, not 0.1 s.
+    camera_frames_by_request: bool = False
     #: The views the model actually reads, where paddock makes some of them out of
     #: `cameras`: alpamayo's telephoto slot is a crop of CAM_FRONT. Empty means
     #: the model reads `cameras` as declared.
@@ -340,6 +345,7 @@ def load_models(directory: Path = MODELS_DIR) -> dict[str, ModelSpec]:
             input_size=_input_size(caps.get("input_size"), path),
             history_frames=_optional_int(caps.get("history_frames")),
             camera_hz=_optional_float(caps.get("camera_hz")),
+            camera_frames_by_request=bool(caps.get("camera_frames_by_request", False)),
             camera_views=tuple(caps.get("camera_views", ())),
             ego_history_steps=_optional_int(caps.get("ego_history_steps")),
             ego_history_hz=_optional_float(caps.get("ego_history_hz")),

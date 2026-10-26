@@ -65,6 +65,7 @@ capabilities:
   # request instead, so a 2 Hz benchmark hands it frames 0.5 s apart. No ego
   # history: it reads the current speed only.
   camera_hz: 10.0
+  camera_frames_by_request: true
   # It predicts lane curvature and the closest in-path object, not a plan --
   # which is why it has no ADE and why horizon_s is absent rather than zero.
   # AutoSteer's waypoints are in camera coordinates with no time parameterisation.

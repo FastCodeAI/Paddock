@@ -210,6 +210,11 @@ def test_history_shows_camera_and_ego_at_their_own_rates() -> None:
     # openpilot reads no speed at all; METEOR reads the current speed and nothing older.
     assert readme_figures.history(models["openpilot"])[1:] == ([], "cam 2 @ 20 Hz · no ego input")
     assert readme_figures.history(models["meteor"])[1:] == ([0.0], "cam 1 · speed now")
+    # VisionPilot was trained on frames 0.1 s apart, but paddock pairs consecutive
+    # requests: the caption must not read as the rate paddock feeds.
+    assert readme_figures.history(models["visionpilot"])[2] == "cam 2 @ 10 Hz in training · speed now"
+    assert "benchmark's rate" in readme_figures.history_note(models["visionpilot"])
+    assert readme_figures.history_note(models["qwendrive"]) == ""
 
 
 def test_only_paddocks_own_datasets_are_marked_as_benchmark_data() -> None:

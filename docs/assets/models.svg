@@ -253,7 +253,8 @@
 <rect x="614.5" y="324" width="3" height="10" fill="#e7298a"/>
 <rect x="613.0" y="324" width="3" height="10" fill="#e7298a"/>
 <rect x="615.2" y="337.5" width="1.5" height="7" fill="#e7298a"/>
-<text x="496" y="359" class="sec" font-size="10" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="start">cam 2 @ 10 Hz · speed now</text>
+<text x="496" y="359" class="sec" font-size="10" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="start">cam 2 @ 10 Hz in training · speed now</text>
+<text x="496" y="371" class="sec" font-size="10" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="start">paddock feeds the last 2 steps, at the benchmark&#x27;s rate</text>
 <rect class="now" x="650" y="321.0" width="1" height="24"/>
 <rect class="none" x="652" y="330.0" width="108" height="10" rx="5"/>
 <text x="766" y="340" class="ink" font-size="12.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="start" font-weight="600">none</text>
