@@ -411,9 +411,9 @@ component of EPDMS. No model behind the proxy is handed those arguments. Its
 recorded 0.90673 is therefore not a baseline the other three can be measured
 against; the comparable set is runs through `paddock_proxy`.
 
-The same stage is available to the drivejepa node in closed loop, off by
-default (`DRIVEJEPA_MOMENTUM=on`): it needs only the node's own previous plan
-and the ego state it is already sent. A plan is fed only when it is 0.45 to
+The same stage runs in the drivejepa node, on by declaration in its
+`model.yaml` (`DRIVEJEPA_MOMENTUM=on`) and acting only in closed loop: it needs
+only the node's own previous plan and the ego state it is already sent. A plan is fed only when it is 0.45 to
 0.55 s old, so a node called at 10 or 20 Hz compares against the plan of half a
 second ago and selects on the plain score until it has one. **Verified at
 Fastcode:** fed the recorded menus of 30 AlpaSim drives (810 replans), the
@@ -430,7 +430,13 @@ nuScenes and planned from ego status alone. It is kept on the branch
 `record/drivejepa-camera-blind` and is not evidence for or against the stage
 on the model that drives now. The comparison has to be made again on this
 node; a run made with it records `camera_frame: ego` beside `momentum: on` in
-`run.json`. No row in `results/` was made with the switch on. `drivejepa_rerank`
+`run.json`. No row in `results/` was made with the switch on: the tracked
+Drive-JEPA rows on neuroNCAP (`20261012T224707-f11ac0`) and Bench2Drive
+(`pooled50-40c29d24c37d542a-1de367`) are the measurement from before it was
+declared on, and are to be replaced by the regression-gate runs made with it.
+Until [issue #99](https://github.com/FastCodeAI/Paddock/issues/99) lands, the
+run id does not record the declared value, so a closed-loop run started before
+the switch was declared must not be continued with `--resume` after it. `drivejepa_rerank`
 refuses the switch: the stage remembers the model's own pick, and that policy
 drives the re-ranker's pick, so it would be compared against a plan the car
 never followed. Supporting it means telling the stage which plan was driven.

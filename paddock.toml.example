@@ -355,14 +355,15 @@ serialize = true
 # [models.drivejepa.env]
 # DRIVEJEPA_IMAGE_GEOMETRY = "native"   # or "openscene"
 #
-# Momentum-aware selection (the paper's section 3.5) is "off" by default, which
-# is how every published drivejepa row was made: the node drives the raw argmax
-# of the learned score. "on" hands each replan the plan the node chose ~0.5 s
-# earlier, so the model's own calibrate_score runs before the argmax -- what
-# upstream's evaluation loop does. It changes which proposal is driven in closed
-# loop; an open-loop sequence resets first and is unaffected. Recorded under
-# provenance.policy with how often a previous plan was actually fed.
-# DRIVEJEPA_MOMENTUM = "off"            # or "on"
+# Momentum-aware selection (the paper's section 3.5) is on: drivejepa's
+# model.yaml declares it, so there is nothing to set here. It hands each replan
+# the plan the node chose ~0.5 s earlier, so the model's own calibrate_score runs
+# before the argmax -- what upstream's evaluation loop does. It changes which
+# proposal is driven in closed loop only; an open-loop sequence resets first and
+# is unaffected. Recorded under provenance.policy with how often a previous plan
+# was actually fed. "off" drives the raw argmax of the learned score; it differs
+# from the declared value, so a run made with it is not valid.
+# DRIVEJEPA_MOMENTUM = "off"            # an override: the run is not valid
 
 # ---------------------------------------------------------------------------
 # [ingest] -- where results that predate paddock live on this machine.

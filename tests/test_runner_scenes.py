@@ -564,6 +564,22 @@ def test_the_released_drivejepa_checkpoint_swapped_by_a_site_is_named(tmp_path) 
     assert _env_override_reasons(_cfg(tmp_path), spec) == [], "no env block, nothing to say"
 
 
+def test_drivejepa_declares_momentum_so_a_site_saying_on_is_not_an_override(tmp_path) -> None:
+    """Momentum is part of the model's definition; a site that switches it off is the override."""
+    from paddock.registry import Registry
+    from paddock.runner import _env_override_reasons
+
+    spec = Registry.load().models["drivejepa"]
+    assert spec.runtime.env["DRIVEJEPA_MOMENTUM"] == "on"
+    assert (
+        _env_override_reasons(_site_with_env(tmp_path, "drivejepa", {"DRIVEJEPA_MOMENTUM": "on"}), spec) == []
+    )
+    (reason,) = _env_override_reasons(
+        _site_with_env(tmp_path, "drivejepa", {"DRIVEJEPA_MOMENTUM": "off"}), spec
+    )
+    assert "DRIVEJEPA_MOMENTUM" in reason
+
+
 def test_autoe2e_logging_where_it_records_is_not_a_change_of_plan(tmp_path) -> None:
     """AutoE2E's NAVSIM row (`20261009T055926-3ceb18`) set only `AUTOE2E_RECORD_DIR`,
     a log written after the plan is made. It must stay rankable; its checkpoint must not."""
