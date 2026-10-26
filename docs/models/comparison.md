@@ -29,7 +29,7 @@ narrative half: provenance, licences, and the things that do not fit a schema.
 |---|---|---|---|---|---|---|---|
 | **Output @ freq** | trajectory from an 8192-entry anchor vocabulary | trajectory @ 6.4 s + chain-of-causation trace; 99 ms end-to-end | 33 waypoints over 10 s @ 20 Hz + lane lines/lead | AutoSteer: ego-path waypoints in camera coords, **no time parameterisation**; AutoSpeed: CIPO boxes (3 classes); AutoDrive: CIPO distance + curvature + presence prob | K=3 × 6 waypoints @ 0.5 s (3 s) + mode logits + steer/accel/brake; plus 11 perception heads | 128-d = 64 steps × (accel, curvature), 6.4 s @ 10 Hz; paddock integrates them with upstream's rollout | 50 poses (x, y, heading) @10 Hz, 5 s; optional one-sentence rationale |
 | **Architecture** | V-JEPA-2-init ViT-L encoder + proposal-centric planner; MTD + momentum-aware selection | Cosmos-Reason2 + diffusion trajectory decoder (AR1: Cosmos-Reason VLM + traj decoder) | supercombo, a single ONNX graph | 3 separate conv nets, all YOLO-family 'n' variant | ResNet-34 + FPN per camera, depth-gated IPM lift to one 800×500 BEV @ 0.2 m, 12 task heads + refiners (`DepthSegIPMNetV52`) | ResNet-50 + BEVFormer V2 T8 (300×200 BEV, frozen for the KITScenes fine-tune), deformable map/route fusion, GRU planner | Qwen3.5-4B VLM (unchanged) + 1 B flow-matching Planning Expert reading its KV caches; separate BEV perception head |
-| **Parameters** | 307 M (encoder + planner) | **10 B** (34 B for Super) | not published | **28.1 M** — AutoSteer 8.22 + AutoSpeed 9.33 + AutoDrive 10.58 ᵐ | 54 M (refiner incl.) ᵖ | 79.9 M ᵖ | **5.58 B** (4.54 B VLM + 1.04 B expert, counted from the checkpoint; the 125 M perception head is not loaded for planning) |
+| **Parameters** | 307 M (encoder + planner) | **10 B** (34 B for Super) | **30.0 M** ᵐ, counted in the pinned ONNX (comma gives 26.6 M for this generation) | **28.1 M** — AutoSteer 8.22 + AutoSpeed 9.33 + AutoDrive 10.58 ᵐ | 54 M (refiner incl.) ᵖ | 79.9 M ᵖ | **5.58 B** (4.54 B VLM + 1.04 B expert, counted from the checkpoint; the 125 M perception head is not loaded for planning) |
 | **Size** | 1.23 GB fp32 / 0.61 fp16 ᶜ | 20 GB bf16 ᶜ | **0.061 GB** (`driving_supercombo.onnx`); 1.76 GB big variant; 0.0075 GB dmonitoring ᵐ | 0.112 GB fp32 / 0.028 INT8 ᵐ | 0.35 GB fp32 ONNX ᵐ; 2:4 sparse trunk | 0.32 GB fp32 ᶜ | 9.1 GB VLM + 2.1 GB per planner, bf16 ᶜ |
 
 Note the four-order-of-magnitude spread in the size row, and then read the
@@ -52,11 +52,11 @@ are non-commercial by default; VisionPilot's and OpenPilot's are not.
 | | Pre-training | Post-training |
 |---|---|---|
 | **Drive-JEPA** | encoder init from V-JEPA 2 (VideoMix22M: SSv2, Kinetics, HowTo100M, YT-Temporal-1B, ImageNet); then CoVLA + DrivingDojo + **OpenScene `trainval`**, 330 h (208 h in paper v1), front camera, 8-frame clips @512×256, 2 Hz, no labels | **NAVSIM `navtrain`**, with simulator-scored vocabulary targets (+ **CARLA** for Bench2Drive: no data, split or checkpoint released; paddock runs the NAVSIM-v2 checkpoint there) |
-| **Alpamayo 1.5** | NVIDIA internal: 80,000 h, >1 B images, 2,500+ cities / 25 countries | chain-of-causation traces: 700 K (AR1) / 3 M (1.5); RL via Cosmos-RL / AlpaGym |
-| **OpenPilot** | comma internal fleet: 400 k × 1-min segments ≈ 6,670 h @5 Hz, not released | on-policy rollouts in reprojective sim + world model; fleet deployment, 500 users, 87 k trips |
-| **VisionPilot** | OpenLane (AutoSpeed CIPO); TuSimple + OpenLane + CurveLanes (AutoSteer); AutoDrive warm-starts from the AutoSpeed backbone | none — single-stage supervised |
-| **METEOR** | TIER IV Co-MLOps DRS recordings (Japan + a US subset), 953 GB / 12,595 scenes @ 5 Hz, 100 % auto-labelled; adverse conditions as Cosmos Transfer re-renders | rule-based trajectory rewards + GRPO mode loss (r48) |
-| **AutoE2E** | nuPlan (`nuplan_full` stage; logs not listed) from a nuScenes-trained BEVFormer V2 initialisation | **KITScenes** fine-tune, camera BEV frozen (`kitscenes-epoch-5`, the checkpoint paddock runs) |
+| **Alpamayo 1.5** | VLM base Cosmos-Reason2-8B, itself post-trained from Qwen3-VL-8B-Instruct; NVIDIA internal driving: 80,000 h, >1 B images, US + EU (2,500+ cities / 25 countries per the AR1 paper); **17 public driving sets** on the model card, including **NAVSIM**-ReCogDrive, **NAVSIM**-Traj and five built on **nuScenes** (nuScenesQA, DriveLM, nuInstruct, OmniDrive, Talk2Car), splits not given | chain-of-causation traces: 700 K (AR1) / 3 M (1.5), about 10 % human, the rest VLM-labelled; RL with a reasoning reward (Cosmos-RL GRPO in AR1; whether 1.5's RL was closed loop is not stated) |
+| **OpenPilot** | comma fleet, not released: the world model on 2.5 M minutes of video at 5 Hz; the vision model on fleet segments (500 k or 2.2 M: comma's posts disagree) | the policy trained entirely inside the learned simulator, a world model (openpilot 0.11's "WMI" model). The 400 k segments ≈ 6,670 h, 500 users and 87 k trips are the 2025 paper's experiment and field test, not this model |
+| **VisionPilot** | AutoSpeed: OpenLane (Waymo Open images), from scratch. AutoSteer: TuSimple + CurveLanes + OpenLane images with OpenLane-V labels, from scratch | AutoDrive: from AutoSpeed's backbone (shown in the weights), then **ZOD** Sequences frame pairs labelled by AutoSpeed, ZOD's radar and its steering angle |
+| **METEOR** | ResNet-34 from **ImageNet**; TIER IV Co-MLOps DRS recordings (Japan + a US subset) and a 7-camera minibus corpus @ 5 Hz, every label from CoMET (TIER IV's ensemble of 12 models, unnamed); Cosmos Transfer re-renders of those scenes train perception only. 953 GB / 12,595 scenes is the disk, not the training list | released v157: a 2:4-sparse fine-tune from v151 with the planner frozen and RL off (`rl_w 0.0`, read from the checkpoint); the GRPO stage is not shown to be in its ancestry |
+| **AutoE2E** | ResNet-50 via **COCO** (FCOS); BEVFormer V2 R50 T8 on **nuScenes train**, frozen in every later stage; then nuPlan v1.1 **train** sensor logs (1,085 logs, none of `navtest`'s) | **KITScenes** train fine-tune (404 scenes), camera BEV still frozen (`kitscenes-epoch-5`, the checkpoint paddock runs) |
 | **Qwen-Drive 1.0** | Qwen3.5-4B's own corpus; driving VQA, perception and planning data from public datasets (report §data); trajectories "standardized from multiple public driving datasets" — **NAVSIM `navtrain`** (declared), Waymo E2E, NVIDIA PhysicalAI | planner-rl: reward optimisation on the benchmark objectives; paddock runs planner-sft |
 
 ---
@@ -75,10 +75,11 @@ situation and pass on the strength of having a row in the tables above.
 
 ### Drive-JEPA × navsim
 
-**Drive-JEPA is the only model here with *declared* training exposure to a
-paddock benchmark's dataset, and it leads that benchmark by 0.235 EPDMS.** It
-was post-trained on NAVSIM `navtrain` and pre-trained partly on OpenScene —
-which *is* the NAVSIM dataset. Every other model meets `navtest` zero-shot.
+**Drive-JEPA trained on NAVSIM's own data, and it leads that benchmark by 0.235
+EPDMS.** It was post-trained on NAVSIM `navtrain` and pre-trained partly on
+OpenScene — which *is* the NAVSIM dataset. Qwen-Drive, AutoE2E and Alpamayo 1.5
+also trained on NAVSIM or nuPlan data (their sections below); OpenPilot and
+VisionPilot meet `navtest` zero-shot.
 (OpenPilot × comma2k19 below is the undeclared case: same fleet, no way to
 check.)
 
@@ -188,8 +189,9 @@ alongside Waymo E2E and NVIDIA PhysicalAI; a model reporting navtest as its
 first planning result trained on `navtrain`, and `trained_on` declares that.
 The NAVSIM frames, cameras (`cam_f0/l0/r0`) and 10 Hz ego history paddock feeds
 it are the ones its own scene files are built from, so on this column it plays
-the benchmark as designed, like Drive-JEPA, while Alpamayo, OpenPilot and
-VisionPilot meet navtest zero-shot.
+the benchmark as designed, like Drive-JEPA, while OpenPilot and VisionPilot
+meet navtest zero-shot (Alpamayo 1.5 trained on NAVSIM data too; see *Alpamayo
+1.5 × navsim*).
 
 **What is not sourced.** The exact split list is not in the inference repo:
 `docs/data.md` describes building navtest scene files, and the report's data
@@ -260,12 +262,11 @@ fine-tuned on KITScenes. NAVSIM's scenes are OpenScene, which is nuPlan
 resampled to 2 Hz, and paddock feeds AutoE2E from nuPlan's own 10 Hz logs. So
 its 0.500 EPDMS on `navtest` is not zero-shot in the way VisionPilot's or
 OpenPilot's is: same rig, same cities, same camera geometry it was pre-trained
-on. Whether it saw the *logs* is a separate question the release does not
-answer. The `nuplan_full` stage names no split and the dataset manifest it
-hashes is not published; `navtest` is drawn from nuPlan's test logs, and the
-release reports its own figures on nuPlan test, which suggests those were held
-out. That is argued, not verified, and `model.yaml` declares `nuplan / train`
-on that reading.
+on. It did not see the *logs*: the release trains on "nuPlan v1.1 train sensor
+logs" (model card at c553a2e1), the code pins that list's 1,085 logs, and none
+of `navtest`'s 136 logs is among them, checked against Motional's published
+train inventory. 44 of nuPlan mini's 64 logs are, which would matter if AutoE2E
+were run on the nuPlan benchmark; it is not today.
 
 Its inputs differ from training too: NAVSIM sends no route and paddock no map,
 which is upstream's own KITScenes test track (`camera_only_missing_map_route`),
@@ -281,12 +282,14 @@ other models there are zero-shot; see *AutoE2E × kitscenes*, below.
 
 **AutoE2E's KITScenes cell is adapted, not zero-shot.** The checkpoint paddock
 runs, `kitscenes-epoch-5`, is the nuPlan model fine-tuned on KITScenes'
-**train** split: the 534 scenes of upstream's pinned geographic split
+**train** split: upstream's pinned geographic split
 (`Model/data_parsing/kit_scenes/pinned_splits/default_geo_split_v1_0` at
-`40a75cf8`). None of the benchmark's 140 scenes is among them, which was
-checked by scene id. 117 of the 140 are that split's 117 validation scenes,
-which the release reports its own KITScenes figures on; whether they also chose
-epoch 5 is not stated. The other 23 are `overlap_train_val` scenes, in neither
+`40a75cf8`) lists 534 scenes, 533 exist in the release, and 404 had samples,
+of which 40 were held out as train-dev. None of the benchmark's 140 scenes is
+among them, which was checked by scene id. 117 of the 140 are that split's 117
+validation scenes, which the release reports its own KITScenes figures on; the
+epoch was chosen on the train-dev scenes, not on these (model card, "These sets
+were used to choose the epoch"). The other 23 are `overlap_train_val` scenes, in neither
 of upstream's lists but in an area that overlaps train. The 223 keyframes split
 186 / 37 between the two, and the AutoE2E page reports both.
 
@@ -297,6 +300,40 @@ default). So the cell is in-distribution twice over: the rig, cities and
 driving it was trained on, and a route no other row is given. Read it beside
 the zero-shot rows, never as one of them. The AutoE2E page has the runs without
 the route and without the map, which say how much of the number each carries.
+
+### Alpamayo 1.5 × navsim — NAVSIM data in its public training sets
+
+**Alpamayo 1.5's NAVSIM cells are adapted, not zero-shot.** Its model card
+(nvidia/Alpamayo-1.5-10B, "Training Dataset") lists 17 public driving datasets
+beside NVIDIA's own data, and two of them are NAVSIM data: NAVSIM-ReCogDrive and
+NAVSIM-Traj. The card gives no split. ReCogDrive's published question-answer
+pairs come from `navtrain`, which shares none of its logs with `navtest`, so
+shared test frames are unlikely; that is argued from ReCogDrive's paper, not
+stated by NVIDIA. Both NAVSIM cells already carried R for their 10 Hz history;
+they now carry A as well.
+
+### Alpamayo 1.5 × nuscenes — five nuScenes-built sets, splits not given
+
+**Alpamayo 1.5's nuScenes and neuroNCAP cells are adapted, not zero-shot.** Five
+of the public datasets on its model card are built on nuScenes images:
+nuScenesQA, DriveLM, nuInstruct, OmniDrive and Talk2Car. Their targets are mostly
+language (questions, answers, descriptions), not trajectories, and NVIDIA gives
+no split. Some of those sets put nuScenes val scenes into their own training
+splits (Talk2Car and nuInstruct re-split train and val together), so paddock's
+val scenes, and neuroNCAP's 14, which are all val scenes, may have been seen.
+That is argued; the card does not say.
+
+### AutoE2E × nuscenes — a camera encoder trained on nuScenes train
+
+**AutoE2E's nuScenes and neuroNCAP cells are adapted, though no scored scene was
+in training.** Its camera encoder, ResNet-50 plus BEVFormer V2, is the official
+BEVFormer V2 R50 T8 checkpoint, trained on nuScenes train only
+(`nuscenes_infos_temporal_train.pkl` in BEVFormer's config; its training log runs
+1,759 steps on 16 GPUs per epoch, which is train's 28,130 samples), and it stays
+frozen through both of AutoE2E's own stages. So the weights that read the cameras
+were fitted to the nuScenes rig and cities. Paddock's nuScenes benchmark scores
+val, and all 14 neuroNCAP scenes are val scenes (checked against
+`adapters/benchmarks/nuscenes/val_scenes.json`), so none was in training.
 
 ### Drive-JEPA retrained × AlpaSim
 
@@ -504,7 +541,7 @@ post-trained on NAVSIM `navtrain` and pre-trained partly on OpenScene, which
 *is* the NAVSIM dataset. Qwen-Drive 1.0 reports navtest as its own headline
 planning result, so its adapter declares `navtrain` too — read off the report
 rather than sourced from code, and the one line to correct if the paper says
-otherwise. OpenPilot, Alpamayo and VisionPilot meet `navtest` zero-shot. That is the protocol NAVSIM intends — it is not cheating —
+otherwise. OpenPilot and VisionPilot meet `navtest` zero-shot; Alpamayo 1.5's model card lists NAVSIM data too. That is the protocol NAVSIM intends — it is not cheating —
 but it means both NAVSIM columns conflate "better planner" with
 "in-distribution versus zero-shot". Sourced at
 the pinned sha: `navsim_v2/scripts/training/train_drive_jepa_perception_based.sh`

@@ -70,11 +70,15 @@ capabilities:
 
   # -- model card (docs/models/comparison.md) --
   architecture: "supercombo -- one ONNX graph, run through tinygrad"
-  # Parameter count is not published by comma. size_gb is the file paddock
+  # Counted, not published: the pinned driving_supercombo.onnx holds 30,003,201
+  # fp16 weights (its initializers; model_checkpoint 6a7d09ad.../a27b3122...).
+  # comma's 0.11.2 notes give 26.6 M for this model generation, which this file
+  # does not match exactly. size_gb is the file paddock
   # actually loads: driving_supercombo.onnx, 60,881,999 bytes. The other one in
   # that directory, big_driving_supercombo.onnx, needs an external AMD GPU and
   # is 1,757,355,221 bytes -- which is only ever seen as a 135-byte git-lfs
   # pointer here, so read the `size` line in the pointer, not the file length.
+  params_m: 30.0
   size_gb: 0.061
   input_size: [512, 256]
   history_frames: 2
@@ -92,13 +96,17 @@ capabilities:
   # a parked car. Not fixable in an adapter.
   needs_speed: false
   trained_on:
-    # comma's internal fleet, ~6,670 h, not released.
+    # comma's internal fleet, not released. This model (openpilot 0.11, the "WMI"
+    # model) has its policy trained only inside a learned simulator, a world model
+    # itself trained on "2.5M minutes of driving video" from the fleet; its vision
+    # part on fleet segments (comma gives 500k and 2.2M in two posts). The 6,670 h
+    # once written here is the 2025 paper's experiment, not this model
+    # (blog.comma.ai/011release, /0112release; arXiv 2504.19077).
     #
-    # This used to say "no overlap with any paddock dataset". That stopped
-    # being safe when comma2k19 was added: comma2k19 is comma's own released
-    # fleet data, collected on the same two cars by the same device, and the
-    # training corpus is not published segment by segment, so whether these
-    # 2035 segments are inside it cannot be checked from outside comma. It is
+    # comma2k19 is comma's own released fleet data, of the same car models (RAV4,
+    # Civic), but recorded in 2018 on the single-camera EON, while this model
+    # trains on narrow + wide camera pairs. No comma source says whether it is in
+    # the training data, so the overlap cannot be checked from outside comma. It is
     # declared as one dataset rather than two because asserting the overlap
     # would be as unverified as denying it; what the overlap would mean for
     # reading that column is in docs/models/comparison.md.

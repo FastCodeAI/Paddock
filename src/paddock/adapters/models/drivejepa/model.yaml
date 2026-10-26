@@ -81,7 +81,7 @@ capabilities:
     - dataset: navsim
       split: trainval
     # 3. The planner, on NAVSIM navtrain. navtrain -> navtest is the protocol NAVSIM
-    #    intends; what makes the column hard to read is that OpenPilot, Alpamayo and
+    #    intends; what makes the column hard to read is that OpenPilot and
     #    VisionPilot meet navtest zero-shot.
     #
     # Sourced at the pinned sha, not taken on trust: Drive-JEPA @ e21f474,

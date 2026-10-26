@@ -68,8 +68,26 @@ capabilities:
   # a measurement: sd 1.817 across seeds on frontal-0103.
   stochastic: true
   trained_on:
-    # NVIDIA internal, 80,000 h. Zero-shot on every paddock benchmark.
+    # Not zero-shot everywhere: the model card (nvidia/Alpamayo-1.5-10B, "Training
+    # Dataset") lists 17 public driving datasets beside NVIDIA's own data.
+    # 1. The VLM base: Cosmos-Reason2-8B (config.json vlm_name_or_path), itself
+    #    post-trained from Qwen3-VL-8B-Instruct on its own physical-AI corpora.
+    - dataset: qwen3-vl
+    - dataset: cosmos-reason2
+    # 2. NVIDIA's fleet: 80,000 h of multi-camera driving, US and EU, and 3M
+    #    chain-of-causation reasoning traces (about 10 % human, the rest VLM-made).
+    #    The public PhysicalAI-AV clips are partitioned to match its train/test
+    #    split; none of paddock's 30 AlpaSim scenes is a train clip (7 alpasim,
+    #    2 test, 21 not in the public dataset), checked in alpamayo_aligned.parquet.
     - dataset: nvidia-internal
+    # 3. The card's public sets. Two are NAVSIM data (NAVSIM-ReCogDrive, NAVSIM-Traj)
+    #    and five are built on nuScenes (nuScenesQA, DriveLM, nuInstruct, OmniDrive,
+    #    Talk2Car); no split is given for any. See comparison.md, Alpamayo 1.5 x
+    #    navsim and x nuscenes. The other ten: CODA-LM, Drive-Action, DriveGPT4,
+    #    LingoQA, MapLM, MM-AU, Roadwork, Senna, SUTD, W3DA.
+    - dataset: navsim
+    - dataset: nuscenes
+    - dataset: public-driving-qa
 # One key, not one per benchmark that arrived: two `benchmarks:` lines make YAML
 # keep the last and silently drop the rest, which is how alpasim once went missing.
 benchmarks: [kitscenes, neuroncap, navsim, navsim_v1, bench2drive, alpasim, nuscenes, comma2k19, nuplan]

@@ -4,7 +4,10 @@
 
 The nuScenes planning protocol that UniAD, VAD and their successors report: on
 every val keyframe, plan 3 s ahead from the real past and compare with what the
-human drove. Zero-shot for every model here; none was trained on nuScenes.
+human drove. Zero-shot for every model here except two, which carry A in the
+support matrix: Alpamayo 1.5's model card lists five nuScenes-built training sets
+(splits not given), and AutoE2E's frozen camera encoder was trained on nuScenes
+train. See docs/models/comparison.md.
 
 **Scoring only some samples.** `PADDOCK_NUSCENES_SAMPLES=<id>,<id>,...` (ids as
 `nuscenes/val/<scene>/<index>`) scores those samples and no others. Such a run is

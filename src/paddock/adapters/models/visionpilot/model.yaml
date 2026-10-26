@@ -71,10 +71,18 @@ capabilities:
   # AutoSteer's waypoints are in camera coordinates with no time parameterisation.
   output_kind: controls
   trained_on:
-    # Lane and CIPO datasets only. Zero-shot on every paddock benchmark.
+    # None of paddock's benchmark data: no training loader of the three nets reads
+    # any (auto_steer, auto_speed, auto_drive repos). Per net:
+    # AutoSteer: TuSimple, CurveLanes, and OpenLane images (Waymo Open) with
+    #   OpenLane-V labels. AutoSpeed: OpenLane (Waymo Open) closest-in-path labels.
+    #   Both from scratch: no COCO or ImageNet weights.
+    # AutoDrive: starts from AutoSpeed's backbone (shown by comparing the shipped
+    #   weights), then trains on ZOD Sequences frame pairs, labelled by AutoSpeed,
+    #   ZOD's radar and its steering angle (load_data_auto_drive.py).
     - dataset: openlane
     - dataset: tusimple
     - dataset: curvelanes
+    - dataset: zod
 # One list, appended to. Two `benchmarks:` keys is valid YAML and keeps only the
 # last, which is how a model has silently dropped off a board before.
 #

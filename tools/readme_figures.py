@@ -100,7 +100,7 @@ DATASET_LABEL = {
     "comma-fleet": "comma fleet",
     "nvidia-internal": "NVIDIA internal",
     "navsim": "NAVSIM",
-    "openlane": "OpenLane",
+    "openlane": "OpenLane (Waymo)",
     "tusimple": "TuSimple",
     "curvelanes": "CurveLanes",
     "tier4_comlops_drs": "TIER IV DRS",
@@ -111,6 +111,13 @@ DATASET_LABEL = {
     "videomix22m": "VideoMix22M",
     "covla": "CoVLA",
     "drivingdojo": "DrivingDojo",
+    "qwen3-vl": "Qwen3-VL corpus",
+    "cosmos-reason2": "Cosmos-Reason2 data",
+    "public-driving-qa": "10 more public sets",
+    "zod": "ZOD",
+    "imagenet": "ImageNet",
+    "coco": "COCO",
+    "nuscenes": "nuScenes",
     # OpenScene is what datasets.yaml calls navsim; its trainval split is the raw
     # video, of which NAVSIM's navtrain is a filter.
     "navsim/trainval": "OpenScene trainval",

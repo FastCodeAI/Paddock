@@ -58,6 +58,19 @@ capabilities:
   stochastic: false
   needs_speed: true
   trained_on:
+    # Four layers, each read from the release (model card c553a2e1, the checkpoints'
+    # stored config) and BEVFormer's own config and log:
+    # 1. BEVFormer's ResNet-50 from an FCOS checkpoint trained on COCO.
+    # 2. BEVFormer V2 R50 T8 on nuScenes train only (24 epochs, 3D boxes). That
+    #    camera encoder stays frozen in both later stages, so it is these weights.
+    #    No nuScenes val scene, and so none of neuroNCAP's 14, is in it; see
+    #    comparison.md, AutoE2E x nuscenes.
+    # 3. nuPlan v1.1 train sensor logs (1,085 logs), trajectory and route. None of
+    #    NAVSIM navtest's 136 logs is among them; 44 of nuPlan mini's 64 are.
+    # 4. KITScenes train (404 scenes); none of the scored val/overlap scenes.
+    - dataset: coco
+    - dataset: nuscenes
+      split: train
     - dataset: nuplan
       split: train
     - dataset: kitscenes

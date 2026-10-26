@@ -1,5 +1,5 @@
 name: nuscenes
-description: nuScenes val open-loop planning - L2 error at 1/2/3 s and collision rate against the recorded future (UniAD/VAD protocol), zero-shot for every model here
+description: nuScenes val open-loop planning - L2 error at 1/2/3 s and collision rate against the recorded future (UniAD/VAD protocol)
 # Open loop: the log decides what happens next; the model plans from the real
 # past (up to 2 s of keyframes) and its 3 s plan is compared with what the human
 # drove. Reported both ways the literature does: VAD-style values at exactly
