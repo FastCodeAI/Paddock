@@ -57,7 +57,7 @@ are non-commercial by default; VisionPilot's and OpenPilot's are not.
 | **VisionPilot** | AutoSpeed: OpenLane (Waymo Open images), from scratch. AutoSteer: TuSimple + CurveLanes + OpenLane images with OpenLane-V labels, from scratch | AutoDrive: from AutoSpeed's backbone (shown in the weights), then **ZOD** Sequences frame pairs labelled by AutoSpeed, ZOD's radar and its steering angle |
 | **METEOR** | ResNet-34 from **ImageNet**; TIER IV Co-MLOps DRS recordings (Japan + a US subset) and a 7-camera minibus corpus @ 5 Hz, every label from CoMET (TIER IV's ensemble of 12 models, unnamed); Cosmos Transfer re-renders of those scenes train perception only. 953 GB / 12,595 scenes is the disk, not the training list | released v157: a 2:4-sparse fine-tune from v151 with the planner frozen and RL off (`rl_w 0.0`, read from the checkpoint); the GRPO stage is not shown to be in its ancestry |
 | **AutoE2E** | ResNet-50 via **COCO** (FCOS); BEVFormer V2 R50 T8 on **nuScenes train**, frozen in every later stage; then nuPlan v1.1 **train** sensor logs (1,085 logs, none of `navtest`'s) | **KITScenes** train fine-tune (404 scenes), camera BEV still frozen (`kitscenes-epoch-5`, the checkpoint paddock runs) |
-| **Qwen-Drive 1.0** | Qwen3.5-4B's own corpus; driving VQA, perception and planning data from public datasets (report §data); trajectories "standardized from multiple public driving datasets" — **NAVSIM `navtrain`** (declared), Waymo E2E, NVIDIA PhysicalAI | planner-rl: reward optimisation on the benchmark objectives; paddock runs planner-sft |
+| **Qwen-Drive 1.0** | Qwen3.5-4B's own corpus (not published); VLM adapted with a perception head on **nuScenes** official train and **OpenScene** trainval minus 16 logs, plus 24 public driving-VQA sets (about 20 % of each; some of their training splits hold nuScenes val scenes and, in Impromptu VLA, **navtest** frames) and 30K in-house examples from China | planning expert (`planner-sft`, what paddock runs): **NAVSIM**, OpenScene, WOD-E2E, PhysicalAI-AV, no split named; `planner-rl`: 15K `navtrain`, 15K PhysicalAI-AV, 479 WOD-E2E validation scenarios |
 
 ---
 
@@ -193,20 +193,36 @@ the benchmark as designed, like Drive-JEPA, while OpenPilot and VisionPilot
 meet navtest zero-shot (Alpamayo 1.5 trained on NAVSIM data too; see *Alpamayo
 1.5 × navsim*).
 
-**What is not sourced.** The exact split list is not in the inference repo:
-`docs/data.md` describes building navtest scene files, and the report's data
-section names the datasets rather than the splits. `navtrain` is the honest
-assumption, not a citation; if the report turns out to state otherwise, the
-declaration in `adapters/models/qwendrive/model.yaml` is the one line to change.
+**What is not sourced.** The report (arXiv 2609.00111, §2.3) names splits for
+the perception data and the RL stage, but not for the planning expert's NAVSIM
+data; `navtrain` is the assumption there. Separately, one of the 24 driving-VQA
+sets the VLM trained on, Impromptu VLA, splits its data its own way, and its
+training split holds frames from 52 of `navtest`'s 136 logs (checked against
+NAVSIM's `navtest` log list). Whether Qwen-Drive's 20 % sample of it included
+them is not stated.
 
-KITScenes, neuroNCAP (nuScenes, rendered) and comma2k19 are zero-shot for this
-model, and its KITScenes cameras sit at wider bearings and field of view than
-the nuPlan rig it was trained on (see [qwendrive.md](qwendrive.md)). comma2k19
+KITScenes and comma2k19 are zero-shot for this model; neuroNCAP is not (see
+*Qwen-Drive 1.0 × nuscenes*). Its KITScenes cameras sit at wider bearings and
+field of view than the nuPlan rig it was trained on (see [qwendrive.md](qwendrive.md)). comma2k19
 is the unequal column in a different way: nothing in the corpus is a
 windscreen-mounted mono camera on a Californian highway, and paddock has to
 replicate that one frame into three view slots for the model to read it at all.
 Second place on that board is therefore a claim about a model driven outside
 both its rig and its domain.
+
+### Qwen-Drive 1.0 × nuscenes — a VLM trained on nuScenes, val scenes included
+
+**Qwen-Drive's nuScenes and neuroNCAP cells are adapted, not zero-shot.** Its VLM
+was trained with a perception head on nuScenes' official train split ("We adopt
+the official nuScenes split", report §2.3.1) and on driving-VQA sets built on
+nuScenes. "We use training splits for these datasets", the report says, but two
+of those training splits re-split nuScenes train and val together: NuInstruct's
+and Talk2Car's training splits hold 123 of the 150 val scenes between them, and
+12 of neuroNCAP's 14 scenes, frontal 0103 among them (counted from their released
+files). Which 20 % of each set was sampled is not stated. The planning expert
+paddock runs did not train on nuScenes. Its nuScenes number, the lowest error
+here and the only learned model besides the re-ranker to beat constant velocity,
+should be read with this in mind.
 
 ### OpenPilot × comma2k19 — same fleet, unverifiable overlap
 

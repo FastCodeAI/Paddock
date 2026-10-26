@@ -113,7 +113,9 @@ was measured the same way as the rest of its column.
 - **A — adapted, not zero-shot.** The model was trained on data from this
   benchmark, or its settings were chosen on it. Drive-JEPA and Qwen-Drive on
   NAVSIM (both trained on `navtrain`), Drive-JEPA on nuPlan (52 of the 62
-  nuPlan mini logs are `navtrain` logs), Alpamayo on NAVSIM, nuScenes and
+  nuPlan mini logs are `navtrain` logs), Qwen-Drive on nuScenes and neuroNCAP
+  (its VLM trained on nuScenes train, and on driving-VQA sets whose training
+  splits hold nuScenes val scenes), Alpamayo on NAVSIM, nuScenes and
   neuroNCAP (its model card lists two NAVSIM-built and five nuScenes-built public
   training sets), AutoE2E on nuScenes and neuroNCAP (its frozen camera encoder was
   trained on nuScenes train), on NAVSIM (trained on nuPlan's train logs, the
@@ -149,7 +151,8 @@ was measured the same way as the rest of its column.
 Before comparing numbers:
 
 - **Open-loop L2 rewards a straight line.** On nuScenes, constant velocity
-  (0.641) beats every learned model except Qwen-Drive and the re-ranker.
+  (0.641) beats every learned model except Qwen-Drive, whose cell is adapted, and
+  the re-ranker.
 - **nuPlan is recorded, not ranked.** This site holds one of nuPlan's nine camera
   shards: 25 anchors, in 7 of 59 scenario types, six of them stop-sign or
   traffic-light decelerations. Every run is stored `valid: false`.

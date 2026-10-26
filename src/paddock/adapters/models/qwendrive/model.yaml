@@ -91,18 +91,33 @@ capabilities:
   # identical. QWENDRIVE_MODE=reasoning is not -- see the note there.
   stochastic: false
   needs_speed: true
-  # From the technical report's data section (arXiv 2609.00111): trajectories
-  # "standardized from multiple public driving datasets", and its reported
-  # NAVSIM navtest number is the in-distribution one. Which splits exactly is
-  # not stated in the repo; navtrain is the honest assumption for navtest.
-  # comma2k19 is named by neither the report nor the checkout.
+  # Four stages, from the technical report (arXiv 2609.00111, sec. 2.2-2.3):
+  # 1-2. The VLM, Qwen3.5-4B (its own corpus is not published), adapted with a BEV
+  #      perception head on nuScenes' official train split and OpenScene trainval
+  #      minus 16 held-out logs, plus 24 public driving-VQA sets ("We use training
+  #      splits for these datasets", about 20 % of each) and 30K in-house examples
+  #      from China. Some of those VQA training splits hold nuScenes val scenes
+  #      (NuInstruct and Talk2Car together: 12 of neuroNCAP's 14), and one, Impromptu
+  #      VLA, holds frames from 52 of navtest's 136 logs; which 20 % was sampled is
+  #      not stated. See comparison.md, Qwen-Drive 1.0 x nuscenes and x navsim.
+  # 3. The planning expert paddock runs (planner-sft), VLM frozen: NAVSIM,
+  #    OpenScene, WOD-E2E and PhysicalAI-AV, no split named for any; navtrain is
+  #    the assumption for NAVSIM.
+  # 4. planner-rl, which paddock does not run: 15K navtrain, 15K PhysicalAI-AV and
+  #    479 WOD-E2E validation scenarios.
+  # KITScenes and comma2k19 are named nowhere in the report or its 24 VQA sources.
   trained_on:
+    - dataset: qwen3.5
+    - dataset: nuscenes
+      split: train
+    - dataset: navsim
+      split: trainval
     - dataset: navsim
       split: navtrain
+    - dataset: public-driving-qa
+    - dataset: in-house-china
     - dataset: waymo-e2e
-      split: train
     - dataset: nvidia-physical-ai
-      split: train
 
 # One key, not one per benchmark that arrives: two `benchmarks:` lines is valid
 # YAML and keeps only the last, which is how a model has silently dropped off a

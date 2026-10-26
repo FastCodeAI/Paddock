@@ -4,8 +4,9 @@
 
 The nuScenes planning protocol that UniAD, VAD and their successors report: on
 every val keyframe, plan 3 s ahead from the real past and compare with what the
-human drove. Zero-shot for every model here except two, which carry A in the
-support matrix: Alpamayo 1.5's model card lists five nuScenes-built training sets
+human drove. Zero-shot for every model here except three, which carry A in the
+support matrix: Qwen-Drive's VLM trained on nuScenes train and on VQA sets that
+hold val scenes, Alpamayo 1.5's model card lists five nuScenes-built training sets
 (splits not given), and AutoE2E's frozen camera encoder was trained on nuScenes
 train. See docs/models/comparison.md.
 

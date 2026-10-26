@@ -307,6 +307,7 @@
 <rect class="r1" x="219" y="466.5" width="81" height="43" rx="4"/>
 <text x="259.5" y="487.5" class="t1" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.450</text>
 <text x="259.5" y="502.5" class="t1" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#1</text>
+<text x="296" y="476.5" class="t1" font-size="9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="end" font-weight="600" opacity="0.85">A</text>
 <rect class="r1" x="303" y="466.5" width="81" height="43" rx="4"/>
 <text x="343.5" y="487.5" class="t1" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.806</text>
 <text x="343.5" y="502.5" class="t1" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#1</text>
@@ -330,6 +331,7 @@
 <rect class="r5" x="807" y="466.5" width="81" height="43" rx="4"/>
 <text x="847.5" y="487.5" class="t5" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">2.49</text>
 <text x="847.5" y="502.5" class="t5" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#5</text>
+<text x="884" y="476.5" class="t5" font-size="9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="end" font-weight="600" opacity="0.85">A</text>
 <rect class="miss" x="891" y="466.5" width="81" height="43" rx="4"/>
 <text x="931.5" y="492" class="sec" font-size="11.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">—</text>
 <text x="20" y="539" class="ink" font-size="14" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="start" font-weight="600">AutoE2E</text>

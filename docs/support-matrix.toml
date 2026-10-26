@@ -193,13 +193,13 @@ neuroncap = { run = "neuroncap/meteor/20260915T193036-d34559" }
 alpasim = { run = "alpasim/meteor/legacy-meteor_011_published_30scenes", marks = "R" }
 
 [cells.qwendrive]
-nuscenes = { run = "nuscenes/qwendrive/20260915T190350-47479e" }
+nuscenes = { run = "nuscenes/qwendrive/20260915T190350-47479e", marks = "A" }  # VLM trained on nuScenes train
 kitscenes = { run = "kitscenes/qwendrive/20260914T220841-5a91fd" }
 comma2k19 = { run = "comma2k19/qwendrive/20260916T220846-971379" }
 navsim = { run = "navsim/qwendrive/20260914T221802-80457c", marks = "A" }
 navsim_v1 = { run = "navsim_v1/qwendrive/20260915T021715-02aab4", marks = "A" }
 bench2drive = { run = "bench2drive/qwendrive/native50-2hz-084418258d833a9f-9b2bc9", marks = "R", note = "2 Hz" }
-neuroncap = { run = "neuroncap/qwendrive/20260915T023604-12d5eb" }
+neuroncap = { run = "neuroncap/qwendrive/20260915T023604-12d5eb", marks = "A" }  # VQA training splits hold its val scenes
 
 [cells.autoe2e]
 nuscenes = { run = "nuscenes/autoe2e/20261023T004711-eedbe2", marks = "A R" }  # camera encoder trained on nuScenes train
