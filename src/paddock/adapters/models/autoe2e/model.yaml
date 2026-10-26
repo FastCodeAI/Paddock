@@ -47,8 +47,14 @@ capabilities:
   precision: bf16
   input_size: [512, 512]
   history_frames: 8
+  # Camera frames 0.5 s apart (now and -3.5 .. -0.5 s); 64 ego rows of speed,
+  # acceleration, yaw rate and curvature 0.1 s apart (policy.py).
+  camera_hz: 2.0
+  ego_history_steps: 64
+  ego_history_hz: 10.0
   output_kind: controls
   horizon_s: 6.4
+  plan_hz: 10.0  # 64 (acceleration, curvature) steps 0.1 s apart
   stochastic: false
   needs_speed: true
   trained_on:

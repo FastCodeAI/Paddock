@@ -59,6 +59,8 @@ capabilities:
   input_size: [1024, 512]
   # AutoDrive consumes a frame pair; the other two are single-frame.
   history_frames: 2
+  # No camera_hz: the pair is this frame and the one before it, at whatever rate
+  # the benchmark sends. No ego history: it reads the current speed only.
   # It predicts lane curvature and the closest in-path object, not a plan --
   # which is why it has no ADE and why horizon_s is absent rather than zero.
   # AutoSteer's waypoints are in camera coordinates with no time parameterisation.

@@ -78,8 +78,13 @@ capabilities:
   size_gb: 0.061
   input_size: [512, 256]
   history_frames: 2
+  # Two frames of each camera at the 20 Hz supercombo runs at (policy.py MODEL_HZ).
+  # No ego history: it reads no speed or pose at all (needs_speed below).
+  camera_hz: 20.0
   output_kind: waypoints
   horizon_s: 10.0
+  # No plan_hz: its 33 points sit on ModelConstants.T_IDXS, 10 * (i/32)^2 s, 0.01 s
+  # apart near now and 0.6 s apart at 10 s.
   # The reason min_input_hz above is load-bearing rather than cautious: the
   # complete non-image input set is {desire_pulse, traffic_convention,
   # action_t}. There is no channel to tell supercombo how fast it is going, so

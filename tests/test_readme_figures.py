@@ -178,6 +178,28 @@ def test_cameras_are_counted_by_view() -> None:
     with pytest.raises(ValueError, match="CAM_ROOF"):
         readme_figures.views(replace(openpilot, cameras=("CAM_ROOF",)))
 
+    # alpamayo is rendered three cameras and sees four views: its telephoto slot is a
+    # crop of CAM_FRONT, and the picture shows what the model reads.
+    alpamayo = load_models()["alpamayo15"]
+    assert len(alpamayo.cameras) == 3
+    assert [v[0] for v in readme_figures.views(alpamayo)] == [
+        "front left",
+        "front",
+        "front right",
+        "front tele",
+    ]
+
+
+def test_history_shows_camera_and_ego_at_their_own_rates() -> None:
+    models = load_models()
+    # Camera frames and ego poses run at different rates: 0.5 s apart and 0.1 s apart.
+    frames, ego, caption = readme_figures.history(models["qwendrive"])
+    assert (frames, len(ego), caption) == ([0.0, 0.5, 1.0, 1.5], 16, "cam 4 @ 2 Hz · ego 16 @ 10 Hz")
+    assert ego[-1] == pytest.approx(1.5)
+    # openpilot reads no speed at all; METEOR reads the current speed and nothing older.
+    assert readme_figures.history(models["openpilot"])[1:] == ([], "cam 2 @ 20 Hz · no ego input")
+    assert readme_figures.history(models["meteor"])[1:] == ([0.0], "cam 1 · speed now")
+
 
 def test_only_paddocks_own_datasets_are_marked_as_benchmark_data() -> None:
     model = replace(

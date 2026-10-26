@@ -55,8 +55,16 @@ capabilities:
   precision: fp32
   input_size: [512, 256]
   history_frames: 2
+  # Two front frames 0.5 s apart feed the JEPA encoder; the BEV stage reads all four
+  # cameras above at the current frame only (vendor drive_jepa_features.py and
+  # bevformer/bev_feature_build.py at the pinned sha). Four ego statuses -- pose,
+  # velocity, acceleration, command -- also 0.5 s apart.
+  camera_hz: 2.0
+  ego_history_steps: 4
+  ego_history_hz: 2.0
   output_kind: waypoints
   horizon_s: 4.0
+  plan_hz: 2.0  # eight poses 0.5 s apart, NAVSIM's grid
   trained_on:
     # The only training exposure to a paddock benchmark's data among the four
     # models -- and it leads that benchmark by 0.235 EPDMS. navtrain -> navtest

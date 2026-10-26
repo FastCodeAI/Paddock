@@ -52,11 +52,18 @@ capabilities:
   size_gb: 20
   precision: bf16
   input_size: [448, 280]
-  # The model has a fourth slot, front_tele, which this adapter does not feed --
-  # see comparison.md. cameras above is what infer() actually reads.
+  # Four slots: three wide views, and a 30 deg telephoto that policy.py crops out
+  # of CAM_FRONT (CAMERA_SLOTS). cameras above is what a simulator renders.
+  camera_views: [CAM_FRONT_LEFT, CAM_FRONT, CAM_FRONT_RIGHT, CAM_FRONT_TELE]
   history_frames: 4
+  # Four frames and 16 ego poses, both 0.1 s apart (NUM_CAM_FRAMES, NUM_HISTORY_STEPS).
+  camera_hz: 10.0
+  ego_history_steps: 16
+  ego_history_hz: 10.0
   output_kind: waypoints
   horizon_s: 6.4
+  # 64 waypoints at 10 Hz; policy.py resamples them to waypoint_dt.
+  plan_hz: 10.0
   # Samples unseeded at T=1.0/top_p=0.95 in closed loop. One run is a draw, not
   # a measurement: sd 1.817 across seeds on frontal-0103.
   stochastic: true

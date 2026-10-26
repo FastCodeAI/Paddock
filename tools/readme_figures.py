@@ -78,7 +78,7 @@ MODELS = {
     "autoe2e": "AutoE2E",
 }
 
-#: Where each declared camera looks: (view, yaw in degrees left of forward, field of
+#: Where each declared camera or view looks: (view, yaw in degrees left of forward, field of
 #: view). Cameras that share a view are one camera: openpilot's CAM_FRONT is its
 #: fallback for one-camera sources (its model.yaml), the same view as its road camera.
 CAMERA_VIEW = {
@@ -90,6 +90,8 @@ CAMERA_VIEW = {
     "CAM_BACK": ("back", 180, 100),
     "CAM_BACK_LEFT": ("back left", 110, 60),
     "CAM_BACK_RIGHT": ("back right", -110, 60),
+    # Not a camera anyone renders: alpamayo crops its 30 deg slot out of CAM_FRONT.
+    "CAM_FRONT_TELE": ("front tele", 0, 30),
 }
 
 #: Short names for `trained_on` datasets. Anything missing prints its key.
@@ -436,21 +438,39 @@ def build_matrix() -> str:
 
 # -- what the models are -----------------------------------------------------
 
-ROW_H = 62
-X_PARAMS, X_CAMS, X_FRAMES, X_PLAN, X_TRAIN = 186, 436, 562, 658, 810
-PARAMS_TRACK, PLAN_TRACK = 150, 80  # 50 px per decade of parameters, 10 M to 10 B
+ROW_H = 64
+X_PARAMS, X_CAMS, X_HIST, X_PLAN, X_TRAIN = 182, 370, 496, 650, 818
+PARAMS_TRACK = 90  # 30 px per decade of parameters, 10 M to 10 B
+HIST_W, PLAN_W = 120, 110  # past and future time axes
 
 
 def views(model: ModelSpec) -> list[tuple[str, int, int]]:
-    """The distinct views a model's declared cameras cover, in declaration order."""
-    unknown = [c for c in model.cameras if c not in CAMERA_VIEW]
+    """The distinct views the model reads, in declaration order."""
+    declared = model.camera_views or model.cameras
+    unknown = [c for c in declared if c not in CAMERA_VIEW]
     if unknown:
         raise ValueError(f"{model.name}: no view recorded for camera(s) {unknown}; add them to CAMERA_VIEW")
     out: dict[str, tuple[str, int, int]] = {}
-    for cam in model.cameras:
+    for cam in declared:
         view = CAMERA_VIEW[cam]
         out.setdefault(view[0], view)
     return list(out.values())
+
+
+def history(model: ModelSpec) -> tuple[list[float], list[float], str]:
+    """(camera frame ages, ego state ages, in seconds before now) and their caption."""
+    n = model.history_frames or 1
+    hz = model.camera_hz
+    frames = [k / hz for k in range(n)] if hz else [0.0]
+    cam = f"cam {n} @ {hz:g} Hz" if hz and n > 1 else "cam 1" if n == 1 else f"cam {n}, back to back"
+    if model.ego_history_steps and model.ego_history_hz:
+        ego = [k / model.ego_history_hz for k in range(model.ego_history_steps)]
+        said = f"ego {model.ego_history_steps} @ {model.ego_history_hz:g} Hz"
+    elif model.needs_speed:
+        ego, said = [0.0], "speed now"
+    else:
+        ego, said = [], "no ego input"
+    return frames, ego, f"{cam} · {said}"
 
 
 def chips(model: ModelSpec, own: set[str]) -> list[tuple[str, bool]]:
@@ -483,15 +503,22 @@ def _chip_width(label: str) -> float:
     return 6.0 * len(label) + 12
 
 
+def _tick(x: float, y: float, w: float, h: float, fill: str) -> str:
+    return f'<rect x="{x - w / 2:.1f}" y="{y:g}" width="{w:g}" height="{h:g}" fill="{fill}"/>'
+
+
 def render_models(models: list[tuple[str, ModelSpec]], own: set[str]) -> str:
     plan_scale = 5 * math.ceil(max(m.horizon_s or 0 for _, m in models) / 5)
+    ages = [a for _, m in models for a in (*history(m)[0], *history(m)[1])]
+    hist_scale = 2 * math.ceil(max(ages) / 2)
+    past, future = HIST_W / hist_scale, PLAN_W / plan_scale  # px per second
     top = PAD + 72
-    height = top + ROW_H * len(models) + PAD - 4
+    height = top + ROW_H * len(models) + PAD - 6
 
     light = [".track{fill:#ecebe7}", ".none{fill:none;stroke:#a9a8a3;stroke-dasharray:3 3}"]
-    light += [".car{fill:#8a8984}", ".stripe{stroke:#fcfcfb}"]
+    light += [".car{fill:#8a8984}", ".stripe{stroke:#fcfcfb}", ".now{fill:#a9a8a3}"]
     light += [".chip{fill:#f0efec}", ".chipt{fill:#52514e}", ".own{fill:#2b2b29}", ".ownt{fill:#fcfcfb}"]
-    dark = [".track{fill:#2f2f2c}", ".none{stroke:#6b6a66}", ".stripe{stroke:#1a1a19}"]
+    dark = [".track{fill:#2f2f2c}", ".none{stroke:#6b6a66}", ".stripe{stroke:#1a1a19}", ".now{fill:#6b6a66}"]
     dark += [".chip{fill:#2a2a28}", ".chipt{fill:#c3c2b7}", ".own{fill:#f0efec}", ".ownt{fill:#1a1a19}"]
     defs = (
         '<pattern id="stripes" width="5" height="5" patternUnits="userSpaceOnUse"'
@@ -499,39 +526,47 @@ def render_models(models: list[tuple[str, ModelSpec]], own: set[str]) -> str:
         ' stroke-width="2"/></pattern>'
     )
     title = (
-        "What the models are: parameters, cameras, frames of history, plan length and "
-        "training data, from each model.yaml"
+        "What the models are: parameters, cameras, the camera and ego history each reads and "
+        "at what rate, the plan each emits and at what rate, and training data, from each model.yaml"
     )
     out = _document(height, title, "each model.yaml", light, dark, defs)
 
-    # Legend.
+    # Legend: what a tick is, then the two fills that need saying.
     y = PAD + 14
-    out.append(f'<rect class="car" x="{PAD}" y="{y - 10}" width="24" height="12" rx="6"/>')
-    out.append(f'<rect fill="url(#stripes)" x="{PAD}" y="{y - 10}" width="24" height="12" rx="6"/>')
-    out.append(_text(PAD + 30, y, "outputs controls; paddock turns them into a path", "sec", 12))
-    sx = PAD + 330
-    out.append(f'<rect class="own" x="{sx}" y="{y - 11}" width="24" height="14" rx="7"/>')
-    out.append(_text(sx + 30, y, "trained on one of paddock's own datasets (the A in the matrix)", "sec", 12))
+    sx = PAD
+    for w, h, text in [(3, 10, "camera frame"), (1.5, 7, "ego state"), (1, 12, "plan point")]:
+        out.append(f'<rect class="car" x="{sx}" y="{y - 1 - h:g}" width="{w:g}" height="{h:g}"/>')
+        out.append(_text(sx + 8, y, text, "sec", 12))
+        sx += 8 + 6.6 * len(text) + 16
+    sx += 10
+    out.append(f'<rect class="car" x="{sx:g}" y="{y - 10}" width="24" height="12" rx="6"/>')
+    out.append(f'<rect fill="url(#stripes)" x="{sx:g}" y="{y - 10}" width="24" height="12" rx="6"/>')
+    out.append(_text(sx + 30, y, "outputs controls, not waypoints", "sec", 12))
+    sx += 30 + 6.6 * 31 + 26
+    out.append(f'<rect class="own" x="{sx:g}" y="{y - 11}" width="24" height="14" rx="7"/>')
+    out.append(_text(sx + 30, y, "trained on a paddock dataset (the A in the matrix)", "sec", 12))
 
-    # Column headers, with the scale of each bar under its header.
+    # Column headers, with the scale of each axis under its header.
     hy = PAD + 46
     for x, label, sub in [
         (PAD, "Model", ""),
         (X_PARAMS, "Parameters", ""),
-        (X_CAMS, "Cameras", "as paddock sends them"),
-        (X_FRAMES, "History", "camera frames"),
-        (X_PLAN, "Plan length", ""),
+        (X_CAMS, "Cameras", "as the model sees them"),
+        (X_HIST, "History", ""),
+        (X_PLAN, "Plan", ""),
         (X_TRAIN, "Trained on", ""),
     ]:
         out.append(_text(x, hy, label, "ink", 12, weight="600"))
         if sub:
             out.append(_text(x, hy + 15, sub, "sec", 10))
-    for k, tick in enumerate(["10 M", "100 M", "1 B", "10 B"]):
-        anchor = "start" if k == 0 else "end" if k == 3 else "middle"
-        out.append(_text(X_PARAMS + PARAMS_TRACK / 3 * k, hy + 15, tick, "sec", 10, anchor))
-    for k, tick in enumerate(["0", f"{plan_scale // 2:g}", f"{plan_scale} s"]):
+    out.append(_text(X_PARAMS, hy + 15, "10 M", "sec", 10))
+    out.append(_text(X_PARAMS + PARAMS_TRACK, hy + 15, "10 B", "sec", 10, "end"))
+    for k, tick in enumerate([f"−{hist_scale} s", f"−{hist_scale // 2}", "now"]):
         anchor = "start" if k == 0 else "end" if k == 2 else "middle"
-        out.append(_text(X_PLAN + PLAN_TRACK / 2 * k, hy + 15, tick, "sec", 10, anchor))
+        out.append(_text(X_HIST + HIST_W / 2 * k, hy + 15, tick, "sec", 10, anchor))
+    for k, tick in enumerate(["now", f"{plan_scale // 2:g}", f"{plan_scale} s"]):
+        anchor = "start" if k == 0 else "end" if k == 2 else "middle"
+        out.append(_text(X_PLAN + PLAN_W / 2 * k, hy + 15, tick, "sec", 10, anchor))
 
     for i, (label, m) in enumerate(models):
         cy = top + ROW_H * i + ROW_H / 2
@@ -545,61 +580,82 @@ def render_models(models: list[tuple[str, ModelSpec]], own: set[str]) -> str:
 
         # Parameters, on a log scale.
         bar_y = cy - 12
+        label_x = X_PARAMS + PARAMS_TRACK + 6
         if m.params_m is None:
             out.append(
                 f'<rect class="none" x="{X_PARAMS}" y="{bar_y}" width="{PARAMS_TRACK}" height="12" rx="6"/>'
             )
-            head = "not published"
+            out.append(_text(label_x, cy - 2, "not published", "sec", 10.5))
         else:
             w = max(6.0, (math.log10(m.params_m) - 1) / 3 * PARAMS_TRACK)
             out.append(
                 f'<rect class="track" x="{X_PARAMS}" y="{bar_y}" width="{PARAMS_TRACK}" height="12" rx="6"/>'
             )
             out.append(f'<rect x="{X_PARAMS}" y="{bar_y}" width="{w:.1f}" height="12" rx="6" fill="{hue}"/>')
-            head = _params(m.params_m)
-        out.append(_text(X_PARAMS + PARAMS_TRACK + 8, cy - 2, head, "ink", 12.5, weight="600"))
+            out.append(_text(label_x, cy - 2, _params(m.params_m), "ink", 12.5, weight="600"))
         if m.size_gb is not None:
             disk = f"{m.size_gb:g} GB" + (f" {m.precision}" if m.precision else "")
-            out.append(_text(X_PARAMS + PARAMS_TRACK + 8, cy + 13, disk, "sec", 10.5))
+            out.append(_text(label_x, cy + 13, disk, "sec", 10.5))
 
-        # Cameras: a car seen from above, one wedge per view.
+        # Cameras: a car seen from above, one wedge per view the model reads.
         gx, gy = X_CAMS + 24, cy
         seen = views(m)
         out += [_wedge(gx, gy, yaw, fov, 24, hue) for _, yaw, fov in seen]
         out.append(f'<rect class="car" x="{gx - 5}" y="{gy - 9}" width="10" height="18" rx="3"/>')
-        cams = f"{len(seen)} camera{'s' if len(seen) != 1 else ''}"
-        out.append(_text(X_CAMS + 56, cy - 2, cams, "ink", 12.5, weight="600"))
-        if m.input_size:
-            out.append(_text(X_CAMS + 56, cy + 13, f"{m.input_size[0]}×{m.input_size[1]}", "sec", 10.5))
-
-        # Frames of history: one square per frame.
-        n = m.history_frames or 0
-        for k in range(n):
-            out.append(
-                f'<rect x="{X_FRAMES + 11 * k}" y="{cy - 13}" width="8" height="12" rx="2" fill="{hue}"/>'
+        out.append(
+            _text(
+                X_CAMS + 54,
+                cy - 2,
+                f"{len(seen)} view{'s' if len(seen) != 1 else ''}",
+                "ink",
+                12.5,
+                weight="600",
             )
-        frames = f"{n} frame{'s' if n != 1 else ''}" if n else "not recorded"
-        out.append(_text(X_FRAMES, cy + 13, frames, "sec", 10.5))
+        )
+        if m.input_size:
+            out.append(_text(X_CAMS + 54, cy + 13, f"{m.input_size[0]}×{m.input_size[1]}", "sec", 10.5))
 
-        # Plan length; striped when the model emits controls rather than waypoints.
+        # History: what the model reads of the past, one tick per frame or state, on a
+        # shared time axis ending now. Dense ticks are a high rate.
+        frames, ego, caption = history(m)
+        now = X_HIST + HIST_W
+        out.append(f'<rect class="track" x="{X_HIST}" y="{cy - 15.5}" width="{HIST_W}" height="1"/>')
+        out.append(f'<rect class="track" x="{X_HIST}" y="{cy - 3.5}" width="{HIST_W}" height="1"/>')
+        out.append(f'<rect class="now" x="{now}" y="{cy - 23}" width="1" height="24"/>')
+        out += [_tick(now - a * past, cy - 20, 3, 10, hue) for a in frames]
+        out += [_tick(now - a * past, cy - 6.5, 1.5, 7, hue) for a in ego]
+        out.append(_text(X_HIST, cy + 15, escape(caption), "sec", 10))
+
+        # Plan: one tick per point the model emits, from now out to its horizon.
+        out.append(f'<rect class="now" x="{X_PLAN}" y="{cy - 23}" width="1" height="24"/>')
         if m.horizon_s is None:
             out.append(
-                f'<rect class="none" x="{X_PLAN}" y="{bar_y}" width="{PLAN_TRACK}" height="12" rx="6"/>'
+                f'<rect class="none" x="{X_PLAN + 2}" y="{cy - 14}" width="{PLAN_W - 2}" height="10" rx="5"/>'
             )
-            head = "none"
+            head, rate = "none", ""
         else:
-            w = m.horizon_s / plan_scale * PLAN_TRACK
+            w = m.horizon_s * future
             out.append(
-                f'<rect class="track" x="{X_PLAN}" y="{bar_y}" width="{PLAN_TRACK}" height="12" rx="6"/>'
+                f'<rect class="track" x="{X_PLAN + 1}" y="{cy - 14}" width="{PLAN_W - 1}" height="10"/>'
             )
-            out.append(f'<rect x="{X_PLAN}" y="{bar_y}" width="{w:.1f}" height="12" rx="6" fill="{hue}"/>')
+            out.append(
+                f'<rect x="{X_PLAN + 1}" y="{cy - 14}" width="{w:.1f}" height="10" fill="{hue}"'
+                f' opacity="{0.35 if m.plan_hz else 0.85}"/>'
+            )
             if m.output_kind == "controls":
                 out.append(
-                    f'<rect x="{X_PLAN}" y="{bar_y}" width="{w:.1f}" height="12" rx="6" fill="url(#stripes)"/>'
+                    f'<rect x="{X_PLAN + 1}" y="{cy - 14}" width="{w:.1f}" height="10" fill="url(#stripes)"/>'
                 )
-            head = f"{m.horizon_s:g} s"
-        out.append(_text(X_PLAN + PLAN_TRACK + 8, cy - 2, head, "ink", 12.5, weight="600"))
-        out.append(_text(X_PLAN + PLAN_TRACK + 8, cy + 13, escape(m.output_kind), "sec", 10.5))
+            if m.plan_hz:
+                points = round(m.horizon_s * m.plan_hz)
+                out += [
+                    _tick(X_PLAN + 1 + k / m.plan_hz * future, cy - 15, 1, 12, hue)
+                    for k in range(1, points + 1)
+                ]
+            head, rate = f"{m.horizon_s:g} s", f"{m.plan_hz:g} Hz" if m.plan_hz else "uneven"
+        out.append(_text(X_PLAN + PLAN_W + 6, cy - 4, head, "ink", 12.5, weight="600"))
+        if rate:
+            out.append(_text(X_PLAN + PLAN_W + 6, cy + 11, rate, "sec", 10.5))
 
         # Trained on: chips, flowed onto as many lines as they need.
         lines: list[list[tuple[str, bool]]] = [[]]

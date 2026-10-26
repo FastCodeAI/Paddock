@@ -74,6 +74,10 @@ capabilities:
   # carry no `target_size`, so a source's own aspect ratio is kept.
   input_size: [1280, 720]
   history_frames: 4
+  # Camera frames 0.5 s apart, ego poses 0.1 s apart (policy.py FRAME_DT, HISTORY_DT).
+  camera_hz: 2.0
+  ego_history_steps: 16
+  ego_history_hz: 10.0
   output_kind: waypoints
   # What the model emits, and now all of what the adapter hands paddock: the
   # 0.5 s grid (GRID_INDICES) carries all ten points rather than stopping at
@@ -81,6 +85,7 @@ capabilities:
   # the first six, so the tail costs them nothing and lets comma2k19 score
   # ADE@5s at the same spacing every other model on that board is scored at.
   horizon_s: 5.0
+  plan_hz: 10.0  # 50 poses 0.1 s apart
   # Flow matching from seeded noise (noise_seed + k) and a greedy reasoning
   # turn: in the default direct mode, repeated inference on identical input is
   # identical. QWENDRIVE_MODE=reasoning is not -- see the note there.

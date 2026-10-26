@@ -164,12 +164,17 @@ def test_card_values_are_in_range(name: str) -> None:
     assert not m.precision or m.precision in PRECISIONS, (
         f"{name}: precision {m.precision!r} not in {PRECISIONS}"
     )
-    for field in ("params_m", "macs_g", "size_gb", "horizon_s"):
+    for field in ("params_m", "macs_g", "size_gb", "horizon_s", "camera_hz", "ego_history_hz", "plan_hz"):
         value = getattr(m, field)
         assert value is None or value > 0, f"{name}: {field} must be positive or absent, got {value}"
     assert m.history_frames is None or m.history_frames >= 1, (
         f"{name}: history_frames counts the current frame, so it is >= 1"
     )
+    assert (m.ego_history_steps is None) == (m.ego_history_hz is None), (
+        f"{name}: ego_history_steps and ego_history_hz come together -- "
+        "a count of poses means nothing without their spacing"
+    )
+    assert m.ego_history_steps is None or m.ego_history_steps >= 1, f"{name}: ego_history_steps must be >= 1"
 
 
 #: Words of prose a training-overlap section must carry. A heading alone, or a

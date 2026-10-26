@@ -19,7 +19,7 @@ narrative half: provenance, licences, and the things that do not fit a schema.
 
 | | Drive-JEPA | Alpamayo 1.5 | OpenPilot | VisionPilot | METEOR | AutoE2E | Qwen-Drive 1.0 |
 |---|---|---|---|---|---|---|---|
-| **Camera views @ freq** | 1 front, 2 frames (t, t−1) | 4 (front_left, front_wide, front_right, front_tele); rig is 7-cam. AR1 paper used 2 | 2 (road + wide), 2 frames, 20 Hz | 1 mono front, 52–55° HFOV, 1–2 MP, 10+ Hz on Orin | 8 surround (front/back wide, front/back narrow, 4 corners), single frame; paddock fills 6 of the 8 | 6 surround (front, front-left, front-right, rear-left, rear, rear-right), 8 frames 0.5 s apart | 3 (front, front-left, front-right), 4 frames each 0.5 s apart. `DrivingScene` refuses a missing view, so a monocular source (comma2k19) replicates its road camera into both side slots -- `QWENDRIVE_VIEWS`, and the policy re-declares `cameras` to match |
+| **Camera views @ freq** | front, 2 frames 0.5 s apart (JEPA encoder); back, front, left, right at the current frame (BEV stage) | 4 (front_left, front_wide, front_right, front_tele), 4 frames 0.1 s apart; paddock crops the tele slot out of CAM_FRONT. Rig is 7-cam. AR1 paper used 2 | 2 (road + wide), 2 frames, 20 Hz | 1 mono front, 52–55° HFOV, 1–2 MP, 10+ Hz on Orin | 8 surround (front/back wide, front/back narrow, 4 corners), single frame; paddock fills 6 of the 8 | 6 surround (front, front-left, front-right, rear-left, rear, rear-right), 8 frames 0.5 s apart | 3 (front, front-left, front-right), 4 frames each 0.5 s apart. `DrivingScene` refuses a missing view, so a monocular source (comma2k19) replicates its road camera into both side slots -- `QWENDRIVE_VIEWS`, and the policy re-declares `cameras` to match |
 | **Per-camera input** | 512×256 | 448×280 (→160 tokens/img); triplane tokenizer fixes 288 tokens/timestep regardless of camera count | 512×256 (medmodel); 1024×512 (bigmodel) | 1024×512 (2:1) all three nets; AutoDrive adds a 50° centre crop | 768×432 uint8 RGB | 512×512 (squashed); the current front also 1024×1024 | pixel budget on a 32 px grid: current ~720p (921,600 px), history ~320p (174,080 px) |
 | **Other inputs** | ego state (NAVSIM protocol) | text prompt; egomotion history (3D translation + 9D rotation, multi-timestep); optional route | desire/nav command, 512-d feature history. **No speed channel at all** | vehicle speed | ego speed; optional LiDAR raster / SD map / driving command in the checkpoint, none in the released ONNX | 256-d egomotion history (6.4 s @ 10 Hz); optional route raster + 14-channel semantic map (450×300 @ 0.4 m; paddock sends the route where the benchmark has one, never the map); per-frame camera projections | 16 ego poses @10 Hz (1.5 s) + velocity + acceleration; ego status [v, a, one-hot command]; nav command in the prompt |
 
@@ -362,23 +362,22 @@ enough that the cap rarely binds, which is why the defect survived them.
 `docs/models/VISION_PILOT_GUIDE.md` has the derivation; the re-sweep is an open
 item in `docs/ROADMAP.md`.
 
-## Three discrepancies against what the adapters declare
+## Discrepancies against what the adapters declare
 
-Recorded rather than resolved, because `capabilities.cameras` decides what a
-simulator renders and changing it changes every closed-loop measurement.
+`capabilities.cameras` decides what a simulator renders, so a wrong declaration
+changes every closed-loop measurement. The first two are resolved, and stay here so
+nobody re-derives them.
 
-1. **Drive-JEPA: 4 cameras declared, 1 in the architecture table.**
-   `model.yaml` declares `[CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT,
-   CAM_BACK]`; the table says one front camera with two frames. The adapter runs
-   the NAVSIM *perception-based* agent, whose BEVFormer stage is multi-camera by
-   construction, so the two may describe different configurations. If the
-   adapter is over-declaring, closed-loop runs are rendering four views to feed
-   one — `adding-a-model.md` calls that "the single largest closed-loop cost".
-   **Worth measuring before the next sweep.**
-2. **Alpamayo: 3 slots fed of 4.** `model.yaml` declares `CAM_FRONT`,
-   `CAM_FRONT_LEFT`, `CAM_FRONT_RIGHT`; the model has a fourth, `front_tele`.
-   Consistent with the eval notes, which match three slots by yaw — recorded so
-   nobody re-derives it.
+1. **Drive-JEPA: 4 cameras declared, 1 in the architecture table. Resolved: all
+   four are read.** At the pinned sha the perception-based agent paddock runs has a
+   BEV stage that reads `cam_b0`, `cam_f0`, `cam_l0` and `cam_r0` at the current
+   frame (`bevformer/bev_feature_build.py`), beside the JEPA encoder, which reads
+   the front camera at t and t − 0.5 s (`drive_jepa_features.py`). The paper's
+   "one front camera" is the encoder alone.
+2. **Alpamayo: 4 slots, 3 cameras declared. Resolved: all four slots are fed.**
+   `policy.py` fills the 30° telephoto slot with a crop of `CAM_FRONT`
+   (`CAMERA_SLOTS`), so a simulator renders three cameras and the model sees four
+   images. `model.yaml` lists the four in `camera_views`.
 3. **AutoSpeed parameter count: 9.33 M or 9.31 M.** The measurement in
    [VISION_PILOT_GUIDE.md](VISION_PILOT_GUIDE.md) says 9.33 M; a later count
    says 9.31 M. The total is 28.1 M either way. Trivial, and noted only because
@@ -492,7 +491,6 @@ the pinned sha: `navsim_v2/scripts/training/train_drive_jepa_perception_based.sh
 sets `TRAIN_TEST_SPLIT=navtrain` for the same agent whose checkpoint paddock
 loads. Detail in [docs/models/comparison.md](comparison.md).
 
-✧ The published architecture reads one front camera; the adapter declares four,
-because it runs the NAVSIM perception-based variant whose BEVFormer stage is
-multi-camera. Unreconciled — and since a simulator renders exactly what is
-declared, it is worth measuring before the next closed-loop sweep.
+✧ The published architecture's encoder reads one front camera; the
+perception-based agent paddock runs also has a BEV stage that reads four, so the
+adapter declares four. See discrepancy 1 above.

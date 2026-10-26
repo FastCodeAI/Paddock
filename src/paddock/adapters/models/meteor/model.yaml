@@ -66,9 +66,11 @@ capabilities:
   size_gb: 0.35
   precision: fp32
   input_size: [768, 432]
+  # One frame and the current speed (v0): no history of either.
   history_frames: 1
   output_kind: waypoints
   horizon_s: 3.0
+  plan_hz: 2.0  # six waypoints 0.5 s apart
   stochastic: false
   needs_speed: true
   # TIER IV Co-MLOps DRS recordings (Japan, plus a US subset), auto-labelled;

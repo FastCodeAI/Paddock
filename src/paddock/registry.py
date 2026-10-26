@@ -171,11 +171,28 @@ class ModelSpec:
     #: Frames of camera history one inference consumes. 1 means the current
     #: frame only.
     history_frames: int | None = None
+    #: Rate of those camera frames, Hz: 2 means 0.5 s apart. None where it is not
+    #: recorded, or the model reads one frame.
+    camera_hz: float | None = None
+    #: The views the model actually reads, where paddock makes some of them out of
+    #: `cameras`: alpamayo's telephoto slot is a crop of CAM_FRONT. Empty means
+    #: the model reads `cameras` as declared.
+    camera_views: tuple[str, ...] = ()
+    #: Past ego states one inference reads (poses, or rows of speed and
+    #: acceleration), and their rate in Hz. Camera and ego history often run at
+    #: different rates: qwendrive reads frames 0.5 s apart and poses 0.1 s apart.
+    #: None where the model reads none, or only the current speed.
+    ego_history_steps: int | None = None
+    ego_history_hz: float | None = None
     #: waypoints | controls | perception. Explains an `n/a` in an ADE column
     #: without sending the reader to find a footnote.
     output_kind: str = "waypoints"
     #: Planning horizon, seconds. None where the output is not time-parameterised.
     horizon_s: float | None = None
+    #: Rate of the plan points the model emits, Hz, before any adapter resamples
+    #: them to `waypoint_dt`. None where they are not evenly spaced (openpilot's
+    #: 33 sit on a quadratic grid) or there is no plan.
+    plan_hz: float | None = None
     #: True if repeated inference on identical input can differ. A single run of
     #: a stochastic model is a draw, not a measurement: alpamayo's frontal
     #: neuroNCAP score has sd 1.817 across seeds on one scenario.
@@ -321,8 +338,13 @@ def load_models(directory: Path = MODELS_DIR) -> dict[str, ModelSpec]:
             precision=caps.get("precision", ""),
             input_size=_input_size(caps.get("input_size"), path),
             history_frames=_optional_int(caps.get("history_frames")),
+            camera_hz=_optional_float(caps.get("camera_hz")),
+            camera_views=tuple(caps.get("camera_views", ())),
+            ego_history_steps=_optional_int(caps.get("ego_history_steps")),
+            ego_history_hz=_optional_float(caps.get("ego_history_hz")),
             output_kind=caps.get("output_kind", "waypoints"),
             horizon_s=_optional_float(caps.get("horizon_s")),
+            plan_hz=_optional_float(caps.get("plan_hz")),
             stochastic=bool(caps.get("stochastic", False)),
             needs_speed=bool(caps.get("needs_speed", True)),
             trained_on=_trained_on(caps.get("trained_on"), path),
