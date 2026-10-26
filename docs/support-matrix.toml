@@ -91,14 +91,6 @@ key = "drivejepa"
 name = "Drive-JEPA"
 
 [[model]]
-key = "drivejepa_rerank"
-name = "Drive-JEPA, KITScenes re-ranker"
-
-[[model]]
-key = "drivejepa_retrained"
-name = "Drive-JEPA, retrained on Physical AI AV"
-
-[[model]]
 key = "visionpilot"
 name = "VisionPilot"
 marks = "P S"  # every cell in the row
@@ -151,26 +143,6 @@ navsim_v1 = { run = "navsim_v1/drivejepa/20260911T082329-575df6", marks = "A" }
 bench2drive = { run = "bench2drive/drivejepa/native50-2hz-40c29d24c37d542a-447e23", marks = "R", note = "2 Hz" }
 neuroncap = { run = "neuroncap/drivejepa/20261012T224707-f11ac0" }
 alpasim = { run = "alpasim/drivejepa/legacy-drivejepa_014_20hz_30scenes" }
-
-[cells.drivejepa_rerank]
-nuscenes = { run = "nuscenes/drivejepa_rerank/20261012T220930-6194bd" }
-kitscenes = { run = "kitscenes/drivejepa_rerank/20260921T210621-d7ed08", marks = "A" }
-comma2k19 = "not run"
-nuplan = "not run"
-navsim = "not run"
-navsim_v1 = "not run"
-neuroncap = "not run"
-
-[cells.drivejepa_retrained]
-nuscenes = "not run"
-kitscenes = "not run"
-comma2k19 = "not run"
-nuplan = "not run"
-navsim = "not run"
-navsim_v1 = "not run"
-bench2drive = "not run"
-neuroncap = "not run"
-alpasim = { run = "alpasim/drivejepa/legacy-drivejepa_017_20hz_30scenes", model = "drivejepa", marks = "A" }
 
 [cells.visionpilot]
 nuscenes = { run = "nuscenes/visionpilot/20260905T093333-319ef5" }

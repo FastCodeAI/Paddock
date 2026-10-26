@@ -94,7 +94,10 @@ data and vendors no model code. What crosses the wire:
 **S** stale · **R** run differently, not ranked · **V** stored `valid: false`, not ranked.
 
 Each number is read from the run [docs/support-matrix.toml](docs/support-matrix.toml)
-names for it. Per-benchmark tables and notes: [nuScenes](docs/benchmarks/nuscenes.md#support-matrix-results) ·
+names for it. The matrix holds released checkpoints only; checkpoints we trained
+ourselves, such as Drive-JEPA's KITScenes re-ranker and its Physical AI AV retrain,
+are in [Gallops' table of training runs](https://github.com/FastCodeAI/Gallops#training-so-far).
+Per-benchmark tables and notes: [nuScenes](docs/benchmarks/nuscenes.md#support-matrix-results) ·
 [KITScenes](docs/benchmarks/kitscenes.md#support-matrix-results) ·
 [comma2k19](docs/benchmarks/comma2k19.md#support-matrix-results) ·
 [nuPlan](docs/benchmarks/nuplan.md#support-matrix-results) ·
@@ -119,9 +122,8 @@ was measured the same way as the rest of its column.
   neuroNCAP (its model card lists two NAVSIM-built and five nuScenes-built public
   training sets), AutoE2E on nuScenes and neuroNCAP (its frozen camera encoder was
   trained on nuScenes train), on NAVSIM (trained on nuPlan's train logs, the
-  source of NAVSIM's scenes) and on KITScenes (fine-tuned on its train split), the
-  re-ranker on KITScenes, the retrained
-  Drive-JEPA on AlpaSim. OpenPilot's KITScenes cell is a configured run, and its
+  source of NAVSIM's scenes) and on KITScenes (fine-tuned on its train split).
+  OpenPilot's KITScenes cell is a configured run, and its
   configuration was chosen by inspecting one scene of the scored split; the stock
   run scores 1.599.
 - **P — grades a pipeline built around the model.** VisionPilot has no
@@ -151,8 +153,7 @@ was measured the same way as the rest of its column.
 Before comparing numbers:
 
 - **Open-loop L2 rewards a straight line.** On nuScenes, constant velocity
-  (0.641) beats every learned model except Qwen-Drive, whose cell is adapted, and
-  the re-ranker.
+  (0.641) beats every learned model except Qwen-Drive, whose cell is adapted.
 - **nuPlan is recorded, not ranked.** This site holds one of nuPlan's nine camera
   shards: 25 anchors, in 7 of 59 scenario types, six of them stop-sign or
   traffic-light decelerations. Every run is stored `valid: false`.
