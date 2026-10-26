@@ -1595,27 +1595,29 @@ def test_nothing_launches_beside_a_running_simulator_subset(tmp_path: Path, monk
     gate.smoke(
         args(tier="closed", bench=["neuroncap", "bench2drive"], cores=["4-7", "8-11"]), lambda _m: None
     )
-    spans = _intervals(stamps)
-    assert spans["bench2drive"][0] >= spans["neuroncap"][1], f"overlapped: {spans}"
+    (a0, a1), (b0, b1) = _intervals(stamps)["bench2drive"], _intervals(stamps)["neuroncap"]
+    assert a1 <= b0 or b1 <= a0, f"overlapped: {(a0, a1)} and {(b0, b1)}"  # in either order (launch_order)
 
 
 def test_a_regression_found_while_waiting_for_gpu_memory_stops_that_launch(
     tmp_path: Path, monkeypatch
 ) -> None:
     """Review #80 (9): the GPU wait blocked the loop, so nuScenes launched after kitscenes
-    had already regressed -- the regression is what freed the card."""
-    args, stamps = _smoke_site(tmp_path, monkeypatch, {"kitscenes": 3.0, "nuscenes": 2.0}, hold=0.5)
+    had already regressed -- the regression is what freed the card. With two lanes the
+    longer nuScenes launches first (`launch_order`), so here it is the one that regresses
+    while kitscenes waits for memory."""
+    args, stamps = _smoke_site(tmp_path, monkeypatch, {"kitscenes": 2.0, "nuscenes": 3.0}, hold=0.5)
     calls = {"n": 0}
 
-    def free_gb(env):  # room for the first launch; then none until kitscenes has ended
+    def free_gb(env):  # room for the first launch; then none until nuscenes has ended
         calls["n"] += 1
-        ended = stamps.exists() and "kitscenes end" in stamps.read_text()
+        ended = stamps.exists() and "nuscenes end" in stamps.read_text()
         return 100.0 if calls["n"] == 1 or ended else 0.0
 
     monkeypatch.setattr(gate, "_gpu_free_gb", free_gb)
     said: list[str] = []
     assert gate.smoke(args(cores=["4-7", "8-11"]), said.append) == 1
-    assert set(_intervals(stamps)) == {"kitscenes"}
+    assert set(_intervals(stamps)) == {"nuscenes"}
     assert "waiting for" in "\n".join(said)
 
 

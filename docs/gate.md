@@ -278,6 +278,11 @@ setsid nohup python -m tools.gate smoke ... --tier all --execute \
   its first episode, after the model is ready, so nothing else launches while
   one is running: the closed tier runs one subset at a time. With one
   `--cores` (the default, `4-7`) everything runs one after another.
+- **Longest first, with lanes.** With more than one lane, a tier's subsets
+  launch longest first (`EXPECTED_MIN`, measured where it could be): NAVSIM,
+  then neuroNCAP, nuScenes, KITScenes. Launched last, NAVSIM ran alone for half
+  an hour while the other lanes sat idle. With one lane the order stays cheap
+  first, so a regression stops the smoke soonest.
 - **Stop at the first regression.** When a finished subset is a REGRESSION
   against its baseline, nothing else is launched; running ones finish. The
   closed tier never starts after a quick-tier regression or an unfinished quick
