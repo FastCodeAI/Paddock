@@ -27,9 +27,10 @@ Run these from a paddock checkout, with your site `paddock.toml` (it needs the
 
 - **checks what the job changes.** Each `--env` key must be one the model's
   `model.yaml` already sets (`runtime.env` or `runtime.tuning_env`), such as
-  `DRIVEJEPA_CHECKPOINT`. A job cannot set `CUDA_VISIBLE_DEVICES` or
-  `PYTHONPATH`: the runs would record the change as part of the model, or not at
-  all.
+  `DRIVEJEPA_CHECKPOINT`, in the commit the job runs, not in your checkout. A job
+  cannot set `CUDA_VISIBLE_DEVICES` or `PYTHONPATH`: the runs would record the
+  change as part of the model, or not at all. The worker checks a job file again
+  before it runs it, so a file written by hand is held to the same rules.
 - **copies the checkpoint.** A value that names a file or a directory is copied
   into the shared store, under a name made from its content (its sha256), and
   the job uses the copy. So you can overwrite or delete your file after
