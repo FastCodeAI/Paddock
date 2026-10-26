@@ -346,6 +346,21 @@ def test_retry_queues_a_finished_job_again_at_the_back(site) -> None:
         q.retry(site.settings, second)
 
 
+def test_a_damaged_job_file_is_skipped_and_named(site, capsys) -> None:
+    """Review of #109 (2): one cut-off job.json stopped ls, submit and the worker for every job."""
+    _baselines(site)
+    good = _submit(site)
+    broken = q._mkdir(site.settings.jobs / "20200101T000000-x-0000")
+    (broken / "job.json").write_text('{"id": "20200101T000000-x-0000", "mod')
+    assert [j.id for j in q.jobs(site.settings)] == [good]
+    assert good in q.listing(site.settings)
+    _submit(site)
+    q.Worker(site.settings, echo=lambda _: None).run(once=True)
+    assert q.load_job(site.settings.jobs / good).state == "done"
+    err = capsys.readouterr().err
+    assert err.count(str(broken / "job.json")) == 1, "named once, not on every look at the queue"
+
+
 def test_only_one_worker_runs(site) -> None:
     lock = q._mkdir(site.settings.root) / "worker.lock"
     with lock.open("a") as held:

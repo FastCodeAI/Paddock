@@ -419,10 +419,21 @@ class Job:
         return self.requeued or str(self.spec.get("submitted", ""))
 
 
+#: Job files already named as unreadable: the worker looks at the queue every few seconds.
+_UNREADABLE: set[Path] = set()
+
+
 def load_job(path: Path) -> Job | None:
-    spec = _read(path / "job.json")
-    if not spec:
-        return None  # still being written by its submitter, or not a job
+    try:
+        spec = _read(path / "job.json")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        # One damaged file stopped ls, submit and the worker for every job.
+        if path not in _UNREADABLE:
+            _UNREADABLE.add(path)
+            print(f"queue: skipping {path / 'job.json'}: not readable JSON", file=sys.stderr)
+        return None
+    if not isinstance(spec, dict) or not spec:
+        return None  # not a job
     requeued = path / "requeued"
     return Job(
         path.name,
