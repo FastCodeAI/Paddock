@@ -129,7 +129,10 @@ directory and `<store>` the large one. Steps marked *as paddock* run under
    ```
 
    In the worker's copy, point `[roots] runs` at a directory `paddock` can write
-   (say `<store>/runs`).
+   (say `<store>/runs`), and copy the site runs folder's `geometry/` into it:
+   neuroNCAP's PDM terms read the road-area files built there
+   (`tools/benchmarks/nuscenes/build_pdm_geometry.py`), and without them its runs
+   record no PDM terms.
 2. **Git, as paddock.** `git config --global safe.directory '*'`. Git refuses a
    clone owned by another account ("dubious ownership"), and the vendor clones
    under `[roots] repos` belong to whoever made them.
