@@ -577,6 +577,24 @@ def provenance_refused(model: str, checkout: Path) -> str | None:
     return None
 
 
+def job_refused(job: dict[str, Any], checkout: Path) -> str | None:
+    """What `submit` would have refused in this job, or None. A job file can be written
+    by hand, so the worker checks again: env keys the model's model.yaml (in the job's
+    own checkout) sets, and no env on a baseline job, which would install a checkpoint
+    as the queue's baselines."""
+    env = job.get("env") or {}
+    if job.get("kind") == "baseline" and env:
+        return f"a baseline job runs the released model, and this one sets {', '.join(sorted(env))}"
+    path = checkout / MODELS_DIR / job["model"] / "model.yaml"
+    if not path.is_file():
+        return f"unknown model {job['model']!r} at {job['commit'][:12]}"
+    try:
+        checked_env(job["model"], env, yaml.safe_load(path.read_text()) or {}, job["commit"])
+    except QueueError as why:
+        return str(why)
+    return None
+
+
 def gate_command(settings: Settings, job: dict[str, Any], job_dir: Path) -> list[str]:
     command = [settings.python, "-m", "tools.gate", "smoke", "--model", job["model"]]
     command += ["--baseline", str(job_dir / "baseline.toml"), "--tier", job["tier"], "--execute"]
@@ -701,7 +719,7 @@ class Worker:
             checkout = ensure_checkout(self.settings, spec["commit"])
         except QueueError as why:
             return self.finish(job, "error", reason=str(why))
-        if why := provenance_refused(spec["model"], checkout):
+        if why := job_refused(spec, checkout) or provenance_refused(spec["model"], checkout):
             return self.finish(job, "error", reason=why)
         baseline = job.path / "baseline.toml"
         if not baseline.is_file():

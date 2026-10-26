@@ -361,6 +361,26 @@ def test_a_damaged_job_file_is_skipped_and_named(site, capsys) -> None:
     assert err.count(str(broken / "job.json")) == 1, "named once, not on every look at the queue"
 
 
+@pytest.mark.parametrize(
+    "edit, reason",
+    [
+        ({"env": {"CUDA_VISIBLE_DEVICES": "1"}}, "does not set CUDA_VISIBLE_DEVICES"),
+        ({"kind": "baseline", "env": {"M_CHECKPOINT": "/some/other.ckpt"}}, "baseline job"),
+    ],
+)
+def test_the_worker_rechecks_a_job_file_written_by_hand(site, edit, reason) -> None:
+    """Review of #109 (3): submit's rules held only for jobs made by submit."""
+    _baselines(site)
+    job_dir = site.settings.jobs / _submit(site)
+    spec = json.loads((job_dir / "job.json").read_text())
+    (job_dir / "job.json").write_text(json.dumps({**spec, **edit}))
+    q.Worker(site.settings, echo=lambda _: None).run(once=True)
+    job = q.load_job(job_dir)
+    assert job.state == "error" and reason in job.result["reason"]
+    assert _stamps(site) == [], "the gate never ran"
+    assert not (site.settings.baselines / "replaced").exists(), "no baselines were replaced"
+
+
 def test_only_one_worker_runs(site) -> None:
     lock = q._mkdir(site.settings.root) / "worker.lock"
     with lock.open("a") as held:
