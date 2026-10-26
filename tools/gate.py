@@ -1688,15 +1688,27 @@ class _Lane:
     log: Any = None
 
 
-def _wait_ready(log_path: Path, offset: int, proc: subprocess.Popen, model: str) -> None:
-    """Return once the launched node prints `<model> ready`, or its run ends, or READY_WAIT_S passes."""
+def _wait_ready(log_path: Path, offset: int, proc: subprocess.Popen, model: str, nodes: int = 1) -> None:
+    """Return once the launched run's model is ready, or its run ends, or READY_WAIT_S passes.
+
+    The runner starts a run's nodes one after another and prints `<model> ready` for
+    each, so with `nodes` > 1 (NAVSIM's two) the first ready line came while the second
+    node was still loading, and the next launch's GPU check missed its memory. So this
+    waits for one ready line per node. A harness can start fewer than asked when the card
+    holds fewer (`node_count`); then the run moves on to its work after its last ready
+    line without starting another node, and that ends the wait too.
+    """
     deadline = time.time() + READY_WAIT_S
-    marker = f"  {model} ready"
+    marker, start = f"  {model} ready", f"  starting {model} node"
     while time.time() < deadline and proc.poll() is None:
         with log_path.open() as log:
             log.seek(offset)
-            if marker in log.read():
-                return
+            lines = log.read().splitlines()
+        ready = [i for i, line in enumerate(lines) if line.startswith(marker)]
+        if len(ready) >= nodes:
+            return
+        if ready and any(line.strip() and not line.startswith(start) for line in lines[ready[-1] + 1 :]):
+            return
         time.sleep(POLL_S / 2)
 
 
@@ -1968,7 +1980,7 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
             entry["pid"], entry["command"] = proc.pid, command
             save()
             # The next launch's GPU check must see this one's memory already taken.
-            _wait_ready(log_path, offset, proc, args.model)
+            _wait_ready(log_path, offset, proc, args.model, nodes)
 
     except _Stopped as why:
         echo(f"\n{why} received: stopping the running lanes; the same command resumes them")

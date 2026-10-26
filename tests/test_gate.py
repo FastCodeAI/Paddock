@@ -1307,6 +1307,43 @@ def test_a_bigger_model_waits_for_more() -> None:
     assert gate.smoke_need_gb("neuroncap", 26.0) == 36.0
 
 
+def _ready_after(log: Path, lines: list[tuple[float, str]], nodes: int) -> float:
+    """Seconds `_wait_ready` took while `lines` were appended to `log` at their times."""
+    import threading
+    import time as _time
+    from types import SimpleNamespace
+
+    log.write_text("  starting m node on port 9800\n")
+
+    def write() -> None:
+        start = _time.monotonic()
+        for at, line in lines:
+            _time.sleep(max(0.0, at - (_time.monotonic() - start)))
+            with log.open("a") as f:
+                f.write(line + "\n")
+
+    thread = threading.Thread(target=write)
+    begin = _time.monotonic()
+    thread.start()
+    gate._wait_ready(log, 0, SimpleNamespace(poll=lambda: None), "m", nodes=nodes)
+    took = _time.monotonic() - begin
+    thread.join()
+    return took
+
+
+def test_the_next_launch_waits_for_every_model_copy_to_be_ready(tmp_path: Path, monkeypatch) -> None:
+    """Review of #111 (1): NAVSIM's second copy loads after the first says ready; the next
+    launch's GPU check ran while it was still loading."""
+    monkeypatch.setattr(gate, "POLL_S", 0.1)
+    log = tmp_path / "navsim.log"
+    second = [(0.2, "  m ready"), (0.3, "  starting m node on port 9801"), (1.5, "  m ready")]
+    assert _ready_after(log, second, nodes=2) >= 1.4, "returned at the first copy"
+    assert _ready_after(log, second, nodes=1) < 1.0, "one copy: the first ready line is enough"
+    # The card held only one: the run moves on without starting a second, and the wait ends.
+    capped = [(0.2, "  m ready"), (0.4, "  scoring navtest via python")]
+    assert _ready_after(log, capped, nodes=2) < 1.0
+
+
 def test_navsim_runs_two_model_nodes_in_the_gate_and_waits_for_both(tmp_path: Path) -> None:
     """One node answered NAVSIM's four scorer workers one scenario at a time."""
     import tomllib
