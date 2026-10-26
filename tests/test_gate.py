@@ -1307,6 +1307,23 @@ def test_a_bigger_model_waits_for_more() -> None:
     assert gate.smoke_need_gb("neuroncap", 26.0) == 36.0
 
 
+def test_navsim_runs_two_model_nodes_in_the_gate_and_waits_for_both(tmp_path: Path) -> None:
+    """One node answered NAVSIM's four scorer workers one scenario at a time."""
+    import tomllib
+
+    site = tmp_path / "paddock.toml"
+    site.write_text('site = "t"\n[benchmarks.navsim]\npython = "p"\n')
+    derived = gate.smoke_config(site, "m", {}, 8700)
+    assert tomllib.loads(derived)["benchmarks"]["navsim"]["gpu_nodes"] == gate.GATE_NAVSIM_GPU_NODES == 2
+    assert gate.navsim_nodes(derived) == 2
+    assert gate.smoke_need_gb("navsim", 12.0, nodes=2) == 26.0
+    site.write_text('site = "t"\n[benchmarks.navsim]\npython = "p"\ngpu_nodes = 1\n')
+    assert gate.navsim_nodes(gate.smoke_config(site, "m", {}, 8700)) == 1, "the site's own choice stands"
+    bare = tmp_path / "bare.toml"
+    bare.write_text('site = "t"\n')
+    assert "navsim" not in tomllib.loads(gate.smoke_config(bare, "m", {}, 8700)).get("benchmarks", {})
+
+
 def test_the_site_config_gains_the_smoke_overrides_and_loses_nothing(tmp_path: Path) -> None:
     """The derived PADDOCK_CONFIG is the site config plus [models.X.env] and the smoke's
     renderer port, round-tripping through TOML."""
@@ -1324,6 +1341,7 @@ def test_the_site_config_gains_the_smoke_overrides_and_loses_nothing(tmp_path: P
     expected = tomllib.loads(site.read_text())
     expected["models"]["drivejepa"]["env"]["DRIVEJEPA_CHECKPOINT"] = "ck.pt"
     expected["benchmarks"]["neuroncap"]["renderer_url"] = "http://127.0.0.1:8700"
+    expected["benchmarks"]["navsim"]["gpu_nodes"] = gate.GATE_NAVSIM_GPU_NODES
     assert derived == expected
 
 
@@ -1548,15 +1566,29 @@ def test_the_closed_tier_starts_only_after_the_quick_tier_ends(tmp_path: Path, m
     assert spans["bench2drive"][0] >= spans["kitscenes"][1]
 
 
-def test_nothing_launches_beside_a_running_simulator_subset(tmp_path: Path, monkeypatch) -> None:
+def test_a_simulator_waits_while_a_running_one_may_still_take_its_memory(tmp_path: Path, monkeypatch) -> None:
     """Review #80 (8): a simulator takes its memory after the model says ready, so a
-    second closed-tier lane's GPU check could run before neuroNCAP's renderer loaded."""
+    second closed-tier lane's GPU check could run before neuroNCAP's renderer loaded.
+    A running simulator's share counts as taken: with 15 GB free, neuroNCAP (10 GB)
+    starts and Bench2Drive (10 GB, plus neuroNCAP's 8 held) waits for it to end."""
     args, stamps = _smoke_site(tmp_path, monkeypatch, {"neuroncap": 2.0, "bench2drive": 2.0}, hold=1.0)
+    monkeypatch.setattr(gate, "_gpu_free_gb", lambda env: 15.0)
+    said: list[str] = []
+    gate.smoke(args(tier="closed", bench=["neuroncap", "bench2drive"], cores=["4-7", "8-11"]), said.append)
+    spans = _intervals(stamps)
+    assert spans["bench2drive"][0] >= spans["neuroncap"][1], f"overlapped: {spans}"
+    assert "waiting for 18 GB of free GPU memory, 8 GB of it held for running simulators" in "\n".join(said)
+
+
+def test_simulators_run_side_by_side_when_the_card_holds_them(tmp_path: Path, monkeypatch) -> None:
+    """With room for both, the closed tier no longer runs one benchmark at a time."""
+    args, stamps = _smoke_site(tmp_path, monkeypatch, {"neuroncap": 2.0, "bench2drive": 2.0}, hold=1.0)
+    monkeypatch.setattr(gate, "_gpu_free_gb", lambda env: 40.0)
     gate.smoke(
         args(tier="closed", bench=["neuroncap", "bench2drive"], cores=["4-7", "8-11"]), lambda _m: None
     )
     spans = _intervals(stamps)
-    assert spans["bench2drive"][0] >= spans["neuroncap"][1], f"overlapped: {spans}"
+    assert spans["bench2drive"][0] < spans["neuroncap"][1], f"ran one after the other: {spans}"
 
 
 def test_a_regression_found_while_waiting_for_gpu_memory_stops_that_launch(

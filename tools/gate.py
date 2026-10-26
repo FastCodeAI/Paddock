@@ -1082,17 +1082,33 @@ SIMULATOR_GB = {"neuroncap": 8.0, "bench2drive": 8.0, "alpasim": 17.0}
 SMOKE_MARGIN_GB = 2.0
 
 
-def smoke_need_gb(bench: str, model_vram_gb: float) -> float:
+def smoke_need_gb(bench: str, model_vram_gb: float, nodes: int = 1) -> float:
     """Free GPU memory to wait for before launching `bench`, in GB.
 
-    The model's declared `vram_gb`, its simulator's share, and a margin. One
+    The model's declared `vram_gb` for each of its `nodes` (NAVSIM runs
+    `GATE_NAVSIM_GPU_NODES`), its simulator's share, and a margin. One
     figure for every benchmark (14 GB) was enough for open loop and too little
     for neuroNCAP: in run 20261015T235246-42c93e the smoke's renderer and model
     loaded beside another job's renderer and model, and every /infer of that
     first pass ended in CUDA out of memory. A launch into too little fails minutes later with an OOM
     that names nobody, so the wait is the cheap place to be generous.
     """
-    return model_vram_gb + SIMULATOR_GB.get(bench, 0.0) + SMOKE_MARGIN_GB
+    return model_vram_gb * nodes + SIMULATOR_GB.get(bench, 0.0) + SMOKE_MARGIN_GB
+
+
+#: Model nodes NAVSIM's scorer sends to (`[benchmarks.navsim] gpu_nodes`), unless the
+#: site sets its own. Its four scorer workers share one node, which answers one
+#: scenario at a time, and on 2026-10-23 the gate's NAVSIM took 41 min to score where
+#: the node, not the scorer, was the queue. A second node halves that queue; each
+#: scenario is still one request to one node, and `gpu_nodes` is not in the run config,
+#: so what is measured is unchanged.
+GATE_NAVSIM_GPU_NODES = 2
+
+
+def navsim_nodes(config_text: str) -> int:
+    """The `gpu_nodes` a derived config gives NAVSIM, for the GPU wait."""
+    navsim = (tomllib.loads(config_text).get("benchmarks") or {}).get("navsim") or {}
+    return max(1, int(navsim.get("gpu_nodes", 1) or 1))
 
 
 #: Makes the neuroNCAP harness start (and stop) a renderer per scene, read in
@@ -1311,8 +1327,9 @@ def smoke_config(
     renderers there, and the site's port is usually where someone's long-lived
     `paddock renderer` already listens, which the harness's preflight refuses to
     start beside); and, unless the site names one, nuScenes' `index_cache` in
-    `cache_dir`. Neither is in a run config, so neither changes what is measured
-    or the run id. neuroNCAP's `video` stays the site's: its mp4s are how a
+    `cache_dir`; and NAVSIM's `gpu_nodes`, `GATE_NAVSIM_GPU_NODES` unless the site
+    sets its own. None is in a run config, so none changes what is measured or the
+    run id. neuroNCAP's `video` stays the site's: its mp4s are how a
     regression is looked at.
     """
     raw = tomllib.loads(site_config.read_text())
@@ -1330,6 +1347,9 @@ def smoke_config(
     alpasim = (raw.get("benchmarks") or {}).get("alpasim")
     if isinstance(alpasim, dict):
         alpasim["scene_set"] = load_subset("alpasim").meta["scene_set"]
+    navsim = (raw.get("benchmarks") or {}).get("navsim")
+    if isinstance(navsim, dict):
+        navsim.setdefault("gpu_nodes", GATE_NAVSIM_GPU_NODES)
     ncap = raw.setdefault("benchmarks", {}).setdefault("neuroncap", {})
     host = str(ncap.get("renderer_url") or "http://127.0.0.1:8000").rsplit(":", 1)[0]
     ncap["renderer_url"] = f"{host}:{renderer_port}"
@@ -1873,16 +1893,10 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
                 continue
             idle = next((lane for lane in lanes if lane.proc is None), None)
             busy = [lane.step for lane in lanes if lane.step is not None]
-            # A simulator starts inside its run's first episode, after the model has
-            # said ready, so its memory is not taken yet when a next launch's GPU
-            # check would run: nothing launches while a simulator subset is running.
             blocked = (
                 nxt is None
                 or idle is None
-                or any(
-                    b.bench == nxt.bench or tier_of[b.name] != tier_of[nxt.name] or b.bench in SIMULATOR_GB
-                    for b in busy
-                )
+                or any(b.bench == nxt.bench or tier_of[b.name] != tier_of[nxt.name] for b in busy)
             )
             if blocked:
                 time.sleep(POLL_S)
@@ -1897,13 +1911,24 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
             # so a regression found meanwhile stops this launch. A blocking wait
             # launched nuScenes after kitscenes had regressed, because the
             # regression is what freed the card.
-            need = smoke_need_gb(nxt.bench, models[args.model].vram_gb)
+            # A simulator starts inside its run's first episode, after the model has
+            # said ready, and neuroNCAP stops and starts its renderer at every scene,
+            # so a running simulator's memory may not be taken when this check reads
+            # the card. Each running simulator's share counts as taken until its lane
+            # ends: that over-counts while it is up, and two simulators never start
+            # into the same memory. (Until 2026-10-27 nothing launched beside a
+            # running simulator, and the closed tier ran one benchmark at a time.)
+            held = sum(SIMULATOR_GB.get(b.bench, 0.0) for b in busy)
+            nodes = navsim_nodes(config_path.read_text()) if nxt.bench == "navsim" else 1
+            need = smoke_need_gb(nxt.bench, models[args.model].vram_gb, nodes) + held
             free = _gpu_free_gb(step_env)
             if free is not None and free < need:
                 if gpu_wait_since is None:
                     gpu_wait_since = time.time()
+                    for_sims = f", {held:.0f} GB of it held for running simulators" if held else ""
                     echo(
-                        f"  {nxt.name}: waiting for {need:.0f} GB of free GPU memory ({free:.1f} GB free now)"
+                        f"  {nxt.name}: waiting for {need:.0f} GB of free GPU memory{for_sims} "
+                        f"({free:.1f} GB free now)"
                     )
                 elif time.time() - gpu_wait_since > GPU_WAIT_S:
                     stop = (
