@@ -682,6 +682,12 @@ def _compare(
         result.verdict = "NO RECORDS"
         missing = [w for r, w in ((baseline, "baseline"), (candidate, "candidate")) if not r.samples]
         result.notes.append(f"no per-sample records on this site for: {', '.join(missing)}")
+        # A candidate with no records because it failed on every sample (the quick
+        # tier's one-route crash check that crashed) is INCOMPLETE, which stops the
+        # gate. NO RECORDS let the closed tier's hours run after it (review of #113, 1).
+        if not candidate.samples and (lost := lost_samples(candidate)):
+            result.verdict = "INCOMPLETE"
+            result.notes.append(f"candidate lost every sample ({lost}) to a failure")
         result.baseline_mean = ((baseline.metrics.get("metrics") or {}).get(metric) or {}).get("mean")
         result.candidate_mean = ((candidate.metrics.get("metrics") or {}).get(metric) or {}).get("mean")
         return result

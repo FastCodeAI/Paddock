@@ -14,6 +14,7 @@ interrupted smoke resumes rather than starting over. None needs a GPU, a dataset
 
 from __future__ import annotations
 
+import functools
 import json
 import math
 from pathlib import Path
@@ -1262,6 +1263,19 @@ def test_the_quick_tier_alone_never_ships() -> None:
     quick = [pair(n, "NEUTRAL") for n in gate.TIERS["quick"] if n != "neuroncap_quick"]
     assert gate.overall([*quick, pair("neuroncap_quick", "GAIN")]) == "HOLD"
     assert gate.overall([*quick, pair("neuroncap_quick", "REGRESSION")]) == "FAIL"
+
+
+def test_a_crash_check_that_crashed_is_incomplete_and_so_stops_the_gate(tmp_path: Path) -> None:
+    """Review of #113 (1): the one-route candidate crashed and kept no records. The gate said
+    NO RECORDS, which does not stop it, and the closed tier's hours ran anyway."""
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    base = [{"sample_id": "b2d/3717", "native_id": {"scene": "3717"}, "metrics": {"driving_score": 50.0}}]
+    _write_run(res, runs, "bench2drive", "m", "a", base, "driving_score")
+    _write_run(res, runs, "bench2drive", "m", "b", [], "driving_score", status="partial", n_failed=1)
+    load = functools.partial(gate.load_run, "bench2drive", runs_root=runs, results_root=res)
+    r = gate.compare_pair(load("m:a"), load("m:b"), runs, subset="bench2drive_quick")
+    assert r.verdict == "INCOMPLETE"
+    assert any("lost every sample" in n for n in r.notes)
 
 
 def test_the_smoke_manifest_pairs_only_finished_runs_with_a_baseline(tmp_path: Path) -> None:
