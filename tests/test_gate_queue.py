@@ -402,6 +402,13 @@ def test_the_worker_reads_its_settings_again_before_each_job(site, tmp_path: Pat
     worker.echo = said.append
     worker.run(once=True)
     assert seen[-1] == ("3-4", "5-6") and any("keeping the current [queue] settings" in m for m in said)
+    # Review of #111 (3): a readable file with a wrong value crashed the worker, and systemd
+    # restarted it into the same crash every minute.
+    config.write_text(table + 'base_port = "98oo"\n')
+    _submit(site)
+    said.clear()
+    worker.run(once=True)
+    assert seen[-1] == ("3-4", "5-6") and any("keeping the current [queue] settings" in m for m in said)
 
 
 def test_only_one_worker_runs(site) -> None:

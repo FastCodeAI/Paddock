@@ -693,7 +693,9 @@ class Worker:
             return
         try:
             new = self.reload()
-        except (QueueError, tomllib.TOMLDecodeError, OSError) as why:
+        except (QueueError, tomllib.TOMLDecodeError, OSError, ValueError, TypeError) as why:
+            # A wrong value (base_port = "98oo") raised here and crashed the worker,
+            # which systemd restarted into the same crash every minute.
             self.echo(f"keeping the current [queue] settings: {why}")
             return
         if new.root != self.settings.root:
