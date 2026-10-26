@@ -70,7 +70,7 @@ capabilities:
   history_frames: 1
   output_kind: waypoints
   horizon_s: 3.0
-  plan_hz: 2.0  # six waypoints 0.5 s apart
+  plan_points_hz: 2.0  # six waypoints 0.5 s apart
   stochastic: false
   needs_speed: true
   # TIER IV Co-MLOps DRS recordings (Japan, plus a US subset), auto-labelled;

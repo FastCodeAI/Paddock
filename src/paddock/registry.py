@@ -191,8 +191,9 @@ class ModelSpec:
     horizon_s: float | None = None
     #: Rate of the plan points the model emits, Hz, before any adapter resamples
     #: them to `waypoint_dt`. None where they are not evenly spaced (openpilot's
-    #: 33 sit on a quadratic grid) or there is no plan.
-    plan_hz: float | None = None
+    #: 33 sit on a quadratic grid) or there is no plan. How far apart one plan's
+    #: points are -- not `planning_hz`, how often the model makes a new plan.
+    plan_points_hz: float | None = None
     #: True if repeated inference on identical input can differ. A single run of
     #: a stochastic model is a draw, not a measurement: alpamayo's frontal
     #: neuroNCAP score has sd 1.817 across seeds on one scenario.
@@ -344,7 +345,7 @@ def load_models(directory: Path = MODELS_DIR) -> dict[str, ModelSpec]:
             ego_history_hz=_optional_float(caps.get("ego_history_hz")),
             output_kind=caps.get("output_kind", "waypoints"),
             horizon_s=_optional_float(caps.get("horizon_s")),
-            plan_hz=_optional_float(caps.get("plan_hz")),
+            plan_points_hz=_optional_float(caps.get("plan_points_hz")),
             stochastic=bool(caps.get("stochastic", False)),
             needs_speed=bool(caps.get("needs_speed", True)),
             trained_on=_trained_on(caps.get("trained_on"), path),

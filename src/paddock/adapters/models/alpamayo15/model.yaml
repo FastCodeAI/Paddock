@@ -63,7 +63,7 @@ capabilities:
   output_kind: waypoints
   horizon_s: 6.4
   # 64 waypoints at 10 Hz; policy.py resamples them to waypoint_dt.
-  plan_hz: 10.0
+  plan_points_hz: 10.0
   # Samples unseeded at T=1.0/top_p=0.95 in closed loop. One run is a draw, not
   # a measurement: sd 1.817 across seeds on frontal-0103.
   stochastic: true

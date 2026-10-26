@@ -85,7 +85,7 @@ capabilities:
   # the first six, so the tail costs them nothing and lets comma2k19 score
   # ADE@5s at the same spacing every other model on that board is scored at.
   horizon_s: 5.0
-  plan_hz: 10.0  # 50 poses 0.1 s apart
+  plan_points_hz: 10.0  # 50 poses 0.1 s apart
   # Flow matching from seeded noise (noise_seed + k) and a greedy reasoning
   # turn: in the default direct mode, repeated inference on identical input is
   # identical. QWENDRIVE_MODE=reasoning is not -- see the note there.

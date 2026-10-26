@@ -680,19 +680,19 @@ def render_models(models: list[tuple[str, ModelSpec]], own: set[str]) -> str:
             )
             out.append(
                 f'<rect x="{X_PLAN + 1}" y="{cy - 14}" width="{w:.1f}" height="10" fill="{hue}"'
-                f' opacity="{0.35 if m.plan_hz else 0.85}"/>'
+                f' opacity="{0.35 if m.plan_points_hz else 0.85}"/>'
             )
             if m.output_kind == "controls":
                 out.append(
                     f'<rect x="{X_PLAN + 1}" y="{cy - 14}" width="{w:.1f}" height="10" fill="url(#stripes)"/>'
                 )
-            if m.plan_hz:
-                points = round(m.horizon_s * m.plan_hz)
+            if m.plan_points_hz:
+                points = round(m.horizon_s * m.plan_points_hz)
                 out += [
-                    _tick(X_PLAN + 1 + k / m.plan_hz * future, cy - 15, 1, 12, hue)
+                    _tick(X_PLAN + 1 + k / m.plan_points_hz * future, cy - 15, 1, 12, hue)
                     for k in range(1, points + 1)
                 ]
-            head, rate = f"{m.horizon_s:g} s", f"{m.plan_hz:g} Hz" if m.plan_hz else "uneven"
+            head, rate = f"{m.horizon_s:g} s", f"{m.plan_points_hz:g} Hz" if m.plan_points_hz else "uneven"
         out.append(_text(X_PLAN + PLAN_W + 6, cy - 4, head, "ink", 12.5, weight="600"))
         if rate:
             out.append(_text(X_PLAN + PLAN_W + 6, cy + 11, rate, "sec", 10.5))

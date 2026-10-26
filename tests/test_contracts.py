@@ -164,7 +164,15 @@ def test_card_values_are_in_range(name: str) -> None:
     assert not m.precision or m.precision in PRECISIONS, (
         f"{name}: precision {m.precision!r} not in {PRECISIONS}"
     )
-    for field in ("params_m", "macs_g", "size_gb", "horizon_s", "camera_hz", "ego_history_hz", "plan_hz"):
+    for field in (
+        "params_m",
+        "macs_g",
+        "size_gb",
+        "horizon_s",
+        "camera_hz",
+        "ego_history_hz",
+        "plan_points_hz",
+    ):
         value = getattr(m, field)
         assert value is None or value > 0, f"{name}: {field} must be positive or absent, got {value}"
     assert m.history_frames is None or m.history_frames >= 1, (

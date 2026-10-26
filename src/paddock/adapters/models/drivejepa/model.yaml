@@ -64,7 +64,7 @@ capabilities:
   ego_history_hz: 2.0
   output_kind: waypoints
   horizon_s: 4.0
-  plan_hz: 2.0  # eight poses 0.5 s apart, NAVSIM's grid
+  plan_points_hz: 2.0  # eight poses 0.5 s apart, NAVSIM's grid
   trained_on:
     # Three training stages, each sourced at the pinned sha or in the papers:
     # 1. The encoder starts from V-JEPA 2 (Drive-JEPA arXiv 2601.22032v2, sec. 3),

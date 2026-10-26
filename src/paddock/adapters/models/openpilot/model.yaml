@@ -83,7 +83,7 @@ capabilities:
   camera_hz: 20.0
   output_kind: waypoints
   horizon_s: 10.0
-  # No plan_hz: its 33 points sit on ModelConstants.T_IDXS, 10 * (i/32)^2 s, 0.01 s
+  # No plan_points_hz: its 33 points sit on ModelConstants.T_IDXS, 10 * (i/32)^2 s, 0.01 s
   # apart near now and 0.6 s apart at 10 s.
   # The reason min_input_hz above is load-bearing rather than cautious: the
   # complete non-image input set is {desire_pulse, traffic_convention,

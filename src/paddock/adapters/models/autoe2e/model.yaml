@@ -54,7 +54,7 @@ capabilities:
   ego_history_hz: 10.0
   output_kind: controls
   horizon_s: 6.4
-  plan_hz: 10.0  # 64 (acceleration, curvature) steps 0.1 s apart
+  plan_points_hz: 10.0  # 64 (acceleration, curvature) steps 0.1 s apart
   stochastic: false
   needs_speed: true
   trained_on:
