@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -913,16 +914,19 @@ def fake_docker(tmp_path: Path, monkeypatch) -> Path:
     """A `docker` on PATH that records each call and answers `compose logs`.
 
     `FAKE_DOCKER_DOWN=fail` makes `compose down` exit non-zero, standing in for
-    a daemon that refuses the teardown.
+    a daemon that refuses the teardown. The compose project each call would act
+    on (`COMPOSE_PROJECT_NAME`) goes to `docker_projects.txt`, one per call.
     """
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     calls = tmp_path / "docker_calls.txt"
+    projects = tmp_path / "docker_projects.txt"
     docker = bin_dir / "docker"
     docker.write_text(
         f"#!{sys.executable}\n"
         "import os, sys\n"
         f"open({str(calls)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n"
+        f"open({str(projects)!r}, 'a').write(os.environ.get('COMPOSE_PROJECT_NAME', '') + '\\n')\n"
         "if 'logs' in sys.argv:\n"
         "    print('2026-10-27T00:00:00Z runtime-0-1  | hello from the container')\n"
         "if 'down' in sys.argv and os.environ.get('FAKE_DOCKER_DOWN') == 'fail':\n"
@@ -1033,3 +1037,30 @@ def test_no_docker_at_all_is_a_warning_not_a_crash(tmp_path: Path, monkeypatch) 
     assert (returncode, timed_out) == (0, False)
     assert any("could not save container logs" in line for line in said)
     assert any("compose down failed" in line for line in said)
+
+
+def test_two_runs_of_one_scene_do_not_share_containers(tmp_path: Path, fake_docker: Path) -> None:
+    """Overlapping runs of one scene must not start or remove each other's containers.
+
+    Left to itself, compose names a project after the folder that holds
+    `docker-compose.yaml` -- here `clipgt-scene` for both runs -- so the first
+    run to finish would remove the second's containers mid-scene.
+    """
+    names = []
+    for run_id in ("20261101T000000-aaaaaa", "20261101T010000-bbbbbb"):
+        out = tmp_path / run_id / "clipgt-scene"
+        out.mkdir(parents=True)
+        (out / "docker-compose.yaml").write_text("services: {}\n")
+        seen = out / "wizard_saw.txt"
+        wizard = f"import os; open({str(seen)!r}, 'w').write(os.environ.get('COMPOSE_PROJECT_NAME', ''))"
+        launcher.run_wizard(
+            [sys.executable, "-c", wizard], tmp_path, out / "wizard.log", 30, echo=lambda _: None
+        )
+        names.append(seen.read_text())
+
+    assert names[0] and names[1] and names[0] != names[1]
+    # Docker refuses any other character, upper case included.
+    assert all(re.fullmatch(r"[a-z0-9][a-z0-9_-]*", name) for name in names)
+    # The logs and the teardown act on the project the wizard started, per run.
+    projects = (tmp_path / "docker_projects.txt").read_text().split()
+    assert projects == [names[0], names[0], names[1], names[1]]

@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import signal
 import subprocess
 import time
@@ -303,6 +304,21 @@ def wizard_command(
     return command
 
 
+def compose_project_name(out_dir: Path) -> str:
+    """The compose project for one run of one scene: `<scene folder>-<run folder>`.
+
+    Left to itself, compose names a project after the folder that holds
+    `docker-compose.yaml`, which is the scene id. Every run of a scene on the
+    machine would then share one set of containers, and of two runs that
+    overlap -- the gate queue and someone's own run -- the second would replace
+    the first's containers and the first to finish would remove the other's. The
+    folder above is the run's own, named by its run id. Docker accepts only
+    lowercase letters, digits, `-` and `_`.
+    """
+    name = f"{out_dir.name}-{out_dir.parent.name}".lower()
+    return re.sub(r"[^a-z0-9_-]", "-", name).lstrip("-_")
+
+
 def run_wizard(
     command: list[str],
     cwd: Path,
@@ -322,8 +338,15 @@ def run_wizard(
     `compose up --exit-code-from` stops the containers on a normal exit but
     does not remove them, and each stopped set keeps its writable layer (up to
     ~1 GB) on the root disk of a shared machine until someone removes it.
+
+    The wizard's `compose up`, the logs and the teardown all act on one compose
+    project named for this run (see `compose_project_name`).
     """
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    env = {
+        **(os.environ if env is None else env),
+        "COMPOSE_PROJECT_NAME": compose_project_name(log_path.parent),
+    }
     started = time.monotonic()
     timed_out = False
     proc: subprocess.Popen | None = None
