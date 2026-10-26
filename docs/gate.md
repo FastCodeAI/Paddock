@@ -430,6 +430,11 @@ the check that the site's baselines are sound.
   `public_2601_30scenes`, twenty more), and thirty of its scenes are the ones
   behind the published 30-scene AlpaSim results. The first draw (2026-10-22, 10
   of all 913 at random) never ran: none of its scenes was on disk.
+  **Another site must download these 10 once** before its gate can run AlpaSim:
+  the scenes listed in `public_2601_gate10.yaml`, into its
+  `[benchmarks.alpasim] scene_cache`, with a Hugging Face token that has access
+  to NVIDIA's gated dataset. AlpaSim fetches a missing scene itself when a run
+  starts, so one run of this scene set with `HF_TOKEN` set does it.
 - **The AlpaSim smoke runs its pinned scene set as the default set**: the
   derived config sets `[benchmarks.alpasim] scene_set = "public_2601_gate10"`,
   so a site configured for `public_2601_30scenes` still runs the subset's 10.
