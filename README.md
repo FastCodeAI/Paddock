@@ -139,16 +139,18 @@ was measured the same way as the rest of its column.
   it the same way it would any other `valid: false` run. Detail in
   [docs/benchmarks/neuroncap.md](docs/benchmarks/neuroncap.md#support-matrix-results).
 - **R — run differently from the rest of its column, so not ranked against it.**
-  NAVSIM with a 10 Hz history from nuPlan, where the others get OpenScene's
-  2 Hz. Bench2Drive at the model's native inference rate over 50 routes, where
+  Bench2Drive at the model's native inference rate over 50 routes, where
   the others run at 20 Hz over the historical 24; those gains are
   partly more exposure. OpenPilot's Bench2Drive cell is an unassisted estimate
   rebuilt from assisted recordings. Alpamayo on AlpaSim drove 4 cameras on 10 of the 30
   scenes, METEOR 6 cameras on all 30, and AutoE2E 6 pinhole cameras at its training field of view on all 30, through paddock's bridge. Drive-JEPA on comma2k19 is its perception-free variant,
-  `drivejepa_free`. AutoE2E on KITScenes is given the scene's map and a route matched
-  to the logged drive, upstream's validation protocol, which no other row gets; without
-  the route it scores 0.837. AutoE2E on nuScenes is fed the 6.5 s of past keyframes it
-  declares, where the others get 2 s.
+  `drivejepa_free`.
+- **Ranked, though fed what the model is built for.** NAVSIM cells marked 10 Hz
+  get nuPlan's 10 Hz frames, where 2 Hz models such as Drive-JEPA get OpenScene's
+  2 Hz. AutoE2E on KITScenes is given the scene's map and a route matched to the
+  logged drive, upstream's validation protocol (without the route it scores
+  0.837); on nuScenes it is fed the 6.5 s of past keyframes it declares, where the
+  others get 2 s.
 
 Before comparing numbers:
 
@@ -161,10 +163,10 @@ Before comparing numbers:
   10 runs each) the top three are statistically indistinguishable. On AlpaSim
   (30 scenes, one rollout each) a difference under about 0.16 is within two
   standard errors.
-- **Constant velocity is a floor, defined per benchmark.** It extrapolates the
-  recorded speed in open loop, holds a fixed 3 m/s target on Bench2Drive, and
-  scores 0 on neuroNCAP by construction: every scenario is staged so that
-  holding speed collides.
+- **Constant velocity is a floor, defined per benchmark, and ranked like a model.**
+  It extrapolates the recorded speed in open loop, holds a fixed 3 m/s target on
+  Bench2Drive, and scores 0 on neuroNCAP by construction: every scenario is
+  staged so that holding speed collides.
 - **The AlpaSim rows come from AlpaSim's native drivers**, not paddock's bridge,
   and were imported into `results/`; AutoE2E's is the exception, run through
   paddock's bridge.

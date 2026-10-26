@@ -117,8 +117,8 @@ nuscenes = { run = "nuscenes/openpilot/20260908T110028-b71f4f" }
 kitscenes = { run = "kitscenes/openpilot/20261008T004723-a369d1", marks = "A" }
 comma2k19 = { run = "comma2k19/openpilot/20260916T051616-2a91ca", marks = "S" }
 nuplan = { run = "nuplan/openpilot/20260917T220353-9e4f44" }
-navsim = { run = "navsim/openpilot/20260911T161513-3a4c90", marks = "R", note = "10 Hz" }
-navsim_v1 = { run = "navsim_v1/openpilot/20260914T181009-dbcef4", marks = "R", note = "10 Hz" }
+navsim = { run = "navsim/openpilot/20260911T161513-3a4c90", note = "10 Hz" }
+navsim_v1 = { run = "navsim_v1/openpilot/20260914T181009-dbcef4", note = "10 Hz" }
 bench2drive = { value = 30.09, source = "docs/benchmarks/bench2drive.md", marks = "R" }
 neuroncap = { run = "neuroncap/openpilot/20260905T055713-11ac59" }
 alpasim = { run = "alpasim/openpilot/legacy-openpilot_020_30scenes" }
@@ -127,8 +127,8 @@ alpasim = { run = "alpasim/openpilot/legacy-openpilot_020_30scenes" }
 nuscenes = { run = "nuscenes/alpamayo15/20260905T093547-3dd7cd", marks = "A" }  # five nuScenes-built sets on its card
 kitscenes = { run = "kitscenes/alpamayo15/legacy-full-nav" }
 comma2k19 = { run = "comma2k19/alpamayo15/20260913T072437-b058c2" }
-navsim = { run = "navsim/alpamayo15/20260912T040211-a9562c", marks = "A R", note = "10 Hz" }  # NAVSIM-Traj, NAVSIM-ReCogDrive
-navsim_v1 = { run = "navsim_v1/alpamayo15/20260914T175447-89a9ca", marks = "A R", note = "10 Hz" }
+navsim = { run = "navsim/alpamayo15/20260912T040211-a9562c", marks = "A", note = "10 Hz" }  # NAVSIM-Traj, NAVSIM-ReCogDrive
+navsim_v1 = { run = "navsim_v1/alpamayo15/20260914T175447-89a9ca", marks = "A", note = "10 Hz" }
 bench2drive = { run = "bench2drive/alpamayo15/native50-10hz-084418258d833a9f-c4d076", marks = "R", note = "10 Hz" }
 neuroncap = { run = "neuroncap/alpamayo15/20260906T034647-bc409f", marks = "A" }  # its scenes are nuScenes val scenes
 alpasim = { run = "alpasim/alpamayo15/legacy-alpamayo_proxy_referee_20hz", marks = "R" }
@@ -174,10 +174,10 @@ bench2drive = { run = "bench2drive/qwendrive/native50-2hz-084418258d833a9f-9b2bc
 neuroncap = { run = "neuroncap/qwendrive/20260915T023604-12d5eb", marks = "A" }  # VQA training splits hold its val scenes
 
 [cells.autoe2e]
-nuscenes = { run = "nuscenes/autoe2e/20261023T004711-eedbe2", marks = "A R" }  # camera encoder trained on nuScenes train
-kitscenes = { run = "kitscenes/autoe2e/20261020T220509-dee848", marks = "A R" }
+nuscenes = { run = "nuscenes/autoe2e/20261023T004711-eedbe2", marks = "A" }  # camera encoder trained on nuScenes train
+kitscenes = { run = "kitscenes/autoe2e/20261020T220509-dee848", marks = "A" }
 comma2k19 = { run = "comma2k19/autoe2e/20261020T213543-417344" }
-navsim = { run = "navsim/autoe2e/20261009T055926-3ceb18", marks = "A R", note = "10 Hz" }
+navsim = { run = "navsim/autoe2e/20261009T055926-3ceb18", marks = "A", note = "10 Hz" }
 neuroncap = { run = "neuroncap/autoe2e/20261021T175940-844841", marks = "A V" }
 alpasim = { run = "alpasim/autoe2e/20261022T045847-86b955", marks = "R" }
 

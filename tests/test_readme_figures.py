@@ -129,13 +129,14 @@ def test_ranks_follow_the_readme_notes(tmp_path: Path) -> None:
     assert [c.lower_is_better for c in columns] == [True, False, True]
     # Lower is better, ties share a rank, an R on the model unranks its whole row, and
     # a V unranks a run stored valid: false.
-    ranks = [by[n].cells[0].rank for n in ("good", "tied", "flagged", "bad", "invalid")]
-    assert ranks == [1, 1, None, 3, None]
+    ranks = [by[n].cells[0].rank for n in ("good", "tied", "flagged", "bad", "invalid", "floor")]
+    assert ranks == [1, 1, None, 4, None, 3]
     # Higher is better, and an R on one cell unranks only that cell.
     assert [by[n].cells[1].rank for n in ("good", "tied", "bad", "invalid")] == [1, None, 3, 2]
-    # A column declared ranked = false ranks nobody; the floor is never ranked.
+    # A column declared ranked = false ranks nobody. The floor is ranked like a model
+    # (above: 0.7 is third), and is never flagged as worse than itself.
     assert all(r.cells[2].rank is None for r in by.values())
-    assert by["floor"].cells[0].rank is None
+    assert by["floor"].cells[1].rank == 4 and not by["floor"].cells[0].below_floor
 
     # Only a ranked cell strictly worse than the floor is flagged.
     assert by["bad"].cells[0].below_floor and not by["good"].cells[0].below_floor

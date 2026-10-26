@@ -15,8 +15,8 @@ The support matrix claims what the README's notes claim:
   valid: false"), and every cell of a column declared `ranked = false`, are hatched
   and carry no rank.
 - A mark on a model applies to every cell in its row, as the README says.
-- The floor row (constant velocity) is never ranked, and a ranked cell strictly worse
-  than it gets a red triangle.
+- The floor row (constant velocity) is ranked like a model, and any other ranked
+  cell strictly worse than it gets a red triangle.
 Ties share a rank. Shading is by rank, not by value, so one outlier (Drive-JEPA's 16 m
 on comma2k19) cannot wash the rest of its column to one shade.
 
@@ -298,18 +298,17 @@ def rank(columns: list[Column], rows: list[Row]) -> None:
         pool = [
             r.cells[j]
             for r in rows
-            if not r.is_floor
-            and r.cells[j].value is not None
-            and not UNRANKED_MARKS & {*r.cells[j].marks, *r.marks}
+            if r.cells[j].value is not None and not UNRANKED_MARKS & {*r.cells[j].marks, *r.marks}
         ]
+        floor_cell = floor.cells[j] if floor else None
         sign = 1 if col.lower_is_better else -1
         for cell in pool:
             if not cell.valid:
                 # paddock report leaves a valid: false run out; the matrix may not rank it either.
                 raise ValueError(f"results/{cell.run} is stored valid: false, so its cell needs V or R")
             cell.rank = 1 + sum(sign * o.value < sign * cell.value for o in pool)
-            base = floor.cells[j].value if floor else None
-            cell.below_floor = base is not None and sign * cell.value > sign * base
+            base = floor_cell.value if floor_cell else None
+            cell.below_floor = cell is not floor_cell and base is not None and sign * cell.value > sign * base
 
 
 def matrix_cell(model: str, bench: str) -> Cell:
@@ -346,12 +345,13 @@ def render_matrix(columns: list[Column], rows: list[Row]) -> str:
     x0 = PAD + LABEL_W
 
     light = [".miss{fill:#f0efec}", ".floor{fill:#fcfcfb;stroke:#a9a8a3;stroke-dasharray:3 3}"]
+    light += [".floorline{fill:none;stroke:#52514e;stroke-width:1.5;stroke-dasharray:4 3}"]
     light += [".hbg{fill:#f0efec}", ".hln{stroke:#c9c8c3}", ".worse{fill:#d03b3b;stroke:#fcfcfb}"]
     light += [".open{fill:#15803d;stroke:#15803d}", ".pseudo{fill:#b45309;stroke:#b45309}"]
     light += [".closed{fill:#b91c1c;stroke:#b91c1c}"]
     light += [f".r{i + 1}{{fill:{c}}}" for i, c in enumerate(RAMP_LIGHT)]
     light += [f".t{i + 1}{{fill:{c}}}" for i, c in enumerate(TEXT_LIGHT)]
-    dark = [".miss{fill:#2a2a28}", ".floor{fill:#1a1a19;stroke:#6b6a66}"]
+    dark = [".miss{fill:#2a2a28}", ".floor{fill:#1a1a19;stroke:#6b6a66}", ".floorline{stroke:#c3c2b7}"]
     dark += [".hbg{fill:#2a2a28}", ".hln{stroke:#45453f}", ".worse{fill:#e66767;stroke:#1a1a19}"]
     dark += [".open{fill:#4ade80;stroke:#4ade80}", ".pseudo{fill:#fbbf24;stroke:#fbbf24}"]
     dark += [".closed{fill:#f87171;stroke:#f87171}"]
@@ -434,7 +434,7 @@ def render_matrix(columns: list[Column], rows: list[Row]) -> str:
                 out.append(f'<rect class="miss" x="{cx}" y="{cy}" width="{cw}" height="{ch}" rx="4"/>')
                 out.append(_text(mid, cy + ch / 2 + 4, escape(cell.text), "sec", 11.5, "middle"))
                 continue
-            if row.is_floor:
+            if row.is_floor and cell.rank is None:
                 fill, txt, sub_txt = 'class="floor"', "sec", cell.qualifier or "floor"
             elif cell.rank is None:
                 fill, txt = 'fill="url(#hatch)"', "ink"
@@ -442,8 +442,12 @@ def render_matrix(columns: list[Column], rows: list[Row]) -> str:
             else:
                 step = min(cell.rank, len(RAMP_LIGHT))
                 fill, txt = f'class="r{step}"', f"t{step}"
-                sub_txt = f"#{cell.rank}" + (f" · {cell.qualifier}" if cell.qualifier else "")
+                # The floor is ranked like a model, but keeps its dashed edge and its name.
+                label = "floor" if row.is_floor else cell.qualifier
+                sub_txt = f"#{cell.rank}" + (f" · {label}" if label else "")
             out.append(f'<rect {fill} x="{cx}" y="{cy}" width="{cw}" height="{ch}" rx="4"/>')
+            if row.is_floor and cell.rank is not None:
+                out.append(f'<rect class="floorline" x="{cx}" y="{cy}" width="{cw}" height="{ch}" rx="4"/>')
             vy = cy + (21 if sub_txt else ch / 2 + 5)
             out.append(_text(mid, vy, cell.shown, txt, 14, "middle", MONO, weight="600"))
             if sub_txt:

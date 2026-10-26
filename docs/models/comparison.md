@@ -154,9 +154,9 @@ that dataset, and their exclusion from training (126,981 samples, 4,015 clips,
 of the training code in the gallops repository, taken on that code's word. Two
 rows in `results/` were made with these weights, both on AlpaSim: 30 scenes,
 0.7697 (`legacy-drivejepa_017_20hz_30scenes`), and the benchmark's ten scenes
-alone, 0.9956 (`legacy-drivejepa_017_20hz`). The 30-scene figure has its own
-row in the support matrix, marked as adapted, and the section below
-says how to read it. Detail in [drivejepa.md](drivejepa.md).
+alone, 0.9956 (`legacy-drivejepa_017_20hz`). Being our own training, it is not
+in the support matrix: it is in Gallops' table of training runs. The section
+below says how to read it. Detail in [drivejepa.md](drivejepa.md).
 
 **Every Drive-JEPA row on this page is the perception-*based* v2 agent.** The
 comma2k19 board carries a second, separate registry entry —
