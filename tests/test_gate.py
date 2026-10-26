@@ -811,6 +811,61 @@ def test_a_bench2drive_turn_is_read_from_the_route_and_carlas_y_points_right() -
     assert b2d_group("ParkingCutIn", 10.0) == "straight: cut-in or hard brake"
 
 
+def _usdz(path: Path, headings_deg: list[float], speed_mps: float) -> Path:
+    """A stand-in AlpaSim scene: only the recorded drive, one pose every 0.1 s."""
+    import zipfile
+
+    x = y = 0.0
+    poses, stamps = [], []
+    for i, h in enumerate(headings_deg):
+        c, s = math.cos(math.radians(h)), math.sin(math.radians(h))
+        poses.append([[c, -s, 0.0, x], [s, c, 0.0, y], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]])
+        stamps.append(i * 100_000)
+        x, y = x + c * speed_mps * 0.1, y + s * speed_mps * 0.1
+    rig = {"rig_trajectories": [{"T_rig_worlds": poses, "T_rig_world_timestamps_us": stamps}]}
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("rig_trajectories.json", json.dumps(rig))
+    return path
+
+
+def test_an_alpasim_scenes_turn_and_speed_come_from_its_recorded_drive(tmp_path: Path) -> None:
+    """Heading x forward, z up: turning from +x to +y is a left turn. A heading that
+    crosses 180 degrees is a small turn, not a U-turn."""
+    from tools.gate_subsets import alpasim_drive, alpasim_group
+
+    turn, speed = alpasim_drive(_usdz(tmp_path / "left.usdz", [i * 1.0 for i in range(91)], 5.0))
+    assert turn == pytest.approx(90.0) and speed == pytest.approx(5.0)
+    assert alpasim_group(turn, speed) == "left/medium"
+    turn, _ = alpasim_drive(_usdz(tmp_path / "wrap.usdz", [170.0 + i for i in range(21)], 10.0))
+    assert turn == pytest.approx(20.0)
+    assert alpasim_group(-60.0, 1.0) == "right/slow" and alpasim_group(20.0, 10.0) == "straight/fast"
+
+
+def test_the_alpasim_draw_takes_only_scenes_on_disk(tmp_path: Path, monkeypatch) -> None:
+    """AlpaSim fetches a missing scene from a gated dataset at run time; the gate's
+    account has no token for it, so only downloaded scenes may be drawn."""
+    import paddock.adapters.benchmarks.alpasim.harness as harness
+    from tools import gate_subsets
+
+    cache = tmp_path / "cache"
+    (cache / "all-usdzs").mkdir(parents=True)
+    rows = ["test_suite_id,scene_id,uuid"]
+    for i, (headings, speed) in enumerate(
+        [([0.0] * 50, 10.0), ([i * 2.0 for i in range(50)], 5.0), ([0.0] * 50, 1.0)]
+    ):
+        rows.append(f"public_2601,clipgt-on-disk-{i},u{i}")
+        _usdz(cache / "all-usdzs" / f"u{i}.usdz", headings, speed)
+    rows.append("public_2601,clipgt-not-downloaded,u9")
+    suites = tmp_path / "sim_suites.csv"
+    suites.write_text("\n".join(rows) + "\n")
+    monkeypatch.setattr(harness, "SCENES_DIR", tmp_path)
+    gate_subsets.draw_alpasim(suites, cache, n=3, directory=tmp_path)
+    subset = gate.load_subset("alpasim", tmp_path)
+    assert sorted(subset.strata) == ["left/medium", "straight/fast", "straight/slow"]
+    assert sorted(subset.ids) == ["clipgt-on-disk-0", "clipgt-on-disk-1", "clipgt-on-disk-2"]
+    assert "not-downloaded" not in (tmp_path / "public_2601_gate10.yaml").read_text()
+
+
 def test_a_subset_without_its_own_baseline_uses_its_benchmarks() -> None:
     baselines = {"neuroncap": {"run": "m:full"}, "navsim_x": {"run": "m:own"}}
     assert gate.baseline_for(

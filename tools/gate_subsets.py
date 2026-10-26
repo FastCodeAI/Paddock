@@ -4,7 +4,7 @@
     python -m tools.gate_subsets nuscenes    --samples <full nuScenes run>/samples.jsonl --nuscenes <nuScenes root>
     python -m tools.gate_subsets navsim      --samples <full navtest run>/samples.jsonl --logs <navsim_logs/test>
     python -m tools.gate_subsets bench2drive --routes <Bench2Drive>/leaderboard/data/bench2drive220.xml
-    python -m tools.gate_subsets alpasim     --suites <alpasim>/data/scenes/sim_suites.csv
+    python -m tools.gate_subsets alpasim     --suites <alpasim>/data/scenes/sim_suites.csv --scene-cache <scene_cache>
     python -m tools.gate_subsets kitscenes   --samples <full KITScenes run>/samples.jsonl
 
 Each writes `tools/gate_smoke/<name>.toml` (AlpaSim also its scene set), with the
@@ -34,6 +34,7 @@ import math
 import pickle
 import sys
 import xml.etree.ElementTree as ET
+import zipfile
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -76,11 +77,17 @@ def _toml_value(v) -> str:
 
 
 def write_subset(
-    name: str, header: str, meta: dict, strata: dict[str, list[str]], directory: Path = SMOKE_DIR
+    name: str,
+    header: str,
+    meta: dict,
+    strata: dict[str, list[str]],
+    directory: Path = SMOKE_DIR,
+    date: str = DATE,
+    seed: int = SEED,
 ) -> Path:
     """`tools/gate_smoke/<name>.toml`: the header comment, the meta keys, then the groups."""
     lines = [f"# {line}" if line else "#" for line in header.strip("\n").splitlines()]
-    lines.append(HEADER_TAIL.format(date=DATE, name=name.split("_")[0], seed=SEED).rstrip("\n"))
+    lines.append(HEADER_TAIL.format(date=date, name=name.split("_")[0], seed=seed).rstrip("\n"))
     lines.append("")
     lines += [f"{k} = {_toml_value(v)}" for k, v in meta.items()]
     lines += ["", "[strata]"]
@@ -442,38 +449,104 @@ ALPASIM_SUITE = "public_2601"
 ALPASIM_SCENE_SET = "public_2601_gate10"
 
 
-def draw_alpasim(suites_csv: Path, n: int = 10, directory: Path = SMOKE_DIR) -> list[Path]:
+#: Redrawn on 2026-10-27 from the scenes on disk (see `draw_alpasim`), with a seed of its own.
+ALPASIM_DATE = "2026-10-27"
+ALPASIM_SEED = 20261027
+#: A clip is a turn when its heading changes by this much, degrees: Bench2Drive's rule.
+ALPASIM_TURN_DEG = B2D_TURN_DEG
+
+
+def alpasim_drive(usdz: Path) -> tuple[float, float]:
+    """A scene's recorded drive: its net heading change, degrees, left positive, and its
+    mean speed, m/s. Read from `rig_trajectories.json` in the scene's USDZ (a zip): the
+    car's 4x4 poses in the world over the clip, x forward, z up."""
+    rig = json.loads(zipfile.ZipFile(usdz).read("rig_trajectories.json"))["rig_trajectories"][0]
+    poses, stamps = rig["T_rig_worlds"], rig["T_rig_world_timestamps_us"]
+    xy = [(m[0][3], m[1][3]) for m in poses]
+    yaw = [math.atan2(m[1][0], m[0][0]) for m in poses]
+    # Summed step by step, so a heading that crosses +-180 degrees is not read as a U-turn.
+    turn = sum((b - a + math.pi) % (2 * math.pi) - math.pi for a, b in zip(yaw, yaw[1:], strict=False))
+    seconds = (stamps[-1] - stamps[0]) / 1e6
+    return math.degrees(turn), sum(math.dist(a, b) for a, b in zip(xy, xy[1:], strict=False)) / seconds
+
+
+def alpasim_group(turn_deg: float, speed_mps: float) -> str:
+    """`<maneuver>/<speed band>`, the naming nuScenes' and NAVSIM's subsets use."""
+    if turn_deg >= ALPASIM_TURN_DEG:
+        maneuver = "left"
+    elif turn_deg <= -ALPASIM_TURN_DEG:
+        maneuver = "right"
+    else:
+        maneuver = "straight"
+    return f"{maneuver}/{speed_band(speed_mps)}"
+
+
+def draw_alpasim(suites_csv: Path, scene_cache: Path, n: int = 10, directory: Path = SMOKE_DIR) -> list[Path]:
+    """The gate's AlpaSim scenes, drawn from the suite's scenes already in `scene_cache`.
+
+    The first draw (2026-10-22) took 10 of all 913 scenes at random, and none of
+    them was downloaded: AlpaSim fetches a scene from a gated Hugging Face dataset
+    at run time, which the gate queue's account has no token for, onto a disk that
+    was 99% full. The scenes on disk are also the only ones whose recorded drive can
+    be read, so this draw is grouped by turn and speed like every other subset.
+    """
     from paddock.adapters.benchmarks.alpasim.harness import SCENES_DIR
 
     with suites_csv.open() as handle:
-        scenes = sorted(
-            {r["scene_id"] for r in csv.DictReader(handle) if r["test_suite_id"] == ALPASIM_SUITE}
-        )
-    picked = balanced_pick({ALPASIM_SUITE: scenes}, n, SEED)
-    ids = picked[ALPASIM_SUITE]
+        uuids = {
+            r["scene_id"]: r["uuid"] for r in csv.DictReader(handle) if r["test_suite_id"] == ALPASIM_SUITE
+        }
+    groups: dict[str, list[str]] = {}
+    for scene, uuid in sorted(uuids.items()):
+        usdz = scene_cache / "all-usdzs" / f"{uuid}.usdz"
+        if usdz.is_file():
+            groups.setdefault(alpasim_group(*alpasim_drive(usdz)), []).append(scene)
+    pool = sum(len(v) for v in groups.values())
+    picked = balanced_pick(groups, n, ALPASIM_SEED)
+    # Group by group, as the subset file lists them: the gate's tests compare the two in order.
+    ids = [i for group in sorted(picked) for i in picked[group]]
+    where = (
+        f"{n} of the {pool} scenes of {ALPASIM_SUITE} downloaded on shakaal (not of all {len(uuids)}),\n"
+        f"grouped by turn (left or right from {ALPASIM_TURN_DEG:g} degrees of heading change over the clip)\n"
+        f"and speed band ({_counts(groups)}), every group the same share."
+    )
+    caveat = (
+        "The pool is what had been downloaded, not a random sample of the suite: the first\n"
+        "ten of its list, twenty drawn for public_2601_30scenes, and twenty more. Thirty of\n"
+        "them are the scenes behind the published 30-scene AlpaSim results."
+    )
     scene_set = SCENES_DIR / f"{ALPASIM_SCENE_SET}.yaml"
     scene_set.write_text(
-        f"# The regression gate's AlpaSim scenes: {n} of the {len(scenes)} scenes of {ALPASIM_SUITE},\n"
-        f"# drawn at random (seed {SEED}) by `python -m tools.gate_subsets alpasim` on {DATE},\n"
-        "# from the suite list in AlpaSim's data/scenes/sim_suites.csv. Not grouped by maneuver\n"
-        "# or speed: no per-scene record of either is on hand without downloading every scene.\n"
-        f"# tools/gate_smoke/alpasim.toml lists the same {n}; tests/test_gate.py holds them equal.\n"
+        f"# The regression gate's AlpaSim scenes, drawn by `python -m tools.gate_subsets alpasim`\n"
+        f"# on {ALPASIM_DATE} (seed {ALPASIM_SEED}): "
+        + where.replace("\n", "\n# ")
+        + "\n# "
+        + caveat.replace("\n", "\n# ")
+        + f"\n# tools/gate_smoke/alpasim.toml lists the same {n}; tests/test_gate.py holds them equal.\n"
         f"suite: {ALPASIM_SUITE}\n"
-        f"selection: {n} drawn at random, seed {SEED}, by scene_id\n"
+        f"selection: {n} of the {pool} downloaded, by turn and speed, seed {ALPASIM_SEED}, by scene_id\n"
         "scenes:\n" + "".join(f"- {s}\n" for s in ids)
     )
     return [
         scene_set,
         write_subset(
             "alpasim",
-            f"AlpaSim smoke tier: {n} of the {len(scenes)} scenes of {ALPASIM_SUITE}, at random. Not\n"
-            "grouped: no per-scene speed or turn is on hand without downloading all of them.\n"
+            f"AlpaSim smoke tier: {where}\n{caveat}\n"
             f"Run as the scene set {ALPASIM_SCENE_SET} (adapters/benchmarks/alpasim/scenes/),\n"
             "which the smoke's derived config pins as [benchmarks.alpasim] scene_set, so a site\n"
-            "whose own scene_set is another still runs these.",
-            {"bench": "alpasim", "unit": "scene", "seed": SEED, "count": n, "scene_set": ALPASIM_SCENE_SET},
+            "whose own scene_set is another still runs these.\n"
+            "Replaces the draw of 2026-10-22 (10 of all 913 at random, none of them downloaded).",
+            {
+                "bench": "alpasim",
+                "unit": "scene",
+                "seed": ALPASIM_SEED,
+                "count": n,
+                "scene_set": ALPASIM_SCENE_SET,
+            },
             picked,
             directory,
+            date=ALPASIM_DATE,
+            seed=ALPASIM_SEED,
         ),
     ]
 
@@ -526,6 +599,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--routes", type=Path, required=True)
     p = sub.add_parser("alpasim")
     p.add_argument("--suites", type=Path, required=True)
+    p.add_argument("--scene-cache", type=Path, required=True, help="[benchmarks.alpasim] scene_cache")
     p = sub.add_parser("kitscenes")
     p.add_argument("--samples", type=Path, required=True)
     args = ap.parse_args(argv)
@@ -538,7 +612,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.bench == "bench2drive":
         written = [draw_bench2drive(args.routes)]
     elif args.bench == "alpasim":
-        written = draw_alpasim(args.suites)
+        written = draw_alpasim(args.suites, args.scene_cache)
     else:
         written = [draw_kitscenes(args.samples)]
     for path in written:

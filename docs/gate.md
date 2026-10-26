@@ -239,7 +239,7 @@ hours for every answer:
 | neuroncap_quick | quick | 3 pairs, 1 run (seed 0); cannot ship | crash type: 1 each | 3 pairs (4.30) | `--scene <its scenes> --runs 1`, `PADDOCK_NCAP_PAIRS=<the pairs>`, `PADDOCK_NCAP_MANAGE_RENDERER=true` | a full sweep (its run 0) |
 | neuroncap | closed | 15 of the 20 pairs over 13 scenes, 1 run (seed 0) | crash type: 5 each (all frontal and side, 5 of 10 stationary) | 15 pairs (2.14) | as above | a full sweep (its run 0) |
 | bench2drive | closed | 7 of the 220 routes; cannot ship | left turn, right turn, and straight by hazard (junction, highway or high speed, obstacle, pedestrian or cyclist, cut-in or hard brake): 1 each | 7 routes (2.45) | `--scene <7 route ids>` | a smoke baseline |
-| alpasim | closed | 10 of the 913 scenes of `public_2601`, at random (scene set `public_2601_gate10`) | none: no per-scene speed or turn on hand | 10 scenes (2.26) | `scene_set` pinned in the derived config | a smoke baseline |
+| alpasim | closed | 10 of the 50 `public_2601` scenes downloaded on the site (scene set `public_2601_gate10`), not of all 913 | maneuver x speed, read from each scene's recorded drive: 7 | 10 scenes (2.26) | `scene_set` pinned in the derived config | a smoke baseline |
 
 A subset's baseline is `[baseline.<subset>]` in the baseline manifest, else
 `[baseline.<benchmark>]`: one full neuroNCAP sweep serves both neuroNCAP subsets.
@@ -424,9 +424,21 @@ the check that the site's baselines are sound.
   EPDMS depends on which others were scored.
 - **The groups need recorded data.** nuScenes' were read from a full run's
   stored samples (its command and future path) and nuScenes' log table; NAVSIM's
-  from navtest's own log pickles; Bench2Drive's from its route file. AlpaSim has
-  no per-scene speed or turn on hand without downloading every scene, so its 10
-  are a plain random draw.
+  from navtest's own log pickles; Bench2Drive's from its route file; AlpaSim's
+  from the recorded drive inside each scene file.
+- **AlpaSim draws only from scenes already downloaded.** AlpaSim fetches a
+  missing scene from a gated Hugging Face dataset when a run starts, and the
+  gate queue's account has no token for it. So the 10 are drawn from the 50
+  `public_2601` scenes on shakaal, not from all 913. That pool is not a random
+  sample of the suite (the first ten of its list, the twenty drawn for
+  `public_2601_30scenes`, twenty more), and thirty of its scenes are the ones
+  behind the published 30-scene AlpaSim results. The first draw (2026-10-22, 10
+  of all 913 at random) never ran: none of its scenes was on disk.
+  **Another site must download these 10 once** before its gate can run AlpaSim:
+  the scenes listed in `public_2601_gate10.yaml`, into its
+  `[benchmarks.alpasim] scene_cache`, with a Hugging Face token that has access
+  to NVIDIA's gated dataset. AlpaSim fetches a missing scene itself when a run
+  starts, so one run of this scene set with `HF_TOKEN` set does it.
 - **The AlpaSim smoke runs its pinned scene set as the default set**: the
   derived config sets `[benchmarks.alpasim] scene_set = "public_2601_gate10"`,
   so a site configured for `public_2601_30scenes` still runs the subset's 10.
