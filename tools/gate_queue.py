@@ -68,7 +68,7 @@ import sys
 import time
 import tomllib
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -674,10 +674,34 @@ class Worker:
     """Runs one job at a time until stopped. `stop()` (SIGTERM, from systemd) stops the
     running gate and leaves its job without a result, so the next start resumes it."""
 
-    def __init__(self, settings: Settings, echo: Callable[[str], None] = _say) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        echo: Callable[[str], None] = _say,
+        reload: Callable[[], Settings] | None = None,
+    ) -> None:
         self.settings = settings
         self.echo = echo
         self.stopping = False
+        self.reload = reload
+
+    def _reload(self) -> None:
+        """`[queue]` as paddock.toml says now, read before each job: a change (more
+        lanes, say) used to need a restart, and a restart stops the running job. The
+        root stays as it was: the lock and the jobs are there."""
+        if self.reload is None:
+            return
+        try:
+            new = self.reload()
+        except (QueueError, tomllib.TOMLDecodeError, OSError, ValueError, TypeError) as why:
+            # A wrong value (base_port = "98oo") raised here and crashed the worker,
+            # which systemd restarted into the same crash every minute.
+            self.echo(f"keeping the current [queue] settings: {why}")
+            return
+        if new.root != self.settings.root:
+            self.echo(f"[queue] root is now {new.root}; the worker moves there when it restarts")
+            new = replace(new, root=self.settings.root)
+        self.settings = new
 
     def stop(self, *_: Any) -> None:
         self.stopping = True
@@ -698,6 +722,7 @@ class Worker:
                         return 0
                     time.sleep(POLL_S)
                     continue
+                self._reload()
                 self.run_job(job)
         return 0
 
@@ -890,7 +915,7 @@ def main(argv: list[str] | None = None) -> int:
 
             print(service_unit(settings, SiteConfig.path().resolve()), end="")
         else:
-            worker = Worker(settings)
+            worker = Worker(settings, reload=load_settings)
             for sig in (signal.SIGTERM, signal.SIGINT):
                 signal.signal(sig, worker.stop)
             return worker.run(once=args.once)

@@ -6,6 +6,7 @@
     python -m tools.gate_subsets bench2drive --routes <Bench2Drive>/leaderboard/data/bench2drive220.xml
     python -m tools.gate_subsets alpasim     --suites <alpasim>/data/scenes/sim_suites.csv --scene-cache <scene_cache>
     python -m tools.gate_subsets kitscenes   --samples <full KITScenes run>/samples.jsonl
+    python -m tools.gate_subsets quick_closed --routes <Bench2Drive>/leaderboard/data/bench2drive220.xml
 
 Each writes `tools/gate_smoke/<name>.toml` (AlpaSim also its scene set), with the
 rule in its header. The rule, everywhere (agreed 2026-10-22):
@@ -32,6 +33,7 @@ import csv
 import json
 import math
 import pickle
+import random
 import sys
 import xml.etree.ElementTree as ET
 import zipfile
@@ -84,10 +86,12 @@ def write_subset(
     directory: Path = SMOKE_DIR,
     date: str = DATE,
     seed: int = SEED,
+    command: str | None = None,
 ) -> Path:
     """`tools/gate_smoke/<name>.toml`: the header comment, the meta keys, then the groups."""
     lines = [f"# {line}" if line else "#" for line in header.strip("\n").splitlines()]
-    lines.append(HEADER_TAIL.format(date=date, name=name.split("_")[0], seed=seed).rstrip("\n"))
+    command = command or name.split("_")[0]
+    lines.append(HEADER_TAIL.format(date=date, name=command, seed=seed).rstrip("\n"))
     lines.append("")
     lines += [f"{k} = {_toml_value(v)}" for k, v in meta.items()]
     lines += ["", "[strata]"]
@@ -585,6 +589,75 @@ def draw_kitscenes(samples_path: Path, directory: Path = SMOKE_DIR) -> Path:
     )
 
 
+# ---------------------------------------------------------------------------
+# Quick-tier crash checks: one Bench2Drive route and one AlpaSim scene.
+# ---------------------------------------------------------------------------
+
+#: Picked on 2026-10-27 (the user's idea that day), from the closed tier's own picks.
+QUICK_CLOSED_DATE = "2026-10-27"
+QUICK_CLOSED_SEED = 20261027
+CRASH_CHECK = (
+    "One is too few for a verdict: the gate says TOO FEW UNITS and shows the score. What it\n"
+    "catches is a checkpoint that cannot drive there at all: a run that fails is INCOMPLETE,\n"
+    "which stops the gate before the closed tier's hours. can_ship = false."
+)
+
+
+def b2d_route_length_m(xml_path: Path) -> dict[str, float]:
+    """route id -> length of its waypoint path, metres."""
+    out = {}
+    for route in ET.parse(xml_path).getroot().findall("route"):
+        pts = [(float(p.get("x")), float(p.get("y"))) for p in route.find("waypoints").findall("position")]
+        out[route.get("id")] = sum(math.dist(a, b) for a, b in zip(pts, pts[1:], strict=False))
+    return out
+
+
+def draw_quick_closed(xml_path: Path, directory: Path = SMOKE_DIR) -> list[Path]:
+    """`bench2drive_quick` and `alpasim_quick`, each one sample of its closed-tier subset.
+
+    Bench2Drive's is the shortest route of `bench2drive.toml` by path length, so the
+    quick tier stays quick; the choice reads the route file, not any model's result.
+    AlpaSim's clips are all 20 s, so its scene is drawn at random from `alpasim.toml`.
+    Both come from the closed tier's subsets, so the closed tier's baselines hold them.
+    """
+    from tools.gate import load_subset
+
+    b2d = load_subset("bench2drive", directory)
+    lengths = b2d_route_length_m(xml_path)
+    route = min(b2d.ids, key=lambda rid: (lengths[rid], rid))
+    route_group = next(g for g, ids in b2d.strata.items() if route in ids)
+    alpasim = load_subset("alpasim", directory)
+    scene = random.Random(f"{QUICK_CLOSED_SEED}:alpasim_quick").choice(sorted(alpasim.ids))
+    scene_group = next(g for g, ids in alpasim.strata.items() if scene in ids)
+    meta = {"can_ship": False, "crash_check": True, "seed": QUICK_CLOSED_SEED, "count": 1}
+    return [
+        write_subset(
+            "bench2drive_quick",
+            "Bench2Drive quick tier: one route, a crash check. The shortest by path length\n"
+            f"({lengths[route]:.0f} m) of the closed tier's {len(b2d.ids)} routes (bench2drive.toml), so the\n"
+            "quick tier stays short and the closed tier's baseline holds it.\n" + CRASH_CHECK,
+            {"bench": "bench2drive", "unit": "route", **meta},
+            {route_group: [route]},
+            directory,
+            date=QUICK_CLOSED_DATE,
+            seed=QUICK_CLOSED_SEED,
+            command="quick_closed",
+        ),
+        write_subset(
+            "alpasim_quick",
+            "AlpaSim quick tier: one scene, a crash check. Drawn at random from the closed tier's\n"
+            f"{len(alpasim.ids)} scenes (alpasim.toml), so the closed tier's baseline holds it. Run as\n"
+            f"`--scene <it>` within the scene set {alpasim.meta['scene_set']}.\n" + CRASH_CHECK,
+            {"bench": "alpasim", "unit": "scene", **meta, "scene_set": alpasim.meta["scene_set"]},
+            {scene_group: [scene]},
+            directory,
+            date=QUICK_CLOSED_DATE,
+            seed=QUICK_CLOSED_SEED,
+            command="quick_closed",
+        ),
+    ]
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="bench", required=True)
@@ -602,6 +675,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--scene-cache", type=Path, required=True, help="[benchmarks.alpasim] scene_cache")
     p = sub.add_parser("kitscenes")
     p.add_argument("--samples", type=Path, required=True)
+    p = sub.add_parser("quick_closed")
+    p.add_argument("--routes", type=Path, required=True)
     args = ap.parse_args(argv)
     if args.bench == "neuroncap":
         written = draw_neuroncap()
@@ -613,6 +688,8 @@ def main(argv: list[str] | None = None) -> int:
         written = [draw_bench2drive(args.routes)]
     elif args.bench == "alpasim":
         written = draw_alpasim(args.suites, args.scene_cache)
+    elif args.bench == "quick_closed":
+        written = draw_quick_closed(args.routes)
     else:
         written = [draw_kitscenes(args.samples)]
     for path in written:

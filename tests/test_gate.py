@@ -14,6 +14,7 @@ interrupted smoke resumes rather than starting over. None needs a GPU, a dataset
 
 from __future__ import annotations
 
+import functools
 import json
 import math
 from pathlib import Path
@@ -766,10 +767,50 @@ def test_every_tracked_subset_is_in_exactly_one_tier() -> None:
     assert len(set(gate.SMOKE_ORDER)) == len(gate.SMOKE_ORDER)
 
 
-def test_the_quick_tier_runs_no_bench2drive_or_alpasim() -> None:
-    """The quick tier is the one run on every checkpoint; the slow simulators stay out of it."""
+def test_the_quick_tier_checks_bench2drive_and_alpasim_on_one_sample_each() -> None:
+    """The user's idea of 2026-10-27: a checkpoint that cannot drive in CARLA or AlpaSim stops
+    before the closed tier's hours. One sample cannot ship, and comes from the closed tier's
+    own subset, whose baseline holds it."""
     benches = {gate.load_subset(n).bench for n in gate.TIERS["quick"]}
-    assert benches == {"kitscenes", "nuscenes", "navsim", "neuroncap"}
+    assert benches == {"kitscenes", "nuscenes", "navsim", "neuroncap", "bench2drive", "alpasim"}
+    for quick, closed in (("bench2drive_quick", "bench2drive"), ("alpasim_quick", "alpasim")):
+        q, c = gate.load_subset(quick), gate.load_subset(closed)
+        assert len(q.ids) == 1 and set(q.ids) <= set(c.ids) and q.meta["can_ship"] is False
+    assert (
+        gate.load_subset("alpasim_quick").meta["scene_set"] == gate.load_subset("alpasim").meta["scene_set"]
+    )
+
+
+def test_the_quick_crash_checks_are_the_shortest_route_and_a_seeded_scene(tmp_path: Path) -> None:
+    """Re-running the draw on a route file where 3717 is shortest reproduces the tracked files."""
+    import shutil
+
+    from tools import gate_subsets
+
+    for name in ("bench2drive", "alpasim"):
+        shutil.copy(gate.SMOKE_DIR / f"{name}.toml", tmp_path / f"{name}.toml")
+    routes = gate.load_subset("bench2drive").ids
+    xml = tmp_path / "routes.xml"
+    xml.write_text(
+        "<routes>"
+        + "".join(
+            f'<route id="{rid}" town="T"><waypoints><position x="0" y="0" z="0"/>'
+            f'<position x="{10 if rid == "3717" else 500 + i}" y="0" z="0"/></waypoints></route>'
+            for i, rid in enumerate(routes)
+        )
+        + "</routes>"
+    )
+    gate_subsets.draw_quick_closed(xml, tmp_path)
+    for name in ("bench2drive_quick", "alpasim_quick"):
+        drawn = (tmp_path / f"{name}.toml").read_text().split("\n#\n", 1)[1]
+        tracked = (gate.SMOKE_DIR / f"{name}.toml").read_text().split("\n#\n", 1)[1]
+        assert drawn == tracked, name
+
+
+def test_the_alpasim_quick_scene_is_named_and_the_whole_set_is_not() -> None:
+    args, env = gate.smoke_args(gate.load_subset("alpasim_quick"))
+    assert args == ["--scene", gate.load_subset("alpasim_quick").ids[0]] and env == {}
+    assert gate.smoke_args(gate.load_subset("alpasim")) == ([], {})
 
 
 def test_a_subset_file_must_name_its_benchmark(tmp_path: Path) -> None:
@@ -981,6 +1022,7 @@ def test_smoke_subset_sizes_are_the_ones_the_gate_was_designed_around() -> None:
     assert len(gate.load_subset("neuroncap_quick").ids) == 3
     assert len(gate.load_subset("bench2drive").ids) == 7
     assert len(gate.load_subset("alpasim").ids) == 10
+    assert len(gate.load_subset("bench2drive_quick").ids) == len(gate.load_subset("alpasim_quick").ids) == 1
 
 
 def test_every_drawn_group_gets_the_same_share_where_it_can() -> None:
@@ -1195,7 +1237,7 @@ def test_a_rerun_skips_finished_runs_and_resumes_started_ones(tmp_path: Path) ->
 
 
 def test_the_small_subsets_cannot_ship_and_their_pairs_say_so() -> None:
-    small = {"bench2drive", "neuroncap_quick"}
+    small = {"bench2drive", "neuroncap_quick", "bench2drive_quick", "alpasim_quick"}
     assert all(gate.load_subset(n).meta["can_ship"] is False for n in small)
     assert all(gate.load_subset(n).meta.get("can_ship", True) for n in gate.SMOKE_ORDER if n not in small)
     step = gate.SmokeStep("bench2drive", "finished", "r1", [], {}, name="bench2drive", can_ship=False)
@@ -1221,6 +1263,49 @@ def test_the_quick_tier_alone_never_ships() -> None:
     quick = [pair(n, "NEUTRAL") for n in gate.TIERS["quick"] if n != "neuroncap_quick"]
     assert gate.overall([*quick, pair("neuroncap_quick", "GAIN")]) == "HOLD"
     assert gate.overall([*quick, pair("neuroncap_quick", "REGRESSION")]) == "FAIL"
+
+
+def test_a_crash_check_that_crashed_is_incomplete_and_so_stops_the_gate(tmp_path: Path) -> None:
+    """Review of #113 (1): the one-route candidate crashed and kept no records. The gate said
+    NO RECORDS, which does not stop it, and the closed tier's hours ran anyway."""
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    base = [{"sample_id": "b2d/3717", "native_id": {"scene": "3717"}, "metrics": {"driving_score": 50.0}}]
+    _write_run(res, runs, "bench2drive", "m", "a", base, "driving_score")
+    _write_run(res, runs, "bench2drive", "m", "b", [], "driving_score", status="partial", n_failed=1)
+    load = functools.partial(gate.load_run, "bench2drive", runs_root=runs, results_root=res)
+    r = gate.compare_pair(load("m:a"), load("m:b"), runs, subset="bench2drive_quick")
+    assert r.verdict == "INCOMPLETE" and r.crash_check
+    assert any("lost every sample" in n for n in r.notes)
+
+
+def test_a_finished_crash_check_does_not_keep_the_gate_from_shipping() -> None:
+    """Review of #113 (2): each crash check is one sample, always TOO FEW UNITS, and SHIP needed
+    every pair decided, so --tier all could never ship."""
+
+    def pair(name: str, verdict: str) -> gate.PairResult:
+        subset = gate.load_subset(name)
+        return gate.PairResult(
+            bench=subset.bench,
+            metric="m",
+            baseline="m:a",
+            candidate="m:b",
+            higher_is_better=True,
+            verdict=verdict,
+            can_ship=bool(subset.meta.get("can_ship", True)),
+            crash_check=bool(subset.meta.get("crash_check", False)),
+        )
+
+    checks = ("bench2drive_quick", "alpasim_quick")
+    rest = [pair(n, "NEUTRAL") for n in gate.SMOKE_ORDER if n not in checks and n != "neuroncap"]
+    gain = pair("neuroncap", "GAIN")
+    assert gate.overall([*rest, gain, *(pair(n, "TOO FEW UNITS") for n in checks)]) == "SHIP"
+    for broken in ("INCOMPLETE", "NO RECORDS"):
+        assert (
+            gate.overall([*rest, gain, pair(checks[0], broken), pair(checks[1], "TOO FEW UNITS")]) == "HOLD"
+        )
+    assert gate.overall([*rest, pair("neuroncap", "TOO FEW UNITS")]) == "HOLD", (
+        "only crash checks are let off"
+    )
 
 
 def test_the_smoke_manifest_pairs_only_finished_runs_with_a_baseline(tmp_path: Path) -> None:
@@ -1346,6 +1431,60 @@ def test_a_bigger_model_waits_for_more() -> None:
     assert gate.smoke_need_gb("neuroncap", 26.0) == 36.0
 
 
+def _ready_after(log: Path, lines: list[tuple[float, str]], nodes: int) -> float:
+    """Seconds `_wait_ready` took while `lines` were appended to `log` at their times."""
+    import threading
+    import time as _time
+    from types import SimpleNamespace
+
+    log.write_text("  starting m node on port 9800\n")
+
+    def write() -> None:
+        start = _time.monotonic()
+        for at, line in lines:
+            _time.sleep(max(0.0, at - (_time.monotonic() - start)))
+            with log.open("a") as f:
+                f.write(line + "\n")
+
+    thread = threading.Thread(target=write)
+    begin = _time.monotonic()
+    thread.start()
+    gate._wait_ready(log, 0, SimpleNamespace(poll=lambda: None), "m", nodes=nodes)
+    took = _time.monotonic() - begin
+    thread.join()
+    return took
+
+
+def test_the_next_launch_waits_for_every_model_copy_to_be_ready(tmp_path: Path, monkeypatch) -> None:
+    """Review of #111 (1): NAVSIM's second copy loads after the first says ready; the next
+    launch's GPU check ran while it was still loading."""
+    monkeypatch.setattr(gate, "POLL_S", 0.1)
+    log = tmp_path / "navsim.log"
+    second = [(0.2, "  m ready"), (0.3, "  starting m node on port 9801"), (1.5, "  m ready")]
+    assert _ready_after(log, second, nodes=2) >= 1.4, "returned at the first copy"
+    assert _ready_after(log, second, nodes=1) < 1.0, "one copy: the first ready line is enough"
+    # The card held only one: the run moves on without starting a second, and the wait ends.
+    capped = [(0.2, "  m ready"), (0.4, "  scoring navtest via python")]
+    assert _ready_after(log, capped, nodes=2) < 1.0
+
+
+def test_navsim_runs_two_model_nodes_in_the_gate_and_waits_for_both(tmp_path: Path) -> None:
+    """One node answered NAVSIM's four scorer workers one scenario at a time."""
+    import tomllib
+
+    site = tmp_path / "paddock.toml"
+    site.write_text('site = "t"\n[benchmarks.navsim]\npython = "p"\n')
+    derived = gate.smoke_config(site, "m", {}, 8700)
+    assert tomllib.loads(derived)["benchmarks"]["navsim"]["gpu_nodes"] == gate.GATE_NAVSIM_GPU_NODES == 2
+    assert gate.navsim_nodes(derived) == 2
+    assert gate.smoke_need_gb("navsim", 12.0, nodes=2) == 26.0
+    site.write_text('site = "t"\n[benchmarks.navsim]\npython = "p"\ngpu_nodes = 1\n')
+    assert gate.navsim_nodes(gate.smoke_config(site, "m", {}, 8700)) == 1, "the site's own choice stands"
+    bare = tmp_path / "bare.toml"
+    bare.write_text('site = "t"\n')
+    assert "navsim" not in tomllib.loads(gate.smoke_config(bare, "m", {}, 8700)).get("benchmarks", {})
+
+
 def test_the_site_config_gains_the_smoke_overrides_and_loses_nothing(tmp_path: Path) -> None:
     """The derived PADDOCK_CONFIG is the site config plus [models.X.env] and the smoke's
     renderer port, round-tripping through TOML."""
@@ -1364,6 +1503,7 @@ def test_the_site_config_gains_the_smoke_overrides_and_loses_nothing(tmp_path: P
     expected["models"]["drivejepa"]["env"]["DRIVEJEPA_CHECKPOINT"] = "ck.pt"
     expected["benchmarks"]["neuroncap"]["renderer_url"] = "http://127.0.0.1:8700"
     expected["benchmarks"]["neuroncap"]["debug_views"] = False
+    expected["benchmarks"]["navsim"]["gpu_nodes"] = gate.GATE_NAVSIM_GPU_NODES
     assert derived == expected
 
 
@@ -1404,8 +1544,9 @@ def test_the_smoke_renderer_port_is_set_even_without_a_site_renderer_url(tmp_pat
 FAKE_RUN = r"""
 import json, pathlib, sys, time
 import os
-bench, results, runs, model, ade, hold, stamps = sys.argv[1:8]
-run_id = f"cand-{bench}"
+bench, results, runs, model, ade, hold, stamps, name = sys.argv[1:9]
+# Named by subset: two subsets of one benchmark (bench2drive_quick, bench2drive) are two runs.
+run_id = f"cand-{name}"
 art = pathlib.Path(runs) / bench / model / run_id
 art.mkdir(parents=True)
 port = os.environ.get("PADDOCK_BASE_PORT", "9700")
@@ -1414,7 +1555,7 @@ print(f"  starting {model} node on port {port}", flush=True)
 if float(ade) < 0:  # a run that crashes after making its artifacts directory
     sys.exit(1)
 with open(stamps, "a") as f:
-    f.write(f"{bench} start {time.time()}\n")
+    f.write(f"{name} start {time.time()}\n")
 print(f"  {model} ready", flush=True)
 time.sleep(float(hold))
 rows = [
@@ -1431,7 +1572,7 @@ mean = sum(r["metrics"]["ade"] for r in rows) / len(rows)
 (tracked / "metrics.json").write_text(json.dumps({"primary_metric": "ade",
     "metrics": {"ade": {"mean": mean, "n": 4}}}))
 with open(stamps, "a") as f:
-    f.write(f"{bench} end {time.time()}\n")
+    f.write(f"{name} end {time.time()}\n")
 """
 
 
@@ -1444,7 +1585,7 @@ def _smoke_site(tmp_path: Path, monkeypatch, ade: dict[str, float], hold: float 
     import paddock.registry
 
     res, runs, stamps = tmp_path / "results", tmp_path / "runs", tmp_path / "stamps"
-    for bench in ("kitscenes", "nuscenes", "bench2drive", "neuroncap"):
+    for bench in ("kitscenes", "nuscenes", "bench2drive", "neuroncap", "alpasim"):
         base = [
             {
                 "sample_id": f"{bench}/s{i}",
@@ -1460,6 +1601,7 @@ def _smoke_site(tmp_path: Path, monkeypatch, ade: dict[str, float], hold: float 
     baselines.write_text(
         '[baseline.kitscenes]\nrun = "m:base"\n[baseline.nuscenes]\nrun = "m:base"\n'
         '[baseline.bench2drive]\nrun = "m:base"\n[baseline.neuroncap]\nrun = "m:base"\n'
+        '[baseline.alpasim]\nrun = "m:base"\n'
     )
 
     def plan(model, names, declared, state, *, runs_root, results_root, **_):
@@ -1481,7 +1623,7 @@ def _smoke_site(tmp_path: Path, monkeypatch, ade: dict[str, float], hold: float 
                 str(ade[bench]),
                 str(hold),
             ]
-            steps.append(gate.SmokeStep(bench, "new", None, [*cmd, str(stamps)], {}, name=name))
+            steps.append(gate.SmokeStep(bench, "new", None, [*cmd, str(stamps), name], {}, name=name))
         return steps
 
     monkeypatch.setattr(gate, "plan_smoke", plan)
@@ -1513,7 +1655,7 @@ def _smoke_site(tmp_path: Path, monkeypatch, ade: dict[str, float], hold: float 
         "load_models",
         lambda: {
             "m": SimpleNamespace(
-                benchmarks=["kitscenes", "nuscenes", "bench2drive", "neuroncap"], vram_gb=0.0
+                benchmarks=["kitscenes", "nuscenes", "bench2drive", "neuroncap", "alpasim"], vram_gb=0.0
             )
         },
     )
@@ -1586,17 +1728,43 @@ def test_the_closed_tier_starts_only_after_the_quick_tier_ends(tmp_path: Path, m
     )
     spans = _intervals(stamps)
     assert spans["bench2drive"][0] >= spans["kitscenes"][1]
+    assert spans["bench2drive"][0] >= spans["bench2drive_quick"][1], "the quick crash check comes first"
 
 
-def test_nothing_launches_beside_a_running_simulator_subset(tmp_path: Path, monkeypatch) -> None:
+def test_a_simulator_waits_while_a_running_one_may_still_take_its_memory(tmp_path: Path, monkeypatch) -> None:
     """Review #80 (8): a simulator takes its memory after the model says ready, so a
-    second closed-tier lane's GPU check could run before neuroNCAP's renderer loaded."""
+    second closed-tier lane's GPU check could run before neuroNCAP's renderer loaded.
+    A running simulator's share counts as taken: with 15 GB free, one of neuroNCAP and
+    Bench2Drive (10 GB each) starts, and the other (10 GB, plus the first one's 8 held)
+    waits for it to end. Which goes first is `launch_order`'s business."""
     args, stamps = _smoke_site(tmp_path, monkeypatch, {"neuroncap": 2.0, "bench2drive": 2.0}, hold=1.0)
+    monkeypatch.setattr(gate, "_gpu_free_gb", lambda env: 15.0)
+    said: list[str] = []
+    gate.smoke(args(tier="closed", bench=["neuroncap", "bench2drive"], cores=["4-7", "8-11"]), said.append)
+    (a0, a1), (b0, b1) = _intervals(stamps)["bench2drive"], _intervals(stamps)["neuroncap"]
+    assert a1 <= b0 or b1 <= a0, f"overlapped: {(a0, a1)} and {(b0, b1)}"
+    assert "waiting for 18 GB of free GPU memory, 8 GB of it held for running simulators" in "\n".join(said)
+
+
+def test_alpasim_runs_alone_until_its_cpu_use_beside_others_is_known(tmp_path: Path, monkeypatch) -> None:
+    """Review of #111 (2): AlpaSim's containers are not held to the lane's cores, and shakaal
+    fails above 90% CPU. With room on the card for both, AlpaSim still waits for neuroNCAP."""
+    args, stamps = _smoke_site(tmp_path, monkeypatch, {"neuroncap": 2.0, "alpasim": 2.0}, hold=1.0)
+    monkeypatch.setattr(gate, "_gpu_free_gb", lambda env: 80.0)
+    gate.smoke(args(tier="closed", bench=["neuroncap", "alpasim"], cores=["4-7", "8-11"]), lambda _m: None)
+    (a0, a1), (b0, b1) = _intervals(stamps)["alpasim"], _intervals(stamps)["neuroncap"]
+    assert a1 <= b0 or b1 <= a0, f"overlapped: {(a0, a1)} and {(b0, b1)}"  # in either order
+
+
+def test_simulators_run_side_by_side_when_the_card_holds_them(tmp_path: Path, monkeypatch) -> None:
+    """With room for both, the closed tier no longer runs one benchmark at a time."""
+    args, stamps = _smoke_site(tmp_path, monkeypatch, {"neuroncap": 2.0, "bench2drive": 2.0}, hold=1.0)
+    monkeypatch.setattr(gate, "_gpu_free_gb", lambda env: 40.0)
     gate.smoke(
         args(tier="closed", bench=["neuroncap", "bench2drive"], cores=["4-7", "8-11"]), lambda _m: None
     )
     (a0, a1), (b0, b1) = _intervals(stamps)["bench2drive"], _intervals(stamps)["neuroncap"]
-    assert a1 <= b0 or b1 <= a0, f"overlapped: {(a0, a1)} and {(b0, b1)}"  # in either order (launch_order)
+    assert a0 < b1 and b0 < a1, f"ran one after the other: {(a0, a1)} and {(b0, b1)}"  # either order
 
 
 def test_a_regression_found_while_waiting_for_gpu_memory_stops_that_launch(

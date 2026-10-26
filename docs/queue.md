@@ -42,7 +42,8 @@ Run these from a paddock checkout, with your site `paddock.toml` (it needs the
   checkout's own state does not matter.
 
 `--tier`, `--bench` and `--keep-going` mean what they do for `tools.gate smoke`.
-The default tier is `quick` (about 40 minutes); `all` adds the closed-loop
+The default tier is `quick` (about 40 minutes, with one Bench2Drive route and one AlpaSim
+scene as crash checks); `all` adds the closed-loop
 benchmarks (hours).
 
 **Where the result is.** `ls` prints each job's outcome: `done: SHIP`,
@@ -102,6 +103,9 @@ baselines replaced later do not change what it was compared with.
    (`--stage-dir`), and the copy is deleted when the job ends.
 5. Writes `result.json`. For a baseline job, also the model's baselines.
 
+The worker reads `[queue]` again before each job, so a change to its settings
+(more lanes, other ports) applies from the next job, with no restart.
+
 Stopping the worker (`systemctl --user stop paddock-queue`) stops the running
 gate cleanly and leaves its job unfinished; the next start resumes it. A lock
 file in `<root>` keeps a second worker from starting.
@@ -124,7 +128,7 @@ directory and `<store>` the large one. Steps marked *as paddock* run under
    # The worker's own settings (submitters can leave them out):
    stage         = "<root>/stage"           # fast local copy of a running job's checkpoint
    python        = "<root>/venv/bin/python" # paddock's interpreter for the worker
-   cores         = ["12-15"]                # one taskset lane per entry, away from people's own runs
+   cores         = ["12-15", "16-19", "20-23"]  # one taskset lane per entry, away from people's own runs
    base_port     = 9800
    renderer_port = 8800
    ```

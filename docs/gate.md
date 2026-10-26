@@ -83,7 +83,10 @@ about 1.5 (measured from the 200-episode sweeps, 2026-10-21).
 `check` adds one overall line: **FAIL** if any pair is a REGRESSION (exit 1);
 **SHIP** only if every pair was decided (GAIN, NEUTRAL or REGRESSION, so no NO
 RECORDS, TOO FEW UNITS or INCOMPLETE), none regressed, and at least one
-closed-loop pair that may ship is a GAIN; **HOLD** otherwise. A pair with
+closed-loop pair that may ship is a GAIN; **HOLD** otherwise. The quick tier's
+two crash checks (`crash_check = true`: one Bench2Drive route, one AlpaSim
+scene) are always TOO FEW UNITS, so one that ran cleanly is left out of that
+rule; one that failed is INCOMPLETE, which holds, and stops the gate. A pair with
 `can_ship = false` (the Bench2Drive subset: seven routes detect only a 17-38
 point drop; the neuroNCAP quick subset: three episodes) still fails the gate on a REGRESSION, and its GAIN never ships a
 checkpoint; the line says `(cannot ship)`. The smoke also holds while any of
@@ -224,8 +227,12 @@ The smoke has two tiers of its own, because one checkpoint at a time cannot wait
 hours for every answer:
 
 - **quick** (`--tier quick`, the default): every checkpoint. The three open-loop
-  benchmarks and three neuroNCAP pairs, one per crash type. It catches a pipeline break or
-  a large regression in about 40 minutes.
+  benchmarks, three neuroNCAP pairs (one per crash type), and one Bench2Drive route
+  and one AlpaSim scene as crash checks. It catches a pipeline break or a large
+  regression in about 40 minutes. The two crash checks are one sample each, too
+  few for a verdict (TOO FEW UNITS): they show the score, and a checkpoint that
+  cannot drive in CARLA or AlpaSim at all is INCOMPLETE and stops the gate
+  before the closed tier.
 - **closed** (`--tier closed`): a checkpoint worth keeping. The finer neuroNCAP
   subset, Bench2Drive and AlpaSim; a few hours.
 - `--tier all` runs quick, then closed only if every quick subset finished and
@@ -237,6 +244,8 @@ hours for every answer:
 | nuscenes | quick | 1,000 of the 5,119 val keyframes, from 143 of the 150 scenes | city area x maneuver x speed: 34 | 143 scenes (1.98) | `--limit 1000` and `PADDOCK_NUSCENES_SAMPLES=<the ids>` | any run of the same config, a full one included |
 | navsim (v2) | quick | 1,018 navtest tokens from 126 of its 136 logs: 1,000 drawn, then every log touched once topped up to 2 | city x driving command x speed: 35 | 126 logs (1.98) | `--limit 1018` and `PADDOCK_NAVSIM_OVERRIDES=train_test_split.scene_filter.tokens=[...]` | a smoke of the same list only |
 | neuroncap_quick | quick | 3 pairs, 1 run (seed 0); cannot ship | crash type: 1 each | 3 pairs (4.30) | `--scene <its scenes> --runs 1`, `PADDOCK_NCAP_PAIRS=<the pairs>`, `PADDOCK_NCAP_MANAGE_RENDERER=true` | a full sweep (its run 0) |
+| bench2drive_quick | quick | route 3717, the shortest (72 m) of the closed tier's 7; a crash check, cannot ship | none | 1 route (no verdict) | `--scene 3717` | the closed tier's baseline |
+| alpasim_quick | quick | one of the closed tier's 10 scenes, at random (seed 20261027); a crash check, cannot ship | none | 1 scene (no verdict) | `--scene <its clip>` within `public_2601_gate10` | the closed tier's baseline |
 | neuroncap | closed | 15 of the 20 pairs over 13 scenes, 1 run (seed 0) | crash type: 5 each (all frontal and side, 5 of 10 stationary) | 15 pairs (2.14) | as above | a full sweep (its run 0) |
 | bench2drive | closed | 7 of the 220 routes; cannot ship | left turn, right turn, and straight by hazard (junction, highway or high speed, obstacle, pedestrian or cyclist, cut-in or hard brake): 1 each | 7 routes (2.45) | `--scene <7 route ids>` | a smoke baseline |
 | alpasim | closed | 10 of the 50 `public_2601` scenes downloaded on the site (scene set `public_2601_gate10`), not of all 913 | maneuver x speed, read from each scene's recorded drive: 7 | 10 scenes (2.26) | `scene_set` pinned in the derived config | a smoke baseline |
@@ -275,12 +284,26 @@ setsid nohup python -m tools.gate smoke ... --tier all --execute \
   the GPU memory below, and the next one waits until this one's model has said
   it is ready, so every GPU check sees the memory already taken. A subset whose
   benchmark runs a simulator (neuroNCAP, Bench2Drive, AlpaSim) starts it inside
-  its first episode, after the model is ready, so nothing else launches while
-  one is running: the closed tier runs one subset at a time. With one
-  `--cores` (the default, `4-7`) everything runs one after another.
+  its first episode, after the model is ready, and neuroNCAP restarts its
+  renderer at every scene, so its memory may not be taken yet when the next
+  check reads the card. Each running simulator's share (8 GB for neuroNCAP and
+  Bench2Drive, 17 GB for AlpaSim) therefore counts as taken until its lane ends.
+  With enough lanes and memory, neuroNCAP and Bench2Drive run side by side;
+  until 2026-10-27 the closed tier ran one subset at a time. AlpaSim still runs
+  beside no other simulator (`RUN_ALONE`): Docker starts its containers, so the
+  lane's `taskset` does not hold them to its cores, and shakaal fails above about
+  90% CPU. Two subsets of one benchmark never run at once. With one `--cores` (the default, `4-7`)
+  everything runs one after another.
+- **NAVSIM gets two model nodes.** The derived config sets
+  `[benchmarks.navsim] gpu_nodes = 2` unless the site sets its own: the scorer's
+  four workers shared one node, which answers one scenario at a time. Each
+  scenario is still one request to one node, and `gpu_nodes` is not in the run
+  config, so the runs pair with baselines made on one node. The GPU wait counts
+  both nodes.
 - **Longest first, with lanes.** With more than one lane, a tier's subsets
-  launch longest first (`EXPECTED_MIN`, measured where it could be): NAVSIM,
-  then neuroNCAP, nuScenes, KITScenes. Launched last, NAVSIM ran alone for half
+  launch longest first (`EXPECTED_MIN`, measured where it could be). In the quick
+  tier: NAVSIM, neuroNCAP, nuScenes, the Bench2Drive route, the AlpaSim scene,
+  KITScenes. Launched last, NAVSIM ran alone for half
   an hour while the other lanes sat idle. With one lane the order stays cheap
   first, so a regression stops the smoke soonest.
 - **Stop at the first regression.** When a finished subset is a REGRESSION
