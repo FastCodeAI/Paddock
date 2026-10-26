@@ -33,7 +33,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from paddock.adapters.benchmarks.neuroncap import pdm_terms
+from paddock.adapters.benchmarks.neuroncap import nuscenes_subset, pdm_terms
 from paddock.benchmark import ClosedLoopBenchmark, Episode
 from paddock.metrics import pdm
 
@@ -286,6 +286,7 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         # --scene names, but a run without it falls back to the default and
         # would never be checked -- the same asymmetry as verifying the 20
         # scenario files exist while not verifying their scenes can render.
+        problems += self._subset_problems(DEFAULT_SCENE)
         problems += self._lidar_problems(DEFAULT_SCENE)
         try:
             self.pair_filter()
@@ -339,9 +340,43 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             f"not a neuroNCAP score ({_official_set_summary()})"
         ]
 
+    def debug_views(self) -> bool:
+        """`[benchmarks.neuroncap] debug_views`, default true: draw FC_TRAJ and
+        COMBINED_OUTPUTS at every step. They are what the videos are made from and
+        what a person watches; nothing reads them back. Off saved about 1 s of each
+        2.7 s step. Not in the run config: what is measured is the same."""
+        return str(self.setting("debug_views", "true")).strip().lower() not in ("false", "0", "no", "off")
+
+    def nuscenes_root(self) -> Path:
+        """The nuScenes dataroot the engine and the renderer read: `[benchmarks.neuroncap]
+        nuscenes_subset` if set (a copy cut down to neuroNCAP's scenes,
+        `nuscenes_subset.py`), else the dataset itself. Not in the run config: the
+        records each scene reads are the same, so runs pair either way."""
+        subset = self.setting("nuscenes_subset")
+        return Path(subset).expanduser() if subset else Path(self.dataset.resolve())
+
+    def _subset_problems(self, scene: str) -> list[str]:
+        """A scene the cut-down dataroot lacks would fail at the engine's first lookup."""
+        subset = self.setting("nuscenes_subset")
+        if not subset or self.dataset is None:
+            return []
+        held = nuscenes_subset.scenes_in(Path(subset).expanduser(), self.dataset.version or "v1.0-trainval")
+        if held is None:
+            return [
+                f"[benchmarks.neuroncap] nuscenes_subset {subset} holds no nuScenes tables; build it with "
+                f"tools/benchmarks/neuroncap/build_nuscenes_subset.py, or unset it"
+            ]
+        if f"scene-{scene}" not in held:
+            return [
+                f"scene {scene} is not in [benchmarks.neuroncap] nuscenes_subset {subset}; rebuild it with "
+                "tools/benchmarks/neuroncap/build_nuscenes_subset.py --scenes <every scene you run>, "
+                "or unset it"
+            ]
+        return []
+
     def scene_problems(self, scene: str) -> list[str]:
         """Per-scene checks: what stops this scene rendering, before anything loads."""
-        problems = []
+        problems = self._subset_problems(scene)
         checkpoints = self.setting("checkpoints")
         if checkpoints and not (Path(checkpoints) / scene).exists():
             problems.append(
@@ -370,7 +405,9 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         dataset = self.dataset
         if dataset is None:
             return []
-        root = Path(dataset.resolve())
+        # The cut-down copy, when set: its tables are a few MB, and the full
+        # sample_data.json alone is 1.35 GB. Its samples/ is a link to the full set's.
+        root = self.nuscenes_root()
         meta = root / (dataset.version or "v1.0-trainval")
         if not meta.exists():
             return []  # the dataset checks in preflight() cover a missing root
@@ -520,7 +557,7 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             "--engine.model.port",
             port,
             "--engine.dataset.data_root",
-            str(self.dataset.resolve()),
+            str(self.nuscenes_root()),
             "--engine.dataset.version",
             self.dataset.version or "v1.0-trainval",
             "--engine.dataset.sequence",
@@ -898,7 +935,7 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             try:
                 dataset = self.dataset
                 self._pdm_categories = pdm_terms.load_categories(
-                    dataset.resolve(), dataset.version or "v1.0-trainval"
+                    self.nuscenes_root(), dataset.version or "v1.0-trainval"
                 )
             except (AttributeError, OSError, KeyError, ValueError) as exc:
                 print(f"  nuScenes categories unreadable ({exc}); every actor counts as an agent", flush=True)

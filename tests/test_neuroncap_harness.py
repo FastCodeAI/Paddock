@@ -1006,3 +1006,137 @@ def test_a_pair_list_keeps_only_its_pairs_of_the_named_scenes(tmp_path, monkeypa
         "frontal-0103",
         "side-0103",
     ]
+
+
+# ---- the cut-down nuScenes and the optional debug views (gate speed, 2026-10-27) ----
+
+
+def _engine_command(harness, tmp_path, monkeypatch) -> list[str]:
+    scene = OFFICIAL_SET["stationary"][0]
+    episode = next(iter(harness.episodes([scene], runs=1, scenarios=["stationary"])))
+    episode.config["cameras"] = ["CAM_FRONT"]
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    harness.run_episode(episode, "http://127.0.0.1:9000", tmp_path / "out")
+    return captured["command"]
+
+
+def _tiny_nuscenes(root: Path, scenes: list[str]) -> None:
+    """Two-sample scenes with a sweep each, an annotation and an instance: enough for every link."""
+    t: dict[str, list[dict]] = {k: [] for k in (
+        "scene", "log", "map", "sample", "sample_data", "ego_pose", "calibrated_sensor",
+        "sample_annotation", "instance", "category", "attribute", "visibility", "sensor",
+    )}  # fmt: skip
+    t["sensor"] = [{"token": "sen", "channel": "LIDAR_TOP", "modality": "lidar"}]
+    t["category"] = [{"token": "cat", "name": "vehicle.car"}]
+    t["attribute"] = [{"token": "att", "name": "vehicle.moving"}]
+    t["visibility"] = [{"token": "vis", "level": "v80-100"}]
+    for name in scenes:
+        n = name[-4:]
+        t["log"].append({"token": f"log{n}", "location": "boston-seaport"})
+        t["map"].append({"token": f"map{n}", "log_tokens": [f"log{n}"], "filename": f"maps/{n}.png"})
+        s0, s1 = f"s{n}a", f"s{n}b"
+        t["scene"].append({"token": f"sc{n}", "name": name, "log_token": f"log{n}",
+                           "first_sample_token": s0, "last_sample_token": s1})  # fmt: skip
+        t["sample"] += [
+            {"token": s0, "scene_token": f"sc{n}", "prev": "", "next": s1},
+            {"token": s1, "scene_token": f"sc{n}", "prev": s0, "next": ""},
+        ]
+        t["calibrated_sensor"].append({"token": f"cs{n}", "sensor_token": "sen"})
+        for i, (sample, sd) in enumerate([(s0, f"sd{n}a"), (s0, f"sd{n}sweep"), (s1, f"sd{n}b")]):
+            prev = ["", f"sd{n}a", f"sd{n}sweep"][i]
+            nxt = [f"sd{n}sweep", f"sd{n}b", ""][i]
+            t["ego_pose"].append({"token": f"ep{sd}"})
+            t["sample_data"].append(
+                {
+                    "token": sd,
+                    "sample_token": sample,
+                    "ego_pose_token": f"ep{sd}",
+                    "calibrated_sensor_token": f"cs{n}",
+                    "prev": prev,
+                    "next": nxt,
+                    "filename": f"samples/LIDAR_TOP/{sd}.pcd.bin",
+                }
+            )
+        first_last = {"first_annotation_token": f"an{n}", "last_annotation_token": f"an{n}"}
+        t["instance"].append({"token": f"in{n}", "category_token": "cat", **first_last})
+        t["sample_annotation"].append({"token": f"an{n}", "sample_token": s0, "instance_token": f"in{n}",
+                                       "visibility_token": "vis", "attribute_tokens": ["att"],
+                                       "prev": "", "next": ""})  # fmt: skip
+    (root / "v1.0-trainval").mkdir(parents=True, exist_ok=True)
+    for name, rows in t.items():
+        (root / "v1.0-trainval" / f"{name}.json").write_text(json.dumps(rows))
+    for sub in ("samples", "sweeps", "maps", "can_bus"):
+        (root / sub).mkdir(exist_ok=True)
+
+
+def test_the_cut_down_nuscenes_keeps_every_record_its_scenes_use_and_nothing_else(tmp_path) -> None:
+    """The engine and the renderer loaded all 2.5 GB of v1.0-trainval to read one scene."""
+    from paddock.adapters.benchmarks.neuroncap import nuscenes_subset
+
+    full, out = tmp_path / "full", tmp_path / "cut"
+    _tiny_nuscenes(full, ["scene-0103", "scene-0200"])
+    manifest = nuscenes_subset.build(full, out, "v1.0-trainval", {"scene-0103"})
+    tables = {p.stem: json.loads(p.read_text()) for p in (out / "v1.0-trainval").glob("*.json")}
+    assert nuscenes_subset.dangling(tables) == []
+    assert [s["name"] for s in tables["scene"]] == ["scene-0103"]
+    assert {r["token"] for r in tables["sample_data"]} == {"sd0103a", "sd0103sweep", "sd0103b"}, "sweeps too"
+    assert [m["log_tokens"] for m in tables["map"]] == [["log0103"]]
+    assert manifest["rows"]["sample"] == 2 and nuscenes_subset.scenes_in(out, "v1.0-trainval") == {
+        "scene-0103"
+    }
+    for sub in ("samples", "sweeps", "maps", "can_bus"):
+        assert (out / sub).is_symlink() and (out / sub).resolve() == (full / sub).resolve()
+    del tables["ego_pose"][0]
+    assert any("ego_pose" in p for p in nuscenes_subset.dangling(tables)), "a missing record is caught"
+    with pytest.raises(ValueError, match="scene-9999"):
+        nuscenes_subset.build(full, tmp_path / "x", "v1.0-trainval", {"scene-9999"})
+
+
+def test_the_engine_and_the_renderer_read_the_cut_down_nuscenes_when_set(tmp_path, monkeypatch) -> None:
+    from paddock.adapters.benchmarks.neuroncap import launcher, nuscenes_subset
+
+    cut = tmp_path / "cut"
+    _tiny_nuscenes(tmp_path / "full", ["scene-0099", "scene-0103"])
+    nuscenes_subset.build(tmp_path / "full", cut, "v1.0-trainval", {"scene-0099"})
+    plain = _harness_for(_ncap_site(tmp_path, monkeypatch))
+    command = _engine_command(plain, tmp_path, monkeypatch)
+    assert command[command.index("--engine.dataset.data_root") + 1] == str(tmp_path / "nuscenes")
+    config_before = plain.run_config()
+
+    cfg = _ncap_site(tmp_path, monkeypatch, nuscenes_subset=str(cut))
+    harness = _harness_for(cfg)
+    command = _engine_command(harness, tmp_path, monkeypatch)
+    assert command[command.index("--engine.dataset.data_root") + 1] == str(cut)
+    assert harness.run_config() == config_before, "not in the run config: runs still pair"
+    _, _, env = launcher.renderer_command(cfg, "0099")
+    assert env[launcher.NUSCENES_SUBSET_ENV] == str(cut)
+    assert not any("nuscenes_subset" in p for p in harness.scene_problems("0099"))
+    assert "is not in [benchmarks.neuroncap] nuscenes_subset" in " ".join(harness.scene_problems("0103"))
+
+
+def test_the_debug_views_stay_on_unless_the_site_turns_them_off(tmp_path, monkeypatch) -> None:
+    """FC_TRAJ and COMBINED_OUTPUTS took about 1 s of each 2.7 s step; the gate turns them off."""
+    default = _harness_for(_ncap_site(tmp_path, monkeypatch))
+    assert "--engine.logger.debug-views" not in _engine_command(default, tmp_path, monkeypatch)
+    config_before = default.run_config()
+    off = _harness_for(_ncap_site(tmp_path, monkeypatch, debug_views="false"))
+    command = _engine_command(off, tmp_path, monkeypatch)
+    assert command[command.index("--engine.logger.debug-views") + 1] == "False"
+    assert "--engine.logger.enabled" not in command, "the records are still written"
+    assert off.run_config() == config_before
+
+
+def test_debug_views_off_needs_the_patched_neuro_ncap(tmp_path, monkeypatch) -> None:
+    logger = tmp_path / "ncap-repo" / "neuro_ncap" / "components" / "logger.py"
+    logger.parent.mkdir(parents=True)
+    logger.write_text("class LoggerConfig:\n    enabled: bool = True\n")
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch, debug_views="false"))
+    assert any("0003-optional-debug-views" in p for p in harness.preflight())
+    logger.write_text("class LoggerConfig:\n    debug_views: bool = True\n")
+    assert not any("0003-optional-debug-views" in p for p in harness.preflight())
