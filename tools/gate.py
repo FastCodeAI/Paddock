@@ -4,7 +4,7 @@
         --baseline drivejepa:20260905T220225-f11ac0 --candidate drivejepa:20261012T224707-f11ac0
     python -m tools.gate check gate.toml [--json out.json]
     python -m tools.gate smoke --model drivejepa --env DRIVEJEPA_CHECKPOINT=/path/to/it.ckpt \\
-        --baseline baselines.toml [--execute]
+        --baseline baselines.toml [--execute] [--json out.json]
     python -m tools.gate subset neuroncap [--env NAME]
 
 `compare` scores one benchmark; `check` scores every pair in a manifest and gives one
@@ -1692,6 +1692,30 @@ def _step_verdict(step: SmokeStep, base: dict[str, Any], model: str, runs_root: 
     return compare_pair(b, c, runs_root, subset=step.name)
 
 
+def _smoke_json(
+    path: Path | None,
+    verdict: str | None,
+    unfinished: list[str],
+    steps: list[SmokeStep],
+    results: list[PairResult],
+) -> None:
+    """`smoke --json`: the overall verdict, each step's run, and every pair, for a program to read
+    (`tools.gate_queue` turns a baseline job's finished steps into its baselines). `overall` is null when
+    no benchmark had both a baseline and a finished candidate."""
+    if path is None:
+        return
+    steps_out = [{"name": s.name, "bench": s.bench, "status": s.status, "run_id": s.run_id} for s in steps]
+    data = {
+        "overall": verdict,
+        "unfinished": unfinished,
+        "steps": steps_out,
+        "pairs": [asdict(r) for r in results],
+    }
+    part = path.with_name(path.name + ".part")
+    part.write_text(json.dumps(data, indent=2) + "\n")
+    os.replace(part, path)
+
+
 def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
     from paddock.config import SiteConfig
     from paddock.registry import load_models
@@ -1948,9 +1972,11 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
         echo(f"not finished: {', '.join(unfinished)}{why}; the same command resumes them")
     if "[[pair]]" not in manifest.read_text():
         echo("no benchmark has both a baseline and a finished candidate; nothing to check")
+        _smoke_json(args.json, None, unfinished, steps, [])
         return 1 if unfinished else 0
     _, results = check(manifest, cfg.runs, RESULTS_ROOT)
     verdict = overall(results, unfinished)
+    _smoke_json(args.json, verdict, unfinished, steps, results)
     echo(render(results))
     echo(f"\noverall: {verdict}" + (f" (not finished: {', '.join(unfinished)})" if unfinished else ""))
     if worse := pdm_regressions(results):
@@ -2031,6 +2057,7 @@ def main(argv: list[str] | None = None) -> int:
         help="taskset CPU list of one lane; repeat it for lanes that run side by side (default: one lane, 4-7)",
     )
     s.add_argument("--python", default=sys.executable, help="interpreter with paddock's dependencies")
+    s.add_argument("--json", type=Path, help="also write the verdict, each step's run and every pair here")
     u = sub.add_parser("subset", help="print one smoke subset")
     u.add_argument("name", help="a file under tools/gate_smoke/, without .toml")
     u.add_argument("--env", help="print this environment value of its smoke command instead")

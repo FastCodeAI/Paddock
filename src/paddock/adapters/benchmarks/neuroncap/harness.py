@@ -747,38 +747,43 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         lines += [f"file '{frames[-1]}'"] * VIDEO_HOLD_FRAMES
         listing.write_text("\n".join(lines) + "\n")
 
-        result = subprocess.run(
-            [
-                ffmpeg,
-                "-loglevel",
-                "error",
-                "-y",
-                "-r",
-                str(VIDEO_FPS),
-                "-f",
-                "concat",
-                "-safe",
-                "0",
-                "-i",
-                str(listing),
-                # Bounded: shakaal fails at >=90% box CPU, and libx264 would
-                # otherwise take every core it can see.
-                "-threads",
-                "2",
-                # H.264 needs even dimensions; the matplotlib figures are not.
-                "-vf",
-                "scale=trunc(iw/2)*2:trunc(ih/2)*2",
-                "-c:v",
-                "libx264",
-                "-pix_fmt",
-                "yuv420p",
-                "-crf",
-                "23",
-                str(dest),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        command = [
+            ffmpeg,
+            "-loglevel",
+            "error",
+            "-y",
+            "-r",
+            str(VIDEO_FPS),
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(listing),
+            # Bounded: shakaal fails at >=90% box CPU, and libx264 would
+            # otherwise take every core it can see.
+            "-threads",
+            "2",
+            # H.264 needs even dimensions; the matplotlib figures are not.
+            "-vf",
+            "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-crf",
+            "23",
+            str(dest),
+        ]
+        try:
+            result = subprocess.run(command, capture_output=True, text=True)
+        except OSError as exc:
+            # A binary that exists and cannot be started: run as another account, the
+            # site's ffmpeg was a script whose Python that account may not reach, and
+            # the PermissionError lost an episode that had already finished.
+            listing.unlink(missing_ok=True)
+            echo(f"    video {dest.name} failed; frames kept: cannot run {ffmpeg}: {exc.strerror}")
+            return None
         listing.unlink(missing_ok=True)
 
         if result.returncode != 0 or not dest.exists():

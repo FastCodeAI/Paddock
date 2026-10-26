@@ -257,6 +257,10 @@ of the verdict and compared alone in a note on the pair.
 
 ## Running the smoke
 
+To have the site's shared worker run it for you, one job at a time, submit it to
+the queue instead: `python -m tools.gate_queue submit --model drivejepa --env
+DRIVEJEPA_CHECKPOINT=/path/to/ckpt` ([queue.md](queue.md)). By hand:
+
 ```bash
 python -m tools.gate smoke --model drivejepa --env DRIVEJEPA_CHECKPOINT=/path/to/ckpt \
     --baseline /path/to/baselines.toml                 # plan only, quick tier
