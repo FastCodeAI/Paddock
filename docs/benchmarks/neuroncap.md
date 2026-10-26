@@ -549,6 +549,9 @@ the full 20-pair set at 10 runs for four models that is **~66 GB**.
 | `keep` | the above plus every source PNG | ~66 GB |
 | `off` | no frames and no per-run json (`--engine.logger.enabled False`), so no PDM terms | ~0 |
 
+`debug_views = false` (above) is the cheaper middle: the camera frames and every
+json stay, and the two drawn streams the videos come from are never made.
+
 `encode` prunes only the derived PNG streams, and only ones that actually
 encoded. Nothing is lost that cannot be rebuilt: the raw camera frames and the
 trajectory json are what those streams were drawn from. Measured on real frames,

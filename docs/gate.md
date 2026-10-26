@@ -305,9 +305,10 @@ Without `--execute` it prints, per benchmark, the exact `paddock run` line
    land on the site's port, where a long-lived `paddock renderer` usually is;
    and nuScenes' `index_cache` in `{roots.runs}/gate/cache/nuscenes`, one index
    every checkout shares, unless the site names its own. Neither is in a run
-   config, so neither changes what is measured. neuroNCAP's `video` stays the
-   site's: with the default `encode`, every episode leaves its mp4s, which is how
-   a regression is looked at;
+   config, so neither changes what is measured. neuroNCAP's `debug_views` is
+   turned off unless the site sets it: the two drawn views took about 1 s of each
+   2.7 s step, so the gate's neuroNCAP runs leave camera frames, plans and poses,
+   and no mp4s;
 2. launches one benchmark at a time, each after `nvidia-smi` shows enough free
    memory on the card the model will use: the model's declared `vram_gb`, plus
    its simulator's share (`SIMULATOR_GB`: 8 GB for neuroNCAP's renderer, as

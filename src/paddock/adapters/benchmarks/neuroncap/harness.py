@@ -274,6 +274,15 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
                 f"rest and record it as a sweep."
             )
 
+        if repo and not self.debug_views():
+            logger = Path(repo) / "neuro_ncap" / "components" / "logger.py"
+            if logger.is_file() and "debug_views" not in logger.read_text():
+                patch = "patches/neuro-ncap/0003-optional-debug-views.patch"
+                problems.append(
+                    f"[benchmarks.neuroncap] debug_views = false needs {patch} in {repo}: "
+                    f"`git -C {repo} apply <paddock>/{patch}`"
+                )
+
         try:
             self.video_mode()
         except ValueError as exc:
@@ -587,6 +596,12 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             # No frames at all: skips the per-step jpeg and matplotlib writes,
             # which is most of what the logger costs.
             command += ["--engine.logger.enabled", "False"]
+        elif not self.debug_views():
+            # Skips only the two drawn debug views (patches/neuro-ncap/0003); every
+            # record the scores and PDM terms read is still written.
+            # tyro makes a bool field a pair of switches: `--engine.logger.debug-views`
+            # and `--engine.logger.no-debug-views`; "--...debug-views False" is refused.
+            command += ["--engine.logger.no-debug-views"]
 
         started = time.time()
         result = subprocess.run(

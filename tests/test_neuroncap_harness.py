@@ -1123,11 +1123,12 @@ def test_the_engine_and_the_renderer_read_the_cut_down_nuscenes_when_set(tmp_pat
 def test_the_debug_views_stay_on_unless_the_site_turns_them_off(tmp_path, monkeypatch) -> None:
     """FC_TRAJ and COMBINED_OUTPUTS took about 1 s of each 2.7 s step; the gate turns them off."""
     default = _harness_for(_ncap_site(tmp_path, monkeypatch))
-    assert "--engine.logger.debug-views" not in _engine_command(default, tmp_path, monkeypatch)
+    assert "--engine.logger.no-debug-views" not in _engine_command(default, tmp_path, monkeypatch)
     config_before = default.run_config()
     off = _harness_for(_ncap_site(tmp_path, monkeypatch, debug_views="false"))
     command = _engine_command(off, tmp_path, monkeypatch)
-    assert command[command.index("--engine.logger.debug-views") + 1] == "False"
+    # tyro's switch form; "--engine.logger.debug-views False" is refused (exit 2).
+    assert "--engine.logger.no-debug-views" in command and "False" not in command
     assert "--engine.logger.enabled" not in command, "the records are still written"
     assert off.run_config() == config_before
 

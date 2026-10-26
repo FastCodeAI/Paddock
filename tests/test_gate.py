@@ -1303,6 +1303,45 @@ def test_the_gpu_wait_adds_the_simulators_share_to_the_models(bench: str, vram: 
     assert gate.smoke_need_gb(bench, vram) == need
 
 
+def test_the_gate_skips_neuroncaps_debug_views_unless_the_site_keeps_them(tmp_path: Path) -> None:
+    """They took about 1 s of each 2.7 s step, and nothing reads them back."""
+    import tomllib
+
+    site = tmp_path / "paddock.toml"
+    site.write_text('site = "t"\n[benchmarks.neuroncap]\nrepo = "r"\n')
+    assert (
+        tomllib.loads(gate.smoke_config(site, "m", {}, 8700))["benchmarks"]["neuroncap"]["debug_views"]
+        is False
+    )
+    site.write_text('site = "t"\n[benchmarks.neuroncap]\nrepo = "r"\ndebug_views = true\n')
+    assert (
+        tomllib.loads(gate.smoke_config(site, "m", {}, 8700))["benchmarks"]["neuroncap"]["debug_views"]
+        is True
+    )
+
+
+def test_with_lanes_the_longest_subset_of_a_tier_launches_first() -> None:
+    """NAVSIM, launched last, ran alone for half an hour while the other lanes sat idle."""
+    names = [
+        "kitscenes",
+        "nuscenes",
+        "navsim",
+        "neuroncap_quick",
+        "unknown_quick",
+        "neuroncap",
+        "bench2drive",
+    ]
+    tier_of = {n: ("closed" if n in ("neuroncap", "bench2drive") else "quick") for n in names}
+    steps = [gate.SmokeStep("b", "new", None, [], {}, name=n) for n in names]
+    order = [s.name for s in gate.launch_order(steps, ["quick", "closed"], tier_of, lanes=3)]
+    assert order == [
+        "navsim", "neuroncap_quick", "nuscenes", "kitscenes", "unknown_quick", "bench2drive", "neuroncap"
+    ]  # fmt: skip
+    assert [s.name for s in gate.launch_order(steps, ["quick", "closed"], tier_of, lanes=1)] == names, (
+        "one lane: cheap answers first, as before"
+    )
+
+
 def test_a_bigger_model_waits_for_more() -> None:
     assert gate.smoke_need_gb("neuroncap", 26.0) == 36.0
 
@@ -1324,6 +1363,7 @@ def test_the_site_config_gains_the_smoke_overrides_and_loses_nothing(tmp_path: P
     expected = tomllib.loads(site.read_text())
     expected["models"]["drivejepa"]["env"]["DRIVEJEPA_CHECKPOINT"] = "ck.pt"
     expected["benchmarks"]["neuroncap"]["renderer_url"] = "http://127.0.0.1:8700"
+    expected["benchmarks"]["neuroncap"]["debug_views"] = False
     assert derived == expected
 
 
