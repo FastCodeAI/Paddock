@@ -243,8 +243,9 @@
 <rect class="track" x="496" y="312.5" width="120" height="1"/>
 <rect class="now" x="616" y="293.0" width="1" height="24"/>
 <rect x="614.5" y="296" width="3" height="10" fill="#e7298a"/>
+<rect x="613.0" y="296" width="3" height="10" fill="#e7298a"/>
 <rect x="615.2" y="309.5" width="1.5" height="7" fill="#e7298a"/>
-<text x="496" y="331" class="sec" font-size="10" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="start">cam 2, back to back · speed now</text>
+<text x="496" y="331" class="sec" font-size="10" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="start">cam 2 @ 10 Hz · speed now</text>
 <rect class="now" x="650" y="293.0" width="1" height="24"/>
 <rect class="none" x="652" y="302.0" width="108" height="10" rx="5"/>
 <text x="766" y="312" class="ink" font-size="12.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="start" font-weight="600">none</text>
