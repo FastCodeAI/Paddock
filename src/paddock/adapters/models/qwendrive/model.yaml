@@ -15,12 +15,11 @@ runtime:
     # under reasoning rollouts and the vendor says to run it in reasoning mode.
     # The adapter refuses the rl/direct pairing rather than record its number.
     #
-    # These two do NOT reach run.json: the runner records config.model_env only
-    # from a site [models.qwendrive] env override, not from runtime.env, so no
-    # record says which planner produced it -- and the vendor's published PDMS
-    # for the two differs by 2.9 points. Framework gap, raised as issue #46;
-    # `paddock doctor --model qwendrive` and /diagnostics both report them
-    # meanwhile.
+    # These two reach run.json as config.declared_env and are hashed into the
+    # run id, which matters because the vendor's published PDMS for the two
+    # differs by 2.9 points. Runs made before that was recorded (#46, #99) do
+    # not say which planner produced them; `paddock doctor --model qwendrive`
+    # and /diagnostics report it too.
     QWENDRIVE_PLANNER: "planner-sft"
     # direct, not reasoning. Reasoning is worth roughly 1.47 against 1.55 ADE on
     # comma2k19's city segment at about twice the latency -- and it is the one

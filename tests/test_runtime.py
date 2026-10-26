@@ -457,3 +457,152 @@ def test_builtin_interpreter_survives_an_env_only_site_override() -> None:
     # An explicit venv override still wins, even for a builtin model.
     venv = types.SimpleNamespace(models={"cv": ModelOverride(venv=Path("/x/env"))})
     assert rt.interpreter(venv, model="cv") == Path("/x/env") / "bin" / "python"
+
+
+# ---- the GPU launch lock ------------------------------------------------
+
+
+def test_the_launch_lock_keeps_a_second_process_out_until_the_first_lets_go(tmp_path, monkeypatch) -> None:
+    """Two runs read the same free memory and both launched into it; the lock is
+    what makes the read-and-launch one step, across processes and users."""
+    import sys
+    import time
+
+    from paddock.runtime import lease
+
+    monkeypatch.setenv(lease.LOCK_DIR_ENV, str(tmp_path / "locks"))
+    holder = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import sys, time; sys.path.insert(0, 'src'); from paddock.runtime import lease\n"
+            "with lease.held('gpu0'):\n    print('held', flush=True)\n    time.sleep(1.5)\n",
+        ],
+        cwd=REPO_ROOT,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    assert holder.stdout.readline().strip() == "held"
+    waited: list[str] = []
+    started = time.time()
+    with lease.held("gpu0", on_wait=lambda path: waited.append(str(path))):
+        elapsed = time.time() - started
+    holder.wait(timeout=10)
+    assert waited == [str(tmp_path / "locks" / "gpu0.lock")], "a waiting launch says what it waits for"
+    assert elapsed >= 0.5, f"got the lock after {elapsed:.2f} s, while another process held it"
+    with lease.held("gpu1", on_wait=lambda path: waited.append("gpu1")):
+        pass
+    assert waited[-1] != "gpu1", "another card's lock is not this one"
+
+
+def test_a_launch_checks_the_memory_again_once_it_holds_the_lock(tmp_path, monkeypatch) -> None:
+    """Memory free while it waited for the lock may be gone once it has it: someone
+    else loaded meanwhile. Then it waits again, and launches only when it fits."""
+    from paddock.runtime import lease, proc
+
+    monkeypatch.setenv(lease.LOCK_DIR_ENV, str(tmp_path / "locks"))
+    readings = iter([30.0, 4.0, 30.0, 30.0])  # pre-check, under the lock (taken), again, under the lock
+    monkeypatch.setattr(gpu, "free_gb", lambda _env=None: next(readings))
+    monkeypatch.setattr(gpu, "wait_for", lambda *a, **k: None)
+    said: list[str] = []
+    with proc.gpu_launch(20.0, {"CUDA_VISIBLE_DEVICES": "0"}, said.append):
+        assert any("filled while this launch waited" in m for m in said), said
+        # Held for the block: nobody else gets the card's lock meanwhile.
+        import fcntl
+        import os
+
+        fd = os.open(tmp_path / "locks" / "gpu0.lock", os.O_RDONLY)
+        with pytest.raises(BlockingIOError):
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        os.close(fd)
+    with lease.held("gpu0"):
+        pass  # released when the launch is done
+
+
+def test_a_launch_goes_ahead_when_nvidia_smi_stops_answering_under_the_lock(tmp_path, monkeypatch) -> None:
+    """Review of #100 (2): no reading under the lock counted as 0 GB free, so the launch looped forever."""
+    from paddock.runtime import lease, proc
+
+    monkeypatch.setenv(lease.LOCK_DIR_ENV, str(tmp_path / "locks"))
+    readings = iter([30.0, None])  # pre-check, then under the lock
+
+    def free_gb(_env=None):
+        return next(readings)  # a third call is the loop: StopIteration fails the test
+
+    monkeypatch.setattr(gpu, "free_gb", free_gb)
+    monkeypatch.setattr(gpu, "wait_for", lambda *a, **k: None)
+    with proc.gpu_launch(20.0, {"CUDA_VISIBLE_DEVICES": "0"}, print):
+        pass
+
+
+def test_a_launch_with_no_card_or_no_memory_need_takes_no_lock(tmp_path, monkeypatch) -> None:
+    from paddock.runtime import lease, proc
+
+    monkeypatch.setenv(lease.LOCK_DIR_ENV, str(tmp_path / "locks"))
+    monkeypatch.setattr(gpu, "free_gb", lambda _env=None: None)
+    with proc.gpu_launch(20.0, {}, print):
+        pass
+    monkeypatch.setattr(gpu, "free_gb", lambda _env=None: 50.0)
+    with proc.gpu_launch(0.0, {}, print):
+        pass
+    assert not (tmp_path / "locks").exists()
+
+
+def test_every_user_locks_the_same_folder_whatever_their_tmpdir(tmp_path, monkeypatch) -> None:
+    """Review of #100 (5): the lock folder followed TMPDIR, so a user who set it locked alone."""
+    import tempfile
+
+    from paddock.runtime import lease
+
+    monkeypatch.delenv(lease.LOCK_DIR_ENV, raising=False)
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    monkeypatch.setattr(tempfile, "tempdir", None)  # gettempdir() caches its first answer
+    assert str(lease.lock_dir()) == "/tmp/paddock-locks"
+
+
+def test_a_model_node_lets_go_of_the_gpu_lock_once_it_is_ready(tmp_path, monkeypatch) -> None:
+    """Review of #100 (6): nothing failed if the node kept the lock for its whole run,
+    which would make every other launch on the card wait for this run to end."""
+    import fcntl
+    import os
+    import sys
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from paddock.runtime import lease
+    from paddock.runtime import proc as node_proc
+
+    class Node:
+        returncode = None
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            pass
+
+        def wait(self, timeout=None):
+            return 0
+
+    monkeypatch.setenv(lease.LOCK_DIR_ENV, str(tmp_path / "locks"))
+    monkeypatch.setattr(gpu, "free_gb", lambda _env=None: 50.0)
+    monkeypatch.setattr(gpu, "wait_for", lambda *a, **k: None)
+    monkeypatch.setattr(env_builder, "build", lambda spec, cfg: {"CUDA_VISIBLE_DEVICES": "0"})
+    monkeypatch.setattr(env_builder, "working_dir", lambda spec, cfg: tmp_path)
+    monkeypatch.setattr(node_proc.subprocess, "Popen", lambda *a, **k: Node())
+    monkeypatch.setattr(node_proc, "wait_alive", lambda *a, **k: None)
+    monkeypatch.setattr(node_proc.time, "sleep", lambda _s: None)
+    spec = SimpleNamespace(
+        name="m",
+        vram_gb=20.0,
+        startup_timeout_s=1,
+        directory=Path("m"),
+        context=lambda cfg: {},
+        runtime=SimpleNamespace(interpreter=lambda cfg, **ctx: Path(sys.executable)),
+    )
+    with node_proc.model_node(spec, None, 9999, tmp_path / "logs", echo=print):
+        fd = os.open(tmp_path / "locks" / "gpu0.lock", os.O_RDONLY)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)  # raises if the ready node still holds it
+        finally:
+            os.close(fd)

@@ -7,7 +7,11 @@ speed), kit_scenes/egomotion.py (gradients on the real timestamps)."""
 
 from __future__ import annotations
 
+import hashlib
 import math
+import sys
+from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -15,6 +19,7 @@ import pytest
 from paddock.adapters.models.autoe2e.policy import (
     EGO_STEPS,
     HISTORY_OFFSETS_S,
+    MATCH_TOLERANCE_S,
     NAV_H,
     NAV_MPP,
     NAV_W,
@@ -24,13 +29,18 @@ from paddock.adapters.models.autoe2e.policy import (
     POLICY,
     VIEW_ORDER,
     _Frame,
+    _Navigation,
+    blank_views,
     egomotion_rows,
     finite_controls,
     integrate_controls,
+    match_tolerance,
+    navigation_modules,
+    pack_tile,
     route_raster,
     steady_before_start,
 )
-from paddock.policy.protocol import Policy
+from paddock.policy.protocol import Command, Observation, Policy
 
 #: Camera optical (x right, y down, z forward) -> ego FLU, for a camera facing forward.
 OPTICAL = np.array([[0.0, 0.0, 1.0], [-1.0, 0.0, 0.0], [0.0, -1.0, 0.0]])
@@ -58,6 +68,15 @@ def test_load_names_the_missing_setting(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("AUTOE2E_REPO", str(tmp_path))
     with pytest.raises(RuntimeError, match="AUTOE2E_REPO"):
         POLICY().load()
+
+
+def test_diagnostics_name_the_release_checkpoint_not_where_this_site_keeps_it() -> None:
+    """`/diagnostics` is copied verbatim into the tracked run.json: no weights root may reach it."""
+    policy = POLICY()
+    policy.checkpoint = "/path/to/weights/auto_e2e/models/kitscenes-epoch-5/checkpoint.pt"
+    assert policy.diagnostics()["checkpoint"] == "models/kitscenes-epoch-5/checkpoint.pt"
+    policy.checkpoint = "/path/to/finetunes/run7.pt"
+    assert policy.diagnostics()["checkpoint"] == "run7.pt"
 
 
 # -- ego history -------------------------------------------------------------
@@ -252,6 +271,37 @@ def test_a_short_past_repeats_the_oldest_frame_and_says_so() -> None:
     assert all(f is policy.frames[0] for f in picked[:3])
 
 
+def test_jittered_keyframes_are_taken_for_the_slots_they_fill() -> None:
+    """nuScenes keyframes drift up to ~0.1 s off the 0.5 s grid; each is still the frame meant."""
+    policy = POLICY()
+    times = [0.0, 0.55, 1.08, 1.62, 2.10, 2.58, 3.07, 3.58]  # gaps 0.47-0.55 s, like nuScenes
+    for t in times:
+        policy.frames.append(_frame(t, 0.0))
+    picked, gaps = policy._history(policy.frames[-1])
+    assert [f.t_s for f in picked] == times[:-1], "every real keyframe, none repeated"
+    assert all(g is not None for g in gaps)
+    assert max(abs(g) for g in gaps) > MATCH_TOLERANCE_S, "the old 0.06 s match refused some of these"
+
+
+def test_a_10_hz_stream_keeps_the_old_match_even_with_a_dropped_frame() -> None:
+    """What KITScenes and neuroNCAP were fed is unchanged: at 10 Hz the tolerance stays 0.06 s,
+    so a slot whose frame is missing still repeats the oldest frame, as it did."""
+    policy = POLICY()
+    for k in range(41):
+        if k == 25:  # t = 2.5 s, the -1.5 s slot of the frame at 4.0 s, is missing
+            continue
+        policy.frames.append(_frame(k / 10, 0.0))
+    assert match_tolerance(np.array([f.t_s for f in policy.frames[:-1]])) == MATCH_TOLERANCE_S
+    picked, gaps = policy._history(policy.frames[-1])
+    assert gaps[4] is None and picked[4] is policy.frames[0]
+
+
+def test_match_tolerance_is_half_the_spacing_with_the_old_floor() -> None:
+    assert match_tolerance(np.array([0.0])) == MATCH_TOLERANCE_S
+    assert match_tolerance(np.arange(0.0, 3.0, 0.1)) == MATCH_TOLERANCE_S
+    assert match_tolerance(np.arange(0.0, 3.0, 0.5)) == pytest.approx(0.25)
+
+
 def test_projection_is_from_the_raised_reference_frame_and_folds_in_ego_motion() -> None:
     """A world point on the camera's axis 10 m ahead lands at the tile centre at depth 10;
     in a frame taken 5 m further back, the same point is at depth 15."""
@@ -267,3 +317,199 @@ def test_projection_is_from_the_raised_reference_frame_and_folds_in_ego_motion()
     u, v, w = policy._projections(past, ref_now2world, 512)[0] @ point_ref
     assert (u / w, v / w, w) == pytest.approx((256.0, 256.0, 15.0))
     assert math.isclose(policy._ref2ego()[2, 3], 2.1)
+
+
+# -- a benchmark with fewer cameras ------------------------------------------------
+
+
+def _obs(images=(), paths=(), calibrated=()) -> Observation:
+    return Observation(
+        images={c: np.zeros((4, 4, 3), dtype=np.uint8) for c in images},
+        image_paths={c: f"/tmp/{c}.npy" for c in paths},
+        ego2world=np.eye(4),
+        canbus=np.zeros(18),
+        timestamp_us=0,
+        command=Command.STRAIGHT,
+        camera2image={c: np.eye(3) for c in calibrated},
+        camera2ego={c: np.eye(4) for c in calibrated},
+    )
+
+
+def test_only_a_view_the_benchmark_says_nothing_about_is_left_out() -> None:
+    """comma2k19 is the road camera alone; a view that lost its pixels, or the front, still refuses."""
+    assert blank_views(_obs(paths=("CAM_FRONT",), calibrated=("CAM_FRONT",))) == frozenset(VIEW_ORDER[1:])
+    assert blank_views(_obs(images=VIEW_ORDER, calibrated=VIEW_ORDER)) == frozenset()
+    # NAVSIM's dense frames: three images, six calibrations -- missing, not absent.
+    with pytest.raises(RuntimeError, match="CAM_BACK"):
+        blank_views(_obs(images=VIEW_ORDER[:3], calibrated=VIEW_ORDER))
+    with pytest.raises(RuntimeError, match="CAM_FRONT"):
+        blank_views(_obs(paths=VIEW_ORDER[1:], calibrated=VIEW_ORDER[1:]))
+    with pytest.raises(RuntimeError, match="intrinsics"):
+        blank_views(_obs(images=VIEW_ORDER, calibrated=VIEW_ORDER[:5]))
+
+
+def test_a_left_out_view_is_a_zero_tile_that_sees_nothing() -> None:
+    """The road camera is packed and projected as in a six-view frame; the five others put every
+    point behind the camera, so upstream's depth test masks them from every BEV cell."""
+    policy = POLICY()
+    blank = frozenset(VIEW_ORDER[1:])
+    front = np.random.default_rng(0).integers(0, 256, (45, 80, 3), dtype=np.uint8)
+    mono = _frame(1.0, 0.0, views=("CAM_FRONT",), size=(80, 45))
+    mono.images["CAM_FRONT"] = front
+    tiles = mono.tiles(blank)
+    assert np.array_equal(tiles[0], pack_tile(front, 512))
+    assert tiles.shape == (6, 512, 512, 3) and not tiles[1:].any()
+    p = policy._projections(mono, None, 512, blank=blank)
+    assert np.array_equal(p[0], policy._projections(_frame(1.0, 0.0, size=(80, 45)), None, 512)[0])
+    for point in ([20.0, 3.0, -1.0, 1.0], [-30.0, -8.0, 0.5, 1.0], [0.0, 0.0, 0.0, 1.0]):
+        assert all((q @ np.array(point))[2] < 0 for q in p[1:])
+
+
+def test_history_on_a_one_camera_source_is_its_own_frames_half_a_second_apart() -> None:
+    """comma2k19 sends the road camera alone at 20 Hz: every frame counts, none is repeated.
+    Counting six-view frames only, as on NAVSIM, finds none and repeats the current one."""
+    policy = POLICY()
+    for k in range(101):  # 5 s at 20 Hz
+        policy.frames.append(_frame(k / 20, 0.0, ("CAM_FRONT",)))
+    picked, gaps = policy._history(policy.frames[-1], frozenset(VIEW_ORDER[1:]))
+    assert [f.t_s for f in picked] == pytest.approx([5.0 + off for off in HISTORY_OFFSETS_S])
+    assert gaps == [0.0] * 7
+    _, six_view_gaps = policy._history(policy.frames[-1])
+    assert six_view_gaps == [None] * 7
+
+
+def test_a_staged_npy_frame_reports_its_size_without_pil(tmp_path) -> None:
+    """comma2k19 stages raw .npy frames; PIL cannot read their header."""
+    path = tmp_path / "frame.npy"
+    np.save(path, np.zeros((874, 1164, 3), dtype=np.uint8))
+    frame = _Frame(
+        t_s=0.0, ego2world=np.eye(4), camera2image={}, camera2ego={}, paths={"CAM_FRONT": str(path)}
+    )
+    assert frame.size("CAM_FRONT") == (1164, 874)
+
+
+# -- the map and the route: upstream's navigation stack, stood in for ---------------
+
+
+class _Upstream:
+    """What `_Navigation` asks of upstream's map loader, matcher and rasterizer, recorded."""
+
+    def __init__(self) -> None:
+        self.loaded: list[Path] = []
+        self.parsed: list[str] = []
+        self.matched: list[dict] = []
+        self.rendered: list[tuple] = []
+
+    def modules(self) -> SimpleNamespace:
+        calls = self
+
+        class MapAdapter:
+            def __init__(self, scene_map, **kwargs) -> None:
+                self.scene_map, self.kwargs = scene_map, kwargs
+
+            def extract(self):
+                # The SDK's SceneMap parses map.osm on first use, and extract() is that use.
+                calls.parsed.append((self.scene_map / "maps" / "map.osm").read_text())
+                return SimpleNamespace(map_version=self.kwargs["map_version"])
+
+        class Matcher:
+            def __init__(self, scene_map, navigation_map, **kwargs) -> None:
+                pass
+
+            def match(self, **kwargs):
+                calls.matched.append(kwargs)
+                return SimpleNamespace(valid=True)
+
+        class Rasterizer:
+            def render(self, navigation_map, route, pose):
+                calls.rendered.append((route, pose))
+                return SimpleNamespace(
+                    map_context=np.ones((14, NAV_H, NAV_W)),
+                    route_mask=np.full((2, NAV_H, NAV_W), route is not None, dtype=np.uint8),
+                    map_valid=True,
+                    route_valid=route is not None,
+                )
+
+        return SimpleNamespace(
+            scene_map=lambda path: calls.loaded.append(Path(path)) or Path(path),
+            revision="data-revision",
+            map_adapter=MapAdapter,
+            file_sha256=lambda path: hashlib.sha256(Path(path).read_bytes()).hexdigest(),
+            matcher=Matcher,
+            pose=lambda **kwargs: SimpleNamespace(**kwargs),
+            rasterizer=Rasterizer(),
+        )
+
+
+def _map_files(tmp_path: Path) -> dict[str, str]:
+    maps = tmp_path / "dataset" / "scene-1" / "maps"
+    maps.mkdir(parents=True)
+    (maps / "map.osm").write_text("<osm/>")
+    (maps / "origin.json").write_text('{"latitude": 49.0, "longitude": 8.4}')
+    return {"format": "lanelet2_osm", "map": str(maps / "map.osm"), "origin": str(maps / "origin.json")}
+
+
+def _ego2world(x: float, y: float, yaw: float) -> np.ndarray:
+    m = np.eye(4)
+    m[:2, :2] = [[math.cos(yaw), -math.sin(yaw)], [math.sin(yaw), math.cos(yaw)]]
+    m[:2, 3] = (x, y)
+    return m
+
+
+def test_the_map_is_read_from_a_scratch_copy_and_drawn_at_the_ego_pose(tmp_path) -> None:
+    """Upstream writes a sanitised map.osm beside the one it reads; that must never be the dataset's."""
+    upstream, files = _Upstream(), _map_files(tmp_path)
+    nav = _Navigation(upstream.modules())
+    semantic, route, map_valid, route_valid = nav.raster(files, None, _ego2world(3.0, 4.0, 0.3), 5_000_000)
+
+    (read,) = upstream.loaded
+    assert read.name == "scene-1" and not read.is_relative_to(tmp_path / "dataset")
+    assert upstream.parsed == ["<osm/>"]
+    assert sorted(p.name for p in Path(files["map"]).parent.iterdir()) == ["map.osm", "origin.json"]
+    ((drawn_route, pose),) = upstream.rendered
+    assert (pose.x_enu_m, pose.y_enu_m, pose.timestamp_ns) == (3.0, 4.0, 5_000_000_000)
+    assert pose.yaw_rad == pytest.approx(0.3)
+    assert drawn_route is None and map_valid and not route_valid and not route.any()
+    assert semantic.dtype == route.dtype == np.float32 and semantic.shape == (14, NAV_H, NAV_W)
+
+
+def test_nothing_of_the_scratch_copy_outlives_the_parse(tmp_path) -> None:
+    """The runner stops a node with terminate() and then kill(), so no finalizer is sure to run:
+    a copy kept for the node's life was left on the host by every run, 93 MB each."""
+    upstream, files = _Upstream(), _map_files(tmp_path)
+    nav = _Navigation(upstream.modules())
+    trace = np.array([[0.0, 0.0, 0.0, 0.0], [0.1, 1.0, 0.0, 0.01]])
+    for _ in range(2):
+        _, _, map_valid, route_valid = nav.raster(files, trace, _ego2world(1.0, 0.0, 0.01), 100_000)
+        assert map_valid and route_valid
+    (read,) = upstream.loaded
+    assert upstream.parsed == ["<osm/>"], "parsed once, from the copy"
+    assert not read.parent.exists(), "and the copy is gone once it is"
+
+
+def test_the_route_is_matched_to_the_logged_drive_once_per_scene_and_drive(tmp_path) -> None:
+    upstream, files = _Upstream(), _map_files(tmp_path)
+    nav = _Navigation(upstream.modules())
+    trace = np.array([[0.0, 0.0, 0.0, 0.0], [0.1, 1.0, 0.0, 0.01], [0.2, 2.0, 0.01, 0.02]])
+    for _ in range(2):
+        _, route, _, route_valid = nav.raster(files, trace, _ego2world(1.0, 0.0, 0.01), 100_000)
+        assert route_valid and route.any()
+    (matched,) = upstream.matched
+    assert matched["scene_id"] == "scene-1"
+    assert np.array_equal(matched["positions_enu_m"], trace[:, 1:3])
+    assert np.array_equal(matched["yaws_rad"], trace[:, 3])
+    assert matched["timestamps_ns"].tolist() == [0, 100_000_000, 200_000_000]
+    nav.raster(files, trace[:2], _ego2world(1.0, 0.0, 0.01), 100_000)
+    assert len(upstream.matched) == 2, "another drive is another route"
+    assert len(upstream.loaded) == 1, "the map is read once"
+
+
+def test_a_map_autoe2e_cannot_draw_is_refused_not_dropped(tmp_path, monkeypatch) -> None:
+    """Dropping it would score the camera-only track under the map's name."""
+    files = _map_files(tmp_path)
+    with pytest.raises(RuntimeError, match="Lanelet2"):
+        _Navigation(_Upstream().modules()).raster({**files, "format": "opendrive"}, None, np.eye(4), 0)
+    monkeypatch.setitem(sys.modules, "navigation", None)
+    monkeypatch.setitem(sys.modules, "data_parsing", None)
+    with pytest.raises(RuntimeError, match="setup.sh"):
+        navigation_modules()

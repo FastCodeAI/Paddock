@@ -2,5 +2,11 @@ name: kitscenes
 description: KITScenes open-loop trajectory accuracy - ADE and FDE against the recorded future
 mode: open_loop
 dataset: kitscenes
-metrics: [ade, fde@1s, fde@2s, fde@3s, longitudinal_mae, lateral_mae, inference_seconds]
+metrics: [ade, fde@1s, fde@2s, fde@3s, longitudinal_mae, lateral_mae, inference_seconds, pdm_ep, pdm_comfort]
 primary_metric: ade
+# Which metric fills which term of NAVSIM v1's PDM score (paddock.metrics.pdm),
+# so the regression gate lays every benchmark out in the same rows.
+# Poses and camera frames only: no agents and no map, so EP and C alone.
+pdm:
+  ep: pdm_ep
+  comfort: pdm_comfort

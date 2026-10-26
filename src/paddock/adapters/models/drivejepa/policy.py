@@ -118,12 +118,14 @@ class DriveJepaPolicy(Policy):
         # no code change.
         self.checkpoint = checkpoint or os.environ.get("DRIVEJEPA_CHECKPOINT")
         self.device = device
-        # "native" hands each camera over at its own intrinsics, which is how
-        # every published drivejepa row was made. "openscene" crops and rescales
-        # it onto the OpenScene camera the checkpoint trained on -- what the
-        # devkit's own KITScenes loader does. It matters there: the ring is 87
-        # degrees against OpenScene's 64, and on the benchmark's first samples
-        # the uncropped images made the best of the 32 candidates worse.
+        # "openscene" crops and rescales each camera onto the OpenScene camera
+        # the checkpoint trained on -- what the devkit's own KITScenes loader
+        # does -- and is what model.yaml sets. "native" hands each camera over at
+        # its own intrinsics; every Drive-JEPA row published before 2026-10-22 was
+        # made that way. It matters: KITScenes' ring is 87 degrees against
+        # OpenScene's 64, and uncropped the model's ADE there was 3.222 m against
+        # 2.521 m. The fallback here stays "native" for a policy built outside the
+        # runner, with no model.yaml env.
         self.image_geometry = os.environ.get("DRIVEJEPA_IMAGE_GEOMETRY", "native")
         if self.image_geometry not in IMAGE_GEOMETRIES:
             raise ValueError(

@@ -82,16 +82,18 @@ first attempt and refuse a resume whose node reports different ones. The
 open-loop path has the same gap: `_carry_forward_provenance` keeps an earlier
 attempt's `policy` only when the new one is empty.
 
-**Regression gate — not yet proven at speed.** `tools/gate.py`
+**Regression gate — timed once.** `tools/gate.py`
 ([docs/gate.md](gate.md)) pairs a candidate with its baseline benchmark by
 benchmark. Verified: the released Drive-JEPA smoked against itself on shakaal
 reproduced nuScenes (2.497) and neuroNCAP (3.175) to three decimals, and the
-statistics reproduce hand-worked comparisons. Not verified, each argued only:
+statistics reproduce hand-worked comparisons. The tiered smoke, `--tier all`,
+took 2 h 40 min on 2026-10-20: the quick tier 19 min in three lanes side by side
+on the shared GPU, the closed tier 2 h 21 min. The first, untiered smoke took
+7.7 h. Not verified, each argued only:
 
-- the tiered smoke has never been timed: the quick tier's ~40–45 min is
-  estimated from the first, untiered smoke's per-subset times (7.7 h in all, on
-  a day with a slow NAS);
-- lanes are tested with stand-in runs only, not side by side on a shared GPU;
+- that 2 h 40 min holds on a busy day: that evening was quiet (the NAS read
+  65 MB/s, one other job on the GPU), and one run cannot separate the quiet
+  evening from the code;
 - CARLA's 8 GB share in the GPU wait is assumed, not measured;
 - the Bench2Drive smoke baseline is mostly "Agent got blocked" and has not been
   checked against the 50-route runs;
@@ -255,11 +257,12 @@ exactly the pairing `min_input_hz` refuses.
 | qwendrive | 5 s | 1.159 | side slots replicated from the road camera |
 | openpilot | 10 s | 1.507 | see the two re-sweeps below |
 | constant velocity | 3 s | 1.639 | registered policy, 6 waypoints |
+| autoe2e | 6 s | 2.016 | the road camera alone; the five views it lacks left out |
 | visionpilot | 4 s | 4.045 | synthesised trajectory |
 | drivejepa_free | 4 s | 16.048 | perception-free agent, NAVSIM v1 |
 
 **Verified:** every row is over the *identical* sample set — `sequences_sha256`
-`293a225a0b5cbaff` in all six run records, which is a stronger statement than
+`293a225a0b5cbaff` in all seven run records, which is a stronger statement than
 six matching values of `n` and is the evidence that makes the column
 comparable. The 2033 × 5 = 10,165 derivation names the two truncated segments
 rather than counting them. Pose maths is delegated to a pinned
@@ -337,8 +340,9 @@ measured from the stored records:
   records), and the gap grows sideways with distance. Re-scored from the stored
   records with each ground truth rotated by its own `rpy_calib_deg` yaw, ADE@3s
   goes from 1.507 to 0.858 for openpilot (lateral MAE 1.092 to 0.137 m), 1.159
-  to 0.602 for qwendrive, 0.900 to 0.858 for alpamayo15 and 1.639 to 1.137 for
-  constant velocity, so the board reorders with qwendrive first. Before the
+  to 0.602 for qwendrive, 0.900 to 0.858 for alpamayo15, 1.639 to 1.137 for
+  constant velocity and 2.016 to 1.358 for autoe2e, so the board reorders with
+  qwendrive first. Before the
   rotation every stored value reproduces to the last digit, and rotating the
   other way gives openpilot 2.448, so the sign is not in doubt. The
   calibration's "about 3×" and "roughly 1.7×" in cross-track error, in the
@@ -615,8 +619,8 @@ each argued immaterial and none measured to be. Tracked as
 `results/bench2drive/<model>/native50-*`; tables, breakdown and the
 verified/argued split in
 [`bench2drive-native-rate.md`](benchmarks/bench2drive-native-rate.md). The
-adapter support for `PADDOCK_INFER_HZ` is **not on `main`**: this landed the
-results, not the knob.
+knob landed later, on 2026-10-22: a model's `planning_hz`, which the Bench2Drive
+client honours; Drive-JEPA declares 2 Hz.
 
 ## Beyond reproduction
 
@@ -641,13 +645,37 @@ results, not the knob.
   because reading it means adding a map dependency, and alpamayo15 has no
   record (gated `Cosmos-Reason2-8B`). Detail in `docs/benchmarks/nuplan.md`.
 
-- **AutoE2E v1.0** — **adapter landed; NAVSIM scored, Bench2Drive paused.** The
-  Autoware Foundation's release checkpoint `kitscenes-epoch-5`, imported from
-  upstream at the release revision. NAVSIM `navtest` 0.500 EPDMS (12,146
-  scenarios, valid) on the 10 Hz nuPlan path, with the rear views from
-  OpenScene's keyframes (`keyframe_cameras`). Bench2Drive needed the route as
-  an observation field (`route_xy`); its 50-route sweep is paused with no
-  record here. Detail in [`docs/models/autoe2e.md`](models/autoe2e.md).
+- **AutoE2E v1.0** — **adapter landed; NAVSIM, KITScenes, comma2k19,
+  neuroNCAP, nuScenes and AlpaSim scored, Bench2Drive paused.** nuScenes val 0.839
+  cumulative L2 (5,119 keyframes, valid), fed the 6.5 s of past keyframes it
+  declares. The Autoware Foundation's release
+  checkpoint `kitscenes-epoch-5`, imported from upstream at the release
+  revision. NAVSIM `navtest` 0.500 EPDMS (12,146 scenarios, valid) on the
+  10 Hz nuPlan path, with the rear views from OpenScene's keyframes
+  (`keyframe_cameras`). neuroNCAP: the full official 20 scenario-scene pairs,
+  10 runs each (n = 200, run `20261021T175940-844841`), ncap_score mean 3.16,
+  collision_rate 42% (worst on side 2.01, best on frontal 3.71) — with PR
+  #89's closed-loop ego-history fix (`steady_before_start`) in effect.
+  `valid: false`: `#82`'s site-env-override rule flags this run's
+  `AUTOE2E_CHECKPOINT` (a site path, not a different checkpoint) the same way
+  it would flag any other override, since `AUTOE2E_CHECKPOINT` isn't in
+  `autoe2e`'s `tuning_env` allowlist; the superseded `20261018T211838-ee6df9`
+  sweep carried the identical override but predates that rule and so reads
+  `valid: true`. KITScenes 0.847 ADE@3s on the 223 keyframes (valid, adapted),
+  given what upstream validated it with: the scene's Lanelet2 map and a route
+  matched to the logged drive (an oracle), both drawn by upstream's own code
+  through two new observation fields (`map_files`, `route_trace`); 0.837
+  without the route, 0.921 without either. comma2k19 2.016 ADE@3s over the
+  10,165 samples (valid; 1.358 with the ground truth in the calibrated frame),
+  from the road camera alone: the adapter now leaves out the views a benchmark
+  does not have instead of refusing every sample. Bench2Drive needed the route
+  as an observation field (`route_xy`); its 50-route sweep is paused with no
+  record here. AlpaSim 0.1694 `scene_score` on the 30 scenes (valid, run
+  `20261022T045847-86b955`), through paddock's bridge on six pinhole cameras at
+  the KITScenes field of view, a rear view from the roof and a 1 µs global
+  shutter; the car leaves the human's path to the left in 28 of 30 scenes, the
+  same growing left turn as on neuroNCAP and Bench2Drive. Detail in
+  [`docs/models/autoe2e.md`](models/autoe2e.md).
 
   | Claim | Verified how | Strength |
   |---|---|---|
@@ -656,6 +684,13 @@ results, not the knob.
   | `route_xy` has the right sign | stand-in CARLA test (left lane arrives at y > 0) and, live, the B2D projection overlay | **strong** |
   | the Bench2Drive swerve is the model, not the adapter | projection overlay, raster mapping, and a y-mirror / rot-180 A/B on 80 navtest scenes where the deployed convention scores best; not ruled out: the route comes from the leaderboard's 50 m-downsampled plan, and route-without-map is an input upstream never produces | **argued** — no upstream closed-loop reference exists |
   | NAVSIM is out of its training logs | the release names no nuPlan split; its own nuPlan-test figures suggest test was held out | **argued** |
+  | its KITScenes inputs are upstream's | compared with upstream's own packed v3.5 samples on the 186 shared val keyframes: tiles byte-identical, projections exact, `map_valid` / `route_valid` 186 of 186, semantic map ≤ 0.16 % of cells and route ≤ 11 cells apart (outside 26 rows whose upstream raster is anchored 0.5 s back), keyframe-40 ego rows ≤ 5.8e-3 | **verified** |
+  | its KITScenes plans are upstream's | ADE@3s on the 117 keyframe-40 samples within 0.4 % of upstream's, for each of map + route, map only, and neither (neither: the 23 of them the control covers); the per-sample tail is wider than upstream's own two-run spread once the rasters are on, put down to their measured differences | **verified** for the aggregate, **argued** for the tail |
+  | its AlpaSim inputs are what the driver profile intends | the per-tick log of all 30 scenes: 168–169 model calls after handover, 34 padded history rows at the first call, no repeated image frame from 0.5 s on | **verified** |
+  | its AlpaSim cameras fit the calibration the node is sent | actors and lane points projected through the node's own calibration against AlpaSim's camera, 2 scenes × 5 moments × 6 views: at most 0.33 px apart | **verified** on 2 scenes |
+  | the AlpaSim run, made before #89, #97, #98 and #107, is what this code produces | `01d503d4` driven again on the current code: 396 of 396 log rows and every plan identical, metrics equal | **verified** on 1 scene of 30 |
+  | the AlpaSim left drift is the model, not the bridge | the first plan of each scene is close to the human's path and later plans bend further left; the same growing left turn on neuroNCAP and Bench2Drive, through other harnesses | **argued** |
+  | its comma2k19 plans are those of the same checkpoint fed the same way out of tree | an out-of-tree comma2k19 study of this checkpoint (front camera alone, the other slots blank): on the 1,359 samples on the same video frame as one of its anchors, `v0` 0.012 m/s apart (median), controls 0.005 m/s² and 1e-4 1/m apart (mean), ADE@3s 1.370 against its 1.352, both with the ground truth in the calibrated frame | **verified** |
 
 Not started, and larger than everything above:
 

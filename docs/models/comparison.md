@@ -254,9 +254,29 @@ while every training and validation sample had both.
 The fine-tune pulls the other way: the last thing the checkpoint learned is a
 different rig, KIT's ring cameras seen from a reference frame 2.1 m up. The
 release's `nuplan-epoch-5` would be the in-distribution choice for this column
-and is not what was scored. A KITScenes number from this checkpoint would be
-in-distribution while the other models there are zero-shot; paddock does not
-score AutoE2E on KITScenes yet.
+and is not what was scored. Its KITScenes number is in-distribution while the
+other models there are zero-shot; see *AutoE2E × kitscenes*, below.
+
+### AutoE2E × kitscenes — fine-tuned on KITScenes, given the map and the logged route
+
+**AutoE2E's KITScenes cell is adapted, not zero-shot.** The checkpoint paddock
+runs, `kitscenes-epoch-5`, is the nuPlan model fine-tuned on KITScenes'
+**train** split: the 534 scenes of upstream's pinned geographic split
+(`Model/data_parsing/kit_scenes/pinned_splits/default_geo_split_v1_0` at
+`40a75cf8`). None of the benchmark's 140 scenes is among them, which was
+checked by scene id. 117 of the 140 are that split's 117 validation scenes,
+which the release reports its own KITScenes figures on; whether they also chose
+epoch 5 is not stated. The other 23 are `overlap_train_val` scenes, in neither
+of upstream's lists but in an area that overlaps train. The 223 keyframes split
+186 / 37 between the two, and the AutoE2E page reports both.
+
+Its inputs are the ones upstream validated it with, not the other rows': the
+scene's Lanelet2 map, and a route matched to the logged drive -- an oracle,
+drawn from the future being scored (KITScenes' `route = "oracle"`, the
+default). So the cell is in-distribution twice over: the rig, cities and
+driving it was trained on, and a route no other row is given. Read it beside
+the zero-shot rows, never as one of them. The AutoE2E page has the runs without
+the route and without the map, which say how much of the number each carries.
 
 ### Drive-JEPA retrained × AlpaSim
 

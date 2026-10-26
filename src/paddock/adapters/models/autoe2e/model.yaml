@@ -18,7 +18,8 @@ runtime:
     AUTOE2E_CHECKPOINT: "{weights}/auto_e2e/models/kitscenes-epoch-5/checkpoint.pt"
     # Projection reference frame height above the ground (KITScenes top-LiDAR frame: 2.1 m).
     AUTOE2E_REF_HEIGHT_M: "2.1"
-    # Route raster from obs.route_xy when the benchmark sends one ("0": camera-only track).
+    # Route raster from the benchmark's route: obs.route_xy, or obs.route_trace matched to its
+    # map ("0": no route, though a map is still drawn).
     AUTOE2E_ROUTE: "1"
     # Forward-pass cadence in seconds (0 = every call). Closed loop sets 0.5 with 10 Hz calls.
     AUTOE2E_REPLAN_S: "0"
@@ -56,4 +57,4 @@ capabilities:
     - dataset: kitscenes
       split: train
 
-benchmarks: [bench2drive, navsim]
+benchmarks: [alpasim, bench2drive, comma2k19, kitscenes, navsim, neuroncap, nuscenes]

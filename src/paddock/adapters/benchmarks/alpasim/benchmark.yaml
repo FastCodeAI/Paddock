@@ -20,3 +20,11 @@ dataset: ""
 metrics: [scene_score, progress, collision_rate, collision_at_fault, offroad,
           open_loop_collision, duration_frac_20s, dist_to_gt_trajectory]
 primary_metric: scene_score
+# Which metric fills which term of NAVSIM v1's PDM score (paddock.metrics.pdm),
+# so the regression gate lays every benchmark out in the same rows.
+# The simulator's own at-fault call, offroad and progress against the human's
+# run. It writes no TTC or comfort term.
+pdm:
+  nc: collision_at_fault
+  dac: offroad
+  ep: progress

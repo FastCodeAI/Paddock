@@ -13,6 +13,8 @@ come from the environment, set by ``harness.run_episode``:
     PADDOCK_NODE_URL      policy node base url
     PADDOCK_CAMERAS       comma-separated camera ids       (default CAM_FRONT)
     PADDOCK_WAYPOINT_DT   spacing of the returned waypoints, s   (default 0.5)
+    PADDOCK_INFER_HZ      ask for a plan this often and follow the last one in
+                          between (default 0: every tick); from `planning_hz`
     PADDOCK_RECORD_DIR    if set, write front/BEV frames + a per-tick log.csv
                           here; the harness sets SAVE_PATH alongside it so the
                           leaderboard allows the BEV camera's 30 m mount
@@ -57,6 +59,15 @@ CAMS = [c.strip() for c in os.environ.get("PADDOCK_CAMERAS", "CAM_FRONT").split(
 WAYPOINT_DT = float(os.environ.get("PADDOCK_WAYPOINT_DT", "0.5"))
 RECORD_DIR = os.environ.get("PADDOCK_RECORD_DIR") or None
 METRICS_DIR = os.environ.get("PADDOCK_METRICS_DIR") or None
+#: Ask the node for a plan at most this often, Hz, and follow the last plan
+#: unchanged in between: 2 Hz is one /infer per 10 frames of the 20 Hz
+#: simulation. 0 asks every tick. The harness sets it from the model's
+#: `planning_hz`. Unchanged means in the ego frame it was planned in, as the
+#: native-rate campaign drove it: its log.csv holds identical waypoints for
+#: 10-frame runs (docs/benchmarks/bench2drive-native-rate.md).
+INFER_HZ = float(os.environ.get("PADDOCK_INFER_HZ") or 0)
+#: Slack on "a plan is due", us: a 0.5 s step can read as 499999 us from floats.
+DUE_SLACK_US = 1000
 
 # Placement (x, y, z, roll, pitch, yaw) in the CARLA ego frame for every nuScenes
 # camera a model might ask for; radius < 3m (the leaderboard sensor limit).
@@ -162,6 +173,9 @@ class PaddockB2DAgent(AutonomousAgent):
             self._metric_path = os.path.join(METRICS_DIR, save_name, "metric_info.json")
         self._prev_speed = 0.0
         self._prev_us = None
+        self._plan = None
+        self._native = None
+        self._plan_us = None
         self._hero = None
         self._tracker = WaypointTracker(WAYPOINT_DT)
         # One connection to the loopback node for the whole route.
@@ -369,10 +383,11 @@ class PaddockB2DAgent(AutonomousAgent):
             accel = (speed - self._prev_speed) / dt if dt > 0 else 0.0
         self._prev_speed, self._prev_us = speed, us
 
+        due = self._plan is None or INFER_HZ <= 0 or us - self._plan_us >= 1e6 / INFER_HZ - DUE_SLACK_US
         images = {}
         front_bgr = None
         for cid in CAMS:
-            if cid in input_data:
+            if due and cid in input_data:
                 bgra = input_data[cid][1]
                 rgb = bgra[:, :, :3][:, :, ::-1]  # BGRA -> RGB
                 # raw .npy for the small frames the multi-camera models stack; JPEG (q95)
@@ -413,13 +428,16 @@ class PaddockB2DAgent(AutonomousAgent):
             },
         }
 
-        r = self._http.post(f"{SERVER}/infer", json=body, timeout=INFER_TIMEOUT_S)
-        r.raise_for_status()
-        # Validated here: a NaN from a mis-warmed model is an error, not a steer
-        # value CARLA accepts silently.
-        payload = r.json()
-        plan = Trajectory(payload["trajectory"], dt=WAYPOINT_DT)
-        native = (payload.get("extras") or {}).get("native_long")
+        if due:
+            r = self._http.post(f"{SERVER}/infer", json=body, timeout=INFER_TIMEOUT_S)
+            r.raise_for_status()
+            # Validated here: a NaN from a mis-warmed model is an error, not a steer
+            # value CARLA accepts silently.
+            payload = r.json()
+            self._plan = Trajectory(payload["trajectory"], dt=WAYPOINT_DT)
+            self._native = (payload.get("extras") or {}).get("native_long")
+            self._plan_us = us
+        plan, native = self._plan, self._native
         if native:
             control, desired_speed = self._control_native(plan.xy, speed, native)
         else:

@@ -33,7 +33,9 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from paddock.adapters.benchmarks.neuroncap import pdm_terms
 from paddock.benchmark import ClosedLoopBenchmark, Episode
+from paddock.metrics import pdm
 
 SCENARIOS_DIR = Path(__file__).parent / "scenarios_10hz"
 WAYPOINT_DT = 0.5
@@ -91,6 +93,12 @@ _SCORE_LINE = re.compile(
 )
 _RUN_DIR = re.compile(r"^run_(\d+)$")
 
+#: How a site gets the drivable rasters the PDM terms need, said wherever one is missing.
+PDM_MAP_HOWTO = (
+    "build them with tools/benchmarks/nuscenes/build_pdm_geometry.py, which needs nuScenes' "
+    "map expansion pack (maps/expansion/*.json, a separate download from nuscenes.org)"
+)
+
 # The engine already writes a frame per step per run; these are the two derived
 # streams worth watching. FC_TRAJ is the front camera with the planned
 # trajectory drawn on it -- what the model saw and what it decided -- and
@@ -99,6 +107,8 @@ _RUN_DIR = re.compile(r"^run_(\d+)$")
 # trajectories.json / ego_poses.json / actors.json they are enough to rebuild
 # either derived stream offline, which is why pruning them is safe.
 VIDEO_STREAMS = ("FC_TRAJ", "COMBINED_OUTPUTS")
+#: A comma list of `<scenario>-<scene>` pairs to keep of what `--scene` names (`pair_filter`).
+ENV_PAIRS = "PADDOCK_NCAP_PAIRS"
 #: The simulation steps at 0.1 s, so 10 fps plays back in real time. Worth
 #: keeping: the question these clips answer is whether a model reacted in time.
 VIDEO_FPS = 10
@@ -195,6 +205,8 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         self._renderer_proc: subprocess.Popen | None = None
         self._renderer_scene: str | None = None
         self._renderer_log_dir: Path | None = None
+        self._pdm_areas: dict[str, pdm.DrivableArea | None] = {}
+        self._pdm_categories: dict[str, str] | None = None
         # A sweep holds ~8 GB of VRAM on a card six other people share; leaving
         # it behind on a crash or a Ctrl-C is not acceptable.
         atexit.register(self._stop_renderer, lambda _msg: None)
@@ -275,6 +287,10 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         # would never be checked -- the same asymmetry as verifying the 20
         # scenario files exist while not verifying their scenes can render.
         problems += self._lidar_problems(DEFAULT_SCENE)
+        try:
+            self.pair_filter()
+        except ValueError as exc:
+            problems.append(str(exc))
 
         url = self.setting("renderer_url")
         if url and self.manages_renderer():
@@ -425,6 +441,7 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         # a stationary file and no other. Skipping that is right; skipping a
         # pair the caller asked for by name is how a sweep silently shrinks.
         explicit = scenarios is not None
+        keep = self.pair_filter()
         self._pairs_run = 0
         for scene in scenes or [DEFAULT_SCENE]:
             for scenario in scenarios or list(DEFAULT_SCENARIOS):
@@ -437,6 +454,8 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
                             f"{_official_set_summary()}."
                         )
                     continue
+                if keep is not None and f"{scenario}-{scene}" not in keep:
+                    continue
                 self._pairs_run += 1
                 yield Episode(
                     episode_id=f"{scenario}-{scene}",
@@ -445,6 +464,26 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
                     run_index=0,
                     config={"scenario_path": str(path), "runs": runs},
                 )
+
+    def pair_filter(self) -> set[str] | None:
+        """`PADDOCK_NCAP_PAIRS`: run only these `<scenario>-<scene>` pairs, or None for all.
+
+        `--scene` runs every shape a listed scene is in, so a set of pairs spread
+        over scenes (the gate's subsets) cannot be named with it alone: the gate
+        names the scenes and this keeps the pairs. Each must be in the official set.
+        """
+        raw = os.environ.get(ENV_PAIRS, "").strip()
+        if not raw:
+            return None
+        pairs = {p.strip() for p in raw.split(",") if p.strip()}
+        official = {f"{s}-{scene}" for s, scenes in OFFICIAL_SET.items() for scene in scenes}
+        if unknown := sorted(pairs - official):
+            raise ValueError(f"{ENV_PAIRS}: not official scenario-scene pairs: {', '.join(unknown)}")
+        return pairs
+
+    def run_config(self) -> dict:
+        pairs = self.pair_filter()
+        return {"pairs": sorted(pairs)} if pairs else {}
 
     def run_episode(
         self,
@@ -494,6 +533,16 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             *cameras,
             "--engine.logger.log-dir",
             str(out_dir),
+            # The vendor logger's `allowed_cams` is `tuple[str]`, fixed arity
+            # one -- tyro's CLI can take exactly one STR or the literal
+            # `None`, never a multi-camera list. `None` logs every camera the
+            # engine has images for (i.e. whatever `--engine.cameras` above
+            # already restricted it to); the field's own default of
+            # `("CAM_FRONT",)` would otherwise silently drop every other
+            # camera a multi-camera model used. See the PR description for
+            # the full investigation.
+            "--engine.logger.allowed-cams",
+            "None",
             "--runs",
             str(runs),
         ]
@@ -777,6 +826,9 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             # Nothing parseable on disk: fall back to whatever run_episode
             # scraped from stdout rather than dropping the episode entirely.
             return super().episode_samples(episode, metrics, out_dir)
+        terms = self.pdm_terms(out_dir, episode.scene)
+        for index, run_metrics in per_run:
+            run_metrics.update(terms.get(index, {}))
         return [
             {
                 # `run_<i>`, matching results/ingest/neuroncap.py exactly: the
@@ -793,6 +845,86 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             }
             for index, run_metrics in per_run
         ]
+
+    # ---- PDM terms ---------------------------------------------------------
+
+    def pdm_geometry(self) -> Path:
+        """Where the drivable rasters are: `[benchmarks.neuroncap] pdm_geometry`,
+        else `{roots.runs}/geometry/nuscenes-drivable`, which
+        `tools/benchmarks/nuscenes/build_pdm_geometry.py` builds."""
+        raw = self.setting("pdm_geometry")
+        return Path(raw).expanduser() if raw else self.cfg.runs / "geometry" / "nuscenes-drivable"
+
+    def _pdm_area(self, scene: str) -> pdm.DrivableArea | None:
+        if scene not in self._pdm_areas:
+            path = self.pdm_geometry() / f"scene-{scene}.npz"
+            self._pdm_areas[scene] = pdm.DrivableArea.load(path) if path.is_file() else None
+            if self._pdm_areas[scene] is None:
+                print(
+                    f"  no drivable raster {path}: no PDM terms for scene {scene}; {PDM_MAP_HOWTO}",
+                    flush=True,
+                )
+        return self._pdm_areas[scene]
+
+    def pdm_maps_missing(self) -> list[str]:
+        """The official scenes with no drivable raster, which therefore record no PDM terms."""
+        scenes = sorted({s for v in OFFICIAL_SET.values() for s in v})
+        return [s for s in scenes if not (self.pdm_geometry() / f"scene-{s}.npz").is_file()]
+
+    def status(self) -> list[tuple[str, str]]:
+        """For `paddock doctor`: whether every official scene has the map its PDM terms need."""
+        if self.settings is None:
+            return []
+        missing, where = self.pdm_maps_missing(), self.pdm_geometry()
+        total = len({s for v in OFFICIAL_SET.values() for s in v})
+        if not missing:
+            return [("PDM maps", f"all {total} scenes in {where}")]
+        return [
+            (
+                "PDM maps",
+                f"{len(missing)} of {total} scenes have none in {where} ({', '.join(missing)}): "
+                f"they record no PDM terms; {PDM_MAP_HOWTO}",
+            )
+        ]
+
+    def _categories(self) -> dict[str, str]:
+        """nuScenes instance token -> category, read once; {} (every actor an agent) if unreadable."""
+        if self._pdm_categories is None:
+            try:
+                dataset = self.dataset
+                self._pdm_categories = pdm_terms.load_categories(
+                    dataset.resolve(), dataset.version or "v1.0-trainval"
+                )
+            except (AttributeError, OSError, KeyError, ValueError) as exc:
+                print(f"  nuScenes categories unreadable ({exc}); every actor counts as an agent", flush=True)
+                self._pdm_categories = {}
+        return self._pdm_categories
+
+    def pdm_terms(self, out_dir: Path, scene: str) -> dict[int, dict[str, float]]:
+        """NAVSIM's PDM terms per run of an episode, from its stored files (`pdm_terms.py`).
+
+        Never fatal: a run whose terms cannot be computed keeps its NCAP metrics
+        and records no PDM terms, which the gate reads as not recorded. They are
+        report-only, and an episode costs minutes of simulator time.
+        """
+        run_dirs = [p for p in out_dir.iterdir() if p.is_dir() and _RUN_DIR.match(p.name)] or [out_dir]
+        out: dict[int, dict[str, float]] = {}
+        try:
+            area, categories = self._pdm_area(scene), self._categories()
+        except Exception as exc:  # noqa: BLE001 -- report-only terms must never cost an episode
+            print(f"  PDM terms not computed for {out_dir.name}: {exc!r}", flush=True)
+            return {}
+        for run_dir in run_dirs:
+            match = _RUN_DIR.match(run_dir.name)
+            # Per run: one unreadable file costs that run its terms, not the episode.
+            try:
+                terms = pdm_terms.run_terms(run_dir, area, categories)
+            except Exception as exc:  # noqa: BLE001 -- report-only terms must never cost an episode
+                print(f"  PDM terms not computed for {out_dir.name}/{run_dir.name}: {exc!r}", flush=True)
+                continue
+            if terms:
+                out[int(match.group(1)) if match else 0] = terms
+        return out
 
     @staticmethod
     def _per_run(out_dir: Path) -> list[tuple[int, dict[str, float]]]:

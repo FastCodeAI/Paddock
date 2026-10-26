@@ -7,5 +7,11 @@ mode: open_loop
 dataset: nuplan
 # inference_seconds is deliberately absent: score() does not time the call,
 # so declaring it left a column blank in every record.
-metrics: [ade, fde@1s, fde@2s, fde@3s, longitudinal_mae, lateral_mae]
+metrics: [ade, fde@1s, fde@2s, fde@3s, longitudinal_mae, lateral_mae, pdm_ep, pdm_comfort]
 primary_metric: ade
+# Which metric fills which term of NAVSIM v1's PDM score (paddock.metrics.pdm),
+# so the regression gate lays every benchmark out in the same rows.
+# The loader reads ego_pose only (no lidar_box, no map), so EP and C alone.
+pdm:
+  ep: pdm_ep
+  comfort: pdm_comfort

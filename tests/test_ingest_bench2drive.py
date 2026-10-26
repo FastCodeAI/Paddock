@@ -302,6 +302,53 @@ def test_config_is_read_from_the_source_runs(tmp_path: Path) -> None:
     assert "run.json" not in run.notes, "nothing was assumed, so nothing to warn about"
 
 
+def _pooled_under(tmp_path: Path, declared: tuple[dict | None, dict | None]):
+    """Pool the two contributing source runs of `_tree`, each recorded under `declared`."""
+    root = _tree(tmp_path)
+    for run_id, env in zip(("20260901T000000-aaaaaa", "20260903T000000-cccccc"), declared, strict=True):
+        record = _source_run_json("modelx", [], {})
+        if env is not None:
+            record["config"]["declared_env"] = env
+        (root / run_id / "run.json").write_text(json.dumps(record))
+    ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s", run_label="pooled")
+    return run
+
+
+def test_the_model_yaml_env_of_the_source_runs_reaches_the_pooled_record(tmp_path: Path) -> None:
+    """#99, one level up: the pooled config was rebuilt without `declared_env`."""
+    on = {"DRIVEJEPA_MOMENTUM": "on"}
+    run = _pooled_under(tmp_path / "a", (on, on))
+    assert run.config["declared_env"] == on
+    assert run.valid, run.notes
+
+
+def test_source_runs_under_different_model_yaml_env_do_not_pool_into_one_ranked_number(
+    tmp_path: Path,
+) -> None:
+    """Momentum off and on pooled into one valid record, with the id of an all-on pool."""
+    off, on = {"DRIVEJEPA_MOMENTUM": "off"}, {"DRIVEJEPA_MOMENTUM": "on"}
+    mixed = _pooled_under(tmp_path / "mixed", (off, on))
+    same = _pooled_under(tmp_path / "same", (on, on))
+
+    assert mixed.config["declared_env"] == [off, on], "recorded disagreeing, like model_env"
+    assert not mixed.valid
+    assert "model.yaml env" in mixed.notes
+    assert mixed.run_id != same.run_id
+
+
+def test_a_source_run_that_recorded_no_model_yaml_env_is_not_read_as_agreeing(tmp_path: Path) -> None:
+    """`_agreed` skips a missing value, so a pre-#99 run would take the others' env."""
+    on = {"DRIVEJEPA_MOMENTUM": "on"}
+    run = _pooled_under(tmp_path / "half", (None, on))
+    assert not run.valid
+    assert "1 of 2 source runs recorded no declared_env" in run.notes
+
+    # Every source run from before #99: nothing to compare, and the record is as it was.
+    old = _pooled_under(tmp_path / "old", (None, None))
+    assert "declared_env" not in old.config
+    assert old.valid, old.notes
+
+
 def test_source_runs_that_disagree_are_recorded_disagreeing(tmp_path: Path) -> None:
     """Collapsing to the first value is how a record asserts a config half its routes ran under."""
     root = _tree(tmp_path)

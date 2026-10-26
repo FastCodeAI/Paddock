@@ -6,9 +6,10 @@ signed so that positive is better, the standard error is clustered on the
 benchmark's independent unit, the bar is Student's t for that many units,
 runs without per-sample records (or with one unit) get no verdict, a candidate
 on its baseline's checkpoint is called out, and a resumed NAVSIM run still finds
-its token -> log map. The smoke tier's tests pin the tracked subsets, the
-commands that run them, and that an interrupted smoke resumes rather than
-starting over. None needs a GPU, a dataset or a site config.
+its token -> log map. A benchmark's PDM terms are paired like its primary, on
+the same unit and under the same refusals, and never decide the gate. The smoke
+tier's tests pin the tracked subsets, the commands that run them, and that an
+interrupted smoke resumes rather than starting over. None needs a GPU, a dataset or a site config.
 """
 
 from __future__ import annotations
@@ -340,6 +341,83 @@ def test_check_fails_on_any_regression_and_ships_only_on_a_closed_loop_gain(tmp_
     assert verdict == "SHIP" and results[1].verdict == "GAIN"
 
 
+def test_a_pair_that_cannot_ship_still_fails_and_never_ships(tmp_path: Path) -> None:
+    """Seven Bench2Drive routes detect only a 17-38 point drop: a GAIN there is too likely
+    to be chance to ship a checkpoint on, while a REGRESSION that large still fails it."""
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    scenes = [f"s{i}" for i in range(8)]
+    _write_run(
+        res,
+        runs,
+        "neuroncap",
+        "m",
+        "a",
+        [_ncap(s, "frontal", r, 2.0) for s in scenes for r in range(2)],
+        "ncap_score",
+    )
+    up = [_ncap(s, "frontal", r, 4.0 + 0.1 * r) for s in scenes for r in range(2)]
+    down = [_ncap(s, "frontal", r, 0.5 + 0.1 * r) for s in scenes for r in range(2)]
+    _write_run(res, runs, "neuroncap", "m", "up", up, "ncap_score")
+    _write_run(res, runs, "neuroncap", "m", "down", down, "ncap_score")
+
+    def manifest(cand: str) -> Path:
+        path = tmp_path / f"gate_{cand}.toml"
+        path.write_text(
+            f'[[pair]]\nbench = "neuroncap"\nbaseline = "m:a"\ncandidate = "m:{cand}"\ncan_ship = false\n'
+        )
+        return path
+
+    verdict, results = gate.check(manifest("up"), runs, res)
+    assert results[0].verdict == "GAIN" and verdict == "HOLD"
+    assert "(cannot ship)" in gate.render(results)
+    verdict, results = gate.check(manifest("down"), runs, res)
+    assert verdict == "FAIL"
+
+
+def test_the_mde_is_t_crit_plus_t80_times_the_se(tmp_path: Path) -> None:
+    """A NEUTRAL is readable only beside what the pair could have detected."""
+    assert gate.mde(1.0, 5) == pytest.approx(2.571 + 0.920)
+    assert gate.mde(0.5, 19) == pytest.approx(0.5 * (2.093 + 0.861))
+    assert gate.mde(1.0, math.inf) == pytest.approx(1.960 + 0.842)
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    _write_run(res, runs, "kitscenes", "m", "a", [_kit(f"s{i}", 0, 1.0) for i in range(6)], "ade")
+    _write_run(
+        res, runs, "kitscenes", "m", "b", [_kit(f"s{i}", 0, 1.0 + 0.1 * (i % 3)) for i in range(6)], "ade"
+    )
+    r = gate.compare(
+        gate.load_run("kitscenes", "m:a", runs, res), gate.load_run("kitscenes", "m:b", runs, res)
+    )
+    assert r.mde == pytest.approx(gate.mde(r.se, r.df))
+    assert "MDE" in gate.render([r])
+
+
+def test_runs_on_different_code_are_noted(tmp_path: Path) -> None:
+    """A baseline measured before an adapter change is another measurement under the same name."""
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    for run_id in ("a", "b", "c"):
+        _write_run(res, runs, "kitscenes", "m", run_id, [_kit(f"s{i}", 0, 1.0) for i in range(3)], "ade")
+    for run_id, prov in (
+        ("a", {"paddock": {"sha": "1" * 40}}),
+        ("b", {"paddock": {"sha": "2" * 40, "dirty": True}}),
+    ):
+        path = res / "kitscenes" / "m" / run_id / "run.json"
+        run = json.loads(path.read_text())
+        run["provenance"] = prov
+        path.write_text(json.dumps(run))
+
+    def notes(base: str, cand: str) -> str:
+        r = gate.compare(
+            gate.load_run("kitscenes", f"m:{base}", runs, res),
+            gate.load_run("kitscenes", f"m:{cand}", runs, res),
+        )
+        return " | ".join(r.notes)
+
+    assert "different paddock code (111111111 vs 222222222)" in notes("a", "b")
+    assert "candidate ran from a paddock checkout with uncommitted edits" in notes("a", "b")
+    assert "baseline predates recording paddock's commit" in notes("c", "a")
+    assert "paddock" not in notes("a", "a")
+
+
 def test_a_resumed_navsim_run_finds_its_logs_through_merged_from(tmp_path: Path) -> None:
     """The resumed run keeps few dumps; the run it merged from holds the rest."""
     res, runs = tmp_path / "results", tmp_path / "runs"
@@ -471,6 +549,202 @@ def test_a_candidate_on_the_baselines_checkpoint_is_called_out(tmp_path: Path) -
     assert any(n.startswith("candidate sets DRIVEJEPA_CHECKPOINT") for n in new.notes)
 
 
+# ---- PDM terms beside the score ---------------------------------------------
+
+
+def _b2d(route: str, ds: float, rc: float, col: float) -> dict:
+    return {
+        "sample_id": f"bench2drive/{route}",
+        "native_id": {"route_id": route},
+        "metrics": {"driving_score": ds, "route_completion": rc, "collision_rate": col},
+    }
+
+
+def _b2d_trade(tmp_path: Path, **run_kw) -> tuple[gate.Run, gate.Run]:
+    """Eight routes on which the candidate drives further and collides more, for the
+    same driving score: the trade a composite hides."""
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    routes = [str(1700 + i) for i in range(8)]
+    base = [_b2d(r, 50.0 + i, 60.0 + i, 0.0) for i, r in enumerate(routes)]
+    cand = [
+        _b2d(r, 50.0 + i + (1.0 if i % 2 else -1.0), 95.0 + i % 2, 0.6 + 0.1 * (i % 3))
+        for i, r in enumerate(routes)
+    ]
+    _write_run(res, runs, "bench2drive", "m", "a", base, "driving_score")
+    _write_run(res, runs, "bench2drive", "m", "b", cand, "driving_score", **run_kw)
+    return gate.load_run("bench2drive", "m:a", runs, res), gate.load_run("bench2drive", "m:b", runs, res)
+
+
+def test_a_pdm_term_that_regresses_is_shown_beside_a_neutral_score_and_decides_nothing(
+    tmp_path: Path,
+) -> None:
+    from dataclasses import asdict
+
+    r = gate.compare(*_b2d_trade(tmp_path))
+    assert r.verdict == "NEUTRAL"
+    assert [(p.slot, p.metric, p.verdict) for p in r.pdm] == [
+        ("nc", "collision_rate", "REGRESSION"),
+        ("ep", "route_completion", "GAIN"),
+    ]
+    assert all(p.units == r.units == 8 for p in r.pdm), "a term is clustered on the primary's unit"
+    assert r.pdm_missing == ["DAC", "TTC", "C"]
+    assert gate.overall([r]) == "HOLD", "a PDM row's REGRESSION is not the pair's"
+    (worse,) = gate.pdm_regressions([r])
+    assert worse.startswith("bench2drive NC collision_rate (t -")
+    text = gate.render([r])
+    assert "\n               NC  collision_rate " in text, "labelled by term, under the primary"
+    assert "not measured on bench2drive: DAC, TTC, C" in text
+    assert "never decide the gate" in text
+    assert asdict(r)["pdm"][0]["verdict"] == "REGRESSION", "--json carries the rows"
+
+
+def test_a_pdm_term_is_refused_whatever_its_primary_is_refused(tmp_path: Path) -> None:
+    """Pairing a term on what an incomplete candidate kept drops the same hard cases."""
+    r = gate.compare(*_b2d_trade(tmp_path, status="partial", n_failed=2))
+    assert r.verdict == "INCOMPLETE"
+    assert {p.verdict for p in r.pdm} == {"INCOMPLETE"}
+    assert not any("lost 2 sample(s)" in n for p in r.pdm for n in p.notes), "said once, on the primary"
+
+
+def test_pdm_rows_belong_to_the_primary_only(tmp_path: Path) -> None:
+    a, b = _b2d_trade(tmp_path)
+    assert gate.compare(a, b, metric="route_completion").pdm == []
+    assert gate.compare(a, b, pdm=()).pdm == []
+    assert [p.slot for p in gate.compare(a, b, pdm=[("nc", "collision_rate")]).pdm] == ["nc"]
+
+
+def test_a_term_a_run_never_recorded_is_named_once_not_compared(tmp_path: Path) -> None:
+    """A run older than `pdm_ep` would otherwise pair as a row of NO RECORDS."""
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    scenes = [f"s{i}" for i in range(4)]
+    base = [_kit(s, 0, 1.0) for s in scenes]
+    cand = [{**_kit(s, 0, 1.1), "metrics": {"ade": 1.1, "pdm_ep": 0.9}} for s in scenes]
+    _write_run(res, runs, "kitscenes", "m", "a", base, "ade")
+    _write_run(res, runs, "kitscenes", "m", "b", cand, "ade")
+    r = gate.compare(
+        gate.load_run("kitscenes", "m:a", runs, res), gate.load_run("kitscenes", "m:b", runs, res)
+    )
+    assert r.pdm == []
+    assert any(n.endswith("not compared: pdm_ep, pdm_comfort") for n in r.notes)
+
+
+def _navsim_row(token: str, nc: float, ep: float, comfort: float = 1.0) -> dict:
+    return {
+        "sample_id": f"navsim/navtest/{token}",
+        "native_id": {"token": token},
+        "metrics": {
+            "epdms": nc * ep,
+            "no_at_fault_collisions": nc,
+            "drivable_area_compliance": 1.0,
+            "time_to_collision_within_bound": 1.0,
+            "ego_progress": ep,
+            "history_comfort": comfort,
+        },
+    }
+
+
+def _navsim_pair(tmp_path: Path, base: list[dict], cand: list[dict], logs: dict[str, str]):
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    _write_run(res, runs, "navsim", "m", "a", base, "epdms")
+    _write_run(res, runs, "navsim", "m", "b", cand, "epdms")
+    (runs / "navsim" / "m" / "a" / "trajectories.jsonl").write_text(
+        "\n".join(json.dumps({"token": t, "log_name": log}) for t, log in logs.items()) + "\n"
+    )
+    a, b = gate.load_run("navsim", "m:a", runs, res), gate.load_run("navsim", "m:b", runs, res)
+    return gate.compare(a, b, unit_of=gate._unit_for(a, b, runs))
+
+
+def test_navsim_v2_gets_a_pdm_style_score_composed_from_its_terms(tmp_path: Path) -> None:
+    """EPDMS's five PDMS terms are all on every sample, so the v1 shape is computable
+    from runs already on disk: NC x DAC x (5 TTC + 5 EP + 2 C) / 12."""
+    tokens = {f"t{log}_{i}": f"log{log}" for log in range(3) for i in range(4)}
+    base = [_navsim_row(t, 1.0, 0.8) for t in tokens]
+    cand = [_navsim_row(t, 1.0, 0.8 + 0.01 * int(t[1]) + 0.001 * int(t[-1])) for t in tokens]
+    r = _navsim_pair(tmp_path, base, cand, tokens)
+    assert [p.slot for p in r.pdm] == ["nc", "dac", "ttc", "ep", "comfort", "score"]
+    score = r.pdm[-1]
+    assert score.metric == "pdm_style_score" and score.units == 3, "clustered on the log too"
+    assert score.baseline_mean == pytest.approx((5 + 5 * 0.8 + 2) / 12)
+    assert any("composed by the gate" in n for n in score.notes)
+    assert r.pdm_missing == []
+
+
+def test_a_benchmarks_own_composite_is_not_said_to_be_the_gates(tmp_path: Path) -> None:
+    """neuroNCAP records its own `pdm_style_score`, the name the gate gives one it builds."""
+    from paddock.metrics.pdm import PDM_KEYS
+
+    def row(pair: str, value: float) -> dict:
+        scenario, scene = pair.split("-")
+        return {
+            "sample_id": f"neuroncap/{scene}/{scenario}/run_0",
+            "native_id": {"scenario": scenario, "scene": scene, "run": 0},
+            "metrics": {"ncap_score": 4.0, **{k: value for k in PDM_KEYS}},
+        }
+
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    pairs = ["stationary-0103", "frontal-0103", "side-0110", "stationary-0796"]
+    _write_run(res, runs, "neuroncap", "m", "a", [row(p, 0.8) for p in pairs], "ncap_score")
+    _write_run(res, runs, "neuroncap", "m", "b", [row(p, 0.9) for p in pairs], "ncap_score")
+    r = gate.compare(
+        gate.load_run("neuroncap", "m:a", runs, res), gate.load_run("neuroncap", "m:b", runs, res)
+    )
+    (score,) = [p for p in r.pdm if p.slot == "score"]
+    assert score.metric == "pdm_style_score" and score.baseline_mean == pytest.approx(0.8)
+    assert not any("composed by the gate" in n for n in score.notes)
+
+
+def test_a_composed_score_with_a_missing_term_is_not_a_pass(tmp_path: Path) -> None:
+    tokens = {f"t{i}": f"log{i % 3}" for i in range(6)}
+    base = [_navsim_row(t, 1.0, 0.8) for t in tokens]
+    cand = [_navsim_row(t, 1.0, 0.8, comfort=math.nan) for t in tokens]
+    score = _navsim_pair(tmp_path, base, cand, tokens).pdm[-1]
+    assert score.candidate_mean is None and score.verdict == "NO RECORDS"
+
+
+def test_navsim_v1s_own_pdms_is_the_headline_not_a_row_again() -> None:
+    slots = dict(gate.pdm_terms("navsim_v1", "pdms"))
+    assert slots["score"] == "pdms" and len(slots) == 6
+
+
+def test_every_smoked_benchmark_fills_a_pdm_term_and_none_fills_one_with_a_guess() -> None:
+    from paddock.registry import load_benchmarks
+
+    specs = load_benchmarks()
+    for name in {gate.load_subset(s).bench for s in gate.SMOKE_ORDER}:
+        assert specs[name].pdm, f"{name} is smoked and fills no PDM term"
+    assert dict(specs["neuroncap"].pdm) == {
+        "nc": "pdm_nc",
+        "dac": "pdm_dac",
+        "ttc": "pdm_ttc",
+        "ep": "pdm_ep",
+        "comfort": "pdm_comfort",
+        "score": "pdm_style_score",
+    }, "every term, from the poses each run writes and nuScenes' drivable area"
+    assert "dac" not in dict(specs["nuscenes"].pdm), "the nuScenes loader reads no map"
+
+
+@pytest.mark.parametrize(
+    ("pdm", "problem"),
+    [
+        ("{nc: fde@2s}", "'fde@2s' is not in metrics"),
+        ("{ep: lead_range_err}", "'lead_range_err' has no better direction"),
+        ("{progress: fde@3s}", "'progress' is not a PDM term"),
+        ("{nc: fde@3s, ep: fde@3s}", "one metric fills two terms"),
+        ("[fde@3s]", "pdm must map a term to a metric"),
+    ],
+)
+def test_an_unreadable_pdm_block_does_not_load(tmp_path: Path, pdm: str, problem: str) -> None:
+    from paddock.config import ConfigError
+    from paddock.registry import load_benchmarks
+
+    (tmp_path / "b").mkdir()
+    (tmp_path / "b" / "benchmark.yaml").write_text(
+        f"name: b\nmetrics: [ade, fde@3s, lead_range_err]\nprimary_metric: ade\npdm: {pdm}\n"
+    )
+    with pytest.raises(ConfigError, match=problem):
+        load_benchmarks(tmp_path)
+
+
 # ---- the smoke tier --------------------------------------------------------
 
 
@@ -504,34 +778,37 @@ def test_a_subset_file_must_name_its_benchmark(tmp_path: Path) -> None:
         gate.load_subset("neuroncap_quick", tmp_path)
 
 
-def test_the_quick_neuroncap_subset_is_every_shape_at_0103_once() -> None:
-    from paddock.adapters.benchmarks.neuroncap.harness import OFFICIAL_SET
+def test_the_quick_neuroncap_subset_is_one_pair_per_crash_type() -> None:
+    from paddock.adapters.benchmarks.neuroncap.harness import ENV_PAIRS, OFFICIAL_SET
 
     subset = gate.load_subset("neuroncap_quick")
     args, env = gate.smoke_args(subset)
-    assert args == ["--scene", "0103", "--runs", "1"] and env == {gate.NCAP_MANAGE_RENDERER: "true"}
-    assert set(subset.ids) == {
-        f"{shape}-0103" for shape, members in OFFICIAL_SET.items() if "0103" in members
-    }
+    assert args[0] == "--scene" and args[2:] == ["--runs", "1"]
+    assert env == {gate.NCAP_MANAGE_RENDERER: "true", ENV_PAIRS: ",".join(sorted(subset.ids))}
+    assert sorted(p.split("-")[0] for p in subset.ids) == sorted(OFFICIAL_SET)
 
 
-def test_the_bench2drive_subset_follows_its_rule() -> None:
-    """Recomputed from the tracked records: kept routes separate the four systems by sd >= 12."""
-    import statistics
+def test_the_bench2drive_subset_is_one_route_per_group() -> None:
+    """Left turn, right turn, and five kinds of straight route, one route each."""
+    from tools import gate_subsets
 
-    records = json.loads((REPO_ROOT / "docs/benchmarks/bench2drive-speed-normalization.json").read_text())[
-        "records"
-    ]
-    systems = ("alpamayo15", "drivejepa", "qwendrive", "visionpilot")
-    scores: dict[str, list[float]] = {}
-    for rec in records:
-        if rec["model"] in systems:
-            scores.setdefault(rec["route_id"], []).append(rec["scores"]["score_composed"])
-    kept = gate.load_subset("bench2drive").ids
-    dropped = ["3307", "25857", "2084"]  # the rest of the 2026-10-16 ten
-    assert all(len(scores[r]) == 4 for r in [*kept, *dropped])
-    assert all(statistics.pstdev(scores[r]) >= 12 for r in kept)
-    assert all(statistics.pstdev(scores[r]) < 12 for r in dropped)
+    subset = gate.load_subset("bench2drive")
+    groups = ["left turn", "right turn", *(f"straight: {h}" for h in gate_subsets.B2D_HAZARDS)]
+    assert sorted(subset.strata) == sorted(groups)
+    assert all(len(v) == 1 and v[0].isdigit() for v in subset.strata.values())
+    types = [t for ts in gate_subsets.B2D_HAZARDS.values() for t in ts]
+    assert len(types) == len(set(types)) == 44, "each of Bench2Drive's 44 scenario types in one family"
+
+
+def test_a_bench2drive_turn_is_read_from_the_route_and_carlas_y_points_right() -> None:
+    """CARLA is left-handed: a route heading +x that ends heading -y has turned left."""
+    from tools.gate_subsets import b2d_group, b2d_turn_deg
+
+    left = [(0.0, 0.0), (10.0, 0.0), (20.0, 0.0), (20.0, -10.0), (20.0, -20.0)]
+    assert b2d_turn_deg(left) == pytest.approx(90.0)
+    assert b2d_group("ParkingCutIn", 90.0) == "left turn"
+    assert b2d_group("ParkingCutIn", -60.0) == "right turn"
+    assert b2d_group("ParkingCutIn", 10.0) == "straight: cut-in or hard brake"
 
 
 def test_a_subset_without_its_own_baseline_uses_its_benchmarks() -> None:
@@ -617,7 +894,7 @@ def test_the_alpasim_smoke_runs_its_own_scene_set_whatever_the_site_sets(tmp_pat
     site = tmp_path / "paddock.toml"
     site.write_text('site = "t"\n[benchmarks.alpasim]\nrepo = "r"\nscene_set = "public_2601_30scenes"\n')
     derived = tomllib.loads(gate.smoke_config(site, "m", {}, 8700))
-    assert derived["benchmarks"]["alpasim"] == {"repo": "r", "scene_set": "public_2601_first10"}
+    assert derived["benchmarks"]["alpasim"] == {"repo": "r", "scene_set": "public_2601_gate10"}
     bare = tmp_path / "bare.toml"
     bare.write_text('site = "t"\n')
     assert "alpasim" not in tomllib.loads(gate.smoke_config(bare, "m", {}, 8700))["benchmarks"]
@@ -639,37 +916,50 @@ def test_the_candidates_env_wins_over_a_pairing_table(tmp_path: Path) -> None:
 
 
 def test_smoke_subset_sizes_are_the_ones_the_gate_was_designed_around() -> None:
-    """NAVSIM 1,000 over all 136 logs (2+ each), KITScenes 223, nuScenes 30 scenes, 6 + 3 pairs, 7 routes."""
+    """NAVSIM ~1,000, KITScenes 223 (186 decide), nuScenes 1,000, 15 + 3 pairs, 7 routes, 10 scenes."""
     navsim = gate.load_subset("navsim")
-    assert len(navsim.ids) == 1000 and len(navsim.strata) == 136
-    assert min(len(v) for v in navsim.strata.values()) >= 2
-    assert len(gate.load_subset("kitscenes").ids) == 223
-    assert len(gate.load_subset("nuscenes").strata) == 30
-    assert len(gate.load_subset("neuroncap").ids) == 6
+    assert 1000 <= len(navsim.ids) <= 1100, "1,000 drawn, then logs topped up to the scorer's floor"
+    kit = gate.load_subset("kitscenes")
+    assert len(kit.ids) == 223 and kit.meta["decide_on"] == ["val"] and len(kit.strata["val"]) == 186
+    assert len(gate.load_subset("nuscenes").ids) == 1000
+    assert len(gate.load_subset("neuroncap").ids) == 15
     assert len(gate.load_subset("neuroncap_quick").ids) == 3
     assert len(gate.load_subset("bench2drive").ids) == 7
+    assert len(gate.load_subset("alpasim").ids) == 10
 
 
-def test_the_neuroncap_scene_list_drives_exactly_the_subset() -> None:
-    """`--scene` runs every shape a scene is in; the smoke's scenes yield exactly the six listed pairs."""
-    from paddock.adapters.benchmarks.neuroncap.harness import OFFICIAL_SET
+def test_every_drawn_group_gets_the_same_share_where_it_can() -> None:
+    """A group holds back only by running out: none is short while another has more than one extra."""
+    for name in ("nuscenes", "neuroncap"):
+        subset = gate.load_subset(name)
+        sizes = sorted(len(v) for v in subset.strata.values())
+        assert sizes[-1] - min(s for s in sizes if s >= sizes[-1] - 1) <= 1
+
+
+def test_the_neuroncap_scene_list_and_pair_list_drive_exactly_the_subset() -> None:
+    """`--scene` runs every shape a scene is in; the pair list keeps exactly the 15 listed."""
+    from paddock.adapters.benchmarks.neuroncap.harness import ENV_PAIRS, OFFICIAL_SET
 
     subset = gate.load_subset("neuroncap")
-    args, _ = gate.smoke_args(subset)
+    args, env = gate.smoke_args(subset)
     scenes = args[args.index("--scene") + 1].split(",")
+    keep = set(env[ENV_PAIRS].split(","))
     driven = {
-        f"{shape}-{scene}" for scene in scenes for shape, members in OFFICIAL_SET.items() if scene in members
+        f"{shape}-{scene}"
+        for scene in scenes
+        for shape, members in OFFICIAL_SET.items()
+        if scene in members and f"{shape}-{scene}" in keep
     }
     assert driven == set(subset.ids)
-    assert {pair.split("-")[0] for pair in subset.ids} == set(OFFICIAL_SET)
+    assert {k: len(v) for k, v in subset.strata.items()} == {"frontal": 5, "side": 5, "stationary": 5}
 
 
-def test_the_alpasim_subset_is_the_benchmarks_own_pinned_ten() -> None:
-    """The tier's AlpaSim list cannot drift from the scene set the harness runs by default."""
-    from paddock.adapters.benchmarks.alpasim.harness import DEFAULT_SCENE_SET, load_scene_set
+def test_the_alpasim_subset_is_its_pinned_scene_set() -> None:
+    """The tier's AlpaSim list cannot drift from the scene set the smoke pins."""
+    from paddock.adapters.benchmarks.alpasim.harness import load_scene_set
 
-    assert DEFAULT_SCENE_SET == "public_2601_first10"
-    assert gate.load_subset("alpasim").ids == load_scene_set(DEFAULT_SCENE_SET)
+    subset = gate.load_subset("alpasim")
+    assert subset.ids == load_scene_set(subset.meta["scene_set"])
 
 
 def test_the_navsim_smoke_passes_its_tokens_as_one_hydra_override() -> None:
@@ -678,11 +968,19 @@ def test_the_navsim_smoke_passes_its_tokens_as_one_hydra_override() -> None:
 
     subset = gate.load_subset("navsim")
     args, env = gate.smoke_args(subset)
-    assert args == ["--limit", "1000"]
+    assert args == ["--limit", str(len(subset.ids))]
     value = env[ENV_OVERRIDES]
     assert len(value.split()) == 1  # the harness splits overrides on whitespace
     assert value.startswith("train_test_split.scene_filter.tokens=[")
-    assert value.count("'") == 2 * 1000
+    assert value.count("'") == 2 * len(subset.ids)
+
+
+def test_the_nuscenes_smoke_names_its_samples() -> None:
+    from paddock.adapters.benchmarks.nuscenes.harness import ENV_SAMPLES
+
+    subset = gate.load_subset("nuscenes")
+    args, env = gate.smoke_args(subset)
+    assert args == ["--limit", "1000"] and env[ENV_SAMPLES].split(",") == subset.ids
 
 
 def test_stratified_pick_is_proportional_floored_and_reproducible() -> None:
@@ -703,6 +1001,72 @@ def test_stratified_pick_is_proportional_floored_and_reproducible() -> None:
     assert {k: len(v) for k, v in gate.stratified_pick(strata, 11, seed=7).items()} == {"big": 7, "mid": 4}
     with pytest.raises(ValueError, match="already exceeds"):
         gate.stratified_pick(strata, 10, seed=7, floor=4)
+
+
+def test_balanced_pick_gives_every_group_the_same_share() -> None:
+    """Equal shares; a group too small gives all it has and the rest is shared again."""
+    strata = {
+        "big": [f"b{i}" for i in range(60)],
+        "mid": [f"m{i}" for i in range(30)],
+        "tiny": ["t0", "t1", "t2"],
+    }
+    # 30 over 3 groups: 10 each, but tiny has 3, so its 7 go 4 / 3 to the other two.
+    picked = gate.balanced_pick(strata, 30, seed=7)
+    assert {k: len(v) for k, v in picked.items()} == {"big": 14, "mid": 13, "tiny": 3}
+    assert sum(len(v) for v in gate.balanced_pick(strata, 31, seed=7).values()) == 31
+    assert picked == gate.balanced_pick(strata, 30, seed=7)
+    assert picked["big"] != gate.balanced_pick(strata, 30, seed=8)["big"]
+    assert all(set(v) <= set(strata[k]) for k, v in picked.items())
+    assert {k: len(v) for k, v in gate.balanced_pick(strata, 3, seed=7).items()} == {
+        "big": 1,
+        "mid": 1,
+        "tiny": 1,
+    }
+    with pytest.raises(ValueError, match="cannot pick"):
+        gate.balanced_pick(strata, 94, seed=7)
+
+
+def test_the_neuroncap_draw_repeats_exactly(tmp_path: Path) -> None:
+    """Re-running the tool reproduces the tracked neuroNCAP subsets, byte for byte."""
+    from tools import gate_subsets
+
+    gate_subsets.draw_neuroncap(tmp_path)
+    for name in ("neuroncap", "neuroncap_quick"):
+        assert (tmp_path / f"{name}.toml").read_text() == (gate.SMOKE_DIR / f"{name}.toml").read_text()
+
+
+def test_kitscenes_decides_on_val_and_reports_the_left_out_keyframes(tmp_path: Path, monkeypatch) -> None:
+    """The 37 overlap_train_val keyframes run, stay out of the verdict, and are named in a note."""
+    subset = gate.load_subset("kitscenes")
+    res, runs = tmp_path / "results", tmp_path / "runs"
+
+    def row(sid: str, ade: float) -> dict:
+        _, _, scene, key = sid.split("/")
+        return {
+            "sample_id": sid,
+            "native_id": {"scene_id": scene, "keyframe_index": int(key)},
+            "metrics": {"ade": ade},
+        }
+
+    val, other = subset.strata["val"], subset.strata["overlap_train_val"]
+    base = [row(s, 2.0) for s in subset.ids]
+    cand = [row(s, 2.0 + 0.01 * (i % 3) - 0.01) for i, s in enumerate(val)] + [row(s, 3.0) for s in other]
+    _write_run(res, runs, "kitscenes", "m", "a", base, "ade")
+    _write_run(res, runs, "kitscenes", "m", "b", cand, "ade")
+    manifest = tmp_path / "m.toml"
+    manifest.write_text(
+        '[[pair]]\nbench = "kitscenes"\nbaseline = "m:a"\ncandidate = "m:b"\nsubset = "kitscenes"\n'
+    )
+    _, (r,) = gate.check(manifest, runs, res)
+    assert r.matched == 186 and r.verdict == "NEUTRAL", "the 37 worse keyframes do not decide"
+    (note,) = [n for n in r.notes if "left out of this verdict" in n]
+    assert note.startswith("37 sample(s) of overlap_train_val left out") and "better by -1.000" in note
+    # Review of #105 (2): the check run as each subset finishes, which can stop the
+    # smoke, counted all 223 and said REGRESSION.
+    monkeypatch.setattr(gate, "RESULTS_ROOT", res)
+    step = gate.SmokeStep("kitscenes", "finished", "b", [], {}, name="kitscenes")
+    early = gate._step_verdict(step, {"run": "m:a", "results": str(res)}, "m", runs)
+    assert (early.verdict, early.matched) == ("NEUTRAL", 186)
 
 
 def _plan(tmp_path: Path, benches: list[str], state: dict, config_path: Path | None = None) -> list:
@@ -727,18 +1091,19 @@ def test_smoke_commands_for_neuroncap_and_kitscenes(tmp_path: Path) -> None:
     ncap, kit = _plan(tmp_path, ["neuroncap", "kitscenes"], {}, config)
     head = ["taskset", "-c", "4-7", "nice", "py", "-m", "paddock.cli", "run"]
     assert ncap.status == "new"
-    assert ncap.command == [
-        *head,
-        *("--bench", "neuroncap", "--model", "drivejepa", "--scene", "0103,0110,0796", "--runs", "3"),
-    ]
+    args, extra = gate.smoke_args(gate.load_subset("neuroncap"))
+    assert ncap.command == [*head, "--bench", "neuroncap", "--model", "drivejepa", *args]
+    assert args[-2:] == ["--runs", "1"]
     assert ncap.env["PADDOCK_NCAP_MANAGE_RENDERER"] == "true"
+    assert ncap.env["PADDOCK_NCAP_PAIRS"] == extra["PADDOCK_NCAP_PAIRS"]
     assert kit.command == [*head, "--bench", "kitscenes", "--model", "drivejepa"]
     for step in (ncap, kit):
         assert step.env["PADDOCK_BASE_PORT"] == "9700"
         assert step.env["PADDOCK_CONFIG"] == str(config)
         assert step.env["PYTHONPATH"] == str(tmp_path / "repo" / "src")
     line = gate.shell_line(ncap, tmp_path / "repo")
-    assert "PADDOCK_NCAP_MANAGE_RENDERER=true taskset -c 4-7 nice py -m paddock.cli run" in line
+    assert "PADDOCK_NCAP_MANAGE_RENDERER=true PADDOCK_NCAP_PAIRS=" in line
+    assert "taskset -c 4-7 nice py -m paddock.cli run" in line
 
 
 def test_a_benchmark_the_model_does_not_declare_is_skipped(tmp_path: Path) -> None:
@@ -774,6 +1139,35 @@ def test_a_rerun_skips_finished_runs_and_resumes_started_ones(tmp_path: Path) ->
         _plan(tmp_path, ["neuroncap"], {"neuroncap": dict(started)})
 
 
+def test_the_small_subsets_cannot_ship_and_their_pairs_say_so() -> None:
+    small = {"bench2drive", "neuroncap_quick"}
+    assert all(gate.load_subset(n).meta["can_ship"] is False for n in small)
+    assert all(gate.load_subset(n).meta.get("can_ship", True) for n in gate.SMOKE_ORDER if n not in small)
+    step = gate.SmokeStep("bench2drive", "finished", "r1", [], {}, name="bench2drive", can_ship=False)
+    text = gate.smoke_manifest("m", "m-released", {"bench2drive": {"run": "m:base"}}, [step])
+    assert "can_ship = false" in text
+
+
+def test_the_quick_tier_alone_never_ships() -> None:
+    """Review of #100 (1): a GAIN on the 3 quick neuroNCAP episodes, the rest NEUTRAL, said SHIP."""
+
+    def pair(name: str, verdict: str) -> gate.PairResult:
+        subset = gate.load_subset(name)
+        return gate.PairResult(
+            bench=subset.bench,
+            metric="m",
+            baseline="m:a",
+            candidate="m:b",
+            higher_is_better=True,
+            verdict=verdict,
+            can_ship=bool(subset.meta.get("can_ship", True)),
+        )
+
+    quick = [pair(n, "NEUTRAL") for n in gate.TIERS["quick"] if n != "neuroncap_quick"]
+    assert gate.overall([*quick, pair("neuroncap_quick", "GAIN")]) == "HOLD"
+    assert gate.overall([*quick, pair("neuroncap_quick", "REGRESSION")]) == "FAIL"
+
+
 def test_the_smoke_manifest_pairs_only_finished_runs_with_a_baseline(tmp_path: Path) -> None:
     """Only finished runs with a baseline become [[pair]]s, with that baseline's results store."""
     steps = [
@@ -796,6 +1190,7 @@ def test_the_smoke_manifest_pairs_only_finished_runs_with_a_baseline(tmp_path: P
             "baseline": "drivejepa:base",
             "baseline_results": "/elsewhere/results",
             "candidate": "drivejepa:n1",
+            "subset": "neuroncap",
         }
     ]
     assert "# nuscenes: candidate drivejepa:u1, not finished" in text
@@ -875,6 +1270,22 @@ def test_the_site_config_gains_the_smoke_overrides_and_loses_nothing(tmp_path: P
     expected["models"]["drivejepa"]["env"]["DRIVEJEPA_CHECKPOINT"] = "ck.pt"
     expected["benchmarks"]["neuroncap"]["renderer_url"] = "http://127.0.0.1:8700"
     assert derived == expected
+
+
+def test_the_smoke_shares_one_nuscenes_index_and_keeps_the_sites_videos(tmp_path: Path) -> None:
+    """A fresh worktree spent 20 of nuScenes' 35 smoke minutes rebuilding its index, so
+    every checkout shares one. neuroNCAP's videos are how a regression is looked at, so
+    the site's `video` setting is left alone."""
+    import tomllib
+
+    site = tmp_path / "paddock.toml"
+    site.write_text('site = "test"\n[benchmarks.neuroncap]\nvideo = "encode"\n')
+    derived = tomllib.loads(gate.smoke_config(site, "drivejepa", {}, 8700, tmp_path / "cache"))
+    assert derived["benchmarks"]["neuroncap"]["video"] == "encode"
+    assert derived["benchmarks"]["nuscenes"]["index_cache"] == str(tmp_path / "cache" / "nuscenes")
+    site.write_text('site = "test"\n[benchmarks.nuscenes]\nindex_cache = "/site/own.pkl"\n')
+    derived = tomllib.loads(gate.smoke_config(site, "drivejepa", {}, 8700, tmp_path / "cache"))
+    assert derived["benchmarks"]["nuscenes"]["index_cache"] == "/site/own.pkl", "the site's own choice stands"
 
 
 def test_the_smoke_renderer_port_is_set_even_without_a_site_renderer_url(tmp_path: Path) -> None:
@@ -979,6 +1390,21 @@ def _smoke_site(tmp_path: Path, monkeypatch, ade: dict[str, float], hold: float 
         return steps
 
     monkeypatch.setattr(gate, "plan_smoke", plan)
+    # Each subset is the four samples FAKE_RUN and the baselines above hold: these
+    # tests are about when the smoke stops, and a real subset would be SUBSET DIFFERS.
+    real_load = gate.load_subset
+
+    def fake_subset(name, directory=gate.SMOKE_DIR):
+        s = real_load(name, directory)
+        rows = [
+            {"sample_id": f"{s.bench}/s{i}", "native_id": {"scene_id": f"s{i}", "scene": f"s{i}"}}
+            for i in range(4)
+        ]
+        ids = [gate._subset_key(s.bench, row) for row in rows]
+        meta = {k: v for k, v in s.meta.items() if k != "decide_on"}
+        return gate.Subset(s.name, s.bench, {"all": ids}, meta)
+
+    monkeypatch.setattr(gate, "load_subset", fake_subset)
     monkeypatch.setattr(gate, "RESULTS_ROOT", res)
     monkeypatch.setattr(gate, "POLL_S", 0.05)
     monkeypatch.setattr(gate, "_gpu_free_gb", lambda env: None)
@@ -1254,3 +1680,34 @@ def test_a_rerun_refuses_while_a_recorded_run_is_still_alive(tmp_path: Path, mon
         alive.wait()
     # Once it is gone, the record is stale and the smoke goes ahead.
     assert gate.smoke(args(bench=["kitscenes"]), lambda _m: None) == 0
+
+
+def test_a_baseline_on_an_older_draw_of_the_subset_gets_no_verdict(tmp_path: Path) -> None:
+    """Review of #105 (3): a baseline holding 5 of the 15 neuroNCAP pairs was a GAIN on those 5."""
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    pairs = gate.load_subset("neuroncap").ids
+
+    def row(pair: str, score: float) -> dict:
+        scenario, scene = pair.split("-")
+        return {
+            "sample_id": f"neuroncap/{scene}/{scenario}/run_0",
+            "native_id": {"scenario": scenario, "scene": scene, "run": 0},
+            "metrics": {"ncap_score": score},
+        }
+
+    _write_run(res, runs, "neuroncap", "m", "old", [row(p, 3.0) for p in pairs[:5]], "ncap_score")
+    _write_run(
+        res,
+        runs,
+        "neuroncap",
+        "m",
+        "new",
+        [row(p, 3.5 + 0.1 * (i % 2)) for i, p in enumerate(pairs)],
+        "ncap_score",
+    )
+    old, new = (gate.load_run("neuroncap", f"m:{r}", runs, res) for r in ("old", "new"))
+    r = gate.compare_pair(old, new, runs, subset="neuroncap")
+    assert r.verdict == "SUBSET DIFFERS" and r.units == 5, "compared and shown, not decided"
+    assert "the baseline holds 5 of subset neuroncap's 15; run it again on this subset" in r.notes
+    assert gate.overall([r]) == "HOLD"
+    assert gate.compare_pair(new, new, runs, subset="neuroncap").verdict != "SUBSET DIFFERS"

@@ -62,6 +62,9 @@ repos:
     url: https://github.com/Thinklab-SJTU/Bench2Drive.git
     sha: 7ec25d1
     description: CARLA 0.9.15 closed-loop leaderboard (release 0.0.4); driven by adapters/benchmarks/bench2drive
+    patches:
+      - 0001-kill-only-own-carla-on-crash.patch
+      - 0002-connect-timeout-for-a-booting-server.patch
 
   kitscenes:
     url: https://github.com/KIT-MRT/kitscenes.git

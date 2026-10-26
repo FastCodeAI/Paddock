@@ -1,42 +1,38 @@
-# Bench2Drive smoke tier (closed-loop tier): 7 of the 50 routes this site's
-# Bench2Drive results use, kept for separating models, not for covering every
-# scenario type.
+# Bench2Drive smoke tier (closed-loop tier): 7 of the 220 routes of bench2drive220.xml,
+# one per group. Groups: a route that turns by 45 degrees or more, read from its own
+# waypoints, is a left or a right turn; one that goes straight is grouped by what it is
+# about, its scenario type's hazard family (tools/gate_subsets.py, B2D_HAZARDS):
+# left turn 68, right turn 45, straight: cut-in or hard brake 15, straight: highway or high speed 38, straight: junction 4, straight: obstacle in the lane 39, straight: pedestrian or cyclist 11.
+#   left turn: route 3717 (VehicleTurningRoute, Town13, turns +79 deg)
+#   right turn: route 24258 (HazardAtSideLaneTwoWays, Town07, turns -54 deg)
+#   straight: cut-in or hard brake: route 18356 (ParkingCutIn, Town12, turns +3 deg)
+#   straight: highway or high speed: route 17598 (SequentialLaneChange, Town12, turns +2 deg)
+#   straight: junction: route 28111 (T_Junction, Town04, turns -45 deg)
+#   straight: obstacle in the lane: route 3482 (VehicleOpensDoorTwoWays, Town13, turns -27 deg)
+#   straight: pedestrian or cyclist: route 3255 (ParkingCrossingPedestrian, Town13, turns -3 deg)
+# Run as `--scene <the ids>`. Stored valid=false (a route subset).
+# can_ship = false: seven routes detect only a large change (17-38 driving-score
+# points, from paired route differences of 13.6-30.4 sd). A REGRESSION that large still
+# fails the gate; a GAIN from so few routes is too likely to be chance to ship on.
 #
-# The 50 are the routes_subset recorded in results/bench2drive/*/pooled50-40c29d24c37d542a-*
-# (bench2drive220.xml route ids). Rule, applied to the 10 routes this subset held
-# from 2026-10-16 (stratified_pick by scenario type, n=10, seed=20261016):
-#   keep a route when the driving scores of the four systems driven without
-#   assistance -- alpamayo15, drivejepa, qwendrive, visionpilot; one record each
-#   per route in docs/benchmarks/bench2drive-speed-normalization.json, field
-#   scores.score_composed -- have a population standard deviation of at least
-#   12 points.
-# OpenPilot is left out of the rule because 16 of its routes were driven with human
-# resume assistance; the constant-velocity sweep because it is a floor, not a model.
-#
-# Why the change, on 2026-10-20: the first smoke (released Drive-JEPA, run
-# 20261016T001452-8ab5d4) spent 240 min on the ten routes, 139 of them on the
-# three this rule drops -- 3307 (sd 5.4, 29 min), 25857 (sd 6.1, 20 min) and 2084
-# (sd 10.1, 90 min, timed out) -- where the four systems score within a few points
-# of each other, so a candidate's run there separates little. The seven kept took
-# 87 min in that run. All seven are in that run, so it stays this subset's baseline.
-#
-# Run as `--scene <the 7 ids>`. Stored valid=false (a route subset).
-#
-# Fixed on 2026-10-20 by the rule above. It must never be re-picked, re-seeded or
-# edited to make a result look better: a gate whose subset moves can be steered. If
-# the subset turns out to be wrong (a route that cannot run, say), replace it in its
-# own commit that says why, and re-run every baseline paired with it.
+# Drawn once, on 2026-10-22, by `python -m tools.gate_subsets bench2drive` (seed 20261022): every
+# group the same share, random within it (tools/gate_subsets.py has the rule). It must
+# never be re-picked, re-drawn or edited to make a result look better: a gate whose
+# subset moves can be steered. If it turns out to be wrong (a sample that cannot run,
+# say), replace it in its own commit that says why, and re-run every baseline paired
+# with it.
 
 bench = "bench2drive"
+can_ship = false
 unit = "route"
-rule = "the 2026-10-16 ten, kept where the four unassisted systems' driving scores have sd >= 12"
+seed = 20261022
 count = 7
 
 [strata]
-DynamicObjectCrossing = ["24211"]
-InvadingTurn = ["3572"]
-ParkingCutIn = ["18305"]
-PedestrianCrossing = ["14194"]
-SignalizedJunctionLeftTurn = ["3936"]
-SignalizedJunctionRightTurn = ["26956"]
-YieldToEmergencyVehicle = ["3364"]
+"left turn" = ["3717"]
+"right turn" = ["24258"]
+"straight: cut-in or hard brake" = ["18356"]
+"straight: highway or high speed" = ["17598"]
+"straight: junction" = ["28111"]
+"straight: obstacle in the lane" = ["3482"]
+"straight: pedestrian or cyclist" = ["3255"]

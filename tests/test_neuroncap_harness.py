@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -511,6 +512,38 @@ def test_run_count_alone_does_not_invalidate(tmp_path, monkeypatch) -> None:
     assert harness.invalid_reasons() == []
 
 
+# ---- the built command line ---------------------------------------------
+
+
+def test_run_episode_passes_allowed_cams_none(tmp_path, monkeypatch) -> None:
+    """`--engine.logger.allowed-cams None` must reach the subprocess, not just the comment above it.
+
+    The vendor logger's own default keeps only CAM_FRONT; without this flag a
+    multi-camera model's closed-loop run would silently lose every other
+    camera's frames. Nothing previously inspected the built command line, so a
+    regression here had no test to break.
+    """
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
+    scene = OFFICIAL_SET["stationary"][0]
+    episode = next(iter(harness.episodes([scene], runs=1, scenarios=["stationary"])))
+    episode.config["cameras"] = ["CAM_FRONT"]
+
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    harness.run_episode(episode, "http://127.0.0.1:9000", tmp_path / "out")
+
+    command = captured["command"]
+    assert "--engine.logger.allowed-cams" in command
+    idx = command.index("--engine.logger.allowed-cams")
+    assert command[idx + 1] == "None"
+
+
 # ---- renderer management -----------------------------------------------
 
 
@@ -925,3 +958,27 @@ def test_an_empty_metadata_file_is_not_a_fallback_loop(tmp_path) -> None:
     empty = tmp_path / "empty.json"
     empty.write_text("")
     assert _lidar_sample_data(empty) == {}
+
+
+def test_a_pair_list_keeps_only_its_pairs_of_the_named_scenes(tmp_path, monkeypatch) -> None:
+    """The gate's subsets are pairs spread over scenes; `--scene` alone runs every shape a scene has."""
+    from paddock.adapters.benchmarks.neuroncap.harness import ENV_PAIRS
+
+    harness = _harness_for(_ncap_site(tmp_path, monkeypatch))
+    monkeypatch.setenv(ENV_PAIRS, "side-0103,stationary-0099")
+    assert [e.episode_id for e in harness.episodes(["0099", "0103"], runs=1)] == [
+        "stationary-0099",
+        "side-0103",
+    ]
+    assert harness.invalid_reasons(), "a pair subset is not a neuroNCAP score"
+    assert harness.run_config() == {"pairs": ["side-0103", "stationary-0099"]}
+    monkeypatch.setenv(ENV_PAIRS, "frontal-0099")
+    with pytest.raises(ValueError, match="not official scenario-scene pairs: frontal-0099"):
+        harness.run_config()
+    monkeypatch.delenv(ENV_PAIRS)
+    assert harness.run_config() == {}
+    assert [e.episode_id for e in harness.episodes(["0103"], runs=1)] == [
+        "stationary-0103",
+        "frontal-0103",
+        "side-0103",
+    ]
