@@ -143,14 +143,14 @@ was measured the same way as the rest of its column.
   the others run at 20 Hz over the historical 24; those gains are
   partly more exposure. OpenPilot's Bench2Drive cell is an unassisted estimate
   rebuilt from assisted recordings. Alpamayo on AlpaSim drove 4 cameras on 10 of the 30
-  scenes, METEOR 6 cameras on all 30, and AutoE2E 6 pinhole cameras at its training field of view on all 30, through paddock's bridge. Drive-JEPA on comma2k19 is its perception-free variant,
-  `drivejepa_free`.
+  scenes, METEOR 6 cameras on all 30, and AutoE2E 6 pinhole cameras at its training field of view on all 30, through paddock's bridge.
 - **Ranked, though fed what the model is built for.** NAVSIM cells marked 10 Hz
   get nuPlan's 10 Hz frames, where 2 Hz models such as Drive-JEPA get OpenScene's
   2 Hz. AutoE2E on KITScenes is given the scene's map and a route matched to the
   logged drive, upstream's validation protocol (without the route it scores
   0.837); on nuScenes it is fed the 6.5 s of past keyframes it declares, where the
-  others get 2 s.
+  others get 2 s. Drive-JEPA on comma2k19 is its released front-camera version,
+  `drivejepa_free`, because comma2k19 has one camera.
 
 Before comparing numbers:
 
