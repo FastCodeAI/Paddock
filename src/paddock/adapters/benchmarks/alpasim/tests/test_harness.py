@@ -12,6 +12,8 @@ No Docker, no GPU, no model, no AlpaSim install.
 from __future__ import annotations
 
 import json
+import os
+import re
 import sys
 from pathlib import Path
 
@@ -902,3 +904,163 @@ def test_the_autoe2e_fixed_poses_look_where_the_kitscenes_cameras_look() -> None
         heading = [math.cos(math.radians(yaw)), math.sin(math.radians(yaw)), 0.0]
         assert optical == pytest.approx(heading, abs=1e-9)
         assert down == pytest.approx([0.0, 0.0, -1.0], abs=1e-9)
+
+
+# -- every run's containers are logged and taken down, whatever the outcome ---
+
+
+@pytest.fixture
+def fake_docker(tmp_path: Path, monkeypatch) -> Path:
+    """A `docker` on PATH that records each call and answers `compose logs`.
+
+    `FAKE_DOCKER_DOWN=fail` makes `compose down` exit non-zero, standing in for
+    a daemon that refuses the teardown. The compose project each call would act
+    on (`COMPOSE_PROJECT_NAME`) goes to `docker_projects.txt`, one per call.
+    """
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    calls = tmp_path / "docker_calls.txt"
+    projects = tmp_path / "docker_projects.txt"
+    docker = bin_dir / "docker"
+    docker.write_text(
+        f"#!{sys.executable}\n"
+        "import os, sys\n"
+        f"open({str(calls)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n"
+        f"open({str(projects)!r}, 'a').write(os.environ.get('COMPOSE_PROJECT_NAME', '') + '\\n')\n"
+        "if 'logs' in sys.argv:\n"
+        "    print('2026-10-27T00:00:00Z runtime-0-1  | hello from the container')\n"
+        "if 'down' in sys.argv and os.environ.get('FAKE_DOCKER_DOWN') == 'fail':\n"
+        "    sys.exit(1)\n"
+    )
+    docker.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    return calls
+
+
+def _run_dir(tmp_path: Path) -> Path:
+    out = tmp_path / "clipgt-run"
+    out.mkdir()
+    # The wizard writes this before `compose up`; teardown keys off it.
+    (out / "docker-compose.yaml").write_text("services: {}\n")
+    return out
+
+
+def _calls(calls: Path, verb: str) -> int:
+    lines = calls.read_text().splitlines() if calls.exists() else []
+    return sum(1 for line in lines if f" {verb}" in line)
+
+
+def test_a_successful_run_saves_logs_and_is_taken_down_once(tmp_path: Path, fake_docker: Path) -> None:
+    out = _run_dir(tmp_path)
+    returncode, timed_out, _ = launcher.run_wizard(
+        [sys.executable, "-c", "pass"], tmp_path, out / "wizard.log", 30, echo=lambda _: None
+    )
+    assert (returncode, timed_out) == (0, False)
+    assert "hello from the container" in (out / "container_logs.txt").read_text()
+    assert _calls(fake_docker, "logs") == 1
+    assert _calls(fake_docker, "down") == 1
+    # Logs before down: down removes the containers the logs live in.
+    verbs = [line.split()[3] for line in fake_docker.read_text().splitlines()]
+    assert verbs == ["logs", "down"]
+
+
+def test_a_failing_run_is_taken_down_and_keeps_its_exit_code(tmp_path: Path, fake_docker: Path) -> None:
+    out = _run_dir(tmp_path)
+    returncode, timed_out, _ = launcher.run_wizard(
+        [sys.executable, "-c", "raise SystemExit(3)"], tmp_path, out / "wizard.log", 30, echo=lambda _: None
+    )
+    assert (returncode, timed_out) == (3, False)
+    assert (out / "container_logs.txt").exists()
+    assert _calls(fake_docker, "down") == 1
+
+
+def test_a_timed_out_run_is_taken_down_once_not_twice(tmp_path: Path, fake_docker: Path) -> None:
+    out = _run_dir(tmp_path)
+    returncode, timed_out, _ = launcher.run_wizard(
+        [sys.executable, "-c", "import time; time.sleep(300)"],
+        tmp_path,
+        out / "wizard.log",
+        1,
+        echo=lambda _: None,
+    )
+    assert timed_out and returncode != 0
+    assert (out / "container_logs.txt").exists()
+    assert _calls(fake_docker, "down") == 1
+
+
+def test_an_interrupted_run_is_taken_down_and_the_interrupt_still_raises(
+    tmp_path: Path, fake_docker: Path
+) -> None:
+    """Ctrl-C reaches paddock but not the wizard, which runs in its own session.
+
+    The stand-in wizard sends the parent a SIGINT -- what a Ctrl-C at the
+    terminal does -- then keeps running, as the real one would.
+    """
+    out = _run_dir(tmp_path)
+    pid_file = tmp_path / "wizard.pid"
+    wizard = (
+        "import os, signal, time\n"
+        f"open({str(pid_file)!r}, 'w').write(str(os.getpid()))\n"
+        "os.kill(os.getppid(), signal.SIGINT)\n"
+        "time.sleep(300)\n"
+    )
+    with pytest.raises(KeyboardInterrupt):
+        launcher.run_wizard(
+            [sys.executable, "-c", wizard], tmp_path, out / "wizard.log", 60, echo=lambda _: None
+        )
+    assert (out / "container_logs.txt").exists()
+    assert _calls(fake_docker, "down") == 1
+    with pytest.raises(ProcessLookupError):
+        os.kill(int(pid_file.read_text()), 0)
+
+
+def test_a_failing_teardown_does_not_change_the_runs_result(
+    tmp_path: Path, fake_docker: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("FAKE_DOCKER_DOWN", "fail")
+    out = _run_dir(tmp_path)
+    said: list[str] = []
+    returncode, timed_out, _ = launcher.run_wizard(
+        [sys.executable, "-c", "raise SystemExit(3)"], tmp_path, out / "wizard.log", 30, echo=said.append
+    )
+    assert (returncode, timed_out) == (3, False)
+    assert any("warning: compose down exited 1" in line for line in said)
+
+
+def test_no_docker_at_all_is_a_warning_not_a_crash(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    out = _run_dir(tmp_path)
+    said: list[str] = []
+    returncode, timed_out, _ = launcher.run_wizard(
+        [sys.executable, "-c", "pass"], tmp_path, out / "wizard.log", 30, echo=said.append
+    )
+    assert (returncode, timed_out) == (0, False)
+    assert any("could not save container logs" in line for line in said)
+    assert any("compose down failed" in line for line in said)
+
+
+def test_two_runs_of_one_scene_do_not_share_containers(tmp_path: Path, fake_docker: Path) -> None:
+    """Overlapping runs of one scene must not start or remove each other's containers.
+
+    Left to itself, compose names a project after the folder that holds
+    `docker-compose.yaml` -- here `clipgt-scene` for both runs -- so the first
+    run to finish would remove the second's containers mid-scene.
+    """
+    names = []
+    for run_id in ("20261101T000000-aaaaaa", "20261101T010000-bbbbbb"):
+        out = tmp_path / run_id / "clipgt-scene"
+        out.mkdir(parents=True)
+        (out / "docker-compose.yaml").write_text("services: {}\n")
+        seen = out / "wizard_saw.txt"
+        wizard = f"import os; open({str(seen)!r}, 'w').write(os.environ.get('COMPOSE_PROJECT_NAME', ''))"
+        launcher.run_wizard(
+            [sys.executable, "-c", wizard], tmp_path, out / "wizard.log", 30, echo=lambda _: None
+        )
+        names.append(seen.read_text())
+
+    assert names[0] and names[1] and names[0] != names[1]
+    # Docker refuses any other character, upper case included.
+    assert all(re.fullmatch(r"[a-z0-9][a-z0-9_-]*", name) for name in names)
+    # The logs and the teardown act on the project the wizard started, per run.
+    projects = (tmp_path / "docker_projects.txt").read_text().split()
+    assert projects == [names[0], names[0], names[1], names[1]]
