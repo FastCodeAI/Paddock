@@ -14,6 +14,7 @@ interrupted smoke resumes rather than starting over. None needs a GPU, a dataset
 
 from __future__ import annotations
 
+import functools
 import json
 import math
 from pathlib import Path
@@ -766,10 +767,50 @@ def test_every_tracked_subset_is_in_exactly_one_tier() -> None:
     assert len(set(gate.SMOKE_ORDER)) == len(gate.SMOKE_ORDER)
 
 
-def test_the_quick_tier_runs_no_bench2drive_or_alpasim() -> None:
-    """The quick tier is the one run on every checkpoint; the slow simulators stay out of it."""
+def test_the_quick_tier_checks_bench2drive_and_alpasim_on_one_sample_each() -> None:
+    """The user's idea of 2026-10-27: a checkpoint that cannot drive in CARLA or AlpaSim stops
+    before the closed tier's hours. One sample cannot ship, and comes from the closed tier's
+    own subset, whose baseline holds it."""
     benches = {gate.load_subset(n).bench for n in gate.TIERS["quick"]}
-    assert benches == {"kitscenes", "nuscenes", "navsim", "neuroncap"}
+    assert benches == {"kitscenes", "nuscenes", "navsim", "neuroncap", "bench2drive", "alpasim"}
+    for quick, closed in (("bench2drive_quick", "bench2drive"), ("alpasim_quick", "alpasim")):
+        q, c = gate.load_subset(quick), gate.load_subset(closed)
+        assert len(q.ids) == 1 and set(q.ids) <= set(c.ids) and q.meta["can_ship"] is False
+    assert (
+        gate.load_subset("alpasim_quick").meta["scene_set"] == gate.load_subset("alpasim").meta["scene_set"]
+    )
+
+
+def test_the_quick_crash_checks_are_the_shortest_route_and_a_seeded_scene(tmp_path: Path) -> None:
+    """Re-running the draw on a route file where 3717 is shortest reproduces the tracked files."""
+    import shutil
+
+    from tools import gate_subsets
+
+    for name in ("bench2drive", "alpasim"):
+        shutil.copy(gate.SMOKE_DIR / f"{name}.toml", tmp_path / f"{name}.toml")
+    routes = gate.load_subset("bench2drive").ids
+    xml = tmp_path / "routes.xml"
+    xml.write_text(
+        "<routes>"
+        + "".join(
+            f'<route id="{rid}" town="T"><waypoints><position x="0" y="0" z="0"/>'
+            f'<position x="{10 if rid == "3717" else 500 + i}" y="0" z="0"/></waypoints></route>'
+            for i, rid in enumerate(routes)
+        )
+        + "</routes>"
+    )
+    gate_subsets.draw_quick_closed(xml, tmp_path)
+    for name in ("bench2drive_quick", "alpasim_quick"):
+        drawn = (tmp_path / f"{name}.toml").read_text().split("\n#\n", 1)[1]
+        tracked = (gate.SMOKE_DIR / f"{name}.toml").read_text().split("\n#\n", 1)[1]
+        assert drawn == tracked, name
+
+
+def test_the_alpasim_quick_scene_is_named_and_the_whole_set_is_not() -> None:
+    args, env = gate.smoke_args(gate.load_subset("alpasim_quick"))
+    assert args == ["--scene", gate.load_subset("alpasim_quick").ids[0]] and env == {}
+    assert gate.smoke_args(gate.load_subset("alpasim")) == ([], {})
 
 
 def test_a_subset_file_must_name_its_benchmark(tmp_path: Path) -> None:
@@ -981,6 +1022,7 @@ def test_smoke_subset_sizes_are_the_ones_the_gate_was_designed_around() -> None:
     assert len(gate.load_subset("neuroncap_quick").ids) == 3
     assert len(gate.load_subset("bench2drive").ids) == 7
     assert len(gate.load_subset("alpasim").ids) == 10
+    assert len(gate.load_subset("bench2drive_quick").ids) == len(gate.load_subset("alpasim_quick").ids) == 1
 
 
 def test_every_drawn_group_gets_the_same_share_where_it_can() -> None:
@@ -1195,7 +1237,7 @@ def test_a_rerun_skips_finished_runs_and_resumes_started_ones(tmp_path: Path) ->
 
 
 def test_the_small_subsets_cannot_ship_and_their_pairs_say_so() -> None:
-    small = {"bench2drive", "neuroncap_quick"}
+    small = {"bench2drive", "neuroncap_quick", "bench2drive_quick", "alpasim_quick"}
     assert all(gate.load_subset(n).meta["can_ship"] is False for n in small)
     assert all(gate.load_subset(n).meta.get("can_ship", True) for n in gate.SMOKE_ORDER if n not in small)
     step = gate.SmokeStep("bench2drive", "finished", "r1", [], {}, name="bench2drive", can_ship=False)
@@ -1221,6 +1263,49 @@ def test_the_quick_tier_alone_never_ships() -> None:
     quick = [pair(n, "NEUTRAL") for n in gate.TIERS["quick"] if n != "neuroncap_quick"]
     assert gate.overall([*quick, pair("neuroncap_quick", "GAIN")]) == "HOLD"
     assert gate.overall([*quick, pair("neuroncap_quick", "REGRESSION")]) == "FAIL"
+
+
+def test_a_crash_check_that_crashed_is_incomplete_and_so_stops_the_gate(tmp_path: Path) -> None:
+    """Review of #113 (1): the one-route candidate crashed and kept no records. The gate said
+    NO RECORDS, which does not stop it, and the closed tier's hours ran anyway."""
+    res, runs = tmp_path / "results", tmp_path / "runs"
+    base = [{"sample_id": "b2d/3717", "native_id": {"scene": "3717"}, "metrics": {"driving_score": 50.0}}]
+    _write_run(res, runs, "bench2drive", "m", "a", base, "driving_score")
+    _write_run(res, runs, "bench2drive", "m", "b", [], "driving_score", status="partial", n_failed=1)
+    load = functools.partial(gate.load_run, "bench2drive", runs_root=runs, results_root=res)
+    r = gate.compare_pair(load("m:a"), load("m:b"), runs, subset="bench2drive_quick")
+    assert r.verdict == "INCOMPLETE" and r.crash_check
+    assert any("lost every sample" in n for n in r.notes)
+
+
+def test_a_finished_crash_check_does_not_keep_the_gate_from_shipping() -> None:
+    """Review of #113 (2): each crash check is one sample, always TOO FEW UNITS, and SHIP needed
+    every pair decided, so --tier all could never ship."""
+
+    def pair(name: str, verdict: str) -> gate.PairResult:
+        subset = gate.load_subset(name)
+        return gate.PairResult(
+            bench=subset.bench,
+            metric="m",
+            baseline="m:a",
+            candidate="m:b",
+            higher_is_better=True,
+            verdict=verdict,
+            can_ship=bool(subset.meta.get("can_ship", True)),
+            crash_check=bool(subset.meta.get("crash_check", False)),
+        )
+
+    checks = ("bench2drive_quick", "alpasim_quick")
+    rest = [pair(n, "NEUTRAL") for n in gate.SMOKE_ORDER if n not in checks and n != "neuroncap"]
+    gain = pair("neuroncap", "GAIN")
+    assert gate.overall([*rest, gain, *(pair(n, "TOO FEW UNITS") for n in checks)]) == "SHIP"
+    for broken in ("INCOMPLETE", "NO RECORDS"):
+        assert (
+            gate.overall([*rest, gain, pair(checks[0], broken), pair(checks[1], "TOO FEW UNITS")]) == "HOLD"
+        )
+    assert gate.overall([*rest, pair("neuroncap", "TOO FEW UNITS")]) == "HOLD", (
+        "only crash checks are let off"
+    )
 
 
 def test_the_smoke_manifest_pairs_only_finished_runs_with_a_baseline(tmp_path: Path) -> None:
@@ -1419,8 +1504,9 @@ def test_the_smoke_renderer_port_is_set_even_without_a_site_renderer_url(tmp_pat
 FAKE_RUN = r"""
 import json, pathlib, sys, time
 import os
-bench, results, runs, model, ade, hold, stamps = sys.argv[1:8]
-run_id = f"cand-{bench}"
+bench, results, runs, model, ade, hold, stamps, name = sys.argv[1:9]
+# Named by subset: two subsets of one benchmark (bench2drive_quick, bench2drive) are two runs.
+run_id = f"cand-{name}"
 art = pathlib.Path(runs) / bench / model / run_id
 art.mkdir(parents=True)
 port = os.environ.get("PADDOCK_BASE_PORT", "9700")
@@ -1429,7 +1515,7 @@ print(f"  starting {model} node on port {port}", flush=True)
 if float(ade) < 0:  # a run that crashes after making its artifacts directory
     sys.exit(1)
 with open(stamps, "a") as f:
-    f.write(f"{bench} start {time.time()}\n")
+    f.write(f"{name} start {time.time()}\n")
 print(f"  {model} ready", flush=True)
 time.sleep(float(hold))
 rows = [
@@ -1446,7 +1532,7 @@ mean = sum(r["metrics"]["ade"] for r in rows) / len(rows)
 (tracked / "metrics.json").write_text(json.dumps({"primary_metric": "ade",
     "metrics": {"ade": {"mean": mean, "n": 4}}}))
 with open(stamps, "a") as f:
-    f.write(f"{bench} end {time.time()}\n")
+    f.write(f"{name} end {time.time()}\n")
 """
 
 
@@ -1497,7 +1583,7 @@ def _smoke_site(tmp_path: Path, monkeypatch, ade: dict[str, float], hold: float 
                 str(ade[bench]),
                 str(hold),
             ]
-            steps.append(gate.SmokeStep(bench, "new", None, [*cmd, str(stamps)], {}, name=name))
+            steps.append(gate.SmokeStep(bench, "new", None, [*cmd, str(stamps), name], {}, name=name))
         return steps
 
     monkeypatch.setattr(gate, "plan_smoke", plan)
@@ -1602,6 +1688,7 @@ def test_the_closed_tier_starts_only_after_the_quick_tier_ends(tmp_path: Path, m
     )
     spans = _intervals(stamps)
     assert spans["bench2drive"][0] >= spans["kitscenes"][1]
+    assert spans["bench2drive"][0] >= spans["bench2drive_quick"][1], "the quick crash check comes first"
 
 
 def test_a_simulator_waits_while_a_running_one_may_still_take_its_memory(tmp_path: Path, monkeypatch) -> None:

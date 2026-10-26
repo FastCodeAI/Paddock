@@ -53,7 +53,8 @@ A `threshold`, when given, adds whether the point estimate drops by more than it
 Overall (`check`): FAIL if any pair is a REGRESSION; SHIP only if every pair is decided
 (GAIN, NEUTRAL or REGRESSION) and at least one closed-loop pair that may ship is a GAIN
 (`can_ship = false` marks a subset too small for its GAIN to be trusted); HOLD
-otherwise. The exit status is 1 on FAIL, else 0. Each pair also reports its MDE, the
+otherwise. A crash check (`crash_check = true`, one sample) that ran cleanly is left
+out of "every pair decided". The exit status is 1 on FAIL, else 0. Each pair also reports its MDE, the
 smallest true difference it detects 80% of the time, which is how a NEUTRAL is read.
 
 PDM terms. Beside the primary, each pair scores the terms of NAVSIM v1's PDM score
@@ -300,6 +301,9 @@ class PairResult:
     #: False for a subset too small to be trusted with a GAIN (`can_ship` in its
     #: TOML): its REGRESSION still fails the gate, its GAIN never ships it.
     can_ship: bool = True
+    #: True for a one-sample crash check (`crash_check` in its TOML): too few for a
+    #: verdict by design, so a clean one (TOO FEW UNITS) does not hold back SHIP.
+    crash_check: bool = False
     baseline_env: dict[str, str] = field(default_factory=dict)
     candidate_env: dict[str, str] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
@@ -682,6 +686,12 @@ def _compare(
         result.verdict = "NO RECORDS"
         missing = [w for r, w in ((baseline, "baseline"), (candidate, "candidate")) if not r.samples]
         result.notes.append(f"no per-sample records on this site for: {', '.join(missing)}")
+        # A candidate with no records because it failed on every sample (the quick
+        # tier's one-route crash check that crashed) is INCOMPLETE, which stops the
+        # gate. NO RECORDS let the closed tier's hours run after it (review of #113, 1).
+        if not candidate.samples and (lost := lost_samples(candidate)):
+            result.verdict = "INCOMPLETE"
+            result.notes.append(f"candidate lost every sample ({lost}) to a failure")
         result.baseline_mean = ((baseline.metrics.get("metrics") or {}).get(metric) or {}).get("mean")
         result.candidate_mean = ((candidate.metrics.get("metrics") or {}).get(metric) or {}).get("mean")
         return result
@@ -805,11 +815,19 @@ def overall(results: list[PairResult], unfinished: list[str] | None = None) -> s
     HOLD otherwise.
 
     A GAIN beside a benchmark that was never compared is not a reason to ship:
-    the uncompared one could be where the candidate broke.
+    the uncompared one could be where the candidate broke. A crash check is one
+    sample and always TOO FEW UNITS; one that ran cleanly is left out of that rule
+    (with it in, `--tier all` could never ship: review of #113, 2). One that failed
+    (INCOMPLETE) or was not compared still holds.
     """
     if any(r.verdict == "REGRESSION" for r in results):
         return "FAIL"
-    if unfinished or any(r.verdict not in DECIDED for r in results):
+    undecided = [
+        r
+        for r in results
+        if r.verdict not in DECIDED and not (r.crash_check and r.verdict == "TOO FEW UNITS")
+    ]
+    if unfinished or undecided:
         return "HOLD"
     if any(r.verdict == "GAIN" and r.bench in CLOSED_LOOP and r.can_ship for r in results):
         return "SHIP"
@@ -1006,6 +1024,8 @@ def compare_pair(
     )
     if left_out:
         result.notes.append(left_out.note(metric))
+    if spec:
+        result.crash_check = bool(spec.meta.get("crash_check", False))
     if spec and short:
         # A baseline made on an older draw of the subset still pairs on whatever
         # both runs share (192 of nuScenes' 1,000, 5 of neuroNCAP's 15 pairs), and
@@ -1053,12 +1073,14 @@ def _short_of(spec: Subset, runs: dict[str, Run]) -> list[tuple[str, int]]:
 
 #: The tracked subsets, one TOML file each; each file's header says how it was chosen.
 SMOKE_DIR = Path(__file__).resolve().with_name("gate_smoke")
-#: Two tiers with different jobs. `quick` runs on every checkpoint, about 40 min:
-#: the three open-loop benchmarks and neuroNCAP's three pairs at 0103. `closed`
-#: runs only for a checkpoint worth keeping: the full smoke neuroNCAP subset,
-#: Bench2Drive and AlpaSim, a few hours. Within a tier, the cheap answers first.
+#: Two tiers with different jobs. `quick` runs on every checkpoint: the three
+#: open-loop benchmarks, neuroNCAP's three pairs, and one Bench2Drive route and
+#: one AlpaSim scene as crash checks (too few for a verdict; a checkpoint that
+#: cannot drive there stops before the closed tier). `closed` runs only for a
+#: checkpoint worth keeping: the full smoke neuroNCAP subset, Bench2Drive and
+#: AlpaSim, hours. Within a tier, the cheap answers first.
 TIERS = {
-    "quick": ("kitscenes", "nuscenes", "navsim", "neuroncap_quick"),
+    "quick": ("kitscenes", "nuscenes", "navsim", "neuroncap_quick", "bench2drive_quick", "alpasim_quick"),
     "closed": ("neuroncap", "bench2drive", "alpasim"),
 }
 SMOKE_ORDER = TIERS["quick"] + TIERS["closed"]
@@ -1252,10 +1274,17 @@ def smoke_args(subset: Subset) -> tuple[list[str], dict[str, str]]:
         return ["--limit", str(len(ids))], {ENV_SAMPLES: ",".join(ids)}
     if bench == "bench2drive":
         return ["--scene", ",".join(ids)], {}
-    if bench in ("kitscenes", "alpasim"):
+    if bench == "alpasim":
+        # The whole pinned scene set runs as the default set (`smoke_config`), a valid
+        # run; part of it (the quick tier's one scene) names its clips.
+        from paddock.adapters.benchmarks.alpasim.harness import load_scene_set
+
+        if set(ids) != set(load_scene_set(subset.meta["scene_set"])):
+            return ["--scene", ",".join(ids)], {}
+        return [], {}
+    if bench == "kitscenes":
         # Run as the benchmark's default set: all 223 KITScenes keyframes (the
-        # verdict reads only the subset's `decide_on` groups), and AlpaSim's scene
-        # set, which `smoke_config` pins to the subset's `scene_set`.
+        # verdict reads only the subset's `decide_on` groups).
         return [], {}
     raise ValueError(f"no smoke rule for {bench}")
 
