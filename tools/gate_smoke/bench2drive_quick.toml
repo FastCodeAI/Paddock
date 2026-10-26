@@ -15,6 +15,7 @@
 bench = "bench2drive"
 unit = "route"
 can_ship = false
+crash_check = true
 seed = 20261027
 count = 1
 

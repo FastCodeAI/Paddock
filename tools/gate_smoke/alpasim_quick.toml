@@ -15,6 +15,7 @@
 bench = "alpasim"
 unit = "scene"
 can_ship = false
+crash_check = true
 seed = 20261027
 count = 1
 scene_set = "public_2601_gate10"

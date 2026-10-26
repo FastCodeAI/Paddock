@@ -83,7 +83,10 @@ about 1.5 (measured from the 200-episode sweeps, 2026-10-21).
 `check` adds one overall line: **FAIL** if any pair is a REGRESSION (exit 1);
 **SHIP** only if every pair was decided (GAIN, NEUTRAL or REGRESSION, so no NO
 RECORDS, TOO FEW UNITS or INCOMPLETE), none regressed, and at least one
-closed-loop pair that may ship is a GAIN; **HOLD** otherwise. A pair with
+closed-loop pair that may ship is a GAIN; **HOLD** otherwise. The quick tier's
+two crash checks (`crash_check = true`: one Bench2Drive route, one AlpaSim
+scene) are always TOO FEW UNITS, so one that ran cleanly is left out of that
+rule; one that failed is INCOMPLETE, which holds, and stops the gate. A pair with
 `can_ship = false` (the Bench2Drive subset: seven routes detect only a 17-38
 point drop; the neuroNCAP quick subset: three episodes) still fails the gate on a REGRESSION, and its GAIN never ships a
 checkpoint; the line says `(cannot ship)`. The smoke also holds while any of

@@ -629,7 +629,7 @@ def draw_quick_closed(xml_path: Path, directory: Path = SMOKE_DIR) -> list[Path]
     alpasim = load_subset("alpasim", directory)
     scene = random.Random(f"{QUICK_CLOSED_SEED}:alpasim_quick").choice(sorted(alpasim.ids))
     scene_group = next(g for g, ids in alpasim.strata.items() if scene in ids)
-    meta = {"can_ship": False, "seed": QUICK_CLOSED_SEED, "count": 1}
+    meta = {"can_ship": False, "crash_check": True, "seed": QUICK_CLOSED_SEED, "count": 1}
     return [
         write_subset(
             "bench2drive_quick",

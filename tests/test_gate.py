@@ -1274,8 +1274,38 @@ def test_a_crash_check_that_crashed_is_incomplete_and_so_stops_the_gate(tmp_path
     _write_run(res, runs, "bench2drive", "m", "b", [], "driving_score", status="partial", n_failed=1)
     load = functools.partial(gate.load_run, "bench2drive", runs_root=runs, results_root=res)
     r = gate.compare_pair(load("m:a"), load("m:b"), runs, subset="bench2drive_quick")
-    assert r.verdict == "INCOMPLETE"
+    assert r.verdict == "INCOMPLETE" and r.crash_check
     assert any("lost every sample" in n for n in r.notes)
+
+
+def test_a_finished_crash_check_does_not_keep_the_gate_from_shipping() -> None:
+    """Review of #113 (2): each crash check is one sample, always TOO FEW UNITS, and SHIP needed
+    every pair decided, so --tier all could never ship."""
+
+    def pair(name: str, verdict: str) -> gate.PairResult:
+        subset = gate.load_subset(name)
+        return gate.PairResult(
+            bench=subset.bench,
+            metric="m",
+            baseline="m:a",
+            candidate="m:b",
+            higher_is_better=True,
+            verdict=verdict,
+            can_ship=bool(subset.meta.get("can_ship", True)),
+            crash_check=bool(subset.meta.get("crash_check", False)),
+        )
+
+    checks = ("bench2drive_quick", "alpasim_quick")
+    rest = [pair(n, "NEUTRAL") for n in gate.SMOKE_ORDER if n not in checks and n != "neuroncap"]
+    gain = pair("neuroncap", "GAIN")
+    assert gate.overall([*rest, gain, *(pair(n, "TOO FEW UNITS") for n in checks)]) == "SHIP"
+    for broken in ("INCOMPLETE", "NO RECORDS"):
+        assert (
+            gate.overall([*rest, gain, pair(checks[0], broken), pair(checks[1], "TOO FEW UNITS")]) == "HOLD"
+        )
+    assert gate.overall([*rest, pair("neuroncap", "TOO FEW UNITS")]) == "HOLD", (
+        "only crash checks are let off"
+    )
 
 
 def test_the_smoke_manifest_pairs_only_finished_runs_with_a_baseline(tmp_path: Path) -> None:

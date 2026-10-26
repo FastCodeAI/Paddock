@@ -53,7 +53,8 @@ A `threshold`, when given, adds whether the point estimate drops by more than it
 Overall (`check`): FAIL if any pair is a REGRESSION; SHIP only if every pair is decided
 (GAIN, NEUTRAL or REGRESSION) and at least one closed-loop pair that may ship is a GAIN
 (`can_ship = false` marks a subset too small for its GAIN to be trusted); HOLD
-otherwise. The exit status is 1 on FAIL, else 0. Each pair also reports its MDE, the
+otherwise. A crash check (`crash_check = true`, one sample) that ran cleanly is left
+out of "every pair decided". The exit status is 1 on FAIL, else 0. Each pair also reports its MDE, the
 smallest true difference it detects 80% of the time, which is how a NEUTRAL is read.
 
 PDM terms. Beside the primary, each pair scores the terms of NAVSIM v1's PDM score
@@ -300,6 +301,9 @@ class PairResult:
     #: False for a subset too small to be trusted with a GAIN (`can_ship` in its
     #: TOML): its REGRESSION still fails the gate, its GAIN never ships it.
     can_ship: bool = True
+    #: True for a one-sample crash check (`crash_check` in its TOML): too few for a
+    #: verdict by design, so a clean one (TOO FEW UNITS) does not hold back SHIP.
+    crash_check: bool = False
     baseline_env: dict[str, str] = field(default_factory=dict)
     candidate_env: dict[str, str] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
@@ -811,11 +815,19 @@ def overall(results: list[PairResult], unfinished: list[str] | None = None) -> s
     HOLD otherwise.
 
     A GAIN beside a benchmark that was never compared is not a reason to ship:
-    the uncompared one could be where the candidate broke.
+    the uncompared one could be where the candidate broke. A crash check is one
+    sample and always TOO FEW UNITS; one that ran cleanly is left out of that rule
+    (with it in, `--tier all` could never ship: review of #113, 2). One that failed
+    (INCOMPLETE) or was not compared still holds.
     """
     if any(r.verdict == "REGRESSION" for r in results):
         return "FAIL"
-    if unfinished or any(r.verdict not in DECIDED for r in results):
+    undecided = [
+        r
+        for r in results
+        if r.verdict not in DECIDED and not (r.crash_check and r.verdict == "TOO FEW UNITS")
+    ]
+    if unfinished or undecided:
         return "HOLD"
     if any(r.verdict == "GAIN" and r.bench in CLOSED_LOOP and r.can_ship for r in results):
         return "SHIP"
@@ -1012,6 +1024,8 @@ def compare_pair(
     )
     if left_out:
         result.notes.append(left_out.note(metric))
+    if spec:
+        result.crash_check = bool(spec.meta.get("crash_check", False))
     if spec and short:
         # A baseline made on an older draw of the subset still pairs on whatever
         # both runs share (192 of nuScenes' 1,000, 5 of neuroNCAP's 15 pairs), and
