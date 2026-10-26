@@ -275,9 +275,22 @@ setsid nohup python -m tools.gate smoke ... --tier all --execute \
   the GPU memory below, and the next one waits until this one's model has said
   it is ready, so every GPU check sees the memory already taken. A subset whose
   benchmark runs a simulator (neuroNCAP, Bench2Drive, AlpaSim) starts it inside
-  its first episode, after the model is ready, so nothing else launches while
-  one is running: the closed tier runs one subset at a time. With one
-  `--cores` (the default, `4-7`) everything runs one after another.
+  its first episode, after the model is ready, and neuroNCAP restarts its
+  renderer at every scene, so its memory may not be taken yet when the next
+  check reads the card. Each running simulator's share (8 GB for neuroNCAP and
+  Bench2Drive, 17 GB for AlpaSim) therefore counts as taken until its lane ends.
+  With enough lanes and memory, neuroNCAP and Bench2Drive run side by side;
+  until 2026-10-27 the closed tier ran one subset at a time. AlpaSim still runs
+  beside no other simulator (`RUN_ALONE`): Docker starts its containers, so the
+  lane's `taskset` does not hold them to its cores, and shakaal fails above about
+  90% CPU. Two subsets of one benchmark never run at once. With one `--cores` (the default, `4-7`)
+  everything runs one after another.
+- **NAVSIM gets two model nodes.** The derived config sets
+  `[benchmarks.navsim] gpu_nodes = 2` unless the site sets its own: the scorer's
+  four workers shared one node, which answers one scenario at a time. Each
+  scenario is still one request to one node, and `gpu_nodes` is not in the run
+  config, so the runs pair with baselines made on one node. The GPU wait counts
+  both nodes.
 - **Stop at the first regression.** When a finished subset is a REGRESSION
   against its baseline, nothing else is launched; running ones finish. The
   closed tier never starts after a quick-tier regression or an unfinished quick

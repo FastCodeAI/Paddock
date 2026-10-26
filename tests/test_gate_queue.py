@@ -381,6 +381,36 @@ def test_the_worker_rechecks_a_job_file_written_by_hand(site, edit, reason) -> N
     assert not (site.settings.baselines / "replaced").exists(), "no baselines were replaced"
 
 
+def test_the_worker_reads_its_settings_again_before_each_job(site, tmp_path: Path, monkeypatch) -> None:
+    """Three lanes set on 2026-10-27 needed a worker restart, which stops the running job."""
+    config = tmp_path / "paddock.toml"
+    table = f'[queue]\nroot = "{site.settings.root}"\nstore = "{site.settings.store}"\n'
+    config.write_text(table + 'cores = ["1-2"]\n')
+    monkeypatch.setenv("PADDOCK_CONFIG", str(config))
+    seen: list[tuple[str, ...]] = []
+    fake = q.gate_command
+    monkeypatch.setattr(q, "gate_command", lambda s, job, d: seen.append(s.cores) or fake(s, job, d))
+    _baselines(site)
+    _submit(site)
+    worker = q.Worker(q.load_settings(), echo=lambda _: None, reload=q.load_settings)
+    config.write_text(table + 'cores = ["3-4", "5-6"]\n')
+    worker.run(once=True)
+    assert seen == [("3-4", "5-6")]
+    config.write_text("[queue\n")  # broken: the worker keeps what it had
+    _submit(site)
+    said: list[str] = []
+    worker.echo = said.append
+    worker.run(once=True)
+    assert seen[-1] == ("3-4", "5-6") and any("keeping the current [queue] settings" in m for m in said)
+    # Review of #111 (3): a readable file with a wrong value crashed the worker, and systemd
+    # restarted it into the same crash every minute.
+    config.write_text(table + 'base_port = "98oo"\n')
+    _submit(site)
+    said.clear()
+    worker.run(once=True)
+    assert seen[-1] == ("3-4", "5-6") and any("keeping the current [queue] settings" in m for m in said)
+
+
 def test_only_one_worker_runs(site) -> None:
     lock = q._mkdir(site.settings.root) / "worker.lock"
     with lock.open("a") as held:
