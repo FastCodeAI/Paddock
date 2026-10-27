@@ -91,7 +91,7 @@ data and vendors no model code. What crosses the wire:
 </p>
 
 **A** adapted to the benchmark · **P** a pipeline around the model is graded ·
-**S** stale · **R** run differently, not ranked · **V** stored `valid: false`, not ranked.
+**S** stale · **R** run differently, not ranked.
 
 Each number is read from the run [docs/support-matrix.toml](docs/support-matrix.toml)
 names for it. The matrix holds released checkpoints only; checkpoints we trained
@@ -132,12 +132,6 @@ was measured the same way as the rest of its column.
 - **S — stale; a re-run will change it.** Every VisionPilot figure predates the
   `CURV_SCALE` fix. Drive-JEPA's nuScenes cell is the camera-blind run from
   before #62. OpenPilot's comma2k19 row was not run at the pinned sha.
-- **V — stored `valid: false`, not ranked.** AutoE2E's neuroNCAP run
-  (`20261021T175940-844841`) carries a site-env override, `AUTOE2E_CHECKPOINT`
-  (a site path, not a different checkpoint), which `#82`'s rule flags
-  regardless of what the override actually changed. `paddock report` excludes
-  it the same way it would any other `valid: false` run. Detail in
-  [docs/benchmarks/neuroncap.md](docs/benchmarks/neuroncap.md#support-matrix-results).
 - **R — run differently from the rest of its column, so not ranked against it.**
   Bench2Drive at the model's native inference rate over 50 routes, where
   the others run at 20 Hz over the historical 24; those gains are
