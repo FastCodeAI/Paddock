@@ -1,18 +1,19 @@
-# The regression gate's AlpaSim scenes, drawn by `python -m tools.gate_subsets alpasim`
-# on 2026-10-27 (seed 20261027): 10 of the 50 scenes of public_2601 downloaded on shakaal (not of all 913),
-# grouped by turn (left or right from 45 degrees of heading change over the clip)
-# and speed band (left/fast 1, left/medium 2, left/slow 1, right/medium 2, straight/fast 24, straight/medium 13, straight/slow 7), every group the same share.
-# The pool is what had been downloaded, not a random sample of the suite: the first
-# ten of its list, twenty drawn for public_2601_30scenes, and twenty more. Thirty of
-# them are the scenes behind the published 30-scene AlpaSim results.
+# The regression gate's AlpaSim scenes. the 10 drawn on 2026-10-27 (seed 20261027) from the 50 public_2601 scenes
+# downloaded on shakaal, by turn and speed, with the ones AlpaSim's wizard could not run
+# swapped on 2026-10-27 for runnable ones, same group or else same turn: they were not in
+# public_2601_30scenes_26p01.csv, the scene list the driver profiles hand the wizard.
+#   clipgt-68e53160-f9d1-4070-9434-bf50c55652d3 (left/slow) -> clipgt-bae463d3-655b-4b54-ac8e-1c982219d829 (left/medium)
+#   clipgt-49e0ea24-2925-4fae-b590-3f725c1063d5 (right/medium) -> clipgt-cdd9448c-8808-46b1-85c1-883bcc5862ff (right/medium)
+# The pool is what had been downloaded, not a random sample of the suite; the list's
+# 30 scenes are the ones behind the published 30-scene AlpaSim results.
 # tools/gate_smoke/alpasim.toml lists the same 10; tests/test_gate.py holds them equal.
 suite: public_2601
-selection: 10 of the 50 downloaded, by turn and speed, seed 20261027, by scene_id
+selection: 10 by turn and speed, seed 20261027; 2 swapped to runnable scenes
 scenes:
 - clipgt-e121e37d-b03f-4f25-aa09-5ba5b74b8afb
+- clipgt-bae463d3-655b-4b54-ac8e-1c982219d829
 - clipgt-d1a25a99-0f02-4730-a076-96f067e92874
-- clipgt-68e53160-f9d1-4070-9434-bf50c55652d3
-- clipgt-49e0ea24-2925-4fae-b590-3f725c1063d5
+- clipgt-cdd9448c-8808-46b1-85c1-883bcc5862ff
 - clipgt-02e075b9-fd24-426b-971b-7cfcb2074cc9
 - clipgt-04749bb9-9b37-495b-bed0-77f0e33ac7da
 - clipgt-1acf2f5d-f674-408f-ba18-6aacb4f4c739

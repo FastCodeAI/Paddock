@@ -248,7 +248,7 @@ hours for every answer:
 | alpasim_quick | quick | one of the closed tier's 10 scenes, at random (seed 20261027); a crash check, cannot ship | none | 1 scene (no verdict) | `--scene <its clip>` within `public_2601_gate10` | the closed tier's baseline |
 | neuroncap | closed | 15 of the 20 pairs over 13 scenes, 1 run (seed 0) | crash type: 5 each (all frontal and side, 5 of 10 stationary) | 15 pairs (2.14) | as above | a full sweep (its run 0) |
 | bench2drive | closed | 7 of the 220 routes; cannot ship | left turn, right turn, and straight by hazard (junction, highway or high speed, obstacle, pedestrian or cyclist, cut-in or hard brake): 1 each | 7 routes (2.45) | `--scene <7 route ids>` | a smoke baseline |
-| alpasim | closed | 10 of the 50 `public_2601` scenes downloaded on the site (scene set `public_2601_gate10`), not of all 913 | maneuver x speed, read from each scene's recorded drive: 7 | 10 scenes (2.26) | `scene_set` pinned in the derived config | a smoke baseline |
+| alpasim | closed | 10 of the 50 `public_2601` scenes downloaded on the site (scene set `public_2601_gate10`), not of all 913, each also on the drivers' scene list | maneuver x speed, read from each scene's recorded drive: 6 | 10 scenes (2.26) | `scene_set` pinned in the derived config | a smoke baseline |
 
 A subset's baseline is `[baseline.<subset>]` in the baseline manifest, else
 `[baseline.<benchmark>]`: one full neuroNCAP sweep serves both neuroNCAP subsets.
@@ -464,6 +464,13 @@ the check that the site's baselines are sound.
   `public_2601_30scenes`, twenty more), and thirty of its scenes are the ones
   behind the published 30-scene AlpaSim results. The first draw (2026-10-22, 10
   of all 913 at random) never ran: none of its scenes was on disk.
+  **A scene must also be on the drivers' scene list.** The driver profiles hand
+  the wizard `public_2601_30scenes_26p01.csv`, and it looks scenes up there
+  only. Two of the 10 drawn on 2026-10-27 were on disk but not on that list, and
+  failed with "Failed to find scenes"; they were swapped for runnable ones from
+  the same group, or else the same turn (`python -m tools.gate_subsets
+  alpasim_replace`), keeping the other 8. A test checks every gate scene is on
+  every pinned list.
   **Another site must download these 10 once** before its gate can run AlpaSim:
   the scenes listed in `public_2601_gate10.yaml`, into its
   `[benchmarks.alpasim] scene_cache`, with a Hugging Face token that has access
