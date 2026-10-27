@@ -1120,6 +1120,15 @@ def test_the_engine_and_the_renderer_read_the_cut_down_nuscenes_when_set(tmp_pat
     assert "is not in [benchmarks.neuroncap] nuscenes_subset" in " ".join(harness.scene_problems("0103"))
 
 
+def test_video_off_turns_the_logger_off_in_the_form_the_engine_accepts(tmp_path, monkeypatch) -> None:
+    """Review of #114 (1): `--engine.logger.enabled False` is refused by neuro-ncap's command
+    line ("Unrecognized arguments: False", exit 2), so `video = "off"` failed every episode."""
+    off = _harness_for(_ncap_site(tmp_path, monkeypatch, video="off"))
+    command = _engine_command(off, tmp_path, monkeypatch)
+    assert "--engine.logger.no-enabled" in command
+    assert "--engine.logger.enabled" not in command and "False" not in command
+
+
 def test_the_debug_views_stay_on_unless_the_site_turns_them_off(tmp_path, monkeypatch) -> None:
     """FC_TRAJ and COMBINED_OUTPUTS took about 1 s of each 2.7 s step; the gate turns them off."""
     default = _harness_for(_ncap_site(tmp_path, monkeypatch))

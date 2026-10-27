@@ -594,8 +594,9 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         ]
         if self.video_mode() == "off":
             # No frames at all: skips the per-step jpeg and matplotlib writes,
-            # which is most of what the logger costs.
-            command += ["--engine.logger.enabled", "False"]
+            # which is most of what the logger costs. The switch form, as below:
+            # "--engine.logger.enabled False" is refused (review of #114, 1).
+            command += ["--engine.logger.no-enabled"]
         elif not self.debug_views():
             # Skips only the two drawn debug views (patches/neuro-ncap/0003); every
             # record the scores and PDM terms read is still written.
