@@ -35,6 +35,7 @@ import os
 import re
 import signal
 import subprocess
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -319,6 +320,98 @@ def compose_project_name(out_dir: Path) -> str:
     return re.sub(r"[^a-z0-9_-]", "-", name).lstrip("-_")
 
 
+#: How often, while the wizard runs, the run's new containers are looked for and pinned (s).
+PIN_POLL_S = 2.0
+
+
+def run_cores() -> str | None:
+    """The CPU cores this process may run on, in Docker's `--cpuset-cpus` form
+    ("12-15,20"), or None when it may use every core (nothing to hold them to)."""
+    try:
+        cores = sorted(os.sched_getaffinity(0))
+    except (AttributeError, OSError):
+        return None
+    if not cores or len(cores) >= (os.cpu_count() or len(cores)):
+        return None
+    spans: list[list[int]] = []
+    for core in cores:
+        if spans and core == spans[-1][1] + 1:
+            spans[-1][1] = core
+        else:
+            spans.append([core, core])
+    return ",".join(f"{a}-{b}" if a != b else str(a) for a, b in spans)
+
+
+class ContainerPinner:
+    """Pins the run's containers to `cpuset` as they appear, until stopped.
+
+    Docker starts AlpaSim's containers, not this run, so they do not inherit the
+    run's cores (`taskset` in the gate's lanes), and on a shared machine that fails
+    above about 90% CPU they could take all of them; the gate therefore ran
+    AlpaSim beside no other simulator. While the wizard runs, this lists the run's
+    compose project every `PIN_POLL_S` and pins each new container with `docker
+    update --cpuset-cpus`, so a container runs unpinned for at most that long.
+    Best effort, like `compose_down`: a failure is said once, never raised.
+    """
+
+    def __init__(
+        self,
+        project: str,
+        cpuset: str,
+        env: dict[str, str] | None = None,
+        echo: Callable[[str], None] = print,
+    ) -> None:
+        self.project, self.cpuset, self.env, self.echo = project, cpuset, env, echo
+        self.pinned: set[str] = set()
+        self._warned = False
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, name="alpasim-pin", daemon=True)
+
+    def start(self) -> ContainerPinner:
+        self._thread.start()
+        return self
+
+    def stop(self) -> None:
+        self._stop.set()
+        self._thread.join(timeout=60)
+
+    def _run(self) -> None:
+        while True:
+            self.pin_new()
+            if self._stop.wait(PIN_POLL_S):
+                return
+
+    def pin_new(self) -> None:
+        label = f"label=com.docker.compose.project={self.project}"
+        try:
+            listed = subprocess.run(
+                ["docker", "ps", "-q", "--filter", label],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env=self.env,
+            )
+            new = [cid for cid in listed.stdout.split() if cid not in self.pinned]
+            if not new:
+                return
+            done = subprocess.run(
+                ["docker", "update", "--cpuset-cpus", self.cpuset, *new],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env=self.env,
+            )
+            if done.returncode != 0:
+                tail = (done.stderr or "").strip().splitlines()[-1:] or [f"exit {done.returncode}"]
+                raise RuntimeError(tail[0])
+            self.pinned.update(new)
+            self.echo(f"pinned {len(new)} container(s) to cores {self.cpuset}")
+        except (OSError, subprocess.SubprocessError, RuntimeError) as exc:
+            if not self._warned:
+                self._warned = True
+                self.echo(f"warning: could not pin the run's containers to cores {self.cpuset}: {exc}")
+
+
 def run_wizard(
     command: list[str],
     cwd: Path,
@@ -340,7 +433,8 @@ def run_wizard(
     ~1 GB) on the root disk of a shared machine until someone removes it.
 
     The wizard's `compose up`, the logs and the teardown all act on one compose
-    project named for this run (see `compose_project_name`).
+    project named for this run (see `compose_project_name`). A run held to some
+    cores (`taskset`) holds its containers to the same ones (`ContainerPinner`).
     """
     log_path.parent.mkdir(parents=True, exist_ok=True)
     env = {
@@ -350,6 +444,7 @@ def run_wizard(
     started = time.monotonic()
     timed_out = False
     proc: subprocess.Popen | None = None
+    pinner: ContainerPinner | None = None
     try:
         with log_path.open("w") as handle:
             proc = subprocess.Popen(
@@ -360,6 +455,8 @@ def run_wizard(
                 start_new_session=True,
                 env=env,
             )
+            if cpuset := run_cores():
+                pinner = ContainerPinner(env["COMPOSE_PROJECT_NAME"], cpuset, env, echo).start()
             try:
                 returncode = proc.wait(timeout=timeout_s)
             except subprocess.TimeoutExpired:
@@ -375,6 +472,8 @@ def run_wizard(
             _kill_group(proc)
         raise
     finally:
+        if pinner is not None:
+            pinner.stop()
         # Logs first: `compose down` removes the containers they live in.
         save_compose_logs(cwd, log_path.parent, env=env, echo=echo)
         compose_down(cwd, log_path.parent, env=env, echo=echo)
