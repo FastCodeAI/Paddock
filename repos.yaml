@@ -104,3 +104,8 @@ repos:
     url: https://github.com/QwenLM/Qwen-Drive-1.0.git
     sha: 28091c1
     description: Qwen-Drive-1.0-4B inference code; Qwen3.5 VLM with a flow-matching planning expert and BEV perception head, imported as a library from src/
+
+  WA-JEPA:
+    url: https://github.com/AFARI-Research/WA-JEPA.git
+    sha: bec2966
+    description: AFARI WA-JEPA world-action model (V-JEPA 2.1 ViT-L + joint flow predictor); the adapter imports the model package and upstream's HUGSIM client helpers, nothing from NAVSIM
