@@ -45,8 +45,12 @@ wizard hands its services host ports from 6000, skipping ports already bound.
 Two runs started together both find the same free ones before either binds
 them. A run with `PADDOCK_BASE_PORT` set (the gate sets one per lane) keeps to
 its own range instead: the bridge from base + 50, the wizard's services from
-base + 60. Without it, the ports are 9200 and 6000 as before. The containers run
-outside the run's `taskset`, so their CPU is not capped by it.
+base + 60. Without it, the ports are 9200 and 6000 as before. Docker starts
+the containers, so they would not inherit the run's `taskset`; the launcher
+pins each one to the run's cores as it appears (`docker update
+--cpuset-cpus`, within 2 s), and a run on every core pins nothing. Measured on
+2026-10-27: one scene's 5 containers all on cores 24-27, the busiest at about
+one core, the mean 17% of one.
 
 ## How the bridge steers a model
 

@@ -931,6 +931,11 @@ def fake_docker(tmp_path: Path, monkeypatch) -> Path:
         "    print('2026-10-27T00:00:00Z runtime-0-1  | hello from the container')\n"
         "if 'down' in sys.argv and os.environ.get('FAKE_DOCKER_DOWN') == 'fail':\n"
         "    sys.exit(1)\n"
+        "if sys.argv[1:2] == ['ps']:\n"
+        "    print(os.environ.get('FAKE_DOCKER_PS', ''))\n"
+        "if sys.argv[1:2] == ['update'] and os.environ.get('FAKE_DOCKER_UPDATE') == 'fail':\n"
+        "    print('Error response from daemon: no such container', file=sys.stderr)\n"
+        "    sys.exit(1)\n"
     )
     docker.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
@@ -1064,3 +1069,68 @@ def test_two_runs_of_one_scene_do_not_share_containers(tmp_path: Path, fake_dock
     # The logs and the teardown act on the project the wizard started, per run.
     projects = (tmp_path / "docker_projects.txt").read_text().split()
     assert projects == [names[0], names[0], names[1], names[1]]
+
+
+def test_a_run_held_to_some_cores_holds_its_containers_to_them(
+    tmp_path: Path, fake_docker: Path, monkeypatch
+) -> None:
+    """Docker starts AlpaSim's containers, so the lane's taskset never reached them and the gate
+    ran AlpaSim beside no other simulator. Each container is pinned once, as it appears."""
+    monkeypatch.setattr(launcher, "run_cores", lambda: "12-15")
+    monkeypatch.setattr(launcher, "PIN_POLL_S", 0.05)
+    monkeypatch.setenv("FAKE_DOCKER_PS", "c1\nc2")
+    out = _run_dir(tmp_path)
+    said: list[str] = []
+    launcher.run_wizard(
+        [sys.executable, "-c", "import time; time.sleep(0.6)"],
+        tmp_path,
+        out / "wizard.log",
+        30,
+        echo=said.append,
+    )
+    updates = [line for line in fake_docker.read_text().splitlines() if line.startswith("update")]
+    assert updates == ["update --cpuset-cpus 12-15 c1 c2"], "pinned once, both containers"
+    assert any(
+        "label=com.docker.compose.project=" + launcher.compose_project_name(out) in line
+        for line in fake_docker.read_text().splitlines()
+        if line.startswith("ps")
+    )
+    assert "pinned 2 container(s) to cores 12-15" in said
+
+
+def test_a_run_on_every_core_pins_nothing(tmp_path: Path, fake_docker: Path, monkeypatch) -> None:
+    monkeypatch.setattr(launcher, "run_cores", lambda: None)
+    out = _run_dir(tmp_path)
+    launcher.run_wizard(
+        [sys.executable, "-c", "pass"], tmp_path, out / "wizard.log", 30, echo=lambda _m: None
+    )
+    assert not any(line.startswith(("ps", "update")) for line in fake_docker.read_text().splitlines())
+
+
+def test_a_pin_that_fails_warns_once_and_leaves_the_run_alone(
+    tmp_path: Path, fake_docker: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(launcher, "run_cores", lambda: "12-15")
+    monkeypatch.setattr(launcher, "PIN_POLL_S", 0.05)
+    monkeypatch.setenv("FAKE_DOCKER_PS", "c1")
+    monkeypatch.setenv("FAKE_DOCKER_UPDATE", "fail")
+    out = _run_dir(tmp_path)
+    said: list[str] = []
+    returncode, timed_out, _ = launcher.run_wizard(
+        [sys.executable, "-c", "import time; time.sleep(0.4)"],
+        tmp_path,
+        out / "wizard.log",
+        30,
+        echo=said.append,
+    )
+    assert (returncode, timed_out) == (0, False)
+    warnings = [m for m in said if m.startswith("warning: could not pin")]
+    assert len(warnings) == 1 and "no such container" in warnings[0]
+
+
+def test_the_run_cores_read_as_dockers_cpuset(monkeypatch) -> None:
+    monkeypatch.setattr(launcher.os, "cpu_count", lambda: 32)
+    monkeypatch.setattr(launcher.os, "sched_getaffinity", lambda pid: {12, 13, 14, 15, 20})
+    assert launcher.run_cores() == "12-15,20"
+    monkeypatch.setattr(launcher.os, "sched_getaffinity", lambda pid: set(range(32)))
+    assert launcher.run_cores() is None, "no taskset: nothing to hold the containers to"
