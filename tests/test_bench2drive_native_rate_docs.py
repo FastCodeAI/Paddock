@@ -28,6 +28,8 @@ from pathlib import Path
 
 import pytest
 
+from tools.readme_figures import matrix_cell
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 NATIVE = REPO_ROOT / "docs/benchmarks/bench2drive-native-rate.json"
 TWENTY = REPO_ROOT / "docs/benchmarks/bench2drive-speed-normalization.json"
@@ -385,29 +387,13 @@ def test_readme_block_reproduces(native: dict, twenty: dict, model: str) -> None
     assert row[7] == f"{old['routes_completed']} → {new['routes_completed']}"
 
 
-#: model -> its row label in the README support matrix.
-MATRIX_ROW = {"drivejepa": "Drive-JEPA", "alpamayo15": "Alpamayo 1.5", "qwendrive": "Qwen-Drive 1.0"}
-
-
-def _matrix_cell(row_label: str, column_header: str) -> str:
-    """One support-matrix cell, addressed by row label and column header."""
-    lines = README.read_text().split("\n")
-    header = next(ln for ln in lines if ln.startswith("| | ") and column_header in ln)
-    index = next(
-        i for i, c in enumerate(c.strip() for c in header.strip().strip("|").split("|")) if column_header in c
-    )
-    row = next(ln for ln in lines if ln.startswith(f"| {row_label} |"))
-    return [c.strip() for c in row.strip().strip("|").split("|")][index]
-
-
 @pytest.mark.parametrize("model", sorted(CAMPAIGN))
 def test_support_matrix_publishes_the_native_score(model: str) -> None:
     """The matrix's Bench2Drive cell for a re-driven model is its native-rate run, rate named."""
-    hz = CAMPAIGN[model][0]
-    metrics = json.loads((_run_dir(model) / "metrics.json").read_text())
-    score = metrics["metrics"]["driving_score"]["mean"]
-    cell = _matrix_cell(MATRIX_ROW[model], "Bench2Drive")
-    assert cell == f"{score:.2f} ({hz} Hz) <sup>R</sup>", f"{model}: the support matrix publishes {cell!r}"
+    hz, run_id, _ = CAMPAIGN[model]
+    cell = matrix_cell(model, "bench2drive")
+    assert cell.run == f"bench2drive/{model}/{run_id}", f"{model}: the support matrix reads {cell.run!r}"
+    assert (cell.qualifier, "R" in cell.marks) == (f"{hz} Hz", True), f"{model}: {cell}"
 
 
 def test_readme_block_lists_exactly_the_models_that_were_re_run() -> None:

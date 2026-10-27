@@ -309,6 +309,10 @@ make check
 Then write `docs/benchmarks/<name>.md`: what data is required, what the metrics
 mean, roughly what a run costs in wall-clock, and reference numbers.
 
+To give it a column in the README's support matrix, add a `[[benchmark]]` entry
+to [docs/support-matrix.toml](support-matrix.toml), point each model's cell at
+its run, and run `python -m tools.readme_figures`.
+
 If the dataset itself is new to paddock, write `docs/datasets/<dataset>.md` as
 well, and keep the line between them: the **benchmark** page documents paddock's
 protocol — history length, horizons, what is scored — all of which are choices

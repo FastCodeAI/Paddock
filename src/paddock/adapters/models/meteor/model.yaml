@@ -66,15 +66,23 @@ capabilities:
   size_gb: 0.35
   precision: fp32
   input_size: [768, 432]
+  # One frame and the current speed (v0): no history of either.
   history_frames: 1
   output_kind: waypoints
   horizon_s: 3.0
+  plan_points_hz: 2.0  # six waypoints 0.5 s apart
   stochastic: false
   needs_speed: true
-  # TIER IV Co-MLOps DRS recordings (Japan, plus a US subset), auto-labelled;
-  # adverse conditions as Cosmos Transfer re-renderings. None of paddock's
-  # benchmark datasets.
+  # The ResNet-34 starts from ImageNet (bevlane/model.py:507). Then TIER IV's own
+  # recordings: Co-MLOps DRS (Japan, plus a US subset on the same rig) and a
+  # 7-camera minibus corpus, labelled entirely by CoMET, TIER IV's ensemble of 12
+  # models whose names and pretraining data are not published -- so exposure to
+  # paddock's data through the labels is not stated. Cosmos re-renders of those
+  # scenes train perception only. The released v157 stage: from v151, RL off
+  # (rl_w 0.0), planner frozen (freeze_ego), read from the checkpoint's saved args.
+  # None of paddock's benchmark datasets in the driving data.
   trained_on:
+    - dataset: imagenet
     - dataset: tier4_comlops_drs
       split: train
 

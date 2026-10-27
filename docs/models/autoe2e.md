@@ -4,7 +4,8 @@ AutoE2E is the Autoware Foundation's open end-to-end planner. Release v1.0
 (Hugging Face `AutowareFoundation/auto_e2e`, published 8 Oct 2026) ships two
 checkpoints of one architecture, `bevformer_v2_t8_split_navigation_v5`:
 `nuplan-epoch-5` and `kitscenes-epoch-5`, the second being the first fine-tuned
-on KITScenes with the camera BEV frozen. Paddock runs **`kitscenes-epoch-5`**,
+on KITScenes. The camera BEV is frozen in both, so it is the nuScenes-trained
+BEVFormer V2 checkpoint unchanged. Paddock runs **`kitscenes-epoch-5`**,
 imported from upstream's own code at the release revision. Nothing of the model
 is re-implemented; the adapter packs inputs and integrates the output.
 
@@ -167,8 +168,9 @@ installs them (`Platform/docker/data-prep/Dockerfile`):
 
 Declared in `model.yaml` as nuPlan train and KITScenes train. The nuPlan stage
 (`nuplan_full`, from the official BEVFormer V2 R50 T8 initialisation, itself
-nuScenes-trained) names no split in the release; that it held out nuPlan test
-is inferred from the release's own nuPlan-test figures, not stated. NAVSIM's
+trained on nuScenes train) is "nuPlan v1.1 train sensor logs" per the model
+card, 1,085 logs pinned in the code, and none of NAVSIM's 136 `navtest` logs is
+among them (checked against Motional's train inventory). NAVSIM's
 `navtest` is drawn from nuPlan's test logs, so the NAVSIM number below is on
 the rig and cities AutoE2E was pre-trained on. See `comparison.md`,
 *AutoE2E × navsim*.

@@ -59,15 +59,30 @@ capabilities:
   input_size: [1024, 512]
   # AutoDrive consumes a frame pair; the other two are single-frame.
   history_frames: 2
+  # The pair was 0.1 s apart in training: auto_drive's loader pairs consecutive
+  # front-camera images of a ZOD sequence (load_data_auto_drive.py, "(T-1, T)"), and
+  # ZOD records them at 10 Hz (arXiv 2305.02008). policy.py pairs the previous
+  # request instead, so a 2 Hz benchmark hands it frames 0.5 s apart. No ego
+  # history: it reads the current speed only.
+  camera_hz: 10.0
+  camera_frames_by_request: true
   # It predicts lane curvature and the closest in-path object, not a plan --
   # which is why it has no ADE and why horizon_s is absent rather than zero.
   # AutoSteer's waypoints are in camera coordinates with no time parameterisation.
   output_kind: controls
   trained_on:
-    # Lane and CIPO datasets only. Zero-shot on every paddock benchmark.
+    # None of paddock's benchmark data: no training loader of the three nets reads
+    # any (auto_steer, auto_speed, auto_drive repos). Per net:
+    # AutoSteer: TuSimple, CurveLanes, and OpenLane images (Waymo Open) with
+    #   OpenLane-V labels. AutoSpeed: OpenLane (Waymo Open) closest-in-path labels.
+    #   Both from scratch: no COCO or ImageNet weights.
+    # AutoDrive: starts from AutoSpeed's backbone (shown by comparing the shipped
+    #   weights), then trains on ZOD Sequences frame pairs, labelled by AutoSpeed,
+    #   ZOD's radar and its steering angle (load_data_auto_drive.py).
     - dataset: openlane
     - dataset: tusimple
     - dataset: curvelanes
+    - dataset: zod
 # One list, appended to. Two `benchmarks:` keys is valid YAML and keeps only the
 # last, which is how a model has silently dropped off a board before.
 #
