@@ -300,6 +300,12 @@ setsid nohup python -m tools.gate smoke ... --tier all --execute \
   scenario is still one request to one node, and `gpu_nodes` is not in the run
   config, so the runs pair with baselines made on one node. The GPU wait counts
   both nodes.
+- **Longest first, with lanes.** With more than one lane, a tier's subsets
+  launch longest first (`EXPECTED_MIN`, measured where it could be). In the quick
+  tier: NAVSIM, neuroNCAP, nuScenes, the Bench2Drive route, the AlpaSim scene,
+  KITScenes. Launched last, NAVSIM ran alone for half
+  an hour while the other lanes sat idle. With one lane the order stays cheap
+  first, so a regression stops the smoke soonest.
 - **Stop at the first regression.** When a finished subset is a REGRESSION
   against its baseline, nothing else is launched; running ones finish. The
   closed tier never starts after a quick-tier regression or an unfinished quick
@@ -327,9 +333,10 @@ Without `--execute` it prints, per benchmark, the exact `paddock run` line
    land on the site's port, where a long-lived `paddock renderer` usually is;
    and nuScenes' `index_cache` in `{roots.runs}/gate/cache/nuscenes`, one index
    every checkout shares, unless the site names its own. Neither is in a run
-   config, so neither changes what is measured. neuroNCAP's `video` stays the
-   site's: with the default `encode`, every episode leaves its mp4s, which is how
-   a regression is looked at;
+   config, so neither changes what is measured. neuroNCAP's `debug_views` is
+   turned off unless the site sets it: the two drawn views took about 1 s of each
+   2.7 s step, so the gate's neuroNCAP runs leave camera frames, plans and poses,
+   and no mp4s;
 2. launches one benchmark at a time, each after `nvidia-smi` shows enough free
    memory on the card the model will use: the model's declared `vram_gb`, plus
    its simulator's share (`SIMULATOR_GB`: 8 GB for neuroNCAP's renderer, as

@@ -1084,6 +1084,50 @@ TIERS = {
     "closed": ("neuroncap", "bench2drive", "alpasim"),
 }
 SMOKE_ORDER = TIERS["quick"] + TIERS["closed"]
+#: Minutes a subset took on one lane, measured unless marked: what `launch_order`
+#: sorts by. KITScenes, nuScenes, NAVSIM and neuroncap_quick from the queue on
+#: 2026-10-23 (NAVSIM 48 on that busy evening, 13 on the quiet 2026-10-20;
+#: neuroncap_quick 15 to 47); Bench2Drive's 7 routes 96 on 2026-10-20. The others
+#: are estimates until timed: bench2drive_quick and alpasim_quick (PR #113), the
+#: 15-pair neuroncap, AlpaSim's 10 scenes.
+EXPECTED_MIN = {
+    "kitscenes": 7,
+    "nuscenes": 17,
+    "navsim": 48,
+    "neuroncap_quick": 30,
+    "bench2drive_quick": 15,
+    "alpasim_quick": 8,
+    "neuroncap": 60,
+    "bench2drive": 96,
+    "alpasim": 40,
+}
+
+
+def launch_order(
+    steps: list[SmokeStep], tiers: list[str], tier_of: dict[str, str], lanes: int
+) -> list[SmokeStep]:
+    """`steps` in the order the smoke launches them: tier by tier, and within a tier,
+    with more than one lane, the longest first.
+
+    The old order, cheap answers first, fails fast: a KITScenes regression stops the
+    smoke before NAVSIM's 48 minutes start. With lanes side by side the cheap ones
+    still finish early in the other lanes, and starting the longest first is what
+    shortens the wall clock: launched last, NAVSIM ran alone for half an hour while
+    the other lanes sat idle. With one lane, cheap first stays. Subsets with no
+    expected time go after the timed ones of their tier, in TIERS order.
+    """
+    rank = {tier: i for i, tier in enumerate(tiers)}
+
+    def key(item: tuple[int, SmokeStep]) -> tuple[int, float, int]:
+        i, step = item
+        minutes = EXPECTED_MIN.get(step.name)
+        if lanes <= 1:
+            return (rank[tier_of[step.name]], 0.0, i)
+        return (rank[tier_of[step.name]], -minutes if minutes is not None else 0.0, i)
+
+    return [step for _, step in sorted(enumerate(steps), key=key)]
+
+
 #: How long a lane waits for a launched node to report ready before the next
 #: launch's GPU check runs anyway. The check exists to see the last launch's
 #: memory already taken; a node still importing after this long has a problem of
@@ -1363,10 +1407,12 @@ def smoke_config(
     renderers there, and the site's port is usually where someone's long-lived
     `paddock renderer` already listens, which the harness's preflight refuses to
     start beside); and, unless the site names one, nuScenes' `index_cache` in
-    `cache_dir`; and NAVSIM's `gpu_nodes`, `GATE_NAVSIM_GPU_NODES` unless the site
-    sets its own. None is in a run config, so none changes what is measured or the
-    run id. neuroNCAP's `video` stays the site's: its mp4s are how a
-    regression is looked at.
+    `cache_dir`; NAVSIM's `gpu_nodes`, `GATE_NAVSIM_GPU_NODES` unless the site
+    sets its own; and neuroNCAP's `debug_views` off, unless the site sets it. None
+    is in a run config, so none changes what is measured or the run id.
+    neuroNCAP's `video` stays the site's, but with the debug views off there are
+    no frames to encode: the gate's runs keep the camera frames, plans and poses a
+    regression is looked at from, and no mp4s.
     """
     raw = tomllib.loads(site_config.read_text())
     own = raw.setdefault("models", {}).setdefault(model, {})
@@ -1389,6 +1435,10 @@ def smoke_config(
     ncap = raw.setdefault("benchmarks", {}).setdefault("neuroncap", {})
     host = str(ncap.get("renderer_url") or "http://127.0.0.1:8000").rsplit(":", 1)[0]
     ncap["renderer_url"] = f"{host}:{renderer_port}"
+    # The two drawn per-step views (FC_TRAJ, COMBINED_OUTPUTS) took about 1 s of each
+    # 2.7 s neuroNCAP step on 2026-10-23, and the mp4s made from them 6-75 s an
+    # episode. Nothing reads them back (patches/neuro-ncap/0003).
+    ncap.setdefault("debug_views", False)
     if cache_dir is not None:
         # One index for every checkout the gate runs from: a fresh worktree spent
         # 20 of nuScenes' 35 minutes rebuilding its own from the NAS.
@@ -1886,7 +1936,7 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
         os.replace(part, state_path)
 
     lanes = [_Lane(c, args.base_port + 100 * i) for i, c in enumerate(cores)]
-    pending = [s for s in steps if s.status in ("new", "resume")]
+    pending = launch_order([s for s in steps if s.status in ("new", "resume")], tiers, tier_of, len(lanes))
     done = {s.name for s in steps if s.status == "finished"}
     stop = ""
     gpu_wait_since: float | None = None

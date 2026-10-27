@@ -171,6 +171,23 @@ neurad_studio   = ".../neurad-studio"
 checkpoints     = ".../checkpoints"            # one per scene
 ```
 
+Two optional settings make runs faster without changing what is measured
+(neither is in the run config, so runs with and without them pair):
+
+- **`nuscenes_subset`**: the engine and the renderer each build a full
+  `NuScenes('v1.0-trainval')` to read one scene, 2.5 GB of tables (sample_data
+  alone is 1.35 GB), at every engine start and every renderer start. Engine starts
+  took 4.0 to 6.6 min on 2026-10-23 with the tables on the NAS.
+  `python tools/benchmarks/neuroncap/build_nuscenes_subset.py <dir>` writes the
+  same records for neuroNCAP's 14 scenes only (41 MB) and links everything else
+  (samples/, sweeps/, maps/, can_bus/) to the original; set `nuscenes_subset =
+  "<dir>"`. Preflight refuses a scene the copy does not hold.
+- **`debug_views = false`**: skips the two drawn per-step views, FC_TRAJ and
+  COMBINED_OUTPUTS, which only a person watches (`patches/neuro-ncap/0003`). On
+  2026-10-23 drawing them took about 1.05 s of each 2.66 s step. Every record the
+  scores and PDM terms read is still written; there are just no mp4s. The
+  regression gate sets it; a site's own runs keep the views unless it says so.
+
 A scene needs both a scenario file (tracked, under `scenarios_10hz/`) and a
 renderer checkpoint (site-local). `preflight` checks both before any model
 loads — `stationary/0061.yaml` exists with no checkpoint for scene 0061, and
@@ -530,7 +547,10 @@ the full 20-pair set at 10 runs for four models that is **~66 GB**.
 |---|---|---:|
 | `encode` (default) | videos, raw `CAM_*` jpegs, all json | ~5 GB |
 | `keep` | the above plus every source PNG | ~66 GB |
-| `off` | no frames and no per-run json (`--engine.logger.enabled False`), so no PDM terms | ~0 |
+| `off` | no frames and no per-run json (`--engine.logger.no-enabled`), so no PDM terms | ~0 |
+
+`debug_views = false` (above) is the cheaper middle: the camera frames and every
+json stay, and the two drawn streams the videos come from are never made.
 
 `encode` prunes only the derived PNG streams, and only ones that actually
 encoded. Nothing is lost that cannot be rebuilt: the raw camera frames and the
