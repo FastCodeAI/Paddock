@@ -301,6 +301,15 @@ ends a median 0.41 m left of the human's, growing with speed), right turns are
 under-turned, and starts from a standstill are timid (2.3 m planned against
 8.4 m driven). Comfort (0.984 history, 0.812 extended) is its strongest column.
 
+**NAVSIM v1, the same 12,146 plans, valid** (`results/navsim_v1/autoe2e/20261027T185517-5c7949`):
+**0.538** PDMS. No model ran: the v2 run's recorded plans were replayed through
+the v1.1 scorer. NC 0.824 and DAC 0.777 match the v2 run's to three decimals,
+as they should for the same plans.
+
+| PDMS | NC | DAC | EP | TTC | comfort | DDC (weight 0) |
+|---:|---:|---:|---:|---:|---:|---:|
+| **0.538** | 0.824 | 0.777 | 0.514 | 0.700 | 1.000 | 0.859 |
+
 **KITScenes, the shared 223 keyframes, valid** (`results/kitscenes/autoe2e/`):
 **0.847** ADE@3s (`20261020T220509-dee848`). Adapted, and given an oracle
 route: see *AutoE2E × kitscenes* in

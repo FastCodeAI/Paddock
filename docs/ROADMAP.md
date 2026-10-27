@@ -669,7 +669,8 @@ campaign driven on 22 Oct 2026 by the same bridge. See
   checkpoint `kitscenes-epoch-5`, imported from upstream at the release
   revision. NAVSIM `navtest` 0.500 EPDMS (12,146 scenarios, valid) on the
   10 Hz nuPlan path, with the rear views from OpenScene's keyframes
-  (`keyframe_cameras`). neuroNCAP: the full official 20 scenario-scene pairs,
+  (`keyframe_cameras`); NAVSIM v1 0.538 PDMS from the same plans, replayed
+  through the v1 scorer (run `20261027T185517-5c7949`). neuroNCAP: the full official 20 scenario-scene pairs,
   10 runs each (n = 200, run `20261026T233951-743060`, valid), ncap_score mean
   3.16, collision_rate 42% (worst on side 2.01, best on frontal 3.71) — with PR
   #89's closed-loop ego-history fix (`steady_before_start`) in effect. Two

@@ -178,6 +178,7 @@ nuscenes = { run = "nuscenes/autoe2e/20261023T004711-eedbe2", marks = "A" }  # c
 kitscenes = { run = "kitscenes/autoe2e/20261020T220509-dee848", marks = "A" }
 comma2k19 = { run = "comma2k19/autoe2e/20261020T213543-417344" }
 navsim = { run = "navsim/autoe2e/20261009T055926-3ceb18", marks = "A", note = "10 Hz" }
+navsim_v1 = { run = "navsim_v1/autoe2e/20261027T185517-5c7949", marks = "A", note = "10 Hz" }
 neuroncap = { run = "neuroncap/autoe2e/20261026T233951-743060", marks = "A" }
 alpasim = { run = "alpasim/autoe2e/20261022T045847-86b955", marks = "R" }
 
