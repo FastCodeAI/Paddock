@@ -959,13 +959,68 @@ def test_an_unrunnable_alpasim_scene_is_swapped_within_its_group_else_its_turn(
         gate_subsets, "alpasim_catalog", lambda: {"keep", "swap-straight", "swap-left-medium"}
     )
     monkeypatch.setattr(harness, "SCENES_DIR", tmp_path)
-    gate_subsets.replace_unrunnable_alpasim(suites, cache, tmp_path)
+    gate_subsets.replace_unusable_alpasim(suites, cache, tmp_path)
     subset = gate.load_subset("alpasim", tmp_path)
     assert subset.strata == {"left/medium": ["swap-left-medium"], "straight/fast": ["keep", "swap-straight"]}
     assert (
         "gone-straight (straight/fast) -> swap-straight (straight/fast)"
         in (tmp_path / "alpasim.toml").read_text()
     )
+
+
+def test_an_unusable_alpasim_scene_is_swapped_and_earlier_swaps_stay_listed(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A scene the wizard runs but that measures nothing is swapped too; a scene an earlier
+    swap took out is never picked back, and that swap stays in the header."""
+    import paddock.adapters.benchmarks.alpasim.harness as harness
+    from tools import gate_subsets
+
+    cache = tmp_path / "cache"
+    (cache / "all-usdzs").mkdir(parents=True)
+    drives = {  # scene: (headings, speed) -> its group
+        "keep": ([0.0] * 50, 10.0),  # straight/fast
+        "dead": ([0.0] * 50, 10.0),  # straight/fast, runs but measures nothing
+        "dropped-before": ([0.0] * 50, 11.0),  # straight/fast, swapped out by an earlier run
+        "spare-medium": ([0.0] * 50, 5.0),  # straight/medium
+    }
+    rows = ["test_suite_id,scene_id,uuid"]
+    for i, (scene, (headings, speed)) in enumerate(drives.items()):
+        rows.append(f"public_2601,{scene},u{i}")
+        _usdz(cache / "all-usdzs" / f"u{i}.usdz", headings, speed)
+    suites = tmp_path / "sim_suites.csv"
+    suites.write_text("\n".join(rows) + "\n")
+    (tmp_path / "alpasim.toml").write_text(
+        "#   gone (left/slow) -> keep (straight/fast)\n"
+        "#   dropped-before (straight/fast) -> dead (straight/fast): it stopped\n"
+        'bench = "alpasim"\nunit = "scene"\ncount = 2\nscene_set = "public_2601_gate10"\n[strata]\n'
+        '"straight/fast" = ["dead", "keep"]\n'
+    )
+    monkeypatch.setattr(gate_subsets, "alpasim_catalog", lambda: set(drives))
+    monkeypatch.setattr(gate_subsets, "ALPASIM_UNUSABLE", {"dead": "leaves the road at once"})
+    monkeypatch.setattr(harness, "SCENES_DIR", tmp_path)
+    gate_subsets.replace_unusable_alpasim(suites, cache, tmp_path)
+    # Same group first, but dropped-before was taken out once: the pick comes from the same turn.
+    assert gate.load_subset("alpasim", tmp_path).strata == {
+        "straight/fast": ["keep"],
+        "straight/medium": ["spare-medium"],
+    }
+    text = (tmp_path / "alpasim.toml").read_text()
+    assert (
+        "gone (left/slow) -> keep (straight/fast): not in public_2601_30scenes_26p01.csv, "
+        "so the wizard cannot find it" in text
+    )
+    assert "dropped-before (straight/fast) -> dead (straight/fast): it stopped" in text
+    assert "dead (straight/fast) -> spare-medium (straight/medium): leaves the road at once" in text
+
+
+def test_no_gate_alpasim_scene_is_one_that_measures_nothing() -> None:
+    """2026-10-27: on 04749bb9 constant velocity and Drive-JEPA both left the road within
+    0.5 s and the run ended, so the scene could not tell any two models apart."""
+    from tools.gate_subsets import ALPASIM_UNUSABLE
+
+    gate_scenes = set(gate.load_subset("alpasim").ids) | set(gate.load_subset("alpasim_quick").ids)
+    assert not gate_scenes & ALPASIM_UNUSABLE.keys()
 
 
 def test_a_subset_without_its_own_baseline_uses_its_benchmarks() -> None:

@@ -21,4 +21,4 @@ count = 1
 scene_set = "public_2601_gate10"
 
 [strata]
-"straight/fast" = ["clipgt-04749bb9-9b37-495b-bed0-77f0e33ac7da"]
+"straight/medium" = ["clipgt-1acf2f5d-f674-408f-ba18-6aacb4f4c739"]
