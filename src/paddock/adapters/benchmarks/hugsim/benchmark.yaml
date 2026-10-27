@@ -1,0 +1,24 @@
+name: hugsim
+description: HUGSIM closed-loop driving in Gaussian-splatting reconstructions of real drives - 420 released scenarios over KITTI-360, nuScenes, PandaSet and Waymo, scored by HD-Score
+
+mode: closed_loop
+
+# The release's scenario files, scene reconstructions and vehicle assets (XDimLab/HUGSIM on Hugging Face). The
+# simulator itself is the checkout pinned in repos.yaml; where it and its interpreter live is [benchmarks.hugsim].
+dataset: hugsim
+
+# hd_score is HUGSIM's headline and its terms are HUGSIM's own, computed per plan by its scorer: new names,
+# documented with their direction in docs/benchmarks/hugsim.md. route_completion and collision_rate reuse the
+# canonical names (percent of the route; fraction of episodes that ended in a collision).
+metrics: [hd_score, hugsim_pdms, route_completion, hugsim_nc, hugsim_dac, hugsim_ttc, hugsim_comfort, collision_rate]
+primary_metric: hd_score
+# Which metric fills which term of NAVSIM v1's PDM score (paddock.metrics.pdm), so the regression gate lays every
+# benchmark out in the same rows. HUGSIM scores every plan the model sent on NAVSIM's terms except progress, which it
+# replaces with route completion; its composite is NC x DAC x (5 TTC + 2 C) / 7.
+pdm:
+  nc: hugsim_nc
+  dac: hugsim_dac
+  ttc: hugsim_ttc
+  comfort: hugsim_comfort
+  ep: route_completion
+  score: hugsim_pdms

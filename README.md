@@ -47,6 +47,7 @@ flowchart LR
         b2d["Bench2Drive<br/>CARLA · ability score"]
         nc["neuroNCAP<br/>NeuRAD · NCAP score"]
         alp["AlpaSim<br/>nuRec · scene score"]
+        hug["HUGSIM<br/>3D Gaussian splatting · HD-Score"]
     end
 
     res[("results/<br/>one schema, with provenance")]
@@ -73,7 +74,7 @@ flowchart LR
     class pol waist
     class ns,ks,c2k,npl ol
     class nv pcl
-    class b2d,nc,alp cl
+    class b2d,nc,alp,hug cl
     class alp planned
     class res store
 ```
@@ -106,6 +107,7 @@ Per-benchmark tables and notes: [nuScenes](docs/benchmarks/nuscenes.md#support-m
 [Bench2Drive](docs/benchmarks/bench2drive.md#support-matrix-results) ·
 [neuroNCAP](docs/benchmarks/neuroncap.md#support-matrix-results) ·
 [AlpaSim](docs/benchmarks/alpasim.md#support-matrix-results).
+[HUGSIM](docs/benchmarks/hugsim.md) has no column yet: two of these models have driven it.
 
 <details>
 <summary>Why each cell is marked, and what to check before comparing</summary>

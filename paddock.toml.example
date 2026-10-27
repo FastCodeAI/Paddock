@@ -74,6 +74,9 @@ weights = "/path/to/weights"
 # [datasets.neurad_checkpoints]
 # path = "/path/to/neuroncap/checkpoints"      # per-scene NeuRAD renderers
 
+# [datasets.hugsim]
+# path = "/path/to/hugsim/data"                # scenarios/, scenes/, 3DRealCar/ (XDimLab/HUGSIM)
+
 # ---------------------------------------------------------------------------
 # Benchmarks that bring their own simulator or assets say where those live here.
 # What each benchmark measures is declared in its tracked benchmark.yaml; this
@@ -133,6 +136,13 @@ weights = "/path/to/weights"
 # tm_port     = "8000"                                 # traffic manager port, likewise
 # gpu_rank    = "0"                                    # CARLA's -graphicsadapter
 # record      = "false"                                # per-tick front/BEV JPEGs + log.csv: ~40 GB per full sweep
+
+# [benchmarks.hugsim]                          # HUGSIM closed-loop; docs/benchmarks/hugsim.md
+# python = "/path/to/hugsim/venv/bin/python"   # HUGSIM's interpreter: imports closed_loop, omegaconf, requests
+# repo   = "/path/to/HUGSIM"                   # the checkout; sha pinned in repos.yaml, patches/HUGSIM/ applied
+# per_episode_timeout_s = 3600                 # default
+# min_free_gb = 12                             # default; free VRAM to wait for before each HUGSIM process
+# keep_ply    = "false"                        # default; true keeps the per-run scene/ground point clouds (~76 MB)
 
 # [benchmarks.alpasim]
 # AlpaSim runs its services through docker compose and attaches a driver over
