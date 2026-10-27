@@ -57,6 +57,7 @@ repos:
     patches:
       - 0001-waypoint-dt-and-camera-selection.patch
       - 0002-fail-loudly-on-renderer-http-errors.patch
+      - 0003-optional-debug-views.patch
 
   Bench2Drive:
     url: https://github.com/Thinklab-SJTU/Bench2Drive.git

@@ -315,6 +315,15 @@ serialize = true
 #                     # "off" logs no frames at all -- fastest, smallest.
 # ffmpeg = "/path/to/ffmpeg"   # else $PADDOCK_FFMPEG, else PATH. Without one,
 #                              # frames are kept and the run is not failed.
+# debug_views = true  # false skips the two drawn per-step views (FC_TRAJ,
+#                     #   COMBINED_OUTPUTS), so no mp4s; every record the scores
+#                     #   and PDM terms read is still written. Needs
+#                     #   patches/neuro-ncap/0003. The regression gate sets false.
+#
+# A copy of the nuScenes dataroot cut down to neuroNCAP's scenes, which the engine
+# and the renderer read instead of all of v1.0-trainval's 2.5 GB of tables:
+# python tools/benchmarks/neuroncap/build_nuscenes_subset.py <dir>, on a fast disk.
+# nuscenes_subset = "/path/to/fast/disk/nuscenes-ncap"
 
 # [benchmarks.nuscenes]
 # nuScenes val open-loop planning (L2 + collision, UniAD/VAD protocol). Reads the

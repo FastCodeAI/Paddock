@@ -1388,6 +1388,45 @@ def test_the_gpu_wait_adds_the_simulators_share_to_the_models(bench: str, vram: 
     assert gate.smoke_need_gb(bench, vram) == need
 
 
+def test_the_gate_skips_neuroncaps_debug_views_unless_the_site_keeps_them(tmp_path: Path) -> None:
+    """They took about 1 s of each 2.7 s step, and nothing reads them back."""
+    import tomllib
+
+    site = tmp_path / "paddock.toml"
+    site.write_text('site = "t"\n[benchmarks.neuroncap]\nrepo = "r"\n')
+    assert (
+        tomllib.loads(gate.smoke_config(site, "m", {}, 8700))["benchmarks"]["neuroncap"]["debug_views"]
+        is False
+    )
+    site.write_text('site = "t"\n[benchmarks.neuroncap]\nrepo = "r"\ndebug_views = true\n')
+    assert (
+        tomllib.loads(gate.smoke_config(site, "m", {}, 8700))["benchmarks"]["neuroncap"]["debug_views"]
+        is True
+    )
+
+
+def test_with_lanes_the_longest_subset_of_a_tier_launches_first() -> None:
+    """NAVSIM, launched last, ran alone for half an hour while the other lanes sat idle."""
+    names = [
+        "kitscenes",
+        "nuscenes",
+        "navsim",
+        "neuroncap_quick",
+        "unknown_quick",
+        "neuroncap",
+        "bench2drive",
+    ]
+    tier_of = {n: ("closed" if n in ("neuroncap", "bench2drive") else "quick") for n in names}
+    steps = [gate.SmokeStep("b", "new", None, [], {}, name=n) for n in names]
+    order = [s.name for s in gate.launch_order(steps, ["quick", "closed"], tier_of, lanes=3)]
+    assert order == [
+        "navsim", "neuroncap_quick", "nuscenes", "kitscenes", "unknown_quick", "bench2drive", "neuroncap"
+    ]  # fmt: skip
+    assert [s.name for s in gate.launch_order(steps, ["quick", "closed"], tier_of, lanes=1)] == names, (
+        "one lane: cheap answers first, as before"
+    )
+
+
 def test_a_bigger_model_waits_for_more() -> None:
     assert gate.smoke_need_gb("neuroncap", 26.0) == 36.0
 
@@ -1463,6 +1502,7 @@ def test_the_site_config_gains_the_smoke_overrides_and_loses_nothing(tmp_path: P
     expected = tomllib.loads(site.read_text())
     expected["models"]["drivejepa"]["env"]["DRIVEJEPA_CHECKPOINT"] = "ck.pt"
     expected["benchmarks"]["neuroncap"]["renderer_url"] = "http://127.0.0.1:8700"
+    expected["benchmarks"]["neuroncap"]["debug_views"] = False
     expected["benchmarks"]["navsim"]["gpu_nodes"] = gate.GATE_NAVSIM_GPU_NODES
     assert derived == expected
 
@@ -1694,14 +1734,15 @@ def test_the_closed_tier_starts_only_after_the_quick_tier_ends(tmp_path: Path, m
 def test_a_simulator_waits_while_a_running_one_may_still_take_its_memory(tmp_path: Path, monkeypatch) -> None:
     """Review #80 (8): a simulator takes its memory after the model says ready, so a
     second closed-tier lane's GPU check could run before neuroNCAP's renderer loaded.
-    A running simulator's share counts as taken: with 15 GB free, neuroNCAP (10 GB)
-    starts and Bench2Drive (10 GB, plus neuroNCAP's 8 held) waits for it to end."""
+    A running simulator's share counts as taken: with 15 GB free, one of neuroNCAP and
+    Bench2Drive (10 GB each) starts, and the other (10 GB, plus the first one's 8 held)
+    waits for it to end. Which goes first is `launch_order`'s business."""
     args, stamps = _smoke_site(tmp_path, monkeypatch, {"neuroncap": 2.0, "bench2drive": 2.0}, hold=1.0)
     monkeypatch.setattr(gate, "_gpu_free_gb", lambda env: 15.0)
     said: list[str] = []
     gate.smoke(args(tier="closed", bench=["neuroncap", "bench2drive"], cores=["4-7", "8-11"]), said.append)
-    spans = _intervals(stamps)
-    assert spans["bench2drive"][0] >= spans["neuroncap"][1], f"overlapped: {spans}"
+    (a0, a1), (b0, b1) = _intervals(stamps)["bench2drive"], _intervals(stamps)["neuroncap"]
+    assert a1 <= b0 or b1 <= a0, f"overlapped: {(a0, a1)} and {(b0, b1)}"
     assert "waiting for 18 GB of free GPU memory, 8 GB of it held for running simulators" in "\n".join(said)
 
 
@@ -1726,27 +1767,29 @@ def test_simulators_run_side_by_side_when_the_card_holds_them(tmp_path: Path, mo
     gate.smoke(
         args(tier="closed", bench=["neuroncap", "bench2drive"], cores=["4-7", "8-11"]), lambda _m: None
     )
-    spans = _intervals(stamps)
-    assert spans["bench2drive"][0] < spans["neuroncap"][1], f"ran one after the other: {spans}"
+    (a0, a1), (b0, b1) = _intervals(stamps)["bench2drive"], _intervals(stamps)["neuroncap"]
+    assert a0 < b1 and b0 < a1, f"ran one after the other: {(a0, a1)} and {(b0, b1)}"  # either order
 
 
 def test_a_regression_found_while_waiting_for_gpu_memory_stops_that_launch(
     tmp_path: Path, monkeypatch
 ) -> None:
     """Review #80 (9): the GPU wait blocked the loop, so nuScenes launched after kitscenes
-    had already regressed -- the regression is what freed the card."""
-    args, stamps = _smoke_site(tmp_path, monkeypatch, {"kitscenes": 3.0, "nuscenes": 2.0}, hold=0.5)
+    had already regressed -- the regression is what freed the card. With two lanes the
+    longer nuScenes launches first (`launch_order`), so here it is the one that regresses
+    while kitscenes waits for memory."""
+    args, stamps = _smoke_site(tmp_path, monkeypatch, {"kitscenes": 2.0, "nuscenes": 3.0}, hold=0.5)
     calls = {"n": 0}
 
-    def free_gb(env):  # room for the first launch; then none until kitscenes has ended
+    def free_gb(env):  # room for the first launch; then none until nuscenes has ended
         calls["n"] += 1
-        ended = stamps.exists() and "kitscenes end" in stamps.read_text()
+        ended = stamps.exists() and "nuscenes end" in stamps.read_text()
         return 100.0 if calls["n"] == 1 or ended else 0.0
 
     monkeypatch.setattr(gate, "_gpu_free_gb", free_gb)
     said: list[str] = []
     assert gate.smoke(args(cores=["4-7", "8-11"]), said.append) == 1
-    assert set(_intervals(stamps)) == {"kitscenes"}
+    assert set(_intervals(stamps)) == {"nuscenes"}
     assert "waiting for" in "\n".join(said)
 
 
