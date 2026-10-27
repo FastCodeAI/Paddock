@@ -653,15 +653,15 @@ client honours; Drive-JEPA declares 2 Hz.
   revision. NAVSIM `navtest` 0.500 EPDMS (12,146 scenarios, valid) on the
   10 Hz nuPlan path, with the rear views from OpenScene's keyframes
   (`keyframe_cameras`). neuroNCAP: the full official 20 scenario-scene pairs,
-  10 runs each (n = 200, run `20261021T175940-844841`), ncap_score mean 3.16,
-  collision_rate 42% (worst on side 2.01, best on frontal 3.71) — with PR
-  #89's closed-loop ego-history fix (`steady_before_start`) in effect.
-  `valid: false`: `#82`'s site-env-override rule flags this run's
-  `AUTOE2E_CHECKPOINT` (a site path, not a different checkpoint) the same way
-  it would flag any other override, since `AUTOE2E_CHECKPOINT` isn't in
-  `autoe2e`'s `tuning_env` allowlist; the superseded `20261018T211838-ee6df9`
-  sweep carried the identical override but predates that rule and so reads
-  `valid: true`. KITScenes 0.847 ADE@3s on the 223 keyframes (valid, adapted),
+  10 runs each (n = 200, run `20261026T233951-743060`, valid), ncap_score mean
+  3.16, collision_rate 42% (worst on side 2.01, best on frontal 3.71) — with PR
+  #89's closed-loop ego-history fix (`steady_before_start`) in effect. Two
+  earlier sweeps with the identical checkpoint (sha256 `120a2163...`) read
+  `valid: false` under `#82`'s site-env-override rule, because the checkpoint
+  lived under a site-specific path passed through `[models.autoe2e.env]`
+  rather than at `model.yaml`'s declared `{weights}/auto_e2e/...` default; this
+  run moved the file to that default path and dropped the override instead.
+  KITScenes 0.847 ADE@3s on the 223 keyframes (valid, adapted),
   given what upstream validated it with: the scene's Lanelet2 map and a route
   matched to the logged drive (an oracle), both drawn by upstream's own code
   through two new observation fields (`map_files`, `route_trace`); 0.837

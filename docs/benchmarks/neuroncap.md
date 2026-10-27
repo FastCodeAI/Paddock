@@ -739,7 +739,7 @@ all 200 runs. Runs are seeded 0-9, so every model met identical scenario jitter.
 | Drive-JEPA ⊙ | 5.00 ±0.00 | 2.51 ±1.42 | 4.01 ±2.00 | **4.13** | 24.5% |
 | Alpamayo 1.5 | 4.41 ±1.48 | 3.64 ±2.01 | 2.45 ±1.93 | **3.73** | 32.5% |
 | OpenPilot | 4.52 ±1.34 | 2.30 ±1.24 | 3.08 ±2.25 | **3.60** | 38.0% |
-| AutoE2E ‖ | 3.46 ±2.16 | 3.71 ±1.82 | 2.01 ±2.30 | **3.16** | 42.0% |
+| AutoE2E | 3.46 ±2.16 | 3.71 ±1.82 | 2.01 ±2.30 | **3.16** | 42.0% |
 | METEOR | 2.44 ±2.42 | 3.20 ±2.39 | 2.50 ±2.50 | **2.64** | 48.0% |
 | Qwen-Drive 1.0 | 2.71 ±1.73 | 1.52 ±1.49 | 3.00 ±2.04 | **2.49** | 69.0% |
 | VisionPilot | 2.53 ±1.60 | 1.17 ±1.38 | 0.08 ±0.18 | **1.58** | 85.5% |
@@ -823,19 +823,19 @@ per-run rows are in `results/`; VisionPilot's side result is 0.08 with a 100%
 collision rate on all 50 runs — it hits the side obstacle at nearly full speed
 every time, which the 0.54 from one scene did not show.
 
-‖ Full official set, 20 pairs over 14 scenes, 10 runs each (n = 200). Every row
-above is stored `valid: true` except AutoE2E's: run `20261021T175940-844841`
-carries a site-env override, `AUTOE2E_CHECKPOINT` (a site path, not a different
-checkpoint), which `#82`'s site-env-override rule flags regardless of what the
-override actually changed, since `AUTOE2E_CHECKPOINT` isn't in `autoe2e`'s
-`tuning_env` allowlist — the superseded `20261018T211838-ee6df9` sweep carried
-the identical override but predates that rule and so reads `valid: true`.
-`paddock report` excludes the stored run. OpenPilot's earlier closed-loop
-figures were all produced before `12f3250` fixed the `traffic_convention`
-one-hot — which had been telling supercombo it was a right-hand-drive car in
-Boston — and were stored `valid: false`; the row above is its first valid
-closed-loop score. Paired by seed on frontal-0103 the fix was worth −0.16, and
-on side-0103 +0.36, so it moved scenarios in both directions.
+‖ Full official set, 20 pairs over 14 scenes, 10 runs each (n = 200), stored
+`valid: true`. OpenPilot's earlier closed-loop figures were all produced before
+`12f3250` fixed the `traffic_convention` one-hot — which had been telling
+supercombo it was a right-hand-drive car in Boston — and are stored
+`valid: false`; this is its first valid closed-loop score. Paired by seed on
+frontal-0103 the fix was worth −0.16, and on side-0103 +0.36, so it moved
+scenarios in both directions. AutoE2E's row (run `20261026T233951-743060`) is
+likewise its first `valid: true` closed-loop score here: two earlier sweeps
+with the byte-identical checkpoint (sha256 `120a2163...`) read `valid: false`
+under `#82`'s site-env-override rule because the checkpoint was passed in
+through a site-specific `AUTOE2E_CHECKPOINT` override rather than found at
+`model.yaml`'s declared `{weights}/auto_e2e/...` path; this run moved the file
+there instead.
 
 Three scenes (0796, 0921, 0923) initially failed for missing nuScenes lidar and
 were completed after fetching it; both runs record `n_reused` for the episodes
