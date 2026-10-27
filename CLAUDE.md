@@ -40,8 +40,10 @@ paddock report [--include-invalid]                # leaderboard from results/
 paddock ingest --all                              # import pre-paddock results
 ```
 
-`paddock setup` is not implemented yet (M3) — it exits 2 and says so rather than
-succeeding quietly. Vendor repos must be cloned by hand for now.
+`paddock setup [--repo NAME | --model NAME] [--dry-run]` clones each `repos.yaml`
+entry into `[roots.repos]` at its pinned sha (or adopts a clone already there),
+then applies its patches; `--model` also runs that model's `setup.sh`. A clone at
+another sha is reported and left alone, and the exit code is 1.
 
 Set `PADDOCK_CONFIG` to use a config file other than `./paddock.toml`, and
 `PADDOCK_BASE_PORT` to give concurrent runs disjoint port ranges (two runs

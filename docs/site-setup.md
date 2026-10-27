@@ -98,17 +98,27 @@ can serve several layouts.
 ## 3. Fetch the repositories
 
 ```bash
-paddock setup
+paddock setup                  # every entry in repos.yaml
+paddock setup --repo HUGSIM    # just one
+paddock setup --dry-run        # say what it would do; change nothing
 ```
 
 For every entry in [`repos.yaml`](../repos.yaml) this clones it into
-`[roots.repos]` at the pinned sha, symlinks it into `external/`, and applies any
-patches listed for it.
+`[roots.repos]/<name>`, checks out the pinned sha, and applies any patches
+listed for it. It prints one line per repo -- name, path, and what it did -- and
+the exit code is the verdict.
 
 **Existing clones are adopted, not re-cloned.** If you already have these repos
 checked out under `[roots.repos]`, paddock uses them where they are, and your
-local work is left alone. It will warn if a clone sits at a different revision
-than the pin, because that will change your numbers.
+local work is left alone. A clone at a different revision than the pin is not
+touched at all: setup prints both shas and the `git -C <path> checkout <sha>`
+that would fix it, and exits 1, because that revision will change your numbers.
+A patch already applied is skipped, so running it again is safe; one that
+neither applies nor is already applied stops that repo with git's reason.
+
+Only `[roots.repos]/<name>` is managed. If a `[benchmarks.<name>]` table sets
+`repo` to a checkout somewhere else, the benchmark runs from that one, and
+`paddock setup` says it did not check it.
 
 ## 4. Check
 
@@ -137,10 +147,13 @@ Each model builds its own, and none of them are compatible with each other. Only
 build the ones you intend to run:
 
 ```bash
-bash src/paddock/adapters/models/<name>/setup.sh
+paddock setup --model <name>
 ```
 
-`doctor` reports which interpreters are still missing. Per-model quirks — pinned
+This sets up the model's repo as in step 3, then runs the model's own
+`src/paddock/adapters/models/<name>/setup.sh` with `PADDOCK_REPO`,
+`PADDOCK_VENV` and `PADDOCK_WEIGHTS` set from `paddock.toml`. The script is not
+run if the repo step failed. `doctor` reports which interpreters are still missing. Per-model quirks — pinned
 CUDA versions, packages that must *not* be installed — are in
 `docs/models/<name>.md` and [troubleshooting.md](troubleshooting.md).
 
