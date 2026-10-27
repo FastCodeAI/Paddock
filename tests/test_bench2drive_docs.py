@@ -301,9 +301,9 @@ def test_speed_sweep_reproduces(data: dict) -> None:
         assert row[3] == f"{s['route_completion']:.2f}", row[0]
 
 
-def test_support_matrix_baseline_cell_is_the_historical_24_three_mps(data: dict) -> None:
-    """♣ 47.94 and the table's 40.39 are different experiments; both must be stated."""
-    s = data["summaries"]["original24"]["constant_velocity_3mps"]
+def test_support_matrix_baseline_cell_is_the_all50_three_mps(data: dict) -> None:
+    """♣ 48.31 and the table's 40.39 are different experiments; both must be stated."""
+    s = data["summaries"]["all50"]["constant_velocity_3mps"]
     assert f"**{s['driving_score']:.2f} ♣**" in PAGE.read_text()
     cell = _matrix_cell("constant_velocity")
     assert cell == f"{s['driving_score']:.2f}", cell
