@@ -8,9 +8,9 @@ lives in the trained hash grids, and the closed-loop server only reads poses,
 intrinsics, transforms and actor trajectories out of the dataparser.
 
 So missing point clouds are substituted with empty ones.  That is a real
-deviation and is not taken on faith -- ``validate_render.py`` re-renders a
-keyframe at its original pose and compares it against the recorded image.  If
-the points had mattered, that comparison falls apart.
+deviation and was not taken on faith: it was checked by re-rendering a keyframe
+at its original pose and comparing it against the recorded image.  If the points
+had mattered, that comparison would have fallen apart.
 
 Camera sweeps are *not* needed on disk: image files are opened lazily, and the
 closed-loop path never reads a training image.

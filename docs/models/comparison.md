@@ -144,7 +144,7 @@ checkpoint exists for the same architecture and is not in any table above:
 | Trajectory vocabulary | 8,192 anchors | 10,240 (the 8,192 plus 2,048 faster shapes) |
 | Inputs | four cameras; acceleration as reported | one front camera, bottom 37 rows masked; acceleration slots zeroed |
 | `trained_on` | `navsim` / `navtrain` | `navsim` / `navtrain` (inherited) **+ `physicalai_av` / `train`** |
-| Runs in paddock | every Drive-JEPA row | none — `tools/models/drivejepa/alpasim_driver/` only |
+| Runs in paddock | every Drive-JEPA row | none — AlpaSim's native driver only |
 
 `physicalai_av` is NVIDIA's Physical AI AV dataset. It is **not a key in
 `datasets.yaml`**, so no test here can cross-check that declaration against a
@@ -221,7 +221,7 @@ and Talk2Car's training splits hold 123 of the 150 val scenes between them, and
 12 of neuroNCAP's 14 scenes, frontal 0103 among them (counted from their released
 files). Which 20 % of each set was sampled is not stated. The planning expert
 paddock runs did not train on nuScenes. Its nuScenes number, the lowest error
-here and the only learned model besides the re-ranker to beat constant velocity,
+here and the only learned model to beat constant velocity,
 should be read with this in mind.
 
 ### OpenPilot × comma2k19 — same fleet, unverifiable overlap
@@ -252,24 +252,6 @@ second test reads this file from the other end:
 requires every `model × dataset` heading here to carry real prose about a
 pairing that can actually happen. This section is held to the same standard as a
 declared one; it is no longer surviving on goodwill.
-
-### Drive-JEPA rerank × kitscenes
-
-**`drivejepa_rerank` is adapted to KITScenes, not zero-shot on it.** It is
-Drive-JEPA unchanged up to its 32 candidate trajectories. A selector then
-chooses among them in place of the NAVSIM-trained scorer, and that selector was
-fitted to KITScenes' **train** split: 5,711 keyframes from 373 scenes. Its
-epoch was chosen on a held-out slice of those same train scenes.
-
-The benchmark's 223 keyframes come from the 140 scenes of the val and
-overlap_train_val splits. None of those scenes is among the 373, which was
-checked by scene id. So the row has seen the dataset's cameras, cities and
-driving, but not its test scenes. That is the same relation Drive-JEPA has to
-navtest through navtrain.
-
-Read its KITScenes cell beside the zero-shot rows, never as one of them. The
-zero-shot `drivejepa` row stays as it is. On nuScenes the selector is
-zero-shot: no nuScenes data went into it. See [drivejepa_rerank.md](drivejepa_rerank.md).
 
 ### AutoE2E × navsim — nuPlan-trained, scored on nuPlan's test logs
 
@@ -495,10 +477,9 @@ nobody re-derives them.
 ᵐ measured · ᶜ computed from parameter count · ᵖ published by the authors, not re-counted.
 
 Everything not marked ᵐ comes from published papers, model cards and repository
-inspection rather than from paddock. Paddock has measured none of it, which is
-the gap [docs/design/model-card-and-latency.md](../design/model-card-and-latency.md)
-proposes to close: declared numbers rot, and the fix is a fixture test asserting
-the declaration against the artifact.
+inspection rather than from paddock. Paddock has measured none of it yet:
+declared numbers rot, and the fix is a fixture test asserting the declaration
+against the artifact.
 
 ## Notes moved from the README support matrix
 
@@ -507,27 +488,9 @@ moved here unchanged except for links. Each starts with the mark it carried in
 the matrix; the benchmark notes are on each benchmark's page under
 "Support-matrix results".
 
-⊛ `drivejepa_rerank` is Drive-JEPA unchanged up to its 32 candidate
-trajectories. A small selector then chooses among them, in place of Drive-JEPA's
-NAVSIM-trained scorer. That selector was trained on KITScenes **train** (5,711
-keyframes, 373 scenes, none of them in the benchmark), so its KITScenes cell is
-*adapted*, not zero-shot like the rows around it.
-It sees the cameras cropped onto the OpenScene lens and gets no route hint.
-Through that same path, Drive-JEPA's own pick scores 2.521 and the best of its 32
-scores 0.409. The selector learned closeness to the human path and nothing about
-collisions, so it has no closed-loop cells until it has been through neuroNCAP.
-Its nuScenes cell is zero-shot (no nuScenes data went into the selector) and was
-measured with the camera-frame fix (#62). Paired over 150 scenes, it is 0.054
-below constant velocity on cumulative L2 (t −2.8); its point collision rate,
-1.21% against 1.66%, is not separated (t −1.5). The Drive-JEPA row is still the
-camera-blind one (⊘), and this row also differs from it in the camera crop, so
-the two are not a like-for-like comparison.
-See `docs/models/drivejepa_rerank.md`.
-
 ⊕ The same architecture with a second checkpoint: Drive-JEPA's trajectory
 generator retrained on NVIDIA's Physical AI AV dataset (`train` split). It is
-driven by the native AlpaSim driver at 0.1.7
-(`tools/models/drivejepa/alpasim_driver/`), not through a paddock node, and the
+driven by the native AlpaSim driver at 0.1.7, not through a paddock node, and the
 row was ingested from that driver's recorded runs, as the Drive-JEPA row was.
 Its AlpaSim cell is *adapted*, not zero-shot: AlpaSim's scenes are
 reconstructions of clips from that dataset. The training code excludes the

@@ -412,7 +412,7 @@ upstream's protocol gives 40, and AutoE2E scores better for it (0.865 against
 **comma2k19, 10,165 samples, valid** (`results/comma2k19/autoe2e/20261020T213543-417344`):
 **2.016** ADE@3s, from the road camera alone, the five views it does not have left
 out. With the ground truth rotated into the calibrated frame the plans are in
-(ROADMAP M8), 1.358. Either way it trails constant velocity (1.639 / 1.137), as
+([ROADMAP](../ROADMAP.md)), 1.358. Either way it trails constant velocity (1.639 / 1.137), as
 an out-of-tree study of this checkpoint on comma2k19 also found.
 
 | horizon | ADE@1s | ADE@2s | ADE@3s | ADE@4s | ADE@5s | FDE@3s | median ADE@3s | miss@3s |
@@ -436,7 +436,7 @@ The plans differ by more than the controls suggest because the inputs differ
 in known ways. Paddock differences 20 Hz positions for the ego rows where the
 study used pose velocities, uses the route-pooled `rpyCalib` where it used its
 own calibration, and builds the history projections from device-frame poses
-(the same M8 frame issue).
+(the same frame issue).
 
 **nuScenes val, 5,119 keyframes, valid** (`results/nuscenes/autoe2e/20261023T004711-eedbe2`):
 **0.839** cumulative L2, 1.565 point L2, 1.319 ADE@3s, 1.86 % predicted collisions.

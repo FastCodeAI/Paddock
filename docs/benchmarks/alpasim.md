@@ -305,8 +305,8 @@ filed under `results/alpasim/`, so `paddock report` agrees with these tables.
 >
 > **Two later versions of the Drive-JEPA driver exist; one has a row here.**
 > `drivejepa-v2-driver-0.1.4b` adds momentum-aware selection to 0.1.4, and
-> `drivejepa-v2-driver-0.1.7` drives a retrained checkpoint; 0.1.7's source is
-> tracked at `tools/models/drivejepa/alpasim_driver/`. Both were measured on
+> `drivejepa-v2-driver-0.1.7` drives a retrained checkpoint; neither driver's
+> source is in this repo. Both were measured on
 > 30 scenes (these ten plus twenty more), one rollout each, outside paddock,
 > and those numbers are in [docs/models/drivejepa.md](../models/drivejepa.md).
 > The ten of 0.1.7's runs that are this benchmark's scenes are ingested as
@@ -586,7 +586,7 @@ The per-metric results behind this benchmark's column in the
 [README's support matrix](../../README.md#support-matrix), and the notes on its
 cells. Moved here from the README unchanged except for links; the symbols are
 the README's former footnote marks, and each note below starts with the mark it
-explains. Marks about a model rather than this benchmark (⊛ ⊕ ∗ ◊ ◇ ✦ ✧) are
+explains. Marks about a model rather than this benchmark (⊕ ∗ ◊ ◇ ✦ ✧) are
 explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
 
 ### Notes on the matrix cells
@@ -672,9 +672,8 @@ uuid-pinned, one rollout per scene — **n = 10**. Every row is under
 [docs/benchmarks/alpasim.md](alpasim.md).
 
 Drive-JEPA has two rows below. The first is its released checkpoint behind the
-native driver at 0.1.4. The second is that driver at 0.1.7, promoted to
-[`tools/models/drivejepa/alpasim_driver/`](../../tools/models/drivejepa/alpasim_driver),
-driving a checkpoint whose trajectory generator was retrained on Physical AI
+native driver at 0.1.4. The second is that driver at 0.1.7 (its source is not
+in this repo), driving a checkpoint whose trajectory generator was retrained on Physical AI
 AV. The second row is an *adapted* result: AlpaSim's scenes are reconstructions
 of clips from that dataset (the training code excludes the evaluation scenes,
 which is taken on that code's word),

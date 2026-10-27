@@ -9,7 +9,7 @@ plan the same way and differ in everything around it.
 
 | | The paddock node | The AlpaSim driver |
 |---|---|---|
-| Where | `src/paddock/adapters/models/drivejepa/` | `tools/models/drivejepa/alpasim_driver/` |
+| Where | `src/paddock/adapters/models/drivejepa/` | outside this repo |
 | What it is | a `Policy` behind paddock's HTTP node | a native gRPC driver AlpaSim's runtime calls directly |
 | Benchmarks | NAVSIM, KITScenes, nuScenes, neuroNCAP, Bench2Drive, and AlpaSim through paddock's bridge | AlpaSim only, and **not through paddock** |
 | Weights | the released checkpoint | **retrained** on Physical AI AV (adapter 0.1.7) |
@@ -33,9 +33,7 @@ near the end. Apart from that section, this page is about the AlpaSim driver at
 version 0.1.7, which is the only place the retrained weights run. AlpaSim is a closed-loop test: the
 model's plan steers a simulated car, and the next camera frame it sees depends
 on where that plan took it. The first 3.0 s of each scene replay the recorded
-drive (the warm-up); at the handover the model takes control. How to launch the
-driver is in
-[its README](../../tools/models/drivejepa/alpasim_driver/README.md).
+drive (the warm-up); at the handover the model takes control.
 
 ---
 
