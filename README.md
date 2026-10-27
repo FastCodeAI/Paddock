@@ -133,10 +133,10 @@ was measured the same way as the rest of its column.
   `CURV_SCALE` fix. Drive-JEPA's nuScenes cell is the camera-blind run from
   before #62. OpenPilot's comma2k19 row was not run at the pinned sha.
 - **R — run differently from the rest of its column, so not ranked against it.**
-  Bench2Drive at the model's native inference rate over 50 routes, where
-  the others run at 20 Hz over the historical 24; those gains are
-  partly more exposure. OpenPilot's Bench2Drive cell is an unassisted estimate
-  rebuilt from assisted recordings. Alpamayo on AlpaSim drove 4 cameras on 10 of the 30
+  Bench2Drive at the model's native inference rate, where the others run at
+  20 Hz over the same 50 routes; those gains are partly more exposure.
+  OpenPilot's Bench2Drive cell is an unassisted estimate rebuilt from assisted
+  recordings. Alpamayo on AlpaSim drove 4 cameras on 10 of the 30
   scenes, METEOR 6 cameras on all 30, and AutoE2E 6 pinhole cameras at its training field of view on all 30, through paddock's bridge.
 - **Ranked, though fed what the model is built for.** NAVSIM cells marked 10 Hz
   get nuPlan's 10 Hz frames, where 2 Hz models such as Drive-JEPA get OpenScene's

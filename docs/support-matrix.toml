@@ -151,7 +151,7 @@ comma2k19 = { run = "comma2k19/visionpilot/20260916T012719-03350c" }
 nuplan = { run = "nuplan/visionpilot/20260917T220044-97873a" }
 navsim = { run = "navsim/visionpilot/20260902T175642-df5291" }
 navsim_v1 = { run = "navsim_v1/visionpilot/20260911T083323-c07583" }
-bench2drive = { value = 49.85, source = "docs/benchmarks/bench2drive.md" }
+bench2drive = { run = "bench2drive/visionpilot/pooled50-40c29d24c37d542a-d94009" }
 neuroncap = { run = "neuroncap/visionpilot/20260905T121810-155d36" }
 alpasim = { run = "alpasim/visionpilot/legacy-visionpilot_v2_30scenes" }
 
@@ -188,6 +188,6 @@ comma2k19 = { run = "comma2k19/constant_velocity/20260916T162837-b89038" }
 nuplan = { run = "nuplan/constant_velocity/20260917T214417-f827db" }
 navsim = { run = "navsim/constant_velocity/20260902T175923-feba73" }
 navsim_v1 = { run = "navsim_v1/constant_velocity/20260911T034553-8f28ac" }
-bench2drive = { run = "bench2drive/constant_velocity/20260908T084921-804913" }
+bench2drive = { run = "bench2drive/constant_velocity/pooled50-3mps-40c29d24c37d542a-02b6ac" }
 neuroncap = { value = 0, source = "docs/benchmarks/neuroncap.md", note = "by construction" }
 alpasim = { run = "alpasim/constant_velocity/legacy-cv_023_20hz_30scenes" }
