@@ -7,6 +7,7 @@
     python -m tools.gate_subsets alpasim     --suites <alpasim>/data/scenes/sim_suites.csv --scene-cache <scene_cache>
     python -m tools.gate_subsets kitscenes   --samples <full KITScenes run>/samples.jsonl
     python -m tools.gate_subsets quick_closed --routes <Bench2Drive>/leaderboard/data/bench2drive220.xml
+    python -m tools.gate_subsets alpasim_replace --suites <alpasim>/data/scenes/sim_suites.csv --scene-cache <scene_cache>
 
 Each writes `tools/gate_smoke/<name>.toml` (AlpaSim also its scene set), with the
 rule in its header. The rule, everywhere (agreed 2026-10-22):
@@ -45,7 +46,7 @@ for _p in (_ROOT / "src", _ROOT):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from tools.gate import SMOKE_DIR, balanced_pick  # noqa: E402
+from tools.gate import SMOKE_DIR, balanced_pick, load_subset  # noqa: E402
 
 #: The seed of every draw made on 2026-10-22.
 SEED = 20261022
@@ -485,6 +486,119 @@ def alpasim_group(turn_deg: float, speed_mps: float) -> str:
     return f"{maneuver}/{speed_band(speed_mps)}"
 
 
+#: The scene list the AlpaSim driver profiles hand the wizard (`harness.DRIVER_PROFILES`,
+#: `scenes_csv`): the wizard looks a scene up there only, and one outside it fails with
+#: "Failed to find scenes" (2 of the gate's 10 on 2026-10-27, though both were on disk).
+ALPASIM_CATALOG = "public_2601_30scenes_26p01.csv"
+
+
+def alpasim_catalog() -> set[str]:
+    from paddock.adapters.benchmarks.alpasim.harness import SCENES_DIR
+
+    with (SCENES_DIR / ALPASIM_CATALOG).open() as handle:
+        return {r["scene_id"] for r in csv.DictReader(handle)}
+
+
+def _alpasim_groups(
+    suites_csv: Path, scene_cache: Path, only: set[str] | None = None
+) -> dict[str, list[str]]:
+    """The suite's scenes on disk (and in `only`, when given), grouped by `alpasim_group`."""
+    with suites_csv.open() as handle:
+        uuids = {
+            r["scene_id"]: r["uuid"] for r in csv.DictReader(handle) if r["test_suite_id"] == ALPASIM_SUITE
+        }
+    groups: dict[str, list[str]] = {}
+    for scene, uuid in sorted(uuids.items()):
+        usdz = scene_cache / "all-usdzs" / f"{uuid}.usdz"
+        if (only is None or scene in only) and usdz.is_file():
+            groups.setdefault(alpasim_group(*alpasim_drive(usdz)), []).append(scene)
+    return groups
+
+
+def _write_alpasim(
+    picked: dict[str, list[str]], header: str, pool_note: str, directory: Path, date: str, seed: int
+) -> list[Path]:
+    from paddock.adapters.benchmarks.alpasim.harness import SCENES_DIR
+
+    n = sum(len(v) for v in picked.values())
+    # Group by group, as the subset file lists them: the gate's tests compare the two in order.
+    ids = [i for group in sorted(picked) for i in picked[group]]
+    scene_set = SCENES_DIR / f"{ALPASIM_SCENE_SET}.yaml"
+    scene_set.write_text(
+        "# The regression gate's AlpaSim scenes. "
+        + header.replace("\n", "\n# ")
+        + f"\n# tools/gate_smoke/alpasim.toml lists the same {n}; tests/test_gate.py holds them equal.\n"
+        f"suite: {ALPASIM_SUITE}\n"
+        f"selection: {pool_note}\n"
+        "scenes:\n" + "".join(f"- {s}\n" for s in ids)
+    )
+    return [
+        scene_set,
+        write_subset(
+            "alpasim",
+            f"AlpaSim smoke tier: {header}\n"
+            f"Run as the scene set {ALPASIM_SCENE_SET} (adapters/benchmarks/alpasim/scenes/),\n"
+            "which the smoke's derived config pins as [benchmarks.alpasim] scene_set, so a site\n"
+            "whose own scene_set is another still runs these.",
+            {"bench": "alpasim", "unit": "scene", "seed": seed, "count": n, "scene_set": ALPASIM_SCENE_SET},
+            picked,
+            directory,
+            date=date,
+            seed=seed,
+        ),
+    ]
+
+
+def replace_unrunnable_alpasim(
+    suites_csv: Path, scene_cache: Path, directory: Path = SMOKE_DIR
+) -> list[Path]:
+    """Swap each gate scene the wizard cannot find for one it can, and keep the rest.
+
+    Only those are swapped, so the scenes a baseline already holds stay paired. A
+    replacement is a seeded pick, among scenes on disk and in `ALPASIM_CATALOG` that the
+    subset does not hold, from the swapped scene's own group, else from its own turn.
+    """
+    catalog = alpasim_catalog()
+    runnable = _alpasim_groups(suites_csv, scene_cache, only=catalog)
+    group_of = {scene: g for g, ids in runnable.items() for scene in ids}
+    subset = load_subset("alpasim", directory)
+    picked = {g: list(ids) for g, ids in subset.strata.items()}
+    held = set(subset.ids)
+    swaps = []
+    for group in sorted(subset.strata):
+        for scene in subset.strata[group]:
+            if scene in catalog:
+                continue
+            same = [c for c in runnable.get(group, []) if c not in held]
+            turn = group.split("/")[0]
+            near = [c for g, ids in runnable.items() if g.split("/")[0] == turn for c in ids if c not in held]
+            if not (same or near):
+                raise SystemExit(f"no runnable {turn} scene left to replace {scene} ({group})")
+            new = random.Random(f"{ALPASIM_SEED}:replace:{scene}").choice(sorted(same or near))
+            picked[group].remove(scene)
+            picked.setdefault(group_of[new], []).append(new)
+            held.add(new)
+            swaps.append(f"{scene} ({group}) -> {new} ({group_of[new]})")
+    picked = {g: sorted(ids) for g, ids in picked.items() if ids}
+    header = (
+        f"the 10 drawn on {ALPASIM_DATE} (seed {ALPASIM_SEED}) from the 50 public_2601 scenes\n"
+        "downloaded on shakaal, by turn and speed, with the ones AlpaSim's wizard could not run\n"
+        f"swapped on {ALPASIM_DATE} for runnable ones, same group or else same turn: they were not in\n"
+        f"{ALPASIM_CATALOG}, the scene list the driver profiles hand the wizard.\n"
+        + "".join(f"  {line}\n" for line in swaps)
+        + "The pool is what had been downloaded, not a random sample of the suite; the list's\n"
+        "30 scenes are the ones behind the published 30-scene AlpaSim results."
+    )
+    return _write_alpasim(
+        picked,
+        header,
+        f"10 by turn and speed, seed {ALPASIM_SEED}; {len(swaps)} swapped to runnable scenes",
+        directory,
+        ALPASIM_DATE,
+        ALPASIM_SEED,
+    )
+
+
 def draw_alpasim(suites_csv: Path, scene_cache: Path, n: int = 10, directory: Path = SMOKE_DIR) -> list[Path]:
     """The gate's AlpaSim scenes, drawn from the suite's scenes already in `scene_cache`.
 
@@ -500,11 +614,8 @@ def draw_alpasim(suites_csv: Path, scene_cache: Path, n: int = 10, directory: Pa
         uuids = {
             r["scene_id"]: r["uuid"] for r in csv.DictReader(handle) if r["test_suite_id"] == ALPASIM_SUITE
         }
-    groups: dict[str, list[str]] = {}
-    for scene, uuid in sorted(uuids.items()):
-        usdz = scene_cache / "all-usdzs" / f"{uuid}.usdz"
-        if usdz.is_file():
-            groups.setdefault(alpasim_group(*alpasim_drive(usdz)), []).append(scene)
+    # Only scenes the wizard can run (`ALPASIM_CATALOG`) as well as on disk.
+    groups = _alpasim_groups(suites_csv, scene_cache, only=alpasim_catalog())
     pool = sum(len(v) for v in groups.values())
     picked = balanced_pick(groups, n, ALPASIM_SEED)
     # Group by group, as the subset file lists them: the gate's tests compare the two in order.
@@ -675,6 +786,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--scene-cache", type=Path, required=True, help="[benchmarks.alpasim] scene_cache")
     p = sub.add_parser("kitscenes")
     p.add_argument("--samples", type=Path, required=True)
+    p = sub.add_parser("alpasim_replace")
+    p.add_argument("--suites", type=Path, required=True)
+    p.add_argument("--scene-cache", type=Path, required=True, help="[benchmarks.alpasim] scene_cache")
     p = sub.add_parser("quick_closed")
     p.add_argument("--routes", type=Path, required=True)
     args = ap.parse_args(argv)
@@ -688,6 +802,8 @@ def main(argv: list[str] | None = None) -> int:
         written = [draw_bench2drive(args.routes)]
     elif args.bench == "alpasim":
         written = draw_alpasim(args.suites, args.scene_cache)
+    elif args.bench == "alpasim_replace":
+        written = replace_unrunnable_alpasim(args.suites, args.scene_cache)
     elif args.bench == "quick_closed":
         written = draw_quick_closed(args.routes)
     else:

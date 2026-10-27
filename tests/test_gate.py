@@ -884,7 +884,8 @@ def test_an_alpasim_scenes_turn_and_speed_come_from_its_recorded_drive(tmp_path:
 
 def test_the_alpasim_draw_takes_only_scenes_on_disk(tmp_path: Path, monkeypatch) -> None:
     """AlpaSim fetches a missing scene from a gated dataset at run time; the gate's
-    account has no token for it, so only downloaded scenes may be drawn."""
+    account has no token for it, so only downloaded scenes may be drawn. And only ones
+    on the drivers' scene list (`ALPASIM_CATALOG`), or the wizard cannot find them."""
     import paddock.adapters.benchmarks.alpasim.harness as harness
     from tools import gate_subsets
 
@@ -897,14 +898,74 @@ def test_the_alpasim_draw_takes_only_scenes_on_disk(tmp_path: Path, monkeypatch)
         rows.append(f"public_2601,clipgt-on-disk-{i},u{i}")
         _usdz(cache / "all-usdzs" / f"u{i}.usdz", headings, speed)
     rows.append("public_2601,clipgt-not-downloaded,u9")
+    rows.append("public_2601,clipgt-not-listed,u8")
+    _usdz(cache / "all-usdzs" / "u8.usdz", [0.0] * 50, 10.0)
     suites = tmp_path / "sim_suites.csv"
     suites.write_text("\n".join(rows) + "\n")
     monkeypatch.setattr(harness, "SCENES_DIR", tmp_path)
+    listed = {f"clipgt-on-disk-{i}" for i in range(3)} | {"clipgt-not-downloaded"}
+    monkeypatch.setattr(gate_subsets, "alpasim_catalog", lambda: listed)
     gate_subsets.draw_alpasim(suites, cache, n=3, directory=tmp_path)
     subset = gate.load_subset("alpasim", tmp_path)
     assert sorted(subset.strata) == ["left/medium", "straight/fast", "straight/slow"]
     assert sorted(subset.ids) == ["clipgt-on-disk-0", "clipgt-on-disk-1", "clipgt-on-disk-2"]
     assert "not-downloaded" not in (tmp_path / "public_2601_gate10.yaml").read_text()
+    assert "not-listed" not in (tmp_path / "public_2601_gate10.yaml").read_text()
+
+
+def test_every_gate_alpasim_scene_is_on_the_scene_list_the_drivers_use() -> None:
+    """2026-10-27: 2 of the 10 were on disk but not in the list the driver profiles hand the
+    wizard, which then failed with "Failed to find scenes", and the baseline held 8."""
+    import csv
+
+    from paddock.adapters.benchmarks.alpasim.harness import DRIVER_PROFILES, SCENES_DIR
+
+    gate_scenes = set(gate.load_subset("alpasim").ids) | set(gate.load_subset("alpasim_quick").ids)
+    lists = {p.scenes_csv for p in DRIVER_PROFILES.values() if p.scenes_csv}
+    assert lists, "no driver profile pins a scene list"
+    for name in lists:
+        with (SCENES_DIR / name).open() as handle:
+            listed = {r["scene_id"] for r in csv.DictReader(handle)}
+        assert gate_scenes <= listed, f"not in {name}: {sorted(gate_scenes - listed)}"
+
+
+def test_an_unrunnable_alpasim_scene_is_swapped_within_its_group_else_its_turn(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Only the scenes the wizard cannot run change, so a baseline keeps the rest paired."""
+    import paddock.adapters.benchmarks.alpasim.harness as harness
+    from tools import gate_subsets
+
+    cache = tmp_path / "cache"
+    (cache / "all-usdzs").mkdir(parents=True)
+    drives = {  # scene: (headings, speed) -> its group
+        "keep": ([0.0] * 50, 10.0),  # straight/fast, runnable
+        "gone-straight": ([0.0] * 50, 10.0),  # straight/fast, not runnable
+        "swap-straight": ([0.0] * 50, 11.0),  # straight/fast, runnable
+        "gone-left-slow": ([i * 2.0 for i in range(50)], 1.0),  # left/slow, not runnable
+        "swap-left-medium": ([i * 2.0 for i in range(50)], 5.0),  # left/medium, runnable
+    }
+    rows = ["test_suite_id,scene_id,uuid"]
+    for i, (scene, (headings, speed)) in enumerate(drives.items()):
+        rows.append(f"public_2601,{scene},u{i}")
+        _usdz(cache / "all-usdzs" / f"u{i}.usdz", headings, speed)
+    suites = tmp_path / "sim_suites.csv"
+    suites.write_text("\n".join(rows) + "\n")
+    (tmp_path / "alpasim.toml").write_text(
+        'bench = "alpasim"\nunit = "scene"\ncount = 3\nscene_set = "public_2601_gate10"\n[strata]\n'
+        '"straight/fast" = ["gone-straight", "keep"]\n"left/slow" = ["gone-left-slow"]\n'
+    )
+    monkeypatch.setattr(
+        gate_subsets, "alpasim_catalog", lambda: {"keep", "swap-straight", "swap-left-medium"}
+    )
+    monkeypatch.setattr(harness, "SCENES_DIR", tmp_path)
+    gate_subsets.replace_unrunnable_alpasim(suites, cache, tmp_path)
+    subset = gate.load_subset("alpasim", tmp_path)
+    assert subset.strata == {"left/medium": ["swap-left-medium"], "straight/fast": ["keep", "swap-straight"]}
+    assert (
+        "gone-straight (straight/fast) -> swap-straight (straight/fast)"
+        in (tmp_path / "alpasim.toml").read_text()
+    )
 
 
 def test_a_subset_without_its_own_baseline_uses_its_benchmarks() -> None:
