@@ -471,6 +471,12 @@ the check that the site's baselines are sound.
   the same group, or else the same turn (`python -m tools.gate_subsets
   alpasim_replace`), keeping the other 8. A test checks every gate scene is on
   every pinned list.
+  **A scene must also let a model drive.** On two more of the 10 the run ended
+  at once: on `04749bb9` constant velocity and Drive-JEPA both left the road
+  within 0.5 s, and on `791d68ce` both left it at their first step. Every
+  model scores the same there, so they were swapped the same way.
+  `ALPASIM_UNUSABLE` in `tools/gate_subsets.py` lists them with why; the quick
+  tier's one scene, which was `04749bb9`, was redrawn from the new 10.
   **Another site must download these 10 once** before its gate can run AlpaSim:
   the scenes listed in `public_2601_gate10.yaml`, into its
   `[benchmarks.alpasim] scene_cache`, with a Hugging Face token that has access

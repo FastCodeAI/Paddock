@@ -35,6 +35,7 @@ import json
 import math
 import pickle
 import random
+import re
 import sys
 import xml.etree.ElementTree as ET
 import zipfile
@@ -491,6 +492,13 @@ def alpasim_group(turn_deg: float, speed_mps: float) -> str:
 #: "Failed to find scenes" (2 of the gate's 10 on 2026-10-27, though both were on disk).
 ALPASIM_CATALOG = "public_2601_30scenes_26p01.csv"
 
+#: Scenes the wizard runs that measure nothing, with why: the run ends before any model
+#: has driven, so every model scores the same. `replace_unusable_alpasim` swaps them out.
+ALPASIM_UNUSABLE = {
+    "clipgt-04749bb9-9b37-495b-bed0-77f0e33ac7da": "constant velocity and Drive-JEPA both leave the road within 0.5 s",
+    "clipgt-791d68ce-fe38-460a-b11d-c19a68f4c8b1": "constant velocity and Drive-JEPA both leave the road at their first step",
+}
+
 
 def alpasim_catalog() -> set[str]:
     from paddock.adapters.benchmarks.alpasim.harness import SCENES_DIR
@@ -549,25 +557,33 @@ def _write_alpasim(
     ]
 
 
-def replace_unrunnable_alpasim(
-    suites_csv: Path, scene_cache: Path, directory: Path = SMOKE_DIR
-) -> list[Path]:
-    """Swap each gate scene the wizard cannot find for one it can, and keep the rest.
+def replace_unusable_alpasim(suites_csv: Path, scene_cache: Path, directory: Path = SMOKE_DIR) -> list[Path]:
+    """Swap each gate scene the wizard cannot find, or that is in `ALPASIM_UNUSABLE`, and keep the rest.
 
     Only those are swapped, so the scenes a baseline already holds stay paired. A
     replacement is a seeded pick, among scenes on disk and in `ALPASIM_CATALOG` that the
-    subset does not hold, from the swapped scene's own group, else from its own turn.
+    subset does not hold and never held, from the swapped scene's own group, else from its
+    own turn. Earlier swaps are read back from the subset's header, so it lists every one.
     """
     catalog = alpasim_catalog()
+    off_list = f"not in {ALPASIM_CATALOG}, so the wizard cannot find it"
     runnable = _alpasim_groups(suites_csv, scene_cache, only=catalog)
     group_of = {scene: g for g, ids in runnable.items() for scene in ids}
     subset = load_subset("alpasim", directory)
     picked = {g: list(ids) for g, ids in subset.strata.items()}
-    held = set(subset.ids)
-    swaps = []
+    # A swap line of an earlier run, `  <old> (<group>) -> <new> (<group>)[: <why>]`; the
+    # first run (2026-10-27) wrote no why, and its scenes were the ones off the list.
+    earlier = re.findall(
+        r"^#   ((\S+) \(\S+\) -> \S+ \(\S+\))(?:: (.+))?$", (directory / "alpasim.toml").read_text(), re.M
+    )
+    swaps = [
+        f"{line}: {why or (off_list if old not in catalog else 'no reason recorded')}"
+        for line, old, why in earlier
+    ]
+    held = set(subset.ids) | {old for _, old, _ in earlier} | set(ALPASIM_UNUSABLE)
     for group in sorted(subset.strata):
         for scene in subset.strata[group]:
-            if scene in catalog:
+            if scene in catalog and scene not in ALPASIM_UNUSABLE:
                 continue
             same = [c for c in runnable.get(group, []) if c not in held]
             turn = group.split("/")[0]
@@ -578,13 +594,15 @@ def replace_unrunnable_alpasim(
             picked[group].remove(scene)
             picked.setdefault(group_of[new], []).append(new)
             held.add(new)
-            swaps.append(f"{scene} ({group}) -> {new} ({group_of[new]})")
+            swaps.append(
+                f"{scene} ({group}) -> {new} ({group_of[new]}): {ALPASIM_UNUSABLE.get(scene, off_list)}"
+            )
     picked = {g: sorted(ids) for g, ids in picked.items() if ids}
     header = (
         f"the 10 drawn on {ALPASIM_DATE} (seed {ALPASIM_SEED}) from the 50 public_2601 scenes\n"
-        "downloaded on shakaal, by turn and speed, with the ones AlpaSim's wizard could not run\n"
-        f"swapped on {ALPASIM_DATE} for runnable ones, same group or else same turn: they were not in\n"
-        f"{ALPASIM_CATALOG}, the scene list the driver profiles hand the wizard.\n"
+        "downloaded on shakaal, by turn and speed, with each scene that could not be used\n"
+        "swapped for a seeded pick from its own group, else its own turn, among the scenes on\n"
+        f"disk and in {ALPASIM_CATALOG} (the scene list the driver profiles hand the wizard):\n"
         + "".join(f"  {line}\n" for line in swaps)
         + "The pool is what had been downloaded, not a random sample of the suite; the list's\n"
         "30 scenes are the ones behind the published 30-scene AlpaSim results."
@@ -592,7 +610,7 @@ def replace_unrunnable_alpasim(
     return _write_alpasim(
         picked,
         header,
-        f"10 by turn and speed, seed {ALPASIM_SEED}; {len(swaps)} swapped to runnable scenes",
+        f"10 by turn and speed, seed {ALPASIM_SEED}; {len(swaps)} swapped for usable scenes",
         directory,
         ALPASIM_DATE,
         ALPASIM_SEED,
@@ -803,7 +821,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.bench == "alpasim":
         written = draw_alpasim(args.suites, args.scene_cache)
     elif args.bench == "alpasim_replace":
-        written = replace_unrunnable_alpasim(args.suites, args.scene_cache)
+        written = replace_unusable_alpasim(args.suites, args.scene_cache)
     elif args.bench == "quick_closed":
         written = draw_quick_closed(args.routes)
     else:

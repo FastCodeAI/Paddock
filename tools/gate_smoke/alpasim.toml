@@ -1,9 +1,11 @@
 # AlpaSim smoke tier: the 10 drawn on 2026-10-27 (seed 20261027) from the 50 public_2601 scenes
-# downloaded on shakaal, by turn and speed, with the ones AlpaSim's wizard could not run
-# swapped on 2026-10-27 for runnable ones, same group or else same turn: they were not in
-# public_2601_30scenes_26p01.csv, the scene list the driver profiles hand the wizard.
-#   clipgt-68e53160-f9d1-4070-9434-bf50c55652d3 (left/slow) -> clipgt-bae463d3-655b-4b54-ac8e-1c982219d829 (left/medium)
-#   clipgt-49e0ea24-2925-4fae-b590-3f725c1063d5 (right/medium) -> clipgt-cdd9448c-8808-46b1-85c1-883bcc5862ff (right/medium)
+# downloaded on shakaal, by turn and speed, with each scene that could not be used
+# swapped for a seeded pick from its own group, else its own turn, among the scenes on
+# disk and in public_2601_30scenes_26p01.csv (the scene list the driver profiles hand the wizard):
+#   clipgt-68e53160-f9d1-4070-9434-bf50c55652d3 (left/slow) -> clipgt-bae463d3-655b-4b54-ac8e-1c982219d829 (left/medium): not in public_2601_30scenes_26p01.csv, so the wizard cannot find it
+#   clipgt-49e0ea24-2925-4fae-b590-3f725c1063d5 (right/medium) -> clipgt-cdd9448c-8808-46b1-85c1-883bcc5862ff (right/medium): not in public_2601_30scenes_26p01.csv, so the wizard cannot find it
+#   clipgt-04749bb9-9b37-495b-bed0-77f0e33ac7da (straight/fast) -> clipgt-98dd56b2-3e60-49ec-9366-70b610dd93cc (straight/fast): constant velocity and Drive-JEPA both leave the road within 0.5 s
+#   clipgt-791d68ce-fe38-460a-b11d-c19a68f4c8b1 (straight/slow) -> clipgt-d2715023-a903-4e67-9b80-e6c76dbbbd99 (straight/slow): constant velocity and Drive-JEPA both leave the road at their first step
 # The pool is what had been downloaded, not a random sample of the suite; the list's
 # 30 scenes are the ones behind the published 30-scene AlpaSim results.
 # Run as the scene set public_2601_gate10 (adapters/benchmarks/alpasim/scenes/),
@@ -27,6 +29,6 @@ scene_set = "public_2601_gate10"
 "left/fast" = ["clipgt-e121e37d-b03f-4f25-aa09-5ba5b74b8afb"]
 "left/medium" = ["clipgt-bae463d3-655b-4b54-ac8e-1c982219d829", "clipgt-d1a25a99-0f02-4730-a076-96f067e92874"]
 "right/medium" = ["clipgt-cdd9448c-8808-46b1-85c1-883bcc5862ff"]
-"straight/fast" = ["clipgt-02e075b9-fd24-426b-971b-7cfcb2074cc9", "clipgt-04749bb9-9b37-495b-bed0-77f0e33ac7da"]
+"straight/fast" = ["clipgt-02e075b9-fd24-426b-971b-7cfcb2074cc9", "clipgt-98dd56b2-3e60-49ec-9366-70b610dd93cc"]
 "straight/medium" = ["clipgt-1acf2f5d-f674-408f-ba18-6aacb4f4c739", "clipgt-b44a4a44-0d00-4795-8a66-7acb0fdf46a2"]
-"straight/slow" = ["clipgt-791d68ce-fe38-460a-b11d-c19a68f4c8b1", "clipgt-8023dce5-c512-43b2-a946-45fa7c19ef9d"]
+"straight/slow" = ["clipgt-8023dce5-c512-43b2-a946-45fa7c19ef9d", "clipgt-d2715023-a903-4e67-9b80-e6c76dbbbd99"]
