@@ -319,6 +319,11 @@ class Observation:
     #: where a benchmark is set to give one: KITScenes' `route = "oracle"` sends the whole scene, as
     #: upstream AutoE2E's validation protocol matches its route to the logged drive. None everywhere else.
     route_trace: np.ndarray | None = None
+    #: The simulator's id for the scene being driven. Sent where a closed-loop source has one and a
+    #: model's behaviour is tied to it: AlpaSim sends it on request (bridge ``--send-scene-id``), and
+    #: Qwen-Drive seeds its sampling noise from it per scene, as its native AlpaSim driver did. None
+    #: everywhere else.
+    scene_id: str | None = None
     #: Frames that live on disk, loaded on first use instead of being carried.
     #:
     #: Open-loop benchmarks read from a local dataset, and the node is a
@@ -364,6 +369,7 @@ class Observation:
                 if body.get("route_trace") is not None
                 else None
             ),
+            scene_id=(str(body["scene_id"]) if body.get("scene_id") is not None else None),
         )
 
     def require_lidar2ego(self) -> np.ndarray:
@@ -434,7 +440,7 @@ class Observation:
         }
         if self.lidar2ego is not None:
             calibration["lidar2ego"] = np.asarray(self.lidar2ego).tolist()
-        return {
+        wire = {
             "images": {k: encode_image(v) for k, v in self.images.items()},
             "image_paths": dict(self.image_paths),
             "ego2world": np.asarray(self.ego2world).tolist(),
@@ -449,6 +455,10 @@ class Observation:
             "route_trace": (np.asarray(self.route_trace).tolist() if self.route_trace is not None else None),
             "calibration": calibration,
         }
+        # Only when set, so every producer that has no scene id sends what it sent before.
+        if self.scene_id is not None:
+            wire["scene_id"] = self.scene_id
+        return wire
 
     def pinhole(self, camera: str = "CAM_FRONT") -> Pinhole:
         image = self.image(camera)

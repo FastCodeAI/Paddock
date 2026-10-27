@@ -67,7 +67,57 @@ the recorded frames, poses and CAN bus, and at each plan:
 | NAVSIM v2 / v1 | `native_input_hz: 10` selects nuPlan's 10 Hz path (`[benchmarks.navsim] nuplan`): 16 observations over 1.5 s, frames picked every 0.5 s | 16 real poses with velocity, acceleration, yaw rate | NAVSIM's one-hot, round-tripped exactly | the model's own NAVSIM cameras (`cam_f0/l0/r0`) and history rate |
 | neuroNCAP | one 1600×900 frame per 0.1 s tick, three cameras rendered | from `ego2world` each tick | the engine's | the adapter plans every tick, as every other model here |
 | comma2k19 | 160 observations at 20 Hz per sample, one `/infer_sequence`; **one** camera, replicated into all three view slots | real, 8 s of 20 Hz pose; CAN speed, acceleration differenced | always STRAIGHT — the dataset ships no route | zero-shot on a rig nothing in the corpus resembles; see below |
+| AlpaSim | every 50 ms step, three f-theta cameras; frames picked 0.5 s apart, refused if off their slot | nearest 20 Hz step per 0.1 s row; forward and sideways speed, acceleration differenced with the turning term | from the route, held over three calls | the native driver's inputs; see [On AlpaSim](#on-alpasim-through-the-bridge) |
 | Bench2Drive | one frame per 20 Hz tick by default, and one per 10th tick in the native-rate campaign; the three trained views, `CAM_FRONT` / `CAM_FRONT_LEFT` / `CAM_FRONT_RIGHT` | from `ego2world` | route-derived | driven: 50 routes, DS 12.92 / RC 50.19, `results/bench2drive/qwendrive/pooled50-*`; `duration_s` averages 3457 s per route, the slowest row in that table. Re-driven at 2 Hz it scores 17.08 over the 49 routes that scored at both rates — [native-rate campaign](../benchmarks/bench2drive-native-rate.md) |
+
+## On AlpaSim, through the bridge
+
+`paddock run --model qwendrive --bench alpasim` drives the model on the settings
+and inputs of Qwen-Drive's native AlpaSim driver (adapter 0.1.4), so a run
+through paddock is the same experiment as the native runs. The settings are the
+`qwendrive` entry in `alpasim/harness.py`'s `DRIVER_PROFILES` and its driver
+config `paddock_bridge_qwendrive.yaml`: four f-theta cameras at 20 Hz (the
+fourth, the tele camera, is rendered as natively and never sent), a 3 s replayed
+warm-up with the driver called, 400 steps of 50 ms, the 30 scenes pinned to
+their 26.01 artifacts.
+
+A body carrying a scene id is how the node knows it is on AlpaSim; only that
+profile's bridge sends one. There the node builds its input the way the native
+driver did, not the way it does for the other benchmarks:
+
+| Input | On AlpaSim |
+|---|---|
+| when the model is called | every 1.5 s (30 steps) from the end of the warm-up, on a grid; between calls the bridge re-times the last plan and re-anchors it to the car |
+| what the node hears | every 50 ms step: warm-up frames and the steps between calls go to `/observe`. A frame cadence other than 50 ms is refused |
+| frames | the newest, and the frame nearest each of 0.5, 1.0, 1.5 s before it; a frame more than 50 ms off its slot is refused rather than stood in for |
+| ego rows | the recorded step nearest each 0.1 s slot (not interpolated), placed by the full 3-D relative pose |
+| velocity | forward and sideways speed as the simulator reports them, each row in its own frame. AlpaSim reports zero velocity and yaw rate while it replays the warm-up; the bridge replaces those from the poses when they move faster than 1 m/s, so a car really standing still keeps its zero |
+| acceleration | the change in velocity over 0.1 s plus the turning term: forward `dv_fwd/dt − ω·v_lat`, sideways `dv_lat/dt + ω·v_fwd`. The simulator also reports an acceleration; it is not used, because the native driver did not use it |
+| command | from the route AlpaSim holds, by the native three-answer rule: the point 20 m along the route, the net heading change to it and the same change median-filtered must all lie more than 3 m to one side to say LEFT or RIGHT. No route, or answers on both sides, is "unknown" (one-hot unknown, text "straight") |
+| command hold | a new command must come back on three model calls in a row before the model is told it. The hold is updated only when the model is called, as natively, so a turn reaches the model 3 s after the route first shows it, and a change that lasts less than three calls (4.5 s of driving) never reaches it. This is kept on purpose because it is what the native runs did; the native code's comment says 150 ms, which is not what it does |
+| noise seed | `42 + sha256(scene id)[:8] mod 1,000,000`, per scene, as natively. `QWENDRIVE_SEED` is not read on AlpaSim |
+| output | all 50 points, 0.1 s apart (the profile sets the bridge's `--waypoint-dt 0.1`, and the bridge refuses a plan spaced otherwise) |
+
+A short, zero or backwards plan goes to the simulator as it is. The native
+driver refused any plan reaching less than 1.5 m forward, to catch output left
+in the model's internal 0–1 units, and that refusal ended three of its scenes
+where the car was simply braking to a stop. Here the units are checked once,
+when the node starts (below), and a plan reaching less than 1.5 m is logged
+with the speed it was planned at and counted in `/diagnostics`
+(`short_plans_total`). Each call's command, the route's own command before the
+hold, the seed, the speed and the forward reach go back in the plan's `extras`
+and land in the scene's per-replan log.
+
+Differences from the native runs that remain:
+
+- **Attention.** Paddock runs `sdpa`; the native runs used
+  `flash_attention_2`. Native measured the two bit-exact on one call only.
+- **Python.** Paddock's environment is Python 3.12, the vendor's; the native
+  environment was 3.10.
+- **The first two calls.** Natively the model was also called at warm-up steps
+  0 and 30, whose plans AlpaSim does not drive; here those frames are observed.
+  The command hold therefore starts at the first call after the warm-up rather
+  than at step 30.
 
 ## Filling three views from one camera
 
@@ -127,7 +177,14 @@ missing input rather than to planning.
 
 `QWENDRIVE_CHECKPOINT`, `QWENDRIVE_PLANNER`, `QWENDRIVE_MODE`,
 `QWENDRIVE_VIEWS`, `QWENDRIVE_NUM_SAMPLES`, `QWENDRIVE_ATTN` and
-`QWENDRIVE_SEED` are the knobs; `model.yaml` sets all but the last. `num_samples > 1` executes the medoid draw;
+`QWENDRIVE_SEED` are the knobs; `model.yaml` sets all but the last.
+`load()` checks the planner's weights against the released sha256 for its
+directory name (`planner-sft` `dcf5989e…`, `planner-rl` `74478eb7…`; the two
+ship identical configs), then makes one call at the real input shape before the
+node reports ready. That call pays the first call's ~14 s of kernel set-up off
+the simulator's clock, and it is the units check: three grey views and a car
+that has driven straight at 10 m/s must get a plan reaching at least 10 m
+forward, or the node refuses to start. `num_samples > 1` executes the medoid draw;
 the vendor's best-of-N figures select with the ground truth and are not
 reproducible here.
 

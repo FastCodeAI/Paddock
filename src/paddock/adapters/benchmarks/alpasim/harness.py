@@ -166,6 +166,17 @@ DEFAULT_PROFILE = DriverProfile()
 #: the cached plan re-timed and re-anchored in between; warm-up frames go to
 #: /observe, and the ego history is padded straight back from the first pose
 #: (see replan_rhythm.py). Same 30 scenes, warm-up and control step as drivejepa.
+#:
+#: qwendrive: the settings of Qwen-Drive's native AlpaSim driver (adapter 0.1.4)
+#: -- four f-theta cameras at 20 Hz, 3.0 s warm-up with the driver called, 400
+#: steps (paddock_bridge_qwendrive.yaml) -- and its inputs. The three cameras it
+#: reads are renamed to the node's names and the fourth is not sent. The node is
+#: asked every 1.5 s on a grid, as the native driver asked it, and hears every
+#: other tick through /observe, so its frames 0.5 s apart and ego rows 0.1 s
+#: apart all exist. canbus carries forward and sideways speed and yaw rate,
+#: with the forced replay's zeros replaced from the poses; the route and the
+#: scene id ride along for the node's command and noise seed. Plans come back
+#: as 50 points 0.1 s apart. Same 30 scenes as drivejepa.
 DRIVER_PROFILES: dict[str, DriverProfile] = {
     "drivejepa": DriverProfile(
         driver="paddock_bridge_drivejepa",
@@ -220,6 +231,36 @@ DRIVER_PROFILES: dict[str, DriverProfile] = {
             "--frame-interval-us",
             "50000",
             "--pad-ego-history",
+        ),
+        scenes_csv="public_2601_30scenes_26p01.csv",
+        replan_log=True,
+    ),
+    "qwendrive": DriverProfile(
+        driver="paddock_bridge_qwendrive",
+        bridge_args=(
+            "--camera-name",
+            "camera_front_wide_120fov=CAM_FRONT",
+            "--camera-name",
+            "camera_cross_left_120fov=CAM_FRONT_LEFT",
+            "--camera-name",
+            "camera_cross_right_120fov=CAM_FRONT_RIGHT",
+            "--named-cameras-only",
+            # The native driver's replan period: 30 control steps.
+            "--replan-every-us",
+            "1500000",
+            # Both must equal paddock_bridge_qwendrive.yaml's control step and
+            # force_gt_duration_us; a test checks they do.
+            "--frame-interval-us",
+            "50000",
+            "--force-gt-us",
+            "3000000",
+            # The node returns all 50 points it plans, 0.1 s apart, on AlpaSim.
+            "--waypoint-dt",
+            "0.1",
+            "--observe-between-replans",
+            "--canbus-ego-frame",
+            "--send-route",
+            "--send-scene-id",
         ),
         scenes_csv="public_2601_30scenes_26p01.csv",
         replan_log=True,

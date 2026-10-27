@@ -101,7 +101,7 @@ model, since AlpaSim renders it after scoring and it changes no number. A
 model without an entry gets exactly what every model got before profiles existed, and `run.json` records a profile under `config`
 only when one is used, so the run id changes with it.
 
-Two models have a profile. Drive-JEPA's reproduces the settings of
+Three models have a profile. Drive-JEPA's reproduces the settings of
 Drive-JEPA's native AlpaSim driver (adapter 0.1.4b) so a run through paddock
 can be checked against that driver's runs: one front camera at 20 Hz, a 3.0 s
 replayed warm-up, the shared 20 Hz scoring config and the 30 scenes pinned to
@@ -128,6 +128,28 @@ model was called or its plan reused, the motion-history rows that fall on
 padding, the image frames the node repeated, and the plan's length and spacing.
 What this means for AutoE2E's inputs, and what is not yet known, is in
 [docs/models/autoe2e.md](../models/autoe2e.md#on-alpasim-through-the-bridge).
+
+Qwen-Drive's reproduces the settings and inputs of its native AlpaSim driver
+(adapter 0.1.4): four f-theta cameras at 20 Hz with a 30 ms shutter, the
+`hyperion_8_1` bonnet mask, a 3.0 s warm-up with the driver called, 400 steps
+(`configs/driver/paddock_bridge_qwendrive.yaml`), and the same 30 pinned scenes.
+It uses the same rhythm with a 1.5 s grid, plus switches that change what a body
+carries. Each is off unless a profile passes it, and with all of them off every
+body is byte-for-byte what it was before they existed (`tests/test_bridge_switches.py`
+pins that for the default, Drive-JEPA and AutoE2E profiles):
+
+| Flag | What the bridge does |
+|---|---|
+| `--observe-between-replans` | after the warm-up, also sends every step that is not a replan to `/observe`, so a node that keeps its own history at the control step has every step |
+| `--canbus-ego-frame` | canbus[13] and [14] carry the forward and sideways speed in the car's frame, instead of [13] carrying the speed's magnitude; [12] stays the yaw rate. While AlpaSim replays the warm-up it reports velocity and yaw rate as exactly zero; when the last two poses move faster than 1 m/s, those are replaced from the poses |
+| `--canbus-acceleration` | canbus[7] and [8] carry the simulator's own forward and sideways acceleration (Qwen-Drive's profile leaves this off) |
+| `--send-route` | sends the route AlpaSim holds as `route_xy`, in the car's frame at the route's own time, as AlpaSim sends it |
+| `--send-scene-id` | sends the scene id as `scene_id` |
+| `--named-cameras-only` | decodes and sends only the cameras named with `--camera-name` |
+| `--waypoint-dt 0.1` | (an existing flag) the plan's spacing; Qwen-Drive returns all 50 of its points 0.1 s apart |
+
+What the node does with these, and what still differs from the native runs, is
+in [docs/models/qwendrive.md](../models/qwendrive.md#on-alpasim-through-the-bridge).
 
 ## Configuration
 

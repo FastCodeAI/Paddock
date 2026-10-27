@@ -19,6 +19,13 @@ is the same computation as Drive-JEPA's `_rebuild`, built from the same geometry
 helpers so the two cannot drift apart. Drive-JEPA's own planner is not involved:
 its frame pairing, speed and command handling stay in `drivejepa_rhythm`.
 
+**Observing between replans** (``observe_between_replans``). Off, a node hears
+from the bridge only at replans once the warm-up is over. A node that keeps its
+own history at the control step (Qwen-Drive picks frames 0.5 s apart and ego
+rows 0.1 s apart from what it was sent) then finds holes where the ticks between
+replans were. On, every such tick's body goes to /observe as well, before the
+cached plan is answered.
+
 Warm-up frames go to /observe because AlpaSim replays the recorded drive during
 the warm-up and ignores the driver's plan (`events/controller.py`, the force-GT
 branch); a forward pass there would only cost time. The node still receives
@@ -194,6 +201,7 @@ class ReplanRhythmPlanner(PolicyPlanner):
         force_gt_us: int,
         frame_interval_us: int,
         pad_ego_history: bool = False,
+        observe_between_replans: bool = False,
         **translation: Any,
     ) -> None:
         super().__init__(policy_url, **translation)
@@ -208,6 +216,7 @@ class ReplanRhythmPlanner(PolicyPlanner):
         self._force_gt_us = int(force_gt_us)
         self._frame_interval_us = int(frame_interval_us)
         self._pad = bool(pad_ego_history)
+        self._observe_between = bool(observe_between_replans)
         self._sessions: dict[str, _Session] = {}
         self._lock = threading.Lock()
 
@@ -261,6 +270,11 @@ class ReplanRhythmPlanner(PolicyPlanner):
         row = {"tick": int(view.drive_count), "sim_time_us": int(time_now_us), "query_us": int(time_query_us)}
 
         if not in_warmup and not due:
+            observed = {}
+            if self._observe_between:
+                between, between_t_us = self.build_infer_body(view, time_now_us)
+                observed = {"sent_as": self.observe_frame(between), "frame_us": int(between_t_us)}
+                session.observed += 1
             result = rebuild_plan(session.plan, view, time_now_us) if session.plan is not None else None
             session.reused += 1
             self.log_row(
@@ -271,6 +285,7 @@ class ReplanRhythmPlanner(PolicyPlanner):
                     "plan_age_us": None if session.plan is None else int(time_now_us) - session.plan.t0_us,
                     "plan_waypoints": 0 if result is None else len(result.positions_in_rig),
                     "plan_dt_s": None if result is None else result.step_us / 1e6,
+                    **observed,
                 }
             )
             return result

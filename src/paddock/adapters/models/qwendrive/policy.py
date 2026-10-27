@@ -42,6 +42,32 @@ first six points, KITScenes truncates at 3 s, and comma2k19 scores whatever is
 offered against horizons it labels honestly -- so emitting the full 5 s costs
 those four nothing and is the only way the fifth second is scored at all.
 
+*AlpaSim.* A body that carries a scene id comes from AlpaSim's bridge under the
+qwendrive profile (`harness.DRIVER_PROFILES`), which sends every 20 Hz tick, the
+route, and forward and sideways speed in canbus. There the inputs are built the
+way Qwen-Drive's native AlpaSim driver built them, so a run through paddock is
+the same experiment as the native runs it is checked against:
+
+- ego rows are the recorded sample nearest each 0.1 s slot (not interpolated),
+  placed by the full 3-D relative pose;
+- acceleration is the change in each row's own-frame velocity over 0.1 s plus
+  the turning term (`alpasim_history`), not the simulator's value;
+- the command comes from the route by a three-answer rule (`route_command`) and
+  a new command must repeat on three model calls before it replaces the held
+  one (`CommandHold`). The native driver updated its hold only when it called
+  the model, every 1.5 s, so a turn reaches the model 3 s after the route first
+  shows it, and a change lasting less than three calls (4.5 s) never does; that
+  is kept on purpose, because it is what the native runs did;
+- a camera frame more than 10 % of 0.5 s off its slot is refused, as is a frame
+  cadence other than 50 ms;
+- the noise seed is derived from the scene id (`scene_seed`);
+- all 50 planned points go back, 0.1 s apart (`--waypoint-dt 0.1`).
+
+A short, zero or backwards plan is returned as it is, never refused: a car
+braking to a stop plans less than a metre ahead, and the native driver's guard
+against that ended scenes. It is counted in `diagnostics()` instead. Every other
+benchmark keeps the behaviour described above.
+
 The model's package (torch, transformers 5.14) exists only in its own
 environment and is imported inside `load()`. Everything that can be checked
 without it -- frame selection, pose resampling, command mapping, the output
@@ -50,9 +76,11 @@ grid -- is a module-level function so the tests can run in paddock's env.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import time
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -60,6 +88,7 @@ import numpy as np
 from paddock.policy.protocol import (
     CANBUS_ACCEL,
     CANBUS_VELOCITY,
+    CANBUS_YAW_RATE,
     Command,
     Observation,
     Policy,
@@ -130,6 +159,254 @@ DRIVING_COMMAND: dict[Command, tuple[float, float, float, float]] = {
     Command.RIGHT: (0.0, 0.0, 1.0, 0.0),
     Command.FOLLOW_REFERENCE: (0.0, 0.0, 0.0, 1.0),
 }
+
+
+# ---- AlpaSim: the native driver's inputs ---------------------------------
+
+#: The plan's spacing on AlpaSim: every point the model emits, 0.1 s apart.
+ALPASIM_WAYPOINT_DT = 0.1
+#: AlpaSim's control step; the bridge sends one body per step.
+ALPASIM_CADENCE_S = 0.05
+#: A picked frame, a frame cadence or an ego row may be off its slot by this
+#: fraction of the slot spacing (the native driver's tolerance) and no more.
+ALPASIM_SPACING_TOLERANCE = 0.10
+#: Route -> command (`route_command`): the lookahead along the route, and how far
+#: off the straight line each of the three answers must be to call it a turn.
+ROUTE_LOOKAHEAD_M = 20.0
+ROUTE_LATERAL_M = 3.0
+#: Below this the route's first segment is too short to give a heading.
+ROUTE_TANGENT_MIN_M = 1.0
+#: Median window over the route's turn rate, so a lane hop cannot carry a turn.
+ROUTE_MEDIAN_WIDTH = 5
+#: Model calls a new command must repeat on before it replaces the held one.
+COMMAND_DWELL_CALLS = 3
+#: The four commands, as the model's text command (0 straight, 1 left, 2 right)
+#: and its ego-status one-hot [left, straight, right, unknown]. AMBIGUOUS is the
+#: route saying nothing usable: unknown in the one-hot, straight in the text,
+#: which has no "unknown".
+ROUTE_COMMANDS: dict[str, tuple[int, tuple[float, float, float, float]]] = {
+    "STRAIGHT": (0, (0.0, 1.0, 0.0, 0.0)),
+    "LEFT": (1, (1.0, 0.0, 0.0, 0.0)),
+    "RIGHT": (2, (0.0, 0.0, 1.0, 0.0)),
+    "AMBIGUOUS": (0, (0.0, 0.0, 0.0, 1.0)),
+}
+#: Per-scene noise seed: this plus a stable hash of the scene id, within this range.
+BASE_NOISE_SEED = 42
+SCENE_SEED_MODULUS = 1_000_000
+#: A plan whose furthest point forward is less than this is logged and counted
+#: as a stop (a zero or backwards plan included). Never refused.
+STOP_REACH_M = 1.5
+#: load()'s units check: a car moving at this speed must get a plan reaching at
+#: least this far in 5 s. A plan left in the model's internal 0-1 units reaches
+#: about a metre whatever the speed; one in metres from 10 m/s reaches tens of
+#: metres, or, braking hard all the way, still more than this.
+UNITS_CHECK_SPEED_M_S = 10.0
+UNITS_CHECK_MIN_REACH_M = 10.0
+#: sha256 of each planner's model.safetensors, from the release (HF blobs API).
+#: Their config.json files are identical, so only the weights tell them apart.
+PLANNER_SHA256 = {
+    "planner-sft": "dcf5989ed292799e77f539b21e5d8b701566676c1c5d13038135e97f96e2d7b4",
+    "planner-rl": "74478eb7ec5dea0d8144372ed7b60e6f508da7d9eb1522e567b391cad6dbaf29",
+}
+
+
+def scene_seed(scene_id: str) -> int:
+    """The noise seed for one scene: stable across processes and runs.
+
+    sha256, not `hash()`, which Python randomises per process.
+    """
+    digest = hashlib.sha256(str(scene_id).encode("utf-8")).digest()
+    return BASE_NOISE_SEED + int.from_bytes(digest[:8], "big") % SCENE_SEED_MODULUS
+
+
+def _median_filter(values: np.ndarray, width: int) -> np.ndarray:
+    """Running median, window truncated at the ends: a steady turn passes, a short burst does not."""
+    half = width // 2
+    out = np.empty_like(values)
+    for index in range(len(values)):
+        out[index] = np.median(values[max(0, index - half) : min(len(values), index + half + 1)])
+    return out
+
+
+def route_command(route_xy: np.ndarray | None) -> str:
+    """The route ahead -> STRAIGHT, LEFT, RIGHT or AMBIGUOUS.
+
+    Three answers, each in metres, must agree past `ROUTE_LATERAL_M` to call a
+    turn: how far the point `ROUTE_LOOKAHEAD_M` along the route sits off the
+    line of its first segment; the net heading change up to there; and the same
+    with the turn rate median-filtered. A heading change becomes metres as
+    ``s * theta / 2``, the offset of an arc of length s that turns by theta.
+    No route, or answers past the threshold on both sides at once, is
+    AMBIGUOUS; a short or straight route is STRAIGHT. Rig frame, y left.
+
+    Qwen-Drive's native AlpaSim driver's rule (its route.py), arithmetic
+    unchanged; it is not Drive-JEPA's single-point rule in drivejepa_rhythm.
+    """
+    if route_xy is None:
+        return "AMBIGUOUS"
+    points = np.asarray(route_xy, dtype=np.float64).reshape(-1, 2)
+    if len(points) == 0:
+        return "AMBIGUOUS"
+    if len(points) < 3:
+        return "STRAIGHT"
+    arc_length = np.concatenate(([0.0], np.cumsum(np.linalg.norm(np.diff(points, axis=0), axis=1))))
+    if arc_length[-1] < ROUTE_LOOKAHEAD_M:
+        return "STRAIGHT"
+    lookahead = min(int(np.searchsorted(arc_length, ROUTE_LOOKAHEAD_M)), len(points) - 1)
+    span_m = float(arc_length[lookahead])
+    tangent = points[1] - points[0]
+    tangent_norm = float(np.linalg.norm(tangent))
+    if tangent_norm < ROUTE_TANGENT_MIN_M:
+        return "STRAIGHT"
+    tangent = tangent / tangent_norm
+    to_target = points[lookahead] - points[0]
+    offset_m = float(tangent[0] * to_target[1] - tangent[1] * to_target[0])
+    headings = np.unwrap(np.arctan2(np.diff(points[:, 1]), np.diff(points[:, 0])))
+    turn_rate = np.diff(headings)[: max(lookahead - 1, 1)]
+    if len(turn_rate) == 0:
+        return "STRAIGHT"
+    net_m = float(np.sum(turn_rate)) * span_m / 2.0
+    sustained_m = float(np.sum(_median_filter(turn_rate, ROUTE_MEDIAN_WIDTH))) * span_m / 2.0
+    answers = (offset_m, net_m, sustained_m)
+    if min(answers) > ROUTE_LATERAL_M:
+        return "LEFT"
+    if max(answers) < -ROUTE_LATERAL_M:
+        return "RIGHT"
+    if max(answers) > ROUTE_LATERAL_M and min(answers) < -ROUTE_LATERAL_M:
+        return "AMBIGUOUS"
+    return "STRAIGHT"
+
+
+@dataclass
+class CommandHold:
+    """Hold the last stable command; a new one replaces it after `dwell` repeats in a row.
+
+    Fed once per model call. The first command is taken at once; a run of a
+    different command shorter than *dwell* is a flicker and the held one stays.
+    The native driver's guard, kept per call (not per control step) because
+    that is where it ran: at a call every 1.5 s, a change reaches the model on
+    the third call that sees it, 3 s after the first.
+    """
+
+    dwell: int = COMMAND_DWELL_CALLS
+    held: str | None = None
+    candidate: str | None = None
+    run: int = 0
+    transitions: int = 0
+    #: Calls on which the held command differed from the route's (the delay the hold adds).
+    held_back: int = 0
+
+    def update(self, command: str) -> str:
+        if self.held is None:
+            self.held, self.candidate, self.run = command, command, 1
+            return self.held
+        if command == self.held:
+            self.candidate, self.run = command, 0
+            return self.held
+        if self.candidate is not None and command == self.candidate:
+            self.run += 1
+        else:
+            self.candidate, self.run = command, 1
+        if self.run >= self.dwell:
+            self.transitions += 1
+            self.held, self.candidate, self.run = command, None, 0
+            return self.held
+        self.held_back += 1
+        return self.held
+
+
+def _yaw_of(matrix: np.ndarray) -> float:
+    return float(np.arctan2(matrix[1, 0], matrix[0, 0]))
+
+
+def _relative_pose(pose: np.ndarray, reference: np.ndarray) -> np.ndarray:
+    """(dx, dy, dyaw) of *pose* in *reference*'s frame, full 3-D."""
+    delta = np.linalg.inv(reference) @ pose
+    return np.array([delta[0, 3], delta[1, 3], _yaw_of(delta)], dtype=np.float64)
+
+
+def alpasim_frame_indices(times_s: np.ndarray) -> tuple[list[int], list[float]]:
+    """The four frames for one AlpaSim call, oldest first, and each one's distance from its slot.
+
+    The newest frame, then the frame nearest each of 0.5, 1.0 and 1.5 s before
+    it. Raises if one is more than `ALPASIM_SPACING_TOLERANCE` of 0.5 s off its
+    slot: the bridge sends every 50 ms step, so that means frames are missing,
+    and the native driver did not plan from such a set.
+    """
+    times = np.asarray(times_s, dtype=np.float64)
+    indices, gaps = [], []
+    for k in range(NUM_CAM_FRAMES - 1, -1, -1):
+        target = times[-1] - k * FRAME_DT
+        index = int(np.argmin(np.abs(times - target)))
+        gap = float(abs(times[index] - target))
+        if k and gap > FRAME_DT * ALPASIM_SPACING_TOLERANCE:
+            raise ValueError(
+                f"no frame within {FRAME_DT * ALPASIM_SPACING_TOLERANCE * 1e3:.0f} ms of "
+                f"now-{k * FRAME_DT:.1f} s "
+                f"(nearest is {gap * 1e3:.0f} ms off; {len(times)} frames over "
+                f"{times[-1] - times[0]:.2f} s). On AlpaSim every step must reach the node: is the "
+                "bridge running with --observe-between-replans?"
+            )
+        indices.append(index)
+        gaps.append(gap)
+    return indices, gaps
+
+
+def alpasim_history(
+    times_s: np.ndarray, matrices: np.ndarray, velocity: np.ndarray, yaw_rate: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+    """The 16 ego rows as Qwen-Drive's native AlpaSim driver built them.
+
+    Each 0.1 s slot takes the recorded sample nearest it, if one is within
+    0.1 s plus `ALPASIM_SPACING_TOLERANCE`, else the oldest sample (counted in
+    the returned fill count). Positions are (x, y, heading) of that sample's
+    pose in the current pose's frame, full 3-D; the last row is (0, 0, 0).
+    Velocity is the sample's own (forward, sideways), in its own frame: the rows
+    are in each row's body frame, not the current one. Acceleration is the
+    velocity change over 0.1 s plus the turning term, because a velocity in a
+    turning frame changes direction without speeding up:
+
+        a_fwd[i] = (v_fwd[i] - v_fwd[i-1]) / 0.1 - w[i] * v_lat[i]
+        a_lat[i] = (v_lat[i] - v_lat[i-1]) / 0.1 + w[i] * v_fwd[i]
+
+    with w the row's yaw rate. Row 0 is differenced against the sample 0.1 s
+    before it, or copies row 1 (and counts a fill) when there is none.
+    """
+    times = np.asarray(times_s, dtype=np.float64)
+    reach = HISTORY_DT * (1.0 + ALPASIM_SPACING_TOLERANCE)
+
+    def pick(target: float) -> int | None:
+        index = int(np.argmin(np.abs(times - target)))
+        return index if abs(times[index] - target) <= reach else None
+
+    now = times[-1]
+    current = matrices[-1]
+    history = np.zeros((NUM_HISTORY_STEPS, 3), dtype=np.float64)
+    rows_v = np.zeros((NUM_HISTORY_STEPS, 2), dtype=np.float64)
+    rows_w = np.zeros(NUM_HISTORY_STEPS, dtype=np.float64)
+    fill = 0
+    for row in range(NUM_HISTORY_STEPS):
+        index = pick(now - (NUM_HISTORY_STEPS - 1 - row) * HISTORY_DT)
+        if index is None:
+            index, fill = 0, fill + 1
+        history[row] = _relative_pose(matrices[index], current)
+        rows_v[row] = velocity[index]
+        rows_w[row] = yaw_rate[index]
+    history[-1] = 0.0
+
+    acceleration = np.zeros_like(rows_v)
+    change = (rows_v[1:] - rows_v[:-1]) / HISTORY_DT
+    acceleration[1:, 0] = change[:, 0] - rows_w[1:] * rows_v[1:, 1]
+    acceleration[1:, 1] = change[:, 1] + rows_w[1:] * rows_v[1:, 0]
+    older = pick(now - NUM_HISTORY_STEPS * HISTORY_DT)
+    if older is not None:
+        first = (rows_v[0] - velocity[older]) / HISTORY_DT
+        acceleration[0, 0] = first[0] - rows_w[0] * rows_v[0, 1]
+        acceleration[0, 1] = first[1] + rows_w[0] * rows_v[0, 0]
+    else:
+        acceleration[0] = acceleration[1]
+        fill += 1
+    return history, rows_v, acceleration, fill
 
 
 def _env_or(name: str, default):
@@ -272,6 +549,11 @@ class QwenDrivePolicy(Policy):
         self._last_command: str | None = None
         self._last_reasoning: str | None = None
         self._n_infer = 0
+        #: Plans reaching less than `STOP_REACH_M` forward: (scene, timestamp, speed, reach), newest last.
+        self._short_plans: list[tuple[str | None, int, float, float]] = []
+        self._short_plans_total = 0
+        self._units_check_reach_m: float | None = None
+        self._planner_sha256: str | None = None
         self.reset()
 
     # ---- lifecycle ------------------------------------------------------
@@ -292,6 +574,7 @@ class QwenDrivePolicy(Policy):
         if not os.path.isdir(planner):
             raise FileNotFoundError(f"planner directory does not exist: {planner}")
 
+        self._planner_sha256 = self._check_planner_weights(planner)
         _log.info("loading %s + %s (attn=%s, mode=%s)", checkpoint, planner, self.attn, self.mode)
         started = time.perf_counter()
         self.model = (
@@ -305,6 +588,80 @@ class QwenDrivePolicy(Policy):
             InferenceMode.REASONING_PLANNING if self.mode == "reasoning" else InferenceMode.DIRECT_PLANNING
         )
         _log.info("loaded in %.0f s", time.perf_counter() - started)
+        self._warm_up_and_check_units()
+
+    @staticmethod
+    def _check_planner_weights(planner: str) -> str:
+        """sha256 of the planner's weights, refused if it is not the release named by the directory.
+
+        planner-sft and planner-rl ship byte-identical configs and equal file
+        sizes, so a renamed or swapped directory is invisible to anything but
+        the weights' hash. A directory with another name is hashed and logged.
+        """
+        weights = os.path.join(planner, "model.safetensors")
+        digest = hashlib.sha256()
+        with open(weights, "rb") as handle:
+            for block in iter(lambda: handle.read(1 << 24), b""):
+                digest.update(block)
+        found = digest.hexdigest()
+        expected = PLANNER_SHA256.get(os.path.basename(os.path.normpath(planner)))
+        if expected is not None and found != expected:
+            named = next((name for name, sha in PLANNER_SHA256.items() if sha == found), "no known release")
+            raise RuntimeError(
+                f"{weights} has sha256 {found[:12]}..., not the released "
+                f"{os.path.basename(planner)} ({expected[:12]}...); it matches {named}"
+            )
+        _log.info("planner weights %s sha256 %s", weights, found)
+        return found
+
+    def _warm_up_and_check_units(self) -> None:
+        """One call at the real input shape before the node reports ready, which also checks units.
+
+        The first call pays for kernel selection and allocation (about 14 s
+        against about 1 s after), so it is made here rather than on a
+        simulator's clock. Its input is three views of four grey frames and a
+        car that has driven straight at `UNITS_CHECK_SPEED_M_S`: a plan in
+        metres reaches tens of metres; one left in the model's internal 0-1
+        units, about one. Refusing to start on the second is the only place a
+        short plan is refused -- in the drive loop a short plan is a stop.
+        """
+        from PIL import Image
+        from qwen_drive import CameraFrame, DrivingScene
+
+        grey = Image.new("RGB", (1920, 1080), (128, 128, 128))
+        rows = np.arange(NUM_HISTORY_STEPS - 1, -1, -1, dtype=np.float64)
+        history = np.zeros((NUM_HISTORY_STEPS, 3))
+        history[:, 0] = -rows * HISTORY_DT * UNITS_CHECK_SPEED_M_S
+        velocity = np.tile([UNITS_CHECK_SPEED_M_S, 0.0], (NUM_HISTORY_STEPS, 1))
+        nav, one_hot = ROUTE_COMMANDS["STRAIGHT"]
+        scene = DrivingScene(
+            views={view: [CameraFrame(grey) for _ in range(NUM_CAM_FRAMES)] for _, view in CAMERA_VIEWS},
+            history=history,
+            history_velocity=velocity,
+            history_acceleration=np.zeros((NUM_HISTORY_STEPS, 2)),
+            ego_velocity=(UNITS_CHECK_SPEED_M_S, 0.0),
+            ego_acceleration=(0.0, 0.0),
+            driving_command=list(one_hot),
+            nav_command=nav,
+            token="warm-up",
+        )
+        started = time.perf_counter()
+        result = self.model.generate_trajectory(scene, mode=self._mode, num_samples=1, seed=BASE_NOISE_SEED)
+        plan = np.asarray(result.trajectories, dtype=np.float64)[0]
+        reach = float(np.max(plan[:, 0]))
+        self._units_check_reach_m = round(reach, 2)
+        _log.info(
+            "warm-up call: %.1f s, plan reaches %.1f m from %.0f m/s",
+            time.perf_counter() - started,
+            reach,
+            UNITS_CHECK_SPEED_M_S,
+        )
+        if reach < UNITS_CHECK_MIN_REACH_M:
+            raise RuntimeError(
+                f"warm-up plan from {UNITS_CHECK_SPEED_M_S:.0f} m/s reaches {reach:.2f} m in 5 s; a plan in "
+                f"metres reaches at least {UNITS_CHECK_MIN_REACH_M:.0f} m. The model's output is not in "
+                "metres -- refusing to start rather than drive on it"
+            )
 
     def reset(self) -> None:
         """Drop the pose, motion and frame history between runs."""
@@ -318,6 +675,16 @@ class QwenDrivePolicy(Policy):
         #: is derived -- the same stream must not answer differently because an
         #: old record aged out.
         self.source_has_accel = False
+        #: Full ego->world poses and yaw rates, 1:1 with `poses`; the AlpaSim
+        #: path places its rows by the 3-D relative pose and turns with them.
+        self.matrices: list[np.ndarray] = []
+        self.yaw_rates: list[float] = []
+        #: None until the first record says which source this is: True when it
+        #: carries a scene id (AlpaSim, see the module docstring).
+        self.alpasim: bool | None = None
+        self.scene_id: str | None = None
+        self.hold = CommandHold()
+        self._last_route_command: str | None = None
 
     # ---- history --------------------------------------------------------
 
@@ -332,6 +699,23 @@ class QwenDrivePolicy(Policy):
         """
         if self.timestamps and obs.timestamp_us <= self.timestamps[-1]:
             return
+        alpasim = obs.scene_id is not None
+        if self.alpasim is None:
+            self.alpasim, self.scene_id = alpasim, obs.scene_id
+        elif alpasim != self.alpasim or obs.scene_id != self.scene_id:
+            raise ValueError(
+                f"observation for scene {obs.scene_id!r} arrived in an episode of scene {self.scene_id!r} "
+                "without a /reset between them"
+            )
+        if self.alpasim and self.timestamps:
+            # Once per episode is enough to catch a wrong profile; every record is cheap too.
+            step = (int(obs.timestamp_us) - self.timestamps[-1]) / 1e6
+            if abs(step - ALPASIM_CADENCE_S) > ALPASIM_CADENCE_S * ALPASIM_SPACING_TOLERANCE:
+                raise ValueError(
+                    f"frames arrive {step * 1e3:.0f} ms apart; on AlpaSim the node needs every "
+                    f"{ALPASIM_CADENCE_S * 1e3:.0f} ms step (the qwendrive profile's "
+                    "--observe-between-replans and its driver config's 50 ms control step and cameras)"
+                )
         sources: dict[str, Any] = {}
         for camera in self.cameras:
             if camera in obs.image_paths:
@@ -348,6 +732,8 @@ class QwenDrivePolicy(Policy):
             self.source_has_accel = True
         self.timestamps.append(int(obs.timestamp_us))
         self.poses.append(pose_xy_yaw(obs.ego2world))
+        self.matrices.append(np.asarray(obs.ego2world, dtype=np.float64))
+        self.yaw_rates.append(float(canbus[CANBUS_YAW_RATE]))
         # Imported, never re-typed: the CAN-bus layout is one of the contracts
         # docs/reviewing.md names. Both channels are (x, y) pairs, so the lateral
         # component is the declared offset plus one.
@@ -382,6 +768,8 @@ class QwenDrivePolicy(Policy):
             del self.poses[:-keep]
             del self.motion[:-keep]
             del self.frames[:-keep]
+            del self.matrices[:-keep]
+            del self.yaw_rates[:-keep]
 
     def observe(self, obs: Observation) -> None:
         """Record a history frame without running the model.
@@ -414,6 +802,32 @@ class QwenDrivePolicy(Policy):
             "nav_command": NAV_COMMAND[Command(command)],
         }
 
+    def alpasim_inputs(self, command: str) -> dict[str, Any]:
+        """`scene_inputs` for AlpaSim: the native driver's rows, frames and *command*.
+
+        The simulator's own acceleration in canbus[7]/[8] is ignored here: the
+        native driver differenced velocity, so this does (`alpasim_history`).
+        """
+        times = np.array(self.timestamps, dtype=np.float64) / 1e6
+        indices, gaps = alpasim_frame_indices(times)
+        motion = np.stack(self.motion)
+        history, velocity, acceleration, fill = alpasim_history(
+            times, np.stack(self.matrices), motion[:, :2], np.array(self.yaw_rates)
+        )
+        nav, one_hot = ROUTE_COMMANDS[command]
+        return {
+            "frame_indices": indices,
+            "frame_gaps_s": gaps,
+            "history": history,
+            "history_velocity": velocity,
+            "history_acceleration": acceleration,
+            "ego_velocity": tuple(float(v) for v in velocity[-1]),
+            "ego_acceleration": tuple(float(a) for a in acceleration[-1]),
+            "driving_command": list(one_hot),
+            "nav_command": nav,
+            "history_fill": fill,
+        }
+
     def _scene(self, obs: Observation, inputs: dict[str, Any]):
         """A `DrivingScene` from `scene_inputs` plus the four frames per view.
 
@@ -430,6 +844,7 @@ class QwenDrivePolicy(Policy):
         inputs = dict(inputs)
         indices = inputs.pop("frame_indices")
         inputs.pop("frame_gaps_s")
+        inputs.pop("history_fill", None)
 
         def open_image(source: Any) -> Any:
             """One frame as a PIL image, whatever the benchmark handed over.
@@ -482,19 +897,28 @@ class QwenDrivePolicy(Policy):
         if self.model is None:
             raise RuntimeError("load() must be called before infer()")
         self._record(obs)
-        inputs = self.scene_inputs(obs.command)
+        if self.alpasim:
+            # The route's command, held: updated here only, once per model call (CommandHold).
+            self._last_route_command = route_command(obs.route_xy)
+            held = self.hold.update(self._last_route_command)
+            inputs = self.alpasim_inputs(held)
+            self._last_command = held
+            seed = scene_seed(self.scene_id)
+        else:
+            inputs = self.scene_inputs(obs.command)
+            self._last_command = Command(obs.command).name
+            seed = self.seed
         self._last_gaps = inputs["frame_gaps_s"]
         self._frames_repeated += NUM_CAM_FRAMES - len(set(inputs["frame_indices"]))
         # A duplicate index is not the only way a slot goes unfilled: a drifting
         # cadence gives four *distinct* frames that are all late. Counted
         # separately, so a 1.5 s history that is not actually 1.5 s is visible.
         self._frames_off_grid += sum(1 for gap in self._last_gaps if gap > FRAME_TOLERANCE_S)
-        self._last_command = Command(obs.command).name
         scene = self._scene(obs, inputs)
 
         started = time.perf_counter()
         result = self.model.generate_trajectory(
-            scene, mode=self._mode, num_samples=self.num_samples, seed=self.seed
+            scene, mode=self._mode, num_samples=self.num_samples, seed=seed
         )
         self._infer_seconds.append(time.perf_counter() - started)
         del self._infer_seconds[:-200]
@@ -503,7 +927,21 @@ class QwenDrivePolicy(Policy):
         chosen = samples[medoid_index(samples)] if len(samples) > 1 else samples[0]
         self._last_reasoning = result.reasoning
         # The model plans x forward, y left, heading positive left: paddock's frame.
-        waypoints = chosen[list(GRID_INDICES)]
+        waypoints = chosen if self.alpasim else chosen[list(GRID_INDICES)]
+        reach = float(np.max(chosen[:, 0]))
+        if reach < STOP_REACH_M:
+            # A stop, or a plan that has gone wrong: either way the simulator drives
+            # and scores it. Never raised -- see the module docstring.
+            speed = float(np.hypot(*inputs["ego_velocity"]))
+            self._short_plans_total += 1
+            self._short_plans.append((self.scene_id, int(obs.timestamp_us), round(speed, 3), round(reach, 3)))
+            del self._short_plans[:-50]
+            _log.info(
+                "short plan: reaches %.2f m forward at %.2f m/s (t=%d); sent as it is",
+                reach,
+                speed,
+                obs.timestamp_us,
+            )
 
         self._n_infer += 1
         if self._n_infer % 100 == 1:
@@ -515,7 +953,24 @@ class QwenDrivePolicy(Policy):
                 self._infer_seconds[-1],
                 self._frames_repeated,
             )
-        return Trajectory(waypoints, dt=self.waypoint_dt)
+        if not self.alpasim:
+            return Trajectory(waypoints, dt=self.waypoint_dt)
+        # What this call was given and did, per call, into the bridge's replan log.
+        extras = {
+            "qwendrive": {
+                "route_command": self._last_route_command,
+                "command": self._last_command,
+                "seed": seed,
+                "speed_m_s": round(float(np.hypot(*inputs["ego_velocity"])), 4),
+                "ego_velocity": [round(float(v), 4) for v in inputs["ego_velocity"]],
+                "ego_acceleration": [round(float(a), 4) for a in inputs["ego_acceleration"]],
+                "forward_reach_m": round(reach, 3),
+                "history_fill": inputs["history_fill"],
+                "frame_gaps_ms": [round(g * 1e3, 2) for g in self._last_gaps],
+                "infer_s": round(self._infer_seconds[-1], 3),
+            }
+        }
+        return Trajectory(waypoints, dt=ALPASIM_WAYPOINT_DT, extras=extras)
 
     def diagnostics(self) -> dict[str, Any]:
         """Cadence, history depth and how often a slot had no frame of its own.
@@ -551,6 +1006,18 @@ class QwenDrivePolicy(Policy):
                 round(float(np.mean(self._infer_seconds)), 3) if self._infer_seconds else None
             ),
             "reasoning": (self._last_reasoning or "")[:400],
+            "planner_sha256": self._planner_sha256,
+            "units_check_reach_m": self._units_check_reach_m,
+            "short_plans_total": self._short_plans_total,
+            "short_plans_last": [list(p) for p in self._short_plans[-10:]],
+            "alpasim": self.alpasim,
+            "scene_id": self.scene_id,
+            "route_command": self._last_route_command,
+            "command_hold": {
+                "held": self.hold.held,
+                "transitions": self.hold.transitions,
+                "calls_held_back": self.hold.held_back,
+            },
         }
 
 
