@@ -622,6 +622,23 @@ verified/argued split in
 knob landed later, on 2026-10-22: a model's `planning_hz`, which the Bench2Drive
 client honours; Drive-JEPA declares 2 Hz.
 
+## HUGSIM — adapter landed; two recorded campaigns tracked, none driven through the harness
+
+`adapters/benchmarks/hugsim`: a launcher that runs upstream's simulation loop in
+HUGSIM's interpreter, a bridge that drives the paddock node command-only at the
+model's own rate, and two patches (upstream PR #57's controller fix; rendering
+only the model's cameras). 420 of the release's 436 scenarios: the other 16 fail
+for every model. The released Drive-JEPA (HD-Score 33.8 on 419, stored `partial`:
+HUGSIM crashed on one scenario) and AutoE2E (5.7 on 420) are ingested from a
+campaign driven on 22 Oct 2026 by the same bridge. See
+[`benchmarks/hugsim.md`](benchmarks/hugsim.md).
+
+| Claim | Evidence | Strength |
+|---|---|---|
+| the stored runs are the campaign's | the ingest reproduces the first-reported Drive-JEPA means and endings from the `eval.json` files | **strong** |
+| the tracked bridge and controller are what drove it | bridge outputs equal to 1e-12 on a test rig; patched controller bit-identical on 200 random plans | **strong** |
+| the harness drives a scenario | — | **unverified** |
+
 ## Beyond reproduction
 
 - **nuScenes open-loop** — **done (camera-only); protocol transcribed and pinned by
