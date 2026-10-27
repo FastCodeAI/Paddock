@@ -1705,14 +1705,18 @@ def test_a_simulator_waits_while_a_running_one_may_still_take_its_memory(tmp_pat
     assert "waiting for 18 GB of free GPU memory, 8 GB of it held for running simulators" in "\n".join(said)
 
 
-def test_alpasim_runs_alone_until_its_cpu_use_beside_others_is_known(tmp_path: Path, monkeypatch) -> None:
-    """Review of #111 (2): AlpaSim's containers are not held to the lane's cores, and shakaal
-    fails above 90% CPU. With room on the card for both, AlpaSim still waits for neuroNCAP."""
+def test_alpasim_runs_beside_another_simulator_now_its_containers_keep_the_lanes_cores(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Until its launcher pinned its containers, AlpaSim ran beside no other simulator
+    (review of #111, 2). With room on the card, it now overlaps neuroNCAP."""
     args, stamps = _smoke_site(tmp_path, monkeypatch, {"neuroncap": 2.0, "alpasim": 2.0}, hold=1.0)
     monkeypatch.setattr(gate, "_gpu_free_gb", lambda env: 80.0)
     gate.smoke(args(tier="closed", bench=["neuroncap", "alpasim"], cores=["4-7", "8-11"]), lambda _m: None)
     spans = _intervals(stamps)
-    assert spans["alpasim"][0] >= spans["neuroncap"][1], f"overlapped: {spans}"
+    assert min(spans["alpasim"][1], spans["neuroncap"][1]) > max(
+        spans["alpasim"][0], spans["neuroncap"][0]
+    ), f"ran one after the other: {spans}"
 
 
 def test_simulators_run_side_by_side_when_the_card_holds_them(tmp_path: Path, monkeypatch) -> None:

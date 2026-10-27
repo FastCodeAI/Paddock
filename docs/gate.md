@@ -288,11 +288,12 @@ setsid nohup python -m tools.gate smoke ... --tier all --execute \
   renderer at every scene, so its memory may not be taken yet when the next
   check reads the card. Each running simulator's share (8 GB for neuroNCAP and
   Bench2Drive, 17 GB for AlpaSim) therefore counts as taken until its lane ends.
-  With enough lanes and memory, neuroNCAP and Bench2Drive run side by side;
-  until 2026-10-27 the closed tier ran one subset at a time. AlpaSim still runs
-  beside no other simulator (`RUN_ALONE`): Docker starts its containers, so the
-  lane's `taskset` does not hold them to its cores, and shakaal fails above about
-  90% CPU. Two subsets of one benchmark never run at once. With one `--cores` (the default, `4-7`)
+  With enough lanes and memory, neuroNCAP, Bench2Drive and AlpaSim run side by
+  side; until 2026-10-27 the closed tier ran one subset at a time. Each keeps its
+  lane's cores: neuroNCAP's renderer and CARLA as the lane's children, AlpaSim's
+  Docker containers because its launcher pins them to the cores its run was
+  given (shakaal fails above about 90% CPU). Two subsets of one benchmark never
+  run at once. With one `--cores` (the default, `4-7`)
   everything runs one after another.
 - **NAVSIM gets two model nodes.** The derived config sets
   `[benchmarks.navsim] gpu_nodes = 2` unless the site sets its own: the scorer's
