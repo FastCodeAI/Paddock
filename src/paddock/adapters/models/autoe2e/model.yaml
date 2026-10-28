@@ -21,8 +21,8 @@ runtime:
     # Route raster from the benchmark's route: obs.route_xy, or obs.route_trace matched to its
     # map ("0": no route, though a map is still drawn).
     AUTOE2E_ROUTE: "1"
-    # Forward-pass cadence in seconds (0 = every call). Bench2Drive calls every 20 Hz tick;
-    # 0.1 there, as a pairing, is the model's own 10 Hz (docs/models/autoe2e.md, "On Bench2Drive").
+    # Forward-pass cadence in seconds (0 = every call), the plan held in the node in between.
+    # Bench2Drive needs none: it asks at `planning_hz` below (docs/models/autoe2e.md, "On Bench2Drive").
     AUTOE2E_REPLAN_S: "0"
     # The ego history fed: "real" (as measured, upstream's input), "steady" (straight driving at the
     # current speed: an extrapolated past), "no_turn" (yaw rate and curvature zeroed) or "steady_speed"
@@ -46,6 +46,9 @@ capabilities:
   min_input_hz: 0.0
   # Ego history is 64 rows at 10 Hz (6.4 s); camera history 8 frames at 0.5 s (3.5 s).
   native_input_hz: 10.0
+  # It plans 64 control steps at 10 Hz, so a 20 Hz simulator asks it every 0.1 s and the
+  # last plan is followed in between (Bench2Drive's client; HUGSIM's 4 Hz is slower anyway).
+  planning_hz: 10.0
   history_s: 6.5
   architecture: "ResNet-50 + BEVFormer V2 T8 (300x200 BEV, 8 frames at 0.5 s), deformable map/route fusion, GRU planner over (accel, curvature)"
   params_m: 79.9

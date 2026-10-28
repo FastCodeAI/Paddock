@@ -20,7 +20,7 @@ paddock run --model autoe2e --bench navsim          # needs [benchmarks.navsim] 
 paddock run --model autoe2e --bench kitscenes       # the map and the oracle route are on by default
 paddock run --model autoe2e --bench comma2k19       # the road camera alone; the other five views left out
 paddock run --model autoe2e --bench nuscenes        # 6.5 s of past keyframes, the history it declares
-paddock run --model autoe2e --bench bench2drive --scene <route>   # at 10 Hz with the pairing in "On Bench2Drive"
+paddock run --model autoe2e --bench bench2drive --scene <route>   # at its declared 10 Hz ("On Bench2Drive")
 ```
 
 PR #19 is a different adapter: KITScenes only, written before any weights were
@@ -169,19 +169,20 @@ installs them (`Platform/docker/data-prep/Dockerfile`):
 
 AutoE2E's own rate is 10 Hz: it reads 64 ego rows at 10 Hz and plans 64
 control steps at 10 Hz (the release `config.json`; `native_input_hz: 10.0`),
-with its camera history sampled every 0.5 s. The Bench2Drive agent calls the
-node on every 20 Hz tick, so a forward on every call runs the model twice as
-often as it was built for, at twice the cost. A pairing runs it at its own rate:
+with its camera history sampled every 0.5 s. Bench2Drive ticks at 20 Hz, and a
+forward on every tick runs the model twice as often as it was built for, at
+twice the cost. So `model.yaml` declares `planning_hz: 10.0`: the client asks the
+node once every 0.1 s of game time and follows the last plan, unchanged, on the
+tick between, the rule every model that declares a rate is driven under
+([`docs/benchmarks/bench2drive.md`](../benchmarks/bench2drive.md)). The rate is
+recorded as `config.infer_hz` and needs no site setting, so such a run can rank.
 
-```toml
-[models.autoe2e.benchmarks.bench2drive.env]
-AUTOE2E_REPLAN_S = "0.1"   # a forward every 0.1 s of game time
-```
-
-On the tick between two forwards the node answers with the last plan, moved
-into the current ego frame (`extras.autoe2e.held_s` is its age). That is not
-the published 20 Hz protocol, so such a run is `valid: false` with
-`AUTOE2E_REPLAN_S` named in its notes.
+Until 28 Oct 2026 the rate came from a site pairing, `AUTOE2E_REPLAN_S = "0.1"`
+in `[models.autoe2e.benchmarks.bench2drive.env]`. The client then asked on every
+tick, and the node ran a forward every 0.1 s and answered the tick between with the
+last plan moved into the current ego frame (`extras.autoe2e.held_s` is its age).
+It sets a key `model.yaml` declares, so every run made with it is `valid: false`,
+the deep dive's and the steady-history sweep's included.
 
 Cost on one A100 80 GB (20 Oct 2026, idle card): 2.0 s a forward (1.93 s model,
 0.07 s packing), 2.3 GB allocated. With six 800 × 450 cameras rendered and

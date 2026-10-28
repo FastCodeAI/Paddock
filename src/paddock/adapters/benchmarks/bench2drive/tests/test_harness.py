@@ -928,6 +928,7 @@ def test_the_models_planning_rate_reaches_the_client_and_the_record(tmp_path, mo
     harness = _harness(cfg)
     models = Registry.load().models
     assert harness.model_run_config(models["drivejepa"]) == {"infer_hz": 2.0}
+    assert harness.model_run_config(models["autoe2e"]) == {"infer_hz": 10.0}, "its own 10 Hz, no site pairing"
     assert harness.model_run_config(models["openpilot"]) == {}, "no planning_hz: asked every tick"
     episode = _episode()
     episode.config["planning_hz"] = 2.0
