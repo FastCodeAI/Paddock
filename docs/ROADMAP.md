@@ -489,6 +489,34 @@ Open work on this driver, in the order it bites:
   name, and the report needs to group by scene set (issue #69).
 - **The promoted driver has not driven a scene.**
 
+**Qwen-Drive runs on AlpaSim through the paddock bridge** (#123): `qwendrive`
+declares `alpasim`, and the bridge drives the paddock node on the settings and
+inputs of Qwen-Drive's native AlpaSim driver (adapter 0.1.4): three cameras,
+a model call every 1.5 s, the native ego history, command rule, three-call
+command hold and per-scene seed (`harness.DRIVER_PROFILES`, switches off for
+every other profile). Documented in
+`docs/models/qwendrive.md#on-alpasim-through-the-bridge`.
+
+| Claim | Evidence | Strength |
+|---|---|---|
+| the existing bridge profiles send what they sent before | `test_bridge_switches.py` pins the sha256 of everything the default, Drive-JEPA and AutoE2E profiles send, taken on `main` before the change; it runs in `make check-alpasim-driver`, **not in `make check`** | **strong** |
+| the node gets the native driver's inputs | offline replay of the native runs' recorded messages through the bridge and the node, 29 scenes: 340 of 342 model calls match (positions, headings, speeds and accelerations to about 1e-6, pixels and frame times identical, seed identical); the other 2 are the command hold starting one call earlier, because the native driver also called the model during the warm-up. Run at the author's site; the native driver is not in this repository | **strong** |
+| through paddock it scores 0.7001 on 30 scenes against the native runs' 0.6672 | `results/alpasim/qwendrive/20261027T215528-d231d8`, valid, one rollout per scene, on simulator image `6dad7728` like the native runs (the one-camera rows used `1e0d5fea`). The native runs are not in `results/` | **moderate** |
+| it matches the native runs scene by scene | — (6 scenes move by 0.3 or more; 3 of them are native runs that its driver ended on a short plan) | **not claimed** |
+
+Open work on this route:
+
+- **No test in the tree compares the node with the native driver's output.**
+  The tests check the code against the native formulas typed out again; the
+  replay above that compares with native is not committed. A small fixture from
+  it (a few calls' recorded poses, route and scene id, with the history rows,
+  command and seed the native driver built) would let any site re-check it.
+- **Attention backend not measured in closed loop.** Paddock's environment uses
+  `sdpa`, the native runs `flash_attention_2`; on 5 recorded inputs the two plans
+  differ by 0.16 to 0.32 m over 5 s.
+- **No constant-velocity floor on this route**, so the row is read against the
+  native runs only.
+
 **METEOR has AlpaSim rows and no tracked driver.** `results/alpasim/meteor/`
 holds a 30-scene row (0.4232) and its first ten scenes (0.6869), ingested from
 runs of a native driver, `meteor-0.1.1`, whose source exists only at the
