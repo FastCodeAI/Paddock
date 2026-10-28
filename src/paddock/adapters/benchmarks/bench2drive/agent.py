@@ -15,6 +15,8 @@ come from the environment, set by ``harness.run_episode``:
     PADDOCK_CAMERA_RIG    where those cameras sit and what they render: a rig
                           named in ``rig.py``          (default paddock)
     PADDOCK_WAYPOINT_DT   spacing of the returned waypoints, s   (default 0.5)
+    PADDOCK_INFER_HZ      ask for a plan this often and follow the last one in
+                          between (default 0: every tick); from `planning_hz`
     PADDOCK_RECORD_DIR    if set, write front/BEV frames + a per-tick log.csv
                           here; the harness sets SAVE_PATH alongside it so the
                           leaderboard allows the BEV camera's 30 m mount. Also
@@ -85,6 +87,15 @@ STOP_AFTER_S = float(os.environ["PADDOCK_STOP_AFTER_S"]) if os.environ.get("PADD
 STOP_ON_COLLISION = os.environ.get("PADDOCK_STOP_ON_COLLISION") == "1"
 STOP_REQUEST = os.environ.get("PADDOCK_STOP_REQUEST") or None
 STOP_RECORD = os.environ.get("PADDOCK_STOP_RECORD") or None
+#: Ask the node for a plan at most this often, Hz, and follow the last plan
+#: unchanged in between: 2 Hz is one /infer per 10 frames of the 20 Hz
+#: simulation. 0 asks every tick. The harness sets it from the model's
+#: `planning_hz`. Unchanged means in the ego frame it was planned in, as the
+#: native-rate campaign drove it: its log.csv holds identical waypoints for
+#: 10-frame runs (docs/benchmarks/bench2drive-native-rate.md).
+INFER_HZ = float(os.environ.get("PADDOCK_INFER_HZ") or 0)
+#: Slack on "a plan is due", us: a 0.5 s step can read as 499999 us from floats.
+DUE_SLACK_US = 1000
 
 #: The rig the cameras are placed by (``rig.py``); the harness passes a site's ``camera_rig``.
 CAMERA_RIG = os.environ.get("PADDOCK_CAMERA_RIG") or rig.DEFAULT
@@ -177,6 +188,10 @@ class PaddockB2DAgent(AutonomousAgent):
             self._metric_path = os.path.join(METRICS_DIR, save_name, "metric_info.json")
         self._prev_speed = 0.0
         self._prev_us = None
+        self._plan = None
+        self._native = None
+        self._payload = None
+        self._plan_us = None
         self._hero = None
         self._tracker = WaypointTracker(WAYPOINT_DT)
         # One connection to the loopback node for the whole route.
@@ -658,11 +673,12 @@ class PaddockB2DAgent(AutonomousAgent):
             accel = (speed - self._prev_speed) / dt if dt > 0 else 0.0
         self._prev_speed, self._prev_us = speed, us
 
+        due = self._plan is None or INFER_HZ <= 0 or us - self._plan_us >= 1e6 / INFER_HZ - DUE_SLACK_US
         images = {}
         raw = {}  # the frames as sent, for the inputs record
         front_bgr = None
         for cid in CAMS:
-            if cid in input_data:
+            if due and cid in input_data:
                 bgra = input_data[cid][1]
                 rgb = bgra[:, :, :3][:, :, ::-1]  # BGRA -> RGB
                 # raw .npy for the small frames the multi-camera models stack; JPEG (q95)
@@ -704,26 +720,34 @@ class PaddockB2DAgent(AutonomousAgent):
             },
         }
 
-        if RECORD_INPUTS and not self._inputs_failed:
-            try:
-                recorder.write_inputs(
-                    os.path.join(RECORD_DIR, recorder.INPUTS_DIR, f"{self._t:05d}.npz"),
-                    raw,
-                    {k: v for k, v in body.items() if k != "images"},
-                )
-            except Exception as exc:  # for analysis only; the route goes on without it
-                self._inputs_failed = True
-                print("[paddock-b2d] inputs record stopped at tick", self._t, ":", repr(exc))
+        if due:
+            # A tick that sends no request has none to record.
+            if RECORD_INPUTS and not self._inputs_failed:
+                try:
+                    recorder.write_inputs(
+                        os.path.join(RECORD_DIR, recorder.INPUTS_DIR, f"{self._t:05d}.npz"),
+                        raw,
+                        {k: v for k, v in body.items() if k != "images"},
+                    )
+                except Exception as exc:  # for analysis only; the route goes on without it
+                    self._inputs_failed = True
+                    print("[paddock-b2d] inputs record stopped at tick", self._t, ":", repr(exc))
 
-        sent_at = time.monotonic()
-        r = self._http.post(f"{SERVER}/infer", json=body, timeout=INFER_TIMEOUT_S)
-        r.raise_for_status()
-        infer_ms = (time.monotonic() - sent_at) * 1000.0
-        # Validated here: a NaN from a mis-warmed model is an error, not a steer
-        # value CARLA accepts silently.
-        payload = r.json()
-        plan = Trajectory(payload["trajectory"], dt=WAYPOINT_DT)
-        native = (payload.get("extras") or {}).get("native_long")
+            sent_at = time.monotonic()
+            r = self._http.post(f"{SERVER}/infer", json=body, timeout=INFER_TIMEOUT_S)
+            r.raise_for_status()
+            infer_ms = (time.monotonic() - sent_at) * 1000.0
+            # Validated here: a NaN from a mis-warmed model is an error, not a steer
+            # value CARLA accepts silently.
+            self._payload = r.json()
+            self._plan = Trajectory(self._payload["trajectory"], dt=WAYPOINT_DT)
+            self._native = (self._payload.get("extras") or {}).get("native_long")
+            self._plan_us = us
+        else:
+            # No /infer this tick: the analysis record holds the plan in force, the last
+            # reply, with no time spent asking (log.csv repeats its waypoints likewise).
+            infer_ms = 0.0
+        plan, native, payload = self._plan, self._native, self._payload
         if native:
             control, desired_speed = self._control_native(plan.xy, speed, native)
         else:

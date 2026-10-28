@@ -53,14 +53,33 @@ capabilities:
   precision: bf16
   input_size: [512, 512]
   history_frames: 8
+  # Camera frames 0.5 s apart (now and -3.5 .. -0.5 s); 64 ego rows of speed,
+  # acceleration, yaw rate and curvature 0.1 s apart (policy.py).
+  camera_hz: 2.0
+  ego_history_steps: 64
+  ego_history_hz: 10.0
   output_kind: controls
   horizon_s: 6.4
+  plan_points_hz: 10.0  # 64 (acceleration, curvature) steps 0.1 s apart
   stochastic: false
   needs_speed: true
   trained_on:
+    # Four layers, each read from the release (model card c553a2e1, the checkpoints'
+    # stored config) and BEVFormer's own config and log:
+    # 1. BEVFormer's ResNet-50 from an FCOS checkpoint trained on COCO.
+    # 2. BEVFormer V2 R50 T8 on nuScenes train only (24 epochs, 3D boxes). That
+    #    camera encoder stays frozen in both later stages, so it is these weights.
+    #    No nuScenes val scene, and so none of neuroNCAP's 14, is in it; see
+    #    comparison.md, AutoE2E x nuscenes.
+    # 3. nuPlan v1.1 train sensor logs (1,085 logs), trajectory and route. None of
+    #    NAVSIM navtest's 136 logs is among them; 44 of nuPlan mini's 64 are.
+    # 4. KITScenes train (404 scenes); none of the scored val/overlap scenes.
+    - dataset: coco
+    - dataset: nuscenes
+      split: train
     - dataset: nuplan
       split: train
     - dataset: kitscenes
       split: train
 
-benchmarks: [bench2drive, comma2k19, kitscenes, navsim, neuroncap]
+benchmarks: [alpasim, bench2drive, comma2k19, hugsim, kitscenes, navsim, neuroncap, nuscenes]

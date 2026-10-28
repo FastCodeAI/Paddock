@@ -47,8 +47,8 @@ in `tools/gate.py` (checked against scipy; `tests/test_gate.py` pins it).
 **Several pairs at once.** Each pair is tested at 5%, 2.5% per direction, so an
 unchanged model is called a REGRESSION on at least one pair more often than
 that: about 10% of the time on the quick tier's 4 pairs and about 16% on
-`--tier all`'s 7, if the pairs were independent. (They are not quite: both
-neuroNCAP subsets include 0103.) A FAIL on one pair, alone, is a reason to look
+`--tier all`'s 7, if the pairs were independent. (They are not quite: the two
+neuroNCAP subsets share two pairs.) A FAIL on one pair, alone, is a reason to look
 at that pair's numbers, not proof the candidate is worse.
 
 ## Reading a verdict
@@ -78,11 +78,15 @@ about 1.5 (measured from the 200-episode sweeps, 2026-10-21).
 | NO UNIT | some paired samples have no independent unit (NAVSIM: no plan dump names their log), so the standard error would be computed over samples and come out too small |
 | CONFIG DIFFERS | the two runs' `config` differs beyond `model_env`, `declared_env` and the subset keys (`limit`, `scene`, `runs`, NAVSIM's token filter, ...), so a difference could be the setup's, not the candidate's. The keys are in a note; `allow_config = ["key"]` on the pair (`--allow-config key` on `compare`) accepts one the candidate is meant to change |
 | INCOMPLETE | the candidate lost samples to a failure (`dataset.n_failed`, or `status: partial`). Pairing on shared samples would drop exactly those, usually the hard cases, so the rest is shown and nothing is claimed |
+| SUBSET DIFFERS | the pair names its subset (`subset = "<name>"`, which the smoke writes) and one of the runs does not hold all of it, most often a baseline made on an older draw of the subset. The shared samples are compared and shown, but they are not the measurement the subset defines, so nothing is claimed. The note says which run holds how many; run that one again on this subset |
 
 `check` adds one overall line: **FAIL** if any pair is a REGRESSION (exit 1);
 **SHIP** only if every pair was decided (GAIN, NEUTRAL or REGRESSION, so no NO
 RECORDS, TOO FEW UNITS or INCOMPLETE), none regressed, and at least one
-closed-loop pair that may ship is a GAIN; **HOLD** otherwise. A pair with
+closed-loop pair that may ship is a GAIN; **HOLD** otherwise. The quick tier's
+two crash checks (`crash_check = true`: one Bench2Drive route, one AlpaSim
+scene) are always TOO FEW UNITS, so one that ran cleanly is left out of that
+rule; one that failed is INCOMPLETE, which holds, and stops the gate. A pair with
 `can_ship = false` (the Bench2Drive subset: seven routes detect only a 17-38
 point drop; the neuroNCAP quick subset: three episodes) still fails the gate on a REGRESSION, and its GAIN never ships a
 checkpoint; the line says `(cannot ship)`. The smoke also holds while any of
@@ -185,13 +189,12 @@ engine's own collision verdict on all 600 runs of three stored sweeps
 sweep made before the terms existed gets them from its stored episodes, in about
 2 minutes, with `tools/benchmarks/neuroncap/pdm_rescore.py`: a new run of the
 same model, `replayed_from` its source (a subset key here), stored `valid: false`.
-Re-scored, the camera fix (Drive-JEPA blind against camera-fixed, 20 pairs x 10)
-leaves the NCAP score NEUTRAL (+0.56, MDE 1.30) and the PDM composite level
-(0.638 to 0.640, MDE 0.20), and moves drivable area the wrong way beyond t crit
-(0.995 to 0.967). neuroNCAP's terms are scored on the plan itself, while NAVSIM
-scores the path its vehicle simulator drives from the plan; so its C is plan
-comfort, and its fall (0.997 to 0.815) is not evidence the model drives less
-comfortably. Details in docs/benchmarks/neuroncap.md.
+Every plan is first driven by NAVSIM's own vehicle simulator, ported in
+`paddock.metrics.pdm_sim`, as NAVSIM does before it scores. Re-scored, the camera
+fix (Drive-JEPA blind against camera-fixed, 20 pairs x 10) leaves the NCAP score
+NEUTRAL (+0.56, MDE 1.30) and the PDM composite NEUTRAL (0.621 to 0.661, MDE
+0.21), and moves comfort the wrong way beyond t crit (0.998 to 0.935). Details
+in docs/benchmarks/neuroncap.md.
 
 What the other empty cells would take: for AlpaSim, the ego and actor poses each
 run already writes; for Bench2Drive, `outside_route_lanes` and the 20 Hz
@@ -206,31 +209,46 @@ tracks.
 check before a release.
 
 **The smoke**: fixed subsets, tracked in `tools/gate_smoke/<name>.toml`, each
-chosen once by a documented rule and headed by how it was chosen. They must never
-be re-picked to make a result look better; a subset that turns out wrong is
-replaced in its own commit, and its baselines re-run. The drawing rule is
-`tools.gate.stratified_pick` where a draw was seeded.
+drawn once and headed by how it was drawn. They must never be re-picked to make a
+result look better; a subset that turns out wrong is replaced in its own commit,
+and its baselines re-run.
+
+**How the subsets are drawn** (since 2026-10-22, `python -m tools.gate_subsets
+<benchmark>`, seed 20261022). Each benchmark is split into groups that change how
+a model has to drive -- the maneuver (left, right, straight), the speed band
+(slow under 3 m/s, fast from 8 m/s), the city or town, the crash type, the
+Bench2Drive scenario family -- as far as the benchmark records them. **Every group
+gets the same share** (`tools.gate.balanced_pick`), so a right turn at speed is as
+present as straight driving, and the samples within a group are drawn at random.
+The gate's mean therefore weighs rare driving more than the full benchmark does:
+it is a test for what broke, not an estimate of the full score.
 
 The smoke has two tiers of its own, because one checkpoint at a time cannot wait
 hours for every answer:
 
 - **quick** (`--tier quick`, the default): every checkpoint. The three open-loop
-  benchmarks and neuroNCAP's three pairs at 0103. It catches a pipeline break or
-  a large regression in about 40 minutes.
+  benchmarks, three neuroNCAP pairs (one per crash type), and one Bench2Drive route
+  and one AlpaSim scene as crash checks. It catches a pipeline break or a large
+  regression in about 40 minutes. The two crash checks are one sample each, too
+  few for a verdict (TOO FEW UNITS): they show the score, and a checkpoint that
+  cannot drive in CARLA or AlpaSim at all is INCOMPLETE and stops the gate
+  before the closed tier.
 - **closed** (`--tier closed`): a checkpoint worth keeping. The finer neuroNCAP
   subset, Bench2Drive and AlpaSim; a few hours.
 - `--tier all` runs quick, then closed only if every quick subset finished and
   none regressed.
 
-| subset | tier | what | units (t crit) | how `paddock run` is told | pairs with |
-|---|---|---|---|---|---|
-| kitscenes | quick | all 223 keyframes | 140 scenes (1.98) | nothing: the full sample list | any full run, or a smoke |
-| nuscenes | quick | first 30 val scenes, all 1,011 anchors | 30 scenes (2.05) | `--limit 1011` | a full run (a prefix of it) |
-| navsim (v2) | quick | 1,000 navtest tokens, every one of its 136 logs, at least 2 per log | 136 logs (1.98) | `--limit 1000` and `PADDOCK_NAVSIM_OVERRIDES=train_test_split.scene_filter.tokens=[...]` | a smoke of the same list only |
-| neuroncap_quick | quick | stationary, frontal and side at 0103; 1 run (seed 0) | 3 pairs (4.30) | `--scene 0103 --runs 1`, `PADDOCK_NCAP_MANAGE_RENDERER=true` | a full sweep (its run 0) |
-| neuroncap | closed | stationary/frontal/side at 0103, frontal+side at 0110, stationary at 0796; 3 runs | 6 pairs (2.57) | `--scene 0103,0110,0796 --runs 3`, `PADDOCK_NCAP_MANAGE_RENDERER=true` | a full sweep (its runs 0-2) |
-| bench2drive | closed | 7 routes where the four unassisted systems' scores spread by sd >= 12; cannot ship | 7 routes (2.45) | `--scene <7 route ids>` | a smoke baseline |
-| alpasim | closed | `public_2601_first10` | 10 clips (2.26) | `scene_set` pinned in the derived config | a smoke baseline |
+| subset | tier | what | groups | units (t crit) | how `paddock run` is told | pairs with |
+|---|---|---|---|---|---|---|
+| kitscenes | quick | all 223 keyframes; the verdict reads the 186 `val` ones | KITScenes' split: `val` 186, `overlap_train_val` 37 (places also in its training data, compared alone in a note) | 117 scenes (1.98) | nothing: the full sample list | any full run, or a smoke |
+| nuscenes | quick | 1,000 of the 5,119 val keyframes, from 143 of the 150 scenes | city area x maneuver x speed: 34 | 143 scenes (1.98) | `--limit 1000` and `PADDOCK_NUSCENES_SAMPLES=<the ids>` | any run of the same config, a full one included |
+| navsim (v2) | quick | 1,018 navtest tokens from 126 of its 136 logs: 1,000 drawn, then every log touched once topped up to 2 | city x driving command x speed: 35 | 126 logs (1.98) | `--limit 1018` and `PADDOCK_NAVSIM_OVERRIDES=train_test_split.scene_filter.tokens=[...]` | a smoke of the same list only |
+| neuroncap_quick | quick | 3 pairs, 1 run (seed 0); cannot ship | crash type: 1 each | 3 pairs (4.30) | `--scene <its scenes> --runs 1`, `PADDOCK_NCAP_PAIRS=<the pairs>`, `PADDOCK_NCAP_MANAGE_RENDERER=true` | a full sweep (its run 0) |
+| bench2drive_quick | quick | route 3717, the shortest (72 m) of the closed tier's 7; a crash check, cannot ship | none | 1 route (no verdict) | `--scene 3717` | the closed tier's baseline |
+| alpasim_quick | quick | one of the closed tier's 10 scenes, at random (seed 20261027); a crash check, cannot ship | none | 1 scene (no verdict) | `--scene <its clip>` within `public_2601_gate10` | the closed tier's baseline |
+| neuroncap | closed | 15 of the 20 pairs over 13 scenes, 1 run (seed 0) | crash type: 5 each (all frontal and side, 5 of 10 stationary) | 15 pairs (2.14) | as above | a full sweep (its run 0) |
+| bench2drive | closed | 7 of the 220 routes; cannot ship | left turn, right turn, and straight by hazard (junction, highway or high speed, obstacle, pedestrian or cyclist, cut-in or hard brake): 1 each | 7 routes (2.45) | `--scene <7 route ids>` | a smoke baseline |
+| alpasim | closed | 10 of the 50 `public_2601` scenes downloaded on the site (scene set `public_2601_gate10`), not of all 913, each also on the drivers' scene list | maneuver x speed, read from each scene's recorded drive: 6 | 10 scenes (2.26) | `scene_set` pinned in the derived config | a smoke baseline |
 
 A subset's baseline is `[baseline.<subset>]` in the baseline manifest, else
 `[baseline.<benchmark>]`: one full neuroNCAP sweep serves both neuroNCAP subsets.
@@ -239,9 +257,18 @@ A smoke run of a subset is stored `valid: false` with the reason in `notes`
 (`--limit`, a few of 20 pairs, a few of the site's routes, a few clips of the
 scene set), so it never reaches the leaderboard. Two smokes are their whole
 benchmark and are ordinary valid runs: KITScenes (all 223 keyframes) and
-AlpaSim (the whole pinned `public_2601_first10`).
+AlpaSim (the whole pinned `public_2601_gate10`).
+
+A pair in a `check` manifest may name its subset (`subset = "<name>"`; the smoke
+writes it). A subset with `decide_on` has groups that run but do not decide:
+KITScenes decides on `val`, and the 37 `overlap_train_val` keyframes are left out
+of the verdict and compared alone in a note on the pair.
 
 ## Running the smoke
+
+To have the site's shared worker run it for you, one job at a time, submit it to
+the queue instead: `python -m tools.gate_queue submit --model drivejepa --env
+DRIVEJEPA_CHECKPOINT=/path/to/ckpt` ([queue.md](queue.md)). By hand:
 
 ```bash
 python -m tools.gate smoke --model drivejepa --env DRIVEJEPA_CHECKPOINT=/path/to/ckpt \
@@ -257,9 +284,29 @@ setsid nohup python -m tools.gate smoke ... --tier all --execute \
   the GPU memory below, and the next one waits until this one's model has said
   it is ready, so every GPU check sees the memory already taken. A subset whose
   benchmark runs a simulator (neuroNCAP, Bench2Drive, AlpaSim) starts it inside
-  its first episode, after the model is ready, so nothing else launches while
-  one is running: the closed tier runs one subset at a time. With one
-  `--cores` (the default, `4-7`) everything runs one after another.
+  its first episode, after the model is ready, and neuroNCAP restarts its
+  renderer at every scene, so its memory may not be taken yet when the next
+  check reads the card. Each running simulator's share (8 GB for neuroNCAP and
+  Bench2Drive, 17 GB for AlpaSim) therefore counts as taken until its lane ends.
+  With enough lanes and memory, neuroNCAP, Bench2Drive and AlpaSim run side by
+  side; until 2026-10-27 the closed tier ran one subset at a time. Each keeps its
+  lane's cores: neuroNCAP's renderer and CARLA as the lane's children, AlpaSim's
+  Docker containers because its launcher pins them to the cores its run was
+  given (shakaal fails above about 90% CPU). Two subsets of one benchmark never
+  run at once. With one `--cores` (the default, `4-7`)
+  everything runs one after another.
+- **NAVSIM gets two model nodes.** The derived config sets
+  `[benchmarks.navsim] gpu_nodes = 2` unless the site sets its own: the scorer's
+  four workers shared one node, which answers one scenario at a time. Each
+  scenario is still one request to one node, and `gpu_nodes` is not in the run
+  config, so the runs pair with baselines made on one node. The GPU wait counts
+  both nodes.
+- **Longest first, with lanes.** With more than one lane, a tier's subsets
+  launch longest first (`EXPECTED_MIN`, measured where it could be). In the quick
+  tier: NAVSIM, neuroNCAP, nuScenes, the Bench2Drive route, the AlpaSim scene,
+  KITScenes. Launched last, NAVSIM ran alone for half
+  an hour while the other lanes sat idle. With one lane the order stays cheap
+  first, so a regression stops the smoke soonest.
 - **Stop at the first regression.** When a finished subset is a REGRESSION
   against its baseline, nothing else is launched; running ones finish. The
   closed tier never starts after a quick-tier regression or an unfinished quick
@@ -287,9 +334,10 @@ Without `--execute` it prints, per benchmark, the exact `paddock run` line
    land on the site's port, where a long-lived `paddock renderer` usually is;
    and nuScenes' `index_cache` in `{roots.runs}/gate/cache/nuscenes`, one index
    every checkout shares, unless the site names its own. Neither is in a run
-   config, so neither changes what is measured. neuroNCAP's `video` stays the
-   site's: with the default `encode`, every episode leaves its mp4s, which is how
-   a regression is looked at;
+   config, so neither changes what is measured. neuroNCAP's `debug_views` is
+   turned off unless the site sets it: the two drawn views took about 1 s of each
+   2.7 s step, so the gate's neuroNCAP runs leave camera frames, plans and poses,
+   and no mp4s;
 2. launches one benchmark at a time, each after `nvidia-smi` shows enough free
    memory on the card the model will use: the model's declared `vram_gb`, plus
    its simulator's share (`SIMULATOR_GB`: 8 GB for neuroNCAP's renderer, as
@@ -404,16 +452,38 @@ the check that the site's baselines are sound.
 - **NAVSIM smoke pairs only with a NAVSIM smoke.** Two-frame extended comfort
   compares each scenario with the next *scored* one in its log, so a token's
   EPDMS depends on which others were scored.
-- **nuScenes smoke is a prefix, not a stratified draw.** Open-loop benchmarks
-  take no scene filter: `paddock run` hands `--scene` to closed-loop harnesses
-  only (`src/paddock/runner.py:591` calls `_run_open_loop` with `limit` and no
-  scenes), and `NuScenesBenchmark.samples`
-  (`src/paddock/adapters/benchmarks/nuscenes/harness.py:223`) has no scene
-  argument. `--limit` takes the first N samples in `val_scenes.json` order, so
-  the 30 scenes are the first 30: boston-seaport and singapore-onenorth, no
-  queenstown or hollandvillage. A stratified choice needs a scene filter there.
+- **The groups need recorded data.** nuScenes' were read from a full run's
+  stored samples (its command and future path) and nuScenes' log table; NAVSIM's
+  from navtest's own log pickles; Bench2Drive's from its route file; AlpaSim's
+  from the recorded drive inside each scene file.
+- **AlpaSim draws only from scenes already downloaded.** AlpaSim fetches a
+  missing scene from a gated Hugging Face dataset when a run starts, and the
+  gate queue's account has no token for it. So the 10 are drawn from the 50
+  `public_2601` scenes on shakaal, not from all 913. That pool is not a random
+  sample of the suite (the first ten of its list, the twenty drawn for
+  `public_2601_30scenes`, twenty more), and thirty of its scenes are the ones
+  behind the published 30-scene AlpaSim results. The first draw (2026-10-22, 10
+  of all 913 at random) never ran: none of its scenes was on disk.
+  **A scene must also be on the drivers' scene list.** The driver profiles hand
+  the wizard `public_2601_30scenes_26p01.csv`, and it looks scenes up there
+  only. Two of the 10 drawn on 2026-10-27 were on disk but not on that list, and
+  failed with "Failed to find scenes"; they were swapped for runnable ones from
+  the same group, or else the same turn (`python -m tools.gate_subsets
+  alpasim_replace`), keeping the other 8. A test checks every gate scene is on
+  every pinned list.
+  **A scene must also let a model drive.** On two more of the 10 the run ended
+  at once: on `04749bb9` constant velocity and Drive-JEPA both left the road
+  within 0.5 s, and on `791d68ce` both left it at their first step. Every
+  model scores the same there, so they were swapped the same way.
+  `ALPASIM_UNUSABLE` in `tools/gate_subsets.py` lists them with why; the quick
+  tier's one scene, which was `04749bb9`, was redrawn from the new 10.
+  **Another site must download these 10 once** before its gate can run AlpaSim:
+  the scenes listed in `public_2601_gate10.yaml`, into its
+  `[benchmarks.alpasim] scene_cache`, with a Hugging Face token that has access
+  to NVIDIA's gated dataset. AlpaSim fetches a missing scene itself when a run
+  starts, so one run of this scene set with `HF_TOKEN` set does it.
 - **The AlpaSim smoke runs its pinned scene set as the default set**: the
-  derived config sets `[benchmarks.alpasim] scene_set = "public_2601_first10"`,
+  derived config sets `[benchmarks.alpasim] scene_set = "public_2601_gate10"`,
   so a site configured for `public_2601_30scenes` still runs the subset's 10.
 - **Drive-JEPA on AlpaSim runs through the bridge on its native driver's
   settings.** Its `model.yaml` declares alpasim, so the smoke drives it. With

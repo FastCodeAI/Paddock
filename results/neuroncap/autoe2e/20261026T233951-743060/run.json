@@ -1,11 +1,11 @@
 {
-  "run_id": "20261021T175940-844841",
+  "run_id": "20261026T233951-743060",
   "site": "renesas-sjccomp250",
   "benchmark": "neuroncap",
   "model": "autoe2e",
   "mode": "closed_loop",
-  "started_utc": "2026-10-21T17:59:40+00:00",
-  "duration_s": 43784.7,
+  "started_utc": "2026-10-26T23:39:51+00:00",
+  "duration_s": 40698.0,
   "repo_sha": "40a75cf8a26b60f6b094125e3924fe0bdb427b02",
   "dataset": {
     "name": "nuscenes",
@@ -25,10 +25,7 @@
       "CAM_BACK_LEFT",
       "CAM_BACK",
       "CAM_BACK_RIGHT"
-    ],
-    "model_env": {
-      "AUTOE2E_CHECKPOINT": "<site path:c4c0ec7d>"
-    }
+    ]
   },
   "hardware": {
     "gpu_free_gb_at_start": null
@@ -74,8 +71,8 @@
         "ego_rows_filled": 6,
         "route_valid": false,
         "destination": false,
-        "pack_s": 0.081,
-        "model_s": 1.441,
+        "pack_s": 0.048,
+        "model_s": 1.122,
         "accel_0": 1.883,
         "kappa_0": 0.9492,
         "end_6s": [
@@ -86,8 +83,8 @@
     }
   },
   "status": "complete",
-  "valid": false,
+  "valid": true,
   "superseded_by": "",
-  "notes": "site env override may change what was measured: AUTOE2E_CHECKPOINT (values in config.model_env)",
+  "notes": "",
   "ingested_from": ""
 }

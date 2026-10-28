@@ -94,6 +94,13 @@ Every key above is read by the adapter; nothing else is. `routes_subset` changes
 So do the `stop_*` settings, whose rules the run's notes also state, and a
 `camera_rig` other than paddock's.
 
+**How often the model is asked for a plan** is the model's own `planning_hz`
+(`model.yaml`, `capabilities`). The client asks the node once per
+1/`planning_hz` seconds and follows the last plan unchanged in between; a model
+without it is asked every 0.05 s tick. Drive-JEPA declares 2 Hz. The rate is
+recorded as `config.infer_hz` and hashed into the run id, and the host's
+`PADDOCK_INFER_HZ` overrides it for every model.
+
 Prerequisites (all outside this repo):
 
 - **CARLA 0.9.15** installed at `carla_root` (`CarlaUE4.sh` must exist, and
@@ -595,6 +602,11 @@ controller fixes. The assisted and expansion recordings are reported
 separately in [OpenPilot, by recording set](#openpilot-by-recording-set); they are
 never pooled into one mean. See [Bench2Drive protocol](bench2drive.md).
 
+VisionPilot's cell is its 20 Hz run over **all 50 routes**, 47.82
+([run](../../results/bench2drive/visionpilot/pooled50-40c29d24c37d542a-d94009/run.json)):
+the historical 24 (49.85, 03–04 Sep) and the 26 expansion routes (45.95, 09 Sep),
+with the set-speed latch fix in place for both.
+
 ※ Bench2Drive driving score at the model's **native inference rate** — Drive-JEPA
 and Qwen-Drive replan at 2 Hz, Alpamayo 1.5 at 10 Hz — over the 50-route set,
 18–20 Sep 2026. Alpamayo 1.5 and Qwen-Drive are means over 49 routes: route 3800
@@ -611,8 +623,8 @@ the 20 Hz protocol only. Per-route detail and the 20 Hz comparison are in
 
 ♣ The Bench2Drive baseline uses a **fixed 3 m/s target**, with straight ego-frame
 waypoints and the shared controller; actual vehicle speed can differ. nuScenes
-constant velocity instead extrapolates the recorded ego velocity. 47.94 is that
-3 m/s target on the historical 24 routes; the whole speed sweep, and why the
+constant velocity instead extrapolates the recorded ego velocity. 48.31 is that
+3 m/s target over all 50 routes (47.94 on the historical 24); the whole speed sweep, and why the
 50-route table shows 40.39, is in
 [Constant velocity — the speed sweep](#constant-velocity--the-speed-sweep).
 
@@ -748,11 +760,11 @@ The baseline is not one experiment. All five targets were driven over the same
 
 This fixes the target speed rather than holding the zero speed at route start;
 the path is straight in the ego frame, not a route-following reference. The
-**47.94 ♣** in the support matrix is the 3 m/s target over the *historical 24*
-routes (RC 74.68) — the same setting scores 48.31 over all 50, and the two are
-separate runs in the store:
-[historical 24](../../results/bench2drive/constant_velocity/20260908T084921-804913/run.json)
-· all 50 under `results/bench2drive/constant_velocity/pooled50-3mps-*`.
+**48.31 ♣** in the support matrix is the 3 m/s target over all 50 routes
+(RC 74.65); the same setting scores 47.94 over the *historical 24* (RC 74.68), and
+the two are separate runs in the store:
+[all 50](../../results/bench2drive/constant_velocity/pooled50-3mps-40c29d24c37d542a-02b6ac/run.json)
+· [historical 24](../../results/bench2drive/constant_velocity/20260908T084921-804913/run.json).
 
 [Calculation](bench2drive-speed-normalization.md) · [Recorded data](bench2drive-speed-normalization.json)
 
@@ -784,9 +796,10 @@ DriveJEPA completes it and scores 100) and is recorded as requested-and-never-sc
 — `n_failed: 1`, `status: partial` — never as a zero. **OpenPilot's native rate is
 20 Hz**, so its published run is already its native-rate run, and VisionPilot was not
 re-run; nothing here restates either. The rate is recorded per run in
-`config.model_env`, not derived from `model.yaml`, and the adapter support for
-`PADDOCK_INFER_HZ` is not on `main` yet — so these are landed results, not runs a
-clean checkout can re-drive. The three runs are `valid: false` and **do not rank**
+`config.model_env`, not derived from `model.yaml`. They were driven before the
+adapter honoured a rate on `main`; it now does (a model's `planning_hz`, above),
+and Drive-JEPA declares 2 Hz, so a clean checkout drives it at that rate by
+default. CARLA re-runs are not bit-reproducible, so these stay landed results. The three runs are `valid: false` and **do not rank**
 on the board: a 2 or 10 Hz run is not the protocol the other rows were driven
 under. Their native scores are the Bench2Drive cells of the support matrix for
 these three models (※). `model_env` also differs in more than the rate — thread counts, a trace

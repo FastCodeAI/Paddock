@@ -19,6 +19,7 @@ import pytest
 from paddock.adapters.models.autoe2e.policy import (
     EGO_STEPS,
     HISTORY_OFFSETS_S,
+    MATCH_TOLERANCE_S,
     NAV_H,
     NAV_MPP,
     NAV_W,
@@ -34,6 +35,7 @@ from paddock.adapters.models.autoe2e.policy import (
     egomotion_rows,
     finite_controls,
     integrate_controls,
+    match_tolerance,
     navigation_modules,
     pack_tile,
     route_raster,
@@ -268,6 +270,37 @@ def test_a_short_past_repeats_the_oldest_frame_and_says_so() -> None:
     picked, gaps = policy._history(policy.frames[-1])
     assert gaps[:3] == [None, None, None] and gaps[3:] == [0.0] * 4
     assert all(f is policy.frames[0] for f in picked[:3])
+
+
+def test_jittered_keyframes_are_taken_for_the_slots_they_fill() -> None:
+    """nuScenes keyframes drift up to ~0.1 s off the 0.5 s grid; each is still the frame meant."""
+    policy = POLICY()
+    times = [0.0, 0.55, 1.08, 1.62, 2.10, 2.58, 3.07, 3.58]  # gaps 0.47-0.55 s, like nuScenes
+    for t in times:
+        policy.frames.append(_frame(t, 0.0))
+    picked, gaps = policy._history(policy.frames[-1])
+    assert [f.t_s for f in picked] == times[:-1], "every real keyframe, none repeated"
+    assert all(g is not None for g in gaps)
+    assert max(abs(g) for g in gaps) > MATCH_TOLERANCE_S, "the old 0.06 s match refused some of these"
+
+
+def test_a_10_hz_stream_keeps_the_old_match_even_with_a_dropped_frame() -> None:
+    """What KITScenes and neuroNCAP were fed is unchanged: at 10 Hz the tolerance stays 0.06 s,
+    so a slot whose frame is missing still repeats the oldest frame, as it did."""
+    policy = POLICY()
+    for k in range(41):
+        if k == 25:  # t = 2.5 s, the -1.5 s slot of the frame at 4.0 s, is missing
+            continue
+        policy.frames.append(_frame(k / 10, 0.0))
+    assert match_tolerance(np.array([f.t_s for f in policy.frames[:-1]])) == MATCH_TOLERANCE_S
+    picked, gaps = policy._history(policy.frames[-1])
+    assert gaps[4] is None and picked[4] is policy.frames[0]
+
+
+def test_match_tolerance_is_half_the_spacing_with_the_old_floor() -> None:
+    assert match_tolerance(np.array([0.0])) == MATCH_TOLERANCE_S
+    assert match_tolerance(np.arange(0.0, 3.0, 0.1)) == MATCH_TOLERANCE_S
+    assert match_tolerance(np.arange(0.0, 3.0, 0.5)) == pytest.approx(0.25)
 
 
 def test_projection_is_from_the_raised_reference_frame_and_folds_in_ego_motion() -> None:

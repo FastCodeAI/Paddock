@@ -101,6 +101,7 @@ capabilities:
   vram_gb: 24
   startup_timeout_s: 600
   waypoint_dt: 0.5
+  planning_hz: 2.0               # closed loop: replan this often; omit to be asked every tick
 
 benchmarks: [kitscenes, neuroncap]
 ```
@@ -216,6 +217,12 @@ rivals. See [architecture.md](architecture.md#where-does-a-file-belong).
 Write `docs/models/<name>.md`: environment, weights and where they come from,
 quirks, and the reference numbers your run produced. The next person to touch
 this model is probably at the other site.
+
+To put the model in the README's support matrix, add it to
+[docs/support-matrix.toml](support-matrix.toml): a `[[model]]` entry and a
+`[cells.<name>]` line per benchmark naming your run. Then run
+`python -m tools.readme_figures` and commit the redrawn picture. `make check`
+fails if a named run is missing or the picture is out of date.
 
 ## Step 11 — open the PR
 

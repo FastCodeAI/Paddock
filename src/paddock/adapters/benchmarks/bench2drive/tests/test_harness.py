@@ -918,3 +918,24 @@ def test_preflight_refuses_record_inputs_without_record(tmp_path, monkeypatch) -
     assert any("record_inputs" in p and "record" in p for p in alone.preflight())
     both = _harness(_site(tmp_path / "b", monkeypatch, COMPLETED, record_inputs="true", record="true"))
     assert not any("record_inputs" in p for p in both.preflight())
+
+
+def test_the_models_planning_rate_reaches_the_client_and_the_record(tmp_path, monkeypatch) -> None:
+    """Drive-JEPA plans every 0.5 s: its `planning_hz` is passed to the client and hashed into the run."""
+    from paddock.adapters.benchmarks.bench2drive.harness import infer_hz
+
+    cfg = _site(tmp_path, monkeypatch, COMPLETED)
+    harness = _harness(cfg)
+    models = Registry.load().models
+    assert harness.model_run_config(models["drivejepa"]) == {"infer_hz": 2.0}
+    assert harness.model_run_config(models["openpilot"]) == {}, "no planning_hz: asked every tick"
+    episode = _episode()
+    episode.config["planning_hz"] = 2.0
+    out = tmp_path / "out"
+    harness.run_episode(episode, "http://127.0.0.1:9123", out)
+    assert json.loads((out / "env.json").read_text())["PADDOCK_INFER_HZ"] == "2"
+    monkeypatch.setenv("PADDOCK_INFER_HZ", "10")
+    assert infer_hz(2.0) == 10.0, "the host's setting drives every model at its rate"
+    monkeypatch.setenv("PADDOCK_INFER_HZ", "fast")
+    with pytest.raises(ValueError, match="expected a rate in Hz"):
+        infer_hz(2.0)

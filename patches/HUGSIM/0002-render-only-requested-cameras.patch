@@ -1,0 +1,44 @@
+Subject: [PATCH 2/2] render only the cameras named in HUGSIM_RENDER_CAMS
+
+Adds the environment variable HUGSIM_RENDER_CAMS (a comma list of camera
+names). Unset, upstream behaviour: all six cameras are rendered every step.
+Set, only the named cameras are rendered; every other camera keeps its key in
+the observation (gymnasium's passive checker asserts them all) and gets one
+shared black frame per size, the way `_get_obs` already blacks out the BACK
+cameras of Waymo and KITTI-360. Pickle stores a repeated array once, so the
+per-step observation on the pipe shrinks too.
+
+Rendering six 800x450 Gaussian-splatting views dominates a HUGSIM step, and a
+model that reads one camera pays for all six. Scoring never reads images
+(`hugsim_evaluate` uses the boxes, the planned trajectories and the scene's
+point clouds), so scores are unchanged. `_get_obs` is a method of the gym
+environment that `closed_loop.create_gym_env` builds itself; no setting
+reaches it. Additive; upstreamable.
+
+---
+diff --git a/sim/hugsim_env/envs/hug_sim.py b/sim/hugsim_env/envs/hug_sim.py
+index 77932df..b90f140 100644
+--- a/sim/hugsim_env/envs/hug_sim.py
++++ b/sim/hugsim_env/envs/hug_sim.py
+@@ -213,8 +213,21 @@ class HUGSimEnv(gymnasium.Env):
+     def _get_obs(self):
+         rgbs, semantics, depths = {}, {}, {}
+         v2front = self.cam_params['CAM_FRONT']["v2c"]
++        # HUGSIM_RENDER_CAMS (comma list): render only these cameras. Every other camera keeps its key (gymnasium's
++        # observation check asserts them all) but gets one shared black frame per size, which pickle stores once,
++        # as this method already blacks out the BACK cameras of Waymo and KITTI-360. Scoring never reads images.
++        keep = os.environ.get('HUGSIM_RENDER_CAMS')
++        keep = set(keep.split(',')) if keep else None
++        black = self.__dict__.setdefault('_black_frames', {})
+         for cam_name, params in self.cam_params.items():
+             intrinsic, v2c = params['intrinsic'], params['v2c']
++            if keep is not None and cam_name not in keep:
++                h, w = int(intrinsic['H']), int(intrinsic['W'])
++                if (h, w) not in black:
++                    black[(h, w)] = (np.zeros((h, w, 3), np.uint8), np.zeros((h, w), np.uint8),
++                                     np.zeros((h, w), np.float32))
++                rgbs[cam_name], semantics[cam_name], depths[cam_name] = black[(h, w)]
++                continue
+             c2front = v2front @ np.linalg.inv(v2c) @ self.cam_rect
+             c2w = self.ego @ c2front
+             viewpoint = create_cam(intrinsic, c2w)

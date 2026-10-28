@@ -1,0 +1,56 @@
+{
+  "run_id": "campaign-87d4f5097a85db3c-ce3603",
+  "site": "fastcode-shakaal-navvrat-hugsim",
+  "benchmark": "hugsim",
+  "model": "drivejepa",
+  "mode": "closed_loop",
+  "started_utc": "2026-10-22T07:40:16.030056+00:00",
+  "duration_s": null,
+  "repo_sha": null,
+  "dataset": {
+    "name": "hugsim-release",
+    "n_samples": 419,
+    "sequences_sha256": "87d4f5097a85db3c",
+    "n_expected": 420,
+    "n_failed": 1
+  },
+  "config": {
+    "excluded": [
+      "scene-021-medium-02",
+      "scene-027-medium-02",
+      "scene-028-medium-02",
+      "scene-032-medium-02",
+      "scene-033-medium-02",
+      "scene-034-medium-02",
+      "scene-038-medium-02",
+      "scene-039-medium-02",
+      "scene-040-medium-02",
+      "scene-044-medium-02",
+      "scene-053-medium-02",
+      "scene-090-medium-02",
+      "scene-095-medium-02",
+      "scene-113-medium-02",
+      "scene-124-medium-02",
+      "scene-140045460035-hard-00"
+    ],
+    "excluded_attempted": 16,
+    "controller": "traj2control with upstream PR #57",
+    "step_cap": 400,
+    "route": "command only",
+    "infer_every": 2,
+    "infer_hz": 2.0,
+    "render_cams": "CAM_FRONT",
+    "model_env": {
+      "DRIVEJEPA_IMAGE_GEOMETRY": "native",
+      "DRIVEJEPA_MOMENTUM": "off"
+    },
+    "source_layout": "results.jsonl + <dataset>_bridge/<scene>_<mode>/eval.json + logs/<scenario>.log"
+  },
+  "hardware": {},
+  "provenance": {},
+  "status": "partial",
+  "valid": false,
+  "superseded_by": "",
+  "notes": "Released Drive-JEPA (NAVSIM v2 ViT-L checkpoint), driven 22 Oct 2026 in two lanes sharing one scenario queue. The node was the drivejepa adapter as of paddock ac7788f plus a per-call record of the 32 candidates and their scores, which does not change the plan; its camera placement goes through lidar2ego, which the bridge sends as the identity, so the cameras land where ac7788f puts them. At that commit the adapter fed cameras uncropped and picked on the plain score; main now crops to the OpenScene camera (#106) and turns momentum selection on (#95), so a re-run on main would differ. Only the front camera was rendered: the released model's forward reads only the front camera. DRIVEJEPA_IMAGE_GEOMETRY, DRIVEJEPA_MOMENTUM were supplied by the ingest config: the campaign recorded no model env, so this is the operator's statement of how the node was configured, not a reading from it. scenarios attempted and never scored: scene-0166-medium-01 (exit 1 after 60 steps: IndexError: index is out of bounds for dimension with size 0).",
+  "ingested_from": "hugsim-eval/dj_released"
+}

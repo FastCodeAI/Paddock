@@ -159,6 +159,13 @@ DEFAULT_PROFILE = DriverProfile()
 #: The bridge also runs that driver's planning rhythm and inputs: a replan
 #: every 0.5 s on its grid, the cached plan re-anchored in between, its frame
 #: pair, forward speed and command (see drivejepa_rhythm.py).
+#:
+#: autoe2e: six cameras re-rendered as pinholes at the KITScenes field of view,
+#: the rear view on the tele camera's id (paddock_bridge_autoe2e.yaml), renamed
+#: to the six names the node reads. The node is asked every 100 ms on a grid,
+#: the cached plan re-timed and re-anchored in between; warm-up frames go to
+#: /observe, and the ego history is padded straight back from the first pose
+#: (see replan_rhythm.py). Same 30 scenes, warm-up and control step as drivejepa.
 DRIVER_PROFILES: dict[str, DriverProfile] = {
     "drivejepa": DriverProfile(
         driver="paddock_bridge_drivejepa",
@@ -184,6 +191,35 @@ DRIVER_PROFILES: dict[str, DriverProfile] = {
             "50000",
             "--force-gt-us",
             "3000000",
+        ),
+        scenes_csv="public_2601_30scenes_26p01.csv",
+        replan_log=True,
+    ),
+    "autoe2e": DriverProfile(
+        driver="paddock_bridge_autoe2e",
+        bridge_args=(
+            "--camera-name",
+            "camera_front_wide_120fov=CAM_FRONT",
+            "--camera-name",
+            "camera_cross_left_120fov=CAM_FRONT_LEFT",
+            "--camera-name",
+            "camera_cross_right_120fov=CAM_FRONT_RIGHT",
+            "--camera-name",
+            "camera_rear_left_70fov=CAM_BACK_LEFT",
+            "--camera-name",
+            "camera_front_tele_30fov=CAM_BACK",
+            "--camera-name",
+            "camera_rear_right_70fov=CAM_BACK_RIGHT",
+            "--pinhole-intrinsics",
+            "--replan-every-us",
+            "100000",
+            # Both must equal paddock_bridge_autoe2e.yaml's control step and
+            # force_gt_duration_us; a test checks they do.
+            "--force-gt-us",
+            "3000000",
+            "--frame-interval-us",
+            "50000",
+            "--pad-ego-history",
         ),
         scenes_csv="public_2601_30scenes_26p01.csv",
         replan_log=True,

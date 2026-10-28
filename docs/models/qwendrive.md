@@ -137,9 +137,13 @@ The vendor states the planner was trained on trajectories "standardized from
 multiple public driving datasets" and reports NAVSIM navtest as its headline
 number, so `trained_on` declares NAVSIM `navtrain`; see the Qwen-Drive × navsim
 section of [comparison.md](comparison.md) for what that does to the NAVSIM
-column. Bench2Drive (CARLA), KITScenes, neuroNCAP (nuScenes, rendered) and
-comma2k19 are zero-shot — and comma2k19 doubly so, since nothing the report
-names is a windscreen-mounted mono camera on a Californian highway.
+column. Its VLM also trained on nuScenes train and on driving-VQA sets whose
+training splits hold nuScenes val scenes, 12 of neuroNCAP's 14 among them, so the
+nuScenes and neuroNCAP cells are adapted too (comparison.md, Qwen-Drive 1.0 ×
+nuscenes). KITScenes and comma2k19 are zero-shot — comma2k19 doubly so, since
+nothing the report names is a windscreen-mounted mono camera on a Californian
+highway. Bench2Drive is zero-shot as far as the report says, but one of its VQA
+sets, DriveLM, has a CARLA part, and which part was used is not stated.
 
 ## Results
 
@@ -178,8 +182,9 @@ also an in-distribution number — the model declares `navtrain`.
 
 nuScenes is the widest margin: lower than every other model on all seven
 columns, collision included, and the first model here to beat the
-constant-velocity baseline outright. Zero-shot — nuScenes is not among the
-datasets the model declares.
+constant-velocity baseline outright. Not zero-shot: its VLM trained on nuScenes
+train, and on VQA sets whose training splits hold val scenes (Training exposure,
+above).
 
 ## Why neuroNCAP is the exception
 
