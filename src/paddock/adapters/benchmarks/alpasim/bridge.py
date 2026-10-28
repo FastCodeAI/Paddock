@@ -75,6 +75,12 @@ pins that for every profile):
 - ``--send-route``: the route AlpaSim holds, as ``route_xy``, in the rig frame
   at the route's own time -- the frame AlpaSim sends it in.
 - ``--send-scene-id``: the scene id, as ``scene_id``.
+- ``--send-route-time``: the route's own timestamp, as ``route_timestamp_us``
+  -- the time of the rig frame ``route_xy`` is in, for a node that moves the
+  route into its newest pose's frame as AlpaSim's own driver does.
+- ``--send-plan-dt``: the spacing the bridge drives the plan at
+  (``--waypoint-dt``), as ``plan_dt``, for a node that can return a plan at the
+  spacing it is asked for rather than its default.
 - ``--named-cameras-only``: only the cameras named with ``--camera-name`` are
   decoded and sent.
 
@@ -374,6 +380,13 @@ def route_xy(route: Any) -> list[list[float]] | None:
     return [[float(w.x), float(w.y)] for w in waypoints]
 
 
+def route_timestamp_us(route: Any) -> int | None:
+    """The time of the rig frame `route_xy` is in, or None when there is no route."""
+    if route is None or not list(getattr(route, "waypoints", None) or []):
+        return None
+    return int(route.timestamp_us)
+
+
 class PolicyPlanner(Planner):
     """A scaffold Planner that asks a paddock policy node for the plan.
 
@@ -399,6 +412,8 @@ class PolicyPlanner(Planner):
         send_route: bool = False,
         send_scene_id: bool = False,
         named_cameras_only: bool = False,
+        send_route_time: bool = False,
+        send_plan_dt: bool = False,
     ) -> None:
         """
         Args:
@@ -419,6 +434,8 @@ class PolicyPlanner(Planner):
             send_route: Send the route as ``route_xy`` (module docstring).
             send_scene_id: Send the scene id as ``scene_id``.
             named_cameras_only: Send only the cameras in *camera_names*.
+            send_route_time: Send the route's timestamp as ``route_timestamp_us``.
+            send_plan_dt: Send *waypoint_dt* as ``plan_dt``.
         """
         self.policy_url = policy_url.rstrip("/")
         self.timeout_s = timeout_s
@@ -433,6 +450,10 @@ class PolicyPlanner(Planner):
         self._canbus_acceleration = canbus_acceleration
         self._send_route = send_route
         self._send_scene_id = send_scene_id
+        if send_route_time and not send_route:
+            raise ValueError("send_route_time needs send_route: a time with no route to go with it")
+        self._send_route_time = send_route_time
+        self._send_plan_dt = send_plan_dt
         if named_cameras_only and not self._camera_names:
             raise ValueError("named_cameras_only needs camera_names: with none named, nothing would be sent")
         self._named_cameras_only = named_cameras_only
@@ -620,6 +641,10 @@ class PolicyPlanner(Planner):
             body["route_xy"] = route_xy(view.route)
         if self._send_scene_id:
             body["scene_id"] = str(view.debug_scene_id)
+        if self._send_route_time:
+            body["route_timestamp_us"] = route_timestamp_us(view.route)
+        if self._send_plan_dt:
+            body["plan_dt"] = self._waypoint_dt
         return body, source_t_us
 
     def _translate_cameras(
@@ -875,6 +900,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--send-route", action="store_true", help="send AlpaSim's route as route_xy")
     parser.add_argument("--send-scene-id", action="store_true", help="send the scene id as scene_id")
     parser.add_argument(
+        "--send-route-time",
+        action="store_true",
+        help="with --send-route: send the route's timestamp as route_timestamp_us",
+    )
+    parser.add_argument(
+        "--send-plan-dt",
+        action="store_true",
+        help="send --waypoint-dt as plan_dt, the spacing the plan will be driven at",
+    )
+    parser.add_argument(
         "--named-cameras-only",
         action="store_true",
         help="send only the cameras named with --camera-name",
@@ -894,6 +929,8 @@ def main(argv: list[str] | None = None) -> int:
         "send_route": args.send_route,
         "send_scene_id": args.send_scene_id,
         "named_cameras_only": args.named_cameras_only,
+        "send_route_time": args.send_route_time,
+        "send_plan_dt": args.send_plan_dt,
     }
     rhythm = None
     if args.planner == "drivejepa-0.1.4b":
@@ -942,6 +979,8 @@ def main(argv: list[str] | None = None) -> int:
         names[source] = target
     if args.named_cameras_only and not names:
         parser.error("--named-cameras-only needs at least one --camera-name")
+    if args.send_route_time and not args.send_route:
+        parser.error("--send-route-time needs --send-route")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", stream=sys.stderr)
     serve(
         args.policy_url,

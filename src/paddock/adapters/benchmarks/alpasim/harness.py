@@ -177,6 +177,18 @@ DEFAULT_PROFILE = DriverProfile()
 #: with the forced replay's zeros replaced from the poses; the route and the
 #: scene id ride along for the node's command and noise seed. Plans come back
 #: as 50 points 0.1 s apart. Same 30 scenes as drivejepa.
+#:
+#: alpamayo15: the settings Alpamayo 1.5's stored 10-scene AlpaSim result was
+#: scored on -- four f-theta cameras at 20 Hz, 3.0 s warm-up with the driver
+#: called, 400 steps (paddock_bridge_alpamayo15.yaml) -- and what AlpaSim's own
+#: Alpamayo driver was shown there. All four cameras are renamed to the node's
+#: names, the telephoto included, so the model gets the real 30 deg render. The
+#: node is asked every 100 ms, the model's own rate, and hears every other tick
+#: through /observe; it keeps the frames 0.1 s apart and the poses for its 1.6 s
+#: of history from those. The route and its timestamp ride along for its
+#: navigation text. The plan spacing is sent too, and plans come back as 64
+#: points 0.1 s apart. No canbus switch: the model reads poses
+#: and pixels only, never speed or acceleration. Same 30 scenes as drivejepa.
 DRIVER_PROFILES: dict[str, DriverProfile] = {
     "drivejepa": DriverProfile(
         driver="paddock_bridge_drivejepa",
@@ -261,6 +273,49 @@ DRIVER_PROFILES: dict[str, DriverProfile] = {
             "--canbus-ego-frame",
             "--send-route",
             "--send-scene-id",
+        ),
+        scenes_csv="public_2601_30scenes_26p01.csv",
+        replan_log=True,
+    ),
+    "alpamayo15": DriverProfile(
+        driver="paddock_bridge_alpamayo15",
+        bridge_args=(
+            # The node's names for the four cameras AlpaSim's Alpamayo driver
+            # reads. CAM_FRONT_TELE is the name model.yaml's camera_views
+            # already gives the telephoto slot.
+            "--camera-name",
+            "camera_front_wide_120fov=CAM_FRONT",
+            "--camera-name",
+            "camera_cross_left_120fov=CAM_FRONT_LEFT",
+            "--camera-name",
+            "camera_cross_right_120fov=CAM_FRONT_RIGHT",
+            "--camera-name",
+            "camera_front_tele_30fov=CAM_FRONT_TELE",
+            # Nothing else is decoded or sent.
+            "--named-cameras-only",
+            # The model's own rate: one plan every 100 ms, two control steps.
+            # The ticks between answer the last plan, re-timed and re-anchored.
+            "--replan-every-us",
+            "100000",
+            # Both must equal paddock_bridge_alpamayo15.yaml's control step and
+            # force_gt_duration_us; a test checks they do.
+            "--frame-interval-us",
+            "50000",
+            "--force-gt-us",
+            "3000000",
+            # The ticks between replans still reach the node, so its frames
+            # 0.1 s apart and its poses at every step all exist.
+            "--observe-between-replans",
+            # The route, for the navigation text the model conditions on, and
+            # the time of the rig frame it is in, so the node can move it into
+            # its newest pose's frame as AlpaSim's own Alpamayo driver does.
+            "--send-route",
+            "--send-route-time",
+            # The node returns all 64 points the model plans, 0.1 s apart; it
+            # is told so (plan_dt) rather than guessing it is on AlpaSim.
+            "--waypoint-dt",
+            "0.1",
+            "--send-plan-dt",
         ),
         scenes_csv="public_2601_30scenes_26p01.csv",
         replan_log=True,
