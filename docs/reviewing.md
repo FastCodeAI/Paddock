@@ -33,10 +33,13 @@ cd /tmp/pr-<N> && make check; echo "exit=$?"
   paths. A green run is the portability check; you do not need to grep for it.
 - Run the adapter's own tests too if they live under `adapters/**/tests/` —
   they are collected by `make check`, but say so in the review.
-- A PR that touches `tools/models/drivejepa/alpasim_driver/` **or the scaffold it
-  imports** (`src/paddock/adapters/benchmarks/alpasim/scaffold.py`) needs one
-  more run that CI cannot make, because that driver's tests need AlpaSim's
-  interpreter: `make check-alpasim-driver ALPASIM_PY=<alpasim python>`. If your
+- A PR that touches `tools/models/drivejepa/alpasim_driver/`, **the scaffold it
+  imports** (`src/paddock/adapters/benchmarks/alpasim/scaffold.py`) **or the
+  AlpaSim bridge** (`bridge.py`, `replan_rhythm.py`, `drivejepa_rhythm.py` in
+  the same folder) needs one more run that CI cannot make, because those tests
+  need AlpaSim's interpreter: `make check-alpasim-driver ALPASIM_PY=<alpasim python>`.
+  It includes the test that the existing bridge profiles still send the same
+  bytes (`test_bridge_switches.py`), which `make check` skips. If your
   site has no AlpaSim checkout, say in the review that this was not run.
 - A PR that touches the openpilot adapter (`src/paddock/adapters/models/openpilot/`)
   needs `make check-openpilot OPENPILOT_REPO=<repos>/openpilot` too. Its
@@ -206,7 +209,7 @@ And the structure:
 ## Reviewer's quick list
 
 - [ ] `make check` run on the PR branch, exit code checked
-- [ ] `make check-alpasim-driver` run if the AlpaSim driver or its scaffold changed, or marked not run
+- [ ] `make check-alpasim-driver` run if the AlpaSim driver, its scaffold or the bridge changed, or marked not run
 - [ ] `make check-openpilot` run if the openpilot adapter changed, or marked not run
 - [ ] upstream flags / schemas verified against a real checkout, or marked argued
 - [ ] every external import and path is preflighted and documented

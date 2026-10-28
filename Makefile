@@ -59,16 +59,17 @@ setup-conda:
 
 check: lint test
 
-# The native AlpaSim driver under tools/ imports grpc, alpasim_grpc and cv2,
-# which paddock's own environment deliberately lacks, so `make check` and CI
-# cannot collect its tests. They run in AlpaSim's interpreter instead, and a
+# The native AlpaSim driver under tools/ and paddock's AlpaSim bridge import grpc,
+# alpasim_grpc and cv2, which paddock's own environment deliberately lacks, so
+# `make check` and CI skip their tests. They run in AlpaSim's interpreter instead,
+# among them the test that pins the bytes every existing bridge profile sends; a
 # reviewer at a site that has one runs this target (docs/reviewing.md §1).
 # It fails rather than skips when the interpreter is missing: a skipped
 # directory reads as a pass.
 check-alpasim-driver:
 	@test -n "$(ALPASIM_PY)" || { echo "set ALPASIM_PY to AlpaSim's python, e.g. <alpasim>/.venv/bin/python"; exit 2; }
 	@$(ALPASIM_PY) -c "import grpc, alpasim_grpc, cv2" || { echo "$(ALPASIM_PY) is not AlpaSim's environment (needs grpc, alpasim_grpc, cv2)"; exit 2; }
-	$(ALPASIM_PY) -m pytest tools/models/drivejepa/alpasim_driver/tests -q
+	$(ALPASIM_PY) -m pytest tools/models/drivejepa/alpasim_driver/tests src/paddock/adapters/benchmarks/alpasim/tests -q
 
 # The openpilot adapter's geometry tests (height scale, tilt, cut) need
 # openpilot's own transforms, which paddock's environment deliberately lacks,
