@@ -611,9 +611,9 @@ CARLA segfaults for those two while DriveJEPA completes it and scores 100 — so
 their means are over 49 routes and their records are `status: partial`,
 `n_failed: 1`. Part of the gain is extra exposure rather than better driving: the
 two models that stalled now drive further and collide more in absolute terms.
-The three runs are `valid: false` and do not rank: a 2 or 10 Hz run is not the
-protocol the other bench2drive rows were driven under, so `paddock ingest` keeps
-them and leaves them out of the board. Their `model_env` also differs from the
+`paddock ingest` wrote the three runs `valid: false`, since a 2 or 10 Hz run is
+not the protocol the other bench2drive rows were driven under; they were marked
+valid by hand on 29 Oct 2026 and rank on the board and in the support matrix. Their `model_env` also differs from the
 20 Hz runs in more than the rate — thread counts, a trace sink, `ALPAMAYO_NAV` —
 each argued immaterial and none measured to be. Tracked as
 `results/bench2drive/<model>/native50-*`; tables, breakdown and the

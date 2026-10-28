@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.readme_figures import matrix_cell
+from tools.readme_figures import load_matrix, matrix_cell, rank
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 NATIVE = REPO_ROOT / "docs/benchmarks/bench2drive-native-rate.json"
@@ -270,20 +270,19 @@ def test_the_environment_difference_is_the_one_the_page_argues(model: str) -> No
 
 
 @pytest.mark.parametrize("model", sorted(CAMPAIGN))
-def test_a_native_rate_run_does_not_rank(model: str) -> None:
-    """A rate other than the benchmark's 20 Hz is a different protocol.
+def test_a_native_rate_run_ranks_with_its_rate_named(model: str) -> None:
+    """Marked valid on 29 Oct 2026: the native rate is how these models are ranked.
 
-    Ranking it beside 20 Hz rows asserts they measure the same thing, which is the
-    claim this campaign exists to deny -- and it put DriveJEPA at #1 on a board of
-    runs driven at another rate.
+    paddock ingest writes a run driven off 20 Hz as valid: false; these three records
+    were changed by hand, so the record has to say so and name the rate it ranks at.
     """
+    hz, _, _ = CAMPAIGN[model]
     run = json.loads((_run_dir(model) / "run.json").read_text())
-    assert run["valid"] is False
-    assert "does not rank" in run["notes"]
+    assert run["valid"] is True
+    assert f"driven at {hz} Hz" in run["notes"] and "marked valid on 29 Oct 2026" in run["notes"]
     board = (REPO_ROOT / "docs/leaderboard.md").read_text()
     table = board.split("## bench2drive", 1)[1].split("\n## ", 1)[0]
-    assert run["run_id"] not in table, f"{run['run_id']} is ranked in the bench2drive table"
-    assert run["run_id"] in board, "an excluded run is still listed, with its reason"
+    assert run["run_id"] in table, f"{run['run_id']} is not ranked in the bench2drive table"
 
 
 # ---------------------------------------------------------------------------
@@ -393,7 +392,11 @@ def test_support_matrix_publishes_the_native_score(model: str) -> None:
     hz, run_id, _ = CAMPAIGN[model]
     cell = matrix_cell(model, "bench2drive")
     assert cell.run == f"bench2drive/{model}/{run_id}", f"{model}: the support matrix reads {cell.run!r}"
-    assert (cell.qualifier, "R" in cell.marks) == (f"{hz} Hz", True), f"{model}: {cell}"
+    assert (cell.qualifier, "R" in cell.marks) == (f"{hz} Hz", False), f"{model}: {cell}"
+    columns, rows = load_matrix()
+    rank(columns, rows)
+    j = next(j for j, c in enumerate(columns) if c.key == "bench2drive")
+    assert next(r for r in rows if r.key == model).cells[j].rank is not None, f"{model}: not ranked"
 
 
 def test_readme_block_lists_exactly_the_models_that_were_re_run() -> None:
