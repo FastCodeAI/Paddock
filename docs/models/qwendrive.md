@@ -119,6 +119,15 @@ Differences from the native runs that remain:
   The command hold therefore starts at the first call after the warm-up rather
   than at step 30.
 
+The run on the 30 scenes is `results/alpasim/qwendrive/20261027T215528-d231d8`:
+valid, one rollout per scene, `scene_score` **0.7001** (progress 0.787), five
+at-fault collisions and two off-road events. The native runs on the same
+simulator image scored 0.6672, three of their scenes ending on the forward-reach
+refusal above; with one rollout per scene the two are level. It is not yet a
+cell of the README's support matrix: it was shown three cameras through the
+bridge, where the one-camera rows were not, so which group it belongs to is
+still to be decided.
+
 ## Filling three views from one camera
 
 `DrivingScene.__post_init__` **raises** on a missing view, so `<FRONT VIEW>`,
