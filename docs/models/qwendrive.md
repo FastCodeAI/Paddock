@@ -123,10 +123,14 @@ The run on the 30 scenes is `results/alpasim/qwendrive/20261027T215528-d231d8`:
 valid, one rollout per scene, `scene_score` **0.7001** (progress 0.787), five
 at-fault collisions and two off-road events. The native runs on the same
 simulator image scored 0.6672, three of their scenes ending on the forward-reach
-refusal above; with one rollout per scene the two are level. It is not yet a
-cell of the README's support matrix: it was shown three cameras through the
-bridge, where the one-camera rows were not, so which group it belongs to is
-still to be decided.
+refusal above; with one rollout per scene the two are level. The native runs
+were made by the native driver at the Fastcode site and are not in `results/`,
+so the 0.6672 cannot be re-checked from this repository.
+
+The run's `run.json` names paddock commit `a074fe5`. That is this route's
+build commit before it was rebased onto `main`, and no branch holds it. In the
+commit that added this route to `main` (#123) the files this route changed
+differ from it only in comments, so check out that one to reproduce the run.
 
 ## Filling three views from one camera
 
