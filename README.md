@@ -144,7 +144,7 @@ was measured the same way as the rest of its column.
   records are valid.
   OpenPilot's Bench2Drive cell is an unassisted estimate rebuilt from assisted
   recordings. Alpamayo on AlpaSim drove 4 cameras on 10 of the 30
-  scenes, METEOR 6 cameras on all 30, and AutoE2E 6 pinhole cameras at its training field of view on all 30, through paddock's bridge.
+  scenes, METEOR 6 cameras on all 30, AutoE2E 6 pinhole cameras at its training field of view on all 30, through paddock's bridge, and Qwen-Drive 3 cameras on all 30, through paddock's bridge on its native driver's settings.
 - **Ranked, though fed what the model is built for.** NAVSIM cells marked 10 Hz
   get nuPlan's 10 Hz frames, where 2 Hz models such as Drive-JEPA get OpenScene's
   2 Hz. AutoE2E on KITScenes is given the scene's map and a route matched to the
@@ -171,8 +171,8 @@ Before comparing numbers:
   Bench2Drive, and scores 0 on neuroNCAP by construction: every scenario is
   staged so that holding speed collides.
 - **The AlpaSim rows come from AlpaSim's native drivers**, not paddock's bridge,
-  and were imported into `results/`; AutoE2E's is the exception, run through
-  paddock's bridge.
+  and were imported into `results/`; AutoE2E's and Qwen-Drive's are the
+  exceptions, run through paddock's bridge.
 
 </details>
 

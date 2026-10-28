@@ -584,7 +584,8 @@ VisionPilot's run did not pass, are in the AlpaSim section below and in
 [docs/benchmarks/alpasim.md](alpasim.md).
 
 ¶¶ Alpamayo ran 4 cameras at 20 Hz (`4cam-20Hz`), METEOR 6 (⬡), AutoE2E 6
-through paddock's bridge (⬢), the other rows 1 camera at 20 Hz. **Different group, not comparable** — and it has no constant-velocity
+through paddock's bridge (⬢), Qwen-Drive 3 through paddock's bridge, the other
+rows 1 camera at 20 Hz. **Different group, not comparable** — and it has no constant-velocity
 floor in its own group, so it cannot be quoted against one. Scene-level variance
 on this model is large enough that no single-rollout mean here should be read to
 four figures.
@@ -619,6 +620,13 @@ above). Not ranked against the one-camera rows. Run
 `results/alpasim/autoe2e/20261022T045847-86b955`, valid, resumed after
 start-up failures on a shared host (the reused scenes are recorded in
 `run.json`; wall time does not change a drive). See `docs/models/autoe2e.md`.
+
+Qwen-Drive's AlpaSim cell is the same 30 scenes, referee scorer and 20 Hz
+control step, driven through **paddock's bridge** on its native driver's
+settings: three f-theta cameras and a model call every 1.5 s. Not ranked against
+the one-camera rows. It ran on simulator image `6dad7728`, where the one-camera
+rows ran on `1e0d5fea`. Run `results/alpasim/qwendrive/20261027T215528-d231d8`,
+valid. See `docs/models/qwendrive.md#on-alpasim-through-the-bridge`.
 
 ### AlpaSim (nuRec)
 
