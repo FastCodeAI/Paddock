@@ -306,7 +306,9 @@ class Observation:
     #: where the source has no route (NAVSIM, open loop). Points are only as dense as the source's route:
     #: Bench2Drive's is downsampled to a point per road-option change and otherwise every ~50 m, so a
     #: segment can cut a bend by metres. A policy that rasterises the route (AutoE2E's navigation tile)
-    #: reads it.
+    #: reads it. AlpaSim's is the exception to "the ego frame": the bridge passes it in the rig frame at
+    #: the route's own timestamp, which need not be the pose's, because that is how Qwen-Drive's
+    #: native driver read it (`alpasim/bridge.py` `route_xy`).
     route_xy: np.ndarray | None = None
     #: The HD map the ego drives in, as files on the shared disk (paths, as with `image_paths`), in the
     #: world frame `ego2world` maps into: {"format": "lanelet2_osm", "map": <map.osm>, "origin":
@@ -322,7 +324,9 @@ class Observation:
     #: The simulator's id for the scene being driven. Sent where a closed-loop source has one and a
     #: model's behaviour is tied to it: AlpaSim sends it on request (bridge ``--send-scene-id``), and
     #: Qwen-Drive seeds its sampling noise from it per scene, as its native AlpaSim driver did. None
-    #: everywhere else.
+    #: everywhere else. Qwen-Drive reads a scene id as "AlpaSim, `qwendrive` profile": it then builds its
+    #: input the native driver's way and refuses any frame cadence other than 50 ms, so a new source that
+    #: sends one changes that model's input path and must be checked against it.
     scene_id: str | None = None
     #: Frames that live on disk, loaded on first use instead of being carried.
     #:
