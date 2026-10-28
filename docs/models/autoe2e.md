@@ -446,8 +446,8 @@ L2 fell from 0.957 to 0.899 (one scene, a check of the inputs, not a score).
 **AlpaSim, the 30 scenes of `public_2601_30scenes`, valid**
 (`results/alpasim/autoe2e/20261022T045847-86b955`): **0.1694** `scene_score`
 through paddock's bridge, six pinhole cameras at 20 Hz, one rollout per scene.
-A group of its own (six cameras through the bridge), not ranked against the
-one-camera rows. On the same scenes, for context: OpenPilot 0.7726, Drive-JEPA
+Ranked with the other 30-scene rows (seventh of seven; camera count and the
+bridge are not reasons to separate rows). On the same scenes, for context: OpenPilot 0.7726, Drive-JEPA
 0.1.4b 0.5433 natively and 0.5302 through the bridge, the constant-velocity
 floor 0.4876.
 

@@ -621,8 +621,8 @@ What the 30 runs show, from the per-scene scorer output:
 - **One rollout per scene.** The standard deviation across the 30 scenes is
   0.37, so the mean is loose.
 
-There is no constant-velocity floor on six cameras, so this number is not
-ranked against the one-camera rows; the README's footnote says the same.
+The number is ranked with the other 30-scene rows and read against the same
+constant-velocity floor (0.4876): camera count is not a reason to separate rows.
 
 **One episode misled.** The pipeline smoke,
 `results/neuroncap/meteor/20260915T192353-6ed840`, drove stationary-0103 once

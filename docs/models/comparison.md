@@ -432,19 +432,19 @@ model on CARLA's cameras, from a standstill". Detail in
 [meteor.md](meteor.md#reference-numbers) and
 [docs/benchmarks/bench2drive.md](../benchmarks/bench2drive.md#notes-on-the-matrix-cells).
 
-### METEOR × alpasim — six cameras, a group of its own, and a driver that is not tracked
+### METEOR × alpasim — six cameras, and a driver that is not tracked
 
 METEOR's AlpaSim cell, 0.4232 on 30 scenes, shares the scenes, the referee
 config and the scorer of the one-camera rows and nothing else. It was shown six
-rendered cameras, so it is the only row in `6cam-20Hz`, with no
-constant-velocity floor to read it against. The cameras are pinhole renders
+rendered cameras (`6cam-20Hz`); it is ranked with the one-camera rows and read
+against the same constant-velocity floor. The cameras are pinhole renders
 narrower than the recorded fisheyes, with the bonnet mask off. The mode is
 chosen by the selector of METEOR's deployed runtime, where every other METEOR
 cell takes the argmax. And the run came from a native driver that is not in
 this repository, where the other METEOR cells came through the paddock node.
 The graph and its pixel scaling are the same as elsewhere: the released ONNX,
-as shipped. Read the cell as "the released model on AlpaSim's cameras, once",
-beside the one-camera rows and not among them. Detail in
+as shipped. Read the cell as "the released model on AlpaSim's cameras, once".
+Detail in
 [meteor.md](meteor.md) and
 [docs/benchmarks/alpasim.md](../benchmarks/alpasim.md).
 

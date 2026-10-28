@@ -131,7 +131,7 @@ navsim = { run = "navsim/alpamayo15/20260912T040211-a9562c", marks = "A", note =
 navsim_v1 = { run = "navsim_v1/alpamayo15/20260914T175447-89a9ca", marks = "A", note = "10 Hz" }
 bench2drive = { run = "bench2drive/alpamayo15/native50-10hz-084418258d833a9f-c4d076", marks = "R", note = "10 Hz" }
 neuroncap = { run = "neuroncap/alpamayo15/20260906T034647-bc409f", marks = "A" }  # its scenes are nuScenes val scenes
-alpasim = { run = "alpasim/alpamayo15/legacy-alpamayo_proxy_referee_20hz", marks = "R" }
+alpasim = { run = "alpasim/alpamayo15/legacy-alpamayo_proxy_referee_20hz", marks = "R" }  # scored on 10 of the 30 scenes
 
 [cells.drivejepa]
 nuscenes = { run = "nuscenes/drivejepa/20260905T093335-4513d4", marks = "S" }
@@ -166,7 +166,7 @@ navsim_v1 = { run = "navsim_v1/meteor/20260915T005223-071c0b", marks = "P" }
 # but not measured as this column's 20 Hz cells were (every tick, every route to its end), so R.
 bench2drive = { run = "bench2drive/meteor/pooled50-40c29d24c37d542a-867d57", marks = "R", note = "5 Hz" }
 neuroncap = { run = "neuroncap/meteor/20260915T193036-d34559" }
-alpasim = { run = "alpasim/meteor/legacy-meteor_011_published_30scenes", marks = "R" }
+alpasim = { run = "alpasim/meteor/legacy-meteor_011_published_30scenes" }
 
 [cells.qwendrive]
 nuscenes = { run = "nuscenes/qwendrive/20260915T190350-47479e", marks = "A" }  # VLM trained on nuScenes train
@@ -176,7 +176,7 @@ navsim = { run = "navsim/qwendrive/20260914T221802-80457c", marks = "A" }
 navsim_v1 = { run = "navsim_v1/qwendrive/20260915T021715-02aab4", marks = "A" }
 bench2drive = { run = "bench2drive/qwendrive/native50-2hz-084418258d833a9f-9b2bc9", marks = "R", note = "2 Hz" }
 neuroncap = { run = "neuroncap/qwendrive/20260915T023604-12d5eb", marks = "A" }  # VQA training splits hold its val scenes
-alpasim = { run = "alpasim/qwendrive/20261027T215528-d231d8", marks = "R" }  # 3 cameras through the bridge
+alpasim = { run = "alpasim/qwendrive/20261027T215528-d231d8" }
 
 [cells.autoe2e]
 nuscenes = { run = "nuscenes/autoe2e/20261023T004711-eedbe2", marks = "A" }  # camera encoder trained on nuScenes train
@@ -187,7 +187,7 @@ navsim = { run = "navsim/autoe2e/20261009T055926-3ceb18", marks = "A", note = "1
 # but not measured as this column's 20 Hz cells were (every tick, every route to its end), so R.
 bench2drive = { run = "bench2drive/autoe2e/pooled50-40c29d24c37d542a-cc7a9c", marks = "R", note = "10 Hz" }
 neuroncap = { run = "neuroncap/autoe2e/20261026T233951-743060", marks = "A" }
-alpasim = { run = "alpasim/autoe2e/20261022T045847-86b955", marks = "R" }
+alpasim = { run = "alpasim/autoe2e/20261022T045847-86b955" }
 
 [cells.constant_velocity]
 nuscenes = { run = "nuscenes/constant_velocity/20260914T225156-e5170c" }

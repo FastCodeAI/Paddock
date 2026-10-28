@@ -514,13 +514,15 @@ Open work on this route:
 - **Attention backend not measured in closed loop.** Paddock's environment uses
   `sdpa`, the native runs `flash_attention_2`; on 5 recorded inputs the two plans
   differ by 0.16 to 0.32 m over 5 s.
-- **No constant-velocity floor on this route**, so the row is read against the
-  native runs only.
+- **Simulator image.** The row is ranked against the one-camera rows and their
+  constant-velocity floor, but it ran on simulator image `6dad7728` and they
+  ran on `1e0d5fea`; nobody has shown the two images drive identically.
 
 **METEOR has AlpaSim rows and no tracked driver.** `results/alpasim/meteor/`
 holds a 30-scene row (0.4232) and its first ten scenes (0.6869), ingested from
 runs of a native driver, `meteor-0.1.1`, whose source exists only at the
-Fastcode site. The rows are in a camera group of their own, `6cam-20Hz`.
+Fastcode site. The rows are `6cam-20Hz`; the 30-scene row is ranked with the
+others in the support matrix (camera count is not a reason to separate rows).
 
 | Claim | Evidence | Strength |
 |---|---|---|

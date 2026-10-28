@@ -92,7 +92,7 @@ data and vendors no model code. What crosses the wire:
 </p>
 
 **A** adapted to the benchmark · **P** a pipeline around the model is graded ·
-**S** stale · **R** run differently, not ranked.
+**S** stale · **R** not ranked: measured on different scenes or by a different method.
 
 Each number is read from the run [docs/support-matrix.toml](docs/support-matrix.toml)
 names for it. The matrix holds released checkpoints only; checkpoints we trained
@@ -134,17 +134,20 @@ was measured the same way as the rest of its column.
 - **S — stale; a re-run will change it.** Every VisionPilot figure predates the
   `CURV_SCALE` fix. Drive-JEPA's nuScenes cell is the camera-blind run from
   before #62. OpenPilot's comma2k19 row was not run at the pinned sha.
-- **R — run differently from the rest of its column, so not ranked against it.**
-  Bench2Drive at the model's native inference rate, where the others run at
-  20 Hz over the same 50 routes; those gains are partly more exposure.
+- **R — not ranked, because the number was measured on different scenes or by a
+  different method from the rest of its column.** Bench2Drive cells marked with
+  a rate ran at the model's own inference rate, where the others run at 20 Hz
+  over the same 50 routes; those gains are partly more exposure.
   AutoE2E's and METEOR's Bench2Drive cells are asked at the rate their
   `model.yaml` declares (10 Hz and 5 Hz), and a route ends after 30 s without
   progress or at 4x the expert's time, where the cells they would rank against
   were asked every tick and drove every route to Bench2Drive's own end. Their
   records are valid.
   OpenPilot's Bench2Drive cell is an unassisted estimate rebuilt from assisted
-  recordings. Alpamayo on AlpaSim drove 4 cameras on 10 of the 30
-  scenes, METEOR 6 cameras on all 30, AutoE2E 6 pinhole cameras at its training field of view on all 30, through paddock's bridge, and Qwen-Drive 3 cameras on all 30, through paddock's bridge on its native driver's settings.
+  recordings.
+  Alpamayo 1.5 on AlpaSim was scored on 10 of the 30 scenes. How many cameras a
+  model is given, and whether it drives through paddock's bridge or its own
+  simulator driver, are never reasons to leave a cell unranked.
 - **Ranked, though fed what the model is built for.** NAVSIM cells marked 10 Hz
   get nuPlan's 10 Hz frames, where 2 Hz models such as Drive-JEPA get OpenScene's
   2 Hz. AutoE2E on KITScenes is given the scene's map and a route matched to the
@@ -172,7 +175,9 @@ Before comparing numbers:
   staged so that holding speed collides.
 - **The AlpaSim rows come from AlpaSim's native drivers**, not paddock's bridge,
   and were imported into `results/`; AutoE2E's and Qwen-Drive's are the
-  exceptions, run through paddock's bridge.
+  exceptions, run through paddock's bridge. The 30-scene rows are ranked together; models
+  are given different numbers of cameras (OpenPilot, VisionPilot, Drive-JEPA
+  and the floor 1, Qwen-Drive 3, METEOR and AutoE2E 6).
 
 </details>
 
