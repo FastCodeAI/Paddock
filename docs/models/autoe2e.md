@@ -491,12 +491,25 @@ every plan identical, the eight scene metrics equal, and the new log fields at
 predates #101, which adds `model.yaml`'s env to the id, so a rerun gets a new
 id.
 
-**Bench2Drive: not recorded here.** No run is pooled into a record; each below
-is `valid: false` (a 10 Hz rate, or inputs upstream never produces).
+**Bench2Drive, the 50 routes of the other rows, `valid: false`**
+(`results/bench2drive/autoe2e/pooled50-steady-noroute-40c29d24c37d542a-8d26e9`):
+**37.74** mean driving score at the model's own 10 Hz, fed a steady ego history
+and no route raster (the settings the deep dive below chose), every route driven
+on Paddock `7244bc5`. Each route ends after 30 s without 3 m of progress, at its
+first recorded collision, or at 4x Think2Drive's time, and is scored as it stood.
+The other rows drive every route to Bench2Drive's own end, so the support matrix
+marks this cell R and does not rank it.
+
+| routes | DS | DS median | RC (%) | infraction penalty | ended at a collision | ended stuck or over time |
+|---:|---:|---:|---:|---:|---:|---:|
+| 50 | **37.74** | 28.17 | 57.59 | 0.63 | 33 / 50 | 0 / 50 |
+
+The runs before it, each `valid: false` too (a 10 Hz rate, or inputs upstream
+never produces), none pooled into a record:
 
 - The first 50-route sweep (`PADDOCK_INFER_HZ=10`, route raster on) ran a
-  forward on every 20 Hz call -- the Bench2Drive agent never read that variable
-  -- and predates the closed-loop history fill. Every route scored DS 3–27 the
+  forward on every 20 Hz call -- the Bench2Drive agent did not read that
+  variable until #106 -- and predates the closed-loop history fill. Every route scored DS 3–27 the
   same way: the car reaches ~12 m/s, the plan curves further left on each call,
   and it leaves the lane at 4–5 s. Checked before calling it the model's
   behaviour: CARLA actors projected through the model's front matrix land on
@@ -507,8 +520,8 @@ is `valid: false` (a 10 Hz rate, or inputs upstream never produces).
 - At the model's own 10 Hz (*On Bench2Drive*), with the history fill and the
   route raster on: 59 routes scored, mean DS 13.7, before that sweep was
   stopped on 21 Oct 2026 for the deep dive below.
-- A full 220-route sweep with a steady ego history and no route raster started
-  on 23 Oct 2026.
+- A full 220-route sweep with these settings started on 23 Oct 2026; its first
+  50 routes are the record above, and the rest are still driving.
 
 Why it swerves, from three routes (1711, 2286, 2373) whose every request was
 recorded and replayed into the model to within 0.5 mm of the plan CARLA's node

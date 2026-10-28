@@ -669,7 +669,7 @@ campaign driven on 22 Oct 2026 by the same bridge. See
   record (gated `Cosmos-Reason2-8B`). Detail in `docs/benchmarks/nuplan.md`.
 
 - **AutoE2E v1.0** — **adapter landed; NAVSIM, KITScenes, comma2k19,
-  neuroNCAP, nuScenes and AlpaSim scored; Bench2Drive driven, not recorded.** nuScenes val 0.839
+  neuroNCAP, nuScenes and AlpaSim scored; Bench2Drive recorded, `valid: false`.** nuScenes val 0.839
   cumulative L2 (5,119 keyframes, valid), fed the 6.5 s of past keyframes it
   declares. The Autoware Foundation's release
   checkpoint `kitscenes-epoch-5`, imported from upstream at the release
@@ -693,10 +693,13 @@ campaign driven on 22 Oct 2026 by the same bridge. See
   from the road camera alone: the adapter now leaves out the views a benchmark
   does not have instead of refusing every sample. Bench2Drive needed the route
   as an observation field (`route_xy`) and its own 10 Hz (`AUTOE2E_REPLAN_S`);
-  a full 220-route sweep with a steady ego history and no route raster
-  (`valid: false`) started on 23 Oct 2026, with no record here, and the deep
-  dive of why the model swerves is in the model doc. AlpaSim 0.1694 `scene_score`
-  on the 30 scenes (valid, run `20261022T045847-86b955`), through paddock's bridge
+  a full 220-route sweep with a steady ego history and no route raster started
+  on 23 Oct 2026, and its first 50 routes, the other rows' set, pool into
+  DS 37.74 (run `pooled50-steady-noroute-40c29d24c37d542a-8d26e9`, `valid: false`:
+  those inputs are not upstream's, and each route ends at its first collision,
+  33 of the 50); the deep dive of why the model swerves is in the model doc.
+  AlpaSim 0.1694 `scene_score` on the 30 scenes (valid, run
+  `20261022T045847-86b955`), through paddock's bridge
   on six pinhole cameras at the KITScenes field of view, a rear view from the roof
   and a 1 µs global shutter; the car leaves the human's path to the left in 28 of
   30 scenes, the same growing left turn as on neuroNCAP and Bench2Drive. Detail in

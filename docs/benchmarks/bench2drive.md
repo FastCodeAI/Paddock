@@ -630,9 +630,17 @@ constant velocity instead extrapolates the recorded ego velocity. 48.31 is that
 
 ✦ Bench2Drive constant velocity is a do-nothing floor: "constant velocity" means holding the current speed, and every route starts from a standstill, so the baseline holds zero and never departs -- blocked after 60 s, driving score 0 on every route (confirmed on 3 routes, structural for all 24). Unlike nuScenes, where the logged ego is already moving, it is not an informative baseline in closed loop.
 
-☉ AutoE2E has no Bench2Drive cell: its 50-route sweep at 10 Hz is paused
-part-way, and every route run so far scores 3–27 the same way, leaving the lane
-at 4–5 s. See [docs/models/autoe2e.md](../models/autoe2e.md).
+☉ AutoE2E's cell, 37.74, is its mean driving score over the 50 routes at its
+own 10 Hz ([run](../../results/bench2drive/autoe2e/pooled50-steady-noroute-40c29d24c37d542a-8d26e9/run.json)),
+route completion 57.59 %, infraction penalty 0.63. It is fed a steady ego
+history (a straight past at the current speed) and no route raster, the
+settings chosen after [the model's deep dive](../models/autoe2e.md) found the
+measured past feeding the car's own turning back into the plan. Each route ends
+after 30 s without progress, at its first collision, or at 4x the expert's time:
+33 of the 50 ended at a collision, none by the other two rules. Those are inputs
+and a stopping rule the other rows do not have, so the cell is marked R, the run
+is stored `valid: false`, and AutoE2E is left out of the 50-route table below,
+whose infraction counts come from routes driven to Bench2Drive's own end.
 
 ### Bench2Drive — 50 routes
 

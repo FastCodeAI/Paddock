@@ -312,8 +312,10 @@
 <text x="632" y="430.5" class="t5" font-size="9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="end" font-weight="600" opacity="0.85">A</text>
 <rect class="miss" x="639" y="420.5" width="81" height="43" rx="4"/>
 <text x="679.5" y="446" class="sec" font-size="11.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">—</text>
-<rect class="miss" x="723" y="420.5" width="81" height="43" rx="4"/>
-<text x="763.5" y="446" class="sec" font-size="11.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">—</text>
+<rect fill="url(#hatch)" x="723" y="420.5" width="81" height="43" rx="4"/>
+<text x="763.5" y="441.5" class="ink" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">37.74</text>
+<text x="763.5" y="456.5" class="ink" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">10 Hz</text>
+<text x="800" y="430.5" class="ink" font-size="9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="end" font-weight="600" opacity="0.85">R</text>
 <rect class="r4" x="807" y="420.5" width="81" height="43" rx="4"/>
 <text x="847.5" y="441.5" class="t4" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">3.16</text>
 <text x="847.5" y="456.5" class="t4" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#4</text>
