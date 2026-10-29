@@ -536,30 +536,33 @@ class AlpamayoPolicy(Policy):
             yaw = np.arctan2(rotations[:, 1, 0], rotations[:, 0, 0])
             plan = np.column_stack([chosen[:, :2], yaw])
             self._log_infer(nav_text, plan, cot)
-            self._log_timing(started, prepared, generated, cot)
+            self._log_timing(started, prepared, generated, cot, nav_text)
             return Trajectory(plan, dt=PLAN_DT, extras={"reasoning": self._last_reasoning})
         self._log_infer(nav_text, waypoints, cot)
-        self._log_timing(started, prepared, generated, cot)
+        self._log_timing(started, prepared, generated, cot, nav_text)
         return Trajectory(waypoints, dt=self.waypoint_dt)
 
-    def _log_timing(self, started: float, prepared: float, generated: float, cot: str) -> None:
+    def _log_timing(
+        self, started: float, prepared: float, generated: float, cot: str, nav_text: str | None
+    ) -> None:
         """Where one call's time went, every call: history, frames, prompt and processor
         (prep); the model's rollout until the plan is on the CPU (generate); the rest.
         Log only. The token count is the reasoning text re-tokenised, without the
-        special tokens around it."""
+        special tokens around it; the navigation text is the one this call was given."""
         done = time.perf_counter()
         # A stand-in processor (the input tests) has no tokenizer; a log line must not fail a call.
         tokenizer = getattr(self.processor, "tokenizer", None)
         tokens = len(tokenizer(cot, add_special_tokens=False)["input_ids"]) if tokenizer and cot else None
         _log.info(
             "infer #%d timing: prep %.0f ms, generate %.0f ms, post %.0f ms, total %.0f ms, "
-            "reasoning %s tokens",
+            "reasoning %s tokens, nav %r",
             self._n_infer,
             (prepared - started) * 1000.0,
             (generated - prepared) * 1000.0,
             (done - generated) * 1000.0,
             (done - started) * 1000.0,
             tokens,
+            nav_text,
         )
 
     def _log_infer(self, nav_text: str | None, waypoints: np.ndarray, cot: str) -> None:
