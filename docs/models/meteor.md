@@ -134,6 +134,14 @@ shorter plan rather than extrapolate. Setting `METEOR_HORIZON_S = "4.0"` under
 plan the model never made; it is opt-in so that KITScenes and the closed-loop
 benchmarks always score the native output.
 
+**Rate.** `model.yaml` declares `planning_hz: 5.0`: METEOR's recordings are
+stored and labelled at 5 Hz (upstream `docs/REPRODUCE.md`), and the AlpaSim
+driver below runs its graph at 5 Hz. Bench2Drive's client asks for a plan every
+0.2 s and follows the last one in between, and records the rate as `infer_hz`
+in the run id; HUGSIM's 4 Hz steps are slower, so every step is planned there.
+The graph is single-frame, so the rate changes how often the car gets a fresh
+plan, not what the model is shown.
+
 ## Running it
 
 ```bash
