@@ -49,8 +49,10 @@ waypoints per frame, and counting runs of consecutive frames holding an identica
 once holds a plan for five frames.
 
 **OpenPilot and VisionPilot were not re-run.** OpenPilot's native rate *is* 20 Hz,
-so the published run is already its native-rate run; VisionPilot was left alone.
-Nothing on this page says anything about either.
+so its runs are already native-rate runs; VisionPilot was left alone.
+Nothing on this page says anything about either. (OpenPilot's 29 Oct 50-route run,
+which the support matrix ranks, is one 20 Hz configuration and is not part of this
+comparison; see [bench2drive.md](bench2drive.md).)
 
 ### Two things this page does not get to assume
 

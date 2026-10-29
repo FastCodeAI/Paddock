@@ -95,6 +95,9 @@ DEVICE_FROM_EGO = np.diag([1.0, -1.0, -1.0])
 # (neuroNCAP boston-seaport, KITScenes Germany, comma2k19 California), so index
 # 0 is set.
 TRAFFIC_CONVENTION = np.array([1.0, 0.0], dtype=np.float32)
+# The (lateral, longitudinal) action_t the tinygrad path feeds openpilot's ModelState. The ONNX wrapper
+# computes its own (`Supercombo.long_action_t`); the planner below reads whichever the model was given.
+TINYGRAD_ACTION_T = (0.3, 0.5)
 
 #: The 0.5 s grid every paddock consumer reads, out to supercombo's own horizon.
 #:
@@ -1194,7 +1197,7 @@ class OpenpilotPolicy(Policy):
         inputs = {
             "desire_pulse": desire_pulse(obs.command, self.desire_mode, ModelConstants.DESIRE_LEN),
             "traffic_convention": TRAFFIC_CONVENTION,
-            "action_t": np.array([0.3, 0.5], dtype=np.float32),
+            "action_t": np.array(TINYGRAD_ACTION_T, dtype=np.float32),
         }
         out = None
         for _ in range(self._repeats(obs)):
@@ -1327,8 +1330,9 @@ class OpenpilotPolicy(Policy):
         # e2e candidate (modeld get_action_from_model, plan branch, 0.3 s smoothed)
         # The horizon the model was told to plan for, read back off the model
         # rather than restated here -- the two disagreed by 25 ms while this was
-        # a constant. See `Supercombo.long_action_t`.
-        long_action_t = self.model.long_action_t
+        # a constant. See `Supercombo.long_action_t`. Under the tinygrad backend the model is openpilot's
+        # ModelState, which has no such property: it was given TINYGRAD_ACTION_T.
+        long_action_t = getattr(self.model, "long_action_t", TINYGRAD_ACTION_T[1])
         a_raw, _ = upstream.accel_and_stop(
             plan33[:, Plan.VELOCITY][:, 0],
             plan33[:, Plan.ACCELERATION][:, 0],

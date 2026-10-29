@@ -539,12 +539,19 @@ pooled 50-route mean they would produce is withheld from
 | Expansion 26 — unassisted, different upstream longitudinal setup | 26 | 43.01 | 60.45 | 287 | 58.54 |
 | Unassisted 24 estimate ◆ — assisted runs censored at the first resume | 24 | 30.09 | 30.76 | — | — |
 
-The third row is the reconstruction behind ◆ and the 30.09 in the support matrix,
+The third row is the reconstruction behind ◆ and the 30.09 the support matrix carried until 29 Oct 2026,
 not a measurement: 16 routes are censored before intervention and eight had no
 intervention. Its per-route values are
 [`openpilot-24-infractions.csv`](openpilot-24-infractions.csv), and
 every record in the pooled JSON now carries an `assistance` block, so the assisted
 and unassisted subsets can be recomputed from the linked file alone.
+
+Since 29 Oct 2026 the support matrix ranks OpenPilot's own 50-route run instead,
+[`bench2drive/openpilot/native50-20hz-40c29d24c37d542a-f68000`](../../results/bench2drive/openpilot/native50-20hz-40c29d24c37d542a-f68000/run.json): one setup on every route —
+no resume assistance, openpilot's own longitudinal plan, the tinygrad backend —
+driven at 20 Hz, the benchmark's rate and openpilot's own. DS 30.91, RC 39.49 over
+all 50 routes, none lost. It is a measurement, not a reconstruction, and it pools
+nothing, so it ranks.
 
 #### Constant velocity — the speed sweep
 

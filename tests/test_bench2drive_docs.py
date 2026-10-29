@@ -10,8 +10,9 @@ on PR #21:
 * **OpenPilot's two recording sets are never pooled into one mean.** Its 24
   historical routes were driven with human resume assistance on 16 of them, and
   its 26 expansion routes use a different upstream longitudinal setup. A pooled
-  driving score of 48.11 would top the table while the support matrix publishes
-  30.09 for the same model on the same benchmark.
+  driving score of 48.11 would top the table. The support matrix published the
+  30.09 unassisted estimate until 29 Oct 2026, and since then OpenPilot's own
+  50-route run under one setup.
 
 No GPU, no dataset, no site config: this reads tracked files only.
 """
@@ -117,7 +118,7 @@ def test_every_record_carries_an_assistance_label(data: dict) -> None:
 
 
 def test_unassisted_subset_is_recomputable_from_the_linked_file(data: dict) -> None:
-    """The 30.09 in the support matrix must fall out of the records themselves."""
+    """The 30.09 unassisted estimate must fall out of the records themselves."""
     est = [
         r["assistance"]["unassisted_prefix_estimate"]["driving_score"]
         if r["assistance"]["assisted"]
@@ -246,13 +247,24 @@ def test_openpilot_block_reproduces(data: dict) -> None:
     assert rows[2][3] == f"{est['route_completion']:.2f}"
 
 
-def test_support_matrix_openpilot_cell_is_the_unassisted_estimate(data: dict) -> None:
-    est = data["summaries"]["openpilot_unassisted24_estimate"]["driving_score"]
+#: OpenPilot's Bench2Drive cell since 29 Oct 2026: its own 50-route run under one setup.
+OPENPILOT_RUN = REPO_ROOT / "results/bench2drive/openpilot/native50-20hz-40c29d24c37d542a-f68000"
+
+
+def test_support_matrix_openpilot_cell_is_one_setup_not_a_pooled_mean() -> None:
+    """The cell is a run driven one way on all 50 routes; never the 48.11 that pools three setups."""
+    run = json.loads((OPENPILOT_RUN / "run.json").read_text())
+    metrics = json.loads((OPENPILOT_RUN / "metrics.json").read_text())
+    assert run["valid"] and run["status"] == "complete"
+    assert run["dataset"]["n_samples"] == 50 and run["dataset"]["n_failed"] == 0
+    env = run["config"]["model_env"]
+    assert env["PADDOCK_OPENPILOT_RESUME_S"] == "0", "no driver-resume assistance"
+    assert env["PADDOCK_OPENPILOT_NATIVE_LONG"] == "1"
+    assert "PADDOCK_INFER_HZ" not in env, "driven at the benchmark's 20 Hz"
+    ds = metrics["metrics"]["driving_score"]["mean"]
     cell = _matrix_cell("openpilot")
-    assert re.match(rf"^{est:.2f}\b", cell), (
-        f"the support matrix publishes {cell!r} for Bench2Drive; it must stay the "
-        "unassisted estimate, not a pooled mean"
-    )
+    assert re.match(rf"^{ds:.2f}\b", cell), f"the support matrix publishes {cell!r}; the run says {ds:.2f}"
+    assert not cell.startswith("48.11")
 
 
 # ---------------------------------------------------------------------------

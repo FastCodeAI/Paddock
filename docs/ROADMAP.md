@@ -597,7 +597,8 @@ intended meaning of a tracked result. Route 11715 crashes CARLA for every model,
 so it is recorded as attempted and never scored — `n_failed: 1`, `status:
 partial` — rather than dropped, and OpenPilot's pooled record is `valid: false`
 because its samples span three recording setups; its per-setup means are in
-`by_group`.
+`by_group`. OpenPilot's Bench2Drive cell is its own 50-route run of 29 Oct 2026
+(`results/bench2drive/openpilot/native50-20hz-*`): one setup on every route, driven at 20 Hz, `valid: true`.
 
 **Native-rate re-run (18-20 Sep 2026).** The 20 Hz protocol is a property of the
 harness, not of the models, so the same 50 routes were re-driven with each model

@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-119 runs across 9 benchmarks.
+120 runs across 9 benchmarks.
 58 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -37,6 +37,7 @@
 | constant_velocity | pooled50-15mps-40c29d24c37d542a-06f021 | 50 | fastcode-navvrat-b2d-pooled | 41.448 | 73.684 | 0.546 | 0.560 | 1.000 | 0.000 | 107.988 |
 | constant_velocity | pooled50-6mps-40c29d24c37d542a-35a5cb | 50 | fastcode-navvrat-b2d-pooled | 40.388 | 73.075 | 0.539 | 0.620 | 1.000 | 0.000 | 157.368 |
 | drivejepa | pooled50-40c29d24c37d542a-1de367 | 50 | fastcode-navvrat-b2d-pooled | 31.706 | 39.101 | 0.862 | 0.160 | 1.000 | 0.000 | 1068.316 |
+| openpilot | native50-20hz-40c29d24c37d542a-f68000 | 50 | fastcode-shakaal-navvrat | 30.907 | 39.490 | 0.873 | 0.140 | 1.000 | 0.000 | 1346.166 |
 | qwendrive | native50-2hz-084418258d833a9f-9b2bc9 | 49 | fastcode-navvrat-b2d-native-rate | 17.075 | 64.299 | 0.291 | 0.939 | 1.000 | 0.000 | 812.441 |
 | qwendrive | pooled50-40c29d24c37d542a-f250e0 | 50 | fastcode-navvrat-b2d-pooled | 12.921 | 50.191 | 0.300 | 0.900 | 1.000 | 0.000 | 3457.266 |
 
