@@ -213,6 +213,15 @@ def test_existing_profiles_send_what_they_sent_before_the_alpamayo_profile(profi
     assert _digest(_drive(_build(args, monkeypatch))) == BEFORE_ALPAMAYO[profile]
 
 
+@pytest.mark.parametrize("profile", ["default", *sorted(harness.DRIVER_PROFILES)])
+def test_only_the_alpamayo_profile_sends_a_plan_spacing_or_a_route_time(profile, monkeypatch) -> None:
+    """Every profile, including any added later: the two keys reach a node only under alpamayo15."""
+    args = harness.DRIVER_PROFILES[profile].bridge_args if profile != "default" else ()
+    keys = {key for path, body in _drive(_build(args, monkeypatch)) for key in body}
+    sent = {"plan_dt", "route_timestamp_us"} & keys
+    assert sent == ({"plan_dt", "route_timestamp_us"} if profile == "alpamayo15" else set())
+
+
 # ---------------------------------------------------------------------------
 # the switches, one by one, through the qwendrive profile
 # ---------------------------------------------------------------------------
