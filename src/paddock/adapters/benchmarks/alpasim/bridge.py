@@ -102,6 +102,7 @@ import logging
 import math
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -460,6 +461,9 @@ class PolicyPlanner(Planner):
         # One encoded placeholder per frame size: the same ~6 MB every tick.
         self._placeholder_cache: dict[tuple[int, int], str] = {}
         self._calls = 0
+        #: Time spent decoding and re-encoding the frames of the last body built,
+        #: logged with the /infer that sends it (log only; nothing on the wire).
+        self._last_frames_ms = 0.0
         self._log_path = Path(replan_log) if replan_log else None
         self._log_lock = threading.Lock()
         self._record_path = Path(plan_record) if plan_record else None
@@ -598,6 +602,7 @@ class PolicyPlanner(Planner):
 
         images: dict[str, str] = {}
         shapes: dict[str, tuple[int, int]] = {}
+        frames_started = time.perf_counter()
         for logical_id, frames in (view.image_cache or {}).items():
             if not frames:
                 continue
@@ -612,6 +617,7 @@ class PolicyPlanner(Planner):
                 pixels = decode_frame(payload)
                 shapes[logical_id] = pixels.shape[:2]
                 images[logical_id] = encode_image(pixels)
+        self._last_frames_ms = (time.perf_counter() - frames_started) * 1000.0
 
         calibration = calibration_from(view, pinhole_intrinsics=self._pinhole_intrinsics)
         if self._named_cameras_only:
@@ -695,6 +701,7 @@ class PolicyPlanner(Planner):
         import urllib.error
         import urllib.request
 
+        started = time.perf_counter()
         payload = json.dumps(body).encode()
         request = urllib.request.Request(
             f"{self.policy_url}/infer",
@@ -709,6 +716,15 @@ class PolicyPlanner(Planner):
             raise RuntimeError(f"policy node at {self.policy_url} did not answer /infer: {exc}") from exc
         if "trajectory" not in answer:
             raise RuntimeError(f"policy node answered /infer without a trajectory: {sorted(answer)}")
+        # Every call, so a slow run says where its time went: frames decoded and
+        # re-encoded here, then the node's whole round trip for this body.
+        logger.info(
+            "infer t=%s: frames %.0f ms, body %.1f MB, round trip %.0f ms",
+            body.get("timestamp"),
+            self._last_frames_ms,
+            len(payload) / 1e6,
+            (time.perf_counter() - started) * 1000.0,
+        )
         return answer
 
     def observe_frame(self, body: dict[str, Any]) -> str:

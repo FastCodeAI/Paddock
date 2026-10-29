@@ -58,6 +58,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -471,6 +472,7 @@ class AlpamayoPolicy(Policy):
         import torch
         from alpamayo1_5 import helper
 
+        started = time.perf_counter()
         self._record(obs)
 
         hist_xyz, hist_rot = self._history()
@@ -498,6 +500,7 @@ class AlpamayoPolicy(Policy):
             {"tokenized_data": inputs, "ego_history_xyz": hist_xyz, "ego_history_rot": hist_rot}, "cuda"
         )
 
+        prepared = time.perf_counter()
         with torch.autocast("cuda", dtype=torch.bfloat16):
             pred_xyz, pred_rot, extra = self.model.sample_trajectories_from_data_with_vlm_rollout(
                 data=model_inputs,
@@ -509,6 +512,7 @@ class AlpamayoPolicy(Policy):
             )
 
         samples = pred_xyz.float().cpu().numpy()[0, 0]  # (K, 64, 3)
+        generated = time.perf_counter()  # the copy to the CPU waits for the GPU
         chosen_idx = medoid_index(samples)
         chosen = samples[chosen_idx]
         # Alpamayo is x-forward, y-left, the same convention NeuroNCAP drives.
@@ -532,9 +536,31 @@ class AlpamayoPolicy(Policy):
             yaw = np.arctan2(rotations[:, 1, 0], rotations[:, 0, 0])
             plan = np.column_stack([chosen[:, :2], yaw])
             self._log_infer(nav_text, plan, cot)
+            self._log_timing(started, prepared, generated, cot)
             return Trajectory(plan, dt=PLAN_DT, extras={"reasoning": self._last_reasoning})
         self._log_infer(nav_text, waypoints, cot)
+        self._log_timing(started, prepared, generated, cot)
         return Trajectory(waypoints, dt=self.waypoint_dt)
+
+    def _log_timing(self, started: float, prepared: float, generated: float, cot: str) -> None:
+        """Where one call's time went, every call: history, frames, prompt and processor
+        (prep); the model's rollout until the plan is on the CPU (generate); the rest.
+        Log only. The token count is the reasoning text re-tokenised, without the
+        special tokens around it."""
+        done = time.perf_counter()
+        # A stand-in processor (the input tests) has no tokenizer; a log line must not fail a call.
+        tokenizer = getattr(self.processor, "tokenizer", None)
+        tokens = len(tokenizer(cot, add_special_tokens=False)["input_ids"]) if tokenizer and cot else None
+        _log.info(
+            "infer #%d timing: prep %.0f ms, generate %.0f ms, post %.0f ms, total %.0f ms, "
+            "reasoning %s tokens",
+            self._n_infer,
+            (prepared - started) * 1000.0,
+            (generated - prepared) * 1000.0,
+            (done - generated) * 1000.0,
+            (done - started) * 1000.0,
+            tokens,
+        )
 
     def _log_infer(self, nav_text: str | None, waypoints: np.ndarray, cot: str) -> None:
         self._n_infer = getattr(self, "_n_infer", 0) + 1
