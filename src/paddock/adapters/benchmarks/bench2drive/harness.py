@@ -65,12 +65,42 @@ AGENT = Path(__file__).parent / "agent.py"
 #: Override per site with ``per_route_timeout_s``.
 DEFAULT_ROUTE_TIMEOUT_S = 5400
 
+
+def infer_hz(planning_hz: float | None) -> float:
+    """How often the client asks for a plan, Hz; 0 means every tick.
+
+    The model's `planning_hz`, unless the host sets PADDOCK_INFER_HZ, which
+    drives every model at that rate (the native-rate campaign set it by hand).
+    """
+    raw = os.environ.get("PADDOCK_INFER_HZ")
+    if not raw:
+        return float(planning_hz or 0.0)
+    try:
+        return float(raw)
+    except ValueError:
+        raise ValueError(f"PADDOCK_INFER_HZ={raw!r}: expected a rate in Hz") from None
+
+
 #: The CARLA launch flag that changes what the cameras see. Bench2Drive 7ec25d1
 #: launches CARLA at its default (Epic) quality; ``-quality-level=Low`` renders
 #: the sky black and the wet-road decal layer as white speckle, so frames scored
 #: that way are not the benchmark's frames. It is a one-line local edit to the
 #: evaluator that leaves no trace in run.json, hence a preflight refusal.
 QUALITY_FLAG = "-quality-level"
+
+#: How the evaluator reads with patches/Bench2Drive/ applied. Unpatched, a crashed
+#: route kills every CARLA its user runs on the GPU (the `kill -9` line), and a
+#: server slower than the evaluator's 30 s sleep costs a 600 s wait before the
+#: connection retry (`--connect-timeout` is the fix).
+CONNECT_TIMEOUT_FLAG = "--connect-timeout"
+KILL_ALL_LINE = "xargs -r kill -9"
+
+#: Seconds each connection attempt to a just-launched CARLA may take before the
+#: evaluator asks again (patch 0002). It bounds one attempt, not the boot: the
+#: evaluator makes up to 20. Override per site with ``connect_timeout_s``. Not in
+#: ``run_config``: it decides only how soon a server that is not up yet is asked
+#: again, never what is measured.
+DEFAULT_CONNECT_TIMEOUT_S = 60
 
 #: Spacing of the waypoints the node returns. Every closed-loop model plans on a
 #: 0.5 s grid (see ``neuroncap/harness.py``); the agent turns waypoint spacing
@@ -170,6 +200,27 @@ def select_routes(
         if scenario_filter is not None and stype not in scenario_filter:
             continue
         yield rid, town, stype
+
+
+def patch_problems(evaluator_source: str, evaluator: Path) -> list[str]:
+    """Why ``evaluator_source`` is not the evaluator with patches/Bench2Drive/ applied.
+
+    Both patches matter beyond one run: without 0001 a crashed route kills every
+    CARLA its user runs on the GPU, a parallel sweep worker's or another gate
+    lane's included; without 0002 the harness passes a flag the evaluator rejects.
+    """
+    problems = []
+    if KILL_ALL_LINE in evaluator_source:
+        problems.append(
+            f"{evaluator} still kills every CARLA on its GPU when a route crashes; apply "
+            f"patches/Bench2Drive/0001-kill-only-own-carla-on-crash.patch (patches/README.md)"
+        )
+    if CONNECT_TIMEOUT_FLAG not in evaluator_source:
+        problems.append(
+            f"{evaluator} has no {CONNECT_TIMEOUT_FLAG}; apply "
+            f"patches/Bench2Drive/0002-connect-timeout-for-a-booting-server.patch (patches/README.md)"
+        )
+    return problems
 
 
 def crash_reason(status: str) -> str | None:
@@ -453,6 +504,8 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
                     f"benchmark's (black sky, speckled road). Revert the edit, or make it a patch "
                     f"under patches/Bench2Drive/ so it is on the record"
                 )
+            if evaluator is not None and evaluator.exists():
+                problems.extend(patch_problems(evaluator.read_text(errors="replace"), evaluator))
 
         routes = self.routes_file
         if routes is not None:
@@ -467,11 +520,10 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
                         f"{routes.name}: {', '.join(unknown)}"
                     )
 
-        timeout = self.setting("per_route_timeout_s")
-        if timeout and not timeout.strip().isdigit():
-            problems.append(
-                f"[benchmarks.bench2drive] per_route_timeout_s must be an integer, got {timeout!r}"
-            )
+        for key in ("per_route_timeout_s", "connect_timeout_s"):
+            value = self.setting(key)
+            if value and not value.strip().isdigit():
+                problems.append(f"[benchmarks.bench2drive] {key} must be an integer, got {value!r}")
 
         if not problems:
             problems += self._import_problems()
@@ -534,6 +586,17 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             f"--scenarios {', '.join(unknown)}: not a scenario type in {routes.name}; "
             f"known: {', '.join(known)}"
         ]
+
+    def model_run_config(self, model) -> dict[str, Any]:
+        """The rate the client asks this model for a plan, when not every tick.
+
+        Recorded and hashed: a model asked at 2 Hz and at 20 Hz drives
+        differently (Drive-JEPA 57.60 against 31.71 on the 50 routes), so the
+        two must never share a run id. Absent means every tick, which is what
+        a record without it was driven at.
+        """
+        hz = infer_hz(getattr(model, "planning_hz", 0.0))
+        return {"infer_hz": hz} if hz else {}
 
     def run_config(self) -> dict[str, Any]:
         """Site settings that change *what is measured*, for ``run.json``.
@@ -631,6 +694,8 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         # foreign-interpreter agent that honours it.
         if os.environ.get("PADDOCK_INFER_TIMEOUT_S"):
             extra["PADDOCK_INFER_TIMEOUT_S"] = os.environ["PADDOCK_INFER_TIMEOUT_S"]
+        if hz := infer_hz(episode.config.get("planning_hz")):
+            extra["PADDOCK_INFER_HZ"] = f"{hz:g}"
         if self.record:
             extra["PADDOCK_RECORD_DIR"] = str(out_dir)
             # agent_wrapper reads SAVE_PATH as its "Bench2Drive mode" flag, which
@@ -659,6 +724,8 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             str(self.setting("tm_port") or 8000),
             "--gpu-rank",
             str(self.setting("gpu_rank") or 0),
+            CONNECT_TIMEOUT_FLAG,
+            str(int(self.setting("connect_timeout_s") or DEFAULT_CONNECT_TIMEOUT_S)),
         ]
 
         started = time.time()

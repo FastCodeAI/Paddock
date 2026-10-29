@@ -74,6 +74,9 @@ weights = "/path/to/weights"
 # [datasets.neurad_checkpoints]
 # path = "/path/to/neuroncap/checkpoints"      # per-scene NeuRAD renderers
 
+# [datasets.hugsim]
+# path = "/path/to/hugsim/data"                # scenarios/, scenes/, 3DRealCar/ (XDimLab/HUGSIM)
+
 # ---------------------------------------------------------------------------
 # Benchmarks that bring their own simulator or assets say where those live here.
 # What each benchmark measures is declared in its tracked benchmark.yaml; this
@@ -127,11 +130,19 @@ weights = "/path/to/weights"
 # repo        = "/path/to/Bench2Drive"                 # has leaderboard/ + scenario_runner/; sha pinned in repos.yaml
 # routes_file = "bench2drive220.xml"                   # under repo/leaderboard/data/ (default)
 # routes_subset = "1711,1773,1790"                     # optional: pin the run to these route ids (recorded in run.json)
-# per_route_timeout_s = 1800                           # default
+# per_route_timeout_s = 5400                           # default
+# connect_timeout_s   = 60                             # default; each attempt to reach a booting CARLA
 # carla_port  = "2000"                                 # evaluator moves up to the first free port from here
 # tm_port     = "8000"                                 # traffic manager port, likewise
 # gpu_rank    = "0"                                    # CARLA's -graphicsadapter
 # record      = "false"                                # per-tick front/BEV JPEGs + log.csv: ~40 GB per full sweep
+
+# [benchmarks.hugsim]                          # HUGSIM closed-loop; docs/benchmarks/hugsim.md
+# python = "/path/to/hugsim/venv/bin/python"   # HUGSIM's interpreter: imports closed_loop, omegaconf, requests
+# repo   = "/path/to/HUGSIM"                   # the checkout; sha pinned in repos.yaml, patches/HUGSIM/ applied
+# per_episode_timeout_s = 3600                 # default
+# min_free_gb = 12                             # default; free VRAM to wait for before each HUGSIM process
+# keep_ply    = "false"                        # default; true keeps the per-run scene/ground point clouds (~76 MB)
 
 # [benchmarks.alpasim]
 # AlpaSim runs its services through docker compose and attaches a driver over
@@ -187,6 +198,17 @@ budget_gb = 24
 # is the difference between a long job and a failed one. Set false only if you
 # have room for every model in `paddock run --model all` simultaneously.
 serialize = true
+
+# The shared gate queue (docs/queue.md). Submitters need `root` and `store`; the
+# rest is read only by the worker, which runs as the `paddock` account.
+# [queue]
+# root          = "/path/to/local/paddock/queue"     # jobs, code checkouts, baselines
+# store         = "/path/to/big/paddock/checkpoints" # submitted checkpoints, by content
+# stage         = "/path/to/local/paddock/stage"     # fast copy of a running job's checkpoint
+# python        = "/path/to/paddock/venv/bin/python"
+# cores         = ["12-15"]                          # one taskset lane per entry
+# base_port     = 9800
+# renderer_port = 8800
 
 # Benchmarks that bring their own environment and assets. Uncomment and fill in
 # the ones this site can run; `paddock doctor` reports the rest as unavailable.
@@ -279,6 +301,7 @@ serialize = true
 # renderer_cwd    = "/path/to/neuroncap"
 # neurad_studio   = "/path/to/neurad-studio"
 # checkpoints     = "/path/to/neuroncap/checkpoints"     # one per scene; also [datasets.neurad_checkpoints]
+# pdm_geometry    = "/path/to/geometry/nuscenes-drivable" # drivable rasters for the PDM terms; default {roots.runs}/geometry/nuscenes-drivable
 #
 # A full-set sweep spans 14 scenes, and the renderer loads one scene's hash
 # grids at startup and cannot switch. With this on, the harness starts and stops
@@ -302,6 +325,15 @@ serialize = true
 #                     # "off" logs no frames at all -- fastest, smallest.
 # ffmpeg = "/path/to/ffmpeg"   # else $PADDOCK_FFMPEG, else PATH. Without one,
 #                              # frames are kept and the run is not failed.
+# debug_views = true  # false skips the two drawn per-step views (FC_TRAJ,
+#                     #   COMBINED_OUTPUTS), so no mp4s; every record the scores
+#                     #   and PDM terms read is still written. Needs
+#                     #   patches/neuro-ncap/0003. The regression gate sets false.
+#
+# A copy of the nuScenes dataroot cut down to neuroNCAP's scenes, which the engine
+# and the renderer read instead of all of v1.0-trainval's 2.5 GB of tables:
+# python tools/benchmarks/neuroncap/build_nuscenes_subset.py <dir>, on a fast disk.
+# nuscenes_subset = "/path/to/fast/disk/nuscenes-ncap"
 
 # [benchmarks.nuscenes]
 # nuScenes val open-loop planning (L2 + collision, UniAD/VAD protocol). Reads the
@@ -353,14 +385,15 @@ serialize = true
 # [models.drivejepa.env]
 # DRIVEJEPA_IMAGE_GEOMETRY = "native"   # or "openscene"
 #
-# Momentum-aware selection (the paper's section 3.5) is "off" by default, which
-# is how every published drivejepa row was made: the node drives the raw argmax
-# of the learned score. "on" hands each replan the plan the node chose ~0.5 s
-# earlier, so the model's own calibrate_score runs before the argmax -- what
-# upstream's evaluation loop does. It changes which proposal is driven in closed
-# loop; an open-loop sequence resets first and is unaffected. Recorded under
-# provenance.policy with how often a previous plan was actually fed.
-# DRIVEJEPA_MOMENTUM = "off"            # or "on"
+# Momentum-aware selection (the paper's section 3.5) is on: drivejepa's
+# model.yaml declares it, so there is nothing to set here. It hands each replan
+# the plan the node chose ~0.5 s earlier, so the model's own calibrate_score runs
+# before the argmax -- what upstream's evaluation loop does. It changes which
+# proposal is driven in closed loop only; an open-loop sequence resets first and
+# is unaffected. Recorded under provenance.policy with how often a previous plan
+# was actually fed. "off" drives the raw argmax of the learned score; it differs
+# from the declared value, so a run made with it is not valid.
+# DRIVEJEPA_MOMENTUM = "off"            # an override: the run is not valid
 
 # ---------------------------------------------------------------------------
 # [ingest] -- where results that predate paddock live on this machine.
@@ -432,10 +465,11 @@ serialize = true
 #
 # The native-rate campaign (18-20 Sep 2026), as it was actually ingested. It is
 # the same 50 routes as the pooled50 blocks above with one knob turned: each model
-# drove at the rate it replans at, set with PADDOCK_INFER_HZ. That rate is not read
-# from model.yaml -- drivejepa declares none, and qwendrive's native_input_hz is
-# its ego-pose history, not a planning rate -- so it is the operator's statement,
-# and each run's notes say so.
+# drove at the rate it replans at, set with PADDOCK_INFER_HZ. When it ran, that
+# rate was not read from model.yaml -- drivejepa declared none, and qwendrive's
+# native_input_hz is its ego-pose history, not a planning rate -- so it is the
+# operator's statement, and each run's notes say so. (Since 2026-10-22 a model can
+# declare `planning_hz`, which the Bench2Drive client honours; drivejepa says 2.)
 # Two things in here are load-bearing, and both have bitten before:
 #
 #   * PADDOCK_INFER_HZ must be in `model_env`, because it is the only place the

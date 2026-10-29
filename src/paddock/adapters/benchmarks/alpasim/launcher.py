@@ -17,7 +17,9 @@ left for the next person to rediscover.
 parent on a timeout leaves the compose project up, holding the GPU and the
 ports, and the next episode then fails on a port clash rather than on the thing
 that actually went wrong. `start_new_session=True` puts the whole tree in its
-own group, and the timeout path kills the group and then runs `compose down`.
+own group, and the timeout path kills the group. Every path then saves the
+containers' logs and runs `compose down`: `compose up --exit-code-from` stops
+the containers when a scene ends but never removes them.
 
 **Big models need a long startup timeout.** `runtime.endpoints.startup_timeout_s`
 defaults to 120 s upstream. A cold 10B checkpoint read answers the runtime's
@@ -30,8 +32,10 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import signal
 import subprocess
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -214,6 +218,7 @@ def wizard_command(
     video: bool = False,
     video_every_nth_frame: int = 1,
     scene_cache: str | None = None,
+    baseport: int | None = None,
     scenes_csv: Path | None = None,
 ) -> list[str]:
     """The wizard invocation for one scene.
@@ -274,6 +279,11 @@ def wizard_command(
         # makes min_ade a different quantity under the same name.
         "eval.scorers.min_ade.time_deltas=[0.5,1.0,2.5]",
     ]
+    if baseport is not None:
+        # Where the wizard starts handing out its services' host ports. It skips
+        # ports already bound, but two runs launched together both see the same
+        # free ones before either binds, so each run gets a base of its own.
+        command.append(f"wizard.baseport={baseport}")
     if scenes_csv is not None:
         command += [
             f"scenes.scenes_csv=[{scenes_csv}]",
@@ -295,6 +305,113 @@ def wizard_command(
     return command
 
 
+def compose_project_name(out_dir: Path) -> str:
+    """The compose project for one run of one scene: `<scene folder>-<run folder>`.
+
+    Left to itself, compose names a project after the folder that holds
+    `docker-compose.yaml`, which is the scene id. Every run of a scene on the
+    machine would then share one set of containers, and of two runs that
+    overlap -- the gate queue and someone's own run -- the second would replace
+    the first's containers and the first to finish would remove the other's. The
+    folder above is the run's own, named by its run id. Docker accepts only
+    lowercase letters, digits, `-` and `_`.
+    """
+    name = f"{out_dir.name}-{out_dir.parent.name}".lower()
+    return re.sub(r"[^a-z0-9_-]", "-", name).lstrip("-_")
+
+
+#: How often, while the wizard runs, the run's new containers are looked for and pinned (s).
+PIN_POLL_S = 2.0
+
+
+def run_cores() -> str | None:
+    """The CPU cores this process may run on, in Docker's `--cpuset-cpus` form
+    ("12-15,20"), or None when it may use every core (nothing to hold them to)."""
+    try:
+        cores = sorted(os.sched_getaffinity(0))
+    except (AttributeError, OSError):
+        return None
+    if not cores or len(cores) >= (os.cpu_count() or len(cores)):
+        return None
+    spans: list[list[int]] = []
+    for core in cores:
+        if spans and core == spans[-1][1] + 1:
+            spans[-1][1] = core
+        else:
+            spans.append([core, core])
+    return ",".join(f"{a}-{b}" if a != b else str(a) for a, b in spans)
+
+
+class ContainerPinner:
+    """Pins the run's containers to `cpuset` as they appear, until stopped.
+
+    Docker starts AlpaSim's containers, not this run, so they do not inherit the
+    run's cores (`taskset` in the gate's lanes), and on a shared machine that fails
+    above about 90% CPU they could take all of them; the gate therefore ran
+    AlpaSim beside no other simulator. While the wizard runs, this lists the run's
+    compose project every `PIN_POLL_S` and pins each new container with `docker
+    update --cpuset-cpus`, so a container runs unpinned for at most that long.
+    Best effort, like `compose_down`: a failure is said once, never raised.
+    """
+
+    def __init__(
+        self,
+        project: str,
+        cpuset: str,
+        env: dict[str, str] | None = None,
+        echo: Callable[[str], None] = print,
+    ) -> None:
+        self.project, self.cpuset, self.env, self.echo = project, cpuset, env, echo
+        self.pinned: set[str] = set()
+        self._warned = False
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, name="alpasim-pin", daemon=True)
+
+    def start(self) -> ContainerPinner:
+        self._thread.start()
+        return self
+
+    def stop(self) -> None:
+        self._stop.set()
+        self._thread.join(timeout=60)
+
+    def _run(self) -> None:
+        while True:
+            self.pin_new()
+            if self._stop.wait(PIN_POLL_S):
+                return
+
+    def pin_new(self) -> None:
+        label = f"label=com.docker.compose.project={self.project}"
+        try:
+            listed = subprocess.run(
+                ["docker", "ps", "-q", "--filter", label],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env=self.env,
+            )
+            new = [cid for cid in listed.stdout.split() if cid not in self.pinned]
+            if not new:
+                return
+            done = subprocess.run(
+                ["docker", "update", "--cpuset-cpus", self.cpuset, *new],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env=self.env,
+            )
+            if done.returncode != 0:
+                tail = (done.stderr or "").strip().splitlines()[-1:] or [f"exit {done.returncode}"]
+                raise RuntimeError(tail[0])
+            self.pinned.update(new)
+            self.echo(f"pinned {len(new)} container(s) to cores {self.cpuset}")
+        except (OSError, subprocess.SubprocessError, RuntimeError) as exc:
+            if not self._warned:
+                self._warned = True
+                self.echo(f"warning: could not pin the run's containers to cores {self.cpuset}: {exc}")
+
+
 def run_wizard(
     command: list[str],
     cwd: Path,
@@ -305,52 +422,114 @@ def run_wizard(
 ) -> tuple[int, bool, float]:
     """Run one wizard invocation. Returns (returncode, timed_out, elapsed_s).
 
-    On a timeout the whole process group is killed and `compose down` is run,
-    because the wizard's own cleanup does not survive being killed and the
-    containers would otherwise hold the GPU into the next episode.
+    On a timeout the whole process group is killed, because the wizard's own
+    cleanup does not survive being killed and the containers would otherwise
+    hold the GPU into the next episode.
+
+    Whatever the outcome -- success, failure, timeout, Ctrl-C -- the compose
+    project's logs are saved next to the wizard log and `compose down` is run.
+    `compose up --exit-code-from` stops the containers on a normal exit but
+    does not remove them, and each stopped set keeps its writable layer (up to
+    ~1 GB) on the root disk of a shared machine until someone removes it.
+
+    The wizard's `compose up`, the logs and the teardown all act on one compose
+    project named for this run (see `compose_project_name`). A run held to some
+    cores (`taskset`) holds its containers to the same ones (`ContainerPinner`).
     """
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    env = {
+        **(os.environ if env is None else env),
+        "COMPOSE_PROJECT_NAME": compose_project_name(log_path.parent),
+    }
     started = time.monotonic()
     timed_out = False
-    with log_path.open("w") as handle:
-        proc = subprocess.Popen(
-            command,
-            cwd=cwd,
-            stdout=handle,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-            env=env,
-        )
-        try:
-            returncode = proc.wait(timeout=timeout_s)
-        except subprocess.TimeoutExpired:
-            timed_out = True
-            echo(f"wizard exceeded {timeout_s / 60:.0f} min; killing the process group")
+    proc: subprocess.Popen | None = None
+    pinner: ContainerPinner | None = None
+    try:
+        with log_path.open("w") as handle:
+            proc = subprocess.Popen(
+                command,
+                cwd=cwd,
+                stdout=handle,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+                env=env,
+            )
+            if cpuset := run_cores():
+                pinner = ContainerPinner(env["COMPOSE_PROJECT_NAME"], cpuset, env, echo).start()
+            try:
+                returncode = proc.wait(timeout=timeout_s)
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                echo(f"wizard exceeded {timeout_s / 60:.0f} min; killing the process group")
+                _kill_group(proc)
+                returncode = proc.returncode if proc.returncode is not None else -signal.SIGKILL
+        elapsed = time.monotonic() - started
+    except BaseException:
+        # The wizard runs in its own session, so a Ctrl-C here never reached
+        # it. Stop it before its containers are taken down underneath it.
+        if proc is not None and proc.poll() is None:
             _kill_group(proc)
-            returncode = proc.returncode if proc.returncode is not None else -signal.SIGKILL
-    if timed_out:
+        raise
+    finally:
+        if pinner is not None:
+            pinner.stop()
+        # Logs first: `compose down` removes the containers they live in.
+        save_compose_logs(cwd, log_path.parent, env=env, echo=echo)
         compose_down(cwd, log_path.parent, env=env, echo=echo)
-    return returncode, timed_out, time.monotonic() - started
+    return returncode, timed_out, elapsed
 
 
-def compose_down(cwd: Path, out_dir: Path, env: dict[str, str] | None = None, echo=print) -> None:
-    """Tear down whatever the killed wizard left running.
+def save_compose_logs(cwd: Path, out_dir: Path, env: dict[str, str] | None = None, echo=print) -> None:
+    """Write the compose project's container logs to `container_logs.txt`.
 
-    Best effort by design: this runs on the failure path, and a teardown error
-    must not mask the failure that caused it.
+    Best effort, like `compose_down`: it runs on every path, including the
+    failure ones, and must not mask the outcome it follows.
     """
     compose_file = out_dir / "docker-compose.yaml"
     if not compose_file.exists():
         return
-    with contextlib.suppress(Exception):
-        subprocess.run(
+    try:
+        with (out_dir / "container_logs.txt").open("w") as handle:
+            result = subprocess.run(
+                ["docker", "compose", "-f", str(compose_file), "logs", "--no-color", "--timestamps"],
+                cwd=cwd,
+                env=env,
+                stdout=handle,
+                stderr=subprocess.STDOUT,
+                timeout=120,
+            )
+        if result.returncode != 0:
+            echo(f"warning: compose logs exited {result.returncode}; see {out_dir / 'container_logs.txt'}")
+    except Exception as exc:
+        echo(f"warning: could not save container logs: {exc}")
+
+
+def compose_down(cwd: Path, out_dir: Path, env: dict[str, str] | None = None, echo=print) -> None:
+    """Stop and remove the run's containers, whether the wizard exited or was killed.
+
+    Best effort by design: this runs on every path, and a teardown error must
+    not mask the outcome that preceded it -- so it warns and returns.
+    """
+    compose_file = out_dir / "docker-compose.yaml"
+    if not compose_file.exists():
+        return
+    try:
+        result = subprocess.run(
             ["docker", "compose", "-f", str(compose_file), "down", "--remove-orphans"],
             cwd=cwd,
             env=env,
             capture_output=True,
             timeout=120,
         )
-        echo("compose down: cleaned up the killed run's containers")
+    except Exception as exc:
+        echo(f"warning: compose down failed: {exc}")
+        return
+    if result.returncode != 0:
+        tail = result.stderr.decode(errors="replace").strip()[-500:]
+        echo(f"warning: compose down exited {result.returncode}: {tail}")
+        return
+    echo("compose down: removed the run's containers")
 
 
 def node_alive(policy_url: str, timeout_s: float = 5.0) -> bool:

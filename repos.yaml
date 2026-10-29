@@ -57,11 +57,23 @@ repos:
     patches:
       - 0001-waypoint-dt-and-camera-selection.patch
       - 0002-fail-loudly-on-renderer-http-errors.patch
+      - 0003-optional-debug-views.patch
 
   Bench2Drive:
     url: https://github.com/Thinklab-SJTU/Bench2Drive.git
     sha: 7ec25d1
     description: CARLA 0.9.15 closed-loop leaderboard (release 0.0.4); driven by adapters/benchmarks/bench2drive
+    patches:
+      - 0001-kill-only-own-carla-on-crash.patch
+      - 0002-connect-timeout-for-a-booting-server.patch
+
+  HUGSIM:
+    url: https://github.com/hyzhou404/HUGSIM.git
+    sha: 62c690d
+    description: HUGSIM closed-loop simulator on Gaussian-splatting scenes; driven by adapters/benchmarks/hugsim
+    patches:
+      - 0001-traj2control-heading-pr57.patch
+      - 0002-render-only-requested-cameras.patch
 
   kitscenes:
     url: https://github.com/KIT-MRT/kitscenes.git
@@ -92,3 +104,8 @@ repos:
     url: https://github.com/QwenLM/Qwen-Drive-1.0.git
     sha: 28091c1
     description: Qwen-Drive-1.0-4B inference code; Qwen3.5 VLM with a flow-matching planning expert and BEV perception head, imported as a library from src/
+
+  WA-JEPA:
+    url: https://github.com/AFARI-Research/WA-JEPA.git
+    sha: bec2966
+    description: AFARI WA-JEPA world-action model (V-JEPA 2.1 ViT-L + joint flow predictor); the adapter imports the model package and upstream's HUGSIM client helpers, nothing from NAVSIM

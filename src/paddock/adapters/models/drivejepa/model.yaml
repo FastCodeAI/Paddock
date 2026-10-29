@@ -21,12 +21,32 @@ runtime:
     # mmcv-full's compiled kernel has no SASS above sm_86; 'auto' falls back to
     # the equivalent pure-PyTorch path on newer cards. See patches/Drive-JEPA/.
     DRIVE_JEPA_MSDA: "auto"
+    # Momentum-aware selection (paper section 3.5) is part of the published
+    # method, so it is on for every benchmark. It can only act where the node
+    # has its own plan from 0.5 s earlier: closed loop (neuroNCAP, Bench2Drive,
+    # and AlpaSim through paddock's bridge).
+    # Open-loop samples arrive through /infer_sequence, which resets the node,
+    # so they always select on the plain score. See momentum.py.
+    DRIVEJEPA_MOMENTUM: "on"
+    # Crop and rescale every camera onto the OpenScene camera the checkpoint was
+    # trained on (64 degrees), the way the devkit's own KITScenes loader does.
+    # Uncropped, a wider camera reaches the model squeezed: on KITScenes (87
+    # degrees) objects arrive 0.65x as wide and 0.55x as tall as in training and
+    # the bonnet fills the bottom of the frame, and ADE was 3.222 m against
+    # 2.521 m cropped (t -4.0, 223 keyframes). The model's own setting, so every
+    # benchmark and every gate run gets it; a site that sets "native" is the
+    # override and its runs are not valid.
+    DRIVEJEPA_IMAGE_GEOMETRY: "openscene"
 
 capabilities:
   cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT, CAM_BACK]
   vram_gb: 12
   startup_timeout_s: 900
   waypoint_dt: 0.5
+  # It replans every 0.5 s, the spacing of its training plans. Asked at
+  # Bench2Drive's 20 Hz it scored 31.71 on the 50 routes; at 2 Hz, the last plan
+  # held between, 57.60 (docs/benchmarks/bench2drive-native-rate.md).
+  planning_hz: 2.0
 
   # -- model card (docs/models/comparison.md) --
   architecture: "V-JEPA-2-init ViT-L encoder + proposal-centric planner"
@@ -35,13 +55,34 @@ capabilities:
   precision: fp32
   input_size: [512, 256]
   history_frames: 2
+  # Two front frames 0.5 s apart feed the JEPA encoder; the BEV stage reads all four
+  # cameras above at the current frame only (vendor drive_jepa_features.py and
+  # bevformer/bev_feature_build.py at the pinned sha). Four ego statuses -- pose,
+  # velocity, acceleration, command -- also 0.5 s apart.
+  camera_hz: 2.0
+  ego_history_steps: 4
+  ego_history_hz: 2.0
   output_kind: waypoints
   horizon_s: 4.0
+  plan_points_hz: 2.0  # eight poses 0.5 s apart, NAVSIM's grid
   trained_on:
-    # The only training exposure to a paddock benchmark's data among the four
-    # models -- and it leads that benchmark by 0.235 EPDMS. navtrain -> navtest
-    # is the protocol NAVSIM intends; what makes the column hard to read is that
-    # the other three meet navtest zero-shot.
+    # Three training stages, each sourced at the pinned sha or in the papers:
+    # 1. The encoder starts from V-JEPA 2 (Drive-JEPA arXiv 2601.22032v2, sec. 3),
+    #    which was pretrained on VideoMix22M (V-JEPA 2, arXiv 2506.09985).
+    # 2. It is then trained without labels on 330 h of front-camera driving video:
+    #    CoVLA, DrivingDojo and OpenScene's trainval split (same section; the author
+    #    confirms trainval in Drive-JEPA issue #10). That encoder is
+    #    vitl_merge_3dataset_e50.pt, loaded by bevformer/image_encoder.py:33.
+    #    OpenScene trainval holds navtrain's logs and 52 of nuPlan mini's 62 (see
+    #    comparison.md, Drive-JEPA x nuplan), and none of navtest's.
+    - dataset: videomix22m
+    - dataset: covla
+    - dataset: drivingdojo
+    - dataset: navsim
+      split: trainval
+    # 3. The planner, on NAVSIM navtrain. navtrain -> navtest is the protocol NAVSIM
+    #    intends; what makes the column hard to read is that OpenPilot and
+    #    VisionPilot meet navtest zero-shot.
     #
     # Sourced at the pinned sha, not taken on trust: Drive-JEPA @ e21f474,
     # navsim_v2/scripts/training/train_drive_jepa_perception_based.sh line 4 is
@@ -56,4 +97,4 @@ capabilities:
       split: navtrain
 # alpasim runs through the bridge's Drive-JEPA settings (harness.DRIVER_PROFILES):
 # its native AlpaSim driver's camera, 2 Hz replanning and inputs. See docs/models/drivejepa.md.
-benchmarks: [navsim, navsim_v1, kitscenes, neuroncap, bench2drive, nuscenes, nuplan, alpasim]
+benchmarks: [navsim, navsim_v1, kitscenes, neuroncap, bench2drive, nuscenes, nuplan, alpasim, hugsim]

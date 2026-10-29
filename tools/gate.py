@@ -4,7 +4,7 @@
         --baseline drivejepa:20260905T220225-f11ac0 --candidate drivejepa:20261012T224707-f11ac0
     python -m tools.gate check gate.toml [--json out.json]
     python -m tools.gate smoke --model drivejepa --env DRIVEJEPA_CHECKPOINT=/path/to/it.ckpt \\
-        --baseline baselines.toml [--execute]
+        --baseline baselines.toml [--execute] [--json out.json]
     python -m tools.gate subset neuroncap [--env NAME]
 
 `compare` scores one benchmark; `check` scores every pair in a manifest and gives one
@@ -51,8 +51,21 @@ At 20 pairs it is 2.09, and it falls to 1.96 as the units grow.
 A `threshold`, when given, adds whether the point estimate drops by more than it.
 
 Overall (`check`): FAIL if any pair is a REGRESSION; SHIP only if every pair is decided
-(GAIN, NEUTRAL or REGRESSION) and at least one closed-loop pair is a GAIN; HOLD
-otherwise. The exit status is 1 on FAIL, else 0.
+(GAIN, NEUTRAL or REGRESSION) and at least one closed-loop pair that may ship is a GAIN
+(`can_ship = false` marks a subset too small for its GAIN to be trusted); HOLD
+otherwise. A crash check (`crash_check = true`, one sample) that ran cleanly is left
+out of "every pair decided". The exit status is 1 on FAIL, else 0. Each pair also reports its MDE, the
+smallest true difference it detects 80% of the time, which is how a NEUTRAL is read.
+
+PDM terms. Beside the primary, each pair scores the terms of NAVSIM v1's PDM score
+that its benchmark can fill (`pdm:` in benchmark.yaml: NC, DAC, TTC, EP, C and a
+composite), in the same rows on every benchmark, with the same pairing, units and
+refusals. A composite can hold still while the candidate trades collisions for
+progress. Where all five terms are filled and the benchmark has no composite of its
+own (NAVSIM v2), the gate composes `pdm_style_score` per sample. PDM rows never change
+a verdict: one test per row at 5% calls an unchanged model worse somewhere far more
+often than the gate's own pairs do, so a row beyond t crit is named under the overall
+line, for a reader.
 
 Model identity. A site `[models.X] env` override such as `DRIVEJEPA_CHECKPOINT` is
 recorded in run.json as `config.model_env` (absolute paths as `<site path:digest>`) and
@@ -65,6 +78,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import functools
 import hashlib
 import json
 import math
@@ -87,6 +101,7 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
+from paddock.metrics import pdm as PDM  # noqa: E402
 from paddock.results.report import has_direction, lower_is_better  # noqa: E402
 from paddock.results.store import RESULTS_ROOT  # noqa: E402
 
@@ -135,25 +150,81 @@ T975: dict[float, float] = {
     math.inf: 1.960,
 }
 
+#: One-sided 80% quantiles of Student's t by degrees of freedom (scipy's
+#: `t.ppf(0.80, df)` to three decimals, checked the same way as `T975`). With
+#: `T975` it gives the smallest true difference a pair reaches t crit for 80% of
+#: the time: (t crit + t80) x SE, the column `render` calls MDE.
+T80: dict[float, float] = {
+    1: 1.376,
+    2: 1.061,
+    3: 0.978,
+    4: 0.941,
+    5: 0.920,
+    6: 0.906,
+    7: 0.896,
+    8: 0.889,
+    9: 0.883,
+    10: 0.879,
+    11: 0.876,
+    12: 0.873,
+    13: 0.870,
+    14: 0.868,
+    15: 0.866,
+    16: 0.865,
+    17: 0.863,
+    18: 0.862,
+    19: 0.861,
+    20: 0.860,
+    21: 0.859,
+    22: 0.858,
+    23: 0.858,
+    24: 0.857,
+    25: 0.856,
+    26: 0.856,
+    27: 0.855,
+    28: 0.855,
+    29: 0.854,
+    30: 0.854,
+    40: 0.851,
+    60: 0.848,
+    120: 0.845,
+    math.inf: 0.842,
+}
+
 #: The fewest independent units a verdict needs: one unit has no spread to measure.
 MIN_UNITS = 2
 
 Sample = dict[str, Any]
 
 
-def t_crit(df: float) -> float:
-    """The two-sided 5% critical value of Student's t on `df` degrees of freedom."""
+def _t_table(table: dict[float, float], df: float) -> float:
     if df < 1:
-        raise ValueError(f"t_crit needs at least 1 degree of freedom, got {df}")
-    if df in T975:
-        return T975[df]
-    rows = sorted(T975)
+        raise ValueError(f"Student's t needs at least 1 degree of freedom, got {df}")
+    if df in table:
+        return table[df]
+    rows = sorted(table)
     hi = next(r for r in rows if r > df)
     lo = max(r for r in rows if r < df)
     # Linear in 1/df, the textbook rule: the quantile is nearly linear in it, and
     # 1/inf = 0 makes the last interval (120, inf) well defined.
     x, x_lo, x_hi = 1 / df, 1 / lo, (0.0 if math.isinf(hi) else 1 / hi)
-    return T975[lo] + (x - x_lo) / (x_hi - x_lo) * (T975[hi] - T975[lo])
+    return table[lo] + (x - x_lo) / (x_hi - x_lo) * (table[hi] - table[lo])
+
+
+def t_crit(df: float) -> float:
+    """The two-sided 5% critical value of Student's t on `df` degrees of freedom."""
+    return _t_table(T975, df)
+
+
+def mde(se: float, df: float) -> float:
+    """The smallest true difference this pair detects 80% of the time, in metric units.
+
+    (t crit + t80) x SE: a candidate truly this much worse is called a
+    REGRESSION four times in five. It reads a NEUTRAL: below it, NEUTRAL says
+    little; well above it, NEUTRAL says the change is smaller. It is computed from
+    the pair's own SE, so it is an estimate too.
+    """
+    return (t_crit(df) + _t_table(T80, df)) * se
 
 
 def _nid(sample: Sample) -> dict[str, Any]:
@@ -225,9 +296,24 @@ class PairResult:
     only_candidate: int = 0
     threshold: float | None = None
     beyond_threshold: bool | None = None
+    #: The smallest true difference this pair detects 80% of the time (`mde`).
+    mde: float | None = None
+    #: False for a subset too small to be trusted with a GAIN (`can_ship` in its
+    #: TOML): its REGRESSION still fails the gate, its GAIN never ships it.
+    can_ship: bool = True
+    #: True for a one-sample crash check (`crash_check` in its TOML): too few for a
+    #: verdict by design, so a clean one (TOO FEW UNITS) does not hold back SHIP.
+    crash_check: bool = False
     baseline_env: dict[str, str] = field(default_factory=dict)
     candidate_env: dict[str, str] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
+    #: Which PDM term this row is (`metrics.pdm.SLOTS` or `score`), on a PDM row.
+    slot: str = ""
+    #: The PDM terms (`pdm:` in benchmark.yaml), each paired the same way as the
+    #: primary, in slot order. Read beside its verdict; never part of `overall`.
+    pdm: list[PairResult] = field(default_factory=list)
+    #: The PDM terms this benchmark cannot measure, as `metrics.pdm.LABELS`.
+    pdm_missing: list[str] = field(default_factory=list)
 
 
 def parse_spec(spec: str) -> tuple[str, str]:
@@ -320,9 +406,16 @@ SUBSET_KEYS = frozenset(
         "routes_subset",
         "scene_set",
         "merged_from",
+        # A re-scored run (tools/benchmarks/neuroncap/pdm_rescore.py) names the
+        # run whose episodes it read; the episodes and their settings are the same.
+        "replayed_from",
         "allow_partial",
         "allow_slow",
         "chunk_order",
+        # The gate's own sample lists: neuroNCAP's scenario-scene pairs and
+        # nuScenes' sample ids (tools/gate_subsets.py).
+        "pairs",
+        "sample_filter",
     }
 )
 #: NAVSIM's subset rides in `overrides` as this hydra key; other overrides do change
@@ -363,6 +456,39 @@ def lost_samples(run: Run) -> int:
     if failed == 0 and run.run.get("status") == "partial":
         return 1
     return failed
+
+
+def code_notes(baseline: Run, candidate: Run) -> list[str]:
+    """What the runs' provenance says about the code each was measured with.
+
+    The same model name on older adapter code is another measurement (PR #93
+    changed what AlpaSim sends every model), and the gate would put the
+    difference on the candidate. Notes, not a verdict: a code change can be
+    exactly what the candidate is.
+    """
+
+    def paddock(run: Run) -> dict[str, Any]:
+        return dict((run.run.get("provenance") or {}).get("paddock") or {})
+
+    notes = []
+    a, b = paddock(baseline), paddock(candidate)
+    if a.get("sha") and b.get("sha") and a["sha"] != b["sha"]:
+        notes.append(
+            f"the runs used different paddock code ({a['sha'][:9]} vs {b['sha'][:9]}): "
+            "an adapter change between them is part of the difference"
+        )
+    elif bool(a.get("sha")) != bool(b.get("sha")):
+        older = "baseline" if not a.get("sha") else "candidate"
+        notes.append(
+            f"the {older} predates recording paddock's commit, so which code it used is not on record"
+        )
+    for who, info in (("baseline", a), ("candidate", b)):
+        if info.get("dirty"):
+            notes.append(f"the {who} ran from a paddock checkout with uncommitted edits")
+    ra, rb = baseline.run.get("repo_sha"), candidate.run.get("repo_sha")
+    if ra and rb and ra != rb:
+        notes.append(f"the model's own repo was at different revisions ({str(ra)[:9]} vs {str(rb)[:9]})")
+    return notes
 
 
 def _verdict(t: float | None, crit: float) -> str:
@@ -406,6 +532,37 @@ def identity_notes(baseline: Run, candidate: Run) -> list[str]:
     return notes
 
 
+@functools.cache
+def _benchmark_pdm() -> dict[str, tuple[str, tuple[tuple[str, str], ...]]]:
+    from paddock.registry import load_benchmarks
+
+    return {name: (spec.primary_metric, spec.pdm) for name, spec in load_benchmarks().items()}
+
+
+def pdm_terms(bench: str, metric: str) -> tuple[tuple[str, str], ...]:
+    """(slot, metric) for the PDM terms benchmark.yaml declares, when `metric` is its primary."""
+    primary, slots = _benchmark_pdm().get(bench, ("", ()))
+    return slots if metric == primary else ()
+
+
+#: What the gate calls a composite it computes itself, from the five terms.
+COMPOSED = "pdm_style_score"
+
+
+def _recorded(run: Run, metric: str) -> bool:
+    return any(_value(s, metric) is not None for s in run.samples)
+
+
+def _composed(run: Run, slots: dict[str, str]) -> Run:
+    """The run with `COMPOSED` on every sample, from its five PDM terms."""
+    samples = []
+    for sample in run.samples:
+        terms = [_value(sample, slots[slot]) for slot in PDM.SLOTS]
+        value = PDM.composite(*(math.nan if t is None else t for t in terms))
+        samples.append({**sample, "metrics": {**(sample.get("metrics") or {}), COMPOSED: value}})
+    return replace(run, samples=samples)
+
+
 def declared_env_notes(baseline: Run, candidate: Run) -> list[str]:
     """Which `model.yaml` env keys the two runs were made under differently.
 
@@ -432,8 +589,62 @@ def compare(
     threshold: float | None = None,
     unit_of: Callable[[Sample], str | None] | None = None,
     allow_config: Any = (),
+    pdm: Any = None,
 ) -> PairResult:
-    """Score one candidate run against one baseline run on the same benchmark."""
+    """Score one candidate run against one baseline run on the same benchmark.
+
+    `pdm` ((slot, metric) pairs; default: the benchmark's own, when `metric` is
+    its primary) is scored by the same pairing, on the same units and under the
+    same refusals, and kept on the result beside the primary. When all five
+    terms are there and no composite is, the gate composes `pdm_style_score`
+    per sample. PDM rows never change the verdict: at 5% each, the quick tier's
+    17 would call an unchanged model worse on at least one about a third of the
+    time.
+    """
+    result = _compare(baseline, candidate, metric, threshold, unit_of, allow_config)
+    slots = dict(pdm_terms(result.bench, result.metric) if pdm is None else pdm)
+    if not slots:
+        return result
+    result.pdm_missing = [PDM.LABELS[s] for s in PDM.SLOTS if s not in slots]
+    # The last field says whether the gate built the row. Not read from the name:
+    # neuroNCAP and comma2k19 record a composite of their own called `COMPOSED` too.
+    rows = [(slot, m, baseline, candidate, False) for slot, m in slots.items()]
+    # Higher-is-better, so each is a pass rate the formula can multiply.
+    if PDM.SCORE not in slots and all(
+        slot in slots and not lower_is_better(slots[slot]) for slot in PDM.SLOTS
+    ):
+        rows.append((PDM.SCORE, COMPOSED, _composed(baseline, slots), _composed(candidate, slots), True))
+    unrecorded = []
+    for slot, m, base, cand, composed in rows:
+        if m == result.metric:
+            continue  # the primary is this term (navsim_v1's pdms): its row is the headline
+        # A run with records but none for this term predates it (or its harness
+        # does not write it): say so once on the primary, not as a row of dashes.
+        if not composed and any(r.samples and not _recorded(r, m) for r in (base, cand)):
+            unrecorded.append(m)
+            continue
+        part = _compare(base, cand, m, None, unit_of, allow_config)
+        part.slot = slot
+        part.notes = [n for n in part.notes if n not in result.notes]
+        if composed:
+            part.notes.insert(0, "composed by the gate from the five terms with NAVSIM v1's weights")
+        result.pdm.append(part)
+    if unrecorded:
+        result.notes.append(
+            f"PDM terms not recorded by one of the runs, so not compared: {', '.join(unrecorded)}"
+        )
+    return result
+
+
+def _compare(
+    baseline: Run,
+    candidate: Run,
+    metric: str | None,
+    threshold: float | None,
+    unit_of: Callable[[Sample], str | None] | None,
+    allow_config: Any,
+) -> PairResult:
+    """One metric of one pair: `compare` without its terms."""
     if baseline.bench != candidate.bench:
         raise ValueError(f"benchmarks differ: {baseline.bench} vs {candidate.bench}")
     bench = baseline.bench
@@ -465,6 +676,7 @@ def compare(
             result.notes.append(f"{who} run is marked invalid: {r.run.get('notes') or 'no reason given'}")
     result.notes += declared_env_notes(baseline, candidate)
     result.notes += identity_notes(baseline, candidate)
+    result.notes += code_notes(baseline, candidate)
     seq_a = (baseline.run.get("dataset") or {}).get("sequences_sha256")
     seq_b = (candidate.run.get("dataset") or {}).get("sequences_sha256")
     if seq_a and seq_b and seq_a != seq_b:
@@ -474,6 +686,12 @@ def compare(
         result.verdict = "NO RECORDS"
         missing = [w for r, w in ((baseline, "baseline"), (candidate, "candidate")) if not r.samples]
         result.notes.append(f"no per-sample records on this site for: {', '.join(missing)}")
+        # A candidate with no records because it failed on every sample (the quick
+        # tier's one-route crash check that crashed) is INCOMPLETE, which stops the
+        # gate. NO RECORDS let the closed tier's hours run after it (review of #113, 1).
+        if not candidate.samples and (lost := lost_samples(candidate)):
+            result.verdict = "INCOMPLETE"
+            result.notes.append(f"candidate lost every sample ({lost}) to a failure")
         result.baseline_mean = ((baseline.metrics.get("metrics") or {}).get(metric) or {}).get("mean")
         result.candidate_mean = ((candidate.metrics.get("metrics") or {}).get(metric) or {}).get("mean")
         return result
@@ -530,6 +748,7 @@ def compare(
         result.se = math.sqrt(var)
         result.df = g - 1
         result.t_crit = t_crit(result.df)
+        result.mde = mde(result.se, result.df)
         if result.se > 0:
             result.t = result.diff / result.se
         elif abs(result.diff) > 1e-9 * max(1.0, abs(result.baseline_mean or 0.0)):
@@ -592,16 +811,25 @@ DECIDED = ("GAIN", "NEUTRAL", "REGRESSION")
 
 def overall(results: list[PairResult], unfinished: list[str] | None = None) -> str:
     """FAIL on any REGRESSION; SHIP only when every pair was decided, nothing is
-    unfinished, and a closed-loop pair is a GAIN; HOLD otherwise.
+    unfinished, and a closed-loop pair that may ship (`can_ship`) is a GAIN;
+    HOLD otherwise.
 
     A GAIN beside a benchmark that was never compared is not a reason to ship:
-    the uncompared one could be where the candidate broke.
+    the uncompared one could be where the candidate broke. A crash check is one
+    sample and always TOO FEW UNITS; one that ran cleanly is left out of that rule
+    (with it in, `--tier all` could never ship: review of #113, 2). One that failed
+    (INCOMPLETE) or was not compared still holds.
     """
     if any(r.verdict == "REGRESSION" for r in results):
         return "FAIL"
-    if unfinished or any(r.verdict not in DECIDED for r in results):
+    undecided = [
+        r
+        for r in results
+        if r.verdict not in DECIDED and not (r.crash_check and r.verdict == "TOO FEW UNITS")
+    ]
+    if unfinished or undecided:
         return "HOLD"
-    if any(r.verdict == "GAIN" and r.bench in CLOSED_LOOP for r in results):
+    if any(r.verdict == "GAIN" and r.bench in CLOSED_LOOP and r.can_ship for r in results):
         return "SHIP"
     return "HOLD"
 
@@ -614,18 +842,52 @@ def _fmt(x: float | None, digits: int = 3) -> str:
     return f"{x:.{digits}f}"
 
 
+PDM_WORSE = "PDM terms worse beyond t crit, not part of the verdict: "
+
+
+def pdm_regressions(results: list[PairResult]) -> list[str]:
+    """`bench TERM metric (t ...)` for every PDM row that is worse beyond its t crit."""
+    return [
+        f"{r.bench} {PDM.LABELS[p.slot]} {p.metric} (t {_fmt(p.t, 2)})"
+        for r in results
+        for p in r.pdm
+        if p.verdict == "REGRESSION"
+    ]
+
+
+def _pdm_label(p: PairResult) -> str:
+    return f"  {PDM.LABELS[p.slot]:<4}{p.metric}"
+
+
 def render(results: list[PairResult]) -> str:
+    # NAVSIM's term names run to 30 characters; one column for all keeps t aligned.
+    width = max([14] + [len(_pdm_label(p)) for r in results for p in r.pdm])
     head = (
-        f"{'bench':<12} {'metric':<14} {'baseline':>9} {'candidate':>9} {'better by':>9} {'SE':>7} "
-        f"{'t':>6} {'t crit':>6}  {'units':>6}  verdict"
+        f"{'bench':<12} {'metric':<{width}} {'baseline':>9} {'candidate':>9} {'better by':>9} {'SE':>7} "
+        f"{'t':>6} {'t crit':>6} {'MDE':>7}  {'units':>6}  verdict"
     )
     lines = [head, "-" * len(head)]
+
+    def row(bench: str, metric: str, r: PairResult) -> str:
+        return (
+            f"{bench:<12} {metric:<{width}} {_fmt(r.baseline_mean):>9} {_fmt(r.candidate_mean):>9} "
+            f"{_fmt(r.diff):>9} {_fmt(r.se):>7} {_fmt(r.t, 2):>6} {_fmt(r.t_crit, 2):>6} {_fmt(r.mde):>7}  "
+            f"{r.units:>6}  "
+            f"{r.verdict}"
+        )
+
     for r in results:
         lines.append(
-            f"{r.bench:<12} {r.metric:<14} {_fmt(r.baseline_mean):>9} {_fmt(r.candidate_mean):>9} "
-            f"{_fmt(r.diff):>9} {_fmt(r.se):>7} {_fmt(r.t, 2):>6} {_fmt(r.t_crit, 2):>6}  {r.units:>6}  "
-            f"{r.verdict}" + (" (drop beyond threshold)" if r.beyond_threshold else "")
+            row(r.bench, r.metric, r)
+            + (" (drop beyond threshold)" if r.beyond_threshold else "")
+            + ("" if r.can_ship else " (cannot ship)")
         )
+        for p in r.pdm:
+            lines.append(row("", _pdm_label(p), p))
+            for note in p.notes:
+                lines.append(f"{'':<12}   {p.metric}: {note}")
+        if r.pdm_missing:
+            lines.append(f"{'':<12}   not measured on {r.bench}: {', '.join(r.pdm_missing)}")
         lines.append(
             f"{'':<12} model_env: baseline {json.dumps(r.baseline_env, sort_keys=True)}, "
             f"candidate {json.dumps(r.candidate_env, sort_keys=True)}"
@@ -641,6 +903,20 @@ def render(results: list[PairResult]) -> str:
         "A pair is a GAIN or a REGRESSION when |t| reaches 't crit', the two-sided 5% Student-t value"
     )
     lines.append("on (units - 1) degrees of freedom; with fewer than 2 units there is no verdict.")
+    lines.append(
+        "MDE is the smallest true difference the pair detects 80% of the time: a NEUTRAL well below it says little."
+    )
+    if any(not r.can_ship for r in results):
+        lines.append(
+            "'cannot ship': too few units for a GAIN to be trusted; its REGRESSION still fails the gate."
+        )
+    if any(r.pdm for r in results):
+        lines.append(
+            "Indented rows are NAVSIM's PDM terms as each benchmark fills them (benchmark.yaml `pdm:`), paired the"
+        )
+        lines.append(
+            "same way. They never decide the gate: each is tested at 5%, so across many, some cross by chance."
+        )
     return "\n".join(lines)
 
 
@@ -650,6 +926,53 @@ def _unit_for(base: Run, cand: Run, runs_root: Path) -> Callable[[Sample], str |
         return None
     logs = navsim_log_map([base, cand], runs_root)
     return lambda s: logs.get(_nid(s).get("token", ""))
+
+
+def _only(run: Run, ids: set[str], keep: bool = True) -> Run:
+    """The run with only the samples in `ids`, or (`keep=False`) all but those."""
+    return replace(run, samples=[s for s in run.samples if (s.get("sample_id") in ids) == keep])
+
+
+@dataclass
+class LeftOut:
+    """A subset's groups that run but do not decide (`decide_on` in its TOML).
+
+    KITScenes runs all 223 keyframes and decides on its 186 `val` ones: the 37
+    of `overlap_train_val` are places in the training data, so a checkpoint
+    trained on KITScenes may have seen them. They are still compared, alone, and
+    said in a note, so nothing about them is hidden.
+    """
+
+    drop: set[str]
+    groups: list[str]
+    reason: str
+    base: Run
+    cand: Run
+
+    def note(self, metric: str | None) -> str:
+        r = compare(self.base, self.cand, metric, pdm=())
+        n = r.matched
+        if r.diff is None:
+            return f"{n} sample(s) of {', '.join(self.groups)} left out of this verdict ({self.reason})"
+        return (
+            f"{n} sample(s) of {', '.join(self.groups)} left out of this verdict ({self.reason}); "
+            f"on them alone, better by {r.diff:.3f}, t {_fmt(r.t, 2)}"
+        )
+
+
+def _left_out(subset: Subset, base: Run, cand: Run) -> LeftOut | None:
+    decide = subset.meta.get("decide_on")
+    if not decide:
+        return None
+    other = [g for g in subset.strata if g not in decide]
+    out = {i for g in other for i in subset.strata[g]}
+    return LeftOut(
+        out,
+        other,
+        str(subset.meta.get("left_out_reason") or "not deciding"),
+        _only(base, out),
+        _only(cand, out),
+    )
 
 
 def check(manifest: Path, runs_root: Path, results_root: Path = RESULTS_ROOT) -> tuple[str, list[PairResult]]:
@@ -662,17 +985,86 @@ def check(manifest: Path, runs_root: Path, results_root: Path = RESULTS_ROOT) ->
         bench = p["bench"]
         base = load_run(bench, p["baseline"], runs_root, Path(p.get("baseline_results") or results_root))
         cand = load_run(bench, p["candidate"], runs_root, Path(p.get("candidate_results") or results_root))
-        results.append(
-            compare(
-                base,
-                cand,
-                p.get("metric"),
-                p.get("threshold"),
-                _unit_for(base, cand, runs_root),
-                allow_config=p.get("allow_config") or (),
-            )
+        result = compare_pair(
+            base,
+            cand,
+            runs_root,
+            subset=p.get("subset"),
+            metric=p.get("metric"),
+            threshold=p.get("threshold"),
+            allow_config=p.get("allow_config") or (),
         )
+        result.can_ship = bool(p.get("can_ship", True))
+        results.append(result)
     return overall(results), results
+
+
+def compare_pair(
+    base: Run,
+    cand: Run,
+    runs_root: Path,
+    *,
+    subset: str | None = None,
+    metric: str | None = None,
+    threshold: float | None = None,
+    allow_config: Any = (),
+) -> PairResult:
+    """One pair as `check` and the smoke's after-subset check both score it.
+
+    The one place a subset's `decide_on` is applied, so the check that can stop
+    the smoke and the final verdict can never disagree about which samples count.
+    """
+    spec = load_subset(subset) if subset else None
+    short = _short_of(spec, {"baseline": base, "candidate": cand}) if spec else []
+    left_out = _left_out(spec, base, cand) if spec else None
+    if left_out:
+        base, cand = (_only(r, left_out.drop, keep=False) for r in (base, cand))
+    result = compare(
+        base, cand, metric, threshold, _unit_for(base, cand, runs_root), allow_config=allow_config
+    )
+    if left_out:
+        result.notes.append(left_out.note(metric))
+    if spec:
+        result.crash_check = bool(spec.meta.get("crash_check", False))
+    if spec and short:
+        # A baseline made on an older draw of the subset still pairs on whatever
+        # both runs share (192 of nuScenes' 1,000, 5 of neuroNCAP's 15 pairs), and
+        # that is not the measurement the subset defines. INCOMPLETE (the candidate
+        # lost samples to a failure) is the more useful answer, so it stands.
+        if result.verdict in DECIDED:
+            result.verdict = SUBSET_DIFFERS
+        result.notes.extend(
+            f"the {who} holds {have} of subset {spec.name}'s {len(spec.ids)}; run it again on this subset"
+            for who, have in short
+        )
+    return result
+
+
+#: The verdict of a pair whose runs do not both hold their whole subset.
+SUBSET_DIFFERS = "SUBSET DIFFERS"
+
+
+def _subset_key(bench: str, sample: Sample) -> str:
+    """The id a sample has in its subset's TOML (tools/gate_subsets.py)."""
+    nid = _nid(sample)
+    if bench == "neuroncap":
+        return f"{nid.get('scenario')}-{nid.get('scene')}"
+    if bench == "navsim":
+        return str(nid.get("token", ""))
+    if bench in ("bench2drive", "alpasim"):
+        return str(nid.get("scene", ""))
+    return str(sample.get("sample_id", ""))
+
+
+def _short_of(spec: Subset, runs: dict[str, Run]) -> list[tuple[str, int]]:
+    """(which run, how many of the subset it holds) for each run that lacks part of it."""
+    want = set(spec.ids)
+    out = []
+    for who, run in runs.items():
+        have = len(want & {_subset_key(run.bench, s) for s in run.samples})
+        if have < len(want):
+            out.append((who, have))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -681,15 +1073,61 @@ def check(manifest: Path, runs_root: Path, results_root: Path = RESULTS_ROOT) ->
 
 #: The tracked subsets, one TOML file each; each file's header says how it was chosen.
 SMOKE_DIR = Path(__file__).resolve().with_name("gate_smoke")
-#: Two tiers with different jobs. `quick` runs on every checkpoint, about 40 min:
-#: the three open-loop benchmarks and neuroNCAP's three pairs at 0103. `closed`
-#: runs only for a checkpoint worth keeping: the full smoke neuroNCAP subset,
-#: Bench2Drive and AlpaSim, a few hours. Within a tier, the cheap answers first.
+#: Two tiers with different jobs. `quick` runs on every checkpoint: the three
+#: open-loop benchmarks, neuroNCAP's three pairs, and one Bench2Drive route and
+#: one AlpaSim scene as crash checks (too few for a verdict; a checkpoint that
+#: cannot drive there stops before the closed tier). `closed` runs only for a
+#: checkpoint worth keeping: the full smoke neuroNCAP subset, Bench2Drive and
+#: AlpaSim, hours. Within a tier, the cheap answers first.
 TIERS = {
-    "quick": ("kitscenes", "nuscenes", "navsim", "neuroncap_quick"),
+    "quick": ("kitscenes", "nuscenes", "navsim", "neuroncap_quick", "bench2drive_quick", "alpasim_quick"),
     "closed": ("neuroncap", "bench2drive", "alpasim"),
 }
 SMOKE_ORDER = TIERS["quick"] + TIERS["closed"]
+#: Minutes a subset took on one lane, measured unless marked: what `launch_order`
+#: sorts by. KITScenes, nuScenes, NAVSIM and neuroncap_quick from the queue on
+#: 2026-10-23 (NAVSIM 48 on that busy evening, 13 on the quiet 2026-10-20;
+#: neuroncap_quick 15 to 47); Bench2Drive's 7 routes 96 on 2026-10-20. The others
+#: are estimates until timed: bench2drive_quick and alpasim_quick (PR #113), the
+#: 15-pair neuroncap, AlpaSim's 10 scenes.
+EXPECTED_MIN = {
+    "kitscenes": 7,
+    "nuscenes": 17,
+    "navsim": 48,
+    "neuroncap_quick": 30,
+    "bench2drive_quick": 15,
+    "alpasim_quick": 8,
+    "neuroncap": 60,
+    "bench2drive": 96,
+    "alpasim": 40,
+}
+
+
+def launch_order(
+    steps: list[SmokeStep], tiers: list[str], tier_of: dict[str, str], lanes: int
+) -> list[SmokeStep]:
+    """`steps` in the order the smoke launches them: tier by tier, and within a tier,
+    with more than one lane, the longest first.
+
+    The old order, cheap answers first, fails fast: a KITScenes regression stops the
+    smoke before NAVSIM's 48 minutes start. With lanes side by side the cheap ones
+    still finish early in the other lanes, and starting the longest first is what
+    shortens the wall clock: launched last, NAVSIM ran alone for half an hour while
+    the other lanes sat idle. With one lane, cheap first stays. Subsets with no
+    expected time go after the timed ones of their tier, in TIERS order.
+    """
+    rank = {tier: i for i, tier in enumerate(tiers)}
+
+    def key(item: tuple[int, SmokeStep]) -> tuple[int, float, int]:
+        i, step = item
+        minutes = EXPECTED_MIN.get(step.name)
+        if lanes <= 1:
+            return (rank[tier_of[step.name]], 0.0, i)
+        return (rank[tier_of[step.name]], -minutes if minutes is not None else 0.0, i)
+
+    return [step for _, step in sorted(enumerate(steps), key=key)]
+
+
 #: How long a lane waits for a launched node to report ready before the next
 #: launch's GPU check runs anyway. The check exists to see the last launch's
 #: memory already taken; a node still importing after this long has a problem of
@@ -710,17 +1148,33 @@ SIMULATOR_GB = {"neuroncap": 8.0, "bench2drive": 8.0, "alpasim": 17.0}
 SMOKE_MARGIN_GB = 2.0
 
 
-def smoke_need_gb(bench: str, model_vram_gb: float) -> float:
+def smoke_need_gb(bench: str, model_vram_gb: float, nodes: int = 1) -> float:
     """Free GPU memory to wait for before launching `bench`, in GB.
 
-    The model's declared `vram_gb`, its simulator's share, and a margin. One
+    The model's declared `vram_gb` for each of its `nodes` (NAVSIM runs
+    `GATE_NAVSIM_GPU_NODES`), its simulator's share, and a margin. One
     figure for every benchmark (14 GB) was enough for open loop and too little
     for neuroNCAP: in run 20261015T235246-42c93e the smoke's renderer and model
     loaded beside another job's renderer and model, and every /infer of that
     first pass ended in CUDA out of memory. A launch into too little fails minutes later with an OOM
     that names nobody, so the wait is the cheap place to be generous.
     """
-    return model_vram_gb + SIMULATOR_GB.get(bench, 0.0) + SMOKE_MARGIN_GB
+    return model_vram_gb * nodes + SIMULATOR_GB.get(bench, 0.0) + SMOKE_MARGIN_GB
+
+
+#: Model nodes NAVSIM's scorer sends to (`[benchmarks.navsim] gpu_nodes`), unless the
+#: site sets its own. Its four scorer workers share one node, which answers one
+#: scenario at a time, and on 2026-10-23 the gate's NAVSIM took 41 min to score where
+#: the node, not the scorer, was the queue. A second node halves that queue; each
+#: scenario is still one request to one node, and `gpu_nodes` is not in the run config,
+#: so what is measured is unchanged.
+GATE_NAVSIM_GPU_NODES = 2
+
+
+def navsim_nodes(config_text: str) -> int:
+    """The `gpu_nodes` a derived config gives NAVSIM, for the GPU wait."""
+    navsim = (tomllib.loads(config_text).get("benchmarks") or {}).get("navsim") or {}
+    return max(1, int(navsim.get("gpu_nodes", 1) or 1))
 
 
 #: Makes the neuroNCAP harness start (and stop) a renderer per scene, read in
@@ -786,6 +1240,41 @@ def stratified_pick(strata: dict[str, list[str]], n: int, seed: int, floor: int 
     }
 
 
+def balanced_pick(strata: dict[str, list[str]], n: int, seed: int) -> dict[str, list[str]]:
+    """`n` ids spread as evenly over `strata` as their sizes allow; deterministic in `seed`.
+
+    The rule the gate's subsets are drawn with since 2026-10-22: every group
+    (a maneuver, a speed band, a city...) gets the same share, so a rare one,
+    a right turn at speed, is as present as straight driving at the gate's size.
+    1. each stratum gets n // k of the k with room left, or all it has if fewer;
+    2. repeat with what is left until n are placed; when fewer remain than
+       strata with room, one each goes to those with the most room, ties to
+       the first name in sorted order;
+    3. within a stratum the ids are `random.Random(f"{seed}:{name}").sample` of
+       its sorted ids, so no stratum's draw depends on any other's.
+    """
+    total = sum(len(v) for v in strata.values())
+    if not 0 < n <= total:
+        raise ValueError(f"cannot pick {n} of {total}")
+    names = sorted(strata)
+    alloc = dict.fromkeys(names, 0)
+    left = n
+    while left:
+        room = [k for k in names if alloc[k] < len(strata[k])]
+        share = left // len(room)
+        if share == 0:
+            for k in sorted(room, key=lambda k: (alloc[k] - len(strata[k]), k))[:left]:
+                alloc[k] += 1
+            break
+        for k in room:
+            take = min(share, len(strata[k]) - alloc[k])
+            alloc[k] += take
+            left -= take
+    return {
+        k: sorted(random.Random(f"{seed}:{k}").sample(sorted(strata[k]), alloc[k])) for k in names if alloc[k]
+    }
+
+
 def smoke_args(subset: Subset) -> tuple[list[str], dict[str, str]]:
     """The `paddock run` arguments and environment that run exactly this subset.
 
@@ -794,11 +1283,14 @@ def smoke_args(subset: Subset) -> tuple[list[str], dict[str, str]]:
     """
     bench, ids = subset.bench, subset.ids
     if bench == "neuroncap":
-        # `--scene` runs every shape each listed scene has, so the subset was chosen
-        # to be exactly that cross product; tests/test_gate.py checks that it is.
+        # `--scene` runs every shape each listed scene has; the pair list keeps
+        # only the subset's scenario-scene pairs of those.
+        from paddock.adapters.benchmarks.neuroncap.harness import ENV_PAIRS
+
         scenes = sorted({pair.rsplit("-", 1)[1] for pair in ids})
         return ["--scene", ",".join(scenes), "--runs", str(subset.meta["runs"])], {
-            NCAP_MANAGE_RENDERER: "true"
+            NCAP_MANAGE_RENDERER: "true",
+            ENV_PAIRS: ",".join(sorted(ids)),
         }
     if bench == "navsim":
         # The token list as a hydra override, plus --limit. The limit makes the run
@@ -812,14 +1304,24 @@ def smoke_args(subset: Subset) -> tuple[list[str], dict[str, str]]:
             ENV_OVERRIDES: f"train_test_split.scene_filter.tokens={hydra_list(ids)}"
         }
     if bench == "nuscenes":
-        # Open-loop harnesses get no scene filter, only --limit, which yields samples
-        # in val_scenes.json order: the subset is that order's prefix.
-        return ["--limit", str(len(ids))], {}
+        # The sample list, plus --limit equal to it: the limit records the run
+        # valid=false as a subset, the way NAVSIM's token list does.
+        from paddock.adapters.benchmarks.nuscenes.harness import ENV_SAMPLES
+
+        return ["--limit", str(len(ids))], {ENV_SAMPLES: ",".join(ids)}
     if bench == "bench2drive":
         return ["--scene", ",".join(ids)], {}
-    if bench in ("kitscenes", "alpasim"):
-        # The subset is the benchmark's own default set: all 223 keyframes, and the
-        # pinned public_2601_first10.
+    if bench == "alpasim":
+        # The whole pinned scene set runs as the default set (`smoke_config`), a valid
+        # run; part of it (the quick tier's one scene) names its clips.
+        from paddock.adapters.benchmarks.alpasim.harness import load_scene_set
+
+        if set(ids) != set(load_scene_set(subset.meta["scene_set"])):
+            return ["--scene", ",".join(ids)], {}
+        return [], {}
+    if bench == "kitscenes":
+        # Run as the benchmark's default set: all 223 KITScenes keyframes (the
+        # verdict reads only the subset's `decide_on` groups).
         return [], {}
     raise ValueError(f"no smoke rule for {bench}")
 
@@ -888,14 +1390,22 @@ def to_toml(data: dict[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def smoke_config(site_config: Path, model: str, env: dict[str, str], renderer_port: int) -> str:
+def smoke_config(
+    site_config: Path, model: str, env: dict[str, str], renderer_port: int, cache_dir: Path | None = None
+) -> str:
     """The site config the smoke runs under, as TOML text.
 
-    Two changes from the site's: `env` merged into `[models.<model>.env]`, and the
-    neuroNCAP `renderer_url` moved to `renderer_port`. The smoke starts its own
-    renderers on that port, and the site's is usually where someone's long-lived
-    `paddock renderer` already listens; the harness's preflight refuses to start
-    beside one, so the smoke would stop at neuroNCAP every time.
+    Changes from the site's: `env` merged into `[models.<model>.env]`; the
+    neuroNCAP `renderer_url` moved to `renderer_port` (the smoke starts its own
+    renderers there, and the site's port is usually where someone's long-lived
+    `paddock renderer` already listens, which the harness's preflight refuses to
+    start beside); and, unless the site names one, nuScenes' `index_cache` in
+    `cache_dir`; NAVSIM's `gpu_nodes`, `GATE_NAVSIM_GPU_NODES` unless the site
+    sets its own; and neuroNCAP's `debug_views` off, unless the site sets it. None
+    is in a run config, so none changes what is measured or the run id.
+    neuroNCAP's `video` stays the site's, but with the debug views off there are
+    no frames to encode: the gate's runs keep the camera frames, plans and poses a
+    regression is looked at from, and no mp4s.
     """
     raw = tomllib.loads(site_config.read_text())
     own = raw.setdefault("models", {}).setdefault(model, {})
@@ -911,10 +1421,22 @@ def smoke_config(site_config: Path, model: str, env: dict[str, str], renderer_po
     # with nothing. Pinned only where the site configures AlpaSim at all.
     alpasim = (raw.get("benchmarks") or {}).get("alpasim")
     if isinstance(alpasim, dict):
-        (alpasim["scene_set"],) = load_subset("alpasim").strata
+        alpasim["scene_set"] = load_subset("alpasim").meta["scene_set"]
+    navsim = (raw.get("benchmarks") or {}).get("navsim")
+    if isinstance(navsim, dict):
+        navsim.setdefault("gpu_nodes", GATE_NAVSIM_GPU_NODES)
     ncap = raw.setdefault("benchmarks", {}).setdefault("neuroncap", {})
     host = str(ncap.get("renderer_url") or "http://127.0.0.1:8000").rsplit(":", 1)[0]
     ncap["renderer_url"] = f"{host}:{renderer_port}"
+    # The two drawn per-step views (FC_TRAJ, COMBINED_OUTPUTS) took about 1 s of each
+    # 2.7 s neuroNCAP step on 2026-10-23, and the mp4s made from them 6-75 s an
+    # episode. Nothing reads them back (patches/neuro-ncap/0003).
+    ncap.setdefault("debug_views", False)
+    if cache_dir is not None:
+        # One index for every checkout the gate runs from: a fresh worktree spent
+        # 20 of nuScenes' 35 minutes rebuilding its own from the NAS.
+        nuscenes = raw["benchmarks"].setdefault("nuscenes", {})
+        nuscenes.setdefault("index_cache", str(cache_dir / "nuscenes"))
     return to_toml(raw)
 
 
@@ -928,6 +1450,8 @@ class SmokeStep:
     reason: str = ""
     #: The subset this step runs; the benchmark's own name unless it has one per tier.
     name: str = ""
+    #: From the subset's TOML (`can_ship`, default true); see `PairResult.can_ship`.
+    can_ship: bool = True
 
     def __post_init__(self) -> None:
         self.name = self.name or self.bench
@@ -1014,7 +1538,17 @@ def plan_smoke(
         args, extra = smoke_args(subset)
         run_id = _run_id_for(state.get(name, {}), runs_root, bench, model)
         if run_id and (results_root / bench / model / run_id / "run.json").is_file():
-            steps.append(SmokeStep(bench, "finished", run_id, [], {}, name=name))
+            steps.append(
+                SmokeStep(
+                    bench,
+                    "finished",
+                    run_id,
+                    [],
+                    {},
+                    name=name,
+                    can_ship=bool(subset.meta.get("can_ship", True)),
+                )
+            )
             continue
         command = ["taskset", "-c", cores, "nice", python, "-m", "paddock.cli", "run"]
         command += ["--bench", bench, "--model", model, *args]
@@ -1024,7 +1558,17 @@ def plan_smoke(
         if config_path is not None:
             env["PADDOCK_CONFIG"] = str(config_path)
         env.update(extra)
-        steps.append(SmokeStep(bench, "resume" if run_id else "new", run_id, command, env, name=name))
+        steps.append(
+            SmokeStep(
+                bench,
+                "resume" if run_id else "new",
+                run_id,
+                command,
+                env,
+                name=name,
+                can_ship=bool(subset.meta.get("can_ship", True)),
+            )
+        )
     return steps
 
 
@@ -1079,6 +1623,9 @@ def smoke_manifest(
             if base.get("results"):
                 lines.append(f"baseline_results = {json.dumps(str(base['results']))}")
             lines.append(f"candidate = {json.dumps(candidate)}")
+            lines.append(f"subset = {json.dumps(step.name)}")
+            if not step.can_ship:
+                lines.append("can_ship = false")
         lines.append("")
     return "\n".join(lines)
 
@@ -1220,15 +1767,27 @@ class _Lane:
     log: Any = None
 
 
-def _wait_ready(log_path: Path, offset: int, proc: subprocess.Popen, model: str) -> None:
-    """Return once the launched node prints `<model> ready`, or its run ends, or READY_WAIT_S passes."""
+def _wait_ready(log_path: Path, offset: int, proc: subprocess.Popen, model: str, nodes: int = 1) -> None:
+    """Return once the launched run's model is ready, or its run ends, or READY_WAIT_S passes.
+
+    The runner starts a run's nodes one after another and prints `<model> ready` for
+    each, so with `nodes` > 1 (NAVSIM's two) the first ready line came while the second
+    node was still loading, and the next launch's GPU check missed its memory. So this
+    waits for one ready line per node. A harness can start fewer than asked when the card
+    holds fewer (`node_count`); then the run moves on to its work after its last ready
+    line without starting another node, and that ends the wait too.
+    """
     deadline = time.time() + READY_WAIT_S
-    marker = f"  {model} ready"
+    marker, start = f"  {model} ready", f"  starting {model} node"
     while time.time() < deadline and proc.poll() is None:
         with log_path.open() as log:
             log.seek(offset)
-            if marker in log.read():
-                return
+            lines = log.read().splitlines()
+        ready = [i for i, line in enumerate(lines) if line.startswith(marker)]
+        if len(ready) >= nodes:
+            return
+        if ready and any(line.strip() and not line.startswith(start) for line in lines[ready[-1] + 1 :]):
+            return
         time.sleep(POLL_S / 2)
 
 
@@ -1241,7 +1800,31 @@ def _step_verdict(step: SmokeStep, base: dict[str, Any], model: str, runs_root: 
     base_results = Path(base["results"]) if base.get("results") else RESULTS_ROOT
     b = load_run(step.bench, str(base["run"]), runs_root, base_results)
     c = load_run(step.bench, f"{model}:{step.run_id}", runs_root, RESULTS_ROOT)
-    return compare(b, c, unit_of=_unit_for(b, c, runs_root))
+    return compare_pair(b, c, runs_root, subset=step.name)
+
+
+def _smoke_json(
+    path: Path | None,
+    verdict: str | None,
+    unfinished: list[str],
+    steps: list[SmokeStep],
+    results: list[PairResult],
+) -> None:
+    """`smoke --json`: the overall verdict, each step's run, and every pair, for a program to read
+    (`tools.gate_queue` turns a baseline job's finished steps into its baselines). `overall` is null when
+    no benchmark had both a baseline and a finished candidate."""
+    if path is None:
+        return
+    steps_out = [{"name": s.name, "bench": s.bench, "status": s.status, "run_id": s.run_id} for s in steps]
+    data = {
+        "overall": verdict,
+        "unfinished": unfinished,
+        "steps": steps_out,
+        "pairs": [asdict(r) for r in results],
+    }
+    part = path.with_name(path.name + ".part")
+    part.write_text(json.dumps(data, indent=2) + "\n")
+    os.replace(part, path)
 
 
 def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
@@ -1335,7 +1918,9 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
 
     out.mkdir(parents=True, exist_ok=True)
     run_env = stage_env(env_pairs, args.stage_dir, echo) if args.stage_dir else env_pairs
-    config_path.write_text(smoke_config(cfg.source, args.model, run_env, args.renderer_port))
+    config_path.write_text(
+        smoke_config(cfg.source, args.model, run_env, args.renderer_port, cfg.runs / "gate" / "cache")
+    )
 
     def save() -> None:
         # Written whole, then renamed: a gate killed mid-write leaves the old file.
@@ -1344,7 +1929,7 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
         os.replace(part, state_path)
 
     lanes = [_Lane(c, args.base_port + 100 * i) for i, c in enumerate(cores)]
-    pending = [s for s in steps if s.status in ("new", "resume")]
+    pending = launch_order([s for s in steps if s.status in ("new", "resume")], tiers, tier_of, len(lanes))
     done = {s.name for s in steps if s.status == "finished"}
     stop = ""
     gpu_wait_since: float | None = None
@@ -1370,6 +1955,8 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
         echo(
             f"  {step.name}: {result.verdict} ({result.metric} better by {result.diff}, t {t}, {result.units} units)"
         )
+        if worse := pdm_regressions([result]):
+            echo(f"  {step.name}: {PDM_WORSE}{', '.join(worse)}")
         if result.verdict in ("REGRESSION", "INCOMPLETE") and not args.keep_going:
             stop = stop or f"{result.verdict} on {step.name}"
 
@@ -1397,16 +1984,14 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
                 continue
             idle = next((lane for lane in lanes if lane.proc is None), None)
             busy = [lane.step for lane in lanes if lane.step is not None]
-            # A simulator starts inside its run's first episode, after the model has
-            # said ready, so its memory is not taken yet when a next launch's GPU
-            # check would run: nothing launches while a simulator subset is running.
             blocked = (
                 nxt is None
                 or idle is None
-                or any(
-                    b.bench == nxt.bench or tier_of[b.name] != tier_of[nxt.name] or b.bench in SIMULATOR_GB
-                    for b in busy
-                )
+                # Every simulator now keeps its lane's cores: neuroNCAP's renderer and
+                # CARLA as the lane's children, AlpaSim's containers because its
+                # launcher pins them (`ContainerPinner`). Until it did, AlpaSim ran
+                # beside no other simulator (review of #111, 2).
+                or any(b.bench == nxt.bench or tier_of[b.name] != tier_of[nxt.name] for b in busy)
             )
             if blocked:
                 time.sleep(POLL_S)
@@ -1421,13 +2006,24 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
             # so a regression found meanwhile stops this launch. A blocking wait
             # launched nuScenes after kitscenes had regressed, because the
             # regression is what freed the card.
-            need = smoke_need_gb(nxt.bench, models[args.model].vram_gb)
+            # A simulator starts inside its run's first episode, after the model has
+            # said ready, and neuroNCAP stops and starts its renderer at every scene,
+            # so a running simulator's memory may not be taken when this check reads
+            # the card. Each running simulator's share counts as taken until its lane
+            # ends: that over-counts while it is up, and two simulators never start
+            # into the same memory. (Until 2026-10-27 nothing launched beside a
+            # running simulator, and the closed tier ran one benchmark at a time.)
+            held = sum(SIMULATOR_GB.get(b.bench, 0.0) for b in busy)
+            nodes = navsim_nodes(config_path.read_text()) if nxt.bench == "navsim" else 1
+            need = smoke_need_gb(nxt.bench, models[args.model].vram_gb, nodes) + held
             free = _gpu_free_gb(step_env)
             if free is not None and free < need:
                 if gpu_wait_since is None:
                     gpu_wait_since = time.time()
+                    for_sims = f", {held:.0f} GB of it held for running simulators" if held else ""
                     echo(
-                        f"  {nxt.name}: waiting for {need:.0f} GB of free GPU memory ({free:.1f} GB free now)"
+                        f"  {nxt.name}: waiting for {need:.0f} GB of free GPU memory{for_sims} "
+                        f"({free:.1f} GB free now)"
                     )
                 elif time.time() - gpu_wait_since > GPU_WAIT_S:
                     stop = (
@@ -1467,7 +2063,7 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
             entry["pid"], entry["command"] = proc.pid, command
             save()
             # The next launch's GPU check must see this one's memory already taken.
-            _wait_ready(log_path, offset, proc, args.model)
+            _wait_ready(log_path, offset, proc, args.model, nodes)
 
     except _Stopped as why:
         echo(f"\n{why} received: stopping the running lanes; the same command resumes them")
@@ -1496,11 +2092,15 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
         echo(f"not finished: {', '.join(unfinished)}{why}; the same command resumes them")
     if "[[pair]]" not in manifest.read_text():
         echo("no benchmark has both a baseline and a finished candidate; nothing to check")
+        _smoke_json(args.json, None, unfinished, steps, [])
         return 1 if unfinished else 0
     _, results = check(manifest, cfg.runs, RESULTS_ROOT)
     verdict = overall(results, unfinished)
+    _smoke_json(args.json, verdict, unfinished, steps, results)
     echo(render(results))
     echo(f"\noverall: {verdict}" + (f" (not finished: {', '.join(unfinished)})" if unfinished else ""))
+    if worse := pdm_regressions(results):
+        echo(PDM_WORSE + ", ".join(worse))
     return 1 if verdict == "FAIL" or unfinished else 0
 
 
@@ -1577,6 +2177,7 @@ def main(argv: list[str] | None = None) -> int:
         help="taskset CPU list of one lane; repeat it for lanes that run side by side (default: one lane, 4-7)",
     )
     s.add_argument("--python", default=sys.executable, help="interpreter with paddock's dependencies")
+    s.add_argument("--json", type=Path, help="also write the verdict, each step's run and every pair here")
     u = sub.add_parser("subset", help="print one smoke subset")
     u.add_argument("name", help="a file under tools/gate_smoke/, without .toml")
     u.add_argument("--env", help="print this environment value of its smoke command instead")
@@ -1612,6 +2213,8 @@ def main(argv: list[str] | None = None) -> int:
         verdict, results = check(args.manifest, runs_root, args.results)
     print(render(results))
     print(f"\noverall: {verdict}")
+    if worse := pdm_regressions(results):
+        print(PDM_WORSE + ", ".join(worse))
     if args.json:
         args.json.write_text(
             json.dumps({"overall": verdict, "pairs": [asdict(r) for r in results]}, indent=2)

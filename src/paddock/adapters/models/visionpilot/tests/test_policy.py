@@ -16,6 +16,7 @@ from paddock.adapters.models.visionpilot.policy import (
     WAYPOINT_DT,
     CIPOFusionEstimate,
     LongitudinalFusion,
+    ScenarioContext,
 )
 from paddock.policy.protocol import Policy, validate_extras
 
@@ -287,3 +288,35 @@ def test_ort_thread_cap_is_off_unless_asked_for() -> None:
         os.environ.pop("VISIONPILOT_ORT_THREADS", None)
         if saved is not None:
             os.environ["VISIONPILOT_ORT_THREADS"] = saved
+
+
+def test_scenario_context_classifies_highway() -> None:
+    """Highway: fast, clear road, low threat."""
+    scenario = ScenarioContext.classify(speed_ms=28.0, lead_distance_m=120.0, lead_prob=0.1, curvature=0.001)
+    assert scenario == "highway"
+
+
+def test_scenario_context_classifies_urban() -> None:
+    """Urban: slow or dense traffic."""
+    slow = ScenarioContext.classify(speed_ms=8.0, lead_distance_m=50.0, lead_prob=0.2, curvature=0.02)
+    assert slow == "urban"
+    dense = ScenarioContext.classify(speed_ms=15.0, lead_distance_m=25.0, lead_prob=0.8, curvature=0.01)
+    assert dense == "urban"
+
+
+def test_scenario_context_classifies_suburban() -> None:
+    """Suburban: medium speed, moderate lead presence."""
+    scenario = ScenarioContext.classify(speed_ms=15.0, lead_distance_m=60.0, lead_prob=0.4, curvature=0.015)
+    assert scenario == "suburban"
+
+
+def test_idm_adjusts_headway_by_scenario() -> None:
+    """IDM headway changes per scenario."""
+    idm = IDM()
+    assert idm.T == pytest.approx(1.5)
+    idm.adjust_for_scenario("highway")
+    assert idm.T == pytest.approx(1.8)
+    idm.adjust_for_scenario("urban")
+    assert idm.T == pytest.approx(1.2)
+    idm.adjust_for_scenario("suburban")
+    assert idm.T == pytest.approx(1.5)

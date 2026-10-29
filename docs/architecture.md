@@ -250,7 +250,12 @@ bridge in front of it). For closed loop:
 
 1. `runtime/gpu.py` waits for the VRAM the model declares, rather than failing
    eight minutes into a checkpoint read with a CUDA OOM traceback that says
-   nothing about the real cause (someone else has the card).
+   nothing about the real cause (someone else has the card). The last check and
+   the launch happen under the card's machine-wide lock (`runtime/lease.py`,
+   `flock` in `/tmp/paddock-locks`, shared by every user), held until the
+   node is ready, so two runs never both start into the same free memory. A
+   simulator that starts inside the first episode loads after the lock is let go;
+   the gate's own wait counts its memory (`SIMULATOR_GB` in `tools/gate.py`).
 2. `runtime/proc.py` starts the node with the env built by `runtime/env.py`,
    polls `/alive` until it answers, runs every scenario, then tears it down and
    waits for the driver to reclaim the memory.
@@ -324,6 +329,7 @@ model comes out a different colour in every panel. Pass legend text separately;
 | `runtime/env.py` | per-model environment construction |
 | `runtime/proc.py` | launch, health-check, tear down model nodes |
 | `runtime/gpu.py` | VRAM gating |
+| `runtime/lease.py` | machine-wide `flock` locks: one launch per card at a time |
 | `metrics/` | trajectory (ADE/FDE), ncap, pdms |
 | `results/` | canonical store, ingest of legacy formats, reporting |
 | `adapters/models/<n>/` | one model |

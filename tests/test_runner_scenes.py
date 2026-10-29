@@ -16,7 +16,7 @@ import pytest
 from paddock import doctor
 from paddock.adapters.benchmarks.bench2drive.harness import Bench2DriveBenchmark
 from paddock.benchmark import OpenLoopBenchmark, Sample
-from paddock.config import SiteConfig
+from paddock.config import REPO_ROOT, SiteConfig
 from paddock.runner import run_benchmark
 
 FIXTURES = Path("src/paddock/adapters/benchmarks/bench2drive/tests/fixtures")
@@ -37,6 +37,8 @@ def b2d_site(tmp_path, monkeypatch) -> SiteConfig:
     ):
         (repo / relative).parent.mkdir(parents=True, exist_ok=True)
         (repo / relative).write_text("")
+    # The evaluator as patches/Bench2Drive/ leaves it, which preflight checks for.
+    (repo / "leaderboard/leaderboard/leaderboard_evaluator.py").write_text("# --connect-timeout\n")
     (repo / "leaderboard" / "data").mkdir()
     shutil.copy(FIXTURES / "routes_sample.xml", repo / "leaderboard" / "data" / "routes_sample.xml")
     for sub in ("repos", "runs", "weights"):
@@ -560,6 +562,22 @@ def test_the_released_drivejepa_checkpoint_swapped_by_a_site_is_named(tmp_path) 
     (reason,) = _env_override_reasons(cfg, spec)
     assert "DRIVEJEPA_CHECKPOINT" in reason
     assert _env_override_reasons(_cfg(tmp_path), spec) == [], "no env block, nothing to say"
+
+
+def test_drivejepa_declares_momentum_so_a_site_saying_on_is_not_an_override(tmp_path) -> None:
+    """Momentum is part of the model's definition; a site that switches it off is the override."""
+    from paddock.registry import Registry
+    from paddock.runner import _env_override_reasons
+
+    spec = Registry.load().models["drivejepa"]
+    assert spec.runtime.env["DRIVEJEPA_MOMENTUM"] == "on"
+    assert (
+        _env_override_reasons(_site_with_env(tmp_path, "drivejepa", {"DRIVEJEPA_MOMENTUM": "on"}), spec) == []
+    )
+    (reason,) = _env_override_reasons(
+        _site_with_env(tmp_path, "drivejepa", {"DRIVEJEPA_MOMENTUM": "off"}), spec
+    )
+    assert "DRIVEJEPA_MOMENTUM" in reason
 
 
 def test_autoe2e_logging_where_it_records_is_not_a_change_of_plan(tmp_path) -> None:
@@ -1164,6 +1182,45 @@ def test_a_run_records_the_revision_and_the_policy_that_produced_it(tmp_path, mo
     # Not in `config`: config is hashed into the run id and compared by
     # `--resume`, so a `git pull` between attempts must not refuse the resume.
     assert "repo" not in written["config"] and "backend" not in written["config"]
+    # Which paddock code ran: a baseline on older adapter code is another measurement.
+    assert written["provenance"]["paddock"]["sha"] == provenance.git_sha(REPO_ROOT)
+    assert "paddock" not in written["config"]
+
+
+def test_paddock_provenance_says_when_tracked_files_were_edited(tmp_path) -> None:
+    import subprocess
+
+    from paddock.runtime import provenance
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / "f").write_text("x")
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "one"], cwd=tmp_path, check=True
+    )
+    (tmp_path / "untracked").write_text("results and site files are always here")
+    clean = provenance.paddock_provenance(tmp_path)
+    assert clean == {"sha": provenance.git_sha(tmp_path), "dirty": False}
+    (tmp_path / "f").write_text("edited")
+    assert provenance.paddock_provenance(tmp_path)["dirty"] is True
+    assert provenance.paddock_provenance(tmp_path / "missing") == {"sha": None}
+
+
+def test_a_resumed_run_keeps_the_paddock_commits_of_its_earlier_attempts(tmp_path, monkeypatch) -> None:
+    """Review of #100 (3): a resume kept the model repo's earlier commits but not paddock's."""
+    from paddock import runner
+    from paddock.results import store
+
+    monkeypatch.setattr(store, "run_dir", lambda b, m, r: tmp_path / b / m / r)
+    (tmp_path / "b" / "m" / "r").mkdir(parents=True)
+    (tmp_path / "b" / "m" / "r" / "run.json").write_text(
+        json.dumps({"provenance": {"repo": {"sha": "r1"}, "paddock": {"sha": "p1", "dirty": False}}})
+    )
+    prov = runner._carry_forward_provenance(
+        "b", "m", "r", {"repo": {"sha": "r2"}, "paddock": {"sha": "p2", "dirty": False}}
+    )
+    assert prov["repo"]["earlier_shas"] == ["r1"]
+    assert prov["paddock"] == {"sha": "p2", "dirty": False, "earlier_shas": ["p1"]}
 
 
 def test_a_run_that_scored_fewer_samples_than_it_should_have_says_so(tmp_path, monkeypatch) -> None:

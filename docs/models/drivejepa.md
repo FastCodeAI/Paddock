@@ -14,8 +14,15 @@ plan the same way and differ in everything around it.
 | Benchmarks | NAVSIM, KITScenes, nuScenes, neuroNCAP, Bench2Drive, and AlpaSim through paddock's bridge | AlpaSim only, and **not through paddock** |
 | Weights | the released checkpoint | **retrained** on Physical AI AV (adapter 0.1.7) |
 | Cameras | four (on AlpaSim: one rendered, three placeholders) | one, front |
-| Momentum-aware selection | off by default (`DRIVEJEPA_MOMENTUM`) | on by default |
+| Momentum-aware selection | on, declared in `model.yaml` (`DRIVEJEPA_MOMENTUM`); acts only in closed loop | on by default |
 | Rows in `results/` | every Drive-JEPA row that was run through paddock | none (its AlpaSim rows are ingested) |
+
+In the paddock node, momentum is declared on in `model.yaml`. The run id does not
+yet record a value a `model.yaml` declares
+([issue #99](https://github.com/FastCodeAI/Paddock/issues/99)), so a
+closed-loop run started before momentum was declared on must not be continued
+with `--resume` after it: the check `--resume` makes would pass, and the run
+would mix episodes driven both ways under one id.
 
 The perception-free NAVSIM v1 agent is a third thing with its own page,
 [drivejepa_free.md](drivejepa_free.md).

@@ -3,6 +3,7 @@
 import math
 
 import numpy as np
+import pytest
 
 from paddock.adapters.benchmarks.nuscenes import loader as L
 from paddock.adapters.benchmarks.nuscenes.harness import plan_headings, plan_on_grid, score_plan
@@ -119,6 +120,37 @@ def test_absent_boxes_omit_collision_metrics_rather_than_zeroing_them():
     assert not any(k.startswith("col_") for k in m)
 
 
+def test_a_shared_cache_directory_keeps_one_file_per_dataset_key(tmp_path):
+    """Two roots in one directory must not evict each other; the name carries the key."""
+    shared = tmp_path / "cache"
+    nas = L.cache_file(shared, tmp_path / "nas", "v1.0-trainval", ["a", "b"])
+    staged = L.cache_file(shared, tmp_path / "staged", "v1.0-trainval", ["b", "a"])
+    assert nas.parent == staged.parent == shared
+    assert nas != staged
+    same = L.cache_file(shared, tmp_path / "nas", "v1.0-trainval", ["b", "a"])
+    assert nas == same, "scene order is not part of the key"
+
+
+def test_a_failed_cache_write_leaves_the_old_cache_whole(tmp_path, monkeypatch):
+    """Parallel lanes read one cache; a write that dies half-way must not be what they read."""
+    monkeypatch.setattr(L, "build_index", lambda root, version, scene_names, log=print: [["fresh"]])
+    cache = tmp_path / "idx.pkl"
+    root = tmp_path / "data"
+    first = L.load_or_build_index(root, "v1.0-trainval", ["a"], cache)
+    good = cache.read_bytes()
+
+    def dies_half_way(obj, handle):
+        handle.write(b"\x80\x04 half a pickle")
+        raise OSError("disk full")
+
+    monkeypatch.setattr(L.pickle, "dump", dies_half_way)
+    with pytest.raises(OSError, match="disk full"):
+        L.load_or_build_index(root, "v1.0-trainval", ["a", "b"], cache)
+    assert cache.read_bytes() == good
+    assert [p.name for p in tmp_path.iterdir() if p.name.endswith(".part")] == []
+    assert first == [["fresh"]]
+
+
 def test_index_cache_is_rebuilt_when_the_dataset_key_changes(tmp_path, monkeypatch):
     calls = {"n": 0}
 
@@ -141,3 +173,44 @@ def test_index_cache_is_rebuilt_when_the_dataset_key_changes(tmp_path, monkeypat
     # Different version: rebuild again.
     L.load_or_build_index(root, "v1.0-mini", ["a", "b"], cache)
     assert calls["n"] == 3
+
+
+def test_a_sample_list_scores_only_its_samples(monkeypatch):
+    """The gate's nuScenes subset is spread over every val scene; --limit alone takes a prefix."""
+    from types import SimpleNamespace
+
+    from paddock.adapters.benchmarks.nuscenes import harness as NH
+
+    frames = [
+        [SimpleNamespace(scene=scene, index_in_scene=i) for i in range(10)]
+        for scene in ("scene-0003", "scene-0012")
+    ]
+    fake = SimpleNamespace(
+        _index=lambda: frames,
+        _sample=lambda fr, i: SimpleNamespace(sample_id=f"nuscenes/val/{fr[i].scene}/{fr[i].index_in_scene}"),
+    )
+    monkeypatch.setenv(NH.ENV_SAMPLES, "nuscenes/val/scene-0012/1,nuscenes/val/scene-0003/2")
+    got = [s.sample_id for s in NH.NuScenesBenchmark.samples(fake)]
+    assert got == ["nuscenes/val/scene-0003/2", "nuscenes/val/scene-0012/1"]
+    monkeypatch.delenv(NH.ENV_SAMPLES)
+    assert len(list(NH.NuScenesBenchmark.samples(fake))) == 2 * (10 - NH.N_STEPS)
+
+
+def test_a_run_on_a_sample_list_is_never_stored_as_a_full_score(tmp_path, monkeypatch):
+    """Review of #105 (1): with the list set and no --limit, the run was stored valid: true."""
+    from paddock.adapters.benchmarks.nuscenes import harness as NH
+    from paddock.config import SiteConfig
+    from paddock.registry import Registry
+
+    for sub in ("repos", "runs", "weights", "nuscenes"):
+        (tmp_path / sub).mkdir()
+    (tmp_path / "site.toml").write_text(
+        f'site = "t"\n[roots]\nrepos = "{tmp_path / "repos"}"\nruns = "{tmp_path / "runs"}"\n'
+        f'weights = "{tmp_path / "weights"}"\n[datasets.nuscenes]\npath = "{tmp_path / "nuscenes"}"\n'
+    )
+    monkeypatch.setenv("PADDOCK_CONFIG", str(tmp_path / "site.toml"))
+    harness = NH.BENCHMARK(Registry.load().benchmarks["nuscenes"], SiteConfig.load())
+    assert harness.invalid_reasons() == []
+    monkeypatch.setenv(NH.ENV_SAMPLES, "nuscenes/val/scene-0003/0,nuscenes/val/scene-0003/1")
+    (reason,) = harness.invalid_reasons()
+    assert reason.startswith("2 samples named by PADDOCK_NUSCENES_SAMPLES")

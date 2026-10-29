@@ -12,6 +12,8 @@ No Docker, no GPU, no model, no AlpaSim install.
 from __future__ import annotations
 
 import json
+import os
+import re
 import sys
 from pathlib import Path
 
@@ -25,6 +27,7 @@ from paddock.adapters.benchmarks.alpasim.harness import (
     NotScored,
     load_scene_set,
     parse_summary,
+    port_bases,
     scorer_sha,
 )
 from paddock.benchmark import Episode
@@ -312,6 +315,29 @@ def test_the_wizard_is_invoked_as_the_package_not_a_main_module(tmp_path: Path) 
     )
     assert command[1:3] == ["-m", "alpasim_wizard"]
     assert "alpasim_wizard.main" not in " ".join(command)
+
+
+def test_a_run_with_its_own_port_range_moves_the_bridge_and_the_wizard_into_it(tmp_path: Path) -> None:
+    """Two AlpaSim runs at once (two gate lanes) both found the same free ports from
+    the fixed bases before either bound them. A run given PADDOCK_BASE_PORT keeps
+    to its range; one without keeps the ports it always had."""
+    assert port_bases({}) == (9200, None)
+    assert port_bases({"PADDOCK_BASE_PORT": "9700"}) == (9750, 9760)
+    assert port_bases({"PADDOCK_BASE_PORT": "9800"}) == (9850, 9860)
+
+    def command(**kw) -> list[str]:
+        return launcher.wizard_command(
+            repo=tmp_path,
+            python="python",
+            scene_id="clipgt-x",
+            out_dir=tmp_path / "out",
+            bridge_port=9750,
+            searchpath=None,
+            **kw,
+        )
+
+    assert "wizard.baseport=9760" in command(baseport=9760)
+    assert not any(arg.startswith("wizard.baseport=") for arg in command())
 
 
 def test_the_wizard_is_not_told_to_force_determinism(tmp_path: Path) -> None:
@@ -724,3 +750,387 @@ def test_the_drivejepa_bridge_flags_match_its_driver_config() -> None:
     assert flag["--force-gt-us"] == simulation["force_gt_duration_us"]
     (front,) = [c for c in simulation["cameras"] if c["logical_id"] == args[args.index("--front-camera") + 1]]
     assert front["frame_interval_us"] == simulation["control_timestep_us"]
+
+
+def test_autoe2e_is_driven_on_its_own_driver_config_and_bridge_flags(
+    tmp_path: Path, fake_repo: Path, monkeypatch
+) -> None:
+    """The node's model name selects the autoe2e profile: its driver config, its six
+    camera names, its rhythm and padding flags, and a per-replan log beside the samples."""
+    from paddock.adapters.benchmarks.alpasim import harness
+
+    monkeypatch.setenv("FAKE_WIZARD_MODE", "ok")
+    monkeypatch.setattr(harness.launcher, "serving_model", lambda url: "autoe2e")
+    seen: list[dict] = []
+    bridges: list[dict] = []
+    fake = harness.launcher.wizard_command
+    no_bridge = harness.launcher.BridgeProcess
+
+    def capture(**kwargs):
+        seen.append(kwargs)
+        return fake(**kwargs)
+
+    def bridge(**kwargs):
+        bridges.append(kwargs)
+        return no_bridge(**kwargs)
+
+    monkeypatch.setattr(harness.launcher, "wizard_command", capture)
+    monkeypatch.setattr(harness.launcher, "BridgeProcess", bridge)
+    bench = _benchmark(tmp_path, monkeypatch, repo=str(fake_repo), python=sys.executable)
+    bench.run_episode(_episode(), "http://127.0.0.1:1", tmp_path / "out", echo=lambda _: None)
+    (call,) = seen
+    (started,) = bridges
+    assert call["driver"] == "paddock_bridge_autoe2e"
+    args = list(started["extra_args"])
+    names = [args[i + 1] for i, a in enumerate(args) if a == "--camera-name"]
+    assert names == [
+        "camera_front_wide_120fov=CAM_FRONT",
+        "camera_cross_left_120fov=CAM_FRONT_LEFT",
+        "camera_cross_right_120fov=CAM_FRONT_RIGHT",
+        "camera_rear_left_70fov=CAM_BACK_LEFT",
+        "camera_front_tele_30fov=CAM_BACK",
+        "camera_rear_right_70fov=CAM_BACK_RIGHT",
+    ]
+    assert "--placeholder" not in args and "--planner" not in args
+    for flag in ("--pinhole-intrinsics", "--pad-ego-history"):
+        assert flag in args
+    assert int(args[args.index("--replan-every-us") + 1]) == 100_000
+    assert args[args.index("--replan-log") + 1].endswith(".replans.jsonl")
+    # The six node names are the six cameras the model declares, in its slot order.
+    model = Registry.load().models["autoe2e"]
+    assert [n.split("=")[1] for n in names] == list(model.cameras)
+    assert "alpasim" in model.benchmarks
+
+
+def test_the_autoe2e_profile_pins_every_scene_it_can_be_asked_for() -> None:
+    """Its driver config exists, and it uses the same 26.01 uuid catalog as drivejepa."""
+    import csv
+
+    from paddock.adapters.benchmarks.alpasim import harness, launcher
+
+    profile = harness.profile_for("autoe2e")
+    assert (launcher.CONFIGS_DIR / "driver" / f"{profile.driver}.yaml").is_file()
+    assert profile.scenes_csv == harness.profile_for("drivejepa").scenes_csv
+    rows = list(csv.DictReader((harness.SCENES_DIR / profile.scenes_csv).open()))
+    assert sorted(row["scene_id"] for row in rows) == sorted(load_scene_set("public_2601_30scenes"))
+    assert {row["nre_version_string"] for row in rows} == {"26.1.112-59673f88"}
+    assert len({row["uuid"] for row in rows}) == len(rows)
+
+
+def test_the_autoe2e_bridge_flags_match_its_driver_config() -> None:
+    """Control step and warm-up are the driver config's; the six renamed cameras are
+    exactly the six it renders and re-declares, each an undistorted pinhole with a 1 us
+    global shutter, whose size, focal length and principal point give the KITScenes
+    field of view."""
+    import math
+
+    import yaml
+
+    from paddock.adapters.benchmarks.alpasim import harness, launcher
+
+    profile = harness.profile_for("autoe2e")
+    args = list(profile.bridge_args)
+    flag = {name: int(args[args.index(name) + 1]) for name in ("--frame-interval-us", "--force-gt-us")}
+    config = yaml.safe_load((launcher.CONFIGS_DIR / "driver" / f"{profile.driver}.yaml").read_text())
+    simulation = config["runtime"]["simulation_config"]
+    assert flag["--frame-interval-us"] == simulation["control_timestep_us"]
+    assert flag["--force-gt-us"] == simulation["force_gt_duration_us"]
+    assert simulation["skip_driver_during_force_gt"] is False
+    assert int(args[args.index("--replan-every-us") + 1]) % simulation["control_timestep_us"] == 0
+
+    sources = [args[i + 1].split("=")[0] for i, a in enumerate(args) if a == "--camera-name"]
+    extra = {c["logical_id"]: c for c in config["runtime"]["extra_cameras"]}
+    rendered = {c["logical_id"]: c for c in simulation["cameras"]}
+    assert sorted(sources) == sorted(extra) == sorted(rendered)
+    fov = {"camera_front_wide_120fov": (88.2, 54.4)}
+    for camera_id, camera in extra.items():
+        pinhole = camera["intrinsics"]["opencv_pinhole"]
+        assert camera["intrinsics"]["model"] == "opencv_pinhole"
+        assert camera["shutter_type"] == "GLOBAL", camera_id
+        for key, count in (("radial", 6), ("tangential", 2), ("thin_prism", 4)):
+            assert pinhole[key] == [0.0] * count, (camera_id, key)
+        height, width = camera["resolution_hw"]
+        assert (rendered[camera_id]["height"], rendered[camera_id]["width"]) == (height, width)
+        assert rendered[camera_id]["frame_interval_us"] == simulation["control_timestep_us"]
+        # The image is drawn at shutter open and labelled with the pose at shutter close.
+        assert rendered[camera_id]["shutter_duration_us"] == 1, camera_id
+        fx, fy = pinhole["focal_length"]
+        assert fx == fy
+        assert pinhole["principal_point"] == [width / 2, height / 2]
+        h_fov = 2 * math.degrees(math.atan(width / 2 / fx))
+        v_fov = 2 * math.degrees(math.atan(height / 2 / fy))
+        assert (h_fov, v_fov) == pytest.approx(fov.get(camera_id, (87.1, 63.3)), abs=0.06)
+    # Each scene's own pose for the front and cross cameras; one pose for the three new directions.
+    assert {c for c, v in extra.items() if "rig_to_camera" in v} == {
+        "camera_rear_left_70fov",
+        "camera_front_tele_30fov",
+        "camera_rear_right_70fov",
+    }
+
+
+def test_the_autoe2e_fixed_poses_look_where_the_kitscenes_cameras_look() -> None:
+    """rig_to_camera is the camera's pose in the rig with OpenCV axes (z forward, y down):
+    the optical axis of each fixed view points at its KITScenes yaw, level, image upright."""
+    import math
+
+    import numpy as np
+    import yaml
+
+    from paddock.adapters.benchmarks.alpasim import harness, launcher
+
+    def rotation(x, y, z, w):
+        return np.array(
+            [
+                [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+                [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+                [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+            ]
+        )
+
+    profile = harness.profile_for("autoe2e")
+    config = yaml.safe_load((launcher.CONFIGS_DIR / "driver" / f"{profile.driver}.yaml").read_text())
+    extra = {c["logical_id"]: c for c in config["runtime"]["extra_cameras"]}
+    expected = {
+        "camera_rear_left_70fov": (120.0, [2.10, 1.04, 1.02]),
+        "camera_front_tele_30fov": (180.0, [1.0, 0.0, 1.93]),
+        "camera_rear_right_70fov": (-120.0, [2.06, -1.01, 1.02]),
+    }
+    for camera_id, (yaw, position) in expected.items():
+        pose = extra[camera_id]["rig_to_camera"]
+        assert pose["translation_m"] == position
+        matrix = rotation(*pose["rotation_xyzw"])
+        assert np.allclose(matrix @ matrix.T, np.eye(3), atol=1e-9)
+        optical, down = matrix[:, 2], matrix[:, 1]
+        heading = [math.cos(math.radians(yaw)), math.sin(math.radians(yaw)), 0.0]
+        assert optical == pytest.approx(heading, abs=1e-9)
+        assert down == pytest.approx([0.0, 0.0, -1.0], abs=1e-9)
+
+
+# -- every run's containers are logged and taken down, whatever the outcome ---
+
+
+@pytest.fixture
+def fake_docker(tmp_path: Path, monkeypatch) -> Path:
+    """A `docker` on PATH that records each call and answers `compose logs`.
+
+    `FAKE_DOCKER_DOWN=fail` makes `compose down` exit non-zero, standing in for
+    a daemon that refuses the teardown. The compose project each call would act
+    on (`COMPOSE_PROJECT_NAME`) goes to `docker_projects.txt`, one per call.
+    """
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    calls = tmp_path / "docker_calls.txt"
+    projects = tmp_path / "docker_projects.txt"
+    docker = bin_dir / "docker"
+    docker.write_text(
+        f"#!{sys.executable}\n"
+        "import os, sys\n"
+        f"open({str(calls)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n"
+        f"open({str(projects)!r}, 'a').write(os.environ.get('COMPOSE_PROJECT_NAME', '') + '\\n')\n"
+        "if 'logs' in sys.argv:\n"
+        "    print('2026-10-27T00:00:00Z runtime-0-1  | hello from the container')\n"
+        "if 'down' in sys.argv and os.environ.get('FAKE_DOCKER_DOWN') == 'fail':\n"
+        "    sys.exit(1)\n"
+        "if sys.argv[1:2] == ['ps']:\n"
+        "    print(os.environ.get('FAKE_DOCKER_PS', ''))\n"
+        "if sys.argv[1:2] == ['update'] and os.environ.get('FAKE_DOCKER_UPDATE') == 'fail':\n"
+        "    print('Error response from daemon: no such container', file=sys.stderr)\n"
+        "    sys.exit(1)\n"
+    )
+    docker.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    return calls
+
+
+def _run_dir(tmp_path: Path) -> Path:
+    out = tmp_path / "clipgt-run"
+    out.mkdir()
+    # The wizard writes this before `compose up`; teardown keys off it.
+    (out / "docker-compose.yaml").write_text("services: {}\n")
+    return out
+
+
+def _calls(calls: Path, verb: str) -> int:
+    lines = calls.read_text().splitlines() if calls.exists() else []
+    return sum(1 for line in lines if f" {verb}" in line)
+
+
+def test_a_successful_run_saves_logs_and_is_taken_down_once(tmp_path: Path, fake_docker: Path) -> None:
+    out = _run_dir(tmp_path)
+    returncode, timed_out, _ = launcher.run_wizard(
+        [sys.executable, "-c", "pass"], tmp_path, out / "wizard.log", 30, echo=lambda _: None
+    )
+    assert (returncode, timed_out) == (0, False)
+    assert "hello from the container" in (out / "container_logs.txt").read_text()
+    assert _calls(fake_docker, "logs") == 1
+    assert _calls(fake_docker, "down") == 1
+    # Logs before down: down removes the containers the logs live in.
+    verbs = [line.split()[3] for line in fake_docker.read_text().splitlines()]
+    assert verbs == ["logs", "down"]
+
+
+def test_a_failing_run_is_taken_down_and_keeps_its_exit_code(tmp_path: Path, fake_docker: Path) -> None:
+    out = _run_dir(tmp_path)
+    returncode, timed_out, _ = launcher.run_wizard(
+        [sys.executable, "-c", "raise SystemExit(3)"], tmp_path, out / "wizard.log", 30, echo=lambda _: None
+    )
+    assert (returncode, timed_out) == (3, False)
+    assert (out / "container_logs.txt").exists()
+    assert _calls(fake_docker, "down") == 1
+
+
+def test_a_timed_out_run_is_taken_down_once_not_twice(tmp_path: Path, fake_docker: Path) -> None:
+    out = _run_dir(tmp_path)
+    returncode, timed_out, _ = launcher.run_wizard(
+        [sys.executable, "-c", "import time; time.sleep(300)"],
+        tmp_path,
+        out / "wizard.log",
+        1,
+        echo=lambda _: None,
+    )
+    assert timed_out and returncode != 0
+    assert (out / "container_logs.txt").exists()
+    assert _calls(fake_docker, "down") == 1
+
+
+def test_an_interrupted_run_is_taken_down_and_the_interrupt_still_raises(
+    tmp_path: Path, fake_docker: Path
+) -> None:
+    """Ctrl-C reaches paddock but not the wizard, which runs in its own session.
+
+    The stand-in wizard sends the parent a SIGINT -- what a Ctrl-C at the
+    terminal does -- then keeps running, as the real one would.
+    """
+    out = _run_dir(tmp_path)
+    pid_file = tmp_path / "wizard.pid"
+    wizard = (
+        "import os, signal, time\n"
+        f"open({str(pid_file)!r}, 'w').write(str(os.getpid()))\n"
+        "os.kill(os.getppid(), signal.SIGINT)\n"
+        "time.sleep(300)\n"
+    )
+    with pytest.raises(KeyboardInterrupt):
+        launcher.run_wizard(
+            [sys.executable, "-c", wizard], tmp_path, out / "wizard.log", 60, echo=lambda _: None
+        )
+    assert (out / "container_logs.txt").exists()
+    assert _calls(fake_docker, "down") == 1
+    with pytest.raises(ProcessLookupError):
+        os.kill(int(pid_file.read_text()), 0)
+
+
+def test_a_failing_teardown_does_not_change_the_runs_result(
+    tmp_path: Path, fake_docker: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("FAKE_DOCKER_DOWN", "fail")
+    out = _run_dir(tmp_path)
+    said: list[str] = []
+    returncode, timed_out, _ = launcher.run_wizard(
+        [sys.executable, "-c", "raise SystemExit(3)"], tmp_path, out / "wizard.log", 30, echo=said.append
+    )
+    assert (returncode, timed_out) == (3, False)
+    assert any("warning: compose down exited 1" in line for line in said)
+
+
+def test_no_docker_at_all_is_a_warning_not_a_crash(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    out = _run_dir(tmp_path)
+    said: list[str] = []
+    returncode, timed_out, _ = launcher.run_wizard(
+        [sys.executable, "-c", "pass"], tmp_path, out / "wizard.log", 30, echo=said.append
+    )
+    assert (returncode, timed_out) == (0, False)
+    assert any("could not save container logs" in line for line in said)
+    assert any("compose down failed" in line for line in said)
+
+
+def test_two_runs_of_one_scene_do_not_share_containers(tmp_path: Path, fake_docker: Path) -> None:
+    """Overlapping runs of one scene must not start or remove each other's containers.
+
+    Left to itself, compose names a project after the folder that holds
+    `docker-compose.yaml` -- here `clipgt-scene` for both runs -- so the first
+    run to finish would remove the second's containers mid-scene.
+    """
+    names = []
+    for run_id in ("20261101T000000-aaaaaa", "20261101T010000-bbbbbb"):
+        out = tmp_path / run_id / "clipgt-scene"
+        out.mkdir(parents=True)
+        (out / "docker-compose.yaml").write_text("services: {}\n")
+        seen = out / "wizard_saw.txt"
+        wizard = f"import os; open({str(seen)!r}, 'w').write(os.environ.get('COMPOSE_PROJECT_NAME', ''))"
+        launcher.run_wizard(
+            [sys.executable, "-c", wizard], tmp_path, out / "wizard.log", 30, echo=lambda _: None
+        )
+        names.append(seen.read_text())
+
+    assert names[0] and names[1] and names[0] != names[1]
+    # Docker refuses any other character, upper case included.
+    assert all(re.fullmatch(r"[a-z0-9][a-z0-9_-]*", name) for name in names)
+    # The logs and the teardown act on the project the wizard started, per run.
+    projects = (tmp_path / "docker_projects.txt").read_text().split()
+    assert projects == [names[0], names[0], names[1], names[1]]
+
+
+def test_a_run_held_to_some_cores_holds_its_containers_to_them(
+    tmp_path: Path, fake_docker: Path, monkeypatch
+) -> None:
+    """Docker starts AlpaSim's containers, so the lane's taskset never reached them and the gate
+    ran AlpaSim beside no other simulator. Each container is pinned once, as it appears."""
+    monkeypatch.setattr(launcher, "run_cores", lambda: "12-15")
+    monkeypatch.setattr(launcher, "PIN_POLL_S", 0.05)
+    monkeypatch.setenv("FAKE_DOCKER_PS", "c1\nc2")
+    out = _run_dir(tmp_path)
+    said: list[str] = []
+    launcher.run_wizard(
+        [sys.executable, "-c", "import time; time.sleep(0.6)"],
+        tmp_path,
+        out / "wizard.log",
+        30,
+        echo=said.append,
+    )
+    updates = [line for line in fake_docker.read_text().splitlines() if line.startswith("update")]
+    assert updates == ["update --cpuset-cpus 12-15 c1 c2"], "pinned once, both containers"
+    assert any(
+        "label=com.docker.compose.project=" + launcher.compose_project_name(out) in line
+        for line in fake_docker.read_text().splitlines()
+        if line.startswith("ps")
+    )
+    assert "pinned 2 container(s) to cores 12-15" in said
+
+
+def test_a_run_on_every_core_pins_nothing(tmp_path: Path, fake_docker: Path, monkeypatch) -> None:
+    monkeypatch.setattr(launcher, "run_cores", lambda: None)
+    out = _run_dir(tmp_path)
+    launcher.run_wizard(
+        [sys.executable, "-c", "pass"], tmp_path, out / "wizard.log", 30, echo=lambda _m: None
+    )
+    assert not any(line.startswith(("ps", "update")) for line in fake_docker.read_text().splitlines())
+
+
+def test_a_pin_that_fails_warns_once_and_leaves_the_run_alone(
+    tmp_path: Path, fake_docker: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(launcher, "run_cores", lambda: "12-15")
+    monkeypatch.setattr(launcher, "PIN_POLL_S", 0.05)
+    monkeypatch.setenv("FAKE_DOCKER_PS", "c1")
+    monkeypatch.setenv("FAKE_DOCKER_UPDATE", "fail")
+    out = _run_dir(tmp_path)
+    said: list[str] = []
+    returncode, timed_out, _ = launcher.run_wizard(
+        [sys.executable, "-c", "import time; time.sleep(0.4)"],
+        tmp_path,
+        out / "wizard.log",
+        30,
+        echo=said.append,
+    )
+    assert (returncode, timed_out) == (0, False)
+    warnings = [m for m in said if m.startswith("warning: could not pin")]
+    assert len(warnings) == 1 and "no such container" in warnings[0]
+
+
+def test_the_run_cores_read_as_dockers_cpuset(monkeypatch) -> None:
+    monkeypatch.setattr(launcher.os, "cpu_count", lambda: 32)
+    monkeypatch.setattr(launcher.os, "sched_getaffinity", lambda pid: {12, 13, 14, 15, 20})
+    assert launcher.run_cores() == "12-15,20"
+    monkeypatch.setattr(launcher.os, "sched_getaffinity", lambda pid: set(range(32)))
+    assert launcher.run_cores() is None, "no taskset: nothing to hold the containers to"

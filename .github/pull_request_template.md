@@ -1,6 +1,6 @@
 ## What
 
-<!-- One paragraph: what this changes and why. Name the files a reviewer should open first. -->
+<!-- What this changes and why, written for someone who was not there: one plain sentence first, short sentences, every term defined, and what the reader has to do (if anything). Name the files a reviewer should open first. -->
 
 ## Verified
 

@@ -26,10 +26,11 @@ from pathlib import Path
 
 import pytest
 
+from tools.readme_figures import matrix_cell
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RECORDS = REPO_ROOT / "docs/benchmarks/bench2drive-speed-normalization.json"
 UNASSISTED_CSV = REPO_ROOT / "docs/benchmarks/openpilot-24-infractions.csv"
-README = REPO_ROOT / "README.md"
 #: The page that holds the Bench2Drive tables; the README keeps only the matrix.
 PAGE = REPO_ROOT / "docs/benchmarks/bench2drive.md"
 
@@ -54,21 +55,9 @@ def data() -> dict:
     return json.loads(RECORDS.read_text())
 
 
-def _matrix_cell(row_label: str, column_header: str) -> str:
-    """One support-matrix cell, addressed by row label and column header.
-
-    The column is found rather than counted. Its index is not stable -- adding
-    the nuPlan column moved Bench2Drive from 5 to 6 -- and a hardcoded index
-    fails by reading a *different* benchmark's number, which is a confusing way
-    to learn that the matrix grew.
-    """
-    lines = README.read_text().split("\n")
-    header = next(ln for ln in lines if ln.startswith("| | ") and column_header in ln)
-    index = next(
-        i for i, c in enumerate(c.strip() for c in header.strip().strip("|").split("|")) if column_header in c
-    )
-    row = next(ln for ln in lines if ln.startswith(f"| {row_label} |"))
-    return [c.strip() for c in row.strip().strip("|").split("|")][index]
+def _matrix_cell(model: str) -> str:
+    """The support matrix's Bench2Drive number for one model, as docs/support-matrix.toml gives it."""
+    return matrix_cell(model, "bench2drive").shown
 
 
 def _readme_table(after: str) -> list[list[str]]:
@@ -259,7 +248,7 @@ def test_openpilot_block_reproduces(data: dict) -> None:
 
 def test_support_matrix_openpilot_cell_is_the_unassisted_estimate(data: dict) -> None:
     est = data["summaries"]["openpilot_unassisted24_estimate"]["driving_score"]
-    cell = _matrix_cell("OpenPilot", "Bench2Drive")
+    cell = _matrix_cell("openpilot")
     assert re.match(rf"^{est:.2f}\b", cell), (
         f"the support matrix publishes {cell!r} for Bench2Drive; it must stay the "
         "unassisted estimate, not a pooled mean"
@@ -312,12 +301,12 @@ def test_speed_sweep_reproduces(data: dict) -> None:
         assert row[3] == f"{s['route_completion']:.2f}", row[0]
 
 
-def test_support_matrix_baseline_cell_is_the_historical_24_three_mps(data: dict) -> None:
-    """♣ 47.94 and the table's 40.39 are different experiments; both must be stated."""
-    s = data["summaries"]["original24"]["constant_velocity_3mps"]
+def test_support_matrix_baseline_cell_is_the_all50_three_mps(data: dict) -> None:
+    """♣ 48.31 and the table's 40.39 are different experiments; both must be stated."""
+    s = data["summaries"]["all50"]["constant_velocity_3mps"]
     assert f"**{s['driving_score']:.2f} ♣**" in PAGE.read_text()
-    cell = _matrix_cell("Baseline (Constant Velocity)", "Bench2Drive")
-    assert cell.startswith(f"{s['driving_score']:.2f}"), cell
+    cell = _matrix_cell("constant_velocity")
+    assert cell == f"{s['driving_score']:.2f}", cell
 
 
 def test_bench2drive_page_still_links_a_tracked_run() -> None:

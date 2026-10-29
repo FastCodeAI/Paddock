@@ -29,6 +29,7 @@ import numpy as np
 
 from paddock.adapters.benchmarks.kitscenes import loader as L
 from paddock.benchmark import OpenLoopBenchmark, Sample
+from paddock.metrics import pdm
 from paddock.metrics import trajectory as M
 from paddock.policy.protocol import CANBUS_VELOCITY, Command, Observation, Trajectory
 
@@ -592,6 +593,11 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         longitudinal, lateral = M.longitudinal_lateral(prediction.xy[:horizon], ground_truth[:horizon, :2])
         metrics["longitudinal_mae"] = longitudinal
         metrics["lateral_mae"] = lateral
+        # The two PDM terms a plan and its recorded future can fill; the gate
+        # reads them in the same rows as NAVSIM's (`pdm:` in benchmark.yaml).
+        metrics.update(
+            pdm.plan_terms(prediction.xy[:horizon], ground_truth[:horizon, :2], prediction.xy, prediction.dt)
+        )
         return metrics
 
 

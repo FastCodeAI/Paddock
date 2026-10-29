@@ -74,6 +74,7 @@ repo        = "/path/to/Bench2Drive"                 # has leaderboard/ + scenar
 routes_file = "bench2drive220.xml"                   # under repo/leaderboard/data/ (default)
 # routes_subset = "1711,1773,1790"   # pin the run to these route ids; recorded in run.json
 # per_route_timeout_s = 5400         # default; must cover CARLA's boot + the route, see Cost
+# connect_timeout_s   = 60           # default; one attempt to reach a booting CARLA, see Cost
 # carla_port = "2000"                # the evaluator moves up to the first free port from here
 # tm_port    = "8000"                # traffic manager port, likewise
 # gpu_rank   = "0"                   # CARLA's -graphicsadapter
@@ -82,6 +83,13 @@ routes_file = "bench2drive220.xml"                   # under repo/leaderboard/da
 
 Every key above is read by the adapter; nothing else is. `routes_subset` changes
 *what is measured*, so it is written to `run.json` and hashed into the run id.
+
+**How often the model is asked for a plan** is the model's own `planning_hz`
+(`model.yaml`, `capabilities`). The client asks the node once per
+1/`planning_hz` seconds and follows the last plan unchanged in between; a model
+without it is asked every 0.05 s tick. Drive-JEPA declares 2 Hz. The rate is
+recorded as `config.infer_hz` and hashed into the run id, and the host's
+`PADDOCK_INFER_HZ` overrides it for every model.
 
 Prerequisites (all outside this repo):
 
@@ -138,9 +146,18 @@ nothing for it, which is why the default is now 5400 s. And a full sweep of all
 four models at three repetitions is on the order of **750 GPU-hours** on one
 card — run the slow model last, and gate on a small subset first (`--scene`
 with a handful of route ids, or `routes_subset`) until every model completes
-routes cleanly. The evaluator's own start-up (`time.sleep(30)` then a 600 s
-client timeout, retried) does not add to this: the first connection attempt
-returns as soon as CARLA answers, so the wait *is* the map load, not extra.
+routes cleanly.
+
+The evaluator's own start-up is `time.sleep(30)`, then up to 20 connection
+attempts. Upstream, each attempt waits the full client timeout (`--timeout`,
+600 s), so a CARLA that needed more than 30 s to come up cost ten minutes before
+the retry that connected at once. That happened on 3 of 10 routes of the
+2026-10-16 gate smoke (`load_world failed , attempts=0` / `time-out of 600000ms`
+/ `load_world success , attempts=1` in `evaluator.log`), about 30 minutes in
+all. Patch `0002` gives the attempts a timeout of their own,
+`--connect-timeout`, which the adapter passes as `connect_timeout_s` (60 s by
+default); the client goes back to `--timeout` once connected, because that same
+value bounds the large towns' world load and the agent and tick watchdogs.
 
 ## Repetitions
 
@@ -262,10 +279,12 @@ transcribed from a report.
   found by the `-carla-rpc-port=<port>` token in its command line — the port the
   evaluator printed, not the one requested — and killed; the port is then
   polled free before the next route. Nothing is killed by process name.
-- Upstream caveat: on `Simulation crashed` the evaluator itself runs
-  `ps | grep -graphicsadapter=<gpu_rank> | kill -9`, which takes down every
-  CARLA on that GPU index, including other people's. That is the checkout's
-  behaviour, not paddock's; on a shared box, use a `gpu_rank` nobody else does.
+- Upstream, on `Simulation crashed` the evaluator runs
+  `ps | grep -graphicsadapter=<gpu_rank> | kill -9`, which kills every CARLA on
+  that GPU index that its user can signal: on a one-GPU box, every parallel
+  sweep worker and gate lane of that user, and every job under a shared account.
+  Patch `0001` makes it kill only its own server's process group. Preflight
+  refuses an evaluator without both patches (`patches/README.md`).
 - The node log (`<model>_node.log` in the run dir) now carries the model's
   load/ready lines and a heartbeat every 100 `/infer` calls with mean latency
   and how far the returned plan reaches. A node that answers but never plans
@@ -384,6 +403,11 @@ controller fixes. The assisted and expansion recordings are reported
 separately in [OpenPilot, by recording set](#openpilot-by-recording-set); they are
 never pooled into one mean. See [Bench2Drive protocol](bench2drive.md).
 
+VisionPilot's cell is its 20 Hz run over **all 50 routes**, 47.82
+([run](../../results/bench2drive/visionpilot/pooled50-40c29d24c37d542a-d94009/run.json)):
+the historical 24 (49.85, 03–04 Sep) and the 26 expansion routes (45.95, 09 Sep),
+with the set-speed latch fix in place for both.
+
 ※ Bench2Drive driving score at the model's **native inference rate** — Drive-JEPA
 and Qwen-Drive replan at 2 Hz, Alpamayo 1.5 at 10 Hz — over the 50-route set,
 18–20 Sep 2026. Alpamayo 1.5 and Qwen-Drive are means over 49 routes: route 3800
@@ -400,8 +424,8 @@ the 20 Hz protocol only. Per-route detail and the 20 Hz comparison are in
 
 ♣ The Bench2Drive baseline uses a **fixed 3 m/s target**, with straight ego-frame
 waypoints and the shared controller; actual vehicle speed can differ. nuScenes
-constant velocity instead extrapolates the recorded ego velocity. 47.94 is that
-3 m/s target on the historical 24 routes; the whole speed sweep, and why the
+constant velocity instead extrapolates the recorded ego velocity. 48.31 is that
+3 m/s target over all 50 routes (47.94 on the historical 24); the whole speed sweep, and why the
 50-route table shows 40.39, is in
 [Constant velocity — the speed sweep](#constant-velocity--the-speed-sweep).
 
@@ -537,11 +561,11 @@ The baseline is not one experiment. All five targets were driven over the same
 
 This fixes the target speed rather than holding the zero speed at route start;
 the path is straight in the ego frame, not a route-following reference. The
-**47.94 ♣** in the support matrix is the 3 m/s target over the *historical 24*
-routes (RC 74.68) — the same setting scores 48.31 over all 50, and the two are
-separate runs in the store:
-[historical 24](../../results/bench2drive/constant_velocity/20260908T084921-804913/run.json)
-· all 50 under `results/bench2drive/constant_velocity/pooled50-3mps-*`.
+**48.31 ♣** in the support matrix is the 3 m/s target over all 50 routes
+(RC 74.65); the same setting scores 47.94 over the *historical 24* (RC 74.68), and
+the two are separate runs in the store:
+[all 50](../../results/bench2drive/constant_velocity/pooled50-3mps-40c29d24c37d542a-02b6ac/run.json)
+· [historical 24](../../results/bench2drive/constant_velocity/20260908T084921-804913/run.json).
 
 [Calculation](bench2drive-speed-normalization.md) · [Recorded data](bench2drive-speed-normalization.json)
 
@@ -573,9 +597,10 @@ DriveJEPA completes it and scores 100) and is recorded as requested-and-never-sc
 — `n_failed: 1`, `status: partial` — never as a zero. **OpenPilot's native rate is
 20 Hz**, so its published run is already its native-rate run, and VisionPilot was not
 re-run; nothing here restates either. The rate is recorded per run in
-`config.model_env`, not derived from `model.yaml`, and the adapter support for
-`PADDOCK_INFER_HZ` is not on `main` yet — so these are landed results, not runs a
-clean checkout can re-drive. The three runs are `valid: false` and **do not rank**
+`config.model_env`, not derived from `model.yaml`. They were driven before the
+adapter honoured a rate on `main`; it now does (a model's `planning_hz`, above),
+and Drive-JEPA declares 2 Hz, so a clean checkout drives it at that rate by
+default. CARLA re-runs are not bit-reproducible, so these stay landed results. The three runs are `valid: false` and **do not rank**
 on the board: a 2 or 10 Hz run is not the protocol the other rows were driven
 under. Their native scores are the Bench2Drive cells of the support matrix for
 these three models (※). `model_env` also differs in more than the rate — thread counts, a trace

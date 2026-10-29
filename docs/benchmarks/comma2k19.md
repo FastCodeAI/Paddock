@@ -280,7 +280,7 @@ derived from a column already in the tables above.
 | `pdm_nc_proxy` | *no-collision proxy*: 0 if the plan would have closed the radar gap to zero, else 1. 1 on an empty road | higher |
 | `pdm_dac_proxy` | *drivable-area proxy*: 1 if every scored waypoint stayed within ±1.85 m (half a US lane) cross-track of the recorded path | higher |
 | `pdm_ttc` | `1 − ttc_below_2s` | higher |
-| `pdm_ep` | *ego progress*: `min(1, predicted / recorded)` path length, so overshooting is not extra credit. 1 where the car was stopped and there was no distance to cover | higher |
+| `pdm_ep` | *ego progress*, NAVSIM's rule (`metrics.pdm.ego_progress`): the plan's progress along the recorded path over the recorded path's length, at most 1, so overshooting is not extra credit; 1 when neither covers 5 m | higher |
 | `pdm_comfort` | `comfort_within_bounds`, unchanged | higher |
 | `pdm_style_score` | the composite above. **Not** the headline | higher |
 
@@ -677,6 +677,18 @@ The full dataset, 10,165 samples, every row on the identical sample set
 scored only as far as it plans; `—` is where its own horizon ends, not a
 failure. Lower is better except `pdm_style_score`.
 
+**The PDMS-style column and every comfort number on this page were made with
+the rules from before #102**, and #102 changes two of them. Progress now follows
+NAVSIM's rule: a plan covering 2 m where the human drove 4 m scored 0.5 and now
+scores 1.0, because neither covers 5 m. And a step under 0.25 m per 0.5 s no
+longer gets a heading, so a car slowing to a stop with 3 cm of wobble failed the
+yaw-rate bound and now passes. Affected: `pdm_ep`, `pdm_comfort`,
+`pdm_style_score`, `comfort_within_bounds`, and the yaw-rate and
+lateral-acceleration columns. ADE, FDE, miss rate and the longitudinal comfort
+columns are not. Scoring the runs again needs their per-sample plans, which are
+at the site that made them (`hpcai-skodate`); until then these numbers are the
+old rules'.
+
 **Every row is scored against a ground truth in the camera's frame, while the
 plans are in the car's.** The two differ by the mount rotation, about 2° of yaw
 on the Civic, and every number below carries it. Re-scored from the stored
@@ -790,7 +802,8 @@ belong with that number rather than after it.
   its lead at 10 s is not a question this table answers.
 
 Its plan is also much smoother than supercombo's: `comfort_within_bounds` 0.956
-against 0.302, and `comfort_lon_jerk_max` 0.64 m/s³ against 5.04 — see the jerk
+against 0.302 (old rules, see [Recorded results](#recorded-results)), and
+`comfort_lon_jerk_max` 0.64 m/s³ against 5.04 — see the jerk
 result below, which is the same measurement from the other side.
 
 Of the seven, only openpilot and visionpilot publish auxiliary heads through
@@ -1144,7 +1157,8 @@ columns are `NaN` throughout — which is the point of one declared metric list
 rather than a per-model one. The baseline's comfort columns are all 1.0 by
 construction: a straight line at constant speed has no jerk.
 
-⁂ **PDMS-style** is NAVSIM v1's published composite,
+⁂ **PDMS-style** values here were made with the progress and comfort rules from
+before #102 (see [Recorded results](#recorded-results)). It is NAVSIM v1's published composite,
 `NC × DAC × (5·TTC + 5·EP + 2·C) / 12`, evaluated over log-replay *proxies* —
 comma2k19 has no other-agent tracks and no map, so no-collision sees only the
 closest radar lead and drivable-area uses the human's own path as the corridor.

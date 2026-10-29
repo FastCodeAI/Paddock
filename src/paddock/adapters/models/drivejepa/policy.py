@@ -45,10 +45,12 @@ timestamp at ~0.5 s spacing rather than by taking the last four requests --
 otherwise the model would see 0.3 s of history and read the scene as nearly
 static.
 
-*Momentum-aware selection* (paper section 3.5) is off unless
-``DRIVEJEPA_MOMENTUM=on``. With it on, each replan is handed the plan this node
-chose about 0.5 s earlier, the way upstream's own evaluation loop hands it over,
-so the model's ``calibrate_score`` runs before the argmax. See `momentum.py`.
+*Momentum-aware selection* (paper section 3.5) is on: ``model.yaml`` declares
+``DRIVEJEPA_MOMENTUM=on``. ``off`` selects on the plain score, and is also what
+a node gets with the variable unset, for example one launched outside paddock.
+With it on, each replan is handed the plan this node chose about 0.5 s
+earlier, the way upstream's own evaluation loop hands it over, so the model's
+``calibrate_score`` runs before the argmax. See `momentum.py`.
 
 *The pick, reported.* Every answer carries ``extras["drivejepa_pick"]``: which
 of the 32 proposals was driven, its score, and whether the momentum stage was
@@ -116,12 +118,14 @@ class DriveJepaPolicy(Policy):
         # no code change.
         self.checkpoint = checkpoint or os.environ.get("DRIVEJEPA_CHECKPOINT")
         self.device = device
-        # "native" hands each camera over at its own intrinsics, which is how
-        # every published drivejepa row was made. "openscene" crops and rescales
-        # it onto the OpenScene camera the checkpoint trained on -- what the
-        # devkit's own KITScenes loader does. It matters there: the ring is 87
-        # degrees against OpenScene's 64, and on the benchmark's first samples
-        # the uncropped images made the best of the 32 candidates worse.
+        # "openscene" crops and rescales each camera onto the OpenScene camera
+        # the checkpoint trained on -- what the devkit's own KITScenes loader
+        # does -- and is what model.yaml sets. "native" hands each camera over at
+        # its own intrinsics; every Drive-JEPA row published before 2026-10-22 was
+        # made that way. It matters: KITScenes' ring is 87 degrees against
+        # OpenScene's 64, and uncropped the model's ADE there was 3.222 m against
+        # 2.521 m. The fallback here stays "native" for a policy built outside the
+        # runner, with no model.yaml env.
         self.image_geometry = os.environ.get("DRIVEJEPA_IMAGE_GEOMETRY", "native")
         if self.image_geometry not in IMAGE_GEOMETRIES:
             raise ValueError(
