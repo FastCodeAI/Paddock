@@ -58,7 +58,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 from paddock.adapters.benchmarks.bench2drive import rig  # noqa: E402
-from paddock.adapters.benchmarks.bench2drive.recorder import to_ego  # noqa: E402
+from paddock.adapters.benchmarks.bench2drive.recorder import tick_asked, to_ego  # noqa: E402
 from tools.benchmarks.bench2drive import expert as expert_mod  # noqa: E402
 from tools.benchmarks.bench2drive import runs  # noqa: E402
 
@@ -187,22 +187,37 @@ def model_state(ticks: list[dict], model: str) -> list[dict]:
     A node that replans less often than it is called answers the ticks between
     with a held plan and fewer fields (AutoE2E: only ``held_s``); those ticks show
     the last full report with the held fields over it, so the panel does not
-    blank on every other frame. Nested values (lane lines, lead lists) are drawn
-    elsewhere or not at all, and are left out.
+    blank on every other frame. A tick that asked nothing (the client's own
+    ``planning_hz``) carries the last reply's extras; it shows that report with the
+    plan's age as ``held_s``, as the node's own hold reports it. Nested values (lane
+    lines, lead lists) are drawn elsewhere or not at all, and are left out.
     """
     out: list[dict] = []
     last_full: dict = {}
+    asked_at = None
     for rec in ticks:
         own = (rec.get("extras") or {}).get(model)
         own = (
             {k: v for k, v in own.items() if not isinstance(v, (dict, list))} if isinstance(own, dict) else {}
         )
+        if not tick_asked(rec):
+            held = {} if asked_at is None else {"held_s": round(float(rec.get("time") or 0.0) - asked_at, 3)}
+            out.append({**last_full, **held})
+            continue
+        asked_at = float(rec.get("time") or 0.0)
         if len(own) > 1:
             last_full = own
             out.append(own)
         else:
             out.append({**last_full, **own})
     return out
+
+
+def mean_infer_ms(ticks: list[dict]) -> float | None:
+    """The mean /infer round trip, ms, over the ticks that asked: one that followed the last plan sent
+    nothing (`recorder.tick_asked`), and counting it as 0 ms halves a 10 Hz model's figure."""
+    asked = [r.get("infer_ms") or 0 for r in ticks if tick_asked(r)]
+    return round(float(np.mean(asked)), 1) if asked else None
 
 
 class RouteData:
@@ -713,7 +728,7 @@ def route_summary(rd: RouteData) -> dict[str, Any]:
         out["max_route_dev"] = round(
             max(float((r.get("route") or {}).get("dev") or 0.0) for r in rd.ticks), 2
         )
-        out["mean_infer_ms"] = round(float(np.mean([r.get("infer_ms") or 0 for r in rd.ticks])), 1)
+        out["mean_infer_ms"] = mean_infer_ms(rd.ticks)
     if rd.expert:
         out["expert_duration_s"] = rd.expert["duration_s"]
         out["expert_mean_speed"] = round(float(rd.expert_v.mean()), 2)

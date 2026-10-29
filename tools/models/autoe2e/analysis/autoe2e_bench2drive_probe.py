@@ -246,7 +246,7 @@ class Probe:
         forward_ticks = sorted(
             t
             for t, r in self.ticks_rec.items()
-            if "held_s" not in ((r.get("extras") or {}).get("autoe2e") or {})
+            if recorder.tick_asked(r) and "held_s" not in ((r.get("extras") or {}).get("autoe2e") or {})
         )
         series_ticks = set(forward_ticks[::every]) | set(focus)
         series, focus_out = [], {}

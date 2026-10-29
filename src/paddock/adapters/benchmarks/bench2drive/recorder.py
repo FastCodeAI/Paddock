@@ -248,9 +248,15 @@ def tick_record(
     lane: dict | None = None,
     lights: dict | None = None,
     actors: list | None = None,
+    asked: bool = True,
 ) -> dict:
     """One line of ``ticks.jsonl``.
 
+    ``asked``    whether this tick asked the node for a plan. A model that declares
+                 ``planning_hz`` is asked once per 1/planning_hz s, and the ticks
+                 between follow the last plan: on those nothing is sent, ``infer_ms``
+                 is 0, and ``sent`` and ``reply`` are what this tick would have sent
+                 and the reply still followed. Read it with ``tick_asked``.
     ``ego``      CARLA world pose (x, y, z, yaw, pitch, roll), speedometer speed,
                  ego-frame velocity/acceleration, yaw rate, posted limit (m/s)
     ``sent``     what the node was given besides pixels: command, navigation
@@ -265,6 +271,7 @@ def tick_record(
     record = {
         "t": tick,
         "time": round(game_time, 3),
+        "asked": bool(asked),
         "infer_ms": round(infer_ms, 1),
         "ego": rounded(ego, 4),
         "sent": rounded(sent, 4),
@@ -282,6 +289,19 @@ def tick_record(
     if actors is not None:
         record["actors"] = actors
     return record
+
+
+def tick_asked(record: dict) -> bool:
+    """Whether a ``ticks.jsonl`` line is a tick that asked the node for a plan.
+
+    Its ``asked`` field. Lines written before that field (28-29 Oct 2026, when the
+    client's own rate was new) marked a tick that did not ask only by an /infer time of
+    exactly 0, which no request takes; every earlier line asked.
+    """
+    if "asked" in record:
+        return bool(record["asked"])
+    infer_ms = record.get("infer_ms")
+    return infer_ms is None or infer_ms > 0
 
 
 def dumps(record: dict) -> str:
