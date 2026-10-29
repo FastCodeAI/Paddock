@@ -706,7 +706,8 @@ class AutoE2EPolicy(Policy):
         self.record_dir = os.environ.get("AUTOE2E_RECORD_DIR") or None
         #: Seconds between forward passes. 0 = every call. Closed loop calls at 10 Hz so the ego
         #: history is real 10 Hz; the plan is refreshed every `replan_s` and held in between,
-        #: re-expressed in the current ego frame (what the Bench2Drive client does with a held plan).
+        #: re-expressed in the current ego frame. (The Bench2Drive client, asking at a declared
+        #: `planning_hz`, holds its plan unchanged in the frame it was made in.)
         self.replan_s = float(os.environ.get("AUTOE2E_REPLAN_S", "0") or 0)
         self.ego_history_mode = os.environ.get("AUTOE2E_EGO_HISTORY", "real") or "real"
         ego_history_as(np.zeros((EGO_STEPS, 4)), self.ego_history_mode)  # refuse a typo before any load
