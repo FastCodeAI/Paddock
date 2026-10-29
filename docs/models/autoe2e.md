@@ -497,9 +497,11 @@ id.
 driving score with upstream's inputs, the measured ego history and the route
 raster, and nothing `model.yaml` declares set at the site, asked for a plan at its
 declared 10 Hz (`planning_hz`); every route driven on Paddock `4521edc`, 28-29 Oct
-2026. A route ends after 30 s without 3 m of progress or at 4x Think2Drive's time
+2026. A route ends after 30 s without 3 m of progress or at 4x the time of
+Think2Drive, the expert driver whose recorded drives Bench2Drive ships,
 and is scored as a failed drive; the other rows drove every route to Bench2Drive's
-own end. The support matrix ranks it, below constant velocity's floor.
+own end. The support matrix marks its cell R for those two differences; the
+record itself is valid and ranks on the leaderboard.
 
 | inputs | record | DS | DS median | RC (%) | infraction penalty | routes with a collision | ended: stuck / over time / at a collision | valid |
 |---|---|---:|---:|---:|---:|---:|---:|---|
@@ -509,9 +511,11 @@ own end. The support matrix ranks it, below constant velocity's floor.
 The second row is the deep dive's fix (below), driven on `7244bc5`: a steady
 straight past at the current speed and no route raster
 (`AUTOE2E_EGO_HISTORY=steady`, `AUTOE2E_ROUTE=0`), 10 Hz from the
-`AUTOE2E_REPLAN_S` pairing, and each route ended at its first collision. It sets
-three keys `model.yaml` declares and stops where Bench2Drive's protocol does not,
-so it does not rank; it is what the fix buys on the same routes.
+`AUTOE2E_REPLAN_S` pairing, and a route ended at its first collision (33 of the
+50 did). It sets three keys `model.yaml` declares and stops where Bench2Drive's
+protocol does not, so it does not rank. It scores higher on the same routes, but
+the two runs also differ in the collision stop, in how the plan is held between
+forwards (below) and in the code revision, so the gap is not the inputs' alone.
 
 The two rows also hold the plan between forwards differently: the client follows
 it unchanged since #106, where the pairing had the node move it into the current
@@ -520,8 +524,7 @@ dive's recorded drives, upstream's inputs), the first plans agree within 4 cm an
 2 mm, the cars are 1.1-1.5 m apart after 4 s, and the client's hold launches
 about 0.5 m/s faster; both drives then crash where the other did.
 
-Earlier runs, each `valid: false` (a site-set rate, or inputs upstream never
-produces), none pooled into a record:
+Earlier runs, each `valid: false`:
 
 - The first 50-route sweep (`PADDOCK_INFER_HZ=10`, route raster on) ran a
   forward on every 20 Hz call -- the Bench2Drive agent did not read that
@@ -537,8 +540,8 @@ produces), none pooled into a record:
   route raster on: 59 routes scored, mean DS 13.7, before that sweep was
   stopped on 21 Oct 2026 for the deep dive below.
 - The full 220-route sweep with the steady settings, from 23 Oct 2026: stopped
-  on 28 Oct at 204 routes for the valid run above; its first 50 routes are the
-  steady row's record.
+  on 28 Oct at 204 routes for the valid run above. Its 50 routes that the other
+  rows pool are the steady row's record.
 
 Why it swerves, from three routes (1711, 2286, 2373) whose every request was
 recorded and replayed into the model to within 0.5 mm of the plan CARLA's node

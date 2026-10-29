@@ -126,6 +126,21 @@ def test_tick_record_keeps_the_whole_reply() -> None:
     assert "\n" not in line and json.loads(line)["t"] == 3
 
 
+def test_a_tick_says_whether_it_asked_and_older_lines_are_read_by_their_infer_time() -> None:
+    """A model that declares planning_hz is asked once per 1/planning_hz s, and the ticks between send
+    nothing. Each line says which it was; lines written before the field (28-29 Oct 2026) told them
+    apart only by an /infer time of 0, and every line before those asked."""
+    ego, ctrl = {"x": 0.0, "y": 0.0, "yaw": 0.0}, {"steer": 0.0, "throttle": 0.3, "brake": 0.0, "v_des": 5.0}
+    reply = {"trajectory": [[1.0, 0.0]], "dt": 0.5, "extras": {}}
+    held = recorder.tick_record(5, 0.25, 0.0, ego, {"command": 3}, reply, ctrl, asked=False)
+    assert held["asked"] is False and not recorder.tick_asked(held)
+    asked = recorder.tick_record(6, 0.3, 6012.3, ego, {"command": 3}, reply, ctrl)
+    assert asked["asked"] is True and recorder.tick_asked(asked)
+    assert not recorder.tick_asked({"t": 1, "infer_ms": 0.0}), "followed the last plan, before the field"
+    assert recorder.tick_asked({"t": 1, "infer_ms": 70.2}), "a call the node answered from its own hold"
+    assert recorder.tick_asked({"t": 1}), "nothing recorded says it did not ask"
+
+
 def test_inputs_round_trip_exactly(tmp_path) -> None:
     """A recorded request reads back bit for bit: a replay feeds the model what it was fed."""
     rng = np.random.default_rng(0)

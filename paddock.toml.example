@@ -489,8 +489,8 @@ serialize = true
 #     part of the id and `source_runs` is hashed into the config -- but the record
 #     would then say nothing about what rate was driven, which is the one thing
 #     this campaign varied.) The ingest marks such a run `valid: false`: a rate
-#     other than the benchmark's 20 Hz is a different protocol, so it is kept and
-#     not ranked against rows that were driven at 20 Hz.
+#     set by hand is an operator's choice, so it is kept and not ranked. (A pool
+#     asked at the planning_hz its model.yaml declares ranks.)
 #   * `routes` must list all 50 even for the models that could not score one of
 #     them. Route 3800 never scored for alpamayo15 or qwendrive, and what it left
 #     behind differs by attempt: an UNSCORABLE.txt marker, or -- for

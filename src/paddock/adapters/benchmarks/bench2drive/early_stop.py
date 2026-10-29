@@ -226,26 +226,35 @@ def end_route() -> bool:
     return True
 
 
-def describe(rules: dict[str, Any]) -> str:
-    """The rules of a run config's ``early_stop``, in words."""
+def describe(rules: dict[str, Any], routes: Iterable[str] | None = None) -> str:
+    """The rules of a run config's ``early_stop``, in words.
+
+    ``no_expert`` names the site's routes the over-time rule cannot end; given the
+    ``routes`` a record covers, only those among them are counted.
+    """
     parts = []
     if rules.get("stuck_s"):
         progress_m = rules.get("progress_m", PROGRESS_M)
         parts.append(f"{rules['stuck_s']:g} s without {progress_m:g} m of route progress")
     if rules.get("expert_factor"):
         budget = f"{rules['expert_factor']:g}x the expert's time on the route"
-        if rules.get("no_expert"):
-            budget += f" (none on the {len(rules['no_expert'])} route(s) with no expert drive)"
+        unbudgeted = rules.get("no_expert") or []
+        here = "" if routes is None else " here"
+        if routes is not None:
+            covered = set(routes)
+            unbudgeted = [r for r in unbudgeted if r in covered]
+        if unbudgeted:
+            budget += f" (none on the {len(unbudgeted)} route(s){here} with no expert drive)"
         parts.append(budget)
     if rules.get("collision"):
         parts.append("a collision the leaderboard records")
     return " or ".join(parts)
 
 
-def remark(rules: dict[str, Any]) -> str:
+def remark(rules: dict[str, Any], routes: Iterable[str] | None = None) -> str:
     """The note a run with these rules carries: which rules, and why its scores stand."""
     return (
-        f"early stop ({describe(rules)}): a car in a driving scene is expected to move, to finish in "
+        f"early stop ({describe(rules, routes)}): a car in a driving scene is expected to move, to finish in "
         "reasonable time and not to collide, so a route ended this way is a failed drive, scored as it "
         "stood when it ended (a collision's penalty included)"
     )
@@ -268,7 +277,7 @@ def manual_reason(n: int) -> str:
     )
 
 
-def mixed_reason(rules: list[Any]) -> str:
+def mixed_reason(rules: list[Any], routes: Iterable[str] | None = None) -> str:
     """Why a pool whose source runs stopped routes under different rules does not rank."""
-    said = "; ".join(describe(r) if isinstance(r, dict) else str(r) for r in rules)
+    said = "; ".join(describe(r, routes) if isinstance(r, dict) else str(r) for r in rules)
     return f"early stop settings differ between source runs ({said}): one mean describes none of them"

@@ -495,6 +495,14 @@ def test_an_early_stop_is_read_from_the_source_runs_and_the_row_still_ranks(tmp_
     assert metrics.metrics["ended_stuck"]["n"] == 2, "2802's run wrote no record, so says nothing"
 
 
+def test_the_routes_without_an_expert_drive_are_counted_among_the_pooled_routes(tmp_path: Path) -> None:
+    """The runs record the site's routes the over-time rule cannot end; the pooled record covers fewer."""
+    rules = {"expert_factor": 4.0, "no_expert": ["1711", "3364", "3373"]}  # 1711 alone is pooled here
+    run = _pooled_with(tmp_path, ({"early_stop": rules}, {"early_stop": rules}))
+    assert run.config["early_stop"] == rules, "the config keeps what the runs recorded"
+    assert "(none on the 1 route(s) here with no expert drive)" in run.notes
+
+
 def test_routes_driven_before_the_early_stop_are_counted_out_loud(tmp_path: Path) -> None:
     root = _tree(tmp_path)
     rules = {"stuck_s": 30.0, "progress_m": 3.0}
@@ -510,12 +518,16 @@ def test_routes_driven_before_the_early_stop_are_counted_out_loud(tmp_path: Path
     assert not run.valid, "with and without the rule are two experiments, as two rules are"
 
 
-def _pooled_with(tmp_path: Path, configs: tuple[dict, dict]):
-    """Pool `_tree`'s two contributing source runs, each with these keys in its recorded config."""
+def _pooled_with(tmp_path: Path, configs: tuple[dict | None, dict | None]):
+    """Pool `_tree`'s two contributing source runs, each with these keys in its recorded config;
+    None is a run that kept no config at all."""
     root = _tree(tmp_path)
     for run_id, extra in zip(("20260901T000000-aaaaaa", "20260903T000000-cccccc"), configs, strict=True):
         record = _source_run_json("modelx", [], {})
-        record["config"].update(extra)
+        if extra is None:
+            record.pop("config")
+        else:
+            record["config"].update(extra)
         (root / run_id / "run.json").write_text(json.dumps(record))
     ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s")
     return run
@@ -550,30 +562,48 @@ def test_a_pool_driven_on_another_camera_rig_names_it_and_does_not_rank(tmp_path
     assert run.run_id != default.run_id
 
 
-def test_a_pool_asked_at_the_rate_its_model_declares_records_it_and_ranks(tmp_path, monkeypatch) -> None:
+def test_a_pool_asked_at_the_rate_its_model_declared_records_it_and_ranks(tmp_path: Path) -> None:
     """Every run since #106 records how often the node was asked (`infer_hz`). AutoE2E's 50 routes
-    pooled without it: the record named no rate, and its run id was the one the same routes asked
-    every tick would get. The model's declared rate is how it is driven, so the pool ranks."""
-    monkeypatch.setattr(bench2drive, "_registered_planning_hz", lambda model: 10.0)
-    run = _pooled_with(tmp_path / "a", ({"infer_hz": 10.0}, {"infer_hz": 10.0}))
-    assert run.config["infer_hz"] == 10.0 and run.valid
-    assert "10 Hz, the planning_hz modelx's model.yaml declares" in run.notes
-    every_tick = _pooled_with(tmp_path / "b", ({}, {}))
-    assert "infer_hz" not in every_tick.config and every_tick.valid, "a pool of earlier runs keeps its id"
-    assert run.run_id != every_tick.run_id
+    pooled without it: the record named no rate and took the run id of the same routes asked every
+    tick. A recorded rate with no `planning_hz` beside it is the one the model declared, so the pool
+    ranks -- judged from the runs, not from model.yaml as it is when the ingest runs."""
+    run = _pooled_with(tmp_path / "a", ({"infer_hz": 10.0}, {"infer_hz": 10}))
+    assert run.config["infer_hz"] == 10.0 and run.valid, "10 and 10.0 are one rate"
+    assert "10 Hz, the planning_hz the model's model.yaml declared" in run.notes
+    every = _pooled_with(tmp_path / "b", ({}, {}))
+    assert "infer_hz" not in every.config and every.valid, "a pool of runs asked every tick keeps its id"
+    assert run.run_id != every.run_id
+    at_20 = _pooled_with(tmp_path / "c", ({"infer_hz": 20.0}, {"infer_hz": 20.0}))
+    assert at_20.valid and at_20.run_id == every.run_id, "20 Hz on a 20 Hz simulation is every tick"
 
 
-def test_a_pool_at_a_rate_nobody_declared_or_at_two_rates_does_not_rank(tmp_path, monkeypatch) -> None:
-    """A rate the model's model.yaml does not declare is the host's PADDOCK_INFER_HZ, an operator's
-    choice; and one mean over two rates describes neither."""
-    monkeypatch.setattr(bench2drive, "_registered_planning_hz", lambda model: 10.0)
-    host = _pooled_with(tmp_path / "a", ({"infer_hz": 2.0}, {"infer_hz": 2.0}))
-    assert host.config["infer_hz"] == 2.0 and not host.valid
-    assert "2 Hz, which modelx's model.yaml does not declare (planning_hz 10)" in host.notes
-    two = _pooled_with(tmp_path / "b", ({"infer_hz": 10.0}, {"infer_hz": 2.0}))
+def test_a_pool_at_the_hosts_rate_at_two_rates_or_at_a_rate_not_known_does_not_rank(tmp_path: Path) -> None:
+    """The host's PADDOCK_INFER_HZ in place of the declared rate is recorded with the declared one
+    beside it: an operator's rate. One mean over two rates describes neither, and a run that kept no
+    config may have been asked at any rate. None of them ranks, and the notes say which."""
+    host = _pooled_with(tmp_path / "a", ({"infer_hz": 2.0, "planning_hz": 10.0},) * 2)
+    assert (host.config["infer_hz"], host.config["planning_hz"]) == (2.0, 10.0) and not host.valid
+    assert "the rate the host's PADDOCK_INFER_HZ set" in host.notes
+    forced = _pooled_with(tmp_path / "b", ({"infer_hz": 0.0, "planning_hz": 10.0},) * 2)
+    assert forced.config["infer_hz"] == 0.0 and not forced.valid, "every tick, forced on a 10 Hz model"
+    two = _pooled_with(tmp_path / "c", ({"infer_hz": 10.0}, {"infer_hz": 2.0}))
     assert sorted(two.config["infer_hz"]) == [2.0, 10.0] and not two.valid
-    some_every_tick = _pooled_with(tmp_path / "c", ({"infer_hz": 10.0}, {}))
-    assert not some_every_tick.valid and "1 of 2 every tick" in some_every_tick.notes
+    with_every_tick = _pooled_with(tmp_path / "d", ({"infer_hz": 10.0}, {}))
+    assert sorted(with_every_tick.config["infer_hz"]) == [0.0, 10.0] and not with_every_tick.valid
+    unknown = _pooled_with(tmp_path / "e", ({"infer_hz": 10.0}, None))
+    assert not unknown.valid and "1 of 2 source runs kept no config" in unknown.notes
+    garbled = _pooled_with(tmp_path / "f", ({"infer_hz": "fast"}, {"infer_hz": "fast"}))
+    assert not garbled.valid and "'fast', which is not a rate" in garbled.notes
+
+
+def test_the_old_rate_rule_reads_only_runs_that_recorded_no_rate(tmp_path: Path) -> None:
+    """Before #106 a rate reached the record only as PADDOCK_INFER_HZ in `model_env` (the September
+    native-rate records). A run that recorded `infer_hz` is judged by that alone, so one record never
+    says both that it was asked at the model's own rate and that it was off the protocol."""
+    september = _pooled_with(tmp_path / "a", ({"model_env": {"PADDOCK_INFER_HZ": "2"}},) * 2)
+    assert not september.valid and "driven at 2 Hz" in september.notes
+    both = _pooled_with(tmp_path / "b", ({"model_env": {"PADDOCK_INFER_HZ": "2"}, "infer_hz": 2.0},) * 2)
+    assert "driven at 2 Hz" not in both.notes and "2 Hz, the planning_hz" in both.notes
 
 
 def test_a_pool_of_routes_ended_at_a_collision_does_not_rank(tmp_path: Path) -> None:

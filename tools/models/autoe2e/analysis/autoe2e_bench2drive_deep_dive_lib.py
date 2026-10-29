@@ -144,7 +144,7 @@ class Route:
                 {
                     "tick": r["t"], "t": r["time"] - t0, "speed": r["ego"]["speed"], "v_des": r["ctrl"].get("v_des"),
                     "steer": r["ctrl"]["steer"], "throttle": r["ctrl"]["throttle"], "brake": r["ctrl"]["brake"],
-                    "infer_ms": r.get("infer_ms"), "forward": "held_s" not in a, "held_s": a.get("held_s"),
+                    "infer_ms": r.get("infer_ms"), "forward": recorder.tick_asked(r) and "held_s" not in a, "held_s": a.get("held_s"),
                     "model_s": a.get("model_s"), "history_repeated": a.get("history_repeated"),
                     "ego_rows_filled": a.get("ego_rows_filled"), "kappa_0": a.get("kappa_0"),
                     "accel_0": a.get("accel_0"), "lane_offset": lane.get("offset"), "lane_heading": lane.get("heading"),

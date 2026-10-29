@@ -941,3 +941,30 @@ def test_the_models_planning_rate_reaches_the_client_and_the_record(tmp_path, mo
     monkeypatch.setenv("PADDOCK_INFER_HZ", "fast")
     with pytest.raises(ValueError, match="expected a rate in Hz"):
         infer_hz(2.0)
+
+
+def test_the_hosts_rate_in_place_of_the_models_own_is_recorded_and_does_not_rank(
+    tmp_path, monkeypatch
+) -> None:
+    """PADDOCK_INFER_HZ on the host drives every model at its rate. Where that is not the model's
+    own, the run records the declared rate beside it and does not rank; the host restating the
+    model's own rate, or 20 Hz for a model asked every tick, changes nothing."""
+    harness, models = _harness(_site(tmp_path, monkeypatch, COMPLETED)), Registry.load().models
+
+    def drive(model: str, host: str | None):
+        if host is None:
+            monkeypatch.delenv("PADDOCK_INFER_HZ", raising=False)
+        else:
+            monkeypatch.setenv("PADDOCK_INFER_HZ", host)
+        config = harness.model_run_config(models[model])
+        return config, [r for r in harness.invalid_reasons() if "PADDOCK_INFER_HZ" in r]
+
+    assert drive("autoe2e", None) == ({"infer_hz": 10.0}, [])
+    assert drive("autoe2e", "10") == ({"infer_hz": 10.0}, []), "the host restating the model's own rate"
+    assert drive("openpilot", "20") == ({}, []), "20 Hz is every tick, openpilot's own"
+    config, (reason,) = drive("autoe2e", "0")
+    assert config == {"infer_hz": 0.0, "planning_hz": 10.0}
+    assert "on every tick" in reason and "planning_hz 10" in reason
+    config, (reason,) = drive("drivejepa", "10")
+    assert config == {"infer_hz": 10.0, "planning_hz": 2.0} and "at 10 Hz" in reason
+    assert drive("drivejepa", None) == ({"infer_hz": 2.0}, []), "the next run of the harness starts clean"

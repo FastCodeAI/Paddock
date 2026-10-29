@@ -367,7 +367,9 @@ class PaddockB2DAgent(AutonomousAgent):
                 stops.append({"id": stop.id, "i": i, "x": round(loc.x, 2), "y": round(loc.y, 2)})
         return lights, stops
 
-    def _write_analysis_record(self, input_data, game_time, infer_ms, sent, payload, control, desired_speed):
+    def _write_analysis_record(
+        self, input_data, game_time, infer_ms, sent, payload, control, desired_speed, asked=True
+    ):
         """One line of ticks.jsonl, plus model-camera thumbnails every few ticks."""
         hero = self._hero_actor()
         if hero is None:
@@ -473,6 +475,7 @@ class PaddockB2DAgent(AutonomousAgent):
             lane=lane,
             lights=lights,
             actors=rows,
+            asked=asked,
         )
         self._ticks.write(recorder.dumps(record) + "\n")
         self._ticks.flush()
@@ -744,8 +747,9 @@ class PaddockB2DAgent(AutonomousAgent):
             self._native = (self._payload.get("extras") or {}).get("native_long")
             self._plan_us = us
         else:
-            # No /infer this tick: the analysis record holds the plan in force, the last
-            # reply, with no time spent asking (log.csv repeats its waypoints likewise).
+            # No /infer this tick: the analysis record says so (`asked` false) and holds the
+            # plan in force, the last reply, with no time spent asking (log.csv repeats its
+            # waypoints likewise).
             infer_ms = 0.0
         plan, native, payload = self._plan, self._native, self._payload
         if native:
@@ -771,7 +775,7 @@ class PaddockB2DAgent(AutonomousAgent):
             }
             try:
                 self._write_analysis_record(
-                    input_data, timestamp, infer_ms, sent, payload, control, desired_speed
+                    input_data, timestamp, infer_ms, sent, payload, control, desired_speed, asked=due
                 )
             except Exception as exc:  # the record is for analysis; the route must go on without it
                 self._record_failed = True

@@ -567,7 +567,9 @@ Models **have** driven: 50 routes each for DriveJEPA, VisionPilot, Alpamayo 1.5,
 OpenPilot, QwenDrive and five constant-velocity speeds, 500 per-route records
 published in
 [`bench2drive-speed-normalization.json`](benchmarks/bench2drive-speed-normalization.json),
-aggregated in the README and tracked as ten `results/` runs (below).
+aggregated in the README and tracked as ten `results/` runs (below). AutoE2E's
+two 50-route records are tracked beside them and left out of those tables (its
+routes end early), so `results/bench2drive/*/pooled50-*` holds twelve.
 
 | Claim | Verified how | Strength |
 |---|---|---|
@@ -576,7 +578,7 @@ aggregated in the README and tracked as ten `results/` runs (below).
 | launch, timeout, CARLA cleanup | stand-in evaluator under test; real flags read from the checkout | **strong** / argued |
 | agent imports in the CARLA-client env | exercised in a Python 3.8 env with the 0.9.15 egg, no server | moderate |
 | a model drives a route through paddock | 500 route records over 50 routes and 10 systems, scores and infractions published; every README cell recomputed from them by `tests/test_bench2drive_docs.py` | **strong** for the tables; the records' faithfulness to the evaluator output is a transcription nobody has re-derived from the raw `results.json` files |
-| the runs carry their own provenance | ten `results/bench2drive/*/pooled50-*` records written by `paddock ingest` from the per-route `results.json` trees: `routes_file`, `routes_subset`, `waypoint_dt`, `model_env` and `site` read from the source runs, every source run id and file digest kept | **strong** |
+| the runs carry their own provenance | twelve `results/bench2drive/*/pooled50-*` records written by `paddock ingest` from the per-route `results.json` trees: `routes_file`, `routes_subset`, `waypoint_dt`, `model_env` and `site` read from the source runs, every source run id and file digest kept | **strong** |
 | the runs are reproducible at another site | nothing yet — a site without the recording trees cannot regenerate them, and CARLA re-runs are not bit-reproducible | **unverified** |
 | the 20 Hz protocol understates models built to replan slower | the same 50 routes re-driven at each model's own rate (`PADDOCK_INFER_HZ`), everything else held: DriveJEPA 31.71 → 57.60, Alpamayo 1.5 43.20 → 55.82, QwenDrive 12.94 → 17.08; three `results/bench2drive/*/native50-*` records, every cell recomputed by `tests/test_bench2drive_native_rate_docs.py` | **strong** for the three models measured; **not general** — one rate per model, no sweep, so nothing here locates an optimum |
 | why each of the three improved | DriveJEPA and QwenDrive drive further instead of stalling (blocked 17 → 7, 16 → 10) at flat-to-worse penalty; only Alpamayo 1.5's penalty rises (0.648 → 0.725, vehicle collisions 42 → 23) | **argued** from the infraction breakdown; no per-tick analysis |
@@ -618,9 +620,9 @@ CARLA segfaults for those two while DriveJEPA completes it and scores 100 — so
 their means are over 49 routes and their records are `status: partial`,
 `n_failed: 1`. Part of the gain is extra exposure rather than better driving: the
 two models that stalled now drive further and collide more in absolute terms.
-The three runs are `valid: false` and do not rank: a 2 or 10 Hz run is not the
-protocol the other bench2drive rows were driven under, so `paddock ingest` keeps
-them and leaves them out of the board. Their `model_env` also differs from the
+The three runs are `valid: false` and do not rank: their rate was set by hand, so
+`paddock ingest` keeps them and leaves them out of the board, which ranks a model
+only at 20 Hz or at the rate its `model.yaml` declares. Their `model_env` also differs from the
 20 Hz runs in more than the rate — thread counts, a trace sink, `ALPAMAYO_NAV` —
 each argued immaterial and none measured to be. Tracked as
 `results/bench2drive/<model>/native50-*`; tables, breakdown and the
@@ -721,7 +723,7 @@ campaign driven on 22 Oct 2026 by the same bridge. See
   | route raster and rollout follow upstream | read against `navigation/geometry.py` and `control_rollout.py` at `40a75cf8`; conventions pinned by the adapter's tests | **strong** |
   | `route_xy` has the right sign | stand-in CARLA test (left lane arrives at y > 0) and, live, the B2D projection overlay | **strong** |
   | its Bench2Drive record is valid | before the drive, paddock's own checks on the site config found no env override and no harness reason; the 50 routes all scored, and the ingest pooled them `valid: true` with `infer_hz` 10, the rate `model.yaml` declares | **verified** |
-  | the client's 10 Hz hold drives like the pairing's | 1711 and 2286 from the same start both ways: first plans within 4 cm and 2 mm, cars 1.1-1.5 m apart after 4 s, the client's hold ~0.5 m/s faster at launch | **ran**, two routes, before the first crash |
+  | the client's 10 Hz hold drives like the pairing's | 1711 and 2286 from the same start both ways: first plans within 4 cm and 2 mm, cars 1.1-1.5 m apart after 4 s, the client's hold ~0.5 m/s faster at launch | **verified** on two routes, up to the first crash |
   | the Bench2Drive swerve is the model, not the adapter | projection overlay, raster mapping, and a y-mirror / rot-180 A/B on 80 navtest scenes where the deployed convention scores best; not ruled out: the route comes from the leaderboard's 50 m-downsampled plan, and route-without-map is an input upstream never produces | **argued** — no upstream closed-loop reference exists |
   | NAVSIM is out of its training logs | the release names no nuPlan split; its own nuPlan-test figures suggest test was held out | **argued** |
   | its KITScenes inputs are upstream's | compared with upstream's own packed v3.5 samples on the 186 shared val keyframes: tiles byte-identical, projections exact, `map_valid` / `route_valid` 186 of 186, semantic map ≤ 0.16 % of cells and route ≤ 11 cells apart (outside 26 rows whose upstream raster is anchored 0.5 s back), keyframe-40 ego rows ≤ 5.8e-3 | **verified** |

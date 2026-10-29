@@ -260,3 +260,14 @@ def test_the_collision_count_is_the_leaderboards_own_read_up_the_stack() -> None
 
     assert Manager()._tick_scenario() == 2
     assert scenario_collisions() is None, "outside the leaderboard's tick there is nothing to read"
+
+
+def test_routes_without_an_expert_drive_are_counted_among_the_routes_a_record_covers() -> None:
+    """A run's config lists the site's routes the over-time rule cannot end. AutoE2E's 50-route
+    records said "none on the 9 route(s)" where only 5 of those are among their 50."""
+    rules = {"expert_factor": 4.0, "no_expert": ["3364", "3373", "3561", "24841"]}
+    assert "(none on the 4 route(s) with no expert drive)" in early_stop.describe(rules)
+    assert "(none on the 2 route(s) here with no expert drive)" in early_stop.describe(
+        rules, ["3364", "3373", "1711"]
+    )
+    assert "no expert drive" not in early_stop.describe(rules, ["1711", "2802"]), "every route here has one"
