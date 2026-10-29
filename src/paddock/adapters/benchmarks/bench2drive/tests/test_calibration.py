@@ -14,7 +14,8 @@ OpenCV camera axes (x right, y down, z forward) to CARLA's (x forward, y right,
 z up), and FLIP_Y takes CARLA's left-handed ego frame (y right) to paddock's
 (y left). `camera2image` is the pinhole of the rendered view, Bench2Drive's
 `tools/utils.py:build_projection_matrix`. And whatever the conventions, a point on
-the road to the ego's left has to land left of centre in the front camera.
+the road to the ego's left has to land left of centre in the front camera, and in
+front of the left cameras and behind the right ones.
 
 carla is stood in for (conftest.py), and so is the HTTP session: `setup()` POSTs
 /reset to the node, and on a shared machine one may be listening on the default port.
@@ -145,3 +146,15 @@ def test_a_road_point_on_the_egos_left_is_seen_left_of_centre(sent) -> None:
     w, h = cameras["CAM_FRONT"]["size"]
     assert depth > 0 and u < w / 2 and v > h / 2, (depth, u, v)
     assert (np.linalg.inv(cam2ego["CAM_BACK"]) @ point)[2] < 0
+
+
+@pytest.mark.parametrize("name", sorted(rig.RIGS))
+def test_a_road_point_on_the_egos_left_is_in_front_of_the_left_cameras(sent, name) -> None:
+    """5 m to the left, on the road: in front of both left cameras and behind both right ones."""
+    # CAM_FRONT and CAM_BACK sit on the centre line, where the y-flip moves nothing, so the test
+    # above passes without it; a side camera is where a left/right slip shows.
+    _, cam2ego, _ = sent(name)
+    point = np.array([0.0, 5.0, 0.0, 1.0])
+    for left, right in (("CAM_FRONT_LEFT", "CAM_FRONT_RIGHT"), ("CAM_BACK_LEFT", "CAM_BACK_RIGHT")):
+        assert (np.linalg.inv(cam2ego[left]) @ point)[2] > 0, f"{name}: behind {left}"
+        assert (np.linalg.inv(cam2ego[right]) @ point)[2] < 0, f"{name}: in front of {right}"
