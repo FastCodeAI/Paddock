@@ -95,14 +95,17 @@ from paddock.adapters.benchmarks.bench2drive.harness import (
     NotScored,
     crash_reason,
     ended_early,
+    every_tick,
     parse_results,
 )
 from paddock.registry import Registry
 from paddock.results.store import MetricsRecord, RunRecord, config_hash, sequence_hash
 
 #: Bench2Drive's published protocol calls the model once per simulator tick --
-#: 20 Hz (docs/benchmarks/bench2drive.md). A run driven at another rate measures
-#: a different protocol, so it is kept and not ranked against runs that were not.
+#: 20 Hz (docs/benchmarks/bench2drive.md). A model may declare a slower rate of its
+#: own (`planning_hz`), and a pool asked at it ranks. A rate an operator set in its
+#: place -- the host's PADDOCK_INFER_HZ, or, before runs recorded their rate,
+#: PADDOCK_INFER_HZ in `model_env` -- is a different protocol: kept, not ranked.
 PROTOCOL_HZ = 20.0
 
 # \w, not letters: MergerIntoSlowTrafficV2 and T_Junction are Bench2Drive-220 scenarios, and a folder this
@@ -181,7 +184,8 @@ def _driven_off_protocol(model_env: dict[str, Any]) -> float | None:
     """The rate this run was driven at, when that is not the benchmark's protocol.
 
     ``None`` for every run driven at 20 Hz, which is every run that does not say
-    otherwise -- the rate is only in the record when an operator put it there.
+    otherwise -- before #106 the rate was only in the record when an operator put
+    it there. Read only for source runs that recorded no ``infer_hz``.
     """
     raw = (model_env or {}).get("PADDOCK_INFER_HZ")
     if raw in (None, ""):
@@ -213,13 +217,13 @@ def _registered_waypoint_dt(model: str) -> float | None:
     return getattr(spec, "waypoint_dt", None) if spec else None
 
 
-def _registered_planning_hz(model: str) -> float:
-    """How often the model's model.yaml says it plans (`planning_hz`, #106); 0 when it says nothing."""
+def _rate(value: Any) -> float | None:
+    """A recorded ``infer_hz`` as Hz, 0.0 for every tick however it is written; None if not a number."""
     try:
-        spec = Registry.load().models.get(model)
-    except Exception:  # noqa: BLE001 -- a broken registry must not fail an ingest
-        return 0.0
-    return float(getattr(spec, "planning_hz", 0.0) or 0.0) if spec else 0.0
+        hz = float(value)
+    except (TypeError, ValueError):
+        return None
+    return 0.0 if every_tick(hz) else hz
 
 
 def discover(runs_roots: Sequence[Path], routes: list[str] | None = None) -> Survey:
@@ -390,19 +394,25 @@ def ingest(
     other_rig = rigs is not None and rigs != rig.DEFAULT
     if other_rig:
         config["camera_rig"] = rigs
-    # How often the node was asked for a plan (`infer_hz`, #106), in the config only when the
-    # source runs recorded a rate, so a pool of runs asked every tick keeps its run id. Dropping
-    # it would let a pool claim a rate it never states, under the run id of the same routes asked
-    # every tick. The rate the model's model.yaml declares is how that model is driven, and the
-    # pool ranks at it; a rate it does not declare (the host's PADDOCK_INFER_HZ), or two rates in
-    # one pool, does not. Judged against model.yaml as it is when the ingest runs.
-    rates = _agreed([c.get("infer_hz") for c in configs])
-    every_tick = sum(1 for c in configs if not c.get("infer_hz")) if rates is not None else 0
-    if rates is not None:
+    # How often the node was asked for a plan (`infer_hz`, #106), judged from the runs' own record
+    # and never from model.yaml as it is when the ingest runs. A run that recorded no rate was asked
+    # every tick (or, before #106, at a rate in `model_env`: `_driven_off_protocol`); one that kept
+    # no config at all is not known. The rate the model declared ranks; the host's PADDOCK_INFER_HZ
+    # in its place is recorded with the declared one beside it (`planning_hz`) and does not, nor do
+    # two rates in one pool. In the config only when some run was asked slower than every tick, or
+    # at the host's rate, so a pool asked every tick keeps its run id and one at 10 Hz never takes it.
+    kept = [c for c in configs if c]
+    unread = len(configs) - len(kept)
+    read = [(c, _rate(c.get("infer_hz", 0.0))) for c in kept]
+    not_a_rate = sorted({repr(c.get("infer_hz")) for c, hz in read if hz is None})
+    rates = _agreed([hz for _, hz in read if hz is not None])
+    host_set = [c for c, hz in read if c.get("planning_hz") is not None and hz != _rate(c["planning_hz"])]
+    if rates is not None and (rates != 0.0 or host_set):
         config["infer_hz"] = rates
-    mixed_rates = isinstance(rates, list) or bool(every_tick)
-    declared_hz = _registered_planning_hz(model) if rates is not None else 0.0
-    undeclared_rate = rates is not None and not mixed_rates and float(rates) != declared_hz
+    if host_set:
+        config["planning_hz"] = _agreed([c["planning_hz"] for c in host_set])
+    mixed_rates = isinstance(rates, list)
+    unknown_rate = unread if rates not in (None, 0.0) else 0
     # A setting the model's model.yaml declares, set to another value: what keeps a
     # `paddock run` from ranking (runner._env_override_reasons) keeps the pool from ranking.
     # Judged against the declared_env the source runs recorded, which leaves tuning keys
@@ -457,7 +467,7 @@ def ingest(
             f"{keys} {was} supplied by the ingest config and recorded by no source run, "
             "so it is the operator's assertion about the campaign, not a reading from it."
         )
-    off_protocol = _driven_off_protocol(config["model_env"])
+    off_protocol = None if any("infer_hz" in c for c in kept) else _driven_off_protocol(config["model_env"])
     if off_protocol is not None:
         note = (note + " " if note else "") + (
             f"driven at {off_protocol:g} Hz, not the {PROTOCOL_HZ:g} Hz the benchmark's published "
@@ -469,21 +479,31 @@ def ingest(
             f"source runs set {', '.join(overrides)}, which the model's model.yaml declares, to other "
             "values (config.model_env), so this run does not rank, as a paddock run of them would not."
         )
+    if not_a_rate:
+        note = (note + " " if note else "") + (
+            f"source runs recorded infer_hz {', '.join(not_a_rate)}, which is not a rate, so this run "
+            "does not rank."
+        )
+    if host_set:
+        note = (note + " " if note else "") + (
+            f"{len(host_set)} of {len(used)} source runs were asked for a plan at the rate the host's "
+            "PADDOCK_INFER_HZ set (config.infer_hz, 0 for every tick), where the model's model.yaml "
+            "declared config.planning_hz: an operator's rate, so this run does not rank."
+        )
     if mixed_rates:
-        also = f", and {every_tick} of {len(used)} every tick" if every_tick else ""
         note = (note + " " if note else "") + (
-            f"source runs were asked for a plan at different rates (config.infer_hz {rates}{also}); "
-            "one mean describes none of them, so this run does not rank."
+            f"source runs were asked for a plan at different rates (config.infer_hz {rates}, 0 for every "
+            "tick); one mean describes none of them, so this run does not rank."
         )
-    elif undeclared_rate:
+    if unknown_rate:
         note = (note + " " if note else "") + (
-            f"asked for a plan at {float(rates):g} Hz, which {model}'s model.yaml does not declare "
-            f"(planning_hz {declared_hz:g}), so this run does not rank."
+            f"{unread} of {len(used)} source runs kept no config, so the rate their routes were asked at "
+            "is not known, and this run does not rank."
         )
-    elif rates is not None:
+    if rates not in (None, 0.0) and not (mixed_rates or host_set or not_a_rate or unknown_rate):
         note = (note + " " if note else "") + (
-            f"asked for a plan at {float(rates):g} Hz, the planning_hz {model}'s model.yaml declares, "
-            "the last plan followed in between."
+            f"asked for a plan at {rates:g} Hz, the planning_hz the model's model.yaml declared for these "
+            "runs, the last plan followed in between."
         )
     if other_rig:
         said = (
@@ -538,15 +558,17 @@ def ingest(
         status="complete" if not missing else "partial",
         # More than one recording setup is not one experiment: its mean is not a
         # measurement of anything, so it is kept and not ranked rather than
-        # published as a number nobody drove. A run driven at another rate is a
-        # different protocol, and ranking it beside 20 Hz rows says they measure
-        # the same thing -- which is the claim this campaign exists to deny.
+        # published as a number nobody drove. A run driven at a rate its model does
+        # not declare is a different protocol, and ranking it beside runs at the
+        # model's own rate says they measure the same thing -- which is the claim
+        # the native-rate campaign exists to deny.
         # Source runs under different, or unrecorded, model.yaml envs are the
         # first case again: two settings of the model behind one mean.
         # An early stop ranks; a pool of routes stopped under different rules does not.
         # A declared setting run at another value, or another camera rig, is what keeps a
         # single run from ranking, and so the pool of them. A pool asked at the rate its model
-        # declares ranks; at a rate it does not, or at two rates, it does not.
+        # declared ranks; at the host's rate, at two rates, or at a rate not known or not a
+        # number, it does not.
         valid=not missing
         and len(pooled_setups) <= 1
         and off_protocol is None
@@ -555,7 +577,9 @@ def ingest(
         and not overrides
         and not other_rig
         and not mixed_rates
-        and not undeclared_rate
+        and not host_set
+        and not unknown_rate
+        and not not_a_rate
         and not mixed_stops
         and not at_collision
         and not by_hand,

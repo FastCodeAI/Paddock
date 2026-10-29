@@ -99,8 +99,10 @@ So do the `stop_*` settings, whose rules the run's notes also state, and a
 1/`planning_hz` seconds and follows the last plan unchanged in between; a model
 without it is asked every 0.05 s tick. Drive-JEPA declares 2 Hz, AutoE2E 10 Hz. The rate is
 recorded as `config.infer_hz` and hashed into the run id, and the host's
-`PADDOCK_INFER_HZ` overrides it for every model. A pooled record carries it too,
-and ranks at the rate the model declares (*Pooling recorded routes*, below).
+`PADDOCK_INFER_HZ` overrides it for every model. Where that replaces the model's
+own rate, the run records the declared rate beside it (`config.planning_hz`) and
+is stored `valid: false`: an operator's rate. A pooled record carries the rate
+too, and ranks at the model's own (*Pooling recorded routes*, below).
 
 Prerequisites (all outside this repo):
 
@@ -464,9 +466,12 @@ So is `declared_env`, the model's own `model.yaml` env. Source runs that recorde
 different ones, or a mix of runs that recorded one and runs from before it was
 recorded (#99), are pooled `valid: false` with a note: two settings of the model
 behind one mean, the same reason as two recording setups. So is `infer_hz`, how
-often the node was asked for a plan: the pool ranks at the rate the model's
-`model.yaml` declares (`planning_hz`), and not at a rate it does not declare (the
-host's `PADDOCK_INFER_HZ`) or at two rates in one pool.
+often the node was asked for a plan, judged from what the runs recorded: the pool
+ranks at the rate the model's `model.yaml` declared for them (`planning_hz`). It
+does not rank at the host's `PADDOCK_INFER_HZ` in its place, at two rates, or at a
+rate not known because a run kept no config. A run that recorded no rate was asked
+every tick; before #106, a rate set by hand reached the record only as
+`PADDOCK_INFER_HZ` in `model_env`, and such a pool does not rank either.
 Aggregates are recomputed by the store from the per-route metrics; nothing is
 transcribed from a report.
 

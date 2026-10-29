@@ -82,6 +82,25 @@ def infer_hz(planning_hz: float | None) -> float:
         raise ValueError(f"PADDOCK_INFER_HZ={raw!r}: expected a rate in Hz") from None
 
 
+#: Bench2Drive steps its simulation at 20 Hz, so a client asked at that rate or faster, or at
+#: none (0), asks on every tick: one protocol however the rate is written.
+SIM_HZ = 20.0
+
+
+def every_tick(hz: float) -> bool:
+    """Whether a client asked at ``hz`` asks the node on every simulation tick."""
+    return hz <= 0 or hz >= SIM_HZ
+
+
+def _same_rate(a: float, b: float) -> bool:
+    """Two rates that ask the node on the same ticks."""
+    return (every_tick(a) and every_tick(b)) or a == b
+
+
+def _rate_said(hz: float) -> str:
+    return "on every tick" if every_tick(hz) else f"at {hz:g} Hz"
+
+
 #: The CARLA launch flag that changes what the cameras see. Bench2Drive 7ec25d1
 #: launches CARLA at its default (Epic) quality; ``-quality-level=Low`` renders
 #: the sky black and the wet-road decal layer as white speckle, so frames scored
@@ -746,9 +765,20 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         differently (Drive-JEPA 57.60 against 31.71 on the 50 routes), so the
         two must never share a run id. Absent means every tick, which is what
         a record without it was driven at.
+
+        When the host's PADDOCK_INFER_HZ replaces the rate the model declares,
+        the declared one is recorded beside it (``planning_hz``; ``infer_hz`` 0
+        for every tick), so the record says the rate was an operator's: the run
+        does not rank (``invalid_reasons``), and neither does a pool of such runs.
+        A host that restates the model's own rate changes nothing.
         """
-        hz = infer_hz(getattr(model, "planning_hz", 0.0))
-        return {"infer_hz": hz} if hz else {}
+        declared = float(getattr(model, "planning_hz", 0.0) or 0.0)
+        hz = infer_hz(declared)
+        if _same_rate(hz, declared):
+            self._host_rate = None
+            return {} if every_tick(declared) else {"infer_hz": declared}
+        self._host_rate = (hz, declared)
+        return {"infer_hz": 0.0 if every_tick(hz) else hz, "planning_hz": declared}
 
     def run_config(self) -> dict[str, Any]:
         """Site settings that change *what is measured*, for ``run.json``.
@@ -829,7 +859,9 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         and over-time rules are not a reason: a route they end is a failed drive
         (`remarks`). The collision rule is one: it scores a route at its first
         collision, where Bench2Drive charges a penalty and drives on. A camera rig
-        other than paddock's is one: the model was shown other cameras.
+        other than paddock's is one: the model was shown other cameras. So is the
+        host's PADDOCK_INFER_HZ replacing the rate the model declares: the model
+        was asked for plans at an operator's rate (``model_run_config``).
         """
         reasons = []
         manual = getattr(self, "_ended_by_hand", set())
@@ -846,6 +878,16 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             reasons.append(
                 f"camera_rig {self.camera_rig!r}: the model saw other cameras than the "
                 f"{rig.DEFAULT!r} rig every model here is compared through"
+            )
+        host = getattr(self, "_host_rate", None)  # set by model_run_config for the model being run
+        if host is not None:
+            hz, declared = host
+            own = (
+                "no planning_hz (a plan every tick)" if every_tick(declared) else f"planning_hz {declared:g}"
+            )
+            reasons.append(
+                f"PADDOCK_INFER_HZ on the host asked the model for a plan {_rate_said(hz)}, where its "
+                f"model.yaml declares {own}: an operator's rate, not the model's own"
             )
         return reasons
 
