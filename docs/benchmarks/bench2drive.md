@@ -97,7 +97,7 @@ So do the `stop_*` settings, whose rules the run's notes also state, and a
 **How often the model is asked for a plan** is the model's own `planning_hz`
 (`model.yaml`, `capabilities`). The client asks the node once per
 1/`planning_hz` seconds and follows the last plan unchanged in between; a model
-without it is asked every 0.05 s tick. Drive-JEPA declares 2 Hz, AutoE2E 10 Hz. The rate is
+without it is asked every 0.05 s tick. Drive-JEPA declares 2 Hz, AutoE2E 10 Hz, METEOR 5 Hz. The rate is
 recorded as `config.infer_hz` and hashed into the run id, and the host's
 `PADDOCK_INFER_HZ` overrides it for every model. Where that replaces the model's
 own rate, the run records the declared rate beside it (`config.planning_hz`) and
