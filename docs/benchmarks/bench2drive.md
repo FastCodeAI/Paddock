@@ -621,7 +621,7 @@ with the set-speed latch fix in place for both.
 and Qwen-Drive replan at 2 Hz, Alpamayo 1.5 at 10 Hz — over the 50-route set,
 18–20 Sep 2026. Alpamayo 1.5 and Qwen-Drive are means over 49 routes: route 3800
 crashes CARLA for both at their native rate and is reported as never scored, not
-as a zero. Every other cell in this column but AutoE2E's (☉) is driven at 20 Hz, one inference per
+as a zero. Every other cell in this column but AutoE2E's (☉) and METEOR's (below) is driven at 20 Hz, one inference per
 simulator tick; OpenPilot's native rate *is* 20 Hz, and VisionPilot was not
 re-run. So the ※ cells are **not comparable with the ◆ cells**: a different rate
 and a different route set. At 20 Hz the same three scored Alpamayo 1.5 44.58 and
@@ -662,8 +662,9 @@ and with no driving command, which the released graph has no input for, asked fo
 a plan at the 5 Hz its `model.yaml` declares
 ([run](../../results/bench2drive/meteor/pooled50-40c29d24c37d542a-867d57/run.json),
 `valid: true`): route completion 6.30 %, infraction penalty 0.90, under AutoE2E's
-early-stop rules. On 43 of the 50 routes the car never leaves the start. Standing
-still, METEOR plans a 3 s path that ends a median 0.17 m ahead, and its own
+early-stop rules. The other rows drove every route to Bench2Drive's own end, so,
+like AutoE2E's, the cell is marked R. On 43 of the 50 routes the car never leaves
+the start. Standing still, METEOR plans a 3 s path that ends a median 0.17 m ahead, and its own
 acceleration output is negative, so the shared controller, which brakes when a
 plan asks for less than 0.4 m/s, holds the brake until a rule ends the route: the
 stuck rule at 30 s on 30 of them, the over-time rule on 1, and Bench2Drive's own

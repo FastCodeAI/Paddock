@@ -161,7 +161,9 @@ kitscenes = { run = "kitscenes/meteor/20260914T215457-ab0586" }
 nuplan = { run = "nuplan/meteor/20260917T195335-1b447c" }
 navsim = { run = "navsim/meteor/20260914T234307-e56cfc", marks = "P" }
 navsim_v1 = { run = "navsim_v1/meteor/20260915T005223-071c0b", marks = "P" }
-bench2drive = { run = "bench2drive/meteor/pooled50-40c29d24c37d542a-867d57", note = "5 Hz" }  # its declared planning_hz
+# Its declared 5 Hz, routes ended after 30 s stuck or 4x the expert's time (AutoE2E's rules): valid,
+# but not measured as this column's 20 Hz cells were (every tick, every route to its end), so R.
+bench2drive = { run = "bench2drive/meteor/pooled50-40c29d24c37d542a-867d57", marks = "R", note = "5 Hz" }
 neuroncap = { run = "neuroncap/meteor/20260915T193036-d34559" }
 alpasim = { run = "alpasim/meteor/legacy-meteor_011_published_30scenes", marks = "R" }
 
