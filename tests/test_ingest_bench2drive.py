@@ -550,6 +550,32 @@ def test_a_pool_driven_on_another_camera_rig_names_it_and_does_not_rank(tmp_path
     assert run.run_id != default.run_id
 
 
+def test_a_pool_asked_at_the_rate_its_model_declares_records_it_and_ranks(tmp_path, monkeypatch) -> None:
+    """Every run since #106 records how often the node was asked (`infer_hz`). AutoE2E's 50 routes
+    pooled without it: the record named no rate, and its run id was the one the same routes asked
+    every tick would get. The model's declared rate is how it is driven, so the pool ranks."""
+    monkeypatch.setattr(bench2drive, "_registered_planning_hz", lambda model: 10.0)
+    run = _pooled_with(tmp_path / "a", ({"infer_hz": 10.0}, {"infer_hz": 10.0}))
+    assert run.config["infer_hz"] == 10.0 and run.valid
+    assert "10 Hz, the planning_hz modelx's model.yaml declares" in run.notes
+    every_tick = _pooled_with(tmp_path / "b", ({}, {}))
+    assert "infer_hz" not in every_tick.config and every_tick.valid, "a pool of earlier runs keeps its id"
+    assert run.run_id != every_tick.run_id
+
+
+def test_a_pool_at_a_rate_nobody_declared_or_at_two_rates_does_not_rank(tmp_path, monkeypatch) -> None:
+    """A rate the model's model.yaml does not declare is the host's PADDOCK_INFER_HZ, an operator's
+    choice; and one mean over two rates describes neither."""
+    monkeypatch.setattr(bench2drive, "_registered_planning_hz", lambda model: 10.0)
+    host = _pooled_with(tmp_path / "a", ({"infer_hz": 2.0}, {"infer_hz": 2.0}))
+    assert host.config["infer_hz"] == 2.0 and not host.valid
+    assert "2 Hz, which modelx's model.yaml does not declare (planning_hz 10)" in host.notes
+    two = _pooled_with(tmp_path / "b", ({"infer_hz": 10.0}, {"infer_hz": 2.0}))
+    assert sorted(two.config["infer_hz"]) == [2.0, 10.0] and not two.valid
+    some_every_tick = _pooled_with(tmp_path / "c", ({"infer_hz": 10.0}, {}))
+    assert not some_every_tick.valid and "1 of 2 every tick" in some_every_tick.notes
+
+
 def test_a_pool_of_routes_ended_at_a_collision_does_not_rank(tmp_path: Path) -> None:
     rules = {"stuck_s": 30.0, "collision": True, "progress_m": 3.0}
     run = _pooled_with(tmp_path, ({"early_stop": rules}, {"early_stop": rules}))

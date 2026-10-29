@@ -99,7 +99,8 @@ So do the `stop_*` settings, whose rules the run's notes also state, and a
 1/`planning_hz` seconds and follows the last plan unchanged in between; a model
 without it is asked every 0.05 s tick. Drive-JEPA declares 2 Hz, AutoE2E 10 Hz. The rate is
 recorded as `config.infer_hz` and hashed into the run id, and the host's
-`PADDOCK_INFER_HZ` overrides it for every model.
+`PADDOCK_INFER_HZ` overrides it for every model. A pooled record carries it too,
+and ranks at the rate the model declares (*Pooling recorded routes*, below).
 
 Prerequisites (all outside this repo):
 
@@ -462,7 +463,10 @@ the ingest, and `config.source_config_read` says how many source runs kept one.
 So is `declared_env`, the model's own `model.yaml` env. Source runs that recorded
 different ones, or a mix of runs that recorded one and runs from before it was
 recorded (#99), are pooled `valid: false` with a note: two settings of the model
-behind one mean, the same reason as two recording setups.
+behind one mean, the same reason as two recording setups. So is `infer_hz`, how
+often the node was asked for a plan: the pool ranks at the rate the model's
+`model.yaml` declares (`planning_hz`), and not at a rate it does not declare (the
+host's `PADDOCK_INFER_HZ`) or at two rates in one pool.
 Aggregates are recomputed by the store from the per-route metrics; nothing is
 transcribed from a report.
 

@@ -213,6 +213,15 @@ def _registered_waypoint_dt(model: str) -> float | None:
     return getattr(spec, "waypoint_dt", None) if spec else None
 
 
+def _registered_planning_hz(model: str) -> float:
+    """How often the model's model.yaml says it plans (`planning_hz`, #106); 0 when it says nothing."""
+    try:
+        spec = Registry.load().models.get(model)
+    except Exception:  # noqa: BLE001 -- a broken registry must not fail an ingest
+        return 0.0
+    return float(getattr(spec, "planning_hz", 0.0) or 0.0) if spec else 0.0
+
+
 def discover(runs_roots: Sequence[Path], routes: list[str] | None = None) -> Survey:
     """Walk the recording trees once: the scored routes, and the rejected ones.
 
@@ -381,6 +390,19 @@ def ingest(
     other_rig = rigs is not None and rigs != rig.DEFAULT
     if other_rig:
         config["camera_rig"] = rigs
+    # How often the node was asked for a plan (`infer_hz`, #106), in the config only when the
+    # source runs recorded a rate, so a pool of runs asked every tick keeps its run id. Dropping
+    # it would let a pool claim a rate it never states, under the run id of the same routes asked
+    # every tick. The rate the model's model.yaml declares is how that model is driven, and the
+    # pool ranks at it; a rate it does not declare (the host's PADDOCK_INFER_HZ), or two rates in
+    # one pool, does not. Judged against model.yaml as it is when the ingest runs.
+    rates = _agreed([c.get("infer_hz") for c in configs])
+    every_tick = sum(1 for c in configs if not c.get("infer_hz")) if rates is not None else 0
+    if rates is not None:
+        config["infer_hz"] = rates
+    mixed_rates = isinstance(rates, list) or bool(every_tick)
+    declared_hz = _registered_planning_hz(model) if rates is not None else 0.0
+    undeclared_rate = rates is not None and not mixed_rates and float(rates) != declared_hz
     # A setting the model's model.yaml declares, set to another value: what keeps a
     # `paddock run` from ranking (runner._env_override_reasons) keeps the pool from ranking.
     # Judged against the declared_env the source runs recorded, which leaves tuning keys
@@ -447,6 +469,22 @@ def ingest(
             f"source runs set {', '.join(overrides)}, which the model's model.yaml declares, to other "
             "values (config.model_env), so this run does not rank, as a paddock run of them would not."
         )
+    if mixed_rates:
+        also = f", and {every_tick} of {len(used)} every tick" if every_tick else ""
+        note = (note + " " if note else "") + (
+            f"source runs were asked for a plan at different rates (config.infer_hz {rates}{also}); "
+            "one mean describes none of them, so this run does not rank."
+        )
+    elif undeclared_rate:
+        note = (note + " " if note else "") + (
+            f"asked for a plan at {float(rates):g} Hz, which {model}'s model.yaml does not declare "
+            f"(planning_hz {declared_hz:g}), so this run does not rank."
+        )
+    elif rates is not None:
+        note = (note + " " if note else "") + (
+            f"asked for a plan at {float(rates):g} Hz, the planning_hz {model}'s model.yaml declares, "
+            "the last plan followed in between."
+        )
     if other_rig:
         said = (
             f"camera rigs differ between source runs ({', '.join(rigs)})"
@@ -507,7 +545,8 @@ def ingest(
         # first case again: two settings of the model behind one mean.
         # An early stop ranks; a pool of routes stopped under different rules does not.
         # A declared setting run at another value, or another camera rig, is what keeps a
-        # single run from ranking, and so the pool of them.
+        # single run from ranking, and so the pool of them. A pool asked at the rate its model
+        # declares ranks; at a rate it does not, or at two rates, it does not.
         valid=not missing
         and len(pooled_setups) <= 1
         and off_protocol is None
@@ -515,6 +554,8 @@ def ingest(
         and not undeclared
         and not overrides
         and not other_rig
+        and not mixed_rates
+        and not undeclared_rate
         and not mixed_stops
         and not at_collision
         and not by_hand,
