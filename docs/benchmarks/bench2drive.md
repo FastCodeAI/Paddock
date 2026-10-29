@@ -99,7 +99,8 @@ So do the `stop_*` settings, whose rules the run's notes also state, and a
 1/`planning_hz` seconds and follows the last plan unchanged in between; a model
 without it is asked every 0.05 s tick. Drive-JEPA declares 2 Hz, AutoE2E 10 Hz. The rate is
 recorded as `config.infer_hz` and hashed into the run id, and the host's
-`PADDOCK_INFER_HZ` overrides it for every model.
+`PADDOCK_INFER_HZ` overrides it for every model. A pooled record carries it too,
+and ranks at the rate the model declares (*Pooling recorded routes*, below).
 
 Prerequisites (all outside this repo):
 
@@ -462,7 +463,10 @@ the ingest, and `config.source_config_read` says how many source runs kept one.
 So is `declared_env`, the model's own `model.yaml` env. Source runs that recorded
 different ones, or a mix of runs that recorded one and runs from before it was
 recorded (#99), are pooled `valid: false` with a note: two settings of the model
-behind one mean, the same reason as two recording setups.
+behind one mean, the same reason as two recording setups. So is `infer_hz`, how
+often the node was asked for a plan: the pool ranks at the rate the model's
+`model.yaml` declares (`planning_hz`), and not at a rate it does not declare (the
+host's `PADDOCK_INFER_HZ`) or at two rates in one pool.
 Aggregates are recomputed by the store from the per-route metrics; nothing is
 transcribed from a report.
 
@@ -630,17 +634,19 @@ constant velocity instead extrapolates the recorded ego velocity. 48.31 is that
 
 ✦ Bench2Drive constant velocity is a do-nothing floor: "constant velocity" means holding the current speed, and every route starts from a standstill, so the baseline holds zero and never departs -- blocked after 60 s, driving score 0 on every route (confirmed on 3 routes, structural for all 24). Unlike nuScenes, where the logged ego is already moving, it is not an informative baseline in closed loop.
 
-☉ AutoE2E's cell, 37.74, is its mean driving score over the 50 routes at its
-own 10 Hz ([run](../../results/bench2drive/autoe2e/pooled50-steady-noroute-40c29d24c37d542a-8d26e9/run.json)),
-route completion 57.59 %, infraction penalty 0.63. It is fed a steady ego
-history (a straight past at the current speed) and no route raster, the
-settings chosen after [the model's deep dive](../models/autoe2e.md) found the
-measured past feeding the car's own turning back into the plan. Each route ends
-after 30 s without progress, at its first collision, or at 4x the expert's time:
-33 of the 50 ended at a collision, none by the other two rules. Those are inputs
-and a stopping rule the other rows do not have, so the cell is marked R, the run
-is stored `valid: false`, and AutoE2E is left out of the 50-route table below,
-whose infraction counts come from routes driven to Bench2Drive's own end.
+☉ AutoE2E's cell, 15.30, is its mean driving score over the 50 routes with its
+own inputs, the measured ego history and the route raster, asked for a plan at the
+10 Hz its `model.yaml` declares
+([run](../../results/bench2drive/autoe2e/pooled50-40c29d24c37d542a-cc7a9c/run.json),
+`valid: true`): route completion 26.37 %, infraction penalty 0.60. A route ends
+after 30 s without 3 m of progress or at 4x the expert's time, and is scored as a
+failed drive: 42 of the 50 ended on the first rule, 1 on the second. The other rows
+drove every route to Bench2Drive's own end, so AutoE2E is left out of the 50-route
+table below, whose infraction counts depend on how long each route ran. Fed a
+steady straight past and no route instead, which are not upstream's inputs, and
+stopped at its first collision, it scored 37.74 on the same routes
+([run](../../results/bench2drive/autoe2e/pooled50-steady-noroute-40c29d24c37d542a-8d26e9/run.json),
+`valid: false`); why that past helps is in [the model's deep dive](../models/autoe2e.md).
 
 ### Bench2Drive — 50 routes
 

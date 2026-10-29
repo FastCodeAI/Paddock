@@ -492,21 +492,36 @@ every plan identical, the eight scene metrics equal, and the new log fields at
 predates #101, which adds `model.yaml`'s env to the id, so a rerun gets a new
 id.
 
-**Bench2Drive, the 50 routes of the other rows, `valid: false`**
-(`results/bench2drive/autoe2e/pooled50-steady-noroute-40c29d24c37d542a-8d26e9`):
-**37.74** mean driving score at the model's own 10 Hz, fed a steady ego history
-and no route raster (the settings the deep dive below chose), every route driven
-on Paddock `7244bc5`. Each route ends after 30 s without 3 m of progress, at its
-first recorded collision, or at 4x Think2Drive's time, and is scored as it stood.
-The other rows drive every route to Bench2Drive's own end, so the support matrix
-marks this cell R and does not rank it.
+**Bench2Drive, the 50 routes of the other rows, valid**
+(`results/bench2drive/autoe2e/pooled50-40c29d24c37d542a-cc7a9c`): **15.30** mean
+driving score with upstream's inputs, the measured ego history and the route
+raster, and nothing `model.yaml` declares set at the site, asked for a plan at its
+declared 10 Hz (`planning_hz`); every route driven on Paddock `4521edc`, 28-29 Oct
+2026. A route ends after 30 s without 3 m of progress or at 4x Think2Drive's time
+and is scored as a failed drive; the other rows drove every route to Bench2Drive's
+own end. The support matrix ranks it, below constant velocity's floor.
 
-| routes | DS | DS median | RC (%) | infraction penalty | ended at a collision | ended stuck or over time |
-|---:|---:|---:|---:|---:|---:|---:|
-| 50 | **37.74** | 28.17 | 57.59 | 0.63 | 33 / 50 | 0 / 50 |
+| inputs | record | DS | DS median | RC (%) | infraction penalty | routes with a collision | ended: stuck / over time / at a collision | valid |
+|---|---|---:|---:|---:|---:|---:|---:|---|
+| upstream's, at 10 Hz | `pooled50-40c29d24c37d542a-cc7a9c` | **15.30** | 12.89 | 26.37 | 0.60 | 36 / 50 | 42 / 1 / -- | yes |
+| steady past, no route | `pooled50-steady-noroute-40c29d24c37d542a-8d26e9` | 37.74 | 28.17 | 57.59 | 0.63 | 33 / 50 | 0 / 0 / 33 | no |
 
-The runs before it, each `valid: false` too (a 10 Hz rate, or inputs upstream
-never produces), none pooled into a record:
+The second row is the deep dive's fix (below), driven on `7244bc5`: a steady
+straight past at the current speed and no route raster
+(`AUTOE2E_EGO_HISTORY=steady`, `AUTOE2E_ROUTE=0`), 10 Hz from the
+`AUTOE2E_REPLAN_S` pairing, and each route ended at its first collision. It sets
+three keys `model.yaml` declares and stops where Bench2Drive's protocol does not,
+so it does not rank; it is what the fix buys on the same routes.
+
+The two rows also hold the plan between forwards differently: the client follows
+it unchanged since #106, where the pairing had the node move it into the current
+ego frame. On 1711 and 2286, driven from the same start both ways (the deep
+dive's recorded drives, upstream's inputs), the first plans agree within 4 cm and
+2 mm, the cars are 1.1-1.5 m apart after 4 s, and the client's hold launches
+about 0.5 m/s faster; both drives then crash where the other did.
+
+Earlier runs, each `valid: false` (a site-set rate, or inputs upstream never
+produces), none pooled into a record:
 
 - The first 50-route sweep (`PADDOCK_INFER_HZ=10`, route raster on) ran a
   forward on every 20 Hz call -- the Bench2Drive agent did not read that
@@ -521,8 +536,9 @@ never produces), none pooled into a record:
 - At the model's own 10 Hz (*On Bench2Drive*), with the history fill and the
   route raster on: 59 routes scored, mean DS 13.7, before that sweep was
   stopped on 21 Oct 2026 for the deep dive below.
-- A full 220-route sweep with these settings started on 23 Oct 2026; its first
-  50 routes are the record above, and the rest are still driving.
+- The full 220-route sweep with the steady settings, from 23 Oct 2026: stopped
+  on 28 Oct at 204 routes for the valid run above; its first 50 routes are the
+  steady row's record.
 
 Why it swerves, from three routes (1711, 2286, 2373) whose every request was
 recorded and replayed into the model to within 0.5 mm of the plan CARLA's node
