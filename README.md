@@ -137,9 +137,6 @@ was measured the same way as the rest of its column.
 - **R — run differently from the rest of its column, so not ranked against it.**
   Bench2Drive at the model's native inference rate, where the others run at
   20 Hz over the same 50 routes; those gains are partly more exposure.
-  AutoE2E's Bench2Drive cell is also fed a steady ego history and no route, and
-  each of its routes ends at the first collision (33 of the 50), where the others
-  drive every route to Bench2Drive's own end; it is stored `valid: false`.
   OpenPilot's Bench2Drive cell is an unassisted estimate rebuilt from assisted
   recordings. Alpamayo on AlpaSim drove 4 cameras on 10 of the 30
   scenes, METEOR 6 cameras on all 30, and AutoE2E 6 pinhole cameras at its training field of view on all 30, through paddock's bridge.
@@ -149,7 +146,10 @@ was measured the same way as the rest of its column.
   logged drive, upstream's validation protocol (without the route it scores
   0.837); on nuScenes it is fed the 6.5 s of past keyframes it declares, where the
   others get 2 s. Drive-JEPA on comma2k19 is its released front-camera version,
-  `drivejepa_free`, because comma2k19 has one camera.
+  `drivejepa_free`, because comma2k19 has one camera. AutoE2E on Bench2Drive is
+  asked for a plan at the 10 Hz its `model.yaml` declares, where the unmarked cells
+  were asked every 20 Hz tick, and a route ends after 30 s without progress or at
+  4x the expert's time, where theirs ran to Bench2Drive's own end.
 
 Before comparing numbers:
 

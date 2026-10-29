@@ -669,7 +669,7 @@ campaign driven on 22 Oct 2026 by the same bridge. See
   record (gated `Cosmos-Reason2-8B`). Detail in `docs/benchmarks/nuplan.md`.
 
 - **AutoE2E v1.0** — **adapter landed; NAVSIM, KITScenes, comma2k19,
-  neuroNCAP, nuScenes and AlpaSim scored; Bench2Drive recorded, `valid: false`.** nuScenes val 0.839
+  neuroNCAP, nuScenes, AlpaSim and Bench2Drive scored.** nuScenes val 0.839
   cumulative L2 (5,119 keyframes, valid), fed the 6.5 s of past keyframes it
   declares. The Autoware Foundation's release
   checkpoint `kitscenes-epoch-5`, imported from upstream at the release
@@ -692,12 +692,12 @@ campaign driven on 22 Oct 2026 by the same bridge. See
   10,165 samples (valid; 1.358 with the ground truth in the calibrated frame),
   from the road camera alone: the adapter now leaves out the views a benchmark
   does not have instead of refusing every sample. Bench2Drive needed the route
-  as an observation field (`route_xy`) and its own 10 Hz (`AUTOE2E_REPLAN_S`);
-  a full 220-route sweep with a steady ego history and no route raster started
-  on 23 Oct 2026, and its first 50 routes, the other rows' set, pool into
-  DS 37.74 (run `pooled50-steady-noroute-40c29d24c37d542a-8d26e9`, `valid: false`:
-  those inputs are not upstream's, and each route ends at its first collision,
-  33 of the 50); the deep dive of why the model swerves is in the model doc.
+  as an observation field (`route_xy`) and its own 10 Hz, now declared as
+  `planning_hz`. On the 50 routes the other rows pool it scores DS 15.30 (run
+  `pooled50-40c29d24c37d542a-cc7a9c`, valid) with upstream's inputs, routes ended
+  after 30 s stuck or 4x the expert's time; fed the deep dive's steady past with
+  no route and stopped at its first collision, 37.74 (`valid: false`). Why the
+  measured past swerves the car is in the model doc.
   AlpaSim 0.1694 `scene_score` on the 30 scenes (valid, run
   `20261022T045847-86b955`), through paddock's bridge
   on six pinhole cameras at the KITScenes field of view, a rear view from the roof
@@ -710,6 +710,8 @@ campaign driven on 22 Oct 2026 by the same bridge. See
   | the two speed patches change no output | `torch.equal` against upstream's forward, 9 Oct | **verified**, on the shapes run |
   | route raster and rollout follow upstream | read against `navigation/geometry.py` and `control_rollout.py` at `40a75cf8`; conventions pinned by the adapter's tests | **strong** |
   | `route_xy` has the right sign | stand-in CARLA test (left lane arrives at y > 0) and, live, the B2D projection overlay | **strong** |
+  | its Bench2Drive record is valid | before the drive, paddock's own checks on the site config found no env override and no harness reason; the 50 routes all scored, and the ingest pooled them `valid: true` with `infer_hz` 10, the rate `model.yaml` declares | **verified** |
+  | the client's 10 Hz hold drives like the pairing's | 1711 and 2286 from the same start both ways: first plans within 4 cm and 2 mm, cars 1.1-1.5 m apart after 4 s, the client's hold ~0.5 m/s faster at launch | **ran**, two routes, before the first crash |
   | the Bench2Drive swerve is the model, not the adapter | projection overlay, raster mapping, and a y-mirror / rot-180 A/B on 80 navtest scenes where the deployed convention scores best; not ruled out: the route comes from the leaderboard's 50 m-downsampled plan, and route-without-map is an input upstream never produces | **argued** — no upstream closed-loop reference exists |
   | NAVSIM is out of its training logs | the release names no nuPlan split; its own nuPlan-test figures suggest test was held out | **argued** |
   | its KITScenes inputs are upstream's | compared with upstream's own packed v3.5 samples on the 186 shared val keyframes: tiles byte-identical, projections exact, `map_valid` / `route_valid` 186 of 186, semantic map ≤ 0.16 % of cells and route ≤ 11 cells apart (outside 26 rows whose upstream raster is anchored 0.5 s back), keyframe-40 ego rows ≤ 5.8e-3 | **verified** |
