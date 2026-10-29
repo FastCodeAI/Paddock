@@ -530,7 +530,8 @@ def ingest(
         note = (note + " " if note else "") + early_stop.manual_reason(by_hand) + "."
     if stop_rules is not None:
         mixed = isinstance(stop_rules, list)
-        said = early_stop.mixed_reason(stop_rules) if mixed else early_stop.remark(stop_rules)
+        # Counted over the routes pooled here: the runs recorded the site's routes with no expert drive.
+        said = early_stop.mixed_reason(stop_rules, wanted) if mixed else early_stop.remark(stop_rules, wanted)
         note = (note + " " if note else "") + said + "."
         if without:
             note += (

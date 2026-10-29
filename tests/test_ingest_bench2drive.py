@@ -495,6 +495,14 @@ def test_an_early_stop_is_read_from_the_source_runs_and_the_row_still_ranks(tmp_
     assert metrics.metrics["ended_stuck"]["n"] == 2, "2802's run wrote no record, so says nothing"
 
 
+def test_the_routes_without_an_expert_drive_are_counted_among_the_pooled_routes(tmp_path: Path) -> None:
+    """The runs record the site's routes the over-time rule cannot end; the pooled record covers fewer."""
+    rules = {"expert_factor": 4.0, "no_expert": ["1711", "3364", "3373"]}  # 1711 alone is pooled here
+    run = _pooled_with(tmp_path, ({"early_stop": rules}, {"early_stop": rules}))
+    assert run.config["early_stop"] == rules, "the config keeps what the runs recorded"
+    assert "(none on the 1 route(s) here with no expert drive)" in run.notes
+
+
 def test_routes_driven_before_the_early_stop_are_counted_out_loud(tmp_path: Path) -> None:
     root = _tree(tmp_path)
     rules = {"stuck_s": 30.0, "progress_m": 3.0}
