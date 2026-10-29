@@ -146,10 +146,11 @@ was measured the same way as the rest of its column.
   logged drive, upstream's validation protocol (without the route it scores
   0.837); on nuScenes it is fed the 6.5 s of past keyframes it declares, where the
   others get 2 s. Drive-JEPA on comma2k19 is its released front-camera version,
-  `drivejepa_free`, because comma2k19 has one camera. AutoE2E on Bench2Drive is
-  asked for a plan at the 10 Hz its `model.yaml` declares, where the unmarked cells
-  were asked every 20 Hz tick, and a route ends after 30 s without progress or at
-  4x the expert's time, where theirs ran to Bench2Drive's own end.
+  `drivejepa_free`, because comma2k19 has one camera. AutoE2E and METEOR on
+  Bench2Drive are asked for a plan at the rate their `model.yaml` declares (10 Hz
+  and 5 Hz), where VisionPilot and constant velocity were asked every 20 Hz tick,
+  and a route ends after 30 s without progress or at 4x the expert's time, where
+  theirs ran to Bench2Drive's own end.
 
 Before comparing numbers:
 

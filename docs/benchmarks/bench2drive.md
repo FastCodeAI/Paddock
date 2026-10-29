@@ -528,6 +528,7 @@ transcribed from a report.
 | an edited CARLA launch line is refused | unit-tested against a stub evaluator with and without the flag | **strong** |
 | `--resume` reuses scored routes and drives the rest | unit-tested (scored, killed, torn, all-crashed, short of repetitions); on a real interrupted sweep it reused the 34 scored routes and drove the other 185 | **strong** |
 | `campaign` deals what is left and the guard frees hung workers | selection, dealing, per-slot config and `--held` unit-tested (`tests/test_campaign.py`); the process side used on one 220-route sweep, where the guard freed two evaluators whose CARLA had died | moderate |
+| the calibration the agent sends is each camera's CARLA mount in paddock's frames | `tests/test_calibration.py` runs the agent's own `setup()` for every camera of every rig, against the conversion written out one frame change at a time, the pinhole of the rendered view, and a road point on the ego's left landing left of centre; carla and the HTTP session are stand-ins, and 3 of its 7 tests fail with the agent's y-flip removed | **strong** for the formula; not compared with a live CARLA's matrices |
 
 ## September 2026 runs: what changed and what the numbers are
 
@@ -616,8 +617,9 @@ and Qwen-Drive replan at 2 Hz, Alpamayo 1.5 at 10 Hz — over the 50-route set,
 18–20 Sep 2026. Alpamayo 1.5 and Qwen-Drive are means over 49 routes: route 3800
 crashes CARLA for both at their native rate and is reported as never scored, not
 as a zero. Every other cell in this column is driven at 20 Hz, one inference per
-simulator tick; OpenPilot's native rate *is* 20 Hz, and VisionPilot was not
-re-run. So the ※ cells are **not comparable with the ◆ cells**: a different rate
+simulator tick, except AutoE2E's and METEOR's, asked at the rate their
+`model.yaml` declares (below); OpenPilot's native rate *is* 20 Hz, and VisionPilot
+was not re-run. So the ※ cells are **not comparable with the ◆ cells**: a different rate
 and a different route set. At 20 Hz the same three scored Alpamayo 1.5 44.58 and
 Drive-JEPA 31.11 (24 routes, ◆) and Qwen-Drive 12.92 (50 routes). Drive-JEPA uses
 its released NAVSIM-v2 checkpoint zero-shot in CARLA. The runs stay
@@ -647,6 +649,22 @@ steady straight past and no route instead, which are not upstream's inputs, and
 stopped at its first collision, it scored 37.74 on the same routes
 ([run](../../results/bench2drive/autoe2e/pooled50-steady-noroute-40c29d24c37d542a-8d26e9/run.json),
 `valid: false`); why that past helps is in [the model's deep dive](../models/autoe2e.md).
+
+METEOR's cell, 1.05, is its mean driving score over the 50 routes: TIER IV's
+released ONNX as shipped, through paddock's six cameras in six of its eight slots
+and with no driving command, which the released graph has no input for, asked for
+a plan at the 5 Hz its `model.yaml` declares
+([run](../../results/bench2drive/meteor/pooled50-40c29d24c37d542a-867d57/run.json),
+`valid: true`): route completion 6.30 %, infraction penalty 0.90, under AutoE2E's
+early-stop rules. On 43 of the 50 routes the car never leaves the start. Standing
+still, METEOR plans a 3 s path that ends a median 0.17 m ahead, and its own
+acceleration output is negative, so the shared controller, which brakes when a
+plan asks for less than 0.4 m/s, holds the brake until a rule ends the route: the
+stuck rule at 30 s on 30 of them, the over-time rule on 1, and Bench2Drive's own
+blocked test at 60 s on the 12 that start about 30 m short of a red light, which
+pauses the stuck clock. On the 7 routes it drives, it collides on every one. Like
+AutoE2E, it is left out of the 50-route table below. Detail in
+[meteor.md](../models/meteor.md#reference-numbers).
 
 ### Bench2Drive — 50 routes
 
