@@ -499,7 +499,8 @@ raster, and nothing `model.yaml` declares set at the site, asked for a plan at i
 declared 10 Hz (`planning_hz`); every route driven on Paddock `4521edc`, 28-29 Oct
 2026. A route ends after 30 s without 3 m of progress or at 4x Think2Drive's time
 and is scored as a failed drive; the other rows drove every route to Bench2Drive's
-own end. The support matrix ranks it, below constant velocity's floor.
+own end. The support matrix marks its cell R for those two differences; the
+record itself is valid and ranks on the leaderboard.
 
 | inputs | record | DS | DS median | RC (%) | infraction penalty | routes with a collision | ended: stuck / over time / at a collision | valid |
 |---|---|---:|---:|---:|---:|---:|---:|---|

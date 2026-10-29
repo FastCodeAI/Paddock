@@ -620,14 +620,15 @@ with the set-speed latch fix in place for both.
 and Qwen-Drive replan at 2 Hz, Alpamayo 1.5 at 10 Hz — over the 50-route set,
 18–20 Sep 2026. Alpamayo 1.5 and Qwen-Drive are means over 49 routes: route 3800
 crashes CARLA for both at their native rate and is reported as never scored, not
-as a zero. Every other cell in this column is driven at 20 Hz, one inference per
+as a zero. Every other cell in this column but AutoE2E's (☉) is driven at 20 Hz, one inference per
 simulator tick; OpenPilot's native rate *is* 20 Hz, and VisionPilot was not
 re-run. So the ※ cells are **not comparable with the ◆ cells**: a different rate
 and a different route set. At 20 Hz the same three scored Alpamayo 1.5 44.58 and
 Drive-JEPA 31.11 (24 routes, ◆) and Qwen-Drive 12.92 (50 routes). Drive-JEPA uses
 its released NAVSIM-v2 checkpoint zero-shot in CARLA. The runs stay
-`valid: false` and off the ranked [leaderboard](../leaderboard.md), which ranks
-the 20 Hz protocol only. Per-route detail and the 20 Hz comparison are in
+`valid: false` and off the ranked [leaderboard](../leaderboard.md): each one's rate
+was set by hand, and the leaderboard ranks a model at 20 Hz or at the rate its
+`model.yaml` declares. Per-route detail and the 20 Hz comparison are in
 [Native inference rate](#native-inference-rate--three-models-re-driven).
 
 ♣ The Bench2Drive baseline uses a **fixed 3 m/s target**, with straight ego-frame
@@ -646,8 +647,9 @@ own inputs, the measured ego history and the route raster, asked for a plan at t
 `valid: true`): route completion 26.37 %, infraction penalty 0.60. A route ends
 after 30 s without 3 m of progress or at 4x the expert's time, and is scored as a
 failed drive: 42 of the 50 ended on the first rule, 1 on the second. The other rows
-drove every route to Bench2Drive's own end, so AutoE2E is left out of the 50-route
-table below, whose infraction counts depend on how long each route ran. Fed a
+drove every route to Bench2Drive's own end, so the cell is marked R, and AutoE2E is
+left out of the 50-route table below, whose infraction counts depend on how long
+each route ran. Fed a
 steady straight past and no route instead, which are not upstream's inputs, and
 stopped at its first collision, it scored 37.74 on the same routes
 ([run](../../results/bench2drive/autoe2e/pooled50-steady-noroute-40c29d24c37d542a-8d26e9/run.json),
@@ -819,8 +821,8 @@ re-run; nothing here restates either. The rate is recorded per run in
 adapter honoured a rate on `main`; it now does (a model's `planning_hz`, above),
 and Drive-JEPA declares 2 Hz, so a clean checkout drives it at that rate by
 default. CARLA re-runs are not bit-reproducible, so these stay landed results. The three runs are `valid: false` and **do not rank**
-on the board: a 2 or 10 Hz run is not the protocol the other rows were driven
-under. Their native scores are the Bench2Drive cells of the support matrix for
+on the board: each rate was set by hand, in the runs' `model_env`, and the board
+ranks a model only at 20 Hz or at the rate its `model.yaml` declares. Their native scores are the Bench2Drive cells of the support matrix for
 these three models (※). `model_env` also differs in more than the rate — thread counts, a trace
 sink, `ALPAMAYO_NAV` — each argued immaterial and none measured to be; the
 [page](bench2drive-native-rate.md) books that as argued, not
