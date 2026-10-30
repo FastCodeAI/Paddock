@@ -39,7 +39,10 @@ concurrency:
 jobs:
   check:
     name: make check (no site config)
-    runs-on: ubuntu-latest
+    # 24.04 because the 3.9 below has no setup-python build for Ubuntu 26.04,
+    # which ubuntu-latest became on 30 Oct 2026; the job then failed on every PR
+    # before a test ran. The other jobs need only 3.11 and stay on latest.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
