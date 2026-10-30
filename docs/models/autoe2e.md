@@ -20,7 +20,7 @@ paddock run --model autoe2e --bench navsim          # needs [benchmarks.navsim] 
 paddock run --model autoe2e --bench kitscenes       # the map and the oracle route are on by default
 paddock run --model autoe2e --bench comma2k19       # the road camera alone; the other five views left out
 paddock run --model autoe2e --bench nuscenes        # 6.5 s of past keyframes, the history it declares
-PADDOCK_INFER_HZ=10 paddock run --model autoe2e --bench bench2drive --scene <route>
+paddock run --model autoe2e --bench bench2drive --scene <route>   # at its declared 10 Hz ("On Bench2Drive")
 ```
 
 PR #19 is a different adapter: KITScenes only, written before any weights were
@@ -123,6 +123,7 @@ From the release `config.json` and upstream's KITScenes evaluation path
 | `AUTOE2E_ROUTE` | `1` | `0`: never draw the route raster |
 | `AUTOE2E_REPLAN_S` | `0` | seconds between forward passes; the plan is held and re-expressed in between. `0` = every call |
 | `AUTOE2E_BF16` | `1` | bf16 autocast on CUDA |
+| `AUTOE2E_EGO_HISTORY` | `real` | the ego history fed: `real` (as measured), `steady` (all 64 rows straight driving at the current speed: an extrapolated past), `no_turn` (yaw rate and curvature zeroed) or `steady_speed` (speed and acceleration steady at the current speed, the turning as measured). The last three are not upstream's input; they test in closed loop what the deep-dive notebook shows offline, that the measured past moves the plan |
 | `AUTOE2E_RECORD_DIR` | unset | append one JSON line per forward pass (controls, rollout, ego rows) |
 | `AUTOE2E_CACHE_CONSTS`, `AUTOE2E_VISIBLE_ONLY` | `1` | the two speed patches below; `0` runs upstream's code |
 
@@ -163,6 +164,35 @@ installs them (`Platform/docker/data-prep/Dockerfile`):
 - **Upstream's C++ rasterizer**, built by `Model/navigation/native/build.py`
   beside its source, where upstream's loader looks for it. It needs a C++17
   compiler.
+
+## On Bench2Drive
+
+AutoE2E's own rate is 10 Hz: it reads 64 ego rows at 10 Hz and plans 64
+control steps at 10 Hz (the release `config.json`; `native_input_hz: 10.0`),
+with its camera history sampled every 0.5 s. Bench2Drive ticks at 20 Hz, and a
+forward on every tick runs the model twice as often as it was built for, at
+twice the cost. So `model.yaml` declares `planning_hz: 10.0`: the client asks the
+node once every 0.1 s of game time and follows the last plan, unchanged, on the
+tick between, the rule every model that declares a rate is driven under
+([`docs/benchmarks/bench2drive.md`](../benchmarks/bench2drive.md)). The rate is
+recorded as `config.infer_hz` and needs no site setting, so such a run can rank.
+
+Until 28 Oct 2026 the rate came from a site pairing, `AUTOE2E_REPLAN_S = "0.1"`
+in `[models.autoe2e.benchmarks.bench2drive.env]`. The client then asked on every
+tick, and the node ran a forward every 0.1 s and answered the tick between with the
+last plan moved into the current ego frame (`extras.autoe2e.held_s` is its age).
+It sets a key `model.yaml` declares, so every run made with it is `valid: false`,
+the deep dive's and the steady-history sweep's included.
+
+Cost on one A100 80 GB (20 Oct 2026, idle card): 2.0 s a forward (1.93 s model,
+0.07 s packing), 2.3 GB allocated. With six 800 × 450 cameras rendered and
+sent every tick, one route drives at ~0.04× real time, ~1.3 s of wall clock a
+tick. Forwards do not overlap on one card: three nodes forwarding back to back
+took 6.1 s each. Three routes driven side by side ran at 0.015–0.018× each,
+~1.25× one route's pace, filling the GPU's idle time between forwards and no
+more. At that pace a route on the 4000-tick cap takes ~3.5 h, so
+`per_route_timeout_s` wants 14400; the early stop (`docs/benchmarks/bench2drive.md`,
+*Ending routes early*) keeps most routes far from the cap.
 
 ## Training exposure
 
@@ -462,21 +492,72 @@ every plan identical, the eight scene metrics equal, and the new log fields at
 predates #101, which adds `model.yaml`'s env to the id, so a rerun gets a new
 id.
 
-**Bench2Drive: not recorded here.** The 50-route sweep (`PADDOCK_INFER_HZ=10`,
-a forward every call, route raster on) was paused part-way. Every route run so
-far scores DS 3–27 the same way: the car reaches ~12 m/s, the plan curves
-further left on each call, and it leaves the lane at 4–5 s. Checked before
-calling it the model's behaviour: CARLA actors projected through the model's
-front matrix land on the cars, with left cars at y > 0; the route raster maps
-pixels exactly as upstream's `navigation/geometry.py`; and on 80 NAVSIM scenes
-the deployed convention beats a y-mirrored BEV and a 180° rotation (4 s ADE
-1.81 m against 1.88 and 1.92). The same left lean is visible open loop above.
-Not ruled out: the route raster is drawn from the leaderboard's downsampled
-plan, a point every ~50 m within one road option, so on a bend the corridor
-runs as a chord up to ~3 m off the lane at a 100 m radius; and a route with no
-map (`route_valid` true, `map_valid` false) is an input upstream never produces
-(`navigation/rasterizer.py` sets `route_valid` only with a map). And these runs
-predate the closed-loop history fill above, so each route spent its first 6.4 s
-with zero rows in the ego history. On neuroNCAP the fill removed the early turn
-but not the later loop, so it is unlikely to explain a departure at 4–5 s, but
-Bench2Drive has not been re-run with it.
+**Bench2Drive, the 50 routes of the other rows, valid**
+(`results/bench2drive/autoe2e/pooled50-40c29d24c37d542a-cc7a9c`): **15.30** mean
+driving score with upstream's inputs, the measured ego history and the route
+raster, and nothing `model.yaml` declares set at the site, asked for a plan at its
+declared 10 Hz (`planning_hz`); every route driven on Paddock `4521edc`, 28-29 Oct
+2026. A route ends after 30 s without 3 m of progress or at 4x the time of
+Think2Drive, the expert driver whose recorded drives Bench2Drive ships,
+and is scored as a failed drive; the other rows drove every route to Bench2Drive's
+own end. The support matrix marks its cell R for those two differences; the
+record itself is valid and ranks on the leaderboard.
+
+| inputs | record | DS | DS median | RC (%) | infraction penalty | routes with a collision | ended: stuck / over time / at a collision | valid |
+|---|---|---:|---:|---:|---:|---:|---:|---|
+| upstream's, at 10 Hz | `pooled50-40c29d24c37d542a-cc7a9c` | **15.30** | 12.89 | 26.37 | 0.60 | 36 / 50 | 42 / 1 / -- | yes |
+| steady past, no route | `pooled50-steady-noroute-40c29d24c37d542a-8d26e9` | 37.74 | 28.17 | 57.59 | 0.63 | 33 / 50 | 0 / 0 / 33 | no |
+
+The second row is the deep dive's fix (below), driven on `7244bc5`: a steady
+straight past at the current speed and no route raster
+(`AUTOE2E_EGO_HISTORY=steady`, `AUTOE2E_ROUTE=0`), 10 Hz from the
+`AUTOE2E_REPLAN_S` pairing, and a route ended at its first collision (33 of the
+50 did). It sets three keys `model.yaml` declares and stops where Bench2Drive's
+protocol does not, so it does not rank. It scores higher on the same routes, but
+the two runs also differ in the collision stop, in how the plan is held between
+forwards (below) and in the code revision, so the gap is not the inputs' alone.
+
+The two rows also hold the plan between forwards differently: the client follows
+it unchanged since #106, where the pairing had the node move it into the current
+ego frame. On 1711 and 2286, driven from the same start both ways (the deep
+dive's recorded drives, upstream's inputs), the first plans agree within 4 cm and
+2 mm, the cars are 1.1-1.5 m apart after 4 s, and the client's hold launches
+about 0.5 m/s faster; both drives then crash where the other did.
+
+Earlier runs, each `valid: false`:
+
+- The first 50-route sweep (`PADDOCK_INFER_HZ=10`, route raster on) ran a
+  forward on every 20 Hz call -- the Bench2Drive agent did not read that
+  variable until #106 -- and predates the closed-loop history fill. Every route scored DS 3–27 the
+  same way: the car reaches ~12 m/s, the plan curves further left on each call,
+  and it leaves the lane at 4–5 s. Checked before calling it the model's
+  behaviour: CARLA actors projected through the model's front matrix land on
+  the cars, with left cars at y > 0; the route raster maps pixels exactly as
+  upstream's `navigation/geometry.py`; and on 80 NAVSIM scenes the deployed
+  convention beats a y-mirrored BEV and a 180° rotation (4 s ADE 1.81 m
+  against 1.88 and 1.92).
+- At the model's own 10 Hz (*On Bench2Drive*), with the history fill and the
+  route raster on: 59 routes scored, mean DS 13.7, before that sweep was
+  stopped on 21 Oct 2026 for the deep dive below.
+- The full 220-route sweep with the steady settings, from 23 Oct 2026: stopped
+  on 28 Oct at 204 routes for the valid run above. Its 50 routes that the other
+  rows pool are the steady row's record.
+
+Why it swerves, from three routes (1711, 2286, 2373) whose every request was
+recorded and replayed into the model to within 0.5 mm of the plan CARLA's node
+sent (`tools/models/autoe2e/analysis/`, 21 Oct 2026). The 64 ego-history rows
+set the plan's turn and acceleration; the cameras, the route raster and the
+projection height move it by centimetres. The network continues the launch
+every route starts with (+2 to +3.4 m/s², to 12 m/s on 8.3 m/s streets), and
+once the car yaws, its own turning, fed back through the yaw-rate and
+curvature rows, grows the plan's curvature into a spin. Driven closed loop
+with each `AUTOE2E_EGO_HISTORY` (three routes): mean DS 51.3 with `steady` (a
+straight past at the current speed), 21.4 `no_turn`, 16.2 `real`, 14.0
+`steady_speed`; all four run the red light on 2373. With `steady`, the route
+raster off kept 1711 in its lane (DS 91.7, ended by a 2x-expert clock with no
+infraction, against 30.8 with it on; one route) -- a route with no map is an
+input upstream never produces. Bench2Drive's and KITScenes' camera rigs
+(`camera_rig`) scored 88.7 and 88.0 on that route, so no better; those rigs
+also send JPEG where paddock's sends raw pixels. Not established: whether the
+model sees the cars it hits -- its BEV segmentation shows no structure on
+CARLA frames.
