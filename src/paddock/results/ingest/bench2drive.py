@@ -71,6 +71,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -87,8 +88,9 @@ from paddock.registry import Registry
 from paddock.results.store import MetricsRecord, RunRecord, config_hash, sequence_hash
 
 #: Bench2Drive's published protocol calls the model once per simulator tick --
-#: 20 Hz (docs/benchmarks/bench2drive.md). A run driven at another rate measures
-#: a different protocol, so it is kept and not ranked against runs that were not.
+#: 20 Hz (docs/benchmarks/bench2drive.md). A run driven at another rate ranks only
+#: when that rate is the one the model's model.yaml declares (`_registered_native_hz`);
+#: at any other rate it measures a different protocol, and is kept and not ranked.
 PROTOCOL_HZ = 20.0
 
 _ROUTE_DIR = re.compile(r"^(?P<route>\d+)-(?P<town>Town\w+?)-(?P<scenario>[A-Za-z]+)$")
@@ -195,6 +197,25 @@ def _registered_waypoint_dt(model: str) -> float | None:
     except Exception:  # noqa: BLE001 -- a broken registry must not fail an ingest
         return None
     return getattr(spec, "waypoint_dt", None) if spec else None
+
+
+def _registered_native_hz(model: str) -> tuple[float, str] | None:
+    """The rate ``model``'s model.yaml declares it runs at, and the key that says so.
+
+    ``planning_hz`` first: how often the model replans, and the rate ``paddock run``
+    drives it at on Bench2Drive. A model that declares no planning rate but declares
+    the observation rate it was built for (``native_input_hz``) is called once per
+    observation at that rate, so that rate stands in. None when it declares neither.
+    """
+    try:
+        spec = Registry.load().models.get(model)
+    except Exception:  # noqa: BLE001 -- a broken registry must not fail an ingest
+        return None
+    for key in ("planning_hz", "native_input_hz"):
+        hz = float(getattr(spec, key, 0.0) or 0.0) if spec else 0.0
+        if hz > 0:
+            return hz, key
+    return None
 
 
 def discover(runs_roots: Sequence[Path], routes: list[str] | None = None) -> Survey:
@@ -397,12 +418,26 @@ def ingest(
             f"{keys} {was} supplied by the ingest config and recorded by no source run, "
             "so it is the operator's assertion about the campaign, not a reading from it."
         )
-    off_protocol = _driven_off_protocol(config["model_env"])
-    if off_protocol is not None:
+    # A model driven at the rate its own model.yaml declares is on protocol: that is
+    # the rate `paddock run` drives it at, and that run ranks. Any other rate is not.
+    driven = _driven_off_protocol(config["model_env"])
+    native = _registered_native_hz(model) if driven is not None else None
+    off_protocol = None if native and math.isclose(driven, native[0]) else driven
+    if driven is not None and off_protocol is None:
         note = (note + " " if note else "") + (
-            f"driven at {off_protocol:g} Hz, not the {PROTOCOL_HZ:g} Hz the benchmark's published "
-            "protocol calls the model at, so this run is kept and does not rank against runs that "
-            "were -- the paired comparison is docs/benchmarks/bench2drive-native-rate.md."
+            f"driven at {driven:g} Hz, the rate {model}/model.yaml declares as {native[1]}, not the "
+            f"benchmark's {PROTOCOL_HZ:g} Hz: a model driven at its own declared rate ranks, as "
+            "`paddock run` drives it -- the paired 20 Hz comparison is "
+            "docs/benchmarks/bench2drive-native-rate.md."
+        )
+    elif off_protocol is not None:
+        declared = f"the {native[0]:g} Hz {model}/model.yaml declares ({native[1]})" if native else (
+            f"a rate {model}/model.yaml declares (it declares none)"
+        )
+        note = (note + " " if note else "") + (
+            f"driven at {off_protocol:g} Hz, neither the {PROTOCOL_HZ:g} Hz the benchmark's published "
+            f"protocol calls the model at nor {declared}, so this run is kept and does not rank -- "
+            "the paired comparison is docs/benchmarks/bench2drive-native-rate.md."
         )
     if missing:
         lost = ", ".join(f"{r} ({attempted.get(r, 'no attempt found')})" for r in missing)
@@ -425,9 +460,8 @@ def ingest(
         status="complete" if not missing else "partial",
         # More than one recording setup is not one experiment: its mean is not a
         # measurement of anything, so it is kept and not ranked rather than
-        # published as a number nobody drove. A run driven at another rate is a
-        # different protocol, and ranking it beside 20 Hz rows says they measure
-        # the same thing -- which is the claim this campaign exists to deny.
+        # published as a number nobody drove. A run driven at a rate that is
+        # neither 20 Hz nor the model's own declared rate is a different protocol.
         # Source runs under different, or unrecorded, model.yaml envs are the
         # first case again: two settings of the model behind one mean.
         valid=not missing
