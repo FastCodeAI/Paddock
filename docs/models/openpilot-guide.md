@@ -771,6 +771,16 @@ What `adapters/models/openpilot/policy.py` does in closed loop, and why.
   steers and never fires with a lead present. Each firing is a rising edge of
   the `resume` column in log.csv; routes are scored unassisted (frozen at the
   first nudge) and assisted \* (full run). See `docs/benchmarks/bench2drive.md`.
+* **The nudge on the default tracker.** `NATIVE_LONG` with `RESUME_S` also
+  swaps the whole longitudinal law for openpilot's planner, so a score from it
+  cannot say which of the two moved it. `PADDOCK_OPENPILOT_RESUME_PLAN=1` gives
+  the nudge alone, without `NATIVE_LONG`: after `RESUME_S` stopped with
+  `lead_prob < 0.5`, the node returns a launch straight ahead at 2 m/s until the
+  car rolls at 1 m/s, and the shared tracker drives it like any plan. Every
+  other frame is the model's own plan, untouched. Straight, because at
+  standstill the plan reaches ~0.1 m, too short to steer by. Each frame's state
+  is in `extras.resume` (`active`, `count`, `still_s`, `lead_prob`). Off by
+  default, and ignored under `NATIVE_LONG`, which has its own nudge.
 * **Not a route follower.** By default no navigation input reaches the model
   (its desire pulses are zeros), so junction turns are missed by construction.
   `PADDOCK_OPENPILOT_DESIRE` changes that; see the next section.
@@ -788,6 +798,26 @@ run recorded before this setting fed zeros. `PADDOCK_OPENPILOT_DESIRE`, under
 | `off` (default) | none | none | none |
 | `turn` | turnLeft | turnRight | none |
 | `lane_change` | laneChangeLeft | laneChangeRight | none |
+| `route` | turnLeft | turnRight | from the route, below |
+
+`route` is the one mode that is not a table. It reads the route frame by frame
+and sends each manoeuvre when it is near, for as long as it applies:
+
+- **A lane change** comes from `nav_lane_change` / `nav_lane_change_m`, the
+  next lane change on the route and the metres to it, which the Bench2Drive
+  agent sends (`adapters/benchmarks/bench2drive/navigation.py`). It is sent
+  from 2.5 s of travel ahead at the current speed, or 10 m, whichever is
+  further, and held until the car has passed it. So it arrives as exactly one
+  edge, as `DesireHelper` sends one per lane change; a second edge would ask for
+  a second lane change.
+- **A junction turn** is the command where the car is now, or a `nav_maneuver`
+  of `TURN_LEFT` / `TURN_RIGHT` within 40 m. Further ahead, the turn desire cost
+  ADE on KITScenes: the model cannot see the turn yet. It is held while the
+  turn is near or under way, and dropped for one frame every 4 s, so a fresh
+  edge is always inside the 5 s the model keeps one. A car that waits at a red
+  light before its turn (Bench2Drive route 2215 waited 10 s) would otherwise
+  enter the junction with the desire long gone.
+- A lane change in reach takes precedence over a turn. Everything else is none.
 
 `turn` is what a route command means, and it is off openpilot's deployment
 distribution. `DesireHelper` sends only the lane-change pair, on the blinker

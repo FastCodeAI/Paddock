@@ -546,7 +546,11 @@ below made the 24-route set (5 abilities × 5 routes minus 11715) the reference.
 * **Wire format:** the agent now sends `speed_limit` (m/s, from
   `hero.get_speed_limit()`) and the next junction maneuver as `nav_maneuver` /
   `nav_distance_m` (walked forward on the 1 m world plan). Both optional; only
-  VisionPilot (set-speed) and Alpamayo (navigation text) read them.
+  VisionPilot (set-speed) and Alpamayo (navigation text) read them. The next
+  lane change on that plan goes beside them, as `nav_lane_change` (`"LEFT"` /
+  `"RIGHT"`, else null) and `nav_lane_change_m`: the 4-way command sends a lane
+  change as STRAIGHT and loses its side (`navigation.py`). Also optional; only
+  openpilot reads it, under `PADDOCK_OPENPILOT_DESIRE=route`.
 * **Timeouts:** `PADDOCK_INFER_TIMEOUT_S` (default 120) raises the per-tick
   HTTP timeout; heavy nodes under GPU contention need 600. Use
   `per_route_timeout_s = 14400` or more for slow models.
