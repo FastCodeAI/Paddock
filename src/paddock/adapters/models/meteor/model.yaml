@@ -61,6 +61,12 @@ capabilities:
   # Single-frame: the temporal memory is baked out of the export, so the
   # observation rate does not matter.
   min_input_hz: 0.0
+  # It plans from frames 0.2 s apart: METEOR's recordings are collected at
+  # 10 Hz and stored and labelled at 5 Hz (upstream docs/REPRODUCE.md), and
+  # the AlpaSim driver its released graph was driven by runs it at 5 Hz. A
+  # 20 Hz simulator asks it every 0.2 s and follows the last plan in between
+  # (Bench2Drive's client; HUGSIM's 4 Hz is slower anyway).
+  planning_hz: 5.0
 
   # -- the model card ---------------------------------------------------
   # Values and provenance: docs/models/meteor.md and docs/models/comparison.md.

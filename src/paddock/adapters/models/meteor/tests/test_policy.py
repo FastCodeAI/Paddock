@@ -187,6 +187,22 @@ def test_fit_frame_nuscenes_is_a_pure_scale() -> None:
     np.testing.assert_allclose(k2, np.diag([0.48, 0.48, 1.0]) @ NUSCENES_K, rtol=1e-6)
 
 
+@pytest.mark.parametrize("fov_deg", [70.0, 110.0])
+def test_fit_frame_carla_is_a_pure_scale(fov_deg: float) -> None:
+    """Bench2Drive renders paddock's rig as 800x450 pinholes (back 110 deg), 768x432's own
+    aspect: no crop, a 0.96 scale, fx 548.4 and 268.9."""
+    f = 400.0 / np.tan(np.radians(fov_deg) / 2.0)
+    k = np.array([[f, 0.0, 400.0], [0.0, f, 225.0], [0.0, 0.0, 1.0]])
+    image = np.zeros((450, 800, 3), dtype=np.uint8)
+    u, v = 600, 300
+    image[v - 8 : v + 8, u - 8 : u + 8] = 255
+    out, k2 = fit_frame(image, k)
+    assert out.shape == (INPUT_H, INPUT_W, 3)
+    np.testing.assert_allclose(k2, np.diag([0.96, 0.96, 1.0]) @ k, rtol=1e-6)
+    bright = np.argwhere(out[:, :, 0] > 128)
+    np.testing.assert_allclose(bright.mean(axis=0), [v * 0.96, u * 0.96], atol=1.0)
+
+
 def test_fit_frame_passes_a_native_frame_through() -> None:
     image = np.arange(INPUT_H * INPUT_W * 3, dtype=np.uint32).reshape(INPUT_H, INPUT_W, 3) % 251
     out, _ = fit_frame(image.astype(np.uint8), np.array([[500.0, 0, 384.0], [0, 500.0, 216.0], [0, 0, 1.0]]))

@@ -45,6 +45,10 @@ _LOWER_IS_BETTER_EXACT = {
     "comfort_lat_accel_max",
     "comfort_lon_jerk_max",
     "comfort_yaw_rate_max",
+    # Bench2Drive's early stop: the share of a run's routes each rule ended.
+    "ended_stuck",
+    "ended_over_time",
+    "ended_collision",
 }
 #: Explicitly higher-is-better: `reference_speed` matches a marker above, and
 #: Bench2Drive's `infraction_penalty` is a 0-1 multiplier on the score, not a
@@ -62,8 +66,9 @@ _HIGHER_IS_BETTER_EXACT = {"reference_speed", "infraction_penalty"}
 #: rendered page: it is how far the model plans, not how well, and comma2k19
 #: says in so many words that a shorter horizon is "where its own horizon ends,
 #: not a failure" -- while the leaderboard drew it as a column a 10 s planner won.
+#: Bench2Drive's `ended_manual` is the share of routes a person ended by hand.
 _NO_DIRECTION_MARKERS = ("_bias", "within_1sigma", "within_2sigma")
-_NO_DIRECTION_EXACT = {"lead_range_err", "path_length_ratio", "scored_horizon_s"}
+_NO_DIRECTION_EXACT = {"lead_range_err", "path_length_ratio", "scored_horizon_s", "ended_manual"}
 
 
 def has_direction(name: str) -> bool:

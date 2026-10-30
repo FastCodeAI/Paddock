@@ -137,6 +137,11 @@ was measured the same way as the rest of its column.
 - **R — run differently from the rest of its column, so not ranked against it.**
   Bench2Drive at the model's native inference rate, where the others run at
   20 Hz over the same 50 routes; those gains are partly more exposure.
+  AutoE2E's and METEOR's Bench2Drive cells are asked at the rate their
+  `model.yaml` declares (10 Hz and 5 Hz), and a route ends after 30 s without
+  progress or at 4x the expert's time, where the cells they would rank against
+  were asked every tick and drove every route to Bench2Drive's own end. Their
+  records are valid.
   OpenPilot's Bench2Drive cell is an unassisted estimate rebuilt from assisted
   recordings. Alpamayo on AlpaSim drove 4 cameras on 10 of the 30
   scenes, METEOR 6 cameras on all 30, and AutoE2E 6 pinhole cameras at its training field of view on all 30, through paddock's bridge.

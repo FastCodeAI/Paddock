@@ -416,6 +416,22 @@ seconds and needs no extension, its L2 sits with Drive-JEPA's. Both numbers are
 real; they are not measuring the same object. `docs/models/meteor.md` has the
 measurements.
 
+### METEOR × bench2drive — a real-camera planner on CARLA's cameras, at its own rate
+
+METEOR's Bench2Drive cell, 1.05 over the 50 routes, is the released graph
+zero-shot: it trained on none of CARLA's towns or renders. It shares the routes,
+the camera rig, the tracker and the early-stop rules with AutoE2E's cell, and is
+asked at its declared 5 Hz where AutoE2E is asked at 10. Against the 20 Hz cells
+(VisionPilot, constant velocity) it differs in the rate and in ending routes
+early. The terms that are not its training's: six of its eight camera slots
+filled, by 70 deg level cameras where it trained on 98 deg pitched ones; no
+driving command, which the released graph has no input for; CARLA's vehicle
+origin at the middle of the car, not the rear axle; right-hand traffic. On 43 of
+the 50 routes it plans to stay where it starts. Read the cell as "the released
+model on CARLA's cameras, from a standstill". Detail in
+[meteor.md](meteor.md#reference-numbers) and
+[docs/benchmarks/bench2drive.md](../benchmarks/bench2drive.md#notes-on-the-matrix-cells).
+
 ### METEOR × alpasim — six cameras, a group of its own, and a driver that is not tracked
 
 METEOR's AlpaSim cell, 0.4232 on 30 scenes, shares the scenes, the referee

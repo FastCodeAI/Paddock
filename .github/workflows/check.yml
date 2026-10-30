@@ -39,9 +39,8 @@ concurrency:
 jobs:
   check:
     name: make check (no site config)
-    # 24.04 because the 3.9 below has no setup-python build for Ubuntu 26.04,
-    # which ubuntu-latest became on 30 Oct 2026; the job then failed on every PR
-    # before a test ran. The other jobs need only 3.11 and stay on latest.
+    # Not ubuntu-latest: that became Ubuntu 26.04 on 2026-10-29, which has no Python 3.9 for
+    # setup-python, so this job failed before installing anything. 3.9 is needed below.
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:

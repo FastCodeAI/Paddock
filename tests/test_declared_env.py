@@ -50,6 +50,9 @@ class _OneEpisode:
     def invalid_reasons(self):
         return []
 
+    def remarks(self):
+        return []
+
 
 def _cfg(tmp_path) -> SiteConfig:
     (tmp_path / "runs").mkdir(exist_ok=True)
