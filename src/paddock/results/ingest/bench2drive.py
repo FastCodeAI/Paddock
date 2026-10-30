@@ -53,6 +53,7 @@ Site configuration (``paddock.toml``)::
     label  = "pooled50"                  # run id: <label>-<route hash>-<config hash>
     routes = ["1711", "1852", ...]       # optional; default: every route found
     notes  = "24 routes from the 03-04 Sep campaign, 26 from the 09 Sep expansion"
+    ranked = true                        # optional; ranks it as recorded despite its rate or a lost route
     [ingest.bench2drive.model_env]       # optional; overrides what the runs recorded
     PADDOCK_CV_SPEED_M_S = "6"
     [ingest.bench2drive.setups]          # optional; recording setup -> route ids
@@ -273,8 +274,14 @@ def ingest(
     notes: str = "",
     model_env: dict[str, str] | None = None,
     setups: dict[str, list[str]] | None = None,
+    ranked: bool = False,
 ) -> list[tuple[RunRecord, MetricsRecord, list[dict[str, Any]]]]:
-    """One pooled paddock run for ``model`` over the routes under ``runs_root``."""
+    """One pooled paddock run for ``model`` over the routes under ``runs_root``.
+
+    ``ranked`` ranks the run as recorded although its rate or a route that never
+    scored would keep it off the board; ``notes`` says so. A run pooling setups or
+    model.yaml envs still does not rank.
+    """
     roots = [runs_root] if isinstance(runs_root, Path) else list(runs_root)
     setup_of = {route: label for label, group in (setups or {}).items() for route in group}
     survey = discover(roots, routes)
@@ -431,8 +438,10 @@ def ingest(
             "docs/benchmarks/bench2drive-native-rate.md."
         )
     elif off_protocol is not None:
-        declared = f"the {native[0]:g} Hz {model}/model.yaml declares ({native[1]})" if native else (
-            f"a rate {model}/model.yaml declares (it declares none)"
+        declared = (
+            f"the {native[0]:g} Hz {model}/model.yaml declares ({native[1]})"
+            if native
+            else (f"a rate {model}/model.yaml declares (it declares none)")
         )
         note = (note + " " if note else "") + (
             f"driven at {off_protocol:g} Hz, neither the {PROTOCOL_HZ:g} Hz the benchmark's published "
@@ -442,6 +451,10 @@ def ingest(
     if missing:
         lost = ", ".join(f"{r} ({attempted.get(r, 'no attempt found')})" for r in missing)
         note = (note + " " if note else "") + f"routes expected but never scored: {lost}."
+    if ranked and (missing or off_protocol is not None):
+        note = (note + " " if note else "") + (
+            f"ranked = true in the ingest config; the mean is over the {len(samples)} routes that scored."
+        )
     run = RunRecord(
         run_id=run_id,
         site=site,
@@ -464,9 +477,8 @@ def ingest(
         # neither 20 Hz nor the model's own declared rate is a different protocol.
         # Source runs under different, or unrecorded, model.yaml envs are the
         # first case again: two settings of the model behind one mean.
-        valid=not missing
+        valid=(bool(ranked) or (not missing and off_protocol is None))
         and len(pooled_setups) <= 1
-        and off_protocol is None
         and not isinstance(declared, list)
         and not undeclared,
         notes=note,

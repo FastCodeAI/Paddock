@@ -86,11 +86,7 @@ this page were driven before that, on another branch, and were ingested.
 | Alpamayo 1.5 (nav) | 10 Hz | [`native50-10hz-…c4d076`](../../results/bench2drive/alpamayo15/native50-10hz-084418258d833a9f-c4d076/run.json) | `pooled50-40c29d24c37d542a-36d2d0` |
 | QwenDrive | 2 Hz | [`native50-2hz-…9b2bc9`](../../results/bench2drive/qwendrive/native50-2hz-084418258d833a9f-9b2bc9/run.json) | `pooled50-40c29d24c37d542a-f250e0` |
 
-`paddock ingest` wrote all three `valid: false`: a run driven at 2 or 10 Hz is
-not the protocol the other Bench2Drive rows were driven under. They were marked
-valid by hand on 29 Oct 2026, so they rank in `docs/leaderboard.md` and in the
-support matrix at the native rate, with the rate in each record's notes. A
-re-ingest of the campaign would write `valid: false` again. The comparison they exist for is this page, where both
+`paddock ingest` writes all three `valid: true`. They rank in `docs/leaderboard.md` and in the support matrix at the native rate. The comparison they exist for is this page, where both
 columns are stated.
 
 All three were written by `paddock ingest` from the per-route `results.json`
@@ -265,8 +261,8 @@ How it is recorded — this is the part that matters for the leaderboard:
 
 - Both runs list 3800 in `config.routes_subset`: it was **requested**.
 - Both carry `dataset.n_failed: 1`, `dataset.n_expected: 50`,
-  `dataset.n_samples: 49` and `status: "partial"`. Both were ingested
-  `valid: false` and marked valid by hand on 29 Oct 2026.
+  `dataset.n_samples: 49` and `status: "partial"`. Both are `valid: true`
+  (`ranked = true` in their ingest entries).
 - Both name it in `notes` — "routes expected but never scored: 3800". The
   QwenDrive record additionally carries
   `config.routes_never_scored: {"3800": "…no records in _checkpoint (the route

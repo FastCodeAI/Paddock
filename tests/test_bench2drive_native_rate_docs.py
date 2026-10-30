@@ -271,15 +271,18 @@ def test_the_environment_difference_is_the_one_the_page_argues(model: str) -> No
 
 @pytest.mark.parametrize("model", sorted(CAMPAIGN))
 def test_a_native_rate_run_ranks_with_its_rate_named(model: str) -> None:
-    """Marked valid on 29 Oct 2026: the native rate is how these models are ranked.
+    """The native rate is how these models are ranked, and the ingest writes it so.
 
-    paddock ingest writes a run driven off 20 Hz as valid: false; these three records
-    were changed by hand, so the record has to say so and name the rate it ranks at.
+    Drive-JEPA by the rate its model.yaml declares; Alpamayo and Qwen-Drive, which
+    lost route 3800, by `ranked = true` in their ingest entries. A re-ingest
+    reproduces the record instead of undoing an edit.
     """
     hz, _, _ = CAMPAIGN[model]
     run = json.loads((_run_dir(model) / "run.json").read_text())
     assert run["valid"] is True
-    assert f"driven at {hz} Hz" in run["notes"] and "marked valid on 29 Oct 2026" in run["notes"]
+    assert f"driven at {hz} Hz" in run["notes"]
+    why = "declares as planning_hz" if model == "drivejepa" else "ranked = true in the ingest config"
+    assert why in run["notes"], f"{model}: the note does not say how it ranks"
     board = (REPO_ROOT / "docs/leaderboard.md").read_text()
     table = board.split("## bench2drive", 1)[1].split("\n## ", 1)[0]
     assert run["run_id"] in table, f"{run['run_id']} is not ranked in the bench2drive table"

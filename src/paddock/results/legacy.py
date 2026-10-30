@@ -156,6 +156,7 @@ def ingest_all(cfg: SiteConfig, dry_run: bool = False) -> tuple[int, list[str]]:
                 run_label=entry.get("label", "pooled"),
                 notes=entry.get("notes", ""),
                 model_env=entry.get("model_env"),
+                ranked=bool(entry.get("ranked", False)),
                 setups={
                     label: [str(r) for r in group] for label, group in (entry.get("setups") or {}).items()
                 },

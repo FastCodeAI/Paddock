@@ -421,7 +421,8 @@ def test_a_run_driven_at_the_models_declared_rate_ranks(tmp_path: Path, monkeypa
     re-ingest silently undid. The rule is here instead, and the note names the key.
     """
     monkeypatch.setattr(bench2drive, "_registered_native_hz", lambda model: (2.0, "planning_hz"))
-    ((run, _, _),) = bench2drive.ingest(_tree(tmp_path), model="modelx", site="s", model_env={"PADDOCK_INFER_HZ": "2"})
+    env = {"PADDOCK_INFER_HZ": "2"}
+    ((run, _, _),) = bench2drive.ingest(_tree(tmp_path), model="modelx", site="s", model_env=env)
     assert run.valid, run.notes
     assert "driven at 2 Hz, the rate modelx/model.yaml declares as planning_hz" in run.notes
 
@@ -432,9 +433,31 @@ def test_a_run_driven_at_the_models_declared_rate_ranks(tmp_path: Path, monkeypa
 def test_a_rate_the_model_does_not_declare_does_not_rank(tmp_path: Path, monkeypatch, declared) -> None:
     """Every route scored; it is the rate that keeps the row off the board."""
     monkeypatch.setattr(bench2drive, "_registered_native_hz", lambda model: declared)
-    ((run, _, _),) = bench2drive.ingest(_tree(tmp_path), model="modelx", site="s", model_env={"PADDOCK_INFER_HZ": "2"})
+    env = {"PADDOCK_INFER_HZ": "2"}
+    ((run, _, _),) = bench2drive.ingest(_tree(tmp_path), model="modelx", site="s", model_env=env)
     assert run.status == "complete" and not run.valid
     assert "driven at 2 Hz, neither the 20 Hz" in run.notes and "does not rank" in run.notes
+
+
+def test_ranked_ranks_a_run_as_recorded_and_says_why(tmp_path: Path, monkeypatch) -> None:
+    """Ranking an off-rate, partial run is an ingest input, not a run.json edit."""
+    monkeypatch.setattr(bench2drive, "_registered_native_hz", lambda model: None)
+    routes = ["1711", "2802", "24333", "9999"]
+    env = {"PADDOCK_INFER_HZ": "2"}
+    ((plain, _, _),) = bench2drive.ingest(
+        _tree(tmp_path / "a"), model="modelx", site="s", routes=routes, model_env=env
+    )
+    ((ranked, _, _),) = bench2drive.ingest(
+        _tree(tmp_path / "b"),
+        model="modelx",
+        site="s",
+        routes=routes,
+        model_env=env,
+        ranked=True,
+    )
+    assert not plain.valid and ranked.valid
+    assert ranked.status == "partial" and ranked.run_id == plain.run_id
+    assert "ranked = true in the ingest config; the mean is over the 3 routes that scored." in ranked.notes
 
 
 def test_the_declared_rate_comes_from_the_registry() -> None:

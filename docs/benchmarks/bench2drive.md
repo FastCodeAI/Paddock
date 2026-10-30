@@ -415,10 +415,9 @@ crashes CARLA for both at their native rate and is reported as never scored, not
 as a zero. Every other cell in this column is driven at 20 Hz, one inference per
 simulator tick; OpenPilot's native rate *is* 20 Hz, and VisionPilot was not
 re-run. So the ※ cells are driven at a different rate from the ◆ cells, and are
-ranked against them all the same: they were marked valid on 29 Oct 2026. At 20 Hz the same three scored Alpamayo 1.5 44.58 and
+ranked against them all the same, at each model's own rate. At 20 Hz the same three scored Alpamayo 1.5 44.58 and
 Drive-JEPA 31.11 (24 routes, ◆) and Qwen-Drive 12.92 (50 routes). Drive-JEPA uses
-its released NAVSIM-v2 checkpoint zero-shot in CARLA. `paddock ingest` wrote the
-runs `valid: false`; they were marked valid by hand on 29 Oct 2026 and now rank on
+its released NAVSIM-v2 checkpoint zero-shot in CARLA. `paddock ingest` writes all three `valid: true`. They rank on
 the [leaderboard](../leaderboard.md) too. Per-route detail and the 20 Hz comparison are in
 [Native inference rate](#native-inference-rate--three-models-re-driven).
 
@@ -607,9 +606,7 @@ re-run; nothing here restates either. The rate is recorded per run in
 `config.model_env`, not derived from `model.yaml`. They were driven before the
 adapter honoured a rate on `main`; it now does (a model's `planning_hz`, above),
 and Drive-JEPA declares 2 Hz, so a clean checkout drives it at that rate by
-default. CARLA re-runs are not bit-reproducible, so these stay landed results. `paddock ingest` wrote the three runs `valid: false`,
-since a 2 or 10 Hz run is not the protocol the other rows were driven under; they
-were marked valid by hand on 29 Oct 2026 and **rank** on the board. Their native scores are the Bench2Drive cells of the support matrix for
+default. CARLA re-runs are not bit-reproducible, so these stay landed results. `paddock ingest` writes all three `valid: true`. All three **rank** on the board. Their native scores are the Bench2Drive cells of the support matrix for
 these three models (※). `model_env` also differs in more than the rate — thread counts, a trace
 sink, `ALPAMAYO_NAV` — each argued immaterial and none measured to be; the
 [page](bench2drive-native-rate.md) books that as argued, not
