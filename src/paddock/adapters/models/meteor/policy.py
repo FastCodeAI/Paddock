@@ -18,10 +18,19 @@ Input side, and why each rule is what it is:
   with a donor camera's calibration, the convention the network was trained
   with for 7-camera rigs (``bevlane/dataset.py`` ``cam_drop`` /
   ``_CAM_FALLBACK``), so one missing camera is in-distribution. A benchmark supplying fewer cameras
-  (KITScenes: front only) leaves more slots absent the same way.
+  leaves more slots absent the same way -- unless the front camera is alone.
+- A front camera alone (comma2k19) is filled by its own rule,
+  ``METEOR_FRONT_ONLY``. With the rule above, all seven black slots would sit on
+  the front camera's pose, and the lift (``bevlane/model.py`` ``project_bev``)
+  averages per BEV cell every slot that sees it, weighted by depth probability
+  + 0.05 -- so every cell the real camera sees would be about 7/8 black-image
+  feature. The default instead poses each black slot where METEOR's own rig has
+  it (what training's per-camera dropout looks like: a zero image with that
+  slot's own K and T) and gives CAM_FRONT_NARROW the centred 30 deg window of
+  the same frame (upstream's KITScenes converter does the same).
 - Frames of any size are cropped to 16:9 around the principal point and
   area-downscaled to 768x432; the intrinsics follow the pixels. KITScenes is
-  3504x2272, nuScenes 1600x900, CARLA 800x450.
+  3504x2272, nuScenes 1600x900, CARLA 800x450, comma2k19 1164x874.
 - No driving command: the released ONNX has no intent input, so the model runs
   in its trained "no navigation" mode (30 % intent dropout in training).
   Mode choice is the plain argmax METEOR's own evaluator uses.
@@ -99,6 +108,87 @@ EGO_LEN = EGO_K * EGO_HORIZON * 2 + EGO_K + 3
 #: docs/models/meteor.md for the check.
 ABSENT_FILL_RGB = (0, 0, 0)
 
+#: How the slots are filled when CAM_FRONT is the only camera supplied:
+#: rule -> (CAM_FRONT_NARROW gets the 30 deg window, where the black slots are
+#: posed). "donor" is the rule every other feed uses; "refpose" poses each black
+#: slot as METEOR's own rig has it (REF_RIG_K / REF_RIG_T_CAM_EGO).
+FRONT_ONLY_RULES = {
+    "donor": (False, "donor"),
+    "narrow": (True, "donor"),
+    "refpose": (False, "refpose"),
+    "narrow_refpose": (True, "refpose"),
+}
+#: Chosen on METEOR's own demo scene (valday, 132 frames with a 3 s future) with
+#: only its front camera fed, not on comma2k19: ADE 1.01 m against 1.21 for
+#: refpose, 1.94 for narrow and 2.22 for donor; 0.65 with all eight cameras and
+#: 1.37 for constant velocity. Measured outside paddock; docs/models/meteor.md.
+DEFAULT_FRONT_ONLY = "narrow_refpose"
+#: upstream tools/kitscenes/kitscenes_to_bevlane.py NARROW_HFOV_DEG.
+NARROW_HFOV_DEG = 30.0
+
+# METEOR's own rig at 768x432, in SLOTS order: (fx, fy, cx, cy), and the top
+# three rows of T_cam_ego. Copied from upstream bevlane/ref_rig_drs.npz, which
+# arrived in 27a5bd0, after the repos.yaml pin (sha256 0b64185cac862ae7...);
+# every value is exact as float32, and test_reference_rig_matches_the_clone
+# compares the two wherever a clone that has the file exists.
+_REF_RIG_INTRINSICS = (
+    (335.4, 292.1226, 372.976, 219.5849),
+    (335.4, 292.1226, 372.976, 219.5849),
+    (335.4, 292.1226, 372.976, 219.5849),
+    (335.4, 292.1226, 372.976, 219.5849),
+    (335.4, 292.1226, 372.976, 219.5849),
+    (335.4, 292.1226, 372.976, 219.5849),
+    (1414.7067, 1240.8643, 376.704, 222.66605),
+    (1412.2773, 1233.6991, 403.10132, 250.29755),
+)
+_REF_RIG_POSE = (
+    (
+        (0.004410922, -0.9999781, 0.0048197866, 0.23507825),
+        (0.020875853, -0.004726181, -0.9997704, 1.8506082),
+        (0.99977183, 0.004509997, 0.02085509, -1.1066022),
+    ),
+    (
+        (0.87826204, -0.47794378, 0.0150217675, -0.45931658),
+        (-0.19166245, -0.38063002, -0.9046481, 2.1622138),
+        (0.43808836, 0.79163915, -0.42589685, -0.106102616),
+    ),
+    (
+        (-0.88886726, -0.458152, -0.0032623385, 0.630096),
+        (-0.18359882, 0.36270875, -0.91363746, 2.0406098),
+        (0.41976824, -0.811504, -0.40651578, 0.2910722),
+    ),
+    (
+        (-0.008049742, 0.99995536, 0.0048712073, -0.36646634),
+        (0.02349667, 0.00505959, -0.99971074, 1.9111043),
+        (-0.9996911, -0.007933373, -0.023535943, 0.2945107),
+    ),
+    (
+        (0.8759256, 0.48205388, 0.019456666, -0.9101501),
+        (0.23416989, -0.38955182, -0.8907386, 1.8373057),
+        (-0.42180437, 0.7847769, -0.45410094, 0.61060315),
+    ),
+    (
+        (-0.8737767, 0.4854349, -0.029500682, 0.6453274),
+        (0.23460798, 0.36760145, -0.89990515, 1.7286803),
+        (-0.4260005, -0.7932359, -0.43508935, 0.9264041),
+    ),
+    (
+        (0.009009867, -0.99995214, 0.003942861, 0.27554005),
+        (0.020045724, -0.0037621267, -0.99979246, 1.8388923),
+        (0.999759, 0.009087552, 0.02001034, -1.245205),
+    ),
+    (
+        (0.0072997278, 0.9999596, 0.005418633, -0.30384293),
+        (0.043151125, 0.005097742, -0.9990565, 1.8799614),
+        (-0.9990428, 0.007527604, -0.043113068, 0.085124314),
+    ),
+)
+REF_RIG_K = np.array(
+    [[[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]] for fx, fy, cx, cy in _REF_RIG_INTRINSICS],
+    dtype=np.float32,
+)
+REF_RIG_T_CAM_EGO = np.array([[*rows, (0.0, 0.0, 0.0, 1.0)] for rows in _REF_RIG_POSE], dtype=np.float32)
+
 DEFAULT_THREADS = 4
 DEFAULT_GPU_MEM_MB = 6144
 
@@ -120,37 +210,77 @@ def horizon_s() -> float:
     return value
 
 
+def front_only_rule() -> str:
+    """How a front camera alone fills the slots, from METEOR_FRONT_ONLY; unset means the default."""
+    raw = os.environ.get("METEOR_FRONT_ONLY", "").strip() or DEFAULT_FRONT_ONLY
+    if raw not in FRONT_ONLY_RULES:
+        raise ValueError(f"METEOR_FRONT_ONLY={raw} is not one of {tuple(FRONT_ONLY_RULES)}")
+    return raw
+
+
 def has_image(obs: Observation, camera: str) -> bool:
     return camera in obs.images or camera in obs.image_paths
+
+
+def crop_to_input(
+    image: np.ndarray, k: np.ndarray, x0: int, y0: int, cw: int, ch: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """The (x0, y0, cw, ch) window of a uint8 HWC RGB frame -> 768x432, and its intrinsics.
+
+    An area filter when shrinking -- PIL's BOX, the same family as the
+    INTER_AREA resize in hf/onnx_smoke_test.py. When enlarging, BOX degenerates
+    to nearest neighbour, so a window smaller than 768x432 (comma2k19's 30 deg
+    narrow window is 488x274) is interpolated bilinearly instead.
+    """
+    fx, fy, cx, cy = float(k[0, 0]), float(k[1, 1]), float(k[0, 2]), float(k[1, 2])
+    sx, sy = INPUT_W / cw, INPUT_H / ch
+    crop = image[y0 : y0 + ch, x0 : x0 + cw]
+    if crop.shape[:2] == (INPUT_H, INPUT_W):
+        out = np.ascontiguousarray(crop, dtype=np.uint8)
+    else:
+        shrink = cw >= INPUT_W and ch >= INPUT_H
+        resample = Image.BOX if shrink else Image.BILINEAR
+        out = np.asarray(Image.fromarray(crop).resize((INPUT_W, INPUT_H), resample), dtype=np.uint8)
+    k2 = np.array(
+        [[fx * sx, 0.0, (cx - x0) * sx], [0.0, fy * sy, (cy - y0) * sy], [0.0, 0.0, 1.0]],
+        dtype=np.float32,
+    )
+    return out, k2
 
 
 def fit_frame(image: np.ndarray, k: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """uint8 HWC RGB of any size -> 768x432, with the intrinsics of that frame.
 
     Crop to 16:9 around the principal point (so cx, cy stay near the centre
-    the network trained on), then an area-filter downscale -- PIL's BOX,
-    the same family as the INTER_AREA resize in hf/onnx_smoke_test.py.
+    the network trained on), then resize (``crop_to_input``).
     """
     h, w = image.shape[:2]
-    fx, fy, cx, cy = float(k[0, 0]), float(k[1, 1]), float(k[0, 2]), float(k[1, 2])
     target = INPUT_W / INPUT_H
     if w / h > target:
         cw, ch = int(round(h * target)), h
     else:
         cw, ch = w, int(round(w / target))
-    x0 = int(np.clip(round(cx - cw / 2), 0, w - cw))
-    y0 = int(np.clip(round(cy - ch / 2), 0, h - ch))
-    sx, sy = INPUT_W / cw, INPUT_H / ch
-    crop = image[y0 : y0 + ch, x0 : x0 + cw]
-    if crop.shape[:2] == (INPUT_H, INPUT_W):
-        out = np.ascontiguousarray(crop, dtype=np.uint8)
-    else:
-        out = np.asarray(Image.fromarray(crop).resize((INPUT_W, INPUT_H), Image.BOX), dtype=np.uint8)
-    k2 = np.array(
-        [[fx * sx, 0.0, (cx - x0) * sx], [0.0, fy * sy, (cy - y0) * sy], [0.0, 0.0, 1.0]],
-        dtype=np.float32,
-    )
-    return out, k2
+    x0 = int(np.clip(round(float(k[0, 2]) - cw / 2), 0, w - cw))
+    y0 = int(np.clip(round(float(k[1, 2]) - ch / 2), 0, h - ch))
+    return crop_to_input(image, k, x0, y0, cw, ch)
+
+
+def narrow_crop(
+    image: np.ndarray, k: np.ndarray, hfov_deg: float = NARROW_HFOV_DEG
+) -> tuple[np.ndarray, np.ndarray]:
+    """The centred ``hfov_deg`` window of a frame, as CAM_FRONT_NARROW sees it.
+
+    Upstream's KITScenes converter feeds its narrow slot this way. The window
+    must lie inside the frame: a camera narrower than 30 deg has no such window,
+    and padding one would show the network black bars it never saw.
+    """
+    h, w = image.shape[:2]
+    cw = int(round(2 * float(k[0, 0]) * np.tan(np.radians(hfov_deg / 2))))
+    ch = int(round(cw * INPUT_H / INPUT_W))
+    x0, y0 = int(round(float(k[0, 2]) - cw / 2)), int(round(float(k[1, 2]) - ch / 2))
+    if x0 < 0 or y0 < 0 or x0 + cw > w or y0 + ch > h:
+        raise ValueError(f"a {hfov_deg} deg window ({cw}x{ch} at {x0},{y0}) does not fit a {w}x{h} frame")
+    return crop_to_input(image, k, x0, y0, cw, ch)
 
 
 def donor_for(slot: str, present: set[str]) -> str:
@@ -160,19 +290,37 @@ def donor_for(slot: str, present: set[str]) -> str:
     raise ValueError("no camera present to donate calibration from")
 
 
-def build_inputs(obs: Observation) -> tuple[dict[str, np.ndarray], tuple[str, ...]]:
-    """The graph's feed for one observation, and which slots carry a real image."""
+def build_inputs(
+    obs: Observation, front_only: str = DEFAULT_FRONT_ONLY
+) -> tuple[dict[str, np.ndarray], tuple[str, ...], str]:
+    """The graph's feed for one observation, the slots carrying a real image, and the rule for the rest.
+
+    ``front_only`` applies only when CAM_FRONT is the one camera supplied; any
+    other set of cameras is filled by the donor rule, as before it existed.
+    """
     frames: dict[str, np.ndarray] = {}
     calib: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    front: tuple[np.ndarray, np.ndarray] | None = None
     for camera, slot in SLOT_FROM_CAMERA.items():
         if not has_image(obs, camera):
             continue
-        frame, k2 = fit_frame(obs.image(camera), np.asarray(obs.camera2image[camera], dtype=np.float64))
+        image = obs.image(camera)
+        k = np.asarray(obs.camera2image[camera], dtype=np.float64)
+        frame, k2 = fit_frame(image, k)
         camera2ego = np.asarray(obs.camera2ego[camera], dtype=np.float64)
         frames[slot] = frame
         calib[slot] = (k2, np.linalg.inv(camera2ego).astype(np.float32))
+        if camera == "CAM_FRONT":
+            front = (image, k)
     if not frames:
         raise ValueError(f"observation carries none of {tuple(SLOT_FROM_CAMERA)}")
+
+    rule = front_only if set(frames) == {"CAM_FRONT_WIDE"} else "donor"
+    narrow, absent = FRONT_ONLY_RULES[rule]
+    if narrow and front is not None:
+        frames["CAM_FRONT_NARROW"], k_narrow = narrow_crop(*front)
+        # The same physical camera as CAM_FRONT_WIDE, so the same pose.
+        calib["CAM_FRONT_NARROW"] = (k_narrow, calib["CAM_FRONT_WIDE"][1])
 
     present = set(frames)
     imgs = np.empty((len(SLOTS), 3, INPUT_H, INPUT_W), dtype=np.uint8)
@@ -184,14 +332,17 @@ def build_inputs(obs: Observation) -> tuple[dict[str, np.ndarray], tuple[str, ..
             intrinsics[i], t_cam_ego[i] = calib[slot]
         else:
             imgs[i] = np.asarray(ABSENT_FILL_RGB, dtype=np.uint8)[:, None, None]
-            intrinsics[i], t_cam_ego[i] = calib[donor_for(slot, present)]
+            if absent == "refpose":
+                intrinsics[i], t_cam_ego[i] = REF_RIG_K[i], REF_RIG_T_CAM_EGO[i]
+            else:
+                intrinsics[i], t_cam_ego[i] = calib[donor_for(slot, present)]
     feed = {
         "imgs": imgs[None],
         "K": intrinsics[None],
         "T_cam_ego": t_cam_ego[None],
         "v0": np.array([obs.speed], dtype=np.float32),
     }
-    return feed, tuple(s for s in SLOTS if s in present)
+    return feed, tuple(s for s in SLOTS if s in present), rule
 
 
 @dataclass(frozen=True)
@@ -250,6 +401,7 @@ class MeteorPolicy(Policy):
         self.provider_mode = (providers or os.environ.get("METEOR_PROVIDERS", "cuda")).strip().lower()
         self.threads = ort_threads()
         self.horizon_s = horizon_s()
+        self.front_only = front_only_rule()
         self.session: Any = None
         self.active_providers: list[str] = []
         self._last: dict[str, Any] = {}
@@ -296,10 +448,11 @@ class MeteorPolicy(Policy):
         self._check_signature()
         self._warm_up()
         logger.info(
-            "meteor ready: %s, %d threads, horizon %.1f s",
+            "meteor ready: %s, %d threads, horizon %.1f s, front camera alone: %s",
             self.active_providers,
             self.threads,
             self.horizon_s,
+            self.front_only,
         )
 
     def _check_signature(self) -> None:
@@ -344,7 +497,7 @@ class MeteorPolicy(Policy):
     def infer(self, obs: Observation) -> Trajectory:
         if self.session is None:
             raise RuntimeError("load() must be called before infer()")
-        feed, present = build_inputs(obs)
+        feed, present, rule = build_inputs(obs, self.front_only)
         decoded = decode_ego(self._run(feed))
         if not np.isfinite(decoded.waypoints).all():
             # A crash must not become a score: never substitute a plan here.
@@ -366,6 +519,7 @@ class MeteorPolicy(Policy):
             **extras,
             "cameras_present": list(present),
             "cameras_absent": [s for s in SLOTS if s not in present],
+            "absent_rule": rule,
             "v0": float(obs.speed),
         }
         return Trajectory(waypoints, dt=WAYPOINT_DT, extras=extras)
@@ -376,6 +530,7 @@ class MeteorPolicy(Policy):
             "providers": self.active_providers,
             "intra_op_threads": self.threads,
             "horizon_s": self.horizon_s,
+            "front_only": self.front_only,
             "last": self._last or "no frame seen yet",
         }
 

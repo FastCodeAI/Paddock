@@ -14,11 +14,15 @@ import pytest
 
 from paddock.adapters.models.meteor.policy import (
     ABSENT_FILL_RGB,
+    DEFAULT_FRONT_ONLY,
     EGO_LEN,
+    FRONT_ONLY_RULES,
     INPUT_H,
     INPUT_W,
     NATIVE_HORIZON_S,
     POLICY,
+    REF_RIG_K,
+    REF_RIG_T_CAM_EGO,
     SLOT_FROM_CAMERA,
     SLOTS,
     WAYPOINT_DT,
@@ -26,11 +30,15 @@ from paddock.adapters.models.meteor.policy import (
     decode_ego,
     extend_horizon,
     fit_frame,
+    narrow_crop,
 )
 from paddock.policy.protocol import CANBUS_VELOCITY, N_WAYPOINTS, Command, Observation, Policy
 from paddock.registry import Registry
 
 NUSCENES_K = np.array([[1266.0, 0.0, 816.0], [0.0, 1266.0, 491.0], [0.0, 0.0, 1.0]])
+#: comma's EON at 1164x874 (loader.EON_INTRINSICS), the one camera comma2k19 has.
+EON_K = np.array([[910.0, 0.0, 582.0], [0.0, 910.0, 437.0], [0.0, 0.0, 1.0]])
+IDX = {s: i for i, s in enumerate(SLOTS)}
 
 
 def cam2ego(x: float, y: float, z: float, yaw_deg: float = 0.0) -> np.ndarray:
@@ -111,6 +119,8 @@ def test_model_yaml_agrees_with_the_policy() -> None:
     assert spec.cameras == POLICY.cameras
     assert spec.waypoint_dt == WAYPOINT_DT
     assert spec.min_input_hz == 0.0
+    assert spec.runtime.env["METEOR_FRONT_ONLY"] == DEFAULT_FRONT_ONLY
+    assert "comma2k19" in spec.benchmarks
 
 
 def test_load_without_onnx_names_the_setting() -> None:
@@ -126,15 +136,23 @@ def test_infer_without_load_is_a_clear_error() -> None:
 def test_settings_come_from_the_environment(monkeypatch) -> None:
     monkeypatch.delenv("METEOR_ORT_THREADS", raising=False)
     monkeypatch.delenv("METEOR_HORIZON_S", raising=False)
+    monkeypatch.delenv("METEOR_FRONT_ONLY", raising=False)
     assert POLICY().threads == 4
     assert POLICY().horizon_s == NATIVE_HORIZON_S
+    assert POLICY().front_only == DEFAULT_FRONT_ONLY == "narrow_refpose"
     monkeypatch.setenv("METEOR_ORT_THREADS", "2")
     monkeypatch.setenv("METEOR_HORIZON_S", "4.0")
     monkeypatch.setenv("METEOR_PROVIDERS", "cpu")
+    monkeypatch.setenv("METEOR_FRONT_ONLY", "donor")
     policy = POLICY()
     assert policy.threads == 2
     assert policy.horizon_s == 4.0
     assert policy.provider_mode == "cpu"
+    assert policy.front_only == "donor"
+    monkeypatch.setenv("METEOR_FRONT_ONLY", "null")
+    with pytest.raises(ValueError, match="METEOR_FRONT_ONLY"):
+        POLICY()
+    monkeypatch.delenv("METEOR_FRONT_ONLY")
     monkeypatch.setenv("METEOR_ORT_THREADS", "all")
     assert POLICY().threads == 4
     monkeypatch.setenv("METEOR_HORIZON_S", "2.0")
@@ -175,11 +193,11 @@ def test_fit_frame_passes_a_native_frame_through() -> None:
     np.testing.assert_array_equal(out, image.astype(np.uint8))
 
 
-def test_build_inputs_single_camera_fills_the_rest_from_the_front() -> None:
-    """KITScenes: a front image path, single-key calibration dicts, nothing else."""
+def test_build_inputs_front_only_donor_fills_the_rest_from_the_front() -> None:
+    """The rule before METEOR_FRONT_ONLY existed, still one setting away."""
     obs = make_observation(("CAM_FRONT",), speed=7.5)
-    feed, present = build_inputs(obs)
-    assert present == ("CAM_FRONT_WIDE",)
+    feed, present, rule = build_inputs(obs, front_only="donor")
+    assert present == ("CAM_FRONT_WIDE",) and rule == "donor"
     imgs, k, t = feed["imgs"][0], feed["K"][0], feed["T_cam_ego"][0]
     assert imgs[0].mean() == pytest.approx(90.0)
     for i in range(1, 8):
@@ -193,8 +211,8 @@ def test_build_inputs_single_camera_fills_the_rest_from_the_front() -> None:
 
 def test_build_inputs_six_cameras_use_upstream_donors() -> None:
     obs = make_observation(tuple(SLOT_FROM_CAMERA))
-    feed, present = build_inputs(obs)
-    assert present == SLOTS[:6]
+    feed, present, rule = build_inputs(obs)
+    assert present == SLOTS[:6] and rule == "donor"
     k = feed["K"][0]
     t = feed["T_cam_ego"][0]
     idx = {s: i for i, s in enumerate(SLOTS)}
@@ -213,14 +231,143 @@ def test_build_inputs_reads_paths_without_touching_absent_cameras(tmp_path) -> N
     obs.image_paths = {"CAM_FRONT": str(path)}
     obs.camera2image = {"CAM_FRONT": NUSCENES_K}
     obs.camera2ego = {"CAM_FRONT": cam2ego(1.5, 0.0, 1.5)}
-    feed, present = build_inputs(obs)
-    assert present == ("CAM_FRONT_WIDE",)
+    feed, present, _ = build_inputs(obs)
+    assert present == ("CAM_FRONT_WIDE", "CAM_FRONT_NARROW")
     assert 55 <= feed["imgs"][0, 0].mean() <= 65
+    assert 55 <= feed["imgs"][0, IDX["CAM_FRONT_NARROW"]].mean() <= 65
 
 
 def test_build_inputs_with_no_camera_is_an_error() -> None:
     with pytest.raises(ValueError, match="carries none"):
         build_inputs(make_observation(()))
+
+
+# ---- a front camera alone (comma2k19) ---------------------------------------
+
+
+def eon_observation(speed: float = 12.0) -> Observation:
+    """comma2k19's shape: one 1164x874 front frame, its intrinsics, a camera 1.22 m up."""
+    obs = make_observation(("CAM_FRONT",), speed=speed)
+    obs.images = {"CAM_FRONT": np.full((874, 1164, 3), 90, dtype=np.uint8)}
+    obs.camera2image = {"CAM_FRONT": EON_K.copy()}
+    obs.camera2ego = {"CAM_FRONT": cam2ego(0.0, 0.0, 1.22, yaw_deg=2.0)}
+    return obs
+
+
+def test_fit_frame_on_the_eon_frame() -> None:
+    """Full width, rows 110-765 (16:9 around cy = 437): f 600.41 x 600.18."""
+    out, k2 = fit_frame(np.zeros((874, 1164, 3), dtype=np.uint8), EON_K)
+    assert out.shape == (INPUT_H, INPUT_W, 3)
+    np.testing.assert_allclose(
+        [k2[0, 0], k2[1, 1], k2[0, 2], k2[1, 2]],
+        [910.0 * 768 / 1164, 910.0 * 432 / 655, 582.0 * 768 / 1164, (437.0 - 110) * 432 / 655],
+        rtol=1e-6,
+    )
+
+
+def test_narrow_crop_on_the_eon_frame_is_a_30_degree_window() -> None:
+    """488x274 at (338, 300), enlarged to 768x432: f 1432.1 x 1434.7, METEOR's narrow is 1415 x 1241."""
+    image = np.zeros((874, 1164, 3), dtype=np.uint8)
+    u, v = 650, 400  # a source pixel inside the window
+    image[v - 6 : v + 6, u - 6 : u + 6] = 255
+    out, k2 = narrow_crop(image, EON_K)
+    assert out.shape == (INPUT_H, INPUT_W, 3) and out.dtype == np.uint8
+    sx, sy = 768 / 488, 432 / 274
+    np.testing.assert_allclose(
+        [k2[0, 0], k2[1, 1], k2[0, 2], k2[1, 2]],
+        [910.0 * sx, 910.0 * sy, (582.0 - 338) * sx, (437.0 - 300) * sy],
+        rtol=1e-6,
+    )
+    hfov = 2 * np.degrees(np.arctan(INPUT_W / 2 / k2[0, 0]))
+    assert hfov == pytest.approx(30.0, abs=0.05)
+    bright = np.argwhere(out[:, :, 0] > 128)
+    np.testing.assert_allclose(bright.mean(axis=0), [(v - 300) * sy, (u - 338) * sx], atol=1.5)
+
+
+def test_narrow_crop_refuses_a_camera_narrower_than_30_degrees() -> None:
+    k = np.array([[2000.0, 0.0, 400.0], [0.0, 2000.0, 225.0], [0.0, 0.0, 1.0]])  # ~23 deg across 800 px
+    with pytest.raises(ValueError, match="does not fit"):
+        narrow_crop(np.zeros((450, 800, 3), dtype=np.uint8), k)
+
+
+def test_front_only_default_poses_black_slots_on_meteors_own_rig() -> None:
+    obs = eon_observation(speed=12.0)
+    feed, present, rule = build_inputs(obs)
+    assert rule == DEFAULT_FRONT_ONLY == "narrow_refpose"
+    assert present == ("CAM_FRONT_WIDE", "CAM_FRONT_NARROW")
+    imgs, k, t = feed["imgs"][0], feed["K"][0], feed["T_cam_ego"][0]
+    wide, narrow = IDX["CAM_FRONT_WIDE"], IDX["CAM_FRONT_NARROW"]
+    assert imgs[wide].mean() == pytest.approx(90.0) and imgs[narrow].mean() == pytest.approx(90.0)
+    np.testing.assert_allclose(t[wide] @ obs.camera2ego["CAM_FRONT"], np.eye(4), atol=1e-5)
+    np.testing.assert_array_equal(t[narrow], t[wide])  # one physical camera
+    assert k[narrow][0, 0] > 2 * k[wide][0, 0]
+    for slot in SLOTS:
+        if slot in present:
+            continue
+        i = IDX[slot]
+        assert (imgs[i] == np.asarray(ABSENT_FILL_RGB, dtype=np.uint8)[:, None, None]).all()
+        np.testing.assert_array_equal(k[i], REF_RIG_K[i])
+        np.testing.assert_array_equal(t[i], REF_RIG_T_CAM_EGO[i])
+    assert feed["v0"][0] == pytest.approx(12.0)
+
+
+@pytest.mark.parametrize("rule", sorted(FRONT_ONLY_RULES))
+def test_front_only_rules(rule: str) -> None:
+    narrow, absent = FRONT_ONLY_RULES[rule]
+    feed, present, used = build_inputs(eon_observation(), front_only=rule)
+    assert used == rule
+    assert ("CAM_FRONT_NARROW" in present) == narrow
+    t = feed["T_cam_ego"][0]
+    back = IDX["CAM_BACK_WIDE"]
+    expected = REF_RIG_T_CAM_EGO[back] if absent == "refpose" else t[IDX["CAM_FRONT_WIDE"]]
+    np.testing.assert_array_equal(t[back], expected)
+
+
+@pytest.mark.parametrize(
+    "cameras", [tuple(SLOT_FROM_CAMERA), ("CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT"), ("CAM_BACK",)]
+)
+def test_front_only_rule_leaves_every_other_camera_set_alone(cameras) -> None:
+    """KITScenes, nuScenes, NAVSIM, neuroNCAP and Bench2Drive supply more than the front: no change there."""
+    obs = make_observation(cameras)
+    default, present, rule = build_inputs(obs)
+    donor, _, _ = build_inputs(obs, front_only="donor")
+    assert rule == "donor" and "CAM_FRONT_NARROW" not in present
+    for key in default:
+        np.testing.assert_array_equal(default[key], donor[key])
+
+
+def test_reference_rig_is_a_rig() -> None:
+    """Proper rotations, cameras 1.7-2.2 m up, wide slots at METEOR's 98 deg, each slot facing its way."""
+    assert REF_RIG_K.shape == (8, 3, 3) and REF_RIG_T_CAM_EGO.shape == (8, 4, 4)
+    for i, slot in enumerate(SLOTS):
+        rot = REF_RIG_T_CAM_EGO[i, :3, :3].astype(np.float64)
+        np.testing.assert_allclose(rot @ rot.T, np.eye(3), atol=1e-5)
+        assert np.linalg.det(rot) == pytest.approx(1.0, abs=1e-5)
+        ego_from_cam = np.linalg.inv(REF_RIG_T_CAM_EGO[i].astype(np.float64))
+        assert 1.7 < ego_from_cam[2, 3] < 2.2, slot
+        optical_axis = ego_from_cam[:3, 2]
+        if slot.startswith("CAM_FRONT"):
+            assert optical_axis[0] > 0.4, slot
+        if slot.startswith("CAM_BACK"):
+            assert optical_axis[0] < -0.4, slot
+        hfov = 2 * np.degrees(np.arctan(INPUT_W / 2 / REF_RIG_K[i, 0, 0]))
+        assert hfov == pytest.approx(30.6 if "NARROW" in slot else 97.7, abs=0.5), slot
+
+
+def test_reference_rig_matches_the_clone() -> None:
+    """The embedded copy against upstream's bevlane/ref_rig_drs.npz, where a clone that has it exists."""
+    from paddock.config import SiteConfig
+
+    try:
+        path = SiteConfig.load().repo("METEOR") / "bevlane" / "ref_rig_drs.npz"
+    except Exception as exc:  # noqa: BLE001 - no site config is a skip, not a failure
+        pytest.skip(f"no site config: {exc}")
+    if not path.is_file():
+        pytest.skip(f"no {path.name} in the METEOR clone (it arrived after the repos.yaml pin)")
+    with np.load(path, allow_pickle=False) as z:
+        assert tuple(int(v) for v in z["img_hw"]) == (INPUT_H, INPUT_W)
+        np.testing.assert_array_equal(REF_RIG_K, z["K"].astype(np.float32))
+        np.testing.assert_array_equal(REF_RIG_T_CAM_EGO, z["T_cam_ego"].astype(np.float32))
 
 
 # ---- output side ------------------------------------------------------------
@@ -264,8 +411,9 @@ def test_infer_obeys_the_contract() -> None:
     assert "meteor_extrapolated_to_s" not in traj.extras
     json.dumps(traj.to_wire())  # numpy scalars would not survive the wire
     diag = policy.diagnostics()
-    assert diag["last"]["cameras_present"] == ["CAM_FRONT_WIDE"]
-    assert len(diag["last"]["cameras_absent"]) == 7
+    assert diag["last"]["cameras_present"] == ["CAM_FRONT_WIDE", "CAM_FRONT_NARROW"]
+    assert len(diag["last"]["cameras_absent"]) == 6
+    assert diag["last"]["absent_rule"] == diag["front_only"] == DEFAULT_FRONT_ONLY
 
 
 def test_infer_extends_to_the_requested_horizon(monkeypatch) -> None:
