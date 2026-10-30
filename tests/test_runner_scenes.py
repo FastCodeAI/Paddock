@@ -16,7 +16,7 @@ import pytest
 from paddock import doctor
 from paddock.adapters.benchmarks.bench2drive.harness import Bench2DriveBenchmark
 from paddock.benchmark import OpenLoopBenchmark, Sample
-from paddock.config import SiteConfig
+from paddock.config import REPO_ROOT, SiteConfig
 from paddock.runner import run_benchmark
 
 FIXTURES = Path("src/paddock/adapters/benchmarks/bench2drive/tests/fixtures")
@@ -37,6 +37,8 @@ def b2d_site(tmp_path, monkeypatch) -> SiteConfig:
     ):
         (repo / relative).parent.mkdir(parents=True, exist_ok=True)
         (repo / relative).write_text("")
+    # The evaluator as patches/Bench2Drive/ leaves it, which preflight checks for.
+    (repo / "leaderboard/leaderboard/leaderboard_evaluator.py").write_text("# --connect-timeout\n")
     (repo / "leaderboard" / "data").mkdir()
     shutil.copy(FIXTURES / "routes_sample.xml", repo / "leaderboard" / "data" / "routes_sample.xml")
     for sub in ("repos", "runs", "weights"):
@@ -481,6 +483,154 @@ def test_a_resumed_run_is_still_rankable(tmp_path, monkeypatch) -> None:
     assert written["dataset"]["n_reused"] == 1
 
 
+def _site_with_env(tmp_path, model: str, env: dict[str, str]):
+    from paddock.config import SiteConfig
+
+    cfg = _cfg(tmp_path)
+    body = "".join(f'{k} = "{v}"\n' for k, v in env.items())
+    cfg.source.write_text(cfg.source.read_text() + f"[models.{model}.env]\n{body}")
+    return SiteConfig.load(cfg.source)
+
+
+@pytest.mark.parametrize(
+    ("env", "valid"),
+    [
+        ({"VISIONPILOT_ORT_THREADS": "2"}, True),  # declared tuning: what shakaal sets
+        ({"OMP_NUM_THREADS": "1"}, True),  # thread counts are tuning for every model
+        ({"LD_LIBRARY_PATH": "/opt/cuda/lib", "HF_HOME": "/cache/hf"}, True),  # where things live
+        ({"PADDOCK_FFMPEG": "/usr/bin/ffmpeg"}, False),  # another ffmpeg can change the input
+        ({"VISIONPILOT_PROVIDERS": "cpu"}, True),  # restating the declared default
+        ({"VISIONPILOT_SETPOINT": "run_start"}, False),  # changes the plan
+        ({"VISIONPILOT_WEIGHTS": "/opt/other"}, False),  # other weights
+        ({"VISIONPILOT_ORT_THREADS": "2", "VISIONPILOT_SETPOINT": "run_start"}, False),
+    ],
+)
+def test_a_site_env_override_that_can_change_the_plan_makes_the_run_unrankable(
+    tmp_path, monkeypatch, env, valid
+) -> None:
+    """End to end through `_run_one_model`, since the bug was in which path applied the rule.
+
+    A `[models.<name>.env]` override was recorded as `model_env` but never read
+    by `_validity`, so a finetuned `DRIVEJEPA_CHECKPOINT` run was stored
+    `valid: true` and would have been ranked as the released model.
+    """
+    from paddock import runner
+    from paddock.benchmark import Episode
+    from paddock.runtime import proc
+
+    class _Harness:
+        spec = type(
+            "S", (), {"name": "fake", "dataset": "d", "mode": "closed_loop", "primary_metric": "score"}
+        )()
+
+        def episodes(self, scenes=None, runs=1, scenarios=None):
+            yield Episode(episode_id="a", scenario="frontal", scene="a")
+
+        def completed_metrics(self, episode, out_dir, runs=1):
+            return {"score": 4.0}
+
+        def episode_samples(self, episode, metrics, out_dir):
+            return [{"sample_id": "fake/a", "native_id": {}, "split": "frontal", "metrics": metrics}]
+
+        def samples_per_episode(self, runs=1):
+            return 1
+
+        def run_config(self):
+            return {}
+
+        def model_run_config(self, model):
+            return {}
+
+        def invalid_reasons(self):
+            return []
+
+        def remarks(self):
+            return []
+
+    monkeypatch.setattr(proc, "model_node", _stub_model_node())
+    _isolate_results(tmp_path, monkeypatch)
+    cfg = _site_with_env(tmp_path, "visionpilot", env)
+    (cfg.runs / "fake" / "visionpilot" / "r").mkdir(parents=True)
+
+    runner._run_one_model(
+        cfg, _Harness(), _Harness.spec, _model_spec(), None, None, 1, 9999, lambda _s: None, resume="r"
+    )
+
+    written = json.loads((tmp_path / "results" / "fake" / "visionpilot" / "r" / "run.json").read_text())
+    assert written["valid"] is valid, written["notes"]
+    assert set(written["config"]["model_env"]) == set(env), "the override stays on the record either way"
+    if not valid:
+        assert "site env override" in written["notes"]
+        assert "VISIONPILOT_ORT_THREADS" not in written["notes"], "tuning keys are not named as reasons"
+
+
+def test_the_released_drivejepa_checkpoint_swapped_by_a_site_is_named(tmp_path) -> None:
+    """The case that found the gap: a finetune swapped in through the site config."""
+    from paddock.registry import Registry
+    from paddock.runner import _env_override_reasons
+
+    spec = Registry.load().models["drivejepa"]
+    cfg = _site_with_env(tmp_path, "drivejepa", {"DRIVEJEPA_CHECKPOINT": "/w/finetune/agent.ckpt"})
+    (reason,) = _env_override_reasons(cfg, spec)
+    assert "DRIVEJEPA_CHECKPOINT" in reason
+    assert _env_override_reasons(_cfg(tmp_path), spec) == [], "no env block, nothing to say"
+
+
+def test_drivejepa_declares_momentum_so_a_site_saying_on_is_not_an_override(tmp_path) -> None:
+    """Momentum is part of the model's definition; a site that switches it off is the override."""
+    from paddock.registry import Registry
+    from paddock.runner import _env_override_reasons
+
+    spec = Registry.load().models["drivejepa"]
+    assert spec.runtime.env["DRIVEJEPA_MOMENTUM"] == "on"
+    assert (
+        _env_override_reasons(_site_with_env(tmp_path, "drivejepa", {"DRIVEJEPA_MOMENTUM": "on"}), spec) == []
+    )
+    (reason,) = _env_override_reasons(
+        _site_with_env(tmp_path, "drivejepa", {"DRIVEJEPA_MOMENTUM": "off"}), spec
+    )
+    assert "DRIVEJEPA_MOMENTUM" in reason
+
+
+def test_autoe2e_logging_where_it_records_is_not_a_change_of_plan(tmp_path) -> None:
+    """AutoE2E's NAVSIM row (`20261009T055926-3ceb18`) set only `AUTOE2E_RECORD_DIR`,
+    a log written after the plan is made. It must stay rankable; its checkpoint must not."""
+    from paddock.registry import Registry
+    from paddock.runner import _env_override_reasons
+
+    spec = Registry.load().models["autoe2e"]
+    cfg = _site_with_env(tmp_path, "autoe2e", {"AUTOE2E_RECORD_DIR": "/path/to/autoe2e_calls"})
+    assert _env_override_reasons(cfg, spec) == []
+    cfg = _site_with_env(tmp_path, "autoe2e", {"AUTOE2E_CHECKPOINT": "/w/other/checkpoint.pt"})
+    (reason,) = _env_override_reasons(cfg, spec)
+    assert "AUTOE2E_CHECKPOINT" in reason
+
+
+def test_restating_alpamayos_nav_default_is_not_an_override(tmp_path) -> None:
+    """`ALPAMAYO_NAV = "1"` is what its Bench2Drive pooled run set: the default, so
+    still rankable. `"0"` is the no-nav baseline, a different plan."""
+    from paddock.registry import Registry
+    from paddock.runner import _env_override_reasons
+
+    spec = Registry.load().models["alpamayo15"]
+    assert _env_override_reasons(_site_with_env(tmp_path, "alpamayo15", {"ALPAMAYO_NAV": "1"}), spec) == []
+    (reason,) = _env_override_reasons(_site_with_env(tmp_path, "alpamayo15", {"ALPAMAYO_NAV": "0"}), spec)
+    assert "ALPAMAYO_NAV" in reason
+
+
+def test_every_declared_tuning_key_is_one_the_model_reads() -> None:
+    """A misspelt `tuning_env` entry would silently let the real key invalidate,
+    or worse, name a key nothing reads. Each must appear in the adapter's source
+    or its declared env."""
+    from paddock.registry import Registry
+
+    models_dir = Path(__file__).resolve().parents[1] / "src/paddock/adapters/models"
+    for name, spec in Registry.load().models.items():
+        source = "\n".join(p.read_text() for p in (models_dir / name).glob("*.py"))
+        for key in spec.runtime.tuning_env:
+            assert key in source or key in spec.runtime.env, f"{name}: tuning_env {key} is read nowhere"
+
+
 def test_a_real_reason_still_invalidates_alongside_a_remark() -> None:
     """`remarks` must not become a way to launder an invalidating reason."""
     from paddock.runner import _validity
@@ -738,6 +888,7 @@ def test_an_interrupted_open_loop_run_resumes_from_its_journal(tmp_path, monkeyp
     written = json.loads(stored.read_text())
     assert written["dataset"]["n_samples"] == 6
     assert written["valid"] is True and "resumed" in written["notes"]
+    assert "this attempt only" in written["notes"], "the start and duration are the second attempt's"
 
 
 def test_resume_is_refused_when_the_switches_changed(tmp_path, monkeypatch) -> None:
@@ -1043,6 +1194,45 @@ def test_a_run_records_the_revision_and_the_policy_that_produced_it(tmp_path, mo
     # Not in `config`: config is hashed into the run id and compared by
     # `--resume`, so a `git pull` between attempts must not refuse the resume.
     assert "repo" not in written["config"] and "backend" not in written["config"]
+    # Which paddock code ran: a baseline on older adapter code is another measurement.
+    assert written["provenance"]["paddock"]["sha"] == provenance.git_sha(REPO_ROOT)
+    assert "paddock" not in written["config"]
+
+
+def test_paddock_provenance_says_when_tracked_files_were_edited(tmp_path) -> None:
+    import subprocess
+
+    from paddock.runtime import provenance
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / "f").write_text("x")
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "one"], cwd=tmp_path, check=True
+    )
+    (tmp_path / "untracked").write_text("results and site files are always here")
+    clean = provenance.paddock_provenance(tmp_path)
+    assert clean == {"sha": provenance.git_sha(tmp_path), "dirty": False}
+    (tmp_path / "f").write_text("edited")
+    assert provenance.paddock_provenance(tmp_path)["dirty"] is True
+    assert provenance.paddock_provenance(tmp_path / "missing") == {"sha": None}
+
+
+def test_a_resumed_run_keeps_the_paddock_commits_of_its_earlier_attempts(tmp_path, monkeypatch) -> None:
+    """Review of #100 (3): a resume kept the model repo's earlier commits but not paddock's."""
+    from paddock import runner
+    from paddock.results import store
+
+    monkeypatch.setattr(store, "run_dir", lambda b, m, r: tmp_path / b / m / r)
+    (tmp_path / "b" / "m" / "r").mkdir(parents=True)
+    (tmp_path / "b" / "m" / "r" / "run.json").write_text(
+        json.dumps({"provenance": {"repo": {"sha": "r1"}, "paddock": {"sha": "p1", "dirty": False}}})
+    )
+    prov = runner._carry_forward_provenance(
+        "b", "m", "r", {"repo": {"sha": "r2"}, "paddock": {"sha": "p2", "dirty": False}}
+    )
+    assert prov["repo"]["earlier_shas"] == ["r1"]
+    assert prov["paddock"] == {"sha": "p2", "dirty": False, "earlier_shas": ["p1"]}
 
 
 def test_a_run_that_scored_fewer_samples_than_it_should_have_says_so(tmp_path, monkeypatch) -> None:

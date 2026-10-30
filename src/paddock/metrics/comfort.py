@@ -84,6 +84,14 @@ BOUNDS = {
     "yaw_rate": 0.95,
 }
 
+#: The shortest 0.5 s step that gets a heading, in metres (0.5 m/s). Below it a
+#: plan's direction is its jitter: Drive-JEPA's neuroNCAP plans that covered
+#: under 2 m in 3 s broke the yaw-rate bound 95% of the time, on headings read
+#: from centimetre steps, and those that covered over 5 m almost never did. No
+#: car turns hard enough at 0.5 m/s to break the 0.95 rad/s bound (it would need
+#: a 0.5 m radius), so nothing real is lost below it.
+MIN_HEADING_STEP_M = 0.25
+
 #: Jerk is a third difference, so it needs three intervals, so it needs three
 #: waypoints past the origin. Below this the whole set is NaN rather than a
 #: subset being quietly emitted: a model whose plan is too short to have a jerk
@@ -182,8 +190,10 @@ def comfort(xy, dt: float) -> dict[str, float]:
 
     # Heading is undefined where the car did not move, and `arctan2(0, 0)` is 0
     # rather than NaN -- so a stopped plan would otherwise report a yaw rate
-    # swinging between whatever headings its noise happened to produce.
-    moving = length > 1e-6
+    # swinging between whatever headings its noise happened to produce. "Did not
+    # move" is a step under MIN_HEADING_STEP_M on the common grid, not exactly
+    # zero: a near-stop's centimetres of jitter are no more a heading than none.
+    moving = length >= MIN_HEADING_STEP_M * dt / REFERENCE_DT
     heading = np.where(moving, np.arctan2(step[:, 1], step[:, 0]), np.nan)
     # `np.unwrap` is a cumulative sum over differences, so a single NaN voids
     # every heading after it: a plan that waited at a light and then turned off

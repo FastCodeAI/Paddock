@@ -186,6 +186,17 @@ class Benchmark(ABC):
         """
         return []
 
+    def close(self) -> None:  # noqa: B027 - optional: a harness that starts nothing releases nothing
+        """Release what this harness started of its own, once the runner is done with it.
+
+        Called once per `run_benchmark`, after the run, its dry run or its
+        refusal, whatever the outcome; what it raises is reported, never raised
+        over the run's result. neuroNCAP stops its managed renderer here. When a
+        pairing table splits a sweep into one harness per model, a renderer left
+        running is what the next harness's preflight finds and refuses.
+        Default: nothing.
+        """
+
     def remarks(self) -> list[str]:
         """What a reader of a run made under the current settings should know, without it ranking less.
 

@@ -150,6 +150,9 @@ dl.kv dt { color: var(--text-secondary); }
 dl.kv dd { margin: 0; font-variant-numeric: tabular-nums; }
 ul.plain { padding-left: 18px; margin: 6px 0; font-size: 13px; }
 
+/* "Stop route" on a live card: deliberate, so it reads as an action and not a status */
+.live button.stop { margin-top: 8px; width: 100%; }
+
 /* rendered markdown reports served beside the dashboard */
 .report { max-width: 1100px; }
 .report h1 { font-size: 22px; } .report h2 { font-size: 17px; margin-top: 28px; } .report h3 { font-size: 15px; }

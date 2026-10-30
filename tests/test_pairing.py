@@ -196,8 +196,82 @@ def test_a_sweep_gives_each_model_its_own_config(tmp_path, monkeypatch) -> None:
     assert [one is not cfg for one in seen] == [name == "openpilot" for name in declaring]
 
 
+def test_a_split_sweep_lets_each_harness_go_before_the_next_starts(tmp_path, monkeypatch) -> None:
+    """neuroNCAP's renderer outlived its harness, and the next model's preflight found it and refused."""
+    cfg = _site(tmp_path, monkeypatch, PAIRING)
+    events: list[tuple[str, int]] = []
+
+    class _Harness:
+        def __init__(self, n: int) -> None:
+            self.n = n
+
+        def preflight(self) -> list[str]:
+            events.append(("preflight", self.n))
+            return ["stopped by the test"]
+
+        def close(self) -> None:
+            events.append(("close", self.n))
+
+    built: list[_Harness] = []
+
+    def _build(_spec, _cfg) -> _Harness:
+        built.append(_Harness(len(built)))
+        return built[-1]
+
+    monkeypatch.setattr(runner, "load_benchmark", _build)
+    monkeypatch.delenv("PADDOCK_BASE_PORT", raising=False)
+
+    runner.run_benchmark(cfg, "kitscenes", "all", echo=lambda _line: None)
+    assert len(built) > 1, "a pairing splits the sweep"
+    assert events == [step for n in range(len(built)) for step in (("preflight", n), ("close", n))]
+
+
+def test_a_close_that_fails_leaves_the_runs_own_outcome(tmp_path, monkeypatch) -> None:
+    """A renderer not reaped in time raised out of the `finally`: the exit code and the sweep were lost."""
+    cfg = _site(tmp_path, monkeypatch, PAIRING)
+    built: list[int] = []
+
+    class _Harness:
+        def preflight(self) -> list[str]:
+            return ["stopped by the test"]
+
+        def close(self) -> None:
+            raise TimeoutError("the renderer would not die")
+
+    def _build(_spec, _cfg) -> _Harness:
+        built.append(len(built))
+        return _Harness()
+
+    monkeypatch.setattr(runner, "load_benchmark", _build)
+    monkeypatch.delenv("PADDOCK_BASE_PORT", raising=False)
+    lines: list[str] = []
+
+    assert runner.run_benchmark(cfg, "kitscenes", "all", echo=lines.append) == 1, "preflight's own exit code"
+    declaring = [m for m in Registry.load().models.values() if "kitscenes" in m.benchmarks]
+    assert len(built) == len(declaring), "every model still gets its turn"
+    assert sum("would not die" in line for line in lines) == len(declaring)
+
+
 def test_a_sweep_without_a_pairing_still_shares_one_harness(tmp_path, monkeypatch) -> None:
     cfg = _site(tmp_path, monkeypatch, GLOBAL)
     seen = _stopped_at_preflight(monkeypatch)
     runner.run_benchmark(cfg, "kitscenes", "all", echo=lambda _line: None)
     assert len(seen) == 1 and seen[0] is cfg
+
+
+@pytest.mark.parametrize("model", ["openpilot", "all"])
+def test_a_pairing_for_a_benchmark_that_does_not_exist_stops_the_run(tmp_path, monkeypatch, model) -> None:
+    """`kitscene` for `kitscenes` must not leave the run measuring stock while reading as configured.
+
+    `_pairing` refuses a misspelt key inside the table; the benchmark's name is
+    the other half of the same mistake, and only the registry can check it.
+    """
+    typo = PAIRING.replace("benchmarks.kitscenes.env", "benchmarks.kitscene.env")
+    cfg = _site(tmp_path, monkeypatch, typo)
+    seen = _stopped_at_preflight(monkeypatch)
+    lines: list[str] = []
+
+    assert runner.run_benchmark(cfg, "kitscenes", model, echo=lines.append) == 2
+    assert seen == []
+    said = "\n".join(lines)
+    assert "[models.openpilot.benchmarks.kitscene]" in said and "no benchmark named 'kitscene'" in said

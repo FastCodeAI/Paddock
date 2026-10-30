@@ -47,13 +47,26 @@ comma2k19 = [
 ]
 # Needed only by the analysis notebooks under tools/ (tag, cluster and dissect
 # recorded predictions). Not in `make setup`: nothing in src/ or tests/ imports
-# these, so the pre-PR gate stays as lean as before. nbclient is what makes
-# `jupyter execute` work, so a notebook can be run headless on all samples.
+# these, so the pre-PR gate stays as lean as before. Install it beside a setup
+# with `uv pip install --python .venv/bin/python -e ".[analysis]"`. nbclient is
+# what makes `jupyter execute` work, so a notebook can be run headless on all
+# samples; viz brings matplotlib and Pillow, which every analysis lib draws with.
 analysis = [
+    "paddock[viz]",
     "pandas>=2.2",
     "ipykernel>=6.29",
     "ipywidgets>=8.1",
     "nbclient>=0.10",
+    # What the nuScenes devkit imports. The nuScenes notebook reads the map
+    # expansion through `{repos}/nuscenes-devkit/python-sdk` put on sys.path, not
+    # an install: the devkit pins numpy<2 and would downgrade this env.
+    "shapely>=2.0",
+    "pyquaternion>=0.9.5",
+    "descartes>=1.1",
+    "scikit-learn>=1.5",
+    "opencv-python-headless>=4.10",
+    "cachetools>=5.0",
+    "tqdm>=4.66",
 ]
 dev = [
     "pytest>=8.0",

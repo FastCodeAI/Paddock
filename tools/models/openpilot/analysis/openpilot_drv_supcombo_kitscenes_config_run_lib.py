@@ -54,7 +54,9 @@ WIDGETS = os.environ.get("PADDOCK_ANALYSIS_WIDGETS") == "1"  # part 1's switch; 
 RUNS = {
     "stock": "20260930T154018-242869",  # nothing set: the open-loop notebook's baseline
     "intent": "20260930T014333-d329a6",  # the route as a desire, on the ring camera (the note's Q1)
-    "config": "20261005T205400-a369d1",  # the scene sweep's CONFIG, run by paddock from a pairing table
+    # the scene sweep's CONFIG, run by paddock from a pairing table: the re-run that superseded
+    # 20261005T205400-a369d1, equal to it on all 223 keyframes, plans included
+    "config": "20261008T004723-a369d1",
 }
 COLOURS = {"stock": T.STOCK_C, "config": T.CONFIG_C, "intent": T.ARM_C[2]}
 # Intent is stock to the last bit on every straight keyframe, so drawn solid over it, it would hide stock's line.
@@ -181,8 +183,8 @@ class Study:
     """The runs on every keyframe, side by side.
 
     runs: {arm: run id}. "stock" and "config" are required, and "intent" is needed only by `decompose`. tags: the
-    stock run's tags table, which the open-loop notebook's §6 writes under {runs}; "auto" finds it, a path names
-    it, None goes without (part 6 then has only this module's columns). overrides: any of PARAMS.
+    stock run's tags table, which the open-loop notebook's §18 export writes under {runs}; "auto" finds it, a
+    path names it, None goes without (part 6 then has only this module's columns). overrides: any of PARAMS.
     """
 
     def __init__(self, runs=None, *, tags="auto", overrides=None, cfg=None):
@@ -288,7 +290,7 @@ class Study:
         else:
             path = Path(self.cfg.resolve(str(tags)))
         if not path.exists():
-            print("no tags table for the stock run here: run the open-loop notebook's §6 to write one")
+            print("no tags table for the stock run here: the open-loop notebook's §18 export writes one")
             return pd.DataFrame(index=self.scores.index)
         t = pd.read_csv(path)
         return t.set_index(t.sample_id.map(T._label)).reindex(self.scores.index)

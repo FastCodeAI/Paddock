@@ -322,6 +322,53 @@ def test_config_is_read_from_the_source_runs(tmp_path: Path) -> None:
     assert "run.json" not in run.notes, "nothing was assumed, so nothing to warn about"
 
 
+def _pooled_under(tmp_path: Path, declared: tuple[dict | None, dict | None]):
+    """Pool the two contributing source runs of `_tree`, each recorded under `declared`."""
+    root = _tree(tmp_path)
+    for run_id, env in zip(("20260901T000000-aaaaaa", "20260903T000000-cccccc"), declared, strict=True):
+        record = _source_run_json("modelx", [], {})
+        if env is not None:
+            record["config"]["declared_env"] = env
+        (root / run_id / "run.json").write_text(json.dumps(record))
+    ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s", run_label="pooled")
+    return run
+
+
+def test_the_model_yaml_env_of_the_source_runs_reaches_the_pooled_record(tmp_path: Path) -> None:
+    """#99, one level up: the pooled config was rebuilt without `declared_env`."""
+    on = {"DRIVEJEPA_MOMENTUM": "on"}
+    run = _pooled_under(tmp_path / "a", (on, on))
+    assert run.config["declared_env"] == on
+    assert run.valid, run.notes
+
+
+def test_source_runs_under_different_model_yaml_env_do_not_pool_into_one_ranked_number(
+    tmp_path: Path,
+) -> None:
+    """Momentum off and on pooled into one valid record, with the id of an all-on pool."""
+    off, on = {"DRIVEJEPA_MOMENTUM": "off"}, {"DRIVEJEPA_MOMENTUM": "on"}
+    mixed = _pooled_under(tmp_path / "mixed", (off, on))
+    same = _pooled_under(tmp_path / "same", (on, on))
+
+    assert mixed.config["declared_env"] == [off, on], "recorded disagreeing, like model_env"
+    assert not mixed.valid
+    assert "model.yaml env" in mixed.notes
+    assert mixed.run_id != same.run_id
+
+
+def test_a_source_run_that_recorded_no_model_yaml_env_is_not_read_as_agreeing(tmp_path: Path) -> None:
+    """`_agreed` skips a missing value, so a pre-#99 run would take the others' env."""
+    on = {"DRIVEJEPA_MOMENTUM": "on"}
+    run = _pooled_under(tmp_path / "half", (None, on))
+    assert not run.valid
+    assert "1 of 2 source runs recorded no declared_env" in run.notes
+
+    # Every source run from before #99: nothing to compare, and the record is as it was.
+    old = _pooled_under(tmp_path / "old", (None, None))
+    assert "declared_env" not in old.config
+    assert old.valid, old.notes
+
+
 def test_source_runs_that_disagree_are_recorded_disagreeing(tmp_path: Path) -> None:
     """Collapsing to the first value is how a record asserts a config half its routes ran under."""
     root = _tree(tmp_path)
@@ -448,6 +495,14 @@ def test_an_early_stop_is_read_from_the_source_runs_and_the_row_still_ranks(tmp_
     assert metrics.metrics["ended_stuck"]["n"] == 2, "2802's run wrote no record, so says nothing"
 
 
+def test_the_routes_without_an_expert_drive_are_counted_among_the_pooled_routes(tmp_path: Path) -> None:
+    """The runs record the site's routes the over-time rule cannot end; the pooled record covers fewer."""
+    rules = {"expert_factor": 4.0, "no_expert": ["1711", "3364", "3373"]}  # 1711 alone is pooled here
+    run = _pooled_with(tmp_path, ({"early_stop": rules}, {"early_stop": rules}))
+    assert run.config["early_stop"] == rules, "the config keeps what the runs recorded"
+    assert "(none on the 1 route(s) here with no expert drive)" in run.notes
+
+
 def test_routes_driven_before_the_early_stop_are_counted_out_loud(tmp_path: Path) -> None:
     root = _tree(tmp_path)
     rules = {"stuck_s": 30.0, "progress_m": 3.0}
@@ -460,6 +515,102 @@ def test_routes_driven_before_the_early_stop_are_counted_out_loud(tmp_path: Path
 
     assert run.config["early_stop"] == rules
     assert "1 of 2 source runs ran without it" in run.notes
+    assert not run.valid, "with and without the rule are two experiments, as two rules are"
+
+
+def _pooled_with(tmp_path: Path, configs: tuple[dict | None, dict | None]):
+    """Pool `_tree`'s two contributing source runs, each with these keys in its recorded config;
+    None is a run that kept no config at all."""
+    root = _tree(tmp_path)
+    for run_id, extra in zip(("20260901T000000-aaaaaa", "20260903T000000-cccccc"), configs, strict=True):
+        record = _source_run_json("modelx", [], {})
+        if extra is None:
+            record.pop("config")
+        else:
+            record["config"].update(extra)
+        (root / run_id / "run.json").write_text(json.dumps(record))
+    ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s")
+    return run
+
+
+def test_a_pool_whose_runs_override_a_setting_the_model_declares_does_not_rank(tmp_path: Path) -> None:
+    """What makes a `paddock run` valid: false makes the pool so too. AutoE2E's sweep set three of
+    its declared settings (10 Hz, a steady ego history, no route); its record directory is tuning,
+    which model.yaml does not declare, and a key restating its default is no override."""
+    declared = {"AUTOE2E_EGO_HISTORY": "real", "AUTOE2E_REPLAN_S": "0", "AUTOE2E_ROUTE": "1"}
+    env = {"AUTOE2E_EGO_HISTORY": "steady", "AUTOE2E_REPLAN_S": "0.1", "AUTOE2E_RECORD_DIR": "<site path:1>"}
+    sweep = {"declared_env": declared, "model_env": {**env, "AUTOE2E_ROUTE": "0"}}
+    run = _pooled_with(tmp_path / "a", (sweep, sweep))
+    assert not run.valid
+    assert "AUTOE2E_EGO_HISTORY, AUTOE2E_REPLAN_S, AUTOE2E_ROUTE" in run.notes
+    assert "AUTOE2E_RECORD_DIR" not in run.notes
+    restated = {"declared_env": declared, "model_env": {"AUTOE2E_ROUTE": "1", "AUTOE2E_RECORD_DIR": "<x>"}}
+    assert _pooled_with(tmp_path / "b", (restated, restated)).valid
+
+
+def test_a_pool_driven_on_another_camera_rig_names_it_and_does_not_rank(tmp_path: Path) -> None:
+    """The rig is in each run's config only when it is not paddock's, so a pool of default-rig runs
+    keeps its run id; another rig, or a mix, is recorded and does not rank."""
+    kit = {"camera_rig": "kitscenes"}
+    run = _pooled_with(tmp_path / "a", (kit, kit))
+    assert run.config["camera_rig"] == "kitscenes" and not run.valid
+    assert "kitscenes" in run.notes
+    mixed = _pooled_with(tmp_path / "b", (kit, {}))
+    assert mixed.config["camera_rig"] == ["kitscenes", "paddock"] and not mixed.valid
+    default = _pooled_with(tmp_path / "c", ({}, {}))
+    assert "camera_rig" not in default.config and default.valid
+    assert run.run_id != default.run_id
+
+
+def test_a_pool_asked_at_the_rate_its_model_declared_records_it_and_ranks(tmp_path: Path) -> None:
+    """Every run since #106 records how often the node was asked (`infer_hz`). AutoE2E's 50 routes
+    pooled without it: the record named no rate and took the run id of the same routes asked every
+    tick. A recorded rate with no `planning_hz` beside it is the one the model declared, so the pool
+    ranks -- judged from the runs, not from model.yaml as it is when the ingest runs."""
+    run = _pooled_with(tmp_path / "a", ({"infer_hz": 10.0}, {"infer_hz": 10}))
+    assert run.config["infer_hz"] == 10.0 and run.valid, "10 and 10.0 are one rate"
+    assert "10 Hz, the planning_hz the model's model.yaml declared" in run.notes
+    every = _pooled_with(tmp_path / "b", ({}, {}))
+    assert "infer_hz" not in every.config and every.valid, "a pool of runs asked every tick keeps its id"
+    assert run.run_id != every.run_id
+    at_20 = _pooled_with(tmp_path / "c", ({"infer_hz": 20.0}, {"infer_hz": 20.0}))
+    assert at_20.valid and at_20.run_id == every.run_id, "20 Hz on a 20 Hz simulation is every tick"
+
+
+def test_a_pool_at_the_hosts_rate_at_two_rates_or_at_a_rate_not_known_does_not_rank(tmp_path: Path) -> None:
+    """The host's PADDOCK_INFER_HZ in place of the declared rate is recorded with the declared one
+    beside it: an operator's rate. One mean over two rates describes neither, and a run that kept no
+    config may have been asked at any rate. None of them ranks, and the notes say which."""
+    host = _pooled_with(tmp_path / "a", ({"infer_hz": 2.0, "planning_hz": 10.0},) * 2)
+    assert (host.config["infer_hz"], host.config["planning_hz"]) == (2.0, 10.0) and not host.valid
+    assert "the rate the host's PADDOCK_INFER_HZ set" in host.notes
+    forced = _pooled_with(tmp_path / "b", ({"infer_hz": 0.0, "planning_hz": 10.0},) * 2)
+    assert forced.config["infer_hz"] == 0.0 and not forced.valid, "every tick, forced on a 10 Hz model"
+    two = _pooled_with(tmp_path / "c", ({"infer_hz": 10.0}, {"infer_hz": 2.0}))
+    assert sorted(two.config["infer_hz"]) == [2.0, 10.0] and not two.valid
+    with_every_tick = _pooled_with(tmp_path / "d", ({"infer_hz": 10.0}, {}))
+    assert sorted(with_every_tick.config["infer_hz"]) == [0.0, 10.0] and not with_every_tick.valid
+    unknown = _pooled_with(tmp_path / "e", ({"infer_hz": 10.0}, None))
+    assert not unknown.valid and "1 of 2 source runs kept no config" in unknown.notes
+    garbled = _pooled_with(tmp_path / "f", ({"infer_hz": "fast"}, {"infer_hz": "fast"}))
+    assert not garbled.valid and "'fast', which is not a rate" in garbled.notes
+
+
+def test_the_old_rate_rule_reads_only_runs_that_recorded_no_rate(tmp_path: Path) -> None:
+    """Before #106 a rate reached the record only as PADDOCK_INFER_HZ in `model_env` (the September
+    native-rate records). A run that recorded `infer_hz` is judged by that alone, so one record never
+    says both that it was asked at the model's own rate and that it was off the protocol."""
+    september = _pooled_with(tmp_path / "a", ({"model_env": {"PADDOCK_INFER_HZ": "2"}},) * 2)
+    assert not september.valid and "driven at 2 Hz" in september.notes
+    both = _pooled_with(tmp_path / "b", ({"model_env": {"PADDOCK_INFER_HZ": "2"}, "infer_hz": 2.0},) * 2)
+    assert "driven at 2 Hz" not in both.notes and "2 Hz, the planning_hz" in both.notes
+
+
+def test_a_pool_of_routes_ended_at_a_collision_does_not_rank(tmp_path: Path) -> None:
+    rules = {"stuck_s": 30.0, "collision": True, "progress_m": 3.0}
+    run = _pooled_with(tmp_path, ({"early_stop": rules}, {"early_stop": rules}))
+    assert run.config["early_stop"] == rules and not run.valid
+    assert "stop_on_collision" in run.notes
 
 
 def test_a_pool_without_an_early_stop_records_none(tmp_path: Path) -> None:
@@ -486,3 +637,17 @@ def test_routes_stopped_under_different_rules_do_not_rank(tmp_path: Path) -> Non
     ]
     assert not run.valid
     assert "early stop settings differ between source runs" in run.notes
+
+
+def test_a_route_ended_by_hand_keeps_its_score_and_the_pool_does_not_rank(tmp_path: Path) -> None:
+    """A stop request is an operator's choice, not a rule: the route stays, named; the row does not rank."""
+    root = _tree(tmp_path)
+    route_dir = root / "20260903T000000-cccccc" / "24333-Town15-DynamicObjectCrossing"
+    (route_dir / "early_stop.json").write_text(json.dumps({"reason": "manual", "game_time_s": 12.0}))
+
+    ((run, _metrics, samples),) = bench2drive.ingest(root, model="modelx", site="s")
+
+    assert not run.valid
+    assert "1 route(s) ended by hand" in run.notes
+    by_route = {s["native_id"]["route_id"]: s["metrics"] for s in samples}
+    assert by_route["24333"]["ended_manual"] == 1.0

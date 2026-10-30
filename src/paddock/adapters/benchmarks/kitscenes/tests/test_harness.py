@@ -90,7 +90,7 @@ def _calib() -> dict:
     return calib
 
 
-def _write_scene(root: Path, sensors, split: str = "val") -> Path:
+def _write_scene(root: Path, sensors, split: str = "val", maps: bool = True) -> Path:
     scene = root / split / SCENE
     (scene / "calibration").mkdir(parents=True)
     (scene / "calibration" / "calib.json").write_text(json.dumps(_calib()))
@@ -98,6 +98,10 @@ def _write_scene(root: Path, sensors, split: str = "val") -> Path:
     (scene / "poses.txt").write_text(
         "".join(f"{i / 10:.3f} {i * 0.5:.3f} 0.0 0.0 0.0 0.0 0.0 1.0\n" for i in range(N_FRAMES))
     )
+    if maps:  # Named, never opened by the harness.
+        (scene / "maps").mkdir()
+        (scene / "maps" / "map.osm").touch()
+        (scene / "maps" / "origin.json").touch()
     for sensor in sensors:
         (scene / sensor).mkdir()
         for i in range(N_FRAMES):
@@ -315,6 +319,18 @@ def test_a_route_hint_is_a_different_measurement(tmp_path, monkeypatch) -> None:
     assert bench.run_config() == {"ground_offset_m": POD_HEIGHT_M, "command_source": "gt"}
 
 
+def test_a_route_hint_is_recorded_and_ranked(tmp_path, monkeypatch) -> None:
+    """`gt` is the route signal ranked rows here and every nuScenes model get: recorded, not invalid."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, [*RING, BASE])
+    hinted = _benchmark(tmp_path, monkeypatch, [archive], settings='command_source = "gt"\n')
+    assert hinted.invalid_reasons() == [], "a navigation command is an input, not a look at the scorer"
+    assert hinted.run_config()["command_source"] == "gt", "and the record says the model was given it"
+
+    base = _benchmark(tmp_path, monkeypatch, [archive], settings='front_camera = "base"\n')
+    assert base.invalid_reasons() == [], "another camera is another input, not a look at the answer"
+
+
 def test_preflight_names_an_unknown_command_source(tmp_path, monkeypatch) -> None:
     """A typo must not quietly run as `straight` and be recorded as something else."""
     archive = tmp_path / "archive"
@@ -324,6 +340,19 @@ def test_preflight_names_an_unknown_command_source(tmp_path, monkeypatch) -> Non
     (problem,) = bench.preflight()
     assert "command_source = 'sample_list'" in problem
     assert "straight, gt" in problem
+
+
+def test_preflight_names_a_route_hint_the_sample_list_cannot_give(tmp_path, monkeypatch) -> None:
+    """`gt` reads each row's `driving_command`; a list without one is refused before the first sample."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+
+    bench = _benchmark(tmp_path, monkeypatch, [archive], settings='command_source = "gt"\n')
+    (problem,) = bench.preflight()
+    assert "1 of 1 row(s)" in problem and "driving_command" in problem
+
+    # `straight` never reads it, so the same list is fine without the hint.
+    assert _benchmark(tmp_path, monkeypatch, [archive]).preflight() == []
 
 
 # ---------------------------------------------------------------------------
@@ -478,3 +507,82 @@ def test_preflight_still_reports_the_missing_sample_list_first(tmp_path, monkeyp
 
     (problem,) = bench.preflight()
     assert "sample_list does not exist" in problem
+
+
+# ---------------------------------------------------------------------------
+# The map and the route
+# ---------------------------------------------------------------------------
+
+
+def test_the_keyframe_names_its_scenes_map_and_carries_the_logged_drive(tmp_path, monkeypatch) -> None:
+    """By default: the scene's Lanelet2 files and the whole logged scene, on the scored keyframe only."""
+    archive = tmp_path / "archive"
+    scene = _write_scene(archive, RING)
+    (sample,) = list(_benchmark(tmp_path, monkeypatch, [archive]).samples())
+    *history, scored = sample.observations
+
+    assert scored.map_files == {
+        "format": "lanelet2_osm",
+        "map": str(scene / "maps" / "map.osm"),
+        "origin": str(scene / "maps" / "origin.json"),
+    }
+    trace = scored.route_trace
+    assert trace.shape == (N_FRAMES, 4), "the whole scene, future included"
+    assert np.allclose(trace[:, 0], np.arange(N_FRAMES) / 10), "in the observations' clock"
+    assert trace[KEYFRAME, 0] * 1e6 == scored.timestamp_us
+    assert np.allclose(trace[:, 1], np.arange(N_FRAMES) * 0.5) and not trace[:, 2:].any()
+    assert all(obs.map_files is None and obs.route_trace is None for obs in history)
+    back = Observation.from_wire(scored.to_wire())
+    assert back.map_files == scored.map_files and np.allclose(back.route_trace, trace)
+
+
+def test_a_withheld_map_or_route_is_absent_and_recorded(tmp_path, monkeypatch) -> None:
+    """`map = false` and `route = "none"` reach no observation; each is hashed in only when set."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+    default = _benchmark(tmp_path, monkeypatch, [archive])
+    assert default.run_config() == {"ground_offset_m": POD_HEIGHT_M}, "so every earlier run keeps its id"
+    assert default.invalid_reasons() == [], "an input, as the route hint is, not a look at the scorer"
+
+    no_route = _benchmark(tmp_path, monkeypatch, [archive], settings='route = "none"\n')
+    scored = _scored_observation(no_route)
+    assert scored.route_trace is None and scored.map_files is not None
+    assert no_route.run_config() == {"ground_offset_m": POD_HEIGHT_M, "route": "none"}
+
+    neither = _benchmark(tmp_path, monkeypatch, [archive], settings='map = false\nroute = "none"\n')
+    scored = _scored_observation(neither)
+    assert scored.route_trace is None and scored.map_files is None
+    assert neither.run_config() == {"ground_offset_m": POD_HEIGHT_M, "map": False, "route": "none"}
+
+
+def test_preflight_refuses_an_oracle_route_without_a_map(tmp_path, monkeypatch) -> None:
+    """The route is matched to the map; asking for one without the other is a contradiction, not a run."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+    (problem,) = _benchmark(tmp_path, monkeypatch, [archive], settings="map = false\n").preflight()
+    assert 'route = "oracle"' in problem and "map is false" in problem
+
+
+def test_preflight_names_an_unknown_route_or_map_value(tmp_path, monkeypatch) -> None:
+    """A typo must not quietly run as the default and be recorded as something else."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+    (problem,) = _benchmark(tmp_path, monkeypatch, [archive], settings='route = "gps"\n').preflight()
+    assert "route = 'gps'" in problem and "oracle, none" in problem
+    (problem,) = _benchmark(tmp_path, monkeypatch, [archive], settings='map = "maybe"\n').preflight()
+    assert "map = 'maybe'" in problem and "true or false" in problem
+
+
+def test_preflight_names_a_scene_whose_map_no_tier_holds(tmp_path, monkeypatch) -> None:
+    """Read from the next tier, like a camera; refused when none holds it, unless the map is off."""
+    fast, archive = tmp_path / "fast", tmp_path / "archive"
+    _write_scene(fast, RING, maps=False)
+    _write_scene(archive, RING)
+    both = _benchmark(tmp_path, monkeypatch, [fast, archive])
+    assert both.preflight() == []
+    assert Path(_scored_observation(both).map_files["map"]).is_relative_to(archive)
+
+    (problem,) = _benchmark(tmp_path, monkeypatch, [fast]).preflight()
+    assert "maps/map.osm" in problem and SCENE in problem
+    off = _benchmark(tmp_path, monkeypatch, [fast], settings='map = false\nroute = "none"\n')
+    assert off.preflight() == []

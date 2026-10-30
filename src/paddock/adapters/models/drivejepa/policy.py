@@ -45,10 +45,19 @@ timestamp at ~0.5 s spacing rather than by taking the last four requests --
 otherwise the model would see 0.3 s of history and read the scene as nearly
 static.
 
-*Momentum-aware selection* (paper section 3.5) is off unless
-``DRIVEJEPA_MOMENTUM=on``. With it on, each replan is handed the plan this node
-chose about 0.5 s earlier, the way upstream's own evaluation loop hands it over,
-so the model's ``calibrate_score`` runs before the argmax. See `momentum.py`.
+*Momentum-aware selection* (paper section 3.5) is on: ``model.yaml`` declares
+``DRIVEJEPA_MOMENTUM=on``. ``off`` selects on the plain score, and is also what
+a node gets with the variable unset, for example one launched outside paddock.
+With it on, each replan is handed the plan this node chose about 0.5 s
+earlier, the way upstream's own evaluation loop hands it over, so the model's
+``calibrate_score`` runs before the argmax. See `momentum.py`.
+
+*The pick, reported.* Every answer carries ``extras["drivejepa_pick"]``: which
+of the 32 proposals was driven, its score, and whether the momentum stage was
+given a previous plan for it (`_pick`). A closed-loop client can then log the
+model's own choice rather than infer it from the path. Clients that read only
+``trajectory`` (neuroNCAP) never see it; `protocol.validate_extras` passes it
+as a model-native block.
 """
 
 from __future__ import annotations
@@ -109,12 +118,14 @@ class DriveJepaPolicy(Policy):
         # no code change.
         self.checkpoint = checkpoint or os.environ.get("DRIVEJEPA_CHECKPOINT")
         self.device = device
-        # "native" hands each camera over at its own intrinsics, which is how
-        # every published drivejepa row was made. "openscene" crops and rescales
-        # it onto the OpenScene camera the checkpoint trained on -- what the
-        # devkit's own KITScenes loader does. It matters there: the ring is 87
-        # degrees against OpenScene's 64, and on the benchmark's first samples
-        # the uncropped images made the best of the 32 candidates worse.
+        # "openscene" crops and rescales each camera onto the OpenScene camera
+        # the checkpoint trained on -- what the devkit's own KITScenes loader
+        # does -- and is what model.yaml sets. "native" hands each camera over at
+        # its own intrinsics; every Drive-JEPA row published before 2026-10-22 was
+        # made that way. It matters: KITScenes' ring is 87 degrees against
+        # OpenScene's 64, and uncropped the model's ADE there was 3.222 m against
+        # 2.521 m. The fallback here stays "native" for a policy built outside the
+        # runner, with no model.yaml env.
         self.image_geometry = os.environ.get("DRIVEJEPA_IMAGE_GEOMETRY", "native")
         if self.image_geometry not in IMAGE_GEOMETRIES:
             raise ValueError(
@@ -132,6 +143,7 @@ class DriveJepaPolicy(Policy):
         self.agent = None
         self.feature_builder = None
         self.history: list[dict[str, Any]] = []
+        self.momentum_fed = False
 
     def load(self) -> None:
         # navsim only exists inside Drive-JEPA's own environment; this module is
@@ -338,11 +350,15 @@ class DriveJepaPolicy(Policy):
             k: (v.unsqueeze(0).to(self.device) if torch.is_tensor(v) else v) for k, v in features.items()
         }
 
+        # Whether this pass's pick was made against a previous plan; read by
+        # `_pick`. Set per call so a stale value cannot survive.
+        self.momentum_fed = False
         if self.momentum is None:
             with torch.no_grad():
                 return self.agent.forward(features)
 
         extra, ego_state = self.momentum.features(*self._ego_now(obs))
+        self.momentum_fed = extra["past_ego_simulated_states"] is not None
         features.update(extra)
         with torch.no_grad():
             output = self.agent.forward(features)
@@ -375,7 +391,24 @@ class DriveJepaPolicy(Policy):
         # resampled. All eight are returned: closed-loop takes the first six,
         # and open-loop scoring wants the full horizon for FDE@3s.
         trajectory = output["trajectory"][0].float().cpu().numpy()
-        return Trajectory(trajectory, dt=HISTORY_DT)
+        return Trajectory(trajectory, dt=HISTORY_DT, extras={"drivejepa_pick": self._pick(output)})
+
+    def _pick(self, output: dict[str, Any]) -> dict[str, Any]:
+        """The proposal driven, as the model chose it (module docstring).
+
+        ``chosen_index`` is the proposal (of 32) whose trajectory `infer`
+        returns and ``chosen_score`` its score: the argmax and max of
+        ``pdm_score``, which is the momentum-recalibrated score when a previous
+        plan was fed and the learned one otherwise (drive_jepa_model.py:85-91).
+        ``momentum_fed`` is whether a previous plan was fed to this pick.
+        """
+        scores = output["pdm_score"][0].float().cpu().numpy()
+        index = int(np.argmax(scores))
+        return {
+            "chosen_index": index,
+            "chosen_score": float(scores[index]),
+            "momentum_fed": bool(self.momentum_fed),
+        }
 
     def diagnostics(self) -> dict[str, Any]:
         """History depth actually achieved, the image geometry, and momentum.

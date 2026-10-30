@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from typing import Any
 
 import numpy as np
@@ -51,6 +52,33 @@ ON_ROUTE_M = 4.0
 #: (CARLA ticks at 20 Hz, so 2 is 10 Hz) at 1/MODEL_VIEW_SCALE of each side.
 MODEL_VIEW_EVERY = 2
 MODEL_VIEW_SCALE = 4
+
+#: Where each tick's whole request goes when the inputs are recorded (``record_inputs``):
+#: one compressed ``.npz`` per tick, the model's camera frames as rendered (uint8,
+#: lossless; a frame :func:`wire_codec` sends as JPEG is encoded the same way again on
+#: replay) beside the rest of the request as JSON, so a route can be fed to a model
+#: again offline (``tools/benchmarks/bench2drive/replay.py``). ~2.5-3 MB a tick for six
+#: 800x450 views, so it is its own setting, off unless asked for.
+INPUTS_DIR = "inputs"
+
+#: Frames of this many pixels or more go to the node as JPEG (q95), the rest as raw
+#: ``.npy``: raw, a multi-megapixel frame is ~20 MB a tick. Every view of the
+#: ``bench2drive`` and ``kitscenes`` rigs is over it; paddock's 800x450 views are not.
+JPEG_FROM_PX = 1_000_000
+
+
+def wire_codec(frame) -> str | None:
+    """How the agent sends ``frame`` (H, W, 3) to the node: ``"jpeg"`` or raw (None).
+
+    The agent and a replay of its record both decide by this, so a replayed request
+    carries each frame the way the live one did.
+    """
+    return "jpeg" if frame.shape[0] * frame.shape[1] >= JPEG_FROM_PX else None
+
+
+#: Thumbnail directories named before any model but openpilot was recorded, and
+#: which its dashboard reads; every other camera gets :func:`model_view_dir`'s name.
+MODEL_VIEW_DIRS = {"CAM_OP_ROAD": "model_road", "CAM_OP_WIDE": "model_wide"}
 
 #: How far either side of the last match the route search looks before falling
 #: back to the whole plan, in plan points (1 m apart).
@@ -87,6 +115,38 @@ def to_ego(points_xy: np.ndarray, ego_x: float, ego_y: float, ego_yaw_deg: float
     c, s = math.cos(yaw), math.sin(yaw)
     dx, dy = pts[:, 0] - ego_x, pts[:, 1] - ego_y
     return np.stack([dx * c + dy * s, dx * s - dy * c], axis=-1)
+
+
+def model_view_dir(camera: str) -> str:
+    """Where a camera's thumbnails go: ``model_front_left`` for ``CAM_FRONT_LEFT``.
+
+    Every camera the model declares is kept, so a six-view model's record shows
+    all six views it planned from, not the two openpilot reads.
+    """
+    if camera in MODEL_VIEW_DIRS:
+        return MODEL_VIEW_DIRS[camera]
+    return "model_" + (camera[4:] if camera.startswith("CAM_") else camera).lower()
+
+
+def write_inputs(path: str, images: dict, body: dict) -> None:
+    """One tick's request: ``images`` (camera id -> uint8 HxWx3, as sent) and the rest of the body.
+
+    Written to a temporary name and renamed, so a route cut off mid-write leaves
+    no torn file for a replay to trip on.
+    """
+    arrays = {"image_" + cid: np.ascontiguousarray(img, dtype=np.uint8) for cid, img in images.items()}
+    text = np.frombuffer(json.dumps(body, separators=(",", ":")).encode(), dtype=np.uint8)
+    partial = path + ".partial.npz"
+    np.savez_compressed(partial, body=text, **arrays)
+    os.replace(partial, path)
+
+
+def read_inputs(path: str) -> tuple[dict, dict]:
+    """``(images, body)`` as :func:`write_inputs` wrote them."""
+    with np.load(path) as stored:
+        body = json.loads(bytes(stored["body"]).decode())
+        images = {name[len("image_") :]: stored[name] for name in stored.files if name.startswith("image_")}
+    return images, body
 
 
 def wrap_deg(angle: float) -> float:
@@ -188,13 +248,19 @@ def tick_record(
     lane: dict | None = None,
     lights: dict | None = None,
     actors: list | None = None,
+    asked: bool = True,
 ) -> dict:
     """One line of ``ticks.jsonl``.
 
+    ``asked``    whether this tick asked the node for a plan. A model that declares
+                 ``planning_hz`` is asked once per 1/planning_hz s, and the ticks
+                 between follow the last plan: on those nothing is sent, ``infer_ms``
+                 is 0, and ``sent`` and ``reply`` are what this tick would have sent
+                 and the reply still followed. Read it with ``tick_asked``.
     ``ego``      CARLA world pose (x, y, z, yaw, pitch, roll), speedometer speed,
                  ego-frame velocity/acceleration, yaw rate, posted limit (m/s)
-    ``sent``     what the node was given besides pixels: command, navigation,
-                 the agent's acceleration estimate
+    ``sent``     what the node was given besides pixels: command, navigation
+                 (the route polyline included), the agent's acceleration estimate
     ``reply``    the node's JSON exactly as returned (trajectory, dt, extras)
     ``control``  steer / throttle / brake and the tracker's target speed
     ``route``    nearest route index, along-route metres, distance off the route
@@ -205,6 +271,7 @@ def tick_record(
     record = {
         "t": tick,
         "time": round(game_time, 3),
+        "asked": bool(asked),
         "infer_ms": round(infer_ms, 1),
         "ego": rounded(ego, 4),
         "sent": rounded(sent, 4),
@@ -222,6 +289,19 @@ def tick_record(
     if actors is not None:
         record["actors"] = actors
     return record
+
+
+def tick_asked(record: dict) -> bool:
+    """Whether a ``ticks.jsonl`` line is a tick that asked the node for a plan.
+
+    Its ``asked`` field. Lines written before that field (28-29 Oct 2026, when the
+    client's own rate was new) marked a tick that did not ask only by an /infer time of
+    exactly 0, which no request takes; every earlier line asked.
+    """
+    if "asked" in record:
+        return bool(record["asked"])
+    infer_ms = record.get("infer_ms")
+    return infer_ms is None or infer_ms > 0
 
 
 def dumps(record: dict) -> str:

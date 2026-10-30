@@ -38,11 +38,17 @@ writes -- no state of its own decides anything:
   so silence alone never fires.
 
 All four go only after this sweep's own processes: workers are found by their
-command line *and* by the runs root of their ``PADDOCK_CONFIG``; evaluators by
-their ``--checkpoint`` lying under it; CARLA by the port in that evaluator's
-log. The evaluator's own crash handler kills every CARLA on its GPU index
-(``harness`` docstring), so routes known to crash CARLA are passed as
-``--held``: they are driven last, by one worker, once nothing else is left.
+command line *and* by the runs root of their ``PADDOCK_CONFIG``, and ``stop``
+signals only those whose ``PADDOCK_CONFIG`` is one of the campaign's own
+``worker<slot>.toml`` (a run started by hand on the same runs root keeps its
+routes from being dealt twice, and is left running); evaluators by their
+``--checkpoint`` lying under it; CARLA by the port in that evaluator's log. A
+process whose environment cannot be read -- another user's -- is never ours.
+A route known to crash CARLA does so on every attempt, and with no score it
+would be dealt again on every launch, so such routes are passed as ``--held``:
+driven last, by one worker, once nothing else is left. (Before patch 0001,
+which preflight now requires, the evaluator's crash handler also killed every
+CARLA on its GPU index, the other workers' with it.)
 
 Run it in paddock's own interpreter; ``PADDOCK_CONFIG`` picks the site config
 the workers copy, exactly as for ``paddock run``.
@@ -252,11 +258,12 @@ def _argv(pid: int) -> list[str]:
         return []
 
 
-def _environ(pid: int) -> dict[str, str]:
+def _environ(pid: int) -> dict[str, str] | None:
+    """The process's environment, or None when it cannot be read: another user's, or gone."""
     try:
         raw = Path(f"/proc/{pid}/environ").read_bytes().split(b"\0")
     except OSError:
-        return {}
+        return None
     return dict(item.decode(errors="replace").split("=", 1) for item in raw if b"=" in item)
 
 
@@ -281,6 +288,11 @@ def _runs_root(cfg: SiteConfig, model: str) -> Path:
     return cfg.runs / "bench2drive" / model
 
 
+def _state_dir(cfg: SiteConfig, model: str) -> Path:
+    """The campaign's own files: each worker's config (``worker<slot>.toml``) and the logs."""
+    return cfg.runs / "bench2drive" / "_campaign" / model
+
+
 def workers(model: str, runs_root: Path) -> list[Worker]:
     """Alive ``paddock run --bench bench2drive --model <model>`` processes writing under ``runs_root``."""
     found = []
@@ -298,7 +310,10 @@ def workers(model: str, runs_root: Path) -> list[Worker]:
             continue
         if bench != "bench2drive" or mdl != model:
             continue
-        cfg_path = Path(_environ(pid).get("PADDOCK_CONFIG") or REPO_ROOT / "paddock.toml")
+        env = _environ(pid)
+        if env is None:  # nothing says where it writes: not ours to count, and never to stop
+            continue
+        cfg_path = Path(env.get("PADDOCK_CONFIG") or REPO_ROOT / "paddock.toml")
         try:
             cfg = SiteConfig.load(cfg_path)
         except Exception:  # an unreadable config is not one of ours
@@ -409,15 +424,27 @@ def status(cfg: SiteConfig, model: str, echo=print) -> dict:
 
 
 def stop(cfg: SiteConfig, model: str, echo=print) -> int:
-    """Stop this sweep's workers: SIGINT first, which the harness turns into killing its evaluator + CARLA."""
+    """Stop this sweep's workers: SIGINT first, which the harness turns into killing its evaluator + CARLA.
+
+    Only the workers ``launch`` started, known by their ``PADDOCK_CONFIG``: one of the
+    campaign's ``worker<slot>.toml``. A ``paddock run`` of the same model started by
+    hand counts for ``launch`` (its routes are not dealt twice) but is not ours to stop.
+    """
     root = _runs_root(cfg, model)
-    alive = workers(model, root)
+    state_dir = _state_dir(cfg, model).resolve()
+    alive = [
+        w
+        for w in workers(model, root)
+        if w.config.resolve().parent == state_dir and w.config.name.startswith("worker")
+    ]
     for w in alive:
         echo(f"stopping worker pid {w.pid} ({len(w.routes)} routes queued)")
         if not _signal_and_wait(w.pid, signal.SIGINT, 180.0):
-            echo(f"  pid {w.pid} ignored SIGINT for 3 min; SIGTERM")
-            if not _signal_and_wait(w.pid, signal.SIGTERM, 30.0):
-                _signal_and_wait(w.pid, signal.SIGKILL, 10.0)
+            # Past SIGINT, the worker's whole process group: its model node runs in it, and a
+            # worker killed alone leaves the node on the GPU (workers lead their own session).
+            echo(f"  pid {w.pid} ignored SIGINT for 3 min; SIGTERM to its process group")
+            if not _signal_and_wait(w.pid, signal.SIGTERM, 30.0, group=True):
+                _signal_and_wait(w.pid, signal.SIGKILL, 10.0, group=True)
     # A worker killed past its SIGINT handler leaves its evaluator (own session) and CARLA behind.
     for pid, route_dir in evaluators(root):
         echo(f"cleaning up orphaned evaluator pid {pid} ({route_dir.name})")
@@ -440,11 +467,10 @@ def launch(
     """Deal what is left to free worker slots; see the module docstring.
 
     ``held`` routes are driven last and alone: one worker, once every other route has scored and no
-    worker is alive, because a route that crashes CARLA can take every other worker's CARLA with it
-    (the evaluator's crash handler kills all CARLA on its GPU index).
+    worker is alive, because a route that crashes CARLA does so every time (see the module docstring).
     """
     root = _runs_root(cfg, model)
-    state_dir = cfg.runs / "bench2drive" / "_campaign" / model
+    state_dir = _state_dir(cfg, model)
     alive = workers(model, root)
     if rebalance and alive:
         if dry_run:
@@ -531,6 +557,31 @@ def launch(
     return launched
 
 
+def _guard_one(pid: int, route_dir: Path, now: float, carla_missing_since: dict, once, dry_run, echo) -> None:
+    """The guard's two tests for one evaluator, and the kill when one fires."""
+    log = route_dir / "evaluator.log"
+    try:
+        silent = now - log.stat().st_mtime
+    except OSError:
+        return
+    port = carla_port_from_log(log, 0)
+    reason = None
+    if silent > SILENT_S:
+        reason = f"evaluator.log silent {silent:.0f} s"
+    elif port and _process_age_s(pid) > CARLA_GONE_S and not carla_pids(port):
+        first = carla_missing_since.setdefault(pid, now)
+        if once or now - first >= CARLA_GONE_S:
+            reason = f"its CARLA (port {port}) is gone"
+    else:
+        carla_missing_since.pop(pid, None)
+    if reason:
+        echo(f"{datetime.now(UTC):%F %T} {route_dir.parent.name}/{route_dir.name}: {reason}; "
+             f"{'would kill' if dry_run else 'killing'} evaluator pid {pid}")  # fmt: skip
+        if not dry_run:
+            kill_evaluator(pid, route_dir)
+        carla_missing_since.pop(pid, None)
+
+
 def guard(cfg: SiteConfig, model: str, once: bool = False, dry_run: bool = False, echo=print) -> None:
     """Kill evaluators that cannot finish; see the module docstring for the two signs."""
     root = _runs_root(cfg, model)
@@ -542,27 +593,12 @@ def guard(cfg: SiteConfig, model: str, once: bool = False, dry_run: bool = False
         seen = set()
         for pid, route_dir in evaluators(root):
             seen.add(pid)
-            log = route_dir / "evaluator.log"
+            # One evaluator's trouble -- its log gone mid-read, a process it may not
+            # signal -- is that evaluator's; the guard goes on watching the others.
             try:
-                silent = now - log.stat().st_mtime
-            except OSError:
-                continue
-            port = carla_port_from_log(log, 0)
-            reason = None
-            if silent > SILENT_S:
-                reason = f"evaluator.log silent {silent:.0f} s"
-            elif port and _process_age_s(pid) > CARLA_GONE_S and not carla_pids(port):
-                first = carla_missing_since.setdefault(pid, now)
-                if once or now - first >= CARLA_GONE_S:
-                    reason = f"its CARLA (port {port}) is gone"
-            else:
-                carla_missing_since.pop(pid, None)
-            if reason:
-                echo(f"{datetime.now(UTC):%F %T} {route_dir.parent.name}/{route_dir.name}: {reason}; "
-                     f"{'would kill' if dry_run else 'killing'} evaluator pid {pid}")  # fmt: skip
-                if not dry_run:
-                    kill_evaluator(pid, route_dir)
-                carla_missing_since.pop(pid, None)
+                _guard_one(pid, route_dir, now, carla_missing_since, once, dry_run, echo)
+            except OSError as exc:
+                echo(f"{datetime.now(UTC):%F %T} {route_dir.parent.name}/{route_dir.name}: {exc!r}; skipped")
         for pid in set(carla_missing_since) - seen:
             carla_missing_since.pop(pid)
         if once:

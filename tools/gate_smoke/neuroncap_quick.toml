@@ -1,0 +1,27 @@
+# neuroNCAP quick tier: 3 of the 20 official scenario-scene pairs, one per crash type,
+# 1 run each -- 3 episodes, about 20 min. With 3 units the bar is |t| >= 4.303: it
+# catches a large break, not a small regression. It can fail the gate but not ship
+# it (can_ship = false); the closed tier's 15 decide.
+# The unit is the scenario-scene pair. Runs are seeded 0..R-1, so a one-run subset is
+# run 0 of every full sweep and pairs with one directly. Run as `--scene <its scenes>
+# --runs 1` with PADDOCK_NCAP_PAIRS naming the pairs (`--scene` alone would run every
+# shape each scene has) and PADDOCK_NCAP_MANAGE_RENDERER=true. Stored valid=false.
+#
+# Drawn once, on 2026-10-22, by `python -m tools.gate_subsets neuroncap` (seed 20261022): every
+# group the same share, random within it (tools/gate_subsets.py has the rule). It must
+# never be re-picked, re-drawn or edited to make a result look better: a gate whose
+# subset moves can be steered. If it turns out to be wrong (a sample that cannot run,
+# say), replace it in its own commit that says why, and re-run every baseline paired
+# with it.
+
+bench = "neuroncap"
+can_ship = false
+unit = "scenario-scene pair"
+seed = 20261023
+runs = 1
+count = 3
+
+[strata]
+"frontal" = ["frontal-0103"]
+"side" = ["side-0103"]
+"stationary" = ["stationary-0783"]

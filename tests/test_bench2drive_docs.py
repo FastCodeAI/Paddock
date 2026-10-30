@@ -3,7 +3,8 @@
 Two things are guarded here, both of which a reviewer had to recompute by hand
 on PR #21:
 
-* **Every cell reproduces from the committed records.** The README tables are
+* **Every cell reproduces from the committed records.** The tables in
+  `docs/benchmarks/bench2drive.md` (moved there from the README) are
   transcribed by a human from `bench2drive-speed-normalization.json`; this
   recomputes them and fails on any drift, in either direction.
 * **OpenPilot's two recording sets are never pooled into one mean.** Its 24
@@ -25,10 +26,14 @@ from pathlib import Path
 
 import pytest
 
+from paddock.adapters.benchmarks.bench2drive.harness import every_tick
+from tools.readme_figures import load_matrix, matrix_cell
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RECORDS = REPO_ROOT / "docs/benchmarks/bench2drive-speed-normalization.json"
 UNASSISTED_CSV = REPO_ROOT / "docs/benchmarks/openpilot-24-infractions.csv"
-README = REPO_ROOT / "README.md"
+#: The page that holds the Bench2Drive tables; the README keeps only the matrix.
+PAGE = REPO_ROOT / "docs/benchmarks/bench2drive.md"
 
 # README label -> key in the records file.
 PUBLISHED = {
@@ -51,26 +56,14 @@ def data() -> dict:
     return json.loads(RECORDS.read_text())
 
 
-def _matrix_cell(row_label: str, column_header: str) -> str:
-    """One support-matrix cell, addressed by row label and column header.
-
-    The column is found rather than counted. Its index is not stable -- adding
-    the nuPlan column moved Bench2Drive from 5 to 6 -- and a hardcoded index
-    fails by reading a *different* benchmark's number, which is a confusing way
-    to learn that the matrix grew.
-    """
-    lines = README.read_text().split("\n")
-    header = next(ln for ln in lines if ln.startswith("| | ") and column_header in ln)
-    index = next(
-        i for i, c in enumerate(c.strip() for c in header.strip().strip("|").split("|")) if column_header in c
-    )
-    row = next(ln for ln in lines if ln.startswith(f"| {row_label} |"))
-    return [c.strip() for c in row.strip().strip("|").split("|")][index]
+def _matrix_cell(model: str) -> str:
+    """The support matrix's Bench2Drive number for one model, as docs/support-matrix.toml gives it."""
+    return matrix_cell(model, "bench2drive").shown
 
 
 def _readme_table(after: str) -> list[list[str]]:
-    """The first markdown table following a heading or marker line."""
-    lines = README.read_text().split("\n")
+    """The first markdown table following a heading or marker line on the Bench2Drive page."""
+    lines = PAGE.read_text().split("\n")
     start = next(i for i, ln in enumerate(lines) if ln.strip() == after)
     rows = []
     for ln in lines[start:]:
@@ -256,7 +249,7 @@ def test_openpilot_block_reproduces(data: dict) -> None:
 
 def test_support_matrix_openpilot_cell_is_the_unassisted_estimate(data: dict) -> None:
     est = data["summaries"]["openpilot_unassisted24_estimate"]["driving_score"]
-    cell = _matrix_cell("OpenPilot", "Bench2Drive")
+    cell = _matrix_cell("openpilot")
     assert re.match(rf"^{est:.2f}\b", cell), (
         f"the support matrix publishes {cell!r} for Bench2Drive; it must stay the "
         "unassisted estimate, not a pooled mean"
@@ -309,19 +302,43 @@ def test_speed_sweep_reproduces(data: dict) -> None:
         assert row[3] == f"{s['route_completion']:.2f}", row[0]
 
 
-def test_support_matrix_baseline_cell_is_the_historical_24_three_mps(data: dict) -> None:
-    """♣ 47.94 and the table's 40.39 are different experiments; both must be stated."""
-    s = data["summaries"]["original24"]["constant_velocity_3mps"]
-    readme = README.read_text()
-    assert f"**{s['driving_score']:.2f} ♣**" in readme
-    cell = _matrix_cell("Baseline (Constant Velocity)", "Bench2Drive")
-    assert cell.startswith(f"{s['driving_score']:.2f}"), cell
+def test_support_matrix_baseline_cell_is_the_all50_three_mps(data: dict) -> None:
+    """♣ 48.31 and the table's 40.39 are different experiments; both must be stated."""
+    s = data["summaries"]["all50"]["constant_velocity_3mps"]
+    assert f"**{s['driving_score']:.2f} ♣**" in PAGE.read_text()
+    cell = _matrix_cell("constant_velocity")
+    assert cell == f"{s['driving_score']:.2f}", cell
 
 
-def test_readme_still_links_a_tracked_bench2drive_run() -> None:
+def test_bench2drive_page_still_links_a_tracked_run() -> None:
     """The section must not be the one that drops the last results/ link."""
-    readme = README.read_text()
-    links = re.findall(r"\((results/bench2drive/[^)]+)\)", readme)
+    links = re.findall(r"\((\.\./\.\./results/bench2drive/[^)]+)\)", PAGE.read_text())
     assert links, "no docs link a results/bench2drive run any more"
     for link in links:
-        assert (REPO_ROOT / link).exists(), link
+        assert (PAGE.parent / link).resolve().exists(), link
+
+
+# ---------------------------------------------------------------------------
+# A cell measured otherwise than its column is marked R
+# ---------------------------------------------------------------------------
+
+
+def test_a_cell_asked_at_its_own_rate_or_stopped_early_is_marked_r() -> None:
+    """A record asked less often than every tick, or whose routes an early stop could end, has an R cell."""
+    # The README: a cell without a mark was measured the same way as the rest of its column,
+    # and this column asks every tick and drives every route to Bench2Drive's own end.
+    columns, rows = load_matrix()
+    j = next(j for j, c in enumerate(columns) if c.key == "bench2drive")
+    for row in rows:
+        cell = row.cells[j]
+        if not cell.run:
+            continue
+        config = json.loads((REPO_ROOT / "results" / cell.run / "run.json").read_text())["config"]
+        otherwise = []
+        if not every_tick(config.get("infer_hz") or 0.0):
+            otherwise.append(f"asked at {config['infer_hz']:g} Hz")
+        if config.get("early_stop"):
+            otherwise.append("its routes ended early")
+        if otherwise:
+            said = " and ".join(otherwise)
+            assert "R" in row.marks + cell.marks, f"{row.key}: {cell.run} was {said}, unmarked"

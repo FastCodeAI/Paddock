@@ -15,12 +15,11 @@ runtime:
     # under reasoning rollouts and the vendor says to run it in reasoning mode.
     # The adapter refuses the rl/direct pairing rather than record its number.
     #
-    # These two do NOT reach run.json: the runner records config.model_env only
-    # from a site [models.qwendrive] env override, not from runtime.env, so no
-    # record says which planner produced it -- and the vendor's published PDMS
-    # for the two differs by 2.9 points. Framework gap, raised as issue #46;
-    # `paddock doctor --model qwendrive` and /diagnostics both report them
-    # meanwhile.
+    # These two reach run.json as config.declared_env and are hashed into the
+    # run id, which matters because the vendor's published PDMS for the two
+    # differs by 2.9 points. Runs made before that was recorded (#46, #99) do
+    # not say which planner produced them; `paddock doctor --model qwendrive`
+    # and /diagnostics report it too.
     QWENDRIVE_PLANNER: "planner-sft"
     # direct, not reasoning. Reasoning is worth roughly 1.47 against 1.55 ADE on
     # comma2k19's city segment at about twice the latency -- and it is the one
@@ -75,6 +74,10 @@ capabilities:
   # carry no `target_size`, so a source's own aspect ratio is kept.
   input_size: [1280, 720]
   history_frames: 4
+  # Camera frames 0.5 s apart, ego poses 0.1 s apart (policy.py FRAME_DT, HISTORY_DT).
+  camera_hz: 2.0
+  ego_history_steps: 16
+  ego_history_hz: 10.0
   output_kind: waypoints
   # What the model emits, and now all of what the adapter hands paddock: the
   # 0.5 s grid (GRID_INDICES) carries all ten points rather than stopping at
@@ -82,23 +85,39 @@ capabilities:
   # the first six, so the tail costs them nothing and lets comma2k19 score
   # ADE@5s at the same spacing every other model on that board is scored at.
   horizon_s: 5.0
+  plan_points_hz: 10.0  # 50 poses 0.1 s apart
   # Flow matching from seeded noise (noise_seed + k) and a greedy reasoning
   # turn: in the default direct mode, repeated inference on identical input is
   # identical. QWENDRIVE_MODE=reasoning is not -- see the note there.
   stochastic: false
   needs_speed: true
-  # From the technical report's data section (arXiv 2609.00111): trajectories
-  # "standardized from multiple public driving datasets", and its reported
-  # NAVSIM navtest number is the in-distribution one. Which splits exactly is
-  # not stated in the repo; navtrain is the honest assumption for navtest.
-  # comma2k19 is named by neither the report nor the checkout.
+  # Four stages, from the technical report (arXiv 2609.00111, sec. 2.2-2.3):
+  # 1-2. The VLM, Qwen3.5-4B (its own corpus is not published), adapted with a BEV
+  #      perception head on nuScenes' official train split and OpenScene trainval
+  #      minus 16 held-out logs, plus 24 public driving-VQA sets ("We use training
+  #      splits for these datasets", about 20 % of each) and 30K in-house examples
+  #      from China. Some of those VQA training splits hold nuScenes val scenes
+  #      (NuInstruct and Talk2Car together: 12 of neuroNCAP's 14), and one, Impromptu
+  #      VLA, holds frames from 52 of navtest's 136 logs; which 20 % was sampled is
+  #      not stated. See comparison.md, Qwen-Drive 1.0 x nuscenes and x navsim.
+  # 3. The planning expert paddock runs (planner-sft), VLM frozen: NAVSIM,
+  #    OpenScene, WOD-E2E and PhysicalAI-AV, no split named for any; navtrain is
+  #    the assumption for NAVSIM.
+  # 4. planner-rl, which paddock does not run: 15K navtrain, 15K PhysicalAI-AV and
+  #    479 WOD-E2E validation scenarios.
+  # KITScenes and comma2k19 are named nowhere in the report or its 24 VQA sources.
   trained_on:
+    - dataset: qwen3.5
+    - dataset: nuscenes
+      split: train
+    - dataset: navsim
+      split: trainval
     - dataset: navsim
       split: navtrain
+    - dataset: public-driving-qa
+    - dataset: in-house-china
     - dataset: waymo-e2e
-      split: train
     - dataset: nvidia-physical-ai
-      split: train
 
 # One key, not one per benchmark that arrives: two `benchmarks:` lines is valid
 # YAML and keeps only the last, which is how a model has silently dropped off a

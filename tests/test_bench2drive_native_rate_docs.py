@@ -9,7 +9,7 @@ either direction. Three things are guarded:
   breakdown). If it and `results/bench2drive/<model>/native50-*/metrics.json`
   ever disagreed, the doc would be built on a file nothing checks. They come
   from the same `results.json` attempts, so their means must match.
-* **Every cell of the doc and the README block reproduces.** The 20 Hz column is
+* **Every cell of the doc and of the block on the Bench2Drive page reproduces.** The 20 Hz column is
   recomputed from the *published* records in
   `bench2drive-speed-normalization.json`, restricted to the routes scored at
   both rates -- which is the only comparison the 49-route runs support.
@@ -28,11 +28,15 @@ from pathlib import Path
 
 import pytest
 
+from tools.readme_figures import matrix_cell
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 NATIVE = REPO_ROOT / "docs/benchmarks/bench2drive-native-rate.json"
 TWENTY = REPO_ROOT / "docs/benchmarks/bench2drive-speed-normalization.json"
 DOC = REPO_ROOT / "docs/benchmarks/bench2drive-native-rate.md"
 README = REPO_ROOT / "README.md"
+#: The page that holds the per-benchmark tables moved out of the README.
+PAGE = REPO_ROOT / "docs/benchmarks/bench2drive.md"
 
 #: model -> (native rate in Hz, tracked native run id, README row label).
 CAMPAIGN = {
@@ -169,7 +173,7 @@ def _doc_table(heading: str) -> dict[str, list[str]]:
 
 
 def _readme_rows() -> dict[str, list[str]]:
-    lines = README.read_text().split("\n")
+    lines = PAGE.read_text().split("\n")
     start = next(
         i for i, ln in enumerate(lines) if ln.strip() == "#### Native inference rate — three models re-driven"
     )
@@ -383,29 +387,13 @@ def test_readme_block_reproduces(native: dict, twenty: dict, model: str) -> None
     assert row[7] == f"{old['routes_completed']} → {new['routes_completed']}"
 
 
-#: model -> its row label in the README support matrix.
-MATRIX_ROW = {"drivejepa": "Drive-JEPA", "alpamayo15": "Alpamayo 1.5", "qwendrive": "Qwen-Drive 1.0"}
-
-
-def _matrix_cell(row_label: str, column_header: str) -> str:
-    """One support-matrix cell, addressed by row label and column header."""
-    lines = README.read_text().split("\n")
-    header = next(ln for ln in lines if ln.startswith("| | ") and column_header in ln)
-    index = next(
-        i for i, c in enumerate(c.strip() for c in header.strip().strip("|").split("|")) if column_header in c
-    )
-    row = next(ln for ln in lines if ln.startswith(f"| {row_label} |"))
-    return [c.strip() for c in row.strip().strip("|").split("|")][index]
-
-
 @pytest.mark.parametrize("model", sorted(CAMPAIGN))
 def test_support_matrix_publishes_the_native_score(model: str) -> None:
     """The matrix's Bench2Drive cell for a re-driven model is its native-rate run, rate named."""
-    hz = CAMPAIGN[model][0]
-    metrics = json.loads((_run_dir(model) / "metrics.json").read_text())
-    score = metrics["metrics"]["driving_score"]["mean"]
-    cell = _matrix_cell(MATRIX_ROW[model], "Bench2Drive")
-    assert cell == f"{score:.2f} ({hz} Hz) ※", f"{model}: the support matrix publishes {cell!r}"
+    hz, run_id, _ = CAMPAIGN[model]
+    cell = matrix_cell(model, "bench2drive")
+    assert cell.run == f"bench2drive/{model}/{run_id}", f"{model}: the support matrix reads {cell.run!r}"
+    assert (cell.qualifier, "R" in cell.marks) == (f"{hz} Hz", True), f"{model}: {cell}"
 
 
 def test_readme_block_lists_exactly_the_models_that_were_re_run() -> None:
@@ -416,7 +404,7 @@ def test_readme_block_lists_exactly_the_models_that_were_re_run() -> None:
 
 def test_readme_does_not_pool_openpilot_into_this_block() -> None:
     """The by-recording-set block is upstream of here and stays untouched."""
-    readme = README.read_text()
+    readme = PAGE.read_text()
     start = readme.index("#### Native inference rate")
     end = readme.index("[Protocol, full infraction breakdown", start)
     block = readme[start:end]

@@ -1,7 +1,8 @@
 """A live dashboard for a Bench2Drive campaign: results as they land, a video per route.
 
     python -m tools.benchmarks.bench2drive.dashboard serve --root <experiment_dir> --runs <runs_dir> \
-        --expert <dir> --routes-xml <bench2drive220.xml> [--port 8765] [--every 60] [--jobs 3]
+        --expert <dir> --routes-xml <bench2drive220.xml> [--port 8765] [--every 60] [--jobs 3] \
+        [--model NAME] [--title TEXT] [--routes 1711,1852]
     python -m tools.benchmarks.bench2drive.dashboard build ...   # one pass, no server
 
 ``serve`` does two things at once:
@@ -42,9 +43,11 @@ from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
+from paddock.adapters.benchmarks.bench2drive.harness import STOP_REQUEST  # noqa: E402
 from tools.benchmarks.bench2drive import route_video, runs  # noqa: E402
 
 ASSETS = Path(__file__).resolve().parent / "dashboard_assets"
@@ -66,6 +69,8 @@ def outcome(att: runs.Attempt) -> str:
         return "Perfect"
     if status == "Completed":
         return "Completed"
+    if att.stopped:  # ended through the tick cap, but by a rule (or a person), not by running out
+        return f"Stopped: {att.stopped}"
     for key, name in (
         ("blocked", "Blocked"),
         ("deviated", "Deviated"),
@@ -94,6 +99,7 @@ def live_state(att: runs.Attempt, root: Path) -> dict[str, Any]:
         "scenario": att.scenario,
         "town": att.town,
         "run_id": att.run_id,
+        "stop_requested": (att.path / STOP_REQUEST).exists(),
     }
     log = att.path / "evaluator.log"
     if log.exists():
@@ -150,6 +156,7 @@ def route_row(att: runs.Attempt, meta: dict, out: Path, root: Path) -> dict[str,
         "wall_s": (result.get("meta") or {}).get("duration_system"),
         "run_id": att.run_id,
         "dir": "/" + str(att.path.relative_to(root)),
+        "early_stop": runs.load_json(att.path / "early_stop.json"),
     }
     summary = runs.load_json(out / att.route_id / "route.json")
     if summary and summary.get("source") == str(att.path):
@@ -173,8 +180,21 @@ class Builder:
         self.routes_out = self.out / "routes"
         self.runs = [Path(p).resolve() for p in args.runs]
         self.expert = args.expert
-        self.features = args.features
+        # The driver's name on the page and the videos. A sweep's runs live in
+        # <runs>/bench2drive/<model>/, so --runs usually names it already.
+        self.model = args.model or (self.runs[0].name if self.runs else "model")
+        self.title = args.title or ""
         self.table = runs.route_table(args.routes_xml)
+        if args.routes:
+            # A campaign over a subset lists that subset, not 220 rows mostly "Queued".
+            wanted = {r.strip() for r in args.routes.split(",") if r.strip()}
+            unknown = sorted(wanted - set(self.table))
+            if unknown:
+                raise SystemExit(
+                    f"--routes names route ids not in {args.routes_xml.name}: {', '.join(unknown)}"
+                )
+            self.table = {rid: meta for rid, meta in self.table.items() if rid in wanted}
+        self.features = args.features
         # Spawned, not forked: a forked worker inherits the server's listening socket and holds
         # the port after the server is gone, so a restart fails with "address already in use".
         self.pool = ProcessPoolExecutor(max_workers=args.jobs, mp_context=multiprocessing.get_context("spawn"))
@@ -201,16 +221,35 @@ class Builder:
                 print(f"[dashboard] render {route_id} failed: {exc}", flush=True)
 
     def needs_render(self, att: runs.Attempt) -> bool:
-        if att.result is None or att.route_id in self.pending or not (att.path / "ticks.jsonl").exists():
+        """Every attempt that is over gets a video -- scored, stopped early, crashed or cut off --
+        and gets it again if its outcome changed after it was drawn."""
+        ticks = att.path / "ticks.jsonl"
+        # An attempt cut off before its first tick was written has nothing to draw.
+        if att.running or att.route_id in self.pending or not ticks.exists() or not ticks.stat().st_size:
             return False
         done = runs.load_json(self.routes_out / att.route_id / "route.json")
-        if not done or done.get("source") != str(att.path):
+        status = (att.result or {}).get("status", "running")
+        if not done or done.get("source") != str(att.path) or done.get("status") != status:
             return att.route_id not in self.errors or self._changed_since_error(att)
         return False
 
     def _changed_since_error(self, att: runs.Attempt) -> bool:
         marker = self.routes_out / att.route_id / ".failed"
-        return not marker.exists() or (att.path / "results.json").stat().st_mtime > marker.stat().st_mtime
+        results = att.path / "results.json"
+        return not marker.exists() or (results.exists() and results.stat().st_mtime > marker.stat().st_mtime)
+
+    def request_stop(self, route_id: str) -> list[str]:
+        """Ask every attempt of ``route_id`` that is driving now to end, scored as it stands.
+
+        Writes the route's stop-request file (``harness.STOP_REQUEST``), which the
+        agent checks every tick (``early_stop.MANUAL``). Returns the run ids asked.
+        """
+        asked = []
+        for att in runs.attempts(self.runs):
+            if att.route_id == route_id and att.running:
+                (att.path / STOP_REQUEST).write_text(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) + "\n")
+                asked.append(att.run_id)
+        return asked
 
     def load_features(self) -> dict[str, dict[str, str]]:
         """``--features`` by route id. Generic on purpose: this tool knows the benchmark, not the model."""
@@ -223,7 +262,7 @@ class Builder:
 
     def build(self) -> dict:
         started = time.time()
-        everything = runs.attempts(self.runs) if self.runs else []
+        everything = [a for a in (runs.attempts(self.runs) if self.runs else []) if a.route_id in self.table]
         chosen = runs.latest(everything)
         for att in chosen.values():
             if self.needs_render(att):
@@ -233,6 +272,7 @@ class Builder:
                     self.expert,
                     self.routes_out,
                     self.table.get(att.route_id),
+                    model=self.model,
                 )
                 with self.lock:
                     self.pending[att.route_id] = fut
@@ -268,6 +308,8 @@ class Builder:
         finished = [a for a in chosen.values() if a.result is not None]
         data = {
             "generated_at": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
+            "model": self.model,
+            "title": self.title,
             "build_s": round(time.time() - started, 1),
             "expected_routes": len(self.table) or EXPECTED_ROUTES,
             "attempts": len(everything),
@@ -305,7 +347,30 @@ class Builder:
 
 
 class Handler(SimpleHTTPRequestHandler):
-    """Static files with byte ranges (video scrubbing) and no caching of data.json."""
+    """Static files with byte ranges (video scrubbing) and no caching of data.json.
+
+    One action besides reading: ``POST /api/stop?route=<id>`` asks the route
+    driving now to end (:meth:`Builder.request_stop`). The server binds to
+    127.0.0.1 only and has no authentication, so whoever can reach the port can
+    end a route; that is the forwarded port's user.
+    """
+
+    builder: Builder | None = None
+
+    def do_POST(self) -> None:  # noqa: N802 (the stdlib's name)
+        url = urlparse(self.path)
+        route = (parse_qs(url.query).get("route") or [""])[0]
+        if url.path != "/api/stop" or not route.isdigit() or self.builder is None:
+            self.send_error(HTTPStatus.BAD_REQUEST, "POST /api/stop?route=<route id>")
+            return
+        asked = self.builder.request_stop(route)
+        body = json.dumps({"route": route, "runs": asked, "ok": bool(asked)}).encode()
+        self.send_response(HTTPStatus.OK if asked else HTTPStatus.NOT_FOUND)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+        print(f"[dashboard] stop requested for route {route}: {asked or 'not driving'}", flush=True)
 
     def end_headers(self) -> None:
         if self.path.split("?")[0].endswith(".json"):
@@ -372,6 +437,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--every", type=float, default=60.0, help="seconds between builder passes")
     ap.add_argument("--jobs", type=int, default=3, help="routes rendered at once (CPU; the GPU is CARLA's)")
+    ap.add_argument("--model", help="the driver's name on the page (default: the --runs directory's name)")
+    ap.add_argument("--title", help="a line under the name, e.g. the checkpoint and how it was driven")
+    ap.add_argument(
+        "--routes", help="comma-separated route ids: the campaign's subset (default: every route)"
+    )
     ap.add_argument(
         "--features",
         type=Path,
@@ -403,6 +473,7 @@ def main(argv: list[str] | None = None) -> int:
             time.sleep(args.every)
 
     threading.Thread(target=loop, daemon=True).start()
+    Handler.builder = builder
     server = ThreadingHTTPServer((args.host, args.port), partial(Handler, directory=str(builder.root)))
     print(f"[dashboard] http://{args.host}:{args.port}/dashboard/  (root {builder.root})", flush=True)
     server.serve_forever()

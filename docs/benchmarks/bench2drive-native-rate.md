@@ -68,13 +68,13 @@ So `PADDOCK_INFER_HZ` in `config.model_env` is the authoritative statement of wh
 each run did. Making the rate derivable from `model.yaml` — one field, checked
 against the run — is follow-up work, not something this campaign settles.
 
-**The harness support is not on `main`.** `PADDOCK_INFER_HZ` is read by the
-Bench2Drive `agent.py` / `harness.py` on the branch that drove this campaign; it
-is not in `src/paddock/adapters/benchmarks/bench2drive` on `main` yet. This PR
-lands the **results and their records**, not the knob. Until that branch merges,
-`paddock run` on `main` drives at 20 Hz and these runs cannot be re-driven from a
-clean checkout — the ingest, which is what produced the tracked records, does run
-on `main`.
+**The harness support is on `main` since 2026-10-22.** A model declares
+`planning_hz` in `model.yaml`; the Bench2Drive client asks the node once per
+1/`planning_hz` seconds and follows the last plan unchanged in between, which is
+what this campaign did (the 10-frame holds above). The rate is recorded as
+`config.infer_hz`, and the host's `PADDOCK_INFER_HZ` still overrides it.
+Drive-JEPA declares 2 Hz; QwenDrive and Alpamayo declare none yet. The runs on
+this page were driven before that, on another branch, and were ingested.
 
 ## Tracked runs
 
@@ -296,7 +296,7 @@ Following [docs/reviewing.md](../reviewing.md), kept apart:
 | 20 Hz is the wrong protocol for these models generally | — | **not claimed.** One campaign, one route set, one simulator build, one rate each. No rate sweep was run, so nothing here locates an optimum or shows the relation is monotonic |
 | The same holds for OpenPilot and VisionPilot | — | **not measured.** Neither was re-run |
 | The rate driven is each model's declared native rate | — | **not derivable here.** `model.yaml` declares `native_input_hz` for two of the three and it disagrees with the rate driven for QwenDrive; the rate is recorded per run in `config.model_env`, not read from the registry (see above) |
-| Another site could re-drive these runs | — | **unverified**, and blocked twice over: `PADDOCK_INFER_HZ` is not read by the Bench2Drive adapter on `main`, and CARLA re-runs are not bit-reproducible anyway. The *ingest* reproduces on `main` from the trees |
+| Another site could re-drive these runs | — | **unverified**: the rate is read on `main` now (`planning_hz`, or `PADDOCK_INFER_HZ`), but CARLA re-runs are not bit-reproducible. The *ingest* reproduces on `main` from the trees |
 
 ## Where the recordings live
 
@@ -324,6 +324,6 @@ paddock ingest --all
 The run ids above fall out of the config; they are not chosen. Never hand-edit a
 `run.json` or `metrics.json` — regenerate.
 
-[50-route tables](../../README.md#bench2drive--50-routes) ·
+[50-route tables](bench2drive.md#bench2drive--50-routes) ·
 [Bench2Drive protocol](bench2drive.md) ·
 [Per-route records](bench2drive-native-rate.json)

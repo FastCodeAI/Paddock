@@ -1,0 +1,163 @@
+{
+  "run_id": "20261026T233951-743060",
+  "primary_metric": "ncap_score",
+  "n": 200,
+  "metrics": {
+    "ncap_score": {
+      "n": 200,
+      "n_missing": 0,
+      "mean": 3.162417,
+      "median": 5.0,
+      "p90": 5.0,
+      "max": 5.0,
+      "std": 2.222558
+    },
+    "collision_rate": {
+      "n": 200,
+      "n_missing": 0,
+      "mean": 0.42,
+      "median": 0.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.493559
+    },
+    "impact_speed": {
+      "n": 200,
+      "n_missing": 0,
+      "mean": 3.720698,
+      "median": 0.0,
+      "p90": 11.469964,
+      "max": 17.954079,
+      "std": 4.868303
+    },
+    "reference_speed": {
+      "n": 200,
+      "n_missing": 0,
+      "mean": 8.60405,
+      "median": 8.159018,
+      "p90": 13.756432,
+      "max": 21.010004,
+      "std": 4.821378
+    }
+  },
+  "by_split": {
+    "frontal": {
+      "n": 50,
+      "ncap_score": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 3.714424,
+        "median": 5.0,
+        "p90": 5.0,
+        "max": 5.0,
+        "std": 1.819684
+      },
+      "collision_rate": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 0.36,
+        "median": 0.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.48
+      },
+      "impact_speed": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 3.233395,
+        "median": 0.0,
+        "p90": 10.577126,
+        "max": 11.438992,
+        "std": 4.596306
+      },
+      "reference_speed": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 14.631842,
+        "median": 13.279218,
+        "p90": 21.010004,
+        "max": 21.010004,
+        "std": 4.262198
+      }
+    },
+    "side": {
+      "n": 50,
+      "ncap_score": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 2.012264,
+        "median": 0.668483,
+        "p90": 5.0,
+        "max": 5.0,
+        "std": 2.302005
+      },
+      "collision_rate": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 0.64,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.48
+      },
+      "impact_speed": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 5.754139,
+        "median": 6.449778,
+        "p90": 12.128664,
+        "max": 13.13121,
+        "std": 4.937869
+      },
+      "reference_speed": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 5.51335,
+        "median": 4.773021,
+        "p90": 9.49102,
+        "max": 9.49102,
+        "std": 2.854707
+      }
+    },
+    "stationary": {
+      "n": 100,
+      "ncap_score": {
+        "n": 100,
+        "n_missing": 0,
+        "mean": 3.46149,
+        "median": 5.0,
+        "p90": 5.0,
+        "max": 5.0,
+        "std": 2.161265
+      },
+      "collision_rate": {
+        "n": 100,
+        "n_missing": 0,
+        "mean": 0.34,
+        "median": 0.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.473709
+      },
+      "impact_speed": {
+        "n": 100,
+        "n_missing": 0,
+        "mean": 2.94763,
+        "median": 0.0,
+        "p90": 10.186976,
+        "max": 17.954079,
+        "std": 4.675752
+      },
+      "reference_speed": {
+        "n": 100,
+        "n_missing": 0,
+        "mean": 7.135504,
+        "median": 7.713516,
+        "p90": 9.873731,
+        "max": 11.854921,
+        "std": 2.869417
+      }
+    }
+  },
+  "by_group": {}
+}

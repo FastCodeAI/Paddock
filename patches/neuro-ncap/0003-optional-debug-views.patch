@@ -1,0 +1,47 @@
+Subject: [PATCH 3/3] make the two per-step debug views optional
+
+Adds the logger field `debug_views` (default True, upstream behaviour;
+`--engine.logger.no-debug-views` on the command line). With False, the logger skips FC_TRAJ (the front camera with the plans drawn on it) and
+COMBINED_OUTPUTS (the multi-panel figure). Nothing reads those back; they are for
+watching a run. Drawing them took about 1.05 s of each 2.66 s step in a
+neuroNCAP episode on 2026-10-23, and the mp4s made from them took 6-75 s more
+per episode. Every other record (camera frames, ego poses, plans, metrics) is
+still written, so scores and PDM terms are unchanged. Paddock's regression gate
+turns it off; a site's own runs keep the views.
+
+---
+diff --git a/neuro_ncap/components/logger.py b/neuro_ncap/components/logger.py
+index 8804b15..4bbb183 100644
+--- a/neuro_ncap/components/logger.py
++++ b/neuro_ncap/components/logger.py
+@@ -56,6 +56,12 @@ class LoggerConfig(InstantiateConfig):
+     """List of cameras to log. If None, all cameras will be logged."""
+     plot_modes_separately: bool = False
+     """If True, each mode will be plotted in a new figure. Otherwise, all modes will be plotted in the same figure."""
++    debug_views: bool = True
++    """Draw the two per-step debug views, FC_TRAJ (front camera with the plans) and
++    COMBINED_OUTPUTS (cameras, bird's-eye view and model outputs). They are only
++    looked at, never read back, and drawing them took about 1 s of each 2.7 s step.
++    With False every other record (camera frames, ego poses, plans, metrics) is
++    still written."""
+ 
+ 
+ class NCAPLogger:
+@@ -86,6 +92,8 @@ class NCAPLogger:
+         planned_traj: Tensor,
+     ) -> None:
+         """Log the images to the log directory."""
++        if not self.config.debug_views:
++            return
+ 
+         img = Image.fromarray(images["CAM_FRONT"].cpu().numpy())
+         draw = ImageDraw.Draw(img)
+@@ -137,6 +145,8 @@ class NCAPLogger:
+         aux_outputs: ModelAuxOutput,
+         crashed: bool = False,
+     ) -> None:
++        if not self.config.debug_views:
++            return
+         fig = plt.figure(figsize=(20, 9))
+         gs = GridSpec(3, 7, figure=fig)
+         fc_ax = fig.add_subplot(gs[:2, 3:])

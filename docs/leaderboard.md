@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
-104 runs across 8 benchmarks.
-58 run(s) excluded as invalid — shown at the end, never averaged in.
+119 runs across 9 benchmarks.
+62 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
@@ -14,10 +14,13 @@
 | visionpilot | visionpilot_v2_smoke_pilot10_handover_blend | 10 | fastcode-shakaal | 0.849 | 0.820 | 0.300 | 0.100 | 0.000 | 0.699 | 1.467 |
 | openpilot | openpilot_020_30scenes | 30 | fastcode-shakaal | 0.773 | 0.724 | 0.200 | 0.000 | 0.100 | 0.671 | 1.787 |
 | drivejepa | drivejepa_017_20hz_30scenes | 30 | fastcode-shakaal | 0.770 | 0.828 | 0.100 | 0.100 | 0.067 | 0.661 | 3.024 |
+| meteor | meteor_011_published_first10 | 10 | fastcode-shakaal | 0.687 | 0.607 | 0.300 | 0.000 | 0.000 | 0.589 | 2.045 |
 | visionpilot | visionpilot_v2_30scenes | 30 | fastcode-shakaal | 0.629 | 0.636 | 0.367 | 0.133 | 0.033 | 0.570 | 1.740 |
 | drivejepa | drivejepa_014_20hz | 10 | fastcode-shakaal | 0.503 | 0.565 | 0.400 | 0.200 | 0.100 | 0.462 | 2.443 |
 | constant_velocity | cv_023_20hz_30scenes | 30 | fastcode-shakaal | 0.488 | 0.541 | 0.267 | 0.067 | 0.167 | 0.447 | 2.189 |
+| meteor | meteor_011_published_30scenes | 30 | fastcode-shakaal | 0.423 | 0.430 | 0.333 | 0.033 | 0.167 | 0.469 | 1.694 |
 | drivejepa | drivejepa_014_20hz_30scenes | 30 | fastcode-shakaal | 0.421 | 0.509 | 0.400 | 0.233 | 0.167 | 0.465 | 2.056 |
+| autoe2e | 20261022T045847-86b955 | 30 | fastcode-shakaal | 0.169 | 0.287 | 0.333 | 0.300 | 0.233 | 0.121 | 2.855 |
 
 ## bench2drive
 
@@ -33,7 +36,9 @@
 | constant_velocity | pooled50-15mps-40c29d24c37d542a-06f021 | 50 | fastcode-navvrat-b2d-pooled | 41.448 | 73.684 | 0.546 | 0.560 | 1.000 | 0.000 | 107.988 |
 | constant_velocity | pooled50-6mps-40c29d24c37d542a-35a5cb | 50 | fastcode-navvrat-b2d-pooled | 40.388 | 73.075 | 0.539 | 0.620 | 1.000 | 0.000 | 157.368 |
 | drivejepa | pooled50-40c29d24c37d542a-1de367 | 50 | fastcode-navvrat-b2d-pooled | 31.706 | 39.101 | 0.862 | 0.160 | 1.000 | 0.000 | 1068.316 |
+| autoe2e | pooled50-40c29d24c37d542a-cc7a9c | 50 | a100-gpu-vm-002 | 15.297 | 26.371 | 0.596 | 0.720 | 1.000 | 0.000 | 2441.672 |
 | qwendrive | pooled50-40c29d24c37d542a-f250e0 | 50 | fastcode-navvrat-b2d-pooled | 12.921 | 50.191 | 0.300 | 0.900 | 1.000 | 0.000 | 3457.266 |
+| meteor | pooled50-40c29d24c37d542a-867d57 | 50 | a100-gpu-vm-002 | 1.051 | 6.295 | 0.899 | 0.140 | 1.000 | 0.000 | 237.998 |
 
 ## comma2k19
 
@@ -43,8 +48,15 @@
 | qwendrive | 20260916T220846-971379 | 10165 | hpcai-skodate | 1.159 | 0.632 | 1.296 | 2.094 | 5.000 | 0.475 | 0.801 |
 | openpilot | 20260916T051616-2a91ca | 10165 | hpcai-skodate | 1.507 | 0.804 | 1.703 | 2.712 | 10.000 | 0.598 | 1.035 |
 | constant_velocity | 20260916T162837-b89038 | 10165 | hpcai-skodate | 1.639 | 0.734 | 1.786 | 3.286 | 3.000 | 0.537 | 1.017 |
+| autoe2e | 20261020T213543-417344 | 10165 | hpcai-skodate | 2.016 | 1.380 | 2.232 | 3.084 | 6.000 | 1.160 | 1.593 |
 | visionpilot | 20260916T012719-03350c | 10165 | hpcai-skodate | 4.045 | 1.652 | 4.553 | 8.146 | 4.000 | 1.149 | 2.462 |
 | drivejepa_free | 20260916T003407-c504e5 | 10165 | hpcai-skodate | 16.048 | 10.887 | 18.016 | 26.248 | 4.000 | 7.800 | 12.077 |
+
+## hugsim
+
+| model | run | n | site | hd_score ↑ | hugsim_pdms ↑ | route_completion ↑ | hugsim_nc ↑ | hugsim_dac ↑ | hugsim_ttc ↑ | hugsim_comfort ↑ |
+|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| autoe2e | campaign-f7d8f9d4b9736ddd-d03155 | 420 | fastcode-shakaal-navvrat-hugsim | 0.057 | 0.357 | 14.078 | 0.539 | 0.598 | 0.450 | 0.681 |
 
 ## kitscenes
 
@@ -54,13 +66,17 @@
 | alpamayo15 | streamtest-nonav | 5 | fastcode-shakaal | 0.619 | 0.317 | 0.740 | 1.067 | 0.329 | 0.405 | 0.587 |
 | qwendrive | 20260914T220841-5a91fd | 223 | fastcode-shakaal | 0.806 | 0.289 | 0.852 | 1.777 | - | - | - |
 | alpamayo15 | phase3-nav | 7 | fastcode-shakaal | 0.819 | 0.411 | 0.932 | 1.533 | 0.561 | 0.937 | 1.817 |
+| autoe2e | 20261020T220642-d63624 | 223 | hpcai-skodate | 0.837 | 0.274 | 0.885 | 1.886 | - | - | - |
 | alpamayo15 | phase3-nonav | 7 | fastcode-shakaal | 0.845 | 0.414 | 0.960 | 1.590 | 0.708 | 1.156 | 2.282 |
+| autoe2e | 20261020T220509-dee848 | 223 | hpcai-skodate | 0.847 | 0.280 | 0.897 | 1.903 | - | - | - |
+| autoe2e | 20261020T215800-4bd074 | 223 | hpcai-skodate | 0.847 | 0.280 | 0.897 | 1.903 | - | - | - |
+| autoe2e | 20261020T220816-0a24e7 | 223 | hpcai-skodate | 0.921 | 0.288 | 0.984 | 2.083 | - | - | - |
 | alpamayo15 | full-nonav | 223 | fastcode-shakaal | 0.921 | 0.332 | 0.990 | 2.003 | 0.552 | 0.892 | 1.902 |
 | drivejepa_rerank | 20260921T210621-d7ed08 | 223 | fastcode-shakaal | 0.973 | 0.383 | 1.029 | 2.082 | - | - | - |
 | alpamayo15 | full-nav | 223 | fastcode-shakaal | 1.002 | 0.362 | 1.088 | 2.158 | 0.543 | 0.875 | 1.862 |
 | alpamayo15 | full-letterbox | 223 | fastcode-shakaal | 1.176 | 0.418 | 1.284 | 2.535 | 0.619 | 1.009 | 2.085 |
 | alpamayo15 | phase3-letterbox | 7 | fastcode-shakaal | 1.188 | 0.506 | 1.357 | 2.338 | 0.750 | 1.182 | 2.288 |
-| openpilot | 20261005T205400-a369d1 | 223 | hpcai-skodate | 1.248 | 0.618 | 1.398 | 2.355 | - | - | - |
+| openpilot | 20261008T004723-a369d1 | 223 | hpcai-skodate | 1.248 | 0.618 | 1.398 | 2.355 | - | - | - |
 | openpilot | local20 | 20 | fastcode-shakaal | 1.291 | 0.726 | 1.460 | 2.274 | - | - | - |
 | openpilot | ablate_0 | 15 | fastcode-shakaal | 1.412 | 0.805 | 1.582 | 2.462 | - | - | - |
 | visionpilot | 20260909T202724-153b04 | 223 | fastcode-shakaal | 1.534 | 0.700 | 1.567 | 3.089 | - | - | - |
@@ -89,6 +105,7 @@
 | openpilot | 20260911T161513-3a4c90 | 12146 | fastcode-shakaal | 0.747 | 0.970 | 0.913 | 0.954 | 0.998 | 0.712 | 0.965 |
 | alpamayo15 | 20260912T040211-a9562c | 12146 | fastcode-shakaal | 0.691 | 0.957 | 0.856 | 0.933 | 0.997 | 0.681 | 0.951 |
 | alpamayo15 | 20260903T183818-5879c1 | 12146 | fastcode-shakaal | 0.608 | 0.941 | 0.788 | 0.890 | 0.998 | 0.596 | 0.939 |
+| autoe2e | 20261009T055926-3ceb18 | 12146 | fastcode-navvrat-autoe2e-navsim | 0.500 | 0.824 | 0.777 | 0.865 | 0.990 | 0.491 | 0.814 |
 | visionpilot | 20260902T175642-df5291 | 12146 | fastcode-shakaal | 0.431 | 0.727 | 0.819 | 0.926 | 0.975 | 0.404 | 0.700 |
 | meteor | 20260914T234307-e56cfc | 12146 | fastcode-shakaal | 0.303 | 0.694 | 0.687 | 0.805 | 0.979 | 0.317 | 0.683 |
 | constant_velocity | 20260902T175923-feba73 | 12146 | fastcode-shakaal | 0.239 | 0.681 | 0.578 | 0.805 | 0.981 | 0.209 | 0.669 |
@@ -118,6 +135,7 @@
 | openpilot | 20260905T055713-11ac59 | 200 | fastcode-shakaal | 3.604 | 2.698 | 8.604 | 0.380 | - |
 | drivejepa | 20260905T220225-f11ac0 | 200 | fastcode-shakaal | 3.568 | 2.229 | 8.604 | 0.455 | - |
 | drivejepa | 20260901T001634-44b6bb | 2 | fastcode-shakaal | 3.536 | - | - | 0.500 | 140.000 |
+| autoe2e | 20261026T233951-743060 | 200 | renesas-sjccomp250 | 3.162 | 3.721 | 8.604 | 0.420 | - |
 | visionpilot | 20260901T000037-c950bd | 1 | fastcode-shakaal | 2.827 | - | - | 1.000 | 89.100 |
 | visionpilot | runs10 | 5 | fastcode-shakaal | 2.792 | 2.510 | 8.314 | 1.000 | - |
 | meteor | 20260915T193036-d34559 | 200 | fastcode-shakaal | 2.644 | 5.051 | 8.604 | 0.480 | - |
@@ -142,13 +160,16 @@
 | constant_velocity | 20260914T225156-e5170c | 5119 | fastcode-shakaal | 1.288 | 0.372 | 0.260 | 0.008 | 0.008 | 1.151 | 0.594 |
 | constant_velocity | 20260907T093007-9697fe | 5119 | fastcode-navvrat-nusc-dj | 1.288 | 0.372 | 0.259 | 0.008 | 0.008 | 1.151 | 0.594 |
 | alpamayo15 | 20260905T093547-3dd7cd | 5119 | fastcode-navvrat-nusc-al | 1.487 | 0.509 | 0.369 | 0.008 | 0.008 | 1.351 | 0.742 |
+| autoe2e | 20261023T004711-eedbe2 | 5119 | fastcode-shakaal | 1.565 | 0.553 | 0.398 | 0.008 | 0.008 | 1.444 | 0.798 |
 | drivejepa | 20260905T093335-4513d4 | 5119 | fastcode-navvrat-nusc-dj | 1.882 | 0.540 | 0.376 | 0.006 | 0.008 | 1.587 | 0.824 |
 | meteor | 20260914T202122-4320bb | 5119 | fastcode-shakaal | 1.885 | 0.616 | 0.447 | 0.030 | 0.023 | 1.683 | 0.914 |
 | visionpilot | 20260905T093333-319ef5 | 5119 | fastcode-navvrat-nusc-vp | 2.360 | 1.031 | 0.883 | 0.025 | 0.033 | 2.213 | 1.382 |
+| openpilot | 20260929T174538-b479ee | 5119 | hpcai-skodate | 4.029 | 1.897 | 1.403 | 0.012 | 0.011 | 4.018 | 2.442 |
 | openpilot | 20260908T110028-b71f4f | 5119 | fastcode-navvrat-nusc-vp | 4.057 | 1.925 | 1.424 | 0.013 | 0.011 | 4.054 | 2.470 |
 
 ## Excluded runs
 
+- **bench2drive/autoe2e/pooled50-steady-noroute-40c29d24c37d542a-8d26e9** — kitscenes-epoch-5 on Paddock 7244bc5, the 50 routes of the other pooled50 rows. AUTOE2E_EGO_HISTORY=steady (a steady straight past at the current speed) and AUTOE2E_ROUTE=0 (no route raster, no map), a forward every 0.1 s, paddock's camera rig; early stop at 30 s without 3 m of progress, the first recorded collision, or 4x Think2Drive's time, where the other pooled50 rows drove every route to Bench2Drive's own end; 3 workers on one A100 80GB. attempted outside the configured route subset and never scored: 3457 (20261028T050704-4d27a7: no records in _checkpoint (the route did not score)). 14 of 14 source runs kept no run.json, so their routes are attributed to autoe2e on the tree they were found in; config.model_env and the rest of config are what 14/14 source runs recorded. source runs set AUTOE2E_EGO_HISTORY, AUTOE2E_REPLAN_S, AUTOE2E_ROUTE, which the model's model.yaml declares, to other values (config.model_env), so this run does not rank, as a paddock run of them would not. stop_on_collision: a route ends at its first collision the leaderboard records, where Bench2Drive's own protocol charges the collision as a penalty (x0.50-0.65) and lets the car drive on, so its driving score is another measure. early stop (30 s without 3 m of route progress or 4x the expert's time on the route (none on the 9 route(s) with no expert drive) or a collision the leaderboard records): a car in a driving scene is expected to move, to finish in reasonable time and not to collide, so a route ended this way is a failed drive, scored as it stood when it ended (a collision's penalty included).
 - **bench2drive/openpilot/pooled50-40c29d24c37d542a-32d680** — Pooled recordings, not one configuration: driver-resume assistance on 16 of the original 24 routes; upstream longitudinal controller on the 26 expansion routes. Not comparable to an unassisted estimate. attempted outside the configured route subset and never scored: 11715 (20260903T171306-b348e3: no records in _checkpoint (the route did not score)). pooled across 3 recording setups (assisted, native-long, unassisted); one mean describes none of them, so this run does not rank -- the per-setup figures are in metrics.json by_group. 9 of 9 source runs kept no run.json, so their routes are attributed to openpilot on the tree they were found in; config.model_env and the rest of config are what 4/9 source runs recorded.
 - **bench2drive/drivejepa/native50-2hz-40c29d24c37d542a-447e23** — Native-rate campaign, 18-20 Sep 2026, RunPod RTX PRO 6000, CARLA 0.9.15 Epic. Driven at 2 Hz, set with PADDOCK_INFER_HZ; drivejepa/model.yaml declares no planning rate, so 2 Hz is the operator's choice and not a registry value. routes_file, routes_subset and waypoint_dt are identical to the 20 Hz pooled50 run; that run recorded MKL/OMP_NUM_THREADS=2 and this one 4, which changes throughput and not the trajectory. The simulator build and the shared tracker and controller were the same, and are recorded in neither run. NAVSIM-v2 checkpoint zero-shot, front pair. 50 of 50 source runs kept no run.json, so their routes are attributed to drivejepa on the tree they were found in; config.model_env and the rest of config are what 50/50 source runs recorded. PADDOCK_INFER_HZ was supplied by the ingest config and recorded by no source run, so it is the operator's assertion about the campaign, not a reading from it. driven at 2 Hz, not the 20 Hz the benchmark's published protocol calls the model at, so this run is kept and does not rank against runs that were -- the paired comparison is docs/benchmarks/bench2drive-native-rate.md.
 - **bench2drive/qwendrive/native50-2hz-084418258d833a9f-9b2bc9** — Native-rate campaign, 18-20 Sep 2026, RunPod RTX PRO 6000, CARLA 0.9.15 Epic. Driven at 2 Hz, set with PADDOCK_INFER_HZ; qwendrive/model.yaml declares native_input_hz 10.0 for the ego-pose history it reads, which is not a planning rate and does not agree with the rate driven. routes_file, routes_subset and waypoint_dt are identical to the 20 Hz pooled50 run; that run recorded MKL/OMP_NUM_THREADS=2 against 4 here and a QWEN_DRIVE_TRACE sink this one did not write. The simulator build and the shared tracker and controller were the same, and are recorded in neither run. Route 3800 (Town13 MergerIntoSlowTraffic) segfaults CARLA for this model: Signal=11 in the evaluator log of attempt 20260918T091245-f19361, at about 1300 frames. DriveJEPA completes the same route at 2 Hz and scores 100, and this model scored it 12.18 at 20 Hz, so the failure follows the rate under test rather than the route. Two routes were re-driven after a crashed first attempt (2201, 3564); parse_results refuses a crash status, so source_runs lists only the attempts that were kept. 49 of 49 source runs kept no run.json, so their routes are attributed to qwendrive on the tree they were found in; config.model_env and the rest of config are what 49/49 source runs recorded. PADDOCK_INFER_HZ was supplied by the ingest config and recorded by no source run, so it is the operator's assertion about the campaign, not a reading from it. driven at 2 Hz, not the 20 Hz the benchmark's published protocol calls the model at, so this run is kept and does not rank against runs that were -- the paired comparison is docs/benchmarks/bench2drive-native-rate.md. routes expected but never scored: 3800 (20260918T091245-f19361: no records in _checkpoint (the route did not score)).
@@ -160,7 +181,10 @@
 - **neuroncap/drivejepa/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **neuroncap/openpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **neuroncap/visionpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
+- **hugsim/drivejepa/campaign-87d4f5097a85db3c-ce3603** — Released Drive-JEPA (NAVSIM v2 ViT-L checkpoint), driven 22 Oct 2026 in two lanes sharing one scenario queue. The node was the drivejepa adapter as of paddock ac7788f plus a per-call record of the 32 candidates and their scores, which does not change the plan; its camera placement goes through lidar2ego, which the bridge sends as the identity, so the cameras land where ac7788f puts them. At that commit the adapter fed cameras uncropped and picked on the plain score; main now crops to the OpenScene camera (#106) and turns momentum selection on (#95), so a re-run on main would differ. Only the front camera was rendered: the released model's forward reads only the front camera. DRIVEJEPA_IMAGE_GEOMETRY, DRIVEJEPA_MOMENTUM were supplied by the ingest config: the campaign recorded no model env, so this is the operator's statement of how the node was configured, not a reading from it. scenarios attempted and never scored: scene-0166-medium-01 (exit 1 after 60 steps: IndexError: index is out of bounds for dimension with size 0).
+- **neuroncap/wajepa/20261015T234134-916e11** — 3 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes)
 - **neuroncap/drivejepa/20261012T205915-7153f0** — 3 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes); resumed: 2 episode(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only
+- **kitscenes/openpilot/20261005T205400-a369d1** — resumed: 223 sample(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only Superseded by 20261008T004723-a369d1: the same configuration (hash a369d1) run again from #60's head, identical on all 223 keyframes; the newer run is the record
 - **kitscenes/openpilot/20260930T161429-4576f3** — --limit 60: a subset of the benchmark, run to test the pipeline
 - **kitscenes/openpilot/20260930T160954-02dd77** — --limit 60: a subset of the benchmark, run to test the pipeline
 - **kitscenes/openpilot/20260930T160509-57c362** — --limit 60: a subset of the benchmark, run to test the pipeline

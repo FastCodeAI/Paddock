@@ -7,6 +7,9 @@ which is what a reviewer can actually verify on a PR.
 
 from __future__ import annotations
 
+import importlib.util
+import re
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -887,16 +890,28 @@ def test_the_resume_plan_is_off_by_default_and_reset_forgets_it(monkeypatch) -> 
 
 
 def test_desire_slots_are_openpilots_own() -> None:
-    """Restated at module scope, so pinned here to cereal's enum itself."""
+    """Restated at module scope, so pinned here to cereal's enum itself.
+
+    Read from `cereal/log.capnp`, the schema `log.Desire` is compiled from, not
+    from `openpilot.cereal`: importing that needs pycapnp, which openpilot's
+    venv has and paddock's does not, and `make check-openpilot` runs these
+    tests in paddock's with the checkout on PYTHONPATH.
+    """
     pytest.importorskip("openpilot", reason="needs openpilot's environment")
-    from openpilot.cereal import log
     from openpilot.selfdrive.modeld.constants import ModelConstants
 
-    assert DESIRE_NONE == log.Desire.none
-    assert (DESIRE_TURN_LEFT, DESIRE_TURN_RIGHT) == (log.Desire.turnLeft, log.Desire.turnRight)
+    cereal = importlib.util.find_spec("openpilot.cereal")
+    assert cereal is not None and cereal.submodule_search_locations, "openpilot has no cereal package"
+    schema = (Path(next(iter(cereal.submodule_search_locations))) / "log.capnp").read_text()
+    block = re.search(r"enum Desire \{(.*?)\}", schema, re.S)
+    assert block is not None, "cereal/log.capnp has no `enum Desire`"
+    desire = {name: int(slot) for name, slot in re.findall(r"(\w+) @(\d+);", block.group(1))}
+
+    assert DESIRE_NONE == desire["none"]
+    assert (DESIRE_TURN_LEFT, DESIRE_TURN_RIGHT) == (desire["turnLeft"], desire["turnRight"])
     assert (DESIRE_LANE_CHANGE_LEFT, DESIRE_LANE_CHANGE_RIGHT) == (
-        log.Desire.laneChangeLeft,
-        log.Desire.laneChangeRight,
+        desire["laneChangeLeft"],
+        desire["laneChangeRight"],
     )
     assert ModelConstants.DESIRE_LEN == 8, "the width the ONNX stub above declares"
 
@@ -1202,6 +1217,16 @@ def test_a_tilted_cut_is_judged_against_its_own_untilted_warp() -> None:
         CameraAdapter(
             BASE_FRONT, _mount(4.0), resample=False, height_scale=1.22, pitch_deg=-1.7, fov_deg=55.0
         )
+
+
+def test_a_cut_too_narrow_for_img_is_refused() -> None:
+    """5.5 typed for 55 left img 4 % real pixels, and nothing refused it: the guard only judges the knobs."""
+    pytest.importorskip("openpilot", reason="needs openpilot's environment")
+
+    for fov in (5.5, 30.0):
+        with pytest.raises(ValueError, match=f"PADDOCK_OPENPILOT_FOV_DEG = {fov:g} cuts into the img view"):
+            CameraAdapter(BASE_FRONT, _mount(), resample=False, fov_deg=fov)
+    CameraAdapter(BASE_FRONT, _mount(), resample=False, fov_deg=55.0)  # img whole, big_img's edges smeared
 
 
 def test_the_margin_of_a_cut_is_the_cuts() -> None:

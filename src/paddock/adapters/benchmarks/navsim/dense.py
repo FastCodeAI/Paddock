@@ -169,9 +169,19 @@ class DenseHistory:
     table the proxy uses for OpenScene, so a model gets the same views either way.
     """
 
-    def __init__(self, root: str, split: str, cameras: list[str], hz: float = NUPLAN_HZ) -> None:
+    def __init__(
+        self,
+        root: str,
+        split: str,
+        cameras: list[str],
+        hz: float = NUPLAN_HZ,
+        keyframe_root: str | None = None,
+    ) -> None:
         self.root = str(root)
         self.split = str(split)
+        #: OpenScene's sensor blobs for this split. A channel with no nuPlan frames for a log is
+        #: read from here, and only where OpenScene holds that image -- its 2 Hz keyframes.
+        self.keyframe_root = str(keyframe_root) if keyframe_root else None
         unknown = [c for c in cameras if c not in CAMERA_SLOTS]
         if unknown:
             raise ValueError(f"no nuPlan channel for {unknown!r}")
@@ -184,6 +194,12 @@ class DenseHistory:
 
     def image_path(self, log: str, channel: str, name: str) -> str:
         return os.path.join(self.root, "sensor_blobs", self.split, log, channel, name)
+
+    def keyframe_only(self, log: str, channel: str) -> bool:
+        """This channel has no nuPlan frames for the log and comes from OpenScene's keyframes."""
+        return bool(self.keyframe_root) and not os.path.isdir(
+            os.path.join(self.root, "sensor_blobs", self.split, log, channel)
+        )
 
     def _index(self, log: str) -> _LogIndex:
         index = self._logs.get(log)
@@ -218,6 +234,7 @@ class DenseHistory:
         origin = index.ego[anchor][at][:3]
         first = index.times[anchor][0]
 
+        sparse = {channel for channel in self.channels.values() if self.keyframe_only(log, channel)}
         frames: list[DenseFrame] = []
         for k in range(count):
             target = t0 - (count - 1 - k) * step_us
@@ -227,6 +244,13 @@ class DenseHistory:
             for camera, channel in self.channels.items():
                 i = 0 if clamped else index.nearest(channel, target)
                 off = abs(index.times[channel][i] - target)
+                if channel in sparse:
+                    # OpenScene keeps this view at its keyframes only: attach it where this
+                    # frame's own image is one of them, and nothing in between.
+                    path = os.path.join(self.keyframe_root, log, channel, index.names[channel][i])
+                    if off <= tolerance_us and os.path.exists(path):
+                        paths[camera] = path
+                    continue
                 if not clamped and off > max_gap_us:
                     raise RuntimeError(
                         f"{log}: no {channel} frame within {MAX_GAP_S:g} s of "

@@ -96,7 +96,23 @@ mode: open_loop            # open_loop | closed_loop
 dataset: mydataset
 metrics: [ade, fde@3s]
 primary_metric: ade
+pdm:                       # optional: which metric fills which PDM term
+  ep: pdm_ep
+  comfort: pdm_comfort
 ```
+
+**`pdm`** maps NAVSIM v1's PDM terms (`nc`, `dac`, `ttc`, `ep`, `comfort`,
+and `score` for a composite) to the declared metrics that measure them here. The
+regression gate shows them in the same rows on every benchmark
+([gate.md](gate.md#pdm-terms-beside-the-score)). Any open-loop benchmark can
+fill EP and C: `paddock.metrics.pdm.plan_terms` gives `pdm_ep` and
+`pdm_comfort` from the plan and its recorded future. Leave out a term the
+benchmark cannot measure; never fill one with a constant. A term may be missing
+on some samples, as long as which ones does not depend on what the model did
+(NAVSIM's two-frame comfort has no value on a log's first frame). Do not use a
+metric that is recorded only on some outcomes: neuroNCAP's `impact_speed`
+exists only for runs that collided, so pairing it compares a subset chosen by
+the result.
 
 **Reuse canonical metric names.** `ade`, `fde@1s`, `fde@2s`, `fde@3s`,
 `min_ade@6`, `ncap_score`, `collision_rate`, `pdms`, `epdms`. A new name should
@@ -210,6 +226,16 @@ a benchmark whose description throws has lost the point of the exercise. Reuse
 whatever `preflight` already computed rather than paying for it twice.
 `adapters/benchmarks/comma2k19/inventory.py` is the worked example.
 
+### `close()` — let go of what the harness started
+
+A harness that launches a process of its own (neuroNCAP's managed renderer)
+stops it in `close()`. The runner calls it once the harness is done with,
+whatever the outcome, and reports rather than raises anything it raises. It
+matters when a pairing table splits a sweep into one harness per model: a
+renderer the last harness left running is what the next one's `preflight`
+finds answering, and refuses. A harness that starts nothing needs nothing here;
+the default does nothing.
+
 ## Step 7 — golden test
 
 Pin a handful of samples and their expected metric values, so a refactor that
@@ -282,6 +308,10 @@ make check
 
 Then write `docs/benchmarks/<name>.md`: what data is required, what the metrics
 mean, roughly what a run costs in wall-clock, and reference numbers.
+
+To give it a column in the README's support matrix, add a `[[benchmark]]` entry
+to [docs/support-matrix.toml](support-matrix.toml), point each model's cell at
+its run, and run `python -m tools.readme_figures`.
 
 If the dataset itself is new to paddock, write `docs/datasets/<dataset>.md` as
 well, and keep the line between them: the **benchmark** page documents paddock's

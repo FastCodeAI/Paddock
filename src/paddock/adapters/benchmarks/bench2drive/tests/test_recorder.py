@@ -32,6 +32,19 @@ def test_to_ego_follows_the_heading() -> None:
     assert ego[1] == pytest.approx([0.0, 2.0], abs=1e-9)
 
 
+def test_model_view_dir_keeps_openpilots_names_and_names_every_other_camera() -> None:
+    # model_road / model_wide are what openpilot's recorded routes already hold.
+    assert recorder.model_view_dir("CAM_OP_ROAD") == "model_road"
+    assert recorder.model_view_dir("CAM_OP_WIDE") == "model_wide"
+    # A six-view model (AutoE2E) gets one directory per view, none colliding.
+    six = ["CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT", "CAM_BACK_LEFT", "CAM_BACK", "CAM_BACK_RIGHT"]
+    dirs = [recorder.model_view_dir(c) for c in six]
+    assert dirs[1] == "model_front_left"
+    assert len(set(dirs)) == len(six)
+    # front/ and bev/ are the recording cameras' own directories; no model view lands there.
+    assert not {"front", "bev"} & set(dirs)
+
+
 def test_wrap_deg() -> None:
     assert recorder.wrap_deg(190.0) == pytest.approx(-170.0)
     assert recorder.wrap_deg(-190.0) == pytest.approx(170.0)
@@ -111,3 +124,42 @@ def test_tick_record_keeps_the_whole_reply() -> None:
     assert record["extras"]["lead"][0]["d"] == 12.346
     line = recorder.dumps(record)
     assert "\n" not in line and json.loads(line)["t"] == 3
+
+
+def test_a_tick_says_whether_it_asked_and_older_lines_are_read_by_their_infer_time() -> None:
+    """A model that declares planning_hz is asked once per 1/planning_hz s, and the ticks between send
+    nothing. Each line says which it was; lines written before the field (28-29 Oct 2026) told them
+    apart only by an /infer time of 0, and every line before those asked."""
+    ego, ctrl = {"x": 0.0, "y": 0.0, "yaw": 0.0}, {"steer": 0.0, "throttle": 0.3, "brake": 0.0, "v_des": 5.0}
+    reply = {"trajectory": [[1.0, 0.0]], "dt": 0.5, "extras": {}}
+    held = recorder.tick_record(5, 0.25, 0.0, ego, {"command": 3}, reply, ctrl, asked=False)
+    assert held["asked"] is False and not recorder.tick_asked(held)
+    asked = recorder.tick_record(6, 0.3, 6012.3, ego, {"command": 3}, reply, ctrl)
+    assert asked["asked"] is True and recorder.tick_asked(asked)
+    assert not recorder.tick_asked({"t": 1, "infer_ms": 0.0}), "followed the last plan, before the field"
+    assert recorder.tick_asked({"t": 1, "infer_ms": 70.2}), "a call the node answered from its own hold"
+    assert recorder.tick_asked({"t": 1}), "nothing recorded says it did not ask"
+
+
+def test_inputs_round_trip_exactly(tmp_path) -> None:
+    """A recorded request reads back bit for bit: a replay feeds the model what it was fed."""
+    rng = np.random.default_rng(0)
+    images = {
+        "CAM_FRONT": rng.integers(0, 255, (45, 80, 3), dtype=np.uint8),
+        "CAM_BACK": np.zeros((45, 80, 3), np.uint8),
+    }
+    body = {"timestamp": 1_050_000, "ego2world": np.eye(4).tolist(), "route_xy": [[-10.0, 0.0], [40.0, 1.5]]}
+    path = str(tmp_path / "00021.npz")
+    recorder.write_inputs(path, images, body)
+    back_images, back_body = recorder.read_inputs(path)
+    assert back_body == body
+    assert set(back_images) == set(images)
+    for cid, img in images.items():
+        assert back_images[cid].dtype == np.uint8 and np.array_equal(back_images[cid], img)
+    assert [p.name for p in tmp_path.iterdir()] == ["00021.npz"], "no partial file left behind"
+
+
+def test_a_replay_sends_each_frame_the_way_the_agent_did() -> None:
+    """One rule for the agent and a replay: a megapixel or more as JPEG, paddock's 800x450 raw."""
+    assert recorder.wire_codec(np.zeros((450, 800, 3), np.uint8)) is None
+    assert recorder.wire_codec(np.zeros((900, 1600, 3), np.uint8)) == "jpeg"

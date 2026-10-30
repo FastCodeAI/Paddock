@@ -4,7 +4,9 @@
 
 const REFRESH_MS = 30000;
 const ABILITIES = ["Overtaking", "Merging", "Emergency_Brake", "Give_Way", "Traffic_Signs"];
-const OUTCOMES = ["Perfect", "Completed", "Blocked", "Deviated", "Timed out", "Tick limit", "Failed", "Crashed", "Running", "Incomplete", "Queued"];
+const OUTCOMES = ["Perfect", "Completed", "Blocked", "Deviated", "Timed out", "Tick limit",
+  "Stopped: stuck", "Stopped: collision", "Stopped: over_time", "Stopped: manual",
+  "Failed", "Crashed", "Running", "Incomplete", "Queued"];
 const INFRACTION_NAMES = {
   collisions_vehicle: "collision: vehicle", collisions_pedestrian: "collision: pedestrian",
   collisions_layout: "collision: layout", red_light: "red light", stop_infraction: "stop sign",
@@ -40,6 +42,8 @@ const num = (v) => (v === null || v === undefined || Number.isNaN(v) ? null : Nu
 function fmt(v, d = 1) { v = num(v); return v === null ? "–" : v.toFixed(d); }
 function mean(xs) { xs = xs.filter((x) => num(x) !== null); return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null; }
 function scored(r) { return num(r.ds) !== null && r.outcome !== "Crashed"; }
+// The driver's name, from data.json (dashboard.py --model): every label that names it reads this.
+const MODEL = () => (DATA && DATA.model) || "model";
 function niceMax(v) { if (!v || v <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))); for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p; return 10 * p; }
 function ticks(max, n = 4) { const out = []; for (let i = 0; i <= n; i++) out.push((max * i) / n); return out; }
 // Whole-number ticks for counts: a step of 1, 2, 5, 10, 20, 25, 50... so no tick repeats after rounding.
@@ -233,11 +237,11 @@ function renderCharts(rows) {
 
   const pts = s.filter((r) => num(r.mean_speed) !== null && num(r.expert_mean_speed) !== null).map((r) => ({
     x: r.expert_mean_speed, y: r.mean_speed, href: `route.html?id=${encodeURIComponent(r.route_id)}`,
-    tip: [[`route ${r.route_id}`, r.scenario], ["openpilot mean speed", fmt(r.mean_speed, 2) + " m/s"], ["expert mean speed", fmt(r.expert_mean_speed, 2) + " m/s"], ["driving score", fmt(r.ds, 1)]],
+    tip: [[`route ${r.route_id}`, r.scenario], [`${MODEL()} mean speed`, fmt(r.mean_speed, 2) + " m/s"], ["expert mean speed", fmt(r.expert_mean_speed, 2) + " m/s"], ["driving score", fmt(r.ds, 1)]],
   }));
-  card(document.querySelector('[data-chart="speed"]'), "Mean speed: openpilot vs the expert, per route", "Think2Drive's drive of the same route from the Bench2Drive dataset. Below the line = slower than the expert.", pts,
-    [{ label: "route", get: (p) => p.tip[0][0] }, { label: "expert m/s", num: 1, get: (p) => fmt(p.x, 2) }, { label: "openpilot m/s", num: 1, get: (p) => fmt(p.y, 2) }],
-    (n, w) => scatter(n, w, pts, { xLabel: "expert mean speed (m/s)", yLabel: "openpilot mean speed (m/s)" }));
+  card(document.querySelector('[data-chart="speed"]'), `Mean speed: ${MODEL()} vs the expert, per route`, "Think2Drive's drive of the same route from the Bench2Drive dataset. Below the line = slower than the expert.", pts,
+    [{ label: "route", get: (p) => p.tip[0][0] }, { label: "expert m/s", num: 1, get: (p) => fmt(p.x, 2) }, { label: `${MODEL()} m/s`, num: 1, get: (p) => fmt(p.y, 2) }],
+    (n, w) => scatter(n, w, pts, { xLabel: "expert mean speed (m/s)", yLabel: `${MODEL()} mean speed (m/s)` }));
 
   const bins = Array.from({ length: 11 }, (_, i) => ({ lo: i * 10, n: 0 }));
   for (const r of s) bins[Math.min(10, Math.floor((num(r.rc) ?? 0) / 10))].n++;
@@ -257,7 +261,8 @@ function chip(r) {
   let cls = "neutral", icon = "•";
   if (o === "Perfect" || (o === "Completed" && r.success)) { cls = "good"; icon = "✓"; }
   else if (o === "Completed") { cls = "warning"; icon = "!"; }
-  else if (["Blocked", "Deviated", "Timed out", "Tick limit", "Failed"].includes(o)) { cls = "serious"; icon = "✕"; }
+  else if (["Blocked", "Deviated", "Timed out", "Tick limit", "Failed"].includes(o) || (o.startsWith("Stopped:") && o !== "Stopped: manual")) { cls = "serious"; icon = "✕"; }
+  else if (o === "Stopped: manual") { cls = "warning"; icon = "■"; }
   else if (o === "Crashed") { cls = "critical"; icon = "⚠"; }
   else if (o === "Running") { icon = "▶"; }
   return el("span", { class: "chip " + cls, title: r.status || "" }, el("span", { class: "icon", text: icon }), o);
@@ -313,8 +318,24 @@ function renderLive() {
         r.bev ? el("img", { src: r.bev + bust, alt: `BEV camera, route ${r.route_id}` }) : el("div")),
       el("div", { class: "meter" }, el("div", { style: `width:${Math.max(0, Math.min(100, 100 * frac))}%` })),
       el("div", { class: "row" }, el("span", { text: `${fmt(100 * frac, 0)} % of route` }), el("span", { text: `${fmt(3.6 * (num(r.speed) ?? 0), 0)} km/h` }),
-        el("span", { text: `game ${fmt(r.game_time, 0)} s` }), el("span", { text: `${fmt(r.ratio, 2)}× real time` })));
+        el("span", { text: `game ${fmt(r.game_time, 0)} s` }), el("span", { text: `${fmt(r.ratio, 2)}× real time` })),
+      stopButton(r));
   }));
+}
+
+// Ends a driving route now, scored as it stands (POST /api/stop; the agent checks for the request every tick).
+function stopButton(r) {
+  if (r.stop_requested) return el("button", { class: "stop", disabled: "disabled", text: "stop requested…" });
+  const b = el("button", { class: "stop", text: "■ Stop route", title: "End this route now; it is scored as it stands and the worker moves on" });
+  b.addEventListener("click", async () => {
+    if (!confirm(`Stop route ${r.route_id} now? It is scored as it stands, and the run is marked as stopped by hand.`)) return;
+    b.disabled = true; b.textContent = "stopping…";
+    try {
+      const res = await fetch(`/api/stop?route=${encodeURIComponent(r.route_id)}`, { method: "POST" });
+      b.textContent = res.ok ? "stop requested…" : "not driving";
+    } catch (e) { b.textContent = "request failed"; b.disabled = false; }
+  });
+  return b;
 }
 
 function fillSelect(id, values) {
@@ -323,8 +344,16 @@ function fillSelect(id, values) {
   s.value = values.includes(cur) ? cur : "";
 }
 
+function renderTitle() {
+  const n = DATA.expected_routes, scope = n && n !== 220 ? ` (${n} of the 220 routes)` : "-220";
+  document.title = `${MODEL()} on Bench2Drive${scope}`;
+  document.getElementById("title").replaceChildren(`${MODEL()} `,
+    DATA.title ? el("span", { class: "meta", text: DATA.title }) : "", ` on Bench2Drive${scope}`);
+}
+
 function render() {
   if (!DATA) return;
+  renderTitle();
   const rows = filtered();
   renderKpis(rows);
   renderCharts(rows);

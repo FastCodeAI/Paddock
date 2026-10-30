@@ -51,6 +51,34 @@ def git_sha(repo: Path) -> str | None:
         return None
 
 
+def paddock_provenance(root: Path | None = None) -> dict[str, Any]:
+    """The paddock checkout that ran: its HEAD, and whether tracked files were edited.
+
+    A baseline measured on older adapter code is a different measurement under
+    the same model name (PR #93 changed what AlpaSim sends every model, for
+    instance), and nothing on the record said which code a run used. The
+    regression gate notes when two runs differ here. `dirty` counts tracked
+    files only: untracked results and site files are always there.
+    """
+    from paddock.config import REPO_ROOT
+
+    root = root or REPO_ROOT
+    info: dict[str, Any] = {"sha": git_sha(root)}
+    if info["sha"] is not None:
+        try:
+            out = subprocess.run(
+                ["git", "-C", str(root), "status", "--porcelain", "--untracked-files=no"],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=30,
+            )
+            info["dirty"] = bool(out.stdout.strip())
+        except (subprocess.SubprocessError, FileNotFoundError):
+            pass
+    return info
+
+
 def repo_provenance(
     cfg: SiteConfig, model_spec: ModelSpec, repos: dict[str, RepoSpec] | None = None
 ) -> dict[str, Any]:

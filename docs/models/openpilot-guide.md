@@ -655,6 +655,18 @@ openpilot/selfdrive/test/process_replay/test_processes.py --whitelist-procs cont
 DISABLE_FILEREADER_CACHE=1 ...test_processes.py                      # bypass log cache
 ```
 
+Paddock's own adapter tests skip whatever needs openpilot in `make check` and
+CI: the warp geometry, the cut, and the guards. Those tests have no automated
+gate. To run them, put the pinned checkout on `PYTHONPATH` in paddock's env:
+
+```bash
+env PYTHONPATH=<openpilot checkout>:<openpilot checkout>/opendbc_repo \
+  .venv/bin/python -m pytest src/paddock/adapters/models/openpilot/tests/test_policy.py
+```
+
+The one that reads cereal's capnp schemas, `test_desire_slots_are_openpilots_own`,
+still skips there. It runs in openpilot's own interpreter.
+
 ### 6.8 Snags — the two that actually bit, plus the usual suspects
 
 **1. `git lfs pull` silently does nothing (hit here).** If `git lfs install` was
@@ -799,8 +811,11 @@ Every record's extras carry:
 - `plan_v0`: the plan's speed at t = 0, beside the pose head's.
 
 The mode is recorded in `provenance.policy.desire_mode`. Set in a site's env
-block, it is also in `config.model_env`, so a desire run gets its own id and
-its own leaderboard row.
+block, it is also in `config.model_env`, so a desire run gets its own id, and
+the runner stores it `valid: false` as a site env override
+(`runner._env_override_reasons`). On KITScenes the commands come from
+`command_source = "gt"`, the route signal the benchmark's other route-conditioned
+rows had ([The route hint](../benchmarks/kitscenes.md#the-route-hint)).
 
 ### A camera higher than openpilot's, shown from openpilot's height
 
@@ -848,16 +863,18 @@ There are two refusals:
 
 The margins in `diagnostics()` are the scaled views'. The scale is recorded in
 `provenance.policy.height_scale`. Set in a site's env block, it is also in
-`config.model_env`, so a scaled run gets its own id and, over a full set, its
-own leaderboard row. Nothing in the record tells a scale measured on the rig
+`config.model_env`, so a scaled run gets its own id and is stored
+`valid: false`, a site env override. Nothing in the record tells a scale measured on the rig
 from one fitted to the benchmark's own errors, and the second is tuned on the
 test set.
 
 ### A view tilted over the camera's, and cut to comma's size
 
-Two more knobs go with the scale. Both were fitted in the KITScenes analysis
-notebooks (`tools/models/openpilot/analysis/`) to KITScenes' own keyframes, so
-a run with them is tuned on the test set.
+Two more knobs go with the scale. The values the config run uses were chosen
+in the KITScenes analysis notebooks (`tools/models/openpilot/analysis/`) by
+inspecting one KITScenes scene, dbba76d9, and the patterns the earlier analysis
+found, not fitted. That scene is in the scored set, so a run with them is not a
+zero-shot measurement.
 
 `PADDOCK_OPENPILOT_PITCH_DEG` tilts the model's view over the camera's,
 positive up. It is a rotation about y in the calibrated frame, ahead of the
@@ -884,8 +901,11 @@ its principal point (c + 0.5 - x0) / s - 0.5. A box rounded to whole pixels
 would move the frame off its K.
 
 A cut narrower than `big_img`'s 58.7° leaves that view's sides past the cut on
-purpose. At 55° about 7.4 % of `big_img` is smeared border, and `warp_in_bounds`
-says so. `img` (31.4°) stays whole.
+purpose. At 55° about 7.6 % of `big_img` is smeared border on a level mount, and
+7.4 % with the config run's height and tilt on the base camera. `warp_in_bounds`
+says so. `img` (31.4°) stays whole, and a cut that does not hold it whole is
+refused when the adapter is built: `5.5` typed for `55` would leave `img` 4 %
+real pixels on the base camera, and the run would measure the smear.
 
 The refusals:
 - a tilt beyond ±15° or a field of view outside [0, 180) stops the node at

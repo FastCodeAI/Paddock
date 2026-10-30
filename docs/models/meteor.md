@@ -102,11 +102,15 @@ black is the deployed convention.
 **Frames.** Any size is cropped to 16:9 around the principal point and
 area-downscaled to 768x432; the intrinsics follow the pixels. KITScenes
 (3504x2272, f=1841) becomes f=403 with the principal point near the centre;
-nuScenes (1600x900) is a pure 0.48 scale.
+nuScenes (1600x900) is a pure 0.48 scale; Bench2Drive's 800x450 renders are a
+pure 0.96 scale (f=548 for the 70 deg views, 269 for the 110 deg back view).
 
 **Ego frame.** The BEV lift assumes the ego origin is on the road (`z = 0`).
 nuScenes and NAVSIM satisfy that; KITScenes' harness shifts its roof-pod
-reference down by the pod height for the same reason.
+reference down by the pod height for the same reason. Bench2Drive sends CARLA's
+vehicle origin, which is on the road but at the middle of the car, about 1.4 m
+(half the wheelbase) ahead of the rear axle Autoware's `base_link` sits on.
+Nothing corrects that; what it does to the plan is argued, not measured.
 
 **No driving command.** The ONNX has no intent input, so the model runs in its
 trained "no navigation" mode (30% intent dropout in training). At junctions it
@@ -134,6 +138,14 @@ shorter plan rather than extrapolate. Setting `METEOR_HORIZON_S = "4.0"` under
 plan the model never made; it is opt-in so that KITScenes and the closed-loop
 benchmarks always score the native output.
 
+**Rate.** `model.yaml` declares `planning_hz: 5.0`: METEOR's recordings are
+stored and labelled at 5 Hz (upstream `docs/REPRODUCE.md`), and the AlpaSim
+driver below runs its graph at 5 Hz. Bench2Drive's client asks for a plan every
+0.2 s and follows the last one in between, and records the rate as `infer_hz`
+in the run id; HUGSIM's 4 Hz steps are slower, so every step is planned there.
+The graph is single-frame, so the rate changes how often the car gets a fresh
+plan, not what the model is shown.
+
 ## Running it
 
 ```bash
@@ -143,6 +155,7 @@ paddock doctor --model meteor
 paddock run --model meteor --bench kitscenes --limit 5 --dry-run
 paddock run --model meteor --bench kitscenes --limit 5
 paddock run --model meteor --bench kitscenes
+paddock run --model meteor --bench bench2drive --scene 2802   # one route, closed loop, a plan every 0.2 s
 ```
 
 Runs on the reference box are launched under `taskset` (see
@@ -171,8 +184,8 @@ shared `kitscenes_e2e_final` list, the six-camera ring, native 3 s plan,
 | **1.879** (median 1.419) | 0.695 | 2.040 | 4.034 | 1.563 | 0.688 |
 
 Constant velocity scores 1.381 on the same list; Alpamayo 1.002, VisionPilot
-1.534, OpenPilot 1.599, Drive-JEPA 2.364. A second run reproduced all 223
-predictions exactly.
+1.534, OpenPilot 1.248 (its configured run; 1.599 stock), Drive-JEPA 2.364. A
+second run reproduced all 223 predictions exactly.
 
 **Front camera only, kept as an ablation:**
 `results/kitscenes/meteor/20260914T185351-5e5223`, made before #40 when the
@@ -368,6 +381,115 @@ so the speed figures here are this measure throughout, not that one.
 (stationary-0796 0.12, stationary-0099 0.14). A single run scores exactly 5.0 or at most
 4.0, so a per-pair mean near 2.5 is a mix of clean escapes and full-speed
 impacts.
+
+Bench2Drive, `results/bench2drive/meteor/pooled50-40c29d24c37d542a-867d57`
+(closed loop in CARLA 0.9.15: the 50 routes every other row pools, one run each,
+paddock's six cameras, a plan every 0.2 s at its declared 5 Hz, and AutoE2E's
+early-stop rules: a route ends after 30 s without 3 m of progress or at 4x the
+expert's time and is scored as it stood; `valid: true`; 46 min wall clock on six
+workers over two A100s, 29 Oct 2026, no node on the CPU):
+
+| routes | DS | DS median | RC (%) | infraction penalty | routes with a collision | never left the start | completed |
+|---|---|---|---|---|---|---|---|
+| 50 | **1.05** | 0.00 | 6.30 | 0.90 | 7 | 43 | 2 |
+
+Constant velocity at 3 m/s scores 48.31 on the same routes, VisionPilot 47.82,
+AutoE2E 15.30 (its own 10 Hz, the same early stop).
+
+**It does not start.** Every Bench2Drive route begins at a standstill, and on 43
+of the 50 the car never got going (on 42 it never passed 0.1 m/s). Standing
+still, METEOR plans a 3 s path that ends 0.04-0.43 m ahead (median over routes
+0.17 m; on nuScenes' stopped anchors its plan creeps 0.95 m on average), and its own
+acceleration output is negative (-0.45 to -0.12 m/s^2, median -0.27). The shared
+controller brakes when a plan asks for less than 0.4 m/s, and it braked on
+97-100 % of those routes' ticks. The stuck rule ended 30 of them at 30 s and the
+over-time rule 1; the other 12 start 27-31 m short of a light that was red for
+40-50 of their first 60 s, which pauses the stuck clock, so Bench2Drive's own
+blocked test ended them at 60 s. The six cameras the model was shown on route
+1711 are the scene as CARLA rendered it, in colour, the road ahead clear, so the
+hold is the network's plan, not a blank input.
+
+**When it moves, it collides.** It left the start on 7 routes and collided on
+every one: 3364 is driven to its end with 16 collisions with static objects, so
+its penalty multiplier is 0.0001 and it scores 0.01; 24252 is completed with one vehicle
+collision (6.41); the best route is 24333 at 14.77.
+
+**What differs from where it drove before, argued and not separated.**
+neuroNCAP's scenarios start with the car already moving, and there METEOR drove
+(and did not brake); every Bench2Drive route starts from a standstill. Its
+cameras were TIER IV's (98 deg lenses, side cameras pitched about 25 deg down,
+about 1.9 m up, in left-hand traffic), where paddock's rig is 70 deg (back
+110 deg), level, 1.5 m up, in right-hand traffic. An open-loop replay of one
+Bench2Drive clip outside this repository found METEOR's 2D detection carries over
+to these cameras and the depth behind its BEV lift does not. And it gets no
+driving command. Nothing here measures which of these holds it still.
+
+AlpaSim, `results/alpasim/meteor/legacy-meteor_011_published_30scenes` (30
+scenes, one rollout each, six cameras at 20 Hz) and `…_first10` (the first ten
+of those 30 runs, not a second sweep):
+
+| scenes | `scene_score` | progress | at-fault collisions | any collision | off-road |
+|---|---|---|---|---|---|
+| first 10 | 0.6869 | 0.6073 | 0 / 10 | 3 / 10 | 0 / 10 |
+| 30 | **0.4232** | 0.4301 | 1 / 30 | 10 / 30 | 5 / 30 |
+
+**This row did not go through the paddock node.** It was made by a native
+AlpaSim driver, `meteor-0.1.1`, written at the Fastcode site and not tracked in
+this repository, and ingested from its recorded runs. `meteor` does not declare
+`alpasim` in `model.yaml`. What that driver does, so the number can be read:
+
+- **The graph and the pixels are the ones above.** The released
+  `meteor_v157c3Z.onnx` (sha256 `50397b4d…`, logged by each of the 30 runs),
+  raw uint8 into the graph's own `/255`, no mean/std normalisation, on the CUDA
+  provider.
+- **Six cameras, rendered as pinholes.** Front wide, cross left and right
+  (in METEOR's front-left and front-right slots), rear left and right, and
+  the front telephoto fill six slots; the rear wide
+  and rear telephoto slots are absent and fed as zeros with a neighbour's
+  calibration. This is a different six from the nuScenes six the node gets,
+  which has a rear wide camera and no telephoto. Each camera is rendered at
+  the narrower of METEOR's own field of view and the recorded one (97.70° for
+  the three wide cameras, about 120° as recorded), with no distortion and the
+  bonnet mask off. See [docs/benchmarks/alpasim.md](../benchmarks/alpasim.md).
+- **The mode is not the argmax.** The driver uses the selector of METEOR's
+  deployed runtime: the previously chosen mode gets +0.35 on its logit, and a
+  non-straight mode is taken only if it leads the straight one by 1.0. The
+  node, and every other METEOR cell in the matrix, takes the plain argmax.
+- **A fresh plan every fourth step.** The simulator steps at 20 Hz and the
+  graph is run at 5 Hz; the three steps between reuse the last plan, re-timed.
+  The six waypoints are passed on as the model emitted them, with headings
+  derived from them. The steer, accel and brake outputs are logged and not
+  driven. No plan is extended: the simulator's controller looks 2 s ahead and
+  the plan is 3 s.
+- **No driving command**, as everywhere else.
+
+The simulator drives the recorded path itself for the first 3 s of each scene
+and then hands over to the model.
+
+What the 30 runs show, from the per-scene scorer output:
+
+- **The first ten scenes and the twenty extra are far apart**: 0.6869 against
+  0.2913. All five off-road events and the one at-fault collision are on the
+  twenty extra scenes, and each zeroes its scene. Four of the ten score 0.98
+  or more; one of the twenty does.
+- **Low progress, not only failures.** Of the 24 scenes with no off-road event
+  and no at-fault collision, 12 score below 0.5 because the car covered less
+  than 40 % of the recorded distance inside the scored window. Seven of those
+  had a collision that was not the model's fault, which ends the window. Three
+  more windows ended early without one (`04749bb9` and `2e1ce314` after less
+  than a second of scored driving). On the last two, `bae463d3` and `d2715023`, the
+  window ran its full length and the car covered under 15 % of the distance.
+- **Not explained yet.** Which of the low-progress scenes are the model
+  stopping short at speed (the plateau seen on KITScenes and NAVSIM) and which
+  are something else has not been separated. An earlier ten-scene run of a
+  variant of this driver showed the simulator's controller swerving when
+  handed a plan much slower than the car, at 15 m/s and 24 m/s; whether
+  that is what ends the fast scenes here has not been checked.
+- **One rollout per scene.** The standard deviation across the 30 scenes is
+  0.37, so the mean is loose.
+
+There is no constant-velocity floor on six cameras, so this number is not
+ranked against the one-camera rows; the README's footnote says the same.
 
 **One episode misled.** The pipeline smoke,
 `results/neuroncap/meteor/20260915T192353-6ed840`, drove stationary-0103 once

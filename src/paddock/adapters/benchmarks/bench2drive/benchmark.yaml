@@ -10,3 +10,11 @@ dataset: ""
 # CARLA Leaderboard driving score = route_completion x infraction_penalty.
 metrics: [driving_score, route_completion, infraction_penalty, collision_rate]
 primary_metric: driving_score
+# Which metric fills which term of NAVSIM v1's PDM score (paddock.metrics.pdm),
+# so the regression gate lays every benchmark out in the same rows.
+# Any collision, and route completion as EP (progress along the route, not
+# against an expert). DAC would be `outside_route_lanes` and C the 20 Hz
+# `metric_info.json`; both are written per route and not yet read.
+pdm:
+  nc: collision_rate
+  ep: route_completion

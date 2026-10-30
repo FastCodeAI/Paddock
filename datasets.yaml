@@ -61,6 +61,22 @@ datasets:
       One checkpoint per nuScenes sequence. A scenario whose scene has no
       checkpoint cannot be rendered and will fail at run time, not at setup.
 
+  hugsim:
+    description: HUGSIM release -- Gaussian-splatting scenes, vehicle assets and 436 closed-loop scenarios over KITTI-360, nuScenes, PandaSet and Waymo
+    requires: [scenarios, scenes, 3DRealCar]
+    splits: [kitti360, nuscenes, pandaset, waymo]
+    notes: >
+      XDimLab/HUGSIM on Hugging Face (public, MIT): scenarios.zip unpacked to
+      scenarios/<dataset>/*.yaml, each scene zip to scenes/<dataset>/<scene>/
+      (scene.pth, cfg.yaml, ground and point-cloud assets), and the 3DRealCar
+      vehicles to 3DRealCar/<car_id>/{gs.pth,wlh.json}. 61 GB in all. A scenario
+      whose scene or vehicles are missing fails when the environment is built,
+      not before. The released scenarios name each vehicle
+      '<car_id>/postprocess/shadow.pth' and the released assets do not match
+      that; paddock's launcher repairs a copy per run and never edits the data.
+      The 16 nuScenes scenarios with load_HD_map: true also need the release's
+      nusc_map_cache, which HUGSIM reads from ~/.unified_data_cache only.
+
   openlane_sample:
     description: short OpenLane clips (video + speed trace) used to smoke-test VisionPilot
 

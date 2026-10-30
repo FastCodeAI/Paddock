@@ -4,8 +4,9 @@
 #
 # How a rule is read:
 #   - `when` is a pandas expression over the notebook's feature table (its §5
-#     glossary lists every column). Thresholds are `@name`, looked up in
-#     `params` below -- after the notebook's OVERRIDES, if any.
+#     glossary, drawn when the notebook runs, lists every column). Thresholds
+#     are `@name`, looked up in `params` below -- after the notebook's
+#     OVERRIDES, if any.
 #   - It runs as `df.eval(when, engine="python", local_dict=params)`. NaN
 #     compares False under <, <=, >, >=, ==, so an undefined value never raises
 #     a flag. `!=` and `not in` are the opposite: NaN != x is True, so give
@@ -64,6 +65,9 @@ params:
   start_slow: 0.97         # v0_ratio at or under this: the plan starts slower than the GT (guess)
   start_fast: 1.03         # at or over this: faster (guess)
   cam_h_split_m: 1.5       # op_cam_h under this: the lower of the road head's two modes on kitscenes (cam_h_read)
+  lane_w_ratio_lo: 0.9     # lane_width_ratio (model / map) under this: the model reads its lane narrow (nuscenes) (guess)
+  lane_w_ratio_hi: 1.1     # over this: wide (guess)
+  lane_pos_tol_m: 0.5      # |lane_offset_err| at or over this: the model puts the car elsewhere in its lane (guess)
   # -- response --
   ratio_much_slow: 0.8     # speed_ratio bin edges
   ratio_slow: 0.95
@@ -104,6 +108,9 @@ bench_params:
 
 # Per-benchmark scene metadata, joined as ctx_<column>. Templates are expanded
 # with the site's paddock.toml ({repos}, {data.NAME}); nothing here names a disk.
+# Both point into a scenario-mining checkout under {repos}. It is optional, and
+# not in repos.yaml: where a site has none, the KITScenes notebook has no ctx_
+# columns, and its §14-§15 take the harness's camera height as the true one.
 context:
   comma2k19:
     csv: "{repos}/scenario_mining/comma2k19/data/scenario_metadata.csv"
@@ -120,6 +127,22 @@ context:
               straight_fraction, mean_speed_mps, location, lane_width_m, at_intersection_fraction,
               speed_limit_kmh, height_ring_front_m, is_dense_traffic, is_vru_rich, vehicle_ahead_fraction,
               close_vehicle_ahead_fraction, mean_vehicles, mean_vrus]
+  nuscenes:
+    # No mined features for nuScenes. Each scene carries a free-text description
+    # ("Night, parking lot, peds, ..."); every flag is a case-insensitive regex
+    # over it and gives a boolean ctx_<flag>. Per-keyframe map context (map_*)
+    # comes from the devkit's map expansion in the notebook's §3, not from here.
+    flags:
+      night: '\bnight\b'
+      rain: '\brain'
+      parking_lot: 'parking lot'
+      intersection: 'intersection|roundabout'
+      waits: '\b(?:wait|waiting|stop|stopped) at\b'
+      peds: '\bpeds?\b|pedestrian|jaywalk'
+      construction: 'construction'
+      large_vehicle: '\bbus|truck|bendy'
+      parked: '\bparked\b'
+      turn: '\bturn(?:ing)? (?:left|right)\b'
 
 # Categorical tags. Rules are tried in order and the first match wins; rows no
 # rule matches get `default`. `sides: [gt, pred]` runs the same rules once on
@@ -127,10 +150,12 @@ context:
 # gt_<name> and pred_<name>, so the GT and the plan are always classified alike.
 # `requires` gives rows where any listed column is NaN the label `missing`.
 classes:
+  # A label is a YAML key, so never a bare yes/no/on/off: YAML reads those as booleans, which
+  # makes the tag's value True/False and breaks export()'s hash of this file.
   # ---------------- scenario: what the car and the world did ----------------
   speed_band:
     group: scenario
-    doc: "ego speed at the keyframe, from the reference: CAN on comma2k19, the harness's pose-derived speed on kitscenes"
+    doc: "ego speed at the keyframe, from the reference: CAN on comma2k19 and nuscenes, the harness's pose-derived speed on kitscenes"
     requires: [ref_speed]
     rules:
       standstill: {when: "ref_speed < @v_stop", doc: "below v_stop"}
@@ -215,7 +240,7 @@ classes:
 
   ego_turning:
     group: scenario
-    doc: "whether the car is yawing at the keyframe itself (reference yaw rate: CAN on comma2k19, the poses on kitscenes), as opposed to later in H"
+    doc: "whether the car is yawing at the keyframe itself (reference yaw rate: CAN on comma2k19 and nuscenes, the poses on kitscenes), as opposed to later in H"
     requires: [ref_yaw_rate]
     rules:
       turning: {when: "abs(ref_yaw_rate) >= @yaw_turning", doc: "|yaw rate| at or above yaw_turning"}
@@ -223,16 +248,35 @@ classes:
 
   history:
     group: scenario
-    only: [kitscenes]
+    only: [kitscenes, nuscenes]
     doc: >-
-      how much history the model had. The harness feeds the 48 source frames (4.8 s) before the
-      keyframe, and at the scene start it repeats frame 0 instead (loader.frame_indices). The model
-      is ticked twice per 10 Hz frame and once per repeat, so at keyframe 40 it gets 90 ticks, under
-      the 96 its feature queue needs (warmup_frames)
+      how much history the model had. On kitscenes the harness feeds the 48 source frames (4.8 s)
+      before the keyframe, and at the scene start it repeats frame 0 instead (loader.frame_indices).
+      The model is ticked twice per 10 Hz frame and once per repeat, so at keyframe 40 it gets 90
+      ticks, under the 96 its feature queue needs (warmup_frames). On nuscenes it gets the CAM_FRONT
+      sweeps of the history_seconds (5 s) before the keyframe, inside the scene, then the keyframe
+      itself; a 50 ms step is one tick and a 100 ms step two. A scene's first 5 s have less, and its
+      keyframe 0 has one image, shown twice
     requires: [model_ticks, warmup_frames]
     rules:
       clamped: {when: "model_ticks < warmup_frames", doc: "fewer ticks than warmup_frames: some queue still holds its initial zeros"}
     default: full
+
+  static_tail:
+    group: scenario
+    only: [nuscenes]
+    doc: >-
+      how many of the model's last ticks show no motion (static_ticks). The keyframe's own CAM_FRONT
+      image is exposed about 36 ms before the keyframe, so it is also the last history sweep, and the
+      harness then appends the keyframe with that same image: the last tick always repeats the
+      image before it. After a 100 ms step that image was already shown twice (the adapter repeats a
+      frame dt * 20 times), so the model's last two ticks see a parked car. The pose head's speed
+      follows: NUMBERS_STATIC_TAIL
+    requires: [static_ticks]
+    rules:
+      one: {when: "static_ticks <= 1", doc: "one static tick: the image repeated once at the end"}
+    default: two_plus
+    default_doc: "two or more static ticks at the end"
 
   # ---------------- intent: what the GT does after H (experimental) ---------
   # The model gets no route or desire input: the adapter sends zeros, unless a kitscenes run sends
@@ -309,10 +353,41 @@ classes:
       weak: {when: "op_lane_prob < @lane_weak", doc: "below lane_weak"}
     default: clear
 
+  lane_width_read:
+    group: perception
+    only: [nuscenes]
+    doc: >-
+      the model's ego-lane width against the map's (lane_width_ratio, both 10 m ahead): the spatial
+      scale the model reads off the image, as the speed is the temporal one. The ratio is only
+      defined where the map has a lane at the car (not a lane connector through an intersection), and
+      only read where the model sees its lines. NUMBERS_LANE_WIDTH
+    requires: [lane_width_ratio]
+    missing: na
+    rules:
+      na:     {when: "op_lane_prob < @lane_none", doc: "the model does not see its lane lines (lanes = none), so its width is a guess"}
+      narrow: {when: "lane_width_ratio < @lane_w_ratio_lo", doc: "under lane_w_ratio_lo of the map's width"}
+      wide:   {when: "lane_width_ratio > @lane_w_ratio_hi", doc: "over lane_w_ratio_hi"}
+    default: ok
+
+  lane_pos_read:
+    group: perception
+    only: [nuscenes]
+    doc: >-
+      where the model puts the car in its lane against the map (lane_offset_err: the model's lane
+      centre offset minus the map's, at the car, left positive), on the same keyframes as
+      lane_width_read. The map's lane centre is where the lane is drawn, not where drivers keep, so
+      a steady offset is the map's as much as the model's
+    requires: [lane_offset_err]
+    missing: na
+    rules:
+      na:  {when: "op_lane_prob < @lane_none", doc: "the model does not see its lane lines (lanes = none)"}
+      shifted: {when: "abs(lane_offset_err) >= @lane_pos_tol_m", doc: "lane_pos_tol_m or more apart"}
+    default: ok
+
   speed_read:
     group: perception
     doc: >-
-      model's pose-head speed against the reference speed (CAN on comma2k19, the poses on kitscenes).
+      model's pose-head speed against the reference speed (CAN on comma2k19 and nuscenes, the poses on kitscenes).
       The poses' speed has no sign, so on kitscenes a reversing car reads as a misread even when the
       pose head gets it right (backwards)
     requires: [ego_speed_rel_err]
@@ -587,6 +662,29 @@ failure_modes:
     when: "yaw_read == 'biased'"
     severity: "abs(ego_yaw_bias)"
     doc: "pose-head yaw rate off the reference by yaw_bias_tol or more"
+  lane_width_misread:
+    group: perception
+    only: [nuscenes]
+    when: "lane_width_read in ['narrow', 'wide']"
+    severity: "abs(lane_width_ratio - 1)"
+    doc: "the model's lane width is off the map's by more than lane_w_ratio_lo..lane_w_ratio_hi"
+  lane_offset_misread:
+    group: perception
+    only: [nuscenes]
+    when: "lane_pos_read == 'shifted'"
+    severity: "abs(lane_offset_err)"
+    doc: "the model puts the car lane_pos_tol_m or more from where the map does, within its lane"
+  # -- collision (nuScenes' annotated boxes) --
+  plan_collides:
+    group: collision
+    only: [nuscenes]
+    when: "rec_col_uniad_3s > 0 and gt_col_uniad_3s == 0"
+    severity: "rec_col_uniad_3s"
+    doc: >-
+      the plan's footprint overlaps an annotated box at some 0.5 s step within 3 s (the recorded
+      col_* metrics), while the GT's own footprint, scored the same way, overlaps none. Severity is
+      the fraction of the six steps in collision. The boxes move as annotated, whatever the plan does,
+      so a plan slower than the GT can be hit from behind: NUMBERS_COLLIDES
   # -- confidence and comfort --
   confidently_wrong:
     group: confidence

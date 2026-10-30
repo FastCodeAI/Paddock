@@ -11,17 +11,26 @@ plan the same way and differ in everything around it.
 |---|---|---|
 | Where | `src/paddock/adapters/models/drivejepa/` | `tools/models/drivejepa/alpasim_driver/` |
 | What it is | a `Policy` behind paddock's HTTP node | a native gRPC driver AlpaSim's runtime calls directly |
-| Benchmarks | NAVSIM, KITScenes, nuScenes, neuroNCAP, Bench2Drive | AlpaSim only, and **not through paddock** |
+| Benchmarks | NAVSIM, KITScenes, nuScenes, neuroNCAP, Bench2Drive, and AlpaSim through paddock's bridge | AlpaSim only, and **not through paddock** |
 | Weights | the released checkpoint | **retrained** on Physical AI AV (adapter 0.1.7) |
-| Cameras | four | one, front |
-| Momentum-aware selection | off by default (`DRIVEJEPA_MOMENTUM`) | on by default |
-| Rows in `results/` | every Drive-JEPA row | none |
+| Cameras | four (on AlpaSim: one rendered, three placeholders) | one, front |
+| Momentum-aware selection | on, declared in `model.yaml` (`DRIVEJEPA_MOMENTUM`); acts only in closed loop | on by default |
+| Rows in `results/` | every Drive-JEPA row that was run through paddock | none (its AlpaSim rows are ingested) |
+
+In the paddock node, momentum is declared on in `model.yaml`. The run id does not
+yet record a value a `model.yaml` declares
+([issue #99](https://github.com/FastCodeAI/Paddock/issues/99)), so a
+closed-loop run started before momentum was declared on must not be continued
+with `--resume` after it: the check `--resume` makes would pass, and the run
+would mix episodes driven both ways under one id.
 
 The perception-free NAVSIM v1 agent is a third thing with its own page,
 [drivejepa_free.md](drivejepa_free.md).
 
-The rest of this page is about the AlpaSim driver at version 0.1.7, which is
-the only place the retrained weights run. AlpaSim is a closed-loop test: the
+How the paddock node drives AlpaSim, and how that compares with the native
+driver it copies, is in [Through paddock on AlpaSim](#through-paddock-on-alpasim)
+near the end. Apart from that section, this page is about the AlpaSim driver at
+version 0.1.7, which is the only place the retrained weights run. AlpaSim is a closed-loop test: the
 model's plan steers a simulated car, and the next camera frame it sees depends
 on where that plan took it. The first 3.0 s of each scene replay the recorded
 drive (the warm-up); at the handover the model takes control. How to launch the
@@ -262,6 +271,79 @@ scenes, which is why the two figures are so far apart. The ten scenes were
 driven repeatedly while the driver was developed, so 0.9956 is the less
 trustworthy of the two as a statement about new scenes.
 
+## Through paddock on AlpaSim
+
+`paddock run --bench alpasim --model drivejepa` drives the paddock node, with
+the released checkpoint, through paddock's AlpaSim bridge. The bridge gives
+Drive-JEPA its own settings, copied from the native driver at 0.1.4b, so the
+two can be compared scene by scene: one front camera at 20 Hz (the node's
+other three cameras get copies of it), a 3.0 s replayed warm-up, a replan every
+0.5 s answered from the last plan in between, the same frame pair, speed,
+acceleration and driving command, and the 30 scenes pinned to the same
+artifacts. The settings live in the bridge (`harness.DRIVER_PROFILES`), not in
+the model; [docs/benchmarks/alpasim.md](../benchmarks/alpasim.md#per-model-settings-in-the-bridge)
+says how.
+
+**What the bridge drives.** The node's `/infer` answer carries `plan`: all
+eight (x, y, heading) poses the model returned, beside the six (x, y) points of
+`trajectory` that neuroNCAP reads. The bridge drives `plan` on the model's own
+headings, the way it reads every model's plan (a model that returns only x and
+y gets headings from its path). Drive-JEPA's answer also reports its pick in
+`extras`: which of the 32 proposals it chose, that proposal's score, and
+whether momentum had a previous plan to compare with. The bridge logs these
+per replan without interpreting them.
+
+**A clean start per scene.** The bridge calls `/reset` at the start of every
+scene, so the node's frame history and momentum's previous plan never carry
+over from the previous scene.
+
+**Result.** All 30 scenes in one run (the 22 driven first and the 8 that failed
+to start while the disk was busy, re-driven with `--resume`; no scene was
+driven twice), momentum on, made before the bridge sent the first frame to
+`/observe` (see the first-plan item below), against the native 0.1.4b runs on the same scenes:
+
+| Scenes | Through paddock | Native 0.1.4b | Difference | At-fault collisions | Off-road |
+|---|---:|---:|---:|---|---|
+| first 10 (the benchmark's default set) | 0.7573 | 0.7271 | +0.0302 | 0 / 1 | 1 / 1 |
+| other 20 | 0.4166 | 0.4514 | −0.0348 | 3 / 3 | 5 / 3 |
+| all 30 | 0.5302 | 0.5433 | −0.0132 | 3 / 4 | 6 / 4 |
+
+Collisions and off-road are counts of scenes, through paddock / native.
+Sixteen scenes score the same, eight higher and six lower. In every scene the
+model's inputs (frame times, speed, acceleration, command) are identical to the
+native driver's up to the handover; after it the two cars drift apart by a few
+centimetres per second. The first pick that differs comes between 1.0 s and
+16.5 s into the scene, and from there each run drives its own scene. Most of the large differences start at a
+near-tie between two proposals, and a near-tie can go either way: 71d7d03b
+(0.55 → 0, leaves the road) and 5f064b02 (0.65 → 1.00) both split on score
+gaps of under 0.01.
+
+**Known differences from the native driver**, none of them a difference in
+what the model is given before the handover:
+
+- **Runtime.** The node is a different process, built differently, on the
+  same GPU. Re-run on recorded inputs, the same pick's score differs by up to
+  0.004, so proposals that close can be picked either way.
+- **The first plan's momentum: fixed by `/observe`, after the run in the
+  table.** In that run, the bridge's first request of a scene only delivered a
+  frame and its plan was thrown away, but momentum kept that plan, so the first
+  real replan was compared with it where the native driver had no previous
+  plan. In 8 of the 30 scenes the warm-up picks differed from then on (seven of
+  them for this reason, one at a near-tie), and the score changed on two
+  (cdd9448c, 0245ff75). The bridge now sends that frame to `/observe`, which
+  records it and plans nothing. Replayed offline on three recorded scenes, 114
+  of the 117 replans now match the native driver; the three that do not are on
+  04394343, from the sideways difference below. The table has not been re-run
+  since.
+- **Sideways speed and acceleration are not passed.** The native driver gave
+  the model and momentum the car's sideways speed and acceleration as well as
+  forward ones. The node's input has forward only, so the model gets 0 for
+  both. This matters only where the car moves sideways: on 04394343 the native
+  driver was sent 0.78 m/s and 4.0 m/s² at the handover, the plans differ from
+  the next replan and the picks a second after that; the native driver's car
+  collided there (0) and this one did not (0.24). Passing them is a separate
+  change.
+
 ## Not verified
 
 - **One rollout per scene.** No repeat, no seed sweep, no interval on any
@@ -282,8 +364,13 @@ trustworthy of the two as a statement about new scenes.
   checkpoint's sha256, and in all 30 it is the one in the Weights table above.
   The 30-scene figures for 0.1.4 and 0.1.7 are rows too, as the
   `…_30scenes` runs. 0.1.4b has no row.
-- **Nothing here runs through the paddock bridge.** `drivejepa` still does not
-  declare `alpasim` in its `model.yaml`.
+- **The run through paddock is not a row either, and is stored `valid: false`.**
+  Momentum is switched on by a site setting (`DRIVEJEPA_MOMENTUM = "on"`), and a
+  site setting that can change the plan makes a run invalid by rule. Its
+  numbers are in [Through paddock on AlpaSim](#through-paddock-on-alpasim) as a
+  comparison with the native driver, not as a ranked result.
+- **One run through paddock.** As for the native rows, no repeat; given the
+  near-ties above, a second run would not give the same per-scene scores.
 - **The scorer's own check failed in training, and that figure is not this
   checkpoint's.** The check asked the scorer to pick the truly best proposal at
   least 50 % of the time on validation clips. The first training run's

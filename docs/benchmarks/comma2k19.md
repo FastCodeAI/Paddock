@@ -280,7 +280,7 @@ derived from a column already in the tables above.
 | `pdm_nc_proxy` | *no-collision proxy*: 0 if the plan would have closed the radar gap to zero, else 1. 1 on an empty road | higher |
 | `pdm_dac_proxy` | *drivable-area proxy*: 1 if every scored waypoint stayed within ±1.85 m (half a US lane) cross-track of the recorded path | higher |
 | `pdm_ttc` | `1 − ttc_below_2s` | higher |
-| `pdm_ep` | *ego progress*: `min(1, predicted / recorded)` path length, so overshooting is not extra credit. 1 where the car was stopped and there was no distance to cover | higher |
+| `pdm_ep` | *ego progress*, NAVSIM's rule (`metrics.pdm.ego_progress`): the plan's progress along the recorded path over the recorded path's length, at most 1, so overshooting is not extra credit; 1 when neither covers 5 m | higher |
 | `pdm_comfort` | `comfort_within_bounds`, unchanged | higher |
 | `pdm_style_score` | the composite above. **Not** the headline | higher |
 
@@ -599,7 +599,7 @@ recorded samples rather than by eye so that "a curve" means a measured one:
 | sustained curve | speed > 20 m/s, \|yaw rate\| > 0.06 rad/s | `4/99c94dc769b5d96e\|2018-06-27--15-03-44/18/998` |
 | pull-away from low speed | lowest speeds, ranked by distance covered over the horizon — 2.65 m/s travelling 20.7 m, so a real departure and not a parked car | `8/99c94dc769b5d96e\|2018-08-17--15-51-25/6/999` |
 
-One sample id addresses the same scene for every row, because all six runs score
+One sample id addresses the same scene for every row, because all seven runs score
 the identical sample set. The mp4s land in `{runs}/comma2k19/_samples/` and are
 not tracked — they are tens of megabytes and regenerate from the stored runs.
 
@@ -619,13 +619,26 @@ highlighted, a HUD of the logs at that frame, a north-up minimap of the whole
 segment, and — only in the first case — the model's plan, coloured by
 `viz.palette` so a model keeps its colour here as in every other figure.
 
-Two things to know before trusting what you see:
+Three things to know before trusting what you see:
 
 - **A mirrored plan is a bug, not a model.** Plans arrive in paddock's ego frame
   (y **left**) and the toolkit projects comma2k19's device frame (y **right**).
   The conversion is a sign, a wrong one mirrors the drawn path about the
   direction of travel, raises nothing, and on a straight road is invisible.
   `test_a_plan_to_the_left_is_drawn_to_the_left` exists for exactly this.
+- **A plan is in the car's frame, like the radar.** `camera2ego` carries the
+  route calibration (see [Calibration](#calibration-the-thing-that-was-wrong-before)),
+  so the overlay turns each plan into the camera's frame with the calibration its
+  model was handed, `native_id.rpy_calib_deg`, exactly as it turns a radar box.
+  Clips rendered before that was fixed drew every plan `focal·tan(yaw)` px
+  sideways and `focal·tan(pitch)` px low — up to 37 px and 16–61 px across this
+  dataset's routes — so a plan running straight down the lane sat beside the
+  recorded path with its far end folded onto the road 18–67 m ahead. They show
+  a model that plans short, or hooks, and it was doing neither.
+  `test_the_overlay_draws_a_plan_through_the_mount_rotation` pins it.
+  The scorer does not do the same for the ground truth yet, so a clip can show
+  a plan on the recorded path beside an ADE that still carries the mount yaw
+  (see [Recorded results](#recorded-results)).
 - **Encoding needs a video backend**, the same one scoring needs: PyAV from the
   `comma2k19` extra, or an external ffmpeg named by `PADDOCK_FFMPEG`. Drawing
   additionally needs Pillow, which the `viz` extra declares.
@@ -652,16 +665,38 @@ a whole route**, because all segments of a route share one mounting and because
 those at `rpy = 0`, silently; openpilot never hits this because it persists
 `CalibrationParams` across drives.
 
-Result on this dataset: 3.5–3.8° of pitch on the RAV4, 1.7–1.8° on the Civic,
-consistent within each vehicle. Correcting it is worth roughly 1.7× in
-cross-track error.
+Result on this dataset: 3.3–3.8° of pitch on the RAV4 (39 of its 42 routes) and
+1.6–2.2° on the Civic (126 of 135), consistent within each vehicle and never
+overlapping between them — the Civic's highest is 2.35°, the RAV4's lowest
+2.57°. Correcting it is worth roughly 1.7× in cross-track error.
 
 ## Recorded results
 
 The full dataset, 10,165 samples, every row on the identical sample set
-(`sequences_sha256` `293a225a0b5cbaff` in all six run records). A model is
+(`sequences_sha256` `293a225a0b5cbaff` in all seven run records). A model is
 scored only as far as it plans; `—` is where its own horizon ends, not a
 failure. Lower is better except `pdm_style_score`.
+
+**The PDMS-style column and every comfort number on this page were made with
+the rules from before #102**, and #102 changes two of them. Progress now follows
+NAVSIM's rule: a plan covering 2 m where the human drove 4 m scored 0.5 and now
+scores 1.0, because neither covers 5 m. And a step under 0.25 m per 0.5 s no
+longer gets a heading, so a car slowing to a stop with 3 cm of wobble failed the
+yaw-rate bound and now passes. Affected: `pdm_ep`, `pdm_comfort`,
+`pdm_style_score`, `comfort_within_bounds`, and the yaw-rate and
+lateral-acceleration columns. ADE, FDE, miss rate and the longitudinal comfort
+columns are not. Scoring the runs again needs their per-sample plans, which are
+at the site that made them (`hpcai-skodate`); until then these numbers are the
+old rules'.
+
+**Every row is scored against a ground truth in the camera's frame, while the
+plans are in the car's.** The two differ by the mount rotation, about 2° of yaw
+on the Civic, and every number below carries it. Re-scored from the stored
+records with the ground truth in the calibrated frame, ADE@3s is 0.602 for
+qwendrive, 0.858 for alpamayo15 and openpilot, 1.137 for constant velocity and
+1.358 for autoe2e,
+which reorders the table. It is left as scored until that re-score lands in its
+own PR ([ROADMAP](../ROADMAP.md), M8).
 
 | | horizon | ADE@1s | ADE@2s | **ADE@3s** | ADE@4s | ADE@5s | ADE@10s | FDE@3s | median ADE@3s | miss@3s | PDMS-style ↑ |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -669,6 +704,7 @@ failure. Lower is better except `pdm_style_score`.
 | qwendrive (`Qwen-Drive-1.0-4B`, side slots replicated) | 5 s | 0.475 | 0.801 | 1.159 | 1.570 | 2.045 | — | 2.094 | 1.138 | 0.505 | 0.511 |
 | openpilot (`small`, split graph, `4df40d2c1`) ∗ | 10 s | 0.598 | 1.035 | 1.507 | 2.017 | 2.571 | 6.032 | 2.712 | 1.555 | 0.647 | 0.410 |
 | constant velocity (registered policy, 6 waypoints) | 3 s | 0.537 | 1.017 | 1.639 | — | — | — | 3.286 | 1.475 | 0.658 | 0.417 |
+| autoe2e (`kitscenes-epoch-5`, the road camera alone, five views left out) | 6 s | 1.160 | 1.593 | 2.016 | 2.507 | 3.185 | — | 3.084 | 2.068 | 0.775 | 0.364 |
 | visionpilot (synthesised trajectory) | 4 s | 1.149 | 2.462 | 4.045 | 5.835 | — | — | 8.146 | 2.195 | 0.864 | 0.406 |
 | drivejepa_free (perception-free agent, NAVSIM v1) | 4 s | 7.800 | 12.077 | 16.048 | 20.501 | — | — | 26.248 | 19.801 | 0.831 | 0.541 |
 
@@ -766,12 +802,14 @@ belong with that number rather than after it.
   its lead at 10 s is not a question this table answers.
 
 Its plan is also much smoother than supercombo's: `comfort_within_bounds` 0.956
-against 0.302, and `comfort_lon_jerk_max` 0.64 m/s³ against 5.04 — see the jerk
+against 0.302 (old rules, see [Recorded results](#recorded-results)), and
+`comfort_lon_jerk_max` 0.64 m/s³ against 5.04 — see the jerk
 result below, which is the same measurement from the other side.
 
-Of the six, only openpilot and visionpilot publish auxiliary heads through
+Of the seven, only openpilot and visionpilot publish auxiliary heads through
 `Trajectory.extras`; alpamayo15, qwendrive and drivejepa_free emit a trajectory
-and nothing else, so every metric in the next two paragraphs is `NaN` for them.
+and nothing else, and autoe2e's extras are its own diagnostics, so every metric
+in the next two paragraphs is `NaN` for them.
 That is the intended behaviour of one declared metric list rather than a
 per-model one: the run records what the model did not produce instead of quietly
 shortening the list.
@@ -973,3 +1011,173 @@ should say so; `paddock run` records `limit` in `run.json` and marks such runs
 - **No published model-evaluation protocol.** comma2k19's own benchmark scores
   GNSS positioning, so this benchmark's metric definitions are its own; see
   `metrics.py` for what each one is and why.
+
+## Support-matrix results
+
+The per-metric results behind this benchmark's column in the
+[README's support matrix](../../README.md#support-matrix), and the notes on its
+cells. Moved here from the README unchanged except for links; the symbols are
+the README's former footnote marks, and each note below starts with the mark it
+explains. Marks about a model rather than this benchmark (⊛ ⊕ ∗ ◊ ◇ ✦ ✧) are
+explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
+
+### Notes on the matrix cells
+
+✦ comma2k19 is the full dataset: **2035 one-minute segments, 5 keyframes each —
+10,165 scored samples**, not 10,175: two truncated segments are too short to
+place a keyframe at all, so it is 2033 × 5 (`{0: 2, 5: 2033}`) — derived, with
+both segments named, in
+[docs/datasets/comma2k19.md](../datasets/comma2k19.md). Every row is over the
+identical sample set
+(`sequences_sha256 = 293a225a0b5cbaff` in all seven `run.json`). METEOR has not
+been swept on it. Read the mean *and* the median: OpenPilot's 3 s mean beats
+constant velocity by 8% (1.507 vs 1.639) while its **median is worse** (1.555 vs
+1.475), because two thirds of I-280 is straight enough for constant velocity to
+be nearly exact and the mean is carried by the curves. Alpamayo is ahead on
+both, but on a **shorter horizon and one camera**: it plans 4 s where supercombo
+plans 10, and comma2k19 has a single forward camera against the four view slots
+Alpamayo takes, so two of them go unsent. The 3 s column is a fair comparison;
+the 10 s column does not exist for it. Qwen-Drive is the only other model within
+half a metre of it, and reaches 5 s doing it — the only other model that plans
+that far is supercombo, half a metre worse again at that horizon (2.045 vs
+2.571). **Drive-JEPA's 16.048 is its perception-free agent** —
+a separate registry entry (`drivejepa_free`, NAVSIM v1) from the perception-based
+v2 model every other column on that row refers to, since comma2k19 supplies
+neither the four cameras nor the lidar extrinsics v2 requires. The number is a
+speed prior, not a wiring fault: its plans are the most accurately *shaped* of
+any model here (0.609 m lateral error at matched arc length, against OpenPilot's
+1.155) but reach only ~67% as far as the car travelled, because 4 s of NAVSIM
+city driving saturates near 64 m while I-280 runs at 30 m/s. See
+[docs/models/drivejepa_free.md](../models/drivejepa_free.md) and the comma2k19
+table below. Every comma2k19 row is also scored against a ground truth left in
+the camera's frame while the plans are in the car's. Re-scored with both in the
+car's frame, the order changes: Qwen-Drive 0.602, Alpamayo 1.5 and OpenPilot
+0.858, constant velocity 1.137, AutoE2E 1.358. That re-score is a tracked follow-up
+([ROADMAP](../ROADMAP.md), M8).
+
+⊗ **OpenPilot's comma2k19 row was not produced at the `repos.yaml` pin.** It
+comes from a clone at `4df40d2c1`, which ships the driving model as two graphs;
+the pin names `555f48c5d`, which ships it as one, and the two plan from
+different hidden states. The same row also predates a fix to the ONNX backend,
+which was feeding the road camera's image to the wide view. The figure is left
+as measured — it is a real openpilot over the same 10,165 samples as every other
+row — and is due to be replaced when openpilot is next evaluated at the pin;
+[docs/ROADMAP.md](../ROADMAP.md) tracks it and
+[docs/benchmarks/comma2k19.md](comma2k19.md#recorded-results)
+gives the detail. Runs made from here on record their clone's sha and their
+backend in `run.json`, so a row cannot lose its provenance this way again.
+
+### comma2k19
+
+The full dataset: 2035 one-minute segments of 20 Hz California highway driving,
+5 keyframes each — **10,165 scored samples**, ten short of 2035 × 5 because two
+truncated segments (9.7 s and 11.1 s) place no keyframe at all. Every row over
+the identical sample
+set. Each sample feeds the model **160 real frames — 7.95 s of history ending at
+the scored moment** — and scores the waypoints it plans against the 20 poses the
+car actually reached, on a 0.5 s grid out to 10 s. A model is scored only as far
+as it plans, so a cell is blank where its own horizon ends rather than being
+padded. Lower is better throughout.
+
+| Model | horizon | ADE@1s | ADE@2s | **ADE@3s** | ADE@4s | ADE@5s | ADE@10s | FDE@3s | median ADE@3s | PDMS-style ↑ ⁂ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Alpamayo 1.5 | 4 s | **0.386** | **0.616** | **0.900** | **1.263** | — | — | **1.654** | **0.823** | — |
+| Qwen-Drive 1.0 | 5 s | 0.475 | 0.801 | 1.159 | 1.570 | **2.045** | — | 2.094 | 1.138 | 0.511 |
+| OpenPilot ⊗ | 10 s | 0.598 | 1.035 | 1.507 | 2.017 | 2.571 | **6.032** | 2.712 | 1.555 | 0.410 |
+| Baseline (Constant Velocity) | 3 s | 0.537 | 1.017 | 1.639 | — | — | — | 3.286 | 1.475 | 0.417 |
+| AutoE2E | 6 s | 1.160 | 1.593 | 2.016 | 2.507 | 3.185 | — | 3.084 | 2.068 | 0.364 |
+| VisionPilot ∗ | 4 s | 1.149 | 2.462 | 4.045 | 5.835 | — | — | 8.146 | 2.195 | 0.406 |
+| Drive-JEPA (perception-free) | 4 s | 7.800 | 12.077 | 16.048 | 20.501 | — | — | 26.248 | 19.801 | 0.541 |
+
+**OpenPilot and the baseline are separated by horizon, not by skill at the
+headline.** Constant velocity is *better* for the first two seconds and has the
+better median at three, because I-280 is mostly straight and a straight line is
+then almost exactly right; OpenPilot's mean wins on the curves, and its
+advantage grows with every horizon they share. The baseline's row stops at 3 s
+because the registered policy emits the six waypoints neuroNCAP requires;
+extending the same arithmetic to 10 s with
+[`tools/benchmarks/comma2k19/constant_velocity.py`](../../tools/benchmarks/comma2k19/constant_velocity.py)
+gives 2.411 / 3.331 / 10.048 at 4, 5 and 10 s, so OpenPilot's advantage is 1.7×
+by 10 s. That tool run agrees with the policy to every printed digit at 1, 2 and
+3 s, which is what licenses reading the two together. An ADE at 3 s alone would
+have called those two nearly a tie.
+
+**Alpamayo and Qwen-Drive lead at every horizon they reach, on less input than
+OpenPilot.** Both see one camera where they expect several view slots —
+comma2k19 is a single forward camera, so Alpamayo's +55°/−55° slots go unsent
+and Qwen-Drive's side views are filled with the forward frame — and both plan
+well short of supercombo's 10 s. Alpamayo is ahead on the mean *and* the median
+within its 4 s, which is the comparison constant velocity survives against
+OpenPilot and does not survive here (0.823 vs 1.475 at 3 s). It is ahead of
+Qwen-Drive too, at every horizon the two share; Qwen-Drive's claim is that it
+carries the lead a second further, reaching 2.045 at 5 s where OpenPilot needs
+until 4 s to reach 2.017. What the table cannot say is how either extrapolates
+to 10 s, because neither goes there.
+
+**Drive-JEPA's row is a reach failure, not a shape failure, and the auxiliary
+columns are what show the difference.** Its perception-free agent has the
+lowest lateral error at matched arc length of any model on this benchmark
+(0.609 m against OpenPilot's 1.155) while travelling only 67% as far as the car
+did (`path_length_ratio` 0.672), so it draws close to the right curve and stops
+a third of the way along it. Four seconds of NAVSIM city driving saturates
+around 64 m; I-280 covers 120. Removing the speed error is exactly what
+`lateral_at_arclength_mae` does, and it takes 16.048 to 0.609 — which is not a
+number this table will headline, because the model was not asked for a shape, it
+was asked for where the car would be. This is the clearest case in the repo for
+why a benchmark that reported ADE alone would be describing the wrong defect.
+
+comma2k19 also carries the car's own CAN bus, radar and fused pose, so it scores
+what a model predicts **besides** the path — one metric list, `NaN` for a model
+that publishes no such head. Two of the seven do. Over the same 10,165 samples:
+
+| what | OpenPilot | VisionPilot | reference it is scored against |
+|---|---:|---:|---|
+| ego speed, relative error | 0.020 | — | CAN speed |
+| yaw rate, absolute error (rad/s) | 0.0024 | — | fused INS/GNSS pose |
+| lead recall / precision | **0.945** / 0.593 | 0.871 / **0.752** | radar tracks |
+| lead range, absolute error (m) | **3.04** (median 1.45) | 9.10 (median 6.85) | radar range |
+| lead lateral, absolute error (m) | 0.595 | **0.369** | radar track position |
+| lead closing speed, absolute error (m/s) | **0.944** | 1.893 | radar range rate |
+| plan within 1σ, along / across track | 0.559 / **0.124** | — | the recorded future |
+| longitudinal jerk within comfort bound | 0.373 | **0.893** | NAVSIM's bounds |
+| sanity gates passed (lane width, camera height, speed) | 0.926 | — | plausibility ranges |
+
+Three of those are results rather than confirmations. OpenPilot's **lateral
+uncertainty head is badly under-dispersed** — a calibrated 1σ should contain
+about 68% of outcomes and contains 12% — and its plan's **longitudinal jerk
+exceeds the comfort bound on 63% of samples** (mean peak 5.04 m/s³ against a
+4.13 bound), which is a property of the 33-point plan resampled onto a 0.5 s
+grid and is worth reading before anyone treats that grid as a controller input.
+And VisionPilot's lead head, which is three times worse than supercombo's at
+*range*, is the better of the two at **lateral** placement (0.369 m vs 0.595):
+it is solving a detection-and-projection problem where supercombo is solving a
+regression, and the two fail in different directions. Alpamayo, Qwen-Drive and
+Drive-JEPA publish none of these heads through paddock's extras schema, so their
+columns are `NaN` throughout — which is the point of one declared metric list
+rather than a per-model one. The baseline's comfort columns are all 1.0 by
+construction: a straight line at constant speed has no jerk.
+
+⁂ **PDMS-style** values here were made with the progress and comfort rules from
+before #102 (see [Recorded results](#recorded-results)). It is NAVSIM v1's published composite,
+`NC × DAC × (5·TTC + 5·EP + 2·C) / 12`, evaluated over log-replay *proxies* —
+comma2k19 has no other-agent tracks and no map, so no-collision sees only the
+closest radar lead and drivable-area uses the human's own path as the corridor.
+It is deliberately not the primary metric and never called a driving score; the
+five sub-scores are reported beside it in `report.md` so nobody has to trust the
+sum. Alpamayo predates the column and is `stochastic: true`, so re-running it
+would replace a published 0.900 with a different draw for two proxy columns, so
+it is `—` rather than a number that cannot be compared. Qwen-Drive was `—` here
+too until it was re-swept on the common 0.5 s grid: its comfort term had been
+measured on a 0.1 s one, where `1/dt³` turns 4 cm of output quantisation into
+1932 m/s³ of "jerk".
+See [docs/benchmarks/comma2k19.md](comma2k19.md) for the full
+derivation and what it still cannot see.
+
+[OpenPilot](../../results/comma2k19/openpilot/20260916T051616-2a91ca/metrics.json)
+· [Alpamayo 1.5](../../results/comma2k19/alpamayo15/20260913T072437-b058c2/metrics.json)
+· [Qwen-Drive 1.0](../../results/comma2k19/qwendrive/20260916T220846-971379/metrics.json)
+· [Drive-JEPA (perception-free)](../../results/comma2k19/drivejepa_free/20260916T003407-c504e5/metrics.json)
+· [VisionPilot](../../results/comma2k19/visionpilot/20260916T012719-03350c/metrics.json)
+· [baseline](../../results/comma2k19/constant_velocity/20260916T162837-b89038/metrics.json)
+· [protocol, and what it cannot score](comma2k19.md)
+· [the dataset itself](../datasets/comma2k19.md).

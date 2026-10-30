@@ -1,6 +1,6 @@
 # openpilot's driving model on KITScenes: four questions
 
-This note answers four questions about openpilot's driving model (supercombo) on KITScenes, run open loop through paddock, and records what each answer assumes. Every measured number comes from [the analysis notebook](openpilot_drv_supcombo_kitscenes_openloop_analysis.ipynb) beside it, which recomputes them from the runs below each time it executes. The § numbers are the notebook's sections, and the figures are there, not here. The section after Q4 takes the four as one problem, with numbers from [the image calibration notebook](openpilot_drv_supcombo_kitscenes_image_calibration.ipynb), and there the § numbers are that notebook's.
+This note answers four questions about openpilot's driving model (supercombo) on KITScenes, run open loop through paddock, and records what each answer assumes. Every measured number comes from [the analysis notebook](openpilot_drv_supcombo_kitscenes_openloop_analysis.ipynb) beside it, which recomputes them from the runs below each time it executes. The § numbers are the notebook's sections, and the figures are there once it is run, not here: its outputs are not committed. The section after Q4 takes the four as one problem, with numbers from [the image calibration notebook](openpilot_drv_supcombo_kitscenes_image_calibration.ipynb), and there the § numbers are that notebook's.
 
 ## The short answers
 
@@ -56,7 +56,7 @@ This note answers four questions about openpilot's driving model (supercombo) on
     - the arm's outputs, other than the plan, equal the fixed baseline's on all 223 keyframes, which a stale warp would break;
     - the s = 1 point equals the baseline on all 60.
 - **The sweep points are subsets**, so they are `valid: false` and `paddock report` leaves them out.
-- **The arm is valid,** and `paddock report` lists it as a second openpilot row. That is why the notebook pins `RUN_ID`.
+- **The arm is valid,** so `paddock report` lists it as another openpilot row. That is why the notebook pins `RUN_ID`. Its route comes from the recorded future (`command_source = "gt"`), as it does for the benchmark's other route-conditioned rows. During #60's review such runs were briefly stored invalid; that rule was reversed.
 
 ---
 
@@ -382,7 +382,7 @@ Rig and city are confounded on val: Frankfurt is only on 53df1231, and dbb25dcf 
 - **`image`:** the plan from the Q4 sweep run nearest the keyframe's s\*. Here the model replans from a start speed that is fixed in the image. Only the sweep's 60 keyframes have one.
 
 **Getting the plots.**
-- **In the notebook:** `speed_profile_sheet(mode)` draws a failure mode's keyframes. The committed notebook shows the worst and the two most typical keyframes of each of these four modes:
+- **In the notebook:** `speed_profile_sheet(mode)` draws a failure mode's keyframes. Run on its defaults, the notebook shows the worst and the two most typical keyframes of each of these four modes:
     - too_slow_cruise;
     - under_brakes;
     - under_accelerates;
@@ -655,8 +655,8 @@ On the other 29, against stock's 1.77 m, the gain is under half as large: 1.44 m
 
 ## Reproducing
 
-**The notebook.** `.venv/bin/jupyter execute --inplace` on it re-runs everything from the recorded runs. It executes in about a minute here, without a GPU.
-- §1 pins `RUN_ID`. `INTENT_RUN` and `SWEEP` find the other runs by the settings they recorded.
+**The notebook.** Its first cell says how to run it; a run recomputes everything from the recorded runs, in about a minute here, without a GPU. Its outputs are not committed, so the figures this note cites appear only in a run. `jupyter` comes with the `analysis` extra, which `make setup` leaves out: `uv pip install --python .venv/bin/python -e ".[analysis]"`.
+- §1 pins `RUN_ID`, `INTENT_RUN` and `SWEEP`. Set to `"auto"`, the last two find runs by the settings they recorded, and would now find the config run (`20261008T004723-a369d1`) for both.
 - `FOCUS` restricts every section to one scene or a list of keyframes, and the §17 side by side draws each of them.
 
 **The image calibration notebook.** It needs [`openpilot_drv_supcombo_image_node.py`](openpilot_drv_supcombo_image_node.py) beside it: the adapter, subclassed, which the notebook launches in openpilot's own interpreter as `paddock run` would.

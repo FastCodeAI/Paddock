@@ -32,7 +32,7 @@ async function load() {
   const live = (data.running || []).find((r) => r.route_id === id);
   if (row.video && shownVideo !== row.video) {
     shownVideo = row.video;
-    media.replaceChildren(el("h2", { text: "Video" }), el("p", { class: "sub", text: "Front camera with the projected plan and lane lines · BEV with plan (green), expert path and its time-synced position (orange), route (blue), driven path (white), tracked actors · the model's own two cameras · route map · speed, progress and controls · score card. One frame per two CARLA ticks, real time." }),
+    media.replaceChildren(el("h2", { text: "Video" }), el("p", { class: "sub", text: "Front camera with the projected plan and lane lines · BEV with plan (green), expert path and its time-synced position (orange), route (blue), driven path (white), tracked actors · the model's own cameras and what it reported · route map · speed, progress and controls · score card. One frame per two CARLA ticks, real time." }),
       el("video", { src: row.video, controls: "", preload: "metadata" }));
   } else if (!row.video) {
     const bust = "?t=" + Date.now();
@@ -48,6 +48,7 @@ async function load() {
     ["status", row.status || "–"], ["driving score", fmt(row.ds, 2)], ["route completion", row.rc == null ? "–" : `${fmt(row.rc, 2)} %`],
     ["infraction penalty", fmt(row.penalty, 3)], ["success (B2D)", row.success ? "yes" : "no"],
     ["game time", row.game_s == null ? "–" : `${fmt(row.game_s, 1)} s`], ["wall time (evaluator)", row.wall_s == null ? "–" : `${fmt(row.wall_s, 0)} s`],
+    ["ended early", row.early_stop && row.early_stop.reason ? `${row.early_stop.reason} at ${fmt(row.early_stop.game_time_s, 1)} s` : "no"],
   ]);
   const detail = row.video ? await getJSON(`routes/${encodeURIComponent(id)}/route.json`) : null;
   const inf = document.getElementById("infractions");

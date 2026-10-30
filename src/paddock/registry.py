@@ -66,6 +66,12 @@ class Runtime:
     pythonpath: tuple[str, ...] = ()
     cwd: str | None = None
     env: dict[str, str] = field(default_factory=dict)
+    #: Env keys a site may override without changing what is measured: thread
+    #: counts, memory caps. Any other key in a site's `[models.<name>.env]`
+    #: makes the run `valid: false` (`runner._env_override_reasons`), because a
+    #: checkpoint or a horizon swapped in by a site would otherwise be ranked
+    #: under the model's name.
+    tuning_env: tuple[str, ...] = ()
 
     def interpreter(self, cfg: SiteConfig, **ctx: str) -> Path:
         """The interpreter to launch, with any site override applied.
@@ -134,6 +140,12 @@ class ModelSpec:
     #: unstated, and a benchmark with a history of its own feeds that. openpilot
     #: fills a 96-frame feature buffer at 20 Hz, so it asks for 4.8 s.
     history_s: float = 0.0
+    #: How often the model replans in closed loop, Hz; 0 means every simulator
+    #: tick. A harness that honours it (Bench2Drive) asks the node for a plan
+    #: this often and follows the last one, unchanged, in between. Drive-JEPA
+    #: plans every 0.5 s: driven at Bench2Drive's 20 Hz it scored 31.71 on the 50
+    #: routes, at 2 Hz 57.60 (docs/benchmarks/bench2drive-native-rate.md).
+    planning_hz: float = 0.0
 
     # -- the model card ---------------------------------------------------
     # What the model IS, as opposed to how to launch it. Each field is here
@@ -159,11 +171,34 @@ class ModelSpec:
     #: Frames of camera history one inference consumes. 1 means the current
     #: frame only.
     history_frames: int | None = None
+    #: Rate of those camera frames, Hz: 2 means 0.5 s apart. None where it is not
+    #: recorded, or the model reads one frame.
+    camera_hz: float | None = None
+    #: True where the adapter feeds the last `history_frames` requests as they
+    #: arrive, so their spacing is the benchmark's step and `camera_hz` is only the
+    #: rate the model was trained at. visionpilot pairs the previous request: on a
+    #: 2 Hz benchmark its two frames are 0.5 s apart, not 0.1 s.
+    camera_frames_by_request: bool = False
+    #: The views the model actually reads, where paddock makes some of them out of
+    #: `cameras`: alpamayo's telephoto slot is a crop of CAM_FRONT. Empty means
+    #: the model reads `cameras` as declared.
+    camera_views: tuple[str, ...] = ()
+    #: Past ego states one inference reads (poses, or rows of speed and
+    #: acceleration), and their rate in Hz. Camera and ego history often run at
+    #: different rates: qwendrive reads frames 0.5 s apart and poses 0.1 s apart.
+    #: None where the model reads none, or only the current speed.
+    ego_history_steps: int | None = None
+    ego_history_hz: float | None = None
     #: waypoints | controls | perception. Explains an `n/a` in an ADE column
     #: without sending the reader to find a footnote.
     output_kind: str = "waypoints"
     #: Planning horizon, seconds. None where the output is not time-parameterised.
     horizon_s: float | None = None
+    #: Rate of the plan points the model emits, Hz, before any adapter resamples
+    #: them to `waypoint_dt`. None where they are not evenly spaced (openpilot's
+    #: 33 sit on a quadratic grid) or there is no plan. How far apart one plan's
+    #: points are -- not `planning_hz`, how often the model makes a new plan.
+    plan_points_hz: float | None = None
     #: True if repeated inference on identical input can differ. A single run of
     #: a stochastic model is a draw, not a measurement: alpamayo's frontal
     #: neuroNCAP score has sd 1.817 across seeds on one scenario.
@@ -193,6 +228,11 @@ class BenchmarkSpec:
     dataset: str
     metrics: tuple[str, ...] = ()
     primary_metric: str = ""
+    #: (slot, metric) pairs: which declared metric fills which term of NAVSIM
+    #: v1's PDM score (`paddock.metrics.pdm.SLOTS`, plus `score`), in slot
+    #: order. The regression gate lays every benchmark out in these rows, so a
+    #: candidate that trades collisions for progress reads the same everywhere.
+    pdm: tuple[tuple[str, str], ...] = ()
     description: str = ""
     directory: Path = REPO_ROOT
 
@@ -287,6 +327,7 @@ def load_models(directory: Path = MODELS_DIR) -> dict[str, ModelSpec]:
                 pythonpath=tuple(rt.get("pythonpath", ())),
                 cwd=rt.get("cwd"),
                 env=dict(rt.get("env", {})),
+                tuning_env=tuple(rt.get("tuning_env", ())),
             ),
             cameras=tuple(caps.get("cameras", ("CAM_FRONT",))),
             vram_gb=float(caps.get("vram_gb", 0.0)),
@@ -295,6 +336,7 @@ def load_models(directory: Path = MODELS_DIR) -> dict[str, ModelSpec]:
             min_input_hz=float(caps.get("min_input_hz", 0.0)),
             native_input_hz=float(caps.get("native_input_hz", 0.0)),
             history_s=float(caps.get("history_s", 0.0)),
+            planning_hz=float(caps.get("planning_hz", 0.0)),
             architecture=caps.get("architecture", ""),
             params_m=_optional_float(caps.get("params_m")),
             macs_g=_optional_float(caps.get("macs_g")),
@@ -302,8 +344,14 @@ def load_models(directory: Path = MODELS_DIR) -> dict[str, ModelSpec]:
             precision=caps.get("precision", ""),
             input_size=_input_size(caps.get("input_size"), path),
             history_frames=_optional_int(caps.get("history_frames")),
+            camera_hz=_optional_float(caps.get("camera_hz")),
+            camera_frames_by_request=bool(caps.get("camera_frames_by_request", False)),
+            camera_views=tuple(caps.get("camera_views", ())),
+            ego_history_steps=_optional_int(caps.get("ego_history_steps")),
+            ego_history_hz=_optional_float(caps.get("ego_history_hz")),
             output_kind=caps.get("output_kind", "waypoints"),
             horizon_s=_optional_float(caps.get("horizon_s")),
+            plan_points_hz=_optional_float(caps.get("plan_points_hz")),
             stochastic=bool(caps.get("stochastic", False)),
             needs_speed=bool(caps.get("needs_speed", True)),
             trained_on=_trained_on(caps.get("trained_on"), path),
@@ -312,6 +360,31 @@ def load_models(directory: Path = MODELS_DIR) -> dict[str, ModelSpec]:
             directory=path.parent,
         )
     return models
+
+
+def _pdm(body: object, metrics: tuple[str, ...], path: Path) -> tuple[tuple[str, str], ...]:
+    """`pdm:` as (slot, metric) pairs in slot order, refused when the gate could not read it.
+
+    A metric the harness never declares pairs as NO RECORDS on every run, and
+    one with no better direction cannot be signed: both would look like a term
+    that is being checked when it is not.
+    """
+    from paddock.metrics.pdm import SCORE, SLOTS
+    from paddock.results.report import has_direction
+
+    if body is None:
+        return ()
+    if not isinstance(body, dict):
+        raise ConfigError(f"{path}: pdm must map a term to a metric, got {body!r}")
+    order = (*SLOTS, SCORE)
+    problems = [f"{k!r} is not a PDM term (one of {', '.join(order)})" for k in body if k not in order]
+    problems += [f"{v!r} is not in metrics" for v in body.values() if v not in metrics]
+    problems += [f"{v!r} has no better direction" for v in body.values() if not has_direction(str(v))]
+    if len(set(body.values())) != len(body):
+        problems.append("one metric fills two terms")
+    if problems:
+        raise ConfigError(f"{path}: pdm: {'; '.join(problems)}")
+    return tuple((k, str(body[k])) for k in order if k in body)
 
 
 def load_benchmarks(directory: Path = BENCHMARKS_DIR) -> dict[str, BenchmarkSpec]:
@@ -324,12 +397,14 @@ def load_benchmarks(directory: Path = BENCHMARKS_DIR) -> dict[str, BenchmarkSpec
         mode = body.get("mode", "open_loop")
         if mode not in ("open_loop", "closed_loop"):
             raise ConfigError(f"{path}: mode must be open_loop or closed_loop, got {mode!r}")
+        metrics = tuple(body.get("metrics", ()))
         benchmarks[name] = BenchmarkSpec(
             name=name,
             mode=mode,
             dataset=body.get("dataset", ""),
-            metrics=tuple(body.get("metrics", ())),
+            metrics=metrics,
             primary_metric=body.get("primary_metric", ""),
+            pdm=_pdm(body.get("pdm"), metrics, path),
             description=body.get("description", ""),
             directory=path.parent,
         )

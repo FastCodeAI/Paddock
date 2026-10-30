@@ -1,0 +1,59 @@
+{
+  "run_id": "20261009T055926-3ceb18",
+  "site": "fastcode-navvrat-autoe2e-navsim",
+  "benchmark": "navsim",
+  "model": "autoe2e",
+  "mode": "open_loop",
+  "started_utc": "2026-10-12T05:32:11+00:00",
+  "duration_s": 3054.6,
+  "repo_sha": "40a75cf8a26b60f6b094125e3924fe0bdb427b02",
+  "dataset": {
+    "name": "navsim",
+    "split": "navtest",
+    "n_samples": 12146,
+    "sequences_sha256": "82e33c6837552a03",
+    "n_failed": 0,
+    "n_unscored": 0,
+    "n_expected": 12146
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT",
+      "CAM_BACK_LEFT",
+      "CAM_BACK",
+      "CAM_BACK_RIGHT"
+    ],
+    "split": "navtest",
+    "agent": "paddock_proxy",
+    "allow_partial": false,
+    "allow_slow": false,
+    "overrides": [],
+    "chunk_order": "by_size",
+    "merged_from": null,
+    "input_hz": 10.0,
+    "history_source": "nuplan",
+    "history_s": 6.5,
+    "keyframe_cameras": true,
+    "model_env": {
+      "AUTOE2E_RECORD_DIR": "<site path:b21fc185>",
+      "AUTOE2E_REPLAN_S": "0"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "auto_e2e",
+      "sha": "40a75cf8a26b60f6b094125e3924fe0bdb427b02",
+      "pinned_sha": "16d60f0a",
+      "at_pin": false
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "",
+  "ingested_from": ""
+}

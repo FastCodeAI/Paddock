@@ -21,6 +21,10 @@ class RendererConfigError(RuntimeError):
     """The site cannot start a renderer, with the reason spelled out."""
 
 
+#: Read by renderer.py: the cut-down nuScenes dataroot NeuRAD's dataparser loads its scene from.
+NUSCENES_SUBSET_ENV = "PADDOCK_NCAP_NUSCENES_SUBSET"
+
+
 def renderer_command(cfg: SiteConfig, scene: str, port: int = 8000) -> tuple[list[str], str, dict]:
     """`(command, cwd, env)` to serve one scene.
 
@@ -65,6 +69,9 @@ def renderer_command(cfg: SiteConfig, scene: str, port: int = 8000) -> tuple[lis
     }
     env["NEURAD_STUDIO"] = studio
     env["PYTHONPATH"] = os.pathsep.join([str(REPO_ROOT / "src"), studio])
+    if subset := settings.get("nuscenes_subset"):
+        # renderer.py points NeuRAD's dataparser at the cut-down tables (nuscenes_subset.py).
+        env[NUSCENES_SUBSET_ENV] = str(subset)
 
     command = [python, "-u", str(RENDERER_SCRIPT), "--load-config", str(config), "--port", str(port)]
     return command, cwd, env
