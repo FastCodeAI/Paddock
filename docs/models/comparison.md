@@ -384,6 +384,24 @@ of ADE was the missing cameras. Read the KITScenes cell as "the released model,
 on a rig and a domain it never saw", which is the same caveat the other rows
 carry in different proportions.
 
+### METEOR × comma2k19 — one phone camera of eight, and perception that does not carry over
+
+The released graph again, with the unequal term at its largest. comma2k19 is one
+65° phone camera behind a windscreen at about 1.22 m; METEOR's rig is eight
+cameras, 98° and 30° lenses at about 1.9 m, in left-hand traffic. The adapter
+gives the phone frame two slots (the frame, and its centred 30° window in the
+telephoto slot) and leaves six black with the calibration of METEOR's own rig,
+as its training drops a camera (`METEOR_FRONT_ONLY`). That rule was chosen on
+METEOR's own demo scene, where the front camera alone fed this way beats
+constant velocity (1.01 against 1.37; all eight cameras 0.65), and re-measured
+there through paddock's adapter. On comma2k19 its 30.075 ADE@3s is the bottom
+of the column: the plan stops about 17 m ahead at every speed above 15 m/s.
+An out-of-tree study of one comma2k19 segment traced that to perception, not
+to the planner or the adapter: depth on this camera's road reads 3.4x too far
+and the bird's-eye view holds road only about 20 m ahead. Read the cell as "the
+released model's perception on a camera it never saw".
+`docs/models/meteor.md` has the measurements.
+
 ### METEOR × navsim — a 3 s planner on a 4 s benchmark
 
 The other unequal term, and it runs the same way as the camera one. NAVSIM

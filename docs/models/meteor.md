@@ -15,7 +15,12 @@ plus a US subset) with auto-generated labels only; the authors publish no
 accuracy figures, and list "evaluation on a public benchmark" as open.
 
 Pinned in `repos.yaml` at `dc193a81` (branch `main`, 2026-09-09). Nothing from
-the checkout is imported: the adapter runs the released ONNX.
+the checkout is imported: the adapter runs the released ONNX. The one thing it
+takes from upstream source, METEOR's own rig calibration (below), is copied in
+from a later commit (`27a5bd0`, `bevlane/ref_rig_drs.npz`); a test compares the
+copy with the clone's file wherever a clone has it. A run still records the
+clone's sha and whether it is at the pin, but this adapter reads nothing from
+the clone, so that sha does not change a plan.
 
 ## Weights and environment
 
@@ -48,6 +53,7 @@ Settings, all in `model.yaml` `runtime.env`:
 | `METEOR_ORT_THREADS` | `4` | onnxruntime intra-op threads. The reference box fails above ~90% CPU |
 | `METEOR_GPU_MEM_MB` | `6144` | CUDA arena cap |
 | `METEOR_HORIZON_S` | unset (3 s) | see "Horizon" below |
+| `METEOR_FRONT_ONLY` | `narrow_refpose` | how the slots are filled when the front camera is the only one; see "A front camera alone" below |
 
 `load()` runs the graph once on a blank frame, so a missing kernel for the GPU
 architecture fails inside `startup_timeout_s` with the error in the node log,
@@ -81,6 +87,59 @@ although the dataset records a six-camera ring with calibration for each. The
 run made under that harness is kept as an ablation (below): seven absent slots
 is a heavier ablation than anything the network saw in training, and it cost
 2.9 m of ADE.
+
+**A front camera alone.** comma2k19 has one camera, a phone on the windscreen.
+Under the rule above, all seven black slots would take that camera's
+calibration. METEOR's lift (`bevlane/model.py`, `project_bev`) averages, per BEV
+cell, the features of every slot that sees the cell, weighted by that slot's
+depth probability plus 0.05, so each cell the real camera sees would be about
+7/8 black-image feature. So when `CAM_FRONT` is the only camera supplied, the
+adapter follows `METEOR_FRONT_ONLY` instead:
+
+| rule | `CAM_FRONT_NARROW` gets | the black slots' calibration |
+|---|---|---|
+| `donor` | a black image | the front camera's (the rule above) |
+| `narrow` | the centred 30° window of the front frame | the front camera's |
+| `refpose` | a black image | METEOR's own rig |
+| **`narrow_refpose`** (default) | the centred 30° window of the front frame | METEOR's own rig |
+
+"METEOR's own rig" is each slot's `K` and `T_cam_ego` on the recording rig,
+copied from upstream's `bevlane/ref_rig_drs.npz`: a black image with its own
+slot's calibration is what training's per-camera dropout looks like. The 30°
+window is what upstream's KITScenes converter feeds the narrow slot
+(`tools/kitscenes/kitscenes_to_bevlane.py`). On comma's 1164x874 frame it is
+488x274 at (338, 300), enlarged 1.57x with a bilinear filter (an area filter
+degenerates when enlarging), f = 1432 x 1435 against METEOR's narrow camera's
+1415 x 1241. The front slot gets the usual full-width 16:9 window, rows 110-765,
+f = 600; METEOR's own wide cameras have f = 335 x 292, so the comma view looks
+1.8x more zoomed in.
+
+Any other set of cameras uses the donor rule whatever the setting says, so no
+other benchmark's number moves; a test feeds the six-camera ring, a
+three-camera front and a back camera alone, and checks the feed is byte for
+byte what `donor` gives. The KITScenes front-only ablation below was made with
+`donor`.
+
+**The default was chosen on METEOR's own data, not on comma2k19.** An
+out-of-tree study ran METEOR's demo scene (`valday` from
+`AutowareFoundation/meteor-demo-scenes`, the 132 frames with a recorded 3 s
+path, 1-11 m/s) with all eight cameras, then with the front camera alone under
+each rule, and picked the best:
+
+| input | ADE (m) | FDE@3s (m) |
+|---|---:|---:|
+| all eight cameras | 0.65 | 1.49 |
+| front only, `narrow_refpose` | **1.01** | 2.11 |
+| front only, `refpose` | 1.21 | 2.46 |
+| front only, `narrow` | 1.94 | 4.41 |
+| front only, `donor` | 2.22 | 4.92 |
+| constant velocity | 1.37 | 3.24 |
+
+The study ran the checkpoint in PyTorch. Re-run through this adapter's
+`build_inputs` and the released ONNX on the CUDA provider (29 Oct 2026, a
+script kept outside the repo), every figure in the table comes out the same to
+two decimals. What it says: on METEOR's own data, the rule, not the camera
+count, decides whether one camera beats constant velocity.
 
 **Normalisation, as shipped.** `meteor_v157.param.yaml` and `deploy/README.md`
 say the uint8 graph applies `/255` and ImageNet mean/std normalisation
@@ -156,6 +215,30 @@ the adapter's feed built from paddock `Observation` fields equals the feed
 slots, `K` identical, `T_cam_ego` within 6e-8. Feeding those six slots with the
 two NARROW slots absent moves the 3 s waypoint by 0.27 m against the full
 8-camera feed.
+
+On comma2k19 the reference is that out-of-tree study's standalone one-camera
+adapter, which feeds the same rule. On the five keyframes paddock scores in its
+sample segment (`Chunk_8`, `99c94dc769b5d96e|2018-08-17--09-18-11`, segment 50,
+frames 159-999), one forward pass each, checked once on 29 Oct 2026:
+
+| | paddock against the study |
+|---|---|
+| mount calibration (route-pooled) | pitch 2.0215° / yaw 2.0741° against 2.0215° / 2.0742°; `camera2ego` within 1e-6 |
+| decoded frames | identical (the study's adapter fed paddock's decode reproduces its own images byte for byte) |
+| `K`, `T_cam_ego`, the six black slots | identical |
+| the two real images | 0.4 (front) and 0.1 (narrow) grey levels apart on average: PIL's area and bilinear filters against OpenCV's |
+| the study's feed through paddock's ONNX session (CUDA) | its PyTorch plans to within 0.05 m |
+| `v0` | CAN speed here, pose speed there (1.2 % apart); moves the plan by under 0.03 m |
+| paddock's own plans | the study's mode on all five; the 3 s point 0.08-1.15 m away, where the study's feed through the same session is within 0.05 m, so the gap is the resize filters |
+
+So paddock feeds the study's inputs except for the resize filters, and the
+model is sensitive to them on this camera: under half a grey level on average
+moves the plan by up to a metre, on plans that end about 50 m short of where the car went
+(below). Repeated forward passes on the same feed, in one session or two, give
+bit-identical outputs, so that sensitivity is to the pixels, not run-to-run
+noise on the GPU.
+`fit_frame` is shared by every benchmark, so matching OpenCV here would move
+the six-camera numbers too; it is left as it is.
 
 Timing on the reference box (RTX PRO 6000, shared): load plus warm-up 1-2 s,
 39-90 ms per forward on the CUDA provider, ~4.4 s on CPU with 4 threads.
@@ -240,6 +323,56 @@ The record carries per-scene aggregates (`by_group`, all 150 scenes), because
 the harness sets `group` to the scene. The four sibling nuScenes records predate
 #28 and carry none, so a per-scene comparison against them is not possible from
 tracked files until they are re-run under the current runner.
+
+comma2k19, `results/comma2k19/meteor/20261030T001935-0b8d0b` (the full
+dataset, n=10,165, the same samples as every other comma2k19 row; one phone
+camera, filled by `narrow_refpose`; native 3 s plan; `valid: true`; 75 min on
+one H200 with eight nodes):
+
+| ADE@1s | ADE@2s | ADE@3s | FDE@3s | median ADE@3s | miss@3s | ADE@3s, calibrated frame |
+|---|---|---|---|---|---|---|
+| 11.787 | 21.545 | **30.075** | 51.334 | 37.313 | 0.891 | 30.132 |
+
+Constant velocity scores 1.639 on the same samples (1.137 with the ground truth
+in the calibrated frame, ROADMAP M8), and every other model scores 16.048 or
+less. METEOR is better than constant velocity on 3.6 % of the samples, all of
+them below 15 m/s. Measured on the per-sample records:
+
+- **The plan stops about 17 m ahead, whatever the speed.** By the car's speed
+  at the scored frame (3 s point, plan against the car's own path):
+
+  | speed | n | plan x@3s | true x@3s | plan y@3s | ADE@3s |
+  |---|---:|---:|---:|---:|---:|
+  | below 15 m/s | 2,564 | 8.0 m | 14.2 m | −1.74 m | 3.80 |
+  | 15-22 m/s | 1,190 | 17.4 m | 54.5 m | −3.35 m | 21.69 |
+  | 22-27 m/s | 1,181 | 17.4 m | 74.4 m | −3.45 m | 33.43 |
+  | 27 m/s and up | 5,230 | 16.8 m | 91.7 m | −3.69 m | 44.11 |
+
+  Over the whole set the plan covers 32 % of the distance the car drove
+  (`path_length_ratio` 0.321) and nearly all of the error is along the road
+  (longitudinal MAE 30.0 m, lateral 1.25 m). The model's own acceleration
+  output is negative on 95 % of samples (median −0.36 m/s²). Stopped, it plans
+  to stay put (0.08 m at 3 s below 1 m/s), so the nuScenes creep does not
+  appear here.
+- **And it bends right.** The 3 s point is 3.1 m right of straight ahead on
+  average (median 3.5 m), where the car's own path ends 0.04 m right. Mode 2 of
+  3 is chosen on 89 % of samples. The out-of-tree study saw the plan bend
+  right on its segment under every rule it tried (y@3s −1.4 to −3.7 m), so the
+  rule is not what bends it.
+- **Not the adapter, and not one camera as such.** The feed matches the
+  study's (above), and on METEOR's own scene the same one-camera feed beats
+  constant velocity (1.01 against 1.37). The out-of-tree study looked at why it
+  does not on comma2k19, on one urban segment: on the road pixels the model
+  itself labels, its predicted depth is 3.4x the flat-road depth on the comma
+  camera against 0.98-1.06x on its own cameras, its bird's-eye view holds road
+  only about 20 m ahead, and its plan ends where that road ends. That is
+  measured there, not here. Read the row as the released model's perception on
+  a camera it never saw (a 65° phone at 1.22 m behind a windscreen, against
+  its 98° and 30° lenses at about 1.9 m), not as a score of its planner.
+
+```bash
+paddock run --model meteor --bench comma2k19            # 10,165 samples
+```
 
 NAVSIM navtest, `results/navsim/meteor/20260914T234307-e56cfc` (v2 EPDMS, 12,146
 scenarios, zero failures, 69 min) and `results/navsim_v1/meteor/20260915T005223-071c0b`

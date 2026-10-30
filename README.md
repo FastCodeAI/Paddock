@@ -146,7 +146,9 @@ was measured the same way as the rest of its column.
   logged drive, upstream's validation protocol (without the route it scores
   0.837); on nuScenes it is fed the 6.5 s of past keyframes it declares, where the
   others get 2 s. Drive-JEPA on comma2k19 is its released front-camera version,
-  `drivejepa_free`, because comma2k19 has one camera.
+  `drivejepa_free`, because comma2k19 has one camera. METEOR there sees that one
+  camera in two of its eight slots, the other six left black as its training
+  drops a camera.
 
 Before comparing numbers:
 

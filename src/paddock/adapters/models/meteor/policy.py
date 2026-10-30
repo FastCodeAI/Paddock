@@ -121,7 +121,8 @@ FRONT_ONLY_RULES = {
 #: Chosen on METEOR's own demo scene (valday, 132 frames with a 3 s future) with
 #: only its front camera fed, not on comma2k19: ADE 1.01 m against 1.21 for
 #: refpose, 1.94 for narrow and 2.22 for donor; 0.65 with all eight cameras and
-#: 1.37 for constant velocity. Measured outside paddock; docs/models/meteor.md.
+#: 1.37 for constant velocity. Reproduced through build_inputs and the released
+#: ONNX to two decimals; docs/models/meteor.md.
 DEFAULT_FRONT_ONLY = "narrow_refpose"
 #: upstream tools/kitscenes/kitscenes_to_bevlane.py NARROW_HFOV_DEG.
 NARROW_HFOV_DEG = 30.0

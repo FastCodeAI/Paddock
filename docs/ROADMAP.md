@@ -260,10 +260,11 @@ exactly the pairing `min_input_hz` refuses.
 | autoe2e | 6 s | 2.016 | the road camera alone; the five views it lacks left out |
 | visionpilot | 4 s | 4.045 | synthesised trajectory |
 | drivejepa_free | 4 s | 16.048 | perception-free agent, NAVSIM v1 |
+| meteor | 3 s | 30.075 | the road camera in 2 of its 8 slots; plans stop about 17 m ahead |
 
 **Verified:** every row is over the *identical* sample set — `sequences_sha256`
-`293a225a0b5cbaff` in all seven run records, which is a stronger statement than
-six matching values of `n` and is the evidence that makes the column
+`293a225a0b5cbaff` in all eight run records, which is a stronger statement than
+eight matching values of `n` and is the evidence that makes the column
 comparable. The 2033 × 5 = 10,165 derivation names the two truncated segments
 rather than counting them. Pose maths is delegated to a pinned
 `commaai/comma2k19` clone rather than reimplemented, and a reference

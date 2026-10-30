@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
-112 runs across 8 benchmarks.
-59 run(s) excluded as invalid — shown at the end, never averaged in.
+117 runs across 9 benchmarks.
+61 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
@@ -20,6 +20,7 @@
 | constant_velocity | cv_023_20hz_30scenes | 30 | fastcode-shakaal | 0.488 | 0.541 | 0.267 | 0.067 | 0.167 | 0.447 | 2.189 |
 | meteor | meteor_011_published_30scenes | 30 | fastcode-shakaal | 0.423 | 0.430 | 0.333 | 0.033 | 0.167 | 0.469 | 1.694 |
 | drivejepa | drivejepa_014_20hz_30scenes | 30 | fastcode-shakaal | 0.421 | 0.509 | 0.400 | 0.233 | 0.167 | 0.465 | 2.056 |
+| autoe2e | 20261022T045847-86b955 | 30 | fastcode-shakaal | 0.169 | 0.287 | 0.333 | 0.300 | 0.233 | 0.121 | 2.855 |
 
 ## bench2drive
 
@@ -47,6 +48,13 @@
 | autoe2e | 20261020T213543-417344 | 10165 | hpcai-skodate | 2.016 | 1.380 | 2.232 | 3.084 | 6.000 | 1.160 | 1.593 |
 | visionpilot | 20260916T012719-03350c | 10165 | hpcai-skodate | 4.045 | 1.652 | 4.553 | 8.146 | 4.000 | 1.149 | 2.462 |
 | drivejepa_free | 20260916T003407-c504e5 | 10165 | hpcai-skodate | 16.048 | 10.887 | 18.016 | 26.248 | 4.000 | 7.800 | 12.077 |
+| meteor | 20261030T001935-0b8d0b | 10165 | hpcai-skodate | 30.075 | 16.626 | 35.702 | 51.334 | 3.000 | 11.787 | 21.545 |
+
+## hugsim
+
+| model | run | n | site | hd_score ↑ | hugsim_pdms ↑ | route_completion ↑ | hugsim_nc ↑ | hugsim_dac ↑ | hugsim_ttc ↑ | hugsim_comfort ↑ |
+|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| autoe2e | campaign-f7d8f9d4b9736ddd-d03155 | 420 | fastcode-shakaal-navvrat-hugsim | 0.057 | 0.357 | 14.078 | 0.539 | 0.598 | 0.450 | 0.681 |
 
 ## kitscenes
 
@@ -125,6 +133,7 @@
 | openpilot | 20260905T055713-11ac59 | 200 | fastcode-shakaal | 3.604 | 2.698 | 8.604 | 0.380 | - |
 | drivejepa | 20260905T220225-f11ac0 | 200 | fastcode-shakaal | 3.568 | 2.229 | 8.604 | 0.455 | - |
 | drivejepa | 20260901T001634-44b6bb | 2 | fastcode-shakaal | 3.536 | - | - | 0.500 | 140.000 |
+| autoe2e | 20261026T233951-743060 | 200 | renesas-sjccomp250 | 3.162 | 3.721 | 8.604 | 0.420 | - |
 | visionpilot | 20260901T000037-c950bd | 1 | fastcode-shakaal | 2.827 | - | - | 1.000 | 89.100 |
 | visionpilot | runs10 | 5 | fastcode-shakaal | 2.792 | 2.510 | 8.314 | 1.000 | - |
 | meteor | 20260915T193036-d34559 | 200 | fastcode-shakaal | 2.644 | 5.051 | 8.604 | 0.480 | - |
@@ -149,6 +158,7 @@
 | constant_velocity | 20260914T225156-e5170c | 5119 | fastcode-shakaal | 1.288 | 0.372 | 0.260 | 0.008 | 0.008 | 1.151 | 0.594 |
 | constant_velocity | 20260907T093007-9697fe | 5119 | fastcode-navvrat-nusc-dj | 1.288 | 0.372 | 0.259 | 0.008 | 0.008 | 1.151 | 0.594 |
 | alpamayo15 | 20260905T093547-3dd7cd | 5119 | fastcode-navvrat-nusc-al | 1.487 | 0.509 | 0.369 | 0.008 | 0.008 | 1.351 | 0.742 |
+| autoe2e | 20261023T004711-eedbe2 | 5119 | fastcode-shakaal | 1.565 | 0.553 | 0.398 | 0.008 | 0.008 | 1.444 | 0.798 |
 | drivejepa | 20260905T093335-4513d4 | 5119 | fastcode-navvrat-nusc-dj | 1.882 | 0.540 | 0.376 | 0.006 | 0.008 | 1.587 | 0.824 |
 | meteor | 20260914T202122-4320bb | 5119 | fastcode-shakaal | 1.885 | 0.616 | 0.447 | 0.030 | 0.023 | 1.683 | 0.914 |
 | visionpilot | 20260905T093333-319ef5 | 5119 | fastcode-navvrat-nusc-vp | 2.360 | 1.031 | 0.883 | 0.025 | 0.033 | 2.213 | 1.382 |
@@ -168,6 +178,8 @@
 - **neuroncap/drivejepa/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **neuroncap/openpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **neuroncap/visionpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
+- **hugsim/drivejepa/campaign-87d4f5097a85db3c-ce3603** — Released Drive-JEPA (NAVSIM v2 ViT-L checkpoint), driven 22 Oct 2026 in two lanes sharing one scenario queue. The node was the drivejepa adapter as of paddock ac7788f plus a per-call record of the 32 candidates and their scores, which does not change the plan; its camera placement goes through lidar2ego, which the bridge sends as the identity, so the cameras land where ac7788f puts them. At that commit the adapter fed cameras uncropped and picked on the plain score; main now crops to the OpenScene camera (#106) and turns momentum selection on (#95), so a re-run on main would differ. Only the front camera was rendered: the released model's forward reads only the front camera. DRIVEJEPA_IMAGE_GEOMETRY, DRIVEJEPA_MOMENTUM were supplied by the ingest config: the campaign recorded no model env, so this is the operator's statement of how the node was configured, not a reading from it. scenarios attempted and never scored: scene-0166-medium-01 (exit 1 after 60 steps: IndexError: index is out of bounds for dimension with size 0).
+- **neuroncap/wajepa/20261015T234134-916e11** — 3 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes)
 - **neuroncap/drivejepa/20261012T205915-7153f0** — 3 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes); resumed: 2 episode(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only
 - **kitscenes/openpilot/20261005T205400-a369d1** — resumed: 223 sample(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only Superseded by 20261008T004723-a369d1: the same configuration (hash a369d1) run again from #60's head, identical on all 223 keyframes; the newer run is the record
 - **kitscenes/openpilot/20260930T161429-4576f3** — --limit 60: a subset of the benchmark, run to test the pipeline
