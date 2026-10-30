@@ -96,7 +96,9 @@ DEVICE_FROM_EGO = np.diag([1.0, -1.0, -1.0])
 # 0 is set.
 TRAFFIC_CONVENTION = np.array([1.0, 0.0], dtype=np.float32)
 # The (lateral, longitudinal) action_t the tinygrad path feeds openpilot's ModelState. The ONNX wrapper
-# computes its own (`Supercombo.long_action_t`); the planner below reads whichever the model was given.
+# computes upstream modeld's own, delay + 1.5 * DT_MDL, which is (0.275, 0.525) at its default delays
+# (`SupercomboRunner.long_action_t`), so the two backends tell the model horizons 25 ms apart. The
+# planner reads back whichever the model was given.
 TINYGRAD_ACTION_T = (0.3, 0.5)
 
 #: The 0.5 s grid every paddock consumer reads, out to supercombo's own horizon.
