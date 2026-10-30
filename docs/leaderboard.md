@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-118 runs across 9 benchmarks.
+119 runs across 9 benchmarks.
 62 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -50,6 +50,7 @@
 | autoe2e | 20261020T213543-417344 | 10165 | hpcai-skodate | 2.016 | 1.380 | 2.232 | 3.084 | 6.000 | 1.160 | 1.593 |
 | visionpilot | 20260916T012719-03350c | 10165 | hpcai-skodate | 4.045 | 1.652 | 4.553 | 8.146 | 4.000 | 1.149 | 2.462 |
 | drivejepa_free | 20260916T003407-c504e5 | 10165 | hpcai-skodate | 16.048 | 10.887 | 18.016 | 26.248 | 4.000 | 7.800 | 12.077 |
+| meteor | 20261030T001935-0b8d0b | 10165 | hpcai-skodate | 30.075 | 16.626 | 35.702 | 51.334 | 3.000 | 11.787 | 21.545 |
 
 ## hugsim
 
