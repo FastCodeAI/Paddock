@@ -83,6 +83,24 @@
       "p90": 0.0,
       "max": 1.0,
       "std": 0.155746
+    },
+    "ended_collision": {
+      "n": 201,
+      "n_missing": 19,
+      "mean": 0.0,
+      "median": 0.0,
+      "p90": 0.0,
+      "max": 0.0,
+      "std": 0.0
+    },
+    "ended_manual": {
+      "n": 201,
+      "n_missing": 19,
+      "mean": 0.0,
+      "median": 0.0,
+      "p90": 0.0,
+      "max": 0.0,
+      "std": 0.0
     }
   },
   "by_split": {
@@ -161,6 +179,24 @@
         "std": 0.0
       },
       "ended_over_time": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
         "n": 5,
         "n_missing": 0,
         "mean": 0.0,
@@ -252,6 +288,24 @@
         "p90": 0.0,
         "max": 0.0,
         "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "BlockedIntersection": {
@@ -329,6 +383,24 @@
         "std": 0.0
       },
       "ended_over_time": {
+        "n": 3,
+        "n_missing": 2,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_collision": {
+        "n": 3,
+        "n_missing": 2,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
         "n": 3,
         "n_missing": 2,
         "mean": 0.0,
@@ -420,6 +492,24 @@
         "p90": 0.0,
         "max": 0.0,
         "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "ConstructionObstacleTwoWays": {
@@ -497,6 +587,24 @@
         "std": 0.4
       },
       "ended_over_time": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
         "n": 5,
         "n_missing": 0,
         "mean": 0.0,
@@ -588,6 +696,24 @@
         "p90": 0.0,
         "max": 0.0,
         "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "CrossingBicycleFlow": {
@@ -665,6 +791,24 @@
         "std": 0.0
       },
       "ended_over_time": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
         "n": 5,
         "n_missing": 0,
         "mean": 0.0,
@@ -756,6 +900,24 @@
         "p90": 0.0,
         "max": 0.0,
         "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "EnterActorFlow": {
@@ -833,6 +995,24 @@
         "std": 0.4
       },
       "ended_over_time": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
         "n": 5,
         "n_missing": 0,
         "mean": 0.0,
@@ -924,6 +1104,24 @@
         "p90": 0.0,
         "max": 0.0,
         "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "HazardAtSideLane": {
@@ -1001,6 +1199,24 @@
         "std": 0.5
       },
       "ended_over_time": {
+        "n": 4,
+        "n_missing": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_collision": {
+        "n": 4,
+        "n_missing": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
         "n": 4,
         "n_missing": 1,
         "mean": 0.0,
@@ -1092,6 +1308,24 @@
         "p90": 0.0,
         "max": 0.0,
         "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "HighwayCutIn": {
@@ -1176,6 +1410,24 @@
         "p90": 0.7,
         "max": 1.0,
         "std": 0.433013
+      },
+      "ended_collision": {
+        "n": 4,
+        "n_missing": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 4,
+        "n_missing": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "HighwayExit": {
@@ -1253,6 +1505,24 @@
         "std": 0.4
       },
       "ended_over_time": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
         "n": 5,
         "n_missing": 0,
         "mean": 0.0,
@@ -1344,6 +1614,24 @@
         "p90": 0.0,
         "max": 0.0,
         "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "InterurbanAdvancedActorFlow": {
@@ -1428,6 +1716,24 @@
         "p90": 1.0,
         "max": 1.0,
         "std": 0.489898
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "InvadingTurn": {
@@ -1512,6 +1818,24 @@
         "p90": 0.7,
         "max": 1.0,
         "std": 0.433013
+      },
+      "ended_collision": {
+        "n": 4,
+        "n_missing": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 4,
+        "n_missing": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "MergerIntoSlowTraffic": {
@@ -1589,6 +1913,24 @@
         "std": 0.0
       },
       "ended_over_time": {
+        "n": 4,
+        "n_missing": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_collision": {
+        "n": 4,
+        "n_missing": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
         "n": 4,
         "n_missing": 1,
         "mean": 0.0,
@@ -1680,6 +2022,24 @@
         "p90": 0.0,
         "max": 0.0,
         "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "NonSignalizedJunctionLeftTurn": {
@@ -1757,6 +2117,24 @@
         "std": 0.5
       },
       "ended_over_time": {
+        "n": 2,
+        "n_missing": 3,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_collision": {
+        "n": 2,
+        "n_missing": 3,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
         "n": 2,
         "n_missing": 3,
         "mean": 0.0,
@@ -1848,6 +2226,24 @@
         "p90": 0.0,
         "max": 0.0,
         "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "NonSignalizedJunctionRightTurn": {
@@ -1925,6 +2321,24 @@
         "std": 0.4
       },
       "ended_over_time": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
         "n": 5,
         "n_missing": 0,
         "mean": 0.0,
@@ -2016,6 +2430,24 @@
         "p90": 0.0,
         "max": 0.0,
         "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "OppositeVehicleTakingPriority": {
@@ -2093,6 +2525,24 @@
         "std": 0.489898
       },
       "ended_over_time": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
         "n": 5,
         "n_missing": 0,
         "mean": 0.0,
@@ -2184,6 +2634,24 @@
         "p90": 0.0,
         "max": 0.0,
         "std": 0.0
+      },
+      "ended_collision": {
+        "n": 4,
+        "n_missing": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 4,
+        "n_missing": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "ParkedObstacleTwoWays": {
@@ -2261,6 +2729,24 @@
         "std": 0.0
       },
       "ended_over_time": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
         "n": 5,
         "n_missing": 0,
         "mean": 0.0,
@@ -2352,6 +2838,24 @@
         "p90": 0.0,
         "max": 0.0,
         "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "ParkingCutIn": {
@@ -2429,6 +2933,24 @@
         "std": 0.0
       },
       "ended_over_time": {
+        "n": 4,
+        "n_missing": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_collision": {
+        "n": 4,
+        "n_missing": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
         "n": 4,
         "n_missing": 1,
         "mean": 0.0,
@@ -2520,6 +3042,24 @@
         "p90": 0.0,
         "max": 0.0,
         "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "PedestrianCrossing": {
@@ -2597,6 +3137,24 @@
         "std": 0.489898
       },
       "ended_over_time": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
         "n": 5,
         "n_missing": 0,
         "mean": 0.0,
@@ -2688,6 +3246,24 @@
         "p90": 0.0,
         "max": 0.0,
         "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "SignalizedJunctionLeftTurn": {
@@ -2765,6 +3341,24 @@
         "std": 0.0
       },
       "ended_over_time": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
         "n": 5,
         "n_missing": 0,
         "mean": 0.0,
@@ -2856,6 +3450,24 @@
         "p90": 0.0,
         "max": 0.0,
         "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "SignalizedJunctionRightTurn": {
@@ -2933,6 +3545,24 @@
         "std": 0.5
       },
       "ended_over_time": {
+        "n": 4,
+        "n_missing": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_collision": {
+        "n": 4,
+        "n_missing": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
         "n": 4,
         "n_missing": 1,
         "mean": 0.0,
@@ -3024,6 +3654,24 @@
         "p90": 0.0,
         "max": 0.0,
         "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "T_Junction": {
@@ -3108,6 +3756,24 @@
         "p90": 0.6,
         "max": 1.0,
         "std": 0.4
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "VanillaNonSignalizedTurn": {
@@ -3185,6 +3851,24 @@
         "std": 0.5
       },
       "ended_over_time": {
+        "n": 2,
+        "n_missing": 3,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_collision": {
+        "n": 2,
+        "n_missing": 3,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
         "n": 2,
         "n_missing": 3,
         "mean": 0.0,
@@ -3276,6 +3960,24 @@
         "p90": 0.0,
         "max": 0.0,
         "std": 0.0
+      },
+      "ended_collision": {
+        "n": 4,
+        "n_missing": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 4,
+        "n_missing": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "VanillaSignalizedTurnEncounterGreenLight": {
@@ -3353,6 +4055,24 @@
         "std": 0.0
       },
       "ended_over_time": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
         "n": 5,
         "n_missing": 0,
         "mean": 0.0,
@@ -3444,6 +4164,24 @@
         "p90": 0.0,
         "max": 0.0,
         "std": 0.0
+      },
+      "ended_collision": {
+        "n": 4,
+        "n_missing": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 4,
+        "n_missing": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "VehicleOpensDoorTwoWays": {
@@ -3521,6 +4259,24 @@
         "std": 0.489898
       },
       "ended_over_time": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
         "n": 5,
         "n_missing": 0,
         "mean": 0.0,
@@ -3612,6 +4368,24 @@
         "p90": 0.0,
         "max": 0.0,
         "std": 0.0
+      },
+      "ended_collision": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "VehicleTurningRoutePedestrian": {
@@ -3696,6 +4470,24 @@
         "p90": 0.0,
         "max": 0.0,
         "std": 0.0
+      },
+      "ended_collision": {
+        "n": 4,
+        "n_missing": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
+        "n": 4,
+        "n_missing": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
       }
     },
     "YieldToEmergencyVehicle": {
@@ -3773,6 +4565,24 @@
         "std": 0.5
       },
       "ended_over_time": {
+        "n": 4,
+        "n_missing": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_collision": {
+        "n": 4,
+        "n_missing": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "ended_manual": {
         "n": 4,
         "n_missing": 1,
         "mean": 0.0,
