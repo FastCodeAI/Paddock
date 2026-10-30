@@ -81,8 +81,8 @@ an absent camera is a zero image tensor with a donor camera's calibration
 (`bevlane/dataset.py`, `_CAM_FALLBACK` and `cam_drop`), and METEOR's runtime
 feeds a missing eighth camera as a zero buffer. The adapter feeds black, which
 the graph's own `/255` turns into that zero tensor. The two NARROW slots are
-always absent in paddock. Every other benchmark supplies the nuScenes six;
-KITScenes did not until #40, whose harness handed over only `camera_ring_front`
+absent in paddock unless the front camera is alone (below). Every benchmark
+but comma2k19 supplies the nuScenes six; KITScenes did not until #40, whose harness handed over only `camera_ring_front`
 although the dataset records a six-camera ring with calibration for each. The
 run made under that harness is kept as an ablation (below): seven absent slots
 is a heavier ablation than anything the network saw in training, and it cost

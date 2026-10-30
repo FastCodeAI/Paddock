@@ -13,7 +13,8 @@ Input side, and why each rule is what it is:
   frames are OpenCV optical (x right, y down, z forward), the convention every
   benchmark here already supplies, so ``T_cam_ego = inv(camera2ego)``.
 - paddock's six nuScenes cameras fill six slots. The two telephoto NARROW slots
-  have no counterpart anywhere in paddock and are fed as *absent*: a black
+  have no counterpart among paddock's cameras and, unless the front camera is
+  alone (next point), are fed as *absent*: a black
   image (the zero tensor METEOR's own runtime feeds for a missing camera)
   with a donor camera's calibration, the convention the network was trained
   with for 7-camera rigs (``bevlane/dataset.py`` ``cam_drop`` /
