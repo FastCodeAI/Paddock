@@ -246,7 +246,8 @@ against ~26 h sequential.
 
 **M8 — comma2k19.** `paddock run --bench comma2k19 --model <m>` scores the full
 released dataset: 2035 one-minute segments of 20 Hz California highway driving,
-10,165 samples, six models on the board. It is the first benchmark here whose
+10,165 samples, seven models and constant velocity on the board. It is the
+first benchmark here whose
 sensor rate is high enough for openpilot to perceive its own motion, which is
 what makes an openpilot open-loop number possible at all — NAVSIM's 2 Hz is
 exactly the pairing `min_input_hz` refuses.
@@ -342,7 +343,8 @@ measured from the stored records:
   records with each ground truth rotated by its own `rpy_calib_deg` yaw, ADE@3s
   goes from 1.507 to 0.858 for openpilot (lateral MAE 1.092 to 0.137 m), 1.159
   to 0.602 for qwendrive, 0.900 to 0.858 for alpamayo15, 1.639 to 1.137 for
-  constant velocity and 2.016 to 1.358 for autoe2e, so the board reorders with
+  constant velocity, 2.016 to 1.358 for autoe2e and 30.075 to 30.132 for
+  meteor, so the board reorders with
   qwendrive first. Before the
   rotation every stored value reproduces to the last digit, and rotating the
   other way gives openpilot 2.448, so the sign is not in doubt. The
