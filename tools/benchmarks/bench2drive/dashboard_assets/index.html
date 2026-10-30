@@ -12,7 +12,7 @@
     <h1 id="title">Bench2Drive campaign</h1>
     <span class="meta" id="generated">loading…</span>
     <span class="spacer"></span>
-    <a href="/analysis/REPORT.html" title="Why it scores what it scores: the written analysis, regenerated every 5 min">Report</a>
+    <a href="/analysis/REPORT.html" id="report" hidden title="Why it scores what it scores: the written analysis">Report</a>
     <span class="meta" id="refresh-note">refreshes every 30 s</span>
     <button id="theme" title="Toggle light / dark">Theme</button>
   </header>
@@ -35,11 +35,11 @@
     </div>
   </section>
 
-  <section class="grid2" aria-label="Why">
-    <div class="card" data-chart="cause"></div>
-    <div class="card" data-chart="ability"></div>
+  <section aria-label="Why" id="why" hidden>
+    <div class="card" data-chart="cause" style="margin-bottom:12px"></div>
   </section>
-  <section class="grid2" aria-label="Breakdowns">
+  <section class="grid3" aria-label="Breakdowns">
+    <div class="card" data-chart="ability"></div>
     <div class="card" data-chart="outcome"></div>
     <div class="card" data-chart="infractions"></div>
   </section>

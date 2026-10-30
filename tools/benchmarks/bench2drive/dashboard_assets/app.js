@@ -205,8 +205,10 @@ function renderCharts(rows) {
     label: k, value: v, valueText: String(v),
     tip: [[k, `${v} routes`], ["scenarios", [...new Set(rows.filter((r) => r.cause === k).map((r) => r.scenario))].slice(0, 6).join(", ")]],
   }));
+  // Causes come only from a per-route analysis passed with --features; without one, no card.
+  document.getElementById("why").hidden = !DATA.routes.some((r) => r.cause);
   card(document.querySelector('[data-chart="cause"]'), "Primary cause of each route's score",
-    "From the per-tick record (openpilot analysis): standstills and what was ahead, lights, turns, collisions. One cause per route.", causeItems,
+    "One cause per route, from the per-route analysis this dashboard was given (--features).", causeItems,
     [{ label: "cause", get: (i) => i.label }, { label: "routes", num: 1, get: (i) => String(i.value) }],
     (n, w) => hbars(n, w, causeItems, { labelW: 290, valueFmt: (v) => fmt(v, 0), counts: true }));
 
@@ -354,6 +356,7 @@ function renderTitle() {
 function render() {
   if (!DATA) return;
   renderTitle();
+  document.getElementById("report").hidden = !DATA.report;
   const rows = filtered();
   renderKpis(rows);
   renderCharts(rows);

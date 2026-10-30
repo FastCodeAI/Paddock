@@ -68,6 +68,7 @@ async function load() {
   const feat = row.features || null;
   const fcard = document.getElementById("features");
   if (feat && fcard) {
+    document.getElementById("features-card").hidden = false;
     const keep = ["cause", "launch_s", "plan_reach_at_start_m", "n_standstills", "standstill_reasons", "final_standstill_reason",
       "final_standstill_s", "red_light_waits", "mean_green_wait_s", "lights_crossed", "lights_crossed_red", "turns_on_route",
       "turns_completed", "left_route_at_turn", "lane_changes", "collisions", "collision_kinds", "lead_detected_frac",

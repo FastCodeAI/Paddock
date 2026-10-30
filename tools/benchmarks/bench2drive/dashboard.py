@@ -318,6 +318,9 @@ class Builder:
             "running": running,
             "rendering": rendering,
             "throughput": self.throughput(finished),
+            # A written analysis a model's own tool may leave beside the dashboard (openpilot's
+            # report writes analysis/REPORT.html); the page links it only when it is there.
+            "report": (self.root / "analysis" / "REPORT.html").is_file(),
         }
         tmp = self.out / "data.json.tmp"
         tmp.write_text(json.dumps(data, separators=(",", ":"), allow_nan=False, default=str))
