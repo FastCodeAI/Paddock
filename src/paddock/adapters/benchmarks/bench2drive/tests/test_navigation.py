@@ -7,9 +7,13 @@ Before the agent sent these, both lane changes reached the model as STRAIGHT.
 
 from __future__ import annotations
 
+import types
+
 import numpy as np
 
+from paddock.adapters.benchmarks.bench2drive import recorder
 from paddock.adapters.benchmarks.bench2drive.navigation import LANE_CHANGE_HORIZON_M, lane_change_ahead
+from paddock.adapters.benchmarks.bench2drive.tests.test_infer_rate import _client
 
 OPTIONS = (
     ["LANEFOLLOW"] * 32
@@ -53,3 +57,35 @@ def test_a_lane_change_beyond_the_horizon_is_not_reported_yet() -> None:
 def test_no_route_or_no_position_is_no_lane_change() -> None:
     assert lane_change_ahead([], [], 0) == (None, None)
     assert lane_change_ahead(OPTIONS, S, None) == (None, None)
+
+
+class _Requests:
+    """A node that keeps every request the client sends it."""
+
+    def __init__(self) -> None:
+        self.bodies: list[dict] = []
+
+    def post(self, url, json, timeout):
+        self.bodies.append(json)
+        plan = [[i + 1.0, 0.0] for i in range(6)]
+        return types.SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"trajectory": plan})
+
+
+def test_the_client_sends_the_lane_change_ahead_of_where_the_car_is(agent_module) -> None:
+    """The CARLA client looks the lane change up on its own route, at the car's position,
+    and sends it in the request. With no route it sends none and the route goes on."""
+    agent, _ = _client(agent_module, 0.0)
+    del agent._lane_change  # the rate test's stand-in: this test is about the real one
+    agent._http = _Requests()
+    agent._nav_route = recorder.Route(np.stack([S, np.zeros_like(S)], axis=1), OPTIONS)
+    car = types.SimpleNamespace(x=20.2, y=0.3)  # CARLA world, as the route is
+    agent._hero_actor = lambda: types.SimpleNamespace(get_location=lambda: car)
+
+    agent.run_step({"SPEED": (0, {"speed": 5.0})}, 0.0)
+    sent = agent._http.bodies[-1]
+    assert (sent["nav_lane_change"], sent["nav_lane_change_m"]) == ("LEFT", 12.0)
+
+    agent._nav_route = None
+    agent.run_step({"SPEED": (1, {"speed": 5.0})}, 0.05)
+    sent = agent._http.bodies[-1]
+    assert (sent["nav_lane_change"], sent["nav_lane_change_m"]) == (None, None)
