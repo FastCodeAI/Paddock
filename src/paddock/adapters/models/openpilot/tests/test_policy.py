@@ -26,6 +26,7 @@ from paddock.adapters.models.openpilot.policy import (
     POLICY,
     TARGET_H,
     TARGET_W,
+    TINYGRAD_ACTION_T,
     CameraAdapter,
     CameraFit,
     desire_index,
@@ -916,6 +917,23 @@ def test_a_cut_needs_the_onnx_backend(monkeypatch) -> None:
         policy.load()
     with pytest.raises(ValueError, match="needs the onnx backend"):
         CameraAdapter(BASE_FRONT, _mount(), resample=True, fov_deg=55.0)
+
+
+def test_the_planner_reads_back_the_horizon_each_backend_was_given() -> None:
+    """Tinygrad's ModelState has no `long_action_t`: it was fed TINYGRAD_ACTION_T.
+
+    Reading the property there raised AttributeError in the native longitudinal
+    planner, on every tick. On ONNX the runner's property is the value; a runner
+    without it must fail, not plan quietly at the tinygrad horizon.
+    """
+    policy = POLICY()
+    policy.backend, policy.model = "tinygrad", object()
+    assert policy._long_action_t() == TINYGRAD_ACTION_T[1]
+    policy.backend, policy.model = "onnx", type("R", (), {"long_action_t": 0.525})()
+    assert policy._long_action_t() == 0.525
+    policy.model = object()
+    with pytest.raises(AttributeError):
+        policy._long_action_t()
 
 
 @pytest.mark.parametrize("two", [True, False], ids=["two cameras", "one camera"])

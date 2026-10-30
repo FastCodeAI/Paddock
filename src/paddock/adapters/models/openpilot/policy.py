@@ -1290,6 +1290,18 @@ class OpenpilotPolicy(Policy):
         validate_extras(traj.extras, n_waypoints=len(traj.waypoints))
         return traj
 
+    def _long_action_t(self) -> float:
+        """The longitudinal horizon the model was told to plan for, seconds.
+
+        Read back off the ONNX runner rather than restated -- the two disagreed by
+        25 ms while this was a constant. See `SupercomboRunner.long_action_t`.
+        openpilot's own ModelState, the tinygrad backend, has no such property: it
+        was given TINYGRAD_ACTION_T. Branching on the backend, not on hasattr, keeps
+        a runner that lost the property failing here instead of planning at the
+        tinygrad value.
+        """
+        return self.model.long_action_t if self.backend == "onnx" else TINYGRAD_ACTION_T[1]
+
     def _native_long(self, out, plan33, v_ego: float, dt_s: float, speed_limit) -> dict:
         """openpilot 0.11 longitudinal planner, reproduced (longitudinal_planner.py:128-149):
         desired accel = MIN of (lead-follow, cruise-to-set-speed, and in experimental
@@ -1328,11 +1340,7 @@ class OpenpilotPolicy(Policy):
             a_lead = float(np.clip(K_ROOM * room + K_VREL * (v_lead - v_ego), ACCEL_MIN, max_accel))
             cands.append((a_lead, "lead", upstream.stopped(v_ego, a_lead)))
         # e2e candidate (modeld get_action_from_model, plan branch, 0.3 s smoothed)
-        # The horizon the model was told to plan for, read back off the model
-        # rather than restated here -- the two disagreed by 25 ms while this was
-        # a constant. See `Supercombo.long_action_t`. Under the tinygrad backend the model is openpilot's
-        # ModelState, which has no such property: it was given TINYGRAD_ACTION_T.
-        long_action_t = getattr(self.model, "long_action_t", TINYGRAD_ACTION_T[1])
+        long_action_t = self._long_action_t()
         a_raw, _ = upstream.accel_and_stop(
             plan33[:, Plan.VELOCITY][:, 0],
             plan33[:, Plan.ACCELERATION][:, 0],
