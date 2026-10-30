@@ -590,6 +590,7 @@ routes end early), so `results/bench2drive/*/pooled50-*` holds twelve.
 | the early stop ends a route scored as it stood | stuck / over-time / collision / by-hand rules unit-tested; live, AutoE2E's 1773 was ended at its first recorded collision at 14.6 s and scored `Failed - TickRuntime`, DS 20.0 (23 Oct, at `20e6a1d`, after `2e1e011` made the rule count only recorded collisions; a run with it is `valid: false`); the stuck and over-time rules ran live on openpilot's sweep (`docs/benchmarks/bench2drive.md`) | **strong** for collision, stuck and over time, and for the stop by hand (a live one-route run: ended on the tick after its request, scored as it stood, the run `valid: false` naming it); the red-light hold is tested through the agent and replayed on one recorded drive (route 25975, no longer stopped while it waits 45 s short of a red), **not yet live** |
 | N workers sharing one GPU, through reboots | `campaign.py` (from openpilot's sweep) drove AutoE2E on three workers, and its sweep restarted after a VM preemption with one command | moderate |
 | `make check` is safe beside a live sweep | the harness tests no longer reap port 2000; a test with a stand-in CARLA on 2000 fails without the fix, and a full `make check` ran beside a live run's CARLA on port 2000 without touching it | **strong** |
+| the calibration the agent sends is each camera's CARLA mount in paddock's frames | `tests/test_calibration.py` runs the agent's own `setup()` for every camera of every rig, against the conversion written out one frame change at a time, the pinhole of the rendered view, a road point on the ego's left landing left of centre, and one 5 m to its left in front of the left cameras and behind the right ones; 6 of its 10 tests fail with the agent's y-flip removed, the side-camera ones among them | **strong** for the formula; not compared with a live CARLA's matrices |
 
 Needs a site with CARLA 0.9.15 and the pinned checkout wired in
 `[benchmarks.bench2drive]`. Detail in `docs/benchmarks/bench2drive.md`.
@@ -629,6 +630,15 @@ verified/argued split in
 [`bench2drive-native-rate.md`](benchmarks/bench2drive-native-rate.md). The
 knob landed later, on 2026-10-22: a model's `planning_hz`, which the Bench2Drive
 client honours; Drive-JEPA declares 2 Hz.
+
+**METEOR at its own 5 Hz (29 Oct 2026).** The released METEOR ONNX drove the same
+50 routes through the campaign tools, asked at the 5 Hz its `model.yaml` declares,
+under AutoE2E's early-stop rules: DS 1.05, `valid: true`
+(`results/bench2drive/meteor/pooled50-40c29d24c37d542a-867d57`). On 43 of the 50
+routes the car never leaves the start: standing still, METEOR plans a 3 s path
+that ends a median 0.17 m ahead, and the shared controller holds the brake. That
+is measured from the per-route records; why the network holds is argued in
+`docs/models/meteor.md` and not separated.
 
 ## HUGSIM — adapter landed; two recorded campaigns tracked, none driven through the harness
 
