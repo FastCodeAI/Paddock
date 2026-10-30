@@ -346,7 +346,7 @@ them below 15 m/s. Measured on the per-sample records:
   | below 15 m/s | 2,564 | 8.0 m | 14.2 m | −1.74 m | 3.80 |
   | 15-22 m/s | 1,190 | 17.4 m | 54.5 m | −3.35 m | 21.69 |
   | 22-27 m/s | 1,181 | 17.4 m | 74.4 m | −3.45 m | 33.43 |
-  | 27 m/s and up | 5,230 | 16.8 m | 91.7 m | −3.69 m | 44.11 |
+  | 27 m/s and up | 5,230 | 16.8 m | 91.6 m | −3.69 m | 44.11 |
 
   Over the whole set the plan covers 32 % of the distance the car drove
   (`path_length_ratio` 0.321) and nearly all of the error is along the road
