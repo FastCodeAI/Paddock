@@ -557,7 +557,8 @@ below made the 24-route set (5 abilities × 5 routes minus 11715) the reference.
 * **openpilot** runs with its comma-three rig (`CAM_OP_ROAD` 1928×1208 fov 40
   → `img`, `CAM_OP_WIDE` fov 119 → `big_img`; warp verified pixel-exact) and a
   reproduction of openpilot 0.11.2's longitudinal planner
-  (`PADDOCK_OPENPILOT_NATIVE_LONG=1`, `PADDOCK_OPENPILOT_MODE=experimental`).
+  (`PADDOCK_OPENPILOT_NATIVE_LONG=1`, declared in its `model.yaml`, so no site
+  setting is needed; `PADDOCK_OPENPILOT_MODE=experimental`).
   Its model does not launch from standstill without a driver; the
   driver-resume rule (`PADDOCK_OPENPILOT_RESUME_S=3.0`: stopped 3 s, no lead →
   the e2e candidate is dropped until 1 m/s) is logged as `resume` in log.csv

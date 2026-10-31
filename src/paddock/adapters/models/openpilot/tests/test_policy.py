@@ -1095,6 +1095,17 @@ def test_a_cut_needs_the_onnx_backend(monkeypatch) -> None:
         CameraAdapter(BASE_FRONT, _mount(), resample=True, fov_deg=55.0)
 
 
+def test_the_native_planner_needs_the_onnx_backend(monkeypatch) -> None:
+    """At load, not at every frame: the planner reads `long_action_t`, which openpilot's ModelState lacks."""
+    import paddock.adapters.models.openpilot.policy as P
+
+    monkeypatch.setattr(P, "NATIVE_LONG", True)
+    policy = POLICY()
+    monkeypatch.setattr(policy, "_resolve_backend", lambda: "tinygrad")
+    with pytest.raises(ValueError, match="NATIVE_LONG needs the onnx backend"):
+        policy.load()
+
+
 @pytest.mark.parametrize("two", [True, False], ids=["two cameras", "one camera"])
 def test_every_camera_is_tilted_and_cut_alike(monkeypatch, two) -> None:
     import paddock.adapters.models.openpilot.policy as P

@@ -121,8 +121,9 @@ MAX_MOUNT_DEG = 15.0
 
 #: Emit openpilot's own longitudinal intent (desired accel + should_stop) so the
 #: closed-loop client can drive it natively instead of through the TCP tracker's
-#: brake-below-0.4 m/s rule. Off by default: the standard tracker path is what
-#: every published Bench2Drive baseline uses.
+#: brake-below-0.4 m/s rule. Off when unset (tests, a node started by hand);
+#: model.yaml declares it on, so every node paddock launches has it. Only the
+#: Bench2Drive client reads `extras.native_long`.
 NATIVE_LONG = os.environ.get("PADDOCK_OPENPILOT_NATIVE_LONG", "").strip().lower() in (
     "1",
     "true",
@@ -1051,6 +1052,15 @@ class OpenpilotPolicy(Policy):
                 f"PADDOCK_OPENPILOT_FOV_DEG = {self.fov_deg:g} needs the onnx backend: the tinygrad warp "
                 f"is compiled for {TARGET_W}x{TARGET_H}, and a cut is {CUT_SIZE[0]}x{CUT_SIZE[1]}. Set "
                 'PADDOCK_OPENPILOT_BACKEND = "onnx" beside it.'
+            )
+        if self.backend == "tinygrad" and NATIVE_LONG:
+            # Here, rather than at every frame: the planner reads `long_action_t` off the
+            # onnx path's `Supercombo`, and openpilot's ModelState keeps it as a local of
+            # modeld's main loop, so on tinygrad each frame would raise AttributeError.
+            raise ValueError(
+                "PADDOCK_OPENPILOT_NATIVE_LONG needs the onnx backend: its planner reads "
+                "long_action_t, which only the onnx path exposes. model.yaml declares it on; set "
+                'PADDOCK_OPENPILOT_BACKEND = "onnx", or PADDOCK_OPENPILOT_NATIVE_LONG = "0".'
             )
         if self.backend == "tinygrad":
             from openpilot.system.camerad.cameras.nv12_info import get_nv12_info

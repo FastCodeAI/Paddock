@@ -754,18 +754,24 @@ What `adapters/models/openpilot/policy.py` does in closed loop, and why.
   verified pixel-exact (horizon rows 47.6 / 151.8 = `MEDMODEL_CY`,
   `(256+47.6)/2`). With the reference 800×450 fov-70 front camera the model
   froze for adjacent parked cars (1711: DS 1.6 → 40.7 after the change).
-* **Longitudinal control.** `PADDOCK_OPENPILOT_NATIVE_LONG=1` makes the node
+* **Longitudinal control.** `model.yaml` declares
+  `PADDOCK_OPENPILOT_NATIVE_LONG=1`, which makes the node
   return `extras.native_long` — a reproduction of openpilot 0.11.2's
   longitudinal planner: candidates from cruise-to-limit, lead-follow (the
   model's `lead` / `lead_prob` on the MPC's safe-distance model) and, in
   `PADDOCK_OPENPILOT_MODE=experimental`, the e2e plan; `accel = min`,
   `should_stop = any`. The Bench2Drive agent then drives throttle from a
   closed-loop speed PID on the planner's target speed instead of the shared TCP
-  tracker, whose 0.4 m/s brake rule braked on 92 % of ticks. Without
-  `NATIVE_LONG` the node behaves as before.
+  tracker, whose 0.4 m/s brake rule braked on 92 % of ticks. No other
+  benchmark reads it. It is declared because it is part of how openpilot
+  drives, and it is not tuning because it moves the score: a site `"0"` puts
+  the shared tracker back and makes the run `valid: false`. It needs the onnx
+  backend, which `"auto"` resolves to at the pinned sha; `load()` refuses
+  tinygrad while it is on.
 * **The nudge.** The 0.11.2 model has no launch-from-standstill without a
   driver: once stationary on a clear road its plan stays at ~0 m (verified by
-  offline replay with a fresh state). `PADDOCK_OPENPILOT_RESUME_S=3.0` emulates
+  offline replay with a fresh state). `PADDOCK_OPENPILOT_RESUME_S` (3.0 unless
+  set, so on with the declared planner) emulates
   the driver's resume: stopped ≥ 3 s with `lead_prob < 0.5` → the e2e candidate
   is dropped and the cruise/lead candidates accelerate until 1 m/s. It never
   steers and never fires with a lead present. Each firing is a rising edge of
@@ -774,7 +780,7 @@ What `adapters/models/openpilot/policy.py` does in closed loop, and why.
 * **The nudge on the default tracker.** `NATIVE_LONG` with `RESUME_S` also
   swaps the whole longitudinal law for openpilot's planner, so a score from it
   cannot say which of the two moved it. `PADDOCK_OPENPILOT_RESUME_PLAN=1` gives
-  the nudge alone, without `NATIVE_LONG`: after `RESUME_S` stopped with
+  the nudge alone, with `NATIVE_LONG` set to `"0"`: after `RESUME_S` stopped with
   `lead_prob < 0.5`, the node returns a launch straight ahead at 2 m/s until the
   car rolls at 1 m/s, and the shared tracker drives it like any plan. Every
   other frame is the model's own plan, untouched. Straight, because at

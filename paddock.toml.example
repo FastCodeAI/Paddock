@@ -564,11 +564,13 @@ serialize = true
 #                                   instead of falling back to the split pair.
 #   PADDOCK_OPENPILOT_MODE          "experimental" (the default: openpilot's
 #                                   end-to-end longitudinal head) or ""
-#   PADDOCK_OPENPILOT_NATIVE_LONG   "1" to let openpilot's own longitudinal
-#                                   planner set speed instead of the harness
+#   PADDOCK_OPENPILOT_NATIVE_LONG   "1", model.yaml's value: openpilot's own
+#                                   longitudinal planner sets speed on
+#                                   Bench2Drive. "0" puts the harness's tracker
+#                                   back, and the run does not rank.
 #   PADDOCK_OPENPILOT_RESUME_S      seconds stopped with no lead before the
 #                                   driver-resume rule pulls away; "0" disables
-#   PADDOCK_OPENPILOT_RESUME_PLAN   "1" for the same nudge without NATIVE_LONG:
+#   PADDOCK_OPENPILOT_RESUME_PLAN   "1" for the same nudge with NATIVE_LONG "0":
 #                                   a launch plan the shared tracker drives,
 #                                   to measure the resume alone. Off by default.
 #   PADDOCK_OPENPILOT_THREADS       onnxruntime thread count (default 8)
