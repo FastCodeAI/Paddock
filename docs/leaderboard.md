@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-119 runs across 9 benchmarks.
+120 runs across 9 benchmarks.
 63 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -29,6 +29,7 @@
 | constant_velocity | pooled50-3mps-40c29d24c37d542a-02b6ac | 50 | fastcode-navvrat-b2d-pooled | 48.308 | 74.651 | 0.615 | 0.540 | 1.000 | 0.000 | 194.900 |
 | constant_velocity | 20260908T084921-804913 | 24 | fastcode-navvrat-cv-b2d | 47.943 | 74.682 | 0.635 | 0.583 | - | 0.000 | 451.080 |
 | visionpilot | pooled50-40c29d24c37d542a-d94009 | 50 | fastcode-navvrat-b2d-pooled | 47.821 | 71.191 | 0.622 | 0.580 | 1.000 | 0.000 | 257.252 |
+| openpilot | pooled50-40c29d24c37d542a-c7d2b2 | 50 | a100-gpu-vm-002 | 47.520 | 62.441 | 0.783 | 0.260 | 1.000 | 0.000 | 374.050 |
 | constant_velocity | pooled50-9mps-40c29d24c37d542a-13c440 | 50 | fastcode-navvrat-b2d-pooled | 43.574 | 72.699 | 0.577 | 0.580 | 1.000 | 0.000 | 123.802 |
 | alpamayo15 | pooled50-40c29d24c37d542a-36d2d0 | 50 | fastcode-navvrat-b2d-pooled | 43.043 | 72.317 | 0.655 | 0.540 | 1.000 | 0.000 | 3555.930 |
 | constant_velocity | pooled50-12mps-40c29d24c37d542a-0c11b2 | 50 | fastcode-navvrat-b2d-pooled | 42.193 | 72.125 | 0.558 | 0.560 | 1.000 | 0.000 | 108.372 |

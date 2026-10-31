@@ -612,7 +612,8 @@ one run per route; route 11715 was excluded after CARLA crashes. These are
 driving scores, not per-ability scores. OpenPilot ≈ is the **unassisted
 pre-resume estimate**, reconstructed from the assisted recordings: 16 routes
 are censored before intervention and eight had no intervention. It is not a
-separate unassisted sweep. The historical OpenPilot scores predate later
+separate unassisted sweep, and the support matrix no longer shows it: OpenPilot's
+cell is now its valid 50-route run (below). The historical OpenPilot scores predate later
 controller fixes. The assisted and expansion recordings are reported
 separately in [OpenPilot, by recording set](#openpilot-by-recording-set); they are
 never pooled into one mean. See [Bench2Drive protocol](bench2drive.md).
@@ -677,6 +678,19 @@ blocked test at 60 s on the 12 that start about 30 m short of a red light, which
 pauses the stuck clock. On the 7 routes it drives, it collides on every one. Like
 AutoE2E, it is left out of the 50-route table below. Detail in
 [meteor.md](../models/meteor.md#reference-numbers).
+
+OpenPilot's cell, 47.52, is its mean driving score over the 50 routes: comma's
+`driving_supercombo` through its comma-three camera pair, asked every tick, with
+openpilot's own longitudinal planner and its driver-resume nudge, both declared in
+its `model.yaml`
+([run](../../results/bench2drive/openpilot/pooled50-40c29d24c37d542a-c7d2b2/run.json),
+`valid: true`): route completion 62.44 %, infraction penalty 0.78, under AutoE2E's
+early-stop rules, which ended 19 routes on the stuck rule and 5 on the time budget.
+The nudge stands in for a driver pressing resume once the car has stood 3 s with
+no lead, so the cell is marked P; the other rows drove every route to
+Bench2Drive's own end, so it is marked R. It replaces the unassisted estimate ◆
+(30.09), a reconstruction from the September recordings, whose 50-route mean the
+table below still withholds.
 
 ### Bench2Drive — 50 routes
 
@@ -782,8 +796,8 @@ pooled 50-route mean they would produce is withheld from
 | Expansion 26 — unassisted, different upstream longitudinal setup | 26 | 43.01 | 60.45 | 287 | 58.54 |
 | Unassisted 24 estimate ◆ — assisted runs censored at the first resume | 24 | 30.09 | 30.76 | — | — |
 
-The third row is the reconstruction behind ◆ and the 30.09 in the support matrix,
-not a measurement: 16 routes are censored before intervention and eight had no
+The third row is the reconstruction behind ◆, not a measurement (the support
+matrix showed it until OpenPilot's valid 50-route run replaced it): 16 routes are censored before intervention and eight had no
 intervention. Its per-route values are
 [`openpilot-24-infractions.csv`](openpilot-24-infractions.csv), and
 every record in the pooled JSON now carries an `assistance` block, so the assisted

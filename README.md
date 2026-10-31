@@ -131,6 +131,9 @@ was measured the same way as the rest of its column.
 - **P — grades a pipeline built around the model.** VisionPilot has no
   trajectory output, so paddock builds one from its lane and speed outputs.
   METEOR plans 3 s and NAVSIM scores 4 s, so the last second is extrapolated.
+  OpenPilot on Bench2Drive drives through openpilot's own longitudinal planner
+  and its driver-resume nudge, which stands in for a driver pressing resume
+  once the car has stood 3 s with no lead.
 - **S — stale; a re-run will change it.** Every VisionPilot figure predates the
   `CURV_SCALE` fix. Drive-JEPA's nuScenes cell is the camera-blind run from
   before #62. OpenPilot's comma2k19 row was not run at the pinned sha.
@@ -142,8 +145,8 @@ was measured the same way as the rest of its column.
   progress or at 4x the expert's time, where the cells they would rank against
   were asked every tick and drove every route to Bench2Drive's own end. Their
   records are valid.
-  OpenPilot's Bench2Drive cell is an unassisted estimate rebuilt from assisted
-  recordings. Alpamayo on AlpaSim drove 4 cameras on 10 of the 30
+  OpenPilot's Bench2Drive cell is asked every tick under the same early stop,
+  and its record is valid too. Alpamayo on AlpaSim drove 4 cameras on 10 of the 30
   scenes, METEOR 6 cameras on all 30, and AutoE2E 6 pinhole cameras at its training field of view on all 30, through paddock's bridge.
 - **Ranked, though fed what the model is built for.** NAVSIM cells marked 10 Hz
   get nuPlan's 10 Hz frames, where 2 Hz models such as Drive-JEPA get OpenScene's
