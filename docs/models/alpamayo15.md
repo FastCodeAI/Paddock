@@ -31,7 +31,7 @@ the adapter before the change):
 | cameras | all four, the telephoto as rendered at 30° where other benchmarks fill that slot with a crop of the front camera; f-theta frames go in as rendered, with no crop, resize or undistortion, as AlpaSim's driver does | a camera named `CAM_FRONT_TELE`; a camera with no pinhole entry |
 | frames | the four newest per camera, 0.1 s apart | — |
 | ego history | 16 poses 0.1 s apart from the 20 Hz pose stream | — |
-| navigation text | AlpaSim's own rule (`route_nav.py`, ported from AlpaSim's `nav_text.py`): the route is moved into the newest pose's frame, and the first turn within 40 m becomes "Turn left in 20m" or similar; otherwise "Continue straight", and no text when the route is unusable | `route_xy` with `route_timestamp_us` (`--send-route`, `--send-route-time`) |
+| navigation text | AlpaSim's own rule (`route_nav.py`, ported from AlpaSim's `nav_text.py`): the route is moved into the newest pose's frame, and the first turn within 40 m becomes "Turn left in 20m" or similar; otherwise "Continue straight", and no text when AlpaSim has no route or it is unusable | `route_xy` with `route_timestamp_us` (`--send-route`, `--send-route-time`) |
 | output | all 64 points 0.1 s apart, with the model's own headings, and the first 400 characters of its reasoning in `extras` (so in the per-replan log). Any spacing other than 0.1 s is refused | `plan_dt` (`--send-plan-dt`) |
 
 The model reads poses and pixels only, so no speed or acceleration switch is

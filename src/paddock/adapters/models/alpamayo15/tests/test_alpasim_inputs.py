@@ -231,3 +231,27 @@ def test_a_route_without_its_time_keeps_the_command_path(model_env) -> None:
     """Bench2Drive sends an ego-frame route with no timestamp: the old path, unchanged."""
     episode = [_observation(FTHETA_FOUR, t_us=50_000 * i, route_xy=_bend(20.0, +1.0)) for i in range(33)]
     assert _drive(episode)["nav_text"] == "Continue straight"
+
+
+def test_a_route_stamped_earlier_is_moved_to_the_newest_pose(model_env) -> None:
+    """The car drives 10 m/s; a route stamped 0.5 s ago has its bend 5 m closer now."""
+    route = _bend(20.0, +1.0)
+    episode = [
+        _observation(FTHETA_FOUR, t_us=50_000 * i, route_xy=route, route_timestamp_us=50_000 * (i - 10))
+        for i in range(10, 43)
+    ]
+    assert _drive(episode)["nav_text"] == "Turn left in 15m"
+
+
+def test_a_route_stamped_outside_the_kept_history_is_refused(model_env) -> None:
+    episode = [
+        _observation(FTHETA_FOUR, t_us=50_000 * i, route_xy=_bend(20.0, +1.0), route_timestamp_us=-1_000_000)
+        for i in range(33)
+    ]
+    with pytest.raises(ValueError, match="route_timestamp_us"):
+        _drive(episode)
+
+
+def test_no_route_on_alpasim_is_no_navigation_text(model_env) -> None:
+    """AlpaSim's own driver gives the model no route sentence when it has no route."""
+    assert _drive(_alpasim_episode(plan_dt=0.1))["nav_text"] is None

@@ -482,8 +482,11 @@ class AlpamayoPolicy(Policy):
         if self.use_nav:
             if obs.route_xy is not None and obs.route_timestamp_us is not None:
                 nav_text = route_to_nav_text(self._route_in_rig(obs.route_xy, obs.route_timestamp_us))
-            else:
+            elif obs.plan_dt is None:
                 nav_text = nav_text_for(*route_maneuver(obs))
+            # Otherwise the body is from AlpaSim's bridge, which sends the route and
+            # its time whenever AlpaSim holds one. With no route, AlpaSim's own
+            # Alpamayo driver gives the model no sentence, so neither does this.
         self._last_nav = nav_text
         messages = helper.create_message(
             frames=image_frames.flatten(0, 1), camera_indices=camera_indices, nav_text=nav_text
@@ -585,6 +588,13 @@ class AlpamayoPolicy(Policy):
         with a step the node has a pose for, so it is that pose exactly. The
         bridge sends the route in two dimensions, so it sits at height zero.
         """
+        if not self.timestamps[0] <= int(route_timestamp_us) <= self.timestamps[-1]:
+            # The pose lookup clips to the kept history, which would place the
+            # route in the wrong frame and still give a sentence.
+            raise ValueError(
+                f"route_timestamp_us {route_timestamp_us} is outside the kept history "
+                f"[{self.timestamps[0]}, {self.timestamps[-1]}]"
+            )
         xy = np.asarray(route_xy, dtype=np.float64).reshape(-1, 2)
         xyz = np.column_stack([xy, np.zeros(len(xy))])
         offset_s = (self.timestamps[-1] - int(route_timestamp_us)) / 1e6
