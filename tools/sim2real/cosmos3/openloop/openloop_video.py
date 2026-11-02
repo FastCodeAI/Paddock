@@ -118,6 +118,8 @@ def main():
         d.text((w * 2 - 290, 10), 'solid = own plan, dashed = the other side', fill=(170, 170, 170), font=FONT)
         sheet.save(p.stdin, format='JPEG', quality=90); n += 1
     p.stdin.close(); p.wait(); print(f'{out}: {n} frames, rc {p.returncode}')
+    if p.returncode:
+        raise SystemExit(f'{out}: ffmpeg exited {p.returncode}, so the clip is not usable')
 
 
 if __name__ == '__main__':

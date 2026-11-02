@@ -25,12 +25,15 @@ for m in al qw; do
   rsync -a -e "$SSH" "$H:$POD_ROOT_REMOTE/plans/${m}_carla.jsonl" "$H:$POD_ROOT_REMOTE/plans/${m}_cosmos.jsonl" "$H:$POD_ROOT_REMOTE/plans/${m}_carla2.jsonl" "$O/plans/" 2>/dev/null
   mkdir -p "$O/converted/$m/CAM_FRONT"; rsync -a -e "$SSH" "$H:$POD_ROOT_REMOTE/converted/$m/CAM_FRONT/" "$O/converted/$m/CAM_FRONT/" 2>/dev/null
 done
+failed=
 for m in vp dj al op qw; do
   a=$O/plans/${m}_carla.jsonl; b=$O/plans/${m}_cosmos.jsonl; c=${CAM[$m]}
   { [ -s "$a" ] && [ -s "$b" ] && [ -d "$O/converted/$m/$c" ]; } || { echo "$m: not ready"; continue; }
   mkdir -p "$NAS/$m"
   "$VIZ_PY" "$HERE/openloop_video.py" --capture "$O/captures/$m" --cam "$c" --frames-b "$O/converted/$m/$c" \
     --plans-a "$a" --plans-b "$b" --out "$NAS/$m/front.carla_vs_cosmos.mp4" --t0 ${T0[$m]} --title "${NAME[$m]}" 2>&1 | tail -n 1
+  [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "$m: clip failed"; failed=1; }
 done
+[ -z "$failed" ] || { echo "a clip failed: page not built" >&2; exit 1; }
 [ -n "${SITE_DIR:-}" ] || { echo "SITE_DIR unset: clips built, page skipped"; exit 0; }
 OPENLOOP_DIR=$O SITE_DIR=$SITE_DIR VIZ_PY=$VIZ_PY "$VIZ_PY" "$HERE/build_openloop_page.py"
