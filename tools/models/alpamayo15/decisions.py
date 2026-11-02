@@ -16,12 +16,12 @@ or anything else built on top of it.
 Writes decisions.csv into the run directory (join key: sample_id).
 
 Usage:
-    python tools/models/alpamayo15/decisions.py [run_id]
-    python tools/models/alpamayo15/decisions.py --stats   # print lateral-offset / speed-delta
-                                                  # histograms instead of writing
-                                                  # decisions.csv, to help calibrate
-                                                  # the thresholds below against real
-                                                  # data before trusting them at scale.
+    python tools/models/alpamayo15/decisions.py <run_id>
+    python tools/models/alpamayo15/decisions.py <run_id> --stats   # print lateral-offset / speed-delta
+                                                           # histograms instead of writing
+                                                           # decisions.csv, to help calibrate
+                                                           # the thresholds below against real
+                                                           # data before trusting them at scale.
 """
 
 from __future__ import annotations
@@ -157,10 +157,7 @@ def _resolve_run_dir(args, cfg) -> Path:
         return Path(args.run_dir)
     if args.run_id:
         return cfg.runs / args.bench / args.model / args.run_id
-    cache = DIR / "baseline_run_id.txt"
-    if not cache.exists():
-        sys.exit("No run_id given and baseline_run_id.txt not found.")
-    return cfg.runs / args.bench / args.model / cache.read_text().strip()
+    sys.exit("Give the run to read: a run id, or --run-dir <path>.")
 
 
 def main() -> None:

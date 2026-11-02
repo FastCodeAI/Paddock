@@ -410,10 +410,7 @@ def _resolve_run_dir(args, cfg) -> Path:
         return Path(args.run_dir)
     if args.run_id:
         return cfg.runs / args.bench / args.model / args.run_id
-    cache = DIR / "baseline_run_id.txt"
-    if not cache.exists():
-        sys.exit("No run_id given and baseline_run_id.txt not found.")
-    return cfg.runs / args.bench / args.model / cache.read_text().strip()
+    sys.exit("Give the run to read: a run id, or --run-dir <path>.")
 
 
 def _load_rows(run_dir: Path) -> list:

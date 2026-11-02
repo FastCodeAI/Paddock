@@ -115,3 +115,21 @@ def test_both_tools_read_the_reasoning_alpamayo_saves_into_samples_jsonl(tmp_pat
     (tmp_path / "samples.jsonl").write_text("".join(json.dumps(r) + "\n" for r in records))
     for tool in (decision_confusion, behavior_gaps):
         assert tool._load_reasoning(tmp_path) == {"a": "Slow down for the pedestrian."}, tool.__name__
+
+
+def test_every_tool_asks_for_a_run_when_none_is_given() -> None:
+    """No run id and no --run-dir is a usage error. It used to fall back to a
+    `baseline_run_id.txt` that is not in the repo and exit with "not found"."""
+    import argparse
+
+    import behavior_gaps
+    import decision_confusion
+    import decision_scatter
+    import decisions
+    import pytest
+
+    args = argparse.Namespace(run_dir=None, run_id=None, bench="nuscenes", model="alpamayo15")
+    for tool in (decisions, decision_confusion, behavior_gaps, decision_scatter):
+        with pytest.raises(SystemExit) as stopped:
+            tool._resolve_run_dir(args, cfg=None)
+        assert "--run-dir" in str(stopped.value), tool.__name__
