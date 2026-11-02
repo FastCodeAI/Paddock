@@ -65,6 +65,16 @@ async function load() {
     ["max distance off route", row.max_route_dev == null ? "–" : `${fmt(row.max_route_dev, 1)} m`], ["mean /infer round trip", row.mean_infer_ms == null ? "–" : `${fmt(row.mean_infer_ms, 0)} ms`],
     ["expert (Think2Drive)", row.has_expert ? `${fmt(row.expert_duration_s, 1)} s, mean ${fmt(row.expert_mean_speed)} m/s, reached ${fmt(row.expert_progress_pct, 0)} %` : "no drive of this route in the dataset"],
   ]);
+  const feat = row.features || null;
+  const fcard = document.getElementById("features");
+  if (feat && fcard) {
+    document.getElementById("features-card").hidden = false;
+    const keep = ["cause", "launch_s", "plan_reach_at_start_m", "n_standstills", "standstill_reasons", "final_standstill_reason",
+      "final_standstill_s", "red_light_waits", "mean_green_wait_s", "lights_crossed", "lights_crossed_red", "turns_on_route",
+      "turns_completed", "left_route_at_turn", "lane_changes", "collisions", "collision_kinds", "lead_detected_frac",
+      "mean_ego_lane_prob", "mean_speed_moving", "mean_speed_limit", "expert_time_to_rc_s", "ego_time_to_rc_s"];
+    kv(fcard, keep.filter((k) => feat[k] !== undefined && feat[k] !== "").map((k) => [k.replace(/_/g, " "), feat[k]]));
+  }
   const files = document.getElementById("files");
   if (row.dir) {
     files.replaceChildren(...["results.json", "ticks.jsonl", "route_plan.json", "actors.jsonl", "log.csv", "evaluator.log"].map((f) => el("li", {}, el("a", { href: `${row.dir}/${f}`, text: f }))),

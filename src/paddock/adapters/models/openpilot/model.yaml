@@ -35,6 +35,16 @@ runtime:
     # "small" (driving_supercombo, 61 MB) or "big" (big_driving_supercombo,
     # 766 MB, LFS-excluded by setup.sh unless PADDOCK_OPENPILOT_BIG=1).
     PADDOCK_OPENPILOT_MODEL: "small"
+    # openpilot's own longitudinal planner (policy.NATIVE_LONG) and, with it,
+    # the driver-resume nudge (PADDOCK_OPENPILOT_RESUME_S, 3 s unless set).
+    # The node adds extras.native_long, and the Bench2Drive client drives it
+    # in place of the shared tracker; no other benchmark reads it, so no other
+    # score moves. Declared, not tuning: it changes how the car drives (5
+    # Bench2Drive scenes went 57.2 -> 83.6 mean DS), so a site "0" makes a run
+    # valid: false. The nudge stands in for a driver pressing resume, which is
+    # why the README marks the cell P. Needs the onnx backend, which "auto"
+    # resolves to at the pinned sha; policy.load refuses tinygrad with it on.
+    PADDOCK_OPENPILOT_NATIVE_LONG: "1"
     # onnxruntime intra-op threads per policy node. The shipped graphs are
     # float16 and onnxruntime's CPU provider has no float16 kernels, so they run
     # ~45x slower there than the same graph widened to float32. If CPU

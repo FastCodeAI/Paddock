@@ -1,0 +1,49 @@
+{
+  "run_id": "20261027T185517-5c7949",
+  "site": "fastcode-shakaal",
+  "benchmark": "navsim_v1",
+  "model": "autoe2e",
+  "mode": "open_loop",
+  "started_utc": "2026-10-27T18:55:17+00:00",
+  "duration_s": 5719.4,
+  "repo_sha": null,
+  "dataset": {
+    "name": "navsim",
+    "split": "navtest",
+    "n_samples": 12146,
+    "sequences_sha256": "013e89176339021d",
+    "n_failed": 0,
+    "n_unscored": 0,
+    "n_expected": 12146
+  },
+  "config": {
+    "limit": null,
+    "cameras": [],
+    "split": "navtest",
+    "agent": "paddock_replay",
+    "allow_partial": false,
+    "allow_slow": false,
+    "overrides": [],
+    "chunk_order": "by_size",
+    "merged_from": null,
+    "input_hz": 2.0,
+    "history_source": "openscene",
+    "history_s": 1.5,
+    "node": null,
+    "replayed_from": "navsim/autoe2e/20261009T055926-3ceb18",
+    "plans": {
+      "n": 12146,
+      "sha256": "326dd3987b07376c",
+      "from": [
+        "20261009T055926-3ceb18"
+      ]
+    }
+  },
+  "hardware": {},
+  "provenance": {},
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "no model process ran: 12146 plans replayed from navsim/autoe2e/20261009T055926-3ceb18 (that run: epdms 0.5002); the same plans, this benchmark's scorer",
+  "ingested_from": ""
+}

@@ -64,6 +64,7 @@ def _client(agent_module, hz: float):
     agent._ego2world = lambda: np.eye(4)
     agent._command = lambda: 2
     agent._nav = lambda: (None, None)
+    agent._lane_change = lambda: (None, None)
     agent._route_xy = lambda: None
     agent._hero_actor = lambda: None
     return agent, steered
