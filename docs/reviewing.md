@@ -46,6 +46,11 @@ cd /tmp/pr-<N> && make check; echo "exit=$?"
   geometry tests import openpilot's transforms, so `make check` skips them
   everywhere; this runs them in paddock's interpreter with the checkout on
   `PYTHONPATH`. If your site has no openpilot checkout, say so in the review.
+- A PR that touches the Alpamayo 1.5 adapter (`src/paddock/adapters/models/alpamayo15/`)
+  needs `make check-alpamayo ALPAMAYO_PY=<repos>/alpamayo1.5/a1_5_venv/bin/python`
+  too. Its input tests, including the pinned inputs of every other benchmark,
+  need torch and `alpamayo1_5`, so `make check` skips them; they run on the CPU
+  without weights. If your site has no Alpamayo environment, say so in the review.
 - If the site has a checkout of the upstream tool the PR shells out to (CARLA,
   neuro-ncap, NAVSIM's devkit), open it and verify the flags, file layouts and
   output schema the PR assumes. "Matches the 0.0.4 checkout" is a verified
@@ -211,6 +216,7 @@ And the structure:
 - [ ] `make check` run on the PR branch, exit code checked
 - [ ] `make check-alpasim-driver` run if the AlpaSim driver, its scaffold or the bridge changed, or marked not run
 - [ ] `make check-openpilot` run if the openpilot adapter changed, or marked not run
+- [ ] `make check-alpamayo` run if the Alpamayo 1.5 adapter changed, or marked not run
 - [ ] upstream flags / schemas verified against a real checkout, or marked argued
 - [ ] every external import and path is preflighted and documented
 - [ ] scorer failure statuses raise `RuntimeError`; poor outcomes still score

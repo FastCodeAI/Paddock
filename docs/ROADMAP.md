@@ -518,6 +518,39 @@ Open work on this route:
   constant-velocity floor, but it ran on simulator image `6dad7728` and they
   ran on `1e0d5fea`; nobody has shown the two images drive identically.
 
+**Alpamayo 1.5 runs on AlpaSim through the paddock bridge**: the `alpamayo15`
+profile in `harness.DRIVER_PROFILES` drives the paddock node on the settings of
+its stored native row (four f-theta cameras including the telephoto, a call
+every 100 ms, the 30 pinned scenes), and the node builds AlpaSim's input the
+way AlpaSim's own Alpamayo driver does: raw f-theta frames, the real telephoto
+camera, the driver's navigation sentence from the route, and all 64 plan points
+0.1 s apart. It switches on two new optional `Observation` fields,
+`route_timestamp_us` and `plan_dt`, that only this profile's bridge sends.
+Documented in `docs/models/alpamayo15.md#on-alpasim-through-the-bridge`.
+
+| Claim | Evidence | Strength |
+|---|---|---|
+| every other benchmark's input to the model is unchanged | `alpamayo15/tests/test_unchanged_inputs.py` pins every prompt item, image hash, history, sampling setting and plan for seven benchmark-shaped inputs, recorded from the adapter before the change; it runs in `make check-alpamayo`, **not in `make check`** | **strong** |
+| the existing bridge profiles send what they sent before | `test_bridge_switches.py` pins the default, Drive-JEPA, AutoE2E and Qwen-Drive profiles' bodies; runs in `make check-alpasim-driver` | **strong** |
+| the node gets the native driver's inputs | offline replay of ten scenes' recorded simulator messages through AlpaSim's own Alpamayo driver code and through the bridge and node: 1,681 of 1,681 model calls identical in call time, frames, pixels, prompt text, navigation text and sampling; ego history within 3.8e-6 m. Run at the author's site; not committed | **strong** |
+| through paddock it scores 0.7952 on 30 scenes, and the native row's 0.9000 on the first ten | `results/alpasim/alpamayo15/20261029T200113-9d900c`, valid, one rollout per scene; the first ten scenes score the same as the native row scene by scene. The native row ran on simulator image `8a69f005`, this run on `6dad7728` | **moderate** (one draw per scene, and this model's draws vary) |
+| the model received the native navigation text live | on the 7 scenes whose route turns, the node's per-call log equals, call for call, the text AlpaSim's driver code computes from the run's own recorded messages | **strong** |
+
+Open work on this route:
+
+- **No committed fixture compares the node with the native driver.** As for
+  Qwen-Drive, the replay above is not in the tree.
+- **JPEG decoding and plan height.** The native driver decoded on the GPU and
+  kept the model's full 3-D poses; the bridge decodes with PIL and returns flat
+  plans. Neither effect was measured.
+- **Calls are slow.** 2.75 s median through paddock against about 0.7 s
+  natively, on a shared GPU. The rollout runs without gradients turned off
+  (`torch.no_grad()` is not used); adding it is a separate change because it
+  changes the run's code fingerprint.
+- **A resumed run loses the model server's earlier log.** The node log is
+  reopened for writing on every resume, so the per-call lines of earlier
+  attempts are gone; this run lost them for 5 of its 30 scenes.
+
 **METEOR has AlpaSim rows and no tracked driver.** `results/alpasim/meteor/`
 holds a 30-scene row (0.4232) and its first ten scenes (0.6869), ingested from
 runs of a native driver, `meteor-0.1.1`, whose source exists only at the
