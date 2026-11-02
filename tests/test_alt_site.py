@@ -97,6 +97,25 @@ def test_doctor_survives_a_bare_site(alt_site) -> None:
             assert check.fix, f"{check.section}/{check.name} reports a problem with no fix"
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root enters any folder")
+def test_doctor_names_an_interpreter_it_may_not_reach_and_carries_on(alt_site) -> None:
+    """Run as the gate queue's account, a model whose venv sits in a folder that account
+    may not enter made doctor crash with PermissionError, reporting nothing."""
+    locked = alt_site / "locked"
+    (locked / "env" / "bin").mkdir(parents=True)
+    config = Path(os.environ["PADDOCK_CONFIG"])
+    config.write_text(config.read_text() + f'\n[models.drivejepa]\nvenv = "{locked / "env"}"\n')
+    locked.chmod(0)
+    try:
+        report = doctor_run()
+    finally:
+        locked.chmod(0o755)
+    by_name = {(c.section, c.name): c for c in report.checks}
+    check = by_name[("models", "drivejepa")]
+    assert check.status is Status.FAIL and "not reachable by this account" in check.detail
+    assert ("models", "openpilot") in by_name, "the other models are still checked"
+
+
 def test_a_boolean_setting_a_site_wrote_as_false_reads_as_false(alt_site) -> None:
     """`false` in a site config must not arrive at a harness as True.
 

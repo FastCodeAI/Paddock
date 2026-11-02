@@ -1,0 +1,38 @@
+# Bench2Drive smoke tier (closed-loop tier): 7 of the 220 routes of bench2drive220.xml,
+# one per group. Groups: a route that turns by 45 degrees or more, read from its own
+# waypoints, is a left or a right turn; one that goes straight is grouped by what it is
+# about, its scenario type's hazard family (tools/gate_subsets.py, B2D_HAZARDS):
+# left turn 68, right turn 45, straight: cut-in or hard brake 15, straight: highway or high speed 38, straight: junction 4, straight: obstacle in the lane 39, straight: pedestrian or cyclist 11.
+#   left turn: route 3717 (VehicleTurningRoute, Town13, turns +79 deg)
+#   right turn: route 24258 (HazardAtSideLaneTwoWays, Town07, turns -54 deg)
+#   straight: cut-in or hard brake: route 18356 (ParkingCutIn, Town12, turns +3 deg)
+#   straight: highway or high speed: route 17598 (SequentialLaneChange, Town12, turns +2 deg)
+#   straight: junction: route 28111 (T_Junction, Town04, turns -45 deg)
+#   straight: obstacle in the lane: route 3482 (VehicleOpensDoorTwoWays, Town13, turns -27 deg)
+#   straight: pedestrian or cyclist: route 3255 (ParkingCrossingPedestrian, Town13, turns -3 deg)
+# Run as `--scene <the ids>`. Stored valid=false (a route subset).
+# can_ship = false: seven routes detect only a large change (17-38 driving-score
+# points, from paired route differences of 13.6-30.4 sd). A REGRESSION that large still
+# fails the gate; a GAIN from so few routes is too likely to be chance to ship on.
+#
+# Drawn once, on 2026-10-22, by `python -m tools.gate_subsets bench2drive` (seed 20261022): every
+# group the same share, random within it (tools/gate_subsets.py has the rule). It must
+# never be re-picked, re-drawn or edited to make a result look better: a gate whose
+# subset moves can be steered. If it turns out to be wrong (a sample that cannot run,
+# say), replace it in its own commit that says why, and re-run every baseline paired
+# with it.
+
+bench = "bench2drive"
+can_ship = false
+unit = "route"
+seed = 20261022
+count = 7
+
+[strata]
+"left turn" = ["3717"]
+"right turn" = ["24258"]
+"straight: cut-in or hard brake" = ["18356"]
+"straight: highway or high speed" = ["17598"]
+"straight: junction" = ["28111"]
+"straight: obstacle in the lane" = ["3482"]
+"straight: pedestrian or cyclist" = ["3255"]

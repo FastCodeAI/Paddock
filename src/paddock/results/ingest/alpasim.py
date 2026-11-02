@@ -74,6 +74,8 @@ _MODEL_BY_DRIVER = {
     "openpilot": "openpilot",
     "visionpilot": "visionpilot",
     "drivejepa": "drivejepa",
+    # METEOR's native driver reports `meteor-<version>`, with no `-driver-` infix.
+    "meteor": "meteor",
 }
 
 
@@ -125,12 +127,14 @@ def model_name(version_id: str | None) -> str | None:
 
 
 def tick_config(run: Path) -> dict[str, Any]:
-    """Cameras and control rate -- the axis along which runs are NOT comparable.
+    """Cameras and control rate, recorded in metrics.json's `by_group`.
 
-    Two AlpaSim runs with different tick configs measure different tasks: 10 Hz
-    control gives a policy five times the opportunities to correct that 2 Hz
-    does, and a four-camera rig sees what a single forward camera cannot. Runs
-    are grouped by this so a report never averages across it.
+    Control rate is the axis along which runs are NOT comparable: 10 Hz control
+    gives a policy five times the opportunities to correct that 2 Hz does. Camera
+    count is recorded but is not a reason to keep runs apart; each model is given
+    the cameras it reads (docs/benchmarks/alpasim.md). `paddock report` does not
+    split on this group; `ingest_campaign` refuses to merge directories whose
+    tick configs differ, so one stored run never mixes two.
 
     Parsed from the YAML rather than by regex: the camera list is a sequence of
     `- logical_id: camera_...` mappings, which a pattern keyed on `camera_.*:`

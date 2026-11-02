@@ -33,13 +33,25 @@ runtime:
     # That is an extrapolation the model never made, which is why it is opt-in
     # and lands in run.json as model_env rather than being the default.
     # METEOR_HORIZON_S: "4.0"
+    # How the eight slots are filled when CAM_FRONT is the only camera a
+    # benchmark supplies (comma2k19); any other camera set uses the donor rule
+    # below whatever this says. narrow_refpose: CAM_FRONT_NARROW gets the
+    # centred 30 deg window of the same frame, and the six black slots keep the
+    # calibration of METEOR's own rig, as training's per-camera dropout does.
+    # donor: every black slot on the front camera's pose, the rule before this
+    # setting existed. narrow and refpose are each half. The default was chosen
+    # on METEOR's own demo scene, not on comma2k19: docs/models/meteor.md.
+    METEOR_FRONT_ONLY: "narrow_refpose"
+  # Site overrides of these change speed or memory, not the plan, so they
+  # leave a run valid; any other [models.meteor.env] key makes it valid: false.
+  tuning_env: [METEOR_ORT_THREADS, METEOR_GPU_MEM_MB]
 
 capabilities:
   # paddock's six nuScenes cameras fill six of METEOR's eight slots (the two
   # telephoto NARROW slots have no counterpart and are fed as absent, the
   # convention the network was trained with for 7-camera rigs). Benchmarks
-  # that supply fewer cameras leave the rest absent too; KITScenes is
-  # front-camera only.
+  # that supply fewer cameras leave the rest absent too; comma2k19 supplies
+  # CAM_FRONT alone, which METEOR_FRONT_ONLY above fills.
   cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT, CAM_BACK, CAM_BACK_LEFT, CAM_BACK_RIGHT]
   vram_gb: 8
   # load() runs the graph once so a kernel/JIT failure on a new GPU
@@ -49,6 +61,12 @@ capabilities:
   # Single-frame: the temporal memory is baked out of the export, so the
   # observation rate does not matter.
   min_input_hz: 0.0
+  # It plans from frames 0.2 s apart: METEOR's recordings are collected at
+  # 10 Hz and stored and labelled at 5 Hz (upstream docs/REPRODUCE.md), and
+  # the AlpaSim driver its released graph was driven by runs it at 5 Hz. A
+  # 20 Hz simulator asks it every 0.2 s and follows the last plan in between
+  # (Bench2Drive's client; HUGSIM's 4 Hz is slower anyway).
+  planning_hz: 5.0
 
   # -- the model card ---------------------------------------------------
   # Values and provenance: docs/models/meteor.md and docs/models/comparison.md.
@@ -63,18 +81,27 @@ capabilities:
   size_gb: 0.35
   precision: fp32
   input_size: [768, 432]
+  # One frame and the current speed (v0): no history of either.
   history_frames: 1
   output_kind: waypoints
   horizon_s: 3.0
+  plan_points_hz: 2.0  # six waypoints 0.5 s apart
   stochastic: false
   needs_speed: true
-  # TIER IV Co-MLOps DRS recordings (Japan, plus a US subset), auto-labelled;
-  # adverse conditions as Cosmos Transfer re-renderings. None of paddock's
-  # benchmark datasets.
+  # The ResNet-34 starts from ImageNet (bevlane/model.py:507). Then TIER IV's own
+  # recordings: Co-MLOps DRS (Japan, plus a US subset on the same rig) and a
+  # 7-camera minibus corpus, labelled entirely by CoMET, TIER IV's ensemble of 12
+  # models whose names and pretraining data are not published -- so exposure to
+  # paddock's data through the labels is not stated. Cosmos re-renders of those
+  # scenes train perception only. The released v157 stage: from v151, RL off
+  # (rl_w 0.0), planner frozen (freeze_ego), read from the checkpoint's saved args.
+  # None of paddock's benchmark datasets in the driving data.
   trained_on:
+    - dataset: imagenet
     - dataset: tier4_comlops_drs
       split: train
 
 # navsim needs METEOR_HORIZON_S=4.0 (see above) or every sample fails in
 # to_navsim_poses with "model plans 3.00 s".
-benchmarks: [kitscenes, nuscenes, neuroncap, navsim, bench2drive, nuplan]
+# comma2k19 is one phone camera: see METEOR_FRONT_ONLY above.
+benchmarks: [kitscenes, nuscenes, neuroncap, navsim, bench2drive, nuplan, comma2k19]

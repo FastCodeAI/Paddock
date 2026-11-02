@@ -158,6 +158,9 @@ class _StubBench:
     def invalid_reasons(self):
         return list(self._reasons)
 
+    def remarks(self):
+        return []
+
     def run_config(self):
         return {"frames_decoded": False}
 

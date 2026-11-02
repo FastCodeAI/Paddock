@@ -101,6 +101,7 @@ capabilities:
   vram_gb: 24
   startup_timeout_s: 600
   waypoint_dt: 0.5
+  planning_hz: 2.0               # closed loop: replan this often; omit to be asked every tick
 
 benchmarks: [kitscenes, neuroncap]
 ```
@@ -111,7 +112,7 @@ site's `paddock.toml` at launch. `tests/test_portability.py` fails the build if
 you write a home directory or a mount point here — that test is why this repo
 still works at the other site.
 
-Three fields are worth more thought than they look:
+Four fields are worth more thought than they look:
 
 - **`cameras`** — closed-loop wall-clock is dominated by rendering, and the
   simulator renders exactly what you declare. Declaring six when you read one
@@ -121,7 +122,28 @@ Three fields are worth more thought than they look:
   into "waiting for 24 GB (12 GB free)".
 - **`env`** — the preferred way to point a repo at data. Most research repos
   already read an environment variable for their data root; find it and use it
-  rather than patching source.
+  rather than patching source. Every key except the tuning ones below is
+  recorded, as written, in `run.json` as `declared_env` and hashed into the run
+  id, so changing one (a planner head, a switch) gives new runs a new id and
+  `--resume` refuses to continue an old run under it.
+- **`tuning_env`** — the `env` keys a site may override in `[models.<name>.env]`
+  without changing what the model computes: thread counts, memory caps. A site
+  override of any other key (a checkpoint, a horizon, a mode) is recorded in
+  `run.json` as `model_env` and makes the run `valid: false`, so a finetune
+  swapped in through a site config is never ranked under the model's name.
+  OpenMP and BLAS thread counts, and keys that only say where a library or
+  cache lives (`LD_LIBRARY_PATH`, `HF_HOME`, ...; `runner.LOCATION_ENV`), are
+  always allowed. A checkpoint path is not: a moved checkpoint and a finetune
+  look the same to the runner.
+- **`env_passthrough`** — a list of var *names* (not values) to forward from
+  whoever's shell launched `paddock run`, for ablation/debugging knobs your
+  own code reads (e.g. `MYMODEL_TEMPERATURE=0.5 paddock run --model mymodel ...`).
+  Without declaring a name here, `runtime/env.py` builds the subprocess's
+  environment from a strict allowlist plus `env` above, so a var not in either
+  place silently never reaches the model — the shell invocation looks like it
+  worked and does nothing. A name set in the shell is held to the same rule
+  as a site `env` override: unless it is in `tuning_env` or restates the
+  declared default, the run is recorded `valid: false`.
 
 ## Step 5 — write `setup.sh`
 
@@ -204,6 +226,12 @@ rivals. See [architecture.md](architecture.md#where-does-a-file-belong).
 Write `docs/models/<name>.md`: environment, weights and where they come from,
 quirks, and the reference numbers your run produced. The next person to touch
 this model is probably at the other site.
+
+To put the model in the README's support matrix, add it to
+[docs/support-matrix.toml](support-matrix.toml): a `[[model]]` entry and a
+`[cells.<name>]` line per benchmark naming your run. Then run
+`python -m tools.readme_figures` and commit the redrawn picture. `make check`
+fails if a named run is missing or the picture is out of date.
 
 ## Step 11 — open the PR
 

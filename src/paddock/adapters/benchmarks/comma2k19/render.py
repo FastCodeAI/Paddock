@@ -299,7 +299,9 @@ def render_sample(runs, sample_id: str, out_dir: Path, cfg) -> list[Path]:
     first = int(native.get("first_frame_index", keyframe))
     fps = float(native.get("input_hz") or L.SRC_HZ)
     plans = [
-        OV.Plan.for_model(run.model, rec["prediction"], label=_plan_label(run, rec))
+        OV.Plan.for_model(
+            run.model, rec["prediction"], label=_plan_label(run, rec), rpy=_calibration(rec["native_id"])
+        )
         for run, rec in found
         if rec.get("prediction")
     ]
@@ -307,7 +309,9 @@ def render_sample(runs, sample_id: str, out_dir: Path, cfg) -> list[Path]:
 
     # The HUD, the legend and the minimap are the dashboard's job now; leaving
     # them on would print every number twice, once over moving road.
-    overlay = OV.SegmentOverlay(segment.path, layers=OV.Layers(hud=False, minimap=False))
+    overlay = OV.SegmentOverlay(
+        segment.path, layers=OV.Layers(hud=False, minimap=False), rpy=_calibration(native)
+    )
     dash = DB.Dashboard(
         overlay,
         scored,
@@ -393,6 +397,19 @@ def _plan_label(run, record) -> str:
         if isinstance(metrics.get(key), (int, float)) and np.isfinite(metrics[key])
     ]
     return f"{run.model} plan" + ("   " + "  ".join(scored) if scored else "")
+
+
+def _calibration(native: dict) -> np.ndarray | None:
+    """The mount rotation the harness handed the model for this sample, radians.
+
+    It defines the frame the plan is in, so it is the rotation to draw the plan
+    back with -- per run, since runs are drawn together and each was handed its
+    own -- and reusing it spares `SegmentOverlay` a pooled estimate over the
+    whole route. None for a record from before the harness stored it; the
+    overlay then estimates, as it always did.
+    """
+    rpy = native.get("rpy_calib_deg")
+    return None if rpy is None else np.radians(np.asarray(rpy, dtype=np.float64))
 
 
 def _no_such_sample(runs, sample_id: str) -> str:

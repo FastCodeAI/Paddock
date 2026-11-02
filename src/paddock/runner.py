@@ -31,6 +31,7 @@ import numpy as np
 
 from paddock.benchmark import (
     PIPELINE_BATCHES,
+    Benchmark,
     ClosedLoopBenchmark,
     ExternallyScoredBenchmark,
     OpenLoopBenchmark,
@@ -76,9 +77,16 @@ def _measurement_config(cfg: SiteConfig, harness, model_spec: ModelSpec, **given
     """Everything that changes what was measured, for the run id and `run.json`.
 
     What the caller knows (`scene`, `runs`, `limit`), the model's cameras, the
-    benchmark's own measurement-changing settings (`run_config()`), and any
-    site `[models.<name>] env` block -- an environment override can change a
-    model's input (alpamayo's frame selection, say), so it is on the record.
+    benchmark's own measurement-changing settings (`run_config()`), the env the
+    model's own `model.yaml` declares (`declared_env`), any site
+    `[models.<name>] env` block, and any of the model's own declared
+    `runtime.env_passthrough` names actually set in the launching shell --
+    an environment override can change a model's input (alpamayo's frame
+    selection, say), so it is on the record. `model_env` reflects the same
+    override order `runtime.env.build()` applies: a site override, then a
+    passthrough name set in the shell, wins over a default for the same key.
+    A pairing table arrives already merged into both (`SiteConfig.paired`), so
+    it is recorded, and hashed, exactly as the same values set globally would be.
     """
     config = {
         **given,
@@ -86,9 +94,18 @@ def _measurement_config(cfg: SiteConfig, harness, model_spec: ModelSpec, **given
         **harness.run_config(),
         **harness.model_run_config(model_spec),
     }
+    declared = _declared_env(model_spec)
+    if declared:
+        config["declared_env"] = declared
+    model_env: dict[str, str] = {}
     override = cfg.models.get(model_spec.name)
     if override is not None and override.env:
-        config["model_env"] = {k: _portable_value(v) for k, v in override.env.items()}
+        model_env.update({k: _portable_value(v) for k, v in override.env.items()})
+    model_env.update(
+        {k: _portable_value(os.environ[k]) for k in model_spec.runtime.env_passthrough if k in os.environ}
+    )
+    if model_env:
+        config["model_env"] = model_env
     return config
 
 
@@ -150,6 +167,73 @@ def _portable_segment(segment: str) -> str:
     return segment
 
 
+#: OpenMP/BLAS thread counts: how fast a node runs, never what it computes,
+#: and set per site to fit the box (shakaal fails at 90% CPU). Allowed for
+#: every model, on top of each model's own `runtime.tuning_env`.
+THREAD_ENV = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS")
+
+#: Where a site keeps libraries and caches: the same code and weights found in
+#: another place. Also allowed for every model. Not on this list, on purpose:
+#: `*_CHECKPOINT`/`*_WEIGHTS` (a moved checkpoint and a finetune are the same
+#: string to the runner) and `PADDOCK_FFMPEG` (openpilot pins its ffmpeg so the
+#: RGB -> NV12 conversion matches; another binary can change the input).
+LOCATION_ENV = ("LD_LIBRARY_PATH", "HF_HOME", "NVRTC_PATH", "TMPDIR", "CUDA_VISIBLE_DEVICES")
+
+
+def _tuning_keys(model_spec: ModelSpec) -> set[str]:
+    """Env keys that change how fast or where a node runs, never what it plans."""
+    return {*THREAD_ENV, *LOCATION_ENV, *model_spec.runtime.tuning_env}
+
+
+def _declared_env(model_spec: ModelSpec) -> dict[str, str]:
+    """The env a model's `model.yaml` sets, as written, without its tuning keys.
+
+    The env is how an adapter picks which variant of a model runs (Qwen-Drive's
+    planner head, Drive-JEPA's momentum), so it belongs in the run id: before it
+    was hashed, turning `DRIVEJEPA_MOMENTUM` on in `model.yaml` left the id
+    unchanged, and `--resume` continued a momentum-off run with momentum on
+    under one number (#99). Values stay unexpanded (`{weights}/...`), so the
+    hash is the same at every site and no machine path reaches `run.json`.
+    Tuning keys are left out for the reason they leave a run valid: changing
+    them moves no plan, so it should neither move the id nor refuse a resume.
+    """
+    tuning = _tuning_keys(model_spec)
+    return {k: _portable_value(str(v)) for k, v in sorted(model_spec.runtime.env.items()) if k not in tuning}
+
+
+def _env_override_reasons(cfg: SiteConfig, model_spec: ModelSpec) -> list[str]:
+    """Why a site `[models.<name>.env]` block keeps this run from being ranked.
+
+    Fail-closed: every overridden key counts unless the model declares it as
+    tuning (`runtime.tuning_env`), it is a thread count, or it only says where a
+    library or cache lives (`LOCATION_ENV`). A key nobody
+    classified is assumed to change the result, because the costly mistake is
+    the other one: a `DRIVEJEPA_CHECKPOINT` pointing at a finetune used to be
+    recorded `valid: true` and ranked as the released model. Restating the
+    declared default value is not an override.
+
+    A declared `runtime.env_passthrough` name set in the launching shell reaches
+    the node the same way (`runtime.env.build()` applies it last, over a site
+    value), so it is held to the same rule: `ALPAMAYO_NAV=0 paddock run ...` is
+    the no-nav baseline, not the released model.
+    """
+    override = cfg.models.get(model_spec.name)
+    site = dict(override.env) if override is not None and override.env else {}
+    shell = {k: os.environ[k] for k in model_spec.runtime.env_passthrough if k in os.environ}
+    tuning = _tuning_keys(model_spec)
+    declared = model_spec.runtime.env
+
+    reasons = []
+    for source, given in (("site", {k: v for k, v in site.items() if k not in shell}), ("shell", shell)):
+        keys = sorted(k for k, v in given.items() if k not in tuning and declared.get(k) != v)
+        if keys:
+            reasons.append(
+                f"{source} env override may change what was measured: {', '.join(keys)} "
+                "(values in config.model_env)"
+            )
+    return reasons
+
+
 def _validity(
     failure_note: str | None,
     invalid_reasons: list[str],
@@ -191,13 +275,21 @@ def _store_run(
     split: str | None = None,
     extra_dataset: dict | None = None,
     provenance: dict | None = None,
+    model_ran: bool = True,
 ) -> tuple[Path, store.MetricsRecord]:
     """Write one run to the results store. Every path stores through here.
 
     `split` is already in every sample id and therefore in the sequence hash;
     recorded in `dataset` too so run.json answers "which split" without
-    opening samples.jsonl.
+    opening samples.jsonl. `model_ran=False` is for a run no model node took
+    part in (NAVSIM's node-less baseline, human anchor and replays): a site
+    env block reaches nothing there, so it cannot invalidate the run.
     """
+    # Here, not at each caller: every path stores through this function, and a
+    # rule applied in two of three places is how the checkpoint gap happened.
+    # Opting out is explicit, so a new path that forgets is still judged.
+    if model_ran:
+        invalid_reasons = [*invalid_reasons, *_env_override_reasons(cfg, model_spec)]
     status, valid, notes = _validity(failure_note, invalid_reasons, remarks)
     dataset: dict = {"name": spec.dataset}
     if split is not None:
@@ -272,11 +364,20 @@ def _config_marker_problems(artifacts: Path, config: dict) -> list[str]:
         recorded = json.loads(marker.read_text())
         differing = sorted(k for k in set(recorded) | set(config) if recorded.get(k) != config.get(k))
         if differing:
-            return [
+            problem = (
                 f"--resume refused: {marker} was written under a different configuration; "
                 f"differs in {', '.join(differing)}. Start a new run, or restore the switches "
                 f"it was made under."
-            ]
+            )
+            if "declared_env" in differing and "declared_env" not in recorded:
+                # Usually not a switch anyone can restore: every run started
+                # before #99 lacks the key, and nothing says which model.yaml
+                # env its finished episodes ran.
+                problem += (
+                    " Its marker records no declared_env, as every run started before #99 does, "
+                    "so which model.yaml env its finished samples ran is not known: start a new run."
+                )
+            return [problem]
         return []
     artifacts.mkdir(parents=True, exist_ok=True)
     marker.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
@@ -340,6 +441,38 @@ def load_benchmark(spec: BenchmarkSpec, cfg: SiteConfig):
     return module.BENCHMARK(spec, cfg)
 
 
+def _pairing_line(cfg: SiteConfig, model: str, bench: str) -> str:
+    """What a pairing table sets, said before anything runs.
+
+    A pairing is a site's default for one model on one benchmark, so it is the
+    one override a reader is least likely to remember is there; a `--dry-run`
+    that names it answers "is this stock?" without opening the file.
+    """
+    pairing = cfg.models[model].benchmarks[bench]
+    values = [f"{k}={v}" for k, v in [*pairing.env.items(), *pairing.settings.items()]]
+    return f"{model} on {bench}: [models.{model}.benchmarks.{bench}] in {cfg.source} sets {', '.join(values)}"
+
+
+def _unknown_pairings(cfg: SiteConfig, models: list[ModelSpec], registry: Registry) -> list[str]:
+    """Pairing tables of these models that name no benchmark, said as the refusal.
+
+    `kitscene` for `kitscenes` would otherwise apply to nothing: the run measures
+    stock and the only sign is a `_pairing_line` that never prints. `config.py`
+    refuses a misspelt key inside the table, but cannot see the registry, so the
+    benchmark's name is checked here, before anything starts.
+    """
+    lines = []
+    for m in models:
+        override = cfg.models.get(m.name)
+        for name in sorted(override.benchmarks if override is not None else {}):
+            if name not in registry.benchmarks:
+                lines.append(
+                    f"[models.{m.name}.benchmarks.{name}] in {cfg.source}: there is no benchmark named "
+                    f"{name!r}; known: {', '.join(sorted(registry.benchmarks))}"
+                )
+    return lines
+
+
 def run_benchmark(
     cfg: SiteConfig,
     bench: str,
@@ -374,8 +507,60 @@ def run_benchmark(
             return 2
         models = [chosen]
 
-    harness = load_benchmark(spec, cfg)
+    unknown = _unknown_pairings(cfg, models, registry)
+    if unknown:
+        for line in unknown:
+            echo(line)
+        return 2
 
+    # A pairing table gives one model its own benchmark settings, which a
+    # harness shared by every model cannot hold. So a sweep that meets one
+    # runs each model in turn as though it had been named alone, and
+    # returns the worst exit code of the lot.
+    if len(models) > 1 and any(cfg.paired(m.name, bench) is not cfg for m in models):
+        return max(
+            run_benchmark(cfg, bench, m.name, scene, scenarios, runs, limit, dry_run, echo=echo)
+            for m in models
+        )
+
+    if len(models) == 1:
+        paired = cfg.paired(models[0].name, bench)
+        if paired is not cfg:
+            echo(_pairing_line(cfg, models[0].name, bench))
+        cfg = paired
+
+    harness = load_benchmark(spec, cfg)
+    try:
+        return _run_harness(
+            cfg, spec, harness, models, bench, scene, scenarios, runs, limit, dry_run, resume, echo
+        )
+    finally:
+        # What a harness started of its own -- neuroNCAP's managed renderer -- is let go once the harness is
+        # done with, not at exit. A sweep split by a pairing builds one harness per model, and the next one's
+        # preflight would otherwise find the last one's renderer still answering and refuse to start.
+        if hasattr(harness, "close"):
+            try:
+                harness.close()
+            except Exception as exc:  # noqa: BLE001 - letting go must not replace the run's own outcome
+                # Whatever it failed to stop is still found, and refused loudly, by the next preflight.
+                echo(f"  could not release what the {bench} harness started: {exc}")
+
+
+def _run_harness(
+    cfg: SiteConfig,
+    spec: BenchmarkSpec,
+    harness: Benchmark,
+    models: list[ModelSpec],
+    bench: str,
+    scene: str | None,
+    scenarios: list[str] | None,
+    runs: int,
+    limit: int | None,
+    dry_run: bool,
+    resume: str | None,
+    echo: Callable[[str], None],
+) -> int:
+    """`run_benchmark` from its harness on: preflight, then the dry run or the models in turn."""
     try:
         base = base_port()
     except ValueError as exc:
@@ -533,7 +718,10 @@ def _run_one_model(
     if resume and not outstanding:
         echo(f"  all {len(episodes)} episode(s) already scored; recording without starting a node")
 
-    prov: dict = {"repo": prov_info.repo_provenance(cfg, model_spec)}
+    prov: dict = {
+        "repo": prov_info.repo_provenance(cfg, model_spec),
+        "paddock": prov_info.paddock_provenance(),
+    }
     try:
         with contextlib.ExitStack() as stack:
             policy_url = (
@@ -545,6 +733,7 @@ def _run_one_model(
             )
             for episode in episodes:
                 episode.config["cameras"] = list(model_spec.cameras)
+                episode.config["planning_hz"] = model_spec.planning_hz
                 out_dir = artifacts / episode.episode_id
                 # On a resume, an episode with all its runs already scored is
                 # simulator time already spent; re-driving it to reach the next
@@ -594,14 +783,17 @@ def _run_one_model(
         # everything in `invalid_reasons` sets `valid: false`. But `started_utc`
         # and `duration_s` cover the resumed attempt only, so a 20-episode sweep
         # can read as forty minutes, and the row should say so itself.
-        remarks=(
-            [
-                f"resumed: {reused} episode(s) reused from an earlier attempt, so "
-                f"started_utc and duration_s describe this attempt only"
-            ]
-            if reused
-            else None
-        ),
+        remarks=[
+            *harness.remarks(),
+            *(
+                [
+                    f"resumed: {reused} episode(s) reused from an earlier attempt, so "
+                    f"started_utc and duration_s describe this attempt only"
+                ]
+                if reused
+                else []
+            ),
+        ],
         hardware={"gpu_free_gb_at_start": None},
         # In samples, not episodes: docs/results-schema.md defines the completion
         # ratio as `n_samples / n_expected`, so the two have to count the same
@@ -745,6 +937,7 @@ def _run_external(
         config,
         failure_note=failure_note,
         invalid_reasons=invalid_reasons,
+        remarks=harness.remarks(),
         # The scorer's own headline and aggregate rows, kept in the tracked
         # metrics.json exactly where the ingest path puts them.
         by_group=evaluation.by_group,
@@ -752,7 +945,10 @@ def _run_external(
         extra_dataset=extra_dataset,
         # No `/diagnostics` here: the external scorer owns the node's lifetime,
         # so by the time this runs there is nothing left to ask.
-        provenance={"repo": prov_info.repo_provenance(cfg, model_spec)},
+        provenance={
+            "repo": prov_info.repo_provenance(cfg, model_spec),
+            "paddock": prov_info.paddock_provenance(),
+        },
     )
     headline = metrics_record.metrics.get(spec.primary_metric, {})
     echo(f"  n={metrics_record.n}  {spec.primary_metric} mean={headline.get('mean')}")
@@ -813,10 +1009,11 @@ def _carry_forward_provenance(benchmark: str, model: str, run_id: str, prov: dic
     which backend and which graph layout produced the samples, for a run whose
     samples had not changed.
 
-    The repo sha gets the opposite treatment. A resume across a `git pull` is
-    part one revision and part another, and storing only the last attempt's sha
-    names a revision that did not produce most of the run. Earlier distinct shas
-    are kept beside it rather than overwritten, so a mixed-revision run says so.
+    The model repo's sha and paddock's own get the opposite treatment. A resume
+    across a `git pull` is part one revision and part another, and storing only
+    the last attempt's sha names a revision that did not produce most of the run.
+    Earlier distinct shas are kept beside it rather than overwritten, so a
+    mixed-revision run says so.
     """
     path = store.run_dir(benchmark, model, run_id) / "run.json"
     try:
@@ -825,11 +1022,12 @@ def _carry_forward_provenance(benchmark: str, model: str, run_id: str, prov: dic
         return prov
     if not prov.get("policy") and previous.get("policy"):
         prov["policy"] = previous["policy"]
-    was = previous.get("repo") or {}
-    now = (prov.get("repo") or {}).get("sha")
-    earlier = sorted({s for s in [*(was.get("earlier_shas") or []), was.get("sha")] if s and s != now})
-    if earlier:
-        prov.setdefault("repo", {})["earlier_shas"] = earlier
+    for key in ("repo", "paddock"):
+        was = previous.get(key) or {}
+        now = (prov.get(key) or {}).get("sha")
+        earlier = sorted({s for s in [*(was.get("earlier_shas") or []), was.get("sha")] if s and s != now})
+        if earlier:
+            prov.setdefault(key, {})["earlier_shas"] = earlier
     return prov
 
 
@@ -1006,7 +1204,10 @@ def _run_open_loop(
             **({"extras": prediction.extras} if prediction.extras else {}),
         }
 
-    prov: dict = {"repo": prov_info.repo_provenance(cfg, model_spec)}
+    prov: dict = {
+        "repo": prov_info.repo_provenance(cfg, model_spec),
+        "paddock": prov_info.paddock_provenance(),
+    }
     aborted: str | None = None
     try:
         # Above the ExitStack, exactly as `_run_one_model` decides it: a node is
@@ -1117,7 +1318,20 @@ def _run_open_loop(
             *_limit_reason(limit),
             *_coverage_reason(harness, samples, limit),
         ],
-        remarks=[f"resumed: {reused} sample(s) reused from an earlier attempt"] if reused else None,
+        # As in the closed-loop path: `started_utc` and `duration_s` are this
+        # attempt's, so a run re-stored with nothing left to score reads as
+        # zero seconds today, and the row has to say so itself.
+        remarks=[
+            *harness.remarks(),
+            *(
+                [
+                    f"resumed: {reused} sample(s) reused from an earlier attempt, so "
+                    f"started_utc and duration_s describe this attempt only"
+                ]
+                if reused
+                else []
+            ),
+        ],
         extra_dataset=_expected_samples(harness),
         provenance=prov,
     )

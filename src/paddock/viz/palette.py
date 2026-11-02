@@ -47,6 +47,10 @@ ASSIGNED: dict[str, str] = {
     # both now appear. Grey also says what it is: the line every other line is
     # being read against, not a competitor.
     "constant_velocity": "#666666",
+    # The hash gave autoe2e that same #666666, so it drew as the floor. Cyan is
+    # the remaining hue: every other model and ground truth's blue stay at least
+    # 11.8 apart from it under colour blindness (OKLab x100).
+    "autoe2e": "#17becf",
 }
 
 #: Drawn from for models with no assigned colour.

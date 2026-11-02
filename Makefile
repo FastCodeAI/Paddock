@@ -17,12 +17,13 @@ PY := $(shell \
   elif [ -x .venv/bin/python ]; then echo ".venv/bin/python"; \
   else echo "python3"; fi)
 
-.PHONY: help setup setup-conda check test lint fmt typecheck doctor which clean
+.PHONY: help setup setup-conda check check-alpasim-driver check-alpamayo check-openpilot test lint fmt typecheck doctor which clean
 
 help:
 	@echo "make setup        — create .venv and install paddock (uv; the default)"
 	@echo "make setup-conda  — create a conda env named 'paddock' instead"
 	@echo "make check        — lint + tests + portability gate. Run before every PR."
+	@echo "make check-alpasim-driver ALPASIM_PY=<python> — the Drive-JEPA AlpaSim driver's own tests"
 	@echo "make test         — pytest only"
 	@echo "make lint         — ruff only"
 	@echo "make fmt          — ruff format + autofix"
@@ -57,6 +58,42 @@ setup-conda:
 	@echo "  paddock doctor"
 
 check: lint test
+
+# The native AlpaSim driver under tools/ and paddock's AlpaSim bridge import grpc,
+# alpasim_grpc and cv2, which paddock's own environment deliberately lacks, so
+# `make check` and CI skip their tests. They run in AlpaSim's interpreter instead,
+# among them the test that pins the bytes every existing bridge profile sends; a
+# reviewer at a site that has one runs this target (docs/reviewing.md §1).
+# It fails rather than skips when the interpreter is missing: a skipped
+# directory reads as a pass.
+check-alpasim-driver:
+	@test -n "$(ALPASIM_PY)" || { echo "set ALPASIM_PY to AlpaSim's python, e.g. <alpasim>/.venv/bin/python"; exit 2; }
+	@$(ALPASIM_PY) -c "import grpc, alpasim_grpc, cv2" || { echo "$(ALPASIM_PY) is not AlpaSim's environment (needs grpc, alpasim_grpc, cv2)"; exit 2; }
+	$(ALPASIM_PY) -m pytest tools/models/drivejepa/alpasim_driver/tests src/paddock/adapters/benchmarks/alpasim/tests -q
+
+# The Alpamayo 1.5 adapter's input tests (what every other benchmark's frames
+# become, pinned, and the AlpaSim inputs built the way AlpaSim's own driver
+# builds them) need torch, scipy and alpamayo1_5, which paddock's environment
+# deliberately lacks, so `make check` and CI skip them. They run in the model's
+# own interpreter on the CPU, without weights; a reviewer at a site that has one
+# runs this target. It fails rather than skips when the interpreter is missing,
+# for the same reason as above.
+check-alpamayo:
+	@test -n "$(ALPAMAYO_PY)" || { echo "set ALPAMAYO_PY to Alpamayo's python, e.g. <repos>/alpamayo1.5/a1_5_venv/bin/python"; exit 2; }
+	@$(ALPAMAYO_PY) -c "import torch, scipy, alpamayo1_5" || { echo "$(ALPAMAYO_PY) is not Alpamayo's environment (needs torch, scipy, alpamayo1_5)"; exit 2; }
+	CUDA_VISIBLE_DEVICES= PYTHONPATH=src $(ALPAMAYO_PY) -m pytest src/paddock/adapters/models/alpamayo15/tests -q -p no:cacheprovider
+
+# The openpilot adapter's geometry tests (height scale, tilt, cut) need
+# openpilot's own transforms, which paddock's environment deliberately lacks,
+# so `make check` and CI skip them. They are pure numpy over openpilot's
+# source, so they run in paddock's interpreter with the checkout on
+# PYTHONPATH; a reviewer at a site that has one runs this target
+# (docs/reviewing.md §1). It fails rather than skips when the checkout is
+# missing, for the same reason as above.
+check-openpilot:
+	@test -n "$(OPENPILOT_REPO)" || { echo "set OPENPILOT_REPO to the openpilot checkout, e.g. <repos>/openpilot"; exit 2; }
+	@PYTHONPATH="$(OPENPILOT_REPO)" $(PY) -c "import openpilot.common.transformations.model" || { echo "$(OPENPILOT_REPO) is not an openpilot checkout paddock's python can import"; exit 2; }
+	PYTHONPATH="$(OPENPILOT_REPO)" $(PY) -m pytest src/paddock/adapters/models/openpilot/tests -q -rs
 
 test:
 	$(PY) -m pytest -q

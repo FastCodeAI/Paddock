@@ -233,8 +233,9 @@ class RouteCalibrations:
         """Per-route estimates, for a run's `metrics.json` and for eyeballing.
 
         Mount rotation is a property of the *rig*, so consistency within a
-        vehicle is itself evidence the estimate is right: on this dataset the
-        RAV4 routes cluster at 3.5-3.8 deg of pitch and the Civic routes at
-        1.7-1.8 deg.
+        vehicle is itself evidence the estimate is right: on this dataset 39 of
+        the RAV4's 42 routes sit at 3.3-3.8 deg of pitch and 126 of the Civic's
+        135 at 1.6-2.2 deg, and the two never overlap -- the Civic's highest is
+        2.35 deg, the RAV4's lowest 2.57.
         """
         return {f"{chunk}/{route}": cal.as_dict() for (chunk, route), cal in sorted(self._cache.items())}

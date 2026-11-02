@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>route</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="viz-root">
+  <header>
+    <h1 id="title">route</h1>
+    <span class="meta" id="sub"></span>
+    <span class="spacer"></span>
+    <a href="index.html">← all routes</a>
+    <button id="theme" title="Toggle light / dark">Theme</button>
+  </header>
+  <div class="route-grid">
+    <div>
+      <div class="card" style="margin-bottom:12px" id="media"></div>
+      <div class="card"><h2>Summary</h2>
+        <p class="sub">Route map with the expert's path and the driven one, speed / progress / controls against time, and the score.</p>
+        <div id="summary"></div></div>
+    </div>
+    <div>
+      <div class="card" style="margin-bottom:12px"><h2>Score</h2><p class="sub">Driving score = route completion × infraction penalty (CARLA leaderboard).</p><dl class="kv" id="score"></dl></div>
+      <div class="card" style="margin-bottom:12px"><h2>Infractions</h2><p class="sub">As the leaderboard recorded them, with the multiplier each applies.</p><div id="infractions"></div></div>
+      <div class="card" style="margin-bottom:12px"><h2>Driving</h2><dl class="kv" id="driving"></dl></div>
+      <div class="card" id="features-card" hidden style="margin-bottom:12px"><h2>Why</h2><p class="sub">From the per-route analysis this dashboard was given (--features), derived from ticks.jsonl.</p><dl class="kv" id="features"></dl></div>
+      <div class="card"><h2>Files</h2><p class="sub">Raw artifacts of this attempt: full per-tick predictions are in ticks.jsonl.</p><ul class="plain" id="files"></ul></div>
+    </div>
+  </div>
+</div>
+<script src="route.js"></script>
+</body>
+</html>

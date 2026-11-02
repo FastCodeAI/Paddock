@@ -39,6 +39,18 @@ names a *different* model is refused -- pointing ``runs`` one component too high
 otherwise pools two models into one row. ``source_config_read`` says how many of
 the source runs kept such a record at all.
 
+An early stop (``stop_*`` in ``[benchmarks.bench2drive]``, see
+``adapters/benchmarks/bench2drive/early_stop.py``) is read the same way: the
+pooled ``config.early_stop`` is what the source runs recorded, every route says
+in ``ended_stuck`` / ``ended_over_time`` / ``ended_collision`` / ``ended_manual``
+whether one ended it, and the notes say why the run still ranks: a route the
+early stop ended is a failed drive, scored as it stood. Source runs that stopped
+routes under different rules -- or some with the rules and some without -- do
+not pool into a ranked run, and neither do source runs that would not rank on
+their own: driven through a camera rig other than paddock's (``camera_rig``,
+then in the pooled config), or with a setting the model's ``model.yaml``
+declares set to another value.
+
 The run id is ``<label>-<route-set hash>-<config hash>``. The route set alone
 cannot distinguish two settings of the same routes -- five constant-velocity
 speed bands, say -- and ``store.write_run`` overwrites a directory that already
@@ -77,16 +89,28 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, NamedTuple
 
+from paddock.adapters.benchmarks.bench2drive import early_stop, rig
 from paddock.adapters.benchmarks.bench2drive.harness import (
     DEFAULT_ROUTES_FILE,
     NotScored,
     crash_reason,
+    ended_early,
+    every_tick,
     parse_results,
 )
 from paddock.registry import Registry
 from paddock.results.store import MetricsRecord, RunRecord, config_hash, sequence_hash
 
-_ROUTE_DIR = re.compile(r"^(?P<route>\d+)-(?P<town>Town\w+?)-(?P<scenario>[A-Za-z]+)$")
+#: Bench2Drive's published protocol calls the model once per simulator tick --
+#: 20 Hz (docs/benchmarks/bench2drive.md). A model may declare a slower rate of its
+#: own (`planning_hz`), and a pool asked at it ranks. A rate an operator set in its
+#: place -- the host's PADDOCK_INFER_HZ, or, before runs recorded their rate,
+#: PADDOCK_INFER_HZ in `model_env` -- is a different protocol: kept, not ranked.
+PROTOCOL_HZ = 20.0
+
+# \w, not letters: MergerIntoSlowTrafficV2 and T_Junction are Bench2Drive-220 scenarios, and a folder this
+# misses is neither scored nor rejected -- it silently leaves the route set.
+_ROUTE_DIR = re.compile(r"^(?P<route>\d+)-(?P<town>Town\w+?)-(?P<scenario>\w+)$")
 _RUN_ID = re.compile(r"^(?P<stamp>\d{8}T\d{6})-[0-9a-f]{6}$")
 
 
@@ -156,6 +180,23 @@ def _read_json(path: Path) -> Any:
         return None
 
 
+def _driven_off_protocol(model_env: dict[str, Any]) -> float | None:
+    """The rate this run was driven at, when that is not the benchmark's protocol.
+
+    ``None`` for every run driven at 20 Hz, which is every run that does not say
+    otherwise -- before #106 the rate was only in the record when an operator put
+    it there. Read only for source runs that recorded no ``infer_hz``.
+    """
+    raw = (model_env or {}).get("PADDOCK_INFER_HZ")
+    if raw in (None, ""):
+        return None
+    try:
+        hz = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return None if hz <= 0 or hz == PROTOCOL_HZ else hz
+
+
 def _agreed(values: Sequence[Any]) -> Any:
     """One value if the source runs agree, the sorted list if they do not.
 
@@ -174,6 +215,15 @@ def _registered_waypoint_dt(model: str) -> float | None:
     except Exception:  # noqa: BLE001 -- a broken registry must not fail an ingest
         return None
     return getattr(spec, "waypoint_dt", None) if spec else None
+
+
+def _rate(value: Any) -> float | None:
+    """A recorded ``infer_hz`` as Hz, 0.0 for every tick however it is written; None if not a number."""
+    try:
+        hz = float(value)
+    except (TypeError, ValueError):
+        return None
+    return 0.0 if every_tick(hz) else hz
 
 
 def discover(runs_roots: Sequence[Path], routes: list[str] | None = None) -> Survey:
@@ -270,6 +320,7 @@ def ingest(
         ]
         if durations:
             metrics["duration_s"] = round(sum(durations) / len(durations), 1)
+        metrics.update(ended_early(attempt.results.parent))
         samples.append(
             {
                 "sample_id": f"bench2drive/{folder}",
@@ -317,12 +368,60 @@ def ingest(
         "model_env": {**recorded_env, **dict(model_env or {})},
         "source_config_read": f"{sum(1 for c in configs if c)}/{len(used)} source runs",
     }
+    # The model.yaml env each source run was made under (#99). Two values are
+    # two settings of the model, not one experiment. `_agreed` skips a missing
+    # value, so a run that recorded none (every run before #99) is counted
+    # rather than read as agreeing with the others.
+    declared = _agreed([c.get("declared_env") for c in configs])
+    undeclared = sum(1 for c in configs if "declared_env" not in c) if declared is not None else 0
+    if declared is not None:
+        config["declared_env"] = declared
     # Every route that was attempted and never scored, whether or not the
     # configured subset asked for it. Route 11715 is the case: excluded for every
     # model because CARLA crashes on it, so it is not in `routes` and not in
     # `n_failed` -- and without this line `results/` would not say it happened.
     if attempted:
         config["routes_never_scored"] = dict(sorted(attempted.items()))
+    # The early stop as the source runs recorded it; absent from the config of a
+    # pool none of whose runs had it, so such a pool keeps its run id.
+    stopped = [c.get("early_stop") for c in configs]
+    stop_rules = _agreed(stopped)
+    if stop_rules is not None:
+        config["early_stop"] = stop_rules
+    # The camera rig, in a run's config only when it is not paddock's, so a pool of
+    # default-rig runs keeps its run id; a run that predates the setting had paddock's.
+    rigs = _agreed([c.get("camera_rig") or rig.DEFAULT for c in configs])
+    other_rig = rigs is not None and rigs != rig.DEFAULT
+    if other_rig:
+        config["camera_rig"] = rigs
+    # How often the node was asked for a plan (`infer_hz`, #106), judged from the runs' own record
+    # and never from model.yaml as it is when the ingest runs. A run that recorded no rate was asked
+    # every tick (or, before #106, at a rate in `model_env`: `_driven_off_protocol`); one that kept
+    # no config at all is not known. The rate the model declared ranks; the host's PADDOCK_INFER_HZ
+    # in its place is recorded with the declared one beside it (`planning_hz`) and does not, nor do
+    # two rates in one pool. In the config only when some run was asked slower than every tick, or
+    # at the host's rate, so a pool asked every tick keeps its run id and one at 10 Hz never takes it.
+    kept = [c for c in configs if c]
+    unread = len(configs) - len(kept)
+    read = [(c, _rate(c.get("infer_hz", 0.0))) for c in kept]
+    not_a_rate = sorted({repr(c.get("infer_hz")) for c, hz in read if hz is None})
+    rates = _agreed([hz for _, hz in read if hz is not None])
+    host_set = [c for c, hz in read if c.get("planning_hz") is not None and hz != _rate(c["planning_hz"])]
+    if rates is not None and (rates != 0.0 or host_set):
+        config["infer_hz"] = rates
+    if host_set:
+        config["planning_hz"] = _agreed([c["planning_hz"] for c in host_set])
+    mixed_rates = isinstance(rates, list)
+    unknown_rate = unread if rates not in (None, 0.0) else 0
+    # A setting the model's model.yaml declares, set to another value: what keeps a
+    # `paddock run` from ranking (runner._env_override_reasons) keeps the pool from ranking.
+    # Judged against the declared_env the source runs recorded, which leaves tuning keys
+    # out; a key the model does not declare, and a pool that recorded none, are not judged.
+    overrides = (
+        sorted(k for k, v in config["model_env"].items() if k in declared and declared[k] != v)
+        if isinstance(declared, dict)
+        else []
+    )
     pooled_setups = sorted({s["group"] for s in samples if s["group"]})
     if setups:
         config["recording_setups"] = {label: sorted(group) for label, group in sorted(setups.items())}
@@ -340,6 +439,20 @@ def ingest(
             "one mean describes none of them, so this run does not rank -- the per-setup "
             "figures are in metrics.json by_group."
         )
+    if isinstance(declared, list):
+        note = (note + " " if note else "") + (
+            f"source runs were made under {len(declared)} different model.yaml envs "
+            "(config.declared_env); one mean describes none of them, so this run does not rank."
+        )
+    if undeclared:
+        note = (note + " " if note else "") + (
+            f"{undeclared} of {len(used)} source runs recorded no declared_env (made before #99), "
+            "so which model.yaml env their routes ran is not known and this run does not rank."
+        )
+    # The override is layered on top of what the runs recorded, so a key that is
+    # only in the override is an operator's assertion -- the note has to say so,
+    # or `results/` claims the source runs recorded a value they never held.
+    overridden = sorted(k for k in dict(model_env or {}) if k not in recorded_env)
     unverified = sum(1 for rec in used if not rec.get("model"))
     if unverified:
         note = (note + " " if note else "") + (
@@ -347,6 +460,84 @@ def ingest(
             f"attributed to {model} on the tree they were found in; config.model_env and the "
             f"rest of config are what {config['source_config_read']} recorded."
         )
+    if overridden:
+        keys = ", ".join(overridden)
+        was = "was" if len(overridden) == 1 else "were"
+        note = (note + " " if note else "") + (
+            f"{keys} {was} supplied by the ingest config and recorded by no source run, "
+            "so it is the operator's assertion about the campaign, not a reading from it."
+        )
+    off_protocol = None if any("infer_hz" in c for c in kept) else _driven_off_protocol(config["model_env"])
+    if off_protocol is not None:
+        note = (note + " " if note else "") + (
+            f"driven at {off_protocol:g} Hz, not the {PROTOCOL_HZ:g} Hz the benchmark's published "
+            "protocol calls the model at, so this run is kept and does not rank against runs that "
+            "were -- the paired comparison is docs/benchmarks/bench2drive-native-rate.md."
+        )
+    if overrides:
+        note = (note + " " if note else "") + (
+            f"source runs set {', '.join(overrides)}, which the model's model.yaml declares, to other "
+            "values (config.model_env), so this run does not rank, as a paddock run of them would not."
+        )
+    if not_a_rate:
+        note = (note + " " if note else "") + (
+            f"source runs recorded infer_hz {', '.join(not_a_rate)}, which is not a rate, so this run "
+            "does not rank."
+        )
+    if host_set:
+        note = (note + " " if note else "") + (
+            f"{len(host_set)} of {len(used)} source runs were asked for a plan at the rate the host's "
+            "PADDOCK_INFER_HZ set (config.infer_hz, 0 for every tick), where the model's model.yaml "
+            "declared config.planning_hz: an operator's rate, so this run does not rank."
+        )
+    if mixed_rates:
+        note = (note + " " if note else "") + (
+            f"source runs were asked for a plan at different rates (config.infer_hz {rates}, 0 for every "
+            "tick); one mean describes none of them, so this run does not rank."
+        )
+    if unknown_rate:
+        note = (note + " " if note else "") + (
+            f"{unread} of {len(used)} source runs kept no config, so the rate their routes were asked at "
+            "is not known, and this run does not rank."
+        )
+    if rates not in (None, 0.0) and not (mixed_rates or host_set or not_a_rate or unknown_rate):
+        note = (note + " " if note else "") + (
+            f"asked for a plan at {rates:g} Hz, the planning_hz the model's model.yaml declared for these "
+            "runs, the last plan followed in between."
+        )
+    if other_rig:
+        said = (
+            f"camera rigs differ between source runs ({', '.join(rigs)})"
+            if isinstance(rigs, list)
+            else f"driven through the {rigs!r} camera rig"
+        )
+        note = (note + " " if note else "") + (
+            f"{said}, not the {rig.DEFAULT!r} rig every model here is compared through, "
+            "so this run does not rank."
+        )
+    # A route the early stop ended is a failed drive, and the pool ranks with it;
+    # routes stopped under different rules, or some with the rules and some without,
+    # are as much one experiment as two setups.
+    without = sum(1 for rules in stopped if not rules) if stop_rules is not None else 0
+    mixed_stops = isinstance(stop_rules, list) or bool(without)
+    # Ending a route at its first collision is not Bench2Drive's score: the run would not rank.
+    at_collision = isinstance(stop_rules, dict) and bool(stop_rules.get("collision"))
+    if at_collision:
+        note = (note + " " if note else "") + early_stop.collision_reason() + "."
+    # A route someone ended by hand was scored at a moment a person chose: kept, named, not ranked.
+    by_hand = sum(1 for sample in samples if sample["metrics"].get(f"ended_{early_stop.MANUAL}"))
+    if by_hand:
+        note = (note + " " if note else "") + early_stop.manual_reason(by_hand) + "."
+    if stop_rules is not None:
+        mixed = isinstance(stop_rules, list)
+        # Counted over the routes pooled here: the runs recorded the site's routes with no expert drive.
+        said = early_stop.mixed_reason(stop_rules, wanted) if mixed else early_stop.remark(stop_rules, wanted)
+        note = (note + " " if note else "") + said + "."
+        if without:
+            note += (
+                f" {without} of {len(stopped)} source runs ran without it; their routes went to "
+                "Bench2Drive's own end, so this run does not rank."
+            )
     if missing:
         lost = ", ".join(f"{r} ({attempted.get(r, 'no attempt found')})" for r in missing)
         note = (note + " " if note else "") + f"routes expected but never scored: {lost}."
@@ -368,8 +559,31 @@ def ingest(
         status="complete" if not missing else "partial",
         # More than one recording setup is not one experiment: its mean is not a
         # measurement of anything, so it is kept and not ranked rather than
-        # published as a number nobody drove.
-        valid=not missing and len(pooled_setups) <= 1,
+        # published as a number nobody drove. A run driven at a rate its model does
+        # not declare is a different protocol, and ranking it beside runs at the
+        # model's own rate says they measure the same thing -- which is the claim
+        # the native-rate campaign exists to deny.
+        # Source runs under different, or unrecorded, model.yaml envs are the
+        # first case again: two settings of the model behind one mean.
+        # An early stop ranks; a pool of routes stopped under different rules does not.
+        # A declared setting run at another value, or another camera rig, is what keeps a
+        # single run from ranking, and so the pool of them. A pool asked at the rate its model
+        # declared ranks; at the host's rate, at two rates, or at a rate not known or not a
+        # number, it does not.
+        valid=not missing
+        and len(pooled_setups) <= 1
+        and off_protocol is None
+        and not isinstance(declared, list)
+        and not undeclared
+        and not overrides
+        and not other_rig
+        and not mixed_rates
+        and not host_set
+        and not unknown_rate
+        and not not_a_rate
+        and not mixed_stops
+        and not at_collision
+        and not by_hand,
         notes=note,
         # A relative tail only: results/ is tracked and must not name a machine's disk.
         ingested_from="; ".join("/".join(r.parts[-3:]) for r in roots),

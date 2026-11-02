@@ -35,6 +35,16 @@ runtime:
     # "small" (driving_supercombo, 61 MB) or "big" (big_driving_supercombo,
     # 766 MB, LFS-excluded by setup.sh unless PADDOCK_OPENPILOT_BIG=1).
     PADDOCK_OPENPILOT_MODEL: "small"
+    # openpilot's own longitudinal planner (policy.NATIVE_LONG) and, with it,
+    # the driver-resume nudge (PADDOCK_OPENPILOT_RESUME_S, 3 s unless set).
+    # The node adds extras.native_long, and the Bench2Drive client drives it
+    # in place of the shared tracker; no other benchmark reads it, so no other
+    # score moves. Declared, not tuning: it changes how the car drives (5
+    # Bench2Drive scenes went 57.2 -> 83.6 mean DS), so a site "0" makes a run
+    # valid: false. The nudge stands in for a driver pressing resume, which is
+    # why the README marks the cell P. Needs the onnx backend, which "auto"
+    # resolves to at the pinned sha; policy.load refuses tinygrad with it on.
+    PADDOCK_OPENPILOT_NATIVE_LONG: "1"
     # onnxruntime intra-op threads per policy node. The shipped graphs are
     # float16 and onnxruntime's CPU provider has no float16 kernels, so they run
     # ~45x slower there than the same graph widened to float32. If CPU
@@ -42,6 +52,9 @@ runtime:
     # (convert_float_to_float16 in reverse) and point PADDOCK_OPENPILOT_ONNX at
     # the result.
     PADDOCK_OPENPILOT_THREADS: "8"
+  # Site overrides of these change speed or memory, not the plan, so they
+  # leave a run valid; any other [models.openpilot.env] key makes it valid: false.
+  tuning_env: [PADDOCK_OPENPILOT_THREADS]
 
 capabilities:
   cameras: [CAM_OP_ROAD, CAM_OP_WIDE, CAM_FRONT]   # comma-three rig: road cam -> img, wide cam -> big_img; CAM_FRONT = fallback for single-camera sources (KITScenes, neuroNCAP)
@@ -67,16 +80,25 @@ capabilities:
 
   # -- model card (docs/models/comparison.md) --
   architecture: "supercombo -- one ONNX graph, run through tinygrad"
-  # Parameter count is not published by comma. size_gb is the file paddock
+  # Counted, not published: the pinned driving_supercombo.onnx holds 30,003,201
+  # fp16 weights (its initializers; model_checkpoint 6a7d09ad.../a27b3122...).
+  # comma's 0.11.2 notes give 26.6 M for this model generation, which this file
+  # does not match exactly. size_gb is the file paddock
   # actually loads: driving_supercombo.onnx, 60,881,999 bytes. The other one in
   # that directory, big_driving_supercombo.onnx, needs an external AMD GPU and
   # is 1,757,355,221 bytes -- which is only ever seen as a 135-byte git-lfs
   # pointer here, so read the `size` line in the pointer, not the file length.
+  params_m: 30.0
   size_gb: 0.061
   input_size: [512, 256]
   history_frames: 2
+  # Two frames of each camera at the 20 Hz supercombo runs at (policy.py MODEL_HZ).
+  # No ego history: it reads no speed or pose at all (needs_speed below).
+  camera_hz: 20.0
   output_kind: waypoints
   horizon_s: 10.0
+  # No plan_points_hz: its 33 points sit on ModelConstants.T_IDXS, 10 * (i/32)^2 s, 0.01 s
+  # apart near now and 0.6 s apart at 10 s.
   # The reason min_input_hz above is load-bearing rather than cautious: the
   # complete non-image input set is {desire_pulse, traffic_convention,
   # action_t}. There is no channel to tell supercombo how fast it is going, so
@@ -84,13 +106,17 @@ capabilities:
   # a parked car. Not fixable in an adapter.
   needs_speed: false
   trained_on:
-    # comma's internal fleet, ~6,670 h, not released.
+    # comma's internal fleet, not released. This model (openpilot 0.11, the "WMI"
+    # model) has its policy trained only inside a learned simulator, a world model
+    # itself trained on "2.5M minutes of driving video" from the fleet; its vision
+    # part on fleet segments (comma gives 500k and 2.2M in two posts). The 6,670 h
+    # once written here is the 2025 paper's experiment, not this model
+    # (blog.comma.ai/011release, /0112release; arXiv 2504.19077).
     #
-    # This used to say "no overlap with any paddock dataset". That stopped
-    # being safe when comma2k19 was added: comma2k19 is comma's own released
-    # fleet data, collected on the same two cars by the same device, and the
-    # training corpus is not published segment by segment, so whether these
-    # 2035 segments are inside it cannot be checked from outside comma. It is
+    # comma2k19 is comma's own released fleet data, of the same car models (RAV4,
+    # Civic), but recorded in 2018 on the single-camera EON, while this model
+    # trains on narrow + wide camera pairs. No comma source says whether it is in
+    # the training data, so the overlap cannot be checked from outside comma. It is
     # declared as one dataset rather than two because asserting the overlap
     # would be as unverified as denying it; what the overlap would mean for
     # reading that column is in docs/models/comparison.md.

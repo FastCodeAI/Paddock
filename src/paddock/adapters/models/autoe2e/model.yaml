@@ -1,0 +1,88 @@
+name: autoe2e
+description: Autoware Foundation AutoE2E v1.0 Reactive model (ResNet-50 + BEVFormer V2 T8, GRU control planner), KITScenes epoch 5
+repo: auto_e2e
+
+runtime:
+  # uv, Python 3.12, torch 2.7.1+cu128 (upstream pins torch 2.7.1; the cu128 build has the
+  # Blackwell kernels the PyPI cu126 wheel lacks). The model is imported from the upstream
+  # checkout at the release revision 40a75cf8; see setup.sh.
+  kind: uv
+  python: "3.12"
+  venv: "{repo}/.venv"
+  pythonpath: ["{repo}/Model"]
+  cwd: "{repo}"
+  env:
+    AUTOE2E_REPO: "{repo}"
+    # Hugging Face AutowareFoundation/auto_e2e v1.0, models/kitscenes-epoch-5/checkpoint.pt
+    # (sha256 120a2163...). setup.sh downloads and checks it.
+    AUTOE2E_CHECKPOINT: "{weights}/auto_e2e/models/kitscenes-epoch-5/checkpoint.pt"
+    # Projection reference frame height above the ground (KITScenes top-LiDAR frame: 2.1 m).
+    AUTOE2E_REF_HEIGHT_M: "2.1"
+    # Route raster from the benchmark's route: obs.route_xy, or obs.route_trace matched to its
+    # map ("0": no route, though a map is still drawn).
+    AUTOE2E_ROUTE: "1"
+    # Forward-pass cadence in seconds (0 = every call), the plan held in the node in between.
+    # Bench2Drive needs none: it asks at `planning_hz` below (docs/models/autoe2e.md, "On Bench2Drive").
+    AUTOE2E_REPLAN_S: "0"
+    # The ego history fed: "real" (as measured, upstream's input), "steady" (straight driving at the
+    # current speed: an extrapolated past), "no_turn" (yaw rate and curvature zeroed) or "steady_speed"
+    # (speed and acceleration steady at the current speed, the turning as measured). The last three
+    # are closed-loop tests of what the measured past does to the plan; see docs/models/autoe2e.md.
+    AUTOE2E_EGO_HISTORY: "real"
+    OMP_NUM_THREADS: "2"
+  # Site overrides of these change speed, memory or logging, not the plan, so they
+  # leave a run valid; any other [models.autoe2e.env] key makes it valid: false.
+  # AUTOE2E_RECORD_DIR only names where a per-call log is written, after the plan
+  # is computed (policy.py, _write_record); nothing reads it back.
+  tuning_env: [AUTOE2E_RECORD_DIR]
+
+capabilities:
+  # Slot order front, front-left, front-right, rear-left, rear, rear-right
+  # (KITScenes base_front_center + ring; nuPlan F0, L0, R0, L2, B0, R2).
+  cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT, CAM_BACK_LEFT, CAM_BACK, CAM_BACK_RIGHT]
+  vram_gb: 4
+  startup_timeout_s: 900
+  waypoint_dt: 0.5
+  min_input_hz: 0.0
+  # Ego history is 64 rows at 10 Hz (6.4 s); camera history 8 frames at 0.5 s (3.5 s).
+  native_input_hz: 10.0
+  # It plans 64 control steps at 10 Hz, so a 20 Hz simulator asks it every 0.1 s and the
+  # last plan is followed in between (Bench2Drive's client; HUGSIM's 4 Hz is slower anyway).
+  planning_hz: 10.0
+  history_s: 6.5
+  architecture: "ResNet-50 + BEVFormer V2 T8 (300x200 BEV, 8 frames at 0.5 s), deformable map/route fusion, GRU planner over (accel, curvature)"
+  params_m: 79.9
+  size_gb: 0.33
+  precision: bf16
+  input_size: [512, 512]
+  history_frames: 8
+  # Camera frames 0.5 s apart (now and -3.5 .. -0.5 s); 64 ego rows of speed,
+  # acceleration, yaw rate and curvature 0.1 s apart (policy.py).
+  camera_hz: 2.0
+  ego_history_steps: 64
+  ego_history_hz: 10.0
+  output_kind: controls
+  horizon_s: 6.4
+  plan_points_hz: 10.0  # 64 (acceleration, curvature) steps 0.1 s apart
+  stochastic: false
+  needs_speed: true
+  trained_on:
+    # Four layers, each read from the release (model card c553a2e1, the checkpoints'
+    # stored config) and BEVFormer's own config and log:
+    # 1. BEVFormer's ResNet-50 from an FCOS checkpoint trained on COCO.
+    # 2. BEVFormer V2 R50 T8 on nuScenes train only (24 epochs, 3D boxes). That
+    #    camera encoder stays frozen in both later stages, so it is these weights.
+    #    No nuScenes val scene, and so none of neuroNCAP's 14, is in it; see
+    #    comparison.md, AutoE2E x nuscenes.
+    # 3. nuPlan v1.1 train sensor logs (1,085 logs), trajectory and route. None of
+    #    NAVSIM navtest's 136 logs is among them; 44 of nuPlan mini's 64 are.
+    # 4. KITScenes train (404 scenes); none of the scored val/overlap scenes.
+    - dataset: coco
+    - dataset: nuscenes
+      split: train
+    - dataset: nuplan
+      split: train
+    - dataset: kitscenes
+      split: train
+
+benchmarks: [alpasim, bench2drive, comma2k19, hugsim, kitscenes, navsim, neuroncap, nuscenes]

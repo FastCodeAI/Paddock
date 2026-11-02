@@ -26,8 +26,10 @@ scored keyframe's ego frame; heading of the planned footprint follows the plan
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
+import os
 from collections.abc import Container, Iterator
 from pathlib import Path
 
@@ -36,13 +38,24 @@ import numpy as np
 from paddock.adapters.benchmarks.nuscenes import history as H
 from paddock.adapters.benchmarks.nuscenes import loader as L
 from paddock.benchmark import OpenLoopBenchmark, Sample
+from paddock.metrics import pdm
 from paddock.policy.protocol import Command, Observation, Trajectory
 
-HISTORY_KEYFRAMES = 4  # 2 s of real past before the scored keyframe
+HISTORY_KEYFRAMES = 4  # 2 s of real past before the scored keyframe, unless the model asks for more
 STEP_S = L.KEYFRAME_DT_S
 N_STEPS = L.FUTURE_STEPS
 HORIZONS = {"1s": 2, "2s": 4, "3s": 6}  # step index (1-based) of each horizon
 VAL_SCENES = Path(__file__).with_name("val_scenes.json")
+#: A comma list of sample ids (`nuscenes/val/<scene>/<index>`) to score, and no
+#: others. Open-loop runs take no scene filter, and the regression gate's nuScenes
+#: subset is spread over every val scene (`tools/gate_subsets.py`).
+ENV_SAMPLES = "PADDOCK_NUSCENES_SAMPLES"
+
+
+def sample_filter() -> set[str] | None:
+    """The ids `PADDOCK_NUSCENES_SAMPLES` names, or None to score every sample."""
+    raw = os.environ.get(ENV_SAMPLES, "").strip()
+    return {s.strip() for s in raw.split(",") if s.strip()} or None
 
 
 def plan_on_grid(prediction: Trajectory, n_steps: int = N_STEPS, step_s: float = STEP_S) -> np.ndarray:
@@ -113,20 +126,64 @@ class NuScenesBenchmark(OpenLoopBenchmark):
         super().__init__(spec, cfg)
         self._index_cache = None
         self._camera_history_cache = None
+        #: Past keyframes per sample, set per model by `model_run_config`.
+        self._history_keyframes = HISTORY_KEYFRAMES
         #: sample_id -> future boxes per step. `Sample.ground_truth` stays the
         #: (6, 3) future-pose array the runner records for every open-loop
         #: benchmark; the boxes are large and only the scorer needs them. Held
         #: per instance, not on the class, so two benchmarks never share state.
         self._boxes: dict[str, list] = {}
 
+    def history_keyframes(self, model) -> int:
+        """Past keyframes fed before the scored one: 2 s, or the model's declared `history_s`
+        when it asks for more -- NAVSIM's rule (navsim/harness.py `history_s`).
+
+        AutoE2E reads 6.4 s of ego motion and 3.5 s of six-view camera history; with 2 s,
+        44 of its 64 ego-history rows were zero on every sample, though 61.5% of scored
+        keyframes have the full 6.4 s recorded. With `camera_history` set the keyframes are
+        not the history at all (the sweeps are), so the window stays where it was. Every other
+        model paired with nuScenes declares 2 s or less, except OpenPilot (4.8 s), which runs
+        only with `camera_history` (`input_problems`), so no other model's input changes.
+        """
+        if self.setting("camera_history"):
+            return HISTORY_KEYFRAMES
+        wanted = math.ceil(float(getattr(model, "history_s", 0.0) or 0.0) / STEP_S - 1e-9)
+        return max(HISTORY_KEYFRAMES, wanted)
+
+    def model_run_config(self, model) -> dict:
+        """The keyframe window this model is fed, recorded and hashed when it is not the default.
+
+        Also sets the window `samples()` builds with. The runner calls this for each model
+        before that model's `samples()` (runner `_run_open_loop`: `_measurement_config`,
+        then `samples`), and `samples()` is not told the model, so this is where it learns.
+        """
+        n = self.history_keyframes(model)
+        self._history_keyframes = n
+        return {} if n == HISTORY_KEYFRAMES else {"history_seconds": n * STEP_S}
+
     def run_config(self) -> dict:
-        return {
+        config = {
             "camera_history": self.setting("camera_history") or "keyframes",
             "history_seconds": float(self.setting("history_seconds", 5.0))
             if self.setting("camera_history")
             else HISTORY_KEYFRAMES * STEP_S,
             "scoring_hz": 2.0,
         }
+        if wanted := sample_filter():
+            digest = hashlib.sha256(",".join(sorted(wanted)).encode()).hexdigest()[:16]
+            config["sample_filter"] = f"{len(wanted)} samples, sha256 {digest}"
+        return config
+
+    def invalid_reasons(self) -> list[str]:
+        """A run on a sample list is a subset, whether or not `--limit` came with it.
+
+        Without this, a run on two hand-picked samples was stored `valid: true`
+        and ranked beside full runs: only `--limit` marked a subset.
+        """
+        reasons = list(super().invalid_reasons())
+        if wanted := sample_filter():
+            reasons.append(f"{len(wanted)} samples named by {ENV_SAMPLES}; a subset, not a nuScenes score")
+        return reasons
 
     # ---- readiness ------------------------------------------------------
 
@@ -203,9 +260,18 @@ class NuScenesBenchmark(OpenLoopBenchmark):
     # ---- samples --------------------------------------------------------
 
     def _cache_path(self) -> Path:
+        """`index_cache` names the file (`*.pkl`) or a directory checkouts share.
+
+        In a directory the file is named by its dataset key (`L.cache_file`), so
+        one directory can serve every worktree and every dataset root.
+        """
         raw = self.setting("index_cache")
         if raw:
-            return Path(raw).expanduser()
+            path = Path(raw).expanduser()
+            if path.suffix != ".pkl":
+                scenes = json.loads(VAL_SCENES.read_text())["val"]
+                return L.cache_file(path, self.dataset.resolve(), self.version, scenes)
+            return path
         return Path(__file__).resolve().parents[5] / ".cache" / f"nuscenes_{self.version}_val_index.pkl"
 
     def _index(self):
@@ -238,10 +304,17 @@ class NuScenesBenchmark(OpenLoopBenchmark):
             raise ValueError(f"nuscenes open-loop scores the official val split only, not {split!r}")
         emitted = 0
         skipped = 0
+        wanted = sample_filter()
+        seen: set[str] = set()
         for frames in self._index():
             for i in range(len(frames)):
                 if i + N_STEPS >= len(frames):
                     break  # no full 3 s future: the standard drops these too
+                if wanted is not None:
+                    sid = f"nuscenes/val/{frames[i].scene}/{frames[i].index_in_scene}"
+                    if sid not in wanted:
+                        continue
+                    seen.add(sid)
                 # The 3 s horizon assumes six *consecutive* keyframes. If a
                 # keyframe was dropped (e.g. missing LIDAR_TOP), the window would
                 # silently span more than 3 s -- skip it rather than mis-score.
@@ -267,6 +340,14 @@ class NuScenesBenchmark(OpenLoopBenchmark):
                 f"(damaged metadata); scored {emitted}",
                 flush=True,
             )
+        if wanted is not None and (missing := wanted - seen):
+            # Said, not raised: by now the run has scored the rest, and the gate
+            # pairs on shared ids, so a short run reads as unpaired samples.
+            print(
+                f"  nuscenes: {len(missing)} of the {len(wanted)} samples in {ENV_SAMPLES} are not "
+                f"scorable val keyframes (e.g. {sorted(missing)[0]})",
+                flush=True,
+            )
 
     def _sample(self, frames: list, i: int) -> Sample:
         cur = frames[i]
@@ -281,7 +362,7 @@ class NuScenesBenchmark(OpenLoopBenchmark):
             ]
         )
         cmd, maneuver, distance = L.command_from_future(future_xy)
-        history = frames[max(0, i - HISTORY_KEYFRAMES) : i + 1]
+        history = frames[max(0, i - getattr(self, "_history_keyframes", HISTORY_KEYFRAMES)) : i + 1]
         if self.setting("camera_history") == "CAM_FRONT":
             if self._camera_history_cache is None:
                 self._camera_history_cache = H.load(
@@ -339,7 +420,12 @@ class NuScenesBenchmark(OpenLoopBenchmark):
         # boxes are genuinely absent (scored outside the process that built the
         # index) score_plan omits the collision metrics rather than zeroing them.
         boxes = self._boxes.get(sample.sample_id)
-        return score_plan(plan_on_grid(prediction), future_xy, boxes)
+        grid = plan_on_grid(prediction)
+        out = score_plan(grid, future_xy, boxes)
+        # The two PDM terms a plan and its recorded future can fill, read by the
+        # gate beside NC (`col_avg`) in the rows NAVSIM's terms use.
+        out.update(pdm.plan_terms(grid, future_xy, prediction.xy, prediction.dt))
+        return out
 
 
 BENCHMARK = NuScenesBenchmark

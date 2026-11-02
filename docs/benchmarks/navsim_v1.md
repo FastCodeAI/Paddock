@@ -224,6 +224,7 @@ completing run, and the replay read both directories):
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
 | openpilot, 10 Hz | **0.807** | 0.969 | 0.913 | 0.719 | 0.936 | 1.000 | 0.948 | 0.747 | `20260914T181009-dbcef4` | replay of `navsim/openpilot/20260911T161513-3a4c90`, 13 min |
 | alpamayo15, 10 Hz | **0.753** | 0.957 | 0.856 | 0.690 | 0.896 | 0.991 | 0.927 | 0.691 | `20260914T175447-89a9ca` | replay of `navsim/alpamayo15/20260912T040211-a9562c`, 15 min |
+| autoe2e, 10 Hz | **0.538** | 0.824 | 0.777 | 0.514 | 0.700 | 1.000 | 0.859 | 0.500 | `20261027T185517-5c7949` | replay of `navsim/autoe2e/20261009T055926-3ceb18`, 95 min with the box loaded |
 
 The 10 Hz history changes what the model sees, not what is scored: the same
 navtest scenes, the same v1 cache. For Alpamayo it is worth +0.077 PDMS over
@@ -247,3 +248,53 @@ Drive-JEPA's paper reports 93.3 PDMS. That figure is its v1-trained checkpoint
 through its own scorer-aware agent; paddock scores the released v2 checkpoint
 through the proxy, so the two are not the same measurement and 0.892 is the
 comparable one here.
+
+## Support-matrix results
+
+The per-metric results behind this benchmark's column in the
+[README's support matrix](../../README.md#support-matrix), and the notes on its
+cells. Moved here from the README unchanged except for links; the symbols are
+the README's former footnote marks, and each note below starts with the mark it
+explains. Marks about a model rather than this benchmark (⊛ ⊕ ∗ ◊ ◇ ✦ ✧) are
+explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
+
+### NAVSIM v1
+
+The same 12,146 navtest scenarios, scored by the v1.1 devkit as PDMS =
+NC × DAC × (5·TTC + 5·EP + 2·comfort) / 12 (`docs/benchmarks/navsim_v1.md`).
+Driving direction compliance is recorded with weight zero. Full navtest,
+12,146 scenarios each, zero failures. Drive-JEPA and VisionPilot are fresh
+proxy runs; the Alpamayo, OpenPilot and AutoE2E rows replay the plans their v2 runs
+recorded (the 10 Hz nuPlan history and, for Alpamayo, the 2 Hz OpenScene run
+too), so each scores the very plans behind the v2 figure above. The baseline
+reproduces the NAVSIM
+paper's constant-velocity row (20.6) term by term, and the recorded human
+future scores 0.946 against the paper's 94.8 (privileged; stored `valid: false`).
+
+| Model | PDMS ↑ | No at-fault collisions ↑ | Drivable area ↑ | Ego progress ↑ | TTC within bound ↑ | Comfort ↑ | Driving direction (weight 0) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| OpenPilot, 10 Hz nuPlan history ‡ | 0.807 | 0.969 | 0.913 | 0.719 | 0.936 | 1.000 | 0.948 |
+| Alpamayo 1.5, 10 Hz nuPlan history ‡ | 0.753 | 0.957 | 0.856 | 0.690 | 0.896 | 0.991 | 0.927 |
+| Alpamayo 1.5, 2 Hz OpenScene | 0.676 | 0.941 | 0.788 | 0.604 | 0.878 | 0.979 | 0.885 |
+| Drive-JEPA | **0.892** | 0.984 | 0.985 | 0.887 | 0.881 | 0.999 | 0.988 |
+| VisionPilot | 0.488 | 0.771 | 0.818 | 0.451 | 0.617 | 0.996 | 0.920 |
+| METEOR ◊ | 0.366 | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | 0.800 |
+| Qwen-Drive 1.0, 10 Hz nuPlan history ‡ | 0.876 | 0.982 | 0.964 | 0.817 | 0.941 | 1.000 | 0.987 |
+| AutoE2E v1.0, 10 Hz nuPlan history ‡ | 0.538 | 0.824 | 0.777 | 0.514 | 0.700 | 1.000 | 0.859 |
+| Baseline (Constant Velocity) | 0.207 | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 |
+
+**Qwen-Drive reproduces its own published row here, term by term.** Its
+technical report gives the `planner-sft`-without-reasoning navtest row — the
+exact configuration paddock runs — and every term agrees:
+
+| | NC | DAC | EP | TTC | Comfort | PDMS |
+|---|---:|---:|---:|---:|---:|---:|
+| vendor, SFT w/o reasoning | 98.2 | 96.4 | 82.0 | 94.4 | 100.0 | 87.8 |
+| paddock | 98.19 | 96.42 | 81.73 | 94.06 | 99.99 | **87.58** |
+
+Every term is within 0.34 and five of the six within 0.27. This is the only row
+in the table with a vendor figure to check against, and matching the *terms*
+rather than just the composite is evidence about the whole path — the camera
+mapping, the 10 Hz history, the 8-pose conversion and the v1 scorer — not only
+about the model. Read it as an in-distribution result all the same: Qwen-Drive
+declares `navtrain` (see ✦).
