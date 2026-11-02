@@ -60,8 +60,8 @@ content is never read.
   overlap conditioned on the previous output (the framework's long-video mode); resumes from
   disk; `COSMOS_VIS_M=50` blanks the depth and map controls beyond that range.
   `COSMOS_STEPS=12 COSMOS_CHUNK=61 COSMOS_NCOND=8 COSMOS_VIS_M=50 python batch/cosmos_batch.py <capture> <cam> <out_dir> <spec.json> [t0 t1]`
-- `run_convert.sh` — the runner: waits for each capture's `.upload_done`, renders wsm, then
-  converts two cameras at a time, one per GPU.
+- `run_convert.sh` — the runner: waits for each capture's `.upload_done` (see "Markers"),
+  renders wsm, then converts two cameras at a time, one per GPU.
 
 Both batch scripts import their sibling service module rather than reimplementing it;
 `COSMOS3_SERVICES` overrides where that module is found.
@@ -96,12 +96,27 @@ scene. `negative_prompt.json` is the framework's generic negative.
 - `build_openloop_page.py`, `finish_openloop.sh` — the results page and the one-shot finish.
 - `pod_replay_queue.sh`, `local_replay_queue.sh` — the replay queues (models whose node needs
   more VRAM than the workstation has run on the pod).
-- `build_model_envs.sh` — builds the paddock, alpamayo15 and qwendrive envs on a fresh pod.
+- `build_model_envs.sh` — builds the paddock, alpamayo15 and qwendrive envs on a fresh pod;
+  qwendrive's from `qwen_freeze.txt`.
 - `paddock.toml.example` — the pod's site config, with every path as a placeholder.
 
 `finish_openloop.sh` no longer restarts the site server: the original matched the process by
 pattern, which on a shared box can kill a colleague's process
 (see [docs/reviewing.md](../../../docs/reviewing.md) §8). Restart it yourself.
+
+## Markers
+
+The queue scripts wait for steps that were done by hand during the study (copying captures to
+the pod, cloning repos), so nothing here writes these markers. Write each one yourself when its
+step is done. Every wait gives up after `WAIT_S` seconds (default 6 h) and says what it was
+waiting for.
+
+| Marker | Waited for by | Write it when |
+|---|---|---|
+| `$POD_ROOT/captures/<m>/.upload_done` | `run_convert.sh`, `pod_replay_queue.sh` | `captures/<m>/` is fully copied to the pod: `touch` it there |
+| `$POD_ROOT/repos/.synced` | `build_model_envs.sh` | `alpamayo1.5` is cloned in `$POD_ROOT/repos/` and the paddock checkout is at `$POD_ROOT/paddock`: `touch` it |
+| `LOCAL_BASELINES_DONE` in `$OPENLOOP_DIR/plans/local_baselines.log` | `local_replay_queue.sh` | the local CARLA-frame replays (`openloop_replay.py` with no `--frames`) are done: `echo LOCAL_BASELINES_DONE >>` that file |
+| `UPLOAD_DONE vp` in `$OPENLOOP_DIR/run_capture_vp.log` | `local_replay_queue.sh`, only while `plans/vp_carla.jsonl` is missing | VisionPilot's capture in `captures/vp/` is complete: `echo "UPLOAD_DONE vp" >>` that file |
 
 ## The capture step lives in paddock
 

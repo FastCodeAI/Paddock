@@ -11,6 +11,7 @@
 #   HF_HOME         Hugging Face cache                                     (default: $POD_ROOT/hf)
 #   HF_TOKEN_FILE   file holding the HF token -- never a token in a script (default: ~/.cache/huggingface/token)
 #   STEPS CHUNK NCOND VIS ORDER WSM_GPU                                    (defaults below = the 17-Sep run)
+#   WAIT_S          seconds to wait for each capture's .upload_done        (default: 21600)
 # Usage: POD_ROOT=/pod/scratch COSMOS_PY=... FLASHDREAMS_PY=... run_convert.sh
 set -u
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd); ROOT_DIR=$(dirname "$HERE")
@@ -32,6 +33,18 @@ mkdir -p "$POD_ROOT/logs" "$POD_ROOT/converted"
 export PATH=$(dirname "$FLASHDREAMS_PY"):$PATH HF_HOME=${HF_HOME:-$POD_ROOT/hf}
 HF_TOKEN_FILE=${HF_TOKEN_FILE:-$HOME/.cache/huggingface/token}
 [ -r "$HF_TOKEN_FILE" ] && export HF_TOKEN=$(cat "$HF_TOKEN_FILE")
+# A wait gives up after WAIT_S seconds (default 6 h) and says what it was waiting for: the markers are
+# written by hand (README, "Markers"), and a forgotten one must not sleep forever.
+wait_for() {  # <what> <test command...>
+  local what=$1 waited=0; shift
+  until "$@"; do
+    [ "$waited" -lt "${WAIT_S:-21600}" ] || { echo "gave up after ${waited} s waiting for $what" >&2; exit 1; }
+    sleep 30; waited=$((waited + 30))
+  done
+}
+capture_ready() {  # model
+  [ -s "$POD_ROOT/captures/$1/ticks.jsonl" ] && [ "$(wc -l < "$POD_ROOT/captures/$1/ticks.jsonl")" -ge "${EXPECT[$1]}" ] && [ -f "$POD_ROOT/captures/$1/.upload_done" ]
+}
 convert() {  # model cam gpu
   local m=$1 c=$2 g=$3; local out=$POD_ROOT/converted/$m/$c
   [ -f "$out/conversion.json" ] && { echo "== $m/$c already converted"; return; }
@@ -41,7 +54,7 @@ convert() {  # model cam gpu
   echo "== $m/$c exit $? $(date -u +%T): $(grep COSMOS_BATCH_DONE "$POD_ROOT/logs/convert-$m-$c.log" | tail -n 1)"
 }
 for m in $ORDER; do
-  until [ -s "$POD_ROOT/captures/$m/ticks.jsonl" ] && [ "$(wc -l < "$POD_ROOT/captures/$m/ticks.jsonl")" -ge "${EXPECT[$m]}" ] && [ -f "$POD_ROOT/captures/$m/.upload_done" ]; do sleep 30; done
+  wait_for "captures/$m: ${EXPECT[$m]} ticks and .upload_done" capture_ready "$m"
   echo "== $m capture ready $(date -u +%T)"
   CUDA_VISIBLE_DEVICES=${WSM_GPU:-1} "$FLASHDREAMS_PY" "$ROOT_DIR/batch/wsm_batch.py" "$POD_ROOT/captures/$m" > "$POD_ROOT/logs/wsm-$m.log" 2>&1; echo "== $m wsm: $(grep WSM_BATCH_DONE "$POD_ROOT/logs/wsm-$m.log")"
   cams=(${CAMS[$m]}); i=0
