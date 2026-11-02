@@ -1,0 +1,24 @@
+# The conversion pod's site config for the open-loop replays (17 Sep 2026 run).
+#
+# Copy to paddock.toml on the pod and replace every /path/to with that box's real layout; the
+# pod is rented and its scratch root changes between rebuilds, which is why nothing here is
+# a real path. `pod_replay_queue.sh` points PADDOCK_CONFIG at the copy.
+site = "CHANGEME-pod-label"
+[roots]
+repos   = "/path/to/pod/repos"
+runs    = "/path/to/pod/runs"
+weights = "/path/to/pod/weights"
+[gpu]
+budget_gb = 90
+serialize = false
+# Both sections are placeholders: the registry requires them, these replays read neither.
+[datasets.kitscenes]
+tiers = ["/path/to/pod/kitscenes/data"]
+[datasets.navsim]
+path = "/path/to/pod/navsim/dataset"
+exp  = "/path/to/pod/navsim/exp"
+[models.qwendrive]
+venv = "/path/to/pod/envs/qwen-drive"
+[models.qwendrive.env]
+OMP_NUM_THREADS = "4"
+MKL_NUM_THREADS = "4"

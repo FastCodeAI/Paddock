@@ -1,0 +1,62 @@
+{
+  "subjects": [
+    {
+      "description": "A red compact sedan travelling ahead of the recording vehicle in the same lane, about 15 metres ahead, moving steadily in the same direction",
+      "appearance_details": "Glossy red paint, standard alloy wheels, tinted rear window, clean modern body; realistic reflections of the overcast sky on the roof and trunk",
+      "relationship": "Lead vehicle directly ahead of the recording vehicle",
+      "location": "Centre of the frame, slightly below the horizon, in the ego lane",
+      "relative_size": "Medium; occupies roughly a tenth of the frame width"
+    },
+    {
+      "description": "A few other cars parked and driving along the street further ahead and in the adjacent lanes",
+      "appearance_details": "Ordinary modern sedans, SUVs and a delivery truck in muted real-world colours with realistic paint, glass and tyres",
+      "relationship": "Background traffic that keeps its exact positions and sizes",
+      "location": "Ahead in the road and along the kerb",
+      "relative_size": "Small to medium"
+    }
+  ],
+  "background_setting": "A real urban avenue on an overcast day. Tall modern office towers and brick low-rise buildings with shopfronts line the left side; a wide sidewalk with a row of large leafy trees lines the right side. A multi-lane asphalt road with a double yellow centre line, white dashed lane markings and a solid white edge line; concrete kerbs; street lamps and road signs along the sidewalk.",
+  "lighting": {
+    "conditions": "Overcast daylight",
+    "direction": "Diffuse, omnidirectional ambient light from a uniformly grey sky",
+    "shadows": "Minimal, soft shadows beneath vehicles and trees",
+    "color_temperature": "Neutral to slightly cool"
+  },
+  "aesthetics": {
+    "composition": "Symmetrical dashcam framing with the road converging to the centre, the lead car centred, buildings left and trees right",
+    "color_palette": "Grey asphalt, white and yellow road markings, red lead car, muted building facades, green foliage, pale grey sky",
+    "mood": "Calm, ordinary daytime city driving",
+    "visual_quality": "Sharp, high-detail, natural photographic realism with no cartoon or rendered look"
+  },
+  "cinematography": {
+    "camera_motion": "Forward-moving dashcam at steady speed",
+    "framing": "Wide shot",
+    "camera_angle": "Eye-level, mounted at windshield height",
+    "depth_of_field": "Deep",
+    "focus": "Sharp focus throughout"
+  },
+  "style_medium": "Live-action video",
+  "artistic_style": "Documentary dashcam realism",
+  "context": "Dashcam footage from a car driving at a steady speed along a city avenue behind a red sedan. Preserve the camera viewpoint, the road geometry, the lane markings, and the position, size and motion of every vehicle exactly; do not add or remove vehicles, signs, poles or obstacles.",
+  "actions": [
+    {
+      "time": "0:00-0:04",
+      "description": "The recording vehicle drives forward at a constant speed while the red sedan ahead slowly pulls away; buildings on the left and trees on the right pass by smoothly."
+    }
+  ],
+  "text_and_signage_elements": [],
+  "segments": [
+    {
+      "segment_index": 0,
+      "time_range": "0:00-0:04",
+      "description": "Continuous forward dashcam view following a red sedan along an overcast city avenue with office towers on the left and tree-lined sidewalk on the right."
+    }
+  ],
+  "transitions": [],
+  "temporal_caption": "From 0:00 to 0:04, the dashcam moves steadily forward along a multi-lane city avenue on an overcast day, following a red sedan that gradually gains distance, with tall buildings on the left and a row of trees on the right.",
+  "audio_description": "Ambient city traffic, tyre noise on asphalt, a low engine hum.",
+  "resolution": { "W": 1280, "H": 720 },
+  "aspect_ratio": "16,9",
+  "duration": "4s",
+  "fps": 30
+}

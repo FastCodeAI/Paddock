@@ -1,0 +1,37 @@
+{
+ "name": "cosmos_nohood",
+ "model_mode": "video2video",
+ "resolution": "480",
+ "aspect_ratio": "16,9",
+ "num_frames": 9,
+ "fps": 20,
+ "shift": 10.0,
+ "num_steps": 50,
+ "seed": 2026,
+ "num_video_frames_per_chunk": 9,
+ "num_conditional_frames": 8,
+ "num_first_chunk_conditional_frames": 0,
+ "share_vision_temporal_positions": true,
+ "negative_metadata_mode": "none",
+ "negative_prompt_keep_metadata": false,
+ "guidance": 3.0,
+ "control_guidance": 1.5,
+ "negative_prompt_file": "prompts/negative_prompt_nohood.json",
+ "prompt_path": "prompts/prompt_rain_nohood.json",
+ "vision_path": "controls/rgb.mp4",
+ "edge": {
+  "preset_edge_threshold": "medium",
+  "weight": 0.5
+ },
+ "depth": {
+  "control_path": "controls/depth.mp4",
+  "weight": 0.5
+ },
+ "wsm": {
+  "control_path": "controls/wsm.mp4",
+  "weight": 1.0
+ },
+ "emphasize_control_in_prompt": false,
+ "show_input": false,
+ "show_control_condition": false
+}

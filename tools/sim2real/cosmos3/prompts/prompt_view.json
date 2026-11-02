@@ -1,0 +1,20 @@
+{
+  "subjects": [
+    {"description": "Cars and a delivery truck parked and driving along a city street, kept at their exact positions and sizes",
+     "appearance_details": "Ordinary modern sedans, SUVs and vans in realistic paint, glass and tyres; a glossy red compact sedan among them",
+     "relationship": "Traffic around the recording vehicle", "location": "On the road and along the kerb", "relative_size": "Small to medium"}
+  ],
+  "background_setting": "A real urban avenue on an overcast day. Tall modern office towers and brick low-rise buildings with shopfronts on one side; a wide sidewalk with a row of large leafy trees on the other. A multi-lane asphalt road with a double yellow centre line, white dashed lane markings and a solid white edge line; concrete kerbs; street lamps and road signs along the sidewalk.",
+  "lighting": {"conditions": "Overcast daylight", "direction": "Diffuse ambient light from a uniformly grey sky", "shadows": "Minimal, soft shadows beneath vehicles and trees", "color_temperature": "Neutral to slightly cool"},
+  "aesthetics": {"composition": "Fixed camera rigidly mounted on a moving car; the road, kerb and buildings sweep past according to the camera's heading", "color_palette": "Grey asphalt, white and yellow road markings, muted building facades, green foliage, pale grey sky", "mood": "Calm, ordinary daytime city driving", "visual_quality": "Sharp, high-detail, natural photographic realism with no cartoon or rendered look"},
+  "cinematography": {"camera_motion": "Rigidly attached to a car moving forward at a steady speed", "framing": "Wide shot", "camera_angle": "Eye-level, mounted on the car body", "depth_of_field": "Deep", "focus": "Sharp focus throughout"},
+  "style_medium": "Live-action video", "artistic_style": "Documentary vehicle-camera realism",
+  "context": "Footage from a camera rigidly mounted on a car driving at a steady speed along a city avenue. Preserve the camera viewpoint and heading, the road geometry, the lane markings, and the position, size and motion of every vehicle exactly; do not add or remove vehicles, signs, poles or obstacles.",
+  "actions": [{"time": "0:00-0:04", "description": "The car drives forward at a constant speed; the street scene passes by smoothly in the direction the camera faces."}],
+  "text_and_signage_elements": [],
+  "segments": [{"segment_index": 0, "time_range": "0:00-0:04", "description": "Continuous vehicle-camera view along an overcast city avenue with office towers and a tree-lined sidewalk."}],
+  "transitions": [],
+  "temporal_caption": "From 0:00 to 0:04, a car-mounted camera moves steadily along a multi-lane city avenue on an overcast day, with tall buildings and a row of trees passing by.",
+  "audio_description": "Ambient city traffic, tyre noise on asphalt, a low engine hum.",
+  "resolution": {"W": 1280, "H": 720}, "aspect_ratio": "16,9", "duration": "4s", "fps": 30
+}
