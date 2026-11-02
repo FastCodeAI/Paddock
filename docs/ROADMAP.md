@@ -246,7 +246,8 @@ against ~26 h sequential.
 
 **M8 — comma2k19.** `paddock run --bench comma2k19 --model <m>` scores the full
 released dataset: 2035 one-minute segments of 20 Hz California highway driving,
-10,165 samples, six models on the board. It is the first benchmark here whose
+10,165 samples, seven models and constant velocity on the board. It is the
+first benchmark here whose
 sensor rate is high enough for openpilot to perceive its own motion, which is
 what makes an openpilot open-loop number possible at all — NAVSIM's 2 Hz is
 exactly the pairing `min_input_hz` refuses.
@@ -260,10 +261,11 @@ exactly the pairing `min_input_hz` refuses.
 | autoe2e | 6 s | 2.016 | the road camera alone; the five views it lacks left out |
 | visionpilot | 4 s | 4.045 | synthesised trajectory |
 | drivejepa_free | 4 s | 16.048 | perception-free agent, NAVSIM v1 |
+| meteor | 3 s | 30.075 | the road camera in 2 of its 8 slots; plans stop about 17 m ahead |
 
 **Verified:** every row is over the *identical* sample set — `sequences_sha256`
-`293a225a0b5cbaff` in all seven run records, which is a stronger statement than
-six matching values of `n` and is the evidence that makes the column
+`293a225a0b5cbaff` in all eight run records, which is a stronger statement than
+eight matching values of `n` and is the evidence that makes the column
 comparable. The 2033 × 5 = 10,165 derivation names the two truncated segments
 rather than counting them. Pose maths is delegated to a pinned
 `commaai/comma2k19` clone rather than reimplemented, and a reference
@@ -341,7 +343,8 @@ measured from the stored records:
   records with each ground truth rotated by its own `rpy_calib_deg` yaw, ADE@3s
   goes from 1.507 to 0.858 for openpilot (lateral MAE 1.092 to 0.137 m), 1.159
   to 0.602 for qwendrive, 0.900 to 0.858 for alpamayo15, 1.639 to 1.137 for
-  constant velocity and 2.016 to 1.358 for autoe2e, so the board reorders with
+  constant velocity, 2.016 to 1.358 for autoe2e and 30.075 to 30.132 for
+  meteor, so the board reorders with
   qwendrive first. Before the
   rotation every stored value reproduces to the last digit, and rotating the
   other way gives openpilot 2.448, so the sign is not in doubt. The
@@ -560,14 +563,16 @@ Open work, in the order it bites:
 
 `adapters/benchmarks/bench2drive`: a model-agnostic CARLA `agent.py`, the
 vendored dual-PID tracker, and a harness that fails a route on every failure
-the evaluator distinguishes rather than scoring it. All five models
-(openpilot, visionpilot, alpamayo15, drivejepa, meteor) declare it.
+the evaluator distinguishes rather than scoring it. Six models (openpilot,
+visionpilot, alpamayo15, drivejepa, meteor, autoe2e) declare it.
 
 Models **have** driven: 50 routes each for DriveJEPA, VisionPilot, Alpamayo 1.5,
 OpenPilot, QwenDrive and five constant-velocity speeds, 500 per-route records
 published in
 [`bench2drive-speed-normalization.json`](benchmarks/bench2drive-speed-normalization.json),
-aggregated in the README and tracked as ten `results/` runs (below).
+aggregated in the README and tracked as ten `results/` runs (below). AutoE2E's
+two 50-route records are tracked beside them and left out of those tables (its
+routes end early), so `results/bench2drive/*/pooled50-*` holds twelve.
 
 | Claim | Verified how | Strength |
 |---|---|---|
@@ -576,12 +581,19 @@ aggregated in the README and tracked as ten `results/` runs (below).
 | launch, timeout, CARLA cleanup | stand-in evaluator under test; real flags read from the checkout | **strong** / argued |
 | agent imports in the CARLA-client env | exercised in a Python 3.8 env with the 0.9.15 egg, no server | moderate |
 | a model drives a route through paddock | 500 route records over 50 routes and 10 systems, scores and infractions published; every README cell recomputed from them by `tests/test_bench2drive_docs.py` | **strong** for the tables; the records' faithfulness to the evaluator output is a transcription nobody has re-derived from the raw `results.json` files |
-| the runs carry their own provenance | ten `results/bench2drive/*/pooled50-*` records written by `paddock ingest` from the per-route `results.json` trees: `routes_file`, `routes_subset`, `waypoint_dt`, `model_env` and `site` read from the source runs, every source run id and file digest kept | **strong** |
+| the runs carry their own provenance | twelve `results/bench2drive/*/pooled50-*` records written by `paddock ingest` from the per-route `results.json` trees: `routes_file`, `routes_subset`, `waypoint_dt`, `model_env` and `site` read from the source runs, every source run id and file digest kept | **strong** |
 | the runs are reproducible at another site | nothing yet — a site without the recording trees cannot regenerate them, and CARLA re-runs are not bit-reproducible | **unverified** |
 | the 20 Hz protocol understates models built to replan slower | the same 50 routes re-driven at each model's own rate (`PADDOCK_INFER_HZ`), everything else held: DriveJEPA 31.71 → 57.60, Alpamayo 1.5 43.20 → 55.82, QwenDrive 12.94 → 17.08; three `results/bench2drive/*/native50-*` records, every cell recomputed by `tests/test_bench2drive_native_rate_docs.py` | **strong** for the three models measured; **not general** — one rate per model, no sweep, so nothing here locates an optimum |
 | why each of the three improved | DriveJEPA and QwenDrive drive further instead of stalling (blocked 17 → 7, 16 → 10) at flat-to-worse penalty; only Alpamayo 1.5's penalty rises (0.648 → 0.725, vehicle collisions 42 → 23) | **argued** from the infraction breakdown; no per-tick analysis |
 | the native-rate result holds for every model | only DriveJEPA, Alpamayo 1.5 and QwenDrive were re-run; OpenPilot's native rate is already 20 Hz and VisionPilot was not re-run | **not measured** |
 | the native-rate runs cover the whole route set | route 3800 never scored for alpamayo15 or qwendrive — CARLA segfaults (`Signal=11`), six attempts; recorded `n_failed: 1`, `status: partial`, never a zero, so both means are over 49 routes | **verified**, and a stated limit of those two rows |
+| a recorded route keeps every tick's whole reply and the world beside it (`recorder.py`), and every model camera as a thumbnail | ticks.jsonl / route_plan.json / actors.jsonl and six `model_*` directories on live AutoE2E routes (20 Oct 2026); ~98 KB a tick with recording on, gated on `record` | **strong** |
+| one video per route and a dashboard, for any model | `tools/benchmarks/bench2drive/` rendered AutoE2E's six-camera routes and served them; the page runs without script errors under jsdom | **strong** for AutoE2E; openpilot's two-camera layout is kept, not re-rendered since |
+| `--resume` reuses scored routes and drives the rest | unit-tested (scored, killed, torn, all-crashed, short of repetitions); a live run resumed in place after its CARLA was killed, config marker matched | **strong** for the rule, moderate live (no scored route existed to reuse) |
+| the early stop ends a route scored as it stood | stuck / over-time / collision / by-hand rules unit-tested; live, AutoE2E's 1773 was ended at its first recorded collision at 14.6 s and scored `Failed - TickRuntime`, DS 20.0 (23 Oct, at `20e6a1d`, after `2e1e011` made the rule count only recorded collisions; a run with it is `valid: false`); the stuck and over-time rules ran live on openpilot's sweep (`docs/benchmarks/bench2drive.md`) | **strong** for collision, stuck and over time, and for the stop by hand (a live one-route run: ended on the tick after its request, scored as it stood, the run `valid: false` naming it); the red-light hold is tested through the agent and replayed on one recorded drive (route 25975, no longer stopped while it waits 45 s short of a red), **not yet live** |
+| N workers sharing one GPU, through reboots | `campaign.py` (from openpilot's sweep) drove AutoE2E on three workers, and its sweep restarted after a VM preemption with one command | moderate |
+| `make check` is safe beside a live sweep | the harness tests no longer reap port 2000; a test with a stand-in CARLA on 2000 fails without the fix, and a full `make check` ran beside a live run's CARLA on port 2000 without touching it | **strong** |
+| the calibration the agent sends is each camera's CARLA mount in paddock's frames | `tests/test_calibration.py` runs the agent's own `setup()` for every camera of every rig, against the conversion written out one frame change at a time, the pinhole of the rendered view, a road point on the ego's left landing left of centre, and one 5 m to its left in front of the left cameras and behind the right ones; 6 of its 10 tests fail with the agent's y-flip removed, the side-camera ones among them | **strong** for the formula; not compared with a live CARLA's matrices |
 
 Needs a site with CARLA 0.9.15 and the pinned checkout wired in
 `[benchmarks.bench2drive]`. Detail in `docs/benchmarks/bench2drive.md`.
@@ -611,9 +623,9 @@ CARLA segfaults for those two while DriveJEPA completes it and scores 100 — so
 their means are over 49 routes and their records are `status: partial`,
 `n_failed: 1`. Part of the gain is extra exposure rather than better driving: the
 two models that stalled now drive further and collide more in absolute terms.
-The three runs are `valid: false` and do not rank: a 2 or 10 Hz run is not the
-protocol the other bench2drive rows were driven under, so `paddock ingest` keeps
-them and leaves them out of the board. Their `model_env` also differs from the
+The three runs are `valid: false` and do not rank: their rate was set by hand, so
+`paddock ingest` keeps them and leaves them out of the board, which ranks a model
+only at 20 Hz or at the rate its `model.yaml` declares. Their `model_env` also differs from the
 20 Hz runs in more than the rate — thread counts, a trace sink, `ALPAMAYO_NAV` —
 each argued immaterial and none measured to be. Tracked as
 `results/bench2drive/<model>/native50-*`; tables, breakdown and the
@@ -621,6 +633,15 @@ verified/argued split in
 [`bench2drive-native-rate.md`](benchmarks/bench2drive-native-rate.md). The
 knob landed later, on 2026-10-22: a model's `planning_hz`, which the Bench2Drive
 client honours; Drive-JEPA declares 2 Hz.
+
+**METEOR at its own 5 Hz (29 Oct 2026).** The released METEOR ONNX drove the same
+50 routes through the campaign tools, asked at the 5 Hz its `model.yaml` declares,
+under AutoE2E's early-stop rules: DS 1.05, `valid: true`
+(`results/bench2drive/meteor/pooled50-40c29d24c37d542a-867d57`). On 43 of the 50
+routes the car never leaves the start: standing still, METEOR plans a 3 s path
+that ends a median 0.17 m ahead, and the shared controller holds the brake. That
+is measured from the per-route records; why the network holds is argued in
+`docs/models/meteor.md` and not separated.
 
 ## HUGSIM — adapter landed; two recorded campaigns tracked, none driven through the harness
 
@@ -663,7 +684,7 @@ campaign driven on 22 Oct 2026 by the same bridge. See
   record (gated `Cosmos-Reason2-8B`). Detail in `docs/benchmarks/nuplan.md`.
 
 - **AutoE2E v1.0** — **adapter landed; NAVSIM, KITScenes, comma2k19,
-  neuroNCAP, nuScenes and AlpaSim scored, Bench2Drive paused.** nuScenes val 0.839
+  neuroNCAP, nuScenes, AlpaSim and Bench2Drive scored.** nuScenes val 0.839
   cumulative L2 (5,119 keyframes, valid), fed the 6.5 s of past keyframes it
   declares. The Autoware Foundation's release
   checkpoint `kitscenes-epoch-5`, imported from upstream at the release
@@ -687,12 +708,17 @@ campaign driven on 22 Oct 2026 by the same bridge. See
   10,165 samples (valid; 1.358 with the ground truth in the calibrated frame),
   from the road camera alone: the adapter now leaves out the views a benchmark
   does not have instead of refusing every sample. Bench2Drive needed the route
-  as an observation field (`route_xy`); its 50-route sweep is paused with no
-  record here. AlpaSim 0.1694 `scene_score` on the 30 scenes (valid, run
-  `20261022T045847-86b955`), through paddock's bridge on six pinhole cameras at
-  the KITScenes field of view, a rear view from the roof and a 1 µs global
-  shutter; the car leaves the human's path to the left in 28 of 30 scenes, the
-  same growing left turn as on neuroNCAP and Bench2Drive. Detail in
+  as an observation field (`route_xy`) and its own 10 Hz, now declared as
+  `planning_hz`. On the 50 routes the other rows pool it scores DS 15.30 (run
+  `pooled50-40c29d24c37d542a-cc7a9c`, valid) with upstream's inputs, routes ended
+  after 30 s stuck or 4x the expert's time; fed the deep dive's steady past with
+  no route and stopped at its first collision, 37.74 (`valid: false`). Why the
+  measured past swerves the car is in the model doc.
+  AlpaSim 0.1694 `scene_score` on the 30 scenes (valid, run
+  `20261022T045847-86b955`), through paddock's bridge
+  on six pinhole cameras at the KITScenes field of view, a rear view from the roof
+  and a 1 µs global shutter; the car leaves the human's path to the left in 28 of
+  30 scenes, the same growing left turn as on neuroNCAP and Bench2Drive. Detail in
   [`docs/models/autoe2e.md`](models/autoe2e.md).
 
   | Claim | Verified how | Strength |
@@ -700,6 +726,8 @@ campaign driven on 22 Oct 2026 by the same bridge. See
   | the two speed patches change no output | `torch.equal` against upstream's forward, 9 Oct | **verified**, on the shapes run |
   | route raster and rollout follow upstream | read against `navigation/geometry.py` and `control_rollout.py` at `40a75cf8`; conventions pinned by the adapter's tests | **strong** |
   | `route_xy` has the right sign | stand-in CARLA test (left lane arrives at y > 0) and, live, the B2D projection overlay | **strong** |
+  | its Bench2Drive record is valid | before the drive, paddock's own checks on the site config found no env override and no harness reason; the 50 routes all scored, and the ingest pooled them `valid: true` with `infer_hz` 10, the rate `model.yaml` declares | **verified** |
+  | the client's 10 Hz hold drives like the pairing's | 1711 and 2286 from the same start both ways: first plans within 4 cm and 2 mm, cars 1.1-1.5 m apart after 4 s, the client's hold ~0.5 m/s faster at launch | **verified** on two routes, up to the first crash |
   | the Bench2Drive swerve is the model, not the adapter | projection overlay, raster mapping, and a y-mirror / rot-180 A/B on 80 navtest scenes where the deployed convention scores best; not ruled out: the route comes from the leaderboard's 50 m-downsampled plan, and route-without-map is an input upstream never produces | **argued** — no upstream closed-loop reference exists |
   | NAVSIM is out of its training logs | the release names no nuPlan split; its own nuPlan-test figures suggest test was held out | **argued** |
   | its KITScenes inputs are upstream's | compared with upstream's own packed v3.5 samples on the 186 shared val keyframes: tiles byte-identical, projections exact, `map_valid` / `route_valid` 186 of 186, semantic map ≤ 0.16 % of cells and route ≤ 11 cells apart (outside 26 rows whose upstream raster is anchored 0.5 s back), keyframe-40 ego rows ≤ 5.8e-3 | **verified** |

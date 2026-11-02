@@ -28,9 +28,11 @@ from paddock.adapters.benchmarks.bench2drive.harness import (
     CRASH_STATUSES,
     DEFAULT_CONNECT_TIMEOUT_S,
     KILL_ALL_LINE,
+    STOP_REQUEST,
     NotScored,
     carla_pids,
     carla_port_from_log,
+    ended_early,
     parse_results,
     parse_routes,
     reap_carla,
@@ -239,8 +241,16 @@ STUB_HEADER = textwrap.dedent(
 )
 
 
+#: The CARLA port every test site requests. A stub evaluator prints no launch line, so
+#: run_episode reaps the *requested* port when it exits, by the `-carla-rpc-port=<port>`
+#: token in /proc -- and at the site default, 2000, that is whatever real CARLA the box is
+#: running. `make check` during a sweep killed the sweep's server that way. Nothing listens here.
+TEST_CARLA_PORT = "47309"
+
+
 def _site(tmp_path: Path, monkeypatch, stub_body: str, **settings: str) -> SiteConfig:
     """A site whose Bench2Drive checkout has a stub evaluator with `stub_body`."""
+    settings.setdefault("carla_port", TEST_CARLA_PORT)
     carla = tmp_path / "carla"
     (carla / "PythonAPI" / "carla" / "agents" / "navigation").mkdir(parents=True)
     (carla / "CarlaUE4.sh").write_text("#!/bin/sh\n")
@@ -423,7 +433,7 @@ def test_carla_is_found_by_the_port_it_printed_and_reaped_after_a_timeout(tmp_pa
         time.sleep(60)
         """
     )
-    cfg = _site(tmp_path, monkeypatch, body, per_route_timeout_s="2", carla_port="2000")
+    cfg = _site(tmp_path, monkeypatch, body, per_route_timeout_s="2")
     out = tmp_path / "out"
     with pytest.raises(RuntimeError, match="timed out"):
         _harness(cfg).run_episode(_episode(), "http://127.0.0.1:9000", out)
@@ -438,6 +448,19 @@ def test_carla_is_found_by_the_port_it_printed_and_reaped_after_a_timeout(tmp_pa
         os.kill(carla_pid, signal.SIGKILL)
         pytest.fail("the stand-in CARLA outlived the timeout")
     assert carla_pids(port) == []
+
+
+def test_the_tests_never_reap_a_real_carla_on_the_default_port(tmp_path, monkeypatch) -> None:
+    """A live CARLA on 2000 outlives a stub route: the incident TEST_CARLA_PORT prevents."""
+    bystander = subprocess.Popen(["sh", "-c", "sleep 60", "sh", "-carla-rpc-port=2000"], preexec_fn=os.setsid)
+    try:
+        _harness(_site(tmp_path, monkeypatch, COMPLETED)).run_episode(
+            _episode(), "http://127.0.0.1:9000", tmp_path / "out"
+        )
+        assert bystander.poll() is None, "run_episode killed a CARLA it did not start"
+    finally:
+        bystander.kill()
+        bystander.wait()
 
 
 def test_reap_carla_matches_the_port_token_exactly() -> None:
@@ -591,6 +614,312 @@ def test_the_sites_own_routes_subset_is_the_full_set(tmp_path, monkeypatch) -> N
     assert harness.invalid_reasons() == []
 
 
+# ---------------------------------------------------------------------------
+# completed_metrics: what --resume reuses
+# ---------------------------------------------------------------------------
+
+
+def _resume_harness():
+    """completed_metrics reads only out_dir, so no site settings are needed."""
+    return BENCHMARK(Registry.load().benchmarks["bench2drive"], None)
+
+
+def test_resume_reuses_a_scored_route_exactly_as_it_was_read(tmp_path: Path) -> None:
+    shutil.copy(FIXTURES / "results_collisions.json", tmp_path / "results.json")
+    reused = _resume_harness().completed_metrics(_episode(), tmp_path, runs=1)
+    assert reused == parse_results(tmp_path / "results.json")
+    assert "duration_s" not in reused  # the harness's clock, which is not on disk
+
+
+@pytest.mark.parametrize(
+    "doc",
+    [
+        None,  # never started: no results.json
+        {"_checkpoint": {"records": []}},  # killed mid-route: the evaluator's startup checkpoint
+        "not json",  # torn write
+    ],
+)
+def test_resume_drives_again_a_route_that_never_finished(tmp_path: Path, doc) -> None:
+    if doc is not None:
+        (tmp_path / "results.json").write_text(doc if isinstance(doc, str) else json.dumps(doc))
+    assert _resume_harness().completed_metrics(_episode(), tmp_path, runs=1) is None
+
+
+def test_resume_drives_again_a_route_whose_every_repetition_crashed(tmp_path: Path) -> None:
+    shutil.copy(FIXTURES / "results_agent_crashed.json", tmp_path / "results.json")
+    assert _resume_harness().completed_metrics(_episode(), tmp_path, runs=1) is None
+
+
+def test_resume_drives_again_a_route_with_fewer_repetitions_than_asked(tmp_path: Path) -> None:
+    """Two of three repetitions on disk is an interrupted route, not a two-run mean."""
+    doc = json.loads((FIXTURES / "results_collisions.json").read_text())
+    doc["_checkpoint"]["records"] = doc["_checkpoint"]["records"] * 2
+    (tmp_path / "results.json").write_text(json.dumps(doc))
+    harness = _resume_harness()
+    assert harness.completed_metrics(_episode(runs=3), tmp_path, runs=3) is None
+    assert harness.completed_metrics(_episode(runs=2), tmp_path, runs=2)["n_runs"] == 2
+
+
+# ---------------------------------------------------------------------------
+# early stop: the site's rules reach the agent, and its verdict the metrics
+# ---------------------------------------------------------------------------
+
+STOPPED_STUCK = COMPLETED + textwrap.dedent(
+    """\
+    stop = os.environ.get("PADDOCK_STOP_RECORD")
+    if stop:
+        json.dump({"reason": "stuck", "game_time_s": 35.4, "stuck_s": 30.0, "after_s": None}, open(stop, "w"))
+    """
+)
+
+
+def _expert(tmp_path: Path, route: str, duration_s: float) -> Path:
+    """An expert directory as ``tools.benchmarks.bench2drive.expert summarize`` writes it."""
+    root = tmp_path / "expert"
+    (root / route).mkdir(parents=True)
+    traj = {"route_id": route, "hz": 10.0, "duration_s": duration_s, "frames": []}
+    (root / route / "expert_traj.json").write_text(json.dumps(traj))
+    return root
+
+
+def test_early_stop_is_off_unless_the_site_sets_it(tmp_path, monkeypatch) -> None:
+    """Off, nothing about a run changes: its config (so its run id), its validity, the agent's env."""
+    harness = _harness(_site(tmp_path, monkeypatch, COMPLETED))
+    assert "early_stop" not in harness.run_config()
+    assert harness.invalid_reasons() == [] and harness.remarks() == []
+    out = tmp_path / "out"
+    metrics = harness.run_episode(_episode(), "http://127.0.0.1:9000", out)
+    env = json.loads((out / "env.json").read_text())
+    rules = ("PADDOCK_STOP_STUCK_S", "PADDOCK_STOP_AFTER_S", "PADDOCK_STOP_ON_COLLISION")
+    assert not any(key in env for key in rules)
+    # A stop by hand needs no rule: its request file and where to say so always reach the agent.
+    assert env["PADDOCK_STOP_REQUEST"] == str(out / STOP_REQUEST)
+    assert "ended_stuck" not in metrics
+
+
+def test_the_early_stop_reaches_the_agent_and_its_verdict_the_metrics(tmp_path, monkeypatch) -> None:
+    expert = _expert(tmp_path, "1773", 21.3)
+    settings = {"stop_stuck_s": "30", "stop_expert_factor": "4", "expert": str(expert)}
+    harness = _harness(_site(tmp_path, monkeypatch, STOPPED_STUCK, **settings))
+    out = tmp_path / "out"
+    metrics = harness.run_episode(_episode(), "http://127.0.0.1:9000", out)
+
+    env = json.loads((out / "env.json").read_text())
+    assert float(env["PADDOCK_STOP_STUCK_S"]) == 30.0
+    assert float(env["PADDOCK_STOP_AFTER_S"]) == pytest.approx(85.2), "4 x the expert's 21.3 s on this route"
+    assert env["PADDOCK_STOP_RECORD"] == str(out / "early_stop.json")
+    assert metrics["ended_stuck"] == 1.0 and metrics["ended_over_time"] == 0.0
+    assert metrics["driving_score"] == 36.0, "scored as the leaderboard recorded it"
+
+    assert harness.run_config()["early_stop"] == {
+        "stuck_s": 30.0,
+        "expert_factor": 4.0,
+        "progress_m": 3.0,
+        "no_expert": ["1711"],  # the fixture's other route; only 1773 has an expert drive here
+    }
+    # A route the rule ends is a failed drive: the run ranks, and its notes say why.
+    assert harness.invalid_reasons() == []
+    (remark,) = harness.remarks()
+    assert (
+        remark.startswith("early stop (30 s without 3 m of route progress or 4x") and "failed drive" in remark
+    )
+    # What --resume reuses reads the same verdict, from the route's directory alone.
+    assert _resume_harness().completed_metrics(_episode(), out, runs=1)["ended_stuck"] == 1.0
+
+
+def test_a_route_without_an_expert_drive_gets_the_stuck_rule_alone(tmp_path, monkeypatch) -> None:
+    expert = _expert(tmp_path, "1711", 21.8)  # nine routes have no expert clip; 1773 is one here
+    settings = {"stop_stuck_s": "30", "stop_expert_factor": "4", "expert": str(expert)}
+    out, said = tmp_path / "out", []
+    _harness(_site(tmp_path, monkeypatch, COMPLETED, **settings)).run_episode(
+        _episode(), "http://127.0.0.1:9000", out, echo=said.append
+    )
+    env = json.loads((out / "env.json").read_text())
+    assert "PADDOCK_STOP_AFTER_S" not in env
+    assert float(env["PADDOCK_STOP_STUCK_S"]) == 30.0
+    assert any("no expert drive" in line for line in said)
+
+
+def test_a_stale_early_stop_verdict_does_not_outlive_its_attempt(tmp_path, monkeypatch) -> None:
+    """A route driven again in the same directory must not be read with the last attempt's verdict."""
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "early_stop.json").write_text(json.dumps({"reason": "stuck"}))
+    metrics = _harness(_site(tmp_path, monkeypatch, COMPLETED)).run_episode(
+        _episode(), "http://127.0.0.1:9000", out
+    )
+    assert not (out / "early_stop.json").exists()
+    assert "ended_stuck" not in metrics
+
+
+def test_a_route_that_went_to_its_end_says_so_and_no_record_says_nothing(tmp_path) -> None:
+    (tmp_path / "early_stop.json").write_text(json.dumps({"reason": None, "stuck_s": 30.0, "after_s": 85.2}))
+    assert ended_early(tmp_path) == {
+        "ended_stuck": 0.0,
+        "ended_over_time": 0.0,
+        "ended_collision": 0.0,
+        "ended_manual": 0.0,
+    }
+    assert ended_early(tmp_path / "elsewhere") == {}, "the stop was off; a 0 would say a rule was there"
+
+
+def test_with_repetitions_each_one_keeps_its_verdict(tmp_path, load_agent) -> None:
+    """The evaluator builds a new agent for every repetition of a route (leaderboard_evaluator.py:366
+    at 7ec25d1), and each wrote the route's one early_stop.json: only the last repetition's verdict
+    was left, beside a driving score averaged over all three."""
+    record = tmp_path / "early_stop.json"
+    agent = load_agent(PADDOCK_STOP_RECORD=str(record))
+    for reason in ("stuck", None, None):  # three repetitions; the first one stopped
+        client = object.__new__(agent.PaddockB2DAgent)
+        client._stop_record = {"reason": reason, "stuck_s": 30.0}
+        client._write_stop_record()
+    assert json.loads(record.read_text())["reason"] is None, "the latest repetition on top, for the videos"
+    assert ended_early(tmp_path)["ended_stuck"] == pytest.approx(1 / 3)
+    assert ended_early(tmp_path)["ended_over_time"] == 0.0
+
+
+def test_preflight_refuses_early_stop_settings_it_cannot_honour(tmp_path, monkeypatch) -> None:
+    cfg = _site(tmp_path, monkeypatch, COMPLETED, stop_stuck_s="half a minute", stop_expert_factor="4")
+    problems = "\n".join(_harness(cfg).preflight())
+    assert "stop_stuck_s must be a number above zero" in problems
+    assert "stop_expert_factor needs `expert`" in problems
+    assert "tick_count > 4000" in problems, "this checkout has no tick cap to end a route through"
+
+
+def test_the_record_names_the_routes_the_time_budget_cannot_end(tmp_path, monkeypatch) -> None:
+    """A route with no expert drive runs without the over-time rule. The run's config names the
+    site's routes that have none, so it is on the record and in the run id: two sites with
+    different expert drives are not running the same rules."""
+    expert = _expert(tmp_path, "1773", 21.3)
+    harness = _harness(_site(tmp_path, monkeypatch, COMPLETED, stop_expert_factor="4", expert=str(expert)))
+    assert harness.run_config()["early_stop"]["no_expert"] == ["1711"]
+    _expert(tmp_path / "all", "1711", 30.0)
+    shutil.copytree(tmp_path / "all" / "expert" / "1711", expert / "1711")
+    assert "no_expert" not in harness.run_config()["early_stop"], "every route has its budget"
+
+
+def test_preflight_refuses_expert_drives_never_summarized(tmp_path, monkeypatch) -> None:
+    fetched = tmp_path / "expert" / "1773"  # downloaded, `expert summarize` never run
+    fetched.mkdir(parents=True)
+    harness = _harness(
+        _site(tmp_path, monkeypatch, COMPLETED, stop_expert_factor="4", expert=str(fetched.parent))
+    )
+    assert "expert_traj.json" in "\n".join(harness.preflight())
+
+
+def test_preflight_accepts_the_pinned_leaderboards_tick_cap(tmp_path, monkeypatch) -> None:
+    expert = _expert(tmp_path, "1773", 21.3)
+    settings = {"stop_stuck_s": "30", "stop_expert_factor": "4", "expert": str(expert)}
+    cfg = _site(tmp_path, monkeypatch, COMPLETED, **settings)
+    scenarios = tmp_path / "Bench2Drive" / "leaderboard" / "leaderboard" / "scenarios"
+    scenarios.mkdir()
+    (scenarios / "scenario_manager.py").write_text(
+        "def _tick_scenario(self):\n    if self.tick_count > 4000:\n        raise TickRuntimeError()\n"
+    )
+    problems = _harness(cfg).preflight()
+    assert not any("stop_" in p or "tick_count" in p or "expert" in p for p in problems), problems
+
+
+def test_stop_on_collision_is_a_rule_on_the_record_and_reaches_the_agent(tmp_path, monkeypatch) -> None:
+    harness = _harness(_site(tmp_path, monkeypatch, COMPLETED, stop_on_collision="true"))
+    assert harness.run_config()["early_stop"]["collision"] is True
+    assert "a collision the leaderboard records" in harness.remarks()[0]
+    out = tmp_path / "out"
+    harness.run_episode(_episode(), "http://127.0.0.1:9000", out)
+    assert json.loads((out / "env.json").read_text())["PADDOCK_STOP_ON_COLLISION"] == "1"
+
+
+def test_preflight_refuses_a_stop_on_collision_it_cannot_read(tmp_path, monkeypatch) -> None:
+    harness = _harness(_site(tmp_path, monkeypatch, COMPLETED, stop_on_collision="sometimes"))
+    assert any("stop_on_collision" in p for p in harness.preflight())
+
+
+def test_a_run_that_ends_routes_at_a_collision_does_not_rank(tmp_path, monkeypatch) -> None:
+    """Bench2Drive charges a collision as a penalty and lets the car drive on; a route ended
+    there scores something else, which must not rank beside the leaderboard's own scores."""
+    harness = _harness(_site(tmp_path / "a", monkeypatch, COMPLETED, stop_on_collision="true"))
+    (reason,) = harness.invalid_reasons()
+    assert "stop_on_collision" in reason and "penalty" in reason
+    stuck_only = _harness(_site(tmp_path / "b", monkeypatch, COMPLETED, stop_stuck_s="30"))
+    assert stuck_only.invalid_reasons() == [], "a car that stops getting anywhere has failed the scene"
+
+
+def test_a_route_ended_by_hand_says_so_and_the_run_does_not_rank(tmp_path, monkeypatch) -> None:
+    """A person choosing when a route ends is not a measurement: the run names it and is not ranked."""
+    (tmp_path / "early_stop.json").write_text(json.dumps({"reason": "manual", "game_time_s": 12.5}))
+    assert ended_early(tmp_path)["ended_manual"] == 1.0
+    harness = _harness(_site(tmp_path, monkeypatch, COMPLETED))
+    harness._note_stop(_episode(), ended_early(tmp_path))
+    (reason,) = harness.invalid_reasons()
+    assert "1 route(s) ended by hand" in reason
+
+
+def test_a_route_ended_by_hand_counts_against_its_own_models_run_only(tmp_path, monkeypatch) -> None:
+    """Under `--model all` the runner drives every model through one harness, calling
+    `episodes()` for each; the next model's run did not stop anything by hand."""
+    harness = _harness(_site(tmp_path, monkeypatch, COMPLETED))
+    list(harness.episodes())
+    harness._note_stop(_episode(), {"ended_manual": 1.0})
+    assert any("ended by hand" in r for r in harness.invalid_reasons())
+    list(harness.episodes())  # the next model
+    assert not any("ended by hand" in r for r in harness.invalid_reasons())
+
+
+def test_an_old_stop_request_cannot_end_a_new_drive(tmp_path, monkeypatch) -> None:
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / STOP_REQUEST).write_text("")
+    _harness(_site(tmp_path, monkeypatch, COMPLETED)).run_episode(_episode(), "http://127.0.0.1:9000", out)
+    assert not (out / STOP_REQUEST).exists()
+
+
+def test_the_inputs_are_recorded_only_when_asked_and_only_with_the_record(tmp_path, monkeypatch) -> None:
+    def env_with(**settings):
+        site = tmp_path / "-".join(f"{k}{v}" for k, v in settings.items())  # a site of its own each
+        site.mkdir()
+        harness = _harness(_site(site, monkeypatch, COMPLETED, **settings))
+        harness.run_episode(_episode(), "http://127.0.0.1:9000", site / "out")
+        return json.loads((site / "out" / "env.json").read_text())
+
+    assert "PADDOCK_RECORD_INPUTS" not in env_with(record="true")
+    assert env_with(record="true", record_inputs="true")["PADDOCK_RECORD_INPUTS"] == "1"
+    assert "PADDOCK_RECORD_INPUTS" not in env_with(record_inputs="true"), "nowhere to put them unrecorded"
+
+
+def test_the_camera_rig_reaches_the_agent_and_another_does_not_rank(tmp_path, monkeypatch) -> None:
+    def drive(**settings):
+        site = tmp_path / ("-".join(f"{k}{v}" for k, v in settings.items()) or "default")
+        site.mkdir()
+        harness = _harness(_site(site, monkeypatch, COMPLETED, **settings))
+        harness.run_episode(_episode(), "http://127.0.0.1:9000", site / "out")
+        return harness, json.loads((site / "out" / "env.json").read_text())
+
+    harness, env = drive()
+    assert env["PADDOCK_CAMERA_RIG"] == "paddock"
+    assert "camera_rig" not in harness.run_config(), "paddock's rig leaves every run id as it was"
+    assert harness.invalid_reasons() == []
+
+    harness, env = drive(camera_rig="bench2drive")
+    assert env["PADDOCK_CAMERA_RIG"] == "bench2drive"
+    assert harness.run_config()["camera_rig"] == "bench2drive"
+    (reason,) = harness.invalid_reasons()
+    assert reason.startswith("camera_rig 'bench2drive'")
+
+
+def test_preflight_names_a_camera_rig_there_is_not(tmp_path, monkeypatch) -> None:
+    problems = _harness(_site(tmp_path, monkeypatch, COMPLETED, camera_rig="bench2driv")).preflight()
+    assert any("camera_rig 'bench2driv'" in p and "bench2drive, kitscenes, paddock" in p for p in problems)
+
+
+def test_preflight_refuses_record_inputs_without_record(tmp_path, monkeypatch) -> None:
+    """Each tick's request goes beside the recorded route; with `record` off there is none, and
+    the site would drive its routes at recording's cost for nothing."""
+    alone = _harness(_site(tmp_path / "a", monkeypatch, COMPLETED, record_inputs="true"))
+    assert any("record_inputs" in p and "record" in p for p in alone.preflight())
+    both = _harness(_site(tmp_path / "b", monkeypatch, COMPLETED, record_inputs="true", record="true"))
+    assert not any("record_inputs" in p for p in both.preflight())
+
+
 def test_the_models_planning_rate_reaches_the_client_and_the_record(tmp_path, monkeypatch) -> None:
     """Drive-JEPA plans every 0.5 s: its `planning_hz` is passed to the client and hashed into the run."""
     from paddock.adapters.benchmarks.bench2drive.harness import infer_hz
@@ -599,6 +928,8 @@ def test_the_models_planning_rate_reaches_the_client_and_the_record(tmp_path, mo
     harness = _harness(cfg)
     models = Registry.load().models
     assert harness.model_run_config(models["drivejepa"]) == {"infer_hz": 2.0}
+    assert harness.model_run_config(models["autoe2e"]) == {"infer_hz": 10.0}, "its own 10 Hz, no site pairing"
+    assert harness.model_run_config(models["meteor"]) == {"infer_hz": 5.0}, "its frames are stored at 5 Hz"
     assert harness.model_run_config(models["openpilot"]) == {}, "no planning_hz: asked every tick"
     episode = _episode()
     episode.config["planning_hz"] = 2.0
@@ -610,3 +941,30 @@ def test_the_models_planning_rate_reaches_the_client_and_the_record(tmp_path, mo
     monkeypatch.setenv("PADDOCK_INFER_HZ", "fast")
     with pytest.raises(ValueError, match="expected a rate in Hz"):
         infer_hz(2.0)
+
+
+def test_the_hosts_rate_in_place_of_the_models_own_is_recorded_and_does_not_rank(
+    tmp_path, monkeypatch
+) -> None:
+    """PADDOCK_INFER_HZ on the host drives every model at its rate. Where that is not the model's
+    own, the run records the declared rate beside it and does not rank; the host restating the
+    model's own rate, or 20 Hz for a model asked every tick, changes nothing."""
+    harness, models = _harness(_site(tmp_path, monkeypatch, COMPLETED)), Registry.load().models
+
+    def drive(model: str, host: str | None):
+        if host is None:
+            monkeypatch.delenv("PADDOCK_INFER_HZ", raising=False)
+        else:
+            monkeypatch.setenv("PADDOCK_INFER_HZ", host)
+        config = harness.model_run_config(models[model])
+        return config, [r for r in harness.invalid_reasons() if "PADDOCK_INFER_HZ" in r]
+
+    assert drive("autoe2e", None) == ({"infer_hz": 10.0}, [])
+    assert drive("autoe2e", "10") == ({"infer_hz": 10.0}, []), "the host restating the model's own rate"
+    assert drive("openpilot", "20") == ({}, []), "20 Hz is every tick, openpilot's own"
+    config, (reason,) = drive("autoe2e", "0")
+    assert config == {"infer_hz": 0.0, "planning_hz": 10.0}
+    assert "on every tick" in reason and "planning_hz 10" in reason
+    config, (reason,) = drive("drivejepa", "10")
+    assert config == {"infer_hz": 10.0, "planning_hz": 2.0} and "at 10 Hz" in reason
+    assert drive("drivejepa", None) == ({"infer_hz": 2.0}, []), "the next run of the harness starts clean"
