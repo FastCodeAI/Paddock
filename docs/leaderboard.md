@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-119 runs across 9 benchmarks.
+120 runs across 9 benchmarks.
 62 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -14,6 +14,7 @@
 | visionpilot | visionpilot_v2_smoke_pilot10_handover_blend | 10 | fastcode-shakaal | 0.849 | 0.820 | 0.300 | 0.100 | 0.000 | 0.699 | 1.467 |
 | openpilot | openpilot_020_30scenes | 30 | fastcode-shakaal | 0.773 | 0.724 | 0.200 | 0.000 | 0.100 | 0.671 | 1.787 |
 | drivejepa | drivejepa_017_20hz_30scenes | 30 | fastcode-shakaal | 0.770 | 0.828 | 0.100 | 0.100 | 0.067 | 0.661 | 3.024 |
+| qwendrive | 20261027T215528-d231d8 | 30 | fastcode-shakaal | 0.700 | 0.787 | 0.333 | 0.167 | 0.067 | 0.631 | 2.177 |
 | meteor | meteor_011_published_first10 | 10 | fastcode-shakaal | 0.687 | 0.607 | 0.300 | 0.000 | 0.000 | 0.589 | 2.045 |
 | visionpilot | visionpilot_v2_30scenes | 30 | fastcode-shakaal | 0.629 | 0.636 | 0.367 | 0.133 | 0.033 | 0.570 | 1.740 |
 | drivejepa | drivejepa_014_20hz | 10 | fastcode-shakaal | 0.503 | 0.565 | 0.400 | 0.200 | 0.100 | 0.462 | 2.443 |
