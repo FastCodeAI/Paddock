@@ -105,6 +105,16 @@ repos:
     sha: 28091c1
     description: Qwen-Drive-1.0-4B inference code; Qwen3.5 VLM with a flow-matching planning expert and BEV perception head, imported as a library from src/
 
+  cosmos-framework:
+    url: https://github.com/NVIDIA/cosmos-framework.git
+    sha: efba207
+    description: Cosmos 3 inference; the video2video transfer mode is the sim2real converter (docs/sim2real/cosmos3.md). Pod-only, no adapter imports it
+
+  flashdreams:
+    url: https://github.com/NVIDIA/flashdreams.git
+    sha: 6e2d3ad
+    description: OmniDreams world model plus the ludus_renderer map rasteriser used for the sim2real map control. Pod-only
+
   WA-JEPA:
     url: https://github.com/AFARI-Research/WA-JEPA.git
     sha: bec2966

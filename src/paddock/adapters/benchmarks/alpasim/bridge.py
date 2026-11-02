@@ -62,6 +62,28 @@ used), gets headings derived from the path's direction (`derive_headings`).
 Which of the two each plan got is recorded per scene (``--plan-record``) and
 lands in the scene's sample record, so a result says how its car was steered.
 
+**Switches a model's profile can turn on, all off by default** (with every
+one off, each body is byte-for-byte what it was before they existed; a test
+pins that for every profile):
+
+- ``--canbus-ego-frame``: canbus[13] / [14] carry the forward and sideways
+  speed, rig frame, instead of [13] = speed magnitude; [12] stays the yaw
+  rate. The forced replay's zero velocity and yaw rate are replaced from the
+  poses (`ego_frame_motion`).
+- ``--canbus-acceleration``: canbus[7] / [8] carry the simulator's own
+  forward and sideways acceleration (`DynamicState.linear_acceleration`).
+- ``--send-route``: the route AlpaSim holds, as ``route_xy``, in the rig frame
+  at the route's own time -- the frame AlpaSim sends it in.
+- ``--send-scene-id``: the scene id, as ``scene_id``.
+- ``--send-route-time``: the route's own timestamp, as ``route_timestamp_us``
+  -- the time of the rig frame ``route_xy`` is in, for a node that moves the
+  route into its newest pose's frame as AlpaSim's own driver does.
+- ``--send-plan-dt``: the spacing the bridge drives the plan at
+  (``--waypoint-dt``), as ``plan_dt``, for a node that can return a plan at the
+  spacing it is asked for rather than its default.
+- ``--named-cameras-only``: only the cameras named with ``--camera-name`` are
+  decoded and sent.
+
 **Every scene starts with /reset.** A node that keeps a frame history (most
 of them) would otherwise pair the first frames of a scene with the last ones
 of the previous scene, so `on_session_start` resets it for every model.
@@ -77,8 +99,10 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -93,6 +117,7 @@ from paddock.adapters.benchmarks.alpasim.scaffold import serve as scaffold_serve
 # so it is running in an interpreter that can see paddock; the foreign-process
 # exemption does not apply here.
 from paddock.policy.protocol import (
+    CANBUS_ACCEL,
     CANBUS_VELOCITY,
     CANBUS_YAW_RATE,
     Command,
@@ -110,6 +135,13 @@ DEFAULT_INFER_TIMEOUT_S = 60.0
 #: told rather than guessing, because the spacing is what turns a list of points
 #: into a trajectory in time and a wrong value is a silently mis-timed plan.
 DEFAULT_WAYPOINT_DT = 0.5
+
+
+#: `--canbus-ego-frame`: a reported velocity of exactly zero is replaced from the
+#: poses only when they move faster than this, so a car really standing still
+#: keeps its zero. The same threshold as Drive-JEPA's rhythm and Qwen-Drive's
+#: native driver.
+STANDSTILL_M_S = 1.0
 
 
 #: The fill of Drive-JEPA's placeholder camera, as its native AlpaSim driver
@@ -192,19 +224,60 @@ def pose_to_matrix(pose: Any) -> np.ndarray:
     return np.asarray(pose_from_grpc(grpc_pose).as_se3(), dtype=np.float64).reshape(4, 4)
 
 
-def canbus_from(view: Any) -> np.ndarray:
+def ego_frame_motion(view: Any) -> tuple[float, float, float, bool, bool]:
+    """(vx, vy, yaw rate) of the newest pose, rig frame, and whether velocity / yaw rate were derived.
+
+    The simulator's reported values, except during the forced replay at the
+    start of every scene, when AlpaSim reports velocity and yaw rate as exactly
+    zero while the car moves along the recorded drive. When the reported
+    velocity is exactly zero and the last two poses move faster than
+    `STANDSTILL_M_S`, the velocity is the newer pose's displacement in the older
+    pose's frame over their time gap; if the yaw rate is zero too, it is their
+    heading change over the same gap. That is Qwen-Drive's native AlpaSim driver
+    sample for sample (its `state_buffer`), which is why it differences in the
+    older pose's frame: Drive-JEPA's `newest_velocity` differences in the newer
+    one, and on a curve the two differ by the turn made in one step.
+    """
+    from paddock.adapters.benchmarks.alpasim.drivejepa_rhythm import pose_to_matrix as matrix_of
+    from paddock.adapters.benchmarks.alpasim.drivejepa_rhythm import relative_pose
+
+    state = view.latest_dynamic_state
+    vx = float(getattr(getattr(state, "linear_velocity", None), "x", 0.0) or 0.0)
+    vy = float(getattr(getattr(state, "linear_velocity", None), "y", 0.0) or 0.0)
+    yaw_rate = float(getattr(getattr(state, "angular_velocity", None), "z", 0.0) or 0.0)
+    poses = view.poses
+    if math.hypot(vx, vy) != 0.0 or len(poses) < 2:
+        return vx, vy, yaw_rate, False, False
+    dt_s = (int(poses[-1].timestamp_us) - int(poses[-2].timestamp_us)) / 1e6
+    if dt_s <= 0.0:
+        return vx, vy, yaw_rate, False, False
+    delta = relative_pose(matrix_of(poses[-1].pose), matrix_of(poses[-2].pose))
+    derived = (float(delta[0]) / dt_s, float(delta[1]) / dt_s)
+    if math.hypot(*derived) <= STANDSTILL_M_S:
+        return vx, vy, yaw_rate, False, False
+    if yaw_rate != 0.0:
+        return derived[0], derived[1], yaw_rate, True, False
+    turned = math.atan2(math.sin(float(delta[2])), math.cos(float(delta[2])))
+    return derived[0], derived[1], turned / dt_s, True, True
+
+
+def canbus_from(view: Any, ego_frame: bool = False, acceleration: bool = False) -> np.ndarray:
     """The 18-wide canbus vector, from what AlpaSim actually sends.
 
     **There is no scalar speed on the wire.** `DynamicState` carries
-    `linear_velocity` / `angular_velocity` as Vec3 and nothing else
+    `linear_velocity`, `angular_velocity` and `linear_acceleration` as Vec3
     (common.proto:36-41), so speed is the magnitude of the linear velocity,
     computed here. Reading a `speed` attribute that does not exist returns zero
     silently, and a model told it is stationary plans as if it were -- which is
     a wrong number, not a crash.
 
-    Only the fields AlpaSim actually has are filled; the rest stay zero. A model
-    needing more than speed and planar velocity here needs the missing terms
-    sourced explicitly rather than reading zeros as measurements.
+    By default [0] / [1] carry vx / vy, [13] the speed and [12] the yaw rate;
+    the acceleration is not sent and everything else stays zero. Every model
+    driven through this bridge before the switches existed reads that, so it is
+    left alone. *ego_frame* puts the forward and sideways speed in [13] / [14],
+    where the layout has them, with the forced replay's zeros replaced
+    (`ego_frame_motion`); *acceleration* puts the simulator's acceleration in
+    [7] / [8].
     """
     canbus = np.zeros(18, dtype=np.float64)
     state = view.latest_dynamic_state
@@ -220,6 +293,14 @@ def canbus_from(view: Any) -> np.ndarray:
     angular = getattr(state, "angular_velocity", None)
     if angular is not None:
         canbus[CANBUS_YAW_RATE] = float(getattr(angular, "z", 0.0) or 0.0)
+    if ego_frame:
+        vx, vy, yaw_rate, _, _ = ego_frame_motion(view)
+        canbus[CANBUS_VELOCITY], canbus[CANBUS_VELOCITY + 1] = vx, vy
+        canbus[CANBUS_YAW_RATE] = yaw_rate
+    if acceleration:
+        accel = getattr(state, "linear_acceleration", None)
+        canbus[CANBUS_ACCEL] = float(getattr(accel, "x", 0.0) or 0.0)
+        canbus[CANBUS_ACCEL + 1] = float(getattr(accel, "y", 0.0) or 0.0)
     return canbus
 
 
@@ -287,6 +368,26 @@ def calibration_from(view: Any, pinhole_intrinsics: bool = False) -> dict[str, A
     return {"camera2image": camera2image, "camera2ego": camera2ego}
 
 
+def route_xy(route: Any) -> list[list[float]] | None:
+    """The route's waypoints as (x, y) rows, or None when there is none.
+
+    Left in the frame AlpaSim sends them in -- the rig frame at the route's own
+    timestamp, which need not be the pose's in the same body -- not moved: that
+    is how the route reaches a native AlpaSim driver.
+    """
+    waypoints = list(getattr(route, "waypoints", None) or []) if route is not None else []
+    if not waypoints:
+        return None
+    return [[float(w.x), float(w.y)] for w in waypoints]
+
+
+def route_timestamp_us(route: Any) -> int | None:
+    """The time of the rig frame `route_xy` is in, or None when there is no route."""
+    if route is None or not list(getattr(route, "waypoints", None) or []):
+        return None
+    return int(route.timestamp_us)
+
+
 class PolicyPlanner(Planner):
     """A scaffold Planner that asks a paddock policy node for the plan.
 
@@ -307,6 +408,13 @@ class PolicyPlanner(Planner):
         pinhole_intrinsics: bool = False,
         replan_log: str | Path | None = None,
         plan_record: str | Path | None = None,
+        canbus_ego_frame: bool = False,
+        canbus_acceleration: bool = False,
+        send_route: bool = False,
+        send_scene_id: bool = False,
+        named_cameras_only: bool = False,
+        send_route_time: bool = False,
+        send_plan_dt: bool = False,
     ) -> None:
         """
         Args:
@@ -323,6 +431,12 @@ class PolicyPlanner(Planner):
                 server's ``extras`` as it sent them.
             plan_record: Keep a JSON count here of where each plan's headings
                 came from (`plan_from_answer`), rewritten after every plan.
+            canbus_ego_frame, canbus_acceleration: see `canbus_from`.
+            send_route: Send the route as ``route_xy`` (module docstring).
+            send_scene_id: Send the scene id as ``scene_id``.
+            named_cameras_only: Send only the cameras in *camera_names*.
+            send_route_time: Send the route's timestamp as ``route_timestamp_us``.
+            send_plan_dt: Send *waypoint_dt* as ``plan_dt``.
         """
         self.policy_url = policy_url.rstrip("/")
         self.timeout_s = timeout_s
@@ -333,9 +447,23 @@ class PolicyPlanner(Planner):
             raise ValueError("placeholders need a placeholder_source to copy size and calibration from")
         self._placeholder_source = placeholder_source
         self._pinhole_intrinsics = pinhole_intrinsics
+        self._canbus_ego_frame = canbus_ego_frame
+        self._canbus_acceleration = canbus_acceleration
+        self._send_route = send_route
+        self._send_scene_id = send_scene_id
+        if send_route_time and not send_route:
+            raise ValueError("send_route_time needs send_route: a time with no route to go with it")
+        self._send_route_time = send_route_time
+        self._send_plan_dt = send_plan_dt
+        if named_cameras_only and not self._camera_names:
+            raise ValueError("named_cameras_only needs camera_names: with none named, nothing would be sent")
+        self._named_cameras_only = named_cameras_only
         # One encoded placeholder per frame size: the same ~6 MB every tick.
         self._placeholder_cache: dict[tuple[int, int], str] = {}
         self._calls = 0
+        #: Time spent decoding and re-encoding the frames of the last body built,
+        #: logged with the /infer that sends it (log only; nothing on the wire).
+        self._last_frames_ms = 0.0
         self._log_path = Path(replan_log) if replan_log else None
         self._log_lock = threading.Lock()
         self._record_path = Path(plan_record) if plan_record else None
@@ -474,8 +602,13 @@ class PolicyPlanner(Planner):
 
         images: dict[str, str] = {}
         shapes: dict[str, tuple[int, int]] = {}
+        frames_started = time.perf_counter()
         for logical_id, frames in (view.image_cache or {}).items():
             if not frames:
+                continue
+            if self._named_cameras_only and logical_id not in self._camera_names:
+                # Not decoded either: a camera the node never reads costs a
+                # decode and ~6 MB of pixels a tick.
                 continue
             _, payload = frames[-1]
             if isinstance(payload, str):
@@ -484,15 +617,23 @@ class PolicyPlanner(Planner):
                 pixels = decode_frame(payload)
                 shapes[logical_id] = pixels.shape[:2]
                 images[logical_id] = encode_image(pixels)
+        self._last_frames_ms = (time.perf_counter() - frames_started) * 1000.0
 
         calibration = calibration_from(view, pinhole_intrinsics=self._pinhole_intrinsics)
+        if self._named_cameras_only:
+            calibration = {
+                key: {k: v for k, v in table.items() if k in self._camera_names}
+                for key, table in calibration.items()
+            }
         if self._camera_names or self._placeholders:
             images, calibration = self._translate_cameras(images, shapes, calibration)
 
         body = {
             "images": images,
             "ego2world": pose_to_matrix(pose).tolist(),
-            "canbus": canbus_from(view).tolist(),
+            "canbus": canbus_from(
+                view, ego_frame=self._canbus_ego_frame, acceleration=self._canbus_acceleration
+            ).tolist(),
             "timestamp": source_t_us,
             # AlpaSim's route is a path to follow, not a discrete manoeuvre, so
             # FOLLOW_REFERENCE is the honest command. Sending STRAIGHT would tell
@@ -500,6 +641,16 @@ class PolicyPlanner(Planner):
             "command": Command.FOLLOW_REFERENCE,
             "calibration": calibration,
         }
+        # Appended after the long-standing keys, and only when asked for, so a
+        # body with every switch off is the same bytes as before they existed.
+        if self._send_route:
+            body["route_xy"] = route_xy(view.route)
+        if self._send_scene_id:
+            body["scene_id"] = str(view.debug_scene_id)
+        if self._send_route_time:
+            body["route_timestamp_us"] = route_timestamp_us(view.route)
+        if self._send_plan_dt:
+            body["plan_dt"] = self._waypoint_dt
         return body, source_t_us
 
     def _translate_cameras(
@@ -550,6 +701,7 @@ class PolicyPlanner(Planner):
         import urllib.error
         import urllib.request
 
+        started = time.perf_counter()
         payload = json.dumps(body).encode()
         request = urllib.request.Request(
             f"{self.policy_url}/infer",
@@ -564,6 +716,15 @@ class PolicyPlanner(Planner):
             raise RuntimeError(f"policy node at {self.policy_url} did not answer /infer: {exc}") from exc
         if "trajectory" not in answer:
             raise RuntimeError(f"policy node answered /infer without a trajectory: {sorted(answer)}")
+        # Every call, so a slow run says where its time went: frames decoded and
+        # re-encoded here, then the node's whole round trip for this body.
+        logger.info(
+            "infer t=%s: frames %.0f ms, body %.1f MB, round trip %.0f ms",
+            body.get("timestamp"),
+            self._last_frames_ms,
+            len(payload) / 1e6,
+            (time.perf_counter() - started) * 1000.0,
+        )
         return answer
 
     def observe_frame(self, body: dict[str, Any]) -> str:
@@ -738,6 +899,38 @@ def main(argv: list[str] | None = None) -> int:
         "from its pose at the measured speed (replan_rhythm.py)",
     )
     parser.add_argument(
+        "--observe-between-replans",
+        action="store_true",
+        help="--replan-every-us: after the warm-up, send every tick that is not a replan to /observe",
+    )
+    parser.add_argument(
+        "--canbus-ego-frame",
+        action="store_true",
+        help="canbus[13]/[14] = forward/sideways speed (rig frame), forced-replay zeros replaced from poses",
+    )
+    parser.add_argument(
+        "--canbus-acceleration",
+        action="store_true",
+        help="canbus[7]/[8] = the simulator's forward/sideways acceleration",
+    )
+    parser.add_argument("--send-route", action="store_true", help="send AlpaSim's route as route_xy")
+    parser.add_argument("--send-scene-id", action="store_true", help="send the scene id as scene_id")
+    parser.add_argument(
+        "--send-route-time",
+        action="store_true",
+        help="with --send-route: send the route's timestamp as route_timestamp_us",
+    )
+    parser.add_argument(
+        "--send-plan-dt",
+        action="store_true",
+        help="send --waypoint-dt as plan_dt, the spacing the plan will be driven at",
+    )
+    parser.add_argument(
+        "--named-cameras-only",
+        action="store_true",
+        help="send only the cameras named with --camera-name",
+    )
+    parser.add_argument(
         "--replan-log", default=None, help="append one JSON line per plan the node is asked for here"
     )
     parser.add_argument(
@@ -746,8 +939,24 @@ def main(argv: list[str] | None = None) -> int:
         help="keep a JSON count here of where each plan's headings came from (model or derived)",
     )
     args = parser.parse_args(argv)
+    switches = {
+        "canbus_ego_frame": args.canbus_ego_frame,
+        "canbus_acceleration": args.canbus_acceleration,
+        "send_route": args.send_route,
+        "send_scene_id": args.send_scene_id,
+        "named_cameras_only": args.named_cameras_only,
+        "send_route_time": args.send_route_time,
+        "send_plan_dt": args.send_plan_dt,
+    }
     rhythm = None
     if args.planner == "drivejepa-0.1.4b":
+        on = [k for k, v in switches.items() if v]
+        if on:
+            # That planner builds its own bodies; the switches would be accepted and do nothing.
+            parser.error(
+                f"--planner drivejepa-0.1.4b builds its own bodies; drop "
+                f"{', '.join('--' + k.replace('_', '-') for k in on)}"
+            )
         missing = [
             f for f in ("front_camera", "frame_interval_us", "force_gt_us") if getattr(args, f) is None
         ]
@@ -772,15 +981,22 @@ def main(argv: list[str] | None = None) -> int:
             "frame_interval_us": args.frame_interval_us,
             "force_gt_us": args.force_gt_us,
             "pad_ego_history": args.pad_ego_history,
+            "observe_between_replans": args.observe_between_replans,
         }
     elif args.pad_ego_history:
         parser.error("--pad-ego-history needs --replan-every-us")
+    elif args.observe_between_replans:
+        parser.error("--observe-between-replans needs --replan-every-us")
     names = {}
     for item in args.camera_name:
         source, sep, target = item.partition("=")
         if not sep or not source or not target:
             parser.error(f"--camera-name wants ALPASIM_ID=NAME, got {item!r}")
         names[source] = target
+    if args.named_cameras_only and not names:
+        parser.error("--named-cameras-only needs at least one --camera-name")
+    if args.send_route_time and not args.send_route:
+        parser.error("--send-route-time needs --send-route")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", stream=sys.stderr)
     serve(
         args.policy_url,
@@ -796,6 +1012,7 @@ def main(argv: list[str] | None = None) -> int:
         pinhole_intrinsics=args.pinhole_intrinsics,
         replan_log=args.replan_log,
         plan_record=args.plan_record,
+        **switches,
     )
     return 0
 

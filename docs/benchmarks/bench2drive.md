@@ -24,6 +24,8 @@ tracked by the Bench2Drive dual-PID controller, vendored in `pid.py` (see
 | collisions per progress km | a collision count divided by `progress_km`; the form upstream publishes (`statistics_manager.py:489-501`) | lower better |
 | `min_speed_entries` | number of ego-to-traffic speed ratios `MinimumSpeedRouteTest` recorded — about 20 per route by construction, so a **count of checkpoints reached**, not of violations | context, not a score |
 | `below_100_percent` | share of those recorded ratios below background-traffic speed | lower better |
+| `ended_stuck`, `ended_over_time`, `ended_collision` | with the early stop on (*Ending routes early*): share of routes that rule ended, 0/1 per route | lower better |
+| `ended_manual` | share of routes a person ended by hand (a run with one is `valid: false`) | context, not a score |
 
 The infraction-penalty coefficients are CARLA Leaderboard's: collision-vehicle
 ×0.60, collision-pedestrian ×0.50, collision-static ×0.65, red light ×0.70, stop
@@ -78,18 +80,29 @@ routes_file = "bench2drive220.xml"                   # under repo/leaderboard/da
 # carla_port = "2000"                # the evaluator moves up to the first free port from here
 # tm_port    = "8000"                # traffic manager port, likewise
 # gpu_rank   = "0"                   # CARLA's -graphicsadapter
-# record     = "false"               # per-tick front/BEV JPEGs + log.csv; ~40 GB per full sweep
+# record     = "false"               # the per-tick record; ~100 KB a tick on paddock's rig
+# record_inputs = "false"            # with record: each tick's whole request, for offline replay; ~2.5 MB a tick
+# stop_stuck_s       = "30"          # end a route 30 s after its last 3 m of progress; see Ending routes early
+# stop_expert_factor = "4"           # end a route at 4x the expert's time on it; needs `expert`
+# stop_on_collision  = "true"        # end a route at the first collision the leaderboard records
+# expert = "/path/to/expert"         # what `python -m tools.benchmarks.bench2drive.expert summarize` wrote
+# camera_rig = "paddock"             # or "bench2drive" / "kitscenes": see Camera rig; any other is valid: false
 ```
 
 Every key above is read by the adapter; nothing else is. `routes_subset` changes
 *what is measured*, so it is written to `run.json` and hashed into the run id.
+So do the `stop_*` settings, whose rules the run's notes also state, and a
+`camera_rig` other than paddock's.
 
 **How often the model is asked for a plan** is the model's own `planning_hz`
 (`model.yaml`, `capabilities`). The client asks the node once per
 1/`planning_hz` seconds and follows the last plan unchanged in between; a model
-without it is asked every 0.05 s tick. Drive-JEPA declares 2 Hz. The rate is
+without it is asked every 0.05 s tick. Drive-JEPA declares 2 Hz, AutoE2E 10 Hz, METEOR 5 Hz. The rate is
 recorded as `config.infer_hz` and hashed into the run id, and the host's
-`PADDOCK_INFER_HZ` overrides it for every model.
+`PADDOCK_INFER_HZ` overrides it for every model. Where that replaces the model's
+own rate, the run records the declared rate beside it (`config.planning_hz`) and
+is stored `valid: false`: an operator's rate. A pooled record carries the rate
+too, and ranks at the model's own (*Pooling recorded routes*, below).
 
 Prerequisites (all outside this repo):
 
@@ -120,6 +133,29 @@ leaves no trace in `run.json`, and it produced a full set of results at one site
 before anyone looked at a frame. `preflight()` now refuses an evaluator that
 contains the flag. If a site genuinely needs Low, make it a patch under
 `patches/Bench2Drive/` so the change is on the record and travels with the pin.
+
+## Camera rig
+
+Every model is driven through the same cameras: paddock's rig, nuScenes' six
+views at half nuScenes' 1600x900, plus openpilot's pair (`rig.py`). A site can
+name another rig to ask how much a model's drive depends on its cameras:
+
+| `camera_rig` | what it renders |
+|---|---|
+| `paddock` (default) | six 800x450 views, 70 deg (back 110), 1.5 m up |
+| `bench2drive` | Bench2Drive's own rig, which its dataset was recorded with (`tools/data_collect.py` at 7ec25d1): the same six at 1600x900, 1.6 m up |
+| `kitscenes` | KITScenes' roof pod, approximated from the calibration in `kitscenes.md`: an 88 x 54 deg front 1.8 m up and 87 x 63 deg side and rear views 2.0 m up |
+
+Another rig changes what the model is shown, so it is in `run.json` and the run
+id, and the run is `valid: false` with the rig named in its notes. It also
+changes how the frames travel: a frame of a megapixel or more goes to the node
+as JPEG (q95), the rest raw (`recorder.wire_codec`), so both other rigs' views
+arrive JPEG-compressed where paddock's arrive raw, and a comparison between
+rigs changes the two at once. The agent
+writes the rig it rendered beside each recorded route as `rig.json`, and
+`route_video` draws plans onto the front camera through it. The `kitscenes`
+front differs in size from its ring: it suits a model that packs each view on its
+own (AutoE2E), not one that stacks the raw frames.
 
 ## Cost
 
@@ -158,6 +194,61 @@ all. Patch `0002` gives the attempts a timeout of their own,
 `--connect-timeout`, which the adapter passes as `connect_timeout_s` (60 s by
 default); the client goes back to `--timeout` once connected, because that same
 value bounds the large towns' world load and the agent and tick watchdogs.
+
+## Ending routes early
+
+Off unless the site sets it. A route the car will not finish still drives until
+the leaderboard ends it, and the leaderboard is patient: its blocked test waits
+60 s under 0.1 m/s, and the scenarios that make the ego wait for a gap
+(AccidentTwoWays, ConstructionObstacleTwoWays, HazardAtSideLane, ...) switch that
+test off, which leaves the 4000-tick cap. In the first 25 routes of the October
+openpilot sweep, three stood still for 130–195 s of game time each, 27–42 min
+of wall clock apiece.
+
+Three settings end a route sooner (`early_stop.py`):
+
+| setting | ends the route when |
+|---|---|
+| `stop_stuck_s` | the ego has gone this many game seconds without getting 3 m further along the route (the blocked test's 0.1 m/s over 30 s). Progress, not speed, so a car that a driver-resume nudge keeps creeping counts too. The clock pauses while the ego waits at a red or amber light -- inside the light's trigger box, or up to 50 m short of the next light on the route, which is where a car queued behind others stands -- so a short window does not end every route that meets a red signal, and the clock runs on from where it was when the light turns; it does run while the car yields to a pedestrian or waits for a gap, so a window of a few seconds cuts those scenes short too |
+| `stop_expert_factor` + `expert` | the game clock reaches this multiple of Think2Drive's time on the route (`duration_s` of `<expert>/<route>/expert_traj.json`). The nine routes with no expert clip get the stuck rule alone; the run's config names the site's routes with none (`early_stop.no_expert`), so they are on the record and in the run id. Preflight refuses an `expert` directory with no `expert_traj.json` in it (drives fetched, never summarized) |
+| `stop_on_collision` | the leaderboard's own `CollisionTest` records a collision with a static object, a vehicle or a pedestrian: the events the infraction penalty is computed from, read by the agent through the ScenarioManager, one tick after the contact. Not its `actual_value`, which also counts a brush with the sidewalk that is neither recorded nor penalised. A run with it is `valid: false`: Bench2Drive charges a collision as a penalty (×0.50–0.65) and lets the car drive on, so a route ended at one scores something else |
+
+And one stop that is not a rule: a route ends **by hand** when its directory
+grows a `stop_request` file while it drives, which the dashboard's "Stop route"
+button writes (`POST /api/stop?route=<id>`, 127.0.0.1 only). The route is scored
+as it stood, and the run is `valid: false`, its notes counting the routes ended
+by hand: a moment a person chose is not one any rule reproduces. With `--runs N`
+the request stops the route, every repetition left of it too: each of those ends
+on its first tick, so the worker moves on.
+
+The agent ends the route through the leaderboard's own tick cap, which `preflight`
+checks the checkout still has, so the route is scored as it stands: the route
+completion and infractions of that moment, status `Failed - TickRuntime`. Beside
+`results.json` it writes `early_stop.json` with the rule that fired (`null` if
+none did), the game time, and the route's own budget, and with `--runs N` one
+such record per repetition under `repetitions`; the metrics carry it per route
+as `ended_stuck` / `ended_over_time` / `ended_collision` / `ended_manual` (the
+share of the route's repetitions, so 0 or 1 with one). The dashboard lists such a route as "Stopped: <reason>", and its video
+says why it ended.
+
+A route the stuck or over-time rule ends is a **failed drive**, and the run ranks. A car in a
+driving scene is expected to move; one that gets no further along its route for
+`stop_stuck_s`, or needs `stop_expert_factor` times the expert's time, has failed
+the scene, so the route is scored as it stood when it ended. The rules are in the
+run's config, and so in its run id, and its notes say which rules it ran under
+and why its scores stand; the ingest carries both into a pooled run. What it
+changes against a run to Bench2Drive's own end: a car that would have crept on
+after the window, or finished just after its budget, scores what it had at the
+cut. 1825 crept from 14 m to 20 m between 34 s and the 4000-tick cap (RC 15.19
+without the rule, 10.65 with it), and 2802 was cut at 4x the expert's 19.1 s,
+104 m along a 112 m route (RC 92.86). A pool of runs that stopped routes under
+*different* rules, or of some runs with the rules and some without, does not rank:
+one mean describes none of them.
+
+Choose the factor from what the model needs, not from the expert: on the five
+routes openpilot completed in the sweep above it took 1.6–2.9× Think2Drive's
+time, so a factor of 1 would have cut every one of them short. Of Think2Drive's
+own 211 drives, 3 stand still for longer than 30 s.
 
 ## Repetitions
 
@@ -223,8 +314,114 @@ per-route metrics are the mean over repetitions and `n_runs` records how many.
 Each route leaves `results.json` and `evaluator.log` (the evaluator's stdout and
 stderr, streamed as it runs, so a hung route can be read while it hangs) under
 the run's artifact dir, alongside the canonical `run.json` / `metrics.json`
-paddock writes. With `record = "true"` it also leaves front/BEV frames and a
-per-tick `log.csv`.
+paddock writes. With `record = "true"` it also leaves front/BEV frames, a
+per-tick `log.csv`, and the analysis record (`recorder.py`):
+
+| file | what |
+|---|---|
+| `ticks.jsonl` | one line per tick: the node's whole reply (every waypoint, every `extras` field), what it was sent besides pixels (command, navigation, the `route_xy` polyline, speed), the actuation and `/infer` latency, and state the model never sees: actors within 60 m, the lane under the ego, progress along the route, the next light and stop sign |
+| `route_plan.json` | the leaderboard's route at its own 1 m spacing, with the lights and stop signs on it |
+| `actors.jsonl` | blueprint, role and extent of each actor, once |
+| `model_<camera>/` | quarter-size thumbnails of every camera the model reads, at 10 Hz (openpilot's pair as `model_road` / `model_wide`) |
+| `inputs/<tick>.npz` | only with `record_inputs = "true"` as well: the tick's whole request -- every model camera's frame exactly as sent (uint8, lossless) and the rest of the body -- so the route can be fed to a model again offline (`tools/benchmarks/bench2drive/replay.py`). ~2.5 MB a tick for six 800×450 views: a few routes' worth for a deep dive, not a sweep's |
+
+None of it reaches the model, and a failure in it disables the record without
+stopping the route.
+
+### Seeing a route
+
+Three tools under `tools/benchmarks/bench2drive/` read those recordings, for any
+model; the driver's name comes from `{runs}/bench2drive/<model>/`:
+
+```bash
+# Think2Drive's own drives of the routes (Bench2Drive's expert), anno/ only, SHA-256 checked
+python -m tools.benchmarks.bench2drive.expert fetch --out <expert> --routes 1711,1852
+python -m tools.benchmarks.bench2drive.expert summarize --out <expert>
+# a video and a summary still per route: front camera, BEV with plan / expert / route,
+# the model's cameras and what it reported, route map, speed / progress / controls, score card
+python -m tools.benchmarks.bench2drive.route_video --runs {runs}/bench2drive/<model> \
+    --expert <expert> --routes-xml <repo>/leaderboard/data/bench2drive220.xml --out <dir>
+# a dashboard on 127.0.0.1 that renders each route as it finishes; --root must contain {runs},
+# because live frames are served by their path below it
+python -m tools.benchmarks.bench2drive.dashboard serve --root <dir> --runs {runs}/bench2drive/<model> \
+    --expert <expert> --routes-xml <repo>/leaderboard/data/bench2drive220.xml \
+    [--routes 1711,1852] [--title "checkpoint, rate"] [--port 8765]
+```
+
+`paddock run ... --resume <run_id>` continues a run in place: a route whose
+`results.json` holds a record for every repetition is reused as it was read
+(`harness.completed_metrics`), and every other route -- killed mid-drive,
+crashed, never started -- is driven. A reused route carries no `duration_s`;
+that is the harness's own clock and is not on disk.
+
+## Running a sweep in parallel, and after a reboot
+
+A full sweep is 220 routes of up to ~40 minutes each at the real-time factors in
+*Cost*, so it runs as several `paddock run` workers side by side, one CARLA each.
+`campaign.py` in this adapter keeps such a sweep moving, and
+`tools/benchmarks/bench2drive/restart_campaign.sh` wraps it in one idempotent
+command for after a reboot, a shutdown, or when finished workers leave the rest
+of the routes unevenly spread:
+
+```bash
+# a copy of the site config whose [roots] runs is this sweep's own (below)
+export PADDOCK_CONFIG=/path/to/sweep/paddock.toml PADDOCK_PYTHON=/path/to/paddock/venv/bin/python
+tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --workers 5 --held 11715
+tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --workers 5 --held 11715 --rebalance
+tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --status
+# also serve the dashboard (tools/benchmarks/bench2drive/dashboard.py); --dashboard-root must
+# contain {runs}, because live frames are served by path relative to it
+tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --workers 5 \
+    --dashboard-root /path/to/experiment --expert /path/to/expert [--features analysis.csv]
+```
+
+It starts, each in its own session so it outlives the shell, only what is not
+already running:
+
+| Piece | What it does |
+|---|---|
+| `campaign guard` | kills an evaluator that can no longer finish -- its log silent 15 min (a driving route logs every ~0.3 s), or its CARLA gone for 2 min -- so the worker records the route FAILED and moves on instead of waiting out `per_route_timeout_s` |
+| `campaign launch` | every route with no scored attempt under `{runs}/bench2drive/<model>/` (any run id) and not queued in an alive worker, sorted and dealt longest-expected-first to the free worker slots; each worker is a fresh `paddock run --scene <its routes>` with a copy of the site config whose CARLA / traffic-manager ports sit 150 above the previous slot's, and its own node port base |
+| `--held` | routes driven last, by one worker, once everything else has scored and no worker is alive |
+| `--rebalance` | stops the alive workers first (their current routes are driven again) and deals everything left anew |
+| `--dashboard-root` | the per-route video dashboard, on 127.0.0.1 |
+
+**Give each sweep its own runs root** (`[roots] runs` in a copy of the site
+config). `launch` counts a route as done when any run under
+`{runs}/bench2drive/<model>/` scored it, whatever settings that run was made
+under, and `paddock ingest` pools the latest scored attempt per route: on a
+root shared with runs started by hand, or with the gate's Bench2Drive lane, a
+route one of those scored is never driven by the sweep, and its score is pooled
+in with the sweep's.
+
+The expected cost of a route is the mean wall time of its scenario's finished
+routes in the same sweep, so a resumed sweep is dealt by what its scenarios
+actually cost: a car that stops behind an obstacle rides the scenario timeout or
+the tick cap (the blocked test is switched off while it "waits for a gap"),
+which is ~30 minutes against ~5 for a route it completes.
+
+Two failure modes this exists for, both met on a 220-route sweep at one site:
+
+* **A CARLA that dies mid-route does not end it.** CARLA stopped delivering
+  sensor data ("A sensor took too long to send their data"), or died inside
+  `route_scenario.spawn_parked_vehicles`; the evaluator then deadlocked in its
+  own shutdown, logging a "failed to destroy actor" line every 600 s, so the
+  worker sat idle for the full 90-minute route timeout. The guard's second test
+  -- the CARLA on the port the evaluator logged is gone -- catches the case
+  silence alone never would.
+* **A route that crashes CARLA crashes it every time.** Upstream's evaluator
+  then ran `ps | grep -graphicsadapter=<rank> | kill -9`, every worker's CARLA
+  on that GPU; with patch `0001`, which preflight requires (see *Shared-machine
+  behaviour*), it kills only its own. Such a route is still dealt again on every
+  launch while it has no score, so routes known to crash CARLA belong in
+  `--held`, driven once at the end: 11715 at the pin, and at that site the
+  Town12/13 `InterurbanAdvancedActorFlow` routes 23695, 23708 and 24078.
+
+Worker configs, logs (`logs/worker<slot>.log`) and a launch history
+(`workers.json`) live in `{runs}/bench2drive/_campaign/<model>/`. Every attempt
+lands under `{runs}/bench2drive/<model>/<run_id>/` as usual, so the dashboard,
+the analysis tools and `paddock ingest` (below, which takes the latest scored
+attempt per route) see one sweep however many launches it took.
 
 ## Pooling recorded routes into a run (`paddock ingest`)
 
@@ -268,7 +465,13 @@ the ingest, and `config.source_config_read` says how many source runs kept one.
 So is `declared_env`, the model's own `model.yaml` env. Source runs that recorded
 different ones, or a mix of runs that recorded one and runs from before it was
 recorded (#99), are pooled `valid: false` with a note: two settings of the model
-behind one mean, the same reason as two recording setups.
+behind one mean, the same reason as two recording setups. So is `infer_hz`, how
+often the node was asked for a plan, judged from what the runs recorded: the pool
+ranks at the rate the model's `model.yaml` declared for them (`planning_hz`). It
+does not rank at the host's `PADDOCK_INFER_HZ` in its place, at two rates, or at a
+rate not known because a run kept no config. A run that recorded no rate was asked
+every tick; before #106, a rate set by hand reached the record only as
+`PADDOCK_INFER_HZ` in `model_env`, and such a pool does not rank either.
 Aggregates are recomputed by the store from the per-route metrics; nothing is
 transcribed from a report.
 
@@ -292,8 +495,11 @@ transcribed from a report.
   is what "blocked at exactly 60 s with brake held" looks like from CARLA's
   side, and it is now visible from the node's.
 - Recording is off by default: a JPEG per camera per tick, a 512² BEV render per
-  tick and a CSV flush, inside the synchronous tick, come to roughly 40 GB for a
-  220-route sweep.
+  tick and a CSV flush, inside the synchronous tick. Measured ~100 KB a tick on
+  paddock's rig (59 routes, 8,077 ticks): ~22 GB for 220 routes of 1,000 ticks,
+  ~90 GB if every route rode the 4000-tick cap. The other rigs' larger frames
+  make it ~280 KB a tick (`bench2drive`) and ~390 KB (`kitscenes`), one route
+  each. `record_inputs` adds ~2.5–3 MB a tick on paddock's rig, for a few routes.
 
 ## Notes
 
@@ -325,6 +531,9 @@ transcribed from a report.
 | `metric_info.json` matches what the upstream tool reads | field names and layout taken from `get_metric_info` and `efficiency_smoothness_benchmark.read_from_json` at 7ec25d1; not yet fed through the tool end to end | argued |
 | crashed repetitions are dropped, not averaged | unit-tested over crashed, blocked and all-crashed triples | **strong** |
 | an edited CARLA launch line is refused | unit-tested against a stub evaluator with and without the flag | **strong** |
+| `--resume` reuses scored routes and drives the rest | unit-tested (scored, killed, torn, all-crashed, short of repetitions); on a real interrupted sweep it reused the 34 scored routes and drove the other 185 | **strong** |
+| `campaign` deals what is left and the guard frees hung workers | selection, dealing, per-slot config and `--held` unit-tested (`tests/test_campaign.py`); the process side used on one 220-route sweep, where the guard freed two evaluators whose CARLA had died | moderate |
+| the calibration the agent sends is each camera's CARLA mount in paddock's frames | `tests/test_calibration.py` runs the agent's own `setup()` for every camera of every rig, against the conversion written out one frame change at a time, the pinhole of the rendered view, a road point on the ego's left landing left of centre, and one 5 m to its left in front of the left cameras and behind the right ones; carla and the HTTP session are stand-ins, and 6 of its 10 tests fail with the agent's y-flip removed, the side-camera ones among them | **strong** for the formula; not compared with a live CARLA's matrices |
 
 ## September 2026 runs: what changed and what the numbers are
 
@@ -337,14 +546,19 @@ below made the 24-route set (5 abilities × 5 routes minus 11715) the reference.
 * **Wire format:** the agent now sends `speed_limit` (m/s, from
   `hero.get_speed_limit()`) and the next junction maneuver as `nav_maneuver` /
   `nav_distance_m` (walked forward on the 1 m world plan). Both optional; only
-  VisionPilot (set-speed) and Alpamayo (navigation text) read them.
+  VisionPilot (set-speed) and Alpamayo (navigation text) read them. The next
+  lane change on that plan goes beside them, as `nav_lane_change` (`"LEFT"` /
+  `"RIGHT"`, else null) and `nav_lane_change_m`: the 4-way command sends a lane
+  change as STRAIGHT and loses its side (`navigation.py`). Also optional; only
+  openpilot reads it, under `PADDOCK_OPENPILOT_DESIRE=route`.
 * **Timeouts:** `PADDOCK_INFER_TIMEOUT_S` (default 120) raises the per-tick
   HTTP timeout; heavy nodes under GPU contention need 600. Use
   `per_route_timeout_s = 14400` or more for slow models.
 * **openpilot** runs with its comma-three rig (`CAM_OP_ROAD` 1928×1208 fov 40
   → `img`, `CAM_OP_WIDE` fov 119 → `big_img`; warp verified pixel-exact) and a
   reproduction of openpilot 0.11.2's longitudinal planner
-  (`PADDOCK_OPENPILOT_NATIVE_LONG=1`, `PADDOCK_OPENPILOT_MODE=experimental`).
+  (`PADDOCK_OPENPILOT_NATIVE_LONG=1`, declared in its `model.yaml`, so no site
+  setting is needed; `PADDOCK_OPENPILOT_MODE=experimental`).
   Its model does not launch from standstill without a driver; the
   driver-resume rule (`PADDOCK_OPENPILOT_RESUME_S=3.0`: stopped 3 s, no lead →
   the e2e candidate is dropped until 1 m/s) is logged as `resume` in log.csv
@@ -398,7 +612,8 @@ one run per route; route 11715 was excluded after CARLA crashes. These are
 driving scores, not per-ability scores. OpenPilot ≈ is the **unassisted
 pre-resume estimate**, reconstructed from the assisted recordings: 16 routes
 are censored before intervention and eight had no intervention. It is not a
-separate unassisted sweep. The historical OpenPilot scores predate later
+separate unassisted sweep, and the support matrix no longer shows it: OpenPilot's
+cell is now its valid 50-route run (below). The historical OpenPilot scores predate later
 controller fixes. The assisted and expansion recordings are reported
 separately in [OpenPilot, by recording set](#openpilot-by-recording-set); they are
 never pooled into one mean. See [Bench2Drive protocol](bench2drive.md).
@@ -412,7 +627,7 @@ with the set-speed latch fix in place for both.
 and Qwen-Drive replan at 2 Hz, Alpamayo 1.5 at 10 Hz — over the 50-route set,
 18–20 Sep 2026. Alpamayo 1.5 and Qwen-Drive are means over 49 routes: route 3800
 crashes CARLA for both at their native rate and is reported as never scored, not
-as a zero. Every other cell in this column is driven at 20 Hz, one inference per
+as a zero. Every other cell in this column but AutoE2E's (☉) and METEOR's (below) is driven at 20 Hz, one inference per
 simulator tick; OpenPilot's native rate *is* 20 Hz, and VisionPilot was not
 re-run. So the ※ cells are driven at a different rate from the ◆ cells, and are
 ranked against them all the same, at each model's own rate. At 20 Hz the same three scored Alpamayo 1.5 44.58 and
@@ -430,9 +645,50 @@ constant velocity instead extrapolates the recorded ego velocity. 48.31 is that
 
 ✦ Bench2Drive constant velocity is a do-nothing floor: "constant velocity" means holding the current speed, and every route starts from a standstill, so the baseline holds zero and never departs -- blocked after 60 s, driving score 0 on every route (confirmed on 3 routes, structural for all 24). Unlike nuScenes, where the logged ego is already moving, it is not an informative baseline in closed loop.
 
-☉ AutoE2E has no Bench2Drive cell: its 50-route sweep at 10 Hz is paused
-part-way, and every route run so far scores 3–27 the same way, leaving the lane
-at 4–5 s. See [docs/models/autoe2e.md](../models/autoe2e.md).
+☉ AutoE2E's cell, 15.30, is its mean driving score over the 50 routes with its
+own inputs, the measured ego history and the route raster, asked for a plan at the
+10 Hz its `model.yaml` declares
+([run](../../results/bench2drive/autoe2e/pooled50-40c29d24c37d542a-cc7a9c/run.json),
+`valid: true`): route completion 26.37 %, infraction penalty 0.60. A route ends
+after 30 s without 3 m of progress or at 4x the expert's time, and is scored as a
+failed drive: 42 of the 50 ended on the first rule, 1 on the second. The other rows
+drove every route to Bench2Drive's own end, so the cell is marked R, and AutoE2E is
+left out of the 50-route table below, whose infraction counts depend on how long
+each route ran. Fed a
+steady straight past and no route instead, which are not upstream's inputs, and
+stopped at its first collision, it scored 37.74 on the same routes
+([run](../../results/bench2drive/autoe2e/pooled50-steady-noroute-40c29d24c37d542a-8d26e9/run.json),
+`valid: false`); why that past helps is in [the model's deep dive](../models/autoe2e.md).
+
+METEOR's cell, 1.05, is its mean driving score over the 50 routes: TIER IV's
+released ONNX as shipped, through paddock's six cameras in six of its eight slots
+and with no driving command, which the released graph has no input for, asked for
+a plan at the 5 Hz its `model.yaml` declares
+([run](../../results/bench2drive/meteor/pooled50-40c29d24c37d542a-867d57/run.json),
+`valid: true`): route completion 6.30 %, infraction penalty 0.90, under AutoE2E's
+early-stop rules. The other rows drove every route to Bench2Drive's own end, so,
+like AutoE2E's, the cell is marked R. On 43 of the 50 routes the car never leaves
+the start. Standing still, METEOR plans a 3 s path that ends a median 0.17 m ahead, and its own
+acceleration output is negative, so the shared controller, which brakes when a
+plan asks for less than 0.4 m/s, holds the brake until a rule ends the route: the
+stuck rule at 30 s on 30 of them, the over-time rule on 1, and Bench2Drive's own
+blocked test at 60 s on the 12 that start about 30 m short of a red light, which
+pauses the stuck clock. On the 7 routes it drives, it collides on every one. Like
+AutoE2E, it is left out of the 50-route table below. Detail in
+[meteor.md](../models/meteor.md#reference-numbers).
+
+OpenPilot's cell, 47.52, is its mean driving score over the 50 routes: comma's
+`driving_supercombo` through its comma-three camera pair, asked every tick, with
+openpilot's own longitudinal planner and its driver-resume nudge, both declared in
+its `model.yaml`
+([run](../../results/bench2drive/openpilot/pooled50-40c29d24c37d542a-c7d2b2/run.json),
+`valid: true`): route completion 62.44 %, infraction penalty 0.78, under AutoE2E's
+early-stop rules, which ended 19 routes on the stuck rule and 5 on the time budget.
+The nudge stands in for a driver pressing resume once the car has stood 3 s with
+no lead, so the cell is marked P; the other rows drove every route to
+Bench2Drive's own end, so it is marked R. It replaces the unassisted estimate ◆
+(30.09), a reconstruction from the September recordings, whose 50-route mean the
+table below still withholds.
 
 ### Bench2Drive — 50 routes
 
@@ -538,19 +794,22 @@ pooled 50-route mean they would produce is withheld from
 | Expansion 26 — unassisted, different upstream longitudinal setup | 26 | 43.01 | 60.45 | 287 | 58.54 |
 | Unassisted 24 estimate ◆ — assisted runs censored at the first resume | 24 | 30.09 | 30.76 | — | — |
 
-The third row is the reconstruction behind ◆ and the 30.09 the support matrix carried until 29 Oct 2026,
-not a measurement: 16 routes are censored before intervention and eight had no
+The third row is the reconstruction behind ◆, not a measurement (the support
+matrix showed it until OpenPilot's valid 50-route run replaced it): 16 routes are censored before intervention and eight had no
 intervention. Its per-route values are
 [`openpilot-24-infractions.csv`](openpilot-24-infractions.csv), and
 every record in the pooled JSON now carries an `assistance` block, so the assisted
 and unassisted subsets can be recomputed from the linked file alone.
 
-Since 29 Oct 2026 the support matrix ranks OpenPilot's own 50-route run instead,
-[`bench2drive/openpilot/native50-20hz-40c29d24c37d542a-f68000`](../../results/bench2drive/openpilot/native50-20hz-40c29d24c37d542a-f68000/run.json): one setup on every route —
-no resume assistance, openpilot's own longitudinal plan, the tinygrad backend —
-driven at 20 Hz, the benchmark's rate and openpilot's own. DS 30.91, RC 39.49 over
-all 50 routes, none lost. It is a measurement, not a reconstruction, and it pools
-nothing, so it ranks.
+A second OpenPilot run, driven on 29 Oct 2026 for this cell before the run of its
+declared setup replaced the estimate, is kept and does not rank:
+[`bench2drive/openpilot/native50-20hz-40c29d24c37d542a-f68000`](../../results/bench2drive/openpilot/native50-20hz-40c29d24c37d542a-f68000/run.json).
+One setup on every route — no resume assistance, openpilot's own longitudinal plan,
+the tinygrad backend on CUDA, no early stop — at 20 Hz: DS 30.91, RC 39.49 over all
+50 routes, none lost. It set the device and backend openpilot's `model.yaml`
+declares to other values, so `paddock ingest` writes it `valid: false`. It differs
+from the ranked run in the backend, the nudge and the early stop at once, so the
+gap between the two is not the effect of any one of them.
 
 #### Constant velocity — the speed sweep
 

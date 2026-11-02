@@ -10,9 +10,8 @@ on PR #21:
 * **OpenPilot's two recording sets are never pooled into one mean.** Its 24
   historical routes were driven with human resume assistance on 16 of them, and
   its 26 expansion routes use a different upstream longitudinal setup. A pooled
-  driving score of 48.11 would top the table. The support matrix published the
-  30.09 unassisted estimate until 29 Oct 2026, and since then OpenPilot's own
-  50-route run under one setup.
+  driving score of 48.11 would top the table as though one setup had driven it;
+  the support matrix publishes a measured record of one setup instead.
 
 No GPU, no dataset, no site config: this reads tracked files only.
 """
@@ -27,7 +26,8 @@ from pathlib import Path
 
 import pytest
 
-from tools.readme_figures import matrix_cell
+from paddock.adapters.benchmarks.bench2drive.harness import every_tick
+from tools.readme_figures import load_matrix, matrix_cell
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RECORDS = REPO_ROOT / "docs/benchmarks/bench2drive-speed-normalization.json"
@@ -247,24 +247,25 @@ def test_openpilot_block_reproduces(data: dict) -> None:
     assert rows[2][3] == f"{est['route_completion']:.2f}"
 
 
-#: OpenPilot's Bench2Drive cell since 29 Oct 2026: its own 50-route run under one setup.
-OPENPILOT_RUN = REPO_ROOT / "results/bench2drive/openpilot/native50-20hz-40c29d24c37d542a-f68000"
+def test_support_matrix_openpilot_cell_is_one_declared_setup() -> None:
+    """The cell is a measured record of one setup, never a mean pooled over setups.
 
-
-def test_support_matrix_openpilot_cell_is_one_setup_not_a_pooled_mean() -> None:
-    """The cell is a run driven one way on all 50 routes; never the 48.11 that pools three setups."""
-    run = json.loads((OPENPILOT_RUN / "run.json").read_text())
-    metrics = json.loads((OPENPILOT_RUN / "metrics.json").read_text())
-    assert run["valid"] and run["status"] == "complete"
-    assert run["dataset"]["n_samples"] == 50 and run["dataset"]["n_failed"] == 0
-    env = run["config"]["model_env"]
-    assert env["PADDOCK_OPENPILOT_RESUME_S"] == "0", "no driver-resume assistance"
-    assert env["PADDOCK_OPENPILOT_NATIVE_LONG"] == "1"
-    assert "PADDOCK_INFER_HZ" not in env, "driven at the benchmark's 20 Hz"
-    ds = metrics["metrics"]["driving_score"]["mean"]
-    cell = _matrix_cell("openpilot")
-    assert re.match(rf"^{ds:.2f}\b", cell), f"the support matrix publishes {cell!r}; the run says {ds:.2f}"
-    assert not cell.startswith("48.11")
+    The recordings in the records file pool three setups, which is why their mean
+    stays withheld above, and the unassisted estimate rebuilt from them is a
+    reconstruction. The cell names one valid run: openpilot's own planner and its
+    resume nudge, declared in model.yaml, on every route. So it carries P (the
+    nudge stands in for a driver pressing resume) and R (its routes can end early).
+    """
+    columns, rows = load_matrix()
+    j = next(j for j, c in enumerate(columns) if c.key == "bench2drive")
+    row = next(r for r in rows if r.key == "openpilot")
+    cell = row.cells[j]
+    assert cell.run, f"the cell shows {cell.shown!r} with no run: a reconstruction, not a measurement"
+    run = json.loads((REPO_ROOT / "results" / cell.run / "run.json").read_text())
+    assert run["valid"], f"{cell.run} does not rank: {run['notes']}"
+    assert "recording_setups" not in run["config"], f"{cell.run} pools setups"
+    assert run["config"]["declared_env"]["PADDOCK_OPENPILOT_NATIVE_LONG"] == "1"
+    assert {"P", "R"} <= {*row.marks, *cell.marks}, f"{cell.run} needs P and R"
 
 
 # ---------------------------------------------------------------------------
@@ -327,3 +328,29 @@ def test_bench2drive_page_still_links_a_tracked_run() -> None:
     assert links, "no docs link a results/bench2drive run any more"
     for link in links:
         assert (PAGE.parent / link).resolve().exists(), link
+
+
+# ---------------------------------------------------------------------------
+# A cell measured otherwise than its column is marked R
+# ---------------------------------------------------------------------------
+
+
+def test_a_cell_asked_at_its_own_rate_or_stopped_early_is_marked_r() -> None:
+    """A record asked less often than every tick, or whose routes an early stop could end, has an R cell."""
+    # The README: a cell without a mark was measured the same way as the rest of its column,
+    # and this column asks every tick and drives every route to Bench2Drive's own end.
+    columns, rows = load_matrix()
+    j = next(j for j, c in enumerate(columns) if c.key == "bench2drive")
+    for row in rows:
+        cell = row.cells[j]
+        if not cell.run:
+            continue
+        config = json.loads((REPO_ROOT / "results" / cell.run / "run.json").read_text())["config"]
+        otherwise = []
+        if not every_tick(config.get("infer_hz") or 0.0):
+            otherwise.append(f"asked at {config['infer_hz']:g} Hz")
+        if config.get("early_stop"):
+            otherwise.append("its routes ended early")
+        if otherwise:
+            said = " and ".join(otherwise)
+            assert "R" in row.marks + cell.marks, f"{row.key}: {cell.run} was {said}, unmarked"

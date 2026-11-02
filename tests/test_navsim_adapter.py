@@ -855,6 +855,9 @@ def test_the_runner_restarts_nodes_and_resumes_after_a_failed_attempt(
         def invalid_reasons(self):
             return []
 
+        def remarks(self):
+            return []
+
         def evaluate(self, policy_url, out_dir, config, limit=None, echo=print):
             calls.append(dict(config))
             if len(calls) == 1:

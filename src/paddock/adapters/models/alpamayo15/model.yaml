@@ -8,6 +8,20 @@ runtime:
   venv: "{repo}/a1_5_venv"
   pythonpath: ["{repo}"]
   cwd: "{repo}"
+  # Ablation/debugging knobs policy.py reads from the environment (_env_or /
+  # _env_float / os.environ.get) -- without this, `ALPAMAYO_NAV=0 paddock run
+  # ...` sets the var in paddock's own process, not the model's subprocess
+  # (runtime/env.py builds that from a strict allowlist), and the ablation
+  # silently runs as if the flag were never set.
+  env_passthrough:
+    - ALPAMAYO_NAV
+    - ALPAMAYO_NUM_TRAJ_SAMPLES
+    - ALPAMAYO_TEMPERATURE
+    - ALPAMAYO_TOP_P
+    - ALPAMAYO_MAX_GEN
+    - ALPAMAYO_RESERVE_GB
+    - ALPAMAYO_FRAME_SELECT
+    - ALPAMAYO_SAVE_REASONING
   env:
     ALPAMAYO_CHECKPOINT: "{weights}/Alpamayo-1.5-10B"
     ALPAMAYO_COSMOS: "{weights}/Cosmos-Reason2-8B"
@@ -23,9 +37,11 @@ runtime:
     KITSCENES_ROOT: "{data.kitscenes.parent}"
     KITSCENES_REPO: "{repos}/kitscenes"
     KITSCENES_SAMPLE_LIST: "{data.navsim.exp}/inference/kitscenes_e2e_final.pkl"
-  # Site overrides of these change speed or memory, not the plan, so they
-  # leave a run valid; any other [models.alpamayo15.env] key makes it valid: false.
-  tuning_env: [ALPAMAYO_RESERVE_GB]
+  # Site overrides of these change speed, memory or what is logged, not the
+  # plan, so they leave a run valid; any other [models.alpamayo15.env] key makes
+  # it valid: false. ALPAMAYO_SAVE_REASONING only adds the reasoning text to
+  # each sample's extras.
+  tuning_env: [ALPAMAYO_RESERVE_GB, ALPAMAYO_SAVE_REASONING]
 
 capabilities:
   cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT]
@@ -53,7 +69,10 @@ capabilities:
   precision: bf16
   input_size: [448, 280]
   # Four slots: three wide views, and a 30 deg telephoto that policy.py crops out
-  # of CAM_FRONT (CAMERA_SLOTS). cameras above is what a simulator renders.
+  # of CAM_FRONT (CAMERA_SLOTS). cameras above is what a simulator renders. On
+  # AlpaSim the bridge also sends the rendered telephoto as CAM_FRONT_TELE, and
+  # policy.py uses it in place of the crop; that is why the policy decodes four
+  # cameras while every source has to send only these three.
   camera_views: [CAM_FRONT_LEFT, CAM_FRONT, CAM_FRONT_RIGHT, CAM_FRONT_TELE]
   history_frames: 4
   # Four frames and 16 ego poses, both 0.1 s apart (NUM_CAM_FRAMES, NUM_HISTORY_STEPS).
@@ -62,7 +81,8 @@ capabilities:
   ego_history_hz: 10.0
   output_kind: waypoints
   horizon_s: 6.4
-  # 64 waypoints at 10 Hz; policy.py resamples them to waypoint_dt.
+  # 64 waypoints at 10 Hz; policy.py resamples them to waypoint_dt, except when
+  # the body asks for a plan_dt (AlpaSim's bridge): then all 64 go back, 0.1 s apart.
   plan_points_hz: 10.0
   # Samples unseeded at T=1.0/top_p=0.95 in closed loop. One run is a draw, not
   # a measurement: sd 1.817 across seeds on frontal-0103.

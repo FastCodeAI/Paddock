@@ -197,6 +197,35 @@ Every metric `benchmark.yaml` declares. All are lower is better except the two
 | `ade_3s` | average displacement over all six 0.5 s steps, m |
 | `pdm_ep`, `pdm_comfort` | NAVSIM v1's EP and C terms on the 0.5 s plan, higher is better ([results-schema](../results-schema.md)). With `col_avg` as NC they are this benchmark's PDM rows in the gate; there is no map, so no DAC |
 
+## Reading a model's decisions back off a run
+
+`tools/models/alpamayo15/decisions.py` turns every scored sample's predicted
+and ground-truth trajectory into a decision label — lateral (straight /
+turn_left / turn_right / lane_change / nudge) and longitudinal (keep_speed /
+slow_down / stop / speed_up) — purely from waypoint geometry, no map or
+annotation data needed, and writes `decisions.csv` into the run directory.
+Everything else here reads that file; none of it touches the simulator or
+`run_config()`.
+
+`decision_confusion.py` breaks ground-truth-vs-predicted-vs-input-command down
+as joint counts per situation (traffic light, intersection, construction,
+dynamic agents, ...), categories overlapping on purpose since a sample can
+match more than one. `behavior_gaps.py` is the "scan for issues" entry point:
+a battery of independent, quantified behavior checks over `decisions.csv` (plus
+`samples.jsonl` metrics and the reasoning text, when the run saved it with
+`ALPAMAYO_SAVE_REASONING=1`), each with a
+headline number and a flagged/not-flagged verdict, registered as plain
+functions so a new check is one function away. `decision_scatter.py` plots the
+same four raw geometric quantities (lateral offset, heading change, speed
+delta, final speed) ground-truth vs. predicted, to spot a cluster
+`behavior_gaps.py`'s fixed checks didn't happen to look for.
+
+`scenario_tags.py` is not a standalone tool — it's the shared nuScenes
+scene-description keyword tagger `decision_confusion.py` and `behavior_gaps.py`
+import, consolidated from logic that used to be duplicated across several
+research scripts (two real keyword-matching bugs — bare `"ped"`/`"bus"` as
+substrings — were found and fixed in that consolidation).
+
 ## Tests
 
 `tests/test_nuscenes_openloop.py`: quaternion/frame geometry, oriented-box

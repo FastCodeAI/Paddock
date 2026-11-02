@@ -45,6 +45,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
+from paddock.adapters.benchmarks.bench2drive import early_stop, rig
 from paddock.benchmark import ClosedLoopBenchmark, Episode
 from paddock.config import REPO_ROOT
 from paddock.runtime import ports
@@ -81,6 +82,31 @@ def infer_hz(planning_hz: float | None) -> float:
         raise ValueError(f"PADDOCK_INFER_HZ={raw!r}: expected a rate in Hz") from None
 
 
+#: Bench2Drive steps its simulation at 20 Hz, so a client asked at that rate or faster, or at
+#: none (0), asks on every tick: one protocol however the rate is written.
+SIM_HZ = 20.0
+
+
+def every_tick(hz: float) -> bool:
+    """Whether a client asked at ``hz`` asks the node on every simulation tick."""
+    return hz <= 0 or hz >= SIM_HZ
+
+
+def _same_rate(a: float, b: float) -> bool:
+    """Two rates that ask the node on the same ticks."""
+    return (every_tick(a) and every_tick(b)) or a == b
+
+
+def _rate_said(hz: float) -> str:
+    return "on every tick" if every_tick(hz) else f"at {hz:g} Hz"
+
+
+def _cameras_override() -> list[str]:
+    """The cameras the host's PADDOCK_CAMERAS_OVERRIDE renders and ships in place of the model's
+    own (a sim2real diagnostic); empty entries are dropped, so a trailing comma is not a camera id."""
+    return [c for c in os.environ.get("PADDOCK_CAMERAS_OVERRIDE", "").split(",") if c.strip()]
+
+
 #: The CARLA launch flag that changes what the cameras see. Bench2Drive 7ec25d1
 #: launches CARLA at its default (Epic) quality; ``-quality-level=Low`` renders
 #: the sky black and the wet-road decal layer as white speckle, so frames scored
@@ -108,6 +134,14 @@ DEFAULT_CONNECT_TIMEOUT_S = 60
 WAYPOINT_DT = 0.5
 
 DEFAULT_ROUTES_FILE = "bench2drive220.xml"
+
+#: The file that, appearing in a route's directory while it drives, ends the route
+#: by hand (``early_stop.MANUAL``). The dashboard's "Stop route" button writes it.
+STOP_REQUEST = "stop_request"
+
+#: One expert drive's summary, ``<expert>/<route>/expert_traj.json`` as
+#: ``tools.benchmarks.bench2drive.expert summarize`` writes it: where a route's time budget comes from.
+EXPERT_TRAJ = "expert_traj.json"
 
 #: CARLA's client library as the 0.9.15 release ships it. Put on the client's
 #: path when present, as the checkout's own ``run_evaluation.sh`` does, so a
@@ -294,6 +328,40 @@ def parse_results(results_json: Path) -> dict[str, float]:
     }
 
 
+def ended_early(route_dir: Path) -> dict[str, float]:
+    """``ended_<reason>`` for one route (stuck, over_time, collision, manual): share of repetitions so ended.
+
+    Read from the ``early_stop.json`` the agent writes beside ``results.json``
+    whenever the early stop is on -- with ``"reason": null`` for a route that went
+    to Bench2Drive's own end -- so this reads only the route's directory, as
+    ``--resume`` and the ingest need. Empty without one: the stop was off, and a
+    0 would claim a rule was there to fire. Each repetition's verdict is in its
+    ``repetitions`` (a record from before those has only the one); with one
+    repetition it is 0/1 per route, so a run's aggregate is the share of its
+    routes each rule ended.
+    """
+    try:
+        record = json.loads((Path(route_dir) / early_stop.RECORD).read_text())
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(record, dict):
+        return {}
+    reps = [r for r in (record.get("repetitions") or [record]) if isinstance(r, dict)] or [record]
+    return {
+        f"ended_{name}": sum(1.0 for r in reps if r.get("reason") == name) / len(reps)
+        for name in early_stop.REASONS
+    }
+
+
+def _positive(value: Any) -> float | None:
+    """A site setting as a number above zero, or None for anything else."""
+    try:
+        number = float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
 # ---------------------------------------------------------------------------
 # Process hygiene: we kill only what we started
 # ---------------------------------------------------------------------------
@@ -410,12 +478,73 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
 
     @property
     def record(self) -> bool:
-        """Per-tick front/BEV JPEGs and a log.csv: off unless asked for.
+        """The per-tick record (front/BEV JPEGs, model-camera thumbnails, log.csv, ticks.jsonl,
+        actors.jsonl, route_plan.json, rig.json): off unless asked for.
 
-        Roughly 50 KB x 4000 frames x 220 routes, about 40 GB a sweep, plus an
-        extra render on CARLA's side every tick.
+        Measured ~100 KB a tick on paddock's rig (59 routes, 8,077 ticks), so ~22 GB
+        for 220 routes of 1,000 ticks and ~90 GB if every route rode the 4000-tick
+        cap; ~280 KB a tick through the ``bench2drive`` rig and ~390 KB through
+        ``kitscenes`` (one route each). Plus an extra render on CARLA's side every tick.
         """
         return (self.setting("record") or "false").strip().lower() in ("1", "true", "yes", "on")
+
+    @property
+    def early_stop(self) -> dict[str, Any] | None:
+        """The early-stop rules the site set (``early_stop.py``), or None when all are off.
+
+        ``stop_stuck_s``: game seconds without :data:`early_stop.PROGRESS_M` of
+        progress along the route. ``stop_expert_factor``: a multiple of the
+        expert's time on the route, read from ``expert``. ``stop_on_collision``:
+        the first collision the leaderboard records. A malformed value reads as
+        off here; ``preflight`` is what reports it.
+        """
+        rules: dict[str, Any] = {}
+        for key, name in (("stop_stuck_s", "stuck_s"), ("stop_expert_factor", "expert_factor")):
+            value = _positive(self.setting(key))
+            if value is not None:
+                rules[name] = value
+        if (self.setting("stop_on_collision") or "").strip().lower() in ("1", "true", "yes", "on"):
+            rules["collision"] = True
+        if not rules:
+            return None
+        rules["progress_m"] = early_stop.PROGRESS_M
+        return rules
+
+    def expert_budget_s(self, route_id: str) -> float | None:
+        """``stop_expert_factor`` x the expert's game time on ``route_id``, or None.
+
+        The expert's time is ``duration_s`` of ``<expert>/<route>/expert_traj.json``
+        as ``tools.benchmarks.bench2drive.expert summarize`` writes it: Think2Drive's
+        drive of the same route, start to end. Nine of the 220 routes have no
+        expert clip; those get the stuck rule alone.
+        """
+        rules, expert = self.early_stop, self.setting("expert")
+        if not rules or "expert_factor" not in rules or not expert:
+            return None
+        try:
+            traj = json.loads((Path(expert) / route_id / EXPERT_TRAJ).read_text())
+            duration = float(traj["duration_s"])
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+        return round(rules["expert_factor"] * duration, 2) if duration > 0 else None
+
+    @property
+    def record_inputs(self) -> bool:
+        """Each tick's whole request under ``inputs/`` (``recorder.write_inputs``): off unless asked for.
+
+        ~2.5 MB a tick for six 800x450 views, a replay's worth of a few routes and not
+        a sweep's; it needs ``record`` on, and changes nothing the model is shown.
+        """
+        return (self.setting("record_inputs") or "false").strip().lower() in ("1", "true", "yes", "on")
+
+    @property
+    def camera_rig(self) -> str:
+        """The rig the agent renders the model's cameras with (``rig.py``); paddock's unless named.
+
+        Another rig changes what the model is shown, so it is on the run's record and
+        the run does not rank (``invalid_reasons``). An unknown name is ``preflight``'s to report.
+        """
+        return (self.setting("camera_rig") or rig.DEFAULT).strip()
 
     def _pythonpath(self) -> list[str]:
         """What the client interpreter needs, in the checkout's own order.
@@ -525,8 +654,56 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             if value and not value.strip().isdigit():
                 problems.append(f"[benchmarks.bench2drive] {key} must be an integer, got {value!r}")
 
+        if self.camera_rig not in rig.RIGS:
+            problems.append(
+                f"[benchmarks.bench2drive] camera_rig {self.camera_rig!r} is not a rig in rig.py; "
+                f"the rigs are {', '.join(sorted(rig.RIGS))}"
+            )
+
+        problems += self._early_stop_problems()
         if not problems:
             problems += self._import_problems()
+        return problems
+
+    def _early_stop_problems(self) -> list[str]:
+        """The stop_* settings parse, the expert's drives exist, and the cap the agent ends routes by does."""
+        problems = []
+        collision = (self.setting("stop_on_collision") or "").strip().lower()
+        if collision not in ("", "1", "true", "yes", "on", "0", "false", "no", "off"):
+            problems.append(
+                f"[benchmarks.bench2drive] stop_on_collision must be true or false, got {collision!r}"
+            )
+        if self.record_inputs and not self.record:
+            problems.append(
+                '[benchmarks.bench2drive] record_inputs = "true" needs record = "true": each tick\'s '
+                "request is written beside the recorded route, and with record off there is none"
+            )
+        for key in ("stop_stuck_s", "stop_expert_factor"):
+            value = self.setting(key)
+            if value not in (None, "") and _positive(value) is None:
+                problems.append(f"[benchmarks.bench2drive] {key} must be a number above zero, got {value!r}")
+        if self.setting("stop_expert_factor") not in (None, ""):
+            expert = self.setting("expert")
+            if not expert:
+                problems.append(
+                    "[benchmarks.bench2drive] stop_expert_factor needs `expert`, the directory "
+                    "`python -m tools.benchmarks.bench2drive.expert summarize` wrote"
+                )
+            elif not Path(expert).is_dir():
+                problems.append(f"expert drives not found: {expert}")
+            elif not any(Path(expert).glob(f"*/{EXPERT_TRAJ}")):
+                problems.append(
+                    f"no {EXPERT_TRAJ} under {expert}, so no route would have a time budget: "
+                    "run `python -m tools.benchmarks.bench2drive.expert summarize` on the drives first"
+                )
+        if self.early_stop and self.repo is not None:
+            manager = self.repo / "leaderboard" / "leaderboard" / "scenarios" / "scenario_manager.py"
+            text = manager.read_text(errors="replace") if manager.exists() else ""
+            if "def _tick_scenario" not in text or f"tick_count > {early_stop.TICK_CAP}" not in text:
+                problems.append(
+                    f"{manager} has no `tick_count > {early_stop.TICK_CAP}` cap in _tick_scenario; "
+                    f"the early stop ends a route through it, so with this leaderboard it would end none"
+                )
         return problems
 
     def _import_problems(self) -> list[str]:
@@ -594,9 +771,20 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         differently (Drive-JEPA 57.60 against 31.71 on the 50 routes), so the
         two must never share a run id. Absent means every tick, which is what
         a record without it was driven at.
+
+        When the host's PADDOCK_INFER_HZ replaces the rate the model declares,
+        the declared one is recorded beside it (``planning_hz``; ``infer_hz`` 0
+        for every tick), so the record says the rate was an operator's: the run
+        does not rank (``invalid_reasons``), and neither does a pool of such runs.
+        A host that restates the model's own rate changes nothing.
         """
-        hz = infer_hz(getattr(model, "planning_hz", 0.0))
-        return {"infer_hz": hz} if hz else {}
+        declared = float(getattr(model, "planning_hz", 0.0) or 0.0)
+        hz = infer_hz(declared)
+        if _same_rate(hz, declared):
+            self._host_rate = None
+            return {} if every_tick(declared) else {"infer_hz": declared}
+        self._host_rate = (hz, declared)
+        return {"infer_hz": 0.0 if every_tick(hz) else hz, "planning_hz": declared}
 
     def run_config(self) -> dict[str, Any]:
         """Site settings that change *what is measured*, for ``run.json``.
@@ -605,11 +793,47 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         the record; recorded here and hashed into the run id by the runner.
         """
         routes = self.routes_file
-        return {
+        config: dict[str, Any] = {
             "routes_file": routes.name if routes is not None else None,
             "routes_subset": sorted(self.routes_subset) if self.routes_subset else None,
             "waypoint_dt": WAYPOINT_DT,
         }
+        # Only when on, so the config hash -- and the run id -- of a run without it is unchanged.
+        if self.early_stop:
+            rules = dict(self.early_stop)
+            # The site's routes the over-time rule cannot end, having no expert drive: which they
+            # are depends on the expert drives a site has, so it is on the record and in the id.
+            unbudgeted = self._routes_without_expert()
+            if unbudgeted:
+                rules["no_expert"] = unbudgeted
+            config["early_stop"] = rules
+        # Likewise only when it is not paddock's.
+        if self.camera_rig != rig.DEFAULT:
+            config["camera_rig"] = self.camera_rig
+        # And the host's sim2real diagnostics (docs/sim2real/cosmos3.md), only when set: under the
+        # override the model's declared `cameras` are not the ones it was shown.
+        override = _cameras_override()
+        if override:
+            config["cameras_override"] = override
+        if os.environ.get("PADDOCK_SEGMENT"):
+            # The spec's name: its path is this machine's.
+            config["segment"] = Path(os.environ["PADDOCK_SEGMENT"]).name
+        return config
+
+    def _routes_without_expert(self) -> list[str]:
+        """The site's routes (its ``routes_subset``, or the whole file) with no expert time budget."""
+        rules, routes_file = self.early_stop, self.routes_file
+        if not rules or "expert_factor" not in rules or routes_file is None or not routes_file.exists():
+            return []
+        routes = select_routes(parse_routes(routes_file), None, None, self.routes_subset)
+        return sorted(
+            (rid for rid, _, _ in routes if self.expert_budget_s(rid) is None), key=lambda r: (len(r), r)
+        )
+
+    def remarks(self) -> list[str]:
+        """The early stop, when on: which rules, and why a route they end is a failed drive."""
+        rules = self.early_stop
+        return [early_stop.remark(rules)] if rules else []
 
     # ---- episodes ------------------------------------------------------
 
@@ -619,6 +843,9 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         runs: int = 1,
         scenarios: list[str] | None = None,
     ) -> Iterator[Episode]:
+        # One run's routes ended by hand. The runner calls this once per model and drives
+        # every model of `--model all` through this one harness, so the next run starts empty.
+        self._ended_by_hand = set()
         routes_file = self.routes_file
         if routes_file is None or not routes_file.exists():
             return
@@ -642,12 +869,93 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         or the whole routes file) would otherwise be stored `valid: true` and
         ranked beside the full runs; the regression gate's 7-route smoke was.
         The site's own `routes_subset` is the set, not a subset: it is on the
-        record (`run_config`) and every full run on the site uses it.
+        record (`run_config`) and every full run on the site uses it. The stuck
+        and over-time rules are not a reason: a route they end is a failed drive
+        (`remarks`). The collision rule is one: it scores a route at its first
+        collision, where Bench2Drive charges a penalty and drives on. A camera rig
+        other than paddock's is one: the model was shown other cameras. So is the
+        host's PADDOCK_INFER_HZ replacing the rate the model declares: the model
+        was asked for plans at an operator's rate (``model_run_config``). So is
+        either sim2real diagnostic set on the host, whatever routes it drove:
+        PADDOCK_CAMERAS_OVERRIDE shows the model cameras it does not declare, and
+        PADDOCK_SEGMENT replays a recording and may convert the frames.
         """
+        reasons = []
+        manual = getattr(self, "_ended_by_hand", set())
+        if manual:
+            reasons.append(early_stop.manual_reason(len(manual)))
         ran, total = getattr(self, "_routes_scope", (None, None))
-        if ran is None or ran >= total:
-            return []
-        return [f"{ran} of the {total} routes this site runs (--scene/--scenarios); a subset, not a score"]
+        if ran is not None and ran < total:
+            reasons.append(
+                f"{ran} of the {total} routes this site runs (--scene/--scenarios); a subset, not a score"
+            )
+        if (self.early_stop or {}).get("collision"):
+            reasons.append(early_stop.collision_reason())
+        if self.camera_rig != rig.DEFAULT:
+            reasons.append(
+                f"camera_rig {self.camera_rig!r}: the model saw other cameras than the "
+                f"{rig.DEFAULT!r} rig every model here is compared through"
+            )
+        override = _cameras_override()
+        if override:
+            reasons.append(
+                f"PADDOCK_CAMERAS_OVERRIDE on the host: the model was shown {', '.join(override)}, "
+                "not the cameras it declares; a sim2real diagnostic, not a score"
+            )
+        if os.environ.get("PADDOCK_SEGMENT"):
+            reasons.append(
+                "PADDOCK_SEGMENT on the host: a sim2real diagnostic that replays a recorded drive "
+                "and may convert its frames, not a score"
+            )
+        host = getattr(self, "_host_rate", None)  # set by model_run_config for the model being run
+        if host is not None:
+            hz, declared = host
+            own = (
+                "no planning_hz (a plan every tick)" if every_tick(declared) else f"planning_hz {declared:g}"
+            )
+            reasons.append(
+                f"PADDOCK_INFER_HZ on the host asked the model for a plan {_rate_said(hz)}, where its "
+                f"model.yaml declares {own}: an operator's rate, not the model's own"
+            )
+        return reasons
+
+    def _note_stop(self, episode: Episode, metrics: dict[str, float]) -> None:
+        """Remember a route someone ended by hand, for ``invalid_reasons``."""
+        if metrics.get(f"ended_{early_stop.MANUAL}"):
+            self.__dict__.setdefault("_ended_by_hand", set()).add(episode.episode_id)
+
+    def completed_metrics(self, episode: Episode, out_dir: Path, runs: int = 1) -> dict[str, float] | None:
+        """The route's metrics if its ``results.json`` already holds every repetition, else None.
+
+        This is what ``--resume`` reuses; without it the base class answers None
+        and a resumed sweep re-drives every route it had already scored. The
+        evaluator writes ``results.json`` at startup and rewrites it as each
+        repetition ends, so the file existing proves nothing: a route killed
+        mid-drive -- a reboot, a per-route timeout -- holds no record, or fewer
+        than the repetitions asked for, and is driven again. One record per
+        repetition is a finished route, and it reads exactly as it did when it
+        was driven: through :func:`parse_results`, which drops crashed
+        repetitions and refuses a route where every one crashed, so a crash is
+        driven again too.
+
+        ``duration_s`` is the one metric not on disk -- it is the harness's own
+        clock around the evaluator, CARLA's boot included -- so a reused route
+        leaves it out rather than invent it, and the store counts it missing.
+        """
+        results = Path(out_dir) / "results.json"
+        try:
+            records = (json.loads(results.read_text()).get("_checkpoint") or {}).get("records") or []
+        except (OSError, ValueError):
+            return None
+        if len(records) < max(1, runs):
+            return None
+        try:
+            metrics = parse_results(results)
+        except NotScored:
+            return None
+        metrics.update(ended_early(Path(out_dir)))
+        self._note_stop(episode, metrics)
+        return metrics
 
     # ---- run one episode ----------------------------------------------
 
@@ -671,6 +979,13 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         repo = self.repo
         python = self.setting("python")
         cameras = episode.config.get("cameras") or ["CAM_FRONT"]
+        # Diagnostic: render and ship only these cameras. The sim2real capture uses it to
+        # record another model's rig behind a cheap node; it also proves a model ignores the
+        # cameras it declares. Host-set, and the adapter must tolerate the gap; a run with it
+        # is on the record and never ranks (`run_config`, `invalid_reasons`).
+        override = _cameras_override()
+        if override:
+            cameras = override
         runs = int(episode.config.get("runs", 1))
         timeout_s = int(self.setting("per_route_timeout_s") or DEFAULT_ROUTE_TIMEOUT_S)
         requested_port = int(self.setting("carla_port") or 2000)
@@ -682,6 +997,7 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         extra = {
             "PADDOCK_NODE_URL": policy_url,
             "PADDOCK_CAMERAS": ",".join(cameras),
+            "PADDOCK_CAMERA_RIG": self.camera_rig,
             "PADDOCK_WAYPOINT_DT": str(WAYPOINT_DT),
             # Per-tick ego kinematics for Bench2Drive's efficiency/comfort tool,
             # which joins ONE directory with each record's `save_name`. One dir
@@ -696,11 +1012,39 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             extra["PADDOCK_INFER_TIMEOUT_S"] = os.environ["PADDOCK_INFER_TIMEOUT_S"]
         if hz := infer_hz(episode.config.get("planning_hz")):
             extra["PADDOCK_INFER_HZ"] = f"{hz:g}"
+        # Segment mode (sim2real diagnostics: capture a recording, or replay it to T0 and then
+        # swap the frames); see bench2drive/segment.py. Host-set like the timeout above; a run
+        # with it is on the record and never ranks (`run_config`, `invalid_reasons`).
+        if os.environ.get("PADDOCK_SEGMENT"):
+            extra["PADDOCK_SEGMENT"] = os.environ["PADDOCK_SEGMENT"]
         if self.record:
             extra["PADDOCK_RECORD_DIR"] = str(out_dir)
+            if self.record_inputs:
+                extra["PADDOCK_RECORD_INPUTS"] = "1"
             # agent_wrapper reads SAVE_PATH as its "Bench2Drive mode" flag, which
             # lifts the 3 m sensor-radius limit the BEV camera at z=30 needs.
             extra["SAVE_PATH"] = str(out_dir)
+        # A route driven again in the same run directory must not inherit the
+        # last attempt's verdict.
+        stop_record = out_dir / early_stop.RECORD
+        stop_record.unlink(missing_ok=True)
+        # The file that ends this route by hand when it appears (the dashboard's
+        # "Stop route" writes it), cleared so an old request cannot end a new drive.
+        stop_request = out_dir / STOP_REQUEST
+        stop_request.unlink(missing_ok=True)
+        extra["PADDOCK_STOP_REQUEST"] = str(stop_request)
+        extra["PADDOCK_STOP_RECORD"] = str(stop_record)
+        rules = self.early_stop
+        if rules:
+            if rules.get("collision"):
+                extra["PADDOCK_STOP_ON_COLLISION"] = "1"
+            if "stuck_s" in rules:
+                extra["PADDOCK_STOP_STUCK_S"] = str(rules["stuck_s"])
+            budget = self.expert_budget_s(episode.config["route_id"])
+            if budget is not None:
+                extra["PADDOCK_STOP_AFTER_S"] = str(budget)
+            elif "expert_factor" in rules:
+                echo(f"  {episode.episode_id}: no expert drive, so no time budget; the stuck rule alone")
 
         command = [
             str(python),
@@ -785,6 +1129,8 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
                 f"{episode.episode_id}: {exc}\n--- tail of {log_path.name} ---\n{_tail(log_path)}"
             ) from exc
         metrics["duration_s"] = round(elapsed, 1)
+        metrics.update(ended_early(out_dir))
+        self._note_stop(episode, metrics)
         return metrics
 
 

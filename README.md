@@ -92,7 +92,7 @@ data and vendors no model code. What crosses the wire:
 </p>
 
 **A** adapted to the benchmark · **P** a pipeline around the model is graded ·
-**S** stale · **R** run differently, not ranked.
+**S** stale · **R** not ranked: measured on different scenes or by a different method.
 
 Each number is read from the run [docs/support-matrix.toml](docs/support-matrix.toml)
 names for it. The matrix holds released checkpoints only; checkpoints we trained
@@ -131,12 +131,19 @@ was measured the same way as the rest of its column.
 - **P — grades a pipeline built around the model.** VisionPilot has no
   trajectory output, so paddock builds one from its lane and speed outputs.
   METEOR plans 3 s and NAVSIM scores 4 s, so the last second is extrapolated.
+  OpenPilot on Bench2Drive drives through openpilot's own longitudinal planner
+  and its driver-resume nudge, which stands in for a driver pressing resume
+  once the car has stood 3 s with no lead.
 - **S — stale; a re-run will change it.** Every VisionPilot figure predates the
   `CURV_SCALE` fix. Drive-JEPA's nuScenes cell is the camera-blind run from
   before #62. OpenPilot's comma2k19 row was not run at the pinned sha.
-- **R — run differently from the rest of its column, so not ranked against it.**
-  Alpamayo on AlpaSim drove 4 cameras on 10 of the 30
-  scenes, METEOR 6 cameras on all 30, and AutoE2E 6 pinhole cameras at its training field of view on all 30, through paddock's bridge.
+- **R — not ranked, because the number was measured on different scenes or by a
+  different method from the rest of its column.** AutoE2E's, METEOR's and
+  OpenPilot's Bench2Drive cells end a route after 30 s without progress or at
+  4x the expert's time, where the cells they would rank against drove every
+  route to Bench2Drive's own end. Their records are valid. How many cameras a
+  model is given, and whether it drives through paddock's bridge or its own
+  simulator driver, are never reasons to leave a cell unranked.
 - **Ranked, though fed what the model is built for.** Bench2Drive cells marked
   2 Hz or 10 Hz are driven at the model's native inference rate, where the rest
   of the column runs at 20 Hz over the same 50 routes; those gains are
@@ -147,7 +154,9 @@ was measured the same way as the rest of its column.
   logged drive, upstream's validation protocol (without the route it scores
   0.837); on nuScenes it is fed the 6.5 s of past keyframes it declares, where the
   others get 2 s. Drive-JEPA on comma2k19 is its released front-camera version,
-  `drivejepa_free`, because comma2k19 has one camera.
+  `drivejepa_free`, because comma2k19 has one camera. METEOR there sees that one
+  camera in two of its eight slots, the other six left black as its training
+  drops a camera.
 
 Before comparing numbers:
 
@@ -165,8 +174,10 @@ Before comparing numbers:
   Bench2Drive, and scores 0 on neuroNCAP by construction: every scenario is
   staged so that holding speed collides.
 - **The AlpaSim rows come from AlpaSim's native drivers**, not paddock's bridge,
-  and were imported into `results/`; AutoE2E's is the exception, run through
-  paddock's bridge.
+  and were imported into `results/`; Alpamayo's, AutoE2E's and Qwen-Drive's are the
+  exceptions, run through paddock's bridge. The 30-scene rows are ranked together; models
+  are given different numbers of cameras (OpenPilot, VisionPilot, Drive-JEPA
+  and the floor 1, Qwen-Drive 3, Alpamayo 4, METEOR and AutoE2E 6).
 
 </details>
 

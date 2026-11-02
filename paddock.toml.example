@@ -135,7 +135,14 @@ weights = "/path/to/weights"
 # carla_port  = "2000"                                 # evaluator moves up to the first free port from here
 # tm_port     = "8000"                                 # traffic manager port, likewise
 # gpu_rank    = "0"                                    # CARLA's -graphicsadapter
-# record      = "false"                                # per-tick front/BEV JPEGs + log.csv: ~40 GB per full sweep
+# record      = "false"                                # the per-tick record: ~100 KB a tick on paddock's rig
+# record_inputs = "false"                              # with record: each tick's whole request, for offline replay; ~2.5-3 MB a tick
+# stop_stuck_s       = "30"                            # optional: end a route 30 s after its last 3 m of progress
+# stop_expert_factor = "4"                             # optional: end a route at 4x the expert's time on it
+# stop_on_collision  = "true"                          # optional: end a route at its first recorded collision (valid: false)
+# expert = "/path/to/expert"                           # tools.benchmarks.bench2drive.expert summarize's output
+#                                                      # a route the stuck or over-time rule ends is a failed drive; see the docs
+# camera_rig = "paddock"                               # default; "bench2drive" / "kitscenes" make a run valid: false
 
 # [benchmarks.hugsim]                          # HUGSIM closed-loop; docs/benchmarks/hugsim.md
 # python = "/path/to/hugsim/venv/bin/python"   # HUGSIM's interpreter: imports closed_loop, omegaconf, requests
@@ -377,6 +384,10 @@ serialize = true
 # [models.openpilot.benchmarks.kitscenes.settings]
 # command_source = "gt"
 # front_camera = "base"
+#
+# AutoE2E on Bench2Drive needs no pairing for its own 10 Hz: model.yaml declares
+# planning_hz 10 (docs/models/autoe2e.md, "On Bench2Drive"). The pairing that did
+# it before, AUTOE2E_REPLAN_S = "0.1", overrides a declared key: valid: false.
 
 # Drive-JEPA reads each camera at its own intrinsics by default ("native"), which
 # is how every published drivejepa row was made. "openscene" crops each camera
@@ -478,8 +489,8 @@ serialize = true
 #     part of the id and `source_runs` is hashed into the config -- but the record
 #     would then say nothing about what rate was driven, which is the one thing
 #     this campaign varied.) The ingest marks such a run `valid: false`: a rate
-#     other than the benchmark's 20 Hz is a different protocol, so it is kept and
-#     not ranked against rows that were driven at 20 Hz.
+#     set by hand is an operator's choice, so it is kept and not ranked. (A pool
+#     asked at the planning_hz its model.yaml declares ranks.)
 #   * `routes` must list all 50 even for the models that could not score one of
 #     them. Route 3800 never scored for alpamayo15 or qwendrive, and what it left
 #     behind differs by attempt: an UNSCORABLE.txt marker, or -- for
@@ -553,15 +564,22 @@ serialize = true
 #                                   instead of falling back to the split pair.
 #   PADDOCK_OPENPILOT_MODE          "experimental" (the default: openpilot's
 #                                   end-to-end longitudinal head) or ""
-#   PADDOCK_OPENPILOT_NATIVE_LONG   "1" to let openpilot's own longitudinal
-#                                   planner set speed instead of the harness
+#   PADDOCK_OPENPILOT_NATIVE_LONG   "1", model.yaml's value: openpilot's own
+#                                   longitudinal planner sets speed on
+#                                   Bench2Drive. "0" puts the harness's tracker
+#                                   back, and the run does not rank.
 #   PADDOCK_OPENPILOT_RESUME_S      seconds stopped with no lead before the
 #                                   driver-resume rule pulls away; "0" disables
+#   PADDOCK_OPENPILOT_RESUME_PLAN   "1" for the same nudge with NATIVE_LONG "0":
+#                                   a launch plan the shared tracker drives,
+#                                   to measure the resume alone. Off by default.
 #   PADDOCK_OPENPILOT_THREADS       onnxruntime thread count (default 8)
 #   PADDOCK_OPENPILOT_DESIRE        "off" (the default: no desire, as every
 #                                   run before it), "turn" or "lane_change":
 #                                   which desire a LEFT/RIGHT route command is
-#                                   sent as. See docs/models/openpilot-guide.md.
+#                                   sent as. "route": lane changes and junction
+#                                   turns from the route, each sent when near
+#                                   (Bench2Drive). See docs/models/openpilot-guide.md.
 #   PADDOCK_OPENPILOT_HEIGHT_SCALE  the camera's height over the road divided
 #                                   by openpilot's 1.22 m, to show the model
 #                                   the road as its own camera would have seen

@@ -16,6 +16,9 @@ The wire contract, unchanged from NeuroNCAP:
               nav_maneuver   optional: next junction maneuver on the route,
                              "TURN_LEFT" | "TURN_RIGHT" | "STRAIGHT" | null
               nav_distance_m optional: along-route metres to that maneuver
+              nav_lane_change   optional: next lane change on the route,
+                                "LEFT" | "RIGHT" | null
+              nav_lane_change_m optional: along-route metres to it
               calibration  camera2image (3x3 per camera), camera2ego (4x4)
 
     response  trajectory   ego frame, x forward and y LEFT, spaced by waypoint dt
@@ -300,13 +303,23 @@ class Observation:
     #: where the source has no route, or no junction ahead of the ego.
     nav_maneuver: str | None = None
     nav_distance_m: float | None = None
+    #: The next lane change on the route ("LEFT", "RIGHT") and the along-route
+    #: distance to it. Separate from `nav_maneuver`, which names junction
+    #: maneuvers only and is read as such by policies that take navigation text:
+    #: folding lane changes into it would change what those policies are told.
+    #: openpilot sends it as its laneChange desire. None where the source has no
+    #: route, or no lane change ahead of the ego.
+    nav_lane_change: str | None = None
+    nav_lane_change_m: float | None = None
     #: The route ahead as an (N, 2) polyline in the ego frame (x forward, y left, metres), starting a few
     #: metres behind the ego. Closed-loop sources that hold a route send it (Bench2Drive: the leaderboard's
     #: global plan, from the first plan point at least 10 m behind to the first at least 200 m ahead); None
     #: where the source has no route (NAVSIM, open loop). Points are only as dense as the source's route:
     #: Bench2Drive's is downsampled to a point per road-option change and otherwise every ~50 m, so a
     #: segment can cut a bend by metres. A policy that rasterises the route (AutoE2E's navigation tile)
-    #: reads it.
+    #: reads it. AlpaSim's is the exception to "the ego frame": the bridge passes it in the rig frame at
+    #: the route's own timestamp, which need not be the pose's, because that is how Qwen-Drive's
+    #: native driver read it (`alpasim/bridge.py` `route_xy`).
     route_xy: np.ndarray | None = None
     #: The HD map the ego drives in, as files on the shared disk (paths, as with `image_paths`), in the
     #: world frame `ego2world` maps into: {"format": "lanelet2_osm", "map": <map.osm>, "origin":
@@ -319,6 +332,24 @@ class Observation:
     #: where a benchmark is set to give one: KITScenes' `route = "oracle"` sends the whole scene, as
     #: upstream AutoE2E's validation protocol matches its route to the logged drive. None everywhere else.
     route_trace: np.ndarray | None = None
+    #: The simulator's id for the scene being driven. Sent where a closed-loop source has one and a
+    #: model's behaviour is tied to it: AlpaSim sends it on request (bridge ``--send-scene-id``), and
+    #: Qwen-Drive seeds its sampling noise from it per scene, as its native AlpaSim driver did. None
+    #: everywhere else. Qwen-Drive reads a scene id as "AlpaSim, `qwendrive` profile": it then builds its
+    #: input the native driver's way and refuses any frame cadence other than 50 ms, so a new source that
+    #: sends one changes that model's input path and must be checked against it.
+    scene_id: str | None = None
+    #: The spacing, in seconds, the client will drive the returned plan at, when it says. AlpaSim's
+    #: bridge sends it on request (``--send-plan-dt``) so a model that predicts at a finer grid than
+    #: paddock's 0.5 s default can return every point it predicts; a model that does not read it keeps
+    #: its declared ``waypoint_dt``. None everywhere else, so every other client gets the plan it got.
+    plan_dt: float | None = None
+    #: The time, in microseconds on the observation's clock, of the frame ``route_xy`` is expressed
+    #: in. AlpaSim's bridge sends it on request (``--send-route-time``): its route is in the rig frame
+    #: at the route's own timestamp, and a model that moves the route into the frame of the newest
+    #: pose, as AlpaSim's own Alpamayo driver does, needs that time. None everywhere else -- every
+    #: other source's route is already in the observation's ego frame.
+    route_timestamp_us: int | None = None
     #: Frames that live on disk, loaded on first use instead of being carried.
     #:
     #: Open-loop benchmarks read from a local dataset, and the node is a
@@ -355,6 +386,10 @@ class Observation:
             nav_distance_m=(
                 float(body["nav_distance_m"]) if body.get("nav_distance_m") is not None else None
             ),
+            nav_lane_change=(str(body["nav_lane_change"]) if body.get("nav_lane_change") else None),
+            nav_lane_change_m=(
+                float(body["nav_lane_change_m"]) if body.get("nav_lane_change_m") is not None else None
+            ),
             route_xy=(
                 np.asarray(body["route_xy"], dtype=np.float64) if body.get("route_xy") is not None else None
             ),
@@ -363,6 +398,11 @@ class Observation:
                 np.asarray(body["route_trace"], dtype=np.float64)
                 if body.get("route_trace") is not None
                 else None
+            ),
+            scene_id=(str(body["scene_id"]) if body.get("scene_id") is not None else None),
+            plan_dt=(float(body["plan_dt"]) if body.get("plan_dt") is not None else None),
+            route_timestamp_us=(
+                int(body["route_timestamp_us"]) if body.get("route_timestamp_us") is not None else None
             ),
         )
 
@@ -434,7 +474,7 @@ class Observation:
         }
         if self.lidar2ego is not None:
             calibration["lidar2ego"] = np.asarray(self.lidar2ego).tolist()
-        return {
+        wire = {
             "images": {k: encode_image(v) for k, v in self.images.items()},
             "image_paths": dict(self.image_paths),
             "ego2world": np.asarray(self.ego2world).tolist(),
@@ -444,11 +484,21 @@ class Observation:
             "speed_limit": self.speed_limit,
             "nav_maneuver": self.nav_maneuver,
             "nav_distance_m": self.nav_distance_m,
+            "nav_lane_change": self.nav_lane_change,
+            "nav_lane_change_m": self.nav_lane_change_m,
             "route_xy": (np.asarray(self.route_xy).tolist() if self.route_xy is not None else None),
             "map_files": (dict(self.map_files) if self.map_files else None),
             "route_trace": (np.asarray(self.route_trace).tolist() if self.route_trace is not None else None),
             "calibration": calibration,
         }
+        # Only when set, so every producer that has no scene id sends what it sent before.
+        if self.scene_id is not None:
+            wire["scene_id"] = self.scene_id
+        if self.plan_dt is not None:
+            wire["plan_dt"] = self.plan_dt
+        if self.route_timestamp_us is not None:
+            wire["route_timestamp_us"] = int(self.route_timestamp_us)
+        return wire
 
     def pinhole(self, camera: str = "CAM_FRONT") -> Pinhole:
         image = self.image(camera)
