@@ -73,8 +73,9 @@ the batch converter.
 
 - `cosmos_live_spec.json` — **the settings every live run and the open-loop conversion used**:
   edge 0.5, depth 0.5, wsm 1.0, guidance 3.0, control guidance 1.5, seed 2026, `prompt_rain`.
-- `cosmos_nohood_spec.json`, `cosmos_roof_spec.json`, `cosmos_d25_spec.json`,
-  `cosmos_cg2_spec.json` — the bonnet experiments. Rejected: no effect.
+- `cosmos_nohood_spec.json`, `cosmos_roof_spec.json`, `cosmos_roof_s7_spec.json`,
+  `cosmos_d25_spec.json`, `cosmos_d25e8_spec.json`, `cosmos_cg2_spec.json` — the bonnet
+  experiments. Rejected: no effect.
 - `cosmos_live_spec_ctrlhi.json` — control guidance 3.0, edge 0.8, depth 1.0. Rejected:
   oversaturated output.
 

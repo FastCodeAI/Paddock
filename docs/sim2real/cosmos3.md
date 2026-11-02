@@ -90,11 +90,14 @@ Batch conversion (`cosmos_batch.py`, the open-loop study):
 | `COSMOS_STEPS` | **12** | 20 steps cost 1.65× for no visible gain on these frames |
 | `COSMOS_VIS_M` | **50** m | see the fog artefact below |
 
-Throughput, from the 13 `conversion.json` records the run wrote: **4,806 frames in 1.92
-GPU-hours, mean 1.43 s per frame at 480p** on an RTX PRO 6000 Blackwell (96 GB), per-camera
-0.45–1.96 s/frame. **13 camera sequences — 5 models, their whole rigs — in about 95 minutes of
-wall clock** on two GPUs, which is the ~57 min of GPU time plus the map renders and the wait for
-each capture to finish uploading. `cosmos_batch` resumes from disk and keeps every output,
+Throughput, from the 11 of the 13 `conversion.json` records that converted every frame in one
+go: **4,066 frames in 1.82 GPU-hours, mean 1.61 s per frame at 480p** on an RTX PRO 6000
+Blackwell (96 GB), per-camera 1.35–1.96 s/frame. The other two, Alpamayo's `CAM_FRONT` and
+`CAM_FRONT_LEFT`, resumed with 326 of their 370 frames already on disk from an interrupted run
+whose time was not recorded, so their 0.45 and 0.52 s/frame are not a conversion speed. **13
+camera sequences — 5 models, their whole rigs — in about 95 minutes of wall clock** on two GPUs:
+the recorded 1.92 GPU-hours (about 57 min on each GPU), plus the map renders, the interrupted
+run and the wait for each capture to finish uploading. `cosmos_batch` resumes from disk and keeps every output,
 because the last window slides back to end on the final tick and re-saves a few earlier frames
 so they stay consistent with what follows.
 
@@ -112,7 +115,8 @@ alone and ~18 s with two converters sharing a GPU.
 
 ## Results: what each model plans on real-looking pixels
 
-Route 2802, from the start of each model's recorded run to 15 s after the cut-in trigger. Metric
+Route 2802, from the start of each model's recorded run to 15 s after the cut-in trigger
+(13.5 s for VisionPilot, whose recorded run ends there). Metric
 is the gap between the two plans' 3 s waypoint, over the ticks after the trigger. **Floor** is
 the same metric with the model asked twice on identical CARLA frames.
 
@@ -166,10 +170,14 @@ These are properties of Cosmos 3 Nano on this input, not of the pipeline, and th
 rather than fixed — the study needed a *consistent* conversion, not a perfect one.
 
 **A car bonnet and windscreen along the bottom edge of every front view.** Present in every
-frame of every front camera. Tried and rejected: a "no bonnet" prompt, a roof-camera prompt with
-no "dashcam" wording, seed 7 instead of 2026, depth weight 0.25, edge weight 0.8, control
-guidance 2.0 (`specs/cosmos_nohood_spec.json`, `cosmos_roof_spec.json`, `cosmos_d25_spec.json`,
-`cosmos_cg2_spec.json`). None of the three controls contains a bonnet, so it is a model prior.
+frame of every front camera. Tried and rejected: a "no bonnet" prompt
+(`specs/cosmos_nohood_spec.json`) and a roof-camera prompt with no "dashcam" wording
+(`cosmos_roof_spec.json`). The other four keep that roof prompt and its "no bonnet" negative
+prompt and change one more setting: seed 7 instead of 2026 (`cosmos_roof_s7_spec.json`), depth
+weight 0.25 (`cosmos_d25_spec.json`), depth weight 0.25 with edge weight 0.8
+(`cosmos_d25e8_spec.json`) and control guidance 2.0 (`cosmos_cg2_spec.json`). So none of them is
+the study's own spec (`cosmos_live_spec.json`) with one setting changed. None of the three
+controls contains a bonnet, so it is a model prior.
 The corresponding artefact on the side views is a **fender across the bottom third of the frame**.
 
 The untested hypothesis is the depth encoding: the control is inverse depth normalised per frame
@@ -255,16 +263,16 @@ Following [docs/reviewing.md](../reviewing.md): what was run, and what is infere
 | The two replays see identical states and differ only in pixels | one `ticks.jsonl` per capture drives both; `openloop_replay.py` builds the same wire body either way and only `--frames` changes | **strong** |
 | The numbers in the tables are what the runs produced | every cell is read from `openloop-2802/compare/all_summaries.json`, written by `openloop_compare.py` | **strong** |
 | The offline replay harness reproduces what a live run did | on route 3813 the replay of openpilot on already-converted frames reproduced that run's saved plans to max abs delta 0.000 m | **proof**, but for the 3813 harness, not this one |
-| openpilot's gap is systematic, not sampling | its floor is 0 over 301 ticks, the planned-speed difference has one sign throughout, and the closed-loop run and the 3813 run show the same direction | **strong** |
+| openpilot's gap is systematic, not sampling | its floor is 0 over 301 ticks; its Cosmos-frame plan is faster on 206 of those ticks and slower on 95 (mostly ticks 71–93 and 234–303), +1.06 m/s on average; and the closed-loop run and the 3813 run show the same direction | **strong** |
 | Alpamayo's gap is mostly its own sampling | its floor (2.55 / 1.79) is most of its gap (3.23 / 2.55) on the same ticks | **moderate** — one pair of runs, n = 301; it was never repeated |
 | Cosmos 3 preserves CARLA's geometry | frame-by-frame review of the 4 s Town13 fixture and the 2802 clips: lanes, kerbs, lead car, buildings in place; no invented actors, unlike cosmos-transfer 2.5 on 3813 | **moderate** — visual, not a numeric layout metric |
 | DriveJEPA plans slower on converted frames | 2.05 against 2.30 m/s over 301 ticks, floor 0 | **strong** |
-| The bonnet is a model prior | absent from all three controls; unchanged by prompt, seed, depth weight, edge weight and control guidance | **strong** |
+| The bonnet is a model prior | absent from all three controls; unchanged by prompt, seed, depth weight, edge weight and control guidance, each tried on top of the roof prompt (six specs in `specs/`), not one at a time from the study's spec | **strong** |
 | The bonnet comes from the depth normalisation | argument only — a per-frame inverse-depth scale makes the near road maximally bright at the bottom edge | **unverified**, never re-run with an absolute scale |
 | Ludus faults above ~1280×720 at MSAA 4 | bisected one case per subprocess on both GPUs with real maps; 1280×720 clean over 300+ frames | **strong** |
 | The upstream shas | `NVIDIA/cosmos-framework` efba207 = `efba2076c8` (2026-09-16) and `NVIDIA/flashdreams` 6e2d3ad = `6e2d3ad3b6` (2026-09-10), both confirmed against the GitHub API; `build_transfer_batch`, `apply_transfer_control_augmentor`, `build_control_cfg_postprocess` and `TransferHintKey{edge,blur,depth,seg,wsm}` read in that source | **verified** |
-| These plan gaps predict closed-loop scores | not claimed. The one model with both (VisionPilot) scored DS 100 either way; DriveJEPA's two closed-loop runs sit inside its own scatter | **not measured** |
-| QwenDrive's figures | its conversion and replay completed, but its capture was stopped at 390 ticks to free CARLA, so its segment is the shortest | **strong**, narrower window |
+| These plan gaps predict closed-loop scores | not claimed. Two models have both: VisionPilot scored DS 100 either way, and DriveJEPA's two closed-loop runs sit inside its own scatter | **not measured** |
+| VisionPilot's figures | its recorded run ends 271 ticks (13.5 s) after the trigger, where every other model has 301 (15 s) | **strong**, narrower window |
 
 ## Upstream
 

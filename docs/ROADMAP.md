@@ -773,9 +773,9 @@ campaign driven on 22 Oct 2026 by the same bridge. See
   | The bonnet comes from the per-frame inverse-depth normalisation | argument only | **unverified** |
   | Plan gap predicts a closed-loop score | not claimed; VisionPilot scored DS 100 on either pixels | **not measured** |
 
-  Open: one route and one pair of runs per model, so nothing here is a distribution; the two
-  sampling models need repeats rather than a better converter; and the artefact hypothesis is
-  untested.
+  Open: one route and one pair of runs per model, so nothing here is a distribution; Alpamayo,
+  the one model that samples, needs repeats rather than a better converter; and the artefact
+  hypothesis is untested.
 
 - **AutoE2E v1.0** — **adapter landed; NAVSIM, KITScenes, comma2k19,
   neuroNCAP, nuScenes, AlpaSim and Bench2Drive scored.** nuScenes val 0.839

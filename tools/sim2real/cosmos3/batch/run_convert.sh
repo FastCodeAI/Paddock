@@ -18,7 +18,8 @@ HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd); ROOT_DIR=$(dirname "$HERE")
 : "${COSMOS_PY:?set COSMOS_PY to the cosmos-framework venv python}"
 : "${FLASHDREAMS_PY:?set FLASHDREAMS_PY to the flashdreams venv python}"
 STEPS=${STEPS:-12}; CHUNK=${CHUNK:-61}; NCOND=${NCOND:-8}; SPEC=${SPEC:-$ROOT_DIR/specs/cosmos_live_spec.json}
-# segment only: from the start of each recording to 15 s after the cut-in trigger (T0: vp 50, dj 66, al 70, op 71, qw 90)
+# segment only: from the start of each recording to 15 s after the cut-in trigger (T0: vp 50, dj 66, al 70, op 71, qw 90);
+# vp's recording ends 13.5 s after it, at 320
 declare -A EXPECT=( [vp]=320 [dj]=366 [op]=371 [al]=370 [qw]=390 )
 declare -A RANGE=( [vp]="1 320" [dj]="1 366" [op]="1 371" [al]="1 370" [qw]="1 390" )
 VIS=${VIS:-50}
