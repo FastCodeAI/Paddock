@@ -537,8 +537,6 @@ Open work, in the order it bites:
 - **The driver is not in the repository.** Promote it under
   `tools/models/meteor/alpasim_driver/`, as Drive-JEPA's was, or drive METEOR
   through the paddock bridge and declare `alpasim` in its `model.yaml`.
-- **No floor in `6cam-20Hz`.** A constant-velocity run on the six-camera
-  config would give the row something to be read against.
 - **The camera widths were fixed from the first ten scenes.** On four of the
   twenty extra scenes one rear camera is rendered up to 0.24° wider than
   recorded. Re-deriving the widths over all 30 would remove that.

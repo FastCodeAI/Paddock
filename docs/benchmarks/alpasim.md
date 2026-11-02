@@ -341,9 +341,11 @@ Two rows need their caveat quoted with the number:
   scenes and four full-distance runs that all scored 1.0000. It is a pattern —
   it wins 1, ties 3 and loses 6 against the floor — not one bad scene.
 
-### `1cam-20Hz` on 30 scenes — what the README's support matrix quotes
+### `1cam-20Hz` on 30 scenes
 
-The same drivers, referee config and scorer, on 30 scenes: the ten above plus
+The support matrix ranks these rows together with the 30-scene rows of the
+other camera groups, all read against this floor; the ranked table is under
+[Support-matrix results](#support-matrix-results). The same drivers, referee config and scorer, on 30 scenes: the ten above plus
 twenty more drawn from `public_2601` (seed 20260922, stratified by speed and
 turn, from the scenes of the suite available at renderer version 26.1.112 and
 not already among the ten). The list is tracked as
@@ -367,7 +369,7 @@ Three things to read with it:
   the 30. A mean over one set says nothing against a mean over the other, so
   quote the difference from the floor and the number of scenes with any figure.
 - **Alpamayo 1.5 has no 30-scene row.** It was run on the first ten scenes
-  only, and its 0.9000 is a ten-scene mean in a different camera group.
+  only, so its 0.9000 is a ten-scene mean and is not ranked on the 30.
 - **One rollout per scene, so the differences are loose.** Paired over the 30
   scenes, the standard error of the difference from the floor is 0.077 for
   OpenPilot, 0.076 for the retrained Drive-JEPA, 0.080 for VisionPilot and
@@ -421,10 +423,9 @@ row, `…_first10`, is the first ten of those directories, not a second sweep.
 Same control rate, force-GT duration, step count and `eval-config.yaml` as the
 other groups, read from each run's resolved config.
 
-- **No floor, so no "vs floor" column.** Constant velocity has not been run on
-  six cameras. It reads no camera, so its score would probably be the
-  `1cam-20Hz` floor's, but that has not been measured and the one-camera floor
-  is not quoted against this row.
+- **Read against the one floor.** Constant velocity reads no camera, so the
+  30-scene floor (0.4876) is these rows' floor too: METEOR is −0.0644 against
+  it and AutoE2E −0.3182 ([Support-matrix results](#support-matrix-results)).
 - **The cameras are not the recorded ones.** METEOR expects pinhole images, so
   the six cameras are rendered as pinholes with square pixels and no
   distortion, each at the narrower of METEOR's own camera and the recorded
