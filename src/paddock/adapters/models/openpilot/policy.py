@@ -95,6 +95,11 @@ DEVICE_FROM_EGO = np.diag([1.0, -1.0, -1.0])
 # (neuroNCAP boston-seaport, KITScenes Germany, comma2k19 California), so index
 # 0 is set.
 TRAFFIC_CONVENTION = np.array([1.0, 0.0], dtype=np.float32)
+# The (lateral, longitudinal) action_t the tinygrad path feeds openpilot's ModelState. The ONNX wrapper
+# computes upstream modeld's own, delay + 1.5 * DT_MDL, which is (0.275, 0.525) at its default delays
+# (`SupercomboRunner.long_action_t`), so the two backends tell the model horizons 25 ms apart. The
+# planner reads back whichever the model was given.
+TINYGRAD_ACTION_T = (0.3, 0.5)
 
 #: The 0.5 s grid every paddock consumer reads, out to supercombo's own horizon.
 #:
@@ -1354,7 +1359,7 @@ class OpenpilotPolicy(Policy):
         inputs = {
             "desire_pulse": self._desire(obs, ModelConstants.DESIRE_LEN),
             "traffic_convention": TRAFFIC_CONVENTION,
-            "action_t": np.array([0.3, 0.5], dtype=np.float32),
+            "action_t": np.array(TINYGRAD_ACTION_T, dtype=np.float32),
         }
         out = None
         for _ in range(self._repeats(obs)):
@@ -1449,6 +1454,18 @@ class OpenpilotPolicy(Policy):
         validate_extras(traj.extras, n_waypoints=len(traj.waypoints))
         return traj
 
+    def _long_action_t(self) -> float:
+        """The longitudinal horizon the model was told to plan for, seconds.
+
+        Read back off the ONNX runner rather than restated -- the two disagreed by
+        25 ms while this was a constant. See `SupercomboRunner.long_action_t`.
+        openpilot's own ModelState, the tinygrad backend, has no such property: it
+        was given TINYGRAD_ACTION_T. Branching on the backend, not on hasattr, keeps
+        a runner that lost the property failing here instead of planning at the
+        tinygrad value.
+        """
+        return self.model.long_action_t if self.backend == "onnx" else TINYGRAD_ACTION_T[1]
+
     def _resume_plan(self, traj: Trajectory, out: dict, v_ego: float, dt_s: float) -> Trajectory:
         """`RESUME_PLAN`: the model's plan, or the launch that stands in for a driver's resume press.
 
@@ -1516,10 +1533,7 @@ class OpenpilotPolicy(Policy):
             a_lead = float(np.clip(K_ROOM * room + K_VREL * (v_lead - v_ego), ACCEL_MIN, max_accel))
             cands.append((a_lead, "lead", upstream.stopped(v_ego, a_lead)))
         # e2e candidate (modeld get_action_from_model, plan branch, 0.3 s smoothed)
-        # The horizon the model was told to plan for, read back off the model
-        # rather than restated here -- the two disagreed by 25 ms while this was
-        # a constant. See `Supercombo.long_action_t`.
-        long_action_t = self.model.long_action_t
+        long_action_t = self._long_action_t()
         a_raw, _ = upstream.accel_and_stop(
             plan33[:, Plan.VELOCITY][:, 0],
             plan33[:, Plan.ACCELERATION][:, 0],

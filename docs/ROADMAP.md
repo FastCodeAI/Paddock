@@ -671,7 +671,9 @@ intended meaning of a tracked result. Route 11715 crashes CARLA for every model,
 so it is recorded as attempted and never scored — `n_failed: 1`, `status:
 partial` — rather than dropped, and OpenPilot's pooled record is `valid: false`
 because its samples span three recording setups; its per-setup means are in
-`by_group`.
+`by_group`. A second OpenPilot run of 29 Oct 2026 (`results/bench2drive/openpilot/native50-20hz-*`:
+tinygrad, no resume nudge, DS 30.91) is kept and does not rank: it set the device and backend its
+`model.yaml` declares to other values. OpenPilot's cell is the run of its declared setup, below.
 
 **Native-rate re-run (18-20 Sep 2026).** The 20 Hz protocol is a property of the
 harness, not of the models, so the same 50 routes were re-driven with each model
@@ -685,9 +687,7 @@ CARLA segfaults for those two while DriveJEPA completes it and scores 100 — so
 their means are over 49 routes and their records are `status: partial`,
 `n_failed: 1`. Part of the gain is extra exposure rather than better driving: the
 two models that stalled now drive further and collide more in absolute terms.
-The three runs are `valid: false` and do not rank: their rate was set by hand, so
-`paddock ingest` keeps them and leaves them out of the board, which ranks a model
-only at 20 Hz or at the rate its `model.yaml` declares. Their `model_env` also differs from the
+`paddock ingest` writes all three `valid: true`. All three rank on the board and in the support matrix. Their `model_env` also differs from the
 20 Hz runs in more than the rate — thread counts, a trace sink, `ALPAMAYO_NAV` —
 each argued immaterial and none measured to be. Tracked as
 `results/bench2drive/<model>/native50-*`; tables, breakdown and the

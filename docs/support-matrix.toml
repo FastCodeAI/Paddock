@@ -129,7 +129,7 @@ kitscenes = { run = "kitscenes/alpamayo15/legacy-full-nav" }
 comma2k19 = { run = "comma2k19/alpamayo15/20260913T072437-b058c2" }
 navsim = { run = "navsim/alpamayo15/20260912T040211-a9562c", marks = "A", note = "10 Hz" }  # NAVSIM-Traj, NAVSIM-ReCogDrive
 navsim_v1 = { run = "navsim_v1/alpamayo15/20260914T175447-89a9ca", marks = "A", note = "10 Hz" }
-bench2drive = { run = "bench2drive/alpamayo15/native50-10hz-084418258d833a9f-c4d076", marks = "R", note = "10 Hz" }
+bench2drive = { run = "bench2drive/alpamayo15/native50-10hz-084418258d833a9f-c4d076", note = "10 Hz" }
 neuroncap = { run = "neuroncap/alpamayo15/20260906T034647-bc409f", marks = "A" }  # its scenes are nuScenes val scenes
 alpasim = { run = "alpasim/alpamayo15/20261029T200113-9d900c" }  # through the bridge, 30 scenes
 
@@ -140,7 +140,7 @@ comma2k19 = { run = "comma2k19/drivejepa_free/20260916T003407-c504e5", model = "
 nuplan = { run = "nuplan/drivejepa/20260916T204900-6a17de", marks = "A" }  # 52 of nuPlan mini's 62 logs are navtrain logs
 navsim = { run = "navsim/drivejepa/20260902T173156-7e208f", marks = "A" }
 navsim_v1 = { run = "navsim_v1/drivejepa/20260911T082329-575df6", marks = "A" }
-bench2drive = { run = "bench2drive/drivejepa/native50-2hz-40c29d24c37d542a-447e23", marks = "R", note = "2 Hz" }
+bench2drive = { run = "bench2drive/drivejepa/native50-2hz-40c29d24c37d542a-447e23", note = "2 Hz" }
 neuroncap = { run = "neuroncap/drivejepa/20261012T224707-f11ac0" }
 alpasim = { run = "alpasim/drivejepa/legacy-drivejepa_014_20hz_30scenes" }
 
@@ -174,7 +174,7 @@ kitscenes = { run = "kitscenes/qwendrive/20260914T220841-5a91fd" }
 comma2k19 = { run = "comma2k19/qwendrive/20260916T220846-971379" }
 navsim = { run = "navsim/qwendrive/20260914T221802-80457c", marks = "A" }
 navsim_v1 = { run = "navsim_v1/qwendrive/20260915T021715-02aab4", marks = "A" }
-bench2drive = { run = "bench2drive/qwendrive/native50-2hz-084418258d833a9f-9b2bc9", marks = "R", note = "2 Hz" }
+bench2drive = { run = "bench2drive/qwendrive/native50-2hz-084418258d833a9f-9b2bc9", note = "2 Hz" }
 neuroncap = { run = "neuroncap/qwendrive/20260915T023604-12d5eb", marks = "A" }  # VQA training splits hold its val scenes
 alpasim = { run = "alpasim/qwendrive/20261027T215528-d231d8" }
 

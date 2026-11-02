@@ -65,6 +65,7 @@ Site configuration (``paddock.toml``)::
     label  = "pooled50"                  # run id: <label>-<route hash>-<config hash>
     routes = ["1711", "1852", ...]       # optional; default: every route found
     notes  = "24 routes from the 03-04 Sep campaign, 26 from the 09 Sep expansion"
+    ranked = true                        # optional; ranks it as recorded despite its rate or a lost route
     [ingest.bench2drive.model_env]       # optional; overrides what the runs recorded
     PADDOCK_CV_SPEED_M_S = "6"
     [ingest.bench2drive.setups]          # optional; recording setup -> route ids
@@ -83,6 +84,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -104,8 +106,9 @@ from paddock.results.store import MetricsRecord, RunRecord, config_hash, sequenc
 #: Bench2Drive's published protocol calls the model once per simulator tick --
 #: 20 Hz (docs/benchmarks/bench2drive.md). A model may declare a slower rate of its
 #: own (`planning_hz`), and a pool asked at it ranks. A rate an operator set in its
-#: place -- the host's PADDOCK_INFER_HZ, or, before runs recorded their rate,
-#: PADDOCK_INFER_HZ in `model_env` -- is a different protocol: kept, not ranked.
+#: place -- the host's PADDOCK_INFER_HZ -- is a different protocol: kept, not ranked.
+#: Before runs recorded their rate, it is PADDOCK_INFER_HZ in `model_env`, and ranks
+#: only when it is the rate the model's model.yaml declares (`_registered_native_hz`).
 PROTOCOL_HZ = 20.0
 
 # \w, not letters: MergerIntoSlowTrafficV2 and T_Junction are Bench2Drive-220 scenarios, and a folder this
@@ -217,6 +220,25 @@ def _registered_waypoint_dt(model: str) -> float | None:
     return getattr(spec, "waypoint_dt", None) if spec else None
 
 
+def _registered_native_hz(model: str) -> tuple[float, str] | None:
+    """The rate ``model``'s model.yaml declares it runs at, and the key that says so.
+
+    ``planning_hz`` first: how often the model replans, and the rate ``paddock run``
+    drives it at on Bench2Drive. A model that declares no planning rate but declares
+    the observation rate it was built for (``native_input_hz``) is called once per
+    observation at that rate, so that rate stands in. None when it declares neither.
+    """
+    try:
+        spec = Registry.load().models.get(model)
+    except Exception:  # noqa: BLE001 -- a broken registry must not fail an ingest
+        return None
+    for key in ("planning_hz", "native_input_hz"):
+        hz = float(getattr(spec, key, 0.0) or 0.0) if spec else 0.0
+        if hz > 0:
+            return hz, key
+    return None
+
+
 def _rate(value: Any) -> float | None:
     """A recorded ``infer_hz`` as Hz, 0.0 for every tick however it is written; None if not a number."""
     try:
@@ -281,8 +303,14 @@ def ingest(
     notes: str = "",
     model_env: dict[str, str] | None = None,
     setups: dict[str, list[str]] | None = None,
+    ranked: bool = False,
 ) -> list[tuple[RunRecord, MetricsRecord, list[dict[str, Any]]]]:
-    """One pooled paddock run for ``model`` over the routes under ``runs_root``."""
+    """One pooled paddock run for ``model`` over the routes under ``runs_root``.
+
+    ``ranked`` ranks the run as recorded although its rate or a route that never
+    scored would keep it off the board; ``notes`` says so. Every other reason a
+    pool does not rank still holds.
+    """
     roots = [runs_root] if isinstance(runs_root, Path) else list(runs_root)
     setup_of = {route: label for label, group in (setups or {}).items() for route in group}
     survey = discover(roots, routes)
@@ -467,12 +495,28 @@ def ingest(
             f"{keys} {was} supplied by the ingest config and recorded by no source run, "
             "so it is the operator's assertion about the campaign, not a reading from it."
         )
-    off_protocol = None if any("infer_hz" in c for c in kept) else _driven_off_protocol(config["model_env"])
-    if off_protocol is not None:
+    # Runs that recorded no rate (before #106) were driven at PADDOCK_INFER_HZ in `model_env`;
+    # at the rate the model's own model.yaml declares, that is on protocol, and ranks.
+    driven = None if any("infer_hz" in c for c in kept) else _driven_off_protocol(config["model_env"])
+    native = _registered_native_hz(model) if driven is not None else None
+    off_protocol = None if native and math.isclose(driven, native[0]) else driven
+    if driven is not None and off_protocol is None:
         note = (note + " " if note else "") + (
-            f"driven at {off_protocol:g} Hz, not the {PROTOCOL_HZ:g} Hz the benchmark's published "
-            "protocol calls the model at, so this run is kept and does not rank against runs that "
-            "were -- the paired comparison is docs/benchmarks/bench2drive-native-rate.md."
+            f"driven at {driven:g} Hz, the rate {model}/model.yaml declares as {native[1]}, not the "
+            f"benchmark's {PROTOCOL_HZ:g} Hz: a model driven at its own declared rate ranks, as "
+            "`paddock run` drives it -- the paired 20 Hz comparison is "
+            "docs/benchmarks/bench2drive-native-rate.md."
+        )
+    elif off_protocol is not None:
+        declared_rate = (
+            f"the {native[0]:g} Hz {model}/model.yaml declares ({native[1]})"
+            if native
+            else (f"a rate {model}/model.yaml declares (it declares none)")
+        )
+        note = (note + " " if note else "") + (
+            f"driven at {off_protocol:g} Hz, neither the {PROTOCOL_HZ:g} Hz the benchmark's published "
+            f"protocol calls the model at nor {declared_rate}, so this run is kept and does not rank -- "
+            "the paired comparison is docs/benchmarks/bench2drive-native-rate.md."
         )
     if overrides:
         note = (note + " " if note else "") + (
@@ -541,6 +585,10 @@ def ingest(
     if missing:
         lost = ", ".join(f"{r} ({attempted.get(r, 'no attempt found')})" for r in missing)
         note = (note + " " if note else "") + f"routes expected but never scored: {lost}."
+    if ranked and (missing or off_protocol is not None):
+        note = (note + " " if note else "") + (
+            f"ranked = true in the ingest config; the mean is over the {len(samples)} routes that scored."
+        )
     run = RunRecord(
         run_id=run_id,
         site=site,
@@ -569,10 +617,9 @@ def ingest(
         # A declared setting run at another value, or another camera rig, is what keeps a
         # single run from ranking, and so the pool of them. A pool asked at the rate its model
         # declared ranks; at the host's rate, at two rates, or at a rate not known or not a
-        # number, it does not.
-        valid=not missing
+        # number, it does not. `ranked` lifts only a lost route and an off-protocol rate.
+        valid=(bool(ranked) or (not missing and off_protocol is None))
         and len(pooled_setups) <= 1
-        and off_protocol is None
         and not isinstance(declared, list)
         and not undeclared
         and not overrides

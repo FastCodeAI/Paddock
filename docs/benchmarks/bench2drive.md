@@ -629,13 +629,11 @@ and Qwen-Drive replan at 2 Hz, Alpamayo 1.5 at 10 Hz — over the 50-route set,
 crashes CARLA for both at their native rate and is reported as never scored, not
 as a zero. Every other cell in this column but AutoE2E's (☉) and METEOR's (below) is driven at 20 Hz, one inference per
 simulator tick; OpenPilot's native rate *is* 20 Hz, and VisionPilot was not
-re-run. So the ※ cells are **not comparable with the ◆ cells**: a different rate
-and a different route set. At 20 Hz the same three scored Alpamayo 1.5 44.58 and
+re-run. So the ※ cells are driven at a different rate from the ◆ cells, and are
+ranked against them all the same, at each model's own rate. At 20 Hz the same three scored Alpamayo 1.5 44.58 and
 Drive-JEPA 31.11 (24 routes, ◆) and Qwen-Drive 12.92 (50 routes). Drive-JEPA uses
-its released NAVSIM-v2 checkpoint zero-shot in CARLA. The runs stay
-`valid: false` and off the ranked [leaderboard](../leaderboard.md): each one's rate
-was set by hand, and the leaderboard ranks a model at 20 Hz or at the rate its
-`model.yaml` declares. Per-route detail and the 20 Hz comparison are in
+its released NAVSIM-v2 checkpoint zero-shot in CARLA. `paddock ingest` writes all three `valid: true`. They rank on
+the [leaderboard](../leaderboard.md) too. Per-route detail and the 20 Hz comparison are in
 [Native inference rate](#native-inference-rate--three-models-re-driven).
 
 ♣ The Bench2Drive baseline uses a **fixed 3 m/s target**, with straight ego-frame
@@ -803,6 +801,16 @@ intervention. Its per-route values are
 every record in the pooled JSON now carries an `assistance` block, so the assisted
 and unassisted subsets can be recomputed from the linked file alone.
 
+A second OpenPilot run, driven on 29 Oct 2026 for this cell before the run of its
+declared setup replaced the estimate, is kept and does not rank:
+[`bench2drive/openpilot/native50-20hz-40c29d24c37d542a-f68000`](../../results/bench2drive/openpilot/native50-20hz-40c29d24c37d542a-f68000/run.json).
+One setup on every route — no resume assistance, openpilot's own longitudinal plan,
+the tinygrad backend on CUDA, no early stop — at 20 Hz: DS 30.91, RC 39.49 over all
+50 routes, none lost. It set the device and backend openpilot's `model.yaml`
+declares to other values, so `paddock ingest` writes it `valid: false`. It differs
+from the ranked run in the backend, the nudge and the early stop at once, so the
+gap between the two is not the effect of any one of them.
+
 #### Constant velocity — the speed sweep
 
 The baseline is not one experiment. All five targets were driven over the same
@@ -857,9 +865,7 @@ re-run; nothing here restates either. The rate is recorded per run in
 `config.model_env`, not derived from `model.yaml`. They were driven before the
 adapter honoured a rate on `main`; it now does (a model's `planning_hz`, above),
 and Drive-JEPA declares 2 Hz, so a clean checkout drives it at that rate by
-default. CARLA re-runs are not bit-reproducible, so these stay landed results. The three runs are `valid: false` and **do not rank**
-on the board: each rate was set by hand, in the runs' `model_env`, and the board
-ranks a model only at 20 Hz or at the rate its `model.yaml` declares. Their native scores are the Bench2Drive cells of the support matrix for
+default. CARLA re-runs are not bit-reproducible, so these stay landed results. `paddock ingest` writes all three `valid: true`. All three **rank** on the board. Their native scores are the Bench2Drive cells of the support matrix for
 these three models (※). `model_env` also differs in more than the rate — thread counts, a trace
 sink, `ALPAMAYO_NAV` — each argued immaterial and none measured to be; the
 [page](bench2drive-native-rate.md) books that as argued, not

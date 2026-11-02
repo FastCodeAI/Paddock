@@ -118,7 +118,7 @@ def test_every_record_carries_an_assistance_label(data: dict) -> None:
 
 
 def test_unassisted_subset_is_recomputable_from_the_linked_file(data: dict) -> None:
-    """The 30.09 in the support matrix must fall out of the records themselves."""
+    """The 30.09 unassisted estimate must fall out of the records themselves."""
     est = [
         r["assistance"]["unassisted_prefix_estimate"]["driving_score"]
         if r["assistance"]["assisted"]

@@ -138,19 +138,19 @@ was measured the same way as the rest of its column.
   `CURV_SCALE` fix. Drive-JEPA's nuScenes cell is the camera-blind run from
   before #62. OpenPilot's comma2k19 row was not run at the pinned sha.
 - **R — not ranked, because the number was measured on different scenes or by a
-  different method from the rest of its column.** Bench2Drive cells marked with
-  a rate ran at the model's own inference rate, where the others run at 20 Hz
-  over the same 50 routes; those gains are partly more exposure.
-  AutoE2E's and METEOR's Bench2Drive cells are asked at the rate their
-  `model.yaml` declares (10 Hz and 5 Hz), and a route ends after 30 s without
-  progress or at 4x the expert's time, where the cells they would rank against
-  were asked every tick and drove every route to Bench2Drive's own end. Their
-  records are valid.
-  OpenPilot's Bench2Drive cell is asked every tick under the same early stop,
-  and its record is valid too. How many cameras a
+  different method from the rest of its column.** AutoE2E's, METEOR's and
+  OpenPilot's Bench2Drive cells end a route after 30 s without progress or at
+  4x the expert's time, where the cells they would rank against drove every
+  route to Bench2Drive's own end. Their records are valid. How many cameras a
   model is given, and whether it drives through paddock's bridge or its own
   simulator driver, are never reasons to leave a cell unranked.
-- **Ranked, though fed what the model is built for.** NAVSIM cells marked 10 Hz
+- **Ranked, though fed what the model is built for.** Bench2Drive cells marked
+  2 Hz or 10 Hz are driven at the model's native inference rate, where the rest
+  of the column runs at 20 Hz over the same 50 routes; those gains are
+  partly more exposure. Alpamayo's and Qwen-Drive's means are over 49 routes:
+  route 3800 crashes CARLA at their rate. Qwen-Drive's 2 Hz is its camera rate
+  only: it reads 16 ego positions 0.1 s apart, and at 2 Hz 12 of them are
+  interpolated. NAVSIM cells marked 10 Hz
   get nuPlan's 10 Hz frames, where 2 Hz models such as Drive-JEPA get OpenScene's
   2 Hz. AutoE2E on KITScenes is given the scene's map and a route matched to the
   logged drive, upstream's validation protocol (without the route it scores
