@@ -312,6 +312,7 @@ def test_the_autoe2e_profile_flags_select_this_planner(monkeypatch) -> None:
         "frame_interval_us": 50_000,
         "force_gt_us": 3_000_000,
         "pad_ego_history": True,
+        "observe_between_replans": False,
     }
     assert seen["pinhole_intrinsics"] is True and seen["placeholders"] == ()
 

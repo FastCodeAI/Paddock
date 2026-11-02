@@ -1,0 +1,54 @@
+# @package _global_
+# The driver AlpaSim composes when paddock serves Qwen-Drive through the bridge.
+#
+# The simulation settings of Qwen-Drive's native AlpaSim driver (adapter 0.1.4),
+# whose 30-scene runs are what a run through paddock is checked against, value
+# for value. `harness.DRIVER_PROFILES` selects this file only for the qwendrive
+# model; other models keep paddock_bridge.yaml.
+#
+# What the values are, briefly:
+#   * four cameras, each the scene's own f-theta lens (no extra_cameras block,
+#     so nothing is re-rendered as a pinhole): the three Qwen-Drive reads, and
+#     camera_front_tele_30fov, which it does not read. The native lane rendered
+#     the tele camera too, and the bridge does not send it
+#     (--named-cameras-only), so it costs render time and changes no input;
+#   * 1900 x 1080 asked for; the rig delivers 1920 x 1080, as it did natively;
+#   * 20 Hz for both the control step and the cameras, 30 ms shutter;
+#   * 3.0 s of ground-truth warm-up with the driver called throughout, and 400
+#     steps, which covers the whole ~19.8 s clip at 50 ms;
+#   * the hyperion_8_1 bonnet mask the native lane set.
+
+wizard:
+  # driver is absent on purpose: the bridge is already listening.
+  run_sim_services:
+    ["renderer", "physics", "trafficsim", "controller", "runtime"]
+
+  external_services:
+    # Overridden per episode with the port the harness actually reserved; this
+    # value only has to compose.
+    driver:
+      - "localhost:9200"
+
+  debug_flags:
+    # Containers join the host network, so localhost:<port> reaches the bridge.
+    use_localhost: true
+
+# Do NOT set `runtime.endpoints.driver.skip: true`. Combined with
+# external_services it makes the runtime skip the driver entirely, and the run
+# still exits 0 with a full metrics table that is not the model's.
+runtime:
+  simulation_config:
+    force_gt_duration_us: 3_000_000
+    # The driver is called during warm-up, as the native one was; the bridge
+    # sends those frames to /observe, so the node's history is full at handover.
+    skip_driver_during_force_gt: false
+    control_timestep_us: 50_000
+    n_sim_steps: 400
+    n_rollouts: 1
+    planner_delay_us: 0
+    ego_mask_rig_config_id: hyperion_8_1
+    cameras:
+      - {logical_id: camera_front_wide_120fov,  height: 1080, width: 1900, frame_interval_us: 50_000, shutter_duration_us: 30_000}
+      - {logical_id: camera_front_tele_30fov,   height: 1080, width: 1900, frame_interval_us: 50_000, shutter_duration_us: 30_000}
+      - {logical_id: camera_cross_left_120fov,  height: 1080, width: 1900, frame_interval_us: 50_000, shutter_duration_us: 30_000}
+      - {logical_id: camera_cross_right_120fov, height: 1080, width: 1900, frame_interval_us: 50_000, shutter_duration_us: 30_000}

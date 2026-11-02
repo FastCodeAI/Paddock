@@ -122,4 +122,7 @@ capabilities:
 # One key, not one per benchmark that arrives: two `benchmarks:` lines is valid
 # YAML and keeps only the last, which is how a model has silently dropped off a
 # board before.
-benchmarks: [kitscenes, nuscenes, navsim, navsim_v1, neuroncap, comma2k19]
+# AlpaSim drives it through the qwendrive driver profile (alpasim/harness.py),
+# which is what makes the node build its native AlpaSim inputs and return 50
+# points 0.1 s apart there instead of the 0.5 s grid above (policy.py).
+benchmarks: [kitscenes, nuscenes, navsim, navsim_v1, neuroncap, comma2k19, alpasim]

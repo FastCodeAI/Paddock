@@ -11,8 +11,8 @@ valid: false would be ranked.
 
 The support matrix claims what the README's notes claim:
 - A column ranks lower-is-better when its header has a down arrow, else higher.
-- A cell marked R ("run differently from the rest of its column") or V ("stored
-  valid: false"), and every cell of a column declared `ranked = false`, are hatched
+- A cell marked R ("measured on different scenes or by a different method") or V
+  ("stored valid: false"), and every cell of a column declared `ranked = false`, are hatched
   and carry no rank.
 - A mark on a model applies to every cell in its row, as the README says.
 - The floor row (constant velocity) is ranked like a model, and any other ranked
