@@ -52,6 +52,22 @@ capabilities:
   stochastic: false
   needs_speed: true
   trained_on:
+    # Three training stages, each sourced at the pinned sha or in the papers:
+    # 1. The encoder starts from V-JEPA 2 (Drive-JEPA arXiv 2601.22032v2, sec. 3),
+    #    which was pretrained on VideoMix22M (V-JEPA 2, arXiv 2506.09985).
+    # 2. It is then trained without labels on 330 h of front-camera driving video:
+    #    CoVLA, DrivingDojo and OpenScene's trainval split (same section; the author
+    #    confirms trainval in Drive-JEPA issue #10). That encoder is
+    #    vitl_merge_3dataset_e50.pt, passed as pretrain_pt_path by
+    #    navsim_v1/scripts/training/train_drive_jepa_perception_free.sh, encoder unfrozen.
+    #    OpenScene trainval holds navtrain's logs and 52 of nuPlan mini's 62 (see
+    #    comparison.md, Drive-JEPA x nuplan), and none of navtest's.
+    - dataset: videomix22m
+    - dataset: covla
+    - dataset: drivingdojo
+    - dataset: navsim
+      split: trainval
+    # 3. The planner:
     # Same provenance as the perception-based sibling, sourced the same way:
     # Drive-JEPA @ e21f474, navsim_v1/scripts/evaluation/eval_drive_jepa_perception_free.sh
     # evaluates on navtest, and the training script for this agent uses navtrain.

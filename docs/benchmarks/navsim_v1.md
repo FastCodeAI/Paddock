@@ -224,6 +224,7 @@ completing run, and the replay read both directories):
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
 | openpilot, 10 Hz | **0.807** | 0.969 | 0.913 | 0.719 | 0.936 | 1.000 | 0.948 | 0.747 | `20260914T181009-dbcef4` | replay of `navsim/openpilot/20260911T161513-3a4c90`, 13 min |
 | alpamayo15, 10 Hz | **0.753** | 0.957 | 0.856 | 0.690 | 0.896 | 0.991 | 0.927 | 0.691 | `20260914T175447-89a9ca` | replay of `navsim/alpamayo15/20260912T040211-a9562c`, 15 min |
+| autoe2e, 10 Hz | **0.538** | 0.824 | 0.777 | 0.514 | 0.700 | 1.000 | 0.859 | 0.500 | `20261027T185517-5c7949` | replay of `navsim/autoe2e/20261009T055926-3ceb18`, 95 min with the box loaded |
 
 The 10 Hz history changes what the model sees, not what is scored: the same
 navtest scenes, the same v1 cache. For Alpamayo it is worth +0.077 PDMS over
@@ -263,7 +264,7 @@ The same 12,146 navtest scenarios, scored by the v1.1 devkit as PDMS =
 NC × DAC × (5·TTC + 5·EP + 2·comfort) / 12 (`docs/benchmarks/navsim_v1.md`).
 Driving direction compliance is recorded with weight zero. Full navtest,
 12,146 scenarios each, zero failures. Drive-JEPA and VisionPilot are fresh
-proxy runs; the Alpamayo and OpenPilot rows replay the plans their v2 runs
+proxy runs; the Alpamayo, OpenPilot and AutoE2E rows replay the plans their v2 runs
 recorded (the 10 Hz nuPlan history and, for Alpamayo, the 2 Hz OpenScene run
 too), so each scores the very plans behind the v2 figure above. The baseline
 reproduces the NAVSIM
@@ -279,6 +280,7 @@ future scores 0.946 against the paper's 94.8 (privileged; stored `valid: false`)
 | VisionPilot | 0.488 | 0.771 | 0.818 | 0.451 | 0.617 | 0.996 | 0.920 |
 | METEOR ◊ | 0.366 | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | 0.800 |
 | Qwen-Drive 1.0, 10 Hz nuPlan history ‡ | 0.876 | 0.982 | 0.964 | 0.817 | 0.941 | 1.000 | 0.987 |
+| AutoE2E v1.0, 10 Hz nuPlan history ‡ | 0.538 | 0.824 | 0.777 | 0.514 | 0.700 | 1.000 | 0.859 |
 | Baseline (Constant Velocity) | 0.207 | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 |
 
 **Qwen-Drive reproduces its own published row here, term by term.** Its

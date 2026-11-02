@@ -1,0 +1,163 @@
+/* Bench2Drive campaign dashboard. Colour roles follow the dataviz reference palette:
+   one series hue (slot 1) for every magnitude, status hues only on outcome chips
+   (always with an icon and a label), text in text tokens, hairline chrome. */
+.viz-root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface-1: #fcfcfb;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --series-1: #2a78d6;
+  --series-1-wash: rgba(42, 120, 214, 0.10);
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --success-text: #006300;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .viz-root {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface-1: #1a1a19;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --series-1: #3987e5;
+    --series-1-wash: rgba(57, 135, 229, 0.14);
+    --success-text: #0ca30c;
+  }
+}
+:root[data-theme="dark"] .viz-root {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface-1: #1a1a19;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --series-1: #3987e5;
+  --series-1-wash: rgba(57, 135, 229, 0.14);
+  --success-text: #0ca30c;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+.viz-root {
+  min-height: 100vh;
+  background: var(--page);
+  color: var(--text-primary);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  padding: 20px 28px 48px;
+}
+a { color: var(--series-1); text-decoration: none; }
+a:hover { text-decoration: underline; }
+header { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+header h1 { font-size: 20px; margin: 0; font-weight: 600; }
+header .meta { color: var(--text-secondary); font-size: 13px; }
+header .spacer { flex: 1; }
+button, select, input {
+  font: inherit; color: var(--text-primary); background: var(--surface-1);
+  border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px;
+}
+button { cursor: pointer; }
+button:hover { background: var(--series-1-wash); }
+
+.filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 4px 0 18px; }
+.filters label { color: var(--text-secondary); font-size: 13px; display: flex; gap: 6px; align-items: center; }
+.filters input[type="search"] { width: 220px; }
+
+.card {
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px; min-width: 0;
+}
+.card h2 { font-size: 14px; font-weight: 600; margin: 0 0 2px; }
+.card .sub { color: var(--text-secondary); font-size: 12px; margin: 0 0 8px; }
+.card .head { display: flex; align-items: flex-start; gap: 8px; }
+.card .head .grow { flex: 1; }
+.card .toggle { font-size: 12px; padding: 2px 8px; }
+
+.kpis { display: grid; grid-template-columns: 1.4fr repeat(5, 1fr); gap: 12px; margin-bottom: 16px; }
+.tile .label { color: var(--text-secondary); font-size: 13px; }
+.tile .value { font-size: 28px; font-weight: 600; margin-top: 2px; }
+.tile.hero .value { font-size: 52px; line-height: 1.05; }
+.tile .note { color: var(--text-muted); font-size: 12px; margin-top: 4px; }
+.meter { height: 8px; border-radius: 4px; background: var(--series-1-wash); margin-top: 10px; overflow: hidden; }
+.meter > div { height: 100%; background: var(--series-1); border-radius: 4px; }
+
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+@media (max-width: 1200px) { .grid3, .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 800px) { .grid2, .grid3, .kpis { grid-template-columns: 1fr; } }
+
+svg text { fill: var(--text-secondary); font: 12px system-ui, -apple-system, "Segoe UI", sans-serif; }
+svg .tick text { fill: var(--text-muted); font-variant-numeric: tabular-nums; }
+svg .gridline { stroke: var(--grid); stroke-width: 1; }
+svg .baseline { stroke: var(--axis); stroke-width: 1; }
+svg .bar { fill: var(--series-1); }
+svg .bar:hover, svg .bar:focus, svg .hit:hover + .dot, svg .dot.on { opacity: 0.8; outline: none; }
+svg .dot { fill: var(--series-1); stroke: var(--surface-1); stroke-width: 2; }
+svg .hit { fill: transparent; cursor: pointer; }
+svg .ref { stroke: var(--text-muted); stroke-width: 1; }
+svg .value-label { fill: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+.tooltip {
+  position: fixed; pointer-events: none; z-index: 10; display: none;
+  background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18); font-size: 12px; max-width: 320px;
+}
+.tooltip .v { font-size: 15px; font-weight: 600; }
+.tooltip .k { color: var(--text-secondary); }
+
+table.data { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.data th, table.data td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+table.data th { color: var(--text-secondary); font-weight: 600; cursor: pointer; user-select: none; position: sticky; top: 0; background: var(--surface-1); }
+table.data td.num, table.data th.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.data tr:hover td { background: var(--series-1-wash); }
+.table-wrap { max-height: 720px; overflow: auto; }
+.mini { font-size: 12px; }
+
+.chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-primary); }
+.chip .icon { width: 16px; height: 16px; border-radius: 50%; display: inline-flex; align-items: center;
+  justify-content: center; color: #fff; font-size: 10px; font-weight: 700; }
+.chip.good .icon { background: var(--good); }
+.chip.warning .icon { background: var(--warning); color: #0b0b0b; }
+.chip.serious .icon { background: var(--serious); color: #0b0b0b; }
+.chip.critical .icon { background: var(--critical); }
+.chip.neutral .icon { background: var(--text-muted); }
+
+.live { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.live .card { padding: 10px 12px; }
+.live img { width: 100%; border-radius: 6px; display: block; background: var(--page); }
+.live .frames { display: grid; grid-template-columns: 1.55fr 1fr; gap: 6px; margin: 8px 0 6px; }
+.live .row { display: flex; justify-content: space-between; color: var(--text-secondary); font-size: 12px; }
+.stale { opacity: 0.6; transition: opacity 0.2s; }
+.empty { color: var(--text-muted); font-size: 13px; padding: 8px 0; }
+
+/* route page */
+.route-grid { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(320px, 1fr); gap: 12px; }
+@media (max-width: 1100px) { .route-grid { grid-template-columns: 1fr; } }
+video, .route-grid img { width: 100%; border-radius: 8px; display: block; background: #000; }
+dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; font-size: 13px; }
+dl.kv dt { color: var(--text-secondary); }
+dl.kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+ul.plain { padding-left: 18px; margin: 6px 0; font-size: 13px; }
+
+/* "Stop route" on a live card: deliberate, so it reads as an action and not a status */
+.live button.stop { margin-top: 8px; width: 100%; }
+
+/* rendered markdown reports served beside the dashboard */
+.report { max-width: 1100px; }
+.report h1 { font-size: 22px; } .report h2 { font-size: 17px; margin-top: 28px; } .report h3 { font-size: 15px; }
+.report table { border-collapse: collapse; font-size: 13px; margin: 8px 0 14px; }
+.report th, .report td { border-bottom: 1px solid var(--grid); padding: 4px 10px; font-variant-numeric: tabular-nums; }
+.report th { color: var(--text-secondary); text-align: left; }
+.report img { max-width: 100%; border: 1px solid var(--border); border-radius: 8px; background: #fcfcfb; }
+.report code { font-size: 12px; }

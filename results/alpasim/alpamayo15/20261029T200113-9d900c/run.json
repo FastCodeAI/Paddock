@@ -1,0 +1,88 @@
+{
+  "run_id": "20261029T200113-9d900c",
+  "site": "fastcode-shakaal",
+  "benchmark": "alpasim",
+  "model": "alpamayo15",
+  "mode": "closed_loop",
+  "started_utc": "2026-10-30T21:53:56+00:00",
+  "duration_s": 0.7,
+  "repo_sha": "7a8f1c781a826f09be53e1e211f26e947ec18019",
+  "dataset": {
+    "name": "",
+    "n_samples": 30,
+    "sequences_sha256": "f110e944b9145544",
+    "n_expected": 30,
+    "n_failed": 0,
+    "n_reused": 30
+  },
+  "config": {
+    "scene": null,
+    "runs": 1,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT"
+    ],
+    "scene_set": "public_2601_30scenes",
+    "startup_timeout_s": 900,
+    "scorer_repo_sha": "affc2ea",
+    "renderer": "nurec",
+    "topology": "1gpu",
+    "driver_profile": "alpamayo15",
+    "driver_config": "paddock_bridge_alpamayo15",
+    "bridge_args": [
+      "--camera-name",
+      "camera_front_wide_120fov=CAM_FRONT",
+      "--camera-name",
+      "camera_cross_left_120fov=CAM_FRONT_LEFT",
+      "--camera-name",
+      "camera_cross_right_120fov=CAM_FRONT_RIGHT",
+      "--camera-name",
+      "camera_front_tele_30fov=CAM_FRONT_TELE",
+      "--named-cameras-only",
+      "--replan-every-us",
+      "100000",
+      "--frame-interval-us",
+      "50000",
+      "--force-gt-us",
+      "3000000",
+      "--observe-between-replans",
+      "--send-route",
+      "--send-route-time",
+      "--waypoint-dt",
+      "0.1",
+      "--send-plan-dt"
+    ],
+    "scenes_csv": "public_2601_30scenes_26p01.csv",
+    "replan_log": true,
+    "declared_env": {
+      "ALPAMAYO_CHECKPOINT": "{weights}/Alpamayo-1.5-10B",
+      "ALPAMAYO_COSMOS": "{weights}/Cosmos-Reason2-8B",
+      "ALPAMAYO_NAV": "1",
+      "KITSCENES_REPO": "{repos}/kitscenes",
+      "KITSCENES_ROOT": "{data.kitscenes.parent}",
+      "KITSCENES_SAMPLE_LIST": "{data.navsim.exp}kitscenes_e2e_final.pkl",
+      "PADDOCK_WEIGHTS": "{weights}"
+    }
+  },
+  "hardware": {
+    "gpu_free_gb_at_start": null
+  },
+  "provenance": {
+    "repo": {
+      "repo": "alpamayo1.5",
+      "sha": "7a8f1c781a826f09be53e1e211f26e947ec18019",
+      "pinned_sha": "7a8f1c7",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "17cb621459cea1df8399e433db8ad9e0995d0f16",
+      "dirty": false
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "resumed: 30 episode(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only",
+  "ingested_from": ""
+}

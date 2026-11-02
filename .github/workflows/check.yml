@@ -39,7 +39,9 @@ concurrency:
 jobs:
   check:
     name: make check (no site config)
-    runs-on: ubuntu-latest
+    # Not ubuntu-latest: that became Ubuntu 26.04 on 2026-10-29, which has no Python 3.9 for
+    # setup-python, so this job failed before installing anything. 3.9 is needed below.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4

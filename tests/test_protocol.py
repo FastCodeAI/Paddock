@@ -78,6 +78,34 @@ def test_to_wire_is_the_inverse_of_from_wire() -> None:
     assert Observation.from_wire(obs.to_wire()).lidar2ego is None
 
 
+def test_the_next_lane_change_crosses_the_wire_and_an_older_agent_sends_none() -> None:
+    """The lane change rides beside `nav_maneuver`, never inside it: a policy
+    reading the junction maneuver must be told exactly what it was told before.
+    An agent that predates the fields decodes as "no lane change ahead"."""
+    obs = Observation(
+        images={},
+        ego2world=np.eye(4),
+        canbus=np.zeros(18),
+        timestamp_us=0,
+        command=Command.STRAIGHT,
+        camera2image={},
+        camera2ego={},
+        nav_maneuver="TURN_RIGHT",
+        nav_distance_m=28.0,
+        nav_lane_change="LEFT",
+        nav_lane_change_m=12.5,
+    )
+    wire = obs.to_wire()
+    back = Observation.from_wire(wire, cameras=())
+    assert (back.nav_lane_change, back.nav_lane_change_m) == ("LEFT", 12.5)
+    assert (back.nav_maneuver, back.nav_distance_m) == ("TURN_RIGHT", 28.0)
+
+    wire.pop("nav_lane_change")
+    wire.pop("nav_lane_change_m")
+    old = Observation.from_wire(wire, cameras=())
+    assert old.nav_lane_change is None and old.nav_lane_change_m is None
+
+
 def test_the_route_polyline_crosses_the_wire_and_its_absence_stays_none() -> None:
     """A closed-loop source with a route sends it as an ego-frame polyline; one
     without (NAVSIM, every open-loop harness) sends nothing, and a policy reads None."""
@@ -97,6 +125,55 @@ def test_the_route_polyline_crosses_the_wire_and_its_absence_stays_none() -> Non
     obs.route_xy = None
     assert obs.to_wire()["route_xy"] is None
     assert Observation.from_wire(obs.to_wire(), cameras=()).route_xy is None
+
+
+def test_the_plan_spacing_and_route_time_cross_the_wire_only_when_a_source_sets_them() -> None:
+    """Unset (every producer but AlpaSim's bridge under the alpamayo15 profile), the body carries
+    neither key, so every other model's request is unchanged; set, both decode as sent."""
+    obs = Observation(
+        images={},
+        ego2world=np.eye(4),
+        canbus=np.zeros(18),
+        timestamp_us=3_000_000,
+        command=Command.STRAIGHT,
+        camera2image={},
+        camera2ego={},
+    )
+    before = obs.to_wire()
+    assert "plan_dt" not in before and "route_timestamp_us" not in before
+    back = Observation.from_wire(before, cameras=())
+    assert back.plan_dt is None and back.route_timestamp_us is None
+
+    obs.plan_dt, obs.route_timestamp_us = 0.1, 2_950_000
+    after = obs.to_wire()
+    assert {k: v for k, v in after.items() if k not in ("plan_dt", "route_timestamp_us")} == before
+    back = Observation.from_wire(after, cameras=())
+    assert back.plan_dt == 0.1 and back.route_timestamp_us == 2_950_000
+
+
+def test_the_map_files_and_route_trace_cross_the_wire_and_their_absence_stays_none() -> None:
+    """KITScenes points at each scene's Lanelet2 map and, under its oracle route, sends the logged
+    drive; every other source sends neither, and a policy reads None."""
+    files = {"format": "lanelet2_osm", "map": "/data/s/maps/map.osm", "origin": "/data/s/maps/origin.json"}
+    trace = np.array([[0.0, 1.0, 2.0, 0.1], [0.1, 2.0, 2.1, 0.1], [0.2, 3.0, 2.2, 0.12]])
+    obs = Observation(
+        images={},
+        ego2world=np.eye(4),
+        canbus=np.zeros(18),
+        timestamp_us=0,
+        command=Command.STRAIGHT,
+        camera2image={},
+        camera2ego={},
+        map_files=files,
+        route_trace=trace,
+    )
+    back = Observation.from_wire(obs.to_wire(), cameras=())
+    assert back.map_files == files
+    assert back.route_trace.shape == (3, 4) and np.allclose(back.route_trace, trace)
+    obs.map_files, obs.route_trace = None, None
+    assert obs.to_wire()["map_files"] is None and obs.to_wire()["route_trace"] is None
+    back = Observation.from_wire(obs.to_wire(), cameras=())
+    assert back.map_files is None and back.route_trace is None
 
 
 def test_a_staged_frame_is_read_as_an_array_and_a_dataset_frame_through_pil(tmp_path) -> None:
@@ -172,6 +249,17 @@ def test_extras_survive_the_closed_loop_wire_and_validate() -> None:
     # No extras at all is the common case and must not add a wire key.
     assert "extras" not in Trajectory(np.zeros((6, 2))).to_wire()
     validate_extras(None)
+
+
+@pytest.mark.parametrize("columns", [2, 3])
+def test_the_wire_carries_the_whole_plan_as_the_model_returned_it(columns: int) -> None:
+    """`plan` holds every row, with yaw only if the model gave one, and the spacing;
+    `trajectory` stays the six (x, y) a neuroNCAP-style client indexes."""
+    waypoints = np.arange(8 * columns, dtype=np.float64).reshape(8, columns)
+    wire = Trajectory(waypoints, dt=0.5).to_wire()
+    assert wire["plan"] == {"waypoints": waypoints.tolist(), "dt": 0.5}
+    assert wire["trajectory"] == waypoints[:6, :2].tolist()
+    assert list(wire) == ["trajectory", "aux_outputs", "plan"]
 
 
 @pytest.mark.parametrize(

@@ -62,6 +62,21 @@ def _read_lidars_tolerant(self, lidars, filepaths):
 ndp.NuScenes._read_lidars = _read_lidars_tolerant
 
 
+# [benchmarks.neuroncap] nuscenes_subset (launcher.NUSCENES_SUBSET_ENV): load the
+# scene from tables cut down to neuroNCAP's scenes, not the 2.5 GB v1.0-trainval
+# the checkpoint's config names. The scene's records are the same, and its file
+# paths resolve through the copy's links to the same files (nuscenes_subset.py).
+_SUBSET = os.environ.get("PADDOCK_NCAP_NUSCENES_SUBSET")
+if _SUBSET:
+    _original_generate = ndp.NuScenes._generate_dataparser_outputs
+
+    def _generate_from_subset(self, split="train"):
+        self.config.data = Path(_SUBSET)
+        return _original_generate(self, split)
+
+    ndp.NuScenes._generate_dataparser_outputs = _generate_from_subset
+
+
 # This neurad-studio is newer than the released checkpoints, and its dataparser
 # now hands back 4x4 transforms where ``ClosedLoopServer.main`` still expects
 # 3x4: ``to4x4`` then appends a row and produces a 5x4, which blows up on the

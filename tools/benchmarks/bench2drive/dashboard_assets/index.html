@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bench2Drive campaign</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="viz-root">
+  <header>
+    <h1 id="title">Bench2Drive campaign</h1>
+    <span class="meta" id="generated">loading…</span>
+    <span class="spacer"></span>
+    <a href="/analysis/REPORT.html" id="report" hidden title="Why it scores what it scores: the written analysis">Report</a>
+    <span class="meta" id="refresh-note">refreshes every 30 s</span>
+    <button id="theme" title="Toggle light / dark">Theme</button>
+  </header>
+
+  <div class="filters" role="group" aria-label="Filters (scope everything below)">
+    <label>Search <input type="search" id="f-text" placeholder="route id or scenario"></label>
+    <label>Ability <select id="f-ability"><option value="">all</option></select></label>
+    <label>Town <select id="f-town"><option value="">all</option></select></label>
+    <label>Outcome <select id="f-outcome"><option value="">all</option></select></label>
+    <button id="f-reset">Reset</button>
+  </div>
+
+  <section class="kpis" id="kpis" aria-label="Headline numbers"></section>
+
+  <section aria-label="Routes driving now">
+    <div class="card" style="margin-bottom:12px">
+      <div class="head"><div class="grow"><h2>Driving now</h2>
+        <p class="sub">Live frames from the routes in progress: front camera and the BEV camera, refreshed with the page.</p></div></div>
+      <div class="live" id="live"></div>
+    </div>
+  </section>
+
+  <section aria-label="Why" id="why" hidden>
+    <div class="card" data-chart="cause" style="margin-bottom:12px"></div>
+  </section>
+  <section class="grid3" aria-label="Breakdowns">
+    <div class="card" data-chart="ability"></div>
+    <div class="card" data-chart="outcome"></div>
+    <div class="card" data-chart="infractions"></div>
+  </section>
+  <section class="grid2" aria-label="Scenario and speed">
+    <div class="card" data-chart="scenario"></div>
+    <div>
+      <div class="card" data-chart="speed" style="margin-bottom:12px"></div>
+      <div class="card" data-chart="rc_hist" style="margin-bottom:12px"></div>
+      <div class="card" data-chart="town"></div>
+    </div>
+  </section>
+
+  <section class="card" aria-label="Every route">
+    <div class="head"><div class="grow"><h2>Routes</h2>
+      <p class="sub">Click a column to sort, a route to open its video, BEV, expert comparison and score breakdown.</p></div>
+      <span class="meta mini" id="row-count"></span></div>
+    <div class="table-wrap"><table class="data" id="routes"></table></div>
+  </section>
+</div>
+<div class="tooltip" id="tooltip" role="status"></div>
+<script src="app.js"></script>
+</body>
+</html>

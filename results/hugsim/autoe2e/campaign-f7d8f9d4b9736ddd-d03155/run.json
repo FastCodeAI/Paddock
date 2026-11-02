@@ -1,0 +1,53 @@
+{
+  "run_id": "campaign-f7d8f9d4b9736ddd-d03155",
+  "site": "fastcode-shakaal-navvrat-hugsim",
+  "benchmark": "hugsim",
+  "model": "autoe2e",
+  "mode": "closed_loop",
+  "started_utc": "2026-10-22T07:30:51.954026+00:00",
+  "duration_s": null,
+  "repo_sha": null,
+  "dataset": {
+    "name": "hugsim-release",
+    "n_samples": 420,
+    "sequences_sha256": "f7d8f9d4b9736ddd",
+    "n_expected": 420,
+    "n_failed": 0
+  },
+  "config": {
+    "excluded": [
+      "scene-021-medium-02",
+      "scene-027-medium-02",
+      "scene-028-medium-02",
+      "scene-032-medium-02",
+      "scene-033-medium-02",
+      "scene-034-medium-02",
+      "scene-038-medium-02",
+      "scene-039-medium-02",
+      "scene-040-medium-02",
+      "scene-044-medium-02",
+      "scene-053-medium-02",
+      "scene-090-medium-02",
+      "scene-095-medium-02",
+      "scene-113-medium-02",
+      "scene-124-medium-02",
+      "scene-140045460035-hard-00"
+    ],
+    "excluded_attempted": 16,
+    "controller": "traj2control with upstream PR #57",
+    "step_cap": 400,
+    "route": "command only",
+    "infer_every": 1,
+    "infer_hz": 4.0,
+    "render_cams": "all",
+    "model_env": {},
+    "source_layout": "results.jsonl + <dataset>_bridge/<scene>_<mode>/eval.json + logs/<scenario>.log"
+  },
+  "hardware": {},
+  "provenance": {},
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "AutoE2E v1.0 (KITScenes epoch 5), driven 22 Oct 2026 in up to four lanes sharing one scenario queue, from paddock b507811 unmodified. The adapter has changed since (#92, #97, #98, #107, #108), so a re-run on main may differ. Called every step (it declares no planning rate), all six cameras rendered. It takes no command, so it gets upstream's no-route input.",
+  "ingested_from": "hugsim-eval/autoe2e"
+}

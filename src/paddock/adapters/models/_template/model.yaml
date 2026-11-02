@@ -72,6 +72,11 @@ capabilities:
   # Waypoint spacing the model plans at, seconds.
   waypoint_dt: 0.5
 
+  # How often the model replans in closed loop, Hz. Omit (0) to be asked every
+  # simulator tick. Bench2Drive honours it: one /infer per 1/planning_hz seconds,
+  # the last plan followed unchanged in between.
+  # planning_hz: 2.0
+
   # -- the model card ---------------------------------------------------
   # What the model IS, as opposed to how to launch it. `paddock list models`
   # prints it, and docs/models/comparison.md is where the values and their

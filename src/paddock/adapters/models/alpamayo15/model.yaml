@@ -66,17 +66,46 @@ capabilities:
   size_gb: 20
   precision: bf16
   input_size: [448, 280]
-  # The model has a fourth slot, front_tele, which this adapter does not feed --
-  # see comparison.md. cameras above is what infer() actually reads.
+  # Four slots: three wide views, and a 30 deg telephoto that policy.py crops out
+  # of CAM_FRONT (CAMERA_SLOTS). cameras above is what a simulator renders. On
+  # AlpaSim the bridge also sends the rendered telephoto as CAM_FRONT_TELE, and
+  # policy.py uses it in place of the crop; that is why the policy decodes four
+  # cameras while every source has to send only these three.
+  camera_views: [CAM_FRONT_LEFT, CAM_FRONT, CAM_FRONT_RIGHT, CAM_FRONT_TELE]
   history_frames: 4
+  # Four frames and 16 ego poses, both 0.1 s apart (NUM_CAM_FRAMES, NUM_HISTORY_STEPS).
+  camera_hz: 10.0
+  ego_history_steps: 16
+  ego_history_hz: 10.0
   output_kind: waypoints
   horizon_s: 6.4
+  # 64 waypoints at 10 Hz; policy.py resamples them to waypoint_dt, except when
+  # the body asks for a plan_dt (AlpaSim's bridge): then all 64 go back, 0.1 s apart.
+  plan_points_hz: 10.0
   # Samples unseeded at T=1.0/top_p=0.95 in closed loop. One run is a draw, not
   # a measurement: sd 1.817 across seeds on frontal-0103.
   stochastic: true
   trained_on:
-    # NVIDIA internal, 80,000 h. Zero-shot on every paddock benchmark.
+    # Not zero-shot everywhere: the model card (nvidia/Alpamayo-1.5-10B, "Training
+    # Dataset") lists 17 public driving datasets beside NVIDIA's own data.
+    # 1. The VLM base: Cosmos-Reason2-8B (config.json vlm_name_or_path), itself
+    #    post-trained from Qwen3-VL-8B-Instruct on its own physical-AI corpora.
+    - dataset: qwen3-vl
+    - dataset: cosmos-reason2
+    # 2. NVIDIA's fleet: 80,000 h of multi-camera driving, US and EU, and 3M
+    #    chain-of-causation reasoning traces (about 10 % human, the rest VLM-made).
+    #    The public PhysicalAI-AV clips are partitioned to match its train/test
+    #    split; none of paddock's 30 AlpaSim scenes is a train clip (7 alpasim,
+    #    2 test, 21 not in the public dataset), checked in alpamayo_aligned.parquet.
     - dataset: nvidia-internal
+    # 3. The card's public sets. Two are NAVSIM data (NAVSIM-ReCogDrive, NAVSIM-Traj)
+    #    and five are built on nuScenes (nuScenesQA, DriveLM, nuInstruct, OmniDrive,
+    #    Talk2Car); no split is given for any. See comparison.md, Alpamayo 1.5 x
+    #    navsim and x nuscenes. The other ten: CODA-LM, Drive-Action, DriveGPT4,
+    #    LingoQA, MapLM, MM-AU, Roadwork, Senna, SUTD, W3DA.
+    - dataset: navsim
+    - dataset: nuscenes
+    - dataset: public-driving-qa
 # One key, not one per benchmark that arrived: two `benchmarks:` lines make YAML
 # keep the last and silently drop the rest, which is how alpasim once went missing.
 benchmarks: [kitscenes, neuroncap, navsim, navsim_v1, bench2drive, alpasim, nuscenes, comma2k19, nuplan]
