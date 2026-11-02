@@ -9,8 +9,9 @@
 Per call the clip is [8 previous OUTPUTS as clean context, 1 new frame]: edge from the CARLA frames (on the fly),
 depth + wsm from CARLA/Ludus, num_conditional_frames = 8 -> the last 4 frames are regenerated, the last one is kept.
 This is the framework's own autoregressive stride-1 pattern (transfer.py), done in-process on tensors (no files).
-Usage: python cosmos_service.py <port> <spec.json>   (spec = a transfer sample spec whose paths exist; only its
-prompt / negative prompt / guidance / weights are used).  Env: COSMOS_STEPS (default 20), COSMOS_RES (480), COSMOS_CHUNK, COSMOS_NCOND, COSMOS_REANCHOR,
+Usage: python cosmos_service.py <port> <spec.json>   (spec = a transfer sample spec whose paths exist; its
+prompt / negative prompt / guidance / control guidance / weights / seed / shift are used, not num_steps or the
+edge preset).  Env: COSMOS_STEPS (default 20), COSMOS_RES (480), COSMOS_CHUNK, COSMOS_NCOND, COSMOS_REANCHOR,
 COSMOS_SPEC (spec path if argv[2] is absent), COSMOS_OUTPUT_DIR (framework scratch dir, default ./cosmos_out).
 """
 import sys

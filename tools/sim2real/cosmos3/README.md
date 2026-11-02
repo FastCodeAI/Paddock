@@ -68,8 +68,10 @@ Both batch scripts import their sibling service module rather than reimplementin
 
 ## specs/ — transfer sample specs
 
-Only the prompt, negative prompt, guidance and control weights are read by the service and
-the batch converter.
+The service and the batch converter read a spec's prompt, negative prompt, guidance, control
+guidance, control weights, seed and shift. They do not read `num_steps`: steps come from
+`COSMOS_STEPS` (default 20; the study used 12). Nor the edge control's `preset_edge_threshold`:
+the preset is fixed at medium in `cosmos_service.py`.
 
 - `cosmos_live_spec.json` — **the settings every live run and the open-loop conversion used**:
   edge 0.5, depth 0.5, wsm 1.0, guidance 3.0, control guidance 1.5, seed 2026, `prompt_rain`.

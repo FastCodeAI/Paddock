@@ -1,7 +1,7 @@
 """Convert one camera of a whole capture with Cosmos 3 Nano, chunked autoregressively.
 
 Usage (pod, cosmos-framework venv):
-  COSMOS_STEPS=12 COSMOS_CHUNK=61 COSMOS_NCOND=8 python cosmos_batch.py <capture_dir> <cam> <out_dir> <spec.json> [t0 t1]
+  COSMOS_STEPS=12 COSMOS_CHUNK=61 COSMOS_NCOND=8 COSMOS_VIS_M=50 python cosmos_batch.py <capture_dir> <cam> <out_dir> <spec.json> [t0 t1]
 The converter itself is ../services/cosmos_service.py, imported here rather than reimplemented;
 set COSMOS3_SERVICES to override where that module is found. The spec's own prompt and control
 paths are relative, so run from the directory holding prompts/ and controls/ (see ../README.md).
