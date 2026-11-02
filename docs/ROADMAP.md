@@ -571,8 +571,9 @@ OpenPilot, QwenDrive and five constant-velocity speeds, 500 per-route records
 published in
 [`bench2drive-speed-normalization.json`](benchmarks/bench2drive-speed-normalization.json),
 aggregated in the README and tracked as ten `results/` runs (below). AutoE2E's
-two 50-route records are tracked beside them and left out of those tables (its
-routes end early), so `results/bench2drive/*/pooled50-*` holds twelve.
+two 50-route records, METEOR's and OpenPilot's valid one are tracked beside them
+and left out of those tables (their routes end early), so
+`results/bench2drive/*/pooled50-*` holds fourteen.
 
 | Claim | Verified how | Strength |
 |---|---|---|
@@ -581,7 +582,7 @@ routes end early), so `results/bench2drive/*/pooled50-*` holds twelve.
 | launch, timeout, CARLA cleanup | stand-in evaluator under test; real flags read from the checkout | **strong** / argued |
 | agent imports in the CARLA-client env | exercised in a Python 3.8 env with the 0.9.15 egg, no server | moderate |
 | a model drives a route through paddock | 500 route records over 50 routes and 10 systems, scores and infractions published; every README cell recomputed from them by `tests/test_bench2drive_docs.py` | **strong** for the tables; the records' faithfulness to the evaluator output is a transcription nobody has re-derived from the raw `results.json` files |
-| the runs carry their own provenance | twelve `results/bench2drive/*/pooled50-*` records written by `paddock ingest` from the per-route `results.json` trees: `routes_file`, `routes_subset`, `waypoint_dt`, `model_env` and `site` read from the source runs, every source run id and file digest kept | **strong** |
+| the runs carry their own provenance | fourteen `results/bench2drive/*/pooled50-*` records written by `paddock ingest` from the per-route `results.json` trees: `routes_file`, `routes_subset`, `waypoint_dt`, `model_env` and `site` read from the source runs, every source run id and file digest kept | **strong** |
 | the runs are reproducible at another site | nothing yet — a site without the recording trees cannot regenerate them, and CARLA re-runs are not bit-reproducible | **unverified** |
 | the 20 Hz protocol understates models built to replan slower | the same 50 routes re-driven at each model's own rate (`PADDOCK_INFER_HZ`), everything else held: DriveJEPA 31.71 → 57.60, Alpamayo 1.5 43.20 → 55.82, QwenDrive 12.94 → 17.08; three `results/bench2drive/*/native50-*` records, every cell recomputed by `tests/test_bench2drive_native_rate_docs.py` | **strong** for the three models measured; **not general** — one rate per model, no sweep, so nothing here locates an optimum |
 | why each of the three improved | DriveJEPA and QwenDrive drive further instead of stalling (blocked 17 → 7, 16 → 10) at flat-to-worse penalty; only Alpamayo 1.5's penalty rises (0.648 → 0.725, vehicle collisions 42 → 23) | **argued** from the infraction breakdown; no per-tick analysis |
@@ -642,6 +643,16 @@ routes the car never leaves the start: standing still, METEOR plans a 3 s path
 that ends a median 0.17 m ahead, and the shared controller holds the brake. That
 is measured from the per-route records; why the network holds is argued in
 `docs/models/meteor.md` and not separated.
+
+**OpenPilot with its own planner (31 Oct 2026).** comma's supercombo drove the
+same 50 routes, asked every tick, with openpilot's own longitudinal planner and its
+driver-resume nudge, both declared in its `model.yaml` (#79), under the same
+early-stop rules: DS 47.52, `valid: true`
+(`results/bench2drive/openpilot/pooled50-40c29d24c37d542a-c7d2b2`). The nudge
+stands in for a driver pressing resume, so the README cell is marked P as well as
+R. It replaces the README's unassisted estimate (30.09), a reconstruction from
+the September recordings. Measured; what the planner and the nudge each add to
+the 47.52 is not separated.
 
 ## HUGSIM — adapter landed; two recorded campaigns tracked, none driven through the harness
 

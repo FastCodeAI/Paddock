@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import calendar
 import json
+import multiprocessing
 import os
 import re
 import shutil
@@ -193,7 +194,10 @@ class Builder:
                     f"--routes names route ids not in {args.routes_xml.name}: {', '.join(unknown)}"
                 )
             self.table = {rid: meta for rid, meta in self.table.items() if rid in wanted}
-        self.pool = ProcessPoolExecutor(max_workers=args.jobs)
+        self.features = args.features
+        # Spawned, not forked: a forked worker inherits the server's listening socket and holds
+        # the port after the server is gone, so a restart fails with "address already in use".
+        self.pool = ProcessPoolExecutor(max_workers=args.jobs, mp_context=multiprocessing.get_context("spawn"))
         self.pending: dict[str, Future] = {}
         self.errors: dict[str, str] = {}
         self.lock = threading.Lock()
@@ -247,6 +251,15 @@ class Builder:
                 asked.append(att.run_id)
         return asked
 
+    def load_features(self) -> dict[str, dict[str, str]]:
+        """``--features`` by route id. Generic on purpose: this tool knows the benchmark, not the model."""
+        if not self.features or not Path(self.features).exists():
+            return {}
+        import csv
+
+        with Path(self.features).open() as handle:
+            return {row["route_id"]: row for row in csv.DictReader(handle) if row.get("route_id")}
+
     def build(self) -> dict:
         started = time.time()
         everything = [a for a in (runs.attempts(self.runs) if self.runs else []) if a.route_id in self.table]
@@ -270,7 +283,11 @@ class Builder:
         running = [live_state(a, self.root) for a in everything if a.running]
         with self.lock:
             rendering, errors = sorted(self.pending), dict(self.errors)
+        extra = self.load_features()
         for row in rows:
+            if row["route_id"] in extra:
+                row["features"] = extra[row["route_id"]]
+                row["cause"] = extra[row["route_id"]].get("cause")
             row["rendering"] = row["route_id"] in rendering
             if row["route_id"] in errors:
                 row["render_error"] = errors[row["route_id"]]
@@ -301,6 +318,9 @@ class Builder:
             "running": running,
             "rendering": rendering,
             "throughput": self.throughput(finished),
+            # A written analysis a model's own tool may leave beside the dashboard (openpilot's
+            # report writes analysis/REPORT.html); the page links it only when it is there.
+            "report": (self.root / "analysis" / "REPORT.html").is_file(),
         }
         tmp = self.out / "data.json.tmp"
         tmp.write_text(json.dumps(data, separators=(",", ":"), allow_nan=False, default=str))
@@ -424,6 +444,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--title", help="a line under the name, e.g. the checkpoint and how it was driven")
     ap.add_argument(
         "--routes", help="comma-separated route ids: the campaign's subset (default: every route)"
+    )
+    ap.add_argument(
+        "--features",
+        type=Path,
+        help="a per-route CSV keyed by route_id (e.g. a model's analysis); its columns are shown beside each route",
     )
     args = ap.parse_args(argv)
 

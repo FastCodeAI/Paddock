@@ -16,6 +16,9 @@ The wire contract, unchanged from NeuroNCAP:
               nav_maneuver   optional: next junction maneuver on the route,
                              "TURN_LEFT" | "TURN_RIGHT" | "STRAIGHT" | null
               nav_distance_m optional: along-route metres to that maneuver
+              nav_lane_change   optional: next lane change on the route,
+                                "LEFT" | "RIGHT" | null
+              nav_lane_change_m optional: along-route metres to it
               calibration  camera2image (3x3 per camera), camera2ego (4x4)
 
     response  trajectory   ego frame, x forward and y LEFT, spaced by waypoint dt
@@ -300,6 +303,14 @@ class Observation:
     #: where the source has no route, or no junction ahead of the ego.
     nav_maneuver: str | None = None
     nav_distance_m: float | None = None
+    #: The next lane change on the route ("LEFT", "RIGHT") and the along-route
+    #: distance to it. Separate from `nav_maneuver`, which names junction
+    #: maneuvers only and is read as such by policies that take navigation text:
+    #: folding lane changes into it would change what those policies are told.
+    #: openpilot sends it as its laneChange desire. None where the source has no
+    #: route, or no lane change ahead of the ego.
+    nav_lane_change: str | None = None
+    nav_lane_change_m: float | None = None
     #: The route ahead as an (N, 2) polyline in the ego frame (x forward, y left, metres), starting a few
     #: metres behind the ego. Closed-loop sources that hold a route send it (Bench2Drive: the leaderboard's
     #: global plan, from the first plan point at least 10 m behind to the first at least 200 m ahead); None
@@ -354,6 +365,10 @@ class Observation:
             nav_maneuver=(str(body["nav_maneuver"]) if body.get("nav_maneuver") else None),
             nav_distance_m=(
                 float(body["nav_distance_m"]) if body.get("nav_distance_m") is not None else None
+            ),
+            nav_lane_change=(str(body["nav_lane_change"]) if body.get("nav_lane_change") else None),
+            nav_lane_change_m=(
+                float(body["nav_lane_change_m"]) if body.get("nav_lane_change_m") is not None else None
             ),
             route_xy=(
                 np.asarray(body["route_xy"], dtype=np.float64) if body.get("route_xy") is not None else None
@@ -444,6 +459,8 @@ class Observation:
             "speed_limit": self.speed_limit,
             "nav_maneuver": self.nav_maneuver,
             "nav_distance_m": self.nav_distance_m,
+            "nav_lane_change": self.nav_lane_change,
+            "nav_lane_change_m": self.nav_lane_change_m,
             "route_xy": (np.asarray(self.route_xy).tolist() if self.route_xy is not None else None),
             "map_files": (dict(self.map_files) if self.map_files else None),
             "route_trace": (np.asarray(self.route_trace).tolist() if self.route_trace is not None else None),

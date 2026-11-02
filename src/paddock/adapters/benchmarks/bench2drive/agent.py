@@ -71,7 +71,7 @@ from agents.navigation.local_planner import RoadOption
 from leaderboard.autoagents.autonomous_agent import AutonomousAgent, Track
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 
-from paddock.adapters.benchmarks.bench2drive import early_stop, recorder, rig
+from paddock.adapters.benchmarks.bench2drive import early_stop, navigation, recorder, rig
 from paddock.adapters.benchmarks.bench2drive.pid import WaypointTracker
 from paddock.policy.protocol import CANBUS_ACCEL, CANBUS_VELOCITY, Command, Trajectory, encode_image
 
@@ -255,11 +255,13 @@ class PaddockB2DAgent(AutonomousAgent):
             os.makedirs(os.path.join(RECORD_DIR, recorder.INPUTS_DIR), exist_ok=True)
 
     def _dense_route(self):
-        """The leaderboard's own route as a ``recorder.Route``: what the early stop measures progress on.
+        """The leaderboard's own route as a ``recorder.Route``: what the early stop measures progress on,
+        and where the lane-change lookup finds the next lane change.
 
-        Built whether or not the analysis record is on. None when there is no
-        route, which leaves the early stop without a measure rather than stopping
-        the route at setup.
+        Built whether or not the analysis record is on: it feeds the node, not
+        the record. None when there is no route, which leaves the early stop
+        without a measure and sends "no lane change", rather than stopping the
+        route at setup.
         """
         plan = getattr(self, "_dense_plan", None) or []
         if not plan:
@@ -664,6 +666,19 @@ class PaddockB2DAgent(AutonomousAgent):
         ego = (np.linalg.inv(self._ego2world()) @ world.T).T
         return np.round(ego[:, :2], 3).tolist()
 
+    def _lane_change(self) -> tuple:
+        """The next lane change on the dense route and the along-route metres to it.
+
+        See ``navigation.lane_change_ahead``; (None, None) with no route or no
+        lane change within its horizon.
+        """
+        route, hero = self._nav_route, self._hero_actor()
+        if route is None or hero is None:
+            return None, None
+        loc = hero.get_location()
+        index, _ = route.locate(loc.x, loc.y)
+        return navigation.lane_change_ahead(route.options, route.s, index)
+
     def run_step(self, input_data, timestamp):
         us = int(timestamp * 1e6)
         # No speedometer is a broken sensor setup, not a stationary car: let the
@@ -705,6 +720,7 @@ class PaddockB2DAgent(AutonomousAgent):
             lim_kmh = 0.0
         speed_limit = lim_kmh / 3.6 if lim_kmh > 0 else None
         nav_maneuver, nav_distance_m = self._nav()
+        nav_lane_change, nav_lane_change_m = self._lane_change()
 
         body = {
             "images": images,
@@ -715,6 +731,8 @@ class PaddockB2DAgent(AutonomousAgent):
             "speed_limit": speed_limit,
             "nav_maneuver": nav_maneuver,
             "nav_distance_m": nav_distance_m,
+            "nav_lane_change": nav_lane_change,
+            "nav_lane_change_m": nav_lane_change_m,
             "route_xy": self._route_xy(),
             "calibration": {
                 "camera2image": self._cam2img,
@@ -765,6 +783,8 @@ class PaddockB2DAgent(AutonomousAgent):
                 "command": body["command"],
                 "nav_maneuver": nav_maneuver,
                 "nav_distance_m": nav_distance_m,
+                "nav_lane_change": nav_lane_change,
+                "nav_lane_change_m": nav_lane_change_m,
                 "speed": speed,
                 "accel": accel,
                 "speed_limit": speed_limit,

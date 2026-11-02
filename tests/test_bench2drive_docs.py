@@ -10,8 +10,8 @@ on PR #21:
 * **OpenPilot's two recording sets are never pooled into one mean.** Its 24
   historical routes were driven with human resume assistance on 16 of them, and
   its 26 expansion routes use a different upstream longitudinal setup. A pooled
-  driving score of 48.11 would top the table while the support matrix publishes
-  30.09 for the same model on the same benchmark.
+  driving score of 48.11 would top the table as though one setup had driven it;
+  the support matrix publishes a measured record of one setup instead.
 
 No GPU, no dataset, no site config: this reads tracked files only.
 """
@@ -247,13 +247,25 @@ def test_openpilot_block_reproduces(data: dict) -> None:
     assert rows[2][3] == f"{est['route_completion']:.2f}"
 
 
-def test_support_matrix_openpilot_cell_is_the_unassisted_estimate(data: dict) -> None:
-    est = data["summaries"]["openpilot_unassisted24_estimate"]["driving_score"]
-    cell = _matrix_cell("openpilot")
-    assert re.match(rf"^{est:.2f}\b", cell), (
-        f"the support matrix publishes {cell!r} for Bench2Drive; it must stay the "
-        "unassisted estimate, not a pooled mean"
-    )
+def test_support_matrix_openpilot_cell_is_one_declared_setup() -> None:
+    """The cell is a measured record of one setup, never a mean pooled over setups.
+
+    The recordings in the records file pool three setups, which is why their mean
+    stays withheld above, and the unassisted estimate rebuilt from them is a
+    reconstruction. The cell names one valid run: openpilot's own planner and its
+    resume nudge, declared in model.yaml, on every route. So it carries P (the
+    nudge stands in for a driver pressing resume) and R (its routes can end early).
+    """
+    columns, rows = load_matrix()
+    j = next(j for j, c in enumerate(columns) if c.key == "bench2drive")
+    row = next(r for r in rows if r.key == "openpilot")
+    cell = row.cells[j]
+    assert cell.run, f"the cell shows {cell.shown!r} with no run: a reconstruction, not a measurement"
+    run = json.loads((REPO_ROOT / "results" / cell.run / "run.json").read_text())
+    assert run["valid"], f"{cell.run} does not rank: {run['notes']}"
+    assert "recording_setups" not in run["config"], f"{cell.run} pools setups"
+    assert run["config"]["declared_env"]["PADDOCK_OPENPILOT_NATIVE_LONG"] == "1"
+    assert {"P", "R"} <= {*row.marks, *cell.marks}, f"{cell.run} needs P and R"
 
 
 # ---------------------------------------------------------------------------
