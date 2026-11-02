@@ -390,6 +390,27 @@ def test_camera_override_replaces_the_declared_rig(tmp_path, monkeypatch) -> Non
     assert env["PADDOCK_CAMERAS"] == "CAM_FRONT,CAM_FRONT_LEFT,CAM_OP_WIDE"
 
 
+def test_a_sim2real_diagnostic_is_on_the_record_and_does_not_rank(tmp_path, monkeypatch) -> None:
+    """Either host switch changes what the model is shown, so a run with one names it in
+    `run.json` (and so in the run id) and is never ranked as the model's score, even over
+    every route the site runs. Review #53 (1)."""
+    harness = _harness(_site(tmp_path, monkeypatch, COMPLETED))
+    list(harness.episodes(None, runs=1))  # every route: not a subset
+    assert harness.invalid_reasons() == []
+    assert not {"cameras_override", "segment"} & set(harness.run_config())
+
+    monkeypatch.setenv("PADDOCK_CAMERAS_OVERRIDE", "CAM_FRONT,CAM_OP_WIDE,")
+    assert harness.run_config()["cameras_override"] == ["CAM_FRONT", "CAM_OP_WIDE"]
+    (reason,) = harness.invalid_reasons()
+    assert reason.startswith("PADDOCK_CAMERAS_OVERRIDE") and "CAM_FRONT, CAM_OP_WIDE" in reason
+
+    monkeypatch.delenv("PADDOCK_CAMERAS_OVERRIDE")
+    monkeypatch.setenv("PADDOCK_SEGMENT", str(tmp_path / "specs" / "vp_capture.json"))
+    assert harness.run_config()["segment"] == "vp_capture.json", "the spec's name; its path is this machine's"
+    (reason,) = harness.invalid_reasons()
+    assert reason.startswith("PADDOCK_SEGMENT")
+
+
 def test_a_scored_run_never_loads_segment_mode(load_agent, monkeypatch) -> None:
     """The client imports segment.py only when PADDOCK_SEGMENT is set. segment.py needs Pillow,
     which preflight does not check in the client interpreter: imported at the top of agent.py,

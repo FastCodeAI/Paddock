@@ -101,6 +101,12 @@ def _rate_said(hz: float) -> str:
     return "on every tick" if every_tick(hz) else f"at {hz:g} Hz"
 
 
+def _cameras_override() -> list[str]:
+    """The cameras the host's PADDOCK_CAMERAS_OVERRIDE renders and ships in place of the model's
+    own (a sim2real diagnostic); empty entries are dropped, so a trailing comma is not a camera id."""
+    return [c for c in os.environ.get("PADDOCK_CAMERAS_OVERRIDE", "").split(",") if c.strip()]
+
+
 #: The CARLA launch flag that changes what the cameras see. Bench2Drive 7ec25d1
 #: launches CARLA at its default (Epic) quality; ``-quality-level=Low`` renders
 #: the sky black and the wet-road decal layer as white speckle, so frames scored
@@ -804,6 +810,14 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         # Likewise only when it is not paddock's.
         if self.camera_rig != rig.DEFAULT:
             config["camera_rig"] = self.camera_rig
+        # And the host's sim2real diagnostics (docs/sim2real/cosmos3.md), only when set: under the
+        # override the model's declared `cameras` are not the ones it was shown.
+        override = _cameras_override()
+        if override:
+            config["cameras_override"] = override
+        if os.environ.get("PADDOCK_SEGMENT"):
+            # The spec's name: its path is this machine's.
+            config["segment"] = Path(os.environ["PADDOCK_SEGMENT"]).name
         return config
 
     def _routes_without_expert(self) -> list[str]:
@@ -861,7 +875,10 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         collision, where Bench2Drive charges a penalty and drives on. A camera rig
         other than paddock's is one: the model was shown other cameras. So is the
         host's PADDOCK_INFER_HZ replacing the rate the model declares: the model
-        was asked for plans at an operator's rate (``model_run_config``).
+        was asked for plans at an operator's rate (``model_run_config``). So is
+        either sim2real diagnostic set on the host, whatever routes it drove:
+        PADDOCK_CAMERAS_OVERRIDE shows the model cameras it does not declare, and
+        PADDOCK_SEGMENT replays a recording and may convert the frames.
         """
         reasons = []
         manual = getattr(self, "_ended_by_hand", set())
@@ -878,6 +895,17 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             reasons.append(
                 f"camera_rig {self.camera_rig!r}: the model saw other cameras than the "
                 f"{rig.DEFAULT!r} rig every model here is compared through"
+            )
+        override = _cameras_override()
+        if override:
+            reasons.append(
+                f"PADDOCK_CAMERAS_OVERRIDE on the host: the model was shown {', '.join(override)}, "
+                "not the cameras it declares; a sim2real diagnostic, not a score"
+            )
+        if os.environ.get("PADDOCK_SEGMENT"):
+            reasons.append(
+                "PADDOCK_SEGMENT on the host: a sim2real diagnostic that replays a recorded drive "
+                "and may convert its frames, not a score"
             )
         host = getattr(self, "_host_rate", None)  # set by model_run_config for the model being run
         if host is not None:
@@ -953,9 +981,9 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         cameras = episode.config.get("cameras") or ["CAM_FRONT"]
         # Diagnostic: render and ship only these cameras. The sim2real capture uses it to
         # record another model's rig behind a cheap node; it also proves a model ignores the
-        # cameras it declares. Host-set, never part of a standard run, and the adapter must
-        # tolerate the gap.
-        override = [c for c in os.environ.get("PADDOCK_CAMERAS_OVERRIDE", "").split(",") if c.strip()]
+        # cameras it declares. Host-set, and the adapter must tolerate the gap; a run with it
+        # is on the record and never ranks (`run_config`, `invalid_reasons`).
+        override = _cameras_override()
         if override:
             cameras = override
         runs = int(episode.config.get("runs", 1))
@@ -985,8 +1013,8 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         if hz := infer_hz(episode.config.get("planning_hz")):
             extra["PADDOCK_INFER_HZ"] = f"{hz:g}"
         # Segment mode (sim2real diagnostics: capture a recording, or replay it to T0 and then
-        # swap the frames); see bench2drive/segment.py. Host-set like the timeout above, and
-        # never part of a standard run.
+        # swap the frames); see bench2drive/segment.py. Host-set like the timeout above; a run
+        # with it is on the record and never ranks (`run_config`, `invalid_reasons`).
         if os.environ.get("PADDOCK_SEGMENT"):
             extra["PADDOCK_SEGMENT"] = os.environ["PADDOCK_SEGMENT"]
         if self.record:
