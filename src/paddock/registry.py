@@ -67,8 +67,9 @@ class Runtime:
     cwd: str | None = None
     env: dict[str, str] = field(default_factory=dict)
     #: Env keys a site may override without changing what is measured: thread
-    #: counts, memory caps. Any other key in a site's `[models.<name>.env]`
-    #: makes the run `valid: false` (`runner._env_override_reasons`), because a
+    #: counts, memory caps. Any other key in a site's `[models.<name>.env]`,
+    #: or an `env_passthrough` name set in the launching shell, makes the run
+    #: `valid: false` (`runner._env_override_reasons`), because a
     #: checkpoint or a horizon swapped in by a site would otherwise be ranked
     #: under the model's name.
     tuning_env: tuple[str, ...] = ()

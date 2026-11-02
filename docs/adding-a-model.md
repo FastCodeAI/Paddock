@@ -141,7 +141,9 @@ Four fields are worth more thought than they look:
   Without declaring a name here, `runtime/env.py` builds the subprocess's
   environment from a strict allowlist plus `env` above, so a var not in either
   place silently never reaches the model — the shell invocation looks like it
-  worked and does nothing.
+  worked and does nothing. A name set in the shell is held to the same rule
+  as a site `env` override: unless it is in `tuning_env` or restates the
+  declared default, the run is recorded `valid: false`.
 
 ## Step 5 — write `setup.sh`
 

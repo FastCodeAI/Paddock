@@ -618,6 +618,25 @@ def test_restating_alpamayos_nav_default_is_not_an_override(tmp_path) -> None:
     assert "ALPAMAYO_NAV" in reason
 
 
+def test_alpamayos_no_nav_baseline_set_in_the_shell_is_not_ranked(tmp_path, monkeypatch) -> None:
+    """`ALPAMAYO_NAV=0 paddock run ...` reaches the node through `env_passthrough`
+    just as a site block would, so it must keep the run from being ranked the
+    same way. Before this, it was recorded in `model_env` and still `valid: true`."""
+    from paddock.registry import Registry
+    from paddock.runner import _env_override_reasons
+
+    spec = Registry.load().models["alpamayo15"]
+    assert "ALPAMAYO_NAV" in spec.runtime.env_passthrough
+    for name in spec.runtime.env_passthrough:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("ALPAMAYO_NAV", "1")
+    monkeypatch.setenv("ALPAMAYO_RESERVE_GB", "40")
+    assert _env_override_reasons(_cfg(tmp_path), spec) == [], "the default, and a tuning key, stay rankable"
+    monkeypatch.setenv("ALPAMAYO_NAV", "0")
+    (reason,) = _env_override_reasons(_cfg(tmp_path), spec)
+    assert "ALPAMAYO_NAV" in reason and "shell" in reason
+
+
 def test_every_declared_tuning_key_is_one_the_model_reads() -> None:
     """A misspelt `tuning_env` entry would silently let the real key invalidate,
     or worse, name a key nothing reads. Each must appear in the adapter's source

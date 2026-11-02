@@ -211,16 +211,27 @@ def _env_override_reasons(cfg: SiteConfig, model_spec: ModelSpec) -> list[str]:
     the other one: a `DRIVEJEPA_CHECKPOINT` pointing at a finetune used to be
     recorded `valid: true` and ranked as the released model. Restating the
     declared default value is not an override.
+
+    A declared `runtime.env_passthrough` name set in the launching shell reaches
+    the node the same way (`runtime.env.build()` applies it last, over a site
+    value), so it is held to the same rule: `ALPAMAYO_NAV=0 paddock run ...` is
+    the no-nav baseline, not the released model.
     """
     override = cfg.models.get(model_spec.name)
-    if override is None or not override.env:
-        return []
+    site = dict(override.env) if override is not None and override.env else {}
+    shell = {k: os.environ[k] for k in model_spec.runtime.env_passthrough if k in os.environ}
     tuning = _tuning_keys(model_spec)
     declared = model_spec.runtime.env
-    keys = sorted(k for k, v in override.env.items() if k not in tuning and declared.get(k) != v)
-    if not keys:
-        return []
-    return [f"site env override may change what was measured: {', '.join(keys)} (values in config.model_env)"]
+
+    reasons = []
+    for source, given in (("site", {k: v for k, v in site.items() if k not in shell}), ("shell", shell)):
+        keys = sorted(k for k, v in given.items() if k not in tuning and declared.get(k) != v)
+        if keys:
+            reasons.append(
+                f"{source} env override may change what was measured: {', '.join(keys)} "
+                "(values in config.model_env)"
+            )
+    return reasons
 
 
 def _validity(
