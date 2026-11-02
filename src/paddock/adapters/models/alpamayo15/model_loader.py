@@ -47,6 +47,27 @@ def _weights(env_var: str, default_name: str) -> Path:
 
 CKPT = _weights("ALPAMAYO_CHECKPOINT", "Alpamayo-1.5-10B")
 COSMOS = _weights("ALPAMAYO_COSMOS", "Cosmos-Reason2-8B")
+#: The Qwen3-VL-2B-Instruct processor files (image resize, chat template). Upstream
+#: loads them by hub name (helper.BASE_PROCESSOR_NAME), which needs a HuggingFace cache
+#: and, without HF_HUB_OFFLINE, a network check that can pull a newer revision.
+PROCESSOR = _weights("ALPAMAYO_PROCESSOR", "Qwen3-VL-2B-Instruct")
+
+
+def get_processor(tokenizer: Any, local: Path = PROCESSOR) -> Any:
+    """helper.get_processor, read from *local* when that directory exists.
+
+    Same files, same resize limits; only where they are read from changes. A site that
+    keeps the processor in its HuggingFace cache instead gets upstream's call unchanged.
+    """
+    if not local.is_dir():
+        return helper.get_processor(tokenizer)
+    from transformers import AutoProcessor
+
+    processor = AutoProcessor.from_pretrained(
+        str(local), min_pixels=helper.MIN_PIXELS, max_pixels=helper.MAX_PIXELS
+    )
+    processor.tokenizer = tokenizer
+    return processor
 
 
 def build_config(ckpt: Path = CKPT, cosmos: Path = COSMOS, attn: str = "sdpa") -> Alpamayo1_5Config:
@@ -147,7 +168,7 @@ def load_model(
         text_attn = model.vlm.config.text_config._attn_implementation
         assert text_attn != "flash_attention_2", f"VLM text config still on {text_attn!r}"
 
-    processor = helper.get_processor(model.tokenizer)
+    processor = get_processor(model.tokenizer)
     return model, processor
 
 

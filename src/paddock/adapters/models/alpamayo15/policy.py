@@ -34,12 +34,31 @@ on a 0.5 s grid, so indices 4, 9, ... 29 are taken -- the same subsampling the
 KITScenes harness used. With more than one sample drawn, the medoid is
 executed: the closed loop can only drive one trajectory, and the medoid is the
 consensus draw rather than an oracle-selected best.
+
+*AlpaSim.* AlpaSim renders the four cameras the model was trained on, with the
+lens they were trained on, so there the adapter adapts nothing and instead
+builds the input the way AlpaSim's own Alpamayo driver does. Each part is
+switched on by the input that calls for it, never by which simulator is
+asking, so a benchmark that sends none of them gets exactly what it got before
+(pinned by tests/test_unchanged_inputs.py):
+
+- a camera named `CAM_FRONT_TELE` fills the telephoto slot itself, instead of a
+  crop out of the front camera;
+- a camera sent with no pinhole intrinsics (AlpaSim's f-theta lenses) is passed
+  as rendered: no crop, no resize, uint8 -- what AlpaSim's driver hands the
+  processor, which does its own resize;
+- a route sent with the time of the frame it is in (`route_timestamp_us`) is
+  moved into the newest pose's frame and classified by heading change
+  (route_nav.py), as AlpaSim's driver does, instead of read from a command;
+- a plan spacing asked for (`plan_dt`) returns every point the model predicts,
+  64 at 0.1 s with the model's own headings, and its reasoning in `extras`.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import time
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -57,6 +76,7 @@ from paddock.adapters.models.alpamayo15.camera_warp import (
 from paddock.adapters.models.alpamayo15.camera_warp import (
     Pinhole as WarpPinhole,
 )
+from paddock.adapters.models.alpamayo15.route_nav import route_in_frame, route_to_nav_text
 from paddock.policy.protocol import Command, Observation, Pinhole, Policy, Trajectory
 
 _log = logging.getLogger(__name__)
@@ -71,6 +91,11 @@ CAMERA_SLOTS: list[tuple[int, str, str]] = [
     (6, "CAM_FRONT", "zoom"),
 ]
 NEEDED_CAMERAS = ("CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT")
+#: A real 30 deg telephoto, where a source renders one (AlpaSim). When present
+#: it fills slot 6 in place of the crop out of CAM_FRONT. The name is
+#: model.yaml's `camera_views` entry for that slot.
+TELE_CAMERA = "CAM_FRONT_TELE"
+TELE_SLOT = 6
 
 
 TARGET_ASPECT = TARGET_H / TARGET_W  # 9:16, the model frame's height/width
@@ -119,6 +144,8 @@ NUM_HISTORY_STEPS = 16
 NUM_CAM_FRAMES = 4
 HISTORY_DT = 0.1
 MODEL_HZ = 10.0
+#: The spacing of the model's own 64 waypoints, returned whole when asked for.
+PLAN_DT = 1.0 / MODEL_HZ
 # 64 waypoints at 10 Hz -> the eight 0.5 s points NAVSIM scores (0.5 .. 4.0 s).
 #
 # Extending this from six changes neither of the other two benchmarks, which is
@@ -152,9 +179,20 @@ def slots_for(obs: Observation) -> list[tuple[int, str, str]]:
     taken at: omitting a slot says "there is no +55 deg view", while repeating
     the centre frame into it says "here is one" and is false. Both are outside
     what the model was trained on, and only one of them lies.
+
+    A source that renders the telephoto itself (`TELE_CAMERA`) fills slot 6
+    with it rather than with a crop. A camera sent without pinhole intrinsics
+    is an f-theta lens (AlpaSim's), which the crop cannot model; it is passed
+    as rendered ("raw"), which is also what AlpaSim's own driver does. Before
+    either existed, such a camera failed here on the missing intrinsics, so no
+    source that worked then takes either path.
     """
     have = set(obs.images) | set(obs.image_paths)
-    return sorted((slot for slot in CAMERA_SLOTS if slot[1] in have), key=lambda entry: entry[0])
+    slots = [slot for slot in CAMERA_SLOTS if slot[1] in have]
+    if TELE_CAMERA in have:
+        slots = [slot for slot in slots if slot[0] != TELE_SLOT] + [(TELE_SLOT, TELE_CAMERA, "zoom")]
+    slots = [(index, camera, kind if camera in obs.camera2image else "raw") for index, camera, kind in slots]
+    return sorted(slots, key=lambda entry: entry[0])
 
 
 class Frame:
@@ -183,6 +221,9 @@ class Frame:
                 key = f"{camera}:{kind}"
                 if key in warped:
                     continue
+                if kind == "raw":
+                    warped[key] = np.ascontiguousarray(self._obs.image(camera), dtype=np.uint8)
+                    continue
                 image = Image.fromarray(self._obs.image(camera))
                 warped[key] = warp(image, to_pinhole(self._obs.pinhole(camera)), kind)
             self._warped = warped
@@ -208,7 +249,8 @@ def medoid(trajectories: np.ndarray) -> np.ndarray:
 
 
 class AlpamayoPolicy(Policy):
-    cameras = NEEDED_CAMERAS
+    # Decoded when sent; the telephoto only where a source renders one.
+    cameras = (*NEEDED_CAMERAS, TELE_CAMERA)
     waypoint_dt = 0.5
 
     def __init__(
@@ -430,6 +472,7 @@ class AlpamayoPolicy(Policy):
         import torch
         from alpamayo1_5 import helper
 
+        started = time.perf_counter()
         self._record(obs)
 
         hist_xyz, hist_rot = self._history()
@@ -437,7 +480,13 @@ class AlpamayoPolicy(Policy):
 
         nav_text = None
         if self.use_nav:
-            nav_text = nav_text_for(*route_maneuver(obs))
+            if obs.route_xy is not None and obs.route_timestamp_us is not None:
+                nav_text = route_to_nav_text(self._route_in_rig(obs.route_xy, obs.route_timestamp_us))
+            elif obs.plan_dt is None:
+                nav_text = nav_text_for(*route_maneuver(obs))
+            # Otherwise the body is from AlpaSim's bridge, which sends the route and
+            # its time whenever AlpaSim holds one. With no route, AlpaSim's own
+            # Alpamayo driver gives the model no sentence, so neither does this.
         self._last_nav = nav_text
         messages = helper.create_message(
             frames=image_frames.flatten(0, 1), camera_indices=camera_indices, nav_text=nav_text
@@ -454,8 +503,9 @@ class AlpamayoPolicy(Policy):
             {"tokenized_data": inputs, "ego_history_xyz": hist_xyz, "ego_history_rot": hist_rot}, "cuda"
         )
 
+        prepared = time.perf_counter()
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            pred_xyz, _, extra = self.model.sample_trajectories_from_data_with_vlm_rollout(
+            pred_xyz, pred_rot, extra = self.model.sample_trajectories_from_data_with_vlm_rollout(
                 data=model_inputs,
                 top_p=self.top_p,
                 temperature=self.temperature,
@@ -465,6 +515,7 @@ class AlpamayoPolicy(Policy):
             )
 
         samples = pred_xyz.float().cpu().numpy()[0, 0]  # (K, 64, 3)
+        generated = time.perf_counter()  # the copy to the CPU waits for the GPU
         chosen_idx = medoid_index(samples)
         chosen = samples[chosen_idx]
         # Alpamayo is x-forward, y-left, the same convention NeuroNCAP drives.
@@ -477,16 +528,78 @@ class AlpamayoPolicy(Policy):
             flat = np.asarray(extra["cot"]).reshape(-1)
             cot = str(flat[chosen_idx]) if chosen_idx < flat.size else (str(flat[0]) if flat.size else "")
         self._last_reasoning = cot[:400]
+        if obs.plan_dt is not None:
+            # Asked for a spacing: every point at the model's own, or nothing.
+            if abs(obs.plan_dt - PLAN_DT) > 1e-9:
+                raise ValueError(
+                    f"plan_dt {obs.plan_dt} s asked for; Alpamayo predicts every {PLAN_DT} s "
+                    "and returns its whole plan only at that spacing"
+                )
+            rotations = pred_rot.float().cpu().numpy()[0, 0][chosen_idx]  # (64, 3, 3)
+            yaw = np.arctan2(rotations[:, 1, 0], rotations[:, 0, 0])
+            plan = np.column_stack([chosen[:, :2], yaw])
+            self._log_infer(nav_text, plan, cot)
+            self._log_timing(started, prepared, generated, cot, nav_text)
+            return Trajectory(plan, dt=PLAN_DT, extras={"reasoning": self._last_reasoning})
+        self._log_infer(nav_text, waypoints, cot)
+        self._log_timing(started, prepared, generated, cot, nav_text)
+        return Trajectory(waypoints, dt=self.waypoint_dt)
+
+    def _log_timing(
+        self, started: float, prepared: float, generated: float, cot: str, nav_text: str | None
+    ) -> None:
+        """Where one call's time went, every call: history, frames, prompt and processor
+        (prep); the model's rollout until the plan is on the CPU (generate); the rest.
+        Log only. The token count is the reasoning text re-tokenised, without the
+        special tokens around it; the navigation text is the one this call was given."""
+        done = time.perf_counter()
+        # A stand-in processor (the input tests) has no tokenizer; a log line must not fail a call.
+        tokenizer = getattr(self.processor, "tokenizer", None)
+        tokens = len(tokenizer(cot, add_special_tokens=False)["input_ids"]) if tokenizer and cot else None
+        _log.info(
+            "infer #%d timing: prep %.0f ms, generate %.0f ms, post %.0f ms, total %.0f ms, "
+            "reasoning %s tokens, nav %r",
+            self._n_infer,
+            (prepared - started) * 1000.0,
+            (generated - prepared) * 1000.0,
+            (done - generated) * 1000.0,
+            (done - started) * 1000.0,
+            tokens,
+            nav_text,
+        )
+
+    def _log_infer(self, nav_text: str | None, waypoints: np.ndarray, cot: str) -> None:
         self._n_infer = getattr(self, "_n_infer", 0) + 1
         if self._n_infer % 100 == 1:
             _log.info(
                 "infer #%d nav=%r reach %.2f m cot=%r",
                 self._n_infer,
                 nav_text,
-                float(np.linalg.norm(waypoints[-1])),
+                float(np.linalg.norm(waypoints[-1, :2])),
                 cot[:240],
             )
-        return Trajectory(waypoints, dt=self.waypoint_dt)
+
+    def _route_in_rig(self, route_xy: np.ndarray, route_timestamp_us: int) -> np.ndarray:
+        """The route moved from the rig frame at its own time into the newest pose's.
+
+        AlpaSim's driver does this with its ego history before classifying the
+        route (`route_nav.route_in_frame`). The pose at the route's time comes
+        from the same resampling as the history; on AlpaSim the route is stamped
+        with a step the node has a pose for, so it is that pose exactly. The
+        bridge sends the route in two dimensions, so it sits at height zero.
+        """
+        if not self.timestamps[0] <= int(route_timestamp_us) <= self.timestamps[-1]:
+            # The pose lookup clips to the kept history, which would place the
+            # route in the wrong frame and still give a sentence.
+            raise ValueError(
+                f"route_timestamp_us {route_timestamp_us} is outside the kept history "
+                f"[{self.timestamps[0]}, {self.timestamps[-1]}]"
+            )
+        xy = np.asarray(route_xy, dtype=np.float64).reshape(-1, 2)
+        xyz = np.column_stack([xy, np.zeros(len(xy))])
+        offset_s = (self.timestamps[-1] - int(route_timestamp_us)) / 1e6
+        route_pose = self._sample_poses(np.array([offset_s]))[0]
+        return route_in_frame(xyz, self.poses[-1], route_pose)
 
     def diagnostics(self) -> dict[str, Any]:
         """Request cadence and history depth, plus the latest reasoning trace.

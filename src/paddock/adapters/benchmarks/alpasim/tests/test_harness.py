@@ -652,16 +652,17 @@ def test_a_scene_subset_is_not_a_score(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_a_model_without_a_profile_is_driven_exactly_as_before(tmp_path: Path, monkeypatch) -> None:
-    """alpamayo15 and every other unlisted model: default driver, no bridge flags, nothing recorded."""
+    """openpilot and every other unlisted model: default driver, no bridge flags, nothing recorded."""
     from types import SimpleNamespace
 
     from paddock.adapters.benchmarks.alpasim import harness
 
-    profile = harness.profile_for("alpamayo15")
+    assert "openpilot" not in harness.DRIVER_PROFILES
+    profile = harness.profile_for("openpilot")
     assert profile == harness.DriverProfile()
     assert (profile.driver, profile.bridge_args, profile.scenes_csv) == ("paddock_bridge", (), None)
     bench = _benchmark(tmp_path, monkeypatch)
-    assert bench.model_run_config(SimpleNamespace(name="alpamayo15")) == {}
+    assert bench.model_run_config(SimpleNamespace(name="openpilot")) == {}
 
 
 def test_the_drivejepa_profile_pins_every_scene_it_can_be_asked_for() -> None:
@@ -1228,3 +1229,116 @@ def test_the_qwendrive_profile_is_the_native_lane() -> None:
         assert camera["shutter_duration_us"] == 30_000
         assert (camera["height"], camera["width"]) == (1080, 1900)
     assert profile.scenes_csv == harness.profile_for("drivejepa").scenes_csv
+
+
+def test_alpamayo_is_driven_on_its_own_driver_config_and_bridge_flags(
+    tmp_path: Path, fake_repo: Path, monkeypatch
+) -> None:
+    """The node's model name selects the alpamayo15 profile: its driver config, its four
+    camera names and nothing else, the 100 ms rhythm with every step observed, the route,
+    its time and the plan spacing, 0.1 s waypoints, and a per-replan log beside the samples."""
+    from paddock.adapters.benchmarks.alpasim import harness
+
+    monkeypatch.setenv("FAKE_WIZARD_MODE", "ok")
+    monkeypatch.setattr(harness.launcher, "serving_model", lambda url: "alpamayo15")
+    seen: list[dict] = []
+    bridges: list[dict] = []
+    fake = harness.launcher.wizard_command
+    no_bridge = harness.launcher.BridgeProcess
+
+    def capture(**kwargs):
+        seen.append(kwargs)
+        return fake(**kwargs)
+
+    def bridge(**kwargs):
+        bridges.append(kwargs)
+        return no_bridge(**kwargs)
+
+    monkeypatch.setattr(harness.launcher, "wizard_command", capture)
+    monkeypatch.setattr(harness.launcher, "BridgeProcess", bridge)
+    bench = _benchmark(tmp_path, monkeypatch, repo=str(fake_repo), python=sys.executable)
+    bench.run_episode(_episode(), "http://127.0.0.1:1", tmp_path / "out", echo=lambda _: None)
+    (call,) = seen
+    (started,) = bridges
+    assert call["driver"] == "paddock_bridge_alpamayo15"
+    assert call["scenes_csv"].name == "public_2601_30scenes_26p01.csv"
+    args = list(started["extra_args"])
+    names = [args[i + 1] for i, a in enumerate(args) if a == "--camera-name"]
+    assert names == [
+        "camera_front_wide_120fov=CAM_FRONT",
+        "camera_cross_left_120fov=CAM_FRONT_LEFT",
+        "camera_cross_right_120fov=CAM_FRONT_RIGHT",
+        "camera_front_tele_30fov=CAM_FRONT_TELE",
+    ]
+    for flag in (
+        "--named-cameras-only",
+        "--observe-between-replans",
+        "--send-route",
+        "--send-route-time",
+        "--send-plan-dt",
+    ):
+        assert flag in args
+    for flag in (
+        "--placeholder",
+        "--planner",
+        "--pinhole-intrinsics",
+        "--pad-ego-history",
+        "--canbus-ego-frame",
+        "--canbus-acceleration",
+        "--send-scene-id",
+    ):
+        assert flag not in args
+    assert int(args[args.index("--replan-every-us") + 1]) == 100_000
+    assert float(args[args.index("--waypoint-dt") + 1]) == 0.1
+    assert args[args.index("--replan-log") + 1].endswith(".replans.jsonl")
+    # The node names are the policy's own: the three it declares and the telephoto.
+    from paddock.adapters.models.alpamayo15.policy import AlpamayoPolicy
+
+    assert sorted(n.split("=")[1] for n in names) == sorted(AlpamayoPolicy.cameras)
+    model = Registry.load().models["alpamayo15"]
+    assert "alpasim" in model.benchmarks
+
+
+def test_the_alpamayo_profile_is_the_stored_rows_simulation() -> None:
+    """Control step, warm-up and 30-scene catalog as drivejepa; the four f-theta cameras AlpaSim's
+    Alpamayo driver reads, at 20 Hz (no extra_cameras), 30 ms shutter, 1080 x 1900; the driver awake
+    in the warm-up; the hyperion_8_1 mask; a replan period of the model's 100 ms that lands on the
+    handover tick; and the same simulation values as the qwendrive profile."""
+    import yaml
+
+    from paddock.adapters.benchmarks.alpasim import harness, launcher
+
+    profile = harness.profile_for("alpamayo15")
+    args = list(profile.bridge_args)
+    flag = {name: int(args[args.index(name) + 1]) for name in ("--frame-interval-us", "--force-gt-us")}
+    config = yaml.safe_load((launcher.CONFIGS_DIR / "driver" / f"{profile.driver}.yaml").read_text())
+    simulation = config["runtime"]["simulation_config"]
+    assert flag["--frame-interval-us"] == simulation["control_timestep_us"] == 50_000
+    assert flag["--force-gt-us"] == simulation["force_gt_duration_us"] == 3_000_000
+    assert simulation["skip_driver_during_force_gt"] is False
+    assert (simulation["n_sim_steps"], simulation["ego_mask_rig_config_id"]) == (400, "hyperion_8_1")
+    replan = int(args[args.index("--replan-every-us") + 1])
+    assert replan == 100_000
+    assert (
+        replan % simulation["control_timestep_us"] == 0 and simulation["force_gt_duration_us"] % replan == 0
+    )
+    assert "extra_cameras" not in config.get("runtime", {})
+    rendered = {c["logical_id"]: c for c in simulation["cameras"]}
+    named = {args[i + 1].split("=")[0] for i, a in enumerate(args) if a == "--camera-name"}
+    assert (
+        named
+        == set(rendered)
+        == {
+            "camera_front_wide_120fov",
+            "camera_cross_left_120fov",
+            "camera_cross_right_120fov",
+            "camera_front_tele_30fov",
+        }
+    )
+    for camera in rendered.values():
+        assert camera["frame_interval_us"] == simulation["control_timestep_us"]
+        assert camera["shutter_duration_us"] == 30_000
+        assert (camera["height"], camera["width"]) == (1080, 1900)
+    assert profile.scenes_csv == harness.profile_for("drivejepa").scenes_csv
+    qwen = yaml.safe_load((launcher.CONFIGS_DIR / "driver" / "paddock_bridge_qwendrive.yaml").read_text())
+    assert simulation == qwen["runtime"]["simulation_config"]

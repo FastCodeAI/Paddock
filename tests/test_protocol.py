@@ -127,6 +127,30 @@ def test_the_route_polyline_crosses_the_wire_and_its_absence_stays_none() -> Non
     assert Observation.from_wire(obs.to_wire(), cameras=()).route_xy is None
 
 
+def test_the_plan_spacing_and_route_time_cross_the_wire_only_when_a_source_sets_them() -> None:
+    """Unset (every producer but AlpaSim's bridge under the alpamayo15 profile), the body carries
+    neither key, so every other model's request is unchanged; set, both decode as sent."""
+    obs = Observation(
+        images={},
+        ego2world=np.eye(4),
+        canbus=np.zeros(18),
+        timestamp_us=3_000_000,
+        command=Command.STRAIGHT,
+        camera2image={},
+        camera2ego={},
+    )
+    before = obs.to_wire()
+    assert "plan_dt" not in before and "route_timestamp_us" not in before
+    back = Observation.from_wire(before, cameras=())
+    assert back.plan_dt is None and back.route_timestamp_us is None
+
+    obs.plan_dt, obs.route_timestamp_us = 0.1, 2_950_000
+    after = obs.to_wire()
+    assert {k: v for k, v in after.items() if k not in ("plan_dt", "route_timestamp_us")} == before
+    back = Observation.from_wire(after, cameras=())
+    assert back.plan_dt == 0.1 and back.route_timestamp_us == 2_950_000
+
+
 def test_the_map_files_and_route_trace_cross_the_wire_and_their_absence_stays_none() -> None:
     """KITScenes points at each scene's Lanelet2 map and, under its oracle route, sends the logged
     drive; every other source sends neither, and a policy reads None."""

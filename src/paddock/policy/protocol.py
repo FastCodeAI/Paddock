@@ -339,6 +339,17 @@ class Observation:
     #: input the native driver's way and refuses any frame cadence other than 50 ms, so a new source that
     #: sends one changes that model's input path and must be checked against it.
     scene_id: str | None = None
+    #: The spacing, in seconds, the client will drive the returned plan at, when it says. AlpaSim's
+    #: bridge sends it on request (``--send-plan-dt``) so a model that predicts at a finer grid than
+    #: paddock's 0.5 s default can return every point it predicts; a model that does not read it keeps
+    #: its declared ``waypoint_dt``. None everywhere else, so every other client gets the plan it got.
+    plan_dt: float | None = None
+    #: The time, in microseconds on the observation's clock, of the frame ``route_xy`` is expressed
+    #: in. AlpaSim's bridge sends it on request (``--send-route-time``): its route is in the rig frame
+    #: at the route's own timestamp, and a model that moves the route into the frame of the newest
+    #: pose, as AlpaSim's own Alpamayo driver does, needs that time. None everywhere else -- every
+    #: other source's route is already in the observation's ego frame.
+    route_timestamp_us: int | None = None
     #: Frames that live on disk, loaded on first use instead of being carried.
     #:
     #: Open-loop benchmarks read from a local dataset, and the node is a
@@ -389,6 +400,10 @@ class Observation:
                 else None
             ),
             scene_id=(str(body["scene_id"]) if body.get("scene_id") is not None else None),
+            plan_dt=(float(body["plan_dt"]) if body.get("plan_dt") is not None else None),
+            route_timestamp_us=(
+                int(body["route_timestamp_us"]) if body.get("route_timestamp_us") is not None else None
+            ),
         )
 
     def require_lidar2ego(self) -> np.ndarray:
@@ -479,6 +494,10 @@ class Observation:
         # Only when set, so every producer that has no scene id sends what it sent before.
         if self.scene_id is not None:
             wire["scene_id"] = self.scene_id
+        if self.plan_dt is not None:
+            wire["plan_dt"] = self.plan_dt
+        if self.route_timestamp_us is not None:
+            wire["route_timestamp_us"] = int(self.route_timestamp_us)
         return wire
 
     def pinhole(self, camera: str = "CAM_FRONT") -> Pinhole:

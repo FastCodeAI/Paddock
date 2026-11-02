@@ -199,6 +199,29 @@ def test_existing_profiles_send_what_they_sent_before_the_switches(profile, monk
     assert _digest(sent) == BEFORE[profile]
 
 
+#: sha256 of everything each profile sent, computed at 1fa1448, before the Alpamayo 1.5
+#: profile and its two switches (--send-route-time, --send-plan-dt) existed.
+BEFORE_ALPAMAYO = {
+    **BEFORE,
+    "qwendrive": "a6fc5fcec45834b51a1272dcb39fbd0cafb826606a4973021119297a64d2ae4a",
+}
+
+
+@pytest.mark.parametrize("profile", sorted(BEFORE_ALPAMAYO))
+def test_existing_profiles_send_what_they_sent_before_the_alpamayo_profile(profile, monkeypatch) -> None:
+    args = harness.DRIVER_PROFILES[profile].bridge_args if profile != "default" else ()
+    assert _digest(_drive(_build(args, monkeypatch))) == BEFORE_ALPAMAYO[profile]
+
+
+@pytest.mark.parametrize("profile", ["default", *sorted(harness.DRIVER_PROFILES)])
+def test_only_the_alpamayo_profile_sends_a_plan_spacing_or_a_route_time(profile, monkeypatch) -> None:
+    """Every profile, including any added later: the two keys reach a node only under alpamayo15."""
+    args = harness.DRIVER_PROFILES[profile].bridge_args if profile != "default" else ()
+    keys = {key for path, body in _drive(_build(args, monkeypatch)) for key in body}
+    sent = {"plan_dt", "route_timestamp_us"} & keys
+    assert sent == ({"plan_dt", "route_timestamp_us"} if profile == "alpamayo15" else set())
+
+
 # ---------------------------------------------------------------------------
 # the switches, one by one, through the qwendrive profile
 # ---------------------------------------------------------------------------
@@ -360,3 +383,80 @@ def test_the_qwendrive_node_reads_these_bodies_as_the_native_driver_built_its_in
 
     assert {seed for _, seed in calls} == {scene_seed("clipgt-0123abcd-test")}
     assert results[-1].step_us == 100_000
+
+
+# -- Alpamayo 1.5 ---------------------------------------------------------------
+
+
+def _alpamayo(monkeypatch) -> bridge.PolicyPlanner:
+    return _build(harness.DRIVER_PROFILES["alpamayo15"].bridge_args, monkeypatch)
+
+
+def test_alpamayo_asks_every_100_ms_after_the_warmup_and_observes_every_other_step(monkeypatch) -> None:
+    """60 warm-up steps observed, then a replan on every other step and the step between observed."""
+    sent = _drive(_alpamayo(monkeypatch))
+    paths = [path for path, _ in sent]
+    assert paths[0] == "/reset"
+    infers = [body["timestamp"] for path, body in sent if path == "/infer"]
+    assert infers == list(range(3_000_000, 4_500_001, 100_000))
+    observed = [body["timestamp"] for path, body in sent if path == "/observe"]
+    assert observed[:60] == list(range(0, 3_000_000, STEP_US))
+    assert observed[60:] == list(range(3_050_000, 4_500_000, 100_000))
+
+
+def test_alpamayo_gets_its_four_cameras_by_name_with_no_intrinsics(monkeypatch) -> None:
+    """The four AlpaSim cameras its native driver reads, renamed, and no pinhole K: they are
+    f-theta lenses, which the node passes on as rendered."""
+    (_, body) = next(item for item in _drive(_alpamayo(monkeypatch)) if item[0] == "/infer")
+    assert sorted(body["images"]) == ["CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT", "CAM_FRONT_TELE"]
+    assert body["calibration"]["camera2image"] == {}
+    assert sorted(body["calibration"]["camera2ego"]) == sorted(body["images"])
+
+
+def test_alpamayo_gets_the_route_its_time_and_the_plan_spacing(monkeypatch) -> None:
+    """The route as AlpaSim sent it, the time of its frame, and plan_dt 0.1; no canbus switch
+    and no scene id, which the model never reads."""
+    (_, body) = next(item for item in _drive(_alpamayo(monkeypatch)) if item[0] == "/infer")
+    route = _route(body["timestamp"])
+    assert body["route_xy"] == [[w.x, w.y] for w in route.waypoints]
+    assert body["route_timestamp_us"] == route.timestamp_us == body["timestamp"]
+    assert body["plan_dt"] == 0.1
+    assert "scene_id" not in body
+    default = next(item for item in _drive(_build((), monkeypatch)) if item[0] == "/infer")[1]
+    assert body["canbus"] == default["canbus"]
+
+
+def test_the_alpamayo_node_reads_these_bodies_with_every_alpasim_field(monkeypatch) -> None:
+    from paddock.policy.protocol import Observation
+
+    (_, body) = next(item for item in _drive(_alpamayo(monkeypatch)) if item[0] == "/infer")
+    cameras = ("CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT", "CAM_FRONT_TELE")
+    obs = Observation.from_wire(body, cameras=cameras)
+    assert sorted(obs.images) == sorted(cameras)
+    assert obs.camera2image == {}
+    assert obs.plan_dt == 0.1
+    assert obs.route_timestamp_us == body["timestamp"]
+    assert obs.route_xy.shape == (13, 2)
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ("--send-route-time",),
+        ("--replan-every-us", "100000", "--frame-interval-us", "50000", "--force-gt-us", "3000000")
+        + ("--send-route-time",),
+    ],
+)
+def test_a_route_time_without_a_route_is_refused(args, monkeypatch) -> None:
+    with pytest.raises(SystemExit):
+        _build(args, monkeypatch)
+
+
+def test_the_new_switches_leave_a_body_alone_until_turned_on(monkeypatch) -> None:
+    """Off, no plan_dt and no route_timestamp_us; on, exactly those two keys are added."""
+    plain = next(item for item in _drive(_build(("--send-route",), monkeypatch)) if item[0] == "/infer")[1]
+    both = ("--send-route", "--send-route-time", "--send-plan-dt")
+    extended = next(item for item in _drive(_build(both, monkeypatch)) if item[0] == "/infer")[1]
+    assert "plan_dt" not in plain and "route_timestamp_us" not in plain
+    assert {k: v for k, v in extended.items() if k not in ("plan_dt", "route_timestamp_us")} == plain
+    assert extended["plan_dt"] == 0.5

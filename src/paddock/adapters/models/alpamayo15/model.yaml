@@ -53,7 +53,10 @@ capabilities:
   precision: bf16
   input_size: [448, 280]
   # Four slots: three wide views, and a 30 deg telephoto that policy.py crops out
-  # of CAM_FRONT (CAMERA_SLOTS). cameras above is what a simulator renders.
+  # of CAM_FRONT (CAMERA_SLOTS). cameras above is what a simulator renders. On
+  # AlpaSim the bridge also sends the rendered telephoto as CAM_FRONT_TELE, and
+  # policy.py uses it in place of the crop; that is why the policy decodes four
+  # cameras while every source has to send only these three.
   camera_views: [CAM_FRONT_LEFT, CAM_FRONT, CAM_FRONT_RIGHT, CAM_FRONT_TELE]
   history_frames: 4
   # Four frames and 16 ego poses, both 0.1 s apart (NUM_CAM_FRAMES, NUM_HISTORY_STEPS).
@@ -62,7 +65,8 @@ capabilities:
   ego_history_hz: 10.0
   output_kind: waypoints
   horizon_s: 6.4
-  # 64 waypoints at 10 Hz; policy.py resamples them to waypoint_dt.
+  # 64 waypoints at 10 Hz; policy.py resamples them to waypoint_dt, except when
+  # the body asks for a plan_dt (AlpaSim's bridge): then all 64 go back, 0.1 s apart.
   plan_points_hz: 10.0
   # Samples unseeded at T=1.0/top_p=0.95 in closed loop. One run is a draw, not
   # a measurement: sd 1.817 across seeds on frontal-0103.
