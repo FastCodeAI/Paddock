@@ -637,6 +637,17 @@ def test_alpamayos_no_nav_baseline_set_in_the_shell_is_not_ranked(tmp_path, monk
     assert "ALPAMAYO_NAV" in reason and "shell" in reason
 
 
+def test_saving_alpamayos_reasoning_text_keeps_the_run_rankable(tmp_path) -> None:
+    """`ALPAMAYO_SAVE_REASONING=1` adds the reasoning text to each sample's record
+    and changes nothing about the plan, so an analysis run is still the released model."""
+    from paddock.registry import Registry
+    from paddock.runner import _env_override_reasons
+
+    spec = Registry.load().models["alpamayo15"]
+    cfg = _site_with_env(tmp_path, "alpamayo15", {"ALPAMAYO_SAVE_REASONING": "1"})
+    assert _env_override_reasons(cfg, spec) == []
+
+
 def test_every_declared_tuning_key_is_one_the_model_reads() -> None:
     """A misspelt `tuning_env` entry would silently let the real key invalidate,
     or worse, name a key nothing reads. Each must appear in the adapter's source
