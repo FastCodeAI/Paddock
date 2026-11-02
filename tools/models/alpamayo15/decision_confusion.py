@@ -26,10 +26,10 @@ against the same run with ALPAMAYO_NAV=0 to see how much of a lateral
 decision is actually driven by the nav instruction vs. the model's own
 preference.
 
-Requires decisions.csv (from decisions.py) in the run directory. Optionally
-uses reasoning.json -- a JSON list of {"sample_id", "reasoning"} records, no
-tool in this repo builds it yet -- for the coverage count; everything still
-works without it, just reports 0 reasoning captured.
+Requires decisions.csv (from decisions.py) in the run directory. The
+reasoning coverage count reads the text a run saved with
+ALPAMAYO_SAVE_REASONING=1 (samples.jsonl's `extras.reasoning`); everything
+still works without it, just reports 0 reasoning captured.
 
 Usage:
     python tools/models/alpamayo15/decision_confusion.py [run_id]
@@ -101,10 +101,21 @@ def _load_rows(run_dir: Path) -> list:
 
 
 def _load_reasoning(run_dir: Path) -> dict:
+    """sample_id -> reasoning text: each samples.jsonl record's `extras.reasoning`
+    (what `ALPAMAYO_SAVE_REASONING=1` writes), plus a reasoning.json if one is there."""
+    out = {}
+    samples = run_dir / "samples.jsonl"
+    if samples.exists():
+        with samples.open() as f:
+            for line in f:
+                s = json.loads(line)
+                text = (s.get("extras") or {}).get("reasoning")
+                if text:
+                    out[s.get("sample_id", "")] = text
     path = run_dir / "reasoning.json"
-    if not path.exists():
-        return {}
-    return {r["sample_id"]: r["reasoning"] for r in json.loads(path.read_text())}
+    if path.exists():
+        out.update({r["sample_id"]: r["reasoning"] for r in json.loads(path.read_text())})
+    return out
 
 
 def _load_metrics(run_dir: Path) -> dict:
@@ -336,7 +347,7 @@ def main() -> None:
     print(f"Run: {run_dir.name}  (n={len(rows)} decision-labeled samples)")
     if not reasoning:
         print(
-            "note: no reasoning.json found -- reasoning coverage will show 0. "
+            "note: no reasoning text in this run -- reasoning coverage will show 0. "
             "Rerun the baseline with ALPAMAYO_SAVE_REASONING=1 first."
         )
 

@@ -6,16 +6,14 @@ issues" entry point: run it, read the table, and you have a concrete,
 evidence-backed punch list instead of one hand-picked finding at a time.
 
 Each check is a plain function over decisions.csv (+ samples.jsonl metrics +
-reasoning.json if present) that returns a dict with a headline verdict and a
+reasoning text if the run saved it) that returns a dict with a headline verdict and a
 small set of comparison bars for the summary plot. Add a new check by adding
 a function and registering it in CHECKS.
 
 Requires decisions.csv (from decisions.py). Reasoning text in a check's own
-printed detail needs reasoning.json: a JSON list of {"sample_id", "reasoning"}
-records in the run directory -- no tool in this repo builds it yet (a baseline
-run's `ALPAMAYO_SAVE_REASONING=1` writes reasoning into samples.jsonl's
-extras, not a separate file); without it, checks that quote reasoning text
-fall back to "(no reasoning captured)".
+printed detail needs a run made with `ALPAMAYO_SAVE_REASONING=1`, which writes
+it into samples.jsonl's `extras.reasoning`; without it, checks that quote
+reasoning text fall back to "(no reasoning captured)".
 
 Usage:
     python tools/models/alpamayo15/behavior_gaps.py <run_id>
@@ -427,10 +425,21 @@ def _load_rows(run_dir: Path) -> list:
 
 
 def _load_reasoning(run_dir: Path) -> dict:
+    """sample_id -> reasoning text: each samples.jsonl record's `extras.reasoning`
+    (what `ALPAMAYO_SAVE_REASONING=1` writes), plus a reasoning.json if one is there."""
+    out = {}
+    samples = run_dir / "samples.jsonl"
+    if samples.exists():
+        with samples.open() as f:
+            for line in f:
+                s = json.loads(line)
+                text = (s.get("extras") or {}).get("reasoning")
+                if text:
+                    out[s.get("sample_id", "")] = text
     path = run_dir / "reasoning.json"
-    if not path.exists():
-        return {}
-    return {r["sample_id"]: r["reasoning"] for r in json.loads(path.read_text())}
+    if path.exists():
+        out.update({r["sample_id"]: r["reasoning"] for r in json.loads(path.read_text())})
+    return out
 
 
 def _load_metrics(run_dir: Path) -> dict:
@@ -593,7 +602,8 @@ def main() -> None:
     print(f"Run: {run_dir.name}  (n={len(rows)} decision-labeled samples)")
     if not reasoning:
         print(
-            "note: no reasoning.json found -- checks that quote reasoning text will show '(no reasoning captured)'."
+            "note: no reasoning text in this run (ALPAMAYO_SAVE_REASONING=1 saves it) -- "
+            "checks that quote reasoning text will show '(no reasoning captured)'."
         )
 
     results = []

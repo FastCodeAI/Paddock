@@ -212,7 +212,8 @@ as joint counts per situation (traffic light, intersection, construction,
 dynamic agents, ...), categories overlapping on purpose since a sample can
 match more than one. `behavior_gaps.py` is the "scan for issues" entry point:
 a battery of independent, quantified behavior checks over `decisions.csv` (plus
-`samples.jsonl` metrics and `reasoning.json` when present), each with a
+`samples.jsonl` metrics and the reasoning text, when the run saved it with
+`ALPAMAYO_SAVE_REASONING=1`), each with a
 headline number and a flagged/not-flagged verdict, registered as plain
 functions so a new check is one function away. `decision_scatter.py` plots the
 same four raw geometric quantities (lateral offset, heading change, speed

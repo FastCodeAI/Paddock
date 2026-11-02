@@ -6,6 +6,7 @@ with the origin implicitly prepended as the sample's current pose.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -98,3 +99,19 @@ def test_classify_lateral_and_longitudinal_are_pure_functions_of_features() -> N
     feats = geometry_features(_constant_lateral_drift(dy_per_step=0.4))
     assert classify_lateral(feats) == "turn_left"
     assert classify_longitudinal(feats) == "keep_speed"
+
+
+def test_both_tools_read_the_reasoning_alpamayo_saves_into_samples_jsonl(tmp_path: Path) -> None:
+    """`ALPAMAYO_SAVE_REASONING=1` puts the text under each record's `extras.reasoning`.
+    A run that saved it must not be reported as having none."""
+    import behavior_gaps
+    import decision_confusion
+
+    records = [
+        {"sample_id": "a", "extras": {"reasoning": "Slow down for the pedestrian."}},
+        {"sample_id": "b", "extras": {"all_trajectories": [[[1.0, 0.0]]]}},
+        {"sample_id": "c"},
+    ]
+    (tmp_path / "samples.jsonl").write_text("".join(json.dumps(r) + "\n" for r in records))
+    for tool in (decision_confusion, behavior_gaps):
+        assert tool._load_reasoning(tmp_path) == {"a": "Slow down for the pedestrian."}, tool.__name__
