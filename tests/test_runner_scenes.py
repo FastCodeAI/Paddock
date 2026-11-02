@@ -618,6 +618,36 @@ def test_restating_alpamayos_nav_default_is_not_an_override(tmp_path) -> None:
     assert "ALPAMAYO_NAV" in reason
 
 
+def test_alpamayos_no_nav_baseline_set_in_the_shell_is_not_ranked(tmp_path, monkeypatch) -> None:
+    """`ALPAMAYO_NAV=0 paddock run ...` reaches the node through `env_passthrough`
+    just as a site block would, so it must keep the run from being ranked the
+    same way. Before this, it was recorded in `model_env` and still `valid: true`."""
+    from paddock.registry import Registry
+    from paddock.runner import _env_override_reasons
+
+    spec = Registry.load().models["alpamayo15"]
+    assert "ALPAMAYO_NAV" in spec.runtime.env_passthrough
+    for name in spec.runtime.env_passthrough:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("ALPAMAYO_NAV", "1")
+    monkeypatch.setenv("ALPAMAYO_RESERVE_GB", "40")
+    assert _env_override_reasons(_cfg(tmp_path), spec) == [], "the default, and a tuning key, stay rankable"
+    monkeypatch.setenv("ALPAMAYO_NAV", "0")
+    (reason,) = _env_override_reasons(_cfg(tmp_path), spec)
+    assert "ALPAMAYO_NAV" in reason and "shell" in reason
+
+
+def test_saving_alpamayos_reasoning_text_keeps_the_run_rankable(tmp_path) -> None:
+    """`ALPAMAYO_SAVE_REASONING=1` adds the reasoning text to each sample's record
+    and changes nothing about the plan, so an analysis run is still the released model."""
+    from paddock.registry import Registry
+    from paddock.runner import _env_override_reasons
+
+    spec = Registry.load().models["alpamayo15"]
+    cfg = _site_with_env(tmp_path, "alpamayo15", {"ALPAMAYO_SAVE_REASONING": "1"})
+    assert _env_override_reasons(cfg, spec) == []
+
+
 def test_every_declared_tuning_key_is_one_the_model_reads() -> None:
     """A misspelt `tuning_env` entry would silently let the real key invalidate,
     or worse, name a key nothing reads. Each must appear in the adapter's source
@@ -678,6 +708,44 @@ def test_every_segment_of_a_path_list_is_withheld() -> None:
     assert "/opt/x" not in out and "/srv/y" not in out
     assert "relative/lib" in out, "a relative segment stays readable"
     assert out.count("<site path:") == 2
+
+
+def test_an_env_passthrough_knob_set_in_the_shell_is_on_the_record(tmp_path, monkeypatch) -> None:
+    """`FOO=1 paddock run ...` must change `run.json`, not just the process.
+
+    `runtime/env.py` forwards a model's declared `env_passthrough` names from
+    whoever's shell launched `paddock run` into the subprocess -- so two runs
+    that otherwise look identical can score differently depending on an
+    environment variable `run.json` never mentioned. `_measurement_config` has
+    to put it on the record the same way a site `[models.*] env` override
+    already is.
+    """
+    import dataclasses
+
+    from paddock.runner import _measurement_config
+
+    class _Harness:
+        def run_config(self):
+            return {}
+
+        def model_run_config(self, model):
+            return {}
+
+    base = _model_spec()
+    model = dataclasses.replace(
+        base,
+        runtime=dataclasses.replace(
+            base.runtime, env_passthrough=("ALPAMAYO_TEMPERATURE", "ALPAMAYO_UNSET_KNOB")
+        ),
+    )
+    monkeypatch.setenv("ALPAMAYO_TEMPERATURE", "1.2")
+    monkeypatch.delenv("ALPAMAYO_UNSET_KNOB", raising=False)
+
+    config = _measurement_config(_cfg(tmp_path), _Harness(), model)
+
+    assert config["model_env"] == {"ALPAMAYO_TEMPERATURE": "1.2"}, (
+        "only the name actually set in the shell belongs on the record, and an unset one must not appear"
+    )
 
 
 # ---- open-loop dispatch: batching, parallel nodes, resume ---------------

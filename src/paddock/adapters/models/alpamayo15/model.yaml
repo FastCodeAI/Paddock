@@ -8,6 +8,20 @@ runtime:
   venv: "{repo}/a1_5_venv"
   pythonpath: ["{repo}"]
   cwd: "{repo}"
+  # Ablation/debugging knobs policy.py reads from the environment (_env_or /
+  # _env_float / os.environ.get) -- without this, `ALPAMAYO_NAV=0 paddock run
+  # ...` sets the var in paddock's own process, not the model's subprocess
+  # (runtime/env.py builds that from a strict allowlist), and the ablation
+  # silently runs as if the flag were never set.
+  env_passthrough:
+    - ALPAMAYO_NAV
+    - ALPAMAYO_NUM_TRAJ_SAMPLES
+    - ALPAMAYO_TEMPERATURE
+    - ALPAMAYO_TOP_P
+    - ALPAMAYO_MAX_GEN
+    - ALPAMAYO_RESERVE_GB
+    - ALPAMAYO_FRAME_SELECT
+    - ALPAMAYO_SAVE_REASONING
   env:
     ALPAMAYO_CHECKPOINT: "{weights}/Alpamayo-1.5-10B"
     ALPAMAYO_COSMOS: "{weights}/Cosmos-Reason2-8B"
@@ -23,9 +37,11 @@ runtime:
     KITSCENES_ROOT: "{data.kitscenes.parent}"
     KITSCENES_REPO: "{repos}/kitscenes"
     KITSCENES_SAMPLE_LIST: "{data.navsim.exp}/inference/kitscenes_e2e_final.pkl"
-  # Site overrides of these change speed or memory, not the plan, so they
-  # leave a run valid; any other [models.alpamayo15.env] key makes it valid: false.
-  tuning_env: [ALPAMAYO_RESERVE_GB]
+  # Site overrides of these change speed, memory or what is logged, not the
+  # plan, so they leave a run valid; any other [models.alpamayo15.env] key makes
+  # it valid: false. ALPAMAYO_SAVE_REASONING only adds the reasoning text to
+  # each sample's extras.
+  tuning_env: [ALPAMAYO_RESERVE_GB, ALPAMAYO_SAVE_REASONING]
 
 capabilities:
   cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT]
