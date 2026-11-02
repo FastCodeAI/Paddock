@@ -766,7 +766,7 @@ campaign driven on 22 Oct 2026 by the same bridge. See
   |---|---|---|
   | The two replays differ only in pixels | one capture drives both; only `--frames` changes | **strong** |
   | openpilot is the most pixel-sensitive model (6.11 m plan gap at 3 s against a 0 floor, and it plans 5.9 m/s where the CARLA-frame plan plans 4.8) | 301 ticks on route 2802; same sign in the closed-loop run and on route 3813 | **strong** |
-  | DriveJEPA 2.09 m, QwenDrive 1.36 m, VisionPilot 0.67 m, all against a 0 floor | same runs, `compare/all_summaries.json` | **strong** |
+  | DriveJEPA 2.09 m, QwenDrive 1.36 m, VisionPilot 0.67 m, all against a 0 floor | same runs, [`docs/sim2real/cosmos3_all_summaries.json`](sim2real/cosmos3_all_summaries.json) | **strong** |
   | Alpamayo's 3.23 m is mostly its own sampling | its floor on identical frames is 2.55 m; never repeated | **moderate** |
   | Cosmos 3 preserves CARLA's geometry where cosmos-transfer 2.5 did not | frame-by-frame review, no numeric layout metric | **moderate** |
   | The bonnet on every front view is a model prior | absent from all three controls, unchanged by prompt, seed, weights and guidance | **strong** |

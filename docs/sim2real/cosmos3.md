@@ -141,7 +141,8 @@ inference times, which are the whole-segment means:
 | openpilot | 71 | 371 | 1.66 | 3.71 | 6.11 / 5.28 / 12.99 | 3.29 | 0.06 | 805 / 593 |
 
 Every figure in both tables is read from the `after_trigger` (or, for inference time, the
-top-level) block of `all_summaries.json` and rounded to two decimals. Distances are metres.
+top-level) block of [`cosmos3_all_summaries.json`](cosmos3_all_summaries.json), the study's
+`compare/all_summaries.json` kept beside this page, and rounded to two decimals. Distances are metres.
 
 **Pixel sensitivity, most to least: openpilot > DriveJEPA > QwenDrive > VisionPilot > Alpamayo
 (within its own noise).**
@@ -261,7 +262,7 @@ Following [docs/reviewing.md](../reviewing.md): what was run, and what is infere
 | Claim | How | Strength |
 |---|---|---|
 | The two replays see identical states and differ only in pixels | one `ticks.jsonl` per capture drives both; `openloop_replay.py` builds the same wire body either way and only `--frames` changes | **strong** |
-| The numbers in the tables are what the runs produced | every cell is read from `openloop-2802/compare/all_summaries.json`, written by `openloop_compare.py` | **strong** |
+| The numbers in the tables are what the runs produced | every cell is read from `openloop-2802/compare/all_summaries.json`, written by `openloop_compare.py` and kept beside this page as [`cosmos3_all_summaries.json`](cosmos3_all_summaries.json) | **strong** |
 | The offline replay harness reproduces what a live run did | on route 3813 the replay of openpilot on already-converted frames reproduced that run's saved plans to max abs delta 0.000 m | **proof**, but for the 3813 harness, not this one |
 | openpilot's gap is systematic, not sampling | its floor is 0 over 301 ticks; its Cosmos-frame plan is faster on 206 of those ticks and slower on 95 (mostly ticks 71–93 and 234–303), +1.06 m/s on average; and the closed-loop run and the 3813 run show the same direction | **strong** |
 | Alpamayo's gap is mostly its own sampling | its floor (2.55 / 1.79) is most of its gap (3.23 / 2.55) on the same ticks | **moderate** — one pair of runs, n = 301; it was never repeated |
