@@ -1,15 +1,18 @@
 # Paddock release roadmap
 
-*Status 29 October 2026. Three releases; the first two are dated.*
+*Status 29 October 2026; v1.1 revised on 2 November, after the review of #121. Three
+releases; the first two are dated.*
 
 | Release | Date | What ships | Why it matters |
 |---|---|---|---|
 | **v1.0 · Clean release** | **Fri 20 Nov 2026** | the codebase cleaned for a public repo; every adapter behind the support matrix tested; the matrix regenerated from those runs | a release anyone can install, run and reproduce |
-| **v1.1 · Failure-mode analysis** | **Fri 11 Dec 2026** | one standard failure analysis for every model × dataset | Paddock's main value: *why* a model fails and what to change, not only a score |
+| **v1.1 · Failure-mode analysis, in its own repo** | target **Fri 11 Dec 2026** | `paddock-analysis`: today's analyses moved, consolidated into one shape, then published | Paddock's main value: *why* a model fails and what to change, not only a score |
 | **v1.2 · Regression gate for fine-tuned models** | later (proposed: Q1 2027) | a supported verdict on whether a fine-tuned checkpoint beats its base | "did training help?" answered paired and honestly |
 
 Before v1.0, on **Mon 3 Nov**, the repository goes public. The cleanup in #121 lands
-first.
+first. Proposed in its review (2 Nov): publish Paddock as a new repository, in a
+different GitHub organisation, made from a snapshot of `main` with no git history. This
+repository stays private with its full history.
 
 ---
 
@@ -24,7 +27,8 @@ No new features.
 
 **Done when:**
 1. **Clean.** Three release PRs land:
-   - #121 moves research scripts, notebooks and dead code to the private `paddock-lab`;
+   - #121 moves the analysis, research scripts and dead code to `paddock-analysis`,
+     private until it is standardized (see v1.1);
    - a second PR gives every model and benchmark page one layout;
    - a third rewrites the README and makes `paddock setup` work.
 
@@ -42,7 +46,7 @@ No new features.
 
 | Item | Today | To do | PR |
 |---|---|---|---|
-| Repo cleanup | open | review; create the private `paddock-lab`; land before 3 Nov | #121 |
+| Repo cleanup | reviewed 2 Nov | rebase onto `main`, moving #86's and #53's analysis too; create the private `paddock-analysis`; land before going public | #121 |
 | One page layout; README and `paddock setup` | not opened | the two follow-up release PRs | — |
 | CI on Ubuntu 24.04 | open | land | #125 |
 | METEOR on Bench2Drive | 1.05, valid, R | land | #126 |
@@ -111,7 +115,7 @@ draws the README picture.
 Only two Bench2Drive cells are ranked today: VisionPilot and constant velocity. #124
 ranks the native-rate cells.
 
-## v1.1 · Failure-mode analysis, Friday 11 December
+## v1.1 · Failure-mode analysis in its own repo, target Friday 11 December
 
 **Why.** A score says how good a model is; failure analysis says why, and what to
 change. That is the value no single benchmark gives, and it produced Paddock's biggest
@@ -119,49 +123,59 @@ wins:
 - openpilot −21.8% on KITScenes with no retraining;
 - Drive-JEPA made to see its camera, neuroNCAP 3.57 → 4.13.
 
-Today that analysis is a set of per-model research scripts, and most of them leave the
-public repo with #121.
+Today that analysis is a set of per-model research scripts. #121 moves them out of
+paddock, into a repo of their own.
+
+**Decided in the review of #121 (2 November):**
+- The analysis lives in its own repo, `paddock-analysis`, for good. Paddock runs, scores
+  and draws runs; paddock-analysis reads paddock's run records and explains them. Paddock
+  never depends on it.
+- It holds everything #121 removes, analysis or not, plus the analysis in #86 and #53. It
+  starts private and goes public once it is standardized, whatever the date. Before then,
+  a pass decides each file: ship, archive or leave out.
+- Public paddock keeps none of the analysis. It keeps the tools marked "stays" below.
+- The first user is a customer bringing their own model, so the standard analysis needs
+  no model-specific code.
+- The entry point is one report per run, with model, dataset and metric cards on top.
+- Fine-tuned models: the regression gate (v1.2) gives the verdict in paddock, and
+  paddock-analysis explains it.
+- Paddock's public roadmap names paddock-analysis now and links it once it is public.
 
 **What exists today**
 
-| Tool | What it answers | Covers | After 3 Nov |
+| Tool | What it answers | Covers | After #121 |
 |---|---|---|---|
 | `paddock render` | how models differ on the same sample, side by side | 5 of 9 benchmarks, every model | stays |
 | comma2k19 report and overlay video | every declared metric, mean and median; the plan drawn on the drive | comma2k19 | stays |
 | NAVSIM's safety terms on other benchmarks (#102) | collision, drivable area, time to collision, progress, comfort | neuroNCAP in full; comma2k19, nuScenes, KITScenes and nuPlan in part | stays |
 | neuroNCAP comparison video | what happened in closed loop | neuroNCAP | stays |
 | Regression gate | did a change help, beyond noise? | smoke subsets of 6 benchmarks | stays |
-| openpilot notebooks, failure tags, "four questions" | start-speed share, camera calibration, scene sweeps, failure classes | openpilot on KITScenes, comma2k19, Bench2Drive | moves to `paddock-lab` |
+| openpilot notebooks, failure tags, "four questions" | start-speed share, camera calibration, scene sweeps, failure classes | openpilot on KITScenes, comma2k19, Bench2Drive | moves to `paddock-analysis` |
 | Drive-JEPA candidate viewer | could it not make a good plan, or did it pick the wrong one? | Drive-JEPA on KITScenes, nuScenes | moves |
 | VisionPilot diagnostics | what each of its three networks saw and decided | VisionPilot | moves |
 | neuroNCAP render and projection checks | was the hazard rendered where the model could see it? | neuroNCAP | moves |
 | nuScenes collision margin | does an open-loop near miss predict a closed-loop crash? | nuScenes | moves |
-| openpilot Bench2Drive analysis (#79); Alpamayo decision analysis (#86) | standstill trap, untimed turns; reasoning against action | one model each | open PRs |
+| openpilot Bench2Drive analysis (#79); Alpamayo decision analysis (#86) | standstill trap, untimed turns; reasoning against action | one model each | merged 2 Nov; moves |
 
 **The pattern:** deep for one model at a time, and nothing runs for every model and
 dataset.
 
-**The standardization plan: five ideas**
+**The plan.** The target plan for paddock-analysis is kept outside this repo: what counts
+as analysis, what it reads from paddock and writes, what a user gets, the workflows, and
+four phases. The five standardization ideas listed here on 29 October moved into it. Its
+first two phases build nothing new:
+1. **Consolidate:** its own package and a pinned paddock version; copies merged
+   (openpilot's three image-tweak libraries share about 1,900 of their 2,200 lines each);
+   one tag vocabulary; one output shape for every existing analysis; tests and CI.
+2. **Publish:** the per-file pass, then a fresh public repo with no history.
 
-| Idea | What | Why |
-|---|---|---|
-| 1. One failure report per run | `paddock analyze <run>` writes a report with figures, for any model on any benchmark | the same diagnosis for every model, a customer's included, with one command |
-| 2. Error broken down the same way everywhere | open loop and NAVSIM: lateral and longitudinal error, start-speed share, error by horizon, speed band and manoeuvre | one ADE hides what failed. 64% of openpilot's KITScenes error is the speed it starts at; Drive-JEPA's error is 11:1 longitudinal |
-| 3. One failure vocabulary | scenario tags computed from the ground truth, not per model: turn left or right, straight, stop, start from rest, lead vehicle, junction, speed band | compare failure profiles across models: who fails left turns, who cannot start. openpilot's 769-line tag file proved the idea for one model |
-| 4. Closed-loop outcome classes, the same across simulators | completed, at-fault collision (front, side, rear), off road, stuck at standstill, timeout; time to the event; NAVSIM's safety terms | the standstill trap (53% of openpilot's lost Bench2Drive points) and METEOR not pulling away on 43 of 50 routes (#126) were found by hand; each simulator reports failure its own way |
-| 5. Input checks for every model | blank the camera, freeze the history, change the speed: does the plan move? | Drive-JEPA was camera-blind for weeks and still scored; AutoE2E's plans follow its own past motion |
+New capabilities, such as a report for every valid run and the five ideas, come after,
+with their own go-ahead.
 
-**Expected on 11 December:**
-- `paddock analyze` runs on every valid run behind the v1.0 matrix, and writes one
-  report per run.
-- Ideas 2 and 3 cover the four open-loop benchmarks and NAVSIM.
-- Idea 4 covers neuroNCAP and Bench2Drive. AlpaSim and HUGSIM may follow.
-- Idea 5's results are recorded for all 8 models, on each model's page.
-- Each benchmark page has a model × failure-type table, regenerated from the reports
-  the way the support matrix is.
-- Tested without a GPU in `make check`, on stored fixtures.
-- Out of scope: model-specific probes, such as VisionPilot's networks and Alpamayo's
-  reasoning traces. They stay in `paddock-lab`.
+**Done when:**
+- every analysis that exists today runs from paddock-analysis against a pinned paddock
+  version and writes the standard records;
+- the per-file pass is done, and paddock-analysis is public.
 
 ## v1.2 · Regression gate for fine-tuned models, later
 
@@ -190,6 +204,9 @@ fine-tuned checkpoint and its base model, it:
 The date is set after v1.1.
 
 ## Open pull requests, 29 October
+
+*As of 29 October. #79, #86 and #53 merged on 2 November; their analysis moves to
+`paddock-analysis` with #121, which replaces the `paddock-lab` named below (see v1.1).*
 
 | PR | What | Lands in |
 |---|---|---|
