@@ -554,7 +554,7 @@ Earlier runs, each `valid: false`:
 
 Why it swerves, from three routes (1711, 2286, 2373) whose every request was
 recorded and replayed into the model to within 0.5 mm of the plan CARLA's node
-sent (`tools/models/autoe2e/analysis/`, 21 Oct 2026). The 64 ego-history rows
+sent (an offline analysis, 21 Oct 2026). The 64 ego-history rows
 set the plan's turn and acceleration; the cameras, the route raster and the
 projection height move it by centimetres. The network continues the launch
 every route starts with (+2 to +3.4 m/s², to 12 m/s on 8.3 m/s streets), and

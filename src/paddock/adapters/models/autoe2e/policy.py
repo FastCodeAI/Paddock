@@ -212,8 +212,8 @@ def ego_history_as(rows: np.ndarray, mode: str) -> np.ndarray:
     ``"steady_speed"`` is its other half: speed and acceleration steady at the
     newest measured speed, yaw rate and curvature as measured. None of them is
     upstream's input: they exist to test, in closed loop, whether the measured
-    past is what turns AutoE2E off its lane on Bench2Drive (the deep-dive notebook
-    under tools/models/autoe2e/analysis shows it moves the plan offline).
+    past is what turns AutoE2E off its lane on Bench2Drive (an offline deep dive
+    showed it moves the plan).
     """
     if mode not in EGO_HISTORY_MODES:
         raise ValueError(f"AUTOE2E_EGO_HISTORY must be one of {EGO_HISTORY_MODES}, got {mode!r}")

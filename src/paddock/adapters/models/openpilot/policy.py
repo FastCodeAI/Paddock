@@ -212,9 +212,8 @@ DESIRE_MODES: dict[str, dict[Command, int]] = {
 
 #: `RouteDesire`: metres before a junction turn its desire is first sent. On
 #: KITScenes the turn desire cost ADE when sent for turns 40 m or more ahead --
-#: the model cannot see them yet -- and nothing nearer (the image-calibration
-#: notebook in tools/models/openpilot/analysis, the route sent "only when the
-#: turn is near").
+#: the model cannot see them yet -- and nothing nearer (an image-calibration
+#: analysis of the route sent "only when the turn is near").
 TURN_NEAR_M = 40.0
 #: `RouteDesire`: seconds between re-sent turn desires. openpilot feeds a desire
 #: only on its rising edge and the model keeps it 5 s (25 bins of 0.2 s). A car
