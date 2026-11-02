@@ -131,7 +131,7 @@ navsim = { run = "navsim/alpamayo15/20260912T040211-a9562c", marks = "A", note =
 navsim_v1 = { run = "navsim_v1/alpamayo15/20260914T175447-89a9ca", marks = "A", note = "10 Hz" }
 bench2drive = { run = "bench2drive/alpamayo15/native50-10hz-084418258d833a9f-c4d076", marks = "R", note = "10 Hz" }
 neuroncap = { run = "neuroncap/alpamayo15/20260906T034647-bc409f", marks = "A" }  # its scenes are nuScenes val scenes
-alpasim = { run = "alpasim/alpamayo15/legacy-alpamayo_proxy_referee_20hz", marks = "R" }  # scored on 10 of the 30 scenes
+alpasim = { run = "alpasim/alpamayo15/20261029T200113-9d900c" }  # through the bridge, 30 scenes
 
 [cells.drivejepa]
 nuscenes = { run = "nuscenes/drivejepa/20260905T093335-4513d4", marks = "S" }

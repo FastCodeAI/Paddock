@@ -144,8 +144,7 @@ was measured the same way as the rest of its column.
   were asked every tick and drove every route to Bench2Drive's own end. Their
   records are valid.
   OpenPilot's Bench2Drive cell is an unassisted estimate rebuilt from assisted
-  recordings.
-  Alpamayo 1.5 on AlpaSim was scored on 10 of the 30 scenes. How many cameras a
+  recordings. How many cameras a
   model is given, and whether it drives through paddock's bridge or its own
   simulator driver, are never reasons to leave a cell unranked.
 - **Ranked, though fed what the model is built for.** NAVSIM cells marked 10 Hz
@@ -174,10 +173,10 @@ Before comparing numbers:
   Bench2Drive, and scores 0 on neuroNCAP by construction: every scenario is
   staged so that holding speed collides.
 - **The AlpaSim rows come from AlpaSim's native drivers**, not paddock's bridge,
-  and were imported into `results/`; AutoE2E's and Qwen-Drive's are the
+  and were imported into `results/`; Alpamayo's, AutoE2E's and Qwen-Drive's are the
   exceptions, run through paddock's bridge. The 30-scene rows are ranked together; models
   are given different numbers of cameras (OpenPilot, VisionPilot, Drive-JEPA
-  and the floor 1, Qwen-Drive 3, METEOR and AutoE2E 6).
+  and the floor 1, Qwen-Drive 3, Alpamayo 4, METEOR and AutoE2E 6).
 
 </details>
 
