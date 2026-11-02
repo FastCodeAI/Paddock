@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -48,16 +49,20 @@ from pathlib import Path
 import httpx
 
 
-def _live_policy_nodes() -> list[dict[str, str]]:
+def _live_policy_nodes(proc: Path = Path("/proc")) -> list[dict[str, str]]:
     """Every running `paddock.policy.server` process, from `/proc/*/cmdline`.
 
     Linux-only, like the rest of this box's tooling. Each result has `model`,
     `port`, `nonce` -- `nonce` is the run id `runner.py` generated for the
-    sweep that started this node (`runtime/proc.py`).
+    sweep that started this node (`runtime/proc.py`). Only this user's
+    processes count: `/proc` lists everyone's, and on a shared box a
+    colleague's node would otherwise be polled and written under their run id.
     """
     nodes = []
-    for cmdline_path in Path("/proc").glob("[0-9]*/cmdline"):
+    for cmdline_path in proc.glob("[0-9]*/cmdline"):
         try:
+            if cmdline_path.parent.stat().st_uid != os.getuid():
+                continue
             argv = cmdline_path.read_bytes().split(b"\0")
         except (FileNotFoundError, ProcessLookupError, PermissionError):
             continue  # the process exited, or isn't ours, between glob and read
