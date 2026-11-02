@@ -532,7 +532,10 @@ on a 401.
 
 **Weights are never committed.** Fetch `Alpamayo-1.5-10B` into `{weights}`; the
 copy these numbers came from has a shard-manifest sha256 of `9cc6fc6ad2852e66`
-(10 files, 20.64 GiB), which is what to compare against.
+(10 files, 20.64 GiB), which is what to compare against. The processor files
+(`Qwen/Qwen3-VL-2B-Instruct`) may also go in `{weights}/Qwen3-VL-2B-Instruct`
+(or wherever `ALPAMAYO_PROCESSOR` points); the model's server reads them from
+there when that folder exists, and from the Hugging Face cache otherwise.
 
 **Driver startup.** Set `startup_timeout_s: 900`. The default is 120 s and a cold
 10B checkpoint read answers the runtime's version probe at about 305 s, so the
