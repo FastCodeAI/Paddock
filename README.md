@@ -113,7 +113,8 @@ Per-benchmark tables and notes: [nuScenes](docs/benchmarks/nuscenes.md#support-m
 <summary>Why each cell is marked, and what to check before comparing</summary>
 
 A mark on a model's name applies to every cell in its row. A cell without a mark
-was measured the same way as the rest of its column.
+was measured the same way as the rest of its column, unless a note below says how
+it differs.
 
 - **A — adapted, not zero-shot.** The model was trained on data from this
   benchmark, or its settings were chosen on it. Drive-JEPA and Qwen-Drive on
@@ -138,15 +139,21 @@ was measured the same way as the rest of its column.
   `CURV_SCALE` fix. Drive-JEPA's nuScenes cell is the camera-blind run from
   before #62. OpenPilot's comma2k19 row was not run at the pinned sha.
 - **R — not ranked, because the number was measured on different scenes or by a
-  different method from the rest of its column.** AutoE2E's, METEOR's and
-  OpenPilot's Bench2Drive cells end a route after 30 s without progress or at
-  4x the expert's time, where the cells they would rank against drove every
-  route to Bench2Drive's own end. Their records are valid. How many cameras a
-  model is given, and whether it drives through paddock's bridge or its own
-  simulator driver, are never reasons to leave a cell unranked.
+  different method from the rest of its column.** How many cameras a model is
+  given, whether it drives through paddock's bridge or its own simulator driver,
+  and whether its Bench2Drive routes end early as failed drives are never
+  reasons to leave a cell unranked.
+- **Ranked, though some Bench2Drive routes end early.** AutoE2E's, METEOR's and
+  OpenPilot's Bench2Drive runs end a route after 30 s without progress or at 4x
+  the expert's time, and score it as it stood, as a failed drive; the rest of
+  the column drove every route to Bench2Drive's own end. That can move a score
+  either way: a car that would have crept on, or finished just after the cut,
+  scores what it had, and one left to drive on could have collected more
+  penalties ([Ending routes early](docs/benchmarks/bench2drive.md#ending-routes-early)).
 - **Ranked, though fed what the model is built for.** Bench2Drive cells marked
-  2 Hz or 10 Hz are driven at the model's native inference rate, where the rest
-  of the column runs at 20 Hz over the same 50 routes; those gains are
+  2 Hz, 5 Hz or 10 Hz are driven at the model's native inference rate, where the
+  rest of the column runs at 20 Hz over the same 50 routes. Drive-JEPA, Alpamayo
+  and Qwen-Drive score higher there than at 20 Hz; those gains are
   partly more exposure. Alpamayo's and Qwen-Drive's means are over 49 routes:
   route 3800 crashes CARLA at their rate. Qwen-Drive's 2 Hz is its camera rate
   only: it reads 16 ego positions 0.1 s apart, and at 2 Hz 12 of them are

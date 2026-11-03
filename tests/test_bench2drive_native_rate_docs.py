@@ -419,6 +419,12 @@ def test_readme_does_not_pool_openpilot_into_this_block() -> None:
     assert not re.search(r"\|\s*OpenPilot", block)
 
 
+def test_the_page_names_the_openpilot_run_the_matrix_ranks() -> None:
+    """The page sets aside OpenPilot's ranked run by its id: a date alone named an unranked one."""
+    run_id = matrix_cell("openpilot", "bench2drive").run.rsplit("/", 1)[-1]
+    assert run_id in DOC.read_text(), f"the page does not name {run_id}, OpenPilot's ranked Bench2Drive run"
+
+
 # ---------------------------------------------------------------------------
 # The exposure caveat is stated where the numbers are
 # ---------------------------------------------------------------------------

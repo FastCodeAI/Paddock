@@ -651,8 +651,10 @@ own inputs, the measured ego history and the route raster, asked for a plan at t
 ([run](../../results/bench2drive/autoe2e/pooled50-40c29d24c37d542a-cc7a9c/run.json),
 `valid: true`): route completion 26.37 %, infraction penalty 0.60. A route ends
 after 30 s without 3 m of progress or at 4x the expert's time, and is scored as a
-failed drive: 42 of the 50 ended on the first rule, 1 on the second. The other rows
-drove every route to Bench2Drive's own end, so the cell is marked R, and AutoE2E is
+failed drive: 42 of the 50 ended on the first rule, 1 on the second. The rows
+without the early stop drove every route to Bench2Drive's own end; the cell
+ranks all the same, as a run under these rules does
+([Ending routes early](#ending-routes-early)), and AutoE2E is
 left out of the 50-route table below, whose infraction counts depend on how long
 each route ran. Fed a
 steady straight past and no route instead, which are not upstream's inputs, and
@@ -666,9 +668,9 @@ and with no driving command, which the released graph has no input for, asked fo
 a plan at the 5 Hz its `model.yaml` declares
 ([run](../../results/bench2drive/meteor/pooled50-40c29d24c37d542a-867d57/run.json),
 `valid: true`): route completion 6.30 %, infraction penalty 0.90, under AutoE2E's
-early-stop rules. The other rows drove every route to Bench2Drive's own end, so,
-like AutoE2E's, the cell is marked R. On 43 of the 50 routes the car never leaves
-the start. Standing still, METEOR plans a 3 s path that ends a median 0.17 m ahead, and its own
+early-stop rules, and like AutoE2E's the cell ranks. On 43 of the 50 routes the
+car never leaves the start. Standing still, METEOR plans a 3 s path that ends a
+median 0.17 m ahead, and its own
 acceleration output is negative, so the shared controller, which brakes when a
 plan asks for less than 0.4 m/s, holds the brake until a rule ends the route: the
 stuck rule at 30 s on 30 of them, the over-time rule on 1, and Bench2Drive's own
@@ -685,8 +687,8 @@ its `model.yaml`
 `valid: true`): route completion 62.44 %, infraction penalty 0.78, under AutoE2E's
 early-stop rules, which ended 19 routes on the stuck rule and 5 on the time budget.
 The nudge stands in for a driver pressing resume once the car has stood 3 s with
-no lead, so the cell is marked P; the other rows drove every route to
-Bench2Drive's own end, so it is marked R. It replaces the unassisted estimate ◆
+no lead, so the cell is marked P; like AutoE2E's and METEOR's, it ranks. It
+replaces the unassisted estimate ◆
 (30.09), a reconstruction from the September recordings, whose 50-route mean the
 table below still withholds.
 
@@ -716,7 +718,7 @@ the per-km table below rather than across this one.
 † **OpenPilot has no DS or RC cell here, deliberately.** Its 24 historical routes
 were driven with human resume assistance on 16 of them, and its 26 expansion
 routes use a different upstream longitudinal setup; no single mean describes both,
-so none is published and nothing ranks OpenPilot against the other systems. The
+so none is published and nothing ranks these recordings against the other systems. The
 counts in its row are the recorded totals over all 50 routes. The scores are in
 [OpenPilot, by recording set](#openpilot-by-recording-set), and its tracked run
 carries the same split in `by_group` with `valid: false` on the pooled mean.
