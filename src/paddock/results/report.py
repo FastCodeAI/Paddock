@@ -123,8 +123,10 @@ def markdown(root: Path = RESULTS_ROOT, include_invalid: bool = False) -> str:
 
         arrow = {n: ("↓" if lower_is_better(n) else "↑") if has_direction(n) else "" for n in names}
         header = " | ".join(f"{n} {arrow[n]}".rstrip() for n in names)
-        lines.append("| model | run | n | site | " + header + " |")
-        lines.append("|---|---|---:|---|" + "---:|" * len(names))
+        # No site column: run.json keeps it for attribution, and a table is read
+        # for the scores.
+        lines.append("| model | run | n | " + header + " |")
+        lines.append("|---|---|---:|" + "---:|" * len(names))
 
         def sort_key(pair: tuple[RunRecord, MetricsRecord], _primary: str = primary) -> tuple[int, float]:
             # `_primary` is bound at definition time on purpose: a closure over
@@ -141,9 +143,7 @@ def markdown(root: Path = RESULTS_ROOT, include_invalid: bool = False) -> str:
         for run, metrics in sorted(entries, key=sort_key):
             cells = [_fmt(metrics.metrics.get(n, {}).get("mean")) for n in names]
             run_label = run.run_id.replace("legacy-", "")
-            lines.append(
-                f"| {run.model} | {run_label} | {metrics.n} | {run.site} | " + " | ".join(cells) + " |"
-            )
+            lines.append(f"| {run.model} | {run_label} | {metrics.n} | " + " | ".join(cells) + " |")
         lines.append("")
 
     if excluded:
