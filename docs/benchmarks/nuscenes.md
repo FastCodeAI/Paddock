@@ -254,7 +254,7 @@ sentence of the second △ note: it said constant velocity beats every learned
 model, which the table below contradicts, and it now names the two that beat it.
 The symbols are the README's former footnote marks, and each note below starts
 with the mark it explains. Marks about a model rather than this benchmark
-(⊕ ∗ ◊ ◇ ✦ ✧) are explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
+(∗ ◊ ◇ ✦ ✧) are explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
 
 ### Notes on the matrix cells
 

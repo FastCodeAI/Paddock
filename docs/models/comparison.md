@@ -134,29 +134,9 @@ recipe; there is no CARLA training script, config or doc. It is therefore
 adapter is run — should not be labelled on the strength of it. Worth resolving
 before that sweep, not after.
 
-**Every Drive-JEPA row on this page is the released checkpoint.** A second
-checkpoint exists for the same architecture and is not in any table above:
-
-| | Drive-JEPA (released) | Drive-JEPA, retrained (AlpaSim driver 0.1.7) |
-|---|---|---|
-| Architecture, parameters | V-JEPA-2 ViT-L encoder + proposal-centric planner, 307 M | the same; encoder untouched (294 tensors bit-identical) |
-| Trained parts | — | generator (2.38 M) and scorer (4.70 M) in a first run; generator again, alone, in a second |
-| Trajectory vocabulary | 8,192 anchors | 10,240 (the 8,192 plus 2,048 faster shapes) |
-| Inputs | four cameras; acceleration as reported | one front camera, bottom 37 rows masked; acceleration slots zeroed |
-| `trained_on` | `navsim` / `navtrain` | `navsim` / `navtrain` (inherited) **+ `physicalai_av` / `train`** |
-| Runs in paddock | every Drive-JEPA row | none — AlpaSim's native driver only |
-
-`physicalai_av` is NVIDIA's Physical AI AV dataset. It is **not a key in
-`datasets.yaml`**, so no test here can cross-check that declaration against a
-benchmark's scene list: some AlpaSim scenes are reconstructions of clips in
-that dataset, and their exclusion from training (126,981 samples, 4,015 clips,
-`train` split, evaluation scenes asserted absent in every script) is a property
-of the training code in the gallops repository, taken on that code's word. Two
-rows in `results/` were made with these weights, both on AlpaSim: 30 scenes,
-0.7697 (`legacy-drivejepa_017_20hz_30scenes`), and the benchmark's ten scenes
-alone, 0.9956 (`legacy-drivejepa_017_20hz`). Being our own training, it is not
-in the support matrix: it is in Gallops' table of training runs. The section
-below says how to read it. Detail in [drivejepa.md](drivejepa.md).
+**Every Drive-JEPA row on this page is the released checkpoint.** Paddock keeps
+results for released checkpoints only; one we trained ourselves is kept, with
+its results, beside its training code.
 
 **Every Drive-JEPA row on this page is the perception-*based* v2 agent.** The
 comma2k19 board carries a second, separate registry entry —
@@ -333,24 +313,6 @@ were fitted to the nuScenes rig and cities. Paddock's nuScenes benchmark scores
 val, and all 14 neuroNCAP scenes are val scenes (checked against
 `adapters/benchmarks/nuscenes/val_scenes.json`), so none was in training.
 
-### Drive-JEPA retrained × AlpaSim
-
-**The retrained checkpoint's AlpaSim row is adapted, not zero-shot, and not
-held out.** Its trajectory generator was retrained on Physical AI AV's `train`
-split, and AlpaSim's scenes are reconstructions of clips from that same
-dataset. The training code asserts the evaluation scenes absent; that lives in
-the gallops repository and is taken on its word, because `physicalai_av` is not
-a key in `datasets.yaml` and no test here can check it.
-
-Two more things separate it from the rows beside it. The ten scenes were driven
-many times while the driver was developed, so choices in the driver were made
-with their outcomes in view. And the two figures are far apart, 0.9956 on the first ten scenes
-against 0.7697 on all 30: every failure it has is on the other twenty.
-
-Read either figure beside the released rows, never as one of them. The
-released `drivejepa` rows, 0.4209 on the 30 scenes and 0.5030 on the ten, stay
-as they are.
-
 ### METEOR × kitscenes — six cameras of eight, and the graph as shipped
 
 METEOR trained on none of paddock's datasets, so it has no exposure section;
@@ -487,22 +449,6 @@ The README's notes on cells that are about a model rather than one benchmark,
 moved here unchanged except for links. Each starts with the mark it carried in
 the matrix; the benchmark notes are on each benchmark's page under
 "Support-matrix results".
-
-⊕ The same architecture with a second checkpoint: Drive-JEPA's trajectory
-generator retrained on NVIDIA's Physical AI AV dataset (`train` split). It is
-driven by the native AlpaSim driver at 0.1.7, not through a paddock node, and the
-row was ingested from that driver's recorded runs, as the Drive-JEPA row was.
-Its AlpaSim cell is *adapted*, not zero-shot: AlpaSim's scenes are
-reconstructions of clips from that dataset. The training code excludes the
-evaluation scenes, which is taken on that code's word, and the 30 scenes were
-driven repeatedly while the driver was developed, so the number is not a
-held-out one. Referee, scenes and scorer are those of the other rows (¶), one
-rollout per scene. On the first ten scenes alone it scores 0.9956. Its other
-cells are not run: the checkpoint has no download location yet and no paddock
-node. The launch log of each of its 30 runs records the checkpoint's sha256,
-the one `docs/models/drivejepa.md` gives, so the file is identified even though
-another site cannot yet fetch it.
-See `docs/models/drivejepa.md`.
 
 ∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
 KITScenes, Paddock constructs sampled XY points from its projected image-space
