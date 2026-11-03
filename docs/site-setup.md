@@ -153,7 +153,22 @@ paddock setup --model <name>
 This sets up the model's repo as in step 3, then runs the model's own
 `src/paddock/adapters/models/<name>/setup.sh` with `PADDOCK_REPO`,
 `PADDOCK_VENV` and `PADDOCK_WEIGHTS` set from `paddock.toml`. The script is not
-run if the repo step failed. `doctor` reports which interpreters are still missing. Per-model quirks — pinned
+run if the repo step failed.
+
+Two models ignore `PADDOCK_VENV` and build a named conda environment in
+conda's own folder: `drivejepa` builds `drive-jepa`, and `visionpilot` builds
+`ncap`. Paddock does not look there, so after setting one of them up, point
+paddock at the environment (`conda env list` shows where it is):
+
+```toml
+[models.drivejepa]
+venv = "/path/to/conda/envs/drive-jepa"
+
+[models.visionpilot]
+venv = "/path/to/conda/envs/ncap"
+```
+
+`doctor` reports which interpreters are still missing. Per-model quirks — pinned
 CUDA versions, packages that must *not* be installed — are in
 `docs/models/<name>.md` and [troubleshooting.md](troubleshooting.md).
 
