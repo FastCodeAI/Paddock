@@ -195,7 +195,7 @@ Wall-clock ~2 h for the full run, of which only 34 min was GPU; the rest is down
   the VLM writes one chain-of-thought per sample (`num_return_sequences`).
   Classifier-free guidance (`..._cfg_nav`, 60 GB+) is optional in the notebook
   and not used. `ALPAMAYO_SAVE_REASONING=1` writes the model's chain-of-thought
-  reasoning alongside each prediction, for tools like `decision_confusion.py`.
+  reasoning alongside each prediction, for later analysis.
 * **History.** Frames stamped no later than the previous one are dropped
   (KITScenes' clamped warm-up repeats frame 0). The chain-of-causation is read
   from `extra["cot"]`, kept in `diagnostics()` and logged every 100 calls.

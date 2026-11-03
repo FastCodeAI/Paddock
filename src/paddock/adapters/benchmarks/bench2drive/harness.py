@@ -810,7 +810,7 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         # Likewise only when it is not paddock's.
         if self.camera_rig != rig.DEFAULT:
             config["camera_rig"] = self.camera_rig
-        # And the host's sim2real diagnostics (docs/sim2real/cosmos3.md), only when set: under the
+        # And the host's sim2real diagnostics, only when set: under the
         # override the model's declared `cameras` are not the ones it was shown.
         override = _cameras_override()
         if override:

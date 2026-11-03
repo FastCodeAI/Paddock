@@ -50,7 +50,3 @@ build/
 # ignore the tmp dir within repo if any
 .tmp
 
-# The sim2real converters run from tools/sim2real/cosmos3/ (its README): the framework's scratch
-# output (COSMOS_OUTPUT_DIR's default) and the placeholder control videos the specs name.
-tools/sim2real/cosmos3/cosmos_out/
-tools/sim2real/cosmos3/controls/
