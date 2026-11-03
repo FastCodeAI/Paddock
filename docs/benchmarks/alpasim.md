@@ -268,8 +268,7 @@ That rule produces the result that most needs stating plainly:
 | VisionPilot v2 2.0.0 | 0.8488 | 0.8202 | −0.0362 |
 | Drive-JEPA 0.1.4 | 0.5030 | 0.5652 | −0.3820 |
 
-**Two of the three released models score below constant velocity.** (The
-retrained Drive-JEPA checkpoint, an adapted result, is in the table further down.) This is not a bug in
+**Two of the three released models score below constant velocity.** This is not a bug in
 the metric and not a claim that constant velocity drives well — it does not
 steer, and it rear-ends things. But a rear-end collision is *not at fault*, so
 the hard-failure rule does not zero it, while the at-fault collisions and
@@ -303,15 +302,13 @@ filed under `results/alpasim/`, so `paddock report` agrees with these tables.
 > with its native driver in [docs/models/drivejepa.md](../models/drivejepa.md#through-paddock-on-alpasim)
 > and is not one of these rows.
 >
-> **Two later versions of the Drive-JEPA driver exist; one has a row here.**
-> `drivejepa-v2-driver-0.1.4b` adds momentum-aware selection to 0.1.4, and
-> `drivejepa-v2-driver-0.1.7` drives a retrained checkpoint; neither driver's
-> source is in this repo. Both were measured on
-> 30 scenes (these ten plus twenty more), one rollout each, outside paddock,
-> and those numbers are in [docs/models/drivejepa.md](../models/drivejepa.md).
-> The ten of 0.1.7's runs that are this benchmark's scenes are ingested as
-> `results/alpasim/drivejepa/legacy-drivejepa_017_20hz`, the same way the
-> 0.1.4 row was. 0.1.4b has no row.
+> **A later version of the Drive-JEPA driver has no row here.**
+> `drivejepa-v2-driver-0.1.4b` adds momentum-aware selection to 0.1.4; its
+> source is not in this repo. It was measured on 30 scenes (these ten plus
+> twenty more), one rollout each, outside paddock, and that number is in
+> [docs/models/drivejepa.md](../models/drivejepa.md). Paddock keeps results
+> for released checkpoints only, so a driver that serves another checkpoint is
+> not ingested.
 >
 > **METEOR's rows come from a driver that is not tracked here.** `meteor-0.1.1`
 > is a native AlpaSim driver written at the Fastcode site; its source is not in
@@ -320,7 +317,7 @@ filed under `results/alpasim/`, so `paddock report` agrees with these tables.
 
 ### `1cam-20Hz` — the shared referee
 
-Five rows on one referee: same control rate, same force-GT duration, same
+Four rows on one referee: same control rate, same force-GT duration, same
 `eval-config.yaml` (md5 `68cf4aaa89356e0f6053d76eb4ef2321`, byte-identical
 across every 20 Hz row, including Alpamayo's and METEOR's).
 
@@ -330,7 +327,6 @@ across every 20 Hz row, including Alpamayo's and METEOR's).
 | *constant-velocity floor 0.2.3* | *0.8850* | *0.2312* | *0.8290* | *10/10* | *—* |
 | VisionPilot v2 2.0.0 | 0.8488 | 0.3170 | 0.8202 | 9/10 | at-fault 1 |
 | Drive-JEPA 0.1.4 | 0.5030 | 0.4306 | 0.5652 | 7/10 | at-fault 2, offroad 1 |
-| Drive-JEPA 0.1.7, retrained checkpoint (adapted) | 0.9956 | 0.0131 | 0.9765 | 10/10 | — |
 
 **Of the released checkpoints, only OpenPilot clears the floor**, by +0.0716. This is the finding, not a
 measurement artefact: `scene_score` saturates at `progress_clipped_rel ≥ 0.8`
@@ -347,15 +343,6 @@ Two rows need their caveat quoted with the number:
   reads `ok: false` on 3 of 12 gates (two Prometheus ports, two that look like
   gate-side indexing); none touch the referee pins, which were read from the
   resolved config and are on-pin.
-- **Drive-JEPA 0.1.7** is not the released model and not a zero-shot result.
-  Its trajectory generator was retrained on Physical AI AV (`train` split), and
-  AlpaSim's scenes are reconstructions of clips from that dataset. The training
-  code excludes the evaluation scenes, which is taken on that code's word. These
-  ten scenes were also driven repeatedly while the driver was developed, so
-  0.9956 is not a held-out number. The ten runs are the first ten of a
-  30-scene sweep made on 2026-10-10; on all 30 the mean is 0.7697, with three
-  at-fault collisions and two off-road events, all on the other twenty scenes.
-  Nine of the ten scenes score 1.0000 and the tenth 0.9563.
 - **Drive-JEPA**'s 0.5030 is a mean over six early-terminated or hard-gated
   scenes and four full-distance runs that all scored 1.0000. It is a pattern —
   it wins 1, ties 3 and loses 6 against the floor — not one bad scene.
@@ -377,7 +364,6 @@ the control rate differs between them.
 | model | `scene_score` | sd | progress | at-fault | off-road | vs floor |
 |---|---|---|---|---|---|---|
 | OpenPilot supercombo 0.2.0 | **0.7726** | 0.3627 | 0.7238 | 0/30 | 3/30 | +0.2850 |
-| Drive-JEPA 0.1.7, retrained checkpoint (adapted) | 0.7697 | 0.4022 | 0.8284 | 3/30 | 2/30 | +0.2821 |
 | VisionPilot v2 2.0.0 | 0.6289 | 0.4106 | 0.6355 | 4/30 | 1/30 | +0.1413 |
 | *constant-velocity floor 0.2.3* | *0.4876* | *0.4252* | *0.5411* | *2/30* | *5/30* | *—* |
 | Drive-JEPA 0.1.4 | 0.4209 | 0.4378 | 0.5091 | 7/30 | 5/30 | −0.0667 |
@@ -393,11 +379,9 @@ Three things to read with it:
   "AlpaSim (nuRec)" below; see [docs/models/alpamayo15.md](../models/alpamayo15.md#on-alpasim-through-the-bridge).
 - **One rollout per scene, so the differences are loose.** Paired over the 30
   scenes, the standard error of the difference from the floor is 0.077 for
-  OpenPilot, 0.076 for the retrained Drive-JEPA, 0.080 for VisionPilot and
-  0.089 for Drive-JEPA 0.1.4. VisionPilot's +0.1413 and Drive-JEPA's −0.0667
-  are both under two standard errors. OpenPilot against the retrained row is
-  +0.003 ± 0.045: level, and the bold marks the best released checkpoint, not
-  a win over the retrained one.
+  OpenPilot, 0.080 for VisionPilot and 0.089 for Drive-JEPA 0.1.4.
+  VisionPilot's +0.1413 and Drive-JEPA's −0.0667 are both under two standard
+  errors.
 - **`paddock run --bench alpasim` still drives the ten by default.** The
   default `scene_set` is unchanged; the twenty extra scenes were driven by each
   model's native driver and ingested. `scene_set = "public_2601_30scenes"` in
@@ -586,7 +570,7 @@ The per-metric results behind this benchmark's column in the
 [README's support matrix](../../README.md#support-matrix), and the notes on its
 cells. Moved here from the README unchanged except for links; the symbols are
 the README's former footnote marks, and each note below starts with the mark it
-explains. Marks about a model rather than this benchmark (⊕ ∗ ◊ ◇ ✦ ✧) are
+explains. Marks about a model rather than this benchmark (∗ ◊ ◇ ✦ ✧) are
 explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
 
 ### Notes on the matrix cells
@@ -599,11 +583,9 @@ suite (seeded, stratified by speed and turn). Scorer `affc2ea`, under the
 the model rather than by the harness. The files are in `results/alpasim/`, as
 the `…_30scenes` runs, and `paddock report` reads them. Against the
 constant-velocity floor (0.4876): Alpamayo 1.5 +0.3076 (through paddock's bridge, ¶¶), OpenPilot +0.2850, VisionPilot +0.1413,
-Drive-JEPA −0.0667; the retrained Drive-JEPA row (⊕), +0.2821, is an adapted
-result read on its own. With one rollout per scene these differences carry a
+Drive-JEPA −0.0667. With one rollout per scene these differences carry a
 paired standard error of about 0.08, so VisionPilot's margin and Drive-JEPA's
-deficit are both under two standard errors, and OpenPilot and the retrained row
-are level (+0.003 ± 0.045). The scene list is tracked as
+deficit are both under two standard errors. The scene list is tracked as
 `adapters/benchmarks/alpasim/scenes/public_2601_30scenes.yaml`. `scene_score` saturates at `progress_clipped_rel ≥ 0.8`
 and zeroes a scene on an at-fault collision or an off-road event, so quote
 progress beside it (floor 0.5411, OpenPilot 0.7238, VisionPilot 0.6355,
@@ -626,8 +608,8 @@ no single-rollout mean here should be read to four figures.
 (`results/alpasim/alpamayo15/20261029T200113-9d900c`, valid). Its native row,
 made by AlpaSim's own Alpamayo driver on the first 10 scenes only, scores
 0.9000, and the bridge run scores the same 0.9000 on those 10, scene for scene.
-On those same 10 scenes the other rows score: OpenPilot 0.9566, VisionPilot 0.8488, Drive-JEPA 0.5030, retrained
-Drive-JEPA 0.9956, constant-velocity floor 0.8850, and METEOR, on six cameras,
+On those same 10 scenes the other rows score: OpenPilot 0.9566, VisionPilot 0.8488, Drive-JEPA 0.5030,
+constant-velocity floor 0.8850, and METEOR, on six cameras,
 0.6869.
 
 ⬡ METEOR's AlpaSim cell is the same 30 scenes, referee config and scorer as the
@@ -671,15 +653,8 @@ uuid-pinned, one rollout per scene — **n = 10**. Every row is under
 `results/alpasim/` and `paddock report` reads it; the protocol is in
 [docs/benchmarks/alpasim.md](alpasim.md).
 
-Drive-JEPA has two rows below. The first is its released checkpoint behind the
-native driver at 0.1.4. The second is that driver at 0.1.7 (its source is not
-in this repo), driving a checkpoint whose trajectory generator was retrained on Physical AI
-AV. The second row is an *adapted* result: AlpaSim's scenes are reconstructions
-of clips from that dataset (the training code excludes the evaluation scenes,
-which is taken on that code's word),
-and these ten scenes were driven repeatedly while the driver was developed. It
-is the first ten scenes of a 30-scene sweep; on all 30 it scores 0.7697. What
-it reads and how it picks are in
+Drive-JEPA's row below is its released checkpoint behind the native driver at
+0.1.4. What it reads and how it picks are in
 [docs/models/drivejepa.md](../models/drivejepa.md).
 
 **On 30 scenes** — these ten plus twenty more from the same suite, the set the
@@ -689,7 +664,6 @@ support matrix quotes — the same drivers under the same referee score:
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | Alpamayo 1.5, through the bridge | `4cam-20Hz` | **0.7952** | **+0.3076** | 0.8434 | 0.657 | 1 / 30 | 3 / 30 | 4 / 30 |
 | OpenPilot | `1cam-20Hz` | 0.7726 | +0.2850 | 0.7238 | 0.671 | 0 / 30 | 6 / 30 | 3 / 30 |
-| Drive-JEPA, retrained ⊕ | `1cam-20Hz` | 0.7697 | +0.2821 | 0.8284 | 0.661 | 3 / 30 | 3 / 30 | 2 / 30 |
 | Qwen-Drive, through the bridge | `3cam-20Hz` | 0.7001 | +0.2125 | 0.7873 | 0.631 | 5 / 30 | 10 / 30 | 2 / 30 |
 | VisionPilot | `1cam-20Hz` | 0.6289 | **+0.1413** | 0.6355 | 0.570 | 4 / 30 | 11 / 30 | 1 / 30 |
 | *floor* | *`1cam-20Hz`* | *0.4876* | *—* | *0.5411* | *0.447* | *2 / 30* | *8 / 30* | *5 / 30* |
@@ -699,8 +673,7 @@ support matrix quotes — the same drivers under the same referee score:
 
 One rollout per scene, so read the differences with their spread: paired over
 the 30 scenes, the standard error of each model's difference from the floor is
-about 0.08 (OpenPilot 0.077, retrained Drive-JEPA 0.076, VisionPilot 0.080,
-Drive-JEPA 0.089), and OpenPilot against the retrained row is +0.003 ± 0.045.
+about 0.08 (OpenPilot 0.077, VisionPilot 0.080, Drive-JEPA 0.089).
 Alpamayo 1.5 against OpenPilot is +0.023, well inside that spread: the two are
 level. Alpamayo scores 0.9000 on the first ten scenes and 0.7427 on the twenty
 extra, where its four off-road events are. METEOR's row is the
@@ -723,7 +696,6 @@ and every row is read against the one constant-velocity floor.
 | *floor* | *`1cam-20Hz`* | *0.8850* | *—* | *0.8290* | *0.654* | *0 / 10* | *2 / 10* | *0 / 10* |
 | VisionPilot | `1cam-20Hz` | 0.8488 | −0.0362 | 0.8202 | 0.699 | 1 / 10 | 3 / 10 | 0 / 10 |
 | Drive-JEPA | `1cam-20Hz` | 0.5030 | **−0.3820** | 0.5652 | 0.462 | 2 / 10 | 4 / 10 | 1 / 10 |
-| Drive-JEPA, retrained ⊕ | `1cam-20Hz` | 0.9956 | +0.1106 | 0.9765 | 0.662 | 0 / 10 | 0 / 10 | 0 / 10 |
 | Alpamayo 1.5 | `4cam-20Hz` | 0.9000 | +0.0150 | 0.9603 | 0.740 | 1 / 10 | 1 / 10 | 0 / 10 |
 | METEOR ⬡ | `6cam-20Hz` | 0.6869 | −0.1981 | 0.6073 | 0.589 | 0 / 10 | 3 / 10 | 0 / 10 |
 | AutoE2E ⬢ | `6cam-20Hz` | 0.3175 | −0.5675 | 0.2924 | 0.120 | 2 / 10 | 3 / 10 | 0 / 10 |

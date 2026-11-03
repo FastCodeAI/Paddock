@@ -37,7 +37,6 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 - **`--resume` does not check the model node.** It compares the run's config,
   not the code serving the model, so a resumed run can mix two versions of an
   adapter.
-- **Drive-JEPA's retrained AlpaSim checkpoint has no public download yet.**
 - **AlpaSim rows driven through paddock's bridge ran on a newer simulator image.**
   Qwen-Drive and Alpamayo 1.5 ran on image `6dad7728`, while the one-camera rows
   they are ranked with ran on `1e0d5fea`. Nobody has shown the two images drive

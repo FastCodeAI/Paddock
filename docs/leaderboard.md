@@ -1,20 +1,18 @@
 # Paddock leaderboard
 
-124 runs across 9 benchmarks.
+122 runs across 9 benchmarks.
 61 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
 | model | run | n | site | scene_score ↑ | progress ↑ | collision_rate ↓ | collision_at_fault ↓ | offroad ↓ | duration_frac_20s ↑ | dist_to_gt_trajectory ↓ |
 |---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
-| drivejepa | drivejepa_017_20hz | 10 | fastcode-shakaal | 0.996 | 0.976 | 0.000 | 0.000 | 0.000 | 0.662 | 4.270 |
 | openpilot | openpilot_020_pilot10 | 10 | fastcode-shakaal | 0.957 | 0.901 | 0.100 | 0.000 | 0.000 | 0.777 | 1.454 |
 | alpamayo15 | alpamayo_proxy_referee_20hz | 10 | fastcode-shakaal | 0.900 | 0.960 | 0.100 | 0.100 | 0.000 | 0.740 | 3.170 |
 | constant_velocity | cv_023_20hz_pilot10 | 10 | fastcode-shakaal | 0.885 | 0.829 | 0.200 | 0.000 | 0.000 | 0.653 | 2.507 |
 | visionpilot | visionpilot_v2_smoke_pilot10_handover_blend | 10 | fastcode-shakaal | 0.849 | 0.820 | 0.300 | 0.100 | 0.000 | 0.699 | 1.467 |
 | alpamayo15 | 20261029T200113-9d900c | 30 | fastcode-shakaal | 0.795 | 0.843 | 0.100 | 0.033 | 0.133 | 0.657 | 2.679 |
 | openpilot | openpilot_020_30scenes | 30 | fastcode-shakaal | 0.773 | 0.724 | 0.200 | 0.000 | 0.100 | 0.671 | 1.787 |
-| drivejepa | drivejepa_017_20hz_30scenes | 30 | fastcode-shakaal | 0.770 | 0.828 | 0.100 | 0.100 | 0.067 | 0.661 | 3.024 |
 | qwendrive | 20261027T215528-d231d8 | 30 | fastcode-shakaal | 0.700 | 0.787 | 0.333 | 0.167 | 0.067 | 0.631 | 2.177 |
 | meteor | meteor_011_published_first10 | 10 | fastcode-shakaal | 0.687 | 0.607 | 0.300 | 0.000 | 0.000 | 0.589 | 2.045 |
 | visionpilot | visionpilot_v2_30scenes | 30 | fastcode-shakaal | 0.629 | 0.636 | 0.367 | 0.133 | 0.033 | 0.570 | 1.740 |
