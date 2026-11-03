@@ -239,17 +239,22 @@ def test_a_driver_that_serves_a_trained_checkpoint_is_not_ingested(tmp_path: Pat
 
     That is how the retrained Drive-JEPA's two AlpaSim runs reached the
     leaderboard as Drive-JEPA's own. Paddock keeps only the released models'
-    results; a trained checkpoint's runs belong to gallops.
+    results; a trained checkpoint's runs belong to gallops. So for Drive-JEPA
+    only the drivers known to serve the released checkpoint are filed, and a
+    driver nobody has listed is left out by default.
     """
-    assert alpasim.model_name("drivejepa-v2-driver-0.1.4b") == "drivejepa"
-    assert alpasim.model_name("drivejepa-v2-driver-0.1.7") is None
+    for released in ("drivejepa-v2-driver-0.1.4", "drivejepa-v2-driver-0.1.4b"):
+        assert alpasim.model_name(released) == "drivejepa", released
+    # 0.1.6 and 0.1.7 drove the Physical AI AV retrain; 0.1.9 stands for the next one.
+    for other in ("drivejepa-v2-driver-0.1.6", "drivejepa-v2-driver-0.1.7", "drivejepa-v2-driver-0.1.9"):
+        assert alpasim.model_name(other) is None, other
 
     run = _scene_variant(tmp_path, "retrained")
     log = run / "wizard_console_alpamayo_two_scenes.log"
-    log.write_text(log.read_text().replace("alpamayo1_5-driver-0.91.0", "drivejepa-v2-driver-0.1.7"))
+    log.write_text(log.read_text().replace("alpamayo1_5-driver-0.91.0", "drivejepa-v2-driver-0.1.6"))
 
     assert alpasim.ingest(tmp_path, site="test-site") == []
-    with pytest.raises(alpasim.Incomparable, match="not the released checkpoint"):
+    with pytest.raises(alpasim.Incomparable, match="not a driver of the released drivejepa"):
         alpasim.ingest_campaign([run], run_id="legacy-retrained", site="test-site")
 
 

@@ -78,13 +78,17 @@ _MODEL_BY_DRIVER = {
     "meteor": "meteor",
 }
 
-#: Drivers, by full version_id, that serve a checkpoint other than the released
-#: model's, and what they serve. Paddock keeps only the released models' results,
-#: and the prefix map above would file such a run, and rank it, as the released
-#: model: that is how the retrained Drive-JEPA's two AlpaSim runs reached the
-#: leaderboard as Drive-JEPA's own. Their runs and the driver are gallops'.
-NOT_RELEASED = {
-    "drivejepa-v2-driver-0.1.7": "Drive-JEPA retrained on Physical AI AV, not the released checkpoint",
+#: For a model that has also been driven with checkpoints we trained, the drivers,
+#: by full version_id, that serve its released checkpoint. Paddock keeps only the
+#: released models' results, and the prefix map above would file any driver of
+#: the model, and rank it, as the released one: that is how the retrained
+#: Drive-JEPA's AlpaSim runs reached the leaderboard as Drive-JEPA's own. So for
+#: these models an unlisted driver is not ingested, and a new driver stays out
+#: until someone adds it here. Drive-JEPA's 0.1.6 and 0.1.7 drove the Physical AI
+#: AV retrain (gallops GC05); 0.1.0 to 0.1.3 were development drivers behind no
+#: row. A model with no entry is filed by its prefix alone.
+RELEASED_DRIVERS = {
+    "drivejepa": frozenset({"drivejepa-v2-driver-0.1.4", "drivejepa-v2-driver-0.1.4b"}),
 }
 
 
@@ -129,8 +133,15 @@ def renderer_name(run: Path) -> str | None:
     return {"NuRec": "nurec", "OmniDreams": "omnidreams"}[match.group(1)] if match else None
 
 
+def _unreleased_driver_of(version_id: str | None) -> str | None:
+    """The model `version_id` drives if it is not one of that model's released drivers."""
+    model = _MODEL_BY_DRIVER.get((version_id or "").split("-", 1)[0])
+    released = RELEASED_DRIVERS.get(model or "")
+    return model if released is not None and version_id not in released else None
+
+
 def model_name(version_id: str | None) -> str | None:
-    if not version_id or version_id in NOT_RELEASED:
+    if not version_id or _unreleased_driver_of(version_id):
         return None
     return _MODEL_BY_DRIVER.get(version_id.split("-", 1)[0])
 
@@ -439,9 +450,12 @@ def ingest_campaign(
     for path in dirs:
         scan = _scan(path)
         if scan is None:
-            serves = NOT_RELEASED.get(driver_version_id(path) or "")
-            if serves:
-                raise Incomparable(f"{run_id}: {path.name} was driven by a driver that serves {serves}")
+            version = driver_version_id(path)
+            model = _unreleased_driver_of(version)
+            if model:
+                raise Incomparable(
+                    f"{run_id}: {path.name} was driven by {version}, not a driver of the released {model}"
+                )
             raise Incomparable(f"{run_id}: {path.name} is not an ingestible AlpaSim run directory")
         scans.append(scan)
     if not scans:
