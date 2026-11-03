@@ -234,6 +234,25 @@ def test_a_campaign_refuses_directories_that_ran_different_drivers(tmp_path: Pat
         alpasim.ingest_campaign([a, b], run_id="legacy-sweep", site="test-site")
 
 
+def test_a_driver_that_serves_a_trained_checkpoint_is_not_ingested(tmp_path: Path) -> None:
+    """Filed by its prefix, such a run would be ranked as the released model.
+
+    That is how the retrained Drive-JEPA's two AlpaSim runs reached the
+    leaderboard as Drive-JEPA's own. Paddock keeps only the released models'
+    results; a trained checkpoint's runs belong to gallops.
+    """
+    assert alpasim.model_name("drivejepa-v2-driver-0.1.4b") == "drivejepa"
+    assert alpasim.model_name("drivejepa-v2-driver-0.1.7") is None
+
+    run = _scene_variant(tmp_path, "retrained")
+    log = run / "wizard_console_alpamayo_two_scenes.log"
+    log.write_text(log.read_text().replace("alpamayo1_5-driver-0.91.0", "drivejepa-v2-driver-0.1.7"))
+
+    assert alpasim.ingest(tmp_path, site="test-site") == []
+    with pytest.raises(alpasim.Incomparable, match="not the released checkpoint"):
+        alpasim.ingest_campaign([run], run_id="legacy-retrained", site="test-site")
+
+
 def test_a_campaign_refuses_directories_that_ran_different_tick_configs(tmp_path: Path) -> None:
     """10 Hz control gives a policy five times the chances to correct that 2 Hz does.
 

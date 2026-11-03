@@ -78,6 +78,15 @@ _MODEL_BY_DRIVER = {
     "meteor": "meteor",
 }
 
+#: Drivers, by full version_id, that serve a checkpoint other than the released
+#: model's, and what they serve. Paddock keeps only the released models' results,
+#: and the prefix map above would file such a run, and rank it, as the released
+#: model: that is how the retrained Drive-JEPA's two AlpaSim runs reached the
+#: leaderboard as Drive-JEPA's own. Their runs and the driver are gallops'.
+NOT_RELEASED = {
+    "drivejepa-v2-driver-0.1.7": "Drive-JEPA retrained on Physical AI AV, not the released checkpoint",
+}
+
 
 #: The console has three names, because the launch path differs. The wizard
 #: writes `wizard_console_<label>.log` when it was given a label and plain
@@ -121,7 +130,7 @@ def renderer_name(run: Path) -> str | None:
 
 
 def model_name(version_id: str | None) -> str | None:
-    if not version_id:
+    if not version_id or version_id in NOT_RELEASED:
         return None
     return _MODEL_BY_DRIVER.get(version_id.split("-", 1)[0])
 
@@ -430,6 +439,9 @@ def ingest_campaign(
     for path in dirs:
         scan = _scan(path)
         if scan is None:
+            serves = NOT_RELEASED.get(driver_version_id(path) or "")
+            if serves:
+                raise Incomparable(f"{run_id}: {path.name} was driven by a driver that serves {serves}")
             raise Incomparable(f"{run_id}: {path.name} is not an ingestible AlpaSim run directory")
         scans.append(scan)
     if not scans:
