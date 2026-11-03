@@ -119,7 +119,7 @@ comma2k19 = { run = "comma2k19/openpilot/20260916T051616-2a91ca", marks = "S" }
 nuplan = { run = "nuplan/openpilot/20260917T220353-9e4f44" }
 navsim = { run = "navsim/openpilot/20260911T161513-3a4c90", note = "10 Hz" }
 navsim_v1 = { run = "navsim_v1/openpilot/20260914T181009-dbcef4", note = "10 Hz" }
-bench2drive = { run = "bench2drive/openpilot/pooled50-40c29d24c37d542a-c7d2b2", marks = "P R" }
+bench2drive = { run = "bench2drive/openpilot/pooled50-40c29d24c37d542a-c7d2b2", marks = "P" }  # routes can end early; it ranks
 neuroncap = { run = "neuroncap/openpilot/20260905T055713-11ac59" }
 alpasim = { run = "alpasim/openpilot/legacy-openpilot_020_30scenes" }
 
@@ -162,9 +162,9 @@ comma2k19 = { run = "comma2k19/meteor/20261030T001935-0b8d0b" }  # the road came
 nuplan = { run = "nuplan/meteor/20260917T195335-1b447c" }
 navsim = { run = "navsim/meteor/20260914T234307-e56cfc", marks = "P" }
 navsim_v1 = { run = "navsim_v1/meteor/20260915T005223-071c0b", marks = "P" }
-# Its declared 5 Hz, routes ended after 30 s stuck or 4x the expert's time (AutoE2E's rules): valid,
-# but not measured as this column's 20 Hz cells were (every tick, every route to its end), so R.
-bench2drive = { run = "bench2drive/meteor/pooled50-40c29d24c37d542a-867d57", marks = "R", note = "5 Hz" }
+# Its declared 5 Hz, routes ended after 30 s stuck or 4x the expert's time (AutoE2E's rules), each a
+# failed drive scored as it stood: valid, and it ranks. The README says how it was driven.
+bench2drive = { run = "bench2drive/meteor/pooled50-40c29d24c37d542a-867d57", note = "5 Hz" }
 neuroncap = { run = "neuroncap/meteor/20260915T193036-d34559" }
 alpasim = { run = "alpasim/meteor/legacy-meteor_011_published_30scenes" }
 
@@ -184,9 +184,9 @@ kitscenes = { run = "kitscenes/autoe2e/20261020T220509-dee848", marks = "A" }
 comma2k19 = { run = "comma2k19/autoe2e/20261020T213543-417344" }
 navsim = { run = "navsim/autoe2e/20261009T055926-3ceb18", marks = "A", note = "10 Hz" }
 navsim_v1 = { run = "navsim_v1/autoe2e/20261027T185517-5c7949", marks = "A", note = "10 Hz" }
-# Its own inputs at its declared 10 Hz, routes ended after 30 s stuck or 4x the expert's time: valid,
-# but not measured as this column's 20 Hz cells were (every tick, every route to its end), so R.
-bench2drive = { run = "bench2drive/autoe2e/pooled50-40c29d24c37d542a-cc7a9c", marks = "R", note = "10 Hz" }
+# Its own inputs at its declared 10 Hz, routes ended after 30 s stuck or 4x the expert's time, each a
+# failed drive scored as it stood: valid, and it ranks. The README says how it was driven.
+bench2drive = { run = "bench2drive/autoe2e/pooled50-40c29d24c37d542a-cc7a9c", note = "10 Hz" }
 neuroncap = { run = "neuroncap/autoe2e/20261026T233951-743060", marks = "A" }
 alpasim = { run = "alpasim/autoe2e/20261022T045847-86b955" }
 

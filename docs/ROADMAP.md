@@ -710,10 +710,10 @@ same 50 routes, asked every tick, with openpilot's own longitudinal planner and 
 driver-resume nudge, both declared in its `model.yaml` (#79), under the same
 early-stop rules: DS 47.52, `valid: true`
 (`results/bench2drive/openpilot/pooled50-40c29d24c37d542a-c7d2b2`). The nudge
-stands in for a driver pressing resume, so the README cell is marked P as well as
-R. It replaces the README's unassisted estimate (30.09), a reconstruction from
-the September recordings. Measured; what the planner and the nudge each add to
-the 47.52 is not separated.
+stands in for a driver pressing resume, so the README cell is marked P; like
+AutoE2E's and METEOR's, it ranks. It replaces the README's unassisted estimate
+(30.09), a reconstruction from the September recordings. Measured; what the
+planner and the nudge each add to the 47.52 is not separated.
 
 ## HUGSIM — adapter landed; two recorded campaigns tracked, none driven through the harness
 
