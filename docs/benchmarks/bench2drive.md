@@ -651,9 +651,10 @@ own inputs, the measured ego history and the route raster, asked for a plan at t
 ([run](../../results/bench2drive/autoe2e/pooled50-40c29d24c37d542a-cc7a9c/run.json),
 `valid: true`): route completion 26.37 %, infraction penalty 0.60. A route ends
 after 30 s without 3 m of progress or at 4x the expert's time, and is scored as a
-failed drive: 42 of the 50 ended on the first rule, 1 on the second. The other rows
-drove every route to Bench2Drive's own end; the cell ranks all the same, as a run
-under these rules does ([Ending routes early](#ending-routes-early)), and AutoE2E is
+failed drive: 42 of the 50 ended on the first rule, 1 on the second. The rows
+without the early stop drove every route to Bench2Drive's own end; the cell
+ranks all the same, as a run under these rules does
+([Ending routes early](#ending-routes-early)), and AutoE2E is
 left out of the 50-route table below, whose infraction counts depend on how long
 each route ran. Fed a
 steady straight past and no route instead, which are not upstream's inputs, and
