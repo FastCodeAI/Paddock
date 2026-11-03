@@ -1,5 +1,17 @@
 # NAVSIM
 
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Loop | open loop |
+| Dataset | `navsim` |
+| Primary metric | `epdms` |
+| Adapter | [`adapters/benchmarks/navsim/`](../../src/paddock/adapters/benchmarks/navsim/) |
+| Models that run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
+
+<!-- /summary -->
+
 PDMS / EPDMS: NAVSIM plans a 4 s trajectory from one frame, re-simulates it
 through a kinematic bicycle model with an LQR tracker, and scores the outcome
 against a cached ground truth — collisions, drivable-area compliance, progress,
@@ -643,24 +655,19 @@ A run's cost on any single failure is now one chunk of four logs, about
 twenty minutes at alpamayo's rate, against the eleven and a half hours the
 first run lost.
 
-## A launcher bug found by the parallel smoke
+## Two runs at once
 
-Running two smokes at once produced two runs reporting a node on the same
-port, with **identical scores**: drivejepa's recorded plans had two columns
-(visionpilot's shape; drivejepa emits x, y, heading). drivejepa's health check
-had passed against visionpilot's node, up on 9001 while drivejepa's own was
-still loading, and its scorer then sent every request to the wrong model.
-
-`/alive` says only that *a* paddock node is answering. Nodes now also answer
+`/alive` says only that *a* paddock node is answering, so a run whose own node
+was still loading could pass its health check against another run's node on
+the same port and score the wrong model. Nodes therefore also answer
 `/whoami` with the model they serve and the nonce the launcher gave them (the
 run id), and the launcher refuses a port that answers as a different model *or
-a different launch of the same model* — two concurrent alpamayo A/B arms would
-otherwise pass each other's check. `/whoami` is retried within the startup
-deadline, so a slow answer on a loaded box is not mistaken for a foreign node,
-and a node that dies during the run is reported after it. `PADDOCK_BASE_PORT`
-gives each concurrent run its own range. The bogus run is stored with
-`valid: false` and the reason. This would have applied to any two concurrent
-paddock runs, not only NAVSIM.
+a different launch of the same model* — two concurrent A/B arms of one model
+would otherwise pass each other's check. `/whoami` is retried within the
+startup deadline, so a slow answer on a loaded box is not mistaken for a
+foreign node, and a node that dies during the run is reported after it.
+`PADDOCK_BASE_PORT` gives each concurrent run its own range. This applies to
+any two concurrent paddock runs, not only NAVSIM.
 
 ## Support-matrix results
 

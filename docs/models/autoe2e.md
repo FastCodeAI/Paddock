@@ -1,4 +1,18 @@
-# AutoE2E v1.0 in paddock
+# AutoE2E
+
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Upstream | [autowarefoundation/auto_e2e](https://github.com/autowarefoundation/auto_e2e) at `40a75cf8` |
+| Adapter | [`adapters/models/autoe2e/`](../../src/paddock/adapters/models/autoe2e/) |
+| Environment | uv, Python 3.12 |
+| Cameras | `CAM_FRONT`, `CAM_FRONT_LEFT`, `CAM_FRONT_RIGHT`, `CAM_BACK_LEFT`, `CAM_BACK`, `CAM_BACK_RIGHT` |
+| Plan | controls, 0.5 s apart, 6.4 s ahead |
+| Runs on | [alpasim](../benchmarks/alpasim.md), [bench2drive](../benchmarks/bench2drive.md), [comma2k19](../benchmarks/comma2k19.md), [hugsim](../benchmarks/hugsim.md), [kitscenes](../benchmarks/kitscenes.md), [navsim](../benchmarks/navsim.md), [neuroncap](../benchmarks/neuroncap.md), [nuscenes](../benchmarks/nuscenes.md) |
+| Size, licence, training data | [comparison.md](comparison.md) |
+
+<!-- /summary -->
 
 AutoE2E is the Autoware Foundation's open end-to-end planner. Release v1.0
 (Hugging Face `AutowareFoundation/auto_e2e`, published 8 Oct 2026) ships two

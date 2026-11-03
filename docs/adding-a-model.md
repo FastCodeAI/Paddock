@@ -31,7 +31,7 @@ on coordinate frames.
 | 3 | `src/paddock/adapters/models/<name>/policy.py` | **create** — three methods |
 | 4 | `src/paddock/adapters/models/<name>/setup.sh` | **create** — build the env |
 | 5 | `src/paddock/adapters/models/<name>/tests/test_policy.py` | **create** — fixture test |
-| 6 | `docs/models/<name>.md` | **create** — quirks and reference numbers |
+| 6 | `docs/models/<name>.md` | **create** — quirks and reference numbers; `python -m tools.doc_summaries` writes its summary table |
 | 7 | `paddock.toml` | **your machine only** — never committed |
 
 Nothing else. In particular you do **not** register your model in any central
@@ -272,7 +272,7 @@ in order after checkout.
 
 ## When the environment resists you instead
 
-This checklist covers what to write. [SKILLS.md](../SKILLS.md) covers what goes
+This checklist covers what to write. [Troubleshooting](troubleshooting.md#bringing-up-a-new-model-or-benchmark) covers what goes
 wrong doing it — `uv sync` failing on an extra you do not need, a `setup.sh`
 missing a dependency the shared machinery assumes, a model that needs a dataset
 your benchmark does not use — the failures that look nothing like a paddock bug

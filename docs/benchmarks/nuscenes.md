@@ -1,5 +1,17 @@
 # nuScenes val, open loop
 
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Loop | open loop |
+| Dataset | `nuscenes` |
+| Primary metric | `l2_avg` |
+| Adapter | [`adapters/benchmarks/nuscenes/`](../../src/paddock/adapters/benchmarks/nuscenes/) |
+| Models that run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
+
+<!-- /summary -->
+
 `paddock run --bench nuscenes --model <drivejepa|visionpilot|alpamayo15|meteor>`
 
 The nuScenes planning protocol that UniAD, VAD and their successors report: on
@@ -218,32 +230,6 @@ parity against the original UniAD/VAD scorers on identical inputs -- there is no
 golden fixture from those scorers here. Establishing that would need one recorded
 (plan, future, boxes) case scored by the original code to diff against; until
 then the equivalence claim rests on the transcription, not on a measured match.
-
-## Framework changes in this PR
-
-Adding this benchmark stayed inside its own adapter directory, with one
-deliberate framework touchpoint kept minimal and called out here per
-`CONTRIBUTING.md` (the `constant_velocity` baseline it uses is `main`'s
-adapter, which runs in a uv venv, or in paddock's own interpreter when a site
-points `[models.constant_velocity] venv` there):
-
-* `results/report.py` learned that `l2*`/`col*` are lower-is-better, so these
-  metrics render with the correct arrow. This is global metric-direction
-  inference; a per-metric declaration on the benchmark would be the cleaner home
-  and is worth a follow-up.
-
-Kept OUT of this PR on purpose, as separate framework follow-ups rather than more
-core changes folded into an adapter:
-
-* **Run provenance (`repo_sha`).** `run.json` carries a `repo_sha` field that the
-  runner never populates, so runs do not record the code version that produced
-  them. Fixing it touches `runner.py` (framework) and should be its own change.
-  Until then, treat any committed result as predating later code changes —
-  e.g. the results here were produced before the geometry and nav-distance fixes
-  and should be re-run before they are quoted alongside the corrected code.
-* **Numerical-parity fixture.** Establishing parity with the original UniAD/VAD
-  scorers needs a recorded `(plan, future, boxes)` case scored by that code to
-  diff against; none is vendored here (see the Tests section).
 
 ## Support-matrix results
 

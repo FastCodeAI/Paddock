@@ -1,5 +1,17 @@
 # nuPlan
 
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Loop | open loop |
+| Dataset | `nuplan` |
+| Primary metric | `ade` |
+| Adapter | [`adapters/benchmarks/nuplan/`](../../src/paddock/adapters/benchmarks/nuplan/) |
+| Models that run on it | [alpamayo15](../models/alpamayo15.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [visionpilot](../models/visionpilot.md) |
+
+<!-- /summary -->
+
 Open-loop trajectory accuracy — ADE and FDE against the recorded future — on
 nuPlan v1.1's original logs, over a balanced set of tagged scenario moments.
 

@@ -33,7 +33,7 @@ place at every site. So a benchmark is declared in two halves — **what it need
 | 3 | `src/paddock/adapters/benchmarks/<name>/benchmark.yaml` | **create** — from `_template` |
 | 4 | `src/paddock/adapters/benchmarks/<name>/harness.py` | **create** |
 | 5 | `src/paddock/adapters/benchmarks/<name>/tests/test_harness.py` | **create** — golden test |
-| 6 | `docs/benchmarks/<name>.md` | **create** |
+| 6 | `docs/benchmarks/<name>.md` | **create**; `python -m tools.doc_summaries` writes its summary table |
 | 7 | `docs/datasets/<dataset>.md` | **create**, if the dataset is new to paddock |
 
 If the benchmark uses a dataset that is already declared, skip step 1.
@@ -329,7 +329,7 @@ dataset page worth having rather than a second copy of the first:
   `{roots.runs}` with the command that regenerates it, not in the repo;
   `tests/test_portability.py` will reject the paths otherwise.
 
-[SKILLS.md](../SKILLS.md) is the companion to this page: not what to write, but
+[Troubleshooting](troubleshooting.md#bringing-up-a-new-model-or-benchmark) is the companion to this page: not what to write, but
 what went wrong writing it — vendored tools missing the flags you would reach
 for, quaternion conventions that need verifying against the data rather than the
 docs, and a `--dry-run` sample count that reads 0 for a new benchmark.

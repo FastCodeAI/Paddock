@@ -1,4 +1,18 @@
-# WA-JEPA — Adapter Notes
+# WA-JEPA
+
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Upstream | [AFARI-Research/WA-JEPA](https://github.com/AFARI-Research/WA-JEPA) at `bec2966` |
+| Adapter | [`adapters/models/wajepa/`](../../src/paddock/adapters/models/wajepa/) |
+| Environment | uv, Python 3.10 |
+| Cameras | `CAM_FRONT_LEFT`, `CAM_FRONT`, `CAM_FRONT_RIGHT`, `CAM_BACK` |
+| Plan | waypoints, 0.5 s apart, 4 s ahead |
+| Runs on | [neuroncap](../benchmarks/neuroncap.md) |
+| Size, licence, training data | [comparison.md](comparison.md) |
+
+<!-- /summary -->
 
 > Paths in this guide are written as placeholders: `<repos>` is
 > `[roots.repos]` from your `paddock.toml`, `<weights>` is `[roots.weights]`.

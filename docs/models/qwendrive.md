@@ -1,4 +1,18 @@
-# Qwen-Drive-1.0 in paddock
+# Qwen-Drive 1.0
+
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Upstream | [QwenLM/Qwen-Drive-1.0](https://github.com/QwenLM/Qwen-Drive-1.0) at `28091c1` |
+| Adapter | [`adapters/models/qwendrive/`](../../src/paddock/adapters/models/qwendrive/) |
+| Environment | uv, Python 3.12 |
+| Cameras | `CAM_FRONT`, `CAM_FRONT_LEFT`, `CAM_FRONT_RIGHT` |
+| Plan | waypoints, 0.5 s apart, 5 s ahead |
+| Runs on | [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [neuroncap](../benchmarks/neuroncap.md), [comma2k19](../benchmarks/comma2k19.md), [alpasim](../benchmarks/alpasim.md) |
+| Size, licence, training data | [comparison.md](comparison.md) |
+
+<!-- /summary -->
 
 Qwen-Drive-1.0-4B (Qwen team + HUST, September 2026, Apache-2.0) is a Qwen3.5-4B
 vision-language model with a 1 B-parameter "Planning Expert" attached: a

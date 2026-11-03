@@ -1,5 +1,17 @@
 # neuroNCAP
 
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Loop | closed loop |
+| Dataset | `nuscenes` |
+| Primary metric | `ncap_score` |
+| Adapter | [`adapters/benchmarks/neuroncap/`](../../src/paddock/adapters/benchmarks/neuroncap/) |
+| Models that run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md), [wajepa](../models/wajepa.md) |
+
+<!-- /summary -->
+
 Closed-loop safety scoring. A NeuRAD render of a real nuScenes sequence is
 driven by the model under test while a staged actor is manoeuvred onto a
 collision course; the score reflects how much of the impact the model avoided.

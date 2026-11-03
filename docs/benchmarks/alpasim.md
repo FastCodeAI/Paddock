@@ -1,5 +1,17 @@
 # AlpaSim
 
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Loop | closed loop |
+| Dataset | rendered by the simulator |
+| Primary metric | `scene_score` |
+| Adapter | [`adapters/benchmarks/alpasim/`](../../src/paddock/adapters/benchmarks/alpasim/) |
+| Models that run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [qwendrive](../models/qwendrive.md) |
+
+<!-- /summary -->
+
 Closed-loop driving on replayed real scenes. NVIDIA's AlpaSim renders a recorded
 clip as a neural reconstruction, hands the policy camera frames at a fixed
 control rate, and steps the world forward on what the policy commands. Errors

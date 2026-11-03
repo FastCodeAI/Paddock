@@ -1,4 +1,18 @@
-# Drive-JEPA — Adapter Notes
+# Drive-JEPA
+
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Upstream | [linhanwang/Drive-JEPA](https://github.com/linhanwang/Drive-JEPA) at `e21f474` |
+| Adapter | [`adapters/models/drivejepa/`](../../src/paddock/adapters/models/drivejepa/) |
+| Environment | conda, Python 3.9 |
+| Cameras | `CAM_FRONT`, `CAM_FRONT_LEFT`, `CAM_FRONT_RIGHT`, `CAM_BACK` |
+| Plan | waypoints, 0.5 s apart, 4 s ahead |
+| Runs on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [kitscenes](../benchmarks/kitscenes.md), [neuroncap](../benchmarks/neuroncap.md), [bench2drive](../benchmarks/bench2drive.md), [nuscenes](../benchmarks/nuscenes.md), [nuplan](../benchmarks/nuplan.md), [alpasim](../benchmarks/alpasim.md), [hugsim](../benchmarks/hugsim.md) |
+| Size, licence, training data | [comparison.md](comparison.md) |
+
+<!-- /summary -->
 
 > Paths in this guide are written as placeholders: `<repos>` is
 > `[roots.repos]` from your `paddock.toml`, `<weights>` is `[roots.weights]`.

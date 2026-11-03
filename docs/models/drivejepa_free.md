@@ -1,4 +1,18 @@
-# Drive-JEPA, perception-free — Adapter Notes
+# Drive-JEPA, perception-free
+
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Upstream | [linhanwang/Drive-JEPA](https://github.com/linhanwang/Drive-JEPA) at `e21f474` |
+| Adapter | [`adapters/models/drivejepa_free/`](../../src/paddock/adapters/models/drivejepa_free/) |
+| Environment | shell, Python 3.9 |
+| Cameras | `CAM_FRONT` |
+| Plan | waypoints, 0.5 s apart, 4 s ahead |
+| Runs on | [comma2k19](../benchmarks/comma2k19.md) |
+| Size, licence, training data | [comparison.md](comparison.md) |
+
+<!-- /summary -->
 
 > Paths in this guide are written as placeholders: `<repos>` is
 > `[roots.repos]` from your `paddock.toml`, `<weights>` is `[roots.weights]`.

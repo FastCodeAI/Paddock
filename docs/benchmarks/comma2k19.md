@@ -1,5 +1,17 @@
 # comma2k19
 
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Loop | open loop |
+| Dataset | `comma2k19` |
+| Primary metric | `ade` |
+| Adapter | [`adapters/benchmarks/comma2k19/`](../../src/paddock/adapters/benchmarks/comma2k19/) |
+| Models that run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa_free](../models/drivejepa_free.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
+
+<!-- /summary -->
+
 Open-loop trajectory accuracy against comma2k19's own recorded
 (INS/GNSS/vision-fused) future pose. 33 hours of 20 Hz highway driving on
 California's I-280, 2035 one-minute segments, two vehicles.
@@ -723,7 +735,7 @@ so this particular ambiguity cannot recur silently.
 
 The same row also predates the fix for a bug in the ONNX backend, which fed the
 road camera's image to the wide view; see [the openpilot
-guide](../models/openpilot-guide.md) for which figures that touches.
+page](../models/openpilot.md) for which figures that touches.
 
 One row carries `—` in the last column: `alpamayo15` predates it and is
 `stochastic: true`, so re-running for two proxy columns would replace a

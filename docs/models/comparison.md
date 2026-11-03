@@ -410,7 +410,7 @@ number unchanged — curvature reaches the plan only through the longitudinal ca
 and will not be reproduced by a re-run. Expect the open-loop rows to move most
 and the closed-loop ones least: Bench2Drive and neuroNCAP are urban and slow
 enough that the cap rarely binds, which is why the defect survived them.
-`docs/models/VISION_PILOT_GUIDE.md` has the derivation; the re-sweep is an open
+`docs/models/visionpilot.md` has the derivation; the re-sweep is an open
 item in `docs/ROADMAP.md`.
 
 ## Discrepancies against what the adapters declare
@@ -430,7 +430,7 @@ nobody re-derives them.
    (`CAMERA_SLOTS`), so a simulator renders three cameras and the model sees four
    images. `model.yaml` lists the four in `camera_views`.
 3. **AutoSpeed parameter count: 9.33 M or 9.31 M.** The measurement in
-   [VISION_PILOT_GUIDE.md](VISION_PILOT_GUIDE.md) says 9.33 M; a later count
+   [visionpilot.md](visionpilot.md) says 9.33 M; a later count
    says 9.31 M. The total is 28.1 M either way. Trivial, and noted only because
    this repo's habit is to say which number it used: `model.yaml` carries 28.1.
 
@@ -466,7 +466,7 @@ should not have. Fixed September 2026; on a 20-sample comma2k19 smoke the
 correction moved ADE@3s from 15.09 to 5.28. **Every VisionPilot figure in the
 README predates it** and will not be reproduced by a re-run — the closed-loop
 ones least, since urban scenes rarely reach the cap, and the comma2k19 and
-KITScenes ones most. `docs/models/VISION_PILOT_GUIDE.md` §"Curvature scale" has
+KITScenes ones most. `docs/models/visionpilot.md` §"Curvature scale" has
 the derivation; re-sweeping VisionPilot is an open item in `docs/ROADMAP.md`.
 
 ◊ METEOR plans **3 s**; NAVSIM scores **4 s**. A quarter of every scored plan is

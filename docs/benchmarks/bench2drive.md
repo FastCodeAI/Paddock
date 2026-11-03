@@ -1,5 +1,17 @@
 # Bench2Drive (CARLA closed-loop)
 
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Loop | closed loop |
+| Dataset | rendered by the simulator |
+| Primary metric | `driving_score` |
+| Adapter | [`adapters/benchmarks/bench2drive/`](../../src/paddock/adapters/benchmarks/bench2drive/) |
+| Models that run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [visionpilot](../models/visionpilot.md) |
+
+<!-- /summary -->
+
 [Bench2Drive](https://github.com/Thinklab-SJTU/Bench2Drive) is a closed-loop
 end-to-end driving benchmark on **CARLA 0.9.15**. The model drives the official
 leaderboard's **220 short routes** (Towns 12/13/15, 44 scenario types × 5), one
@@ -535,10 +547,9 @@ transcribed from a report.
 | `campaign` deals what is left and the guard frees hung workers | selection, dealing, per-slot config and `--held` unit-tested (`tests/test_campaign.py`); the process side used on one 220-route sweep, where the guard freed two evaluators whose CARLA had died | moderate |
 | the calibration the agent sends is each camera's CARLA mount in paddock's frames | `tests/test_calibration.py` runs the agent's own `setup()` for every camera of every rig, against the conversion written out one frame change at a time, the pinhole of the rendered view, a road point on the ego's left landing left of centre, and one 5 m to its left in front of the left cameras and behind the right ones; carla and the HTTP session are stand-ins, and 6 of its 10 tests fail with the agent's y-flip removed, the side-camera ones among them | **strong** for the formula; not compared with a live CARLA's matrices |
 
-## September 2026 runs: what changed and what the numbers are
+## Protocol details
 
-The first sweeps (2–3 Sep) were harness artifacts for two models; the fixes
-below made the 24-route set (5 abilities × 5 routes minus 11715) the reference.
+What every run here depends on, beyond the leaderboard's own rules.
 
 * **Route 11715 (Town12 EnterActorFlow) is excluded for every model.** CARLA
   segfaults inside `route_scenario.spawn_parked_vehicles` ~54 s in, on all nine
@@ -577,10 +588,11 @@ below made the 24-route set (5 abilities × 5 routes minus 11715) the reference.
 * **Official metrics beyond DS:** `tools/statistic_route_json.is_success`
   (Completed and no infraction except min-speed), and
   `tools/efficiency_smoothness_benchmark.py` on the per-tick `metric_info`
-  the agent writes (needs scipy; the b2d conda env lacks it). Wrapper:
-  `paddock-ops/bench2drive_official_metrics.py`.
+  the agent writes (needs scipy; the b2d conda env lacks it).
 
-Results on the 24 (04–06 Sep 2026), one run per route:
+Earlier results on a 24-route set (5 abilities × 5 routes, minus 11715), 04–06
+Sep 2026, one run per route. These runs are not in `results/`, so the table
+cannot be re-checked from this repository; the 50-route runs below replace it.
 
 | model | DS | RC | Success | Efficiency | Smoothness | penalised events |
 |---|---|---|---|---|---|---|
@@ -589,12 +601,6 @@ Results on the 24 (04–06 Sep 2026), one run per route:
 | Alpamayo 1.5 (nav) | 44.58 | 73.4 | 0.0 % | 180.7 | 0.598 | 34 |
 | openpilot, no nudge | 30.09 | 30.8 | 12.5 % | — | — | 1 (+17 blocked) |
 | openpilot, with nudge \* | 53.62 | 66.8 | 29.2 % | 171.6 | 0.410 | 21 |
-
-Videos with the driven trajectory overlaid, every route, every model:
-`<site video root>/Bench2drive/Simulation/<model>/<route>/{front.cam.mp4,bev.mp4}`
-plus `route_table.md`. Raw runs: `{runs}/bench2drive/<model>/<run>/<route>/`. Machine-specific locations for this site are kept in the top-level repo's `docs/RUNNING_BENCH2DRIVE.md`, not here.
-Per-scenario infractions, the nudge, and the metric definitions are on the
-"Paddock Benchmark Metrics" artifact.
 
 ## Support-matrix results
 

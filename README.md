@@ -261,7 +261,7 @@ kilobyte-sized `results/` metrics are tracked.
 | [docs/adding-a-benchmark.md](docs/adding-a-benchmark.md) | **adding a benchmark** |
 | [docs/models/comparison.md](docs/models/comparison.md) | what each model is, in full |
 | [docs/models/](docs/models/) | one page per model |
-| [SKILLS.md](SKILLS.md) | a model's own environment will not come up |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | a model's own environment will not come up |
 | [docs/architecture.md](docs/architecture.md) | how open and closed loop work |
 | [docs/benchmarks/](docs/benchmarks/) | how each benchmark is scored, every figure with its run id |
 | [docs/datasets/](docs/datasets/) | what each dataset holds, and what it cannot answer |

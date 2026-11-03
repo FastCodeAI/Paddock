@@ -94,7 +94,8 @@ before -- is in [docs/reviewing.md](docs/reviewing.md). A reviewer will look for
 - [ ] no real machine paths in tracked files
 - [ ] new repos pin a sha
 - [ ] a fixture or golden test that runs with no GPU and no dataset
-- [ ] `docs/models/<name>.md` or `docs/benchmarks/<name>.md` exists
+- [ ] `docs/models/<name>.md` or `docs/benchmarks/<name>.md` exists, its summary
+  table written by `python -m tools.doc_summaries` (`make check` fails otherwise)
 - [ ] canonical metric names reused, or a new one documented
 - [ ] non-obvious environment requirements written down, not just encoded
 - [ ] no changes to `src/paddock/` for a pure model/benchmark addition

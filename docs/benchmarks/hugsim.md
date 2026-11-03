@@ -1,5 +1,17 @@
 # HUGSIM
 
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Loop | closed loop |
+| Dataset | `hugsim` |
+| Primary metric | `hd_score` |
+| Adapter | [`adapters/benchmarks/hugsim/`](../../src/paddock/adapters/benchmarks/hugsim/) |
+| Models that run on it | [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md) |
+
+<!-- /summary -->
+
 HUGSIM ([hyzhou404/HUGSIM](https://github.com/hyzhou404/HUGSIM), data
 [XDimLab/HUGSIM](https://huggingface.co/datasets/XDimLab/HUGSIM)) is a closed-loop
 driving simulator built on 3D Gaussian splatting. Each scene is a reconstruction of

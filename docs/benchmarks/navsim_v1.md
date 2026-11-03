@@ -1,5 +1,17 @@
 # NAVSIM v1 (PDMS)
 
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Loop | open loop |
+| Dataset | `navsim` |
+| Primary metric | `pdms` |
+| Adapter | [`adapters/benchmarks/navsim_v1/`](../../src/paddock/adapters/benchmarks/navsim_v1/) |
+| Models that run on it | [alpamayo15](../models/alpamayo15.md), [drivejepa](../models/drivejepa.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
+
+<!-- /summary -->
+
 The same OpenScene scenes as [`navsim`](navsim.md), scored by the **v1.1**
 devkit as **PDMS**: the composite the 2024 NAVSIM leaderboard and most published
 navtest figures use (TransFuser 84.0, Human 94.8, constant velocity 20.6 in the
