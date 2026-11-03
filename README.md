@@ -146,9 +146,10 @@ it differs.
 - **Ranked, though some Bench2Drive routes end early.** AutoE2E's, METEOR's and
   OpenPilot's Bench2Drive runs end a route after 30 s without progress or at 4x
   the expert's time, and score it as it stood, as a failed drive; the rest of
-  the column drove every route to Bench2Drive's own end. A car that would have
-  crept on, or finished just after the cut, scores what it had
-  ([Ending routes early](docs/benchmarks/bench2drive.md#ending-routes-early)).
+  the column drove every route to Bench2Drive's own end. That can move a score
+  either way: a car that would have crept on, or finished just after the cut,
+  scores what it had, and one left to drive on could have collected more
+  penalties ([Ending routes early](docs/benchmarks/bench2drive.md#ending-routes-early)).
 - **Ranked, though fed what the model is built for.** Bench2Drive cells marked
   2 Hz, 5 Hz or 10 Hz are driven at the model's native inference rate, where the
   rest of the column runs at 20 Hz over the same 50 routes. Drive-JEPA, Alpamayo
