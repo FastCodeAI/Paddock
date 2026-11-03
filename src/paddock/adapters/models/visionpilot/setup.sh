@@ -7,11 +7,13 @@
 
 set -euo pipefail
 : "${PADDOCK_REPO:?run via 'paddock setup --model visionpilot', which sets PADDOCK_REPO}"
-ENV_NAME="${VISIONPILOT_ENV_NAME:-ncap}"
+# Created at the path paddock will look in (model.yaml's venv, or the site's
+# [models.visionpilot] venv), not by name.
+: "${PADDOCK_VENV:?run via 'paddock setup --model visionpilot', which sets PADDOCK_VENV}"
 
-conda create -y -n "${ENV_NAME}" python=3.10
+conda create -y -p "${PADDOCK_VENV}" python=3.10
 # shellcheck disable=SC1091
-eval "$(conda shell.bash hook)" && conda activate "${ENV_NAME}"
+eval "$(conda shell.bash hook)" && conda activate "${PADDOCK_VENV}"
 pip install onnxruntime numpy pillow fastapi uvicorn httpx
 
 W="${PADDOCK_REPO}/VisionPilot/modules/models/weights"

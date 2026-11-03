@@ -366,6 +366,18 @@ def test_the_cli_without_a_site_config_says_how_to_make_one(monkeypatch, tmp_pat
     assert "no site configuration" in result.output and "paddock.toml.example" in result.output
 
 
+def test_every_model_setup_sh_builds_where_paddock_will_look() -> None:
+    """`paddock setup --model X` hands the script PADDOCK_VENV, the path paddock will launch from.
+
+    Three scripts once ignored it: two built a conda env by name, which landed in
+    conda's default folder and not at model.yaml's `venv`, and openpilot's always
+    built `.venv`. Setup then "succeeded" and the first run could not find the env.
+    """
+    scripts = [spec.directory / "setup.sh" for spec in Registry.load().models.values()]
+    ignoring = [s.parent.name for s in scripts if s.exists() and "PADDOCK_VENV" not in s.read_text()]
+    assert not ignoring, f"setup.sh ignores PADDOCK_VENV: {ignoring}"
+
+
 # -- tools/ci/check_patches.py shares the helpers ---------------------------------------
 
 
