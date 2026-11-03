@@ -50,3 +50,5 @@ Report bugs and ask for models or benchmarks in GitHub issues.
   paddock's patches.
 - HUGSIM driven through paddock's own harness; today its runs are imported.
 - Models listed in `repos.yaml` but not yet evaluated: Alpamayo 2 and sunnypilot.
+- Failure-mode analysis, the same for every model and dataset, in its own repo,
+  `paddock-analysis`.
