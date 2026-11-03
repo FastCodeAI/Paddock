@@ -22,8 +22,8 @@ from paddock.adapters.benchmarks.navsim.harness import (
     NAVSIM_HISTORY_S,
     input_rate_problems,
 )
+from paddock.adapters.benchmarks.navsim.tests.test_harness import _harness, _navsim_site
 from paddock.registry import Registry
-from tests.test_navsim_adapter import _harness, _navsim_site
 
 SPEED = 5.0  # m/s, heading north (pi/2) from (100, 200)
 YAW_RATE = 0.1
@@ -310,7 +310,7 @@ def test_every_dense_override_is_declared_by_both_proxy_configs(tmp_path, monkey
 
     from paddock.adapters.benchmarks.navsim.harness import CONF_DIR as V2_CONF
     from paddock.adapters.benchmarks.navsim_v1.harness import CONF_DIR as V1_CONF
-    from tests.test_navsim_v1_adapter import _v1_site
+    from paddock.adapters.benchmarks.navsim_v1.tests.test_harness import _v1_site
 
     root = _nuplan_root(tmp_path, channels={"CAM_F0": 0.0, "CAM_L0": 8.0, "CAM_R0": 4.0})
     asks = {"cameras": ["CAM_FRONT"], "model": "alpamayo15", "native_input_hz": 10.0, "history_s": 1.5}

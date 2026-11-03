@@ -533,7 +533,7 @@ def test_a_model_needing_denser_input_than_navsim_has_is_refused(monkeypatch) ->
 
     assert INPUT_HZ == pytest.approx(2.0)
     harness = BENCHMARK(spec, cfg)
-    # A site holding nuPlan's full-rate data feeds it instead (test_navsim_dense.py);
+    # A site holding nuPlan's full-rate data feeds it instead (test_dense.py);
     # this is the refusal without it.
     monkeypatch.setattr(BENCHMARK, "nuplan_root", property(lambda self: None))
     with pytest.raises(RuntimeError, match="Hz observations"):

@@ -18,7 +18,7 @@ make which          # which interpreter the targets will use
 Every target runs against the active venv/conda env, falling back to `.venv`.
 Override with `make test PY=/path/to/python`.
 
-A single test: `.venv/bin/python -m pytest tests/test_neuroncap_harness.py::test_scenarios_step_at_ten_hertz -q`.
+A single test: `.venv/bin/python -m pytest src/paddock/adapters/benchmarks/neuroncap/tests/test_harness.py::test_scenarios_step_at_ten_hertz -q`.
 `testpaths` is `tests` **and** `src/paddock/adapters`, so adapter tests under
 `adapters/**/tests/` are collected by `make check` too. `tools/` and
 `*/scenarios_10hz` are excluded from collection because rescued modules there

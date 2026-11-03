@@ -223,7 +223,7 @@ last real heading is carried forward — otherwise a stopped ego gets a random
 yaw and fails checks it should pass.
 
 The conversion lives in `convert.py`, which imports no vendor code, so
-`tests/test_navsim_adapter.py` pins it in paddock's own environment. Same
+`src/paddock/adapters/benchmarks/navsim/tests/test_harness.py` pins it in paddock's own environment. Same
 reasoning as `CameraFit` in the openpilot adapter.
 
 ## Reproduction status

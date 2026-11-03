@@ -47,7 +47,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # 3.11 is paddock's own interpreter. 3.9 is on PATH only so that
-      # tests/test_navsim_adapter.py::test_wire_modules_compile_under_python_39
+      # src/paddock/adapters/benchmarks/navsim/tests/test_harness.py::test_wire_modules_compile_under_python_39
       # runs instead of skipping: the NAVSIM proxy imports paddock's wire
       # modules inside the vendor's 3.9 interpreter.
       - uses: actions/setup-python@v5

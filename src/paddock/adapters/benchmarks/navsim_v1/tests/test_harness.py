@@ -1,7 +1,7 @@
 """NAVSIM v1 PDMS: the subclass, its vocabulary, the checks that keep the two
 devkit generations apart, and the node-less runs (baseline, human, replay).
 
-The stand-in site comes from tests/test_navsim_adapter.py; nothing here needs
+The stand-in site comes from navsim/tests/test_harness.py; nothing here needs
 a devkit, a cache or a model, except the one site-gated test at the end.
 """
 
@@ -13,7 +13,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from test_navsim_adapter import _harness, _navsim_site
 
 from paddock.adapters.benchmarks.navsim import convert, nodeless
 from paddock.adapters.benchmarks.navsim import harness as v2
@@ -29,16 +28,15 @@ from paddock.adapters.benchmarks.navsim.harness import (
     limit_problems,
     merge_chunk_csvs,
 )
+from paddock.adapters.benchmarks.navsim.tests.test_harness import _harness, _navsim_site
 from paddock.adapters.benchmarks.navsim_v1.harness import CONF_DIR as V1_CONF_DIR
 from paddock.adapters.benchmarks.navsim_v1.harness import SCORER as V1_SCORER
 from paddock.adapters.benchmarks.navsim_v1.harness import NavsimV1Benchmark
-from paddock.config import ConfigError, SiteConfig
+from paddock.config import REPO_ROOT, ConfigError, SiteConfig
 from paddock.registry import Registry
 from paddock.results import store
 from paddock.results.ingest.navsim import EPDMS, PDMS, parse_scores
 from paddock.runner import load_benchmark
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _v1_site(tmp_path: Path, monkeypatch, **kwargs):

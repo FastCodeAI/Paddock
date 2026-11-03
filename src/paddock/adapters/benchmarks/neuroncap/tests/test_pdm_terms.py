@@ -198,8 +198,9 @@ def test_the_geometry_builder_covers_every_neuroncap_scene() -> None:
     import importlib.util
 
     from paddock.adapters.benchmarks.neuroncap.harness import OFFICIAL_SET
+    from paddock.config import REPO_ROOT
 
-    path = Path(__file__).resolve().parents[1] / "tools" / "benchmarks" / "nuscenes" / "build_pdm_geometry.py"
+    path = REPO_ROOT / "tools" / "benchmarks" / "nuscenes" / "build_pdm_geometry.py"
     spec = importlib.util.spec_from_file_location("build_pdm_geometry", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

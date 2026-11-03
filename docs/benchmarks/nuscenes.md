@@ -205,7 +205,7 @@ for behaviour gaps are kept outside this repo.
 
 ## Tests
 
-`tests/test_nuscenes_openloop.py`: quaternion/frame geometry, oriented-box
+`src/paddock/adapters/benchmarks/nuscenes/tests/test_harness.py`: quaternion/frame geometry, oriented-box
 intersection, the command rule, plan resampling (including the origin anchor and
 the mid-turn distance), the scorer's point vs cumulative conventions, that absent
 box data omits the collision metrics rather than zeroing them, and that the index

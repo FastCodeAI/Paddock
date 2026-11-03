@@ -34,7 +34,7 @@ than the run itself.
 | waypoint grid | 0.5 s | The collision lookahead and reference-speed calculation both assume it. |
 
 `--engine.waypoint-dt` exists to keep them apart; see `patches/neuro-ncap/0001`.
-`tests/test_neuroncap_harness.py` asserts every scenario file still steps at
+`src/paddock/adapters/benchmarks/neuroncap/tests/test_harness.py` asserts every scenario file still steps at
 0.1 s, because drifting back to 0.5 s would silently compare models at a rate
 one of them cannot use.
 
@@ -54,7 +54,7 @@ scenario file's `time-step` (`engine.py:94`).
 
 The vendor default is 0.5 s, i.e. 2 Hz (`components/scenario.py:21`). The
 tracked files under `scenarios_10hz/` override it to 0.1, and
-`tests/test_neuroncap_harness.py` asserts all 20 still do.
+`src/paddock/adapters/benchmarks/neuroncap/tests/test_harness.py` asserts all 20 still do.
 
 Nothing per-model changes the rate. openpilot duplicates each frame internally
 to feed supercombo at the 20 Hz it expects
@@ -318,7 +318,7 @@ the closed-loop value had been telling the model it was driving a right-hand-dri
 car in Boston.
 
 **Fixed in `12f3250`**, committed 2026-09-01T00:44:56Z. Both paths now pass
-`[1, 0]`, and `tests/test_openpilot_traffic_convention.py` parses the constant out
+`[1, 0]`, and `src/paddock/adapters/models/openpilot/tests/test_traffic_convention.py` parses the constant out
 of both files and fails if they ever disagree again — they are separate constants
 in separate files, because the two paths load openpilot differently, which is how
 they came to disagree in the first place.
@@ -361,7 +361,7 @@ scene with no renderer checkpoint on this machine.
 The files under `scenarios_10hz/` are the upstream scenario files with
 `time-step: 0.5` changed to `0.1` and nothing else — verified one line per file
 at porting time. `preflight` refuses a sweep with any of the 20 missing, and
-`tests/test_neuroncap_harness.py` pins the set both ways: no file missing, and
+`src/paddock/adapters/benchmarks/neuroncap/tests/test_harness.py` pins the set both ways: no file missing, and
 no file present that is not in it.
 
 Not every scene is in every category — 0099 is stationary-only — so `episodes()`

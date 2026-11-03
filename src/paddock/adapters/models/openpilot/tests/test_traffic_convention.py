@@ -28,9 +28,8 @@ from pathlib import Path
 
 import pytest
 
-SRC = Path(__file__).resolve().parents[1] / "src" / "paddock"
 PATHS = {
-    "openpilot policy": SRC / "adapters" / "models" / "openpilot" / "policy.py",
+    "openpilot policy": Path(__file__).resolve().parents[1] / "policy.py",
 }
 
 # Left-hand-drive, right-hand traffic: is_rhd is False, so index 0 is set.

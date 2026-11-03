@@ -132,7 +132,7 @@ follow_imports = "silent"
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "src/paddock/adapters"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 # Rescued modules import torch, openpilot, mmcv -- none of which exist in
 # paddock's own environment, by design. Collection must not try.
 norecursedirs = ["tools", "*/scenarios_10hz"]
