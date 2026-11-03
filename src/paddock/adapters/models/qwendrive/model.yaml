@@ -17,7 +17,7 @@ runtime:
     #
     # These two reach run.json as config.declared_env and are hashed into the
     # run id, which matters because the vendor's published PDMS for the two
-    # differs by 2.9 points. Runs made before that was recorded (#46, #99) do
+    # differs by 2.9 points. Runs made before that was recorded do
     # not say which planner produced them; `paddock doctor --model qwendrive`
     # and /diagnostics report it too.
     QWENDRIVE_PLANNER: "planner-sft"

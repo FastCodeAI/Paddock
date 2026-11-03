@@ -55,8 +55,8 @@ def paddock_provenance(root: Path | None = None) -> dict[str, Any]:
     """The paddock checkout that ran: its HEAD, and whether tracked files were edited.
 
     A baseline measured on older adapter code is a different measurement under
-    the same model name (PR #93 changed what AlpaSim sends every model, for
-    instance), and nothing on the record said which code a run used. The
+    the same model name (a change on 21 Oct 2026 altered what AlpaSim sends
+    every model, for instance), and nothing on the record said which code a run used. The
     regression gate notes when two runs differ here. `dirty` counts tracked
     files only: untracked results and site files are always there.
     """

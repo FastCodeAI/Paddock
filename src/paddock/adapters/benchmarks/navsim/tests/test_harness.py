@@ -887,7 +887,7 @@ def test_the_runner_restarts_nodes_and_resumes_after_a_failed_attempt(
 
     # Nothing here depends on the site: nodes, storage and ports are all
     # stand-ins, so the config is a constructed one and the test runs on a
-    # machine with no paddock.toml (CI, a fresh clone, the other site).
+    # machine with no paddock.toml (CI, a fresh clone, another site).
     cfg = _navsim_site(tmp_path, monkeypatch)
     spec = BenchmarkSpec(name="navsim", mode="open_loop", dataset="navsim", primary_metric="epdms")
     model = ModelSpec(name="m", repo="r", runtime=Runtime(kind="shell"), vram_gb=0)

@@ -305,7 +305,7 @@ def test_every_dense_override_is_declared_by_both_proxy_configs(tmp_path, monkey
     """hydra refuses an override of a key the config does not declare, after
     preflight, in every chunk. The v1 devkit's proxy config once lacked the four
     dense keys while inheriting the harness that emits them, so a v1 site with
-    nuPlan configured passed preflight and then lost the run (review of #33)."""
+    nuPlan configured passed preflight and then lost the run."""
     import yaml
 
     from paddock.adapters.benchmarks.navsim.harness import CONF_DIR as V2_CONF

@@ -71,7 +71,7 @@ ones. Check for `sweeps/` and populated `RADAR_*` before trusting a fusion
 pipeline.
 
 **nuScenes with cameras but no lidar for some scenes.** A copy extracted with a
-camera-only filter -- the shakaal site's `extract_nuscenes.sh` took
+camera-only filter -- one site's `extract_nuscenes.sh` took
 `samples/CAM_*` and nothing else -- has full camera keyframes for every scene and
 no `samples/LIDAR_TOP` for the scenes whose blob was filtered. neuroNCAP refuses
 such a scene in `preflight`, because NeuRAD's dataparser reads lidar eagerly and

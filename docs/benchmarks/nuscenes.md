@@ -133,7 +133,7 @@ was assembled by the site's four-worker orchestration, not written by
 `paddock run` as tracked here: its `config.execution_workers` and
 `dataset.n_expected` are keys no open-loop path in `src/paddock/` writes, it
 retained 135 predictions from an earlier attempt, and it predates the
-`camera_history` keys `run_config()` records now. The other site cannot
+`camera_history` keys `run_config()` records now. Another site cannot
 regenerate it with the tracked code. It stays `valid` because the number is not
 in question, but landing the orchestration (or a `--workers` path in the
 runner) is the open item that makes it regenerable; see `docs/ROADMAP.md`.
@@ -154,7 +154,7 @@ openpilot sha (`provenance.repo.at_pin`), on the ONNX backend, and with the
 every headline: point L2 average 4.029 m, cumulative L2 average 2.451 m, ADE at
 3 seconds 3.508 m, point collision average 2.61%. The leaderboard lists both,
 `b479ee` first. The README keeps the 8 September figures, the run this section
-and the GPU validation were written from; `b479ee` is the one the other site can
+and the GPU validation were written from; `b479ee` is the one another site can
 regenerate with the tracked code.
 
 ## Results (05 Sep 2026, n = 5119)
@@ -263,7 +263,7 @@ is the mean of cumulative L2 through 1, 2 and 3 seconds, not ADE at 3 seconds.
 OpenPilot uses real approximately 12 Hz front-camera history; scoring stays at
 2 Hz. See the nuScenes table below for point L2, cumulative L2 and ADE.
 
-⊘ Measured camera-blind: until the camera-frame fix (#62) Drive-JEPA's adapter
+⊘ Measured camera-blind: until the camera-frame fix of 13 Oct 2026 Drive-JEPA's adapter
 placed the cameras so that no sample point landed in the image on nuScenes and
 neuroNCAP, and the plan came from ego status alone. Re-measure pending for
 nuScenes; its other columns are not affected.
@@ -304,7 +304,7 @@ is predicted ego-footprint overlap with annotated boxes, not an observed crash.
 6.5 s of past keyframes it declares, where the other rows get 2 s; its BEVFormer V2
 starting weights were trained on nuScenes train, not val.
 
-⊘ Measured camera-blind; re-measure pending, see #62.
+⊘ Measured camera-blind; re-measure pending, see the note above.
 
 **Constant velocity was the lowest L2 on this recorded split until Qwen-Drive,
 which is below it on every column**, collision included, and is the first model
@@ -317,7 +317,7 @@ contains. nuScenes is also not in its declared training data (NAVSIM `navtrain`,
 Waymo E2E, NVIDIA PhysicalAI), so unlike its NAVSIM columns this one is
 zero-shot.
 
-[nuScenes implementation and result records (PR #14)](https://github.com/FastCodeAI/Paddock/pull/14)
-· [OpenPilot full metrics](https://github.com/FastCodeAI/Paddock/blob/a75d30418248c33e5a9a76de837887cd1e19a1e8/results/nuscenes/openpilot/20260908T110028-b71f4f/metrics.json).
-Older model results predate the geometry/navigation corrections noted in #14;
+[OpenPilot full metrics](../../results/nuscenes/openpilot/20260908T110028-b71f4f/metrics.json).
+Older model results predate the geometry and navigation corrections made when
+this benchmark was added;
 these tables report the saved runs, not new evaluations of the merged code.

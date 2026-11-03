@@ -611,7 +611,7 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         if self.video_mode() == "off":
             # No frames at all: skips the per-step jpeg and matplotlib writes,
             # which is most of what the logger costs. The switch form, as below:
-            # "--engine.logger.enabled False" is refused (review of #114, 1).
+            # "--engine.logger.enabled False" is refused.
             command += ["--engine.logger.no-enabled"]
         elif not self.debug_views():
             # Skips only the two drawn debug views (patches/neuro-ncap/0003); every
@@ -826,7 +826,7 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
             "0",
             "-i",
             str(listing),
-            # Bounded: shakaal fails at >=90% box CPU, and libx264 would
+            # Bounded: some machines fail at >=90% CPU, and libx264 would
             # otherwise take every core it can see.
             "-threads",
             "2",

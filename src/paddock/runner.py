@@ -168,7 +168,7 @@ def _portable_segment(segment: str) -> str:
 
 
 #: OpenMP/BLAS thread counts: how fast a node runs, never what it computes,
-#: and set per site to fit the box (shakaal fails at 90% CPU). Allowed for
+#: and set per site to fit the box (some machines fail at 90% CPU). Allowed for
 #: every model, on top of each model's own `runtime.tuning_env`.
 THREAD_ENV = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS")
 
@@ -192,7 +192,7 @@ def _declared_env(model_spec: ModelSpec) -> dict[str, str]:
     planner head, Drive-JEPA's momentum), so it belongs in the run id: before it
     was hashed, turning `DRIVEJEPA_MOMENTUM` on in `model.yaml` left the id
     unchanged, and `--resume` continued a momentum-off run with momentum on
-    under one number (#99). Values stay unexpanded (`{weights}/...`), so the
+    under one number. Values stay unexpanded (`{weights}/...`), so the
     hash is the same at every site and no machine path reaches `run.json`.
     Tuning keys are left out for the reason they leave a run valid: changing
     them moves no plan, so it should neither move the id nor refuse a resume.
@@ -371,10 +371,10 @@ def _config_marker_problems(artifacts: Path, config: dict) -> list[str]:
             )
             if "declared_env" in differing and "declared_env" not in recorded:
                 # Usually not a switch anyone can restore: every run started
-                # before #99 lacks the key, and nothing says which model.yaml
+                # before 21 Oct 2026 lacks the key, and nothing says which model.yaml
                 # env its finished episodes ran.
                 problem += (
-                    " Its marker records no declared_env, as every run started before #99 does, "
+                    " Its marker records no declared_env, as every run started before 21 Oct 2026 does, "
                     "so which model.yaml env its finished samples ran is not known: start a new run."
                 )
             return [problem]

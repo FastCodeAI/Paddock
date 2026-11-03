@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build this model's environment from nothing, on a machine that has never run
-# it. This script is what makes the model runnable at the other site, so prefer
+# it. This script is what makes the model runnable at another site, so prefer
 # being explicit over being short.
 #
 #   bash src/paddock/adapters/models/<name>/setup.sh

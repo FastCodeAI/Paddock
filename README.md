@@ -13,8 +13,7 @@
 </p>
 
 Many driving models, the same benchmarks, one interface, one results format.
-Shared between **Fastcode** and **Renesas**; each site runs it against the data it
-already has.
+Each site runs it against the data it already has.
 
 ## How it works
 
@@ -95,9 +94,7 @@ data and vendors no model code. What crosses the wire:
 **S** stale · **R** not ranked: measured on different scenes or by a different method.
 
 Each number is read from the run [docs/support-matrix.toml](docs/support-matrix.toml)
-names for it. The matrix holds released checkpoints only; checkpoints we trained
-ourselves, such as Drive-JEPA's KITScenes re-ranker and its Physical AI AV retrain,
-are in [Gallops' table of training runs](https://github.com/FastCodeAI/Gallops#training-so-far).
+names for it. The matrix holds released checkpoints only.
 Per-benchmark tables and notes: [nuScenes](docs/benchmarks/nuscenes.md#support-matrix-results) ·
 [KITScenes](docs/benchmarks/kitscenes.md#support-matrix-results) ·
 [comma2k19](docs/benchmarks/comma2k19.md#support-matrix-results) ·
@@ -137,7 +134,7 @@ it differs.
   once the car has stood 3 s with no lead.
 - **S — stale; a re-run will change it.** Every VisionPilot figure predates the
   `CURV_SCALE` fix. Drive-JEPA's nuScenes cell is the camera-blind run from
-  before #62. OpenPilot's comma2k19 row was not run at the pinned sha.
+  before the camera fix of 13 Oct 2026. OpenPilot's comma2k19 row was not run at the pinned sha.
 - **R — not ranked, because the number was measured on different scenes or by a
   different method from the rest of its column.** How many cameras a model is
   given, whether it drives through paddock's bridge or its own simulator driver,

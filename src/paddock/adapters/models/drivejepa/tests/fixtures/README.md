@@ -15,7 +15,7 @@ replans 0.5 s apart, 102 kB. Used by `../test_momentum.py`.
 | `pick` | (27,) | the proposal picked with the stage on |
 | `calibrated` | (27, 32) | the score after `calibrate_score`, the one the argmax was taken over |
 
-**Where it came from.** AlpaSim scene `2e1ce314` (NuRec 26.01) at Fastcode.
+**Where it came from.** AlpaSim scene `2e1ce314` (NuRec 26.01).
 The observations are those of a closed-loop drive of that scene under
 `drivejepa-v2-driver-0.1.4`, which did not feed the stage. On 2026-10-01 they
 were replayed in order through the planner of `drivejepa-v2-driver-0.1.4b`, the

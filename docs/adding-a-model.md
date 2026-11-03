@@ -111,7 +111,7 @@ benchmarks: [kitscenes, neuroncap]
 `{runs}`, `{data.NAME}`, `{data.NAME.tiers}`, `{site}` are expanded from the
 site's `paddock.toml` at launch. `tests/test_portability.py` fails the build if
 you write a home directory or a mount point here — that test is why this repo
-still works at the other site.
+still works at another site.
 
 Four fields are worth more thought than they look:
 
@@ -227,7 +227,7 @@ rivals. See [architecture.md](architecture.md#where-does-a-file-belong).
 
 Write `docs/models/<name>.md`: environment, weights and where they come from,
 quirks, and the reference numbers your run produced. The next person to touch
-this model is probably at the other site.
+this model is probably at another site.
 
 To put the model in the README's support matrix, add it to
 [docs/support-matrix.toml](support-matrix.toml): a `[[model]]` entry and a

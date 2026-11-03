@@ -197,7 +197,7 @@ def test_a_sample_list_scores_only_its_samples(monkeypatch):
 
 
 def test_a_run_on_a_sample_list_is_never_stored_as_a_full_score(tmp_path, monkeypatch):
-    """Review of #105 (1): with the list set and no --limit, the run was stored valid: true."""
+    """With the list set and no --limit, the run was stored valid: true."""
     from paddock.adapters.benchmarks.nuscenes import harness as NH
     from paddock.config import SiteConfig
     from paddock.registry import Registry

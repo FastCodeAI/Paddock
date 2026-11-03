@@ -67,20 +67,16 @@ packages = ["src/paddock"]
 line-length = 110
 target-version = "py311"
 
-# Migration backlog (M2). Code rescued verbatim from untracked working
-# directories, still carrying the style of where it was written. Excluded while
-# it is adapted, for the same reason as the portability exemption in
-# tests/test_portability.py: rewriting 9k lines before committing any of it left
-# it sitting unversioned on a scratch disk.
-#
-# Delete each entry as that directory is adapted. Do not add to this list --
-# new code is linted from the start.
+# Older code brought in from earlier research scripts still carries the style
+# of where it was written; [tool.ruff.lint.per-file-ignores] below lists it.
+# Delete each entry as that file is adapted. Do not add to the list -- new code
+# is linted from the start.
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.per-file-ignores]
-# Rescued one-off diagnostics. De-hardcoded, so they pass the portability gate;
+# Older one-off diagnostics. De-hardcoded, so they pass the portability gate;
 # their original style is left alone because rewriting analysis scripts nobody
 # is reading risks changing what they measure for no gain.
 "tools/**" = [
@@ -89,12 +85,12 @@ select = ["E", "F", "I", "UP", "B"]
     "B905", "B019", "B007",
     "UP006", "UP035",
 ]
-# Rescued open-loop adapters still awaiting conversion, in directories whose
+# Older open-loop adapters still awaiting conversion, in directories whose
 # policy.py is already done. Narrower than excluding the whole directory, so new
 # code beside them stays linted. Remove the entry when the file is adapted.
 #
 # B019: @cache on a method pins the instance for the life of the process. Real,
-# but this is rescued code -- fix it during conversion, not in a lint pass.
+# but this is older code -- fix it during conversion, not in a lint pass.
 "src/paddock/adapters/models/drivejepa/kitscenes_adapter.py" = ["B019", "E501", "UP006", "UP035"]
 
 # renderer.py must extend sys.path to the neurad-studio checkout before importing
@@ -106,17 +102,17 @@ select = ["E", "F", "I", "UP", "B"]
 #
 # The rule this repo follows is that local and CI must agree on what can
 # *reject* your work: CI's blocking gate is literally `make check`, so anything
-# added there has to hold at both sites on day one. mypy does not: there are 63
-# errors across 19 files today, most of them in the code rescued in M2, which is
-# unannotated by construction. A blocking gate would turn every PR red --
+# added there has to hold on every machine on day one. mypy does not: it reports
+# dozens of errors today, most of them in older code that was brought in without
+# type annotations. A blocking gate would turn every PR red --
 # including PRs touching none of those files -- and teach everyone to ignore it.
 #
 # So it runs, and it reports, and it blocks nothing: `make typecheck` locally,
 # an advisory job in CI, and any editor hook you point at it. Every caller
 # reads this block, so they cannot drift apart on strictness.
 #
-# Tighten as the migration backlog in [tool.ruff.lint.per-file-ignores] shrinks,
-# not before. Making it blocking is a separate decision that needs those 63
+# Tighten as the list of older files in [tool.ruff.lint.per-file-ignores] shrinks,
+# not before. Making it blocking is a separate decision that needs those errors
 # fixed first.
 python_version = "3.11"
 # Paddock never imports a model, so torch, tinygrad, mmcv and openpilot are
@@ -133,6 +129,6 @@ follow_imports = "silent"
 [tool.pytest.ini_options]
 testpaths = ["tests", "src/paddock/adapters"]
 pythonpath = ["src", "."]
-# Rescued modules import torch, openpilot, mmcv -- none of which exist in
+# Older modules import torch, openpilot, mmcv -- none of which exist in
 # paddock's own environment, by design. Collection must not try.
 norecursedirs = ["tools", "*/scenarios_10hz"]

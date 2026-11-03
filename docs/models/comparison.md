@@ -317,13 +317,13 @@ val, and all 14 neuroNCAP scenes are val scenes (checked against
 
 METEOR trained on none of paddock's datasets, so it has no exposure section;
 the unequal terms run the other way. It is an 8-camera network; KITScenes hands
-it six (#40), the two telephoto slots stay absent (the convention it was
+it six, the two telephoto slots stay absent (the convention it was
 trained with for one missing camera), it has no driving-command input in the
 released ONNX, and that ONNX applies no ImageNet normalisation although its
 training loader did (verified against the checkpoint's first conv; see
 `docs/models/meteor.md`). Its 1.879 ADE is longitudinal above 13 m/s, where its
 plans plateau near 35 m at 3 s, a prior from urban Japanese driving. The
-front-only run made before #40 scored 4.784 and is kept as an ablation: 2.9 m
+front-only run made before KITScenes passed the ring scored 4.784 and is kept as an ablation: 2.9 m
 of ADE was the missing cameras. Read the KITScenes cell as "the released model,
 on a rig and a domain it never saw", which is the same caveat the other rows
 carry in different proportions.
@@ -482,9 +482,9 @@ plus that extension, not as a 4 s planner; its 3 s output is scored without any
 extension on nuScenes and KITScenes. See `docs/models/meteor.md`.
 
 ◇ METEOR is TIER IV's 8-camera multi-task network, run from its released
-camera-only ONNX. KITScenes hands it the six-camera ring (#40), so only its two
+camera-only ONNX. KITScenes hands it the six-camera ring, so only its two
 telephoto slots are absent; it has no driving-command input. Fed the front
-camera alone, as the harness did before #40, it scored 4.784 -- the run is kept
+camera alone, as the harness did before 14 Sep 2026, it scored 4.784 -- the run is kept
 as an ablation. With six cameras the residual error is longitudinal above
 13 m/s, where its plans plateau near 35 m at 3 s (a prior from its training
 domain). The feed matches the authors' reference loader byte for byte. On

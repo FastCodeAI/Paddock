@@ -83,7 +83,7 @@ def test_a_run_planning_into_a_stopped_car_loses_nc_on_the_decisions_that_reach_
 
 
 def test_without_a_map_there_are_no_terms_at_all(tmp_path: Path) -> None:
-    """Review of #102 (3): with no map, NC, TTC and EP were still recorded, under looser rules."""
+    """With no map, NC, TTC and EP were still recorded, under looser rules."""
     run = tmp_path / "run_0"
     write_run(run, car_x=200.0)
     assert pdm_terms.run_terms(run, None, CATEGORIES) == {}
@@ -159,7 +159,7 @@ def test_the_harness_adds_the_terms_to_each_runs_sample(tmp_path: Path, monkeypa
 
 
 def test_one_unreadable_run_loses_only_its_own_terms(tmp_path: Path, monkeypatch) -> None:
-    """Review of #102 (6): one bad file dropped the PDM terms of every run in the episode."""
+    """One bad file dropped the PDM terms of every run in the episode."""
     harness = _harness(tmp_path, monkeypatch)
     out_dir = tmp_path / "frontal-0103"
     write_run(out_dir / "run_0")

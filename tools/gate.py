@@ -69,7 +69,7 @@ line, for a reader.
 
 Model identity. A site `[models.X] env` override such as `DRIVEJEPA_CHECKPOINT` is
 recorded in run.json as `config.model_env` (absolute paths as `<site path:digest>`) and
-makes the run `valid: false` unless the key is tuning-only (#82). Nothing stops a
+makes the run `valid: false` unless the key is tuning-only. Nothing stops a
 "candidate" that is the same checkpoint as its baseline, so `compare` prints both runs'
 model_env and says when they match.
 """
@@ -461,8 +461,8 @@ def lost_samples(run: Run) -> int:
 def code_notes(baseline: Run, candidate: Run) -> list[str]:
     """What the runs' provenance says about the code each was measured with.
 
-    The same model name on older adapter code is another measurement (PR #93
-    changed what AlpaSim sends every model), and the gate would put the
+    The same model name on older adapter code is another measurement (a change on
+    21 Oct 2026 altered what AlpaSim sends every model), and the gate would put the
     difference on the candidate. Notes, not a verdict: a code change can be
     exactly what the candidate is.
     """
@@ -568,7 +568,7 @@ def declared_env_notes(baseline: Run, candidate: Run) -> list[str]:
 
     Like a code change, a changed `model.yaml` is something a candidate is meant
     to test, so it is a note rather than CONFIG DIFFERS. A run with no
-    `declared_env` was made before it was recorded (#99), or under a model.yaml
+    `declared_env` was made before it was recorded, or under a model.yaml
     that declared only tuning keys; that is said rather than read as "the same".
     """
     recorded = [(r.run.get("config") or {}).get("declared_env") for r in (baseline, candidate)]
@@ -576,7 +576,7 @@ def declared_env_notes(baseline: Run, candidate: Run) -> list[str]:
         return []
     if None in recorded:
         who = "baseline" if recorded[0] is None else "candidate"
-        return [f"the {who} records no config.declared_env (made before #99, or none declared)"]
+        return [f"the {who} records no config.declared_env (made before 21 Oct 2026, or none declared)"]
     a, b = recorded
     keys = sorted(k for k in a.keys() | b.keys() if a.get(k) != b.get(k))
     return [f"model.yaml env differs: {k} {a.get(k)!r} -> {b.get(k)!r}" for k in keys]
@@ -688,7 +688,7 @@ def _compare(
         result.notes.append(f"no per-sample records on this site for: {', '.join(missing)}")
         # A candidate with no records because it failed on every sample (the quick
         # tier's one-route crash check that crashed) is INCOMPLETE, which stops the
-        # gate. NO RECORDS let the closed tier's hours run after it (review of #113, 1).
+        # gate. NO RECORDS let the closed tier's hours run after it.
         if not candidate.samples and (lost := lost_samples(candidate)):
             result.verdict = "INCOMPLETE"
             result.notes.append(f"candidate lost every sample ({lost}) to a failure")
@@ -817,7 +817,7 @@ def overall(results: list[PairResult], unfinished: list[str] | None = None) -> s
     A GAIN beside a benchmark that was never compared is not a reason to ship:
     the uncompared one could be where the candidate broke. A crash check is one
     sample and always TOO FEW UNITS; one that ran cleanly is left out of that rule
-    (with it in, `--tier all` could never ship: review of #113, 2). One that failed
+    (with it in, `--tier all` could never ship). One that failed
     (INCOMPLETE) or was not compared still holds.
     """
     if any(r.verdict == "REGRESSION" for r in results):
@@ -1088,7 +1088,7 @@ SMOKE_ORDER = TIERS["quick"] + TIERS["closed"]
 #: sorts by. KITScenes, nuScenes, NAVSIM and neuroncap_quick from the queue on
 #: 2026-10-23 (NAVSIM 48 on that busy evening, 13 on the quiet 2026-10-20;
 #: neuroncap_quick 15 to 47); Bench2Drive's 7 routes 96 on 2026-10-20. The others
-#: are estimates until timed: bench2drive_quick and alpasim_quick (PR #113), the
+#: are estimates until timed: bench2drive_quick and alpasim_quick, the
 #: 15-pair neuroncap, AlpaSim's 10 scenes.
 EXPECTED_MIN = {
     "kitscenes": 7,
@@ -1676,7 +1676,7 @@ def stage_env(env: dict[str, str], stage_dir: Path, echo: Callable[[str], None] 
     path. A copy is reused only while its size and modification time equal the
     source's (`copy2` keeps the time): an older step restored over the same path
     with `cp -p` was otherwise skipped as "not newer". Symlinks are resolved first,
-    so the files under 1 MB that come along (gallops writes `checkpoint.json`) are
+    so the files under 1 MB that come along (a training run may write `checkpoint.json`) are
     the checkpoint's own neighbours, not the link's. `<KEY>_SOURCE` records the
     path that was named, so the run's `model_env` still says which file it measured.
     """
@@ -1990,7 +1990,7 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
                 # Every simulator now keeps its lane's cores: neuroNCAP's renderer and
                 # CARLA as the lane's children, AlpaSim's containers because its
                 # launcher pins them (`ContainerPinner`). Until it did, AlpaSim ran
-                # beside no other simulator (review of #111, 2).
+                # beside no other simulator.
                 or any(b.bench == nxt.bench or tier_of[b.name] != tier_of[nxt.name] for b in busy)
             )
             if blocked:

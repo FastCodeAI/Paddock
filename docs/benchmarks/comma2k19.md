@@ -678,7 +678,7 @@ scored only as far as it plans; `—` is where its own horizon ends, not a
 failure. Lower is better except `pdm_style_score`.
 
 **The PDMS-style column and every comfort number on this page were made with
-the rules from before #102**, and #102 changes two of them. Progress now follows
+the rules from before 22 Oct 2026**, and that change altered two of them. Progress now follows
 NAVSIM's rule: a plan covering 2 m where the human drove 4 m scored 0.5 and now
 scores 1.0, because neither covers 5 m. And a step under 0.25 m per 0.5 s no
 longer gets a heading, so a car slowing to a stop with 3 cm of wobble failed the
@@ -1185,7 +1185,7 @@ rather than a per-model one. The baseline's comfort columns are all 1.0 by
 construction: a straight line at constant speed has no jerk.
 
 ⁂ **PDMS-style** values here were made with the progress and comfort rules from
-before #102 (see [Recorded results](#recorded-results)). It is NAVSIM v1's published composite,
+before 22 Oct 2026 (see [Recorded results](#recorded-results)). It is NAVSIM v1's published composite,
 `NC × DAC × (5·TTC + 5·EP + 2·C) / 12`, evaluated over log-replay *proxies* —
 comma2k19 has no other-agent tracks and no map, so no-collision sees only the
 closest radar lead and drivable-area uses the human's own path as the corridor.

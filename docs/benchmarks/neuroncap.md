@@ -457,7 +457,7 @@ and yaw rate its logged poses give at the decision; the steering angle is the
 one the bicycle model needs for that yaw rate, since neuroNCAP logs none. C is
 NAVSIM v1's six comfort checks on the driven path. The simulator matters most
 for comfort: on 235 stored Drive-JEPA decisions, the raw plan failed comfort on
-51 that NAVSIM's driven path passed (review of #102).
+51 that NAVSIM's driven path passed.
 
 **What it needs.** A drivable raster per scene, built once with neuroNCAP's own
 interpreter, which has the nuScenes map API. The builder reads nuScenes' **map
@@ -478,7 +478,7 @@ the scenes that have no raster. Actor categories come from
 the dataset's own `instance.json` and `category.json`: every actor in
 `actors.json` is a nuScenes instance, the inserted one included.
 
-**How the geometry is held to the benchmark's** (2026-10-21, shakaal):
+**How the geometry is held to the benchmark's** (2026-10-21):
 
 | check | result |
 |---|---|
@@ -693,7 +693,7 @@ buys: preflight is the cheap check that runs before everything else, often on a
 box already busy, and it should not be the largest allocation in the run.
 
 **This is not hypothetical -- it is why the check exists.** As extracted on
-2026-09-04, the shakaal copy of nuScenes had 177 of 850 scenes with no lidar at
+2026-09-04, one site's copy of nuScenes had 177 of 850 scenes with no lidar at
 all, because `extract_nuscenes.sh` took `samples/CAM_*` and nothing else. Three
 of those scenes -- 0796, 0921 and 0923 -- are in the official 20 pairs. The
 full-set sweep spent roughly 13 GPU-hours on it: every attempt failed those
@@ -720,7 +720,7 @@ explained in [What these models are](../models/comparison.md#notes-moved-from-th
 
 ### Notes on the matrix cells
 
-⊙ Re-measured with the camera-frame fix (#62): 4.13, against 3.57 camera-blind.
+⊙ Re-measured with the camera-frame fix of 13 Oct 2026: 4.13, against 3.57 camera-blind.
 See the neuroNCAP table.
 
 § Not run — zero by construction. Every neuroNCAP scenario is staged so that an
@@ -751,7 +751,7 @@ all 200 runs. Runs are seeded 0-9, so every model met identical scenario jitter.
 | VisionPilot | 2.53 ±1.60 | 1.17 ±1.38 | 0.08 ±0.18 | **1.58** | 85.5% |
 | Baseline (Constant Velocity) | 0.00 | 0.00 | 0.00 | 0.00 § | 100.0% |
 
-⊙ Measured after the camera-frame fix (#62), run `20261012T224707-f11ac0`. The
+⊙ Measured after the camera-frame fix, run `20261012T224707-f11ac0`. The
 camera-blind run (`20260905T220225-f11ac0`) scored 4.23 / 2.42 / 3.39, overall 3.57,
 with 45.5% collisions. Paired over the 20 scenario-scene pairs the fix is worth
 +0.56 (SE 0.44, t 1.28), mostly stationary (+0.77, SE 0.30) and side.
@@ -838,7 +838,7 @@ frontal-0103 the fix was worth −0.16, and on side-0103 +0.36, so it moved
 scenarios in both directions. AutoE2E's row (run `20261026T233951-743060`) is
 likewise its first `valid: true` closed-loop score here: two earlier sweeps
 with the byte-identical checkpoint (sha256 `120a2163...`) read `valid: false`
-under `#82`'s site-env-override rule because the checkpoint was passed in
+under the site-env-override rule because the checkpoint was passed in
 through a site-specific `AUTOE2E_CHECKPOINT` override rather than found at
 `model.yaml`'s declared `{weights}/auto_e2e/...` path; this run moved the file
 there instead.

@@ -1,8 +1,8 @@
 # Contributing to Paddock
 
-Paddock is shared between Fastcode and Renesas. Most people reading your code
-will be at the other site, on a machine you have never seen, some months from
-now. Nearly every convention here follows from that.
+Most people reading your code will be on a machine you have never seen, with
+data laid out differently from yours, some months from now. Nearly every
+convention here follows from that.
 
 ---
 
@@ -15,7 +15,7 @@ make check          # lint + tests + the portability gate
 The same command runs on every PR in GitHub Actions
 ([`.github/workflows/check.yml`](.github/workflows/check.yml)), in a clean
 environment with **no site `paddock.toml`** -- so a test that quietly needs the
-author's site config fails there rather than at the other site. Tests that
+author's site config fails there rather than at another site. Tests that
 genuinely need a site skip in CI; the reviewer runs `make check` with the site
 config to cover them. A second job checks that every patch under `patches/`
 still applies at the sha `repos.yaml` pins (`python tools/ci/check_patches.py`
@@ -69,7 +69,7 @@ commit that explains it.
 Only metrics and provenance go there — kilobytes. Predictions, frames and videos
 go to `[roots.runs]`, outside the repo.
 
-Every `run.json` records `site`, so numbers from both organisations stay
+Every `run.json` records `site`, so numbers from different machines stay
 distinguishable. Never hand-edit a metrics file: regenerate it, so its
 provenance stays true.
 

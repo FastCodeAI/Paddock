@@ -1,6 +1,6 @@
 """Path resolution for the diagnostic scripts in `tools/`.
 
-These are one-off analysis and plotting scripts rescued alongside the adapters.
+These are one-off analysis and plotting scripts kept alongside the adapters.
 They are not on the evaluation path, but they still must not hardcode one
 machine's layout, or they stop working the moment anyone else runs them.
 
@@ -9,7 +9,7 @@ machine's layout, or they stop working the moment anyone else runs them.
     weights = paths.repo("vision_pilot") / "VisionPilot/modules/models/weights"
 
 Everything resolves from the same `paddock.toml` the framework uses, so a script
-run here and at the other site reads the same configuration.
+run here and at another site reads the same configuration.
 """
 
 from __future__ import annotations

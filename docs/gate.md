@@ -97,13 +97,13 @@ Read the notes; they are where the gate says what it cannot check:
 
 - **model_env.** Both runs' `config.model_env` is printed. The runner records a
   `[models.X] env` override such as `DRIVEJEPA_CHECKPOINT` (paths as
-  `<site path:digest>`) and, since #82, marks the run `valid: false` unless the
+  `<site path:digest>`) and marks the run `valid: false` unless the
   key is tuning-only. A "candidate" launched without its override is just the
   baseline again. The gate says so
   when the two are identical, and when one side sets a key the other does not.
   Identical is legitimate for a code change on the same weights.
 - **declared_env.** The env a model's own `model.yaml` sets is recorded as
-  `config.declared_env` (#99). A change to it is something a candidate is meant
+  `config.declared_env`. A change to it is something a candidate is meant
   to test, like a code change, so it is not CONFIG DIFFERS: the gate names each
   key that differs, and says when one run has no such record.
 - **invalid.** A smoke run of a subset is `valid: false`; the note is expected
@@ -198,7 +198,7 @@ in docs/benchmarks/neuroncap.md.
 
 What the other empty cells would take: for AlpaSim, the ego and actor poses each
 run already writes; for Bench2Drive, `outside_route_lanes` and the 20 Hz
-`metric_info.json`, both written per route and not yet read, or PR #79's recorder.
+`metric_info.json`, both written per route and not yet read, or OpenPilot's Bench2Drive recorder.
 Those need fresh baselines. For nuScenes and nuPlan, loading their maps and agent
 tracks.
 
@@ -292,7 +292,7 @@ setsid nohup python -m tools.gate smoke ... --tier all --execute \
   side; until 2026-10-27 the closed tier ran one subset at a time. Each keeps its
   lane's cores: neuroNCAP's renderer and CARLA as the lane's children, AlpaSim's
   Docker containers because its launcher pins them to the cores its run was
-  given (shakaal fails above about 90% CPU). Two subsets of one benchmark never
+  given (the machine the gate was built on fails above about 90% CPU). Two subsets of one benchmark never
   run at once. With one `--cores` (the default, `4-7`)
   everything runs one after another.
 - **NAVSIM gets two model nodes.** The derived config sets
@@ -319,7 +319,7 @@ setsid nohup python -m tools.gate smoke ... --tier all --execute \
   same command resumes what was stopped.
 - **`--stage-dir`.** Every `--env` value that names a file, typically the
   candidate's checkpoint, is copied there first (with any file under 1 MB beside
-  it, such as gallops' `checkpoint.json`), and the run reads the copy. Point it
+  it, such as a training run's `checkpoint.json`), and the run reads the copy. Point it
   at a fast local disk: a checkpoint read from a slow network share was enough to
   make node starts time out.
 
@@ -439,7 +439,7 @@ that has never run the gate makes its own baselines first:
    made with other settings cannot stand in by accident.
 
 The released model smoked against itself should come out NEUTRAL everywhere; on
-shakaal it did (nuScenes and neuroNCAP identical to three decimals), which is
+the machine that made the baselines it did (nuScenes and neuroNCAP identical to three decimals), which is
 the check that the site's baselines are sound.
 
 ## Limits
@@ -459,7 +459,7 @@ the check that the site's baselines are sound.
 - **AlpaSim draws only from scenes already downloaded.** AlpaSim fetches a
   missing scene from a gated Hugging Face dataset when a run starts, and the
   gate queue's account has no token for it. So the 10 are drawn from the 50
-  `public_2601` scenes on shakaal, not from all 913. That pool is not a random
+  `public_2601` scenes already on disk, not from all 913. That pool is not a random
   sample of the suite (the first ten of its list, the twenty drawn for
   `public_2601_30scenes`, twenty more), and thirty of its scenes are the ones
   behind the published 30-scene AlpaSim results. The first draw (2026-10-22, 10
@@ -493,8 +493,8 @@ the check that the site's baselines are sound.
   [the 30-scene comparison](models/drivejepa.md#through-paddock-on-alpasim)),
   while the 30-scene mean moved by 0.013. For this model, compare means, or
   flag only when several scenes move.
-- **A checkpoint override invalidates a run** (#82: `src/paddock/runner.py:169`
-  `_env_override_reasons`), so a candidate run is never ranked as the released
+- **A checkpoint override invalidates a run** (`_env_override_reasons` in
+  `src/paddock/runner.py`), so a candidate run is never ranked as the released
   model. NAVSIM's `PADDOCK_NAVSIM_OVERRIDES` is recorded in `config.overrides`
   but is not one of its `invalid_reasons`
   (`src/paddock/adapters/benchmarks/navsim/harness.py:741`); the NAVSIM smoke is

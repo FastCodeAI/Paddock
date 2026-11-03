@@ -464,13 +464,13 @@ that did not run (see *What does not score*). `routes_file`, `waypoint_dt`,
 the ingest, and `config.source_config_read` says how many source runs kept one.
 So is `declared_env`, the model's own `model.yaml` env. Source runs that recorded
 different ones, or a mix of runs that recorded one and runs from before it was
-recorded (#99), are pooled `valid: false` with a note: two settings of the model
+recorded (21 Oct 2026), are pooled `valid: false` with a note: two settings of the model
 behind one mean, the same reason as two recording setups. So is `infer_hz`, how
 often the node was asked for a plan, judged from what the runs recorded: the pool
 ranks at the rate the model's `model.yaml` declared for them (`planning_hz`). It
 does not rank at the host's `PADDOCK_INFER_HZ` in its place, at two rates, or at a
 rate not known because a run kept no config. A run that recorded no rate was asked
-every tick; before #106, a rate set by hand reached the record only as
+every tick; before 23 Oct 2026, a rate set by hand reached the record only as
 `PADDOCK_INFER_HZ` in `model_env`, and such a pool does not rank either.
 Aggregates are recomputed by the store from the per-route metrics; nothing is
 transcribed from a report.

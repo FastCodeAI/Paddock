@@ -463,7 +463,7 @@ def test_a_replay_inherits_the_source_runs_validity(tmp_path: Path, monkeypatch)
 @pytest.mark.parametrize(
     ("model", "env", "replay"),
     [
-        ("visionpilot", {"VISIONPILOT_ORT_THREADS": "2"}, True),  # what every shakaal site sets
+        ("visionpilot", {"VISIONPILOT_ORT_THREADS": "2"}, True),  # what a CPU-limited site sets
         ("visionpilot", {"VISIONPILOT_SETPOINT": "run_start"}, True),  # changes a plan, but none is made
         ("constant_velocity", {"PADDOCK_CV_SPEED_M_S": "6"}, False),  # Bench2Drive's speed bands
     ],

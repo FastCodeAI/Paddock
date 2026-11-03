@@ -393,7 +393,7 @@ def test_camera_override_replaces_the_declared_rig(tmp_path, monkeypatch) -> Non
 def test_a_sim2real_diagnostic_is_on_the_record_and_does_not_rank(tmp_path, monkeypatch) -> None:
     """Either host switch changes what the model is shown, so a run with one names it in
     `run.json` (and so in the run id) and is never ranked as the model's score, even over
-    every route the site runs. Review #53 (1)."""
+    every route the site runs."""
     harness = _harness(_site(tmp_path, monkeypatch, COMPLETED))
     list(harness.episodes(None, runs=1))  # every route: not a subset
     assert harness.invalid_reasons() == []
@@ -414,7 +414,7 @@ def test_a_sim2real_diagnostic_is_on_the_record_and_does_not_rank(tmp_path, monk
 def test_a_scored_run_never_loads_segment_mode(load_agent, monkeypatch) -> None:
     """The client imports segment.py only when PADDOCK_SEGMENT is set. segment.py needs Pillow,
     which preflight does not check in the client interpreter: imported at the top of agent.py,
-    a site without it would pass preflight and then fail every route at import. Review #53 (2)."""
+    a site without it would pass preflight and then fail every route at import."""
     monkeypatch.setitem(sys.modules, "PIL", None)  # a client interpreter without Pillow
     monkeypatch.delitem(sys.modules, "paddock.adapters.benchmarks.bench2drive.segment", raising=False)
     monkeypatch.delenv("PADDOCK_SEGMENT", raising=False)
@@ -662,7 +662,7 @@ def test_a_site_sets_the_connect_timeout(tmp_path, monkeypatch) -> None:
 
 
 def test_a_route_subset_given_on_the_command_line_is_not_a_score(tmp_path, monkeypatch) -> None:
-    """Review #80 (6): a 7-route smoke was stored valid: true and ranked beside 50-route runs."""
+    """A 7-route smoke was stored valid: true and ranked beside 50-route runs."""
     harness = _harness(_site(tmp_path, monkeypatch, COMPLETED))
     list(harness.episodes(None, runs=1))
     assert harness.invalid_reasons() == []

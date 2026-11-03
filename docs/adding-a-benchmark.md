@@ -145,7 +145,7 @@ BENCHMARK = MyBenchmark
 ```
 
 - **`samples` must be deterministic.** `--limit 5` has to select the same five
-  samples at both sites, or two people comparing smoke tests reach different
+  samples at every site, or two people comparing smoke tests reach different
   conclusions and neither is wrong. Sort explicitly; never rely on the order the
   filesystem returns.
 - **`score` returns per-sample metrics, not aggregates.** Paddock aggregates, so

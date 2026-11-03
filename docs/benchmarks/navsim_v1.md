@@ -185,7 +185,7 @@ the stored record `20260902T175923-feba73`:
   1e-11 -- last-bit floating-point noise in the progress normaliser.
 
 The re-run is not committed, so the leaderboard does not carry two identical
-baseline rows. At the fastcode-shakaal site its record is kept at
+baseline rows. Its record is kept at
 `{runs}/ops/navsim_v1/v2_regression_record/20260911T051742-c99808/`, its
 artifacts (samples, per-chunk CSVs, scorer logs) under
 `{runs}/navsim/constant_velocity/20260911T051742-c99808/`, and the comparison
@@ -215,7 +215,7 @@ from `results/navsim/` for reference: a different composite, not a ranking.
 | constant_velocity | **0.207** | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 | 0.239 | `20260911T034553-8f28ac` | node-less baseline, 27 min |
 | human (`valid: false`) | 0.946 | 1.000 | 1.000 | 0.870 | 1.000 | 0.999 | 0.988 | — | `20260911T041230-67c4f3` | node-less anchor, 35 min |
 
-With the **10 Hz history from nuPlan** (the v2 runs of PR #33, whose plans
+With the **10 Hz history from nuPlan** (the v2 runs of 14 Sep 2026, whose plans
 were replayed here once those runs were in the store -- a store test requires
 every `replayed_from` to resolve; both sources are merges of an earlier and a
 completing run, and the replay read both directories):

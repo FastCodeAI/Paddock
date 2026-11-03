@@ -8,7 +8,8 @@ Review a paddock pull request the way `docs/reviewing.md` prescribes.
 
 Target: **$ARGUMENTS**
 
-- A number (`42`) → GitHub PR #42 on `FastCodeAI/Paddock`.
+- A number (`42`) → GitHub PR #42 of this repository (`gh` fills in
+  `{owner}/{repo}` from the checkout).
 - A branch name → that branch against `main`.
 - Blank → the current branch against `main`.
 
@@ -88,14 +89,14 @@ replaces the longer one in §10:
   summary.
 - **No tables, no statistics jargon, no § references.**
 
-The model is review 5621674058 on #100, which starts:
+A good review starts like this:
 
 ```markdown
 Nothing is broken. Fix 4 things before merging.
 
-🟠 **1. 3 neuroNCAP scenarios can still approve a checkpoint.** Add `can_ship = false` to `tools/gate_smoke/neuroncap_quick.toml`. ([gate.py:682](https://github.com/FastCodeAI/Paddock/blob/33d4843/tools/gate.py#L682))
+🟠 **1. 3 neuroNCAP scenarios can still approve a checkpoint.** Add `can_ship = false` to `tools/gate_smoke/neuroncap_quick.toml`. ([gate.py:682](https://github.com/<owner>/<repo>/blob/33d4843/tools/gate.py#L682))
 
-🟠 **2. A launch hangs forever if `nvidia-smi` stops answering.** No answer counts as 0 GB free, so it waits forever. If there is no answer, launch the model anyway. ([proc.py:163](https://github.com/FastCodeAI/Paddock/blob/33d4843/src/paddock/runtime/proc.py#L163))
+🟠 **2. A launch hangs forever if `nvidia-smi` stops answering.** No answer counts as 0 GB free, so it waits forever. If there is no answer, launch the model anyway. ([proc.py:163](https://github.com/<owner>/<repo>/blob/33d4843/src/paddock/runtime/proc.py#L163))
 
 **Checked:** `make check` passes. Both Bench2Drive patches apply and match this machine's copy.
 **Not checked:** the lock between two users, and AlpaSim with `PADDOCK_BASE_PORT`.
@@ -135,7 +136,7 @@ twenty, and it keeps the file view and the summary in agreement:
 # inline.json: [{"path":"src/...","line":123,"side":"RIGHT","body":"🔴 **Blocker.** ..."}]
 jq -n --rawfile body /tmp/review.md --argjson comments "$(cat /tmp/inline.json)" \
   '{event:"COMMENT", body:$body, comments:$comments}' > /tmp/review-payload.json
-gh api repos/FastCodeAI/Paddock/pulls/<N>/reviews --input /tmp/review-payload.json
+gh api repos/{owner}/{repo}/pulls/<N>/reviews --input /tmp/review-payload.json
 ```
 
 Four things that decide whether this works:
@@ -148,8 +149,8 @@ Four things that decide whether this works:
   body instead, quoting `file:line` there.
 - **Anchor to the head commit you reviewed.** If the author pushes while you are
   writing, re-read the diff rather than posting line numbers from under them.
-- **A new pass is fine; a duplicate is noise.** Reviews accumulate (PR #16 has
-  three passes, and its third overturned the verdict). Before posting, check
+- **A new pass is fine; a duplicate is noise.** Reviews accumulate (one PR had
+  three passes, and the third overturned the verdict). Before posting, check
   whether the review you are about to leave is one you already left.
 
 If the target is a local branch with no PR, there is nowhere to post — print it,

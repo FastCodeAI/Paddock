@@ -25,8 +25,8 @@ PYTHONPATH). A value naming a file or a directory is copied into the store, unde
 `<store>/<digest>/` where the digest is the sha256 of the copied files' names and
 contents, and the job names the copy: a checkpoint overwritten after submit would
 otherwise be measured under the old one's name. A file brings its siblings under
-1 MB, as `tools.gate --stage-dir` does, because gallops writes checkpoint.json
-beside it.
+1 MB, as `tools.gate --stage-dir` does, because a training run may write
+checkpoint.json beside it.
 
 The commit is origin/main by default, fetched at submit; `--ref` names another
 branch or commit, which must be on origin so whoever reads the result can check

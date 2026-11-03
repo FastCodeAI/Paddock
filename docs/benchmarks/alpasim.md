@@ -311,8 +311,8 @@ filed under `results/alpasim/`, so `paddock report` agrees with these tables.
 > not ingested.
 >
 > **METEOR's rows come from a driver that is not tracked here.** `meteor-0.1.1`
-> is a native AlpaSim driver written at the Fastcode site; its source is not in
-> this repository, so its two rows (`6cam-20Hz`, below) are reference values
+> is a native AlpaSim driver written outside this repository; its source is not in
+> it, so its two rows (`6cam-20Hz`, below) are reference values
 > another site cannot yet reproduce.
 
 ### `1cam-20Hz` — the shared referee

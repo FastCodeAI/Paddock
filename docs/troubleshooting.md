@@ -120,8 +120,8 @@ older clone, all on 9001. Coordinate a base port per person on a shared box.
 
 ## The machine falls over under a sweep
 
-A shared box has a ceiling that is not yours to spend. On the Fastcode
-workstation it is **90% total CPU utilization** -- measured from `/proc/stat`,
+A shared box has a ceiling that is not yours to spend. On the workstation
+most of these runs were made on it is **90% total CPU utilization** -- measured from `/proc/stat`,
 not load average -- beyond which the machine fails. A three-model NAVSIM sweep
 with multi-node visionpilot reached load 232 on 32 cores before that was known.
 

@@ -21,7 +21,7 @@ Override with `make test PY=/path/to/python`.
 A single test: `.venv/bin/python -m pytest src/paddock/adapters/benchmarks/neuroncap/tests/test_harness.py::test_scenarios_step_at_ten_hertz -q`.
 `testpaths` is `tests` **and** `src/paddock/adapters`, so adapter tests under
 `adapters/**/tests/` are collected by `make check` too. `tools/` and
-`*/scenarios_10hz` are excluded from collection because rescued modules there
+`*/scenarios_10hz` are excluded from collection because older modules there
 import torch/openpilot/mmcv, which paddock's own env deliberately lacks.
 
 CLI (after `source .venv/bin/activate`, or as `.venv/bin/paddock`):
@@ -61,11 +61,10 @@ tracked file contains a real machine root — a home directory, a mount
 point, or one of this workspace's own disks. (That test necessarily contains
 the very patterns it bans, and exempts itself; do not restate them here or
 this file joins the failure list.)
-When it fails, the fix is almost always a template variable, **not** an
-allowlist entry. Its migration-backlog exemption list may only shrink —
-`test_migration_backlog_does_not_grow` enforces that, and the matching
-`[tool.ruff.lint.per-file-ignores]` block in `pyproject.toml` is the same
-backlog. Do not add to either.
+When it fails, the fix is almost always a template variable; the test has no
+exemption list to add to. The `[tool.ruff.lint.per-file-ignores]` block in
+`pyproject.toml` covers older code not yet brought up to the lint rules; it may
+only shrink, so do not add to it.
 
 ## Architecture
 
@@ -164,9 +163,9 @@ locally and a green PR are the same claim by construction — keep it that way:
 workflow's own command list.
 
 `make typecheck` (mypy) is the deliberate exception: it is advisory, absent from
-`make check`, and its CI job is `continue-on-error`, because the M2 rescued code
-is unannotated and a check that reddens unrelated PRs is one people learn to
-ignore. Do not add it to the required checks; see `[tool.mypy]` in
+`make check`, and its CI job is `continue-on-error`, because older code was brought in
+without type annotations, and a check that reddens unrelated PRs is one people
+learn to ignore. Do not add it to the required checks; see `[tool.mypy]` in
 `pyproject.toml` for the full reasoning and what would have to happen first. The reviewer checklist is in
 [CONTRIBUTING.md](CONTRIBUTING.md) and how to actually verify each item is in
 [docs/reviewing.md](docs/reviewing.md) — including the standard that reviews and
@@ -178,5 +177,4 @@ PR does in one plain sentence first. Use plain words and short sentences, define
 every term the first time it appears, use no labels made up during your session,
 and say what the reader has to do. The same rules cover reviews and replies; see
 "Write it so the user can read it" in
-[.claude/commands/pr-review.md](.claude/commands/pr-review.md). The model is the
-description of #100.
+[.claude/commands/pr-review.md](.claude/commands/pr-review.md).

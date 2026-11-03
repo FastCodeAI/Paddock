@@ -25,7 +25,7 @@ def _stub_ffmpeg(tmp_path: Path, fail: bool = False) -> Path:
     it writes and cleans up the concat file, that it prunes only a stream that
     encoded, that a failure keeps the frames. None of that is ffmpeg's
     behaviour, and requiring the binary meant the whole video pipeline had no
-    coverage on CI or at the other site. A real encode is verified separately.
+    coverage on CI or at another site. A real encode is verified separately.
     """
     stub = tmp_path / ("ffmpeg_fail" if fail else "ffmpeg_stub")
     stub.write_text(
@@ -67,7 +67,7 @@ def _ncap_site(tmp_path: Path, monkeypatch, **settings) -> SiteConfig:
     Most of this harness needs nothing from the site: `episodes` reads tracked
     scenario files, `episode_samples` takes an `out_dir`, `video_mode` reads one
     setting and `_encode` needs ffmpeg and a directory. Loading the real
-    `paddock.toml` made all of that skip on CI and at the other site, which left
+    `paddock.toml` made all of that skip on CI and at another site, which left
     the video pipeline and the per-run sampling with no coverage anywhere but
     here.
     """
@@ -1121,7 +1121,7 @@ def test_the_engine_and_the_renderer_read_the_cut_down_nuscenes_when_set(tmp_pat
 
 
 def test_video_off_turns_the_logger_off_in_the_form_the_engine_accepts(tmp_path, monkeypatch) -> None:
-    """Review of #114 (1): `--engine.logger.enabled False` is refused by neuro-ncap's command
+    """`--engine.logger.enabled False` is refused by neuro-ncap's command
     line ("Unrecognized arguments: False", exit 2), so `video = "off"` failed every episode."""
     off = _harness_for(_ncap_site(tmp_path, monkeypatch, video="off"))
     command = _engine_command(off, tmp_path, monkeypatch)
