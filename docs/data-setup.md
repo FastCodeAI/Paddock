@@ -170,12 +170,8 @@ documentation, and where the scored-sample count comes from.
 
 ## Symlinks
 
-Paddock creates symlinks in exactly two situations:
-
-1. `external/<repo>` → the local clone, so adapters have one stable place to
-   resolve repos from.
-2. `<repo>/data/<dataset>` where a repo hardcodes a relative path and offers no
-   configuration hook.
+Paddock creates symlinks in exactly one situation: `<repo>/data/<dataset>`,
+where a repo hardcodes a relative path and offers no configuration hook.
 
 Everything else is environment variables and CLI flags computed at launch. If
 you find yourself creating symlinks by hand to make a benchmark work, that is a

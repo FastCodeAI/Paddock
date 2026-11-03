@@ -7,7 +7,7 @@ because both organisations need to see it.
 |---|---|---|---|
 | **M1** | Foundation and contribution contract | **done** | `make check`; `paddock doctor`; `tests/test_alt_site.py` |
 | **M2** | Rescue untracked work into adapters and patches | **done (models)** | patches verified byte-identical; 4 model adapters converted |
-| **M3** | Registries, `paddock setup`, data projection | partial | registries, projection and full de-hardcoding done; `paddock setup` not implemented |
+| **M3** | Registries, `paddock setup`, data projection | **done** | registries, projection and full de-hardcoding; `paddock setup` clones or adopts each repo at its pin and applies its patches (`tests/test_setup.py`); `--model` not yet run on a real model |
 | **M4** | Ingest existing results | **done** | 36 runs, 77 tests, golden values from the original reports |
 | **M5** | Reproduce closed-loop (neuroNCAP) | **partial** | adapters proven identical to the original nodes; see `docs/benchmarks/neuroncap.md` |
 | **M6** | Reproduce open-loop (KITScenes) | **done** | full n=223: 892/892 metric comparisons identical at full float precision |
@@ -65,9 +65,13 @@ Still unrun: the third scenario (`side`), scene 0108, and multi-run seeds.
 
 ## Remaining work
 
-**M3 — `paddock setup`.** Clone or adopt vendor repos, build the `external/`
-symlink farm, apply patches, run per-model `setup.sh`. Today `doctor` reports
-what is missing; `setup` does not yet fix it.
+**`paddock setup --model` for the conda models.** `drivejepa` and
+`visionpilot` build a named conda environment in conda's own folder and ignore
+`PADDOCK_VENV`, so after `paddock setup --model <name>` paddock finds the
+interpreter only once `[models.<name>] venv` points at that environment
+(`docs/site-setup.md`, step 5). To do: build them at
+`PADDOCK_VENV`, without overwriting a site's existing environment. Separately,
+`--model` has not yet been run end to end on a real model.
 
 **Resume does not check the node.** `--resume` compares only the run's config
 before reusing finished episodes, and writes `provenance.policy` from the last
@@ -367,8 +371,8 @@ Landed alongside it, none comma2k19-specific:
 - **`paddock new` and `paddock verify` (M3).** Not `paddock setup` — no cloning,
   no patching — but the scaffolding half: `new` copies the `_template/` adapter
   and rewrites its names, `verify` checks an adapter against the contracts
-  before a run rather than eight minutes into one. `setup` itself is still
-  unimplemented and still exits 2 saying so.
+  before a run rather than eight minutes into one. `setup` itself landed
+  later, in #130.
 - **Parallel open-loop nodes and open-loop `--resume`.** comma2k19 is the first
   open-loop benchmark large enough to need either: `node_count` runs N policy
   nodes against one harness, and a journal lets an interrupted sweep continue in
