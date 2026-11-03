@@ -200,8 +200,20 @@ def test_a_directory_that_is_not_a_clone_is_refused(site) -> None:
     code, out = _setup(site, _registry(site))
 
     assert code == 1, out
-    assert "not a git checkout" in out
+    assert "not a git checkout" in out and "move it aside" in out
     assert sorted(p.name for p in site.clone.iterdir()) == ["stray.txt"]
+
+
+def test_a_clone_another_account_owns_gets_gits_fix_not_move_it_aside(site, monkeypatch) -> None:
+    """On a shared box that clone is a colleague's: git prints the right fix, safe.directory."""
+    _git("clone", "-q", site.url, str(site.clone), cwd=site.root)
+    monkeypatch.setenv("GIT_TEST_ASSUME_DIFFERENT_OWNER", "1")  # git's own switch for this case
+
+    code, out = _setup(site, _registry(site))
+
+    assert code == 1, out
+    assert "dubious ownership" in out and "safe.directory" in out
+    assert "move it aside" not in out
 
 
 # -- patches -------------------------------------------------------------------------

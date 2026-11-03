@@ -137,13 +137,12 @@ def prepare(
     else:
         problem = _toplevel_problem(path) if path.is_dir() else "it is a file"
         if problem:
-            return RepoOutcome(
-                spec.name,
-                path,
-                "not a git checkout",
-                ok=False,
-                detail=(problem, "move it aside and run again to clone, or fix [roots.repos]"),
-            )
+            # A clone another account owns is most likely a colleague's: git's own
+            # message names the fix (safe.directory), and moving it aside is wrong.
+            detail = (problem,)
+            if "dubious ownership" not in problem:
+                detail += ("move it aside and run again to clone, or fix [roots.repos]",)
+            return RepoOutcome(spec.name, path, "not a git checkout", ok=False, detail=detail)
         mismatch = _mismatch(spec, path)
         if mismatch:
             return mismatch
