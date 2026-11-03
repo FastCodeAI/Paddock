@@ -27,6 +27,7 @@ from pathlib import Path
 import pytest
 
 from paddock.adapters.benchmarks.bench2drive.harness import every_tick
+from paddock.results.ingest.bench2drive import _driven_off_protocol
 from tools.readme_figures import load_matrix, matrix_cell, rank
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -343,8 +344,10 @@ def test_a_cell_asked_at_its_own_rate_or_stopped_early_ranks_and_says_so() -> No
     ends is a failed drive (early_stop.py), so neither leaves a valid run unranked. The
     rest of this column is asked every tick and drives every route to Bench2Drive's own
     end, and the README says a cell without a mark was measured the same way as the rest
-    of its column. So such a cell says how it was measured: its rate under the number, and
-    its model named in the README's note on routes that end early.
+    of its column unless a note says how it differs. So such a cell says how it was
+    measured: its rate under the number, and its model named in the README's note on
+    routes that end early. The rate is read as the ingest reads it: `infer_hz`, or for
+    runs that predate it, PADDOCK_INFER_HZ in `model_env`.
     """
     readme = (REPO_ROOT / "README.md").read_text()
     start = readme.index("**Ranked, though some Bench2Drive routes end early.**")
@@ -352,13 +355,17 @@ def test_a_cell_asked_at_its_own_rate_or_stopped_early_ranks_and_says_so() -> No
     columns, rows = load_matrix()
     rank(columns, rows)
     j = next(j for j, c in enumerate(columns) if c.key == "bench2drive")
+    own_rated, stopped = set(), set()
     for row in rows:
         cell = row.cells[j]
         if not cell.run:
             continue
         run = json.loads((REPO_ROOT / "results" / cell.run / "run.json").read_text())
         config = run["config"]
-        own_rate = not every_tick(config.get("infer_hz") or 0.0)
+        hz = config.get("infer_hz")
+        if hz is None:
+            hz = _driven_off_protocol(config.get("model_env") or {})
+        own_rate = not every_tick(hz or 0.0)
         stopped_early = bool(config.get("early_stop"))
         # A run that is not valid (the collision rule, a stop by hand) must not rank;
         # tools/readme_figures.py refuses to rank it.
@@ -367,6 +374,12 @@ def test_a_cell_asked_at_its_own_rate_or_stopped_early_ranks_and_says_so() -> No
         assert "R" not in row.marks + cell.marks, f"{row.key}: {cell.run} is marked R"
         assert cell.rank is not None, f"{row.key}: {cell.run} is not ranked"
         if own_rate:
-            assert cell.qualifier == f"{config['infer_hz']:g} Hz", f"{row.key}: its rate is not named"
+            own_rated.add(row.key)
+            assert cell.qualifier == f"{hz:g} Hz", f"{row.key}: its rate is not named"
         if stopped_early:
+            stopped.add(row.key)
             assert row.name in early, f"{row.key}: the README does not say its routes end early"
+    # The cells this rule is about; a loop that matched none of them would pass anything.
+    own_rate_cells = {"drivejepa", "alpamayo15", "qwendrive", "meteor", "autoe2e"}
+    assert own_rate_cells <= own_rated, f"own-rate cells checked: {sorted(own_rated)}"
+    assert {"openpilot", "meteor", "autoe2e"} <= stopped, f"early-stopped cells checked: {sorted(stopped)}"
