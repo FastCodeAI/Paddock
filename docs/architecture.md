@@ -306,12 +306,9 @@ comparison: it does not know about its rivals, and should not.
 Before paddock this was inverted. A three-way KITScenes plot lived under
 openpilot, a trajectory plot under Drive-JEPA, a per-sample sheet under
 Drive-JEPA again -- each able to draw only the model it sat beside, and each
-re-deriving the same axes. `tools/` now mirrors the same split:
-
-```
-tools/benchmarks/<b>/   harness checks and one-off figures for that benchmark
-tools/models/<m>/       probes into that model's internals
-```
+re-deriving the same axes. `tools/benchmarks/<b>/` now holds the harness checks
+and figures for one benchmark; probes into one model's internals stay outside
+paddock.
 
 ### The colour rule
 

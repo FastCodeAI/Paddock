@@ -907,7 +907,7 @@ test set.
 ### A view tilted over the camera's, and cut to comma's size
 
 Two more knobs go with the scale. The values the config run uses were chosen
-in the KITScenes analysis notebooks (`tools/models/openpilot/analysis/`) by
+in KITScenes analysis notebooks kept outside this repo, by
 inspecting one KITScenes scene, dbba76d9, and the patterns the earlier analysis
 found, not fitted. That scene is in the scored set, so a run with them is not a
 zero-shot measurement.

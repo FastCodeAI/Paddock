@@ -1,4 +1,4 @@
-"""The two openpilot paths must agree about which side of the road it is on.
+"""openpilot must be told which side of the road it is on.
 
 supercombo takes a two-element `traffic_convention` one-hot, set upstream as
 `traffic_convention[int(is_rhd)] = 1` (modeld.py), where `is_rhd` means
@@ -8,20 +8,17 @@ Every scene paddock evaluates is left-hand-drive, right-hand-traffic: the
 neuroNCAP sequences are boston-seaport and KITScenes is Germany. So index 0 is
 the correct one and `[1, 0]` is the correct vector.
 
-This was wrong in one path and right in the other -- the closed-loop node passed
-`[0, 1]`, telling the model it was driving a right-hand-drive car in Boston,
-while the open-loop KITScenes harness passed `[1, 0]`. The values are separate
-constants in separate files because the two paths load openpilot differently,
-which is exactly how they came to disagree, and nothing but a test stops them
-disagreeing again.
+This was once wrong: the closed-loop node passed `[0, 1]`, telling the model it
+was driving a right-hand-drive car in Boston, while a separate open-loop script
+passed `[1, 0]`. One policy now serves both loops, and this test stops the value
+drifting again.
 
 Fixed in `12f3250`. Every closed-loop openpilot score recorded before
 2026-09-01T00:44:56Z was produced with the wrong value -- see
 docs/benchmarks/neuroncap.md.
 
-The constants are read from source rather than imported: `run_openpilot.py`
-imports the openpilot checkout at module scope, which is not on PYTHONPATH
-outside a run.
+The constant is read from source rather than imported, so the test needs neither
+the openpilot checkout nor its dependencies.
 """
 
 from __future__ import annotations
@@ -33,8 +30,7 @@ import pytest
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "paddock"
 PATHS = {
-    "closed-loop node": SRC / "adapters" / "models" / "openpilot" / "policy.py",
-    "open-loop KITScenes": SRC / "adapters" / "benchmarks" / "kitscenes" / "run_openpilot.py",
+    "openpilot policy": SRC / "adapters" / "models" / "openpilot" / "policy.py",
 }
 
 # Left-hand-drive, right-hand traffic: is_rhd is False, so index 0 is set.
@@ -63,14 +59,3 @@ def test_traffic_convention_is_left_hand_drive(label: str) -> None:
         f"{label} ({PATHS[label].name}) disagrees. `[0, 1]` would tell supercombo "
         f"it is a right-hand-drive car, which is the bug fixed in 12f3250."
     )
-
-
-def test_both_openpilot_paths_agree() -> None:
-    """Open- and closed-loop must feed the same model the same convention.
-
-    Stated separately from the value check: if the correct value ever changes
-    (a scene from Singapore, say), the two paths still have to change together,
-    and this is the assertion that says so.
-    """
-    values = {label: _traffic_convention(path) for label, path in PATHS.items()}
-    assert len(set(map(tuple, values.values()))) == 1, values

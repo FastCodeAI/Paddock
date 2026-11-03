@@ -212,8 +212,8 @@ is moving.
 
 ## Step 9 (optional) — probes
 
-Diagnostics that need this model's internals go in `tools/models/<name>/`, and
-anything cheap enough to serve on request goes in `diagnostics()`, which
+Diagnostics that need this model's internals belong in your own tooling, outside
+paddock. Anything cheap enough to serve on request goes in `diagnostics()`, which
 `paddock` exposes at `/diagnostics` on a running node.
 
 What does **not** go here is a figure comparing this model with others.

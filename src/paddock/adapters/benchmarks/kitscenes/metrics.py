@@ -41,8 +41,9 @@ def displacement_errors(
 ) -> dict[str, float]:
     """ADE up to *eval_horizon_s* plus FDE at each whole second within it.
 
-    Ported unchanged from ``run_kitscenes_inference.displacement_errors`` -- this is
-    the metric definition the comparison baseline was computed with.
+    Ported unchanged from the original KITScenes inference script's
+    ``displacement_errors`` -- this is the metric definition the comparison
+    baseline was computed with.
     """
     available = min(len(predicted), len(ground_truth))
     horizon = min(available, int(round(eval_horizon_s / interval_s)))

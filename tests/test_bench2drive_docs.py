@@ -287,18 +287,7 @@ def test_no_video_is_tracked() -> None:
         check=True,
     ).stdout.split("\0")
     offenders = [p for p in tracked if p and Path(p).suffix.lower() in VIDEO_SUFFIXES]
-    assert not offenders, (
-        f"{offenders} are run artifacts; move them under [roots.runs] and keep the "
-        "manifest, as docs/evidence/driving-videos/README.md does"
-    )
-
-
-def test_video_manifest_points_outside_the_repo() -> None:
-    doc = (REPO_ROOT / "docs/evidence/driving-videos/README.md").read_text()
-    manifest = json.loads((REPO_ROOT / "docs/evidence/driving-videos/manifest.json").read_text())
-    for name in manifest["video_sha256"]:
-        assert f"{{runs}}/bench2drive/evidence/driving-videos/{name}" in doc, name
-        assert not (REPO_ROOT / "docs/evidence/driving-videos" / name).exists()
+    assert not offenders, f"{offenders} are run artifacts; move them under [roots.runs]"
 
 
 # ---------------------------------------------------------------------------

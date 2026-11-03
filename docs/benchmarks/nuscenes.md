@@ -199,32 +199,9 @@ Every metric `benchmark.yaml` declares. All are lower is better except the two
 
 ## Reading a model's decisions back off a run
 
-`tools/models/alpamayo15/decisions.py` turns every scored sample's predicted
-and ground-truth trajectory into a decision label — lateral (straight /
-turn_left / turn_right / lane_change / nudge) and longitudinal (keep_speed /
-slow_down / stop / speed_up) — purely from waypoint geometry, no map or
-annotation data needed, and writes `decisions.csv` into the run directory.
-Everything else here reads that file; none of it touches the simulator or
-`run_config()`.
-
-`decision_confusion.py` breaks ground-truth-vs-predicted-vs-input-command down
-as joint counts per situation (traffic light, intersection, construction,
-dynamic agents, ...), categories overlapping on purpose since a sample can
-match more than one. `behavior_gaps.py` is the "scan for issues" entry point:
-a battery of independent, quantified behavior checks over `decisions.csv` (plus
-`samples.jsonl` metrics and the reasoning text, when the run saved it with
-`ALPAMAYO_SAVE_REASONING=1`), each with a
-headline number and a flagged/not-flagged verdict, registered as plain
-functions so a new check is one function away. `decision_scatter.py` plots the
-same four raw geometric quantities (lateral offset, heading change, speed
-delta, final speed) ground-truth vs. predicted, to spot a cluster
-`behavior_gaps.py`'s fixed checks didn't happen to look for.
-
-`scenario_tags.py` is not a standalone tool — it's the shared nuScenes
-scene-description keyword tagger `decision_confusion.py` and `behavior_gaps.py`
-import, consolidated from logic that used to be duplicated across several
-research scripts (two real keyword-matching bugs — bare `"ped"`/`"bus"` as
-substrings — were found and fixed in that consolidation).
+`ALPAMAYO_SAVE_REASONING=1` saves Alpamayo's reasoning text beside each
+prediction; the tools that label each plan as a driving decision and scan a run
+for behaviour gaps are kept outside this repo.
 
 ## Tests
 
@@ -277,7 +254,7 @@ sentence of the second △ note: it said constant velocity beats every learned
 model, which the table below contradicts, and it now names the two that beat it.
 The symbols are the README's former footnote marks, and each note below starts
 with the mark it explains. Marks about a model rather than this benchmark
-(⊛ ⊕ ∗ ◊ ◇ ✦ ✧) are explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
+(⊕ ∗ ◊ ◇ ✦ ✧) are explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
 
 ### Notes on the matrix cells
 
@@ -300,7 +277,7 @@ front-camera history while retaining the same 2 Hz scoring anchors; its complete
 GPU run is detailed below. VisionPilot's plan here is its acceleration/steering
 integrated to a path, as in NAVSIM, so unlike KITScenes it does yield an L2.
 Alpamayo's figure is inflated by the first keyframe of each scene, where it has
-no history to difference (9.5 m there vs 1.2 m elsewhere). A constant-velocity baseline scores 0.64 here (point-avg L2 1.29), **better than every learned model except Qwen-Drive 1.0 (0.450) and the KITScenes re-ranker (0.587)** — nuScenes ego motion is largely straight, so open-loop L2 rewards a straight line; read these numbers with that in mind.
+no history to difference (9.5 m there vs 1.2 m elsewhere). A constant-velocity baseline scores 0.64 here (point-avg L2 1.29), **better than every learned model except Qwen-Drive 1.0 (0.450)** — nuScenes ego motion is largely straight, so open-loop L2 rewards a straight line; read these numbers with that in mind.
 
 ### nuScenes
 
@@ -313,7 +290,6 @@ history, CUDA inference, CPU camera warping and resume assistance disabled.
 | OpenPilot | 1.925 | 4.054 | 6.194 | 4.057 | 2.477 | 3.535 | 2.624 |
 | Alpamayo 1.5 | 0.509 | 1.351 | 2.602 | 1.487 | 0.787 | 1.249 | 1.582 |
 | Drive-JEPA ⊘ | 0.540 | 1.587 | 3.519 | 1.882 | 0.912 | 1.536 | 1.459 |
-| Drive-JEPA, KITScenes re-ranker ⊛ | 0.373 | 0.953 | 2.126 | 1.151 | 0.587 | 0.949 | 1.211 |
 | VisionPilot | 1.031 | 2.213 | 3.837 | 2.360 | 1.441 | 2.058 | 3.816 |
 | METEOR | 0.616 | 1.683 | 3.356 | 1.885 | 0.977 | 1.570 | 6.152 ◇ |
 | Qwen-Drive 1.0 | 0.318 | 0.722 | 1.360 | 0.800 | 0.450 | 0.678 | 0.770 |

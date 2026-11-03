@@ -334,9 +334,9 @@ class DriveJepaPolicy(Policy):
 
         Besides the chosen ``trajectory`` this holds all 32 ``proposals``, the
         scorer's six ``pred_logit`` per proposal and its ``pdm_score``. `infer`
-        keeps only the pick; `drivejepa_rerank` and the candidate dumps under
-        `tools/models/drivejepa/` need the rest, and read it from here so they
-        see exactly the input path `infer` does.
+        keeps only the pick; anything that studies the candidates needs the
+        rest, and reads it from here so it sees exactly the input path `infer`
+        does.
         """
         if self.agent is None:
             raise RuntimeError("load() must be called before infer()")
