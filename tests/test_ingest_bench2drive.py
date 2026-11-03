@@ -335,7 +335,7 @@ def _pooled_under(tmp_path: Path, declared: tuple[dict | None, dict | None]):
 
 
 def test_the_model_yaml_env_of_the_source_runs_reaches_the_pooled_record(tmp_path: Path) -> None:
-    """#99, one level up: the pooled config was rebuilt without `declared_env`."""
+    """The declared-env check, one level up: the pooled config was rebuilt without `declared_env`."""
     on = {"DRIVEJEPA_MOMENTUM": "on"}
     run = _pooled_under(tmp_path / "a", (on, on))
     assert run.config["declared_env"] == on
