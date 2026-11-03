@@ -253,6 +253,11 @@ def _build_env(cfg: SiteConfig, repo: Path | None, venv: Path) -> dict[str, str]
     and uv configuration, CUDA. What is removed is paddock's own interpreter, so
     that a bare `pip` or `python` in a script cannot install into paddock's
     environment, which deliberately has no torch.
+
+    That covers a venv install of paddock only, and not a bare `uv pip install`:
+    the script runs from paddock's folder, where uv finds paddock's `.venv`, and
+    a conda install keeps its `bin/` on PATH and `CONDA_PREFIX` set. Hence every
+    setup.sh passes `--python` to uv, or changes to its own repo first.
     """
     env = dict(os.environ)
     for key in ("VIRTUAL_ENV", "PYTHONPATH", "PYTHONHOME", "PADDOCK_REPO", "PADDOCK_VENV"):
