@@ -4,7 +4,7 @@
 #   PADDOCK_REPO=<the WA-JEPA clone> PADDOCK_WEIGHTS=<weights root> \
 #     bash src/paddock/adapters/models/wajepa/setup.sh
 #
-# (`paddock setup --model wajepa` will run this once setup is implemented.)
+# `paddock setup --model wajepa` runs it with both set from paddock.toml.
 #
 # Upstream's recipe (docs/installation.md) is a conda python 3.10 env with NAVSIM
 # and the nuPlan devkit installed on top, and NAVSIM pins torch 2.0.1. None of
@@ -16,7 +16,7 @@
 # reference box: torch 2.0.1 has no sm_120 kernels.
 
 set -euo pipefail
-: "${PADDOCK_REPO:?set PADDOCK_REPO to the WA-JEPA clone ('paddock setup' is not implemented yet)}"
+: "${PADDOCK_REPO:?run via 'paddock setup --model wajepa', which sets PADDOCK_REPO}"
 : "${PADDOCK_WEIGHTS:?set PADDOCK_WEIGHTS to [roots.weights]}"
 : "${PADDOCK_VENV:=${PADDOCK_REPO}/.venv}"
 # Never stage into ~/.cache on the root filesystem.

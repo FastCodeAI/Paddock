@@ -62,9 +62,10 @@ bump the sha in a PR, so the change to the numbers has a commit that explains it
 paddock setup --repo mymodel
 ```
 
-Clones into `[roots.repos]/mymodel` and symlinks it into `external/`. If a clone
-is already there it is **adopted, not re-cloned** — your existing checkout and
-any local work survive.
+Clones into `[roots.repos]/mymodel`, checks out the pinned sha and applies any
+listed patches. If a clone is already there it is **adopted, not re-cloned** —
+your existing checkout and any local work survive. If it sits at another sha,
+setup changes nothing, prints the checkout that would fix it, and exits 1.
 
 ## Step 3 — copy the template
 
@@ -148,8 +149,9 @@ Four fields are worth more thought than they look:
 ## Step 5 — write `setup.sh`
 
 Build the environment from nothing, on a machine that has never run this model.
-Paddock passes `PADDOCK_REPO`, `PADDOCK_WEIGHTS` and `PADDOCK_VENV` in, so the
-script contains no absolute paths.
+`paddock setup --model mymodel` runs it with `PADDOCK_REPO`, `PADDOCK_WEIGHTS`
+and `PADDOCK_VENV` set from `paddock.toml`, so the script contains no absolute
+paths.
 
 Record anything non-obvious as a comment **and** in `docs/models/<name>.md`: a
 pinned CUDA version, a package that must *not* be installed, a build needing a

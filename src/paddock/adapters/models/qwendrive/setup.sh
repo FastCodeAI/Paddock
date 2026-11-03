@@ -3,7 +3,7 @@
 #
 #   PADDOCK_REPO=<the Qwen-Drive-1.0 clone> bash src/paddock/adapters/models/qwendrive/setup.sh
 #
-# (`paddock setup --model qwendrive` will run this once setup is implemented.)
+# `paddock setup --model qwendrive` runs it with PADDOCK_REPO and PADDOCK_VENV set from paddock.toml.
 
 set -euo pipefail
 : "${PADDOCK_REPO:?set PADDOCK_REPO to the Qwen-Drive-1.0 clone}"

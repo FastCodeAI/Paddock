@@ -34,6 +34,8 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 - **OpenPilot's nuScenes run cannot be regenerated with tracked code.** It was
   made by four parallel workers outside the runner; a `--workers` path in the
   runner would fix that.
+- **`paddock setup --model` has not been run on a real model.** Its tests use a
+  local stand-in repository and a stand-in `setup.sh`.
 - **`--resume` does not check the model node.** It compares the run's config,
   not the code serving the model, so a resumed run can mix two versions of an
   adapter.
@@ -46,8 +48,10 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 
 ## Next
 
-- `paddock setup`: clone each upstream repo at its pinned commit and apply
-  paddock's patches.
+- `paddock setup --model` for `drivejepa` and `visionpilot`: build their conda
+  environments where `PADDOCK_VENV` says, without overwriting one a site
+  already has. Today their `setup.sh` ignores it, so a site points paddock at
+  the environment by hand (`docs/site-setup.md`, step 5).
 - HUGSIM driven through paddock's own harness; today its runs are imported.
 - Models listed in `repos.yaml` but not yet evaluated: Alpamayo 2 and sunnypilot.
 - Failure-mode analysis, the same for every model and dataset, in its own repo,

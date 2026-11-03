@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-: "${PADDOCK_REPO:?set PADDOCK_REPO to the METEOR clone ('paddock setup' is not implemented yet)}"
+: "${PADDOCK_REPO:?run via 'paddock setup --model meteor', which sets PADDOCK_REPO}"
 : "${PADDOCK_WEIGHTS:?set PADDOCK_WEIGHTS to [roots.weights]}"
 : "${PADDOCK_VENV:=${PADDOCK_REPO}/.venv}"
 # Never stage into ~/.cache on the root filesystem.
