@@ -50,9 +50,9 @@ once holds a plan for five frames.
 
 **OpenPilot and VisionPilot were not re-run.** OpenPilot's native rate *is* 20 Hz,
 so its runs are already native-rate runs; VisionPilot was left alone.
-Nothing on this page says anything about either. (OpenPilot's 29 Oct 50-route run,
-which the support matrix ranks, is one 20 Hz configuration and is not part of this
-comparison; see [bench2drive.md](bench2drive.md).)
+Nothing on this page says anything about either. (OpenPilot's 31 Oct 50-route run,
+`pooled50-40c29d24c37d542a-c7d2b2`, which the support matrix ranks, is one 20 Hz
+configuration and is not part of this comparison; see [bench2drive.md](bench2drive.md).)
 
 ### Two things this page does not get to assume
 
