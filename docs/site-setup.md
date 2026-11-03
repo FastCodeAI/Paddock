@@ -108,6 +108,11 @@ For every entry in [`repos.yaml`](../repos.yaml) this clones it into
 listed for it. It prints one line per repo -- name, path, and what it did -- and
 the exit code is the verdict.
 
+Plain `paddock setup` fetches every entry, including some that no model or
+benchmark uses yet, such as sunnypilot (3.7 GB of history). To fetch only what
+you will run, give `--repo NAME` for each one, or use `paddock setup --model
+NAME` (step 5), which fetches that model's repo and then builds its environment.
+
 **Existing clones are adopted, not re-cloned.** If you already have these repos
 checked out under `[roots.repos]`, paddock uses them where they are, and your
 local work is left alone. A clone at a different revision than the pin is not
