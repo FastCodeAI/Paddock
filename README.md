@@ -113,7 +113,8 @@ Per-benchmark tables and notes: [nuScenes](docs/benchmarks/nuscenes.md#support-m
 <summary>Why each cell is marked, and what to check before comparing</summary>
 
 A mark on a model's name applies to every cell in its row. A cell without a mark
-was measured the same way as the rest of its column.
+was measured the same way as the rest of its column, unless a note below says how
+it differs.
 
 - **A — adapted, not zero-shot.** The model was trained on data from this
   benchmark, or its settings were chosen on it. Drive-JEPA and Qwen-Drive on
