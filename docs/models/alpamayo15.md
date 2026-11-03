@@ -4,9 +4,8 @@ NVIDIA's Alpamayo 1.5 (10B), a vision-language driving model: four cameras, four
 frames each, 1.6 s of ego history and an optional navigation sentence in; a
 reasoning trace and 64 poses 0.1 s apart (6.4 s) out. The adapter is
 `src/paddock/adapters/models/alpamayo15/`; the model card and training data are
-in [comparison.md](comparison.md), its KITScenes protocol in
-[alpamayo15-eval-notes.md](alpamayo15-eval-notes.md), and what its reasoning
-traces say in [alpamayo15-reasoning.md](alpamayo15-reasoning.md).
+in [comparison.md](comparison.md), and its KITScenes protocol in
+[alpamayo15-eval-notes.md](alpamayo15-eval-notes.md).
 
 ## On AlpaSim, through the bridge
 

@@ -269,6 +269,15 @@ Every model sees identical episodes and identical seeds, derived from the run
 index. The comparison is paired, not merely averaged — which is worth far more
 and costs nothing if planned for.
 
+A `model.yaml` can also declare `runtime.env_passthrough`, a tuple of env var
+names to forward into that model's subprocess beyond paddock's own
+`PASSTHROUGH` default (`runtime/env.py`) — for ablation/debugging knobs a
+model's own code reads (e.g. `FOO=1 paddock run --model mymodel ...`).
+Without declaring a name here, the subprocess's environment is built from that
+strict allowlist plus `env`, so a var not in either place silently never
+reaches the model — the shell invocation looks like it worked and does
+nothing.
+
 ## Configuration
 
 Covered in [site-setup.md](site-setup.md); the short version is that tracked
@@ -297,12 +306,9 @@ comparison: it does not know about its rivals, and should not.
 Before paddock this was inverted. A three-way KITScenes plot lived under
 openpilot, a trajectory plot under Drive-JEPA, a per-sample sheet under
 Drive-JEPA again -- each able to draw only the model it sat beside, and each
-re-deriving the same axes. `tools/` now mirrors the same split:
-
-```
-tools/benchmarks/<b>/   harness checks and one-off figures for that benchmark
-tools/models/<m>/       probes into that model's internals
-```
+re-deriving the same axes. `tools/benchmarks/<b>/` now holds the harness checks
+and figures for one benchmark; probes into one model's internals stay outside
+paddock.
 
 ### The colour rule
 

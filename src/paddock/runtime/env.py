@@ -66,6 +66,12 @@ def build(spec: ModelSpec, cfg: SiteConfig, extra: dict[str, str] | None = None)
     env.setdefault("PADDOCK_RUNS", str(cfg.runs))
     env["PADDOCK_SITE"] = cfg.site
 
+    # A model's own declared debugging/ablation knobs (model.yaml's
+    # runtime.env_passthrough), sourced from whoever's shell launched `paddock
+    # run` -- last, so `FOO=1 paddock run ...` always wins over a static or
+    # site-declared default for the same name (see Runtime.env_passthrough).
+    env.update({k: os.environ[k] for k in spec.runtime.env_passthrough if k in os.environ})
+
     if extra:
         env.update(extra)
     return env

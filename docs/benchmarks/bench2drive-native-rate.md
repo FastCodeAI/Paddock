@@ -49,8 +49,10 @@ waypoints per frame, and counting runs of consecutive frames holding an identica
 once holds a plan for five frames.
 
 **OpenPilot and VisionPilot were not re-run.** OpenPilot's native rate *is* 20 Hz,
-so the published run is already its native-rate run; VisionPilot was left alone.
-Nothing on this page says anything about either.
+so its runs are already native-rate runs; VisionPilot was left alone.
+Nothing on this page says anything about either. (OpenPilot's 31 Oct 50-route run,
+`pooled50-40c29d24c37d542a-c7d2b2`, which the support matrix ranks, is one 20 Hz
+configuration and is not part of this comparison; see [bench2drive.md](bench2drive.md).)
 
 ### Two things this page does not get to assume
 
@@ -84,11 +86,7 @@ this page were driven before that, on another branch, and were ingested.
 | Alpamayo 1.5 (nav) | 10 Hz | [`native50-10hz-…c4d076`](../../results/bench2drive/alpamayo15/native50-10hz-084418258d833a9f-c4d076/run.json) | `pooled50-40c29d24c37d542a-36d2d0` |
 | QwenDrive | 2 Hz | [`native50-2hz-…9b2bc9`](../../results/bench2drive/qwendrive/native50-2hz-084418258d833a9f-9b2bc9/run.json) | `pooled50-40c29d24c37d542a-f250e0` |
 
-All three are `valid: false`: a run driven at 2 or 10 Hz is not the protocol the
-other Bench2Drive rows were driven under, so `paddock ingest` keeps it and does
-not rank it — the same treatment a run pooling two recording setups gets, and for
-the same reason. They appear in `docs/leaderboard.md` under excluded runs, with
-the rate in the reason. The comparison they exist for is this page, where both
+`paddock ingest` writes all three `valid: true`. They rank in `docs/leaderboard.md` and in the support matrix at the native rate. The comparison they exist for is this page, where both
 columns are stated.
 
 All three were written by `paddock ingest` from the per-route `results.json`
@@ -263,7 +261,8 @@ How it is recorded — this is the part that matters for the leaderboard:
 
 - Both runs list 3800 in `config.routes_subset`: it was **requested**.
 - Both carry `dataset.n_failed: 1`, `dataset.n_expected: 50`,
-  `dataset.n_samples: 49`, `status: "partial"` and `valid: false`.
+  `dataset.n_samples: 49` and `status: "partial"`. Both are `valid: true`
+  (`ranked = true` in their ingest entries).
 - Both name it in `notes` — "routes expected but never scored: 3800". The
   QwenDrive record additionally carries
   `config.routes_never_scored: {"3800": "…no records in _checkpoint (the route

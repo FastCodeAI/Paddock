@@ -696,7 +696,7 @@ records with the ground truth in the calibrated frame, ADE@3s is 0.602 for
 qwendrive, 0.858 for alpamayo15 and openpilot, 1.137 for constant velocity,
 1.358 for autoe2e and 30.132 for meteor,
 which reorders the table. It is left as scored until that re-score lands in its
-own PR ([ROADMAP](../ROADMAP.md), M8).
+own PR ([ROADMAP](../ROADMAP.md)).
 
 | | horizon | ADE@1s | ADE@2s | **ADE@3s** | ADE@4s | ADE@5s | ADE@10s | FDE@3s | median ADE@3s | miss@3s | PDMS-style ↑ |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -1027,7 +1027,7 @@ The per-metric results behind this benchmark's column in the
 [README's support matrix](../../README.md#support-matrix), and the notes on its
 cells. Moved here from the README unchanged except for links; the symbols are
 the README's former footnote marks, and each note below starts with the mark it
-explains. Marks about a model rather than this benchmark (⊛ ⊕ ∗ ◊ ◇ ✦ ✧) are
+explains. Marks about a model rather than this benchmark (⊕ ∗ ◊ ◇ ✦ ✧) are
 explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
 
 ### Notes on the matrix cells
@@ -1062,7 +1062,7 @@ table below. Every comma2k19 row is also scored against a ground truth left in
 the camera's frame while the plans are in the car's. Re-scored with both in the
 car's frame, the order changes: Qwen-Drive 0.602, Alpamayo 1.5 and OpenPilot
 0.858, constant velocity 1.137, AutoE2E 1.358, METEOR 30.132. That re-score is
-a tracked follow-up ([ROADMAP](../ROADMAP.md), M8). **METEOR's 30.075 is a
+a tracked follow-up ([ROADMAP](../ROADMAP.md)). **METEOR's 30.075 is a
 reach failure too, and a larger one**: the released graph, shown one phone
 camera in two of its eight slots, plans about 17 m ahead whatever the speed,
 where I-280 needs 55-92 m.

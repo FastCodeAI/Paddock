@@ -602,7 +602,7 @@ The per-metric results behind this benchmark's column in the
 [README's support matrix](../../README.md#support-matrix), and the notes on its
 cells. Moved here from the README unchanged except for links; the symbols are
 the README's former footnote marks, and each note below starts with the mark it
-explains. Marks about a model rather than this benchmark (⊛ ⊕ ∗ ◊ ◇ ✦ ✧) are
+explains. Marks about a model rather than this benchmark (⊕ ∗ ◊ ◇ ✦ ✧) are
 explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
 
 ### Notes on the matrix cells
@@ -629,13 +629,11 @@ and Qwen-Drive replan at 2 Hz, Alpamayo 1.5 at 10 Hz — over the 50-route set,
 crashes CARLA for both at their native rate and is reported as never scored, not
 as a zero. Every other cell in this column but AutoE2E's (☉) and METEOR's (below) is driven at 20 Hz, one inference per
 simulator tick; OpenPilot's native rate *is* 20 Hz, and VisionPilot was not
-re-run. So the ※ cells are **not comparable with the ◆ cells**: a different rate
-and a different route set. At 20 Hz the same three scored Alpamayo 1.5 44.58 and
+re-run. So the ※ cells are driven at a different rate from the ◆ cells, and are
+ranked against them all the same, at each model's own rate. At 20 Hz the same three scored Alpamayo 1.5 44.58 and
 Drive-JEPA 31.11 (24 routes, ◆) and Qwen-Drive 12.92 (50 routes). Drive-JEPA uses
-its released NAVSIM-v2 checkpoint zero-shot in CARLA. The runs stay
-`valid: false` and off the ranked [leaderboard](../leaderboard.md): each one's rate
-was set by hand, and the leaderboard ranks a model at 20 Hz or at the rate its
-`model.yaml` declares. Per-route detail and the 20 Hz comparison are in
+its released NAVSIM-v2 checkpoint zero-shot in CARLA. `paddock ingest` writes all three `valid: true`. They rank on
+the [leaderboard](../leaderboard.md) too. Per-route detail and the 20 Hz comparison are in
 [Native inference rate](#native-inference-rate--three-models-re-driven).
 
 ♣ The Bench2Drive baseline uses a **fixed 3 m/s target**, with straight ego-frame
@@ -653,8 +651,10 @@ own inputs, the measured ego history and the route raster, asked for a plan at t
 ([run](../../results/bench2drive/autoe2e/pooled50-40c29d24c37d542a-cc7a9c/run.json),
 `valid: true`): route completion 26.37 %, infraction penalty 0.60. A route ends
 after 30 s without 3 m of progress or at 4x the expert's time, and is scored as a
-failed drive: 42 of the 50 ended on the first rule, 1 on the second. The other rows
-drove every route to Bench2Drive's own end, so the cell is marked R, and AutoE2E is
+failed drive: 42 of the 50 ended on the first rule, 1 on the second. The rows
+without the early stop drove every route to Bench2Drive's own end; the cell
+ranks all the same, as a run under these rules does
+([Ending routes early](#ending-routes-early)), and AutoE2E is
 left out of the 50-route table below, whose infraction counts depend on how long
 each route ran. Fed a
 steady straight past and no route instead, which are not upstream's inputs, and
@@ -668,9 +668,9 @@ and with no driving command, which the released graph has no input for, asked fo
 a plan at the 5 Hz its `model.yaml` declares
 ([run](../../results/bench2drive/meteor/pooled50-40c29d24c37d542a-867d57/run.json),
 `valid: true`): route completion 6.30 %, infraction penalty 0.90, under AutoE2E's
-early-stop rules. The other rows drove every route to Bench2Drive's own end, so,
-like AutoE2E's, the cell is marked R. On 43 of the 50 routes the car never leaves
-the start. Standing still, METEOR plans a 3 s path that ends a median 0.17 m ahead, and its own
+early-stop rules, and like AutoE2E's the cell ranks. On 43 of the 50 routes the
+car never leaves the start. Standing still, METEOR plans a 3 s path that ends a
+median 0.17 m ahead, and its own
 acceleration output is negative, so the shared controller, which brakes when a
 plan asks for less than 0.4 m/s, holds the brake until a rule ends the route: the
 stuck rule at 30 s on 30 of them, the over-time rule on 1, and Bench2Drive's own
@@ -687,8 +687,8 @@ its `model.yaml`
 `valid: true`): route completion 62.44 %, infraction penalty 0.78, under AutoE2E's
 early-stop rules, which ended 19 routes on the stuck rule and 5 on the time budget.
 The nudge stands in for a driver pressing resume once the car has stood 3 s with
-no lead, so the cell is marked P; the other rows drove every route to
-Bench2Drive's own end, so it is marked R. It replaces the unassisted estimate ◆
+no lead, so the cell is marked P; like AutoE2E's and METEOR's, it ranks. It
+replaces the unassisted estimate ◆
 (30.09), a reconstruction from the September recordings, whose 50-route mean the
 table below still withholds.
 
@@ -718,7 +718,7 @@ the per-km table below rather than across this one.
 † **OpenPilot has no DS or RC cell here, deliberately.** Its 24 historical routes
 were driven with human resume assistance on 16 of them, and its 26 expansion
 routes use a different upstream longitudinal setup; no single mean describes both,
-so none is published and nothing ranks OpenPilot against the other systems. The
+so none is published and nothing ranks these recordings against the other systems. The
 counts in its row are the recorded totals over all 50 routes. The scores are in
 [OpenPilot, by recording set](#openpilot-by-recording-set), and its tracked run
 carries the same split in `by_group` with `valid: false` on the pooled mean.
@@ -803,6 +803,16 @@ intervention. Its per-route values are
 every record in the pooled JSON now carries an `assistance` block, so the assisted
 and unassisted subsets can be recomputed from the linked file alone.
 
+A second OpenPilot run, driven on 29 Oct 2026 for this cell before the run of its
+declared setup replaced the estimate, is kept and does not rank:
+[`bench2drive/openpilot/native50-20hz-40c29d24c37d542a-f68000`](../../results/bench2drive/openpilot/native50-20hz-40c29d24c37d542a-f68000/run.json).
+One setup on every route — no resume assistance, openpilot's own longitudinal plan,
+the tinygrad backend on CUDA, no early stop — at 20 Hz: DS 30.91, RC 39.49 over all
+50 routes, none lost. It set the device and backend openpilot's `model.yaml`
+declares to other values, so `paddock ingest` writes it `valid: false`. It differs
+from the ranked run in the backend, the nudge and the early stop at once, so the
+gap between the two is not the effect of any one of them.
+
 #### Constant velocity — the speed sweep
 
 The baseline is not one experiment. All five targets were driven over the same
@@ -857,9 +867,7 @@ re-run; nothing here restates either. The rate is recorded per run in
 `config.model_env`, not derived from `model.yaml`. They were driven before the
 adapter honoured a rate on `main`; it now does (a model's `planning_hz`, above),
 and Drive-JEPA declares 2 Hz, so a clean checkout drives it at that rate by
-default. CARLA re-runs are not bit-reproducible, so these stay landed results. The three runs are `valid: false` and **do not rank**
-on the board: each rate was set by hand, in the runs' `model_env`, and the board
-ranks a model only at 20 Hz or at the rate its `model.yaml` declares. Their native scores are the Bench2Drive cells of the support matrix for
+default. CARLA re-runs are not bit-reproducible, so these stay landed results. `paddock ingest` writes all three `valid: true`. All three **rank** on the board. Their native scores are the Bench2Drive cells of the support matrix for
 these three models (※). `model_env` also differs in more than the rate — thread counts, a trace
 sink, `ALPAMAYO_NAV` — each argued immaterial and none measured to be; the
 [page](bench2drive-native-rate.md) books that as argued, not
@@ -877,4 +885,3 @@ files by `paddock ingest` (`[[ingest.bench2drive]]`, one pooled closed-loop run 
 model or speed band): `results/bench2drive/<model>/pooled50-*`. `paddock report` reads
 them like any other run.
 
-[VisionPilot and OpenPilot failure videos](../evidence/driving-videos/README.md) — manifest and hashes tracked; the MP4s live under `{runs}`, not in the repo.

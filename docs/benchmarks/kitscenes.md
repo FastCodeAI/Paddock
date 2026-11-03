@@ -31,7 +31,7 @@ predictions sitting beside them; `paddock ingest` reads the same file for the
 predictions, which is how Drive-JEPA has a row on this benchmark without a
 paddock run.
 
-### The eight rows, and where each came from
+### The seven rows, and where each came from
 
 | model | run | n | ADE | source |
 |---|---|---:|---:|---|
@@ -41,17 +41,16 @@ paddock run.
 | openpilot | `20261008T004723-a369d1` | 223 | 1.248 | a paddock run; base front camera, 55° cut, height 1.22, pitch −1.7°, route as desire ([⊜](#notes-on-the-matrix-cells)) |
 | meteor | `20260914T215457-ab0586` | 223 | 1.879 | a paddock run; six of its eight cameras |
 | drivejepa | `legacy-kitscenes_e2e_final` | 223 | 2.364 | `inference/kitscenes_e2e_final.pkl` |
-| drivejepa_rerank | `20260921T210621-d7ed08` | 223 | 0.973 | a paddock run; **adapted**, trained on KITScenes train, see below |
 | autoe2e | `20261020T220509-dee848` | 223 | 0.847 | a paddock run; six cameras, the scene's map and an **oracle route**; **adapted**, fine-tuned on KITScenes train, see below |
 
-All eight carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
+All seven carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
 so the column compares.
 
 openpilot's row is its configured run. Its other ranked runs on the same 223
 keyframes all use the ring's front camera:
 - stock, `legacy-full223` (`eval_kitscenes/runs/full223`): 1.599, the row shown
   before;
-- stock, M6's paddock reproduction at `fastcode-shakaal`
+- stock, paddock's reproduction of the original run
   (`20260901T175755-cc27fb`): 1.599, its `config` recording only `limit`;
 - stock again, at another site after the warp-cache fix
   (`20260930T154018-242869`): 1.595, with the median at 1.401 against 1.323. What
@@ -69,8 +68,8 @@ Caveats the hash cannot express:
 - **Domain.** The checkpoint is trained on nuPlan/OpenScene — US cities, a
   windshield rig — and KITScenes is European driving from a roof pod. Its rank
   here is a zero-shot transfer result, which is why it sits last on this
-  benchmark and first on NAVSIM. `adapters/benchmarks/navsim/run_kitscenes_inference.py`
-  sets out what the adapter can and cannot reconcile.
+  benchmark and first on NAVSIM. The roof-pod and windshield rigs differ in a way
+  no camera transform can undo.
 - **Camera geometry, and no route hint at all.** Qwen-Drive is the only row read
   on three cameras: the ring's front, front-left and front-right, at
   +60.9 / +0.97 / −58.5 degrees and ~87° horizontally, against the ~70° nuPlan
@@ -78,17 +77,6 @@ Caveats the hash cannot express:
   command, so every one of its samples is driven as "go straight" — a channel
   the model uses on NAVSIM is inert on this one.
 
-- **Adapted, not zero-shot.** `drivejepa_rerank` is Drive-JEPA with a selector
-  choosing among its 32 candidates. The selector was trained on 5,711 keyframes
-  from 373 KITScenes **train** scenes. None of those scenes is in this list,
-  which was checked by scene id. It is 1.002 on the 186 val samples and 0.828 on
-  the 37 overlap_train_val ones, whose area overlaps train. It is the first
-  paddock run of Drive-JEPA on this benchmark. Before it, the harness sent no
-  `lidar2ego`, and Drive-JEPA refuses an observation without one. It reads the
-  ring cropped onto the OpenScene lens (`DRIVEJEPA_IMAGE_GEOMETRY=openscene`),
-  with no route hint. Through that path Drive-JEPA's own pick scores 2.521; the
-  2.364 row's devkit loader also sent acceleration and the route hint. See
-  [drivejepa_rerank.md](../models/drivejepa_rerank.md).
 - **Adapted, and given the logged route.** AutoE2E's `kitscenes-epoch-5` was
   fine-tuned on KITScenes train (upstream's 534 scenes, none of the 140 here,
   checked by scene id), and is the one row given the scene's Lanelet2 map and a
@@ -459,7 +447,7 @@ The per-metric results behind this benchmark's column in the
 [README's support matrix](../../README.md#support-matrix), and the notes on its
 cells. Moved here from the README unchanged except for links; the symbols are
 the README's former footnote marks, and each note below starts with the mark it
-explains. Marks about a model rather than this benchmark (⊛ ⊕ ∗ ◊ ◇ ✦ ✧) are
+explains. Marks about a model rather than this benchmark (⊕ ∗ ◊ ◇ ✦ ✧) are
 explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
 
 ### Notes on the matrix cells
@@ -479,7 +467,6 @@ The values were chosen by inspecting one scene of this split (dbba76d9) and
 patterns from the earlier analysis. The gain is in speed, along the path. Against
 the stock run re-made here, lateral error rises from 0.286 to 0.339 m, and the 39
 turns get 0.234 m worse. An independent re-run reproduced every keyframe to the bit.
-See `tools/models/openpilot/analysis/openpilot_drv_supcombo_kitscenes_config_run.md`.
 
 ⊞ **AutoE2E's KITScenes figure is adapted, and is given an oracle route**
 (`20261020T220509-dee848`). The checkpoint was fine-tuned on KITScenes train,
@@ -501,10 +488,8 @@ synthesised by the adapter (see ∗); METEOR sees six of its eight cameras (see
 ◇). Qwen-Drive 1.0 reads three of the ring's six and is zero-shot on this
 dataset. It, Alpamayo 1.5 and OpenPilot's configured run beat the
 constant-velocity baseline; OpenPilot's configuration was chosen by inspecting
-one scene of this split (see ⊜). The re-ranked Drive-JEPA row also beats the
-baseline, but it is adapted to KITScenes train (see ⊛): 1.002 on the 186 val
-samples, 0.828 on the 37 from scenes whose area overlaps train. AutoE2E is
-adapted too, and is the one row given the scene's map and an oracle route (see
+one scene of this split (see ⊜). AutoE2E is
+adapted, and is the one row given the scene's map and an oracle route (see
 ⊞): 0.848 on the val samples, 0.842 on the overlap ones.
 
 | Model | ADE@3s ↓ (m) | FDE@3s ↓ (m) |
@@ -512,7 +497,6 @@ adapted too, and is the one row given the scene's map and an oracle route (see
 | OpenPilot | 1.248 ⊜ | 2.355 ⊜ |
 | Alpamayo 1.5 | 1.002 | 2.158 |
 | Drive-JEPA | 2.364 | 4.199 |
-| Drive-JEPA, KITScenes re-ranker ⊛ | 0.973 | 2.082 |
 | VisionPilot | 1.534 ∗ | 3.089 ∗ |
 | METEOR | 1.879 ◇ | 4.034 ◇ |
 | Qwen-Drive 1.0 | **0.806** | **1.777** |

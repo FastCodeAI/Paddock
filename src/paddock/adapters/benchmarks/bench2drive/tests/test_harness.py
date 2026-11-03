@@ -358,6 +358,70 @@ def test_host_pinning_reaches_the_evaluator(tmp_path, monkeypatch) -> None:
     assert "SOME_UNRELATED_VAR" not in env
 
 
+def test_segment_mode_is_off_unless_asked_for_and_then_reaches_the_agent(tmp_path, monkeypatch) -> None:
+    """PADDOCK_SEGMENT is the only switch for the sim2real capture / frame-swap path.
+
+    A standard run must not see it: segment.py teleports the ego and spawns a depth camera,
+    neither of which belongs in a scored route.
+    """
+    cfg = _site(tmp_path, monkeypatch, COMPLETED)
+    off = tmp_path / "off"
+    _harness(cfg).run_episode(_episode(), "http://127.0.0.1:9000", off)
+    assert "PADDOCK_SEGMENT" not in json.loads((off / "env.json").read_text())
+
+    spec = tmp_path / "vp_capture.json"
+    monkeypatch.setenv("PADDOCK_SEGMENT", str(spec))
+    on = tmp_path / "on"
+    _harness(cfg).run_episode(_episode(), "http://127.0.0.1:9000", on)
+    assert json.loads((on / "env.json").read_text())["PADDOCK_SEGMENT"] == str(spec)
+
+
+def test_camera_override_replaces_the_declared_rig(tmp_path, monkeypatch) -> None:
+    """PADDOCK_CAMERAS_OVERRIDE renders a rig the running model did not declare.
+
+    The sim2real capture needs one model's cameras behind a cheap node; empty entries are
+    dropped so a trailing comma is not a camera id.
+    """
+    cfg = _site(tmp_path, monkeypatch, COMPLETED)
+    monkeypatch.setenv("PADDOCK_CAMERAS_OVERRIDE", "CAM_FRONT,CAM_FRONT_LEFT,,CAM_OP_WIDE,")
+    out = tmp_path / "out"
+    _harness(cfg).run_episode(_episode(), "http://127.0.0.1:9000", out)
+    env = json.loads((out / "env.json").read_text())
+    assert env["PADDOCK_CAMERAS"] == "CAM_FRONT,CAM_FRONT_LEFT,CAM_OP_WIDE"
+
+
+def test_a_sim2real_diagnostic_is_on_the_record_and_does_not_rank(tmp_path, monkeypatch) -> None:
+    """Either host switch changes what the model is shown, so a run with one names it in
+    `run.json` (and so in the run id) and is never ranked as the model's score, even over
+    every route the site runs. Review #53 (1)."""
+    harness = _harness(_site(tmp_path, monkeypatch, COMPLETED))
+    list(harness.episodes(None, runs=1))  # every route: not a subset
+    assert harness.invalid_reasons() == []
+    assert not {"cameras_override", "segment"} & set(harness.run_config())
+
+    monkeypatch.setenv("PADDOCK_CAMERAS_OVERRIDE", "CAM_FRONT,CAM_OP_WIDE,")
+    assert harness.run_config()["cameras_override"] == ["CAM_FRONT", "CAM_OP_WIDE"]
+    (reason,) = harness.invalid_reasons()
+    assert reason.startswith("PADDOCK_CAMERAS_OVERRIDE") and "CAM_FRONT, CAM_OP_WIDE" in reason
+
+    monkeypatch.delenv("PADDOCK_CAMERAS_OVERRIDE")
+    monkeypatch.setenv("PADDOCK_SEGMENT", str(tmp_path / "specs" / "vp_capture.json"))
+    assert harness.run_config()["segment"] == "vp_capture.json", "the spec's name; its path is this machine's"
+    (reason,) = harness.invalid_reasons()
+    assert reason.startswith("PADDOCK_SEGMENT")
+
+
+def test_a_scored_run_never_loads_segment_mode(load_agent, monkeypatch) -> None:
+    """The client imports segment.py only when PADDOCK_SEGMENT is set. segment.py needs Pillow,
+    which preflight does not check in the client interpreter: imported at the top of agent.py,
+    a site without it would pass preflight and then fail every route at import. Review #53 (2)."""
+    monkeypatch.setitem(sys.modules, "PIL", None)  # a client interpreter without Pillow
+    monkeypatch.delitem(sys.modules, "paddock.adapters.benchmarks.bench2drive.segment", raising=False)
+    monkeypatch.delenv("PADDOCK_SEGMENT", raising=False)
+    load_agent()
+    assert "paddock.adapters.benchmarks.bench2drive.segment" not in sys.modules
+
+
 def test_recording_is_gated_on_the_record_setting(tmp_path, monkeypatch) -> None:
     cfg = _site(tmp_path, monkeypatch, COMPLETED, record="true")
     out = tmp_path / "out"

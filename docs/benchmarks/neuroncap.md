@@ -203,7 +203,7 @@ would otherwise fail deep into a sweep.
 | paddock `visionpilot` adapter | 2.8269616956051293 |
 | original `visionpilot_server.py`, invoked the original way | 2.8269616956051293 |
 
-Identical to full float precision. That is the claim M5 set out to test, and it
+Identical to full float precision. That is the claim this reproduction set out to test, and it
 holds: the conversion to the `Policy` contract changed the seams and nothing else.
 
 `openpilot` likewise returned 5.0 on stationary-0103, matching its recorded value.
@@ -574,6 +574,12 @@ For all four models side by side on one clock, see
 `tools/benchmarks/neuroncap/comparison_video.py` — it reads frames rather than
 videos, so it needs `video = "keep"`.
 
+### Reading a model's reasoning back off a sweep
+
+A model that writes reasoning text exposes it through `/diagnostics` (see
+`policy/protocol.py`); the tools that capture it during a sweep and overlay it on
+the sweep's video are kept outside this repo.
+
 ## The score is not linear over 0–5
 
 From `neuro_ncap/components/evaluator.py::_compute_ncap_score`:
@@ -709,7 +715,7 @@ The per-metric results behind this benchmark's column in the
 [README's support matrix](../../README.md#support-matrix), and the notes on its
 cells. Moved here from the README unchanged except for links; the symbols are
 the README's former footnote marks, and each note below starts with the mark it
-explains. Marks about a model rather than this benchmark (⊛ ⊕ ∗ ◊ ◇ ✦ ✧) are
+explains. Marks about a model rather than this benchmark (⊕ ∗ ◊ ◇ ✦ ✧) are
 explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
 
 ### Notes on the matrix cells

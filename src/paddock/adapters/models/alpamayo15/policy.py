@@ -543,7 +543,17 @@ class AlpamayoPolicy(Policy):
             return Trajectory(plan, dt=PLAN_DT, extras={"reasoning": self._last_reasoning})
         self._log_infer(nav_text, waypoints, cot)
         self._log_timing(started, prepared, generated, cot, nav_text)
-        return Trajectory(waypoints, dt=self.waypoint_dt)
+        extras: dict = {}
+        # Off by default: persisting the reasoning for every sample would bloat
+        # samples.jsonl on a 5000+ sample run. Opt in for a small targeted run
+        # (e.g. re-scoring only a prior run's worst-cases list) instead.
+        if _env_or("ALPAMAYO_SAVE_REASONING", 0) == 1:
+            extras["reasoning"] = cot[:400]
+        if self.num_traj_samples > 1:
+            extras["all_trajectories"] = [
+                samples[i][GRID_INDICES][:, :2].tolist() for i in range(len(samples))
+            ]
+        return Trajectory(waypoints, dt=self.waypoint_dt, extras=extras or None)
 
     def _log_timing(
         self, started: float, prepared: float, generated: float, cot: str, nav_text: str | None

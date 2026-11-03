@@ -43,6 +43,8 @@ come from the environment, set by ``harness.run_episode``:
                           dashboard's "Stop route" writes it)
     PADDOCK_STOP_RECORD   where to write why and when a route was ended early;
                           see ``early_stop.py``
+    PADDOCK_SEGMENT       a sim2real diagnostic, never a scored run: the spec of a
+                          recorded segment to capture or replay; see ``segment.py``
 
 It runs inside the CARLA client's interpreter (Python 3.8 at the one site that
 has one), with ``REPO_ROOT/src`` on PYTHONPATH like every process paddock
@@ -87,6 +89,7 @@ STOP_AFTER_S = float(os.environ["PADDOCK_STOP_AFTER_S"]) if os.environ.get("PADD
 STOP_ON_COLLISION = os.environ.get("PADDOCK_STOP_ON_COLLISION") == "1"
 STOP_REQUEST = os.environ.get("PADDOCK_STOP_REQUEST") or None
 STOP_RECORD = os.environ.get("PADDOCK_STOP_RECORD") or None
+SEGMENT = os.environ.get("PADDOCK_SEGMENT") or None
 #: Ask the node for a plan at most this often, Hz, and follow the last plan
 #: unchanged in between: 2 Hz is one /infer per 10 frames of the 20 Hz
 #: simulation. 0 asks every tick. The harness sets it from the model's
@@ -175,6 +178,9 @@ def _intrinsics(width, height, fov_deg) -> list:
 
 
 class PaddockB2DAgent(AutonomousAgent):
+    #: Segment mode's driver (``segment.py``) when PADDOCK_SEGMENT is set; None on every other run.
+    _seg = None
+
     def setup(self, path_to_conf_file):
         self.track = Track.SENSORS
         self._t = 0
@@ -188,8 +194,6 @@ class PaddockB2DAgent(AutonomousAgent):
             self._metric_path = os.path.join(METRICS_DIR, save_name, "metric_info.json")
         self._prev_speed = 0.0
         self._prev_us = None
-        self._plan = None
-        self._native = None
         self._payload = None
         self._plan_us = None
         self._hero = None
@@ -212,6 +216,20 @@ class PaddockB2DAgent(AutonomousAgent):
             self._http.post(f"{SERVER}/reset", json={}, timeout=30)
         except Exception as exc:  # a fresh node has nothing to reset; not fatal
             print("[paddock-b2d] reset warning:", exc)
+        # Segment mode (PADDOCK_SEGMENT): capture a recorded run tick by tick, or replay it to
+        # T0 and then hand over with converted frames. Off for every standard run; the spec
+        # names the cameras it touches. See segment.py.
+        if SEGMENT:
+            # Imported only here: it needs Pillow, which preflight does not check and a scored
+            # run's client interpreter need not have.
+            from paddock.adapters.benchmarks.bench2drive import segment
+
+            self._seg = segment.Segment(
+                SEGMENT,
+                {c: RIG[c]["pose"] for c in CAMS},
+                {c: RIG[c]["size"] for c in CAMS},
+                {c: RIG[c]["fov"] for c in CAMS},
+            )
         self._log = None
         if RECORD_DIR:
             os.makedirs(os.path.join(RECORD_DIR, "front"), exist_ok=True)
@@ -499,6 +517,9 @@ class PaddockB2DAgent(AutonomousAgent):
                     )
 
     def destroy(self):
+        if self._seg is not None:
+            self._seg.close()
+            self._seg = None
         if self._stop_record is not None and self._stop_record["reason"] is None:
             self._write_stop_record()  # on, and the route went to the leaderboard's own end
         if self._log is not None:
@@ -679,7 +700,10 @@ class PaddockB2DAgent(AutonomousAgent):
         index, _ = route.locate(loc.x, loc.y)
         return navigation.lane_change_ahead(route.options, route.s, index)
 
-    def run_step(self, input_data, timestamp):
+    def tick_inputs(self, input_data, timestamp, frames=True):
+        """Everything one tick contributes to the wire body, with the camera frames still
+        raw (RGB arrays), so a caller may swap a frame before ``infer`` encodes it. With
+        ``frames`` false the cameras are left out: a tick that asks the node nothing."""
         us = int(timestamp * 1e6)
         # No speedometer is a broken sensor setup, not a stationary car: let the
         # KeyError surface, so the leaderboard records the route as crashed.
@@ -691,19 +715,12 @@ class PaddockB2DAgent(AutonomousAgent):
             accel = (speed - self._prev_speed) / dt if dt > 0 else 0.0
         self._prev_speed, self._prev_us = speed, us
 
-        due = self._plan is None or INFER_HZ <= 0 or us - self._plan_us >= 1e6 / INFER_HZ - DUE_SLACK_US
         images = {}
-        raw = {}  # the frames as sent, for the inputs record
         front_bgr = None
         for cid in CAMS:
-            if due and cid in input_data:
+            if frames and cid in input_data:
                 bgra = input_data[cid][1]
-                rgb = bgra[:, :, :3][:, :, ::-1]  # BGRA -> RGB
-                # raw .npy for the small frames the multi-camera models stack; JPEG (q95)
-                # for multi-megapixel frames (recorder.wire_codec)
-                images[cid] = encode_image(rgb, codec=recorder.wire_codec(rgb))
-                if RECORD_INPUTS:
-                    raw[cid] = rgb
+                images[cid] = bgra[:, :, :3][:, :, ::-1]  # BGRA -> RGB
         if RECORD_DIR and RECORD_CAM in input_data:
             front_bgr = input_data[RECORD_CAM][1][:, :, :3].copy()
 
@@ -721,12 +738,14 @@ class PaddockB2DAgent(AutonomousAgent):
         speed_limit = lim_kmh / 3.6 if lim_kmh > 0 else None
         nav_maneuver, nav_distance_m = self._nav()
         nav_lane_change, nav_lane_change_m = self._lane_change()
-
-        body = {
+        return {
+            "us": us,
+            "speed": speed,
+            "accel": accel,
             "images": images,
-            "ego2world": self._ego2world().tolist(),
+            "front_bgr": front_bgr,
             "canbus": canbus,
-            "timestamp": us,
+            "ego2world": self._ego2world().tolist(),
             "command": self._command(),
             "speed_limit": speed_limit,
             "nav_maneuver": nav_maneuver,
@@ -734,6 +753,30 @@ class PaddockB2DAgent(AutonomousAgent):
             "nav_lane_change": nav_lane_change,
             "nav_lane_change_m": nav_lane_change_m,
             "route_xy": self._route_xy(),
+        }
+
+    def wire_body(self, inputs, override_images=None):
+        """The /infer body for one tick. ``override_images`` replaces the raw frame of the
+        cameras it names (segment mode) before encoding; everything else is untouched."""
+        images = {}
+        for cid, rgb in inputs["images"].items():
+            if override_images and cid in override_images:
+                rgb = override_images[cid]
+            # raw .npy for the small frames the multi-camera models stack; JPEG (q95)
+            # for multi-megapixel frames (recorder.wire_codec)
+            images[cid] = encode_image(rgb, codec=recorder.wire_codec(rgb))
+        return {
+            "images": images,
+            "ego2world": inputs["ego2world"],
+            "canbus": inputs["canbus"],
+            "timestamp": inputs["us"],
+            "command": inputs["command"],
+            "speed_limit": inputs["speed_limit"],
+            "nav_maneuver": inputs["nav_maneuver"],
+            "nav_distance_m": inputs["nav_distance_m"],
+            "nav_lane_change": inputs["nav_lane_change"],
+            "nav_lane_change_m": inputs["nav_lane_change_m"],
+            "route_xy": inputs["route_xy"],
             "calibration": {
                 "camera2image": self._cam2img,
                 "camera2ego": self._cam2ego,
@@ -741,13 +784,50 @@ class PaddockB2DAgent(AutonomousAgent):
             },
         }
 
+    def infer(self, inputs, override_images=None):
+        """POST one tick to the node and return its reply; see ``wire_body``."""
+        return self._post(self.wire_body(inputs, override_images))
+
+    def _post(self, body):
+        r = self._http.post(f"{SERVER}/infer", json=body, timeout=INFER_TIMEOUT_S)
+        r.raise_for_status()
+        return r.json()
+
+    def decide(self, payload, speed):
+        """Node reply -> (control, desired_speed, plan, native). Validated here: a NaN
+        from a mis-warmed model is an error, not a steer value CARLA accepts silently."""
+        plan = Trajectory(payload["trajectory"], dt=WAYPOINT_DT)
+        native = (payload.get("extras") or {}).get("native_long")
+        if native:
+            control, desired_speed = self._control_native(plan.xy, speed, native)
+        else:
+            control, desired_speed = self._control(plan.xy, speed)
+        return control, desired_speed, plan, native
+
+    def run_step(self, input_data, timestamp):
+        if self._seg is not None:
+            control = self._seg.step(
+                self, self._hero_actor(), CarlaDataProvider.get_world(), input_data, timestamp
+            )
+            if self._metric_path:
+                self._record_metric_info()
+            self._t += 1
+            return control
+
+        us = int(timestamp * 1e6)
+        due = self._payload is None or INFER_HZ <= 0 or us - self._plan_us >= 1e6 / INFER_HZ - DUE_SLACK_US
+        inputs = self.tick_inputs(input_data, timestamp, frames=due)
+        speed, accel, front_bgr = inputs["speed"], inputs["accel"], inputs["front_bgr"]
+        nav_maneuver, nav_distance_m = inputs["nav_maneuver"], inputs["nav_distance_m"]
+        body = self.wire_body(inputs)
+
         if due:
             # A tick that sends no request has none to record.
             if RECORD_INPUTS and not self._inputs_failed:
                 try:
                     recorder.write_inputs(
                         os.path.join(RECORD_DIR, recorder.INPUTS_DIR, f"{self._t:05d}.npz"),
-                        raw,
+                        inputs["images"],  # the frames as sent
                         {k: v for k, v in body.items() if k != "images"},
                     )
                 except Exception as exc:  # for analysis only; the route goes on without it
@@ -755,25 +835,16 @@ class PaddockB2DAgent(AutonomousAgent):
                     print("[paddock-b2d] inputs record stopped at tick", self._t, ":", repr(exc))
 
             sent_at = time.monotonic()
-            r = self._http.post(f"{SERVER}/infer", json=body, timeout=INFER_TIMEOUT_S)
-            r.raise_for_status()
+            self._payload = self._post(body)
             infer_ms = (time.monotonic() - sent_at) * 1000.0
-            # Validated here: a NaN from a mis-warmed model is an error, not a steer
-            # value CARLA accepts silently.
-            self._payload = r.json()
-            self._plan = Trajectory(self._payload["trajectory"], dt=WAYPOINT_DT)
-            self._native = (self._payload.get("extras") or {}).get("native_long")
             self._plan_us = us
         else:
             # No /infer this tick: the analysis record says so (`asked` false) and holds the
             # plan in force, the last reply, with no time spent asking (log.csv repeats its
             # waypoints likewise).
             infer_ms = 0.0
-        plan, native, payload = self._plan, self._native, self._payload
-        if native:
-            control, desired_speed = self._control_native(plan.xy, speed, native)
-        else:
-            control, desired_speed = self._control(plan.xy, speed)
+        payload = self._payload
+        control, desired_speed, plan, native = self.decide(payload, speed)
 
         if self._metric_path:
             self._record_metric_info()
@@ -783,11 +854,11 @@ class PaddockB2DAgent(AutonomousAgent):
                 "command": body["command"],
                 "nav_maneuver": nav_maneuver,
                 "nav_distance_m": nav_distance_m,
-                "nav_lane_change": nav_lane_change,
-                "nav_lane_change_m": nav_lane_change_m,
+                "nav_lane_change": inputs["nav_lane_change"],
+                "nav_lane_change_m": inputs["nav_lane_change_m"],
                 "speed": speed,
                 "accel": accel,
-                "speed_limit": speed_limit,
+                "speed_limit": inputs["speed_limit"],
                 # The leaderboard's sparse plan as the node got it (ego frame): a
                 # model that rasterises it (AutoE2E) planned from these chords, not
                 # from route_plan.json's dense 1 m route.

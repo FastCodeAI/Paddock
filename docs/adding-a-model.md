@@ -113,7 +113,7 @@ site's `paddock.toml` at launch. `tests/test_portability.py` fails the build if
 you write a home directory or a mount point here — that test is why this repo
 still works at the other site.
 
-Three fields are worth more thought than they look:
+Four fields are worth more thought than they look:
 
 - **`cameras`** — closed-loop wall-clock is dominated by rendering, and the
   simulator renders exactly what you declare. Declaring six when you read one
@@ -136,6 +136,15 @@ Three fields are worth more thought than they look:
   cache lives (`LD_LIBRARY_PATH`, `HF_HOME`, ...; `runner.LOCATION_ENV`), are
   always allowed. A checkpoint path is not: a moved checkpoint and a finetune
   look the same to the runner.
+- **`env_passthrough`** — a list of var *names* (not values) to forward from
+  whoever's shell launched `paddock run`, for ablation/debugging knobs your
+  own code reads (e.g. `MYMODEL_TEMPERATURE=0.5 paddock run --model mymodel ...`).
+  Without declaring a name here, `runtime/env.py` builds the subprocess's
+  environment from a strict allowlist plus `env` above, so a var not in either
+  place silently never reaches the model — the shell invocation looks like it
+  worked and does nothing. A name set in the shell is held to the same rule
+  as a site `env` override: unless it is in `tuning_env` or restates the
+  declared default, the run is recorded `valid: false`.
 
 ## Step 5 — write `setup.sh`
 
@@ -205,8 +214,8 @@ is moving.
 
 ## Step 9 (optional) — probes
 
-Diagnostics that need this model's internals go in `tools/models/<name>/`, and
-anything cheap enough to serve on request goes in `diagnostics()`, which
+Diagnostics that need this model's internals belong in your own tooling, outside
+paddock. Anything cheap enough to serve on request goes in `diagnostics()`, which
 `paddock` exposes at `/diagnostics` on a running node.
 
 What does **not** go here is a figure comparing this model with others.
