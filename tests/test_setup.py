@@ -378,6 +378,46 @@ def test_every_model_setup_sh_builds_where_paddock_will_look() -> None:
     assert not ignoring, f"setup.sh ignores PADDOCK_VENV: {ignoring}"
 
 
+def _run_conda_setup(model: str, tmp_path: Path, venv: Path) -> tuple[subprocess.CompletedProcess, str]:
+    """The model's real setup.sh, with conda and pip replaced by stubs that only log their arguments."""
+    stubs, log, repo = tmp_path / "stubs", tmp_path / "calls.log", tmp_path / "repo"
+    stubs.mkdir()
+    repo.mkdir()
+    for tool in ("conda", "pip"):
+        (stubs / tool).write_text(f'#!/bin/sh\necho "{tool} $*" >> "{log}"\n')
+        (stubs / tool).chmod(0o755)
+    env = {"PATH": f"{stubs}:/usr/bin:/bin", "PADDOCK_REPO": str(repo), "PADDOCK_VENV": str(venv)}
+    script = Registry.load().models[model].directory / "setup.sh"
+    done = subprocess.run(["bash", str(script)], env=env, capture_output=True, text=True)
+    return done, log.read_text() if log.exists() else ""
+
+
+@pytest.mark.parametrize("model", ["drivejepa", "visionpilot"])
+def test_conda_setup_leaves_an_existing_environment_alone(model: str, tmp_path: Path) -> None:
+    """`conda create -y -p` deletes what is at the path, and a site's venv can be a shared one.
+
+    visionpilot's is often the neuroNCAP engine's environment, and this script would not
+    put torch or nuscenes back.
+    """
+    venv = tmp_path / "env"
+    (venv / "bin").mkdir(parents=True)
+    (venv / "bin" / "python").touch()
+
+    done, calls = _run_conda_setup(model, tmp_path, venv)
+
+    assert done.returncode == 1 and "already exists" in done.stderr
+    assert calls == "", "conda or pip ran against an environment that was already there"
+    assert (venv / "bin" / "python").exists()
+
+
+@pytest.mark.parametrize("model", ["drivejepa", "visionpilot"])
+def test_conda_setup_builds_at_the_path_when_nothing_is_there(model: str, tmp_path: Path) -> None:
+    venv = tmp_path / "env"
+    done, calls = _run_conda_setup(model, tmp_path, venv)
+    assert done.returncode == 0, done.stderr
+    assert f"conda create -y -p {venv}" in calls
+
+
 # -- tools/ci/check_patches.py shares the helpers ---------------------------------------
 
 

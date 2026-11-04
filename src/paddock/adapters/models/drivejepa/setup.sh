@@ -19,6 +19,14 @@ set -euo pipefail
 : "${PADDOCK_REPO:?run via 'paddock setup --model drivejepa', which sets PADDOCK_REPO}"
 : "${PADDOCK_VENV:?run via 'paddock setup --model drivejepa', which sets PADDOCK_VENV}"
 
+# `conda create -y -p` deletes whatever environment is already at the path, and
+# a site's venv can be one other benchmarks run from, so a person has to choose.
+if [ -e "${PADDOCK_VENV}" ]; then
+  echo "${PADDOCK_VENV} already exists, so nothing was changed." >&2
+  echo "To rebuild it, delete that folder and run this again." >&2
+  exit 1
+fi
+
 conda create -y -p "${PADDOCK_VENV}" python=3.9
 # shellcheck disable=SC1091
 eval "$(conda shell.bash hook)" && conda activate "${PADDOCK_VENV}"
