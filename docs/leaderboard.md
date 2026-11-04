@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-98 runs across 9 benchmarks.
+99 runs across 9 benchmarks.
 32 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -73,6 +73,7 @@
 | autoe2e | 20261020T220816-0a24e7 | 223 | 0.921 | 0.288 | 0.984 | 2.083 | - | - | - |
 | alpamayo15 | full-nonav | 223 | 0.921 | 0.332 | 0.990 | 2.003 | 3.415 | 2.364 | 0.552 |
 | alpamayo15 | full-nav | 223 | 1.002 | 0.362 | 1.088 | 2.158 | 3.486 | 2.364 | 0.543 |
+| alpamayo15 | full-letterbox | 223 | 1.176 | 0.418 | 1.284 | 2.535 | 3.384 | 2.364 | 0.619 |
 | openpilot | 20261008T004723-a369d1 | 223 | 1.248 | 0.618 | 1.398 | 2.355 | - | - | - |
 | visionpilot | 20260909T202724-153b04 | 223 | 1.534 | 0.700 | 1.567 | 3.089 | - | - | - |
 | openpilot | 20260930T154018-242869 | 223 | 1.595 | 0.828 | 1.801 | 2.904 | - | - | - |
