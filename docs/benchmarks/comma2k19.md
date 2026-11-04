@@ -698,8 +698,7 @@ yaw-rate bound and now passes. Affected: `pdm_ep`, `pdm_comfort`,
 `pdm_style_score`, `comfort_within_bounds`, and the yaw-rate and
 lateral-acceleration columns. ADE, FDE, miss rate and the longitudinal comfort
 columns are not. Scoring the runs again needs their per-sample plans, which are
-at the site that made them (`hpcai-skodate`); until then these numbers are the
-old rules'.
+at the site that made them; until then these numbers are the old rules'.
 
 **Every row is scored against a ground truth in the camera's frame, while the
 plans are in the car's.** The two differ by the mount rotation, about 2° of yaw
