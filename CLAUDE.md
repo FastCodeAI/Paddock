@@ -100,7 +100,8 @@ three ways, all implementing `preflight()`, `run_config()` and
 **Registry is discovery, not a list** ([registry.py](src/paddock/registry.py)):
 models and benchmarks are found by walking `adapters/models/*/model.yaml` and
 `adapters/benchmarks/*/benchmark.yaml`. Adding either touches **one registry
-file and one new directory — never `src/paddock/` outside the new adapter**. If
+file and one new directory — never `src/paddock/` outside the new adapter** — plus
+its docs page and a README row, which `make check` requires. If
 you cannot, that is a framework bug worth raising rather than working around.
 Copy from the `_template/` directory in each.
 

@@ -24,7 +24,8 @@ def test_every_model_and_benchmark_is_in_the_readme_tables() -> None:
     registry = Registry.load()
     pages = [f"docs/models/{m}.md" for m in registry.models]
     pages += [f"docs/benchmarks/{b}.md" for b in registry.benchmarks]
-    assert not [page for page in pages if f"({page})" not in readme]
+    missing = [page for page in pages if f"({page})" not in readme]
+    assert not missing, f"add a row to the tables in the README's 'Models and benchmarks', linking to: {missing}"
 
 
 def test_every_issue_template_is_a_form_github_can_show() -> None:

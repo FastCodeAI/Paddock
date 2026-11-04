@@ -283,6 +283,7 @@ Then fill it in:
 2. `model.yaml`: its interpreter, cameras, VRAM and benchmarks. `setup.sh`: how to build
    its environment.
 3. `policy.py`: `load()`, `reset()` and `infer()`.
+4. `docs/models/mymodel.md`: a page for it, and a row in the table above that links to it.
 
 ```bash
 paddock setup --model mymodel                              # clones your repo, builds the environment
@@ -291,8 +292,8 @@ paddock run --model mymodel --bench comma2k19 --limit 5
 ```
 
 The template's policy already drives at constant velocity, so you can get the whole
-pipeline working first and swap in your model after. You touch one registry file and
-one new directory, and nothing in Paddock's core. The full guide is
+pipeline working first and swap in your model after. Nothing in Paddock's core changes,
+and `make check` tells you if the page or the row is missing. The full guide is
 [docs/adding-a-model.md](docs/adding-a-model.md), and a benchmark works the same way:
 [docs/adding-a-benchmark.md](docs/adding-a-benchmark.md).
 

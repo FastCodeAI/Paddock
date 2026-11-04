@@ -51,7 +51,8 @@ of. That failure is expensive and lands on the wrong person.
 | add a benchmark | [docs/adding-a-benchmark.md](docs/adding-a-benchmark.md) | none |
 | add a dataset | [docs/data-setup.md](docs/data-setup.md) | none |
 
-Adding any of these should touch one registry file and one new directory. **If
+Adding any of these should touch one registry file and one new directory, plus a
+docs page and a README row for a model or benchmark. **If
 you find yourself editing `src/paddock/` to add a model or a benchmark, stop and
 open an issue** — that is a gap in the framework, and patching around it in your
 adapter hides the gap from the next person.

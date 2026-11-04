@@ -7,8 +7,8 @@
 > full contract are in [adding-an-adapter.md](adding-an-adapter.md); this page is the
 > model-specific detail.
 
-**You touch one registry file and one new directory. You do not edit anything
-under `src/paddock/` outside your own adapter.** If you cannot add a model
+**You touch one registry file and one new directory, then add a docs page and a
+README row. You do not edit anything under `src/paddock/` outside your own adapter.** If you cannot add a model
 without changing the core, that is a framework bug — raise it, and fix it *as* a
 framework change with its own reasoning, rather than working around it inside
 the adapter. That has happened and is the intended outcome, not a violation of
@@ -33,7 +33,8 @@ on coordinate frames.
 | 4 | `src/paddock/adapters/models/<name>/setup.sh` | **create** — build the env |
 | 5 | `src/paddock/adapters/models/<name>/tests/test_policy.py` | **create** — fixture test |
 | 6 | `docs/models/<name>.md` | **create** — quirks and reference numbers; `python -m tools.doc_summaries` writes its summary table |
-| 7 | `paddock.toml` | **your machine only** — never committed |
+| 7 | `README.md` | **modify** — add a row to the models table, linking to the page in step 6; `make check` fails without it |
+| 8 | `paddock.toml` | **your machine only** — never committed |
 
 Nothing else. In particular you do **not** register your model in any central
 list: `paddock list` discovers it by finding `model.yaml`.

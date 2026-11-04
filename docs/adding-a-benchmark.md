@@ -7,7 +7,7 @@
 > benchmark-specific detail.
 
 Same shape as [adding a model](adding-a-model.md): one registry file, one new
-directory, no changes to `src/paddock/`.
+directory, a docs page and a README row, and no changes to `src/paddock/`.
 
 Two base classes cover most benchmarks (`OpenLoopBenchmark`, `ClosedLoopBenchmark`);
 a third, `ExternallyScoredBenchmark`, is for a scorer that owns its own iteration
@@ -35,6 +35,7 @@ place at every site. So a benchmark is declared in two halves — **what it need
 | 5 | `src/paddock/adapters/benchmarks/<name>/tests/test_harness.py` | **create** — golden test |
 | 6 | `docs/benchmarks/<name>.md` | **create**; `python -m tools.doc_summaries` writes its summary table |
 | 7 | `docs/datasets/<dataset>.md` | **create**, if the dataset is new to paddock |
+| 8 | `README.md` | **modify** — add a row to the benchmarks table, linking to the page in step 6; `make check` fails without it |
 
 If the benchmark uses a dataset that is already declared, skip step 1.
 
