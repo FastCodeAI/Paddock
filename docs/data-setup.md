@@ -120,10 +120,10 @@ resolves onto `/`.
 
 ## comma2k19
 
-Not on Hugging Face: comma2k19 is a Harvard Dataverse release, ten zips
-(`Chunk_1.zip` … `Chunk_10.zip`) totalling ~100 GB unpacked. Download them from
-the Dataverse record linked in comma's
-[README](https://github.com/commaai/comma2k19) and unpack them side by side:
+comma2k19 is ten zips (`Chunk_1.zip` … `Chunk_10.zip`), about 9 GB each and ~100 GB
+unpacked. Download them from the `raw_data/` folder of
+[commaai/comma2k19 on Hugging Face](https://huggingface.co/datasets/commaai/comma2k19/tree/main/raw_data)
+and unpack them side by side:
 
 ```
 <root>/raw_data/Chunk_1/<dongle_id>|<start_time>/<segment>/
