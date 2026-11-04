@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
-94 runs across 9 benchmarks.
-42 run(s) excluded as invalid — shown at the end, never averaged in.
+92 runs across 9 benchmarks.
+44 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
@@ -29,7 +29,6 @@
 | drivejepa | native50-2hz-40c29d24c37d542a-447e23 | 50 | 57.604 | 70.965 | 0.848 | 0.200 | 1.000 | 0.000 | 354.308 |
 | alpamayo15 | native50-10hz-084418258d833a9f-c4d076 | 49 | 55.821 | 76.516 | 0.725 | 0.408 | 1.000 | 0.000 | 1986.029 |
 | constant_velocity | pooled50-3mps-40c29d24c37d542a-02b6ac | 50 | 48.308 | 74.651 | 0.615 | 0.540 | 1.000 | 0.000 | 194.900 |
-| constant_velocity | 20260908T084921-804913 | 24 | 47.943 | 74.682 | 0.635 | 0.583 | - | 0.000 | 451.080 |
 | visionpilot | pooled50-40c29d24c37d542a-d94009 | 50 | 47.821 | 71.191 | 0.622 | 0.580 | 1.000 | 0.000 | 257.252 |
 | openpilot | pooled50-40c29d24c37d542a-c7d2b2 | 50 | 47.520 | 62.441 | 0.783 | 0.260 | 1.000 | 0.000 | 374.050 |
 | constant_velocity | pooled50-9mps-40c29d24c37d542a-13c440 | 50 | 43.574 | 72.699 | 0.577 | 0.580 | 1.000 | 0.000 | 123.802 |
@@ -88,7 +87,6 @@
 
 | model | run | n | epdms ↑ | no_at_fault_collisions ↑ | drivable_area_compliance ↑ | driving_direction_compliance ↑ | traffic_light_compliance ↑ | ego_progress ↑ | time_to_collision_within_bound ↑ |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| drivejepa | 2026.08.08.02.26.44 | 242 | 0.907 | 0.994 | 0.992 | 0.998 | 1.000 | 0.923 | 0.979 |
 | drivejepa | 20260902T173156-7e208f | 12146 | 0.843 | 0.984 | 0.985 | 0.991 | 0.998 | 0.889 | 0.979 |
 | qwendrive | 20260914T221802-80457c | 12146 | 0.840 | 0.982 | 0.964 | 0.993 | 0.998 | 0.820 | 0.977 |
 | openpilot | 20260911T161513-3a4c90 | 12146 | 0.747 | 0.970 | 0.913 | 0.954 | 0.998 | 0.712 | 0.965 |
@@ -153,6 +151,7 @@
 - **neuroncap/drivejepa/legacy-runs1** — Superseded by 20261012T224707-f11ac0: a small early run of 3 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one.
 - **neuroncap/visionpilot/legacy-runs1** — Superseded by 20260905T121810-155d36: a small early run of 3 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one.
 - **neuroncap/visionpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
+- **navsim/drivejepa/legacy-2026.08.08.02.26.44** — aggregate rows kept as context, not scored: average_all_frames=0.90673, pseudo_closed_loop=0.45337, average_expert_frames=0.90673. Source log reported 0.90488 over the same scenarios; paddock recomputes from per-sample scores. See the ingest module docstring. Superseded by 20260902T173156-7e208f: Covers 242 of the 12,146 scenarios, and came from the vendor's own agent, which reads the scorer's simulator while planning; the full run through paddock's proxy agent is the comparable score.
 - **hugsim/drivejepa/campaign-87d4f5097a85db3c-ce3603** — Released Drive-JEPA (NAVSIM v2 ViT-L checkpoint), driven 22 Oct 2026 in two lanes sharing one scenario queue. The node was the drivejepa adapter as of paddock ac7788f plus a per-call record of the 32 candidates and their scores, which does not change the plan; its camera placement goes through lidar2ego, which the bridge sends as the identity, so the cameras land where ac7788f puts them. At that commit the adapter fed cameras uncropped and picked on the plain score; main now crops to the OpenScene camera (#106) and turns momentum selection on (#95), so a re-run on main would differ. Only the front camera was rendered: the released model's forward reads only the front camera. DRIVEJEPA_IMAGE_GEOMETRY, DRIVEJEPA_MOMENTUM were supplied by the ingest config: the campaign recorded no model env, so this is the operator's statement of how the node was configured, not a reading from it. scenarios attempted and never scored: scene-0166-medium-01 (exit 1 after 60 steps: IndexError: index is out of bounds for dimension with size 0).
 - **neuroncap/wajepa/20261015T234134-916e11** — 3 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes)
 - **kitscenes/openpilot/20261005T205400-a369d1** — resumed: 223 sample(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only Superseded by 20261008T004723-a369d1: the same configuration (hash a369d1) run again from #60's head, identical on all 223 keyframes; the newer run is the record
@@ -168,6 +167,7 @@
 - **comma2k19/constant_velocity/20260911T231819-736a8a** — Reference baseline: straight ahead at the recorded speed, no model. Produced by tools/benchmarks/comma2k19/constant_velocity.py against the benchmark's own harness and scoring; video decoding skipped, since the policy reads no pixels. Stored under the pseudo-model 'constant_velocity' because it is not a registered model. Superseded by 20260916T162837-b89038: that is the row the docs cite. This one predates measuring comfort on a common 0.5 s grid, so its comfort and far-horizon columns are not comparable with the rows beside it. Kept rather than deleted so the record of it having happened survives.
 - **navsim_v1/human/20260911T041230-67c4f3** — privileged: the human agent returns the recorded future the scorer measures against; an anchor for the scoring path, not a model; no model process ran: the recorded human future through the devkit scorer
 - **navsim/alpamayo15/20260911T024038-d518fc** — 1 scenario(s) failed in the scorer and are excluded
+- **bench2drive/constant_velocity/20260908T084921-804913** — Four independent CARLA workers; 4 completed route checkpoints reused. Duration covers this attempt. Superseded by pooled50-3mps-40c29d24c37d542a-02b6ac: Its 24 routes are already inside the 50-route run at the same 3 m/s target, so the same drives ranked twice.
 - **navsim/alpamayo15/20260903T183459-753b33** — --limit 12: a subset of the benchmark, run to test the pipeline
 - **navsim/alpamayo15/20260901T213227-d6117e** — 242-scenario subset (5 of navtest's 136 logs had sensor blobs), run under PADDOCK_NAVSIM_ALLOW_PARTIAL=1 before the runner recorded that switch; marked valid=false and config.allow_partial added retroactively on 2026-09-03 under the rule that nothing below the full split is ranked against a full run. alpamayo15; this is the current headline for alpamayo15 until its full-navtest run lands, and it is a subset figure.
 - **navsim/alpamayo15/20260901T212250-b5daf0** — EXPERIMENT, not a result: the 'distinct' arm of the same paired A/B. 0.709 EPDMS over the same 60 scenarios, +0.207 over 'grid' (better on 36, worse on 19, sign test p=0.03), almost all of it collisions avoided (no_at_fault_collisions 0.708 -> 0.992). This selection is now the default via `auto`; the full 242-scenario run supersedes this.
