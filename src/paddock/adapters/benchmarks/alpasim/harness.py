@@ -136,7 +136,8 @@ class DriverProfile:
     node per scene, record where headings came from -- is in bridge.py.)
     """
 
-    #: Driver config under configs/driver/, passed as `driver=`.
+    #: Driver config, passed as `driver=`: `configs/driver/<driver>.yaml` in this
+    #: benchmark, or `driver/<driver>.yaml` in the model's own folder.
     driver: str = "paddock_bridge"
     #: Extra `bridge.py` flags: camera renames, placeholders, intrinsics.
     bridge_args: tuple[str, ...] = ()
@@ -146,6 +147,22 @@ class DriverProfile:
     #: Write the bridge's per-replan log next to the run's samples.jsonl, as
     #: `<scene>.replans.jsonl`. Only a bridge running a replan rhythm writes one.
     replan_log: bool = False
+    #: The cameras the model reads on AlpaSim, when that is fewer than the
+    #: `cameras` its model.yaml declares for every benchmark; None means all of
+    #: them. Used only to check, before a run, that each one reaches the node
+    #: (`input_problems`); it changes nothing the bridge sends. Constant velocity
+    #: says `[]`: it declares CAM_FRONT for the benchmarks that need a camera to
+    #: render, and reads none.
+    cameras: tuple[str, ...] | None = None
+
+    def drives_like_default(self) -> bool:
+        """True when this profile drives the model exactly as DEFAULT_PROFILE does."""
+        return (self.driver, self.bridge_args, self.scenes_csv, self.replan_log) == (
+            DEFAULT_PROFILE.driver,
+            DEFAULT_PROFILE.bridge_args,
+            DEFAULT_PROFILE.scenes_csv,
+            DEFAULT_PROFILE.replan_log,
+        )
 
 
 DEFAULT_PROFILE = DriverProfile()
@@ -155,10 +172,13 @@ DEFAULT_PROFILE = DriverProfile()
 #: DEFAULT_PROFILE. Each file says why its model needs what it sets.
 PROFILE_FILE = "alpasim.yaml"
 
-#: Every key a profile file must set, and nothing else. All four are required so
-#: that a typo or a forgotten key fails at load time instead of quietly driving
-#: the model on a default it was never meant to have.
+#: Every key a profile file must set. All four are required so that a typo or a
+#: forgotten key fails at load time instead of quietly driving the model on a
+#: default it was never meant to have.
 _PROFILE_KEYS = ("driver", "bridge_args", "scenes_csv", "replan_log")
+
+#: Keys a profile file may set. Any other key fails at load time.
+_OPTIONAL_PROFILE_KEYS = ("cameras",)
 
 
 class DriverProfileError(ValueError):
@@ -179,7 +199,7 @@ def load_profile(path: Path) -> DriverProfile:
         raise DriverProfileError(f"{path}: not valid YAML: {exc}") from exc
     if not isinstance(body, dict):
         raise DriverProfileError(f"{path}: must be a mapping of {', '.join(_PROFILE_KEYS)}")
-    unknown = sorted(set(body) - set(_PROFILE_KEYS))
+    unknown = sorted(set(body) - set(_PROFILE_KEYS) - set(_OPTIONAL_PROFILE_KEYS))
     missing = [key for key in _PROFILE_KEYS if key not in body]
     if unknown or missing:
         parts = []
@@ -187,7 +207,10 @@ def load_profile(path: Path) -> DriverProfile:
             parts.append(f"unknown key(s) {', '.join(map(str, unknown))}")
         if missing:
             parts.append(f"missing key(s) {', '.join(missing)}")
-        raise DriverProfileError(f"{path}: {'; '.join(parts)} (expected exactly {', '.join(_PROFILE_KEYS)})")
+        raise DriverProfileError(
+            f"{path}: {'; '.join(parts)} (required: {', '.join(_PROFILE_KEYS)}; "
+            f"optional: {', '.join(_OPTIONAL_PROFILE_KEYS)})"
+        )
     driver, bridge_args = body["driver"], body["bridge_args"]
     scenes_csv, replan_log = body["scenes_csv"], body["replan_log"]
     if not isinstance(driver, str) or not driver:
@@ -200,11 +223,17 @@ def load_profile(path: Path) -> DriverProfile:
         )
     if not isinstance(replan_log, bool):
         raise DriverProfileError(f"{path}: replan_log must be true or false, got {replan_log!r}")
+    cameras = body.get("cameras")
+    if "cameras" in body and (
+        not isinstance(cameras, list) or not all(isinstance(c, str) and c for c in cameras)
+    ):
+        raise DriverProfileError(f"{path}: cameras must be a list of camera names, got {cameras!r}")
     return DriverProfile(
         driver=driver,
         bridge_args=tuple(bridge_args),
         scenes_csv=scenes_csv,
         replan_log=replan_log,
+        cameras=None if cameras is None else tuple(cameras),
     )
 
 
@@ -227,6 +256,97 @@ def profile_for(model: str) -> DriverProfile:
 def profiled_models() -> tuple[str, ...]:
     """Every model folder that has a profile file, sorted."""
     return tuple(sorted(path.parent.name for path in MODELS_DIR.glob(f"*/{PROFILE_FILE}")))
+
+
+def driver_config_paths(model: str, driver: str) -> tuple[Path, Path]:
+    """Where `driver` may live: this benchmark's configs, then the model's folder."""
+    return (
+        launcher.CONFIGS_DIR / "driver" / f"{driver}.yaml",
+        MODELS_DIR / model / "driver" / f"{driver}.yaml",
+    )
+
+
+def driver_searchpath(model: str, profile: DriverProfile) -> Path | None:
+    """The model's folder, when its driver config lives there; otherwise None.
+
+    None leaves the wizard command exactly as it was before a model could keep
+    its own driver config, so every model whose config is in this benchmark is
+    launched as before. AlpaSim's config loader searches this benchmark's
+    configs first, then this folder (launcher.wizard_command).
+    """
+    _, own = driver_config_paths(model, profile.driver)
+    return MODELS_DIR / model if own.is_file() else None
+
+
+def cameras_reaching_node(bridge_args: tuple[str, ...]) -> set[str]:
+    """The paddock camera names the bridge sends under these flags.
+
+    The bridge sends each AlpaSim camera under AlpaSim's own id (such as
+    `camera_front_wide_120fov`) unless `--camera-name ID=NAME` renames it, and
+    `--placeholder NAME` adds a frame under NAME. A node keeps only the cameras
+    its model declares, by name, so a declared camera reaches it only through
+    one of those two flags.
+    """
+    names: set[str] = set()
+    args = list(bridge_args)
+    for i, arg in enumerate(args):
+        for flag in ("--camera-name", "--placeholder"):
+            if arg == flag and i + 1 < len(args):
+                value = args[i + 1]
+            elif arg.startswith(flag + "="):
+                value = arg[len(flag) + 1 :]
+            else:
+                continue
+            names.add(value.split("=", 1)[1] if flag == "--camera-name" and "=" in value else value)
+    return names
+
+
+def profile_problems(model) -> list[str]:
+    """Why `model` cannot be driven on AlpaSim as its folder describes, or [].
+
+    Checked before a dry run or any model starts: a profile that does not load,
+    a driver config or scene list that is not there, or a camera the model reads
+    that would never reach its node. The last is the silent failure: the model
+    would plan from poses alone and the run would still be scored.
+    """
+    name = model.name
+    try:
+        profile = profile_for(name)
+    except DriverProfileError as exc:
+        return [str(exc)]
+    problems: list[str] = []
+    in_benchmark, in_model = driver_config_paths(name, profile.driver)
+    if in_benchmark.is_file() and in_model.is_file():
+        problems.append(
+            f"{name}'s driver config {profile.driver!r} is both in {in_benchmark.parent} and in "
+            f"{in_model.parent}; AlpaSim would load the first. Rename the one in the model's folder"
+        )
+    elif not in_benchmark.is_file() and not in_model.is_file():
+        problems.append(f"{name}'s driver config {profile.driver!r} is neither {in_model} nor {in_benchmark}")
+    if profile.scenes_csv is not None and not (SCENES_DIR / profile.scenes_csv).is_file():
+        problems.append(
+            f"{name}'s profile pins scenes in {SCENES_DIR / profile.scenes_csv}, which does not exist"
+        )
+    declared = tuple(model.cameras)
+    reads = declared if profile.cameras is None else profile.cameras
+    if extra := sorted(set(reads) - set(declared)):
+        problems.append(
+            f"{profile_path(name)}: cameras lists {', '.join(extra)}, which {name}'s model.yaml does not "
+            f"declare ({', '.join(declared) or 'none'})"
+        )
+    if missing := [c for c in reads if c not in cameras_reaching_node(profile.bridge_args)]:
+        why = (
+            f"{profile_path(name)} neither renames an AlpaSim camera to it (--camera-name) nor fills it "
+            f"(--placeholder)"
+            if has_profile(name)
+            else f"there is no {profile_path(name)} to rename AlpaSim's cameras to these names"
+        )
+        problems.append(
+            f"{name} reads {', '.join(missing)}, which would never reach its node on AlpaSim: {why}. "
+            f"Rename them in the model's alpasim.yaml, or set `cameras: []` there if it reads no image "
+            f"on AlpaSim (docs/adding-a-model.md, AlpaSim settings)"
+        )
+    return problems
 
 
 #: Metrics we lift out of a rollout record, mapped to canonical names.
@@ -391,14 +511,16 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
         }
 
     def model_run_config(self, model) -> dict[str, Any]:
-        """A model's profile, when it has one, so the run id and run.json say so.
+        """A model's profile, when it drives the model differently, so the run id and run.json say so.
 
-        Empty for the default profile, so a model without one records exactly
-        what it recorded before profiles existed.
+        Empty for a model with no profile, so it records exactly what it recorded
+        before profiles existed. Empty too for a profile that only says which
+        cameras the model reads (constant velocity's): that is a check made
+        before the run, and it changes nothing the bridge sends.
         """
-        if not has_profile(model.name):
-            return {}
         profile = profile_for(model.name)
+        if profile.drives_like_default():
+            return {}
         return {
             "driver_profile": model.name,
             "driver_config": profile.driver,
@@ -408,6 +530,10 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
         }
 
     # -- preflight ---------------------------------------------------------
+
+    def input_problems(self, model) -> list[str]:
+        """What stops `model` being driven on AlpaSim; the runner asks before any dry run or launch."""
+        return profile_problems(model)
 
     def preflight(self) -> list[str]:
         """Everything that must hold before a model loads, checked cheaply."""
@@ -683,7 +809,7 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
                 scene_id=episode.scene,
                 out_dir=out_dir,
                 bridge_port=bridge_port,
-                searchpath=None,
+                searchpath=driver_searchpath(model, profile),
                 driver=profile.driver,
                 startup_timeout_s=self.startup_timeout_s,
                 deploy=self.setting("deploy") or launcher.DEFAULT_DEPLOY,

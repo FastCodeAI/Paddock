@@ -1,8 +1,9 @@
 # How the AlpaSim benchmark drives Qwen-Drive through paddock's bridge.
 #
-# Read by adapters/benchmarks/alpasim/harness.py (profile_for). A model folder
-# without this file is driven on the default profile. All four keys are
-# required; an unknown or missing key fails the run with this file's name.
+# Read by adapters/benchmarks/alpasim/harness.py (profile_for). The four keys
+# below are required; an unknown or missing key fails the run with this file's
+# name. Without this file the model's cameras would never reach its node, and
+# AlpaSim would refuse it before starting.
 # See docs/adding-a-model.md, "AlpaSim settings".
 #
 # The settings of Qwen-Drive's native AlpaSim driver (adapter 0.1.4) -- four
