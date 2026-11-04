@@ -49,8 +49,10 @@ waypoints per frame, and counting runs of consecutive frames holding an identica
 once holds a plan for five frames.
 
 **OpenPilot and VisionPilot were not re-run.** OpenPilot's native rate *is* 20 Hz,
-so the published run is already its native-rate run; VisionPilot was left alone.
-Nothing on this page says anything about either.
+so its runs are already native-rate runs; VisionPilot was left alone.
+Nothing on this page says anything about either. (OpenPilot's 31 Oct 50-route run,
+`pooled50-40c29d24c37d542a-c7d2b2`, which the support matrix ranks, is one 20 Hz
+configuration and is not part of this comparison; see [bench2drive.md](bench2drive.md).)
 
 ### Two things this page does not get to assume
 
@@ -68,13 +70,13 @@ So `PADDOCK_INFER_HZ` in `config.model_env` is the authoritative statement of wh
 each run did. Making the rate derivable from `model.yaml` — one field, checked
 against the run — is follow-up work, not something this campaign settles.
 
-**The harness support is not on `main`.** `PADDOCK_INFER_HZ` is read by the
-Bench2Drive `agent.py` / `harness.py` on the branch that drove this campaign; it
-is not in `src/paddock/adapters/benchmarks/bench2drive` on `main` yet. This PR
-lands the **results and their records**, not the knob. Until that branch merges,
-`paddock run` on `main` drives at 20 Hz and these runs cannot be re-driven from a
-clean checkout — the ingest, which is what produced the tracked records, does run
-on `main`.
+**The harness support is on `main` since 2026-10-22.** A model declares
+`planning_hz` in `model.yaml`; the Bench2Drive client asks the node once per
+1/`planning_hz` seconds and follows the last plan unchanged in between, which is
+what this campaign did (the 10-frame holds above). The rate is recorded as
+`config.infer_hz`, and the host's `PADDOCK_INFER_HZ` still overrides it.
+Drive-JEPA declares 2 Hz; QwenDrive and Alpamayo declare none yet. The runs on
+this page were driven before that, on another branch, and were ingested.
 
 ## Tracked runs
 
@@ -84,11 +86,7 @@ on `main`.
 | Alpamayo 1.5 (nav) | 10 Hz | [`native50-10hz-…c4d076`](../../results/bench2drive/alpamayo15/native50-10hz-084418258d833a9f-c4d076/run.json) | `pooled50-40c29d24c37d542a-36d2d0` |
 | QwenDrive | 2 Hz | [`native50-2hz-…9b2bc9`](../../results/bench2drive/qwendrive/native50-2hz-084418258d833a9f-9b2bc9/run.json) | `pooled50-40c29d24c37d542a-f250e0` |
 
-All three are `valid: false`: a run driven at 2 or 10 Hz is not the protocol the
-other Bench2Drive rows were driven under, so `paddock ingest` keeps it and does
-not rank it — the same treatment a run pooling two recording setups gets, and for
-the same reason. They appear in `docs/leaderboard.md` under excluded runs, with
-the rate in the reason. The comparison they exist for is this page, where both
+`paddock ingest` writes all three `valid: true`. They rank in `docs/leaderboard.md` and in the support matrix at the native rate. The comparison they exist for is this page, where both
 columns are stated.
 
 All three were written by `paddock ingest` from the per-route `results.json`
@@ -263,7 +261,8 @@ How it is recorded — this is the part that matters for the leaderboard:
 
 - Both runs list 3800 in `config.routes_subset`: it was **requested**.
 - Both carry `dataset.n_failed: 1`, `dataset.n_expected: 50`,
-  `dataset.n_samples: 49`, `status: "partial"` and `valid: false`.
+  `dataset.n_samples: 49` and `status: "partial"`. Both are `valid: true`
+  (`ranked = true` in their ingest entries).
 - Both name it in `notes` — "routes expected but never scored: 3800". The
   QwenDrive record additionally carries
   `config.routes_never_scored: {"3800": "…no records in _checkpoint (the route
@@ -296,7 +295,7 @@ Following [docs/reviewing.md](../reviewing.md), kept apart:
 | 20 Hz is the wrong protocol for these models generally | — | **not claimed.** One campaign, one route set, one simulator build, one rate each. No rate sweep was run, so nothing here locates an optimum or shows the relation is monotonic |
 | The same holds for OpenPilot and VisionPilot | — | **not measured.** Neither was re-run |
 | The rate driven is each model's declared native rate | — | **not derivable here.** `model.yaml` declares `native_input_hz` for two of the three and it disagrees with the rate driven for QwenDrive; the rate is recorded per run in `config.model_env`, not read from the registry (see above) |
-| Another site could re-drive these runs | — | **unverified**, and blocked twice over: `PADDOCK_INFER_HZ` is not read by the Bench2Drive adapter on `main`, and CARLA re-runs are not bit-reproducible anyway. The *ingest* reproduces on `main` from the trees |
+| Another site could re-drive these runs | — | **unverified**: the rate is read on `main` now (`planning_hz`, or `PADDOCK_INFER_HZ`), but CARLA re-runs are not bit-reproducible. The *ingest* reproduces on `main` from the trees |
 
 ## Where the recordings live
 

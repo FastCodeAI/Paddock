@@ -1,0 +1,53 @@
+Subject: [PATCH 2/2] add --connect-timeout for reaching a just-launched server
+
+The evaluator launches CARLA, sleeps 30 s, then tries to connect up to 20
+times. Each attempt used the client timeout, which is --timeout (default
+600 s). When the server needed more than 30 s to come up, the first attempt
+blocked for the full ten minutes before the retry that then connected at once:
+"time-out of 600000ms while waiting for the simulator", then "load_world
+success, attempts=1". On 2026-10-16 that cost 3 of 10 routes about ten minutes
+each.
+
+Lowering --timeout itself is not a fix: the same value bounds `load_world` on
+the large towns and the agent and tick watchdogs, where a short limit would
+fail routes that are only slow. So the connection attempts get a timeout of
+their own, and the client goes back to --timeout once connected. Without the
+flag the behaviour is upstream's.
+
+Upstreamable.
+
+diff --git a/leaderboard/leaderboard/leaderboard_evaluator.py b/leaderboard/leaderboard/leaderboard_evaluator.py
+index 0958f7d..a2fcf95 100644
+--- a/leaderboard/leaderboard/leaderboard_evaluator.py
++++ b/leaderboard/leaderboard/leaderboard_evaluator.py
+@@ -213,7 +213,11 @@ class LeaderboardEvaluator(object):
+                 client = carla.Client(args.host, args.port)
+                 if args.timeout:
+                     client_timeout = args.timeout
+-                client.set_timeout(client_timeout)
++                # Each connection attempt waits --connect-timeout, then the next
++                # one starts; the server can still be booting after the 30 s
++                # sleep, and a first attempt at the full --timeout (600 s) spent
++                # ten minutes waiting on a server that answered seconds later.
++                client.set_timeout(args.connect_timeout or client_timeout)
+ 
+                 settings = carla.WorldSettings(
+                     synchronous_mode = True,
+@@ -222,6 +226,7 @@ class LeaderboardEvaluator(object):
+                     spectator_as_ego = False
+                 )
+                 client.get_world().apply_settings(settings)
++                client.set_timeout(client_timeout)
+                 print(f"load_world success , attempts={attempts}", flush=True)
+                 break
+             except Exception as e:
+@@ -528,6 +533,9 @@ def main():
+                         help='Use CARLA recording feature to create a recording of the scenario')
+     parser.add_argument('--timeout', default=600.0, type=float,
+                         help='Set the CARLA client timeout value in seconds')
++    parser.add_argument('--connect-timeout', default=None, type=float,
++                        help='Client timeout for each attempt to reach a just-launched server, '
++                             'in seconds (default: --timeout)')
+ 
+     # simulation setup
+     parser.add_argument('--routes', required=True,

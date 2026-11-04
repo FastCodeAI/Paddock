@@ -4,7 +4,17 @@
 
 The nuScenes planning protocol that UniAD, VAD and their successors report: on
 every val keyframe, plan 3 s ahead from the real past and compare with what the
-human drove. Zero-shot for every model here; none was trained on nuScenes.
+human drove. Zero-shot for every model here except three, which carry A in the
+support matrix: Qwen-Drive's VLM trained on nuScenes train and on VQA sets that
+hold val scenes, Alpamayo 1.5's model card lists five nuScenes-built training sets
+(splits not given), and AutoE2E's frozen camera encoder was trained on nuScenes
+train. See docs/models/comparison.md.
+
+**Scoring only some samples.** `PADDOCK_NUSCENES_SAMPLES=<id>,<id>,...` (ids as
+`nuscenes/val/<scene>/<index>`) scores those samples and no others. Such a run is
+stored `valid: false` as a subset, with or without `--limit`. The regression
+gate's nuScenes subset runs this way (docs/gate.md). The list is recorded in
+`config.sample_filter` as its size and digest.
 
 ## What is scored
 
@@ -13,7 +23,9 @@ human drove. Zero-shot for every model here; none was trained on nuScenes.
   5119 with six future keyframes (a full 3 s) are scored; the last six of each
   scene are dropped, where the literature pads with masks.
 * **Sample:** up to four preceding keyframes plus the scored one (2 s of real
-  history), so Drive-JEPA gets its four frames 0.5 s apart and Alpamayo a pose
+  history), or as many as a model's declared `history_s` asks for when that is
+  longer, NAVSIM's rule (AutoE2E: 13, 6.5 s, recorded as `history_seconds` in the
+  run's config). With `camera_history` set the window stays at four. So Drive-JEPA gets its four frames 0.5 s apart and Alpamayo a pose
   history to difference. Six cameras as `image_paths` with the dataset's
   intrinsics and `cam2ego`; LIDAR_TOP ego pose; CAN-bus 18-float status
   (nearest `pose` message); `lidar2ego` for models that project through the
@@ -40,13 +52,13 @@ path    = "/path/to/nuscenes"
 version = "v1.0-trainval"
 
 [benchmarks.nuscenes]
-index_cache = "/path/to/cache/nuscenes_val_index.pkl"   # optional; default <repo>/.cache/
+index_cache = "/path/to/cache/nuscenes_val_index.pkl"   # optional; default <repo>/.cache/; or a directory
 ```
 
 The loader reads the `v1.0-trainval` JSON tables directly (no devkit): the
 1.3 GB `sample_data`, `ego_pose` and `sample_annotation` tables are each loaded
 once, reduced to the val keyframes and dropped; the 27 MB index is cached at
-`index_cache` (default `<repo>/.cache/`). Building it takes ~25 s. The default path only needs keyframe images (`samples/`). Openpilot additionally
+`index_cache` (default `<repo>/.cache/`). Building it takes ~25 s on a quiet disk; from a busy NAS it took about 20 minutes, once per checkout. An `index_cache` that does not end in `.pkl` is a directory several checkouts can share: the file in it is named by its dataset root, version and scene set, so two roots never evict each other, and it is written whole and renamed into place, so parallel runs never read half of one. The default path only needs keyframe images (`samples/`). Openpilot additionally
 requires the CAM_FRONT sweeps described below.
 
 ## Cost
@@ -169,8 +181,8 @@ model's plan, BEV with annotated boxes, per-scene videos) are on the NAS:
 
 ## Metrics
 
-Every metric `benchmark.yaml` declares, with its direction (all lower is better
-.
+Every metric `benchmark.yaml` declares. All are lower is better except the two
+`pdm_*` terms.
 
 | metric | meaning |
 |---|---|
@@ -183,6 +195,13 @@ Every metric `benchmark.yaml` declares, with its direction (all lower is better
 | `col_uniad_1s`, `col_uniad_2s`, `col_uniad_3s` | collision averaged over every step up to that horizon (cumulative) |
 | `col_uniad_avg` | mean of the three cumulative collision values |
 | `ade_3s` | average displacement over all six 0.5 s steps, m |
+| `pdm_ep`, `pdm_comfort` | NAVSIM v1's EP and C terms on the 0.5 s plan, higher is better ([results-schema](../results-schema.md)). With `col_avg` as NC they are this benchmark's PDM rows in the gate; there is no map, so no DAC |
+
+## Reading a model's decisions back off a run
+
+`ALPAMAYO_SAVE_REASONING=1` saves Alpamayo's reasoning text beside each
+prediction; the tools that label each plan as a driving decision and scan a run
+for behaviour gaps are kept outside this repo.
 
 ## Tests
 
@@ -235,7 +254,7 @@ sentence of the second △ note: it said constant velocity beats every learned
 model, which the table below contradicts, and it now names the two that beat it.
 The symbols are the README's former footnote marks, and each note below starts
 with the mark it explains. Marks about a model rather than this benchmark
-(⊛ ⊕ ∗ ◊ ◇ ✦ ✧) are explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
+(∗ ◊ ◇ ✦ ✧) are explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
 
 ### Notes on the matrix cells
 
@@ -258,7 +277,7 @@ front-camera history while retaining the same 2 Hz scoring anchors; its complete
 GPU run is detailed below. VisionPilot's plan here is its acceleration/steering
 integrated to a path, as in NAVSIM, so unlike KITScenes it does yield an L2.
 Alpamayo's figure is inflated by the first keyframe of each scene, where it has
-no history to difference (9.5 m there vs 1.2 m elsewhere). A constant-velocity baseline scores 0.64 here (point-avg L2 1.29), **better than every learned model except Qwen-Drive 1.0 (0.450) and the KITScenes re-ranker (0.587)** — nuScenes ego motion is largely straight, so open-loop L2 rewards a straight line; read these numbers with that in mind.
+no history to difference (9.5 m there vs 1.2 m elsewhere). A constant-velocity baseline scores 0.64 here (point-avg L2 1.29), **better than every learned model except Qwen-Drive 1.0 (0.450)** — nuScenes ego motion is largely straight, so open-loop L2 rewards a straight line; read these numbers with that in mind.
 
 ### nuScenes
 
@@ -271,15 +290,19 @@ history, CUDA inference, CPU camera warping and resume assistance disabled.
 | OpenPilot | 1.925 | 4.054 | 6.194 | 4.057 | 2.477 | 3.535 | 2.624 |
 | Alpamayo 1.5 | 0.509 | 1.351 | 2.602 | 1.487 | 0.787 | 1.249 | 1.582 |
 | Drive-JEPA ⊘ | 0.540 | 1.587 | 3.519 | 1.882 | 0.912 | 1.536 | 1.459 |
-| Drive-JEPA, KITScenes re-ranker ⊛ | 0.373 | 0.953 | 2.126 | 1.151 | 0.587 | 0.949 | 1.211 |
 | VisionPilot | 1.031 | 2.213 | 3.837 | 2.360 | 1.441 | 2.058 | 3.816 |
 | METEOR | 0.616 | 1.683 | 3.356 | 1.885 | 0.977 | 1.570 | 6.152 ◇ |
 | Qwen-Drive 1.0 | 0.318 | 0.722 | 1.360 | 0.800 | 0.450 | 0.678 | 0.770 |
+| AutoE2E ⧗ | 0.553 | 1.444 | 2.697 | 1.565 | 0.839 | 1.319 | 1.862 |
 | Baseline (Constant Velocity) | 0.372 | 1.151 | 2.340 | 1.288 | 0.641 | 1.069 | 1.661 |
 
 Point L2 averages errors at 1, 2 and 3 seconds. Cumulative L2 averages the three
 prefix means; ADE at 3 seconds averages all six half-second errors. Collision
 is predicted ego-footprint overlap with annotated boxes, not an observed crash.
+
+⧗ AutoE2E (`kitscenes-epoch-5`, run `20261023T004711-eedbe2`, valid) is fed the
+6.5 s of past keyframes it declares, where the other rows get 2 s; its BEVFormer V2
+starting weights were trained on nuScenes train, not val.
 
 ⊘ Measured camera-blind; re-measure pending, see #62.
 

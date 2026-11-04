@@ -320,7 +320,22 @@ def run(model_filter: str | None = None) -> Report:
         except ConfigError as exc:
             report.add("models", name, Status.FAIL, "", str(exc))
             continue
-        if interpreter.exists():
+        try:
+            present = interpreter.exists()
+        except PermissionError:
+            # A folder on the way this account may not enter, often a venv built on a
+            # Python inside someone's home folder. It crashed doctor whole, run as a
+            # second account, instead of naming the one model it cannot run.
+            report.add(
+                "models",
+                name,
+                Status.FAIL,
+                f"interpreter not reachable by this account: {interpreter}",
+                f"`readlink -f {interpreter}` names where it really is; give this account "
+                "read access there (docs/queue.md, setup step 3)",
+            )
+            continue
+        if present:
             report.add("models", name, Status.OK, f"{spec.runtime.kind}: {interpreter}")
         else:
             report.add(

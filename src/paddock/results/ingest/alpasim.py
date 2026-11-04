@@ -78,6 +78,19 @@ _MODEL_BY_DRIVER = {
     "meteor": "meteor",
 }
 
+#: For a model that has also been driven with checkpoints we trained, the drivers,
+#: by full version_id, that serve its released checkpoint. Paddock keeps only the
+#: released models' results, and the prefix map above would file any driver of
+#: the model, and rank it, as the released one: that is how the retrained
+#: Drive-JEPA's AlpaSim runs reached the leaderboard as Drive-JEPA's own. So for
+#: these models an unlisted driver is not ingested, and a new driver stays out
+#: until someone adds it here. Drive-JEPA's 0.1.6 and 0.1.7 drove the Physical AI
+#: AV retrain (gallops GC05); 0.1.0 to 0.1.3 were development drivers behind no
+#: row. A model with no entry is filed by its prefix alone.
+RELEASED_DRIVERS = {
+    "drivejepa": frozenset({"drivejepa-v2-driver-0.1.4", "drivejepa-v2-driver-0.1.4b"}),
+}
+
 
 #: The console has three names, because the launch path differs. The wizard
 #: writes `wizard_console_<label>.log` when it was given a label and plain
@@ -120,19 +133,28 @@ def renderer_name(run: Path) -> str | None:
     return {"NuRec": "nurec", "OmniDreams": "omnidreams"}[match.group(1)] if match else None
 
 
+def _unreleased_driver_of(version_id: str | None) -> str | None:
+    """The model `version_id` drives if it is not one of that model's released drivers."""
+    model = _MODEL_BY_DRIVER.get((version_id or "").split("-", 1)[0])
+    released = RELEASED_DRIVERS.get(model or "")
+    return model if released is not None and version_id not in released else None
+
+
 def model_name(version_id: str | None) -> str | None:
-    if not version_id:
+    if not version_id or _unreleased_driver_of(version_id):
         return None
     return _MODEL_BY_DRIVER.get(version_id.split("-", 1)[0])
 
 
 def tick_config(run: Path) -> dict[str, Any]:
-    """Cameras and control rate -- the axis along which runs are NOT comparable.
+    """Cameras and control rate, recorded in metrics.json's `by_group`.
 
-    Two AlpaSim runs with different tick configs measure different tasks: 10 Hz
-    control gives a policy five times the opportunities to correct that 2 Hz
-    does, and a four-camera rig sees what a single forward camera cannot. Runs
-    are grouped by this so a report never averages across it.
+    Control rate is the axis along which runs are NOT comparable: 10 Hz control
+    gives a policy five times the opportunities to correct that 2 Hz does. Camera
+    count is recorded but is not a reason to keep runs apart; each model is given
+    the cameras it reads (docs/benchmarks/alpasim.md). `paddock report` does not
+    split on this group; `ingest_campaign` refuses to merge directories whose
+    tick configs differ, so one stored run never mixes two.
 
     Parsed from the YAML rather than by regex: the camera list is a sequence of
     `- logical_id: camera_...` mappings, which a pattern keyed on `camera_.*:`
@@ -428,6 +450,12 @@ def ingest_campaign(
     for path in dirs:
         scan = _scan(path)
         if scan is None:
+            version = driver_version_id(path)
+            model = _unreleased_driver_of(version)
+            if model:
+                raise Incomparable(
+                    f"{run_id}: {path.name} was driven by {version}, not a driver of the released {model}"
+                )
             raise Incomparable(f"{run_id}: {path.name} is not an ingestible AlpaSim run directory")
         scans.append(scan)
     if not scans:

@@ -8,9 +8,9 @@ lives in the trained hash grids, and the closed-loop server only reads poses,
 intrinsics, transforms and actor trajectories out of the dataparser.
 
 So missing point clouds are substituted with empty ones.  That is a real
-deviation and is not taken on faith -- ``validate_render.py`` re-renders a
-keyframe at its original pose and compares it against the recorded image.  If
-the points had mattered, that comparison falls apart.
+deviation and was not taken on faith: it was checked by re-rendering a keyframe
+at its original pose and comparing it against the recorded image.  If the points
+had mattered, that comparison would have fallen apart.
 
 Camera sweeps are *not* needed on disk: image files are opened lazily, and the
 closed-loop path never reads a training image.
@@ -60,6 +60,21 @@ def _read_lidars_tolerant(self, lidars, filepaths):
 
 
 ndp.NuScenes._read_lidars = _read_lidars_tolerant
+
+
+# [benchmarks.neuroncap] nuscenes_subset (launcher.NUSCENES_SUBSET_ENV): load the
+# scene from tables cut down to neuroNCAP's scenes, not the 2.5 GB v1.0-trainval
+# the checkpoint's config names. The scene's records are the same, and its file
+# paths resolve through the copy's links to the same files (nuscenes_subset.py).
+_SUBSET = os.environ.get("PADDOCK_NCAP_NUSCENES_SUBSET")
+if _SUBSET:
+    _original_generate = ndp.NuScenes._generate_dataparser_outputs
+
+    def _generate_from_subset(self, split="train"):
+        self.config.data = Path(_SUBSET)
+        return _original_generate(self, split)
+
+    ndp.NuScenes._generate_dataparser_outputs = _generate_from_subset
 
 
 # This neurad-studio is newer than the released checkpoints, and its dataparser

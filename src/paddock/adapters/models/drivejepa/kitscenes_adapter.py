@@ -25,7 +25,7 @@ Three conventions have to be reconciled; each is handled explicitly below.
    pose stream and rotated into the body frame.
 
 The rig geometries still differ (roof pod vs. windshield mounts), which no
-transform can undo -- see the module docstring of ``run_kitscenes_inference``.
+transform can undo.
 """
 
 from __future__ import annotations

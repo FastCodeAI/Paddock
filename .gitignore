@@ -47,3 +47,7 @@ build/
 *.swp
 # also as a symlink: a worktree pointing at a sibling checkout's venv
 .venv
+
+# ignore the tmp dir within repo if any
+.tmp
+

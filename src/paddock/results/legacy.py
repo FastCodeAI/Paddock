@@ -26,6 +26,10 @@ alongside everything else machine-shaped:
     runs   = "/path/to/paddock-runs/bench2drive/drivejepa"
     label  = "pooled50"
     routes = ["1711", "1852"]        # optional; default: every route found
+    [[ingest.hugsim]]                # likewise one block per run
+    model  = "drivejepa"
+    runs   = "/path/to/hugsim-eval/dj_released"
+    label  = "campaign"
 
 Absent sources are reported and skipped, not treated as errors: no site is
 expected to have all of them.
@@ -38,7 +42,7 @@ from pathlib import Path
 
 from paddock.config import ConfigError, SiteConfig
 from paddock.results import store
-from paddock.results.ingest import alpasim, bench2drive, kitscenes, navsim, neuroncap
+from paddock.results.ingest import alpasim, bench2drive, hugsim, kitscenes, navsim, neuroncap
 
 
 def _ingest_section(cfg: SiteConfig) -> dict:
@@ -152,12 +156,37 @@ def ingest_all(cfg: SiteConfig, dry_run: bool = False) -> tuple[int, list[str]]:
                 run_label=entry.get("label", "pooled"),
                 notes=entry.get("notes", ""),
                 model_env=entry.get("model_env"),
+                ranked=bool(entry.get("ranked", False)),
                 setups={
                     label: [str(r) for r in group] for label, group in (entry.get("setups") or {}).items()
                 },
             )
         else:
             skipped.append(f"bench2drive.{entry.get('model', '?')} runs do not exist: {runs}")
+
+    # One run per recorded campaign: see results/ingest/hugsim.py.
+    entries = section.get("hugsim") or []
+    if not isinstance(entries, list):
+        raise ConfigError(
+            "[ingest.hugsim] must be an array of tables -- write [[ingest.hugsim]], one block per run"
+        )
+    for entry in entries:
+        for key in ("model", "runs"):
+            if key not in entry:
+                raise ConfigError(f"[[ingest.hugsim]] entry is missing {key!r}: {entry}")
+        runs = entry["runs"]
+        roots = [Path(r) for r in (runs if isinstance(runs, list) else [runs])]
+        if all((r / "results.jsonl").exists() for r in roots):
+            collected += hugsim.ingest(
+                roots,
+                model=entry["model"],
+                site=cfg.site,
+                run_label=entry.get("label", "campaign"),
+                notes=entry.get("notes", ""),
+                model_env=entry.get("model_env"),
+            )
+        else:
+            skipped.append(f"hugsim.{entry.get('model', '?')}: no results.jsonl under {runs}")
 
     csv_path = section.get("navsim_csv")
     if csv_path and Path(csv_path).exists():

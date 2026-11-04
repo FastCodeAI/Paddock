@@ -95,6 +95,11 @@ DEVICE_FROM_EGO = np.diag([1.0, -1.0, -1.0])
 # (neuroNCAP boston-seaport, KITScenes Germany, comma2k19 California), so index
 # 0 is set.
 TRAFFIC_CONVENTION = np.array([1.0, 0.0], dtype=np.float32)
+# The (lateral, longitudinal) action_t the tinygrad path feeds openpilot's ModelState. The ONNX wrapper
+# computes upstream modeld's own, delay + 1.5 * DT_MDL, which is (0.275, 0.525) at its default delays
+# (`SupercomboRunner.long_action_t`), so the two backends tell the model horizons 25 ms apart. The
+# planner reads back whichever the model was given.
+TINYGRAD_ACTION_T = (0.3, 0.5)
 
 #: The 0.5 s grid every paddock consumer reads, out to supercombo's own horizon.
 #:
@@ -121,8 +126,9 @@ MAX_MOUNT_DEG = 15.0
 
 #: Emit openpilot's own longitudinal intent (desired accel + should_stop) so the
 #: closed-loop client can drive it natively instead of through the TCP tracker's
-#: brake-below-0.4 m/s rule. Off by default: the standard tracker path is what
-#: every published Bench2Drive baseline uses.
+#: brake-below-0.4 m/s rule. Off when unset (tests, a node started by hand);
+#: model.yaml declares it on, so every node paddock launches has it. Only the
+#: Bench2Drive client reads `extras.native_long`.
 NATIVE_LONG = os.environ.get("PADDOCK_OPENPILOT_NATIVE_LONG", "").strip().lower() in (
     "1",
     "true",
@@ -152,6 +158,25 @@ V_CRUISE_FALLBACK = 13.9  # m/s when the source sends no road limit
 #: the car is rolling (>= 1 m/s), then experimental resumes control. 0 disables.
 RESUME_S = float(os.environ.get("PADDOCK_OPENPILOT_RESUME_S", "3.0"))
 RESUME_UNTIL_V = 1.0
+#: The same driver-resume nudge on the default tracker path, to measure the
+#: resume alone. NATIVE_LONG + RESUME_S also swaps the whole longitudinal law
+#: for openpilot's planner, so a score from it cannot say which of the two moved
+#: it. Here, after RESUME_S stopped with no lead (lead_prob < 0.5), the
+#: trajectory returned is a launch straight ahead at RESUME_PLAN_V until the car
+#: rolls at RESUME_UNTIL_V; the tracker drives it like any plan, and every other
+#: frame is the model's own plan, untouched. Straight, because at standstill the
+#: plan reaches ~0.1 m, too short to steer by. Ignored under NATIVE_LONG, which
+#: has its own nudge. Off by default.
+RESUME_PLAN = os.environ.get("PADDOCK_OPENPILOT_RESUME_PLAN", "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+#: m/s: the launch plan's speed, which the TCP tracker reads as its target. Over
+#: its 0.4 m/s brake threshold and past RESUME_UNTIL_V, so the nudge ends by
+#: itself; a walking pace, so a nudge into something the model missed is slow.
+RESUME_PLAN_V = 2.0
 
 #: openpilot's `log.Desire` (cereal/log.capnp): the slots of the one-hot
 #: `desire_pulse` input and of the `desire_state` output. Restated because
@@ -173,11 +198,35 @@ DESIRE_LANE_CHANGE_LEFT, DESIRE_LANE_CHANGE_RIGHT = 3, 4
 #: code, only measured. "lane_change" sends laneChangeLeft/laneChangeRight: in
 #: distribution but a different manoeuvre, which makes it the control for "turn".
 #: STRAIGHT and FOLLOW_REFERENCE are none in every mode.
+#:
+#: "route" is the one mode that is not a table: the route's lane changes and
+#: junction turns are each sent when they are near and for as long as they
+#: apply, frame by frame (`RouteDesire`). Its entry here is the turn table, what
+#: a bare command means under it.
 DESIRE_MODES: dict[str, dict[Command, int]] = {
     "off": {},
     "turn": {Command.LEFT: DESIRE_TURN_LEFT, Command.RIGHT: DESIRE_TURN_RIGHT},
     "lane_change": {Command.LEFT: DESIRE_LANE_CHANGE_LEFT, Command.RIGHT: DESIRE_LANE_CHANGE_RIGHT},
+    "route": {Command.LEFT: DESIRE_TURN_LEFT, Command.RIGHT: DESIRE_TURN_RIGHT},
 }
+
+#: `RouteDesire`: metres before a junction turn its desire is first sent. On
+#: KITScenes the turn desire cost ADE when sent for turns 40 m or more ahead --
+#: the model cannot see them yet -- and nothing nearer (an image-calibration
+#: analysis of the route sent "only when the turn is near").
+TURN_NEAR_M = 40.0
+#: `RouteDesire`: seconds between re-sent turn desires. openpilot feeds a desire
+#: only on its rising edge and the model keeps it 5 s (25 bins of 0.2 s). A car
+#: that waits 10 s at a red light before its turn -- Bench2Drive route 2215 --
+#: would otherwise enter the junction with the desire long gone; re-sent inside
+#: 5 s, one is always in the window.
+TURN_REARM_S = 4.0
+#: `RouteDesire`: a lane change is sent once it is this many seconds of travel
+#: ahead at the current speed, or `LANE_CHANGE_MIN_M`, whichever is further:
+#: openpilot's model takes a few seconds to cross a lane, and the route marks
+#: the point the lane is already changed by.
+LANE_CHANGE_LEAD_S = 2.5
+LANE_CHANGE_MIN_M = 10.0
 
 
 class ImplausibleMounting(ValueError):
@@ -282,11 +331,10 @@ class CameraFit:
         The box is in floats and `prepare` resamples it with PIL's BOX, so
         output pixel i's centre, i + 0.5, is the box's x0 + (i + 0.5) * s, s
         source pixels per output pixel. The cut's focal length is then f / s and
-        its principal point (c + 0.5 - x0) / s - 0.5. Computed in the analysis
-        lib's order, operation for operation (`cut` in
-        tools/models/openpilot/analysis/openpilot_drv_supcombo_image_tweak_lib.py),
-        because that order is what makes this frame and warp bit for bit the
-        ones its runs measured.
+        its principal point (c + 0.5 - x0) / s - 0.5. Computed in the same
+        order, operation for operation, as the analysis code that chose these
+        settings, because that order is what makes this frame and warp bit for
+        bit the ones its runs measured.
         """
         if pinhole.fx != pinhole.fy:
             raise ValueError(
@@ -614,6 +662,88 @@ def desire_pulse(command: Command, mode: str, width: int) -> np.ndarray:
     return pulse
 
 
+class RouteDesire:
+    """`PADDOCK_OPENPILOT_DESIRE=route`: the desire each frame is sent as, from the route.
+
+    A level per frame, like `desire_pulse`; both backends turn it into openpilot's
+    rising-edge pulse. What the level does decides what the model is told:
+
+    *Lane change* (`Observation.nav_lane_change`, within `LANE_CHANGE_LEAD_S`
+    of travel or `LANE_CHANGE_MIN_M`): held until the agent reports it passed,
+    so it arrives as exactly one edge -- as openpilot's `DesireHelper` sends one
+    per lane change. Never re-sent: a second edge asks for a second lane change.
+    Two lane changes in a row each get their own edge, the level dropping for
+    one frame between them if they are close enough to run together.
+
+    *Junction turn* (command LEFT/RIGHT, where the car is now, else
+    `nav_maneuver` TURN_* within `TURN_NEAR_M`): held while the turn is near or
+    under way, and dropped for one frame every `TURN_REARM_S` so a fresh edge
+    reaches the model -- a turn can wait out a red light, a lane change cannot
+    sensibly be repeated. A lane change in reach takes precedence; turns are
+    off openpilot's deployment distribution (see `DESIRE_MODES`).
+
+    Everything else -- STRAIGHT, lane follow, no route -- is none.
+    """
+
+    def __init__(self) -> None:
+        self.reset()
+
+    def reset(self) -> None:
+        self.prev_slot = DESIRE_NONE
+        #: When the turn desire last rose, for the re-send clock; None when no turn is held.
+        self.turn_since_us: int | None = None
+        #: The distance to the lane change last frame, to tell the next one from this one.
+        self.lane_change_m: float | None = None
+
+    def slot(self, obs: Observation) -> int:
+        lane_change = self._lane_change(obs)
+        if lane_change is None:  # between two lane changes: this frame is off
+            slot = DESIRE_NONE
+        elif lane_change == DESIRE_NONE:
+            slot = self._turn(obs)
+        else:
+            slot = lane_change
+            self.turn_since_us = None
+        self.prev_slot = slot
+        return slot
+
+    def _lane_change(self, obs: Observation) -> int | None:
+        """The lane-change slot in reach, `DESIRE_NONE` if none is, None for the frame between two."""
+        side = getattr(obs, "nav_lane_change", None)
+        metres = getattr(obs, "nav_lane_change_m", None)
+        previous, self.lane_change_m = self.lane_change_m, metres
+        if side not in ("LEFT", "RIGHT") or metres is None:
+            return DESIRE_NONE
+        if metres > max(LANE_CHANGE_MIN_M, LANE_CHANGE_LEAD_S * max(float(obs.speed), 0.0)):
+            return DESIRE_NONE
+        slot = DESIRE_LANE_CHANGE_LEFT if side == "LEFT" else DESIRE_LANE_CHANGE_RIGHT
+        if self.prev_slot == slot and previous is not None and metres > previous + 1.0:
+            # Further than last frame: that lane change is behind, this is the
+            # next one, already in reach. One frame off makes it its own edge.
+            return None
+        return slot
+
+    def _turn(self, obs: Observation) -> int:
+        command = int(obs.command)
+        if command in (Command.LEFT, Command.RIGHT):
+            slot = DESIRE_TURN_LEFT if command == Command.LEFT else DESIRE_TURN_RIGHT
+        elif obs.nav_maneuver in ("TURN_LEFT", "TURN_RIGHT") and (
+            obs.nav_distance_m is not None and obs.nav_distance_m <= TURN_NEAR_M
+        ):
+            slot = DESIRE_TURN_LEFT if obs.nav_maneuver == "TURN_LEFT" else DESIRE_TURN_RIGHT
+        else:
+            self.turn_since_us = None
+            return DESIRE_NONE
+        now = int(obs.timestamp_us)
+        if self.prev_slot != slot or self.turn_since_us is None:
+            self.turn_since_us = now
+            return slot
+        if now - self.turn_since_us >= TURN_REARM_S * 1e6:
+            self.turn_since_us = None  # off for this frame; the next rises again
+            return DESIRE_NONE
+        return slot
+
+
 def build_extras(
     out: dict, plan33: np.ndarray, grid_s: np.ndarray = GRID_S, desire: int = DESIRE_NONE
 ) -> dict:
@@ -775,6 +905,12 @@ class OpenpilotPolicy(Policy):
         self.a_cruise_prev = 0.0
         self.still_s = 0.0
         self.resuming = False
+        #: Nudges `RESUME_PLAN` has given on this route; reported in `extras["resume"]`.
+        self.resumes = 0
+        #: The route-mode scheduler, and the desire slot the last frame was sent
+        #: as -- what the record reports, whichever mode chose it.
+        self.route_desire = RouteDesire()
+        self.desire_slot = DESIRE_NONE
         self.nv12_info = None
         self.buf: np.ndarray | None = None
         self.bufs: dict[str, np.ndarray] = {}
@@ -920,6 +1056,15 @@ class OpenpilotPolicy(Policy):
                 f"is compiled for {TARGET_W}x{TARGET_H}, and a cut is {CUT_SIZE[0]}x{CUT_SIZE[1]}. Set "
                 'PADDOCK_OPENPILOT_BACKEND = "onnx" beside it.'
             )
+        if self.backend == "tinygrad" and NATIVE_LONG:
+            # Here, rather than at every frame: the planner reads `long_action_t` off the
+            # onnx path's `Supercombo`, and openpilot's ModelState keeps it as a local of
+            # modeld's main loop, so on tinygrad each frame would raise AttributeError.
+            raise ValueError(
+                "PADDOCK_OPENPILOT_NATIVE_LONG needs the onnx backend: its planner reads "
+                "long_action_t, which only the onnx path exposes. model.yaml declares it on; set "
+                'PADDOCK_OPENPILOT_BACKEND = "onnx", or PADDOCK_OPENPILOT_NATIVE_LONG = "0".'
+            )
         if self.backend == "tinygrad":
             from openpilot.system.camerad.cameras.nv12_info import get_nv12_info
 
@@ -1047,6 +1192,9 @@ class OpenpilotPolicy(Policy):
         self.a_cruise_prev = 0.0
         self.still_s = 0.0
         self.resuming = False
+        self.resumes = 0
+        self.route_desire.reset()
+        self.desire_slot = DESIRE_NONE
 
     # ---- inference -------------------------------------------------------
 
@@ -1105,6 +1253,21 @@ class OpenpilotPolicy(Policy):
             return self.cam_road, self.cam_wide, "CAM_OP_ROAD", "CAM_OP_WIDE"
         assert self.camera is not None
         return self.camera, self.camera, "CAM_FRONT", "CAM_FRONT"
+
+    def _desire(self, obs: Observation, width: int) -> np.ndarray:
+        """This frame's `desire_pulse` level under the node's mode; see `desire_pulse` and `RouteDesire`.
+
+        One place for both backends, so a route-mode frame is scheduled once
+        per observation, never once per repeat of it.
+        """
+        if self.desire_mode != "route":
+            self.desire_slot = desire_index(obs.command, self.desire_mode)
+            return desire_pulse(obs.command, self.desire_mode, width)
+        self.desire_slot = self.route_desire.slot(obs)
+        pulse = np.zeros(width, dtype=np.float32)
+        if self.desire_slot != DESIRE_NONE:
+            pulse[self.desire_slot] = 1.0
+        return pulse
 
     def infer(self, obs: Observation) -> Trajectory:
         if self.model is None:
@@ -1192,9 +1355,9 @@ class OpenpilotPolicy(Policy):
         transforms = {"img": road.transforms["img"], "big_img": wide.transforms["big_img"]}
 
         inputs = {
-            "desire_pulse": desire_pulse(obs.command, self.desire_mode, ModelConstants.DESIRE_LEN),
+            "desire_pulse": self._desire(obs, ModelConstants.DESIRE_LEN),
             "traffic_convention": TRAFFIC_CONVENTION,
-            "action_t": np.array([0.3, 0.5], dtype=np.float32),
+            "action_t": np.array(TINYGRAD_ACTION_T, dtype=np.float32),
         }
         out = None
         for _ in range(self._repeats(obs)):
@@ -1258,7 +1421,7 @@ class OpenpilotPolicy(Policy):
         # queue is built from (`InputQueues.build`). With the mode "off" this is
         # the zeros `SupercomboRunner.run` substitutes for `desire=None`.
         width = self.session.spec.input_shapes["desire_pulse"][-1]
-        desire = desire_pulse(obs.command, self.desire_mode, width)
+        desire = self._desire(obs, width)
         out = None
         for _ in range(self._repeats(obs)):
             out = self.model.run(img, big, max(float(obs.speed), 0.0), desire=desire)
@@ -1281,11 +1444,54 @@ class OpenpilotPolicy(Policy):
         """
         plan33 = np.asarray(out["plan"])[0]
         traj = Trajectory(plan_to_grid(plan33), dt=self.waypoint_dt)
-        traj.extras = build_extras(out, plan33, desire=desire_index(obs.command, self.desire_mode))
+        traj.extras = build_extras(out, plan33, desire=self.desire_slot)
         if NATIVE_LONG:
             traj.extras["native_long"] = self._native_long(out, plan33, obs.speed, self.dt_s, obs.speed_limit)
+        elif RESUME_PLAN:
+            traj = self._resume_plan(traj, out, obs.speed, self.dt_s)
         validate_extras(traj.extras, n_waypoints=len(traj.waypoints))
         return traj
+
+    def _long_action_t(self) -> float:
+        """The longitudinal horizon the model was told to plan for, seconds.
+
+        Read back off the ONNX runner rather than restated -- the two disagreed by
+        25 ms while this was a constant. See `SupercomboRunner.long_action_t`.
+        openpilot's own ModelState, the tinygrad backend, has no such property: it
+        was given TINYGRAD_ACTION_T. Branching on the backend, not on hasattr, keeps
+        a runner that lost the property failing here instead of planning at the
+        tinygrad value.
+        """
+        return self.model.long_action_t if self.backend == "onnx" else TINYGRAD_ACTION_T[1]
+
+    def _resume_plan(self, traj: Trajectory, out: dict, v_ego: float, dt_s: float) -> Trajectory:
+        """`RESUME_PLAN`: the model's plan, or the launch that stands in for a driver's resume press.
+
+        The same trigger as `_native_long`'s nudge -- `RESUME_S` stopped, the
+        model seeing no lead -- held until the car rolls at `RESUME_UNTIL_V`.
+        `extras["resume"]` puts every frame's state on the record, nudges or not,
+        so a score can be read with and without them.
+        """
+        prob = float(np.asarray(out["lead_prob"])[0, 0]) if "lead_prob" in out else 0.0
+        self.still_s = self.still_s + dt_s if v_ego < 0.3 else 0.0
+        if v_ego >= RESUME_UNTIL_V:
+            self.resuming = False
+        if RESUME_S > 0 and not self.resuming and self.still_s >= RESUME_S and prob < 0.5:
+            self.resuming = True
+            self.resumes += 1
+        traj.extras["resume"] = {
+            "active": self.resuming,
+            "count": self.resumes,
+            "still_s": round(self.still_s, 2),
+            "lead_prob": prob,
+        }
+        if not self.resuming:
+            return traj
+        steps = np.asarray(traj.waypoints, dtype=np.float64).shape[0]
+        t = np.arange(1, steps + 1) * self.waypoint_dt
+        launch = Trajectory(np.stack([RESUME_PLAN_V * t, np.zeros_like(t)], axis=-1), dt=self.waypoint_dt)
+        launch.extras = traj.extras
+        return launch
 
     def _native_long(self, out, plan33, v_ego: float, dt_s: float, speed_limit) -> dict:
         """openpilot 0.11 longitudinal planner, reproduced (longitudinal_planner.py:128-149):
@@ -1325,10 +1531,7 @@ class OpenpilotPolicy(Policy):
             a_lead = float(np.clip(K_ROOM * room + K_VREL * (v_lead - v_ego), ACCEL_MIN, max_accel))
             cands.append((a_lead, "lead", upstream.stopped(v_ego, a_lead)))
         # e2e candidate (modeld get_action_from_model, plan branch, 0.3 s smoothed)
-        # The horizon the model was told to plan for, read back off the model
-        # rather than restated here -- the two disagreed by 25 ms while this was
-        # a constant. See `Supercombo.long_action_t`.
-        long_action_t = self.model.long_action_t
+        long_action_t = self._long_action_t()
         a_raw, _ = upstream.accel_and_stop(
             plan33[:, Plan.VELOCITY][:, 0],
             plan33[:, Plan.ACCELERATION][:, 0],
@@ -1402,8 +1605,9 @@ class OpenpilotPolicy(Policy):
             "backend": self.backend,
             "model": self.model_name,
             # What the node did with route commands and the camera's geometry.
-            # `config.model_env` records only a site's env block, so a setting
-            # made anywhere else would leave no other trace in the run record.
+            # `config` records only env set in model.yaml or a site's env block,
+            # so a setting made anywhere else would leave no other trace in the
+            # run record.
             "desire_mode": self.desire_mode,
             "height_scale": self.height_scale,
             "pitch_deg": self.pitch_deg,

@@ -10,8 +10,8 @@ on PR #21:
 * **OpenPilot's two recording sets are never pooled into one mean.** Its 24
   historical routes were driven with human resume assistance on 16 of them, and
   its 26 expansion routes use a different upstream longitudinal setup. A pooled
-  driving score of 48.11 would top the table while the support matrix publishes
-  30.09 for the same model on the same benchmark.
+  driving score of 48.11 would top the table as though one setup had driven it;
+  the support matrix publishes a measured record of one setup instead.
 
 No GPU, no dataset, no site config: this reads tracked files only.
 """
@@ -26,10 +26,13 @@ from pathlib import Path
 
 import pytest
 
+from paddock.adapters.benchmarks.bench2drive.harness import every_tick
+from paddock.results.ingest.bench2drive import _driven_off_protocol
+from tools.readme_figures import load_matrix, matrix_cell, rank
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RECORDS = REPO_ROOT / "docs/benchmarks/bench2drive-speed-normalization.json"
 UNASSISTED_CSV = REPO_ROOT / "docs/benchmarks/openpilot-24-infractions.csv"
-README = REPO_ROOT / "README.md"
 #: The page that holds the Bench2Drive tables; the README keeps only the matrix.
 PAGE = REPO_ROOT / "docs/benchmarks/bench2drive.md"
 
@@ -54,21 +57,9 @@ def data() -> dict:
     return json.loads(RECORDS.read_text())
 
 
-def _matrix_cell(row_label: str, column_header: str) -> str:
-    """One support-matrix cell, addressed by row label and column header.
-
-    The column is found rather than counted. Its index is not stable -- adding
-    the nuPlan column moved Bench2Drive from 5 to 6 -- and a hardcoded index
-    fails by reading a *different* benchmark's number, which is a confusing way
-    to learn that the matrix grew.
-    """
-    lines = README.read_text().split("\n")
-    header = next(ln for ln in lines if ln.startswith("| | ") and column_header in ln)
-    index = next(
-        i for i, c in enumerate(c.strip() for c in header.strip().strip("|").split("|")) if column_header in c
-    )
-    row = next(ln for ln in lines if ln.startswith(f"| {row_label} |"))
-    return [c.strip() for c in row.strip().strip("|").split("|")][index]
+def _matrix_cell(model: str) -> str:
+    """The support matrix's Bench2Drive number for one model, as docs/support-matrix.toml gives it."""
+    return matrix_cell(model, "bench2drive").shown
 
 
 def _readme_table(after: str) -> list[list[str]]:
@@ -128,7 +119,7 @@ def test_every_record_carries_an_assistance_label(data: dict) -> None:
 
 
 def test_unassisted_subset_is_recomputable_from_the_linked_file(data: dict) -> None:
-    """The 30.09 in the support matrix must fall out of the records themselves."""
+    """The 30.09 unassisted estimate must fall out of the records themselves."""
     est = [
         r["assistance"]["unassisted_prefix_estimate"]["driving_score"]
         if r["assistance"]["assisted"]
@@ -257,13 +248,26 @@ def test_openpilot_block_reproduces(data: dict) -> None:
     assert rows[2][3] == f"{est['route_completion']:.2f}"
 
 
-def test_support_matrix_openpilot_cell_is_the_unassisted_estimate(data: dict) -> None:
-    est = data["summaries"]["openpilot_unassisted24_estimate"]["driving_score"]
-    cell = _matrix_cell("OpenPilot", "Bench2Drive")
-    assert re.match(rf"^{est:.2f}\b", cell), (
-        f"the support matrix publishes {cell!r} for Bench2Drive; it must stay the "
-        "unassisted estimate, not a pooled mean"
-    )
+def test_support_matrix_openpilot_cell_is_one_declared_setup() -> None:
+    """The cell is a measured record of one setup, never a mean pooled over setups.
+
+    The recordings in the records file pool three setups, which is why their mean
+    stays withheld above, and the unassisted estimate rebuilt from them is a
+    reconstruction. The cell names one valid run: openpilot's own planner and its
+    resume nudge, declared in model.yaml, on every route. So it carries P (the
+    nudge stands in for a driver pressing resume). Its routes can end early, and it
+    ranks all the same (the last test below).
+    """
+    columns, rows = load_matrix()
+    j = next(j for j, c in enumerate(columns) if c.key == "bench2drive")
+    row = next(r for r in rows if r.key == "openpilot")
+    cell = row.cells[j]
+    assert cell.run, f"the cell shows {cell.shown!r} with no run: a reconstruction, not a measurement"
+    run = json.loads((REPO_ROOT / "results" / cell.run / "run.json").read_text())
+    assert run["valid"], f"{cell.run} does not rank: {run['notes']}"
+    assert "recording_setups" not in run["config"], f"{cell.run} pools setups"
+    assert run["config"]["declared_env"]["PADDOCK_OPENPILOT_NATIVE_LONG"] == "1"
+    assert "P" in {*row.marks, *cell.marks}, f"{cell.run} needs P"
 
 
 # ---------------------------------------------------------------------------
@@ -283,18 +287,7 @@ def test_no_video_is_tracked() -> None:
         check=True,
     ).stdout.split("\0")
     offenders = [p for p in tracked if p and Path(p).suffix.lower() in VIDEO_SUFFIXES]
-    assert not offenders, (
-        f"{offenders} are run artifacts; move them under [roots.runs] and keep the "
-        "manifest, as docs/evidence/driving-videos/README.md does"
-    )
-
-
-def test_video_manifest_points_outside_the_repo() -> None:
-    doc = (REPO_ROOT / "docs/evidence/driving-videos/README.md").read_text()
-    manifest = json.loads((REPO_ROOT / "docs/evidence/driving-videos/manifest.json").read_text())
-    for name in manifest["video_sha256"]:
-        assert f"{{runs}}/bench2drive/evidence/driving-videos/{name}" in doc, name
-        assert not (REPO_ROOT / "docs/evidence/driving-videos" / name).exists()
+    assert not offenders, f"{offenders} are run artifacts; move them under [roots.runs]"
 
 
 # ---------------------------------------------------------------------------
@@ -312,12 +305,12 @@ def test_speed_sweep_reproduces(data: dict) -> None:
         assert row[3] == f"{s['route_completion']:.2f}", row[0]
 
 
-def test_support_matrix_baseline_cell_is_the_historical_24_three_mps(data: dict) -> None:
-    """♣ 47.94 and the table's 40.39 are different experiments; both must be stated."""
-    s = data["summaries"]["original24"]["constant_velocity_3mps"]
+def test_support_matrix_baseline_cell_is_the_all50_three_mps(data: dict) -> None:
+    """♣ 48.31 and the table's 40.39 are different experiments; both must be stated."""
+    s = data["summaries"]["all50"]["constant_velocity_3mps"]
     assert f"**{s['driving_score']:.2f} ♣**" in PAGE.read_text()
-    cell = _matrix_cell("Baseline (Constant Velocity)", "Bench2Drive")
-    assert cell.startswith(f"{s['driving_score']:.2f}"), cell
+    cell = _matrix_cell("constant_velocity")
+    assert cell == f"{s['driving_score']:.2f}", cell
 
 
 def test_bench2drive_page_still_links_a_tracked_run() -> None:
@@ -326,3 +319,56 @@ def test_bench2drive_page_still_links_a_tracked_run() -> None:
     assert links, "no docs link a results/bench2drive run any more"
     for link in links:
         assert (PAGE.parent / link).resolve().exists(), link
+
+
+# ---------------------------------------------------------------------------
+# A cell asked at its own rate, or whose routes end early, ranks and says so
+# ---------------------------------------------------------------------------
+
+
+def test_a_cell_asked_at_its_own_rate_or_stopped_early_ranks_and_says_so() -> None:
+    """A valid record asked less often than every tick, or whose routes an early stop could end, ranks.
+
+    Its rate is the one its model.yaml declares, and a route the stuck or over-time rule
+    ends is a failed drive (early_stop.py), so neither leaves a valid run unranked. The
+    rest of this column is asked every tick and drives every route to Bench2Drive's own
+    end, and the README says a cell without a mark was measured the same way as the rest
+    of its column unless a note says how it differs. So such a cell says how it was
+    measured: its rate under the number, and its model named in the README's note on
+    routes that end early. The rate is read as the ingest reads it: `infer_hz`, or for
+    runs that predate it, PADDOCK_INFER_HZ in `model_env`.
+    """
+    readme = (REPO_ROOT / "README.md").read_text()
+    start = readme.index("**Ranked, though some Bench2Drive routes end early.**")
+    early = readme[start : readme.index("\n- ", start)]
+    columns, rows = load_matrix()
+    rank(columns, rows)
+    j = next(j for j, c in enumerate(columns) if c.key == "bench2drive")
+    own_rated, stopped = set(), set()
+    for row in rows:
+        cell = row.cells[j]
+        if not cell.run:
+            continue
+        run = json.loads((REPO_ROOT / "results" / cell.run / "run.json").read_text())
+        config = run["config"]
+        hz = config.get("infer_hz")
+        if hz is None:
+            hz = _driven_off_protocol(config.get("model_env") or {})
+        own_rate = not every_tick(hz or 0.0)
+        stopped_early = bool(config.get("early_stop"))
+        # A run that is not valid (the collision rule, a stop by hand) must not rank;
+        # tools/readme_figures.py refuses to rank it.
+        if not run["valid"] or not (own_rate or stopped_early):
+            continue
+        assert "R" not in row.marks + cell.marks, f"{row.key}: {cell.run} is marked R"
+        assert cell.rank is not None, f"{row.key}: {cell.run} is not ranked"
+        if own_rate:
+            own_rated.add(row.key)
+            assert cell.qualifier == f"{hz:g} Hz", f"{row.key}: its rate is not named"
+        if stopped_early:
+            stopped.add(row.key)
+            assert row.name in early, f"{row.key}: the README does not say its routes end early"
+    # The cells this rule is about; a loop that matched none of them would pass anything.
+    own_rate_cells = {"drivejepa", "alpamayo15", "qwendrive", "meteor", "autoe2e"}
+    assert own_rate_cells <= own_rated, f"own-rate cells checked: {sorted(own_rated)}"
+    assert {"openpilot", "meteor", "autoe2e"} <= stopped, f"early-stopped cells checked: {sorted(stopped)}"

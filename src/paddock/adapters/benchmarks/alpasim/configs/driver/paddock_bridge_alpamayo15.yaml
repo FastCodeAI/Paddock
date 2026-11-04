@@ -1,0 +1,63 @@
+# @package _global_
+# The driver AlpaSim composes when paddock serves Alpamayo 1.5 through the bridge.
+#
+# The simulation settings Alpamayo 1.5's stored AlpaSim result was scored on
+# (the 10-scene row under results/alpasim/alpamayo15/): the shared 20 Hz
+# clock, with AlpaSim's own Alpamayo driver behind a filter that showed it
+# frames 100 ms apart and asked it for a plan every 100 ms. The bridge
+# reproduces that filter (harness.DRIVER_PROFILES["alpamayo15"]); this file
+# reproduces the simulation, value for value. Other models keep
+# paddock_bridge.yaml.
+#
+# What the values are, briefly:
+#   * the four cameras AlpaSim's Alpamayo driver reads (its alpamayo1_5.yaml
+#     `inference.use_cameras`), each the scene's own f-theta lens: no
+#     extra_cameras block, so nothing is re-rendered as a pinhole, and the
+#     model sees the lens it was trained on;
+#   * 1900 x 1080 asked for, as AlpaSim's alpamayo_configs.yaml asks;
+#   * 20 Hz for both the control step and the cameras, 30 ms shutter. The two
+#     must be equal: AlpaSim's Alpamayo driver anchors its plan on the newest
+#     camera frame, and the bridge on the newest pose, and they coincide only
+#     when a frame closes on every control step;
+#   * 3.0 s of ground-truth warm-up with the driver called throughout, so the
+#     node's 1.6 s of ego history is full at handover, and 400 steps, which
+#     covers the whole ~19.8 s clip at 50 ms;
+#   * the hyperion_8_1 bonnet mask.
+#
+# These are the values of paddock_bridge_qwendrive.yaml as well; the file is
+# kept separate so that a change made for one model cannot move the other.
+
+wizard:
+  # driver is absent on purpose: the bridge is already listening.
+  run_sim_services:
+    ["renderer", "physics", "trafficsim", "controller", "runtime"]
+
+  external_services:
+    # Overridden per episode with the port the harness actually reserved; this
+    # value only has to compose.
+    driver:
+      - "localhost:9200"
+
+  debug_flags:
+    # Containers join the host network, so localhost:<port> reaches the bridge.
+    use_localhost: true
+
+# Do NOT set `runtime.endpoints.driver.skip: true`. Combined with
+# external_services it makes the runtime skip the driver entirely, and the run
+# still exits 0 with a full metrics table that is not the model's.
+runtime:
+  simulation_config:
+    force_gt_duration_us: 3_000_000
+    # The driver is called during warm-up; the bridge sends those frames to
+    # /observe, so the node's history is full at handover.
+    skip_driver_during_force_gt: false
+    control_timestep_us: 50_000
+    n_sim_steps: 400
+    n_rollouts: 1
+    planner_delay_us: 0
+    ego_mask_rig_config_id: hyperion_8_1
+    cameras:
+      - {logical_id: camera_front_wide_120fov,  height: 1080, width: 1900, frame_interval_us: 50_000, shutter_duration_us: 30_000}
+      - {logical_id: camera_front_tele_30fov,   height: 1080, width: 1900, frame_interval_us: 50_000, shutter_duration_us: 30_000}
+      - {logical_id: camera_cross_left_120fov,  height: 1080, width: 1900, frame_interval_us: 50_000, shutter_duration_us: 30_000}
+      - {logical_id: camera_cross_right_120fov, height: 1080, width: 1900, frame_interval_us: 50_000, shutter_duration_us: 30_000}

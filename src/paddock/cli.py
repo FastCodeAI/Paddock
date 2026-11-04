@@ -1,12 +1,7 @@
-"""`paddock` -- the command line.
-
-Commands that are not implemented yet say so and name the milestone, rather than
-succeeding quietly with nothing done.
-"""
+"""`paddock` -- the command line."""
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import typer
@@ -204,18 +199,33 @@ def config() -> None:
         typer.echo(f"  {name:<12} {roots}{mark}")
 
 
-def _not_yet(command: str, milestone: str) -> None:
-    typer.echo(
-        f"`paddock {command}` is not implemented yet (planned for {milestone}).\nNothing was changed.",
-        err=True,
-    )
-    sys.exit(2)
-
-
 @app.command()
-def setup(repo: str = typer.Option(None, "--repo", help="Only this repository.")) -> None:
-    """Clone or adopt vendor repos, create the symlink farm, apply patches."""
-    _not_yet("setup", "M3")
+def setup(
+    repo: str = typer.Option(None, "--repo", help="Only this repos.yaml entry."),
+    model: str = typer.Option(
+        None, "--model", "-m", help="This model's repo (if it has one), then its setup.sh."
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Say what would be done; change nothing."),
+) -> None:
+    """Clone or adopt the vendor repos at their pinned shas, and apply their patches.
+
+    A clone already in place is adopted, not re-cloned. One whose HEAD is not
+    the pinned sha is left exactly as it is: setup prints both shas and the
+    checkout that would fix it, and exits 1. Patches already applied are
+    skipped, so running it again is safe.
+
+    With --model, the model's own setup.sh then builds its environment, with
+    PADDOCK_REPO, PADDOCK_VENV and PADDOCK_WEIGHTS set from paddock.toml.
+    """
+    from paddock import vendor
+
+    try:
+        cfg = SiteConfig.load()
+        code = vendor.setup(cfg, repo=repo, model=model, dry_run=dry_run, echo=typer.echo)
+    except ConfigError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    raise typer.Exit(code=code)
 
 
 @app.command()

@@ -45,29 +45,6 @@ viz = [
 comma2k19 = [
     "av>=12.0",
 ]
-# Needed only by the analysis notebooks under tools/ (tag, cluster and dissect
-# recorded predictions). Not in `make setup`: nothing in src/ or tests/ imports
-# these, so the pre-PR gate stays as lean as before. Install it beside a setup
-# with `uv pip install --python .venv/bin/python -e ".[analysis]"`. nbclient is
-# what makes `jupyter execute` work, so a notebook can be run headless on all
-# samples; viz brings matplotlib and Pillow, which every analysis lib draws with.
-analysis = [
-    "paddock[viz]",
-    "pandas>=2.2",
-    "ipykernel>=6.29",
-    "ipywidgets>=8.1",
-    "nbclient>=0.10",
-    # What the nuScenes devkit imports. The nuScenes notebook reads the map
-    # expansion through `{repos}/nuscenes-devkit/python-sdk` put on sys.path, not
-    # an install: the devkit pins numpy<2 and would downgrade this env.
-    "shapely>=2.0",
-    "pyquaternion>=0.9.5",
-    "descartes>=1.1",
-    "scikit-learn>=1.5",
-    "opencv-python-headless>=4.10",
-    "cachetools>=5.0",
-    "tqdm>=4.66",
-]
 dev = [
     "pytest>=8.0",
     "ruff>=0.5",
@@ -119,16 +96,6 @@ select = ["E", "F", "I", "UP", "B"]
 # B019: @cache on a method pins the instance for the life of the process. Real,
 # but this is rescued code -- fix it during conversion, not in a lint pass.
 "src/paddock/adapters/models/drivejepa/kitscenes_adapter.py" = ["B019", "E501", "UP006", "UP035"]
-"src/paddock/adapters/models/openpilot/camera_adapt.py" = ["E501", "UP006", "UP035"]
-"src/paddock/adapters/models/alpamayo15/kitscenes_alpamayo_loader.py" = ["B019", "E501", "UP006", "UP035"]
-
-# Rescued reporting and inference scripts. De-hardcoded, so they pass the
-# portability gate; still in their original house style. Cosmetic only.
-"src/paddock/adapters/benchmarks/kitscenes/report_alpamayo.py" = ["E501", "E702", "E731", "E741"]
-"src/paddock/adapters/benchmarks/kitscenes/report_openpilot.py" = ["E501", "E702", "E731", "E741"]
-"src/paddock/adapters/benchmarks/kitscenes/run_openpilot.py" = ["E501", "E702", "E741"]
-"src/paddock/adapters/benchmarks/navsim/run_inference.py" = ["E501", "E702", "E741"]
-"src/paddock/adapters/benchmarks/navsim/run_kitscenes_inference.py" = ["E501", "E702", "E741"]
 
 # renderer.py must extend sys.path to the neurad-studio checkout before importing
 # from it, so its imports genuinely cannot come first.

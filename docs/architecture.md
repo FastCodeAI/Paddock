@@ -75,6 +75,7 @@ NeuroNCAP model nodes; the rest were added for open loop and for provenance.
 | `GET /alive` | the runner, after launch | health check |
 | `GET /whoami` | the runner, after launch | names the model and this launch's nonce, so a run never scores a sibling's node on the same port |
 | `POST /infer` | closed-loop simulators; AlpaSim's bridge | one `Observation` (one timestamp) in, one `Trajectory` out |
+| `POST /observe` | AlpaSim's bridge, for a frame it needs no plan from | one `Observation` in, no plan out: the model takes the frame into its history (`Policy.observe`; a model that does not override it plans and drops the plan) |
 | `POST /infer_sequence` | open-loop harnesses; NAVSIM's scorer | a list of `Observation`s, oldest first; the model takes in all but the last and plans on the last |
 | `POST /reset` | the simulator, before each episode | clears the model's history between episodes |
 | `GET /diagnostics` | the runner, at the end of a run | what the loaded policy says it is, for `run.json` provenance |
@@ -88,7 +89,12 @@ Two details that look like off-by-ones and are not:
 
 - **Six waypoints is exact, not a floor.** NeuroNCAP builds six waypoint
   timestamps per step and indexes them positionally; a seventh is dropped, a
-  fifth raises `IndexError`.
+  fifth raises `IndexError`. So `/infer`'s `trajectory` is always six (x, y)
+  points, and the whole plan travels beside it as `plan`:
+  `{"waypoints": [[x, y], ...] or [[x, y, yaw], ...], "dt": 0.5}`, every row
+  the model returned, with yaw only when the model predicts one (the same
+  shape `/infer_sequence` returns). NeuroNCAP reads only `trajectory` and
+  `aux_outputs`; AlpaSim's bridge reads `plan`.
 - **An all-zero trajectory is a commanded emergency stop**, not "no plan". A
   model that has not warmed up must return `constant_velocity(obs.speed)`.
   Returning zeros scores as a deliberate brake, which for a collision-avoidance
@@ -244,7 +250,12 @@ bridge in front of it). For closed loop:
 
 1. `runtime/gpu.py` waits for the VRAM the model declares, rather than failing
    eight minutes into a checkpoint read with a CUDA OOM traceback that says
-   nothing about the real cause (someone else has the card).
+   nothing about the real cause (someone else has the card). The last check and
+   the launch happen under the card's machine-wide lock (`runtime/lease.py`,
+   `flock` in `/tmp/paddock-locks`, shared by every user), held until the
+   node is ready, so two runs never both start into the same free memory. A
+   simulator that starts inside the first episode loads after the lock is let go;
+   the gate's own wait counts its memory (`SIMULATOR_GB` in `tools/gate.py`).
 2. `runtime/proc.py` starts the node with the env built by `runtime/env.py`,
    polls `/alive` until it answers, runs every scenario, then tears it down and
    waits for the driver to reclaim the memory.
@@ -257,6 +268,15 @@ bridge in front of it). For closed loop:
 Every model sees identical episodes and identical seeds, derived from the run
 index. The comparison is paired, not merely averaged — which is worth far more
 and costs nothing if planned for.
+
+A `model.yaml` can also declare `runtime.env_passthrough`, a tuple of env var
+names to forward into that model's subprocess beyond paddock's own
+`PASSTHROUGH` default (`runtime/env.py`) — for ablation/debugging knobs a
+model's own code reads (e.g. `FOO=1 paddock run --model mymodel ...`).
+Without declaring a name here, the subprocess's environment is built from that
+strict allowlist plus `env`, so a var not in either place silently never
+reaches the model — the shell invocation looks like it worked and does
+nothing.
 
 ## Configuration
 
@@ -286,12 +306,9 @@ comparison: it does not know about its rivals, and should not.
 Before paddock this was inverted. A three-way KITScenes plot lived under
 openpilot, a trajectory plot under Drive-JEPA, a per-sample sheet under
 Drive-JEPA again -- each able to draw only the model it sat beside, and each
-re-deriving the same axes. `tools/` now mirrors the same split:
-
-```
-tools/benchmarks/<b>/   harness checks and one-off figures for that benchmark
-tools/models/<m>/       probes into that model's internals
-```
+re-deriving the same axes. `tools/benchmarks/<b>/` now holds the harness checks
+and figures for one benchmark; probes into one model's internals stay outside
+paddock.
 
 ### The colour rule
 
@@ -318,6 +335,7 @@ model comes out a different colour in every panel. Pass legend text separately;
 | `runtime/env.py` | per-model environment construction |
 | `runtime/proc.py` | launch, health-check, tear down model nodes |
 | `runtime/gpu.py` | VRAM gating |
+| `runtime/lease.py` | machine-wide `flock` locks: one launch per card at a time |
 | `metrics/` | trajectory (ADE/FDE), ncap, pdms |
 | `results/` | canonical store, ingest of legacy formats, reporting |
 | `adapters/models/<n>/` | one model |

@@ -71,6 +71,9 @@ class _StubObs:
         self.timestamp_us = timestamp_us
         self.images: dict[str, np.ndarray] = {}
         self.image_paths = {c: f"/nowhere/{c}.npy" for c in cameras}
+        # Pinhole cameras, as `pinhole` below says: each has its K.
+        k = np.array([[910.0, 0.0, 582.0], [0.0, 910.0, 437.0], [0.0, 0.0, 1.0]])
+        self.camera2image = {c: k for c in cameras}
         self.reads = 0
 
     def image(self, camera: str = "CAM_FRONT") -> np.ndarray:

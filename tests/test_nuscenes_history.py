@@ -88,3 +88,34 @@ def test_openpilot_rejects_keyframe_only_history(monkeypatch):
     monkeypatch.setattr(harness, "setting", lambda key, default=None: default)
     assert harness.input_problems(SimpleNamespace(name="openpilot", min_input_hz=10))
     assert not harness.input_problems(SimpleNamespace(name="other", min_input_hz=2))
+
+
+def test_a_model_declaring_more_history_gets_more_keyframes_and_the_run_says_so(monkeypatch):
+    """AutoE2E declares 6.5 s: 13 past keyframes, recorded; 2 s or less keeps today's 4, unrecorded."""
+    from types import SimpleNamespace
+
+    from paddock.adapters.benchmarks.nuscenes.harness import NuScenesBenchmark
+
+    harness = object.__new__(NuScenesBenchmark)
+    settings = {}
+    monkeypatch.setattr(harness, "setting", lambda key, default=None: settings.get(key, default))
+    harness._boxes = {}
+    frames = []
+    for i in range(30):
+        pose = np.eye(4)
+        pose[0, 3] = i * 2
+        frames.append(Keyframe(str(i), "scene", i, i * 500_000, pose))
+
+    assert harness.model_run_config(SimpleNamespace(history_s=6.5)) == {"history_seconds": 6.5}
+    assert len(harness._sample(frames, 20).observations) == 14
+    assert len(harness._sample(frames, 5).observations) == 6, "a short past is what the log holds"
+
+    for history_s in (0.0, 1.5, 2.0):
+        assert harness.model_run_config(SimpleNamespace(history_s=history_s)) == {}
+        assert len(harness._sample(frames, 20).observations) == 5
+
+    settings.update(camera_history="CAM_FRONT")  # the sweeps are the history there, not keyframes
+    assert harness.model_run_config(SimpleNamespace(history_s=6.5)) == {}
+    # OpenPilot declares 4.8 s and can run only with camera_history set, so its input is unchanged.
+    assert harness.model_run_config(SimpleNamespace(history_s=4.8)) == {}
+    assert harness._history_keyframes == 4

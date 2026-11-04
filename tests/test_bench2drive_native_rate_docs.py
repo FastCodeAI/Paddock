@@ -28,6 +28,8 @@ from pathlib import Path
 
 import pytest
 
+from tools.readme_figures import load_matrix, matrix_cell, rank
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 NATIVE = REPO_ROOT / "docs/benchmarks/bench2drive-native-rate.json"
 TWENTY = REPO_ROOT / "docs/benchmarks/bench2drive-speed-normalization.json"
@@ -268,20 +270,22 @@ def test_the_environment_difference_is_the_one_the_page_argues(model: str) -> No
 
 
 @pytest.mark.parametrize("model", sorted(CAMPAIGN))
-def test_a_native_rate_run_does_not_rank(model: str) -> None:
-    """A rate other than the benchmark's 20 Hz is a different protocol.
+def test_a_native_rate_run_ranks_with_its_rate_named(model: str) -> None:
+    """The native rate is how these models are ranked, and the ingest writes it so.
 
-    Ranking it beside 20 Hz rows asserts they measure the same thing, which is the
-    claim this campaign exists to deny -- and it put DriveJEPA at #1 on a board of
-    runs driven at another rate.
+    Drive-JEPA by the rate its model.yaml declares; Alpamayo and Qwen-Drive, which
+    lost route 3800, by `ranked = true` in their ingest entries. A re-ingest
+    reproduces the record instead of undoing an edit.
     """
+    hz, _, _ = CAMPAIGN[model]
     run = json.loads((_run_dir(model) / "run.json").read_text())
-    assert run["valid"] is False
-    assert "does not rank" in run["notes"]
+    assert run["valid"] is True
+    assert f"driven at {hz} Hz" in run["notes"]
+    why = "declares as planning_hz" if model == "drivejepa" else "ranked = true in the ingest config"
+    assert why in run["notes"], f"{model}: the note does not say how it ranks"
     board = (REPO_ROOT / "docs/leaderboard.md").read_text()
     table = board.split("## bench2drive", 1)[1].split("\n## ", 1)[0]
-    assert run["run_id"] not in table, f"{run['run_id']} is ranked in the bench2drive table"
-    assert run["run_id"] in board, "an excluded run is still listed, with its reason"
+    assert run["run_id"] in table, f"{run['run_id']} is not ranked in the bench2drive table"
 
 
 # ---------------------------------------------------------------------------
@@ -385,29 +389,17 @@ def test_readme_block_reproduces(native: dict, twenty: dict, model: str) -> None
     assert row[7] == f"{old['routes_completed']} → {new['routes_completed']}"
 
 
-#: model -> its row label in the README support matrix.
-MATRIX_ROW = {"drivejepa": "Drive-JEPA", "alpamayo15": "Alpamayo 1.5", "qwendrive": "Qwen-Drive 1.0"}
-
-
-def _matrix_cell(row_label: str, column_header: str) -> str:
-    """One support-matrix cell, addressed by row label and column header."""
-    lines = README.read_text().split("\n")
-    header = next(ln for ln in lines if ln.startswith("| | ") and column_header in ln)
-    index = next(
-        i for i, c in enumerate(c.strip() for c in header.strip().strip("|").split("|")) if column_header in c
-    )
-    row = next(ln for ln in lines if ln.startswith(f"| {row_label} |"))
-    return [c.strip() for c in row.strip().strip("|").split("|")][index]
-
-
 @pytest.mark.parametrize("model", sorted(CAMPAIGN))
 def test_support_matrix_publishes_the_native_score(model: str) -> None:
     """The matrix's Bench2Drive cell for a re-driven model is its native-rate run, rate named."""
-    hz = CAMPAIGN[model][0]
-    metrics = json.loads((_run_dir(model) / "metrics.json").read_text())
-    score = metrics["metrics"]["driving_score"]["mean"]
-    cell = _matrix_cell(MATRIX_ROW[model], "Bench2Drive")
-    assert cell == f"{score:.2f} ({hz} Hz) <sup>R</sup>", f"{model}: the support matrix publishes {cell!r}"
+    hz, run_id, _ = CAMPAIGN[model]
+    cell = matrix_cell(model, "bench2drive")
+    assert cell.run == f"bench2drive/{model}/{run_id}", f"{model}: the support matrix reads {cell.run!r}"
+    assert (cell.qualifier, "R" in cell.marks) == (f"{hz} Hz", False), f"{model}: {cell}"
+    columns, rows = load_matrix()
+    rank(columns, rows)
+    j = next(j for j, c in enumerate(columns) if c.key == "bench2drive")
+    assert next(r for r in rows if r.key == model).cells[j].rank is not None, f"{model}: not ranked"
 
 
 def test_readme_block_lists_exactly_the_models_that_were_re_run() -> None:
@@ -425,6 +417,12 @@ def test_readme_does_not_pool_openpilot_into_this_block() -> None:
     assert "OpenPilot's native rate is\n20 Hz" in block
     # No DS/RC number is published for openpilot anywhere in the new block.
     assert not re.search(r"\|\s*OpenPilot", block)
+
+
+def test_the_page_names_the_openpilot_run_the_matrix_ranks() -> None:
+    """The page sets aside OpenPilot's ranked run by its id: a date alone named an unranked one."""
+    run_id = matrix_cell("openpilot", "bench2drive").run.rsplit("/", 1)[-1]
+    assert run_id in DOC.read_text(), f"the page does not name {run_id}, OpenPilot's ranked Bench2Drive run"
 
 
 # ---------------------------------------------------------------------------

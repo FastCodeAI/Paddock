@@ -40,8 +40,10 @@ paddock report [--include-invalid]                # leaderboard from results/
 paddock ingest --all                              # import pre-paddock results
 ```
 
-`paddock setup` is not implemented yet (M3) — it exits 2 and says so rather than
-succeeding quietly. Vendor repos must be cloned by hand for now.
+`paddock setup [--repo NAME | --model NAME] [--dry-run]` clones each `repos.yaml`
+entry into `[roots.repos]` at its pinned sha (or adopts a clone already there),
+then applies its patches; `--model` also runs that model's `setup.sh`. A clone at
+another sha is reported and left alone, and the exit code is 1.
 
 Set `PADDOCK_CONFIG` to use a config file other than `./paddock.toml`, and
 `PADDOCK_BASE_PORT` to give concurrent runs disjoint port ranges (two runs
@@ -106,7 +108,8 @@ Copy from the `_template/` directory in each.
 **Runtime** ([runtime/](src/paddock/runtime/)): `env.py` builds the per-model
 environment (`PASSTHROUGH` is the one definition of what a subprocess inherits),
 `gpu.py` waits for declared VRAM before launch instead of failing eight minutes
-into a checkpoint read, `proc.py` starts/health-checks/tears down nodes. With
+into a checkpoint read, `lease.py` makes the last check and the launch one step
+per card across processes and users, `proc.py` starts/health-checks/tears down nodes. With
 `gpu.serialize = true` exactly one model is resident at a time; the simulator's
 renderer stays up across models.
 
@@ -169,3 +172,11 @@ ignore. Do not add it to the required checks; see `[tool.mypy]` in
 [docs/reviewing.md](docs/reviewing.md) — including the standard that reviews and
 `docs/ROADMAP.md` share: **separate what you verified from what you argued**,
 with the strength of each claim stated.
+
+**Write the PR title and description so the user can read them.** Say what the
+PR does in one plain sentence first. Use plain words and short sentences, define
+every term the first time it appears, use no labels made up during your session,
+and say what the reader has to do. The same rules cover reviews and replies; see
+"Write it so the user can read it" in
+[.claude/commands/pr-review.md](.claude/commands/pr-review.md). The model is the
+description of #100.

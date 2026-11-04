@@ -62,9 +62,10 @@ bump the sha in a PR, so the change to the numbers has a commit that explains it
 paddock setup --repo mymodel
 ```
 
-Clones into `[roots.repos]/mymodel` and symlinks it into `external/`. If a clone
-is already there it is **adopted, not re-cloned** — your existing checkout and
-any local work survive.
+Clones into `[roots.repos]/mymodel`, checks out the pinned sha and applies any
+listed patches. If a clone is already there it is **adopted, not re-cloned** —
+your existing checkout and any local work survive. If it sits at another sha,
+setup changes nothing, prints the checkout that would fix it, and exits 1.
 
 ## Step 3 — copy the template
 
@@ -101,6 +102,7 @@ capabilities:
   vram_gb: 24
   startup_timeout_s: 600
   waypoint_dt: 0.5
+  planning_hz: 2.0               # closed loop: replan this often; omit to be asked every tick
 
 benchmarks: [kitscenes, neuroncap]
 ```
@@ -111,7 +113,7 @@ site's `paddock.toml` at launch. `tests/test_portability.py` fails the build if
 you write a home directory or a mount point here — that test is why this repo
 still works at the other site.
 
-Three fields are worth more thought than they look:
+Four fields are worth more thought than they look:
 
 - **`cameras`** — closed-loop wall-clock is dominated by rendering, and the
   simulator renders exactly what you declare. Declaring six when you read one
@@ -121,7 +123,10 @@ Three fields are worth more thought than they look:
   into "waiting for 24 GB (12 GB free)".
 - **`env`** — the preferred way to point a repo at data. Most research repos
   already read an environment variable for their data root; find it and use it
-  rather than patching source.
+  rather than patching source. Every key except the tuning ones below is
+  recorded, as written, in `run.json` as `declared_env` and hashed into the run
+  id, so changing one (a planner head, a switch) gives new runs a new id and
+  `--resume` refuses to continue an old run under it.
 - **`tuning_env`** — the `env` keys a site may override in `[models.<name>.env]`
   without changing what the model computes: thread counts, memory caps. A site
   override of any other key (a checkpoint, a horizon, a mode) is recorded in
@@ -131,12 +136,22 @@ Three fields are worth more thought than they look:
   cache lives (`LD_LIBRARY_PATH`, `HF_HOME`, ...; `runner.LOCATION_ENV`), are
   always allowed. A checkpoint path is not: a moved checkpoint and a finetune
   look the same to the runner.
+- **`env_passthrough`** — a list of var *names* (not values) to forward from
+  whoever's shell launched `paddock run`, for ablation/debugging knobs your
+  own code reads (e.g. `MYMODEL_TEMPERATURE=0.5 paddock run --model mymodel ...`).
+  Without declaring a name here, `runtime/env.py` builds the subprocess's
+  environment from a strict allowlist plus `env` above, so a var not in either
+  place silently never reaches the model — the shell invocation looks like it
+  worked and does nothing. A name set in the shell is held to the same rule
+  as a site `env` override: unless it is in `tuning_env` or restates the
+  declared default, the run is recorded `valid: false`.
 
 ## Step 5 — write `setup.sh`
 
 Build the environment from nothing, on a machine that has never run this model.
-Paddock passes `PADDOCK_REPO`, `PADDOCK_WEIGHTS` and `PADDOCK_VENV` in, so the
-script contains no absolute paths.
+`paddock setup --model mymodel` runs it with `PADDOCK_REPO`, `PADDOCK_WEIGHTS`
+and `PADDOCK_VENV` set from `paddock.toml`, so the script contains no absolute
+paths.
 
 Record anything non-obvious as a comment **and** in `docs/models/<name>.md`: a
 pinned CUDA version, a package that must *not* be installed, a build needing a
@@ -199,8 +214,8 @@ is moving.
 
 ## Step 9 (optional) — probes
 
-Diagnostics that need this model's internals go in `tools/models/<name>/`, and
-anything cheap enough to serve on request goes in `diagnostics()`, which
+Diagnostics that need this model's internals belong in your own tooling, outside
+paddock. Anything cheap enough to serve on request goes in `diagnostics()`, which
 `paddock` exposes at `/diagnostics` on a running node.
 
 What does **not** go here is a figure comparing this model with others.
@@ -213,6 +228,12 @@ rivals. See [architecture.md](architecture.md#where-does-a-file-belong).
 Write `docs/models/<name>.md`: environment, weights and where they come from,
 quirks, and the reference numbers your run produced. The next person to touch
 this model is probably at the other site.
+
+To put the model in the README's support matrix, add it to
+[docs/support-matrix.toml](support-matrix.toml): a `[[model]]` entry and a
+`[cells.<name>]` line per benchmark naming your run. Then run
+`python -m tools.readme_figures` and commit the redrawn picture. `make check`
+fails if a named run is missing or the picture is out of date.
 
 ## Step 11 — open the PR
 

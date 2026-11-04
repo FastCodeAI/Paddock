@@ -490,6 +490,17 @@ def test_a_perfect_prediction_scores_zero(site: SiteConfig) -> None:
     assert metrics["lateral_mae"] == pytest.approx(0.0, abs=1e-9)
 
 
+def test_the_pdm_plan_terms_are_scored(site: SiteConfig) -> None:
+    """`pdm_ep` and `pdm_comfort` are declared, so the gate reads them as EP and C."""
+    harness = _harness(site)
+    sample = next(iter(harness.samples()))
+    metrics = harness.score(sample, constant_velocity(SPEED_MS, n=N_GT_POSES, dt=0.5))
+    assert metrics["pdm_ep"] == pytest.approx(1.0)
+    assert metrics["pdm_comfort"] == 1.0
+    slow = harness.score(sample, constant_velocity(SPEED_MS / 2, n=N_GT_POSES, dt=0.5))
+    assert slow["pdm_ep"] == pytest.approx(0.5)
+
+
 def test_a_lateral_offset_is_measured(site: SiteConfig) -> None:
     harness = _harness(site)
     sample = next(iter(harness.samples()))

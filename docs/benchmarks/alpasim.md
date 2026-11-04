@@ -40,6 +40,136 @@ Roughly **5 minutes per scene** with a 10B driver at 4 cameras and 10 Hz — a
 read. The constant-velocity floor over the same 10 scenes takes about 8 minutes,
 because the cost is rendering rather than inference.
 
+**Two runs at once.** The bridge starts looking for a port at 9200 and the
+wizard hands its services host ports from 6000, skipping ports already bound.
+Two runs started together both find the same free ones before either binds
+them. A run with `PADDOCK_BASE_PORT` set (the gate sets one per lane) keeps to
+its own range instead: the bridge from base + 50, the wizard's services from
+base + 60. Without it, the ports are 9200 and 6000 as before. Docker starts
+the containers, so they would not inherit the run's `taskset`; the launcher
+pins each one to the run's cores as it appears (`docker update
+--cpuset-cpus`, within 2 s), and a run on every core pins nothing. Measured on
+2026-10-27: one scene's 5 containers all on cores 24-27, the busiest at about
+one core, the mean 17% of one.
+
+## How the bridge steers a model
+
+AlpaSim's controller follows a list of poses: a position and a heading per
+waypoint. The bridge builds that list the same way for every model:
+
+- **The whole plan.** It reads `plan` from the node's `/infer` answer, every
+  waypoint the model returned, rather than the six points of `trajectory`
+  (those six exist for neuroNCAP, which indexes them positionally).
+- **Headings from the model when it has them.** A plan whose rows are
+  (x, y, yaw) is driven on the model's own headings. A plan of (x, y) only gets
+  headings from the path's direction: each waypoint faces along the segment
+  that leads to it, and a segment shorter than 5 cm keeps the previous heading,
+  so a plan that stands still does not spin. A node too old to send `plan` is
+  driven on its `trajectory`, also with derived headings.
+- **Recorded per scene.** Each scene's sample record says how its plans were
+  steered: `headings` is `model`, `derived` or `mixed`, and `bridge_plans`
+  holds the counts. `history_frames` says how a frame the planner needed no
+  plan from was sent: `observe`, `infer` (a node without `/observe`, the plan
+  dropped), or null when the planner sent none.
+- **A clean start.** The bridge calls `/reset` at the start of every scene, for
+  every model, so a model that keeps a frame history never pairs one scene's
+  first frames with the previous scene's last ones.
+
+Before this, the bridge drove six (x, y) points and told the controller to keep
+the car's current heading at each of them. What the change means for the
+models that declare `alpasim`:
+
+| Model | Plan it returns | Headings now | Effect on its AlpaSim results |
+|---|---|---|---|
+| Drive-JEPA | 8 × (x, y, yaw) | the model's | driven on all eight poses (see below) |
+| Alpamayo 1.5 | 8 × (x, y) | derived from the path | now driven on 8 waypoints with headings, where it was driven on 6 with none; and from the second scene of a sweep on, its frame and pose history starts empty, where it used to carry over from the previous scene (the node stays up for the whole sweep, and its `reset` clears that history). Its results will shift for both reasons; it has not been re-run |
+| constant velocity | 6 × (x, y), straight along x | derived, and all 0 | steered exactly as before (a straight path's derived heading is 0, the "keep the current heading" it was always sent) |
+
+The rows in [Reference numbers](#reference-numbers) were made by each model's
+native AlpaSim driver, not by this bridge, so none of them changes.
+
+## Per-model settings in the bridge
+
+Most models are driven on one shared set of simulation settings
+(`configs/driver/paddock_bridge.yaml`) and the bridge passes AlpaSim's cameras
+through as they are. A model whose numbers must be compared with a native
+AlpaSim driver can instead get its own settings: an entry in
+`harness.DRIVER_PROFILES`, which names a driver config, extra bridge flags, a
+scene list pinned to artifact uuids and whether the bridge writes a per-replan
+log. Video is not among them: it stays the site's `video` setting for every
+model, since AlpaSim renders it after scoring and it changes no number. A
+model without an entry gets exactly what every model got before profiles existed, and `run.json` records a profile under `config`
+only when one is used, so the run id changes with it.
+
+Four models have a profile. Drive-JEPA's reproduces the settings of
+Drive-JEPA's native AlpaSim driver (adapter 0.1.4b) so a run through paddock
+can be checked against that driver's runs: one front camera at 20 Hz, a 3.0 s
+replayed warm-up, the shared 20 Hz scoring config and the 30 scenes pinned to
+their 26.01 artifacts. What the bridge does for it, and how the result compares
+with the native driver, is in
+[docs/models/drivejepa.md](../models/drivejepa.md#through-paddock-on-alpasim).
+
+AutoE2E's has no native driver to match. It renders the six cameras the model
+was trained on: AlpaSim's six recorded cameras re-rendered as undistorted
+pinholes at the KITScenes field of view, the view straight back borrowing the
+tele camera's id because AlpaSim can change a scene's camera but not add one
+(`configs/driver/paddock_bridge_autoe2e.yaml`). It shares Drive-JEPA's warm-up,
+control step and 30 pinned scenes. Its bridge flags select a second rhythm,
+`replan_rhythm.py`, which any node can use:
+
+| Flag | What the bridge does |
+|---|---|
+| `--replan-every-us 100000` | asks the node on a 100 ms grid anchored on the scene's first ask; answers the ticks between from the last plan, re-timed onto now and re-anchored to the car (the same computation as Drive-JEPA's rhythm); sends every warm-up frame to `/observe` instead of asking for a plan AlpaSim would not drive |
+| `--force-gt-us`, `--frame-interval-us` | the warm-up length and control step; a test checks both equal the driver config's |
+| `--pad-ego-history` | before the scene's first frame, sends ego-only frames straight back from its pose at the speed measured from poses (AlpaSim reports zero velocity while it replays the warm-up), one per control step back to 6.6 s |
+
+The per-replan log (`<scene>.replans.jsonl`) has one line per tick: whether the
+model was called or its plan reused, the motion-history rows that fall on
+padding, the image frames the node repeated, and the plan's length and spacing.
+What this means for AutoE2E's inputs, and what is not yet known, is in
+[docs/models/autoe2e.md](../models/autoe2e.md#on-alpasim-through-the-bridge).
+
+Qwen-Drive's reproduces the settings and inputs of its native AlpaSim driver
+(adapter 0.1.4): four f-theta cameras at 20 Hz with a 30 ms shutter, the
+`hyperion_8_1` bonnet mask, a 3.0 s warm-up with the driver called, 400 steps
+(`configs/driver/paddock_bridge_qwendrive.yaml`), and the same 30 pinned scenes.
+It uses the same rhythm with a 1.5 s grid, plus switches that change what a body
+carries. Each is off unless a profile passes it, and with all of them off every
+body is byte-for-byte what it was before they existed (`tests/test_bridge_switches.py`
+pins that for the default, Drive-JEPA and AutoE2E profiles):
+
+| Flag | What the bridge does |
+|---|---|
+| `--observe-between-replans` | after the warm-up, also sends every step that is not a replan to `/observe`, so a node that keeps its own history at the control step has every step |
+| `--canbus-ego-frame` | canbus[13] and [14] carry the forward and sideways speed in the car's frame, instead of [13] carrying the speed's magnitude; [12] stays the yaw rate. While AlpaSim replays the warm-up it reports velocity and yaw rate as exactly zero; when the last two poses move faster than 1 m/s, those are replaced from the poses |
+| `--canbus-acceleration` | canbus[7] and [8] carry the simulator's own forward and sideways acceleration (Qwen-Drive's profile leaves this off) |
+| `--send-route` | sends the route AlpaSim holds as `route_xy`, in the car's frame at the route's own time, as AlpaSim sends it |
+| `--send-scene-id` | sends the scene id as `scene_id` |
+| `--named-cameras-only` | decodes and sends only the cameras named with `--camera-name` |
+| `--waypoint-dt 0.1` | (an existing flag) the plan's spacing; Qwen-Drive returns all 50 of its points 0.1 s apart |
+
+What the node does with these, and what still differs from the native runs, is
+in [docs/models/qwendrive.md](../models/qwendrive.md#on-alpasim-through-the-bridge).
+
+Alpamayo 1.5's reproduces the settings of its stored AlpaSim row, made by
+AlpaSim's own Alpamayo driver: the same four f-theta cameras, warm-up and 400
+steps as Qwen-Drive's (`configs/driver/paddock_bridge_alpamayo15.yaml`; a test
+checks the two simulation blocks are equal), and the same 30 pinned scenes. All
+four cameras are sent, the 30° telephoto included, under the node's camera
+names. The node is asked every 100 ms, the model's own rate, with the step
+between sent to `/observe`. It uses `--send-route` and `--named-cameras-only`
+from the table above, and two more switches, also off for every other profile:
+
+| Flag | What the bridge does |
+|---|---|
+| `--send-route-time` | with `--send-route`, sends the route's own timestamp as `route_timestamp_us`: the time of the car frame `route_xy` is in, so the node can move the route into its newest pose's frame as AlpaSim's Alpamayo driver does |
+| `--send-plan-dt` | sends the spacing the bridge will drive the plan at (`--waypoint-dt`, here 0.1 s) as `plan_dt`, so a node that predicts more finely than its default spacing can return every point it predicts |
+
+`tests/test_bridge_switches.py` pins what the default, Drive-JEPA, AutoE2E and
+Qwen-Drive profiles send, so these two switches are checked to change none of
+them. What the node does with them, and what still differs from the native
+runs, is in [docs/models/alpamayo15.md](../models/alpamayo15.md#on-alpasim-through-the-bridge).
+
 ## Configuration
 
 ```toml
@@ -67,16 +197,19 @@ matters is visible in the floor itself — constant velocity scores 0.3562 at
 20 Hz on the 0.1.0 driver, 0.7411 on 0.2.0 and 0.8850 on 0.2.3, a spread wider
 than the gap between most of the models.
 
-A faster control rate gives a policy more opportunities to correct, and four
-cameras see what one cannot. **Numbers from different groups are
-not comparable and must never be averaged together.** Every run records its
+A faster control rate gives a policy more opportunities to correct, so
+**numbers from different control rates are not comparable and must never be
+averaged together.** Camera count is different: each model is given the
+cameras it reads, and rows that differ only in camera count are ranked
+together and read against the same floor. Every run records its
 group in `run.json` under `config.renderer`, `config.topology` and
 `config.scene_set`, all of which are hashed into the run id — so two tick
 configs cannot collide on one run id. **There is no `config.group` key and no
 `by_group` block on this path**: grouping the rows is done by the ingest reader
 for recorded campaigns, not by the adapter, which drives one scene per run.
 
-Compare a model against the constant-velocity floor **of its own group**.
+Compare a model against the constant-velocity floor **at its control rate and on
+its scenes**.
 
 ## What the scored window actually is
 
@@ -135,8 +268,7 @@ That rule produces the result that most needs stating plainly:
 | VisionPilot v2 2.0.0 | 0.8488 | 0.8202 | −0.0362 |
 | Drive-JEPA 0.1.4 | 0.5030 | 0.5652 | −0.3820 |
 
-**Two of the three released models score below constant velocity.** (The
-retrained Drive-JEPA checkpoint, an adapted result, is in the table further down.) This is not a bug in
+**Two of the three released models score below constant velocity.** This is not a bug in
 the metric and not a claim that constant velocity drives well — it does not
 steer, and it rear-ends things. But a rear-end collision is *not at fault*, so
 the hard-failure rule does not zero it, while the at-fault collisions and
@@ -160,22 +292,23 @@ filed under `results/alpasim/`, so `paddock report` agrees with these tables.
 > AlpaSim's own native drivers — `openpilot-supercombo-driver-0.2.0`,
 > `visionpilot-v2-driver-2.0.0`, `drivejepa-v2-driver-0.1.4`,
 > `alpamayo1_5-driver-0.91.0`, `constant_velocity-driver-0.2.3` — run before the
-> paddock bridge existed. That is also why only `alpamayo15` and
-> `constant_velocity` declare `alpasim` in their `model.yaml`: declaring the
-> other three would claim a pairing runs through the bridge, and nothing here
-> demonstrates that. So these rows are **reference values for what the
-> benchmark yields**, not evidence about this PR's code path. The live path
-> through the bridge is unverified, as the PR says.
+> paddock bridge existed. `alpamayo15` and `constant_velocity` declare
+> `alpasim` in their `model.yaml`, and `drivejepa` and `autoe2e` do too since
+> each has its own settings in the bridge (see
+> [Per-model settings in the bridge](#per-model-settings-in-the-bridge));
+> OpenPilot and VisionPilot do not, because nothing demonstrates that pairing.
+> So these rows are **reference values for what the benchmark yields**, not
+> evidence about the bridge. Drive-JEPA's run through the bridge is compared
+> with its native driver in [docs/models/drivejepa.md](../models/drivejepa.md#through-paddock-on-alpasim)
+> and is not one of these rows.
 >
-> **Two later versions of the Drive-JEPA driver exist; one has a row here.**
-> `drivejepa-v2-driver-0.1.4b` adds momentum-aware selection to 0.1.4, and
-> `drivejepa-v2-driver-0.1.7` drives a retrained checkpoint; 0.1.7's source is
-> tracked at `tools/models/drivejepa/alpasim_driver/`. Both were measured on
-> 30 scenes (these ten plus twenty more), one rollout each, outside paddock,
-> and those numbers are in [docs/models/drivejepa.md](../models/drivejepa.md).
-> The ten of 0.1.7's runs that are this benchmark's scenes are ingested as
-> `results/alpasim/drivejepa/legacy-drivejepa_017_20hz`, the same way the
-> 0.1.4 row was. 0.1.4b has no row.
+> **A later version of the Drive-JEPA driver has no row here.**
+> `drivejepa-v2-driver-0.1.4b` adds momentum-aware selection to 0.1.4; its
+> source is not in this repo. It was measured on 30 scenes (these ten plus
+> twenty more), one rollout each, outside paddock, and that number is in
+> [docs/models/drivejepa.md](../models/drivejepa.md). Paddock keeps results
+> for released checkpoints only, so a driver that serves another checkpoint is
+> not ingested.
 >
 > **METEOR's rows come from a driver that is not tracked here.** `meteor-0.1.1`
 > is a native AlpaSim driver written at the Fastcode site; its source is not in
@@ -184,7 +317,7 @@ filed under `results/alpasim/`, so `paddock report` agrees with these tables.
 
 ### `1cam-20Hz` — the shared referee
 
-Five rows on one referee: same control rate, same force-GT duration, same
+Four rows on one referee: same control rate, same force-GT duration, same
 `eval-config.yaml` (md5 `68cf4aaa89356e0f6053d76eb4ef2321`, byte-identical
 across every 20 Hz row, including Alpamayo's and METEOR's).
 
@@ -194,7 +327,6 @@ across every 20 Hz row, including Alpamayo's and METEOR's).
 | *constant-velocity floor 0.2.3* | *0.8850* | *0.2312* | *0.8290* | *10/10* | *—* |
 | VisionPilot v2 2.0.0 | 0.8488 | 0.3170 | 0.8202 | 9/10 | at-fault 1 |
 | Drive-JEPA 0.1.4 | 0.5030 | 0.4306 | 0.5652 | 7/10 | at-fault 2, offroad 1 |
-| Drive-JEPA 0.1.7, retrained checkpoint (adapted) | 0.9956 | 0.0131 | 0.9765 | 10/10 | — |
 
 **Of the released checkpoints, only OpenPilot clears the floor**, by +0.0716. This is the finding, not a
 measurement artefact: `scene_score` saturates at `progress_clipped_rel ≥ 0.8`
@@ -211,22 +343,15 @@ Two rows need their caveat quoted with the number:
   reads `ok: false` on 3 of 12 gates (two Prometheus ports, two that look like
   gate-side indexing); none touch the referee pins, which were read from the
   resolved config and are on-pin.
-- **Drive-JEPA 0.1.7** is not the released model and not a zero-shot result.
-  Its trajectory generator was retrained on Physical AI AV (`train` split), and
-  AlpaSim's scenes are reconstructions of clips from that dataset. The training
-  code excludes the evaluation scenes, which is taken on that code's word. These
-  ten scenes were also driven repeatedly while the driver was developed, so
-  0.9956 is not a held-out number. The ten runs are the first ten of a
-  30-scene sweep made on 2026-10-10; on all 30 the mean is 0.7697, with three
-  at-fault collisions and two off-road events, all on the other twenty scenes.
-  Nine of the ten scenes score 1.0000 and the tenth 0.9563.
 - **Drive-JEPA**'s 0.5030 is a mean over six early-terminated or hard-gated
   scenes and four full-distance runs that all scored 1.0000. It is a pattern —
   it wins 1, ties 3 and loses 6 against the floor — not one bad scene.
 
-### `1cam-20Hz` on 30 scenes — what the README's support matrix quotes
+### `1cam-20Hz` on 30 scenes
 
-The same drivers, referee config and scorer, on 30 scenes: the ten above plus
+The support matrix ranks these rows together with the 30-scene rows of the
+other camera groups, all read against this floor; the ranked table is under
+[Support-matrix results](#support-matrix-results). The same drivers, referee config and scorer, on 30 scenes: the ten above plus
 twenty more drawn from `public_2601` (seed 20260922, stratified by speed and
 turn, from the scenes of the suite available at renderer version 26.1.112 and
 not already among the ten). The list is tracked as
@@ -239,7 +364,6 @@ the control rate differs between them.
 | model | `scene_score` | sd | progress | at-fault | off-road | vs floor |
 |---|---|---|---|---|---|---|
 | OpenPilot supercombo 0.2.0 | **0.7726** | 0.3627 | 0.7238 | 0/30 | 3/30 | +0.2850 |
-| Drive-JEPA 0.1.7, retrained checkpoint (adapted) | 0.7697 | 0.4022 | 0.8284 | 3/30 | 2/30 | +0.2821 |
 | VisionPilot v2 2.0.0 | 0.6289 | 0.4106 | 0.6355 | 4/30 | 1/30 | +0.1413 |
 | *constant-velocity floor 0.2.3* | *0.4876* | *0.4252* | *0.5411* | *2/30* | *5/30* | *—* |
 | Drive-JEPA 0.1.4 | 0.4209 | 0.4378 | 0.5091 | 7/30 | 5/30 | −0.0667 |
@@ -249,20 +373,30 @@ Three things to read with it:
 - **The floor moves with the scene set**, from 0.8850 on the ten to 0.4876 on
   the 30. A mean over one set says nothing against a mean over the other, so
   quote the difference from the floor and the number of scenes with any figure.
-- **Alpamayo 1.5 has no 30-scene row.** It was run on the first ten scenes
-  only, and its 0.9000 is a ten-scene mean in a different camera group.
+- **Alpamayo 1.5's 30-scene row was driven through paddock's bridge.** Its
+  stored native row covers the first ten scenes only (0.9000). The 30-scene run
+  through the bridge, 0.7952, is in the support matrix and in the table under
+  "AlpaSim (nuRec)" below; see [docs/models/alpamayo15.md](../models/alpamayo15.md#on-alpasim-through-the-bridge).
 - **One rollout per scene, so the differences are loose.** Paired over the 30
   scenes, the standard error of the difference from the floor is 0.077 for
-  OpenPilot, 0.076 for the retrained Drive-JEPA, 0.080 for VisionPilot and
-  0.089 for Drive-JEPA 0.1.4. VisionPilot's +0.1413 and Drive-JEPA's −0.0667
-  are both under two standard errors. OpenPilot against the retrained row is
-  +0.003 ± 0.045: level, and the bold marks the best released checkpoint, not
-  a win over the retrained one.
+  OpenPilot, 0.080 for VisionPilot and 0.089 for Drive-JEPA 0.1.4.
+  VisionPilot's +0.1413 and Drive-JEPA's −0.0667 are both under two standard
+  errors.
 - **`paddock run --bench alpasim` still drives the ten by default.** The
   default `scene_set` is unchanged; the twenty extra scenes were driven by each
-  model's native driver and ingested. `--scenarios public_2601_30scenes` (or
-  `scene_set` in `[benchmarks.alpasim]`) selects the 30, and no row has been
-  produced that way yet.
+  model's native driver and ingested. `scene_set = "public_2601_30scenes"` in
+  `[benchmarks.alpasim]` selects the 30. (`--scenarios` only filters by the
+  configured set's name; it does not switch sets.) The one run made that way
+  is Drive-JEPA's through the bridge, compared in
+  [docs/models/drivejepa.md](../models/drivejepa.md#through-paddock-on-alpasim);
+  it is not filed as a row.
+- **A sample is its clip.** Each scene's record has `sample_id`
+  `alpasim/<clip>` whichever set drove it, so a 30-scene run and a 10-scene run
+  pair on their ten shared scenes, and a run over the 30 has the same
+  `sequences_sha256` as the stored 30-scene rows. The record's `split` says
+  which half of the 30 the scene is in, `pilot10` (the ten above) or `ext20`
+  (the twenty drawn after them), and `native_id.scene_set` names the set the
+  run drove.
 
 ### `4cam-20Hz`
 
@@ -270,9 +404,11 @@ Three things to read with it:
 |---|---|---|---|---|---|
 | Alpamayo 1.5 (10B), via the referee proxy | **0.9000** | 0.3000 | 0.9603 | 9/10 | at-fault 1 |
 
-Alpamayo has no constant-velocity floor in its own group at 20 Hz, so it cannot
-be quoted against one; the `1cam-20Hz` floor is a different measurement and is
-not a substitute. Its environment is verified identical to the reference rows'
+On these ten scenes the 20 Hz constant-velocity floor scores 0.8850, so
+Alpamayo is +0.0150 against it. This row was made by AlpaSim's own Alpamayo
+driver before paddock's bridge could drive the model; the 30-scene run through
+the bridge (0.7952, the same 0.9000 on these ten) is the one the support matrix
+quotes. Its environment is verified identical to the reference rows'
 (`pip freeze` 300/300 packages, image `8a69f005`) and all 25 smoke gates pass on
 all ten scenes. Scene-level variance on this model is large — `04749bb9` has
 produced 0.0, 0.9148 and 1.0 across identical environments — so neither this
@@ -284,6 +420,8 @@ mean nor any other single-rollout mean here should be read to four figures.
 |---|---|---|---|---|---|---|
 | METEOR, released ONNX as shipped, driver 0.1.1 | first 10 | 0.6869 | 0.3103 | 0.6073 | 10/10 | — |
 | METEOR, released ONNX as shipped, driver 0.1.1 | 30 | 0.4232 | 0.3673 | 0.4301 | 24/30 | off-road 5, at-fault 1 |
+| AutoE2E `kitscenes-epoch-5`, through paddock's bridge | first 10 | 0.3175 | 0.1938 | 0.2924 | 8/10 | at-fault 2 |
+| AutoE2E `kitscenes-epoch-5`, through paddock's bridge | 30 | 0.1694 | 0.2034 | 0.2867 | 14/30 | at-fault 9, off-road 7 |
 
 One sweep of the 30 scenes of `public_2601_30scenes`, one scene per run
 directory, made on 2026-10-13/14 and ingested as
@@ -292,10 +430,9 @@ row, `…_first10`, is the first ten of those directories, not a second sweep.
 Same control rate, force-GT duration, step count and `eval-config.yaml` as the
 other groups, read from each run's resolved config.
 
-- **No floor, so no "vs floor" column.** Constant velocity has not been run on
-  six cameras. It reads no camera, so its score would probably be the
-  `1cam-20Hz` floor's, but that has not been measured and the one-camera floor
-  is not quoted against this row.
+- **Read against the one floor.** Constant velocity reads no camera, so the
+  30-scene floor (0.4876) is these rows' floor too: METEOR is −0.0644 against
+  it and AutoE2E −0.3182 ([Support-matrix results](#support-matrix-results)).
 - **The cameras are not the recorded ones.** METEOR expects pinhole images, so
   the six cameras are rendered as pinholes with square pixels and no
   distortion, each at the narrower of METEOR's own camera and the recorded
@@ -339,6 +476,20 @@ other groups, read from each run's resolved config.
   twenty extra scenes. What the model does on them is in
   [docs/models/meteor.md](../models/meteor.md).
 
+**AutoE2E** (`results/alpasim/autoe2e/20261022T045847-86b955`, valid) is the
+first six-camera row driven through paddock's own bridge, so any site can
+reproduce it with `paddock run --model autoe2e --bench alpasim` and
+`scene_set = "public_2601_30scenes"`. Its cameras are not METEOR's: the
+KITScenes field of view, a rear view drawn from the roof, a 1 µs global
+shutter ([Per-model settings in the bridge](#per-model-settings-in-the-bridge),
+[docs/models/autoe2e.md](../models/autoe2e.md#camera-setup-on-alpasim)). So it
+shares the group's name, not its inputs; like every 30-scene row, it is ranked
+with the rest. The score is low for one reason seen on almost every scene: the car
+leaves the human's path to the left within about a second at speed, so the
+scored window ends early (a median 1.55 s after handover) and 6 of its 15
+at-fault collisions fall after it. Detail in
+[docs/models/autoe2e.md](../models/autoe2e.md#results).
+
 ## Reproducing this
 
 **Environment.** AlpaSim's own conda environment, plus:
@@ -365,7 +516,10 @@ on a 401.
 
 **Weights are never committed.** Fetch `Alpamayo-1.5-10B` into `{weights}`; the
 copy these numbers came from has a shard-manifest sha256 of `9cc6fc6ad2852e66`
-(10 files, 20.64 GiB), which is what to compare against.
+(10 files, 20.64 GiB), which is what to compare against. The processor files
+(`Qwen/Qwen3-VL-2B-Instruct`) may also go in `{weights}/Qwen3-VL-2B-Instruct`
+(or wherever `ALPAMAYO_PROCESSOR` points); the model's server reads them from
+there when that folder exists, and from the Hugging Face cache otherwise.
 
 **Driver startup.** Set `startup_timeout_s: 900`. The default is 120 s and a cold
 10B checkpoint read answers the runtime's version probe at about 305 s, so the
@@ -416,7 +570,7 @@ The per-metric results behind this benchmark's column in the
 [README's support matrix](../../README.md#support-matrix), and the notes on its
 cells. Moved here from the README unchanged except for links; the symbols are
 the README's former footnote marks, and each note below starts with the mark it
-explains. Marks about a model rather than this benchmark (⊛ ⊕ ∗ ◊ ◇ ✦ ✧) are
+explains. Marks about a model rather than this benchmark (∗ ◊ ◇ ✦ ✧) are
 explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
 
 ### Notes on the matrix cells
@@ -428,12 +582,10 @@ suite (seeded, stratified by speed and turn). Scorer `affc2ea`, under the
 `eval-config.yaml` (md5 `68cf4aaa…`) across every row, so the rows differ by
 the model rather than by the harness. The files are in `results/alpasim/`, as
 the `…_30scenes` runs, and `paddock report` reads them. Against the
-constant-velocity floor (0.4876): OpenPilot +0.2850, VisionPilot +0.1413,
-Drive-JEPA −0.0667; the retrained Drive-JEPA row (⊕), +0.2821, is an adapted
-result read on its own. With one rollout per scene these differences carry a
+constant-velocity floor (0.4876): Alpamayo 1.5 +0.3076 (through paddock's bridge, ¶¶), OpenPilot +0.2850, VisionPilot +0.1413,
+Drive-JEPA −0.0667. With one rollout per scene these differences carry a
 paired standard error of about 0.08, so VisionPilot's margin and Drive-JEPA's
-deficit are both under two standard errors, and OpenPilot and the retrained row
-are level (+0.003 ± 0.045). The scene list is tracked as
+deficit are both under two standard errors. The scene list is tracked as
 `adapters/benchmarks/alpasim/scenes/public_2601_30scenes.yaml`. `scene_score` saturates at `progress_clipped_rel ≥ 0.8`
 and zeroes a scene on an at-fault collision or an off-road event, so quote
 progress beside it (floor 0.5411, OpenPilot 0.7238, VisionPilot 0.6355,
@@ -443,23 +595,27 @@ The ten-scene figures and the per-row caveats, including the gates
 VisionPilot's run did not pass, are in the AlpaSim section below and in
 [docs/benchmarks/alpasim.md](alpasim.md).
 
-¶¶ Alpamayo ran 4 cameras at 20 Hz (`4cam-20Hz`), METEOR 6 (⬡), the other rows
-1 camera at 20 Hz. **Different group, not comparable** — and it has no constant-velocity
-floor in its own group, so it cannot be quoted against one. Scene-level variance
-on this model is large enough that no single-rollout mean here should be read to
-four figures.
+¶¶ Camera count is recorded, not used to separate rows: Alpamayo ran 4 cameras
+at 20 Hz through paddock's bridge (`4cam-20Hz`), METEOR 6 (⬡), AutoE2E 6 through
+paddock's bridge (⬢), Qwen-Drive 3 through paddock's bridge, the other rows 1
+camera at 20 Hz. Neither
+the number of cameras nor the bridge keeps a row out of the ranking; every row
+on the 30 scenes is ranked against the others and read against the one
+constant-velocity floor. Scene-level variance on Alpamayo is large enough that
+no single-rollout mean here should be read to four figures.
 
-\* Alpamayo 1.5 was run on the first 10 of the 30 scenes only, so 0.9000 is its
-10-scene mean and not a 30-scene one. On those same 10 scenes the other rows
-score: OpenPilot 0.9566, VisionPilot 0.8488, Drive-JEPA 0.5030, retrained
-Drive-JEPA 0.9956, constant-velocity floor 0.8850, and METEOR, on six cameras,
+\* Alpamayo 1.5's cell is its 30-scene run through paddock's bridge, 0.7952
+(`results/alpasim/alpamayo15/20261029T200113-9d900c`, valid). Its native row,
+made by AlpaSim's own Alpamayo driver on the first 10 scenes only, scores
+0.9000, and the bridge run scores the same 0.9000 on those 10, scene for scene.
+On those same 10 scenes the other rows score: OpenPilot 0.9566, VisionPilot 0.8488, Drive-JEPA 0.5030,
+constant-velocity floor 0.8850, and METEOR, on six cameras,
 0.6869.
 
 ⬡ METEOR's AlpaSim cell is the same 30 scenes, referee config and scorer as the
 ¶ rows, one rollout per scene, but it was shown **six cameras** where they were
-shown one, so it is a group of its own (`6cam-20Hz`). Like Alpamayo's cell it
-has no constant-velocity floor in its group and is not to be ranked against the
-one-camera rows. It is the released ONNX fed as shipped, the convention of every
+shown one (`6cam-20Hz`). It is ranked with them and read against the same
+constant-velocity floor: camera count is not a reason to separate rows. It is the released ONNX fed as shipped, the convention of every
 other METEOR cell (◇): raw pixels into the graph's own `/255`, no mean/std
 normalisation, the two absent camera slots as zeros. The six cameras are
 rendered as pinholes, narrower than the recorded fisheyes (a 120° camera is
@@ -472,6 +628,21 @@ twenty extra scenes; on the first ten alone it scores 0.6869. The rows are
 `results/alpasim/meteor/legacy-meteor_011_published_30scenes` and
 `…_first10`. See `docs/models/meteor.md`.
 
+⬢ AutoE2E's AlpaSim cell is the same 30 scenes, referee scorer and 20 Hz
+control step, driven through **paddock's bridge** on six pinhole cameras at the
+KITScenes field of view (`6cam-20Hz`, its own cameras: see the row's notes
+above). Ranked with the other 30-scene rows. Run
+`results/alpasim/autoe2e/20261022T045847-86b955`, valid, resumed after
+start-up failures on a shared host (the reused scenes are recorded in
+`run.json`; wall time does not change a drive). See `docs/models/autoe2e.md`.
+
+Qwen-Drive's AlpaSim cell is the same 30 scenes, referee scorer and 20 Hz
+control step, driven through **paddock's bridge** on its native driver's
+settings: three f-theta cameras and a model call every 1.5 s. Ranked with the
+other 30-scene rows. It ran on simulator image `6dad7728`, where the one-camera
+rows ran on `1e0d5fea`; nobody has shown the two images drive identically. Run `results/alpasim/qwendrive/20261027T215528-d231d8`,
+valid. See `docs/models/qwendrive.md#on-alpasim-through-the-bridge`.
+
 ### AlpaSim (nuRec)
 
 Closed-loop driving on replayed real scenes: AlpaSim renders a recorded clip as
@@ -482,36 +653,31 @@ uuid-pinned, one rollout per scene — **n = 10**. Every row is under
 `results/alpasim/` and `paddock report` reads it; the protocol is in
 [docs/benchmarks/alpasim.md](alpasim.md).
 
-Drive-JEPA has two rows below. The first is its released checkpoint behind the
-native driver at 0.1.4. The second is that driver at 0.1.7, promoted to
-[`tools/models/drivejepa/alpasim_driver/`](../../tools/models/drivejepa/alpasim_driver),
-driving a checkpoint whose trajectory generator was retrained on Physical AI
-AV. The second row is an *adapted* result: AlpaSim's scenes are reconstructions
-of clips from that dataset (the training code excludes the evaluation scenes,
-which is taken on that code's word),
-and these ten scenes were driven repeatedly while the driver was developed. It
-is the first ten scenes of a 30-scene sweep; on all 30 it scores 0.7697. What
-it reads and how it picks are in
+Drive-JEPA's row below is its released checkpoint behind the native driver at
+0.1.4. What it reads and how it picks are in
 [docs/models/drivejepa.md](../models/drivejepa.md).
 
 **On 30 scenes** — these ten plus twenty more from the same suite, the set the
 support matrix quotes — the same drivers under the same referee score:
 
-| Model | Group | `scene_score` ↑ | Δ vs its floor | Progress ↑ | `duration_frac_20s` ↑ | At-fault collisions ↓ | Any collision ↓ | Off-road ↓ |
+| Model | Cameras | `scene_score` ↑ | Δ vs floor | Progress ↑ | `duration_frac_20s` ↑ | At-fault collisions ↓ | Any collision ↓ | Off-road ↓ |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
-| OpenPilot | `1cam-20Hz` | 0.7726 | **+0.2850** | 0.7238 | 0.671 | 0 / 30 | 6 / 30 | 3 / 30 |
-| Drive-JEPA, retrained ⊕ | `1cam-20Hz` | 0.7697 | +0.2821 | 0.8284 | 0.661 | 3 / 30 | 3 / 30 | 2 / 30 |
+| Alpamayo 1.5, through the bridge | `4cam-20Hz` | **0.7952** | **+0.3076** | 0.8434 | 0.657 | 1 / 30 | 3 / 30 | 4 / 30 |
+| OpenPilot | `1cam-20Hz` | 0.7726 | +0.2850 | 0.7238 | 0.671 | 0 / 30 | 6 / 30 | 3 / 30 |
+| Qwen-Drive, through the bridge | `3cam-20Hz` | 0.7001 | +0.2125 | 0.7873 | 0.631 | 5 / 30 | 10 / 30 | 2 / 30 |
 | VisionPilot | `1cam-20Hz` | 0.6289 | **+0.1413** | 0.6355 | 0.570 | 4 / 30 | 11 / 30 | 1 / 30 |
 | *floor* | *`1cam-20Hz`* | *0.4876* | *—* | *0.5411* | *0.447* | *2 / 30* | *8 / 30* | *5 / 30* |
+| METEOR ⬡ | `6cam-20Hz` | 0.4232 | −0.0644 | 0.4301 | 0.469 | 1 / 30 | 10 / 30 | 5 / 30 |
 | Drive-JEPA | `1cam-20Hz` | 0.4209 | −0.0667 | 0.5091 | 0.465 | 7 / 30 | 12 / 30 | 5 / 30 |
-| METEOR ⬡ | `6cam-20Hz` | 0.4232 | no floor | 0.4301 | 0.469 | 1 / 30 | 10 / 30 | 5 / 30 |
+| AutoE2E ⬢ | `6cam-20Hz` | 0.1694 | −0.3182 | 0.2867 | 0.121 | 9 / 30 | 10 / 30 | 7 / 30 |
 
 One rollout per scene, so read the differences with their spread: paired over
 the 30 scenes, the standard error of each model's difference from the floor is
-about 0.08 (OpenPilot 0.077, retrained Drive-JEPA 0.076, VisionPilot 0.080,
-Drive-JEPA 0.089), and OpenPilot against the retrained row is +0.003 ± 0.045.
-Alpamayo 1.5 has not been run on the twenty extra scenes. METEOR's row is the
-released ONNX on six cameras, a group with no floor of its own (⬡); it scores
+about 0.08 (OpenPilot 0.077, VisionPilot 0.080, Drive-JEPA 0.089).
+Alpamayo 1.5 against OpenPilot is +0.023, well inside that spread: the two are
+level. Alpamayo scores 0.9000 on the first ten scenes and 0.7427 on the twenty
+extra, where its four off-road events are. METEOR's row is the
+released ONNX on six cameras (⬡); it scores
 0.6869 on the first ten scenes and 0.2913 on the twenty extra, where all five
 of its off-road events and its one at-fault collision are. The floor is far
 lower here than on the ten: on the twenty extra scenes constant velocity has two
@@ -520,20 +686,19 @@ ten. The rest of this section is about the first ten scenes.
 
 **Every row ran under the shared 20 Hz referee**: one control rate, one force-GT
 duration and one `eval-config.yaml` (md5 `68cf4aaa…`), so the rows differ by the
-model rather than by the harness. Camera count still changes what is measured —
-four cameras see what one cannot — so Alpamayo's `4cam-20Hz` row and METEOR's
-`6cam-20Hz` row are separate groups, and neither has a constant-velocity floor
-of its own.
+model rather than by the harness. Camera count is recorded in the Cameras
+column but does not separate rows: each model is given the cameras it reads,
+and every row is read against the one constant-velocity floor.
 
-| Model | Group | `scene_score` ↑ | Δ vs its floor | Progress ↑ | `duration_frac_20s` ↑ | At-fault collisions ↓ | Any collision ↓ | Off-road ↓ |
+| Model | Cameras | `scene_score` ↑ | Δ vs floor | Progress ↑ | `duration_frac_20s` ↑ | At-fault collisions ↓ | Any collision ↓ | Off-road ↓ |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | OpenPilot | `1cam-20Hz` | 0.9566 | **+0.0716** | 0.9010 | 0.777 | 0 / 10 | 1 / 10 | 0 / 10 |
 | *floor* | *`1cam-20Hz`* | *0.8850* | *—* | *0.8290* | *0.654* | *0 / 10* | *2 / 10* | *0 / 10* |
 | VisionPilot | `1cam-20Hz` | 0.8488 | −0.0362 | 0.8202 | 0.699 | 1 / 10 | 3 / 10 | 0 / 10 |
 | Drive-JEPA | `1cam-20Hz` | 0.5030 | **−0.3820** | 0.5652 | 0.462 | 2 / 10 | 4 / 10 | 1 / 10 |
-| Drive-JEPA, retrained ⊕ | `1cam-20Hz` | 0.9956 | +0.1106 | 0.9765 | 0.662 | 0 / 10 | 0 / 10 | 0 / 10 |
-| Alpamayo 1.5 | `4cam-20Hz` | 0.9000 | no floor | 0.9603 | 0.740 | 1 / 10 | 1 / 10 | 0 / 10 |
-| METEOR ⬡ | `6cam-20Hz` | 0.6869 | no floor | 0.6073 | 0.589 | 0 / 10 | 3 / 10 | 0 / 10 |
+| Alpamayo 1.5 | `4cam-20Hz` | 0.9000 | +0.0150 | 0.9603 | 0.740 | 1 / 10 | 1 / 10 | 0 / 10 |
+| METEOR ⬡ | `6cam-20Hz` | 0.6869 | −0.1981 | 0.6073 | 0.589 | 0 / 10 | 3 / 10 | 0 / 10 |
+| AutoE2E ⬢ | `6cam-20Hz` | 0.3175 | −0.5675 | 0.2924 | 0.120 | 2 / 10 | 3 / 10 | 0 / 10 |
 
 **An at-fault collision or an off-road event zeroes the scene outright**, whatever
 progress preceded it:
