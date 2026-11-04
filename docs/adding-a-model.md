@@ -145,6 +145,13 @@ Four fields are worth more thought than they look:
   worked and does nothing. A name set in the shell is held to the same rule
   as a site `env` override: unless it is in `tuning_env` or restates the
   declared default, the run is recorded `valid: false`.
+- **`score_notes`** (top level, beside `benchmarks`) — env keys that change what a
+  score means, each with one line. `paddock report` prints the line under any
+  ranked run whose `model_env` set the key to something other than the declared
+  default, and `{value}` in the line becomes what the run set. Use it where a
+  row would otherwise read as comparable when it is not: a plan stretched to fit
+  a benchmark's horizon, one camera repeated into three slots. Leave out keys
+  that change no number on the benchmarks you ran.
 
 ## Step 5 — write `setup.sh`
 

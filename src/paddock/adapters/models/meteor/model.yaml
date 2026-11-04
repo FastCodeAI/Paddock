@@ -101,6 +101,11 @@ capabilities:
     - dataset: tier4_comlops_drs
       split: train
 
+# Settings that change what a score means. The leaderboard prints the line under
+# any ranked run that set one to something other than the declared default.
+score_notes:
+  METEOR_HORIZON_S: "plan continued to {value} s by paddock; the model itself plans 3 s"
+
 # navsim needs METEOR_HORIZON_S=4.0 (see above) or every sample fails in
 # to_navsim_poses with "model plans 3.00 s".
 # comma2k19 is one phone camera: see METEOR_FRONT_ONLY above.

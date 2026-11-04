@@ -53,4 +53,9 @@ capabilities:
 # benchmark landed, but `--model all` and `paddock render` walk the registry
 # rather than the results directory, so the floor was absent from every figure
 # it was supposed to anchor. A row nobody can see is not a reference.
+# Settings that change what a score means. The leaderboard prints the line under
+# any ranked run that set one to something other than the declared default.
+score_notes:
+  PADDOCK_CV_SPEED_M_S: "driven at a fixed {value} m/s, not the measured ego speed"
+
 benchmarks: [alpasim, nuscenes, bench2drive, comma2k19, nuplan]
