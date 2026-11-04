@@ -1,0 +1,39 @@
+name: New benchmark
+description: Ask for a driving benchmark to be added, or say you will add one.
+labels: [new-benchmark]
+body:
+  - type: input
+    id: upstream
+    attributes:
+      label: Upstream repository or site
+    validations:
+      required: true
+  - type: input
+    id: paper
+    attributes:
+      label: Paper
+  - type: dropdown
+    id: loop
+    attributes:
+      label: What kind of test is it?
+      options:
+        - Open loop
+        - Pseudo-closed loop
+        - Closed loop
+    validations:
+      required: true
+  - type: textarea
+    id: data
+    attributes:
+      label: Data and metric
+      description: Where the data comes from, its licence, and the headline metric.
+  - type: dropdown
+    id: who
+    attributes:
+      label: Will you write the adapter?
+      description: See docs/adding-a-benchmark.md.
+      options:
+        - "Yes"
+        - "No, this is a request"
+    validations:
+      required: true

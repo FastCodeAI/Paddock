@@ -1,0 +1,36 @@
+name: New model
+description: Ask for a driving model to be added, or say you will add one.
+labels: [new-model]
+body:
+  - type: input
+    id: upstream
+    attributes:
+      label: Upstream repository
+    validations:
+      required: true
+  - type: input
+    id: paper
+    attributes:
+      label: Paper
+  - type: textarea
+    id: weights
+    attributes:
+      label: Released weights
+      description: Where they are, and their licence. Paddock runs released checkpoints only.
+    validations:
+      required: true
+  - type: textarea
+    id: inputs
+    attributes:
+      label: Inputs and output
+      description: Cameras, frames of history, ego state, and the plan it returns.
+  - type: dropdown
+    id: who
+    attributes:
+      label: Will you write the adapter?
+      description: See docs/adding-a-model.md.
+      options:
+        - "Yes"
+        - "No, this is a request"
+    validations:
+      required: true
