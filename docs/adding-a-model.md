@@ -152,6 +152,9 @@ Four fields are worth more thought than they look:
   row would otherwise read as comparable when it is not: a plan stretched to fit
   a benchmark's horizon, one camera repeated into three slots. Leave out keys
   that change no number on the benchmarks you ran.
+  A note does not make a run rankable: a new run that overrides one of these
+  keys is still stored `valid: false` by the `tuning_env` rule above, so it
+  leaves the ranking, and its note prints only with `paddock report --include-invalid`.
 
 ## Step 5 — write `setup.sh`
 
