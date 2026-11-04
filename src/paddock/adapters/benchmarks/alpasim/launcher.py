@@ -87,7 +87,7 @@ class BridgeProcess:
         extra_args: tuple[str, ...] = (),
     ) -> None:
         self.python = python
-        # Per-model translation flags (`harness.DRIVER_PROFILES`); empty for
+        # Per-model translation flags (a model folder's alpasim.yaml); empty for
         # every model that does not need one, so their command is unchanged.
         self.extra_args = tuple(extra_args)
         self.policy_url = policy_url

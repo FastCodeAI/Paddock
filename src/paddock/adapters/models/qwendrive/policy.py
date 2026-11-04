@@ -43,7 +43,7 @@ offered against horizons it labels honestly -- so emitting the full 5 s costs
 those four nothing and is the only way the fifth second is scored at all.
 
 *AlpaSim.* A body that carries a scene id comes from AlpaSim's bridge under the
-qwendrive profile (`harness.DRIVER_PROFILES`), which sends every 20 Hz tick, the
+qwendrive profile (`qwendrive/alpasim.yaml`), which sends every 20 Hz tick, the
 route, and forward and sideways speed in canbus. There the inputs are built the
 way Qwen-Drive's native AlpaSim driver built them, so a run through paddock is
 the same experiment as the native runs it is checked against:

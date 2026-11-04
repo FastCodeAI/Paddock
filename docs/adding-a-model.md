@@ -32,7 +32,8 @@ on coordinate frames.
 | 4 | `src/paddock/adapters/models/<name>/setup.sh` | **create** — build the env |
 | 5 | `src/paddock/adapters/models/<name>/tests/test_policy.py` | **create** — fixture test |
 | 6 | `docs/models/<name>.md` | **create** — quirks and reference numbers |
-| 7 | `paddock.toml` | **your machine only** — never committed |
+| 7 | `src/paddock/adapters/models/<name>/alpasim.yaml` | **optional** — only if AlpaSim must drive the model on its own settings |
+| 8 | `paddock.toml` | **your machine only** — never committed |
 
 Nothing else. In particular you do **not** register your model in any central
 list: `paddock list` discovers it by finding `model.yaml`.
@@ -211,6 +212,36 @@ paddock run --model mymodel --bench kitscenes --limit 5
 Run the constant-velocity template **before** wiring in your model. Getting the
 plumbing green first makes coordinate-frame bugs obvious, because nothing else
 is moving.
+
+## AlpaSim settings (optional)
+
+Most models need nothing here: AlpaSim drives every model on the shared
+`paddock_bridge` driver config, and its bridge passes cameras through under
+AlpaSim's own names. If yours needs other settings (camera renames, a replan
+rate, a pinned scene list, its own driver config), put them in an
+`alpasim.yaml` beside `model.yaml`. Do **not** edit
+`adapters/benchmarks/alpasim/harness.py`: the harness finds the file by the
+model's name, so the folder must be named after the model.
+
+The file holds exactly four keys, all required:
+
+| Key | What it is |
+|---|---|
+| `driver` | a driver config name under `adapters/benchmarks/alpasim/configs/driver/`, passed to AlpaSim as `driver=` (`paddock_bridge` is the shared one) |
+| `bridge_args` | a list of extra `bridge.py` flags, as strings (quote numbers: `"50000"`) |
+| `scenes_csv` | a file under `adapters/benchmarks/alpasim/scenes/` pinning each scene to one artifact, or `null` to name scenes by id |
+| `replan_log` | `true` to have the bridge write a per-replan log beside the run's samples |
+
+A missing or unknown key, or a value of the wrong type, fails the run with the
+file's path in the error; it never falls back to the default. With no file at
+all, the model gets the default profile. `adapters/models/drivejepa/alpasim.yaml`
+is a worked example, with a comment on every flag. If your profile needs its
+own driver config or scene list, those two files still go in the AlpaSim
+benchmark's folder, because AlpaSim reads them from there.
+
+This file is a new convention: one `<benchmark>.yaml` in a model's folder for
+a benchmark that needs per-model settings. AlpaSim is the only benchmark that
+reads one so far.
 
 ## Step 9 (optional) — probes
 

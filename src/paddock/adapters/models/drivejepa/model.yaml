@@ -95,6 +95,6 @@ capabilities:
     # comment citing carla_garage for an augmentation recipe. See comparison.md.
     - dataset: navsim
       split: navtrain
-# alpasim runs through the bridge's Drive-JEPA settings (harness.DRIVER_PROFILES):
+# alpasim runs through the bridge's Drive-JEPA settings (alpasim.yaml beside this file):
 # its native AlpaSim driver's camera, 2 Hz replanning and inputs. See docs/models/drivejepa.md.
 benchmarks: [navsim, navsim_v1, kitscenes, neuroncap, bench2drive, nuscenes, nuplan, alpasim, hugsim]

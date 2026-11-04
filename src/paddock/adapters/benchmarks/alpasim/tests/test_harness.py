@@ -657,7 +657,7 @@ def test_a_model_without_a_profile_is_driven_exactly_as_before(tmp_path: Path, m
 
     from paddock.adapters.benchmarks.alpasim import harness
 
-    assert "openpilot" not in harness.DRIVER_PROFILES
+    assert not harness.has_profile("openpilot")
     profile = harness.profile_for("openpilot")
     assert profile == harness.DriverProfile()
     assert (profile.driver, profile.bridge_args, profile.scenes_csv) == ("paddock_bridge", (), None)

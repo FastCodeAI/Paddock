@@ -1,0 +1,47 @@
+# How the AlpaSim benchmark drives AutoE2E through paddock's bridge.
+#
+# Read by adapters/benchmarks/alpasim/harness.py (profile_for). A model folder
+# without this file is driven on the default profile. All four keys are
+# required; an unknown or missing key fails the run with this file's name.
+# See docs/adding-a-model.md, "AlpaSim settings".
+#
+# Six cameras re-rendered as pinholes at the KITScenes field of view, the rear
+# view on the tele camera's id (paddock_bridge_autoe2e.yaml), renamed to the six
+# names the node reads. The node is asked every 100 ms on a grid, the cached
+# plan re-timed and re-anchored in between; warm-up frames go to /observe, and
+# the ego history is padded straight back from the first pose (see
+# replan_rhythm.py). Same 30 scenes, warm-up and control step as drivejepa.
+
+# Driver config under adapters/benchmarks/alpasim/configs/driver/.
+driver: paddock_bridge_autoe2e
+
+# Extra bridge.py flags.
+bridge_args:
+  - --camera-name
+  - camera_front_wide_120fov=CAM_FRONT
+  - --camera-name
+  - camera_cross_left_120fov=CAM_FRONT_LEFT
+  - --camera-name
+  - camera_cross_right_120fov=CAM_FRONT_RIGHT
+  - --camera-name
+  - camera_rear_left_70fov=CAM_BACK_LEFT
+  - --camera-name
+  - camera_front_tele_30fov=CAM_BACK
+  - --camera-name
+  - camera_rear_right_70fov=CAM_BACK_RIGHT
+  - --pinhole-intrinsics
+  - --replan-every-us
+  - "100000"
+  # Both must equal paddock_bridge_autoe2e.yaml's control step and
+  # force_gt_duration_us; a test checks they do.
+  - --force-gt-us
+  - "3000000"
+  - --frame-interval-us
+  - "50000"
+  - --pad-ego-history
+
+# Under adapters/benchmarks/alpasim/scenes/: each scene pinned to one artifact.
+scenes_csv: public_2601_30scenes_26p01.csv
+
+# Write the bridge's per-replan log next to the run's samples.jsonl.
+replan_log: true

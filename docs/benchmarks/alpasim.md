@@ -93,13 +93,19 @@ native AlpaSim driver, not by this bridge, so none of them changes.
 Most models are driven on one shared set of simulation settings
 (`configs/driver/paddock_bridge.yaml`) and the bridge passes AlpaSim's cameras
 through as they are. A model whose numbers must be compared with a native
-AlpaSim driver can instead get its own settings: an entry in
-`harness.DRIVER_PROFILES`, which names a driver config, extra bridge flags, a
-scene list pinned to artifact uuids and whether the bridge writes a per-replan
-log. Video is not among them: it stays the site's `video` setting for every
-model, since AlpaSim renders it after scoring and it changes no number. A
-model without an entry gets exactly what every model got before profiles existed, and `run.json` records a profile under `config`
-only when one is used, so the run id changes with it.
+AlpaSim driver can instead get its own settings, called a *profile*: a file
+`alpasim.yaml` in the model's own folder (`adapters/models/<model>/alpasim.yaml`),
+which names a driver config, extra bridge flags, a scene list pinned to
+artifact uuids and whether the bridge writes a per-replan log. The harness
+reads it by model name (`harness.profile_for`). All four keys are required, and
+a file with a missing or unknown key fails the run with the file's name rather
+than falling back to the default; only a model with no file at all gets the
+default. Video is not among the keys: it stays the site's `video` setting for
+every model, since AlpaSim renders it after scoring and it changes no number. A
+model without a profile gets exactly what every model got before profiles
+existed, and `run.json` records a profile under `config` only when one is used,
+so the run id changes with it. How to write one is in
+[adding-a-model.md](../adding-a-model.md#alpasim-settings-optional).
 
 Four models have a profile. Drive-JEPA's reproduces the settings of
 Drive-JEPA's native AlpaSim driver (adapter 0.1.4b) so a run through paddock
