@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
-104 runs across 9 benchmarks.
-32 run(s) excluded as invalid — shown at the end, never averaged in.
+94 runs across 9 benchmarks.
+42 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
@@ -76,8 +76,6 @@
 | alpamayo15 | full-letterbox | 223 | 1.176 | 0.418 | 1.284 | 2.535 | 3.384 | 2.364 | 0.619 |
 | openpilot | 20261008T004723-a369d1 | 223 | 1.248 | 0.618 | 1.398 | 2.355 | - | - | - |
 | visionpilot | 20260909T202724-153b04 | 223 | 1.534 | 0.700 | 1.567 | 3.089 | - | - | - |
-| openpilot | 20260901T025750-fd824c | 3 | 1.592 | 0.581 | 1.785 | 3.340 | - | - | - |
-| openpilot | 20260901T021743-fd824c | 3 | 1.592 | 0.581 | 1.785 | 3.340 | - | - | - |
 | openpilot | 20260930T154018-242869 | 223 | 1.595 | 0.828 | 1.801 | 2.904 | - | - | - |
 | openpilot | full223 | 223 | 1.599 | 0.836 | 1.808 | 2.894 | 18.731 | 2.364 | - |
 | openpilot | 20260901T175755-cc27fb | 223 | 1.599 | 0.836 | 1.808 | 2.894 | - | - | - |
@@ -117,25 +115,17 @@
 
 ## neuroncap
 
-| model | run | n | ncap_score ↑ | impact_speed ↓ | reference_speed ↑ | collision_rate ↓ | duration_s ↑ |
-|---|---|---:|---:|---:|---:|---:|---:|
-| alpamayo15 | 20260901T002333-6dae70 | 2 | 5.000 | - | - | 0.000 | 267.700 |
-| drivejepa | 20261012T224707-f11ac0 | 200 | 4.130 | 2.199 | 8.604 | 0.245 | - |
-| drivejepa | runs5 | 15 | 4.042 | 2.073 | 13.279 | 0.333 | - |
-| drivejepa | runs1 | 3 | 4.024 | 2.133 | 13.279 | 0.333 | - |
-| alpamayo15 | 20260906T034647-bc409f | 200 | 3.727 | 2.346 | 8.604 | 0.325 | - |
-| openpilot | 20260905T055713-11ac59 | 200 | 3.604 | 2.698 | 8.604 | 0.380 | - |
-| drivejepa | 20260905T220225-f11ac0 | 200 | 3.568 | 2.229 | 8.604 | 0.455 | - |
-| drivejepa | 20260901T001634-44b6bb | 2 | 3.536 | - | - | 0.500 | 140.000 |
-| autoe2e | 20261026T233951-743060 | 200 | 3.162 | 3.721 | 8.604 | 0.420 | - |
-| visionpilot | 20260901T000037-c950bd | 1 | 2.827 | - | - | 1.000 | 89.100 |
-| meteor | 20260915T193036-d34559 | 200 | 2.644 | 5.051 | 8.604 | 0.480 | - |
-| qwendrive | 20260915T023604-12d5eb | 200 | 2.487 | 4.514 | 8.604 | 0.690 | - |
-| alpamayo | runs5 | 15 | 2.458 | 4.731 | 11.226 | 0.667 | - |
-| visionpilot | runs1 | 3 | 1.968 | 5.133 | 9.902 | 1.000 | - |
-| visionpilot | runs5 | 15 | 1.671 | 6.099 | 10.246 | 1.000 | - |
-| visionpilot | 20260905T121810-155d36 | 200 | 1.576 | 6.218 | 8.604 | 0.855 | - |
-| visionpilot | runs1_fixed | 3 | 1.475 | 6.411 | 9.902 | 1.000 | - |
+| model | run | n | ncap_score ↑ | impact_speed ↓ | reference_speed ↑ | collision_rate ↓ |
+|---|---|---:|---:|---:|---:|---:|
+| drivejepa | 20261012T224707-f11ac0 | 200 | 4.130 | 2.199 | 8.604 | 0.245 |
+| alpamayo15 | 20260906T034647-bc409f | 200 | 3.727 | 2.346 | 8.604 | 0.325 |
+| openpilot | 20260905T055713-11ac59 | 200 | 3.604 | 2.698 | 8.604 | 0.380 |
+| drivejepa | 20260905T220225-f11ac0 | 200 | 3.568 | 2.229 | 8.604 | 0.455 |
+| autoe2e | 20261026T233951-743060 | 200 | 3.162 | 3.721 | 8.604 | 0.420 |
+| meteor | 20260915T193036-d34559 | 200 | 2.644 | 5.051 | 8.604 | 0.480 |
+| qwendrive | 20260915T023604-12d5eb | 200 | 2.487 | 4.514 | 8.604 | 0.690 |
+| alpamayo | runs5 | 15 | 2.458 | 4.731 | 11.226 | 0.667 |
+| visionpilot | 20260905T121810-155d36 | 200 | 1.576 | 6.218 | 8.604 | 0.855 |
 
 ## nuscenes
 
@@ -156,7 +146,12 @@
 
 - **bench2drive/autoe2e/pooled50-steady-noroute-40c29d24c37d542a-8d26e9** — kitscenes-epoch-5 on Paddock 7244bc5, the 50 routes of the other pooled50 rows. AUTOE2E_EGO_HISTORY=steady (a steady straight past at the current speed) and AUTOE2E_ROUTE=0 (no route raster, no map), a forward every 0.1 s, paddock's camera rig; early stop at 30 s without 3 m of progress, the first recorded collision, or 4x Think2Drive's time, where the other pooled50 rows drove every route to Bench2Drive's own end; 3 workers on one A100 80GB. attempted outside the configured route subset and never scored: 3457 (20261028T050704-4d27a7: no records in _checkpoint (the route did not score)). 14 of 14 source runs kept no run.json, so their routes are attributed to autoe2e on the tree they were found in; config.model_env and the rest of config are what 14/14 source runs recorded. source runs set AUTOE2E_EGO_HISTORY, AUTOE2E_REPLAN_S, AUTOE2E_ROUTE, which the model's model.yaml declares, to other values (config.model_env), so this run does not rank, as a paddock run of them would not. stop_on_collision: a route ends at its first collision the leaderboard records, where Bench2Drive's own protocol charges the collision as a penalty (x0.50-0.65) and lets the car drive on, so its driving score is another measure. early stop (30 s without 3 m of route progress or 4x the expert's time on the route (none on the 9 route(s) with no expert drive) or a collision the leaderboard records): a car in a driving scene is expected to move, to finish in reasonable time and not to collide, so a route ended this way is a failed drive, scored as it stood when it ended (a collision's penalty included).
 - **bench2drive/openpilot/native50-20hz-40c29d24c37d542a-f68000** — OpenPilot on the 50 routes, 29 Oct 2026, one RTX PRO 6000 (shared), CARLA 0.9.15, six lanes. Driven at 20 Hz, which is openpilot's own rate and the benchmark protocol. One setup on every route: the tinygrad backend (PADDOCK_OPENPILOT_BACKEND=tinygrad), openpilot's own longitudinal plan (PADDOCK_OPENPILOT_NATIVE_LONG=1) and no driver-resume assistance (PADDOCK_OPENPILOT_RESUME_S=0). Driven from 9671b49 plus the TINYGRAD_ACTION_T fallback this commit adds to policy.py: the tinygrad ModelState has no long_action_t, so the native longitudinal planner raised AttributeError without it; the value is the 0.5 s the tinygrad path already feeds the model. Seven attempts failed on infrastructure and were re-run; their directories were moved out of this root, to _failed_infra beside it: node or CARLA start-up on 24795 (20261029T080029-0ffa0a), 3800 (20261029T080140-f99ef2), 2509 (20261029T080951-e076b4) and 26990 (20261029T095341-ac924f); the 2 h wall cap on the first attempts of 2084 (20261029T103048-d4e0c1), 2086 (20261029T104135-c8ba52) and 2050 (20261029T104914-1d3202), which ran at 3-4 s per tick under full CPU. It was driven to replace the 30.09 typed in from docs/benchmarks/bench2drive.md (24 routes, unassisted estimate) as OpenPilot's Bench2Drive cell; that cell is now #79's 50-route run of the setup openpilot/model.yaml declares (pooled50-40c29d24c37d542a-c7d2b2). 50 of 50 source runs kept no run.json, so their routes are attributed to openpilot on the tree they were found in; config.model_env and the rest of config are what 50/50 source runs recorded. source runs set DEV, PADDOCK_OPENPILOT_BACKEND, which the model's model.yaml declares, to other values (config.model_env), so this run does not rank, as a paddock run of them would not.
+- **neuroncap/drivejepa/legacy-runs5** — Superseded by 20261012T224707-f11ac0: a small early run of 15 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one.
 - **neuroncap/openpilot/legacy-runs5** — openpilot closed-loop scores recorded before 12f3250 fixed the traffic_convention one-hot: the node passed [0, 1], telling supercombo it was a right-hand-drive car in a left-hand-drive city. Superseded; re-measure rather than compare. See docs/benchmarks/neuroncap.md.
+- **neuroncap/visionpilot/legacy-runs5** — Superseded by 20260905T121810-155d36: a small early run of 15 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one.
+- **neuroncap/visionpilot/legacy-runs1_fixed** — Superseded by 20260905T121810-155d36: a small early run of 3 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one.
+- **neuroncap/drivejepa/legacy-runs1** — Superseded by 20261012T224707-f11ac0: a small early run of 3 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one.
+- **neuroncap/visionpilot/legacy-runs1** — Superseded by 20260905T121810-155d36: a small early run of 3 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one.
 - **neuroncap/visionpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **hugsim/drivejepa/campaign-87d4f5097a85db3c-ce3603** — Released Drive-JEPA (NAVSIM v2 ViT-L checkpoint), driven 22 Oct 2026 in two lanes sharing one scenario queue. The node was the drivejepa adapter as of paddock ac7788f plus a per-call record of the 32 candidates and their scores, which does not change the plan; its camera placement goes through lidar2ego, which the bridge sends as the identity, so the cameras land where ac7788f puts them. At that commit the adapter fed cameras uncropped and picked on the plain score; main now crops to the OpenScene camera (#106) and turns momentum selection on (#95), so a re-run on main would differ. Only the front camera was rendered: the released model's forward reads only the front camera. DRIVEJEPA_IMAGE_GEOMETRY, DRIVEJEPA_MOMENTUM were supplied by the ingest config: the campaign recorded no model env, so this is the operator's statement of how the node was configured, not a reading from it. scenarios attempted and never scored: scene-0166-medium-01 (exit 1 after 60 steps: IndexError: index is out of bounds for dimension with size 0).
 - **neuroncap/wajepa/20261015T234134-916e11** — 3 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes)
@@ -184,7 +179,12 @@
 - **navsim/visionpilot/20260901T204347-be57d6** — SMOKE, not a result: a 4-scenario run proves the pipeline (node, conversion, scorer, CSV) and nothing about the model. Twice now the n=4 figure has been contradicted by a larger run -- visionpilot 0.640 -> 0.447 at n=242, alpamayo 0.226 -> 0.503 at n=60. NAVSIM's floor for a meaningful score is far above 4; use the full-split run.
 - **navsim/openpilot/20260901T204239-8f4682** — openpilot infers ego motion from frame-to-frame change and NAVSIM supplies 2 Hz observations, so it was shown a near-stationary world: it planned 0.30 m of travel over 4 s while doing 4.8 m/s. The score measures the rate gap, not the model. model.yaml now declares min_input_hz: 10.0 and the harness refuses this pairing. See docs/benchmarks/navsim.md.
 - **navsim/drivejepa/20260901T202524-7e208f** — 242-scenario subset (5 of navtest's 136 logs had sensor blobs), run under PADDOCK_NAVSIM_ALLOW_PARTIAL=1 before the runner recorded that switch; marked valid=false and config.allow_partial added retroactively on 2026-09-03 under the rule that nothing below the full split is ranked against a full run. drivejepa; the comparable figure for that model on the subset is the full-navtest row 20260902T173156-7e208f (0.84272).
+- **kitscenes/openpilot/20260901T025750-fd824c** — Superseded by 20261008T004723-a369d1: a 3-sample check; the full 223-sample run replaces it, and docs/benchmarks/kitscenes.md still quotes this one.
+- **kitscenes/openpilot/20260901T021743-fd824c** — Superseded by 20261008T004723-a369d1: a 3-sample check; the full 223-sample run replaces it, and docs/benchmarks/kitscenes.md still quotes this one.
 - **neuroncap/openpilot/20260901T004005-88a4e0** — openpilot closed-loop scores recorded before 12f3250 fixed the traffic_convention one-hot: the node passed [0, 1], telling supercombo it was a right-hand-drive car in a left-hand-drive city. Superseded; re-measure rather than compare. See docs/benchmarks/neuroncap.md.
+- **neuroncap/alpamayo15/20260901T002333-6dae70** — Superseded by 20260906T034647-bc409f: a small early run of 2 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one.
+- **neuroncap/drivejepa/20260901T001634-44b6bb** — Superseded by 20261012T224707-f11ac0: a small early run of 2 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one.
+- **neuroncap/visionpilot/20260901T000037-c950bd** — Superseded by 20260905T121810-155d36: a single-episode check; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md and docs/ROADMAP.md still quote this one.
 - **neuroncap/openpilot/20260831T235716-88a4e0** — openpilot closed-loop scores recorded before 12f3250 fixed the traffic_convention one-hot: the node passed [0, 1], telling supercombo it was a right-hand-drive car in a left-hand-drive city. Superseded; re-measure rather than compare. See docs/benchmarks/neuroncap.md.
 
 ---

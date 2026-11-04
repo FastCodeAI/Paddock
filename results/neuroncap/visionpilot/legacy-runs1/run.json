@@ -16,8 +16,10 @@
     "run_group": "runs1"
   },
   "hardware": {},
+  "provenance": {},
   "status": "complete",
-  "valid": true,
-  "notes": "",
+  "valid": false,
+  "superseded_by": "20260905T121810-155d36",
+  "notes": "Superseded by 20260905T121810-155d36: a small early run of 3 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one.",
   "ingested_from": "neuroncap/outputs/runs1"
 }
