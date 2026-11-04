@@ -1,5 +1,5 @@
 {
-  "run_id": "legacy-scene0108_runs5",
+  "run_id": "legacy-runs5",
   "site": "fastcode-shakaal",
   "benchmark": "neuroncap",
   "model": "visionpilot",
@@ -9,15 +9,15 @@
   "repo_sha": null,
   "dataset": {
     "name": "nuscenes",
-    "n_samples": 10,
-    "sequences_sha256": "8400c58096837d36"
+    "n_samples": 15,
+    "sequences_sha256": "5312d7886fc3571a"
   },
   "config": {
-    "run_group": "scene0108_runs5"
+    "run_group": "runs5"
   },
   "hardware": {},
   "status": "complete",
   "valid": true,
   "notes": "",
-  "ingested_from": "neuroncap/outputs/scene0108_runs5"
+  "ingested_from": "neuroncap/outputs/runs5"
 }

@@ -1,5 +1,5 @@
 {
-  "run_id": "legacy-runs1_noise0.3",
+  "run_id": "legacy-runs1",
   "site": "fastcode-shakaal",
   "benchmark": "neuroncap",
   "model": "visionpilot",
@@ -13,11 +13,11 @@
     "sequences_sha256": "ea43204cca0349a1"
   },
   "config": {
-    "run_group": "runs1_noise0.3"
+    "run_group": "runs1"
   },
   "hardware": {},
   "status": "complete",
   "valid": true,
   "notes": "",
-  "ingested_from": "neuroncap/outputs/runs1_noise0.3"
+  "ingested_from": "neuroncap/outputs/runs1"
 }
