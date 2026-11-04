@@ -36,7 +36,7 @@ name locations through template variables — `{repo}`, `{repos}`, `{runs}`,
 `paddock.config`.
 
 `tests/test_portability.py` enforces this. If it fails on your change, the fix is
-almost always a template variable, not an addition to the allowlist. Placeholders
+almost always a template variable; the test has no exemption list. Placeholders
 in prose (`/path/to/thing`) are fine; a real root from a real box is not.
 
 Why so strict: a single leaked path works perfectly for whoever wrote it and
