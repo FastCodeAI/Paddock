@@ -773,7 +773,7 @@ models it beat on every open-loop column. The frontal column is where it goes:
 1.52 with 86% of those runs ending in a collision, against 3.64 for Alpamayo.
 **It brakes; it does not steer.** Over the 50 frontal episodes its planned 3 s
 path reaches a mean peak lateral offset of 1.22 m, against 10.44 m for
-Alpamayo — which decelerates no harder (−2.31 m/s against Qwen-Drive's −2.48)
+Alpamayo — which decelerates no harder (−2.29 m/s against Qwen-Drive's −2.81)
 and collides in 32% of episodes rather than 86%. Drive-JEPA brakes hard and still
 collides in 78%, with or without the camera: seeing the car, it now plans a little
 sideways movement (mean peak 1.80 m, against 0.11 m blind) and slows by 4.67 m/s

@@ -42,8 +42,8 @@
   "hardware": {},
   "provenance": {},
   "status": "complete",
-  "valid": true,
-  "superseded_by": "",
-  "notes": "no model process ran: 12146 plans replayed from navsim/autoe2e/20261009T055926-3ceb18 (that run: epdms 0.5002); the same plans, this benchmark's scorer",
+  "valid": false,
+  "superseded_by": "20261104T210206-3022fb",
+  "notes": "no model process ran: 12146 plans replayed from navsim/autoe2e/20261009T055926-3ceb18 (that run: epdms 0.5002); the same plans, this benchmark's scorer Superseded by 20261104T210206-3022fb: this replay recorded 2 Hz OpenScene history and 1.5 s, but its plans were made at 10 Hz from nuPlan with 6.5 s; re-made with the right record, every score identical",
   "ingested_from": ""
 }

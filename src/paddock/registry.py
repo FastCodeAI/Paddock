@@ -222,6 +222,12 @@ class ModelSpec:
     trained_on: tuple[TrainedOn, ...] = ()
 
     benchmarks: tuple[str, ...] = ()
+    #: Env keys that change what a score means, each with the line the
+    #: leaderboard prints under a ranked run that set it to anything but the
+    #: declared default. `{value}` in the line is replaced by what the run set.
+    #: Only the model knows that a horizon was stretched or a camera repeated:
+    #: the report sees a name and a number, and the row reads as comparable.
+    score_notes: dict[str, str] = field(default_factory=dict)
     description: str = ""
     directory: Path = REPO_ROOT
 
@@ -366,6 +372,7 @@ def load_models(directory: Path = MODELS_DIR) -> dict[str, ModelSpec]:
             needs_speed=bool(caps.get("needs_speed", True)),
             trained_on=_trained_on(caps.get("trained_on"), path),
             benchmarks=tuple(body.get("benchmarks", ())),
+            score_notes=dict(body.get("score_notes") or {}),
             description=body.get("description", ""),
             directory=path.parent,
         )
