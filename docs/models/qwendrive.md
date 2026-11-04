@@ -280,17 +280,20 @@ plan against the collision rate:
 
 | model | collisions | speed change over the episode | mean peak \|lateral\| |
 |---|---:|---:|---:|
-| alpamayo15 | 32% | −2.31 m/s | 10.44 m |
-| drivejepa | 78% | −5.47 m/s | 0.11 m |
-| openpilot | 84% | −1.88 m/s | 1.00 m |
-| **qwendrive** | **86%** | **−2.48 m/s** | **1.22 m** |
-| visionpilot | 90% | −2.45 m/s | 1.91 m |
+| alpamayo15 | 32% | −2.29 m/s | 10.44 m |
+| drivejepa | 78% | −4.67 m/s | 1.80 m |
+| openpilot | 84% | −4.99 m/s | 1.00 m |
+| **qwendrive** | **86%** | **−2.81 m/s** | **1.22 m** |
+| visionpilot | 90% | −2.27 m/s | 1.91 m |
 
-Qwen-Drive brakes about as hard as Alpamayo, and harder than OpenPilot: on
-`frontal-0103` seed 5 it goes from 7.3 to 2.3 m/s with its planned reach
-collapsing from 21 m to under 5 m. Its lateral offset stays near zero
-throughout. Drive-JEPA brakes hardest of anyone and still collides in 78% of
-episodes. In a staged head-on the closing vehicle arrives whatever the ego's
+Speed change is the last speed minus the first, from each episode's
+`ego_poses.json`. Drive-JEPA's row is its run after the camera fix.
+
+Qwen-Drive brakes about as hard as Alpamayo, and less hard than OpenPilot: on
+`frontal-0103` seed 5 it goes from 8.1 to 2.7 m/s with its planned reach
+collapsing from 21 m to under 5 m. Its planned lateral offset never passes
+1.2 m. OpenPilot and Drive-JEPA brake hardest of the five and still collide in
+84% and 78% of episodes. In a staged head-on the closing vehicle arrives whatever the ego's
 speed, so the escape is lateral, and Alpamayo is the only model that takes it.
 
 **This is the model, not the adapter.** Through the same code path on NAVSIM the
