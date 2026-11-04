@@ -495,7 +495,7 @@ def _site_with_env(tmp_path, model: str, env: dict[str, str]):
 @pytest.mark.parametrize(
     ("env", "valid"),
     [
-        ({"VISIONPILOT_ORT_THREADS": "2"}, True),  # declared tuning: what shakaal sets
+        ({"VISIONPILOT_ORT_THREADS": "2"}, True),  # declared tuning: what a CPU-limited site sets
         ({"OMP_NUM_THREADS": "1"}, True),  # thread counts are tuning for every model
         ({"LD_LIBRARY_PATH": "/opt/cuda/lib", "HF_HOME": "/cache/hf"}, True),  # where things live
         ({"PADDOCK_FFMPEG": "/usr/bin/ffmpeg"}, False),  # another ffmpeg can change the input
@@ -1287,7 +1287,7 @@ def test_paddock_provenance_says_when_tracked_files_were_edited(tmp_path) -> Non
 
 
 def test_a_resumed_run_keeps_the_paddock_commits_of_its_earlier_attempts(tmp_path, monkeypatch) -> None:
-    """Review of #100 (3): a resume kept the model repo's earlier commits but not paddock's."""
+    """A resume kept the model repo's earlier commits but not paddock's."""
     from paddock import runner
     from paddock.results import store
 

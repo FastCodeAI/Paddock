@@ -1,7 +1,7 @@
 """The published Bench2Drive tables must still be what the records say.
 
-Two things are guarded here, both of which a reviewer had to recompute by hand
-on PR #21:
+Two things are guarded here, both of which a reviewer once had to recompute by
+hand:
 
 * **Every cell reproduces from the committed records.** The tables in
   `docs/benchmarks/bench2drive.md` (moved there from the README) are
@@ -209,7 +209,7 @@ def test_entries_per_km_is_not_published(data: dict) -> None:
     # The claim is comparative, so assert it that way rather than against a bare
     # threshold: over the same rows the derived quantity varies by a few percent
     # while `below_100_percent`, the column that does carry the speed signal,
-    # varies several-fold. (Ten published rows now, so the flat 2% of PR #21 --
+    # varies several-fold. (Ten published rows now, so the flat 2% first used here --
     # five rows, 1.1% -- no longer states anything about the set being published.)
     signal = [
         s["below_100_percent"]

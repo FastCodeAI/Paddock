@@ -1107,7 +1107,7 @@ class OpenpilotPolicy(Policy):
 
         `diagnostics()` lands in `run.json` through `provenance.policy`, which is
         committed -- so an absolute path here is both a portability-gate failure
-        and provenance the other site cannot resolve. Relative to `PADDOCK_REPO`
+        and provenance another site cannot resolve. Relative to `PADDOCK_REPO`
         it is exactly what a reader needs: which file inside the pinned checkout
         produced the number. `store.scrub` would otherwise reduce it to a bare
         filename, losing the split-layout directory that says which graph it was.

@@ -152,7 +152,7 @@ class Rig:
         # lidar (x right, y forward: yawed -90 deg). Drive-JEPA places each camera on the ego frame and
         # AutoE2E never reads it, but an adapter that places cameras relative to the lidar (sensor2lidar =
         # inv(lidar2ego) @ camera2ego) turns every camera a quarter turn off with HUGSIM's lidar and drives
-        # camera-blind -- the bug Drive-JEPA's adapter had on nuScenes before #62.
+        # camera-blind -- the bug Drive-JEPA's adapter had on nuScenes until 13 Oct 2026.
         return {
             "camera2image": self.camera2image,
             "camera2ego": {c: m.tolist() for c, m in self.camera2ego.items()},

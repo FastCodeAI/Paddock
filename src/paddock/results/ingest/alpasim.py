@@ -85,7 +85,7 @@ _MODEL_BY_DRIVER = {
 #: Drive-JEPA's AlpaSim runs reached the leaderboard as Drive-JEPA's own. So for
 #: these models an unlisted driver is not ingested, and a new driver stays out
 #: until someone adds it here. Drive-JEPA's 0.1.6 and 0.1.7 drove the Physical AI
-#: AV retrain (gallops GC05); 0.1.0 to 0.1.3 were development drivers behind no
+#: AV retrain; 0.1.0 to 0.1.3 were development drivers behind no
 #: row. A model with no entry is filed by its prefix alone.
 RELEASED_DRIVERS = {
     "drivejepa": frozenset({"drivejepa-v2-driver-0.1.4", "drivejepa-v2-driver-0.1.4b"}),

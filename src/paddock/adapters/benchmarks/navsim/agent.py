@@ -18,7 +18,7 @@ paddock's dependencies installed. So it imports only from
 geometry -- and *those two modules must stay 3.9-importable*: numpy-only,
 no ``match``, no 3.10+ syntax evaluated at import. A ``match`` statement in
 ``protocol.py`` would fail every NAVSIM run inside hydra with only a log tail
-to show for it. ``tests/test_navsim_adapter.py`` compiles them under a 3.9
+to show for it. ``src/paddock/adapters/benchmarks/navsim/tests/test_harness.py`` compiles them under a 3.9
 interpreter when the site has one.
 
 Three things here exist because the fork made them necessary:

@@ -1,5 +1,19 @@
 # Constant velocity (the floor)
 
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Upstream | none: paddock's own code |
+| Adapter | [`adapters/models/constant_velocity/`](../../src/paddock/adapters/models/constant_velocity/) |
+| Environment | uv, Python 3.11 |
+| Cameras | `CAM_FRONT` |
+| Plan | waypoints, 0.5 s apart, 3 s ahead |
+| Paddock can run it on | [alpasim](../benchmarks/alpasim.md), [nuscenes](../benchmarks/nuscenes.md), [bench2drive](../benchmarks/bench2drive.md), [comma2k19](../benchmarks/comma2k19.md), [nuplan](../benchmarks/nuplan.md) |
+| Size, licence, training data | [comparison.md](comparison.md) |
+
+<!-- /summary -->
+
 Not a model. It holds the ego's measured speed on a straight line and never
 steers, and it is here because **a closed-loop score is uninterpretable without
 it**.

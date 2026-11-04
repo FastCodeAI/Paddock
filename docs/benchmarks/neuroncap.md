@@ -1,5 +1,17 @@
 # neuroNCAP
 
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Loop | closed loop |
+| Dataset | `nuscenes` |
+| Primary metric | `ncap_score` |
+| Adapter | [`adapters/benchmarks/neuroncap/`](../../src/paddock/adapters/benchmarks/neuroncap/) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md), [wajepa](../models/wajepa.md) |
+
+<!-- /summary -->
+
 Closed-loop safety scoring. A NeuRAD render of a real nuScenes sequence is
 driven by the model under test while a staged actor is manoeuvred onto a
 collision course; the score reflects how much of the impact the model avoided.
@@ -34,7 +46,7 @@ than the run itself.
 | waypoint grid | 0.5 s | The collision lookahead and reference-speed calculation both assume it. |
 
 `--engine.waypoint-dt` exists to keep them apart; see `patches/neuro-ncap/0001`.
-`tests/test_neuroncap_harness.py` asserts every scenario file still steps at
+`src/paddock/adapters/benchmarks/neuroncap/tests/test_harness.py` asserts every scenario file still steps at
 0.1 s, because drifting back to 0.5 s would silently compare models at a rate
 one of them cannot use.
 
@@ -54,7 +66,7 @@ scenario file's `time-step` (`engine.py:94`).
 
 The vendor default is 0.5 s, i.e. 2 Hz (`components/scenario.py:21`). The
 tracked files under `scenarios_10hz/` override it to 0.1, and
-`tests/test_neuroncap_harness.py` asserts all 20 still do.
+`src/paddock/adapters/benchmarks/neuroncap/tests/test_harness.py` asserts all 20 still do.
 
 Nothing per-model changes the rate. openpilot duplicates each frame internally
 to feed supercombo at the 20 Hz it expects
@@ -318,7 +330,7 @@ the closed-loop value had been telling the model it was driving a right-hand-dri
 car in Boston.
 
 **Fixed in `12f3250`**, committed 2026-09-01T00:44:56Z. Both paths now pass
-`[1, 0]`, and `tests/test_openpilot_traffic_convention.py` parses the constant out
+`[1, 0]`, and `src/paddock/adapters/models/openpilot/tests/test_traffic_convention.py` parses the constant out
 of both files and fails if they ever disagree again — they are separate constants
 in separate files, because the two paths load openpilot differently, which is how
 they came to disagree in the first place.
@@ -361,7 +373,7 @@ scene with no renderer checkpoint on this machine.
 The files under `scenarios_10hz/` are the upstream scenario files with
 `time-step: 0.5` changed to `0.1` and nothing else — verified one line per file
 at porting time. `preflight` refuses a sweep with any of the 20 missing, and
-`tests/test_neuroncap_harness.py` pins the set both ways: no file missing, and
+`src/paddock/adapters/benchmarks/neuroncap/tests/test_harness.py` pins the set both ways: no file missing, and
 no file present that is not in it.
 
 Not every scene is in every category — 0099 is stationary-only — so `episodes()`
@@ -457,7 +469,7 @@ and yaw rate its logged poses give at the decision; the steering angle is the
 one the bicycle model needs for that yaw rate, since neuroNCAP logs none. C is
 NAVSIM v1's six comfort checks on the driven path. The simulator matters most
 for comfort: on 235 stored Drive-JEPA decisions, the raw plan failed comfort on
-51 that NAVSIM's driven path passed (review of #102).
+51 that NAVSIM's driven path passed.
 
 **What it needs.** A drivable raster per scene, built once with neuroNCAP's own
 interpreter, which has the nuScenes map API. The builder reads nuScenes' **map
@@ -478,7 +490,7 @@ the scenes that have no raster. Actor categories come from
 the dataset's own `instance.json` and `category.json`: every actor in
 `actors.json` is a nuScenes instance, the inserted one included.
 
-**How the geometry is held to the benchmark's** (2026-10-21, shakaal):
+**How the geometry is held to the benchmark's** (2026-10-21):
 
 | check | result |
 |---|---|
@@ -693,7 +705,7 @@ buys: preflight is the cheap check that runs before everything else, often on a
 box already busy, and it should not be the largest allocation in the run.
 
 **This is not hypothetical -- it is why the check exists.** As extracted on
-2026-09-04, the shakaal copy of nuScenes had 177 of 850 scenes with no lidar at
+2026-09-04, one site's copy of nuScenes had 177 of 850 scenes with no lidar at
 all, because `extract_nuscenes.sh` took `samples/CAM_*` and nothing else. Three
 of those scenes -- 0796, 0921 and 0923 -- are in the official 20 pairs. The
 full-set sweep spent roughly 13 GPU-hours on it: every attempt failed those
@@ -720,7 +732,7 @@ explained in [What these models are](../models/comparison.md#notes-moved-from-th
 
 ### Notes on the matrix cells
 
-⊙ Re-measured with the camera-frame fix (#62): 4.13, against 3.57 camera-blind.
+⊙ Re-measured with the camera-frame fix of 13 Oct 2026: 4.13, against 3.57 camera-blind.
 See the neuroNCAP table.
 
 § Not run — zero by construction. Every neuroNCAP scenario is staged so that an
@@ -751,7 +763,7 @@ all 200 runs. Runs are seeded 0-9, so every model met identical scenario jitter.
 | VisionPilot | 2.53 ±1.60 | 1.17 ±1.38 | 0.08 ±0.18 | **1.58** | 85.5% |
 | Baseline (Constant Velocity) | 0.00 | 0.00 | 0.00 | 0.00 § | 100.0% |
 
-⊙ Measured after the camera-frame fix (#62), run `20261012T224707-f11ac0`. The
+⊙ Measured after the camera-frame fix, run `20261012T224707-f11ac0`. The
 camera-blind run (`20260905T220225-f11ac0`) scored 4.23 / 2.42 / 3.39, overall 3.57,
 with 45.5% collisions. Paired over the 20 scenario-scene pairs the fix is worth
 +0.56 (SE 0.44, t 1.28), mostly stationary (+0.77, SE 0.30) and side.
@@ -838,7 +850,7 @@ frontal-0103 the fix was worth −0.16, and on side-0103 +0.36, so it moved
 scenarios in both directions. AutoE2E's row (run `20261026T233951-743060`) is
 likewise its first `valid: true` closed-loop score here: two earlier sweeps
 with the byte-identical checkpoint (sha256 `120a2163...`) read `valid: false`
-under `#82`'s site-env-override rule because the checkpoint was passed in
+under the site-env-override rule because the checkpoint was passed in
 through a site-specific `AUTOE2E_CHECKPOINT` override rather than found at
 `model.yaml`'s declared `{weights}/auto_e2e/...` path; this run moved the file
 there instead.

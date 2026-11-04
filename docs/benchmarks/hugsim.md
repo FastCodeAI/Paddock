@@ -1,5 +1,17 @@
 # HUGSIM
 
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Loop | closed loop |
+| Dataset | `hugsim` |
+| Primary metric | `hd_score` |
+| Adapter | [`adapters/benchmarks/hugsim/`](../../src/paddock/adapters/benchmarks/hugsim/) |
+| Models paddock can run on it | [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md) |
+
+<!-- /summary -->
+
 HUGSIM ([hyzhou404/HUGSIM](https://github.com/hyzhou404/HUGSIM), data
 [XDimLab/HUGSIM](https://huggingface.co/datasets/XDimLab/HUGSIM)) is a closed-loop
 driving simulator built on 3D Gaussian splatting. Each scene is a reconstruction of
@@ -180,9 +192,8 @@ What to read with them:
 - **Neither run is today's adapter.** Drive-JEPA was served by the adapter as of
   `ac7788f` (22 Oct) plus a per-call record of its 32 candidates; at that commit it
   fed cameras uncropped and picked on the plain score. Main now crops to the
-  OpenScene camera (#106) and turns momentum selection on (#95). AutoE2E was served
-  by `b507811` (20 Oct), unmodified; its adapter has changed since in #92, #97, #98,
-  #107 and #108. A re-run on main may differ for both; each `run.json` says so.
+  OpenScene camera and turns momentum selection on. AutoE2E was served
+  by `b507811` (20 Oct), unmodified; its adapter has changed five times since. A re-run on main may differ for both; each `run.json` says so.
 - **Drive-JEPA was rendered the front camera only.** The released model's forward
   reads only the front camera (it encodes the two front frames and slices
   `lidar2img` to that camera), so the black side and rear frames are never read.

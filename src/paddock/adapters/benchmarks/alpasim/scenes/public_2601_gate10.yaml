@@ -1,5 +1,5 @@
 # The regression gate's AlpaSim scenes. the 10 drawn on 2026-10-27 (seed 20261027) from the 50 public_2601 scenes
-# downloaded on shakaal, by turn and speed, with each scene that could not be used
+# already downloaded, by turn and speed, with each scene that could not be used
 # swapped for a seeded pick from its own group, else its own turn, among the scenes on
 # disk and in public_2601_30scenes_26p01.csv (the scene list the driver profiles hand the wizard):
 #   clipgt-68e53160-f9d1-4070-9434-bf50c55652d3 (left/slow) -> clipgt-bae463d3-655b-4b54-ac8e-1c982219d829 (left/medium): not in public_2601_30scenes_26p01.csv, so the wizard cannot find it

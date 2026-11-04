@@ -1,4 +1,18 @@
-# Qwen-Drive-1.0 in paddock
+# Qwen-Drive 1.0
+
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Upstream | [QwenLM/Qwen-Drive-1.0](https://github.com/QwenLM/Qwen-Drive-1.0) at `28091c1` |
+| Adapter | [`adapters/models/qwendrive/`](../../src/paddock/adapters/models/qwendrive/) |
+| Environment | uv, Python 3.12 |
+| Cameras | `CAM_FRONT`, `CAM_FRONT_LEFT`, `CAM_FRONT_RIGHT` |
+| Plan | waypoints, 0.5 s apart, 5 s ahead |
+| Paddock can run it on | [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [neuroncap](../benchmarks/neuroncap.md), [comma2k19](../benchmarks/comma2k19.md), [alpasim](../benchmarks/alpasim.md) |
+| Size, licence, training data | [comparison.md](comparison.md) |
+
+<!-- /summary -->
 
 Qwen-Drive-1.0-4B (Qwen team + HUST, September 2026, Apache-2.0) is a Qwen3.5-4B
 vision-language model with a 1 B-parameter "Planning Expert" attached: a
@@ -124,12 +138,12 @@ valid, one rollout per scene, `scene_score` **0.7001** (progress 0.787), five
 at-fault collisions and two off-road events. The native runs on the same
 simulator image scored 0.6672, three of their scenes ending on the forward-reach
 refusal above; with one rollout per scene the two are level. The native runs
-were made by the native driver at the Fastcode site and are not in `results/`,
+were made by the native driver outside paddock and are not in `results/`,
 so the 0.6672 cannot be re-checked from this repository.
 
 The run's `run.json` names paddock commit `a074fe5`. That is this route's
 build commit before it was rebased onto `main`, and no branch holds it. In the
-commit that added this route to `main` (#123) the files this route changed
+commit that added this route to `main` (`caffc85`) the files this route changed
 differ from it only in comments, so check out that one to reproduce the run.
 
 ## Filling three views from one camera

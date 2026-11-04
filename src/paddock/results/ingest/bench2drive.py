@@ -187,7 +187,7 @@ def _driven_off_protocol(model_env: dict[str, Any]) -> float | None:
     """The rate this run was driven at, when that is not the benchmark's protocol.
 
     ``None`` for every run driven at 20 Hz, which is every run that does not say
-    otherwise -- before #106 the rate was only in the record when an operator put
+    otherwise -- before 23 Oct 2026 the rate was only in the record when an operator put
     it there. Read only for source runs that recorded no ``infer_hz``.
     """
     raw = (model_env or {}).get("PADDOCK_INFER_HZ")
@@ -396,9 +396,9 @@ def ingest(
         "model_env": {**recorded_env, **dict(model_env or {})},
         "source_config_read": f"{sum(1 for c in configs if c)}/{len(used)} source runs",
     }
-    # The model.yaml env each source run was made under (#99). Two values are
+    # The model.yaml env each source run was made under. Two values are
     # two settings of the model, not one experiment. `_agreed` skips a missing
-    # value, so a run that recorded none (every run before #99) is counted
+    # value, so a run that recorded none (every run before 21 Oct 2026) is counted
     # rather than read as agreeing with the others.
     declared = _agreed([c.get("declared_env") for c in configs])
     undeclared = sum(1 for c in configs if "declared_env" not in c) if declared is not None else 0
@@ -422,9 +422,9 @@ def ingest(
     other_rig = rigs is not None and rigs != rig.DEFAULT
     if other_rig:
         config["camera_rig"] = rigs
-    # How often the node was asked for a plan (`infer_hz`, #106), judged from the runs' own record
+    # How often the node was asked for a plan (`infer_hz`), judged from the runs' own record
     # and never from model.yaml as it is when the ingest runs. A run that recorded no rate was asked
-    # every tick (or, before #106, at a rate in `model_env`: `_driven_off_protocol`); one that kept
+    # every tick (or, before 23 Oct 2026, at a rate in `model_env`: `_driven_off_protocol`); one that kept
     # no config at all is not known. The rate the model declared ranks; the host's PADDOCK_INFER_HZ
     # in its place is recorded with the declared one beside it (`planning_hz`) and does not, nor do
     # two rates in one pool. In the config only when some run was asked slower than every tick, or
@@ -474,7 +474,7 @@ def ingest(
         )
     if undeclared:
         note = (note + " " if note else "") + (
-            f"{undeclared} of {len(used)} source runs recorded no declared_env (made before #99), "
+            f"{undeclared} of {len(used)} source runs recorded no declared_env (made before 21 Oct 2026), "
             "so which model.yaml env their routes ran is not known and this run does not rank."
         )
     # The override is layered on top of what the runs recorded, so a key that is
@@ -495,7 +495,7 @@ def ingest(
             f"{keys} {was} supplied by the ingest config and recorded by no source run, "
             "so it is the operator's assertion about the campaign, not a reading from it."
         )
-    # Runs that recorded no rate (before #106) were driven at PADDOCK_INFER_HZ in `model_env`;
+    # Runs that recorded no rate (before 23 Oct 2026) were driven at PADDOCK_INFER_HZ in `model_env`;
     # at the rate the model's own model.yaml declares, that is on protocol, and ranks.
     driven = None if any("infer_hz" in c for c in kept) else _driven_off_protocol(config["model_env"])
     native = _registered_native_hz(model) if driven is not None else None

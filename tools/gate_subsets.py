@@ -600,7 +600,7 @@ def replace_unusable_alpasim(suites_csv: Path, scene_cache: Path, directory: Pat
     picked = {g: sorted(ids) for g, ids in picked.items() if ids}
     header = (
         f"the 10 drawn on {ALPASIM_DATE} (seed {ALPASIM_SEED}) from the 50 public_2601 scenes\n"
-        "downloaded on shakaal, by turn and speed, with each scene that could not be used\n"
+        "already downloaded, by turn and speed, with each scene that could not be used\n"
         "swapped for a seeded pick from its own group, else its own turn, among the scenes on\n"
         f"disk and in {ALPASIM_CATALOG} (the scene list the driver profiles hand the wizard):\n"
         + "".join(f"  {line}\n" for line in swaps)
@@ -639,7 +639,7 @@ def draw_alpasim(suites_csv: Path, scene_cache: Path, n: int = 10, directory: Pa
     # Group by group, as the subset file lists them: the gate's tests compare the two in order.
     ids = [i for group in sorted(picked) for i in picked[group]]
     where = (
-        f"{n} of the {pool} scenes of {ALPASIM_SUITE} downloaded on shakaal (not of all {len(uuids)}),\n"
+        f"{n} of the {pool} scenes of {ALPASIM_SUITE} already downloaded (not of all {len(uuids)}),\n"
         f"grouped by turn (left or right from {ALPASIM_TURN_DEG:g} degrees of heading change over the clip)\n"
         f"and speed band ({_counts(groups)}), every group the same share."
     )

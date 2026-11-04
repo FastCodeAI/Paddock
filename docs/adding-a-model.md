@@ -31,7 +31,7 @@ on coordinate frames.
 | 3 | `src/paddock/adapters/models/<name>/policy.py` | **create** — three methods |
 | 4 | `src/paddock/adapters/models/<name>/setup.sh` | **create** — build the env |
 | 5 | `src/paddock/adapters/models/<name>/tests/test_policy.py` | **create** — fixture test |
-| 6 | `docs/models/<name>.md` | **create** — quirks and reference numbers |
+| 6 | `docs/models/<name>.md` | **create** — quirks and reference numbers; `python -m tools.doc_summaries` writes its summary table |
 | 7 | `paddock.toml` | **your machine only** — never committed |
 
 Nothing else. In particular you do **not** register your model in any central
@@ -111,7 +111,7 @@ benchmarks: [kitscenes, neuroncap]
 `{runs}`, `{data.NAME}`, `{data.NAME.tiers}`, `{site}` are expanded from the
 site's `paddock.toml` at launch. `tests/test_portability.py` fails the build if
 you write a home directory or a mount point here — that test is why this repo
-still works at the other site.
+still works at another site.
 
 Four fields are worth more thought than they look:
 
@@ -227,7 +227,7 @@ rivals. See [architecture.md](architecture.md#where-does-a-file-belong).
 
 Write `docs/models/<name>.md`: environment, weights and where they come from,
 quirks, and the reference numbers your run produced. The next person to touch
-this model is probably at the other site.
+this model is probably at another site.
 
 To put the model in the README's support matrix, add it to
 [docs/support-matrix.toml](support-matrix.toml): a `[[model]]` entry and a
@@ -272,7 +272,7 @@ in order after checkout.
 
 ## When the environment resists you instead
 
-This checklist covers what to write. [SKILLS.md](../SKILLS.md) covers what goes
+This checklist covers what to write. [Troubleshooting](troubleshooting.md#bringing-up-a-new-model-or-benchmark) covers what goes
 wrong doing it — `uv sync` failing on an extra you do not need, a `setup.sh`
 missing a dependency the shared machinery assumes, a model that needs a dataset
 your benchmark does not use — the failures that look nothing like a paddock bug

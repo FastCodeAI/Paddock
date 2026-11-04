@@ -317,13 +317,13 @@ val, and all 14 neuroNCAP scenes are val scenes (checked against
 
 METEOR trained on none of paddock's datasets, so it has no exposure section;
 the unequal terms run the other way. It is an 8-camera network; KITScenes hands
-it six (#40), the two telephoto slots stay absent (the convention it was
+it six, the two telephoto slots stay absent (the convention it was
 trained with for one missing camera), it has no driving-command input in the
 released ONNX, and that ONNX applies no ImageNet normalisation although its
 training loader did (verified against the checkpoint's first conv; see
 `docs/models/meteor.md`). Its 1.879 ADE is longitudinal above 13 m/s, where its
 plans plateau near 35 m at 3 s, a prior from urban Japanese driving. The
-front-only run made before #40 scored 4.784 and is kept as an ablation: 2.9 m
+front-only run made before KITScenes passed the ring scored 4.784 and is kept as an ablation: 2.9 m
 of ADE was the missing cameras. Read the KITScenes cell as "the released model,
 on a rig and a domain it never saw", which is the same caveat the other rows
 carry in different proportions.
@@ -410,7 +410,7 @@ number unchanged — curvature reaches the plan only through the longitudinal ca
 and will not be reproduced by a re-run. Expect the open-loop rows to move most
 and the closed-loop ones least: Bench2Drive and neuroNCAP are urban and slow
 enough that the cap rarely binds, which is why the defect survived them.
-`docs/models/VISION_PILOT_GUIDE.md` has the derivation; the re-sweep is an open
+`docs/models/visionpilot.md` has the derivation; the re-sweep is an open
 item in `docs/ROADMAP.md`.
 
 ## Discrepancies against what the adapters declare
@@ -430,7 +430,7 @@ nobody re-derives them.
    (`CAMERA_SLOTS`), so a simulator renders three cameras and the model sees four
    images. `model.yaml` lists the four in `camera_views`.
 3. **AutoSpeed parameter count: 9.33 M or 9.31 M.** The measurement in
-   [VISION_PILOT_GUIDE.md](VISION_PILOT_GUIDE.md) says 9.33 M; a later count
+   [visionpilot.md](visionpilot.md) says 9.33 M; a later count
    says 9.31 M. The total is 28.1 M either way. Trivial, and noted only because
    this repo's habit is to say which number it used: `model.yaml` carries 28.1.
 
@@ -466,7 +466,7 @@ should not have. Fixed September 2026; on a 20-sample comma2k19 smoke the
 correction moved ADE@3s from 15.09 to 5.28. **Every VisionPilot figure in the
 README predates it** and will not be reproduced by a re-run — the closed-loop
 ones least, since urban scenes rarely reach the cap, and the comma2k19 and
-KITScenes ones most. `docs/models/VISION_PILOT_GUIDE.md` §"Curvature scale" has
+KITScenes ones most. `docs/models/visionpilot.md` §"Curvature scale" has
 the derivation; re-sweeping VisionPilot is an open item in `docs/ROADMAP.md`.
 
 ◊ METEOR plans **3 s**; NAVSIM scores **4 s**. A quarter of every scored plan is
@@ -482,9 +482,9 @@ plus that extension, not as a 4 s planner; its 3 s output is scored without any
 extension on nuScenes and KITScenes. See `docs/models/meteor.md`.
 
 ◇ METEOR is TIER IV's 8-camera multi-task network, run from its released
-camera-only ONNX. KITScenes hands it the six-camera ring (#40), so only its two
+camera-only ONNX. KITScenes hands it the six-camera ring, so only its two
 telephoto slots are absent; it has no driving-command input. Fed the front
-camera alone, as the harness did before #40, it scored 4.784 -- the run is kept
+camera alone, as the harness did before 14 Sep 2026, it scored 4.784 -- the run is kept
 as an ablation. With six cameras the residual error is longitudinal above
 13 m/s, where its plans plateau near 35 m at 3 s (a prior from its training
 domain). The feed matches the authors' reference loader byte for byte. On

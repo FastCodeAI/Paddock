@@ -56,7 +56,7 @@ and the guards that skip anything which is not a Python file in a linted tree.
 
 Blocking means exit 2, which hands the failure back to Claude to fix before it
 moves on. mypy is advisory for the same reason its CI job cannot fail the build:
-there is a backlog of unannotated rescued code, and a check that reddens
+there is a backlog of older unannotated code, and a check that reddens
 unrelated work is a check people learn to ignore. See `[tool.mypy]` in
 `pyproject.toml`.
 

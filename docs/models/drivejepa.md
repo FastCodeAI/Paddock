@@ -1,4 +1,18 @@
-# Drive-JEPA — Adapter Notes
+# Drive-JEPA
+
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Upstream | [linhanwang/Drive-JEPA](https://github.com/linhanwang/Drive-JEPA) at `e21f474` |
+| Adapter | [`adapters/models/drivejepa/`](../../src/paddock/adapters/models/drivejepa/) |
+| Environment | conda, Python 3.9 |
+| Cameras | `CAM_FRONT`, `CAM_FRONT_LEFT`, `CAM_FRONT_RIGHT`, `CAM_BACK` |
+| Plan | waypoints, 0.5 s apart, 4 s ahead |
+| Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [kitscenes](../benchmarks/kitscenes.md), [neuroncap](../benchmarks/neuroncap.md), [bench2drive](../benchmarks/bench2drive.md), [nuscenes](../benchmarks/nuscenes.md), [nuplan](../benchmarks/nuplan.md), [alpasim](../benchmarks/alpasim.md), [hugsim](../benchmarks/hugsim.md) |
+| Size, licence, training data | [comparison.md](comparison.md) |
+
+<!-- /summary -->
 
 > Paths in this guide are written as placeholders: `<repos>` is
 > `[roots.repos]` from your `paddock.toml`, `<weights>` is `[roots.weights]`.
@@ -17,12 +31,10 @@ plan the same way and differ in everything around it.
 | Momentum-aware selection | on, declared in `model.yaml` (`DRIVEJEPA_MOMENTUM`); acts only in closed loop | on from 0.1.4b |
 | Rows in `results/` | every Drive-JEPA row that was run through paddock | none (its AlpaSim rows are ingested) |
 
-In the paddock node, momentum is declared on in `model.yaml`. The run id does not
-yet record a value a `model.yaml` declares
-([issue #99](https://github.com/FastCodeAI/Paddock/issues/99)), so a
-closed-loop run started before momentum was declared on must not be continued
-with `--resume` after it: the check `--resume` makes would pass, and the run
-would mix episodes driven both ways under one id.
+In the paddock node, momentum is declared on in `model.yaml`. The run id covers
+what a `model.yaml` declares, so `--resume` refuses to continue a closed-loop
+run started before momentum was declared on, which would mix episodes driven
+both ways under one id.
 
 The perception-free NAVSIM v1 agent is a third thing with its own page,
 [drivejepa_free.md](drivejepa_free.md).
@@ -56,9 +68,8 @@ scorer that rates them and picks one.
    plain *S* is used, as upstream's evaluation loop does. The first replan of a
    rollout has no previous plan and also uses plain *S*.
 
-This is the step [PR #59](https://github.com/FastCodeAI/Paddock/pull/59) put
-into the paddock node; here it has been on since 0.1.4b. The effect #59
-measured for it on neuroNCAP was measured on a paddock node that could not see
+The paddock node has the same step; here it has been on since 0.1.4b. The
+effect measured for it on neuroNCAP came from a paddock node that could not see
 the camera (next paragraph) and is to be re-measured; the 0.1.4b figure on this
 page comes from this driver and does not depend on that.
 
@@ -68,7 +79,7 @@ and projects them with each camera's matrix as if they were lidar coordinates.
 The paddock node composed nuScenes' real lidar pose into that matrix, which put
 every such point off the front image, so on neuroNCAP and nuScenes open-loop
 the model planned from ego status alone
-([PR #62](https://github.com/FastCodeAI/Paddock/pull/62) corrects it). This
+(fixed on 13 Oct 2026). This
 driver has no lidar in the chain: AlpaSim's `rig_to_camera` is used as the
 camera's pose in the car's frame, unchanged. With the front camera AlpaSim
 declares, a point 10 m ahead projects to the image centre, a point to the left

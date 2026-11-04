@@ -16,8 +16,10 @@
     "limit": 3
   },
   "hardware": {},
+  "provenance": {},
   "status": "complete",
-  "valid": true,
-  "notes": "",
+  "valid": false,
+  "superseded_by": "20261008T004723-a369d1",
+  "notes": "Superseded by 20261008T004723-a369d1: a 3-sample check; the full 223-sample run replaces it, and docs/benchmarks/kitscenes.md still quotes this one.",
   "ingested_from": ""
 }

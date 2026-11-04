@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Post-edit hook: mypy on the edited file. ADVISORY -- never blocks.
 #
-# Advisory on purpose. The 9k lines rescued in M2 are unannotated, so a blocking
+# Advisory on purpose. Older code brought in from research scripts is unannotated, so a blocking
 # type check would fail on code nobody is currently editing and train everyone
 # to ignore the output. The lenient settings are in [tool.mypy] in
 # pyproject.toml, and mypy is deliberately absent from `make check`: it does not
 # gate a PR.
 #
-# Tighten this -- here and in pyproject.toml -- as the migration backlog in
+# Tighten this -- here and in pyproject.toml -- as the list of older files in
 # [tool.ruff.lint.per-file-ignores] shrinks, not before.
 
 # shellcheck source=lib/common.sh

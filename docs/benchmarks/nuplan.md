@@ -1,5 +1,17 @@
 # nuPlan
 
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Loop | open loop |
+| Dataset | `nuplan` |
+| Primary metric | `ade` |
+| Adapter | [`adapters/benchmarks/nuplan/`](../../src/paddock/adapters/benchmarks/nuplan/) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [visionpilot](../models/visionpilot.md) |
+
+<!-- /summary -->
+
 Open-loop trajectory accuracy — ADE and FDE against the recorded future — on
 nuPlan v1.1's original logs, over a balanced set of tagged scenario moments.
 
@@ -58,7 +70,7 @@ split = "mini"
 
 ## The scored set is in the adapter, not in site config
 
-`--limit` aside, both sites must score the same moments, so `SCENARIOS_PER_TYPE`
+`--limit` aside, every site must score the same moments, so `SCENARIOS_PER_TYPE`
 and `MIN_SEPARATION_S` are constants in `harness.py` rather than settings. Three
 rules build the set, and each exists because of a way the count would otherwise
 overstate what is measured:
@@ -178,7 +190,7 @@ it goes straight — a limitation already visible on nuScenes and Bench2Drive.
 
 Its row moved between the first measurement and this one, from ADE 3.192 to
 2.246, and not because of anything in this adapter: merging `main` brought
-`VISIONPILOT_SETPOINT` from #24, which latches the ACC set-speed at the scored
+`VISIONPILOT_SETPOINT`, which latches the ACC set-speed at the scored
 frame instead of at the first history frame. The earlier run is deleted rather
 than kept beside the new one, so `results/nuplan/` holds one record per model
 and no reader has to know a commit message to tell which counts.
