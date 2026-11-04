@@ -1,8 +1,9 @@
 # Adding a model
 
 > **Start with `paddock new model <name>`** — it scaffolds the directory below
-> and renames the template consistently. Then `paddock verify --model <name>`
-> checks the contract before you spend a sweep on it. The shared mechanics and the
+> and renames the template consistently. Then `paddock setup --model <name>` builds
+> its environment, and `paddock verify --model <name>` checks the contract before
+> you spend a sweep on it. The shared mechanics and the
 > full contract are in [adding-an-adapter.md](adding-an-adapter.md); this page is the
 > model-specific detail.
 
