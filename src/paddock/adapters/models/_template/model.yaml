@@ -126,6 +126,13 @@ capabilities:
   #   - dataset: nuscenes
   #     split: train
 
+# Settings that change what a score means, each with the line the leaderboard
+# prints under a ranked run that set one to something other than the declared
+# default. `{value}` is replaced by what the run set. Say what the setting did
+# to the measurement, not that it was set.
+# score_notes:
+#   MYMODEL_HORIZON_S: "plan continued to {value} s by paddock; the model itself plans 3 s"
+
 # Benchmarks this model is expected to work on. `paddock doctor` uses it to
 # report coverage; it does not restrict what you can run.
 benchmarks: []

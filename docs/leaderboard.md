@@ -1,9 +1,24 @@
 # Paddock leaderboard
 
 94 runs across 9 benchmarks.
-42 run(s) excluded as invalid — shown at the end, never averaged in.
+44 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
+
+### n = 30, scene set f110e944
+
+| model | run | n | scene_score ↑ | progress ↑ | collision_rate ↓ | collision_at_fault ↓ | offroad ↓ | duration_frac_20s ↑ | dist_to_gt_trajectory ↓ |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| alpamayo15 | 20261029T200113-9d900c | 30 | 0.795 | 0.843 | 0.100 | 0.033 | 0.133 | 0.657 | 2.679 |
+| openpilot | openpilot_020_30scenes | 30 | 0.773 | 0.724 | 0.200 | 0.000 | 0.100 | 0.671 | 1.787 |
+| qwendrive | 20261027T215528-d231d8 | 30 | 0.700 | 0.787 | 0.333 | 0.167 | 0.067 | 0.631 | 2.177 |
+| visionpilot | visionpilot_v2_30scenes | 30 | 0.629 | 0.636 | 0.367 | 0.133 | 0.033 | 0.570 | 1.740 |
+| constant_velocity | cv_023_20hz_30scenes | 30 | 0.488 | 0.541 | 0.267 | 0.067 | 0.167 | 0.447 | 2.189 |
+| meteor | meteor_011_published_30scenes | 30 | 0.423 | 0.430 | 0.333 | 0.033 | 0.167 | 0.469 | 1.694 |
+| drivejepa | drivejepa_014_20hz_30scenes | 30 | 0.421 | 0.509 | 0.400 | 0.233 | 0.167 | 0.465 | 2.056 |
+| autoe2e | 20261022T045847-86b955 | 30 | 0.169 | 0.287 | 0.333 | 0.300 | 0.233 | 0.121 | 2.855 |
+
+### n = 10, scene set f4241f1e
 
 | model | run | n | scene_score ↑ | progress ↑ | collision_rate ↓ | collision_at_fault ↓ | offroad ↓ | duration_frac_20s ↑ | dist_to_gt_trajectory ↓ |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -11,50 +26,64 @@
 | alpamayo15 | alpamayo_proxy_referee_20hz | 10 | 0.900 | 0.960 | 0.100 | 0.100 | 0.000 | 0.740 | 3.170 |
 | constant_velocity | cv_023_20hz_pilot10 | 10 | 0.885 | 0.829 | 0.200 | 0.000 | 0.000 | 0.653 | 2.507 |
 | visionpilot | visionpilot_v2_smoke_pilot10_handover_blend | 10 | 0.849 | 0.820 | 0.300 | 0.100 | 0.000 | 0.699 | 1.467 |
-| alpamayo15 | 20261029T200113-9d900c | 30 | 0.795 | 0.843 | 0.100 | 0.033 | 0.133 | 0.657 | 2.679 |
-| openpilot | openpilot_020_30scenes | 30 | 0.773 | 0.724 | 0.200 | 0.000 | 0.100 | 0.671 | 1.787 |
-| qwendrive | 20261027T215528-d231d8 | 30 | 0.700 | 0.787 | 0.333 | 0.167 | 0.067 | 0.631 | 2.177 |
 | meteor | meteor_011_published_first10 | 10 | 0.687 | 0.607 | 0.300 | 0.000 | 0.000 | 0.589 | 2.045 |
-| visionpilot | visionpilot_v2_30scenes | 30 | 0.629 | 0.636 | 0.367 | 0.133 | 0.033 | 0.570 | 1.740 |
 | drivejepa | drivejepa_014_20hz | 10 | 0.503 | 0.565 | 0.400 | 0.200 | 0.100 | 0.462 | 2.443 |
-| constant_velocity | cv_023_20hz_30scenes | 30 | 0.488 | 0.541 | 0.267 | 0.067 | 0.167 | 0.447 | 2.189 |
-| meteor | meteor_011_published_30scenes | 30 | 0.423 | 0.430 | 0.333 | 0.033 | 0.167 | 0.469 | 1.694 |
-| drivejepa | drivejepa_014_20hz_30scenes | 30 | 0.421 | 0.509 | 0.400 | 0.233 | 0.167 | 0.465 | 2.056 |
-| autoe2e | 20261022T045847-86b955 | 30 | 0.169 | 0.287 | 0.333 | 0.300 | 0.233 | 0.121 | 2.855 |
 
 ## bench2drive
+
+### n = 50, scene set 40c29d24
 
 | model | run | n | driving_score ↑ | route_completion ↑ | infraction_penalty ↑ | collision_rate ↓ | n_runs ↑ | n_crashed ↑ | duration_s ↑ |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | drivejepa | native50-2hz-40c29d24c37d542a-447e23 | 50 | 57.604 | 70.965 | 0.848 | 0.200 | 1.000 | 0.000 | 354.308 |
-| alpamayo15 | native50-10hz-084418258d833a9f-c4d076 | 49 | 55.821 | 76.516 | 0.725 | 0.408 | 1.000 | 0.000 | 1986.029 |
-| constant_velocity | pooled50-3mps-40c29d24c37d542a-02b6ac | 50 | 48.308 | 74.651 | 0.615 | 0.540 | 1.000 | 0.000 | 194.900 |
-| constant_velocity | 20260908T084921-804913 | 24 | 47.943 | 74.682 | 0.635 | 0.583 | - | 0.000 | 451.080 |
+| constant_velocity [1] | pooled50-3mps-40c29d24c37d542a-02b6ac | 50 | 48.308 | 74.651 | 0.615 | 0.540 | 1.000 | 0.000 | 194.900 |
 | visionpilot | pooled50-40c29d24c37d542a-d94009 | 50 | 47.821 | 71.191 | 0.622 | 0.580 | 1.000 | 0.000 | 257.252 |
 | openpilot | pooled50-40c29d24c37d542a-c7d2b2 | 50 | 47.520 | 62.441 | 0.783 | 0.260 | 1.000 | 0.000 | 374.050 |
-| constant_velocity | pooled50-9mps-40c29d24c37d542a-13c440 | 50 | 43.574 | 72.699 | 0.577 | 0.580 | 1.000 | 0.000 | 123.802 |
+| constant_velocity [2] | pooled50-9mps-40c29d24c37d542a-13c440 | 50 | 43.574 | 72.699 | 0.577 | 0.580 | 1.000 | 0.000 | 123.802 |
 | alpamayo15 | pooled50-40c29d24c37d542a-36d2d0 | 50 | 43.043 | 72.317 | 0.655 | 0.540 | 1.000 | 0.000 | 3555.930 |
-| constant_velocity | pooled50-12mps-40c29d24c37d542a-0c11b2 | 50 | 42.193 | 72.125 | 0.558 | 0.560 | 1.000 | 0.000 | 108.372 |
-| constant_velocity | pooled50-15mps-40c29d24c37d542a-06f021 | 50 | 41.448 | 73.684 | 0.546 | 0.560 | 1.000 | 0.000 | 107.988 |
-| constant_velocity | pooled50-6mps-40c29d24c37d542a-35a5cb | 50 | 40.388 | 73.075 | 0.539 | 0.620 | 1.000 | 0.000 | 157.368 |
+| constant_velocity [3] | pooled50-12mps-40c29d24c37d542a-0c11b2 | 50 | 42.193 | 72.125 | 0.558 | 0.560 | 1.000 | 0.000 | 108.372 |
+| constant_velocity [4] | pooled50-15mps-40c29d24c37d542a-06f021 | 50 | 41.448 | 73.684 | 0.546 | 0.560 | 1.000 | 0.000 | 107.988 |
+| constant_velocity [5] | pooled50-6mps-40c29d24c37d542a-35a5cb | 50 | 40.388 | 73.075 | 0.539 | 0.620 | 1.000 | 0.000 | 157.368 |
 | drivejepa | pooled50-40c29d24c37d542a-1de367 | 50 | 31.706 | 39.101 | 0.862 | 0.160 | 1.000 | 0.000 | 1068.316 |
-| qwendrive | native50-2hz-084418258d833a9f-9b2bc9 | 49 | 17.075 | 64.299 | 0.291 | 0.939 | 1.000 | 0.000 | 812.441 |
 | autoe2e | pooled50-40c29d24c37d542a-cc7a9c | 50 | 15.297 | 26.371 | 0.596 | 0.720 | 1.000 | 0.000 | 2441.672 |
 | qwendrive | pooled50-40c29d24c37d542a-f250e0 | 50 | 12.921 | 50.191 | 0.300 | 0.900 | 1.000 | 0.000 | 3457.266 |
 | meteor | pooled50-40c29d24c37d542a-867d57 | 50 | 1.051 | 6.295 | 0.899 | 0.140 | 1.000 | 0.000 | 237.998 |
+
+- [1] constant_velocity: driven at a fixed 3 m/s, not the measured ego speed
+- [2] constant_velocity: driven at a fixed 9 m/s, not the measured ego speed
+- [3] constant_velocity: driven at a fixed 12 m/s, not the measured ego speed
+- [4] constant_velocity: driven at a fixed 15 m/s, not the measured ego speed
+- [5] constant_velocity: driven at a fixed 6 m/s, not the measured ego speed
+
+### n = 49, scene set 08441825
+
+| model | run | n | driving_score ↑ | route_completion ↑ | infraction_penalty ↑ | collision_rate ↓ | n_runs ↑ | n_crashed ↑ | duration_s ↑ |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| alpamayo15 | native50-10hz-084418258d833a9f-c4d076 | 49 | 55.821 | 76.516 | 0.725 | 0.408 | 1.000 | 0.000 | 1986.029 |
+| qwendrive | native50-2hz-084418258d833a9f-9b2bc9 | 49 | 17.075 | 64.299 | 0.291 | 0.939 | 1.000 | 0.000 | 812.441 |
+
+### n = 24, scene set a3fb3fbe
+
+| model | run | n | driving_score ↑ | route_completion ↑ | infraction_penalty ↑ | collision_rate ↓ | n_runs ↑ | n_crashed ↑ | duration_s ↑ |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| constant_velocity [1] | 20260908T084921-804913 | 24 | 47.943 | 74.682 | 0.635 | 0.583 | - | 0.000 | 451.080 |
+
+- [1] constant_velocity: driven at a fixed 3 m/s, not the measured ego speed
 
 ## comma2k19
 
 | model | run | n | ade ↓ | fde@1s ↓ | fde@2s ↓ | fde@3s ↓ | scored_horizon_s | ade@1s ↓ | ade@2s ↓ |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | alpamayo15 | 20260913T072437-b058c2 | 10165 | 0.900 | 0.499 | 0.973 | 1.654 | 4.000 | 0.386 | 0.616 |
-| qwendrive | 20260916T220846-971379 | 10165 | 1.159 | 0.632 | 1.296 | 2.094 | 5.000 | 0.475 | 0.801 |
+| qwendrive [1] | 20260916T220846-971379 | 10165 | 1.159 | 0.632 | 1.296 | 2.094 | 5.000 | 0.475 | 0.801 |
 | openpilot | 20260916T051616-2a91ca | 10165 | 1.507 | 0.804 | 1.703 | 2.712 | 10.000 | 0.598 | 1.035 |
 | constant_velocity | 20260916T162837-b89038 | 10165 | 1.639 | 0.734 | 1.786 | 3.286 | 3.000 | 0.537 | 1.017 |
 | autoe2e | 20261020T213543-417344 | 10165 | 2.016 | 1.380 | 2.232 | 3.084 | 6.000 | 1.160 | 1.593 |
 | visionpilot | 20260916T012719-03350c | 10165 | 4.045 | 1.652 | 4.553 | 8.146 | 4.000 | 1.149 | 2.462 |
 | drivejepa_free | 20260916T003407-c504e5 | 10165 | 16.048 | 10.887 | 18.016 | 26.248 | 4.000 | 7.800 | 12.077 |
 | meteor | 20261030T001935-0b8d0b | 10165 | 30.075 | 16.626 | 35.702 | 51.334 | 3.000 | 11.787 | 21.545 |
+
+- [1] qwendrive: one camera fills all three view slots (replicate); the model was trained on three real cameras
 
 ## hugsim
 
@@ -74,21 +103,27 @@
 | alpamayo15 | full-nonav | 223 | 0.921 | 0.332 | 0.990 | 2.003 | 3.415 | 2.364 | 0.552 |
 | alpamayo15 | full-nav | 223 | 1.002 | 0.362 | 1.088 | 2.158 | 3.486 | 2.364 | 0.543 |
 | alpamayo15 | full-letterbox | 223 | 1.176 | 0.418 | 1.284 | 2.535 | 3.384 | 2.364 | 0.619 |
-| openpilot | 20261008T004723-a369d1 | 223 | 1.248 | 0.618 | 1.398 | 2.355 | - | - | - |
+| openpilot [1] [2] [3] [4] | 20261008T004723-a369d1 | 223 | 1.248 | 0.618 | 1.398 | 2.355 | - | - | - |
 | visionpilot | 20260909T202724-153b04 | 223 | 1.534 | 0.700 | 1.567 | 3.089 | - | - | - |
 | openpilot | 20260930T154018-242869 | 223 | 1.595 | 0.828 | 1.801 | 2.904 | - | - | - |
 | openpilot | full223 | 223 | 1.599 | 0.836 | 1.808 | 2.894 | 18.731 | 2.364 | - |
 | openpilot | 20260901T175755-cc27fb | 223 | 1.599 | 0.836 | 1.808 | 2.894 | - | - | - |
-| openpilot | 20260930T014333-d329a6 | 223 | 1.649 | 0.826 | 1.848 | 3.070 | - | - | - |
+| openpilot [1] | 20260930T014333-d329a6 | 223 | 1.649 | 0.826 | 1.848 | 3.070 | - | - | - |
 | meteor | 20260914T215457-ab0586 | 223 | 1.879 | 0.695 | 2.040 | 4.034 | - | - | - |
 | drivejepa | kitscenes_e2e_final | 223 | 2.364 | 1.306 | 2.668 | 4.199 | 0.187 | - | - |
 | meteor | 20260914T185351-5e5223 | 223 | 4.784 | 2.334 | 5.542 | 9.011 | - | - | - |
 
+- [1] openpilot: route commands sent as the desire input (turn); the default sends none
+- [2] openpilot: camera height taken as 1.22x openpilot's to fit this dataset's rig
+- [3] openpilot: view tilted -1.7 degrees to fit this dataset's rig
+- [4] openpilot: frame cut to a 55 degree field of view to fit this dataset's rig
+
 ## navsim
+
+### n = 12146, scene set 82e33c68
 
 | model | run | n | epdms ↑ | no_at_fault_collisions ↑ | drivable_area_compliance ↑ | driving_direction_compliance ↑ | traffic_light_compliance ↑ | ego_progress ↑ | time_to_collision_within_bound ↑ |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| drivejepa | 2026.08.08.02.26.44 | 242 | 0.907 | 0.994 | 0.992 | 0.998 | 1.000 | 0.923 | 0.979 |
 | drivejepa | 20260902T173156-7e208f | 12146 | 0.843 | 0.984 | 0.985 | 0.991 | 0.998 | 0.889 | 0.979 |
 | qwendrive | 20260914T221802-80457c | 12146 | 0.840 | 0.982 | 0.964 | 0.993 | 0.998 | 0.820 | 0.977 |
 | openpilot | 20260911T161513-3a4c90 | 12146 | 0.747 | 0.970 | 0.913 | 0.954 | 0.998 | 0.712 | 0.965 |
@@ -96,24 +131,36 @@
 | alpamayo15 | 20260903T183818-5879c1 | 12146 | 0.608 | 0.941 | 0.788 | 0.890 | 0.998 | 0.596 | 0.939 |
 | autoe2e | 20261009T055926-3ceb18 | 12146 | 0.500 | 0.824 | 0.777 | 0.865 | 0.990 | 0.491 | 0.814 |
 | visionpilot | 20260902T175642-df5291 | 12146 | 0.431 | 0.727 | 0.819 | 0.926 | 0.975 | 0.404 | 0.700 |
-| meteor | 20260914T234307-e56cfc | 12146 | 0.303 | 0.694 | 0.687 | 0.805 | 0.979 | 0.317 | 0.683 |
+| meteor [1] | 20260914T234307-e56cfc | 12146 | 0.303 | 0.694 | 0.687 | 0.805 | 0.979 | 0.317 | 0.683 |
 | constant_velocity | 20260902T175923-feba73 | 12146 | 0.239 | 0.681 | 0.578 | 0.805 | 0.981 | 0.209 | 0.669 |
+
+- [1] meteor: plan continued to 4.0 s by paddock; the model itself plans 3 s
+
+### n = 242, scene set ff48d70f
+
+| model | run | n | epdms ↑ | no_at_fault_collisions ↑ | drivable_area_compliance ↑ | driving_direction_compliance ↑ | traffic_light_compliance ↑ | ego_progress ↑ | time_to_collision_within_bound ↑ |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| drivejepa | 2026.08.08.02.26.44 | 242 | 0.907 | 0.994 | 0.992 | 0.998 | 1.000 | 0.923 | 0.979 |
 
 ## navsim_v1
 
 | model | run | n | pdms ↑ | no_at_fault_collisions ↑ | drivable_area_compliance ↑ | ego_progress ↑ | time_to_collision_within_bound ↑ | comfort ↑ | driving_direction_compliance ↑ |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | drivejepa | 20260911T082329-575df6 | 12146 | 0.892 | 0.984 | 0.985 | 0.887 | 0.881 | 0.999 | 0.988 |
-| qwendrive | 20260915T021715-02aab4 | 12146 | 0.876 | 0.982 | 0.964 | 0.817 | 0.941 | 1.000 | 0.987 |
+| qwendrive | 20261104T205054-df25d5 | 12146 | 0.876 | 0.982 | 0.964 | 0.817 | 0.941 | 1.000 | 0.987 |
 | openpilot | 20260914T181009-dbcef4 | 12146 | 0.807 | 0.969 | 0.913 | 0.719 | 0.936 | 1.000 | 0.948 |
 | alpamayo15 | 20260914T175447-89a9ca | 12146 | 0.753 | 0.957 | 0.856 | 0.690 | 0.896 | 0.991 | 0.927 |
 | alpamayo15 | 20260911T044805-0aea35 | 12146 | 0.676 | 0.941 | 0.788 | 0.604 | 0.878 | 0.979 | 0.885 |
-| autoe2e | 20261027T185517-5c7949 | 12146 | 0.538 | 0.824 | 0.777 | 0.514 | 0.700 | 1.000 | 0.859 |
+| autoe2e | 20261104T210206-3022fb | 12146 | 0.538 | 0.824 | 0.777 | 0.514 | 0.700 | 1.000 | 0.859 |
 | visionpilot | 20260911T083323-c07583 | 12146 | 0.488 | 0.771 | 0.818 | 0.451 | 0.617 | 0.996 | 0.920 |
-| meteor | 20260915T005223-071c0b | 12146 | 0.366 | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | 0.800 |
+| meteor [1] | 20260915T005223-071c0b | 12146 | 0.366 | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | 0.800 |
 | constant_velocity | 20260911T034553-8f28ac | 12146 | 0.207 | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 |
 
+- [1] meteor: plan continued to 4.0 s by paddock; the model itself plans 3 s
+
 ## neuroncap
+
+### n = 200, scene set ef927e96
 
 | model | run | n | ncap_score ↑ | impact_speed ↓ | reference_speed ↑ | collision_rate ↓ |
 |---|---|---:|---:|---:|---:|---:|
@@ -124,8 +171,13 @@
 | autoe2e | 20261026T233951-743060 | 200 | 3.162 | 3.721 | 8.604 | 0.420 |
 | meteor | 20260915T193036-d34559 | 200 | 2.644 | 5.051 | 8.604 | 0.480 |
 | qwendrive | 20260915T023604-12d5eb | 200 | 2.487 | 4.514 | 8.604 | 0.690 |
-| alpamayo | runs5 | 15 | 2.458 | 4.731 | 11.226 | 0.667 |
 | visionpilot | 20260905T121810-155d36 | 200 | 1.576 | 6.218 | 8.604 | 0.855 |
+
+### n = 15, scene set 5312d788
+
+| model | run | n | ncap_score ↑ | impact_speed ↓ | reference_speed ↑ | collision_rate ↓ |
+|---|---|---:|---:|---:|---:|---:|
+| alpamayo | runs5 | 15 | 2.458 | 4.731 | 11.226 | 0.667 |
 
 ## nuscenes
 
@@ -154,6 +206,7 @@
 - **neuroncap/visionpilot/legacy-runs1** — Superseded by 20260905T121810-155d36: a small early run of 3 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one.
 - **neuroncap/visionpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **hugsim/drivejepa/campaign-87d4f5097a85db3c-ce3603** — Released Drive-JEPA (NAVSIM v2 ViT-L checkpoint), driven 22 Oct 2026 in two lanes sharing one scenario queue. The node was the drivejepa adapter as of paddock ac7788f plus a per-call record of the 32 candidates and their scores, which does not change the plan; its camera placement goes through lidar2ego, which the bridge sends as the identity, so the cameras land where ac7788f puts them. At that commit the adapter fed cameras uncropped and picked on the plain score; main now crops to the OpenScene camera (#106) and turns momentum selection on (#95), so a re-run on main would differ. Only the front camera was rendered: the released model's forward reads only the front camera. DRIVEJEPA_IMAGE_GEOMETRY, DRIVEJEPA_MOMENTUM were supplied by the ingest config: the campaign recorded no model env, so this is the operator's statement of how the node was configured, not a reading from it. scenarios attempted and never scored: scene-0166-medium-01 (exit 1 after 60 steps: IndexError: index is out of bounds for dimension with size 0).
+- **navsim_v1/autoe2e/20261027T185517-5c7949** — no model process ran: 12146 plans replayed from navsim/autoe2e/20261009T055926-3ceb18 (that run: epdms 0.5002); the same plans, this benchmark's scorer Superseded by 20261104T210206-3022fb: this replay recorded 2 Hz OpenScene history and 1.5 s, but its plans were made at 10 Hz from nuPlan with 6.5 s; re-made with the right record, every score identical
 - **neuroncap/wajepa/20261015T234134-916e11** — 3 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes)
 - **kitscenes/openpilot/20261005T205400-a369d1** — resumed: 223 sample(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only Superseded by 20261008T004723-a369d1: the same configuration (hash a369d1) run again from #60's head, identical on all 223 keyframes; the newer run is the record
 - **kitscenes/openpilot/20260929T043619-242869** — Superseded by 20260930T154018-242869: The warp-cache bug fixed in f8dce3b warped 14 of its 223 samples with another rig's calibration; the re-run on the fixed code equals it bit for bit on the other 209, and equals a fresh-warp replay on each of the 51 samples checked (every sample that follows a change of rig, and the 3 that inherited a hit within their rig).
@@ -164,6 +217,7 @@
 - **nuplan/drivejepa/20260916T204900-6a17de** — camera images cover 26 of 375 anchors (53 logs have no images); not comparable with a full-coverage run
 - **comma2k19/qwendrive/20260915T214115-405f64** — Superseded by 20260916T220846-971379: the adapter that produced it no longer exists, so no paddock run can reproduce 1.016; it emitted all 50 poses at waypoint_dt 0.1 and score() aligns the ground truth onto the prediction's grid, which is also why comfort read 1932 m/s**3 of quantiser jerk
 - **neuroncap/meteor/20260915T192353-6ed840** — 1 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes)
+- **navsim_v1/qwendrive/20260915T021715-02aab4** — no model process ran: 12146 plans replayed from navsim/qwendrive/20260914T221802-80457c (that run: epdms 0.8402); the same plans, this benchmark's scorer Superseded by 20261104T205054-df25d5: this replay recorded 2 Hz OpenScene history, but its plans were made at 10 Hz from nuPlan; re-made with the right record, every score identical
 - **comma2k19/openpilot/20260912T053225-2a91ca** — Superseded by 20260916T051616-2a91ca: that is the row the docs cite. The two are bit-identical on all 65 shared metrics -- same 10,165 samples, same sequences_sha256 -- and the later one additionally carries the nine proxy and miss-rate metrics added after this ran. Kept rather than deleted so the record of it having happened survives.
 - **comma2k19/constant_velocity/20260911T231819-736a8a** — Reference baseline: straight ahead at the recorded speed, no model. Produced by tools/benchmarks/comma2k19/constant_velocity.py against the benchmark's own harness and scoring; video decoding skipped, since the policy reads no pixels. Stored under the pseudo-model 'constant_velocity' because it is not a registered model. Superseded by 20260916T162837-b89038: that is the row the docs cite. This one predates measuring comfort on a common 0.5 s grid, so its comfort and far-horizon columns are not comparable with the rows beside it. Kept rather than deleted so the record of it having happened survives.
 - **navsim_v1/human/20260911T041230-67c4f3** — privileged: the human agent returns the recorded future the scorer measures against; an anchor for the scoring path, not a model; no model process ran: the recorded human future through the devkit scorer
@@ -189,4 +243,4 @@
 
 ---
 
-Arrows show direction of better; a column with no arrow has none -- a signed bias, a ratio best at one, or a description of the model rather than a score. Aggregates are recomputed by paddock from per-sample records, never taken from the producer.
+Arrows show direction of better; a column with no arrow has none -- a signed bias, a ratio best at one, or a description of the model rather than a score. Runs are ranked only against runs of the same scenes; a benchmark with more than one scene set has one table for each. A number in brackets after a model marks a setting that changes what that run's score means. Aggregates are recomputed by paddock from per-sample records, never taken from the producer.

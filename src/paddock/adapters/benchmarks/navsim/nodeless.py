@@ -21,6 +21,8 @@ that: `paddock run` always starts a node and stores under a registered model.
   benchmark with `config.replayed_from`, and valid exactly when the source
   was: they are that model's own plans, and whatever kept the source from
   being ranked -- a subset, a rate override -- keeps the replay from it too.
+  For the same reason `config` carries the source's input rate and history,
+  never this benchmark's defaults.
   Only a run in the results store is accepted as a source, never a loose file.
 
 Everything else is the runner's: the same measurement config, run id, resume
@@ -46,6 +48,7 @@ from paddock.adapters.benchmarks.navsim.harness import (
     CONSTANT_VELOCITY_AGENT,
     ENV_AGENT,
     HUMAN_AGENT,
+    PLAN_SETTINGS,
     REPLAY_AGENT,
     NavsimBenchmark,
 )
@@ -159,6 +162,7 @@ def locate_replay(cfg: SiteConfig, ref: str) -> dict | str:
         "source_score": score,
         "source_valid": bool(record.get("valid")),
         "source_notes": str(record.get("notes") or ""),
+        "plan_settings": {key: config[key] for key in PLAN_SETTINGS if key in config},
     }
 
 
@@ -219,6 +223,12 @@ def run(
         config = _measurement_config(cfg, harness, pseudo, limit=limit)
         config["node"] = None
         if source is not None:
+            # The plans were made by the run being replayed, so how they were
+            # made is that run's to say. A source too old to have recorded it
+            # leaves the fields out: nothing here knows them.
+            for key in PLAN_SETTINGS:
+                config.pop(key, None)
+            config.update(source["plan_settings"])
             config["replayed_from"] = source["ref"]
             config["plans"] = {
                 "n": source["n_plans"],
