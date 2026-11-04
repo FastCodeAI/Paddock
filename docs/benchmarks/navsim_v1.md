@@ -236,7 +236,7 @@ completing run, and the replay read both directories):
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
 | openpilot, 10 Hz | **0.807** | 0.969 | 0.913 | 0.719 | 0.936 | 1.000 | 0.948 | 0.747 | `20260914T181009-dbcef4` | replay of `navsim/openpilot/20260911T161513-3a4c90`, 13 min |
 | alpamayo15, 10 Hz | **0.753** | 0.957 | 0.856 | 0.690 | 0.896 | 0.991 | 0.927 | 0.691 | `20260914T175447-89a9ca` | replay of `navsim/alpamayo15/20260912T040211-a9562c`, 15 min |
-| autoe2e, 10 Hz | **0.538** | 0.824 | 0.777 | 0.514 | 0.700 | 1.000 | 0.859 | 0.500 | `20261027T185517-5c7949` | replay of `navsim/autoe2e/20261009T055926-3ceb18`, 95 min with the box loaded |
+| autoe2e, 10 Hz | **0.538** | 0.824 | 0.777 | 0.514 | 0.700 | 1.000 | 0.859 | 0.500 | `20261104T210206-3022fb` | replay of `navsim/autoe2e/20261009T055926-3ceb18`, 95 min with the box loaded |
 
 The 10 Hz history changes what the model sees, not what is scored: the same
 navtest scenes, the same v1 cache. For Alpamayo it is worth +0.077 PDMS over
