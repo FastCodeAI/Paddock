@@ -105,6 +105,8 @@ capabilities:
 # any ranked run that set one to something other than the declared default.
 score_notes:
   METEOR_HORIZON_S: "plan continued to {value} s by paddock; the model itself plans 3 s"
+# Of those, what a site may set and stay ranked. NAVSIM cannot score METEOR without it.
+ranked_with_note: [METEOR_HORIZON_S]
 
 # navsim needs METEOR_HORIZON_S=4.0 (see above) or every sample fails in
 # to_navsim_poses with "model plans 3.00 s".

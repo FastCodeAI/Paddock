@@ -220,6 +220,15 @@ def _registered_waypoint_dt(model: str) -> float | None:
     return getattr(spec, "waypoint_dt", None) if spec else None
 
 
+def _registered_ranked_with_note(model: str) -> tuple[str, ...]:
+    """The settings ``model``'s model.yaml keeps ranked, as a ``paddock run`` would."""
+    try:
+        spec = Registry.load().models.get(model)
+    except Exception:  # noqa: BLE001 -- a broken registry must not fail an ingest
+        return ()
+    return getattr(spec, "ranked_with_note", ()) if spec else ()
+
+
 def _registered_native_hz(model: str) -> tuple[float, str] | None:
     """The rate ``model``'s model.yaml declares it runs at, and the key that says so.
 
@@ -445,8 +454,13 @@ def ingest(
     # `paddock run` from ranking (runner._env_override_reasons) keeps the pool from ranking.
     # Judged against the declared_env the source runs recorded, which leaves tuning keys
     # out; a key the model does not declare, and a pool that recorded none, are not judged.
+    ranked_anyway = _registered_ranked_with_note(model)
     overrides = (
-        sorted(k for k, v in config["model_env"].items() if k in declared and declared[k] != v)
+        sorted(
+            k
+            for k, v in config["model_env"].items()
+            if k in declared and declared[k] != v and k not in ranked_anyway
+        )
         if isinstance(declared, dict)
         else []
     )

@@ -141,5 +141,8 @@ score_notes:
   PADDOCK_OPENPILOT_HEIGHT_SCALE: "camera height taken as {value}x openpilot's to fit this dataset's rig"
   PADDOCK_OPENPILOT_PITCH_DEG: "view tilted {value} degrees to fit this dataset's rig"
   PADDOCK_OPENPILOT_FOV_DEG: "frame cut to a {value} degree field of view to fit this dataset's rig"
+# Of those, what a site may set and stay ranked. Not the three camera numbers: nothing
+# in the record tells a value measured on the rig from one fitted to the test set.
+ranked_with_note: [PADDOCK_OPENPILOT_DESIRE]
 
 benchmarks: [kitscenes, neuroncap, bench2drive, navsim, nuscenes, comma2k19, nuplan]

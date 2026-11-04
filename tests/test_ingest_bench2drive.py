@@ -604,6 +604,18 @@ def test_a_pool_whose_runs_override_a_setting_the_model_declares_does_not_rank(t
     assert _pooled_with(tmp_path / "b", (restated, restated)).valid
 
 
+def test_a_pool_keeps_ranking_on_a_setting_its_model_ranks_with_a_note(tmp_path: Path, monkeypatch) -> None:
+    """The same exception a `paddock run` has. Any other declared setting still stops the pool."""
+    monkeypatch.setattr(bench2drive, "_registered_ranked_with_note", lambda _model: ("X_VIEWS",))
+    declared = {"X_VIEWS": "ring", "X_MODE": "a"}
+    noted = {"declared_env": declared, "model_env": {"X_VIEWS": "replicate"}}
+    assert _pooled_with(tmp_path / "a", (noted, noted)).valid
+    both = {"declared_env": declared, "model_env": {"X_VIEWS": "replicate", "X_MODE": "b"}}
+    run = _pooled_with(tmp_path / "b", (both, both))
+    assert not run.valid
+    assert "X_MODE" in run.notes and "X_VIEWS" not in run.notes
+
+
 def test_a_pool_driven_on_another_camera_rig_names_it_and_does_not_rank(tmp_path: Path) -> None:
     """The rig is in each run's config only when it is not paddock's, so a pool of default-rig runs
     keeps its run id; another rig, or a mix, is recorded and does not rank."""

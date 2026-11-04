@@ -212,6 +212,11 @@ def _env_override_reasons(cfg: SiteConfig, model_spec: ModelSpec) -> list[str]:
     recorded `valid: true` and ranked as the released model. Restating the
     declared default value is not an override.
 
+    A key the model lists in `ranked_with_note` does not count either: the run
+    stays ranked, and `paddock report` prints the model's `score_notes` line
+    beside it. That is a model's own statement about one setting, so a key nobody
+    listed still fails closed.
+
     A declared `runtime.env_passthrough` name set in the launching shell reaches
     the node the same way (`runtime.env.build()` applies it last, over a site
     value), so it is held to the same rule: `ALPAMAYO_NAV=0 paddock run ...` is
@@ -220,12 +225,12 @@ def _env_override_reasons(cfg: SiteConfig, model_spec: ModelSpec) -> list[str]:
     override = cfg.models.get(model_spec.name)
     site = dict(override.env) if override is not None and override.env else {}
     shell = {k: os.environ[k] for k in model_spec.runtime.env_passthrough if k in os.environ}
-    tuning = _tuning_keys(model_spec)
+    allowed = {*_tuning_keys(model_spec), *model_spec.ranked_with_note}
     declared = model_spec.runtime.env
 
     reasons = []
     for source, given in (("site", {k: v for k, v in site.items() if k not in shell}), ("shell", shell)):
-        keys = sorted(k for k, v in given.items() if k not in tuning and declared.get(k) != v)
+        keys = sorted(k for k, v in given.items() if k not in allowed and declared.get(k) != v)
         if keys:
             reasons.append(
                 f"{source} env override may change what was measured: {', '.join(keys)} "
