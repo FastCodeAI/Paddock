@@ -1,0 +1,20 @@
+# Changelog
+
+Notable changes to Paddock. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## 0.1.0 (unreleased)
+
+First public release.
+
+- One `Policy` interface for open-loop scoring and closed-loop simulation, with each
+  model in its own environment behind a local HTTP server.
+- Adapters for Alpamayo 1.5, AutoE2E, Drive-JEPA, METEOR, OpenPilot, Qwen-Drive 1.0,
+  VisionPilot and WA-JEPA, and a constant-velocity floor.
+- Benchmarks: nuScenes, KITScenes, comma2k19, nuPlan, NAVSIM v1 and v2, Bench2Drive,
+  neuroNCAP, AlpaSim and HUGSIM.
+- A command line: `paddock doctor`, `setup`, `new`, `verify`, `run`, `render` and `report`.
+- A results store that records each run's settings and upstream commits beside its
+  scores, and a leaderboard built from it.
+- A regression gate that compares a change against earlier runs of the released models.

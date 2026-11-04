@@ -27,7 +27,7 @@ GNSS/INS/vision ego pose.
   Fused Pose Estimators* — Harald Schafer, Eder Santana, Andrew Haden, Riccardo
   Biasini (comma.ai), [arXiv:1812.05752](https://arxiv.org/abs/1812.05752).
 * Toolkit and dataset home: [`commaai/comma2k19`](https://github.com/commaai/comma2k19),
-  pinned to a sha in [`repos.yaml`](../../src/paddock/repos.yaml). The toolkit
+  pinned to a sha in [`repos.yaml`](../../repos.yaml). The toolkit
   is a hard requirement of this benchmark, not a convenience — see *The toolkit*.
 * Licence: **MIT** for the toolkit code, and the dataset itself is published for
   research use under the terms on the repository. Check them before

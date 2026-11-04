@@ -55,8 +55,9 @@ class ScaffoldResult:
                 f"  1. edit {self.name}/model.yaml     -- repo, runtime, cameras, vram",
                 f"  2. edit {self.name}/setup.sh       -- build its environment",
                 f"  3. edit {self.name}/policy.py      -- load(), reset(), infer()",
-                f"  4. paddock verify --model {self.name}",
-                f"  5. paddock run --model {self.name} --bench <a benchmark> --limit 5",
+                f"  4. paddock setup --model {self.name}",
+                f"  5. paddock verify --model {self.name}",
+                f"  6. paddock run --model {self.name} --bench <a benchmark> --limit 5",
             ]
         else:
             lines += [

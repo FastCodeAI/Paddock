@@ -101,22 +101,18 @@ binary via `PADDOCK_FFMPEG`. `preflight` reports which, and refuses to run
 without one. `make setup` installs PyAV (the `comma2k19` extra) already; on an
 environment built by hand it is `pip install -e ".[comma2k19]"`.
 
-Getting the dataset: see [data setup](../data-setup.md#comma2k19). It is a
-Harvard Dataverse download, `Chunk_1.zip` … `Chunk_10.zip`, ~100 GB unpacked.
+Getting the dataset: see [data setup](../data-setup.md#comma2k19). It is ten zips on
+Hugging Face, `Chunk_1.zip` … `Chunk_10.zip`, ~100 GB unpacked.
 
 ### The toolkit is required, not optional
 
 comma ships a toolkit with the dataset, and every rotation under a comma2k19
-score comes from it. Clone it into `[roots] repos` at the sha pinned in
+score comes from it. This clones it into `[roots] repos` at the sha pinned in
 `repos.yaml`:
 
 ```bash
-paddock config                      # prints the resolved [roots] repos
-git clone https://github.com/commaai/comma2k19.git <repos>/comma2k19
+paddock setup --repo comma2k19
 ```
-
-The directory name must be `comma2k19`; that is the key in `repos.yaml` and how
-paddock finds it.
 
 It is not pip-installable (no `setup.py`), so paddock treats it the way it
 treats every model repo: a pinned clone, put on `sys.path` for the length of one
@@ -1036,10 +1032,9 @@ should say so; `paddock run` records `limit` in `run.json` and marks such runs
 
 The per-metric results behind this benchmark's column in the
 [README's support matrix](../../README.md#support-matrix), and the notes on its
-cells. Moved here from the README unchanged except for links; the symbols are
-the README's former footnote marks, and each note below starts with the mark it
-explains. Marks about a model rather than this benchmark (∗ ◊ ◇ ✦ ✧) are
-explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
+cells. Each note below starts with the mark it explains. Marks about a model
+rather than this benchmark (∗ ◊ ◇ ✦ ✧) are explained in
+[What these models are](../models/comparison.md#notes-on-the-models).
 
 ### Notes on the matrix cells
 

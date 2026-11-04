@@ -74,6 +74,14 @@ def test_scaffold_keeps_setup_executable(sandbox):
     assert setup.stat().st_mode & 0o111, "setup.sh must stay executable"
 
 
+def test_a_new_models_setup_names_the_model_and_not_the_template(sandbox):
+    """setup.sh prints the command to run next, so a leftover name sends the author to the wrong one."""
+    result = create("model", "mymodel", root=sandbox("model"))
+    setup = (result.path / "setup.sh").read_text()
+    assert "template" not in setup.lower()
+    assert "paddock doctor --model mymodel" in setup
+
+
 def test_scaffold_refuses_to_clobber(sandbox):
     root = sandbox("model")
     create("model", "mymodel", root=root)
