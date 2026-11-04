@@ -1,5 +1,17 @@
 # AlpaSim
 
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Loop | closed loop |
+| Dataset | rendered by the simulator |
+| Primary metric | `scene_score` |
+| Adapter | [`adapters/benchmarks/alpasim/`](../../src/paddock/adapters/benchmarks/alpasim/) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [qwendrive](../models/qwendrive.md) |
+
+<!-- /summary -->
+
 Closed-loop driving on replayed real scenes. NVIDIA's AlpaSim renders a recorded
 clip as a neural reconstruction, hands the policy camera frames at a fixed
 control rate, and steps the world forward on what the policy commands. Errors
@@ -317,8 +329,8 @@ filed under `results/alpasim/`, so `paddock report` agrees with these tables.
 > not ingested.
 >
 > **METEOR's rows come from a driver that is not tracked here.** `meteor-0.1.1`
-> is a native AlpaSim driver written at the Fastcode site; its source is not in
-> this repository, so its two rows (`6cam-20Hz`, below) are reference values
+> is a native AlpaSim driver written outside this repository; its source is not in
+> it, so its two rows (`6cam-20Hz`, below) are reference values
 > another site cannot yet reproduce.
 
 ### `1cam-20Hz` — the shared referee

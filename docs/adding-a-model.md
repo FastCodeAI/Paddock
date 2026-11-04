@@ -31,8 +31,8 @@ on coordinate frames.
 | 3 | `src/paddock/adapters/models/<name>/policy.py` | **create** — three methods |
 | 4 | `src/paddock/adapters/models/<name>/setup.sh` | **create** — build the env |
 | 5 | `src/paddock/adapters/models/<name>/tests/test_policy.py` | **create** — fixture test |
-| 6 | `docs/models/<name>.md` | **create** — quirks and reference numbers |
-| 7 | `src/paddock/adapters/models/<name>/alpasim.yaml` | **optional** — only if AlpaSim must drive the model on its own settings |
+| 6 | `docs/models/<name>.md` | **create** — quirks and reference numbers; `python -m tools.doc_summaries` writes its summary table |
+| 7 | `src/paddock/adapters/models/<name>/alpasim.yaml` | **AlpaSim only** — the settings AlpaSim drives the model on; see [AlpaSim settings](#alpasim-settings) |
 | 8 | `paddock.toml` | **your machine only** — never committed |
 
 Nothing else. In particular you do **not** register your model in any central
@@ -112,7 +112,7 @@ benchmarks: [kitscenes, neuroncap]
 `{runs}`, `{data.NAME}`, `{data.NAME.tiers}`, `{site}` are expanded from the
 site's `paddock.toml` at launch. `tests/test_portability.py` fails the build if
 you write a home directory or a mount point here — that test is why this repo
-still works at the other site.
+still works at another site.
 
 Four fields are worth more thought than they look:
 
@@ -146,6 +146,16 @@ Four fields are worth more thought than they look:
   worked and does nothing. A name set in the shell is held to the same rule
   as a site `env` override: unless it is in `tuning_env` or restates the
   declared default, the run is recorded `valid: false`.
+- **`score_notes`** (top level, beside `benchmarks`) — env keys that change what a
+  score means, each with one line. `paddock report` prints the line under any
+  ranked run whose `model_env` set the key to something other than the declared
+  default, and `{value}` in the line becomes what the run set. Use it where a
+  row would otherwise read as comparable when it is not: a plan stretched to fit
+  a benchmark's horizon, one camera repeated into three slots. Leave out keys
+  that change no number on the benchmarks you ran.
+  A note does not make a run rankable: a new run that overrides one of these
+  keys is still stored `valid: false` by the `tuning_env` rule above, so it
+  leaves the ranking, and its note prints only with `paddock report --include-invalid`.
 
 ## Step 5 — write `setup.sh`
 
@@ -258,7 +268,7 @@ rivals. See [architecture.md](architecture.md#where-does-a-file-belong).
 
 Write `docs/models/<name>.md`: environment, weights and where they come from,
 quirks, and the reference numbers your run produced. The next person to touch
-this model is probably at the other site.
+this model is probably at another site.
 
 To put the model in the README's support matrix, add it to
 [docs/support-matrix.toml](support-matrix.toml): a `[[model]]` entry and a
@@ -303,7 +313,7 @@ in order after checkout.
 
 ## When the environment resists you instead
 
-This checklist covers what to write. [SKILLS.md](../SKILLS.md) covers what goes
+This checklist covers what to write. [Troubleshooting](troubleshooting.md#bringing-up-a-new-model-or-benchmark) covers what goes
 wrong doing it — `uv sync` failing on an extra you do not need, a `setup.sh`
 missing a dependency the shared machinery assumes, a model that needs a dataset
 your benchmark does not use — the failures that look nothing like a paddock bug

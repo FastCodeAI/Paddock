@@ -1,5 +1,17 @@
 # nuScenes val, open loop
 
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Loop | open loop |
+| Dataset | `nuscenes` |
+| Primary metric | `l2_avg` |
+| Adapter | [`adapters/benchmarks/nuscenes/`](../../src/paddock/adapters/benchmarks/nuscenes/) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
+
+<!-- /summary -->
+
 `paddock run --bench nuscenes --model <drivejepa|visionpilot|alpamayo15|meteor>`
 
 The nuScenes planning protocol that UniAD, VAD and their successors report: on
@@ -133,7 +145,7 @@ was assembled by the site's four-worker orchestration, not written by
 `paddock run` as tracked here: its `config.execution_workers` and
 `dataset.n_expected` are keys no open-loop path in `src/paddock/` writes, it
 retained 135 predictions from an earlier attempt, and it predates the
-`camera_history` keys `run_config()` records now. The other site cannot
+`camera_history` keys `run_config()` records now. Another site cannot
 regenerate it with the tracked code. It stays `valid` because the number is not
 in question, but landing the orchestration (or a `--workers` path in the
 runner) is the open item that makes it regenerable; see `docs/ROADMAP.md`.
@@ -154,7 +166,7 @@ openpilot sha (`provenance.repo.at_pin`), on the ONNX backend, and with the
 every headline: point L2 average 4.029 m, cumulative L2 average 2.451 m, ADE at
 3 seconds 3.508 m, point collision average 2.61%. The leaderboard lists both,
 `b479ee` first. The README keeps the 8 September figures, the run this section
-and the GPU validation were written from; `b479ee` is the one the other site can
+and the GPU validation were written from; `b479ee` is the one another site can
 regenerate with the tracked code.
 
 ## Results (05 Sep 2026, n = 5119)
@@ -205,7 +217,7 @@ for behaviour gaps are kept outside this repo.
 
 ## Tests
 
-`tests/test_nuscenes_openloop.py`: quaternion/frame geometry, oriented-box
+`src/paddock/adapters/benchmarks/nuscenes/tests/test_harness.py`: quaternion/frame geometry, oriented-box
 intersection, the command rule, plan resampling (including the origin anchor and
 the mid-turn distance), the scorer's point vs cumulative conventions, that absent
 box data omits the collision metrics rather than zeroing them, and that the index
@@ -218,32 +230,6 @@ parity against the original UniAD/VAD scorers on identical inputs -- there is no
 golden fixture from those scorers here. Establishing that would need one recorded
 (plan, future, boxes) case scored by the original code to diff against; until
 then the equivalence claim rests on the transcription, not on a measured match.
-
-## Framework changes in this PR
-
-Adding this benchmark stayed inside its own adapter directory, with one
-deliberate framework touchpoint kept minimal and called out here per
-`CONTRIBUTING.md` (the `constant_velocity` baseline it uses is `main`'s
-adapter, which runs in a uv venv, or in paddock's own interpreter when a site
-points `[models.constant_velocity] venv` there):
-
-* `results/report.py` learned that `l2*`/`col*` are lower-is-better, so these
-  metrics render with the correct arrow. This is global metric-direction
-  inference; a per-metric declaration on the benchmark would be the cleaner home
-  and is worth a follow-up.
-
-Kept OUT of this PR on purpose, as separate framework follow-ups rather than more
-core changes folded into an adapter:
-
-* **Run provenance (`repo_sha`).** `run.json` carries a `repo_sha` field that the
-  runner never populates, so runs do not record the code version that produced
-  them. Fixing it touches `runner.py` (framework) and should be its own change.
-  Until then, treat any committed result as predating later code changes —
-  e.g. the results here were produced before the geometry and nav-distance fixes
-  and should be re-run before they are quoted alongside the corrected code.
-* **Numerical-parity fixture.** Establishing parity with the original UniAD/VAD
-  scorers needs a recorded `(plan, future, boxes)` case scored by that code to
-  diff against; none is vendored here (see the Tests section).
 
 ## Support-matrix results
 
@@ -263,7 +249,7 @@ is the mean of cumulative L2 through 1, 2 and 3 seconds, not ADE at 3 seconds.
 OpenPilot uses real approximately 12 Hz front-camera history; scoring stays at
 2 Hz. See the nuScenes table below for point L2, cumulative L2 and ADE.
 
-⊘ Measured camera-blind: until the camera-frame fix (#62) Drive-JEPA's adapter
+⊘ Measured camera-blind: until the camera-frame fix of 13 Oct 2026 Drive-JEPA's adapter
 placed the cameras so that no sample point landed in the image on nuScenes and
 neuroNCAP, and the plan came from ego status alone. Re-measure pending for
 nuScenes; its other columns are not affected.
@@ -304,7 +290,7 @@ is predicted ego-footprint overlap with annotated boxes, not an observed crash.
 6.5 s of past keyframes it declares, where the other rows get 2 s; its BEVFormer V2
 starting weights were trained on nuScenes train, not val.
 
-⊘ Measured camera-blind; re-measure pending, see #62.
+⊘ Measured camera-blind; re-measure pending, see the note above.
 
 **Constant velocity was the lowest L2 on this recorded split until Qwen-Drive,
 which is below it on every column**, collision included, and is the first model
@@ -317,7 +303,7 @@ contains. nuScenes is also not in its declared training data (NAVSIM `navtrain`,
 Waymo E2E, NVIDIA PhysicalAI), so unlike its NAVSIM columns this one is
 zero-shot.
 
-[nuScenes implementation and result records (PR #14)](https://github.com/FastCodeAI/Paddock/pull/14)
-· [OpenPilot full metrics](https://github.com/FastCodeAI/Paddock/blob/a75d30418248c33e5a9a76de837887cd1e19a1e8/results/nuscenes/openpilot/20260908T110028-b71f4f/metrics.json).
-Older model results predate the geometry/navigation corrections noted in #14;
+[OpenPilot full metrics](../../results/nuscenes/openpilot/20260908T110028-b71f4f/metrics.json).
+Older model results predate the geometry and navigation corrections made when
+this benchmark was added;
 these tables report the saved runs, not new evaluations of the merged code.

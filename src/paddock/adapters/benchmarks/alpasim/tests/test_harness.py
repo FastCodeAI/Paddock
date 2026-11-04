@@ -257,7 +257,7 @@ def test_a_clip_is_the_same_sample_whichever_set_drove_it(tmp_path: Path, monkey
 
 
 def test_scene_order_is_the_pinned_order_not_the_filesystems(tmp_path: Path, monkeypatch) -> None:
-    """`--limit 5` must select the same five at both sites."""
+    """`--limit 5` must select the same five at every site."""
     bench = _benchmark(tmp_path, monkeypatch)
     once = [e.scene for e in bench.episodes()]
     twice = [e.scene for e in bench.episodes()]
@@ -642,7 +642,7 @@ def test_a_bridge_that_never_binds_is_killed_not_leaked(tmp_path: Path) -> None:
 
 
 def test_a_scene_subset_is_not_a_score(tmp_path: Path, monkeypatch) -> None:
-    """Review #80 (6): fewer clips than the pinned set would be ranked beside full runs."""
+    """Fewer clips than the pinned set would be ranked beside full runs."""
     bench = _benchmark(tmp_path, monkeypatch)
     list(bench.episodes(None))
     assert bench.invalid_reasons() == []

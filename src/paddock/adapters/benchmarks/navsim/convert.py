@@ -3,7 +3,7 @@
 Split out of `agent.py` so the part that can silently corrupt a score is
 testable in paddock's own environment. `agent.py` needs navsim and nuplan and
 runs on python 3.9 inside the vendor's conda env; nothing here imports either,
-so `tests/test_navsim_adapter.py` can pin the geometry and the resampling
+so `src/paddock/adapters/benchmarks/navsim/tests/test_harness.py` can pin the geometry and the resampling
 without a 4 GB checkpoint or a second interpreter.
 
 Same reasoning as CameraFit in the openpilot adapter: the arithmetic that

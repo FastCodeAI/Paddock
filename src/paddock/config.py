@@ -19,8 +19,8 @@ template variables which this module expands:
                        such as openpilot's KITSCENES_ROOTS)
 
 `tests/test_portability.py` enforces the split by failing if a tracked file
-contains an absolute path. That test is why this repo will still work at the
-other site six months from now.
+contains an absolute path. That test is why this repo will still work on
+someone else's machine six months from now.
 """
 
 from __future__ import annotations

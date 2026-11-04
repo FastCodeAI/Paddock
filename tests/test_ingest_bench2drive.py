@@ -335,7 +335,7 @@ def _pooled_under(tmp_path: Path, declared: tuple[dict | None, dict | None]):
 
 
 def test_the_model_yaml_env_of_the_source_runs_reaches_the_pooled_record(tmp_path: Path) -> None:
-    """#99, one level up: the pooled config was rebuilt without `declared_env`."""
+    """The declared-env check, one level up: the pooled config was rebuilt without `declared_env`."""
     on = {"DRIVEJEPA_MOMENTUM": "on"}
     run = _pooled_under(tmp_path / "a", (on, on))
     assert run.config["declared_env"] == on
@@ -357,13 +357,13 @@ def test_source_runs_under_different_model_yaml_env_do_not_pool_into_one_ranked_
 
 
 def test_a_source_run_that_recorded_no_model_yaml_env_is_not_read_as_agreeing(tmp_path: Path) -> None:
-    """`_agreed` skips a missing value, so a pre-#99 run would take the others' env."""
+    """`_agreed` skips a missing value, so a run from before 21 Oct 2026 would take the others' env."""
     on = {"DRIVEJEPA_MOMENTUM": "on"}
     run = _pooled_under(tmp_path / "half", (None, on))
     assert not run.valid
     assert "1 of 2 source runs recorded no declared_env" in run.notes
 
-    # Every source run from before #99: nothing to compare, and the record is as it was.
+    # Every source run from before 21 Oct 2026: nothing to compare, and the record is as it was.
     old = _pooled_under(tmp_path / "old", (None, None))
     assert "declared_env" not in old.config
     assert old.valid, old.notes
@@ -619,7 +619,7 @@ def test_a_pool_driven_on_another_camera_rig_names_it_and_does_not_rank(tmp_path
 
 
 def test_a_pool_asked_at_the_rate_its_model_declared_records_it_and_ranks(tmp_path: Path) -> None:
-    """Every run since #106 records how often the node was asked (`infer_hz`). AutoE2E's 50 routes
+    """Every run since 23 Oct 2026 records how often the node was asked (`infer_hz`). AutoE2E's 50 routes
     pooled without it: the record named no rate and took the run id of the same routes asked every
     tick. A recorded rate with no `planning_hz` beside it is the one the model declared, so the pool
     ranks -- judged from the runs, not from model.yaml as it is when the ingest runs."""
@@ -653,7 +653,7 @@ def test_a_pool_at_the_hosts_rate_at_two_rates_or_at_a_rate_not_known_does_not_r
 
 
 def test_the_old_rate_rule_reads_only_runs_that_recorded_no_rate(tmp_path: Path) -> None:
-    """Before #106 a rate reached the record only as PADDOCK_INFER_HZ in `model_env` (the September
+    """Before 23 Oct 2026 a rate reached the record only as PADDOCK_INFER_HZ in `model_env` (the September
     native-rate records). A run that recorded `infer_hz` is judged by that alone, so one record never
     says both that it was asked at the model's own rate and that it was off the protocol."""
     september = _pooled_with(tmp_path / "a", ({"model_env": {"PADDOCK_INFER_HZ": "2"}},) * 2)

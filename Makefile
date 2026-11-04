@@ -24,12 +24,15 @@ help:
 	@echo "make setup-conda  — create a conda env named 'paddock' instead"
 	@echo "make check        — lint + tests + portability gate. Run before every PR."
 	@echo "make check-alpasim-driver ALPASIM_PY=<python> — the AlpaSim bridge tests, in AlpaSim's interpreter"
+	@echo "make check-alpamayo ALPAMAYO_PY=<python> — the Alpamayo 1.5 input tests, in its own interpreter"
+	@echo "make check-openpilot OPENPILOT_REPO=<dir> — the openpilot geometry tests, against its checkout"
 	@echo "make test         — pytest only"
 	@echo "make lint         — ruff only"
 	@echo "make fmt          — ruff format + autofix"
 	@echo "make typecheck    — mypy. ADVISORY: not in 'make check', never blocks a PR."
 	@echo "make doctor       — report what this machine can actually run"
 	@echo "make which        — show which interpreter these targets will use"
+	@echo "make clean        — remove caches and build output"
 
 which:
 	@echo "$(PY)"
@@ -104,7 +107,7 @@ lint:
 
 # Advisory. Deliberately not a dependency of `check`: CI's blocking gate is
 # `make check`, and what blocks locally must be what blocks there. mypy reports
-# 63 errors across 19 files today, most in the M2 rescued code, so gating on it
+# dozens of errors today, most in older unannotated code, so gating on it
 # would fail PRs that touch none of it. Settings live in [tool.mypy].
 #
 # The exit code is mypy's own -- not swallowed -- so this is scriptable and an

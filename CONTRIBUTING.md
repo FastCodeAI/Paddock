@@ -1,8 +1,8 @@
 # Contributing to Paddock
 
-Paddock is shared between Fastcode and Renesas. Most people reading your code
-will be at the other site, on a machine you have never seen, some months from
-now. Nearly every convention here follows from that.
+Most people reading your code will be on a machine you have never seen, with
+data laid out differently from yours, some months from now. Nearly every
+convention here follows from that.
 
 ---
 
@@ -15,7 +15,7 @@ make check          # lint + tests + the portability gate
 The same command runs on every PR in GitHub Actions
 ([`.github/workflows/check.yml`](.github/workflows/check.yml)), in a clean
 environment with **no site `paddock.toml`** -- so a test that quietly needs the
-author's site config fails there rather than at the other site. Tests that
+author's site config fails there rather than at another site. Tests that
 genuinely need a site skip in CI; the reviewer runs `make check` with the site
 config to cover them. A second job checks that every patch under `patches/`
 still applies at the sha `repos.yaml` pins (`python tools/ci/check_patches.py`
@@ -36,7 +36,7 @@ name locations through template variables — `{repo}`, `{repos}`, `{runs}`,
 `paddock.config`.
 
 `tests/test_portability.py` enforces this. If it fails on your change, the fix is
-almost always a template variable, not an addition to the allowlist. Placeholders
+almost always a template variable; the test has no exemption list. Placeholders
 in prose (`/path/to/thing`) are fine; a real root from a real box is not.
 
 Why so strict: a single leaked path works perfectly for whoever wrote it and
@@ -69,7 +69,7 @@ commit that explains it.
 Only metrics and provenance go there — kilobytes. Predictions, frames and videos
 go to `[roots.runs]`, outside the repo.
 
-Every `run.json` records `site`, so numbers from both organisations stay
+Every `run.json` records `site`, so numbers from different machines stay
 distinguishable. Never hand-edit a metrics file: regenerate it, so its
 provenance stays true.
 
@@ -94,7 +94,8 @@ before -- is in [docs/reviewing.md](docs/reviewing.md). A reviewer will look for
 - [ ] no real machine paths in tracked files
 - [ ] new repos pin a sha
 - [ ] a fixture or golden test that runs with no GPU and no dataset
-- [ ] `docs/models/<name>.md` or `docs/benchmarks/<name>.md` exists
+- [ ] `docs/models/<name>.md` or `docs/benchmarks/<name>.md` exists, its summary
+  table written by `python -m tools.doc_summaries` (`make check` fails otherwise)
 - [ ] canonical metric names reused, or a new one documented
 - [ ] non-obvious environment requirements written down, not just encoded
 - [ ] no changes to `src/paddock/` for a pure model/benchmark addition

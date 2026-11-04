@@ -1,4 +1,18 @@
-# AutoE2E v1.0 in paddock
+# AutoE2E
+
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Upstream | [autowarefoundation/auto_e2e](https://github.com/autowarefoundation/auto_e2e) at `40a75cf8` |
+| Adapter | [`adapters/models/autoe2e/`](../../src/paddock/adapters/models/autoe2e/) |
+| Environment | uv, Python 3.12 |
+| Cameras | `CAM_FRONT`, `CAM_FRONT_LEFT`, `CAM_FRONT_RIGHT`, `CAM_BACK_LEFT`, `CAM_BACK`, `CAM_BACK_RIGHT` |
+| Plan | controls, 0.5 s apart, 6.4 s ahead |
+| Paddock can run it on | [alpasim](../benchmarks/alpasim.md), [bench2drive](../benchmarks/bench2drive.md), [comma2k19](../benchmarks/comma2k19.md), [hugsim](../benchmarks/hugsim.md), [kitscenes](../benchmarks/kitscenes.md), [navsim](../benchmarks/navsim.md), [neuroncap](../benchmarks/neuroncap.md), [nuscenes](../benchmarks/nuscenes.md) |
+| Size, licence, training data | [comparison.md](comparison.md) |
+
+<!-- /summary -->
 
 AutoE2E is the Autoware Foundation's open end-to-end planner. Release v1.0
 (Hugging Face `AutowareFoundation/auto_e2e`, published 8 Oct 2026) ships two
@@ -23,7 +37,7 @@ paddock run --model autoe2e --bench nuscenes        # 6.5 s of past keyframes, t
 paddock run --model autoe2e --bench bench2drive --scene <route>   # at its declared 10 Hz ("On Bench2Drive")
 ```
 
-PR #19 is a different adapter: KITScenes only, written before any weights were
+An earlier, unmerged adapter targeted KITScenes only, before any weights were
 public, for a seven-view SwinV2 architecture this release does not have.
 
 ## What the model consumes and emits
@@ -332,7 +346,7 @@ ends a median 0.41 m left of the human's, growing with speed), right turns are
 under-turned, and starts from a standstill are timid (2.3 m planned against
 8.4 m driven). Comfort (0.984 history, 0.812 extended) is its strongest column.
 
-**NAVSIM v1, the same 12,146 plans, valid** (`results/navsim_v1/autoe2e/20261027T185517-5c7949`):
+**NAVSIM v1, the same 12,146 plans, valid** (`results/navsim_v1/autoe2e/20261104T210206-3022fb`):
 **0.538** PDMS. No model ran: the v2 run's recorded plans were replayed through
 the v1.1 scorer. NC 0.824 and DAC 0.777 match the v2 run's to three decimals,
 as they should for the same plans.
@@ -492,14 +506,14 @@ The car leaves the human's path to the left, as on neuroNCAP and Bench2Drive:
 The inputs were as the profile intends on every scene: 168–169 model calls
 after handover, 34 padded motion-history rows at the first call, no repeated
 image frame from 0.5 s on. The run was made before this adapter gained the
-closed-loop history fill (#89), the map and route rasters (#97), left-out
-views (#98) and the history-frame tolerance of #107. None of them reaches
+closed-loop history fill, the map and route rasters, left-out views and the
+history-frame tolerance. None of them reaches
 AlpaSim, which sends no map or route, all six views, frames 50 ms apart (so the
 tolerance stays 0.06 s), and a history the bridge has already padded. Checked on one scene
 (`01d503d4`) driven again with the current code: all 396 per-tick log rows and
 every plan identical, the eight scene metrics equal, and the new log fields at
 `views` 6, `ego_rows_filled` 0, `map_valid` false. The run's id hash (`86b955`)
-predates #101, which adds `model.yaml`'s env to the id, so a rerun gets a new
+predates 21 Oct 2026, when `model.yaml`'s env joined the id, so a rerun gets a new
 id.
 
 **Bench2Drive, the 50 routes of the other rows, valid**
@@ -528,7 +542,7 @@ the two runs also differ in the collision stop, in how the plan is held between
 forwards (below) and in the code revision, so the gap is not the inputs' alone.
 
 The two rows also hold the plan between forwards differently: the client follows
-it unchanged since #106, where the pairing had the node move it into the current
+it unchanged since 23 Oct 2026; before that the pairing had the node move it into the current
 ego frame. On 1711 and 2286, driven from the same start both ways (the deep
 dive's recorded drives, upstream's inputs), the first plans agree within 4 cm and
 2 mm, the cars are 1.1-1.5 m apart after 4 s, and the client's hold launches
@@ -538,7 +552,7 @@ Earlier runs, each `valid: false`:
 
 - The first 50-route sweep (`PADDOCK_INFER_HZ=10`, route raster on) ran a
   forward on every 20 Hz call -- the Bench2Drive agent did not read that
-  variable until #106 -- and predates the closed-loop history fill. Every route scored DS 3–27 the
+  variable until 23 Oct 2026 -- and predates the closed-loop history fill. Every route scored DS 3–27 the
   same way: the car reaches ~12 m/s, the plan curves further left on each call,
   and it leaves the lane at 4–5 s. Checked before calling it the model's
   behaviour: CARLA actors projected through the model's front matrix land on

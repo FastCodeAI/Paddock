@@ -1,4 +1,18 @@
-# Qwen-Drive-1.0 in paddock
+# Qwen-Drive 1.0
+
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Upstream | [QwenLM/Qwen-Drive-1.0](https://github.com/QwenLM/Qwen-Drive-1.0) at `28091c1` |
+| Adapter | [`adapters/models/qwendrive/`](../../src/paddock/adapters/models/qwendrive/) |
+| Environment | uv, Python 3.12 |
+| Cameras | `CAM_FRONT`, `CAM_FRONT_LEFT`, `CAM_FRONT_RIGHT` |
+| Plan | waypoints, 0.5 s apart, 5 s ahead |
+| Paddock can run it on | [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [neuroncap](../benchmarks/neuroncap.md), [comma2k19](../benchmarks/comma2k19.md), [alpasim](../benchmarks/alpasim.md) |
+| Size, licence, training data | [comparison.md](comparison.md) |
+
+<!-- /summary -->
 
 Qwen-Drive-1.0-4B (Qwen team + HUST, September 2026, Apache-2.0) is a Qwen3.5-4B
 vision-language model with a 1 B-parameter "Planning Expert" attached: a
@@ -124,12 +138,12 @@ valid, one rollout per scene, `scene_score` **0.7001** (progress 0.787), five
 at-fault collisions and two off-road events. The native runs on the same
 simulator image scored 0.6672, three of their scenes ending on the forward-reach
 refusal above; with one rollout per scene the two are level. The native runs
-were made by the native driver at the Fastcode site and are not in `results/`,
+were made by the native driver outside paddock and are not in `results/`,
 so the 0.6672 cannot be re-checked from this repository.
 
 The run's `run.json` names paddock commit `a074fe5`. That is this route's
 build commit before it was rebased onto `main`, and no branch holds it. In the
-commit that added this route to `main` (#123) the files this route changed
+commit that added this route to `main` (`caffc85`) the files this route changed
 differ from it only in comments, so check out that one to reproduce the run.
 
 ## Filling three views from one camera
@@ -227,7 +241,7 @@ four workers.
 | KITScenes ADE@3s ↓ | 223 | 0.806 m | 6.6 min | `20260914T220841-5a91fd` |
 | nuScenes cumulative L2 ↓ | 5,119 | 0.450 m | 88 min | `20260915T190350-47479e` |
 | NAVSIM v2 EPDMS ↑ | 12,146 | 0.840 | 4.0 h | `20260914T221802-80457c` |
-| NAVSIM v1 PDMS ↑ | 12,146 | 0.876 | 9 min, no GPU | `20260915T021715-02aab4` |
+| NAVSIM v1 PDMS ↑ | 12,146 | 0.876 | 11 min, no GPU | `20261104T205054-df25d5` |
 | neuroNCAP score ↑ | 200 | 2.49 | 7.7 h | `20260915T023604-12d5eb` |
 | comma2k19 ADE@3s ↓ | 10,165 | 1.159 m | 2.0 h | `20260916T220846-971379` |
 | Bench2Drive driving score ↑ | 50 | 12.92 | 3,457 s per route | `pooled50-40c29d24c37d542a-f250e0` |
@@ -266,17 +280,20 @@ plan against the collision rate:
 
 | model | collisions | speed change over the episode | mean peak \|lateral\| |
 |---|---:|---:|---:|
-| alpamayo15 | 32% | −2.31 m/s | 10.44 m |
-| drivejepa | 78% | −5.47 m/s | 0.11 m |
-| openpilot | 84% | −1.88 m/s | 1.00 m |
-| **qwendrive** | **86%** | **−2.48 m/s** | **1.22 m** |
-| visionpilot | 90% | −2.45 m/s | 1.91 m |
+| alpamayo15 | 32% | −2.29 m/s | 10.44 m |
+| drivejepa | 78% | −4.67 m/s | 1.80 m |
+| openpilot | 84% | −4.99 m/s | 1.00 m |
+| **qwendrive** | **86%** | **−2.81 m/s** | **1.22 m** |
+| visionpilot | 90% | −2.27 m/s | 1.91 m |
 
-Qwen-Drive brakes about as hard as Alpamayo, and harder than OpenPilot: on
-`frontal-0103` seed 5 it goes from 7.3 to 2.3 m/s with its planned reach
-collapsing from 21 m to under 5 m. Its lateral offset stays near zero
-throughout. Drive-JEPA brakes hardest of anyone and still collides in 78% of
-episodes. In a staged head-on the closing vehicle arrives whatever the ego's
+Speed change is the last speed minus the first, from each episode's
+`ego_poses.json`. Drive-JEPA's row is its run after the camera fix.
+
+Qwen-Drive brakes about as hard as Alpamayo, and less hard than OpenPilot: on
+`frontal-0103` seed 5 it drops from 8.1 m/s to a low of 2.7 m/s with its planned
+reach collapsing from 21 m to under 5 m. Its planned lateral offset never passes
+1.2 m. OpenPilot and Drive-JEPA brake hardest of the five and still collide in
+84% and 78% of episodes. In a staged head-on the closing vehicle arrives whatever the ego's
 speed, so the escape is lateral, and Alpamayo is the only model that takes it.
 
 **This is the model, not the adapter.** Through the same code path on NAVSIM the

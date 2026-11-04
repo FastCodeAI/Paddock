@@ -510,7 +510,7 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
         """One episode per scene, in the pinned order.
 
         Deterministic by construction: the order comes from the pinned YAML, not
-        from the filesystem, so `--limit` selects the same scenes at both sites.
+        from the filesystem, so `--limit` selects the same scenes at every site.
 
         `scenarios` is the scene *set* here -- AlpaSim has no scenario axis of
         its own, and `Episode.scenario` carries the set name so a run's episodes

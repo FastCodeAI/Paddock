@@ -49,7 +49,7 @@ Everything needed to decide whether two numbers are comparable.
 
 Three fields do the real work:
 
-- **`site`** — both organisations write into one history; without this a
+- **`site`** — many machines write into one history; without this a
   discrepancy is unattributable.
 - **`sequences_sha256`** — a hash of the sorted sample-id list. Two runs with
   different hashes evaluated different data, whatever their `n_samples` say. This
@@ -215,7 +215,7 @@ The model's settings reach `config` the same way, in two keys:
 - **`declared_env`** — the env the model's own `model.yaml` sets under
   `runtime.env`, as written (`"{weights}/..."`, unexpanded, so the hash is the
   same at every site), without its tuning keys (`tuning_env`, thread counts,
-  `runner.LOCATION_ENV`). Recorded since #99. A run with no such key was made
+  `runner.LOCATION_ENV`). Recorded since 21 Oct 2026. A run with no such key was made
   before that, or under a `model.yaml` that declares only tuning keys; for the
   former it does not mean the model declared nothing.
 - **`model_env`** — a site's `[models.<name>] env` override, absolute paths as

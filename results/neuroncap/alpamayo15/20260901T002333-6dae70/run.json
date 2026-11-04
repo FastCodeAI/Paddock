@@ -24,8 +24,10 @@
   "hardware": {
     "gpu_free_gb_at_start": null
   },
+  "provenance": {},
   "status": "complete",
-  "valid": true,
-  "notes": "",
+  "valid": false,
+  "superseded_by": "20260906T034647-bc409f",
+  "notes": "Superseded by 20260906T034647-bc409f: a small early run of 2 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one.",
   "ingested_from": ""
 }

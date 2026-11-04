@@ -13,8 +13,8 @@ shapely (neuroNCAP's), and the answer is kept as a boolean raster: 0.25 m cells,
 path laterally and reaches about 40 m ahead, so the margin is generous; a point
 outside the raster counts as not drivable.
 
-The format is gallops' (`expert/drivable.py`: `mask`, `origin`, `cell`, `scene`,
-`location`), so a raster built by either repo serves both. The layer is nuScenes'
+The format (`mask`, `origin`, `cell`, `scene`, `location`) is one a training repo
+can read too, so one raster serves both. The layer is nuScenes'
 `drivable_area`: the surface a vehicle may use, oncoming carriageway included. It
 is not a lane test.
 

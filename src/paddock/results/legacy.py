@@ -97,8 +97,8 @@ def ingest_all(cfg: SiteConfig, dry_run: bool = False) -> tuple[int, list[str]]:
     # A campaign that drove one scene per wizard invocation left one directory
     # per scene. Which directories those are is site data -- they are paths on
     # one box -- but what they add up to is not: the tracked run.json carries
-    # `sequences_sha256` over the scene ids, which is what a reviewer at the
-    # other site compares against, and n_samples says how many scenes it was.
+    # `sequences_sha256` over the scene ids, which is what a reviewer on
+    # another machine compares against, and n_samples says how many scenes it was.
     for run_id, campaign in (section.get("alpasim_campaigns") or {}).items():
         dirs = [Path(d) for d in campaign.get("dirs", [])]
         missing = [d for d in dirs if not (d / "aggregate" / "results-summary.json").exists()]

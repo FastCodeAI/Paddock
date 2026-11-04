@@ -1,4 +1,4 @@
-"""The env a model's own `model.yaml` declares is part of what a run measured (#99, #46).
+"""The env a model's own `model.yaml` declares is part of what a run measured.
 
 Before it was recorded, turning Drive-JEPA's `DRIVEJEPA_MOMENTUM` on in
 `model.yaml` gave the same run id (`1fff04`) as leaving it off, and `--resume`
@@ -73,7 +73,7 @@ def _drivejepa(momentum: str) -> ModelSpec:
 
 
 def test_a_switch_declared_in_model_yaml_moves_the_run_id(tmp_path) -> None:
-    """The reproduction in #99: momentum on and off hashed alike."""
+    """The original bug: momentum on and off hashed alike."""
     cfg = _cfg(tmp_path)
     off = runner._measurement_config(cfg, _OneEpisode(), _drivejepa("off"))
     on = runner._measurement_config(cfg, _OneEpisode(), _drivejepa("on"))
@@ -139,7 +139,7 @@ def test_resume_refuses_a_run_started_under_another_model_yaml_env(tmp_path, mon
     code, said = resume(_drivejepa("on"))
     assert code == 2
     assert "--resume refused" in said and "declared_env" in said
-    assert "before #99" not in said, "this run recorded its declared env; restoring it is possible"
+    assert "before 21 Oct 2026" not in said, "this run recorded its declared env; restoring it is possible"
 
 
 def test_a_run_from_before_declared_env_was_recorded_is_not_resumed_into(tmp_path) -> None:
@@ -154,7 +154,7 @@ def test_a_run_from_before_declared_env_was_recorded_is_not_resumed_into(tmp_pat
 
 def test_the_gate_reports_a_model_yaml_change_instead_of_refusing_the_pair() -> None:
     """A changed model.yaml is what a candidate is meant to test, like a code change;
-    and every baseline made before #99 lacks the key, which must not read as CONFIG DIFFERS."""
+    and every baseline made before 21 Oct 2026 lacks the key, which must not read as CONFIG DIFFERS."""
     before = {"cameras": ["CAM_FRONT"]}
     after = {"cameras": ["CAM_FRONT"], "declared_env": {"DRIVEJEPA_MOMENTUM": "on"}}
     assert gate.config_differences(before, after) == []

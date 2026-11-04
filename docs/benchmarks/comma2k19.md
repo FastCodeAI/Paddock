@@ -1,5 +1,17 @@
 # comma2k19
 
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Loop | open loop |
+| Dataset | `comma2k19` |
+| Primary metric | `ade` |
+| Adapter | [`adapters/benchmarks/comma2k19/`](../../src/paddock/adapters/benchmarks/comma2k19/) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa_free](../models/drivejepa_free.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
+
+<!-- /summary -->
+
 Open-loop trajectory accuracy against comma2k19's own recorded
 (INS/GNSS/vision-fused) future pose. 33 hours of 20 Hz highway driving on
 California's I-280, 2035 one-minute segments, two vehicles.
@@ -678,7 +690,7 @@ scored only as far as it plans; `—` is where its own horizon ends, not a
 failure. Lower is better except `pdm_style_score`.
 
 **The PDMS-style column and every comfort number on this page were made with
-the rules from before #102**, and #102 changes two of them. Progress now follows
+the rules from before 22 Oct 2026**, and that change altered two of them. Progress now follows
 NAVSIM's rule: a plan covering 2 m where the human drove 4 m scored 0.5 and now
 scores 1.0, because neither covers 5 m. And a step under 0.25 m per 0.5 s no
 longer gets a heading, so a car slowing to a stop with 3 cm of wobble failed the
@@ -686,8 +698,7 @@ yaw-rate bound and now passes. Affected: `pdm_ep`, `pdm_comfort`,
 `pdm_style_score`, `comfort_within_bounds`, and the yaw-rate and
 lateral-acceleration columns. ADE, FDE, miss rate and the longitudinal comfort
 columns are not. Scoring the runs again needs their per-sample plans, which are
-at the site that made them (`hpcai-skodate`); until then these numbers are the
-old rules'.
+at the site that made them; until then these numbers are the old rules'.
 
 **Every row is scored against a ground truth in the camera's frame, while the
 plans are in the car's.** The two differ by the mount rotation, about 2° of yaw
@@ -723,7 +734,7 @@ so this particular ambiguity cannot recur silently.
 
 The same row also predates the fix for a bug in the ONNX backend, which fed the
 road camera's image to the wide view; see [the openpilot
-guide](../models/openpilot-guide.md) for which figures that touches.
+page](../models/openpilot.md) for which figures that touches.
 
 One row carries `—` in the last column: `alpamayo15` predates it and is
 `stochastic: true`, so re-running for two proxy columns would replace a
@@ -1185,7 +1196,7 @@ rather than a per-model one. The baseline's comfort columns are all 1.0 by
 construction: a straight line at constant speed has no jerk.
 
 ⁂ **PDMS-style** values here were made with the progress and comfort rules from
-before #102 (see [Recorded results](#recorded-results)). It is NAVSIM v1's published composite,
+before 22 Oct 2026 (see [Recorded results](#recorded-results)). It is NAVSIM v1's published composite,
 `NC × DAC × (5·TTC + 5·EP + 2·C) / 12`, evaluated over log-replay *proxies* —
 comma2k19 has no other-agent tracks and no map, so no-collision sees only the
 closest radar lead and drivable-area uses the human's own path as the corridor.

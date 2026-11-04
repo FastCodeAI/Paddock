@@ -1,7 +1,7 @@
 """Tests for the constant-velocity baseline in `tools/benchmarks/comma2k19/`.
 
 The tool lives under `tools/`, which pytest does not collect (`norecursedirs`
-in `pyproject.toml`, because rescued modules there import torch and openpilot).
+in `pyproject.toml`, because older modules there import torch and openpilot).
 This one imports cleanly in paddock's own environment, and it writes into the
 tracked results store, so it is tested from here rather than not at all.
 

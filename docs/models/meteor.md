@@ -1,4 +1,18 @@
-# METEOR — Adapter Notes
+# METEOR
+
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Upstream | [tier4/METEOR](https://github.com/tier4/METEOR) at `dc193a81` |
+| Adapter | [`adapters/models/meteor/`](../../src/paddock/adapters/models/meteor/) |
+| Environment | uv, Python 3.11 |
+| Cameras | `CAM_FRONT`, `CAM_FRONT_LEFT`, `CAM_FRONT_RIGHT`, `CAM_BACK`, `CAM_BACK_LEFT`, `CAM_BACK_RIGHT` |
+| Plan | waypoints, 0.5 s apart, 3 s ahead |
+| Paddock can run it on | [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [neuroncap](../benchmarks/neuroncap.md), [navsim](../benchmarks/navsim.md), [bench2drive](../benchmarks/bench2drive.md), [nuplan](../benchmarks/nuplan.md), [comma2k19](../benchmarks/comma2k19.md) |
+| Size, licence, training data | [comparison.md](comparison.md) |
+
+<!-- /summary -->
 
 > Paths in this guide are written as placeholders: `<repos>` is
 > `[roots.repos]` from your `paddock.toml`, `<weights>` is `[roots.weights]`.
@@ -82,7 +96,7 @@ an absent camera is a zero image tensor with a donor camera's calibration
 feeds a missing eighth camera as a zero buffer. The adapter feeds black, which
 the graph's own `/255` turns into that zero tensor. The two NARROW slots are
 absent in paddock unless the front camera is alone (below). Every benchmark
-but comma2k19 supplies the nuScenes six; KITScenes did not until #40, whose harness handed over only `camera_ring_front`
+but comma2k19 supplies the nuScenes six; KITScenes did not until 14 Sep 2026; its harness handed over only `camera_ring_front`
 although the dataset records a six-camera ring with calibration for each. The
 run made under that harness is kept as an ablation (below): seven absent slots
 is a heavier ablation than anything the network saw in training, and it cost
@@ -271,7 +285,7 @@ Constant velocity scores 1.381 on the same list; Alpamayo 1.002, VisionPilot
 second run reproduced all 223 predictions exactly.
 
 **Front camera only, kept as an ablation:**
-`results/kitscenes/meteor/20260914T185351-5e5223`, made before #40 when the
+`results/kitscenes/meteor/20260914T185351-5e5223`, made before 14 Sep 2026 when the
 harness handed over one camera: ADE **4.784** (median 3.411), FDE@3s 9.011,
 longitudinal MAE 4.427, lateral MAE 1.064. The ring improves 177 of the 223
 samples. Where the difference lives, by ground-truth speed band (3 s point,
@@ -334,7 +348,7 @@ each comes from, measured on the per-sample records:
 
 The record carries per-scene aggregates (`by_group`, all 150 scenes), because
 the harness sets `group` to the scene. The four sibling nuScenes records predate
-#28 and carry none, so a per-scene comparison against them is not possible from
+the per-scene aggregates and carry none, so a per-scene comparison against them is not possible from
 tracked files until they are re-run under the current runner.
 
 comma2k19, `results/comma2k19/meteor/20261030T001935-0b8d0b` (the full
@@ -567,8 +581,8 @@ of those 30 runs, not a second sweep):
 | 30 | **0.4232** | 0.4301 | 1 / 30 | 10 / 30 | 5 / 30 |
 
 **This row did not go through the paddock node.** It was made by a native
-AlpaSim driver, `meteor-0.1.1`, written at the Fastcode site and not tracked in
-this repository, and ingested from its recorded runs. `meteor` does not declare
+AlpaSim driver, `meteor-0.1.1`, written outside this repository and not tracked in
+it, and ingested from its recorded runs. `meteor` does not declare
 `alpasim` in `model.yaml`. What that driver does, so the number can be read:
 
 - **The graph and the pixels are the ones above.** The released

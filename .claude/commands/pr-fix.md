@@ -8,7 +8,8 @@ Address a review of a paddock pull request.
 
 Target: **$ARGUMENTS**
 
-- A number (`42`) → fetch the review(s) on PR #42 from `FastCodeAI/Paddock`.
+- A number (`42`) → fetch the review(s) on PR #42 of this repository (`gh` fills in
+  `{owner}/{repo}` from the checkout).
 - Blank → the review produced earlier in this session by `/pr-review`.
 - A path → read the review from that file.
 
@@ -31,7 +32,7 @@ procedure.
 
 ```bash
 gh pr view <N> --json reviews --jq '.reviews[] | "[\(.state)] \(.author.login)\n\(.body)\n"'
-gh api repos/FastCodeAI/Paddock/pulls/<N>/comments \
+gh api repos/{owner}/{repo}/pulls/<N>/comments \
   --jq '.[] | "\(.path):\(.line // .original_line) outdated=\(.line == null) id=\(.id)\n\(.body)\n"'
 gh pr view <N> --json comments --jq '.comments[] | "\(.author.login): \(.body)"'
 ```
@@ -40,7 +41,7 @@ Three separate places: summary reviews, inline comments anchored to `file:line`,
 and plain issue comments. A review that exists only in one of them is easy to
 miss entirely.
 
-**Reviews come in passes, and a later pass can change the verdict.** On PR #16
+**Reviews come in passes, and a later pass can change the verdict.** On one PR
 the third pass opened with "This changes my verdict" and turned a no-blocker
 review into a blocker. Read them in order; the newest verdict is the one you owe
 an answer to.
@@ -96,11 +97,11 @@ Most findings have an easy fix that this repo forbids. These are the ones that
 have to be checked by hand, because `make check` goes green either way:
 
 - **A lint finding is never fixed by widening
-  `[tool.ruff.lint.per-file-ignores]`.** That list is the M2 migration backlog
-  and it may only shrink — `test_migration_backlog_does_not_grow` enforces it.
-  Same for the portability allowlist in
-  [tests/test_portability.py](../../tests/test_portability.py): the fix for a
-  machine path is a template variable, essentially always.
+  `[tool.ruff.lint.per-file-ignores]`.** That list covers older code not yet
+  brought up to the lint rules, and it may only shrink. The portability check in
+  [tests/test_portability.py](../../tests/test_portability.py) has no exemption
+  list at all: the fix for a machine path is a template variable, essentially
+  always.
 - **Never hand-edit `results/**/metrics.json` or `run.json`** to make a number
   agree with the text. Regenerate the run, so its provenance stays true. If a
   finding says a row should not be ranked, the mechanism is
@@ -128,7 +129,7 @@ re-review expensive and hides the fix inside it.
 A correctness finding (🔴, and most 🟠) is not addressed until something fails
 without the fix and passes with it. Add or extend a test that runs **with no GPU
 and no dataset** — that is the CONTRIBUTING checklist item, and it is what lets
-the other site re-check your claim.
+another site re-check your claim.
 
 Then, from the worktree:
 
@@ -178,7 +179,7 @@ Then close the loop on each thread you addressed, so the reviewer does not have
 to diff the branch to find out what happened:
 
 ```bash
-gh api repos/FastCodeAI/Paddock/pulls/<N>/comments/<comment-id>/replies \
+gh api repos/{owner}/{repo}/pulls/<N>/comments/<comment-id>/replies \
   -f body='Fixed in <sha> — <what changed>.'
 ```
 

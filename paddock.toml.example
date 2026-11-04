@@ -371,7 +371,7 @@ serialize = true
 # same values set globally would be, and `paddock run` names it before it
 # starts. Delete the tables to reset: the next run hashes as it did before them.
 # openpilot on KITScenes, from the base front camera as comma's own would see it
-# (docs/models/openpilot-guide.md). The scale, tilt and cut were chosen by
+# (docs/models/openpilot.md). The scale, tilt and cut were chosen by
 # inspecting one KITScenes scene (dbba76d9), and command_source = "gt" gives the
 # scored keyframe its route, the signal Drive-JEPA's and Alpamayo's rows there
 # had. A run with these tables is ranked, and the README marks it:
@@ -579,13 +579,13 @@ serialize = true
 #                                   which desire a LEFT/RIGHT route command is
 #                                   sent as. "route": lane changes and junction
 #                                   turns from the route, each sent when near
-#                                   (Bench2Drive). See docs/models/openpilot-guide.md.
+#                                   (Bench2Drive). See docs/models/openpilot.md.
 #   PADDOCK_OPENPILOT_HEIGHT_SCALE  the camera's height over the road divided
 #                                   by openpilot's 1.22 m, to show the model
 #                                   the road as its own camera would have seen
 #                                   it. "1" (the default) is openpilot's own
 #                                   warp. A measurement, not a correction: see
-#                                   docs/models/openpilot-guide.md.
+#                                   docs/models/openpilot.md.
 #   PADDOCK_OPENPILOT_PITCH_DEG     degrees the model's view is tilted over
 #                                   the camera's, positive up. "0" (the
 #                                   default) is openpilot's own warp.
@@ -594,7 +594,7 @@ serialize = true
 #                                   1164x874, instead of the frame as recorded.
 #                                   "0" (the default) is no cut. Needs
 #                                   PADDOCK_OPENPILOT_BACKEND = "onnx". Both:
-#                                   see docs/models/openpilot-guide.md. Both
+#                                   see docs/models/openpilot.md. Both
 #                                   are set for one camera rig, so set them in
 #                                   a pairing table (above) for the benchmark
 #                                   whose rig they were measured on.

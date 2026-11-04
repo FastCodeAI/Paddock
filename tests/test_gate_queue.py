@@ -197,7 +197,7 @@ def test_submit_puts_the_commit_and_the_copied_checkpoint_in_the_job(site, tmp_p
 
 
 def test_env_keys_are_checked_against_the_commit_the_job_runs(site) -> None:
-    """Review of #109 (1): a key set only in the submitter's checkout passed, and the job
+    """A key set only in the submitter's checkout passed, and the job
     ran main, where it does nothing. A pushed branch that adds the key may set it."""
     _baselines(site)
     site.models["m"].runtime.env["M_NEW"] = "local only"  # the submitter's own registry
@@ -347,7 +347,7 @@ def test_retry_queues_a_finished_job_again_at_the_back(site) -> None:
 
 
 def test_a_damaged_job_file_is_skipped_and_named(site, capsys) -> None:
-    """Review of #109 (2): one cut-off job.json stopped ls, submit and the worker for every job."""
+    """One cut-off job.json stopped ls, submit and the worker for every job."""
     _baselines(site)
     good = _submit(site)
     broken = q._mkdir(site.settings.jobs / "20200101T000000-x-0000")
@@ -369,7 +369,7 @@ def test_a_damaged_job_file_is_skipped_and_named(site, capsys) -> None:
     ],
 )
 def test_the_worker_rechecks_a_job_file_written_by_hand(site, edit, reason) -> None:
-    """Review of #109 (3): submit's rules held only for jobs made by submit."""
+    """Submit's rules held only for jobs made by submit."""
     _baselines(site)
     job_dir = site.settings.jobs / _submit(site)
     spec = json.loads((job_dir / "job.json").read_text())
@@ -402,7 +402,7 @@ def test_the_worker_reads_its_settings_again_before_each_job(site, tmp_path: Pat
     worker.echo = said.append
     worker.run(once=True)
     assert seen[-1] == ("3-4", "5-6") and any("keeping the current [queue] settings" in m for m in said)
-    # Review of #111 (3): a readable file with a wrong value crashed the worker, and systemd
+    # A readable file with a wrong value crashed the worker, and systemd
     # restarted it into the same crash every minute.
     config.write_text(table + 'base_port = "98oo"\n')
     _submit(site)

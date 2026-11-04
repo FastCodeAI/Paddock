@@ -44,7 +44,7 @@ def test_the_simulator_drives_every_plan_as_navsims_does(case) -> None:
 
 
 def test_the_recorded_plans_make_every_check_both_pass_and_fail() -> None:
-    """Review of #106 (2): yaw rate, yaw acceleration and jerk never failed in the
+    """Yaw rate, yaw acceleration and jerk never failed in the
     first recording, so a wrong version of them would have passed. Lateral
     acceleration is the exception, in NAVSIM too: v1 reads the rear axle's sideways
     acceleration, which its bicycle model always sets to 0, so it can never fail."""
@@ -70,7 +70,7 @@ def test_a_plan_is_scored_as_driven_and_comfort_reads_the_driven_path() -> None:
 
 
 def test_a_car_the_simulator_rolls_backwards_is_moving_not_stopped() -> None:
-    """Review of #106 (1): braking hard from 0.3 m/s on an all-zero plan, the simulated car
+    """Braking hard from 0.3 m/s on an all-zero plan, the simulated car
     rolls back about 0.8 m, into a car parked just behind it. NAVSIM reads the speed
     without its sign, so the ego is moving and hits a stopped car: at fault."""
     eye = np.eye(4)

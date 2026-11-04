@@ -143,7 +143,7 @@ class Track:
         """Centre (n, 2), yaw (n,), speed (n,) and whether it exists (n,) at `times_us`.
 
         Linear between logged poses, shortest way round for the heading, as
-        neuroNCAP's `interpolate_actor_trajectory` and gallops' grader do. Outside
+        neuroNCAP's `interpolate_actor_trajectory` does. Outside
         its logged span a track does not exist; a single pose exists only then.
         """
         times_us = np.asarray(times_us, dtype=float)
@@ -166,8 +166,8 @@ class Track:
 class DrivableArea:
     """A boolean raster of the drivable surface, in world coordinates.
 
-    The format gallops' `expert/drivable.py` writes (`mask`, `origin`, `cell`), so
-    one build serves both repos. A point outside the raster is not drivable: the
+    Stored as `mask`, `origin` and `cell`, a format a training repo can read
+    too, so one build serves both. A point outside the raster is not drivable: the
     raster covers everything a plan from the logged path can reach.
     """
 
