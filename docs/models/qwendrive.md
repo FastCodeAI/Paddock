@@ -290,8 +290,8 @@ Speed change is the last speed minus the first, from each episode's
 `ego_poses.json`. Drive-JEPA's row is its run after the camera fix.
 
 Qwen-Drive brakes about as hard as Alpamayo, and less hard than OpenPilot: on
-`frontal-0103` seed 5 it goes from 8.1 to 2.7 m/s with its planned reach
-collapsing from 21 m to under 5 m. Its planned lateral offset never passes
+`frontal-0103` seed 5 it drops from 8.1 m/s to a low of 2.7 m/s with its planned
+reach collapsing from 21 m to under 5 m. Its planned lateral offset never passes
 1.2 m. OpenPilot and Drive-JEPA brake hardest of the five and still collide in
 84% and 78% of episodes. In a staged head-on the closing vehicle arrives whatever the ego's
 speed, so the escape is lateral, and Alpamayo is the only model that takes it.
