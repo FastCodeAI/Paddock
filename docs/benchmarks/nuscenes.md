@@ -235,12 +235,9 @@ then the equivalence claim rests on the transcription, not on a measured match.
 
 The per-metric results behind this benchmark's column in the
 [README's support matrix](../../README.md#support-matrix), and the notes on its
-cells. Moved here from the README unchanged except for links, and for one
-sentence of the second △ note: it said constant velocity beats every learned
-model, which the table below contradicts, and it now names the two that beat it.
-The symbols are the README's former footnote marks, and each note below starts
-with the mark it explains. Marks about a model rather than this benchmark
-(∗ ◊ ◇ ✦ ✧) are explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
+cells. Each note below starts with the mark it explains. Marks about a model
+rather than this benchmark (∗ ◊ ◇ ✦ ✧) are explained in
+[What these models are](../models/comparison.md#notes-on-the-models).
 
 ### Notes on the matrix cells
 
