@@ -309,7 +309,6 @@ repos.yaml               vendor manifest: upstream URL + pinned sha + patches
 datasets.yaml            what each dataset is (no paths)
 patches/                 extracted edits to third-party source
 results/                 TRACKED metrics + provenance (kilobytes)
-external/                gitignored symlinks to this machine's vendor clones
 src/paddock/
   config.py              paddock.toml + template expansion
   policy/                the Policy protocol and its HTTP server wrapper
