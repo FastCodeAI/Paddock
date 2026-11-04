@@ -242,8 +242,11 @@ Paddock ships no weights and no datasets.
 
 ## Quickstart
 
+You need git, make, [uv](https://docs.astral.sh/uv/getting-started/installation/), curl
+and unzip.
+
 ```bash
-git clone <this repo> && cd paddock
+git clone <this repo> paddock && cd paddock
 make setup && source .venv/bin/activate     # .venv + editable install
 cp paddock.toml.example paddock.toml        # then set the three [roots] paths to folders on your machine
 paddock doctor                              # what this machine can run, and how to fix the rest
