@@ -54,9 +54,9 @@ def model_table(model: ModelSpec, registry: Registry) -> str:
             ("Upstream", _repo(registry.repos.get(model.repo) if model.repo else None)),
             ("Adapter", f"[`adapters/models/{model.name}/`](../../src/paddock/adapters/models/{model.name}/)"),
             ("Environment", env),
-            ("Cameras", ", ".join(f"`{c}`" for c in model.cameras)),
+            ("Cameras", ", ".join(f"`{c}`" for c in model.camera_views or model.cameras)),
             ("Plan", plan),
-            ("Runs on", benches),
+            ("Paddock can run it on", benches),
             ("Size, licence, training data", "[comparison.md](comparison.md)"),
         ]
     )
@@ -70,7 +70,7 @@ def benchmark_table(bench: BenchmarkSpec, registry: Registry) -> str:
             ("Dataset", f"`{bench.dataset}`" if bench.dataset else "rendered by the simulator"),
             ("Primary metric", f"`{bench.primary_metric}`"),
             ("Adapter", f"[`adapters/benchmarks/{bench.name}/`](../../src/paddock/adapters/benchmarks/{bench.name}/)"),
-            ("Models that run on it", ", ".join(f"[{m}](../models/{m}.md)" for m in models) or "none yet"),
+            ("Models paddock can run on it", ", ".join(f"[{m}](../models/{m}.md)" for m in models) or "none yet"),
         ]
     )
 

@@ -7,9 +7,9 @@
 | Upstream | [NVlabs/alpamayo1.5](https://github.com/NVlabs/alpamayo1.5) at `7a8f1c7` |
 | Adapter | [`adapters/models/alpamayo15/`](../../src/paddock/adapters/models/alpamayo15/) |
 | Environment | uv, Python 3.12 |
-| Cameras | `CAM_FRONT`, `CAM_FRONT_LEFT`, `CAM_FRONT_RIGHT` |
+| Cameras | `CAM_FRONT_LEFT`, `CAM_FRONT`, `CAM_FRONT_RIGHT`, `CAM_FRONT_TELE` |
 | Plan | waypoints, 0.5 s apart, 6.4 s ahead |
-| Runs on | [kitscenes](../benchmarks/kitscenes.md), [neuroncap](../benchmarks/neuroncap.md), [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [bench2drive](../benchmarks/bench2drive.md), [alpasim](../benchmarks/alpasim.md), [nuscenes](../benchmarks/nuscenes.md), [comma2k19](../benchmarks/comma2k19.md), [nuplan](../benchmarks/nuplan.md) |
+| Paddock can run it on | [kitscenes](../benchmarks/kitscenes.md), [neuroncap](../benchmarks/neuroncap.md), [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [bench2drive](../benchmarks/bench2drive.md), [alpasim](../benchmarks/alpasim.md), [nuscenes](../benchmarks/nuscenes.md), [comma2k19](../benchmarks/comma2k19.md), [nuplan](../benchmarks/nuplan.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->

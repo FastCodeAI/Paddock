@@ -8,7 +8,7 @@
 | Dataset | `navsim` |
 | Primary metric | `pdms` |
 | Adapter | [`adapters/benchmarks/navsim_v1/`](../../src/paddock/adapters/benchmarks/navsim_v1/) |
-| Models that run on it | [alpamayo15](../models/alpamayo15.md), [drivejepa](../models/drivejepa.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [drivejepa](../models/drivejepa.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 

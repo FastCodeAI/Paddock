@@ -9,7 +9,7 @@
 | Environment | shell, Python 3.9 |
 | Cameras | `CAM_FRONT` |
 | Plan | waypoints, 0.5 s apart, 4 s ahead |
-| Runs on | [comma2k19](../benchmarks/comma2k19.md) |
+| Paddock can run it on | [comma2k19](../benchmarks/comma2k19.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->

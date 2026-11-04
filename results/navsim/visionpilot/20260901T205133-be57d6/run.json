@@ -1,0 +1,26 @@
+{
+  "run_id": "20260901T205133-be57d6",
+  "site": "fastcode-shakaal",
+  "benchmark": "navsim",
+  "model": "visionpilot",
+  "mode": "open_loop",
+  "started_utc": "2026-09-01T20:51:33+00:00",
+  "duration_s": 19.1,
+  "repo_sha": null,
+  "dataset": {
+    "name": "navsim",
+    "n_samples": 4,
+    "sequences_sha256": "69e21058d96f1cc5"
+  },
+  "config": {
+    "limit": 4,
+    "cameras": [
+      "CAM_FRONT"
+    ]
+  },
+  "hardware": {},
+  "status": "complete",
+  "valid": false,
+  "notes": "SMOKE, not a result: a 4-scenario run proves the pipeline (node, conversion, scorer, CSV) and nothing about the model. Twice now the n=4 figure has been contradicted by a larger run -- visionpilot 0.640 -> 0.447 at n=242, alpamayo 0.226 -> 0.503 at n=60. NAVSIM's floor for a meaningful score is far above 4; use the full-split run.",
+  "ingested_from": ""
+}

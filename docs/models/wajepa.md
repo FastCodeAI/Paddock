@@ -9,7 +9,7 @@
 | Environment | uv, Python 3.10 |
 | Cameras | `CAM_FRONT_LEFT`, `CAM_FRONT`, `CAM_FRONT_RIGHT`, `CAM_BACK` |
 | Plan | waypoints, 0.5 s apart, 4 s ahead |
-| Runs on | [neuroncap](../benchmarks/neuroncap.md) |
+| Paddock can run it on | [neuroncap](../benchmarks/neuroncap.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->

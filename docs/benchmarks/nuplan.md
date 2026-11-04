@@ -8,7 +8,7 @@
 | Dataset | `nuplan` |
 | Primary metric | `ade` |
 | Adapter | [`adapters/benchmarks/nuplan/`](../../src/paddock/adapters/benchmarks/nuplan/) |
-| Models that run on it | [alpamayo15](../models/alpamayo15.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 

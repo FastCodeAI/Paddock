@@ -8,7 +8,7 @@
 | Dataset | rendered by the simulator |
 | Primary metric | `scene_score` |
 | Adapter | [`adapters/benchmarks/alpasim/`](../../src/paddock/adapters/benchmarks/alpasim/) |
-| Models that run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [qwendrive](../models/qwendrive.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [qwendrive](../models/qwendrive.md) |
 
 <!-- /summary -->
 

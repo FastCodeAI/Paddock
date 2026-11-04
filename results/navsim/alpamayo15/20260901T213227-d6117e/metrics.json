@@ -1,0 +1,193 @@
+{
+  "run_id": "20260901T213227-d6117e",
+  "primary_metric": "epdms",
+  "n": 242,
+  "metrics": {
+    "no_at_fault_collisions": {
+      "n": 242,
+      "n_missing": 0,
+      "mean": 0.88843,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.308205
+    },
+    "drivable_area_compliance": {
+      "n": 242,
+      "n_missing": 0,
+      "mean": 0.863636,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.343174
+    },
+    "driving_direction_compliance": {
+      "n": 242,
+      "n_missing": 0,
+      "mean": 0.915289,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.249076
+    },
+    "traffic_light_compliance": {
+      "n": 242,
+      "n_missing": 0,
+      "mean": 1.0,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.0
+    },
+    "ego_progress": {
+      "n": 242,
+      "n_missing": 0,
+      "mean": 0.618675,
+      "median": 0.698397,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.368747
+    },
+    "time_to_collision_within_bound": {
+      "n": 242,
+      "n_missing": 0,
+      "mean": 0.88843,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.314837
+    },
+    "lane_keeping": {
+      "n": 242,
+      "n_missing": 0,
+      "mean": 0.938017,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.241126
+    },
+    "history_comfort": {
+      "n": 242,
+      "n_missing": 0,
+      "mean": 0.929752,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.255564
+    },
+    "two_frame_extended_comfort": {
+      "n": 201,
+      "n_missing": 41,
+      "mean": 0.447761,
+      "median": 0.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.497264
+    },
+    "epdms": {
+      "n": 242,
+      "n_missing": 0,
+      "mean": 0.653322,
+      "median": 0.843889,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.384167
+    }
+  },
+  "by_split": {
+    "navtest": {
+      "n": 242,
+      "no_at_fault_collisions": {
+        "n": 242,
+        "n_missing": 0,
+        "mean": 0.88843,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.308205
+      },
+      "drivable_area_compliance": {
+        "n": 242,
+        "n_missing": 0,
+        "mean": 0.863636,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.343174
+      },
+      "driving_direction_compliance": {
+        "n": 242,
+        "n_missing": 0,
+        "mean": 0.915289,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.249076
+      },
+      "traffic_light_compliance": {
+        "n": 242,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "ego_progress": {
+        "n": 242,
+        "n_missing": 0,
+        "mean": 0.618675,
+        "median": 0.698397,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.368747
+      },
+      "time_to_collision_within_bound": {
+        "n": 242,
+        "n_missing": 0,
+        "mean": 0.88843,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.314837
+      },
+      "lane_keeping": {
+        "n": 242,
+        "n_missing": 0,
+        "mean": 0.938017,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.241126
+      },
+      "history_comfort": {
+        "n": 242,
+        "n_missing": 0,
+        "mean": 0.929752,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.255564
+      },
+      "two_frame_extended_comfort": {
+        "n": 201,
+        "n_missing": 41,
+        "mean": 0.447761,
+        "median": 0.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.497264
+      },
+      "epdms": {
+        "n": 242,
+        "n_missing": 0,
+        "mean": 0.653322,
+        "median": 0.843889,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.384167
+      }
+    }
+  },
+  "by_group": {}
+}

@@ -8,7 +8,7 @@
 | Dataset | `kitscenes` |
 | Primary metric | `ade` |
 | Adapter | [`adapters/benchmarks/kitscenes/`](../../src/paddock/adapters/benchmarks/kitscenes/) |
-| Models that run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 
