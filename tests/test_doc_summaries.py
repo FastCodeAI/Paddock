@@ -28,6 +28,16 @@ def test_every_summary_table_matches_its_source() -> None:
     assert not stale, f"stale summary tables in {stale}; run: python -m tools.doc_summaries"
 
 
+def test_the_table_links_to_the_comparison_page_only_for_models_on_it(tmp_path, monkeypatch) -> None:
+    """A link to a page that never mentions the model sends the reader nowhere."""
+    registry = Registry.load()
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "comparison.md").write_text("Only WA-JEPA is on this page.\n")
+    monkeypatch.setattr(doc_summaries, "DOCS", tmp_path)
+    assert "comparison.md" in doc_summaries.model_table(registry.models["wajepa"], registry)
+    assert "comparison.md" not in doc_summaries.model_table(registry.models["meteor"], registry)
+
+
 def test_a_page_without_a_table_gets_one_under_its_title() -> None:
     text = "# Title\n\nFirst paragraph.\n"
     once = doc_summaries.with_summary(text, "| | |\n|---|---|\n| a | b |")

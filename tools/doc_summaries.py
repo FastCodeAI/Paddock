@@ -43,23 +43,32 @@ def _table(rows: list[tuple[str, str]]) -> str:
     return "\n".join(["| | |", "|---|---|", *(f"| {k} | {v} |" for k, v in rows)])
 
 
+def _squashed(text: str) -> str:
+    """Lower case, letters and digits only, so `wajepa` matches "WA-JEPA" and `alpamayo15` "Alpamayo 1.5"."""
+    return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
+def _on_comparison_page(name: str) -> bool:
+    return _squashed(name) in _squashed((DOCS / "models" / "comparison.md").read_text())
+
+
 def model_table(model: ModelSpec, registry: Registry) -> str:
     plan = f"{model.output_kind}, {model.waypoint_dt:g} s apart"
     if model.horizon_s:
         plan += f", {model.horizon_s:g} s ahead"
     env = model.runtime.kind + (f", Python {model.runtime.python}" if model.runtime.python else "")
     benches = ", ".join(f"[{b}](../benchmarks/{b}.md)" for b in model.benchmarks) or "none yet"
-    return _table(
-        [
-            ("Upstream", _repo(registry.repos.get(model.repo) if model.repo else None)),
-            ("Adapter", f"[`adapters/models/{model.name}/`](../../src/paddock/adapters/models/{model.name}/)"),
-            ("Environment", env),
-            ("Cameras", ", ".join(f"`{c}`" for c in model.camera_views or model.cameras)),
-            ("Plan", plan),
-            ("Paddock can run it on", benches),
-            ("Size, licence, training data", "[comparison.md](comparison.md)"),
-        ]
-    )
+    rows = [
+        ("Upstream", _repo(registry.repos.get(model.repo) if model.repo else None)),
+        ("Adapter", f"[`adapters/models/{model.name}/`](../../src/paddock/adapters/models/{model.name}/)"),
+        ("Environment", env),
+        ("Cameras", ", ".join(f"`{c}`" for c in model.camera_views or model.cameras)),
+        ("Plan", plan),
+        ("Paddock can run it on", benches),
+    ]
+    if _on_comparison_page(model.name):
+        rows.append(("Size, licence, training data", "[comparison.md](comparison.md)"))
+    return _table(rows)
 
 
 def benchmark_table(bench: BenchmarkSpec, registry: Registry) -> str:

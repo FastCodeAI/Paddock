@@ -10,7 +10,6 @@
 | Cameras | `CAM_FRONT_LEFT`, `CAM_FRONT`, `CAM_FRONT_RIGHT`, `CAM_BACK` |
 | Plan | waypoints, 0.5 s apart, 4 s ahead |
 | Paddock can run it on | [neuroncap](../benchmarks/neuroncap.md) |
-| Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->
 
