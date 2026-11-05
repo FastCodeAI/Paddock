@@ -197,8 +197,10 @@ frame.)*
   shown that never moves a plan. Run on the default CPU provider for a ranked
   row, with `VISIONPILOT_ORT_THREADS` and the benchmark's node count, both
   speed-only, to share the cores. The Bench2Drive, nuScenes and first comma2k19
-  rows ran on CUDA before that rule and stay ranked. They used this setup.
-  The ONNX stack defaulted to the CPU provider with ~94 threads. Site
+  rows ran on CUDA before that rule and stay ranked.
+
+  Those rows ran with this setup. The ONNX stack defaulted to the CPU provider
+  with ~94 threads. Site
   env: `VISIONPILOT_PROVIDERS="cuda"`, `VISIONPILOT_ORT_THREADS="2"`, and
   `LD_LIBRARY_PATH` pointing at the venv's nvidia wheel libs
   (`site-packages/nvidia/{cudnn,cublas,cuda_runtime,cuda_nvrtc}/lib`); without
