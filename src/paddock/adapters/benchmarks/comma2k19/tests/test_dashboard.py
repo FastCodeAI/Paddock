@@ -299,6 +299,32 @@ def test_the_recorded_future_is_flipped_out_of_the_device_frame(mpl):
         dash.close()
 
 
+def test_the_recorded_future_is_drawn_in_the_cars_frame_like_the_plans(mpl, rotations):
+    """The plans beside it, and the ground truth they are scored against, are
+    in the car's frame; a path drawn in the camera's leans off by the mount yaw.
+
+    A camera yawed 1.5 deg off the car's axis sees a straight drive bear to its
+    right. Rotated by the overlay's calibration, the drawn path is straight.
+    """
+    yaw = np.radians(1.5)
+
+    class _Mounted(_Overlay):
+        rpy = np.array([0.0, 0.0, yaw])
+
+        def future_device(self, index: int):
+            ahead = np.arange(20, dtype=np.float64)
+            return np.column_stack([ahead * np.cos(yaw), ahead * np.sin(yaw), np.zeros_like(ahead)])
+
+    dash = _dash(overlay=_Mounted(n=60))
+    try:
+        dash.compose(np.zeros((L.EON_HEIGHT_PX, 8, 3), dtype=np.uint8), 40, show_plans=True)
+        x, y = dash._gt_line.get_data()
+        assert list(x) == pytest.approx([0.0] * len(x), abs=1e-9)
+        assert list(y) == pytest.approx(list(range(len(y))))
+    finally:
+        dash.close()
+
+
 def test_frames_composes_one_output_per_input(mpl):
     dash = _dash()
     try:
