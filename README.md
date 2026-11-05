@@ -22,7 +22,7 @@ and every score it produces traces back to a run you can inspect.
 </p>
 
 **A** adapted to the benchmark · **P** a pipeline around the model is graded ·
-**S** stale · **R** not ranked: measured on different scenes or by a different method.
+**S** stale.
 
 Each number is read from the run [docs/support-matrix.toml](docs/support-matrix.toml)
 names for it. The matrix holds released checkpoints only.
@@ -65,11 +65,10 @@ it differs.
 - **S — stale; a re-run will change it.** Every VisionPilot figure predates the
   `CURV_SCALE` fix. Drive-JEPA's nuScenes cell is the camera-blind run from
   before the camera fix of 13 Oct 2026. OpenPilot's comma2k19 row was not run at the pinned sha.
-- **R — not ranked, because the number was measured on different scenes or by a
-  different method from the rest of its column.** How many cameras a model is
-  given, whether it drives through paddock's bridge or its own simulator driver,
-  and whether its Bench2Drive routes end early as failed drives are never
-  reasons to leave a cell unranked.
+- **What never leaves a cell unranked.** How many cameras a model is given,
+  whether it drives through paddock's bridge or its own simulator driver, and
+  whether its Bench2Drive routes end early as failed drives are never reasons to
+  leave a cell unranked.
 - **Ranked, though some Bench2Drive routes end early.** AutoE2E's, METEOR's and
   OpenPilot's Bench2Drive runs end a route after 30 s without progress or at 4x
   the expert's time, and score it as it stood, as a failed drive; the rest of

@@ -147,16 +147,16 @@ other and are deliberately not merged into one column here.
 
 ### Drive-JEPA × nuplan — most of nuPlan mini is in its training logs
 
-**Drive-JEPA's nuPlan cell is adapted, not zero-shot.** Paddock's nuPlan
+**Drive-JEPA's nuPlan runs are adapted, not zero-shot.** Paddock's nuPlan
 benchmark scores nuPlan's `mini` split. NAVSIM's `navmini` scene filter names 62
 mini logs (`train_test_split/scene_filter/navmini.yaml`, vendored in Drive-JEPA at
 the pinned sha), and 52 of them are also `navtrain` logs. So Drive-JEPA's planner
 was fine-tuned on those drives, and its encoder was pre-trained on all of OpenScene
 `trainval`, which holds them too. The other 10 are `navtest` logs. Which of the 25
 scored anchors fall in the 52 is not known on this machine: the anchor list lives on
-the site that ran the benchmark. The nuPlan column is unranked and every run in it is
-stored `valid: false` already, so no rank changes; the A says why this number is not
-a zero-shot one.
+the site that ran the benchmark. nuPlan has no column in the support matrix yet and
+every run is stored `valid: false`, so no rank depends on this. When full runs bring the
+column back, Drive-JEPA's cell there needs the A.
 
 ### Qwen-Drive 1.0 × navsim
 

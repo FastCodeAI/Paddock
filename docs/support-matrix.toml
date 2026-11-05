@@ -10,7 +10,8 @@
 #   { value = 30.09, source = "docs/..." }  typed, for a figure with no stored run; the
 #                                           source page must show the same number
 #   "not run"                               a variant nobody ran here; a cell left out reads "—"
-# with, optionally, `marks` (the README's A P S R V) and `note` (shown under the number).
+# with, optionally, `marks` (A, P and S are in the README; R or V leaves a cell unranked)
+# and `note` (shown under the number).
 # A run must be the row's own model's; a cell that borrows another's names it with `model`.
 
 [[benchmark]]
