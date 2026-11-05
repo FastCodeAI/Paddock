@@ -185,10 +185,12 @@ def test_a_profile_folder_is_named_after_its_model(model: str) -> None:
     assert body.get("name", model) == model
 
 
-@pytest.mark.parametrize("model", ["openpilot", "no_such_model"])
-def test_a_model_without_a_profile_gets_the_default(model: str) -> None:
-    assert not harness.has_profile(model)
-    assert harness.profile_for(model) is DEFAULT_PROFILE
+def test_a_model_without_a_profile_gets_the_default(tmp_path: Path, monkeypatch) -> None:
+    """A made-up model, so a real one can gain an alpasim.yaml without editing this test."""
+    monkeypatch.setattr(harness, "MODELS_DIR", tmp_path)
+    (tmp_path / "m").mkdir()
+    assert not harness.has_profile("m")
+    assert harness.profile_for("m") is DEFAULT_PROFILE
     assert DEFAULT_PROFILE == DriverProfile("paddock_bridge", (), None, False)
 
 
@@ -263,13 +265,29 @@ def test_every_model_that_lists_alpasim_can_be_driven(model: str) -> None:
     assert harness.profile_problems(spec) == []
 
 
-@pytest.mark.parametrize("model", ["openpilot", "meteor", "visionpilot", "wajepa", "drivejepa_free"])
-def test_a_camera_model_with_no_profile_is_refused(model: str) -> None:
-    """2026-11-04: on the default profile these models' nodes kept none of their cameras."""
-    spec = Registry.load().models[model]
-    (problem,) = harness.profile_problems(spec)
-    assert "would never reach its node on AlpaSim" in problem
-    assert all(camera in problem for camera in spec.cameras)
+def _camera_models_without_a_profile() -> list[str]:
+    """Built from the folders, so a model that gains an alpasim.yaml leaves this list."""
+    models = Registry.load().models
+    return sorted(name for name, spec in models.items() if spec.cameras and not harness.has_profile(name))
+
+
+def test_a_camera_model_with_no_profile_is_refused() -> None:
+    """2026-11-04: on the default profile, openpilot, METEOR, VisionPilot, WA-JEPA and
+    drivejepa_free each kept none of their cameras. Every model like them is refused."""
+    models = Registry.load().models
+    for model in _camera_models_without_a_profile():
+        spec = models[model]
+        (problem,) = harness.profile_problems(spec)
+        assert "would never reach its node on AlpaSim" in problem, model
+        assert all(camera in problem for camera in spec.cameras), model
+
+
+def test_a_made_up_camera_model_with_no_profile_is_refused(tmp_path: Path, monkeypatch) -> None:
+    """The same refusal, on a model whose folder this test owns, so it holds when no real one is left."""
+    monkeypatch.setattr(harness, "MODELS_DIR", tmp_path)
+    (tmp_path / "m").mkdir()
+    (problem,) = harness.profile_problems(_spec("m"))
+    assert "would never reach its node on AlpaSim" in problem and "CAM_FRONT" in problem
 
 
 def _spec(name: str, cameras=("CAM_FRONT",)):
@@ -333,7 +351,33 @@ def test_a_missing_scene_list_is_refused(tmp_path: Path, monkeypatch) -> None:
 
 # -- a model's own driver config, in <model>/driver/ ----------------------------
 
-DRIVER_BODY = "# a model's own driver config\ndefaults:\n  - paddock_bridge\n  - _self_\n"
+DRIVER_BODY = (
+    "# @package _global_\n# a model's own driver config\ndefaults:\n  - paddock_bridge\n  - _self_\n"
+)
+
+
+def test_a_model_folder_driver_config_without_the_global_header_is_refused(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """2026-11-05: without it AlpaSim loaded the file but nested n_sim_steps under driver.runtime."""
+    _write(tmp_path, monkeypatch, "m", {**RENAMED, "driver": "paddock_bridge_m"})
+    path = _write(
+        tmp_path,
+        monkeypatch,
+        "m",
+        DRIVER_BODY.replace("# @package _global_\n", ""),
+        filename="driver/paddock_bridge_m.yaml",
+    )
+    (problem,) = harness.profile_problems(_spec("m"))
+    assert str(path) in problem and "@package _global_" in problem
+
+
+def test_the_header_counts_only_above_the_first_line_of_yaml(tmp_path: Path) -> None:
+    path = tmp_path / "d.yaml"
+    path.write_text("defaults:\n  - paddock_bridge\n# @package _global_\n")
+    assert not harness._is_global_package(path)
+    path.write_text("\n# comment\n#   @package   _global_\nx: 1\n")
+    assert harness._is_global_package(path)
 
 
 def test_a_driver_config_in_the_model_folder_is_found_and_searched(tmp_path: Path, monkeypatch) -> None:

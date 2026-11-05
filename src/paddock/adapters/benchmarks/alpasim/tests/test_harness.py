@@ -652,17 +652,23 @@ def test_a_scene_subset_is_not_a_score(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_a_model_without_a_profile_is_driven_exactly_as_before(tmp_path: Path, monkeypatch) -> None:
-    """openpilot and every other unlisted model: default driver, no bridge flags, nothing recorded."""
+    """Any model with no alpasim.yaml: default driver, no bridge flags, nothing recorded.
+
+    A made-up model, so a real one can gain a profile without editing this test.
+    """
     from types import SimpleNamespace
 
     from paddock.adapters.benchmarks.alpasim import harness
 
-    assert not harness.has_profile("openpilot")
-    profile = harness.profile_for("openpilot")
+    bench = _benchmark(tmp_path, monkeypatch)
+    models_dir = tmp_path / "models"
+    (models_dir / "m").mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(harness, "MODELS_DIR", models_dir)
+    assert not harness.has_profile("m")
+    profile = harness.profile_for("m")
     assert profile == harness.DriverProfile()
     assert (profile.driver, profile.bridge_args, profile.scenes_csv) == ("paddock_bridge", (), None)
-    bench = _benchmark(tmp_path, monkeypatch)
-    assert bench.model_run_config(SimpleNamespace(name="openpilot")) == {}
+    assert bench.model_run_config(SimpleNamespace(name="m")) == {}
 
 
 def test_the_drivejepa_profile_pins_every_scene_it_can_be_asked_for() -> None:

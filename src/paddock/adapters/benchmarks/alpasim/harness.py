@@ -278,6 +278,23 @@ def driver_searchpath(model: str, profile: DriverProfile) -> Path | None:
     return MODELS_DIR / model if own.is_file() else None
 
 
+def _is_global_package(path: Path) -> bool:
+    """Does this config's leading comment block carry Hydra's `# @package _global_`?
+
+    Hydra reads the package directive only from the comments at the top of the
+    file, before the first line of YAML.
+    """
+    for line in path.read_text().splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if not stripped.startswith("#"):
+            return False
+        if stripped.lstrip("#").split() == ["@package", "_global_"]:
+            return True
+    return False
+
+
 def cameras_reaching_node(bridge_args: tuple[str, ...]) -> set[str]:
     """The paddock camera names the bridge sends under these flags.
 
@@ -323,6 +340,13 @@ def profile_problems(model) -> list[str]:
         )
     elif not in_benchmark.is_file() and not in_model.is_file():
         problems.append(f"{name}'s driver config {profile.driver!r} is neither {in_model} nor {in_benchmark}")
+    elif in_model.is_file() and not _is_global_package(in_model):
+        # Without the header Hydra nests the file under `driver.`, where no
+        # AlpaSim setting is read, so the run keeps the shared values silently.
+        problems.append(
+            f"{in_model} does not start with `# @package _global_`; without it AlpaSim would load it "
+            f"but ignore its settings (docs/adding-a-model.md, AlpaSim settings)"
+        )
     if profile.scenes_csv is not None and not (SCENES_DIR / profile.scenes_csv).is_file():
         problems.append(
             f"{name}'s profile pins scenes in {SCENES_DIR / profile.scenes_csv}, which does not exist"

@@ -266,7 +266,11 @@ setting can go without the file.
 `adapters/models/drivejepa/alpasim.yaml` is a worked example, with a comment on
 every flag. A driver config in `<model>/driver/` is found because AlpaSim's
 config loader searches the model's folder after the benchmark's own configs; it
-can extend the shared one with `defaults: [paddock_bridge, _self_]`. The four
+can extend the shared one with `defaults: [paddock_bridge, _self_]`. Its first
+line must be `# @package _global_`, as in every driver config in the benchmark's
+folder. Without it AlpaSim still loads the file, but puts its settings under
+`driver.` where nothing reads them, so the run keeps the shared values with no
+error. AlpaSim refuses a driver config in a model's folder without that line. The four
 driver configs that existed before this convention stay in the benchmark's
 folder until #94 replaces them with one shared setting.
 
