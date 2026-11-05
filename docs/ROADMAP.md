@@ -47,7 +47,7 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 
 - **Bench2Drive's ranked runs cover 50 of 220 routes and 14 of 44 scenario types.**
   They cannot be compared with published 220-route scores.
-- **AlpaSim's ranked rows cover 30 of 913 scenes, one rollout each.** A gap under
+- **AlpaSim's matrix cells cover 30 of 913 scenes, one rollout each.** A gap under
   about 0.16 is within two standard errors.
 - **NAVSIM v2 has not been run two-stage on `navhard`,** the set its public
   leaderboard uses. Paddock's column is `navtest`, stage one only.

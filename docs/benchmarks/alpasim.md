@@ -18,8 +18,8 @@ control rate, and steps the world forward on what the policy commands. Errors
 compound, which is the point: a policy that drifts a metre in the first second
 is shown the consequence rather than being re-anchored to the log.
 
-The primary metric is `scene_score`, 0–1, meaned over scenes. The ranked rows drive
-30 of the 913 scenes in `public_2601`, one rollout each, so a score here is not a
+The primary metric is `scene_score`, 0–1, meaned over scenes. The support matrix's
+cells drive 30 of the 913 scenes in `public_2601`, one rollout each, so a score here is not a
 full-suite score.
 
 ## What you need
