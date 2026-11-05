@@ -127,7 +127,7 @@ alpasim = { run = "alpasim/alpamayo15/20261029T200113-9d900c" }  # through the b
 [cells.drivejepa]
 nuscenes = { run = "nuscenes/drivejepa/20260905T093335-4513d4", marks = "S" }
 kitscenes = { run = "kitscenes/drivejepa/legacy-kitscenes_e2e_final" }
-comma2k19 = { run = "comma2k19/drivejepa_free/20260916T003407-c504e5", model = "drivejepa_free" }  # front-camera version
+comma2k19 = { run = "comma2k19/drivejepa_free/20260916T003407-c504e5", model = "drivejepa_free", note = "front camera" }
 navsim = { run = "navsim/drivejepa/20260902T173156-7e208f", marks = "A" }
 navsim_v1 = { run = "navsim_v1/drivejepa/20260911T082329-575df6", marks = "A" }
 bench2drive = { run = "bench2drive/drivejepa/native50-2hz-40c29d24c37d542a-447e23", note = "2 Hz" }
