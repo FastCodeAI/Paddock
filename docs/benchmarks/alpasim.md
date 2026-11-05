@@ -116,9 +116,11 @@ file's name rather than falling back to the default.
 Before a dry run or any model starts, the harness checks each model
 (`input_problems`): its profile loads, its driver config exists (in this
 benchmark's `configs/driver/` or the model's own `driver/` folder), its scene
-list exists, and every camera it reads reaches its node, renamed or filled by
-a placeholder. A model node keeps only the cameras its model declares, by name,
-so a camera model with no profile would otherwise get no images and no error.
+list exists, and every camera it reads is named by a `--camera-name` rename or
+a `--placeholder`. A model node keeps only the cameras its model declares, by
+name, so a camera model with no profile would otherwise get no images and no
+error. The check reads only the paddock name in `--camera-name ID=NAME`, not the
+AlpaSim id: a mistyped id still passes and that camera never arrives.
 Constant velocity's profile says only `cameras: []`.
 
 Video is not among the settings: it stays the site's `video` setting for every
