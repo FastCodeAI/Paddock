@@ -53,7 +53,8 @@ runtime:
     # the result.
     PADDOCK_OPENPILOT_THREADS: "8"
   # Site overrides of these change speed or memory, not the plan, so they
-  # leave a run valid; any other [models.openpilot.env] key makes it valid: false.
+  # leave a run valid; any other [models.openpilot.env] key makes it valid: false,
+  # unless it is in ranked_with_note below.
   tuning_env: [PADDOCK_OPENPILOT_THREADS]
 
 capabilities:
