@@ -512,13 +512,19 @@ Every segment ships `global_pose/frame_{times,positions,orientations,velocities}
 — ECEF pose already fused from INS/GNSS/vision, one row per video frame. There
 is no SLAM or GNSS pipeline to run.
 
-The one thing that is easy to get backwards is the **quaternion direction**, and
+One thing that is easy to get backwards is the **quaternion direction**, and
 the dataset's own README states it backwards. It says the quaternion rotates
 ECEF into the device frame; comma2k19's own `utils/camera.py::device_from_ecef`
 transposes it before use, which is the tell. `_quat2rot` returns
 `ecef_from_device`, and taking a delta into device coordinates needs the
 transpose. Getting it wrong does not fail — it mirrors every relative position
 through the direction of travel.
+
+The pose describes the camera, not the car, so the recorded future is also
+rotated by the route calibration before it is scored, into the car's frame that
+every plan is in. That rotation's direction is the other thing easy to get
+backwards: the inverse doubles the mount yaw instead of removing it.
+`loader.future_in_ego_frame` and its tests pin the sign.
 
 ## Inspecting the dataset
 
