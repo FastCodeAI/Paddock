@@ -18,7 +18,6 @@ body:
       label: What kind of test is it?
       options:
         - Open loop
-        - Pseudo-closed loop
         - Closed loop
     validations:
       required: true
