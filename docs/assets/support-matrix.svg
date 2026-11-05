@@ -81,12 +81,12 @@
 <text x="511.5" y="107" class="sec" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">ADE ↓ (m)</text>
 <text x="511.5" y="120" class="sec" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">25 anchors</text>
 <text x="511.5" y="133" class="sec" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">not ranked</text>
-<text x="595.5" y="92" class="ink" font-size="12" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" font-weight="600">NAVSIM v2</text>
-<text x="595.5" y="107" class="sec" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">EPDMS ↑ (0–1)</text>
-<text x="595.5" y="120" class="sec" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">navtest</text>
-<text x="595.5" y="133" class="sec" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">stage one</text>
-<text x="679.5" y="92" class="ink" font-size="12" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" font-weight="600">NAVSIM v1</text>
-<text x="679.5" y="107" class="sec" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">PDMS ↑ (0–1)</text>
+<text x="595.5" y="92" class="ink" font-size="12" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" font-weight="600">NAVSIM v1</text>
+<text x="595.5" y="107" class="sec" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">PDMS ↑ (0–1)</text>
+<text x="679.5" y="92" class="ink" font-size="12" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" font-weight="600">NAVSIM v2</text>
+<text x="679.5" y="107" class="sec" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">EPDMS ↑ (0–1)</text>
+<text x="679.5" y="120" class="sec" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">navtest</text>
+<text x="679.5" y="133" class="sec" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">stage one</text>
 <text x="763.5" y="92" class="ink" font-size="12" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" font-weight="600">Bench2Drive</text>
 <text x="763.5" y="107" class="sec" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">driving score</text>
 <text x="763.5" y="120" class="sec" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">↑ (0–100)</text>
@@ -115,10 +115,10 @@
 <rect fill="url(#hatch)" x="471" y="157.5" width="81" height="43" rx="4"/>
 <text x="511.5" y="184" class="ink" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.807</text>
 <rect class="r3" x="555" y="157.5" width="81" height="43" rx="4"/>
-<text x="595.5" y="178.5" class="t3" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.747</text>
+<text x="595.5" y="178.5" class="t3" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.807</text>
 <text x="595.5" y="193.5" class="t3" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#3 · 10 Hz</text>
 <rect class="r3" x="639" y="157.5" width="81" height="43" rx="4"/>
-<text x="679.5" y="178.5" class="t3" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.807</text>
+<text x="679.5" y="178.5" class="t3" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.747</text>
 <text x="679.5" y="193.5" class="t3" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#3 · 10 Hz</text>
 <rect class="r5" x="723" y="157.5" width="81" height="43" rx="4"/>
 <text x="763.5" y="178.5" class="t5" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">47.52</text>
@@ -146,11 +146,11 @@
 <rect class="miss" x="471" y="203.5" width="81" height="43" rx="4"/>
 <text x="511.5" y="229" class="sec" font-size="11.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">—</text>
 <rect class="r4" x="555" y="203.5" width="81" height="43" rx="4"/>
-<text x="595.5" y="224.5" class="t4" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.691</text>
+<text x="595.5" y="224.5" class="t4" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.753</text>
 <text x="595.5" y="239.5" class="t4" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#4 · 10 Hz</text>
 <text x="632" y="213.5" class="t4" font-size="9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="end" font-weight="600" opacity="0.85">A</text>
 <rect class="r4" x="639" y="203.5" width="81" height="43" rx="4"/>
-<text x="679.5" y="224.5" class="t4" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.753</text>
+<text x="679.5" y="224.5" class="t4" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.691</text>
 <text x="679.5" y="239.5" class="t4" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#4 · 10 Hz</text>
 <text x="716" y="213.5" class="t4" font-size="9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="end" font-weight="600" opacity="0.85">A</text>
 <rect class="r2" x="723" y="203.5" width="81" height="43" rx="4"/>
@@ -181,11 +181,11 @@
 <text x="511.5" y="276" class="ink" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">1.512</text>
 <text x="548" y="259.5" class="ink" font-size="9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="end" font-weight="600" opacity="0.85">A</text>
 <rect class="r1" x="555" y="249.5" width="81" height="43" rx="4"/>
-<text x="595.5" y="270.5" class="t1" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.843</text>
+<text x="595.5" y="270.5" class="t1" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.892</text>
 <text x="595.5" y="285.5" class="t1" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#1</text>
 <text x="632" y="259.5" class="t1" font-size="9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="end" font-weight="600" opacity="0.85">A</text>
 <rect class="r1" x="639" y="249.5" width="81" height="43" rx="4"/>
-<text x="679.5" y="270.5" class="t1" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.892</text>
+<text x="679.5" y="270.5" class="t1" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.843</text>
 <text x="679.5" y="285.5" class="t1" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#1</text>
 <text x="716" y="259.5" class="t1" font-size="9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="end" font-weight="600" opacity="0.85">A</text>
 <rect class="r1" x="723" y="249.5" width="81" height="43" rx="4"/>
@@ -214,10 +214,10 @@
 <rect fill="url(#hatch)" x="471" y="295.5" width="81" height="43" rx="4"/>
 <text x="511.5" y="322" class="ink" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">2.246</text>
 <rect class="r6" x="555" y="295.5" width="81" height="43" rx="4"/>
-<text x="595.5" y="316.5" class="t6" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.431</text>
+<text x="595.5" y="316.5" class="t6" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.488</text>
 <text x="595.5" y="331.5" class="t6" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#6</text>
 <rect class="r6" x="639" y="295.5" width="81" height="43" rx="4"/>
-<text x="679.5" y="316.5" class="t6" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.488</text>
+<text x="679.5" y="316.5" class="t6" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.431</text>
 <text x="679.5" y="331.5" class="t6" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#6</text>
 <rect class="r4" x="723" y="295.5" width="81" height="43" rx="4"/>
 <text x="763.5" y="316.5" class="t4" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">47.82</text>
@@ -245,11 +245,11 @@
 <rect fill="url(#hatch)" x="471" y="341.5" width="81" height="43" rx="4"/>
 <text x="511.5" y="368" class="ink" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">1.273</text>
 <rect class="r6" x="555" y="341.5" width="81" height="43" rx="4"/>
-<text x="595.5" y="362.5" class="t6" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.303</text>
+<text x="595.5" y="362.5" class="t6" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.366</text>
 <text x="595.5" y="377.5" class="t6" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#7</text>
 <text x="632" y="351.5" class="t6" font-size="9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="end" font-weight="600" opacity="0.85">P</text>
 <rect class="r6" x="639" y="341.5" width="81" height="43" rx="4"/>
-<text x="679.5" y="362.5" class="t6" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.366</text>
+<text x="679.5" y="362.5" class="t6" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.303</text>
 <text x="679.5" y="377.5" class="t6" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#7</text>
 <text x="716" y="351.5" class="t6" font-size="9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="end" font-weight="600" opacity="0.85">P</text>
 <rect class="r6" x="723" y="341.5" width="81" height="43" rx="4"/>
@@ -277,11 +277,11 @@
 <rect class="miss" x="471" y="387.5" width="81" height="43" rx="4"/>
 <text x="511.5" y="413" class="sec" font-size="11.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">—</text>
 <rect class="r2" x="555" y="387.5" width="81" height="43" rx="4"/>
-<text x="595.5" y="408.5" class="t2" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.840</text>
+<text x="595.5" y="408.5" class="t2" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.876</text>
 <text x="595.5" y="423.5" class="t2" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#2</text>
 <text x="632" y="397.5" class="t2" font-size="9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="end" font-weight="600" opacity="0.85">A</text>
 <rect class="r2" x="639" y="387.5" width="81" height="43" rx="4"/>
-<text x="679.5" y="408.5" class="t2" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.876</text>
+<text x="679.5" y="408.5" class="t2" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.840</text>
 <text x="679.5" y="423.5" class="t2" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#2</text>
 <text x="716" y="397.5" class="t2" font-size="9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="end" font-weight="600" opacity="0.85">A</text>
 <rect class="r6" x="723" y="387.5" width="81" height="43" rx="4"/>
@@ -312,11 +312,11 @@
 <rect class="miss" x="471" y="433.5" width="81" height="43" rx="4"/>
 <text x="511.5" y="459" class="sec" font-size="11.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">—</text>
 <rect class="r5" x="555" y="433.5" width="81" height="43" rx="4"/>
-<text x="595.5" y="454.5" class="t5" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.500</text>
+<text x="595.5" y="454.5" class="t5" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.538</text>
 <text x="595.5" y="469.5" class="t5" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#5 · 10 Hz</text>
 <text x="632" y="443.5" class="t5" font-size="9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="end" font-weight="600" opacity="0.85">A</text>
 <rect class="r5" x="639" y="433.5" width="81" height="43" rx="4"/>
-<text x="679.5" y="454.5" class="t5" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.538</text>
+<text x="679.5" y="454.5" class="t5" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.500</text>
 <text x="679.5" y="469.5" class="t5" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#5 · 10 Hz</text>
 <text x="716" y="443.5" class="t5" font-size="9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="end" font-weight="600" opacity="0.85">A</text>
 <rect class="r6" x="723" y="433.5" width="81" height="43" rx="4"/>
@@ -350,11 +350,11 @@
 <text x="511.5" y="525.5" class="sec" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">floor</text>
 <rect class="r6" x="555" y="489.5" width="81" height="43" rx="4"/>
 <rect class="floorline" x="555" y="489.5" width="81" height="43" rx="4"/>
-<text x="595.5" y="510.5" class="t6" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.239</text>
+<text x="595.5" y="510.5" class="t6" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.207</text>
 <text x="595.5" y="525.5" class="t6" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#8 · floor</text>
 <rect class="r6" x="639" y="489.5" width="81" height="43" rx="4"/>
 <rect class="floorline" x="639" y="489.5" width="81" height="43" rx="4"/>
-<text x="679.5" y="510.5" class="t6" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.207</text>
+<text x="679.5" y="510.5" class="t6" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.239</text>
 <text x="679.5" y="525.5" class="t6" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#8 · floor</text>
 <rect class="r3" x="723" y="489.5" width="81" height="43" rx="4"/>
 <rect class="floorline" x="723" y="489.5" width="81" height="43" rx="4"/>

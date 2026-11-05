@@ -44,17 +44,17 @@ decimals = 3
 ranked = false
 
 [[benchmark]]
-key = "navsim"
-name = "NAVSIM v2"
-loop = "open"
-header = "EPDMS ↑ (0–1), navtest, stage one"
-decimals = 3
-
-[[benchmark]]
 key = "navsim_v1"
 name = "NAVSIM v1"
 loop = "open"
 header = "PDMS ↑ (0–1)"
+decimals = 3
+
+[[benchmark]]
+key = "navsim"
+name = "NAVSIM v2"
+loop = "open"
+header = "EPDMS ↑ (0–1), navtest, stage one"
 decimals = 3
 
 [[benchmark]]
