@@ -43,7 +43,8 @@ runtime:
     # on METEOR's own demo scene, not on comma2k19: docs/models/meteor.md.
     METEOR_FRONT_ONLY: "narrow_refpose"
   # Site overrides of these change speed or memory, not the plan, so they
-  # leave a run valid; any other [models.meteor.env] key makes it valid: false.
+  # leave a run valid; any other [models.meteor.env] key makes it valid: false,
+  # unless it is in ranked_with_note below.
   tuning_env: [METEOR_ORT_THREADS, METEOR_GPU_MEM_MB]
 
 capabilities:
@@ -105,6 +106,8 @@ capabilities:
 # any ranked run that set one to something other than the declared default.
 score_notes:
   METEOR_HORIZON_S: "plan continued to {value} s by paddock; the model itself plans 3 s"
+# Of those, what a site may set and stay ranked. NAVSIM cannot score METEOR without it.
+ranked_with_note: [METEOR_HORIZON_S]
 
 # navsim needs METEOR_HORIZON_S=4.0 (see above) or every sample fails in
 # to_navsim_poses with "model plans 3.00 s".

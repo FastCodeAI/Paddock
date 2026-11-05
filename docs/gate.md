@@ -98,7 +98,8 @@ Read the notes; they are where the gate says what it cannot check:
 - **model_env.** Both runs' `config.model_env` is printed. The runner records a
   `[models.X] env` override such as `DRIVEJEPA_CHECKPOINT` (paths as
   `<site path:digest>`) and marks the run `valid: false` unless the
-  key is tuning-only. A "candidate" launched without its override is just the
+  key is tuning-only or the model lists it in `ranked_with_note`. A "candidate"
+  launched without its override is just the
   baseline again. The gate says so
   when the two are identical, and when one side sets a key the other does not.
   Identical is legitimate for a code change on the same weights.

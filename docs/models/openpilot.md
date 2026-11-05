@@ -223,9 +223,8 @@ Every record's extras carry:
 - `plan_v0`: the plan's speed at t = 0, beside the pose head's.
 
 The mode is recorded in `provenance.policy.desire_mode`. Set in a site's env
-block, it is also in `config.model_env`, so a desire run gets its own id, and
-the runner stores it `valid: false` as a site env override
-(`runner._env_override_reasons`). On KITScenes the commands come from
+block, it is also in `config.model_env`, so a desire run gets its own id. It
+stays ranked, with a note on the leaderboard (`ranked_with_note` in `model.yaml`). On KITScenes the commands come from
 `command_source = "gt"`, the route signal the benchmark's other route-conditioned
 rows had ([The route hint](../benchmarks/kitscenes.md#the-route-hint)).
 

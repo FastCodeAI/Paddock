@@ -131,7 +131,8 @@ Before comparing numbers:
   copied or converted.
 - **Every number can be checked.** Upstream repos are pinned to a commit, and each
   run records its settings next to its scores. A partial run or a changed setting is
-  kept, but it is not ranked.
+  kept, but it is not ranked. The one exception is a setting a model lists as safe to
+  rank, which keeps its rank and shows a note beside the score.
 
 ## How it works
 

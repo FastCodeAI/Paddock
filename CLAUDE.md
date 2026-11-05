@@ -117,7 +117,8 @@ renderer stays up across models.
 is tracked (kilobytes, reviewable in a diff); per-sample records and artifacts go
 to `{roots.runs}` outside the repo. `run_id` is `<UTC timestamp>-<short config hash>`.
 `_validity()` in [runner.py](src/paddock/runner.py) is the single place that
-decides `valid` — a subset, an overriding env, or a failure makes a run
+decides `valid` — a subset, an overriding env (unless the model lists it in
+`ranked_with_note`), or a failure makes a run
 `valid: false` with the reason in `notes`, and `paddock report` excludes it.
 **Never hand-edit a metrics or run file; regenerate it** so provenance stays true.
 
