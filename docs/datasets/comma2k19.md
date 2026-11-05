@@ -157,8 +157,10 @@ from differencing it. That 19.95 Hz happens to equal openpilot's
 
 The camera also has a **real mount rotation and it is not zero** — 3.3–3.8° of
 pitch on the RAV4 and 1.6–2.2° on the Civic for nine routes in ten, estimated
-per route by `calibration.py`. Correcting it is worth about 3× in cross-track
-error. The benchmark doc's *Calibration* section has the full story, including
+per route by `calibration.py`. Correcting it was worth about 3× in cross-track
+error, measured against the camera-frame ground truth used before the ground
+truth was rotated into the car's frame too. The benchmark doc's *Calibration*
+section has the full story, including
 the defect where passing `np.eye(4)` as "no rotation" produced ADE 38.8 m.
 
 ## Two traps that cost real time
