@@ -44,6 +44,10 @@ class _Overlay:
     none of that says anything about whether the panels draw the right numbers.
     """
 
+    #: No usable calibration, which a real overlay also reports as None. A class
+    #: attribute, so a subclass that mounts the camera can set its own.
+    rpy = None
+
     def __init__(self, n: int = 60, speed: float = 20.0, can: bool = True, radar=(None, None)):
         t = np.arange(n) / HZ
         self.pose = types.SimpleNamespace(times=t, speed=np.full(n, speed))

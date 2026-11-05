@@ -375,7 +375,9 @@ class Dashboard:
             # the recorded path is rotated out of the camera's frame by the same
             # calibration before it is drawn. Without it the path leans off by
             # the mount yaw and a plan that matches the score looks wrong here.
-            rpy = getattr(self.overlay, "rpy", None)
+            # None when the route has no usable calibration (`SegmentOverlay._rpy`),
+            # in which case the path is drawn as recorded, like the radar boxes.
+            rpy = self.overlay.rpy
             if rpy is not None:
                 calib_from_device = L.rot_from_euler(np.asarray(rpy, dtype=np.float64)).T
                 future = np.asarray(future, dtype=np.float64) @ calib_from_device.T
