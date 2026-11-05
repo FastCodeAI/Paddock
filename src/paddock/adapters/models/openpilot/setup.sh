@@ -18,7 +18,15 @@ PY="${UV_PROJECT_ENVIRONMENT}/bin/python"
 # openpilot vendors several repos as submodules (tinygrad, opendbc, panda, msgq).
 git submodule update --init --recursive --jobs 6
 
-uv sync --frozen --all-extras
+# Everything the lockfile names except libdatachannel-py, the WebRTC library
+# behind openpilot's teleoprtc (remote viewing). openpilot installs teleoprtc by
+# default, and libdatachannel-py ships wheels only for glibc 2.35 and newer, so
+# on a glibc 2.34 host (RHEL 9 and its rebuilds) the whole sync failed: "doesn't
+# have a source distribution or wheel for the current platform". Nothing paddock
+# runs imports it -- modeld, the policy node and this adapter never touch
+# teleoprtc -- so skipping it changes no plan. --frozen still installs the
+# locked version of everything else.
+uv sync --frozen --all-extras --no-install-package libdatachannel-py
 
 # paddock.policy.server (the HTTP node open- and closed-loop benchmarks both
 # talk to) runs inside this venv, not paddock's own -- so it needs fastapi and
