@@ -1,0 +1,22 @@
+# How the AlpaSim benchmark drives constant velocity through paddock's bridge.
+#
+# Read by adapters/benchmarks/alpasim/harness.py (profile_for). See
+# docs/adding-a-model.md, "AlpaSim settings".
+#
+# Driven exactly as a model with no profile is: the shared driver config, no
+# bridge flags, scenes named by id. The four keys below are those defaults; the
+# loader requires them. Because the profile changes nothing the bridge sends,
+# run.json records no profile for it and its run id is what it was before.
+#
+# The one thing it says: on AlpaSim this model reads no image. model.yaml
+# declares CAM_FRONT, for the benchmarks that need a camera to render, but the
+# policy only integrates the measured speed. Without `cameras: []` AlpaSim would
+# refuse it, because CAM_FRONT never reaches a node with no camera renames.
+
+driver: paddock_bridge
+bridge_args: []
+scenes_csv: null
+replan_log: false
+
+# The cameras it reads on AlpaSim: none.
+cameras: []

@@ -918,10 +918,10 @@ def test_every_gate_alpasim_scene_is_on_the_scene_list_the_drivers_use() -> None
     wizard, which then failed with "Failed to find scenes", and the baseline held 8."""
     import csv
 
-    from paddock.adapters.benchmarks.alpasim.harness import DRIVER_PROFILES, SCENES_DIR
+    from paddock.adapters.benchmarks.alpasim.harness import SCENES_DIR, profile_for, profiled_models
 
     gate_scenes = set(gate.load_subset("alpasim").ids) | set(gate.load_subset("alpasim_quick").ids)
-    lists = {p.scenes_csv for p in DRIVER_PROFILES.values() if p.scenes_csv}
+    lists = {p.scenes_csv for p in map(profile_for, profiled_models()) if p.scenes_csv}
     assert lists, "no driver profile pins a scene list"
     for name in lists:
         with (SCENES_DIR / name).open() as handle:

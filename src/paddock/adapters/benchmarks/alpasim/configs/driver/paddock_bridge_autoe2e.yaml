@@ -9,7 +9,7 @@
 # `extra_cameras`. AlpaSim can only change a camera a scene already has, never
 # add one (camera_catalog.py, "sensorsim only supports changing, not adding"),
 # so the rear view borrows camera_front_tele_30fov, which this profile does not
-# otherwise need. `harness.DRIVER_PROFILES` selects this file only for the
+# otherwise need. `models/autoe2e/alpasim.yaml` selects this file only for the
 # autoe2e model, and the bridge renames each id to the node's camera name.
 #
 # What the values are, briefly:

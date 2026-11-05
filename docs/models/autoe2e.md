@@ -222,8 +222,9 @@ the rig and cities AutoE2E was pre-trained on. See `comparison.md`,
 ## On AlpaSim, through the bridge
 
 **Run on the 30 scenes: 0.1694** (results below). The AlpaSim harness gives `autoe2e` its own driver
-profile (`harness.DRIVER_PROFILES`, `configs/driver/paddock_bridge_autoe2e.yaml`);
-the model's adapter is unchanged apart from listing `alpasim` in `model.yaml`.
+profile (`adapters/models/autoe2e/alpasim.yaml`, which names
+`configs/driver/paddock_bridge_autoe2e.yaml`); the model's `policy.py` is
+unchanged.
 It is camera-only, as on NAVSIM: the bridge sends no route and the node sends
 no map.
 

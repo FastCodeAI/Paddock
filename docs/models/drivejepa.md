@@ -147,8 +147,8 @@ two can be compared scene by scene: one front camera at 20 Hz (the node's
 other three cameras get copies of it), a 3.0 s replayed warm-up, a replan every
 0.5 s answered from the last plan in between, the same frame pair, speed,
 acceleration and driving command, and the 30 scenes pinned to the same
-artifacts. The settings live in the bridge (`harness.DRIVER_PROFILES`), not in
-the model; [docs/benchmarks/alpasim.md](../benchmarks/alpasim.md#per-model-settings-in-the-bridge)
+artifacts. The settings live in the model's folder
+(`adapters/models/drivejepa/alpasim.yaml`), which the AlpaSim harness reads; [docs/benchmarks/alpasim.md](../benchmarks/alpasim.md#per-model-settings-in-the-bridge)
 says how.
 
 **What the bridge drives.** The node's `/infer` answer carries `plan`: all

@@ -49,7 +49,7 @@ hundreds of milliseconds, so the observation is always older than the request.
 **Camera translation is per model, and off unless asked for.** A model whose
 node reads Paddock's camera names (``CAM_FRONT`` ...) and needs intrinsics is
 launched with ``--camera-name``, ``--placeholder`` and ``--pinhole-intrinsics``
-(``harness.DRIVER_PROFILES`` passes them for Drive-JEPA). Without them the body
+(``drivejepa/alpasim.yaml`` passes them for Drive-JEPA). Without them the body
 is exactly what it was before those flags existed, so every other model's
 input is unchanged.
 

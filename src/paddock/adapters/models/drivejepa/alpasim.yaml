@@ -1,0 +1,50 @@
+# How the AlpaSim benchmark drives Drive-JEPA through paddock's bridge.
+#
+# Read by adapters/benchmarks/alpasim/harness.py (profile_for). The four keys
+# below are required; an unknown or missing key fails the run with this file's
+# name. Without this file the model's cameras would never reach its node, and
+# AlpaSim would refuse it before starting.
+# See docs/adding-a-model.md, "AlpaSim settings".
+#
+# These are the settings of Drive-JEPA's native AlpaSim driver (adapter
+# 0.1.4b), whose 30-scene runs are the baseline a run through this bridge is
+# checked against -- one front pinhole camera at 20 Hz, 3.0 s warm-up with the
+# driver called, 400 steps, the shared 20 Hz eval config, 26.01 artifacts by
+# uuid. The node reads CAM_FRONT plus three more cameras; AlpaSim renders one,
+# so the other three are that driver's placeholder (see bridge.PLACEHOLDER_RGB).
+# The bridge also runs that driver's planning rhythm and inputs: a replan every
+# 0.5 s on its grid, the cached plan re-anchored in between, its frame pair,
+# forward speed and command (see drivejepa_rhythm.py).
+
+# Driver config under adapters/benchmarks/alpasim/configs/driver/.
+driver: paddock_bridge_drivejepa
+
+# Extra bridge.py flags.
+bridge_args:
+  - --camera-name
+  - camera_front_wide_120fov=CAM_FRONT
+  - --placeholder
+  - CAM_FRONT_LEFT
+  - --placeholder
+  - CAM_FRONT_RIGHT
+  - --placeholder
+  - CAM_BACK
+  - --placeholder-source
+  - CAM_FRONT
+  - --pinhole-intrinsics
+  - --planner
+  - drivejepa-0.1.4b
+  - --front-camera
+  - camera_front_wide_120fov
+  # Both must equal paddock_bridge_drivejepa.yaml's control step and
+  # force_gt_duration_us; a test checks they do.
+  - --frame-interval-us
+  - "50000"
+  - --force-gt-us
+  - "3000000"
+
+# Under adapters/benchmarks/alpasim/scenes/: each scene pinned to one artifact.
+scenes_csv: public_2601_30scenes_26p01.csv
+
+# Write the bridge's per-replan log next to the run's samples.jsonl.
+replan_log: true

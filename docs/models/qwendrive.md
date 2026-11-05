@@ -88,8 +88,8 @@ the recorded frames, poses and CAN bus, and at each plan:
 
 `paddock run --model qwendrive --bench alpasim` drives the model on the settings
 and inputs of Qwen-Drive's native AlpaSim driver (adapter 0.1.4), so a run
-through paddock is the same experiment as the native runs. The settings are the
-`qwendrive` entry in `alpasim/harness.py`'s `DRIVER_PROFILES` and its driver
+through paddock is the same experiment as the native runs. The settings are the model's own
+`adapters/models/qwendrive/alpasim.yaml` and its driver
 config `paddock_bridge_qwendrive.yaml`: four f-theta cameras at 20 Hz (the
 fourth, the tele camera, is rendered as natively and never sent), a 3 s replayed
 warm-up with the driver called, 400 steps of 50 ms, the 30 scenes pinned to

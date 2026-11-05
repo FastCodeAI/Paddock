@@ -26,8 +26,8 @@ in [comparison.md](comparison.md), and its KITScenes protocol is
 `paddock run --model alpamayo15 --bench alpasim` drives the model on the settings
 of its stored AlpaSim result (`results/alpasim/alpamayo15/legacy-alpamayo_proxy_referee_20hz`,
 made by AlpaSim's own Alpamayo driver) and builds its input the way that driver
-does. The settings are the `alpamayo15` entry in `alpasim/harness.py`'s
-`DRIVER_PROFILES` and its driver config `paddock_bridge_alpamayo15.yaml`: four
+does. The settings are the model's own
+`adapters/models/alpamayo15/alpasim.yaml` and its driver config `paddock_bridge_alpamayo15.yaml`: four
 f-theta cameras at 20 Hz (front wide, both cross cameras and the 30° telephoto),
 a 3 s replayed warm-up with the driver called, 400 steps of 50 ms, and the 30
 scenes pinned to their 26.01 artifacts. With `scene_set = "public_2601_30scenes"`
