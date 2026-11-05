@@ -57,7 +57,5 @@ capabilities:
 # any ranked run that set one to something other than the declared default.
 score_notes:
   PADDOCK_CV_SPEED_M_S: "driven at a fixed {value} m/s, not the measured ego speed"
-# Of those, what a site may set and stay ranked. A fixed speed is a floor of its own.
-ranked_with_note: [PADDOCK_CV_SPEED_M_S]
 
 benchmarks: [alpasim, nuscenes, bench2drive, comma2k19, nuplan]

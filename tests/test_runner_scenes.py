@@ -661,6 +661,17 @@ def test_every_declared_tuning_key_is_one_the_model_reads() -> None:
             assert key in source or key in spec.runtime.env, f"{name}: tuning_env {key} is read nowhere"
 
 
+def test_every_setting_ranked_with_a_note_is_one_the_model_reads() -> None:
+    """A note says what a setting did. If nothing reads the setting, the note is false."""
+    from paddock.registry import Registry
+
+    models_dir = Path(__file__).resolve().parents[1] / "src/paddock/adapters/models"
+    for name, spec in Registry.load().models.items():
+        source = "\n".join(p.read_text() for p in (models_dir / name).glob("*.py"))
+        for key in spec.ranked_with_note:
+            assert key in source, f"{name}: ranked_with_note {key} is read nowhere"
+
+
 def test_a_real_reason_still_invalidates_alongside_a_remark() -> None:
     """`remarks` must not become a way to launder an invalidating reason."""
     from paddock.runner import _validity
