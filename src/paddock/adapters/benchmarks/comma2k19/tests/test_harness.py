@@ -414,6 +414,28 @@ def test_samples_are_scored_against_their_own_calibrations_ground_truth(tmp_path
         assert sample.native_id["rpy_calib_deg"] == pytest.approx(np.degrees(rpy), abs=1e-4)
 
 
+def test_the_ego_history_a_model_reads_is_in_the_cars_frame(tmp_path, monkeypatch, rotations):
+    """The same defect as the ground truth's, on the input side.
+
+    `ego2world` placed each history frame in the camera's axes while
+    `camera2ego` told the same model where the car points, so a model reading
+    its own past path saw a straight drive as a car drifting sideways at the
+    mount yaw. Recorded by a mounted camera, a straight drive must reach every
+    model as straight: no sideways offset, no turn.
+    """
+    rpy = np.array([0.0, np.radians(3.5), np.radians(1.5)])
+    pose = _mounted(straight_pose(speed=25.0, n=260), rpy)
+    bench, segment = _frame_bench(tmp_path, monkeypatch, _synthetic_frames(), pose=pose)
+
+    samples = list(bench._segment_samples(segment, _FixedMount(rpy)))
+    assert samples
+    for sample in samples:
+        poses = np.array([obs.ego2world for obs in sample.observations])
+        assert np.all(np.diff(poses[:, 0, 3]) > 0), "the history moves forward"
+        assert np.allclose(poses[:, 1, 3], 0.0, atol=1e-6), poses[-1, :2, 3]
+        assert np.allclose(np.arctan2(poses[:, 1, 0], poses[:, 0, 0]), 0.0, atol=1e-9)
+
+
 def test_a_cached_frame_is_the_decoded_frame_bit_for_bit(tmp_path, monkeypatch, rotations):
     """Lossless, or two models' numbers stop being comparable across the change."""
     frames = _synthetic_frames()
@@ -877,6 +899,8 @@ def test_run_config_records_what_changes_the_number():
     # Moves the run id away from every run scored in the camera's frame, so
     # `--resume` cannot finish one of those under this scorer.
     assert cfg["ground_truth_frame"].startswith("car")
+    # Likewise for the history the models read.
+    assert cfg["ego_history_frame"].startswith("car")
 
 
 def test_a_stationary_prediction_reproduces_the_published_numbers():

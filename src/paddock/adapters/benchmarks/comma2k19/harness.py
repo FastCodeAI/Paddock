@@ -509,6 +509,10 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
             # the keys that explain it.
             config["stride"] = None
             config["history_span_s"] = None
+        # The frame of the window's poses (`ego2world`). Like the ground truth's,
+        # it moves the run id away from runs whose models read their own past
+        # path in the camera's frame, so `--resume` cannot mix the two.
+        config["ego_history_frame"] = "car (window poses rotated by the route calibration)"
         return config
 
     def invalid_reasons(self) -> list[str]:
@@ -984,7 +988,7 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
                     # the keyframe would be a silently different measurement.
                     continue
                 observations = [
-                    self._observation(frames[i], pose, can, i, window[0], camera2ego) for i in window
+                    self._observation(frames[i], pose, can, i, window[0], camera2ego, cal.rpy) for i in window
                 ]
                 yield Sample(
                     sample_id=self._sample_id(segment, k),
@@ -1187,6 +1191,7 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         index: int,
         origin: int,
         camera2ego: np.ndarray,
+        rpy,
     ) -> Observation:
         """One frame, in the protocol's shape.
 
@@ -1197,15 +1202,30 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         observation in a sample shares one locally flat world frame. `canbus`
         carries the recorded speed and yaw rate in the nuScenes slots a model
         may read.
+
+        `ego2world` is the *car's* pose, like the ground truth and like
+        `camera2ego`, so it goes through the mount rotation `rpy` -- the
+        segment's calibration. The recorded pose is the camera's, a degree or two
+        off the car's axis; left there, a model that reads its own past path
+        (Alpamayo, Qwen-Drive, AutoE2E, Drive-JEPA) saw a straight drive as a
+        car drifting sideways at the mount yaw, while `camera2ego` told it where
+        the car points.
         """
         # Displacement from the window's first frame, rotated into that frame's
-        # device axes and then converted to paddock's ego convention. At
-        # index == origin this is exactly zero, which is why there is no special
-        # case: an earlier version had one that computed the same quantity a
-        # second way and named the result `device` when it was already ego.
+        # device axes, out of them through the mount rotation, and then
+        # converted to paddock's ego convention -- the same steps as
+        # `loader.future_in_ego_frame`. At index == origin this is exactly zero,
+        # which is why there is no special case: an earlier version had one that
+        # computed the same quantity a second way and named the result `device`
+        # when it was already ego.
+        calib_from_device = L.rot_from_euler(np.asarray(rpy, dtype=np.float64)).T
         delta = pose.positions[index] - pose.positions[origin]
-        ego = L.ego_from_device(delta @ pose.device_from_ecef[origin].T)
-        rel = np.asarray(L.euler_from_rot(pose.device_from_ecef[origin] @ pose.ecef_from_device[index]))
+        ego = L.ego_from_device((delta @ pose.device_from_ecef[origin].T) @ calib_from_device.T)
+        # The car's rotation between the two frames: the camera's, seen through
+        # the mount on both sides. With a fixed mount it differs from the
+        # camera's only by the tilt of the axis it turns about.
+        rel_device = pose.device_from_ecef[origin] @ pose.ecef_from_device[index]
+        rel = np.asarray(L.euler_from_rot(calib_from_device @ rel_device @ calib_from_device.T))
         yaw = -float(rel[2])  # device yaw is right-positive; ego yaw is left-positive
         ego2world = np.eye(4)
         ego2world[0, 3], ego2world[1, 3] = float(ego[0]), float(ego[1])
