@@ -42,9 +42,11 @@ asked to plan, and the recording says what the car did next.
 | **headline** | first **6** waypoints vs the same 6 poses | 3 s ahead | 0.5 s |
 
 Every frame also carries the car's pose relative to the first frame
-(`ego2world`) and its CAN speed. The pose, the plan and the ground truth are
-all in the car's frame: the recorded pose describes the camera, so the route
-calibration that builds `camera2ego` rotates the pose and the ground truth too.
+(`ego2world`), its CAN speed and its yaw rate. The pose, the plan and the ground
+truth are all in the car's frame: the recorded pose describes the camera, so the
+route calibration that builds `camera2ego` rotates the pose and the ground truth
+too. The yaw rate is the one exception: it still turns about the camera's down
+axis, a scale error of at most 0.2 % (the cosine of the mount pitch).
 
 So: *the model sees 160 frames of the past 7.95 s and predicts 20 waypoints out
 to 10 s; `ade` is its mean error over the first 3 s, and `ade@h`/`fde@h` repeat
