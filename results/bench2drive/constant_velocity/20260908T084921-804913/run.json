@@ -52,8 +52,10 @@
     }
   },
   "hardware": {},
+  "provenance": {},
   "status": "complete",
-  "valid": true,
-  "notes": "Four independent CARLA workers; 4 completed route checkpoints reused. Duration covers this attempt.",
+  "valid": false,
+  "superseded_by": "pooled50-3mps-40c29d24c37d542a-02b6ac",
+  "notes": "Four independent CARLA workers; 4 completed route checkpoints reused. Duration covers this attempt. Superseded by pooled50-3mps-40c29d24c37d542a-02b6ac: Its 24 routes are already inside the 50-route run at the same 3 m/s target, so the same drives ranked twice.",
   "ingested_from": ""
 }

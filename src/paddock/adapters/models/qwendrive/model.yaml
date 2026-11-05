@@ -129,5 +129,7 @@ capabilities:
 # any ranked run that set one to something other than the declared default.
 score_notes:
   QWENDRIVE_VIEWS: "one camera fills all three view slots ({value}); the model was trained on three real cameras"
+# Of those, what a site may set and stay ranked. A one-camera dataset needs it to run at all.
+ranked_with_note: [QWENDRIVE_VIEWS]
 
 benchmarks: [kitscenes, nuscenes, navsim, navsim_v1, neuroncap, comma2k19, alpasim]

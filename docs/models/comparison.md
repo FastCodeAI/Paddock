@@ -3,10 +3,9 @@
 The support matrix says how well each model drives. This says **what each one
 is** — how large, what it consumes, what it emits, and what it was trained on.
 
-Two reasons it matters beyond curiosity. First, the destination for our own work
-is an automotive SoC, and a score with no size or latency beside it cannot
-answer the only question that matters there. Second — and this is the part the
-score table cannot show — **these models did not all meet these benchmarks on
+Two reasons it matters beyond curiosity. First, a model bound for an automotive
+chip needs its size and latency beside its score. Second — and this is the part
+the score table cannot show — **these models did not all meet these benchmarks on
 equal terms.** See [what this changes](#what-this-changes-about-reading-the-support-matrix).
 
 The machine-readable subset of this lives in each `model.yaml` under
@@ -413,27 +412,6 @@ enough that the cap rarely binds, which is why the defect survived them.
 `docs/models/visionpilot.md` has the derivation; the re-sweep is an open
 item in `docs/ROADMAP.md`.
 
-## Discrepancies against what the adapters declare
-
-`capabilities.cameras` decides what a simulator renders, so a wrong declaration
-changes every closed-loop measurement. The first two are resolved, and stay here so
-nobody re-derives them.
-
-1. **Drive-JEPA: 4 cameras declared, 1 in the architecture table. Resolved: all
-   four are read.** At the pinned sha the perception-based agent paddock runs has a
-   BEV stage that reads `cam_b0`, `cam_f0`, `cam_l0` and `cam_r0` at the current
-   frame (`bevformer/bev_feature_build.py`), beside the JEPA encoder, which reads
-   the front camera at t and t − 0.5 s (`drive_jepa_features.py`). The paper's
-   "one front camera" is the encoder alone.
-2. **Alpamayo: 4 slots, 3 cameras declared. Resolved: all four slots are fed.**
-   `policy.py` fills the 30° telephoto slot with a crop of `CAM_FRONT`
-   (`CAMERA_SLOTS`), so a simulator renders three cameras and the model sees four
-   images. `model.yaml` lists the four in `camera_views`.
-3. **AutoSpeed parameter count: 9.33 M or 9.31 M.** The measurement in
-   [visionpilot.md](visionpilot.md) says 9.33 M; a later count
-   says 9.31 M. The total is 28.1 M either way. Trivial, and noted only because
-   this repo's habit is to say which number it used: `model.yaml` carries 28.1.
-
 ## Provenance of these figures
 
 ᵐ measured · ᶜ computed from parameter count · ᵖ published by the authors, not re-counted.
@@ -443,12 +421,11 @@ inspection rather than from paddock. Paddock has measured none of it yet:
 declared numbers rot, and the fix is a fixture test asserting the declaration
 against the artifact.
 
-## Notes moved from the README support matrix
+## Notes on the models
 
-The README's notes on cells that are about a model rather than one benchmark,
-moved here unchanged except for links. Each starts with the mark it carried in
-the matrix; the benchmark notes are on each benchmark's page under
-"Support-matrix results".
+Notes on support-matrix cells that are about a model rather than one benchmark.
+Each starts with its mark. The notes about one benchmark are on that benchmark's
+page, under "Support-matrix results".
 
 ∗ VisionPilot has no native trajectory output. For nuScenes, NAVSIM and
 KITScenes, Paddock constructs sampled XY points from its projected image-space
@@ -464,7 +441,7 @@ where the stack's own `lateral_fusion.hpp` has 0.21, so the planner saw a
 curvature 4.8x too large and its `sqrt(mu*g/|kappa|)` speed cap bound where it
 should not have. Fixed September 2026; on a 20-sample comma2k19 smoke the
 correction moved ADE@3s from 15.09 to 5.28. **Every VisionPilot figure in the
-README predates it** and will not be reproduced by a re-run — the closed-loop
+support matrix predates it** and will not be reproduced by a re-run — the closed-loop
 ones least, since urban scenes rarely reach the cap, and the comma2k19 and
 KITScenes ones most. `docs/models/visionpilot.md` §"Curvature scale" has
 the derivation; re-sweeping VisionPilot is an open item in `docs/ROADMAP.md`.
@@ -505,8 +482,10 @@ but it means both NAVSIM columns conflate "better planner" with
 "in-distribution versus zero-shot". Sourced at
 the pinned sha: `navsim_v2/scripts/training/train_drive_jepa_perception_based.sh`
 sets `TRAIN_TEST_SPLIT=navtrain` for the same agent whose checkpoint paddock
-loads. Detail in [docs/models/comparison.md](comparison.md).
+loads.
 
-✧ The published architecture's encoder reads one front camera; the
-perception-based agent paddock runs also has a BEV stage that reads four, so the
-adapter declares four. See discrepancy 1 above.
+✧ The published architecture's encoder reads one front camera, at t and
+t − 0.5 s (`drive_jepa_features.py`). The perception-based agent paddock runs also
+has a BEV stage that reads `cam_b0`, `cam_f0`, `cam_l0` and `cam_r0` at the current
+frame (`bevformer/bev_feature_build.py`), so the adapter declares four. The paper's
+"one front camera" is the encoder alone.

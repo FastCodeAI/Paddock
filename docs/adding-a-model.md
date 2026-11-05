@@ -1,13 +1,14 @@
 # Adding a model
 
 > **Start with `paddock new model <name>`** — it scaffolds the directory below
-> and renames the template consistently. Then `paddock verify --model <name>`
-> checks the contract before you spend a sweep on it. The shared mechanics and the
+> and renames the template consistently. Then `paddock setup --model <name>` builds
+> its environment, and `paddock verify --model <name>` checks the contract before
+> you spend a sweep on it. The shared mechanics and the
 > full contract are in [adding-an-adapter.md](adding-an-adapter.md); this page is the
 > model-specific detail.
 
-**You touch one registry file and one new directory. You do not edit anything
-under `src/paddock/` outside your own adapter.** If you cannot add a model
+**You touch one registry file and one new directory, then add a docs page and a
+README row. You do not edit anything under `src/paddock/` outside your own adapter.** If you cannot add a model
 without changing the core, that is a framework bug — raise it, and fix it *as* a
 framework change with its own reasoning, rather than working around it inside
 the adapter. That has happened and is the intended outcome, not a violation of
@@ -32,8 +33,9 @@ on coordinate frames.
 | 4 | `src/paddock/adapters/models/<name>/setup.sh` | **create** — build the env |
 | 5 | `src/paddock/adapters/models/<name>/tests/test_policy.py` | **create** — fixture test |
 | 6 | `docs/models/<name>.md` | **create** — quirks and reference numbers; `python -m tools.doc_summaries` writes its summary table |
-| 7 | `src/paddock/adapters/models/<name>/alpasim.yaml` | **AlpaSim only** — the settings AlpaSim drives the model on; see [AlpaSim settings](#alpasim-settings); needed by any model that reads a camera there |
-| 8 | `paddock.toml` | **your machine only** — never committed |
+| 7 | `README.md` | **modify** — add a row to the models table, linking to the page in step 6; `make check` fails without it |
+| 8 | `src/paddock/adapters/models/<name>/alpasim.yaml` | **AlpaSim only** — the settings AlpaSim drives the model on; see [AlpaSim settings](#alpasim-settings); needed by any model that reads a camera there |
+| 9 | `paddock.toml` | **your machine only** — never committed |
 
 Nothing else. In particular you do **not** register your model in any central
 list: `paddock list` discovers it by finding `model.yaml`.
@@ -133,6 +135,7 @@ Four fields are worth more thought than they look:
   override of any other key (a checkpoint, a horizon, a mode) is recorded in
   `run.json` as `model_env` and makes the run `valid: false`, so a finetune
   swapped in through a site config is never ranked under the model's name.
+  The one exception is a key listed in `ranked_with_note`, below.
   OpenMP and BLAS thread counts, and keys that only say where a library or
   cache lives (`LD_LIBRARY_PATH`, `HF_HOME`, ...; `runner.LOCATION_ENV`), are
   always allowed. A checkpoint path is not: a moved checkpoint and a finetune
@@ -144,8 +147,8 @@ Four fields are worth more thought than they look:
   environment from a strict allowlist plus `env` above, so a var not in either
   place silently never reaches the model — the shell invocation looks like it
   worked and does nothing. A name set in the shell is held to the same rule
-  as a site `env` override: unless it is in `tuning_env` or restates the
-  declared default, the run is recorded `valid: false`.
+  as a site `env` override: unless it is in `tuning_env` or `ranked_with_note`,
+  or restates the declared default, the run is recorded `valid: false`.
 - **`score_notes`** (top level, beside `benchmarks`) — env keys that change what a
   score means, each with one line. `paddock report` prints the line under any
   ranked run whose `model_env` set the key to something other than the declared
@@ -153,9 +156,12 @@ Four fields are worth more thought than they look:
   row would otherwise read as comparable when it is not: a plan stretched to fit
   a benchmark's horizon, one camera repeated into three slots. Leave out keys
   that change no number on the benchmarks you ran.
-  A note does not make a run rankable: a new run that overrides one of these
-  keys is still stored `valid: false` by the `tuning_env` rule above, so it
-  leaves the ranking, and its note prints only with `paddock report --include-invalid`.
+- **`ranked_with_note`** (top level) — the `score_notes` keys a site may set and
+  stay ranked, with the note beside the row. List a fixed choice your model needs
+  to run on a benchmark at all, such as METEOR's horizon on NAVSIM. Leave out any
+  number that could be tuned to a benchmark's own errors, and never a checkpoint.
+  A run that sets a noted key not listed here is stored `valid: false`, and its
+  note prints only with `paddock report --include-invalid`.
 
 ## Step 5 — write `setup.sh`
 

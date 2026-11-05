@@ -69,7 +69,8 @@ line, for a reader.
 
 Model identity. A site `[models.X] env` override such as `DRIVEJEPA_CHECKPOINT` is
 recorded in run.json as `config.model_env` (absolute paths as `<site path:digest>`) and
-makes the run `valid: false` unless the key is tuning-only. Nothing stops a
+makes the run `valid: false` unless the key is tuning-only or the model lists it in
+`ranked_with_note`. Nothing stops a
 "candidate" that is the same checkpoint as its baseline, so `compare` prints both runs'
 model_env and says when they match.
 """

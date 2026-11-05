@@ -69,7 +69,8 @@ class Runtime:
     #: Env keys a site may override without changing what is measured: thread
     #: counts, memory caps. Any other key in a site's `[models.<name>.env]`,
     #: or an `env_passthrough` name set in the launching shell, makes the run
-    #: `valid: false` (`runner._env_override_reasons`), because a
+    #: `valid: false` (`runner._env_override_reasons`), unless the model lists it
+    #: in `ranked_with_note`, because a
     #: checkpoint or a horizon swapped in by a site would otherwise be ranked
     #: under the model's name.
     tuning_env: tuple[str, ...] = ()
@@ -228,6 +229,13 @@ class ModelSpec:
     #: Only the model knows that a horizon was stretched or a camera repeated:
     #: the report sees a name and a number, and the row reads as comparable.
     score_notes: dict[str, str] = field(default_factory=dict)
+    #: The `score_notes` keys a site may set and stay ranked. A fixed choice the
+    #: model needs to run on a benchmark at all belongs here: METEOR cannot be
+    #: scored at NAVSIM's 4 s without its horizon set. A number that could be
+    #: tuned to a benchmark's own errors does not: nothing in the record tells
+    #: OpenPilot's camera height measured on the rig from one fitted to the test
+    #: set, so such a run stays `valid: false` however clearly a note describes it.
+    ranked_with_note: tuple[str, ...] = ()
     description: str = ""
     directory: Path = REPO_ROOT
 
@@ -373,6 +381,7 @@ def load_models(directory: Path = MODELS_DIR) -> dict[str, ModelSpec]:
             trained_on=_trained_on(caps.get("trained_on"), path),
             benchmarks=tuple(body.get("benchmarks", ())),
             score_notes=dict(body.get("score_notes") or {}),
+            ranked_with_note=tuple(body.get("ranked_with_note") or ()),
             description=body.get("description", ""),
             directory=path.parent,
         )
