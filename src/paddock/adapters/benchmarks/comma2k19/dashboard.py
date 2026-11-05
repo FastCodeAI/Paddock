@@ -370,6 +370,17 @@ class Dashboard:
     def _update_bev(self, index: int, show_plans: bool) -> None:
         future = self.overlay.future_device(index)
         if future is not None and len(future):
+            # The plans beside it are in the car's frame, and so is the ground
+            # truth they are scored against (`loader.future_in_ego_frame`), so
+            # the recorded path is rotated out of the camera's frame by the same
+            # calibration before it is drawn. Without it the path leans off by
+            # the mount yaw and a plan that matches the score looks wrong here.
+            # None when the route has no usable calibration (`SegmentOverlay._rpy`),
+            # in which case the path is drawn as recorded, like the radar boxes.
+            rpy = self.overlay.rpy
+            if rpy is not None:
+                calib_from_device = L.rot_from_euler(np.asarray(rpy, dtype=np.float64)).T
+                future = np.asarray(future, dtype=np.float64) @ calib_from_device.T
             # Device frame is y-right; the BEV, like every ego-frame quantity in
             # paddock, is y-left.
             self._gt_band.set_data(-future[:, 1], future[:, 0])

@@ -218,7 +218,7 @@ def test_synthetic_pose_velocity_is_forward_dominant(toolkit):
 
 def test_future_in_ego_frame_advances_forward_and_stays_centred(toolkit):
     pose = straight_pose(speed=20.0)
-    fut = L.future_in_ego_frame(pose, 20, [0.5, 1.0, 1.5])
+    fut = L.future_in_ego_frame(pose, 20, [0.5, 1.0, 1.5], np.zeros(3))
     assert np.allclose(fut[:, 0], [10.0, 20.0, 30.0], atol=1e-4)
     assert np.allclose(fut[:, 1], 0.0, atol=1e-6)
 
@@ -240,11 +240,63 @@ def test_ground_truth_relative_to_a_rotated_keyframe(toolkit):
     pose.orientations[idx] = rot2quat(rotated)
     reset_pose_cache(pose)  # the cached rotations predate the edit above
 
-    fut = L.future_in_ego_frame(pose, idx, [1.5])  # 30 m of travel
+    fut = L.future_in_ego_frame(pose, idx, [1.5], np.zeros(3))  # 30 m of travel
     # Travel is still east; the car now faces north, so east is on its right,
     # and paddock's y is LEFT -- so y must be -30.
     assert np.isclose(fut[0, 0], 0.0, atol=1e-4), fut
     assert np.isclose(fut[0, 1], -30.0, atol=1e-4), fut
+
+
+def _mounted(pose, rpy):
+    """`pose` as recorded by a camera mounted at `rpy` on the same car.
+
+    The pose stream describes the camera, so a camera at `rpy` records
+    `ecef_from_device = ecef_from_calib @ calib_from_device` with
+    `calib_from_device = rot_from_euler(rpy).T` -- the convention
+    `camera2ego_from_rpy` and `calibration.estimate` share. `straight_pose`'s
+    own orientation is the car's, so it plays `ecef_from_calib`.
+    """
+    ecef_from_device = pose.ecef_from_device[0] @ L.rot_from_euler(np.asarray(rpy, dtype=np.float64)).T
+    pose.orientations = np.tile(rot2quat(ecef_from_device), (len(pose), 1))
+    reset_pose_cache(pose)
+    return pose
+
+
+def test_the_ground_truth_points_where_the_car_points_not_the_camera(rotations):
+    """The defect every comma2k19 row was scored with, on a fixture with one answer.
+
+    A camera mounted 1.5 deg right of the car's axis and 3.5 deg down, on a car
+    driving dead straight. In the car's frame -- the frame every plan is in --
+    the recorded future is straight ahead. Left in the camera's frame, which is
+    what zero `rpy` reproduces, it bears off by the mount yaw, and it is
+    shortened by cos(pitch): the part a yaw-only correction would keep.
+    """
+    rpy = np.array([0.0, np.radians(3.5), np.radians(1.5)])
+    pose = _mounted(straight_pose(speed=25.0, n=200), rpy)
+    horizons = np.array([1.0, 2.0, 3.0])
+
+    car = L.future_in_ego_frame(pose, 20, horizons, rpy)
+    assert np.allclose(car[:, 0], 25.0 * horizons, atol=1e-6), car
+    assert np.allclose(car[:, 1:], 0.0, atol=1e-6), car
+
+    camera = L.future_in_ego_frame(pose, 20, horizons, np.zeros(3))
+    # Positive yaw puts the car's travel to the camera's right: -y in the ego frame.
+    assert np.allclose(np.arctan2(camera[:, 1], camera[:, 0]), -rpy[2], atol=1e-9)
+    assert np.allclose(np.hypot(camera[:, 0], camera[:, 1]), 25.0 * horizons * np.cos(rpy[1]), atol=1e-6)
+
+
+def test_the_inverse_rotation_doubles_the_error_rather_than_removing_it(rotations):
+    """Row versus column form is the easy way to get this backwards.
+
+    Rotating by `device_from_calib` instead of `calib_from_device` applies the
+    mount rotation a second time, and the ground truth points twice as far off
+    the car's axis as it did with no correction at all. Pinned with yaw alone,
+    where turning the wrong way is exactly a doubled bearing.
+    """
+    yaw = np.radians(1.5)
+    pose = _mounted(straight_pose(speed=25.0, n=200), [0.0, 0.0, yaw])
+    wrong = L.future_in_ego_frame(pose, 20, [3.0], [0.0, 0.0, -yaw])
+    assert np.isclose(np.arctan2(wrong[0, 1], wrong[0, 0]), -2 * yaw, atol=1e-9)
 
 
 # --------------------------------------------------------------------------
@@ -293,13 +345,23 @@ class _AlwaysValid:
         return CAL.Calibration(rpy=np.zeros(3), n_valid=10, n_total=10, spread=np.zeros(3), scope="route")
 
 
+class _FixedMount:
+    """A calibration survey that answers one real mount rotation for every segment."""
+
+    def __init__(self, rpy):
+        self.rpy = np.asarray(rpy, dtype=np.float64)
+
+    def get(self, segment):
+        return CAL.Calibration(rpy=self.rpy, n_valid=10, n_total=10, spread=np.zeros(3), scope="route")
+
+
 def _synthetic_frames(n: int = 64) -> list[np.ndarray]:
     """Frames whose pixels identify their index, so a misordered cache shows."""
     rng = np.random.default_rng(3)
     return [rng.integers(0, 256, size=(12, 16, 3), dtype=np.uint8) for _ in range(n)]
 
 
-def _frame_bench(tmp_path, monkeypatch, frames, **settings):
+def _frame_bench(tmp_path, monkeypatch, frames, pose=None, **settings):
     bench = _bench(history_frames=4, keyframes_per_segment=2, **settings)
     bench.cfg.runs = tmp_path / "runs"
 
@@ -307,7 +369,7 @@ def _frame_bench(tmp_path, monkeypatch, frames, **settings):
         yield from frames[: limit if limit is not None else len(frames)]
 
     monkeypatch.setattr(L, "decode_frames", fake_decode)
-    pose = straight_pose(speed=25.0, n=260)
+    pose = straight_pose(speed=25.0, n=260) if pose is None else pose
     seg = write_segment(tmp_path / "seg", pose)
     return bench, L.SegmentRef(chunk=1, route_id="dongle|route", segment=4, path=seg)
 
@@ -329,6 +391,27 @@ def test_observations_carry_frame_paths_rather_than_pixels(tmp_path, monkeypatch
             # Raw, not PNG: the node decompressing what the runner just
             # compressed was two thirds of this benchmark's wall clock.
             assert obs.image_paths["CAM_FRONT"].endswith(".npy")
+
+
+def test_samples_are_scored_against_their_own_calibrations_ground_truth(tmp_path, monkeypatch, rotations):
+    """End to end through `_segment_samples`, where the defect actually lived.
+
+    `camera2ego` was built from the segment's calibration and the ground truth
+    beside it was not. A straight drive recorded by a mounted camera must come
+    out straight ahead in every sample, and the rotation it used must be the
+    one the sample records.
+    """
+    rpy = np.array([0.0, np.radians(3.5), np.radians(1.5)])
+    pose = _mounted(straight_pose(speed=25.0, n=260), rpy)
+    bench, segment = _frame_bench(tmp_path, monkeypatch, _synthetic_frames(), pose=pose)
+
+    samples = list(bench._segment_samples(segment, _FixedMount(rpy)))
+    assert samples
+    for sample in samples:
+        gt = np.asarray(sample.ground_truth)
+        assert np.all(gt[:, 0] > 0)
+        assert np.allclose(gt[:, 1:], 0.0, atol=1e-6), gt[:3]
+        assert sample.native_id["rpy_calib_deg"] == pytest.approx(np.degrees(rpy), abs=1e-4)
 
 
 def test_a_cached_frame_is_the_decoded_frame_bit_for_bit(tmp_path, monkeypatch, rotations):
@@ -791,6 +874,9 @@ def test_run_config_records_what_changes_the_number():
     assert cfg["history_frames"] == 200
     assert cfg["keyframes_per_segment"] == 2
     assert "calibration" in cfg
+    # Moves the run id away from every run scored in the camera's frame, so
+    # `--resume` cannot finish one of those under this scorer.
+    assert cfg["ground_truth_frame"].startswith("car")
 
 
 def test_a_stationary_prediction_reproduces_the_published_numbers():

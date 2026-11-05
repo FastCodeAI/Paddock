@@ -63,6 +63,11 @@ once, on the way out. openpilot predicts in [forward, right, down] too and its
 own adapter negates y on the way back -- so a sign error would show as a
 mirrored trajectory, which `score` cannot hide and the render can.
 
+"Forward" is the car's, not the camera's. The device frame is the phone's, a
+degree or two off the car's axis, so the ground truth is rotated by the route
+calibration (`loader.future_in_ego_frame`) -- the same one `camera2ego` tells
+the model -- before it is scored.
+
 ## What is different from the removed implementation
 
 Recorded in `docs/benchmarks/comma2k19.md`. The short version: `camera2ego` was
@@ -479,6 +484,11 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         recorded because they, not the rate, are what a reader needs to interpret
         the row. `calibration` is in here because it is the single setting that
         most changes the result and the one that was silently wrong before.
+
+        `ground_truth_frame` says which forward the plans were scored against.
+        Runs made before it existed scored the car's plan against the camera's
+        future; naming the frame moves the run id, so `--resume` cannot finish
+        one of those runs under the current scorer and report the mix as one.
         """
         config = {
             "history_frames": self.history_frames,
@@ -488,6 +498,7 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
             "gt_horizon_s": N_GT_POSES * INTERVAL_S,
             "input_hz": self.input_hz,
             "calibration": "route-pooled, calibrationd formula on recorded pose",
+            "ground_truth_frame": "car (recorded future rotated by the route calibration)",
         }
         try:
             config["stride"] = self.grid.stride
@@ -978,7 +989,9 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
                 yield Sample(
                     sample_id=self._sample_id(segment, k),
                     observations=observations,
-                    ground_truth=L.future_in_ego_frame(pose, k, grid.gt_horizons_s),
+                    # The calibration that built `camera2ego` above, so the plan
+                    # and the future it is scored against share one forward.
+                    ground_truth=L.future_in_ego_frame(pose, k, grid.gt_horizons_s, cal.rpy),
                     split=segment.vehicle,
                     native_id={
                         "chunk": segment.chunk,

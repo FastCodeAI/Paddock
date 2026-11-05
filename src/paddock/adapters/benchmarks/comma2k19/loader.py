@@ -35,12 +35,16 @@ the device origin with no rotation of its own and hand openpilot an identity
   model, shown a rotated world, predicted a stationary car).
 * There *is* a mount rotation to correct. Estimated from the recorded poses with
   calibrationd's own formula, it is 3.3-3.8 deg of pitch on the RAV4 and
-  1.6-2.2 deg on the Civic for nine routes in ten. Correcting it is worth about
+  1.6-2.2 deg on the Civic for nine routes in ten. Correcting it was worth about
   3x in cross-track error, because openpilot's model expects the road to sit at
-  a fixed place in its input frame.
+  a fixed place in its input frame (measured against the camera-frame ground
+  truth below, before that was corrected too).
 
 So `camera2ego` here carries the estimated mount rotation, and
-`calibration.py` computes it.
+`calibration.py` computes it. The ground truth goes through the same rotation
+(`future_in_ego_frame`): the pose stream describes the camera, the plan is in
+the car's frame, and scoring one against the other left a yaw of 1-2 deg
+between them on every sample.
 
 **Where the maths comes from.** The rotations, the EON intrinsics and the
 view-frame basis are comma's own, taken from the dataset toolkit through
@@ -463,19 +467,41 @@ def device_from_ego(points_ego: np.ndarray) -> np.ndarray:
     return np.asarray(points_ego, dtype=np.float64) @ _DEVICE_TO_EGO.T
 
 
-def future_in_ego_frame(pose: SegmentPose, index: int, horizons_s) -> np.ndarray:
+def future_in_ego_frame(pose: SegmentPose, index: int, horizons_s, rpy) -> np.ndarray:
     """(H, 3) recorded future position at `horizons_s`, in frame `index`'s ego frame.
 
-    Rotated into the *device* frame first (that is the frame the recorded
-    orientation describes), then converted to paddock's ego convention. Callers
-    must check `future_available_s`: `np.interp` clamps past the end of the
-    recording, which would silently turn "no data" into "the car stopped".
+    The ego frame is the *car's*, the same frame every model plans in. Three
+    steps: into the device frame (the frame the recorded orientation describes),
+    out of it through the mount rotation `rpy`, then into paddock's convention.
+
+    The middle step is the one that was missing. The device frame is the
+    camera's, which sits a degree or two off the car's axis, so a ground truth
+    left there points that much away from every plan scored against it: about
+    3 m sideways at 90 m on the Civic, enough to mark a perfect plan wrong.
+    `rpy` is the same calibration `camera2ego_from_rpy` hands the model, so the
+    model is told where the car points and scored against the same direction.
+
+        p_calib = calib_from_device @ p_device,  calib_from_device = rot_from_euler(rpy).T
+
+    which for row vectors is `p_device @ rot_from_euler(rpy)`; the transpose
+    instead would apply `device_from_calib` and double the error. The full
+    rotation, not yaw alone: a pitched camera also sees the road ahead as
+    shortened by cos(pitch), up to 0.2 % on this dataset's RAV4s.
+
+    `rpy` is required, so no caller can quietly score in the camera's frame;
+    pass zeros where the device frame already is the car's. Callers must check
+    `future_available_s`: `np.interp` clamps past the end of the recording,
+    which would silently turn "no data" into "the car stopped".
     """
     horizons = np.asarray(horizons_s, dtype=np.float64)
     target_t = pose.times[index] + horizons
     delta = pose.positions_at(target_t) - pose.positions[index]
     device = delta @ pose.device_from_ecef[index].T
-    return ego_from_device(device)
+    calib = device @ rot_from_euler(np.asarray(rpy, dtype=np.float64))
+    # diag(1, -1, -1) maps the calibrated frame to paddock's ego convention
+    # exactly as it maps the device frame, which is how `camera2ego_from_rpy`
+    # uses it as `ego_from_calib`.
+    return ego_from_device(calib)
 
 
 def camera2ego_from_rpy(rpy, height: float = EON_HEIGHT) -> np.ndarray:
