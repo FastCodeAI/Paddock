@@ -336,7 +336,9 @@ It is tempting to justify a larger number by a settling transient after the
 buffer fills, and one segment's error trace does look that way. Aggregated over
 24 segments it does not: cross-track error at 3 s is 0.20 m in the first 20
 frames past the 96-frame boundary and 0.27 m thereafter, already at its floor.
-The single-segment impression was noise.
+The single-segment impression was noise. (Both figures are against the
+camera-frame ground truth of the time; the comparison between them is what
+carries the argument.)
 
 There is no shared external keyframe list the way KITScenes has one, so
 `keyframe_indices` generates it from the segment length — deterministic, so
@@ -676,7 +678,9 @@ those at `rpy = 0`, silently; openpilot never hits this because it persists
 Result on this dataset: 3.3–3.8° of pitch on the RAV4 (39 of its 42 routes) and
 1.6–2.2° on the Civic (126 of 135), consistent within each vehicle and never
 overlapping between them — the Civic's highest is 2.35°, the RAV4's lowest
-2.57°. Correcting it is worth roughly 1.7× in cross-track error.
+2.57°. Correcting it was worth roughly 1.7× in cross-track error, measured
+against the camera-frame ground truth used before the ground truth was rotated
+into the car's frame too.
 
 ## Recorded results
 
@@ -696,14 +700,15 @@ lateral-acceleration columns. ADE, FDE, miss rate and the longitudinal comfort
 columns are not. Scoring the runs again needs their per-sample plans, which are
 at the site that made them; until then these numbers are the old rules'.
 
-**Every row is scored against a ground truth in the camera's frame, while the
-plans are in the car's.** The two differ by the mount rotation, about 2° of yaw
-on the Civic, and every number below carries it. Re-scored from the stored
-records with the ground truth in the calibrated frame, ADE@3s is 0.602 for
-qwendrive, 0.858 for alpamayo15 and openpilot, 1.137 for constant velocity,
-1.358 for autoe2e and 30.132 for meteor,
-which reorders the table. It is left as scored until that re-score lands in its
-own PR ([ROADMAP](../ROADMAP.md)).
+**Every row below was scored against a ground truth in the camera's frame,
+while the plans are in the car's.** The two differ by the mount rotation, about
+2° of yaw on the Civic, and every number below carries it. The scorer now
+rotates the ground truth by the route calibration, the same one `camera2ego`
+hands the model. Scored that way, the stored plans give ADE@3s 0.612 for
+qwendrive, 0.843 for openpilot, 0.867 for alpamayo15, 1.135 for constant
+velocity, 1.382 for autoe2e, 3.631 for visionpilot, 16.047 for drivejepa_free
+and 30.167 for meteor, which reorders the table. Each row is replaced, in its
+own PR, when its model is re-run ([ROADMAP](../ROADMAP.md)).
 
 | | horizon | ADE@1s | ADE@2s | **ADE@3s** | ADE@4s | ADE@5s | ADE@10s | FDE@3s | median ADE@3s | miss@3s | PDMS-style ↑ |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -1064,11 +1069,12 @@ any model here (0.609 m lateral error at matched arc length, against OpenPilot's
 1.155) but reach only ~67% as far as the car travelled, because 4 s of NAVSIM
 city driving saturates near 64 m while I-280 runs at 30 m/s. See
 [docs/models/drivejepa_free.md](../models/drivejepa_free.md) and the comma2k19
-table below. Every comma2k19 row is also scored against a ground truth left in
-the camera's frame while the plans are in the car's. Re-scored with both in the
-car's frame, the order changes: Qwen-Drive 0.602, Alpamayo 1.5 and OpenPilot
-0.858, constant velocity 1.137, AutoE2E 1.358, METEOR 30.132. That re-score is
-a tracked follow-up ([ROADMAP](../ROADMAP.md)). **METEOR's 30.075 is a
+table below. Every comma2k19 row there was also scored against a ground truth
+left in the camera's frame while the plans are in the car's. The scorer now puts
+both in the car's frame, and the stored plans scored that way change the order:
+Qwen-Drive 0.612, OpenPilot 0.843, Alpamayo 1.5 0.867, constant velocity 1.135,
+AutoE2E 1.382, METEOR 30.167. Each row is replaced when its model is re-run
+([ROADMAP](../ROADMAP.md)). **METEOR's 30.075 is a
 reach failure too, and a larger one**: the released graph, shown one phone
 camera in two of its eight slots, plans about 17 m ahead whatever the speed,
 where I-280 needs 55-92 m.

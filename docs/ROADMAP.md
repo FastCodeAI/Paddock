@@ -17,9 +17,10 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 
 - **OpenPilot's comma2k19 row predates the pinned commit.** It comes from a clone
   at `4df40d2c1`, and the pin is `555f48c5d`. It is due to be re-run at the pin.
-- **comma2k19 is scored with the ground truth in the camera's frame and every
-  plan in the car's.** Re-scored with both in the car's frame, the order changes.
-  The re-score moves a published column, so it lands in its own PR.
+- **comma2k19's published rows were scored with the ground truth in the camera's
+  frame and every plan in the car's.** The scorer now puts both in the car's
+  frame, and the order changes. Each row is replaced, in its own PR, when its
+  model is re-run.
 - **VisionPilot's figures predate the `CURV_SCALE` fix.** Every VisionPilot cell
   is due to be re-run.
 - **OpenPilot runs made with the ONNX backend** fed the road camera's image to
