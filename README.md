@@ -97,6 +97,12 @@ it differs.
 
 Before comparing numbers:
 
+- **Three columns use part of a benchmark, so don't compare them with published
+  scores.** Bench2Drive is 50 of its 220 routes, and those cover 14 of its 44
+  scenario types. AlpaSim is 30 of the 913 scenes in `public_2601`. NAVSIM v2 is
+  `navtest`, stage one only; its public leaderboard uses `navhard`, two stages.
+- **Both NAVSIM columns are open loop.** The plan is simulated for 4 s to score it,
+  but the model never sees what happened, so errors do not compound.
 - **Open-loop L2 rewards a straight line.** On nuScenes, constant velocity
   (0.641) beats every learned model except Qwen-Drive, whose cell is adapted.
 - **nuPlan is recorded, not ranked.** These runs use one of nuPlan's nine camera
@@ -162,7 +168,7 @@ flowchart LR
         c2k["comma2k19<br/>20 Hz highway · 10,165 samples"]
         npl["nuPlan<br/>v1.1 · 10 Hz · ADE / FDE"]
     end
-    subgraph pseudo ["pseudo-closed-loop"]
+    subgraph simscored ["open-loop, plan simulated for scoring"]
         nv["NAVSIM<br/>v1 PDMS · v2 EPDMS"]
     end
     subgraph closed ["closed-loop"]
@@ -177,13 +183,13 @@ flowchart LR
 
     op & al & dj & vp & me & ae & qd & wj & cv --> pol
     pol -- "harness posts a recording<br/>/infer_sequence" --> open
-    pol -- "scorer posts a recording,<br/>then simulates the plan" --> pseudo
+    pol -- "scorer posts a recording,<br/>then simulates the plan" --> simscored
     pol -- "simulator posts /infer<br/>every tick, the plan<br/>moves the car<br/>(AlpaSim: via a gRPC bridge)" --> closed
-    open & pseudo & closed --> res
+    open & simscored & closed --> res
 
     style models fill:#fff8f1,stroke:#c2410c,stroke-width:1.5px,color:#9a3412
     style open   fill:#f2fbf4,stroke:#15803d,stroke-width:1.5px,color:#166534
-    style pseudo fill:#fffbeb,stroke:#b45309,stroke-width:1.5px,color:#92400e
+    style simscored fill:#fffbeb,stroke:#b45309,stroke-width:1.5px,color:#92400e
     style closed fill:#fff5f5,stroke:#b91c1c,stroke-width:1.5px,color:#991b1b
 
     classDef model   fill:#ffedd5,stroke:#ea580c,stroke-width:1.5px,color:#1f2328
@@ -234,11 +240,11 @@ Paddock ships no weights and no datasets.
 | [KITScenes](docs/benchmarks/kitscenes.md) | open loop | ADE | [KIT-MRT/kitscenes](https://github.com/KIT-MRT/kitscenes) | [KITScenes](https://arxiv.org/abs/2606.02956) |
 | [comma2k19](docs/benchmarks/comma2k19.md) | open loop | ADE | [commaai/comma2k19](https://github.com/commaai/comma2k19) | [A Commute in Data](https://arxiv.org/abs/1812.05752) |
 | [nuPlan](docs/benchmarks/nuplan.md) | open loop | ADE | [nuPlan](https://www.nuscenes.org/nuplan) | [nuPlan](https://arxiv.org/abs/2106.11810) |
-| [NAVSIM v2](docs/benchmarks/navsim.md) | pseudo-closed loop | EPDMS | [autonomousvision/navsim](https://github.com/autonomousvision/navsim) | [Pseudo-Simulation](https://arxiv.org/abs/2506.04218) |
-| [NAVSIM v1](docs/benchmarks/navsim_v1.md) | pseudo-closed loop | PDMS | [autonomousvision/navsim](https://github.com/autonomousvision/navsim) | [NAVSIM](https://arxiv.org/abs/2406.15349) |
-| [Bench2Drive](docs/benchmarks/bench2drive.md) | closed loop, CARLA | driving score | [Thinklab-SJTU/Bench2Drive](https://github.com/Thinklab-SJTU/Bench2Drive) | [Bench2Drive](https://arxiv.org/abs/2406.03877) |
+| [NAVSIM v2](docs/benchmarks/navsim.md) | open loop, plan simulated for scoring; `navtest`, stage one | EPDMS | [autonomousvision/navsim](https://github.com/autonomousvision/navsim) | [Pseudo-Simulation](https://arxiv.org/abs/2506.04218) |
+| [NAVSIM v1](docs/benchmarks/navsim_v1.md) | open loop, plan simulated for scoring | PDMS | [autonomousvision/navsim](https://github.com/autonomousvision/navsim) | [NAVSIM](https://arxiv.org/abs/2406.15349) |
+| [Bench2Drive](docs/benchmarks/bench2drive.md) | closed loop, CARLA; 50 of 220 routes | driving score | [Thinklab-SJTU/Bench2Drive](https://github.com/Thinklab-SJTU/Bench2Drive) | [Bench2Drive](https://arxiv.org/abs/2406.03877) |
 | [neuroNCAP](docs/benchmarks/neuroncap.md) | closed loop, NeuRAD | NCAP score | [atonderski/neuro-ncap](https://github.com/atonderski/neuro-ncap) | [NeuroNCAP](https://arxiv.org/abs/2404.07762) |
-| [AlpaSim](docs/benchmarks/alpasim.md) | closed loop, NuRec | scene score | [NVlabs/alpasim](https://github.com/NVlabs/alpasim) | |
+| [AlpaSim](docs/benchmarks/alpasim.md) | closed loop, NuRec; 30 of 913 scenes | scene score | [NVlabs/alpasim](https://github.com/NVlabs/alpasim) | |
 | [HUGSIM](docs/benchmarks/hugsim.md) | closed loop, Gaussian splatting | HD-Score | [hyzhou404/HUGSIM](https://github.com/hyzhou404/HUGSIM) | [HUGSIM](https://arxiv.org/abs/2412.01718) |
 
 ## Quickstart

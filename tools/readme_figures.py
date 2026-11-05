@@ -55,7 +55,7 @@ RESULTS = ROOT / "results"
 MATRIX_SVG = ROOT / "docs" / "assets" / "support-matrix.svg"
 MODELS_SVG = ROOT / "docs" / "assets" / "models.svg"
 
-LOOP = {"open": "open loop", "pseudo": "pseudo-closed loop", "closed": "closed loop"}
+LOOP = {"open": "open loop", "closed": "closed loop"}
 MISSING = ("—", "not run")
 UNRANKED_MARKS = {"R", "V"}
 CELL_KEYS = {"run", "value", "source", "marks", "note", "model"}
@@ -347,14 +347,12 @@ def render_matrix(columns: list[Column], rows: list[Row]) -> str:
     light = [".miss{fill:#f0efec}", ".floor{fill:#fcfcfb;stroke:#a9a8a3;stroke-dasharray:3 3}"]
     light += [".floorline{fill:none;stroke:#52514e;stroke-width:1.5;stroke-dasharray:4 3}"]
     light += [".hbg{fill:#f0efec}", ".hln{stroke:#c9c8c3}", ".worse{fill:#d03b3b;stroke:#fcfcfb}"]
-    light += [".open{fill:#15803d;stroke:#15803d}", ".pseudo{fill:#b45309;stroke:#b45309}"]
-    light += [".closed{fill:#b91c1c;stroke:#b91c1c}"]
+    light += [".open{fill:#15803d;stroke:#15803d}", ".closed{fill:#b91c1c;stroke:#b91c1c}"]
     light += [f".r{i + 1}{{fill:{c}}}" for i, c in enumerate(RAMP_LIGHT)]
     light += [f".t{i + 1}{{fill:{c}}}" for i, c in enumerate(TEXT_LIGHT)]
     dark = [".miss{fill:#2a2a28}", ".floor{fill:#1a1a19;stroke:#6b6a66}", ".floorline{stroke:#c3c2b7}"]
     dark += [".hbg{fill:#2a2a28}", ".hln{stroke:#45453f}", ".worse{fill:#e66767;stroke:#1a1a19}"]
-    dark += [".open{fill:#4ade80;stroke:#4ade80}", ".pseudo{fill:#fbbf24;stroke:#fbbf24}"]
-    dark += [".closed{fill:#f87171;stroke:#f87171}"]
+    dark += [".open{fill:#4ade80;stroke:#4ade80}", ".closed{fill:#f87171;stroke:#f87171}"]
     dark += [f".r{i + 1}{{fill:{c}}}" for i, c in enumerate(RAMP_DARK)]
     dark += [f".t{i + 1}{{fill:{c}}}" for i, c in enumerate(TEXT_DARK)]
     defs = (

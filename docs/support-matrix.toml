@@ -46,14 +46,14 @@ ranked = false
 [[benchmark]]
 key = "navsim"
 name = "NAVSIM v2"
-loop = "pseudo"
-header = "EPDMS ↑ (0–1)"
+loop = "open"
+header = "EPDMS ↑ (0–1), navtest, stage one"
 decimals = 3
 
 [[benchmark]]
 key = "navsim_v1"
 name = "NAVSIM v1"
-loop = "pseudo"
+loop = "open"
 header = "PDMS ↑ (0–1)"
 decimals = 3
 
@@ -61,7 +61,7 @@ decimals = 3
 key = "bench2drive"
 name = "Bench2Drive"
 loop = "closed"
-header = "driving score ↑ (0–100)"
+header = "driving score ↑ (0–100), 50 of 220 routes"
 decimals = 2
 
 [[benchmark]]
@@ -75,7 +75,7 @@ decimals = 2
 key = "alpasim"
 name = "AlpaSim"
 loop = "closed"
-header = "nuRec scene score ↑ (0–1)"
+header = "nuRec scene score ↑ (0–1), 30 of 913 scenes"
 decimals = 4
 
 [[model]]

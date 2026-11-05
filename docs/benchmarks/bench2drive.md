@@ -15,7 +15,9 @@
 [Bench2Drive](https://github.com/Thinklab-SJTU/Bench2Drive) is a closed-loop
 end-to-end driving benchmark on **CARLA 0.9.15**. The model drives the official
 leaderboard's **220 short routes** (Towns 12/13/15, 44 scenario types × 5), one
-scenario per route, and is scored by the CARLA Leaderboard driving score.
+scenario per route, and is scored by the CARLA Leaderboard driving score. Every
+ranked number here uses 50 of those routes; see
+[The 50 routes are not a sample of the 220](#the-50-routes-are-not-a-sample-of-the-220).
 
 Closed-loop, like neuroNCAP: the model decides what happens next and errors
 compound. The model runs behind paddock's HTTP policy node; the adapter spawns the
@@ -696,6 +698,26 @@ no lead, so the cell is marked P; like AutoE2E's and METEOR's, it ranks. It
 replaces the unassisted estimate ◆
 (30.09), a reconstruction from the September recordings, whose 50-route mean the
 table below still withholds.
+
+### The 50 routes are not a sample of the 220
+
+Every ranked cell uses the same 50 routes, listed in each run's
+`config.routes_subset`. They grew in two steps: 24 routes first (5 abilities × 5
+routes, minus 11715, which crashes CARLA), then 26 more. Nothing in this repository
+records how the 26 were picked.
+
+They cover **14 of the 44 scenario types**, so the other 30 types are not tested at
+all:
+
+| Routes | Scenario types |
+|---:|---|
+| 5 | Accident, DynamicObjectCrossing, InvadingTurn, PedestrianCrossing, YieldToEmergencyVehicle |
+| 4 | ParkingCutIn, SignalizedJunctionLeftTurn |
+| 3 | AccidentTwoWays, NonSignalizedJunctionLeftTurn, SignalizedJunctionRightTurn |
+| 2 | ConstructionObstacle, EnterActorFlow, HighwayCutIn, MergerIntoSlowTraffic |
+
+A score here says how a model drives these 14 types. Do not compare it with a
+published 220-route score.
 
 ### Bench2Drive — 50 routes
 
