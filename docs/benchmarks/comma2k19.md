@@ -646,9 +646,10 @@ Three things to know before trusting what you see:
   recorded path with its far end folded onto the road 18–67 m ahead. They show
   a model that plans short, or hooks, and it was doing neither.
   `test_the_overlay_draws_a_plan_through_the_mount_rotation` pins it.
-  The scorer does not do the same for the ground truth yet, so a clip can show
-  a plan on the recorded path beside an ADE that still carries the mount yaw
-  (see [Recorded results](#recorded-results)).
+  The scorer rotates the ground truth by the same calibration, so a plan drawn
+  on the recorded path also scores as on it. A published row made before that
+  still carries the mount yaw until its model is re-run (see
+  [Recorded results](#recorded-results)).
 - **Encoding needs a video backend**, the same one scoring needs: PyAV from the
   `comma2k19` extra, or an external ffmpeg named by `PADDOCK_FFMPEG`. Drawing
   additionally needs Pillow, which the `viz` extra declares.
