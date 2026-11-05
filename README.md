@@ -29,13 +29,13 @@ names for it. The matrix holds released checkpoints only.
 Per-benchmark tables and notes: [nuScenes](docs/benchmarks/nuscenes.md#support-matrix-results) ·
 [KITScenes](docs/benchmarks/kitscenes.md#support-matrix-results) ·
 [comma2k19](docs/benchmarks/comma2k19.md#support-matrix-results) ·
-[nuPlan](docs/benchmarks/nuplan.md#support-matrix-results) ·
 [NAVSIM v2](docs/benchmarks/navsim.md#support-matrix-results) ·
 [NAVSIM v1](docs/benchmarks/navsim_v1.md#support-matrix-results) ·
 [Bench2Drive](docs/benchmarks/bench2drive.md#support-matrix-results) ·
 [neuroNCAP](docs/benchmarks/neuroncap.md#support-matrix-results) ·
 [AlpaSim](docs/benchmarks/alpasim.md#support-matrix-results).
 [HUGSIM](docs/benchmarks/hugsim.md) has no column yet: two of these models have driven it.
+[nuPlan](docs/benchmarks/nuplan.md) has no column yet: its runs so far cover 25 of 351 anchors.
 
 <details>
 <summary>Why each cell is marked, and what to check before comparing</summary>
@@ -46,8 +46,7 @@ it differs.
 
 - **A — adapted, not zero-shot.** The model was trained on data from this
   benchmark, or its settings were chosen on it. Drive-JEPA and Qwen-Drive on
-  NAVSIM (both trained on `navtrain`), Drive-JEPA on nuPlan (52 of the 62
-  nuPlan mini logs are `navtrain` logs), Qwen-Drive on nuScenes and neuroNCAP
+  NAVSIM (both trained on `navtrain`), Qwen-Drive on nuScenes and neuroNCAP
   (its VLM trained on nuScenes train, and on driving-VQA sets whose training
   splits hold nuScenes val scenes), Alpamayo on NAVSIM, nuScenes and
   neuroNCAP (its model card lists two NAVSIM-built and five nuScenes-built public
@@ -105,9 +104,6 @@ Before comparing numbers:
   but the model never sees what happened, so errors do not compound.
 - **Open-loop L2 rewards a straight line.** On nuScenes, constant velocity
   (0.641) beats every learned model except Qwen-Drive, whose cell is adapted.
-- **nuPlan is recorded, not ranked.** These runs use one of nuPlan's nine camera
-  shards: 25 anchors, in 7 of 59 scenario types, six of them stop-sign or
-  traffic-light decelerations. Every run is stored `valid: false`.
 - **Close closed-loop scores are often ties.** On neuroNCAP (20 scenario pairs,
   10 runs each) the top three are statistically indistinguishable. On AlpaSim
   (30 scenes, one rollout each) a difference under about 0.16 is within two

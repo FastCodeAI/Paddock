@@ -36,14 +36,6 @@ header = "ADE@3s ↓ (m)"
 decimals = 3
 
 [[benchmark]]
-key = "nuplan"
-name = "nuPlan"
-loop = "open"
-header = "ADE ↓ (m), 25 anchors, not ranked"
-decimals = 3
-ranked = false
-
-[[benchmark]]
 key = "navsim_v1"
 name = "NAVSIM v1"
 loop = "open"
@@ -116,7 +108,6 @@ floor = true
 nuscenes = { run = "nuscenes/openpilot/20260908T110028-b71f4f" }
 kitscenes = { run = "kitscenes/openpilot/20261008T004723-a369d1", marks = "A" }
 comma2k19 = { run = "comma2k19/openpilot/20260916T051616-2a91ca", marks = "S" }
-nuplan = { run = "nuplan/openpilot/20260917T220353-9e4f44" }
 navsim = { run = "navsim/openpilot/20260911T161513-3a4c90", note = "10 Hz" }
 navsim_v1 = { run = "navsim_v1/openpilot/20260914T181009-dbcef4", note = "10 Hz" }
 bench2drive = { run = "bench2drive/openpilot/pooled50-40c29d24c37d542a-c7d2b2", marks = "P" }  # routes can end early; it ranks
@@ -137,7 +128,6 @@ alpasim = { run = "alpasim/alpamayo15/20261029T200113-9d900c" }  # through the b
 nuscenes = { run = "nuscenes/drivejepa/20260905T093335-4513d4", marks = "S" }
 kitscenes = { run = "kitscenes/drivejepa/legacy-kitscenes_e2e_final" }
 comma2k19 = { run = "comma2k19/drivejepa_free/20260916T003407-c504e5", model = "drivejepa_free" }  # front-camera version
-nuplan = { run = "nuplan/drivejepa/20260916T204900-6a17de", marks = "A" }  # 52 of nuPlan mini's 62 logs are navtrain logs
 navsim = { run = "navsim/drivejepa/20260902T173156-7e208f", marks = "A" }
 navsim_v1 = { run = "navsim_v1/drivejepa/20260911T082329-575df6", marks = "A" }
 bench2drive = { run = "bench2drive/drivejepa/native50-2hz-40c29d24c37d542a-447e23", note = "2 Hz" }
@@ -148,7 +138,6 @@ alpasim = { run = "alpasim/drivejepa/legacy-drivejepa_014_20hz_30scenes" }
 nuscenes = { run = "nuscenes/visionpilot/20260905T093333-319ef5" }
 kitscenes = { run = "kitscenes/visionpilot/20260909T202724-153b04" }
 comma2k19 = { run = "comma2k19/visionpilot/20260916T012719-03350c" }
-nuplan = { run = "nuplan/visionpilot/20260917T220044-97873a" }
 navsim = { run = "navsim/visionpilot/20260902T175642-df5291" }
 navsim_v1 = { run = "navsim_v1/visionpilot/20260911T083323-c07583" }
 bench2drive = { run = "bench2drive/visionpilot/pooled50-40c29d24c37d542a-d94009" }
@@ -159,7 +148,6 @@ alpasim = { run = "alpasim/visionpilot/legacy-visionpilot_v2_30scenes" }
 nuscenes = { run = "nuscenes/meteor/20260914T202122-4320bb" }
 kitscenes = { run = "kitscenes/meteor/20260914T215457-ab0586" }
 comma2k19 = { run = "comma2k19/meteor/20261030T001935-0b8d0b" }  # the road camera in 2 of its 8 slots
-nuplan = { run = "nuplan/meteor/20260917T195335-1b447c" }
 navsim = { run = "navsim/meteor/20260914T234307-e56cfc", marks = "P" }
 navsim_v1 = { run = "navsim_v1/meteor/20260915T005223-071c0b", marks = "P" }
 # Its declared 5 Hz, routes ended after 30 s stuck or 4x the expert's time (AutoE2E's rules), each a
@@ -194,7 +182,6 @@ alpasim = { run = "alpasim/autoe2e/20261022T045847-86b955" }
 nuscenes = { run = "nuscenes/constant_velocity/20260914T225156-e5170c" }
 kitscenes = { value = 1.381, source = "docs/benchmarks/kitscenes.md" }
 comma2k19 = { run = "comma2k19/constant_velocity/20260916T162837-b89038" }
-nuplan = { run = "nuplan/constant_velocity/20260917T214417-f827db" }
 navsim = { run = "navsim/constant_velocity/20260902T175923-feba73" }
 navsim_v1 = { run = "navsim_v1/constant_velocity/20260911T034553-8f28ac" }
 bench2drive = { run = "bench2drive/constant_velocity/pooled50-3mps-40c29d24c37d542a-02b6ac" }

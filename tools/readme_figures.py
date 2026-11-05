@@ -375,9 +375,11 @@ def render_matrix(columns: list[Column], rows: list[Row]) -> str:
     sx += 26 * len(RAMP_LIGHT) + 4
     out.append(_text(sx, y, "rank 6+", "sec", 12))
     sx += 70
-    out.append(f'<rect fill="url(#hatch)" x="{sx}" y="{y - 11}" width="24" height="14" rx="3"/>')
-    out.append(_text(sx + 30, y, "not ranked", "sec", 12))
-    sx += 120
+    # Only when a cell uses it: a key for nothing on the page sends a reader looking.
+    if any(c.value is not None and c.rank is None for r in rows if not r.is_floor for c in r.cells):
+        out.append(f'<rect fill="url(#hatch)" x="{sx}" y="{y - 11}" width="24" height="14" rx="3"/>')
+        out.append(_text(sx + 30, y, "not ranked", "sec", 12))
+        sx += 120
     out.append(f'<path class="worse" d="M{sx} {y - 10}h11l-5.5 9z" stroke-width="1.5"/>')
     out.append(_text(sx + 16, y, "worse than constant velocity", "sec", 12))
     sx += 200
