@@ -105,7 +105,7 @@
 | drivejepa | kitscenes_e2e_final | 223 | 2.364 | 1.306 | 2.668 | 4.199 | 0.187 | - | - |
 | meteor | 20260914T185351-5e5223 | 223 | 4.784 | 2.334 | 5.542 | 9.011 | - | - | - |
 
-- [1] openpilot: route commands sent as the desire input (turn); the default sends none
+- [1] openpilot: desire input mode set to turn; the default, off, sends none
 - [2] openpilot: camera height taken as 1.22x openpilot's to fit this dataset's rig
 - [3] openpilot: view tilted -1.7 degrees to fit this dataset's rig
 - [4] openpilot: frame cut to a 55 degree field of view to fit this dataset's rig
