@@ -5,11 +5,12 @@ Two things a number needs to be reproducible, and paddock recorded neither:
 **Which revision of the upstream repo produced it.** `RunRecord.repo_sha` has
 existed since the store was written and nothing ever set it, so `repos.yaml`'s
 pin was the only answer available -- and a pin is what a clone *should* be at,
-not what it is. The gap is not hypothetical: this repo's published comma2k19
-openpilot row was produced by a checkout at `4df40d2c1`, which ships the model
-as two graphs, while the pin names `555f48c5d`, which ships it as one. The two
-plan from different hidden states. Nothing on the record said so, and finding
-out meant running `git -C` in the clone and knowing to.
+not what it is. The gap is not hypothetical: this repo's comma2k19 openpilot
+row, until its re-run in November 2026, came from a checkout at `4df40d2c1`,
+which ships the model as two graphs, while the pin names `555f48c5d`, which
+ships it as one. The two plan from different hidden states. Nothing on the
+record said so, and finding out meant running `git -C` in the clone and knowing
+to.
 
 **What the loaded policy says it is.** Every `Policy` serves `/diagnostics`
 (`policy/protocol.py`), which is where a model reports the things a score

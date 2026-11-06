@@ -115,7 +115,7 @@ floor = true
 [cells.openpilot]
 nuscenes = { run = "nuscenes/openpilot/20260908T110028-b71f4f" }
 kitscenes = { run = "kitscenes/openpilot/20261008T004723-a369d1", marks = "A" }
-comma2k19 = { run = "comma2k19/openpilot/20260916T051616-2a91ca", marks = "S" }
+comma2k19 = { run = "comma2k19/openpilot/20261106T003719-5cde54" }
 nuplan = { run = "nuplan/openpilot/20260917T220353-9e4f44" }
 navsim = { run = "navsim/openpilot/20260911T161513-3a4c90", note = "10 Hz" }
 navsim_v1 = { run = "navsim_v1/openpilot/20260914T181009-dbcef4", note = "10 Hz" }
