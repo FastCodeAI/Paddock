@@ -1172,7 +1172,7 @@ have called those two nearly a tie.
 **Alpamayo and Qwen-Drive lead at every horizon they reach, on less input than
 OpenPilot.** Both see one camera where they expect several view slots —
 comma2k19 is a single forward camera, so Alpamayo's +55°/−55° slots go unsent
-and Qwen-Drive's side views are filled with the forward frame — and both plan
+and Qwen-Drive's side views are black — and both plan
 well short of supercombo's 10 s. Alpamayo is ahead on the mean *and* the median
 within its 4 s, which is the comparison constant velocity survives against
 OpenPilot and does not survive here (0.823 vs 1.475 at 3 s). It is ahead of
