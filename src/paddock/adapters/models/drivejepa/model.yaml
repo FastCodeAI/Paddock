@@ -101,4 +101,8 @@ capabilities:
       split: navtrain
 # alpasim runs through the bridge's Drive-JEPA settings (alpasim.yaml beside this file):
 # its native AlpaSim driver's camera, 2 Hz replanning and inputs. See docs/models/drivejepa.md.
-benchmarks: [navsim, navsim_v1, kitscenes, neuroncap, bench2drive, nuscenes, nuplan, alpasim, hugsim]
+# comma2k19 sends one camera, the road-facing one. The other three slots get black
+# frames, which never reach the plan (the model keeps only the front camera), and the
+# acceleration it lacks comes from the recorded speed: policy.py, *Absent views* and
+# *Acceleration*.
+benchmarks: [navsim, navsim_v1, kitscenes, neuroncap, bench2drive, nuscenes, nuplan, alpasim, hugsim, comma2k19]

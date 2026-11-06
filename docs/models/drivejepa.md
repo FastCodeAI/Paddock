@@ -9,7 +9,7 @@
 | Environment | conda, Python 3.9 |
 | Cameras | `CAM_FRONT`, `CAM_FRONT_LEFT`, `CAM_FRONT_RIGHT`, `CAM_BACK` |
 | Plan | waypoints, 0.5 s apart, 4 s ahead |
-| Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [kitscenes](../benchmarks/kitscenes.md), [neuroncap](../benchmarks/neuroncap.md), [bench2drive](../benchmarks/bench2drive.md), [nuscenes](../benchmarks/nuscenes.md), [nuplan](../benchmarks/nuplan.md), [alpasim](../benchmarks/alpasim.md), [hugsim](../benchmarks/hugsim.md) |
+| Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [kitscenes](../benchmarks/kitscenes.md), [neuroncap](../benchmarks/neuroncap.md), [bench2drive](../benchmarks/bench2drive.md), [nuscenes](../benchmarks/nuscenes.md), [nuplan](../benchmarks/nuplan.md), [alpasim](../benchmarks/alpasim.md), [hugsim](../benchmarks/hugsim.md), [comma2k19](../benchmarks/comma2k19.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->

@@ -14,7 +14,7 @@ dataclass NAVSIM already knows how to consume and calls the shipped feature
 builder and agent. That keeps the BEVFormer projection maths (lidar2img from
 each camera's sensor2lidar and intrinsics) in the code that was trained with it.
 
-Three adaptations:
+Five adaptations:
 
 *Frame.* NAVSIM places every camera relative to the lidar (``sensor2lidar``),
 and in every OpenScene log the lidar frame *is* the ego frame: lidar2ego is the
@@ -45,6 +45,28 @@ timestamp at ~0.5 s spacing rather than by taking the last four requests --
 otherwise the model would see 0.3 s of history and read the scene as nearly
 static.
 
+*Absent views.* A source with one camera -- comma2k19's road-facing phone --
+has no image for the other three slots, and they cannot be left empty. The
+model keeps one view, camera index 1 (upstream ``drive_jepa_model.py:50``,
+``lidar2img[:, 1:2]``), and its loader skips an empty slot
+(``bev_feature_build.py:26-29``), which would move the front camera off index 1.
+Projected points are also scaled by camera 0's image size, the back slot's
+(``bevformer/encoder.py:141-142``). So a camera the source does not have
+(`_absent`) gets a black frame the size of the front image, with the front
+camera's calibration, which the loader needs to invert. Neither the black
+pixels nor that calibration reach the plan. It is never the forward image:
+a slot for another direction keeps its meaning (docs/benchmarks/comma2k19.md,
+"What each model sees"). `diagnostics()` lists these slots as ``blank_views``.
+
+*Acceleration.* The model's ego status carries forward acceleration. A source
+that never fills the CAN bus's acceleration channel (comma2k19, KITScenes) would
+hand it a constant zero, which tells the model the car holds its speed. So the
+channel is used when the source has filled it at least once in the episode;
+otherwise the slope of the recorded speed over the last 0.5 s stands in, as the
+devkit's own KITScenes loader differentiates its poses. Sideways acceleration
+stays zero, as on every source. `diagnostics()` reports which as
+``accel_source``.
+
 *Momentum-aware selection* (paper section 3.5) is on: ``model.yaml`` declares
 ``DRIVEJEPA_MOMENTUM=on``. ``off`` selects on the plain score, and is also what
 a node gets with the variable unset, for example one launched outside paddock.
@@ -69,7 +91,7 @@ from typing import Any
 import numpy as np
 
 from paddock.adapters.models.drivejepa import momentum
-from paddock.policy.protocol import Observation, Policy, Trajectory
+from paddock.policy.protocol import CANBUS_ACCEL, Observation, Policy, Trajectory
 
 # Drive-JEPA camera slot -> nuScenes camera. The perception branch reads these
 # four; the remaining slots stay empty and are skipped by the loader.
@@ -80,6 +102,11 @@ CAMERA_MAP = {
     "cam_b0": "CAM_BACK",
 }
 NEEDED_CAMERAS = tuple(CAMERA_MAP.values())
+FRONT_CAMERA = CAMERA_MAP["cam_f0"]
+
+#: Seconds of recorded speed whose slope stands in for an acceleration channel
+#: the source never fills (module docstring, *Acceleration*).
+ACCEL_WINDOW_S = 0.5
 
 IMAGE_GEOMETRIES = ("native", "openscene")
 
@@ -143,6 +170,8 @@ class DriveJepaPolicy(Policy):
         self.agent = None
         self.feature_builder = None
         self.history: list[dict[str, Any]] = []
+        self.blank_views: set[str] = set()
+        self.source_has_accel = False
         self.momentum_fed = False
 
     def load(self) -> None:
@@ -172,6 +201,14 @@ class DriveJepaPolicy(Policy):
     def reset(self) -> None:
         """Drop the frame history, and the previous plan, between runs."""
         self.history: list[dict[str, Any]] = []
+        #: Cameras this episode's source does not have, whose slots were filled
+        #: black (`_absent`). Reported by `diagnostics()`, so a run records which
+        #: of its views were real.
+        self.blank_views: set[str] = set()
+        #: Whether this source has filled the CAN bus's acceleration channel in
+        #: this episode. Sticky, so trimming old history cannot change how
+        #: acceleration is derived (`_accel`).
+        self.source_has_accel = False
         if self.momentum is not None:
             self.momentum.reset()
 
@@ -192,6 +229,9 @@ class DriveJepaPolicy(Policy):
                 "command": int(obs.command),
             }
         )
+        canbus = np.asarray(obs.canbus, dtype=np.float64)
+        if canbus[CANBUS_ACCEL] or canbus[CANBUS_ACCEL + 1]:
+            self.source_has_accel = True
         # 12 s of 10 Hz history is far more than the 1.5 s ever used. An entry
         # holds its Observation until `_decode` picks it -- paths open-loop,
         # pixels closed-loop -- then the four decoded cameras; trimming keeps
@@ -199,26 +239,61 @@ class DriveJepaPolicy(Policy):
         if len(self.history) > 128:
             self.history = self.history[-128:]
 
+    @staticmethod
+    def _absent(obs: Observation, camera: str) -> bool:
+        """Is `camera` one this source does not have, as opposed to one that went missing?
+
+        Only a source that describes its front camera can say another is
+        absent: comma2k19 calibrates its road camera and sends nothing at all
+        for the rest. So a camera counts as absent only when the front has both
+        its intrinsics and its pose on the car -- the two a filled slot copies --
+        and this camera has neither an image nor any calibration. Anything else
+        is a camera that went missing, and `obs.image` raises for it as before.
+        """
+        described = FRONT_CAMERA in obs.camera2image and FRONT_CAMERA in obs.camera2ego
+        traced = camera in obs.images or camera in obs.image_paths
+        calibrated = camera in obs.camera2image or camera in obs.camera2ego
+        return camera != FRONT_CAMERA and described and not traced and not calibrated
+
     def _decode(self, frames: list[dict[str, Any]]) -> None:
         """Give each frame its `images` and `camera2image`, decoding in parallel.
 
         PIL releases the GIL while decoding a JPEG, so four threads overlap four
         8-megapixel reads. A frame keeps its pixels once decoded and drops the
         observation it came from.
+
+        A camera the source does not have (`_absent`) is decided here, for the
+        frames the model reads and nowhere else, so this branch runs only where
+        `obs.image` would raise: a source that sends all four cameras is
+        untouched. Its slot is filled after the image geometry is applied, so the
+        black frame has the processed front image's size and intrinsics.
         """
-        pending = {id(f): f for f in frames if "images" not in f}.values()
+        pending = list({id(f): f for f in frames if "images" not in f}.values())
         if not pending:
             return
-        jobs = [(frame, camera) for frame in pending for camera in self.cameras]
+        absent = {id(f): [c for c in self.cameras if self._absent(f["obs"], c)] for f in pending}
+        jobs = [
+            (frame, camera) for frame in pending for camera in self.cameras if camera not in absent[id(frame)]
+        ]
         with ThreadPoolExecutor(DECODE_THREADS) as pool:
             pixels = list(pool.map(lambda job: job[0]["obs"].image(job[1]), jobs))
         decoded = {(id(frame), camera): pixels[i] for i, (frame, camera) in enumerate(jobs)}
         for frame in pending:
             obs = frame.pop("obs")
-            images = {camera: decoded[(id(frame), camera)] for camera in self.cameras}
-            camera2image = obs.camera2image
+            blank = absent[id(frame)]
+            images = {camera: decoded[(id(frame), camera)] for camera in self.cameras if camera not in blank}
+            camera2image = dict(obs.camera2image)
             if self.image_geometry == "openscene":
                 images, camera2image = self._to_openscene(images, camera2image)
+            if blank:
+                # Copies, never the observation's own dicts: the front keeps its
+                # calibration, and the filled slots borrow it only to be invertible.
+                for camera in blank:
+                    images[camera] = np.zeros_like(images[FRONT_CAMERA])
+                    camera2image[camera] = camera2image[FRONT_CAMERA]
+                front2ego = frame["camera2ego"][FRONT_CAMERA]
+                frame["camera2ego"] = {**frame["camera2ego"], **{camera: front2ego for camera in blank}}
+                self.blank_views.update(blank)
             frame["images"], frame["camera2image"] = images, camera2image
 
     def _to_openscene(self, images: dict[str, np.ndarray], camera2image: dict[str, np.ndarray]):
@@ -301,12 +376,30 @@ class DriveJepaPolicy(Policy):
                 EgoStatus(
                     ego_pose=relative_pose(frame["ego2world"], current),
                     ego_velocity=np.array([frame["speed"], 0.0], dtype=np.float32),
-                    ego_acceleration=np.array([frame["accel"], 0.0], dtype=np.float32),
+                    ego_acceleration=np.array([self._accel(frame), 0.0], dtype=np.float32),
                     driving_command=np.array(COMMAND_ONE_HOT[frame["command"]], dtype=np.int64),
                 )
             )
         cameras = [self._cameras(frame) for frame in frames]
         return AgentInput(ego_statuses=ego_statuses, cameras=cameras, lidars=[])
+
+    def _accel(self, frame: dict[str, Any]) -> float:
+        """Forward acceleration at *frame*, m/s^2 (module docstring, *Acceleration*).
+
+        The recorded channel when this source has filled it in the episode;
+        otherwise the least-squares slope of the recorded speed over the
+        ACCEL_WINDOW_S ending at *frame*, and 0.0 when the window holds fewer
+        than two distinct times.
+        """
+        if self.source_has_accel:
+            return float(frame["accel"])
+        end = frame["timestamp"]
+        window = [f for f in self.history if 0 <= end - f["timestamp"] <= ACCEL_WINDOW_S * 1e6]
+        t = np.array([f["timestamp"] for f in window], dtype=np.float64) / 1e6
+        if len(window) < 2 or np.ptp(t) == 0:
+            return 0.0
+        v = np.array([f["speed"] for f in window], dtype=np.float64)
+        return float(np.polyfit(t - t[-1], v, 1)[0])
 
     def observe(self, obs: Observation) -> None:
         """Record a history frame without running the model.
@@ -370,18 +463,19 @@ class DriveJepaPolicy(Policy):
         self.momentum.remember(chosen, ego_state, obs.timestamp_us, changed=changed)
         return output
 
-    @staticmethod
-    def _ego_now(obs: Observation) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+    def _ego_now(self, obs: Observation) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
         """Pose, velocity, acceleration and time the momentum stage is given.
 
         Velocity and acceleration are the newest `EgoStatus` row `_agent_input`
         builds -- the numbers the model itself is given -- which is upstream's
-        pairing: one frame record feeds both the model and the stage. The pose
-        is ego2world, which plays the part of upstream's global frame.
+        pairing: one frame record feeds both the model and the stage. So the
+        acceleration is `_accel` of the record *obs* made, which `forward` has
+        just appended. The pose is ego2world, which plays the part of upstream's
+        global frame.
         """
         pose = np.array([obs.ego2world[0, 3], obs.ego2world[1, 3], yaw_of(obs.ego2world)], dtype=np.float64)
         velocity = np.array([obs.speed, 0.0], dtype=np.float32)
-        acceleration = np.array([obs.accel, 0.0], dtype=np.float32)
+        acceleration = np.array([self._accel(self.history[-1]), 0.0], dtype=np.float32)
         return pose, velocity, acceleration, int(obs.timestamp_us)
 
     def infer(self, obs: Observation) -> Trajectory:
@@ -436,6 +530,11 @@ class DriveJepaPolicy(Policy):
         marker describes the attempt that wrote run.json, not every episode in
         it: a resumed run keeps the episodes of its earlier attempts, and the
         runner does not yet check that those came from a node reporting the same.
+
+        `blank_views` lists the slots filled black because the source has no
+        such camera, and `accel_source` says whether the model's acceleration
+        was the source's channel or the slope of its speed (module docstring).
+        Both describe the latest episode, which is the one the runner reads.
         """
         selection: dict[str, Any] = {"momentum": "off"}
         if self.momentum is not None:
@@ -455,6 +554,8 @@ class DriveJepaPolicy(Policy):
             "frames_recorded": len(self.history),
             "history_span_s": round((self.history[-1]["timestamp"] - chosen[0]["timestamp"]) / 1e6, 2),
             "history_target_s": round((HISTORY_FRAMES - 1) * HISTORY_DT, 2),
+            "blank_views": sorted(self.blank_views),
+            "accel_source": "canbus" if self.source_has_accel else "speed_slope",
         }
 
 
