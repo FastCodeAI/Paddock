@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pytest
 
-from paddock.adapters.benchmarks.bench2drive.harness import every_tick
+from paddock.adapters.benchmarks.bench2drive.harness import SET_ASIDE, every_tick
 from paddock.results.ingest.bench2drive import _driven_off_protocol
 from tools.readme_figures import load_matrix, matrix_cell, rank
 
@@ -372,3 +372,14 @@ def test_a_cell_asked_at_its_own_rate_or_stopped_early_ranks_and_says_so() -> No
     own_rate_cells = {"drivejepa", "alpamayo15", "qwendrive", "meteor", "autoe2e"}
     assert own_rate_cells <= own_rated, f"own-rate cells checked: {sorted(own_rated)}"
     assert {"openpilot", "meteor", "autoe2e"} <= stopped, f"early-stopped cells checked: {sorted(stopped)}"
+
+
+def test_the_page_lists_exactly_the_routes_set_aside_with_the_code_s_reasons() -> None:
+    """The table under "Routes set aside" is the list the harness, the campaign and the ingest act on:
+    a route added to one and not the other would leave every 220-route record pooled under a list
+    nobody reading the page knows about."""
+    text = PAGE.read_text()
+    section = text.split("### Routes set aside", 1)[1].split("\n## ", 1)[0]
+    rows = [line.split("|")[1:-1] for line in section.splitlines() if re.match(r"^\| \d+ \|", line)]
+    listed = {cells[0].strip(): cells[2].strip() for cells in rows}
+    assert listed == SET_ASIDE
