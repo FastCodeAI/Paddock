@@ -414,6 +414,77 @@ def test_samples_are_scored_against_their_own_calibrations_ground_truth(tmp_path
         assert sample.native_id["rpy_calib_deg"] == pytest.approx(np.degrees(rpy), abs=1e-4)
 
 
+def test_the_ego_history_a_model_reads_is_in_the_cars_frame(tmp_path, monkeypatch, rotations):
+    """The same defect as the ground truth's, on the input side.
+
+    `ego2world` placed each history frame in the camera's axes while
+    `camera2ego` told the same model where the car points, so a model reading
+    its own past path saw a straight drive as a car drifting sideways at the
+    mount yaw. Recorded by a mounted camera, a straight drive must reach every
+    model as straight: no sideways offset, no turn.
+    """
+    rpy = np.array([0.0, np.radians(3.5), np.radians(1.5)])
+    pose = _mounted(straight_pose(speed=25.0, n=260), rpy)
+    bench, segment = _frame_bench(tmp_path, monkeypatch, _synthetic_frames(), pose=pose)
+
+    samples = list(bench._segment_samples(segment, _FixedMount(rpy)))
+    assert samples
+    for sample in samples:
+        poses = np.array([obs.ego2world for obs in sample.observations])
+        assert np.all(np.diff(poses[:, 0, 3]) > 0), "the history moves forward"
+        assert np.allclose(poses[:, 1, 3], 0.0, atol=1e-6), poses[-1, :2, 3]
+        assert np.allclose(np.arctan2(poses[:, 1, 0], poses[:, 0, 0]), 0.0, atol=1e-9)
+
+
+def _turning(rpy, speed: float = 25.0, radius: float = 50.0, n: int = 260, hz: float = 20.0) -> L.SegmentPose:
+    """A car on a left-hand circle, as recorded by a camera mounted at `rpy`.
+
+    `straight_pose`'s conventions: the equator, ECEF x up, y east, z north. The
+    car starts heading east and turns towards north at `speed / radius` rad/s;
+    its [forward, right, down] axes in ECEF are the columns of `ecef_from_calib`.
+    """
+    t = np.arange(n) / hz
+    heading = speed / radius * t
+    c, s = np.cos(heading), np.sin(heading)
+    pos = np.zeros((n, 3))
+    pos[:, 0] = 6378137.0
+    pos[:, 1] = radius * s
+    pos[:, 2] = radius * (1.0 - c)
+    vel = np.zeros((n, 3))
+    vel[:, 1], vel[:, 2] = speed * c, speed * s
+    device_from_calib = L.rot_from_euler(np.asarray(rpy, dtype=np.float64))
+    quats = []
+    for ci, si in zip(c, s, strict=True):
+        ecef_from_calib = np.array([[0.0, 0.0, -1.0], [ci, si, 0.0], [si, -ci, 0.0]])
+        quats.append(rot2quat(ecef_from_calib @ device_from_calib.T))
+    return L.SegmentPose(times=t, positions=pos, orientations=np.array(quats), velocities=vel)
+
+
+def test_the_ego_history_turns_with_the_car_not_the_camera(tmp_path, monkeypatch, rotations):
+    """The heading half of the same fix, which a straight drive cannot check.
+
+    On a straight drive the camera never turns, so its heading change is zero
+    whichever way the mount rotation is applied. On a turn, a pitched camera
+    turns about a tilted axis: seen through the mount the right way round, the
+    history reports the car's own turn exactly; the wrong way round tilts it
+    twice as far, and the turn comes out short.
+    """
+    rpy = np.array([0.0, np.radians(3.5), np.radians(1.5)])
+    speed, radius = 25.0, 50.0
+    pose = _turning(rpy, speed, radius)
+    bench, segment = _frame_bench(tmp_path, monkeypatch, _synthetic_frames(), pose=pose)
+
+    samples = list(bench._segment_samples(segment, _FixedMount(rpy)))
+    assert samples
+    for sample in samples:
+        poses = np.array([obs.ego2world for obs in sample.observations])
+        times = np.array([obs.timestamp_us for obs in sample.observations], dtype=np.float64) / 1e6
+        turned = speed / radius * (times - times[0])
+        assert np.allclose(np.arctan2(poses[:, 1, 0], poses[:, 0, 0]), turned, atol=1e-9)
+        assert np.allclose(poses[:, 0, 3], radius * np.sin(turned), atol=1e-6)
+        assert np.allclose(poses[:, 1, 3], radius * (1.0 - np.cos(turned)), atol=1e-6)
+
+
 def test_a_cached_frame_is_the_decoded_frame_bit_for_bit(tmp_path, monkeypatch, rotations):
     """Lossless, or two models' numbers stop being comparable across the change."""
     frames = _synthetic_frames()
@@ -877,6 +948,8 @@ def test_run_config_records_what_changes_the_number():
     # Moves the run id away from every run scored in the camera's frame, so
     # `--resume` cannot finish one of those under this scorer.
     assert cfg["ground_truth_frame"].startswith("car")
+    # Likewise for the history the models read.
+    assert cfg["ego_history_frame"].startswith("car")
 
 
 def test_a_stationary_prediction_reproduces_the_published_numbers():

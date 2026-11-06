@@ -41,6 +41,13 @@ asked to plan, and the recording says what the car did next.
 | **ground truth** | 200 recorded frames, read as **20 poses** | 0.5 s → 10 s ahead | 0.5 s |
 | **headline** | first **6** waypoints vs the same 6 poses | 3 s ahead | 0.5 s |
 
+Every frame also carries the car's pose relative to the first frame
+(`ego2world`), its CAN speed and its yaw rate. The pose, the plan and the ground
+truth are all in the car's frame: the recorded pose describes the camera, so the
+route calibration that builds `camera2ego` rotates the pose and the ground truth
+too. The yaw rate is the one exception: it still turns about the camera's down
+axis, a scale error of at most 0.2 % (the cosine of the mount pitch).
+
 So: *the model sees 160 frames of the past 7.95 s and predicts 20 waypoints out
 to 10 s; `ade` is its mean error over the first 3 s, and `ade@h`/`fde@h` repeat
 that at 1, 2, 3, 4, 5, 6, 8 and 10 s.*
@@ -715,7 +722,9 @@ hands the model. Scored that way, the stored plans give ADE@3s 0.612 for
 qwendrive, 0.843 for openpilot, 0.867 for alpamayo15, 1.135 for constant
 velocity, 1.382 for autoe2e, 3.631 for visionpilot, 16.047 for drivejepa_free
 and 30.167 for meteor, which reorders the table. Each row is replaced, in its
-own PR, when its model is re-run ([ROADMAP](../ROADMAP.md)).
+own PR, when its model is re-run ([ROADMAP](../ROADMAP.md)). Four of them can
+move further than that: Alpamayo 1.5, Qwen-Drive, AutoE2E and Drive-JEPA also
+read their own past path, which they were shown in the camera's frame too.
 
 | | horizon | ADE@1s | ADE@2s | **ADE@3s** | ADE@4s | ADE@5s | ADE@10s | FDE@3s | median ADE@3s | miss@3s | PDMS-style ↑ |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
