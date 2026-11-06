@@ -8,7 +8,7 @@
 | Dataset | `comma2k19` |
 | Primary metric | `ade` |
 | Adapter | [`adapters/benchmarks/comma2k19/`](../../src/paddock/adapters/benchmarks/comma2k19/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [drivejepa_free](../models/drivejepa_free.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 

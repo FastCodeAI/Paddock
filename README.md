@@ -211,7 +211,7 @@ benchmark is one new directory under `adapters/`. What crosses the wire:
 |---|---|---|---|
 | [Alpamayo 1.5](docs/models/alpamayo15.md) | NVIDIA's 10B vision-language model with a diffusion trajectory decoder | [NVlabs/alpamayo1.5](https://github.com/NVlabs/alpamayo1.5) · Apache-2.0 | [Alpamayo-R1](https://arxiv.org/abs/2511.00088) |
 | [AutoE2E](docs/models/autoe2e.md) | The Autoware Foundation's end-to-end model | [autowarefoundation/auto_e2e](https://github.com/autowarefoundation/auto_e2e) · Apache-2.0 | |
-| [Drive-JEPA](docs/models/drivejepa.md) | Video JEPA encoder with a proposal-based planner; also its [front-camera version](docs/models/drivejepa_free.md) | [linhanwang/Drive-JEPA](https://github.com/linhanwang/Drive-JEPA) · Apache-2.0 | [Drive-JEPA](https://arxiv.org/abs/2601.22032) |
+| [Drive-JEPA](docs/models/drivejepa.md) | Video JEPA encoder with a proposal-based planner | [linhanwang/Drive-JEPA](https://github.com/linhanwang/Drive-JEPA) · Apache-2.0 | [Drive-JEPA](https://arxiv.org/abs/2601.22032) |
 | [METEOR](docs/models/meteor.md) | TIER IV's 8-camera multi-task network | [tier4/METEOR](https://github.com/tier4/METEOR) · Apache-2.0 | |
 | [OpenPilot](docs/models/openpilot.md) | comma.ai's driving model, a single 30M-parameter network | [commaai/openpilot](https://github.com/commaai/openpilot) · MIT | [Learning to Drive from a World Model](https://arxiv.org/abs/2504.19077) |
 | [Qwen-Drive 1.0](docs/models/qwendrive.md) | 4B vision-language model with a flow-matching planner | [QwenLM/Qwen-Drive-1.0](https://github.com/QwenLM/Qwen-Drive-1.0) · Apache-2.0 | [Qwen-Drive-1.0](https://arxiv.org/abs/2609.00111) |
