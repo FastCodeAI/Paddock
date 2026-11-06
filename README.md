@@ -90,10 +90,10 @@ it differs.
   2 Hz. AutoE2E on KITScenes is given the scene's map and a route matched to the
   logged drive, upstream's validation protocol (without the route it scores
   0.837); on nuScenes it is fed the 6.5 s of past keyframes it declares, where the
-  others get 2 s. Drive-JEPA on comma2k19 is its released front-camera version,
-  `drivejepa_free`, because comma2k19 has one camera. METEOR there sees that one
-  camera in two of its eight slots, the other six left black as its training
-  drops a camera.
+  others get 2 s. Drive-JEPA on comma2k19 gets the one camera there is; its other
+  three views are black, and the model reads only its front camera. METEOR there
+  sees that one camera in two of its eight slots, the other six left black as its
+  training drops a camera.
 
 Before comparing numbers:
 

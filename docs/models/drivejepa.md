@@ -25,9 +25,9 @@ plan the same way and differ in everything around it.
 |---|---|---|
 | Where | `src/paddock/adapters/models/drivejepa/` | outside this repo |
 | What it is | a `Policy` behind paddock's HTTP node | a native gRPC driver AlpaSim's runtime calls directly |
-| Benchmarks | NAVSIM, KITScenes, nuScenes, neuroNCAP, Bench2Drive, and AlpaSim through paddock's bridge | AlpaSim only, and **not through paddock** |
+| Benchmarks | NAVSIM, KITScenes, nuScenes, comma2k19, neuroNCAP, Bench2Drive, and AlpaSim through paddock's bridge | AlpaSim only, and **not through paddock** |
 | Weights | the released checkpoint | the released checkpoint (versions 0.1.4 and 0.1.4b) |
-| Cameras | four (on AlpaSim: one rendered, three placeholders) | one, front |
+| Cameras | four (on AlpaSim: one rendered, three placeholders; on comma2k19: one, three black) | one, front |
 | Momentum-aware selection | on, declared in `model.yaml` (`DRIVEJEPA_MOMENTUM`); acts only in closed loop | on from 0.1.4b |
 | Rows in `results/` | every Drive-JEPA row that was run through paddock | none (its AlpaSim rows are ingested) |
 
@@ -36,12 +36,12 @@ what a `model.yaml` declares, so `--resume` refuses to continue a closed-loop
 run started before momentum was declared on, which would mix episodes driven
 both ways under one id.
 
-The perception-free NAVSIM v1 agent is a third thing with its own page,
-[drivejepa_free.md](drivejepa_free.md).
-
 How the paddock node drives AlpaSim, and how that compares with the native
 driver it copies, is in [Through paddock on AlpaSim](#through-paddock-on-alpasim)
-near the end. Apart from that section, this page is about the AlpaSim driver.
+near the end. After it come the node's [weights and
+environment](#weights-and-environment) and what it gets [on
+comma2k19](#on-comma2k19). Apart from those sections, this page is about the
+AlpaSim driver.
 AlpaSim is a closed-loop test: the
 model's plan steers a simulated car, and the next camera frame it sees depends
 on where that plan took it. The first 3.0 s of each scene replay the recorded
@@ -144,7 +144,8 @@ of these 30 scenes, and the README's rows are on those ten:
 the released checkpoint, through paddock's AlpaSim bridge. The bridge gives
 Drive-JEPA its own settings, copied from the native driver at 0.1.4b, so the
 two can be compared scene by scene: one front camera at 20 Hz (the node's
-other three cameras get copies of it), a 3.0 s replayed warm-up, a replan every
+other three cameras get one-colour placeholder frames, with the front camera's
+calibration), a 3.0 s replayed warm-up, a replan every
 0.5 s answered from the last plan in between, the same frame pair, speed,
 acceleration and driving command, and the 30 scenes pinned to the same
 artifacts. The settings live in the model's folder
@@ -210,6 +211,65 @@ what the model is given before the handover:
   the next replan and the picks a second after that; the native driver's car
   collided there (0) and this one did not (0.24). Passing them is a separate
   change.
+
+## Weights and environment
+
+`paddock setup --model drivejepa` applies the three patches `repos.yaml` lists
+to the clone at its pin and runs `setup.sh`. That builds a conda env at
+`{repos}/.conda-envs/drive-jepa` with Python 3.9, torch 2.1.0+cu121 and the
+prebuilt `mmcv_full` 1.7.2 that upstream pins, and holds torch there while
+upstream's requirements install. The env is built and run with the user's
+`~/.local` site-packages switched off (`PYTHONNOUSERSITE`), which a conda env
+would otherwise read ahead of its own.
+
+The node needs two files from the Hugging Face dataset repo
+[`LinhanWang/Drive-JEPA`](https://huggingface.co/datasets/LinhanWang/Drive-JEPA),
+both in `{data.navsim.exp}/Drive-JEPA-cache/`:
+
+| File | Size | Read by |
+|---|---|---|
+| `drive_jepa_perception_based_agent_vitl_v2.ckpt` | 3.7 GB | `DRIVEJEPA_CHECKPOINT` in `model.yaml` |
+| `vitl_merge_3dataset_e50.pt` | 5.1 GB | upstream's `bevformer/image_encoder.py`, at a path it builds from `NAVSIM_EXP_ROOT`; no setting moves it |
+
+```bash
+hf download LinhanWang/Drive-JEPA drive_jepa_perception_based_agent_vitl_v2.ckpt \
+  --repo-type dataset --local-dir <data.navsim.exp>/Drive-JEPA-cache
+hf download LinhanWang/Drive-JEPA vitl_merge_3dataset_e50.pt \
+  --repo-type dataset --local-dir <data.navsim.exp>/Drive-JEPA-cache
+```
+
+Put the files at that path, or link them there. Pointing `DRIVEJEPA_CHECKPOINT`
+somewhere else from `paddock.toml` works, but a site setting that can change
+the plan stores the run `valid: false`.
+
+## On comma2k19
+
+comma2k19 is a dashcam dataset: one road-facing camera, the car's speed and
+yaw rate, and no lidar, map or route. The node gets:
+
+- **The road camera in its front slot**, cropped onto the 64° OpenScene camera,
+  as on every other benchmark.
+- **Black frames in the other three slots**, front-left, front-right and back.
+  Each is the size of the front image and carries the front camera's
+  calibration. The model keeps only the front camera (upstream
+  `drive_jepa_model.py:50` takes `lidar2img[:, 1:2]`), so these pixels never
+  reach the plan. The slots exist only because upstream's loader skips an empty
+  one, which would move the front camera off that index, and sizes its
+  projections by the back slot's image. Checked on 5 real samples: sending the
+  three views as random-noise cameras instead, and again with the back camera
+  turned around, gave the same plan to the bit and the same pick. The run lists
+  the three as `blank_views`.
+- **Acceleration from the speed.** comma2k19 has no acceleration channel, so
+  the slope of the recorded speed over the last 0.5 s stands in, and the run
+  records `accel_source: speed_slope`.
+- **"Straight" as its driving command**, as every model gets on comma2k19.
+
+Until November 2026 this cell was a different agent: Drive-JEPA's
+perception-free one, a separate registry entry, because the perception-based
+adapter then required a lidar mounting, and comma2k19 has none. That
+requirement went in October 2026, so the cell is now this model, as in every
+other column. The perception-free agent's rows stay in `results/`, retired.
+Results are on [the comma2k19 page](../benchmarks/comma2k19.md).
 
 ## Not verified
 
