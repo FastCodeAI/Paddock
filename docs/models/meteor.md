@@ -351,33 +351,35 @@ the harness sets `group` to the scene. The four sibling nuScenes records predate
 the per-scene aggregates and carry none, so a per-scene comparison against them is not possible from
 tracked files until they are re-run under the current runner.
 
-comma2k19, `results/comma2k19/meteor/20261030T001935-0b8d0b` (the full
+comma2k19, `results/comma2k19/meteor/20261106T064120-226c00` (the full
 dataset, n=10,165, the same samples as every other comma2k19 row; one phone
-camera, filled by `narrow_refpose`; native 3 s plan; `valid: true`; 75 min on
-one H200 with eight nodes):
+camera, filled by `narrow_refpose`; native 3 s plan; scored against the ground
+truth in the car's frame; `valid: true`; 56 min on one H200 with eight nodes):
 
-| ADE@1s | ADE@2s | ADE@3s | FDE@3s | median ADE@3s | miss@3s | ADE@3s, calibrated frame |
-|---|---|---|---|---|---|---|
-| 11.787 | 21.545 | **30.075** | 51.334 | 37.313 | 0.891 | 30.132 |
+| ADE@1s | ADE@2s | ADE@3s | FDE@3s | median ADE@3s | miss@3s |
+|---|---|---|---|---|---|
+| 11.841 | 21.621 | **30.167** | 51.507 | 37.395 | 0.892 |
 
-Constant velocity scores 1.639 on the same samples (1.135 with the ground truth
-in the calibrated frame, ROADMAP M8), and every other model scores 16.048 or
-less. METEOR is better than constant velocity on 3.6 % of the samples, all of
-them below 15 m/s. Measured on the per-sample records:
+The earlier run, `20261030T001935-0b8d0b`, was scored against a ground truth in
+the camera's frame and gave 30.075. Its plans are the same as this run's to
+within 0.01 mm, so the change is the scoring alone. Constant velocity scores
+1.135 on the same samples, and every other model scores 16.047 or less. METEOR
+is better than constant velocity on 3.5 % of the samples, all of them below
+15 m/s. Measured on the per-sample records:
 
 - **The plan stops about 17 m ahead, whatever the speed.** By the car's speed
   at the scored frame (3 s point, plan against the car's own path):
 
   | speed | n | plan x@3s | true x@3s | plan y@3s | ADE@3s |
   |---|---:|---:|---:|---:|---:|
-  | below 15 m/s | 2,564 | 8.0 m | 14.2 m | −1.74 m | 3.80 |
-  | 15-22 m/s | 1,190 | 17.4 m | 54.5 m | −3.35 m | 21.69 |
-  | 22-27 m/s | 1,181 | 17.4 m | 74.4 m | −3.45 m | 33.43 |
-  | 27 m/s and up | 5,230 | 16.8 m | 91.6 m | −3.69 m | 44.11 |
+  | below 15 m/s | 2,564 | 8.0 m | 14.2 m | −1.74 m | 3.84 |
+  | 15-22 m/s | 1,190 | 17.4 m | 54.6 m | −3.35 m | 21.77 |
+  | 22-27 m/s | 1,181 | 17.4 m | 74.5 m | −3.45 m | 33.53 |
+  | 27 m/s and up | 5,230 | 16.8 m | 91.7 m | −3.69 m | 44.22 |
 
   Over the whole set the plan covers 32 % of the distance the car drove
   (`path_length_ratio` 0.321) and nearly all of the error is along the road
-  (longitudinal MAE 30.0 m, lateral 1.25 m). The model's own acceleration
+  (longitudinal MAE 30.1 m, lateral 1.83 m). The model's own acceleration
   output is negative on 95 % of samples (median −0.36 m/s²). Stopped, it plans
   to stay put (0.08 m at 3 s below 1 m/s), so the nuScenes creep does not
   appear here.

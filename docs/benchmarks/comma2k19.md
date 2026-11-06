@@ -748,8 +748,9 @@ drivejepa_free and 30.167 for meteor, which reorders the table. Each row is
 replaced, in its own PR, when its model is re-run ([ROADMAP](../ROADMAP.md)).
 Four of them can move further than that: Alpamayo 1.5, Qwen-Drive, AutoE2E and
 Drive-JEPA also read their own past path, which they were shown in the camera's
-frame too. Until the last row is replaced, the paragraphs on this page that
-compare one model with another quote the figures from before the re-runs.
+frame too. Every row has now been re-run, but some of the paragraphs on this
+page that compare one model with another still quote the figures from before the
+re-runs; they are due to be rewritten ([ROADMAP](../ROADMAP.md)).
 
 | | horizon | ADE@1s | ADE@2s | **ADE@3s** | ADE@4s | ADE@5s | ADE@10s | FDE@3s | median ADE@3s | miss@3s | PDMS-style ↑ |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -760,7 +761,7 @@ compare one model with another quote the figures from before the re-runs.
 | autoe2e (`kitscenes-epoch-5`, the road camera alone, five views left out) † | 6 s | 0.734 | 0.977 | 1.350 | 1.949 | 2.846 | — | 2.396 | 1.339 | 0.640 | 0.766 |
 | visionpilot (synthesised trajectory) † | 4 s | 0.964 | 2.126 | 3.592 | 5.287 | — | — | 7.415 | 1.513 | 0.747 | 0.676 |
 | drivejepa_free (perception-free agent, NAVSIM v1) † | 4 s | 7.801 | 12.078 | 16.047 | 20.507 | — | — | 26.244 | 19.832 | 0.829 | 0.717 |
-| meteor (`meteor_v157c3Z.onnx`, the road camera in 2 of 8 slots, `narrow_refpose`) | 3 s | 11.787 | 21.545 | 30.075 | — | — | — | 51.334 | 37.313 | 0.891 | 0.049 |
+| meteor (`meteor_v157c3Z.onnx`, the road camera in 2 of 8 slots, `narrow_refpose`) † | 3 s | 11.841 | 21.621 | 30.167 | — | — | — | 51.507 | 37.395 | 0.892 | 0.034 |
 
 † **The openpilot row is the run of 6 Nov 2026 at the `repos.yaml` pin,
 `555f48c5d`,** on the ONNX backend; its `run.json` records both
@@ -790,7 +791,7 @@ the narrow front slot, the other six black with the calibration of METEOR's own
 rig (`METEOR_FRONT_ONLY`, chosen on METEOR's own scene; see
 [docs/models/meteor.md](../models/meteor.md)). Its plans stop about 17 m ahead
 at every speed above 15 m/s, where the car went 55-92 m, and bend about 3 m to
-the right. It beats constant velocity on 3.6 % of samples, all below 15 m/s.
+the right. It beats constant velocity on 3.5 % of samples, all below 15 m/s.
 
 `qwendrive` was `—` here too until it was swept again, and the reason is worth
 keeping because it is a property of the grid rather than of the model. It used
@@ -1123,11 +1124,12 @@ ground truth left in the camera's frame while the plans are in the car's. The
 scorer now puts both in the car's frame, and the stored plans scored that way
 change the order: Qwen-Drive 0.612, OpenPilot 0.843, Alpamayo 1.5 0.867,
 constant velocity 1.135, AutoE2E 1.382, METEOR 30.167. Each row is replaced
-when its model is re-run ([ROADMAP](../ROADMAP.md)); until the last one is,
-the comparisons in this note and under the table quote the figures from before
-the re-runs. **METEOR's 30.075 is a reach failure too, and a larger one**: the
-released graph, shown one phone camera in two of its eight slots, plans about
-17 m ahead whatever the speed, where I-280 needs 55-92 m.
+when its model is re-run, and every row now has been; some of the comparisons in
+this note and under the table still quote the figures from before the re-runs
+and are due to be rewritten ([ROADMAP](../ROADMAP.md)). **METEOR's 30.075 is a
+reach failure too, and a larger one**: the released graph, shown one phone
+camera in two of its eight slots, plans about 17 m ahead whatever the speed,
+where I-280 needs 55-92 m.
 
 † **Re-run in November 2026 and scored against the ground truth in the car's
 frame.** OpenPilot's row is the run of 6 Nov 2026 at the `repos.yaml` pin,
@@ -1157,7 +1159,7 @@ padded. Lower is better throughout.
 | AutoE2E † | 6 s | 0.734 | 0.977 | 1.350 | 1.949 | 2.846 | — | 2.396 | 1.339 | 0.766 |
 | VisionPilot ∗ † | 4 s | 0.964 | 2.126 | 3.592 | 5.287 | — | — | 7.415 | 1.513 | 0.676 |
 | Drive-JEPA (perception-free) † | 4 s | 7.801 | 12.078 | 16.047 | 20.507 | — | — | 26.244 | 19.832 | 0.717 |
-| METEOR | 3 s | 11.787 | 21.545 | 30.075 | — | — | — | 51.334 | 37.313 | 0.049 |
+| METEOR † | 3 s | 11.841 | 21.621 | 30.167 | — | — | — | 51.507 | 37.395 | 0.034 |
 
 **OpenPilot and the baseline are separated by horizon, not by skill at the
 headline.** Constant velocity is *better* for the first two seconds and has the
@@ -1205,7 +1207,7 @@ METEOR's own recordings, the front camera alone beats constant velocity (1.01
 against 1.37, [docs/models/meteor.md](../models/meteor.md)). Here it plans
 about 17 m ahead at every speed above 15 m/s, where the car went 55-92 m:
 `path_length_ratio` 0.321, the shortest reach on the board. Below 15 m/s its
-ADE@3s is 3.80, and every sample where it beats constant velocity (3.6 % of
+ADE@3s is 3.84, and every sample where it beats constant velocity (3.5 % of
 them) is there. An out-of-tree study of one comma2k19 segment found the model
 placing the road 3.4x too far on this camera and seeing road only about 20 m
 ahead in its bird's-eye view, which is where its plans end.
@@ -1260,7 +1262,7 @@ derivation and what it still cannot see.
 · [Qwen-Drive 1.0](../../results/comma2k19/qwendrive/20261106T030530-7d9fd3/metrics.json)
 · [Drive-JEPA (perception-free)](../../results/comma2k19/drivejepa_free/20261106T053407-587a3e/metrics.json)
 · [VisionPilot](../../results/comma2k19/visionpilot/20261106T003749-c10a7f/metrics.json)
-· [METEOR](../../results/comma2k19/meteor/20261030T001935-0b8d0b/metrics.json)
+· [METEOR](../../results/comma2k19/meteor/20261106T064120-226c00/metrics.json)
 · [baseline](../../results/comma2k19/constant_velocity/20261106T045541-d0cdb5/metrics.json)
 · [protocol, and what it cannot score](comma2k19.md)
 · [the dataset itself](../datasets/comma2k19.md).

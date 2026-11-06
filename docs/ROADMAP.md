@@ -15,10 +15,11 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 
 ## Known issues
 
-- **comma2k19's published rows were scored with the ground truth in the camera's
-  frame and every plan in the car's.** The scorer now puts both in the car's
-  frame, and the order changes. Each row is replaced, in its own PR, when its
-  model is re-run.
+- **Some of comma2k19's comparisons between models quote figures from before
+  the re-runs.** Every row has been re-run with the ground truth in the car's
+  frame, which changed the order; the paragraphs on
+  [docs/benchmarks/comma2k19.md](benchmarks/comma2k19.md) that compare models are
+  due to be rewritten with the new figures.
 - **VisionPilot's figures predate the `CURV_SCALE` fix.** Every VisionPilot cell
   but comma2k19's, re-run in November 2026, is due to be re-run.
 - **OpenPilot runs made with the ONNX backend** fed the road camera's image to
