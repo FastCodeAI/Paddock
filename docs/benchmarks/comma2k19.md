@@ -759,7 +759,7 @@ compare one model with another quote the figures from before the re-runs.
 | constant velocity (registered policy, 6 waypoints) † | 3 s | 0.252 | 0.611 | 1.135 | — | — | — | 2.546 | 0.816 | 0.466 | 0.650 |
 | autoe2e (`kitscenes-epoch-5`, the road camera alone, five views left out) † | 6 s | 0.734 | 0.977 | 1.350 | 1.949 | 2.846 | — | 2.396 | 1.339 | 0.640 | 0.766 |
 | visionpilot (synthesised trajectory) † | 4 s | 0.964 | 2.126 | 3.592 | 5.287 | — | — | 7.415 | 1.513 | 0.747 | 0.676 |
-| drivejepa_free (perception-free agent, NAVSIM v1) | 4 s | 7.800 | 12.077 | 16.048 | 20.501 | — | — | 26.248 | 19.801 | 0.831 | 0.541 |
+| drivejepa_free (perception-free agent, NAVSIM v1) † | 4 s | 7.801 | 12.078 | 16.047 | 20.507 | — | — | 26.244 | 19.832 | 0.829 | 0.717 |
 | meteor (`meteor_v157c3Z.onnx`, the road camera in 2 of 8 slots, `narrow_refpose`) | 3 s | 11.787 | 21.545 | 30.075 | — | — | — | 51.334 | 37.313 | 0.891 | 0.049 |
 
 † **The openpilot row is the run of 6 Nov 2026 at the `repos.yaml` pin,
@@ -1156,7 +1156,7 @@ padded. Lower is better throughout.
 | Baseline (Constant Velocity) † | 3 s | 0.252 | 0.611 | 1.135 | — | — | — | 2.546 | 0.816 | 0.650 |
 | AutoE2E † | 6 s | 0.734 | 0.977 | 1.350 | 1.949 | 2.846 | — | 2.396 | 1.339 | 0.766 |
 | VisionPilot ∗ † | 4 s | 0.964 | 2.126 | 3.592 | 5.287 | — | — | 7.415 | 1.513 | 0.676 |
-| Drive-JEPA (perception-free) | 4 s | 7.800 | 12.077 | 16.048 | 20.501 | — | — | 26.248 | 19.801 | 0.541 |
+| Drive-JEPA (perception-free) † | 4 s | 7.801 | 12.078 | 16.047 | 20.507 | — | — | 26.244 | 19.832 | 0.717 |
 | METEOR | 3 s | 11.787 | 21.545 | 30.075 | — | — | — | 51.334 | 37.313 | 0.049 |
 
 **OpenPilot and the baseline are separated by horizon, not by skill at the
@@ -1258,7 +1258,7 @@ derivation and what it still cannot see.
 [OpenPilot](../../results/comma2k19/openpilot/20261106T003719-5cde54/metrics.json)
 · [Alpamayo 1.5](../../results/comma2k19/alpamayo15/20261106T005600-6c52a2/metrics.json)
 · [Qwen-Drive 1.0](../../results/comma2k19/qwendrive/20261106T030530-7d9fd3/metrics.json)
-· [Drive-JEPA (perception-free)](../../results/comma2k19/drivejepa_free/20260916T003407-c504e5/metrics.json)
+· [Drive-JEPA (perception-free)](../../results/comma2k19/drivejepa_free/20261106T053407-587a3e/metrics.json)
 · [VisionPilot](../../results/comma2k19/visionpilot/20261106T003749-c10a7f/metrics.json)
 · [METEOR](../../results/comma2k19/meteor/20261030T001935-0b8d0b/metrics.json)
 · [baseline](../../results/comma2k19/constant_velocity/20261106T045541-d0cdb5/metrics.json)
