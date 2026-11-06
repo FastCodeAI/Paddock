@@ -63,8 +63,8 @@ it differs.
   OpenPilot on Bench2Drive drives through openpilot's own longitudinal planner
   and its driver-resume nudge, which stands in for a driver pressing resume
   once the car has stood 3 s with no lead.
-- **S — stale; a re-run will change it.** Every VisionPilot figure predates the
-  `CURV_SCALE` fix. Drive-JEPA's nuScenes cell is the camera-blind run from
+- **S — stale; a re-run will change it.** Every VisionPilot figure but
+  comma2k19's predates the `CURV_SCALE` fix. Drive-JEPA's nuScenes cell is the camera-blind run from
   before the camera fix of 13 Oct 2026.
 - **R — not ranked, because the number was measured on different scenes or by a
   different method from the rest of its column.** How many cameras a model is

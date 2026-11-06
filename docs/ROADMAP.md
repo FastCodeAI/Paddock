@@ -20,7 +20,7 @@ Report bugs and ask for models or benchmarks in GitHub issues.
   frame, and the order changes. Each row is replaced, in its own PR, when its
   model is re-run.
 - **VisionPilot's figures predate the `CURV_SCALE` fix.** Every VisionPilot cell
-  is due to be re-run.
+  but comma2k19's, re-run in November 2026, is due to be re-run.
 - **OpenPilot runs made with the ONNX backend** fed the road camera's image to
   the wide view. Those rows are due to be re-run.
 - **comma2k19's `pdm_style_score` proxy ranks a parked car first.** It pairs

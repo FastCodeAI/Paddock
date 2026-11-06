@@ -758,7 +758,7 @@ compare one model with another quote the figures from before the re-runs.
 | openpilot (`small`, combined graph, `555f48c5d`) † | 10 s | 0.299 | 0.548 | 0.843 | 1.185 | 1.582 | 4.396 | 1.611 | 0.643 | 0.293 | 0.816 |
 | constant velocity (registered policy, 6 waypoints) † | 3 s | 0.252 | 0.611 | 1.135 | — | — | — | 2.546 | 0.816 | 0.466 | 0.650 |
 | autoe2e (`kitscenes-epoch-5`, the road camera alone, five views left out) † | 6 s | 0.734 | 0.977 | 1.350 | 1.949 | 2.846 | — | 2.396 | 1.339 | 0.640 | 0.766 |
-| visionpilot (synthesised trajectory) | 4 s | 1.149 | 2.462 | 4.045 | 5.835 | — | — | 8.146 | 2.195 | 0.864 | 0.406 |
+| visionpilot (synthesised trajectory) † | 4 s | 0.964 | 2.126 | 3.592 | 5.287 | — | — | 7.415 | 1.513 | 0.747 | 0.676 |
 | drivejepa_free (perception-free agent, NAVSIM v1) | 4 s | 7.800 | 12.077 | 16.048 | 20.501 | — | — | 26.248 | 19.801 | 0.831 | 0.541 |
 | meteor (`meteor_v157c3Z.onnx`, the road camera in 2 of 8 slots, `narrow_refpose`) | 3 s | 11.787 | 21.545 | 30.075 | — | — | — | 51.334 | 37.313 | 0.891 | 0.049 |
 
@@ -843,8 +843,8 @@ caveat attached, and in both cases the auxiliary columns are what supply it.
 - **visionpilot has no native trajectory**, so its row grades a synthesised
   pipeline — perception, ground projection, curve fit, cruise-speed assumption
   and extrapolation past a 1 s planner horizon — and is not comparable in kind
-  with a model that emits a timed trajectory. Its median (2.195) is barely half
-  its mean (4.045), which is the signature of that extrapolation failing on a
+  with a model that emits a timed trajectory. Its median (1.513) is well under
+  half its mean (3.592), which is the signature of that extrapolation failing on a
   minority of samples rather than a uniform error.
 
 Alpamayo is ahead of both at every horizon it reaches, on the mean *and* the
@@ -885,7 +885,7 @@ polylines ordered left to right; AutoSteer emits a single fitted path centreline
 sampled per image row, and offsetting it by half a nominal lane to manufacture
 two boundaries would make `lane_width_m` report the assumption back as a
 measurement. Its lead head is the interesting comparison with supercombo's:
-three times worse at range (`lead_range_abs_err` 9.10 m against 3.03) and better
+three times worse at range (`lead_range_abs_err` 9.13 m against 3.03) and better
 at lateral placement (`lead_lateral_abs_err` 0.369 m against 0.592), which is
 what a detect-and-project stack against a regression head should look like.
 Neither publishes what the other lacks, so `speed_rel_err`, `yaw_rate_abs_err`
@@ -1155,7 +1155,7 @@ padded. Lower is better throughout.
 | OpenPilot † | 10 s | 0.299 | 0.548 | 0.843 | 1.185 | 1.582 | **4.396** | 1.611 | 0.643 | 0.816 |
 | Baseline (Constant Velocity) † | 3 s | 0.252 | 0.611 | 1.135 | — | — | — | 2.546 | 0.816 | 0.650 |
 | AutoE2E † | 6 s | 0.734 | 0.977 | 1.350 | 1.949 | 2.846 | — | 2.396 | 1.339 | 0.766 |
-| VisionPilot ∗ | 4 s | 1.149 | 2.462 | 4.045 | 5.835 | — | — | 8.146 | 2.195 | 0.406 |
+| VisionPilot ∗ † | 4 s | 0.964 | 2.126 | 3.592 | 5.287 | — | — | 7.415 | 1.513 | 0.676 |
 | Drive-JEPA (perception-free) | 4 s | 7.800 | 12.077 | 16.048 | 20.501 | — | — | 26.248 | 19.801 | 0.541 |
 | METEOR | 3 s | 11.787 | 21.545 | 30.075 | — | — | — | 51.334 | 37.313 | 0.049 |
 
@@ -1214,16 +1214,16 @@ comma2k19 also carries the car's own CAN bus, radar and fused pose, so it scores
 what a model predicts **besides** the path — one metric list, `NaN` for a model
 that publishes no such head. Two of the eight do. Over the same 10,165 samples:
 
-| what | OpenPilot † | VisionPilot | reference it is scored against |
+| what | OpenPilot † | VisionPilot † | reference it is scored against |
 |---|---:|---:|---|
 | ego speed, relative error | 0.020 | — | CAN speed |
 | yaw rate, absolute error (rad/s) | 0.0024 | — | fused INS/GNSS pose |
 | lead recall / precision | **0.945** / 0.593 | 0.871 / **0.752** | radar tracks |
-| lead range, absolute error (m) | **3.03** (median 1.45) | 9.10 (median 6.85) | radar range |
+| lead range, absolute error (m) | **3.03** (median 1.45) | 9.13 (median 6.87) | radar range |
 | lead lateral, absolute error (m) | 0.592 | **0.369** | radar track position |
-| lead closing speed, absolute error (m/s) | **0.938** | 1.893 | radar range rate |
+| lead closing speed, absolute error (m/s) | **0.938** | 1.882 | radar range rate |
 | plan within 1σ, along / across track | 0.576 / 0.612 | — | the recorded future |
-| longitudinal jerk within comfort bound | 0.361 | **0.893** | NAVSIM's bounds |
+| longitudinal jerk within comfort bound | 0.361 | **0.894** | NAVSIM's bounds |
 | sanity gates passed (lane width, camera height, speed) | 0.926 | — | plausibility ranges |
 
 Two of those are results rather than confirmations. OpenPilot's **longitudinal
@@ -1259,7 +1259,7 @@ derivation and what it still cannot see.
 · [Alpamayo 1.5](../../results/comma2k19/alpamayo15/20261106T005600-6c52a2/metrics.json)
 · [Qwen-Drive 1.0](../../results/comma2k19/qwendrive/20261106T030530-7d9fd3/metrics.json)
 · [Drive-JEPA (perception-free)](../../results/comma2k19/drivejepa_free/20260916T003407-c504e5/metrics.json)
-· [VisionPilot](../../results/comma2k19/visionpilot/20260916T012719-03350c/metrics.json)
+· [VisionPilot](../../results/comma2k19/visionpilot/20261106T003749-c10a7f/metrics.json)
 · [METEOR](../../results/comma2k19/meteor/20261030T001935-0b8d0b/metrics.json)
 · [baseline](../../results/comma2k19/constant_velocity/20261106T045541-d0cdb5/metrics.json)
 · [protocol, and what it cannot score](comma2k19.md)
