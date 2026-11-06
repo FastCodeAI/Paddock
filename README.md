@@ -65,7 +65,7 @@ it differs.
   once the car has stood 3 s with no lead.
 - **S — stale; a re-run will change it.** Every VisionPilot figure predates the
   `CURV_SCALE` fix. Drive-JEPA's nuScenes cell is the camera-blind run from
-  before the camera fix of 13 Oct 2026. OpenPilot's comma2k19 row was not run at the pinned sha.
+  before the camera fix of 13 Oct 2026.
 - **R — not ranked, because the number was measured on different scenes or by a
   different method from the rest of its column.** How many cameras a model is
   given, whether it drives through paddock's bridge or its own simulator driver,

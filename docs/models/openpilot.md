@@ -365,6 +365,7 @@ plan from a different wide input. Which rows those are is not fully answerable
 from the record, because `/diagnostics` was not being fetched when they were
 made — that is the same gap as the revision one above, and it is closed the same
 way: `run.json` now carries `provenance.policy.backend`. The comma2k19 openpilot
-row is the known case, and it is flagged in
-[docs/benchmarks/comma2k19.md](../benchmarks/comma2k19.md#recorded-results); the
-re-sweep is in the [ROADMAP](../ROADMAP.md).
+row was the known case, and its re-run at the pin on 6 Nov 2026 shows the fix
+does not touch that benchmark: comma2k19 has one camera, so its frame feeds both
+views either way
+([docs/benchmarks/comma2k19.md](../benchmarks/comma2k19.md#recorded-results)).

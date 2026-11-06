@@ -33,8 +33,10 @@
     }
   },
   "hardware": {},
+  "provenance": {},
   "status": "complete",
-  "valid": true,
-  "notes": "",
+  "valid": false,
+  "superseded_by": "20261106T003719-5cde54",
+  "notes": "Superseded by 20261106T003719-5cde54: Re-run on 6 Nov 2026 at the pinned 555f48c5d and scored with the ground truth in the car's frame (issue #141); this row came from a clone at 4df40d2c1 and was scored against a ground truth in the camera's frame.",
   "ingested_from": ""
 }

@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
 92 runs across 9 benchmarks.
-46 run(s) excluded as invalid — shown at the end, never averaged in.
+47 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
@@ -66,9 +66,9 @@
 
 | model | run | n | ade ↓ | fde@1s ↓ | fde@2s ↓ | fde@3s ↓ | scored_horizon_s | ade@1s ↓ | ade@2s ↓ |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| openpilot | 20261106T003719-5cde54 | 10165 | 0.843 | 0.407 | 0.938 | 1.611 | 10.000 | 0.299 | 0.548 |
 | alpamayo15 | 20260913T072437-b058c2 | 10165 | 0.900 | 0.499 | 0.973 | 1.654 | 4.000 | 0.386 | 0.616 |
 | qwendrive [1] | 20260916T220846-971379 | 10165 | 1.159 | 0.632 | 1.296 | 2.094 | 5.000 | 0.475 | 0.801 |
-| openpilot | 20260916T051616-2a91ca | 10165 | 1.507 | 0.804 | 1.703 | 2.712 | 10.000 | 0.598 | 1.035 |
 | constant_velocity | 20260916T162837-b89038 | 10165 | 1.639 | 0.734 | 1.786 | 3.286 | 3.000 | 0.537 | 1.017 |
 | autoe2e | 20261020T213543-417344 | 10165 | 2.016 | 1.380 | 2.232 | 3.084 | 6.000 | 1.160 | 1.593 |
 | visionpilot | 20260916T012719-03350c | 10165 | 4.045 | 1.652 | 4.553 | 8.146 | 4.000 | 1.149 | 2.462 |
@@ -200,6 +200,7 @@
 - **nuplan/constant_velocity/20260917T214417-f827db** — camera images cover 25 of 351 scorable anchors (53 logs have no images); not comparable with a full-coverage run
 - **nuplan/meteor/20260917T195335-1b447c** — camera images cover 26 of 375 anchors (53 logs have no images); not comparable with a full-coverage run
 - **nuplan/drivejepa/20260916T204900-6a17de** — camera images cover 26 of 375 anchors (53 logs have no images); not comparable with a full-coverage run
+- **comma2k19/openpilot/20260916T051616-2a91ca** — Superseded by 20261106T003719-5cde54: Re-run on 6 Nov 2026 at the pinned 555f48c5d and scored with the ground truth in the car's frame (issue #141); this row came from a clone at 4df40d2c1 and was scored against a ground truth in the camera's frame.
 - **comma2k19/qwendrive/20260915T214115-405f64** — Superseded by 20260916T220846-971379: the adapter that produced it no longer exists, so no paddock run can reproduce 1.016; it emitted all 50 poses at waypoint_dt 0.1 and score() aligns the ground truth onto the prediction's grid, which is also why comfort read 1932 m/s**3 of quantiser jerk
 - **neuroncap/meteor/20260915T192353-6ed840** — 1 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes)
 - **navsim_v1/qwendrive/20260915T021715-02aab4** — no model process ran: 12146 plans replayed from navsim/qwendrive/20260914T221802-80457c (that run: epdms 0.8402); the same plans, this benchmark's scorer Superseded by 20261104T205054-df25d5: this replay recorded 2 Hz OpenScene history, but its plans were made at 10 Hz from nuPlan; re-made with the right record, every score identical
