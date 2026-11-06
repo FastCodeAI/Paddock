@@ -13,7 +13,7 @@ rather than assumed weak.
 is: `adapters/models/constant_velocity/` declares `repo: ""`, lists comma2k19
 among its benchmarks, and `paddock run --model constant_velocity --bench
 comma2k19` produced the row the docs cite
-(`results/comma2k19/constant_velocity/20260916T162837-b89038`). An earlier
+(`results/comma2k19/constant_velocity/20261106T045541-d0cdb5`). An earlier
 version of this docstring claimed `ModelSpec` requires a `repo` and
 `Runtime.interpreter()` a declared venv; neither is true, and the registered
 floor is the normal path. Use it.

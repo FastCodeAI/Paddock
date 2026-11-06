@@ -360,7 +360,7 @@ one H200 with eight nodes):
 |---|---|---|---|---|---|---|
 | 11.787 | 21.545 | **30.075** | 51.334 | 37.313 | 0.891 | 30.132 |
 
-Constant velocity scores 1.639 on the same samples (1.137 with the ground truth
+Constant velocity scores 1.639 on the same samples (1.135 with the ground truth
 in the calibrated frame, ROADMAP M8), and every other model scores 16.048 or
 less. METEOR is better than constant velocity on 3.6 % of the samples, all of
 them below 15 m/s. Measured on the per-sample records:
