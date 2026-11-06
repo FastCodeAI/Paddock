@@ -17,25 +17,166 @@ import pytest
 from paddock.adapters.benchmarks.bench2drive.campaign import (
     SLOT_STRIDE,
     RouteState,
+    _cards,
     balance,
     expected_costs,
     free_slots,
+    given_up,
     route_states,
     select_pending,
     slot_ports,
+    whose,
     with_ports,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
-def _attempt(root: Path, run_id: str, route: str, fixture: str | None) -> None:
+def _attempt(root: Path, run_id: str, route: str, fixture: str | None, failure: dict | None = None) -> None:
     d = root / run_id / f"{route}-Town12-ParkedObstacle"
     d.mkdir(parents=True)
     if fixture == "empty":
         (d / "results.json").write_text(json.dumps({"_checkpoint": {"records": []}}))
     elif fixture:
         shutil.copy(FIXTURES / fixture, d / "results.json")
+    if failure is not None:
+        (d / "failure.json").write_text(json.dumps(failure))
+
+
+CRASHED = {"kind": "carla_crash", "signal": 11, "game_time_s": 36.4, "returncode": -15, "timed_out": False}
+
+
+def test_a_failed_attempt_counts_toward_tries_and_a_cut_off_one_does_not(tmp_path: Path) -> None:
+    """Only an attempt that left a failure record failed: one cut off by a restart says nothing
+    about the route, and must not use up its tries."""
+    for i in range(3):
+        _attempt(tmp_path, f"2026100{i + 1}T000000-aaaaaa", "23695", "empty", CRASHED)
+        _attempt(tmp_path, f"2026100{i + 1}T000000-aaaaaa", "1711", "empty")  # cut off, no record
+    states = route_states(tmp_path)
+    assert len(states["23695"].failures) == 3 and states["1711"].failures == []
+    assert given_up(states, 3) == {"23695"}
+    assert given_up(states, 4) == set() and given_up(states, 0) == set()
+
+
+def test_whose_failure_it_is_decides_what_to_do_with_a_route_given_up_on() -> None:
+    assert "SET_ASIDE" in whose([CRASHED, CRASHED, CRASHED])
+    agent = {"kind": "not_scored", "status": ["Failed - Agent crashed"]}
+    assert "fix that" in whose([CRASHED, agent, CRASHED]), "one failure of the model's own is enough"
+    assert "evaluator.log" in whose([{"kind": "timeout"}, CRASHED])
+
+
+def _deal_site(tmp_path: Path, monkeypatch, routes):
+    from paddock.adapters.benchmarks.bench2drive import campaign
+
+    class Cfg:
+        runs = tmp_path
+        benchmarks = {"bench2drive": {"carla_port": "2000", "tm_port": "8000"}}
+        source = tmp_path / "site.toml"
+
+    Cfg.source.write_text(SITE)
+    monkeypatch.setattr(campaign, "_routes_meta", lambda cfg: routes)
+    monkeypatch.setattr(campaign.ports, "is_free", lambda port: True)
+    monkeypatch.setattr(campaign, "workers", lambda model, root: [])
+    return campaign, Cfg
+
+
+def test_a_route_given_up_is_not_dealt_and_status_says_whose_failure_it_was(tmp_path, monkeypatch) -> None:
+    routes = [("1711", "Town12", "ParkingCutIn"), ("23695", "Town13", "InterurbanAdvancedActorFlow")]
+    campaign, cfg = _deal_site(tmp_path, monkeypatch, routes)
+    for i in range(3):
+        _attempt(tmp_path / "bench2drive" / "m", f"2026100{i + 1}T000000-aaaaaa", "23695", "empty", CRASHED)
+    lines: list[str] = []
+    campaign.launch(cfg, "m", 5, dry_run=True, echo=lines.append)
+    assert [ln.rsplit(": ", 1)[1] for ln in lines if ln.startswith("worker slot")] == ["1711"]
+    said: list[str] = []
+    state = campaign.status(cfg, "m", echo=said.append)
+    assert state["given_up"] == ["23695"] and state["left"] == ["1711"]
+    assert any("given up on 23695 after 3 failed attempt(s)" in ln and "SET_ASIDE" in ln for ln in said)
+    assert sum("CARLA crashed (signal 11) at 36.4 s of game time" in ln for ln in said) == 3
+
+
+def test_a_set_aside_route_is_dealt_only_when_only_names_it(tmp_path, monkeypatch) -> None:
+    """11715 is set aside for every model: never dealt in a sweep, but --only can drive it on
+    purpose, to see whether it still fails."""
+    routes = [("1711", "Town12", "ParkingCutIn"), ("11715", "Town12", "EnterActorFlow")]
+    campaign, cfg = _deal_site(tmp_path, monkeypatch, routes)
+
+    def dealt(**kw) -> list[str]:
+        lines: list[str] = []
+        campaign.launch(cfg, "m", 5, dry_run=True, echo=lines.append, **kw)
+        return [ln.rsplit(": ", 1)[1] for ln in lines if ln.startswith("worker slot")]
+
+    assert dealt() == ["1711"]
+    assert dealt(only={"11715"}) == ["11715"]
+    said: list[str] = []
+    assert campaign.status(cfg, "m", echo=said.append)["total"] == 1
+    assert any("set aside for every model" in ln and "11715" in ln for ln in said)
+
+
+def test_batch_deals_the_longest_expected_routes_first_and_no_more_than_asked(tmp_path, monkeypatch) -> None:
+    routes = [(str(r), "Town12", "ParkingCutIn") for r in (1, 2, 3, 4, 5, 6)]
+    campaign, cfg = _deal_site(tmp_path, monkeypatch, routes)
+    costs = {"1": 100.0, "2": 900.0, "3": 300.0, "4": 800.0, "5": 200.0, "6": 700.0}
+    monkeypatch.setattr(campaign, "expected_costs", lambda states, scenario_of: costs)
+    lines: list[str] = []
+    campaign.launch(cfg, "m", 2, batch=2, dry_run=True, echo=lines.append)
+    dealt = [ln.rsplit(": ", 1)[1].split(",") for ln in lines if ln.startswith("worker slot")]
+    assert len(dealt) == 2, "one batch per free slot"
+    assert {r for group in dealt for r in group} == {"2", "4", "6", "3"}, "the four longest, of six"
+
+
+def test_cards_pin_each_new_worker_to_a_card(tmp_path, monkeypatch) -> None:
+    """Each worker's CARLA renders on its card (gpu_rank, a Vulkan index) and its node runs on the
+    same one (CUDA_VISIBLE_DEVICES); new workers go to the card with fewest."""
+    routes = [(str(r), "Town12", "ParkingCutIn") for r in range(1, 9)]
+    campaign, cfg = _deal_site(tmp_path, monkeypatch, routes)
+    started: list[dict] = []
+
+    class Proc:
+        pid = 4242
+
+    def popen(command, env, **kw):
+        started.append(env)
+        return Proc()
+
+    monkeypatch.setattr(campaign.subprocess, "Popen", popen)
+    monkeypatch.setattr(campaign.time, "sleep", lambda s: None)
+    alive = [campaign.Worker(7, ["99"], Path("w"), 2900, "0")]  # one already on the first card
+    monkeypatch.setattr(campaign, "workers", lambda model, root: alive)
+    out = campaign.launch(cfg, "m", 2, cards=[("0", "0"), ("1", "2")], echo=lambda s: None)
+    assert [w["card"] for w in out] == [["1", "2"], ["0", "0"], ["1", "2"]]
+    assert [e["CUDA_VISIBLE_DEVICES"] for e in started] == ["1", "0", "1"]
+    ranks = [
+        tomllib.loads(Path(w["config"]).read_text())["benchmarks"]["bench2drive"]["gpu_rank"] for w in out
+    ]
+    assert ranks == ["2", "0", "2"]
+
+
+def test_cards_are_cuda_and_vulkan_index_pairs() -> None:
+    assert _cards("0:0,1:2") == [("0", "0"), ("1", "2")] and _cards(None) is None
+    with pytest.raises(SystemExit, match="CUDA:VULKAN"):
+        _cards("0,1")
+
+
+def test_keep_stops_once_nothing_is_left_and_no_worker_is_alive(monkeypatch) -> None:
+    from paddock.adapters.benchmarks.bench2drive import campaign
+
+    # keep asks twice a pass: before launching (to clean up) and after (to settle).
+    worker = campaign.Worker(1, ["1711"], Path("w"), 2000)
+    alive = [[worker], [worker], [], []]
+    calls: list[str] = []
+    monkeypatch.setattr(campaign, "workers", lambda model, root: alive.pop(0) if len(alive) > 1 else alive[0])
+    monkeypatch.setattr(campaign, "launch", lambda *a, **kw: calls.append("launch") or [])
+    monkeypatch.setattr(campaign, "_reap_orphans", lambda root, echo: calls.append("reap"))
+
+    class Cfg:
+        runs = Path("/nowhere")
+
+    said: list[str] = []
+    campaign.keep(Cfg, "m", 5, sleep=lambda s: calls.append("sleep"), echo=said.append)
+    # alive at first: launch, sleep; then none alive: reap the orphans, launch, and settle.
+    assert calls == ["launch", "sleep", "reap", "launch"]
+    assert "settled" in said[-1]
 
 
 def test_a_route_counts_as_scored_once_any_attempt_scored(tmp_path: Path) -> None:
@@ -101,6 +242,12 @@ def test_with_ports_edits_only_the_bench2drive_table_and_keeps_everything_else()
     assert parsed["benchmarks"]["navsim"]["carla_port"] == "should not change"
     assert parsed["gpu"]["budget_gb"] == 80 and parsed["benchmarks"]["bench2drive"]["record"] == "true"
     assert "# CARLA closed-loop" in out
+
+
+def test_with_ports_sets_gpu_rank_when_asked_and_nothing_else() -> None:
+    out = with_ports(SITE, 2150, 8150, gpu_rank="2")
+    assert tomllib.loads(out)["benchmarks"]["bench2drive"]["gpu_rank"] == "2"
+    assert "gpu_rank" not in tomllib.loads(with_ports(SITE, 2150, 8150))["benchmarks"]["bench2drive"]
 
 
 def test_with_ports_refuses_a_config_without_bench2drive() -> None:
@@ -189,7 +336,7 @@ def test_held_routes_wait_for_everything_else_and_then_run_alone(tmp_path: Path,
         source = tmp_path / "site.toml"
 
     Cfg.source.write_text(SITE)
-    routes = [("1711", "Town12", "ParkingCutIn"), ("11715", "Town12", "EnterActorFlow")]
+    routes = [("1711", "Town12", "ParkingCutIn"), ("23695", "Town13", "InterurbanAdvancedActorFlow")]
     monkeypatch.setattr(campaign, "_routes_meta", lambda cfg: routes)
     monkeypatch.setattr(campaign.ports, "is_free", lambda port: True)
     launched: list[list[str]] = []
@@ -197,15 +344,15 @@ def test_held_routes_wait_for_everything_else_and_then_run_alone(tmp_path: Path,
 
     def plan(**kw):
         lines: list[str] = []
-        campaign.launch(Cfg, "m", 5, held={"11715"}, dry_run=True, echo=lines.append, **kw)
+        campaign.launch(Cfg, "m", 5, held={"23695"}, dry_run=True, echo=lines.append, **kw)
         launched.append([ln for ln in lines if ln.startswith("worker slot")])
         return lines
 
     plan()
-    assert len(launched[-1]) == 1 and launched[-1][0].endswith(": 1711")  # 11715 not dealt yet
+    assert len(launched[-1]) == 1 and launched[-1][0].endswith(": 1711")  # 23695 not dealt yet
     _attempt(tmp_path / "bench2drive" / "m", "20261007T000000-cccccc", "1711", "results_collisions.json")
     lines = plan()
-    assert launched[-1] == ["worker slot 0: 1 route(s), ~0.1 h, CARLA 2000, TM 8000: 11715"]
+    assert launched[-1] == ["worker slot 0: 1 route(s), ~0.1 h, CARLA 2000, TM 8000: 23695"]
     assert any("alone" in ln for ln in lines)
     monkeypatch.setattr(
         campaign, "workers", lambda model, root: [campaign.Worker(1, ["1711"], Path("x"), 2150)]
