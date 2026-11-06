@@ -193,7 +193,7 @@ alpasim = { run = "alpasim/autoe2e/20261022T045847-86b955" }
 [cells.constant_velocity]
 nuscenes = { run = "nuscenes/constant_velocity/20260914T225156-e5170c" }
 kitscenes = { value = 1.381, source = "docs/benchmarks/kitscenes.md" }
-comma2k19 = { run = "comma2k19/constant_velocity/20260916T162837-b89038" }
+comma2k19 = { run = "comma2k19/constant_velocity/20261106T045541-d0cdb5" }
 nuplan = { run = "nuplan/constant_velocity/20260917T214417-f827db" }
 navsim = { run = "navsim/constant_velocity/20260902T175923-feba73" }
 navsim_v1 = { run = "navsim_v1/constant_velocity/20260911T034553-8f28ac" }

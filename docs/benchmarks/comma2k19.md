@@ -756,7 +756,7 @@ compare one model with another quote the figures from before the re-runs.
 | qwendrive (`Qwen-Drive-1.0-4B`, side slots black) † | 5 s | 0.154 | 0.326 | **0.589** | 0.946 | 1.411 | — | 1.316 | 0.498 | 0.195 | 0.779 |
 | alpamayo15 (`Alpamayo-1.5-10B`, 2 of 4 camera slots) † | 4 s | 0.152 | 0.427 | 0.819 | 1.314 | — | — | 1.864 | 0.737 | 0.395 | 0.690 |
 | openpilot (`small`, combined graph, `555f48c5d`) † | 10 s | 0.299 | 0.548 | 0.843 | 1.185 | 1.582 | 4.396 | 1.611 | 0.643 | 0.293 | 0.816 |
-| constant velocity (registered policy, 6 waypoints) | 3 s | 0.537 | 1.017 | 1.639 | — | — | — | 3.286 | 1.475 | 0.658 | 0.417 |
+| constant velocity (registered policy, 6 waypoints) † | 3 s | 0.252 | 0.611 | 1.135 | — | — | — | 2.546 | 0.816 | 0.466 | 0.650 |
 | autoe2e (`kitscenes-epoch-5`, the road camera alone, five views left out) | 6 s | 1.160 | 1.593 | 2.016 | 2.507 | 3.185 | — | 3.084 | 2.068 | 0.775 | 0.364 |
 | visionpilot (synthesised trajectory) | 4 s | 1.149 | 2.462 | 4.045 | 5.835 | — | — | 8.146 | 2.195 | 0.864 | 0.406 |
 | drivejepa_free (perception-free agent, NAVSIM v1) | 4 s | 7.800 | 12.077 | 16.048 | 20.501 | — | — | 26.248 | 19.801 | 0.831 | 0.541 |
@@ -811,10 +811,12 @@ in arithmetic.** The earlier record
 extrapolates the recorded speed across the full 10 s ground-truth horizon and is
 stored under a pseudo-model, as its own `notes` field says. The row above is the
 registered `constant_velocity` policy, which emits the six waypoints neuroNCAP
-requires — 3 s at `waypoint_dt` 0.5. They agree to every printed digit at 1, 2
-and 3 s; the tool's 4/5/10 s figures are 2.411, 3.331 and 10.048, and remain the
-long-horizon reference line because nothing else here reaches 10 s except
-openpilot.
+requires — 3 s at `waypoint_dt` 0.5. Scored against the same ground truth, the
+two agreed to every printed digit at 1, 2 and 3 s. The script has not been run
+since the ground truth moved to the car's frame, so its 4/5/10 s figures (2.411,
+3.331 and 10.048) are from the camera's frame, where the mount's yaw adds an
+error that grows with distance. They are the only constant-velocity figures past
+3 s, and nothing else here reaches 10 s except openpilot.
 
 Constant velocity is better at 1 s and has the better *median* at 3 s than
 openpilot; openpilot wins the 3 s mean and pulls away with every horizon they
@@ -1151,7 +1153,7 @@ padded. Lower is better throughout.
 | Qwen-Drive 1.0 † | 5 s | 0.154 | **0.326** | **0.589** | **0.946** | **1.411** | — | **1.316** | **0.498** | 0.779 |
 | Alpamayo 1.5 † | 4 s | **0.152** | 0.427 | 0.819 | 1.314 | — | — | 1.864 | 0.737 | 0.690 |
 | OpenPilot † | 10 s | 0.299 | 0.548 | 0.843 | 1.185 | 1.582 | **4.396** | 1.611 | 0.643 | 0.816 |
-| Baseline (Constant Velocity) | 3 s | 0.537 | 1.017 | 1.639 | — | — | — | 3.286 | 1.475 | 0.417 |
+| Baseline (Constant Velocity) † | 3 s | 0.252 | 0.611 | 1.135 | — | — | — | 2.546 | 0.816 | 0.650 |
 | AutoE2E | 6 s | 1.160 | 1.593 | 2.016 | 2.507 | 3.185 | — | 3.084 | 2.068 | 0.364 |
 | VisionPilot ∗ | 4 s | 1.149 | 2.462 | 4.045 | 5.835 | — | — | 8.146 | 2.195 | 0.406 |
 | Drive-JEPA (perception-free) | 4 s | 7.800 | 12.077 | 16.048 | 20.501 | — | — | 26.248 | 19.801 | 0.541 |
@@ -1259,6 +1261,6 @@ derivation and what it still cannot see.
 · [Drive-JEPA (perception-free)](../../results/comma2k19/drivejepa_free/20260916T003407-c504e5/metrics.json)
 · [VisionPilot](../../results/comma2k19/visionpilot/20260916T012719-03350c/metrics.json)
 · [METEOR](../../results/comma2k19/meteor/20261030T001935-0b8d0b/metrics.json)
-· [baseline](../../results/comma2k19/constant_velocity/20260916T162837-b89038/metrics.json)
+· [baseline](../../results/comma2k19/constant_velocity/20261106T045541-d0cdb5/metrics.json)
 · [protocol, and what it cannot score](comma2k19.md)
 · [the dataset itself](../datasets/comma2k19.md).

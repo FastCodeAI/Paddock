@@ -28,8 +28,10 @@
     "history_span_s": 7.95
   },
   "hardware": {},
+  "provenance": {},
   "status": "complete",
-  "valid": true,
-  "notes": "",
+  "valid": false,
+  "superseded_by": "20261106T045541-d0cdb5",
+  "notes": "Superseded by 20261106T045541-d0cdb5: Re-run on 6 Nov 2026 and scored against the ground truth in the car's frame (issue #141); this row was scored against a ground truth in the camera's frame. The plans did not change: constant velocity plans from the recorded speed alone.",
   "ingested_from": ""
 }
