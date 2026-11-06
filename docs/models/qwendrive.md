@@ -255,10 +255,10 @@ the Bench2Drive row pools five source runs over four workers.
 The comma2k19 row has replaced two earlier ones, and both are still here,
 marked `superseded_by`. `20260916T220846-971379` (ADE@3s 1.159) copied the road
 camera into the side slots (`replicate`), showed the model its past path in the
-camera's frame, and was scored against a ground truth in the camera's frame too
-(issue #141). Scored against the ground truth in the car's frame, that run's own
-plans give 0.612; the re-run of 6 Nov 2026, with black side views and the past
-path in the car's frame as well, gives 0.589. Before that,
+camera's frame, and was scored against a ground truth in the camera's frame too.
+Scored against the ground truth in the car's frame, that run's own plans give
+0.612; the re-run of 6 Nov 2026, with black side views and the past path in the
+car's frame as well, gives 0.589. Before that,
 `20260915T214115-405f64` (ADE@3s 1.016) was produced by the pre-merge adapter,
 which emitted all 50 poses at `waypoint_dt` 0.1 s; `score()` aligns the ground
 truth onto *the prediction's* grid, so the same predictions on the merged
