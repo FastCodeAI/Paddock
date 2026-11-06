@@ -185,9 +185,8 @@ KITScenes and comma2k19 are zero-shot for this model; neuroNCAP is not (see
 field of view than the nuPlan rig it was trained on (see [qwendrive.md](qwendrive.md)). comma2k19
 is the unequal column in a different way: nothing in the corpus is a
 windscreen-mounted mono camera on a Californian highway, and the model reads it
-with that one frame in its front slot and two black side slots (the published
-row replicated the frame into all three).
-Second place on that board is therefore a claim about a model driven outside
+with that one frame in its front slot and two black side slots.
+First place on that board is therefore a claim about a model driven outside
 both its rig and its domain.
 
 ### Qwen-Drive 1.0 × nuscenes — a VLM trained on nuScenes, val scenes included
