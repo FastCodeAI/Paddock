@@ -303,7 +303,7 @@
 <text x="343.5" y="456.5" class="t2" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#2</text>
 <text x="380" y="430.5" class="t2" font-size="9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="end" font-weight="600" opacity="0.85">A</text>
 <rect class="r5" x="387" y="420.5" width="81" height="43" rx="4"/>
-<text x="427.5" y="441.5" class="t5" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">2.016</text>
+<text x="427.5" y="441.5" class="t5" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">1.350</text>
 <text x="427.5" y="456.5" class="t5" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#5</text>
 <path class="worse" d="M390 423.5h10l-5 8.5z" stroke-width="1.5"/>
 <rect class="miss" x="471" y="420.5" width="81" height="43" rx="4"/>
