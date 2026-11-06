@@ -424,21 +424,23 @@ above is argued, not verified. On the other 69 keyframes the harness gives 48 re
 upstream's protocol gives 40, and AutoE2E scores better for it (0.865 against
 0.914 on those rows).
 
-**comma2k19, 10,165 samples, valid** (`results/comma2k19/autoe2e/20261020T213543-417344`):
-**2.016** ADE@3s, from the road camera alone, the five views it does not have left
-out. With the ground truth rotated into the calibrated frame the plans are in
-([ROADMAP](../ROADMAP.md)), 1.358. Either way it trails constant velocity (1.639 / 1.135), as
-an out-of-tree study of this checkpoint on comma2k19 also found.
+**comma2k19, 10,165 samples, valid** (`results/comma2k19/autoe2e/20261106T073744-1b4fe1`):
+**1.350** ADE@3s, from the road camera alone, the five views it does not have left
+out, with its past path and the ground truth in the car's frame. The earlier run
+(`20261020T213543-417344`) was shown its past path and scored in the camera's
+frame: 2.016, and 1.382 with the ground truth rotated into the car's frame.
+Either way it trails constant velocity (1.135 in the car's frame), as an
+out-of-tree study of this checkpoint on comma2k19 also found.
 
 | horizon | ADE@1s | ADE@2s | ADE@3s | ADE@4s | ADE@5s | FDE@3s | median ADE@3s | miss@3s |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 6 s | 1.160 | 1.593 | **2.016** | 2.507 | 3.185 | 3.084 | 2.068 | 0.775 |
+| 6 s | 0.734 | 0.977 | **1.350** | 1.949 | 2.846 | 2.396 | 1.339 | 0.640 |
 
-**Checked against that study.** It fed the same checkpoint the same way: the
-front camera alone, the other five slots blank with a projection that sees
-nothing. It also used its own calibration, pose velocities for the ego rows,
-and an anchor every 0.5 s of each drive. On the 1,359 paddock samples that fall
-on the same video frame as one of its anchors:
+**Checked against that study, with the earlier run.** It fed the same checkpoint
+the same way: the front camera alone, the other five slots blank with a
+projection that sees nothing. It also used its own calibration, pose velocities
+for the ego rows, and an anchor every 0.5 s of each drive. On the 1,359 paddock
+samples that fall on the same video frame as one of its anchors:
 
 | | agreement |
 |---|---|
@@ -450,8 +452,8 @@ on the same video frame as one of its anchors:
 The plans differ by more than the controls suggest because the inputs differ
 in known ways. Paddock differences 20 Hz positions for the ego rows where the
 study used pose velocities, uses the route-pooled `rpyCalib` where it used its
-own calibration, and builds the history projections from device-frame poses
-(the same frame issue).
+own calibration, and, in that run, built the history projections from
+device-frame poses (the same frame issue, fixed since).
 
 **nuScenes val, 5,119 keyframes, valid** (`results/nuscenes/autoe2e/20261023T004711-eedbe2`):
 **0.839** cumulative L2, 1.565 point L2, 1.319 ADE@3s, 1.86 % predicted collisions.

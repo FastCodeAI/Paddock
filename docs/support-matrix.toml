@@ -181,7 +181,7 @@ alpasim = { run = "alpasim/qwendrive/20261027T215528-d231d8" }
 [cells.autoe2e]
 nuscenes = { run = "nuscenes/autoe2e/20261023T004711-eedbe2", marks = "A" }  # camera encoder trained on nuScenes train
 kitscenes = { run = "kitscenes/autoe2e/20261020T220509-dee848", marks = "A" }
-comma2k19 = { run = "comma2k19/autoe2e/20261020T213543-417344" }
+comma2k19 = { run = "comma2k19/autoe2e/20261106T073744-1b4fe1" }
 navsim = { run = "navsim/autoe2e/20261009T055926-3ceb18", marks = "A", note = "10 Hz" }
 navsim_v1 = { run = "navsim_v1/autoe2e/20261104T210206-3022fb", marks = "A", note = "10 Hz" }
 # Its own inputs at its declared 10 Hz, routes ended after 30 s stuck or 4x the expert's time, each a
