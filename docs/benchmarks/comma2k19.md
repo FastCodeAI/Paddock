@@ -8,7 +8,7 @@
 | Dataset | `comma2k19` |
 | Primary metric | `ade` |
 | Adapter | [`adapters/benchmarks/comma2k19/`](../../src/paddock/adapters/benchmarks/comma2k19/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa_free](../models/drivejepa_free.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 
@@ -99,7 +99,7 @@ row is read with it.
 | METEOR | a front-wide crop and a 30° narrow window of the road frame; its six other slots are black, which is how its training marks a missing camera |
 | AutoE2E | the road frame in its front view; its five other views are masked out |
 | Qwen-Drive | the road frame in its front view; its front-left and front-right views are black, because the model has no flag for a missing camera. The run's diagnostics list them as `blank_views` |
-| Drive-JEPA (front) | the road frame only, which is what this version was trained on |
+| Drive-JEPA | the road frame in its front view; its front-left, front-right and back views are black. The model keeps only its front camera, so they never reach the plan; they are there because its loader expects four. The run's diagnostics list them as `blank_views` |
 | VisionPilot | its one camera |
 | constant velocity | no image |
 
@@ -283,9 +283,12 @@ PDM score uses them, cited there at the strength of published constants.
 **The comfort rates do not share a denominator across models.** A plan too
 short, not finite, or too coarse to resample onto the 0.5 s reference grid is
 NaN rather than a failure — "not measurable" is not "uncomfortable" — and the
-aggregate drops it. On the runs recorded below that is `n = 9148` for
-constant_velocity (1017 missing) against `n = 10165` for alpamayo15, openpilot,
-qwendrive and drivejepa_free, and `10161` for visionpilot. Read a comfort column
+aggregate drops it. On the runs recorded below, the acceleration and jerk rates
+are judged on all 10,165 samples for every model, but the yaw-rate and
+lateral-acceleration rates, and so `comfort_within_bounds`, on 9072 (METEOR) to
+10150 (VisionPilot) of them: those two need two plan steps in a row of at least
+0.25 m to have a heading to difference, so a plan that stands or creeps is not
+judged on them. Read a comfort column
 as *of the plans this model made that could be judged, this fraction were
 comfortable*: comparable as a rate, not subtractable. `metrics.json` carries `n`
 and `n_missing` per metric, so the denominator is always recoverable from the
@@ -748,7 +751,7 @@ failure.
 | constant velocity (registered policy, 6 waypoints) | 3 s | 0.252 | 0.611 | 1.135 | — | — | — | 2.546 | 0.816 | 0.466 | 0.650 |
 | autoe2e (`kitscenes-epoch-5`, the road camera alone, five views left out) | 6 s | 0.734 | 0.977 | 1.350 | 1.949 | 2.846 | — | 2.396 | 1.339 | 0.640 | 0.766 |
 | visionpilot (synthesised trajectory) | 4 s | 0.964 | 2.126 | 3.592 | 5.287 | — | — | 7.415 | 1.513 | 0.747 | 0.676 |
-| drivejepa_free (perception-free agent, NAVSIM v1) | 4 s | 7.801 | 12.078 | 16.047 | 20.507 | — | — | 26.244 | 19.832 | 0.829 | 0.717 |
+| drivejepa (perception-based agent, NAVSIM v2; the road camera in 1 of 4 slots) | 4 s | 7.474 | 13.080 | 18.754 | 24.385 | — | — | 32.893 | 23.401 | 0.852 | 0.620 |
 | meteor (`meteor_v157c3Z.onnx`, the road camera in 2 of 8 slots, `narrow_refpose`) | 3 s | 11.841 | 21.621 | 30.167 | — | — | — | 51.507 | 37.395 | 0.892 | 0.034 |
 
 **The openpilot row is the run of 6 Nov 2026 at the `repos.yaml` pin,
@@ -813,21 +816,23 @@ medians of 0.816 against 0.643. Scored against the ground truth in the camera's
 frame, the baseline had the better median at 3 s; the plans barely changed
 between the runs, so that result came from the frame.
 
-Two of the four models added after the first sweep need their rows read with a
-caveat attached, and in both cases the auxiliary columns are what supply it.
+Two rows need a caveat, and in both cases the auxiliary columns are what supply
+it.
 
-- **drivejepa_free's 16.047 is a reach failure, not a shape failure.** Its
-  `lateral_at_arclength_mae` is 0.216, second only to openpilot's 0.135, while
-  `path_length_ratio` is 0.667. It draws close to the right curve and travels
-  two thirds of it. Four seconds of NAVSIM city driving saturates near 64 m and
-  I-280 covers 120, so this is a training-domain speed prior meeting a highway.
-  It is also the clearest demonstration in the repo of why this benchmark
-  refuses to report ADE alone: ADE puts it an order of magnitude behind every
-  model but METEOR, and the two columns that separate speed from shape put its
-  shape second on the board.
-  [docs/models/drivejepa_free.md](../models/drivejepa_free.md) is the adapter's
-  own page — what the checkpoint is, and why it is a separate registry entry
-  from the perception-based v2 model.
+- **drivejepa's 18.754 is a reach failure, not a shape failure.** Its
+  `lateral_at_arclength_mae` is 0.150, second only to openpilot's 0.135, while
+  `path_length_ratio` is 0.586. It draws close to the right curve and travels
+  three fifths of it. Its 4 s plan follows the car's speed up to about 12 m/s
+  and then stops growing near 53 m, while I-280 covers about 120 m in 4 s, so
+  this is a training-domain speed prior meeting a highway. It is also the
+  clearest demonstration in the repo of why this benchmark refuses to report ADE
+  alone: ADE puts it an order of magnitude behind every model but METEOR, and
+  the two columns that separate speed from shape put its shape second on the
+  board. It is the perception-based model of every other benchmark, fed the one
+  camera with its three other views black ([docs/models/drivejepa.md](../models/drivejepa.md#on-comma2k19)).
+  Until November 2026 this row was Drive-JEPA's perception-free agent, a
+  separate registry entry: 16.047, with plans that stopped near 64 m and a less
+  well shaped path (0.216).
 - **visionpilot has no native trajectory**, so its row grades a synthesised
   pipeline — perception, ground projection, curve fit, cruise-speed assumption
   and extrapolation past a 1 s planner horizon — and is not comparable in kind
@@ -860,9 +865,9 @@ against 0.322, and `comfort_lon_jerk_max` 0.58 m/s³ against 5.05 — see the je
 result below, which is the same measurement from the other side.
 
 Of the eight, only openpilot and visionpilot publish auxiliary heads through
-`Trajectory.extras`; alpamayo15, qwendrive and drivejepa_free emit a trajectory
-and nothing else, and autoe2e's and meteor's extras are their own diagnostics, so
-every metric in the next two paragraphs is `NaN` for them.
+`Trajectory.extras`; alpamayo15 and qwendrive emit a trajectory and nothing else,
+and autoe2e's, meteor's and drivejepa's extras are their own diagnostics, so every
+metric in the next two paragraphs is `NaN` for them.
 That is the intended behaviour of one declared metric list rather than a
 per-model one: the run records what the model did not produce instead of quietly
 shortening the list.
@@ -1091,16 +1096,16 @@ from 2 s to its 5 s, on the mean and the median, on one camera**: its two side
 views are black, where it was trained on three cameras. Alpamayo 1.5 and
 OpenPilot follow within 2.4 cm of each other at 3 s, Alpamayo on a **shorter
 horizon and one camera** (it plans 4 s where supercombo plans 10, and two of its
-four view slots go unsent). Only OpenPilot plans 10 s. **Drive-JEPA's 16.047 is
-its perception-free agent** — a separate registry entry (`drivejepa_free`,
-NAVSIM v1) from the perception-based v2 model every other column on that row
-refers to, since comma2k19 supplies neither the four cameras nor the lidar
-extrinsics v2 requires. The number is a speed prior, not a wiring fault: its
-plans are the second best *shaped* here (0.216 m lateral error at matched arc
-length, against OpenPilot's 0.135) but reach only ~67% as far as the car
-travelled, because 4 s of NAVSIM city driving saturates near 64 m while I-280
-runs at 30 m/s. See [docs/models/drivejepa_free.md](../models/drivejepa_free.md)
-and the comma2k19 table below. **METEOR's 30.167 is a reach failure too, and a
+four view slots go unsent). Only OpenPilot plans 10 s. **Drive-JEPA's 18.754 is
+the same perception-based model as the rest of its row**, fed the one camera
+with its three other views black, which it never reads; until November 2026
+this cell was its perception-free agent, a separate registry entry (16.047). The
+number is a speed prior, not a wiring fault: its plans are the second best
+*shaped* here (0.150 m lateral error at matched arc length, against OpenPilot's
+0.135) but reach only ~59% as far as the car travelled, because its 4 s plan
+stops growing near 53 m while I-280 runs at 30 m/s. See
+[docs/models/drivejepa.md](../models/drivejepa.md#on-comma2k19) and the
+comma2k19 table below. **METEOR's 30.167 is a reach failure too, and a
 larger one**: the released graph, shown one phone camera in two of its eight
 slots, plans about 17 m ahead whatever the speed, where I-280 needs 55-92 m.
 
@@ -1124,7 +1129,7 @@ padded. Lower is better throughout.
 | Baseline (Constant Velocity) | 3 s | 0.252 | 0.611 | 1.135 | — | — | — | 2.546 | 0.816 | 0.650 |
 | AutoE2E | 6 s | 0.734 | 0.977 | 1.350 | 1.949 | 2.846 | — | 2.396 | 1.339 | 0.766 |
 | VisionPilot ∗ | 4 s | 0.964 | 2.126 | 3.592 | 5.287 | — | — | 7.415 | 1.513 | 0.676 |
-| Drive-JEPA (perception-free) | 4 s | 7.801 | 12.078 | 16.047 | 20.507 | — | — | 26.244 | 19.832 | 0.717 |
+| Drive-JEPA | 4 s | 7.474 | 13.080 | 18.754 | 24.385 | — | — | 32.893 | 23.401 | 0.620 |
 | METEOR | 3 s | 11.841 | 21.621 | 30.167 | — | — | — | 51.507 | 37.395 | 0.034 |
 
 **OpenPilot and the baseline separate after the first second.** Constant
@@ -1150,16 +1155,19 @@ the median and at 4 s. What the table cannot say is how Qwen-Drive or Alpamayo
 would extrapolate to 10 s, because neither goes there.
 
 **Drive-JEPA's row is a reach failure, not a shape failure, and the auxiliary
-columns are what show the difference.** Its perception-free agent has the
-second-lowest lateral error at matched arc length on this benchmark (0.216 m,
-against OpenPilot's 0.135) while travelling only 67% as far as the car did
-(`path_length_ratio` 0.667), so it draws close to the right curve and stops a
-third short of where the car went. Four seconds of NAVSIM city driving saturates
-around 64 m; I-280 covers 120. Removing the speed error is exactly what
-`lateral_at_arclength_mae` does, and it takes 16.047 to 0.216 — which is not a
-number this table will headline, because the model was not asked for a shape, it
-was asked for where the car would be. This is the clearest case in the repo for
-why a benchmark that reported ADE alone would be describing the wrong defect.
+columns are what show the difference.** It has the second-lowest lateral error
+at matched arc length on this benchmark (0.150 m, against OpenPilot's 0.135)
+while travelling only 59% as far as the car did (`path_length_ratio` 0.586), so
+it draws close to the right curve and stops two fifths short of where the car
+went. Its 4 s plan follows the car's speed up to about 12 m/s and stops growing
+near 53 m; I-280 covers about 120 m in 4 s. Removing the speed error is exactly
+what `lateral_at_arclength_mae` does, and it takes 18.754 to 0.150 — which is
+not a number this table will headline, because the model was not asked for a
+shape, it was asked for where the car would be. This is the clearest case in
+the repo for why a benchmark that reported ADE alone would be describing the
+wrong defect. The perception-free agent that held this row until November 2026
+scored 16.047: its plans stopped further out, near 64 m, and its path was less
+well shaped (0.216 m).
 
 **METEOR's row is the released graph on a camera it never saw.** METEOR is an
 eight-camera network; comma2k19 has one phone camera, so the adapter puts it
@@ -1223,7 +1231,7 @@ derivation and what it still cannot see.
 [OpenPilot](../../results/comma2k19/openpilot/20261106T003719-5cde54/metrics.json)
 · [Alpamayo 1.5](../../results/comma2k19/alpamayo15/20261106T005600-6c52a2/metrics.json)
 · [Qwen-Drive 1.0](../../results/comma2k19/qwendrive/20261106T030530-7d9fd3/metrics.json)
-· [Drive-JEPA (perception-free)](../../results/comma2k19/drivejepa_free/20261106T053407-587a3e/metrics.json)
+· [Drive-JEPA](../../results/comma2k19/drivejepa/20261106T192049-391e2d/metrics.json)
 · [VisionPilot](../../results/comma2k19/visionpilot/20261106T003749-c10a7f/metrics.json)
 · [METEOR](../../results/comma2k19/meteor/20261106T064120-226c00/metrics.json)
 · [AutoE2E](../../results/comma2k19/autoe2e/20261106T073744-1b4fe1/metrics.json)

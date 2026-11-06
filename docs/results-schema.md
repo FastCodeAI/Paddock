@@ -71,6 +71,11 @@ Three fields do the real work:
 - **`valid`** — set `false` with a `notes` explaining why, for runs known to be
   bad. Reporting excludes them and never silently averages them in. Deleting a
   bad run loses the record that it happened; marking it keeps it.
+- **`superseded_by`** — the later run that replaced this one, written only by
+  `paddock supersede`, which also sets `valid: false` and appends the reason to
+  `notes`. A bare run id is the same model's run on the same benchmark;
+  `<model>/<run id>` is another model's (`--by-model`), for a row that moves to
+  a different registry entry of the model.
 
 - **`provenance.paddock`** — the paddock checkout's commit (`sha`) and whether
   its tracked files were edited (`dirty`). A baseline measured on older adapter

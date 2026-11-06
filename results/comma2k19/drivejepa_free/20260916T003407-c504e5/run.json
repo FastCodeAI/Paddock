@@ -31,7 +31,7 @@
   "provenance": {},
   "status": "complete",
   "valid": false,
-  "superseded_by": "20261106T053407-587a3e",
-  "notes": "Superseded by 20261106T053407-587a3e: Re-run on 6 Nov 2026 with the clone at its pin and its past path in the car's frame (#143), and scored against the ground truth in the car's frame (issue #141); this row was shown its past path and scored in the camera's frame, and did not record its commit.",
+  "superseded_by": "drivejepa/20261106T192049-391e2d",
+  "notes": "Superseded by 20261106T053407-587a3e: Re-run on 6 Nov 2026 with the clone at its pin and its past path in the car's frame (#143), and scored against the ground truth in the car's frame (issue #141); this row was shown its past path and scored in the camera's frame, and did not record its commit. Superseded by drivejepa/20261106T192049-391e2d: The row it pointed at, 20261106T053407-587a3e, is retired too: Drive-JEPA's comma2k19 row is now the perception-based model, so this one points at that run.",
   "ingested_from": ""
 }

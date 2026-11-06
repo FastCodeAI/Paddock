@@ -149,12 +149,14 @@ def comfort(xy, dt: float) -> dict[str, float]:
     sample whose plan was too short, not finite, or too coarse to resample
     contributes NaN, and an aggregate over NaN drops the sample rather than
     counting it as a failure -- deliberately, because "not measurable" is not
-    "uncomfortable". On the recorded comma2k19 runs that is `n = 9148,
-    n_missing = 1017` for constant_velocity against `n = 10165, n_missing = 0`
-    for alpamayo15, openpilot, qwendrive and drivejepa_free, and `10161` for
-    visionpilot. So the column reads "of the plans this model made that could
-    be judged, this fraction were comfortable" -- fine to compare as a rate,
-    not as a count, and never to subtract.
+    "uncomfortable". On the recorded comma2k19 runs the acceleration and jerk
+    flags are judged on all 10,165 samples for every model, but the yaw-rate and
+    lateral-acceleration ones -- which need two steps in a row of at least
+    `MIN_HEADING_STEP_M` to have a heading to difference -- and so
+    `comfort_within_bounds`, on 9072 (METEOR) to 10150 (VisionPilot). So the
+    column reads "of the plans this model made that could be judged, this
+    fraction were comfortable" -- fine to compare as a rate, not as a count,
+    and never to subtract.
 
     `metrics.json` carries `n` and `n_missing` for every metric, so the
     denominator is on the record; it is the *rendered* leaderboard column that

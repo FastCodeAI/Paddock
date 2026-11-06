@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import types
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -16,7 +17,7 @@ from paddock.adapters.models.drivejepa.policy import (
     POLICY,
     relative_pose,
 )
-from paddock.policy.protocol import Command, Observation, Policy
+from paddock.policy.protocol import CANBUS_ACCEL, CANBUS_VELOCITY, Command, Observation, Policy
 
 
 def test_policy_imports_without_navsim_installed() -> None:
@@ -280,6 +281,162 @@ def test_openscene_crops_every_camera_onto_the_openscene_pinhole(devkit_crop, mo
     np.testing.assert_array_equal(intrinsics["CAM_FRONT"], devkit_crop.target_intrinsics())
     assert out[560, 960].min() == 255, "the principal point moved"
     assert out[560, 960 + 60].max() == 0 and out[560 - 60, 960].max() == 0, "the marker grew"
+
+
+# --- a source with one camera: comma2k19 ---------------------------------------
+
+#: comma2k19's road camera, the EON: 1164x874 at f = 910 px, looking along ego x.
+EON_K = np.array([[910.0, 0.0, 582.0], [0.0, 910.0, 437.0], [0.0, 0.0, 1.0]])
+EON2EGO = np.array(
+    [[0.0, 0.0, 1.0, 0.0], [-1.0, 0.0, 0.0, 0.0], [0.0, -1.0, 0.0, 1.22], [0.0, 0.0, 0.0, 1.0]]
+)
+BLANK_SLOTS = ("cam_l0", "cam_r0", "cam_b0")
+
+
+@pytest.fixture
+def navsim_and_devkit(monkeypatch):
+    """`navsim_dataclasses` plus `Lidar`, so the devkit crop imports too."""
+    stub = types.ModuleType("navsim.common.dataclasses")
+    for name in ("AgentInput", "Camera", "Cameras", "EgoStatus", "Lidar"):
+        setattr(stub, name, type(name, (), {"__init__": lambda self, **kw: self.__dict__.update(kw)}))
+    for name, module in (
+        ("navsim", types.ModuleType("navsim")),
+        ("navsim.common", types.ModuleType("navsim.common")),
+        ("navsim.common.dataclasses", stub),
+    ):
+        monkeypatch.setitem(sys.modules, name, module)
+    adapter = "paddock.adapters.models.drivejepa.kitscenes_adapter"
+    monkeypatch.delitem(sys.modules, adapter, raising=False)
+    yield stub
+    sys.modules.pop(adapter, None)
+
+
+def _road_camera_observation(
+    t_s: float, frame: Path, speed: float = 25.0, accel: float = 0.0, **fields
+) -> Observation:
+    """What comma2k19 sends: the road camera as a staged frame, its calibration,
+    and nothing at all for the other cameras."""
+    canbus = np.zeros(18)
+    canbus[CANBUS_VELOCITY], canbus[CANBUS_ACCEL] = speed, accel
+    return Observation(
+        **{
+            "images": {},
+            "image_paths": {"CAM_FRONT": str(frame)},
+            "ego2world": np.eye(4),
+            "canbus": canbus,
+            "timestamp_us": int(round(t_s * 1e6)),
+            "command": Command.STRAIGHT,
+            "camera2image": {"CAM_FRONT": EON_K},
+            "camera2ego": {"CAM_FRONT": EON2EGO},
+            **fields,
+        }
+    )
+
+
+@pytest.fixture
+def road_frame(tmp_path: Path) -> Path:
+    """A staged road-camera frame, never black, so a copy of it would show."""
+    path = tmp_path / "road.npy"
+    np.save(path, np.full((874, 1164, 3), 77, dtype=np.uint8))
+    return path
+
+
+@pytest.mark.parametrize("geometry", ["native", "openscene"])
+def test_a_camera_the_source_does_not_have_gets_a_black_frame_shaped_like_the_front(
+    navsim_and_devkit, monkeypatch, road_frame: Path, geometry: str
+) -> None:
+    """The model keeps only the front camera, but its loader skips an empty slot
+    (which would move the front off index 1) and scales projections by the back
+    slot's image size. So each missing slot is a black frame of the front's
+    size, with the front's calibration -- never the front's pixels."""
+    monkeypatch.setenv("DRIVEJEPA_IMAGE_GEOMETRY", geometry)
+    policy = POLICY(checkpoint="/x.ckpt")
+    for t_s in (0.0, 0.5, 1.0, 1.5):
+        policy.observe(_road_camera_observation(t_s, road_frame))
+
+    for cameras in policy._agent_input().cameras:
+        front = cameras.cam_f0
+        assert front.image.min() == 77, "the front slot is the road camera"
+        for slot in BLANK_SLOTS:
+            camera = getattr(cameras, slot)
+            assert camera.image.shape == front.image.shape, f"{slot} is not the front's size"
+            assert not camera.image.any(), f"{slot} is not black"
+            np.testing.assert_array_equal(camera.intrinsics, front.intrinsics)
+            np.testing.assert_array_equal(camera.sensor2lidar_rotation, front.sensor2lidar_rotation)
+            np.testing.assert_array_equal(camera.sensor2lidar_translation, front.sensor2lidar_translation)
+    assert policy.diagnostics()["blank_views"] == ["CAM_BACK", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT"]
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        pytest.param(
+            {"camera2image": {"CAM_FRONT": EON_K, "CAM_FRONT_LEFT": EON_K}}, id="calibrated-but-no-image"
+        ),
+        pytest.param({"camera2image": {}, "camera2ego": {}}, id="front-not-described"),
+        pytest.param(
+            {"camera2ego": {"CAM_FRONT": EON2EGO, "CAM_BACK": EON2EGO}}, id="back-placed-but-no-image"
+        ),
+        pytest.param({"image_paths": {}}, id="front-has-no-image"),
+    ],
+)
+def test_a_camera_that_went_missing_is_still_refused(navsim_dataclasses, road_frame: Path, fields) -> None:
+    """Only a camera the source plainly does not have is filled. One that is
+    described but sent no image, or a source that describes nothing, is a camera
+    that went missing, and the sample fails as it always did."""
+    policy = POLICY(checkpoint="/x.ckpt")
+    for t_s in (0.0, 0.5, 1.0, 1.5):
+        policy.observe(_road_camera_observation(t_s, road_frame, **fields))
+    with pytest.raises(KeyError):
+        policy._agent_input()
+    assert policy.diagnostics()["blank_views"] == []
+
+
+def test_a_source_with_all_four_cameras_fills_nothing() -> None:
+    policy = POLICY(checkpoint="/x.ckpt")
+    opened: list = []
+    for tick in range(16):
+        policy.observe(_counting_observation(tick / 10, opened))
+    policy._decode(policy._select_history())
+    assert len(opened) == 4 * len(CAMERA_MAP)
+    assert policy.diagnostics()["blank_views"] == []
+
+
+def test_acceleration_is_the_slope_of_the_speed_when_the_source_sends_none(
+    navsim_dataclasses, road_frame: Path
+) -> None:
+    """comma2k19 leaves the channel at zero. Passed through, that zero would tell
+    the model the car holds its speed; the slope of the recorded speed says what
+    it did."""
+    policy = POLICY(checkpoint="/x.ckpt")
+    for tick in range(31):  # 1.5 s at 20 Hz, speeding up at 1.2 m/s^2
+        policy.observe(_road_camera_observation(tick / 20, road_frame, speed=20.0 + 1.2 * tick / 20))
+
+    statuses = policy._agent_input().ego_statuses
+    for status in statuses[1:]:
+        np.testing.assert_allclose(status.ego_acceleration, [1.2, 0.0], atol=1e-5)
+    assert statuses[0].ego_acceleration[0] == 0.0, "one recorded frame has no slope"
+    assert policy.diagnostics()["accel_source"] == "speed_slope"
+
+
+def test_a_recorded_acceleration_is_used_for_the_whole_episode(navsim_dataclasses, road_frame: Path) -> None:
+    """Once the source has filled the channel, its value is the acceleration, even
+    where it is zero -- the same stream must not switch sources as it goes. A
+    reset starts the next episode undecided."""
+    policy = POLICY(checkpoint="/x.ckpt")
+    policy.observe(_road_camera_observation(0.0, road_frame, accel=-0.7))
+    for tick in range(1, 31):
+        policy.observe(_road_camera_observation(tick / 20, road_frame, speed=20.0 + tick / 20))
+
+    statuses = policy._agent_input().ego_statuses
+    assert statuses[0].ego_acceleration[0] == pytest.approx(-0.7)
+    assert statuses[-1].ego_acceleration[0] == 0.0, "the channel's own value, not the slope"
+    assert policy.diagnostics()["accel_source"] == "canbus"
+
+    policy.reset()
+    for tick in range(11):
+        policy.observe(_road_camera_observation(tick / 20, road_frame, speed=20.0 + tick / 20))
+    assert policy.diagnostics()["accel_source"] == "speed_slope"
 
 
 class _Tensor:

@@ -33,10 +33,16 @@ runtime:
     # Uncropped, a wider camera reaches the model squeezed: on KITScenes (87
     # degrees) objects arrive 0.65x as wide and 0.55x as tall as in training and
     # the bonnet fills the bottom of the frame, and ADE was 3.222 m against
-    # 2.521 m cropped (t -4.0, 223 keyframes). The model's own setting, so every
+    # 2.521 m cropped (t -4.0, 223 keyframes; October 2026, when the model got
+    # acceleration 0 on KITScenes -- it now gets the slope of the speed, so a
+    # re-run will not give exactly these). The model's own setting, so every
     # benchmark and every gate run gets it; a site that sets "native" is the
     # override and its runs are not valid.
     DRIVEJEPA_IMAGE_GEOMETRY: "openscene"
+    # A conda env also reads the user's ~/.local site-packages, ahead of its own.
+    # Off, so the node runs what setup.sh installed and not whatever that
+    # machine's home directory holds (it held fastapi, pydantic and uvicorn here).
+    PYTHONNOUSERSITE: "1"
 
 capabilities:
   cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT, CAM_BACK]
@@ -97,4 +103,8 @@ capabilities:
       split: navtrain
 # alpasim runs through the bridge's Drive-JEPA settings (alpasim.yaml beside this file):
 # its native AlpaSim driver's camera, 2 Hz replanning and inputs. See docs/models/drivejepa.md.
-benchmarks: [navsim, navsim_v1, kitscenes, neuroncap, bench2drive, nuscenes, nuplan, alpasim, hugsim]
+# comma2k19 sends one camera, the road-facing one. The other three slots get black
+# frames, which never reach the plan (the model keeps only the front camera), and the
+# acceleration it lacks comes from the recorded speed: policy.py, *Absent views* and
+# *Acceleration*.
+benchmarks: [navsim, navsim_v1, kitscenes, neuroncap, bench2drive, nuscenes, nuplan, alpasim, hugsim, comma2k19]

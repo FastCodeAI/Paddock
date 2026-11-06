@@ -366,13 +366,22 @@ def supersede(
     run_id: str = typer.Option(..., "--run-id", help="The older run, the one to stop ranking."),
     by: str = typer.Option(..., "--by", help="Run id of the later run that replaces it."),
     reason: str = typer.Option(..., "--reason", help="Why, in one sentence, for the record."),
+    by_model: str = typer.Option(
+        "",
+        "--by-model",
+        help="Model of the replacing run, when it is not --model's own (default: the same model).",
+    ),
 ) -> None:
-    """Mark an older run as replaced by a later one of the same model.
+    """Mark an older run as replaced by a later one.
 
     Two runs of one model on one benchmark are both valid as their runner left
     them, and the leaderboard has no way to pick. This is how the choice is
     recorded -- the alternative people reach for is editing `valid` in the file,
     which is the thing `results/` most needs nobody to do.
+
+    The later run is normally the same model's. `--by-model` names another
+    model's run on the same benchmark, for a row that moves to a different
+    registry entry of the model.
 
     Changes `valid`, `superseded_by` and `notes`. The measured numbers and the
     run's own identity are left exactly as produced, and `metrics.json` is not
@@ -383,11 +392,12 @@ def supersede(
     from paddock.results.store import supersede as do_supersede
 
     try:
-        path = do_supersede(bench, model, run_id, by=by, reason=reason)
+        path = do_supersede(bench, model, run_id, by=by, reason=reason, by_model=by_model)
     except SupersedeError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
-    typer.echo(f"{run_id} superseded by {by}; rewrote {path.relative_to(REPO_ROOT)}")
+    later = by if by_model in ("", model) else f"{by_model}/{by}"
+    typer.echo(f"{run_id} superseded by {later}; rewrote {path.relative_to(REPO_ROOT)}")
     typer.echo("Commit the change: results/ is tracked.")
 
 

@@ -137,13 +137,12 @@ before that sweep, not after.
 results for released checkpoints only; one we trained ourselves is kept, with
 its results, beside its training code.
 
-**Every Drive-JEPA row on this page is the perception-*based* v2 agent.** The
-comma2k19 board carries a second, separate registry entry —
-[`drivejepa_free`](drivejepa_free.md), the perception-free NAVSIM v1 agent —
-because comma2k19 supplies neither the four cameras nor the lidar extrinsics v2
-requires. Different checkpoint (`drive_jepa_perception_free_agent_vitl.ckpt`),
-different repo subtree, different inputs; the two are not comparable to each
-other and are deliberately not merged into one column here.
+**Every Drive-JEPA row on this page is the perception-*based* v2 agent**,
+comma2k19's included. Until November 2026 the comma2k19 cell came from
+Drive-JEPA's perception-free NAVSIM v1 agent, a separate registry entry with its
+own checkpoint, because the perception-based adapter then required a lidar
+mounting that comma2k19 does not have. That agent's rows stay in `results/`,
+retired; see [drivejepa.md](drivejepa.md#on-comma2k19).
 
 ### Drive-JEPA × nuplan — most of nuPlan mini is in its training logs
 
@@ -486,6 +485,8 @@ loads.
 
 ✧ The published architecture's encoder reads one front camera, at t and
 t − 0.5 s (`drive_jepa_features.py`). The perception-based agent paddock runs also
-has a BEV stage that reads `cam_b0`, `cam_f0`, `cam_l0` and `cam_r0` at the current
-frame (`bevformer/bev_feature_build.py`), so the adapter declares four. The paper's
-"one front camera" is the encoder alone.
+has a BEV stage whose loader takes `cam_b0`, `cam_f0`, `cam_l0` and `cam_r0` at the
+current frame (`bevformer/bev_feature_build.py`), so the adapter declares four. The
+model then keeps only the front camera's projection (`drive_jepa_model.py:50`), so
+the other three views' pixels never reach the plan, and the paper's "one front
+camera" holds for the whole model.
