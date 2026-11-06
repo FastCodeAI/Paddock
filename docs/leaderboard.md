@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
 92 runs across 9 benchmarks.
-53 run(s) excluded as invalid — shown at the end, never averaged in.
+54 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
@@ -73,7 +73,7 @@
 | autoe2e | 20261106T073744-1b4fe1 | 10165 | 1.350 | 0.826 | 1.371 | 2.396 | 6.000 | 0.734 | 0.977 |
 | visionpilot | 20261106T003749-c10a7f | 10165 | 3.592 | 1.372 | 4.010 | 7.415 | 4.000 | 0.964 | 2.126 |
 | drivejepa_free | 20261106T053407-587a3e | 10165 | 16.047 | 10.889 | 18.011 | 26.244 | 4.000 | 7.801 | 12.078 |
-| meteor | 20261030T001935-0b8d0b | 10165 | 30.075 | 16.626 | 35.702 | 51.334 | 3.000 | 11.787 | 21.545 |
+| meteor | 20261106T064120-226c00 | 10165 | 30.167 | 16.702 | 35.804 | 51.507 | 3.000 | 11.841 | 21.621 |
 
 ## hugsim
 
@@ -189,6 +189,7 @@
 - **neuroncap/visionpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **navsim/drivejepa/legacy-2026.08.08.02.26.44** — aggregate rows kept as context, not scored: average_all_frames=0.90673, pseudo_closed_loop=0.45337, average_expert_frames=0.90673. Source log reported 0.90488 over the same scenarios; paddock recomputes from per-sample scores. See the ingest module docstring. Superseded by 20260902T173156-7e208f: Covers 242 of the 12,146 scenarios, and came from the vendor's own agent, which reads the scorer's simulator while planning; the full run through paddock's proxy agent is the comparable score.
 - **hugsim/drivejepa/campaign-87d4f5097a85db3c-ce3603** — Released Drive-JEPA (NAVSIM v2 ViT-L checkpoint), driven 22 Oct 2026 in two lanes sharing one scenario queue. The node was the drivejepa adapter as of paddock ac7788f plus a per-call record of the 32 candidates and their scores, which does not change the plan; its camera placement goes through lidar2ego, which the bridge sends as the identity, so the cameras land where ac7788f puts them. At that commit the adapter fed cameras uncropped and picked on the plain score; main now crops to the OpenScene camera (#106) and turns momentum selection on (#95), so a re-run on main would differ. Only the front camera was rendered: the released model's forward reads only the front camera. DRIVEJEPA_IMAGE_GEOMETRY, DRIVEJEPA_MOMENTUM were supplied by the ingest config: the campaign recorded no model env, so this is the operator's statement of how the node was configured, not a reading from it. scenarios attempted and never scored: scene-0166-medium-01 (exit 1 after 60 steps: IndexError: index is out of bounds for dimension with size 0).
+- **comma2k19/meteor/20261030T001935-0b8d0b** — Superseded by 20261106T064120-226c00: Re-run on 6 Nov 2026 with the clone at its pinned dc193a81 and scored against the ground truth in the car's frame; this row came from a clone at 8567eb0 and was scored against a ground truth in the camera's frame. The plans are the same in both runs.
 - **navsim_v1/autoe2e/20261027T185517-5c7949** — no model process ran: 12146 plans replayed from navsim/autoe2e/20261009T055926-3ceb18 (that run: epdms 0.5002); the same plans, this benchmark's scorer Superseded by 20261104T210206-3022fb: this replay recorded 2 Hz OpenScene history and 1.5 s, but its plans were made at 10 Hz from nuPlan with 6.5 s; re-made with the right record, every score identical
 - **comma2k19/autoe2e/20261020T213543-417344** — Superseded by 20261106T073744-1b4fe1: Re-run on 6 Nov 2026 with its past path in the car's frame (#143) and scored against the ground truth in the car's frame (issue #141); this row was shown its past path and scored in the camera's frame.
 - **neuroncap/wajepa/20261015T234134-916e11** — 3 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes)

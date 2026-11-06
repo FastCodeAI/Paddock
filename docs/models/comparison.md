@@ -337,7 +337,7 @@ telephoto slot) and leaves six black with the calibration of METEOR's own rig,
 as its training drops a camera (`METEOR_FRONT_ONLY`). That rule was chosen on
 METEOR's own demo scene, where the front camera alone fed this way beats
 constant velocity (1.01 against 1.37; all eight cameras 0.65), and re-measured
-there through paddock's adapter. On comma2k19 its 30.075 ADE@3s is the bottom
+there through paddock's adapter. On comma2k19 its 30.167 ADE@3s is the bottom
 of the column: the plan stops about 17 m ahead at every speed above 15 m/s.
 An out-of-tree study of one comma2k19 segment traced that to perception, not
 to the planner or the adapter: depth on this camera's road reads 3.4x too far

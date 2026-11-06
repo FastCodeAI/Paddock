@@ -1,0 +1,97 @@
+{
+  "run_id": "20261106T064120-226c00",
+  "site": "hpcai-skodate",
+  "benchmark": "comma2k19",
+  "model": "meteor",
+  "mode": "open_loop",
+  "started_utc": "2026-11-06T06:41:20+00:00",
+  "duration_s": 3363.2,
+  "repo_sha": "dc193a81e9959de57b751e269127ae9b67e3f300",
+  "dataset": {
+    "name": "comma2k19",
+    "n_samples": 10165,
+    "sequences_sha256": "293a225a0b5cbaff",
+    "n_expected": 10165
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT",
+      "CAM_BACK",
+      "CAM_BACK_LEFT",
+      "CAM_BACK_RIGHT"
+    ],
+    "history_frames": 160,
+    "keyframes_per_segment": 5,
+    "eval_horizon_s": 3.0,
+    "interval_s": 0.5,
+    "gt_horizon_s": 10.0,
+    "input_hz": 20.0,
+    "calibration": "route-pooled, calibrationd formula on recorded pose",
+    "ground_truth_frame": "car (recorded future rotated by the route calibration)",
+    "stride": 1,
+    "history_span_s": 7.95,
+    "ego_history_frame": "car (window poses rotated by the route calibration)",
+    "declared_env": {
+      "METEOR_FRONT_ONLY": "narrow_refpose",
+      "METEOR_ONNX": "{weights}meteor_v157c3Z.onnx",
+      "METEOR_PROVIDERS": "cuda"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "METEOR",
+      "sha": "dc193a81e9959de57b751e269127ae9b67e3f300",
+      "pinned_sha": "dc193a81",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "ce5c42c6f0c666eb45f45c99b5833c966e450e4f",
+      "dirty": false
+    },
+    "policy": {
+      "onnx": "meteor_v157c3Z.onnx",
+      "providers": [
+        "CUDAExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "intra_op_threads": 4,
+      "horizon_s": 3.0,
+      "front_only": "narrow_refpose",
+      "last": {
+        "meteor_mode": 2,
+        "meteor_mode_logits": [
+          -1.0816785097122192,
+          -1.2073612213134766,
+          -0.2756086587905884
+        ],
+        "meteor_steer_rad": 0.027664201334118843,
+        "meteor_accel": -0.1929619461297989,
+        "meteor_brake_logit": -1.4102771282196045,
+        "meteor_native_horizon_s": 3.0,
+        "cameras_present": [
+          "CAM_FRONT_WIDE",
+          "CAM_FRONT_NARROW"
+        ],
+        "cameras_absent": [
+          "CAM_FRONT_LEFT",
+          "CAM_FRONT_RIGHT",
+          "CAM_BACK_WIDE",
+          "CAM_BACK_LEFT",
+          "CAM_BACK_RIGHT",
+          "CAM_BACK_NARROW"
+        ],
+        "absent_rule": "narrow_refpose",
+        "v0": 11.807192023976256
+      }
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "",
+  "ingested_from": ""
+}
