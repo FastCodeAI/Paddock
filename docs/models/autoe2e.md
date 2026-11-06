@@ -427,7 +427,7 @@ upstream's protocol gives 40, and AutoE2E scores better for it (0.865 against
 **comma2k19, 10,165 samples, valid** (`results/comma2k19/autoe2e/20261020T213543-417344`):
 **2.016** ADE@3s, from the road camera alone, the five views it does not have left
 out. With the ground truth rotated into the calibrated frame the plans are in
-([ROADMAP](../ROADMAP.md)), 1.358. Either way it trails constant velocity (1.639 / 1.137), as
+([ROADMAP](../ROADMAP.md)), 1.358. Either way it trails constant velocity (1.639 / 1.135), as
 an out-of-tree study of this checkpoint on comma2k19 also found.
 
 | horizon | ADE@1s | ADE@2s | ADE@3s | ADE@4s | ADE@5s | FDE@3s | median ADE@3s | miss@3s |
