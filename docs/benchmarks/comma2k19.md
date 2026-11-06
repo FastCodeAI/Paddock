@@ -87,8 +87,8 @@ here are always samples; `n` in a run record is samples too.
 comma2k19 has one camera, a road-facing phone, and several models expect more.
 The rule for every model is the same: a slot that means a forward view may get
 a view made from the road camera (a wider or narrower crop of it); a slot that
-means another direction gets nothing, which is black or masked out, depending on
-the model. A slot is never filled with the forward image at a bearing that camera
+means another direction gets nothing: black, masked out or left out, depending
+on the model. A slot is never filled with the forward image at a bearing that camera
 never had. This is a limitation of the dataset, and it is stated here so every
 row is read with it.
 
