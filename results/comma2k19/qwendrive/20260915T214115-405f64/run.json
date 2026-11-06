@@ -35,7 +35,7 @@
   "provenance": {},
   "status": "complete",
   "valid": false,
-  "superseded_by": "20260916T220846-971379",
-  "notes": "Superseded by 20260916T220846-971379: the adapter that produced it no longer exists, so no paddock run can reproduce 1.016; it emitted all 50 poses at waypoint_dt 0.1 and score() aligns the ground truth onto the prediction's grid, which is also why comfort read 1932 m/s**3 of quantiser jerk",
+  "superseded_by": "20261106T030530-7d9fd3",
+  "notes": "Superseded by 20260916T220846-971379: the adapter that produced it no longer exists, so no paddock run can reproduce 1.016; it emitted all 50 poses at waypoint_dt 0.1 and score() aligns the ground truth onto the prediction's grid, which is also why comfort read 1932 m/s**3 of quantiser jerk Superseded by 20261106T030530-7d9fd3: the row it pointed at, 20260916T220846-971379, is itself superseded by the re-run of 6 Nov 2026 (issue #141), so this one points at the ranked row.",
   "ingested_from": ""
 }

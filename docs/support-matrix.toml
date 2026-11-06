@@ -171,7 +171,7 @@ alpasim = { run = "alpasim/meteor/legacy-meteor_011_published_30scenes" }
 [cells.qwendrive]
 nuscenes = { run = "nuscenes/qwendrive/20260915T190350-47479e", marks = "A" }  # VLM trained on nuScenes train
 kitscenes = { run = "kitscenes/qwendrive/20260914T220841-5a91fd" }
-comma2k19 = { run = "comma2k19/qwendrive/20260916T220846-971379" }
+comma2k19 = { run = "comma2k19/qwendrive/20261106T030530-7d9fd3" }
 navsim = { run = "navsim/qwendrive/20260914T221802-80457c", marks = "A" }
 navsim_v1 = { run = "navsim_v1/qwendrive/20261104T205054-df25d5", marks = "A" }
 bench2drive = { run = "bench2drive/qwendrive/native50-2hz-084418258d833a9f-9b2bc9", note = "2 Hz" }
