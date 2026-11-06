@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from paddock.registry import Registry
-from paddock.results.store import RESULTS_ROOT, MetricsRecord, RunRecord
+from paddock.results.store import RESULTS_ROOT, MetricsRecord, RunRecord, superseding_run
 
 RUNS = sorted(RESULTS_ROOT.rglob("run.json"))
 
@@ -55,10 +55,11 @@ def test_each_run_is_filed_consistently_and_explains_itself(run_json: Path) -> N
     if not run.valid:
         assert run.notes.strip(), f"{rel}: valid=false with no note saying why"
     if run.superseded_by:
-        # The replacement has to exist, under the same model, and be the one a
-        # reader would actually land on. A chain ending nowhere leaves the model
-        # with no ranked row, which is worse than the two rows it was fixing.
-        later = RESULTS_ROOT / benchmark / model / run.superseded_by / "run.json"
+        # The replacement has to exist -- the same model's run, or the
+        # `<model>/<run id>` it names -- and be the one a reader would actually
+        # land on. A chain ending nowhere leaves the model with no ranked row,
+        # which is worse than the two rows it was fixing.
+        later = superseding_run(benchmark, model, run.superseded_by) / "run.json"
         assert later.exists(), f"{rel}: superseded by {run.superseded_by}, which is not in results/"
         replacement = RunRecord(**json.loads(later.read_text()))
         assert replacement.valid, f"{rel}: superseded by {run.superseded_by}, which is itself invalid"
@@ -107,12 +108,12 @@ def test_a_replay_names_a_source_run_that_is_in_the_store(run_json: Path) -> Non
 # --- supersede: the verb that exists so nobody edits `valid` by hand ---------
 
 
-def _store(tmp_path: Path, run_id: str, **fields) -> Path:
+def _store(tmp_path: Path, run_id: str, model: str = "openpilot", **fields) -> Path:
     from paddock.results.store import RunRecord as R
 
-    directory = tmp_path / "comma2k19" / "openpilot" / run_id
+    directory = tmp_path / "comma2k19" / model / run_id
     directory.mkdir(parents=True)
-    record = R(run_id=run_id, site="test", benchmark="comma2k19", model="openpilot", **fields)
+    record = R(run_id=run_id, site="test", benchmark="comma2k19", model=model, **fields)
     (directory / "run.json").write_text(json.dumps(record.to_json(), indent=2) + "\n")
     return directory / "run.json"
 
@@ -163,6 +164,81 @@ def test_supersede_refuses_the_edits_that_leave_no_ranked_row(tmp_path: Path) ->
     with pytest.raises(SupersedeError, match="point at that one instead"):
         # b is retired, so pointing a at it would retire every row there is.
         supersede(*args, "a-run", by="b-run", reason="circular", root=tmp_path)
+
+
+def test_supersede_can_point_a_row_at_another_models_run(tmp_path: Path) -> None:
+    """A benchmark's row for one model can move to another registry entry of it,
+    as Drive-JEPA's comma2k19 row did from its perception-free agent to the
+    perception-based model. The pointer names the model, and resolves."""
+    from paddock.results.store import supersede
+
+    old = _store(tmp_path, "free-run", model="drivejepa_free", notes="ran clean.")
+    new = _store(tmp_path, "based-run", model="drivejepa")
+
+    supersede(
+        "comma2k19",
+        "drivejepa_free",
+        "free-run",
+        by="based-run",
+        by_model="drivejepa",
+        reason="the row is now the model every other benchmark runs",
+        root=tmp_path,
+    )
+
+    after = RunRecord(**json.loads(old.read_text()))
+    assert after.valid is False
+    assert after.superseded_by == "drivejepa/based-run"
+    assert "Superseded by drivejepa/based-run: the row is now" in after.notes
+    resolved = superseding_run("comma2k19", "drivejepa_free", after.superseded_by, root=tmp_path)
+    assert resolved / "run.json" == new
+    # A same-model pointer keeps the bare run id, so every existing record still reads.
+    same_model = superseding_run("comma2k19", "openpilot", "b-run", root=tmp_path)
+    assert same_model == tmp_path / "comma2k19" / "openpilot" / "b-run"
+
+
+def test_supersede_across_models_refuses_what_it_refuses_within_one(tmp_path: Path) -> None:
+    from paddock.results.store import SupersedeError, supersede
+
+    _store(tmp_path, "free-run", model="drivejepa_free")
+    _store(tmp_path, "free-older", model="drivejepa_free")
+    _store(tmp_path, "bad-run", model="drivejepa", valid=False, notes="a subset")
+    _store(tmp_path, "free-run", model="drivejepa")  # the same id under another model is another run
+    args = ("comma2k19", "drivejepa_free", "free-older")
+
+    with pytest.raises(SupersedeError, match="no such run to supersede it"):
+        supersede(*args, by="missing", by_model="drivejepa", reason="x", root=tmp_path)
+    with pytest.raises(SupersedeError, match="marked invalid"):
+        supersede(*args, by="bad-run", by_model="drivejepa", reason="x", root=tmp_path)
+    with pytest.raises(SupersedeError, match="neither contains '/'"):
+        supersede(*args, by="drivejepa/free-run", reason="x", root=tmp_path)
+    with pytest.raises(SupersedeError, match="neither contains '/'"):
+        supersede(*args, by="free-run", by_model="drivejepa/x", reason="x", root=tmp_path)
+    with pytest.raises(SupersedeError, match="itself"):
+        supersede(*args, by="free-older", by_model="drivejepa_free", reason="x", root=tmp_path)
+
+    # The same run id under another model is another run, not itself.
+    supersede(*args, by="free-run", by_model="drivejepa", reason="moved", root=tmp_path)
+
+
+def test_an_older_row_is_re_pointed_when_its_replacement_moves_to_another_model(tmp_path: Path) -> None:
+    """Retiring the row an older record points at would end that record's chain
+    at an unranked row, which the store check refuses. Superseding it again
+    points it at the current row, and its first note stays."""
+    from paddock.results.store import supersede
+
+    oldest = _store(tmp_path, "free-older", model="drivejepa_free")
+    _store(tmp_path, "free-run", model="drivejepa_free")
+    _store(tmp_path, "based-run", model="drivejepa")
+    args = ("comma2k19", "drivejepa_free")
+
+    supersede(*args, "free-older", by="free-run", reason="a re-run", root=tmp_path)
+    supersede(*args, "free-run", by="based-run", by_model="drivejepa", reason="moved", root=tmp_path)
+    supersede(*args, "free-older", by="based-run", by_model="drivejepa", reason="moved too", root=tmp_path)
+
+    after = RunRecord(**json.loads(oldest.read_text()))
+    assert after.superseded_by == "drivejepa/based-run"
+    assert after.notes.startswith("Superseded by free-run: a re-run")
+    assert after.notes.endswith("Superseded by drivejepa/based-run: moved too")
 
 
 def test_supersede_output_is_what_the_store_would_have_written(tmp_path: Path) -> None:
