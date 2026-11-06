@@ -556,14 +556,41 @@ def test_the_view_mode_comes_from_the_environment(monkeypatch) -> None:
 
 
 def test_a_monocular_source_records_without_a_missing_camera_error() -> None:
-    """The same observation that `ring` refuses, `replicate` accepts. Both are
-    right: the refusal is what stops a ring model reading a third of its input
-    and calling the result a number."""
+    """A source with a road camera and nothing else. `replicate` records the
+    front alone; `ring` records the front and marks the two sides as cameras the
+    source does not have, which is what leaves their slots black."""
     p = _policy(views="replicate")
     p._record(_mono(0))
     assert p.frames[0] == {"CAM_FRONT": "/frames/CAM_FRONT/0.jpg"}
+    ring = _policy(views="ring")
+    ring._record(_mono(0))
+    assert ring.frames[0] == {
+        "CAM_FRONT": "/frames/CAM_FRONT/0.jpg",
+        "CAM_FRONT_LEFT": None,
+        "CAM_FRONT_RIGHT": None,
+    }
+    assert ring.blank_views == {"CAM_FRONT_LEFT", "CAM_FRONT_RIGHT"}
+
+
+def test_a_camera_that_went_missing_is_still_refused() -> None:
+    """Black is for a camera the source does not have, never for one it lost.
+
+    The forward camera is always required. And a source that sends no
+    calibrations cannot say a side camera is absent, so a missing image there
+    is a camera that went missing, as is an image missing beside its
+    calibration (`test_a_missing_camera_is_a_clear_error`).
+    """
+    no_front = _mono(0)
+    no_front.image_paths.pop("CAM_FRONT")
+    with pytest.raises(KeyError, match="CAM_FRONT"):
+        _policy(views="ring")._record(no_front)
+
+    undescribed = make_observation(0)
+    undescribed.camera2image.clear()
+    undescribed.camera2ego.clear()
+    undescribed.image_paths.pop("CAM_FRONT_LEFT")
     with pytest.raises(KeyError, match="CAM_FRONT_LEFT"):
-        _policy(views="ring")._record(_mono(0))
+        _policy(views="ring")._record(undescribed)
 
 
 def test_crop_boxes_are_overlapping_thirds_of_one_frame() -> None:
@@ -661,6 +688,38 @@ def test_a_ring_source_still_gets_one_real_camera_per_slot(qwen_drive) -> None:
         "<FRONT LEFT VIEW>": "/frames/CAM_FRONT_LEFT/0.jpg",
         "<FRONT RIGHT VIEW>": "/frames/CAM_FRONT_RIGHT/0.jpg",
     }
+
+
+def test_ring_leaves_a_side_camera_the_source_does_not_have_black(qwen_drive, tmp_path) -> None:
+    """comma2k19 under the default mode: the road camera in the forward slot and
+    nothing invented for the sides. Black at the forward frame's size, so a
+    side slot costs the model as many tokens as a real one; and deferred, like
+    every other frame, so building the scene opens nothing."""
+    from PIL import Image
+
+    path = tmp_path / "front.png"
+    Image.new("RGB", (1164, 874), (10, 20, 30)).save(path)
+    obs = _mono(0)
+    obs.image_paths["CAM_FRONT"] = str(path)
+
+    scene = _scene_of(_policy(views="ring"), obs)
+    assert scene.views["<FRONT VIEW>"][-1].image == str(path), "the real camera, as a path"
+    for view in ("<FRONT LEFT VIEW>", "<FRONT RIGHT VIEW>"):
+        frames = scene.views[view]
+        assert all(callable(frame.image) for frame in frames), "nothing opened yet"
+        image = frames[-1].image()
+        assert image.size == (1164, 874)
+        assert image.getbbox() is None, "every pixel black"
+
+
+def test_diagnostics_name_the_slots_left_black() -> None:
+    """So a run's record says which of its views were real."""
+    p = _loaded()
+    p.infer(_mono(0))
+    assert p.diagnostics()["blank_views"] == ["CAM_FRONT_LEFT", "CAM_FRONT_RIGHT"]
+    full = _loaded()
+    full.infer(make_observation(0))
+    assert full.diagnostics()["blank_views"] == []
 
 
 def test_diagnostics_name_the_view_mode_and_the_cameras_it_implies() -> None:
