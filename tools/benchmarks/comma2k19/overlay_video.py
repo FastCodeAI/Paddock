@@ -45,15 +45,19 @@ def first_segment() -> Path:
 
 
 def parse_args(argv=None) -> argparse.Namespace:
-    ap = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
-    )
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--segment", default=None, help="segment directory; default the first configured one")
-    ap.add_argument("--out", default=None, help="output .mp4; default <runs>/comma2k19/_segments/<route>_<seg>.mp4")
+    ap.add_argument(
+        "--out", default=None, help="output .mp4; default <runs>/comma2k19/_segments/<route>_<seg>.mp4"
+    )
     ap.add_argument("--max-frames", type=int, default=0, help="0 = the whole segment")
     ap.add_argument("--path-horizon-s", type=float, default=OV.PATH_HORIZON_S, help="how far ahead to draw")
-    ap.add_argument("--path-skip-s", type=float, default=OV.PATH_SKIP_S, help="skip the near field, hidden by the hood")
-    ap.add_argument("--radar-window-s", type=float, default=OV.RADAR_WINDOW_S, help="radar rows kept per frame")
+    ap.add_argument(
+        "--path-skip-s", type=float, default=OV.PATH_SKIP_S, help="skip the near field, hidden by the hood"
+    )
+    ap.add_argument(
+        "--radar-window-s", type=float, default=OV.RADAR_WINDOW_S, help="radar rows kept per frame"
+    )
     ap.add_argument("--no-path", action="store_true")
     ap.add_argument("--no-radar", action="store_true")
     ap.add_argument("--no-hud", action="store_true")

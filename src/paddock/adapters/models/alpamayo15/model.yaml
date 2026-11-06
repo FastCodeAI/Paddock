@@ -60,6 +60,12 @@ capabilities:
   # (load_physical_aiavdataset.py in the vendor repo). A benchmark holding
   # 10 Hz data should feed that rather than the 0.5 s fallback above.
   native_input_hz: 10.0
+  # How often it plans: once per frame of that 0.1 s grid, so a closed-loop benchmark that
+  # steps faster (Bench2Drive's 20 Hz) asks once every 0.1 s and follows the last plan in
+  # between. Without it Bench2Drive asked every tick, and its 10 Hz cell needed the host's
+  # PADDOCK_INFER_HZ, which a run no longer ranks with. HUGSIM steps at 4 Hz, so it still
+  # asks every step; neither AlpaSim nor neuroNCAP reads it.
+  planning_hz: 10.0
   history_s: 1.5
 
   # -- model card (docs/models/comparison.md) --

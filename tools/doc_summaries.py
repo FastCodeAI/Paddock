@@ -78,8 +78,14 @@ def benchmark_table(bench: BenchmarkSpec, registry: Registry) -> str:
             ("Loop", bench.mode.replace("_", " ")),
             ("Dataset", f"`{bench.dataset}`" if bench.dataset else "rendered by the simulator"),
             ("Primary metric", f"`{bench.primary_metric}`"),
-            ("Adapter", f"[`adapters/benchmarks/{bench.name}/`](../../src/paddock/adapters/benchmarks/{bench.name}/)"),
-            ("Models paddock can run on it", ", ".join(f"[{m}](../models/{m}.md)" for m in models) or "none yet"),
+            (
+                "Adapter",
+                f"[`adapters/benchmarks/{bench.name}/`](../../src/paddock/adapters/benchmarks/{bench.name}/)",
+            ),
+            (
+                "Models paddock can run on it",
+                ", ".join(f"[{m}](../models/{m}.md)" for m in models) or "none yet",
+            ),
         ]
     )
 
@@ -102,7 +108,9 @@ def expected(registry: Registry) -> dict[Path, str]:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--check", action="store_true", help="exit 1 if a page is missing or stale; write nothing")
+    ap.add_argument(
+        "--check", action="store_true", help="exit 1 if a page is missing or stale; write nothing"
+    )
     args = ap.parse_args(argv)
     problems = []
     for path, table in expected(Registry.load()).items():

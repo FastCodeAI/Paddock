@@ -197,7 +197,9 @@ class Builder:
         self.features = args.features
         # Spawned, not forked: a forked worker inherits the server's listening socket and holds
         # the port after the server is gone, so a restart fails with "address already in use".
-        self.pool = ProcessPoolExecutor(max_workers=args.jobs, mp_context=multiprocessing.get_context("spawn"))
+        self.pool = ProcessPoolExecutor(
+            max_workers=args.jobs, mp_context=multiprocessing.get_context("spawn")
+        )
         self.pending: dict[str, Future] = {}
         self.errors: dict[str, str] = {}
         self.lock = threading.Lock()
@@ -247,7 +249,9 @@ class Builder:
         asked = []
         for att in runs.attempts(self.runs):
             if att.route_id == route_id and att.running:
-                (att.path / STOP_REQUEST).write_text(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) + "\n")
+                (att.path / STOP_REQUEST).write_text(
+                    time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) + "\n"
+                )
                 asked.append(att.run_id)
         return asked
 

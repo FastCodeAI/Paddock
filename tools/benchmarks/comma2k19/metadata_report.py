@@ -137,7 +137,11 @@ def _vocabulary(found: INV.Survey) -> list[str]:
         table(
             ["Term", "Meaning", "Count here"],
             [
-                ["`chunk`", "Download unit, ~200 min of driving (`Chunk_1` ... `Chunk_10`)", len(found.chunks)],
+                [
+                    "`chunk`",
+                    "Download unit, ~200 min of driving (`Chunk_1` ... `Chunk_10`)",
+                    len(found.chunks),
+                ],
                 ["`route`", "One drive, a directory named `dongle_id|start_time`", found.n_routes],
                 ["`dongle_id`", "16-hex id of the comma EON device; one per car", len(DONGLE_CARS)],
                 ["`segment`", "One minute of a route, a numbered directory", found.n_segments],
@@ -292,9 +296,16 @@ def _pose(deep: list[dict]) -> list[str]:
     for d in deep:
         for key, info in d.get("arrays", {}).items():
             if key.startswith("global_pose/"):
-                shapes.setdefault(key, set()).add(f"(n, {info['shape'][1]})" if len(info["shape"]) > 1 else "(n,)")
+                shapes.setdefault(key, set()).add(
+                    f"(n, {info['shape'][1]})" if len(info["shape"]) > 1 else "(n,)"
+                )
     rows = [
-        [f"`{key}`", INV.POSE_SPEC[key][0], ", ".join(sorted(shapes.get(key, {"absent"}))), INV.POSE_SPEC[key][1]]
+        [
+            f"`{key}`",
+            INV.POSE_SPEC[key][0],
+            ", ".join(sorted(shapes.get(key, {"absent"}))),
+            INV.POSE_SPEC[key][1],
+        ]
         for key in INV.POSE_SPEC
     ]
     return [
@@ -339,11 +350,11 @@ def _logs(deep: list[dict]) -> list[str]:
         for key, (name, layout, unit) in INV.LOG_SPEC.items():
             if f"/{group}/" not in key:
                 continue
-            seen = sorted(shapes.get(key, set())) or (["(no value array)"] if "raw_can" in key else ["absent"])
-            hz = rates.get(key, [])
-            rows.append(
-                [f"`{name}`", layout, unit, ", ".join(seen), f"{np.mean(hz):.1f}" if hz else "n/a"]
+            seen = sorted(shapes.get(key, set())) or (
+                ["(no value array)"] if "raw_can" in key else ["absent"]
             )
+            hz = rates.get(key, [])
+            rows.append([f"`{name}`", layout, unit, ", ".join(seen), f"{np.mean(hz):.1f}" if hz else "n/a"])
         if rows:
             out += [f"### 8.{['IMU', 'CAN', 'GNSS'].index(group) + 1} {group}", "",
                     table(["Signal", "Columns *(from README)*", "Unit", "Shape", "Hz"], rows), ""]  # fmt: skip

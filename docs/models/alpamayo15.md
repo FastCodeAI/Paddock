@@ -289,6 +289,11 @@ Wall-clock ~2 h for the full run, of which only 34 min was GPU; the rest is down
 * **History.** Frames stamped no later than the previous one are dropped
   (KITScenes' clamped warm-up repeats frame 0). The chain-of-causation is read
   from `extra["cot"]`, kept in `diagnostics()` and logged every 100 calls.
+* **Planning rate.** `model.yaml` declares `planning_hz: 10.0`, the 0.1 s grid
+  its frames and poses are on, so Bench2Drive asks it once every 0.1 s and
+  follows the last plan in between (since November 2026). Before that it was
+  asked every 20 Hz tick unless the host set `PADDOCK_INFER_HZ`, which is how its
+  10 Hz Bench2Drive cell was driven.
 * **Behaviour worth knowing.** From standstill the model derives zero speed
   from its own pose history and plans near-zero motion until a sample commits;
   in CARLA that is 20+ s of waiting followed by a hard launch, and at junctions

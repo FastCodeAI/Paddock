@@ -602,7 +602,8 @@ def test_ranked_ranks_a_run_as_recorded_and_says_why(tmp_path: Path, monkeypatch
 def test_the_declared_rate_comes_from_the_registry() -> None:
     """planning_hz first; native_input_hz stands in for a model that declares no planning rate."""
     assert bench2drive._registered_native_hz("drivejepa") == (2.0, "planning_hz")
-    assert bench2drive._registered_native_hz("alpamayo15") == (10.0, "native_input_hz")
+    assert bench2drive._registered_native_hz("alpamayo15") == (10.0, "planning_hz")
+    assert bench2drive._registered_native_hz("qwendrive") == (10.0, "native_input_hz")
     assert bench2drive._registered_native_hz("no-such-model") is None
 
 
