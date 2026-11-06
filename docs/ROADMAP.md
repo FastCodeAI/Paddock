@@ -29,8 +29,12 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 - **OpenPilot's nuScenes run cannot be regenerated with tracked code.** It was
   made by four parallel workers outside the runner; a `--workers` path in the
   runner would fix that.
-- **`paddock setup --model` has not been run on a real model.** Its tests use a
-  local stand-in repository and a stand-in `setup.sh`.
+- **`paddock setup --model` is tested only with stand-ins.** It has built real
+  environments (OpenPilot and VisionPilot on 5 Nov 2026, Drive-JEPA on 6 Nov),
+  but its tests use a local stand-in repository and a stand-in `setup.sh`. So a
+  `setup.sh` that installs the wrong versions is found only when someone builds
+  it: Drive-JEPA's let its requirements replace the torch its mmcv was built for,
+  until 6 Nov.
 - **`--resume` does not check the model node.** It compares the run's config,
   not the code serving the model, so a resumed run can mix two versions of an
   adapter.

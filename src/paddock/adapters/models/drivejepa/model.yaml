@@ -37,6 +37,10 @@ runtime:
     # benchmark and every gate run gets it; a site that sets "native" is the
     # override and its runs are not valid.
     DRIVEJEPA_IMAGE_GEOMETRY: "openscene"
+    # A conda env also reads the user's ~/.local site-packages, ahead of its own.
+    # Off, so the node runs what setup.sh installed and not whatever that
+    # machine's home directory holds (it held fastapi, pydantic and uvicorn here).
+    PYTHONNOUSERSITE: "1"
 
 capabilities:
   cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT, CAM_BACK]
