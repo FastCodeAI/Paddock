@@ -883,8 +883,8 @@ polylines ordered left to right; AutoSteer emits a single fitted path centreline
 sampled per image row, and offsetting it by half a nominal lane to manufacture
 two boundaries would make `lane_width_m` report the assumption back as a
 measurement. Its lead head is the interesting comparison with supercombo's:
-three times worse at range (`lead_range_abs_err` 9.10 m against 3.04) and better
-at lateral placement (`lead_lateral_abs_err` 0.369 m against 0.595), which is
+three times worse at range (`lead_range_abs_err` 9.10 m against 3.03) and better
+at lateral placement (`lead_lateral_abs_err` 0.369 m against 0.592), which is
 what a detect-and-project stack against a regression head should look like.
 Neither publishes what the other lacks, so `speed_rel_err`, `yaw_rate_abs_err`
 and the sanity gates stay openpilot-only.
