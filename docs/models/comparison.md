@@ -218,8 +218,8 @@ having never seen a comma device; OpenPilot meets a route recorded by the
 hardware it ships on, in the domain its fleet drives, with the camera geometry
 it was trained against. Even under the most favourable reading — none of these
 2035 segments in training — it is the only model here being scored **in**
-distribution, and its 0.843 should be read as such rather than as a like-for-like
-win over models driven outside their rig and domain.
+distribution. Its 0.843 is third in that column, behind Qwen-Drive and Alpamayo
+1.5, which meet comma2k19 outside both their rig and their domain.
 
 `model.yaml` declares one dataset (`comma-fleet`) rather than two, because
 declaring `comma2k19` there would assert an overlap nobody has evidence for —
