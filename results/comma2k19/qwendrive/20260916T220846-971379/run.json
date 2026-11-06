@@ -35,8 +35,10 @@
     }
   },
   "hardware": {},
+  "provenance": {},
   "status": "complete",
-  "valid": true,
-  "notes": "",
+  "valid": false,
+  "superseded_by": "20261106T030530-7d9fd3",
+  "notes": "Superseded by 20261106T030530-7d9fd3: Re-run on 6 Nov 2026 with black side views (#146) and its past path in the car's frame (#143), and scored against the ground truth in the car's frame (issue #141); this row copied the road camera into the side views (QWENDRIVE_VIEWS=replicate) and was scored against a ground truth in the camera's frame.",
   "ingested_from": ""
 }

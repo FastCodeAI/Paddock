@@ -724,33 +724,37 @@ The full dataset, 10,165 samples, every row on the identical sample set
 scored only as far as it plans; `—` is where its own horizon ends, not a
 failure. Lower is better except `pdm_style_score`.
 
-**The PDMS-style column and every comfort number on this page were made with
-the rules from before 22 Oct 2026**, and that change altered two of them. Progress now follows
-NAVSIM's rule: a plan covering 2 m where the human drove 4 m scored 0.5 and now
-scores 1.0, because neither covers 5 m. And a step under 0.25 m per 0.5 s no
+**Outside the rows marked †, the PDMS-style column and every comfort number on
+this page were made with the rules from before 22 Oct 2026**, and that change
+altered two of them. Progress now follows NAVSIM's rule: a plan covering 2 m
+where the human drove 4 m scored 0.5 and now scores 1.0, because neither covers
+5 m. And a step under 0.25 m per 0.5 s no
 longer gets a heading, so a car slowing to a stop with 3 cm of wobble failed the
 yaw-rate bound and now passes. Affected: `pdm_ep`, `pdm_comfort`,
 `pdm_style_score`, `comfort_within_bounds`, and the yaw-rate and
 lateral-acceleration columns. ADE, FDE, miss rate and the longitudinal comfort
-columns are not. Scoring the runs again needs their per-sample plans, which are
-at the site that made them; until then these numbers are the old rules'.
+columns are not. The † rows were scored with the current rules; the others
+keep the old rules' numbers until their models are re-run.
 
-**Every row below was scored against a ground truth in the camera's frame,
-while the plans are in the car's.** The two differ by the mount rotation, about
-2° of yaw on the Civic, and every number below carries it. The scorer now
-rotates the ground truth by the route calibration, the same one `camera2ego`
-hands the model. Scored that way, the stored plans give ADE@3s 0.612 for
-qwendrive, 0.843 for openpilot, 0.867 for alpamayo15, 1.135 for constant
-velocity, 1.382 for autoe2e, 3.631 for visionpilot, 16.047 for drivejepa_free
-and 30.167 for meteor, which reorders the table. Each row is replaced, in its
-own PR, when its model is re-run ([ROADMAP](../ROADMAP.md)). Four of them can
-move further than that: Alpamayo 1.5, Qwen-Drive, AutoE2E and Drive-JEPA also
-read their own past path, which they were shown in the camera's frame too.
+**Rows marked † were re-run in November 2026 and scored against a ground truth
+in the car's frame. Every other row was scored against a ground truth in the
+camera's frame, while the plans are in the car's.** The two differ by the mount
+rotation, about 2° of yaw on the Civic, and every unmarked number below carries
+it. The scorer now rotates the ground truth by the route calibration, the same
+one `camera2ego` hands the model. Scored that way, the stored plans give ADE@3s
+0.612 for qwendrive, 0.843 for openpilot, 0.867 for alpamayo15, 1.135 for
+constant velocity, 1.382 for autoe2e, 3.631 for visionpilot, 16.047 for
+drivejepa_free and 30.167 for meteor, which reorders the table. Each row is
+replaced, in its own PR, when its model is re-run ([ROADMAP](../ROADMAP.md)).
+Four of them can move further than that: Alpamayo 1.5, Qwen-Drive, AutoE2E and
+Drive-JEPA also read their own past path, which they were shown in the camera's
+frame too. Until the last row is replaced, the paragraphs on this page that
+compare one model with another quote the figures from before the re-runs.
 
 | | horizon | ADE@1s | ADE@2s | **ADE@3s** | ADE@4s | ADE@5s | ADE@10s | FDE@3s | median ADE@3s | miss@3s | PDMS-style ↑ |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| alpamayo15 (`Alpamayo-1.5-10B`, 2 of 4 camera slots) | 4 s | 0.386 | 0.616 | **0.900** | 1.263 | — | — | 1.654 | 0.823 | — | — |
-| qwendrive (`Qwen-Drive-1.0-4B`, side slots replicated) | 5 s | 0.475 | 0.801 | 1.159 | 1.570 | 2.045 | — | 2.094 | 1.138 | 0.505 | 0.511 |
+| qwendrive (`Qwen-Drive-1.0-4B`, side slots black) † | 5 s | 0.154 | 0.326 | **0.589** | 0.946 | 1.411 | — | 1.316 | 0.498 | 0.195 | 0.779 |
+| alpamayo15 (`Alpamayo-1.5-10B`, 2 of 4 camera slots) | 4 s | 0.386 | 0.616 | 0.900 | 1.263 | — | — | 1.654 | 0.823 | — | — |
 | openpilot (`small`, split graph, `4df40d2c1`) ∗ | 10 s | 0.598 | 1.035 | 1.507 | 2.017 | 2.571 | 6.032 | 2.712 | 1.555 | 0.647 | 0.410 |
 | constant velocity (registered policy, 6 waypoints) | 3 s | 0.537 | 1.017 | 1.639 | — | — | — | 3.286 | 1.475 | 0.658 | 0.417 |
 | autoe2e (`kitscenes-epoch-5`, the road camera alone, five views left out) | 6 s | 1.160 | 1.593 | 2.016 | 2.507 | 3.185 | — | 3.084 | 2.068 | 0.775 | 0.364 |
@@ -790,13 +794,13 @@ the right. It beats constant velocity on 3.6 % of samples, all below 15 m/s.
 keeping because it is a property of the grid rather than of the model. It used
 to emit all 50 poses of its output at `waypoint_dt` 0.1; `metrics/comfort.py`
 differences jerk as `1/dt³`, so 4 cm of output quantisation became 1932 m/s³ of
-"jerk" — a number about the quantiser, not about the plan. The row above is the
-same model reporting the ten poses on the 0.5 s grid every other row uses, and
-its jerk is 11.45 m/s³. Nothing else in the row moved for that reason: the ADE
-columns changed because the grid an ADE averages over changed, which is the
-`score()` alignment described under [What is scored](#what-is-scored), not a change in what
-the model planned. The five models already at `dt = 0.5` are untouched
-throughout.
+"jerk" — a number about the quantiser, not about the plan. The model now reports
+the ten poses on the 0.5 s grid every other row uses, and the row above has a
+jerk of 11.50 m/s³. When it first moved to that grid, nothing else in its row
+moved for that reason: the ADE columns changed because the grid an ADE averages
+over changed, which is the `score()` alignment described under [What is
+scored](#what-is-scored), not a change in what the model planned. The five
+models already at `dt = 0.5` are untouched throughout.
 
 **The constant-velocity row stops at 3 s, and that is a change in producer, not
 in arithmetic.** The earlier record
@@ -1106,15 +1110,16 @@ any model here (0.609 m lateral error at matched arc length, against OpenPilot's
 1.155) but reach only ~67% as far as the car travelled, because 4 s of NAVSIM
 city driving saturates near 64 m while I-280 runs at 30 m/s. See
 [docs/models/drivejepa_free.md](../models/drivejepa_free.md) and the comma2k19
-table below. Every comma2k19 row there was also scored against a ground truth
-left in the camera's frame while the plans are in the car's. The scorer now puts
-both in the car's frame, and the stored plans scored that way change the order:
-Qwen-Drive 0.612, OpenPilot 0.843, Alpamayo 1.5 0.867, constant velocity 1.135,
-AutoE2E 1.382, METEOR 30.167. Each row is replaced when its model is re-run
-([ROADMAP](../ROADMAP.md)). **METEOR's 30.075 is a
-reach failure too, and a larger one**: the released graph, shown one phone
-camera in two of its eight slots, plans about 17 m ahead whatever the speed,
-where I-280 needs 55-92 m.
+table below. Every comma2k19 row there not marked † was also scored against a
+ground truth left in the camera's frame while the plans are in the car's. The
+scorer now puts both in the car's frame, and the stored plans scored that way
+change the order: Qwen-Drive 0.612, OpenPilot 0.843, Alpamayo 1.5 0.867,
+constant velocity 1.135, AutoE2E 1.382, METEOR 30.167. Each row is replaced
+when its model is re-run ([ROADMAP](../ROADMAP.md)); until the last one is,
+the comparisons in this note and under the table quote the figures from before
+the re-runs. **METEOR's 30.075 is a reach failure too, and a larger one**: the
+released graph, shown one phone camera in two of its eight slots, plans about
+17 m ahead whatever the speed, where I-280 needs 55-92 m.
 
 ⊗ **OpenPilot's comma2k19 row was not produced at the `repos.yaml` pin.** It
 comes from a clone at `4df40d2c1`, which ships the driving model as two graphs;
@@ -1142,8 +1147,8 @@ padded. Lower is better throughout.
 
 | Model | horizon | ADE@1s | ADE@2s | **ADE@3s** | ADE@4s | ADE@5s | ADE@10s | FDE@3s | median ADE@3s | PDMS-style ↑ ⁂ |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Alpamayo 1.5 | 4 s | **0.386** | **0.616** | **0.900** | **1.263** | — | — | **1.654** | **0.823** | — |
-| Qwen-Drive 1.0 | 5 s | 0.475 | 0.801 | 1.159 | 1.570 | **2.045** | — | 2.094 | 1.138 | 0.511 |
+| Qwen-Drive 1.0 † | 5 s | **0.154** | **0.326** | **0.589** | **0.946** | **1.411** | — | **1.316** | **0.498** | 0.779 |
+| Alpamayo 1.5 | 4 s | 0.386 | 0.616 | 0.900 | 1.263 | — | — | 1.654 | 0.823 | — |
 | OpenPilot ⊗ | 10 s | 0.598 | 1.035 | 1.507 | 2.017 | 2.571 | **6.032** | 2.712 | 1.555 | 0.410 |
 | Baseline (Constant Velocity) | 3 s | 0.537 | 1.017 | 1.639 | — | — | — | 3.286 | 1.475 | 0.417 |
 | AutoE2E | 6 s | 1.160 | 1.593 | 2.016 | 2.507 | 3.185 | — | 3.084 | 2.068 | 0.364 |
@@ -1233,8 +1238,8 @@ columns are `NaN` throughout — which is the point of one declared metric list
 rather than a per-model one. The baseline's comfort columns are all 1.0 by
 construction: a straight line at constant speed has no jerk.
 
-⁂ **PDMS-style** values here were made with the progress and comfort rules from
-before 22 Oct 2026 (see [Recorded results](#recorded-results)). It is NAVSIM v1's published composite,
+⁂ **PDMS-style** values in rows not marked † were made with the progress and
+comfort rules from before 22 Oct 2026 (see [Recorded results](#recorded-results)). It is NAVSIM v1's published composite,
 `NC × DAC × (5·TTC + 5·EP + 2·C) / 12`, evaluated over log-replay *proxies* —
 comma2k19 has no other-agent tracks and no map, so no-collision sees only the
 closest radar lead and drivable-area uses the human's own path as the corridor.
@@ -1251,7 +1256,7 @@ derivation and what it still cannot see.
 
 [OpenPilot](../../results/comma2k19/openpilot/20260916T051616-2a91ca/metrics.json)
 · [Alpamayo 1.5](../../results/comma2k19/alpamayo15/20260913T072437-b058c2/metrics.json)
-· [Qwen-Drive 1.0](../../results/comma2k19/qwendrive/20260916T220846-971379/metrics.json)
+· [Qwen-Drive 1.0](../../results/comma2k19/qwendrive/20261106T030530-7d9fd3/metrics.json)
 · [Drive-JEPA (perception-free)](../../results/comma2k19/drivejepa_free/20260916T003407-c504e5/metrics.json)
 · [VisionPilot](../../results/comma2k19/visionpilot/20260916T012719-03350c/metrics.json)
 · [METEOR](../../results/comma2k19/meteor/20261030T001935-0b8d0b/metrics.json)
