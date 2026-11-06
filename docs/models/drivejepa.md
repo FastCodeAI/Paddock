@@ -248,7 +248,10 @@ comma2k19 is a dashcam dataset: one road-facing camera, the car's speed and
 yaw rate, and no lidar, map or route. The node gets:
 
 - **The road camera in its front slot**, cropped onto the 64° OpenScene camera,
-  as on every other benchmark.
+  which `model.yaml` sets for every benchmark since 22 October 2026. The
+  Drive-JEPA rows paddock ran on other benchmarks were made before that,
+  uncropped (neuroNCAP's run record says `native`). On NAVSIM's own camera the
+  crop window is the whole image, so there it changes nothing.
 - **Black frames in the other three slots**, front-left, front-right and back.
   Each is the size of the front image and carries the front camera's
   calibration. The model keeps only the front camera (upstream
