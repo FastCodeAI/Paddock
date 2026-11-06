@@ -31,12 +31,13 @@ runtime:
     QWENDRIVE_MODE: "direct"
     QWENDRIVE_NUM_SAMPLES: "1"
     # One real camera per view slot: what the model was trained on, and what
-    # every benchmark here but comma2k19 supplies. A site whose source is
-    # monocular sets `replicate` (or the `crop` ablation) in its own
-    # [models.qwendrive.env] -- the choice belongs to the source, not the model,
-    # and the policy re-declares `cameras` to match so nothing renders or asks
-    # for a camera that does not exist. A site that runs both kinds needs two
-    # registry entries, the way drivejepa and drivejepa_free split.
+    # every benchmark here but comma2k19 supplies. A side camera the source does
+    # not have at all -- comma2k19's road camera is the only one it has -- gets
+    # black frames, so a monocular source runs on this default too: the forward
+    # camera in the forward slot, nothing invented for the sides, and the run's
+    # diagnostics name the slots left black. `replicate` and the `crop` ablation
+    # put the forward image in the side slots instead; they stay available for
+    # comparison, ranked with the note below.
     QWENDRIVE_VIEWS: "ring"
     # flash-attn does not build for sm_120 on this toolchain (see setup.sh);
     # the model supports sdpa for both the VLM and the expert.
@@ -44,6 +45,7 @@ runtime:
 
 capabilities:
   # Exactly the three views the model was trained on (scene.py CAMERA_VIEWS).
+  # A source may supply fewer: a side camera it does not have is left black.
   # Under QWENDRIVE_VIEWS=replicate|crop the policy declares CAM_FRONT alone and
   # fills the other two slots from it; this list is the ring-source default.
   cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT]
