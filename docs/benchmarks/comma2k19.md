@@ -754,7 +754,7 @@ compare one model with another quote the figures from before the re-runs.
 | | horizon | ADE@1s | ADE@2s | **ADE@3s** | ADE@4s | ADE@5s | ADE@10s | FDE@3s | median ADE@3s | miss@3s | PDMS-style ↑ |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | qwendrive (`Qwen-Drive-1.0-4B`, side slots black) † | 5 s | 0.154 | 0.326 | **0.589** | 0.946 | 1.411 | — | 1.316 | 0.498 | 0.195 | 0.779 |
-| alpamayo15 (`Alpamayo-1.5-10B`, 2 of 4 camera slots) | 4 s | 0.386 | 0.616 | 0.900 | 1.263 | — | — | 1.654 | 0.823 | — | — |
+| alpamayo15 (`Alpamayo-1.5-10B`, 2 of 4 camera slots) † | 4 s | 0.152 | 0.427 | 0.819 | 1.314 | — | — | 1.864 | 0.737 | 0.395 | 0.690 |
 | openpilot (`small`, split graph, `4df40d2c1`) ∗ | 10 s | 0.598 | 1.035 | 1.507 | 2.017 | 2.571 | 6.032 | 2.712 | 1.555 | 0.647 | 0.410 |
 | constant velocity (registered policy, 6 waypoints) | 3 s | 0.537 | 1.017 | 1.639 | — | — | — | 3.286 | 1.475 | 0.658 | 0.417 |
 | autoe2e (`kitscenes-epoch-5`, the road camera alone, five views left out) | 6 s | 1.160 | 1.593 | 2.016 | 2.507 | 3.185 | — | 3.084 | 2.068 | 0.775 | 0.364 |
@@ -778,9 +778,11 @@ The same row also predates the fix for a bug in the ONNX backend, which fed the
 road camera's image to the wide view; see [the openpilot
 page](../models/openpilot.md) for which figures that touches.
 
-One row carries `—` in the last column: `alpamayo15` predates it and is
-`stochastic: true`, so re-running for two proxy columns would replace a
-published 0.900 with a different draw.
+`alpamayo15` is `stochastic: true`, so its re-run is a new draw as well as a new
+scoring. Scored against the ground truth in the car's frame, its earlier run's
+own plans give ADE@3s 0.867; the re-run, shown its past path in the car's frame
+too, gives 0.819. The earlier run predated the miss-rate and PDMS-style columns,
+which the re-run fills.
 
 **The meteor row is the released graph shown one camera of the eight it was
 built for**: the road camera in the wide front slot, its centred 30° window in
@@ -1147,8 +1149,8 @@ padded. Lower is better throughout.
 
 | Model | horizon | ADE@1s | ADE@2s | **ADE@3s** | ADE@4s | ADE@5s | ADE@10s | FDE@3s | median ADE@3s | PDMS-style ↑ ⁂ |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Qwen-Drive 1.0 † | 5 s | **0.154** | **0.326** | **0.589** | **0.946** | **1.411** | — | **1.316** | **0.498** | 0.779 |
-| Alpamayo 1.5 | 4 s | 0.386 | 0.616 | 0.900 | 1.263 | — | — | 1.654 | 0.823 | — |
+| Qwen-Drive 1.0 † | 5 s | 0.154 | **0.326** | **0.589** | **0.946** | **1.411** | — | **1.316** | **0.498** | 0.779 |
+| Alpamayo 1.5 † | 4 s | **0.152** | 0.427 | 0.819 | 1.314 | — | — | 1.864 | 0.737 | 0.690 |
 | OpenPilot ⊗ | 10 s | 0.598 | 1.035 | 1.507 | 2.017 | 2.571 | **6.032** | 2.712 | 1.555 | 0.410 |
 | Baseline (Constant Velocity) | 3 s | 0.537 | 1.017 | 1.639 | — | — | — | 3.286 | 1.475 | 0.417 |
 | AutoE2E | 6 s | 1.160 | 1.593 | 2.016 | 2.507 | 3.185 | — | 3.084 | 2.068 | 0.364 |
@@ -1245,17 +1247,14 @@ comma2k19 has no other-agent tracks and no map, so no-collision sees only the
 closest radar lead and drivable-area uses the human's own path as the corridor.
 It is deliberately not the primary metric and never called a driving score; the
 five sub-scores are reported beside it in `report.md` so nobody has to trust the
-sum. Alpamayo predates the column and is `stochastic: true`, so re-running it
-would replace a published 0.900 with a different draw for two proxy columns, so
-it is `—` rather than a number that cannot be compared. Qwen-Drive was `—` here
-too until it was re-swept on the common 0.5 s grid: its comfort term had been
-measured on a 0.1 s one, where `1/dt³` turns 4 cm of output quantisation into
-1932 m/s³ of "jerk".
+sum. Qwen-Drive was `—` here until it was re-swept on the common 0.5 s grid:
+its comfort term had been measured on a 0.1 s one, where `1/dt³` turns 4 cm of
+output quantisation into 1932 m/s³ of "jerk".
 See [docs/benchmarks/comma2k19.md](comma2k19.md) for the full
 derivation and what it still cannot see.
 
 [OpenPilot](../../results/comma2k19/openpilot/20260916T051616-2a91ca/metrics.json)
-· [Alpamayo 1.5](../../results/comma2k19/alpamayo15/20260913T072437-b058c2/metrics.json)
+· [Alpamayo 1.5](../../results/comma2k19/alpamayo15/20261106T005600-6c52a2/metrics.json)
 · [Qwen-Drive 1.0](../../results/comma2k19/qwendrive/20261106T030530-7d9fd3/metrics.json)
 · [Drive-JEPA (perception-free)](../../results/comma2k19/drivejepa_free/20260916T003407-c504e5/metrics.json)
 · [VisionPilot](../../results/comma2k19/visionpilot/20260916T012719-03350c/metrics.json)

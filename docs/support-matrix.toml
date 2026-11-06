@@ -126,7 +126,7 @@ alpasim = { run = "alpasim/openpilot/legacy-openpilot_020_30scenes" }
 [cells.alpamayo15]
 nuscenes = { run = "nuscenes/alpamayo15/20260905T093547-3dd7cd", marks = "A" }  # five nuScenes-built sets on its card
 kitscenes = { run = "kitscenes/alpamayo15/legacy-full-nav" }
-comma2k19 = { run = "comma2k19/alpamayo15/20260913T072437-b058c2" }
+comma2k19 = { run = "comma2k19/alpamayo15/20261106T005600-6c52a2" }
 navsim = { run = "navsim/alpamayo15/20260912T040211-a9562c", marks = "A", note = "10 Hz" }  # NAVSIM-Traj, NAVSIM-ReCogDrive
 navsim_v1 = { run = "navsim_v1/alpamayo15/20260914T175447-89a9ca", marks = "A", note = "10 Hz" }
 bench2drive = { run = "bench2drive/alpamayo15/native50-10hz-084418258d833a9f-c4d076", note = "10 Hz" }

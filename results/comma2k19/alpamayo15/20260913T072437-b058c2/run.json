@@ -35,8 +35,10 @@
     }
   },
   "hardware": {},
+  "provenance": {},
   "status": "complete",
-  "valid": true,
-  "notes": "",
+  "valid": false,
+  "superseded_by": "20261106T005600-6c52a2",
+  "notes": "Superseded by 20261106T005600-6c52a2: Re-run on 6 Nov 2026 with the clone at its pinned 7a8f1c7 and its past path in the car's frame (#143), and scored against the ground truth in the car's frame (issue #141); this row was shown its past path and scored in the camera's frame. The model samples its plan, so the re-run is also a new draw.",
   "ingested_from": ""
 }
