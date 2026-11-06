@@ -51,6 +51,14 @@ their own: driven through a camera rig other than paddock's (``camera_rig``,
 then in the pooled config), or with a setting the model's ``model.yaml``
 declares set to another value.
 
+**A route set aside for every model is neither expected nor lost.** The routes in
+``harness.SET_ASIDE`` fail in the simulator whichever model drives, so they measure no
+model: such a route leaves the pool before anything is read from it, its id goes in
+``config.routes_set_aside`` and its reason in the notes -- the list as it stands when the
+pool is made, so every model's pool of the same routes says the same. A full-set pool
+asks for ``routes = "all"``: with ``routes`` left out the expected set is what the trees
+hold, and a route a sweep never drove would leave no trace.
+
 The run id is ``<label>-<route-set hash>-<config hash>``. The route set alone
 cannot distinguish two settings of the same routes -- five constant-velocity
 speed bands, say -- and ``store.write_run`` overwrites a directory that already
@@ -63,7 +71,8 @@ Site configuration (``paddock.toml``)::
     model  = "drivejepa"
     runs   = "/path/to/paddock-runs/bench2drive/drivejepa"   # or a list of roots
     label  = "pooled50"                  # run id: <label>-<route hash>-<config hash>
-    routes = ["1711", "1852", ...]       # optional; default: every route found
+    routes = ["1711", "1852", ...]       # optional, or "all": every route of the routes file;
+                                         # default: every route found
     notes  = "24 routes from the 03-04 Sep campaign, 26 from the 09 Sep expansion"
     ranked = true                        # optional; ranks it as recorded despite its rate or a lost route
     [ingest.bench2drive.model_env]       # optional; overrides what the runs recorded
@@ -94,11 +103,13 @@ from typing import Any, NamedTuple
 from paddock.adapters.benchmarks.bench2drive import early_stop, rig
 from paddock.adapters.benchmarks.bench2drive.harness import (
     DEFAULT_ROUTES_FILE,
+    SET_ASIDE,
     NotScored,
     crash_reason,
     ended_early,
     every_tick,
     parse_results,
+    set_aside_remark,
 )
 from paddock.registry import Registry
 from paddock.results.store import MetricsRecord, RunRecord, config_hash, sequence_hash
@@ -324,6 +335,17 @@ def ingest(
     setup_of = {route: label for label, group in (setups or {}).items() for route in group}
     survey = discover(roots, routes)
     rejected = dict(survey.rejected)
+    # Routes set aside for every model (harness.SET_ASIDE) leave the pool before anything is read
+    # from them: neither their samples nor their source runs' configs, which would otherwise join
+    # the agreement checks below. Out of the routes asked for, or of every route the trees hold.
+    seen = {parts[0] for folder in (*survey.scored, *survey.rejected) if (parts := route_parts(folder))}
+    aside = sorted(
+        (r for r in (routes if routes is not None else seen) if r in SET_ASIDE), key=lambda r: (len(r), r)
+    )
+    scored_aside = sorted(
+        {parts[0] for folder in survey.scored if (parts := route_parts(folder)) and parts[0] in aside},
+        key=lambda r: (len(r), r),
+    )
     # Keyed by directory, not by run id: two roots can hold the same run id, and
     # that collision is exactly the mix this is here to catch.
     sources: dict[Path, dict[str, Any]] = {}
@@ -331,6 +353,8 @@ def ingest(
     samples: list[dict[str, Any]] = []
     for folder, attempt in sorted(survey.scored.items()):
         route, town, scenario = route_parts(folder)  # type: ignore[misc]
+        if route in aside:
+            continue
         run_dir = attempt.results.parent.parent
         source = sources.setdefault(run_dir, source_record(run_dir))
         recorded_model = source.get("model")
@@ -381,7 +405,10 @@ def ingest(
     # construction -- n_failed: 0, status complete, valid true -- on exactly the
     # case the record exists to show: a model that crashed out of a route.
     attempted = {route_parts(f)[0]: why for f, why in rejected.items() if route_parts(f)}  # type: ignore[index]
-    wanted = sorted(routes) if routes is not None else sorted(have | set(attempted))
+    # A route set aside is neither expected nor lost: it measures no model.
+    wanted = [
+        r for r in (sorted(routes) if routes is not None else sorted(have | set(attempted))) if r not in aside
+    ]
     missing = [r for r in wanted if r not in have]
     source_runs = sorted({s["native_id"]["run_id"] for s in samples})
     starts = [d for d in (_started(r) for r in source_runs) if d is not None]
@@ -419,6 +446,11 @@ def ingest(
     # `n_failed` -- and without this line `results/` would not say it happened.
     if attempted:
         config["routes_never_scored"] = dict(sorted(attempted.items()))
+    # The routes set aside for every model that this pool would otherwise expect, by id: the list
+    # as it stands when the pool is made, never what its source runs recorded, so every model's
+    # pool says the same. Only when there are some, so a pool without any keeps its run id.
+    if aside:
+        config["routes_set_aside"] = aside
     # The early stop as the source runs recorded it; absent from the config of a
     # pool none of whose runs had it, so such a pool keeps its run id.
     stopped = [c.get("early_stop") for c in configs]
@@ -469,12 +501,18 @@ def ingest(
         config["recording_setups"] = {label: sorted(group) for label, group in sorted(setups.items())}
     run_id = f"{run_label}-{sequence_hash(sample_ids)}-{config_hash(config)}"
     note = notes.strip()
-    outside = sorted(r for r in attempted if r not in set(wanted))
+    outside = sorted(r for r in attempted if r not in set(wanted) and r not in aside)
     if outside:
         lost = ", ".join(f"{r} ({attempted[r]})" for r in outside)
         note = (note + " " if note else "") + (
             f"attempted outside the configured route subset and never scored: {lost}."
         )
+    if aside:
+        said = set_aside_remark(aside)
+        if scored_aside:
+            did = "it scored here" if len(scored_aside) == 1 else "they scored here"
+            said += f"; {', '.join(scored_aside)} left out although {did}, as for every model"
+        note = (note + " " if note else "") + said + "."
     if len(pooled_setups) > 1:
         note = (note + " " if note else "") + (
             f"pooled across {len(pooled_setups)} recording setups ({', '.join(pooled_setups)}); "

@@ -195,6 +195,11 @@ def test_subset_keys_and_model_env_do_not_count_as_a_different_measurement() -> 
     assert gate.config_differences({"cameras": ["CAM_FRONT"]}, {}) == ["cameras"], (
         "a key only one run recorded"
     )
+    # A Bench2Drive baseline from before a route was set aside drove the routes both did the same way.
+    assert (
+        gate.config_differences({"routes_file": "x.xml"}, {"routes_file": "x.xml", "routes_set_aside": ["1"]})
+        == []
+    )
 
 
 def test_navsim_without_plan_dumps_gets_no_verdict_over_tokens(tmp_path: Path) -> None:

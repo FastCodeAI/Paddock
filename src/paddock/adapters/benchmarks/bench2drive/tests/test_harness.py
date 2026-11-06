@@ -22,12 +22,14 @@ from pathlib import Path
 
 import pytest
 
+from paddock.adapters.benchmarks.bench2drive import harness as harness_module
 from paddock.adapters.benchmarks.bench2drive.harness import (
     BENCHMARK,
     CONNECT_TIMEOUT_FLAG,
     CRASH_STATUSES,
     DEFAULT_CONNECT_TIMEOUT_S,
     KILL_ALL_LINE,
+    SET_ASIDE,
     STOP_REQUEST,
     NotScored,
     carla_pids,
@@ -219,6 +221,26 @@ def test_routes_subset_restricts_to_chosen_ids() -> None:
     routes = parse_routes(FIXTURES / "routes_sample.xml")
     assert list(select_routes(routes, subset=["1773"])) == [("1773", "Town12", "ParkedObstacle")]
     assert len(list(select_routes(routes, subset=["1711", "1773"]))) == 2
+
+
+def test_set_aside_routes_are_skipped_unless_named_by_id() -> None:
+    """A route set aside for every model is driven only when --scene names it: naming its town
+    asks for the routes that are scored."""
+    routes = parse_routes(FIXTURES / "routes_sample.xml")
+    aside = {"1711"}
+    kept = [("1773", "Town12", "ParkedObstacle")]
+    assert list(select_routes(routes, set_aside=aside)) == kept
+    assert list(select_routes(routes, scenes=["Town12"], set_aside=aside)) == kept
+    assert list(select_routes(routes, scenes=["1711"], set_aside=aside)) == [
+        ("1711", "Town12", "ParkingCutIn")
+    ]
+
+
+def test_every_route_set_aside_names_its_reason_without_a_path() -> None:
+    """The reasons reach tracked notes, so they may name no disk; the ids are route ids."""
+    assert SET_ASIDE, "the 220-route records are pooled under this list"
+    for route, reason in SET_ASIDE.items():
+        assert route.isdigit() and reason.strip() and "/" not in reason
 
 
 # ---------------------------------------------------------------------------
@@ -669,6 +691,28 @@ def test_a_route_subset_given_on_the_command_line_is_not_a_score(tmp_path, monke
     list(harness.episodes(["1773"], runs=1))
     (reason,) = harness.invalid_reasons()
     assert "1 of the 2 routes" in reason and "subset" in reason
+
+
+def test_a_full_run_is_the_set_less_the_routes_set_aside(tmp_path, monkeypatch) -> None:
+    """Every route but the set aside ones is the whole set, not a subset, and the record
+    names the ones left out by id, with why in the notes."""
+    monkeypatch.setattr(harness_module, "SET_ASIDE", {"1711": "a stand-in reason"})
+    harness = _harness(_site(tmp_path, monkeypatch, COMPLETED))
+    assert [e.scene for e in harness.episodes(None)] == ["1773"]
+    assert harness.invalid_reasons() == []
+    assert harness.run_config()["routes_set_aside"] == ["1711"]
+    (remark,) = harness.remarks()
+    assert "1711: a stand-in reason" in remark and "set aside for every model" in remark
+
+
+def test_a_run_that_drives_a_set_aside_route_does_not_rank(tmp_path, monkeypatch) -> None:
+    """Naming one with --scene drives it, to see whether it still fails: not a score, even when
+    every other route ran too."""
+    monkeypatch.setattr(harness_module, "SET_ASIDE", {"1711": "a stand-in reason"})
+    harness = _harness(_site(tmp_path, monkeypatch, COMPLETED))
+    assert [e.scene for e in harness.episodes(["1711", "1773"])] == ["1711", "1773"]
+    (reason,) = harness.invalid_reasons()
+    assert "set aside" in reason and "1711" in reason
 
 
 def test_the_sites_own_routes_subset_is_the_full_set(tmp_path, monkeypatch) -> None:

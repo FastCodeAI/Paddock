@@ -405,6 +405,9 @@ SUBSET_KEYS = frozenset(
         "scene",
         "runs",
         "routes_subset",
+        # Bench2Drive's routes set aside for every model: which routes are in the set, so a
+        # baseline from before a route was set aside still pairs on the routes both drove.
+        "routes_set_aside",
         "scene_set",
         "merged_from",
         # A re-scored run (tools/benchmarks/neuroncap/pdm_rescore.py) names the
