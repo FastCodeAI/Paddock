@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
 92 runs across 9 benchmarks.
-51 run(s) excluded as invalid — shown at the end, never averaged in.
+52 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
@@ -71,7 +71,7 @@
 | openpilot | 20261106T003719-5cde54 | 10165 | 0.843 | 0.407 | 0.938 | 1.611 | 10.000 | 0.299 | 0.548 |
 | constant_velocity | 20261106T045541-d0cdb5 | 10165 | 1.135 | 0.370 | 1.211 | 2.546 | 3.000 | 0.252 | 0.611 |
 | autoe2e | 20261106T073744-1b4fe1 | 10165 | 1.350 | 0.826 | 1.371 | 2.396 | 6.000 | 0.734 | 0.977 |
-| visionpilot | 20260916T012719-03350c | 10165 | 4.045 | 1.652 | 4.553 | 8.146 | 4.000 | 1.149 | 2.462 |
+| visionpilot | 20261106T003749-c10a7f | 10165 | 3.592 | 1.372 | 4.010 | 7.415 | 4.000 | 0.964 | 2.126 |
 | drivejepa_free | 20260916T003407-c504e5 | 10165 | 16.048 | 10.887 | 18.016 | 26.248 | 4.000 | 7.800 | 12.077 |
 | meteor | 20261030T001935-0b8d0b | 10165 | 30.075 | 16.626 | 35.702 | 51.334 | 3.000 | 11.787 | 21.545 |
 
@@ -202,6 +202,7 @@
 - **nuplan/drivejepa/20260916T204900-6a17de** — camera images cover 26 of 375 anchors (53 logs have no images); not comparable with a full-coverage run
 - **comma2k19/constant_velocity/20260916T162837-b89038** — Superseded by 20261106T045541-d0cdb5: Re-run on 6 Nov 2026 and scored against the ground truth in the car's frame (issue #141); this row was scored against a ground truth in the camera's frame. The plans did not change: constant velocity plans from the recorded speed alone.
 - **comma2k19/openpilot/20260916T051616-2a91ca** — Superseded by 20261106T003719-5cde54: Re-run on 6 Nov 2026 at the pinned 555f48c5d and scored with the ground truth in the car's frame (issue #141); this row came from a clone at 4df40d2c1 and was scored against a ground truth in the camera's frame.
+- **comma2k19/visionpilot/20260916T012719-03350c** — Superseded by 20261106T003749-c10a7f: Re-run on 6 Nov 2026 at the pinned e93eceaa with CURV_SCALE 0.21 on the CPU provider, and scored against the ground truth in the car's frame (issue #141); this row ran on the CUDA provider, did not record its commit, and was scored against a ground truth in the camera's frame.
 - **comma2k19/qwendrive/20260915T214115-405f64** — Superseded by 20260916T220846-971379: the adapter that produced it no longer exists, so no paddock run can reproduce 1.016; it emitted all 50 poses at waypoint_dt 0.1 and score() aligns the ground truth onto the prediction's grid, which is also why comfort read 1932 m/s**3 of quantiser jerk Superseded by 20261106T030530-7d9fd3: the row it pointed at, 20260916T220846-971379, is itself superseded by the re-run of 6 Nov 2026 (issue #141), so this one points at the ranked row.
 - **neuroncap/meteor/20260915T192353-6ed840** — 1 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes)
 - **navsim_v1/qwendrive/20260915T021715-02aab4** — no model process ran: 12146 plans replayed from navsim/qwendrive/20260914T221802-80457c (that run: epdms 0.8402); the same plans, this benchmark's scorer Superseded by 20261104T205054-df25d5: this replay recorded 2 Hz OpenScene history, but its plans were made at 10 Hz from nuPlan; re-made with the right record, every score identical

@@ -31,8 +31,10 @@
     }
   },
   "hardware": {},
+  "provenance": {},
   "status": "complete",
-  "valid": true,
-  "notes": "",
+  "valid": false,
+  "superseded_by": "20261106T003749-c10a7f",
+  "notes": "Superseded by 20261106T003749-c10a7f: Re-run on 6 Nov 2026 at the pinned e93eceaa with CURV_SCALE 0.21 on the CPU provider, and scored against the ground truth in the car's frame (issue #141); this row ran on the CUDA provider, did not record its commit, and was scored against a ground truth in the camera's frame.",
   "ingested_from": ""
 }

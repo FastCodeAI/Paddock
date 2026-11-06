@@ -196,8 +196,9 @@ frame.)*
   settings, because the two providers do different arithmetic and nobody has
   shown that never moves a plan. Run on the default CPU provider for a ranked
   row, with `VISIONPILOT_ORT_THREADS` and the benchmark's node count, both
-  speed-only, to share the cores. The Bench2Drive, nuScenes and first comma2k19
-  rows ran on CUDA before that rule and stay ranked.
+  speed-only, to share the cores. The Bench2Drive and nuScenes rows ran on CUDA
+  before that rule and stay ranked. So did the first comma2k19 row; its re-run
+  of November 2026 used the CPU provider.
 
   Those rows ran with this setup. The ONNX stack defaulted to the CPU provider
   with ~94 threads. Site
