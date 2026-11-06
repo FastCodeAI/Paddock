@@ -191,7 +191,16 @@ frame.)*
   1 m/s for whole routes and its "completions" were completions by crawl. The
   policy now takes `Observation.speed_limit` (the simulator's posted limit) each
   tick and falls back to the latch only when no limit is sent.
-* **GPU.** The ONNX stack defaulted to the CPU provider with ~94 threads. Site
+* **GPU.** A site that sets `VISIONPILOT_PROVIDERS="cuda"` now gets its runs
+  stored `valid: false`. The provider is not one of VisionPilot's speed-only
+  settings, because the two providers do different arithmetic and nobody has
+  shown that never moves a plan. Run on the default CPU provider for a ranked
+  row, with `VISIONPILOT_ORT_THREADS` and the benchmark's node count, both
+  speed-only, to share the cores. The Bench2Drive, nuScenes and first comma2k19
+  rows ran on CUDA before that rule and stay ranked.
+
+  Those rows ran with this setup. The ONNX stack defaulted to the CPU provider
+  with ~94 threads. Site
   env: `VISIONPILOT_PROVIDERS="cuda"`, `VISIONPILOT_ORT_THREADS="2"`, and
   `LD_LIBRARY_PATH` pointing at the venv's nvidia wheel libs
   (`site-packages/nvidia/{cudnn,cublas,cuda_runtime,cuda_nvrtc}/lib`); without
