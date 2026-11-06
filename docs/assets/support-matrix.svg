@@ -171,7 +171,7 @@
 <text x="343.5" y="272.5" class="t6" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#8</text>
 <path class="worse" d="M306 239.5h10l-5 8.5z" stroke-width="1.5"/>
 <rect class="r6" x="387" y="236.5" width="81" height="43" rx="4"/>
-<text x="427.5" y="257.5" class="t6" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">16.048</text>
+<text x="427.5" y="257.5" class="t6" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">16.047</text>
 <text x="427.5" y="272.5" class="t6" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#7</text>
 <path class="worse" d="M390 239.5h10l-5 8.5z" stroke-width="1.5"/>
 <rect fill="url(#hatch)" x="471" y="236.5" width="81" height="43" rx="4"/>
