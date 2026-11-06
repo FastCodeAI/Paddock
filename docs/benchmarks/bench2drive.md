@@ -318,6 +318,29 @@ run each repetition into its own run (three `paddock run … --runs 1`) if you
 intend to feed the upstream tools, and check `n_expected` against `n_samples`
 in `run.json` before believing a merged number.
 
+For a pooled record, one command runs the same scripts on exactly the record's
+routes and writes their answers beside it, as `upstream_scores.json`:
+
+```bash
+PADDOCK_CONFIG=<sweep>/paddock.toml python -m tools.benchmarks.bench2drive.upstream_scores \
+    results/bench2drive/<model>/<run_id> --runs <the ingest block's runs root>
+```
+
+It finds the routes the way `paddock ingest` did, and refuses unless they are the
+record's own attempts (its sample hash and `source_runs`). It runs Bench2Drive's
+code at the pinned checkout in the CARLA-client interpreter
+(`upstream_scores_client.py`): success as `merge_route_json.py` counts it, efficiency
+and comfort through `efficiency_smoothness_benchmark.py`'s own functions, and the
+abilities as `ability_benchmark.py` scores them, per route. The traffic-sign test is
+inline in that script's `main`, so the client restates it, and checks the per-route
+credits against `main`'s own pooled numbers on the same routes before it writes
+anything. Pooled values are over the record's routes, so a route set aside for every
+model is in none of them; each route's row is in the file, so the 220-divisor
+convention can be recomputed. `ability_benchmark.py` divides by each ability's route
+count, so a record without a route of every ability cannot be scored by it, and the
+tool says so. A `metric_info.json` that is missing leaves that route's comfort out,
+and the file counts the routes each pooled comfort and efficiency are over.
+
 ## Running
 
 ```bash
@@ -670,7 +693,7 @@ What every run here depends on, beyond the leaderboard's own rules.
   CARLA. The paper's Bench2Drive result (DS 64.52) comes from a
   Bench2Drive-trained variant whose configs are in the repo but whose data
   pipeline, agent and checkpoint are unreleased; do not compare.
-* **Official metrics beyond DS:** `tools/statistic_route_json.is_success`
+* **Official metrics beyond DS:** success as `tools/merge_route_json.py` counts it
   (Completed and no infraction except min-speed), and
   `tools/efficiency_smoothness_benchmark.py` on the per-tick `metric_info`
   the agent writes (needs scipy; the b2d conda env lacks it).
