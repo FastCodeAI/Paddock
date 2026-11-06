@@ -176,6 +176,9 @@ class Column:
     decimals: int
     lower_is_better: bool
     ranked: bool
+    #: Whose runs fill it: the benchmark's name in results/. The key unless the toml says
+    #: otherwise, so one benchmark can fill two columns -- Bench2Drive's 50 routes and its 220.
+    benchmark: str = ""
 
 
 @dataclass
@@ -213,8 +216,8 @@ def _cell(spec: object, col: Column, model: str, where: str, results: Path, root
     marks, note = spec.get("marks", "").split(), spec.get("note", "")
     if "run" in spec:
         run = spec["run"]
-        if not run.startswith(f"{col.key}/"):
-            raise ValueError(f"{where}: {run!r} is not a {col.key} run")
+        if not run.startswith(f"{col.benchmark or col.key}/"):
+            raise ValueError(f"{where}: {run!r} is not a {col.benchmark or col.key} run")
         # A line copied from another row and not edited would show that model's number
         # under this one. A cell that borrows a run on purpose says whose it is.
         owner = run.split("/")[1]
@@ -258,7 +261,8 @@ def load_matrix(
             raise ValueError(f"{b['key']}: the header needs exactly one of ↑ or ↓: {header!r}")
         if "metric" not in b and not primary:
             primary = {k: spec.primary_metric for k, spec in load_benchmarks().items()}
-        metric = b.get("metric") or primary.get(b["key"], "")
+        bench = b.get("benchmark", b["key"])
+        metric = b.get("metric") or primary.get(bench, "")
         loop = LOOP[b["loop"]]
         lower = "↓" in header
         # The arrow is typed by hand; paddock's own report already knows the direction.
@@ -268,7 +272,9 @@ def load_matrix(
                 f"{b['key']}: the header says {said} is better, which paddock's report does not say of {metric!r}"
             )
         columns.append(
-            Column(b["key"], b["name"], loop, header, metric, b["decimals"], lower, b.get("ranked", True))
+            Column(
+                b["key"], b["name"], loop, header, metric, b["decimals"], lower, b.get("ranked", True), bench
+            )
         )
 
     keys = {c.key for c in columns}
