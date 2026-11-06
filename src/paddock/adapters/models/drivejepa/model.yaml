@@ -33,7 +33,9 @@ runtime:
     # Uncropped, a wider camera reaches the model squeezed: on KITScenes (87
     # degrees) objects arrive 0.65x as wide and 0.55x as tall as in training and
     # the bonnet fills the bottom of the frame, and ADE was 3.222 m against
-    # 2.521 m cropped (t -4.0, 223 keyframes). The model's own setting, so every
+    # 2.521 m cropped (t -4.0, 223 keyframes; October 2026, when the model got
+    # acceleration 0 on KITScenes -- it now gets the slope of the speed, so a
+    # re-run will not give exactly these). The model's own setting, so every
     # benchmark and every gate run gets it; a site that sets "native" is the
     # override and its runs are not valid.
     DRIVEJEPA_IMAGE_GEOMETRY: "openscene"
