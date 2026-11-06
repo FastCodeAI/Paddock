@@ -115,7 +115,7 @@ floor = true
 [cells.openpilot]
 nuscenes = { run = "nuscenes/openpilot/20260908T110028-b71f4f" }
 kitscenes = { run = "kitscenes/openpilot/20261008T004723-a369d1", marks = "A" }
-comma2k19 = { run = "comma2k19/openpilot/20260916T051616-2a91ca", marks = "S" }
+comma2k19 = { run = "comma2k19/openpilot/20261106T003719-5cde54" }
 nuplan = { run = "nuplan/openpilot/20260917T220353-9e4f44" }
 navsim = { run = "navsim/openpilot/20260911T161513-3a4c90", note = "10 Hz" }
 navsim_v1 = { run = "navsim_v1/openpilot/20260914T181009-dbcef4", note = "10 Hz" }
@@ -126,7 +126,7 @@ alpasim = { run = "alpasim/openpilot/legacy-openpilot_020_30scenes" }
 [cells.alpamayo15]
 nuscenes = { run = "nuscenes/alpamayo15/20260905T093547-3dd7cd", marks = "A" }  # five nuScenes-built sets on its card
 kitscenes = { run = "kitscenes/alpamayo15/legacy-full-nav" }
-comma2k19 = { run = "comma2k19/alpamayo15/20260913T072437-b058c2" }
+comma2k19 = { run = "comma2k19/alpamayo15/20261106T005600-6c52a2" }
 navsim = { run = "navsim/alpamayo15/20260912T040211-a9562c", marks = "A", note = "10 Hz" }  # NAVSIM-Traj, NAVSIM-ReCogDrive
 navsim_v1 = { run = "navsim_v1/alpamayo15/20260914T175447-89a9ca", marks = "A", note = "10 Hz" }
 bench2drive = { run = "bench2drive/alpamayo15/native50-10hz-084418258d833a9f-c4d076", note = "10 Hz" }
