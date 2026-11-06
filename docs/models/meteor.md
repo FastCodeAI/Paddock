@@ -363,7 +363,7 @@ truth in the car's frame; `valid: true`; 56 min on one H200 with eight nodes):
 The earlier run, `20261030T001935-0b8d0b`, was scored against a ground truth in
 the camera's frame and gave 30.075. Its plans are the same as this run's to
 within 0.01 mm, so the change is the scoring alone. Constant velocity scores
-1.135 on the same samples, and every other model scores 16.047 or less. METEOR
+1.135 on the same samples, and every other model scores 18.754 or less. METEOR
 is better than constant velocity on 3.5 % of the samples, all of them below
 15 m/s. Measured on the per-sample records:
 
