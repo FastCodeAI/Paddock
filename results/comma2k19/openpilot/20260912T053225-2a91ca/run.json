@@ -36,7 +36,7 @@
   "provenance": {},
   "status": "complete",
   "valid": false,
-  "superseded_by": "20260916T051616-2a91ca",
-  "notes": "Superseded by 20260916T051616-2a91ca: that is the row the docs cite. The two are bit-identical on all 65 shared metrics -- same 10,165 samples, same sequences_sha256 -- and the later one additionally carries the nine proxy and miss-rate metrics added after this ran. Kept rather than deleted so the record of it having happened survives.",
+  "superseded_by": "20261106T003719-5cde54",
+  "notes": "Superseded by 20260916T051616-2a91ca: that is the row the docs cite. The two are bit-identical on all 65 shared metrics -- same 10,165 samples, same sequences_sha256 -- and the later one additionally carries the nine proxy and miss-rate metrics added after this ran. Kept rather than deleted so the record of it having happened survives. Superseded by 20261106T003719-5cde54: the row it pointed at, 20260916T051616-2a91ca, is itself superseded by the re-run at the pinned 555f48c5d (issue #141), so this one points at the ranked row.",
   "ingested_from": ""
 }
