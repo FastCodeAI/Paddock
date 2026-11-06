@@ -82,6 +82,27 @@ samples**: 2033 segments × 5, plus two segments that yield none. Those two hold
 and 200 ahead — 360 in all — so neither can place even one. The numbers reported
 here are always samples; `n` in a run record is samples too.
 
+## What each model sees
+
+comma2k19 has one camera, a road-facing phone, and several models expect more.
+The rule for every model is the same: a slot that means a forward view may get
+a view made from the road camera (a wider or narrower crop of it); a slot that
+means another direction gets nothing, which is black or masked out, depending on
+the model. A slot is never filled with the forward image at a bearing that camera
+never had. This is a limitation of the dataset, and it is stated here so every
+row is read with it.
+
+| Model | What it gets |
+|---|---|
+| OpenPilot | the road frame in both its narrow and wide inputs, each warped with the road camera's own lens. Upstream `modeld` does the same on a one-camera device, and lists the EON that recorded comma2k19 as one |
+| Alpamayo 1.5 | a front-wide crop and a 30° tele crop of the road frame; its front-left and front-right cameras are left out, which the model accepts |
+| METEOR | a front-wide crop and a 30° narrow window of the road frame; its six other slots are black, which is how its training marks a missing camera |
+| AutoE2E | the road frame in its front view; its five other views are masked out |
+| Qwen-Drive | the road frame in its front view; its front-left and front-right views are black, because the model has no flag for a missing camera. The run's diagnostics list them as `blank_views` |
+| Drive-JEPA (front) | the road frame only, which is what this version was trained on |
+| VisionPilot | its one camera |
+| constant velocity | no image |
+
 ## Setup
 
 ```toml
