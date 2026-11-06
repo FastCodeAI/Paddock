@@ -73,6 +73,7 @@ from pathlib import Path
 
 from paddock.adapters.benchmarks.bench2drive.harness import (
     DEFAULT_ROUTES_FILE,
+    GUARD_KILL,
     NotScored,
     carla_pids,
     carla_port_from_log,
@@ -578,6 +579,12 @@ def _guard_one(pid: int, route_dir: Path, now: float, carla_missing_since: dict,
         echo(f"{datetime.now(UTC):%F %T} {route_dir.parent.name}/{route_dir.name}: {reason}; "
              f"{'would kill' if dry_run else 'killing'} evaluator pid {pid}")  # fmt: skip
         if not dry_run:
+            # Before the kill: the worker writes the attempt's failure record when its evaluator
+            # exits, and the reason is the difference between a crash and a hang in it.
+            try:
+                (route_dir / GUARD_KILL).write_text(json.dumps({"reason": reason}) + "\n")
+            except OSError:
+                pass
             kill_evaluator(pid, route_dir)
         carla_missing_since.pop(pid, None)
 

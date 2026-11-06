@@ -271,6 +271,29 @@ def test_routes_all_is_every_route_of_the_sites_routes_file(tmp_path: Path) -> N
         legacy._bench2drive_routes(_site(tmp_path, ""), {"routes": "all"})
 
 
+def test_a_failure_record_gives_the_reason_a_route_never_scored(tmp_path: Path) -> None:
+    """A CARLA crash and an attempt cut off by a restart leave the same empty checkpoint;
+    the harness's failure.json says which."""
+    root = _tree(tmp_path)
+    folder = "23695-Town13-InterurbanAdvancedActorFlow"
+    _write(root, "20260904T000000-dddddd", folder, _unscored("23695"))
+    failure = {"kind": "carla_crash", "signal": 11, "game_time_s": 36.4, "returncode": -15}
+    (root / "20260904T000000-dddddd" / folder / "failure.json").write_text(json.dumps(failure))
+    ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s")
+    said = run.config["routes_never_scored"]["23695"]
+    assert said == "20260904T000000-dddddd: CARLA crashed (signal 11) at 36.4 s of game time"
+
+
+def test_without_a_failure_record_the_reason_is_the_parsers_unchanged(tmp_path: Path) -> None:
+    """routes_never_scored is hashed into the run id, so a stored record ingested again must read
+    exactly as it did."""
+    root = _tree(tmp_path)
+    _write(root, "20260904T000000-dddddd", "23695-Town13-InterurbanAdvancedActorFlow", _unscored("23695"))
+    ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s")
+    said = run.config["routes_never_scored"]["23695"]
+    assert said == "20260904T000000-dddddd: no records in _checkpoint (the route did not score)"
+
+
 def test_the_rejection_reason_names_the_run_and_no_machine_path(tmp_path: Path) -> None:
     """`notes` is tracked, so the reason may name a run id but never a disk."""
     root = _tree(tmp_path)

@@ -246,3 +246,5 @@ def test_one_evaluator_the_guard_cannot_handle_does_not_end_the_guard(tmp_path: 
     campaign.guard(Cfg, "m", once=True, echo=said.append)
     assert killed == [102]
     assert any("Operation not permitted" in line for line in said)
+    # Its reason is in the route's folder before the kill, for the attempt's failure record.
+    assert json.loads((routes[1] / "guard.json").read_text())["reason"].startswith("evaluator.log silent")

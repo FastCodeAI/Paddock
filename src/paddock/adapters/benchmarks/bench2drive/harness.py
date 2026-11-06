@@ -139,6 +139,20 @@ DEFAULT_ROUTES_FILE = "bench2drive220.xml"
 #: by hand (``early_stop.MANUAL``). The dashboard's "Stop route" button writes it.
 STOP_REQUEST = "stop_request"
 
+#: Why an attempt that scored nothing failed, beside its ``results.json``
+#: (:func:`classify_failure`). A CARLA crash and an attempt cut off by a restart both
+#: leave an empty checkpoint, so without this only the logs could tell them apart -- and
+#: only a crash is evidence that a route cannot be run. An interrupted attempt writes none.
+FAILURE = "failure.json"
+
+#: What the campaign guard writes into a route's directory just before it kills the
+#: route's evaluator, so the failure record can say why the evaluator died.
+GUARD_KILL = "guard.json"
+
+#: CARLA's crash handler's line, and the agent's per-tick line, in ``evaluator.log``.
+_CRASH_SIGNAL = re.compile(r"CommonUnixCrashHandler: Signal=(\d+)")
+_GAME_TIME = re.compile(r"Game time = ([0-9.]+)")
+
 #: One expert drive's summary, ``<expert>/<route>/expert_traj.json`` as
 #: ``tools.benchmarks.bench2drive.expert summarize`` writes it: where a route's time budget comes from.
 EXPERT_TRAJ = "expert_traj.json"
@@ -390,6 +404,100 @@ def ended_early(route_dir: Path) -> dict[str, float]:
         f"ended_{name}": sum(1.0 for r in reps if r.get("reason") == name) / len(reps)
         for name in early_stop.REASONS
     }
+
+
+def classify_failure(
+    log_text: str, *, timed_out: bool, returncode: int | None, results_json: Path
+) -> dict[str, Any]:
+    """What ended an attempt that scored nothing, from its ``evaluator.log`` and ``results.json``.
+
+    ``kind`` is the first that applies: ``carla_crash`` (CARLA's own crash handler is in
+    the log, with its signal), ``timeout``, ``evaluator_exit`` (any other non-zero exit),
+    ``no_results`` or ``not_scored`` (the leaderboard's statuses, in ``status``). The crash
+    handler is read first, however the attempt then ended: after a crash the evaluator
+    deadlocks in its own shutdown, so the process ends by the guard's kill (exit -15) or
+    the timeout, and either alone would hide the crash. ``game_time_s`` is the last tick
+    the agent logged, when it logged one.
+    """
+    record: dict[str, Any] = {"timed_out": timed_out, "returncode": returncode}
+    times = _GAME_TIME.findall(log_text)
+    if times:
+        record["game_time_s"] = float(times[-1])
+    crash = _CRASH_SIGNAL.search(log_text)
+    if crash:
+        record["kind"], record["signal"] = "carla_crash", int(crash.group(1))
+    elif timed_out:
+        record["kind"] = "timeout"
+    elif returncode not in (0, None):
+        record["kind"] = "evaluator_exit"
+    elif not results_json.exists():
+        record["kind"] = "no_results"
+    else:
+        record["kind"] = "not_scored"
+        try:
+            records = (json.loads(results_json.read_text()).get("_checkpoint") or {}).get("records") or []
+        except (OSError, ValueError):
+            records = []
+        record["status"] = sorted({str(r.get("status", "")) for r in records if isinstance(r, dict)})
+    return record
+
+
+def failure_said(record: dict[str, Any]) -> str:
+    """One line for a failure record, naming no path: it reaches tracked notes."""
+    kind = record.get("kind")
+    at = f" at {record['game_time_s']:g} s of game time" if record.get("game_time_s") is not None else ""
+    if kind == "carla_crash":
+        said = f"CARLA crashed (signal {record.get('signal')}){at}"
+    elif kind == "timeout":
+        said = f"timed out (per_route_timeout_s){at}"
+    elif kind == "evaluator_exit":
+        said = f"evaluator exited {record.get('returncode')}{at}"
+    elif kind == "no_results":
+        said = "evaluator exited 0 but wrote no results.json"
+    else:
+        statuses = [s for s in record.get("status") or [] if s]
+        said = f"not scored ({', '.join(statuses)})" if statuses else "no records in _checkpoint"
+    guard = record.get("guard")
+    return f"{said}; the guard killed it: {guard}" if guard else said
+
+
+def simulator_side(record: dict[str, Any]) -> bool | None:
+    """Whether a failure is the simulator's (True), the model's or its agent's (False), or unclear (None).
+
+    Only the simulator's count toward setting a route aside: CARLA's crash handler, the
+    leaderboard's ``Simulation crashed``, or the guard finding the route's CARLA gone. An
+    ``Agent crashed`` or ``couldn't be set up`` is the client or the model's node -- the
+    model's to fix, never a reason to take the route away from every model.
+    """
+    statuses = record.get("status") or []
+    if record.get("kind") == "carla_crash" or "CARLA" in str(record.get("guard") or ""):
+        return True
+    if any(s.endswith("Simulation crashed") for s in statuses):
+        return True
+    if any(s.endswith(("Agent crashed", "Agent couldn't be set up")) for s in statuses):
+        return False
+    return None
+
+
+def read_failure(route_dir: Path) -> dict[str, Any] | None:
+    """The failure record beside a route's ``results.json``; None if it scored, was cut off or predates it."""
+    try:
+        record = json.loads((Path(route_dir) / FAILURE).read_text())
+    except (OSError, ValueError):
+        return None
+    return record if isinstance(record, dict) else None
+
+
+def write_failure(route_dir: Path, record: dict[str, Any]) -> None:
+    """Write ``record`` as the route's failure record, whole or not at all.
+
+    Atomic, because the campaign counts these to decide when a route is given up on, and
+    a half-written file read at the wrong moment would count as no failure.
+    """
+    target = Path(route_dir) / FAILURE
+    partial = target.with_name(target.name + ".tmp")
+    partial.write_text(json.dumps(record, indent=1) + "\n")
+    os.replace(partial, target)
 
 
 def _positive(value: Any) -> float | None:
@@ -1100,6 +1208,9 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         # last attempt's verdict.
         stop_record = out_dir / early_stop.RECORD
         stop_record.unlink(missing_ok=True)
+        # Nor the last attempt's failure, or the guard's word on it.
+        (out_dir / FAILURE).unlink(missing_ok=True)
+        (out_dir / GUARD_KILL).unlink(missing_ok=True)
         # The file that ends this route by hand when it appears (the dashboard's
         # "Stop route" writes it), cleared so an old request cannot end a new drive.
         stop_request = out_dir / STOP_REQUEST
@@ -1178,18 +1289,36 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         # CARLA; after a kill it has not. Either way, only ours, by its port.
         reap_carla(carla_port_from_log(log_path, requested_port))
 
+        def failed(message: str) -> RuntimeError:
+            """Say why beside results.json (`failure.json`), then the error the runner logs."""
+            record = classify_failure(
+                log_path.read_text(errors="replace") if log_path.exists() else "",
+                timed_out=timed_out,
+                returncode=returncode,
+                results_json=results_json,
+            )
+            record["elapsed_s"] = round(elapsed, 1)
+            try:
+                guard = json.loads((out_dir / GUARD_KILL).read_text())
+            except (OSError, ValueError):
+                guard = None
+            if isinstance(guard, dict) and guard.get("reason"):
+                record["guard"] = str(guard["reason"])
+            write_failure(out_dir, record)
+            return RuntimeError(message)
+
         if timed_out:
-            raise RuntimeError(
+            raise failed(
                 f"{episode.episode_id}: timed out after {timeout_s / 60:.0f} min "
                 f"(per_route_timeout_s); evaluator killed\n--- tail of {log_path.name} ---\n{_tail(log_path)}"
             )
         if returncode != 0:
-            raise RuntimeError(
+            raise failed(
                 f"{episode.episode_id}: evaluator exited {returncode} after {elapsed / 60:.1f} min"
                 f"\n--- tail of {log_path.name} ---\n{_tail(log_path)}"
             )
         if not results_json.exists():
-            raise RuntimeError(
+            raise failed(
                 f"{episode.episode_id}: evaluator exited 0 but wrote no results.json"
                 f"\n--- tail of {log_path.name} ---\n{_tail(log_path)}"
             )
@@ -1197,7 +1326,7 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         try:
             metrics = parse_results(results_json)
         except NotScored as exc:
-            raise RuntimeError(
+            raise failed(
                 f"{episode.episode_id}: {exc}\n--- tail of {log_path.name} ---\n{_tail(log_path)}"
             ) from exc
         metrics["duration_s"] = round(elapsed, 1)

@@ -108,7 +108,9 @@ from paddock.adapters.benchmarks.bench2drive.harness import (
     crash_reason,
     ended_early,
     every_tick,
+    failure_said,
     parse_results,
+    read_failure,
     set_aside_remark,
 )
 from paddock.registry import Registry
@@ -297,9 +299,14 @@ def discover(runs_roots: Sequence[Path], routes: list[str] | None = None) -> Sur
             try:
                 metrics = parse_results(results)
             except NotScored as exc:
-                # The message names the file; keep the run id and drop the path,
-                # because this reason is written into a tracked run.json.
-                rejected[route_dir.name] = f"{run_dir.name}: {str(exc).split('.json: ', 1)[-1]}"
+                # Why the attempt failed, when the harness wrote it down (failure.json): a
+                # CARLA crash and a cut-off attempt both leave an empty checkpoint. Otherwise
+                # the parser's words, unchanged, so a stored record ingested again keeps its
+                # id. The message names the file; keep the run id and drop the path, because
+                # this reason is written into a tracked run.json.
+                failure = read_failure(route_dir)
+                said = failure_said(failure) if failure else str(exc).split(".json: ", 1)[-1]
+                rejected[route_dir.name] = f"{run_dir.name}: {said}"
                 continue
             # json.JSONDecodeError and UnicodeDecodeError are ValueError; OSError
             # is the NFS read that used to take the whole ingest down with it.

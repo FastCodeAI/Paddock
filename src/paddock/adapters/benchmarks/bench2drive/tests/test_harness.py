@@ -28,17 +28,23 @@ from paddock.adapters.benchmarks.bench2drive.harness import (
     CONNECT_TIMEOUT_FLAG,
     CRASH_STATUSES,
     DEFAULT_CONNECT_TIMEOUT_S,
+    FAILURE,
+    GUARD_KILL,
     KILL_ALL_LINE,
     SET_ASIDE,
     STOP_REQUEST,
     NotScored,
     carla_pids,
     carla_port_from_log,
+    classify_failure,
     ended_early,
+    failure_said,
     parse_results,
     parse_routes,
+    read_failure,
     reap_carla,
     select_routes,
+    simulator_side,
 )
 from paddock.benchmark import Episode
 from paddock.config import SiteConfig
@@ -500,6 +506,98 @@ def test_a_timeout_is_reported_as_one_and_the_evaluator_is_killed(tmp_path, monk
     else:
         os.kill(pid, signal.SIGKILL)
         pytest.fail("the evaluator outlived its timeout")
+
+
+# ---------------------------------------------------------------------------
+# why an attempt failed, beside its results.json
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("timed_out", "returncode"), [(True, -9), (False, -15), (False, 255), (False, 0)])
+def test_a_carla_crash_is_named_from_the_log_however_the_attempt_ended(
+    tmp_path, timed_out, returncode
+) -> None:
+    """Route 11715's real log (fixtures/README.md): CARLA's crash handler at 53.65 s of game time.
+
+    After the crash the evaluator deadlocks in its shutdown, so the guard's kill (-15) or the
+    timeout ends it; neither may hide that CARLA crashed.
+    """
+    log = (FIXTURES / "evaluator_carla_crash.log").read_text()
+    record = classify_failure(
+        log, timed_out=timed_out, returncode=returncode, results_json=tmp_path / "r.json"
+    )
+    assert record["kind"] == "carla_crash" and record["signal"] == 11 and record["game_time_s"] == 53.65
+    assert simulator_side(record) is True
+    assert failure_said(record) == "CARLA crashed (signal 11) at 53.65 s of game time"
+
+
+HANGS_AFTER_A_CRASH = textwrap.dedent(
+    """\
+    print("=== [Agent] -- Wallclock = 2026-10-07 20:26:07.814 -- Game time = 53.650 -- Ratio = 0.159x")
+    print("CommonUnixCrashHandler: Signal=11", flush=True)
+    time.sleep(60)
+    """
+)
+
+
+@pytest.mark.parametrize(
+    ("body", "settings", "kind", "side"),
+    [
+        ("time.sleep(60)\n", {"per_route_timeout_s": "2"}, "timeout", None),
+        (COMPLETED + "sys.exit(255)\n", {}, "evaluator_exit", None),
+        ("os.remove(checkpoint)\n", {}, "no_results", None),
+        (f"import shutil\nshutil.copy({str(FIXTURES / 'results_agent_crashed.json')!r}, checkpoint)\n", {},
+         "not_scored", False),
+        (HANGS_AFTER_A_CRASH, {"per_route_timeout_s": "2"}, "carla_crash", True),
+    ],
+)  # fmt: skip
+def test_each_failure_leaves_its_kind_beside_results_json(
+    tmp_path, monkeypatch, body, settings, kind, side
+) -> None:
+    """What a sweep counts toward setting a route aside, and what it tells the operator to fix."""
+    cfg = _site(tmp_path, monkeypatch, body, **settings)
+    out = tmp_path / "out"
+    with pytest.raises(RuntimeError):
+        _harness(cfg).run_episode(_episode(), "http://127.0.0.1:9000", out)
+    record = read_failure(out)
+    assert record is not None and record["kind"] == kind and simulator_side(record) is side
+    assert "elapsed_s" in record and str(tmp_path) not in failure_said(record)
+
+
+def test_the_agents_crash_is_the_models_to_fix_not_a_reason_to_set_a_route_aside(tmp_path) -> None:
+    results = tmp_path / "results.json"
+    shutil.copy(FIXTURES / "results_agent_crashed.json", results)
+    record = classify_failure("", timed_out=False, returncode=0, results_json=results)
+    assert record["status"] == ["Failed - Agent crashed"] and simulator_side(record) is False
+    assert failure_said(record) == "not scored (Failed - Agent crashed)"
+
+
+def test_a_scored_route_leaves_no_failure_record_and_a_stale_one_is_cleared(tmp_path, monkeypatch) -> None:
+    cfg = _site(tmp_path, monkeypatch, COMPLETED)
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / FAILURE).write_text('{"kind": "carla_crash"}')
+    (out / GUARD_KILL).write_text('{"reason": "an earlier attempt"}')
+    _harness(cfg).run_episode(_episode(), "http://127.0.0.1:9000", out)
+    assert not (out / FAILURE).exists() and not (out / GUARD_KILL).exists()
+    assert read_failure(out) is None
+
+
+def test_the_guards_reason_reaches_the_failure_record(tmp_path, monkeypatch) -> None:
+    """The guard writes its reason before it kills; a CARLA found gone is the simulator's failure."""
+    body = textwrap.dedent(
+        """\
+        open(os.path.join(out, "guard.json"), "w").write('{"reason": "its CARLA (port 2000) is gone"}')
+        sys.exit(-15 & 0xFF)
+        """
+    )
+    cfg = _site(tmp_path, monkeypatch, body)
+    out = tmp_path / "out"
+    with pytest.raises(RuntimeError):
+        _harness(cfg).run_episode(_episode(), "http://127.0.0.1:9000", out)
+    record = read_failure(out)
+    assert record["guard"] == "its CARLA (port 2000) is gone" and simulator_side(record) is True
+    assert failure_said(record).endswith("; the guard killed it: its CARLA (port 2000) is gone")
 
 
 def test_carla_is_found_by_the_port_it_printed_and_reaped_after_a_timeout(tmp_path, monkeypatch) -> None:
