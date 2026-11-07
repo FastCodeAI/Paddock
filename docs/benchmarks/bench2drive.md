@@ -318,6 +318,39 @@ run each repetition into its own run (three `paddock run … --runs 1`) if you
 intend to feed the upstream tools, and check `n_expected` against `n_samples`
 in `run.json` before believing a merged number.
 
+For a pooled record, one command runs the same scripts on exactly the record's
+routes and writes their answers beside it, as `upstream_scores.json`:
+
+```bash
+PADDOCK_CONFIG=<sweep>/paddock.toml python -m tools.benchmarks.bench2drive.upstream_scores \
+    results/bench2drive/<model>/<run_id> --runs <the ingest block's runs root>
+```
+
+Bench2Drive's scorers need two packages in the CARLA-client interpreter that driving
+does not: `scipy`, which `efficiency_smoothness_benchmark.py` imports, and `networkx`,
+which CARLA's route planner imports for `ability_benchmark.py`. Install them there once
+(`<python> -m pip install scipy networkx`; this site's are scipy 1.5.4 and networkx
+2.2). Without them the tool stops and names the missing one.
+
+It finds the routes the way `paddock ingest` did, and refuses unless each is the very
+`results.json` the record pooled: the run and sha256 the ingest wrote for it to the
+record's `samples.jsonl`, under the runs root of the config it pooled with. So run it
+with that config. It runs Bench2Drive's
+code at the pinned checkout in the CARLA-client interpreter
+(`upstream_scores_client.py`): success as `merge_route_json.py` counts it, efficiency
+and comfort through `efficiency_smoothness_benchmark.py`'s own functions, and the
+abilities as `ability_benchmark.py` scores them, per route. The traffic-sign test is
+inline in that script's `main`, so the client restates it, and checks the per-route
+credits against `main`'s own pooled numbers on the same routes before it writes
+anything. Pooled values are over the record's routes, so a route set aside for every
+model is in none of them; each route's row is in the file, so the 220-divisor
+convention can be recomputed. `ability_benchmark.py` divides by each ability's route
+count, so a record without a route of every ability cannot be scored by it, and the
+tool says so. A `metric_info.json` that is missing or empty leaves that route's
+comfort out, with the reason in its row. Its efficiency still counts, because
+efficiency needs only `results.json`. The file counts the routes each pooled comfort
+and efficiency are over.
+
 ## Running
 
 ```bash
@@ -524,6 +557,7 @@ every model, so the column it fills compares like with like:
 | route timeout | `per_route_timeout_s = 14400`, which covers a slow model's longest route on a shared GPU |
 | attempts | three per route: `campaign --tries 3`, the default |
 | the record | `paddock ingest` with `routes = "all"` and `label = "full220"` |
+| Bench2Drive's own scores | `python -m tools.benchmarks.bench2drive.upstream_scores` on the record, with the config that pooled it, writes `upstream_scores.json` beside it (*Efficiency and comfort*) |
 
 Think2Drive's drives come from `python -m tools.benchmarks.bench2drive.expert
 fetch --out <dir>` and then `summarize --out <dir>`: 211 routes have one. The other
@@ -670,10 +704,11 @@ What every run here depends on, beyond the leaderboard's own rules.
   CARLA. The paper's Bench2Drive result (DS 64.52) comes from a
   Bench2Drive-trained variant whose configs are in the repo but whose data
   pipeline, agent and checkpoint are unreleased; do not compare.
-* **Official metrics beyond DS:** `tools/statistic_route_json.is_success`
+* **Official metrics beyond DS:** success as `tools/merge_route_json.py` counts it
   (Completed and no infraction except min-speed), and
   `tools/efficiency_smoothness_benchmark.py` on the per-tick `metric_info`
-  the agent writes (needs scipy; the b2d conda env lacks it).
+  the agent writes (needs scipy in the CARLA-client interpreter, as
+  `upstream_scores` does: *Efficiency and comfort*).
 
 Earlier results on a 24-route set (5 abilities × 5 routes, minus 11715), 04–06
 Sep 2026, one run per route. These runs are not in `results/`, so the table
