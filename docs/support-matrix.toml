@@ -61,7 +61,17 @@ decimals = 3
 key = "bench2drive"
 name = "Bench2Drive"
 loop = "closed"
-header = "driving score ↑ (0–100)"
+header = "driving score ↑ (0–100), 50 routes"
+decimals = 2
+
+# Every model the same way over all 220 routes but the ones set aside for every model (issue #158;
+# "The 220-route protocol" in docs/benchmarks/bench2drive.md). It fills as models are run.
+[[benchmark]]
+key = "bench2drive220"
+benchmark = "bench2drive"
+name = "Bench2Drive"  # shared with the 50-route column, drawn once across both
+loop = "closed"
+header = "driving score ↑ (0–100), 219 of 220 routes"
 decimals = 2
 
 [[benchmark]]
@@ -120,6 +130,7 @@ nuplan = { run = "nuplan/openpilot/20260917T220353-9e4f44" }
 navsim = { run = "navsim/openpilot/20260911T161513-3a4c90", note = "10 Hz" }
 navsim_v1 = { run = "navsim_v1/openpilot/20260914T181009-dbcef4", note = "10 Hz" }
 bench2drive = { run = "bench2drive/openpilot/pooled50-40c29d24c37d542a-c7d2b2", marks = "P" }  # routes can end early; it ranks
+bench2drive220 = { run = "bench2drive/openpilot/full220-96854bd47e320563-22709f", marks = "P" }
 neuroncap = { run = "neuroncap/openpilot/20260905T055713-11ac59" }
 alpasim = { run = "alpasim/openpilot/legacy-openpilot_020_30scenes" }
 
