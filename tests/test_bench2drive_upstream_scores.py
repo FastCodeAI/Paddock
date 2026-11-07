@@ -132,3 +132,23 @@ def test_the_scores_are_bench2drives_own(tmp_path: Path) -> None:
     assert by_route["4183"]["traffic_sign_test"]["passed"] is False
     assert by_route["25857"]["efficiency"] is None, "no min-speed infraction, no efficiency"
     assert str(tmp_path) not in upstream_scores.dumps(content), "the file is tracked: no machine path"
+
+
+def test_a_route_without_its_ticks_keeps_its_efficiency(tmp_path: Path) -> None:
+    """Efficiency needs only results.json; comfort needs the route's ticks (metric_info.json). A
+    route whose ticks file is empty -- route 3178's was, in October -- or missing loses its comfort,
+    its row says why, and its efficiency still counts."""
+    cfg = _site()
+    if cfg is None:
+        pytest.skip("needs the site's Bench2Drive checkout and CARLA-client interpreter")
+    root, record_dir, record = _pooled(tmp_path)
+    next(root.glob("*/metric_info/RouteScenario_24224_*/metric_info.json")).write_text("")
+    next(root.glob("*/metric_info/RouteScenario_3575_*/metric_info.json")).unlink()
+    content = upstream_scores.scores(record_dir, [root], cfg, samples=_samples(tmp_path, record))
+    pooled = content["pooled"]
+    assert pooled["efficiency"] == pytest.approx(216.84537207602338, abs=1e-9), "as with every file there"
+    assert (pooled["efficiency_routes"], pooled["comfort_routes"]) == (4, 3)
+    by_route = {r["route_id"]: r for r in content["routes"]}
+    assert by_route["24224"]["comfort"] is None and by_route["24224"]["efficiency"] is not None
+    assert by_route["24224"]["comfort_error"] == "metric_info.json is empty"
+    assert by_route["3575"]["comfort_error"] == "no metric_info.json"

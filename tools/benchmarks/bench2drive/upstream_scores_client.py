@@ -101,21 +101,28 @@ def main(argv=None):
             credit["Traffic_Signs"] = 1.0 if passed else 0.0
         efficiency, comfort, comfort_error = None, None, None
         metric_info = route.get("metric_info")
-        if metric_info and os.path.getsize(metric_info) > 0:
-            # read_from_json joins its metric_dir with each record's save_name: one record, one link.
-            one = os.path.join(work, route["route_id"])
-            os.makedirs(one, exist_ok=True)
-            link = os.path.join(one, record["save_name"])
-            if not os.path.exists(link):
-                os.symlink(os.path.dirname(metric_info), link)
-            merged_one = os.path.join(one, "merged.json")
-            json.dump({"_checkpoint": {"records": [record]}}, open(merged_one, "w"))
-            try:
-                data, driving_efficiency = es.read_from_json(merged_one, one)
-                efficiency = driving_efficiency[0] if driving_efficiency else None
+        ticks = bool(metric_info) and os.path.getsize(metric_info) > 0
+        # read_from_json joins its metric_dir with each record's save_name: one record, one link.
+        # Efficiency needs only the record, so a route without its ticks gets an empty file there,
+        # and only its comfort is missing, with the reason.
+        one = os.path.join(work, route["route_id"])
+        os.makedirs(one, exist_ok=True)
+        link = os.path.join(one, record["save_name"])
+        if ticks:
+            os.symlink(os.path.dirname(metric_info), link)
+        else:
+            os.makedirs(link)
+            json.dump({}, open(os.path.join(link, "metric_info.json"), "w"))
+            comfort_error = "metric_info.json is empty" if metric_info else "no metric_info.json"
+        merged_one = os.path.join(one, "merged.json")
+        json.dump({"_checkpoint": {"records": [record]}}, open(merged_one, "w"))
+        try:
+            data, driving_efficiency = es.read_from_json(merged_one, one)
+            efficiency = driving_efficiency[0] if driving_efficiency else None
+            if ticks:
                 comfort = float(es.seg_compute_comfort_metric(**data[0]))
-            except Exception as exc:  # upstream raises on a route too short to segment; say so
-                comfort_error = f"{type(exc).__name__}: {exc}"
+        except Exception as exc:  # upstream raises on a route too short to segment; say so
+            comfort_error = f"{type(exc).__name__}: {exc}"
         rows.append(
             {
                 "route_id": route["route_id"],

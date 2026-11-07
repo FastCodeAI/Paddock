@@ -340,8 +340,10 @@ anything. Pooled values are over the record's routes, so a route set aside for e
 model is in none of them; each route's row is in the file, so the 220-divisor
 convention can be recomputed. `ability_benchmark.py` divides by each ability's route
 count, so a record without a route of every ability cannot be scored by it, and the
-tool says so. A `metric_info.json` that is missing leaves that route's comfort out,
-and the file counts the routes each pooled comfort and efficiency are over.
+tool says so. A `metric_info.json` that is missing or empty leaves that route's
+comfort out, with the reason in its row. Its efficiency still counts, because
+efficiency needs only `results.json`. The file counts the routes each pooled comfort
+and efficiency are over.
 
 ## Running
 
