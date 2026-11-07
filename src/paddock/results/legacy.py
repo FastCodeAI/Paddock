@@ -65,13 +65,13 @@ def _bench2drive_routes(cfg: SiteConfig, entry: dict) -> list[str] | None:
     if routes != "all":
         # A bare string used to be iterated: routes = "1711" asked for routes 1, 7, 1 and 1.
         raise ConfigError(f'[[ingest.bench2drive]] routes is a list of route ids or "all", got {routes!r}')
-    from paddock.adapters.benchmarks.bench2drive.harness import DEFAULT_ROUTES_FILE, parse_routes
+    from paddock.adapters.benchmarks.bench2drive.harness import parse_routes, routes_path
 
     settings = cfg.benchmarks.get("bench2drive")
     repo = settings.get("repo") if settings is not None else None
     if not repo:
         raise ConfigError('[[ingest.bench2drive]] routes = "all" needs [benchmarks.bench2drive] repo')
-    path = Path(repo) / "leaderboard" / "data" / (settings.get("routes_file") or DEFAULT_ROUTES_FILE)
+    path = routes_path(Path(repo), settings.get("routes_file"))
     if not path.exists():
         raise ConfigError(f'[[ingest.bench2drive]] routes = "all": routes file not found: {path}')
     return [rid for rid, _, _ in parse_routes(path)]

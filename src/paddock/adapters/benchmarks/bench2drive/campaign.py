@@ -95,7 +95,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from paddock.adapters.benchmarks.bench2drive.harness import (
-    DEFAULT_ROUTES_FILE,
     GUARD_KILL,
     SET_ASIDE,
     NotScored,
@@ -105,6 +104,7 @@ from paddock.adapters.benchmarks.bench2drive.harness import (
     parse_results,
     parse_routes,
     read_failure,
+    routes_path,
     simulator_side,
 )
 from paddock.config import REPO_ROOT, SiteConfig
@@ -474,8 +474,7 @@ def _routes_meta(cfg: SiteConfig) -> list[tuple[str, str, str]]:
     repo = settings.get("repo") if settings else None
     if not repo:
         raise SystemExit("[benchmarks.bench2drive] repo is not set in the site config")
-    routes_file = Path(repo) / "leaderboard" / "data" / (settings.get("routes_file") or DEFAULT_ROUTES_FILE)
-    return parse_routes(routes_file)
+    return parse_routes(routes_path(Path(repo), settings.get("routes_file")))
 
 
 def _ids(text: str | None) -> set[str] | None:

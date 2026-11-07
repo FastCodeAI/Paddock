@@ -226,6 +226,11 @@ class NotScored(ValueError):
 # ---------------------------------------------------------------------------
 
 
+def routes_path(repo: Path, routes_file: str | None = None) -> Path:
+    """Where a Bench2Drive checkout keeps a routes file: ``leaderboard/data/<name>``."""
+    return Path(repo) / "leaderboard" / "data" / (routes_file or DEFAULT_ROUTES_FILE)
+
+
 def parse_routes(routes_xml: Path) -> list[tuple[str, str, str]]:
     """``(route_id, town, scenario_type)`` for every route in a leaderboard XML.
 
@@ -625,7 +630,7 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         repo = self.repo
         if repo is None:
             return None
-        return repo / "leaderboard" / "data" / (self.setting("routes_file") or DEFAULT_ROUTES_FILE)
+        return routes_path(repo, self.setting("routes_file"))
 
     @property
     def evaluator(self) -> Path | None:
