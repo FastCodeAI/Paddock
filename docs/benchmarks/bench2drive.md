@@ -858,8 +858,9 @@ No route needed a third attempt, and none was added to the routes set aside.
 
 **METEOR** is asked at its declared 5 Hz, the last plan followed in between, and
 CARLA never crashed on its attempts. As on 50 routes, it rarely gets moving: 192
-of its 219 routes end under 1% route completion, 163 of them by the 30 s rule. No
-route is a success; its one ability credit is Traffic signs, for 3 of 94 routes
+of its 219 routes end under 1% route completion. The 30 s rule ended 141 of them,
+Bench2Drive's own 60 s blocked test 44 (the 30 s clock pauses while the car waits
+at a red light) and the over-time rule 7. No route is a success; its one ability credit is Traffic signs, for 3 of 94 routes
 that got past their first junction with no red light or stop sign run. Its comfort
 is that of a car that barely moved, and its efficiency is over the 26 routes with
 a minimum-speed check.
