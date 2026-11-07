@@ -17,7 +17,6 @@ from __future__ import annotations
 import functools
 import json
 import math
-import time
 from pathlib import Path
 
 import pytest
@@ -1931,11 +1930,11 @@ def test_a_card_someone_else_freed_lets_the_waiting_launch_start_beside_a_runnin
     starts beside nuScenes, not after it."""
     args, stamps = _smoke_site(tmp_path, monkeypatch, {"kitscenes": 2.0, "nuscenes": 2.0}, hold=3.0)
     monkeypatch.setattr(gate, "LANE_EXIT_S", 0.3)
-    first: list[float] = []
+    checks: list[None] = []
 
-    def free_gb(env):  # room for the first launch, none for a moment, then room while nuScenes runs
-        first.append(time.time())
-        return 100.0 if len(first) == 1 or time.time() - first[0] > 0.3 else 0.0
+    def free_gb(env):  # room for the first launch, none on the next two checks, then room again
+        checks.append(None)
+        return 0.0 if len(checks) in (2, 3) else 100.0
 
     monkeypatch.setattr(gate, "_gpu_free_gb", free_gb)
     said: list[str] = []
