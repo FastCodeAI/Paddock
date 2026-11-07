@@ -39,12 +39,13 @@ writes -- no state of its own decides anything:
   "failed to destroy actor" line every 600 s for hours, so silence alone never
   fires. It writes its reason into the route's folder (``guard.json``) first,
   so the attempt's failure record says why.
-* **what is given up on** -- a route whose last ``--tries`` attempts (3 by
-  default) each left a failure record (``failure.json``) and none scored is not
-  dealt again; ``status`` lists it with why each attempt failed, and whether
-  that was the simulator (a candidate for ``harness.SET_ASIDE``) or the model
-  (the model's to fix). An attempt cut off by a restart leaves no record and
-  does not count. A route given up on, or already in ``SET_ASIDE``, is dealt
+* **what is given up on** -- a route with no score and ``--tries`` failed
+  attempts (3 by default) is not dealt again, a failed attempt being one that
+  left a failure record (``failure.json``) with the model's node still
+  answering. ``status`` lists it with why each attempt failed, and whether that
+  was the simulator (a candidate for ``harness.SET_ASIDE``) or the model (the
+  model's to fix). An attempt cut off by a restart leaves no record and does
+  not count. A route given up on, or already in ``SET_ASIDE``, is dealt
   again only when ``--only`` names it: to drive it after a fix, or to see
   whether it still fails.
 * **batches and cards** -- ``--batch N`` deals at most N routes to each new
@@ -59,15 +60,19 @@ writes -- no state of its own decides anything:
   and no worker is alive; with no worker alive it first stops what a worker
   killed hard can leave behind (an evaluator and its CARLA, a model node on the
   GPU), which nothing else would. It stops, exit 1, after three launches in a
-  row whose workers all exited without attempting a route.
+  row whose workers all exited without attempting a route. Its pid is in
+  ``_campaign/<model>/keep.pid``, and ``stop`` stops it first.
 
-All four go only after this sweep's own processes: workers are found by their
-command line *and* by the runs root of their ``PADDOCK_CONFIG``, and ``stop``
-signals only those whose ``PADDOCK_CONFIG`` is one of the campaign's own
-``worker<slot>.toml`` (a run started by hand on the same runs root keeps its
-routes from being dealt twice, and is left running); evaluators by their
-``--checkpoint`` lying under it; CARLA by the port in that evaluator's log. A
-process whose environment cannot be read -- another user's -- is never ours.
+All of them go only after this sweep's own processes. Launches deal under the
+sweep's lock (``_campaign/<model>/launch.lock``), so two never deal the same
+routes. Workers are found by their command line *and* by the runs root of their
+``PADDOCK_CONFIG``, and ``stop`` signals only those whose ``PADDOCK_CONFIG`` is
+one of the campaign's own ``worker<slot>.toml`` (a run started by hand on the
+same runs root keeps its routes from being dealt twice, and is left running).
+Evaluators and model nodes are the sweep's when they write under its runs root,
+and are stopped only when the run that started them -- their parent -- is gone;
+CARLA by the port in that evaluator's log. A process whose environment cannot
+be read -- another user's -- is never ours.
 A route suspected of crashing CARLA can be passed as ``--held``: driven last,
 by one worker, once nothing else is left. (Before patch 0001, which preflight
 now requires, the evaluator's crash handler also killed every CARLA on its GPU

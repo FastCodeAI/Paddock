@@ -407,10 +407,10 @@ already running:
 |---|---|
 | `campaign guard` | kills an evaluator that can no longer finish -- its log silent 15 min (a driving route logs every ~0.3 s), or its CARLA gone for 2 min -- so the worker records the route FAILED and moves on instead of waiting out `per_route_timeout_s` |
 | `campaign launch` | every route with no scored attempt under `{runs}/bench2drive/<model>/` (any run id) and not queued in an alive worker, sorted and dealt longest-expected-first to the free worker slots; each worker is a fresh `paddock run --scene <its routes>` with a copy of the site config whose CARLA / traffic-manager ports sit 150 above the previous slot's, and its own node port base. A route set aside for every model (*Routes set aside*) is never dealt, unless `--only` names it |
-| `--tries` | failed attempts after which a route is not dealt again (3 by default). Only an attempt that left a `failure.json` counts; `campaign status` lists each route given up on with why every attempt failed, and whose failure it was |
+| `--tries` | failed attempts after which a route is not dealt again (3 by default). Only an attempt that left a `failure.json` with the model's node still answering counts: a cut-off attempt says nothing about the route, and one failed with the node gone failed the node. `campaign status` lists each route given up on with why every attempt failed, and whose failure it was; `--only` deals it again |
 | `--batch` | at most this many routes to each new worker, longest expected first, so the last hours are not one long queue in one slot while the others stand idle |
 | `--cards` | `CUDA:VULKAN` index pairs, one per GPU: `--workers` workers on each. A worker's config copy gets the card's `gpu_rank` and its node the card's `CUDA_VISIBLE_DEVICES`. CARLA picks its card by Vulkan index, which is not the CUDA one when a software renderer (Mesa's llvmpipe) is listed between two GPUs: `vulkaninfo --summary` shows the order |
-| `--keep` | `campaign keep`: the same launch every five minutes until nothing is left and no worker is alive, so slots that free up are filled to the end. With no worker alive it first stops what a worker killed hard leaves behind: an evaluator and its CARLA, a model node holding GPU memory |
+| `--keep` | `campaign keep`: the same launch every five minutes until nothing is left and no worker is alive, so slots that free up are filled to the end. With no worker alive it first stops what a worker killed hard leaves behind (an evaluator and its CARLA, a model node holding GPU memory, each only once the run that started it is gone). It stops after three launches in a row that drove nothing. Launches deal under a lock, so a restart beside a keeper deals nothing twice; `campaign stop` stops the keeper first, then the workers |
 | `--held` | routes driven last, by one worker, once everything else has scored and no worker is alive |
 | `--rebalance` | stops the alive workers first (their current routes are driven again) and deals everything left anew |
 | `--dashboard-root` | the per-route video dashboard, on 127.0.0.1 |
@@ -445,8 +445,9 @@ Two failure modes this exists for, both met on a 220-route sweep at one site:
   behaviour*), it kills only its own. Such a route used to be dealt again on
   every launch while it had no score. Now `--tries` gives up on it, and
   `campaign status` says whether it is a candidate for the routes set aside for
-  every model. At that site the Town12/13 `InterurbanAdvancedActorFlow` routes
-  23695, 23708 and 24078 crashed or hung there; 23708 and 24078 later scored.
+  every model. At that site route 23695 (Town13 `InterurbanAdvancedActorFlow`)
+  crashed CARLA on all seven attempts, and 23708 (Town12) on two before one
+  scored.
 
 Worker configs, logs (`logs/worker<slot>.log`) and a launch history
 (`workers.json`) live in `{runs}/bench2drive/_campaign/<model>/`. Every attempt
@@ -557,7 +558,7 @@ failure on the simulator, with the evidence here. The list is `SET_ASIDE` in
 
 - the harness drives a listed route only when `--scene` names it, and a run that
   does is not a score;
-- the campaign never deals one;
+- the campaign deals one only when `--only` names it, to see whether it still fails;
 - the ingest leaves it out of the pool, names it in `config.routes_set_aside`, and
   gives the reason in the notes.
 
@@ -623,7 +624,7 @@ failure on the simulator, with the evidence here. The list is `SET_ASIDE` in
 | an edited CARLA launch line is refused | unit-tested against a stub evaluator with and without the flag | **strong** |
 | `--resume` reuses scored routes and drives the rest | unit-tested (scored, killed, torn, all-crashed, short of repetitions); on a real interrupted sweep it reused the 34 scored routes and drove the other 185 | **strong** |
 | `campaign` deals what is left and the guard frees hung workers | selection, dealing, per-slot config and `--held` unit-tested (`tests/test_campaign.py`); the process side used on one 220-route sweep, where the guard freed two evaluators whose CARLA had died | moderate |
-| `--tries`, `--batch`, `--cards` and `keep` deal as described | unit-tested: tries counted from failure records only, batches longest first, each new worker's `gpu_rank` and `CUDA_VISIBLE_DEVICES` by card, `keep` settling once nothing is left; not yet used on a full sweep | moderate |
+| `--tries`, `--batch`, `--cards` and `keep` deal as described | unit-tested: tries counted from failure records only, batches capped per worker, each new worker's `gpu_rank` and `CUDA_VISIBLE_DEVICES` by card, the launch lock, orphans known by their parent, `keep` settling and stopping; the process side is argued until a full sweep has used it | moderate |
 | a failed attempt names its cause in `failure.json` | golden test on route 11715's real `evaluator.log` (CARLA's `Signal=11` at 53.65 s, read however the attempt ended); each kind tested against a stand-in evaluator | **strong** for the parse; argued for every way a real evaluator can fail |
 | a route set aside is in no mean and is named | unit-tested in the harness (not driven unless named, not a subset), the campaign (never dealt) and the ingest (out of the pool, in `routes_set_aside`, still valid) | **strong** |
 | the calibration the agent sends is each camera's CARLA mount in paddock's frames | `tests/test_calibration.py` runs the agent's own `setup()` for every camera of every rig, against the conversion written out one frame change at a time, the pinhole of the rendered view, a road point on the ego's left landing left of centre, and one 5 m to its left in front of the left cameras and behind the right ones; carla and the HTTP session are stand-ins, and 6 of its 10 tests fail with the agent's y-flip removed, the side-camera ones among them | **strong** for the formula; not compared with a live CARLA's matrices |

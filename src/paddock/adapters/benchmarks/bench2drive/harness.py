@@ -751,8 +751,9 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
 
         Built like ``runtime.env.build``, not inherited wholesale -- a stray
         PYTHONPATH from paddock's own env would make the client half-import
-        paddock's dependencies. ``CUDA_VISIBLE_DEVICES`` passes through so the
-        CARLA the evaluator launches honours how the sweep was pinned.
+        paddock's dependencies. ``CUDA_VISIBLE_DEVICES`` passes through with the
+        rest of the host's set; the CARLA the evaluator launches picks its card by
+        ``gpu_rank`` (``-graphicsadapter``, a Vulkan index), which ignores it.
         """
         env = {k: os.environ[k] for k in PASSTHROUGH if k in os.environ}
         env.update(
