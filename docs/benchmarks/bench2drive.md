@@ -557,6 +557,7 @@ every model, so the column it fills compares like with like:
 | route timeout | `per_route_timeout_s = 14400`, which covers a slow model's longest route on a shared GPU |
 | attempts | three per route: `campaign --tries 3`, the default |
 | the record | `paddock ingest` with `routes = "all"` and `label = "full220"` |
+| Bench2Drive's own scores | `python -m tools.benchmarks.bench2drive.upstream_scores` on the record, with the config that pooled it, writes `upstream_scores.json` beside it (*Efficiency and comfort*) |
 
 Think2Drive's drives come from `python -m tools.benchmarks.bench2drive.expert
 fetch --out <dir>` and then `summarize --out <dir>`: 211 routes have one. The other
