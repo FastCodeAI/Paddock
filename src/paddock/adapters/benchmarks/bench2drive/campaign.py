@@ -110,6 +110,7 @@ from paddock.adapters.benchmarks.bench2drive.harness import (
     simulator_side,
 )
 from paddock.config import REPO_ROOT, SiteConfig
+from paddock.registry import Registry
 from paddock.runtime import ports
 
 #: Port spacing between worker slots, as Bench2Drive's own multi-GPU scripts space them.
@@ -125,8 +126,9 @@ CARLA_GONE_S = 120.0
 #: Failed attempts after which a route is not dealt again (``--tries``): enough to tell a
 #: repeatable crash from a one-off. The 220-route protocol's (docs/benchmarks/bench2drive.md).
 TRIES = 3
-#: Seconds between ``keep``'s launches.
+#: Seconds between ``keep``'s launches, and the fewest it waits: every pass scans the runs root.
 KEEP_EVERY_S = 300.0
+KEEP_MIN_S = 10.0
 #: How long a launch waits for another launch of the same sweep -- a keeper's pass, a restart run
 #: beside it -- to finish dealing, before it gives up for this pass.
 LOCK_WAIT_S = 300.0
@@ -309,8 +311,9 @@ def free_slots(
     """The first ``n`` slots none of whose ports is taken by an alive worker or bound by anything."""
     out, slot = [], 0
     while len(out) < n and slot < 64:
-        carla, tm, _node = slot_ports(slot, base_carla, base_tm, node_base)
-        needed = (carla, carla + 1, carla + 2, tm)
+        carla, tm, node = slot_ports(slot, base_carla, base_tm, node_base)
+        # The node base too: with the default bases, slot 8's traffic manager is slot 10's node base.
+        needed = (carla, carla + 1, carla + 2, tm, node)
         if not any(p in taken for p in needed) and all(is_free(p) for p in needed):
             out.append(slot)
         slot += 1
@@ -517,7 +520,29 @@ def _routes_meta(cfg: SiteConfig) -> list[tuple[str, str, str]]:
     repo = settings.get("repo") if settings else None
     if not repo:
         raise SystemExit("[benchmarks.bench2drive] repo is not set in the site config")
-    return parse_routes(routes_path(Path(repo), settings.get("routes_file")))
+    routes = parse_routes(routes_path(Path(repo), settings.get("routes_file")))
+    # The site's routes_subset is the site's set (harness.select_routes): a route outside it, dealt,
+    # would be dropped by its worker without a word, and dealt again on every pass.
+    subset = _ids(settings.get("routes_subset"))
+    return [r for r in routes if subset is None or r[0] in subset]
+
+
+def _cuda_pin(cfg: SiteConfig, model: str) -> str | None:
+    """Where the model's node env pins CUDA_VISIBLE_DEVICES, which would beat each worker's --cards one."""
+    try:
+        spec = Registry.load().models.get(model)
+    except Exception:  # noqa: BLE001 -- a broken registry is the launch's to report, not this check's
+        spec = None
+    if spec is not None and "CUDA_VISIBLE_DEVICES" in spec.runtime.env:
+        return f"{model}/model.yaml"
+    override = (getattr(cfg, "models", None) or {}).get(model)
+    if override is not None:
+        if "CUDA_VISIBLE_DEVICES" in override.env:
+            return f"[models.{model}.env]"
+        pairing = (override.benchmarks or {}).get("bench2drive")
+        if pairing is not None and "CUDA_VISIBLE_DEVICES" in pairing.env:
+            return f"[models.{model}.benchmarks.bench2drive.env]"
+    return None
 
 
 def _ids(text: str | None) -> set[str] | None:
@@ -728,6 +753,13 @@ def _launch(
 ) -> list[dict]:
     root = _runs_root(cfg, model)
     state_dir = _state_dir(cfg, model)
+    pinned = _cuda_pin(cfg, model) if cards else None
+    if pinned:
+        raise SystemExit(
+            f"--cards gives each worker's node its card through CUDA_VISIBLE_DEVICES, but {pinned} pins it, "
+            "and that wins: the node would run on another card than its CARLA. Remove the pin, or drop "
+            "--cards"
+        )
     alive = workers(model, root)
     if rebalance and alive:
         if dry_run:
@@ -866,27 +898,32 @@ def keep(
 
 
 def _keep(cfg, model, n_workers, every_s, sleep, echo, root, deal) -> int:
+    every_s = max(every_s, KEEP_MIN_S)
     strikes, launched, attempts_then = 0, [], None
     while True:
-        alive = workers(model, root)
-        attempts = sum(st.attempts for st in route_states(root).values())
-        if launched and not alive and attempts == attempts_then:
-            strikes += 1
-            if strikes >= KEEP_STRIKES:
-                echo(
-                    f"{datetime.now(UTC):%F %T} the last {strikes} launches' workers all exited without "
-                    "attempting a route (a model node that cannot start?): stopping; read the worker logs"
-                )
-                return 1
-        elif attempts != attempts_then:
-            strikes = 0
-        if not alive:
-            _reap_orphans(root, echo)
         try:
+            alive = workers(model, root)
+            attempts = sum(st.attempts for st in route_states(root).values())
+            if launched and not alive and attempts == attempts_then:
+                strikes += 1
+                if strikes >= KEEP_STRIKES:
+                    echo(
+                        f"{datetime.now(UTC):%F %T} the last {strikes} launches' workers all exited without "
+                        "attempting a route (a model node that cannot start?): stopping; read the worker logs"
+                    )
+                    return 1
+            elif attempts != attempts_then:
+                strikes = 0
+            if not alive:
+                _reap_orphans(root, echo)
             launched = launch(cfg, model, n_workers, echo=echo, **deal)
-        except SystemExit as exc:  # no free slot this pass: CARLAs still releasing their ports
+        except (SystemExit, OSError, ValueError) as exc:
+            # One pass that could not deal -- no free slot or lock yet, a run directory removed while it
+            # was read, a torn workers.json -- is that pass's: the sweep is not settled because of it.
             launched = []
             echo(f"{datetime.now(UTC):%F %T} launch: {exc}; trying again in {every_s:.0f} s")
+            sleep(every_s)
+            continue
         attempts_then = attempts
         if not workers(model, root):
             echo(f"{datetime.now(UTC):%F %T} nothing left to deal and no worker alive: the sweep has settled")

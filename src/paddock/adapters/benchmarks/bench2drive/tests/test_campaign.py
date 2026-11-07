@@ -226,6 +226,69 @@ def test_a_dry_run_starts_and_stops_nothing(monkeypatch) -> None:
     assert calls == [("launch", True)], "no keep loop, no signal"
 
 
+def test_keep_carries_on_past_a_pass_that_could_not_deal(tmp_path, monkeypatch) -> None:
+    """A run directory removed mid-scan, or no free slot yet, is that pass's trouble: keep says so, waits,
+    and goes on -- it neither dies nor calls the sweep settled."""
+    from paddock.adapters.benchmarks.bench2drive import campaign
+
+    passes = iter([OSError(2, "removed while scanned"), SystemExit("no free slot"), []])
+
+    def launch(*a, **kw):
+        result = next(passes)
+        if isinstance(result, BaseException):
+            raise result
+        return result
+
+    monkeypatch.setattr(campaign, "launch", launch)
+    monkeypatch.setattr(campaign, "workers", lambda model, root: [])
+    monkeypatch.setattr(campaign, "_reap_orphans", lambda root, echo: None)
+
+    class Cfg:
+        runs = tmp_path
+
+    said: list[str] = []
+    slept: list[float] = []
+    assert campaign.keep(Cfg, "m", 5, every_s=0, sleep=slept.append, echo=said.append) == 0
+    assert [ln for ln in said if "settled" in ln] == [said[-1]], "settled once, at the end"
+    assert slept == [campaign.KEEP_MIN_S] * 2, "a pass that could not deal waits, at least KEEP_MIN_S"
+
+
+def test_a_sites_routes_subset_is_what_is_dealt(tmp_path, monkeypatch) -> None:
+    """Its worker would drop a route outside it without a word, and keep would deal it again forever."""
+    from paddock.adapters.benchmarks.bench2drive import campaign
+
+    data = tmp_path / "Bench2Drive" / "leaderboard" / "data"
+    data.mkdir(parents=True)
+    shutil.copy(FIXTURES / "routes_sample.xml", data / "routes_sample.xml")
+
+    site = {
+        "repo": str(tmp_path / "Bench2Drive"),
+        "routes_file": "routes_sample.xml",
+        "routes_subset": "1773",
+    }
+
+    class Cfg:
+        benchmarks = {"bench2drive": site}
+
+    assert [rid for rid, _, _ in campaign._routes_meta(Cfg)] == ["1773"]
+
+
+def test_cards_refuse_a_cuda_pin_that_would_beat_them(tmp_path, monkeypatch) -> None:
+    """The node env's own CUDA_VISIBLE_DEVICES beats each worker's: its node would leave its CARLA's card."""
+    from paddock.config import ModelOverride
+
+    routes = [("1711", "Town12", "ParkingCutIn")]
+    campaign, cfg = _deal_site(tmp_path, monkeypatch, routes)
+    cfg.models = {"m": ModelOverride(env={"CUDA_VISIBLE_DEVICES": "0"})}
+    with pytest.raises(SystemExit, match=r"\[models.m.env\] pins it"):
+        campaign.launch(cfg, "m", 2, cards=[("0", "0"), ("1", "2")], dry_run=True, echo=lambda s: None)
+
+
+def test_a_slot_whose_node_port_is_bound_is_skipped() -> None:
+    bound = {9100 + 10 * 1}  # something already listens on slot 1's node base
+    assert free_slots(2, 2000, 8000, 9100, set(), lambda p: p not in bound) == [0, 2]
+
+
 def test_cards_are_cuda_and_vulkan_index_pairs() -> None:
     assert _cards("0:0,1:2") == [("0", "0"), ("1", "2")] and _cards(None) is None
     with pytest.raises(SystemExit, match="CUDA:VULKAN"):
