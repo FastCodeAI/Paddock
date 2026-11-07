@@ -38,8 +38,14 @@ def main(argv=None):
     ap.add_argument("answer")
     args = ap.parse_args(argv)
     sys.path.insert(0, os.path.join(args.repo, "tools"))
-    import ability_benchmark as ab
-    import efficiency_smoothness_benchmark as es
+    try:
+        import ability_benchmark as ab
+        import efficiency_smoothness_benchmark as es
+    except ImportError as exc:  # scipy and networkx: the scorers need them, driving does not
+        sys.exit(
+            f"Bench2Drive's scorers cannot be imported in {sys.executable}: {exc}. "
+            "They need scipy and networkx there (docs/benchmarks/bench2drive.md, Efficiency and comfort)."
+        )
 
     request = json.load(open(args.request))
     routes_xml = request["routes_xml"]

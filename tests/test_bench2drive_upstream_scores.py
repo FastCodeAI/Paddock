@@ -11,6 +11,8 @@ from __future__ import annotations
 import ast
 import json
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -152,3 +154,18 @@ def test_a_route_without_its_ticks_keeps_its_efficiency(tmp_path: Path) -> None:
     assert by_route["24224"]["comfort"] is None and by_route["24224"]["efficiency"] is not None
     assert by_route["24224"]["comfort_error"] == "metric_info.json is empty"
     assert by_route["3575"]["comfort_error"] == "no metric_info.json"
+
+
+def test_an_interpreter_without_the_scorers_packages_is_told_what_they_need(tmp_path: Path) -> None:
+    """Bench2Drive's scorers import scipy and networkx, which driving does not need: an interpreter
+    set up for driving alone is told so in one line, not with a traceback from Bench2Drive's code."""
+    (tmp_path / "tools").mkdir()
+    (tmp_path / "tools" / "ability_benchmark.py").write_text("import a_package_this_interpreter_lacks\n")
+    said = subprocess.run(
+        [sys.executable, str(upstream_scores.CLIENT), str(tmp_path), "request.json", "answer.json"],
+        capture_output=True,
+        text=True,
+    )
+    assert said.returncode == 1
+    assert "a_package_this_interpreter_lacks" in said.stderr and "scipy and networkx" in said.stderr
+    assert "Traceback" not in said.stderr

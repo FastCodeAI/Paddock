@@ -131,12 +131,13 @@ def scores(
     with tempfile.TemporaryDirectory() as tmp:
         asked, answer = Path(tmp) / "request.json", Path(tmp) / "answer.json"
         asked.write_text(json.dumps(request))
-        subprocess.run(
+        client = subprocess.run(
             [python, "-u", str(CLIENT), str(repo), str(asked), str(answer)],
             env=harness._environment({}),
             cwd=tmp,
-            check=True,
         )
+        if client.returncode != 0:  # it has said why on stderr, above
+            raise SystemExit(f"{CLIENT.name} exited {client.returncode}; nothing written")
         result = json.loads(answer.read_text())
     sha = subprocess.run(
         ["git", "-C", str(repo), "rev-parse", "--short", "HEAD"], capture_output=True, text=True

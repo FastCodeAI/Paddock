@@ -326,6 +326,12 @@ PADDOCK_CONFIG=<sweep>/paddock.toml python -m tools.benchmarks.bench2drive.upstr
     results/bench2drive/<model>/<run_id> --runs <the ingest block's runs root>
 ```
 
+Bench2Drive's scorers need two packages in the CARLA-client interpreter that driving
+does not: `scipy`, which `efficiency_smoothness_benchmark.py` imports, and `networkx`,
+which CARLA's route planner imports for `ability_benchmark.py`. Install them there once
+(`<python> -m pip install scipy networkx`; this site's are scipy 1.5.4 and networkx
+2.2). Without them the tool stops and names the missing one.
+
 It finds the routes the way `paddock ingest` did, and refuses unless each is the very
 `results.json` the record pooled: the run and sha256 the ingest wrote for it to the
 record's `samples.jsonl`, under the runs root of the config it pooled with. So run it
@@ -700,7 +706,8 @@ What every run here depends on, beyond the leaderboard's own rules.
 * **Official metrics beyond DS:** success as `tools/merge_route_json.py` counts it
   (Completed and no infraction except min-speed), and
   `tools/efficiency_smoothness_benchmark.py` on the per-tick `metric_info`
-  the agent writes (needs scipy; the b2d conda env lacks it).
+  the agent writes (needs scipy in the CARLA-client interpreter, as
+  `upstream_scores` does: *Efficiency and comfort*).
 
 Earlier results on a 24-route set (5 abilities × 5 routes, minus 11715), 04–06
 Sep 2026, one run per route. These runs are not in `results/`, so the table
