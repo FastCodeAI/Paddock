@@ -62,7 +62,7 @@ harness could read back. What the capability blocks say today:
 
 | Model | Rate driven | `model.yaml` says | |
 |---|---:|---|---|
-| Alpamayo 1.5 | 10 Hz | `native_input_hz: 10.0`, `waypoint_dt: 0.5` | matches |
+| Alpamayo 1.5 | 10 Hz | `native_input_hz: 10.0`, `waypoint_dt: 0.5`; since Nov 2026 `planning_hz: 10.0` | matches |
 | QwenDrive | 2 Hz | `native_input_hz: 10.0`, `waypoint_dt: 0.5` | `native_input_hz` describes its 10 Hz *ego-pose history*; its camera frames are picked 0.5 s apart, which is the 2 Hz cadence it was driven at |
 | DriveJEPA | 2 Hz | no `native_input_hz`; `waypoint_dt: 0.5` | 2 Hz is its planning cadence, not a declared field |
 
@@ -75,8 +75,9 @@ against the run — is follow-up work, not something this campaign settles.
 1/`planning_hz` seconds and follows the last plan unchanged in between, which is
 what this campaign did (the 10-frame holds above). The rate is recorded as
 `config.infer_hz`, and the host's `PADDOCK_INFER_HZ` still overrides it.
-Drive-JEPA declares 2 Hz; QwenDrive and Alpamayo declare none yet. The runs on
-this page were driven before that, on another branch, and were ingested.
+Drive-JEPA declares 2 Hz and Alpamayo 1.5 10 Hz (since Nov 2026); QwenDrive declares
+none yet. The runs on this page were driven before that, on another branch, and were
+ingested.
 
 ## Tracked runs
 

@@ -1212,6 +1212,9 @@ def test_the_models_planning_rate_reaches_the_client_and_the_record(tmp_path, mo
     assert harness.model_run_config(models["drivejepa"]) == {"infer_hz": 2.0}
     assert harness.model_run_config(models["autoe2e"]) == {"infer_hz": 10.0}, "its own 10 Hz, no site pairing"
     assert harness.model_run_config(models["meteor"]) == {"infer_hz": 5.0}, "its frames are stored at 5 Hz"
+    assert harness.model_run_config(models["alpamayo15"]) == {"infer_hz": 10.0}, (
+        "frames and poses 0.1 s apart"
+    )
     assert harness.model_run_config(models["openpilot"]) == {}, "no planning_hz: asked every tick"
     episode = _episode()
     episode.config["planning_hz"] = 2.0
@@ -1250,3 +1253,5 @@ def test_the_hosts_rate_in_place_of_the_models_own_is_recorded_and_does_not_rank
     config, (reason,) = drive("drivejepa", "10")
     assert config == {"infer_hz": 10.0, "planning_hz": 2.0} and "at 10 Hz" in reason
     assert drive("drivejepa", None) == ({"infer_hz": 2.0}, []), "the next run of the harness starts clean"
+    # Alpamayo 1.5's ranked 10 Hz cell was driven exactly so: now its own rate, and it ranks.
+    assert drive("alpamayo15", "10") == ({"infer_hz": 10.0}, [])

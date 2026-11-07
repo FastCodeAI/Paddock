@@ -119,7 +119,8 @@ So do the `stop_*` settings, whose rules the run's notes also state, and a
 **How often the model is asked for a plan** is the model's own `planning_hz`
 (`model.yaml`, `capabilities`). The client asks the node once per
 1/`planning_hz` seconds and follows the last plan unchanged in between; a model
-without it is asked every 0.05 s tick. Drive-JEPA declares 2 Hz, AutoE2E 10 Hz, METEOR 5 Hz. The rate is
+without it is asked every 0.05 s tick. Drive-JEPA declares 2 Hz, AutoE2E 10 Hz, METEOR 5 Hz,
+Alpamayo 1.5 10 Hz. The rate is
 recorded as `config.infer_hz` and hashed into the run id, and the host's
 `PADDOCK_INFER_HZ` overrides it for every model. Where that replaces the model's
 own rate, the run records the declared rate beside it (`config.planning_hz`) and
@@ -955,8 +956,8 @@ DriveJEPA completes it and scores 100) and is recorded as requested-and-never-sc
 re-run; nothing here restates either. The rate is recorded per run in
 `config.model_env`, not derived from `model.yaml`. They were driven before the
 adapter honoured a rate on `main`; it now does (a model's `planning_hz`, above),
-and Drive-JEPA declares 2 Hz, so a clean checkout drives it at that rate by
-default. CARLA re-runs are not bit-reproducible, so these stay landed results. `paddock ingest` writes all three `valid: true`. All three **rank** on the board. Their native scores are the Bench2Drive cells of the support matrix for
+and Drive-JEPA (2 Hz) and Alpamayo 1.5 (10 Hz) declare theirs, so a clean checkout
+drives each at that rate by default. CARLA re-runs are not bit-reproducible, so these stay landed results. `paddock ingest` writes all three `valid: true`. All three **rank** on the board. Their native scores are the Bench2Drive cells of the support matrix for
 these three models (※). `model_env` also differs in more than the rate — thread counts, a trace
 sink, `ALPAMAYO_NAV` — each argued immaterial and none measured to be; the
 [page](bench2drive-native-rate.md) books that as argued, not
