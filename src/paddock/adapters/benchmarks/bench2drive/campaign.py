@@ -234,16 +234,20 @@ def expected_costs(
     }
 
 
-def balance(routes: list[str], cost: Callable[[str], float], n: int) -> list[list[str]]:
+def balance(
+    routes: list[str], cost: Callable[[str], float], n: int, cap: int | None = None
+) -> list[list[str]]:
     """Deal ``routes`` to ``n`` workers longest-expected-first (LPT); each worker's list sorted by id.
 
-    Ties break on the route id, so the same inputs always give the same split.
+    Ties break on the route id, so the same inputs always give the same split. ``cap`` is the most
+    routes one worker gets (``--batch``); the caller deals no more than ``n * cap``.
     """
     n = max(1, min(n, len(routes)))
     loads = [0.0] * n
     groups: list[list[str]] = [[] for _ in range(n)]
     for rid in sorted(routes, key=lambda r: (-cost(r), int(r))):
-        k = min(range(n), key=lambda i: (loads[i], i))
+        room = [i for i in range(n) if cap is None or len(groups[i]) < cap]
+        k = min(room, key=lambda i: (loads[i], i))
         groups[k].append(rid)
         loads[k] += cost(rid)
     return [sorted(g, key=int) for g in groups if g]
@@ -637,7 +641,7 @@ def launch(
         # The longest expected first, so the slow routes start early and the last hours are short ones;
         # the rest wait for the next launch, which deals them to whichever slots are free by then.
         pending = sorted(pending, key=lambda r: (-cost.get(r, 300.0), int(r)))[: free * batch]
-    groups = balance(pending, lambda r: cost.get(r, 300.0), free)
+    groups = balance(pending, lambda r: cost.get(r, 300.0), free, cap=batch or None)
     settings = cfg.benchmarks.get("bench2drive")
     base_carla = int(settings.get("carla_port") or 2000)
     base_tm = int(settings.get("tm_port") or 8000)

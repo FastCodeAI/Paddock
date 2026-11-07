@@ -157,6 +157,16 @@ def test_batch_deals_the_longest_expected_routes_first_and_no_more_than_asked(tm
     dealt = [ln.rsplit(": ", 1)[1].split(",") for ln in lines if ln.startswith("worker slot")]
     assert len(dealt) == 2, "one batch per free slot"
     assert {r for group in dealt for r in group} == {"2", "4", "6", "3"}, "the four longest, of six"
+    assert all(len(group) <= 2 for group in dealt), "no worker more than its batch"
+
+
+def test_a_batch_caps_each_worker_however_long_its_routes() -> None:
+    """One long route and three short ones, two workers, batch 2: balancing by time alone gives the
+    long one a worker to itself and the other worker three."""
+    costs = {"1": 900.0, "2": 100.0, "3": 100.0, "4": 100.0}
+    groups = balance(list(costs), costs.__getitem__, 2, cap=2)
+    assert sorted(len(g) for g in groups) == [2, 2]
+    assert sorted(len(g) for g in balance(list(costs), costs.__getitem__, 2)) == [1, 3], "uncapped"
 
 
 def test_cards_pin_each_new_worker_to_a_card(tmp_path, monkeypatch) -> None:
