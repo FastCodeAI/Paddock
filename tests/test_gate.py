@@ -1945,6 +1945,32 @@ def test_a_card_someone_else_freed_lets_the_waiting_launch_start_beside_a_runnin
     assert "waiting for" in "\n".join(said)
 
 
+def test_a_lane_that_already_exited_explains_the_free_card(tmp_path: Path, monkeypatch) -> None:
+    """Three lanes: two run and the third waits for memory. The first to exit frees the card and
+    has been judged, so the third starts at once, not after the other lane too has ended."""
+    hold = {"neuroncap": 0.3, "bench2drive": 2.0, "alpasim": 2.0}
+    args, stamps = _smoke_site(tmp_path, monkeypatch, dict.fromkeys(hold, 2.0), hold=2.0)
+    plan = gate.plan_smoke
+
+    def plan_with_holds(*a, **k):  # the fake run's hold is its ninth argument
+        steps = plan(*a, **k)
+        for step in steps:
+            if step.command:
+                step.command[8] = str(hold[step.bench])
+        return steps
+
+    monkeypatch.setattr(gate, "plan_smoke", plan_with_holds)
+    # Room for two of the three simulators' shares at once (8, 8 and 17 GB), not for all three.
+    monkeypatch.setattr(gate, "_gpu_free_gb", lambda env: 30.0 + gate.SMOKE_MARGIN_GB)
+    gate.smoke(args(tier="closed", bench=list(hold), cores=["4-7", "8-11", "12-15"]), lambda _m: None)
+    spans = _intervals(stamps)
+    first_two = sorted(spans, key=lambda b: spans[b][0])[:2]
+    assert "neuroncap" in first_two, f"needs neuroNCAP's short lane among the first two: {spans}"
+    third = next(b for b in spans if b not in first_two)
+    other = next(b for b in first_two if b != "neuroncap")
+    assert spans[third][0] < spans[other][1], f"{third} waited for {other} to end: {spans}"
+
+
 def test_the_smoke_does_not_adopt_a_run_it_did_not_start(tmp_path: Path) -> None:
     """Our launch died before making a run; a colleague's appeared; it was adopted."""
     runs, log = tmp_path / "runs", tmp_path / "lane.log"

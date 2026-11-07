@@ -1941,8 +1941,9 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
     done = {s.name for s in steps if s.status == "finished"}
     stop = ""
     gpu_wait_since: float | None = None
-    # When the card freed during a wait, and which lanes were running then.
-    freed: tuple[float, set[int]] | None = None
+    # The lanes running when a wait for GPU memory began, and when the card freed during it.
+    wait_lanes: set[int] = set()
+    freed_at: float | None = None
 
     def finish(lane: _Lane) -> None:
         nonlocal stop
@@ -2028,9 +2029,10 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
             need = smoke_need_gb(nxt.bench, models[args.model].vram_gb, nodes) + held
             free = _gpu_free_gb(step_env)
             if free is not None and free < need:
-                freed = None
+                freed_at = None
                 if gpu_wait_since is None:
                     gpu_wait_since = time.time()
+                    wait_lanes = {id(lane) for lane in lanes if lane.proc is not None}
                     for_sims = f", {held:.0f} GB of it held for running simulators" if held else ""
                     echo(
                         f"  {nxt.name}: waiting for {need:.0f} GB of free GPU memory{for_sims} "
@@ -2046,16 +2048,17 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
                 # The card freed while this waited. A run frees it when its model node stops and
                 # only then writes its results and exits, so the likeliest reason is a lane that is
                 # finishing and cannot be judged yet. Launching on the free card alone started
-                # kitscenes after nuScenes had regressed. So wait for one of the lanes running now to
-                # exit -- the loop reaps it above, and its regression stops this launch -- or for
-                # LANE_EXIT_S if none does, when someone else freed the card.
+                # kitscenes after nuScenes had regressed. So while every lane that was running when
+                # the wait began still runs, wait for one of them to exit -- the loop reaps it above,
+                # and its regression stops this launch -- or for LANE_EXIT_S if none does, when
+                # someone else freed the card. A lane that has already exited, and been judged,
+                # explains the free card, and the launch goes at once.
                 running = {id(lane) for lane in lanes if lane.proc is not None}
-                if freed is None:
-                    freed = (time.time(), running)
-                if running and freed[1] <= running and time.time() - freed[0] < LANE_EXIT_S:
+                freed_at = freed_at or time.time()
+                if wait_lanes and wait_lanes <= running and time.time() - freed_at < LANE_EXIT_S:
                     time.sleep(POLL_S)
                     continue
-            gpu_wait_since = freed = None
+            gpu_wait_since = freed_at = None
             pending.pop(0)
             command = list(nxt.command)
             if command[:2] == ["taskset", "-c"]:
