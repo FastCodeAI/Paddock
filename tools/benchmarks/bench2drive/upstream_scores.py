@@ -11,7 +11,10 @@ scripts compute. This writes those, per route and pooled, into the record's dire
 
 The routes are found as ``paddock ingest`` found them -- the latest scored attempt of each
 route the record expects -- and refused unless they are exactly the record's: the same sample
-ids (``dataset.sequences_sha256``) and the same source runs. The scores are computed by
+ids (``dataset.sequences_sha256``), the same source runs, and for each route the very
+``results.json`` the record pooled (its run and sha256, from the record's ``samples.jsonl``,
+which ``paddock ingest`` writes under the runs root of the config it ran with -- so run this
+with that config). The scores are computed by
 Bench2Drive's own code at the pinned checkout, in its CARLA-client interpreter
 (``upstream_scores_client.py``), and the per-route ability credits are checked against
 ``tools/ability_benchmark.py``'s own pooled numbers on the same routes.
@@ -25,6 +28,7 @@ either convention can be recomputed. Regenerate the file, never edit it.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 import sys
@@ -36,7 +40,7 @@ from paddock.adapters.benchmarks.bench2drive.harness import BENCHMARK, ended_ear
 from paddock.config import SiteConfig
 from paddock.registry import Registry
 from paddock.results.ingest.bench2drive import discover, route_parts
-from paddock.results.store import sequence_hash
+from paddock.results.store import run_dir, sequence_hash
 
 CLIENT = Path(__file__).with_name("upstream_scores_client.py")
 OUT = "upstream_scores.json"
@@ -46,8 +50,14 @@ class Mismatch(ValueError):
     """The runs tree no longer holds exactly the attempts the record was pooled from."""
 
 
-def record_attempts(record: dict[str, Any], roots: list[Path]) -> dict[str, Any]:
-    """The record's route folder -> its ``Attempt``, found as the ingest found them, or ``Mismatch``."""
+def record_attempts(record: dict[str, Any], roots: list[Path], samples: Path) -> dict[str, Any]:
+    """The record's route folder -> its ``Attempt``, found as the ingest found them, or ``Mismatch``.
+
+    ``samples`` is the record's ``samples.jsonl``, where ``paddock ingest`` wrote the run and the
+    sha256 of each route's ``results.json``. Route names and source runs agreeing is not enough: a
+    run continued after pooling (``--resume``) can hold a later drive of a route the record took
+    from another run, so each attempt found must be the very file the record pooled.
+    """
     config, dataset = record.get("config") or {}, record.get("dataset") or {}
     wanted = [str(r) for r in config.get("routes_subset") or []]
     if not wanted:
@@ -63,7 +73,22 @@ def record_attempts(record: dict[str, Any], roots: list[Path]) -> dict[str, Any]
     runs = sorted({a.run_id for a in scored.values()})
     if runs != sorted(config.get("source_runs") or []):
         raise Mismatch("the trees' latest scored attempts come from other runs than the record's source_runs")
+    pooled = _pooled_from(samples)
+    for folder, attempt in sorted(scored.items()):
+        found = (attempt.run_id, hashlib.sha256(attempt.results.read_bytes()).hexdigest())
+        if pooled.get(f"bench2drive/{folder}") != found:
+            raise Mismatch(f"{folder}: the trees' latest scored attempt is not the drive the record pooled")
     return scored
+
+
+def _pooled_from(samples: Path) -> dict[str, tuple[str, str]]:
+    """Sample id -> the run and the sha256 of the ``results.json`` the record pooled for it."""
+    if not samples.is_file():
+        raise Mismatch(
+            f"no {samples}: pool the record with `paddock ingest` under this config, which writes it"
+        )
+    rows = [json.loads(line) for line in samples.read_text().splitlines() if line.strip()]
+    return {r["sample_id"]: (r["native_id"]["run_id"], r["native_id"]["sha256"]) for r in rows}
 
 
 def request_for(scored: dict[str, Any], routes_xml: Path) -> dict[str, Any]:
@@ -88,14 +113,20 @@ def request_for(scored: dict[str, Any], routes_xml: Path) -> dict[str, Any]:
     return {"routes_xml": str(routes_xml), "routes": routes}
 
 
-def scores(record_dir: Path, roots: list[Path], cfg: SiteConfig) -> dict[str, Any]:
-    """Run the client on the record's routes; the file's content."""
+def scores(
+    record_dir: Path, roots: list[Path], cfg: SiteConfig, samples: Path | None = None
+) -> dict[str, Any]:
+    """Run the client on the record's routes; the file's content. ``samples`` defaults to where
+    ``paddock ingest`` wrote the record's ``samples.jsonl``: under this config's runs root."""
     record = json.loads((record_dir / "run.json").read_text())
+    samples = (
+        samples or run_dir(record["benchmark"], record["model"], record["run_id"], cfg.runs) / "samples.jsonl"
+    )
     harness = BENCHMARK(Registry.load().benchmarks["bench2drive"], cfg)
     python, repo, routes_xml = harness.setting("python"), harness.repo, harness.routes_file
     if not python or repo is None or routes_xml is None or not routes_xml.exists():
         raise SystemExit("[benchmarks.bench2drive] python, repo and the routes file are needed")
-    scored = record_attempts(record, roots)
+    scored = record_attempts(record, roots, samples)
     request = request_for(scored, routes_xml)
     with tempfile.TemporaryDirectory() as tmp:
         asked, answer = Path(tmp) / "request.json", Path(tmp) / "answer.json"

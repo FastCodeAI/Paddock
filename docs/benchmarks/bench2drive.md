@@ -326,8 +326,10 @@ PADDOCK_CONFIG=<sweep>/paddock.toml python -m tools.benchmarks.bench2drive.upstr
     results/bench2drive/<model>/<run_id> --runs <the ingest block's runs root>
 ```
 
-It finds the routes the way `paddock ingest` did, and refuses unless they are the
-record's own attempts (its sample hash and `source_runs`). It runs Bench2Drive's
+It finds the routes the way `paddock ingest` did, and refuses unless each is the very
+`results.json` the record pooled: the run and sha256 the ingest wrote for it to the
+record's `samples.jsonl`, under the runs root of the config it pooled with. So run it
+with that config. It runs Bench2Drive's
 code at the pinned checkout in the CARLA-client interpreter
 (`upstream_scores_client.py`): success as `merge_route_json.py` counts it, efficiency
 and comfort through `efficiency_smoothness_benchmark.py`'s own functions, and the
