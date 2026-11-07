@@ -832,12 +832,14 @@ as 0, so each is 219/220 of the figure here (OpenPilot: DS 43.81, success 10.91%
 | Model | Routes | DS ↑ | RC ↑ (%) | IP ↑ | With collision ↓ (%) | Success ↑ (%) | Efficiency ↑ | Comfort ↑ (%) | Record |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|
 | OpenPilot | 219/220 | 44.01 | 55.76 | 0.814 | 22.83 | 10.96 | 181.51 | 40.47 | `full220-96854bd47e320563-22709f` |
+| METEOR | 219/220 | 1.90 | 5.32 | 0.926 | 11.87 | 0.00 | 148.74 | 95.79 | `full220-96854bd47e320563-cc0c28` |
 
 **Bench2Drive's five abilities, in % of the routes that count towards each:**
 
 | Model | Merging ↑ | Overtaking ↑ | Emergency brake ↑ | Give way ↑ | Traffic signs ↑ | Mean ↑ |
 |---|---:|---:|---:|---:|---:|---:|
 | OpenPilot | 10.13 | 11.11 | 15.00 | 20.00 | 36.17 | 18.48 |
+| METEOR | 0.00 | 0.00 | 0.00 | 0.00 | 3.19 | 0.64 |
 
 A route counts towards an ability by its scenario, the same for every model:
 Merging 79 of these routes, Overtaking 45, Emergency brake 60, Give way 10 and
@@ -853,6 +855,14 @@ they started and scored on their next attempt. Route 28111 had finished: the
 evaluator had printed and registered its result (completed at 34.8 s of game
 time, one collision) when CARLA crashed, so that result is the route's score.
 No route needed a third attempt, and none was added to the routes set aside.
+
+**METEOR** is asked at its declared 5 Hz, the last plan followed in between, and
+CARLA never crashed on its attempts. As on 50 routes, it rarely gets moving: 192
+of its 219 routes end under 1% route completion, 163 of them by the 30 s rule. No
+route is a success; its one ability credit is Traffic signs, for 3 of 94 routes
+that got past their first junction with no red light or stop sign run. Its comfort
+is that of a car that barely moved, and its efficiency is over the 26 routes with
+a minimum-speed check.
 
 ### Bench2Drive — 50 routes
 
