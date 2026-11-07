@@ -75,6 +75,16 @@ all. `results.json` existing is not a signal: the evaluator writes it, empty, at
 startup. The distinction is tested in `tests/test_harness.py` against the
 status strings in `statistics_manager.py` at the pinned revision.
 
+Every attempt that scores nothing leaves `failure.json` beside its `results.json`,
+because a CARLA crash and an attempt cut off by a restart leave the same empty
+checkpoint. It says what ended the attempt -- `carla_crash` with CARLA's signal,
+`timeout`, `evaluator_exit`, `no_results`, or `not_scored` with the statuses
+above -- with the last game time the agent logged, the exit code, and the guard's
+reason when the guard killed the evaluator (see *Running a sweep in parallel*).
+CARLA's crash handler is read first: after a crash the evaluator hangs in its own
+shutdown until the guard or the timeout ends it, and either alone would hide the
+crash. An attempt cut off by a restart leaves none.
+
 ## Site setup
 
 CARLA and the Bench2Drive checkout live wherever this machine keeps them; declare
@@ -378,9 +388,12 @@ of the routes unevenly spread:
 ```bash
 # a copy of the site config whose [roots] runs is this sweep's own (below)
 export PADDOCK_CONFIG=/path/to/sweep/paddock.toml PADDOCK_PYTHON=/path/to/paddock/venv/bin/python
-tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --workers 5 --held 11715
-tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --workers 5 --held 11715 --rebalance
+tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --workers 5
+tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --workers 5 --rebalance
 tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --status
+# two GPUs, five workers on each, four routes per worker, refilled until done
+tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --workers 5 \
+    --cards 0:0,1:2 --batch 4 --keep
 # also serve the dashboard (tools/benchmarks/bench2drive/dashboard.py); --dashboard-root must
 # contain {runs}, because live frames are served by path relative to it
 tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --workers 5 \
@@ -393,7 +406,11 @@ already running:
 | Piece | What it does |
 |---|---|
 | `campaign guard` | kills an evaluator that can no longer finish -- its log silent 15 min (a driving route logs every ~0.3 s), or its CARLA gone for 2 min -- so the worker records the route FAILED and moves on instead of waiting out `per_route_timeout_s` |
-| `campaign launch` | every route with no scored attempt under `{runs}/bench2drive/<model>/` (any run id) and not queued in an alive worker, sorted and dealt longest-expected-first to the free worker slots; each worker is a fresh `paddock run --scene <its routes>` with a copy of the site config whose CARLA / traffic-manager ports sit 150 above the previous slot's, and its own node port base |
+| `campaign launch` | every route with no scored attempt under `{runs}/bench2drive/<model>/` (any run id) and not queued in an alive worker, sorted and dealt longest-expected-first to the free worker slots; each worker is a fresh `paddock run --scene <its routes>` with a copy of the site config whose CARLA / traffic-manager ports sit 150 above the previous slot's, and its own node port base. A route set aside for every model (*Routes set aside*) is never dealt, unless `--only` names it |
+| `--tries` | failed attempts after which a route is not dealt again (3 by default). Only an attempt that left a `failure.json` with the model's node still answering counts: a cut-off attempt says nothing about the route, and one failed with the node gone failed the node. `campaign status` lists each route given up on with why every attempt failed, and whose failure it was; `--only` deals it again |
+| `--batch` | at most this many routes to each new worker, longest expected first, so the last hours are not one long queue in one slot while the others stand idle |
+| `--cards` | `CUDA:VULKAN` index pairs, one per GPU: `--workers` workers on each. A worker's config copy gets the card's `gpu_rank` and its node the card's `CUDA_VISIBLE_DEVICES`. CARLA picks its card by Vulkan index, which is not the CUDA one when a software renderer (Mesa's llvmpipe) is listed between two GPUs: `vulkaninfo --summary` shows the order |
+| `--keep` | `campaign keep`: the same launch every five minutes until nothing is left and no worker is alive, so slots that free up are filled to the end. With no worker alive it first stops what a worker killed hard leaves behind (an evaluator and its CARLA, a model node holding GPU memory, each only once the run that started it is gone). It stops after three launches in a row that drove nothing. Launches deal under a lock, so a restart beside a keeper deals nothing twice; `campaign stop` stops the keeper first, then the workers |
 | `--held` | routes driven last, by one worker, once everything else has scored and no worker is alive |
 | `--rebalance` | stops the alive workers first (their current routes are driven again) and deals everything left anew |
 | `--dashboard-root` | the per-route video dashboard, on 127.0.0.1 |
@@ -415,19 +432,22 @@ which is ~30 minutes against ~5 for a route it completes.
 Two failure modes this exists for, both met on a 220-route sweep at one site:
 
 * **A CARLA that dies mid-route does not end it.** CARLA stopped delivering
-  sensor data ("A sensor took too long to send their data"), or died inside
-  `route_scenario.spawn_parked_vehicles`; the evaluator then deadlocked in its
-  own shutdown, logging a "failed to destroy actor" line every 600 s, so the
-  worker sat idle for the full 90-minute route timeout. The guard's second test
-  -- the CARLA on the port the evaluator logged is gone -- catches the case
-  silence alone never would.
+  sensor data ("A sensor took too long to send their data"), or crashed (its
+  crash handler logs `Signal=11`); the evaluator then deadlocked in its own
+  shutdown, logging a "failed to destroy actor" line every 600 s, so the worker
+  sat idle for the full 90-minute route timeout. The guard's second test -- the
+  CARLA on the port the evaluator logged is gone -- catches the case silence
+  alone never would. The guard writes its reason into the route's folder
+  (`guard.json`) before it kills, so the attempt's `failure.json` says why.
 * **A route that crashes CARLA crashes it every time.** Upstream's evaluator
   then ran `ps | grep -graphicsadapter=<rank> | kill -9`, every worker's CARLA
   on that GPU; with patch `0001`, which preflight requires (see *Shared-machine
-  behaviour*), it kills only its own. Such a route is still dealt again on every
-  launch while it has no score, so routes known to crash CARLA belong in
-  `--held`, driven once at the end: 11715 at the pin, and at that site the
-  Town12/13 `InterurbanAdvancedActorFlow` routes 23695, 23708 and 24078.
+  behaviour*), it kills only its own. Such a route used to be dealt again on
+  every launch while it had no score. Now `--tries` gives up on it, and
+  `campaign status` says whether it is a candidate for the routes set aside for
+  every model. At that site route 23695 (Town13 `InterurbanAdvancedActorFlow`)
+  crashed CARLA on all seven attempts, and 23708 (Town12) on two before one
+  scored.
 
 Worker configs, logs (`logs/worker<slot>.log`) and a launch history
 (`workers.json`) live in `{runs}/bench2drive/_campaign/<model>/`. Every attempt
@@ -447,7 +467,7 @@ assembled afterwards, by `paddock ingest --all` from `[[ingest.bench2drive]]`:
 model  = "drivejepa"
 runs   = "/path/to/paddock-runs/bench2drive/drivejepa"   # or a list of roots
 label  = "pooled50"
-routes = ["1711", "1852"]                   # optional; default: every route found
+routes = ["1711", "1852"]                   # optional, or "all"; default: every route found
 notes  = "24 routes from the 03-04 Sep campaign, 26 from the 09 Sep expansion"
 
 [ingest.bench2drive.model_env]              # recorded in config, over what ran
@@ -463,7 +483,7 @@ What it guarantees, and what each key is for:
 |---|---|
 | `model` | checked against the `model` in each source run's own `run.json`. A route recorded for another model is refused, so `runs` pointed one component too high cannot pool two models into one row |
 | `runs` | one root or several. Everything below them is walked: `<run_id>/<route>-<Town>-<Scenario>/results.json` |
-| `routes` | the route subset to score. It selects what is scored, not what is seen: a route attempted and never scored is recorded in `config.routes_never_scored` either way |
+| `routes` | the route subset to score, or `"all"`: every route of the site's routes file. It selects what is scored, not what is seen: a route attempted and never scored is recorded in `config.routes_never_scored` either way, with its `failure.json`'s reason when it has one. A route set aside for every model is neither expected nor lost: its id goes in `config.routes_set_aside` and its reason in the notes. Left out, the expected routes are the ones the trees hold, so a full-set pool says `"all"`: a route a sweep never drove is then reported, and a set aside one still named |
 | `label` | the run id is `<label>-<route hash>-<config hash>`. The config hash is why five constant-velocity speed bands over the same 50 routes are five directories and not one overwritten one |
 | `model_env` | recorded in `config.model_env`, layered over what the source runs recorded. For the CV baseline it is the only machine-readable statement of which speed band a row is |
 | `setups` | the configuration each route was actually driven under, aggregated into `metrics.json`'s `by_group`. A run pooling more than one is written `valid: false` — its mean is not a measurement — and `paddock report` lists it as excluded instead of ranking it |
@@ -486,6 +506,65 @@ every tick; before 23 Oct 2026, a rate set by hand reached the record only as
 `PADDOCK_INFER_HZ` in `model_env`, and such a pool does not rank either.
 Aggregates are recomputed by the store from the per-route metrics; nothing is
 transcribed from a report.
+
+## The 220-route protocol
+
+Every ranked Bench2Drive number made before November 2026 is over the same 50
+routes. Those cover 14 of the 44 scenario types, so none of them can be compared
+with a published score over all 220. A 220-route record is made the same way for
+every model, so the column it fills compares like with like:
+
+| | |
+|---|---|
+| routes | every route of `bench2drive220.xml` but the ones set aside for every model (below) |
+| rate | the model's own: its `planning_hz`, or every 20 Hz tick when it declares none |
+| inputs | paddock's camera rig, and no site value for anything the model's `model.yaml` declares |
+| early stop | `stop_stuck_s = "30"` and `stop_expert_factor = "4"`, with `expert` the summaries of Think2Drive's drives; no `stop_on_collision` (*Ending routes early*) |
+| route timeout | `per_route_timeout_s = 14400`, which covers a slow model's longest route on a shared GPU |
+| attempts | three per route: `campaign --tries 3`, the default |
+| the record | `paddock ingest` with `routes = "all"` and `label = "full220"` |
+
+Think2Drive's drives come from `python -m tools.benchmarks.bench2drive.expert
+fetch --out <dir>` and then `summarize --out <dir>`: 211 routes have one. The other
+nine get the stuck rule alone, and every run names them in `early_stop.no_expert`.
+Give every model the same directory. A run records which routes had no time
+budget, not what the budgets were.
+
+**A record is always the ingest's pool,** even of a sweep that ran as one
+`paddock run`. A direct run names its samples `bench2drive/<route>/<scenario>`, and
+the ingest names them `bench2drive/<route>-<Town>-<Scenario>`, so the two land in
+different tables of `paddock report` even over the same routes.
+
+**Keep every sweep's per-route results** (`{runs}/bench2drive/<model>/`) until the
+220-route column is final. When a route joins the list below, every model's record
+is pooled again from them, never edited.
+
+Each mean is over the routes not set aside. Bench2Drive's own `merge_route_json.py`
+divides by 220 and counts a missing route as 0, so its figure for the same drives
+is lower by the share of routes set aside.
+
+### Routes set aside
+
+A route is set aside for every model when the simulator fails on it on every
+attempt, whichever model drives. It then measures no model, and a mean with it for
+one model and without it for another is not over the same routes. Poor driving is
+never a reason: a route the car is blocked on, deviates from, times out on or has
+ended early is scored. Neither is a failure of the model's own node (an HTTP 500,
+running out of memory): that is the model's to fix.
+
+A route joins the list after three attempts whose `failure.json` each put the
+failure on the simulator, with the evidence here. The list is `SET_ASIDE` in
+`harness.py`:
+
+- the harness drives a listed route only when `--scene` names it, and a run that
+  does is not a score;
+- the campaign deals one only when `--only` names it, to see whether it still fails;
+- the ingest leaves it out of the pool, names it in `config.routes_set_aside`, and
+  gives the reason in the notes.
+
+| Route | Scenario | Why | Evidence |
+|---|---|---|---|
+| 11715 | Town12 EnterActorFlow | CARLA crashes (signal 11) about 54 s into the route on every attempt, whichever model drives | five attempts at one site, 7–8 Oct 2026 (openpilot), each `CommonUnixCrashHandler: Signal=11` at 53.65–54.0 s of game time; nine at another under three stacks |
 
 ## Shared-machine behaviour
 
@@ -545,15 +624,20 @@ transcribed from a report.
 | an edited CARLA launch line is refused | unit-tested against a stub evaluator with and without the flag | **strong** |
 | `--resume` reuses scored routes and drives the rest | unit-tested (scored, killed, torn, all-crashed, short of repetitions); on a real interrupted sweep it reused the 34 scored routes and drove the other 185 | **strong** |
 | `campaign` deals what is left and the guard frees hung workers | selection, dealing, per-slot config and `--held` unit-tested (`tests/test_campaign.py`); the process side used on one 220-route sweep, where the guard freed two evaluators whose CARLA had died | moderate |
+| `--tries`, `--batch`, `--cards` and `keep` deal as described | unit-tested: tries counted from failure records only, batches capped per worker, each new worker's `gpu_rank` and `CUDA_VISIBLE_DEVICES` by card, the launch lock, orphans known by their parent, `keep` settling and stopping; the process side is argued until a full sweep has used it | moderate |
+| a failed attempt names its cause in `failure.json` | golden test on route 11715's real `evaluator.log` (CARLA's `Signal=11` at 53.65 s, read however the attempt ended); each kind tested against a stand-in evaluator | **strong** for the parse; argued for every way a real evaluator can fail |
+| a route set aside is in no mean and is named | unit-tested in the harness (not driven unless named, not a subset), the campaign (never dealt) and the ingest (out of the pool, in `routes_set_aside`, still valid) | **strong** |
 | the calibration the agent sends is each camera's CARLA mount in paddock's frames | `tests/test_calibration.py` runs the agent's own `setup()` for every camera of every rig, against the conversion written out one frame change at a time, the pinhole of the rendered view, a road point on the ego's left landing left of centre, and one 5 m to its left in front of the left cameras and behind the right ones; carla and the HTTP session are stand-ins, and 6 of its 10 tests fail with the agent's y-flip removed, the side-camera ones among them | **strong** for the formula; not compared with a live CARLA's matrices |
 
 ## Protocol details
 
 What every run here depends on, beyond the leaderboard's own rules.
 
-* **Route 11715 (Town12 EnterActorFlow) is excluded for every model.** CARLA
-  segfaults inside `route_scenario.spawn_parked_vehicles` ~54 s in, on all nine
-  attempts across three stacks, regardless of ego speed.
+* **Route 11715 (Town12 EnterActorFlow) is set aside for every model** (*Routes
+  set aside*). CARLA crashes with signal 11 about 54 s in, on every attempt across
+  three stacks, regardless of ego speed. The client's traceback lands in
+  `route_scenario.spawn_parked_vehicles` only because that is its first call to
+  the server after the crash.
 * **Wire format:** the agent now sends `speed_limit` (m/s, from
   `hero.get_speed_limit()`) and the next junction maneuver as `nav_maneuver` /
   `nav_distance_m` (walked forward on the 1 m world plan). Both optional; only

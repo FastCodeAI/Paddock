@@ -167,6 +167,35 @@ def test_a_cell_that_cannot_be_traced_fails_loudly(tmp_path: Path, change: str, 
         _load(tmp_path, HEADER + rows, {**runs, "open/invalid/1": 0.2})
 
 
+def test_one_benchmark_can_fill_two_columns(tmp_path: Path) -> None:
+    """Bench2Drive's 220-route column beside its 50-route one: a second key, the same benchmark's runs,
+    and its own ranks."""
+    second = (
+        '[[benchmark]]\nkey = "closed_all"\nbenchmark = "closed"\nname = "Closed, all"\nloop = "closed"\n'
+        'header = "score ↑ (0–5), every scene"\ndecimals = 2\nmetric = "ncap_score"\n'
+    )
+    rows = ROWS.replace(
+        'closed = { run = "closed/good/1", marks = "A" }',
+        'closed = { run = "closed/good/1", marks = "A" }\nclosed_all = { run = "closed/good/2" }',
+    ).replace(
+        'closed = { run = "closed/bad/1" }',
+        'closed = { run = "closed/bad/1" }\nclosed_all = { run = "closed/bad/2" }',
+    )
+    columns, by = _load(
+        tmp_path,
+        HEADER + second + rows,
+        {**RUNS, "open/invalid/1": 0.2, "closed/good/2": 2.0, "closed/bad/2": 3.0},
+    )
+    assert [c.benchmark for c in columns] == ["open", "closed", "side", "closed"]
+    assert (by["good"].cells[3].shown, by["good"].cells[3].rank) == ("2.00", 2)
+    assert by["bad"].cells[3].rank == 1 and by["tied"].cells[3].text == "—"
+    wrong = rows.replace('closed_all = { run = "closed/good/2" }', 'closed_all = { run = "open/good/1" }')
+    with pytest.raises(ValueError, match="is not a closed run"):
+        _load(
+            tmp_path / "again", HEADER + second + wrong, {**RUNS, "open/invalid/1": 0.2, "closed/bad/2": 3.0}
+        )
+
+
 def test_a_header_arrow_must_agree_with_paddocks_direction(tmp_path: Path) -> None:
     # The arrow is typed by hand; an ADE column marked higher-is-better would rank backwards.
     flipped = HEADER.replace('header = "ADE ↓ (m)"', 'header = "ADE ↑ (m)"', 1)

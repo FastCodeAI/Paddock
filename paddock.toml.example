@@ -454,7 +454,8 @@ serialize = true
 # model  = "drivejepa"
 # runs   = "/path/to/paddock-runs/bench2drive/drivejepa"
 # label  = "pooled50"
-# routes = ["1711", "1852", "2802"]
+# routes = ["1711", "1852", "2802"]   # or "all": every route of the routes file, for a full-set
+#                                     # pool (see "The 220-route protocol" in bench2drive.md)
 # notes  = "24 routes from the 03-04 Sep campaign, 26 from the 09 Sep expansion"
 #
 # Environment overrides recorded in the run's config. The ingest reads what the

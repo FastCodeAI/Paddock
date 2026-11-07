@@ -25,7 +25,7 @@ alongside everything else machine-shaped:
     model  = "drivejepa"
     runs   = "/path/to/paddock-runs/bench2drive/drivejepa"
     label  = "pooled50"
-    routes = ["1711", "1852"]        # optional; default: every route found
+    routes = ["1711", "1852"]        # optional, or "all" (the routes file); default: every route found
     [[ingest.hugsim]]                # likewise one block per run
     model  = "drivejepa"
     runs   = "/path/to/hugsim-eval/dj_released"
@@ -48,6 +48,33 @@ from paddock.results.ingest import alpasim, bench2drive, hugsim, kitscenes, navs
 def _ingest_section(cfg: SiteConfig) -> dict:
     with cfg.source.open("rb") as fh:
         return tomllib.load(fh).get("ingest", {})
+
+
+def _bench2drive_routes(cfg: SiteConfig, entry: dict) -> list[str] | None:
+    """An `[[ingest.bench2drive]]` entry's `routes`: a list of ids, "all", or absent.
+
+    "all" is every route of the site's routes file. Left out, the expected routes are the
+    ones the trees hold, so a route a sweep never drove leaves no trace; a full-set pool
+    says "all" so that such a route is reported, and one set aside is named as set aside.
+    """
+    routes = entry.get("routes")
+    if not routes:
+        return None
+    if isinstance(routes, list):
+        return [str(r) for r in routes]
+    if routes != "all":
+        # A bare string used to be iterated: routes = "1711" asked for routes 1, 7, 1 and 1.
+        raise ConfigError(f'[[ingest.bench2drive]] routes is a list of route ids or "all", got {routes!r}')
+    from paddock.adapters.benchmarks.bench2drive.harness import parse_routes, routes_path
+
+    settings = cfg.benchmarks.get("bench2drive")
+    repo = settings.get("repo") if settings is not None else None
+    if not repo:
+        raise ConfigError('[[ingest.bench2drive]] routes = "all" needs [benchmarks.bench2drive] repo')
+    path = routes_path(Path(repo), settings.get("routes_file"))
+    if not path.exists():
+        raise ConfigError(f'[[ingest.bench2drive]] routes = "all": routes file not found: {path}')
+    return [rid for rid, _, _ in parse_routes(path)]
 
 
 def ingest_all(cfg: SiteConfig, dry_run: bool = False) -> tuple[int, list[str]]:
@@ -152,7 +179,7 @@ def ingest_all(cfg: SiteConfig, dry_run: bool = False) -> tuple[int, list[str]]:
                 roots,
                 model=entry["model"],
                 site=cfg.site,
-                routes=[str(r) for r in entry["routes"]] if entry.get("routes") else None,
+                routes=_bench2drive_routes(cfg, entry),
                 run_label=entry.get("label", "pooled"),
                 notes=entry.get("notes", ""),
                 model_env=entry.get("model_env"),
