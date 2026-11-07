@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import replace
 from pathlib import Path
 
@@ -194,6 +195,29 @@ def test_one_benchmark_can_fill_two_columns(tmp_path: Path) -> None:
         _load(
             tmp_path / "again", HEADER + second + wrong, {**RUNS, "open/invalid/1": 0.2, "closed/bad/2": 3.0}
         )
+
+
+def test_names_narrow_with_their_columns_and_one_name_spans_its_columns() -> None:
+    """The picture keeps its width, so a tenth benchmark narrows every column: at full size one
+    name ran into the next. The names shrink and the metric lines wrap in step, and two adjacent
+    columns of one name -- Bench2Drive's 50 routes and its 220 -- share it, drawn once."""
+
+    def column(key: str, name: str, header: str) -> readme_figures.Column:
+        return readme_figures.Column(key, name, "closed", header, "m", 2, False, True)
+
+    def name_size(svg: str, name: str) -> str:
+        return re.findall(rf'font-size="([\d.]+)"[^>]*>{name}</text>', svg)[0]
+
+    nine = [column(f"b{i}", f"Bench {i}", "score ↑ (0–100)") for i in range(9)]
+    shared = [
+        column("b8", "Shared", "score ↑ (0–100), 50 routes"),
+        column("b9", "Shared", "score ↑ (0–100), 219 of 220 routes"),
+    ]
+    full, narrow = readme_figures.render_matrix(nine, []), readme_figures.render_matrix(nine[:8] + shared, [])
+    assert name_size(full, "Bench 0") == "12", "nine columns are drawn as they always were"
+    assert name_size(narrow, "Bench 0") == "10.7" and name_size(narrow, "Shared") == "10.7"
+    assert narrow.count(">Shared</text>") == 1
+    assert ">219 of 220</text>" in narrow and ">routes</text>" in narrow, "the lines wrap at 12 characters"
 
 
 def test_a_header_arrow_must_agree_with_paddocks_direction(tmp_path: Path) -> None:
