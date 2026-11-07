@@ -24,9 +24,11 @@ Kept 3.8-compatible, like ``agent.py``.
 from __future__ import annotations
 
 import argparse
+import atexit
 import json
 import math
 import os
+import shutil
 import sys
 import tempfile
 
@@ -73,6 +75,7 @@ def main(argv=None):
     xml_routes = {r.get("id"): r for r in ET.parse(routes_xml).getroot().findall("route")}
 
     work = tempfile.mkdtemp(prefix="upstream_scores_")
+    atexit.register(shutil.rmtree, work, True)
     rows, records = [], []
     for route in request["routes"]:
         record = json.load(open(route["results"]))["_checkpoint"]["records"][0]
