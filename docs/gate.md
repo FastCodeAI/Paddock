@@ -283,7 +283,12 @@ setsid nohup python -m tools.gate smoke ... --tier all --execute \
   range (`--base-port`, then +100 per lane). Subsets of the same tier run side by
   side, one per lane, never two of one benchmark at once. Each launch waits for
   the GPU memory below, and the next one waits until this one's model has said
-  it is ready, so every GPU check sees the memory already taken. A subset whose
+  it is ready, so every GPU check sees the memory already taken. A launch that
+  waited for memory also waits, once the card frees, for one of the running lanes
+  to exit, for up to 5 minutes (`LANE_EXIT_S`). A run frees the card when its
+  model node stops and only then writes its results and exits, so without this
+  wait the next subset could start before the gate saw the finished one regress.
+  A subset whose
   benchmark runs a simulator (neuroNCAP, Bench2Drive, AlpaSim) starts it inside
   its first episode, after the model is ready, and neuroNCAP restarts its
   renderer at every scene, so its memory may not be taken yet when the next

@@ -1636,6 +1636,10 @@ def smoke_manifest(
 
 #: How long one launch may wait for GPU memory before the smoke gives up on it.
 GPU_WAIT_S = 12 * 3600
+#: How long a launch whose card has just freed first waits for a running lane to exit. A run frees
+#: the card when its model node stops, then writes its results and exits: a lane that is finishing
+#: exits well within this, and a card someone else freed delays the launch by no more than this.
+LANE_EXIT_S = 300.0
 
 
 def _gpu_free_gb(env: dict[str, str]) -> float | None:
@@ -1937,6 +1941,8 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
     done = {s.name for s in steps if s.status == "finished"}
     stop = ""
     gpu_wait_since: float | None = None
+    # When the card freed during a wait, and which lanes were running then.
+    freed: tuple[float, set[int]] | None = None
 
     def finish(lane: _Lane) -> None:
         nonlocal stop
@@ -2022,6 +2028,7 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
             need = smoke_need_gb(nxt.bench, models[args.model].vram_gb, nodes) + held
             free = _gpu_free_gb(step_env)
             if free is not None and free < need:
+                freed = None
                 if gpu_wait_since is None:
                     gpu_wait_since = time.time()
                     for_sims = f", {held:.0f} GB of it held for running simulators" if held else ""
@@ -2035,7 +2042,20 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
                     )
                 time.sleep(POLL_S)
                 continue
-            gpu_wait_since = None
+            if gpu_wait_since is not None:
+                # The card freed while this waited. A run frees it when its model node stops and
+                # only then writes its results and exits, so the likeliest reason is a lane that is
+                # finishing and cannot be judged yet. Launching on the free card alone started
+                # kitscenes after nuScenes had regressed. So wait for one of the lanes running now to
+                # exit -- the loop reaps it above, and its regression stops this launch -- or for
+                # LANE_EXIT_S if none does, when someone else freed the card.
+                running = {id(lane) for lane in lanes if lane.proc is not None}
+                if freed is None:
+                    freed = (time.time(), running)
+                if running and freed[1] <= running and time.time() - freed[0] < LANE_EXIT_S:
+                    time.sleep(POLL_S)
+                    continue
+            gpu_wait_since = freed = None
             pending.pop(0)
             command = list(nxt.command)
             if command[:2] == ["taskset", "-c"]:
