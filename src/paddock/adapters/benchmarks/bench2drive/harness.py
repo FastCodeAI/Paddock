@@ -25,7 +25,9 @@ Three things the evaluator does that shape the code below (all read from the
 * it **writes the checkpoint at startup**, so ``results.json`` existing proves
   nothing, and it **still fills in scores for a crashed route**, marking the
   crash only in the record's ``status``;
-* it exits non-zero only for ``Simulation crashed``; an agent crash exits 0.
+* it exits -1 (status 255) when the scenario cannot be loaded, the agent or
+  its sensors cannot be set up, or the simulation crashes; an agent crash
+  mid-route exits 0.
 
 CARLA and the Bench2Drive checkout are vendored outside the package; the
 ``[benchmarks.bench2drive]`` section of ``paddock.toml`` says where they live
@@ -148,6 +150,10 @@ FAILURE = "failure.json"
 #: What the campaign guard writes into a route's directory just before it kills the
 #: route's evaluator, so the failure record can say why the evaluator died.
 GUARD_KILL = "guard.json"
+
+#: The leaderboard's statuses for a failure on the agent's side: the paddock client or the
+#: model's node (``CRASH_STATUSES``), never the route's.
+MODEL_SIDE = ("Agent crashed", "Agent couldn't be set up", "Agent's sensors were invalid")
 
 #: CARLA's crash handler's line, and the agent's per-tick line, in ``evaluator.log``.
 _CRASH_SIGNAL = re.compile(r"CommonUnixCrashHandler: Signal=(\d+)")
@@ -423,6 +429,16 @@ def classify_failure(
     times = _GAME_TIME.findall(log_text)
     if times:
         record["game_time_s"] = float(times[-1])
+    # The leaderboard's own verdict, whenever it wrote one: it exits -1 for a scenario that
+    # would not load, an agent or sensors it could not set up and a simulation crash alike,
+    # so the exit code alone cannot say whose failure it was.
+    try:
+        records = (json.loads(results_json.read_text()).get("_checkpoint") or {}).get("records") or []
+    except (OSError, ValueError, AttributeError):
+        records = []
+    statuses = sorted({str(r.get("status", "")) for r in records if isinstance(r, dict)})
+    if statuses:
+        record["status"] = statuses
     crash = _CRASH_SIGNAL.search(log_text)
     if crash:
         record["kind"], record["signal"] = "carla_crash", int(crash.group(1))
@@ -434,11 +450,6 @@ def classify_failure(
         record["kind"] = "no_results"
     else:
         record["kind"] = "not_scored"
-        try:
-            records = (json.loads(results_json.read_text()).get("_checkpoint") or {}).get("records") or []
-        except (OSError, ValueError):
-            records = []
-        record["status"] = sorted({str(r.get("status", "")) for r in records if isinstance(r, dict)})
     return record
 
 
@@ -446,17 +457,18 @@ def failure_said(record: dict[str, Any]) -> str:
     """One line for a failure record, naming no path: it reaches tracked notes."""
     kind = record.get("kind")
     at = f" at {record['game_time_s']:g} s of game time" if record.get("game_time_s") is not None else ""
+    statuses = [s for s in record.get("status") or [] if s]
+    status = f" ({', '.join(statuses)})" if statuses else ""
     if kind == "carla_crash":
-        said = f"CARLA crashed (signal {record.get('signal')}){at}"
+        said = f"CARLA crashed (signal {record.get('signal')}){at}{status}"
     elif kind == "timeout":
-        said = f"timed out (per_route_timeout_s){at}"
+        said = f"timed out (per_route_timeout_s){at}{status}"
     elif kind == "evaluator_exit":
-        said = f"evaluator exited {record.get('returncode')}{at}"
+        said = f"evaluator exited {record.get('returncode')}{status}{at}"
     elif kind == "no_results":
         said = "evaluator exited 0 but wrote no results.json"
     else:
-        statuses = [s for s in record.get("status") or [] if s]
-        said = f"not scored ({', '.join(statuses)})" if statuses else "no records in _checkpoint"
+        said = f"not scored{status}" if statuses else "no records in _checkpoint"
     guard = record.get("guard")
     return f"{said}; the guard killed it: {guard}" if guard else said
 
@@ -464,18 +476,21 @@ def failure_said(record: dict[str, Any]) -> str:
 def simulator_side(record: dict[str, Any]) -> bool | None:
     """Whether a failure is the simulator's (True), the model's or its agent's (False), or unclear (None).
 
-    Only the simulator's count toward setting a route aside: CARLA's crash handler, the
-    leaderboard's ``Simulation crashed``, or the guard finding the route's CARLA gone. An
-    ``Agent crashed`` or ``couldn't be set up`` is the client or the model's node -- the
-    model's to fix, never a reason to take the route away from every model.
+    Only the simulator's count toward setting a route aside: CARLA's crash handler on the
+    route, the leaderboard's ``Simulation crashed``, or the guard finding the route's CARLA
+    gone. CARLA's crash handler is read first, because after a crash the agent's next call
+    can surface as ``Agent crashed``. A crash before the first tick says more about the
+    machine than the route, so it is unclear. ``Agent crashed``, ``couldn't be set up`` and
+    ``sensors were invalid`` are the client or the model's node -- the model's to fix, never
+    a reason to take the route away from every model.
     """
     statuses = record.get("status") or []
-    if record.get("kind") == "carla_crash" or "CARLA" in str(record.get("guard") or ""):
-        return True
-    if any(s.endswith("Simulation crashed") for s in statuses):
-        return True
-    if any(s.endswith(("Agent crashed", "Agent couldn't be set up")) for s in statuses):
+    if record.get("kind") == "carla_crash":
+        return True if record.get("game_time_s") is not None else None
+    if any(s.endswith(MODEL_SIDE) for s in statuses):
         return False
+    if any(s.endswith("Simulation crashed") for s in statuses) or record.get("guard_carla_gone"):
+        return True
     return None
 
 
@@ -1290,21 +1305,29 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         reap_carla(carla_port_from_log(log_path, requested_port))
 
         def failed(message: str) -> RuntimeError:
-            """Say why beside results.json (`failure.json`), then the error the runner logs."""
-            record = classify_failure(
-                log_path.read_text(errors="replace") if log_path.exists() else "",
-                timed_out=timed_out,
-                returncode=returncode,
-                results_json=results_json,
-            )
-            record["elapsed_s"] = round(elapsed, 1)
+            """Say why beside results.json (`failure.json`), then the error the runner logs.
+
+            The record is best-effort: the runner catches only RuntimeError, so a full disk here
+            must not take the worker's whole run, and the routes it already scored, with it.
+            """
             try:
-                guard = json.loads((out_dir / GUARD_KILL).read_text())
-            except (OSError, ValueError):
-                guard = None
-            if isinstance(guard, dict) and guard.get("reason"):
-                record["guard"] = str(guard["reason"])
-            write_failure(out_dir, record)
+                record = classify_failure(
+                    log_path.read_text(errors="replace") if log_path.exists() else "",
+                    timed_out=timed_out,
+                    returncode=returncode,
+                    results_json=results_json,
+                )
+                record["elapsed_s"] = round(elapsed, 1)
+                try:
+                    guard = json.loads((out_dir / GUARD_KILL).read_text())
+                except (OSError, ValueError):
+                    guard = None
+                if isinstance(guard, dict) and guard.get("reason"):
+                    record["guard"] = str(guard["reason"])
+                    record["guard_carla_gone"] = bool(guard.get("carla_gone"))
+                write_failure(out_dir, record)
+            except OSError as exc:
+                echo(f"  {episode.episode_id}: could not write {FAILURE} ({exc})")
             return RuntimeError(message)
 
         if timed_out:

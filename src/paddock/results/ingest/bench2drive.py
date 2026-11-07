@@ -289,6 +289,9 @@ def discover(runs_roots: Sequence[Path], routes: list[str] | None = None) -> Sur
     """
     scored: dict[str, Attempt] = {}
     rejected: dict[str, str] = {}
+    # Folders whose reason came from a failure record: a later attempt cut off by a restart
+    # leaves none and says nothing about the route, so it does not replace the record's reason.
+    recorded: set[str] = set()
     for root in runs_roots:
         for results in sorted(root.rglob("results.json")):
             route_dir, run_dir = results.parent, results.parent.parent
@@ -305,8 +308,12 @@ def discover(runs_roots: Sequence[Path], routes: list[str] | None = None) -> Sur
                 # id. The message names the file; keep the run id and drop the path, because
                 # this reason is written into a tracked run.json.
                 failure = read_failure(route_dir)
+                if failure is None and route_dir.name in recorded:
+                    continue
                 said = failure_said(failure) if failure else str(exc).split(".json: ", 1)[-1]
                 rejected[route_dir.name] = f"{run_dir.name}: {said}"
+                if failure is not None:
+                    recorded.add(route_dir.name)
                 continue
             # json.JSONDecodeError and UnicodeDecodeError are ValueError; OSError
             # is the NFS read that used to take the whole ingest down with it.

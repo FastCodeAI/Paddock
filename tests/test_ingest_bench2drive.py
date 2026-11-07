@@ -284,6 +284,20 @@ def test_a_failure_record_gives_the_reason_a_route_never_scored(tmp_path: Path) 
     assert said == "20260904T000000-dddddd: CARLA crashed (signal 11) at 36.4 s of game time"
 
 
+def test_an_attempt_cut_off_later_does_not_hide_the_failures_on_record(tmp_path: Path) -> None:
+    """Five crashes and then a cut-off attempt (route 11715's real trees): the reason is the crash."""
+    root = _tree(tmp_path)
+    folder = "23695-Town13-InterurbanAdvancedActorFlow"
+    failure = {"kind": "carla_crash", "signal": 11, "game_time_s": 36.4, "returncode": -15}
+    for run in ("20260904T000000-dddddd", "20260905T000000-eeeeee"):
+        _write(root, run, folder, _unscored("23695"))
+        (root / run / folder / "failure.json").write_text(json.dumps(failure))
+    _write(root, "20260906T000000-ffffff", folder, _unscored("23695"))  # cut off: no failure record
+    ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s")
+    said = run.config["routes_never_scored"]["23695"]
+    assert said == "20260905T000000-eeeeee: CARLA crashed (signal 11) at 36.4 s of game time"
+
+
 def test_without_a_failure_record_the_reason_is_the_parsers_unchanged(tmp_path: Path) -> None:
     """routes_never_scored is hashed into the run id, so a stored record ingested again must read
     exactly as it did."""

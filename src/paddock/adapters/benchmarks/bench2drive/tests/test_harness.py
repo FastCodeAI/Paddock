@@ -564,6 +564,48 @@ def test_each_failure_leaves_its_kind_beside_results_json(
     assert "elapsed_s" in record and str(tmp_path) not in failure_said(record)
 
 
+@pytest.mark.parametrize(
+    ("status", "side"),
+    [
+        ("Failed - Simulation crashed", True),
+        ("Failed - Agent couldn't be set up", False),
+        ("Failed - Agent's sensors were invalid", False),
+    ],
+)
+def test_the_leaderboards_verdict_is_kept_when_the_evaluator_exits_255(
+    tmp_path, monkeypatch, status, side
+) -> None:
+    """The pinned evaluator exits -1 for a simulation crash and for an agent or sensors it could not set
+    up alike (leaderboard_evaluator.py at 7ec25d1), so whose failure it was is in results.json alone."""
+    body = f"json.dump({_record_with_status(status)!r}, open(checkpoint, 'w'))\nsys.exit(255)\n"
+    cfg = _site(tmp_path, monkeypatch, body)
+    out = tmp_path / "out"
+    with pytest.raises(RuntimeError, match="exited 255"):
+        _harness(cfg).run_episode(_episode(), "http://127.0.0.1:9000", out)
+    record = read_failure(out)
+    assert record["kind"] == "evaluator_exit" and record["status"] == [status]
+    assert simulator_side(record) is side and status in failure_said(record)
+
+
+def test_a_carla_crash_before_the_first_tick_is_not_the_routes(tmp_path) -> None:
+    """With no game time CARLA died at boot or map load: the machine's, not the route's."""
+    log = "CommonUnixCrashHandler: Signal=11\n"
+    record = classify_failure(log, timed_out=False, returncode=-15, results_json=tmp_path / "r.json")
+    assert record["kind"] == "carla_crash" and simulator_side(record) is None
+
+
+def test_a_failure_record_that_cannot_be_written_does_not_end_the_run(tmp_path, monkeypatch) -> None:
+    """The runner catches RuntimeError only: a full disk at the record must not take the worker's run."""
+
+    def full(route_dir, record):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(harness_module, "write_failure", full)
+    cfg = _site(tmp_path, monkeypatch, "sys.exit(255)\n")
+    with pytest.raises(RuntimeError, match="exited 255"):
+        _harness(cfg).run_episode(_episode(), "http://127.0.0.1:9000", tmp_path / "out")
+
+
 def test_the_agents_crash_is_the_models_to_fix_not_a_reason_to_set_a_route_aside(tmp_path) -> None:
     results = tmp_path / "results.json"
     shutil.copy(FIXTURES / "results_agent_crashed.json", results)
@@ -587,7 +629,8 @@ def test_the_guards_reason_reaches_the_failure_record(tmp_path, monkeypatch) -> 
     """The guard writes its reason before it kills; a CARLA found gone is the simulator's failure."""
     body = textwrap.dedent(
         """\
-        open(os.path.join(out, "guard.json"), "w").write('{"reason": "its CARLA (port 2000) is gone"}')
+        guard = {"reason": "its CARLA (port 2000) is gone", "carla_gone": True}
+        open(os.path.join(out, "guard.json"), "w").write(json.dumps(guard))
         sys.exit(-15 & 0xFF)
         """
     )

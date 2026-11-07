@@ -44,8 +44,9 @@ writes -- no state of its own decides anything:
   dealt again; ``status`` lists it with why each attempt failed, and whether
   that was the simulator (a candidate for ``harness.SET_ASIDE``) or the model
   (the model's to fix). An attempt cut off by a restart leaves no record and
-  does not count. A route already in ``SET_ASIDE`` is never dealt, unless
-  ``--only`` names it, to see whether it still fails.
+  does not count. A route given up on, or already in ``SET_ASIDE``, is dealt
+  again only when ``--only`` names it: to drive it after a fix, or to see
+  whether it still fails.
 * **batches and cards** -- ``--batch N`` deals at most N routes to each new
   worker, so the last hours are not one long route queue in one slot while the
   others stand idle; ``keep`` refills the slots as they free. ``--cards
@@ -57,7 +58,8 @@ writes -- no state of its own decides anything:
 * **keep** -- ``launch`` again every few minutes until nothing is left to deal
   and no worker is alive; with no worker alive it first stops what a worker
   killed hard can leave behind (an evaluator and its CARLA, a model node on the
-  GPU), which nothing else would.
+  GPU), which nothing else would. It stops, exit 1, after three launches in a
+  row whose workers all exited without attempting a route.
 
 All four go only after this sweep's own processes: workers are found by their
 command line *and* by the runs root of their ``PADDOCK_CONFIG``, and ``stop``
@@ -123,6 +125,9 @@ CARLA_GONE_S = 120.0
 TRIES = 3
 #: Seconds between ``keep``'s launches.
 KEEP_EVERY_S = 300.0
+#: ``keep`` passes in a row whose workers all exited without a route attempt before it stops:
+#: a model node that cannot start fails every worker the same way, and would be relaunched forever.
+KEEP_STRIKES = 3
 
 _ROUTE_DIR = re.compile(r"^(?P<rid>\d+)-(?P<town>Town\w+?)-(?P<scenario>\w+)$")
 
@@ -610,7 +615,8 @@ def launch(
     scored = {r for r, s in states.items() if s.scored}
     claimed = {r for w in alive for r in w.routes if r not in scored}
     ids = [rid for rid, _, _ in routes]
-    out = (exclude or set()) | (set(SET_ASIDE) - (only or set())) | given_up(states, tries)
+    # Set aside, or given up on: dealt again only when --only names it, on purpose.
+    out = (exclude or set()) | ((set(SET_ASIDE) | given_up(states, tries)) - (only or set()))
     pending = select_pending(ids, scored, claimed, only, out | (held or set()))
     target = n_workers * (len(cards) if cards else 1)
     if not pending and held:
@@ -712,24 +718,40 @@ def keep(
     sleep: Callable[[float], None] = time.sleep,
     echo=print,
     **deal,
-) -> None:
+) -> int:
     """``launch`` every ``every_s`` until nothing is left to deal and no worker is alive.
 
     A slot a worker left -- its batch done, or the worker dead -- is filled at the next pass. With no
     worker alive, what a worker killed hard left behind is stopped first (``_reap_orphans``), or the
-    next launch would wait for the memory an orphaned node holds. ``deal`` is ``launch``'s.
+    next launch would wait for the memory an orphaned node holds. ``deal`` is ``launch``'s. Returns 0
+    once settled, 1 when :data:`KEEP_STRIKES` launches in a row drove nothing.
     """
     root = _runs_root(cfg, model)
+    strikes, launched, attempts_then = 0, [], None
     while True:
-        if not workers(model, root):
+        alive = workers(model, root)
+        attempts = sum(st.attempts for st in route_states(root).values())
+        if launched and not alive and attempts == attempts_then:
+            strikes += 1
+            if strikes >= KEEP_STRIKES:
+                echo(
+                    f"{datetime.now(UTC):%F %T} the last {strikes} launches' workers all exited without "
+                    "attempting a route (a model node that cannot start?): stopping; read the worker logs"
+                )
+                return 1
+        elif attempts != attempts_then:
+            strikes = 0
+        if not alive:
             _reap_orphans(root, echo)
         try:
-            launch(cfg, model, n_workers, echo=echo, **deal)
+            launched = launch(cfg, model, n_workers, echo=echo, **deal)
         except SystemExit as exc:  # no free slot this pass: CARLAs still releasing their ports
+            launched = []
             echo(f"{datetime.now(UTC):%F %T} launch: {exc}; trying again in {every_s:.0f} s")
+        attempts_then = attempts
         if not workers(model, root):
             echo(f"{datetime.now(UTC):%F %T} nothing left to deal and no worker alive: the sweep has settled")
-            return
+            return 0
         sleep(every_s)
 
 
@@ -741,13 +763,13 @@ def _guard_one(pid: int, route_dir: Path, now: float, carla_missing_since: dict,
     except OSError:
         return
     port = carla_port_from_log(log, 0)
-    reason = None
+    reason, carla_gone = None, False
     if silent > SILENT_S:
         reason = f"evaluator.log silent {silent:.0f} s"
     elif port and _process_age_s(pid) > CARLA_GONE_S and not carla_pids(port):
         first = carla_missing_since.setdefault(pid, now)
         if once or now - first >= CARLA_GONE_S:
-            reason = f"its CARLA (port {port}) is gone"
+            reason, carla_gone = f"its CARLA (port {port}) is gone", True
     else:
         carla_missing_since.pop(pid, None)
     if reason:
@@ -757,7 +779,9 @@ def _guard_one(pid: int, route_dir: Path, now: float, carla_missing_since: dict,
             # Before the kill: the worker writes the attempt's failure record when its evaluator
             # exits, and the reason is the difference between a crash and a hang in it.
             try:
-                (route_dir / GUARD_KILL).write_text(json.dumps({"reason": reason}) + "\n")
+                (route_dir / GUARD_KILL).write_text(
+                    json.dumps({"reason": reason, "carla_gone": carla_gone}) + "\n"
+                )
             except OSError:
                 pass
             kill_evaluator(pid, route_dir)
@@ -840,7 +864,9 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "guard":
         guard(cfg, args.model, once=args.once, dry_run=args.dry_run, echo=lambda s: print(s, flush=True))
     elif args.command == "keep":
-        keep(cfg, args.model, args.workers, every_s=args.every, echo=lambda s: print(s, flush=True), **deal)
+        return keep(
+            cfg, args.model, args.workers, every_s=args.every, echo=lambda s: print(s, flush=True), **deal
+        )
     else:
         launch(cfg, args.model, args.workers, rebalance=args.rebalance, dry_run=args.dry_run, **deal)
     return 0

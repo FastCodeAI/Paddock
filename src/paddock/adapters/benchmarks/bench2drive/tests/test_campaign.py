@@ -7,6 +7,7 @@ here against a stand-in process table.
 
 from __future__ import annotations
 
+import itertools
 import json
 import shutil
 import tomllib
@@ -95,6 +96,39 @@ def test_a_route_given_up_is_not_dealt_and_status_says_whose_failure_it_was(tmp_
     assert sum("CARLA crashed (signal 11) at 36.4 s of game time" in ln for ln in said) == 3
 
 
+def test_a_route_given_up_on_is_dealt_again_when_only_names_it(tmp_path, monkeypatch) -> None:
+    """After the model's failure on it is fixed, --only drives it again; nothing else does."""
+    routes = [("1711", "Town12", "ParkingCutIn"), ("23695", "Town13", "InterurbanAdvancedActorFlow")]
+    campaign, cfg = _deal_site(tmp_path, monkeypatch, routes)
+    for i in range(3):
+        _attempt(tmp_path / "bench2drive" / "m", f"2026100{i + 1}T000000-aaaaaa", "23695", "empty", CRASHED)
+    lines: list[str] = []
+    campaign.launch(cfg, "m", 5, only={"23695"}, dry_run=True, echo=lines.append)
+    assert [ln.rsplit(": ", 1)[1] for ln in lines if ln.startswith("worker slot")] == ["23695"]
+
+
+def test_keep_stops_when_its_workers_keep_exiting_without_driving(tmp_path, monkeypatch) -> None:
+    """A model node that cannot start fails every worker the same way, before any route: keep stops
+    after three such launches in a row instead of relaunching them forever."""
+    from paddock.adapters.benchmarks.bench2drive import campaign
+
+    passes: list[str] = []
+    # Alive just after each launch, gone by the next pass: what a node failing at start looks like.
+    alive = itertools.cycle([[], [campaign.Worker(1, ["1711"], Path("w"), 2000)]])
+    monkeypatch.setattr(campaign, "workers", lambda model, root: next(alive))
+    monkeypatch.setattr(campaign, "launch", lambda *a, **kw: passes.append("launch") or [{"slot": 0}])
+    monkeypatch.setattr(campaign, "_reap_orphans", lambda root, echo: None)
+    monkeypatch.setattr(campaign, "route_states", lambda root: {})
+
+    class Cfg:
+        runs = tmp_path
+
+    said: list[str] = []
+    result = campaign.keep(Cfg, "m", 5, sleep=lambda s: None, echo=said.append)
+    assert result == 1 and "without attempting a route" in said[-1]
+    assert passes == ["launch"] * 3
+
+
 def test_a_set_aside_route_is_dealt_only_when_only_names_it(tmp_path, monkeypatch) -> None:
     """11715 is set aside for every model: never dealt in a sweep, but --only can drive it on
     purpose, to see whether it still fails."""
@@ -173,7 +207,7 @@ def test_keep_stops_once_nothing_is_left_and_no_worker_is_alive(monkeypatch) -> 
         runs = Path("/nowhere")
 
     said: list[str] = []
-    campaign.keep(Cfg, "m", 5, sleep=lambda s: calls.append("sleep"), echo=said.append)
+    assert campaign.keep(Cfg, "m", 5, sleep=lambda s: calls.append("sleep"), echo=said.append) == 0
     # alive at first: launch, sleep; then none alive: reap the orphans, launch, and settle.
     assert calls == ["launch", "sleep", "reap", "launch"]
     assert "settled" in said[-1]
@@ -393,5 +427,7 @@ def test_one_evaluator_the_guard_cannot_handle_does_not_end_the_guard(tmp_path: 
     campaign.guard(Cfg, "m", once=True, echo=said.append)
     assert killed == [102]
     assert any("Operation not permitted" in line for line in said)
-    # Its reason is in the route's folder before the kill, for the attempt's failure record.
-    assert json.loads((routes[1] / "guard.json").read_text())["reason"].startswith("evaluator.log silent")
+    # Its reason is in the route's folder before the kill, for the attempt's failure record, with
+    # whether the route's CARLA was gone: the harness reads that field, never the wording.
+    guard = json.loads((routes[1] / "guard.json").read_text())
+    assert guard["reason"].startswith("evaluator.log silent") and guard["carla_gone"] is False
