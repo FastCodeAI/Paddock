@@ -59,6 +59,17 @@ def test_a_failed_attempt_counts_toward_tries_and_a_cut_off_one_does_not(tmp_pat
     assert given_up(states, 4) == set() and given_up(states, 0) == set()
 
 
+def test_a_failure_with_the_model_node_gone_uses_up_no_try(tmp_path: Path) -> None:
+    """A node that died mid-queue fails every later route of its worker; those failed the node."""
+    gone = {**CRASHED, "kind": "not_scored", "status": ["Failed - Agent crashed"], "node_alive": False}
+    for i in range(3):
+        _attempt(tmp_path, f"2026100{i + 1}T000000-aaaaaa", "1711", "empty", gone)
+    assert given_up(route_states(tmp_path), 3) == set()
+    for i in range(3):
+        _attempt(tmp_path, f"2026101{i + 1}T000000-bbbbbb", "1711", "empty", {**CRASHED, "node_alive": True})
+    assert given_up(route_states(tmp_path), 3) == {"1711"}
+
+
 def test_whose_failure_it_is_decides_what_to_do_with_a_route_given_up_on() -> None:
     assert "SET_ASIDE" in whose([CRASHED, CRASHED, CRASHED])
     agent = {"kind": "not_scored", "status": ["Failed - Agent crashed"]}

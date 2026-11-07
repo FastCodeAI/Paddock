@@ -187,11 +187,16 @@ def route_states(runs_root: Path) -> dict[str, RouteState]:
     return states
 
 
+def counted(failures: list[dict]) -> list[dict]:
+    """The failures that use up a try: not one whose model node was gone, which failed the node."""
+    return [f for f in failures if f.get("node_alive") is not False]
+
+
 def given_up(states: dict[str, RouteState], tries: int) -> set[str]:
-    """Routes with no score and ``tries`` failed attempts or more: not dealt again. 0 never gives up."""
+    """Routes with no score and ``tries`` counted failures or more: not dealt again. 0 never gives up."""
     if tries <= 0:
         return set()
-    return {rid for rid, st in states.items() if not st.scored and len(st.failures) >= tries}
+    return {rid for rid, st in states.items() if not st.scored and len(counted(st.failures)) >= tries}
 
 
 def whose(failures: list[dict]) -> str:
@@ -547,7 +552,8 @@ def status(cfg: SiteConfig, model: str, tries: int = TRIES, echo=print) -> dict:
         echo(f"  set aside for every model, so not dealt: {','.join(aside)}")
     for rid in gave_up:
         failures = states[rid].failures
-        echo(f"  given up on {rid} after {len(failures)} failed attempt(s), {whose(failures)}:")
+        tried = counted(failures)
+        echo(f"  given up on {rid} after {len(tried)} failed attempt(s), {whose(tried)}:")
         for failure in failures:
             echo(f"    {failure_said(failure)}")
     for w in alive:

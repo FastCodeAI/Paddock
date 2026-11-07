@@ -587,6 +587,38 @@ def test_the_leaderboards_verdict_is_kept_when_the_evaluator_exits_255(
     assert simulator_side(record) is side and status in failure_said(record)
 
 
+def test_a_failure_says_whether_the_model_node_was_still_answering(tmp_path, monkeypatch) -> None:
+    """With the node gone, the next routes of the run fail as "Agent crashed" too: they failed the node,
+    and the record has to say so for the campaign to leave them out of a route's tries."""
+    import http.server
+    import threading
+
+    class Alive(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 -- the stdlib's name
+            self.send_response(200 if self.path == "/alive" else 404)
+            self.end_headers()
+            self.wfile.write(b"true")
+
+        def log_message(self, *args):
+            pass
+
+    body = f"import shutil\nshutil.copy({str(FIXTURES / 'results_agent_crashed.json')!r}, checkpoint)\n"
+    cfg = _site(tmp_path, monkeypatch, body)
+    with pytest.raises(RuntimeError, match="Agent crashed"):
+        _harness(cfg).run_episode(_episode(), f"http://127.0.0.1:{TEST_CARLA_PORT}", tmp_path / "gone")
+    gone = read_failure(tmp_path / "gone")
+    assert gone["node_alive"] is False and "node was not answering" in failure_said(gone)
+    server = http.server.HTTPServer(("127.0.0.1", 0), Alive)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        url = f"http://127.0.0.1:{server.server_port}"
+        with pytest.raises(RuntimeError, match="Agent crashed"):
+            _harness(cfg).run_episode(_episode(), url, tmp_path / "alive")
+    finally:
+        server.shutdown()
+    assert read_failure(tmp_path / "alive")["node_alive"] is True
+
+
 def test_a_carla_crash_before_the_first_tick_is_not_the_routes(tmp_path) -> None:
     """With no game time CARLA died at boot or map load: the machine's, not the route's."""
     log = "CommonUnixCrashHandler: Signal=11\n"

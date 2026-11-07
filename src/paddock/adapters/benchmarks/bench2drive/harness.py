@@ -42,6 +42,7 @@ import re
 import signal
 import subprocess
 import time
+import urllib.request
 import xml.etree.ElementTree as ET
 from collections.abc import Callable, Collection, Iterable, Iterator
 from pathlib import Path
@@ -458,6 +459,19 @@ def classify_failure(
     return record
 
 
+def node_alive(policy_url: str, timeout_s: float = 3.0) -> bool:
+    """Whether the model's node still answers ``/alive``.
+
+    Asked after an attempt fails: with the node gone, the next routes of the same run fail too, as
+    "Agent crashed", and they failed the node, not the route -- so they use up none of its tries.
+    """
+    try:
+        with urllib.request.urlopen(f"{policy_url.rstrip('/')}/alive", timeout=timeout_s) as answer:
+            return answer.status == 200
+    except (OSError, ValueError):
+        return False
+
+
 def failure_said(record: dict[str, Any]) -> str:
     """One line for a failure record, naming no path: it reaches tracked notes."""
     kind = record.get("kind")
@@ -474,6 +488,8 @@ def failure_said(record: dict[str, Any]) -> str:
         said = "evaluator exited 0 but wrote no results.json"
     else:
         said = f"not scored{status}" if statuses else "no records in _checkpoint"
+    if record.get("node_alive") is False:
+        said += "; the model's node was not answering"
     guard = record.get("guard")
     return f"{said}; the guard killed it: {guard}" if guard else said
 
@@ -1324,6 +1340,7 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
                     results_json=results_json,
                 )
                 record["elapsed_s"] = round(elapsed, 1)
+                record["node_alive"] = node_alive(policy_url)
                 try:
                     guard = json.loads((out_dir / GUARD_KILL).read_text())
                 except (OSError, ValueError):
