@@ -848,12 +848,13 @@ def test_a_full_run_is_the_set_less_the_routes_set_aside(tmp_path, monkeypatch) 
 
 def test_a_run_that_drives_a_set_aside_route_does_not_rank(tmp_path, monkeypatch) -> None:
     """Naming one with --scene drives it, to see whether it still fails: not a score, even when
-    every other route ran too."""
+    every other route ran too, and its notes do not say the route it drove was left out."""
     monkeypatch.setattr(harness_module, "SET_ASIDE", {"1711": "a stand-in reason"})
     harness = _harness(_site(tmp_path, monkeypatch, COMPLETED))
     assert [e.scene for e in harness.episodes(["1711", "1773"])] == ["1711", "1773"]
     (reason,) = harness.invalid_reasons()
     assert "set aside" in reason and "1711" in reason
+    assert harness.remarks() == []
 
 
 def test_the_sites_own_routes_subset_is_the_full_set(tmp_path, monkeypatch) -> None:

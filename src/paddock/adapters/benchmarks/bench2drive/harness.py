@@ -1016,7 +1016,8 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         And the routes set aside, when the site's set has any: which, and why."""
         rules = self.early_stop
         said = [early_stop.remark(rules)] if rules else []
-        aside = set_aside_remark(self._routes_set_aside())
+        driven = set(getattr(self, "_set_aside_driven", []))
+        aside = set_aside_remark(r for r in self._routes_set_aside() if r not in driven)
         return [*said, aside] if aside else said
 
     # ---- episodes ------------------------------------------------------

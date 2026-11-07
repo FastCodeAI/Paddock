@@ -222,9 +222,14 @@ def test_a_route_set_aside_is_neither_expected_nor_lost_and_says_why(tmp_path: P
 
 def test_a_set_aside_route_that_scored_is_left_out(tmp_path: Path) -> None:
     """A route set aside because it fails for another model is out of this one's pool too:
-    neither its sample nor its run's config enters it, so every mean is over the same routes."""
+    neither its sample nor its run's config enters it, so every mean is over the same routes.
+    That run was driven through another camera rig: had its config entered the pool, the pool
+    would not rank."""
     root = _tree(tmp_path)
     _write(root, "20260906T000000-ffffff", "11715-Town12-EnterActorFlow", _results_json("11715", 90.0, 100.0))
+    other = _source_run_json("modelx", [], {})
+    other["config"]["camera_rig"] = "kitscenes"
+    (root / "20260906T000000-ffffff" / "run.json").write_text(json.dumps(other))
 
     ((run, metrics, samples),) = bench2drive.ingest(root, model="modelx", site="s")
 
