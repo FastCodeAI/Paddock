@@ -221,7 +221,7 @@ def test_cards_are_cuda_and_vulkan_index_pairs() -> None:
         _cards("0,1")
 
 
-def test_keep_stops_once_nothing_is_left_and_no_worker_is_alive(monkeypatch) -> None:
+def test_keep_stops_once_nothing_is_left_and_no_worker_is_alive(tmp_path, monkeypatch) -> None:
     from paddock.adapters.benchmarks.bench2drive import campaign
 
     # keep asks twice a pass: before launching (to clean up) and after (to settle).
@@ -233,13 +233,94 @@ def test_keep_stops_once_nothing_is_left_and_no_worker_is_alive(monkeypatch) -> 
     monkeypatch.setattr(campaign, "_reap_orphans", lambda root, echo: calls.append("reap"))
 
     class Cfg:
-        runs = Path("/nowhere")
+        runs = tmp_path
 
     said: list[str] = []
     assert campaign.keep(Cfg, "m", 5, sleep=lambda s: calls.append("sleep"), echo=said.append) == 0
     # alive at first: launch, sleep; then none alive: reap the orphans, launch, and settle.
     assert calls == ["launch", "sleep", "reap", "launch"]
     assert "settled" in said[-1]
+    assert not (tmp_path / "bench2drive" / "_campaign" / "m" / campaign.KEEPER_PID).exists(), "it cleans up"
+
+
+def test_two_launches_never_deal_at_once(tmp_path, monkeypatch) -> None:
+    """A keeper's pass and a restart run beside it would pick the same free slots and routes: the
+    second waits for the sweep's launch lock, and gives up for this pass when it cannot get it."""
+    import fcntl
+
+    routes = [("1711", "Town12", "ParkingCutIn")]
+    campaign, cfg = _deal_site(tmp_path, monkeypatch, routes)
+    monkeypatch.setattr(campaign, "LOCK_WAIT_S", 0.0)
+    state = tmp_path / "bench2drive" / "_campaign" / "m"
+    state.mkdir(parents=True)
+    with (state / campaign.LAUNCH_LOCK).open("a") as other:
+        fcntl.flock(other, fcntl.LOCK_EX)  # another launch is dealing
+        with pytest.raises(SystemExit, match="another launch"):
+            campaign.launch(cfg, "m", 5, echo=lambda s: None)
+        lines: list[str] = []
+        campaign.launch(cfg, "m", 5, dry_run=True, echo=lines.append)  # a dry run deals nothing: no lock
+        assert any(ln.startswith("worker slot") for ln in lines)
+
+
+def test_only_what_a_dead_run_left_is_an_orphan(tmp_path, monkeypatch) -> None:
+    """An evaluator or node whose run is alive is never stopped, however that run was started; one
+    whose run is gone is."""
+    from paddock.adapters.benchmarks.bench2drive import campaign
+
+    hand_run = ["/env/python", "-m", "paddock.cli", "run", "-b", "bench2drive", "-m", "openpilot"]
+    parents = {10: 20, 11: 1, 30: 20, 31: 1}  # 20 is a live paddock run started by hand; 1 is init
+    monkeypatch.setattr(campaign, "_ppid", parents.get)
+    monkeypatch.setattr(campaign, "_argv", lambda pid: hand_run if pid == 20 else ["/sbin/init"])
+    monkeypatch.setattr(campaign, "evaluators", lambda root: [(10, tmp_path / "a"), (11, tmp_path / "b")])
+    killed: list = []
+    monkeypatch.setattr(campaign, "kill_evaluator", lambda pid, route_dir: killed.append(pid))
+    monkeypatch.setattr(
+        campaign, "_signal_and_wait", lambda pid, sig, wait_s, group=False: killed.append(pid) or True
+    )
+    monkeypatch.setattr(campaign, "_pids", lambda: [30, 31])
+    nodes = {30: ["python", "-m", "paddock.policy.server", "--nonce", "run1"], 31: ["python", "-m",
+             "paddock.policy.server", "--nonce", "run1"]}  # fmt: skip
+    (tmp_path / "run1").mkdir()
+    monkeypatch.setattr(
+        campaign, "_argv", lambda pid: hand_run if pid == 20 else nodes.get(pid, ["/sbin/init"])
+    )
+    campaign._reap_orphans(tmp_path, echo=lambda s: None)
+    assert killed == [11, 31], "the hand-started run's evaluator (10) and node (30) are left"
+
+
+def test_stop_stops_the_keeper_first(tmp_path, monkeypatch) -> None:
+    """Or the keeper's next pass starts the workers again."""
+    from paddock.adapters.benchmarks.bench2drive import campaign
+
+    class Cfg:
+        runs = tmp_path
+
+    state = tmp_path / "bench2drive" / "_campaign" / "m"
+    state.mkdir(parents=True)
+    (state / campaign.KEEPER_PID).write_text("4321\n")
+    keep_argv = [
+        "/env/python",
+        "-m",
+        "paddock.adapters.benchmarks.bench2drive.campaign",
+        "keep",
+        "--model",
+        "m",
+    ]
+    monkeypatch.setattr(campaign, "_argv", lambda pid: keep_argv if pid == 4321 else [])
+    signalled: list = []
+    monkeypatch.setattr(
+        campaign,
+        "_signal_and_wait",
+        lambda pid, sig, wait_s, group=False: signalled.append((pid, sig)) or True,
+    )
+    worker = campaign.Worker(7, ["1711"], state / "worker0.toml", 3000)
+    monkeypatch.setattr(campaign, "workers", lambda model, root: [worker])
+    monkeypatch.setattr(campaign, "evaluators", lambda root: [])
+    campaign.stop(Cfg, "m", echo=lambda s: None)
+    assert signalled == [(4321, campaign.signal.SIGTERM), (7, campaign.signal.SIGINT)]
+    signalled.clear()
+    campaign.stop(Cfg, "m", echo=lambda s: None, keeper_too=False)  # --rebalance
+    assert signalled == [(7, campaign.signal.SIGINT)]
 
 
 def test_a_route_counts_as_scored_once_any_attempt_scored(tmp_path: Path) -> None:

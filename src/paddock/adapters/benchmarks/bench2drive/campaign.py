@@ -80,6 +80,8 @@ the workers copy, exactly as for ``paddock run``.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import fcntl
 import json
 import os
 import re
@@ -125,6 +127,13 @@ CARLA_GONE_S = 120.0
 TRIES = 3
 #: Seconds between ``keep``'s launches.
 KEEP_EVERY_S = 300.0
+#: How long a launch waits for another launch of the same sweep -- a keeper's pass, a restart run
+#: beside it -- to finish dealing, before it gives up for this pass.
+LOCK_WAIT_S = 300.0
+#: The sweep's own files beside the worker configs: the lock two launches deal under, and the
+#: running keeper's pid, which `stop` stops first.
+LAUNCH_LOCK = "launch.lock"
+KEEPER_PID = "keep.pid"
 #: ``keep`` passes in a row whose workers all exited without a route attempt before it stops:
 #: a model node that cannot start fails every worker the same way, and would be relaunched forever.
 KEEP_STRIKES = 3
@@ -412,12 +421,37 @@ def evaluators(runs_root: Path) -> list[tuple[int, Path]]:
     return found
 
 
+def _ppid(pid: int) -> int | None:
+    """``pid``'s parent, from /proc (field 4 of stat), or None when it cannot be read."""
+    try:
+        return int(Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[1])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _a_run(pid: int) -> bool:
+    """Whether ``pid`` is a ``paddock run``, however its flags are spelled (``-b``, ``--model all``)."""
+    argv = _argv(pid)
+    return "run" in argv and any(a.endswith("paddock") or a == "paddock.cli" for a in argv)
+
+
+def orphaned(pid: int) -> bool:
+    """Whether the ``paddock run`` that started ``pid`` is gone.
+
+    An evaluator and a model node are children of their worker's run, so one whose parent is no
+    longer a run is an orphan, and ours to stop; one whose run is alive is never, whoever started
+    that run and however -- `workers()` knows only the campaign's own spelling of a command line.
+    """
+    parent = _ppid(pid)
+    return parent is None or not _a_run(parent)
+
+
 def orphaned_nodes(runs_root: Path) -> list[int]:
-    """Model nodes of this sweep's runs: their launch nonce (the runner's run id) is a run under the root.
+    """Orphaned model nodes of this sweep's runs: launch nonce (the runner's run id) a run under the root.
 
     A worker leads its own session and its node runs in it, so stopping a worker stops its node; one
     killed some other way (the kernel's OOM killer, say) leaves the node holding the GPU, and the next
-    launch would wait for the memory it holds. Only ever called with no worker alive.
+    launch would wait for the memory it holds.
     """
     found = []
     for pid in _pids():
@@ -425,7 +459,7 @@ def orphaned_nodes(runs_root: Path) -> list[int]:
         if "paddock.policy.server" not in argv or "--nonce" not in argv:
             continue
         nonce = argv[argv.index("--nonce") + 1] if argv.index("--nonce") + 1 < len(argv) else ""
-        if nonce and "/" not in nonce and (runs_root / nonce).is_dir():
+        if nonce and "/" not in nonce and (runs_root / nonce).is_dir() and orphaned(pid):
             found.append(pid)
     return found
 
@@ -534,13 +568,26 @@ def status(cfg: SiteConfig, model: str, tries: int = TRIES, echo=print) -> dict:
     }
 
 
-def stop(cfg: SiteConfig, model: str, echo=print, dry_run: bool = False) -> int:
-    """Stop this sweep's workers: SIGINT first, which the harness turns into killing its evaluator + CARLA.
+def keeper(cfg: SiteConfig, model: str) -> int | None:
+    """The pid of this sweep's running ``keep``, from its pid file, or None."""
+    try:
+        pid = int((_state_dir(cfg, model) / KEEPER_PID).read_text().split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
+    argv = _argv(pid)
+    is_keep = "keep" in argv and any(a.endswith("campaign") for a in argv)
+    return pid if is_keep and "--model" in argv and model in argv else None
 
-    Only the workers ``launch`` started, known by their ``PADDOCK_CONFIG``: one of the
-    campaign's ``worker<slot>.toml``. A ``paddock run`` of the same model started by
-    hand counts for ``launch`` (its routes are not dealt twice) but is not ours to stop.
-    ``dry_run`` says which it would stop, and signals nothing.
+
+def stop(cfg: SiteConfig, model: str, echo=print, dry_run: bool = False, keeper_too: bool = True) -> int:
+    """Stop this sweep's keeper, then its workers: SIGINT first, which the harness turns into
+    killing its evaluator + CARLA.
+
+    The keeper first, or its next pass would start the workers again. Only the workers ``launch``
+    started, known by their ``PADDOCK_CONFIG``: one of the campaign's ``worker<slot>.toml``. A
+    ``paddock run`` of the same model started by hand counts for ``launch`` (its routes are not dealt
+    twice) but is not ours to stop. ``dry_run`` says which it would stop, and signals nothing;
+    ``keeper_too`` false (``--rebalance``) leaves the keeper running.
     """
     root = _runs_root(cfg, model)
     state_dir = _state_dir(cfg, model).resolve()
@@ -549,10 +596,17 @@ def stop(cfg: SiteConfig, model: str, echo=print, dry_run: bool = False) -> int:
         for w in workers(model, root)
         if w.config.resolve().parent == state_dir and w.config.name.startswith("worker")
     ]
+    kept = keeper(cfg, model) if keeper_too else None
     if dry_run:
+        if kept is not None:
+            echo(f"would stop the keeper pid {kept}")
         for w in alive:
             echo(f"would stop worker pid {w.pid} ({len(w.routes)} routes queued)")
         return len(alive)
+    if kept is not None:
+        echo(f"stopping the keeper pid {kept}")
+        if not _signal_and_wait(kept, signal.SIGTERM, 30.0):
+            _signal_and_wait(kept, signal.SIGKILL, 10.0)
     for w in alive:
         echo(f"stopping worker pid {w.pid} ({len(w.routes)} routes queued)")
         if not _signal_and_wait(w.pid, signal.SIGINT, 180.0):
@@ -561,26 +615,62 @@ def stop(cfg: SiteConfig, model: str, echo=print, dry_run: bool = False) -> int:
             echo(f"  pid {w.pid} ignored SIGINT for 3 min; SIGTERM to its process group")
             if not _signal_and_wait(w.pid, signal.SIGTERM, 30.0, group=True):
                 _signal_and_wait(w.pid, signal.SIGKILL, 10.0, group=True)
-    # A worker killed past its SIGINT handler leaves its evaluator (own session) and CARLA behind.
+    # A worker killed past its SIGINT handler leaves its evaluator (own session) and CARLA behind;
+    # a run started by hand on this root keeps its own.
     for pid, route_dir in evaluators(root):
-        echo(f"cleaning up orphaned evaluator pid {pid} ({route_dir.name})")
-        kill_evaluator(pid, route_dir)
+        if orphaned(pid):
+            echo(f"cleaning up orphaned evaluator pid {pid} ({route_dir.name})")
+            kill_evaluator(pid, route_dir)
     return len(alive)
 
 
 def _reap_orphans(root: Path, echo=print) -> None:
     """What workers killed hard leave behind: evaluators (own session) with their CARLA, and model nodes.
 
-    Only with no worker on this runs root alive, ours or one started by hand: every evaluator and
-    node of its runs is then an orphan.
+    Only those whose run is gone (:func:`orphaned`): a run started by hand on this runs root, which
+    the campaign may not recognise as a worker, keeps its evaluator and node. One that is not ours to
+    signal (another user's) is reported and left.
     """
     for pid, route_dir in evaluators(root):
+        if not orphaned(pid):
+            continue
         echo(f"cleaning up orphaned evaluator pid {pid} ({route_dir.name})")
-        kill_evaluator(pid, route_dir)
+        try:
+            kill_evaluator(pid, route_dir)
+        except PermissionError:
+            echo(f"  pid {pid} is not ours to signal; left running")
     for pid in orphaned_nodes(root):
         echo(f"cleaning up orphaned model node pid {pid}")
-        if not _signal_and_wait(pid, signal.SIGTERM, 30.0):
-            _signal_and_wait(pid, signal.SIGKILL, 10.0)
+        try:
+            if not _signal_and_wait(pid, signal.SIGTERM, 30.0):
+                _signal_and_wait(pid, signal.SIGKILL, 10.0)
+        except PermissionError:
+            echo(f"  pid {pid} is not ours to signal; left running")
+
+
+@contextlib.contextmanager
+def _launching(state_dir: Path, wait_s: float):
+    """Deal under the sweep's launch lock.
+
+    Two launches at once -- a keeper's pass, and a `restart_campaign.sh` run beside it -- would each
+    pick the same free slots before the 20 s pauses let the other's CARLAs bind them, and deal the
+    same routes to both. The second waits here, then sees the first's workers and deals what is left.
+    """
+    state_dir.mkdir(parents=True, exist_ok=True)
+    with (state_dir / LAUNCH_LOCK).open("a") as handle:
+        deadline = time.time() + wait_s
+        while True:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.time() >= deadline:
+                    raise SystemExit("another launch of this sweep is still dealing; try again") from None
+                time.sleep(1.0)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 def launch(
@@ -602,11 +692,34 @@ def launch(
 
     ``held`` routes are driven last and alone: one worker, once every other route has scored and no
     worker is alive, because a route that crashes CARLA does so every time (see the module docstring).
-    A route set aside for every model is dealt only when ``only`` names it; one ``tries`` failed
-    attempts have given up on, never. ``batch`` caps the routes a new worker is dealt. With ``cards``
+    A route set aside for every model, or one ``tries`` failed attempts have given up on, is dealt
+    only when ``only`` names it. ``batch`` caps the routes a new worker is dealt. With ``cards``
     (CUDA index, Vulkan index), ``n_workers`` is per card, and each new worker goes to the card with
-    the fewest.
+    the fewest. Everything but a dry run deals under the sweep's launch lock (:func:`_launching`).
     """
+    if dry_run:
+        return _launch(cfg, model, n_workers, only, exclude, rebalance, node_base, True, held, tries,
+                       batch, cards, echo)  # fmt: skip
+    with _launching(_state_dir(cfg, model), LOCK_WAIT_S):
+        return _launch(cfg, model, n_workers, only, exclude, rebalance, node_base, False, held, tries,
+                       batch, cards, echo)  # fmt: skip
+
+
+def _launch(
+    cfg: SiteConfig,
+    model: str,
+    n_workers: int,
+    only: set[str] | None,
+    exclude: set[str] | None,
+    rebalance: bool,
+    node_base: int,
+    dry_run: bool,
+    held: set[str] | None,
+    tries: int,
+    batch: int,
+    cards: list[tuple[str, str]] | None,
+    echo,
+) -> list[dict]:
     root = _runs_root(cfg, model)
     state_dir = _state_dir(cfg, model)
     alive = workers(model, root)
@@ -615,7 +728,7 @@ def launch(
             echo(f"would stop {len(alive)} alive worker(s) to deal their routes anew")
             alive = []
         else:
-            stop(cfg, model, echo)
+            stop(cfg, model, echo, keeper_too=False)
             alive = workers(model, root)
     routes = _routes_meta(cfg)
     scenario_of = {rid: stype for rid, _, stype in routes}
@@ -735,6 +848,18 @@ def keep(
     once settled, 1 when :data:`KEEP_STRIKES` launches in a row drove nothing.
     """
     root = _runs_root(cfg, model)
+    pid_file = _state_dir(cfg, model) / KEEPER_PID
+    pid_file.parent.mkdir(parents=True, exist_ok=True)
+    pid_file.write_text(f"{os.getpid()}\n")
+    try:
+        return _keep(cfg, model, n_workers, every_s, sleep, echo, root, deal)
+    finally:
+        with contextlib.suppress(OSError):
+            if pid_file.read_text().split()[0] == str(os.getpid()):
+                pid_file.unlink()
+
+
+def _keep(cfg, model, n_workers, every_s, sleep, echo, root, deal) -> int:
     strikes, launched, attempts_then = 0, [], None
     while True:
         alive = workers(model, root)

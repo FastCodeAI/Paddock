@@ -15,7 +15,9 @@
 #              set aside for every model is never dealt, nor one --tries failed attempts gave up on;
 #              --cards spreads --workers per card over the GPUs, --batch caps a worker's routes
 #   keeper     only with --keep: `campaign keep`, the same launch every few minutes until nothing is
-#              left and no worker is alive, so slots that free up are filled to the end
+#              left and no worker is alive, so slots that free up are filled to the end. Launches deal
+#              under a lock, so this script's own launch beside a running keeper deals nothing twice.
+#              `campaign stop --model <m>` stops the keeper first, then the workers.
 #   dashboard  only with --dashboard-root: tools/benchmarks/bench2drive/dashboard.py on 127.0.0.1:<port>
 # then prints `campaign status`. See docs/benchmarks/bench2drive.md, "Running a sweep in parallel".
 #
@@ -48,6 +50,12 @@ done
 C="$PY -m paddock.adapters.benchmarks.bench2drive.campaign"
 LOGS=$($PY -c "from paddock.config import SiteConfig; print(SiteConfig.load().runs / 'bench2drive' / '_campaign' / '$MODEL' / 'logs')")
 mkdir -p "$LOGS"
+STATE=$(dirname "$LOGS")
+keeper_alive() {  # this sweep's keeper, by the pid file it writes; not any user's keeper of the model
+  local pid
+  pid=$(head -n1 "$STATE/keep.pid" 2>/dev/null | tr -dc 0-9)
+  [ -n "$pid" ] && tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q " keep --model $MODEL "
+}
 
 if [ -n "$STATUS_ONLY" ]; then $C status --model "$MODEL" ${TRIES:+--tries "$TRIES"}; exit 0; fi
 if ! nvidia-smi > /dev/null 2>&1; then
@@ -64,7 +72,7 @@ DEAL=(--model "$MODEL" --workers "$WORKERS" ${HELD:+--held "$HELD"} ${CARDS:+--c
       ${BATCH:+--batch "$BATCH"} ${TRIES:+--tries "$TRIES"})
 $C launch "${DEAL[@]}" $REBALANCE
 
-if [ -n "$KEEP" ] && ! pgrep -f "[c]ampaign keep --model $MODEL " > /dev/null; then
+if [ -n "$KEEP" ] && ! keeper_alive; then
   setsid nohup $C keep "${DEAL[@]}" < /dev/null >> "$LOGS/keep.log" 2>&1 &
   echo "keeper started ($LOGS/keep.log)"
 fi
