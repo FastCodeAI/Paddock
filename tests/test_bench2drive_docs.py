@@ -27,7 +27,7 @@ from pathlib import Path
 import pytest
 
 from paddock.adapters.benchmarks.bench2drive.harness import SET_ASIDE, every_tick
-from paddock.registry import Registry
+from paddock.registry import Registry, load_repos
 from paddock.results.ingest.bench2drive import _driven_off_protocol
 from tools.readme_figures import load_matrix, matrix_cell, rank
 
@@ -406,7 +406,7 @@ def test_the_220_route_column_is_one_protocol() -> None:
     aside = sorted(SET_ASIDE, key=lambda r: (len(r), r))
     header = next(c.header for c in load_matrix()[0] if c.key == "bench2drive220")
     assert f"{220 - len(aside)} of 220 routes" in header
-    registry = Registry.load().models
+    registry, repos = Registry.load().models, load_repos()
     hashes, stops = set(), []
     for row in rows:
         cell = row.cells[j]
@@ -425,6 +425,10 @@ def test_the_220_route_column_is_one_protocol() -> None:
         if declared:
             assert cell.qualifier == f"{declared:g} Hz", f"{row.key}: its rate is not named"
         assert (REPO_ROOT / "results" / cell.run / "upstream_scores.json").is_file()
+        # A pooled record keeps no repo_sha: its notes are its only account of what drove it.
+        pin = repos[registry[row.key].repo].sha[:7]
+        assert pin in record["notes"], f"{cell.run}: the notes do not name {row.key}'s pinned commit {pin}"
+        assert re.search(r"\bPaddock [0-9a-f]{7}", record["notes"]), f"{cell.run}: no Paddock commit named"
     assert rows, "the column has no cell to check"
     assert len(hashes) == 1, "every cell is over the same routes"
     assert all(s == stops[0] for s in stops) and stops[0]["stuck_s"] == 30.0
