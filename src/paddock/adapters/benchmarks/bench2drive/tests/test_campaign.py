@@ -196,6 +196,25 @@ def test_cards_pin_each_new_worker_to_a_card(tmp_path, monkeypatch) -> None:
     assert ranks == ["2", "0", "2"]
 
 
+def test_a_dry_run_starts_and_stops_nothing(monkeypatch) -> None:
+    """`keep --dry-run` is one dry pass of what keep would deal; `stop --dry-run` signals nothing."""
+    from paddock.adapters.benchmarks.bench2drive import campaign
+
+    calls: list = []
+    monkeypatch.setattr(campaign.SiteConfig, "load", classmethod(lambda cls, path=None: object()))
+    monkeypatch.setattr(
+        campaign, "launch", lambda cfg, model, n, **kw: calls.append(("launch", kw["dry_run"]))
+    )
+    monkeypatch.setattr(campaign, "keep", lambda *a, **kw: calls.append("keep"))
+    monkeypatch.setattr(campaign, "workers", lambda model, root: [campaign.Worker(7, ["1"], Path("w"), 2000)])
+    monkeypatch.setattr(campaign, "_signal_and_wait", lambda *a, **kw: calls.append("signal"))
+    monkeypatch.setattr(campaign, "_runs_root", lambda cfg, model: Path("/nowhere"))
+    monkeypatch.setattr(campaign, "_state_dir", lambda cfg, model: Path("/nowhere/_campaign"))
+    assert campaign.main(["keep", "--model", "m", "--dry-run"]) == 0
+    assert campaign.main(["stop", "--model", "m", "--dry-run"]) == 0
+    assert calls == [("launch", True)], "no keep loop, no signal"
+
+
 def test_cards_are_cuda_and_vulkan_index_pairs() -> None:
     assert _cards("0:0,1:2") == [("0", "0"), ("1", "2")] and _cards(None) is None
     with pytest.raises(SystemExit, match="CUDA:VULKAN"):

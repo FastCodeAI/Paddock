@@ -534,12 +534,13 @@ def status(cfg: SiteConfig, model: str, tries: int = TRIES, echo=print) -> dict:
     }
 
 
-def stop(cfg: SiteConfig, model: str, echo=print) -> int:
+def stop(cfg: SiteConfig, model: str, echo=print, dry_run: bool = False) -> int:
     """Stop this sweep's workers: SIGINT first, which the harness turns into killing its evaluator + CARLA.
 
     Only the workers ``launch`` started, known by their ``PADDOCK_CONFIG``: one of the
     campaign's ``worker<slot>.toml``. A ``paddock run`` of the same model started by
     hand counts for ``launch`` (its routes are not dealt twice) but is not ours to stop.
+    ``dry_run`` says which it would stop, and signals nothing.
     """
     root = _runs_root(cfg, model)
     state_dir = _state_dir(cfg, model).resolve()
@@ -548,6 +549,10 @@ def stop(cfg: SiteConfig, model: str, echo=print) -> int:
         for w in workers(model, root)
         if w.config.resolve().parent == state_dir and w.config.name.startswith("worker")
     ]
+    if dry_run:
+        for w in alive:
+            echo(f"would stop worker pid {w.pid} ({len(w.routes)} routes queued)")
+        return len(alive)
     for w in alive:
         echo(f"stopping worker pid {w.pid} ({len(w.routes)} routes queued)")
         if not _signal_and_wait(w.pid, signal.SIGINT, 180.0):
@@ -863,9 +868,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "status":
         status(cfg, args.model, tries=args.tries)
     elif args.command == "stop":
-        stop(cfg, args.model)
+        stop(cfg, args.model, dry_run=args.dry_run)
     elif args.command == "guard":
         guard(cfg, args.model, once=args.once, dry_run=args.dry_run, echo=lambda s: print(s, flush=True))
+    elif args.command == "keep" and args.dry_run:
+        # One pass of what keep would deal: a dry run starts nothing, and keep would start workers.
+        launch(cfg, args.model, args.workers, dry_run=True, **deal)
     elif args.command == "keep":
         return keep(
             cfg, args.model, args.workers, every_s=args.every, echo=lambda s: print(s, flush=True), **deal
