@@ -18,13 +18,13 @@ from pathlib import Path
 import pytest
 
 from paddock.adapters.benchmarks.bench2drive.harness import SET_ASIDE
+from paddock.config import BenchmarkOverride, ConfigError, SiteConfig
+from paddock.results import legacy, store
+from paddock.results.ingest import bench2drive
 
 #: 11715 stands in for a route set aside for every model: it was the list's first entry, until patch 0003
 #: made it score (harness.SET_ASIDE). The mechanism is tested against it; the list itself is empty.
 STAND_IN = "a stand-in reason: CARLA crashes on it every time, whichever model drives"
-from paddock.config import BenchmarkOverride, ConfigError, SiteConfig
-from paddock.results import legacy, store
-from paddock.results.ingest import bench2drive
 
 
 def _results_json(route: str, ds: float, rc: float, status: str = "Completed", collisions: int = 0) -> dict:
@@ -611,7 +611,7 @@ def test_the_declared_rate_comes_from_the_registry(monkeypatch) -> None:
     """planning_hz first; native_input_hz stands in for a model that declares no planning rate."""
     assert bench2drive._registered_native_hz("drivejepa") == (2.0, "planning_hz")
     assert bench2drive._registered_native_hz("alpamayo15") == (10.0, "planning_hz")
-    assert bench2drive._registered_native_hz("qwendrive") == (2.0, "planning_hz"), "below its 10 Hz input rate"
+    assert bench2drive._registered_native_hz("qwendrive") == (2.0, "planning_hz"), "under its input rate"
     assert bench2drive._registered_native_hz("no-such-model") is None
     # No model here declares an input rate without a planning rate any more; the fallback on a stand-in.
     spec = types.SimpleNamespace(planning_hz=0.0, native_input_hz=10.0)

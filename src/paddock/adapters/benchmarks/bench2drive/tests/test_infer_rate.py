@@ -97,7 +97,7 @@ class _ObservingNode(_Node):
 
 
 @pytest.mark.parametrize("observe, frames", [(10.0, [2, 4, 6, 8, 12, 14, 16, 18]), (0.0, [])])
-def test_between_plans_the_client_hands_frames_at_the_models_input_rate(agent_module, observe, frames) -> None:
+def test_between_plans_the_client_hands_frames_at_the_input_rate(agent_module, observe, frames) -> None:
     """Qwen-Drive: a plan every 0.5 s and, in between, a frame every 0.1 s (POST /observe), so its
     0.1 s pose history is real; the plan in force is still the last /infer reply."""
     agent, steered = _client(agent_module, 2.0)

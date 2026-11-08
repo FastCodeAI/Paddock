@@ -24,13 +24,13 @@ import pytest
 
 from paddock.adapters.benchmarks.bench2drive import harness as harness_module
 from paddock.adapters.benchmarks.bench2drive.harness import (
-    BENCHMARK,
     ATOMIC_BEHAVIORS,
+    BENCHMARK,
     CONNECT_TIMEOUT_FLAG,
     CRASH_STATUSES,
     DEFAULT_CONNECT_TIMEOUT_S,
-    FAR_CAR_GUARD,
     FAILURE,
+    FAR_CAR_GUARD,
     GUARD_KILL,
     KILL_ALL_LINE,
     SET_ASIDE,
