@@ -246,8 +246,8 @@ recorded differs by model, and the two halves are not equally strong:**
 
 **It is a model/route pairing, not a broken route:** DriveJEPA drives the same
 route at 2 Hz in the same campaign and scores **100** (source run
-`20260918T050144-892d9d`). That distinguishes it from route 11715, which crashes
-CARLA for every model and is excluded from the route set entirely.
+`20260918T050144-892d9d`). That distinguishes it from route 11715, which crashed
+CARLA for every model and was left out of the route set until patch 0003 (bench2drive.md, *Routes set aside*).
 
 **But it is not independent of the variable under test.** Both models drove 3800
 to a score at 20 Hz — `alpamayo15` **35.33**, `qwendrive` **12.18**, in the

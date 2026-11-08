@@ -17,6 +17,10 @@ from pathlib import Path
 import pytest
 
 from paddock.adapters.benchmarks.bench2drive.harness import SET_ASIDE
+
+#: 11715 stands in for a route set aside for every model: it was the list's first entry, until patch 0003
+#: made it score (harness.SET_ASIDE). The mechanism is tested against it; the list itself is empty.
+STAND_IN = "a stand-in reason: CARLA crashes on it every time, whichever model drives"
 from paddock.config import BenchmarkOverride, ConfigError, SiteConfig
 from paddock.results import legacy, store
 from paddock.results.ingest import bench2drive
@@ -172,7 +176,7 @@ def test_a_scenario_name_with_a_digit_or_an_underscore_is_scored_not_skipped(tmp
 
 
 def test_a_route_excluded_by_the_subset_and_never_scored_is_still_recorded(tmp_path: Path) -> None:
-    """11715 exactly: excluded for every model because CARLA crashes on it.
+    """11715 as it was: attempted, never scored, and outside the subset asked for.
 
     An explicit `routes` list is a choice and keeps the run complete, but
     "excluded" and "attempted and lost" are different facts and `results/` must
@@ -198,12 +202,13 @@ def test_a_route_excluded_by_the_subset_and_never_scored_is_still_recorded(tmp_p
     assert "routes_set_aside" not in run.config
 
 
-def test_a_route_set_aside_is_neither_expected_nor_lost_and_says_why(tmp_path: Path) -> None:
+def test_a_route_set_aside_is_neither_expected_nor_lost_and_says_why(tmp_path: Path, monkeypatch) -> None:
     """11715 fails in the simulator whichever model drives, so it measures no model.
 
     It leaves the pool -- not expected, not lost, in no mean -- and the record names it
     with its reason, while its attempts stay on the record as evidence.
     """
+    monkeypatch.setitem(SET_ASIDE, "11715", STAND_IN)
     root = _tree(tmp_path)
     for run in ("20260904T000000-dddddd", "20260905T000000-eeeeee"):
         _write(root, run, "11715-Town12-EnterActorFlow", _unscored("11715"))
@@ -220,11 +225,12 @@ def test_a_route_set_aside_is_neither_expected_nor_lost_and_says_why(tmp_path: P
     assert metrics.n == 3
 
 
-def test_a_set_aside_route_that_scored_is_left_out(tmp_path: Path) -> None:
+def test_a_set_aside_route_that_scored_is_left_out(tmp_path: Path, monkeypatch) -> None:
     """A route set aside because it fails for another model is out of this one's pool too:
     neither its sample nor its run's config enters it, so every mean is over the same routes.
     That run was driven through another camera rig: had its config entered the pool, the pool
     would not rank."""
+    monkeypatch.setitem(SET_ASIDE, "11715", STAND_IN)
     root = _tree(tmp_path)
     _write(root, "20260906T000000-ffffff", "11715-Town12-EnterActorFlow", _results_json("11715", 90.0, 100.0))
     other = _source_run_json("modelx", [], {})
@@ -240,9 +246,10 @@ def test_a_set_aside_route_that_scored_is_left_out(tmp_path: Path) -> None:
     assert "11715 left out although it scored here" in run.notes
 
 
-def test_a_full_set_pool_names_a_set_aside_route_no_sweep_drove(tmp_path: Path) -> None:
+def test_a_full_set_pool_names_a_set_aside_route_no_sweep_drove(tmp_path: Path, monkeypatch) -> None:
     """With every route of the file asked for, a route set aside is named although no attempt of
     it exists, and a route never attempted is lost, not absent."""
+    monkeypatch.setitem(SET_ASIDE, "11715", STAND_IN)
     root = _tree(tmp_path)
     routes = ["1711", "2802", "24333", "11715", "9999"]
     ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s", routes=routes)

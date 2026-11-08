@@ -123,6 +123,11 @@ QUALITY_FLAG = "-quality-level"
 #: connection retry (`--connect-timeout` is the fix).
 CONNECT_TIMEOUT_FLAG = "--connect-timeout"
 KILL_ALL_LINE = "xargs -r kill -9"
+#: The scenario_runner file patch 0003 changes, and what it adds. Unpatched, a flow car that misses
+#: its sink keeps its collision sensor until a large map puts it to sleep 650 m from the hero, and
+#: CARLA 0.9.15 segfaults (route 11715 for every model).
+ATOMIC_BEHAVIORS = Path("scenario_runner/srunner/scenariomanager/scenarioatomics/atomic_behaviors.py")
+FAR_CAR_GUARD = "def _remove_far_cars("
 
 #: Seconds each connection attempt to a just-launched CARLA may take before the
 #: evaluator asks again (patch 0002). It bounds one attempt, not the boot: the
@@ -194,11 +199,11 @@ CRASH_STATUSES = frozenset(
 #: docs/benchmarks/bench2drive.md, "Routes set aside". ``--scene <id>`` still drives one, to
 #: see whether it still fails; a run that does is not a score (``invalid_reasons``).
 SET_ASIDE: dict[str, str] = {
-    # Five attempts at one site (7-8 Oct 2026, openpilot) and nine at another under three
-    # stacks: CARLA's CommonUnixCrashHandler logs Signal=11 at 53.65-54.0 s of game time each
-    # time. The client's traceback lands in route_scenario.spawn_parked_vehicles only because
-    # that is its first call to the server after the crash.
-    "11715": "CARLA crashes (signal 11) about 54 s into the route on every attempt, whichever model drives",
+    # 11715 (Town12 EnterActorFlow) was the first, from #159: CARLA's Signal=11 about 54 s in, on
+    # every attempt. Under gdb that was a flow car with a collision sensor put to sleep 650 m from
+    # the hero (ALargeMapManager::ConvertActiveToDormantActors -> ASensor::EndPlay). Patch 0003
+    # removes such a car first, as its sink would; with it 11715 scored for the three models of the
+    # 220-route sweep (Drive-JEPA, Qwen-Drive, VisionPilot; 8 Nov 2026).
 }
 
 #: Everything ``agent.py`` imports, checked in the client interpreter by
@@ -304,6 +309,21 @@ def patch_problems(evaluator_source: str, evaluator: Path) -> list[str]:
             f"patches/Bench2Drive/0002-connect-timeout-for-a-booting-server.patch (patches/README.md)"
         )
     return problems
+
+
+def scenario_patch_problems(behaviors_source: str, behaviors: Path) -> list[str]:
+    """Why ``behaviors_source`` is not scenario_runner's atomic_behaviors.py with patch 0003 applied.
+
+    Without it CARLA crashes on route 11715, which is no longer set aside, and on any flow route
+    where a car that missed its sink gets 650 m from the hero (patches/README.md).
+    """
+    if FAR_CAR_GUARD in behaviors_source:
+        return []
+    return [
+        f"{behaviors} has no far-car guard in ActorFlow, so CARLA crashes when a large map puts a flow "
+        f"car with a collision sensor to sleep (route 11715 every time); apply "
+        f"patches/Bench2Drive/0003-actorflow-remove-far-flow-cars-before-dormancy.patch (patches/README.md)"
+    ]
 
 
 def crash_reason(status: str) -> str | None:
@@ -802,6 +822,7 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
                 (Path("leaderboard/leaderboard/leaderboard_evaluator.py"), "the evaluator"),
                 (Path("leaderboard/leaderboard/autoagents/autonomous_agent.py"), "the AutonomousAgent base"),
                 (Path("scenario_runner/srunner/scenariomanager/carla_data_provider.py"), "scenario_runner"),
+                (ATOMIC_BEHAVIORS, "scenario_runner's atomic behaviours"),
             ):
                 if not (repo / relative).exists():
                     problems.append(f"Bench2Drive checkout is missing {why}: {repo / relative}")
@@ -819,6 +840,9 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
                 )
             if evaluator is not None and evaluator.exists():
                 problems.extend(patch_problems(evaluator.read_text(errors="replace"), evaluator))
+            behaviors = repo / ATOMIC_BEHAVIORS
+            if behaviors.exists():
+                problems.extend(scenario_patch_problems(behaviors.read_text(errors="replace"), behaviors))
 
         routes = self.routes_file
         if routes is not None:

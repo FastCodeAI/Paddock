@@ -597,9 +597,33 @@ failure on the simulator, with the evidence here. The list is `SET_ASIDE` in
 - the ingest leaves it out of the pool, names it in `config.routes_set_aside`, and
   gives the reason in the notes.
 
-| Route | Scenario | Why | Evidence |
-|---|---|---|---|
-| 11715 | Town12 EnterActorFlow | CARLA crashes (signal 11) about 54 s into the route on every attempt, whichever model drives | five attempts at one site, 7–8 Oct 2026 (openpilot), each `CommonUnixCrashHandler: Signal=11` at 53.65–54.0 s of game time; nine at another under three stacks |
+No route is set aside at present.
+
+Route 11715 (Town12 EnterActorFlow) was the first, from #159. CARLA crashed with signal 11 about
+54 s in, on every attempt, whichever model drove: five attempts at one site (7–8 Oct 2026,
+openpilot), nine at another under three stacks. The client's traceback lands in
+`route_scenario.spawn_parked_vehicles` only because that is its first call to the server after the
+crash. Under gdb, with CARLA's own `CarlaUE4-Linux-Shipping.debug`, the server's stack is
+
+    ASensor::EndPlay                                  Sensor.cpp:120
+    AActor::Destroy  <- FCarlaActor::PutActorToSleep (the car's attached sensor)
+    UCarlaEpisode::PutActorToSleep
+    ALargeMapManager::ConvertActiveToDormantActors    LargeMapManager.cpp:817
+
+The evaluator sets `actor_active_distance = 650`, and a large map puts an actor that far from the hero
+to sleep with what is attached to it. `ActorFlow` attaches a collision sensor to every flow car; on
+11715 the cars from one source never turn towards their sink and drive straight on, and about 50 s
+later the first is 650 m away. Patch `0003` removes such a car at 600 m, sensor first, as the sink
+removes one (patches/README.md), and preflight refuses a checkout without it. Destroying only the
+sensor does not help: an A/B test with a scripted ego crashed at 56.7 s unpatched and with the sensor
+alone released, and ran clean to the route's end with the patch. With it, 11715 scores for
+Drive-JEPA, Qwen-Drive and VisionPilot, the three models of the 220-route sweep (8 Nov 2026).
+
+The same crash, once the ego falls far enough behind the flow, ended route 11755 (Town12
+EnterActorFlow) for every model and five Town13 flow routes (3785, 3800, 23695, 24041, 24071) on
+all three of Drive-JEPA's attempts. Those were never set aside; with the patch they score too. Each
+removal is printed in `evaluator.log` (`ActorFlow: removed flow car ...`), so a run shows whether
+the patch changed anything in it.
 
 ## Shared-machine behaviour
 
@@ -668,11 +692,10 @@ failure on the simulator, with the evidence here. The list is `SET_ASIDE` in
 
 What every run here depends on, beyond the leaderboard's own rules.
 
-* **Route 11715 (Town12 EnterActorFlow) is set aside for every model** (*Routes
-  set aside*). CARLA crashes with signal 11 about 54 s in, on every attempt across
-  three stacks, regardless of ego speed. The client's traceback lands in
-  `route_scenario.spawn_parked_vehicles` only because that is its first call to
-  the server after the crash.
+* **Flow cars are removed 600 m from the hero** (patch `0003`, *Routes set aside*). Unpatched,
+  CARLA crashes with signal 11 when a large map puts a flow car with a collision sensor to sleep,
+  which is why route 11715 was set aside until 8 Nov 2026. The removal is printed in each route's
+  `evaluator.log`.
 * **Wire format:** the agent now sends `speed_limit` (m/s, from
   `hero.get_speed_limit()`) and the next junction maneuver as `nav_maneuver` /
   `nav_distance_m` (walked forward on the 1 m world plan). Both optional; only
