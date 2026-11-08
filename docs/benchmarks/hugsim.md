@@ -50,7 +50,7 @@ HUGSIM's upstream install pins torch 2.4/cu118, which has no kernels for newer G
 the site that produced the results below built torch 2.7.1/cu128 and the CUDA
 extensions for sm_120, and kept every other package at the versions upstream's
 `pixi.lock` pins. `paddock doctor` and every run start with `preflight`, which checks
-the checkout and its two patches, the data directories, the HD-map link, and that
+the checkout and its three patches, the data directories, the HD-map link, and that
 the interpreter can import the simulator and the bridge.
 
 ## Running it
@@ -101,6 +101,17 @@ waypoints. The choices that fix what is measured:
 - **Only the model's cameras are rendered** (`patches/HUGSIM/0002`); the others are
   sent black, as HUGSIM itself sends the rear cameras on Waymo and KITTI-360, which
   have no rear data. Scoring never reads images.
+- **The scripted cars' planner fix** (`patches/HUGSIM/0003`). Upstream's `IDM.update`
+  indexes an empty tensor when an agent one point from its path's end has a car on that
+  point (`sim/utils/agent_controller.py:170`), and the simulator dies with no score.
+  That one case now takes the agent's distance to the point; an episode where it never
+  happens is unchanged. It is what ended Drive-JEPA's `scene-0166-medium-01` (below).
+- **The whole plan is sent**, up to 4 s (8 waypoints 0.5 s apart; NAVSIM's horizon,
+  UniAD and VAD plan 3 s). HUGSIM scores every step's sent plan -- collision, drivable
+  area, TTC and comfort over its length -- so a plan cut short is judged over less time
+  than the model planned. The bridge reads the reply's `plan`, not its `trajectory`,
+  which the wire cuts at six waypoints for neuroNCAP. **The 22 Oct campaigns stored
+  here were sent six (3 s)** for every model, Drive-JEPA's 4 s plans included.
 - **The step cap.** Upstream ends an episode after 400 steps (100 s).
 
 ### How an episode ends
@@ -188,7 +199,8 @@ What to read with them:
   attempts: its scripted-vehicle controller (`sim/utils/agent_controller.py:170`)
   indexed an empty lookahead path of another car. AutoE2E finished that scenario, so
   it is a lost scenario for Drive-JEPA, not a release bug, and paddock does not rank
-  a run with one. Its means are over the other 419.
+  a run with one. Its means are over the other 419. Patch `0003` fixes the crash; the
+  stored record is the campaign as it ran.
 - **Neither run is today's adapter.** Drive-JEPA was served by the adapter as of
   `ac7788f` (22 Oct) plus a per-call record of its 32 candidates; at that commit it
   fed cameras uncropped and picked on the plain score. Main now crops to the
@@ -244,7 +256,9 @@ campaign that disagrees with itself is stored and does not rank.
 | `bridge.py` is the bridge that drove the campaign | camera matrices, vehicle pose and the plans sent to HUGSIM match that bridge's own output to 1e-12 on a test rig (`tests/test_bridge.py`); its scipy rotations are replaced by numpy, equal to 7e-16 on 10,000 random rotations | **verified** |
 | Patch 0001 is the controller the campaign ran | the campaign applied PR #57 at run time; the patched `traj2control` gives bit-identical acceleration and steering rate on 200 random plans | **verified** |
 | Patch 0002 renders what the campaign rendered | the same code as the campaign's run-time replacement, moved into `_get_obs`; scores never read images | argued (read, not re-run) |
-| Both patches apply at the pinned sha | `git apply` on a clean checkout of `62c690d`; the patched files equal the intended trees | **verified** |
+| The three patches apply at the pinned sha | `git apply` on a clean checkout of `62c690d`, in order; the patched files equal the intended trees | **verified** |
+| Patch 0003 lets scene-0166-medium-01 finish | the same guard, applied at run time, re-drove released Drive-JEPA on it: steps 0-59 identical to the crashed attempt (ego path, all 30 model calls), then on to the 400-step cap; 3,860 random IDM cases identical to upstream, finite on the 140 upstream raises on | **verified** |
+| The bridge sends the model's whole plan | `plan` read before `trajectory`, the horizon counted in time, cut at 8 (`tests/test_bridge.py`) | **verified** (unit); not yet re-run end to end |
 | The Drive-JEPA node drove as main's adapter did on 22 Oct | the served adapter differs from `ac7788f` only by recording and a camera placement that is identical given the identity `lidar2ego`. Against a run of `ac7788f` itself on 7 scenarios: 5 identical to six decimals; the two longest (331 and 400 steps) diverged | argued, partly checked |
 | `launcher.py` runs a scenario end to end | not run: no HUGSIM episode was driven through the harness for this change | **unverified** |
 | The 16 left-out scenarios fail for every model | each failed the same way for three models in the campaign | **verified** |
