@@ -43,7 +43,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
-from paddock.adapters.benchmarks.hugsim.bridge import STEP_DT, infer_every
+from paddock.adapters.benchmarks.hugsim.bridge import STEP_DT, infer_every, observes
 from paddock.benchmark import ClosedLoopBenchmark, Episode
 from paddock.config import REPO_ROOT
 from paddock.runtime import gpu
@@ -431,11 +431,16 @@ class HugsimBenchmark(ClosedLoopBenchmark):
         so two rates never share a run id.
         """
         n = infer_every(getattr(model, "planning_hz", None))
-        return {
+        config = {
             "infer_every": n,
             "infer_hz": round(1.0 / (STEP_DT * n), 3),
             "render_cams": sorted(model.cameras),
         }
+        # Frames between plans (bridge.observes), recorded and hashed: a history of every step and one of the
+        # planning rate's are two inputs. Absent when none are handed, so every other model keeps its run id.
+        if observes(getattr(model, "native_input_hz", None), n):
+            config["observe"] = True
+        return config
 
     # ---- episodes ------------------------------------------------------
 
@@ -537,6 +542,8 @@ class HugsimBenchmark(ClosedLoopBenchmark):
             "--infer_every",
             str(infer_every(episode.config.get("planning_hz"))),
         ]
+        if observes(episode.config.get("native_input_hz"), infer_every(episode.config.get("planning_hz"))):
+            command.append("--observe")
 
         gpu.wait_for(
             float(self.setting("min_free_gb") or DEFAULT_MIN_FREE_GB),

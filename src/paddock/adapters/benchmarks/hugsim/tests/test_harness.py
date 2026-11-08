@@ -160,3 +160,14 @@ def test_patch_problems_on_an_unpatched_checkout(tmp_path: Path) -> None:
     (tmp_path / "sim/utils/agent_controller.py").write_text("class IDM:\n    pass\n")
     problems = harness.patch_problems(tmp_path)
     assert len(problems) == 3 and all(re.search(r"000[123]-", p) for p in problems)
+
+
+def test_frames_between_plans_are_recorded_for_a_model_asked_slower_than_its_history() -> None:
+    from types import SimpleNamespace
+
+    from paddock.adapters.benchmarks.hugsim.harness import HugsimBenchmark
+
+    dense = SimpleNamespace(planning_hz=2.0, native_input_hz=10.0, cameras=["CAM_FRONT"])
+    plain = SimpleNamespace(planning_hz=2.0, native_input_hz=0.0, cameras=["CAM_FRONT"])
+    assert HugsimBenchmark.model_run_config(None, dense)["observe"] is True
+    assert "observe" not in HugsimBenchmark.model_run_config(None, plain), "other models keep their run id"
