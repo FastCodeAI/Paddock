@@ -833,6 +833,7 @@ as 0, so each is 219/220 of the figure here (OpenPilot: DS 43.81, success 10.91%
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|
 | OpenPilot | 219/220 | 44.01 | 55.76 | 0.814 | 22.83 | 10.96 | 181.51 | 40.47 | `full220-96854bd47e320563-22709f` |
 | METEOR | 219/220 | 1.90 | 5.32 | 0.926 | 11.87 | 0.00 | 148.74 | 95.79 | `full220-96854bd47e320563-cc0c28` |
+| AutoE2E | 219/220 | 14.28 | 27.62 | 0.549 | 79.91 | 0.00 | 221.45 | 50.05 | `full220-96854bd47e320563-731529` |
 
 **Bench2Drive's five abilities, in % of the routes that count towards each:**
 
@@ -840,6 +841,7 @@ as 0, so each is 219/220 of the figure here (OpenPilot: DS 43.81, success 10.91%
 |---|---:|---:|---:|---:|---:|---:|
 | OpenPilot | 10.13 | 11.11 | 15.00 | 20.00 | 36.17 | 18.48 |
 | METEOR | 0.00 | 0.00 | 0.00 | 0.00 | 3.19 | 0.64 |
+| AutoE2E | 0.00 | 0.00 | 0.00 | 0.00 | 11.70 | 2.34 |
 
 A route counts towards an ability by its scenario, the same for every model:
 Merging 79 of these routes, Overtaking 45, Emergency brake 60, Give way 10 and
@@ -864,6 +866,15 @@ at a red light) and the over-time rule 7. No route is a success; its one ability
 that got past their first junction with no red light or stop sign run. Its comfort
 is that of a car that barely moved, and its efficiency is over the 26 routes with
 a minimum-speed check.
+
+**AutoE2E** is asked at its declared 10 Hz, the last plan followed in between,
+with upstream's inputs: the measured ego history and the route raster. CARLA
+crashed once, on route 3307's first attempt as it started, and the route scored
+on its next. It moves off on every route but completes none: its median route
+completion is 25.6%, 175 of its 219 routes have a collision, and the 30 s rule
+ended 180 of them, the over-time rule 12. No route is a success; its one ability
+credit is Traffic signs, for 11 of 94 routes that got past their first junction
+with no red light or stop sign run.
 
 ### Bench2Drive — 50 routes
 
