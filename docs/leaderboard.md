@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-92 runs across 9 benchmarks.
+95 runs across 9 benchmarks.
 55 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -30,6 +30,14 @@
 | drivejepa | drivejepa_014_20hz | 10 | 0.503 | 0.565 | 0.400 | 0.200 | 0.100 | 0.462 | 2.443 |
 
 ## bench2drive
+
+### n = 220, scene set 86aa45e7
+
+| model | run | n | driving_score ↑ | route_completion ↑ | infraction_penalty ↑ | collision_rate ↓ | n_runs ↑ | n_crashed ↑ | duration_s ↑ |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| visionpilot | pooled220-86aa45e768a29a64-9f3c17 | 220 | 46.097 | 66.039 | 0.650 | 0.523 | 1.000 | 0.000 | 301.989 |
+| drivejepa | pooled220-86aa45e768a29a64-1507a1 | 220 | 40.742 | 52.674 | 0.827 | 0.241 | 1.000 | 0.000 | 168.731 |
+| qwendrive | pooled220-86aa45e768a29a64-11acea | 220 | 27.409 | 61.695 | 0.467 | 0.786 | 1.000 | 0.000 | 227.102 |
 
 ### n = 50, scene set 40c29d24
 

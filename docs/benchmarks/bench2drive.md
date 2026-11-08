@@ -848,6 +848,33 @@ replaces the unassisted estimate ◆
 (30.09), a reconstruction from the September recordings, whose 50-route mean the
 table below still withholds.
 
+### Bench2Drive — 220 routes
+
+All 220 routes of `bench2drive220.xml`, 6–8 Nov 2026, on one shared RTX PRO 6000 with CARLA 0.9.15, each model at
+its own rate. Each record is `paddock ingest`'s pool (`routes = "all"`, `label = "pooled220"`), every route scored.
+
+| Model | Record | DS ↑ | RC ↑ (%) | Infraction penalty ↑ | Collision rate ↓ |
+|---|---|---:|---:|---:|---:|
+| VisionPilot | [`pooled220-86aa45e768a29a64-9f3c17`](../../results/bench2drive/visionpilot/pooled220-86aa45e768a29a64-9f3c17/run.json) | 46.10 | 66.04 | 0.650 | 0.523 |
+| Drive-JEPA (released NAVSIM v2 checkpoint, zero-shot), 2 Hz | [`pooled220-86aa45e768a29a64-1507a1`](../../results/bench2drive/drivejepa/pooled220-86aa45e768a29a64-1507a1/run.json) | 40.74 | 52.67 | 0.827 | 0.241 |
+| Qwen-Drive, 2 Hz, frames every 0.1 s between plans | [`pooled220-86aa45e768a29a64-11acea`](../../results/bench2drive/qwendrive/pooled220-86aa45e768a29a64-11acea/run.json) | 27.41 | 61.70 | 0.467 | 0.786 |
+
+What to read with them:
+
+- **Not yet the 220-route protocol above.** These sweeps ran before it was set: no early stop, and a 5400 s
+  route timeout instead of 14400. Every route ran until Bench2Drive's own rules ended it (blocked, off route,
+  out of time or finished), not 30 s after the car stopped making progress.
+- **Patch 0003** was in the evaluator for 11715 and 11755 (all three models) and for 3785, 3800, 23695, 24041,
+  24071 (Drive-JEPA), the routes CARLA crashed on without it. It acted on Drive-JEPA's 11755 and five Town13
+  routes and VisionPilot's 11755, and on none of Qwen-Drive's; on every other route the code it adds is never
+  reached or never acts.
+- **Up to three attempts per route.** An attempt that broke in the simulator or the client was set aside and the
+  route driven again; a poor drive was always kept.
+- Drive-JEPA ran with momentum-aware selection and the OpenScene crop, as its `model.yaml` declares, from an SSD
+  copy of the released checkpoint (sha256 `740335c8…`, the same bytes as the declared path). VisionPilot's plan
+  tail is extrapolated, as everywhere (*Notes on the matrix cells*). Qwen-Drive's frames between plans were set
+  on the host in this sweep (`PADDOCK_OBSERVE_HZ=10`), which `observe_hz` now records.
+
 ### Bench2Drive — 50 routes
 
 Five models and constant velocity at five fixed target speeds, evaluated on the
