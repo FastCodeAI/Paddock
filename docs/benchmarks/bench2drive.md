@@ -871,8 +871,8 @@ a minimum-speed check.
 with upstream's inputs: the measured ego history and the route raster. CARLA
 crashed once, on route 3307's first attempt as it started, and the route scored
 on its next. It moves off on every route but completes none: its median route
-completion is 25.6%, 175 of its 219 routes have a collision, and the 30 s rule
-ended 180 of them, the over-time rule 12. No route is a success; its one ability
+completion is 25.6%, and 175 of its 219 routes have a collision. The 30 s rule
+ended 180 routes and the over-time rule 12. No route is a success; its one ability
 credit is Traffic signs, for 11 of 94 routes that got past their first junction
 with no red light or stop sign run.
 
