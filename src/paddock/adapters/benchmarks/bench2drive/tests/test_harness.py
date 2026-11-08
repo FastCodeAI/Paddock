@@ -1243,6 +1243,13 @@ def test_the_models_planning_rate_reaches_the_client_and_the_record(tmp_path, mo
         "frames and poses 0.1 s apart"
     )
     assert harness.model_run_config(models["openpilot"]) == {}, "no planning_hz: asked every tick"
+    assert harness.model_run_config(models["qwendrive"]) == {"infer_hz": 2.0, "observe_hz": 10.0}, (
+        "plans at 2 Hz, its pose history is on a 0.1 s grid: frames handed between plans, recorded"
+    )
+    dense = _episode()
+    dense.config.update(planning_hz=2.0, native_input_hz=10.0)
+    harness.run_episode(dense, "http://127.0.0.1:9123", tmp_path / "dense")
+    assert json.loads((tmp_path / "dense" / "env.json").read_text())["PADDOCK_OBSERVE_HZ"] == "10"
     episode = _episode()
     episode.config["planning_hz"] = 2.0
     out = tmp_path / "out"
@@ -1253,6 +1260,15 @@ def test_the_models_planning_rate_reaches_the_client_and_the_record(tmp_path, mo
     monkeypatch.setenv("PADDOCK_INFER_HZ", "fast")
     with pytest.raises(ValueError, match="expected a rate in Hz"):
         infer_hz(2.0)
+
+
+def test_frames_are_handed_between_plans_only_to_a_model_asked_slower_than_its_input_rate() -> None:
+    from paddock.adapters.benchmarks.bench2drive.harness import observe_hz
+
+    assert observe_hz(10.0, 2.0) == 10.0, "Qwen-Drive"
+    assert observe_hz(10.0, 10.0) == 0.0, "Alpamayo 1.5 and AutoE2E plan at their input rate"
+    assert observe_hz(10.0, 0.0) == 0.0, "asked every tick: every frame already reaches it"
+    assert observe_hz(0.0, 2.0) == 0.0 and observe_hz(None, 2.0) == 0.0, "Drive-JEPA declares no input rate"
 
 
 def test_the_hosts_rate_in_place_of_the_models_own_is_recorded_and_does_not_rank(

@@ -95,6 +95,19 @@ def every_tick(hz: float) -> bool:
     return hz <= 0 or hz >= SIM_HZ
 
 
+def observe_hz(native_input_hz: float | None, asked_hz: float) -> float:
+    """How often the client hands the node a frame between plans (POST /observe), Hz; 0 never.
+
+    A model asked for a plan slower than the rate its history is built on (``native_input_hz``) is
+    handed a frame at that rate in between, so its history holds real frames, not the planning
+    rate's. Qwen-Drive plans at 2 Hz and reads sixteen ego poses on a 0.1 s grid: asked at 2 Hz
+    with nothing in between, its pose history came 5x sparser than it was trained on. A model asked
+    every tick (``asked_hz`` 0), or at its own input rate, never observes.
+    """
+    native = float(native_input_hz or 0.0)
+    return native if asked_hz > 0 and native > asked_hz and not _same_rate(native, asked_hz) else 0.0
+
+
 def _same_rate(a: float, b: float) -> bool:
     """Two rates that ask the node on the same ticks."""
     return (every_tick(a) and every_tick(b)) or a == b
@@ -985,14 +998,22 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         for every tick), so the record says the rate was an operator's: the run
         does not rank (``invalid_reasons``), and neither does a pool of such runs.
         A host that restates the model's own rate changes nothing.
+
+        A model asked slower than its ``native_input_hz`` is handed frames between plans at that
+        rate, recorded as ``observe_hz`` (:func:`observe_hz`).
         """
         declared = float(getattr(model, "planning_hz", 0.0) or 0.0)
         hz = infer_hz(declared)
+        # Frames between plans (``observe_hz``), recorded and hashed like the rate: Qwen-Drive with
+        # and without them reads different histories. Absent when none are handed, so every other
+        # model keeps its run id.
+        observed = observe_hz(getattr(model, "native_input_hz", 0.0), hz)
+        extra = {"observe_hz": observed} if observed else {}
         if _same_rate(hz, declared):
             self._host_rate = None
-            return {} if every_tick(declared) else {"infer_hz": declared}
+            return extra if every_tick(declared) else {"infer_hz": declared, **extra}
         self._host_rate = (hz, declared)
-        return {"infer_hz": 0.0 if every_tick(hz) else hz, "planning_hz": declared}
+        return {"infer_hz": 0.0 if every_tick(hz) else hz, "planning_hz": declared, **extra}
 
     def run_config(self) -> dict[str, Any]:
         """Site settings that change *what is measured*, for ``run.json``.
@@ -1254,6 +1275,8 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             extra["PADDOCK_INFER_TIMEOUT_S"] = os.environ["PADDOCK_INFER_TIMEOUT_S"]
         if hz := infer_hz(episode.config.get("planning_hz")):
             extra["PADDOCK_INFER_HZ"] = f"{hz:g}"
+            if observed := observe_hz(episode.config.get("native_input_hz"), hz):
+                extra["PADDOCK_OBSERVE_HZ"] = f"{observed:g}"
         # Segment mode (sim2real diagnostics: capture a recording, or replay it to T0 and then
         # swap the frames); see bench2drive/segment.py. Host-set like the timeout above; a run
         # with it is on the record and never ranks (`run_config`, `invalid_reasons`).

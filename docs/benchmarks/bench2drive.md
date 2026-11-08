@@ -119,13 +119,21 @@ So do the `stop_*` settings, whose rules the run's notes also state, and a
 **How often the model is asked for a plan** is the model's own `planning_hz`
 (`model.yaml`, `capabilities`). The client asks the node once per
 1/`planning_hz` seconds and follows the last plan unchanged in between; a model
-without it is asked every 0.05 s tick. Drive-JEPA declares 2 Hz, AutoE2E 10 Hz, METEOR 5 Hz,
-Alpamayo 1.5 10 Hz. The rate is
+without it is asked every 0.05 s tick. Drive-JEPA declares 2 Hz, Qwen-Drive 2 Hz, AutoE2E 10 Hz,
+METEOR 5 Hz, Alpamayo 1.5 10 Hz. The rate is
 recorded as `config.infer_hz` and hashed into the run id, and the host's
 `PADDOCK_INFER_HZ` overrides it for every model. Where that replaces the model's
 own rate, the run records the declared rate beside it (`config.planning_hz`) and
 is stored `valid: false`: an operator's rate. A pooled record carries the rate
 too, and ranks at the model's own (*Pooling recorded routes*, below).
+
+**Between plans, a model asked slower than its history** (`native_input_hz` above the rate it is
+asked at) is handed a frame at that rate with `POST /observe`: the same body as `/infer`, no plan
+asked, the plan in force unchanged. Qwen-Drive plans at 2 Hz and reads sixteen ego poses on a
+0.1 s grid, so it observes at 10 Hz; asked at 2 Hz with nothing in between, its pose history came
+five times sparser than it was trained on (the native-rate campaign's QwenDrive row). The rate is
+recorded as `config.observe_hz` and hashed into the run id; a model that asks at its input rate
+(Alpamayo 1.5, AutoE2E) or declares none never observes, and its run id is unchanged.
 
 Prerequisites (all outside this repo):
 

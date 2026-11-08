@@ -17,6 +17,9 @@ come from the environment, set by ``harness.run_episode``:
     PADDOCK_WAYPOINT_DT   spacing of the returned waypoints, s   (default 0.5)
     PADDOCK_INFER_HZ      ask for a plan this often and follow the last one in
                           between (default 0: every tick); from `planning_hz`
+    PADDOCK_OBSERVE_HZ    between plans, hand the node a frame this often
+                          (POST /observe; default 0: never); from
+                          `native_input_hz` when the model plans slower
     PADDOCK_RECORD_DIR    if set, write front/BEV frames + a per-tick log.csv
                           here; the harness sets SAVE_PATH alongside it so the
                           leaderboard allows the BEV camera's 30 m mount. Also
@@ -97,6 +100,13 @@ SEGMENT = os.environ.get("PADDOCK_SEGMENT") or None
 #: native-rate campaign drove it: its log.csv holds identical waypoints for
 #: 10-frame runs (docs/benchmarks/bench2drive-native-rate.md).
 INFER_HZ = float(os.environ.get("PADDOCK_INFER_HZ") or 0)
+#: Between plans, hand the node a frame this often, Hz (POST /observe, the
+#: same body as /infer, no plan asked): a model whose history is denser than
+#: its planning rate gets real frames for it. Qwen-Drive plans at 2 Hz but
+#: reads sixteen ego poses on a 0.1 s grid, so it observes at 10 Hz. The
+#: harness sets it from the model's `native_input_hz` when that is above the
+#: rate it is asked at (``harness.observe_hz``). 0 never observes.
+OBSERVE_HZ = float(os.environ.get("PADDOCK_OBSERVE_HZ") or 0)
 #: Slack on "a plan is due", us: a 0.5 s step can read as 499999 us from floats.
 DUE_SLACK_US = 1000
 
@@ -196,6 +206,7 @@ class PaddockB2DAgent(AutonomousAgent):
         self._prev_us = None
         self._payload = None
         self._plan_us = None
+        self._obs_us = None
         self._hero = None
         self._tracker = WaypointTracker(WAYPOINT_DT)
         # One connection to the loopback node for the whole route.
@@ -793,6 +804,10 @@ class PaddockB2DAgent(AutonomousAgent):
         r.raise_for_status()
         return r.json()
 
+    def _observe(self, body):
+        r = self._http.post(f"{SERVER}/observe", json=body, timeout=INFER_TIMEOUT_S)
+        r.raise_for_status()
+
     def decide(self, payload, speed):
         """Node reply -> (control, desired_speed, plan, native). Validated here: a NaN
         from a mis-warmed model is an error, not a steer value CARLA accepts silently."""
@@ -816,7 +831,9 @@ class PaddockB2DAgent(AutonomousAgent):
 
         us = int(timestamp * 1e6)
         due = self._payload is None or INFER_HZ <= 0 or us - self._plan_us >= 1e6 / INFER_HZ - DUE_SLACK_US
-        inputs = self.tick_inputs(input_data, timestamp, frames=due)
+        last_frame_us = self._obs_us if self._obs_us is not None else self._plan_us
+        observe = not due and OBSERVE_HZ > 0 and us - last_frame_us >= 1e6 / OBSERVE_HZ - DUE_SLACK_US
+        inputs = self.tick_inputs(input_data, timestamp, frames=due or observe)
         speed, accel, front_bgr = inputs["speed"], inputs["accel"], inputs["front_bgr"]
         nav_maneuver, nav_distance_m = inputs["nav_maneuver"], inputs["nav_distance_m"]
         body = self.wire_body(inputs)
@@ -837,8 +854,12 @@ class PaddockB2DAgent(AutonomousAgent):
             sent_at = time.monotonic()
             self._payload = self._post(body)
             infer_ms = (time.monotonic() - sent_at) * 1000.0
-            self._plan_us = us
+            self._plan_us = self._obs_us = us
         else:
+            if observe:
+                # A frame of history, no plan: the plan in force stays the last reply.
+                self._observe(body)
+                self._obs_us = us
             # No /infer this tick: the analysis record says so (`asked` false) and holds the
             # plan in force, the last reply, with no time spent asking (log.csv repeats its
             # waypoints likewise).

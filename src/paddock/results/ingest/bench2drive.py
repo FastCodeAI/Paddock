@@ -496,6 +496,13 @@ def ingest(
         config["planning_hz"] = _agreed([c["planning_hz"] for c in host_set])
     mixed_rates = isinstance(rates, list)
     unknown_rate = unread if rates not in (None, 0.0) else 0
+    # Frames handed to the node between plans (`observe_hz`, harness.observe_hz), as the source runs
+    # recorded them. In the config only when some run had them, so a pool without keeps its run id.
+    # Runs with and without them, or at two rates, read two different histories: one mean, no rank.
+    observed = _agreed([float(c.get("observe_hz") or 0.0) for c in kept])
+    if observed not in (None, 0.0):
+        config["observe_hz"] = observed
+    mixed_observe = isinstance(observed, list)
     # A setting the model's model.yaml declares, set to another value: what keeps a
     # `paddock run` from ranking (runner._env_override_reasons) keeps the pool from ranking.
     # Judged against the declared_env the source runs recorded, which leaves tuning keys
@@ -605,6 +612,11 @@ def ingest(
             f"source runs were asked for a plan at different rates (config.infer_hz {rates}, 0 for every "
             "tick); one mean describes none of them, so this run does not rank."
         )
+    if mixed_observe:
+        note = (note + " " if note else "") + (
+            f"source runs were handed frames between plans at different rates (config.observe_hz {observed}, "
+            "0 for none); one mean describes none of them, so this run does not rank."
+        )
     if unknown_rate:
         note = (note + " " if note else "") + (
             f"{unread} of {len(used)} source runs kept no config, so the rate their routes were asked at "
@@ -691,6 +703,7 @@ def ingest(
         and not overrides
         and not other_rig
         and not mixed_rates
+        and not mixed_observe
         and not host_set
         and not unknown_rate
         and not not_a_rate

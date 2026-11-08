@@ -12,6 +12,7 @@ machine.
 from __future__ import annotations
 
 import json
+import types
 from pathlib import Path
 
 import pytest
@@ -606,12 +607,17 @@ def test_ranked_ranks_a_run_as_recorded_and_says_why(tmp_path: Path, monkeypatch
     assert "ranked = true in the ingest config; the mean is over the 3 routes that scored." in ranked.notes
 
 
-def test_the_declared_rate_comes_from_the_registry() -> None:
+def test_the_declared_rate_comes_from_the_registry(monkeypatch) -> None:
     """planning_hz first; native_input_hz stands in for a model that declares no planning rate."""
     assert bench2drive._registered_native_hz("drivejepa") == (2.0, "planning_hz")
     assert bench2drive._registered_native_hz("alpamayo15") == (10.0, "planning_hz")
-    assert bench2drive._registered_native_hz("qwendrive") == (10.0, "native_input_hz")
+    assert bench2drive._registered_native_hz("qwendrive") == (2.0, "planning_hz"), "below its 10 Hz input rate"
     assert bench2drive._registered_native_hz("no-such-model") is None
+    # No model here declares an input rate without a planning rate any more; the fallback on a stand-in.
+    spec = types.SimpleNamespace(planning_hz=0.0, native_input_hz=10.0)
+    registry = types.SimpleNamespace(models={"stand-in": spec})
+    monkeypatch.setattr(bench2drive.Registry, "load", staticmethod(lambda *a, **k: registry))
+    assert bench2drive._registered_native_hz("stand-in") == (10.0, "native_input_hz")
 
 
 # --- the site config is read by a stranger, so it fails by name --------------
@@ -770,6 +776,20 @@ def test_a_pool_asked_at_the_rate_its_model_declared_records_it_and_ranks(tmp_pa
     assert run.run_id != every.run_id
     at_20 = _pooled_with(tmp_path / "c", ({"infer_hz": 20.0}, {"infer_hz": 20.0}))
     assert at_20.valid and at_20.run_id == every.run_id, "20 Hz on a 20 Hz simulation is every tick"
+
+
+def test_frames_handed_between_plans_are_in_the_pool_and_one_mean_never_mixes_them(tmp_path: Path) -> None:
+    """Qwen-Drive asked at 2 Hz and handed a frame every 0.1 s between (`observe_hz`) reads another history
+    than asked at 2 Hz alone: the rate is in the pool's config and run id, and runs with and without it
+    do not pool into a ranked run. A pool none of whose runs had it keeps its run id."""
+    dense = {"infer_hz": 2.0, "observe_hz": 10.0}
+    run = _pooled_with(tmp_path / "a", (dense, dense))
+    assert run.config["observe_hz"] == 10.0 and run.valid
+    sparse = _pooled_with(tmp_path / "b", ({"infer_hz": 2.0}, {"infer_hz": 2.0}))
+    assert "observe_hz" not in sparse.config and sparse.valid and sparse.run_id != run.run_id
+    mixed = _pooled_with(tmp_path / "c", (dense, {"infer_hz": 2.0}))
+    assert sorted(mixed.config["observe_hz"]) == [0.0, 10.0] and not mixed.valid
+    assert "handed frames between plans at different rates" in mixed.notes
 
 
 def test_a_pool_at_the_hosts_rate_at_two_rates_or_at_a_rate_not_known_does_not_rank(tmp_path: Path) -> None:

@@ -61,6 +61,12 @@ capabilities:
   # hist_traj_10hz), which NAVSIM can supply from nuPlan (native_input_hz
   # above 2 selects the dense path); the frames stay 0.5 s apart either way.
   native_input_hz: 10.0
+  # How often it replans in closed loop: 2 Hz, the rate its camera frames are picked at (0.5 s apart,
+  # above), and the rate of the 220-route Bench2Drive sweep (Nov 2026). Bench2Drive asks once
+  # every 0.5 s and, because native_input_hz is above it, hands it a frame every 0.1 s in between
+  # (POST /observe, harness.observe_hz), so the ego-pose history above stays dense; HUGSIM asks every
+  # second step.
+  planning_hz: 2.0
   history_s: 1.5
 
   # -- model card (docs/models/comparison.md) --
@@ -134,4 +140,4 @@ score_notes:
 # Of those, what a site may set and stay ranked, with the note: `replicate` and `crop`, kept for comparison.
 ranked_with_note: [QWENDRIVE_VIEWS]
 
-benchmarks: [kitscenes, nuscenes, navsim, navsim_v1, neuroncap, comma2k19, alpasim]
+benchmarks: [kitscenes, nuscenes, navsim, navsim_v1, neuroncap, comma2k19, alpasim, bench2drive]
