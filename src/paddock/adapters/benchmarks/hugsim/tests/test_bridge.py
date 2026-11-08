@@ -125,3 +125,14 @@ def test_hugsim_commands_are_paddock_commands() -> None:
 @pytest.mark.parametrize(("hz", "every"), [(None, 1), (0.0, 1), (4.0, 1), (2.0, 2), (1.0, 4), (10.0, 1)])
 def test_call_interval_follows_the_models_rate(hz: float | None, every: int) -> None:
     assert bridge.infer_every(hz) == every
+
+
+def test_a_model_asked_slower_than_its_history_observes_every_step_between() -> None:
+    """Qwen-Drive: asked every second step (2 Hz), its history built on 0.1 s; it is handed every frame HUGSIM
+    renders. Drive-JEPA (no input rate) and a model asked every step (4 Hz, the fastest there is) are not."""
+    assert bridge.observes(10.0, 2) and not bridge.observes(None, 2) and not bridge.observes(10.0, 1)
+    assert not bridge.observes(2.0, 2), "a history at the planning rate needs nothing between"
+    asked = [bridge.step_action(s, s > 0, 2, True) for s in range(6)]
+    assert asked == ["infer", "observe", "infer", "observe", "infer", "observe"]
+    assert [bridge.step_action(s, s > 0, 2, False) for s in range(4)] == ["infer", None, "infer", None]
+    assert bridge.step_action(3, False, 2, True) == "infer", "no plan yet: ask for one"

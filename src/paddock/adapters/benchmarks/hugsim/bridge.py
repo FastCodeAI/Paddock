@@ -110,6 +110,24 @@ def infer_every(planning_hz: float | None) -> int:
     return max(1, round(1.0 / (STEP_DT * planning_hz)))
 
 
+def observes(native_input_hz: float | None, every: int) -> bool:
+    """Whether the model is handed a frame on the steps between its plans (POST /observe).
+
+    A model asked slower than the rate its history is built on (``native_input_hz``) is, so its history
+    holds every frame HUGSIM renders (one each 0.25 s, the densest there is), not only the planning rate's.
+    Qwen-Drive plans at 2 Hz and reads poses on a 0.1 s grid; asked every second step with nothing between,
+    its history came at 2 Hz. A model asked every step has no step between.
+    """
+    return every > 1 and bool(native_input_hz) and float(native_input_hz) > 1.0 / (STEP_DT * every) + 1e-9
+
+
+def step_action(step: int, have_plan: bool, every: int, observe: bool) -> str | None:
+    """What the bridge asks the node at this step: "infer" (a plan), "observe" (a frame, no plan) or None."""
+    if not have_plan or step % every == 0:
+        return "infer"
+    return "observe" if observe else None
+
+
 class Rig:
     """Camera matrices for paddock, from HUGSIM's camera yaml (``load_camera_cfg``'s own reading of it)."""
 
@@ -262,6 +280,9 @@ def main() -> None:
         "--camera_yaml", required=True, help="the HUGSIM camera config this scenario renders with"
     )
     ap.add_argument("--infer_every", type=int, default=1, help="call the model every N steps (0.25 s each)")
+    ap.add_argument(
+        "--observe", action="store_true", help="hand the node a frame (POST /observe) on steps between plans"
+    )
     ap.add_argument("--timeout", type=float, default=300.0)
     ap.add_argument(
         "--dump_steps",
@@ -309,7 +330,8 @@ def main() -> None:
         }
         plan = None
         try:
-            if held is None or step % args.infer_every == 0:
+            action = step_action(step, held is not None, args.infer_every, args.observe)
+            if action is not None:
                 e2w = np.eye(4)
                 e2w[:2, :2], e2w[:2, 3], e2w[2, 3] = T_veh[:2, :2], T_veh[:2, 2], ground_z
                 canbus = [0.0] * 18
@@ -350,23 +372,28 @@ def main() -> None:
                         cams=np.array(CAMS),
                     )
                 t0 = time.time()
-                r = http.post(f"{args.server}/infer", json=body, timeout=args.timeout)
-                r.raise_for_status()
-                out = r.json()
-                traj, dt = plan_of(out)
-                if not np.isfinite(traj).all() or len(traj) < 2:
-                    raise ValueError(f"bad trajectory from the model: {traj.tolist()}")
-                held = HeldPlan(t, T_veh, traj, dt)
-                rec.update(
-                    called=True,
-                    infer_ms=round(1000 * (time.time() - t0)),
-                    n_wp=len(traj),
-                    dt=dt,
-                    n_sent=held.n,
-                    model_last=[round(float(v), 2) for v in traj[-1, :2]],
-                    model_traj=np.round(traj, 3).tolist(),
-                    extras=out.get("extras"),
-                )
+                if action == "observe":
+                    # A frame of history, no plan: the plan in force stays the one held.
+                    http.post(f"{args.server}/observe", json=body, timeout=args.timeout).raise_for_status()
+                    rec.update(observed=True, observe_ms=round(1000 * (time.time() - t0)))
+                else:
+                    r = http.post(f"{args.server}/infer", json=body, timeout=args.timeout)
+                    r.raise_for_status()
+                    out = r.json()
+                    traj, dt = plan_of(out)
+                    if not np.isfinite(traj).all() or len(traj) < 2:
+                        raise ValueError(f"bad trajectory from the model: {traj.tolist()}")
+                    held = HeldPlan(t, T_veh, traj, dt)
+                    rec.update(
+                        called=True,
+                        infer_ms=round(1000 * (time.time() - t0)),
+                        n_wp=len(traj),
+                        dt=dt,
+                        n_sent=held.n,
+                        model_last=[round(float(v), 2) for v in traj[-1, :2]],
+                        model_traj=np.round(traj, 3).tolist(),
+                        extras=out.get("extras"),
+                    )
             plan = to_hugsim(held, t, T_veh, rig)
             rec["plan"] = np.round(
                 plan, 3

@@ -83,6 +83,12 @@ waypoints. The choices that fix what is measured:
   (Drive-JEPA, 2 Hz: every second step); one that declares none is called every
   step. Between calls the held plan is fixed in the world and re-sampled for where
   the car actually is, as the Bench2Drive client holds a plan.
+  A model asked slower than the rate its history is built on (`native_input_hz`)
+  is handed every frame between its plans (`POST /observe`, no plan asked;
+  `config.observe`): Qwen-Drive plans every second step and reads poses on a 0.1 s
+  grid, so it sees every 0.25 s step, the densest HUGSIM renders. A model that
+  plans faster than 4 Hz (AutoE2E, Alpamayo 1.5 and METEOR declare 10, 10 and
+  5 Hz) is asked every step, the most HUGSIM allows.
 - **What the model is told.** HUGSIM's ego point is the front camera's calibrated
   pose, and it moves that point along the camera's heading, which on nuScenes is
   0.58° left of the calibration's vehicle axis. The vehicle frame sent to models is
