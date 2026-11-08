@@ -157,5 +157,6 @@ def test_patch_problems_on_an_unpatched_checkout(tmp_path: Path) -> None:
     (tmp_path / "sim/hugsim_env/envs").mkdir(parents=True)
     (tmp_path / "sim/utils/sim_utils.py").write_text("    for i, (a, b) in enumerate(plan_traj):\n")
     (tmp_path / "sim/hugsim_env/envs/hug_sim.py").write_text("def _get_obs(self):\n")
+    (tmp_path / "sim/utils/agent_controller.py").write_text("class IDM:\n    pass\n")
     problems = harness.patch_problems(tmp_path)
-    assert len(problems) == 2 and all(re.search(r"000[12]-", p) for p in problems)
+    assert len(problems) == 3 and all(re.search(r"000[123]-", p) for p in problems)

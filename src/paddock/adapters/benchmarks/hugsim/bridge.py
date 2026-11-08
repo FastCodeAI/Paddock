@@ -53,9 +53,24 @@ PLAN_DT = 0.5
 #: Seconds per simulator step (upstream ``HUGSimEnv``; the kinematic model integrates at 0.25 s).
 STEP_DT = 0.25
 MIN_STEP_M = 0.3  # a waypoint step shorter than this carries no usable heading
-N_MAX = (
-    8  # waypoints sent to HUGSIM: the model's own horizon (paddock returns 6 = 3 s), never padded, cut at 4 s
-)
+#: Waypoints sent to HUGSIM at most: 0.5 s apart, so 4 s, NAVSIM's planning horizon (UniAD and VAD plan
+#: 3 s). Below that, the model's own horizon, never padded. HUGSIM scores every step's sent plan (collision,
+#: drivable area, TTC, comfort over its length), so a plan cut short is judged over less time than the model
+#: planned: the reply's `plan` (the whole plan) is read, not its `trajectory`, which the wire cuts at six
+#: waypoints for neuroNCAP.
+N_MAX = 8
+
+
+def plan_of(reply: dict) -> tuple[np.ndarray, float]:
+    """The model's whole plan from an /infer reply, and its spacing.
+
+    ``plan`` when the node sends it (every node since ``Trajectory.to_wire`` carried it), else
+    ``trajectory``, which holds at most six waypoints.
+    """
+    plan = reply.get("plan") or {}
+    if plan.get("waypoints"):
+        return np.asarray(plan["waypoints"], dtype=np.float64)[:, :2], float(plan.get("dt") or PLAN_DT)
+    return np.asarray(reply["trajectory"], dtype=np.float64), float(reply.get("dt") or PLAN_DT)
 
 
 def euler_xyz_deg(rot_deg) -> np.ndarray:
@@ -195,7 +210,8 @@ class HeldPlan:
         yaw = np.asarray(yaw)
         x0, y0, yaw0 = pose_xyyaw(T_world_veh)
         pts = (T_world_veh @ np.c_[xy, np.ones(len(xy))].T).T[:, :2]
-        self.n = min(len(xy), N_MAX)  # how many waypoints the model itself gave: what HUGSIM is sent
+        # How many 0.5 s waypoints the model's own horizon holds: what HUGSIM is sent, at most N_MAX.
+        self.n = max(1, min(N_MAX, int(math.floor(len(xy) * dt / PLAN_DT + 1e-9))))
         self.t = t0 + dt * np.arange(0, len(xy) + 1)
         self.xy = np.vstack([[x0, y0], pts])
         self.yaw = np.unwrap(np.r_[yaw0, yaw0 + yaw])
@@ -337,14 +353,16 @@ def main() -> None:
                 r = http.post(f"{args.server}/infer", json=body, timeout=args.timeout)
                 r.raise_for_status()
                 out = r.json()
-                traj = np.asarray(out["trajectory"], dtype=np.float64)
+                traj, dt = plan_of(out)
                 if not np.isfinite(traj).all() or len(traj) < 2:
                     raise ValueError(f"bad trajectory from the model: {traj.tolist()}")
-                held = HeldPlan(t, T_veh, traj, float(out.get("dt", PLAN_DT)))
+                held = HeldPlan(t, T_veh, traj, dt)
                 rec.update(
                     called=True,
                     infer_ms=round(1000 * (time.time() - t0)),
                     n_wp=len(traj),
+                    dt=dt,
+                    n_sent=held.n,
                     model_last=[round(float(v), 2) for v in traj[-1, :2]],
                     model_traj=np.round(traj, 3).tolist(),
                     extras=out.get("extras"),
