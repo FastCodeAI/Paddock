@@ -52,7 +52,7 @@ then in the pooled config), or with a setting the model's ``model.yaml``
 declares set to another value.
 
 **A route set aside for every model is neither expected nor lost.** The routes in
-``harness.SET_ASIDE`` fail in the simulator whichever model drives, so they measure no
+``harness.SET_ASIDE`` failed in the simulator on every attempt, so they measure no
 model: such a route leaves the pool before anything is read from it, its id goes in
 ``config.routes_set_aside`` and its reason in the notes -- the list as it stands when the
 pool is made, so every model's pool of the same routes says the same. A full-set pool

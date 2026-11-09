@@ -836,6 +836,44 @@ replaces the unassisted estimate ◆
 (30.09), a reconstruction from the September recordings, whose 50-route mean the
 table below still withholds.
 
+### Bench2Drive — 220 routes
+
+Every model driven the same way over all 220 routes of `bench2drive220.xml` but
+the ones set aside for every model ([The 220-route protocol](#the-220-route-protocol)):
+the support matrix's column headed "216 of 220 routes". It fills as models are run.
+DS, RC and IP are paddock's means over those routes, as in the matrix; "with
+collision" is the share of routes with at least one. Success, efficiency, comfort
+and the abilities are what Bench2Drive's own scripts give for the same routes, from
+the `upstream_scores.json` beside each record ([Efficiency and comfort](#efficiency-and-comfort)).
+Bench2Drive's own tables divide DS and success by 220, a route not driven counting
+as 0, so each is 216/220 of the figure here (OpenPilot: DS 42.63, success 10.45%).
+
+| Model | Routes | DS ↑ | RC ↑ (%) | IP ↑ | With collision ↓ (%) | Success ↑ (%) | Efficiency ↑ | Comfort ↑ (%) | Record |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| OpenPilot | 216/220 | 43.42 | 55.15 | 0.813 | 22.69 | 10.65 | 180.59 | 40.88 | `full220-836dda734659a86c-2803bd` |
+
+**Bench2Drive's five abilities, in % of the routes that count towards each:**
+
+| Model | Merging ↑ | Overtaking ↑ | Emergency brake ↑ | Give way ↑ | Traffic signs ↑ | Mean ↑ |
+|---|---:|---:|---:|---:|---:|---:|
+| OpenPilot | 9.21 | 11.11 | 15.00 | 20.00 | 36.17 | 18.30 |
+
+A route counts towards an ability by its scenario, the same for every model:
+Merging 76 of these routes, Overtaking 45, Emergency brake 60, Give way 10 and
+Traffic signs 94 (a scenario can count towards two). A route earns its abilities
+by succeeding: completed, with no infraction but a minimum-speed one. A traffic-sign
+route also earns that one if the car got past its first junction with no red
+light or stop sign run.
+
+**OpenPilot** drives through openpilot's own longitudinal planner and its
+driver-resume nudge (P), asked every 20 Hz tick, as in its 50-route cell. CARLA
+crashed (signal 11) on three of its attempts. Routes 2943 and 3248 crashed as
+they started and scored on their next attempt. Route 28111 had finished: the
+evaluator had printed and registered its result (completed at 34.8 s of game
+time, one collision) when CARLA crashed, so that result is the route's score.
+No route needed a third attempt. The three routes set aside after Alpamayo 1.5's
+run (3800, 23695, 24071) are out of its mean too, though it had completed each.
+
 ### Bench2Drive — 50 routes
 
 Five models and constant velocity at five fixed target speeds, evaluated on the
