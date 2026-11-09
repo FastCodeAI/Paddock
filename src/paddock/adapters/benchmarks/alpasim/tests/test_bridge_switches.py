@@ -203,7 +203,9 @@ def test_existing_profiles_send_what_they_sent_before_the_switches(profile, monk
 #: profile and its two switches (--send-route-time, --send-plan-dt) existed.
 BEFORE_ALPAMAYO = {
     **BEFORE,
-    "qwendrive": "a6fc5fcec45834b51a1272dcb39fbd0cafb826606a4973021119297a64d2ae4a",
+    # Re-pinned for the 0.5 s replan (native 2 Hz, user's request 09 Nov). Was a6fc5fce...: the
+    # same 92 bodies in the same order; only the 3.5 s and 4.0 s ticks go to /infer, not /observe.
+    "qwendrive": "1a587c8193125794f922a818aef77db2237688db3be17fc85a8916b2a924814f",
 }
 
 
@@ -236,17 +238,19 @@ def test_the_qwendrive_profile_selects_the_replan_rhythm_with_its_switches(monke
 
     planner = _qwendrive(monkeypatch)
     assert isinstance(planner, ReplanRhythmPlanner)
-    assert planner._replan_every_us == 1_500_000 and planner._observe_between
+    # 0.5 s: native 2 Hz (planning_hz 2.0), user's request 09 Nov; the native driver asked every 1.5 s.
+    assert planner._replan_every_us == 500_000 and planner._observe_between
     assert planner._waypoint_dt == 0.1
     assert planner._canbus_ego_frame and planner._send_route and planner._send_scene_id
     assert planner._named_cameras_only and not planner._canbus_acceleration
 
 
-def test_every_step_reaches_the_node_and_the_model_is_asked_every_1_5_s(monkeypatch) -> None:
+def test_every_step_reaches_the_node_and_the_model_is_asked_every_0_5_s(monkeypatch) -> None:
+    # 0.5 s: native 2 Hz (planning_hz 2.0), user's request 09 Nov; the native driver asked every 1.5 s.
     sent = _drive(_qwendrive(monkeypatch), until_us=6_000_000)
     assert sent[0][0] == "/reset"
     infer_times = [body["timestamp"] for path, body in sent if path == "/infer"]
-    assert infer_times == [3_000_000, 4_500_000, 6_000_000]
+    assert infer_times == list(range(3_000_000, 6_000_001, 500_000))
     times = [body["timestamp"] for path, body in sent if path != "/reset"]
     assert times == list(range(0, 6_000_001, STEP_US)), "one body per 50 ms step, none missing"
 
@@ -369,7 +373,8 @@ def test_the_qwendrive_node_reads_these_bodies_as_the_native_driver_built_its_in
     planner.on_session_start(SimpleNamespace(session_uuid="session-1"))
     results = [planner.plan(_view(t), t, t + STEP_US) for t in range(0, 6_000_001, STEP_US)]
     assert [r is not None for r in results].count(True) == 61, "a plan at every step from handover (3.0 s) on"
-    assert len(calls) == 3
+    # A call every 0.5 s from 3.0 s to 6.0 s (native 2 Hz, user's request 09 Nov; was 3 at 1.5 s).
+    assert len(calls) == 7
     first, last = calls[0][0], calls[-1][0]
     assert first["frame_gaps_s"] == [0.0, 0.0, 0.0, 0.0] and last["history_fill"] == 0
     # Handover plan: every row is a warm-up row, each with the pose-derived speed.
