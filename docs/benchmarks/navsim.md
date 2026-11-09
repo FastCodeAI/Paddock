@@ -541,7 +541,8 @@ All five are the **242-scenario subset**, not navtest, and the three model rows
 are stored `valid: false` (marked retroactively on 2026-09-03: they were run
 under `PADDOCK_NAVSIM_ALLOW_PARTIAL` before the runner recorded that switch;
 `notes` says so). They cannot be ranked against the full-split rows above. The
-full-split fetch is `tools/benchmarks/navsim/fetch_test_blobs.py`.
+full split is fetched with `paddock data fetch navsim`
+([Downloading a dataset](../data-setup.md#downloading-a-dataset)).
 
 One open wart on visionpilot, not a blocker: its fitted path does not pass
 through the ego origin, so its first waypoint sits ~1 m laterally off and the
