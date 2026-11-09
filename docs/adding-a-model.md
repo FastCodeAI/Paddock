@@ -34,7 +34,8 @@ on coordinate frames.
 | 5 | `src/paddock/adapters/models/<name>/tests/test_policy.py` | **create** — fixture test |
 | 6 | `docs/models/<name>.md` | **create** — quirks and reference numbers; `python -m tools.doc_summaries` writes its summary table |
 | 7 | `README.md` | **modify** — add a row to the models table, linking to the page in step 6; `make check` fails without it |
-| 8 | `paddock.toml` | **your machine only** — never committed |
+| 8 | `src/paddock/adapters/models/<name>/alpasim.yaml` | **AlpaSim only** — the settings AlpaSim drives the model on; see [AlpaSim settings](#alpasim-settings); needed by any model that reads a camera there |
+| 9 | `paddock.toml` | **your machine only** — never committed |
 
 Nothing else. In particular you do **not** register your model in any central
 list: `paddock list` discovers it by finding `model.yaml`.
@@ -227,6 +228,55 @@ paddock run --model mymodel --bench kitscenes --limit 5
 Run the constant-velocity template **before** wiring in your model. Getting the
 plumbing green first makes coordinate-frame bugs obvious, because nothing else
 is moving.
+
+## AlpaSim settings
+
+Only if your model lists `alpasim` in `benchmarks`. AlpaSim's bridge sends each
+camera under AlpaSim's own id (`camera_front_wide_120fov`, ...), and a model node
+keeps only the cameras its model declares, by name. So a model that reads any
+camera needs a file `alpasim.yaml` beside `model.yaml` that renames AlpaSim's
+cameras to its names. Without one, AlpaSim refuses the model before a dry run or
+any model starts, naming the cameras that would not arrive. (Before this check
+the model got no images and no error, and planned from poses alone.)
+
+**What goes where.** A fact any benchmark could use stays in `model.yaml`: the
+cameras the model reads, its replan rate (`planning_hz`), its waypoint spacing.
+Only settings that mean something to AlpaSim alone go in `alpasim.yaml`. Do
+**not** edit `adapters/benchmarks/alpasim/harness.py`: the harness finds the
+file by the model's name, so the folder must be named after the model.
+
+Four keys are required and one is optional:
+
+| Key | What it is |
+|---|---|
+| `driver` | the driver config passed to AlpaSim as `driver=`: `paddock_bridge` is the shared one; your own goes in `<model>/driver/<driver>.yaml` |
+| `bridge_args` | a list of extra `bridge.py` flags, as strings (quote numbers: `"50000"`); `--camera-name ALPASIM_ID=NAME` renames a camera, `--placeholder NAME` fills one AlpaSim does not render |
+| `scenes_csv` | a file under `adapters/benchmarks/alpasim/scenes/` pinning each scene to one artifact, or `null` to name scenes by id |
+| `replan_log` | `true` to have the bridge write a per-replan log beside the run's samples |
+| `cameras` | optional: the cameras the model reads on AlpaSim, when fewer than `model.yaml` declares. `[]` for a model that reads no image there (constant velocity) |
+
+A missing required key, an unknown key, or a value of the wrong type fails with
+the file's path in the error; it never falls back to the default. AlpaSim also
+refuses, before anything starts, a driver config that is neither in
+`adapters/benchmarks/alpasim/configs/driver/` nor in `<model>/driver/` (or is in
+both), a scene list that does not exist, and a camera the model reads that the
+flags never rename or fill. A model that reads no camera and needs no other
+setting can go without the file.
+
+`adapters/models/drivejepa/alpasim.yaml` is a worked example, with a comment on
+every flag. A driver config in `<model>/driver/` is found because AlpaSim's
+config loader searches the model's folder after the benchmark's own configs; it
+can extend the shared one with `defaults: [paddock_bridge, _self_]`. Its first
+line must be `# @package _global_`, as in every driver config in the benchmark's
+folder. Without it AlpaSim still loads the file, but puts its settings under
+`driver.` where nothing reads them, so the run keeps the shared values with no
+error. AlpaSim refuses a driver config in a model's folder without that line. The four
+driver configs that existed before this convention stay in the benchmark's
+folder until #94 replaces them with one shared setting.
+
+This file is a convention: one `<benchmark>.yaml` in a model's folder, for a
+benchmark that needs per-model settings. AlpaSim is the only benchmark that
+reads one so far.
 
 ## Step 9 (optional) — probes
 

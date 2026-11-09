@@ -405,6 +405,9 @@ SUBSET_KEYS = frozenset(
         "scene",
         "runs",
         "routes_subset",
+        # Bench2Drive's routes set aside for every model: which routes are in the set, so a
+        # baseline from before a route was set aside still pairs on the routes both drove.
+        "routes_set_aside",
         "scene_set",
         "merged_from",
         # A re-scored run (tools/benchmarks/neuroncap/pdm_rescore.py) names the
@@ -1633,6 +1636,10 @@ def smoke_manifest(
 
 #: How long one launch may wait for GPU memory before the smoke gives up on it.
 GPU_WAIT_S = 12 * 3600
+#: How long a launch whose card has just freed first waits for a running lane to exit. A run frees
+#: the card when its model node stops, then writes its results and exits: a lane that is finishing
+#: exits well within this, and a card someone else freed delays the launch by no more than this.
+LANE_EXIT_S = 300.0
 
 
 def _gpu_free_gb(env: dict[str, str]) -> float | None:
@@ -1934,6 +1941,9 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
     done = {s.name for s in steps if s.status == "finished"}
     stop = ""
     gpu_wait_since: float | None = None
+    # The lanes running when a wait for GPU memory began, and when the card freed during it.
+    wait_lanes: set[int] = set()
+    freed_at: float | None = None
 
     def finish(lane: _Lane) -> None:
         nonlocal stop
@@ -2019,8 +2029,10 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
             need = smoke_need_gb(nxt.bench, models[args.model].vram_gb, nodes) + held
             free = _gpu_free_gb(step_env)
             if free is not None and free < need:
+                freed_at = None
                 if gpu_wait_since is None:
                     gpu_wait_since = time.time()
+                    wait_lanes = {id(lane) for lane in lanes if lane.proc is not None}
                     for_sims = f", {held:.0f} GB of it held for running simulators" if held else ""
                     echo(
                         f"  {nxt.name}: waiting for {need:.0f} GB of free GPU memory{for_sims} "
@@ -2032,7 +2044,21 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
                     )
                 time.sleep(POLL_S)
                 continue
-            gpu_wait_since = None
+            if gpu_wait_since is not None:
+                # The card freed while this waited. A run frees it when its model node stops and
+                # only then writes its results and exits, so the likeliest reason is a lane that is
+                # finishing and cannot be judged yet. Launching on the free card alone started
+                # kitscenes after nuScenes had regressed. So while every lane that was running when
+                # the wait began still runs, wait for one of them to exit -- the loop reaps it above,
+                # and its regression stops this launch -- or for LANE_EXIT_S if none does, when
+                # someone else freed the card. A lane that has already exited, and been judged,
+                # explains the free card, and the launch goes at once.
+                running = {id(lane) for lane in lanes if lane.proc is not None}
+                freed_at = freed_at or time.time()
+                if wait_lanes and wait_lanes <= running and time.time() - freed_at < LANE_EXIT_S:
+                    time.sleep(POLL_S)
+                    continue
+            gpu_wait_since = freed_at = None
             pending.pop(0)
             command = list(nxt.command)
             if command[:2] == ["taskset", "-c"]:

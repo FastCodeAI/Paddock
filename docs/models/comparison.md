@@ -18,7 +18,7 @@ narrative half: provenance, licences, and the things that do not fit a schema.
 
 | | Drive-JEPA | Alpamayo 1.5 | OpenPilot | VisionPilot | METEOR | AutoE2E | Qwen-Drive 1.0 |
 |---|---|---|---|---|---|---|---|
-| **Camera views @ freq** | front, 2 frames 0.5 s apart (JEPA encoder); back, front, left, right at the current frame (BEV stage) | 4 (front_left, front_wide, front_right, front_tele), 4 frames 0.1 s apart; paddock crops the tele slot out of CAM_FRONT. Rig is 7-cam. AR1 paper used 2 | 2 (road + wide), 2 frames, 20 Hz | 1 mono front, 52–55° HFOV, 1–2 MP, 10+ Hz on Orin | 8 surround (front/back wide, front/back narrow, 4 corners), single frame; paddock fills 6 of the 8 | 6 surround (front, front-left, front-right, rear-left, rear, rear-right), 8 frames 0.5 s apart | 3 (front, front-left, front-right), 4 frames each 0.5 s apart. `DrivingScene` refuses a missing view, so a monocular source (comma2k19) replicates its road camera into both side slots -- `QWENDRIVE_VIEWS`, and the policy re-declares `cameras` to match |
+| **Camera views @ freq** | front, 2 frames 0.5 s apart (JEPA encoder); back, front, left, right at the current frame (BEV stage) | 4 (front_left, front_wide, front_right, front_tele), 4 frames 0.1 s apart; paddock crops the tele slot out of CAM_FRONT. Rig is 7-cam. AR1 paper used 2 | 2 (road + wide), 2 frames, 20 Hz | 1 mono front, 52–55° HFOV, 1–2 MP, 10+ Hz on Orin | 8 surround (front/back wide, front/back narrow, 4 corners), single frame; paddock fills 6 of the 8 | 6 surround (front, front-left, front-right, rear-left, rear, rear-right), 8 frames 0.5 s apart | 3 (front, front-left, front-right), 4 frames each 0.5 s apart. `DrivingScene` refuses a missing view, so on a monocular source (comma2k19) the side slots get black frames; `QWENDRIVE_VIEWS=replicate` or `crop` fill them from the road camera instead, and the policy then re-declares `cameras` to match |
 | **Per-camera input** | 512×256 | 448×280 (→160 tokens/img); triplane tokenizer fixes 288 tokens/timestep regardless of camera count | 512×256 (medmodel); 1024×512 (bigmodel) | 1024×512 (2:1) all three nets; AutoDrive adds a 50° centre crop | 768×432 uint8 RGB | 512×512 (squashed); the current front also 1024×1024 | pixel budget on a 32 px grid: current ~720p (921,600 px), history ~320p (174,080 px) |
 | **Other inputs** | ego state (NAVSIM protocol) | text prompt; egomotion history (3D translation + 9D rotation, multi-timestep); optional route | desire/nav command, 512-d feature history. **No speed channel at all** | vehicle speed | ego speed; optional LiDAR raster / SD map / driving command in the checkpoint, none in the released ONNX | 256-d egomotion history (6.4 s @ 10 Hz); optional route raster + 14-channel semantic map (450×300 @ 0.4 m; paddock sends the route where the benchmark has one, never the map); per-frame camera projections | 16 ego poses @10 Hz (1.5 s) + velocity + acceleration; ego status [v, a, one-hot command]; nav command in the prompt |
 
@@ -137,13 +137,12 @@ before that sweep, not after.
 results for released checkpoints only; one we trained ourselves is kept, with
 its results, beside its training code.
 
-**Every Drive-JEPA row on this page is the perception-*based* v2 agent.** The
-comma2k19 board carries a second, separate registry entry —
-[`drivejepa_free`](drivejepa_free.md), the perception-free NAVSIM v1 agent —
-because comma2k19 supplies neither the four cameras nor the lidar extrinsics v2
-requires. Different checkpoint (`drive_jepa_perception_free_agent_vitl.ckpt`),
-different repo subtree, different inputs; the two are not comparable to each
-other and are deliberately not merged into one column here.
+**Every Drive-JEPA row on this page is the perception-*based* v2 agent**,
+comma2k19's included. Until November 2026 the comma2k19 cell came from
+Drive-JEPA's perception-free NAVSIM v1 agent, a separate registry entry with its
+own checkpoint, because the perception-based adapter then required a lidar
+mounting that comma2k19 does not have. That agent's rows stay in `results/`,
+retired; see [drivejepa.md](drivejepa.md#on-comma2k19).
 
 ### Drive-JEPA × nuplan — most of nuPlan mini is in its training logs
 
@@ -184,9 +183,9 @@ KITScenes and comma2k19 are zero-shot for this model; neuroNCAP is not (see
 *Qwen-Drive 1.0 × nuscenes*). Its KITScenes cameras sit at wider bearings and
 field of view than the nuPlan rig it was trained on (see [qwendrive.md](qwendrive.md)). comma2k19
 is the unequal column in a different way: nothing in the corpus is a
-windscreen-mounted mono camera on a Californian highway, and paddock has to
-replicate that one frame into three view slots for the model to read it at all.
-Second place on that board is therefore a claim about a model driven outside
+windscreen-mounted mono camera on a Californian highway, and the model reads it
+with that one frame in its front slot and two black side slots.
+First place on that board is therefore a claim about a model driven outside
 both its rig and its domain.
 
 ### Qwen-Drive 1.0 × nuscenes — a VLM trained on nuScenes, val scenes included
@@ -218,8 +217,8 @@ having never seen a comma device; OpenPilot meets a route recorded by the
 hardware it ships on, in the domain its fleet drives, with the camera geometry
 it was trained against. Even under the most favourable reading — none of these
 2035 segments in training — it is the only model here being scored **in**
-distribution, and the 1.507 should be read as such rather than as a like-for-like
-win over models driven outside their rig and domain.
+distribution. Its 0.843 is third in that column, behind Qwen-Drive and Alpamayo
+1.5, which meet comma2k19 outside both their rig and their domain.
 
 `model.yaml` declares one dataset (`comma-fleet`) rather than two, because
 declaring `comma2k19` there would assert an overlap nobody has evidence for —
@@ -337,7 +336,7 @@ telephoto slot) and leaves six black with the calibration of METEOR's own rig,
 as its training drops a camera (`METEOR_FRONT_ONLY`). That rule was chosen on
 METEOR's own demo scene, where the front camera alone fed this way beats
 constant velocity (1.01 against 1.37; all eight cameras 0.65), and re-measured
-there through paddock's adapter. On comma2k19 its 30.075 ADE@3s is the bottom
+there through paddock's adapter. On comma2k19 its 30.167 ADE@3s is the bottom
 of the column: the plan stops about 17 m ahead at every speed above 15 m/s.
 An out-of-tree study of one comma2k19 segment traced that to perception, not
 to the planner or the adapter: depth on this camera's road reads 3.4x too far
@@ -391,7 +390,7 @@ Detail in
 [meteor.md](meteor.md) and
 [docs/benchmarks/alpasim.md](../benchmarks/alpasim.md).
 
-### VisionPilot × everything — every figure predates a constant that moved
+### VisionPilot × everything — every figure but comma2k19's predates a constant that moved
 
 VisionPilot's adapter carried `CURV_SCALE = 1.0`. The stack's own
 `lateral_fusion.hpp` has `ad_curvature_scale = 0.21f`, annotated "CURV_SCALE =
@@ -405,8 +404,8 @@ instead of 120.
 Fixed September 2026. On a 20-sample comma2k19 smoke the correction moved ADE@3s
 from 15.09 to 5.28 and `path_length_ratio` from 0.60 to 0.84, with every lateral
 number unchanged — curvature reaches the plan only through the longitudinal cap.
-**Every VisionPilot number on this page and in the README was produced with 1.0**
-and will not be reproduced by a re-run. Expect the open-loop rows to move most
+**Every VisionPilot number on this page and in the README but comma2k19's was
+produced with 1.0** and will not be reproduced by a re-run. Expect the open-loop rows to move most
 and the closed-loop ones least: Bench2Drive and neuroNCAP are urban and slow
 enough that the cap rarely binds, which is why the defect survived them.
 `docs/models/visionpilot.md` has the derivation; the re-sweep is an open
@@ -441,9 +440,9 @@ where the stack's own `lateral_fusion.hpp` has 0.21, so the planner saw a
 curvature 4.8x too large and its `sqrt(mu*g/|kappa|)` speed cap bound where it
 should not have. Fixed September 2026; on a 20-sample comma2k19 smoke the
 correction moved ADE@3s from 15.09 to 5.28. **Every VisionPilot figure in the
-support matrix predates it** and will not be reproduced by a re-run — the closed-loop
-ones least, since urban scenes rarely reach the cap, and the comma2k19 and
-KITScenes ones most. `docs/models/visionpilot.md` §"Curvature scale" has
+support matrix but comma2k19's predates it** and will not be reproduced by a
+re-run — the closed-loop ones least, since urban scenes rarely reach the cap, and
+the KITScenes one most. The comma2k19 cell was re-run in November 2026. `docs/models/visionpilot.md` §"Curvature scale" has
 the derivation; re-sweeping VisionPilot is an open item in `docs/ROADMAP.md`.
 
 ◊ METEOR plans **3 s**; NAVSIM scores **4 s**. A quarter of every scored plan is
@@ -486,6 +485,8 @@ loads.
 
 ✧ The published architecture's encoder reads one front camera, at t and
 t − 0.5 s (`drive_jepa_features.py`). The perception-based agent paddock runs also
-has a BEV stage that reads `cam_b0`, `cam_f0`, `cam_l0` and `cam_r0` at the current
-frame (`bevformer/bev_feature_build.py`), so the adapter declares four. The paper's
-"one front camera" is the encoder alone.
+has a BEV stage whose loader takes `cam_b0`, `cam_f0`, `cam_l0` and `cam_r0` at the
+current frame (`bevformer/bev_feature_build.py`), so the adapter declares four. The
+model then keeps only the front camera's projection (`drive_jepa_model.py:50`), so
+the other three views' pixels never reach the plan, and the paper's "one front
+camera" holds for the whole model.

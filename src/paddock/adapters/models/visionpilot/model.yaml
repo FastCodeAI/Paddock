@@ -13,7 +13,10 @@ runtime:
   env:
     VISIONPILOT_WEIGHTS: "{repo}/VisionPilot/modules/models/weights"
     # CPU by default: the recorded closed-loop runs used it, and the renderer
-    # wants the GPU. Set to "cuda" to use CUDAExecutionProvider.
+    # wants the GPU. "cuda" selects CUDAExecutionProvider, but a site that sets
+    # it gets runs stored valid: false. It is not in `tuning_env` below: the two
+    # providers do different arithmetic, and nobody has shown that never moves a
+    # plan. Rows recorded on CUDA before that rule existed stay ranked.
     VISIONPILOT_PROVIDERS: "cpu"
     # Deliberately unset, so this reproduces the recorded baseline runs.
     #
@@ -88,7 +91,10 @@ capabilities:
 #
 # comma2k19 supplies exactly what `infer` reads -- one front camera, its pinhole
 # and its `camera2ego` -- and `project_to_ground` intersects the road plane
-# analytically, so nothing dataset-specific is needed to feed it. Run it with
-# `VISIONPILOT_PROVIDERS=cuda` from the site config: 160 history frames x 3 nets
-# x 10,165 samples is not a CPU workload.
+# analytically, so nothing dataset-specific is needed to feed it. Run it on the
+# declared CPU provider: a site's VISIONPILOT_PROVIDERS stores the run valid:
+# false (see `env` above). 160 history frames x 3 nets x 10,165 samples is a lot
+# of CPU work, so raise `[benchmarks.comma2k19] nodes` and set
+# VISIONPILOT_ORT_THREADS to share the cores between them; both are speed-only,
+# so the run stays ranked.
 benchmarks: [kitscenes, neuroncap, navsim, navsim_v1, bench2drive, nuscenes, comma2k19, nuplan]

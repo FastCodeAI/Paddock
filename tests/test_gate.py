@@ -195,6 +195,11 @@ def test_subset_keys_and_model_env_do_not_count_as_a_different_measurement() -> 
     assert gate.config_differences({"cameras": ["CAM_FRONT"]}, {}) == ["cameras"], (
         "a key only one run recorded"
     )
+    # A Bench2Drive baseline from before a route was set aside drove the routes both did the same way.
+    assert (
+        gate.config_differences({"routes_file": "x.xml"}, {"routes_file": "x.xml", "routes_set_aside": ["1"]})
+        == []
+    )
 
 
 def test_navsim_without_plan_dumps_gets_no_verdict_over_tokens(tmp_path: Path) -> None:
@@ -918,10 +923,10 @@ def test_every_gate_alpasim_scene_is_on_the_scene_list_the_drivers_use() -> None
     wizard, which then failed with "Failed to find scenes", and the baseline held 8."""
     import csv
 
-    from paddock.adapters.benchmarks.alpasim.harness import DRIVER_PROFILES, SCENES_DIR
+    from paddock.adapters.benchmarks.alpasim.harness import SCENES_DIR, profile_for, profiled_models
 
     gate_scenes = set(gate.load_subset("alpasim").ids) | set(gate.load_subset("alpasim_quick").ids)
-    lists = {p.scenes_csv for p in DRIVER_PROFILES.values() if p.scenes_csv}
+    lists = {p.scenes_csv for p in map(profile_for, profiled_models()) if p.scenes_csv}
     assert lists, "no driver profile pins a scene list"
     for name in lists:
         with (SCENES_DIR / name).open() as handle:
@@ -1689,6 +1694,8 @@ mean = sum(r["metrics"]["ade"] for r in rows) / len(rows)
     "metrics": {"ade": {"mean": mean, "n": 4}}}))
 with open(stamps, "a") as f:
     f.write(f"{name} end {time.time()}\n")
+# A real run stops its model node, freeing the card, before it writes its results and exits.
+time.sleep(float(os.environ.get("FAKE_RUN_LINGER_S", "0")))
 """
 
 
@@ -1893,8 +1900,14 @@ def test_a_regression_found_while_waiting_for_gpu_memory_stops_that_launch(
     """The GPU wait blocked the loop, so nuScenes launched after kitscenes
     had already regressed -- the regression is what freed the card. With two lanes the
     longer nuScenes launches first (`launch_order`), so here it is the one that regresses
-    while kitscenes waits for memory."""
+    while kitscenes waits for memory.
+
+    A run frees the card when its model node stops, and only then writes its results and
+    exits, so the card is free a while before the lane can be judged. Here nuScenes lingers
+    a second after freeing it: a launch made on the free card alone started kitscenes in
+    that second, and did so now and then under load before the linger made it every time."""
     args, stamps = _smoke_site(tmp_path, monkeypatch, {"kitscenes": 2.0, "nuscenes": 3.0}, hold=0.5)
+    monkeypatch.setenv("FAKE_RUN_LINGER_S", "1.0")
     calls = {"n": 0}
 
     def free_gb(env):  # room for the first launch; then none until nuscenes has ended
@@ -1907,6 +1920,54 @@ def test_a_regression_found_while_waiting_for_gpu_memory_stops_that_launch(
     assert gate.smoke(args(cores=["4-7", "8-11"]), said.append) == 1
     assert set(_intervals(stamps)) == {"nuscenes"}
     assert "waiting for" in "\n".join(said)
+
+
+def test_a_card_someone_else_freed_lets_the_waiting_launch_start_beside_a_running_lane(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The wait for a lane to exit after the card frees is bounded. Here the card frees while
+    nuScenes keeps running, so nothing of the smoke's freed it, and after LANE_EXIT_S kitscenes
+    starts beside nuScenes, not after it."""
+    args, stamps = _smoke_site(tmp_path, monkeypatch, {"kitscenes": 2.0, "nuscenes": 2.0}, hold=3.0)
+    monkeypatch.setattr(gate, "LANE_EXIT_S", 0.3)
+    checks: list[None] = []
+
+    def free_gb(env):  # room for the first launch, none on the next two checks, then room again
+        checks.append(None)
+        return 0.0 if len(checks) in (2, 3) else 100.0
+
+    monkeypatch.setattr(gate, "_gpu_free_gb", free_gb)
+    said: list[str] = []
+    gate.smoke(args(cores=["4-7", "8-11"]), said.append)
+    spans = _intervals(stamps)
+    assert spans["kitscenes"][0] < spans["nuscenes"][1], f"kitscenes waited for nuScenes to end: {spans}"
+    assert "waiting for" in "\n".join(said)
+
+
+def test_a_lane_that_already_exited_explains_the_free_card(tmp_path: Path, monkeypatch) -> None:
+    """Three lanes: two run and the third waits for memory. The first to exit frees the card and
+    has been judged, so the third starts at once, not after the other lane too has ended."""
+    hold = {"neuroncap": 0.3, "bench2drive": 2.0, "alpasim": 2.0}
+    args, stamps = _smoke_site(tmp_path, monkeypatch, dict.fromkeys(hold, 2.0), hold=2.0)
+    plan = gate.plan_smoke
+
+    def plan_with_holds(*a, **k):  # the fake run's hold is its ninth argument
+        steps = plan(*a, **k)
+        for step in steps:
+            if step.command:
+                step.command[8] = str(hold[step.bench])
+        return steps
+
+    monkeypatch.setattr(gate, "plan_smoke", plan_with_holds)
+    # Room for two of the three simulators' shares at once (8, 8 and 17 GB), not for all three.
+    monkeypatch.setattr(gate, "_gpu_free_gb", lambda env: 30.0 + gate.SMOKE_MARGIN_GB)
+    gate.smoke(args(tier="closed", bench=list(hold), cores=["4-7", "8-11", "12-15"]), lambda _m: None)
+    spans = _intervals(stamps)
+    first_two = sorted(spans, key=lambda b: spans[b][0])[:2]
+    assert "neuroncap" in first_two, f"needs neuroNCAP's short lane among the first two: {spans}"
+    third = next(b for b in spans if b not in first_two)
+    other = next(b for b in first_two if b != "neuroncap")
+    assert spans[third][0] < spans[other][1], f"{third} waited for {other} to end: {spans}"
 
 
 def test_the_smoke_does_not_adopt_a_run_it_did_not_start(tmp_path: Path) -> None:

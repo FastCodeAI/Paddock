@@ -15,13 +15,8 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 
 ## Known issues
 
-- **OpenPilot's comma2k19 row predates the pinned commit.** It comes from a clone
-  at `4df40d2c1`, and the pin is `555f48c5d`. It is due to be re-run at the pin.
-- **comma2k19 is scored with the ground truth in the camera's frame and every
-  plan in the car's.** Re-scored with both in the car's frame, the order changes.
-  The re-score moves a published column, so it lands in its own PR.
 - **VisionPilot's figures predate the `CURV_SCALE` fix.** Every VisionPilot cell
-  is due to be re-run.
+  but comma2k19's, re-run in November 2026, is due to be re-run.
 - **OpenPilot runs made with the ONNX backend** fed the road camera's image to
   the wide view. Those rows are due to be re-run.
 - **comma2k19's `pdm_style_score` proxy ranks a parked car first.** It pairs
@@ -34,8 +29,12 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 - **OpenPilot's nuScenes run cannot be regenerated with tracked code.** It was
   made by four parallel workers outside the runner; a `--workers` path in the
   runner would fix that.
-- **`paddock setup --model` has not been run on a real model.** Its tests use a
-  local stand-in repository and a stand-in `setup.sh`.
+- **`paddock setup --model` is tested only with stand-ins.** It has built real
+  environments (OpenPilot and VisionPilot on 5 Nov 2026, Drive-JEPA on 6 Nov),
+  but its tests use a local stand-in repository and a stand-in `setup.sh`. So a
+  `setup.sh` that installs the wrong versions is found only when someone builds
+  it: Drive-JEPA's let its requirements replace the torch its mmcv was built for,
+  until 6 Nov.
 - **`--resume` does not check the model node.** It compares the run's config,
   not the code serving the model, so a resumed run can mix two versions of an
   adapter.
@@ -54,6 +53,10 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 
 ## Next
 
+- Bench2Drive over all 220 routes, one column of its own, made the same way for
+  every model ("The 220-route protocol" in docs/benchmarks/bench2drive.md):
+  openpilot, AutoE2E, METEOR and Alpamayo 1.5 first, the other models after
+  (issue #158).
 - nuPlan back in the support matrix, once full runs replace the 25-anchor ones.
 - HUGSIM driven through paddock's own harness; today its runs are imported.
 - Models listed in `repos.yaml` but not yet evaluated: Alpamayo 2 and sunnypilot.

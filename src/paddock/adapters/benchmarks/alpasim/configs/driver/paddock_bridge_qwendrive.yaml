@@ -3,7 +3,7 @@
 #
 # The simulation settings of Qwen-Drive's native AlpaSim driver (adapter 0.1.4),
 # whose 30-scene runs are what a run through paddock is checked against, value
-# for value. `harness.DRIVER_PROFILES` selects this file only for the qwendrive
+# for value. `models/qwendrive/alpasim.yaml` selects this file only for the qwendrive
 # model; other models keep paddock_bridge.yaml.
 #
 # What the values are, briefly:

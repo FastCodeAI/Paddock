@@ -25,7 +25,9 @@ Three things the evaluator does that shape the code below (all read from the
 * it **writes the checkpoint at startup**, so ``results.json`` existing proves
   nothing, and it **still fills in scores for a crashed route**, marking the
   crash only in the record's ``status``;
-* it exits non-zero only for ``Simulation crashed``; an agent crash exits 0.
+* it exits -1 (status 255) when the scenario cannot be loaded, the agent or
+  its sensors cannot be set up, or the simulation crashes; an agent crash
+  mid-route exits 0.
 
 CARLA and the Bench2Drive checkout are vendored outside the package; the
 ``[benchmarks.bench2drive]`` section of ``paddock.toml`` says where they live
@@ -40,8 +42,9 @@ import re
 import signal
 import subprocess
 import time
+import urllib.request
 import xml.etree.ElementTree as ET
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Collection, Iterable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -139,6 +142,24 @@ DEFAULT_ROUTES_FILE = "bench2drive220.xml"
 #: by hand (``early_stop.MANUAL``). The dashboard's "Stop route" button writes it.
 STOP_REQUEST = "stop_request"
 
+#: Why an attempt that scored nothing failed, beside its ``results.json``
+#: (:func:`classify_failure`). A CARLA crash and an attempt cut off by a restart both
+#: leave an empty checkpoint, so without this only the logs could tell them apart -- and
+#: only a crash is evidence that a route cannot be run. An interrupted attempt writes none.
+FAILURE = "failure.json"
+
+#: What the campaign guard writes into a route's directory just before it kills the
+#: route's evaluator, so the failure record can say why the evaluator died.
+GUARD_KILL = "guard.json"
+
+#: The leaderboard's statuses for a failure on the agent's side: the paddock client or the
+#: model's node (``CRASH_STATUSES``), never the route's.
+MODEL_SIDE = ("Agent crashed", "Agent couldn't be set up", "Agent's sensors were invalid")
+
+#: CARLA's crash handler's line, and the agent's per-tick line, in ``evaluator.log``.
+_CRASH_SIGNAL = re.compile(r"CommonUnixCrashHandler: Signal=(\d+)")
+_GAME_TIME = re.compile(r"Game time = ([0-9.]+)")
+
 #: One expert drive's summary, ``<expert>/<route>/expert_traj.json`` as
 #: ``tools.benchmarks.bench2drive.expert summarize`` writes it: where a route's time budget comes from.
 EXPERT_TRAJ = "expert_traj.json"
@@ -162,6 +183,23 @@ CRASH_STATUSES = frozenset(
         "Agent crashed",
     }
 )
+
+#: Routes left out of every model's numbers, with the reason. Each fails in the simulator
+#: on every attempt, whichever model drives, so it measures no model -- and a mean with it
+#: for one model and without it for another would not be over the same routes. Poor
+#: driving is never a reason: a route the car is blocked on, deviates from, times out on or
+#: has ended early scores. Nor is a model's own node failing (an HTTP 500, out of memory):
+#: that is the model's to fix. A route joins after three attempts that failed in the
+#: simulator (``failure.json``, ``campaign --tries``), with its evidence in
+#: docs/benchmarks/bench2drive.md, "Routes set aside". ``--scene <id>`` still drives one, to
+#: see whether it still fails; a run that does is not a score (``invalid_reasons``).
+SET_ASIDE: dict[str, str] = {
+    # Five attempts at one site (7-8 Oct 2026, openpilot) and nine at another under three
+    # stacks: CARLA's CommonUnixCrashHandler logs Signal=11 at 53.65-54.0 s of game time each
+    # time. The client's traceback lands in route_scenario.spawn_parked_vehicles only because
+    # that is its first call to the server after the crash.
+    "11715": "CARLA crashes (signal 11) about 54 s into the route on every attempt, whichever model drives",
+}
 
 #: Everything ``agent.py`` imports, checked in the client interpreter by
 #: ``preflight`` so a missing package fails before CARLA boots.
@@ -189,6 +227,11 @@ class NotScored(ValueError):
 # ---------------------------------------------------------------------------
 
 
+def routes_path(repo: Path, routes_file: str | None = None) -> Path:
+    """Where a Bench2Drive checkout keeps a routes file: ``leaderboard/data/<name>``."""
+    return Path(repo) / "leaderboard" / "data" / (routes_file or DEFAULT_ROUTES_FILE)
+
+
 def parse_routes(routes_xml: Path) -> list[tuple[str, str, str]]:
     """``(route_id, town, scenario_type)`` for every route in a leaderboard XML.
 
@@ -210,6 +253,7 @@ def select_routes(
     scenes: list[str] | None = None,
     scenarios: list[str] | None = None,
     subset: list[str] | None = None,
+    set_aside: Collection[str] = (),
 ) -> Iterator[tuple[str, str, str]]:
     """Filter routes by ``--scene`` (route id or town), ``--scenarios`` (type) and
     an optional site ``subset`` (route ids, from ``[benchmarks.bench2drive]
@@ -220,6 +264,9 @@ def select_routes(
     when ``--scene`` was not given, the same contract every closed-loop
     benchmark gets.
 
+    A route in ``set_aside`` (:data:`SET_ASIDE`) is driven only when ``--scene``
+    names its id: naming its town, or nothing, means the routes that are scored.
+
     Pure and separate from :meth:`Bench2DriveBenchmark.episodes` so the selection
     logic is unit-testable without a site config.
     """
@@ -228,6 +275,8 @@ def select_routes(
     scenario_filter = set(scenarios) if scenarios else None
     for rid, town, stype in routes:
         if subset_ids is not None and rid not in subset_ids:
+            continue
+        if rid in set_aside and (scene_filter is None or rid not in scene_filter):
             continue
         if scene_filter is not None and rid not in scene_filter and town not in scene_filter:
             continue
@@ -263,6 +312,22 @@ def crash_reason(status: str) -> str | None:
         if status.endswith(reason):
             return reason
     return None
+
+
+def set_aside_remark(routes: Iterable[str]) -> str:
+    """The note a run, or a pool, carries for the routes :data:`SET_ASIDE` left out of it; "" for none.
+
+    One wording for both, as ``early_stop.remark`` is: the ids are in the config, and why
+    they are out is said here, so rewording a reason moves no run id.
+    """
+    ids = sorted(set(routes), key=lambda r: (len(r), r))
+    if not ids:
+        return ""
+    said = "; ".join(f"{r}: {SET_ASIDE[r]}" for r in ids)
+    return (
+        f"{len(ids)} route(s) set aside for every model ({said}): a route the simulator fails on "
+        "every time measures no model, so it is in no mean and not counted as lost"
+    )
 
 
 def parse_results(results_json: Path) -> dict[str, float]:
@@ -351,6 +416,124 @@ def ended_early(route_dir: Path) -> dict[str, float]:
         f"ended_{name}": sum(1.0 for r in reps if r.get("reason") == name) / len(reps)
         for name in early_stop.REASONS
     }
+
+
+def classify_failure(
+    log_text: str, *, timed_out: bool, returncode: int | None, results_json: Path
+) -> dict[str, Any]:
+    """What ended an attempt that scored nothing, from its ``evaluator.log`` and ``results.json``.
+
+    ``kind`` is the first that applies: ``carla_crash`` (CARLA's own crash handler is in
+    the log, with its signal), ``timeout``, ``evaluator_exit`` (any other non-zero exit),
+    ``no_results`` or ``not_scored`` (the leaderboard's statuses, in ``status``). The crash
+    handler is read first, however the attempt then ended: after a crash the evaluator
+    deadlocks in its own shutdown, so the process ends by the guard's kill (exit -15) or
+    the timeout, and either alone would hide the crash. ``game_time_s`` is the last tick
+    the agent logged, when it logged one.
+    """
+    record: dict[str, Any] = {"timed_out": timed_out, "returncode": returncode}
+    times = _GAME_TIME.findall(log_text)
+    if times:
+        record["game_time_s"] = float(times[-1])
+    # The leaderboard's own verdict, whenever it wrote one: it exits -1 for a scenario that
+    # would not load, an agent or sensors it could not set up and a simulation crash alike,
+    # so the exit code alone cannot say whose failure it was.
+    try:
+        records = (json.loads(results_json.read_text()).get("_checkpoint") or {}).get("records") or []
+    except (OSError, ValueError, AttributeError):
+        records = []
+    statuses = sorted({str(r.get("status", "")) for r in records if isinstance(r, dict)})
+    if statuses:
+        record["status"] = statuses
+    crash = _CRASH_SIGNAL.search(log_text)
+    if crash:
+        record["kind"], record["signal"] = "carla_crash", int(crash.group(1))
+    elif timed_out:
+        record["kind"] = "timeout"
+    elif returncode not in (0, None):
+        record["kind"] = "evaluator_exit"
+    elif not results_json.exists():
+        record["kind"] = "no_results"
+    else:
+        record["kind"] = "not_scored"
+    return record
+
+
+def node_alive(policy_url: str, timeout_s: float = 3.0) -> bool:
+    """Whether the model's node still answers ``/alive``.
+
+    Asked after an attempt fails: with the node gone, the next routes of the same run fail too, as
+    "Agent crashed", and they failed the node, not the route -- so they use up none of its tries.
+    """
+    try:
+        with urllib.request.urlopen(f"{policy_url.rstrip('/')}/alive", timeout=timeout_s) as answer:
+            return answer.status == 200
+    except (OSError, ValueError):
+        return False
+
+
+def failure_said(record: dict[str, Any]) -> str:
+    """One line for a failure record, naming no path: it reaches tracked notes."""
+    kind = record.get("kind")
+    at = f" at {record['game_time_s']:g} s of game time" if record.get("game_time_s") is not None else ""
+    statuses = [s for s in record.get("status") or [] if s]
+    status = f" ({', '.join(statuses)})" if statuses else ""
+    if kind == "carla_crash":
+        said = f"CARLA crashed (signal {record.get('signal')}){at}{status}"
+    elif kind == "timeout":
+        said = f"timed out (per_route_timeout_s){at}{status}"
+    elif kind == "evaluator_exit":
+        said = f"evaluator exited {record.get('returncode')}{status}{at}"
+    elif kind == "no_results":
+        said = "evaluator exited 0 but wrote no results.json"
+    else:
+        said = f"not scored{status}" if statuses else "no records in _checkpoint"
+    if record.get("node_alive") is False:
+        said += "; the model's node was not answering"
+    guard = record.get("guard")
+    return f"{said}; the guard killed it: {guard}" if guard else said
+
+
+def simulator_side(record: dict[str, Any]) -> bool | None:
+    """Whether a failure is the simulator's (True), the model's or its agent's (False), or unclear (None).
+
+    Only the simulator's count toward setting a route aside: CARLA's crash handler on the
+    route, the leaderboard's ``Simulation crashed``, or the guard finding the route's CARLA
+    gone. CARLA's crash handler is read first, because after a crash the agent's next call
+    can surface as ``Agent crashed``. A crash before the first tick says more about the
+    machine than the route, so it is unclear. ``Agent crashed``, ``couldn't be set up`` and
+    ``sensors were invalid`` are the client or the model's node -- the model's to fix, never
+    a reason to take the route away from every model.
+    """
+    statuses = record.get("status") or []
+    if record.get("kind") == "carla_crash":
+        return True if record.get("game_time_s") is not None else None
+    if any(s.endswith(MODEL_SIDE) for s in statuses):
+        return False
+    if any(s.endswith("Simulation crashed") for s in statuses) or record.get("guard_carla_gone"):
+        return True
+    return None
+
+
+def read_failure(route_dir: Path) -> dict[str, Any] | None:
+    """The failure record beside a route's ``results.json``; None if it scored, was cut off or predates it."""
+    try:
+        record = json.loads((Path(route_dir) / FAILURE).read_text())
+    except (OSError, ValueError):
+        return None
+    return record if isinstance(record, dict) else None
+
+
+def write_failure(route_dir: Path, record: dict[str, Any]) -> None:
+    """Write ``record`` as the route's failure record, whole or not at all.
+
+    Atomic, because the campaign counts these to decide when a route is given up on, and
+    a half-written file read at the wrong moment would count as no failure.
+    """
+    target = Path(route_dir) / FAILURE
+    partial = target.with_name(target.name + ".tmp")
+    partial.write_text(json.dumps(record, indent=1) + "\n")
+    os.replace(partial, target)
 
 
 def _positive(value: Any) -> float | None:
@@ -463,7 +646,7 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         repo = self.repo
         if repo is None:
             return None
-        return repo / "leaderboard" / "data" / (self.setting("routes_file") or DEFAULT_ROUTES_FILE)
+        return routes_path(repo, self.setting("routes_file"))
 
     @property
     def evaluator(self) -> Path | None:
@@ -568,8 +751,9 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
 
         Built like ``runtime.env.build``, not inherited wholesale -- a stray
         PYTHONPATH from paddock's own env would make the client half-import
-        paddock's dependencies. ``CUDA_VISIBLE_DEVICES`` passes through so the
-        CARLA the evaluator launches honours how the sweep was pinned.
+        paddock's dependencies. ``CUDA_VISIBLE_DEVICES`` passes through with the
+        rest of the host's set; the CARLA the evaluator launches picks its card by
+        ``gpu_rank`` (``-graphicsadapter``, a Vulkan index), which ignores it.
         """
         env = {k: os.environ[k] for k in PASSTHROUGH if k in os.environ}
         env.update(
@@ -807,6 +991,12 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             if unbudgeted:
                 rules["no_expert"] = unbudgeted
             config["early_stop"] = rules
+        # The routes the site's set loses to SET_ASIDE, by id; why is in the notes (`remarks`), so
+        # a reworded reason moves no run id. Only when there are some, so a set without any keeps
+        # its id. Every worker of a sweep computes the same list, whatever its --scene.
+        aside = self._routes_set_aside()
+        if aside:
+            config["routes_set_aside"] = aside
         # Likewise only when it is not paddock's.
         if self.camera_rig != rig.DEFAULT:
             config["camera_rig"] = self.camera_rig
@@ -821,7 +1011,12 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         return config
 
     def _routes_without_expert(self) -> list[str]:
-        """The site's routes (its ``routes_subset``, or the whole file) with no expert time budget."""
+        """The site's routes (its ``routes_subset``, or the whole file) with no expert time budget.
+
+        Counted over the set aside routes too: were they left out here, adding a route to
+        :data:`SET_ASIDE` would change ``no_expert`` between two runs of one sweep, and a pool
+        of them would read as stopped under two sets of rules.
+        """
         rules, routes_file = self.early_stop, self.routes_file
         if not rules or "expert_factor" not in rules or routes_file is None or not routes_file.exists():
             return []
@@ -830,10 +1025,22 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             (rid for rid, _, _ in routes if self.expert_budget_s(rid) is None), key=lambda r: (len(r), r)
         )
 
+    def _routes_set_aside(self) -> list[str]:
+        """The site's routes (its ``routes_subset``, or the whole file) that :data:`SET_ASIDE` leaves out."""
+        routes_file = self.routes_file
+        if routes_file is None or not routes_file.exists():
+            return []
+        routes = select_routes(parse_routes(routes_file), None, None, self.routes_subset)
+        return sorted((rid for rid, _, _ in routes if rid in SET_ASIDE), key=lambda r: (len(r), r))
+
     def remarks(self) -> list[str]:
-        """The early stop, when on: which rules, and why a route they end is a failed drive."""
+        """The early stop, when on: which rules, and why a route they end is a failed drive.
+        And the routes set aside, when the site's set has any: which, and why."""
         rules = self.early_stop
-        return [early_stop.remark(rules)] if rules else []
+        said = [early_stop.remark(rules)] if rules else []
+        driven = set(getattr(self, "_set_aside_driven", []))
+        aside = set_aside_remark(r for r in self._routes_set_aside() if r not in driven)
+        return [*said, aside] if aside else said
 
     # ---- episodes ------------------------------------------------------
 
@@ -850,9 +1057,14 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         if routes_file is None or not routes_file.exists():
             return
         routes = parse_routes(routes_file)
-        selected = list(select_routes(routes, scenes, scenarios, self.routes_subset))
-        # Recorded for `invalid_reasons`: the site's whole route set, against what ran.
-        self._routes_scope = (len(selected), len(list(select_routes(routes, None, None, self.routes_subset))))
+        selected = list(select_routes(routes, scenes, scenarios, self.routes_subset, SET_ASIDE))
+        # Recorded for `invalid_reasons`: the site's whole route set, less the routes set
+        # aside, against what ran; and any set aside route --scene named, which no record counts.
+        whole = select_routes(routes, None, None, self.routes_subset, SET_ASIDE)
+        self._routes_scope = (len(selected), len(list(whole)))
+        self._set_aside_driven = sorted(
+            (rid for rid, _, _ in selected if rid in SET_ASIDE), key=lambda r: (len(r), r)
+        )
         for rid, town, stype in selected:
             yield Episode(
                 episode_id=f"{rid}-{town}-{stype}",
@@ -888,6 +1100,12 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         if ran is not None and ran < total:
             reasons.append(
                 f"{ran} of the {total} routes this site runs (--scene/--scenarios); a subset, not a score"
+            )
+        driven = getattr(self, "_set_aside_driven", [])
+        if driven:
+            reasons.append(
+                f"drove route(s) set aside for every model ({', '.join(driven)}): a check whether the "
+                "simulator still fails on them, not a score"
             )
         if (self.early_stop or {}).get("collision"):
             reasons.append(early_stop.collision_reason())
@@ -1028,6 +1246,9 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         # last attempt's verdict.
         stop_record = out_dir / early_stop.RECORD
         stop_record.unlink(missing_ok=True)
+        # Nor the last attempt's failure, or the guard's word on it.
+        (out_dir / FAILURE).unlink(missing_ok=True)
+        (out_dir / GUARD_KILL).unlink(missing_ok=True)
         # The file that ends this route by hand when it appears (the dashboard's
         # "Stop route" writes it), cleared so an old request cannot end a new drive.
         stop_request = out_dir / STOP_REQUEST
@@ -1106,18 +1327,45 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         # CARLA; after a kill it has not. Either way, only ours, by its port.
         reap_carla(carla_port_from_log(log_path, requested_port))
 
+        def failed(message: str) -> RuntimeError:
+            """Say why beside results.json (`failure.json`), then the error the runner logs.
+
+            The record is best-effort: the runner catches only RuntimeError, so a full disk here
+            must not take the worker's whole run, and the routes it already scored, with it.
+            """
+            try:
+                record = classify_failure(
+                    log_path.read_text(errors="replace") if log_path.exists() else "",
+                    timed_out=timed_out,
+                    returncode=returncode,
+                    results_json=results_json,
+                )
+                record["elapsed_s"] = round(elapsed, 1)
+                record["node_alive"] = node_alive(policy_url)
+                try:
+                    guard = json.loads((out_dir / GUARD_KILL).read_text())
+                except (OSError, ValueError):
+                    guard = None
+                if isinstance(guard, dict) and guard.get("reason"):
+                    record["guard"] = str(guard["reason"])
+                    record["guard_carla_gone"] = bool(guard.get("carla_gone"))
+                write_failure(out_dir, record)
+            except OSError as exc:
+                echo(f"  {episode.episode_id}: could not write {FAILURE} ({exc})")
+            return RuntimeError(message)
+
         if timed_out:
-            raise RuntimeError(
+            raise failed(
                 f"{episode.episode_id}: timed out after {timeout_s / 60:.0f} min "
                 f"(per_route_timeout_s); evaluator killed\n--- tail of {log_path.name} ---\n{_tail(log_path)}"
             )
         if returncode != 0:
-            raise RuntimeError(
+            raise failed(
                 f"{episode.episode_id}: evaluator exited {returncode} after {elapsed / 60:.1f} min"
                 f"\n--- tail of {log_path.name} ---\n{_tail(log_path)}"
             )
         if not results_json.exists():
-            raise RuntimeError(
+            raise failed(
                 f"{episode.episode_id}: evaluator exited 0 but wrote no results.json"
                 f"\n--- tail of {log_path.name} ---\n{_tail(log_path)}"
             )
@@ -1125,7 +1373,7 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         try:
             metrics = parse_results(results_json)
         except NotScored as exc:
-            raise RuntimeError(
+            raise failed(
                 f"{episode.episode_id}: {exc}\n--- tail of {log_path.name} ---\n{_tail(log_path)}"
             ) from exc
         metrics["duration_s"] = round(elapsed, 1)

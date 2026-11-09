@@ -193,7 +193,7 @@ BEFORE = {
 
 @pytest.mark.parametrize("profile", sorted(BEFORE))
 def test_existing_profiles_send_what_they_sent_before_the_switches(profile, monkeypatch) -> None:
-    args = harness.DRIVER_PROFILES[profile].bridge_args if profile != "default" else ()
+    args = harness.profile_for(profile).bridge_args if profile != "default" else ()
     sent = _drive(_build(args, monkeypatch))
     assert sent, "the planner sent nothing"
     assert _digest(sent) == BEFORE[profile]
@@ -209,14 +209,14 @@ BEFORE_ALPAMAYO = {
 
 @pytest.mark.parametrize("profile", sorted(BEFORE_ALPAMAYO))
 def test_existing_profiles_send_what_they_sent_before_the_alpamayo_profile(profile, monkeypatch) -> None:
-    args = harness.DRIVER_PROFILES[profile].bridge_args if profile != "default" else ()
+    args = harness.profile_for(profile).bridge_args if profile != "default" else ()
     assert _digest(_drive(_build(args, monkeypatch))) == BEFORE_ALPAMAYO[profile]
 
 
-@pytest.mark.parametrize("profile", ["default", *sorted(harness.DRIVER_PROFILES)])
+@pytest.mark.parametrize("profile", ["default", *harness.profiled_models()])
 def test_only_the_alpamayo_profile_sends_a_plan_spacing_or_a_route_time(profile, monkeypatch) -> None:
     """Every profile, including any added later: the two keys reach a node only under alpamayo15."""
-    args = harness.DRIVER_PROFILES[profile].bridge_args if profile != "default" else ()
+    args = harness.profile_for(profile).bridge_args if profile != "default" else ()
     keys = {key for path, body in _drive(_build(args, monkeypatch)) for key in body}
     sent = {"plan_dt", "route_timestamp_us"} & keys
     assert sent == ({"plan_dt", "route_timestamp_us"} if profile == "alpamayo15" else set())
@@ -228,7 +228,7 @@ def test_only_the_alpamayo_profile_sends_a_plan_spacing_or_a_route_time(profile,
 
 
 def _qwendrive(monkeypatch) -> bridge.PolicyPlanner:
-    return _build(harness.DRIVER_PROFILES["qwendrive"].bridge_args, monkeypatch)
+    return _build(harness.profile_for("qwendrive").bridge_args, monkeypatch)
 
 
 def test_the_qwendrive_profile_selects_the_replan_rhythm_with_its_switches(monkeypatch) -> None:
@@ -389,7 +389,7 @@ def test_the_qwendrive_node_reads_these_bodies_as_the_native_driver_built_its_in
 
 
 def _alpamayo(monkeypatch) -> bridge.PolicyPlanner:
-    return _build(harness.DRIVER_PROFILES["alpamayo15"].bridge_args, monkeypatch)
+    return _build(harness.profile_for("alpamayo15").bridge_args, monkeypatch)
 
 
 def test_alpamayo_asks_every_100_ms_after_the_warmup_and_observes_every_other_step(monkeypatch) -> None:

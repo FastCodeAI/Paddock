@@ -487,7 +487,7 @@ def alpasim_group(turn_deg: float, speed_mps: float) -> str:
     return f"{maneuver}/{speed_band(speed_mps)}"
 
 
-#: The scene list the AlpaSim driver profiles hand the wizard (`harness.DRIVER_PROFILES`,
+#: The scene list the AlpaSim driver profiles hand the wizard (each model folder's `alpasim.yaml`,
 #: `scenes_csv`): the wizard looks a scene up there only, and one outside it fails with
 #: "Failed to find scenes" (2 of the gate's 10 on 2026-10-27, though both were on disk).
 ALPASIM_CATALOG = "public_2601_30scenes_26p01.csv"

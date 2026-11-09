@@ -1,0 +1,71 @@
+{
+  "run_id": "20261106T053407-587a3e",
+  "site": "hpcai-skodate",
+  "benchmark": "comma2k19",
+  "model": "drivejepa_free",
+  "mode": "open_loop",
+  "started_utc": "2026-11-06T05:34:07+00:00",
+  "duration_s": 4012.4,
+  "repo_sha": "e21f47410b4d26b61f05f9bd23e169c0390cae2a",
+  "dataset": {
+    "name": "comma2k19",
+    "n_samples": 10165,
+    "sequences_sha256": "293a225a0b5cbaff",
+    "n_expected": 10165
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT"
+    ],
+    "history_frames": 160,
+    "keyframes_per_segment": 5,
+    "eval_horizon_s": 3.0,
+    "interval_s": 0.5,
+    "gt_horizon_s": 10.0,
+    "input_hz": 20.0,
+    "calibration": "route-pooled, calibrationd formula on recorded pose",
+    "ground_truth_frame": "car (recorded future rotated by the route calibration)",
+    "stride": 1,
+    "history_span_s": 7.95,
+    "ego_history_frame": "car (window poses rotated by the route calibration)",
+    "declared_env": {
+      "DRIVEJEPA_FREE_CHECKPOINT": "{weights}drive_jepa_perception_free_agent_vitl.ckpt",
+      "DRIVEJEPA_VJEPA_WEIGHTS": "{weights}vitl_merge_3dataset_e50.pt",
+      "NAVSIM_DEVKIT_ROOT": "{repo}/navsim_v1"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "Drive-JEPA",
+      "sha": "e21f47410b4d26b61f05f9bd23e169c0390cae2a",
+      "pinned_sha": "e21f474",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "ce5c42c6f0c666eb45f45c99b5833c966e450e4f",
+      "dirty": false
+    },
+    "policy": {
+      "frames_recorded": 64,
+      "history_span_s": 0.5,
+      "history_target_s": 0.5,
+      "speed_ms": 11.807,
+      "accel_source": "speed_slope",
+      "crop_hfov_deg": 63.67,
+      "crop_vfov_deg": 36.72,
+      "crop_box": [
+        135,
+        739,
+        17,
+        1147
+      ]
+    }
+  },
+  "status": "complete",
+  "valid": false,
+  "superseded_by": "drivejepa/20261106T192049-391e2d",
+  "notes": "Superseded by drivejepa/20261106T192049-391e2d: Drive-JEPA's comma2k19 row is now the perception-based model that every other benchmark runs. This perception-free agent was its comma2k19 row only because, when comma2k19 was added in September 2026, the perception-based adapter needed a lidar mounting that comma2k19 does not have; that need went in October 2026.",
+  "ingested_from": ""
+}

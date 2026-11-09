@@ -26,8 +26,8 @@ in [comparison.md](comparison.md), and its KITScenes protocol is
 `paddock run --model alpamayo15 --bench alpasim` drives the model on the settings
 of its stored AlpaSim result (`results/alpasim/alpamayo15/legacy-alpamayo_proxy_referee_20hz`,
 made by AlpaSim's own Alpamayo driver) and builds its input the way that driver
-does. The settings are the `alpamayo15` entry in `alpasim/harness.py`'s
-`DRIVER_PROFILES` and its driver config `paddock_bridge_alpamayo15.yaml`: four
+does. The settings are the model's own
+`adapters/models/alpamayo15/alpasim.yaml` and its driver config `paddock_bridge_alpamayo15.yaml`: four
 f-theta cameras at 20 Hz (front wide, both cross cameras and the 30° telephoto),
 a 3 s replayed warm-up with the driver called, 400 steps of 50 ms, and the 30
 scenes pinned to their 26.01 artifacts. With `scene_set = "public_2601_30scenes"`
@@ -289,6 +289,11 @@ Wall-clock ~2 h for the full run, of which only 34 min was GPU; the rest is down
 * **History.** Frames stamped no later than the previous one are dropped
   (KITScenes' clamped warm-up repeats frame 0). The chain-of-causation is read
   from `extra["cot"]`, kept in `diagnostics()` and logged every 100 calls.
+* **Planning rate.** `model.yaml` declares `planning_hz: 10.0`, the 0.1 s grid
+  its frames and poses are on, so Bench2Drive asks it once every 0.1 s and
+  follows the last plan in between (since November 2026). Before that it was
+  asked every 20 Hz tick unless the host set `PADDOCK_INFER_HZ`, which is how its
+  10 Hz Bench2Drive cell was driven.
 * **Behaviour worth knowing.** From standstill the model derives zero speed
   from its own pose history and plans near-zero motion until a sample commits;
   in CARLA that is 20+ s of waiting followed by a hard launch, and at junctions

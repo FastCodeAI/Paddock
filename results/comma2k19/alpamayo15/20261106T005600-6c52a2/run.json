@@ -1,0 +1,80 @@
+{
+  "run_id": "20261106T005600-6c52a2",
+  "site": "hpcai-skodate",
+  "benchmark": "comma2k19",
+  "model": "alpamayo15",
+  "mode": "open_loop",
+  "started_utc": "2026-11-06T00:56:00+00:00",
+  "duration_s": 7742.5,
+  "repo_sha": "7a8f1c781a826f09be53e1e211f26e947ec18019",
+  "dataset": {
+    "name": "comma2k19",
+    "n_samples": 10165,
+    "sequences_sha256": "293a225a0b5cbaff",
+    "n_expected": 10165
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT"
+    ],
+    "history_frames": 160,
+    "keyframes_per_segment": 5,
+    "eval_horizon_s": 3.0,
+    "interval_s": 0.5,
+    "gt_horizon_s": 10.0,
+    "input_hz": 20.0,
+    "calibration": "route-pooled, calibrationd formula on recorded pose",
+    "ground_truth_frame": "car (recorded future rotated by the route calibration)",
+    "stride": 1,
+    "history_span_s": 7.95,
+    "ego_history_frame": "car (window poses rotated by the route calibration)",
+    "declared_env": {
+      "ALPAMAYO_CHECKPOINT": "{weights}/Alpamayo-1.5-10B",
+      "ALPAMAYO_COSMOS": "{weights}/Cosmos-Reason2-8B",
+      "ALPAMAYO_NAV": "1",
+      "KITSCENES_REPO": "{repos}/kitscenes",
+      "KITSCENES_ROOT": "{data.kitscenes.parent}",
+      "KITSCENES_SAMPLE_LIST": "{data.navsim.exp}kitscenes_e2e_final.pkl",
+      "PADDOCK_WEIGHTS": "{weights}"
+    },
+    "model_env": {
+      "HF_HOME": "<site path:187674b0>"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "alpamayo1.5",
+      "sha": "7a8f1c781a826f09be53e1e211f26e947ec18019",
+      "pinned_sha": "7a8f1c7",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "ce5c42c6f0c666eb45f45c99b5833c966e450e4f",
+      "dirty": false
+    },
+    "policy": {
+      "num_traj_samples": 1,
+      "temperature": 0.6,
+      "top_p": 0.98,
+      "nav": true,
+      "nav_text": "Continue straight",
+      "camera_slots": [
+        "1:CAM_FRONT:fill",
+        "6:CAM_FRONT:zoom"
+      ],
+      "history_frames": 16,
+      "expected_dt_s": 0.1,
+      "request_dt_s": 0.05,
+      "reasoning": "Lane change to the left due to slow traffic ahead in our lane and an available gap behind the red sedan in the left lane, then match speed with that lead vehicle after merging."
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "",
+  "ingested_from": ""
+}

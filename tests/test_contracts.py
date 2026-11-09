@@ -338,14 +338,15 @@ def test_the_policy_servers_routes_avoid_syntax_the_oldest_model_python_cannot_e
     """FastAPI evaluates route annotations; `dict | None` is not evaluable on 3.9.
 
     `policy/server.py` runs inside the *model's* interpreter, not paddock's, and
-    the registry says how old that can be -- Drive-JEPA's perception-free agent
-    is Python 3.9. `from __future__ import annotations` makes annotations
-    strings, which is normally the end of it, but FastAPI asks pydantic to
-    evaluate the ones on a route to build it, and on 3.9 pydantic cannot
-    evaluate PEP 604 without `eval_type_backport`. The node then dies at import,
-    before `load()`, with a pydantic traceback naming neither paddock nor the
-    model. Caught once, on drivejepa_free's first sweep; this is the guard,
-    because on paddock's own 3.11 nothing about it fails.
+    the registry says how old that can be -- Drive-JEPA's is Python 3.9.
+    `from __future__ import annotations` makes annotations strings, which is
+    normally the end of it, but FastAPI asks pydantic to evaluate the ones on a
+    route to build it, and on 3.9 pydantic cannot evaluate PEP 604 without
+    `eval_type_backport`. The node then dies at import, before `load()`, with a
+    pydantic traceback naming neither paddock nor the model. Caught once, on the
+    first comma2k19 sweep of Drive-JEPA's perception-free agent (an adapter
+    since removed); this is the guard, because on paddock's own 3.11 nothing
+    about it fails.
     """
     import ast
 

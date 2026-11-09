@@ -7,6 +7,7 @@ here against a stand-in process table.
 
 from __future__ import annotations
 
+import itertools
 import json
 import shutil
 import tomllib
@@ -17,25 +18,383 @@ import pytest
 from paddock.adapters.benchmarks.bench2drive.campaign import (
     SLOT_STRIDE,
     RouteState,
+    _cards,
     balance,
     expected_costs,
     free_slots,
+    given_up,
     route_states,
     select_pending,
     slot_ports,
+    whose,
     with_ports,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
-def _attempt(root: Path, run_id: str, route: str, fixture: str | None) -> None:
+def _attempt(root: Path, run_id: str, route: str, fixture: str | None, failure: dict | None = None) -> None:
     d = root / run_id / f"{route}-Town12-ParkedObstacle"
     d.mkdir(parents=True)
     if fixture == "empty":
         (d / "results.json").write_text(json.dumps({"_checkpoint": {"records": []}}))
     elif fixture:
         shutil.copy(FIXTURES / fixture, d / "results.json")
+    if failure is not None:
+        (d / "failure.json").write_text(json.dumps(failure))
+
+
+CRASHED = {"kind": "carla_crash", "signal": 11, "game_time_s": 36.4, "returncode": -15, "timed_out": False}
+
+
+def test_a_failed_attempt_counts_toward_tries_and_a_cut_off_one_does_not(tmp_path: Path) -> None:
+    """Only an attempt that left a failure record failed: one cut off by a restart says nothing
+    about the route, and must not use up its tries."""
+    for i in range(3):
+        _attempt(tmp_path, f"2026100{i + 1}T000000-aaaaaa", "23695", "empty", CRASHED)
+        _attempt(tmp_path, f"2026100{i + 1}T000000-aaaaaa", "1711", "empty")  # cut off, no record
+    states = route_states(tmp_path)
+    assert len(states["23695"].failures) == 3 and states["1711"].failures == []
+    assert given_up(states, 3) == {"23695"}
+    assert given_up(states, 4) == set() and given_up(states, 0) == set()
+
+
+def test_a_failure_with_the_model_node_gone_uses_up_no_try(tmp_path: Path) -> None:
+    """A node that died mid-queue fails every later route of its worker; those failed the node."""
+    gone = {**CRASHED, "kind": "not_scored", "status": ["Failed - Agent crashed"], "node_alive": False}
+    for i in range(3):
+        _attempt(tmp_path, f"2026100{i + 1}T000000-aaaaaa", "1711", "empty", gone)
+    assert given_up(route_states(tmp_path), 3) == set()
+    for i in range(3):
+        _attempt(tmp_path, f"2026101{i + 1}T000000-bbbbbb", "1711", "empty", {**CRASHED, "node_alive": True})
+    assert given_up(route_states(tmp_path), 3) == {"1711"}
+
+
+def test_whose_failure_it_is_decides_what_to_do_with_a_route_given_up_on() -> None:
+    assert "SET_ASIDE" in whose([CRASHED, CRASHED, CRASHED])
+    agent = {"kind": "not_scored", "status": ["Failed - Agent crashed"]}
+    assert "fix that" in whose([CRASHED, agent, CRASHED]), "one failure of the model's own is enough"
+    assert "evaluator.log" in whose([{"kind": "timeout"}, CRASHED])
+
+
+def _deal_site(tmp_path: Path, monkeypatch, routes):
+    from paddock.adapters.benchmarks.bench2drive import campaign
+
+    class Cfg:
+        runs = tmp_path
+        benchmarks = {"bench2drive": {"carla_port": "2000", "tm_port": "8000"}}
+        source = tmp_path / "site.toml"
+
+    Cfg.source.write_text(SITE)
+    monkeypatch.setattr(campaign, "_routes_meta", lambda cfg: routes)
+    monkeypatch.setattr(campaign.ports, "is_free", lambda port: True)
+    monkeypatch.setattr(campaign, "workers", lambda model, root: [])
+    return campaign, Cfg
+
+
+def test_a_route_given_up_is_not_dealt_and_status_says_whose_failure_it_was(tmp_path, monkeypatch) -> None:
+    routes = [("1711", "Town12", "ParkingCutIn"), ("23695", "Town13", "InterurbanAdvancedActorFlow")]
+    campaign, cfg = _deal_site(tmp_path, monkeypatch, routes)
+    for i in range(3):
+        _attempt(tmp_path / "bench2drive" / "m", f"2026100{i + 1}T000000-aaaaaa", "23695", "empty", CRASHED)
+    lines: list[str] = []
+    campaign.launch(cfg, "m", 5, dry_run=True, echo=lines.append)
+    assert [ln.rsplit(": ", 1)[1] for ln in lines if ln.startswith("worker slot")] == ["1711"]
+    said: list[str] = []
+    state = campaign.status(cfg, "m", echo=said.append)
+    assert state["given_up"] == ["23695"] and state["left"] == ["1711"]
+    assert any("given up on 23695 after 3 failed attempt(s)" in ln and "SET_ASIDE" in ln for ln in said)
+    assert sum("CARLA crashed (signal 11) at 36.4 s of game time" in ln for ln in said) == 3
+
+
+def test_a_route_given_up_on_is_dealt_again_when_only_names_it(tmp_path, monkeypatch) -> None:
+    """After the model's failure on it is fixed, --only drives it again; nothing else does."""
+    routes = [("1711", "Town12", "ParkingCutIn"), ("23695", "Town13", "InterurbanAdvancedActorFlow")]
+    campaign, cfg = _deal_site(tmp_path, monkeypatch, routes)
+    for i in range(3):
+        _attempt(tmp_path / "bench2drive" / "m", f"2026100{i + 1}T000000-aaaaaa", "23695", "empty", CRASHED)
+    lines: list[str] = []
+    campaign.launch(cfg, "m", 5, only={"23695"}, dry_run=True, echo=lines.append)
+    assert [ln.rsplit(": ", 1)[1] for ln in lines if ln.startswith("worker slot")] == ["23695"]
+
+
+def test_keep_stops_when_its_workers_keep_exiting_without_driving(tmp_path, monkeypatch) -> None:
+    """A model node that cannot start fails every worker the same way, before any route: keep stops
+    after three such launches in a row instead of relaunching them forever."""
+    from paddock.adapters.benchmarks.bench2drive import campaign
+
+    passes: list[str] = []
+    # Alive just after each launch, gone by the next pass: what a node failing at start looks like.
+    alive = itertools.cycle([[], [campaign.Worker(1, ["1711"], Path("w"), 2000)]])
+    monkeypatch.setattr(campaign, "workers", lambda model, root: next(alive))
+    monkeypatch.setattr(campaign, "launch", lambda *a, **kw: passes.append("launch") or [{"slot": 0}])
+    monkeypatch.setattr(campaign, "_reap_orphans", lambda root, echo: None)
+    monkeypatch.setattr(campaign, "route_states", lambda root: {})
+
+    class Cfg:
+        runs = tmp_path
+
+    said: list[str] = []
+    result = campaign.keep(Cfg, "m", 5, sleep=lambda s: None, echo=said.append)
+    assert result == 1 and "without attempting a route" in said[-1]
+    assert passes == ["launch"] * 3
+
+
+def test_a_set_aside_route_is_dealt_only_when_only_names_it(tmp_path, monkeypatch) -> None:
+    """11715 is set aside for every model: never dealt in a sweep, but --only can drive it on
+    purpose, to see whether it still fails."""
+    routes = [("1711", "Town12", "ParkingCutIn"), ("11715", "Town12", "EnterActorFlow")]
+    campaign, cfg = _deal_site(tmp_path, monkeypatch, routes)
+
+    def dealt(**kw) -> list[str]:
+        lines: list[str] = []
+        campaign.launch(cfg, "m", 5, dry_run=True, echo=lines.append, **kw)
+        return [ln.rsplit(": ", 1)[1] for ln in lines if ln.startswith("worker slot")]
+
+    assert dealt() == ["1711"]
+    assert dealt(only={"11715"}) == ["11715"]
+    said: list[str] = []
+    assert campaign.status(cfg, "m", echo=said.append)["total"] == 1
+    assert any("set aside for every model" in ln and "11715" in ln for ln in said)
+
+
+def test_batch_deals_the_longest_expected_routes_first_and_no_more_than_asked(tmp_path, monkeypatch) -> None:
+    routes = [(str(r), "Town12", "ParkingCutIn") for r in (1, 2, 3, 4, 5, 6)]
+    campaign, cfg = _deal_site(tmp_path, monkeypatch, routes)
+    costs = {"1": 100.0, "2": 900.0, "3": 300.0, "4": 800.0, "5": 200.0, "6": 700.0}
+    monkeypatch.setattr(campaign, "expected_costs", lambda states, scenario_of: costs)
+    lines: list[str] = []
+    campaign.launch(cfg, "m", 2, batch=2, dry_run=True, echo=lines.append)
+    dealt = [ln.rsplit(": ", 1)[1].split(",") for ln in lines if ln.startswith("worker slot")]
+    assert len(dealt) == 2, "one batch per free slot"
+    assert {r for group in dealt for r in group} == {"2", "4", "6", "3"}, "the four longest, of six"
+    assert all(len(group) <= 2 for group in dealt), "no worker more than its batch"
+
+
+def test_a_batch_caps_each_worker_however_long_its_routes() -> None:
+    """One long route and three short ones, two workers, batch 2: balancing by time alone gives the
+    long one a worker to itself and the other worker three."""
+    costs = {"1": 900.0, "2": 100.0, "3": 100.0, "4": 100.0}
+    groups = balance(list(costs), costs.__getitem__, 2, cap=2)
+    assert sorted(len(g) for g in groups) == [2, 2]
+    assert sorted(len(g) for g in balance(list(costs), costs.__getitem__, 2)) == [1, 3], "uncapped"
+
+
+def test_cards_pin_each_new_worker_to_a_card(tmp_path, monkeypatch) -> None:
+    """Each worker's CARLA renders on its card (gpu_rank, a Vulkan index) and its node runs on the
+    same one (CUDA_VISIBLE_DEVICES); new workers go to the card with fewest."""
+    routes = [(str(r), "Town12", "ParkingCutIn") for r in range(1, 9)]
+    campaign, cfg = _deal_site(tmp_path, monkeypatch, routes)
+    started: list[dict] = []
+
+    class Proc:
+        pid = 4242
+
+    def popen(command, env, **kw):
+        started.append(env)
+        return Proc()
+
+    monkeypatch.setattr(campaign.subprocess, "Popen", popen)
+    monkeypatch.setattr(campaign.time, "sleep", lambda s: None)
+    alive = [campaign.Worker(7, ["99"], Path("w"), 2900, "0")]  # one already on the first card
+    monkeypatch.setattr(campaign, "workers", lambda model, root: alive)
+    out = campaign.launch(cfg, "m", 2, cards=[("0", "0"), ("1", "2")], echo=lambda s: None)
+    assert [w["card"] for w in out] == [["1", "2"], ["0", "0"], ["1", "2"]]
+    assert [e["CUDA_VISIBLE_DEVICES"] for e in started] == ["1", "0", "1"]
+    ranks = [
+        tomllib.loads(Path(w["config"]).read_text())["benchmarks"]["bench2drive"]["gpu_rank"] for w in out
+    ]
+    assert ranks == ["2", "0", "2"]
+
+
+def test_a_dry_run_starts_and_stops_nothing(monkeypatch) -> None:
+    """`keep --dry-run` is one dry pass of what keep would deal; `stop --dry-run` signals nothing."""
+    from paddock.adapters.benchmarks.bench2drive import campaign
+
+    calls: list = []
+    monkeypatch.setattr(campaign.SiteConfig, "load", classmethod(lambda cls, path=None: object()))
+    monkeypatch.setattr(
+        campaign, "launch", lambda cfg, model, n, **kw: calls.append(("launch", kw["dry_run"]))
+    )
+    monkeypatch.setattr(campaign, "keep", lambda *a, **kw: calls.append("keep"))
+    monkeypatch.setattr(campaign, "workers", lambda model, root: [campaign.Worker(7, ["1"], Path("w"), 2000)])
+    monkeypatch.setattr(campaign, "_signal_and_wait", lambda *a, **kw: calls.append("signal"))
+    monkeypatch.setattr(campaign, "_runs_root", lambda cfg, model: Path("/nowhere"))
+    monkeypatch.setattr(campaign, "_state_dir", lambda cfg, model: Path("/nowhere/_campaign"))
+    assert campaign.main(["keep", "--model", "m", "--dry-run"]) == 0
+    assert campaign.main(["stop", "--model", "m", "--dry-run"]) == 0
+    assert calls == [("launch", True)], "no keep loop, no signal"
+
+
+def test_keep_carries_on_past_a_pass_that_could_not_deal(tmp_path, monkeypatch) -> None:
+    """A run directory removed mid-scan, or no free slot yet, is that pass's trouble: keep says so, waits,
+    and goes on -- it neither dies nor calls the sweep settled."""
+    from paddock.adapters.benchmarks.bench2drive import campaign
+
+    passes = iter([OSError(2, "removed while scanned"), SystemExit("no free slot"), []])
+
+    def launch(*a, **kw):
+        result = next(passes)
+        if isinstance(result, BaseException):
+            raise result
+        return result
+
+    monkeypatch.setattr(campaign, "launch", launch)
+    monkeypatch.setattr(campaign, "workers", lambda model, root: [])
+    monkeypatch.setattr(campaign, "_reap_orphans", lambda root, echo: None)
+
+    class Cfg:
+        runs = tmp_path
+
+    said: list[str] = []
+    slept: list[float] = []
+    assert campaign.keep(Cfg, "m", 5, every_s=0, sleep=slept.append, echo=said.append) == 0
+    assert [ln for ln in said if "settled" in ln] == [said[-1]], "settled once, at the end"
+    assert slept == [campaign.KEEP_MIN_S] * 2, "a pass that could not deal waits, at least KEEP_MIN_S"
+
+
+def test_a_sites_routes_subset_is_what_is_dealt(tmp_path, monkeypatch) -> None:
+    """Its worker would drop a route outside it without a word, and keep would deal it again forever."""
+    from paddock.adapters.benchmarks.bench2drive import campaign
+
+    data = tmp_path / "Bench2Drive" / "leaderboard" / "data"
+    data.mkdir(parents=True)
+    shutil.copy(FIXTURES / "routes_sample.xml", data / "routes_sample.xml")
+
+    site = {
+        "repo": str(tmp_path / "Bench2Drive"),
+        "routes_file": "routes_sample.xml",
+        "routes_subset": "1773",
+    }
+
+    class Cfg:
+        benchmarks = {"bench2drive": site}
+
+    assert [rid for rid, _, _ in campaign._routes_meta(Cfg)] == ["1773"]
+
+
+def test_cards_refuse_a_cuda_pin_that_would_beat_them(tmp_path, monkeypatch) -> None:
+    """The node env's own CUDA_VISIBLE_DEVICES beats each worker's: its node would leave its CARLA's card."""
+    from paddock.config import ModelOverride
+
+    routes = [("1711", "Town12", "ParkingCutIn")]
+    campaign, cfg = _deal_site(tmp_path, monkeypatch, routes)
+    cfg.models = {"m": ModelOverride(env={"CUDA_VISIBLE_DEVICES": "0"})}
+    with pytest.raises(SystemExit, match=r"\[models.m.env\] pins it"):
+        campaign.launch(cfg, "m", 2, cards=[("0", "0"), ("1", "2")], dry_run=True, echo=lambda s: None)
+
+
+def test_a_slot_whose_node_port_is_bound_is_skipped() -> None:
+    bound = {9100 + 10 * 1}  # something already listens on slot 1's node base
+    assert free_slots(2, 2000, 8000, 9100, set(), lambda p: p not in bound) == [0, 2]
+
+
+def test_cards_are_cuda_and_vulkan_index_pairs() -> None:
+    assert _cards("0:0,1:2") == [("0", "0"), ("1", "2")] and _cards(None) is None
+    with pytest.raises(SystemExit, match="CUDA:VULKAN"):
+        _cards("0,1")
+
+
+def test_keep_stops_once_nothing_is_left_and_no_worker_is_alive(tmp_path, monkeypatch) -> None:
+    from paddock.adapters.benchmarks.bench2drive import campaign
+
+    # keep asks twice a pass: before launching (to clean up) and after (to settle).
+    worker = campaign.Worker(1, ["1711"], Path("w"), 2000)
+    alive = [[worker], [worker], [], []]
+    calls: list[str] = []
+    monkeypatch.setattr(campaign, "workers", lambda model, root: alive.pop(0) if len(alive) > 1 else alive[0])
+    monkeypatch.setattr(campaign, "launch", lambda *a, **kw: calls.append("launch") or [])
+    monkeypatch.setattr(campaign, "_reap_orphans", lambda root, echo: calls.append("reap"))
+
+    class Cfg:
+        runs = tmp_path
+
+    said: list[str] = []
+    assert campaign.keep(Cfg, "m", 5, sleep=lambda s: calls.append("sleep"), echo=said.append) == 0
+    # alive at first: launch, sleep; then none alive: reap the orphans, launch, and settle.
+    assert calls == ["launch", "sleep", "reap", "launch"]
+    assert "settled" in said[-1]
+    assert not (tmp_path / "bench2drive" / "_campaign" / "m" / campaign.KEEPER_PID).exists(), "it cleans up"
+
+
+def test_two_launches_never_deal_at_once(tmp_path, monkeypatch) -> None:
+    """A keeper's pass and a restart run beside it would pick the same free slots and routes: the
+    second waits for the sweep's launch lock, and gives up for this pass when it cannot get it."""
+    import fcntl
+
+    routes = [("1711", "Town12", "ParkingCutIn")]
+    campaign, cfg = _deal_site(tmp_path, monkeypatch, routes)
+    monkeypatch.setattr(campaign, "LOCK_WAIT_S", 0.0)
+    state = tmp_path / "bench2drive" / "_campaign" / "m"
+    state.mkdir(parents=True)
+    with (state / campaign.LAUNCH_LOCK).open("a") as other:
+        fcntl.flock(other, fcntl.LOCK_EX)  # another launch is dealing
+        with pytest.raises(SystemExit, match="another launch"):
+            campaign.launch(cfg, "m", 5, echo=lambda s: None)
+        lines: list[str] = []
+        campaign.launch(cfg, "m", 5, dry_run=True, echo=lines.append)  # a dry run deals nothing: no lock
+        assert any(ln.startswith("worker slot") for ln in lines)
+
+
+def test_only_what_a_dead_run_left_is_an_orphan(tmp_path, monkeypatch) -> None:
+    """An evaluator or node whose run is alive is never stopped, however that run was started; one
+    whose run is gone is."""
+    from paddock.adapters.benchmarks.bench2drive import campaign
+
+    hand_run = ["/env/python", "-m", "paddock.cli", "run", "-b", "bench2drive", "-m", "openpilot"]
+    parents = {10: 20, 11: 1, 30: 20, 31: 1}  # 20 is a live paddock run started by hand; 1 is init
+    monkeypatch.setattr(campaign, "_ppid", parents.get)
+    monkeypatch.setattr(campaign, "_argv", lambda pid: hand_run if pid == 20 else ["/sbin/init"])
+    monkeypatch.setattr(campaign, "evaluators", lambda root: [(10, tmp_path / "a"), (11, tmp_path / "b")])
+    killed: list = []
+    monkeypatch.setattr(campaign, "kill_evaluator", lambda pid, route_dir: killed.append(pid))
+    monkeypatch.setattr(
+        campaign, "_signal_and_wait", lambda pid, sig, wait_s, group=False: killed.append(pid) or True
+    )
+    monkeypatch.setattr(campaign, "_pids", lambda: [30, 31])
+    nodes = {30: ["python", "-m", "paddock.policy.server", "--nonce", "run1"], 31: ["python", "-m",
+             "paddock.policy.server", "--nonce", "run1"]}  # fmt: skip
+    (tmp_path / "run1").mkdir()
+    monkeypatch.setattr(
+        campaign, "_argv", lambda pid: hand_run if pid == 20 else nodes.get(pid, ["/sbin/init"])
+    )
+    campaign._reap_orphans(tmp_path, echo=lambda s: None)
+    assert killed == [11, 31], "the hand-started run's evaluator (10) and node (30) are left"
+
+
+def test_stop_stops_the_keeper_first(tmp_path, monkeypatch) -> None:
+    """Or the keeper's next pass starts the workers again."""
+    from paddock.adapters.benchmarks.bench2drive import campaign
+
+    class Cfg:
+        runs = tmp_path
+
+    state = tmp_path / "bench2drive" / "_campaign" / "m"
+    state.mkdir(parents=True)
+    (state / campaign.KEEPER_PID).write_text("4321\n")
+    keep_argv = [
+        "/env/python",
+        "-m",
+        "paddock.adapters.benchmarks.bench2drive.campaign",
+        "keep",
+        "--model",
+        "m",
+    ]
+    monkeypatch.setattr(campaign, "_argv", lambda pid: keep_argv if pid == 4321 else [])
+    signalled: list = []
+    monkeypatch.setattr(
+        campaign,
+        "_signal_and_wait",
+        lambda pid, sig, wait_s, group=False: signalled.append((pid, sig)) or True,
+    )
+    worker = campaign.Worker(7, ["1711"], state / "worker0.toml", 3000)
+    monkeypatch.setattr(campaign, "workers", lambda model, root: [worker])
+    monkeypatch.setattr(campaign, "evaluators", lambda root: [])
+    campaign.stop(Cfg, "m", echo=lambda s: None)
+    assert signalled == [(4321, campaign.signal.SIGTERM), (7, campaign.signal.SIGINT)]
+    signalled.clear()
+    campaign.stop(Cfg, "m", echo=lambda s: None, keeper_too=False)  # --rebalance
+    assert signalled == [(7, campaign.signal.SIGINT)]
 
 
 def test_a_route_counts_as_scored_once_any_attempt_scored(tmp_path: Path) -> None:
@@ -101,6 +460,12 @@ def test_with_ports_edits_only_the_bench2drive_table_and_keeps_everything_else()
     assert parsed["benchmarks"]["navsim"]["carla_port"] == "should not change"
     assert parsed["gpu"]["budget_gb"] == 80 and parsed["benchmarks"]["bench2drive"]["record"] == "true"
     assert "# CARLA closed-loop" in out
+
+
+def test_with_ports_sets_gpu_rank_when_asked_and_nothing_else() -> None:
+    out = with_ports(SITE, 2150, 8150, gpu_rank="2")
+    assert tomllib.loads(out)["benchmarks"]["bench2drive"]["gpu_rank"] == "2"
+    assert "gpu_rank" not in tomllib.loads(with_ports(SITE, 2150, 8150))["benchmarks"]["bench2drive"]
 
 
 def test_with_ports_refuses_a_config_without_bench2drive() -> None:
@@ -189,7 +554,7 @@ def test_held_routes_wait_for_everything_else_and_then_run_alone(tmp_path: Path,
         source = tmp_path / "site.toml"
 
     Cfg.source.write_text(SITE)
-    routes = [("1711", "Town12", "ParkingCutIn"), ("11715", "Town12", "EnterActorFlow")]
+    routes = [("1711", "Town12", "ParkingCutIn"), ("23695", "Town13", "InterurbanAdvancedActorFlow")]
     monkeypatch.setattr(campaign, "_routes_meta", lambda cfg: routes)
     monkeypatch.setattr(campaign.ports, "is_free", lambda port: True)
     launched: list[list[str]] = []
@@ -197,15 +562,15 @@ def test_held_routes_wait_for_everything_else_and_then_run_alone(tmp_path: Path,
 
     def plan(**kw):
         lines: list[str] = []
-        campaign.launch(Cfg, "m", 5, held={"11715"}, dry_run=True, echo=lines.append, **kw)
+        campaign.launch(Cfg, "m", 5, held={"23695"}, dry_run=True, echo=lines.append, **kw)
         launched.append([ln for ln in lines if ln.startswith("worker slot")])
         return lines
 
     plan()
-    assert len(launched[-1]) == 1 and launched[-1][0].endswith(": 1711")  # 11715 not dealt yet
+    assert len(launched[-1]) == 1 and launched[-1][0].endswith(": 1711")  # 23695 not dealt yet
     _attempt(tmp_path / "bench2drive" / "m", "20261007T000000-cccccc", "1711", "results_collisions.json")
     lines = plan()
-    assert launched[-1] == ["worker slot 0: 1 route(s), ~0.1 h, CARLA 2000, TM 8000: 11715"]
+    assert launched[-1] == ["worker slot 0: 1 route(s), ~0.1 h, CARLA 2000, TM 8000: 23695"]
     assert any("alone" in ln for ln in lines)
     monkeypatch.setattr(
         campaign, "workers", lambda model, root: [campaign.Worker(1, ["1711"], Path("x"), 2150)]
@@ -246,3 +611,7 @@ def test_one_evaluator_the_guard_cannot_handle_does_not_end_the_guard(tmp_path: 
     campaign.guard(Cfg, "m", once=True, echo=said.append)
     assert killed == [102]
     assert any("Operation not permitted" in line for line in said)
+    # Its reason is in the route's folder before the kill, for the attempt's failure record, with
+    # whether the route's CARLA was gone: the harness reads that field, never the wording.
+    guard = json.loads((routes[1] / "guard.json").read_text())
+    assert guard["reason"].startswith("evaluator.log silent") and guard["carla_gone"] is False

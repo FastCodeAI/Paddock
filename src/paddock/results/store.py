@@ -95,7 +95,9 @@ class RunRecord:
     #: silently averaging it in, and the record of it having happened survives --
     #: which deleting the directory would not.
     valid: bool = True
-    #: Run id of the later run that replaced this one, when there is one.
+    #: Run id of the later run that replaced this one, when there is one, or
+    #: `<model>/<run id>` when that run is another model's on the same
+    #: benchmark. `superseding_run` reads either form.
     #:
     #: A separate field rather than a sentence in `notes` because "this is not
     #: the current row" is a fact the tooling has to act on -- `paddock report`
@@ -251,6 +253,17 @@ class SupersedeError(Exception):
     """Why a supersession was refused, in terms the caller can act on."""
 
 
+def superseding_run(benchmark: str, model: str, superseded_by: str, root: Path = RESULTS_ROOT) -> Path:
+    """The run directory a `superseded_by` pointer names.
+
+    A bare run id is the same model's run; `<model>/<run id>` is another
+    model's on the same benchmark (see `supersede`). A run id never contains a
+    `/`, so the two forms cannot be mistaken for each other.
+    """
+    other, _, run_id = superseded_by.rpartition("/")
+    return run_dir(benchmark, other or model, run_id, root)
+
+
 def supersede(
     benchmark: str,
     model: str,
@@ -258,6 +271,7 @@ def supersede(
     by: str,
     reason: str,
     root: Path = RESULTS_ROOT,
+    by_model: str = "",
 ) -> Path:
     """Mark an older run as replaced by a later one, and stop ranking it.
 
@@ -278,13 +292,27 @@ def supersede(
     that decides validity *at write time*; this is the one post-hoc exception,
     and it is a curation decision rather than a measurement one.
 
+    `by_model` names the replacement's model when it is not `model`. A
+    benchmark's row for one model can move to another registry entry of it:
+    Drive-JEPA's comma2k19 row was its perception-free agent, a separate entry,
+    until November 2026, when it became the perception-based model every other
+    benchmark runs. The pointer is then stored as `<by_model>/<by>`, which
+    `superseding_run` resolves; a same-model pointer keeps the bare run id.
+
     Raises `SupersedeError` if either run is missing, if a run is pointed at
     itself, or if the replacement is itself superseded -- a chain whose end is
     not a valid row leaves the model with no row at all.
     """
+    if "/" in by or "/" in by_model:
+        raise SupersedeError(
+            f"{by_model + '/' if by_model else ''}{by}: --by is a run id and --by-model a model name; "
+            "neither contains '/'"
+        )
+    by_model = by_model or model
+    pointer = by if by_model == model else f"{by_model}/{by}"
     path = run_dir(benchmark, model, run_id, root) / "run.json"
-    replacement = run_dir(benchmark, model, by, root) / "run.json"
-    if run_id == by:
+    replacement = superseding_run(benchmark, model, pointer, root) / "run.json"
+    if path == replacement:
         raise SupersedeError(f"{run_id} cannot supersede itself")
     if not path.exists():
         raise SupersedeError(f"no such run: {path.relative_to(root.parent)}")
@@ -306,8 +334,8 @@ def supersede(
 
     record = RunRecord(**json.loads(path.read_text()))
     record.valid = False
-    record.superseded_by = by
-    note = f"Superseded by {by}: {reason.strip()}"
+    record.superseded_by = pointer
+    note = f"Superseded by {pointer}: {reason.strip()}"
     # Appended, not replaced. Whatever the run already said about itself is
     # still true; this is one more thing that became true afterwards.
     record.notes = f"{record.notes.rstrip()} {note}".strip() if record.notes else note
