@@ -98,7 +98,7 @@
 <text x="780" y="107" class="sec" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">driving</text>
 <text x="780" y="120" class="sec" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">score ↑</text>
 <text x="780" y="133" class="sec" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">(0–100)</text>
-<text x="780" y="146" class="sec" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">219 of 220</text>
+<text x="780" y="146" class="sec" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">216 of 220</text>
 <text x="780" y="159" class="sec" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">routes</text>
 <text x="855" y="92" class="ink" font-size="10.7" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" font-weight="600">neuroNCAP</text>
 <text x="855" y="107" class="sec" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">score ↑</text>
@@ -133,7 +133,7 @@
 <text x="737" y="180.5" class="t5" font-size="9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="end" font-weight="600" opacity="0.85">P</text>
 <path class="worse" d="M672 173.5h10l-5 8.5z" stroke-width="1.5"/>
 <rect class="r1" x="744" y="170.5" width="72" height="43" rx="4"/>
-<text x="780" y="191.5" class="t1" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">44.01</text>
+<text x="780" y="191.5" class="t1" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">43.42</text>
 <text x="780" y="206.5" class="t1" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#1</text>
 <text x="812" y="180.5" class="t1" font-size="9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="end" font-weight="600" opacity="0.85">P</text>
 <rect class="r3" x="819" y="170.5" width="72" height="43" rx="4"/>
