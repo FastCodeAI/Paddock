@@ -36,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--bench", default="navsim_v1", help="navsim or navsim_v1 (default navsim_v1)")
+    parser.add_argument("--bench", default="navsim_v1", help="navsim, navsim_v1 or navhard (default navsim_v1)")
     parser.add_argument(
         "--logs", default="", help="comma-separated log names for a timing smoke; default the split"
     )
@@ -75,7 +75,9 @@ def main(argv: list[str] | None = None) -> int:
         "-u",
         str(devkit / CACHING),
         f"train_test_split={harness.split}",
-        f"cache.cache_path={harness.setting('metric_cache')}",
+        # v2.2 (navhard) reads the cache root from `metric_cache_path`; v1 and the v2 fork from `cache.cache_path`.
+        (f"metric_cache_path={harness.setting('metric_cache')}" if args.bench == "navhard"
+         else f"cache.cache_path={harness.setting('metric_cache')}"),
         "worker=single_machine_thread_pool",
         f"worker.max_workers={args.workers}",
         "worker.use_process_pool=true",

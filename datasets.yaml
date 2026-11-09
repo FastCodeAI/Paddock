@@ -39,6 +39,17 @@ datasets:
       on different, easier data and is not comparable to those figures. Training
       needs navtrain / trainval_sensor, another separate and much larger download.
 
+  navhard:
+    description: NAVSIM v2.2 navhard_two_stage -- real OpenScene test scenes plus synthetic follow-up scenes for pseudo closed-loop scoring (navhard)
+    requires: [navsim_logs, sensor_blobs, maps, navhard_two_stage]
+    notes: >
+      The navsim root layout plus navhard_two_stage/ (sensor_blobs,
+      synthetic_scene_pickles, openscene_meta_datas, synthetic_scenes_attributes.csv)
+      from upstream download/download_navhard_two_stage.sh (navsim-v2.2 on
+      OpenDriveLab/OpenScene, 38.5 GB). Stage one reads the real test blobs under
+      sensor_blobs/test, stage two the synthetic ones. Needs its own metric cache,
+      built by the v2.2 devkit's run_metric_caching.py with train_test_split=navhard_two_stage.
+
   nuplan:
     description: nuPlan v1.1 -- the original 10 Hz camera logs behind NAVSIM's OpenScene; open-loop ADE/FDE
     requires: [nuplan-v1.1, maps]
