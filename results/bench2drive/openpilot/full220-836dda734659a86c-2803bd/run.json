@@ -1,5 +1,5 @@
 {
-  "run_id": "full220-96854bd47e320563-22709f",
+  "run_id": "full220-836dda734659a86c-2803bd",
   "site": "a100-gpu-vm-002",
   "benchmark": "bench2drive",
   "model": "openpilot",
@@ -9,9 +9,9 @@
   "repo_sha": null,
   "dataset": {
     "name": "bench2drive220",
-    "n_samples": 219,
-    "sequences_sha256": "96854bd47e320563",
-    "n_expected": 219,
+    "n_samples": 216,
+    "sequences_sha256": "836dda734659a86c",
+    "n_expected": 216,
     "n_failed": 0
   },
   "config": {
@@ -64,7 +64,6 @@
       "23659",
       "23670",
       "23687",
-      "23695",
       "23700",
       "23708",
       "2373",
@@ -77,7 +76,6 @@
       "2397",
       "2403",
       "24041",
-      "24071",
       "24078",
       "24092",
       "24098",
@@ -222,7 +220,6 @@
       "3737",
       "3749",
       "3785",
-      "3800",
       "3813",
       "3865",
       "3869",
@@ -291,7 +288,10 @@
       "PADDOCK_OPENPILOT_NATIVE_LONG": "1"
     },
     "routes_set_aside": [
-      "11715"
+      "3800",
+      "11715",
+      "23695",
+      "24071"
     ],
     "early_stop": {
       "expert_factor": 4.0,
@@ -315,6 +315,6 @@
   "status": "complete",
   "valid": true,
   "superseded_by": "",
-  "notes": "openpilot driving_supercombo (small), the ONNX graph at the pinned openpilot 555f48c5d on onnxruntime's CUDA provider, driven on Paddock 0f0b9ef (the head of PR #160; its driving code is main's after #159 and #160 merged) over every route of bench2drive220.xml at Bench2Drive 7ec25d1, the routes set aside for every model left out (issue #158, the 220-route protocol). Asked every tick at Bench2Drive's 20 Hz, supercombo's own rate; its comma-three camera pair from paddock's rig; openpilot's own longitudinal planner with its driver-resume nudge (PADDOCK_OPENPILOT_NATIVE_LONG 1, declared in model.yaml; RESUME_S 3 s): the nudge stands in for a driver pressing resume; no desire input; early stop at 30 s without 3 m of progress or 4x Think2Drive's time; up to three attempts a route; no site value for anything model.yaml declares; 5 workers on each of two A100 80GB, 6 Nov 23:39 to 7 Nov 02:31 UTC. 1 route(s) set aside for every model (11715: CARLA crashes (signal 11) about 54 s into the route on every attempt, whichever model drives): a route the simulator fails on every time measures no model, so it is in no mean and not counted as lost. 37 of 37 source runs kept no run.json, so their routes are attributed to openpilot on the tree they were found in; config.model_env and the rest of config are what 37/37 source runs recorded. early stop (30 s without 3 m of route progress or 4x the expert's time on the route (none on the 9 route(s) here with no expert drive)): a car in a driving scene is expected to move, to finish in reasonable time and not to collide, so a route ended this way is a failed drive, scored as it stood when it ended (a collision's penalty included).",
+  "notes": "openpilot driving_supercombo (small), the ONNX graph at the pinned openpilot 555f48c5d on onnxruntime's CUDA provider, driven on Paddock 0f0b9ef (the head of PR #160; its driving code is main's after #159 and #160 merged) over every route of bench2drive220.xml at Bench2Drive 7ec25d1, the routes set aside for every model left out (issue #158, the 220-route protocol). Asked every tick at Bench2Drive's 20 Hz, supercombo's own rate; its comma-three camera pair from paddock's rig; openpilot's own longitudinal planner with its driver-resume nudge (PADDOCK_OPENPILOT_NATIVE_LONG 1, declared in model.yaml; RESUME_S 3 s): the nudge stands in for a driver pressing resume; no desire input; early stop at 30 s without 3 m of progress or 4x Think2Drive's time; up to three attempts a route; no site value for anything model.yaml declares; 5 workers on each of two A100 80GB, 6 Nov 23:39 to 7 Nov 02:31 UTC. 4 route(s) set aside for every model (3800: CARLA crashes (signal 11) 63-69 s into the route on every attempt by Alpamayo 1.5 at its declared 10 Hz; 11715: CARLA crashes (signal 11) about 54 s into the route on every attempt, whichever model drives; 23695: CARLA crashes (signal 11) about 40 s into the route on every attempt by Alpamayo 1.5 at its declared 10 Hz; 24071: CARLA crashes (signal 11) 37-40 s into the route on every attempt by Alpamayo 1.5 at its declared 10 Hz): a route the simulator fails on every time measures no model, so it is in no mean and not counted as lost; 3800, 23695, 24071 left out although they scored here, as for every model. 37 of 37 source runs kept no run.json, so their routes are attributed to openpilot on the tree they were found in; config.model_env and the rest of config are what 37/37 source runs recorded. early stop (30 s without 3 m of route progress or 4x the expert's time on the route (none on the 9 route(s) here with no expert drive)): a car in a driving scene is expected to move, to finish in reasonable time and not to collide, so a route ended this way is a failed drive, scored as it stood when it ended (a collision's penalty included).",
   "ingested_from": "paddock_runs/bench2drive/openpilot"
 }

@@ -97,9 +97,10 @@ it differs.
 
 Before comparing numbers:
 
-- **Bench2Drive has two columns.** The one headed "219 of 220 routes" is every
-  model driven the same way over all 220 routes but the ones set aside for every
-  model (CARLA crashes on route 11715 on every attempt, whichever model drives):
+- **Bench2Drive has two columns.** The one headed "216 of 220 routes" is every
+  model driven the same way over all 220 routes but the four set aside for every
+  model (CARLA crashes on route 11715 whichever model drives, and crashed on 3800,
+  23695 and 24071 on every attempt by Alpamayo 1.5):
   each model at its own rate, routes ended after 30 s without progress or at 4x
   the expert's time, and three tries per route
   ([The 220-route protocol](docs/benchmarks/bench2drive.md#the-220-route-protocol)).
