@@ -9,8 +9,9 @@ failure when crossed:
 
 * **The CAN-bus layout.** nuScenes puts acceleration at 7:10, rotation rate at 10:13 and velocity at 13:16
   (the order of the CAN-bus expansion's ``pose`` message); Bench2DriveZoo puts velocity at 7:10,
-  acceleration at 10:13 and rotation rate at 13:16 (``prepare_B2D.py``). Both keep translation at 0:3, a
-  rotation quaternion at 3:7 and the heading, in radians then degrees, at 16:18. Paddock's own canbus is the
+  acceleration at 10:13 and rotation rate at 13:16 (``prepare_B2D.py``). Both keep translation at 0:3 and
+  the heading, in radians then degrees, at 16:18; at 3:7 Bench2DriveZoo has the heading's quaternion and the
+  nuScenes datasets the ego quaternion's w four times (`nuscenes_can_bus`). Paddock's own canbus is the
   nuScenes layout, so for Bench2Drive it is re-ordered here.
 * **``l2g_r_mat``.** The nuScenes datasets store the *transpose* of the lidar-to-global rotation (their
   tracker multiplies row vectors); Bench2DriveZoo stores the rotation itself. Each model is fed its own.
