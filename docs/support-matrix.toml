@@ -176,7 +176,7 @@ navsim_v1 = { run = "navsim_v1/meteor/20260915T005223-071c0b", marks = "P" }
 # Its declared 5 Hz, routes ended after 30 s stuck or 4x the expert's time (AutoE2E's rules), each a
 # failed drive scored as it stood: valid, and it ranks. The README says how it was driven.
 bench2drive = { run = "bench2drive/meteor/pooled50-40c29d24c37d542a-867d57", note = "5 Hz" }
-bench2drive220 = { run = "bench2drive/meteor/full220-96854bd47e320563-cc0c28", note = "5 Hz" }
+bench2drive220 = { run = "bench2drive/meteor/full220-836dda734659a86c-dda00e", note = "5 Hz" }
 neuroncap = { run = "neuroncap/meteor/20260915T193036-d34559" }
 alpasim = { run = "alpasim/meteor/legacy-meteor_011_published_30scenes" }
 

@@ -851,7 +851,7 @@ as 0, so each is 216/220 of the figure here (OpenPilot: DS 42.63, success 10.45%
 | Model | Routes | DS ↑ | RC ↑ (%) | IP ↑ | With collision ↓ (%) | Success ↑ (%) | Efficiency ↑ | Comfort ↑ (%) | Record |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|
 | OpenPilot | 216/220 | 43.42 | 55.15 | 0.813 | 22.69 | 10.65 | 180.59 | 40.88 | `full220-836dda734659a86c-2803bd` |
-| METEOR | 219/220 | 1.90 | 5.32 | 0.926 | 11.87 | 0.00 | 148.74 | 95.79 | `full220-96854bd47e320563-cc0c28` |
+| METEOR | 216/220 | 1.92 | 5.40 | 0.925 | 12.04 | 0.00 | 148.74 | 95.73 | `full220-836dda734659a86c-dda00e` |
 
 **Bench2Drive's five abilities, in % of the routes that count towards each:**
 
@@ -877,8 +877,8 @@ No route needed a third attempt. The three routes set aside after Alpamayo 1.5's
 run (3800, 23695, 24071) are out of its mean too, though it had completed each.
 
 **METEOR** is asked at its declared 5 Hz, the last plan followed in between, and
-CARLA never crashed on its attempts. As on 50 routes, it rarely gets moving: 192
-of its 219 routes end under 1% route completion. The 30 s rule ended 141 of them,
+CARLA never crashed on its attempts. As on 50 routes, it rarely gets moving: 189
+of its 216 routes end under 1% route completion. The 30 s rule ended 138 of them,
 Bench2Drive's own 60 s blocked test 44 (the 30 s clock pauses while the car waits
 at a red light) and the over-time rule 7. No route is a success; its one ability credit is Traffic signs, for 3 of 94 routes
 that got past their first junction with no red light or stop sign run. Its comfort

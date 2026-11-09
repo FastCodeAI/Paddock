@@ -573,11 +573,11 @@ Bench2Drive clip outside this repository found METEOR's 2D detection carries ove
 to these cameras and the depth behind its BEV lift does not. And it gets no
 driving command. Nothing here measures which of these holds it still.
 
-Over all 220 routes, `results/bench2drive/meteor/full220-96854bd47e320563-cc0c28`
+Over all 220 routes, `results/bench2drive/meteor/full220-836dda734659a86c-dda00e`
 (7 Nov 2026, the 220-route protocol: the same rate, cameras and early stop, up to
-three attempts a route, route 11715 set aside for every model): DS **1.90** over 219
-routes, RC 5.32%, infraction penalty 0.93, a collision on 26 routes. 192 routes end
-under 1% route completion, and one, 26394, is completed, with 12 collisions with
+three attempts a route, the four routes set aside for every model left out): DS
+**1.92** over 216 routes, RC 5.40%, infraction penalty 0.92, a collision on 26 routes.
+189 routes end under 1% route completion, and one, 26394, is completed, with 12 collisions with
 static objects. The tables, and Bench2Drive's own scores for the record, are in
 [Bench2Drive — 220 routes](../benchmarks/bench2drive.md#bench2drive--220-routes).
 
