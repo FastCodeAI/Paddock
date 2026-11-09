@@ -852,6 +852,7 @@ as 0, so each is 216/220 of the figure here (OpenPilot: DS 42.63, success 10.45%
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|
 | OpenPilot | 216/220 | 43.42 | 55.15 | 0.813 | 22.69 | 10.65 | 180.59 | 40.88 | `full220-836dda734659a86c-2803bd` |
 | METEOR | 216/220 | 1.92 | 5.40 | 0.925 | 12.04 | 0.00 | 148.74 | 95.73 | `full220-836dda734659a86c-dda00e` |
+| AutoE2E | 216/220 | 14.36 | 27.80 | 0.548 | 79.63 | 0.00 | 219.49 | 50.46 | `full220-836dda734659a86c-63902e` |
 
 **Bench2Drive's five abilities, in % of the routes that count towards each:**
 
@@ -859,6 +860,7 @@ as 0, so each is 216/220 of the figure here (OpenPilot: DS 42.63, success 10.45%
 |---|---:|---:|---:|---:|---:|---:|
 | OpenPilot | 9.21 | 11.11 | 15.00 | 20.00 | 36.17 | 18.30 |
 | METEOR | 0.00 | 0.00 | 0.00 | 0.00 | 3.19 | 0.64 |
+| AutoE2E | 0.00 | 0.00 | 0.00 | 0.00 | 11.70 | 2.34 |
 
 A route counts towards an ability by its scenario, the same for every model:
 Merging 76 of these routes, Overtaking 45, Emergency brake 60, Give way 10 and
@@ -886,6 +888,15 @@ is that of a car that barely moved. Bench2Drive's minimum-speed check runs on ev
 route but records a value only each time the car covers another twentieth of it,
 so METEOR's efficiency is over the 26 routes it drove at least 5% of (OpenPilot's
 is over 205).
+
+**AutoE2E** is asked at its declared 10 Hz, the last plan followed in between,
+with upstream's inputs: the measured ego history and the route raster. CARLA
+crashed once, on route 3307's first attempt as it started, and the route scored
+on its next. It moves off on every route but completes none: its median route
+completion is 25.8%, and 172 of its 216 routes have a collision. The 30 s rule
+ended 177 routes and the over-time rule 12. No route is a success; its one ability
+credit is Traffic signs, for 11 of 94 routes that got past their first junction
+with no red light or stop sign run.
 
 ### Bench2Drive — 50 routes
 
