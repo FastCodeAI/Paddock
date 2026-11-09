@@ -882,8 +882,10 @@ of its 216 routes end under 1% route completion. The 30 s rule ended 138 of them
 Bench2Drive's own 60 s blocked test 44 (the 30 s clock pauses while the car waits
 at a red light) and the over-time rule 7. No route is a success; its one ability credit is Traffic signs, for 3 of 94 routes
 that got past their first junction with no red light or stop sign run. Its comfort
-is that of a car that barely moved, and its efficiency is over the 26 routes with
-a minimum-speed check.
+is that of a car that barely moved. Bench2Drive's minimum-speed check runs on every
+route but records a value only each time the car covers another twentieth of it,
+so METEOR's efficiency is over the 26 routes it drove at least 5% of (OpenPilot's
+is over 205).
 
 ### Bench2Drive — 50 routes
 
