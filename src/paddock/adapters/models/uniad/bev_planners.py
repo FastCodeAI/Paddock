@@ -9,8 +9,9 @@ failure when crossed:
 
 * **The CAN-bus layout.** nuScenes puts acceleration at 7:10, rotation rate at 10:13 and velocity at 13:16
   (the order of the CAN-bus expansion's ``pose`` message); Bench2DriveZoo puts velocity at 7:10,
-  acceleration at 10:13 and rotation rate at 13:16 (``prepare_B2D.py``). Both keep translation at 0:3, a
-  rotation quaternion at 3:7 and the heading, in radians then degrees, at 16:18. Paddock's own canbus is the
+  acceleration at 10:13 and rotation rate at 13:16 (``prepare_B2D.py``). Both keep translation at 0:3 and
+  the heading, in radians then degrees, at 16:18; at 3:7 Bench2DriveZoo has the heading's quaternion and the
+  nuScenes datasets the ego quaternion's w four times (`nuscenes_can_bus`). Paddock's own canbus is the
   nuScenes layout, so for Bench2Drive it is re-ordered here.
 * **``l2g_r_mat``.** The nuScenes datasets store the *transpose* of the lidar-to-global rotation (their
   tracker multiplies row vectors); Bench2DriveZoo stores the rotation itself. Each model is fed its own.
@@ -406,6 +407,11 @@ def b2d_command(obs: Observation) -> int:
     changes folded into STRAIGHT, and the next lane change separately (``nav_lane_change``). Bench2Drive's
     models were trained with the lane changes as commands of their own, so a lane change within
     `B2D_ROUTE_LOOKAHEAD_M` is restored as one -- unless the ego is mid-turn, where the turn is kept.
+
+    A source without a route (HUGSIM, nuScenes, NAVSIM: ``route_xy`` is None) speaks the three-way
+    vocabulary, where STRAIGHT means "not turning". Bench2Drive's STRAIGHT is the junction command; keeping
+    along the road is LANEFOLLOW in its training data, so that is what STRAIGHT becomes there. Bench2Drive's
+    own client sends a route, and its STRAIGHT is CARLA's.
     """
     command = Command(int(obs.command))
     near = obs.nav_lane_change_m is not None and obs.nav_lane_change_m <= B2D_ROUTE_LOOKAHEAD_M
@@ -414,6 +420,8 @@ def b2d_command(obs: Observation) -> int:
             return B2D_CHANGELANELEFT
         if obs.nav_lane_change == "RIGHT":
             return B2D_CHANGELANERIGHT
+    if command == Command.STRAIGHT and obs.route_xy is None:
+        return B2D_LANEFOLLOW
     return B2D_COMMAND[command]
 
 
@@ -474,6 +482,60 @@ def history_on_grid(times_us, now_us: int, after_us: int | None, dt_s: float = P
     return chosen[::-1]
 
 
+#: A call less than one plan step (0.5 s, less this slack for clock rounding) after the model's last step
+#: is answered from the held plan (`held_plan`) instead of a new step: a client asking every 0.1 s
+#: (neuroNCAP) would otherwise have the temporal BEV fuse grids 0.1 s apart as if they were 0.5 s. Clients
+#: that honour ``planning_hz`` (HUGSIM, Bench2Drive) call 0.5 s apart, within a millisecond, and never
+#: reach it.
+STEP_SLACK_S = 0.02
+
+
+def held_plan(
+    plan_xy, planned_from: np.ndarray, planned_us: int, ego2world: np.ndarray, now_us: int
+) -> np.ndarray:
+    """A plan made at `planned_us` from pose `planned_from`, sampled at now + 0.5 k in the current ego frame.
+
+    The plan is held fixed in the world, as the HUGSIM and Bench2Drive clients hold one between replans:
+    its waypoints and the ego's position when it was made are interpolated in time, and past the plan's end
+    the last segment's velocity continues. Planar: the poses' headings and xy only.
+    """
+    plan = np.asarray(plan_xy, dtype=np.float64)[:, :2]
+    start = np.asarray(planned_from, dtype=np.float64)
+    c0, s0 = start[0, 0], start[1, 0]
+    norm0 = math.hypot(c0, s0) or 1.0
+    c0, s0 = c0 / norm0, s0 / norm0
+    world = np.vstack([start[:2, 3], plan @ np.array([[c0, s0], [-s0, c0]]) + start[:2, 3]])
+    times = planned_us / 1e6 + PLAN_DT * np.arange(len(world))
+    targets = now_us / 1e6 + PLAN_DT * np.arange(1, len(plan) + 1)
+    sampled = np.empty((len(targets), 2))
+    for i, t in enumerate(targets):
+        if t <= times[-1]:
+            sampled[i] = [np.interp(t, times, world[:, 0]), np.interp(t, times, world[:, 1])]
+        else:
+            velocity = (world[-1] - world[-2]) / (times[-1] - times[-2])
+            sampled[i] = world[-1] + velocity * (t - times[-1])
+    now = np.asarray(ego2world, dtype=np.float64)
+    c, s = now[0, 0], now[1, 0]
+    norm = math.hypot(c, s) or 1.0
+    c, s = c / norm, s / norm
+    return (sampled - now[:2, 3]) @ np.array([[c, -s], [s, c]])
+
+
+def extend_horizon(waypoints, dt: float, horizon_s: float) -> np.ndarray:
+    """Continue the last segment until the plan reaches `horizon_s`: METEOR's rule (meteor/policy.py).
+
+    Constant displacement per step from the last two waypoints, the model's speed and heading at the end of
+    its plan held. Nothing inside the model's own horizon changes. An extrapolation the model never made,
+    so it is opt-in (`BevPlannerPolicy.horizon_env`).
+    """
+    waypoints = np.asarray(waypoints, dtype=np.float64)
+    needed = int(round(horizon_s / dt))
+    if len(waypoints) >= needed:
+        return waypoints
+    step = waypoints[-1] - waypoints[-2]
+    return np.vstack([waypoints, waypoints[-1] + step * np.arange(1, needed - len(waypoints) + 1)[:, None]])
+
+
 # --------------------------------------------------------------------------
 # The policy
 # --------------------------------------------------------------------------
@@ -497,12 +559,21 @@ class BevPlannerPolicy(Policy):
     nominal_lidar2ego = NUSC_LIDAR2EGO
     #: Whether a source's own lidar may stand in for the model's (only on nuScenes-trained models).
     lidar_from_observation = True
+    #: The environment variable that continues the plan past its own 3 s (`extend_horizon`); unset, the plan
+    #: is the model's. NAVSIM scores 4 s and refuses a shorter plan; nothing else needs it.
+    horizon_env = ""
 
     def __init__(self) -> None:
         self.config = os.environ.get(self.config_env)
         self.checkpoint = os.environ.get(self.checkpoint_env)
         self.model: Any = None
         self.pipeline: Any = None
+        raw = os.environ.get(self.horizon_env, "").strip() if self.horizon_env else ""
+        self.horizon_s = float(raw) if raw else PLAN_DT * PLAN_STEPS
+        if self.horizon_s < PLAN_DT * PLAN_STEPS:
+            raise ValueError(
+                f"{self.horizon_env}={raw} is shorter than the model's {PLAN_DT * PLAN_STEPS} s plan"
+            )
         self.episode = 0
         self._begin_episode()
 
@@ -541,6 +612,8 @@ class BevPlannerPolicy(Policy):
         self.last: dict[str, Any] = {}
         self.plan_lidar: np.ndarray | None = None
         self.lidar2ego: np.ndarray | None = None
+        #: The last step's plan in the ego frame, the pose and the time it was made from (`held_plan`).
+        self._held: tuple[np.ndarray, np.ndarray, int] | None = None
 
     def observe(self, obs: Observation) -> None:
         """Keep a frame of history; the next `infer` steps the model on it if it lies on the 0.5 s grid."""
@@ -551,16 +624,23 @@ class BevPlannerPolicy(Policy):
     def infer(self, obs: Observation) -> Trajectory:
         if self.model is None:
             raise RuntimeError("load() must be called before infer()")
+        now = int(obs.timestamp_us)
+        since = None if self._last_step_us is None else (now - self._last_step_us) / 1e6
+        if self._held is not None and since is not None and 0 < since < PLAN_DT - STEP_SLACK_S:
+            # Asked again before a plan step has passed (neuroNCAP's 0.1 s): hold the last plan.
+            self.last["held"] = self.last.get("held", 0) + 1
+            xy = held_plan(*self._held, np.asarray(obs.ego2world, dtype=np.float64), now)
+            return Trajectory(extend_horizon(xy, PLAN_DT, self.horizon_s), dt=PLAN_DT)
         times = [int(o.timestamp_us) for o in self._pending]
-        history = [
-            self._pending[i] for i in history_on_grid(times, int(obs.timestamp_us), self._last_step_us)
-        ]
+        history = [self._pending[i] for i in history_on_grid(times, now, self._last_step_us)]
         self._pending = []
         for past in history:
             self._step(past)
         plan, lidar2ego = self._step(obs)
         self.last["frames_fed"] = len(history) + 1
-        return Trajectory(lidar_plan_to_ego(plan, lidar2ego), dt=PLAN_DT)
+        xy = lidar_plan_to_ego(plan, lidar2ego)
+        self._held = (xy, np.asarray(obs.ego2world, dtype=np.float64).copy(), now)
+        return Trajectory(extend_horizon(xy, PLAN_DT, self.horizon_s), dt=PLAN_DT)
 
     def _step(self, obs: Observation) -> tuple[np.ndarray, np.ndarray]:
         """One model step on `obs`: (the plan in the model's lidar frame, that lidar in the ego frame)."""

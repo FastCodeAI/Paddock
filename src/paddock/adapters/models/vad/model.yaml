@@ -16,6 +16,10 @@ runtime:
     VAD_CONFIG: "{repo}/projects/configs/VAD/VAD_base_stage_2.py"
     # VAD-Base from the hustvl/VAD README (Google Drive id 1FLX-4LVm4z-RskghFbxGuYlcYOQmV5bS); docs/models/vad.md.
     VAD_CHECKPOINT: "{weights}/vad/VAD_base.pth"
+    # VAD_HORIZON_S (unset): continue the plan past its own 3 s by holding the last 0.5 s step, for
+    # NAVSIM, which scores 4 s and refuses a shorter plan. An extrapolation the model never made, so it is
+    # set per benchmark, in a [models.vad.benchmarks.navsim.env] pairing, and the report notes it.
+    # VAD_HORIZON_S: "4.0"
     PYTHONNOUSERSITE: "1"
     MPLBACKEND: "Agg"
     OMP_NUM_THREADS: "2"
@@ -52,4 +56,16 @@ capabilities:
     - dataset: nuscenes
       split: train
     - dataset: imagenet
-benchmarks: [hugsim, nuscenes, bench2drive, neuroncap]
+# VAD_HORIZON_S changes what a NAVSIM score means. tests/test_report.py accepts a score note only once a
+# stored run sets its key, so these two lines go in with the first stored NAVSIM run; until then such a
+# run is stored valid: false:
+#   score_notes:
+#     VAD_HORIZON_S: "plan continued to {value} s by paddock; the model itself plans 3 s"
+#   ranked_with_note: [VAD_HORIZON_S]
+
+# Where it runs (docs/models/vad.md, "Benchmarks"): every benchmark that sends the six surround cameras.
+# navsim and navsim_v1 need VAD_HORIZON_S = "4.0" (above). neuroncap asks every 0.1 s whatever
+# planning_hz says; the policy steps the model every 0.5 s and holds its plan in between
+# (bev_planners.held_plan). Not listed: comma2k19 sends one camera; alpasim renders no rectified six-camera
+# nuScenes-like rig (no alpasim.yaml).
+benchmarks: [hugsim, nuscenes, bench2drive, kitscenes, nuplan, neuroncap, navsim, navsim_v1]
