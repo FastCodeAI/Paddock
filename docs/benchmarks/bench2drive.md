@@ -608,6 +608,13 @@ failure on the simulator, with the evidence here. The list is `SET_ASIDE` in
 | 23695 | Town13 InterurbanAdvancedActorFlow | CARLA crashes (signal 11) about 40 s into the route on every attempt by Alpamayo 1.5 at its declared 10 Hz | three attempts by Alpamayo 1.5 at 10 Hz, 9 Nov 2026, each `Signal=11` at 39.75–41.5 s; seven of seven openpilot attempts at another site in October. openpilot completed it in 25.9 s; the 30 s rule stopped METEOR at 30.1 s and AutoE2E at 34.0 s |
 | 24071 | Town13 InterurbanAdvancedActorFlow | CARLA crashes (signal 11) 37-40 s into the route on every attempt by Alpamayo 1.5 at its declared 10 Hz | three attempts by Alpamayo 1.5 at 10 Hz, 9 Nov 2026, each `Signal=11` at 36.7–40.45 s. openpilot completed it in 24.6 s; the 30 s rule stopped METEOR at 30.1 s and AutoE2E at 34.0 s |
 
+**The 50-route column keeps 3800.** Route 3800 is one of the 50 routes behind the
+older Bench2Drive column, whose records were pooled before it was set aside; they
+keep it, as stored. Pooled again now, or driven again on that set, they leave it out:
+49 routes and a new route-set hash, so a table of their own on the leaderboard.
+openpilot's `pooled50-40c29d24c37d542a-c7d2b2`, pooled again under this list, is
+`pooled50-084418258d833a9f-db51cb`.
+
 ## Shared-machine behaviour
 
 - The evaluator is started in its own session and, on a timeout, that session
