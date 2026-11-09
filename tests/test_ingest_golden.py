@@ -59,6 +59,15 @@ def test_scrub_keeps_what_is_not_a_machine_path() -> None:
     assert scrub("https://github.com/commaai/openpilot") == "https://github.com/commaai/openpilot"
     assert scrub("models/supercombo.onnx") == "models/supercombo.onnx"
     assert scrub("20260917T101500-a1b2c3") == "20260917T101500-a1b2c3"
+    # How model.yaml names a file at any site, and so how a record's declared_env does: the
+    # `/` after a template variable is not the start of a disk. Cut, they read
+    # `{weights}checkpoint.pt` (#173).
+    for templated in (
+        "{weights}/auto_e2e/models/kitscenes-epoch-5/checkpoint.pt",
+        "{data.navsim.exp}/inference/kitscenes_e2e_final.pkl",
+        "{repo}/.venv/bin/ffmpeg",
+    ):
+        assert scrub(templated) == templated
 
 
 def test_sequence_hash_is_order_independent_and_content_sensitive() -> None:

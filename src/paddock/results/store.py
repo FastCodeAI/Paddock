@@ -45,8 +45,10 @@ RESULTS_ROOT = REPO_ROOT / "results"
 # shared constant.)
 #
 # The lookbehind keeps URLs intact: the `//` of `http://host/path` is not the
-# start of a path, and neither is any `/` inside one.
-_ABSOLUTE = re.compile(r"(?<![\w:/])/(?:[A-Za-z0-9_.+-]+/)+[A-Za-z0-9_.+-]*")
+# start of a path, and neither is any `/` inside one. Nor is the `/` after a
+# template variable: `{weights}/meteor/x.onnx` is how model.yaml names a file at
+# any site, and it used to be cut to `{weights}x.onnx` (#173).
+_ABSOLUTE = re.compile(r"(?<![\w:/}])/(?:[A-Za-z0-9_.+-]+/)+[A-Za-z0-9_.+-]*")
 
 
 def scrub(value: Any) -> Any:
