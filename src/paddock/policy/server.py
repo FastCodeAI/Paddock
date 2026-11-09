@@ -43,6 +43,14 @@ def _plan_reach(result: dict) -> tuple[float, float]:
         return float("nan"), float("nan")
 
 
+def _plan_body(trajectory) -> dict[str, Any]:
+    """One open-loop plan on the wire: every waypoint row, the spacing, and the extras when there are any."""
+    result: dict[str, Any] = {"trajectory": trajectory.waypoints.tolist(), "dt": trajectory.dt}
+    if trajectory.extras:
+        result["extras"] = trajectory.extras
+    return result
+
+
 def build_app(policy: Policy, model: str | None = None, nonce: str | None = None):
     """Wrap a loaded Policy in the endpoints a simulator expects."""
     from fastapi import FastAPI
@@ -122,11 +130,19 @@ def build_app(policy: Policy, model: str | None = None, nonce: str | None = None
         open loop the one path where a model is judged on less than it produced.
         """
         observations = [Observation.from_wire(item, cameras=policy.cameras) for item in body["observations"]]
-        trajectory = policy.infer_sequence(observations)
-        result: dict[str, Any] = {"trajectory": trajectory.waypoints.tolist(), "dt": trajectory.dt}
-        if trajectory.extras:
-            result["extras"] = trajectory.extras
-        return result
+        return _plan_body(policy.infer_sequence(observations))
+
+    @app.post("/infer_each")
+    async def infer_each(body: dict) -> dict:
+        """Score a whole sequence as one episode: reset once, plan from every frame, in order.
+
+        `plans` holds one entry per observation, each shaped as `/infer_sequence`'s answer. The harness
+        picks the frames it scores; the rest were still steps of the model, which is the point -- a
+        model that carries state from frame to frame reaches each scored frame the way its own
+        evaluation loop did (`Policy.infer_each`).
+        """
+        observations = [Observation.from_wire(item, cameras=policy.cameras) for item in body["observations"]]
+        return {"plans": [_plan_body(trajectory) for trajectory in policy.infer_each(observations)]}
 
     @app.post("/reset")
     # `Optional[dict]`, not `dict | None`, and it is not a style choice. This

@@ -37,7 +37,7 @@ import numpy as np
 
 from paddock.adapters.benchmarks.nuscenes import history as H
 from paddock.adapters.benchmarks.nuscenes import loader as L
-from paddock.benchmark import OpenLoopBenchmark, Sample
+from paddock.benchmark import OpenLoopBenchmark, Sample, SampleSequence
 from paddock.metrics import pdm
 from paddock.policy.protocol import Command, Observation, Trajectory
 
@@ -50,6 +50,19 @@ VAL_SCENES = Path(__file__).with_name("val_scenes.json")
 #: others. Open-loop runs take no scene filter, and the regression gate's nuScenes
 #: subset is spread over every val scene (`tools/gate_subsets.py`).
 ENV_SAMPLES = "PADDOCK_NUSCENES_SAMPLES"
+#: How the scored keyframes are fed, `[benchmarks.nuscenes] sequence`:
+#: "window" (the default) -- each scored keyframe its own episode: a reset, the keyframes before it
+#: (`history_keyframes`), then it;
+#: "scene" -- each scene one episode: a reset at its first keyframe, then every keyframe in order, each
+#: scored from the plan made at it. That is how UniAD's and VAD's own test loops run the val set,
+#: carrying the previous BEV grid (and UniAD its tracks) from keyframe to keyframe through a scene.
+SEQUENCES = ("window", "scene")
+#: The models scene order is offered to, unless the site names its own (`scene_models`). Each one's own
+#: evaluation ran a scene once and in order, so the whole scene is the history it was built for. Every
+#: other model is refused rather than quietly fed more: a model that reads a fixed window of frames
+#: (Drive-JEPA, Alpamayo, QwenDrive's dense pose history) is built around that window, and whether a
+#: per-frame call with state carried across a whole scene is harmless has to be shown for it first.
+SCENE_MODELS = ("uniad", "vad", "uniad_b2d", "vad_b2d")
 
 
 def sample_filter() -> set[str] | None:
@@ -156,19 +169,42 @@ class NuScenesBenchmark(OpenLoopBenchmark):
         Also sets the window `samples()` builds with. The runner calls this for each model
         before that model's `samples()` (runner `_run_open_loop`: `_measurement_config`,
         then `samples`), and `samples()` is not told the model, so this is where it learns.
+        In scene order there is no window: the history is the scene so far, for every model.
         """
+        if self.in_sequence():
+            return {}
         n = self.history_keyframes(model)
         self._history_keyframes = n
         return {} if n == HISTORY_KEYFRAMES else {"history_seconds": n * STEP_S}
 
+    def sequence(self) -> str:
+        """`window` or `scene` (`SEQUENCES`), as the site set it; `window` when it did not."""
+        return str(self.setting("sequence") or "window").strip().lower()
+
+    def in_sequence(self) -> bool:
+        return self.sequence() == "scene"
+
+    def scene_models(self) -> tuple[str, ...]:
+        """The models scene order may run: `SCENE_MODELS`, or the site's own comma list."""
+        raw = self.setting("scene_models")
+        if raw is None:
+            return SCENE_MODELS
+        return tuple(name.strip() for name in str(raw).split(",") if name.strip())
+
     def run_config(self) -> dict:
-        config = {
-            "camera_history": self.setting("camera_history") or "keyframes",
-            "history_seconds": float(self.setting("history_seconds", 5.0))
-            if self.setting("camera_history")
-            else HISTORY_KEYFRAMES * STEP_S,
-            "scoring_hz": 2.0,
-        }
+        if self.in_sequence():
+            # On the record, and in the run id: the same model and keyframes, fed another way.
+            # `history_seconds` would be a scene's length, so it is left out rather than misstated.
+            config: dict = {"camera_history": "keyframes", "sequence": "scene", "scoring_hz": 2.0}
+        else:
+            # Unchanged from before scene order existed, so a window run keeps its config hash.
+            config = {
+                "camera_history": self.setting("camera_history") or "keyframes",
+                "history_seconds": float(self.setting("history_seconds", 5.0))
+                if self.setting("camera_history")
+                else HISTORY_KEYFRAMES * STEP_S,
+                "scoring_hz": 2.0,
+            }
         if wanted := sample_filter():
             digest = hashlib.sha256(",".join(sorted(wanted)).encode()).hexdigest()[:16]
             config["sample_filter"] = f"{len(wanted)} samples, sha256 {digest}"
@@ -192,9 +228,20 @@ class NuScenesBenchmark(OpenLoopBenchmark):
         return (self.dataset.version if self.dataset else None) or "v1.0-trainval"
 
     def input_problems(self, model) -> list[str]:
+        problems = []
         if model.min_input_hz > 2.0 and self.setting("camera_history") != "CAM_FRONT":
-            return [f"{model.name} requires camera_history=CAM_FRONT with real nuScenes camera sweeps"]
-        return []
+            problems.append(
+                f"{model.name} requires camera_history=CAM_FRONT with real nuScenes camera sweeps"
+            )
+        if self.in_sequence() and model.name not in self.scene_models():
+            problems.append(
+                f'sequence = "scene" feeds {model.name} every keyframe of a scene in order from one reset, '
+                f"a history it was not built for (scene order is for {', '.join(self.scene_models())}: "
+                f"models whose own evaluation ran each scene in order). Run it with the default "
+                f'sequence = "window", or name it in scene_models once scene order is shown '
+                f"harmless for it"
+            )
+        return problems
 
     def preflight(self) -> list[str]:
         problems: list[str] = []
@@ -219,6 +266,13 @@ class NuScenesBenchmark(OpenLoopBenchmark):
         camera_history = self.setting("camera_history")
         if camera_history and camera_history != "CAM_FRONT":
             problems.append("camera_history currently supports CAM_FRONT only")
+        if self.sequence() not in SEQUENCES:
+            problems.append(f"sequence = {self.sequence()!r}: one of {', '.join(SEQUENCES)}")
+        if self.in_sequence() and camera_history:
+            problems.append(
+                'sequence = "scene" feeds keyframes; camera_history replaces them with camera sweeps '
+                "(openpilot's), so the two cannot be combined"
+            )
         if camera_history:
             image_root = Path(self.setting("history_image_root") or str(root))
             if not (image_root / "sweeps/CAM_FRONT").is_dir():
@@ -300,27 +354,9 @@ class NuScenesBenchmark(OpenLoopBenchmark):
         decode happens until the node reads them -- so there is nothing to save
         by reconstructing ids ahead of `_sample`, the way comma2k19 must.
         """
-        if split not in (None, "", "val"):
-            raise ValueError(f"nuscenes open-loop scores the official val split only, not {split!r}")
         emitted = 0
-        skipped = 0
-        wanted = sample_filter()
-        seen: set[str] = set()
-        for frames in self._index():
-            for i in range(len(frames)):
-                if i + N_STEPS >= len(frames):
-                    break  # no full 3 s future: the standard drops these too
-                if wanted is not None:
-                    sid = f"nuscenes/val/{frames[i].scene}/{frames[i].index_in_scene}"
-                    if sid not in wanted:
-                        continue
-                    seen.add(sid)
-                # The 3 s horizon assumes six *consecutive* keyframes. If a
-                # keyframe was dropped (e.g. missing LIDAR_TOP), the window would
-                # silently span more than 3 s -- skip it rather than mis-score.
-                if frames[i + N_STEPS].index_in_scene - frames[i].index_in_scene != N_STEPS:
-                    skipped += 1
-                    continue
+        for frames, indices in self._scorable(split):
+            for i in indices:
                 sample = self._sample(frames, i)
                 # Not counted against `limit`: the contract is that `limit`
                 # caps what is yielded, so on a resume it caps the samples
@@ -331,6 +367,68 @@ class NuScenesBenchmark(OpenLoopBenchmark):
                 emitted += 1
                 if limit and emitted >= limit:
                     return
+
+    def sequences(
+        self,
+        limit: int | None = None,
+        split: str | None = None,
+        skip: Container[str] = (),
+    ) -> Iterator[SampleSequence]:
+        """Scene order (`sequence = "scene"`): each scene one sequence, from its first keyframe on.
+
+        The samples are `samples()`'s, keyframe for keyframe, scored the same way; what changes is how
+        the model reaches them. Every keyframe from the scene's first to the last one scored is fed, so
+        a keyframe's plan does not depend on what else was skipped, limited or filtered out: a resumed
+        scene starts again from its first keyframe. Each keyframe carries its own command (from its own
+        future), as each sample of the scene does in a window.
+        """
+        emitted = 0
+        for frames, indices in self._scorable(split):
+            keep = [i for i in indices if self._sample_id(frames[i]) not in skip]
+            if limit:
+                keep = keep[: limit - emitted]
+            if not keep:
+                continue
+            observations = [
+                self._observation(frames[j], *self._command(frames, j)) for j in range(keep[-1] + 1)
+            ]
+            yield SampleSequence(
+                sequence_id=f"nuscenes/val/{frames[0].scene}",
+                observations=observations,
+                scored=[(i, self._sample(frames, i, history=observations[: i + 1])) for i in keep],
+            )
+            emitted += len(keep)
+            if limit and emitted >= limit:
+                return
+
+    def _scorable(self, split: str | None) -> Iterator[tuple[list, list[int]]]:
+        """Each scene's keyframes and the indices among them that are scored, scene by scene, in order."""
+        if split not in (None, "", "val"):
+            raise ValueError(f"nuscenes open-loop scores the official val split only, not {split!r}")
+        emitted = 0
+        skipped = 0
+        wanted = sample_filter()
+        seen: set[str] = set()
+        for frames in self._index():
+            indices = []
+            for i in range(len(frames)):
+                if i + N_STEPS >= len(frames):
+                    break  # no full 3 s future: the standard drops these too
+                if wanted is not None:
+                    sid = self._sample_id(frames[i])
+                    if sid not in wanted:
+                        continue
+                    seen.add(sid)
+                # The 3 s horizon assumes six *consecutive* keyframes. If a
+                # keyframe was dropped (e.g. missing LIDAR_TOP), the window would
+                # silently span more than 3 s -- skip it rather than mis-score.
+                if frames[i + N_STEPS].index_in_scene - frames[i].index_in_scene != N_STEPS:
+                    skipped += 1
+                    continue
+                indices.append(i)
+            if indices:
+                emitted += len(indices)
+                yield frames, indices
         # Every val keyframe has LIDAR_TOP, so this is normally 0; a non-zero
         # count means the metadata was damaged and the scored set is smaller than
         # the protocol's. Surface it rather than finish quietly short.
@@ -349,10 +447,25 @@ class NuScenesBenchmark(OpenLoopBenchmark):
                 flush=True,
             )
 
-    def _sample(self, frames: list, i: int) -> Sample:
-        cur = frames[i]
+    @staticmethod
+    def _sample_id(frame) -> str:
+        return f"nuscenes/val/{frame.scene}/{frame.index_in_scene}"
+
+    @staticmethod
+    def _future(frames: list, i: int) -> tuple[list, np.ndarray]:
+        """The (up to) six keyframes after `i`, and their positions in its ego frame."""
         future = frames[i + 1 : i + 1 + N_STEPS]
-        future_xy = L.to_ego_xy(cur.ego2world, np.array([f.ego2world[:3, 3] for f in future]))
+        positions = np.array([f.ego2world[:3, 3] for f in future]).reshape(-1, 3)
+        return future, L.to_ego_xy(frames[i].ego2world, positions)
+
+    def _command(self, frames: list, i: int) -> tuple[int, str | None, float | None]:
+        """Keyframe `i`'s command, from its own recorded future (VAD's rule, `L.command_from_future`)."""
+        return L.command_from_future(self._future(frames, i)[1])
+
+    def _sample(self, frames: list, i: int, history: list[Observation] | None = None) -> Sample:
+        """Keyframe `i` as a sample: its window of keyframes, or `history` (scene order's scene so far)."""
+        cur = frames[i]
+        future, future_xy = self._future(frames, i)
         cur_yaw = math.atan2(cur.ego2world[1, 0], cur.ego2world[0, 0])
         future_yaw = np.array(
             [
@@ -362,20 +475,23 @@ class NuScenesBenchmark(OpenLoopBenchmark):
             ]
         )
         cmd, maneuver, distance = L.command_from_future(future_xy)
-        history = frames[max(0, i - getattr(self, "_history_keyframes", HISTORY_KEYFRAMES)) : i + 1]
-        if self.setting("camera_history") == "CAM_FRONT":
-            if self._camera_history_cache is None:
-                self._camera_history_cache = H.load(
-                    self.dataset.resolve(),
-                    self.version,
-                    Path(self.setting("history_image_root") or str(self.dataset.resolve())),
-                    json.loads(VAL_SCENES.read_text())["val"],
-                    Path(self.setting("history_index_cache") or str(self._cache_path()) + ".camera"),
-                )
-            history_s = float(self.setting("history_seconds", 5.0))
-            history = H.before(self._camera_history_cache[cur.scene], cur.timestamp_us, history_s) + [cur]
-        observations = [self._observation(f, cmd, maneuver, distance) for f in history]
-        sample_id = f"nuscenes/val/{cur.scene}/{cur.index_in_scene}"
+        if history is not None:
+            observations = history
+        else:
+            window = frames[max(0, i - getattr(self, "_history_keyframes", HISTORY_KEYFRAMES)) : i + 1]
+            if self.setting("camera_history") == "CAM_FRONT":
+                if self._camera_history_cache is None:
+                    self._camera_history_cache = H.load(
+                        self.dataset.resolve(),
+                        self.version,
+                        Path(self.setting("history_image_root") or str(self.dataset.resolve())),
+                        json.loads(VAL_SCENES.read_text())["val"],
+                        Path(self.setting("history_index_cache") or str(self._cache_path()) + ".camera"),
+                    )
+                history_s = float(self.setting("history_seconds", 5.0))
+                window = H.before(self._camera_history_cache[cur.scene], cur.timestamp_us, history_s) + [cur]
+            observations = [self._observation(f, cmd, maneuver, distance) for f in window]
+        sample_id = self._sample_id(cur)
         self._boxes[sample_id] = [L.boxes_to_ego(cur.ego2world, f.boxes_world) for f in future]
         return Sample(
             sample_id=sample_id,
