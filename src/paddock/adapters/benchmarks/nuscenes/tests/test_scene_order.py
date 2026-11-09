@@ -137,7 +137,7 @@ def test_the_run_says_it_was_made_in_scene_order_and_a_window_run_hashes_as_befo
     assert harness.model_run_config(SimpleNamespace(history_s=6.5)) == {}
 
 
-@pytest.mark.parametrize("name", ["uniad", "vad", "uniad_b2d", "vad_b2d"])
+@pytest.mark.parametrize("name", ["uniad", "vad"])
 def test_scene_order_is_offered_to_the_models_whose_own_evaluation_ran_that_way(monkeypatch, scenes, name):
     harness = _harness(monkeypatch, scenes, sequence="scene")
     assert harness.input_problems(SimpleNamespace(name=name, min_input_hz=2.0)) == []

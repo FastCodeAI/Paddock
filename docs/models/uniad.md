@@ -76,21 +76,22 @@ Every input is built as UniAD's own data path builds it (`NuScenesE2EDataset.get
 | input | from | as upstream |
 |---|---|---|
 | images | the six cameras, in the info files' order (front, front-right, front-left, back, back-left, back-right) | resized to 1600×900 if they arrive at another size (intrinsics scaled with them); fed **BGR** float32, as `mmcv.imread` reads them; the config's own `NormalizeMultiviewImage` (caffe mean 103.530, 116.280, 123.675; std 1; no channel swap) and padding to 1600×928 |
-| `lidar2img` | each camera's `camera2image` and `camera2ego`, and the model's lidar | `K @ inv(camera2ego) @ lidar2ego`, the dataset's `viewpad @ lidar2cam` |
+| `lidar2img` | each camera's `camera2image` and `camera2ego`, and the model's lidar (on nuScenes the harness sends each camera where it was when it fired, as the converter places it) | `K @ inv(camera2ego) @ lidar2ego`, the dataset's `viewpad @ lidar2cam` |
 | the lidar | the source's `lidar2ego` if it is a LIDAR_TOP (x right, y forward, z up), else nuScenes' LIDAR_TOP as calibrated on the log of scene-0103 | the grid and the plan live in this frame |
-| `can_bus` (18) | translation and heading from `ego2world`; acceleration, rotation rate and velocity from paddock's canbus | 0:3 ego translation; 3:7 **w of the ego quaternion, four times** (below); 7:16 accel, rotation rate, velocity; 16:18 heading in [0, 2π), radians then degrees |
+| `can_bus` (18) | translation and heading from `ego2world`; acceleration, rotation rate and velocity from paddock's canbus (on nuScenes the converter's message and the stored quaternion: model.yaml `inputs: {nuscenes: uniad}`) | 0:3 ego translation; 3:7 **w of the ego quaternion, four times** (below); 7:16 accel, rotation rate, velocity; 16:18 heading in [0, 2π), radians then degrees |
 | gravity | | nuScenes' CAN-bus accel reads z ≈ +9.6-9.8 (specific force); a source that sends z ≈ 0 gets 9.81 added |
 | `l2g_r_mat`, `l2g_t`, `timestamp` | `ego2world` and the lidar; the observation's time | the transpose of the lidar→global rotation, float32, as the dataset stores it; seconds |
-| command | paddock's, or the route's | 0 right, 1 left, 2 forward (UniAD's own order, from `get_sdc_planning_label`); FOLLOW_REFERENCE is forward, except with a route stamped with its frame's time (AlpaSim): there the label rule is applied to the route (`route_command`): the lidar placed max(speed × 3 s, 6.75 m) along it, read in the current lidar frame, x ≥ 2 m right, ≤ −2 m left. The record goes with each plan as `extras["route_command"]` |
+| command | paddock's, or the route's (on nuScenes, `get_sdc_planning_label`'s own rule) | 0 right, 1 left, 2 forward (UniAD's own order, from `get_sdc_planning_label`); FOLLOW_REFERENCE is forward, except with a route stamped with its frame's time (AlpaSim): there the label rule is applied to the route (`route_command`): the lidar placed max(speed × 3 s, 6.75 m) along it, read in the current lidar frame, x ≥ 2 m right, ≤ −2 m left. The record goes with each plan as `extras["route_command"]` |
 | `use_can_bus` | | `True`, as configured |
 
 **Three upstream behaviours are reproduced, not fixed**, because the checkpoint trained with them:
 
 - `can_bus[3:7] = Quaternion(...)` in the dataset assigns a pyquaternion object into a numpy slice. It has
   `__float__` (its w) and no `__len__`, so numpy broadcasts w into all four slots. The sign of w is the stored
-  quaternion's, which nuScenes keeps either way (57 % of its ego poses have w < 0). A source that puts the ego
-  pose's own quaternion at canbus 3:7 keeps its sign; otherwise the adapter takes w ≥ 0 on an episode's first
-  frame and holds the sign continuous. On scene-0103 the two signs move the 3 s waypoint by up to 0.50 m.
+  quaternion's, which nuScenes keeps either way (w < 0 on 41.7 % of the val keyframes' ego poses). A source
+  that puts the ego pose's own quaternion at canbus 3:7 keeps its sign -- paddock's nuScenes harness does
+  (below) -- otherwise the adapter takes w ≥ 0 on an episode's first frame and holds the sign continuous. On
+  scene-0103 the two signs move the 3 s waypoint by up to 0.50 m.
 - On the first frame after a reset, UniAD's `forward_test` leaves the absolute position in `can_bus[:3]`
   (its first-frame test runs after the scene token is already set), so the first plan reads it.
 - The evaluation-only ground truth `forward_test` dereferences (lane masks for map IoU, occupancy labels) is
@@ -169,14 +170,21 @@ The model needs all six surround cameras (one learned embedding per camera slot)
   canonical one, and a reset reproduced the sequence exactly. The fixture also records, untested, what the
   original path plans with each camera placed at its own ego pose instead of the lidar's (one ego pose per
   frame is all an Observation carries): up to 0.23 m.
+- **What nuScenes sends** (`tests/test_scene_golden.py`, in `make check`; docs/benchmarks/nuscenes.md, "The
+  datasets' own inputs"): UniAD declares `inputs: {nuscenes: uniad}`, and paddock's harness, building
+  scene-0103 and scene-0916 from nuScenes' tables, hands the adapter at every keyframe the `lidar2img`,
+  `can_bus`, `l2g`, timestamp and command `NuScenesE2EDataset` gave the model there (within 1e-9; `l2g`,
+  timestamp and command exact). Over all 6,019 val keyframes against UniAD's own converter functions
+  (`infos_reference.py`): `lidar2img` within 1.3e-12, the commands identical (10 Nov 2026).
 - **Scene order** (`make check-uniad-vad ... UNIAD_VAD_SCENE_DATA=<nuscenes>`; `tests/test_scene_golden.py`):
-  `scene_reference.py` runs UniAD's own evaluation on all 40 keyframes of scene-0103 -- its converter's
-  info file, the config's `NuScenesE2EDataset` and test pipeline, `build_dataloader`, and `forward_test`
-  keyframe after keyframe with its own grid, tracks and CAN-bus deltas -- and the adapter, sent the scene in
-  order (`infer_each`, nuScenes' `sequence = "scene"`) with the dataset's inputs, plans the same: **0.000 m**
-  at every keyframe (9 Nov 2026). Every keyframe is a model step there, including the 0.40 and 0.45 s ones
-  `infer` would answer from the held plan. The repo's loop over the whole val set differs at a scene's start
-  (docs/benchmarks/nuscenes.md, "Scene order"): 1.58 / 4.80 m at scene-0103's first two keyframes.
+  `scene_reference.py` runs UniAD's own evaluation on every keyframe of scene-0103 (40) and scene-0916 (41)
+  -- its converter's info file, the config's `NuScenesE2EDataset` and test pipeline, `build_dataloader`, and
+  `forward_test` keyframe after keyframe with its own grid, tracks and CAN-bus deltas -- and the harness's
+  scene-order request for the same scene, sent as the runner sends it to `/infer_each`, plans the same:
+  **0.000 m** at every keyframe sent (34 of scene-0103's, 35 of scene-0916's; 10 Nov 2026). Every keyframe is a model step there, including the 0.40 and 0.45 s ones `infer` would
+  answer from the held plan. The repo's loop over the whole val set differs at a scene's start
+  (docs/benchmarks/nuscenes.md, "Scene order"): 1.58 / 4.80 m at scene-0103's first two keyframes and up to 0.41 m after;
+  0.035 / 0.011 m and up to 0.047 m on scene-0916, whose predecessor there is another log.
 - **Paddock-env tests** (`tests/test_bev_planners.py`, in `make check`): the inputs built from the fixture's
   Observations equal those the original path fed (lidar2img, can_bus, l2g, timestamp, command); the
   config's normalisation and `use_can_bus` where the checkout is present; the frame of the plan; the history

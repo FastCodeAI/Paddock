@@ -79,9 +79,13 @@ every token is refused. comma2k19 (one camera) does not run.
 Golden test, as for UniAD (`tests/fixtures/golden_vad.json`, written from VAD's own converter, dataset and
 `test_pipeline`): **0.000 m maximum difference** on four scene-0103 keyframes, for the stored and the canonical
 quaternion, and an exact repeat after reset (9 Nov 2026). The quaternion's sign moves VAD's 3 s waypoint by up
-to 0.66 m; placing each camera at its own ego pose, by 0.03 m. In scene order (`test_scene_golden.py`), VAD's
-own evaluation of all 40 keyframes of scene-0103 (converter, `VADCustomNuScenesDataset`, dataloader, test loop)
-and the adapter's `infer_each` agree at every keyframe: **0.000 m**. Node: 0.29-0.30 s per `/infer` (0.64 s first),
+to 0.66 m; placing each camera at its own ego pose, by 0.03 m. On nuScenes VAD declares `inputs: {nuscenes:
+vad}`, so the harness sends those as VAD's dataset has them (docs/benchmarks/nuscenes.md, "The datasets' own
+inputs"): on scene-0103 and scene-0916 every input the adapter hands its pipeline is the dataset's within
+1e-9, the command exactly (`test_scene_golden.py`, in `make check`), and over all 6,019 val keyframes against
+VAD's converter `lidar2img` is within 1.3e-12 and every command the same (10 Nov 2026). In scene order, VAD's
+own evaluation of every keyframe of both scenes (converter, `VADCustomNuScenesDataset`, dataloader, test loop)
+and the harness's scene-order request, sent as the runner sends it, agree: **0.000 m** at every keyframe sent (10 Nov 2026). Node: 0.29-0.30 s per `/infer` (0.64 s first),
 about 3.7 GB of GPU memory.
 
 A step on nuScenes (six 1600×900 JPEGs, the card shared; medians, ms) spends more on preparing than on the

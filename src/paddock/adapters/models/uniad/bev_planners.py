@@ -234,10 +234,11 @@ def accel_with_gravity(accel) -> tuple[np.ndarray, bool]:
 def continuous_quaternion(rotation, previous=None) -> np.ndarray:
     """A quaternion for `rotation` on the same sign branch as `previous`, w >= 0 on the first.
 
-    q and -q are one rotation, and nuScenes stores either (57% of the ego poses in paddock's nuScenes
-    subset have w < 0), but the CAN-bus MLP reads numbers, not the rotation -- w, for the nuScenes
-    checkpoints (`nuscenes_can_bus`). A pose source gives a smooth quaternion within a log, so the sign is
-    held continuous across an episode rather than flipped wherever w crosses zero.
+    q and -q are one rotation, and nuScenes stores either (w < 0 on 41.7% of the val keyframes' ego poses),
+    but the CAN-bus MLP reads numbers, not the rotation -- w, for the nuScenes checkpoints
+    (`nuscenes_can_bus`). A pose source gives a smooth quaternion within a log, so the sign is held continuous
+    across an episode rather than flipped wherever w crosses zero. The nuScenes harness sends these models
+    the stored one (`source_quaternion`), so this is for every other source.
     """
     q = matrix_quaternion(rotation)
     if previous is not None and float(q @ np.asarray(previous, dtype=np.float64)) < 0:
@@ -249,7 +250,9 @@ def source_quaternion(canbus, rotation) -> np.ndarray | None:
     """The source's own quaternion at canbus 3:7, if it is a unit quaternion of exactly `rotation`, else None.
 
     A source that fills the slot the way the nuScenes info files do (the ego pose's quaternion) keeps its
-    sign; HUGSIM and Bench2Drive leave it zero, and nuScenes' CAN-bus orientation is not the ego pose's.
+    sign: paddock's nuScenes harness does, for the models that declare ``inputs: {nuscenes: ...}``
+    (`benchmarks/nuscenes/infos`). HUGSIM and Bench2Drive leave it zero, and the CAN-bus message's own
+    orientation, which nuScenes sends every other model there, is not the ego pose's.
     """
     q = np.asarray(canbus, dtype=np.float64)[3:7]
     if abs(float(np.linalg.norm(q)) - 1.0) > 1e-6:

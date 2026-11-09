@@ -118,16 +118,18 @@ check-openpilot:
 
 # UniAD's and VAD's golden tests (uniad, vad): each adapter, run in its model's
 # own environment through the site's paddock.toml, must plan what the model's original tools plan on four
-# nuScenes keyframes (adapters/models/uniad/tests/test_golden.py), and uniad and vad, sent a whole val scene
-# in order (nuScenes' scene order), what their repos' own test loops plan at every keyframe of it
+# nuScenes keyframes (adapters/models/uniad/tests/test_golden.py), and uniad and vad, sent two whole val scenes
+# in order as paddock's nuScenes harness builds them, what their repos' own test loops plan at every keyframe
 # (test_scene_golden.py). They need the env, the weights, a GPU (~4 GB), scene-0103's four-keyframe sample
-# (UNIAD_VAD_DATA) and a nuScenes root holding all of scene-0103's camera JPEGs (UNIAD_VAD_SCENE_DATA), so
-# `make check` skips them; a reviewer at a site that has them runs this. It fails rather than skips when
-# something is missing, for the same reason as above.
+# (UNIAD_VAD_DATA) and a nuScenes root holding the camera JPEGs of scene-0103 and scene-0916
+# (UNIAD_VAD_SCENE_DATA), so `make check` skips them; a reviewer at a site that has them runs this. It fails
+# rather than skips when something is missing, for the same reason as above. UNIAD_VAD_INFOS_REFERENCE=<dir>
+# (optional; infos_reference.py writes it) also holds the harness's inputs for every val keyframe to the repos'
+# converters, through the site's nuScenes config.
 check-uniad-vad:
 	@test -n "$(UNIAD_VAD_DATA)" || { echo "set UNIAD_VAD_DATA to the directory holding scene-0103's samples/CAM_*/ JPEGs"; exit 2; }
-	@test -n "$(UNIAD_VAD_SCENE_DATA)" || { echo "set UNIAD_VAD_SCENE_DATA to a nuScenes root whose samples/CAM_*/ hold scene-0103"; exit 2; }
-	UNIAD_VAD_GOLDEN=1 UNIAD_VAD_GOLDEN_DATA="$(UNIAD_VAD_DATA)" UNIAD_VAD_SCENE_DATA="$(UNIAD_VAD_SCENE_DATA)" $(PY) -m pytest src/paddock/adapters/models/uniad/tests/test_golden.py src/paddock/adapters/models/uniad/tests/test_scene_golden.py -q -rs -s $(PYTEST_ARGS)
+	@test -n "$(UNIAD_VAD_SCENE_DATA)" || { echo "set UNIAD_VAD_SCENE_DATA to a nuScenes root whose samples/CAM_*/ hold scene-0103 and scene-0916"; exit 2; }
+	UNIAD_VAD_GOLDEN=1 UNIAD_VAD_GOLDEN_DATA="$(UNIAD_VAD_DATA)" UNIAD_VAD_SCENE_DATA="$(UNIAD_VAD_SCENE_DATA)" UNIAD_VAD_INFOS_REFERENCE="$(UNIAD_VAD_INFOS_REFERENCE)" $(PY) -m pytest src/paddock/adapters/models/uniad/tests/test_golden.py src/paddock/adapters/models/uniad/tests/test_scene_golden.py -q -rs -s $(PYTEST_ARGS)
 
 test:
 	$(PY) -m pytest -q

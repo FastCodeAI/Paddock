@@ -349,6 +349,10 @@ serialize = true
 # v1.0-trainval tables directly -- no devkit -- using [datasets.nuscenes] above.
 # The 150-scene val index is cached here; optional, defaults to <repo>/.cache/.
 # index_cache = "/path/to/cache/nuscenes_val_index.pkl"
+# The datasets' own inputs for the models that declare inputs.nuscenes (UniAD, VAD:
+# docs/benchmarks/nuscenes.md, "The datasets' own inputs"), built from the tables the
+# first time one runs; optional, defaults to beside index_cache's file.
+# infos_cache = "/path/to/cache/nuscenes_val_infos.pkl"
 
 # How the scored keyframes are fed. "window" (the default): each keyframe its own
 # episode, a reset and the 2 s before it. "scene": each val scene one episode, a reset
@@ -356,7 +360,7 @@ serialize = true
 # VAD's own test loops run the val set (docs/benchmarks/nuscenes.md, "Scene order").
 # Offered to the models in scene_models only; preflight refuses any other.
 # sequence = "scene"
-# scene_models = "uniad, vad, uniad_b2d, vad_b2d"   # the default list
+# scene_models = "uniad, vad"   # the default list
 
 # For Openpilot only: real front-camera exposures between the scored keyframes.
 # camera_history = "CAM_FRONT"

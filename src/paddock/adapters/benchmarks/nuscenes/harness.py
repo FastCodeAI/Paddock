@@ -36,6 +36,7 @@ from pathlib import Path
 import numpy as np
 
 from paddock.adapters.benchmarks.nuscenes import history as H
+from paddock.adapters.benchmarks.nuscenes import infos as I
 from paddock.adapters.benchmarks.nuscenes import loader as L
 from paddock.benchmark import OpenLoopBenchmark, Sample, SampleSequence
 from paddock.metrics import pdm
@@ -62,7 +63,19 @@ SEQUENCES = ("window", "scene")
 #: other model is refused rather than quietly fed more: a model that reads a fixed window of frames
 #: (Drive-JEPA, Alpamayo, QwenDrive's dense pose history) is built around that window, and whether a
 #: per-frame call with state carried across a whole scene is harmless has to be shown for it first.
-SCENE_MODELS = ("uniad", "vad", "uniad_b2d", "vad_b2d")
+SCENE_MODELS = ("uniad", "vad")
+
+
+def model_inputs(model) -> str | None:
+    """The input convention `model` asks nuScenes for (model.yaml ``inputs: {nuscenes: ...}``), or None.
+
+    None -- every model but UniAD's and VAD's -- is the shared inputs every model has always been sent. A
+    convention (`infos.CONVENTIONS`) is the inputs that repo's own converter and dataset give a keyframe:
+    the stored ego quaternion, each camera at its own ego pose, the CAN-bus message after the keyframe, and
+    the repo's own command (`infos`).
+    """
+    declared = getattr(model, "inputs", None) or {}
+    return declared.get("nuscenes")
 
 
 def sample_filter() -> set[str] | None:
@@ -139,6 +152,11 @@ class NuScenesBenchmark(OpenLoopBenchmark):
         super().__init__(spec, cfg)
         self._index_cache = None
         self._camera_history_cache = None
+        #: sample token -> `infos.KeyframeInfo`, loaded for the first model that asks for its dataset's
+        #: inputs.
+        self._infos_cache = None
+        #: The input convention of the model being run (`model_inputs`), set per model by `model_run_config`.
+        self._inputs: str | None = None
         #: Past keyframes per sample, set per model by `model_run_config`.
         self._history_keyframes = HISTORY_KEYFRAMES
         #: sample_id -> future boxes per step. `Sample.ground_truth` stays the
@@ -170,12 +188,17 @@ class NuScenesBenchmark(OpenLoopBenchmark):
         before that model's `samples()` (runner `_run_open_loop`: `_measurement_config`,
         then `samples`), and `samples()` is not told the model, so this is where it learns.
         In scene order there is no window: the history is the scene so far, for every model.
+
+        A model that asks for its dataset's inputs (`model_inputs`) gets them in either order, and the run
+        records which (`inputs`); every other model's config is what it was before they existed.
         """
+        self._inputs = model_inputs(model)
+        recorded = {"inputs": self._inputs} if self._inputs else {}
         if self.in_sequence():
-            return {}
+            return recorded
         n = self.history_keyframes(model)
         self._history_keyframes = n
-        return {} if n == HISTORY_KEYFRAMES else {"history_seconds": n * STEP_S}
+        return {**({} if n == HISTORY_KEYFRAMES else {"history_seconds": n * STEP_S}), **recorded}
 
     def sequence(self) -> str:
         """`window` or `scene` (`SEQUENCES`), as the site set it; `window` when it did not."""
@@ -229,6 +252,17 @@ class NuScenesBenchmark(OpenLoopBenchmark):
 
     def input_problems(self, model) -> list[str]:
         problems = []
+        inputs = model_inputs(model)
+        if inputs is not None and inputs not in I.CONVENTIONS:
+            problems.append(
+                f"{model.name} asks for nuScenes inputs {inputs!r} (model.yaml inputs.nuscenes); "
+                f"the conventions are {', '.join(I.CONVENTIONS)}"
+            )
+        if inputs is not None and self.setting("camera_history"):
+            problems.append(
+                f"{model.name} reads keyframes as its dataset gives them (inputs.nuscenes {inputs!r}); "
+                "camera_history replaces the keyframes with camera sweeps, which no info file holds"
+            )
         if model.min_input_hz > 2.0 and self.setting("camera_history") != "CAM_FRONT":
             problems.append(
                 f"{model.name} requires camera_history=CAM_FRONT with real nuScenes camera sweeps"
@@ -327,6 +361,30 @@ class NuScenesBenchmark(OpenLoopBenchmark):
                 return L.cache_file(path, self.dataset.resolve(), self.version, scenes)
             return path
         return Path(__file__).resolve().parents[5] / ".cache" / f"nuscenes_{self.version}_val_index.pkl"
+
+    def _infos_cache_path(self) -> Path:
+        """`infos_cache` names the file (`*.pkl`) or a shared directory; unset, it sits beside the index."""
+        raw = self.setting("infos_cache")
+        if raw and Path(raw).suffix == ".pkl":
+            return Path(raw).expanduser()
+        if raw:
+            scenes = json.loads(VAL_SCENES.read_text())["val"]
+            index = L.cache_file(Path(raw).expanduser(), self.dataset.resolve(), self.version, scenes)
+        else:
+            index = self._cache_path()
+        return index.with_name(f"{index.stem}.infos.pkl")
+
+    def _infos(self) -> dict:
+        """sample token -> `infos.KeyframeInfo`, for the models that ask for their dataset's inputs."""
+        if getattr(self, "_infos_cache", None) is None:
+            self._infos_cache = I.load_or_build(
+                self.dataset.resolve(),
+                self.version,
+                json.loads(VAL_SCENES.read_text())["val"],
+                self._infos_cache_path(),
+                log=lambda m: print(f"  {m}", flush=True),
+            )
+        return self._infos_cache
 
     def _index(self):
         if self._index_cache is None:
@@ -459,7 +517,14 @@ class NuScenesBenchmark(OpenLoopBenchmark):
         return future, L.to_ego_xy(frames[i].ego2world, positions)
 
     def _command(self, frames: list, i: int) -> tuple[int, str | None, float | None]:
-        """Keyframe `i`'s command, from its own recorded future (VAD's rule, `L.command_from_future`)."""
+        """Keyframe `i`'s command, from its own recorded future.
+
+        VAD's threshold on the ego frame's lateral offset (`L.command_from_future`), or, for a model that
+        asks for its dataset's inputs, that repo's own rule in the lidar frame (`infos.command`).
+        """
+        inputs = getattr(self, "_inputs", None)
+        if inputs:
+            return I.command(inputs, frames, i)
         return L.command_from_future(self._future(frames, i)[1])
 
     def _sample(self, frames: list, i: int, history: list[Observation] | None = None) -> Sample:
@@ -474,7 +539,7 @@ class NuScenesBenchmark(OpenLoopBenchmark):
                 for f in future
             ]
         )
-        cmd, maneuver, distance = L.command_from_future(future_xy)
+        cmd, maneuver, distance = self._command(frames, i)
         if history is not None:
             observations = history
         else:
@@ -513,15 +578,25 @@ class NuScenesBenchmark(OpenLoopBenchmark):
         )
 
     def _observation(self, frame, cmd: int, maneuver, distance) -> Observation:
+        canbus = frame.canbus
+        camera2ego = {cam: rec["cam2ego"] for cam, rec in frame.cameras.items()}
+        if getattr(self, "_inputs", None):
+            # The dataset's inputs (`infos`): its CAN bus with the stored quaternion, each camera where it was
+            # when it fired. Only for a model that asked; every other model is sent what it always was.
+            info = self._infos().get(frame.token)
+            if info is None:
+                raise KeyError(f"nuscenes infos hold no keyframe {frame.token} ({frame.scene})")
+            canbus = I.dataset_can_bus(frame, info)
+            camera2ego = {cam: I.camera_in_keyframe(frame, cam, info) for cam in frame.cameras}
         return Observation(
             images={},
             image_paths={cam: rec["path"] for cam, rec in frame.cameras.items()},
             ego2world=frame.ego2world,
-            canbus=frame.canbus,
+            canbus=canbus,
             timestamp_us=frame.timestamp_us,
             command=Command(cmd),
             camera2image={cam: rec["intrinsic"] for cam, rec in frame.cameras.items()},
-            camera2ego={cam: rec["cam2ego"] for cam, rec in frame.cameras.items()},
+            camera2ego=camera2ego,
             lidar2ego=frame.lidar2ego,
             nav_maneuver=maneuver,
             nav_distance_m=distance,

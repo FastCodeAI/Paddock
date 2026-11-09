@@ -35,8 +35,9 @@ What it does instead of the original, and why none of it reaches a plan:
 
 Recorded per keyframe, in the loader's order: the info record's inputs (sample token, timestamp, the lidar's
 ego pose and mount, each camera's file, intrinsics and ``sensor2lidar``, the converter's CAN bus, the
-dataset's command) -- everything paddock's scene order needs to send the same frames -- and the plan, in the
-model's lidar frame. For UniAD a second pass starts the scene the way the repo's full val loop reaches it:
+dataset's command), what the dataset then handed the model (``dataset_can_bus``, ``dataset_lidar2img``, and
+for UniAD ``dataset_l2g_r_mat``, ``dataset_l2g_t``, ``dataset_timestamp``), and the plan, in the model's lidar
+frame. For UniAD a second pass starts the scene the way the repo's full val loop reaches it:
 ``forward_test`` checks for a first frame only after recording the new scene token, so the first keyframe of
 every scene but the first takes its CAN-bus delta from the last keyframe of the scene before it in time
 (``--previous``, that keyframe's ego translation and patch angle). Paddock's scene order resets instead, as a
@@ -48,7 +49,10 @@ Run from the model's repo root, paddock's src on PYTHONPATH after it::
         --config <cfg> --checkpoint <ckpt> --anchors <pkl> --scene scene-0103 \\
         --tables <root whose v1.0-trainval/*.json hold the scene> --images <root with samples/CAM_*> \\
         --can-bus <dir with <scene>_pose.json [and _steeranglefeedback.json]> --work <scratch dir> \\
-        [--previous x,y,z,patch_angle_deg] --out <fixtures>/golden_scene_uniad.json
+        [--previous x,y,z,patch_angle_deg] --out <fixtures>/golden_scene_uniad_scene-0103.json
+
+``--previous`` is the last keyframe, in time, of the val scene before this one (the datasets sort the val
+infos by timestamp): scene-0102's for scene-0103, scene-0802's for scene-0916.
 """
 
 from __future__ import annotations
@@ -309,6 +313,10 @@ def main() -> None:
             }
             if args.model == "uniad":
                 seen["command"] = int(first(data["command"]))
+                # The ego pose as the model gets it besides the CAN bus: UniAD's tracker reads l2g (float32).
+                seen["l2g_r_mat"] = np.asarray(first(data["l2g_r_mat"]).cpu()).reshape(3, 3).tolist()
+                seen["l2g_t"] = np.asarray(first(data["l2g_t"]).cpu()).reshape(3).tolist()
+                seen["timestamp"] = float(np.asarray(first(data["timestamp"])).reshape(-1)[0])
             else:
                 seen["command"] = int(np.argmax(np.asarray(first(data["ego_fut_cmd"]).cpu()).reshape(-1)))
             with torch.no_grad():
@@ -376,6 +384,7 @@ def main() -> None:
                 },
                 "dataset_can_bus": seen["can_bus"],
                 "dataset_lidar2img": seen["lidar2img"],
+                **{f"dataset_{key}": seen[key] for key in ("l2g_r_mat", "l2g_t", "timestamp") if key in seen},
             }
         )
     fixture = {
