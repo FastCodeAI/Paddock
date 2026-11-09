@@ -184,9 +184,10 @@ CRASH_STATUSES = frozenset(
     }
 )
 
-#: Routes left out of every model's numbers, with the reason. Each fails in the simulator
-#: on every attempt, whichever model drives, so it measures no model -- and a mean with it
-#: for one model and without it for another would not be over the same routes. Poor
+#: Routes left out of every model's numbers, with the reason. Each failed in the simulator
+#: on every attempt -- whichever model drives (11715), or for a model that drives it far
+#: enough (3800, 23695, 24071) -- so it measures no model, and a mean with it for one
+#: model and without it for another would not be over the same routes. Poor
 #: driving is never a reason: a route the car is blocked on, deviates from, times out on or
 #: has ended early scores. Nor is a model's own node failing (an HTTP 500, out of memory):
 #: that is the model's to fix. A route joins after three attempts that failed in the
