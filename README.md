@@ -277,7 +277,7 @@ paddock run --model constant_velocity --bench comma2k19 --limit 5
 paddock report
 ```
 
-The run takes under a minute and ends with `n=5  ade mean=0.997717`. Five samples of one
+The run takes under a minute and ends with `n=5  ade mean=0.899672`. Five samples of one
 chunk is a smoke test, so Paddock keeps the record but does not rank it:
 `paddock report` lists it under "Excluded runs".
 
