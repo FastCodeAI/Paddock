@@ -15,9 +15,9 @@ First public release.
 - Benchmarks: nuScenes, KITScenes, comma2k19, nuPlan, NAVSIM v1 and v2, Bench2Drive,
   neuroNCAP, AlpaSim and HUGSIM.
 - A command line: `paddock doctor`, `setup`, `new`, `verify`, `run`, `render` and `report`.
-- `paddock data fetch` downloads comma2k19, HUGSIM and NAVSIM's test split from their
-  official sources at pinned revisions, checks each file's sha256, and unpacks them
-  where paddock reads them.
+- `paddock data fetch` downloads comma2k19, HUGSIM, NAVSIM, nuScenes, nuPlan and
+  KITScenes from their official sources, pinned and checked file by file, and unpacks
+  them where paddock reads them.
 - A results store that records each run's settings and upstream commits beside its
   scores, and a leaderboard built from it.
 - A regression gate that compares a change against earlier runs of the released models.

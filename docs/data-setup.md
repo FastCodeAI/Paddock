@@ -109,11 +109,14 @@ cross-checks the configured tiers against the benchmark's sample list.
 `paddock data fetch` downloads a dataset from its owners' own host, and only the
 files a benchmark scores: the evaluation split, cameras only.
 
-| Dataset | Parts | Size | Licence |
-|---|---|---|---|
-| `comma2k19` | `raw_data`: ten chunks | 94.6 GB | MIT |
-| `hugsim` | `scenarios`, `scenes`, `vehicles`, `map_cache` | 60.7 GB | MIT |
-| `navsim` | `metadata`, `cameras` (the test split), `maps` | 129.4 GB | CC BY-NC-SA 4.0: needs `--accept-terms` |
+| Dataset | Parts | Size | Licence | Before you start |
+|---|---|---:|---|---|
+| `comma2k19` | `raw_data`: ten chunks | 94.6 GB | MIT | |
+| `hugsim` | `scenarios`, `scenes`, `vehicles`, `map_cache` | 60.7 GB | MIT | |
+| `navsim` | `metadata`, `cameras` (the test split), `maps` | 129.3 GB | CC BY-NC-SA 4.0 | `--accept-terms` |
+| `nuscenes` | `metadata`, `keyframes`, `can_bus`, `map_expansion` | 46.5 GB | CC BY-NC-SA 4.0 | `--accept-terms`; nuScenes asks you to register at nuscenes.org |
+| `nuplan` | `logs`, `cameras` (the mini split), `maps` | 460.2 GB | CC BY-NC-SA 4.0 | `--accept-terms`; the host is slow, so the cameras take more than a day |
+| `kitscenes` | `val`, `overlap_train_val` | 594.3 GB | CC BY-NC 4.0 | accept the terms on [its Hugging Face page](https://huggingface.co/datasets/KIT-MRT/KITScenes-Multimodal), log in with `huggingface-cli login`, and pass `--accept-terms` |
 
 ```bash
 paddock data fetch comma2k19 --dest /data/comma2k19 --match Chunk_1.zip   # one chunk, 8.7 GB
@@ -122,10 +125,15 @@ paddock data fetch navsim    --dest /data/navsim --dry-run                # the 
 paddock data fetch navsim    --dest /data/navsim --accept-terms           # after reading the terms it prints
 ```
 
-- **Pinned.** Each source is read at a fixed revision, recorded in
-  [`datasets.yaml`](../datasets.yaml) under `fetch:`. Every file is checked
-  against its size and sha256 before it is unpacked; one that differs is deleted
-  and the command fails.
+- **Pinned.** Each source is read at a fixed version, recorded in
+  [`datasets.yaml`](../datasets.yaml) under `fetch:`: a Hugging Face commit, or,
+  for a file at a plain web address, its size and its sha256 or S3 ETag. Every
+  file is checked against those before it is unpacked; one that differs is
+  deleted and the command fails.
+- **Checked first.** Before anything downloads, and in a dry run too, each file at
+  a web address is confirmed unchanged at its host, and a gated Hugging Face repo
+  is confirmed to accept your login. `--dry-run` is therefore a full check that a
+  dataset can be fetched.
 - **Resumable.** Run the same command again after an interruption: a partial file
   continues where it stopped, and finished files are skipped. Progress is kept
   under `<dest>/.paddock-fetch/`.
@@ -138,8 +146,11 @@ Each dataset still needs what its benchmark page lists beyond the data: comma's
 toolkit for comma2k19, HUGSIM's own environment and its map-cache link, NAVSIM's
 devkit and metric cache. The command prints the next step when it finishes.
 
-nuScenes, nuPlan, KITScenes and AlpaSim's scenes are not covered yet: download
-them by hand as their benchmark pages describe.
+Not covered: AlpaSim needs no download, because its own scene provider fetches
+each scene on first use. neuroNCAP's NeuRAD scene reconstructions
+(`neurad_checkpoints`) and `openlane_sample`'s clips have no recipe yet.
+nuScenes' sweeps (`sweeps/`, read only by openpilot's optional camera history) are
+left out of the nuScenes recipe.
 
 ## Fetching data you do not have
 

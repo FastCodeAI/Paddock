@@ -1,10 +1,12 @@
 """`paddock data fetch`: download, check, unpack, record -- with no network.
 
-The "Hugging Face" here is a directory reached over file://, laid out the way
-the real host serves files (`datasets/<repo>/resolve/<revision>/<path>`), and
-listed by a stand-in for the tree API that reports each file's real sha256.
-So everything below runs the real curl, the real checks and the real unpacking;
-only the host is local.
+Both kinds of source are directories reached over file://. The "Hugging Face"
+one is laid out the way the real host serves files
+(`datasets/<repo>/resolve/<revision>/<path>`) and listed by a stand-in for the
+tree API that reports each file's real sha256; the "web address" one answers
+HEAD with each file's real size and md5 ETag, as S3 and CloudFront do. So
+everything below runs the real curl, the real checks and the real unpacking;
+only the hosts are local.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ import tarfile
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import unquote, urlparse
 
 import pytest
 from typer.testing import CliRunner
@@ -27,11 +30,12 @@ from paddock.registry import DatasetSpec, load_datasets
 REPO, REV = "owner/toy", "0123456789abcdef0123456789abcdef01234567"
 
 
-class LocalHub(fetch.HuggingFace):
-    def __init__(self, root: Path) -> None:
-        super().__init__(endpoint=root.as_uri())
+class LocalHub(fetch.Sources):
+    def __init__(self, root: Path, token: str = "") -> None:
+        super().__init__(endpoint=root.as_uri(), token=token)
         self.root = root
         self.lie: dict[str, str] = {}  # path -> a wrong sha256 to report
+        self.moved: dict[str, int] = {}  # web file name -> the size its host now reports
 
     def base(self) -> Path:
         return self.root / "datasets" / REPO / "resolve" / REV
@@ -48,6 +52,16 @@ class LocalHub(fetch.HuggingFace):
             out.append(fetch.Remote(rel, self.url(repo, revision, rel), p.stat().st_size, sha))
         return out
 
+    def head(self, url):
+        path = Path(unquote(urlparse(url).path))
+        if not path.exists():
+            return None, None, 404
+        size = self.moved.get(path.name, path.stat().st_size)
+        return size, hashlib.md5(path.read_bytes()).hexdigest(), 200
+
+    def readable(self, url):
+        return 302 if self.token else 401
+
 
 def _zip(path: Path, members: dict[str, bytes]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -56,9 +70,9 @@ def _zip(path: Path, members: dict[str, bytes]) -> None:
             zf.writestr(name, data)
 
 
-def _tgz(path: Path, members: dict[str, bytes], link: str | None = None) -> None:
+def _tar(path: Path, members: dict[str, bytes], link: str | None = None, mode: str = "w:gz") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(path, "w:gz") as tf:
+    with tarfile.open(path, mode) as tf:
         for name, data in members.items():
             info = tarfile.TarInfo(name)
             info.size = len(data)
@@ -77,13 +91,14 @@ def hub(tmp_path: Path) -> LocalHub:
     # Shaped like the real recipes: a zip that unpacks where it says (comma2k19),
     # tarballs with leading directories to strip (OpenScene), a zip whose LICENSE
     # sits beside the stripped directory (nuPlan's maps), plain files kept at
-    # their source path (HUGSIM's vehicles), and a zip unpacking beside itself.
+    # their source path (HUGSIM's vehicles), a zip unpacking beside itself, and
+    # a tarball at a plain web address pinned by its ETag (nuScenes).
     _zip(
         base / "raw/Chunk_1.zip",
         {"Chunk_1/r|t/0/video.hevc": b"v1", "Chunk_1/r|t/0/global_pose/frame_times": b"t"},
     )
     _zip(base / "raw/Chunk_2.zip", {"Chunk_2/r|t/0/video.hevc": b"v2"})
-    _tgz(
+    _tar(
         base / "meta/meta_test.tgz",
         {"top/meta_datas/test/log_a.pkl": b"a", "top/meta_datas/test/log_b.pkl": b"b"},
     )
@@ -93,25 +108,37 @@ def hub(tmp_path: Path) -> LocalHub:
     (base / "cars/car_2").mkdir(parents=True)
     (base / "cars/car_2/gs.pth").write_bytes(b"g2")
     _zip(base / "scenes/kitti/s1.zip", {"s1/scene.pth": b"s"})
+    _tar(hub.root / "web/v1.0/meta.tgz", {"v1.0-trainval/scene.json": b"[]", "samples/CAM_FRONT/a.jpg": b"j"})
     return hub
+
+
+def _pins(path: Path) -> dict:
+    return {"size": path.stat().st_size, "etag": hashlib.md5(path.read_bytes()).hexdigest()}
+
+
+@pytest.fixture
+def recipe(hub: LocalHub) -> dict:
+    return {
+        "license": "MIT",
+        "huggingface": {"repo": REPO, "revision": REV},
+        "parts": {
+            "raw": {"files": ["raw/Chunk_*.zip"], "into": "."},
+            "meta": {"files": ["meta/meta_test.tgz"], "into": "logs/test", "strip": 3},
+            "maps": {"files": ["maps.zip"], "into": "maps", "strip": 1},
+            "cars": {"files": ["cars/*/*"]},
+            "scenes": {"files": ["scenes/*/*.zip"]},
+            "web": {
+                "base": (hub.root / "web").as_uri() + "/",
+                "files": {"v1.0/meta.tgz": _pins(hub.root / "web/v1.0/meta.tgz")},
+                "into": ".",
+            },
+        },
+        "after": "next: link {dest}/maps",
+    }
 
 
 def _spec(fetch_block: dict, requires: tuple[str, ...] = ()) -> DatasetSpec:
     return DatasetSpec(name="toy", requires=requires, fetch=fetch_block)
-
-
-RECIPE = {
-    "license": "MIT",
-    "huggingface": {"repo": REPO, "revision": REV},
-    "parts": {
-        "raw": {"files": ["raw/Chunk_*.zip"], "into": "."},
-        "meta": {"files": ["meta/meta_test.tgz"], "into": "logs/test", "strip": 3},
-        "maps": {"files": ["maps.zip"], "into": "maps", "strip": 1},
-        "cars": {"files": ["cars/*/*"]},
-        "scenes": {"files": ["scenes/*/*.zip"]},
-    },
-    "after": "next: link {dest}/maps",
-}
 
 
 @pytest.fixture
@@ -121,25 +148,28 @@ def site(tmp_path: Path) -> SiteConfig:
     return SiteConfig.load(toml)
 
 
-def _run(site: SiteConfig, hub: LocalHub, dest: Path, recipe: dict | None = None, **kw) -> tuple[int, str]:
+def _run(site: SiteConfig, hub: LocalHub, dest: Path, recipe: dict, **kw) -> tuple[int, str]:
     lines: list[str] = []
-    registry = SimpleNamespace(datasets={"toy": _spec(recipe or RECIPE, requires=("logs", "maps"))})
+    registry = SimpleNamespace(datasets={"toy": _spec(recipe, requires=("logs", "maps"))})
     code = fetch.fetch(site, "toy", dest=dest, echo=lines.append, registry=registry, hub=hub, **kw)
     return code, "\n".join(lines)
 
 
-def test_every_recipe_in_datasets_yaml_parses_and_pins_a_commit() -> None:
+def test_every_recipe_in_datasets_yaml_parses_and_pins_every_file() -> None:
     specs = {name: spec for name, spec in load_datasets().items() if spec.fetch}
-    assert {"comma2k19", "hugsim", "navsim"} <= set(specs)
+    assert {"comma2k19", "hugsim", "navsim", "nuscenes", "nuplan", "kitscenes"} <= set(specs)
     for spec in specs.values():
         rec = fetch.recipe(spec)
         for part in rec.parts.values():
-            assert part.huggingface or (part.url and part.sha256 and part.size), part.name
+            if part.base:
+                assert all(p.size and (p.sha256 or p.etag) for p in part.pinned), part.name
+            else:
+                assert part.huggingface and len(part.huggingface[1]) == 40, part.name
 
 
-def test_a_fetch_lands_every_file_where_paddock_reads_it(site, hub, tmp_path) -> None:
+def test_a_fetch_lands_every_file_where_paddock_reads_it(site, hub, recipe, tmp_path) -> None:
     dest = tmp_path / "data"
-    code, out = _run(site, hub, dest)
+    code, out = _run(site, hub, dest, recipe)
     assert code == 0, out
     assert (dest / "Chunk_1/r|t/0/video.hevc").read_bytes() == b"v1"
     assert (dest / "Chunk_2/r|t/0/video.hevc").read_bytes() == b"v2"
@@ -149,57 +179,62 @@ def test_a_fetch_lands_every_file_where_paddock_reads_it(site, hub, tmp_path) ->
     assert (dest / "cars/car_1/gs.pth").read_bytes() == b"g1"  # same name, two cars, both intact
     assert (dest / "cars/car_2/gs.pth").read_bytes() == b"g2"
     assert (dest / "scenes/kitti/s1/scene.pth").read_bytes() == b"s"  # unpacked beside itself
-    assert not list((dest / fetch.STATE_DIR / "partial").rglob("*.*")), "archives are deleted once unpacked"
+    assert (dest / "samples/CAM_FRONT/a.jpg").read_bytes() == b"j"  # from the web address
+    assert not [p for p in (dest / fetch.STATE_DIR / "partial").rglob("*") if p.is_file()], (
+        "archives go once unpacked"
+    )
     assert f"next: link {dest}/maps" in out
 
 
-def test_the_site_config_gains_the_path_once_and_is_otherwise_untouched(site, hub, tmp_path) -> None:
+def test_the_site_config_gains_the_path_once_and_is_otherwise_untouched(site, hub, recipe, tmp_path) -> None:
     before = site.source.read_text()
     dest = tmp_path / "data"
-    _run(site, hub, dest)
+    _run(site, hub, dest, recipe)
     after = site.source.read_text()
     assert after.startswith(before)
     assert SiteConfig.load(site.source).datasets["toy"].path == dest
-    code, out = _run(SiteConfig.load(site.source), hub, dest)
+    code, out = _run(SiteConfig.load(site.source), hub, dest, recipe)
     assert code == 0 and site.source.read_text() == after
 
 
-def test_a_path_already_configured_elsewhere_is_reported_not_changed(site, hub, tmp_path) -> None:
+def test_a_path_already_configured_elsewhere_is_reported_not_changed(site, hub, recipe, tmp_path) -> None:
     site.source.write_text(site.source.read_text() + f'\n[datasets.toy]\npath = "{tmp_path}/elsewhere"\n')
     before = site.source.read_text()
-    code, out = _run(SiteConfig.load(site.source), hub, tmp_path / "data")
+    code, out = _run(SiteConfig.load(site.source), hub, tmp_path / "data", recipe)
     assert code == 0
     assert site.source.read_text() == before
     assert "not here" in out
 
 
-def test_a_second_run_downloads_nothing(site, hub, tmp_path, monkeypatch) -> None:
+def test_a_second_run_downloads_nothing(site, hub, recipe, tmp_path, monkeypatch) -> None:
     dest = tmp_path / "data"
-    assert _run(site, hub, dest)[0] == 0
+    assert _run(site, hub, dest, recipe)[0] == 0
 
-    def refuse(url, target):
+    def refuse(url, target, headers=None):
         raise AssertionError(f"downloaded {url} again")
 
     monkeypatch.setattr(fetch, "_download", refuse)
-    code, out = _run(SiteConfig.load(site.source), hub, dest)
-    assert code == 0 and out.count("already done") == 8
+    code, out = _run(SiteConfig.load(site.source), hub, dest, recipe)
+    assert code == 0 and out.count("already done") == 9
 
 
-def test_an_interrupted_download_is_continued_not_restarted(site, hub, tmp_path) -> None:
+def test_an_interrupted_download_is_continued_not_restarted(site, hub, recipe, tmp_path) -> None:
     dest = tmp_path / "data"
     source = hub.base() / "maps.zip"
     partial = dest / fetch.STATE_DIR / "partial" / "maps.zip"
     partial.parent.mkdir(parents=True)
     partial.write_bytes(source.read_bytes()[:20])
-    code, out = _run(site, hub, dest, only=["maps"])
+    code, out = _run(site, hub, dest, recipe, only=["maps"])
     assert code == 0, out
     assert (dest / "maps/city/map.gpkg").read_bytes() == b"m"
 
 
-def test_a_file_that_arrives_different_is_deleted_and_nothing_is_unpacked(site, hub, tmp_path) -> None:
+def test_a_file_that_arrives_different_is_deleted_and_nothing_is_unpacked(
+    site, hub, recipe, tmp_path
+) -> None:
     hub.lie["maps.zip"] = "0" * 64
     dest = tmp_path / "data"
-    code, out = _run(site, hub, dest, only=["maps"])
+    code, out = _run(site, hub, dest, recipe, only=["maps"])
     assert code == 1
     assert "sha256" in out and "run again" in out
     assert not (dest / "maps").exists()
@@ -207,34 +242,92 @@ def test_a_file_that_arrives_different_is_deleted_and_nothing_is_unpacked(site, 
     assert not (dest / fetch.STATE_DIR / "done" / "maps.zip.done").exists()
 
 
-def test_terms_must_be_accepted_before_anything_downloads(site, hub, tmp_path) -> None:
-    gated = {**RECIPE, "terms": "https://example.com/terms"}
+def test_a_web_file_with_the_wrong_etag_is_deleted(site, hub, recipe, tmp_path) -> None:
+    pins = recipe["parts"]["web"]["files"]["v1.0/meta.tgz"]
+    wrong = {**recipe, "parts": {"web": {**recipe["parts"]["web"], "files": {"v1.0/meta.tgz": {**pins}}}}}
+    wrong["parts"]["web"]["files"]["v1.0/meta.tgz"]["etag"] = "0" * 32
+    hub.head = lambda url: (pins["size"], "0" * 32, 200)  # the host agrees with the bad pin
+    code, out = _run(site, hub, tmp_path / "data", wrong)
+    assert code == 1 and "ETag" in out
+    assert not (tmp_path / "data/samples").exists()
+
+
+def test_a_web_file_that_changed_at_its_host_stops_before_anything_downloads(
+    site, hub, recipe, tmp_path, monkeypatch
+) -> None:
+    hub.moved["meta.tgz"] = 12345
+
+    def refuse(url, target, headers=None):
+        raise AssertionError(f"downloaded {url}")
+
+    monkeypatch.setattr(fetch, "_download", refuse)
+    for dry_run in (True, False):
+        code, out = _run(site, hub, tmp_path / "data", recipe, dry_run=dry_run)
+        assert code == 1 and "has changed at its source" in out and "12345" in out
+
+
+def test_a_gated_repo_needs_a_login_before_anything_downloads(site, hub, recipe, tmp_path) -> None:
+    gated = {**recipe, "huggingface": {"repo": REPO, "revision": REV, "gated": True}}
+    code, out = _run(site, hub, tmp_path / "data", gated, only=["maps"])
+    assert code == 1 and "huggingface-cli login" in out
+    assert not (tmp_path / "data").exists()
+    hub.token = "hf_a_login"
+    assert _run(site, hub, tmp_path / "data", gated, only=["maps"])[0] == 0
+
+
+def test_a_login_reaches_curl_on_stdin_and_only_for_hugging_face(monkeypatch, tmp_path) -> None:
+    calls = []
+    monkeypatch.setattr(
+        fetch.subprocess,
+        "run",
+        lambda cmd, input=None: calls.append((cmd, input)) or SimpleNamespace(returncode=0),
+    )
+    hub = fetch.Sources(token="hf_secret")
+    fetch._download(hub.url(REPO, REV, "a.zip"), tmp_path / "a", hub.headers(hub.url(REPO, REV, "a.zip")))
+    fetch._download("https://example.com/a.zip", tmp_path / "b", hub.headers("https://example.com/a.zip"))
+    (first, sent), (second, none) = calls
+    assert not any("hf_secret" in arg for arg in first) and b"hf_secret" in sent
+    assert none is None and "-H" not in second
+
+
+def test_the_login_comes_from_hf_token_then_the_saved_file(monkeypatch, tmp_path) -> None:
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.setenv("HF_HOME", str(tmp_path))
+    assert fetch.hf_token() is None
+    (tmp_path / "token").write_text("hf_saved\n")
+    assert fetch.hf_token() == "hf_saved"
+    monkeypatch.setenv("HF_TOKEN", "hf_env")
+    assert fetch.hf_token() == "hf_env"
+
+
+def test_terms_must_be_accepted_before_anything_downloads(site, hub, recipe, tmp_path) -> None:
+    gated = {**recipe, "terms": "https://example.com/terms"}
     dest = tmp_path / "data"
-    code, out = _run(site, hub, dest, recipe=gated, only=["maps"])
+    code, out = _run(site, hub, dest, gated, only=["maps"])
     assert code == 1 and "--accept-terms" in out and "https://example.com/terms" in out
     assert not dest.exists()
-    code, _ = _run(site, hub, dest, recipe=gated, only=["maps"], accept_terms=True)
+    code, _ = _run(site, hub, dest, gated, only=["maps"], accept_terms=True)
     assert code == 0
 
 
-def test_a_dry_run_lists_sizes_and_writes_nothing(site, hub, tmp_path) -> None:
+def test_a_dry_run_lists_sizes_and_writes_nothing(site, hub, recipe, tmp_path) -> None:
     before = site.source.read_text()
     dest = tmp_path / "data"
-    code, out = _run(site, hub, dest, dry_run=True)
+    code, out = _run(site, hub, dest, recipe, dry_run=True)
     assert code == 0 and "Chunk_1.zip" in out and "dry run" in out
     assert not dest.exists()
     assert site.source.read_text() == before
 
 
-def test_too_little_space_stops_before_downloading(site, hub, tmp_path, monkeypatch) -> None:
+def test_too_little_space_stops_before_downloading(site, hub, recipe, tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(fetch, "_free", lambda path: 1)
-    code, out = _run(site, hub, tmp_path / "data")
+    code, out = _run(site, hub, tmp_path / "data", recipe)
     assert code == 1 and "not enough space" in out
     assert not (tmp_path / "data").exists()
 
 
-def test_only_and_match_narrow_the_files(hub) -> None:
-    rec = fetch.recipe(_spec(RECIPE))
+def test_only_and_match_narrow_the_files(hub, recipe) -> None:
+    rec = fetch.recipe(_spec(recipe))
     names = [i.remote.path for i in fetch.plan(rec, only=["raw"], hub=hub)]
     assert names == ["raw/Chunk_1.zip", "raw/Chunk_2.zip"]
     names = [i.remote.path for i in fetch.plan(rec, match=["Chunk_1.zip"], hub=hub)]
@@ -247,26 +340,26 @@ def test_only_and_match_narrow_the_files(hub) -> None:
         fetch.plan(rec, match=["Chunk_9.zip"], hub=hub)
 
 
-def test_a_pattern_matching_nothing_at_the_source_fails(hub) -> None:
-    broken = {**RECIPE, "parts": {"raw": {"files": ["raw/Shard_*.zip"]}}}
+def test_a_pattern_matching_nothing_at_the_source_fails(hub, recipe) -> None:
+    broken = {**recipe, "parts": {"raw": {"files": ["raw/Shard_*.zip"]}}}
     with pytest.raises(fetch.FetchError, match="matches"):
         fetch.plan(fetch.recipe(_spec(broken)), hub=hub)
+
+
+HF = {"repo": REPO, "revision": REV}
 
 
 @pytest.mark.parametrize(
     "block, complaint",
     [
-        ({"parts": {"a": {"files": ["x"]}}, "huggingface": {"repo": REPO, "revision": REV}}, "license"),
+        ({"parts": {"a": {"files": ["x"]}}, "huggingface": HF}, "license"),
         (
-            {
-                "license": "MIT",
-                "huggingface": {"repo": REPO, "revision": "main"},
-                "parts": {"a": {"files": ["x"]}},
-            },
+            {"license": "MIT", "huggingface": {**HF, "revision": "main"}, "parts": {"a": {"files": ["x"]}}},
             "40",
         ),
-        ({"license": "MIT", "parts": {"a": {"url": "https://example.com/a.zip"}}}, "sha256"),
-        ({"license": "MIT", "parts": {"a": {"files": ["x"]}}}, "either a url or a huggingface"),
+        ({"license": "MIT", "base": "https://x/", "parts": {"a": {"files": {"a.zip": {"size": 3}}}}}, "etag"),
+        ({"license": "MIT", "parts": {"a": {"files": {"a.zip": {"size": 3, "etag": "e"}}}}}, "base address"),
+        ({"license": "MIT", "parts": {"a": {"files": ["x"]}}}, "huggingface source"),
     ],
 )
 def test_a_recipe_that_cannot_be_pinned_or_explained_is_refused(block, complaint) -> None:
@@ -274,10 +367,40 @@ def test_a_recipe_that_cannot_be_pinned_or_explained_is_refused(block, complaint
         fetch.recipe(_spec(block))
 
 
-def test_a_url_part_beside_a_shared_source_uses_its_url() -> None:
-    block = {**RECIPE, "parts": {"m": {"url": "https://example.com/m.zip", "size": 3, "sha256": "ab" * 32}}}
+def test_a_web_part_beside_a_shared_hugging_face_source_uses_its_own_base() -> None:
+    block = {
+        "license": "MIT",
+        "huggingface": HF,
+        "parts": {
+            "m": {"base": "https://example.com/", "files": {"m.zip": {"size": 3, "sha256": "ab" * 32}}}
+        },
+    }
     part = fetch.recipe(_spec(block)).parts["m"]
-    assert part.huggingface is None and part.url == "https://example.com/m.zip"
+    assert part.huggingface is None and part.base == "https://example.com/"
+
+
+def _multipart_etag(data: bytes, part_size: int) -> str:
+    """S3's multipart ETag, computed independently of the code under test."""
+    chunks = [data[i : i + part_size] for i in range(0, len(data), part_size)]
+    joined = b"".join(hashlib.md5(c).digest() for c in chunks)
+    return f"{hashlib.md5(joined).hexdigest()}-{len(chunks)}"
+
+
+def test_an_s3_etag_is_checked_whole_or_by_its_upload_parts(tmp_path) -> None:
+    data = bytes(range(256)) * (10 * 1024 + 1)  # 2.5 MiB and a bit: three 1 MiB parts
+    path = tmp_path / "blob"
+    path.write_bytes(data)
+    assert fetch.etag_matches(path, hashlib.md5(data).hexdigest())
+    assert fetch.etag_matches(path, f'"{_multipart_etag(data, 1 << 20)}"')
+    assert fetch.etag_matches(path, _multipart_etag(data, 8 << 20))  # one 8 MiB part: "-1"
+    assert not fetch.etag_matches(path, _multipart_etag(data[:-1] + b"x", 1 << 20))
+
+
+def test_an_archive_is_opened_by_what_it_is_not_what_it_is_called(tmp_path) -> None:
+    mislabelled = tmp_path / "camera_0.zip"  # nuPlan ships tar archives under .zip names
+    _tar(mislabelled, {"cam/a.jpg": b"j"}, mode="w")
+    assert fetch.unpack(mislabelled, tmp_path / "into", strip=1) == 1
+    assert (tmp_path / "into/a.jpg").read_bytes() == b"j"
 
 
 def test_an_archive_cannot_write_outside_its_destination(tmp_path) -> None:
@@ -288,7 +411,7 @@ def test_an_archive_cannot_write_outside_its_destination(tmp_path) -> None:
     assert not (tmp_path / "outside.txt").exists()
 
     linked = tmp_path / "link.tgz"
-    _tgz(linked, {"a/ok.txt": b"x"}, link="a/passwd")
+    _tar(linked, {"a/ok.txt": b"x"}, link="a/passwd")
     with pytest.raises(fetch.FetchError, match="link or device"):
         fetch.unpack(linked, tmp_path / "into2")
 

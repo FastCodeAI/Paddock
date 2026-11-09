@@ -10,12 +10,15 @@ Three rules shape everything below.
 
 * **Official sources only, never a mirror.** Several datasets carry terms each
   user must accept, so paddock fetches from the owner's own host with the
-  user's own agreement, and refuses a dataset with `terms` until
-  `--accept-terms` says the user has read them.
+  user's own agreement: it refuses a dataset with `terms` until
+  `--accept-terms` says the user has read them, and a gated Hugging Face repo
+  is read with the user's own login.
 * **Pinned, and checked byte for byte.** A Hugging Face source names a commit,
-  and the listing at that commit gives each large file's sha256; a plain URL
-  carries its sha256 and size in the recipe. A file that arrives different is
-  deleted and the run fails, rather than unpacking something nobody measured.
+  and the listing at that commit gives each large file's sha256; a file at a
+  plain web address carries its size and its sha256 or S3 ETag in the recipe,
+  and a HEAD request confirms the host still serves that file before anything
+  downloads. A file that arrives different is deleted and the run fails,
+  rather than unpacking something nobody measured.
 * **Only what scoring reads.** The evaluation split, cameras only: no training
   data, no lidar. NAVSIM's lidar alone is as large as its cameras.
 
@@ -40,7 +43,7 @@ import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlparse
+from typing import Any
 
 from paddock.config import SiteConfig
 from paddock.registry import DatasetSpec, Registry
@@ -63,22 +66,40 @@ class FetchError(Exception):
 
 
 @dataclass(frozen=True)
+class Pinned:
+    """One file at a plain web address, pinned by what the recipe records of it.
+
+    A web address has no revision, so the recipe carries the file's size and
+    its sha256 or its ETag. An S3 or CloudFront ETag is the md5 of the file, or
+    of its upload parts; either can be checked locally, and reading it needs
+    only a HEAD request, so a file can be pinned without downloading it.
+    """
+
+    name: str  # its path under the part's base address
+    size: int
+    sha256: str | None = None
+    etag: str | None = None
+
+
+@dataclass(frozen=True)
 class Part:
     """One named piece of a dataset: a set of files and where they unpack.
 
-    `files` are globs over the source's paths (Hugging Face), or exactly one
-    URL. An archive unpacks into `into` (default: the directory it sits in at
-    the source), with `strip` leading path components removed from each member,
-    as tar's --strip-components does. A plain file lands at its source path,
-    or in `into` when one is given.
+    A part's files are either globs over a Hugging Face repo at a pinned
+    commit (`files` given as a list), or files at a plain web address (`base`,
+    with `files` given as a mapping of name to its pins). An archive unpacks
+    into `into` (default: the directory it sits in at the source), with
+    `strip` leading path components removed from each member, as tar's
+    --strip-components does. A plain file lands at its source path, or in
+    `into` when one is given.
     """
 
     name: str
-    files: tuple[str, ...]
+    files: tuple[str, ...] = ()
     huggingface: tuple[str, str] | None = None  # (repo, revision)
-    url: str | None = None
-    size: int | None = None
-    sha256: str | None = None
+    gated: bool = False
+    base: str | None = None
+    pinned: tuple[Pinned, ...] = ()
     into: str | None = None
     strip: int = 0
 
@@ -102,46 +123,56 @@ def recipe(spec: DatasetSpec) -> Recipe:
         )
     if not raw.get("license"):
         raise FetchError(f"{where}: needs a license, so every fetch can say what the user is agreeing to")
-    shared_hf = raw.get("huggingface")
     parts: dict[str, Part] = {}
     for name, body in (raw.get("parts") or {}).items():
         body = body or {}
-        url = body.get("url")
-        # A part with its own url leaves the recipe-wide source behind: NAVSIM's
-        # maps come from nuPlan's host, beside OpenScene's files.
-        hf = body.get("huggingface", None if url else shared_hf)
-        if bool(hf) == bool(url):
+        files = body.get("files")
+        here = f"{where}.parts.{name}"
+        if not files:
+            raise FetchError(f"{here}: lists no files")
+        placement = {
+            "into": str(body["into"]) if body.get("into") is not None else None,
+            "strip": int(body.get("strip", 0)),
+        }
+        if isinstance(files, dict):
+            # Files at a plain web address. The part's own base wins over the
+            # recipe's: NAVSIM's maps come from nuPlan's host, beside OpenScene.
+            base = body.get("base") or raw.get("base")
+            if not base:
+                raise FetchError(f"{here}: files given by name need a base address")
+            pinned = []
+            for file, pins in files.items():
+                pins = pins or {}
+                if not pins.get("size") or not (pins.get("sha256") or pins.get("etag")):
+                    raise FetchError(
+                        f"{here}.files.{file}: a web address has no revision to pin, "
+                        "so each file must carry its size and its sha256 or etag"
+                    )
+                pinned.append(
+                    Pinned(
+                        name=str(file),
+                        size=int(pins["size"]),
+                        sha256=str(pins["sha256"]).lower() if pins.get("sha256") else None,
+                        etag=str(pins["etag"]).strip('"') if pins.get("etag") else None,
+                    )
+                )
+            parts[name] = Part(name=name, base=str(base), pinned=tuple(pinned), **placement)
+            continue
+        hf = body.get("huggingface") or raw.get("huggingface")
+        if not hf:
+            raise FetchError(f"{here}: files given as globs need a huggingface source")
+        repo, revision = hf.get("repo"), str(hf.get("revision", ""))
+        if not repo or len(revision) != 40 or any(c not in "0123456789abcdef" for c in revision):
             raise FetchError(
-                f"{where}.parts.{name}: give either a url or a huggingface source, not both or neither"
+                f"{here}: huggingface needs a repo and a full 40-character commit as revision -- "
+                f"a branch name would let the data change under a published number"
             )
-        if url:
-            if not (body.get("sha256") and body.get("size")):
-                raise FetchError(
-                    f"{where}.parts.{name}: a url has no revision to pin, "
-                    "so it must carry its sha256 and size"
-                )
-            files: tuple[str, ...] = (url,)
-            source = None
-        else:
-            repo, revision = hf.get("repo"), str(hf.get("revision", ""))
-            if not repo or len(revision) != 40 or any(c not in "0123456789abcdef" for c in revision):
-                raise FetchError(
-                    f"{where}.parts.{name}: huggingface needs a repo and a full 40-character commit as "
-                    f"revision -- a branch name would let the data change under a published number"
-                )
-            files = tuple(str(f) for f in body.get("files") or ())
-            if not files:
-                raise FetchError(f"{where}.parts.{name}: lists no files")
-            source = (str(repo), revision)
         parts[name] = Part(
             name=name,
-            files=files,
-            huggingface=source,
-            url=url,
-            size=int(body["size"]) if body.get("size") else None,
-            sha256=str(body["sha256"]).lower() if body.get("sha256") else None,
-            into=str(body["into"]) if body.get("into") is not None else None,
-            strip=int(body.get("strip", 0)),
+            files=tuple(str(f) for f in files),
+            huggingface=(str(repo), revision),
+            gated=bool(hf.get("gated", False)),
+            **placement,
         )
     if not parts:
         raise FetchError(f"{where}: declares no parts")
@@ -165,22 +196,58 @@ class Remote:
     url: str
     size: int | None
     sha256: str | None
+    etag: str | None = None
 
 
-class HuggingFace:
-    """A Hugging Face dataset repo, read at a pinned commit.
+def hf_token() -> str | None:
+    """The user's own Hugging Face login, where huggingface_hub keeps it.
 
-    The tree API at a commit reports each LFS file's sha256 -- the hash of the
-    file itself -- so the check needs nothing stored in the recipe. Small files
-    kept in git rather than LFS report only a git blob id; those are checked by
-    size alone.
+    `HF_TOKEN` first, then the file `huggingface-cli login` writes. Read only to
+    send to Hugging Face itself, and never printed.
+    """
+    if os.environ.get("HF_TOKEN"):
+        return os.environ["HF_TOKEN"].strip()
+    home = Path(os.environ.get("HF_HOME") or Path.home() / ".cache" / "huggingface")
+    path = home / "token"
+    return (path.read_text().strip() or None) if path.exists() else None
+
+
+class Sources:
+    """Where files come from: Hugging Face repos at a commit, and plain web addresses.
+
+    The Hugging Face tree API at a commit reports each LFS file's sha256 -- the
+    hash of the file itself -- so those need nothing stored in the recipe. Small
+    files kept in git rather than LFS report only a git blob id; those are
+    checked by size alone.
     """
 
-    def __init__(self, endpoint: str = HUGGINGFACE) -> None:
+    def __init__(self, endpoint: str = HUGGINGFACE, token: str | None = None) -> None:
         self.endpoint = endpoint.rstrip("/")
+        self.token = token if token is not None else hf_token()
+
+    def headers(self, url: str) -> dict[str, str]:
+        """The login, for Hugging Face's own host only; nothing for anyone else."""
+        if self.token and url.startswith(self.endpoint + "/"):
+            return {"Authorization": f"Bearer {self.token}"}
+        return {}
 
     def url(self, repo: str, revision: str, path: str) -> str:
         return f"{self.endpoint}/datasets/{repo}/resolve/{revision}/{path}"
+
+    def head(self, url: str) -> tuple[int | None, str | None, int]:
+        """`(size, etag, status)` for a web address, following redirects."""
+        import httpx
+
+        response = httpx.head(url, follow_redirects=True, timeout=60, headers=self.headers(url))
+        length = response.headers.get("content-length")
+        etag = response.headers.get("etag")
+        return (int(length) if length else None, etag.strip('"') if etag else None, response.status_code)
+
+    def readable(self, url: str) -> int:
+        """The status a download of `url` would start with; 401 or 403 means no access."""
+        import httpx
+
+        return httpx.head(url, follow_redirects=False, timeout=60, headers=self.headers(url)).status_code
 
     def files(self, repo: str, revision: str, directory: str, recursive: bool) -> list[Remote]:
         import httpx
@@ -192,7 +259,9 @@ class HuggingFace:
         found: list[Remote] = []
         with httpx.Client(follow_redirects=True, timeout=60) as client:
             while url:
-                response = client.get(url)
+                response = client.get(url, headers=self.headers(url))
+                if response.status_code in (401, 403):
+                    raise FetchError(_login_needed(repo))
                 if response.status_code == 404:
                     raise FetchError(f"{repo} has no {directory or 'top level'} at {revision[:12]}")
                 response.raise_for_status()
@@ -230,16 +299,23 @@ def _listing_dir(pattern: str) -> tuple[str, bool]:
     return "/".join(fixed), len(parts) - len(fixed) > 1
 
 
-def remotes(part: Part, hub: HuggingFace) -> list[Remote]:
+def _login_needed(repo: str) -> str:
+    return (
+        f"{repo} needs a Hugging Face login that has accepted its terms:\n"
+        f"  open https://huggingface.co/datasets/{repo} and accept them, then run "
+        f"`huggingface-cli login` or set HF_TOKEN"
+    )
+
+
+def remotes(part: Part, hub: Sources) -> list[Remote]:
     """Every file `part` names, at its pinned source. A pattern matching nothing fails.
 
     An empty match means the recipe and the source disagree, and fetching
     nothing would read as success.
     """
-    if part.url:
-        return [
-            Remote(path=urlparse(part.url).path.lstrip("/"), url=part.url, size=part.size, sha256=part.sha256)
-        ]
+    if part.base:
+        base = part.base.rstrip("/") + "/"
+        return [Remote(p.name, base + p.name, p.size, p.sha256, p.etag) for p in part.pinned]
     assert part.huggingface is not None
     repo, revision = part.huggingface
     out: dict[str, Remote] = {}
@@ -296,10 +372,10 @@ def plan(
     rec: Recipe,
     only: list[str] | None = None,
     match: list[str] | None = None,
-    hub: HuggingFace | None = None,
+    hub: Sources | None = None,
 ) -> list[Item]:
     """The files a fetch will handle, in order. `match` filters by name or path glob."""
-    hub = hub or HuggingFace()
+    hub = hub or Sources()
     unknown = [p for p in (only or []) if p not in rec.parts]
     if unknown:
         raise FetchError(
@@ -318,16 +394,53 @@ def plan(
     return items
 
 
+def check_sources(items: list[Item], hub: Sources) -> list[str]:
+    """What stops these files downloading as pinned, found without downloading them.
+
+    A file at a web address must still have the size and ETag the recipe
+    pinned: anything else means the host changed it, and the number it would
+    produce is not the one published. A gated repo must accept this user's
+    login, which a HEAD request on one of its files shows.
+    """
+    problems: list[str] = []
+    for item in items:
+        if not item.part.base:
+            continue
+        size, etag, status = hub.head(item.remote.url)
+        if status >= 400:
+            problems.append(f"{item.remote.url}: HTTP {status}")
+        elif size != item.remote.size or (item.remote.etag and etag != item.remote.etag):
+            problems.append(
+                f"{item.remote.path} has changed at its source: now {size} bytes, ETag {etag}; "
+                f"datasets.yaml pins {item.remote.size} bytes, ETag {item.remote.etag}"
+            )
+    gated = {i.part.huggingface: i for i in items if i.part.gated and i.part.huggingface}
+    for (repo, _), item in gated.items():
+        if not hub.token:
+            problems.append(_login_needed(repo))
+        elif hub.readable(item.remote.url) in (401, 403):
+            problems.append(_login_needed(repo))
+    return problems
+
+
 # -- downloading and unpacking ------------------------------------------------
 
 
-def _download(url: str, target: Path) -> None:
-    """Resumable: curl continues a partial file left by an earlier attempt."""
+def _download(url: str, target: Path, headers: dict[str, str] | None = None) -> None:
+    """Resumable: curl continues a partial file left by an earlier attempt.
+
+    A login goes to curl on stdin, never in its arguments, where any user on
+    the machine could read it from the process list. curl sends it to the first
+    host only, not to the storage host a download redirects to.
+    """
     target.parent.mkdir(parents=True, exist_ok=True)
     meter = "--progress-bar" if sys.stderr.isatty() else "--no-progress-meter"
     cmd = ["curl", "-fL", "-C", "-", meter, "--retry", "5", "--retry-delay", "10", "-o", str(target), url]
+    lines = "".join(f"{k}: {v}\n" for k, v in (headers or {}).items())
+    if lines:
+        cmd[1:1] = ["-H", "@-"]
     try:
-        result = subprocess.run(cmd)
+        result = subprocess.run(cmd, input=lines.encode() if lines else None)
     except FileNotFoundError as exc:
         raise FetchError("curl is not installed; paddock data fetch downloads with it") from exc
     if result.returncode != 0:
@@ -338,11 +451,7 @@ def _download(url: str, target: Path) -> None:
 
 
 def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as fh:
-        for block in iter(lambda: fh.read(1 << 22), b""):
-            digest.update(block)
-    return digest.hexdigest()
+    return _digest(path, hashlib.sha256)
 
 
 def _member_path(name: str, strip: int, is_dir: bool) -> str | None:
@@ -376,7 +485,8 @@ def unpack(archive: Path, into: Path, strip: int = 0) -> int:
     into.mkdir(parents=True, exist_ok=True)
     base = into.resolve()
     written = 0
-    if archive.name.endswith(".zip"):
+    # By content, not by name: nuPlan publishes some tar archives named .zip.
+    if zipfile.is_zipfile(archive):
         with zipfile.ZipFile(archive) as zf:
             for info in zf.infolist():
                 relative = _member_path(info.filename, strip, info.is_dir())
@@ -448,10 +558,11 @@ def fetch(
     accept_terms: bool = False,
     echo: Callable[[str], None] = print,
     registry: Registry | None = None,
-    hub: HuggingFace | None = None,
+    hub: Sources | None = None,
 ) -> int:
     """`paddock data fetch`: 0 when every selected file is on disk, verified and unpacked."""
     registry = registry or Registry.load()
+    hub = hub or Sources()
     spec = registry.datasets.get(name)
     if spec is None:
         echo(f"unknown dataset {name!r}; known: {', '.join(sorted(registry.datasets))}")
@@ -488,7 +599,16 @@ def fetch(
             state = "done" if i.marker(dest).exists() else "to do"
             size = _gb(i.remote.size) if i.remote.size else "?"
             echo(f"  {state:<6} {i.part.name:<10} {size:>10}  {i.remote.path}")
-        echo("dry run: nothing downloaded")
+    # Before anything is downloaded, and in a dry run too: a dry run that passed
+    # here and a real one that failed on the first file would make the dry run
+    # worthless as a check.
+    problems = check_sources(todo, hub)
+    for problem in problems:
+        echo(problem)
+    if problems:
+        return 1
+    if dry_run:
+        echo("sources checked; dry run: nothing downloaded")
         return 0
 
     if rec.terms and not accept_terms:
@@ -518,7 +638,7 @@ def fetch(
             started = time.time()
             partial = item.partial(dest)
             if not (item.remote.size and _partial_bytes(partial) == item.remote.size):
-                _download(item.remote.url, partial)
+                _download(item.remote.url, partial, hub.headers(item.remote.url))
             _verify(item, partial)
             if item.archive:
                 count = unpack(partial, item.into(dest), item.part.strip)
@@ -552,8 +672,42 @@ def _partial_bytes(path: Path) -> int:
     return path.stat().st_size if path.exists() else 0
 
 
+def etag_matches(path: Path, etag: str) -> bool:
+    """Whether `path` has this S3 ETag: the md5 of the file, or of its upload parts.
+
+    A multipart ETag is `md5(md5(part 1) + ... + md5(part n))-n`. The part size
+    is not recorded, but uploaders use whole mebibytes, and only a few sizes
+    split this file into exactly n parts; every host checked so far used 8 MiB.
+    """
+    etag = etag.strip('"')
+    if "-" not in etag:
+        return _digest(path, hashlib.md5) == etag
+    digest, count = etag.split("-", 1)
+    n, size, mib = int(count), path.stat().st_size, 1 << 20
+    if n == 1:
+        candidates = [max(size, 1)]
+    else:
+        candidates = [k * mib for k in range(1, 5 * 1024 + 1) if (n - 1) * k * mib < size <= n * k * mib]
+    for part_size in sorted(candidates, key=lambda c: c != 8 * mib):
+        joined = hashlib.md5()
+        with path.open("rb") as fh:
+            while block := fh.read(part_size):
+                joined.update(hashlib.md5(block).digest())
+        if joined.hexdigest() == digest:
+            return True
+    return False
+
+
+def _digest(path: Path, kind: Callable[[], Any]) -> str:
+    digest = kind()
+    with path.open("rb") as fh:
+        for block in iter(lambda: fh.read(1 << 22), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 def _verify(item: Item, path: Path) -> None:
-    """Size, then sha256 when the source gives one. A mismatch deletes the file."""
+    """Size, then sha256 or ETag, whichever the source gives. A mismatch deletes the file."""
     size = path.stat().st_size
     expected = item.remote.size
     problem = None
@@ -561,6 +715,8 @@ def _verify(item: Item, path: Path) -> None:
         problem = f"is {size:,} bytes, the source says {expected:,}"
     elif item.remote.sha256 and _sha256(path) != item.remote.sha256:
         problem = f"does not match its sha256 {item.remote.sha256[:16]}..."
+    elif item.remote.etag and not item.remote.sha256 and not etag_matches(path, item.remote.etag):
+        problem = f"does not match its ETag {item.remote.etag}"
     if problem:
         path.unlink()
         raise FetchError(f"{item.remote.path} {problem}; deleted it -- run again to download it afresh")
