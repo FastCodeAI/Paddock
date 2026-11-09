@@ -134,7 +134,7 @@ neuroncap = { run = "neuroncap/alpamayo15/20260906T034647-bc409f", marks = "A" }
 alpasim = { run = "alpasim/alpamayo15/20261029T200113-9d900c" }  # through the bridge, 30 scenes
 
 [cells.drivejepa]
-nuscenes = { run = "nuscenes/drivejepa/20260905T093335-4513d4", marks = "S" }
+nuscenes = { run = "nuscenes/drivejepa/20261105T201953-308dc5" }
 kitscenes = { run = "kitscenes/drivejepa/legacy-kitscenes_e2e_final" }
 comma2k19 = { run = "comma2k19/drivejepa/20261106T192049-391e2d" }  # three of its four views black; it reads only the front
 nuplan = { run = "nuplan/drivejepa/20260916T204900-6a17de", marks = "A" }  # 52 of nuPlan mini's 62 logs are navtrain logs
@@ -146,7 +146,7 @@ alpasim = { run = "alpasim/drivejepa/legacy-drivejepa_014_20hz_30scenes" }
 
 [cells.visionpilot]
 nuscenes = { run = "nuscenes/visionpilot/20260905T093333-319ef5", marks = "S" }
-kitscenes = { run = "kitscenes/visionpilot/20260909T202724-153b04", marks = "S" }
+kitscenes = { run = "kitscenes/visionpilot/20261105T191932-c71101" }
 comma2k19 = { run = "comma2k19/visionpilot/20261106T003749-c10a7f" }
 nuplan = { run = "nuplan/visionpilot/20260917T220044-97873a", marks = "S" }
 navsim = { run = "navsim/visionpilot/20260902T175642-df5291", marks = "S" }

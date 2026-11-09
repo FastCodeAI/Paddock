@@ -440,9 +440,10 @@ where the stack's own `lateral_fusion.hpp` has 0.21, so the planner saw a
 curvature 4.8x too large and its `sqrt(mu*g/|kappa|)` speed cap bound where it
 should not have. Fixed September 2026; on a 20-sample comma2k19 smoke the
 correction moved ADE@3s from 15.09 to 5.28. **Every VisionPilot figure in the
-support matrix but comma2k19's predates it** and will not be reproduced by a
-re-run — the closed-loop ones least, since urban scenes rarely reach the cap, and
-the KITScenes one most. The comma2k19 cell was re-run in November 2026. `docs/models/visionpilot.md` §"Curvature scale" has
+support matrix but comma2k19's and KITScenes' predates it** and will not be
+reproduced by a re-run, the closed-loop ones least, since urban scenes rarely reach
+the cap. Both of those cells were re-run in November 2026: KITScenes moved from
+1.534 to 1.475. `docs/models/visionpilot.md` §"Curvature scale" has
 the derivation; re-sweeping VisionPilot is an open item in `docs/ROADMAP.md`.
 
 ◊ METEOR plans **3 s**; NAVSIM scores **4 s**. A quarter of every scored plan is

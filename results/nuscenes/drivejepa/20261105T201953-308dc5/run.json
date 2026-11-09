@@ -1,0 +1,71 @@
+{
+  "run_id": "20261105T201953-308dc5",
+  "site": "fastcode-shakaal",
+  "benchmark": "nuscenes",
+  "model": "drivejepa",
+  "mode": "open_loop",
+  "started_utc": "2026-11-05T20:19:53+00:00",
+  "duration_s": 7351.7,
+  "repo_sha": "e21f47410b4d26b61f05f9bd23e169c0390cae2a",
+  "dataset": {
+    "name": "nuscenes",
+    "n_samples": 5119,
+    "sequences_sha256": "b507a7d90c5ccae9"
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT",
+      "CAM_BACK"
+    ],
+    "camera_history": "keyframes",
+    "history_seconds": 2.0,
+    "scoring_hz": 2.0,
+    "declared_env": {
+      "DRIVEJEPA_CHECKPOINT": "{data.navsim.exp}drive_jepa_perception_based_agent_vitl_v2.ckpt",
+      "DRIVEJEPA_IMAGE_GEOMETRY": "openscene",
+      "DRIVEJEPA_MOMENTUM": "on",
+      "DRIVE_JEPA_MSDA": "auto",
+      "NAVSIM_DEVKIT_ROOT": "{repo}/navsim_v2",
+      "NAVSIM_EXP_ROOT": "{data.navsim.exp}",
+      "NUPLAN_MAPS_ROOT": "{data.navsim}/maps",
+      "NUPLAN_MAP_VERSION": "nuplan-maps-v1.0",
+      "OPENSCENE_DATA_ROOT": "{data.navsim}"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "Drive-JEPA",
+      "sha": "e21f47410b4d26b61f05f9bd23e169c0390cae2a",
+      "pinned_sha": "e21f474",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "f01770a41de4d288d4bcc5da6511817902187b99",
+      "dirty": false
+    },
+    "policy": {
+      "image_geometry": "openscene",
+      "camera_frame": "ego",
+      "momentum": "on",
+      "momentum_counts": {
+        "replans": 5119,
+        "fed": 0,
+        "no_previous": 5119,
+        "out_of_window": 0,
+        "picks_changed": 0
+      },
+      "frames_recorded": 5,
+      "history_span_s": 1.5,
+      "history_target_s": 1.5
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "",
+  "ingested_from": ""
+}

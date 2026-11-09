@@ -465,7 +465,7 @@ declares instead of 2 s, so the 64 ego rows are real wherever the log reaches ba
 |---:|---:|---:|---:|---:|---:|---:|
 | 0.553 | 1.444 | 2.697 | 1.565 | **0.839** | 1.319 | 1.86 |
 
-Between Alpamayo 1.5 (0.787) and Drive-JEPA (0.912); constant velocity scores 0.641.
+Between Alpamayo 1.5 (0.787) and METEOR (0.977); constant velocity scores 0.641.
 On the 28 keyframes of scene-0003, run before and after the two input changes, the point
 L2 fell from 0.957 to 0.899 (one scene, a check of the inputs, not a score).
 
