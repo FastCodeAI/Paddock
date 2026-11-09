@@ -302,4 +302,6 @@ Wall-clock ~2 h for the full run, of which only 34 min was GPU; the rest is down
   same mechanism inflates its error on the first keyframe of each scene (L2
   avg 9.5 m there, 1.2 m elsewhere). Results: Bench2Drive 24 routes DS 44.6
   (best Overtaking of the four stacks); nuScenes val L2 avg 1.49 m (best of
-  three). See `docs/benchmarks/bench2drive.md` and `nuscenes.md`.
+  three). On the 220-route protocol, over 216 routes
+  (`results/bench2drive/alpamayo15/full220-836dda734659a86c-f81033`), DS 37.66,
+  completing 53 routes. See `docs/benchmarks/bench2drive.md` and `nuscenes.md`.
