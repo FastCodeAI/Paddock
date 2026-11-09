@@ -481,7 +481,7 @@ Two failure modes this exists for, both met on a 220-route sweep at one site:
   `campaign status` says whether it is a candidate for the routes set aside for
   every model. At that site route 23695 (Town13 `InterurbanAdvancedActorFlow`)
   crashed CARLA on all seven attempts, and 23708 (Town12) on two before one
-  scored.
+  scored. 23695 is now among the routes set aside (*Routes set aside*, below).
 
 Worker configs, logs (`logs/worker<slot>.log`) and a launch history
 (`workers.json`) live in `{runs}/bench2drive/_campaign/<model>/`. Every attempt
@@ -581,8 +581,12 @@ is lower by the share of routes set aside.
 ### Routes set aside
 
 A route is set aside for every model when the simulator fails on it on every
-attempt, whichever model drives. It then measures no model, and a mean with it for
-one model and without it for another is not over the same routes. Poor driving is
+attempt. On 11715 it fails whichever model drives. On 3800, 23695 and 24071 it
+failed on every attempt Alpamayo 1.5 made, each time at about the same point of the
+route; the other models' drives ended before that point, so their scores there are of
+drives that Alpamayo 1.5 could not finish. Either way the route measures no model, and
+a mean with it for one model and without it for another is not over the same routes.
+Poor driving is
 never a reason: a route the car is blocked on, deviates from, times out on or has
 ended early is scored. Neither is a failure of the model's own node (an HTTP 500,
 running out of memory): that is the model's to fix.
@@ -600,6 +604,16 @@ failure on the simulator, with the evidence here. The list is `SET_ASIDE` in
 | Route | Scenario | Why | Evidence |
 |---|---|---|---|
 | 11715 | Town12 EnterActorFlow | CARLA crashes (signal 11) about 54 s into the route on every attempt, whichever model drives | five attempts at one site, 7–8 Oct 2026 (openpilot), each `CommonUnixCrashHandler: Signal=11` at 53.65–54.0 s of game time; nine at another under three stacks |
+| 3800 | Town13 MergerIntoSlowTraffic | CARLA crashes (signal 11) 63-69 s into the route on every attempt by Alpamayo 1.5 at its declared 10 Hz | three attempts by Alpamayo 1.5 at 10 Hz, 9 Nov 2026, each `Signal=11` at 62.65–68.8 s of game time; in October the same at about 1300–1411 frames (65–71 s) for Alpamayo 1.5 and Qwen-Drive at their rates. openpilot completed it in 39.4 s; the 30 s rule stopped METEOR at 30.1 s and AutoE2E at 34.4 s |
+| 23695 | Town13 InterurbanAdvancedActorFlow | CARLA crashes (signal 11) about 40 s into the route on every attempt by Alpamayo 1.5 at its declared 10 Hz | three attempts by Alpamayo 1.5 at 10 Hz, 9 Nov 2026, each `Signal=11` at 39.75–41.5 s; seven of seven openpilot attempts at another site in October. openpilot completed it in 25.9 s; the 30 s rule stopped METEOR at 30.1 s and AutoE2E at 34.0 s |
+| 24071 | Town13 InterurbanAdvancedActorFlow | CARLA crashes (signal 11) 37-40 s into the route on every attempt by Alpamayo 1.5 at its declared 10 Hz | three attempts by Alpamayo 1.5 at 10 Hz, 9 Nov 2026, each `Signal=11` at 36.7–40.45 s. openpilot completed it in 24.6 s; the 30 s rule stopped METEOR at 30.1 s and AutoE2E at 34.0 s |
+
+**The 50-route column keeps 3800.** Route 3800 is one of the 50 routes behind the
+older Bench2Drive column, whose records were pooled before it was set aside; they
+keep it, as stored. Pooled again now, or driven again on that set, they leave it out:
+49 routes and a new route-set hash, so a table of their own on the leaderboard.
+openpilot's `pooled50-40c29d24c37d542a-c7d2b2`, pooled again under this list, is
+`pooled50-084418258d833a9f-db51cb`.
 
 ## Shared-machine behaviour
 
@@ -673,6 +687,11 @@ What every run here depends on, beyond the leaderboard's own rules.
   three stacks, regardless of ego speed. The client's traceback lands in
   `route_scenario.spawn_parked_vehicles` only because that is its first call to
   the server after the crash.
+* **Routes 3800, 23695 and 24071 (Town13) are set aside for every model too.**
+  CARLA crashed with signal 11 on every attempt Alpamayo 1.5 made at its declared
+  10 Hz, each time at about the same point (about 65, 40 and 38 s in). The other
+  models' drives ended before that point. It is not game time alone: at 20 Hz in
+  September, with no early stop, Alpamayo 1.5 drove 3800 to the 200 s tick cap.
 * **Wire format:** the agent now sends `speed_limit` (m/s, from
   `hero.get_speed_limit()`) and the next junction maneuver as `nav_maneuver` /
   `nav_distance_m` (walked forward on the 1 m world plan). Both optional; only
