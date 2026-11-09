@@ -45,6 +45,11 @@ entry into `[roots.repos]` at its pinned sha (or adopts a clone already there),
 then applies its patches; `--model` also runs that model's `setup.sh`. A clone at
 another sha is reported and left alone, and the exit code is 1.
 
+`paddock data fetch NAME [--dest DIR] [--only PART] [--match GLOB] [--dry-run]`
+downloads a dataset whose `datasets.yaml` entry has a `fetch:` recipe, from its
+owners' host at a pinned revision, checking each file's sha256. A dataset with
+`terms` needs `--accept-terms`, which only the user may give.
+
 Set `PADDOCK_CONFIG` to use a config file other than `./paddock.toml`, and
 `PADDOCK_BASE_PORT` to give concurrent runs disjoint port ranges (two runs
 scanning from 9000 will collide).

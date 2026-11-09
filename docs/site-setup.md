@@ -70,7 +70,9 @@ weights = "..."   # model checkpoints
 
 Then a `[datasets.*]` section for each dataset you have — see
 [data-setup.md](data-setup.md). Leave out what you do not have; being incomplete
-is not an error, and `doctor` will tell you what each gap blocks.
+is not an error, and `doctor` will tell you what each gap blocks. comma2k19,
+HUGSIM and NAVSIM can be downloaded with `paddock data fetch`, which adds the
+section for you ([Downloading a dataset](data-setup.md#downloading-a-dataset)).
 
 Two things worth getting right now rather than later:
 

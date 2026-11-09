@@ -256,8 +256,8 @@ Paddock ships no weights and no datasets.
 
 ## Quickstart
 
-You need git, make, [uv](https://docs.astral.sh/uv/getting-started/installation/), curl
-and unzip.
+You need git, make, [uv](https://docs.astral.sh/uv/getting-started/installation/) and
+curl.
 
 ```bash
 git clone <this repo> paddock && cd paddock
@@ -270,11 +270,7 @@ Then get a first score, with no GPU and no model weights: the constant-velocity 
 on one 8.7 GB chunk of comma2k19.
 
 ```bash
-mkdir -p ~/data/comma2k19
-curl -L -o ~/data/Chunk_1.zip https://huggingface.co/datasets/commaai/comma2k19/resolve/main/raw_data/Chunk_1.zip
-unzip -q ~/data/Chunk_1.zip -d ~/data/comma2k19
-printf '\n[datasets.comma2k19]\npath = "%s"\n' ~/data/comma2k19 >> paddock.toml
-
+paddock data fetch comma2k19 --dest ~/data/comma2k19 --match Chunk_1.zip   # also adds its path to paddock.toml
 paddock setup --repo comma2k19              # comma's toolkit, at its pinned commit
 paddock setup --model constant_velocity     # this model's own environment
 paddock run --model constant_velocity --bench comma2k19 --limit 5

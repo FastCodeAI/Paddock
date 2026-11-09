@@ -49,6 +49,9 @@ class DatasetSpec:
     splits: tuple[str, ...] = ()
     #: Free-form notes surfaced by `paddock doctor` when the dataset is partial.
     notes: str = ""
+    #: Where to download it from, for `paddock data fetch`; parsed and checked
+    #: by `paddock.fetch.recipe`. Empty for a dataset paddock cannot fetch.
+    fetch: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -290,6 +293,7 @@ def load_datasets(root: Path = REPO_ROOT) -> dict[str, DatasetSpec]:
             requires=tuple(body.get("requires", ())),
             splits=tuple(body.get("splits", ())),
             notes=body.get("notes", ""),
+            fetch=body.get("fetch") or {},
         )
         for name, body in (raw.get("datasets") or {}).items()
     }

@@ -3,6 +3,12 @@
 # Locations go in paddock.toml, which is gitignored, because they differ at
 # every site. `requires` lists subdirectories that must be present under the
 # resolved root; `paddock doctor` checks them and reports what a gap blocks.
+#
+# `fetch`, where present, is where the dataset comes from, for
+# `paddock data fetch` (src/paddock/fetch.py says how each key is read). It names
+# the owner's own host at a pinned revision, never a copy of ours, and only the
+# files a benchmark scores: the evaluation split, cameras only. `terms` makes
+# the command refuse until the user passes --accept-terms.
 
 datasets:
   nuscenes:
@@ -38,6 +44,35 @@ datasets:
       synthetic_scenes/, a separate download; EPDMS on navtest is the same metric
       on different, easier data and is not comparable to those figures. Training
       needs navtrain / trainval_sensor, another separate and much larger download.
+    fetch:
+      license: CC BY-NC-SA 4.0, non-commercial use only (OpenScene, and nuPlan's maps)
+      terms: https://www.nuscenes.org/terms-of-use
+      huggingface: {repo: OpenDriveLab/OpenScene, revision: a76f840b65e972bc45e56c2adced897498e9a026}
+      parts:
+        # One .pkl per log. NAVSIM builds its scene list from these, not from the
+        # images, so without them the cameras below score nothing.
+        metadata:
+          files: [openscene-v1.1/openscene_metadata_test.tgz]
+          into: navsim_logs/test
+          strip: 3  # openscene-v1.1/meta_datas/test/<log>.pkl
+        # The test split's 147 logs; navtest scores 136 of them. The lidar shards
+        # beside these are as large again, and no model here reads lidar.
+        cameras:
+          files: [openscene-v1.1/openscene_sensor_test_camera/openscene_sensor_test_camera_*.tgz]
+          into: sensor_blobs/test
+          strip: 3  # openscene-v1.1/sensor_blobs/test/<log>/<CAM>/*.jpg
+        # NAVSIM's own download_maps.sh fetches this same zip and renames its
+        # nuplan-maps-v1.0/ to maps/.
+        maps:
+          url: https://motional-nuplan.s3-ap-northeast-1.amazonaws.com/public/nuplan-v1.1/nuplan-maps-v1.1.zip
+          size: 970997691
+          sha256: 444860429f9a3bcf89a6459d683fa82eb9219aa259d8d9b8cdefdb37f0b56b05
+          into: maps
+          strip: 1
+      after: >
+        NAVSIM also scores in its own devkit, from a metric cache built from these
+        logs: see docs/benchmarks/navsim.md and docs/benchmarks/navsim_v1.md for the
+        devkit and `python -m tools.benchmarks.navsim.build_metric_cache`.
 
   nuplan:
     description: nuPlan v1.1 -- the original 10 Hz camera logs behind NAVSIM's OpenScene; open-loop ADE/FDE
@@ -76,6 +111,22 @@ datasets:
       that; paddock's launcher repairs a copy per run and never edits the data.
       The 16 nuScenes scenarios with load_HD_map: true also need the release's
       nusc_map_cache, which HUGSIM reads from ~/.unified_data_cache only.
+    fetch:
+      license: MIT
+      huggingface: {repo: XDimLab/HUGSIM, revision: 38433e301bef99dca09f7bbd10f3145449fb66a2}
+      parts:
+        scenarios:
+          files: [scenarios.zip]
+          into: scenarios  # the zip holds kitti360/ nuscenes/ pandaset/ waymo/
+        scenes:
+          files: ["scenes/*/*.zip"]  # each unpacks beside itself: scenes/<dataset>/<scene>/
+        vehicles:
+          files: ["3DRealCar/*/*"]  # 3DRealCar/<car_id>/{gs.pth,wlh.json}
+        map_cache:
+          files: [nusc_map_cache.zip]
+      after: >
+        HUGSIM reads the nuScenes map cache only from ~/.unified_data_cache, so link
+        it there: ln -s {dest}/nusc_map_cache ~/.unified_data_cache
 
   openlane_sample:
     description: short OpenLane clips (video + speed trace) used to smoke-test VisionPilot
@@ -112,3 +163,15 @@ datasets:
       There is no published model-evaluation protocol either -- comma2k19's own benchmark
       scores GNSS positioning, not driving models -- so this benchmark defines its metrics;
       see docs/benchmarks/comma2k19.md.
+    fetch:
+      license: MIT
+      huggingface: {repo: commaai/comma2k19, revision: 4bff77c7254c654c28d4c2726186b4e825adccee}
+      parts:
+        # All ten chunks are the benchmark's 10,165 samples; --match Chunk_1.zip
+        # takes one (8.7 GB) for a first score. Each unpacks to <dest>/Chunk_N/,
+        # so <dest> is what [datasets.comma2k19] path points at.
+        raw_data:
+          files: ["raw_data/Chunk_*.zip"]
+          into: .
+      after: >
+        comma2k19 also needs comma's toolkit, at its pinned commit: paddock setup --repo comma2k19
