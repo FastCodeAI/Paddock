@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
-92 runs across 9 benchmarks.
-55 run(s) excluded as invalid — shown at the end, never averaged in.
+99 runs across 9 benchmarks.
+56 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
@@ -79,7 +79,14 @@
 
 | model | run | n | hd_score ↑ | hugsim_pdms ↑ | route_completion ↑ | hugsim_nc ↑ | hugsim_dac ↑ | hugsim_ttc ↑ | hugsim_comfort ↑ |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| autoe2e | campaign-f7d8f9d4b9736ddd-d03155 | 420 | 0.057 | 0.357 | 14.078 | 0.539 | 0.598 | 0.450 | 0.681 |
+| drivejepa | fullplan-f7d8f9d4b9736ddd-b89341 | 420 | 0.371 | 0.621 | 47.182 | 0.703 | 0.960 | 0.650 | 0.873 |
+| qwendrive | fullplan-f7d8f9d4b9736ddd-1ddf85 | 420 | 0.348 | 0.523 | 46.659 | 0.617 | 0.927 | 0.552 | 0.928 |
+| constant_velocity | fullplan-f7d8f9d4b9736ddd-a8f5b7 | 420 | 0.242 | 0.656 | 28.578 | 0.729 | 0.930 | 0.686 | 1.000 |
+| alpamayo15 | fullplan-f7d8f9d4b9736ddd-7ea973 | 420 | 0.238 | 0.546 | 35.709 | 0.708 | 0.895 | 0.652 | 0.635 |
+| visionpilot | fullplan-f7d8f9d4b9736ddd-92c0b7 | 420 | 0.163 | 0.352 | 34.545 | 0.676 | 0.943 | 0.489 | 0.078 |
+| meteor | fullplan-f7d8f9d4b9736ddd-241d7f | 420 | 0.162 | 0.307 | 32.460 | 0.483 | 0.814 | 0.357 | 0.532 |
+| openpilot | fullplan-f7d8f9d4b9736ddd-cac3b5 | 420 | 0.061 | 0.735 | 6.996 | 0.841 | 0.883 | 0.826 | 1.000 |
+| autoe2e | fullplan-f7d8f9d4b9736ddd-4d9640 | 420 | 0.043 | 0.275 | 13.653 | 0.448 | 0.489 | 0.370 | 0.649 |
 
 ## kitscenes
 
@@ -188,7 +195,8 @@
 - **neuroncap/visionpilot/legacy-runs1** — Superseded by 20260905T121810-155d36: a small early run of 3 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one.
 - **neuroncap/visionpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **navsim/drivejepa/legacy-2026.08.08.02.26.44** — aggregate rows kept as context, not scored: average_all_frames=0.90673, pseudo_closed_loop=0.45337, average_expert_frames=0.90673. Source log reported 0.90488 over the same scenarios; paddock recomputes from per-sample scores. See the ingest module docstring. Superseded by 20260902T173156-7e208f: Covers 242 of the 12,146 scenarios, and came from the vendor's own agent, which reads the scorer's simulator while planning; the full run through paddock's proxy agent is the comparable score.
-- **hugsim/drivejepa/campaign-87d4f5097a85db3c-ce3603** — Released Drive-JEPA (NAVSIM v2 ViT-L checkpoint), driven 22 Oct 2026 in two lanes sharing one scenario queue. The node was the drivejepa adapter as of paddock ac7788f plus a per-call record of the 32 candidates and their scores, which does not change the plan; its camera placement goes through lidar2ego, which the bridge sends as the identity, so the cameras land where ac7788f puts them. At that commit the adapter fed cameras uncropped and picked on the plain score; main now crops to the OpenScene camera (#106) and turns momentum selection on (#95), so a re-run on main would differ. Only the front camera was rendered: the released model's forward reads only the front camera. DRIVEJEPA_IMAGE_GEOMETRY, DRIVEJEPA_MOMENTUM were supplied by the ingest config: the campaign recorded no model env, so this is the operator's statement of how the node was configured, not a reading from it. scenarios attempted and never scored: scene-0166-medium-01 (exit 1 after 60 steps: IndexError: index is out of bounds for dimension with size 0).
+- **hugsim/autoe2e/campaign-f7d8f9d4b9736ddd-d03155** — AutoE2E v1.0 (KITScenes epoch 5), driven 22 Oct 2026 in up to four lanes sharing one scenario queue, from paddock b507811 unmodified. The adapter has changed since (#92, #97, #98, #107, #108), so a re-run on main may differ. Called every step (it declares no planning rate), all six cameras rendered. It takes no command, so it gets upstream's no-route input. Superseded by fullplan-f7d8f9d4b9736ddd-4d9640: the 22 Oct campaign's bridge sent HUGSIM only the six waypoints (3 s) of each plan that the wire's trajectory keeps, so the scorer judged a cut plan, and it ran without the IDM guard; the 8-9 Nov campaign drove the same 420 scenarios through paddock's own bridge with the whole plan (up to 4 s) and the guard.
+- **hugsim/drivejepa/campaign-87d4f5097a85db3c-ce3603** — Released Drive-JEPA (NAVSIM v2 ViT-L checkpoint), driven 22 Oct 2026 in two lanes sharing one scenario queue. The node was the drivejepa adapter as of paddock ac7788f plus a per-call record of the 32 candidates and their scores, which does not change the plan; its camera placement goes through lidar2ego, which the bridge sends as the identity, so the cameras land where ac7788f puts them. At that commit the adapter fed cameras uncropped and picked on the plain score; main now crops to the OpenScene camera (#106) and turns momentum selection on (#95), so a re-run on main would differ. Only the front camera was rendered: the released model's forward reads only the front camera. DRIVEJEPA_IMAGE_GEOMETRY, DRIVEJEPA_MOMENTUM were supplied by the ingest config: the campaign recorded no model env, so this is the operator's statement of how the node was configured, not a reading from it. scenarios attempted and never scored: scene-0166-medium-01 (exit 1 after 60 steps: IndexError: index is out of bounds for dimension with size 0). Superseded by fullplan-f7d8f9d4b9736ddd-b89341: the 22 Oct campaign's bridge sent HUGSIM only the six waypoints (3 s) of each plan that the wire's trajectory keeps, so the scorer judged a cut plan, and it ran without the IDM guard; the 8-9 Nov campaign drove the same 420 scenarios through paddock's own bridge with the whole plan (up to 4 s) and the guard. Momentum selection and the OpenScene crop, both off here, were on there, as model.yaml declares.
 - **comma2k19/drivejepa_free/20261106T053407-587a3e** — Superseded by drivejepa/20261106T192049-391e2d: Drive-JEPA's comma2k19 row is now the perception-based model that every other benchmark runs. This perception-free agent was its comma2k19 row only because, when comma2k19 was added in September 2026, the perception-based adapter needed a lidar mounting that comma2k19 does not have; that need went in October 2026.
 - **comma2k19/meteor/20261030T001935-0b8d0b** — Superseded by 20261106T064120-226c00: Re-run on 6 Nov 2026 with the clone at its pinned dc193a81 and scored against the ground truth in the car's frame; this row came from a clone at 8567eb0 and was scored against a ground truth in the camera's frame. The plans are the same in both runs.
 - **navsim_v1/autoe2e/20261027T185517-5c7949** — no model process ran: 12146 plans replayed from navsim/autoe2e/20261009T055926-3ceb18 (that run: epdms 0.5002); the same plans, this benchmark's scorer Superseded by 20261104T210206-3022fb: this replay recorded 2 Hz OpenScene history and 1.5 s, but its plans were made at 10 Hz from nuPlan with 6.5 s; re-made with the right record, every score identical

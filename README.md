@@ -35,7 +35,7 @@ Per-benchmark tables and notes: [nuScenes](docs/benchmarks/nuscenes.md#support-m
 [Bench2Drive](docs/benchmarks/bench2drive.md#support-matrix-results) ·
 [neuroNCAP](docs/benchmarks/neuroncap.md#support-matrix-results) ·
 [AlpaSim](docs/benchmarks/alpasim.md#support-matrix-results).
-[HUGSIM](docs/benchmarks/hugsim.md) has no column yet: two of these models have driven it.
+[HUGSIM](docs/benchmarks/hugsim.md) has no column yet: all eight of these models have driven it ([results](docs/benchmarks/hugsim.md#results)).
 
 <details>
 <summary>Why each cell is marked, and what to check before comparing</summary>
