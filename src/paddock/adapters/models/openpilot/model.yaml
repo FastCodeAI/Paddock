@@ -146,4 +146,4 @@ score_notes:
 # in the record tells a value measured on the rig from one fitted to the test set.
 ranked_with_note: [PADDOCK_OPENPILOT_DESIRE]
 
-benchmarks: [kitscenes, neuroncap, bench2drive, navsim, nuscenes, comma2k19, nuplan]
+benchmarks: [kitscenes, neuroncap, bench2drive, navsim, nuscenes, comma2k19, nuplan, hugsim]
