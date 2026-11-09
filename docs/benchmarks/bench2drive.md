@@ -853,6 +853,7 @@ as 0, so each is 216/220 of the figure here (OpenPilot: DS 42.63, success 10.45%
 | OpenPilot | 216/220 | 43.42 | 55.15 | 0.813 | 22.69 | 10.65 | 180.59 | 40.88 | `full220-836dda734659a86c-2803bd` |
 | METEOR | 216/220 | 1.92 | 5.40 | 0.925 | 12.04 | 0.00 | 148.74 | 95.73 | `full220-836dda734659a86c-dda00e` |
 | AutoE2E | 216/220 | 14.36 | 27.80 | 0.548 | 79.63 | 0.00 | 219.49 | 50.46 | `full220-836dda734659a86c-63902e` |
+| Alpamayo 1.5 | 216/220 | 37.66 | 56.49 | 0.740 | 40.74 | 2.78 | 161.32 | 51.83 | `full220-836dda734659a86c-f81033` |
 
 **Bench2Drive's five abilities, in % of the routes that count towards each:**
 
@@ -861,6 +862,7 @@ as 0, so each is 216/220 of the figure here (OpenPilot: DS 42.63, success 10.45%
 | OpenPilot | 9.21 | 11.11 | 15.00 | 20.00 | 36.17 | 18.30 |
 | METEOR | 0.00 | 0.00 | 0.00 | 0.00 | 3.19 | 0.64 |
 | AutoE2E | 0.00 | 0.00 | 0.00 | 0.00 | 11.70 | 2.34 |
+| Alpamayo 1.5 | 1.32 | 4.44 | 3.33 | 10.00 | 52.13 | 14.24 |
 
 A route counts towards an ability by its scenario, the same for every model:
 Merging 76 of these routes, Overtaking 45, Emergency brake 60, Give way 10 and
@@ -897,6 +899,15 @@ completion is 25.8%, and 172 of its 216 routes have a collision. The 30 s rule
 ended 177 routes and the over-time rule 12. No route is a success; its one ability
 credit is Traffic signs, for 11 of 94 routes that got past their first junction
 with no red light or stop sign run.
+
+**Alpamayo 1.5** is asked at its declared 10 Hz, the last plan followed in between,
+with its three front cameras and the route as navigation text. CARLA crashed on
+nine of its attempts, all on routes 3800, 23695 and 24071, three each, which are
+now set aside for every model (*Routes set aside*); every other route scored on
+its first attempt. It completes 53 of its 216 routes, more than any other model
+here, and is second to openpilot on driving score: 88 routes have a collision, and
+the 30 s rule ended 110 and the over-time rule 22. Six routes are a success; its
+best ability is Traffic signs, 49 of 94 routes.
 
 ### Bench2Drive — 50 routes
 
