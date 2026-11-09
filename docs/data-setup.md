@@ -116,6 +116,7 @@ files a benchmark scores: the evaluation split, cameras only.
 | `navsim` | `metadata`, `cameras` (the test split), `maps` | 129.3 GB | CC BY-NC-SA 4.0 | `--accept-terms` |
 | `nuscenes` | `metadata`, `keyframes`, `can_bus`, `map_expansion` | 46.5 GB | CC BY-NC-SA 4.0 | `--accept-terms`; nuScenes asks you to register at nuscenes.org |
 | `nuplan` | `logs`, `cameras` (the mini split), `maps` | 460.2 GB | CC BY-NC-SA 4.0 | `--accept-terms`; the host is slow, so the cameras take more than a day |
+| `neurad_checkpoints` | `renderers`: neuroNCAP's 14 scene renderers | 13.5 GB | CC BY-NC-SA 4.0 (trained on nuScenes) | `--accept-terms`; then set `[benchmarks.neuroncap] checkpoints` to the same folder |
 | `kitscenes` | `val`, `overlap_train_val` | 594.3 GB | CC BY-NC 4.0 | accept the terms on [its Hugging Face page](https://huggingface.co/datasets/KIT-MRT/KITScenes-Multimodal), log in with `huggingface-cli login`, and pass `--accept-terms` |
 
 ```bash
@@ -147,8 +148,7 @@ toolkit for comma2k19, HUGSIM's own environment and its map-cache link, NAVSIM's
 devkit and metric cache. The command prints the next step when it finishes.
 
 Not covered: AlpaSim needs no download, because its own scene provider fetches
-each scene on first use. neuroNCAP's NeuRAD scene reconstructions
-(`neurad_checkpoints`) and `openlane_sample`'s clips have no recipe yet.
+each scene on first use.
 nuScenes' sweeps (`sweeps/`, read only by openpilot's optional camera history) are
 left out of the nuScenes recipe.
 

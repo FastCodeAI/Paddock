@@ -235,11 +235,21 @@ class Sources:
         return f"{self.endpoint}/datasets/{repo}/resolve/{revision}/{path}"
 
     def head(self, url: str) -> tuple[int | None, str | None, int]:
-        """`(size, etag, status)` for a web address, following redirects."""
+        """`(size, etag, status)` for a web address, following redirects.
+
+        A HEAD request first. A host that answers it without a length -- Dropbox's
+        download host does -- is asked for the first byte instead, and the total
+        read from its Content-Range: still no download.
+        """
         import httpx
 
         response = httpx.head(url, follow_redirects=True, timeout=60, headers=self.headers(url))
         length = response.headers.get("content-length")
+        if response.status_code < 400 and not length:
+            ranged = {**self.headers(url), "Range": "bytes=0-0"}
+            with httpx.stream("GET", url, follow_redirects=True, timeout=60, headers=ranged) as response:
+                total = response.headers.get("content-range", "").rpartition("/")[2]
+                length = total if total.isdigit() else None
         etag = response.headers.get("etag")
         return (int(length) if length else None, etag.strip('"') if etag else None, response.status_code)
 
@@ -315,7 +325,9 @@ def remotes(part: Part, hub: Sources) -> list[Remote]:
     """
     if part.base:
         base = part.base.rstrip("/") + "/"
-        return [Remote(p.name, base + p.name, p.size, p.sha256, p.etag) for p in part.pinned]
+        # A query string is part of the address, not of the file's name: the
+        # Dropbox link neuroNCAP publishes ends in ?rlkey=...&dl=1.
+        return [Remote(p.name.split("?", 1)[0], base + p.name, p.size, p.sha256, p.etag) for p in part.pinned]
     assert part.huggingface is not None
     repo, revision = part.huggingface
     out: dict[str, Remote] = {}

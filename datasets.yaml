@@ -188,6 +188,27 @@ datasets:
     notes: >
       One checkpoint per nuScenes sequence. A scenario whose scene has no
       checkpoint cannot be rendered and will fail at run time, not at setup.
+    fetch:
+      license: >-
+        neuroNCAP's own release; the renderers are trained on nuScenes, so nuScenes'
+        terms apply: CC BY-NC-SA 4.0, non-commercial use only
+      terms: https://www.nuscenes.org/terms-of-use
+      parts:
+        # The link neuroNCAP's own scripts/download/download_neurad_weights.sh
+        # fetches, at the neuro-ncap commit repos.yaml pins (ecdcf28). Dropbox's
+        # ETag is not a checksum, so the file is pinned by its sha256, taken from
+        # one download on 2026-11-10. It unpacks to <dest>/<scene>/{config.yml,
+        # dataparser_transforms.json, step-000150000.ckpt} for neuroNCAP's 14 scenes.
+        renderers:
+          base: https://www.dropbox.com/scl/fi/s5wu0jwhhmtafmnl8icao/
+          files:
+            ncap-weights.tar.gz?rlkey=xrf7b99q4z1a09g2mbfl921kk&st=dil5h0m6&dl=1:
+              size: 13489194240
+              sha256: c049b6371b442cf0c6fd17ae7c40d695545ca3496bbef09f76b64a51a003a0f1
+      after: >
+        neuroNCAP reads its renderers from [benchmarks.neuroncap] checkpoints, not from
+        this dataset's path, so set checkpoints = "{dest}" there as well
+        (docs/benchmarks/neuroncap.md).
 
   hugsim:
     description: HUGSIM release -- Gaussian-splatting scenes, vehicle assets and 436 closed-loop scenarios over KITTI-360, nuScenes, PandaSet and Waymo
@@ -220,9 +241,6 @@ datasets:
       after: >
         HUGSIM reads the nuScenes map cache only from ~/.unified_data_cache, so link
         it there: ln -s {dest}/nusc_map_cache ~/.unified_data_cache
-
-  openlane_sample:
-    description: short OpenLane clips (video + speed trace) used to smoke-test VisionPilot
 
   comma2k19:
     description: comma.ai comma2k19 -- 33 hours of 20 Hz highway driving -- open-loop ADE/FDE

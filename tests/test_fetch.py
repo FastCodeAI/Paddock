@@ -157,7 +157,7 @@ def _run(site: SiteConfig, hub: LocalHub, dest: Path, recipe: dict, **kw) -> tup
 
 def test_every_recipe_in_datasets_yaml_parses_and_pins_every_file() -> None:
     specs = {name: spec for name, spec in load_datasets().items() if spec.fetch}
-    assert {"comma2k19", "hugsim", "navsim", "nuscenes", "nuplan", "kitscenes"} <= set(specs)
+    assert set(specs) == set(load_datasets()), "every dataset paddock reads can be fetched"
     for spec in specs.values():
         rec = fetch.recipe(spec)
         for part in rec.parts.values():
@@ -436,3 +436,36 @@ def test_the_command_names_the_datasets_it_knows(tmp_path, monkeypatch) -> None:
     result = CliRunner().invoke(app, ["data", "fetch", "no-such-dataset", "--dry-run"])
     assert result.exit_code == 2
     assert "comma2k19" in result.output
+
+
+def test_a_query_string_is_part_of_the_address_not_the_name() -> None:
+    block = {
+        "license": "MIT",
+        "parts": {
+            "w": {
+                "base": "https://www.dropbox.com/scl/fi/abc/",
+                "files": {"weights.tar.gz?rlkey=k&dl=1": {"size": 3, "sha256": "ab" * 32}},
+            }
+        },
+    }
+    (item,) = fetch.plan(fetch.recipe(_spec(block)), hub=fetch.Sources(token=""))
+    assert item.remote.url == "https://www.dropbox.com/scl/fi/abc/weights.tar.gz?rlkey=k&dl=1"
+    assert item.name == "weights.tar.gz" and item.archive
+
+
+def test_a_host_that_gives_no_length_to_head_is_asked_for_one_byte(monkeypatch) -> None:
+    import contextlib
+
+    import httpx
+
+    monkeypatch.setattr(httpx, "head", lambda *a, **k: httpx.Response(200, headers={"etag": '"x"'}))
+    asked = {}
+
+    @contextlib.contextmanager
+    def stream(method, url, **kw):
+        asked.update(kw["headers"])
+        yield httpx.Response(206, headers={"content-range": "bytes 0-0/13489194240"})
+
+    monkeypatch.setattr(httpx, "stream", stream)
+    size, _, status = fetch.Sources(token="").head("https://example.com/w.tar.gz")
+    assert (size, status) == (13489194240, 206) and asked["Range"] == "bytes=0-0"
