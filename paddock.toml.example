@@ -217,6 +217,12 @@ serialize = true
 # base_port     = 9800
 # renderer_port = 8800
 
+# Hosted evaluation (docs/hosted-evaluation.md). The intake and the worker read it.
+# [submissions]
+# repo      = "FastCodeAI/Paddock"       # whose issues are submissions
+# sandbox   = "/srv/psbx"                # one workspace per job; keep it short
+# token_env = "PADDOCK_GITHUB_TOKEN"     # the variable holding the token
+
 # Benchmarks that bring their own environment and assets. Uncomment and fill in
 # the ones this site can run; `paddock doctor` reports the rest as unavailable.
 

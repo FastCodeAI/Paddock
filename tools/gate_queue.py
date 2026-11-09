@@ -546,10 +546,14 @@ def retry(settings: Settings, job_id: str) -> str:
 # -- the worker ---------------------------------------------------------------
 
 
-def ensure_checkout(settings: Settings, commit: str) -> Path:
+def ensure_checkout(settings: Settings, commit: str, name: str | None = None) -> Path:
     """A checkout of `commit` of its own, made once and kept: the runs it makes write
-    their run.json into its results/, and baselines point there."""
-    path = settings.checkouts / commit
+    their run.json into its results/, and baselines point there.
+
+    `name` gives a job a checkout nobody shares: a `submission` job copies the
+    author's adapter into its checkout, which no other job may then run from.
+    """
+    path = settings.checkouts / (name or commit)
     if not (path / ".git").exists():
         _mkdir(settings.checkouts)
         _git(["worktree", "add", "-q", "--detach", str(path), commit], settings.repo)
@@ -569,7 +573,7 @@ def provenance_refused(model: str, checkout: Path) -> str | None:
     spec = load_models().get(model)
     if spec is None:
         return None  # the gate says so, with the list of known models
-    repo = SiteConfig.load().repo(spec.repo)
+    repo = SiteConfig.load().model_repo(model, spec.repo)
     for where in (repo, checkout):
         out = subprocess.run(["git", "-C", str(where), "rev-parse", "HEAD"], capture_output=True, text=True)
         if out.returncode != 0 and where.exists():
@@ -581,10 +585,10 @@ def job_refused(job: dict[str, Any], checkout: Path) -> str | None:
     """What `submit` would have refused in this job, or None. A job file can be written
     by hand, so the worker checks again: env keys the model's model.yaml (in the job's
     own checkout) sets, and no env on a baseline job, which would install a checkpoint
-    as the queue's baselines."""
+    as the queue's baselines, or on a submission, whose code is all it measures."""
     env = job.get("env") or {}
-    if job.get("kind") == "baseline" and env:
-        return f"a baseline job runs the released model, and this one sets {', '.join(sorted(env))}"
+    if job.get("kind") in ("baseline", "submission") and env:
+        return f"a {job['kind']} job sets no env, and this one sets {', '.join(sorted(env))}"
     path = checkout / MODELS_DIR / job["model"] / "model.yaml"
     if not path.is_file():
         return f"unknown model {job['model']!r} at {job['commit'][:12]}"
@@ -740,18 +744,29 @@ class Worker:
             return self.finish(job, "cancelled")
         if job.started is None:
             _write(job.path / "started.json", json.dumps({"at": _now(), "worker": os.getpid()}) + "\n")
+        submission = spec["kind"] == "submission"
+        gate_env: dict[str, str] = {}
         try:
-            checkout = ensure_checkout(self.settings, spec["commit"])
+            if submission:
+                # A stranger's adapter: a checkout of the job's own, the code built and
+                # verified in the sandbox, and a site config that starts its node there
+                # (tools/submissions.py, docs/hosted-evaluation.md).
+                from tools import submissions
+
+                checkout = ensure_checkout(self.settings, spec["commit"], name=job.id)
+                gate_env = submissions.prepare(self.settings, spec, job.path, checkout, echo=self.echo)
+            else:
+                checkout = ensure_checkout(self.settings, spec["commit"])
         except QueueError as why:
             return self.finish(job, "error", reason=str(why))
         if why := job_refused(spec, checkout) or provenance_refused(spec["model"], checkout):
             return self.finish(job, "error", reason=why)
         baseline = job.path / "baseline.toml"
         if not baseline.is_file():
-            if spec["kind"] == "baseline":
+            if spec["kind"] in ("baseline", "submission"):
                 _write(
                     baseline,
-                    f"# A baseline job: nothing to pair with.\nmodel = {json.dumps(spec['model'])}\n",
+                    f"# A {spec['kind']} job: nothing to pair with.\nmodel = {json.dumps(spec['model'])}\n",
                 )
             else:
                 source = self.settings.baselines / f"{spec['model']}.toml"
@@ -778,8 +793,13 @@ class Worker:
                     f"\n== {_now()} worker {os.getpid()}, commit {spec['commit']}\n$ {shlex.join(command)}\n"
                 )
                 log.flush()
-                env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+                env = {**os.environ, "PYTHONUNBUFFERED": "1", **gate_env}
                 env.pop("PYTHONPATH", None)  # the checkout's own tools/ and src/, not the worker's
+                if submission:
+                    from tools.submissions import SECRET_ENV
+
+                    for key in SECRET_ENV:  # never in reach of a submitted model's node
+                        env.pop(key, None)
                 proc = subprocess.Popen(
                     command,
                     cwd=checkout,
@@ -824,6 +844,10 @@ class Worker:
             "overall": verdict.get("overall"),
             "unfinished": verdict["unfinished"],
         }
+        if submission:
+            from tools import submissions
+
+            fields["scores"] = submissions.scores(verdict, checkout, spec["model"])
         if spec["kind"] == "baseline":
             current = self.settings.baselines / f"{spec['model']}.toml"
             previous = gate.load_baselines(current) if current.is_file() else {}

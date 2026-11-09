@@ -84,13 +84,24 @@ def _verify_model_in_its_own_env(cfg: SiteConfig, registry: Registry, name: str,
             )
         ]
 
+    from paddock.runtime.proc import launcher
+
     module = f"paddock.adapters.models.{spec.directory.name}.policy"
     echo(f"  running the policy checks inside {interpreter}")
     proc = subprocess.run(  # noqa: S603 -- interpreter comes from the tracked registry
         # The declaration travels as an argument because the registry is not
         # importable from every model's environment; the driver must not have to
         # resolve a site config to know what the model already said about itself.
-        [str(interpreter), "-c", _MODEL_DRIVER, module, "stochastic" if spec.stochastic else "seeded"],
+        # Through the site's launcher, as a node is started: a sandboxed model's
+        # code must not run bare here either.
+        [
+            *launcher(spec, cfg),
+            str(interpreter),
+            "-c",
+            _MODEL_DRIVER,
+            module,
+            "stochastic" if spec.stochastic else "seeded",
+        ],
         capture_output=True,
         text=True,
         env=env_builder.build(spec, cfg),

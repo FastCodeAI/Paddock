@@ -336,6 +336,7 @@ kilobyte-sized `results/` metrics are tracked.
 | [docs/data-setup.md](docs/data-setup.md) | pointing Paddock at datasets, or fetching them |
 | [docs/adding-a-model.md](docs/adding-a-model.md) | **adding a model** |
 | [docs/adding-a-benchmark.md](docs/adding-a-benchmark.md) | **adding a benchmark** |
+| [docs/hosted-evaluation.md](docs/hosted-evaluation.md) | having a model scored without running Paddock yourself, or running that service |
 | [docs/models/](docs/models/) | one page per model |
 | [docs/models/comparison.md](docs/models/comparison.md) | what each model is, and what it was trained on |
 | [docs/benchmarks/](docs/benchmarks/) | how each benchmark is scored, every figure with its run id |

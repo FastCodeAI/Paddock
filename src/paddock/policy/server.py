@@ -166,7 +166,13 @@ def load_policy(model: str) -> Policy:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Serve a paddock model as an HTTP policy node.")
     parser.add_argument("--model", required=True, help="directory name under adapters/models/")
-    parser.add_argument("--port", type=int, required=True)
+    where = parser.add_mutually_exclusive_group(required=True)
+    where.add_argument("--port", type=int)
+    # A Unix socket instead of a port, for a node in a network namespace of its
+    # own: a hosted submission's node has no network at all, and the sandbox
+    # launcher forwards the port paddock chose to this socket
+    # (`paddock.runtime.sandbox`). The node is told nothing else differs.
+    where.add_argument("--uds", help="serve on this Unix socket instead of a TCP port")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument(
         "--nonce", default=None, help="echoed by /whoami so the launcher knows this node is its own"
@@ -186,10 +192,13 @@ def main() -> None:
     # the first inference would time out with nothing explaining why.
     logger.info("loading %s", args.model)
     policy.load()
-    logger.info("%s ready on port %d", args.model, args.port)
+    logger.info("%s ready on %s", args.model, args.uds or f"port {args.port}")
 
     app = build_app(policy, model=args.model, nonce=args.nonce)
-    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+    if args.uds:
+        uvicorn.run(app, uds=args.uds, log_level="warning")
+    else:
+        uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 
 if __name__ == "__main__":

@@ -199,6 +199,40 @@ def model_node(
             yield url
 
 
+def launcher(spec: ModelSpec, cfg: SiteConfig) -> list[str]:
+    """The site's `[models.<name>] launcher` prefix, template variables resolved.
+
+    Empty for every model a site has not wrapped. `paddock verify` starts the
+    model's interpreter through the same prefix, so a model that verifies is one
+    that launches the way its runs will.
+    """
+    override = cfg.models.get(spec.name)
+    if override is None or not override.launcher:
+        return []
+    context = spec.context(cfg)
+    return [cfg.resolve(part, **context) for part in override.launcher]
+
+
+def node_command(
+    spec: ModelSpec, cfg: SiteConfig, port: int, nonce: str, interpreter: Path | None = None
+) -> list[str]:
+    """The argv that starts one policy node: the launcher, if any, then the server."""
+    interpreter = interpreter or spec.runtime.interpreter(cfg, **spec.context(cfg))
+    return [
+        *launcher(spec, cfg),
+        str(interpreter),
+        "-u",
+        "-m",
+        "paddock.policy.server",
+        "--model",
+        spec.directory.name,
+        "--port",
+        str(port),
+        "--nonce",
+        nonce,
+    ]
+
+
 @contextlib.contextmanager
 def _started_node(
     spec: ModelSpec,
@@ -222,18 +256,7 @@ def _started_node(
     nonce = nonce or uuid.uuid4().hex[:12]
     log_dir.mkdir(parents=True, exist_ok=True)
     log = log_dir / f"{spec.name}_node_{port}.log"
-    command = [
-        str(interpreter),
-        "-u",
-        "-m",
-        "paddock.policy.server",
-        "--model",
-        spec.directory.name,
-        "--port",
-        str(port),
-        "--nonce",
-        nonce,
-    ]
+    command = node_command(spec, cfg, port, nonce, interpreter)
 
     echo(f"  starting {spec.name} node on port {port}")
     died: int | None = None

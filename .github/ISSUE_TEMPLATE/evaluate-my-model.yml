@@ -1,0 +1,52 @@
+name: Evaluate my model
+description: Have Paddock score your driving model on its benchmarks. You need no GPU and no data.
+title: "Evaluate: <your model's name>"
+labels: [evaluate]
+# The labels below are read by tools/submissions.py (FIELDS): change one there too.
+body:
+  - type: input
+    id: repository
+    attributes:
+      label: Repository
+      description: >-
+        The public GitHub repository holding your model and its Paddock folder.
+        docs/hosted-evaluation.md says what goes in that folder.
+      placeholder: https://github.com/you/your-model
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+      description: The full 40-character commit hash to evaluate. The job measures exactly this commit.
+      placeholder: 0123456789abcdef0123456789abcdef01234567
+    validations:
+      required: true
+  - type: input
+    id: adapter
+    attributes:
+      label: Adapter folder
+      description: >-
+        The folder in your repository that holds model.yaml, policy.py and setup.sh,
+        copied from Paddock's model template. Leave it empty if it is `paddock`.
+      placeholder: paddock
+  - type: textarea
+    id: weights
+    attributes:
+      label: Weights and licence
+      description: Where setup.sh downloads your released weights from, and the licence they are under.
+    validations:
+      required: true
+  - type: dropdown
+    id: tier
+    attributes:
+      label: Tier
+      description: >-
+        quick takes about 40 minutes of GPU time. closed and all run for hours, and a
+        maintainer approves them after a quick run has finished cleanly.
+      options:
+        - quick
+        - closed
+        - all
+    validations:
+      required: true

@@ -92,7 +92,7 @@ def repo_provenance(
     """
     if repos is None:
         repos = load_repos()
-    root = cfg.repo(model_spec.repo)
+    root = cfg.model_repo(model_spec.name, model_spec.repo)
     sha = git_sha(root)
     info: dict[str, Any] = {"repo": model_spec.repo, "sha": sha}
     pinned = repos.get(model_spec.repo)

@@ -367,7 +367,7 @@ def setup(
             # repos.yaml names.
             echo(f"{spec.name}: setup.sh not run, because its repo is not ready")
         else:
-            repo_path = cfg.repo(spec.repo) if spec.repo else None
+            repo_path = cfg.model_repo(spec.name, spec.repo) if spec.repo else None
             failed = run_model_setup(spec, cfg, repo_path, dry_run=dry_run, echo=echo) != 0
 
     if not repo and not model:

@@ -30,7 +30,7 @@ def test_every_model_and_benchmark_is_in_the_readme_tables() -> None:
 
 def test_every_issue_template_is_a_form_github_can_show() -> None:
     templates = sorted((REPO_ROOT / ".github" / "ISSUE_TEMPLATE").glob("*.yml"))
-    assert len(templates) == 3
+    assert len(templates) == 4
     for path in templates:
         form = yaml.safe_load(path.read_text())
         assert form["name"] and form["description"] and form["body"], path.name

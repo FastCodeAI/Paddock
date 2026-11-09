@@ -430,7 +430,9 @@ def test_a_job_whose_model_repo_git_refuses_fails_before_it_runs(site, tmp_path:
     monkeypatch.setattr(
         paddock.config.SiteConfig,
         "load",
-        classmethod(lambda cls, *a: SimpleNamespace(repo=lambda n: tmp_path / n)),
+        classmethod(
+            lambda cls, *a: SimpleNamespace(repo=lambda n: tmp_path / n, model_repo=lambda m, n: tmp_path / n)
+        ),
     )
     assert "git refuses" in q.provenance_refused("m", tmp_path)
 

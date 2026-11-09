@@ -119,11 +119,27 @@ class ModelOverride:
 
     `benchmarks` holds this model's pairing tables, by benchmark name; see
     `PairingOverride`.
+
+    `launcher` is a command every process that runs this model's code is started
+    through: its policy node and `paddock verify`'s driver. The hosted queue
+    sets it to the sandbox for a submitted model (`paddock.runtime.sandbox`), in
+    a config of the job's own, so a stranger's code never runs bare on the
+    box. It changes where the code runs, never what it computes, so it is not
+    part of a run's measured config.
+
+        [models.sub_123]
+        launcher = ["/usr/bin/python3", "-m", "paddock.runtime.sandbox", "node", "--workspace", "...", "--"]
+        repo = "/srv/paddock-sandbox/<job>/source"
     """
 
     venv: Path | None = None
     env: dict[str, str] = field(default_factory=dict)
     benchmarks: dict[str, PairingOverride] = field(default_factory=dict)
+    launcher: tuple[str, ...] = ()
+    #: The model's clone, where it is not `[roots.repos]/<repo>`: a hosted
+    #: submission's code lives in its job's sandbox workspace, not beside the
+    #: vendored clones every other run reads.
+    repo: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -216,6 +232,8 @@ class SiteConfig:
                     bench: _pairing(cfg_path, name, bench, table)
                     for bench, table in (body.get("benchmarks") or {}).items()
                 },
+                launcher=_launcher(cfg_path, name, body.get("launcher")),
+                repo=_abs(body["repo"]) if "repo" in body else None,
             )
             for name, body in raw.get("models", {}).items()
         }
@@ -309,6 +327,13 @@ class SiteConfig:
         """Where a vendor clone lives here."""
         return self.repos / name
 
+    def model_repo(self, model: str, repo: str) -> Path:
+        """Where `model`'s clone lives here: its `[models.<model>] repo`, else the vendor clone."""
+        override = self.models.get(model)
+        if override is not None and override.repo is not None:
+            return override.repo
+        return self.repo(repo)
+
     def paired(self, model: str, bench: str) -> SiteConfig:
         """This config as `model` sees it on `bench`: its pairing table applied.
 
@@ -352,6 +377,19 @@ def _pairing(cfg_path: Path, model: str, bench: str, body: object) -> PairingOve
         env={k: str(v) for k, v in (body.get("env") or {}).items()},
         settings={k: str(v) for k, v in (body.get("settings") or {}).items()},
     )
+
+
+def _launcher(cfg_path: Path, model: str, value: object) -> tuple[str, ...]:
+    """`[models.<model>] launcher`, a list of strings, refused in any other shape.
+
+    A single string would be split by nobody and run as one argv word; a list
+    with a number in it would reach `subprocess` as a TypeError mid-sweep.
+    """
+    if value is None:
+        return ()
+    if not isinstance(value, list) or not all(isinstance(part, str) and part for part in value):
+        raise ConfigError(f"{cfg_path}: [models.{model}] launcher must be a list of non-empty strings")
+    return tuple(value)
 
 
 def _abs(value: str | Path) -> Path:

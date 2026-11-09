@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import base64
 import io
+import os
 import pickle
 import zipfile
 from abc import ABC, abstractmethod
@@ -138,14 +139,22 @@ def _load_torch_tensor_without_torch(data: bytes) -> np.ndarray:
             )
 
         class _Unpickler(pickle.Unpickler):
+            # An allowlist, not a fallback. Plain pickle resolves any global it is
+            # named -- `posix.system` included -- and calls it while loading, so a
+            # request body could run code in a node that has no torch. That was
+            # only theoretical while every node listened on localhost for paddock's
+            # own harnesses; a hosted submission's node is fed frames by a process
+            # that holds what the submitter must not reach, and the decoder is the
+            # one place the two meet. `_rebuild_tensor_v2` passes its backward
+            # hooks as an empty OrderedDict, the only global a tensor needs.
             def find_class(self, module: str, name: str):
-                if name in _STORAGE_DTYPES:
+                if name in _STORAGE_DTYPES and module.startswith("torch"):
                     return _STORAGE_DTYPES[name]
-                if name == "_rebuild_tensor_v2":
+                if name == "_rebuild_tensor_v2" and module.startswith("torch"):
                     return rebuild_tensor
-                if module.startswith("torch"):
-                    raise ValueError(f"unsupported torch symbol in payload: {module}.{name}")
-                return super().find_class(module, name)
+                if (module, name) == ("collections", "OrderedDict"):
+                    return super().find_class(module, name)
+                raise ValueError(f"unsupported symbol in image payload: {module}.{name}")
 
         unpickler = _Unpickler(io.BytesIO(archive.read(pickle_name)))
         unpickler.persistent_load = persistent_load
@@ -172,6 +181,33 @@ def encode_image(array: np.ndarray, codec: str | None = None) -> str:
     else:
         np.save(buffer, np.ascontiguousarray(np.asarray(array, dtype=np.uint8)), allow_pickle=False)
     return base64.b64encode(buffer.getvalue()).decode()
+
+
+#: Set to "1" in a harness's environment to send on-disk frames as pixels.
+#:
+#: Open-loop harnesses normally send paths, because the node reads the same disk
+#: (see `Observation.image_paths`). A hosted submission's node runs in a sandbox
+#: that cannot see the dataset, so that a model cannot open the recorded future
+#: it is about to be scored against. The queue worker sets this for every
+#: `submission` job (tools/gate_queue.py); nothing else does.
+INLINE_IMAGES_ENV = "PADDOCK_INLINE_IMAGES"
+
+
+def inline_frame(path: str | Path) -> str:
+    """One frame on disk, as the wire string a node decodes to the same pixels.
+
+    A JPEG travels as its own bytes: `decode_image` opens it with PIL and converts
+    to RGB, which is exactly what `load_frame` does with the file, so the node
+    sees the pixels it would have read itself, at a tenth of the size of raw
+    pixels. Anything else is read with `load_frame` -- its `.npy` checks included
+    -- and sent as a lossless `.npy`.
+    """
+    with open(path, "rb") as handle:
+        head = handle.read(2)
+        if head == b"\xff\xd8":
+            handle.seek(0)
+            return base64.b64encode(handle.read()).decode()
+    return encode_image(load_frame(path))
 
 
 def decode_image(encoded: str) -> np.ndarray:
@@ -474,9 +510,17 @@ class Observation:
         }
         if self.lidar2ego is not None:
             calibration["lidar2ego"] = np.asarray(self.lidar2ego).tolist()
+        images = {k: encode_image(v) for k, v in self.images.items()}
+        paths = dict(self.image_paths)
+        if os.environ.get(INLINE_IMAGES_ENV) == "1":
+            # A frame already held as pixels wins, as it does in `image()`.
+            for camera, path in paths.items():
+                if camera not in images:
+                    images[camera] = inline_frame(path)
+            paths = {}
         wire = {
-            "images": {k: encode_image(v) for k, v in self.images.items()},
-            "image_paths": dict(self.image_paths),
+            "images": images,
+            "image_paths": paths,
             "ego2world": np.asarray(self.ego2world).tolist(),
             "canbus": np.asarray(self.canbus).tolist(),
             "timestamp": int(self.timestamp_us),

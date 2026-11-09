@@ -628,7 +628,7 @@ def test_a_model_node_lets_go_of_the_gpu_lock_once_it_is_ready(tmp_path, monkeyp
         context=lambda cfg: {},
         runtime=SimpleNamespace(interpreter=lambda cfg, **ctx: Path(sys.executable)),
     )
-    with node_proc.model_node(spec, None, 9999, tmp_path / "logs", echo=print):
+    with node_proc.model_node(spec, SimpleNamespace(models={}), 9999, tmp_path / "logs", echo=print):
         fd = os.open(tmp_path / "locks" / "gpu0.lock", os.O_RDONLY)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)  # raises if the ready node still holds it

@@ -1823,7 +1823,10 @@ def _smoke_json(
     no benchmark had both a baseline and a finished candidate."""
     if path is None:
         return
-    steps_out = [{"name": s.name, "bench": s.bench, "status": s.status, "run_id": s.run_id} for s in steps]
+    steps_out = [
+        {"name": s.name, "bench": s.bench, "status": s.status, "run_id": s.run_id, "reason": s.reason}
+        for s in steps
+    ]
     data = {
         "overall": verdict,
         "unfinished": unfinished,

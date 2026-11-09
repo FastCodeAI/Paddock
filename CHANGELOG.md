@@ -18,3 +18,6 @@ First public release.
 - A results store that records each run's settings and upstream commits beside its
   scores, and a leaderboard built from it.
 - A regression gate that compares a change against earlier runs of the released models.
+- Hosted evaluation: an author opens an issue, and the queue builds their model in a
+  bubblewrap sandbox, runs the smoke tier and posts the scores on the issue
+  (`tools/submissions.py`, docs/hosted-evaluation.md).

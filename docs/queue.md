@@ -11,6 +11,9 @@ into the same free memory, both pin the same four cores, and each pairs against
 baselines made in their own checkout under their own account. The queue runs
 every job the same way.
 
+A third kind of job, `submission`, is an outside author's model queued from a GitHub
+issue by `tools.submissions`; [hosted-evaluation.md](hosted-evaluation.md) covers it.
+
 ## Using it
 
 ```bash

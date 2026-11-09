@@ -61,7 +61,7 @@ def build(spec: ModelSpec, cfg: SiteConfig, extra: dict[str, str] | None = None)
             env[key] = cfg.resolve(value, **context)
 
     # Paths a model's own setup.sh may want, named consistently.
-    env.setdefault("PADDOCK_REPO", str(cfg.repo(spec.repo)))
+    env.setdefault("PADDOCK_REPO", str(cfg.model_repo(spec.name, spec.repo)))
     env.setdefault("PADDOCK_WEIGHTS", str(cfg.weights))
     env.setdefault("PADDOCK_RUNS", str(cfg.runs))
     env["PADDOCK_SITE"] = cfg.site
@@ -86,4 +86,4 @@ def working_dir(spec: ModelSpec, cfg: SiteConfig) -> Path:
     """
     if spec.runtime.cwd:
         return Path(cfg.resolve(spec.runtime.cwd, **spec.context(cfg)))
-    return cfg.repo(spec.repo)
+    return cfg.model_repo(spec.name, spec.repo)

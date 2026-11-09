@@ -241,7 +241,7 @@ class ModelSpec:
 
     def context(self, cfg: SiteConfig) -> dict[str, str]:
         """Template variables available to this model's config strings."""
-        return {"repo": str(cfg.repo(self.repo)), "model": self.name}
+        return {"repo": str(cfg.model_repo(self.name, self.repo)), "model": self.name}
 
 
 @dataclass(frozen=True)
