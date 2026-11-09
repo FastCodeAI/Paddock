@@ -106,7 +106,11 @@ Read the notes; they are where the gate says what it cannot check:
 - **declared_env.** The env a model's own `model.yaml` sets is recorded as
   `config.declared_env`. A change to it is something a candidate is meant
   to test, like a code change, so it is not CONFIG DIFFERS: the gate names each
-  key that differs, and says when one run has no such record.
+  key that differs, and says when one run has no such record. Records written
+  before issue #173 was fixed hold a path such as
+  `{weights}/meteor/meteor_v157c3Z.onnx` cut to its last part, as
+  `{weights}meteor_v157c3Z.onnx`. Comparing a newer run with one of them names
+  that key even when `model.yaml` did not change it.
 - **invalid.** A smoke run of a subset is `valid: false`; the note is expected
   there and a warning anywhere else.
 - **code.** `run.json` records the paddock commit a run was made with
