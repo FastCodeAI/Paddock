@@ -48,6 +48,7 @@ class UniADPolicy(bp.Mmdet3dPlannerPolicy):
     cameras = bp.NUSC_CAMERAS
     config_env = "UNIAD_CONFIG"
     checkpoint_env = "UNIAD_CHECKPOINT"
+    horizon_env = "UNIAD_HORIZON_S"
     #: The steps of ``test_pipeline`` that read nuScenes from disk: the images and the annotations.
     drop_steps = ("LoadMultiViewImageFromFilesInCeph", "LoadAnnotations3D_E2E", "GenerateOccFlowLabels")
     #: What ``forward_test`` plans from; Bench2DriveZoo's ``inference_only_pipeline`` keeps the same five.

@@ -31,6 +31,7 @@ from paddock.adapters.models.vad.policy import reset_vad_state
 class VADB2DPolicy(bp.B2DPlannerPolicy):
     config_env = "VAD_B2D_CONFIG"
     checkpoint_env = "VAD_B2D_CHECKPOINT"
+    horizon_env = "VAD_B2D_HORIZON_S"
 
     def _extra_results(self, command: int) -> dict[str, Any]:
         # The agent's command_onehot: np.zeros(6) with a 1 at the command.

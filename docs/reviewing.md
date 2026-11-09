@@ -51,6 +51,10 @@ cd /tmp/pr-<N> && make check; echo "exit=$?"
   too. Its input tests, including the pinned inputs of every other benchmark,
   need torch and `alpamayo1_5`, so `make check` skips them; they run on the CPU
   without weights. If your site has no Alpamayo environment, say so in the review.
+- A PR that touches the UniAD / VAD adapters (`src/paddock/adapters/models/{uniad,vad,uniad_b2d,vad_b2d}/`)
+  needs `make check-uniad-vad UNIAD_VAD_DATA=<dir>` too: each adapter, in its own env on the GPU, must plan
+  what the model's original data path plans on four nuScenes keyframes (`<dir>` holds scene-0103's camera
+  JPEGs). `make check` runs their paddock-env tests only. If your site has no such env, say so in the review.
 - If the site has a checkout of the upstream tool the PR shells out to (CARLA,
   neuro-ncap, NAVSIM's devkit), open it and verify the flags, file layouts and
   output schema the PR assumes. "Matches the 0.0.4 checkout" is a verified
@@ -217,6 +221,7 @@ And the structure:
 - [ ] `make check-alpasim-driver` run if the AlpaSim scaffold or the bridge changed, or marked not run
 - [ ] `make check-openpilot` run if the openpilot adapter changed, or marked not run
 - [ ] `make check-alpamayo` run if the Alpamayo 1.5 adapter changed, or marked not run
+- [ ] `make check-uniad-vad` run if a UniAD / VAD adapter changed, or marked not run
 - [ ] upstream flags / schemas verified against a real checkout, or marked argued
 - [ ] every external import and path is preflighted and documented
 - [ ] scorer failure statuses raise `RuntimeError`; poor outcomes still score

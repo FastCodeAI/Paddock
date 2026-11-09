@@ -354,6 +354,18 @@ serialize = true
 # history_index_cache = "/path/to/cache/nuscenes_front_exposures.pkl"
 # history_seconds = 5.0
 
+# UniAD, VAD and their Bench2Drive checkpoints share one conda env, built by
+# adapters/models/uniad/setup.sh at {repos}/.conda-envs/uniad-vad. A site that keeps it
+# elsewhere points all four at it (docs/models/uniad.md):
+# [models.uniad]
+# venv = "/path/to/envs/uniad-vad"
+# [models.vad]
+# venv = "/path/to/envs/uniad-vad"
+# [models.uniad_b2d]
+# venv = "/path/to/envs/uniad-vad"
+# [models.vad_b2d]
+# venv = "/path/to/envs/uniad-vad"
+
 # Configure these in the model node environment, not just the invoking shell.
 # [models.openpilot.env]
 # PADDOCK_OPENPILOT_CUDA_MODEL = "/path/to/driving_cuda.pkl"

@@ -21,6 +21,10 @@ runtime:
     # to the working directory, and policy.py points it here instead.
     UNIAD_MOTION_ANCHORS: "{weights}/uniad/motion_anchor_infos_mode6.pkl"
     # A conda env also reads ~/.local site-packages ahead of its own; off, so the node runs what setup.sh built.
+    # UNIAD_HORIZON_S (unset): continue the plan past its own 3 s by holding the last 0.5 s step, for
+    # NAVSIM, which scores 4 s and refuses a shorter plan. An extrapolation the model never made, so it is
+    # set per benchmark, in a [models.uniad.benchmarks.navsim.env] pairing, and the report notes it.
+    # UNIAD_HORIZON_S: "4.0"
     PYTHONNOUSERSITE: "1"
     # nuscenes-devkit imports matplotlib at module scope; no display on a node.
     MPLBACKEND: "Agg"
@@ -62,4 +66,16 @@ capabilities:
     # splits (docs/models/comparison.md, UniAD and VAD x hugsim).
     - dataset: nuscenes
       split: train
-benchmarks: [hugsim, nuscenes, bench2drive, neuroncap]
+# UNIAD_HORIZON_S changes what a NAVSIM score means. tests/test_report.py accepts a score note only once a
+# stored run sets its key, so these two lines go in with the first stored NAVSIM run; until then such a
+# run is stored valid: false:
+#   score_notes:
+#     UNIAD_HORIZON_S: "plan continued to {value} s by paddock; the model itself plans 3 s"
+#   ranked_with_note: [UNIAD_HORIZON_S]
+
+# Where it runs (docs/models/uniad.md, "Benchmarks"): every benchmark that sends the six surround cameras.
+# navsim and navsim_v1 need UNIAD_HORIZON_S = "4.0" (above). neuroncap asks every 0.1 s whatever
+# planning_hz says; the policy steps the model every 0.5 s and holds its plan in between
+# (bev_planners.held_plan). Not listed: comma2k19 sends one camera; alpasim renders no rectified six-camera
+# nuScenes-like rig (no alpasim.yaml).
+benchmarks: [hugsim, nuscenes, bench2drive, kitscenes, nuplan, neuroncap, navsim, navsim_v1]

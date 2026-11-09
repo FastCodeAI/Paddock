@@ -28,6 +28,7 @@ from paddock.adapters.models.uniad.policy import reset_uniad_state
 class UniADB2DPolicy(bp.B2DPlannerPolicy):
     config_env = "UNIAD_B2D_CONFIG"
     checkpoint_env = "UNIAD_B2D_CHECKPOINT"
+    horizon_env = "UNIAD_B2D_HORIZON_S"
 
     def _plan(self, output, results: dict[str, Any]) -> np.ndarray:  # pragma: no cover
         return output[0]["planning"]["result_planning"]["sdc_traj"][0].detach().cpu().numpy()

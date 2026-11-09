@@ -38,6 +38,7 @@ class VADPolicy(bp.Mmdet3dPlannerPolicy):
     cameras = bp.NUSC_CAMERAS
     config_env = "VAD_CONFIG"
     checkpoint_env = "VAD_CHECKPOINT"
+    horizon_env = "VAD_HORIZON_S"
     #: The steps of ``test_pipeline`` that read nuScenes from disk: images, the lidar sweep (which
     #: ``forward_test`` never reads), the annotations and the two filters over them.
     drop_steps = (
