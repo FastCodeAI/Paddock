@@ -248,6 +248,10 @@ recorded differs by model, and the two halves are not equally strong:**
 route at 2 Hz in the same campaign and scores **100** (source run
 `20260918T050144-892d9d`). That distinguishes it from route 11715, which crashes
 CARLA for every model and is excluded from the route set entirely.
+Since 9 Nov 2026 3800 is among the routes set aside for every model as well: it
+crashed CARLA on all three attempts by Alpamayo 1.5 at 10 Hz in the 220-route runs
+([Routes set aside](bench2drive.md#routes-set-aside)). The records on this page were
+pooled before that, and keep it as a route lost.
 
 **But it is not independent of the variable under test.** Both models drove 3800
 to a score at 20 Hz — `alpamayo15` **35.33**, `qwendrive` **12.18**, in the
