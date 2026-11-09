@@ -1,0 +1,25 @@
+Subject: [PATCH 2/2] dispatch nms_rotated_cpu on scalar_type(), not type()
+
+`AT_DISPATCH_FLOATING_TYPES(dets.type(), ...)` passes a DeprecatedTypeProperties,
+which torch 2.x's dispatch macro no longer accepts, so the in-place build of the
+vendored ops (`python setup.py build_ext --inplace`) stops at:
+
+    nms_rotated.cpp:62: cannot convert 'const at::DeprecatedTypeProperties' to 'c10::ScalarType'
+
+The env needs torch 2.7.1+cu128 for Blackwell (sm_120) kernels. Same op, same
+dispatch; only the argument's type changes.
+
+---
+diff --git a/mmcv/ops/csrc/pytorch/cpu/nms_rotated.cpp b/mmcv/ops/csrc/pytorch/cpu/nms_rotated.cpp
+index 223ee1a..d2774c8 100644
+--- a/mmcv/ops/csrc/pytorch/cpu/nms_rotated.cpp
++++ b/mmcv/ops/csrc/pytorch/cpu/nms_rotated.cpp
+@@ -59,7 +59,7 @@ Tensor nms_rotated_cpu_kernel(const Tensor dets, const Tensor scores,
+ Tensor nms_rotated_cpu(const Tensor dets, const Tensor scores,
+                        const float iou_threshold) {
+   auto result = at::empty({0}, dets.options());
+-  AT_DISPATCH_FLOATING_TYPES(dets.type(), "nms_rotated", [&] {
++  AT_DISPATCH_FLOATING_TYPES(dets.scalar_type(), "nms_rotated", [&] {
+     result = nms_rotated_cpu_kernel<scalar_t>(dets, scores, iou_threshold);
+   });
+   return result;

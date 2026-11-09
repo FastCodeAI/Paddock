@@ -1,0 +1,65 @@
+name: uniad
+description: UniAD-Base (OpenDriveLab, CVPR 2023) - planning-oriented end-to-end stack on a BEVFormer grid, released nuScenes stage-2 checkpoint
+repo: UniAD
+
+runtime:
+  # Conda rather than uv: the stack is OpenMMLab's 1.x line (mmcv-full 1.7.2, mmdet 2.28.2, mmdet3d 0.17.1),
+  # compiled against the env's torch 2.7.1+cu128 and a CUDA 12.8 nvcc from conda. One env serves all four
+  # BEVFormer planners (uniad, vad, uniad_b2d, vad_b2d); setup.sh builds it. A site that keeps it elsewhere
+  # sets [models.uniad] venv.
+  kind: conda
+  python: "3.9"
+  venv: "{repos}/.conda-envs/uniad-vad"
+  # The repo root, for `projects.mmdet3d_plugin`, which the config names as its plugin.
+  pythonpath: ["{repo}"]
+  cwd: "{repo}"
+  env:
+    UNIAD_CONFIG: "{repo}/projects/configs/stage2_e2e/base_e2e.py"
+    # github.com/OpenDriveLab/UniAD/releases/download/v1.0.1/uniad_base_e2e.pth
+    UNIAD_CHECKPOINT: "{weights}/uniad/uniad_base_e2e.pth"
+    # The motion head's anchors, a v1.0 release asset the repo does not track; the config names it relative
+    # to the working directory, and policy.py points it here instead.
+    UNIAD_MOTION_ANCHORS: "{weights}/uniad/motion_anchor_infos_mode6.pkl"
+    # A conda env also reads ~/.local site-packages ahead of its own; off, so the node runs what setup.sh built.
+    PYTHONNOUSERSITE: "1"
+    # nuscenes-devkit imports matplotlib at module scope; no display on a node.
+    MPLBACKEND: "Agg"
+    # The node is GPU-bound; torch's CPU pool would otherwise take every core of a shared box.
+    OMP_NUM_THREADS: "2"
+
+capabilities:
+  # In the model's own order (the nuScenes info files'): the spatial cross-attention learns an embedding
+  # per camera index.
+  cameras: [CAM_FRONT, CAM_FRONT_RIGHT, CAM_FRONT_LEFT, CAM_BACK, CAM_BACK_LEFT, CAM_BACK_RIGHT]
+  # Measured 4.1 GB for the process (2.4 GB allocated, 3.2 GB reserved peak) on six 1600x900 cameras.
+  vram_gb: 6
+  startup_timeout_s: 900
+  waypoint_dt: 0.5
+  # The temporal BEV fuses the previous grid and the tracker carries its queries forward as though 0.5 s
+  # had passed: it trained on nuScenes keyframes, 2 Hz. Closed loop replans at that rate; open-loop history
+  # is fed on the same grid (bev_planners.history_on_grid).
+  planning_hz: 2.0
+
+  # -- model card (docs/models/comparison.md) --
+  architecture: "ResNet-101-DCN + BEVFormer (200x200) with track, map, motion, occupancy and planning heads"
+  params_m: 131.8
+  size_gb: 1.0
+  precision: fp32
+  input_size: [1600, 900]
+  # One frame of images per call; the previous BEV grid and the track queries are recurrent state.
+  history_frames: 1
+  camera_hz: 2.0
+  output_kind: waypoints
+  horizon_s: 3.0
+  plan_points_hz: 2.0
+  stochastic: false
+  needs_speed: true
+  trained_on:
+    # Both stages train on nuScenes `train` and report on `val` (ann_file_train nuscenes_infos_temporal_train.pkl
+    # in projects/configs/stage1_track_map/base_track_map.py and stage2_e2e/base_e2e.py at the pinned sha).
+    # Stage 1 starts from BEVFormer's released nuScenes model (load_from ckpts/bevformer_r101_dcn_24ep.pth,
+    # docs/INSTALL.md), stage 2 from stage 1. HUGSIM's nuScenes scenarios reconstruct drives of both nuScenes
+    # splits (docs/models/comparison.md, UniAD and VAD x hugsim).
+    - dataset: nuscenes
+      split: train
+benchmarks: [hugsim, nuscenes, bench2drive, neuroncap]
