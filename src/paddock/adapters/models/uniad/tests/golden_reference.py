@@ -37,7 +37,6 @@ from __future__ import annotations
 
 import argparse
 import copy
-import datetime
 import hashlib
 import importlib
 import json
@@ -45,6 +44,7 @@ import math
 import os
 import subprocess
 import sys
+import time
 from collections import OrderedDict
 from pathlib import Path
 
@@ -415,6 +415,13 @@ def run_nuscenes(args, meta: dict, messages: list[dict]) -> dict:
     return out
 
 
+def first_meta(obj) -> dict:
+    """The first sample's img_metas dict, through however many DataContainers and lists collate made."""
+    while not isinstance(obj, dict):
+        obj = obj.data if hasattr(obj, "data") else obj[0]
+    return obj
+
+
 def b2d_record(meta: dict, index: int, messages: list[dict]) -> dict:
     """A Bench2Drive annotation's fields for one nuScenes keyframe, run through ``prepare_B2D.py``'s formulas.
 
@@ -541,7 +548,7 @@ def run_b2d(args, meta: dict, messages: list[dict]) -> dict:
             for key, data in batch.items():
                 if key != "img_metas" and torch.is_tensor(data[0]):
                     data[0] = data[0].to("cuda")
-            metas = batch["img_metas"][0].data[0][0]
+            metas = first_meta(batch["img_metas"])
             seen = {
                 "lidar2img": np.asarray(metas["lidar2img"]).tolist(),
                 "can_bus": np.asarray(metas["can_bus"]).tolist(),
@@ -624,7 +631,7 @@ def main() -> None:
     fixture = {
         "provenance": {
             "written_by": "paddock.adapters.models.uniad.tests.golden_reference",
-            "date": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d"),
+            "date": time.strftime("%Y-%m-%d", time.gmtime()),
             "model": args.model,
             "repo": os.getcwd().split(os.sep)[-1],
             "repo_head": git_head(os.getcwd()),
