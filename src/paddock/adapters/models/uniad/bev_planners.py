@@ -34,8 +34,11 @@ the models. The policy itself imports the model's code base inside `load()`.
 
 from __future__ import annotations
 
+import contextlib
 import math
 import os
+from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -82,6 +85,15 @@ LOAD_SIZE = (1600, 900)
 
 #: Standard gravity, m/s^2: the vertical term of an accelerometer reading at rest.
 GRAVITY = 9.81
+
+#: Threads a node may use beside the one that runs the model, to read and prepare frames: one prepares the
+#: next frame (its six images, the config's test pipeline, the collated batch) while the model runs on this
+#: one, the rest decode and convert the six cameras side by side, and OpenCV's own pool is held to as many.
+#: Speed only: every frame is prepared in order and fed what it would be fed one at a time, so the plans
+#: are the same at any count (the golden tests, `make check-uniad-vad`). 1 or less prepares on the model's
+#: thread, one camera after another, as before. model.yaml declares it `tuning_env`.
+THREADS_ENV = "UNIAD_VAD_THREADS"
+DEFAULT_THREADS = 5
 
 
 def pose_matrix(translation, quaternion) -> np.ndarray:
@@ -575,6 +587,9 @@ class BevPlannerPolicy(Policy):
                 f"{self.horizon_env}={raw} is shorter than the model's {PLAN_DT * PLAN_STEPS} s plan"
             )
         self.episode = 0
+        self.threads = 1
+        self._prepare_pool: ThreadPoolExecutor | None = None
+        self._views_pool: ThreadPoolExecutor | None = None
         self._begin_episode()
 
     # -- lifecycle ----------------------------------------------------------
@@ -593,7 +608,23 @@ class BevPlannerPolicy(Policy):
             if not Path(path).is_file():
                 raise FileNotFoundError(f"{type(self).__name__}: no such file {path}")
         self._build()
+        self._start_threads()
         self.reset()
+
+    def _start_threads(self) -> None:
+        """The preparing thread and the camera threads (`THREADS_ENV`); OpenCV's pool held to the latter."""
+        raw = os.environ.get(THREADS_ENV, "").strip()
+        threads = int(raw) if raw else DEFAULT_THREADS
+        self.threads = max(1, threads)
+        with contextlib.suppress(
+            ImportError
+        ):  # cv2 is in every model env; paddock's own tests run without it
+            import cv2
+
+            cv2.setNumThreads(max(1, self.threads - 1))
+        if self.threads > 1:
+            self._prepare_pool = ThreadPoolExecutor(1, thread_name_prefix="bev-prepare")
+            self._views_pool = ThreadPoolExecutor(self.threads - 1, thread_name_prefix="bev-views")
 
     def reset(self) -> None:
         """A new episode: the model's temporal state back to how a freshly built model has it."""
@@ -609,6 +640,9 @@ class BevPlannerPolicy(Policy):
         self._last_step_us: int | None = None
         self._quaternion: np.ndarray | None = None
         self._steps = 0
+        #: Frames prepared this episode (`_prepare_frame`): the frame index a frame's inputs carry. Equal to
+        #: `_steps` one frame at a time; ahead of it by one while the next frame is prepared during a step.
+        self._prepared = 0
         self.last: dict[str, Any] = {}
         self.plan_lidar: np.ndarray | None = None
         self.lidar2ego: np.ndarray | None = None
@@ -634,9 +668,7 @@ class BevPlannerPolicy(Policy):
         times = [int(o.timestamp_us) for o in self._pending]
         history = [self._pending[i] for i in history_on_grid(times, now, self._last_step_us)]
         self._pending = []
-        for past in history:
-            self._step(past)
-        plan, lidar2ego = self._step(obs)
+        plan, lidar2ego = self._step_through([*history, obs])[-1]
         self.last["frames_fed"] = len(history) + 1
         xy = lidar_plan_to_ego(plan, lidar2ego)
         self._held = (xy, np.asarray(obs.ego2world, dtype=np.float64).copy(), now)
@@ -644,6 +676,39 @@ class BevPlannerPolicy(Policy):
 
     def _step(self, obs: Observation) -> tuple[np.ndarray, np.ndarray]:
         """One model step on `obs`: (the plan in the model's lidar frame, that lidar in the ego frame)."""
+        return self._step_through([obs])[-1]
+
+    def _step_through(self, frames: list[Observation]) -> list[tuple[np.ndarray, np.ndarray]]:
+        """A model step on each frame in turn; `_step`'s pair for each.
+
+        The model runs on this thread, frame after frame. With threads to spare (`THREADS_ENV`) the next
+        frame is prepared on another while the model runs on this one: its images read and decoded, put
+        through the config's test pipeline and collated, all CPU work the model's step does not wait on.
+        Preparing happens strictly in frame order, one frame ahead, so each frame's inputs -- its frame
+        index and the quaternion's sign branch among them -- are what they would be one at a time, and
+        nothing is still being prepared when this returns, so a `reset` never meets a frame in flight.
+        """
+        if self._prepare_pool is None or len(frames) == 1:
+            return [self._run_prepared(obs, self._prepare_frame(obs)) for obs in frames]
+        out = []
+        pending: Future | None = self._prepare_pool.submit(self._prepare_frame, frames[0])
+        try:
+            for k, obs in enumerate(frames):
+                prepared = pending.result()
+                pending = (
+                    self._prepare_pool.submit(self._prepare_frame, frames[k + 1])
+                    if k + 1 < len(frames)
+                    else None
+                )
+                out.append(self._run_prepared(obs, prepared))
+        finally:
+            if pending is not None:
+                with contextlib.suppress(Exception):  # the step failed; its error is the one that matters
+                    pending.result()
+        return out
+
+    def _prepare_frame(self, obs: Observation) -> tuple[np.ndarray, str, dict[str, Any], Any]:
+        """All a step needs before the model: (lidar2ego, where it came from, results, prepared input)."""
         if self.lidar_from_observation:
             lidar2ego, lidar_source = model_lidar2ego(obs.lidar2ego, self.nominal_lidar2ego)
         else:
@@ -656,7 +721,12 @@ class BevPlannerPolicy(Policy):
                 f"{type(self).__name__} reads all six surround cameras; this observation has no {missing}"
             )
         results = self._results(obs, lidar2ego)
-        plan = np.asarray(self._forward(results), dtype=np.float64).reshape(-1, 2)
+        self._prepared += 1
+        return lidar2ego, lidar_source, results, self._prepare(results)
+
+    def _run_prepared(self, obs: Observation, prepared) -> tuple[np.ndarray, np.ndarray]:
+        lidar2ego, lidar_source, results, batch = prepared
+        plan = np.asarray(self._run(batch, results), dtype=np.float64).reshape(-1, 2)
         self._last_step_us = int(obs.timestamp_us)
         self._steps += 1
         #: The last step's plan as the model gave it, and the lidar frame it is in (full precision).
@@ -669,6 +739,17 @@ class BevPlannerPolicy(Policy):
         image = obs.image(camera)
         self.last.setdefault("source_size", {})[camera] = [int(image.shape[1]), int(image.shape[0])]
         return to_load_size(np.ascontiguousarray(image[:, :, :3]), obs.camera2image[camera])
+
+    def _views(self, obs: Observation, convert: Callable[[np.ndarray, np.ndarray], Any]) -> list[Any]:
+        """`convert(rgb, intrinsics)` of each camera (`_camera`), in the model's camera order.
+
+        On the camera threads when there are any: decoding a 1600x900 JPEG and casting it to float32 are
+        each done by one camera's thread with the GIL released (Pillow's decoder, numpy's copies), so six
+        take about as long as one. What each thread computes is what the loop computed.
+        """
+        if self._views_pool is None:
+            return [convert(*self._camera(obs, camera)) for camera in self.cameras]
+        return list(self._views_pool.map(lambda camera: convert(*self._camera(obs, camera)), self.cameras))
 
     def _nuscenes_quaternion(self, obs: Observation) -> np.ndarray:
         """canbus 3:7: the source's own quaternion when it is the ego pose's, else one held continuous."""
@@ -687,7 +768,20 @@ class BevPlannerPolicy(Policy):
         raise NotImplementedError
 
     def _forward(self, results: dict[str, Any]) -> np.ndarray:  # pragma: no cover - model environment only
+        """One frame's results to the plan as the model gives it."""
         raise NotImplementedError
+
+    def _prepare(self, results: dict[str, Any]) -> Any:
+        """The CPU half of a step, what the model is then called with (`_run`); by default `results` as is.
+
+        A code base splits its `_forward` here so that the next frame can be prepared while the model runs
+        (`_step_through`).
+        """
+        return results
+
+    def _run(self, prepared: Any, results: dict[str, Any]) -> np.ndarray:
+        """The model on `_prepare`'s output. By default `_forward`, for a code base that does not split it."""
+        return self._forward(prepared)
 
     def _reset_model(self) -> None:  # pragma: no cover - model environment only
         raise NotImplementedError
@@ -815,10 +909,10 @@ class Mmdet3dPlannerPolicy(BevPlannerPolicy):
     def _results(self, obs: Observation, lidar2ego: np.ndarray) -> dict[str, Any]:
         """What ``get_data_info``, ``pre_pipeline`` and the image loader would hand the pipeline."""
         images, projections, intrinsics, lidar2cams = [], [], [], []
-        for camera in self.cameras:
-            rgb, k = self._camera(obs, camera)
-            # mmcv.imread decodes to BGR and the loader casts to float32 (to_float32=True in both configs).
-            images.append(np.ascontiguousarray(rgb[:, :, ::-1]).astype(np.float32))
+        # mmcv.imread decodes to BGR and the loader casts to float32 (to_float32=True in both configs).
+        views = self._views(obs, lambda rgb, k: (np.ascontiguousarray(rgb[:, :, ::-1]).astype(np.float32), k))
+        for camera, (image, k) in zip(self.cameras, views):  # noqa: B905 - runs on Python 3.9, no strict=
+            images.append(image)
             projections.append(lidar2img(k, obs.camera2ego[camera], lidar2ego))
             pad = np.eye(4)
             pad[:3, :3] = k
@@ -829,14 +923,14 @@ class Mmdet3dPlannerPolicy(BevPlannerPolicy):
         command = nuscenes_command(obs)
         self.last.update(command=command, gravity_added=gravity)
         results: dict[str, Any] = {
-            "sample_idx": f"{self.scene_token}-{self._steps}",
+            "sample_idx": f"{self.scene_token}-{self._prepared}",
             "pts_filename": "",
             "sweeps": [],
             "prev_idx": "",
             "next_idx": "",
             "scene_token": self.scene_token,
             "can_bus": can_bus,
-            "frame_idx": self._steps,
+            "frame_idx": self._prepared,
             "timestamp": int(obs.timestamp_us) / 1e6,
             "l2g_r_mat": l2g_r_mat,
             "l2g_t": l2g_t,
@@ -864,15 +958,22 @@ class Mmdet3dPlannerPolicy(BevPlannerPolicy):
     def _extra_results(self, command: int) -> dict[str, Any]:
         return {}
 
-    def _forward(self, results: dict[str, Any]) -> np.ndarray:  # pragma: no cover - model environment only
+    def _prepare(self, results: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover - model env only
+        """The config's test pipeline, ``prepare_test_data`` and collate: the batch, still on the CPU."""
         example = self.pipeline(results)
         # NuScenesE2EDataset.prepare_test_data turns the l2g matrices into tensors before collating.
         data = {k: (self._to_tensor(v[0]) if "l2g" in k else v) for k, v in example.items()}
         batch = self._collate([data], samples_per_gpu=1)
         batch.update(self._gt_stubs())
+        return batch
+
+    def _run(self, batch: dict[str, Any], results: dict[str, Any]) -> np.ndarray:  # pragma: no cover
         with self._torch.no_grad():
             output = self.model(return_loss=False, rescale=True, **to_one_gpu(batch))
         return self._plan(output, results)
+
+    def _forward(self, results: dict[str, Any]) -> np.ndarray:  # pragma: no cover - model environment only
+        return self._run(self._prepare(results), results)
 
     def _gt_stubs(self) -> dict[str, Any]:  # pragma: no cover - model environment only
         raise NotImplementedError
@@ -977,14 +1078,17 @@ class B2DPlannerPolicy(BevPlannerPolicy):
         """
         import cv2
 
-        images, projections, lidar2cams = [], [], []
-        for camera in self.cameras:
-            rgb, k = self._camera(obs, camera)
+        def dataset_round_trip(rgb: np.ndarray, k: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
             bgr = np.ascontiguousarray(rgb[:, :, ::-1])
             ok, encoded = cv2.imencode(".jpg", bgr, [int(cv2.IMWRITE_JPEG_QUALITY), B2D_JPEG_QUALITY])
             if not ok:
-                raise RuntimeError(f"JPEG encoding failed for {camera}")
-            images.append(cv2.imdecode(encoded, cv2.IMREAD_COLOR))
+                raise RuntimeError("JPEG encoding failed")
+            return cv2.imdecode(encoded, cv2.IMREAD_COLOR), k
+
+        images, projections, lidar2cams = [], [], []
+        views = self._views(obs, dataset_round_trip)
+        for camera, (image, k) in zip(self.cameras, views):  # noqa: B905 - runs on Python 3.9, no strict=
+            images.append(image)
             projections.append(lidar2img(k, obs.camera2ego[camera], lidar2ego))
             lidar2cams.append(np.linalg.inv(obs.camera2ego[camera]) @ lidar2ego)
         can_bus, gravity = b2d_can_bus(obs.ego2world, obs.canbus)
@@ -1015,16 +1119,21 @@ class B2DPlannerPolicy(BevPlannerPolicy):
     def _extra_results(self, command: int) -> dict[str, Any]:
         return {}
 
-    def _forward(self, results: dict[str, Any]) -> np.ndarray:  # pragma: no cover - model environment only
+    def _prepare(self, results: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover - model env only
+        """The agents' ``inference_only_pipeline`` and collate: the batch, still on the CPU."""
+        return self._collate([self.pipeline(results)], samples_per_gpu=1)
+
+    def _run(self, batch: dict[str, Any], results: dict[str, Any]) -> np.ndarray:  # pragma: no cover
         torch = self._torch
-        example = self.pipeline(results)
-        batch = self._collate([example], samples_per_gpu=1)
         for key, data in batch.items():
             if key != "img_metas" and torch.is_tensor(data[0]):
                 data[0] = data[0].to("cuda")
         with torch.no_grad():
             output = self.model(batch, return_loss=False, rescale=True)
         return self._plan(output, results)
+
+    def _forward(self, results: dict[str, Any]) -> np.ndarray:  # pragma: no cover - model environment only
+        return self._run(self._prepare(results), results)
 
     def _plan(self, output, results: dict[str, Any]) -> np.ndarray:  # pragma: no cover
         raise NotImplementedError

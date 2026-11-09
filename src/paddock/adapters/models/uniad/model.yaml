@@ -30,6 +30,11 @@ runtime:
     MPLBACKEND: "Agg"
     # The node is GPU-bound; torch's CPU pool would otherwise take every core of a shared box.
     OMP_NUM_THREADS: "2"
+    # Threads beside the model's own that read and prepare frames: one prepares the next frame while the
+    # model runs, the rest decode the six cameras side by side; OpenCV's pool is held to as many
+    # (bev_planners.THREADS_ENV). Speed only -- the plans are the same at any count -- so it is tuning.
+    UNIAD_VAD_THREADS: "5"
+  tuning_env: [UNIAD_VAD_THREADS]
 
 capabilities:
   # In the model's own order (the nuScenes info files'): the spatial cross-attention learns an embedding

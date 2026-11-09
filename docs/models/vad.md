@@ -78,3 +78,12 @@ Golden test, as for UniAD (`tests/fixtures/golden_vad.json`, written from VAD's 
 quaternion, and an exact repeat after reset (9 Nov 2026). The quaternion's sign moves VAD's 3 s waypoint by up
 to 0.66 m; placing each camera at its own ego pose, by 0.03 m. Node: 0.29-0.30 s per `/infer` (0.64 s first),
 about 3.7 GB of GPU memory.
+
+A step on nuScenes (six 1600×900 JPEGs, the card shared; medians, ms) spends more on preparing than on the
+model: read + decode 21, BGR + float32 27, the rest of `_results` 29, the test pipeline (normalise, scale to
+1280×720, pad, format) 126, collate 20, to GPU 6, forward 134. `UNIAD_VAD_THREADS` ([UniAD's
+section](uniad.md#cost-of-a-step-and-the-threads-that-prepare-frames)) prepares the next frame while the model
+runs and holds OpenCV to four threads: same plans (golden 0.000 m; identical in an A/B on twelve keyframes),
+a five-keyframe window 2.05 / 1.96 → 1.06 / 1.12 s, an in-order keyframe 409 / 396 → 211 / 228 ms, CPU per
+window 5.0 → 2.5 s (OpenCV had been using every core). A single `/infer` has nothing to overlap: 0.35 s either
+way.

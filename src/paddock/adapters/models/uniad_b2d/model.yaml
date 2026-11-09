@@ -27,6 +27,9 @@ runtime:
     PYTHONNOUSERSITE: "1"
     MPLBACKEND: "Agg"
     OMP_NUM_THREADS: "2"
+    # Frame-preparing threads beside the model's own, as uniad's model.yaml explains. Speed only.
+    UNIAD_VAD_THREADS: "5"
+  tuning_env: [UNIAD_VAD_THREADS]
 
 capabilities:
   # Bench2DriveZoo's order (prepare_B2D.py CAMERAS, and its agents').

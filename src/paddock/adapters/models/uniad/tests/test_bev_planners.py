@@ -536,3 +536,79 @@ def test_the_horizon_setting_is_off_by_default_and_named_in_model_yaml(model: st
     policy = importlib.import_module(f"paddock.adapters.models.{model}.policy").POLICY
     assert policy.horizon_env not in spec.runtime.env, "unset by default: the plan is the model's own"
     assert policy.horizon_env in (spec.directory / "model.yaml").read_text(), "a site must find its name"
+
+
+# -- preparing the next frame while the model runs ----------------------------------------------------
+
+
+class SlowStub(StubPlanner):
+    """Records what each step was fed -- frame index, quaternion branch, which frame -- from `_results`,
+    which runs on the preparing thread, and takes a little while to run, so preparing overlaps it."""
+
+    def _results(self, obs, lidar2ego):
+        q = self._nuscenes_quaternion(obs)
+        self.order.append(int(obs.timestamp_us))
+        return {"t": obs.timestamp_us, "frame": self._prepared, "w": float(q[0])}
+
+    def _run(self, prepared, results):
+        import time
+
+        time.sleep(0.01)
+        self.fed.append((results["t"], results["frame"], results["w"]))
+        return np.c_[np.zeros(6), 4.0 * np.arange(1, 7)]
+
+    def _reset_model(self) -> None:
+        self.fed, self.order = [], []
+
+
+@pytest.mark.parametrize("threads", ["1", "2", "5"])
+def test_preparing_ahead_feeds_every_frame_what_it_is_fed_one_at_a_time(
+    threads: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The next frame is prepared on another thread while the model runs, strictly in frame order: the
+    frame index each step carries and the quaternion's sign branch (held from frame to frame) come out the
+    same at any thread count. The poses turn through 180 degrees so the branch has somewhere to go."""
+    monkeypatch.setenv(bp.THREADS_ENV, threads)
+    policy = SlowStub()
+    policy.load()
+    assert policy.threads == int(threads)
+    frames = []
+    for i in range(9):
+        obs = conformance.synthetic_observation(cameras=bp.NUSC_CAMERAS, timestamp_us=i * 500_000)
+        yaw = math.radians(150 + 10 * i)
+        obs.ego2world[:2, :2] = [[math.cos(yaw), -math.sin(yaw)], [math.sin(yaw), math.cos(yaw)]]
+        frames.append(obs)
+    policy.infer_sequence(frames)
+    stamps = [i * 500_000 for i in range(9)]
+    assert policy.order == stamps, "prepared in frame order, each once"
+    assert [t for t, _, _ in policy.fed] == stamps
+    assert [frame for _, frame, _ in policy.fed] == list(range(9)), "the frame index is the step's own"
+    q = None
+    expected = []
+    for obs in frames:
+        q = bp.continuous_quaternion(obs.ego2world[:3, :3], q)
+        expected.append(float(q[0]))
+    assert [w for _, _, w in policy.fed] == expected
+    assert policy.last["steps"] == 9 and policy.diagnostics()["frames_fed"] == 9
+
+
+def test_a_step_that_fails_leaves_nothing_being_prepared_behind_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A `reset` after a failed request must not meet the next frame still being prepared."""
+
+    class Failing(SlowStub):
+        def _run(self, prepared, results):
+            if results["t"] == 1_000_000:
+                raise RuntimeError("the model failed on this frame")
+            return super()._run(prepared, results)
+
+    monkeypatch.setenv(bp.THREADS_ENV, "3")
+    policy = Failing()
+    policy.load()
+    frames = [
+        conformance.synthetic_observation(cameras=bp.NUSC_CAMERAS, timestamp_us=i * 500_000) for i in range(5)
+    ]
+    with pytest.raises(RuntimeError, match="failed on this frame"):
+        policy.infer_sequence(frames)
+    assert policy.order == [0, 500_000, 1_000_000, 1_500_000], "the frame after the failure was finished"
+    policy.reset()
+    assert policy.order == [] and policy._prepared == 0

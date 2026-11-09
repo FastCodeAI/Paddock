@@ -170,5 +170,31 @@ The model needs all six surround cameras (one learned embedding per camera slot)
   identity lidar2ego, speed / acceleration / yaw rate only): 0.47-0.49 s per `/infer` on an RTX PRO 6000,
   0.89 s for the first; about 4.1 GB of GPU memory for the process.
 
+## Cost of a step, and the threads that prepare frames
+
+One model step on nuScenes (six 1600×900 JPEGs from local NVMe, scene-0103, 9 Nov 2026, the card shared with
+other jobs), stage by stage, before preparing went onto threads; medians over ten keyframes, ms:
+
+| read + decode (Pillow) | BGR + float32 | the rest of `_results` | test pipeline (normalise, pad, format) | collate | to GPU | forward | plan out |
+|---|---|---|---|---|---|---|---|
+| 25 | 31 | 54 | 162 | 31 | 17 | 1,404 | 0.2 |
+
+The forward is 0.29 s on an idle card. During it the node's main thread is at 100% CPU, and that is not
+Python work: in a torch profile of four steps, 4.40 s of the thread's 5.07 s of CPU time is inside
+`cudaStreamSynchronize`, about 3,900 calls a step. UniAD's tracker (`RuntimeTrackerBase.update`) loops over
+its 900-odd track queries in Python and tests each one's tensors, every test a host-device sync, and the CUDA
+runtime spin-waits on each, longer when the card is shared. That is the model's own code and is left as it is.
+
+What paddock does around the forward is CPU work, and `UNIAD_VAD_THREADS` (model.yaml, default 5; declared
+`tuning_env`) spreads it out: one thread prepares the next frame -- its images, the config's test pipeline,
+collate -- while the model runs on this one, the others decode and convert the six cameras side by side, and
+OpenCV's own pool is held to as many (it otherwise takes all 32 cores of this box for VAD's resize). Frames
+are prepared strictly in order, one ahead, so each gets exactly the inputs it would get one at a time: the
+four golden tests stay at 0.000 m, and an A/B against the previous code on twelve keyframes gave identical
+plans (0.0 m) for single calls, windows and in-order passes. Per call, old → new, two rounds on the shared
+card: `/infer` (reset + one keyframe) 1,544 / 1,863 → 1,167 / 1,031 ms; a five-keyframe window (nuScenes'
+default) 8.19 / 8.64 → 5.06 / 5.11 s; a keyframe of an in-order pass 1.76 / 1.63 → 0.96 / 0.96 s.
+`UNIAD_VAD_THREADS=1` prepares on the model's thread, one camera after another, as before.
+
 Not verified: plan quality on any benchmark (no sweep has been scored here); `setup.sh` on a clean machine;
 any GPU but sm_120.
