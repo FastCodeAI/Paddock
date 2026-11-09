@@ -169,6 +169,14 @@ The model needs all six surround cameras (one learned embedding per camera slot)
   canonical one, and a reset reproduced the sequence exactly. The fixture also records, untested, what the
   original path plans with each camera placed at its own ego pose instead of the lidar's (one ego pose per
   frame is all an Observation carries): up to 0.23 m.
+- **Scene order** (`make check-uniad-vad ... UNIAD_VAD_SCENE_DATA=<nuscenes>`; `tests/test_scene_golden.py`):
+  `scene_reference.py` runs UniAD's own evaluation on all 40 keyframes of scene-0103 -- its converter's
+  info file, the config's `NuScenesE2EDataset` and test pipeline, `build_dataloader`, and `forward_test`
+  keyframe after keyframe with its own grid, tracks and CAN-bus deltas -- and the adapter, sent the scene in
+  order (`infer_each`, nuScenes' `sequence = "scene"`) with the dataset's inputs, plans the same: **0.000 m**
+  at every keyframe (9 Nov 2026). Every keyframe is a model step there, including the 0.40 and 0.45 s ones
+  `infer` would answer from the held plan. The repo's loop over the whole val set differs at a scene's start
+  (docs/benchmarks/nuscenes.md, "Scene order"): 1.58 / 4.80 m at scene-0103's first two keyframes.
 - **Paddock-env tests** (`tests/test_bev_planners.py`, in `make check`): the inputs built from the fixture's
   Observations equal those the original path fed (lidar2img, can_bus, l2g, timestamp, command); the
   config's normalisation and `use_can_bus` where the checkout is present; the frame of the plan; the history

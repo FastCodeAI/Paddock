@@ -56,6 +56,67 @@ gate's nuScenes subset runs this way (docs/gate.md). The list is recorded in
   against every annotated box of the future keyframe in the current ego frame
   (separating-axis test); `ade_3s`. Primary metric: `l2_avg`.
 
+## Scene order (UniAD, VAD)
+
+```toml
+[benchmarks.nuscenes]
+sequence = "scene"                                 # default "window"
+# scene_models = "uniad, vad, uniad_b2d, vad_b2d"  # the default: the models scene order may run
+```
+
+By default (`window`) every scored keyframe is its own episode: the node is reset and fed the keyframes
+before it, then it (above), so a model steps up to five times per sample. In scene order each val scene is
+one episode, which is how UniAD's and VAD's own test scripts run the val set: the node is reset at the
+scene's first keyframe and plans from every keyframe in turn (`/infer_each`, `Policy.infer_each`), and each
+keyframe is scored from the plan it made there. The scored keyframes, their ground truth, commands and
+metrics are the window's, keyframe for keyframe; what changes is what stands behind each plan -- the scene
+so far, with whatever state the model carries from keyframe to keyframe (UniAD: the previous BEV grid, its
+tracks, the CAN-bus delta from the last keyframe; VAD: the grid and the delta). Each keyframe carries its
+own command, as it does in the datasets. A resumed, limited or sample-listed run feeds a scene again from
+its first keyframe, so a plan never depends on what else was skipped. 5,119 model steps in all, against
+about 24,100 in windows.
+
+The run config records `sequence: scene` (and drops `history_seconds`, which would be a scene's length),
+so a scene-order run has its own id; a window run's config, and so its id, is unchanged. Preflight refuses
+scene order for any model outside `scene_models`: it feeds a whole scene from one reset to a model that may
+read a fixed window (Drive-JEPA, Alpamayo) or build a window-shaped history of its own (QwenDrive's dense
+poses), and that has to be shown harmless before such a model is listed. It cannot be combined with
+`camera_history`, which replaces the keyframes with camera sweeps.
+
+**Verified** (`make check-uniad-vad`, `adapters/models/uniad/tests/test_scene_golden.py`):
+`scene_reference.py` runs each repo's own evaluation on scene-0103 -- its converter's info file, the
+config's test dataset and pipeline, its dataloader, and the model called keyframe after keyframe with its
+own state handling -- and the adapter, sent the scene in order with the same inputs, plans the same at all
+40 keyframes: a maximum difference of 0.000 m for UniAD and for VAD (9 Nov 2026, RTX PRO 6000; the inputs the
+adapter builds for each keyframe equal the dataset's, `lidar2img` to 1e-9 and the CAN bus to 1e-12). The unit tests (`tests/test_scene_order.py`, and
+`test_a_model_with_no_temporal_state_scores_the_same_in_scene_order_as_in_windows` in
+`tests/test_runner_scenes.py`) pin the scored set, the order, resumes and limits, the refusals, and that a
+model without temporal state scores the same in either order.
+
+**Not the repo's full val loop at scene starts (UniAD).** UniAD's `forward_test` records the new scene token
+before it checks for a first frame, so in its own loop over the whole val set the first keyframe of every
+scene but the first takes its CAN-bus position and heading deltas from the last keyframe of the scene before
+it in time. Paddock resets at every scene start, as a freshly built model starts -- what the repo's loop
+does for its first scene. On scene-0103, whose predecessor in time is scene-0102 (3.6 s earlier), the repo's
+loop would plan 1.58 m differently at the first keyframe and 4.80 m at the second, under 0.15 m from the
+sixth and under 0.03 m from the eleventh (the fixture's `after_previous_scene` variant, measured, not
+asserted). VAD checks for a first frame by its previous grid and has no
+such carry.
+
+**What paddock sends is not yet what the datasets send.** Three inputs differ from the repos' own
+evaluation in either order, and the golden test sends the datasets' values to isolate the order: each
+camera's own ego pose (the converter places every camera with its own; an Observation has one ego pose per
+keyframe), the sign of the ego quaternion at canbus 3:7 (nuScenes often stores it with w < 0, on 57% of the poses of paddock's 14-scene subset; the
+index keeps the rotation, not the stored quaternion), and the CAN-bus message (the nearest one here; the
+converter reads the first one after the keyframe). The command differs too where the lidar frame and the
+ego frame put the 3 s pose on either side of 2 m (on scene-0103 all 40 agree). Fed paddock's own observations
+of scene-0103 (34 scored keyframes), scene order is within 1.26 m of UniAD's own loop (median 0.27 m) and
+windows within 2.03 m (median 0.72 m); for VAD 2.22 m (median 0.93 m) in scene order and 3.49 m (median
+1.46 m) in windows. Putting one of paddock's inputs at a time into the golden inputs, the quaternion's sign
+is most of it (median 0.29 m UniAD, 0.89 m VAD; max 1.44 / 2.06 m), the cameras' own ego poses next (0.12 /
+0.04 m) and the CAN-bus message least (0.05 / 0.06 m). Sending the stored quaternion needs it in the index,
+which keeps only the rotation, so the index would be rebuilt from the tables.
+
 ## Site setup
 
 ```toml

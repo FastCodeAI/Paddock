@@ -598,6 +598,25 @@ def test_a_held_plan_is_resampled_in_time_and_in_the_current_ego_frame() -> None
     )
 
 
+def test_in_scene_order_every_keyframe_is_a_step_however_soon_it_follows_the_last() -> None:
+    """nuScenes keyframes come 0.40-0.65 s apart and the repos' test loops step on every one; `infer` would
+    answer the 0.40 s one from the held plan, so scene order (`infer_each`) steps every frame instead."""
+    stamps = [0, 400_000, 850_000, 1_350_000, 1_950_000, 2_400_000]
+    frames = [conformance.synthetic_observation(cameras=bp.NUSC_CAMERAS, timestamp_us=t) for t in stamps]
+    policy = StubPlanner()
+    policy.load()
+    plans = policy.infer_each(frames)
+    assert policy.fed == stamps and len(plans) == len(stamps)
+    assert "held" not in policy.last and policy.self_prime is True
+    np.testing.assert_allclose(plans[1].xy[:, 0], 4.0 * np.arange(1, 7), atol=0.06)
+    policy.reset()
+    for frame in frames:
+        policy.infer(frame)
+    assert policy.fed == [0, 850_000, 1_350_000, 1_950_000], (
+        "frame by frame, the 0.40 and 0.45 s ones are held"
+    )
+
+
 def test_clients_that_honour_planning_hz_are_never_held() -> None:
     policy = StubPlanner()
     policy.load()

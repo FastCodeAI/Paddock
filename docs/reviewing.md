@@ -60,10 +60,11 @@ cd /tmp/pr-<N> && make check; echo "exit=$?"
   and load no weights. If your site has no Alpamayo 2 Edge environment, say so in
   the review.
 - A PR that touches the UniAD / VAD adapters (`src/paddock/adapters/models/{uniad,vad}/`)
-  needs `make check-uniad-vad UNIAD_VAD_DATA=<dir>` too: each adapter, in its own env on the GPU, must plan
-  what the model's own pipeline and forward plan on four nuScenes keyframes, given the inputs paddock's wire
-  carries (one ego pose per frame, the source's quaternion sign; the gaps that leaves are in
-  `test_golden.py`'s docstring). `<dir>` holds scene-0103's camera JPEGs. `make check` runs their paddock-env tests only. If your site has no such env, say so in the review.
+  needs `make check-uniad-vad UNIAD_VAD_DATA=<dir> UNIAD_VAD_SCENE_DATA=<nuscenes>` too: each adapter, in its
+  own env on the GPU, must plan what the model's original data path plans on four nuScenes keyframes (`<dir>`
+  holds scene-0103's camera JPEGs), and uniad and vad, sent scene-0103 whole and in order, what their repos'
+  own test loops plan at every keyframe (`<nuscenes>` is a root whose `samples/CAM_*` hold the scene). `make
+  check` runs their paddock-env tests only. If your site has no such env, say so in the review.
 - If the site has a checkout of the upstream tool the PR shells out to (CARLA,
   neuro-ncap, NAVSIM's devkit), open it and verify the flags, file layouts and
   output schema the PR assumes. "Matches the 0.0.4 checkout" is a verified

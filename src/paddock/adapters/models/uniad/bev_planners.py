@@ -663,6 +663,31 @@ class BevPlannerPolicy(Policy):
         extras = {"route_command": record} if record is not None and record["source"] == "route" else None
         return Trajectory(extend_horizon(xy, PLAN_DT, self.horizon_s), dt=PLAN_DT, extras=extras)
 
+    def infer_each(self, observations: list[Observation]) -> list[Trajectory]:
+        """Scene order: one reset, then a model step on every frame, as the repos' test loops step.
+
+        `infer` answers a call less than a plan step after the last one from the held plan, for clients
+        that ask faster than 2 Hz. nuScenes keyframes are 0.40-0.65 s apart -- 462 of val's 5,869 intervals
+        are 0.40 or 0.45 s -- and UniAD's and VAD's own test loops step on every one, so here no frame is
+        held, and the next frame is prepared while the model runs on this one (`_step_through`).
+        """
+        if not observations:
+            raise ValueError("infer_each needs at least one observation")
+        previous, self.self_prime = self.self_prime, False
+        try:
+            self.reset()
+            out = []
+            steps = self._step_through(list(observations))
+            for plan, lidar2ego in steps:
+                xy = lidar_plan_to_ego(plan, lidar2ego)
+                out.append(Trajectory(extend_horizon(xy, PLAN_DT, self.horizon_s), dt=PLAN_DT))
+            last = observations[-1]
+            self._held = (xy, np.asarray(last.ego2world, dtype=np.float64).copy(), int(last.timestamp_us))
+            self.last["frames_fed"] = 1
+            return out
+        finally:
+            self.self_prime = previous
+
     def _step(self, obs: Observation) -> tuple[np.ndarray, np.ndarray]:
         """One model step on `obs`: (the plan in the model's lidar frame, that lidar in the ego frame)."""
         return self._step_through([obs])[-1]

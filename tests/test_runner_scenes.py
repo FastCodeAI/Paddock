@@ -1158,7 +1158,7 @@ class _FromThisFrame:
 
     @staticmethod
     def plan(obs) -> np.ndarray:
-        speed, turn = float(obs.canbus[13]), {1: 0.0, 2: 0.4, 3: -0.4, 4: 0.0}[int(obs.command)]
+        speed, turn = float(obs.canbus[13]), {0: -0.4, 1: 0.4, 2: 0.0, 3: 0.0}[int(obs.command)]
         steps = np.arange(1, 7)
         return np.c_[speed * 0.5 * steps, turn * steps**2 / 6]
 

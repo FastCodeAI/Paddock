@@ -79,7 +79,9 @@ every token is refused. comma2k19 (one camera) does not run.
 Golden test, as for UniAD (`tests/fixtures/golden_vad.json`, written from VAD's own converter, dataset and
 `test_pipeline`): **0.000 m maximum difference** on four scene-0103 keyframes, for the stored and the canonical
 quaternion, and an exact repeat after reset (9 Nov 2026). The quaternion's sign moves VAD's 3 s waypoint by up
-to 0.66 m; placing each camera at its own ego pose, by 0.03 m. Node: 0.29-0.30 s per `/infer` (0.64 s first),
+to 0.66 m; placing each camera at its own ego pose, by 0.03 m. In scene order (`test_scene_golden.py`), VAD's
+own evaluation of all 40 keyframes of scene-0103 (converter, `VADCustomNuScenesDataset`, dataloader, test loop)
+and the adapter's `infer_each` agree at every keyframe: **0.000 m**. Node: 0.29-0.30 s per `/infer` (0.64 s first),
 about 3.7 GB of GPU memory.
 
 A step on nuScenes (six 1600×900 JPEGs, the card shared; medians, ms) spends more on preparing than on the
