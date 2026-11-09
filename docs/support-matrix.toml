@@ -71,7 +71,7 @@ key = "bench2drive220"
 benchmark = "bench2drive"
 name = "Bench2Drive"  # shared with the 50-route column, drawn once across both
 loop = "closed"
-header = "driving score ↑ (0–100), 219 of 220 routes"
+header = "driving score ↑ (0–100), 216 of 220 routes"
 decimals = 2
 
 [[benchmark]]
@@ -130,7 +130,7 @@ nuplan = { run = "nuplan/openpilot/20260917T220353-9e4f44" }
 navsim = { run = "navsim/openpilot/20260911T161513-3a4c90", note = "10 Hz" }
 navsim_v1 = { run = "navsim_v1/openpilot/20260914T181009-dbcef4", note = "10 Hz" }
 bench2drive = { run = "bench2drive/openpilot/pooled50-40c29d24c37d542a-c7d2b2", marks = "P" }  # routes can end early; it ranks
-bench2drive220 = { run = "bench2drive/openpilot/full220-96854bd47e320563-22709f", marks = "P" }
+bench2drive220 = { run = "bench2drive/openpilot/full220-836dda734659a86c-2803bd", marks = "P" }
 neuroncap = { run = "neuroncap/openpilot/20260905T055713-11ac59" }
 alpasim = { run = "alpasim/openpilot/legacy-openpilot_020_30scenes" }
 
@@ -176,7 +176,7 @@ navsim_v1 = { run = "navsim_v1/meteor/20260915T005223-071c0b", marks = "P" }
 # Its declared 5 Hz, routes ended after 30 s stuck or 4x the expert's time (AutoE2E's rules), each a
 # failed drive scored as it stood: valid, and it ranks. The README says how it was driven.
 bench2drive = { run = "bench2drive/meteor/pooled50-40c29d24c37d542a-867d57", note = "5 Hz" }
-bench2drive220 = { run = "bench2drive/meteor/full220-96854bd47e320563-cc0c28", note = "5 Hz" }
+bench2drive220 = { run = "bench2drive/meteor/full220-836dda734659a86c-dda00e", note = "5 Hz" }
 neuroncap = { run = "neuroncap/meteor/20260915T193036-d34559" }
 alpasim = { run = "alpasim/meteor/legacy-meteor_011_published_30scenes" }
 

@@ -199,6 +199,25 @@ SET_ASIDE: dict[str, str] = {
     # time. The client's traceback lands in route_scenario.spawn_parked_vehicles only because
     # that is its first call to the server after the crash.
     "11715": "CARLA crashes (signal 11) about 54 s into the route on every attempt, whichever model drives",
+    # Three Town13 routes on which CARLA crashed on every attempt Alpamayo 1.5 made at its declared
+    # 10 Hz (three each, 9 Nov 2026), each time at about the same point of game time. openpilot
+    # completed each sooner (24.6-39.4 s), and METEOR and AutoE2E were stopped by the 30 s rule by
+    # 34.4 s. It is not game time alone: at 20 Hz in September, with no early stop, Alpamayo 1.5
+    # drove 3800 to the 200 s tick cap without a crash. 3800 also crashed at ~1300-1411 frames
+    # (65-71 s) for Alpamayo 1.5 and Qwen-Drive at their rates in October, and 23695 on seven of
+    # seven openpilot attempts at another site.
+    "3800": (
+        "CARLA crashes (signal 11) 63-69 s into the route on every attempt by Alpamayo 1.5 "
+        "at its declared 10 Hz"
+    ),
+    "23695": (
+        "CARLA crashes (signal 11) about 40 s into the route on every attempt by Alpamayo 1.5 "
+        "at its declared 10 Hz"
+    ),
+    "24071": (
+        "CARLA crashes (signal 11) 37-40 s into the route on every attempt by Alpamayo 1.5 "
+        "at its declared 10 Hz"
+    ),
 }
 
 #: Everything ``agent.py`` imports, checked in the client interpreter by
