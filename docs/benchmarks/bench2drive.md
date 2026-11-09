@@ -851,12 +851,14 @@ as 0, so each is 216/220 of the figure here (OpenPilot: DS 42.63, success 10.45%
 | Model | Routes | DS ↑ | RC ↑ (%) | IP ↑ | With collision ↓ (%) | Success ↑ (%) | Efficiency ↑ | Comfort ↑ (%) | Record |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|
 | OpenPilot | 216/220 | 43.42 | 55.15 | 0.813 | 22.69 | 10.65 | 180.59 | 40.88 | `full220-836dda734659a86c-2803bd` |
+| METEOR | 216/220 | 1.92 | 5.40 | 0.925 | 12.04 | 0.00 | 148.74 | 95.73 | `full220-836dda734659a86c-dda00e` |
 
 **Bench2Drive's five abilities, in % of the routes that count towards each:**
 
 | Model | Merging ↑ | Overtaking ↑ | Emergency brake ↑ | Give way ↑ | Traffic signs ↑ | Mean ↑ |
 |---|---:|---:|---:|---:|---:|---:|
 | OpenPilot | 9.21 | 11.11 | 15.00 | 20.00 | 36.17 | 18.30 |
+| METEOR | 0.00 | 0.00 | 0.00 | 0.00 | 3.19 | 0.64 |
 
 A route counts towards an ability by its scenario, the same for every model:
 Merging 76 of these routes, Overtaking 45, Emergency brake 60, Give way 10 and
@@ -873,6 +875,17 @@ evaluator had printed and registered its result (completed at 34.8 s of game
 time, one collision) when CARLA crashed, so that result is the route's score.
 No route needed a third attempt. The three routes set aside after Alpamayo 1.5's
 run (3800, 23695, 24071) are out of its mean too, though it had completed each.
+
+**METEOR** is asked at its declared 5 Hz, the last plan followed in between, and
+CARLA never crashed on its attempts. As on 50 routes, it rarely gets moving: 189
+of its 216 routes end under 1% route completion. The 30 s rule ended 138 of them,
+Bench2Drive's own 60 s blocked test 44 (the 30 s clock pauses while the car waits
+at a red light) and the over-time rule 7. No route is a success; its one ability credit is Traffic signs, for 3 of 94 routes
+that got past their first junction with no red light or stop sign run. Its comfort
+is that of a car that barely moved. Bench2Drive's minimum-speed check runs on every
+route but records a value only each time the car covers another twentieth of it,
+so METEOR's efficiency is over the 26 routes it drove at least 5% of (OpenPilot's
+is over 205).
 
 ### Bench2Drive — 50 routes
 

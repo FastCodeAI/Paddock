@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-93 runs across 9 benchmarks.
+94 runs across 9 benchmarks.
 55 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -36,6 +36,7 @@
 | model | run | n | driving_score ↑ | route_completion ↑ | infraction_penalty ↑ | collision_rate ↓ | n_runs ↑ | n_crashed ↑ | duration_s ↑ |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | openpilot | full220-836dda734659a86c-2803bd | 216 | 43.422 | 55.145 | 0.813 | 0.227 | 1.000 | 0.000 | 317.833 |
+| meteor | full220-836dda734659a86c-dda00e | 216 | 1.922 | 5.397 | 0.925 | 0.120 | 1.000 | 0.000 | 250.255 |
 
 ### n = 50, scene set 40c29d24
 
