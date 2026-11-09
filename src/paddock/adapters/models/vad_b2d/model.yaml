@@ -1,0 +1,51 @@
+name: vad_b2d
+description: VAD-Base trained on Bench2Drive (Thinklab-SJTU Bench2DriveZoo) - the same planner, CARLA-trained, six CARLA commands
+repo: Bench2DriveZoo
+
+runtime:
+  # The env uniad builds and shares, plus Bench2DriveZoo's own `mmcv` built in place (uniad_b2d/setup.sh).
+  kind: conda
+  python: "3.9"
+  venv: "{repos}/.conda-envs/uniad-vad"
+  # First on the path so the vendored `mmcv` shadows the env's mmcv-full; policy.py checks.
+  pythonpath: ["{repo}"]
+  cwd: "{repo}"
+  env:
+    VAD_B2D_CONFIG: "{repo}/adzoo/vad/configs/VAD/VAD_base_e2e_b2d.py"
+    # huggingface.co/rethinklab/Bench2DriveZoo, vad_b2d_base.pth
+    VAD_B2D_CHECKPOINT: "{weights}/bench2drivezoo/vad_b2d_base.pth"
+    PYTHONNOUSERSITE: "1"
+    MPLBACKEND: "Agg"
+    OMP_NUM_THREADS: "2"
+
+capabilities:
+  # Bench2DriveZoo's order (prepare_B2D.py CAMERAS, and its agents').
+  cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT, CAM_BACK, CAM_BACK_LEFT, CAM_BACK_RIGHT]
+  # Measured 2.8 GB for the process (1.6 GB allocated, 2.1 GB reserved peak).
+  vram_gb: 4
+  startup_timeout_s: 900
+  waypoint_dt: 0.5
+  # Trained on Bench2Drive's 10 Hz logs sampled every 5th frame; Bench2DriveZoo's agent asks it every 20 Hz
+  # tick (docs/models/vad_b2d.md).
+  planning_hz: 2.0
+
+  # -- model card (docs/models/comparison.md) --
+  architecture: "ResNet-50 + BEVFormer (200x200) with vectorised agent and map queries and an ego planning query"
+  params_m: 58.4
+  size_gb: 0.70
+  precision: fp32
+  input_size: [1280, 720]
+  history_frames: 1
+  camera_hz: 2.0
+  output_kind: waypoints
+  horizon_s: 3.0
+  plan_points_hz: 2.0
+  stochastic: false
+  needs_speed: true
+  trained_on:
+    # Bench2Drive base less its validation clips (docs/DATA_PREP.md at the pinned sha); the ResNet-50 starts
+    # from torchvision's ImageNet weights (pretrained=dict(img='ckpts/resnet50-19c8e357.pth')).
+    - dataset: bench2drive
+      split: base train
+    - dataset: imagenet
+benchmarks: [bench2drive, hugsim, nuscenes]
