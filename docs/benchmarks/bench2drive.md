@@ -852,7 +852,7 @@ as 0, so each is 216/220 of the figure here (OpenPilot: DS 42.63, success 10.45%
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|
 | OpenPilot | 216/220 | 43.42 | 55.15 | 0.813 | 22.69 | 10.65 | 180.59 | 40.88 | `full220-836dda734659a86c-2803bd` |
 | METEOR | 216/220 | 1.92 | 5.40 | 0.925 | 12.04 | 0.00 | 148.74 | 95.73 | `full220-836dda734659a86c-dda00e` |
-| AutoE2E | 219/220 | 14.28 | 27.62 | 0.549 | 79.91 | 0.00 | 221.45 | 50.05 | `full220-96854bd47e320563-731529` |
+| AutoE2E | 216/220 | 14.36 | 27.80 | 0.548 | 79.63 | 0.00 | 219.49 | 50.46 | `full220-836dda734659a86c-63902e` |
 
 **Bench2Drive's five abilities, in % of the routes that count towards each:**
 
@@ -891,8 +891,8 @@ a minimum-speed check.
 with upstream's inputs: the measured ego history and the route raster. CARLA
 crashed once, on route 3307's first attempt as it started, and the route scored
 on its next. It moves off on every route but completes none: its median route
-completion is 25.6%, and 175 of its 219 routes have a collision. The 30 s rule
-ended 180 routes and the over-time rule 12. No route is a success; its one ability
+completion is 25.8%, and 172 of its 216 routes have a collision. The 30 s rule
+ended 177 routes and the over-time rule 12. No route is a success; its one ability
 credit is Traffic signs, for 11 of 94 routes that got past their first junction
 with no red light or stop sign run.
 

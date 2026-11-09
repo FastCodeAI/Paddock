@@ -570,11 +570,12 @@ Earlier runs, each `valid: false`:
   rows pool are the steady row's record.
 
 **Bench2Drive, all 220 routes, valid**
-(`results/bench2drive/autoe2e/full220-96854bd47e320563-731529`, 7-8 Nov 2026, the
+(`results/bench2drive/autoe2e/full220-836dda734659a86c-63902e`, 7-8 Nov 2026, the
 220-route protocol): the same inputs, rate and early stop as the 50-route row, up
-to three attempts a route, route 11715 set aside for every model. **14.28** mean
-driving score over 219 routes (median 12.86), RC 27.62%, infraction penalty 0.55,
-a collision on 175 routes; the 30 s rule ended 180 and the over-time rule 12. It
+to three attempts a route, the four routes set aside for every model left out.
+**14.36** mean driving score over 216 routes (median 13.05), RC 27.80%, infraction
+penalty 0.55, a collision on 172 routes; the 30 s rule ended 177 and the over-time
+rule 12. It
 moves off on every route and completes none. The tables, and Bench2Drive's own
 scores for the record, are in
 [Bench2Drive — 220 routes](../benchmarks/bench2drive.md#bench2drive--220-routes).

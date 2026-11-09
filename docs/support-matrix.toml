@@ -199,7 +199,7 @@ navsim_v1 = { run = "navsim_v1/autoe2e/20261104T210206-3022fb", marks = "A", not
 # Its own inputs at its declared 10 Hz, routes ended after 30 s stuck or 4x the expert's time, each a
 # failed drive scored as it stood: valid, and it ranks. The README says how it was driven.
 bench2drive = { run = "bench2drive/autoe2e/pooled50-40c29d24c37d542a-cc7a9c", note = "10 Hz" }
-bench2drive220 = { run = "bench2drive/autoe2e/full220-96854bd47e320563-731529", note = "10 Hz" }
+bench2drive220 = { run = "bench2drive/autoe2e/full220-836dda734659a86c-63902e", note = "10 Hz" }
 neuroncap = { run = "neuroncap/autoe2e/20261026T233951-743060", marks = "A" }
 alpasim = { run = "alpasim/autoe2e/20261022T045847-86b955" }
 
