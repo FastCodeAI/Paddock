@@ -9,7 +9,7 @@
 | Environment | conda, Python 3.9 |
 | Cameras | `CAM_FRONT`, `CAM_FRONT_RIGHT`, `CAM_FRONT_LEFT`, `CAM_BACK`, `CAM_BACK_LEFT`, `CAM_BACK_RIGHT` |
 | Plan | waypoints, 0.5 s apart, 3 s ahead |
-| Paddock can run it on | [hugsim](../benchmarks/hugsim.md), [nuscenes](../benchmarks/nuscenes.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuplan](../benchmarks/nuplan.md), [neuroncap](../benchmarks/neuroncap.md), [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md) |
+| Paddock can run it on | [hugsim](../benchmarks/hugsim.md), [nuscenes](../benchmarks/nuscenes.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuplan](../benchmarks/nuplan.md), [neuroncap](../benchmarks/neuroncap.md), [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [alpasim](../benchmarks/alpasim.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->
@@ -148,7 +148,7 @@ The model needs all six surround cameras (one learned embedding per camera slot)
 | [neuroncap](../benchmarks/neuroncap.md) | yes | NeuRAD renders the six cameras and sends the real LIDAR_TOP. It asks every 0.1 s whatever `planning_hz` says, so the model steps every 0.5 s and the plan is held in between (below) |
 | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md) | with `UNIAD_HORIZON_S = "4.0"` | NAVSIM scores 4 s and refuses a 3 s plan; the setting continues the last 0.5 s step (METEOR's rule), set in a `[models.uniad.benchmarks.navsim.env]` pairing. Its cameras map as nuPlan's; history is four frames at 2 Hz. Until model.yaml declares the setting's score note (its comment says how), such a run is stored `valid: false` |
 | comma2k19 | no | one camera; the other five slots would have to be invented |
-| alpasim | no | the bridge does not rectify AlpaSim's f-theta cameras, and the only six-camera profile (AutoE2E's) is 120° wide cameras plus a 30° telephoto turned backwards: pinhole `lidar2img` would mis-project every BEV sample |
+| [alpasim](../benchmarks/alpasim.md) | yes (not yet run) | its six cameras re-rendered as nuScenes' rig: 1600×900 undistorted pinholes at scene-0103's calibrated intrinsics and poses, CAM_BACK on the telephoto's id (`paddock_bridge_nuscenes_rig.yaml`), rendered every 0.5 s on the replan grid. Asked every 0.5 s, the 3.0 s warm-up sent to `/observe`; canbus carries ego-frame speed and the simulator's acceleration. No route: the command is always FORWARD |
 
 ## Verification
 

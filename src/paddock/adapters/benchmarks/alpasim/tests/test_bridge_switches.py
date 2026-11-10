@@ -460,3 +460,86 @@ def test_the_new_switches_leave_a_body_alone_until_turned_on(monkeypatch) -> Non
     assert "plan_dt" not in plain and "route_timestamp_us" not in plain
     assert {k: v for k, v in extended.items() if k not in ("plan_dt", "route_timestamp_us")} == plain
     assert extended["plan_dt"] == 0.5
+
+
+# -- UniAD and VAD ----------------------------------------------------------------
+
+NUSC_NAMES = ["CAM_BACK", "CAM_BACK_LEFT", "CAM_BACK_RIGHT", "CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT"]
+
+
+@pytest.mark.parametrize("model", ["uniad", "vad"])
+def test_uniad_and_vad_observe_the_warmup_then_are_asked_every_0_5_s(model, monkeypatch) -> None:
+    """Every warm-up step to /observe, a replan every 0.5 s after it and nothing in between;
+    six cameras with K and pose; ego-frame speed and the simulator's acceleration."""
+    from paddock.policy.protocol import CANBUS_ACCEL, CANBUS_VELOCITY, CANBUS_YAW_RATE
+
+    sent = _drive(_build(harness.profile_for(model).bridge_args, monkeypatch))
+    assert sent[0][0] == "/reset"
+    assert [b["timestamp"] for p, b in sent if p == "/observe"] == list(range(0, 3_000_000, STEP_US))
+    assert [b["timestamp"] for p, b in sent if p == "/infer"] == [3_000_000, 3_500_000, 4_000_000, 4_500_000]
+    for _, body in sent[1:]:
+        assert sorted(body["images"]) == NUSC_NAMES
+        calibration = body["calibration"]
+        assert sorted(calibration["camera2image"]) == sorted(calibration["camera2ego"]) == NUSC_NAMES
+    bodies = {body["timestamp"]: body for path, body in sent if path != "/reset"}
+    after = bodies[4_500_000]["canbus"]
+    assert (after[CANBUS_VELOCITY], after[CANBUS_VELOCITY + 1], after[CANBUS_YAW_RATE]) == (8.0, 0.05, 0.1)
+    assert (after[CANBUS_ACCEL], after[CANBUS_ACCEL + 1]) == (0.3, 0.8)
+    # Through the forced replay, speed and yaw rate from the poses, not the reported zeros.
+    assert bodies[2_000_000]["canbus"][CANBUS_VELOCITY] == pytest.approx(8.0, abs=1e-3)
+    assert bodies[2_000_000]["canbus"][CANBUS_YAW_RATE] == pytest.approx(0.1, abs=1e-6)
+
+
+def test_the_uniad_node_steps_on_the_warmup_grid_then_once_per_replan(monkeypatch) -> None:
+    """Bridge -> wire -> UniAD's node, the model stubbed: the first plan steps through the seven
+    warm-up frames on the 0.5 s grid up to handover, each later plan through its own frame
+    alone, every frame with all six cameras, K and pose; the bridge accepts every plan."""
+    from paddock.adapters.models.uniad.bev_planners import NUSC_CAMERAS, BevPlannerPolicy, nuscenes_can_bus
+    from paddock.policy.protocol import Observation
+
+    stepped: list[dict] = []
+
+    class Stub(BevPlannerPolicy):
+        cameras = NUSC_CAMERAS
+
+        def _results(self, obs, lidar2ego):
+            can_bus, _ = nuscenes_can_bus(obs.ego2world, obs.canbus, self._nuscenes_quaternion(obs))
+            return {
+                "t": int(obs.timestamp_us),
+                "cameras": sorted(obs.images),
+                "k": sorted(obs.camera2image),
+                "pose": sorted(obs.camera2ego),
+                "can_bus": can_bus,
+            }
+
+        def _forward(self, results):
+            stepped.append(results)
+            return np.c_[np.zeros(6), 4.0 * (np.arange(6) + 1)]  # the lidar frame: y forward
+
+        def _reset_model(self) -> None:
+            pass
+
+    node = Stub()
+    node.model = object()
+    planner = _build(harness.profile_for("uniad").bridge_args, monkeypatch)
+
+    def post(path, body):
+        if path == "/reset":
+            node.reset()
+        else:
+            node.observe(Observation.from_wire(json.loads(json.dumps(body)), cameras=node.cameras))
+        return {"observed": True}
+
+    def post_infer(body):
+        return node.infer(Observation.from_wire(json.loads(json.dumps(body)), cameras=node.cameras)).to_wire()
+
+    planner._post, planner.post_infer = post, post_infer
+    planner.on_session_start(SimpleNamespace(session_uuid="session-1"))
+    results = [planner.plan(_view(t), t, t + STEP_US) for t in range(0, 4_500_001, STEP_US)]
+    assert [s["t"] for s in stepped] == [*range(0, 3_000_001, 500_000), 3_500_000, 4_000_000, 4_500_000]
+    assert all(s["cameras"] == s["k"] == s["pose"] == NUSC_NAMES for s in stepped)
+    assert [r is not None for r in results].count(True) == 31, "a plan at every step from handover (3.0 s) on"
+    # The warm-up frames carry the speed the car had (the first has one pose, nothing to derive from).
+    np.testing.assert_allclose([s["can_bus"][13] for s in stepped[1:]], 8.0, atol=1e-3)
+    # After the replay, the simulator's acceleration with gravity added, as nuScenes' accelerometer reads.
+    np.testing.assert_allclose(stepped[-1]["can_bus"][7:10], [0.3, 0.8, 9.81])
