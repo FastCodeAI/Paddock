@@ -57,11 +57,12 @@ compare with, therefore select on the plain score rather than on a comparison
 the stage was never evaluated at.
 
 Open loop, each sample arrives through ``/infer_sequence``, which resets the
-node, so the episode's book is always empty there. navhard's streamed mode
-(``PADDOCK_NAVHARD_STREAMED``) is the exception: it plans a log's real frames in
-time order and names the log with each (``protocol.StreamFrame``, with the
-frame's own timestamp and global pose), and `Momentum` keeps one book per log
-across those resets. That is upstream's sequential loop again, one frame per
+node, so the episode's book is always empty there. The streamed modes are the
+exception -- navtest's (``PADDOCK_NAVSIM_STREAMED``) and navhard's
+(``PADDOCK_NAVHARD_STREAMED``): each plans a log's real frames in time order
+and names the log with each (``protocol.StreamFrame``, with the frame's own
+timestamp and global pose), and `Momentum` keeps one book per log across
+those resets. That is upstream's sequential loop again, one frame per
 request; see the class docstring for why the books are keyed.
 """
 
@@ -165,7 +166,7 @@ class Momentum:
 
     Two kinds of book. The episode's own (`stream=None`): a closed-loop drive,
     one call after another, emptied by `reset`. And one per *stream*: an
-    open-loop harness in a streamed mode (navhard's) scores each frame as its
+    open-loop harness in a streamed mode (navsim's, navhard's) scores each frame as its
     own `/infer_sequence` sample, which resets the node, and names the recorded
     drive the frame came from (`protocol.StreamFrame`). Those books are keyed by
     that name and survive `reset`, so a frame is handed the plan this node chose

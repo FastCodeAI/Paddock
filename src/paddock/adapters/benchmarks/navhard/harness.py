@@ -220,6 +220,9 @@ class NavhardBenchmark(NavsimBenchmark):
     VOCABULARY = navsim_ingest.ScoreVocabulary("epdms", SUB_METRICS, frozenset(SUMMARY_TOKENS))
     DOC = "docs/benchmarks/navhard.md"
     DEVKIT_MAJOR = "2"
+    #: navsim's PADDOCK_NAVSIM_STREAMED is refused here; navhard's own streamed
+    #: mode, below, is PADDOCK_NAVHARD_STREAMED. The two never both act.
+    NO_STREAMED_MODE = f"navhard's own streamed mode is {ENV_STREAMED} (navhard/harness.py)"
 
     @property
     def split(self) -> str:

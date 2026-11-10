@@ -26,6 +26,37 @@ against. Set `PADDOCK_NAVSIM_AGENT` to a hydra agent group name to run a
 vendor's native agent instead -- used to reproduce a recorded run and to
 quantify exactly that gap, not as a normal path.
 
+**Streamed mode** (`PADDOCK_NAVSIM_STREAMED=1`; off by default, and then
+nothing below applies). Each scenario reaches the node through
+`/infer_sequence`, which resets it, so Drive-JEPA's momentum stage -- on for
+every benchmark in its model.yaml -- has never had a previous plan to act on
+here. Upstream's sequential loop feeds it one: the plan chosen for the same
+log's frame 0.5 s earlier (run_pdm_score_sequential.py:130-138). Streamed mode
+lets the node keep that book itself, without the scorer's help:
+
+* the proxy sends each frame's log name, timestamp and global pose with the
+  request (`agent.cache_stream_frame`), and the node keeps its own plan per
+  log (adapters/models/drivejepa/momentum.py). The observations are a standard
+  run's, byte for byte;
+* nothing about the order changes: the scorer already hands each worker whole
+  logs and plans a log's frames sorted by time (the same script, :106-118), and
+  the proxy pins a worker to one node;
+* the plan dump records, per frame, the stream and whether the node fed a
+  previous plan; the run's samples carry it as `extra.momentum_fed` and
+  `metrics.json` counts it under `by_group.streamed`, beside how many scored
+  frames had a frame of the same log planned 0.45-0.55 s before them;
+* a retry pass's neighbours (`retry_tokens`) are re-planned and discarded; their
+  plans are moved out of the dump (`set_aside_plans`), so the dump holds the
+  plans that were scored, which is what the counts and a v1 replay read.
+
+Every model can be run so and every model but Drive-JEPA ignores the stream, so
+the switch moves the run id (`run_config()["streamed"]`, absent from a standard
+run), a standard run cannot be resumed into a streamed one or back, and the
+run's notes say so. It is a different protocol from published navtest numbers
+of any proxy model. NAVSIM v1 has no streamed mode of its own (its scorer plans
+in set order): its number for a streamed run is a replay of that run's plans
+(nodeless.py), which records `streamed` from the run it replays.
+
 Site settings, `[benchmarks.navsim]` in paddock.toml:
 
     python         interpreter that can import navsim and nuplan
@@ -207,6 +238,115 @@ def dense_history_summary(out_dir: Path) -> dict[str, int]:
     }
 
 
+def plan_lines(*dirs: Path) -> dict[str, dict[str, Any]]:
+    """token -> the last plan-dump line for it under *dirs*, oldest directory first.
+
+    Last, because a chunk re-run after a node restart appends to its dump: the
+    line written last is the plan that was scored. The same rule
+    `convert.load_plans` replays by.
+    """
+    import json
+
+    records: dict[str, dict[str, Any]] = {}
+    for directory in dirs:
+        for dump in sorted(Path(directory).rglob("trajectories.jsonl")):
+            with dump.open() as handle:
+                for line in handle:
+                    try:
+                        record = json.loads(line)
+                    except ValueError:
+                        continue
+                    token = record.get("token")
+                    if token:
+                        records[str(token)] = record
+    return records
+
+
+def _sample_token(sample: dict[str, Any]) -> str | None:
+    native = sample.get("native_id")
+    return native.get("token") if isinstance(native, dict) else native
+
+
+def streamed_counts(records: dict[str, dict[str, Any]], scored: Collection[str]) -> dict[str, int]:
+    """What a streamed run's dump says about the frames that were scored, counted.
+
+    `streamed_frames`: scored frames whose plan was asked for with a stream.
+    `momentum_fed`: of those, how many the node says it fed a previous plan;
+    `momentum_reported`: how many it said anything about (zero for a model with
+    no momentum stage, whose `momentum_fed` is None). `previous_planned`: how
+    many had a frame of the same log planned 0.45-0.55 s earlier -- the frames
+    upstream's sequential loop would feed, so `momentum_fed` short of it means
+    a previous plan that existed was not used. Counted from the dump, never
+    from the node's say-so alone.
+    """
+    import bisect
+
+    planned: dict[str, list[int]] = {}
+    for record in records.values():
+        if record.get("stream") and record.get("stream_time_us") is not None:
+            planned.setdefault(str(record["stream"]), []).append(int(record["stream_time_us"]))
+    for times in planned.values():
+        times.sort()
+
+    def has_previous(record: dict[str, Any]) -> bool:
+        times = planned.get(str(record["stream"]), [])
+        now = int(record["stream_time_us"])
+        lo = bisect.bisect_left(times, now - STREAM_MAX_AGE_US)
+        return lo < len(times) and times[lo] <= now - STREAM_MIN_AGE_US
+
+    lines = [records[token] for token in scored if token in records]
+    streamed = [r for r in lines if r.get("stream") and r.get("stream_time_us") is not None]
+    return {
+        "scored_frames": len(scored),
+        "streamed_frames": len(streamed),
+        "momentum_fed": sum(1 for r in streamed if r.get("momentum_fed") is True),
+        "momentum_reported": sum(1 for r in streamed if r.get("momentum_fed") is not None),
+        "previous_planned": sum(1 for r in streamed if has_previous(r)),
+    }
+
+
+def join_streamed(evaluation: Evaluation, records: dict[str, dict[str, Any]], echo=print) -> None:
+    """Each sample's `momentum_fed` from the plan dump, and the counts under `by_group.streamed`."""
+    tokens = []
+    for sample in evaluation.samples:
+        token = _sample_token(sample)
+        tokens.append(token)
+        sample.setdefault("extra", {})["momentum_fed"] = (records.get(token) or {}).get("momentum_fed")
+    counts = streamed_counts(records, [t for t in tokens if t])
+    evaluation.by_group["streamed"] = counts
+    echo(
+        f"  streamed: momentum fed on {counts['momentum_fed']} of {counts['scored_frames']} scored frame(s); "
+        f"{counts['previous_planned']} had a frame of the same log planned 0.45-0.55 s before"
+    )
+
+
+def set_aside_plans(dump: Path, keep: set[str]) -> int:
+    """Move every line of *dump* whose token is not in *keep* into `NEIGHBOUR_PLANS` beside it.
+
+    For a streamed run's retry pass: its neighbours were re-planned only so
+    the scorer could aggregate, and their rows are discarded (`keep_tokens`),
+    but their plans would otherwise be the last line for their tokens -- the
+    one the counts and a replay read -- although the scored plan is the first
+    pass's. Idempotent; returns how many lines it moved.
+    """
+    import json
+
+    if not dump.is_file():
+        return 0
+    kept, moved = [], []
+    for line in dump.read_text().splitlines(keepends=True):
+        try:
+            token = json.loads(line).get("token")
+        except ValueError:
+            token = None
+        (kept if token is None or token in keep else moved).append(line)
+    if moved:
+        with (dump.parent / NEIGHBOUR_PLANS).open("a") as handle:
+            handle.writelines(moved)
+        dump.write_text("".join(kept))
+    return len(moved)
+
+
 def completed_chunk_csv(chunk_dir: Path) -> Path | None:
     """The scorer's CSV for a chunk that finished, else None."""
     csvs = sorted(chunk_dir.glob("*.csv")) if chunk_dir.is_dir() else []
@@ -268,6 +408,26 @@ ENV_ALLOW_PARTIAL = "PADDOCK_NAVSIM_ALLOW_PARTIAL"
 ENV_ALLOW_SLOW = "PADDOCK_NAVSIM_ALLOW_SLOW"
 ENV_OVERRIDES = "PADDOCK_NAVSIM_OVERRIDES"
 
+#: Streamed mode's switch (module docstring). Recorded in run.json as
+#: `config.streamed` when on; a standard run's config has no such key, so its
+#: id and its `--resume` check are what they were before the switch existed.
+#: The same values navhard's own switch takes.
+ENV_STREAMED = "PADDOCK_NAVSIM_STREAMED"
+STREAMED_ON = ("1", "true", "on", "yes")
+STREAMED_OFF = ("", "0", "false", "off", "no")
+#: What `config.streamed` says: one stream per log, keyed by the log's name.
+STREAMED_PER_LOG = "per_log"
+#: What the scorer's command line gains in streamed mode: the proxy's `stream`.
+STREAM_OVERRIDE = "agent.stream=true"
+#: The ages, in microseconds, at which a previous plan is fed: the node's own
+#: window (adapters/models/drivejepa/momentum.py), which at OpenScene's 0.5 s
+#: keyframes is upstream's 0.55 s cutoff. Used only to count, never to decide.
+STREAM_MIN_AGE_US, STREAM_MAX_AGE_US = 450_000, 550_000
+#: Where a streamed run's retry pass puts the plans of the neighbours it
+#: re-planned and discarded; any name but `trajectories.jsonl`, which every
+#: reader of the dump globs for.
+NEIGHBOUR_PLANS = "trajectories.retry-neighbours.jsonl"
+
 #: Fewest scenarios NAVSIM can aggregate. `calculate_two_frame_extended_comfort`
 #: pairs consecutive frames within a log -- `range(len(group) - 1)` -- so a
 #: single scenario yields no pairs, the aggregate frame comes back with no
@@ -295,11 +455,13 @@ SETTING_NUPLAN = "nuplan"
 #: history is itself 2 Hz (AutoE2E: eight frames 0.5 s apart) that is every frame it reads;
 #: the 10 Hz frames in between still carry the ego state. Off unless set.
 SETTING_KEYFRAME_CAMERAS = "keyframe_cameras"
-#: What `model_run_config` records about how a model's plans were made. A replay
-#: makes no plans, so `nodeless` takes these from the run it replays. Left as its
-#: pseudo-model's own, a replay of a 10 Hz nuPlan run said its plans came from
-#: 2 Hz OpenScene history.
-PLAN_SETTINGS = ("input_hz", "history_source", "history_s", "keyframe_cameras")
+#: What `model_run_config` records about how a model's plans were made, and
+#: `streamed` from `run_config` (whether the node kept its own plan per log). A
+#: replay makes no plans, so `nodeless` takes these from the run it replays.
+#: Left as its pseudo-model's own, a replay of a 10 Hz nuPlan run said its plans
+#: came from 2 Hz OpenScene history, and a replay of a streamed run would have
+#: read as a replay of a standard one.
+PLAN_SETTINGS = ("input_hz", "history_source", "history_s", "keyframe_cameras", "streamed")
 CONF_DIR = Path(__file__).resolve().parent / "conf"
 SCORER = "navsim/planning/script/run_pdm_score_sequential.py"
 
@@ -407,6 +569,12 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
     #: `run_pdm_score.py`, so the scorer path passing proves little, and a v2
     #: tree scored under a PDMS label would look exactly like a result.
     DEVKIT_MAJOR = "2"
+    #: None where `ENV_STREAMED` is this benchmark's streamed mode (module
+    #: docstring); otherwise why it has none, and the switch is refused rather
+    #: than ignored. Its own members are `navsim_streamed`, `_navsim_streamed_*`:
+    #: navhard subclasses this class and has a streamed mode of its own under
+    #: the plain names, and the two must never both act.
+    NO_STREAMED_MODE: str | None = None
 
     # -- site settings: `self.setting(key)` / `self.settings` from the base -----
 
@@ -442,6 +610,11 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
     # -- preflight --------------------------------------------------------
 
     def preflight(self) -> list[str]:
+        # The switch is checked whatever the site's state, so a misspelt or
+        # misplaced one is reported even beside a missing section.
+        return self._site_problems() + self._navsim_streamed_problems()
+
+    def _site_problems(self) -> list[str]:
         problems: list[str] = []
         section = f"[benchmarks.{self.spec.name}]"
 
@@ -652,6 +825,48 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
     def _overrides() -> list[str]:
         return os.environ.get(ENV_OVERRIDES, "").split()
 
+    # -- streamed mode (module docstring) ----------------------------------
+
+    @staticmethod
+    def _navsim_streamed_value() -> str:
+        return os.environ.get(ENV_STREAMED, "").strip().lower()
+
+    @property
+    def navsim_streamed(self) -> bool:
+        """`ENV_STREAMED` is on, the benchmark has the mode, and the proxy plans."""
+        return (
+            self.NO_STREAMED_MODE is None
+            and self._navsim_streamed_value() in STREAMED_ON
+            and self._agent() == self.PROXY_AGENT
+        )
+
+    def _navsim_streamed_problems(self) -> list[str]:
+        """Why `ENV_STREAMED` as set cannot run. Every way it could be quietly
+        ignored is a refusal instead: a run believed streamed must be one."""
+        value = self._navsim_streamed_value()
+        if value not in STREAMED_ON + STREAMED_OFF:
+            return [f"{ENV_STREAMED}={value!r}: expected one of {', '.join(STREAMED_ON + STREAMED_OFF[1:])}"]
+        if value not in STREAMED_ON:
+            return []
+        if self.NO_STREAMED_MODE is not None:
+            return [
+                f"{ENV_STREAMED} is navsim's streamed mode, and {self.spec.name} has none: "
+                f"{self.NO_STREAMED_MODE}"
+            ]
+        if self._agent() != self.PROXY_AGENT:
+            return [
+                f"{ENV_STREAMED} streams through the paddock proxy, and this run uses the agent "
+                f"{self._agent()!r}; unset one of them (a replay records `streamed` from the run it replays)"
+            ]
+        borrowed = [name for name in (RESUME_ENV, MERGE_ENV) if os.environ.get(name)]
+        if borrowed:
+            return [
+                f"{ENV_STREAMED} with {', '.join(borrowed)}: a streamed run's counts and replays read "
+                f"its own plan dump, and another run's chunks are not checked to have been streamed. "
+                f"Use --resume on the streamed run itself"
+            ]
+        return []
+
     # -- which observation rate a model is fed ------------------------------
 
     @property
@@ -730,7 +945,7 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
 
     def run_config(self) -> dict[str, Any]:
         """The switches that change what a NAVSIM run measures, for run.json."""
-        return {
+        config = {
             "split": self.split,
             "agent": self._agent(),
             "allow_partial": bool(os.environ.get(ENV_ALLOW_PARTIAL)),
@@ -742,6 +957,22 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
             "chunk_order": "by_size",
             "merged_from": os.environ.get(MERGE_ENV) or None,
         }
+        # Only when on: a standard run's config, id and resume check stay
+        # exactly what they were before streamed mode existed.
+        if self.navsim_streamed:
+            config["streamed"] = STREAMED_PER_LOG
+        return config
+
+    def remarks(self) -> list[str]:
+        if not self.navsim_streamed:
+            return super().remarks()
+        return [
+            *super().remarks(),
+            f"streamed ({ENV_STREAMED}): each frame named its log, time and global pose so the node could "
+            f"keep its own previous plan per log, as upstream's sequential loop feeds Drive-JEPA; the "
+            f"observations are a standard run's. A standard paddock navsim run hands no model a previous "
+            f"plan, so the two are different protocols. Counts in by_group.streamed",
+        ]
 
     def invalid_reasons(self) -> list[str]:
         """Why a run under the current switches cannot be ranked with the others."""
@@ -943,6 +1174,10 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
                 ]
                 if self.keyframe_cameras:
                     command.append("agent.keyframe_cameras=true")
+            if self.navsim_streamed:
+                # Ahead of PADDOCK_NAVSIM_OVERRIDES, appended last, so a site
+                # override still wins.
+                command.append(STREAM_OVERRIDE)
         if agent == REPLAY_AGENT and config.get("plans_dir"):
             # The run being replayed, by artifacts directory. Passed on the
             # command line rather than through PADDOCK_NAVSIM_OVERRIDES so the
@@ -1219,6 +1454,12 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
                     echo(f"  retry pass FAILED ({str(exc).splitlines()[0]}); the {len(failed)} stay excluded")
                     retried = None
             if retried is not None:
+                if self.navsim_streamed:
+                    # The neighbours' rows were dropped; their re-plans go too
+                    # (module docstring). Idempotent, so a reused pass is safe.
+                    moved = set_aside_plans(retry_dir / "trajectories.jsonl", set(failed))
+                    if moved:
+                        echo(f"  set aside {moved} neighbour plan(s) of the retry pass ({NEIGHBOUR_PLANS})")
                 csvs.append(retried)
                 merged = self._merge(csvs, out_dir)
                 samples, aggregates, failed = self._parse(merged)
@@ -1243,13 +1484,16 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         }
         if self._agent() == self.PROXY_AGENT and hz > INPUT_HZ:
             by_group["dense_history"] = dense_history_summary(out_dir)
-        return Evaluation(
+        evaluation = Evaluation(
             samples=samples,
             failed=failed,
             by_group=by_group,
             failed_chunks=failed_chunks,
             n_expected=n_expected,
         )
+        if self.navsim_streamed:
+            join_streamed(evaluation, plan_lines(out_dir), echo)
+        return evaluation
 
 
 def _kill_group(proc: subprocess.Popen) -> None:

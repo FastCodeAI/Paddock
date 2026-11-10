@@ -526,7 +526,8 @@ class StreamFrame:
     An open-loop sample is self-contained: `/infer_sequence` resets the node and
     hands it the sample's own history, with times and poses relative to the
     scored frame. That is right for every model and every default run. A
-    harness in a *streamed* mode (navhard's, `PADDOCK_NAVHARD_STREAMED`) also
+    harness in a *streamed* mode (navsim's `PADDOCK_NAVSIM_STREAMED`, navhard's
+    `PADDOCK_NAVHARD_STREAMED`) also
     sends this, beside the observations, for a sample that is a real frame of a
     real drive, so a model that carries state from one replan to the next --
     Drive-JEPA's momentum stage keeps its own previous plan -- can tell which
