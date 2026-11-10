@@ -28,13 +28,28 @@ plan the same way and differ in everything around it.
 | Benchmarks | NAVSIM, KITScenes, nuScenes, comma2k19, neuroNCAP, Bench2Drive, and AlpaSim through paddock's bridge | AlpaSim only, and **not through paddock** |
 | Weights | the released checkpoint | the released checkpoint (versions 0.1.4 and 0.1.4b) |
 | Cameras | four (on AlpaSim: one rendered, three placeholders; on comma2k19: one, three black) | one, front |
-| Momentum-aware selection | on, declared in `model.yaml` (`DRIVEJEPA_MOMENTUM`); acts only in closed loop | on from 0.1.4b |
+| Momentum-aware selection | on, declared in `model.yaml` (`DRIVEJEPA_MOMENTUM`); acts in closed loop, and open loop only in a streamed mode (below) | on from 0.1.4b |
 | Rows in `results/` | every Drive-JEPA row that was run through paddock | none (its AlpaSim rows are ingested) |
 
 In the paddock node, momentum is declared on in `model.yaml`. The run id covers
 what a `model.yaml` declares, so `--resume` refuses to continue a closed-loop
 run started before momentum was declared on, which would mix episodes driven
 both ways under one id.
+
+Open loop, every sample resets the node, so momentum never acts in a standard
+run of NAVSIM, navhard, nuScenes, KITScenes or comma2k19: each pick is on the
+plain score, and the run's `provenance.policy.momentum_counts` shows `fed: 0`.
+An opt-in *streamed* mode per benchmark makes it act, and is recorded as
+`config.streamed`, per sample as `momentum_fed` and in `by_group.streamed`:
+navhard's `PADDOCK_NAVHARD_STREAMED` (one stream per log, see
+[navsim.md](../benchmarks/navsim.md)); nuScenes' `PADDOCK_NUSCENES_STREAMED`
+(one stream per scene, planned in order on one node; upstream's sequential loop,
+see [nuscenes.md](../benchmarks/nuscenes.md#streamed-mode-drive-jepas-momentum));
+and KITScenes' and comma2k19's `PADDOCK_KITSCENES_STREAMED` /
+`PADDOCK_COMMA2K19_STREAMED`, whose keyframes are seconds apart, so each sample
+is preceded by a discarded *warm-up* plan 0.5 s earlier -- a Paddock choice,
+not upstream protocol (see
+[kitscenes.md](../benchmarks/kitscenes.md#streamed-mode-drive-jepas-momentum-with-a-warm-up)).
 
 How the paddock node drives AlpaSim, and how that compares with the native
 driver it copies, is in [Through paddock on AlpaSim](#through-paddock-on-alpasim)

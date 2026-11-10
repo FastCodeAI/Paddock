@@ -16,10 +16,30 @@ camera alone, and a six-camera model was scored with five of its inputs absent.
 The scored keyframe also names its scene's Lanelet2 map and carries the logged
 drive a route is matched to (`map`, `route`): inputs only a policy that reads
 `map_files` / `route_trace` sees, so every other model's numbers are unchanged.
+
+**Streamed mode** (`PADDOCK_KITSCENES_STREAMED=1`; off by default, and then
+nothing here changes). Each sample resets the node, so Drive-JEPA's momentum
+stage -- on for every benchmark -- never has a previous plan here, and no
+streaming order could give it one: the 223 keyframes are 9 s apart, none 0.5 s
+after another. Streamed mode gives each sample a *warm-up* instead
+(`benchmark.Warmup`): just before the scored request, on the same node, the
+runner plans the sample's own frame 0.5 s earlier (index keyframe - 5, in the
+sample's history) from the history before it, under a stream keyed by the
+sample, at that frame's own time and pose in the scene's frame; discards that
+plan; then sends the scored request under the same key, 0.5 s later on the same
+clock. The node hands the scored pick the warm-up's plan. **This is a Paddock
+choice, not upstream protocol**: Drive-JEPA's own sequential loop feeds only
+the plans of frames it scores, and never plans one just to feed it. Recorded as
+`config.streamed = "warmup_0.5s"`, per sample as `extra.warmup` and
+`extra.momentum_fed`, and counted in `by_group.streamed`. The warm-up frame is
+planned with the scored keyframe's route command (`_command`; STRAIGHT unless
+`command_source = "gt"`), the route a car would have been following 0.5 s
+earlier. See docs/benchmarks/kitscenes.md.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import pickle
 from collections.abc import Container, Iterator
@@ -28,7 +48,15 @@ from pathlib import Path
 import numpy as np
 
 from paddock.adapters.benchmarks.kitscenes import loader as L
-from paddock.benchmark import OpenLoopBenchmark, Sample
+from paddock.benchmark import (
+    STREAMED_WARMUP,
+    OpenLoopBenchmark,
+    Sample,
+    stream_frame,
+    streamed_switch,
+    streamed_switch_problems,
+    warmup_before,
+)
 from paddock.metrics import pdm
 from paddock.metrics import trajectory as M
 from paddock.policy.protocol import CANBUS_VELOCITY, Command, Observation, Trajectory
@@ -144,17 +172,23 @@ MAP_FORMAT = "lanelet2_osm"
 #: recorded in `run_config()` only when it is not the default.
 ROUTE_SOURCES = ("oracle", "none")
 
+#: Streamed mode's switch (module docstring). Recorded as `config.streamed` when
+#: on; a standard run's config has no such key, so its id and `--resume` check
+#: are what they were before the switch existed.
+ENV_STREAMED = "PADDOCK_KITSCENES_STREAMED"
+
 
 class KitScenesBenchmark(OpenLoopBenchmark):
     # ---- readiness ------------------------------------------------------
 
     def preflight(self) -> list[str]:
-        problems: list[str] = []
+        problems: list[str] = streamed_switch_problems(ENV_STREAMED)
         dataset = self.dataset
         if dataset is None:
             return [
+                *problems,
                 "dataset 'kitscenes' is not configured; add [datasets.kitscenes] "
-                "to paddock.toml (see docs/data-setup.md)"
+                "to paddock.toml (see docs/data-setup.md)",
             ]
         if not any(root.exists() for root in dataset.roots):
             problems.append(
@@ -378,13 +412,47 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         if self._route() == "oracle":
             # The whole logged scene, future included, in the observations' clock.
             scored.route_trace = np.column_stack([np.arange(len(poses)) / SRC_HZ, poses])
+        sample_id = self._sample_id(row)
+        stream = warmup = None
+        if self.streamed:
+            # Keyed by the sample: its warm-up and its scored request are the
+            # only two plans in the stream. Poses are the scene's own frame
+            # (`poses.txt`), times the scene's frame clock.
+            stream = stream_frame(sample_id, scored)
+            warmup = warmup_before(observations, sample_id)
+            if warmup is not None and warmup.observations[-1].command != scored.command:
+                # A copy: the history frame in the scored request keeps STRAIGHT.
+                warmup.observations[-1] = dataclasses.replace(warmup.observations[-1], command=scored.command)
         return Sample(
-            sample_id=self._sample_id(row),
+            sample_id=sample_id,
             observations=observations,
             ground_truth=L.ground_truth(poses, keyframe, n=N_GT_POSES),
             split=row["split"],
             native_id={"scene_id": row["scene_id"], "keyframe_index": keyframe},
+            stream=stream,
+            warmup=warmup,
         )
+
+    # ---- streamed mode (module docstring) -------------------------------
+
+    @property
+    def streamed(self) -> bool:
+        return streamed_switch(ENV_STREAMED)
+
+    def stream_mode(self) -> str | None:
+        return STREAMED_WARMUP if self.streamed else None
+
+    def remarks(self) -> list[str]:
+        if not self.streamed:
+            return super().remarks()
+        return [
+            *super().remarks(),
+            f"streamed with a warm-up ({ENV_STREAMED}): before each scored request the same node planned "
+            f"the sample's own frame 0.5 s earlier from the history before it, and that plan -- discarded, "
+            f"never scored -- was the previous plan the scored request could be handed. A Paddock choice: "
+            f"upstream Drive-JEPA never plans a frame only to feed it, and the open-loop protocol hands no "
+            f"model a previous plan. Counts in by_group.streamed",
+        ]
 
     def _ground_offset(self) -> float:
         """Roof-pod height above the road, from the site config or `POD_HEIGHT_M`."""
@@ -482,6 +550,8 @@ class KitScenesBenchmark(OpenLoopBenchmark):
             config["map"] = False
         if self._route() != "oracle":
             config["route"] = self._route()
+        if self.streamed:
+            config["streamed"] = STREAMED_WARMUP
         return config
 
     def model_run_config(self, model) -> dict:
