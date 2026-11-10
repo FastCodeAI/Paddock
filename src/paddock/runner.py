@@ -168,7 +168,7 @@ def _portable_segment(segment: str) -> str:
 
 
 #: OpenMP/BLAS thread counts: how fast a node runs, never what it computes,
-#: and set per site to fit the box (shakaal fails at 90% CPU). Allowed for
+#: and set per site to fit the box (some machines fail at 90% CPU). Allowed for
 #: every model, on top of each model's own `runtime.tuning_env`.
 THREAD_ENV = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS")
 
@@ -192,7 +192,7 @@ def _declared_env(model_spec: ModelSpec) -> dict[str, str]:
     planner head, Drive-JEPA's momentum), so it belongs in the run id: before it
     was hashed, turning `DRIVEJEPA_MOMENTUM` on in `model.yaml` left the id
     unchanged, and `--resume` continued a momentum-off run with momentum on
-    under one number (#99). Values stay unexpanded (`{weights}/...`), so the
+    under one number. Values stay unexpanded (`{weights}/...`), so the
     hash is the same at every site and no machine path reaches `run.json`.
     Tuning keys are left out for the reason they leave a run valid: changing
     them moves no plan, so it should neither move the id nor refuse a resume.
@@ -212,6 +212,11 @@ def _env_override_reasons(cfg: SiteConfig, model_spec: ModelSpec) -> list[str]:
     recorded `valid: true` and ranked as the released model. Restating the
     declared default value is not an override.
 
+    A key the model lists in `ranked_with_note` does not count either: the run
+    stays ranked, and `paddock report` prints the model's `score_notes` line
+    beside it. That is a model's own statement about one setting, so a key nobody
+    listed still fails closed.
+
     A declared `runtime.env_passthrough` name set in the launching shell reaches
     the node the same way (`runtime.env.build()` applies it last, over a site
     value), so it is held to the same rule: `ALPAMAYO_NAV=0 paddock run ...` is
@@ -220,12 +225,12 @@ def _env_override_reasons(cfg: SiteConfig, model_spec: ModelSpec) -> list[str]:
     override = cfg.models.get(model_spec.name)
     site = dict(override.env) if override is not None and override.env else {}
     shell = {k: os.environ[k] for k in model_spec.runtime.env_passthrough if k in os.environ}
-    tuning = _tuning_keys(model_spec)
+    allowed = {*_tuning_keys(model_spec), *model_spec.ranked_with_note}
     declared = model_spec.runtime.env
 
     reasons = []
     for source, given in (("site", {k: v for k, v in site.items() if k not in shell}), ("shell", shell)):
-        keys = sorted(k for k, v in given.items() if k not in tuning and declared.get(k) != v)
+        keys = sorted(k for k, v in given.items() if k not in allowed and declared.get(k) != v)
         if keys:
             reasons.append(
                 f"{source} env override may change what was measured: {', '.join(keys)} "
@@ -371,10 +376,10 @@ def _config_marker_problems(artifacts: Path, config: dict) -> list[str]:
             )
             if "declared_env" in differing and "declared_env" not in recorded:
                 # Usually not a switch anyone can restore: every run started
-                # before #99 lacks the key, and nothing says which model.yaml
+                # before 21 Oct 2026 lacks the key, and nothing says which model.yaml
                 # env its finished episodes ran.
                 problem += (
-                    " Its marker records no declared_env, as every run started before #99 does, "
+                    " Its marker records no declared_env, as every run started before 21 Oct 2026 does, "
                     "so which model.yaml env its finished samples ran is not known: start a new run."
                 )
             return [problem]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import replace
 from pathlib import Path
 
@@ -165,6 +166,58 @@ def test_a_cell_that_cannot_be_traced_fails_loudly(tmp_path: Path, change: str, 
     runs = {k: v for k, v in RUNS.items() if not (k == "open/good/1" and "no run" in error)}
     with pytest.raises(ValueError, match=error):
         _load(tmp_path, HEADER + rows, {**runs, "open/invalid/1": 0.2})
+
+
+def test_one_benchmark_can_fill_two_columns(tmp_path: Path) -> None:
+    """Bench2Drive's 220-route column beside its 50-route one: a second key, the same benchmark's runs,
+    and its own ranks."""
+    second = (
+        '[[benchmark]]\nkey = "closed_all"\nbenchmark = "closed"\nname = "Closed, all"\nloop = "closed"\n'
+        'header = "score ↑ (0–5), every scene"\ndecimals = 2\nmetric = "ncap_score"\n'
+    )
+    rows = ROWS.replace(
+        'closed = { run = "closed/good/1", marks = "A" }',
+        'closed = { run = "closed/good/1", marks = "A" }\nclosed_all = { run = "closed/good/2" }',
+    ).replace(
+        'closed = { run = "closed/bad/1" }',
+        'closed = { run = "closed/bad/1" }\nclosed_all = { run = "closed/bad/2" }',
+    )
+    columns, by = _load(
+        tmp_path,
+        HEADER + second + rows,
+        {**RUNS, "open/invalid/1": 0.2, "closed/good/2": 2.0, "closed/bad/2": 3.0},
+    )
+    assert [c.benchmark for c in columns] == ["open", "closed", "side", "closed"]
+    assert (by["good"].cells[3].shown, by["good"].cells[3].rank) == ("2.00", 2)
+    assert by["bad"].cells[3].rank == 1 and by["tied"].cells[3].text == "—"
+    wrong = rows.replace('closed_all = { run = "closed/good/2" }', 'closed_all = { run = "open/good/1" }')
+    with pytest.raises(ValueError, match="is not a closed run"):
+        _load(
+            tmp_path / "again", HEADER + second + wrong, {**RUNS, "open/invalid/1": 0.2, "closed/bad/2": 3.0}
+        )
+
+
+def test_names_narrow_with_their_columns_and_one_name_spans_its_columns() -> None:
+    """The picture keeps its width, so a tenth benchmark narrows every column: at full size one
+    name ran into the next. The names shrink and the metric lines wrap in step, and two adjacent
+    columns of one name -- Bench2Drive's 50 routes and its 220 -- share it, drawn once."""
+
+    def column(key: str, name: str, header: str) -> readme_figures.Column:
+        return readme_figures.Column(key, name, "closed", header, "m", 2, False, True)
+
+    def name_size(svg: str, name: str) -> str:
+        return re.findall(rf'font-size="([\d.]+)"[^>]*>{name}</text>', svg)[0]
+
+    nine = [column(f"b{i}", f"Bench {i}", "score ↑ (0–100)") for i in range(9)]
+    shared = [
+        column("b8", "Shared", "score ↑ (0–100), 50 routes"),
+        column("b9", "Shared", "score ↑ (0–100), 219 of 220 routes"),
+    ]
+    full, narrow = readme_figures.render_matrix(nine, []), readme_figures.render_matrix(nine[:8] + shared, [])
+    assert name_size(full, "Bench 0") == "12", "nine columns are drawn as they always were"
+    assert name_size(narrow, "Bench 0") == "10.7" and name_size(narrow, "Shared") == "10.7"
+    assert narrow.count(">Shared</text>") == 1
+    assert ">219 of 220</text>" in narrow and ">routes</text>" in narrow, "the lines wrap at 12 characters"
 
 
 def test_a_header_arrow_must_agree_with_paddocks_direction(tmp_path: Path) -> None:

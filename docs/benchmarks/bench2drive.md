@@ -1,5 +1,17 @@
 # Bench2Drive (CARLA closed-loop)
 
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Loop | closed loop |
+| Dataset | rendered by the simulator |
+| Primary metric | `driving_score` |
+| Adapter | [`adapters/benchmarks/bench2drive/`](../../src/paddock/adapters/benchmarks/bench2drive/) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [visionpilot](../models/visionpilot.md) |
+
+<!-- /summary -->
+
 [Bench2Drive](https://github.com/Thinklab-SJTU/Bench2Drive) is a closed-loop
 end-to-end driving benchmark on **CARLA 0.9.15**. The model drives the official
 leaderboard's **220 short routes** (Towns 12/13/15, 44 scenario types × 5), one
@@ -63,6 +75,16 @@ all. `results.json` existing is not a signal: the evaluator writes it, empty, at
 startup. The distinction is tested in `tests/test_harness.py` against the
 status strings in `statistics_manager.py` at the pinned revision.
 
+Every attempt that scores nothing leaves `failure.json` beside its `results.json`,
+because a CARLA crash and an attempt cut off by a restart leave the same empty
+checkpoint. It says what ended the attempt -- `carla_crash` with CARLA's signal,
+`timeout`, `evaluator_exit`, `no_results`, or `not_scored` with the statuses
+above -- with the last game time the agent logged, the exit code, and the guard's
+reason when the guard killed the evaluator (see *Running a sweep in parallel*).
+CARLA's crash handler is read first: after a crash the evaluator hangs in its own
+shutdown until the guard or the timeout ends it, and either alone would hide the
+crash. An attempt cut off by a restart leaves none.
+
 ## Site setup
 
 CARLA and the Bench2Drive checkout live wherever this machine keeps them; declare
@@ -97,7 +119,8 @@ So do the `stop_*` settings, whose rules the run's notes also state, and a
 **How often the model is asked for a plan** is the model's own `planning_hz`
 (`model.yaml`, `capabilities`). The client asks the node once per
 1/`planning_hz` seconds and follows the last plan unchanged in between; a model
-without it is asked every 0.05 s tick. Drive-JEPA declares 2 Hz, AutoE2E 10 Hz, METEOR 5 Hz. The rate is
+without it is asked every 0.05 s tick. Drive-JEPA declares 2 Hz, AutoE2E 10 Hz, METEOR 5 Hz,
+Alpamayo 1.5 10 Hz. The rate is
 recorded as `config.infer_hz` and hashed into the run id, and the host's
 `PADDOCK_INFER_HZ` overrides it for every model. Where that replaces the model's
 own rate, the run records the declared rate beside it (`config.planning_hz`) and
@@ -295,6 +318,39 @@ run each repetition into its own run (three `paddock run … --runs 1`) if you
 intend to feed the upstream tools, and check `n_expected` against `n_samples`
 in `run.json` before believing a merged number.
 
+For a pooled record, one command runs the same scripts on exactly the record's
+routes and writes their answers beside it, as `upstream_scores.json`:
+
+```bash
+PADDOCK_CONFIG=<sweep>/paddock.toml python -m tools.benchmarks.bench2drive.upstream_scores \
+    results/bench2drive/<model>/<run_id> --runs <the ingest block's runs root>
+```
+
+Bench2Drive's scorers need two packages in the CARLA-client interpreter that driving
+does not: `scipy`, which `efficiency_smoothness_benchmark.py` imports, and `networkx`,
+which CARLA's route planner imports for `ability_benchmark.py`. Install them there once
+(`<python> -m pip install scipy networkx`; this site's are scipy 1.5.4 and networkx
+2.2). Without them the tool stops and names the missing one.
+
+It finds the routes the way `paddock ingest` did, and refuses unless each is the very
+`results.json` the record pooled: the run and sha256 the ingest wrote for it to the
+record's `samples.jsonl`, under the runs root of the config it pooled with. So run it
+with that config. It runs Bench2Drive's
+code at the pinned checkout in the CARLA-client interpreter
+(`upstream_scores_client.py`): success as `merge_route_json.py` counts it, efficiency
+and comfort through `efficiency_smoothness_benchmark.py`'s own functions, and the
+abilities as `ability_benchmark.py` scores them, per route. The traffic-sign test is
+inline in that script's `main`, so the client restates it, and checks the per-route
+credits against `main`'s own pooled numbers on the same routes before it writes
+anything. Pooled values are over the record's routes, so a route set aside for every
+model is in none of them; each route's row is in the file, so the 220-divisor
+convention can be recomputed. `ability_benchmark.py` divides by each ability's route
+count, so a record without a route of every ability cannot be scored by it, and the
+tool says so. A `metric_info.json` that is missing or empty leaves that route's
+comfort out, with the reason in its row. Its efficiency still counts, because
+efficiency needs only `results.json`. The file counts the routes each pooled comfort
+and efficiency are over.
+
 ## Running
 
 ```bash
@@ -366,9 +422,12 @@ of the routes unevenly spread:
 ```bash
 # a copy of the site config whose [roots] runs is this sweep's own (below)
 export PADDOCK_CONFIG=/path/to/sweep/paddock.toml PADDOCK_PYTHON=/path/to/paddock/venv/bin/python
-tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --workers 5 --held 11715
-tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --workers 5 --held 11715 --rebalance
+tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --workers 5
+tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --workers 5 --rebalance
 tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --status
+# two GPUs, five workers on each, four routes per worker, refilled until done
+tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --workers 5 \
+    --cards 0:0,1:2 --batch 4 --keep
 # also serve the dashboard (tools/benchmarks/bench2drive/dashboard.py); --dashboard-root must
 # contain {runs}, because live frames are served by path relative to it
 tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot --workers 5 \
@@ -381,7 +440,11 @@ already running:
 | Piece | What it does |
 |---|---|
 | `campaign guard` | kills an evaluator that can no longer finish -- its log silent 15 min (a driving route logs every ~0.3 s), or its CARLA gone for 2 min -- so the worker records the route FAILED and moves on instead of waiting out `per_route_timeout_s` |
-| `campaign launch` | every route with no scored attempt under `{runs}/bench2drive/<model>/` (any run id) and not queued in an alive worker, sorted and dealt longest-expected-first to the free worker slots; each worker is a fresh `paddock run --scene <its routes>` with a copy of the site config whose CARLA / traffic-manager ports sit 150 above the previous slot's, and its own node port base |
+| `campaign launch` | every route with no scored attempt under `{runs}/bench2drive/<model>/` (any run id) and not queued in an alive worker, sorted and dealt longest-expected-first to the free worker slots; each worker is a fresh `paddock run --scene <its routes>` with a copy of the site config whose CARLA / traffic-manager ports sit 150 above the previous slot's, and its own node port base. A route set aside for every model (*Routes set aside*) is never dealt, unless `--only` names it |
+| `--tries` | failed attempts after which a route is not dealt again (3 by default). Only an attempt that left a `failure.json` with the model's node still answering counts: a cut-off attempt says nothing about the route, and one failed with the node gone failed the node. `campaign status` lists each route given up on with why every attempt failed, and whose failure it was; `--only` deals it again |
+| `--batch` | at most this many routes to each new worker, longest expected first, so the last hours are not one long queue in one slot while the others stand idle |
+| `--cards` | `CUDA:VULKAN` index pairs, one per GPU: `--workers` workers on each. A worker's config copy gets the card's `gpu_rank` and its node the card's `CUDA_VISIBLE_DEVICES`. CARLA picks its card by Vulkan index, which is not the CUDA one when a software renderer (Mesa's llvmpipe) is listed between two GPUs: `vulkaninfo --summary` shows the order |
+| `--keep` | `campaign keep`: the same launch every five minutes until nothing is left and no worker is alive, so slots that free up are filled to the end. With no worker alive it first stops what a worker killed hard leaves behind (an evaluator and its CARLA, a model node holding GPU memory, each only once the run that started it is gone). It stops after three launches in a row that drove nothing. Launches deal under a lock, so a restart beside a keeper deals nothing twice; `campaign stop` stops the keeper first, then the workers |
 | `--held` | routes driven last, by one worker, once everything else has scored and no worker is alive |
 | `--rebalance` | stops the alive workers first (their current routes are driven again) and deals everything left anew |
 | `--dashboard-root` | the per-route video dashboard, on 127.0.0.1 |
@@ -403,19 +466,22 @@ which is ~30 minutes against ~5 for a route it completes.
 Two failure modes this exists for, both met on a 220-route sweep at one site:
 
 * **A CARLA that dies mid-route does not end it.** CARLA stopped delivering
-  sensor data ("A sensor took too long to send their data"), or died inside
-  `route_scenario.spawn_parked_vehicles`; the evaluator then deadlocked in its
-  own shutdown, logging a "failed to destroy actor" line every 600 s, so the
-  worker sat idle for the full 90-minute route timeout. The guard's second test
-  -- the CARLA on the port the evaluator logged is gone -- catches the case
-  silence alone never would.
+  sensor data ("A sensor took too long to send their data"), or crashed (its
+  crash handler logs `Signal=11`); the evaluator then deadlocked in its own
+  shutdown, logging a "failed to destroy actor" line every 600 s, so the worker
+  sat idle for the full 90-minute route timeout. The guard's second test -- the
+  CARLA on the port the evaluator logged is gone -- catches the case silence
+  alone never would. The guard writes its reason into the route's folder
+  (`guard.json`) before it kills, so the attempt's `failure.json` says why.
 * **A route that crashes CARLA crashes it every time.** Upstream's evaluator
   then ran `ps | grep -graphicsadapter=<rank> | kill -9`, every worker's CARLA
   on that GPU; with patch `0001`, which preflight requires (see *Shared-machine
-  behaviour*), it kills only its own. Such a route is still dealt again on every
-  launch while it has no score, so routes known to crash CARLA belong in
-  `--held`, driven once at the end: 11715 at the pin, and at that site the
-  Town12/13 `InterurbanAdvancedActorFlow` routes 23695, 23708 and 24078.
+  behaviour*), it kills only its own. Such a route used to be dealt again on
+  every launch while it had no score. Now `--tries` gives up on it, and
+  `campaign status` says whether it is a candidate for the routes set aside for
+  every model. At that site route 23695 (Town13 `InterurbanAdvancedActorFlow`)
+  crashed CARLA on all seven attempts, and 23708 (Town12) on two before one
+  scored. 23695 is now among the routes set aside (*Routes set aside*, below).
 
 Worker configs, logs (`logs/worker<slot>.log`) and a launch history
 (`workers.json`) live in `{runs}/bench2drive/_campaign/<model>/`. Every attempt
@@ -435,7 +501,7 @@ assembled afterwards, by `paddock ingest --all` from `[[ingest.bench2drive]]`:
 model  = "drivejepa"
 runs   = "/path/to/paddock-runs/bench2drive/drivejepa"   # or a list of roots
 label  = "pooled50"
-routes = ["1711", "1852"]                   # optional; default: every route found
+routes = ["1711", "1852"]                   # optional, or "all"; default: every route found
 notes  = "24 routes from the 03-04 Sep campaign, 26 from the 09 Sep expansion"
 
 [ingest.bench2drive.model_env]              # recorded in config, over what ran
@@ -451,7 +517,7 @@ What it guarantees, and what each key is for:
 |---|---|
 | `model` | checked against the `model` in each source run's own `run.json`. A route recorded for another model is refused, so `runs` pointed one component too high cannot pool two models into one row |
 | `runs` | one root or several. Everything below them is walked: `<run_id>/<route>-<Town>-<Scenario>/results.json` |
-| `routes` | the route subset to score. It selects what is scored, not what is seen: a route attempted and never scored is recorded in `config.routes_never_scored` either way |
+| `routes` | the route subset to score, or `"all"`: every route of the site's routes file. It selects what is scored, not what is seen: a route attempted and never scored is recorded in `config.routes_never_scored` either way, with its `failure.json`'s reason when it has one. A route set aside for every model is neither expected nor lost: its id goes in `config.routes_set_aside` and its reason in the notes. Left out, the expected routes are the ones the trees hold, so a full-set pool says `"all"`: a route a sweep never drove is then reported, and a set aside one still named |
 | `label` | the run id is `<label>-<route hash>-<config hash>`. The config hash is why five constant-velocity speed bands over the same 50 routes are five directories and not one overwritten one |
 | `model_env` | recorded in `config.model_env`, layered over what the source runs recorded. For the CV baseline it is the only machine-readable statement of which speed band a row is |
 | `setups` | the configuration each route was actually driven under, aggregated into `metrics.json`'s `by_group`. A run pooling more than one is written `valid: false` — its mean is not a measurement — and `paddock report` lists it as excluded instead of ranking it |
@@ -464,16 +530,90 @@ that did not run (see *What does not score*). `routes_file`, `waypoint_dt`,
 the ingest, and `config.source_config_read` says how many source runs kept one.
 So is `declared_env`, the model's own `model.yaml` env. Source runs that recorded
 different ones, or a mix of runs that recorded one and runs from before it was
-recorded (#99), are pooled `valid: false` with a note: two settings of the model
+recorded (21 Oct 2026), are pooled `valid: false` with a note: two settings of the model
 behind one mean, the same reason as two recording setups. So is `infer_hz`, how
 often the node was asked for a plan, judged from what the runs recorded: the pool
 ranks at the rate the model's `model.yaml` declared for them (`planning_hz`). It
 does not rank at the host's `PADDOCK_INFER_HZ` in its place, at two rates, or at a
 rate not known because a run kept no config. A run that recorded no rate was asked
-every tick; before #106, a rate set by hand reached the record only as
+every tick; before 23 Oct 2026, a rate set by hand reached the record only as
 `PADDOCK_INFER_HZ` in `model_env`, and such a pool does not rank either.
 Aggregates are recomputed by the store from the per-route metrics; nothing is
 transcribed from a report.
+
+## The 220-route protocol
+
+Every ranked Bench2Drive number made before November 2026 is over the same 50
+routes. Those cover 14 of the 44 scenario types, so none of them can be compared
+with a published score over all 220. A 220-route record is made the same way for
+every model, so the column it fills compares like with like:
+
+| | |
+|---|---|
+| routes | every route of `bench2drive220.xml` but the ones set aside for every model (below) |
+| rate | the model's own: its `planning_hz`, or every 20 Hz tick when it declares none |
+| inputs | paddock's camera rig, and no site value for anything the model's `model.yaml` declares |
+| early stop | `stop_stuck_s = "30"` and `stop_expert_factor = "4"`, with `expert` the summaries of Think2Drive's drives; no `stop_on_collision` (*Ending routes early*) |
+| route timeout | `per_route_timeout_s = 14400`, which covers a slow model's longest route on a shared GPU |
+| attempts | three per route: `campaign --tries 3`, the default |
+| the record | `paddock ingest` with `routes = "all"` and `label = "full220"` |
+| Bench2Drive's own scores | `python -m tools.benchmarks.bench2drive.upstream_scores` on the record, with the config that pooled it, writes `upstream_scores.json` beside it (*Efficiency and comfort*) |
+
+Think2Drive's drives come from `python -m tools.benchmarks.bench2drive.expert
+fetch --out <dir>` and then `summarize --out <dir>`: 211 routes have one. The other
+nine get the stuck rule alone, and every run names them in `early_stop.no_expert`.
+Give every model the same directory. A run records which routes had no time
+budget, not what the budgets were.
+
+**A record is always the ingest's pool,** even of a sweep that ran as one
+`paddock run`. A direct run names its samples `bench2drive/<route>/<scenario>`, and
+the ingest names them `bench2drive/<route>-<Town>-<Scenario>`, so the two land in
+different tables of `paddock report` even over the same routes.
+
+**Keep every sweep's per-route results** (`{runs}/bench2drive/<model>/`) until the
+220-route column is final. When a route joins the list below, every model's record
+is pooled again from them, never edited.
+
+Each mean is over the routes not set aside. Bench2Drive's own `merge_route_json.py`
+divides by 220 and counts a missing route as 0, so its figure for the same drives
+is lower by the share of routes set aside.
+
+### Routes set aside
+
+A route is set aside for every model when the simulator fails on it on every
+attempt. On 11715 it fails whichever model drives. On 3800, 23695 and 24071 it
+failed on every attempt Alpamayo 1.5 made, each time at about the same point of the
+route; the other models' drives ended before that point, so their scores there are of
+drives that Alpamayo 1.5 could not finish. Either way the route measures no model, and
+a mean with it for one model and without it for another is not over the same routes.
+Poor driving is
+never a reason: a route the car is blocked on, deviates from, times out on or has
+ended early is scored. Neither is a failure of the model's own node (an HTTP 500,
+running out of memory): that is the model's to fix.
+
+A route joins the list after three attempts whose `failure.json` each put the
+failure on the simulator, with the evidence here. The list is `SET_ASIDE` in
+`harness.py`:
+
+- the harness drives a listed route only when `--scene` names it, and a run that
+  does is not a score;
+- the campaign deals one only when `--only` names it, to see whether it still fails;
+- the ingest leaves it out of the pool, names it in `config.routes_set_aside`, and
+  gives the reason in the notes.
+
+| Route | Scenario | Why | Evidence |
+|---|---|---|---|
+| 11715 | Town12 EnterActorFlow | CARLA crashes (signal 11) about 54 s into the route on every attempt, whichever model drives | five attempts at one site, 7–8 Oct 2026 (openpilot), each `CommonUnixCrashHandler: Signal=11` at 53.65–54.0 s of game time; nine at another under three stacks |
+| 3800 | Town13 MergerIntoSlowTraffic | CARLA crashes (signal 11) 63-69 s into the route on every attempt by Alpamayo 1.5 at its declared 10 Hz | three attempts by Alpamayo 1.5 at 10 Hz, 9 Nov 2026, each `Signal=11` at 62.65–68.8 s of game time; in October the same at about 1300–1411 frames (65–71 s) for Alpamayo 1.5 and Qwen-Drive at their rates. openpilot completed it in 39.4 s; the 30 s rule stopped METEOR at 30.1 s and AutoE2E at 34.4 s |
+| 23695 | Town13 InterurbanAdvancedActorFlow | CARLA crashes (signal 11) about 40 s into the route on every attempt by Alpamayo 1.5 at its declared 10 Hz | three attempts by Alpamayo 1.5 at 10 Hz, 9 Nov 2026, each `Signal=11` at 39.75–41.5 s; seven of seven openpilot attempts at another site in October. openpilot completed it in 25.9 s; the 30 s rule stopped METEOR at 30.1 s and AutoE2E at 34.0 s |
+| 24071 | Town13 InterurbanAdvancedActorFlow | CARLA crashes (signal 11) 37-40 s into the route on every attempt by Alpamayo 1.5 at its declared 10 Hz | three attempts by Alpamayo 1.5 at 10 Hz, 9 Nov 2026, each `Signal=11` at 36.7–40.45 s. openpilot completed it in 24.6 s; the 30 s rule stopped METEOR at 30.1 s and AutoE2E at 34.0 s |
+
+**The 50-route column keeps 3800.** Route 3800 is one of the 50 routes behind the
+older Bench2Drive column, whose records were pooled before it was set aside; they
+keep it, as stored. Pooled again now, or driven again on that set, they leave it out:
+49 routes and a new route-set hash, so a table of their own on the leaderboard.
+openpilot's `pooled50-40c29d24c37d542a-c7d2b2`, pooled again under this list, is
+`pooled50-084418258d833a9f-db51cb`.
 
 ## Shared-machine behaviour
 
@@ -528,21 +668,30 @@ transcribed from a report.
 | evaluator flags, exit codes, checkpoint-at-startup, CARLA port and session | read from `leaderboard_evaluator.py` at 7ec25d1; launch path tested against a stand-in evaluator (`tests/test_harness.py`) | **strong** for the harness, argued for the real evaluator |
 | `agent.py` imports and runs its control path in the CARLA-client env | imported and exercised in the site's `b2d` env (Python 3.8, 0.9.15 egg) without a server | moderate |
 | a model drives a route end to end through paddock | openpilot and VisionPilot completed routes (DS 100) through this adapter at one site; frames were at Low quality (see *Render quality*) and the run predates the crash-status and repetition handling above | moderate |
-| `metric_info.json` matches what the upstream tool reads | field names and layout taken from `get_metric_info` and `efficiency_smoothness_benchmark.read_from_json` at 7ec25d1; not yet fed through the tool end to end | argued |
+| `metric_info.json` matches what the upstream tool reads | field names and layout taken from `get_metric_info` and `efficiency_smoothness_benchmark.read_from_json` at 7ec25d1; fed through the tool end to end for openpilot's 220-route record (`full220-836dda734659a86c-2803bd`): `efficiency_smoothness_benchmark.py` read all 216 routes' files and gave comfort 40.88%, the figure in *Bench2Drive — 220 routes*, both through `upstream_scores` and run on its own | **strong** |
 | crashed repetitions are dropped, not averaged | unit-tested over crashed, blocked and all-crashed triples | **strong** |
 | an edited CARLA launch line is refused | unit-tested against a stub evaluator with and without the flag | **strong** |
 | `--resume` reuses scored routes and drives the rest | unit-tested (scored, killed, torn, all-crashed, short of repetitions); on a real interrupted sweep it reused the 34 scored routes and drove the other 185 | **strong** |
 | `campaign` deals what is left and the guard frees hung workers | selection, dealing, per-slot config and `--held` unit-tested (`tests/test_campaign.py`); the process side used on one 220-route sweep, where the guard freed two evaluators whose CARLA had died | moderate |
+| `--tries`, `--batch`, `--cards` and `keep` deal as described | unit-tested: tries counted from failure records only, batches capped per worker, each new worker's `gpu_rank` and `CUDA_VISIBLE_DEVICES` by card, the launch lock, orphans known by their parent, `keep` settling and stopping; the process side is argued until a full sweep has used it | moderate |
+| a failed attempt names its cause in `failure.json` | golden test on route 11715's real `evaluator.log` (CARLA's `Signal=11` at 53.65 s, read however the attempt ended); each kind tested against a stand-in evaluator | **strong** for the parse; argued for every way a real evaluator can fail |
+| a route set aside is in no mean and is named | unit-tested in the harness (not driven unless named, not a subset), the campaign (never dealt) and the ingest (out of the pool, in `routes_set_aside`, still valid) | **strong** |
 | the calibration the agent sends is each camera's CARLA mount in paddock's frames | `tests/test_calibration.py` runs the agent's own `setup()` for every camera of every rig, against the conversion written out one frame change at a time, the pinhole of the rendered view, a road point on the ego's left landing left of centre, and one 5 m to its left in front of the left cameras and behind the right ones; carla and the HTTP session are stand-ins, and 6 of its 10 tests fail with the agent's y-flip removed, the side-camera ones among them | **strong** for the formula; not compared with a live CARLA's matrices |
 
-## September 2026 runs: what changed and what the numbers are
+## Protocol details
 
-The first sweeps (2–3 Sep) were harness artifacts for two models; the fixes
-below made the 24-route set (5 abilities × 5 routes minus 11715) the reference.
+What every run here depends on, beyond the leaderboard's own rules.
 
-* **Route 11715 (Town12 EnterActorFlow) is excluded for every model.** CARLA
-  segfaults inside `route_scenario.spawn_parked_vehicles` ~54 s in, on all nine
-  attempts across three stacks, regardless of ego speed.
+* **Route 11715 (Town12 EnterActorFlow) is set aside for every model** (*Routes
+  set aside*). CARLA crashes with signal 11 about 54 s in, on every attempt across
+  three stacks, regardless of ego speed. The client's traceback lands in
+  `route_scenario.spawn_parked_vehicles` only because that is its first call to
+  the server after the crash.
+* **Routes 3800, 23695 and 24071 (Town13) are set aside for every model too.**
+  CARLA crashed with signal 11 on every attempt Alpamayo 1.5 made at its declared
+  10 Hz, each time at about the same point (about 65, 40 and 38 s in). The other
+  models' drives ended before that point. It is not game time alone: at 20 Hz in
+  September, with no early stop, Alpamayo 1.5 drove 3800 to the 200 s tick cap.
 * **Wire format:** the agent now sends `speed_limit` (m/s, from
   `hero.get_speed_limit()`) and the next junction maneuver as `nav_maneuver` /
   `nav_distance_m` (walked forward on the 1 m world plan). Both optional; only
@@ -574,13 +723,15 @@ below made the 24-route set (5 abilities × 5 routes minus 11715) the reference.
   CARLA. The paper's Bench2Drive result (DS 64.52) comes from a
   Bench2Drive-trained variant whose configs are in the repo but whose data
   pipeline, agent and checkpoint are unreleased; do not compare.
-* **Official metrics beyond DS:** `tools/statistic_route_json.is_success`
+* **Official metrics beyond DS:** success as `tools/merge_route_json.py` counts it
   (Completed and no infraction except min-speed), and
   `tools/efficiency_smoothness_benchmark.py` on the per-tick `metric_info`
-  the agent writes (needs scipy; the b2d conda env lacks it). Wrapper:
-  `paddock-ops/bench2drive_official_metrics.py`.
+  the agent writes (needs scipy in the CARLA-client interpreter, as
+  `upstream_scores` does: *Efficiency and comfort*).
 
-Results on the 24 (04–06 Sep 2026), one run per route:
+Earlier results on a 24-route set (5 abilities × 5 routes, minus 11715), 04–06
+Sep 2026, one run per route. These runs are not in `results/`, so the table
+cannot be re-checked from this repository; the 50-route runs below replace it.
 
 | model | DS | RC | Success | Efficiency | Smoothness | penalised events |
 |---|---|---|---|---|---|---|
@@ -590,20 +741,13 @@ Results on the 24 (04–06 Sep 2026), one run per route:
 | openpilot, no nudge | 30.09 | 30.8 | 12.5 % | — | — | 1 (+17 blocked) |
 | openpilot, with nudge \* | 53.62 | 66.8 | 29.2 % | 171.6 | 0.410 | 21 |
 
-Videos with the driven trajectory overlaid, every route, every model:
-`<site video root>/Bench2drive/Simulation/<model>/<route>/{front.cam.mp4,bev.mp4}`
-plus `route_table.md`. Raw runs: `{runs}/bench2drive/<model>/<run>/<route>/`. Machine-specific locations for this site are kept in the top-level repo's `docs/RUNNING_BENCH2DRIVE.md`, not here.
-Per-scenario infractions, the nudge, and the metric definitions are on the
-"Paddock Benchmark Metrics" artifact.
-
 ## Support-matrix results
 
 The per-metric results behind this benchmark's column in the
 [README's support matrix](../../README.md#support-matrix), and the notes on its
-cells. Moved here from the README unchanged except for links; the symbols are
-the README's former footnote marks, and each note below starts with the mark it
-explains. Marks about a model rather than this benchmark (∗ ◊ ◇ ✦ ✧) are
-explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
+cells. Each note below starts with the mark it explains. Marks about a model
+rather than this benchmark (∗ ◊ ◇ ✦ ✧) are explained in
+[What these models are](../models/comparison.md#notes-on-the-models).
 
 ### Notes on the matrix cells
 
@@ -691,6 +835,79 @@ no lead, so the cell is marked P; like AutoE2E's and METEOR's, it ranks. It
 replaces the unassisted estimate ◆
 (30.09), a reconstruction from the September recordings, whose 50-route mean the
 table below still withholds.
+
+### Bench2Drive — 220 routes
+
+Every model driven the same way over all 220 routes of `bench2drive220.xml` but
+the ones set aside for every model ([The 220-route protocol](#the-220-route-protocol)):
+the support matrix's column headed "216 of 220 routes". It fills as models are run.
+DS, RC and IP are paddock's means over those routes, as in the matrix; "with
+collision" is the share of routes with at least one. Success, efficiency, comfort
+and the abilities are what Bench2Drive's own scripts give for the same routes, from
+the `upstream_scores.json` beside each record ([Efficiency and comfort](#efficiency-and-comfort)).
+Bench2Drive's own tables divide DS and success by 220, a route not driven counting
+as 0, so each is 216/220 of the figure here (OpenPilot: DS 42.63, success 10.45%).
+
+| Model | Routes | DS ↑ | RC ↑ (%) | IP ↑ | With collision ↓ (%) | Success ↑ (%) | Efficiency ↑ | Comfort ↑ (%) | Record |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| OpenPilot | 216/220 | 43.42 | 55.15 | 0.813 | 22.69 | 10.65 | 180.59 | 40.88 | `full220-836dda734659a86c-2803bd` |
+| METEOR | 216/220 | 1.92 | 5.40 | 0.925 | 12.04 | 0.00 | 148.74 | 95.73 | `full220-836dda734659a86c-dda00e` |
+| AutoE2E | 216/220 | 14.36 | 27.80 | 0.548 | 79.63 | 0.00 | 219.49 | 50.46 | `full220-836dda734659a86c-63902e` |
+| Alpamayo 1.5 | 216/220 | 37.66 | 56.49 | 0.740 | 40.74 | 2.78 | 161.32 | 51.83 | `full220-836dda734659a86c-f81033` |
+
+**Bench2Drive's five abilities, in % of the routes that count towards each:**
+
+| Model | Merging ↑ | Overtaking ↑ | Emergency brake ↑ | Give way ↑ | Traffic signs ↑ | Mean ↑ |
+|---|---:|---:|---:|---:|---:|---:|
+| OpenPilot | 9.21 | 11.11 | 15.00 | 20.00 | 36.17 | 18.30 |
+| METEOR | 0.00 | 0.00 | 0.00 | 0.00 | 3.19 | 0.64 |
+| AutoE2E | 0.00 | 0.00 | 0.00 | 0.00 | 11.70 | 2.34 |
+| Alpamayo 1.5 | 1.32 | 4.44 | 3.33 | 10.00 | 52.13 | 14.24 |
+
+A route counts towards an ability by its scenario, the same for every model:
+Merging 76 of these routes, Overtaking 45, Emergency brake 60, Give way 10 and
+Traffic signs 94 (a scenario can count towards two). A route earns its abilities
+by succeeding: completed, with no infraction but a minimum-speed one. A traffic-sign
+route also earns that one if the car got past its first junction with no red
+light or stop sign run.
+
+**OpenPilot** drives through openpilot's own longitudinal planner and its
+driver-resume nudge (P), asked every 20 Hz tick, as in its 50-route cell. CARLA
+crashed (signal 11) on three of its attempts. Routes 2943 and 3248 crashed as
+they started and scored on their next attempt. Route 28111 had finished: the
+evaluator had printed and registered its result (completed at 34.8 s of game
+time, one collision) when CARLA crashed, so that result is the route's score.
+No route needed a third attempt. The three routes set aside after Alpamayo 1.5's
+run (3800, 23695, 24071) are out of its mean too, though it had completed each.
+
+**METEOR** is asked at its declared 5 Hz, the last plan followed in between, and
+CARLA never crashed on its attempts. As on 50 routes, it rarely gets moving: 189
+of its 216 routes end under 1% route completion. The 30 s rule ended 138 of them,
+Bench2Drive's own 60 s blocked test 44 (the 30 s clock pauses while the car waits
+at a red light) and the over-time rule 7. No route is a success; its one ability credit is Traffic signs, for 3 of 94 routes
+that got past their first junction with no red light or stop sign run. Its comfort
+is that of a car that barely moved. Bench2Drive's minimum-speed check runs on every
+route but records a value only each time the car covers another twentieth of it,
+so METEOR's efficiency is over the 26 routes it drove at least 5% of (OpenPilot's
+is over 205).
+
+**AutoE2E** is asked at its declared 10 Hz, the last plan followed in between,
+with upstream's inputs: the measured ego history and the route raster. CARLA
+crashed once, on route 3307's first attempt as it started, and the route scored
+on its next. It moves off on every route but completes none: its median route
+completion is 25.8%, and 172 of its 216 routes have a collision. The 30 s rule
+ended 177 routes and the over-time rule 12. No route is a success; its one ability
+credit is Traffic signs, for 11 of 94 routes that got past their first junction
+with no red light or stop sign run.
+
+**Alpamayo 1.5** is asked at its declared 10 Hz, the last plan followed in between,
+with its three front cameras and the route as navigation text. CARLA crashed on
+nine of its attempts, all on routes 3800, 23695 and 24071, three each, which are
+now set aside for every model (*Routes set aside*); every other route scored on
+its first attempt. It completes 53 of its 216 routes, more than any other model
+here, and is second to openpilot on driving score: 88 routes have a collision, and
+the 30 s rule ended 110 and the over-time rule 22. Six routes are a success; its
+best ability is Traffic signs, 49 of 94 routes.
 
 ### Bench2Drive — 50 routes
 
@@ -866,8 +1083,8 @@ DriveJEPA completes it and scores 100) and is recorded as requested-and-never-sc
 re-run; nothing here restates either. The rate is recorded per run in
 `config.model_env`, not derived from `model.yaml`. They were driven before the
 adapter honoured a rate on `main`; it now does (a model's `planning_hz`, above),
-and Drive-JEPA declares 2 Hz, so a clean checkout drives it at that rate by
-default. CARLA re-runs are not bit-reproducible, so these stay landed results. `paddock ingest` writes all three `valid: true`. All three **rank** on the board. Their native scores are the Bench2Drive cells of the support matrix for
+and Drive-JEPA (2 Hz) and Alpamayo 1.5 (10 Hz) declare theirs, so a clean checkout
+drives each at that rate by default. CARLA re-runs are not bit-reproducible, so these stay landed results. `paddock ingest` writes all three `valid: true`. All three **rank** on the board. Their native scores are the Bench2Drive cells of the support matrix for
 these three models (※). `model_env` also differs in more than the rate — thread counts, a trace
 sink, `ALPAMAYO_NAV` — each argued immaterial and none measured to be; the
 [page](bench2drive-native-rate.md) books that as argued, not

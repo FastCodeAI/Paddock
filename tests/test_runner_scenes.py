@@ -495,7 +495,7 @@ def _site_with_env(tmp_path, model: str, env: dict[str, str]):
 @pytest.mark.parametrize(
     ("env", "valid"),
     [
-        ({"VISIONPILOT_ORT_THREADS": "2"}, True),  # declared tuning: what shakaal sets
+        ({"VISIONPILOT_ORT_THREADS": "2"}, True),  # declared tuning: what a CPU-limited site sets
         ({"OMP_NUM_THREADS": "1"}, True),  # thread counts are tuning for every model
         ({"LD_LIBRARY_PATH": "/opt/cuda/lib", "HF_HOME": "/cache/hf"}, True),  # where things live
         ({"PADDOCK_FFMPEG": "/usr/bin/ffmpeg"}, False),  # another ffmpeg can change the input
@@ -659,6 +659,17 @@ def test_every_declared_tuning_key_is_one_the_model_reads() -> None:
         source = "\n".join(p.read_text() for p in (models_dir / name).glob("*.py"))
         for key in spec.runtime.tuning_env:
             assert key in source or key in spec.runtime.env, f"{name}: tuning_env {key} is read nowhere"
+
+
+def test_every_setting_ranked_with_a_note_is_one_the_model_reads() -> None:
+    """A note says what a setting did. If nothing reads the setting, the note is false."""
+    from paddock.registry import Registry
+
+    models_dir = Path(__file__).resolve().parents[1] / "src/paddock/adapters/models"
+    for name, spec in Registry.load().models.items():
+        source = "\n".join(p.read_text() for p in (models_dir / name).glob("*.py"))
+        for key in spec.ranked_with_note:
+            assert key in source, f"{name}: ranked_with_note {key} is read nowhere"
 
 
 def test_a_real_reason_still_invalidates_alongside_a_remark() -> None:
@@ -1287,7 +1298,7 @@ def test_paddock_provenance_says_when_tracked_files_were_edited(tmp_path) -> Non
 
 
 def test_a_resumed_run_keeps_the_paddock_commits_of_its_earlier_attempts(tmp_path, monkeypatch) -> None:
-    """Review of #100 (3): a resume kept the model repo's earlier commits but not paddock's."""
+    """A resume kept the model repo's earlier commits but not paddock's."""
     from paddock import runner
     from paddock.results import store
 
@@ -1406,3 +1417,107 @@ def test_a_benchmarks_remark_reaches_the_notes_and_the_run_still_ranks(tmp_path,
     assert written["valid"] is True
     assert written["notes"].startswith("early stop (30 s without 3 m of route progress): a failed drive")
     assert "resumed" in written["notes"], "the benchmark's remark sits beside the runner's own"
+
+
+def test_a_setting_listed_as_ranked_with_a_note_keeps_the_run_ranked(tmp_path) -> None:
+    """METEOR cannot be scored on NAVSIM without this, so re-making that row must rank."""
+    from paddock.registry import Registry
+    from paddock.runner import _env_override_reasons
+
+    spec = Registry.load().models["meteor"]
+    cfg = _site_with_env(tmp_path, "meteor", {"METEOR_HORIZON_S": "4.0"})
+    assert _env_override_reasons(cfg, spec) == []
+
+
+@pytest.mark.parametrize(
+    "key", ["PADDOCK_OPENPILOT_HEIGHT_SCALE", "PADDOCK_OPENPILOT_PITCH_DEG", "PADDOCK_OPENPILOT_FOV_DEG"]
+)
+def test_a_camera_number_that_could_be_fitted_to_the_test_set_stays_unranked(tmp_path, key) -> None:
+    """They carry a note, but a note says what was set, not how the number was chosen."""
+    from paddock.registry import Registry
+    from paddock.runner import _env_override_reasons
+
+    spec = Registry.load().models["openpilot"]
+    (reason,) = _env_override_reasons(_site_with_env(tmp_path, "openpilot", {key: "1.5"}), spec)
+    assert key in reason
+
+
+def test_a_listed_setting_does_not_excuse_another_beside_it(tmp_path) -> None:
+    from paddock.registry import Registry
+    from paddock.runner import _env_override_reasons
+
+    spec = Registry.load().models["openpilot"]
+    env = {"PADDOCK_OPENPILOT_DESIRE": "turn", "PADDOCK_OPENPILOT_FOV_DEG": "55"}
+    (reason,) = _env_override_reasons(_site_with_env(tmp_path, "openpilot", env), spec)
+    assert "PADDOCK_OPENPILOT_FOV_DEG" in reason
+    assert "PADDOCK_OPENPILOT_DESIRE" not in reason
+
+
+def test_a_setting_listed_as_ranked_has_a_note_and_is_not_a_checkpoint() -> None:
+    """Ranked with no note reads as stock, and a checkpoint is what the rule exists to stop."""
+    from paddock.registry import Registry
+
+    for spec in Registry.load().models.values():
+        for key in spec.ranked_with_note:
+            assert key in spec.score_notes, f"{spec.name}: {key} would rank with no note"
+            for word in ("CHECKPOINT", "WEIGHTS", "CKPT"):
+                assert word not in key, f"{spec.name}: {key} must stay unranked"
+
+
+def test_a_ranked_run_with_a_listed_setting_stores_valid_and_prints_its_note(tmp_path, monkeypatch) -> None:
+    """End to end through `_run_one_model`, then the report, on a stubbed node."""
+    from dataclasses import replace
+
+    from paddock import runner
+    from paddock.benchmark import Episode
+    from paddock.results import report
+    from paddock.runtime import proc
+
+    class _Harness:
+        spec = type(
+            "S", (), {"name": "fake", "dataset": "d", "mode": "closed_loop", "primary_metric": "score"}
+        )()
+
+        def episodes(self, scenes=None, runs=1, scenarios=None):
+            yield Episode(episode_id="a", scenario="frontal", scene="a")
+
+        def completed_metrics(self, episode, out_dir, runs=1):
+            return {"score": 4.0}
+
+        def episode_samples(self, episode, metrics, out_dir):
+            return [{"sample_id": "fake/a", "native_id": {}, "split": "frontal", "metrics": metrics}]
+
+        def samples_per_episode(self, runs=1):
+            return 1
+
+        def run_config(self):
+            return {}
+
+        def model_run_config(self, model):
+            return {}
+
+        def invalid_reasons(self):
+            return []
+
+        def remarks(self):
+            return []
+
+    monkeypatch.setattr(proc, "model_node", _stub_model_node())
+    _isolate_results(tmp_path, monkeypatch)
+    cfg = _site_with_env(tmp_path, "visionpilot", {"VISIONPILOT_SETPOINT": "run_start"})
+    (cfg.runs / "fake" / "visionpilot" / "r").mkdir(parents=True)
+    note = {"VISIONPILOT_SETPOINT": "set point taken at {value}"}
+    spec = replace(_model_spec(), score_notes=note, ranked_with_note=("VISIONPILOT_SETPOINT",))
+
+    runner._run_one_model(
+        cfg, _Harness(), _Harness.spec, spec, None, None, 1, 9999, lambda _s: None, resume="r"
+    )
+
+    written = json.loads((tmp_path / "results" / "fake" / "visionpilot" / "r" / "run.json").read_text())
+    assert written["valid"] is True, written["notes"]
+    assert written["config"]["model_env"] == {"VISIONPILOT_SETPOINT": "run_start"}
+
+    monkeypatch.setattr(report, "load_models", lambda: {"visionpilot": spec})
+    text = report.markdown(tmp_path / "results")
+    assert "| visionpilot [1] | r |" in text
+    assert "- [1] visionpilot: set point taken at run_start" in text

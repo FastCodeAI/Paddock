@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+message: "If you use Paddock in your work, please cite it as below."
+title: "Paddock: an evaluation framework for end-to-end driving models"
+type: software
+authors:
+  - name: "Renesas Electronics Corporation"
+version: 0.1.0
+license: Apache-2.0
+keywords:
+  - autonomous-driving
+  - end-to-end-driving
+  - benchmark
+  - closed-loop

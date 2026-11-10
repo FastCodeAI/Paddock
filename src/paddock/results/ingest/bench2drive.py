@@ -51,6 +51,15 @@ their own: driven through a camera rig other than paddock's (``camera_rig``,
 then in the pooled config), or with a setting the model's ``model.yaml``
 declares set to another value.
 
+**A route set aside for every model is neither expected nor lost.** The routes in
+``harness.SET_ASIDE`` failed in the simulator on every attempt by whichever model drives
+(11715), or by Alpamayo 1.5 at its declared 10 Hz (3800, 23695, 24071), so they measure no
+model: such a route leaves the pool before anything is read from it, its id goes in
+``config.routes_set_aside`` and its reason in the notes -- the list as it stands when the
+pool is made, so every model's pool of the same routes says the same. A full-set pool
+asks for ``routes = "all"``: with ``routes`` left out the expected set is what the trees
+hold, and a route a sweep never drove would leave no trace.
+
 The run id is ``<label>-<route-set hash>-<config hash>``. The route set alone
 cannot distinguish two settings of the same routes -- five constant-velocity
 speed bands, say -- and ``store.write_run`` overwrites a directory that already
@@ -63,7 +72,8 @@ Site configuration (``paddock.toml``)::
     model  = "drivejepa"
     runs   = "/path/to/paddock-runs/bench2drive/drivejepa"   # or a list of roots
     label  = "pooled50"                  # run id: <label>-<route hash>-<config hash>
-    routes = ["1711", "1852", ...]       # optional; default: every route found
+    routes = ["1711", "1852", ...]       # optional, or "all": every route of the routes file;
+                                         # default: every route found
     notes  = "24 routes from the 03-04 Sep campaign, 26 from the 09 Sep expansion"
     ranked = true                        # optional; ranks it as recorded despite its rate or a lost route
     [ingest.bench2drive.model_env]       # optional; overrides what the runs recorded
@@ -94,11 +104,15 @@ from typing import Any, NamedTuple
 from paddock.adapters.benchmarks.bench2drive import early_stop, rig
 from paddock.adapters.benchmarks.bench2drive.harness import (
     DEFAULT_ROUTES_FILE,
+    SET_ASIDE,
     NotScored,
     crash_reason,
     ended_early,
     every_tick,
+    failure_said,
     parse_results,
+    read_failure,
+    set_aside_remark,
 )
 from paddock.registry import Registry
 from paddock.results.store import MetricsRecord, RunRecord, config_hash, sequence_hash
@@ -187,7 +201,7 @@ def _driven_off_protocol(model_env: dict[str, Any]) -> float | None:
     """The rate this run was driven at, when that is not the benchmark's protocol.
 
     ``None`` for every run driven at 20 Hz, which is every run that does not say
-    otherwise -- before #106 the rate was only in the record when an operator put
+    otherwise -- before 23 Oct 2026 the rate was only in the record when an operator put
     it there. Read only for source runs that recorded no ``infer_hz``.
     """
     raw = (model_env or {}).get("PADDOCK_INFER_HZ")
@@ -218,6 +232,15 @@ def _registered_waypoint_dt(model: str) -> float | None:
     except Exception:  # noqa: BLE001 -- a broken registry must not fail an ingest
         return None
     return getattr(spec, "waypoint_dt", None) if spec else None
+
+
+def _registered_ranked_with_note(model: str) -> tuple[str, ...]:
+    """The settings ``model``'s model.yaml keeps ranked, as a ``paddock run`` would."""
+    try:
+        spec = Registry.load().models.get(model)
+    except Exception:  # noqa: BLE001 -- a broken registry must not fail an ingest
+        return ()
+    return getattr(spec, "ranked_with_note", ()) if spec else ()
 
 
 def _registered_native_hz(model: str) -> tuple[float, str] | None:
@@ -267,6 +290,9 @@ def discover(runs_roots: Sequence[Path], routes: list[str] | None = None) -> Sur
     """
     scored: dict[str, Attempt] = {}
     rejected: dict[str, str] = {}
+    # Folders whose reason came from a failure record: a later attempt cut off by a restart
+    # leaves none and says nothing about the route, so it does not replace the record's reason.
+    recorded: set[str] = set()
     for root in runs_roots:
         for results in sorted(root.rglob("results.json")):
             route_dir, run_dir = results.parent, results.parent.parent
@@ -277,9 +303,18 @@ def discover(runs_roots: Sequence[Path], routes: list[str] | None = None) -> Sur
             try:
                 metrics = parse_results(results)
             except NotScored as exc:
-                # The message names the file; keep the run id and drop the path,
-                # because this reason is written into a tracked run.json.
-                rejected[route_dir.name] = f"{run_dir.name}: {str(exc).split('.json: ', 1)[-1]}"
+                # Why the attempt failed, when the harness wrote it down (failure.json): a
+                # CARLA crash and a cut-off attempt both leave an empty checkpoint. Otherwise
+                # the parser's words, unchanged, so a stored record ingested again keeps its
+                # id. The message names the file; keep the run id and drop the path, because
+                # this reason is written into a tracked run.json.
+                failure = read_failure(route_dir)
+                if failure is None and route_dir.name in recorded:
+                    continue
+                said = failure_said(failure) if failure else str(exc).split(".json: ", 1)[-1]
+                rejected[route_dir.name] = f"{run_dir.name}: {said}"
+                if failure is not None:
+                    recorded.add(route_dir.name)
                 continue
             # json.JSONDecodeError and UnicodeDecodeError are ValueError; OSError
             # is the NFS read that used to take the whole ingest down with it.
@@ -315,6 +350,17 @@ def ingest(
     setup_of = {route: label for label, group in (setups or {}).items() for route in group}
     survey = discover(roots, routes)
     rejected = dict(survey.rejected)
+    # Routes set aside for every model (harness.SET_ASIDE) leave the pool before anything is read
+    # from them: neither their samples nor their source runs' configs, which would otherwise join
+    # the agreement checks below. Out of the routes asked for, or of every route the trees hold.
+    seen = {parts[0] for folder in (*survey.scored, *survey.rejected) if (parts := route_parts(folder))}
+    aside = sorted(
+        (r for r in (routes if routes is not None else seen) if r in SET_ASIDE), key=lambda r: (len(r), r)
+    )
+    scored_aside = sorted(
+        {parts[0] for folder in survey.scored if (parts := route_parts(folder)) and parts[0] in aside},
+        key=lambda r: (len(r), r),
+    )
     # Keyed by directory, not by run id: two roots can hold the same run id, and
     # that collision is exactly the mix this is here to catch.
     sources: dict[Path, dict[str, Any]] = {}
@@ -322,6 +368,8 @@ def ingest(
     samples: list[dict[str, Any]] = []
     for folder, attempt in sorted(survey.scored.items()):
         route, town, scenario = route_parts(folder)  # type: ignore[misc]
+        if route in aside:
+            continue
         run_dir = attempt.results.parent.parent
         source = sources.setdefault(run_dir, source_record(run_dir))
         recorded_model = source.get("model")
@@ -372,7 +420,10 @@ def ingest(
     # construction -- n_failed: 0, status complete, valid true -- on exactly the
     # case the record exists to show: a model that crashed out of a route.
     attempted = {route_parts(f)[0]: why for f, why in rejected.items() if route_parts(f)}  # type: ignore[index]
-    wanted = sorted(routes) if routes is not None else sorted(have | set(attempted))
+    # A route set aside is neither expected nor lost: it measures no model.
+    wanted = [
+        r for r in (sorted(routes) if routes is not None else sorted(have | set(attempted))) if r not in aside
+    ]
     missing = [r for r in wanted if r not in have]
     source_runs = sorted({s["native_id"]["run_id"] for s in samples})
     starts = [d for d in (_started(r) for r in source_runs) if d is not None]
@@ -396,9 +447,9 @@ def ingest(
         "model_env": {**recorded_env, **dict(model_env or {})},
         "source_config_read": f"{sum(1 for c in configs if c)}/{len(used)} source runs",
     }
-    # The model.yaml env each source run was made under (#99). Two values are
+    # The model.yaml env each source run was made under. Two values are
     # two settings of the model, not one experiment. `_agreed` skips a missing
-    # value, so a run that recorded none (every run before #99) is counted
+    # value, so a run that recorded none (every run before 21 Oct 2026) is counted
     # rather than read as agreeing with the others.
     declared = _agreed([c.get("declared_env") for c in configs])
     undeclared = sum(1 for c in configs if "declared_env" not in c) if declared is not None else 0
@@ -410,6 +461,11 @@ def ingest(
     # `n_failed` -- and without this line `results/` would not say it happened.
     if attempted:
         config["routes_never_scored"] = dict(sorted(attempted.items()))
+    # The routes set aside for every model that this pool would otherwise expect, by id: the list
+    # as it stands when the pool is made, never what its source runs recorded, so every model's
+    # pool says the same. Only when there are some, so a pool without any keeps its run id.
+    if aside:
+        config["routes_set_aside"] = aside
     # The early stop as the source runs recorded it; absent from the config of a
     # pool none of whose runs had it, so such a pool keeps its run id.
     stopped = [c.get("early_stop") for c in configs]
@@ -422,9 +478,9 @@ def ingest(
     other_rig = rigs is not None and rigs != rig.DEFAULT
     if other_rig:
         config["camera_rig"] = rigs
-    # How often the node was asked for a plan (`infer_hz`, #106), judged from the runs' own record
+    # How often the node was asked for a plan (`infer_hz`), judged from the runs' own record
     # and never from model.yaml as it is when the ingest runs. A run that recorded no rate was asked
-    # every tick (or, before #106, at a rate in `model_env`: `_driven_off_protocol`); one that kept
+    # every tick (or, before 23 Oct 2026, at a rate in `model_env`: `_driven_off_protocol`); one that kept
     # no config at all is not known. The rate the model declared ranks; the host's PADDOCK_INFER_HZ
     # in its place is recorded with the declared one beside it (`planning_hz`) and does not, nor do
     # two rates in one pool. In the config only when some run was asked slower than every tick, or
@@ -445,8 +501,13 @@ def ingest(
     # `paddock run` from ranking (runner._env_override_reasons) keeps the pool from ranking.
     # Judged against the declared_env the source runs recorded, which leaves tuning keys
     # out; a key the model does not declare, and a pool that recorded none, are not judged.
+    ranked_anyway = _registered_ranked_with_note(model)
     overrides = (
-        sorted(k for k, v in config["model_env"].items() if k in declared and declared[k] != v)
+        sorted(
+            k
+            for k, v in config["model_env"].items()
+            if k in declared and declared[k] != v and k not in ranked_anyway
+        )
         if isinstance(declared, dict)
         else []
     )
@@ -455,12 +516,18 @@ def ingest(
         config["recording_setups"] = {label: sorted(group) for label, group in sorted(setups.items())}
     run_id = f"{run_label}-{sequence_hash(sample_ids)}-{config_hash(config)}"
     note = notes.strip()
-    outside = sorted(r for r in attempted if r not in set(wanted))
+    outside = sorted(r for r in attempted if r not in set(wanted) and r not in aside)
     if outside:
         lost = ", ".join(f"{r} ({attempted[r]})" for r in outside)
         note = (note + " " if note else "") + (
             f"attempted outside the configured route subset and never scored: {lost}."
         )
+    if aside:
+        said = set_aside_remark(aside)
+        if scored_aside:
+            did = "it scored here" if len(scored_aside) == 1 else "they scored here"
+            said += f"; {', '.join(scored_aside)} left out although {did}, as for every model"
+        note = (note + " " if note else "") + said + "."
     if len(pooled_setups) > 1:
         note = (note + " " if note else "") + (
             f"pooled across {len(pooled_setups)} recording setups ({', '.join(pooled_setups)}); "
@@ -474,7 +541,7 @@ def ingest(
         )
     if undeclared:
         note = (note + " " if note else "") + (
-            f"{undeclared} of {len(used)} source runs recorded no declared_env (made before #99), "
+            f"{undeclared} of {len(used)} source runs recorded no declared_env (made before 21 Oct 2026), "
             "so which model.yaml env their routes ran is not known and this run does not rank."
         )
     # The override is layered on top of what the runs recorded, so a key that is
@@ -495,7 +562,7 @@ def ingest(
             f"{keys} {was} supplied by the ingest config and recorded by no source run, "
             "so it is the operator's assertion about the campaign, not a reading from it."
         )
-    # Runs that recorded no rate (before #106) were driven at PADDOCK_INFER_HZ in `model_env`;
+    # Runs that recorded no rate (before 23 Oct 2026) were driven at PADDOCK_INFER_HZ in `model_env`;
     # at the rate the model's own model.yaml declares, that is on protocol, and ranks.
     driven = None if any("infer_hz" in c for c in kept) else _driven_off_protocol(config["model_env"])
     native = _registered_native_hz(model) if driven is not None else None

@@ -85,7 +85,8 @@ def outcome(att: runs.Attempt) -> str:
 def success(result: dict | None) -> bool:
     """Bench2Drive's success: the route completed with no infraction but min-speed ones.
 
-    ``tools/statistic_route_json.is_success`` / ``ability_benchmark.get_infraction_status`` at 7ec25d1.
+    ``tools/merge_route_json.py`` (its ``success_flag``) and ``ability_benchmark.get_infraction_status``
+    at 7ec25d1.
     """
     if not result or result.get("status") not in ("Perfect", "Completed"):
         return False

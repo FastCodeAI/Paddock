@@ -53,7 +53,8 @@ runtime:
     # the result.
     PADDOCK_OPENPILOT_THREADS: "8"
   # Site overrides of these change speed or memory, not the plan, so they
-  # leave a run valid; any other [models.openpilot.env] key makes it valid: false.
+  # leave a run valid; any other [models.openpilot.env] key makes it valid: false,
+  # unless it is in ranked_with_note below.
   tuning_env: [PADDOCK_OPENPILOT_THREADS]
 
 capabilities:
@@ -134,4 +135,15 @@ capabilities:
 # comma2k19 needs no such setting: it is native 20 Hz, exactly supercombo's own
 # input rate, so no frame-repeat trick is needed at all -- see
 # docs/benchmarks/comma2k19.md.
+# Settings that change what a score means. The leaderboard prints the line under
+# any ranked run that set one to something other than the declared default.
+score_notes:
+  PADDOCK_OPENPILOT_DESIRE: "desire input mode set to {value}; the default, off, sends none"
+  PADDOCK_OPENPILOT_HEIGHT_SCALE: "camera height taken as {value}x openpilot's to fit this dataset's rig"
+  PADDOCK_OPENPILOT_PITCH_DEG: "view tilted {value} degrees to fit this dataset's rig"
+  PADDOCK_OPENPILOT_FOV_DEG: "frame cut to a {value} degree field of view to fit this dataset's rig"
+# Of those, what a site may set and stay ranked. Not the three camera numbers: nothing
+# in the record tells a value measured on the rig from one fitted to the test set.
+ranked_with_note: [PADDOCK_OPENPILOT_DESIRE]
+
 benchmarks: [kitscenes, neuroncap, bench2drive, navsim, nuscenes, comma2k19, nuplan]

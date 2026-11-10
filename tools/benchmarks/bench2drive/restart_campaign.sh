@@ -2,8 +2,8 @@
 # Start, restart or rebalance a Bench2Drive campaign in one idempotent call -- after a reboot, after a
 # shutdown, or when some workers have finished and the rest of the routes should be spread out again.
 #
-#   tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot [--workers 5] [--held 11715]
-#       [--rebalance] [--status]
+#   tools/benchmarks/bench2drive/restart_campaign.sh --model openpilot [--workers 5] [--held 23695]
+#       [--cards 0:0,1:2] [--batch 4] [--tries 3] [--keep] [--rebalance] [--status]
 #       [--dashboard-root DIR --expert DIR [--features CSV] [--port 8765]]
 #
 # It (re)starts, each detached in its own session so it outlives this shell, only what is not running:
@@ -11,7 +11,13 @@
 #              worker records the route FAILED and moves on
 #   workers    `campaign launch`: every route without a scored attempt, sorted and dealt to the free
 #              worker slots (own CARLA / TM / node ports each); --held routes last and alone;
-#              --rebalance stops the alive workers first so everything left is dealt anew
+#              --rebalance stops the alive workers first so everything left is dealt anew; a route
+#              set aside for every model is never dealt, nor one --tries failed attempts gave up on;
+#              --cards spreads --workers per card over the GPUs, --batch caps a worker's routes
+#   keeper     only with --keep: `campaign keep`, the same launch every few minutes until nothing is
+#              left and no worker is alive, so slots that free up are filled to the end. Launches deal
+#              under a lock, so this script's own launch beside a running keeper deals nothing twice.
+#              `campaign stop --model <m>` stops the keeper first, then the workers.
 #   dashboard  only with --dashboard-root: tools/benchmarks/bench2drive/dashboard.py on 127.0.0.1:<port>
 # then prints `campaign status`. See docs/benchmarks/bench2drive.md, "Running a sweep in parallel".
 #
@@ -21,12 +27,17 @@ set -u
 cd "$(dirname "$0")/../../.." || exit 1   # the Paddock checkout
 PY=${PADDOCK_PYTHON:-python3}
 MODEL="" WORKERS=5 HELD="" REBALANCE="" STATUS_ONLY="" ROOT="" EXPERT="" FEATURES="" PORT=8765
+CARDS="" BATCH="" TRIES="" KEEP=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --model) MODEL=$2; shift 2 ;;
     --workers) WORKERS=$2; shift 2 ;;
     --held) HELD=$2; shift 2 ;;
     --rebalance) REBALANCE=--rebalance; shift ;;
+    --cards) CARDS=$2; shift 2 ;;
+    --batch) BATCH=$2; shift 2 ;;
+    --tries) TRIES=$2; shift 2 ;;
+    --keep) KEEP=1; shift ;;
     --status) STATUS_ONLY=1; shift ;;
     --dashboard-root) ROOT=$2; shift 2 ;;
     --expert) EXPERT=$2; shift 2 ;;
@@ -39,8 +50,14 @@ done
 C="$PY -m paddock.adapters.benchmarks.bench2drive.campaign"
 LOGS=$($PY -c "from paddock.config import SiteConfig; print(SiteConfig.load().runs / 'bench2drive' / '_campaign' / '$MODEL' / 'logs')")
 mkdir -p "$LOGS"
+STATE=$(dirname "$LOGS")
+keeper_alive() {  # this sweep's keeper, by the pid file it writes; not any user's keeper of the model
+  local pid
+  pid=$(head -n1 "$STATE/keep.pid" 2>/dev/null | tr -dc 0-9)
+  [ -n "$pid" ] && tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q " keep --model $MODEL "
+}
 
-if [ -n "$STATUS_ONLY" ]; then $C status --model "$MODEL"; exit 0; fi
+if [ -n "$STATUS_ONLY" ]; then $C status --model "$MODEL" ${TRIES:+--tries "$TRIES"}; exit 0; fi
 if ! nvidia-smi > /dev/null 2>&1; then
   echo "nvidia-smi fails: the GPU driver is not up yet. Wait a minute after boot and run this again." >&2
   exit 1
@@ -51,7 +68,14 @@ if ! pgrep -f "[c]ampaign guard --model $MODEL" > /dev/null; then
   echo "guard started ($LOGS/guard.log)"
 fi
 
-$C launch --model "$MODEL" --workers "$WORKERS" ${HELD:+--held "$HELD"} $REBALANCE
+DEAL=(--model "$MODEL" --workers "$WORKERS" ${HELD:+--held "$HELD"} ${CARDS:+--cards "$CARDS"}
+      ${BATCH:+--batch "$BATCH"} ${TRIES:+--tries "$TRIES"})
+$C launch "${DEAL[@]}" $REBALANCE
+
+if [ -n "$KEEP" ] && ! keeper_alive; then
+  setsid nohup $C keep "${DEAL[@]}" < /dev/null >> "$LOGS/keep.log" 2>&1 &
+  echo "keeper started ($LOGS/keep.log)"
+fi
 
 if [ -n "$ROOT" ] && ! ss -ltn | grep -q ":$PORT "; then
   RUNS=$($PY -c "from paddock.config import SiteConfig; print(SiteConfig.load().runs / 'bench2drive' / '$MODEL')")
@@ -66,4 +90,4 @@ print(f\"{s.get('repo')}/leaderboard/data/{s.get('routes_file') or 'bench2drive2
 fi
 
 sleep 3
-$C status --model "$MODEL"
+$C status --model "$MODEL" ${TRIES:+--tries "$TRIES"}

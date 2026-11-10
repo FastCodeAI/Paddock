@@ -169,7 +169,7 @@ def test_a_lateral_collision_is_at_fault_only_off_the_drivable_area() -> None:
 
 
 def test_a_parked_car_that_pulls_into_the_egos_side_is_the_egos_fault() -> None:
-    """Review of #102 (4): NAVSIM calls the other "stopped" by its speed when first
+    """NAVSIM calls the other "stopped" by its speed when first
     seen, not at contact. Parked beside the lane for 1 s, then sliding into the
     ego's flank, behind its front bumper and on the road: at fault in NAVSIM."""
     t = np.arange(0.0, 6.01, 0.5)

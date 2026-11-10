@@ -35,7 +35,7 @@ Run these from a paddock checkout, with your site `paddock.toml` (it needs the
   into the shared store, under a name made from its content (its sha256), and
   the job uses the copy. So you can overwrite or delete your file after
   submitting, and the job still measures what you submitted. A file brings the
-  small files beside it (under 1 MB, such as gallops' `checkpoint.json`).
+  small files beside it (under 1 MB, such as a training run's `checkpoint.json`).
 - **fixes the code.** The job runs the commit `origin/main` is at when you
   submit, or the branch or commit `--ref` names. That commit must be on GitHub,
   so whoever reads the result can check out exactly what it ran. Your local
@@ -70,7 +70,7 @@ a reason that was not the checkpoint (a renderer that did not start in time).
 
 The queue keeps its own baselines, made by the same account in the same way as
 the jobs compared with them. Make them once per model, and again whenever the
-model's own settings change on main (as PR #106 changed Drive-JEPA's):
+model's own settings change on main (as the Drive-JEPA change of 23 Oct 2026 did):
 
 ```bash
 python -m tools.gate_queue submit --model drivejepa --baseline --tier all
@@ -145,7 +145,7 @@ directory and `<store>` the large one. Steps marked *as paddock* run under
    run every model's interpreter. Grant the group read access where it is
    missing, without changing owners: `setfacl -R -m g:paddock:rX <dir>`, plus
    `setfacl -d -m g:paddock:rX` on its directories so new files are readable
-   too. On shakaal these were the NeuRAD checkpoints and the NAVSIM metric
+   too. On the first machine the queue ran on, these were the NeuRAD checkpoints and the NAVSIM metric
    cache. Look also at where each model environment's `bin/python` link points
    (`readlink -f`): an environment built on a Python inside someone's home
    folder cannot be run by another account. CARLA needs no write access to its

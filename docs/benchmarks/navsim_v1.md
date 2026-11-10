@@ -1,5 +1,17 @@
 # NAVSIM v1 (PDMS)
 
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Loop | open loop |
+| Dataset | `navsim` |
+| Primary metric | `pdms` |
+| Adapter | [`adapters/benchmarks/navsim_v1/`](../../src/paddock/adapters/benchmarks/navsim_v1/) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [drivejepa](../models/drivejepa.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
+
+<!-- /summary -->
+
 The same OpenScene scenes as [`navsim`](navsim.md), scored by the **v1.1**
 devkit as **PDMS**: the composite the 2024 NAVSIM leaderboard and most published
 navtest figures use (TransFuser 84.0, Human 94.8, constant velocity 20.6 in the
@@ -185,7 +197,7 @@ the stored record `20260902T175923-feba73`:
   1e-11 -- last-bit floating-point noise in the progress normaliser.
 
 The re-run is not committed, so the leaderboard does not carry two identical
-baseline rows. At the fastcode-shakaal site its record is kept at
+baseline rows. Its record is kept at
 `{runs}/ops/navsim_v1/v2_regression_record/20260911T051742-c99808/`, its
 artifacts (samples, per-chunk CSVs, scorer logs) under
 `{runs}/navsim/constant_velocity/20260911T051742-c99808/`, and the comparison
@@ -215,7 +227,7 @@ from `results/navsim/` for reference: a different composite, not a ranking.
 | constant_velocity | **0.207** | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 | 0.239 | `20260911T034553-8f28ac` | node-less baseline, 27 min |
 | human (`valid: false`) | 0.946 | 1.000 | 1.000 | 0.870 | 1.000 | 0.999 | 0.988 | — | `20260911T041230-67c4f3` | node-less anchor, 35 min |
 
-With the **10 Hz history from nuPlan** (the v2 runs of PR #33, whose plans
+With the **10 Hz history from nuPlan** (the v2 runs of 14 Sep 2026, whose plans
 were replayed here once those runs were in the store -- a store test requires
 every `replayed_from` to resolve; both sources are merges of an earlier and a
 completing run, and the replay read both directories):
@@ -224,7 +236,7 @@ completing run, and the replay read both directories):
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
 | openpilot, 10 Hz | **0.807** | 0.969 | 0.913 | 0.719 | 0.936 | 1.000 | 0.948 | 0.747 | `20260914T181009-dbcef4` | replay of `navsim/openpilot/20260911T161513-3a4c90`, 13 min |
 | alpamayo15, 10 Hz | **0.753** | 0.957 | 0.856 | 0.690 | 0.896 | 0.991 | 0.927 | 0.691 | `20260914T175447-89a9ca` | replay of `navsim/alpamayo15/20260912T040211-a9562c`, 15 min |
-| autoe2e, 10 Hz | **0.538** | 0.824 | 0.777 | 0.514 | 0.700 | 1.000 | 0.859 | 0.500 | `20261027T185517-5c7949` | replay of `navsim/autoe2e/20261009T055926-3ceb18`, 95 min with the box loaded |
+| autoe2e, 10 Hz | **0.538** | 0.824 | 0.777 | 0.514 | 0.700 | 1.000 | 0.859 | 0.500 | `20261104T210206-3022fb` | replay of `navsim/autoe2e/20261009T055926-3ceb18`, 8 min |
 
 The 10 Hz history changes what the model sees, not what is scored: the same
 navtest scenes, the same v1 cache. For Alpamayo it is worth +0.077 PDMS over
@@ -253,10 +265,9 @@ comparable one here.
 
 The per-metric results behind this benchmark's column in the
 [README's support matrix](../../README.md#support-matrix), and the notes on its
-cells. Moved here from the README unchanged except for links; the symbols are
-the README's former footnote marks, and each note below starts with the mark it
-explains. Marks about a model rather than this benchmark (∗ ◊ ◇ ✦ ✧) are
-explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
+cells. Each note below starts with the mark it explains. Marks about a model
+rather than this benchmark (∗ ◊ ◇ ✦ ✧) are explained in
+[What these models are](../models/comparison.md#notes-on-the-models).
 
 ### NAVSIM v1
 

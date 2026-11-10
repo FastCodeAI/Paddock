@@ -43,7 +43,7 @@ class TemplateBenchmark(OpenLoopBenchmark):
         """Yield samples in a deterministic order.
 
         Determinism matters more than it looks: `--limit 5` must select the same
-        five samples at both sites, or two people comparing smoke tests will
+        five samples at every site, or two people comparing smoke tests will
         reach different conclusions. Sort explicitly; do not rely on the order
         the filesystem hands back.
 

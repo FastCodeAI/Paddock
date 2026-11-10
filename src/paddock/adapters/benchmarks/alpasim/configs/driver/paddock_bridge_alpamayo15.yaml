@@ -5,7 +5,7 @@
 # (the 10-scene row under results/alpasim/alpamayo15/): the shared 20 Hz
 # clock, with AlpaSim's own Alpamayo driver behind a filter that showed it
 # frames 100 ms apart and asked it for a plan every 100 ms. The bridge
-# reproduces that filter (harness.DRIVER_PROFILES["alpamayo15"]); this file
+# reproduces that filter (models/alpamayo15/alpasim.yaml); this file
 # reproduces the simulation, value for value. Other models keep
 # paddock_bridge.yaml.
 #

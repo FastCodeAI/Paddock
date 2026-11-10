@@ -176,6 +176,9 @@ class Column:
     decimals: int
     lower_is_better: bool
     ranked: bool
+    #: Whose runs fill it: the benchmark's name in results/. The key unless the toml says
+    #: otherwise, so one benchmark can fill two columns -- Bench2Drive's 50 routes and its 220.
+    benchmark: str = ""
 
 
 @dataclass
@@ -213,8 +216,8 @@ def _cell(spec: object, col: Column, model: str, where: str, results: Path, root
     marks, note = spec.get("marks", "").split(), spec.get("note", "")
     if "run" in spec:
         run = spec["run"]
-        if not run.startswith(f"{col.key}/"):
-            raise ValueError(f"{where}: {run!r} is not a {col.key} run")
+        if not run.startswith(f"{col.benchmark or col.key}/"):
+            raise ValueError(f"{where}: {run!r} is not a {col.benchmark or col.key} run")
         # A line copied from another row and not edited would show that model's number
         # under this one. A cell that borrows a run on purpose says whose it is.
         owner = run.split("/")[1]
@@ -258,7 +261,8 @@ def load_matrix(
             raise ValueError(f"{b['key']}: the header needs exactly one of ↑ or ↓: {header!r}")
         if "metric" not in b and not primary:
             primary = {k: spec.primary_metric for k, spec in load_benchmarks().items()}
-        metric = b.get("metric") or primary.get(b["key"], "")
+        bench = b.get("benchmark", b["key"])
+        metric = b.get("metric") or primary.get(bench, "")
         loop = LOOP[b["loop"]]
         lower = "↓" in header
         # The arrow is typed by hand; paddock's own report already knows the direction.
@@ -268,7 +272,9 @@ def load_matrix(
                 f"{b['key']}: the header says {said} is better, which paddock's report does not say of {metric!r}"
             )
         columns.append(
-            Column(b["key"], b["name"], loop, header, metric, b["decimals"], lower, b.get("ranked", True))
+            Column(
+                b["key"], b["name"], loop, header, metric, b["decimals"], lower, b.get("ranked", True), bench
+            )
         )
 
     keys = {c.key for c in columns}
@@ -336,7 +342,10 @@ def render_matrix(columns: list[Column], rows: list[Row]) -> str:
     # Both pictures share one width so they scale alike on the page; more benchmarks
     # means narrower columns, not a wider picture.
     col_w = (WIDTH - 2 * PAD - LABEL_W) // len(columns)
-    metric_lines = [_wrap(c.header, 14) for c in columns]
+    # The names and metric lines are sized for COL_W; at ten columns one name ran into the next,
+    # so narrower columns shrink the names and wrap the lines in step.
+    fit = min(1.0, col_w / COL_W)
+    metric_lines = [_wrap(c.header, int(14 * fit)) for c in columns]
     legend_h, band_h = 34, 24
     head_h = band_h + 18 + 13 * max(len(m) for m in metric_lines) + 8
     floor_gap = 10
@@ -398,13 +407,22 @@ def render_matrix(columns: list[Column], rows: list[Row]) -> str:
         out.append(_text(bx, by + 8, columns[j].loop.upper(), "sec", 9.5, extra=' letter-spacing="0.8"'))
         j = k + 1
 
-    # Column headers.
-    for j, col in enumerate(columns):
-        cx = x0 + col_w * j + (col_w + GAP) / 2
-        hy = PAD + legend_h + band_h + 14
-        out.append(_text(cx, hy, escape(col.name), "ink", 12, "middle", weight="600"))
-        for i, line in enumerate(metric_lines[j]):
-            out.append(_text(cx, hy + 15 + 13 * i, escape(line), "sec", 10.5, "middle"))
+    # Column headers. Adjacent columns of one name -- Bench2Drive's 50 routes and its 220 -- share
+    # it, drawn once across them; their metric lines tell them apart.
+    hy = PAD + legend_h + band_h + 14
+    j = 0
+    while j < len(columns):
+        k = j
+        while k + 1 < len(columns) and columns[k + 1].name == columns[j].name:
+            k += 1
+        cx = x0 + col_w * (j + k + 1) / 2 + GAP / 2
+        size = f"{round(12 * fit, 1):g}"
+        out.append(_text(cx, hy, escape(columns[j].name), "ink", size, "middle", weight="600"))
+        for c in range(j, k + 1):
+            cx = x0 + col_w * c + (col_w + GAP) / 2
+            for i, line in enumerate(metric_lines[c]):
+                out.append(_text(cx, hy + 15 + 13 * i, escape(line), "sec", 10.5, "middle"))
+        j = k + 1
 
     # Rows.
     y = grid_top

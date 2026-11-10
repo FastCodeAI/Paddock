@@ -1,5 +1,17 @@
 # AlpaSim
 
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Loop | closed loop |
+| Dataset | rendered by the simulator |
+| Primary metric | `scene_score` |
+| Adapter | [`adapters/benchmarks/alpasim/`](../../src/paddock/adapters/benchmarks/alpasim/) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [qwendrive](../models/qwendrive.md) |
+
+<!-- /summary -->
+
 Closed-loop driving on replayed real scenes. NVIDIA's AlpaSim renders a recorded
 clip as a neural reconstruction, hands the policy camera frames at a fixed
 control rate, and steps the world forward on what the policy commands. Errors
@@ -90,16 +102,34 @@ native AlpaSim driver, not by this bridge, so none of them changes.
 
 ## Per-model settings in the bridge
 
-Most models are driven on one shared set of simulation settings
-(`configs/driver/paddock_bridge.yaml`) and the bridge passes AlpaSim's cameras
-through as they are. A model whose numbers must be compared with a native
-AlpaSim driver can instead get its own settings: an entry in
-`harness.DRIVER_PROFILES`, which names a driver config, extra bridge flags, a
-scene list pinned to artifact uuids and whether the bridge writes a per-replan
-log. Video is not among them: it stays the site's `video` setting for every
-model, since AlpaSim renders it after scoring and it changes no number. A
-model without an entry gets exactly what every model got before profiles existed, and `run.json` records a profile under `config`
-only when one is used, so the run id changes with it.
+Every model is driven on one shared set of simulation settings
+(`configs/driver/paddock_bridge.yaml`) unless it says otherwise, and the bridge
+passes AlpaSim's cameras through under AlpaSim's own names. A model's settings
+for AlpaSim, called a *profile*, live in its own folder as `alpasim.yaml`
+(`adapters/models/<model>/alpasim.yaml`): a driver config, extra bridge flags
+(the camera renames among them), a scene list pinned to artifact uuids and
+whether the bridge writes a per-replan log, plus, optionally, which of its
+cameras the model reads here. The harness reads it by model name
+(`harness.profile_for`). A file with a missing or unknown key fails with the
+file's name rather than falling back to the default.
+
+Before a dry run or any model starts, the harness checks each model
+(`input_problems`): its profile loads, its driver config exists (in this
+benchmark's `configs/driver/` or the model's own `driver/` folder), its scene
+list exists, and every camera it reads is named by a `--camera-name` rename or
+a `--placeholder`. A model node keeps only the cameras its model declares, by
+name, so a camera model with no profile would otherwise get no images and no
+error. The check reads only the paddock name in `--camera-name ID=NAME`, not the
+AlpaSim id: a mistyped id still passes and that camera never arrives.
+Constant velocity's profile says only `cameras: []`.
+
+Video is not among the settings: it stays the site's `video` setting for every
+model, since AlpaSim renders it after scoring and it changes no number.
+`run.json` records a profile under `config` only when it drives the model
+differently from the default, so the run id changes with it, and a model
+driven on the default records exactly what it did before profiles existed.
+How to write one is in
+[adding-a-model.md](../adding-a-model.md#alpasim-settings).
 
 Four models have a profile. Drive-JEPA's reproduces the settings of
 Drive-JEPA's native AlpaSim driver (adapter 0.1.4b) so a run through paddock
@@ -311,8 +341,8 @@ filed under `results/alpasim/`, so `paddock report` agrees with these tables.
 > not ingested.
 >
 > **METEOR's rows come from a driver that is not tracked here.** `meteor-0.1.1`
-> is a native AlpaSim driver written at the Fastcode site; its source is not in
-> this repository, so its two rows (`6cam-20Hz`, below) are reference values
+> is a native AlpaSim driver written outside this repository; its source is not in
+> it, so its two rows (`6cam-20Hz`, below) are reference values
 > another site cannot yet reproduce.
 
 ### `1cam-20Hz` — the shared referee
@@ -568,10 +598,9 @@ quoted from that scorer is not this one.
 
 The per-metric results behind this benchmark's column in the
 [README's support matrix](../../README.md#support-matrix), and the notes on its
-cells. Moved here from the README unchanged except for links; the symbols are
-the README's former footnote marks, and each note below starts with the mark it
-explains. Marks about a model rather than this benchmark (∗ ◊ ◇ ✦ ✧) are
-explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
+cells. Each note below starts with the mark it explains. Marks about a model
+rather than this benchmark (∗ ◊ ◇ ✦ ✧) are explained in
+[What these models are](../models/comparison.md#notes-on-the-models).
 
 ### Notes on the matrix cells
 

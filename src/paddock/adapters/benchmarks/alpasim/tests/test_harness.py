@@ -257,7 +257,7 @@ def test_a_clip_is_the_same_sample_whichever_set_drove_it(tmp_path: Path, monkey
 
 
 def test_scene_order_is_the_pinned_order_not_the_filesystems(tmp_path: Path, monkeypatch) -> None:
-    """`--limit 5` must select the same five at both sites."""
+    """`--limit 5` must select the same five at every site."""
     bench = _benchmark(tmp_path, monkeypatch)
     once = [e.scene for e in bench.episodes()]
     twice = [e.scene for e in bench.episodes()]
@@ -642,7 +642,7 @@ def test_a_bridge_that_never_binds_is_killed_not_leaked(tmp_path: Path) -> None:
 
 
 def test_a_scene_subset_is_not_a_score(tmp_path: Path, monkeypatch) -> None:
-    """Review #80 (6): fewer clips than the pinned set would be ranked beside full runs."""
+    """Fewer clips than the pinned set would be ranked beside full runs."""
     bench = _benchmark(tmp_path, monkeypatch)
     list(bench.episodes(None))
     assert bench.invalid_reasons() == []
@@ -652,17 +652,23 @@ def test_a_scene_subset_is_not_a_score(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_a_model_without_a_profile_is_driven_exactly_as_before(tmp_path: Path, monkeypatch) -> None:
-    """openpilot and every other unlisted model: default driver, no bridge flags, nothing recorded."""
+    """Any model with no alpasim.yaml: default driver, no bridge flags, nothing recorded.
+
+    A made-up model, so a real one can gain a profile without editing this test.
+    """
     from types import SimpleNamespace
 
     from paddock.adapters.benchmarks.alpasim import harness
 
-    assert "openpilot" not in harness.DRIVER_PROFILES
-    profile = harness.profile_for("openpilot")
+    bench = _benchmark(tmp_path, monkeypatch)
+    models_dir = tmp_path / "models"
+    (models_dir / "m").mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(harness, "MODELS_DIR", models_dir)
+    assert not harness.has_profile("m")
+    profile = harness.profile_for("m")
     assert profile == harness.DriverProfile()
     assert (profile.driver, profile.bridge_args, profile.scenes_csv) == ("paddock_bridge", (), None)
-    bench = _benchmark(tmp_path, monkeypatch)
-    assert bench.model_run_config(SimpleNamespace(name="openpilot")) == {}
+    assert bench.model_run_config(SimpleNamespace(name="m")) == {}
 
 
 def test_the_drivejepa_profile_pins_every_scene_it_can_be_asked_for() -> None:

@@ -239,7 +239,7 @@ def test_a_driver_that_serves_a_trained_checkpoint_is_not_ingested(tmp_path: Pat
 
     That is how the retrained Drive-JEPA's two AlpaSim runs reached the
     leaderboard as Drive-JEPA's own. Paddock keeps only the released models'
-    results; a trained checkpoint's runs belong to gallops. So for Drive-JEPA
+    results; a checkpoint trained after release does not belong here. So for Drive-JEPA
     only the drivers known to serve the released checkpoint are filed, and a
     driver nobody has listed is left out by default.
     """

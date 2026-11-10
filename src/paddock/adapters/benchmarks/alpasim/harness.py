@@ -46,6 +46,7 @@ import yaml
 
 from paddock.adapters.benchmarks.alpasim import launcher
 from paddock.benchmark import ClosedLoopBenchmark, Episode
+from paddock.registry import MODELS_DIR
 
 #: Pinned scene lists that ship with this adapter.
 SCENES_DIR = Path(__file__).parent / "scenes"
@@ -126,15 +127,17 @@ def scorer_sha() -> str:
 class DriverProfile:
     """The simulation settings and bridge translation one model is driven with.
 
-    Every model gets the default unless it is listed in `DRIVER_PROFILES`: the
-    `paddock_bridge` driver config, no translation flags, scenes named by id.
+    Every model gets the default unless its own folder has an `alpasim.yaml`
+    (PROFILE_FILE below): the `paddock_bridge` driver config, no translation
+    flags, scenes named by id.
     Video is the site's choice for every model, profile or not: AlpaSim renders
     it after its scorer has written the metrics, so it changes no score. (What
     the bridge does for every model, profile or not -- read the plan, reset the
     node per scene, record where headings came from -- is in bridge.py.)
     """
 
-    #: Driver config under configs/driver/, passed as `driver=`.
+    #: Driver config, passed as `driver=`: `configs/driver/<driver>.yaml` in this
+    #: benchmark, or `driver/<driver>.yaml` in the model's own folder.
     driver: str = "paddock_bridge"
     #: Extra `bridge.py` flags: camera renames, placeholders, intrinsics.
     bridge_args: tuple[str, ...] = ()
@@ -144,187 +147,230 @@ class DriverProfile:
     #: Write the bridge's per-replan log next to the run's samples.jsonl, as
     #: `<scene>.replans.jsonl`. Only a bridge running a replan rhythm writes one.
     replan_log: bool = False
+    #: The cameras the model reads on AlpaSim, when that is fewer than the
+    #: `cameras` its model.yaml declares for every benchmark; None means all of
+    #: them. Used only to check, before a run, that each one reaches the node
+    #: (`input_problems`); it changes nothing the bridge sends. Constant velocity
+    #: says `[]`: it declares CAM_FRONT for the benchmarks that need a camera to
+    #: render, and reads none.
+    cameras: tuple[str, ...] | None = None
+
+    def drives_like_default(self) -> bool:
+        """True when this profile drives the model exactly as DEFAULT_PROFILE does."""
+        return (self.driver, self.bridge_args, self.scenes_csv, self.replan_log) == (
+            DEFAULT_PROFILE.driver,
+            DEFAULT_PROFILE.bridge_args,
+            DEFAULT_PROFILE.scenes_csv,
+            DEFAULT_PROFILE.replan_log,
+        )
 
 
 DEFAULT_PROFILE = DriverProfile()
 
-#: Models driven on settings other than the default, keyed by model name.
-#:
-#: drivejepa: the settings of Drive-JEPA's native AlpaSim driver (adapter
-#: 0.1.4b), whose 30-scene runs are the baseline a run through this bridge is
-#: checked against -- one front pinhole camera at 20 Hz, 3.0 s warm-up with the driver
-#: called, 400 steps, the shared 20 Hz eval config, 26.01 artifacts by uuid.
-#: The node reads CAM_FRONT plus three more cameras; AlpaSim renders one, so
-#: the other three are that driver's placeholder (see bridge.PLACEHOLDER_RGB).
-#: The bridge also runs that driver's planning rhythm and inputs: a replan
-#: every 0.5 s on its grid, the cached plan re-anchored in between, its frame
-#: pair, forward speed and command (see drivejepa_rhythm.py).
-#:
-#: autoe2e: six cameras re-rendered as pinholes at the KITScenes field of view,
-#: the rear view on the tele camera's id (paddock_bridge_autoe2e.yaml), renamed
-#: to the six names the node reads. The node is asked every 100 ms on a grid,
-#: the cached plan re-timed and re-anchored in between; warm-up frames go to
-#: /observe, and the ego history is padded straight back from the first pose
-#: (see replan_rhythm.py). Same 30 scenes, warm-up and control step as drivejepa.
-#:
-#: qwendrive: the settings of Qwen-Drive's native AlpaSim driver (adapter 0.1.4)
-#: -- four f-theta cameras at 20 Hz, 3.0 s warm-up with the driver called, 400
-#: steps (paddock_bridge_qwendrive.yaml) -- and its inputs. The three cameras it
-#: reads are renamed to the node's names and the fourth is not sent. The node is
-#: asked every 1.5 s on a grid, as the native driver asked it, and hears every
-#: other tick through /observe, so its frames 0.5 s apart and ego rows 0.1 s
-#: apart all exist. canbus carries forward and sideways speed and yaw rate,
-#: with the forced replay's zeros replaced from the poses; the route and the
-#: scene id ride along for the node's command and noise seed. Plans come back
-#: as 50 points 0.1 s apart. Same 30 scenes as drivejepa.
-#:
-#: alpamayo15: the settings Alpamayo 1.5's stored 10-scene AlpaSim result was
-#: scored on -- four f-theta cameras at 20 Hz, 3.0 s warm-up with the driver
-#: called, 400 steps (paddock_bridge_alpamayo15.yaml) -- and what AlpaSim's own
-#: Alpamayo driver was shown there. All four cameras are renamed to the node's
-#: names, the telephoto included, so the model gets the real 30 deg render. The
-#: node is asked every 100 ms, the model's own rate, and hears every other tick
-#: through /observe; it keeps the frames 0.1 s apart and the poses for its 1.6 s
-#: of history from those. The route and its timestamp ride along for its
-#: navigation text. The plan spacing is sent too, and plans come back as 64
-#: points 0.1 s apart. No canbus switch: the model reads poses
-#: and pixels only, never speed or acceleration. Same 30 scenes as drivejepa.
-DRIVER_PROFILES: dict[str, DriverProfile] = {
-    "drivejepa": DriverProfile(
-        driver="paddock_bridge_drivejepa",
-        bridge_args=(
-            "--camera-name",
-            "camera_front_wide_120fov=CAM_FRONT",
-            "--placeholder",
-            "CAM_FRONT_LEFT",
-            "--placeholder",
-            "CAM_FRONT_RIGHT",
-            "--placeholder",
-            "CAM_BACK",
-            "--placeholder-source",
-            "CAM_FRONT",
-            "--pinhole-intrinsics",
-            "--planner",
-            "drivejepa-0.1.4b",
-            "--front-camera",
-            "camera_front_wide_120fov",
-            # Both must equal paddock_bridge_drivejepa.yaml's control step and
-            # force_gt_duration_us; a test checks they do.
-            "--frame-interval-us",
-            "50000",
-            "--force-gt-us",
-            "3000000",
-        ),
-        scenes_csv="public_2601_30scenes_26p01.csv",
-        replan_log=True,
-    ),
-    "autoe2e": DriverProfile(
-        driver="paddock_bridge_autoe2e",
-        bridge_args=(
-            "--camera-name",
-            "camera_front_wide_120fov=CAM_FRONT",
-            "--camera-name",
-            "camera_cross_left_120fov=CAM_FRONT_LEFT",
-            "--camera-name",
-            "camera_cross_right_120fov=CAM_FRONT_RIGHT",
-            "--camera-name",
-            "camera_rear_left_70fov=CAM_BACK_LEFT",
-            "--camera-name",
-            "camera_front_tele_30fov=CAM_BACK",
-            "--camera-name",
-            "camera_rear_right_70fov=CAM_BACK_RIGHT",
-            "--pinhole-intrinsics",
-            "--replan-every-us",
-            "100000",
-            # Both must equal paddock_bridge_autoe2e.yaml's control step and
-            # force_gt_duration_us; a test checks they do.
-            "--force-gt-us",
-            "3000000",
-            "--frame-interval-us",
-            "50000",
-            "--pad-ego-history",
-        ),
-        scenes_csv="public_2601_30scenes_26p01.csv",
-        replan_log=True,
-    ),
-    "qwendrive": DriverProfile(
-        driver="paddock_bridge_qwendrive",
-        bridge_args=(
-            "--camera-name",
-            "camera_front_wide_120fov=CAM_FRONT",
-            "--camera-name",
-            "camera_cross_left_120fov=CAM_FRONT_LEFT",
-            "--camera-name",
-            "camera_cross_right_120fov=CAM_FRONT_RIGHT",
-            "--named-cameras-only",
-            # The native driver's replan period: 30 control steps.
-            "--replan-every-us",
-            "1500000",
-            # Both must equal paddock_bridge_qwendrive.yaml's control step and
-            # force_gt_duration_us; a test checks they do.
-            "--frame-interval-us",
-            "50000",
-            "--force-gt-us",
-            "3000000",
-            # The node returns all 50 points it plans, 0.1 s apart, on AlpaSim.
-            "--waypoint-dt",
-            "0.1",
-            "--observe-between-replans",
-            "--canbus-ego-frame",
-            "--send-route",
-            "--send-scene-id",
-        ),
-        scenes_csv="public_2601_30scenes_26p01.csv",
-        replan_log=True,
-    ),
-    "alpamayo15": DriverProfile(
-        driver="paddock_bridge_alpamayo15",
-        bridge_args=(
-            # The node's names for the four cameras AlpaSim's Alpamayo driver
-            # reads. CAM_FRONT_TELE is the name model.yaml's camera_views
-            # already gives the telephoto slot.
-            "--camera-name",
-            "camera_front_wide_120fov=CAM_FRONT",
-            "--camera-name",
-            "camera_cross_left_120fov=CAM_FRONT_LEFT",
-            "--camera-name",
-            "camera_cross_right_120fov=CAM_FRONT_RIGHT",
-            "--camera-name",
-            "camera_front_tele_30fov=CAM_FRONT_TELE",
-            # Nothing else is decoded or sent.
-            "--named-cameras-only",
-            # The model's own rate: one plan every 100 ms, two control steps.
-            # The ticks between answer the last plan, re-timed and re-anchored.
-            "--replan-every-us",
-            "100000",
-            # Both must equal paddock_bridge_alpamayo15.yaml's control step and
-            # force_gt_duration_us; a test checks they do.
-            "--frame-interval-us",
-            "50000",
-            "--force-gt-us",
-            "3000000",
-            # The ticks between replans still reach the node, so its frames
-            # 0.1 s apart and its poses at every step all exist.
-            "--observe-between-replans",
-            # The route, for the navigation text the model conditions on, and
-            # the time of the rig frame it is in, so the node can move it into
-            # its newest pose's frame as AlpaSim's own Alpamayo driver does.
-            "--send-route",
-            "--send-route-time",
-            # The node returns all 64 points the model plans, 0.1 s apart; it
-            # is told so (plan_dt) rather than guessing it is on AlpaSim.
-            "--waypoint-dt",
-            "0.1",
-            "--send-plan-dt",
-        ),
-        scenes_csv="public_2601_30scenes_26p01.csv",
-        replan_log=True,
-    ),
-}
+#: The file, in a model's own folder (`adapters/models/<model>/`), that gives
+#: that model settings other than the default. A model without one gets
+#: DEFAULT_PROFILE. Each file says why its model needs what it sets.
+PROFILE_FILE = "alpasim.yaml"
+
+#: Every key a profile file must set. All four are required so that a typo or a
+#: forgotten key fails at load time instead of quietly driving the model on a
+#: default it was never meant to have.
+_PROFILE_KEYS = ("driver", "bridge_args", "scenes_csv", "replan_log")
+
+#: Keys a profile file may set. Any other key fails at load time.
+_OPTIONAL_PROFILE_KEYS = ("cameras",)
+
+
+class DriverProfileError(ValueError):
+    """A model's alpasim.yaml exists but does not describe a valid profile."""
+
+
+def profile_path(model: str) -> Path:
+    """Where `model`'s AlpaSim profile would be, whether or not it exists."""
+    return MODELS_DIR / model / PROFILE_FILE
+
+
+def load_profile(path: Path) -> DriverProfile:
+    """Read and check one profile file. Any problem names the file."""
+    try:
+        with path.open() as fh:
+            body = yaml.safe_load(fh)
+    except yaml.YAMLError as exc:
+        raise DriverProfileError(f"{path}: not valid YAML: {exc}") from exc
+    if not isinstance(body, dict):
+        raise DriverProfileError(f"{path}: must be a mapping of {', '.join(_PROFILE_KEYS)}")
+    unknown = sorted(set(body) - set(_PROFILE_KEYS) - set(_OPTIONAL_PROFILE_KEYS))
+    missing = [key for key in _PROFILE_KEYS if key not in body]
+    if unknown or missing:
+        parts = []
+        if unknown:
+            parts.append(f"unknown key(s) {', '.join(map(str, unknown))}")
+        if missing:
+            parts.append(f"missing key(s) {', '.join(missing)}")
+        raise DriverProfileError(
+            f"{path}: {'; '.join(parts)} (required: {', '.join(_PROFILE_KEYS)}; "
+            f"optional: {', '.join(_OPTIONAL_PROFILE_KEYS)})"
+        )
+    driver, bridge_args = body["driver"], body["bridge_args"]
+    scenes_csv, replan_log = body["scenes_csv"], body["replan_log"]
+    if not isinstance(driver, str) or not driver:
+        raise DriverProfileError(f"{path}: driver must be a non-empty string, got {driver!r}")
+    if not isinstance(bridge_args, list) or not all(isinstance(arg, str) for arg in bridge_args):
+        raise DriverProfileError(f"{path}: bridge_args must be a list of strings, got {bridge_args!r}")
+    if scenes_csv is not None and (not isinstance(scenes_csv, str) or not scenes_csv):
+        raise DriverProfileError(
+            f"{path}: scenes_csv must be a file name under scenes/ or null, got {scenes_csv!r}"
+        )
+    if not isinstance(replan_log, bool):
+        raise DriverProfileError(f"{path}: replan_log must be true or false, got {replan_log!r}")
+    cameras = body.get("cameras")
+    if "cameras" in body and (
+        not isinstance(cameras, list) or not all(isinstance(c, str) and c for c in cameras)
+    ):
+        raise DriverProfileError(f"{path}: cameras must be a list of camera names, got {cameras!r}")
+    return DriverProfile(
+        driver=driver,
+        bridge_args=tuple(bridge_args),
+        scenes_csv=scenes_csv,
+        replan_log=replan_log,
+        cameras=None if cameras is None else tuple(cameras),
+    )
+
+
+def has_profile(model: str) -> bool:
+    return profile_path(model).is_file()
 
 
 def profile_for(model: str) -> DriverProfile:
-    return DRIVER_PROFILES.get(model, DEFAULT_PROFILE)
+    """`model`'s own profile from its folder, or DEFAULT_PROFILE when it has none.
+
+    Only a missing file means the default. A file that is there but wrong raises
+    DriverProfileError naming it.
+    """
+    path = profile_path(model)
+    if not path.is_file():
+        return DEFAULT_PROFILE
+    return load_profile(path)
+
+
+def profiled_models() -> tuple[str, ...]:
+    """Every model folder that has a profile file, sorted."""
+    return tuple(sorted(path.parent.name for path in MODELS_DIR.glob(f"*/{PROFILE_FILE}")))
+
+
+def driver_config_paths(model: str, driver: str) -> tuple[Path, Path]:
+    """Where `driver` may live: this benchmark's configs, then the model's folder."""
+    return (
+        launcher.CONFIGS_DIR / "driver" / f"{driver}.yaml",
+        MODELS_DIR / model / "driver" / f"{driver}.yaml",
+    )
+
+
+def driver_searchpath(model: str, profile: DriverProfile) -> Path | None:
+    """The model's folder, when its driver config lives there; otherwise None.
+
+    None leaves the wizard command exactly as it was before a model could keep
+    its own driver config, so every model whose config is in this benchmark is
+    launched as before. AlpaSim's config loader searches this benchmark's
+    configs first, then this folder (launcher.wizard_command).
+    """
+    _, own = driver_config_paths(model, profile.driver)
+    return MODELS_DIR / model if own.is_file() else None
+
+
+def _is_global_package(path: Path) -> bool:
+    """Does this config's leading comment block carry Hydra's `# @package _global_`?
+
+    Hydra reads the package directive only from the comments at the top of the
+    file, before the first line of YAML.
+    """
+    for line in path.read_text().splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if not stripped.startswith("#"):
+            return False
+        if stripped.lstrip("#").split() == ["@package", "_global_"]:
+            return True
+    return False
+
+
+def cameras_reaching_node(bridge_args: tuple[str, ...]) -> set[str]:
+    """The paddock camera names the bridge sends under these flags.
+
+    The bridge sends each AlpaSim camera under AlpaSim's own id (such as
+    `camera_front_wide_120fov`) unless `--camera-name ID=NAME` renames it, and
+    `--placeholder NAME` adds a frame under NAME. A node keeps only the cameras
+    its model declares, by name, so a declared camera reaches it only through
+    one of those two flags.
+    """
+    names: set[str] = set()
+    args = list(bridge_args)
+    for i, arg in enumerate(args):
+        for flag in ("--camera-name", "--placeholder"):
+            if arg == flag and i + 1 < len(args):
+                value = args[i + 1]
+            elif arg.startswith(flag + "="):
+                value = arg[len(flag) + 1 :]
+            else:
+                continue
+            names.add(value.split("=", 1)[1] if flag == "--camera-name" and "=" in value else value)
+    return names
+
+
+def profile_problems(model) -> list[str]:
+    """Why `model` cannot be driven on AlpaSim as its folder describes, or [].
+
+    Checked before a dry run or any model starts: a profile that does not load,
+    a driver config or scene list that is not there, or a camera the model reads
+    that would never reach its node. The last is the silent failure: the model
+    would plan from poses alone and the run would still be scored.
+    """
+    name = model.name
+    try:
+        profile = profile_for(name)
+    except DriverProfileError as exc:
+        return [str(exc)]
+    problems: list[str] = []
+    in_benchmark, in_model = driver_config_paths(name, profile.driver)
+    if in_benchmark.is_file() and in_model.is_file():
+        problems.append(
+            f"{name}'s driver config {profile.driver!r} is both in {in_benchmark.parent} and in "
+            f"{in_model.parent}; AlpaSim would load the first. Rename the one in the model's folder"
+        )
+    elif not in_benchmark.is_file() and not in_model.is_file():
+        problems.append(f"{name}'s driver config {profile.driver!r} is neither {in_model} nor {in_benchmark}")
+    elif in_model.is_file() and not _is_global_package(in_model):
+        # Without the header Hydra nests the file under `driver.`, where no
+        # AlpaSim setting is read, so the run keeps the shared values silently.
+        problems.append(
+            f"{in_model} does not start with `# @package _global_`; without it AlpaSim would load it "
+            f"but ignore its settings (docs/adding-a-model.md, AlpaSim settings)"
+        )
+    if profile.scenes_csv is not None and not (SCENES_DIR / profile.scenes_csv).is_file():
+        problems.append(
+            f"{name}'s profile pins scenes in {SCENES_DIR / profile.scenes_csv}, which does not exist"
+        )
+    declared = tuple(model.cameras)
+    reads = declared if profile.cameras is None else profile.cameras
+    if extra := sorted(set(reads) - set(declared)):
+        problems.append(
+            f"{profile_path(name)}: cameras lists {', '.join(extra)}, which {name}'s model.yaml does not "
+            f"declare ({', '.join(declared) or 'none'})"
+        )
+    if missing := [c for c in reads if c not in cameras_reaching_node(profile.bridge_args)]:
+        why = (
+            f"{profile_path(name)} neither renames an AlpaSim camera to it (--camera-name) nor fills it "
+            f"(--placeholder)"
+            if has_profile(name)
+            else f"there is no {profile_path(name)} to rename AlpaSim's cameras to these names"
+        )
+        problems.append(
+            f"{name} reads {', '.join(missing)}, which would never reach its node on AlpaSim: {why}. "
+            f"Rename them in the model's alpasim.yaml, or set `cameras: []` there if it reads no image "
+            f"on AlpaSim (docs/adding-a-model.md, AlpaSim settings)"
+        )
+    return problems
 
 
 #: Metrics we lift out of a rollout record, mapped to canonical names.
@@ -489,14 +535,16 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
         }
 
     def model_run_config(self, model) -> dict[str, Any]:
-        """A model's profile, when it has one, so the run id and run.json say so.
+        """A model's profile, when it drives the model differently, so the run id and run.json say so.
 
-        Empty for the default profile, so a model without one records exactly
-        what it recorded before profiles existed.
+        Empty for a model with no profile, so it records exactly what it recorded
+        before profiles existed. Empty too for a profile that only says which
+        cameras the model reads (constant velocity's): that is a check made
+        before the run, and it changes nothing the bridge sends.
         """
-        if model.name not in DRIVER_PROFILES:
+        profile = profile_for(model.name)
+        if profile.drives_like_default():
             return {}
-        profile = DRIVER_PROFILES[model.name]
         return {
             "driver_profile": model.name,
             "driver_config": profile.driver,
@@ -506,6 +554,10 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
         }
 
     # -- preflight ---------------------------------------------------------
+
+    def input_problems(self, model) -> list[str]:
+        """What stops `model` being driven on AlpaSim; the runner asks before any dry run or launch."""
+        return profile_problems(model)
 
     def preflight(self) -> list[str]:
         """Everything that must hold before a model loads, checked cheaply."""
@@ -608,7 +660,7 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
         """One episode per scene, in the pinned order.
 
         Deterministic by construction: the order comes from the pinned YAML, not
-        from the filesystem, so `--limit` selects the same scenes at both sites.
+        from the filesystem, so `--limit` selects the same scenes at every site.
 
         `scenarios` is the scene *set* here -- AlpaSim has no scenario axis of
         its own, and `Episode.scenario` carries the set name so a run's episodes
@@ -781,7 +833,7 @@ class AlpaSimBenchmark(ClosedLoopBenchmark):
                 scene_id=episode.scene,
                 out_dir=out_dir,
                 bridge_port=bridge_port,
-                searchpath=None,
+                searchpath=driver_searchpath(model, profile),
                 driver=profile.driver,
                 startup_timeout_s=self.startup_timeout_s,
                 deploy=self.setting("deploy") or launcher.DEFAULT_DEPLOY,

@@ -7,6 +7,7 @@ satisfy. Per-kind detail is in [adding-a-model.md](adding-a-model.md) and
 ```bash
 paddock new model mymodel            # scaffold
 paddock new benchmark mybench --dataset mydata
+paddock setup --model mymodel        # clone its repo, build its environment
 paddock verify --model mymodel       # check the contract
 paddock verify --bench mybench
 paddock verify --explain             # what every check is for

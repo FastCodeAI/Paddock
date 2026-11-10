@@ -62,7 +62,7 @@ harness could read back. What the capability blocks say today:
 
 | Model | Rate driven | `model.yaml` says | |
 |---|---:|---|---|
-| Alpamayo 1.5 | 10 Hz | `native_input_hz: 10.0`, `waypoint_dt: 0.5` | matches |
+| Alpamayo 1.5 | 10 Hz | `native_input_hz: 10.0`, `waypoint_dt: 0.5`; since Nov 2026 `planning_hz: 10.0` | matches |
 | QwenDrive | 2 Hz | `native_input_hz: 10.0`, `waypoint_dt: 0.5` | `native_input_hz` describes its 10 Hz *ego-pose history*; its camera frames are picked 0.5 s apart, which is the 2 Hz cadence it was driven at |
 | DriveJEPA | 2 Hz | no `native_input_hz`; `waypoint_dt: 0.5` | 2 Hz is its planning cadence, not a declared field |
 
@@ -75,8 +75,9 @@ against the run — is follow-up work, not something this campaign settles.
 1/`planning_hz` seconds and follows the last plan unchanged in between, which is
 what this campaign did (the 10-frame holds above). The rate is recorded as
 `config.infer_hz`, and the host's `PADDOCK_INFER_HZ` still overrides it.
-Drive-JEPA declares 2 Hz; QwenDrive and Alpamayo declare none yet. The runs on
-this page were driven before that, on another branch, and were ingested.
+Drive-JEPA declares 2 Hz and Alpamayo 1.5 10 Hz (since Nov 2026); QwenDrive declares
+none yet. The runs on this page were driven before that, on another branch, and were
+ingested.
 
 ## Tracked runs
 
@@ -247,6 +248,10 @@ recorded differs by model, and the two halves are not equally strong:**
 route at 2 Hz in the same campaign and scores **100** (source run
 `20260918T050144-892d9d`). That distinguishes it from route 11715, which crashes
 CARLA for every model and is excluded from the route set entirely.
+Since 9 Nov 2026 3800 is among the routes set aside for every model as well: it
+crashed CARLA on all three attempts by Alpamayo 1.5 at 10 Hz in the 220-route runs
+([Routes set aside](bench2drive.md#routes-set-aside)). The records on this page were
+pooled before that, and keep it as a route lost.
 
 **But it is not independent of the variable under test.** Both models drove 3800
 to a score at 20 Hz — `alpamayo15` **35.33**, `qwendrive` **12.18**, in the

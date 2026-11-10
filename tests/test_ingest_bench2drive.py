@@ -16,7 +16,8 @@ from pathlib import Path
 
 import pytest
 
-from paddock.config import ConfigError, SiteConfig
+from paddock.adapters.benchmarks.bench2drive.harness import SET_ASIDE
+from paddock.config import BenchmarkOverride, ConfigError, SiteConfig
 from paddock.results import legacy, store
 from paddock.results.ingest import bench2drive
 
@@ -127,7 +128,8 @@ def test_written_run_record_names_no_machine_path(tmp_path: Path) -> None:
 
 
 def test_a_route_that_never_scored_is_expected_not_absent(tmp_path: Path) -> None:
-    """The 11715 case: every attempt crashed, and `routes` is unset.
+    """A route every attempt of which crashed, as 23695's did here before it was set aside,
+    and `routes` is unset.
 
     Before this was fixed the expected set was built from the samples that
     survived, so `missing` was empty by construction: the route left no trace in
@@ -135,18 +137,18 @@ def test_a_route_that_never_scored_is_expected_not_absent(tmp_path: Path) -> Non
     the mean silently came from a smaller route set.
     """
     root = _tree(tmp_path)
-    # Route 11715 in this repo's real trees: several attempts, every one of them
-    # with an empty `_checkpoint.records`.
+    # Several attempts, every one of them with an empty `_checkpoint.records`, as route
+    # 23695 had in this repo's real trees. Not set aside, so it is lost.
     for run in ("20260904T000000-dddddd", "20260905T000000-eeeeee"):
-        _write(root, run, "11715-Town12-EnterActorFlow", _unscored("11715"))
+        _write(root, run, "3248-Town13-ParkingCrossingPedestrian", _unscored("3248"))
 
     ((run, metrics, samples),) = bench2drive.ingest(root, model="modelx", site="s")
 
-    assert "11715" not in {s["native_id"]["route_id"] for s in samples}, "it did not score"
-    assert "11715" in run.config["routes_subset"], "but it was attempted, so it was expected"
+    assert "3248" not in {s["native_id"]["route_id"] for s in samples}, "it did not score"
+    assert "3248" in run.config["routes_subset"], "but it was attempted, so it was expected"
     assert run.dataset["n_expected"] == 4 and run.dataset["n_failed"] == 1
     assert run.status == "partial" and not run.valid
-    assert "11715" in run.notes and "did not score" in run.notes
+    assert "3248" in run.notes and "did not score" in run.notes
     assert metrics.n == 3, "the three routes that scored are what the mean is over"
 
 
@@ -192,21 +194,139 @@ def test_a_route_excluded_by_the_subset_and_never_scored_is_still_recorded(tmp_p
     assert list(run.config["routes_never_scored"]) == ["11715"]
     assert "20260905T000000-eeeeee" in run.config["routes_never_scored"]["11715"]
     assert "attempted outside the configured route subset" in run.notes
+    # The 50-route pools' case: a set aside route the list asked for none of is not
+    # "set aside" in this pool, so its config -- and run id -- are what they were.
+    assert "routes_set_aside" not in run.config
+
+
+def test_a_route_set_aside_is_neither_expected_nor_lost_and_says_why(tmp_path: Path) -> None:
+    """11715 fails in the simulator whichever model drives, so it measures no model.
+
+    It leaves the pool -- not expected, not lost, in no mean -- and the record names it
+    with its reason, while its attempts stay on the record as evidence.
+    """
+    root = _tree(tmp_path)
+    for run in ("20260904T000000-dddddd", "20260905T000000-eeeeee"):
+        _write(root, run, "11715-Town12-EnterActorFlow", _unscored("11715"))
+
+    ((run, metrics, _),) = bench2drive.ingest(root, model="modelx", site="s")
+
+    assert run.status == "complete" and run.valid
+    assert run.dataset["n_expected"] == 3 and run.dataset["n_failed"] == 0
+    assert run.config["routes_set_aside"] == ["11715"]
+    assert "11715" not in run.config["routes_subset"]
+    assert "11715" in run.config["routes_never_scored"], "its attempts are still evidence"
+    assert SET_ASIDE["11715"] in run.notes and "set aside for every model" in run.notes
+    assert "attempted outside the configured route subset" not in run.notes
+    assert metrics.n == 3
+
+
+def test_a_set_aside_route_that_scored_is_left_out(tmp_path: Path) -> None:
+    """A route set aside because it fails for another model is out of this one's pool too:
+    neither its sample nor its run's config enters it, so every mean is over the same routes.
+    That run was driven through another camera rig: had its config entered the pool, the pool
+    would not rank."""
+    root = _tree(tmp_path)
+    _write(root, "20260906T000000-ffffff", "11715-Town12-EnterActorFlow", _results_json("11715", 90.0, 100.0))
+    other = _source_run_json("modelx", [], {})
+    other["config"]["camera_rig"] = "kitscenes"
+    (root / "20260906T000000-ffffff" / "run.json").write_text(json.dumps(other))
+
+    ((run, metrics, samples),) = bench2drive.ingest(root, model="modelx", site="s")
+
+    assert "11715" not in {s["native_id"]["route_id"] for s in samples}
+    assert "20260906T000000-ffffff" not in run.config["source_runs"]
+    assert run.config["routes_set_aside"] == ["11715"]
+    assert metrics.n == 3 and run.valid
+    assert "11715 left out although it scored here" in run.notes
+
+
+def test_a_full_set_pool_names_a_set_aside_route_no_sweep_drove(tmp_path: Path) -> None:
+    """With every route of the file asked for, a route set aside is named although no attempt of
+    it exists, and a route never attempted is lost, not absent."""
+    root = _tree(tmp_path)
+    routes = ["1711", "2802", "24333", "11715", "9999"]
+    ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s", routes=routes)
+    assert run.config["routes_set_aside"] == ["11715"]
+    assert "routes_never_scored" not in run.config
+    assert run.dataset["n_expected"] == 4 and run.dataset["n_failed"] == 1
+    assert run.status == "partial" and "9999" in run.notes
+
+
+ROUTES_XML = """<routes>
+<route id="1711" town="Town12"><scenarios><scenario name="a" type="ParkingCutIn"/></scenarios></route>
+<route id="11715" town="Town12"><scenarios><scenario name="b" type="EnterActorFlow"/></scenarios></route>
+</routes>
+"""
+
+
+def test_routes_all_is_every_route_of_the_sites_routes_file(tmp_path: Path) -> None:
+    """`routes = "all"` asks for the routes file's every id; a bare string is refused by name, as
+    iterating it once asked for routes 1, 7, 1 and 1."""
+    data = tmp_path / "Bench2Drive" / "leaderboard" / "data"
+    data.mkdir(parents=True)
+    (data / "routes.xml").write_text(ROUTES_XML)
+    settings = {"repo": str(tmp_path / "Bench2Drive"), "routes_file": "routes.xml"}
+    cfg = _site(tmp_path, "", benchmarks={"bench2drive": BenchmarkOverride(settings)})
+    assert legacy._bench2drive_routes(cfg, {"routes": "all"}) == ["1711", "11715"]
+    assert legacy._bench2drive_routes(cfg, {"routes": ["1711", 2802]}) == ["1711", "2802"]
+    assert legacy._bench2drive_routes(cfg, {}) is None
+    with pytest.raises(ConfigError, match='list of route ids or "all"'):
+        legacy._bench2drive_routes(cfg, {"routes": "1711"})
+    with pytest.raises(ConfigError, match="needs \\[benchmarks.bench2drive\\] repo"):
+        legacy._bench2drive_routes(_site(tmp_path, ""), {"routes": "all"})
+
+
+def test_a_failure_record_gives_the_reason_a_route_never_scored(tmp_path: Path) -> None:
+    """A CARLA crash and an attempt cut off by a restart leave the same empty checkpoint;
+    the harness's failure.json says which."""
+    root = _tree(tmp_path)
+    folder = "3248-Town13-ParkingCrossingPedestrian"
+    _write(root, "20260904T000000-dddddd", folder, _unscored("3248"))
+    failure = {"kind": "carla_crash", "signal": 11, "game_time_s": 36.4, "returncode": -15}
+    (root / "20260904T000000-dddddd" / folder / "failure.json").write_text(json.dumps(failure))
+    ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s")
+    said = run.config["routes_never_scored"]["3248"]
+    assert said == "20260904T000000-dddddd: CARLA crashed (signal 11) at 36.4 s of game time"
+
+
+def test_an_attempt_cut_off_later_does_not_hide_the_failures_on_record(tmp_path: Path) -> None:
+    """Five crashes and then a cut-off attempt (route 11715's real trees): the reason is the crash."""
+    root = _tree(tmp_path)
+    folder = "3248-Town13-ParkingCrossingPedestrian"
+    failure = {"kind": "carla_crash", "signal": 11, "game_time_s": 36.4, "returncode": -15}
+    for run in ("20260904T000000-dddddd", "20260905T000000-eeeeee"):
+        _write(root, run, folder, _unscored("3248"))
+        (root / run / folder / "failure.json").write_text(json.dumps(failure))
+    _write(root, "20260906T000000-ffffff", folder, _unscored("3248"))  # cut off: no failure record
+    ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s")
+    said = run.config["routes_never_scored"]["3248"]
+    assert said == "20260905T000000-eeeeee: CARLA crashed (signal 11) at 36.4 s of game time"
+
+
+def test_without_a_failure_record_the_reason_is_the_parsers_unchanged(tmp_path: Path) -> None:
+    """routes_never_scored is hashed into the run id, so a stored record ingested again must read
+    exactly as it did."""
+    root = _tree(tmp_path)
+    _write(root, "20260904T000000-dddddd", "3248-Town13-ParkingCrossingPedestrian", _unscored("3248"))
+    ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s")
+    said = run.config["routes_never_scored"]["3248"]
+    assert said == "20260904T000000-dddddd: no records in _checkpoint (the route did not score)"
 
 
 def test_the_rejection_reason_names_the_run_and_no_machine_path(tmp_path: Path) -> None:
     """`notes` is tracked, so the reason may name a run id but never a disk."""
     root = _tree(tmp_path)
-    _write(root, "20260904T000000-dddddd", "11715-Town12-EnterActorFlow", _unscored("11715"))
+    _write(root, "20260904T000000-dddddd", "3248-Town13-ParkingCrossingPedestrian", _unscored("3248"))
     ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s")
     assert "20260904T000000-dddddd" in run.notes
-    assert str(tmp_path) not in run.notes and "/" not in run.notes.split("11715", 1)[1]
+    assert str(tmp_path) not in run.notes and "/" not in run.notes.split("3248", 1)[1]
 
 
 def test_an_unreadable_results_file_is_a_rejection_not_a_crash(tmp_path: Path) -> None:
     """One truncated file on a network mount used to abort the whole walk."""
     root = _tree(tmp_path)
-    truncated = root / "20260904T000000-dddddd" / "11715-Town12-EnterActorFlow" / "results.json"
+    truncated = root / "20260904T000000-dddddd" / "3248-Town13-ParkingCrossingPedestrian" / "results.json"
     truncated.parent.mkdir(parents=True)
     truncated.write_text('{"_checkpoint": {"records": [')
 
@@ -335,7 +455,7 @@ def _pooled_under(tmp_path: Path, declared: tuple[dict | None, dict | None]):
 
 
 def test_the_model_yaml_env_of_the_source_runs_reaches_the_pooled_record(tmp_path: Path) -> None:
-    """#99, one level up: the pooled config was rebuilt without `declared_env`."""
+    """The declared-env check, one level up: the pooled config was rebuilt without `declared_env`."""
     on = {"DRIVEJEPA_MOMENTUM": "on"}
     run = _pooled_under(tmp_path / "a", (on, on))
     assert run.config["declared_env"] == on
@@ -357,13 +477,13 @@ def test_source_runs_under_different_model_yaml_env_do_not_pool_into_one_ranked_
 
 
 def test_a_source_run_that_recorded_no_model_yaml_env_is_not_read_as_agreeing(tmp_path: Path) -> None:
-    """`_agreed` skips a missing value, so a pre-#99 run would take the others' env."""
+    """`_agreed` skips a missing value, so a run from before 21 Oct 2026 would take the others' env."""
     on = {"DRIVEJEPA_MOMENTUM": "on"}
     run = _pooled_under(tmp_path / "half", (None, on))
     assert not run.valid
     assert "1 of 2 source runs recorded no declared_env" in run.notes
 
-    # Every source run from before #99: nothing to compare, and the record is as it was.
+    # Every source run from before 21 Oct 2026: nothing to compare, and the record is as it was.
     old = _pooled_under(tmp_path / "old", (None, None))
     assert "declared_env" not in old.config
     assert old.valid, old.notes
@@ -483,14 +603,15 @@ def test_ranked_ranks_a_run_as_recorded_and_says_why(tmp_path: Path, monkeypatch
 def test_the_declared_rate_comes_from_the_registry() -> None:
     """planning_hz first; native_input_hz stands in for a model that declares no planning rate."""
     assert bench2drive._registered_native_hz("drivejepa") == (2.0, "planning_hz")
-    assert bench2drive._registered_native_hz("alpamayo15") == (10.0, "native_input_hz")
+    assert bench2drive._registered_native_hz("alpamayo15") == (10.0, "planning_hz")
+    assert bench2drive._registered_native_hz("qwendrive") == (10.0, "native_input_hz")
     assert bench2drive._registered_native_hz("no-such-model") is None
 
 
 # --- the site config is read by a stranger, so it fails by name --------------
 
 
-def _site(tmp_path: Path, toml: str) -> SiteConfig:
+def _site(tmp_path: Path, toml: str, benchmarks: dict | None = None) -> SiteConfig:
     source = tmp_path / "paddock.toml"
     source.write_text(toml)
     return SiteConfig(
@@ -500,7 +621,7 @@ def _site(tmp_path: Path, toml: str) -> SiteConfig:
         weights=tmp_path,
         datasets={},
         models={},
-        benchmarks={},
+        benchmarks=benchmarks or {},
         gpu=None,  # type: ignore[arg-type]
         source=source,
     )
@@ -604,6 +725,18 @@ def test_a_pool_whose_runs_override_a_setting_the_model_declares_does_not_rank(t
     assert _pooled_with(tmp_path / "b", (restated, restated)).valid
 
 
+def test_a_pool_keeps_ranking_on_a_setting_its_model_ranks_with_a_note(tmp_path: Path, monkeypatch) -> None:
+    """The same exception a `paddock run` has. Any other declared setting still stops the pool."""
+    monkeypatch.setattr(bench2drive, "_registered_ranked_with_note", lambda _model: ("X_VIEWS",))
+    declared = {"X_VIEWS": "ring", "X_MODE": "a"}
+    noted = {"declared_env": declared, "model_env": {"X_VIEWS": "replicate"}}
+    assert _pooled_with(tmp_path / "a", (noted, noted)).valid
+    both = {"declared_env": declared, "model_env": {"X_VIEWS": "replicate", "X_MODE": "b"}}
+    run = _pooled_with(tmp_path / "b", (both, both))
+    assert not run.valid
+    assert "X_MODE" in run.notes and "X_VIEWS" not in run.notes
+
+
 def test_a_pool_driven_on_another_camera_rig_names_it_and_does_not_rank(tmp_path: Path) -> None:
     """The rig is in each run's config only when it is not paddock's, so a pool of default-rig runs
     keeps its run id; another rig, or a mix, is recorded and does not rank."""
@@ -619,7 +752,7 @@ def test_a_pool_driven_on_another_camera_rig_names_it_and_does_not_rank(tmp_path
 
 
 def test_a_pool_asked_at_the_rate_its_model_declared_records_it_and_ranks(tmp_path: Path) -> None:
-    """Every run since #106 records how often the node was asked (`infer_hz`). AutoE2E's 50 routes
+    """Every run since 23 Oct 2026 records how often the node was asked (`infer_hz`). AutoE2E's 50 routes
     pooled without it: the record named no rate and took the run id of the same routes asked every
     tick. A recorded rate with no `planning_hz` beside it is the one the model declared, so the pool
     ranks -- judged from the runs, not from model.yaml as it is when the ingest runs."""
@@ -653,7 +786,7 @@ def test_a_pool_at_the_hosts_rate_at_two_rates_or_at_a_rate_not_known_does_not_r
 
 
 def test_the_old_rate_rule_reads_only_runs_that_recorded_no_rate(tmp_path: Path) -> None:
-    """Before #106 a rate reached the record only as PADDOCK_INFER_HZ in `model_env` (the September
+    """Before 23 Oct 2026 a rate reached the record only as PADDOCK_INFER_HZ in `model_env` (the September
     native-rate records). A run that recorded `infer_hz` is judged by that alone, so one record never
     says both that it was asked at the model's own rate and that it was off the protocol."""
     september = _pooled_with(tmp_path / "a", ({"model_env": {"PADDOCK_INFER_HZ": "2"}},) * 2)

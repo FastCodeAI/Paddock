@@ -295,6 +295,11 @@ SETTING_NUPLAN = "nuplan"
 #: history is itself 2 Hz (AutoE2E: eight frames 0.5 s apart) that is every frame it reads;
 #: the 10 Hz frames in between still carry the ego state. Off unless set.
 SETTING_KEYFRAME_CAMERAS = "keyframe_cameras"
+#: What `model_run_config` records about how a model's plans were made. A replay
+#: makes no plans, so `nodeless` takes these from the run it replays. Left as its
+#: pseudo-model's own, a replay of a 10 Hz nuPlan run said its plans came from
+#: 2 Hz OpenScene history.
+PLAN_SETTINGS = ("input_hz", "history_source", "history_s", "keyframe_cameras")
 CONF_DIR = Path(__file__).resolve().parent / "conf"
 SCORER = "navsim/planning/script/run_pdm_score_sequential.py"
 

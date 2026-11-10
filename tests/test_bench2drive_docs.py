@@ -1,7 +1,7 @@
 """The published Bench2Drive tables must still be what the records say.
 
-Two things are guarded here, both of which a reviewer had to recompute by hand
-on PR #21:
+Two things are guarded here, both of which a reviewer once had to recompute by
+hand:
 
 * **Every cell reproduces from the committed records.** The tables in
   `docs/benchmarks/bench2drive.md` (moved there from the README) are
@@ -26,7 +26,8 @@ from pathlib import Path
 
 import pytest
 
-from paddock.adapters.benchmarks.bench2drive.harness import every_tick
+from paddock.adapters.benchmarks.bench2drive.harness import SET_ASIDE, every_tick
+from paddock.registry import Registry, load_repos
 from paddock.results.ingest.bench2drive import _driven_off_protocol
 from tools.readme_figures import load_matrix, matrix_cell, rank
 
@@ -209,7 +210,7 @@ def test_entries_per_km_is_not_published(data: dict) -> None:
     # The claim is comparative, so assert it that way rather than against a bare
     # threshold: over the same rows the derived quantity varies by a few percent
     # while `below_100_percent`, the column that does carry the speed signal,
-    # varies several-fold. (Ten published rows now, so the flat 2% of PR #21 --
+    # varies several-fold. (Ten published rows now, so the flat 2% first used here --
     # five rows, 1.1% -- no longer states anything about the set being published.)
     signal = [
         s["below_100_percent"]
@@ -372,3 +373,94 @@ def test_a_cell_asked_at_its_own_rate_or_stopped_early_ranks_and_says_so() -> No
     own_rate_cells = {"drivejepa", "alpamayo15", "qwendrive", "meteor", "autoe2e"}
     assert own_rate_cells <= own_rated, f"own-rate cells checked: {sorted(own_rated)}"
     assert {"openpilot", "meteor", "autoe2e"} <= stopped, f"early-stopped cells checked: {sorted(stopped)}"
+
+
+def test_the_page_lists_exactly_the_routes_set_aside_with_the_code_s_reasons() -> None:
+    """The table under "Routes set aside" is the list the harness, the campaign and the ingest act on:
+    a route added to one and not the other would leave every 220-route record pooled under a list
+    nobody reading the page knows about."""
+    text = PAGE.read_text()
+    section = text.split("### Routes set aside", 1)[1].split("\n## ", 1)[0]
+    rows = [line.split("|")[1:-1] for line in section.splitlines() if re.match(r"^\| \d+ \|", line)]
+    listed = {cells[0].strip(): cells[2].strip() for cells in rows}
+    assert listed == SET_ASIDE
+
+
+# ---------------------------------------------------------------------------
+# The 220-route column: one protocol for every cell (issue #158)
+# ---------------------------------------------------------------------------
+
+
+def _column_220() -> tuple[int, list]:
+    columns, rows = load_matrix()
+    rank(columns, rows)
+    j = next(j for j, c in enumerate(columns) if c.key == "bench2drive220")
+    assert columns[j].benchmark == "bench2drive"
+    return j, [row for row in rows if row.cells[j].run]
+
+
+def test_the_220_route_column_is_one_protocol() -> None:
+    """Every cell of the 220-route column is the same experiment on the same routes: a cell made
+    differently is a different measurement, and ranking it beside the others says it is not."""
+    j, rows = _column_220()
+    aside = sorted(SET_ASIDE, key=lambda r: (len(r), r))
+    header = next(c.header for c in load_matrix()[0] if c.key == "bench2drive220")
+    assert f"{220 - len(aside)} of 220 routes" in header
+    registry, repos = Registry.load().models, load_repos()
+    hashes, stops = set(), []
+    for row in rows:
+        cell = row.cells[j]
+        record = json.loads((REPO_ROOT / "results" / cell.run / "run.json").read_text())
+        config, dataset = record["config"], record["dataset"]
+        assert record["valid"] and record["status"] == "complete", f"{cell.run}: {record['notes']}"
+        assert dataset["n_failed"] == 0 and dataset["n_expected"] == 220 - len(aside)
+        assert config["routes_file"] == "bench2drive220.xml"
+        assert config["routes_set_aside"] == aside, f"{cell.run}: pooled under another set-aside list"
+        hashes.add(dataset["sequences_sha256"])
+        stops.append(config.get("early_stop"))
+        declared = registry[row.key].planning_hz
+        assert config.get("infer_hz", 0.0) == (declared or 0.0), f"{cell.run}: not its model's own rate"
+        assert "planning_hz" not in config, f"{cell.run}: asked at the host's rate"
+        assert cell.rank is not None and "R" not in row.marks + cell.marks
+        if declared:
+            assert cell.qualifier == f"{declared:g} Hz", f"{row.key}: its rate is not named"
+        assert (REPO_ROOT / "results" / cell.run / "upstream_scores.json").is_file()
+        # A pooled record keeps no repo_sha: its notes are its only account of what drove it.
+        pin = repos[registry[row.key].repo].sha[:7]
+        assert pin in record["notes"], f"{cell.run}: the notes do not name {row.key}'s pinned commit {pin}"
+        assert re.search(r"\bPaddock [0-9a-f]{7}", record["notes"]), f"{cell.run}: no Paddock commit named"
+    assert rows, "the column has no cell to check"
+    assert len(hashes) == 1, "every cell is over the same routes"
+    assert all(s == stops[0] for s in stops) and stops[0]["stuck_s"] == 30.0
+    assert stops[0]["expert_factor"] == 4.0 and "collision" not in stops[0]
+
+
+def test_the_220_route_tables_reproduce() -> None:
+    """Each row of the page's 220-route tables is its matrix cell's record: paddock's means from
+    metrics.json, Bench2Drive's own figures from the upstream_scores.json beside it."""
+    j, rows = _column_220()
+    scores = {r[0]: r for r in _readme_table("### Bench2Drive — 220 routes")[1:]}
+    marker = "**Bench2Drive's five abilities, in % of the routes that count towards each:**"
+    abilities = {r[0]: r for r in _readme_table(marker)[1:]}
+    assert set(scores) == set(abilities) == {row.name for row in rows}, "one row per filled cell"
+    order = ["Merging", "Overtaking", "Emergency_Brake", "Give_Way", "Traffic_Signs"]
+    for row in rows:
+        run = row.cells[j].run
+        record = REPO_ROOT / "results" / run
+        m = json.loads((record / "metrics.json").read_text())["metrics"]
+        u = json.loads((record / "upstream_scores.json").read_text())["pooled"]
+        n = json.loads((record / "run.json").read_text())["dataset"]["n_samples"]
+        assert u["routes"] == n, f"{run}: upstream_scores.json is over other routes"
+        assert scores[row.name][1:] == [
+            f"{n}/220",
+            f"{m['driving_score']['mean']:.2f}",
+            f"{m['route_completion']['mean']:.2f}",
+            f"{m['infraction_penalty']['mean']:.3f}",
+            f"{100 * m['collision_rate']['mean']:.2f}",
+            f"{100 * u['success_rate']:.2f}",
+            f"{u['efficiency']:.2f}",
+            f"{100 * u['comfort']:.2f}",
+            f"`{run.split('/')[-1]}`",
+        ], row.name
+        shares = [f"{100 * u['abilities'][k]['score']:.2f}" for k in order]
+        assert abilities[row.name][1:] == [*shares, f"{100 * u['multi_ability_mean']:.2f}"], row.name

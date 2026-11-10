@@ -41,7 +41,9 @@ Pooling them is the openpilot equivalent of having a persisted
 being a refinement: in a 220-segment sample, **5 segments have no frame at all
 that passes the `straight_and_fast` gate** -- stop-and-go traffic where the car
 never holds 15 mph straight. Estimating per segment leaves those at `rpy = 0`,
-silently, and a zero calibration costs roughly 3x in cross-track error.
+silently, and a zero calibration costs roughly 3x in cross-track error
+(measured against the camera-frame ground truth used before the ground truth
+was rotated into the car's frame too).
 openpilot never hits this because it does not forget its calibration when the
 car slows down.
 

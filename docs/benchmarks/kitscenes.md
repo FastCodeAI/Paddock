@@ -1,5 +1,17 @@
 # KITScenes
 
+<!-- summary: written by `python -m tools.doc_summaries` from model.yaml, benchmark.yaml and repos.yaml -->
+
+| | |
+|---|---|
+| Loop | open loop |
+| Dataset | `kitscenes` |
+| Primary metric | `ade` |
+| Adapter | [`adapters/benchmarks/kitscenes/`](../../src/paddock/adapters/benchmarks/kitscenes/) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
+
+<!-- /summary -->
+
 Open-loop trajectory accuracy: ADE and FDE against the recorded future, over a
 fixed set of 223 keyframes.
 
@@ -194,7 +206,7 @@ otherwise see that event at the start of the history, not at the scored moment.
 Whether the hint changes anything is the model's business: one that never
 reads `obs.command` scores the same under either setting. openpilot is one of
 those unless its node is also told which desire a turn is sent as; see
-[the openpilot guide](../models/openpilot-guide.md#a-route-command-reaches-the-desire-input-only-when-asked).
+[the openpilot page](../models/openpilot.md#a-route-command-reaches-the-desire-input-only-when-asked).
 
 ## The camera ring
 
@@ -313,7 +325,7 @@ to its own run id with `front_camera` in its `config`. `ring` adds no key, so
 every run made before the setting existed keeps its id and `--resume`. The
 setting was added for the openpilot analysis of KITScenes, which warps a 55°
 cut of this camera; see
-[the openpilot guide](../models/openpilot-guide.md#a-view-tilted-over-the-cameras-and-cut-to-commas-size).
+[the openpilot page](../models/openpilot.md#a-view-tilted-over-the-cameras-and-cut-to-commas-size).
 
 **What is checked, and what is assumed.** Frame *i* of every camera is treated
 as the sample taken at pose *i*. That is how the dataset is written -- one frame
@@ -445,10 +457,9 @@ say so. `tests/test_policy.py::test_reset_clears_the_camera_adapter` does.
 
 The per-metric results behind this benchmark's column in the
 [README's support matrix](../../README.md#support-matrix), and the notes on its
-cells. Moved here from the README unchanged except for links; the symbols are
-the README's former footnote marks, and each note below starts with the mark it
-explains. Marks about a model rather than this benchmark (∗ ◊ ◇ ✦ ✧) are
-explained in [What these models are](../models/comparison.md#notes-moved-from-the-readme-support-matrix).
+cells. Each note below starts with the mark it explains. Marks about a model
+rather than this benchmark (∗ ◊ ◇ ✦ ✧) are explained in
+[What these models are](../models/comparison.md#notes-on-the-models).
 
 ### Notes on the matrix cells
 

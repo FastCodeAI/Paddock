@@ -22,17 +22,24 @@ acceleration come from the CAN bus where a source records them; KITScenes
 records speed only, so acceleration is differenced from it.
 
 *Views.* The model wants three cameras and `DrivingScene` refuses a missing
-slot, so a monocular source has to fill all three from one frame or not run at
-all. `QWENDRIVE_VIEWS` picks which: `ring` (the default, and the model as
-trained) takes one real camera per slot; `replicate` puts the true forward
-frame in all three; `crop` cuts overlapping thirds out of it. The mode also
-decides what the policy *declares*, so `cameras` always names exactly what
-`infer()` reads and a benchmark is never asked for a camera it does not have.
-Between the two monocular modes the measurement says replicate: 1.47 / 2.00 ADE
-on comma2k19's city and highway segments against crop's 1.78 / 2.13. That is
-choosing between two lies -- a replicated frame claims a bearing it does not
-have, a crop claims extrinsics a crop does not have -- and the measured one
-wins.
+slot, so every slot needs a frame. `QWENDRIVE_VIEWS` picks how they are filled:
+`ring` (the default, and the model as trained) takes one real camera per slot;
+`replicate` puts the true forward frame in all three; `crop` cuts overlapping
+thirds out of it. The mode also decides what the policy *declares*, so
+`cameras` always names exactly what `infer()` reads.
+
+Under `ring`, a side camera the source does not have gets black frames. That is
+how a monocular source such as comma2k19 runs: the forward camera in the
+forward slot, and nothing invented for a slot that means another direction. The
+model has no flag for a missing camera, so black is the closest it has to
+"empty". "Does not have" is strict -- the source describes its forward camera
+and sends neither an image nor a calibration for the side one -- so a camera
+that went missing from a source that has it (an image with no calibration, or
+the reverse) is still refused, and `diagnostics()` names every slot left black.
+`replicate` and `crop` remain for comparison: both put the forward image where
+the model expects a side, so neither is the default. Measured on comma2k19's
+city and highway segments, replicate scored 1.47 / 2.00 ADE and crop 1.78 /
+2.13.
 
 *Output.* 50 waypoints at 10 Hz become 10 on the 0.5 s grid, indices 4, 9, ...
 49 -- the vendor's own NAVSIM conversion (`qwen_drive.trajectory.resample_10hz_to_2hz`)
@@ -43,7 +50,7 @@ offered against horizons it labels honestly -- so emitting the full 5 s costs
 those four nothing and is the only way the fifth second is scored at all.
 
 *AlpaSim.* A body that carries a scene id comes from AlpaSim's bridge under the
-qwendrive profile (`harness.DRIVER_PROFILES`), which sends every 20 Hz tick, the
+qwendrive profile (`qwendrive/alpasim.yaml`), which sends every 20 Hz tick, the
 route, and forward and sideways speed in canbus. There the inputs are built the
 way Qwen-Drive's native AlpaSim driver built them, so a run through paddock is
 the same experiment as the native runs it is checked against:
@@ -134,9 +141,9 @@ DEFAULT_PLANNER = "planner-sft"
 MODES = ("direct", "reasoning")
 
 #: How the three view slots are filled. `ring` is the model as trained, one
-#: real camera per slot; the other two exist for a source that has a road
-#: camera and nothing else (comma2k19), where `DrivingScene`'s refusal to accept
-#: a missing view leaves no third option. See the module docstring for which.
+#: real camera per slot, with black frames for a side camera the source does not
+#: have (comma2k19's road camera alone). The other two fill the sides from the
+#: forward frame and remain for comparison. See the module docstring.
 VIEW_MODES = ("ring", "replicate", "crop")
 #: Width of each `crop` slice as a fraction of the frame. Overlapping thirds:
 #: the centre keeps the vanishing point, the sides keep the shoulders.
@@ -685,8 +692,29 @@ class QwenDrivePolicy(Policy):
         self.scene_id: str | None = None
         self.hold = CommandHold()
         self._last_route_command: str | None = None
+        #: Cameras this episode's source does not have, whose slots were left
+        #: black (see `_absent`). Reported by `diagnostics()`, so a run records
+        #: which of its views were real.
+        self.blank_views: set[str] = set()
 
     # ---- history --------------------------------------------------------
+
+    @staticmethod
+    def _absent(obs: Observation, camera: str) -> bool:
+        """Is `camera` a camera this source does not have, as opposed to one that went missing?
+
+        Only a source that describes its cameras can say one is absent:
+        comma2k19 calibrates its forward camera and sends nothing at all for
+        the sides. So a side camera counts as absent only when the forward
+        camera is described and the side one has neither an image nor a
+        calibration. A source that sends no calibrations, or a camera with a
+        calibration and no image, is a camera that went missing, and is refused.
+        """
+        front = NEEDED_CAMERAS[0]
+        described = front in obs.camera2image or front in obs.camera2ego
+        traced = camera in obs.image_paths or camera in obs.images
+        calibrated = camera in obs.camera2image or camera in obs.camera2ego
+        return camera != front and described and not traced and not calibrated
 
     def _record(self, obs: Observation) -> None:
         """Append one observation.
@@ -695,7 +723,9 @@ class QwenDrivePolicy(Policy):
         (KITScenes clamps its warm-up at the scene start) and is dropped: the
         history is resampled by time. Frames are kept as whatever the source
         gave -- a path on the open-loop benchmarks, decoded pixels in closed
-        loop -- and only the four that are used get opened.
+        loop -- and only the four that are used get opened. Under `ring`, a side
+        camera the source does not have is recorded as None, and `_scene` gives
+        its slot black frames.
         """
         if self.timestamps and obs.timestamp_us <= self.timestamps[-1]:
             return
@@ -722,10 +752,14 @@ class QwenDrivePolicy(Policy):
                 sources[camera] = obs.image_paths[camera]
             elif camera in obs.images:
                 sources[camera] = obs.images[camera]
+            elif self.views == "ring" and self._absent(obs, camera):
+                sources[camera] = None
+                self.blank_views.add(camera)
             else:
                 raise KeyError(
                     f"observation has no {camera} (has {sorted(obs.images) or sorted(obs.image_paths)}); "
-                    f"Qwen-Drive needs all of {list(self.cameras)}"
+                    f"Qwen-Drive needs {NEEDED_CAMERAS[0]}, and leaves a side view black only when the "
+                    "source describes its forward camera and sends neither an image nor a calibration for it"
                 )
         canbus = np.asarray(obs.canbus, dtype=np.float64)
         if canbus[CANBUS_ACCEL] or canbus[CANBUS_ACCEL + 1]:
@@ -832,7 +866,9 @@ class QwenDrivePolicy(Policy):
         """A `DrivingScene` from `scene_inputs` plus the four frames per view.
 
         A slot whose camera was never recorded is filled from the front frame,
-        the way `self.views` says. Crops go in as a loader rather than an image:
+        the way `self.views` says; under `ring`, a side camera the source does
+        not have is black, at the front frame's size so the slot costs the model
+        as many tokens as a real one. Crops go in as a loader rather than an image:
         `CameraFrame` accepts a callable and the processor decides when a frame
         is worth opening, so a source that sends paths -- every open-loop
         benchmark -- still decodes the four frames it reads and not the 160 it
@@ -859,11 +895,25 @@ class QwenDrivePolicy(Policy):
                 return Image.fromarray(source)
             return Image.fromarray(load_frame(source))
 
+        # The front frame's size, read once per scene by the first black slot
+        # that needs it; every front frame of one source has the same size.
+        front_size: list[tuple[int, int]] = []
+
         views: dict[str, list[Any]] = {}
         for camera, view in CAMERA_VIEWS:
             frames = []
             for index in indices:
                 record = self.frames[index]
+                if self.views == "ring" and record[camera] is None:
+                    # A camera this source does not have (`_absent`): black,
+                    # deferred like every other frame.
+                    def black(front: Any = record[NEEDED_CAMERAS[0]]) -> Any:
+                        if not front_size:
+                            front_size.append(open_image(front).size)
+                        return Image.new("RGB", front_size[0])
+
+                    frames.append(CameraFrame(black))
+                    continue
                 if self.views == "crop":
                     # The centre is cut too, not passed through whole: three
                     # slices of one width is the point, and a wide centre beside
@@ -993,6 +1043,9 @@ class QwenDrivePolicy(Policy):
             "mode": self.mode,
             "views": self.views,
             "cameras": list(self.cameras),
+            # The slots this source left black (see `_absent`), so a run records
+            # which of its views were real.
+            "blank_views": sorted(self.blank_views),
             "num_samples": self.num_samples,
             "attn": self.attn,
             "seed": self.seed,

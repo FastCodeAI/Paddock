@@ -7,7 +7,7 @@
 > benchmark-specific detail.
 
 Same shape as [adding a model](adding-a-model.md): one registry file, one new
-directory, no changes to `src/paddock/`.
+directory, a docs page and a README row, and no changes to `src/paddock/`.
 
 Two base classes cover most benchmarks (`OpenLoopBenchmark`, `ClosedLoopBenchmark`);
 a third, `ExternallyScoredBenchmark`, is for a scorer that owns its own iteration
@@ -33,8 +33,9 @@ place at every site. So a benchmark is declared in two halves — **what it need
 | 3 | `src/paddock/adapters/benchmarks/<name>/benchmark.yaml` | **create** — from `_template` |
 | 4 | `src/paddock/adapters/benchmarks/<name>/harness.py` | **create** |
 | 5 | `src/paddock/adapters/benchmarks/<name>/tests/test_harness.py` | **create** — golden test |
-| 6 | `docs/benchmarks/<name>.md` | **create** |
+| 6 | `docs/benchmarks/<name>.md` | **create**; `python -m tools.doc_summaries` writes its summary table |
 | 7 | `docs/datasets/<dataset>.md` | **create**, if the dataset is new to paddock |
+| 8 | `README.md` | **modify** — add a row to the benchmarks table, linking to the page in step 6; `make check` fails without it |
 
 If the benchmark uses a dataset that is already declared, skip step 1.
 
@@ -145,7 +146,7 @@ BENCHMARK = MyBenchmark
 ```
 
 - **`samples` must be deterministic.** `--limit 5` has to select the same five
-  samples at both sites, or two people comparing smoke tests reach different
+  samples at every site, or two people comparing smoke tests reach different
   conclusions and neither is wrong. Sort explicitly; never rely on the order the
   filesystem returns.
 - **`score` returns per-sample metrics, not aggregates.** Paddock aggregates, so
@@ -329,7 +330,7 @@ dataset page worth having rather than a second copy of the first:
   `{roots.runs}` with the command that regenerates it, not in the repo;
   `tests/test_portability.py` will reject the paths otherwise.
 
-[SKILLS.md](../SKILLS.md) is the companion to this page: not what to write, but
+[Troubleshooting](troubleshooting.md#bringing-up-a-new-model-or-benchmark) is the companion to this page: not what to write, but
 what went wrong writing it — vendored tools missing the flags you would reach
 for, quaternion conventions that need verifying against the data rather than the
 docs, and a `--dry-run` sample count that reads 0 for a new benchmark.

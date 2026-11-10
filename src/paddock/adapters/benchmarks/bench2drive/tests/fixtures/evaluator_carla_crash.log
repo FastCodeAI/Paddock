@@ -1,0 +1,11 @@
+=== [Agent] -- Wallclock = 2026-10-07 20:26:06.864 -- System time = 337.482 -- Game time = 53.500 -- Ratio = 0.159x
+=== [Agent] -- Wallclock = 2026-10-07 20:26:07.171 -- System time = 337.789 -- Game time = 53.550 -- Ratio = 0.159x
+=== [Agent] -- Wallclock = 2026-10-07 20:26:07.521 -- System time = 338.138 -- Game time = 53.600 -- Ratio = 0.159x
+=== [Agent] -- Wallclock = 2026-10-07 20:26:07.814 -- System time = 338.432 -- Game time = 53.650 -- Ratio = 0.159x
+Signal 11 caught.
+Malloc Size=65538 LargeMemoryPoolOffset=65554 
+4.26.2-0+++UE4+Release-4.26 522 0
+Disabling core dumps.
+CommonUnixCrashHandler: Signal=11
+Engine crash handling finished; re-raising signal 11 for the default handler. Good bye.
+Segmentation fault (core dumped)

@@ -6,7 +6,7 @@ from the car's measured state, and every PDM term is scored on the path that
 comes out (`navsim/evaluate/pdm_score.py`, `PDMSimulator.simulate_proposals`).
 The driven path is smoother than the plan, which matters most for comfort: on
 235 stored Drive-JEPA neuroNCAP decisions the raw plan failed comfort on 51
-that NAVSIM's simulated path passed (review of #102).
+that NAVSIM's simulated path passed.
 
 Ported line by line from NAVSIM v1 (Drive-JEPA's `navsim_v1` checkout;
 v2's simulator is the same code): `simulation/batch_lqr.py`,

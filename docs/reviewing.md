@@ -1,7 +1,7 @@
 # Reviewing a pull request
 
 How to review a paddock PR so that the number it eventually produces can be
-trusted by someone at the other site, on a machine you have never seen. This
+trusted by someone at another site, on a machine you have never seen. This
 complements the checklist in [CONTRIBUTING.md](../CONTRIBUTING.md); that list
 says *what* a PR must have, this page says *how to check it* and what has
 gone wrong before.
@@ -171,7 +171,7 @@ reads first:
 ## 10. Writing the review
 
 Every finding carries a severity marker, so the author can triage the review
-at a glance and a reader at the other site can tell a merge-blocker from a
+at a glance and a reader at another site can tell a merge-blocker from a
 preference without reading the argument.
 
 | Marker | Meaning | Merge rule |
@@ -187,7 +187,7 @@ Rules of thumb for the scale:
   🔴, however small the diff that fixes it.
 - If it only fails on the author's machine's absence (a module on their
   `PYTHONPATH`, a path in their shell), it is 🔴: the whole point of paddock is
-  the other site.
+  another site.
 - If the code is correct but the *record* of what ran is wrong (`run.json`
   claims three repetitions, or a scene id from another benchmark), it is 🟠.
 - Anything that could be a follow-up PR without changing a number is 🟡.

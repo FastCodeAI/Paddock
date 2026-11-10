@@ -9,12 +9,19 @@ statements about the same model run the same way.
 |---|---|---|---|
 | provenance | `results/<bench>/<model>/<run_id>/run.json` | **yes** | ~1 KB |
 | metrics | `results/<bench>/<model>/<run_id>/metrics.json` | **yes** | ~1 KB |
+| upstream's own scores (Bench2Drive's 220-route records only) | `results/bench2drive/<model>/<run_id>/upstream_scores.json` | **yes** | ~200 KB |
 | per-sample records | `{runs}/<bench>/<model>/<run_id>/samples.jsonl` | no | MB |
 | artifacts | `{runs}/<bench>/<model>/<run_id>/artifacts/` | no | GB |
 
 Metrics are committed so the leaderboard is reviewable in a diff and both
 organisations see one history. Predictions, frames and videos stay outside the
 repo.
+
+`upstream_scores.json` holds what Bench2Drive's own scripts say of a pooled record's
+routes -- per route and pooled: success, the five abilities and their mean, efficiency,
+comfort -- for comparison with published tables. It is written by
+`python -m tools.benchmarks.bench2drive.upstream_scores` and, like the rest, regenerated,
+never edited. Its pooled values are over the record's routes, as `metrics.json`'s are.
 
 `run_id` is `<UTC timestamp>-<short config hash>`, e.g. `20260901T031500-a1b2c3`.
 A run pooled from recordings has no single start, so the ingests name it after
@@ -49,7 +56,7 @@ Everything needed to decide whether two numbers are comparable.
 
 Three fields do the real work:
 
-- **`site`** — both organisations write into one history; without this a
+- **`site`** — many machines write into one history; without this a
   discrepancy is unattributable.
 - **`sequences_sha256`** — a hash of the sorted sample-id list. Two runs with
   different hashes evaluated different data, whatever their `n_samples` say. This
@@ -71,6 +78,11 @@ Three fields do the real work:
 - **`valid`** — set `false` with a `notes` explaining why, for runs known to be
   bad. Reporting excludes them and never silently averages them in. Deleting a
   bad run loses the record that it happened; marking it keeps it.
+- **`superseded_by`** — the later run that replaced this one, written only by
+  `paddock supersede`, which also sets `valid: false` and appends the reason to
+  `notes`. A bare run id is the same model's run on the same benchmark;
+  `<model>/<run id>` is another model's (`--by-model`), for a row that moves to
+  a different registry entry of the model.
 
 - **`provenance.paddock`** — the paddock checkout's commit (`sha`) and whether
   its tracked files were edited (`dirty`). A baseline measured on older adapter
@@ -215,7 +227,7 @@ The model's settings reach `config` the same way, in two keys:
 - **`declared_env`** — the env the model's own `model.yaml` sets under
   `runtime.env`, as written (`"{weights}/..."`, unexpanded, so the hash is the
   same at every site), without its tuning keys (`tuning_env`, thread counts,
-  `runner.LOCATION_ENV`). Recorded since #99. A run with no such key was made
+  `runner.LOCATION_ENV`). Recorded since 21 Oct 2026. A run with no such key was made
   before that, or under a `model.yaml` that declares only tuning keys; for the
   former it does not mean the model declared nothing.
 - **`model_env`** — a site's `[models.<name>] env` override, absolute paths as

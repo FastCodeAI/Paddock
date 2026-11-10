@@ -10,22 +10,34 @@ set -euo pipefail
 : "${PADDOCK_REPO:?run via 'paddock setup --model openpilot', which sets PADDOCK_REPO}"
 
 cd "${PADDOCK_REPO}"
+# The env goes where paddock will look for it (model.yaml's venv, or the
+# site's [models.openpilot] venv); uv sync honours UV_PROJECT_ENVIRONMENT.
+export UV_PROJECT_ENVIRONMENT="${PADDOCK_VENV:-${PADDOCK_REPO}/.venv}"
+PY="${UV_PROJECT_ENVIRONMENT}/bin/python"
 
 # openpilot vendors several repos as submodules (tinygrad, opendbc, panda, msgq).
 git submodule update --init --recursive --jobs 6
 
-uv sync --frozen --all-extras
+# Everything the lockfile names except libdatachannel-py, the WebRTC library
+# behind openpilot's teleoprtc (remote viewing). openpilot installs teleoprtc by
+# default, and libdatachannel-py ships wheels only for glibc 2.35 and newer, so
+# on a glibc 2.34 host (RHEL 9 and its rebuilds) the whole sync failed: "doesn't
+# have a source distribution or wheel for the current platform". Nothing paddock
+# runs imports it -- modeld, the policy node and this adapter never touch
+# teleoprtc -- so skipping it changes no plan. --frozen still installs the
+# locked version of everything else.
+uv sync --frozen --all-extras --no-install-package libdatachannel-py
 
 # paddock.policy.server (the HTTP node open- and closed-loop benchmarks both
 # talk to) runs inside this venv, not paddock's own -- so it needs fastapi and
 # uvicorn here too. openpilot's own pyproject.toml has no reason to know about
 # either, so this can't come from `uv sync`.
-uv pip install --python .venv/bin/python fastapi uvicorn
+uv pip install --python "${PY}" fastapi uvicorn
 
 # onnxruntime, for the ONNX backend (see policy.py). Needed whenever the
 # tinygrad JIT pickle cannot be built -- no GPU, no clang, or an unpopulated
 # tinygrad_repo -- and harmless otherwise.
-uv pip install --python .venv/bin/python onnxruntime
+uv pip install --python "${PY}" onnxruntime
 
 # The driving models are fetched by LFS. The 'big' variant costs ~766 MB and is
 # only used when PADDOCK_OPENPILOT_MODEL=big, so it is opt-in.

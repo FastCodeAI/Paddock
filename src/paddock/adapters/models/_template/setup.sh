@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build this model's environment from nothing, on a machine that has never run
-# it. This script is what makes the model runnable at the other site, so prefer
+# it. This script is what makes the model runnable at another site, so prefer
 # being explicit over being short.
 #
 #   bash src/paddock/adapters/models/<name>/setup.sh
@@ -17,7 +17,7 @@ set -euo pipefail
 : "${PADDOCK_REPO:?run this through 'paddock setup --model <name>', which sets PADDOCK_REPO}"
 : "${PADDOCK_VENV:=${PADDOCK_REPO}/.venv}"
 
-echo "building environment for template in ${PADDOCK_VENV}"
+echo "building environment for _template in ${PADDOCK_VENV}"
 
 cd "${PADDOCK_REPO}"
 
@@ -30,4 +30,4 @@ cd "${PADDOCK_REPO}"
 # a pinned CUDA version, a package that must NOT be installed, a build that
 # needs a compiler the OS does not ship. The next person will not guess it.
 
-echo "done. Verify with: paddock doctor --model template"
+echo "done. Verify with: paddock doctor --model _template"

@@ -22,21 +22,29 @@ from pathlib import Path
 
 import pytest
 
+from paddock.adapters.benchmarks.bench2drive import harness as harness_module
 from paddock.adapters.benchmarks.bench2drive.harness import (
     BENCHMARK,
     CONNECT_TIMEOUT_FLAG,
     CRASH_STATUSES,
     DEFAULT_CONNECT_TIMEOUT_S,
+    FAILURE,
+    GUARD_KILL,
     KILL_ALL_LINE,
+    SET_ASIDE,
     STOP_REQUEST,
     NotScored,
     carla_pids,
     carla_port_from_log,
+    classify_failure,
     ended_early,
+    failure_said,
     parse_results,
     parse_routes,
+    read_failure,
     reap_carla,
     select_routes,
+    simulator_side,
 )
 from paddock.benchmark import Episode
 from paddock.config import SiteConfig
@@ -221,6 +229,26 @@ def test_routes_subset_restricts_to_chosen_ids() -> None:
     assert len(list(select_routes(routes, subset=["1711", "1773"]))) == 2
 
 
+def test_set_aside_routes_are_skipped_unless_named_by_id() -> None:
+    """A route set aside for every model is driven only when --scene names it: naming its town
+    asks for the routes that are scored."""
+    routes = parse_routes(FIXTURES / "routes_sample.xml")
+    aside = {"1711"}
+    kept = [("1773", "Town12", "ParkedObstacle")]
+    assert list(select_routes(routes, set_aside=aside)) == kept
+    assert list(select_routes(routes, scenes=["Town12"], set_aside=aside)) == kept
+    assert list(select_routes(routes, scenes=["1711"], set_aside=aside)) == [
+        ("1711", "Town12", "ParkingCutIn")
+    ]
+
+
+def test_every_route_set_aside_names_its_reason_without_a_path() -> None:
+    """The reasons reach tracked notes, so they may name no disk; the ids are route ids."""
+    assert SET_ASIDE, "the 220-route records are pooled under this list"
+    for route, reason in SET_ASIDE.items():
+        assert route.isdigit() and reason.strip() and "/" not in reason
+
+
 # ---------------------------------------------------------------------------
 # the harness against a stand-in evaluator
 # ---------------------------------------------------------------------------
@@ -393,7 +421,7 @@ def test_camera_override_replaces_the_declared_rig(tmp_path, monkeypatch) -> Non
 def test_a_sim2real_diagnostic_is_on_the_record_and_does_not_rank(tmp_path, monkeypatch) -> None:
     """Either host switch changes what the model is shown, so a run with one names it in
     `run.json` (and so in the run id) and is never ranked as the model's score, even over
-    every route the site runs. Review #53 (1)."""
+    every route the site runs."""
     harness = _harness(_site(tmp_path, monkeypatch, COMPLETED))
     list(harness.episodes(None, runs=1))  # every route: not a subset
     assert harness.invalid_reasons() == []
@@ -414,7 +442,7 @@ def test_a_sim2real_diagnostic_is_on_the_record_and_does_not_rank(tmp_path, monk
 def test_a_scored_run_never_loads_segment_mode(load_agent, monkeypatch) -> None:
     """The client imports segment.py only when PADDOCK_SEGMENT is set. segment.py needs Pillow,
     which preflight does not check in the client interpreter: imported at the top of agent.py,
-    a site without it would pass preflight and then fail every route at import. Review #53 (2)."""
+    a site without it would pass preflight and then fail every route at import."""
     monkeypatch.setitem(sys.modules, "PIL", None)  # a client interpreter without Pillow
     monkeypatch.delitem(sys.modules, "paddock.adapters.benchmarks.bench2drive.segment", raising=False)
     monkeypatch.delenv("PADDOCK_SEGMENT", raising=False)
@@ -478,6 +506,173 @@ def test_a_timeout_is_reported_as_one_and_the_evaluator_is_killed(tmp_path, monk
     else:
         os.kill(pid, signal.SIGKILL)
         pytest.fail("the evaluator outlived its timeout")
+
+
+# ---------------------------------------------------------------------------
+# why an attempt failed, beside its results.json
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("timed_out", "returncode"), [(True, -9), (False, -15), (False, 255), (False, 0)])
+def test_a_carla_crash_is_named_from_the_log_however_the_attempt_ended(
+    tmp_path, timed_out, returncode
+) -> None:
+    """Route 11715's real log (fixtures/README.md): CARLA's crash handler at 53.65 s of game time.
+
+    After the crash the evaluator deadlocks in its shutdown, so the guard's kill (-15) or the
+    timeout ends it; neither may hide that CARLA crashed.
+    """
+    log = (FIXTURES / "evaluator_carla_crash.log").read_text()
+    record = classify_failure(
+        log, timed_out=timed_out, returncode=returncode, results_json=tmp_path / "r.json"
+    )
+    assert record["kind"] == "carla_crash" and record["signal"] == 11 and record["game_time_s"] == 53.65
+    assert simulator_side(record) is True
+    assert failure_said(record) == "CARLA crashed (signal 11) at 53.65 s of game time"
+
+
+HANGS_AFTER_A_CRASH = textwrap.dedent(
+    """\
+    print("=== [Agent] -- Wallclock = 2026-10-07 20:26:07.814 -- Game time = 53.650 -- Ratio = 0.159x")
+    print("CommonUnixCrashHandler: Signal=11", flush=True)
+    time.sleep(60)
+    """
+)
+
+
+@pytest.mark.parametrize(
+    ("body", "settings", "kind", "side"),
+    [
+        ("time.sleep(60)\n", {"per_route_timeout_s": "2"}, "timeout", None),
+        (COMPLETED + "sys.exit(255)\n", {}, "evaluator_exit", None),
+        ("os.remove(checkpoint)\n", {}, "no_results", None),
+        (f"import shutil\nshutil.copy({str(FIXTURES / 'results_agent_crashed.json')!r}, checkpoint)\n", {},
+         "not_scored", False),
+        (HANGS_AFTER_A_CRASH, {"per_route_timeout_s": "2"}, "carla_crash", True),
+    ],
+)  # fmt: skip
+def test_each_failure_leaves_its_kind_beside_results_json(
+    tmp_path, monkeypatch, body, settings, kind, side
+) -> None:
+    """What a sweep counts toward setting a route aside, and what it tells the operator to fix."""
+    cfg = _site(tmp_path, monkeypatch, body, **settings)
+    out = tmp_path / "out"
+    with pytest.raises(RuntimeError):
+        _harness(cfg).run_episode(_episode(), "http://127.0.0.1:9000", out)
+    record = read_failure(out)
+    assert record is not None and record["kind"] == kind and simulator_side(record) is side
+    assert "elapsed_s" in record and str(tmp_path) not in failure_said(record)
+
+
+@pytest.mark.parametrize(
+    ("status", "side"),
+    [
+        ("Failed - Simulation crashed", True),
+        ("Failed - Agent couldn't be set up", False),
+        ("Failed - Agent's sensors were invalid", False),
+    ],
+)
+def test_the_leaderboards_verdict_is_kept_when_the_evaluator_exits_255(
+    tmp_path, monkeypatch, status, side
+) -> None:
+    """The pinned evaluator exits -1 for a simulation crash and for an agent or sensors it could not set
+    up alike (leaderboard_evaluator.py at 7ec25d1), so whose failure it was is in results.json alone."""
+    body = f"json.dump({_record_with_status(status)!r}, open(checkpoint, 'w'))\nsys.exit(255)\n"
+    cfg = _site(tmp_path, monkeypatch, body)
+    out = tmp_path / "out"
+    with pytest.raises(RuntimeError, match="exited 255"):
+        _harness(cfg).run_episode(_episode(), "http://127.0.0.1:9000", out)
+    record = read_failure(out)
+    assert record["kind"] == "evaluator_exit" and record["status"] == [status]
+    assert simulator_side(record) is side and status in failure_said(record)
+
+
+def test_a_failure_says_whether_the_model_node_was_still_answering(tmp_path, monkeypatch) -> None:
+    """With the node gone, the next routes of the run fail as "Agent crashed" too: they failed the node,
+    and the record has to say so for the campaign to leave them out of a route's tries."""
+    import http.server
+    import threading
+
+    class Alive(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 -- the stdlib's name
+            self.send_response(200 if self.path == "/alive" else 404)
+            self.end_headers()
+            self.wfile.write(b"true")
+
+        def log_message(self, *args):
+            pass
+
+    body = f"import shutil\nshutil.copy({str(FIXTURES / 'results_agent_crashed.json')!r}, checkpoint)\n"
+    cfg = _site(tmp_path, monkeypatch, body)
+    with pytest.raises(RuntimeError, match="Agent crashed"):
+        _harness(cfg).run_episode(_episode(), f"http://127.0.0.1:{TEST_CARLA_PORT}", tmp_path / "gone")
+    gone = read_failure(tmp_path / "gone")
+    assert gone["node_alive"] is False and "node was not answering" in failure_said(gone)
+    server = http.server.HTTPServer(("127.0.0.1", 0), Alive)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        url = f"http://127.0.0.1:{server.server_port}"
+        with pytest.raises(RuntimeError, match="Agent crashed"):
+            _harness(cfg).run_episode(_episode(), url, tmp_path / "alive")
+    finally:
+        server.shutdown()
+    assert read_failure(tmp_path / "alive")["node_alive"] is True
+
+
+def test_a_carla_crash_before_the_first_tick_is_not_the_routes(tmp_path) -> None:
+    """With no game time CARLA died at boot or map load: the machine's, not the route's."""
+    log = "CommonUnixCrashHandler: Signal=11\n"
+    record = classify_failure(log, timed_out=False, returncode=-15, results_json=tmp_path / "r.json")
+    assert record["kind"] == "carla_crash" and simulator_side(record) is None
+
+
+def test_a_failure_record_that_cannot_be_written_does_not_end_the_run(tmp_path, monkeypatch) -> None:
+    """The runner catches RuntimeError only: a full disk at the record must not take the worker's run."""
+
+    def full(route_dir, record):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(harness_module, "write_failure", full)
+    cfg = _site(tmp_path, monkeypatch, "sys.exit(255)\n")
+    with pytest.raises(RuntimeError, match="exited 255"):
+        _harness(cfg).run_episode(_episode(), "http://127.0.0.1:9000", tmp_path / "out")
+
+
+def test_the_agents_crash_is_the_models_to_fix_not_a_reason_to_set_a_route_aside(tmp_path) -> None:
+    results = tmp_path / "results.json"
+    shutil.copy(FIXTURES / "results_agent_crashed.json", results)
+    record = classify_failure("", timed_out=False, returncode=0, results_json=results)
+    assert record["status"] == ["Failed - Agent crashed"] and simulator_side(record) is False
+    assert failure_said(record) == "not scored (Failed - Agent crashed)"
+
+
+def test_a_scored_route_leaves_no_failure_record_and_a_stale_one_is_cleared(tmp_path, monkeypatch) -> None:
+    cfg = _site(tmp_path, monkeypatch, COMPLETED)
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / FAILURE).write_text('{"kind": "carla_crash"}')
+    (out / GUARD_KILL).write_text('{"reason": "an earlier attempt"}')
+    _harness(cfg).run_episode(_episode(), "http://127.0.0.1:9000", out)
+    assert not (out / FAILURE).exists() and not (out / GUARD_KILL).exists()
+    assert read_failure(out) is None
+
+
+def test_the_guards_reason_reaches_the_failure_record(tmp_path, monkeypatch) -> None:
+    """The guard writes its reason before it kills; a CARLA found gone is the simulator's failure."""
+    body = textwrap.dedent(
+        """\
+        guard = {"reason": "its CARLA (port 2000) is gone", "carla_gone": True}
+        open(os.path.join(out, "guard.json"), "w").write(json.dumps(guard))
+        sys.exit(-15 & 0xFF)
+        """
+    )
+    cfg = _site(tmp_path, monkeypatch, body)
+    out = tmp_path / "out"
+    with pytest.raises(RuntimeError):
+        _harness(cfg).run_episode(_episode(), "http://127.0.0.1:9000", out)
+    record = read_failure(out)
+    assert record["guard"] == "its CARLA (port 2000) is gone" and simulator_side(record) is True
+    assert failure_said(record).endswith("; the guard killed it: its CARLA (port 2000) is gone")
 
 
 def test_carla_is_found_by_the_port_it_printed_and_reaped_after_a_timeout(tmp_path, monkeypatch) -> None:
@@ -662,13 +857,36 @@ def test_a_site_sets_the_connect_timeout(tmp_path, monkeypatch) -> None:
 
 
 def test_a_route_subset_given_on_the_command_line_is_not_a_score(tmp_path, monkeypatch) -> None:
-    """Review #80 (6): a 7-route smoke was stored valid: true and ranked beside 50-route runs."""
+    """A 7-route smoke was stored valid: true and ranked beside 50-route runs."""
     harness = _harness(_site(tmp_path, monkeypatch, COMPLETED))
     list(harness.episodes(None, runs=1))
     assert harness.invalid_reasons() == []
     list(harness.episodes(["1773"], runs=1))
     (reason,) = harness.invalid_reasons()
     assert "1 of the 2 routes" in reason and "subset" in reason
+
+
+def test_a_full_run_is_the_set_less_the_routes_set_aside(tmp_path, monkeypatch) -> None:
+    """Every route but the set aside ones is the whole set, not a subset, and the record
+    names the ones left out by id, with why in the notes."""
+    monkeypatch.setattr(harness_module, "SET_ASIDE", {"1711": "a stand-in reason"})
+    harness = _harness(_site(tmp_path, monkeypatch, COMPLETED))
+    assert [e.scene for e in harness.episodes(None)] == ["1773"]
+    assert harness.invalid_reasons() == []
+    assert harness.run_config()["routes_set_aside"] == ["1711"]
+    (remark,) = harness.remarks()
+    assert "1711: a stand-in reason" in remark and "set aside for every model" in remark
+
+
+def test_a_run_that_drives_a_set_aside_route_does_not_rank(tmp_path, monkeypatch) -> None:
+    """Naming one with --scene drives it, to see whether it still fails: not a score, even when
+    every other route ran too, and its notes do not say the route it drove was left out."""
+    monkeypatch.setattr(harness_module, "SET_ASIDE", {"1711": "a stand-in reason"})
+    harness = _harness(_site(tmp_path, monkeypatch, COMPLETED))
+    assert [e.scene for e in harness.episodes(["1711", "1773"])] == ["1711", "1773"]
+    (reason,) = harness.invalid_reasons()
+    assert "set aside" in reason and "1711" in reason
+    assert harness.remarks() == []
 
 
 def test_the_sites_own_routes_subset_is_the_full_set(tmp_path, monkeypatch) -> None:
@@ -994,6 +1212,9 @@ def test_the_models_planning_rate_reaches_the_client_and_the_record(tmp_path, mo
     assert harness.model_run_config(models["drivejepa"]) == {"infer_hz": 2.0}
     assert harness.model_run_config(models["autoe2e"]) == {"infer_hz": 10.0}, "its own 10 Hz, no site pairing"
     assert harness.model_run_config(models["meteor"]) == {"infer_hz": 5.0}, "its frames are stored at 5 Hz"
+    assert harness.model_run_config(models["alpamayo15"]) == {"infer_hz": 10.0}, (
+        "frames and poses 0.1 s apart"
+    )
     assert harness.model_run_config(models["openpilot"]) == {}, "no planning_hz: asked every tick"
     episode = _episode()
     episode.config["planning_hz"] = 2.0
@@ -1032,3 +1253,5 @@ def test_the_hosts_rate_in_place_of_the_models_own_is_recorded_and_does_not_rank
     config, (reason,) = drive("drivejepa", "10")
     assert config == {"infer_hz": 10.0, "planning_hz": 2.0} and "at 10 Hz" in reason
     assert drive("drivejepa", None) == ({"infer_hz": 2.0}, []), "the next run of the harness starts clean"
+    # Alpamayo 1.5's ranked 10 Hz cell was driven exactly so: now its own rate, and it ranks.
+    assert drive("alpamayo15", "10") == ({"infer_hz": 10.0}, [])

@@ -69,7 +69,8 @@ line, for a reader.
 
 Model identity. A site `[models.X] env` override such as `DRIVEJEPA_CHECKPOINT` is
 recorded in run.json as `config.model_env` (absolute paths as `<site path:digest>`) and
-makes the run `valid: false` unless the key is tuning-only (#82). Nothing stops a
+makes the run `valid: false` unless the key is tuning-only or the model lists it in
+`ranked_with_note`. Nothing stops a
 "candidate" that is the same checkpoint as its baseline, so `compare` prints both runs'
 model_env and says when they match.
 """
@@ -404,6 +405,9 @@ SUBSET_KEYS = frozenset(
         "scene",
         "runs",
         "routes_subset",
+        # Bench2Drive's routes set aside for every model: which routes are in the set, so a
+        # baseline from before a route was set aside still pairs on the routes both drove.
+        "routes_set_aside",
         "scene_set",
         "merged_from",
         # A re-scored run (tools/benchmarks/neuroncap/pdm_rescore.py) names the
@@ -461,8 +465,8 @@ def lost_samples(run: Run) -> int:
 def code_notes(baseline: Run, candidate: Run) -> list[str]:
     """What the runs' provenance says about the code each was measured with.
 
-    The same model name on older adapter code is another measurement (PR #93
-    changed what AlpaSim sends every model), and the gate would put the
+    The same model name on older adapter code is another measurement (a change on
+    21 Oct 2026 altered what AlpaSim sends every model), and the gate would put the
     difference on the candidate. Notes, not a verdict: a code change can be
     exactly what the candidate is.
     """
@@ -568,7 +572,7 @@ def declared_env_notes(baseline: Run, candidate: Run) -> list[str]:
 
     Like a code change, a changed `model.yaml` is something a candidate is meant
     to test, so it is a note rather than CONFIG DIFFERS. A run with no
-    `declared_env` was made before it was recorded (#99), or under a model.yaml
+    `declared_env` was made before it was recorded, or under a model.yaml
     that declared only tuning keys; that is said rather than read as "the same".
     """
     recorded = [(r.run.get("config") or {}).get("declared_env") for r in (baseline, candidate)]
@@ -576,7 +580,7 @@ def declared_env_notes(baseline: Run, candidate: Run) -> list[str]:
         return []
     if None in recorded:
         who = "baseline" if recorded[0] is None else "candidate"
-        return [f"the {who} records no config.declared_env (made before #99, or none declared)"]
+        return [f"the {who} records no config.declared_env (made before 21 Oct 2026, or none declared)"]
     a, b = recorded
     keys = sorted(k for k in a.keys() | b.keys() if a.get(k) != b.get(k))
     return [f"model.yaml env differs: {k} {a.get(k)!r} -> {b.get(k)!r}" for k in keys]
@@ -688,7 +692,7 @@ def _compare(
         result.notes.append(f"no per-sample records on this site for: {', '.join(missing)}")
         # A candidate with no records because it failed on every sample (the quick
         # tier's one-route crash check that crashed) is INCOMPLETE, which stops the
-        # gate. NO RECORDS let the closed tier's hours run after it (review of #113, 1).
+        # gate. NO RECORDS let the closed tier's hours run after it.
         if not candidate.samples and (lost := lost_samples(candidate)):
             result.verdict = "INCOMPLETE"
             result.notes.append(f"candidate lost every sample ({lost}) to a failure")
@@ -817,7 +821,7 @@ def overall(results: list[PairResult], unfinished: list[str] | None = None) -> s
     A GAIN beside a benchmark that was never compared is not a reason to ship:
     the uncompared one could be where the candidate broke. A crash check is one
     sample and always TOO FEW UNITS; one that ran cleanly is left out of that rule
-    (with it in, `--tier all` could never ship: review of #113, 2). One that failed
+    (with it in, `--tier all` could never ship). One that failed
     (INCOMPLETE) or was not compared still holds.
     """
     if any(r.verdict == "REGRESSION" for r in results):
@@ -1088,7 +1092,7 @@ SMOKE_ORDER = TIERS["quick"] + TIERS["closed"]
 #: sorts by. KITScenes, nuScenes, NAVSIM and neuroncap_quick from the queue on
 #: 2026-10-23 (NAVSIM 48 on that busy evening, 13 on the quiet 2026-10-20;
 #: neuroncap_quick 15 to 47); Bench2Drive's 7 routes 96 on 2026-10-20. The others
-#: are estimates until timed: bench2drive_quick and alpasim_quick (PR #113), the
+#: are estimates until timed: bench2drive_quick and alpasim_quick, the
 #: 15-pair neuroncap, AlpaSim's 10 scenes.
 EXPECTED_MIN = {
     "kitscenes": 7,
@@ -1632,6 +1636,10 @@ def smoke_manifest(
 
 #: How long one launch may wait for GPU memory before the smoke gives up on it.
 GPU_WAIT_S = 12 * 3600
+#: How long a launch whose card has just freed first waits for a running lane to exit. A run frees
+#: the card when its model node stops, then writes its results and exits: a lane that is finishing
+#: exits well within this, and a card someone else freed delays the launch by no more than this.
+LANE_EXIT_S = 300.0
 
 
 def _gpu_free_gb(env: dict[str, str]) -> float | None:
@@ -1676,7 +1684,7 @@ def stage_env(env: dict[str, str], stage_dir: Path, echo: Callable[[str], None] 
     path. A copy is reused only while its size and modification time equal the
     source's (`copy2` keeps the time): an older step restored over the same path
     with `cp -p` was otherwise skipped as "not newer". Symlinks are resolved first,
-    so the files under 1 MB that come along (gallops writes `checkpoint.json`) are
+    so the files under 1 MB that come along (a training run may write `checkpoint.json`) are
     the checkpoint's own neighbours, not the link's. `<KEY>_SOURCE` records the
     path that was named, so the run's `model_env` still says which file it measured.
     """
@@ -1933,6 +1941,9 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
     done = {s.name for s in steps if s.status == "finished"}
     stop = ""
     gpu_wait_since: float | None = None
+    # The lanes running when a wait for GPU memory began, and when the card freed during it.
+    wait_lanes: set[int] = set()
+    freed_at: float | None = None
 
     def finish(lane: _Lane) -> None:
         nonlocal stop
@@ -1990,7 +2001,7 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
                 # Every simulator now keeps its lane's cores: neuroNCAP's renderer and
                 # CARLA as the lane's children, AlpaSim's containers because its
                 # launcher pins them (`ContainerPinner`). Until it did, AlpaSim ran
-                # beside no other simulator (review of #111, 2).
+                # beside no other simulator.
                 or any(b.bench == nxt.bench or tier_of[b.name] != tier_of[nxt.name] for b in busy)
             )
             if blocked:
@@ -2018,8 +2029,10 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
             need = smoke_need_gb(nxt.bench, models[args.model].vram_gb, nodes) + held
             free = _gpu_free_gb(step_env)
             if free is not None and free < need:
+                freed_at = None
                 if gpu_wait_since is None:
                     gpu_wait_since = time.time()
+                    wait_lanes = {id(lane) for lane in lanes if lane.proc is not None}
                     for_sims = f", {held:.0f} GB of it held for running simulators" if held else ""
                     echo(
                         f"  {nxt.name}: waiting for {need:.0f} GB of free GPU memory{for_sims} "
@@ -2031,7 +2044,21 @@ def smoke(args: argparse.Namespace, echo: Callable[[str], None] = _say) -> int:
                     )
                 time.sleep(POLL_S)
                 continue
-            gpu_wait_since = None
+            if gpu_wait_since is not None:
+                # The card freed while this waited. A run frees it when its model node stops and
+                # only then writes its results and exits, so the likeliest reason is a lane that is
+                # finishing and cannot be judged yet. Launching on the free card alone started
+                # kitscenes after nuScenes had regressed. So while every lane that was running when
+                # the wait began still runs, wait for one of them to exit -- the loop reaps it above,
+                # and its regression stops this launch -- or for LANE_EXIT_S if none does, when
+                # someone else freed the card. A lane that has already exited, and been judged,
+                # explains the free card, and the launch goes at once.
+                running = {id(lane) for lane in lanes if lane.proc is not None}
+                freed_at = freed_at or time.time()
+                if wait_lanes and wait_lanes <= running and time.time() - freed_at < LANE_EXIT_S:
+                    time.sleep(POLL_S)
+                    continue
+            gpu_wait_since = freed_at = None
             pending.pop(0)
             command = list(nxt.command)
             if command[:2] == ["taskset", "-c"]:

@@ -618,8 +618,8 @@ class VisionPilotPolicy(Policy):
         tick -- so the episode-start latch neuroNCAP and Bench2Drive rely on is
         unchanged. The server's ``/observe`` would reach it mid-episode and clear
         the set-speed there; only the AlpaSim bridge calls ``/observe``, for
-        Drive-JEPA alone. Issue #94 would send every model's in-between frames
-        to it, and has to decide this first.
+        Drive-JEPA alone. Sending every model's in-between frames to it would
+        have to decide this first.
         NAVSIM *does* go through `/infer_sequence`, so its history is shorter but
         this applies there too: the recorded EPDMS 0.431 was measured under the
         old behaviour and a re-run will not reproduce it.

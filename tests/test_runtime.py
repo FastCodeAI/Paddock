@@ -548,7 +548,7 @@ def test_a_launch_checks_the_memory_again_once_it_holds_the_lock(tmp_path, monke
 
 
 def test_a_launch_goes_ahead_when_nvidia_smi_stops_answering_under_the_lock(tmp_path, monkeypatch) -> None:
-    """Review of #100 (2): no reading under the lock counted as 0 GB free, so the launch looped forever."""
+    """No reading under the lock counted as 0 GB free, so the launch looped forever."""
     from paddock.runtime import lease, proc
 
     monkeypatch.setenv(lease.LOCK_DIR_ENV, str(tmp_path / "locks"))
@@ -577,7 +577,7 @@ def test_a_launch_with_no_card_or_no_memory_need_takes_no_lock(tmp_path, monkeyp
 
 
 def test_every_user_locks_the_same_folder_whatever_their_tmpdir(tmp_path, monkeypatch) -> None:
-    """Review of #100 (5): the lock folder followed TMPDIR, so a user who set it locked alone."""
+    """The lock folder followed TMPDIR, so a user who set it locked alone."""
     import tempfile
 
     from paddock.runtime import lease
@@ -589,7 +589,7 @@ def test_every_user_locks_the_same_folder_whatever_their_tmpdir(tmp_path, monkey
 
 
 def test_a_model_node_lets_go_of_the_gpu_lock_once_it_is_ready(tmp_path, monkeypatch) -> None:
-    """Review of #100 (6): nothing failed if the node kept the lock for its whole run,
+    """Nothing failed if the node kept the lock for its whole run,
     which would make every other launch on the card wait for this run to end."""
     import fcntl
     import os

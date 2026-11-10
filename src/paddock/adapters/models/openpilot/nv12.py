@@ -1,8 +1,7 @@
 """NV12 packing for openpilot's model input.
 
-Rescued from `openpilot/eval_kitscenes/loader.py`, where it sat in the
-open-loop harness and was imported across repos by the closed-loop node. It is
-model-specific, so it belongs to the model.
+Moved here from an earlier open-loop harness, which the closed-loop node
+imported across repos. It is model-specific, so it belongs to the model.
 """
 
 from __future__ import annotations

@@ -166,12 +166,31 @@ def _observation(t_s: float, speed: float = 3.0, accel: float = -1.0) -> Observa
 
 
 def test_the_stage_is_given_the_ego_status_the_model_is_given() -> None:
-    """Pose from ego2world; speed and acceleration as `_agent_input` writes them."""
-    pose, velocity, acceleration, time_us = POLICY._ego_now(_observation(2.5))
+    """Pose from ego2world; speed and acceleration as `_agent_input` writes them.
+
+    `forward` records the observation before asking for it, so the stage reads
+    the acceleration of that record: the source's channel here.
+    """
+    policy = POLICY(checkpoint="/x.ckpt")
+    obs = _observation(2.5)
+    policy.observe(obs)
+    pose, velocity, acceleration, time_us = policy._ego_now(obs)
     np.testing.assert_allclose(pose, [12.0, -4.0, np.pi / 2])
     np.testing.assert_allclose(velocity, [3.0, 0.0])
     np.testing.assert_allclose(acceleration, [-1.0, 0.0])
     assert time_us == 2_500_000
+
+
+def test_without_an_acceleration_channel_the_stage_gets_the_derived_one() -> None:
+    """A source that never fills the channel gets the slope of its speed, in the
+    model's row and the stage's alike -- never the zero it sent."""
+    policy = POLICY(checkpoint="/x.ckpt")
+    for tick in range(11):  # 0.5 s at 20 Hz, speed rising 1.5 m/s^2
+        obs = _observation(10.0 + tick / 20, speed=8.0 + 1.5 * tick / 20, accel=0.0)
+        policy.observe(obs)
+    _, _, acceleration, _ = policy._ego_now(obs)
+    np.testing.assert_allclose(acceleration, [1.5, 0.0], atol=1e-6)
+    assert acceleration[0] == np.float32(policy._accel(policy.history[-1]))
 
 
 def test_momentum_is_off_unless_asked_for(monkeypatch) -> None:

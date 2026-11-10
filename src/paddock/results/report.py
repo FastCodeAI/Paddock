@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from pathlib import Path
 
+from paddock.registry import ModelSpec, load_models
 from paddock.results.store import RESULTS_ROOT, MetricsRecord, RunRecord, load_runs
 
 #: Metric families where a smaller number is a better one.
@@ -90,6 +91,40 @@ def _fmt(value: float | None) -> str:
     return "-" if value is None else f"{value:.3f}"
 
 
+def score_notes(run: RunRecord, models: dict[str, ModelSpec]) -> list[str]:
+    """What a reader of this run's row must know, from its model's `score_notes`.
+
+    Read here from `config.model_env`, already on every run, so a stored run
+    needs no rewrite to carry one. A value equal to the declared default is not
+    an override, as in `runner._env_override_reasons`: a run that restates
+    `QWENDRIVE_VIEWS=ring` is the model as trained.
+    """
+    spec = models.get(run.model)
+    if spec is None:
+        return []
+    env = run.config.get("model_env") or {}
+    return [
+        text.replace("{value}", str(env[key]))
+        for key, text in spec.score_notes.items()
+        if key in env and env[key] != spec.runtime.env.get(key)
+    ]
+
+
+def _scene_sets(
+    entries: list[tuple[RunRecord, MetricsRecord]],
+) -> list[tuple[str, list[tuple[RunRecord, MetricsRecord]]]]:
+    """A benchmark's rows by the exact scenes they ran, the largest set first.
+
+    A mean over ten scenes is not comparable to a mean over thirty: AlpaSim's
+    constant-velocity floor is 0.885 on one and 0.488 on the other, so one
+    ranking of both puts a model's easy scenes above another's hard ones.
+    """
+    sets: dict[str, list[tuple[RunRecord, MetricsRecord]]] = defaultdict(list)
+    for run, metrics in entries:
+        sets[run.dataset.get("sequences_sha256") or ""].append((run, metrics))
+    return sorted(sets.items(), key=lambda item: (-max(m.n for _, m in item[1]), item[0]))
+
+
 def markdown(root: Path = RESULTS_ROOT, include_invalid: bool = False) -> str:
     runs = load_runs(root)
     if not runs:
@@ -98,6 +133,7 @@ def markdown(root: Path = RESULTS_ROOT, include_invalid: bool = False) -> str:
     kept = [(r, m) for r, m in runs if r.valid or include_invalid]
     excluded = [r for r, _ in runs if not r.valid]
 
+    models = load_models()
     by_bench: dict[str, list[tuple[RunRecord, MetricsRecord]]] = defaultdict(list)
     for run, metrics in kept:
         by_bench[run.benchmark].append((run, metrics))
@@ -123,8 +159,6 @@ def markdown(root: Path = RESULTS_ROOT, include_invalid: bool = False) -> str:
 
         arrow = {n: ("↓" if lower_is_better(n) else "↑") if has_direction(n) else "" for n in names}
         header = " | ".join(f"{n} {arrow[n]}".rstrip() for n in names)
-        lines.append("| model | run | n | site | " + header + " |")
-        lines.append("|---|---|---:|---|" + "---:|" * len(names))
 
         def sort_key(pair: tuple[RunRecord, MetricsRecord], _primary: str = primary) -> tuple[int, float]:
             # `_primary` is bound at definition time on purpose: a closure over
@@ -138,13 +172,31 @@ def markdown(root: Path = RESULTS_ROOT, include_invalid: bool = False) -> str:
                 return (1, 0.0)
             return (0, value if lower_is_better(_primary) else -value)
 
-        for run, metrics in sorted(entries, key=sort_key):
-            cells = [_fmt(metrics.metrics.get(n, {}).get("mean")) for n in names]
-            run_label = run.run_id.replace("legacy-", "")
-            lines.append(
-                f"| {run.model} | {run_label} | {metrics.n} | {run.site} | " + " | ".join(cells) + " |"
-            )
-        lines.append("")
+        scene_sets = _scene_sets(entries)
+        for sequences, rows in scene_sets:
+            if len(scene_sets) > 1:
+                named = f"scene set {sequences[:8]}" if sequences else "scene set not recorded"
+                lines += [f"### n = {max(m.n for _, m in rows)}, {named}", ""]
+            # No site column: run.json keeps it for attribution, and a table is
+            # read for the scores.
+            lines.append("| model | run | n | " + header + " |")
+            lines.append("|---|---|---:|" + "---:|" * len(names))
+            footnotes: list[str] = []
+            for run, metrics in sorted(rows, key=sort_key):
+                cells = [_fmt(metrics.metrics.get(n, {}).get("mean")) for n in names]
+                run_label = run.run_id.replace("legacy-", "")
+                marks = []
+                for note in score_notes(run, models):
+                    line = f"{run.model}: {note}"
+                    if line not in footnotes:
+                        footnotes.append(line)
+                    marks.append(f"[{footnotes.index(line) + 1}]")
+                label = " ".join([run.model, *marks])
+                lines.append(f"| {label} | {run_label} | {metrics.n} | " + " | ".join(cells) + " |")
+            lines.append("")
+            if footnotes:
+                lines += [f"- [{i}] {line}" for i, line in enumerate(footnotes, start=1)]
+                lines.append("")
 
     if excluded:
         lines += ["## Excluded runs", ""]
@@ -157,6 +209,9 @@ def markdown(root: Path = RESULTS_ROOT, include_invalid: bool = False) -> str:
         "",
         "Arrows show direction of better; a column with no arrow has none -- a signed "
         "bias, a ratio best at one, or a description of the model rather than a score. "
+        "Runs are ranked only against runs of the same scenes; a benchmark with more than "
+        "one scene set has one table for each. A number in brackets after a model marks a "
+        "setting that changes what that run's score means. "
         "Aggregates are recomputed by paddock from per-sample records, never taken "
         "from the producer.",
         "",

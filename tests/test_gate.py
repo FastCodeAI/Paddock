@@ -156,7 +156,7 @@ def test_unpaired_and_invalid_runs_are_reported_not_hidden(tmp_path: Path) -> No
 
 @pytest.mark.parametrize("undecided", ["NO RECORDS", "TOO FEW UNITS", "INCOMPLETE"])
 def test_a_gain_beside_an_uncompared_pair_is_not_ship(undecided: str) -> None:
-    """Review #80 (2): a closed-loop GAIN next to a pair that was never compared shipped."""
+    """A closed-loop GAIN next to a pair that was never compared shipped."""
     gain = gate.PairResult("neuroncap", "ncap_score", "m:a", "m:b", "GAIN", True)
     other = gate.PairResult("bench2drive", "driving_score", "m:a", "m:b", undecided, True)
     assert gate.overall([gain]) == "SHIP"
@@ -165,7 +165,7 @@ def test_a_gain_beside_an_uncompared_pair_is_not_ship(undecided: str) -> None:
 
 
 def test_runs_measured_differently_get_no_verdict(tmp_path: Path) -> None:
-    """Review #80 (3): the released model 'regressed' against itself on KITScenes.
+    """The released model 'regressed' against itself on KITScenes.
 
     The tracked full run used ground-truth commands and no ground offset; the smoke
     run, neither. Same weights, same samples, t -4.76.
@@ -195,10 +195,15 @@ def test_subset_keys_and_model_env_do_not_count_as_a_different_measurement() -> 
     assert gate.config_differences({"cameras": ["CAM_FRONT"]}, {}) == ["cameras"], (
         "a key only one run recorded"
     )
+    # A Bench2Drive baseline from before a route was set aside drove the routes both did the same way.
+    assert (
+        gate.config_differences({"routes_file": "x.xml"}, {"routes_file": "x.xml", "routes_set_aside": ["1"]})
+        == []
+    )
 
 
 def test_navsim_without_plan_dumps_gets_no_verdict_over_tokens(tmp_path: Path) -> None:
-    """Review #80 (7): with no dumps the unit fell back to the token, silently.
+    """With no dumps the unit fell back to the token, silently.
 
     Ten logs of twenty tokens, a shock shared within each log, true difference 0:
     on tokens it was GAIN; on logs it is NEUTRAL.
@@ -225,7 +230,7 @@ def test_navsim_without_plan_dumps_gets_no_verdict_over_tokens(tmp_path: Path) -
 
 
 def test_zero_spread_is_a_verdict_only_for_a_real_shift(tmp_path: Path) -> None:
-    """Review #80 (13): a constant 1e-9 drop on 6 pairs read as REGRESSION, t -inf."""
+    """A constant 1e-9 drop on 6 pairs read as REGRESSION, t -inf."""
     res, runs = tmp_path / "results", tmp_path / "runs"
     base = [_ncap(f"{i:04d}", "frontal", 0, 3.0) for i in range(6)]
     _write_run(res, runs, "neuroncap", "m", "a", base, "ncap_score")
@@ -254,7 +259,7 @@ def test_zero_spread_is_a_verdict_only_for_a_real_shift(tmp_path: Path) -> None:
 
 
 def test_lanes_must_not_share_cpus_or_the_renderer_port(tmp_path: Path, monkeypatch) -> None:
-    """Review #80 (16, 17): overlapping --cores, or a lane's ports reaching the renderer's."""
+    """Overlapping --cores, or a lane's ports reaching the renderer's."""
     assert gate._overlapping_cores(["4-7", "6-9"]) == [6, 7]
     assert gate._overlapping_cores(["4-7", "8-11", "12,13"]) == []
     args, stamps = _smoke_site(tmp_path, monkeypatch, {"kitscenes": 2.0, "nuscenes": 2.0})
@@ -266,7 +271,7 @@ def test_lanes_must_not_share_cpus_or_the_renderer_port(tmp_path: Path, monkeypa
 
 
 def test_a_candidate_that_lost_samples_gets_no_verdict(tmp_path: Path) -> None:
-    """Review #80 (1): the episodes a candidate crashes on vanish from the pairing.
+    """The episodes a candidate crashes on vanish from the pairing.
 
     It lost both 0110 episodes and is better on the four pairs it kept; paired on
     what it kept it was a GAIN and the run SHIPped.
@@ -450,7 +455,7 @@ def test_a_resumed_navsim_run_finds_its_logs_through_merged_from(tmp_path: Path)
         ("nuscenes", {"group": "scene-0003", "native_id": {"scene": "scene-0003"}}, "scene-0003"),
         ("kitscenes", {"group": "", "native_id": {"scene_id": "00fc1b9b", "keyframe_index": 40}}, "00fc1b9b"),
         # Not the token: tokens of one log share it, so the unit is the log, known
-        # only from the runs' plan dumps (`_unit_for`). Review #80 (7).
+        # only from the runs' plan dumps (`_unit_for`).
         ("navsim", {"native_id": {"token": "808e5edcddce51c3"}}, None),
         ("bench2drive", {"native_id": {"route_id": "1711"}}, "1711"),
         ("alpasim", {"native_id": {"clipgt_id": "clipgt-0245"}}, "clipgt-0245"),
@@ -918,10 +923,10 @@ def test_every_gate_alpasim_scene_is_on_the_scene_list_the_drivers_use() -> None
     wizard, which then failed with "Failed to find scenes", and the baseline held 8."""
     import csv
 
-    from paddock.adapters.benchmarks.alpasim.harness import DRIVER_PROFILES, SCENES_DIR
+    from paddock.adapters.benchmarks.alpasim.harness import SCENES_DIR, profile_for, profiled_models
 
     gate_scenes = set(gate.load_subset("alpasim").ids) | set(gate.load_subset("alpasim_quick").ids)
-    lists = {p.scenes_csv for p in DRIVER_PROFILES.values() if p.scenes_csv}
+    lists = {p.scenes_csv for p in map(profile_for, profiled_models()) if p.scenes_csv}
     assert lists, "no driver profile pins a scene list"
     for name in lists:
         with (SCENES_DIR / name).open() as handle:
@@ -1059,7 +1064,7 @@ def test_staging_copies_the_file_and_its_small_neighbours_once(tmp_path: Path) -
 
 
 def test_staging_recopies_a_source_restored_with_an_older_time(tmp_path: Path) -> None:
-    """Review #80 (11): same size, not newer -- the previous copy was run."""
+    """Same size, not newer -- the previous copy was run."""
     import os
 
     ckpt, local = tmp_path / "agent.ckpt", tmp_path / "local"
@@ -1100,7 +1105,7 @@ def test_a_new_checkpoint_at_the_same_path_gets_a_new_state(tmp_path: Path) -> N
 
 
 def test_the_alpasim_smoke_runs_its_own_scene_set_whatever_the_site_sets(tmp_path: Path) -> None:
-    """Review #80 (12): a site on public_2601_30scenes ran 30 clips that paired with nothing."""
+    """A site on public_2601_30scenes ran 30 clips that paired with nothing."""
     import tomllib
 
     site = tmp_path / "paddock.toml"
@@ -1274,7 +1279,7 @@ def test_kitscenes_decides_on_val_and_reports_the_left_out_keyframes(tmp_path: P
     assert r.matched == 186 and r.verdict == "NEUTRAL", "the 37 worse keyframes do not decide"
     (note,) = [n for n in r.notes if "left out of this verdict" in n]
     assert note.startswith("37 sample(s) of overlap_train_val left out") and "better by -1.000" in note
-    # Review of #105 (2): the check run as each subset finishes, which can stop the
+    # The check run as each subset finishes, which can stop the
     # smoke, counted all 223 and said REGRESSION.
     monkeypatch.setattr(gate, "RESULTS_ROOT", res)
     step = gate.SmokeStep("kitscenes", "finished", "b", [], {}, name="kitscenes")
@@ -1342,8 +1347,8 @@ def test_a_rerun_skips_finished_runs_and_resumes_started_ones(tmp_path: Path) ->
     assert ncap.status == "resume" and ncap.command[-2:] == ["--resume", "ours"]
     assert nus.status == "new" and "--resume" not in nus.command
 
-    # A colleague's run appearing meanwhile is not ours, and is not mistaken for it
-    # (review #80, 10); two new runs both on our node port cannot be told apart.
+    # A colleague's run appearing meanwhile is not ours, and is not mistaken for it;
+    # two new runs both on our node port cannot be told apart.
     (runs / "neuroncap" / "drivejepa" / "someone_elses").mkdir()
     (ncap2,) = _plan(tmp_path, ["neuroncap"], {"neuroncap": dict(started)})
     assert ncap2.command[-2:] == ["--resume", "ours"]
@@ -1362,7 +1367,7 @@ def test_the_small_subsets_cannot_ship_and_their_pairs_say_so() -> None:
 
 
 def test_the_quick_tier_alone_never_ships() -> None:
-    """Review of #100 (1): a GAIN on the 3 quick neuroNCAP episodes, the rest NEUTRAL, said SHIP."""
+    """A GAIN on the 3 quick neuroNCAP episodes, the rest NEUTRAL, said SHIP."""
 
     def pair(name: str, verdict: str) -> gate.PairResult:
         subset = gate.load_subset(name)
@@ -1382,7 +1387,7 @@ def test_the_quick_tier_alone_never_ships() -> None:
 
 
 def test_a_crash_check_that_crashed_is_incomplete_and_so_stops_the_gate(tmp_path: Path) -> None:
-    """Review of #113 (1): the one-route candidate crashed and kept no records. The gate said
+    """The one-route candidate crashed and kept no records. The gate said
     NO RECORDS, which does not stop it, and the closed tier's hours ran anyway."""
     res, runs = tmp_path / "results", tmp_path / "runs"
     base = [{"sample_id": "b2d/3717", "native_id": {"scene": "3717"}, "metrics": {"driving_score": 50.0}}]
@@ -1395,7 +1400,7 @@ def test_a_crash_check_that_crashed_is_incomplete_and_so_stops_the_gate(tmp_path
 
 
 def test_a_finished_crash_check_does_not_keep_the_gate_from_shipping() -> None:
-    """Review of #113 (2): each crash check is one sample, always TOO FEW UNITS, and SHIP needed
+    """Each crash check is one sample, always TOO FEW UNITS, and SHIP needed
     every pair decided, so --tier all could never ship."""
 
     def pair(name: str, verdict: str) -> gate.PairResult:
@@ -1572,7 +1577,7 @@ def _ready_after(log: Path, lines: list[tuple[float, str]], nodes: int) -> float
 
 
 def test_the_next_launch_waits_for_every_model_copy_to_be_ready(tmp_path: Path, monkeypatch) -> None:
-    """Review of #111 (1): NAVSIM's second copy loads after the first says ready; the next
+    """NAVSIM's second copy loads after the first says ready; the next
     launch's GPU check ran while it was still loading."""
     monkeypatch.setattr(gate, "POLL_S", 0.1)
     log = tmp_path / "navsim.log"
@@ -1689,6 +1694,8 @@ mean = sum(r["metrics"]["ade"] for r in rows) / len(rows)
     "metrics": {"ade": {"mean": mean, "n": 4}}}))
 with open(stamps, "a") as f:
     f.write(f"{name} end {time.time()}\n")
+# A real run stops its model node, freeing the card, before it writes its results and exits.
+time.sleep(float(os.environ.get("FAKE_RUN_LINGER_S", "0")))
 """
 
 
@@ -1807,7 +1814,7 @@ def argparse_ns(**kw):
 
 
 def test_a_smoke_with_an_unfinished_subset_does_not_say_ship(tmp_path: Path, monkeypatch) -> None:
-    """Review #80 (2): neuroNCAP crashed and bench2drive gained; the smoke printed SHIP, then exited 1."""
+    """NeuroNCAP crashed and bench2drive gained; the smoke printed SHIP, then exited 1."""
     args, stamps = _smoke_site(
         tmp_path, monkeypatch, {"kitscenes": 2.0, "nuscenes": 2.0, "bench2drive": 1.0, "neuroncap": -1.0}
     )
@@ -1848,7 +1855,7 @@ def test_the_closed_tier_starts_only_after_the_quick_tier_ends(tmp_path: Path, m
 
 
 def test_a_simulator_waits_while_a_running_one_may_still_take_its_memory(tmp_path: Path, monkeypatch) -> None:
-    """Review #80 (8): a simulator takes its memory after the model says ready, so a
+    """A simulator takes its memory after the model says ready, so a
     second closed-tier lane's GPU check could run before neuroNCAP's renderer loaded.
     A running simulator's share counts as taken: with 15 GB free, one of neuroNCAP and
     Bench2Drive (10 GB each) starts, and the other (10 GB, plus the first one's 8 held)
@@ -1865,8 +1872,8 @@ def test_a_simulator_waits_while_a_running_one_may_still_take_its_memory(tmp_pat
 def test_alpasim_runs_beside_another_simulator_now_its_containers_keep_the_lanes_cores(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """Until its launcher pinned its containers, AlpaSim ran beside no other simulator
-    (review of #111, 2). With room on the card, it now overlaps neuroNCAP."""
+    """Until its launcher pinned its containers, AlpaSim ran beside no other simulator.
+    With room on the card, it now overlaps neuroNCAP."""
     args, stamps = _smoke_site(tmp_path, monkeypatch, {"neuroncap": 2.0, "alpasim": 2.0}, hold=1.0)
     monkeypatch.setattr(gate, "_gpu_free_gb", lambda env: 80.0)
     gate.smoke(args(tier="closed", bench=["neuroncap", "alpasim"], cores=["4-7", "8-11"]), lambda _m: None)
@@ -1890,11 +1897,17 @@ def test_simulators_run_side_by_side_when_the_card_holds_them(tmp_path: Path, mo
 def test_a_regression_found_while_waiting_for_gpu_memory_stops_that_launch(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """Review #80 (9): the GPU wait blocked the loop, so nuScenes launched after kitscenes
+    """The GPU wait blocked the loop, so nuScenes launched after kitscenes
     had already regressed -- the regression is what freed the card. With two lanes the
     longer nuScenes launches first (`launch_order`), so here it is the one that regresses
-    while kitscenes waits for memory."""
+    while kitscenes waits for memory.
+
+    A run frees the card when its model node stops, and only then writes its results and
+    exits, so the card is free a while before the lane can be judged. Here nuScenes lingers
+    a second after freeing it: a launch made on the free card alone started kitscenes in
+    that second, and did so now and then under load before the linger made it every time."""
     args, stamps = _smoke_site(tmp_path, monkeypatch, {"kitscenes": 2.0, "nuscenes": 3.0}, hold=0.5)
+    monkeypatch.setenv("FAKE_RUN_LINGER_S", "1.0")
     calls = {"n": 0}
 
     def free_gb(env):  # room for the first launch; then none until nuscenes has ended
@@ -1909,8 +1922,56 @@ def test_a_regression_found_while_waiting_for_gpu_memory_stops_that_launch(
     assert "waiting for" in "\n".join(said)
 
 
+def test_a_card_someone_else_freed_lets_the_waiting_launch_start_beside_a_running_lane(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The wait for a lane to exit after the card frees is bounded. Here the card frees while
+    nuScenes keeps running, so nothing of the smoke's freed it, and after LANE_EXIT_S kitscenes
+    starts beside nuScenes, not after it."""
+    args, stamps = _smoke_site(tmp_path, monkeypatch, {"kitscenes": 2.0, "nuscenes": 2.0}, hold=3.0)
+    monkeypatch.setattr(gate, "LANE_EXIT_S", 0.3)
+    checks: list[None] = []
+
+    def free_gb(env):  # room for the first launch, none on the next two checks, then room again
+        checks.append(None)
+        return 0.0 if len(checks) in (2, 3) else 100.0
+
+    monkeypatch.setattr(gate, "_gpu_free_gb", free_gb)
+    said: list[str] = []
+    gate.smoke(args(cores=["4-7", "8-11"]), said.append)
+    spans = _intervals(stamps)
+    assert spans["kitscenes"][0] < spans["nuscenes"][1], f"kitscenes waited for nuScenes to end: {spans}"
+    assert "waiting for" in "\n".join(said)
+
+
+def test_a_lane_that_already_exited_explains_the_free_card(tmp_path: Path, monkeypatch) -> None:
+    """Three lanes: two run and the third waits for memory. The first to exit frees the card and
+    has been judged, so the third starts at once, not after the other lane too has ended."""
+    hold = {"neuroncap": 0.3, "bench2drive": 2.0, "alpasim": 2.0}
+    args, stamps = _smoke_site(tmp_path, monkeypatch, dict.fromkeys(hold, 2.0), hold=2.0)
+    plan = gate.plan_smoke
+
+    def plan_with_holds(*a, **k):  # the fake run's hold is its ninth argument
+        steps = plan(*a, **k)
+        for step in steps:
+            if step.command:
+                step.command[8] = str(hold[step.bench])
+        return steps
+
+    monkeypatch.setattr(gate, "plan_smoke", plan_with_holds)
+    # Room for two of the three simulators' shares at once (8, 8 and 17 GB), not for all three.
+    monkeypatch.setattr(gate, "_gpu_free_gb", lambda env: 30.0 + gate.SMOKE_MARGIN_GB)
+    gate.smoke(args(tier="closed", bench=list(hold), cores=["4-7", "8-11", "12-15"]), lambda _m: None)
+    spans = _intervals(stamps)
+    first_two = sorted(spans, key=lambda b: spans[b][0])[:2]
+    assert "neuroncap" in first_two, f"needs neuroNCAP's short lane among the first two: {spans}"
+    third = next(b for b in spans if b not in first_two)
+    other = next(b for b in first_two if b != "neuroncap")
+    assert spans[third][0] < spans[other][1], f"{third} waited for {other} to end: {spans}"
+
+
 def test_the_smoke_does_not_adopt_a_run_it_did_not_start(tmp_path: Path) -> None:
-    """Review #80 (10): our launch died before making a run; a colleague's appeared; it was adopted."""
+    """Our launch died before making a run; a colleague's appeared; it was adopted."""
     runs, log = tmp_path / "runs", tmp_path / "lane.log"
     (runs / "kitscenes" / "m" / "20261020T010101-colleague").mkdir(parents=True)
     (runs / "kitscenes" / "m" / "20261020T010101-colleague" / "m_node_9800.log").write_text("")
@@ -2010,7 +2071,7 @@ def _live_stand_ins() -> list[int]:
 
 @pytest.mark.skipif(not Path("/proc").is_dir(), reason="reads /proc")
 def test_sigterm_to_the_gate_stops_its_lanes(tmp_path: Path, monkeypatch) -> None:
-    """Review #80 (4): `kill <gate pid>` orphaned every lane, and a re-run resumed the live one."""
+    """`kill <gate pid>` orphaned every lane, and a re-run resumed the live one."""
     import multiprocessing
     import os
     import signal
@@ -2082,7 +2143,7 @@ def test_a_rerun_refuses_while_a_recorded_run_is_still_alive(tmp_path: Path, mon
 
 
 def test_a_baseline_on_an_older_draw_of_the_subset_gets_no_verdict(tmp_path: Path) -> None:
-    """Review of #105 (3): a baseline holding 5 of the 15 neuroNCAP pairs was a GAIN on those 5."""
+    """A baseline holding 5 of the 15 neuroNCAP pairs was a GAIN on those 5."""
     res, runs = tmp_path / "results", tmp_path / "runs"
     pairs = gate.load_subset("neuroncap").ids
 

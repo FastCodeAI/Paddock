@@ -4,7 +4,7 @@
 # `make lint` runs `ruff format --check src tests`, so an unformatted file fails
 # the PR gate. Applying the format here is mechanical and saves a round trip;
 # tools/ is excluded from formatting, exactly as in the Makefile, because that
-# tree is rescued one-off code whose house style is left alone on purpose.
+# tree is older one-off code whose house style is left alone on purpose.
 #
 # `ruff check` covers all three trees and blocks, because a lint error is
 # unambiguous and cheap to fix at the moment it is introduced.
