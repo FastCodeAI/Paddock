@@ -13,13 +13,11 @@
 # planning_hz, and the 50 ms steps between are answered from that plan; the
 # 3.0 s warm-up goes to /observe, and the first plan steps through the warm-up
 # frames on the 0.5 s grid. canbus carries velocity and acceleration where
-# nuScenes' CAN bus has them. Same 30 scenes, warm-up and control step as
-# drivejepa and autoe2e. VAD's profile (models/vad/alpasim.yaml) is this one;
-# a test checks the two agree.
-#
-# No route is sent: the bridge's command is FOLLOW_REFERENCE, which these
-# models read as FORWARD (bev_planners.NUSC_COMMAND), so they are never told
-# to turn.
+# nuScenes' CAN bus has them. AlpaSim's route rides along with the time of its
+# frame, and the node turns it into the right / left / forward command by the
+# rule the nuScenes datasets labelled with (bev_planners.route_command). Same
+# 30 scenes, warm-up and control step as drivejepa and autoe2e. VAD's profile
+# (models/vad/alpasim.yaml) is this one; a test checks the two agree.
 
 # Driver config under adapters/benchmarks/alpasim/configs/driver/, shared with vad.
 driver: paddock_bridge_nuscenes_rig
@@ -68,6 +66,18 @@ bridge_args:
   # vertical (bev_planners.accel_with_gravity). Without it the model reads no
   # acceleration at all.
   - --canbus-acceleration
+  # The route AlpaSim holds, as route_xy: the ego frame at the newest pose's
+  # time, NaN-padded to 20 points 4 m apart. The bridge's command is always
+  # FOLLOW_REFERENCE; with a route the node derives the nuScenes command from
+  # it (where the lidar would be 3 s along the route, +-2 m in the lidar
+  # frame: bev_planners.route_command) instead of reading FORWARD.
+  - --send-route
+  # The route's own timestamp, as route_timestamp_us. AlpaSim stamps the route
+  # with the step it sends the newest pose at, so the two are equal; the node
+  # checks that, refusing a route in another frame, and derives a command from
+  # the route only when it is sent, which only this bridge does (Bench2Drive's
+  # client also sends a route with FOLLOW_REFERENCE, and keeps FORWARD).
+  - --send-route-time
   # Not passed, on purpose:
   #   --observe-between-replans: after the warm-up the model steps only on the
   #     0.5 s grid, and history_on_grid drops a frame observed between two

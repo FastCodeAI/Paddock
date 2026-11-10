@@ -12,8 +12,9 @@
 # BEVFormer grid and reads the same CAN-bus layout. AlpaSim's six cameras are
 # re-rendered as nuScenes' rig every 0.5 s (paddock_bridge_nuscenes_rig.yaml)
 # and renamed to the node's names; the node is asked every 0.5 s, the warm-up
-# goes to /observe, and canbus carries ego-frame velocity and acceleration. No
-# route is sent: the command is FOLLOW_REFERENCE, which VAD reads as FORWARD.
+# goes to /observe, and canbus carries ego-frame velocity and acceleration.
+# AlpaSim's route rides along with its frame's time, and the node derives the
+# right / left / forward command from it by the datasets' own rule.
 
 # Driver config under adapters/benchmarks/alpasim/configs/driver/, shared with uniad.
 driver: paddock_bridge_nuscenes_rig
@@ -50,6 +51,10 @@ bridge_args:
   # canbus[7] / [8] = the simulator's forward / sideways acceleration:
   # nuScenes' CAN-bus accel (gravity added by the adapter).
   - --canbus-acceleration
+  # The route, as route_xy, and the time of its frame, as route_timestamp_us:
+  # the node derives the command from the route (bev_planners.route_command).
+  - --send-route
+  - --send-route-time
   # Not passed, as for UniAD: --observe-between-replans, --pad-ego-history,
   # --waypoint-dt (the default 0.5 s is VAD's spacing).
 

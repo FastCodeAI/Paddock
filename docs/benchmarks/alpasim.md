@@ -212,8 +212,12 @@ closed at that replan's own time, at a tenth of the render cost (the driver
 config's header has the reasoning, a test the equalities). The node is asked
 every 0.5 s with the warm-up sent to `/observe`, and `--canbus-ego-frame` and
 `--canbus-acceleration` put velocity and acceleration where nuScenes' CAN bus
-has them. Same warm-up, control step and 30 pinned scenes as Drive-JEPA's; not
-yet run. What the models then read is in
+has them. `--send-route` and `--send-route-time` send the route and its frame's
+time, and the node turns the route into the right / left / forward command by
+the rule the nuScenes datasets labelled with (where the lidar would be 3 s along
+the route, ±2 m sideways; `bev_planners.route_command`), logged with each plan
+in the per-replan log. Same warm-up, control step and 30 pinned scenes as
+Drive-JEPA's; not yet run. What the models then read is in
 [docs/models/uniad.md](../models/uniad.md#benchmarks).
 
 ## Configuration

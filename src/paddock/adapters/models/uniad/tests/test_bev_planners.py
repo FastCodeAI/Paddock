@@ -291,6 +291,202 @@ def test_nuscenes_commands_ignore_the_route() -> None:
     assert [bp.nuscenes_command(_with_command(c, route=False)) for c in Command] == [0, 1, 2, 2]
 
 
+# -- the command from AlpaSim's route ------------------------------------------------------------------
+
+
+def _path(radius: float, side: int, straight_m: float, distance_m: float) -> tuple[float, float, float]:
+    """(x, y, heading) after `distance_m` along a path straight for `straight_m`, then a circle of `radius`
+    turning left (`side` +1) or right (-1); ego frame, y left."""
+    if distance_m <= straight_m:
+        return distance_m, 0.0, 0.0
+    angle = (distance_m - straight_m) / radius
+    return straight_m + radius * math.sin(angle), side * radius * (1 - math.cos(angle)), side * angle
+
+
+def _route(radius: float, side: int, straight_m: float, step_m: float = 4.0, points: int = 20) -> np.ndarray:
+    """A route like AlpaSim's: `points` waypoints `step_m` apart along `_path`, from the car."""
+    return np.array([_path(radius, side, straight_m, k * step_m)[:2] for k in range(points)])
+
+
+def _label_lateral(radius: float, side: int, straight_m: float, distance_m: float) -> float:
+    """What UniAD's get_sdc_planning_label and VAD's converter compute for a car that covers `distance_m`
+    along `_path` in 3 s: the lidar's future pose (the ego pose there, then lidar2ego), its origin read in
+    the current lidar frame, x (+ right)."""
+    x, y, heading = _path(radius, side, straight_m, distance_m)
+    ego = np.eye(4)
+    ego[:2, :2] = [[math.cos(heading), -math.sin(heading)], [math.sin(heading), math.cos(heading)]]
+    ego[:2, 3] = x, y
+    future_lidar_origin = (ego @ bp.NUSC_LIDAR2EGO)[:, 3]
+    return float((np.linalg.inv(bp.NUSC_LIDAR2EGO) @ future_lidar_origin)[0])
+
+
+#: (radius m, side, straight before the curve m): a junction turn starting 5 m ahead, a gentle 200 m bend,
+#: a turn 30 m ahead, and no turn at all.
+SHAPES = {
+    "left_turn": (15.0, 1, 5.0),
+    "right_turn": (15.0, -1, 5.0),
+    "gentle_left": (200.0, 1, 0.0),
+    "turn_30m_ahead": (15.0, -1, 30.0),
+    "straight": (1e9, 1, 0.0),
+}
+
+
+@pytest.mark.parametrize("speed", [0.0, 2.0, 5.0, 10.0, 15.0])
+@pytest.mark.parametrize("shape", sorted(SHAPES))
+def test_the_route_command_is_the_label_codes_rule_applied_to_the_route(shape: str, speed: float) -> None:
+    """The lidar 3 s ahead (speed * 3 s along the route, at least the minimum lookahead), in the current
+    lidar frame, +-2 m: on a densely sampled route, the same number the label code gets from the path."""
+    radius, side, straight = SHAPES[shape]
+    record = bp.route_command(
+        _route(radius, side, straight, step_m=0.25, points=400), speed, bp.NUSC_LIDAR2EGO
+    )
+    distance = max(speed * 3.0, bp.COMMAND_MIN_LOOKAHEAD_M)
+    want = _label_lateral(radius, side, straight, distance)
+    assert record["lookahead_m"] == pytest.approx(distance)
+    assert record["lateral_m"] == pytest.approx(want, abs=0.01)
+    expected = bp.NUSC_RIGHT if want >= 2.0 else bp.NUSC_LEFT if want <= -2.0 else bp.NUSC_FORWARD
+    assert record["command"] == expected
+    assert not record["route_end"] and record["route_offset_m"] == pytest.approx(0.0, abs=1e-9)
+
+
+#: On AlpaSim's own route (20 points 4 m apart), the command by speed, m/s: 0, 2, 5, 10, 15.
+EXPECTED = {
+    "straight": ["FORWARD"] * 5,
+    "left_turn": ["FORWARD", "FORWARD", "LEFT", "LEFT", "LEFT"],
+    "right_turn": ["FORWARD", "FORWARD", "RIGHT", "RIGHT", "RIGHT"],
+    "gentle_left": ["FORWARD", "FORWARD", "FORWARD", "LEFT", "LEFT"],
+    "turn_30m_ahead": ["FORWARD", "FORWARD", "FORWARD", "FORWARD", "RIGHT"],
+}
+
+
+@pytest.mark.parametrize("shape", sorted(EXPECTED))
+def test_turns_on_alpasims_route_by_speed(shape: str) -> None:
+    """Left is negative x in the lidar frame, right positive; a turn is called once 3 s of travel reaches
+    2 m into it, so a faster car hears of it sooner and a standing car not at all."""
+    radius, side, straight = SHAPES[shape]
+    route = _route(radius, side, straight)
+    names = [bp.route_command(route, v, bp.NUSC_LIDAR2EGO)["name"] for v in (0.0, 2.0, 5.0, 10.0, 15.0)]
+    assert names == EXPECTED[shape]
+
+
+def test_the_car_is_placed_on_the_route_and_the_route_may_run_out() -> None:
+    """A route starting behind the car gives what the route from the car gives; one shorter than the
+    lookahead is read at its last point, as the label code reads the last future keyframe a scene has."""
+    radius, side, straight = SHAPES["left_turn"]
+    ahead = _route(radius, side, straight)
+    behind = np.vstack([[[-8.0, 0.0], [-4.0, 0.0]], ahead])
+    for speed in (0.0, 5.0, 10.0):
+        a, b = (bp.route_command(r, speed, bp.NUSC_LIDAR2EGO) for r in (ahead, behind))
+        assert a == b
+    short = bp.route_command(ahead[:4], 15.0, bp.NUSC_LIDAR2EGO)
+    assert short["route_end"] and short["lookahead_m"] == 45.0
+    assert short == {
+        **bp.route_command(ahead[:4], 4.0, bp.NUSC_LIDAR2EGO),
+        "lookahead_m": 45.0,
+        "speed_m_s": 15.0,
+    }
+
+
+def test_alpasims_nan_padding_is_dropped() -> None:
+    route = _route(*SHAPES["left_turn"])
+    padded = np.vstack([route[:6], np.full((14, 2), np.nan)])
+    assert bp.route_command(padded, 5.0, bp.NUSC_LIDAR2EGO) == bp.route_command(
+        route[:6], 5.0, bp.NUSC_LIDAR2EGO
+    )
+    assert bp.route_command(np.full((20, 2), np.nan), 5.0, bp.NUSC_LIDAR2EGO) is None
+    assert bp.route_command(route[:1], 5.0, bp.NUSC_LIDAR2EGO) is None
+
+
+def _alpasim(
+    command: Command, route: np.ndarray | None, stamped: bool = True, speed: float = 8.0
+) -> Observation:
+    obs = conformance.synthetic_observation(
+        speed=speed, cameras=bp.NUSC_CAMERAS, width=1600, height=900, timestamp_us=3_500_000
+    )
+    obs.command = command
+    obs.route_xy = route
+    obs.route_timestamp_us = obs.timestamp_us if stamped and route is not None else None
+    return obs
+
+
+def test_only_follow_reference_with_a_stamped_route_is_decided_by_the_route() -> None:
+    """AlpaSim's bridge sends FOLLOW_REFERENCE, the route and its frame's time; the route decides. Without
+    the time (Bench2Drive's client) or without a route, FOLLOW_REFERENCE stays FORWARD; a command the source
+    gives (LEFT, RIGHT, STRAIGHT) is never overridden."""
+    left = _route(*SHAPES["left_turn"])
+    record = bp.command_record(_alpasim(Command.FOLLOW_REFERENCE, left))
+    assert (record["source"], record["name"], record["given"]) == ("route", "LEFT", "FOLLOW_REFERENCE")
+    assert bp.nuscenes_command(_alpasim(Command.FOLLOW_REFERENCE, left)) == bp.NUSC_LEFT
+    for obs in (
+        _alpasim(Command.FOLLOW_REFERENCE, left, stamped=False),
+        _alpasim(Command.FOLLOW_REFERENCE, None),
+        _alpasim(Command.FOLLOW_REFERENCE, np.full((20, 2), np.nan)),
+    ):
+        record = bp.command_record(obs)
+        assert (record["source"], record["command"]) == ("given", bp.NUSC_FORWARD)
+    for given, want in ((Command.RIGHT, 0), (Command.LEFT, 1), (Command.STRAIGHT, 2)):
+        assert bp.command_record(_alpasim(given, _route(*SHAPES["right_turn"]))) == {
+            "source": "given",
+            "command": want,
+            "name": bp.NUSC_COMMAND_NAMES[want],
+            "given": given.name,
+        }
+
+
+def test_a_route_in_another_frame_is_refused() -> None:
+    obs = _alpasim(Command.FOLLOW_REFERENCE, _route(*SHAPES["left_turn"]))
+    obs.route_timestamp_us = obs.timestamp_us - 50_000
+    with pytest.raises(ValueError, match="route_xy is in the ego frame at 3450000 us"):
+        bp.command_record(obs)
+
+
+@pytest.mark.parametrize("model", ["uniad", "vad"])
+def test_the_nuscenes_datasets_input_carries_the_routes_command(model: str) -> None:
+    """Through the policy's own `_results`: UniAD's ``command`` and VAD's ``ego_fut_cmd`` one-hot
+    [right, left, straight], and the record in ``last`` that the diagnostics serve."""
+    import importlib
+
+    policy = importlib.import_module(f"paddock.adapters.models.{model}.policy").POLICY()
+    policy._box_type = policy._box_mode = None  # set by _build in the model's environment; unread here
+    obs = _alpasim(Command.FOLLOW_REFERENCE, _route(*SHAPES["right_turn"]))
+    results = policy._results(obs, bp.NUSC_LIDAR2EGO)
+    assert results["command"] == bp.NUSC_RIGHT
+    if model == "vad":
+        assert results["ego_fut_cmd"].tolist() == [1, 0, 0]
+    assert policy.last["command"] == bp.NUSC_RIGHT
+    assert policy.last["command_record"]["source"] == "route"
+
+
+class CommandStub(bp.BevPlannerPolicy):
+    """The shared machinery with the command recorded as `Mmdet3dPlannerPolicy._results` records it."""
+
+    cameras = bp.NUSC_CAMERAS
+
+    def _results(self, obs, lidar2ego):
+        record = bp.command_record(obs, lidar2ego)
+        self.last.update(command=record["command"], command_record=record)
+        return {}
+
+    def _forward(self, results):
+        return np.c_[np.zeros(6), 4.0 * np.arange(1, 7)]
+
+    def _reset_model(self) -> None:
+        pass
+
+
+def test_a_command_the_route_decided_travels_with_the_plan() -> None:
+    """Under ``extras["route_command"]``, which AlpaSim's bridge writes to the run's per-replan log; any
+    other command leaves the answer as it was, with no extras."""
+    policy = CommandStub()
+    policy.model = object()
+    routed = policy.infer(_alpasim(Command.FOLLOW_REFERENCE, _route(*SHAPES["left_turn"])))
+    assert routed.extras == {"route_command": policy.last["command_record"]}
+    assert routed.extras["route_command"]["name"] == "LEFT"
+    policy.reset()
+    plain = policy.infer(_alpasim(Command.FOLLOW_REFERENCE, _route(*SHAPES["left_turn"]), stamped=False))
+    assert plain.extras is None and "extras" not in plain.to_wire()
+
+
 def test_bench2drive_commands_are_carlas_road_options_minus_one() -> None:
     """On Bench2Drive's own client, which sends a route: CARLA's road option minus one."""
     expected = {Command.RIGHT: 1, Command.LEFT: 0, Command.STRAIGHT: 2, Command.FOLLOW_REFERENCE: 3}

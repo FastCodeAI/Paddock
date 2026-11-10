@@ -76,7 +76,7 @@ Every input is built as UniAD's own data path builds it (`NuScenesE2EDataset.get
 | `can_bus` (18) | translation and heading from `ego2world`; acceleration, rotation rate and velocity from paddock's canbus | 0:3 ego translation; 3:7 **w of the ego quaternion, four times** (below); 7:16 accel, rotation rate, velocity; 16:18 heading in [0, 2π), radians then degrees |
 | gravity | | nuScenes' CAN-bus accel reads z ≈ +9.6-9.8 (specific force); a source that sends z ≈ 0 gets 9.81 added |
 | `l2g_r_mat`, `l2g_t`, `timestamp` | `ego2world` and the lidar; the observation's time | the transpose of the lidar→global rotation, float32, as the dataset stores it; seconds |
-| command | paddock's | 0 right, 1 left, 2 forward (UniAD's own order, from `get_sdc_planning_label`); FOLLOW_REFERENCE is forward |
+| command | paddock's, or the route's | 0 right, 1 left, 2 forward (UniAD's own order, from `get_sdc_planning_label`); FOLLOW_REFERENCE is forward, except with a route stamped with its frame's time (AlpaSim): there the label rule is applied to the route (`route_command`): the lidar placed max(speed × 3 s, 6.75 m) along it, read in the current lidar frame, x ≥ 2 m right, ≤ −2 m left. The record goes with each plan as `extras["route_command"]` |
 | `use_can_bus` | | `True`, as configured |
 
 **Three upstream behaviours are reproduced, not fixed**, because the checkpoint trained with them:
@@ -148,7 +148,7 @@ The model needs all six surround cameras (one learned embedding per camera slot)
 | [neuroncap](../benchmarks/neuroncap.md) | yes | NeuRAD renders the six cameras and sends the real LIDAR_TOP. It asks every 0.1 s whatever `planning_hz` says, so the model steps every 0.5 s and the plan is held in between (below) |
 | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md) | with `UNIAD_HORIZON_S = "4.0"` | NAVSIM scores 4 s and refuses a 3 s plan; the setting continues the last 0.5 s step (METEOR's rule), set in a `[models.uniad.benchmarks.navsim.env]` pairing. Its cameras map as nuPlan's; history is four frames at 2 Hz. Until model.yaml declares the setting's score note (its comment says how), such a run is stored `valid: false` |
 | comma2k19 | no | one camera; the other five slots would have to be invented |
-| [alpasim](../benchmarks/alpasim.md) | yes (not yet run) | its six cameras re-rendered as nuScenes' rig: 1600×900 undistorted pinholes at scene-0103's calibrated intrinsics and poses, CAM_BACK on the telephoto's id (`paddock_bridge_nuscenes_rig.yaml`), rendered every 0.5 s on the replan grid. Asked every 0.5 s, the 3.0 s warm-up sent to `/observe`; canbus carries ego-frame speed and the simulator's acceleration. No route: the command is always FORWARD |
+| [alpasim](../benchmarks/alpasim.md) | yes (not yet run) | its six cameras re-rendered as nuScenes' rig: 1600×900 undistorted pinholes at scene-0103's calibrated intrinsics and poses, CAM_BACK on the telephoto's id (`paddock_bridge_nuscenes_rig.yaml`), rendered every 0.5 s on the replan grid. Asked every 0.5 s, the 3.0 s warm-up sent to `/observe`; canbus carries ego-frame speed and the simulator's acceleration. The command comes from AlpaSim's route by the datasets' own rule (`route_command`; table above) |
 
 ## Verification
 

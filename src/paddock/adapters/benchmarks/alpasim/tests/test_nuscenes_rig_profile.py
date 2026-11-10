@@ -124,11 +124,18 @@ def test_the_bridge_flags_match_the_driver_config(model: str) -> None:
         assert camera["frame_interval_us"] == replan, camera["logical_id"]
         # Drawn at shutter open, labelled with the pose at shutter close: 1 us apart.
         assert camera["shutter_duration_us"] == 1, camera["logical_id"]
-    for flag in ("--pinhole-intrinsics", "--canbus-ego-frame", "--canbus-acceleration"):
+    # The route with its frame's time: the node derives the command from it (bev_planners.route_command).
+    for flag in (
+        "--pinhole-intrinsics",
+        "--canbus-ego-frame",
+        "--canbus-acceleration",
+        "--send-route",
+        "--send-route-time",
+    ):
         assert flag in args
     # Padded frames carry no images; frames between replans are never stepped on; 0.5 s
-    # is the models' spacing; the models take no route.
-    for flag in ("--pad-ego-history", "--observe-between-replans", "--waypoint-dt", "--send-route"):
+    # is the models' spacing.
+    for flag in ("--pad-ego-history", "--observe-between-replans", "--waypoint-dt", "--send-plan-dt"):
         assert flag not in args
 
 

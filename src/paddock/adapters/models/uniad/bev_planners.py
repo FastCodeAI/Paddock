@@ -384,13 +384,31 @@ def b2d_l2g(ego2world) -> tuple[np.ndarray, np.ndarray]:
 #: paddock Command -> the nuScenes models' index. UniAD's ``get_sdc_planning_label`` and VAD's converter
 #: both derive it from the 3 s pose's lateral offset in the lidar frame (x right): x >= 2 m -> 0 "RIGHT",
 #: x <= -2 m -> 1 "LEFT", else 2 "FORWARD"/"Go Straight". UniAD embeds it (``navi_embed``), VAD selects one
-#: of its three plans with it. FOLLOW_REFERENCE is "keep going", which is FORWARD in that vocabulary.
+#: of its three plans with it. FOLLOW_REFERENCE is "keep going", which is FORWARD in that vocabulary --
+#: unless it comes with a route whose frame time is stated, when the route decides (`command_record`).
 NUSC_COMMAND = {
     Command.RIGHT: 0,
     Command.LEFT: 1,
     Command.STRAIGHT: 2,
     Command.FOLLOW_REFERENCE: 2,
 }
+NUSC_RIGHT, NUSC_LEFT, NUSC_FORWARD = 0, 1, 2
+NUSC_COMMAND_NAMES = ("RIGHT", "LEFT", "FORWARD")
+
+#: The label rule `route_command` reproduces: the lidar's position at the last of the six future keyframes
+#: (3 s; the last one the scene has if it ends sooner), in the current lidar frame, x >= +2 m RIGHT,
+#: x <= -2 m LEFT, else FORWARD. UniAD ``data_utils/trajectory_api.py`` ``get_sdc_planning_label`` (the
+#: pseudo ego box at each future lidar origin, moved into the initial lidar frame; ``planning_steps = 6``);
+#: VAD ``tools/data_converter/vad_nuscenes_converter.py`` ("drive command according to final fut step
+#: offset from lcf"; the lidar's global pose at each of ``fut_ts = 6`` keyframes, in the current lidar frame).
+COMMAND_HORIZON_S = PLAN_DT * PLAN_STEPS
+COMMAND_LATERAL_M = 2.0
+#: The shortest distance along a route at which `route_command` takes the 3 s position: what a car pulling
+#: away from rest at a moderate 1.5 m/s^2 covers in 3 s (0.5 * 1.5 * 3^2). Speed times 3 s alone shrinks to
+#: nothing at a standstill, so a car waiting at a junction would be told FORWARD until it had rolled into the
+#: turn; the label code tells a car that pulls away into a turn within 3 s that turn. Short enough that a car
+#: stopped on a straight lane is still told FORWARD.
+COMMAND_MIN_LOOKAHEAD_M = 6.75
 
 #: Bench2DriveZoo's six commands: CARLA's RoadOption minus one (``command_near``; VOID reads as LANEFOLLOW).
 B2D_LEFT, B2D_RIGHT, B2D_STRAIGHT, B2D_LANEFOLLOW, B2D_CHANGELANELEFT, B2D_CHANGELANERIGHT = range(6)
@@ -408,8 +426,92 @@ B2D_COMMAND = {
 B2D_ROUTE_LOOKAHEAD_M = 4.0
 
 
-def nuscenes_command(obs: Observation) -> int:
-    return NUSC_COMMAND[Command(int(obs.command))]
+def route_command(route_xy, speed_m_s: float, lidar2ego) -> dict[str, Any] | None:
+    """The nuScenes command for a route, by the datasets' own rule (`COMMAND_HORIZON_S`), and what decided it.
+
+    The route -- ego frame at the observation's time, x forward, y left; AlpaSim pads it with NaN -- stands
+    in for the future the label code reads. The car is placed on it at the route's nearest point, and its
+    3 s position is the point `lookahead_m` further along: what it covers in 3 s at its current speed, at
+    least `COMMAND_MIN_LOOKAHEAD_M`, the route's last point if the route ends sooner. The lidar is placed
+    there facing along the route, its lever arm swung with it, and read in the current lidar frame as the
+    label code reads it. None when fewer than two finite points remain.
+
+    The record: ``command`` (the index) and its ``name``; ``lateral_m``, the 3 s lidar position's x in the
+    current lidar frame (+ right; the number the thresholds apply to); ``lookahead_m``, ``speed_m_s``;
+    ``route_offset_m``, how far the car is from the route; ``route_end``, whether the route ran out first.
+    """
+    points = np.asarray(route_xy, dtype=np.float64).reshape(-1, 2)
+    points = points[np.isfinite(points).all(axis=1)]
+    if len(points) > 1:
+        points = points[np.r_[True, np.linalg.norm(np.diff(points, axis=0), axis=1) > 1e-6]]
+    if len(points) < 2:
+        return None
+    segments = np.diff(points, axis=0)
+    lengths = np.linalg.norm(segments, axis=1)
+    starts = np.r_[0.0, np.cumsum(lengths)[:-1]]
+    # The car on the route: each segment's nearest point to the ego origin, then the nearest of those.
+    along = np.clip(-np.einsum("ij,ij->i", points[:-1], segments) / lengths**2, 0.0, 1.0)
+    distance = np.linalg.norm(points[:-1] + along[:, None] * segments, axis=1)
+    nearest = int(np.argmin(distance))
+    speed = max(float(speed_m_s), 0.0)
+    lookahead = max(speed * COMMAND_HORIZON_S, COMMAND_MIN_LOOKAHEAD_M)
+    target = starts[nearest] + along[nearest] * lengths[nearest] + lookahead
+    at_end = bool(target >= starts[-1] + lengths[-1])
+    index = len(segments) - 1 if at_end else int(np.searchsorted(starts, target, side="right")) - 1
+    fraction = 1.0 if at_end else (target - starts[index]) / lengths[index]
+    position = points[index] + fraction * segments[index]
+    heading = math.atan2(segments[index][1], segments[index][0])
+    lidar = np.asarray(lidar2ego, dtype=np.float64)
+    arm = lidar[:3, 3]
+    c, s = math.cos(heading), math.sin(heading)
+    future = np.array(
+        [position[0] + c * arm[0] - s * arm[1], position[1] + s * arm[0] + c * arm[1], arm[2], 1.0]
+    )
+    lateral = float((np.linalg.inv(lidar) @ future)[0])
+    if lateral >= COMMAND_LATERAL_M:
+        command = NUSC_RIGHT
+    elif lateral <= -COMMAND_LATERAL_M:
+        command = NUSC_LEFT
+    else:
+        command = NUSC_FORWARD
+    return {
+        "source": "route",
+        "command": command,
+        "name": NUSC_COMMAND_NAMES[command],
+        "lateral_m": round(lateral, 3),
+        "lookahead_m": round(lookahead, 3),
+        "speed_m_s": round(speed, 3),
+        "route_offset_m": round(float(distance[nearest]), 3),
+        "route_end": at_end,
+    }
+
+
+def command_record(obs: Observation, lidar2ego=NUSC_LIDAR2EGO) -> dict[str, Any]:
+    """The nuScenes command for this observation and where it came from (``source``: "given" or "route").
+
+    The source's command, mapped by `NUSC_COMMAND`, except FOLLOW_REFERENCE with a route whose frame time is
+    stated (``route_timestamp_us``; AlpaSim's bridge with ``--send-route-time``, the only source that sends
+    one): there the route decides (`route_command`), as the datasets would have labelled where it goes.
+    Bench2Drive's client also sends FOLLOW_REFERENCE with a route, without a time, and keeps FORWARD. The
+    route must be in the observation's own frame: one stamped at another time is refused rather than read
+    in the wrong frame.
+    """
+    given = Command(int(obs.command))
+    if given == Command.FOLLOW_REFERENCE and obs.route_xy is not None and obs.route_timestamp_us is not None:
+        if int(obs.route_timestamp_us) != int(obs.timestamp_us):
+            raise ValueError(
+                f"route_xy is in the ego frame at {int(obs.route_timestamp_us)} us, the observation's pose "
+                f"at {int(obs.timestamp_us)} us; a route command needs both in one frame"
+            )
+        record = route_command(obs.route_xy, obs.speed, lidar2ego)
+        if record is not None:
+            return {**record, "given": given.name}
+    command = NUSC_COMMAND[given]
+    return {"source": "given", "command": command, "name": NUSC_COMMAND_NAMES[command], "given": given.name}
+
+
+def nuscenes_command(obs: Observation, lidar2ego=NUSC_LIDAR2EGO) -> int:
+    return int(command_record(obs, lidar2ego)["command"])
 
 
 def b2d_command(obs: Observation) -> int:
@@ -672,7 +774,11 @@ class BevPlannerPolicy(Policy):
         self.last["frames_fed"] = len(history) + 1
         xy = lidar_plan_to_ego(plan, lidar2ego)
         self._held = (xy, np.asarray(obs.ego2world, dtype=np.float64).copy(), now)
-        return Trajectory(extend_horizon(xy, PLAN_DT, self.horizon_s), dt=PLAN_DT)
+        # A command the route decided travels with the plan, so a run's per-replan log records it; with any
+        # other command the answer is what it always was.
+        record = self.last.get("command_record")
+        extras = {"route_command": record} if record is not None and record["source"] == "route" else None
+        return Trajectory(extend_horizon(xy, PLAN_DT, self.horizon_s), dt=PLAN_DT, extras=extras)
 
     def _step(self, obs: Observation) -> tuple[np.ndarray, np.ndarray]:
         """One model step on `obs`: (the plan in the model's lidar frame, that lidar in the ego frame)."""
@@ -792,7 +898,9 @@ class BevPlannerPolicy(Policy):
         ``lidar_source`` is "observation" where a source's LIDAR_TOP framed the grid and "nominal" where the
         model's training mount did; ``quaternion_source`` (nuScenes checkpoints) is "canbus" where the
         source's own quaternion was used; ``gravity_added`` says the source's acceleration had no gravity
-        term; ``source_size`` is each camera as it arrived, before the resize to `LOAD_SIZE`.
+        term; ``source_size`` is each camera as it arrived, before the resize to `LOAD_SIZE`;
+        ``command_record`` (nuScenes checkpoints) is the last step's command and what decided it
+        (`command_record`), also sent with the plan as ``extras["route_command"]`` when a route decided it.
         """
         if not self.last:
             return {"status": "no frame seen yet", "episode": self.episode}
@@ -920,8 +1028,9 @@ class Mmdet3dPlannerPolicy(BevPlannerPolicy):
             lidar2cams.append(np.linalg.inv(obs.camera2ego[camera]) @ lidar2ego)
         can_bus, gravity = nuscenes_can_bus(obs.ego2world, obs.canbus, self._nuscenes_quaternion(obs))
         l2g_r_mat, l2g_t = nuscenes_l2g(obs.ego2world, lidar2ego)
-        command = nuscenes_command(obs)
-        self.last.update(command=command, gravity_added=gravity)
+        record = command_record(obs, lidar2ego)
+        command = record["command"]
+        self.last.update(command=command, command_record=record, gravity_added=gravity)
         results: dict[str, Any] = {
             "sample_idx": f"{self.scene_token}-{self._prepared}",
             "pts_filename": "",

@@ -213,13 +213,22 @@ def test_existing_profiles_send_what_they_sent_before_the_alpamayo_profile(profi
     assert _digest(_drive(_build(args, monkeypatch))) == BEFORE_ALPAMAYO[profile]
 
 
+#: The profiles that ask for the two keys: alpamayo15 both; uniad and vad the route's time, from which
+#: their node derives the command (adapters/models/uniad/bev_planners.py, command_record).
+ASKS_FOR = {
+    "alpamayo15": {"plan_dt", "route_timestamp_us"},
+    "uniad": {"route_timestamp_us"},
+    "vad": {"route_timestamp_us"},
+}
+
+
 @pytest.mark.parametrize("profile", ["default", *harness.profiled_models()])
-def test_only_the_alpamayo_profile_sends_a_plan_spacing_or_a_route_time(profile, monkeypatch) -> None:
-    """Every profile, including any added later: the two keys reach a node only under alpamayo15."""
+def test_only_the_profiles_that_ask_send_a_plan_spacing_or_a_route_time(profile, monkeypatch) -> None:
+    """Every profile, including any added later: the two keys reach a node only where its profile asks."""
     args = harness.profile_for(profile).bridge_args if profile != "default" else ()
     keys = {key for path, body in _drive(_build(args, monkeypatch)) for key in body}
     sent = {"plan_dt", "route_timestamp_us"} & keys
-    assert sent == ({"plan_dt", "route_timestamp_us"} if profile == "alpamayo15" else set())
+    assert sent == ASKS_FOR.get(profile, set())
 
 
 # ---------------------------------------------------------------------------
@@ -494,7 +503,12 @@ def test_the_uniad_node_steps_on_the_warmup_grid_then_once_per_replan(monkeypatc
     """Bridge -> wire -> UniAD's node, the model stubbed: the first plan steps through the seven
     warm-up frames on the 0.5 s grid up to handover, each later plan through its own frame
     alone, every frame with all six cameras, K and pose; the bridge accepts every plan."""
-    from paddock.adapters.models.uniad.bev_planners import NUSC_CAMERAS, BevPlannerPolicy, nuscenes_can_bus
+    from paddock.adapters.models.uniad.bev_planners import (
+        NUSC_CAMERAS,
+        BevPlannerPolicy,
+        command_record,
+        nuscenes_can_bus,
+    )
     from paddock.policy.protocol import Observation
 
     stepped: list[dict] = []
@@ -504,12 +518,16 @@ def test_the_uniad_node_steps_on_the_warmup_grid_then_once_per_replan(monkeypatc
 
         def _results(self, obs, lidar2ego):
             can_bus, _ = nuscenes_can_bus(obs.ego2world, obs.canbus, self._nuscenes_quaternion(obs))
+            # As Mmdet3dPlannerPolicy._results records it.
+            record = command_record(obs, lidar2ego)
+            self.last.update(command=record["command"], command_record=record)
             return {
                 "t": int(obs.timestamp_us),
                 "cameras": sorted(obs.images),
                 "k": sorted(obs.camera2image),
                 "pose": sorted(obs.camera2ego),
                 "can_bus": can_bus,
+                "command": record,
             }
 
         def _forward(self, results):
@@ -543,3 +561,73 @@ def test_the_uniad_node_steps_on_the_warmup_grid_then_once_per_replan(monkeypatc
     np.testing.assert_allclose([s["can_bus"][13] for s in stepped[1:]], 8.0, atol=1e-3)
     # After the replay, the simulator's acceleration with gravity added, as nuScenes' accelerometer reads.
     np.testing.assert_allclose(stepped[-1]["can_bus"][7:10], [0.3, 0.8, 9.81])
+    # Every frame's command from its own route (this one bends gently left: under 2 m at 3 s), and the
+    # record of the newest one with each plan, for the bridge's per-replan log.
+    assert all(s["command"]["source"] == "route" and s["command"]["name"] == "FORWARD" for s in stepped)
+    assert all(-2.0 < s["command"]["lateral_m"] < 0.0 for s in stepped)
+
+
+def test_the_uniad_node_is_told_the_turn_alpasims_route_makes(monkeypatch) -> None:
+    """A route turning right 5 m ahead, NaN-padded as AlpaSim pads it, through the bridge and the wire: the
+    node derives RIGHT from it at 8 m/s, and each /infer answer carries the record."""
+    from paddock.adapters.models.uniad.bev_planners import NUSC_CAMERAS, BevPlannerPolicy, command_record
+    from paddock.policy.protocol import Observation
+
+    class Stub(BevPlannerPolicy):
+        cameras = NUSC_CAMERAS
+
+        def _results(self, obs, lidar2ego):
+            record = command_record(obs, lidar2ego)
+            self.last.update(command=record["command"], command_record=record)
+            return {}
+
+        def _forward(self, results):
+            return np.c_[np.zeros(6), 4.0 * (np.arange(6) + 1)]
+
+        def _reset_model(self) -> None:
+            pass
+
+    def right_turn(t_us: int) -> SimpleNamespace:
+        points = []
+        for k in range(20):
+            s = 4.0 * k
+            a = max(s - 5.0, 0.0) / 15.0
+            x, y = (s, 0.0) if s <= 5.0 else (5.0 + 15.0 * math.sin(a), -15.0 * (1 - math.cos(a)))
+            points.append(
+                SimpleNamespace(x=x, y=y, z=0.0) if k < 12 else SimpleNamespace(x=math.nan, y=math.nan, z=0.0)
+            )
+        return SimpleNamespace(timestamp_us=t_us, waypoints=points)
+
+    def view(t_us: int) -> SimpleNamespace:
+        v = _view(t_us)
+        v.route = right_turn(t_us)
+        return v
+
+    node = Stub()
+    node.model = object()
+    planner = _build(harness.profile_for("uniad").bridge_args, monkeypatch)
+    answers: list[dict] = []
+
+    def post(path, body):
+        if path == "/reset":
+            node.reset()
+        else:
+            node.observe(Observation.from_wire(json.loads(json.dumps(body)), cameras=node.cameras))
+        return {"observed": True}
+
+    def post_infer(body):
+        answers.append(
+            node.infer(Observation.from_wire(json.loads(json.dumps(body)), cameras=node.cameras)).to_wire()
+        )
+        return answers[-1]
+
+    planner._post, planner.post_infer = post, post_infer
+    planner.on_session_start(SimpleNamespace(session_uuid="session-1"))
+    for t in range(0, 4_000_001, STEP_US):
+        planner.plan(view(t), t, t + STEP_US)
+    assert len(answers) == 3
+    for answer in answers:
+        record = answer["extras"]["route_command"]
+        assert (record["source"], record["name"], record["given"]) == ("route", "RIGHT", "FOLLOW_REFERENCE")
+        assert record["lookahead_m"] == pytest.approx(24.0, abs=0.01)
+        assert record["lateral_m"] > 2.0
