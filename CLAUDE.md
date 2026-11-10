@@ -40,9 +40,10 @@ paddock report [--include-invalid]                # leaderboard from results/
 paddock ingest --all                              # import pre-paddock results
 ```
 
-`paddock setup [--repo NAME | --model NAME] [--dry-run]` clones each `repos.yaml`
+`paddock setup [--repo NAME | --model NAME | --bench NAME] [--dry-run]` clones each `repos.yaml`
 entry into `[roots.repos]` at its pinned sha (or adopts a clone already there),
-then applies its patches; `--model` also runs that model's `setup.sh`. A clone at
+then applies its patches; `--model` also runs that model's `setup.sh`, and
+`--bench` a benchmark's (bench2drive's builds the CARLA-client Python). A clone at
 another sha is reported and left alone, and the exit code is 1.
 
 `paddock data fetch NAME [--dest DIR] [--only PART] [--match GLOB] [--dry-run]`

@@ -125,8 +125,8 @@ weights = "/path/to/weights"
 #                                # no, off) is read as off.
 
 # [benchmarks.bench2drive]                     # CARLA closed-loop; docs/benchmarks/bench2drive.md
-# python      = "/path/to/conda/envs/b2d/bin/python"  # CARLA-client env: imports carla, cv2, numpy, requests
-# carla_root  = "/path/to/carla0915"                   # contains CarlaUE4.sh and PythonAPI/
+# python      = "/path/to/conda/envs/b2d/bin/python"  # CARLA-client env: imports carla, cv2, numpy, requests; paddock setup --bench bench2drive
+# carla_root  = "/path/to/carla0915"                   # contains CarlaUE4.sh and PythonAPI/; paddock data fetch carla
 # repo        = "/path/to/Bench2Drive"                 # has leaderboard/ + scenario_runner/; sha pinned in repos.yaml
 # routes_file = "bench2drive220.xml"                   # under repo/leaderboard/data/ (default)
 # routes_subset = "1711,1773,1790"                     # optional: pin the run to these route ids (recorded in run.json)

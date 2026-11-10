@@ -16,8 +16,9 @@ First public release.
   neuroNCAP, AlpaSim and HUGSIM.
 - A command line: `paddock doctor`, `setup`, `new`, `verify`, `run`, `render` and `report`.
 - `paddock data fetch` downloads every dataset Paddock reads (comma2k19, HUGSIM, NAVSIM,
-  nuScenes, nuPlan, KITScenes and neuroNCAP's renderers) from their official sources, pinned and checked file by file, and unpacks
-  them where paddock reads them.
+  nuScenes, nuPlan, KITScenes and neuroNCAP's renderers), and CARLA for Bench2Drive, from
+  their official sources, pinned and checked file by file, and unpacks them where paddock
+  reads them. `paddock setup --bench bench2drive` builds the Python that drives CARLA.
 - A results store that records each run's settings and upstream commits beside its
   scores, and a leaderboard built from it.
 - A regression gate that compares a change against earlier runs of the released models.

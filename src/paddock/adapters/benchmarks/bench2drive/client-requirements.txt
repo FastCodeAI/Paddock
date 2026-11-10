@@ -1,0 +1,56 @@
+# The CARLA-client interpreter: what Bench2Drive's evaluator, paddock's agent and
+# Bench2Drive's own scorers import. setup.sh installs these into Python 3.8.
+#
+# Every version is the one in the working CARLA-client environment on the machine
+# Paddock is developed on, so a new site drives CARLA with the same code. The one
+# exception is carla itself.
+
+# CARLA's client library, from PyPI rather than the egg in carla_root. Both are
+# CARLA's own 0.9.15 build; the egg needs the system's libtiff.so.5, which newer
+# systems no longer have, and this wheel carries its own copy. With it installed
+# the harness leaves the egg off the path.
+carla==0.9.15
+
+# Bench2Drive's leaderboard/requirements.txt and scenario_runner/requirements.txt
+# at the pinned 7ec25d1. Pins are theirs where they give one.
+dictor==0.1.12
+ephem==4.2.1
+matplotlib==3.5.3
+networkx==2.2
+numpy==1.18.4
+opencv-python==4.2.0.32
+pexpect==4.9.0
+psutil==7.2.2
+py-trees==0.8.3
+pygame==2.6.1
+requests==2.32.4
+Shapely==1.7.1
+simple-watchdog-timer==0.1.1
+six==1.17.0
+tabulate==0.9.0
+transforms3d==0.4.2
+xmlschema==1.0.18
+
+# leaderboard_evaluator.py imports pkg_resources to read CARLA's version.
+setuptools==75.1.0
+# paddock's segment.py (PIL); agent.py needs only cv2, numpy and requests above.
+pillow==10.4.0
+# Bench2Drive's efficiency_smoothness_benchmark.py, which
+# tools/benchmarks/bench2drive/upstream_scores runs here.
+scipy==1.5.4
+
+# What those pull in, at the same environment's versions.
+certifi==2026.7.22
+charset-normalizer==3.5.1
+cycler==0.12.1
+decorator==5.3.1
+elementpath==1.3.3
+fonttools==4.57.0
+idna==3.15
+kiwisolver==1.4.7
+packaging==26.2
+ptyprocess==0.7.0
+pydot==4.0.1
+pyparsing==3.1.4
+python-dateutil==2.9.0.post0
+urllib3==2.2.3

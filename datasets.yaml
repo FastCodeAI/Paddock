@@ -8,7 +8,8 @@
 # `paddock data fetch` (src/paddock/fetch.py says how each key is read). It names
 # the owner's own host at a pinned revision, never a copy of ours, and only the
 # files a benchmark scores: the evaluation split, cameras only. `terms` makes
-# the command refuse until the user passes --accept-terms.
+# the command refuse until the user passes --accept-terms. `carla` is a
+# simulator, not data; it is here so the same command downloads it.
 
 datasets:
   nuscenes:
@@ -286,3 +287,35 @@ datasets:
           into: .
       after: >
         comma2k19 also needs comma's toolkit, at its pinned commit: paddock setup --repo comma2k19
+
+  carla:
+    description: CARLA 0.9.15, the simulator Bench2Drive drives in, with the additional maps that hold its Towns 12, 13 and 15
+    requires: [CarlaUE4, PythonAPI]
+    notes: >
+      Bench2Drive's 220 routes are all in Towns 12, 13 and 15, which ship in
+      AdditionalMaps_0.9.15.tar.gz, not in the simulator archive. Without them
+      every route fails when CARLA loads its town.
+    fetch:
+      license: >-
+        MIT for CARLA's code and CC BY for its assets, the maps among them; the
+        Unreal Engine runtime inside follows Epic's own licence
+      # CARLA's own release host, at the addresses Bench2Drive's README gives at
+      # the pinned 7ec25d1. Pinned by size and S3 ETag (the md5 of the upload
+      # parts: 100 MB for the simulator, 8 MiB for the maps).
+      base: https://carla-releases.s3.us-east-005.backblazeb2.com/Linux/
+      parts:
+        simulator:  # CarlaUE4.sh, CarlaUE4/, PythonAPI/ (with the 0.9.15 egg the harness imports)
+          files:
+            CARLA_0.9.15.tar.gz: {size: 8386636048, etag: e7e759a251bbd7c62bcd38b789ad8499-84}
+        # CARLA's ImportAssets.sh only untars Import/*.tar.gz in the CARLA folder,
+        # so unpacking the maps there is the same install. 11,447 files are in
+        # both archives and 3,221 of them differ; a CARLA installed with
+        # ImportAssets.sh holds the maps' copy of all 3,221, so the maps go on second.
+        maps:
+          unpack_after: simulator
+          files:
+            AdditionalMaps_0.9.15.tar.gz: {size: 7375946087, etag: 25fb0bda594ad2fef5431a056c9ee990-880}
+      after: >
+        Bench2Drive reads CARLA from [benchmarks.bench2drive] carla_root, not from this
+        path, so set carla_root = "{dest}" there; paddock setup --bench bench2drive
+        builds the Python it drives CARLA with (docs/benchmarks/bench2drive.md).

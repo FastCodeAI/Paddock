@@ -261,6 +261,8 @@ class BenchmarkSpec:
     pdm: tuple[tuple[str, str], ...] = ()
     description: str = ""
     directory: Path = REPO_ROOT
+    #: The repos.yaml entry the harness drives, for `paddock setup --bench`.
+    repo: str = ""
 
 
 def _load_yaml(path: Path) -> dict:
@@ -437,6 +439,7 @@ def load_benchmarks(directory: Path = BENCHMARKS_DIR) -> dict[str, BenchmarkSpec
             pdm=_pdm(body.get("pdm"), metrics, path),
             description=body.get("description", ""),
             directory=path.parent,
+            repo=body.get("repo", ""),
         )
     return benchmarks
 

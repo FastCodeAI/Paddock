@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import os
 import tarfile
 import zipfile
 from pathlib import Path
@@ -70,7 +71,13 @@ def _zip(path: Path, members: dict[str, bytes]) -> None:
             zf.writestr(name, data)
 
 
-def _tar(path: Path, members: dict[str, bytes], link: str | None = None, mode: str = "w:gz") -> None:
+def _tar(
+    path: Path,
+    members: dict[str, bytes],
+    link: str | None = None,
+    mode: str = "w:gz",
+    target: str = "/etc/passwd",
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(path, mode) as tf:
         for name, data in members.items():
@@ -80,7 +87,7 @@ def _tar(path: Path, members: dict[str, bytes], link: str | None = None, mode: s
         if link:
             info = tarfile.TarInfo(link)
             info.type = tarfile.SYMTYPE
-            info.linkname = "/etc/passwd"
+            info.linkname = target
             tf.addfile(info)
 
 
@@ -340,6 +347,48 @@ def test_only_and_match_narrow_the_files(hub, recipe) -> None:
         fetch.plan(rec, match=["Chunk_9.zip"], hub=hub)
 
 
+def _layered(hub: LocalHub) -> dict:
+    """CARLA's shape: a second archive that replaces some of the first one's files."""
+    web = hub.root / "web"
+    _tar(web / "sim.tgz", {"Content/shared.uasset": b"old", "CarlaUE4.sh": b"#!"})
+    _tar(web / "maps.tgz", {"Content/shared.uasset": b"new", "Maps/Town12.umap": b"t"})
+    files = {name: _pins(web / name) for name in ("sim.tgz", "maps.tgz")}
+    return {
+        "license": "MIT",
+        "base": web.as_uri() + "/",
+        "parts": {
+            "simulator": {"files": {"sim.tgz": files["sim.tgz"]}, "into": "."},
+            "maps": {"files": {"maps.tgz": files["maps.tgz"]}, "into": ".", "unpack_after": "simulator"},
+        },
+    }
+
+
+def test_a_part_that_replaces_files_goes_on_after_them(site, hub, tmp_path) -> None:
+    """CARLA's maps archive has its own copy of 3,221 of the simulator's files, and CARLA keeps the
+    maps' copy. Unpacked first, the maps' copies would be overwritten by the simulator's."""
+    layered, dest = _layered(hub), tmp_path / "carla"
+
+    code, out = _run(site, hub, dest, layered, only=["maps"], dry_run=True)
+    assert code == 1 and "simulator must be unpacked first" in out
+    code, out = _run(site, hub, dest, layered, only=["maps"])
+    assert code == 1 and "simulator must be unpacked first" in out
+    assert not dest.exists() or not any(dest.rglob("*.umap")), "refused before anything downloaded"
+
+    # Named in the wrong order, the parts still run in the recipe's.
+    rec = fetch.recipe(_spec(layered))
+    order = [i.part.name for i in fetch.plan(rec, only=["maps", "simulator"], hub=hub)]
+    assert order == ["simulator", "maps"]
+    code, out = _run(site, hub, dest, layered, only=["maps", "simulator"])
+    assert code == 0, out
+    assert (dest / "Content/shared.uasset").read_bytes() == b"new"
+
+    # Once the simulator is done, the maps alone may follow.
+    (dest / fetch.STATE_DIR / "done" / "maps.tgz.done").unlink()
+    code, out = _run(site, hub, dest, layered, only=["maps"])
+    assert code == 0, out
+    assert (dest / "Content/shared.uasset").read_bytes() == b"new"
+
+
 def test_a_pattern_matching_nothing_at_the_source_fails(hub, recipe) -> None:
     broken = {**recipe, "parts": {"raw": {"files": ["raw/Shard_*.zip"]}}}
     with pytest.raises(fetch.FetchError, match="matches"):
@@ -360,6 +409,10 @@ HF = {"repo": REPO, "revision": REV}
         ({"license": "MIT", "base": "https://x/", "parts": {"a": {"files": {"a.zip": {"size": 3}}}}}, "etag"),
         ({"license": "MIT", "parts": {"a": {"files": {"a.zip": {"size": 3, "etag": "e"}}}}}, "base address"),
         ({"license": "MIT", "parts": {"a": {"files": ["x"]}}}, "huggingface source"),
+        (
+            {"license": "MIT", "huggingface": HF, "parts": {"a": {"files": ["x"], "unpack_after": "b"}}},
+            "not a part declared before",
+        ),
     ],
 )
 def test_a_recipe_that_cannot_be_pinned_or_explained_is_refused(block, complaint) -> None:
@@ -393,6 +446,9 @@ def test_an_s3_etag_is_checked_whole_or_by_its_upload_parts(tmp_path) -> None:
     assert fetch.etag_matches(path, hashlib.md5(data).hexdigest())
     assert fetch.etag_matches(path, f'"{_multipart_etag(data, 1 << 20)}"')
     assert fetch.etag_matches(path, _multipart_etag(data, 8 << 20))  # one 8 MiB part: "-1"
+    # Whole megabytes, not mebibytes: Backblaze's tools upload in 100 MB parts.
+    assert _multipart_etag(data, 1_000_000) != _multipart_etag(data, 1 << 20)
+    assert fetch.etag_matches(path, _multipart_etag(data, 1_000_000))
     assert not fetch.etag_matches(path, _multipart_etag(data[:-1] + b"x", 1 << 20))
 
 
@@ -414,6 +470,29 @@ def test_an_archive_cannot_write_outside_its_destination(tmp_path) -> None:
     _tar(linked, {"a/ok.txt": b"x"}, link="a/passwd")
     with pytest.raises(fetch.FetchError, match="link or device"):
         fetch.unpack(linked, tmp_path / "into2")
+
+
+@pytest.mark.parametrize("target", ["../ok.txt", "b/ok.txt", "/tmp/ok.txt", "..", "."])
+def test_a_link_out_of_its_own_folder_is_refused(tmp_path, target) -> None:
+    linked = tmp_path / "link.tgz"
+    _tar(linked, {"a/ok.txt": b"x"}, link="a/lib.so", target=target)
+    with pytest.raises(fetch.FetchError, match="link or device"):
+        fetch.unpack(linked, tmp_path / "into")
+    assert not (tmp_path / "into/a/lib.so").is_symlink()
+
+
+def test_a_link_to_a_file_beside_it_is_kept(tmp_path) -> None:
+    """CARLA's release ships libsqlite3.so -> libsqlite3.so.0.8.6, and CARLA loads it by the link."""
+    linked = tmp_path / "carla.tar.gz"
+    _tar(linked, {"lib/libsqlite3.so.0.8.6": b"elf"}, link="lib/libsqlite3.so", target="libsqlite3.so.0.8.6")
+    into = tmp_path / "into"
+    assert fetch.unpack(linked, into) == 2
+    assert (into / "lib/libsqlite3.so").is_symlink()
+    assert os.readlink(into / "lib/libsqlite3.so") == "libsqlite3.so.0.8.6"
+    assert (into / "lib/libsqlite3.so").read_bytes() == b"elf"
+    # Unpacking again, as a rerun after an interruption does, replaces the link.
+    assert fetch.unpack(linked, into) == 2
+    assert (into / "lib/libsqlite3.so").read_bytes() == b"elf"
 
 
 @pytest.mark.parametrize(

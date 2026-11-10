@@ -42,7 +42,7 @@ import time
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from paddock.config import SiteConfig
@@ -91,7 +91,10 @@ class Part:
     into `into` (default: the directory it sits in at the source), with
     `strip` leading path components removed from each member, as tar's
     --strip-components does. A plain file lands at its source path, or in
-    `into` when one is given.
+    `into` when one is given. `unpack_after` names an earlier part whose files
+    this one's archives replace, so it must be unpacked first: CARLA's maps
+    archive has its own copies of 3,221 of the simulator archive's files, and
+    CARLA's own install keeps the maps' ones.
     """
 
     name: str
@@ -102,6 +105,7 @@ class Part:
     pinned: tuple[Pinned, ...] = ()
     into: str | None = None
     strip: int = 0
+    unpack_after: str | None = None
 
 
 @dataclass(frozen=True)
@@ -130,9 +134,15 @@ def recipe(spec: DatasetSpec) -> Recipe:
         here = f"{where}.parts.{name}"
         if not files:
             raise FetchError(f"{here}: lists no files")
+        first = body.get("unpack_after")
+        if first is not None and first not in parts:
+            raise FetchError(
+                f"{here}: unpack_after names {first!r}, which is not a part declared before this one"
+            )
         placement = {
             "into": str(body["into"]) if body.get("into") is not None else None,
             "strip": int(body.get("strip", 0)),
+            "unpack_after": str(first) if first is not None else None,
         }
         if isinstance(files, dict):
             # Files at a plain web address. The part's own base wins over the
@@ -386,14 +396,18 @@ def plan(
     match: list[str] | None = None,
     hub: Sources | None = None,
 ) -> list[Item]:
-    """The files a fetch will handle, in order. `match` filters by name or path glob."""
+    """The files a fetch will handle, in recipe order. `match` filters by name or path glob.
+
+    Recipe order, not the order `--only` names them in, because a part may
+    replace an earlier one's files (`Part.unpack_after`).
+    """
     hub = hub or Sources()
     unknown = [p for p in (only or []) if p not in rec.parts]
     if unknown:
         raise FetchError(
             f"{rec.dataset} has no part {', '.join(map(repr, unknown))}; parts: {', '.join(rec.parts)}"
         )
-    names = only or list(rec.parts)
+    names = [n for n in rec.parts if not only or n in only]
     items = [Item(rec.parts[n], r) for n in names for r in remotes(rec.parts[n], hub)]
     if match:
         items = [
@@ -404,6 +418,28 @@ def plan(
         if not items:
             raise FetchError(f"--match {' '.join(match)} selects none of {rec.dataset}'s files")
     return items
+
+
+def _unpacked_out_of_order(rec: Recipe, todo: list[Item], dest: Path, hub: Sources) -> list[str]:
+    """A part that would be unpacked before the part whose files it replaces.
+
+    Such a part's files are only right on top of the other's: unpacked first,
+    they would be overwritten by the older copies. A part selected in the
+    same run is fine, because plan() keeps recipe order and a failure stops
+    the run before anything after it.
+    """
+    selected = {i.part.name for i in todo}
+    problems = []
+    for part in dict.fromkeys(i.part.name for i in todo):
+        first = rec.parts[part].unpack_after
+        if first is None or first in selected:
+            continue
+        if any(not i.marker(dest).exists() for i in plan(rec, only=[first], hub=hub)):
+            problems.append(
+                f"{part} replaces some of {first}'s files, so {first} must be unpacked first: "
+                f"run without --only, or with --only {first} before --only {part}"
+            )
+    return problems
 
 
 def check_sources(items: list[Item], hub: Sources) -> list[str]:
@@ -487,12 +523,35 @@ def _inside(base: Path, relative: str) -> Path:
     return target
 
 
+def _sibling(linkname: str) -> bool:
+    """True for a link target that is a plain name in the link's own folder.
+
+    Nothing with a slash or `..`: a link may only point beside itself, so a
+    chain of links stays in that folder, and a later member written through one
+    stays inside the destination.
+    """
+    return "/" not in linkname and "\\" not in linkname and linkname not in ("", ".", "..")
+
+
+def _symlink(base: Path, relative: str, linkname: str) -> None:
+    parent = _inside(base, str(PurePosixPath(relative).parent))
+    parent.mkdir(parents=True, exist_ok=True)
+    link = parent / PurePosixPath(relative).name
+    # A rerun after an interruption unpacks the archive again over its own output.
+    if link.is_symlink() or link.is_file():
+        link.unlink()
+    elif link.exists():
+        raise FetchError(f"archive link {relative!r} would replace the folder {link}; refusing to unpack it")
+    os.symlink(linkname, link)
+
+
 def unpack(archive: Path, into: Path, strip: int = 0) -> int:
     """Unpack `archive` into `into`; returns the number of files written.
 
-    Files and directories only. A link or device in a dataset archive has no
-    business there, and following one is how an archive writes outside its
-    destination, so it stops the fetch.
+    Files and directories, and one kind of link: a symlink naming a file in its
+    own folder, as CARLA's release ships `libsqlite3.so -> libsqlite3.so.0.8.6`.
+    Any other link or a device stops the fetch, because following a link that
+    points elsewhere is how an archive writes outside its destination.
     """
     into.mkdir(parents=True, exist_ok=True)
     base = into.resolve()
@@ -528,6 +587,9 @@ def unpack(archive: Path, into: Path, strip: int = 0) -> int:
                 assert src is not None
                 with target.open("wb") as dst:
                     shutil.copyfileobj(src, dst, 1 << 20)
+                written += 1
+            elif member.issym() and _sibling(member.linkname):
+                _symlink(base, relative, member.linkname)
                 written += 1
             else:
                 raise FetchError(
@@ -614,7 +676,7 @@ def fetch(
     # Before anything is downloaded, and in a dry run too: a dry run that passed
     # here and a real one that failed on the first file would make the dry run
     # worthless as a check.
-    problems = check_sources(todo, hub)
+    problems = _unpacked_out_of_order(rec, todo, dest, hub) + check_sources(todo, hub)
     for problem in problems:
         echo(problem)
     if problems:
@@ -688,19 +750,29 @@ def etag_matches(path: Path, etag: str) -> bool:
     """Whether `path` has this S3 ETag: the md5 of the file, or of its upload parts.
 
     A multipart ETag is `md5(md5(part 1) + ... + md5(part n))-n`. The part size
-    is not recorded, but uploaders use whole mebibytes, and only a few sizes
-    split this file into exactly n parts; every host checked so far used 8 MiB.
+    is not recorded, but uploaders use a whole number of mebibytes (aws's 8 MiB,
+    which nuScenes and nuPlan used) or of megabytes (Backblaze's 100 MB, which
+    CARLA's simulator archive used), and only a few sizes split this file into
+    exactly n parts. Those two defaults are tried first.
     """
     etag = etag.strip('"')
     if "-" not in etag:
         return _digest(path, hashlib.md5) == etag
     digest, count = etag.split("-", 1)
-    n, size, mib = int(count), path.stat().st_size, 1 << 20
+    n, size = int(count), path.stat().st_size
     if n == 1:
         candidates = [max(size, 1)]
     else:
-        candidates = [k * mib for k in range(1, 5 * 1024 + 1) if (n - 1) * k * mib < size <= n * k * mib]
-    for part_size in sorted(candidates, key=lambda c: c != 8 * mib):
+        # S3 caps a part at 5 GiB.
+        candidates = sorted(
+            {
+                k * unit
+                for unit in (1 << 20, 1_000_000)
+                for k in range(1, 5 * 1024 + 1)
+                if (n - 1) * k * unit < size <= n * k * unit
+            }
+        )
+    for part_size in sorted(candidates, key=lambda c: c not in (8 << 20, 100_000_000)):
         joined = hashlib.md5()
         with path.open("rb") as fh:
             while block := fh.read(part_size):

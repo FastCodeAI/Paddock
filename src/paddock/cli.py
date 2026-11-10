@@ -206,6 +206,9 @@ def setup(
     model: str = typer.Option(
         None, "--model", "-m", help="This model's repo (if it has one), then its setup.sh."
     ),
+    bench: str = typer.Option(
+        None, "--bench", "-b", help="This benchmark's repo, then its setup.sh (bench2drive has one)."
+    ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Say what would be done; change nothing."),
 ) -> None:
     """Clone or adopt the vendor repos at their pinned shas, and apply their patches.
@@ -217,12 +220,15 @@ def setup(
 
     With --model, the model's own setup.sh then builds its environment, with
     PADDOCK_REPO, PADDOCK_VENV and PADDOCK_WEIGHTS set from paddock.toml.
+    --bench does the same for a benchmark whose harness runs its own
+    interpreter: bench2drive's builds the Python that drives CARLA, at
+    [benchmarks.bench2drive] python, or in the clone's .venv.
     """
     from paddock import vendor
 
     try:
         cfg = SiteConfig.load()
-        code = vendor.setup(cfg, repo=repo, model=model, dry_run=dry_run, echo=typer.echo)
+        code = vendor.setup(cfg, repo=repo, model=model, bench=bench, dry_run=dry_run, echo=typer.echo)
     except ConfigError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc

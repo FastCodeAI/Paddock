@@ -87,8 +87,16 @@ crash. An attempt cut off by a restart leaves none.
 
 ## Site setup
 
-CARLA and the Bench2Drive checkout live wherever this machine keeps them; declare
-them in `paddock.toml` (never committed):
+Two commands put everything in place:
+
+```bash
+paddock data fetch carla --dest /data/carla0915   # CARLA 0.9.15 and the maps with Towns 12, 13 and 15; 15.8 GB
+paddock setup --bench bench2drive                 # Bench2Drive at its pin, and the Python that drives CARLA
+```
+
+Each prints the line it needs in `paddock.toml`. CARLA and the Bench2Drive
+checkout live wherever this machine keeps them; declare them in `paddock.toml`
+(never committed):
 
 ```toml
 [benchmarks.bench2drive]
@@ -130,16 +138,31 @@ too, and ranks at the model's own (*Pooling recorded routes*, below).
 Prerequisites (all outside this repo):
 
 - **CARLA 0.9.15** installed at `carla_root` (`CarlaUE4.sh` must exist, and
-  `PythonAPI/carla/agents/` — the agent imports `RoadOption` from it). The
-  evaluator self-launches CARLA; you do not start it yourself.
+  `PythonAPI/carla/agents/` — the agent imports `RoadOption` from it), with the
+  additional maps imported: all 220 routes are in Towns 12, 13 and 15, which
+  ship separately. `paddock data fetch carla` downloads both from CARLA's own
+  host and unpacks the maps into the CARLA folder, which is all CARLA's
+  `ImportAssets.sh` does. The maps archive has its own copy of 3,221 of the
+  simulator's files, and CARLA's install keeps the maps' copy, so the command
+  unpacks the maps second and refuses the other order. The evaluator
+  self-launches CARLA; you do not start it yourself.
 - The **Bench2Drive checkout** at the revision pinned in `repos.yaml`
   (`leaderboard/` + `scenario_runner/` + the routes XML under `leaderboard/data/`).
   Nothing from Bench2DriveZoo is needed: the PID tracker its baselines use is
   vendored here.
 - A **CARLA-client interpreter** (`python` above) that can import `carla`,
-  `cv2`, `numpy` and `requests`. `carla` may be the pip package or the egg the
-  0.9.15 release ships under `PythonAPI/carla/dist/`, which the adapter puts on
-  the path itself. Python 3.8 is fine; `agent.py` and `pid.py` are kept 3.8-compatible.
+  `cv2`, `numpy` and `requests`. `paddock setup --bench bench2drive` builds one:
+  Python 3.8 with the versions in
+  [`client-requirements.txt`](../../src/paddock/adapters/benchmarks/bench2drive/client-requirements.txt),
+  which are those of the working environment on the machine Paddock is
+  developed on. It goes where `python` points, or in the clone's `.venv`, and
+  an existing environment there is left alone.
+  `carla` may be the pip package or the egg the 0.9.15 release ships under
+  `PythonAPI/carla/dist/`. The adapter puts the egg on the path only for an
+  interpreter with no `carla` of its own, because the egg needs the system's
+  `libtiff.so.5`, which newer systems no longer ship; PyPI's wheel, which the
+  setup installs, carries its own copy. `agent.py` and `pid.py` are kept
+  3.8-compatible.
 
 `paddock doctor` runs the adapter's `preflight()`, which checks all of the above
 — including a real import of everything `agent.py` needs, inside that
@@ -328,9 +351,10 @@ PADDOCK_CONFIG=<sweep>/paddock.toml python -m tools.benchmarks.bench2drive.upstr
 
 Bench2Drive's scorers need two packages in the CARLA-client interpreter that driving
 does not: `scipy`, which `efficiency_smoothness_benchmark.py` imports, and `networkx`,
-which CARLA's route planner imports for `ability_benchmark.py`. Install them there once
-(`<python> -m pip install scipy networkx`; this site's are scipy 1.5.4 and networkx
-2.2). Without them the tool stops and names the missing one.
+which CARLA's route planner imports for `ability_benchmark.py`.
+`paddock setup --bench bench2drive` installs both (scipy 1.5.4, networkx 2.2); an
+interpreter built by hand needs `<python> -m pip install scipy networkx`. Without them
+the tool stops and names the missing one.
 
 It finds the routes the way `paddock ingest` did, and refuses unless each is the very
 `results.json` the record pooled: the run and sha256 the ingest wrote for it to the
@@ -667,6 +691,7 @@ openpilot's `pooled50-40c29d24c37d542a-c7d2b2`, pooled again under this list, is
 | crash statuses fail the episode, poor outcomes score | status strings read from `statistics_manager.py` at 7ec25d1; parametrised test over all of them | **strong** |
 | evaluator flags, exit codes, checkpoint-at-startup, CARLA port and session | read from `leaderboard_evaluator.py` at 7ec25d1; launch path tested against a stand-in evaluator (`tests/test_harness.py`) | **strong** for the harness, argued for the real evaluator |
 | `agent.py` imports and runs its control path in the CARLA-client env | imported and exercised in the site's `b2d` env (Python 3.8, 0.9.15 egg) without a server | moderate |
+| the environment `paddock setup --bench bench2drive` builds can run the evaluator | built on one machine on 10 Nov 2026: preflight passes with it, and it imports the evaluator, all 37 scenario modules, the agent and both scorers; no route has been driven with it yet | moderate |
 | a model drives a route end to end through paddock | openpilot and VisionPilot completed routes (DS 100) through this adapter at one site; frames were at Low quality (see *Render quality*) and the run predates the crash-status and repetition handling above | moderate |
 | `metric_info.json` matches what the upstream tool reads | field names and layout taken from `get_metric_info` and `efficiency_smoothness_benchmark.read_from_json` at 7ec25d1; not yet fed through the tool end to end | argued |
 | crashed repetitions are dropped, not averaged | unit-tested over crashed, blocked and all-crashed triples | **strong** |
