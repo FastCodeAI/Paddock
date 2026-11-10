@@ -186,6 +186,39 @@ the raw argmax with the switch on or off. Feeding the proxy's plans back across
 scenarios — which is what would close the 0.02705 below — is a separate
 decision about this benchmark's comparability and is not made here.
 
+### navhard's streamed mode (opt in)
+
+navhard (NAVSIM v2.2, `navhard_two_stage`) has an opt-in mode that does feed
+the node its own plans back, for the stage-one frames upstream's sequential
+loop would: `PADDOCK_NAVHARD_STREAMED=1 paddock run --bench navhard --model drivejepa`.
+Off, nothing changes for any model. On:
+
+- For each **real** stage-one frame the proxy adds a `stream` to the
+  `/infer_sequence` request: the log name, the frame's own timestamp and its
+  global pose, read from the Scene (`protocol.StreamFrame`). The observations
+  are byte-identical to a standard run's. The node still resets per sample, but
+  Drive-JEPA keeps one previous-plan book per log across those resets and is
+  fed a plan that is 0.45-0.55 s old, as in closed loop. The scorer's
+  `metric_cache` and `past_ego_simulated_states` are still ignored.
+- **Synthetic** stage-two scenes are sent exactly as in a standard run, with no
+  stream, and never enter a log's book. The Scene tells them apart:
+  `scene_metadata.corresponding_original_scene` is set only for a synthetic scene.
+- The v2.2 scorer plans each worker's stage-one frames in set order (hash
+  order). In one standard run's plan dump (uniad, 10 Nov 2026), only 109 of the
+  225 (previous, now) pairs had the earlier frame planned first. `adapters/benchmarks/navhard/score.py`
+  therefore swaps that one line of the official worker for the same tokens
+  sorted by (log, timestamp), in streamed mode only. A log's frames all go to
+  one worker, and each request blocks until the node has kept its plan. So
+  all 225 "now" frames can be fed, unless the frame before one failed.
+- The run records it. `config.streamed = "per_log"` changes the run id, and a
+  standard run cannot be resumed as a streamed one or the other way round. Each
+  sample's `extra.momentum_fed` and `by_group.streamed` (real and synthetic
+  frames, how many were fed) come from the plan dump, and the notes say so.
+
+Upstream's navhard protocol gives no agent a previous plan. So a streamed
+navhard row is a different protocol from published navhard numbers and from
+a standard paddock run. Report them side by side, not as one number.
+
 ## The fork's own baselines do not run
 
 Both stock baseline agents in `Drive-JEPA/navsim_v2` are broken by the fork's

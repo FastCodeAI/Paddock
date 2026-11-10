@@ -18,6 +18,14 @@ helper `calculate_weighted_average_score` on the same rows and writes one line
 per frame to FRAMES next to the CSV. The harness checks that the mean of those
 lines reproduces the CSV's combined row before it reports anything.
 
+Streamed mode, and only it (`ordering.STREAM_OVERRIDE` on the command line,
+which the harness adds under PADDOCK_NAVHARD_STREAMED), changes one more thing:
+the order each worker plans its stage-one frames in, from the devkit's set
+order to time order per log, so a log's earlier frame is planned before the
+later one that is handed its plan. One line of the official worker, swapped in
+this process; ordering.py says which and why. Order is all it changes -- every
+scene is scored by the same code on the same plan.
+
 Runs under the devkit's Python 3.9: no 3.10+ syntax.
 """
 
@@ -29,6 +37,8 @@ import sys
 from pathlib import Path
 
 import navsim.planning.script.run_pdm_score as official
+
+from paddock.adapters.benchmarks.navhard import ordering
 
 #: One JSON line per stage-one frame: its stage-one, stage-two and combined Series.
 FRAMES = "pseudo_closed_loop_frames.jsonl"
@@ -86,6 +96,8 @@ def _mapping_scores_with_frames(pdm_score_df, all_mappings):
 
 
 official.calculate_individual_mapping_scores = _mapping_scores_with_frames
+if ordering.streamed(sys.argv[1:]):
+    ordering.install(official)
 
 if __name__ == "__main__":
     official.main()

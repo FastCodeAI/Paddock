@@ -11,6 +11,11 @@ sensor_blobs_path: null
 # navhard_two_stage/sensor_blobs, the stage-two scenes' images; the harness sets it.
 # Looked up before sensor_blobs_path (agent.py).
 synthetic_blobs_path: null
+# Streamed mode: each real stage-one frame also names its log (with its own timestamp
+# and global pose), so a node that keeps a previous plan per drive -- Drive-JEPA's
+# momentum -- has one; synthetic frames go as they always do. The harness sets it
+# under PADDOCK_NAVHARD_STREAMED, and score.py then plans stage one in time order.
+stream: false
 timeout_s: 600.0
 dump_path: null
 retries: 2
