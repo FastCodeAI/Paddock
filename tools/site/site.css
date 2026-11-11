@@ -303,10 +303,18 @@ tr.on th { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
 .badge-box .code { width: 100%; margin: 0; white-space: pre-wrap; word-break: break-all; }
 
 /* -- side-by-side videos -------------------------------------------------------- */
-.clips { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+.bench-clips { display: grid; gap: 10px; margin-bottom: 30px; }
+.bench-clips h3 { margin: 0; font-size: 1.15rem; }
+.bench-clips h3 .test { margin-left: 6px; font-size: 0.82rem; font-weight: 500; color: var(--muted); }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tab { font: inherit; font-size: 0.86rem; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink-2); cursor: pointer; }
+.tab:hover { border-color: var(--accent); }
+.tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .clip { margin: 0; }
 .clip video { width: 100%; border-radius: 10px; border: 1px solid var(--line); background: #000; }
 .clip figcaption { font-size: 0.88rem; color: var(--muted); margin-top: 6px; }
+.bench-note { margin: 0; font-size: 0.88rem; color: var(--muted); }
 
 .foot { border-top: 1px solid var(--line); margin-top: 24px; padding: 28px 0 40px; color: var(--muted); font-size: 0.88rem; }
 .foot p { margin: 0 0 6px; }

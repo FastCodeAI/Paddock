@@ -43,6 +43,12 @@ Report bugs and ask for models or benchmarks in GitHub issues.
   they are ranked with ran on `1e0d5fea`. Nobody has shown the two images drive
   identically, and no committed fixture yet compares the bridge's inputs with each
   model's native AlpaSim driver.
+- **Adding a model can mean editing `src/paddock/viz/palette.py`.** A model with no
+  entry there is drawn in one of six colours picked by a hash of its name, and three
+  of the six are taken (constant velocity, AutoE2E, WA-JEPA). So about half of new
+  model names share a colour with a registered model, and `tests/test_viz.py` then
+  fails until `palette.py` gets an entry, which `CONTRIBUTING.md` says adding a model
+  must not need. A colour set in the model's own `model.yaml` would remove the conflict.
 
 - **Bench2Drive's ranked runs cover 50 of 220 routes and 14 of 44 scenario types.**
   They cannot be compared with published 220-route scores.
@@ -60,4 +66,6 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 - nuPlan back in the support matrix, once full runs replace the 25-anchor ones.
 - HUGSIM driven through paddock's own harness; today its runs are imported.
 - Models listed in `repos.yaml` but not yet evaluated: Alpamayo 2.
+- Alpamayo 2 Edge on NAVSIM with nuPlan's 10 Hz frames, which it is built for. Its
+  NAVSIM cells are 2 Hz: the site that ran it holds no nuPlan 10 Hz data.
 - Failure-mode analysis, the same for every model and dataset.
