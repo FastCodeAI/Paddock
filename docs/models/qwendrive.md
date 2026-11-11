@@ -297,6 +297,10 @@ plan against the collision rate:
 | **qwendrive** | **86%** | **−2.81 m/s** | **1.22 m** |
 | visionpilot | 90% | −2.27 m/s | 1.91 m |
 
+The drivejepa row is its run `20261012T224707-f11ac0`, since retired for the
+momentum-aware `20261110T204020-036fb3`, which collides in 80% of the frontal
+episodes; its other two columns have not been measured on that run.
+
 Speed change is the last speed minus the first, from each episode's
 `ego_poses.json`. Drive-JEPA's row is its run after the camera fix.
 

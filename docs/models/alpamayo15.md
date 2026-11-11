@@ -244,9 +244,13 @@ assertion is calibrated to the smoke-test scenes and is not a bound on the datas
 | system | ADE | FDE@3s | longitudinal | lateral |
 |---|---:|---:|---:|---:|
 | Constant velocity | 1.381 | 3.091 | — | — |
-| Drive-JEPA (zero-shot) | 2.364 | 4.199 | 2.317 | 0.209 |
+| Drive-JEPA (zero-shot; its pre-paddock row, since retired) | 2.364 | 4.199 | 2.317 | 0.209 |
 | **Alpamayo-1.5 `nav` medoid** | **0.875** | **1.862** | 0.718 | 0.331 |
 | Alpamayo-1.5 `nav` minADE@6 | 0.543 | 1.035 | — | — |
+
+Drive-JEPA's KITScenes row is now its momentum-aware run (`20261111T054224-9f8371`,
+ADE 2.188, FDE@3s 3.867, longitudinal 2.078, lateral 0.402, no route given); the
+paired figures below compare against the retired row above.
 
 Paired over all 223 samples: mean difference −1.488 m, Alpamayo wins 168/223 (75%),
 Wilcoxon signed-rank z = −9.19, p = 4.05e-20. Ground-truth agreement 2.22e-14 m.

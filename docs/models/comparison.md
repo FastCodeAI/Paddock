@@ -78,8 +78,8 @@ situation and pass on the strength of having a row in the tables above.
 
 ### Drive-JEPA × navsim
 
-**Drive-JEPA trained on NAVSIM's own data, and it leads that benchmark by 0.235
-EPDMS.** It was post-trained on NAVSIM `navtrain` and pre-trained partly on
+**Drive-JEPA trained on NAVSIM's own data, and it leads that benchmark by 0.262
+EPDMS** over the 2 Hz field (its momentum-aware run; 0.235 before). It was post-trained on NAVSIM `navtrain` and pre-trained partly on
 OpenScene — which *is* the NAVSIM dataset. Qwen-Drive, AutoE2E and Alpamayo 1.5
 also trained on NAVSIM or nuPlan data (their sections below); OpenPilot and
 VisionPilot meet `navtest` zero-shot.
@@ -97,7 +97,7 @@ To be precise about what this is and is not: training on `navtrain` and testing
 on `navtest` is **the protocol NAVSIM intends**. Drive-JEPA is not cheating; it
 is playing the benchmark the way the benchmark is designed to be played. What
 makes the column hard to read is that the other three are not playing it that
-way at all. The 0.235 EPDMS gap therefore conflates *"better planner"* with
+way at all. The 0.262 EPDMS gap therefore conflates *"better planner"* with
 *"in-distribution versus zero-shot"*, and nothing on the page previously said so.
 
 **Sourced at the pinned sha, not taken on trust.** In `Drive-JEPA @ e21f474`,
@@ -525,8 +525,9 @@ ahead (22.6 % of stopped anchors), and its plans carry a left bias twice as
 large in Boston as in Singapore. See `docs/models/meteor.md`.
 
 ✦ **Two models here declare training exposure to a benchmark's own dataset.**
-Drive-JEPA leads that benchmark by 0.096 EPDMS on v2 and 0.085 PDMS on v1 over
-OpenPilot with its 10 Hz history (0.235 and 0.216 over the 2 Hz field): it was
+Drive-JEPA leads that benchmark by 0.123 EPDMS on v2 and 0.086 PDMS on v1 over
+OpenPilot with its 10 Hz history (0.262 and 0.218 over the 2 Hz field; its
+momentum-aware runs, against 0.096 / 0.085 and 0.235 / 0.216 before): it was
 post-trained on NAVSIM `navtrain` and pre-trained partly on OpenScene, which
 *is* the NAVSIM dataset. Qwen-Drive 1.0 reports navtest as its own headline
 planning result, so its adapter declares `navtrain` too — read off the report

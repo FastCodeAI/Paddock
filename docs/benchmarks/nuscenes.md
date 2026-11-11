@@ -122,6 +122,10 @@ recorded, not over what was expected.
 Every other model ignores the stream (the base `Policy.infer_sequence_streamed`
 drops it) and plans exactly as in a standard run, one node at a time.
 
+Drive-JEPA's support-matrix row is this mode's run, `20261111T061849-382fec`:
+4,485 of 5,119 fed, the expected count. It replaces `20261105T201953-308dc5`
+(momentum on, 0 fed).
+
 ## Openpilot camera history and GPU inference
 
 Openpilot uses real approximately 12 Hz CAM_FRONT exposures between keyframes.
@@ -228,8 +232,11 @@ camera-frame fix of 13 Oct 2026: the adapter placed the cameras relative to
 LIDAR_TOP, which nuScenes yaws −90°, so none of the model's image samples landed in
 the front image and it planned from ego status alone. The re-run with the fix
 (`20261105T201953-308dc5`, 5 Nov 2026) sees the camera and scores worse: cumulative
-L2 1.328 against 0.912, point L2 2.344 against 1.882. The support-matrix table
-below uses the re-run.
+L2 1.328 against 0.912, point L2 2.344 against 1.882. Momentum was declared on in
+that re-run and never acted (0 of 5,119 plans were handed a previous plan). It is
+retired in turn by the momentum-aware run `20261111T061849-382fec` (streamed per
+scene, below; 4,485 of 5,119 keyframes fed): cumulative L2 1.128, point L2 1.995.
+The support-matrix table below uses that run.
 
 Overlays for every scored keyframe (camera with the human future and each
 model's plan, BEV with annotated boxes, per-scene videos) are on the NAS:
@@ -311,7 +318,7 @@ history, CUDA inference, CPU camera warping and resume assistance disabled.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | OpenPilot | 1.925 | 4.054 | 6.194 | 4.057 | 2.477 | 3.535 | 2.624 |
 | Alpamayo 1.5 | 0.509 | 1.351 | 2.602 | 1.487 | 0.787 | 1.249 | 1.582 |
-| Drive-JEPA | 0.957 | 2.158 | 3.917 | 2.344 | 1.328 | 1.996 | 1.628 |
+| Drive-JEPA ⟲ | 0.819 | 1.806 | 3.358 | 1.995 | 1.128 | 1.694 | 1.244 |
 | VisionPilot | 1.031 | 2.213 | 3.837 | 2.360 | 1.441 | 2.058 | 3.816 |
 | METEOR | 0.616 | 1.683 | 3.356 | 1.885 | 0.977 | 1.570 | 6.152 ◇ |
 | Qwen-Drive 1.0 | 0.318 | 0.722 | 1.360 | 0.800 | 0.450 | 0.678 | 0.770 |
@@ -325,6 +332,12 @@ is predicted ego-footprint overlap with annotated boxes, not an observed crash.
 ⧗ AutoE2E (`kitscenes-epoch-5`, run `20261023T004711-eedbe2`, valid) is fed the
 6.5 s of past keyframes it declares, where the other rows get 2 s; its BEVFormer V2
 starting weights were trained on nuScenes train, not val.
+
+⟲ Drive-JEPA (run `20261111T061849-382fec`, valid) is momentum-aware: streamed per
+scene, each keyframe handed the node's own plan for the scene's previous keyframe
+when that is 0.45-0.55 s earlier (4,485 of 5,119). It replaces
+`20261105T201953-308dc5` (point L2 2.344, cumulative 1.328), in which momentum never
+acted. See [Streamed mode](#streamed-mode-drive-jepas-momentum).
 
 **Constant velocity was the lowest L2 on this recorded split until Qwen-Drive,
 which is below it on every column**, collision included, and is the first model

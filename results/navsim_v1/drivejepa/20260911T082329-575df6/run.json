@@ -31,8 +31,10 @@
     "overrides": []
   },
   "hardware": {},
+  "provenance": {},
   "status": "complete",
-  "valid": true,
-  "notes": "",
+  "valid": false,
+  "superseded_by": "20261111T090508-ad88e6",
+  "notes": "Superseded by 20261111T090508-ad88e6: Drive-JEPA's rows are its momentum-aware model now: 20261111T090508-ad88e6 scores the plans of the streamed navtest run 20261111T052813-8f96dd with the v1.1 scorer. Momentum never acted in this run: it predates the selection stage, and each open-loop sample reset the node.",
   "ingested_from": ""
 }

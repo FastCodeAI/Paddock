@@ -579,7 +579,8 @@ so nothing below the full split can be averaged or ranked against a real one.
 
 | model | EPDMS | collisions | drivable | progress | run |
 |---|---:|---:|---:|---:|---|
-| drivejepa | **0.8427** | 0.984 | 0.985 | 0.889 | `20260902T173156-7e208f` |
+| drivejepa, momentum-aware (streamed per log) | **0.8700** | 0.984 | 0.984 | 0.882 | `20261111T052813-8f96dd` |
+| drivejepa, retired: momentum never acted | 0.8427 | 0.984 | 0.985 | 0.889 | `20260902T173156-7e208f` |
 | openpilot, 10 Hz nuPlan history | **0.7468** | 0.970 | 0.913 | 0.712 | `20260911T161513-3a4c90` |
 | alpamayo15, 10 Hz nuPlan history | **0.6910** | 0.957 | 0.856 | 0.681 | `20260912T040211-a9562c` |
 | alpamayo15, 2 Hz OpenScene | **0.6081** | 0.941 | 0.788 | 0.596 | `20260903T183818-5879c1` |
@@ -788,7 +789,8 @@ reports constant velocity 20.6 and human 94.8 -- see
 `docs/benchmarks/navsim_v1.md`. Alpamayo's and OpenPilot's v1 figures replay the
 plans their 10 Hz v2 runs recorded -- the same plans, the other scorer -- so each
 model's two columns describe one run; Alpamayo's 2 Hz pair (0.608 / 0.676) is in
-the tables below. Drive-JEPA and VisionPilot are fresh proxy runs at 2 Hz.
+the tables below. VisionPilot's are fresh proxy runs at 2 Hz. Drive-JEPA's v2 figure
+is a streamed proxy run at 2 Hz (⟲) and its v1 figure replays that run's plans.
 
 ‡ OpenScene is a 2 Hz dataset and OpenPilot infers motion from frame-to-frame
 change, so on it OpenPilot plans a parked car — 0.30 m of travel in 4 s at
@@ -812,6 +814,18 @@ a second the model never planned. Their `model.yaml` now lists that setting unde
 runner stored them `valid: false`; a run made from now on is ranked, with the note.
 Both are given the six surround cameras.
 
+⟲ **Drive-JEPA's figure is momentum-aware** (`20261111T052813-8f96dd`), in navtest's
+streamed mode (`PADDOCK_NAVSIM_STREAMED`, `config.streamed = "per_log"`; see
+[navtest's streamed mode](#navtests-streamed-mode-opt-in)): each frame names its
+log, time and pose, and the node hands it the plan it made for the log's frame
+0.5 s earlier, as upstream's sequential loop does. 10,040 of the 12,146 frames were
+fed, the expected count; the rest open a log or have no predecessor 0.45-0.55 s
+back. A standard paddock run hands no model a previous plan, so this is a different
+protocol from the other rows. It replaces `20260902T173156-7e208f` (0.843), in
+which momentum never acted. Between the two, two-frame extended comfort, the
+term that compares consecutive frames' plans, moves from 0.477 to 0.784 and ego
+progress from 0.889 to 0.882. The last column is that earlier run's subset figure.
+
 ☉ AutoE2E v1.0, the `kitscenes-epoch-5` checkpoint: the release's nuPlan model
 fine-tuned on KITScenes. NAVSIM is fed from nuPlan at 10 Hz with the rear views
 taken from OpenScene's keyframes (`keyframe_cameras`), which are exactly the
@@ -825,7 +839,7 @@ nuPlan, whose test logs `navtest` is drawn from; see *AutoE2E × navsim* in
 Full navtest (stage one: real recorded scenes, no synthetic stage two), 12,146 scenarios, all sub-metrics 0–1. Every column except EPDMS
 is the mean of a per-scenario pass/fail or ratio, and EPDMS is the weighted
 product the scorer builds from them. Drive-JEPA is scored through paddock's
-proxy agent (see †). Extended comfort is the mean over the scenarios where it
+proxy agent (see †), in streamed mode (see ⟲). Extended comfort is the mean over the scenarios where it
 is defined, 10,040 of the 12,146 -- it compares consecutive frames' plans, so
 it is absent for a log's first frame and for any scenario without a scorable
 predecessor (`docs/results-schema.md`); every other column is over all 12,146.
@@ -837,7 +851,7 @@ was first run on, for reference only.
 | OpenPilot, 10 Hz nuPlan history ‡ | 0.747 | 0.970 | 0.913 | 0.954 | 0.998 | 0.712 | 0.965 | 0.947 | 0.983 | 0.653 | — |
 | Alpamayo 1.5, 10 Hz nuPlan history ‡ | 0.691 | 0.957 | 0.856 | 0.933 | 0.997 | 0.681 | 0.951 | 0.963 | 0.962 | 0.576 | — |
 | Alpamayo 1.5, 2 Hz OpenScene | 0.608 | 0.941 | 0.788 | 0.890 | 0.998 | 0.596 | 0.939 | 0.931 | 0.938 | 0.490 | 0.653 |
-| Drive-JEPA | **0.843** | 0.984 | 0.985 | 0.991 | 0.998 | 0.889 | 0.979 | 0.974 | 0.978 | 0.477 | 0.880 |
+| Drive-JEPA ⟲ | **0.870** | 0.984 | 0.984 | 0.991 | 0.998 | 0.882 | 0.978 | 0.976 | 0.979 | 0.784 | 0.880 |
 | VisionPilot | 0.431 | 0.727 | 0.819 | 0.926 | 0.975 | 0.404 | 0.700 | 0.899 | 0.968 | 0.518 | 0.447 |
 | METEOR ◊ | 0.303 | 0.694 | 0.687 | 0.805 | 0.979 | 0.317 | 0.683 | 0.795 | 0.973 | 0.451 | — |
 | Qwen-Drive 1.0, 10 Hz nuPlan history ‡ | 0.840 | 0.982 | 0.964 | 0.993 | 0.998 | 0.820 | 0.977 | 0.975 | 0.982 | **0.867** | — |

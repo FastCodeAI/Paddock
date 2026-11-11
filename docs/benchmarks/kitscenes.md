@@ -42,8 +42,8 @@ became the set every later model had to match. Reading it as a sample list uses
 `scene_id`, `keyframe_index` and `split` -- and, only under `command_source =
 "gt"`, `driving_command` ([The route hint](#the-route-hint)) -- and ignores the
 predictions sitting beside them; `paddock ingest` reads the same file for the
-predictions, which is how Drive-JEPA has a row on this benchmark without a
-paddock run.
+predictions, which is how Drive-JEPA had a row on this benchmark before it had a
+paddock run (`legacy-kitscenes_e2e_final`, now retired; see below).
 
 The list is not in this repository yet, so a site that downloads KITScenes
 with `paddock data fetch kitscenes` still cannot score a model on it; issue
@@ -58,7 +58,7 @@ with `paddock data fetch kitscenes` still cannot score a model on it; issue
 | visionpilot | `20261105T191932-c71101` | 223 | 1.475 | a paddock run; see below |
 | openpilot | `20261008T004723-a369d1` | 223 | 1.248 | a paddock run; base front camera, 55° cut, height 1.22, pitch −1.7°, route as desire ([⊜](#notes-on-the-matrix-cells)) |
 | meteor | `20260914T215457-ab0586` | 223 | 1.879 | a paddock run; six of its eight cameras |
-| drivejepa | `legacy-kitscenes_e2e_final` | 223 | 2.364 | `inference/kitscenes_e2e_final.pkl` |
+| drivejepa | `20261111T054224-9f8371` | 223 | 2.188 | a paddock run; momentum-aware with a 0.5 s warm-up, a Paddock choice ([⟲](#notes-on-the-matrix-cells)); told STRAIGHT on every keyframe |
 | autoe2e | `20261020T220509-dee848` | 223 | 0.847 | a paddock run; six cameras, the scene's map and an **oracle route**; **adapted**, fine-tuned on KITScenes train, see below |
 | uniad | `20261109T082536-b881a6` | 223 | 2.073 | a paddock run; the six ring cameras, UniAD 1.0 base nuScenes checkpoint |
 | vad | `20261109T082536-a393ec` | 223 | 2.374 | a paddock run; the six ring cameras, VAD-Base nuScenes checkpoint |
@@ -79,16 +79,18 @@ keyframes all use the ring's front camera:
 
 Caveats the hash cannot express:
 
-- **Route hint.** Drive-JEPA was run with `--command gt`, which derives a turn
-  command from the recorded future on 39 of the 223 samples. VisionPilot has
+- **Route hint.** Drive-JEPA's retired pre-paddock row (`legacy-kitscenes_e2e_final`,
+  2.364) was run with `--command gt`, which derives a turn
+  command from the recorded future on 39 of the 223 samples. Its momentum-aware
+  row is not: it runs at the default `command_source`, STRAIGHT on every keyframe. VisionPilot has
   no such input, openpilot reads one only under `PADDOCK_OPENPILOT_DESIRE`,
   and Alpamayo's equivalent is its `nav` arm.
   Recorded as `command_source` in that run's `config`. A paddock run can be
   given the same hint; see [The route hint](#the-route-hint).
 - **Domain.** The checkpoint is trained on nuPlan/OpenScene — US cities, a
   windshield rig — and KITScenes is European driving from a roof pod. Its rank
-  here is a zero-shot transfer result, which is why it sits last on this
-  benchmark and first on NAVSIM. The roof-pod and windshield rigs differ in a way
+  here is a zero-shot transfer result, which is why it sits near the bottom of
+  this benchmark and first on NAVSIM. The roof-pod and windshield rigs differ in a way
   no camera transform can undo.
 - **Camera geometry, and no route hint at all.** Qwen-Drive is the only row read
   on three cameras: the ring's front, front-left and front-right, at
@@ -118,10 +120,11 @@ Caveats the hash cannot express:
   [the AutoE2E page](../models/autoe2e.md#results), which also has these
   inputs checked against upstream's own packed samples.
 
-Nearly all of Drive-JEPA's error is longitudinal (2.317 m against 0.209 m
-lateral, an 11:1 split, from the original report, which decomposed it against
-Alpamayo only): it steers better than Alpamayo and predicts speed far worse,
-so its last place here is a speed result rather than a path one.
+Nearly all of Drive-JEPA's error is longitudinal: 2.078 m against 0.402 m lateral
+in its momentum-aware run (`longitudinal_mae`, `lateral_mae`). The retired
+pre-paddock row split 2.317 m against 0.209 m, from the original report, which
+decomposed it against Alpamayo only: it steered better than Alpamayo and predicted
+speed far worse, so its place here is a speed result rather than a path one.
 ## VisionPilot has no trajectory of its own
 
 VisionPilot is an L2 assist stack. Its three networks return a path drawn in
@@ -233,18 +236,18 @@ can instead give the scored keyframe the sample list's own `driving_command`:
 command_source = "gt"   # default "straight"
 ```
 
-That one-hot is the command Drive-JEPA's row was run with, and its `--command
+That one-hot is the command Drive-JEPA's retired pre-paddock row was run with, and its `--command
 gt` derived it from the recorded future, as a lateral offset at the end of the
 horizon. So the model is told which way the car is about to go, from the scored
 future, standing in for the route a car's navigation knows, and 39 of the 223
 keyframes (21 left, 18 right) are told to turn. A `gt` run is therefore a
 different measurement from a `straight` one. It hashes to its own run id with
 `command_source` in its `config`, the key and values `paddock ingest` already
-records Drive-JEPA's row under. `straight` adds no key, so every run made before
+records that row under. `straight` adds no key, so every run made before
 the setting existed keeps its id and `--resume`.
 
 A `gt` run is ranked like any other, and its `config` says it was given the
-route. It is the same signal Drive-JEPA's row (`--command gt`) and Alpamayo's
+route. It is the same signal Drive-JEPA's retired row (`--command gt`) and Alpamayo's
 nav arm were given here. It is also the kind of high-level command nuScenes
 gives every model, whose harness infers it from the recorded future (VAD's
 rule): the standard input of open-loop planning, standing in for the route a
@@ -275,8 +278,9 @@ Until this change the harness handed every model `camera_ring_front` alone, as
 `CAM_FRONT`. openpilot and VisionPilot read one camera, so their rows measure
 what they claim; Drive-JEPA declares four, Alpamayo three and METEOR six, and a
 paddock run of any of them was scored with most of its inputs absent. The
-Drive-JEPA and Alpamayo rows in the table above were ingested from their own
-pre-paddock loaders, which read the ring themselves, so they are unaffected.
+Alpamayo row in the table above was ingested from its own pre-paddock loader,
+which read the ring itself, so it is unaffected; so was Drive-JEPA's retired
+row, and its momentum-aware row is a paddock run made after the change.
 
 | dataset sensor | protocol camera | looks |
 |---|---|---|
@@ -525,13 +529,23 @@ tables in `paddock.toml`, `.env` and `.settings`, set the configuration
   to 55° at comma's 1164×874;
 - the road shown as from a camera 1.22× lower, with the view tilted 1.7° down;
 - the scored keyframe's route command sent to openpilot's desire input as a turn.
-  This is the route signal Drive-JEPA's row and Alpamayo's nav arm receive here,
+  This is the route signal Drive-JEPA's retired row and Alpamayo's nav arm received here,
   and the kind of command nuScenes gives every model.
 
 The values were chosen by inspecting one scene of this split (dbba76d9) and
 patterns from the earlier analysis. The gain is in speed, along the path. Against
 the stock run re-made here, lateral error rises from 0.286 to 0.339 m, and the 39
 turns get 0.234 m worse. An independent re-run reproduced every keyframe to the bit.
+
+⟲ **Drive-JEPA's KITScenes figure is momentum-aware, with a 0.5 s warm-up**
+(`20261111T054224-9f8371`). Before each scored keyframe the same node plans the
+frame 0.5 s earlier and that plan is discarded, so the scored request can be handed
+it: 223 of 223 were. That is a Paddock choice, not upstream protocol
+([Streamed mode](#streamed-mode-drive-jepas-momentum-with-a-warm-up)). It runs at the
+default `command_source`, STRAIGHT on every keyframe. It replaces the pre-paddock
+row `legacy-kitscenes_e2e_final` (2.364), which was given the route on 39 turns and
+in which momentum, which hands over a plan made 0.45-0.55 s earlier, had none to
+hand: its keyframes are 9 s apart.
 
 ⊞ **AutoE2E's KITScenes figure is adapted, and is given an oracle route**
 (`20261020T220509-dee848`). The checkpoint was fine-tuned on KITScenes train,
@@ -562,7 +576,7 @@ nuScenes checkpoints, zero-shot here, given all six ring cameras.
 |---|---:|---:|
 | OpenPilot | 1.248 ⊜ | 2.355 ⊜ |
 | Alpamayo 1.5 | 1.002 | 2.158 |
-| Drive-JEPA | 2.364 | 4.199 |
+| Drive-JEPA ⟲ | 2.188 | 3.867 |
 | VisionPilot | 1.475 ∗ | 2.968 ∗ |
 | METEOR | 1.879 ◇ | 4.034 ◇ |
 | Qwen-Drive 1.0 | **0.806** | **1.777** |

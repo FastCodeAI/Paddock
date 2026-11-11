@@ -41,8 +41,8 @@ run of NAVSIM, navhard, nuScenes, KITScenes or comma2k19: each pick is on the
 plain score, and the run's `provenance.policy.momentum_counts` shows `fed: 0`.
 An opt-in *streamed* mode per benchmark makes it act, and is recorded as
 `config.streamed`, per sample as `momentum_fed` and in `by_group.streamed`:
-navhard's `PADDOCK_NAVHARD_STREAMED` (one stream per log, see
-[navsim.md](../benchmarks/navsim.md)); nuScenes' `PADDOCK_NUSCENES_STREAMED`
+navtest's `PADDOCK_NAVSIM_STREAMED` and navhard's `PADDOCK_NAVHARD_STREAMED` (one
+stream per log, see [navsim.md](../benchmarks/navsim.md)); nuScenes' `PADDOCK_NUSCENES_STREAMED`
 (one stream per scene, planned in order on one node; upstream's sequential loop,
 see [nuscenes.md](../benchmarks/nuscenes.md#streamed-mode-drive-jepas-momentum));
 and KITScenes' and comma2k19's `PADDOCK_KITSCENES_STREAMED` /
@@ -50,6 +50,35 @@ and KITScenes' and comma2k19's `PADDOCK_KITSCENES_STREAMED` /
 is preceded by a discarded *warm-up* plan 0.5 s earlier -- a Paddock choice,
 not upstream protocol (see
 [kitscenes.md](../benchmarks/kitscenes.md#streamed-mode-drive-jepas-momentum-with-a-warm-up)).
+
+**Drive-JEPA's rows on these benchmarks are momentum-aware runs.** Each open-loop
+row is a streamed run, and the run it replaced, in which momentum never acted, is
+retired with `paddock supersede`; its notes say why.
+
+| benchmark | run | `config.streamed` | fed a previous plan (`by_group.streamed`) | score |
+|---|---|---|---|---|
+| NAVSIM v2, navtest | `20261111T052813-8f96dd` | `per_log` | 10,040 of 12,146 frames | EPDMS 0.870 |
+| NAVSIM v1, navtest | `20261111T090508-ad88e6` | `per_log`, a replay of the plans above | 10,040 of 12,146 | PDMS 0.894 |
+| navhard | `20261110T165434-167fd4` | `per_log` | 225 of 450 stage-one frames | EPDMS 0.428, stored `valid: false` ([why](../benchmarks/navhard.md#results)) |
+| nuScenes | `20261111T061849-382fec` | `per_scene` | 4,485 of 5,119 keyframes | L2 avg 1.995, cumulative 1.128 |
+| KITScenes | `20261111T054224-9f8371` | `warmup_0.5s` | 223 of 223 | ADE 2.188 |
+| comma2k19 | `20261111T074533-0f26ee` | `warmup_0.5s` | 10,163 of 10,165 | ADE@3s 18.740 |
+| neuroNCAP | `20261110T204020-036fb3` | closed loop, not streamed | acts as in any drive | NCAP 4.06 |
+
+- **KITScenes and comma2k19 use a 0.5 s warm-up, a Paddock choice, not upstream
+  protocol.** Their scored keyframes are seconds apart, so before each one the same
+  node plans the frame 0.5 s earlier and that plan is discarded, never scored; it is
+  only the previous plan the scored request may be handed. Upstream Drive-JEPA never
+  plans a frame only to feed the next, and neither open-loop protocol hands any model
+  a previous plan. On NAVSIM and nuScenes the previous plan is the one the node made
+  for an earlier frame the benchmark itself scores.
+- **Quote `by_group.streamed`, not `provenance.policy.momentum_counts`.** The latter is
+  one node's own count: comma2k19's run had two nodes, and the record keeps one
+  node's 5,083 of 10,166 calls fed; neuroNCAP's was resumed, and the record keeps the
+  resumed attempt's node only (894 replans, 844 fed).
+- **Not part of this:** the Bench2Drive and AlpaSim cells and the HUGSIM rows are
+  earlier runs, made before momentum-aware selection was on (Bench2Drive in September
+  2026; AlpaSim through the native driver at 0.1.4, which has none).
 
 How the paddock node drives AlpaSim, and how that compares with the native
 driver it copies, is in [Through paddock on AlpaSim](#through-paddock-on-alpasim)

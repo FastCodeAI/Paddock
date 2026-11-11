@@ -281,7 +281,8 @@ shared `kitscenes_e2e_final` list, the six-camera ring, native 3 s plan,
 | **1.879** (median 1.419) | 0.695 | 2.040 | 4.034 | 1.563 | 0.688 |
 
 Constant velocity scores 1.381 on the same list; Alpamayo 1.002, VisionPilot
-1.475, OpenPilot 1.248 (its configured run; 1.599 stock), Drive-JEPA 2.364. A
+1.475, OpenPilot 1.248 (its configured run; 1.599 stock), Drive-JEPA 2.188 (its
+momentum-aware run, with a 0.5 s warm-up). A
 second run reproduced all 223 predictions exactly.
 
 **Front camera only, kept as an ablation:**
@@ -317,7 +318,7 @@ anchors in 150 scenes, all six cameras, 2 Hz keyframes, native 3 s plan,
 |---|---|---|---|---|---|---|
 | 0.616 | 1.683 | 3.356 | **1.885** (median 1.581) | 0.977 | 1.570 | 6.15 % |
 
-Drive-JEPA scores 2.344 / 1.328 / 1.63 % on the same anchors and constant
+Drive-JEPA (momentum-aware) scores 1.995 / 1.128 / 1.24 % on the same anchors and constant
 velocity 1.288 / 0.641 / 1.66 %. With its cameras filled in, METEOR's
 displacement error is below Drive-JEPA's; its collision rate is above both. Where
 each comes from, measured on the per-sample records:
@@ -363,7 +364,7 @@ truth in the car's frame; `valid: true`; 56 min on one H200 with eight nodes):
 The earlier run, `20261030T001935-0b8d0b`, was scored against a ground truth in
 the camera's frame and gave 30.075. Its plans are the same as this run's to
 within 0.01 mm, so the change is the scoring alone. Constant velocity scores
-1.135 on the same samples, and every other model scores 18.754 or less. METEOR
+1.135 on the same samples, and every other model scores 18.740 or less. METEOR
 is better than constant velocity on 3.5 % of the samples, all of them below
 15 m/s. Measured on the per-sample records:
 
@@ -413,7 +414,7 @@ scenarios, zero failures, 69 min) and `results/navsim_v1/meteor/20260915T005223-
 | v1 | **0.366** | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | — | — |
 
 Above the constant-velocity floor (0.239 v2, 0.207 v1) and below every learned
-model (VisionPilot 0.431 / 0.488, Drive-JEPA 0.843 / 0.892). That is a different
+model (VisionPilot 0.431 / 0.488, Drive-JEPA 0.870 / 0.894). That is a different
 standing from nuScenes, where its L2 sits with Drive-JEPA's, and the difference
 is worth reading carefully, because **a quarter of what NAVSIM scored here is
 not the model's output.**

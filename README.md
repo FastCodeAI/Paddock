@@ -72,6 +72,14 @@ it differs.
   which their `model.yaml` now lists as ranked with a note, as METEOR's is. These runs
   were made before that line went in, so the runner stored them `valid: false`, and a
   stored flag is never edited by hand. A run made from now on ranks, with the note.
+- **Drive-JEPA's open-loop and neuroNCAP cells are its momentum-aware model.**
+  Its selection stage hands each plan the node's own plan from 0.5 s earlier, which
+  open loop never does on its own, because every sample resets the node. So these
+  cells are streamed runs: NAVSIM per log, nuScenes per scene, and KITScenes and
+  comma2k19 after a 0.5 s warm-up plan that is discarded, a Paddock choice rather
+  than upstream protocol ([Drive-JEPA](docs/models/drivejepa.md)). The runs they
+  replace, in which momentum never acted, are retired. Its Bench2Drive and AlpaSim
+  cells are earlier runs, made before momentum-aware selection was on.
 - **What never leaves a cell unranked.** How many cameras a model is given,
   whether it drives through paddock's bridge or its own simulator driver, and
   whether its Bench2Drive routes end early as failed drives are never reasons to
