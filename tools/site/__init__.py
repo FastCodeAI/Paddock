@@ -511,7 +511,7 @@ def gallery(videos: list[dict], bench_rows: list[list[str]]) -> str:
         '<section id="videos" aria-labelledby="videos-h"><div class="wrap">'
         '<div class="sec-head"><h2 id="videos-h">Side by side</h2>'
         '<p class="sub">Every model on the same hard moments. Each benchmark picks its own by a rule '
-        "in its code, never by hand: the hardest of each kind, then where the models disagree most.</p></div>"
+        "in its code, never by hand, and each caption says why that moment was picked.</p></div>"
         + "".join(blocks)
         + "</div></section>"
     )
