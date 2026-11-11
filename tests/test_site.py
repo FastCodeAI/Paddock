@@ -176,13 +176,17 @@ def test_videos_come_one_block_per_benchmark_in_the_readme_order(tmp_path: Path,
         'base = "https://example.org/v/abc/"\n'
         '[[video]]\nbenchmark = "neuroncap"\ntitle = "Side"\nsrc = "neuroncap/side.mp4"\n'
         '[[video]]\nbenchmark = "nuscenes"\ntitle = "Turn"\nsrc = "nuscenes/turn.mp4"\n'
-        '[[video]]\nbenchmark = "neuroncap"\ntitle = "Frontal"\nsrc = "neuroncap/frontal.mp4"\n',
+        '[[video]]\nbenchmark = "neuroncap"\ntitle = "Frontal"\nsrc = "neuroncap/frontal.mp4"\n'
+        '[notes]\nneuroncap = "The car is drawn roughly."\n',
     )
     html = site.page(REPO)[0]
     # The README lists nuScenes first, so its block comes first whatever order media.toml has.
     assert html.index('id="videos-nuscenes"') < html.index('id="videos-neuroncap"')
     block = html.split('id="videos-neuroncap"', 1)[1].split("</div>", 1)[0]
     assert block.index('src="https://example.org/v/abc/neuroncap/side.mp4"') < block.index("frontal.mp4")
+    # A benchmark's note sits under its own videos, and only there.
+    assert block.index("frontal.mp4") < block.index('<p class="bench-note">The car is drawn roughly.</p>')
+    assert html.count('class="bench-note"') == 1
     assert '<a href="#videos">Videos</a>' in html
 
 

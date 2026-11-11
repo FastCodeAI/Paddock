@@ -314,6 +314,7 @@ tr.on th { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
 .clip { margin: 0; }
 .clip video { width: 100%; border-radius: 10px; border: 1px solid var(--line); background: #000; }
 .clip figcaption { font-size: 0.88rem; color: var(--muted); margin-top: 6px; }
+.bench-note { margin: 0; font-size: 0.88rem; color: var(--muted); }
 
 .foot { border-top: 1px solid var(--line); margin-top: 24px; padding: 28px 0 40px; color: var(--muted); font-size: 0.88rem; }
 .foot p { margin: 0 0 6px; }

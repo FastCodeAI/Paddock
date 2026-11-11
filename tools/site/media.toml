@@ -18,6 +18,12 @@
 
 base = "https://huggingface.co/datasets/naren-fastcode/paddock-videos/resolve/283fcfdcfc1b85516dae5344e3f95817664ba7d5/"
 
+# One line under a benchmark's videos, for what a viewer would otherwise misread. In
+# neuroNCAP scene 0108, OpenPilot and METEOR end 36 m and 51 m from the recorded path and
+# still score 5.0.
+[notes]
+neuroncap = "neuroNCAP rebuilds each scene from one real recorded drive and adds the other car to it. It draws that car only roughly, and a model that drives far from the recorded path sees a smeared view. The score counts only collisions, so a drive like that can still score 5."
+
 [[video]]
 benchmark = "neuroncap"
 title = "Oncoming car, scene 0923"

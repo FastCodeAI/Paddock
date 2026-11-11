@@ -474,22 +474,24 @@ def video_html(v: dict, cls: str = "") -> str:
     )
 
 
-def gallery(videos: list[dict], bench_rows: list[list[str]]) -> str:
+def gallery(videos: list[dict], bench_rows: list[list[str]], notes: dict | None = None) -> str:
     """The videos, one block per benchmark in the README's order.
 
     Every clip is in the page, so with no script they stack; site.js turns each block into
     one player with a tab per clip, which keeps a six-model video wide enough to read.
+    `notes` gives a benchmark one line under its videos, for what a viewer would misread.
     """
     if not videos:
         return ""
+    notes = notes or {}
     benches = {}
     for row in bench_rows:
         name, page = _first_link(row[0])
         benches[Path(page).stem] = (name, row[1])  # docs/benchmarks/neuroncap.md -> neuroncap
-    named = {v.get("benchmark", "") for v in videos}
+    named = {v.get("benchmark", "") for v in videos} | set(notes)
     if named - set(benches):
         raise ValueError(
-            "tools/site/media.toml: each [[video]] needs a benchmark from the README's table "
+            "tools/site/media.toml: each [[video]] and [notes] key needs a benchmark from the README's table "
             f"({', '.join(benches)}); got {sorted(named - set(benches))}"
         )
     blocks = []
@@ -505,7 +507,9 @@ def gallery(videos: list[dict], bench_rows: list[list[str]]) -> str:
         if figs:
             blocks.append(
                 f'<div class="bench-clips" id="videos-{escape(key)}">'
-                f'<h3>{escape(name)} <span class="test">{escape(test)}</span></h3>{figs}</div>'
+                f'<h3>{escape(name)} <span class="test">{escape(test)}</span></h3>{figs}'
+                + (f'<p class="bench-note">{escape(notes[key])}</p>' if key in notes else "")
+                + "</div>"
             )
     return (
         '<section id="videos" aria-labelledby="videos-h"><div class="wrap">'
@@ -639,7 +643,7 @@ def page(
         "MATRIX": table_html,
         "MATRIX_NOTES": markdown(details(sec["Support matrix"]), link),
         "SUPPORT_TOML": escape(link("docs/support-matrix.toml")),
-        "GALLERY": gallery(m.get("video", []), bench_rows),
+        "GALLERY": gallery(m.get("video", []), bench_rows, m.get("notes", {})),
         "NAV_VIDEOS": '<a href="#videos">Videos</a>' if m.get("video") else "",
         "WHY": why_cards(sec["Why Paddock"], link),
         "MODELS": cards,
