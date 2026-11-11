@@ -9,7 +9,7 @@
 | Environment | uv, Python 3.12 |
 | Cameras | `CAM_FRONT_LEFT`, `CAM_FRONT`, `CAM_FRONT_RIGHT`, `CAM_BACK_LEFT`, `CAM_BACK_RIGHT`, `CAM_FRONT_TELE` |
 | Plan | waypoints, 0.1 s apart, 6.4 s ahead |
-| Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md) |
+| Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [kitscenes](../benchmarks/kitscenes.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->
@@ -208,7 +208,8 @@ nuPlan data is claimed.
   is not taken into account.
 - **No route distance on NAVSIM**, as above.
 - **Open loop only.** The plan's first six poses span 0.6 s, so a closed-loop client
-  reading six waypoints would get the wrong horizon. `benchmarks` lists only NAVSIM.
+  reading six waypoints would get the wrong horizon. `benchmarks` lists only the
+  open-loop NAVSIM and KITScenes.
 
 ## Results
 
