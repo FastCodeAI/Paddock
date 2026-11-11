@@ -14,8 +14,12 @@
 
 [Bench2Drive](https://github.com/Thinklab-SJTU/Bench2Drive) is a closed-loop
 end-to-end driving benchmark on **CARLA 0.9.15**. The model drives the official
-leaderboard's **220 short routes** (Towns 12/13/15, 44 scenario types × 5), one
-scenario per route, and is scored by the CARLA Leaderboard driving score.
+leaderboard's **220 short routes** (12 towns, 151 of the routes in Towns 12 and 13;
+44 scenario types × 5), one
+scenario per route, and is scored by the CARLA Leaderboard driving score. Every
+ranked number here uses 50 of those routes (Alpamayo 1.5 and Qwen-Drive score 49 at
+their own rates); see
+[The 50 routes are not a sample of the 220](#the-50-routes-are-not-a-sample-of-the-220).
 
 Closed-loop, like neuroNCAP: the model decides what happens next and errors
 compound. The model runs behind paddock's HTTP policy node; the adapter spawns the
@@ -908,6 +912,28 @@ its first attempt. It completes 53 of its 216 routes, more than any other model
 here, and is second to openpilot on driving score: 88 routes have a collision, and
 the 30 s rule ended 110 and the over-time rule 22. Six routes are a success; its
 best ability is Traffic signs, 49 of 94 routes.
+
+### The 50 routes are not a sample of the 220
+
+Every matrix cell lists the same 50 routes in its run's `config.routes_subset`.
+Alpamayo 1.5 and Qwen-Drive score 49 of them, because route 3800 crashes CARLA at
+their rate. The routes grew in two steps: 24 routes first (5 abilities × 5 routes,
+minus 11715, which crashes CARLA), then 26 more. Nothing in this repository records
+how the 26 were picked. All 26 are of types the first 24 already had, so they added
+routes and no new type.
+
+They cover **14 of the 44 scenario types**, so the other 30 types are not tested at
+all:
+
+| Routes | Scenario types |
+|---:|---|
+| 5 | Accident, DynamicObjectCrossing, InvadingTurn, PedestrianCrossing, YieldToEmergencyVehicle |
+| 4 | ParkingCutIn, SignalizedJunctionLeftTurn |
+| 3 | AccidentTwoWays, NonSignalizedJunctionLeftTurn, SignalizedJunctionRightTurn |
+| 2 | ConstructionObstacle, EnterActorFlow, HighwayCutIn, MergerIntoSlowTraffic |
+
+A score here says how a model drives these 14 types. Do not compare it with a
+published 220-route score.
 
 ### Bench2Drive — 50 routes
 

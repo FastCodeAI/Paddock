@@ -17,9 +17,9 @@ through a kinematic bicycle model with an LQR tracker, and scores the outcome
 against a cached ground truth — collisions, drivable-area compliance, progress,
 time-to-collision, lane keeping and comfort, combined into one composite.
 
-It is a **closed-loop proxy**: the ego is re-simulated, but it never sees the
-consequences of its own actions, so errors do not compound. Paddock therefore
-records it as `mode: open_loop`, alongside KITScenes.
+It is **open loop**: the ego is re-simulated to score the plan, but the model never
+sees the consequences of its own actions, so errors do not compound. Paddock records
+it as `mode: open_loop`, alongside KITScenes.
 
 ## What exactly is measured
 
@@ -136,19 +136,19 @@ test the pipeline. A site `[models.<name>] env` block is recorded as
 (`ALPAMAYO_FRAME_SELECT`, for one). None of this needs a hand edit of a results
 file; the runner decides `valid` from these, and the reason is in `notes`.
 
-## This site scores 242 scenarios, not navtest
+## A partial copy of the sensor data scores part of navtest
 
-navtest is 12,146 scenarios across 136 logs. The metric cache here covers all of
-them. **The sensor blobs cover 5 logs**, and NAVSIM scores the intersection:
+navtest is 12,146 scenarios across 136 logs, and every ranked run covers all of them.
+NAVSIM scores only the scenarios whose sensor blobs are on disk. With 5 logs present:
 
 ```
 WARNING - Unused metric cache for 11904 tokens. Skipping these tokens.
 INFO    - Starting pdm scoring of 242 scenarios...
 ```
 
-242 of 12,146 — 2%. The already-stored August run is this subset, labelled
-`navtest`, which is why `preflight` now refuses a partial split by default
-rather than letting a subset be reported under the full split's name.
+That is 242 of 12,146, or 2%. The early runs on this subset are stored `valid: false`,
+and `preflight` now refuses a partial split by default, so a subset cannot be reported
+under the full split's name.
 
 Closing the gap means fetching the `openscene_sensor_test_camera` shards
 (`Drive-JEPA/download/download_test.sh`). Extrapolating from the 5 logs present
@@ -240,7 +240,7 @@ reasoning as `CameraFit` in the openpilot adapter.
 
 ## Reproduction status
 
-Three runs over the same 242 scenarios, all 242/242 with zero failures:
+Three runs over the 242-scenario subset above, all 242/242 with zero failures:
 
 | run | agent | EPDMS (recomputed) | scorer reported |
 |---|---|---:|---:|

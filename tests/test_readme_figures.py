@@ -233,6 +233,31 @@ def test_a_run_stored_invalid_cannot_be_ranked(tmp_path: Path) -> None:
         _load(tmp_path, HEADER + rows, {**RUNS, "open/invalid/1": 0.2}, invalid=("open/invalid/1",))
 
 
+def test_the_not_ranked_key_is_drawn_only_when_a_cell_is_hatched(tmp_path: Path) -> None:
+    runs = {**RUNS, "open/invalid/1": 0.2}
+    columns, by = _load(tmp_path / "hatched", HEADER + ROWS, runs, invalid=("open/invalid/1",))
+    assert "not ranked" in readme_figures.render_matrix(columns, list(by.values()))
+
+    one_ranked_cell = """
+[[benchmark]]
+key = "open"
+name = "Open"
+loop = "open"
+header = "ADE ↓ (m)"
+metric = "ade"
+decimals = 2
+
+[[model]]
+key = "good"
+name = "Good"
+
+[cells.good]
+open = { run = "open/good/1" }
+"""
+    columns, by = _load(tmp_path / "plain", one_ranked_cell, {"open/good/1": 0.5})
+    assert "not ranked" not in readme_figures.render_matrix(columns, list(by.values()))
+
+
 def test_cameras_are_counted_by_view() -> None:
     # openpilot declares CAM_FRONT as a fallback for one-camera sources; it is the same
     # view as its road camera, so the picture shows two cameras, not three.

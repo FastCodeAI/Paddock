@@ -44,12 +44,20 @@ Report bugs and ask for models or benchmarks in GitHub issues.
   identically, and no committed fixture yet compares the bridge's inputs with each
   model's native AlpaSim driver.
 
+- **Bench2Drive's ranked runs cover 50 of 220 routes and 14 of 44 scenario types.**
+  They cannot be compared with published 220-route scores.
+- **AlpaSim's matrix cells cover 30 of 913 scenes, one rollout each.** A gap under
+  about 0.16 is within two standard errors.
+- **NAVSIM v2 has not been run two-stage on `navhard`,** the set its public
+  leaderboard uses. Paddock's column is `navtest`, stage one only.
+
 ## Next
 
 - Bench2Drive over all 220 routes, one column of its own, made the same way for
   every model ("The 220-route protocol" in docs/benchmarks/bench2drive.md):
   openpilot's, METEOR's, AutoE2E's and Alpamayo 1.5's cells are in; the other
   models after (issue #158).
+- nuPlan back in the support matrix, once full runs replace the 25-anchor ones.
 - HUGSIM driven through paddock's own harness; today its runs are imported.
 - Models listed in `repos.yaml` but not yet evaluated: Alpamayo 2 and sunnypilot.
 - Failure-mode analysis, the same for every model and dataset.
