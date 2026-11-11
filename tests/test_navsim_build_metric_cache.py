@@ -101,7 +101,8 @@ def test_the_command_composes_under_the_sites_devkit(bench: str, capsys) -> None
     except ConfigError:
         pytest.skip("no site configuration")
     settings = cfg.benchmarks.get(bench)
-    if settings is None or not settings.get("python") or not settings.get("devkit"):
+    # the three settings the tool refuses to run without
+    if settings is None or not all(settings.get(key) for key in ("python", "devkit", "metric_cache")):
         pytest.skip(f"{bench} not configured at this site")
     python, devkit = Path(settings.get("python")), Path(settings.get("devkit"))
     if not python.exists() or not (devkit / tool.CACHING).exists():
