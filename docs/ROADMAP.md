@@ -59,5 +59,5 @@ Report bugs and ask for models or benchmarks in GitHub issues.
   models after (issue #158).
 - nuPlan back in the support matrix, once full runs replace the 25-anchor ones.
 - HUGSIM driven through paddock's own harness; today its runs are imported.
-- Models listed in `repos.yaml` but not yet evaluated: Alpamayo 2 and sunnypilot.
+- Models listed in `repos.yaml` but not yet evaluated: Alpamayo 2.
 - Failure-mode analysis, the same for every model and dataset.
