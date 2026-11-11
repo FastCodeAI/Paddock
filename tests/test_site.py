@@ -94,6 +94,26 @@ def test_a_badge_counts_each_benchmark_once(built: Path) -> None:
         assert page["badges"][row.key] == badge["message"], row.key
 
 
+def test_out_never_empties_a_folder_another_build_did_not_make(tmp_path: Path) -> None:
+    # `--out /srv/paddock/share` once would have deleted every team page served there.
+    shared = tmp_path / "share"
+    shared.mkdir()
+    (shared / "gate.html").write_text("someone else's page", encoding="utf-8")
+    with pytest.raises(FileExistsError, match="refusing to empty"):
+        site.build(shared, REPO, sha=SHA)
+    assert (shared / "gate.html").read_text(encoding="utf-8") == "someone else's page"
+
+
+def test_a_rebuild_replaces_the_last_build(tmp_path: Path) -> None:
+    out = tmp_path / "site"
+    out.mkdir()  # an empty folder is fine
+    site.build(out, REPO, sha=SHA)
+    (out / "badges" / "a-model-since-removed.json").write_text("{}", encoding="utf-8")
+    site.build(out, REPO, sha=SHA)
+    assert (out / "index.html").exists()
+    assert not (out / "badges" / "a-model-since-removed.json").exists()
+
+
 def test_readme_links_become_github_links() -> None:
     link = site.Links(REPO, "abc")
     got = site.inline("see [the guide](docs/adding-a-model.md#setup), `make check` and **this**", link)

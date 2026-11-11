@@ -41,6 +41,9 @@ ROOT = rf.ROOT
 README = ROOT / "README.md"
 MEDIA = HERE / "media.toml"
 FLOOR = "constant_velocity"
+# Written into every build. A rebuild empties its folder first, and only a folder holding
+# this file: `--out` aimed at a shared folder (the team pages, say) must never delete it.
+MARKER = ".paddock-site"
 
 #: Phrases that only make sense inside the README, and what the site says instead. Each must
 #: still be found, or the build fails: a reworded README should not leave the site saying
@@ -642,8 +645,16 @@ def build(out: Path, repo: str, ref: str = "main", site_url: str = "", sha: str 
     sha = _sha() if sha is None else sha
     html, export, badges = page(repo, ref, site_url, sha)
     if out.exists():
+        if any(out.iterdir()) and not (out / MARKER).is_file():
+            raise FileExistsError(
+                f"refusing to empty {out}: it holds files this tool did not write (no {MARKER} in it). "
+                "Give --out a new or empty folder."
+            )
         shutil.rmtree(out)
     (out / "badges").mkdir(parents=True)
+    (out / MARKER).write_text(
+        "Built by `python -m tools.site`, which empties this folder on a rebuild.\n", encoding="utf-8"
+    )
     written = [out / "index.html", out / "data.json"]
     written[0].write_text(html, encoding="utf-8")
     written[1].write_text(json.dumps(export, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
