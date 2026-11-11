@@ -36,8 +36,8 @@ Per-benchmark tables and notes: [nuScenes](docs/benchmarks/nuscenes.md#support-m
 [AlpaSim](docs/benchmarks/alpasim.md#support-matrix-results).
 [HUGSIM](docs/benchmarks/hugsim.md) has no column yet: two of these models have driven it.
 [nuPlan](docs/benchmarks/nuplan.md) has no column yet: its runs so far cover 25 of 351 anchors.
-[navhard](docs/benchmarks/navhard.md), NAVSIM v2.2's two-stage protocol, has no column yet: seven models
-and the floor have run it, Alpamayo 1.5 not yet.
+[navhard](docs/benchmarks/navhard.md), NAVSIM v2.2's two-stage protocol, has no column yet: eight models
+and the floor have run it.
 
 <details>
 <summary>Why each cell is marked, and what to check before comparing</summary>

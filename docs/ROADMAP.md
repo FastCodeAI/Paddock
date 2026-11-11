@@ -50,8 +50,8 @@ Report bugs and ask for models or benchmarks in GitHub issues.
   about 0.16 is within two standard errors.
 - **NAVSIM v2's `navhard` two-stage set has no matrix column yet.** Paddock's
   NAVSIM v2 column is `navtest`, stage one only. navhard runs as its own
-  benchmark in NAVSIM v2.2's devkit (`docs/benchmarks/navhard.md`): seven models
-  and the floor are stored, Alpamayo 1.5 is not yet, and the devkit it scores
+  benchmark in NAVSIM v2.2's devkit (`docs/benchmarks/navhard.md`): eight models
+  and the floor are stored, and the devkit it scores
   with is a site setting that `repos.yaml` does not pin.
 
 ## Next

@@ -8,7 +8,7 @@
 | Dataset | `navhard` |
 | Primary metric | `epdms` |
 | Adapter | [`adapters/benchmarks/navhard/`](../../src/paddock/adapters/benchmarks/navhard/) |
-| Models paddock can run on it | [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 
@@ -114,7 +114,7 @@ maps, checked by size and sha256.
 
 ## Results
 
-All eight runs are the full split, 450 stage-one frames, all 450 scored, and carry
+All nine runs are the full split, 450 stage-one frames, all 450 scored, and carry
 `sequences_sha256: 3af39efa412cc8df`, so they are the same frames. In each, the
 per-frame mean matches the devkit's combined row (`by_group.source_aggregates.paddock_check`).
 NC is no at-fault collisions and DAC drivable-area compliance.
@@ -123,6 +123,7 @@ NC is no at-fault collisions and DAC drivable-area compliance.
 |---|---:|---:|---:|---:|---:|---:|---:|---|---|
 | Drive-JEPA ⟲ | 0.4277 | 0.818 | 0.529 | 0.956 | 0.960 | 0.884 | 0.852 | `20261110T165434-167fd4` | false |
 | Qwen-Drive 1.0 | 0.3124 | 0.763 | 0.427 | 0.969 | 0.880 | 0.812 | 0.745 | `20261111T060112-5231af` | true |
+| Alpamayo 1.5 | 0.1928 | 0.507 | 0.366 | 0.924 | 0.664 | 0.841 | 0.650 | `20261111T090014-04904f` | true |
 | VisionPilot ∗ | 0.1921 | 0.453 | 0.390 | 0.921 | 0.618 | 0.847 | 0.672 | `20261110T165413-30c0d8` | true |
 | UniAD ⊟ | 0.1234 | 0.386 | 0.300 | 0.890 | 0.527 | 0.806 | 0.535 | `20261110T092734-19b732` | false |
 | Baseline (Constant Velocity) | 0.1148 | 0.290 | 0.342 | 0.889 | 0.429 | 0.832 | 0.591 | `20261110T085953-e122fd` | true |
@@ -131,7 +132,7 @@ NC is no at-fault collisions and DAC drivable-area compliance.
 | AutoE2E | 0.0822 | 0.330 | 0.240 | 0.858 | 0.520 | 0.764 | 0.436 | `20261110T192825-24d0b3` | true |
 
 `epdms` is the mean of a per-frame product, so it is not the product of the two
-stage columns. Alpamayo 1.5 has no stored navhard run yet.
+stage columns.
 
 ⟲ **Drive-JEPA is momentum-aware, in streamed mode** (`config.streamed =
 "per_log"`): 225 of the 450 stage-one frames were handed the plan the node made

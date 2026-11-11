@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-106 runs across 10 benchmarks.
+107 runs across 10 benchmarks.
 71 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -126,6 +126,7 @@
 | model | run | n | epdms ↑ | epdms_stage_one ↑ | no_at_fault_collisions_stage_one ↑ | drivable_area_compliance_stage_one ↑ | driving_direction_compliance_stage_one ↑ | traffic_light_compliance_stage_one ↑ | ego_progress_stage_one ↑ |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | qwendrive | 20261111T060112-5231af | 450 | 0.312 | 0.763 | 0.969 | 0.880 | 0.996 | 0.998 | 0.826 |
+| alpamayo15 | 20261111T090014-04904f | 450 | 0.193 | 0.507 | 0.924 | 0.664 | 0.861 | 0.998 | 0.796 |
 | visionpilot | 20261110T165413-30c0d8 | 450 | 0.192 | 0.453 | 0.921 | 0.618 | 0.871 | 0.993 | 0.786 |
 | constant_velocity | 20261110T085953-e122fd | 450 | 0.115 | 0.290 | 0.889 | 0.429 | 0.707 | 0.993 | 0.775 |
 | meteor [1] | 20261110T181854-9b4014 | 450 | 0.088 | 0.315 | 0.868 | 0.507 | 0.752 | 0.996 | 0.802 |
