@@ -17,11 +17,17 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # A site's CARLA client is often a conda env other tools use too, and
-# reinstalling into it would change their versions, so a person has to choose.
+# reinstalling into it would change their versions, so an existing one is left
+# as it is. The folder is two levels above [benchmarks.bench2drive] python,
+# which for a conda env is the whole install: deleting it is suggested only for
+# a venv (one with a pyvenv.cfg).
 if [ -e "${PADDOCK_VENV}" ]; then
-  echo "${PADDOCK_VENV} already exists, so nothing was changed." >&2
-  echo "To rebuild it, delete that folder and run this again." >&2
-  exit 1
+  echo "${PADDOCK_VENV} already exists, so it was left as it is."
+  if [ -f "${PADDOCK_VENV}/pyvenv.cfg" ]; then
+    echo "To rebuild it with the pinned versions, delete that folder and run this again."
+  fi
+  echo "Check it with: paddock doctor"
+  exit 0
 fi
 
 echo "building Bench2Drive's CARLA-client environment in ${PADDOCK_VENV}"

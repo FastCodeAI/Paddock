@@ -416,14 +416,23 @@ def test_bench2drive_setup_builds_python_3_8_from_its_pinned_list(tmp_path: Path
     assert f'python     = "{venv}/bin/python"' in done.stdout, "it says what to put in paddock.toml"
 
 
-def test_bench2drive_setup_leaves_an_existing_environment_alone(tmp_path: Path) -> None:
-    """A site's CARLA client is often a shared conda env; installing into it changes others' versions."""
+@pytest.mark.parametrize("venv_kind", ["conda", "venv"])
+def test_bench2drive_setup_leaves_an_existing_environment_alone(tmp_path: Path, venv_kind: str) -> None:
+    """A site's CARLA client is often a shared conda env; installing into it changes others' versions.
+
+    The folder is two levels above `python`, so for a conda env it is the whole install:
+    it must never be the one the script tells someone to delete.
+    """
     venv = tmp_path / "env"
     (venv / "bin").mkdir(parents=True)
+    if venv_kind == "venv":
+        (venv / "pyvenv.cfg").write_text("home = /usr/bin\n")
 
     done, calls = _run_bench2drive_setup(tmp_path, venv)
 
-    assert done.returncode == 1 and "already exists" in done.stderr
+    assert done.returncode == 0, done.stderr
+    assert "left as it is" in done.stdout
+    assert ("delete that folder" in done.stdout) == (venv_kind == "venv")
     assert calls == ""
 
 
