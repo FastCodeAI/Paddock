@@ -311,19 +311,47 @@ def test_a_route_hint_reaches_the_keyframe_alone(tmp_path, monkeypatch, one_hot,
     assert Observation.from_wire(scored.to_wire()).command == expected
 
 
+GT = 'command_source = "gt"\n'
+
+
 def test_a_route_hint_is_a_different_measurement(tmp_path, monkeypatch) -> None:
     archive = tmp_path / "archive"
     _write_scene(archive, RING)
-    bench = _benchmark(tmp_path, monkeypatch, [archive], settings='command_source = "gt"\n')
+    bench = _benchmark(tmp_path, monkeypatch, [archive], settings=GT, row={"driving_command": [1, 0, 0, 0]})
 
-    assert bench.run_config() == {"ground_offset_m": POD_HEIGHT_M, "command_source": "gt"}
+    config = bench.run_config()
+    assert config["command_source"] == "gt"
+    assert config["commands"] | {"sha256": None} == {"left": 1, "straight": 0, "right": 0, "sha256": None}
+
+
+def test_a_route_hint_records_which_commands_were_given(tmp_path, monkeypatch) -> None:
+    """Two lists that differ only in a keyframe's command are two measurements, with two run ids.
+
+    `sequences_sha256` covers the keyframe ids alone, and each site builds the
+    `driving_command` column itself, so this is the only record of which turns
+    the model was told about.
+    """
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+
+    def commands(one_hot) -> dict:
+        bench = _benchmark(tmp_path, monkeypatch, [archive], settings=GT, row={"driving_command": one_hot})
+        return bench.run_config()["commands"]
+
+    left, right = commands([1, 0, 0, 0]), commands([0, 0, 1, 0])
+    assert (left["left"], left["right"]) == (1, 0) and (right["left"], right["right"]) == (0, 1)
+    assert left["sha256"] != right["sha256"]
+    assert commands(np.asarray([1, 0, 0, 0])) == left, "what the model is told, not the spelling"
+    assert commands([0, 0, 0, 1]) == commands(STRAIGHT_COMMAND), "unknown is told straight"
 
 
 def test_a_route_hint_is_recorded_and_ranked(tmp_path, monkeypatch) -> None:
     """`gt` is the route signal ranked rows here and every nuScenes model get: recorded, not invalid."""
     archive = tmp_path / "archive"
     _write_scene(archive, [*RING, BASE])
-    hinted = _benchmark(tmp_path, monkeypatch, [archive], settings='command_source = "gt"\n')
+    hinted = _benchmark(
+        tmp_path, monkeypatch, [archive], settings=GT, row={"driving_command": STRAIGHT_COMMAND}
+    )
     assert hinted.invalid_reasons() == [], "a navigation command is an input, not a look at the scorer"
     assert hinted.run_config()["command_source"] == "gt", "and the record says the model was given it"
 

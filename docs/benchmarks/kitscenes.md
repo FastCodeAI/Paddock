@@ -95,7 +95,8 @@ Caveats the hash cannot express:
   `nav` arm had. The site that ran it had a copy of the list without
   `driving_command`, so the column was rebuilt there with Drive-JEPA's own rule
   (`drivejepa/kitscenes_adapter.py::_driving_command`: the pose 40 frames, 4 s,
-  ahead; more than 5 m to a side is a turn). It gives the 21 left and 18 right
+  ahead; more than 5 m to a side is a turn), by
+  `tools/benchmarks/kitscenes/driving_command.py`. It gives the 21 left and 18 right
   turns of [The route hint](#the-route-hint); a 50-frame horizon gives 23 and 24.
   Only the counts were compared, not each keyframe's command with the original
   list's. The same model told "Continue straight" on every keyframe (`20261111T223048-778679`)
@@ -210,6 +211,17 @@ different measurement from a `straight` one. It hashes to its own run id with
 `command_source` in its `config`, the key and values `paddock ingest` already
 records Drive-JEPA's row under. `straight` adds no key, so every run made before
 the setting existed keeps its id and `--resume`.
+
+A `gt` run also records which commands it was given, as `commands` in its
+`config`: how many keyframes were told left, straight and right, and a hash of
+every keyframe's command. Each site has its own copy of the list, and
+`sequences_sha256` covers only the keyframe ids. So without it, a list whose
+column was built by another rule would give the same config and the same run
+id, and a different score: looking 50 frames (5 s) ahead instead of 40 makes 47
+keyframes turns, not 39. A copy of the list without the column can be given
+Drive-JEPA's by `tools/benchmarks/kitscenes/driving_command.py`. The `gt` records
+made before this key existed, openpilot's runs and Drive-JEPA's ingested row, do
+not have it.
 
 A `gt` run is ranked like any other, and its `config` says it was given the
 route. It is the same signal Drive-JEPA's row (`--command gt`) and Alpamayo's

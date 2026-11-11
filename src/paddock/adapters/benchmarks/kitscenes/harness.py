@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import os
 import pickle
+from collections import Counter
 from collections.abc import Container, Iterator
 from pathlib import Path
 
@@ -32,6 +33,7 @@ from paddock.benchmark import OpenLoopBenchmark, Sample
 from paddock.metrics import pdm
 from paddock.metrics import trajectory as M
 from paddock.policy.protocol import CANBUS_VELOCITY, Command, Observation, Trajectory
+from paddock.results import store
 
 #: Source frames of history fed before the scored keyframe. 48 at the dataset's
 #: 10 Hz is 4.8 s, which is what fills openpilot's 24-deep feature buffer at the
@@ -504,10 +506,12 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         front camera, and a withheld map or route are the same kind of
         difference, but each is recorded only when it departs from the default,
         so every run made before the setting existed keeps its id and `--resume`.
+        Under `gt`, the commands themselves are recorded too; see `_commands_given`.
         """
         config: dict = {"ground_offset_m": self._ground_offset()}
         if self._command_source() != "straight":
             config["command_source"] = self._command_source()
+            config["commands"] = self._commands_given()
         if self._front_camera() != "ring":
             config["front_camera"] = self._front_camera()
         if not self._map():
@@ -515,6 +519,28 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         if self._route() != "oracle":
             config["route"] = self._route()
         return config
+
+    def _commands_given(self) -> dict:
+        """Under `gt`, which command each keyframe is given: the counts, and a hash of all of them.
+
+        `command_source = "gt"` says only where the commands come from. They are
+        the sample list's `driving_command` column, which each site builds for
+        itself (`tools/benchmarks/kitscenes/driving_command.py`), and
+        `sequences_sha256` covers the keyframe ids, not their commands. Without
+        this, two lists built by different rules would give the same config, the
+        same run id and a different score: looking 5 s ahead instead of
+        Drive-JEPA's 4 s makes 47 of the 223 keyframes turns, not 39. Read through
+        `_command`, so the hash is of what the model was actually told.
+        """
+        rows = pickle.loads(self._sample_list().read_bytes())
+        given = {self._sample_id(row): self._command(row) for row in rows}
+        counts = Counter(given.values())
+        return {
+            "left": counts[Command.LEFT],
+            "straight": counts[Command.STRAIGHT],
+            "right": counts[Command.RIGHT],
+            "sha256": store.sequence_hash([f"{sample} {command.name}" for sample, command in given.items()]),
+        }
 
     def model_run_config(self, model) -> dict:
         """Which ring cameras this model was given: the ones it declares.
