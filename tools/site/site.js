@@ -224,15 +224,15 @@
   function badge() {
     const key = pick.value;
     if (!key) return;
-    const row = rows.find((r) => r.key === key);
-    const n = row.cells.filter(Boolean).length;
+    // The badge file's own message, counted once in Python, so the preview cannot disagree with it.
+    const message = data.badges[key];
     const url = `https://img.shields.io/endpoint?url=${encodeURIComponent(site + "badges/" + key + ".json")}`;
     md.textContent = `[![Paddock](${url})](${site}#model-${key})`;
-    const w1 = 54, w2 = 8 + 6.4 * `${n} benchmarks`.length;
+    const w1 = 54, w2 = 8 + 6.4 * message.length;
     const svg =
       `<svg xmlns="${SVG}" width="${w1 + w2}" height="20"><rect width="${w1}" height="20" fill="#555"/>` +
       `<rect x="${w1}" width="${w2}" height="20" fill="#2a289d"/><g fill="#fff" font-family="Verdana,sans-serif" font-size="11">` +
-      `<text x="${w1 / 2}" y="14" text-anchor="middle">Paddock</text><text x="${w1 + w2 / 2}" y="14" text-anchor="middle">${n} benchmarks</text></g></svg>`;
+      `<text x="${w1 / 2}" y="14" text-anchor="middle">Paddock</text><text x="${w1 + w2 / 2}" y="14" text-anchor="middle">${message}</text></g></svg>`;
     img.src = "data:image/svg+xml," + encodeURIComponent(svg);
   }
   pick.addEventListener("change", badge);

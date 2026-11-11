@@ -76,6 +76,24 @@ def test_every_model_with_a_row_gets_a_badge(built: Path) -> None:
     assert badge["schemaVersion"] == 1 and badge["message"].endswith("benchmarks")
 
 
+def test_a_badge_counts_each_benchmark_once(built: Path) -> None:
+    # Bench2Drive has two columns, 50 routes and 220; a model scored on both ran one benchmark.
+    readme = site.sections(site.README.read_text(encoding="utf-8"))["Models and benchmarks"]
+    benchmarks = {site._first_link(row[0])[0] for row in site.table(readme, "Benchmark")}
+    columns, rows = readme_figures.load_matrix()
+    html = (built / "index.html").read_text(encoding="utf-8")
+    page = json.loads(re.search(r'id="paddock-data" type="application/json">(.*?)</script>', html, re.S)[1])
+    for row in rows:
+        if row.is_floor:
+            continue
+        ran = {col.name for col, cell in zip(columns, row.cells, strict=True) if cell.value is not None}
+        assert ran <= benchmarks, f"{row.key}: {ran - benchmarks} is not in the README's benchmark table"
+        badge = json.loads((built / "badges" / f"{row.key}.json").read_text(encoding="utf-8"))
+        assert badge["message"] == f"{len(ran)} benchmarks", row.key
+        # The page draws its preview from the same message, so the two cannot disagree.
+        assert page["badges"][row.key] == badge["message"], row.key
+
+
 def test_readme_links_become_github_links() -> None:
     link = site.Links(REPO, "abc")
     got = site.inline("see [the guide](docs/adding-a-model.md#setup), `make check` and **this**", link)

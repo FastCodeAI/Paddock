@@ -555,7 +555,10 @@ def page(
     for key in model_keys:
         if key == FLOOR or key not in badge_rows:
             continue
-        n = sum(c is not None for c in badge_rows[key]["cells"])
+        # Benchmarks, not columns: Bench2Drive has two (50 routes and 220), and a model
+        # scored on both has run one benchmark.
+        cells = zip(data["columns"], badge_rows[key]["cells"], strict=True)
+        n = len({col["name"] for col, cell in cells if cell is not None})
         badges[key] = {
             "schemaVersion": 1,
             "label": "Paddock",
@@ -602,7 +605,10 @@ def page(
         "LICENSE": escape(link("LICENSE")),
         "BUILT": built,
         "RAMP": ramp_css(),
-        "DATA": json.dumps({**data, "site": site_url}, ensure_ascii=False).replace("</", "<\\/"),
+        "DATA": json.dumps(
+            {**data, "site": site_url, "badges": {k: b["message"] for k, b in badges.items()}},
+            ensure_ascii=False,
+        ).replace("</", "<\\/"),
         "CSS": (HERE / "site.css").read_text(encoding="utf-8"),
         "JS": (HERE / "site.js").read_text(encoding="utf-8"),
     }
