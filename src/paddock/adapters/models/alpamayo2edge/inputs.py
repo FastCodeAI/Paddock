@@ -46,6 +46,8 @@ from collections.abc import Sequence
 
 import numpy as np
 
+from paddock.policy.protocol import Command
+
 #: Edge camera ID -> (paddock camera, field of view to crop to in degrees, None for
 #: the widest 16:9 window). ID 4, the rear telephoto, is not one of Edge's inputs.
 SLOTS: tuple[tuple[int, str, float | None], ...] = (
@@ -278,9 +280,6 @@ def history_before_first_frame_s(times_s: Sequence[float]) -> float:
 
 # -- route ----------------------------------------------------------------------
 
-#: Paddock's 4-way driving command (`policy.protocol.Command`): RIGHT 0, LEFT 1.
-COMMAND_RIGHT, COMMAND_LEFT = 0, 1
-
 
 def nav_text(
     command: int,
@@ -300,8 +299,8 @@ def nav_text(
         if maneuver not in ("TURN_LEFT", "TURN_RIGHT"):
             return "Continue straight"
         side = "left" if maneuver == "TURN_LEFT" else "right"
-    elif int(command) in (COMMAND_LEFT, COMMAND_RIGHT):
-        side = "left" if int(command) == COMMAND_LEFT else "right"
+    elif int(command) in (Command.LEFT, Command.RIGHT):
+        side = "left" if int(command) == Command.LEFT else "right"
         distance_m = None
     else:
         return "Continue straight"
