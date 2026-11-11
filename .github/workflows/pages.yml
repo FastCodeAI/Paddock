@@ -1,0 +1,70 @@
+# Publish the website to GitHub Pages on every push to main.
+#
+# tools/site builds one static page from main's own README.md, docs/support-matrix.toml and
+# results/, so the site cannot show a number main does not hold, and its links point at the
+# commit it was built from.
+#
+# Nothing here can reject work. A site that would fail to build fails tests/test_site.py in
+# `make check` first, on the PR that broke it (see check.yml for why that split matters).
+#
+# It runs only where the repo is public, so the private working copy never tries to deploy.
+# Pages must be switched on once in the public repo: Settings > Pages > Source: GitHub Actions.
+
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and a deploy already running finishes.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v6
+
+      # The base install is enough: the site reads model.yaml and results/, and draws nothing
+      # with matplotlib.
+      - name: Install paddock
+        run: |
+          uv venv --python 3.11 .venv
+          uv pip install --python .venv/bin/python -e .
+
+      # Gives the address Pages serves from, custom domain included, for the page's own links.
+      - id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Build the site
+        run: .venv/bin/python -m tools.site --out _site --site-url "${{ steps.pages.outputs.base_url }}/"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

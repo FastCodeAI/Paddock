@@ -1,0 +1,18 @@
+# Videos the website shows, hosted outside git (Hugging Face). Each section of the page is
+# left out while its entry is empty. Every URL must be https.
+#
+# Which scenes may be shown is a question about each dataset's terms: settle it before adding
+# a clip from that dataset.
+#
+# The clip at the top of the page, beside the title:
+# [hero]
+# src = "https://huggingface.co/datasets/OWNER/paddock-media/resolve/main/hero.mp4"
+# poster = "https://huggingface.co/datasets/OWNER/paddock-media/resolve/main/hero.jpg"
+# alt = "Every model driving the same neuroNCAP scene, side by side"
+#
+# The side-by-side gallery, one entry per clip, made with `paddock render`:
+# [[video]]
+# title = "neuroNCAP 0103, frontal"
+# caption = "eight models, one stationary car ahead"
+# src = "https://huggingface.co/datasets/OWNER/paddock-media/resolve/main/neuroncap-0103.mp4"
+# poster = "https://huggingface.co/datasets/OWNER/paddock-media/resolve/main/neuroncap-0103.jpg"
