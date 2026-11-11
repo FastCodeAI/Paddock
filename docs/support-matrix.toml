@@ -61,7 +61,17 @@ decimals = 3
 key = "bench2drive"
 name = "Bench2Drive"
 loop = "closed"
-header = "driving score ↑ (0–100)"
+header = "driving score ↑ (0–100), 50 routes"
+decimals = 2
+
+# Every model the same way over all 220 routes but the ones set aside for every model (issue #158;
+# "The 220-route protocol" in docs/benchmarks/bench2drive.md). It fills as models are run.
+[[benchmark]]
+key = "bench2drive220"
+benchmark = "bench2drive"
+name = "Bench2Drive"  # shared with the 50-route column, drawn once across both
+loop = "closed"
+header = "driving score ↑ (0–100), 216 of 220 routes"
 decimals = 2
 
 [[benchmark]]
@@ -120,6 +130,7 @@ nuplan = { run = "nuplan/openpilot/20260917T220353-9e4f44" }
 navsim = { run = "navsim/openpilot/20260911T161513-3a4c90", note = "10 Hz" }
 navsim_v1 = { run = "navsim_v1/openpilot/20260914T181009-dbcef4", note = "10 Hz" }
 bench2drive = { run = "bench2drive/openpilot/pooled50-40c29d24c37d542a-c7d2b2", marks = "P" }  # routes can end early; it ranks
+bench2drive220 = { run = "bench2drive/openpilot/full220-836dda734659a86c-2803bd", marks = "P" }
 neuroncap = { run = "neuroncap/openpilot/20260905T055713-11ac59" }
 alpasim = { run = "alpasim/openpilot/legacy-openpilot_020_30scenes" }
 
@@ -130,6 +141,7 @@ comma2k19 = { run = "comma2k19/alpamayo15/20261106T005600-6c52a2" }
 navsim = { run = "navsim/alpamayo15/20260912T040211-a9562c", marks = "A", note = "10 Hz" }  # NAVSIM-Traj, NAVSIM-ReCogDrive
 navsim_v1 = { run = "navsim_v1/alpamayo15/20260914T175447-89a9ca", marks = "A", note = "10 Hz" }
 bench2drive = { run = "bench2drive/alpamayo15/native50-10hz-084418258d833a9f-c4d076", note = "10 Hz" }
+bench2drive220 = { run = "bench2drive/alpamayo15/full220-836dda734659a86c-f81033", note = "10 Hz" }
 neuroncap = { run = "neuroncap/alpamayo15/20260906T034647-bc409f", marks = "A" }  # its scenes are nuScenes val scenes
 alpasim = { run = "alpasim/alpamayo15/20261029T200113-9d900c" }  # through the bridge, 30 scenes
 
@@ -165,6 +177,7 @@ navsim_v1 = { run = "navsim_v1/meteor/20260915T005223-071c0b", marks = "P" }
 # Its declared 5 Hz, routes ended after 30 s stuck or 4x the expert's time (AutoE2E's rules), each a
 # failed drive scored as it stood: valid, and it ranks. The README says how it was driven.
 bench2drive = { run = "bench2drive/meteor/pooled50-40c29d24c37d542a-867d57", note = "5 Hz" }
+bench2drive220 = { run = "bench2drive/meteor/full220-836dda734659a86c-dda00e", note = "5 Hz" }
 neuroncap = { run = "neuroncap/meteor/20260915T193036-d34559" }
 alpasim = { run = "alpasim/meteor/legacy-meteor_011_published_30scenes" }
 
@@ -187,6 +200,7 @@ navsim_v1 = { run = "navsim_v1/autoe2e/20261104T210206-3022fb", marks = "A", not
 # Its own inputs at its declared 10 Hz, routes ended after 30 s stuck or 4x the expert's time, each a
 # failed drive scored as it stood: valid, and it ranks. The README says how it was driven.
 bench2drive = { run = "bench2drive/autoe2e/pooled50-40c29d24c37d542a-cc7a9c", note = "10 Hz" }
+bench2drive220 = { run = "bench2drive/autoe2e/full220-836dda734659a86c-63902e", note = "10 Hz" }
 neuroncap = { run = "neuroncap/autoe2e/20261026T233951-743060", marks = "A" }
 alpasim = { run = "alpasim/autoe2e/20261022T045847-86b955" }
 

@@ -481,7 +481,7 @@ Two failure modes this exists for, both met on a 220-route sweep at one site:
   `campaign status` says whether it is a candidate for the routes set aside for
   every model. At that site route 23695 (Town13 `InterurbanAdvancedActorFlow`)
   crashed CARLA on all seven attempts, and 23708 (Town12) on two before one
-  scored.
+  scored. 23695 is now among the routes set aside (*Routes set aside*, below).
 
 Worker configs, logs (`logs/worker<slot>.log`) and a launch history
 (`workers.json`) live in `{runs}/bench2drive/_campaign/<model>/`. Every attempt
@@ -581,8 +581,12 @@ is lower by the share of routes set aside.
 ### Routes set aside
 
 A route is set aside for every model when the simulator fails on it on every
-attempt, whichever model drives. It then measures no model, and a mean with it for
-one model and without it for another is not over the same routes. Poor driving is
+attempt. On 11715 it fails whichever model drives. On 3800, 23695 and 24071 it
+failed on every attempt Alpamayo 1.5 made, each time at about the same point of the
+route; the other models' drives ended before that point, so their scores there are of
+drives that Alpamayo 1.5 could not finish. Either way the route measures no model, and
+a mean with it for one model and without it for another is not over the same routes.
+Poor driving is
 never a reason: a route the car is blocked on, deviates from, times out on or has
 ended early is scored. Neither is a failure of the model's own node (an HTTP 500,
 running out of memory): that is the model's to fix.
@@ -600,6 +604,16 @@ failure on the simulator, with the evidence here. The list is `SET_ASIDE` in
 | Route | Scenario | Why | Evidence |
 |---|---|---|---|
 | 11715 | Town12 EnterActorFlow | CARLA crashes (signal 11) about 54 s into the route on every attempt, whichever model drives | five attempts at one site, 7–8 Oct 2026 (openpilot), each `CommonUnixCrashHandler: Signal=11` at 53.65–54.0 s of game time; nine at another under three stacks |
+| 3800 | Town13 MergerIntoSlowTraffic | CARLA crashes (signal 11) 63-69 s into the route on every attempt by Alpamayo 1.5 at its declared 10 Hz | three attempts by Alpamayo 1.5 at 10 Hz, 9 Nov 2026, each `Signal=11` at 62.65–68.8 s of game time; in October the same at about 1300–1411 frames (65–71 s) for Alpamayo 1.5 and Qwen-Drive at their rates. openpilot completed it in 39.4 s; the 30 s rule stopped METEOR at 30.1 s and AutoE2E at 34.4 s |
+| 23695 | Town13 InterurbanAdvancedActorFlow | CARLA crashes (signal 11) about 40 s into the route on every attempt by Alpamayo 1.5 at its declared 10 Hz | three attempts by Alpamayo 1.5 at 10 Hz, 9 Nov 2026, each `Signal=11` at 39.75–41.5 s; seven of seven openpilot attempts at another site in October. openpilot completed it in 25.9 s; the 30 s rule stopped METEOR at 30.1 s and AutoE2E at 34.0 s |
+| 24071 | Town13 InterurbanAdvancedActorFlow | CARLA crashes (signal 11) 37-40 s into the route on every attempt by Alpamayo 1.5 at its declared 10 Hz | three attempts by Alpamayo 1.5 at 10 Hz, 9 Nov 2026, each `Signal=11` at 36.7–40.45 s. openpilot completed it in 24.6 s; the 30 s rule stopped METEOR at 30.1 s and AutoE2E at 34.0 s |
+
+**The 50-route column keeps 3800.** Route 3800 is one of the 50 routes behind the
+older Bench2Drive column, whose records were pooled before it was set aside; they
+keep it, as stored. Pooled again now, or driven again on that set, they leave it out:
+49 routes and a new route-set hash, so a table of their own on the leaderboard.
+openpilot's `pooled50-40c29d24c37d542a-c7d2b2`, pooled again under this list, is
+`pooled50-084418258d833a9f-db51cb`.
 
 ## Shared-machine behaviour
 
@@ -654,7 +668,7 @@ failure on the simulator, with the evidence here. The list is `SET_ASIDE` in
 | evaluator flags, exit codes, checkpoint-at-startup, CARLA port and session | read from `leaderboard_evaluator.py` at 7ec25d1; launch path tested against a stand-in evaluator (`tests/test_harness.py`) | **strong** for the harness, argued for the real evaluator |
 | `agent.py` imports and runs its control path in the CARLA-client env | imported and exercised in the site's `b2d` env (Python 3.8, 0.9.15 egg) without a server | moderate |
 | a model drives a route end to end through paddock | openpilot and VisionPilot completed routes (DS 100) through this adapter at one site; frames were at Low quality (see *Render quality*) and the run predates the crash-status and repetition handling above | moderate |
-| `metric_info.json` matches what the upstream tool reads | field names and layout taken from `get_metric_info` and `efficiency_smoothness_benchmark.read_from_json` at 7ec25d1; not yet fed through the tool end to end | argued |
+| `metric_info.json` matches what the upstream tool reads | field names and layout taken from `get_metric_info` and `efficiency_smoothness_benchmark.read_from_json` at 7ec25d1; fed through the tool end to end for openpilot's 220-route record (`full220-836dda734659a86c-2803bd`): `efficiency_smoothness_benchmark.py` read all 216 routes' files and gave comfort 40.88%, the figure in *Bench2Drive — 220 routes*, both through `upstream_scores` and run on its own | **strong** |
 | crashed repetitions are dropped, not averaged | unit-tested over crashed, blocked and all-crashed triples | **strong** |
 | an edited CARLA launch line is refused | unit-tested against a stub evaluator with and without the flag | **strong** |
 | `--resume` reuses scored routes and drives the rest | unit-tested (scored, killed, torn, all-crashed, short of repetitions); on a real interrupted sweep it reused the 34 scored routes and drove the other 185 | **strong** |
@@ -673,6 +687,11 @@ What every run here depends on, beyond the leaderboard's own rules.
   three stacks, regardless of ego speed. The client's traceback lands in
   `route_scenario.spawn_parked_vehicles` only because that is its first call to
   the server after the crash.
+* **Routes 3800, 23695 and 24071 (Town13) are set aside for every model too.**
+  CARLA crashed with signal 11 on every attempt Alpamayo 1.5 made at its declared
+  10 Hz, each time at about the same point (about 65, 40 and 38 s in). The other
+  models' drives ended before that point. It is not game time alone: at 20 Hz in
+  September, with no early stop, Alpamayo 1.5 drove 3800 to the 200 s tick cap.
 * **Wire format:** the agent now sends `speed_limit` (m/s, from
   `hero.get_speed_limit()`) and the next junction maneuver as `nav_maneuver` /
   `nav_distance_m` (walked forward on the 1 m world plan). Both optional; only
@@ -816,6 +835,79 @@ no lead, so the cell is marked P; like AutoE2E's and METEOR's, it ranks. It
 replaces the unassisted estimate ◆
 (30.09), a reconstruction from the September recordings, whose 50-route mean the
 table below still withholds.
+
+### Bench2Drive — 220 routes
+
+Every model driven the same way over all 220 routes of `bench2drive220.xml` but
+the ones set aside for every model ([The 220-route protocol](#the-220-route-protocol)):
+the support matrix's column headed "216 of 220 routes". It fills as models are run.
+DS, RC and IP are paddock's means over those routes, as in the matrix; "with
+collision" is the share of routes with at least one. Success, efficiency, comfort
+and the abilities are what Bench2Drive's own scripts give for the same routes, from
+the `upstream_scores.json` beside each record ([Efficiency and comfort](#efficiency-and-comfort)).
+Bench2Drive's own tables divide DS and success by 220, a route not driven counting
+as 0, so each is 216/220 of the figure here (OpenPilot: DS 42.63, success 10.45%).
+
+| Model | Routes | DS ↑ | RC ↑ (%) | IP ↑ | With collision ↓ (%) | Success ↑ (%) | Efficiency ↑ | Comfort ↑ (%) | Record |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| OpenPilot | 216/220 | 43.42 | 55.15 | 0.813 | 22.69 | 10.65 | 180.59 | 40.88 | `full220-836dda734659a86c-2803bd` |
+| METEOR | 216/220 | 1.92 | 5.40 | 0.925 | 12.04 | 0.00 | 148.74 | 95.73 | `full220-836dda734659a86c-dda00e` |
+| AutoE2E | 216/220 | 14.36 | 27.80 | 0.548 | 79.63 | 0.00 | 219.49 | 50.46 | `full220-836dda734659a86c-63902e` |
+| Alpamayo 1.5 | 216/220 | 37.66 | 56.49 | 0.740 | 40.74 | 2.78 | 161.32 | 51.83 | `full220-836dda734659a86c-f81033` |
+
+**Bench2Drive's five abilities, in % of the routes that count towards each:**
+
+| Model | Merging ↑ | Overtaking ↑ | Emergency brake ↑ | Give way ↑ | Traffic signs ↑ | Mean ↑ |
+|---|---:|---:|---:|---:|---:|---:|
+| OpenPilot | 9.21 | 11.11 | 15.00 | 20.00 | 36.17 | 18.30 |
+| METEOR | 0.00 | 0.00 | 0.00 | 0.00 | 3.19 | 0.64 |
+| AutoE2E | 0.00 | 0.00 | 0.00 | 0.00 | 11.70 | 2.34 |
+| Alpamayo 1.5 | 1.32 | 4.44 | 3.33 | 10.00 | 52.13 | 14.24 |
+
+A route counts towards an ability by its scenario, the same for every model:
+Merging 76 of these routes, Overtaking 45, Emergency brake 60, Give way 10 and
+Traffic signs 94 (a scenario can count towards two). A route earns its abilities
+by succeeding: completed, with no infraction but a minimum-speed one. A traffic-sign
+route also earns that one if the car got past its first junction with no red
+light or stop sign run.
+
+**OpenPilot** drives through openpilot's own longitudinal planner and its
+driver-resume nudge (P), asked every 20 Hz tick, as in its 50-route cell. CARLA
+crashed (signal 11) on three of its attempts. Routes 2943 and 3248 crashed as
+they started and scored on their next attempt. Route 28111 had finished: the
+evaluator had printed and registered its result (completed at 34.8 s of game
+time, one collision) when CARLA crashed, so that result is the route's score.
+No route needed a third attempt. The three routes set aside after Alpamayo 1.5's
+run (3800, 23695, 24071) are out of its mean too, though it had completed each.
+
+**METEOR** is asked at its declared 5 Hz, the last plan followed in between, and
+CARLA never crashed on its attempts. As on 50 routes, it rarely gets moving: 189
+of its 216 routes end under 1% route completion. The 30 s rule ended 138 of them,
+Bench2Drive's own 60 s blocked test 44 (the 30 s clock pauses while the car waits
+at a red light) and the over-time rule 7. No route is a success; its one ability credit is Traffic signs, for 3 of 94 routes
+that got past their first junction with no red light or stop sign run. Its comfort
+is that of a car that barely moved. Bench2Drive's minimum-speed check runs on every
+route but records a value only each time the car covers another twentieth of it,
+so METEOR's efficiency is over the 26 routes it drove at least 5% of (OpenPilot's
+is over 205).
+
+**AutoE2E** is asked at its declared 10 Hz, the last plan followed in between,
+with upstream's inputs: the measured ego history and the route raster. CARLA
+crashed once, on route 3307's first attempt as it started, and the route scored
+on its next. It moves off on every route but completes none: its median route
+completion is 25.8%, and 172 of its 216 routes have a collision. The 30 s rule
+ended 177 routes and the over-time rule 12. No route is a success; its one ability
+credit is Traffic signs, for 11 of 94 routes that got past their first junction
+with no red light or stop sign run.
+
+**Alpamayo 1.5** is asked at its declared 10 Hz, the last plan followed in between,
+with its three front cameras and the route as navigation text. CARLA crashed on
+nine of its attempts, all on routes 3800, 23695 and 24071, three each, which are
+now set aside for every model (*Routes set aside*); every other route scored on
+its first attempt. It completes 53 of its 216 routes, more than any other model
+here, and is second to openpilot on driving score: 88 routes have a collision, and
+the 30 s rule ended 110 and the over-time rule 22. Six routes are a success; its
+best ability is Traffic signs, 49 of 94 routes.
 
 ### Bench2Drive — 50 routes
 
