@@ -6,7 +6,7 @@
 # The environment is the vendor's own lock (uv.lock at 02f55a7: Python 3.12,
 # torch 2.8.0 with CUDA 12.8, transformers 5.17.0), with SDPA attention; the
 # flash-attn extra is not installed and the adapter does not use it. The
-# checkpoint is nvidia/Alpamayo2-Edge at revision f8951d0, 5.0 GB, not gated. It
+# checkpoint is nvidia/Alpamayo2-Edge at revision f8951d0, 5.3 GB, not gated. It
 # goes into the Hugging Face cache at HF_HOME, and {weights}/Alpamayo2-Edge links
 # to its pinned snapshot, so downloading another revision later cannot change
 # what a run is scored against.

@@ -187,6 +187,10 @@ class ModelSpec:
     #: Rate of those camera frames, Hz: 2 means 0.5 s apart. None where it is not
     #: recorded, or the model reads one frame.
     camera_hz: float | None = None
+    #: The times of those frames, seconds relative to now, oldest first, where no
+    #: single `camera_hz` spaces them: alpamayo2edge reads its front cameras at -2,
+    #: -1, -0.5, -0.1 and 0 s. Empty means `camera_hz` says it.
+    camera_frame_times_s: tuple[float, ...] = ()
     #: True where the adapter feeds the last `history_frames` requests as they
     #: arrive, so their spacing is the benchmark's step and `camera_hz` is only the
     #: rate the model was trained at. visionpilot pairs the previous request: on a
@@ -375,6 +379,7 @@ def load_models(directory: Path = MODELS_DIR) -> dict[str, ModelSpec]:
             input_size=_input_size(caps.get("input_size"), path),
             history_frames=_optional_int(caps.get("history_frames")),
             camera_hz=_optional_float(caps.get("camera_hz")),
+            camera_frame_times_s=tuple(float(t) for t in caps.get("camera_frame_times_s") or ()),
             camera_frames_by_request=bool(caps.get("camera_frames_by_request", False)),
             camera_views=tuple(caps.get("camera_views", ())),
             ego_history_steps=_optional_int(caps.get("ego_history_steps")),

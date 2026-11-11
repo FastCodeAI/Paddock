@@ -60,19 +60,18 @@ capabilities:
   # -- model card (docs/models/alpamayo2edge.md) --
   architecture: "Cosmos3-Edge 2B VLM (SigLIP2 vision) + 0.2B flow-matching trajectory expert reading its KV cache"
   params_m: 2651
-  size_gb: 5.0
+  size_gb: 5.3
   precision: bf16
   # Front and telephoto frames after the vendor's resize; the other four are 416x224.
   input_size: [576, 320]
   # Six slots: Edge's training rig is 120 deg cross and front cameras, 70 deg rear
   # side cameras and a 30 deg telephoto, which policy.py crops out of CAM_FRONT.
   camera_views: [CAM_FRONT_LEFT, CAM_FRONT, CAM_FRONT_RIGHT, CAM_BACK_LEFT, CAM_BACK_RIGHT, CAM_FRONT_TELE]
-  # Five frames for the front and telephoto cameras (-2, -1, -0.5, -0.1, 0 s) and
-  # three for the others (-1, -0.1, 0 s). No single rate fits; camera_hz only draws
-  # the README's and the website's caption, where 2 Hz spans the 2 s the frames do
-  # and leaving it out would read as five frames back to back.
+  # Five frames for the front and telephoto cameras and three for the others
+  # (-1, -0.1, 0 s). No single rate spaces them, so the card gives the front
+  # cameras' times (inputs.FRONT_OFFSETS_S) where other models give camera_hz.
   history_frames: 5
-  camera_hz: 2.0
+  camera_frame_times_s: [-2.0, -1.0, -0.5, -0.1, 0.0]
   ego_history_steps: 20
   ego_history_hz: 10.0
   output_kind: waypoints

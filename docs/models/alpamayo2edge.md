@@ -10,6 +10,7 @@
 | Cameras | `CAM_FRONT_LEFT`, `CAM_FRONT`, `CAM_FRONT_RIGHT`, `CAM_BACK_LEFT`, `CAM_BACK_RIGHT`, `CAM_FRONT_TELE` |
 | Plan | waypoints, 0.1 s apart, 6.4 s ahead |
 | Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md) |
+| Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->
 
@@ -129,13 +130,20 @@ The seed is set before every plan. A plan therefore depends on its input alone, 
 on the node, the order, a retry or a resumed run. It is still one draw: on one
 KITScenes frame, plans drawn with different seeds ended metres apart at 6.4 s.
 
+The vendor's code refuses a plan whose rationale has not reached the trajectory within
+256 generated tokens. With the seed fixed, asking again repeats the same draw, so the
+adapter draws again with the next seed, up to four draws, and the scenario fails only
+if all four are refused. On navtest this happened in 2 of the 12,146 scenarios at
+seed 43, and seed 44 planned both. The node logs each such plan, and `/diagnostics`
+counts them (`drawn_again`).
+
 ## Environment and weights
 
 `setup.sh` builds the vendor's own lock (`uv sync --locked`: Python 3.12, torch
 2.8.0 with CUDA 12.8, transformers 5.17.0) into `PADDOCK_VENV`, with SDPA attention;
 flash-attn is not installed. It adds fastapi and uvicorn for the node.
 
-The checkpoint is 5.0 GB and not gated. `setup.sh` fetches it into the Hugging Face
+The checkpoint is 5.3 GB and not gated. `setup.sh` fetches it into the Hugging Face
 cache at `HF_HOME` (default `{weights}/hf_cache`) and checks the sha256 of every file
 the model reads. It then links `{weights}/Alpamayo2-Edge` to the pinned snapshot, by a
 relative path. A later download of another revision cannot change what a run is
@@ -158,10 +166,13 @@ make check-alpamayo2edge ALPAMAYO2_EDGE_PY=<model venv>/bin/python \
   ALPAMAYO2_EDGE_CHECKPOINT=<{weights}/Alpamayo2-Edge>
 ```
 
-It checks the restated constants against the vendor's. It also checks that a NAVSIM
-sequence passes the vendor's `validate_sample`, that the prompt labels its frames as
-above, that the processor read once gives the vendor's tensors (2,892 image tokens),
-and the speed fits in the table above.
+It checks the restated constants against the vendor's. Among them is the start of the
+message the vendor refuses an incomplete rationale with, which is how the adapter
+knows to draw again: the test has the vendor's own code refuse a draw and checks that
+the next seed is drawn. It also checks that a NAVSIM sequence passes the vendor's
+`validate_sample`, that the prompt labels its frames as above, that the processor
+read once gives the vendor's tensors (2,892 image tokens), and the speed fits in the
+table above.
 
 ## Cost
 
@@ -201,4 +212,42 @@ nuPlan data is claimed.
 
 ## Results
 
-None yet.
+NAVSIM navtest, all 12,146 scenarios, on OpenScene's 2 Hz frames, with no failed
+scenario. The v1 score replays the v2 run's plans through the v1 devkit, so the two
+numbers describe one set of plans.
+
+| Benchmark | Score | Run | How |
+|---|---:|---|---|
+| NAVSIM v2 | **0.626** EPDMS | `navsim/alpamayo2edge/20261111T052918-f9f90a` | four nodes on one H200, 92 min |
+| NAVSIM v1 | **0.699** PDMS | `navsim_v1/alpamayo2edge/20261111T070439-f19e8f` | replay of the v2 run's plans, 9 min, no GPU |
+
+Every sub-metric is in [navsim.md](../benchmarks/navsim.md#navsim-v2) and
+[navsim_v1.md](../benchmarks/navsim_v1.md#navsim-v1). Alpamayo 1.5 scores 0.608 and
+0.676 on the same 2 Hz frames, and 0.691 and 0.753 with nuPlan's 10 Hz frames. Edge has
+not been run at 10 Hz, so compare it with the 2 Hz pair.
+
+**The scenarios and ground truth are the ones the other rows used.** Edge's runs were
+made at a different site from the earlier NAVSIM rows, with metric caches built there.
+The constant-velocity floor, scored on those caches, reproduces its stored rows exactly:
+0.238544 EPDMS and 0.206517 PDMS, every sub-metric to six decimals, with the same
+`sequences_sha256` (`82e33c6837552a03` for v2, `013e89176339021d` for v1). The two
+records reported here carry the same hashes.
+
+**The plans are reproducible.** The run reported here is the second full run. The first,
+`navsim/alpamayo2edge/20261111T031938-f9f90a`, was made at `02b26a8`, before the redraw
+was added. It scored 12,144 scenarios and lost the two the vendor refused, so it was
+stored partial and `valid: false`; its record is kept in `results/`, and the leaderboard
+lists it under "Excluded runs". Every one of those 12,144 plans is identical in the two
+runs, to the 0.1 mm the plan dump records, although different nodes served them.
+
+What the plans look like, from the run's plan dump and node logs:
+
+- **The route sentence is followed.** Of the 2,501 "Turn left" scenarios, 86 % of
+  plans end more than 1 m left at 4 s and 0.4 % more than 1 m right. Of the 1,575
+  "Turn right" ones, 84 % end right and 0.6 % left.
+- **The plan starts at the car's speed.** In the 10,707 scenarios where the car moves
+  faster than 1 m/s, the plan's first 0.1 s step is within 0.2 m/s of the measured
+  speed in 95 % of them; the median difference is +0.1 m/s.
+- **The model wrote `<NOMINAL>` in 37 % of scenarios** (4,488 of 12,146) and a
+  rationale in the rest.
+- **Two plans were drawn again**, the two the first run lost, both at seed 44.

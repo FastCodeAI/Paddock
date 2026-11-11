@@ -91,6 +91,11 @@ it differs.
   three views are black, and the model reads only its front camera. METEOR there
   sees that one camera in two of its eight slots, the other six left black as its
   training drops a camera.
+- **Ranked, though fed less than the model is built for.** Alpamayo 2 Edge's NAVSIM
+  cells, marked 2 Hz, are a model built for 0.1 s frames run on OpenScene's 2 Hz; it
+  has not been run on nuPlan's 10 Hz frames. Compare them with Alpamayo 1.5's 2 Hz run
+  (0.676 PDMS, 0.608 EPDMS), not with the 10 Hz cells above them
+  ([navsim.md](docs/benchmarks/navsim.md#notes-on-the-matrix-cells)).
 
 Before comparing numbers:
 

@@ -16,7 +16,14 @@ from PIL import Image
 
 from paddock import conformance
 from paddock.adapters.models.alpamayo2edge import inputs
-from paddock.adapters.models.alpamayo2edge.policy import NOMINAL, POLICY, Alpamayo2EdgePolicy, Settings
+from paddock.adapters.models.alpamayo2edge.policy import (
+    MAX_DRAWS,
+    NOMINAL,
+    POLICY,
+    Alpamayo2EdgePolicy,
+    Settings,
+    draw_until_complete,
+)
 from paddock.policy import protocol
 from paddock.policy.protocol import CANBUS_VELOCITY, Command, Observation
 
@@ -301,6 +308,9 @@ def test_model_yaml_declares_the_cameras_and_spacing_the_policy_uses() -> None:
     assert spec.waypoint_dt == POLICY.waypoint_dt == inputs.PLAN_DT_S
     assert spec.horizon_s == pytest.approx(inputs.PLAN_STEPS * inputs.PLAN_DT_S)
     assert spec.ego_history_steps == inputs.HISTORY_STEPS
+    # The README's models picture draws the camera frames at the card's times.
+    assert spec.camera_frame_times_s == inputs.FRONT_OFFSETS_S
+    assert spec.history_frames == len(inputs.FRONT_OFFSETS_S)
 
 
 def test_model_yaml_declares_the_policys_defaults_and_passes_every_setting_through() -> None:
@@ -313,3 +323,47 @@ def test_model_yaml_declares_the_policys_defaults_and_passes_every_setting_throu
     knobs = {f"ALPAMAYO2_EDGE_{name.upper()}" for name in Settings.__dataclass_fields__}
     assert knobs == set(spec.runtime.env_passthrough)
     assert set(spec.runtime.tuning_env) == {"ALPAMAYO2_EDGE_SAVE_REASONING"}
+
+
+# -- a rationale that never reaches the trajectory ------------------------------------
+
+
+def _attempts(refused: int, error: str = "No <traj_future_start> token found in generated rows [0]."):
+    seeds: list[int] = []
+
+    def attempt(seed: int) -> str:
+        seeds.append(seed)
+        if len(seeds) <= refused:
+            raise ValueError(error)
+        return f"plan from seed {seed}"
+
+    return attempt, seeds
+
+
+def test_a_refused_draw_is_drawn_again_with_the_next_seed() -> None:
+    """The vendor refuses a plan whose rationale has not reached the trajectory token in
+    256 tokens. With the seed fixed, asking again would repeat the same draw, as NAVSIM's
+    retry did for 2 navtest scenarios; the next seed is a new draw."""
+    attempt, seeds = _attempts(refused=1)
+    assert draw_until_complete(attempt, 43) == ("plan from seed 44", 44)
+    assert seeds == [43, 44]
+
+
+def test_a_draw_the_vendor_accepts_is_used_as_it_is() -> None:
+    attempt, seeds = _attempts(refused=0)
+    assert draw_until_complete(attempt, 43) == ("plan from seed 43", 43)
+    assert seeds == [43]
+
+
+def test_the_scenario_fails_when_every_draw_is_refused() -> None:
+    attempt, seeds = _attempts(refused=MAX_DRAWS)
+    with pytest.raises(ValueError, match="traj_future_start"):
+        draw_until_complete(attempt, 43)
+    assert seeds == list(range(43, 43 + MAX_DRAWS))
+
+
+def test_any_other_error_is_not_drawn_again() -> None:
+    attempt, seeds = _attempts(refused=1, error="Model produced nonfinite trajectory values")
+    with pytest.raises(ValueError, match="nonfinite"):
+        draw_until_complete(attempt, 43)
+    assert seeds == [43]

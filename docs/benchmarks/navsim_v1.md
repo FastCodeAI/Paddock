@@ -222,6 +222,7 @@ from `results/navsim/` for reference: a different composite, not a ranking.
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
 | drivejepa | **0.892** | 0.984 | 0.985 | 0.887 | 0.881 | 0.999 | 0.988 | 0.843 | `20260911T082329-575df6` | proxy, 7.5 h |
 | alpamayo15 | **0.676** | 0.941 | 0.788 | 0.604 | 0.878 | 0.979 | 0.885 | 0.608 | `20260911T044805-0aea35` | replay of `navsim/alpamayo15/20260903T183818-5879c1`'s 12,146 plans, 30 min, no GPU |
+| alpamayo2edge | **0.699** | 0.924 | 0.801 | 0.665 | 0.847 | 0.991 | 0.873 | 0.626 | `20261111T070439-f19e8f` | replay of `navsim/alpamayo2edge/20261111T052918-f9f90a`'s 12,146 plans, 9 min, no GPU |
 | visionpilot | **0.488** | 0.771 | 0.818 | 0.451 | 0.617 | 0.996 | 0.920 | 0.431 | `20260911T083323-c07583` | proxy, four nodes, 8.2 h |
 | meteor | **0.366** | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | 0.800 | 0.303 | `20260915T005223-071c0b` | replay of `navsim/meteor/20260914T234307-e56cfc`, 12 min. Its plans are 3 s extended to 4 s (`METEOR_HORIZON_S`); see `docs/models/meteor.md` |
 | constant_velocity | **0.207** | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 | 0.239 | `20260911T034553-8f28ac` | node-less baseline, 27 min |
@@ -276,8 +277,10 @@ NC × DAC × (5·TTC + 5·EP + 2·comfort) / 12 (`docs/benchmarks/navsim_v1.md`)
 Driving direction compliance is recorded with weight zero. Full navtest,
 12,146 scenarios each, zero failures. Drive-JEPA and VisionPilot are fresh
 proxy runs; the Alpamayo, OpenPilot and AutoE2E rows replay the plans their v2 runs
-recorded (the 10 Hz nuPlan history and, for Alpamayo, the 2 Hz OpenScene run
-too), so each scores the very plans behind the v2 figure above. The baseline
+recorded (the 10 Hz nuPlan history and, for Alpamayo 1.5, the 2 Hz OpenScene run
+too), so each scores the very plans behind the v2 figure above. Alpamayo 2 Edge's
+row replays its 2 Hz OpenScene run the same way; it has not been run at 10 Hz (see ‡
+in `docs/benchmarks/navsim.md`). The baseline
 reproduces the NAVSIM
 paper's constant-velocity row (20.6) term by term, and the recorded human
 future scores 0.946 against the paper's 94.8 (privileged; stored `valid: false`).
@@ -287,6 +290,7 @@ future scores 0.946 against the paper's 94.8 (privileged; stored `valid: false`)
 | OpenPilot, 10 Hz nuPlan history ‡ | 0.807 | 0.969 | 0.913 | 0.719 | 0.936 | 1.000 | 0.948 |
 | Alpamayo 1.5, 10 Hz nuPlan history ‡ | 0.753 | 0.957 | 0.856 | 0.690 | 0.896 | 0.991 | 0.927 |
 | Alpamayo 1.5, 2 Hz OpenScene | 0.676 | 0.941 | 0.788 | 0.604 | 0.878 | 0.979 | 0.885 |
+| Alpamayo 2 Edge, 2 Hz OpenScene ‡ | 0.699 | 0.924 | 0.801 | 0.665 | 0.847 | 0.991 | 0.873 |
 | Drive-JEPA | **0.892** | 0.984 | 0.985 | 0.887 | 0.881 | 0.999 | 0.988 |
 | VisionPilot | 0.488 | 0.771 | 0.818 | 0.451 | 0.617 | 0.996 | 0.920 |
 | METEOR ◊ | 0.366 | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | 0.800 |
