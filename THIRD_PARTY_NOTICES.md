@@ -15,6 +15,7 @@ comes under its owner's licence and terms, which you accept when you download it
 |---|---|---|
 | `src/paddock/adapters/models/alpamayo15/route_nav.py`, in part | [NVIDIA AlpaSim](https://github.com/NVlabs/alpasim): `nav_text.py` and `alpamayo_base.py` | Apache-2.0, Copyright (c) 2026 NVIDIA Corporation |
 | `src/paddock/adapters/models/visionpilot/policy.py`, in part, ported from C++ | [Autoware Foundation VisionPilot](https://github.com/autowarefoundation/vision_pilot): `longitudinal_fusion.cpp`, `longitudinal_planning.cpp`, `planning.cpp` and `auto_speed.cpp` | Apache-2.0 |
+| `src/paddock/adapters/benchmarks/bench2drive/pid.py`, reimplemented | The control law of the PID controller in [TCP](https://github.com/OpenDriveLab/TCP) (`leaderboard/team_code/pid_controller.py`), which the UniAD and VAD agents of Bench2Drive's baselines also use | Apache-2.0 |
 | `src/paddock/adapters/models/meteor/policy.py`: METEOR's camera rig, as numbers (intrinsics, and three rows of each camera's transform) | [TIER IV METEOR](https://github.com/tier4/METEOR): `bevlane/ref_rig_drs.npz` | Apache-2.0 |
 
 Each file names its source, at the top or beside the copied lines.
