@@ -75,6 +75,8 @@ Site configuration (``paddock.toml``)::
                                          # default: every route found
     notes  = "24 routes from the 03-04 Sep campaign, 26 from the 09 Sep expansion"
     ranked = true                        # optional; ranks it as recorded despite its rate or a lost route
+    tracked = ["bench2drive/drivejepa/full220-..."]   # optional; records in results/ whose
+                                         # upstream_scores.json rows supply routes not under `runs`
     [ingest.bench2drive.model_env]       # optional; overrides what the runs recorded
     PADDOCK_CV_SPEED_M_S = "6"
     [ingest.bench2drive.setups]          # optional; recording setup -> route ids
@@ -87,6 +89,29 @@ experiment: a mean over them describes no configuration anybody ran, so such a r
 is written ``valid: false`` with the setups in ``notes``. It is kept, and the
 leaderboard lists it as excluded rather than ranking it -- which is the whole point
 of recording the setup instead of a sentence in prose.
+
+**A route driven at another site can come from that site's tracked record.** A record
+in ``results/bench2drive/`` carries, beside its ``metrics.json``, the per-route rows of
+``upstream_scores.json`` (``tools/benchmarks/bench2drive/upstream_scores.py``): each
+route's scores and infraction counts from its ``results.json``, and how the early stop
+ended it. ``tracked = ["bench2drive/<model>/<run_id>"]`` names such records, and a
+route not scored under ``runs`` is taken from them -- so routes driven here can complete
+a record made where the raw results are not. A raw route under ``runs`` takes precedence,
+route by route. Each route is measured as :func:`parse_results` and :func:`ended_early`
+would measure its ``results.json``, with one exception: ``duration_s``, the evaluator's
+wall-clock seconds, is not in the rows, so a route taken from a record carries none and
+the store counts it missing, as it does for a route ``--resume`` reused.
+
+That is exact only for a record the rows fully describe, so :func:`read_tracked` refuses
+one that is not: no ``upstream_scores.json``; rows that are not the record's routes; a
+``metrics.json`` that does not pin one scored repetition per route (``n_runs`` mean and
+max 1, ``n_crashed`` max 0) -- the rows hold the first record only; ``ended_*`` blocks
+that are neither absent nor present for every route -- a row's ``ended_early: null``
+cannot say whether its route had an ``early_stop.json``; or rows that, aggregated as
+here, do not reproduce the record's own ``metrics.json``. The record's ``config`` joins
+the source runs' in every agreement check above, a record that does not rank keeps the
+pool from ranking, and every pooled route names its origin: the raw run and the sha256 of
+its ``results.json``, or the record and the sha256 of its ``upstream_scores.json``.
 """
 
 from __future__ import annotations
@@ -109,12 +134,21 @@ from paddock.adapters.benchmarks.bench2drive.harness import (
     ended_early,
     every_tick,
     failure_said,
+    parse_checkpoint,
     parse_results,
     read_failure,
     set_aside_remark,
+    stop_shares,
 )
 from paddock.registry import Registry
 from paddock.results.store import MetricsRecord, RunRecord, config_hash, sequence_hash
+
+#: The per-route rows a tracked record carries beside its metrics.json
+#: (tools/benchmarks/bench2drive/upstream_scores.py).
+UPSTREAM_SCORES = "upstream_scores.json"
+#: What upstream_scores.json does not hold: the evaluator's wall-clock seconds
+#: (results.json ``meta.duration_system``).
+NOT_IN_ROWS = "duration_s"
 
 #: Bench2Drive's published protocol calls the model once per simulator tick --
 #: 20 Hz (docs/benchmarks/bench2drive.md). A model may declare a slower rate of its
@@ -328,6 +362,168 @@ def discover(runs_roots: Sequence[Path], routes: list[str] | None = None) -> Sur
     return Survey(scored, {k: v for k, v in rejected.items() if k not in scored})
 
 
+class TrackedRefused(ValueError):
+    """A tracked record whose rows cannot stand in for its routes' ``results.json``, and why."""
+
+
+class Tracked(NamedTuple):
+    """A tracked record whose ``upstream_scores.json`` rows stand in for its routes' ``results.json``."""
+
+    #: ``bench2drive/<model>/<run_id>``: how ``tracked`` names it, and where ``results/`` keeps it.
+    name: str
+    #: Its run.json's ``site``: where it was pooled. ``source_sites``: where its runs were, as they recorded.
+    site: str
+    source_sites: list[str]
+    started: datetime | None
+    #: Its run.json's ``config``, checked against the source runs' as theirs are against each other.
+    config: dict[str, Any]
+    valid: bool
+    #: Of its upstream_scores.json, the file every route taken from it was measured from.
+    sha256: str
+    #: Route folder -> the route's metrics, measured as from its results.json.
+    routes: dict[str, dict[str, Any]]
+
+
+def _differing(mine: dict[str, Any], stored: dict[str, Any]) -> list[str]:
+    """The keys whose blocks differ, but for what the rows do not hold."""
+    keys = sorted((set(mine) | set(stored)) - {NOT_IN_ROWS})
+    return [k for k in keys if mine.get(k) != stored.get(k)]
+
+
+def read_tracked(record_dir: Path, model: str) -> Tracked:
+    """A tracked record's routes, measured from its ``upstream_scores.json`` -- or :class:`TrackedRefused`.
+
+    Each row goes through :func:`parse_checkpoint` as the one record of its route and through
+    :func:`stop_shares` as its ``early_stop.json``, so a route is measured by the code that measures
+    a ``results.json``. The rows hold what that needs but for three things, and the record's own
+    ``metrics.json`` must pin those, or it is refused rather than guessed at (module docstring):
+    how many repetitions a route had (the rows hold the first), whether a route with no early stop
+    had an ``early_stop.json`` at all, and ``duration_s``, which is left out (:data:`NOT_IN_ROWS`).
+    Last, the rows aggregated as the store aggregates them must give the record's ``metrics.json``,
+    every block but that one: a record they do not reproduce is not one they describe.
+    """
+    record_dir = Path(record_dir)
+    run, stored = (_read_json(record_dir / name) for name in ("run.json", "metrics.json"))
+    if not isinstance(run, dict) or not isinstance(stored, dict):
+        raise TrackedRefused(f"{record_dir.name}: no readable run.json and metrics.json there")
+    name = f"{run.get('benchmark')}/{run.get('model')}/{run.get('run_id')}"
+    if run.get("benchmark") != "bench2drive" or run.get("model") != model:
+        raise TrackedRefused(f"{name} is not a Bench2Drive record of {model!r}")
+    config = run.get("config")
+    if not isinstance(config, dict) or not config:
+        raise TrackedRefused(f"{name}: its run.json holds no config to check against the source runs'")
+    try:
+        raw = (record_dir / UPSTREAM_SCORES).read_bytes()
+        upstream = json.loads(raw)
+    except OSError as exc:
+        raise TrackedRefused(
+            f"{name}: no {UPSTREAM_SCORES} beside it, so nothing holds its routes' rows; "
+            "`python -m tools.benchmarks.bench2drive.upstream_scores` writes it where its raw results are"
+        ) from exc
+    except ValueError as exc:
+        raise TrackedRefused(f"{name}: its {UPSTREAM_SCORES} is not JSON ({type(exc).__name__})") from exc
+    if upstream.get("record") != run.get("run_id") or upstream.get("model") != model:
+        raise TrackedRefused(
+            f"{name}: its {UPSTREAM_SCORES} is for {upstream.get('model')}/{upstream.get('record')}"
+        )
+    rows = upstream.get("routes") or []
+    metrics = stored.get("metrics") or {}
+    n = len(rows)
+    dataset = run.get("dataset") or {}
+    if n != dataset.get("n_samples"):
+        raise TrackedRefused(f"{name}: the {n} routes of its {UPSTREAM_SCORES} are not the record's own")
+
+    def pinned(key: str, **values: float) -> bool:
+        block = metrics.get(key) or {}
+        return (
+            block.get("n") == n
+            and block.get("n_missing") == 0
+            and all(block.get(k) == v for k, v in values.items())
+        )
+
+    # The rows are each route's first record (upstream_scores_client.py): one scored repetition a route.
+    if not pinned("n_runs", mean=1, max=1) or not pinned("n_crashed", max=0):
+        raise TrackedRefused(
+            f"{name}: its metrics.json does not pin one scored repetition per route (n_runs mean and max 1, "
+            f"n_crashed max 0, over all {n} routes), and a row holds a route's first record only"
+        )
+    # A row's `ended_early: null` is a route that went to Bench2Drive's own end, or one with no
+    # early_stop.json at all.
+    ended = [f"ended_{reason}" for reason in early_stop.REASONS]
+    stops = bool(config.get("early_stop")) or any(key in metrics for key in ended)
+    if stops and not all(pinned(key) for key in ended):
+        raise TrackedRefused(
+            f"{name}: its metrics.json does not hold {', '.join(ended)} for every one of its {n} routes "
+            f"(the early stop {'on' if config.get('early_stop') else 'off'}), and a row's ended_early null "
+            "cannot say which routes had an early_stop.json"
+        )
+    routes: dict[str, dict[str, Any]] = {}
+    split: dict[str, str] = {}
+    for row in rows:
+        try:
+            rid, town, scenario = str(row["route_id"]), str(row["town"]), str(row["scenario"])
+            record = {
+                "route_id": f"RouteScenario_{rid}",
+                "status": row["status"],
+                "scores": {
+                    "score_composed": row["driving_score"],
+                    "score_route": row["route_completion"],
+                    "score_penalty": row["infraction_penalty"],
+                },
+                "infractions": dict(row["infractions"]),
+            }
+            reason = row["ended_early"]
+        except (KeyError, TypeError) as exc:
+            raise TrackedRefused(f"{name}: a row of its {UPSTREAM_SCORES} lacks {exc}") from exc
+        folder = f"{rid}-{town}-{scenario}"
+        if route_parts(folder) is None or folder in routes:
+            raise TrackedRefused(f"{name}: {folder} is not one route folder of its {UPSTREAM_SCORES}")
+        if reason not in (None, *early_stop.REASONS) or (reason and not stops):
+            raise TrackedRefused(
+                f"{name}: route {rid} ended_early {reason!r}, which its metrics.json does not hold"
+            )
+        try:
+            measured = parse_checkpoint({"records": [record]}, f"{name}/{UPSTREAM_SCORES} route {rid}")
+        except NotScored as exc:
+            raise TrackedRefused(str(exc)) from exc
+        measured[NOT_IN_ROWS] = None
+        if stops:
+            measured.update(stop_shares({"reason": reason}))
+        routes[folder], split[folder] = measured, scenario
+    ids = [f"bench2drive/{folder}" for folder in routes]
+    if sequence_hash(ids) != dataset.get("sequences_sha256"):
+        raise TrackedRefused(f"{name}: the {n} routes of its {UPSTREAM_SCORES} are not the record's own")
+    samples = [
+        {"sample_id": f"bench2drive/{f}", "split": split[f], "metrics": routes[f]} for f in sorted(routes)
+    ]
+    mine = MetricsRecord.from_samples(str(run.get("run_id")), samples, primary_metric="driving_score")
+    differ = _differing(mine.metrics, metrics) + [
+        f"by_split {s}"
+        for s in sorted(set(mine.by_split) | set(stored.get("by_split") or {}))
+        if _differing(mine.by_split.get(s) or {}, (stored.get("by_split") or {}).get(s) or {})
+    ]
+    if differ:
+        raise TrackedRefused(
+            f"{name}: its {UPSTREAM_SCORES} rows, measured as a results.json is, do not give its "
+            f"metrics.json ({', '.join(differ[:5])}{', ...' if len(differ) > 5 else ''})"
+        )
+    started = run.get("started_utc")
+    try:
+        when = datetime.fromisoformat(started) if started else None
+    except ValueError:
+        when = None
+    return Tracked(
+        name=name,
+        site=str(run.get("site") or ""),
+        source_sites=[str(s) for s in config.get("source_sites") or []],
+        started=when,
+        config=config,
+        valid=bool(run.get("valid", True)),
+        sha256=hashlib.sha256(raw).hexdigest(),
+        routes=routes,
+    )
+
+
 def ingest(
     runs_root: Path | Sequence[Path],
     model: str,
@@ -338,14 +534,21 @@ def ingest(
     model_env: dict[str, str] | None = None,
     setups: dict[str, list[str]] | None = None,
     ranked: bool = False,
+    tracked: Sequence[Path] = (),
 ) -> list[tuple[RunRecord, MetricsRecord, list[dict[str, Any]]]]:
     """One pooled paddock run for ``model`` over the routes under ``runs_root``.
 
     ``ranked`` ranks the run as recorded although its rate or a route that never
     scored would keep it off the board; ``notes`` says so. Every other reason a
     pool does not rank still holds.
+
+    ``tracked`` names record directories whose ``upstream_scores.json`` rows supply
+    the routes not scored under ``runs_root`` (:func:`read_tracked`, module docstring).
     """
     roots = [runs_root] if isinstance(runs_root, Path) else list(runs_root)
+    records = [read_tracked(Path(d), model) for d in tracked]
+    if len({rec.name for rec in records}) < len(records):
+        raise TrackedRefused(f"a tracked record is named twice: {', '.join(rec.name for rec in records)}")
     setup_of = {route: label for label, group in (setups or {}).items() for route in group}
     survey = discover(roots, routes)
     rejected = dict(survey.rejected)
@@ -353,6 +556,7 @@ def ingest(
     # from them: neither their samples nor their source runs' configs, which would otherwise join
     # the agreement checks below. Out of the routes asked for, or of every route the trees hold.
     seen = {parts[0] for folder in (*survey.scored, *survey.rejected) if (parts := route_parts(folder))}
+    seen |= {parts[0] for rec in records for folder in rec.routes if (parts := route_parts(folder))}
     aside = sorted(
         (r for r in (routes if routes is not None else seen) if r in SET_ASIDE), key=lambda r: (len(r), r)
     )
@@ -413,23 +617,69 @@ def ingest(
                 "metrics": metrics,
             }
         )
+    # A route no run under `runs` scored, from the tracked record that holds it: a raw route takes
+    # precedence route by route, and a route two records hold is the operator's to settle, not ours.
+    raw_routes = {s["native_id"]["route_id"] for s in samples}
+    taken: dict[str, Tracked] = {}
+    for rec in records:
+        for folder, measured in sorted(rec.routes.items()):
+            route, town, scenario = route_parts(folder)  # type: ignore[misc]
+            if route in raw_routes or route in aside or (routes is not None and route not in routes):
+                continue
+            if route in taken:
+                raise TrackedRefused(
+                    f"route {route} is in both {taken[route].name} and {rec.name}, and scored under no run "
+                    "here: name the one it comes from"
+                )
+            taken[route] = rec
+            samples.append(
+                {
+                    "sample_id": f"bench2drive/{folder}",
+                    "native_id": {
+                        "route_id": route,
+                        "town": town,
+                        "scenario": scenario,
+                        "record": rec.name,
+                        "source": f"results/{rec.name}/{UPSTREAM_SCORES}",
+                        "sha256": rec.sha256,
+                    },
+                    "split": scenario,
+                    "group": setup_of.get(route, ""),
+                    "metrics": dict(measured),
+                }
+            )
+    # In sample-id order, as a pool of raw routes alone is: the store's float sums follow it.
+    samples.sort(key=lambda s: s["sample_id"])
+    used_records = [rec for rec in records if any(t is rec for t in taken.values())]
     have = {s["native_id"]["route_id"] for s in samples}
     # A route that was attempted and never scored is expected too. Defaulting
     # `wanted` to the samples that survived would make `missing` empty by
     # construction -- n_failed: 0, status complete, valid true -- on exactly the
     # case the record exists to show: a model that crashed out of a route.
-    attempted = {route_parts(f)[0]: why for f, why in rejected.items() if route_parts(f)}  # type: ignore[index]
+    attempted = {
+        parts[0]: why for f, why in rejected.items() if (parts := route_parts(f)) and parts[0] not in taken
+    }
+    # What a record that contributed says of a route it never scored, unless a run here says more.
+    for rec in used_records:
+        for route, why in (rec.config.get("routes_never_scored") or {}).items():
+            if route not in have and route not in attempted:
+                attempted[route] = f"{rec.name}: {why}"
     # A route set aside is neither expected nor lost: it measures no model.
     wanted = [
         r for r in (sorted(routes) if routes is not None else sorted(have | set(attempted))) if r not in aside
     ]
     missing = [r for r in wanted if r not in have]
-    source_runs = sorted({s["native_id"]["run_id"] for s in samples})
+    source_runs = sorted({s["native_id"]["run_id"] for s in samples if "run_id" in s["native_id"]})
     starts = [d for d in (_started(r) for r in source_runs) if d is not None]
+    starts += [rec.started for rec in used_records if rec.started is not None]
     sample_ids = [s["sample_id"] for s in samples]
 
-    # Configuration comes from the runs being ingested, not from this function.
-    used = [sources[d] for d in dict.fromkeys(contributing)]
+    # Configuration comes from the runs being ingested, not from this function. A tracked record's
+    # config is one more source here, checked as the runs' are against each other.
+    runs_used = [sources[d] for d in dict.fromkeys(contributing)]
+    used = runs_used + [{"model": model, "config": rec.config, "record": rec.name} for rec in used_records]
+    sources_said = "source runs and tracked records" if used_records else "source runs"
+    raw_sites = sorted({rec["site"] for rec in runs_used if rec.get("site")})
     configs = [rec.get("config") or {} for rec in used]
     recorded_env: dict[str, Any] = {}
     for key in sorted({k for c in configs for k in (c.get("model_env") or {})}):
@@ -438,13 +688,23 @@ def ingest(
         "routes_file": _agreed([c.get("routes_file") for c in configs]) or DEFAULT_ROUTES_FILE,
         "routes_subset": wanted,
         "source_runs": source_runs,
+        # Each tracked record a route came from: where it was pooled, and the file its routes were read from.
+        **(
+            {
+                "source_records": {
+                    rec.name: {"site": rec.site, "upstream_scores_sha256": rec.sha256} for rec in used_records
+                }
+            }
+            if used_records
+            else {}
+        ),
         # `site` names the operation that pooled these runs; the machines that
         # produced them are here, as far as the recordings state them.
-        "source_sites": sorted({rec["site"] for rec in used if rec.get("site")}),
+        "source_sites": sorted(set(raw_sites) | {s for rec in used_records for s in rec.source_sites}),
         "waypoint_dt": _agreed([c.get("waypoint_dt") for c in configs]) or _registered_waypoint_dt(model),
         # The operator's entry is an override of what ran, not a substitute for it.
         "model_env": {**recorded_env, **dict(model_env or {})},
-        "source_config_read": f"{sum(1 for c in configs if c)}/{len(used)} source runs",
+        "source_config_read": f"{sum(1 for r in runs_used if r.get('config'))}/{len(runs_used)} source runs",
     }
     # The model.yaml env each source run was made under. Two values are
     # two settings of the model, not one experiment. `_agreed` skips a missing
@@ -522,6 +782,33 @@ def ingest(
         config["recording_setups"] = {label: sorted(group) for label, group in sorted(setups.items())}
     run_id = f"{run_label}-{sequence_hash(sample_ids)}-{config_hash(config)}"
     note = notes.strip()
+    if used_records:
+        origins = []
+        if len(samples) > len(taken):
+            origins.append(
+                f"{len(samples) - len(taken)} route(s) from {len(source_runs)} run(s) under `runs`, read "
+                f"from their results.json (sites recorded: {', '.join(raw_sites) or 'none'})"
+            )
+        for rec in used_records:
+            their_sites = ", ".join(rec.source_sites) or "none"
+            origins.append(
+                f"{sum(1 for t in taken.values() if t is rec)} route(s) from tracked record {rec.name}, "
+                f"read from its {UPSTREAM_SCORES} (sha256 {rec.sha256[:12]}; pooled at site "
+                f"{rec.site or 'not recorded'}, its runs' sites recorded: {their_sites})"
+            )
+        note = (note + " " if note else "") + (
+            f"of the {len(samples)} routes pooled: {'; '.join(origins)}. A route scored under `runs` takes "
+            f"precedence over a record's row. {NOT_IN_ROWS}, the evaluator's wall-clock seconds, is not in "
+            f"{UPSTREAM_SCORES}, "
+            f"so the {len(taken)} route(s) from tracked records carry none and metrics.json counts them "
+            "missing, as for a route --resume reused."
+        )
+    unranked = [rec.name for rec in used_records if not rec.valid]
+    if unranked:
+        note = (note + " " if note else "") + (
+            f"tracked record(s) {', '.join(unranked)} do not rank (valid: false; their notes say why), "
+            "so neither does this run."
+        )
     outside = sorted(r for r in attempted if r not in set(wanted) and r not in aside)
     if outside:
         lost = ", ".join(f"{r} ({attempted[r]})" for r in outside)
@@ -547,17 +834,17 @@ def ingest(
         )
     if undeclared:
         note = (note + " " if note else "") + (
-            f"{undeclared} of {len(used)} source runs recorded no declared_env (made before 21 Oct 2026), "
+            f"{undeclared} of {len(used)} {sources_said} recorded no declared_env (made before 21 Oct 2026), "
             "so which model.yaml env their routes ran is not known and this run does not rank."
         )
     # The override is layered on top of what the runs recorded, so a key that is
     # only in the override is an operator's assertion -- the note has to say so,
     # or `results/` claims the source runs recorded a value they never held.
     overridden = sorted(k for k in dict(model_env or {}) if k not in recorded_env)
-    unverified = sum(1 for rec in used if not rec.get("model"))
+    unverified = sum(1 for rec in runs_used if not rec.get("model"))
     if unverified:
         note = (note + " " if note else "") + (
-            f"{unverified} of {len(used)} source runs kept no run.json, so their routes are "
+            f"{unverified} of {len(runs_used)} source runs kept no run.json, so their routes are "
             f"attributed to {model} on the tree they were found in; config.model_env and the "
             f"rest of config are what {config['source_config_read']} recorded."
         )
@@ -603,7 +890,7 @@ def ingest(
         )
     if host_set:
         note = (note + " " if note else "") + (
-            f"{len(host_set)} of {len(used)} source runs were asked for a plan at the rate the host's "
+            f"{len(host_set)} of {len(used)} {sources_said} were asked for a plan at the rate the host's "
             "PADDOCK_INFER_HZ set (config.infer_hz, 0 for every tick), where the model's model.yaml "
             "declared config.planning_hz: an operator's rate, so this run does not rank."
         )
@@ -619,7 +906,7 @@ def ingest(
         )
     if unknown_rate:
         note = (note + " " if note else "") + (
-            f"{unread} of {len(used)} source runs kept no config, so the rate their routes were asked at "
+            f"{unread} of {len(used)} {sources_said} kept no config, so the rate their routes were asked at "
             "is not known, and this run does not rank."
         )
     if rates not in (None, 0.0) and not (mixed_rates or host_set or not_a_rate or unknown_rate):
@@ -657,7 +944,7 @@ def ingest(
         note = (note + " " if note else "") + said + "."
         if without:
             note += (
-                f" {without} of {len(stopped)} source runs ran without it; their routes went to "
+                f" {without} of {len(stopped)} {sources_said} ran without it; their routes went to "
                 "Bench2Drive's own end, so this run does not rank."
             )
     if missing:
@@ -709,10 +996,13 @@ def ingest(
         and not not_a_rate
         and not mixed_stops
         and not at_collision
-        and not by_hand,
+        and not by_hand
+        and not unranked,
         notes=note,
         # A relative tail only: results/ is tracked and must not name a machine's disk.
-        ingested_from="; ".join("/".join(r.parts[-3:]) for r in roots),
+        ingested_from="; ".join(
+            ["/".join(r.parts[-3:]) for r in roots] + [f"results/{rec.name}" for rec in records]
+        ),
     )
     metrics_record = MetricsRecord.from_samples(run_id, samples, primary_metric="driving_score")
     return [(run, metrics_record, samples)]
