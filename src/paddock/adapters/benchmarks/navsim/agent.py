@@ -309,7 +309,7 @@ class PaddockProxyAgent(_PaddockAgentBase):
         for name in self._cameras:
             camera = getattr(cameras, CAMERA_SLOTS[name])
             if camera.camera_path is not None and self._sensor_blobs_path:
-                image_paths[name] = os.path.join(self._sensor_blobs_path, str(camera.camera_path))
+                image_paths[name] = self._image_path(str(camera.camera_path))
             elif camera.image is not None:
                 images[name] = np.asarray(camera.image)
             else:
@@ -335,6 +335,11 @@ class PaddockProxyAgent(_PaddockAgentBase):
             # the lidar frame need not assume this benchmark's convention.
             lidar2ego=np.eye(4),
         )
+
+    def _image_path(self, relative: str) -> str:
+        """A Camera's camera_path is relative to the blob root its scene was
+        loaded from. One root here; navhard's proxy has two (real and synthetic)."""
+        return os.path.join(self._sensor_blobs_path, relative)
 
     def _frame_payload(self, agent_input: AgentInput, index: int, yaw_rate: float) -> dict[str, Any]:
         return self._observation(agent_input, index, yaw_rate).to_wire()
